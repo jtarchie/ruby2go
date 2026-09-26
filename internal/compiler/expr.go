@@ -92,6 +92,12 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genRegexp(n)
 	case *parser.MatchWriteNode:
 		f.errorf(n, "named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match")
+	case *parser.LocalVariableOrWriteNode:
+		return f.genOrAssignLocal(n)
+	case *parser.InstanceVariableOrWriteNode:
+		return f.genOrAssignIvar(n)
+	case *parser.MultiWriteNode:
+		return f.genMultiWrite(n)
 	case *parser.KeywordHashNode:
 		// `f(a: 1)` on a method without keyword params passes a Hash.
 		return f.genHash(n, n.Elements, expected)
@@ -1567,3 +1573,174 @@ var simpleGo = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|\(\*[A-Za-z_][A-Za
 
 // isSimpleGo reports whether code can be evaluated twice without effects.
 func isSimpleGo(code string) bool { return simpleGo.MatchString(code) }
+
+// genOrAssign renders `x ||= value` for a target whose current value is cur.
+// The value is evaluated only when x is nil (or falsy, for untyped/bool).
+func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
+	elem := stripOpt(cur.typ)
+	var cond string
+	var want Type
+	switch {
+	case isAny(elem):
+		cond, want = "!"+f.truthy(n, cur), TAny{}
+	case isOpt(cur.typ):
+		cond, want = cur.code+" == nil", cur.typ
+	case isClass(cur.typ, "Boolean"):
+		cond, want = "!"+cur.code, cur.typ
+	default:
+		// never nil or false: Ruby leaves it alone and skips the value
+		return expr{code: cur.code, typ: cur.typ, done: true}
+	}
+	f.emit("if %s {", cond)
+	f.indent++
+	saved := f.enterBlock()
+	v := f.genExpr(value, elem)
+	f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+	f.leaveBlock(saved)
+	f.indent--
+	f.emit("}")
+	if isOpt(cur.typ) && !isAny(elem) && !isOpt(v.typ) && !isNil(v.typ) {
+		return expr{code: "(*" + cur.code + ")", typ: elem, done: true}
+	}
+	return expr{code: cur.code, typ: cur.typ, done: true}
+}
+
+func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
+	if f.scope.lookup(n.Name) == nil {
+		// a new local starts out nil, so this is a plain assignment
+		return f.assignLocal(n, n.Name, f.genExpr(n.Value, nil), nil)
+	}
+	v := f.readLocal(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location})
+	if v.base != nil {
+		return expr{code: v.goName, typ: v.typ, done: true} // narrowed: already set
+	}
+	e := f.genOrAssign(n, expr{code: v.goName, typ: v.typ}, n.Value)
+	if info := f.locals[n.Name]; info != nil {
+		info.writes++
+		if !isAncestorBlock(info.declBlock, f.block) {
+			info.hoist = true
+		}
+	}
+	if isOpt(v.typ) && !isOpt(e.typ) {
+		f.applyNarrow([]narrowInfo{{local: v, typ: e.typ}}) // non-nil from here on
+	}
+	return e
+}
+
+func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
+	iv := f.c.findIvar(f.owner, n.Name)
+	if iv == nil && f.discover {
+		// first seen through ||=: it starts out nil
+		var v expr
+		f.probe(func() { v = f.genExpr(n.Value, nil) })
+		t := v.typ
+		if !isOpt(t) && !isAny(t) && !isClass(t, "Boolean") && !isNil(t) {
+			t = TOpt{Elem: t}
+		}
+		iv = f.ivar(n, n.Name, t)
+	}
+	if iv == nil {
+		iv = f.ivar(n, n.Name, nil)
+	}
+	return f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
+}
+
+// genMultiWrite renders `a, b = x, y` and `a, b = tuple`.
+func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
+	if n.Rest != nil || len(n.Rights) > 0 {
+		f.errorf(n, "splat in multiple assignment is not supported")
+	}
+	var vals []expr
+	if arr, ok := n.Value.(*parser.ArrayNode); ok && len(arr.Elements) == len(n.Lefts) {
+		vals = f.multiLiteral(arr, n.Lefts)
+	} else {
+		vals = f.multiDestructure(n)
+	}
+	for i, target := range n.Lefts {
+		switch t := target.(type) {
+		case *parser.LocalVariableTargetNode:
+			f.assignLocal(t, t.Name, vals[i], nil)
+		case *parser.InstanceVariableTargetNode:
+			iv := f.ivar(t, t.Name, vals[i].typ)
+			f.emit("%s = %s", f.ivarCode(iv), f.coerce(t, vals[i], iv.Type))
+		default:
+			f.errorf(target, "unsupported assignment target %s", nodeType(target))
+		}
+	}
+	return expr{code: "", typ: TVoid{}, stmt: true, done: true}
+}
+
+// multiLiteral evaluates every right-hand side into a temporary before any
+// target is written, so `a, b = b, a` swaps.
+func (f *fctx) multiLiteral(arr *parser.ArrayNode, lefts []parser.Node) []expr {
+	vals := make([]expr, 0, len(arr.Elements))
+	for i, el := range arr.Elements {
+		e := f.genExpr(el, f.targetType(lefts[i]))
+		if isNil(e.typ) {
+			t := f.targetType(lefts[i])
+			if t == nil {
+				f.errorf(el, "cannot infer a type from nil; annotate the target first")
+			}
+			e.typ = t
+		}
+		tmp := f.newTmp()
+		code := e.code
+		if e.lit {
+			code = f.c.goType(e.typ) + "(" + code + ")"
+		}
+		if isNil(e.typ) || code == "nil" {
+			f.emit("var %s %s", tmp, f.c.goType(e.typ))
+		} else {
+			f.emit("%s := %s", tmp, code)
+		}
+		vals = append(vals, expr{code: tmp, typ: e.typ})
+	}
+	return vals
+}
+
+// multiDestructure splits a tuple (or an Array, into T? values).
+func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
+	var vals []expr
+	{
+		v := f.genExpr(n.Value, nil)
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, v.code)
+		switch t := v.typ.(type) {
+		case TTuple:
+			if len(t.Elems) != len(n.Lefts) {
+				f.errorf(n, "%d targets for a %d-tuple", len(n.Lefts), len(t.Elems))
+			}
+			for i, et := range t.Elems {
+				vals = append(vals, expr{code: fmt.Sprintf("%s.F%d", tmp, i), typ: et})
+			}
+		case TClass:
+			if t.C.RubyName != "Array" {
+				f.errorf(n, "cannot destructure %s", v.typ)
+			}
+			for i := range n.Lefts {
+				vals = append(vals, expr{code: fmt.Sprintf("%s.Idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
+			}
+		default:
+			f.errorf(n, "cannot destructure %s", v.typ)
+		}
+	}
+	return vals
+}
+
+// targetType is the current type of an assignment target, if it has one.
+func (f *fctx) targetType(n parser.Node) Type {
+	switch t := n.(type) {
+	case *parser.LocalVariableTargetNode:
+		if v := f.scope.lookup(t.Name); v != nil {
+			if v.base != nil {
+				return v.base.typ
+			}
+			return v.typ
+		}
+	case *parser.InstanceVariableTargetNode:
+		if iv := f.c.findIvar(f.owner, t.Name); iv != nil {
+			return iv.Type
+		}
+	}
+	return nil
+}
