@@ -50,6 +50,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: "Symbol(" + strconv.Quote(n.Unescaped.Value) + ")", typ: f.cls("Symbol")}, true
 	case *withMember:
 		return f.genMethodCall(n, n.recv, n.name, nil, nil), true
+	case *exprNode:
+		return n.e, true
 	}
 	return expr{}, false
 }
@@ -659,6 +661,10 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		if e, ok := f.genRespondTo(n, recv, args); ok {
 			return e, true
 		}
+		return f.genDynRespondTo(n, recv, args), true
+	}
+	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 {
+		return f.genSend(n, recv, name, args, block), true
 	}
 	if name == "is_a?" || name == "kind_of?" {
 		if len(args) != 1 || block != nil {
@@ -686,6 +692,11 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 		if e == nil {
 			if mm := t.C.lookup("method_missing"); mm != nil {
 				return f.callMissing(n, mm, recv, name, args, block)
+			}
+			// a Module/Class-typed value is some class object: its own
+			// class methods and `new` are found at run time
+			if (t.C.RubyName == "Module" || t.C.RubyName == "Class") && block == nil {
+				return f.genDynCall(n, recv, name, args)
 			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
@@ -1457,8 +1468,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "hash":
 		return expr{code: "rbHash(" + recv.code + ")", typ: f.cls("Integer")}
 	}
-	f.errorf(n, "undefined method %s for %s", name, recv.typ)
-	return expr{}
+	return f.genDynCall(n, recv, name, args)
 }
 
 // blockParam declares a block parameter: a fresh local that Go syntax
@@ -2081,4 +2091,75 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		f.emit("_ = %s", recv.code)
 	}
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
+}
+
+// exprNode carries an already generated expression where a node is
+// expected (wrapper arguments).
+type exprNode struct {
+	parser.Node
+	e expr
+}
+
+func (x *exprNode) GetLocation() parser.Location { return parser.Location{} }
+
+// genDynCall sends a method to an untyped value: see prelude/dynamic.rb.
+func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
+	f.c.noteDyn(name)
+	f.c.warn(f.f, n, "dynamic call: %s on %s", name, recv.typ)
+	codes := make([]string, 0, 1+len(args))
+	codes = append(codes, f.coerce(n, recv, TAny{}))
+	for _, a := range args {
+		if _, ok := a.(*parser.SplatNode); ok {
+			f.errorf(a, "splat arguments in a dynamic call are not supported")
+		}
+		e := f.genExpr(a, nil)
+		codes = append(codes, f.coerce(a, e, TAny{}))
+	}
+	return expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+}
+
+// genSend compiles send/public_send/__send__. A literal name is an
+// ordinary call (send may reach private methods); a computed one switches
+// over every method name at run time.
+func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if lit := literalName(args[0]); lit != "" {
+		if name != "public_send" {
+			f.implicitCall = true
+		}
+		e := f.genMethodCall(n, recv, lit, args[1:], block)
+		f.implicitCall = false
+		return e
+	}
+	if block != nil {
+		f.errorf(n, "a block with a computed send is not supported")
+	}
+	f.c.dynAll = true
+	f.c.warn(f.f, n, "dynamic call: %s with a computed name", name)
+	nameExpr := f.genExpr(args[0], nil)
+	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")"}
+	for _, a := range args[1:] {
+		e := f.genExpr(a, nil)
+		codes = append(codes, f.coerce(a, e, TAny{}))
+	}
+	return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+}
+
+// universalNames answer respond_to? for every object.
+var universalNames = map[string]bool{"to_s": true, "inspect": true, "==": true, "!=": true, "!": true,
+	"nil?": true, "equal?": true, "class": true, "is_a?": true, "kind_of?": true, "respond_to?": true,
+	"send": true, "public_send": true, "hash": true, "then": true, "frozen?": true, "to_json": true}
+
+// genDynRespondTo answers respond_to? when the static type cannot.
+func (f *fctx) genDynRespondTo(n parser.Node, recv expr, args []parser.Node) expr {
+	r := f.coerce(n, recv, TAny{})
+	if lit := literalName(args[0]); lit != "" {
+		if universalNames[lit] {
+			return expr{code: "Boolean(true)", typ: f.cls("Boolean")}
+		}
+		f.c.noteRespond(lit)
+		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ")", typ: f.cls("Boolean")}
+	}
+	f.c.dynAll = true
+	nameExpr := f.genExpr(args[0], nil)
+	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "))", typ: f.cls("Boolean")}
 }

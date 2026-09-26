@@ -20,7 +20,13 @@ type Compiler struct {
 	classList     []*Class
 	topDefs       map[string]*Method
 	consts        map[string]*Const
-	topConstNames []string          // constants declared at top level: Object's table
+	topConstNames []string // constants declared at top level: Object's table
+	dynNames      []string // method names called on untyped values
+	dynSeen       map[string]bool
+	dynAll        bool     // a computed send/respond_to?: every method may be named
+	respondNames  []string // names asked about with respond_to? at run time
+	respondSeen   map[string]bool
+	warned        map[string]bool
 	regexps       []string          // package-level compiled literals
 	regexpVars    map[string]string // literal → its variable, to share one per pattern
 	constList     []*Const
@@ -89,7 +95,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	}
 	defer func() { _ = p.Close(ctx) }()
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, regexpVars: map[string]string{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, regexpVars: map[string]string{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPrelude(ctx, "prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)
@@ -166,4 +172,34 @@ func (c *Compiler) requireRelative(ctx context.Context, f *File, n *parser.CallN
 		target += ".rb"
 	}
 	c.loadPrelude(ctx, target)
+}
+
+// warn records a warning once, with its source position.
+func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
+	msg := fmt.Sprintf("%s:%d: ", f.Name, f.line(n.GetLocation().StartOffset)) + fmt.Sprintf(format, args...)
+	if c.warned[msg] {
+		return
+	}
+	c.warned[msg] = true
+	c.Warnings = append(c.Warnings, msg)
+}
+
+// noteDyn asks for dynamic wrappers of a method name.
+func (c *Compiler) noteDyn(name string) {
+	if c.dynSeen[name] {
+		return
+	}
+	c.dynSeen[name] = true
+	c.dynNames = append(c.dynNames, name)
+	c.noteDyn("method_missing")
+}
+
+// noteRespond asks for a run-time respond_to? check of a method name.
+func (c *Compiler) noteRespond(name string) {
+	if c.respondSeen[name] {
+		return
+	}
+	c.respondSeen[name] = true
+	c.respondNames = append(c.respondNames, name)
+	c.noteDyn("respond_to_missing?")
 }

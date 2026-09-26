@@ -234,6 +234,7 @@ func (c *Compiler) emitProgram() {
 
 	c.emitRubyNames()
 	c.emitMain()
+	c.emitDynamic()
 	c.emitTuples()
 	// last: every body, main included, has registered its literals by now
 	for _, r := range c.regexps {
@@ -378,7 +379,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	isModule := cls.isSubclassOf(c.classes["Module"])
 	if isModule {
-		c.w("\t_Consts() []rbConst\n")
+		c.w("\t_Consts() []rbConst\n\t_Kind() string\n")
 	}
 	c.w("}\n\n")
 	c.w("func (self *%s) _%s() *%s { return self }\n\n", cls.Name, cls.Name, cls.Name)
@@ -589,6 +590,11 @@ func (c *Compiler) constValue(full string) (string, bool) {
 // when the table is asked for, so constants assigned later are seen.
 func (c *Compiler) emitConstTable(cls *Class) {
 	desc := cls.metaOf
+	kind := "class"
+	if desc != nil && desc.IsModule {
+		kind = "module"
+	}
+	c.w("func (self *%s) _Kind() string { return %q }\n\n", cls.Name, kind)
 	if desc == nil {
 		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
 		return

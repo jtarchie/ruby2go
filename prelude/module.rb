@@ -15,6 +15,7 @@
 
   type rbModule interface {
     _Consts() []rbConst
+    _Kind() string // "class" or "module", for messages
     Name() String
   }
 
