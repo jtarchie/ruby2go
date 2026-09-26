@@ -50,6 +50,7 @@ type localInfo struct {
 	writes    int
 	typ       Type
 	annotated bool
+	noHoist   bool // params and block params: declared by Go syntax
 }
 
 type scope struct {
@@ -784,10 +785,20 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		f.noteUnused(v, rc.Reference)
 	}
 	f.genStmts(rc.Statements, t)
-	f.emit("return")
+	if !endsInRaise(rc.Statements) {
+		f.emit("return")
+	}
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+}
+
+func endsInRaise(st *parser.StatementsNode) bool {
+	if st == nil || len(st.Body) == 0 {
+		return false
+	}
+	c, ok := st.Body[len(st.Body)-1].(*parser.CallNode)
+	return ok && c.Receiver == nil && c.Name == "raise"
 }
 
 // ---- locals
@@ -797,6 +808,12 @@ func (f *fctx) declareLocal(name string, typ Type, n parser.Node) *local {
 	if info == nil {
 		info = &localInfo{declBlock: f.block, typ: typ}
 		f.locals[name] = info
+	}
+	if info.noHoist {
+		// block params are fresh per block; never share analysis
+		info.declBlock = f.block
+		info.typ = typ
+		info.hoist = false
 	} else if f.pass < 2 && info.typ != nil && !info.annotated {
 		if j, ok := join(info.typ, typ); ok {
 			info.typ = j
@@ -913,7 +930,7 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 	final := f.buf
 	f.locals = map[string]*localInfo{}
 	for _, p := range params {
-		f.locals[p.name] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1}
+		f.locals[p.name] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
 	}
 	for pass := 1; pass <= 2; pass++ {
 		f.pass = pass
@@ -935,7 +952,7 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		if pass == 2 {
 			for name, info := range sortedLocals(f.locals) {
 				_ = name
-				if info.hoist && info.typ != nil && !isNil(info.typ) {
+				if info.hoist && !info.noHoist && info.typ != nil && !isNil(info.typ) {
 					f.emit("var %s %s", goLocalName(info.name), f.c.goType(info.typ))
 				}
 			}

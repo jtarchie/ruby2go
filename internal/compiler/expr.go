@@ -831,8 +831,7 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 				var lhs, rhs []string
 				var vars []*local
 				for i, nm := range names {
-					v := f.declareLocal(nm, tt.Elems[i], n)
-					v.declared = true
+					v := f.blockParam(nm, tt.Elems[i], n)
 					lhs = append(lhs, v.goName)
 					rhs = append(rhs, fmt.Sprintf("%s.F%d", p, i))
 					vars = append(vars, v)
@@ -849,8 +848,7 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	}
 	for i := range yields {
 		if i < len(names) {
-			v := f.declareLocal(names[i], yields[i], n)
-			v.declared = true
+			v := f.blockParam(names[i], yields[i], n)
 			goParams = append(goParams, v.goName)
 		} else {
 			goParams = append(goParams, "_")
@@ -1285,4 +1283,18 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
+}
+
+// blockParam declares a block parameter: a fresh local that Go syntax
+// declares, so it is never hoisted.
+func (f *fctx) blockParam(name string, typ Type, n parser.Node) *local {
+	info := f.locals[name]
+	if info == nil {
+		info = &localInfo{}
+		f.locals[name] = info
+	}
+	info.noHoist = true
+	v := f.declareLocal(name, typ, n)
+	v.declared = true
+	return v
 }
