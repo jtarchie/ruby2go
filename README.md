@@ -33,9 +33,10 @@ internal/rbs/         the RBS type-syntax subset the compiler understands
 prelude.rb            core library entry point; require_relatives prelude/*.rb
 prelude/              core library, written in Ruby, compiled by the same transpiler;
                       includes net_http.rb and webrick.rb over Go's net/http
-examples/NN_*/        main.rb (user code, runs on MRI) + main.go (hand-written target shape)
+examples/NN_*/main.rb  one feature per program; runs on MRI unchanged
+testdata/run/*.rb     smaller behaviour cases, same MRI oracle, no rbs/lint gate
+testdata/errors/*.txtar  compile-error and warning cases
 rb2go_test.go         the integration suite (below)
-check.sh              runs the hand-written main.go files against MRI
 Gemfile               rbs, rbs-inline, and webrick (the HTTP examples' MRI server)
 .golangci.yml         lint config for this repo
 .golangci.generated.yml  lint config the tests apply to the generated Go
@@ -54,10 +55,16 @@ Examples that `require "net/http"` (or any library) get the matching
 `rbs -r net-http` flags, so their annotations validate against the
 library's signatures.
 
-The hand-written `main.go` files are the *target shape*, not golden files:
-the transpiler's output is written to a temp dir and never compared to them
-byte for byte. Each example covers one feature; add one whenever the
-transpiler grows something the others don't exercise.
+Each example covers one feature; add one whenever the transpiler grows
+something the others don't exercise. There are no golden Go files: MRI's
+output is the only expectation, and the generated Go is inspected with
+`go run ./cmd/rb2go main.rb` when needed.
+
+`TestRun` holds `testdata/run/*.rb` to the same MRI comparison but skips the
+rbs and lint gates, so each file costs one `go build`. `TestErrors` compiles
+each case in `testdata/errors/*.txtar` and checks the `# error: text` /
+`# warning: text` lines it declares. A `# skip: reason` line marks a known
+failure in either; `RB2GO_RUN_SKIPPED=1` runs them anyway.
 
 ## Simplest case
 
@@ -91,8 +98,7 @@ s.equal?(s)          # BasicObject  → true
 is `[]` — everything comes from `Kernel`.)
 
 Example: [00_string_hierarchy](examples/00_string_hierarchy/) —
-[main.rb](examples/00_string_hierarchy/main.rb),
-[main.go](examples/00_string_hierarchy/main.go).
+[main.rb](examples/00_string_hierarchy/main.rb).
 
 ### The prelude idea
 
@@ -152,14 +158,14 @@ Rules the prelude relies on:
 
 ## Examples
 
-Each pair produces identical output under `ruby` and `go run`; `./check.sh`
-verifies. User code is plain Ruby that runs on MRI, so the transpiler can be
-tested by diffing against MRI output.
+Each `main.rb` produces identical output under `ruby` and as transpiled Go.
+User code is plain Ruby that runs on MRI, so the transpiler is tested by
+diffing against MRI output. The design notes below describe the Go shape
+each feature compiles to.
 
 ### 01 — Inheritance, `super`, overriding
 
-[main.rb](examples/01_inheritance/main.rb) ·
-[main.go](examples/01_inheritance/main.go)
+[main.rb](examples/01_inheritance/main.rb)
 
 `describe` is defined on `Shape` but must call the subclass's `area`/`name`.
 
@@ -178,8 +184,7 @@ tested by diffing against MRI output.
 
 ### 02 — Enumerable, blocks, generic containers
 
-[main.rb](examples/02_enumerable/main.rb) ·
-[main.go](examples/02_enumerable/main.go)
+[main.rb](examples/02_enumerable/main.rb)
 
 `Enumerable` written once in the prelude against `each`; Go generics inference.
 
@@ -207,8 +212,7 @@ tested by diffing against MRI output.
 
 ### 03 — `nil` and optional types
 
-[main.rb](examples/03_nil/main.rb) ·
-[main.go](examples/03_nil/main.go)
+[main.rb](examples/03_nil/main.rb)
 
 `T?`, `&.`, `||`, truthiness narrowing. The biggest cross-cutting decision: it
 affects `Hash#[]`, `find`, `first`, and every `if x`.
@@ -233,8 +237,7 @@ affects `Hash#[]`, `find`, `first`, and every `if x`.
 
 ### 04 — Exceptions
 
-[main.rb](examples/04_exceptions/main.rb) ·
-[main.go](examples/04_exceptions/main.go)
+[main.rb](examples/04_exceptions/main.rb)
 
 `raise`/`rescue`/`ensure`, user-defined hierarchies. Feasibility proof more than
 a design driver.
@@ -258,8 +261,7 @@ a design driver.
 
 ### 05 — A real program: word count
 
-[main.rb](examples/05_word_count/main.rb) ·
-[main.go](examples/05_word_count/main.go)
+[main.rb](examples/05_word_count/main.rb)
 
 Three mechanism tests prove feasibility; one small real program shows what a
 user would actually write, and surfaces what the toys don't.
@@ -269,7 +271,7 @@ user would actually write, and surfaces what the toys don't.
   sort key decides), but any program that prints or iterates an unsorted hash
   would have nondeterministic output — which also kills MRI-diff testing.
   Recommended: ordered `Hash` as `map[K]int` index into `[]entry` with
-  tombstones (Python-dict style, ~40 lines, O(1) ops). Omitted from `main.go`
+  tombstones (Python-dict style, ~40 lines, O(1) ops). Omitted here
   for brevity.
 - **`tally` instead of `Hash.new(0)` + `+= 1`.** The default-value idiom needs
   the transpiler to track hash defaults through types (or accept RBS's unsound
@@ -292,7 +294,6 @@ user would actually write, and surfaces what the toys don't.
 ### 06 — `puts`
 
 [main.rb](examples/06_puts/main.rb) ·
-[main.go](examples/06_puts/main.go) ·
 [prelude `Kernel#puts`](prelude.rb)
 
 `puts` is not `fmt.Println`: `nil` → blank line, arrays flatten recursively,
@@ -333,7 +334,7 @@ classes, strings, hashes, optionals, exception flow, an uncaught exception,
 namespaces and constants, class methods and class objects, symbols and
 braceless hash arguments, regexps, JSON, `untyped` and `is_a?`, `||=`,
 multiple assignment, threads, and a WEBrick server with a `Net::HTTP`
-client in one process. Only 00–06 have a hand-written `main.go`.
+client in one process.
 
 ### 26–31 — reflection, and the Ruby resty leans on
 
@@ -422,7 +423,7 @@ resolve; anything not listed is still open.
 6. Prelude coverage: **done.** Every example compiles against `prelude/`
    alone; the subsets that used to be inlined in `examples/*/main.go` are
    in `prelude/{object,integer,float,string,enumerable,array,hash,exception}.rb`.
-   The hand-written `main.go` files are kept as the reference shape.
+   The hand-written `main.go` files were later dropped; MRI is the oracle.
 7. `T?` representation: **decided, uniformly `*T`** — including for struct
    classes, whose non-optional representation is already an interface
    (`Rect` is `RectI`, `Rect?` is `*RectI`). The README's "one
