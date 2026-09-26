@@ -212,8 +212,8 @@ class Array < Object
     return &x
   }
 
-  #: (String) -> String
-  def join(sep) = %x{
+  #: (?String) -> String
+  def join(sep = "") = %x{
     parts := make([]string, len(*self))
     for i, x := range *self {
       parts[i] = string(rbToS(x))

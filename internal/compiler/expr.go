@@ -40,6 +40,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: "nil", typ: TNil{}}, true
 	case *parser.SelfNode:
 		return expr{code: f.selfCode, typ: f.selfType}, true
+	case *parser.SymbolNode:
+		return expr{code: "Symbol(" + strconv.Quote(n.Unescaped.Value) + ")", typ: f.cls("Symbol")}, true
 	}
 	return expr{}, false
 }
@@ -79,7 +81,10 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	case *parser.ArrayNode:
 		return f.genArray(n, expected)
 	case *parser.HashNode:
-		return f.genHash(n, expected)
+		return f.genHash(n, n.Elements, expected)
+	case *parser.KeywordHashNode:
+		// `f(a: 1)` on a method without keyword params passes a Hash.
+		return f.genHash(n, n.Elements, expected)
 	case *parser.ParenthesesNode:
 		st, ok := n.Body.(*parser.StatementsNode)
 		if !ok || len(st.Body) != 1 {
@@ -330,10 +335,14 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 		elems[i] = f.genExpr(el, elemT)
 	}
 	if elemT == nil {
-		if t, ok := f.tupleLiteral(n, elems); ok {
-			return t
+		elemT = inferElemType(elems)
+		// [Integer, String] with nothing expected is a tuple (a sort key, a
+		// multiple-return); anywhere untyped is expected it is an Array.
+		if isAny(elemT) && expected == nil && len(elems) > 0 {
+			if t, ok := f.tupleLiteral(n, elems); ok {
+				return t
+			}
 		}
-		elemT = f.inferElemType(n, elems)
 	}
 	codes := make([]string, len(elems))
 	for i, e := range elems {
@@ -345,14 +354,12 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 
 // inferElemType picks the element type of an unannotated array literal.
 // Ruby's `[]` is untyped; so is ours.
-func (f *fctx) inferElemType(n parser.Node, elems []expr) Type {
-	if len(elems) == 0 {
-		return TAny{}
+func inferElemType(elems []expr) Type {
+	ts := make([]Type, len(elems))
+	for i, e := range elems {
+		ts[i] = e.typ
 	}
-	if isNil(elems[0].typ) {
-		f.errorf(n, "cannot infer the element type of [nil]; add `#: Array[T?]`")
-	}
-	return elems[0].typ
+	return joinOrAny(ts)
 }
 
 // tupleLiteral turns a literal with mixed element types into a tuple.
@@ -367,14 +374,16 @@ func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
 		return expr{}, false
 	}
 	if len(elems) < 2 || len(elems) > 3 {
-		f.errorf(n, "array literal with mixed element types; add `#: Array[T]`")
+		return expr{}, false
+	}
+	for _, e := range elems {
+		if isNil(e.typ) || isAny(e.typ) {
+			return expr{}, false
+		}
 	}
 	ts := make([]Type, len(elems))
 	codes := make([]string, len(elems))
 	for i, e := range elems {
-		if isNil(e.typ) {
-			f.errorf(n, "tuple literal with nil element needs an annotation")
-		}
 		ts[i] = e.typ
 		codes[i] = f.coerce(n, e, e.typ)
 	}
@@ -382,33 +391,26 @@ func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
 	return expr{code: f.c.goType(tt) + "{" + strings.Join(codes, ", ") + "}", typ: tt}, true
 }
 
-func (f *fctx) genHash(n *parser.HashNode, expected Type) expr {
+func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) expr {
 	var kT, vT Type
-	if ec, ok := expected.(TClass); ok && ec.C.Name == "Hash" {
+	if ec, ok := expected.(TClass); ok && ec.C.RubyName == "Hash" {
 		kT, vT = ec.Args[0], ec.Args[1]
 	}
 	type kv struct{ k, v expr }
-	pairs := make([]kv, 0, len(n.Elements))
-	for _, el := range n.Elements {
+	pairs := make([]kv, 0, len(elements))
+	ks, vs := make([]Type, 0, len(elements)), make([]Type, 0, len(elements))
+	for _, el := range elements {
 		a, ok := el.(*parser.AssocNode)
 		if !ok {
 			f.c.unsupported(f.f, el)
 		}
-		if _, ok := a.Key.(*parser.SymbolNode); ok {
-			f.errorf(a.Key, "symbol keys are not supported; use string keys")
-		}
 		k := f.genExpr(a.Key, kT)
 		v := f.genExpr(a.Value, vT)
-		if kT == nil {
-			kT, vT = k.typ, v.typ
-		}
+		ks, vs = append(ks, k.typ), append(vs, v.typ)
 		pairs = append(pairs, kv{k, v})
 	}
 	if kT == nil {
-		kT, vT = TAny{}, TAny{}
-	}
-	if isNil(kT) || isNil(vT) {
-		f.errorf(n, "cannot infer hash types from nil; add `#: Hash[K, V]`")
+		kT, vT = joinOrAny(ks), joinOrAny(vs)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "NewHash[%s, %s]()", f.c.goType(kT), f.c.goType(vT))
@@ -416,6 +418,28 @@ func (f *fctx) genHash(n *parser.HashNode, expected Type) expr {
 		fmt.Fprintf(&b, ".__Set(%s, %s)", f.coerce(n, p.k, kT), f.coerce(n, p.v, vT))
 	}
 	return expr{code: b.String(), typ: TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}}
+}
+
+// joinOrAny is the element type of an unannotated literal: the join of its
+// parts, or untyped when they have none in common (Ruby's literals are
+// heterogeneous; RBS would say `untyped` too).
+func joinOrAny(ts []Type) Type {
+	var out Type
+	for _, t := range ts {
+		if out == nil {
+			out = t
+			continue
+		}
+		j, ok := join(out, t)
+		if !ok {
+			return TAny{}
+		}
+		out = j
+	}
+	if out == nil || isNil(out) || isVoid(out) {
+		return TAny{}
+	}
+	return out
 }
 
 // ---- coercion
