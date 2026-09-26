@@ -820,9 +820,7 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 	f.leaveBlock(saved)
 	f.emit("}()")
 	if t.kind == tailReturn && t.typ != nil && f.begins == 0 {
-		if !f.hasNamedRet {
-			f.emit("return")
-		}
+		f.emit("return") // the value is already in the named result
 	} else if flag != "" {
 		f.emit("if %s {", flag)
 		if f.begins > 0 && f.retFlag != "" {
@@ -1214,8 +1212,6 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	if m.Iterator {
 		f.indent--
 		f.emit("}")
-	} else if namedRet {
-		f.emit("return")
 	}
 	c.out.WriteString(f.buf.String())
 }

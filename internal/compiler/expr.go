@@ -1318,7 +1318,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 			f.errorf(n, "%s takes one argument", name)
 		}
 		a := f.genExpr(args[0], nil)
-		code := "rbEq(Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")"
+		code := "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")"
 		if name == "!=" {
 			code = "!" + code
 		}

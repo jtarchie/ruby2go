@@ -35,6 +35,12 @@ module Enumerable
     nil
   end
 
+  #: () { (E) -> bool } -> E?
+  def detect
+    each { |x| return x if yield(x) }
+    nil
+  end
+
   #: () { (E) -> bool } -> bool
   def any?
     each { |x| return true if yield(x) }

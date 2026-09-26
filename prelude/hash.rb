@@ -88,6 +88,22 @@ class Hash < Object
     raise KeyError, "key not found: #{k.inspect}"
   end
 
+  # A new hash with other's pairs laid over this one's.
+  #: (Hash[K, V]) -> Hash[K, V]
+  def merge(other)
+    out = {} #: Hash[K, V]
+    each { |k, v| out[k] = v }
+    other.each { |k, v| out[k] = v }
+    out
+  end
+
+  #: () -> self
+  def clear = %x{
+    self.keys = self.keys[:0]
+    clear(self.vals)
+    return self
+  }
+
   #: (K) -> bool
   def key?(k) = %x{
     _, ok := self.vals[k]
