@@ -11,10 +11,14 @@ Requirements:
 
 Anti-goals:
 
-- we don't need to support eval, or *reflective* dispatch (`send`,
-  `method_missing`, `define_method`). Class-based virtual dispatch on `self`
-  **is** required — inheritance doesn't work without it (see
-  [01_inheritance](examples/01_inheritance/)).
+- we don't need to support eval or `define_method`. Class-based virtual
+  dispatch on `self` **is** required — inheritance doesn't work without it
+  (see [01_inheritance](examples/01_inheritance/)).
+- *Amended:* reflective dispatch (`send`, `method_missing`, `const_get`,
+  `constants`) is supported, generated from the closed world rather than
+  looked up at run time: typed code never pays for it, calls on `untyped`
+  values do, and the compiler warns at each one (decisions 28–33,
+  [docs/dynamic-dispatch.md](docs/dynamic-dispatch.md)).
 
 I want to support all the native types of Ruby as Golang primitives, but with
 methods. These are ideas, and not limited to or the strict implementation.
@@ -331,7 +335,15 @@ braceless hash arguments, regexps, JSON, `untyped` and `is_a?`, `||=`,
 multiple assignment, threads, and a WEBrick server with a `Net::HTTP`
 client in one process. Only 00–06 have a hand-written `main.go`.
 
-### 25 — resty: a web framework over `net/http`
+### 26–31 — reflection, and the Ruby resty leans on
+
+Class objects and constant reflection (26), `extend` and `&block` (27),
+`Struct.new` and `Data.define` (28), `method_missing` and `respond_to?` on
+typed receivers (29), dynamic `send` on untyped values (30), and everyday
+Ruby semantics such as `rescue` modifiers, `return` in `ensure`, and `&&`
+returning values (31).
+
+### 25 and 32 — resty: a web framework over `net/http`
 
 [main.rb](examples/25_resty/main.rb) is a typed port of
 [jtarchie/resty](https://github.com/jtarchie/resty), a Rack framework that
@@ -358,8 +370,14 @@ README's anti-goal list:
 - idioms whose types are unions (`path =~ re || …` as a `bool`,
   `match(...)[1]` on a possible nil) are spelled with `match?` and a check.
 
-Running the original files fails loudly and early, for example
-`controller.rb:5: uninitialized constant Struct`.
+[Example 32](examples/32_resty_reflective/main.rb) then compiles resty's
+own `lib/` code as written, reflection and all: `constantize`,
+`const_get`, `constants.map { const_get }`, `NullAction`'s
+`method_missing`, `Struct.new ... do`, `extend Enumerable`. It adds type
+annotations and changes two lines (marked `rb2go:`); `Rack::Request`,
+ActiveSupport's `camelize`/`constantize` and ActiveRecord are small shims.
+Its transcript is the same as example 25's. The compiler warns at each of
+its dynamic calls, which is where the program's types run out.
 
 ## Open decisions
 
@@ -463,12 +481,11 @@ resolve; anything not listed is still open.
     innermost class's ancestors, then top level; `class A::B` compact form
     does not put `A` in scope. RBS names in annotations resolve the same way.
 18. Constants are Go package variables, typed by `#: T` or by their
-    initializer. Go orders package initialization by dependency, so
-    constants may refer to each other and to classes in any order, but all
-    of them initialize before `main`: an initializer with visible side
-    effects would run earlier than MRI runs it.
-19. Class methods: every struct class, and every class or module with
-    `def self.` methods, gets a metaclass — a struct class holding the
+    initializer, and assigned in `main` in source order (prelude first), as
+    MRI evaluates them. *(Revised: they used to initialize before `main` in
+    Go's dependency order.)*
+19. Class methods: every class and module (except `BasicObject` and
+    `Kernel`) gets a metaclass — a struct class holding the
     class methods, inheriting from the parent's metaclass — and one
     instance of it is the class object. Class methods therefore inherit and
     dispatch virtually like instance methods; `singleton(C)` is the
@@ -478,13 +495,17 @@ resolve; anything not listed is still open.
     `initialize`: `klass.new(...)` through `singleton(Base)` type-asserts
     for a matching `New`, failing at run time where Ruby would raise
     `ArgumentError`. `Foo.new` on a constant stays a direct constructor
-    call. `class << self` is not supported.
+    call. `class << self` is not supported. Metaclasses inherit from the
+    parent's metaclass, else from prelude `Class` (modules: `Module`), so
+    a value typed `Module` can hold any class object.
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
-    passing it on asserts the type. Narrowing follows `if x`,
-    `if x.is_a?(C)`, `&&`, and early-exit guards (`return … unless cond`,
-    `return if x.nil?`) for the rest of the block; reassigning the local
-    drops its narrowings.
+    passing it on asserts the type. *Calling a method* on `T?` raises
+    `NoMethodError` when it is nil, as in Ruby, and the compiler warns.
+    Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
+    (`return … unless cond`, `return if x.nil?`) for the rest of the
+    block; attribute reads on `self` narrow like locals; reassigning drops
+    the narrowings.
 21. `is_a?`/`kind_of?` is a constant when static types decide it and a Go
     type assertion otherwise. There is no runtime record of included
     modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
@@ -517,3 +538,48 @@ resolve; anything not listed is still open.
     Servers listen in `new` (so `Port: 0` works with `config[:Port]`),
     `start` blocks until `shutdown`, and each request gets its own
     goroutine and servlet instance.
+28. Constant reflection: every class object has a generated constant
+    table (own constants in definition order, then inherited), behind
+    `Module#constants`, `#const_get` (`A::B` paths, top-level fallback,
+    `NameError` on a miss) and `#const_defined?`. `M.const_get(name)` is
+    typed: a literal name gets the constant's type, any other name the
+    join of the constants of `M` and its subclasses; unrelated classes
+    join at their nearest common superclass. MRI orders `constants` by its
+    symbol table, not by definition, so programs must not depend on it.
+29. `extend M` includes `M` in the class object (a module can
+    `extend Enumerable` over its own `self.each`). A named `&block`
+    parameter needs a block in the signature; `block.call` is a yield,
+    passing it to an iterator re-yields in a range loop, passing it to a
+    closure-taking method hands the closure on; storing it is an error.
+30. `Struct.new` and `Data.define` declare classes. Member types come from
+    rbs-inline's per-member form (`:x, #: Integer`) or a trailing
+    `#: [A, B]`. Accessors (readers only for `Data`), `initialize`
+    (trailing nilable struct members optional, every `Data` member
+    required), keyword `new`, `==`, `to_h`, `members`, `inspect`, `to_a`
+    and `with` are generated as Ruby and compiled like user code.
+    `keyword_init` is not supported.
+31. `method_missing` on a typed receiver: an unknown method compiles to
+    `method_missing(:name, *args)`, typed by its signature.
+    `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.
+32. Dynamic dispatch: a method called on an `untyped` value, an unknown
+    method on a `Module`-typed class object, or a method only subclasses
+    define compiles to `rbDynName(recv, args...)`. Each such name gets a
+    `DynName(args ...any) any` wrapper on every class with a public,
+    non-generic, block-less method of that name: MRI's `ArgumentError` for
+    arity, `TypeError` for argument types, then the typed call. Without a
+    wrapper the call goes to `method_missing`, then `NoMethodError` (or
+    `NameError` for a bare name). `send`/`public_send` with a literal name
+    are ordinary calls; a computed name switches over every method name
+    and makes the output larger, so it is generated only when used. On
+    generic classes, methods whose signatures nest the type parameters in
+    another type get no wrapper: wrapping them makes Go instantiation
+    cycles. Blocks cannot cross a dynamic call.
+33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
+    `ensure` discards the pending exception; `&&`/`||` return values of
+    any types (unions become `untyped`) and evaluate the right side only
+    when Ruby would; locals first assigned in a branch or `begin` body are
+    visible after it (Ruby scopes are methods and blocks); `rescue` and
+    `ensure` are generated after the body; `untyped` in a `bool` position
+    is truthiness.
+34. `Hash#inspect` prints symbol keys as labels (`{a: 1, "a b": 2}`), as
+    Ruby 3.4 does.

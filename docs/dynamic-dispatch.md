@@ -1,5 +1,8 @@
 # Plan: constants reflection and dynamic dispatch
 
+Status: done. Steps 1–7 landed as examples 26–32; `Data.define` was added
+to step 4 on request. The decisions are recorded in the README (28–33).
+
 Goal: compile jtarchie/resty's own library code, which relies on
 `constantize`, `const_get`, `constants` and `method_missing`. Everything is
 generated from the closed world (one program, every class known); the output
