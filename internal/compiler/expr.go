@@ -14,6 +14,7 @@ import (
 type expr struct {
 	code     string
 	typ      Type
+	classObj bool // exactly a class constant: its Go type is the concrete metaclass
 	lit      bool // untyped Go constant
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
@@ -450,6 +451,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		if isAny(e.typ) {
 			return e.code + ".(" + f.c.goType(to) + ")"
 		}
+
 		if isOpt(e.typ) {
 			// Ruby would raise NoMethodError on nil; Go panics on the deref.
 			return "(*" + e.code + ")"
@@ -481,13 +483,18 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		}
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
-		if n.Name != "new" {
-			f.errorf(n, "class methods (%s.%s) are not supported", cls.RubyName, n.Name)
+		// Foo.new is a direct constructor call unless Foo defines self.new.
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new"))) {
+			if n.Block != nil {
+				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
+			}
+			return f.genNew(n, cls, callArgs(n), nil, expected)
 		}
-		if n.Block != nil {
-			f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
+		if cls.meta == nil {
+			f.errorf(n, "%s has no class methods", cls.RubyName)
 		}
-		return f.genNew(n, cls, callArgs(n), nil, expected)
+		recv := expr{code: classVar(cls), typ: TClass{C: cls.meta}, classObj: true}
+		return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 	}
 	if n.IsSAFE_NAVIGATION() {
 		return f.genSafeNav(n)
@@ -565,6 +572,11 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 
 // genMethodCall dispatches a call on an already-generated receiver.
 func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if name == "class" && len(args) == 0 && block == nil {
+		if e, ok := f.genClassOf(recv); ok {
+			return e
+		}
+	}
 	switch t := recv.typ.(type) {
 	case TOpt:
 		return f.optCall(n, recv, name, args)
@@ -720,6 +732,14 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	}
 	ret := subst(m.Ret, env)
 	code := f.callCode(e, recv, codes, env)
+	// `klass.new` returns the hierarchy's root type; narrow to the class the
+	// receiver is statically known to be.
+	if m.Kind == kindSynth && m.Name == "new" {
+		if meta := f.metaOfType(recv.typ); meta != nil && meta.metaOf != meta.metaOf.root() {
+			ret = TClass{C: meta.metaOf}
+			code += ".(" + f.c.goType(ret) + ")"
+		}
+	}
 	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" && e.Owner != nil {
 		if rc, ok := recv.typ.(TClass); ok && rc.C.isStruct() && e.Entry != rc.C {
 			code += ".(" + f.c.goType(recv.typ) + ")"
@@ -737,6 +757,11 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	}
 	if m.Owner == nil {
 		return m.GoName + "(" + argList + ")"
+	}
+	if m.Owner.metaOf != nil && m.Name == "new" && !recv.classObj {
+		// `new` on a class object of unknown exact class: assert for it.
+		ps, ret := f.c.sig(m, env)
+		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
 	}
 	free := m.generic() || (m.Private && !f.c.isDirectMethod(m)) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e))
 	if !free {
@@ -1342,9 +1367,50 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	switch {
 	case k != nil:
 		return expr{code: k.GoName, typ: f.c.constType(k)}
+	case cls != nil && cls.meta != nil:
+		return expr{code: classVar(cls), typ: TClass{C: cls.meta}, classObj: true}
 	case cls != nil:
 		f.errorf(n, "class %s used as a value is not supported", cls.RubyName)
 	}
 	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
 	return expr{}
+}
+
+// metaOfType returns the metaclass a receiver type denotes, if any.
+func (f *fctx) metaOfType(t Type) *Class {
+	switch t := t.(type) {
+	case TClass:
+		if t.C.metaOf != nil {
+			return t.C
+		}
+	case TVar:
+		if t.Name == "Self" && f.owner != nil && f.owner.metaOf != nil {
+			return f.owner
+		}
+	}
+	return nil
+}
+
+// genClassOf renders `x.class` for an instance of a class with a metaclass.
+func (f *fctx) genClassOf(recv expr) (expr, bool) {
+	var cls *Class
+	switch t := recv.typ.(type) {
+	case TClass:
+		cls = t.C
+	case TVar:
+		if t.Name == "Self" {
+			cls = f.owner
+		}
+	}
+	if cls == nil || cls.meta == nil || cls.metaOf != nil {
+		return expr{}, false
+	}
+	if !cls.isStruct() {
+		return expr{code: classVar(cls), typ: TClass{C: cls.meta}}, true
+	}
+	code := recv.code + "._Class()"
+	if cls != cls.root() {
+		code += ".(" + f.c.goType(TClass{C: cls.meta}) + ")"
+	}
+	return expr{code: code, typ: TClass{C: cls.meta}}, true
 }

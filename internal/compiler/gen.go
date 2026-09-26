@@ -1062,6 +1062,10 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 
 func (c *Compiler) emitMethod(m *Method) {
 	cls := m.Owner
+	if m.Kind == kindSynth {
+		c.emitSynth(m)
+		return
+	}
 	if m.Kind == kindAttrReader {
 		iv := c.findIvar(cls, m.Attr)
 		c.w("func (self *%s) %s() %s { return self.%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name))
@@ -1206,4 +1210,16 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 	}
+}
+
+// emitSynth emits a metaclass's generated method as a Go method.
+func (c *Compiler) emitSynth(m *Method) {
+	meta := m.Owner
+	cls := meta.metaOf
+	params, ret := c.sig(m, map[string]Type{"Self": TClass{C: cls}})
+	body := fmt.Sprintf("return String(%q)", cls.RubyName)
+	if m.Name == "new" {
+		body = "return New" + cls.Name + "(" + c.argNames(m) + ")"
+	}
+	c.w("func (self *%s) %s(%s) %s { %s }\n\n", meta.Name, m.GoName, params, ret, body)
 }

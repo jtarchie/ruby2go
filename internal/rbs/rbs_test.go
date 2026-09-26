@@ -29,7 +29,7 @@ func TestParseMethodType(t *testing.T) {
 }
 
 func TestParseType(t *testing.T) {
-	for _, in := range []string{"String", "Array[String]?", "[Integer, String]", "Hash[String, Array[Integer]]"} {
+	for _, in := range []string{"String", "Array[String]?", "[Integer, String]", "Hash[String, Array[Integer]]", "singleton(A::B)", "Array[singleton(Base)]"} {
 		ty, err := ParseType(in)
 		if err != nil {
 			t.Errorf("%q: %v", in, err)

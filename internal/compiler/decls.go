@@ -152,7 +152,7 @@ func (c *Compiler) isDirectMethod(m *Method) bool {
 	if m.Owner == nil {
 		return false
 	}
-	if m.Kind == kindAttrReader || m.Kind == kindAttrWriter {
+	if m.Kind == kindAttrReader || m.Kind == kindAttrWriter || m.Kind == kindSynth {
 		return true
 	}
 	return m.Owner.GoType != "" && !m.generic()
@@ -357,13 +357,30 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.w("\t_%s() *%s\n", k.Name, k.Name)
 	}
 	for _, e := range c.publicEntries(cls) {
+		if cls.metaOf != nil && e.M.Name == "new" {
+			// Subclasses may take different initialize arguments, so `new`
+			// is not part of the shared class-object interface; calls
+			// through `singleton(C)` assert for it instead.
+			continue
+		}
 		env := composeEnv(e.Env, nil)
 		env["Self"] = c.selfTypeFor(e, cls)
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
+	if cls.meta != nil {
+		c.w("\t_Class() %s\n", c.goType(TClass{C: cls.root().meta}))
+	}
 	c.w("}\n\n")
 	c.w("func (self *%s) _%s() *%s { return self }\n\n", cls.Name, cls.Name, cls.Name)
+	if cls.meta != nil {
+		c.w("func (self *%s) _Class() %s { return %s }\n\n", cls.Name, c.goType(TClass{C: cls.root().meta}), classVar(cls))
+	}
+	if cls.metaOf != nil {
+		// a metaclass has exactly one instance: the class object
+		c.w("var %s = &%s{}\n\n", classVar(cls.metaOf), cls.Name)
+		return
+	}
 	// constructor
 	init := cls.lookup("initialize")
 	if init != nil {

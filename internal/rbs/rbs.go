@@ -33,6 +33,8 @@ type (
 	Untyped struct{}
 	// Bool is `bool`.
 	Bool struct{}
+	// Singleton is `singleton(Foo)`: the class object Foo.
+	Singleton struct{ Name string }
 )
 
 func (t Name) String() string {
@@ -50,11 +52,12 @@ func (t Union) String() string {
 	}
 	return strings.Join(parts, " | ")
 }
-func (Self) String() string    { return "self" }
-func (Void) String() string    { return "void" }
-func (Nil) String() string     { return "nil" }
-func (Untyped) String() string { return "untyped" }
-func (Bool) String() string    { return "bool" }
+func (Self) String() string        { return "self" }
+func (Void) String() string        { return "void" }
+func (Nil) String() string         { return "nil" }
+func (Untyped) String() string     { return "untyped" }
+func (Bool) String() string        { return "bool" }
+func (t Singleton) String() string { return "singleton(" + t.Name + ")" }
 
 func join(ts []Type) string {
 	parts := make([]string, len(ts))
@@ -400,6 +403,18 @@ func (p *parser) parsePrimary() (Type, error) {
 		return Bool{}, nil
 	case "^":
 		return nil, errors.New("rbs: proc types are not supported")
+	case "singleton":
+		if p.peek() == "(" {
+			p.next()
+			name := p.next()
+			if name == "::" {
+				name = p.next()
+			}
+			if name == "" || !isIdentStart(name[0]) {
+				return nil, fmt.Errorf("rbs: bad singleton type near %q", name)
+			}
+			return Singleton{Name: name}, p.expect(")")
+		}
 	}
 	if !isIdentStart(tok[0]) {
 		return nil, fmt.Errorf("rbs: unexpected %q", tok)

@@ -33,6 +33,8 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
+	meta          *Class // the class object's class (holds `def self.` methods)
+	metaOf        *Class // for a metaclass: the class it describes
 	msetCache     []entry
 	selfCallCache map[string]bool
 }
@@ -90,6 +92,7 @@ const (
 	kindPrimitive
 	kindAttrReader
 	kindAttrWriter
+	kindSynth // generated per metaclass: new, name, to_s, inspect
 )
 
 // Method is a Ruby method definition.
@@ -113,6 +116,15 @@ type Method struct {
 	Iterator   bool // block returns void → iter.Seq
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
+}
+
+// root is the topmost struct class of c's hierarchy (below Object).
+func (c *Class) root() *Class {
+	k := c
+	for k.Super != nil && !k.Super.universal {
+		k = k.Super
+	}
+	return k
 }
 
 // Param is a positional parameter.
@@ -494,6 +506,10 @@ func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private boo
 		cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: n, private: private, scope: scope, file: f})
 		return
 	}
+	c.addDef(f, cls, n, private, scope)
+}
+
+func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private, Scope: scope}
 	if sig, found := f.sigComment(line); found {
@@ -666,6 +682,7 @@ func (c *Compiler) link() {
 			}
 		}
 	}
+	c.buildMetas()
 	for _, cls := range c.classList {
 		if cls.GoType != "" && cls.Super != nil && cls.Super.isStruct() && !cls.Super.universal {
 			c.errorf(cls.File, nil, "%s:%d: @go_type class %s cannot inherit from struct class %s", cls.File.Name, cls.Line, cls.Name, cls.Super.Name)
@@ -755,6 +772,15 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		return TClass{C: cls, Args: args}
 	case rbs.Bool:
 		return TClass{C: c.classes["Boolean"]}
+	case rbs.Singleton:
+		cls, _ := c.lookupName(sc.lex, t.Name)
+		if cls == nil {
+			c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
+		}
+		if cls.meta == nil {
+			c.errorf(sc.file, nil, "%s:%d: %s has no class object type", sc.file.Name, sc.line, t)
+		}
+		return TClass{C: cls.meta}
 	case rbs.Optional:
 		return TOpt{Elem: c.resolveType(t.Elem, sc)}
 	case rbs.Tuple:
@@ -789,6 +815,10 @@ func (c *Compiler) resolveMethod(m *Method) {
 		return
 	}
 	m.resolved = true
+	if m.Kind == kindSynth {
+		c.resolveSynth(m)
+		return
+	}
 	f := m.File
 	if m.sig == nil && m.sigText == "" {
 		// unannotated override inherits the parent's signature
@@ -956,3 +986,87 @@ func (m *Method) String() string {
 	}
 	return fmt.Sprintf("%s#%s", owner, m.Name)
 }
+
+// ---- metaclasses
+
+// buildMetas gives every struct class, and every class or module with
+// `def self.` methods, a metaclass: a struct class whose methods are the
+// class methods, whose superclass is the parent's metaclass (so class
+// methods inherit and dispatch virtually), and whose single instance is the
+// class object.
+func (c *Compiler) buildMetas() {
+	for _, cls := range append([]*Class(nil), c.classList...) {
+		if cls.universal {
+			if len(cls.singletonDefs) > 0 {
+				c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
+			}
+			continue
+		}
+		if (cls.isStruct() && cls.metaOf == nil) || len(cls.singletonDefs) > 0 {
+			c.metaFor(cls)
+		}
+	}
+}
+
+func (c *Compiler) metaFor(cls *Class) *Class {
+	if cls.meta != nil {
+		return cls.meta
+	}
+	if len(cls.TypeParams) > 0 {
+		c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
+	}
+	sup := c.classes["Object"]
+	if !cls.IsModule && cls.Super != nil && !cls.Super.universal {
+		sup = c.metaFor(cls.Super)
+	}
+	m := &Class{Name: cls.Name + "_Meta", RubyName: cls.RubyName, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{},
+		File: cls.File, Line: cls.Line, Super: sup, metaOf: cls}
+	cls.meta = m
+	sup.Subclasses = append(sup.Subclasses, m)
+	c.classList = append(c.classList, m)
+	for _, d := range cls.singletonDefs {
+		c.addDef(d.file, m, d.node, d.private, d.scope)
+	}
+	synth := []string{"name", "to_s", "inspect"}
+	if cls.isStruct() && m.Methods["new"] == nil {
+		synth = append(synth, "new")
+	}
+	for _, name := range synth {
+		if m.Methods[name] != nil {
+			continue
+		}
+		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, File: cls.File, Line: cls.Line}
+		m.Methods[name] = sm
+		m.MethodList = append(m.MethodList, sm)
+	}
+	return m
+}
+
+// resolveSynth fills in a metaclass's generated methods. `new` takes the
+// described class's initialize params and returns the hierarchy's root
+// type, so that every metaclass in a hierarchy shares one Go signature and
+// `singleton(Base)` can hold any subclass whose initialize matches.
+func (c *Compiler) resolveSynth(m *Method) {
+	cls := m.Owner.metaOf
+	if m.Name != "new" {
+		m.Ret = TClass{C: c.classes["String"]}
+		return
+	}
+	m.Ret = TClass{C: cls.root()}
+	init := cls.lookup("initialize")
+	if init == nil {
+		return
+	}
+	c.resolveMethod(init.M)
+	env := composeEnv(init.Env, nil)
+	env["Self"] = TClass{C: cls}
+	for _, p := range init.M.Params {
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest})
+	}
+}
+
+// isSynthNew reports whether e is a metaclass's generated `new`.
+func isSynthNew(e *entry) bool { return e != nil && e.M.Kind == kindSynth && e.M.Name == "new" }
+
+// classVar is the Go variable holding a class object.
+func classVar(cls *Class) string { return cls.Name + "_class" }

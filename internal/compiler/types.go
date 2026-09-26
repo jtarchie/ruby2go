@@ -34,6 +34,9 @@ type (
 )
 
 func (t TClass) String() string {
+	if t.C.metaOf != nil {
+		return "singleton(" + t.C.metaOf.RubyName + ")"
+	}
 	if len(t.Args) == 0 {
 		return t.C.RubyName
 	}
