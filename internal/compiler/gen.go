@@ -741,7 +741,9 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 	f.leaveBlock(saved)
 	f.emit("}()")
 	if t.kind == tailReturn && t.typ != nil && f.begins == 0 {
-		f.emit("return")
+		if !f.hasNamedRet {
+			f.emit("return")
+		}
 	} else if flag != "" {
 		f.emit("if %s {", flag)
 		if f.begins > 0 && f.retFlag != "" {
