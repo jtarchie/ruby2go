@@ -226,6 +226,7 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 			f.genStmt(s, t)
 		} else {
 			f.genStmt(s, tail{})
+			f.applyNarrow(f.guardNarrowing(s))
 		}
 	}
 }
@@ -338,6 +339,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 type narrowInfo struct {
 	local *local
 	typ   Type
+	code  string // Go expression for the narrowed view; "" means deref
 }
 
 // applyNarrow shadows narrowed locals in the current scope.
@@ -347,8 +349,49 @@ func (f *fctx) applyNarrow(ns []narrowInfo) {
 		if base.base != nil {
 			base = base.base
 		}
-		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: "(*" + nw.local.goName + ")", typ: nw.typ, base: base, declared: true}
+		code := nw.code
+		if code == "" {
+			code = "(*" + nw.local.goName + ")"
+		}
+		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: code, typ: nw.typ, base: base, declared: true}
 	}
+}
+
+// unnarrow forgets every narrowed view of a local after it is reassigned:
+// the new value may be nil or another class again.
+func (f *fctx) unnarrow(name string) {
+	for sc := f.scope; sc != nil; sc = sc.parent {
+		if v := sc.vars[name]; v != nil && v.base != nil {
+			delete(sc.vars, name)
+		}
+	}
+}
+
+// guardNarrowing is what an early-exit guard proves about the statements
+// after it: `return x unless cond` narrows like `if cond`, and
+// `return if x.nil?` narrows x to non-nil.
+func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
+	var ns []narrowInfo
+	switch s := s.(type) {
+	case *parser.UnlessNode:
+		if s.ElseClause == nil && terminates(s.Statements) {
+			f.probe(func() { _, ns = f.genCond(s.Predicate) })
+		}
+	case *parser.IfNode:
+		if s.Subsequent != nil || !terminates(s.Statements) {
+			return nil
+		}
+		call, ok := s.Predicate.(*parser.CallNode)
+		if !ok || call.Arguments != nil || (call.Name != "nil?" && call.Name != "!") {
+			return nil
+		}
+		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
+			if v := f.scope.lookup(lv.Name); v != nil && isOpt(v.typ) {
+				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+			}
+		}
+	}
+	return ns
 }
 
 // genCond renders a Ruby truthiness test as a Go bool expression.
@@ -383,8 +426,13 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		}
 	case *parser.LocalVariableReadNode:
 		v := f.readLocal(n)
-		if isOpt(v.typ) {
+		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
 			return v.goName + " != nil", []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+		}
+	}
+	if call, ok := n.(*parser.CallNode); ok && isIsA(call) {
+		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
+			return f.narrowIsA(call, f.readLocal(lv))
 		}
 	}
 	e := f.genExpr(n, nil)
@@ -401,6 +449,8 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		return "false"
 	case isAny(e.typ):
 		return "rbTruthy(" + e.code + ")"
+	case isOpt(e.typ) && isAny(e.typ.(TOpt).Elem):
+		return "rbTruthy(Opt(" + e.code + "))"
 	}
 	f.c.Warnings = append(f.c.Warnings, fmt.Sprintf("%s:%d: condition of type %s is always true", f.f.Name, f.f.line(n.GetLocation().StartOffset), e.typ))
 	return "(" + e.code + " != nil || true)"
@@ -908,6 +958,7 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 	}
 	if existing != nil && existing.base != nil {
 		existing = existing.base
+		defer f.unnarrow(name)
 	}
 	if isNil(typ) && f.pass == 2 {
 		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)

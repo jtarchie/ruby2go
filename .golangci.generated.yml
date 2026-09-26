@@ -47,6 +47,9 @@ linters:
         # A narrowed `T?` local is spelled `(*x)`; Go's auto-deref makes the
         # explicit form redundant on method calls but not elsewhere.
         - underef
+        # A Ruby block that only forwards (`map { |r| f(r) }`) stays a
+        # closure; passing `f` itself is a style choice, not a fix.
+        - unlambda
     gosec:
       excludes:
         # Integer width conversions: Ruby integers are unbounded, ours are

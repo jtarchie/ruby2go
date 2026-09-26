@@ -243,6 +243,9 @@ class Array < Object
 
   #: () -> Array[untyped]
   def _to_any = %x{
+    if same, ok := any(self).(*Array[any]); ok {
+      return same // already untyped: share it, so writes are seen
+    }
     out := &Array[any]{}
     for _, x := range *self {
       *out = append(*out, x)

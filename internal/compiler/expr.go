@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -223,26 +224,43 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		}
 		return expr{code: "(" + l.code + " || " + r.code + ")", typ: l.typ}
 	}
-	if !isOpt(l.typ) {
+	untyped := isAny(stripOpt(l.typ))
+	if !isOpt(l.typ) && !untyped {
 		f.errorf(n, "`||` on a non-nilable %s is always the left side", l.typ)
 	}
 	var r expr
 	f.probe(func() { r = f.genExpr(n.Right, stripOpt(l.typ)) })
 	typ, ok := join(stripOpt(l.typ), r.typ)
+	switch {
+	case r.noreturn: // `x || raise(...)`
+		typ, ok = stripOpt(l.typ), true
+	case untyped:
+		typ, ok = TAny{}, true
+	}
 	if !ok {
 		f.errorf(n, "`||` with incompatible types %s and %s", l.typ, r.typ)
 	}
 	tmp := f.newTmp()
 	lt := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
-	f.emit("if %s := %s; %s != nil {", lt, l.code, lt)
-	f.indent++
-	f.emit("%s = %s", tmp, f.coerce(n, expr{code: "(*" + lt + ")", typ: stripOpt(l.typ)}, typ))
+	if untyped {
+		f.emit("if %s := %s; rbTruthy(%s) {", lt, f.coerce(n, l, TAny{}), lt)
+		f.indent++
+		f.emit("%s = %s", tmp, lt)
+	} else {
+		f.emit("if %s := %s; %s != nil {", lt, l.code, lt)
+		f.indent++
+		f.emit("%s = %s", tmp, f.coerce(n, expr{code: "(*" + lt + ")", typ: stripOpt(l.typ)}, typ))
+	}
 	f.indent--
 	f.emit("} else {")
 	f.indent++
 	r = f.genExpr(n.Right, stripOpt(l.typ))
-	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	if r.noreturn {
+		f.emit("%s", r.code)
+	} else {
+		f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	}
 	f.indent--
 	f.emit("}")
 	return expr{code: tmp, typ: typ}
@@ -609,6 +627,12 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		if e, ok := f.genClassOf(recv); ok {
 			return e
 		}
+	}
+	if name == "is_a?" || name == "kind_of?" {
+		if len(args) != 1 || block != nil {
+			f.errorf(n, "%s takes one class", name)
+		}
+		return expr{code: "Boolean(" + f.isACheck(n, recv, args[0]) + ")", typ: f.cls("Boolean")}
 	}
 	switch t := recv.typ.(type) {
 	case TOpt:
@@ -1451,3 +1475,95 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 	}
 	return expr{code: code, typ: TClass{C: cls.meta}}, true
 }
+
+func isIsA(n *parser.CallNode) bool {
+	return (n.Name == "is_a?" || n.Name == "kind_of?") && n.Arguments != nil && len(n.Arguments.Arguments) == 1
+}
+
+// isACheck renders `recv.is_a?(C)` as a Go bool: a constant when the static
+// type decides it, otherwise a type assertion.
+func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string {
+	cls := f.classRef(classNode)
+	if cls == nil {
+		f.errorf(classNode, "is_a? needs a class name")
+	}
+	if !isSimpleGo(recv.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, recv.code)
+		recv.code = tmp
+	}
+	t := recv.typ
+	if o, ok := t.(TOpt); ok {
+		inner := f.isACheck(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, classNode)
+		return "(" + recv.code + " != nil && " + inner + ")"
+	}
+	if isNil(t) {
+		return strconv.FormatBool(cls.universal)
+	}
+	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
+		t = TClass{C: f.owner}
+	}
+	switch t := t.(type) {
+	case TClass:
+		switch {
+		case cls.universal || t.C.isSubclassOf(cls):
+			return "true"
+		case cls.isStruct() && t.C.isStruct() && cls.isSubclassOf(t.C):
+			return "rbIsA[" + f.c.goType(TClass{C: cls}) + "](" + recv.code + ")"
+		case cls.IsModule && t.C.isStruct():
+			f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", cls.RubyName, t)
+		}
+		return "false"
+	case TTuple:
+		return strconv.FormatBool(cls.universal || cls.RubyName == "Array")
+	case TAny:
+		if cls.universal {
+			return "true"
+		}
+		return "rbIsA[" + f.isAGoType(n, cls) + "](" + recv.code + ")"
+	}
+	f.errorf(n, "is_a? on %s is not supported", t)
+	return ""
+}
+
+// isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
+func (f *fctx) isAGoType(n parser.Node, cls *Class) string {
+	switch {
+	case cls.IsModule:
+		f.errorf(n, "is_a?(%s) on untyped cannot be checked: rb2go has no runtime record of included modules", cls.RubyName)
+	case len(cls.TypeParams) > 0:
+		return cls.Name + "_Any"
+	}
+	return f.c.goType(TClass{C: cls})
+}
+
+// narrowIsA renders `x.is_a?(C)` in a condition and narrows x to C inside.
+func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo) {
+	recv := expr{code: v.goName, typ: v.typ}
+	cond := f.isACheck(call, recv, call.Arguments.Arguments[0])
+	cls := f.classRef(call.Arguments.Arguments[0])
+	base := stripOpt(v.typ)
+	code := v.goName
+	if isOpt(v.typ) {
+		code = "(*" + v.goName + ")"
+	}
+	if cond == "true" || cond == "false" || cls.IsModule || cls.universal {
+		return cond, nil
+	}
+	if bt, ok := base.(TClass); ok && bt.C.isSubclassOf(cls) {
+		return cond, nil
+	}
+	typ := TClass{C: cls}
+	if len(cls.TypeParams) > 0 {
+		for range cls.TypeParams {
+			typ.Args = append(typ.Args, TAny{})
+		}
+		return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + cls.Name + "_Any)._ToAny()"}}
+	}
+	return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + f.c.goType(typ) + ")"}}
+}
+
+var simpleGo = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|\(\*[A-Za-z_][A-Za-z0-9_]*\)|[0-9.]+|"(?:[^"\\]|\\.)*")$`)
+
+// isSimpleGo reports whether code can be evaluated twice without effects.
+func isSimpleGo(code string) bool { return simpleGo.MatchString(code) }

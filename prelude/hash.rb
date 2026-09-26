@@ -189,6 +189,9 @@ class Hash < Object
 
   #: () -> Hash[untyped, untyped]
   def _to_any = %x{
+    if same, ok := any(self).(*Hash[any, any]); ok {
+      return same
+    }
     out := NewHash[any, any]()
     for _, k := range self.keys {
       out.IdxSet(k, self.vals[k])
