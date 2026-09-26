@@ -797,6 +797,11 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	}
 	ret := subst(m.Ret, env)
 	code := f.callCode(e, recv, codes, env)
+	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
+		if t := f.constGetType(recv, args); t != nil {
+			code, ret = code+".("+f.c.goType(t)+")", t
+		}
+	}
 	// `klass.new` returns the hierarchy's root type; narrow to the class the
 	// receiver is statically known to be.
 	if m.Kind == kindSynth && m.Name == "new" {
@@ -1471,13 +1476,21 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 			cls = f.owner
 		}
 	}
-	if cls == nil || cls.meta == nil || cls.metaOf != nil {
+	if cls != nil && cls.metaOf != nil {
+		// the class of a class object is Class; of a module, Module
+		k := f.c.classes["Class"]
+		if cls.metaOf.IsModule {
+			k = f.c.classes["Module"]
+		}
+		return expr{code: classVar(k), typ: TClass{C: k.meta}, classObj: true}, true
+	}
+	if cls == nil || cls.meta == nil {
 		return expr{}, false
 	}
 	if !cls.isStruct() {
 		return expr{code: classVar(cls), typ: TClass{C: cls.meta}}, true
 	}
-	code := recv.code + "._Class()"
+	code := recv.code + "._ClassOf()"
 	if cls != cls.root() {
 		code += ".(" + f.c.goType(TClass{C: cls.meta}) + ")"
 	}
@@ -1745,4 +1758,77 @@ func (f *fctx) targetType(n parser.Node) Type {
 		}
 	}
 	return nil
+}
+
+// constGetType narrows `M.const_get(name)` when M is statically known: a
+// literal name gets that constant's type; any other name the join of the
+// constants of M and its subclasses (whose tables M's may stand for).
+func (f *fctx) constGetType(recv expr, args []parser.Node) Type {
+	meta := f.metaOfType(recv.typ)
+	if meta == nil || len(args) == 0 {
+		return nil
+	}
+	mod := meta.metaOf
+	if lit := literalName(args[0]); lit != "" {
+		cls, k := f.c.lookupConst(f.f, constPath(lit), []*Class{mod})
+		if mod.RubyName == "Object" {
+			cls, k = f.c.lookupConst(f.f, constPath(lit), nil)
+		}
+		return f.c.constTypeOf(cls, k)
+	}
+	var ts []Type
+	var walk func(c *Class)
+	walk = func(c *Class) {
+		for _, full := range f.c.constEntries(c) {
+			cls, k := f.c.classes[full], f.c.consts[full]
+			if t := f.c.constTypeOf(cls, k); t != nil {
+				ts = append(ts, t)
+			}
+		}
+		for _, sub := range c.Subclasses {
+			if sub.metaOf == nil {
+				walk(sub)
+			}
+		}
+	}
+	walk(mod)
+	if len(ts) == 0 {
+		return nil
+	}
+	if t := joinOrAny(ts); !isAny(t) {
+		return t
+	}
+	return nil
+}
+
+func (c *Compiler) constTypeOf(cls *Class, k *Const) Type {
+	switch {
+	case cls != nil && cls.meta != nil:
+		return TClass{C: cls.meta}
+	case k != nil:
+		return c.constType(k)
+	}
+	return nil
+}
+
+// literalName returns the text of a Symbol or String literal.
+func literalName(n parser.Node) string {
+	switch n := n.(type) {
+	case *parser.SymbolNode:
+		return n.Unescaped.Value
+	case *parser.StringNode:
+		return n.Unescaped.Value
+	}
+	return ""
+}
+
+// constPath turns "A::B" into a constant node lookupConst understands.
+func constPath(path string) parser.Node {
+	parts := strings.Split(strings.TrimPrefix(path, "::"), "::")
+	var n parser.Node = &parser.ConstantReadNode{Name: parts[0]}
+	for _, p := range parts[1:] {
+		name := p
+		n = &parser.ConstantPathNode{Parent: n, Name: &name}
+	}
+	return n
 }

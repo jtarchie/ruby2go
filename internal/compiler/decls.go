@@ -374,12 +374,19 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
 	if cls.meta != nil {
-		c.w("\t_Class() %s\n", c.goType(TClass{C: cls.root().meta}))
+		c.w("\t_ClassOf() %s\n", c.goType(TClass{C: cls.root().meta}))
+	}
+	isModule := cls.isSubclassOf(c.classes["Module"])
+	if isModule {
+		c.w("\t_Consts() []rbConst\n")
 	}
 	c.w("}\n\n")
 	c.w("func (self *%s) _%s() *%s { return self }\n\n", cls.Name, cls.Name, cls.Name)
 	if cls.meta != nil {
-		c.w("func (self *%s) _Class() %s { return %s }\n\n", cls.Name, c.goType(TClass{C: cls.root().meta}), classVar(cls))
+		c.w("func (self *%s) _ClassOf() %s { return %s }\n\n", cls.Name, c.goType(TClass{C: cls.root().meta}), classVar(cls))
+	}
+	if isModule {
+		c.emitConstTable(cls)
 	}
 	if cls.metaOf != nil {
 		// a metaclass has exactly one instance: the class object
@@ -537,24 +544,63 @@ func (c *Compiler) constType(k *Const) Type {
 	return k.Type
 }
 
-// emitConst emits a constant as a package variable. Go orders package
-// initialization by dependency, so constants may refer to each other and to
-// classes in any order; unlike MRI, they are all initialized before main.
+// emitConst declares a constant's package variable. Its value is assigned
+// in main, in source order, where MRI would evaluate it (see constInit).
 func (c *Compiler) emitConst(k *Const) {
-	typ := c.constType(k)
-	f := c.constFctx(k)
-	f.indent = 1
-	e := f.genExpr(k.Value, typ)
-	code := f.coerce(k.Value, e, typ)
-	if e.lit {
-		code = c.goType(typ) + "(" + code + ")"
-	}
 	c.lineDirective(k.File, k.Line)
-	if f.buf.Len() == 0 {
-		c.w("var %s %s = %s\n\n", k.GoName, c.goType(typ), code)
+	c.w("var %s %s\n\n", k.GoName, c.goType(c.constType(k)))
+}
+
+// constEntries lists the constants a class object answers to: its own in
+// definition order, then inherited ones (Object's are the top-level ones).
+func (c *Compiler) constEntries(cls *Class) []string {
+	if cls.RubyName == "Object" {
+		return c.topConstNames
+	}
+	seen := map[string]bool{}
+	var out []string
+	for k := cls; k != nil && !k.universal; k = k.Super {
+		for _, n := range k.constNames {
+			if !seen[n] {
+				seen[n] = true
+				out = append(out, k.RubyName+"::"+n)
+			}
+		}
+	}
+	return out
+}
+
+// constValue is the Go expression for a constant's current value, boxed.
+func (c *Compiler) constValue(full string) (string, bool) {
+	if cls := c.classes[full]; cls != nil {
+		if cls.meta == nil {
+			return "", false
+		}
+		return classVar(cls), true
+	}
+	k := c.consts[full]
+	if isOpt(c.constType(k)) {
+		return "Opt(" + k.GoName + ")", true
+	}
+	return k.GoName, true
+}
+
+// emitConstTable gives a class object its constant table. Values are read
+// when the table is asked for, so constants assigned later are seen.
+func (c *Compiler) emitConstTable(cls *Class) {
+	desc := cls.metaOf
+	if desc == nil {
+		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
 		return
 	}
-	c.w("var %s = func() %s {\n%s\treturn %s\n}()\n\n", k.GoName, c.goType(typ), f.buf.String(), code)
+	c.w("func (self *%s) _Consts() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	for _, full := range c.constEntries(desc) {
+		if v, ok := c.constValue(full); ok {
+			short := full[strings.LastIndex(full, ":")+1:]
+			c.w("\t\t{%q, %s},\n", short, v)
+		}
+	}
+	c.w("\t}\n}\n\n")
 }
 
 // emitRubyNames maps Go type names back to Ruby constant paths for the

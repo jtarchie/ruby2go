@@ -309,6 +309,14 @@ func join(a, b Type) (Type, bool) {
 		if cb.isSubclassOf(ca) {
 			return a, true
 		}
+		// nearest common superclass, if it is more than Object
+		if len(a.(TClass).Args) == 0 && len(b.(TClass).Args) == 0 {
+			for k := ca.Super; k != nil && !k.universal; k = k.Super {
+				if cb.isSubclassOf(k) {
+					return TClass{C: k}, true
+				}
+			}
+		}
 	}
 	return nil, false
 }

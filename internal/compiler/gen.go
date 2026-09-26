@@ -247,6 +247,10 @@ func (f *fctx) emptyTail(n parser.Node, t tail) {
 }
 
 func (f *fctx) genStmt(n parser.Node, t tail) {
+	if ci, ok := n.(*constInit); ok {
+		f.genConstInit(ci.k)
+		return
+	}
 	f.lineOf(n)
 	switch n := n.(type) {
 	case *parser.IfNode:
@@ -1222,7 +1226,7 @@ func (c *Compiler) emitMain() {
 	f := c.newFctx(c.mainFile, nil, nil)
 	f.indent = 1
 	f.retVar = ""
-	stmts := &parser.StatementsNode{Body: c.mainStmts}
+	stmts := &parser.StatementsNode{Body: c.mainBody()}
 	f.genBody(stmts, nil, tail{}, nil)
 	c.out.WriteString(f.buf.String())
 	c.w("}\n\n")
@@ -1278,4 +1282,61 @@ func (c *Compiler) emitSynth(m *Method) {
 		body = "return New" + cls.Name + "(" + c.argNames(m) + ")"
 	}
 	c.w("func (self *%s) %s(%s) %s { %s }\n\n", meta.Name, m.GoName, params, ret, body)
+}
+
+// constInit stands in main's statement list for a constant assignment, so
+// constants are evaluated in source order like MRI (prelude ones first).
+type constInit struct {
+	parser.Node
+	k *Const
+}
+
+func (ci *constInit) GetLocation() parser.Location     { return ci.k.Value.GetLocation() }
+func (ci *constInit) CompactChildNodes() []parser.Node { return nil }
+func (ci *constInit) ChildNodes() []parser.Node        { return nil }
+
+// mainBody merges main.rb's top-level statements with every constant
+// assignment: prelude constants first, then main.rb's by position.
+func (c *Compiler) mainBody() []parser.Node {
+	var body []parser.Node
+	var mine []*Const
+	for _, k := range c.constList {
+		if k.File == c.mainFile {
+			mine = append(mine, k)
+		} else {
+			body = append(body, &constInit{k: k})
+		}
+	}
+	stmts := c.mainStmts
+	for len(stmts) > 0 || len(mine) > 0 {
+		if len(mine) > 0 && (len(stmts) == 0 || mine[0].Value.GetLocation().StartOffset < stmts[0].GetLocation().StartOffset) {
+			body = append(body, &constInit{k: mine[0]})
+			mine = mine[1:]
+			continue
+		}
+		body = append(body, stmts[0])
+		stmts = stmts[1:]
+	}
+	return body
+}
+
+// genConstInit assigns a constant's package variable.
+func (f *fctx) genConstInit(k *Const) {
+	typ := f.c.constType(k)
+	sub := f.c.constFctx(k)
+	sub.indent = f.indent + 1
+	e := sub.genExpr(k.Value, typ)
+	code := sub.coerce(k.Value, e, typ)
+	if e.lit {
+		code = f.c.goType(typ) + "(" + code + ")"
+	}
+	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)
+	if sub.buf.Len() == 0 {
+		f.emit("%s = %s", k.GoName, code)
+		return
+	}
+	f.emit("%s = func() %s {", k.GoName, f.c.goType(typ))
+	f.buf.WriteString(sub.buf.String())
+	f.emit("\treturn %s", code)
+	f.emit("}()")
 }

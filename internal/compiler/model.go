@@ -33,8 +33,9 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
-	meta          *Class // the class object's class (holds `def self.` methods)
-	metaOf        *Class // for a metaclass: the class it describes
+	meta          *Class   // the class object's class (holds `def self.` methods)
+	metaOf        *Class   // for a metaclass: the class it describes
+	constNames    []string // constants (classes included) declared directly inside, in order
 	msetCache     []entry
 	selfCallCache map[string]bool
 }
@@ -302,6 +303,7 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 		cls.universal = name == "BasicObject" || name == "Object" || name == "Kernel"
 		c.classes[name] = cls
 		c.classList = append(c.classList, cls)
+		c.noteConstName(name)
 	} else if cls.IsModule != isModule {
 		c.errorf(f, nil, "%s:%d: %s is already defined as a %s", f.Name, line, name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
 	}
@@ -393,6 +395,20 @@ func (c *Compiler) addConst(f *File, n parser.Node, name string, value parser.No
 	k.ann = f.trailingAnnotation(n)
 	c.consts[full] = k
 	c.constList = append(c.constList, k)
+	c.noteConstName(full)
+}
+
+// noteConstName records a new constant in its namespace's table, in
+// definition order (top-level ones belong to Object).
+func (c *Compiler) noteConstName(full string) {
+	i := strings.LastIndex(full, "::")
+	if i < 0 {
+		c.topConstNames = append(c.topConstNames, full)
+		return
+	}
+	if parent := c.classes[full[:i]]; parent != nil {
+		parent.constNames = append(parent.constNames, full[i+2:])
+	}
 }
 func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node, scope []*Class) {
 	if body == nil {
@@ -1015,13 +1031,13 @@ func (m *Method) String() string {
 // class object.
 func (c *Compiler) buildMetas() {
 	for _, cls := range append([]*Class(nil), c.classList...) {
-		if cls.universal {
+		if cls.RubyName == "BasicObject" || cls.RubyName == "Kernel" {
 			if len(cls.singletonDefs) > 0 {
 				c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
 			}
 			continue
 		}
-		if (cls.isStruct() && cls.metaOf == nil) || len(cls.singletonDefs) > 0 {
+		if cls.metaOf == nil {
 			c.metaFor(cls)
 		}
 	}
@@ -1031,12 +1047,19 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 	if cls.meta != nil {
 		return cls.meta
 	}
-	if len(cls.TypeParams) > 0 {
+	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 {
 		c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
 	}
-	sup := c.classes["Object"]
-	if !cls.IsModule && cls.Super != nil && !cls.Super.universal {
+	// A class object is a Class (a module's, a Module); a subclass's class
+	// object inherits from its superclass's, so class methods inherit.
+	var sup *Class
+	switch {
+	case cls.IsModule:
+		sup = c.classes["Module"]
+	case cls.Super != nil && !cls.Super.universal:
 		sup = c.metaFor(cls.Super)
+	default:
+		sup = c.classes["Class"]
 	}
 	m := &Class{Name: cls.Name + "_Meta", RubyName: cls.RubyName, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{},
 		File: cls.File, Line: cls.Line, Super: sup, metaOf: cls}
@@ -1047,7 +1070,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		c.addDef(d.file, m, d.node, d.private, d.scope)
 	}
 	synth := []string{"name", "to_s", "inspect"}
-	if cls.isStruct() && m.Methods["new"] == nil {
+	if cls.isStruct() && !cls.universal && m.Methods["new"] == nil {
 		synth = append(synth, "new")
 	}
 	for _, name := range synth {

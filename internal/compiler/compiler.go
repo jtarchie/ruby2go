@@ -16,23 +16,24 @@ import (
 
 // Compiler holds the whole program: prelude + one user file.
 type Compiler struct {
-	classes    map[string]*Class
-	classList  []*Class
-	topDefs    map[string]*Method
-	consts     map[string]*Const
-	regexps    []string          // package-level compiled literals
-	regexpVars map[string]string // literal → its variable, to share one per pattern
-	constList  []*Const
-	topDefList []*Method
-	verbatim   []verbatim
-	mainStmts  []parser.Node
-	mainFile   *File
-	files      []*File
-	preludeFS  fs.FS
-	parser     *parser.Parser
-	loaded     map[string]bool
-	out        strings.Builder
-	Warnings   []string
+	classes       map[string]*Class
+	classList     []*Class
+	topDefs       map[string]*Method
+	consts        map[string]*Const
+	topConstNames []string          // constants declared at top level: Object's table
+	regexps       []string          // package-level compiled literals
+	regexpVars    map[string]string // literal → its variable, to share one per pattern
+	constList     []*Const
+	topDefList    []*Method
+	verbatim      []verbatim
+	mainStmts     []parser.Node
+	mainFile      *File
+	files         []*File
+	preludeFS     fs.FS
+	parser        *parser.Parser
+	loaded        map[string]bool
+	out           strings.Builder
+	Warnings      []string
 	// tuple arities used, so their types get emitted
 	tupleN map[int]bool
 }
