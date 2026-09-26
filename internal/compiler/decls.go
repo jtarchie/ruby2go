@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"rb2go/internal/rbs"
 )
 
 // ---- Go type rendering
@@ -226,6 +228,10 @@ func (c *Compiler) emitProgram() {
 	for _, m := range c.topDefList {
 		c.emitTopDef(m)
 	}
+	for _, k := range c.constList {
+		c.emitConst(k)
+	}
+	c.emitRubyNames()
 	c.emitMain()
 	c.emitTuples()
 }
@@ -463,4 +469,75 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 		return true
 	}
 	return e.Owner.IsModule && !e.Owner.universal && c.selfCalls(e.Owner)[e.M.Name]
+}
+
+// constFctx is the codegen context a constant's initializer runs in.
+func (c *Compiler) constFctx(k *Const) *fctx {
+	f := c.newFctx(k.File, nil, nil)
+	f.lex = k.Scope
+	f.locals = map[string]*localInfo{}
+	f.scope = &scope{vars: map[string]*local{}}
+	f.pass = 2
+	return f
+}
+
+// constType is the type of constant k: its `#: T` annotation, or else the
+// type of its initializer.
+func (c *Compiler) constType(k *Const) Type {
+	if k.Type != nil {
+		return k.Type
+	}
+	if k.ann != "" {
+		t, err := rbs.ParseType(k.ann)
+		if err != nil {
+			c.errorf(k.File, k.Value, "%v", err)
+		}
+		k.Type = c.resolveType(t, typeScope{lex: k.Scope, file: k.File, line: k.Line})
+		return k.Type
+	}
+	if k.resolving {
+		c.errorf(k.File, k.Value, "constant %s depends on itself; annotate it with `#: T`", k.RubyName)
+	}
+	k.resolving = true
+	f := c.constFctx(k)
+	var e expr
+	f.probe(func() { e = f.genExpr(k.Value, nil) })
+	k.resolving = false
+	if isNil(e.typ) || isVoid(e.typ) {
+		c.errorf(k.File, k.Value, "cannot infer the type of constant %s; annotate it with `#: T`", k.RubyName)
+	}
+	k.Type = e.typ
+	return k.Type
+}
+
+// emitConst emits a constant as a package variable. Go orders package
+// initialization by dependency, so constants may refer to each other and to
+// classes in any order; unlike MRI, they are all initialized before main.
+func (c *Compiler) emitConst(k *Const) {
+	typ := c.constType(k)
+	f := c.constFctx(k)
+	f.indent = 1
+	e := f.genExpr(k.Value, typ)
+	code := f.coerce(k.Value, e, typ)
+	if e.lit {
+		code = c.goType(typ) + "(" + code + ")"
+	}
+	c.lineDirective(k.File, k.Line)
+	if f.buf.Len() == 0 {
+		c.w("var %s %s = %s\n\n", k.GoName, c.goType(typ), code)
+		return
+	}
+	c.w("var %s = func() %s {\n%s\treturn %s\n}()\n\n", k.GoName, c.goType(typ), f.buf.String(), code)
+}
+
+// emitRubyNames maps Go type names back to Ruby constant paths for the
+// classes whose names differ (namespaced ones), for messages and #inspect.
+func (c *Compiler) emitRubyNames() {
+	c.w("var rbRubyNames = map[string]string{\n")
+	for _, cls := range c.classList {
+		if cls.Name != cls.RubyName {
+			c.w("\t%q: %q,\n", cls.Name, cls.RubyName)
+		}
+	}
+	c.w("}\n\n")
 }

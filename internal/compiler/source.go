@@ -156,3 +156,15 @@ func (f *File) annotations(ln int) map[string][]string {
 	}
 	return out
 }
+
+// trailingAnnotation returns the `#: T` comment trailing node n, looked up on
+// its last line (`X = [\n ...\n] #: T`) and then its first.
+func (f *File) trailingAnnotation(n parser.Node) string {
+	loc := n.GetLocation()
+	for _, ln := range []int{f.line(loc.StartOffset + loc.Length - 1), f.line(loc.StartOffset)} {
+		if t, ok := f.trailing[ln]; ok && !strings.HasPrefix(t, "[") {
+			return t
+		}
+	}
+	return ""
+}

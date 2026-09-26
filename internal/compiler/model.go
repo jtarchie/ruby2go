@@ -12,11 +12,12 @@ import (
 
 // Class is a Ruby class or module.
 type Class struct {
-	Name       string
+	Name       string // Go identifier: "Resty_Actions_Show"
+	RubyName   string // constant path: "Resty::Actions::Show"
 	IsModule   bool
 	GoType     string // `@go_type` underlying Go type; "" for struct classes
 	TypeParams []string
-	SuperName  string
+	superRef   *constRef // superclass expression, resolved in link
 	Super      *Class
 	Includes   []Include
 	Methods    map[string]*Method
@@ -31,24 +32,48 @@ type Class struct {
 	universal bool
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
+	singletonDefs []singletonDef
 	msetCache     []entry
 	selfCallCache map[string]bool
 }
 
 type ivarDecl struct {
-	name string
-	rbs  rbs.Type
-	line int
+	name  string
+	rbs   rbs.Type
+	line  int
+	scope []*Class
+}
+
+// constRef is a constant expression to resolve once every class is known.
+type constRef struct {
+	node  parser.Node
+	scope []*Class
+	file  *File
 }
 
 // Include is `include Mod #[Args]`.
 type Include struct {
-	Mod  *Class
-	Args []Type
-	name string
-	args []rbs.Type
-	line int
-	file *File
+	Mod   *Class
+	Args  []Type
+	ref   constRef
+	args  []rbs.Type
+	line  int
+	file  *File
+	scope []*Class
+}
+
+// Const is a non-class constant (`VERSION = "1.0"`), emitted as a Go
+// package-level variable.
+type Const struct {
+	RubyName  string
+	GoName    string
+	Value     parser.Node
+	File      *File
+	Line      int
+	Scope     []*Class // lexical scope of the assignment
+	ann       string   // trailing `#: T`
+	Type      Type
+	resolving bool
 }
 
 // Ivar is an instance variable of a struct class.
@@ -78,6 +103,7 @@ type Method struct {
 	Node       *parser.DefNode
 	File       *File
 	Line       int
+	Scope      []*Class // lexical scope (Module.nesting), innermost last
 	sigText    string
 	sig        *rbs.MethodType
 	TypeParams []string
@@ -228,11 +254,13 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 	for _, n := range f.Root.Statements.Body {
 		switch n := n.(type) {
 		case *parser.ClassNode:
-			c.collectClass(f, n)
+			c.collectClass(f, n, nil)
 		case *parser.ModuleNode:
-			c.collectModule(f, n)
+			c.collectModule(f, n, nil)
 		case *parser.DefNode:
 			c.collectTopDef(f, n)
+		case *parser.ConstantWriteNode:
+			c.addConst(f, n, n.Name, nil, nil)
 		case *parser.XStringNode:
 			if !f.prelude {
 				c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")
@@ -255,16 +283,18 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 		}
 	}
 }
-
 func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *Class {
 	cls := c.classes[name]
 	if cls == nil {
-		cls = &Class{Name: name, IsModule: isModule, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{}, File: f, Line: line}
+		cls = &Class{Name: goClassName(name), RubyName: name, IsModule: isModule, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{}, File: f, Line: line}
 		cls.universal = name == "BasicObject" || name == "Object" || name == "Kernel"
 		c.classes[name] = cls
 		c.classList = append(c.classList, cls)
 	} else if cls.IsModule != isModule {
 		c.errorf(f, nil, "%s:%d: %s is already defined as a %s", f.Name, line, name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
+	}
+	if c.consts[name] != nil {
+		c.errorf(f, nil, "%s:%d: %s is already a constant", f.Name, line, name)
 	}
 	ann := f.annotations(line)
 	for _, g := range ann["generic"] {
@@ -290,36 +320,69 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 	return cls
 }
 
-func (c *Compiler) collectClass(f *File, n *parser.ClassNode) {
-	if _, ok := n.ConstantPath.(*parser.ConstantReadNode); !ok {
-		c.errorf(f, n, "unsupported class name %s", f.text(n.ConstantPath.GetLocation()))
+// goClassName maps a constant path to a Go identifier.
+func goClassName(rubyName string) string { return strings.ReplaceAll(rubyName, "::", "_") }
+
+// qualify names the constant `name` declared directly inside scope.
+func qualify(scope []*Class, name string) string {
+	if len(scope) == 0 {
+		return name
 	}
+	return scope[len(scope)-1].RubyName + "::" + name
+}
+
+// declName resolves the name of a `class X` / `class A::X` / `module X`.
+func (c *Compiler) declName(f *File, path parser.Node, scope []*Class) string {
+	switch p := path.(type) {
+	case *parser.ConstantReadNode:
+		return qualify(scope, p.Name)
+	case *parser.ConstantPathNode:
+		if p.Parent == nil {
+			return *p.Name
+		}
+		parent, _ := c.lookupConst(f, p.Parent, scope)
+		if parent == nil {
+			c.errorf(f, p.Parent, "unknown namespace %s", f.text(p.Parent.GetLocation()))
+		}
+		return parent.RubyName + "::" + *p.Name
+	}
+	c.errorf(f, path, "unsupported class name %s", f.text(path.GetLocation()))
+	return ""
+}
+func (c *Compiler) collectClass(f *File, n *parser.ClassNode, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
-	cls := c.declareClass(f, n.Name, line, false)
+	name := c.declName(f, n.ConstantPath, scope)
+	cls := c.declareClass(f, name, line, false)
 	if n.Superclass != nil {
-		sup, ok := n.Superclass.(*parser.ConstantReadNode)
-		if !ok {
-			c.errorf(f, n.Superclass, "unsupported superclass expression")
+		if cls.superRef != nil && f.text(cls.superRef.node.GetLocation()) != f.text(n.Superclass.GetLocation()) {
+			c.errorf(f, n, "class %s reopened with a different superclass", name)
 		}
-		if cls.SuperName != "" && cls.SuperName != sup.Name {
-			c.errorf(f, n, "class %s reopened with a different superclass", n.Name)
-		}
-		cls.SuperName = sup.Name
-	} else if cls.SuperName == "" && n.Name != "BasicObject" {
-		cls.SuperName = "Object"
+		// The superclass expression is evaluated outside the class body.
+		cls.superRef = &constRef{node: n.Superclass, scope: scope, file: f}
 	}
-	c.collectBody(f, cls, n.Body)
+	c.collectBody(f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
+}
+func (c *Compiler) collectModule(f *File, n *parser.ModuleNode, scope []*Class) {
+	name := c.declName(f, n.ConstantPath, scope)
+	cls := c.declareClass(f, name, f.line(n.Location.StartOffset), true)
+	c.collectBody(f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
 
-func (c *Compiler) collectModule(f *File, n *parser.ModuleNode) {
-	if _, ok := n.ConstantPath.(*parser.ConstantReadNode); !ok {
-		c.errorf(f, n, "unsupported module name %s", f.text(n.ConstantPath.GetLocation()))
+// addConst records `NAME = value` declared in scope.
+func (c *Compiler) addConst(f *File, n parser.Node, name string, value parser.Node, scope []*Class) {
+	if w, ok := n.(*parser.ConstantWriteNode); ok {
+		value = w.Value
 	}
-	cls := c.declareClass(f, n.Name, f.line(n.Location.StartOffset), true)
-	c.collectBody(f, cls, n.Body)
+	full := qualify(scope, name)
+	if c.consts[full] != nil || c.classes[full] != nil {
+		c.errorf(f, n, "constant %s is already defined", full)
+	}
+	k := &Const{RubyName: full, GoName: goClassName(full), Value: value, File: f, Line: f.line(n.GetLocation().StartOffset), Scope: scope}
+	k.ann = f.trailingAnnotation(n)
+	c.consts[full] = k
+	c.constList = append(c.constList, k)
 }
-
-func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node) {
+func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node, scope []*Class) {
 	if body == nil {
 		return
 	}
@@ -331,29 +394,35 @@ func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node) {
 	for _, n := range stmts.Body {
 		switch n := n.(type) {
 		case *parser.DefNode:
-			c.addMethod(f, cls, n, private)
+			c.addMethod(f, cls, n, private, scope)
 		case *parser.CallNode:
-			c.collectClassCall(f, cls, n, &private)
+			c.collectClassCall(f, cls, n, &private, scope)
+		case *parser.ClassNode:
+			c.collectClass(f, n, scope)
+		case *parser.ModuleNode:
+			c.collectModule(f, n, scope)
+		case *parser.ConstantWriteNode:
+			c.addConst(f, n, n.Name, nil, scope)
 		default:
-			c.errorf(f, n, "unsupported node in class body: %T", n)
+			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
 		}
 	}
-	c.collectIvarDecls(f, cls, body)
+	c.collectIvarDecls(f, cls, body, scope)
 }
 
 // collectClassCall handles a bare call in a class body: attr_*, include,
 // private/public.
-func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, private *bool) {
+func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, private *bool, scope []*Class) {
 	if n.Receiver != nil {
 		c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
 	}
 	args := callArgs(n)
 	switch n.Name {
 	case "attr_reader", "attr_writer", "attr_accessor":
-		c.addAttrs(f, cls, n, args, *private)
+		c.addAttrs(f, cls, n, args, *private, scope)
 	case "include":
 		for _, a := range args {
-			c.addInclude(f, n, cls, a)
+			c.addInclude(f, n, cls, a, scope)
 		}
 	case "private":
 		switch {
@@ -364,7 +433,7 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 			if !ok {
 				c.errorf(f, n, "unsupported private form")
 			}
-			c.addMethod(f, cls, d, true)
+			c.addMethod(f, cls, d, true, scope)
 		default:
 			c.errorf(f, n, "unsupported private form")
 		}
@@ -375,12 +444,13 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 	}
 }
 
-func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.Node) {
-	cr, ok := a.(*parser.ConstantReadNode)
-	if !ok {
+func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.Node, scope []*Class) {
+	switch a.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+	default:
 		c.errorf(f, a, "unsupported include argument")
 	}
-	inc := Include{name: cr.Name, line: f.line(n.Location.StartOffset), file: f}
+	inc := Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(n.Location.StartOffset), file: f, scope: scope}
 	if t, ok := f.trailing[inc.line]; ok && strings.HasPrefix(t, "[") {
 		tup, err := rbs.ParseType(t)
 		if err != nil {
@@ -392,7 +462,7 @@ func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.
 }
 
 // collectIvarDecls picks up `# @rbs @x: T` annotations anywhere in a body.
-func (c *Compiler) collectIvarDecls(f *File, cls *Class, body parser.Node) {
+func (c *Compiler) collectIvarDecls(f *File, cls *Class, body parser.Node, scope []*Class) {
 	end := f.line(body.GetLocation().StartOffset + body.GetLocation().Length)
 	for ln := cls.Line; ln <= end+1; ln++ {
 		for _, iv := range f.annotations(ln)["ivar"] {
@@ -404,7 +474,7 @@ func (c *Compiler) collectIvarDecls(f *File, cls *Class, body parser.Node) {
 			if err != nil {
 				c.errorf(f, nil, "%s:%d: %v", f.Name, ln, err)
 			}
-			cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: strings.TrimSpace(name), rbs: t, line: ln})
+			cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: strings.TrimSpace(name), rbs: t, line: ln, scope: scope})
 		}
 	}
 }
@@ -416,12 +486,16 @@ func callArgs(n *parser.CallNode) []parser.Node {
 	return n.Arguments.Arguments
 }
 
-func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private bool) {
+func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
 	if n.Receiver != nil {
-		c.errorf(f, n, "singleton methods (def self.x) are not supported")
+		if _, ok := n.Receiver.(*parser.SelfNode); !ok || cls == nil {
+			c.errorf(f, n, "singleton methods are only supported as `def self.x` in a class or module body")
+		}
+		cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: n, private: private, scope: scope, file: f})
+		return
 	}
 	line := f.line(n.Location.StartOffset)
-	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private}
+	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private, Scope: scope}
 	if sig, found := f.sigComment(line); found {
 		if sig == "" {
 			c.errorf(f, n, "overloaded signatures (#|) are not supported")
@@ -455,7 +529,7 @@ func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private boo
 	cls.Methods[n.Name] = m
 }
 
-func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []parser.Node, private bool) {
+func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []parser.Node, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	if !cls.isStruct() {
 		c.errorf(f, n, "%s on a non-struct class", n.Name)
@@ -474,15 +548,15 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			c.errorf(f, a, "%s argument must be a symbol", n.Name)
 		}
 		name := sym.Unescaped.Value
-		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: rt, line: line})
+		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: rt, line: line, scope: scope})
 		if n.Name != "attr_writer" {
-			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, File: f, Line: line, Private: private}
+			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Return: rt}
 			cls.Methods[name] = m
 			cls.MethodList = append(cls.MethodList, m)
 		}
 		if n.Name != "attr_reader" {
-			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, File: f, Line: line, Private: private}
+			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Params: []rbs.Param{{Type: rt, Name: name}}, Return: rbs.Void{}}
 			cls.Methods[name+"="] = m
 			cls.MethodList = append(cls.MethodList, m)
@@ -491,36 +565,104 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 }
 
 func (c *Compiler) collectTopDef(f *File, n *parser.DefNode) {
-	c.addMethod(f, nil, n, false)
+	c.addMethod(f, nil, n, false, nil)
+}
+
+type singletonDef struct {
+	node    *parser.DefNode
+	private bool
+	scope   []*Class
+	file    *File
+}
+
+// lookupConst resolves a constant expression (Foo, Foo::Bar, ::Foo) the
+// way Ruby does: lexical scope innermost-out, then the innermost class's
+// ancestors, then top level. Exactly one of the results is non-nil, or
+// both are nil when nothing matched.
+func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, *Const) {
+	switch n := n.(type) {
+	case *parser.ConstantReadNode:
+		return c.lookupName(scope, n.Name)
+	case *parser.ConstantPathNode:
+		if n.Parent == nil {
+			return c.classes[*n.Name], c.consts[*n.Name]
+		}
+		parent, k := c.lookupConst(f, n.Parent, scope)
+		if parent == nil {
+			if k != nil {
+				c.errorf(f, n, "%s is not a class or module", k.RubyName)
+			}
+			return nil, nil
+		}
+		full := parent.RubyName + "::" + *n.Name
+		return c.classes[full], c.consts[full]
+	}
+	return nil, nil
+}
+
+func (c *Compiler) lookupName(scope []*Class, name string) (*Class, *Const) {
+	// A qualified name from RBS ("A::B") resolves its head lexically.
+	head, rest, qualified := strings.Cut(name, "::")
+	find := func(full string) (*Class, *Const) {
+		if qualified {
+			full += "::" + rest
+		}
+		return c.classes[full], c.consts[full]
+	}
+	for i := len(scope) - 1; i >= 0; i-- {
+		if cls, k := find(scope[i].RubyName + "::" + head); cls != nil || k != nil {
+			return cls, k
+		}
+	}
+	if len(scope) > 0 {
+		for anc := scope[len(scope)-1].Super; anc != nil && !anc.universal; anc = anc.Super {
+			if cls, k := find(anc.RubyName + "::" + head); cls != nil || k != nil {
+				return cls, k
+			}
+		}
+	}
+	return find(head)
+}
+
+// resolveClassRef resolves a constRef that must name a class or module.
+func (c *Compiler) resolveClassRef(r *constRef) *Class {
+	cls, _ := c.lookupConst(r.file, r.node, r.scope)
+	if cls == nil {
+		c.errorf(r.file, r.node, "unknown class or module %s", r.file.text(r.node.GetLocation()))
+	}
+	return cls
 }
 
 // ---- resolution
 
 func (c *Compiler) link() {
 	for _, cls := range c.classList {
-		if cls.SuperName != "" {
-			sup := c.classes[cls.SuperName]
-			if sup == nil {
-				c.errorf(cls.File, nil, "%s:%d: unknown superclass %s", cls.File.Name, cls.Line, cls.SuperName)
-			}
+		var sup *Class
+		switch {
+		case cls.superRef != nil:
+			sup = c.resolveClassRef(cls.superRef)
 			if sup.IsModule {
-				c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, cls.SuperName)
+				c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
 			}
+		case !cls.IsModule && cls.RubyName != "BasicObject":
+			sup = c.classes["Object"]
+		}
+		if sup != nil {
 			cls.Super = sup
 			sup.Subclasses = append(sup.Subclasses, cls)
 		}
 		for i := range cls.Includes {
 			inc := &cls.Includes[i]
-			mod := c.classes[inc.name]
-			if mod == nil || !mod.IsModule {
-				c.errorf(inc.file, nil, "%s:%d: unknown module %s", inc.file.Name, inc.line, inc.name)
+			mod := c.resolveClassRef(&inc.ref)
+			if !mod.IsModule {
+				c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
 			}
 			inc.Mod = mod
 			if len(inc.args) != len(mod.TypeParams) {
-				c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`)", inc.file.Name, inc.line, inc.name, len(mod.TypeParams), inc.name)
+				c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`)", inc.file.Name, inc.line, mod.RubyName, len(mod.TypeParams), mod.RubyName)
 			}
 			for _, a := range inc.args {
-				inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, file: inc.file, line: inc.line}))
+				inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, file: inc.file, line: inc.line}))
 			}
 		}
 	}
@@ -535,7 +677,7 @@ func (c *Compiler) link() {
 	// ivar declarations
 	for _, cls := range c.classList {
 		for _, d := range cls.ivarDecls {
-			t := c.resolveType(d.rbs, typeScope{class: cls, file: cls.File, line: d.line})
+			t := c.resolveType(d.rbs, typeScope{class: cls, lex: d.scope, file: cls.File, line: d.line})
 			c.declareIvar(cls, d.name, t, cls.File, d.line)
 		}
 	}
@@ -578,6 +720,7 @@ func (c *Compiler) findIvar(cls *Class, name string) *Ivar {
 
 type typeScope struct {
 	class     *Class
+	lex       []*Class // lexical scope for constant names
 	methodTPs []string
 	file      *File
 	line      int
@@ -598,7 +741,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 				}
 			}
 		}
-		cls := c.classes[t.Name]
+		cls, _ := c.lookupName(sc.lex, t.Name)
 		if cls == nil {
 			c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
 		}
@@ -661,7 +804,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 		}
 		m.sig = sig
 	}
-	sc := typeScope{class: m.Owner, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
+	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
 	m.TypeParams = m.sig.TypeParams
 	for _, p := range m.sig.Params {
 		m.Params = append(m.Params, Param{Name: p.Name, Type: c.resolveType(p.Type, sc), Rest: p.Rest})

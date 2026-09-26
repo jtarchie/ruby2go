@@ -13,6 +13,7 @@ type fctx struct {
 	f           *File
 	owner       *Class
 	m           *Method
+	lex         []*Class // lexical scope for constant lookup
 	selfType    Type
 	selfCode    string
 	ret         Type
@@ -513,8 +514,8 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		for _, cond := range wn.Conditions {
 			switch c := cond.(type) {
 			case *parser.NilNode:
-			case *parser.ConstantReadNode:
-				if f.c.classes[c.Name] == nil {
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+				if f.classRef(c) == nil {
 					typeSwitch = false
 				}
 			default:
@@ -583,8 +584,8 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			case *parser.NilNode:
 				cases = append(cases, "nil")
 				armType = TNil{}
-			case *parser.ConstantReadNode:
-				cls := f.c.classes[c.Name]
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+				cls := f.classRef(c)
 				if len(cls.TypeParams) > 0 {
 					cases = append(cases, cls.Name+"_Any")
 					args := make([]Type, len(cls.TypeParams))
@@ -780,11 +781,11 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		classes = append(classes, f.c.classes["StandardError"])
 	}
 	for _, ex := range rc.Exceptions {
-		cr, ok := ex.(*parser.ConstantReadNode)
-		if !ok || f.c.classes[cr.Name] == nil {
+		cls := f.classRef(ex)
+		if cls == nil {
 			f.errorf(ex, "rescue needs exception class names")
 		}
-		classes = append(classes, f.c.classes[cr.Name])
+		classes = append(classes, cls)
 	}
 	conds := make([]string, 0, len(classes))
 	for _, cls := range classes {
@@ -1042,6 +1043,7 @@ func (c *Compiler) newFctx(f *File, owner *Class, m *Method) *fctx {
 		fc.ret = m.Ret
 		fc.iterator = m.Iterator
 		fc.blockSig = m.Block
+		fc.lex = m.Scope
 	}
 	return fc
 }

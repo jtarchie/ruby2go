@@ -106,6 +106,9 @@
     if i := strings.IndexByte(name, '['); i >= 0 {
       name = name[:i]
     }
+    if ruby, ok := rbRubyNames[name]; ok {
+      return ruby
+    }
     return name
   }
 

@@ -35,9 +35,9 @@ type (
 
 func (t TClass) String() string {
 	if len(t.Args) == 0 {
-		return t.C.Name
+		return t.C.RubyName
 	}
-	return t.C.Name + "[" + joinTypes(t.Args) + "]"
+	return t.C.RubyName + "[" + joinTypes(t.Args) + "]"
 }
 func (t TOpt) String() string   { return t.Elem.String() + "?" }
 func (t TTuple) String() string { return "[" + joinTypes(t.Elems) + "]" }

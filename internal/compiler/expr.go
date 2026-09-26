@@ -56,7 +56,7 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return expr{code: v.goName, typ: v.typ}
 	case *parser.LocalVariableWriteNode:
 		var ann Type
-		if t, ok := f.f.trailing[f.f.line(n.Location.StartOffset)]; ok && !strings.HasPrefix(t, "[") {
+		if t := f.f.trailingAnnotation(n); t != "" {
 			ann = f.parseTypeAnn(n, t)
 		}
 		exp := ann
@@ -100,8 +100,8 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genSuper(n, n.Arguments, false)
 	case *parser.ForwardingSuperNode:
 		return f.genSuper(n, nil, true)
-	case *parser.ConstantReadNode:
-		f.errorf(n, "constant %s used as a value is not supported", n.Name)
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		return f.genConstRead(n)
 	case *parser.RescueModifierNode:
 		f.errorf(n, "`expr rescue expr` is not supported; use begin/rescue")
 	}
@@ -117,7 +117,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		return expr{code: f.ivarCode(iv), typ: iv.Type}
 	case *parser.InstanceVariableWriteNode:
 		var exp Type
-		if t, ok := f.f.trailing[f.f.line(n.Location.StartOffset)]; ok && !strings.HasPrefix(t, "[") {
+		if t := f.f.trailingAnnotation(n); t != "" {
 			exp = f.parseTypeAnn(n, t)
 		} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
 			exp = iv.Type
@@ -149,7 +149,7 @@ func (f *fctx) parseTypeAnn(n parser.Node, s string) Type {
 	if f.m != nil {
 		tps = f.m.TypeParams
 	}
-	return f.c.resolveType(t, typeScope{class: f.owner, methodTPs: tps, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
+	return f.c.resolveType(t, typeScope{class: f.owner, lex: f.lex, methodTPs: tps, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
 }
 
 // lift turns a statement-shaped expression (if/case/begin) into a temp.
@@ -480,16 +480,12 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 			f.errorf(n, "%s is not supported", n.Name)
 		}
 	}
-	if cr, ok := n.Receiver.(*parser.ConstantReadNode); ok {
-		cls := f.c.classes[cr.Name]
-		if cls == nil {
-			f.errorf(cr, "unknown constant %s", cr.Name)
-		}
+	if cls := f.classRef(n.Receiver); cls != nil {
 		if n.Name != "new" {
-			f.errorf(n, "class methods (%s.%s) are not supported", cr.Name, n.Name)
+			f.errorf(n, "class methods (%s.%s) are not supported", cls.RubyName, n.Name)
 		}
 		if n.Block != nil {
-			f.errorf(n, "%s.new with a block is not supported", cr.Name)
+			f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 		}
 		return f.genNew(n, cls, callArgs(n), nil, expected)
 	}
@@ -991,7 +987,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 // genIterCall emits `for ... range recv.Each(...) { body }` for iterator
 // methods called with a block. Returns false if the call is not one.
 func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
-	if _, ok := n.Receiver.(*parser.ConstantReadNode); ok {
+	if f.classRef(n.Receiver) != nil {
 		return false
 	}
 	var recvT Type
@@ -1181,10 +1177,9 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 	case 0:
 		f.errorf(n, "bare `raise` (re-raise) is not supported")
 	case 1:
-		if cr, ok := args[0].(*parser.ConstantReadNode); ok {
-			cls := f.c.classes[cr.Name]
-			if cls == nil || !cls.isSubclassOf(exc) {
-				f.errorf(cr, "%s is not an exception class", cr.Name)
+		if cls := f.classRef(args[0]); cls != nil {
+			if !cls.isSubclassOf(exc) {
+				f.errorf(args[0], "%s is not an exception class", cls.RubyName)
 			}
 			val = f.genNew(n, cls, nil, []expr{}, nil)
 			break
@@ -1200,13 +1195,12 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		}
 		f.errorf(args[0], "raise needs an exception class, a String, or an exception object (got %s)", a.typ)
 	case 2:
-		cr, ok := args[0].(*parser.ConstantReadNode)
-		if !ok {
+		cls := f.classRef(args[0])
+		if cls == nil {
 			f.errorf(args[0], "raise Class, message: first argument must be a class")
 		}
-		cls := f.c.classes[cr.Name]
-		if cls == nil || !cls.isSubclassOf(exc) {
-			f.errorf(cr, "%s is not an exception class", cr.Name)
+		if !cls.isSubclassOf(exc) {
+			f.errorf(args[0], "%s is not an exception class", cls.RubyName)
 		}
 		msg := f.genExpr(args[1], f.cls("String"))
 		val = f.genNew(n, cls, nil, []expr{msg}, nil)
@@ -1330,4 +1324,27 @@ func (f *fctx) blockParam(name string, typ Type) *local {
 	v := f.declareLocal(name, typ)
 	v.declared = true
 	return v
+}
+
+// classRef resolves n to a class or module when it is a constant naming one.
+func (f *fctx) classRef(n parser.Node) *Class {
+	switch n.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		cls, _ := f.c.lookupConst(f.f, n, f.lex)
+		return cls
+	}
+	return nil
+}
+
+// genConstRead reads a constant: a Go package variable.
+func (f *fctx) genConstRead(n parser.Node) expr {
+	cls, k := f.c.lookupConst(f.f, n, f.lex)
+	switch {
+	case k != nil:
+		return expr{code: k.GoName, typ: f.c.constType(k)}
+	case cls != nil:
+		f.errorf(n, "class %s used as a value is not supported", cls.RubyName)
+	}
+	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
+	return expr{}
 }

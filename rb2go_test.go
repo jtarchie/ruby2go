@@ -91,7 +91,8 @@ func testExample(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatalf("rbs-inline failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
-	out, err = gemCmd(t, "rbs", "-I", sig, "validate").CombinedOutput()
+	args := append(rbsLibraries(t, filepath.Join(dir, "main.rb")), "-I", sig, "validate")
+	out, err = gemCmd(t, "rbs", args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("rbs validate failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
@@ -157,4 +158,22 @@ func testExample(t *testing.T, dir string) {
 	if wantCode != gotCode {
 		t.Errorf("exit code: ruby %d, go %d", wantCode, gotCode)
 	}
+}
+
+var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)
+
+// rbsLibraries turns an example's `require "net/http"` lines into the
+// `-r net-http` flags rbs needs to see those libraries' signatures.
+func rbsLibraries(t *testing.T, path string) []string {
+	t.Helper()
+	src, err := os.ReadFile(path) //nolint:gosec // example path
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := requireLine.FindAllStringSubmatch(string(src), -1)
+	args := make([]string, 0, 2*len(matches))
+	for _, m := range matches {
+		args = append(args, "-r", strings.ReplaceAll(m[1], "/", "-"))
+	}
+	return args
 }
