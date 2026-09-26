@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -153,7 +155,7 @@ func TestErrors(t *testing.T) {
 				if len(wantErrs)+len(wantWarns) == 0 {
 					t.Fatal("case declares no `# error:` or `# warning:`")
 				}
-				_, warnings, err := Compile(context.Background(), "main.rb", f.Data)
+				_, warnings, err := compileSafe("main.rb", f.Data)
 				switch {
 				case len(wantErrs) > 0 && err == nil:
 					t.Errorf("compiled; want error %q", wantErrs)
@@ -222,10 +224,21 @@ func testExample(t *testing.T, dir string) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen))
 }
 
+// compileSafe is Compile with an internal compiler panic turned into an
+// error, so one bad case fails its test instead of the whole binary.
+func compileSafe(name string, src []byte) (code []byte, warnings []string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("compiler panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return Compile(context.Background(), name, src)
+}
+
 // transpile compiles src into a fresh Go module and returns its directory.
 func transpile(t *testing.T, name string, src []byte) string {
 	t.Helper()
-	code, warnings, err := Compile(context.Background(), name, src)
+	code, warnings, err := compileSafe(name, src)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
 	}
