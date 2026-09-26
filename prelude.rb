@@ -9,6 +9,7 @@
 require_relative "prelude/runtime"
 require_relative "prelude/object"
 require_relative "prelude/module"
+require_relative "prelude/struct"
 require_relative "prelude/boolean"
 require_relative "prelude/integer"
 require_relative "prelude/float"

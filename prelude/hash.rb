@@ -3,6 +3,22 @@
 #
 # Hash: insertion-ordered, a struct over a Go map plus a key list.
 
+%x{
+  // Ruby 3.4+ prints symbol keys as labels: `a: 1`, or `"a b": 1` when the
+  // symbol is not an identifier.
+  var rbLabelSymbol = regexp.MustCompile(`^[\\p{L}_][\\p{L}\\p{N}_]*[?!]?$`)
+
+  func rbInspectPair(k, v any) string {
+    if s, ok := k.(Symbol); ok {
+      if rbLabelSymbol.MatchString(string(s)) {
+        return string(s) + ": " + string(rbInspect(v))
+      }
+      return string(rbStringInspect(string(s))) + ": " + string(rbInspect(v))
+    }
+    return string(rbInspect(k)) + " => " + string(rbInspect(v))
+  }
+}
+
 # Insertion-ordered, like Ruby. Deletion is O(n) (README open decision 1).
 # @rbs generic K
 # @rbs generic V
@@ -180,10 +196,13 @@ class Hash < Object
   }
 
   #: () -> String
-  def inspect
-    return "{}" if empty?
-    "{" + map { |k, v| k.inspect + " => " + v.inspect }.join(", ") + "}"
-  end
+  def inspect = %x{
+    parts := make([]string, 0, len(self.keys))
+    for _, k := range self.keys {
+      parts = append(parts, rbInspectPair(k, self.vals[k]))
+    }
+    return String("{" + strings.Join(parts, ", ") + "}")
+  }
 
   #: () -> String
   def to_s = inspect

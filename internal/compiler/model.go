@@ -37,6 +37,8 @@ type Class struct {
 	meta          *Class    // the class object's class (holds `def self.` methods)
 	metaOf        *Class    // for a metaclass: the class it describes
 	constNames    []string  // constants (classes included) declared directly inside, in order
+	valueMembers  []string  // Struct.new / Data.define members, in order
+	valueKind     string    // "struct" or "data"
 	msetCache     []entry
 	selfCallCache map[string]bool
 }
@@ -269,12 +271,16 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 	for _, n := range f.Root.Statements.Body {
 		switch n := n.(type) {
 		case *parser.ClassNode:
-			c.collectClass(f, n, nil)
+			c.collectClass(ctx, f, n, nil)
 		case *parser.ModuleNode:
-			c.collectModule(f, n, nil)
+			c.collectModule(ctx, f, n, nil)
 		case *parser.DefNode:
 			c.collectTopDef(f, n)
 		case *parser.ConstantWriteNode:
+			if call, kind := valueClass(n.Value); call != nil {
+				c.collectValueClass(ctx, f, n, call, kind, nil)
+				continue
+			}
 			c.addConst(f, n, n.Name, nil, nil)
 		case *parser.XStringNode:
 			if !f.prelude {
@@ -365,7 +371,8 @@ func (c *Compiler) declName(f *File, path parser.Node, scope []*Class) string {
 	c.errorf(f, path, "unsupported class name %s", f.text(path.GetLocation()))
 	return ""
 }
-func (c *Compiler) collectClass(f *File, n *parser.ClassNode, scope []*Class) {
+
+func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNode, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	name := c.declName(f, n.ConstantPath, scope)
 	cls := c.declareClass(f, name, line, false)
@@ -376,12 +383,13 @@ func (c *Compiler) collectClass(f *File, n *parser.ClassNode, scope []*Class) {
 		// The superclass expression is evaluated outside the class body.
 		cls.superRef = &constRef{node: n.Superclass, scope: scope, file: f}
 	}
-	c.collectBody(f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
+	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
-func (c *Compiler) collectModule(f *File, n *parser.ModuleNode, scope []*Class) {
+
+func (c *Compiler) collectModule(ctx context.Context, f *File, n *parser.ModuleNode, scope []*Class) {
 	name := c.declName(f, n.ConstantPath, scope)
 	cls := c.declareClass(f, name, f.line(n.Location.StartOffset), true)
-	c.collectBody(f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
+	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
 
 // addConst records `NAME = value` declared in scope.
@@ -412,7 +420,7 @@ func (c *Compiler) noteConstName(full string) {
 		parent.constNames = append(parent.constNames, full[i+2:])
 	}
 }
-func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node, scope []*Class) {
+func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body parser.Node, scope []*Class) {
 	if body == nil {
 		return
 	}
@@ -428,10 +436,14 @@ func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node, scope []*C
 		case *parser.CallNode:
 			c.collectClassCall(f, cls, n, &private, scope)
 		case *parser.ClassNode:
-			c.collectClass(f, n, scope)
+			c.collectClass(ctx, f, n, scope)
 		case *parser.ModuleNode:
-			c.collectModule(f, n, scope)
+			c.collectModule(ctx, f, n, scope)
 		case *parser.ConstantWriteNode:
+			if call, kind := valueClass(n.Value); call != nil {
+				c.collectValueClass(ctx, f, n, call, kind, scope)
+				continue
+			}
 			c.addConst(f, n, n.Name, nil, scope)
 		default:
 			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
@@ -488,7 +500,7 @@ func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.
 		c.errorf(f, a, "unsupported include argument")
 	}
 	inc := Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(n.Location.StartOffset), file: f, scope: scope}
-	if t, ok := f.trailing[inc.line]; ok && strings.HasPrefix(t, "[") {
+	if t, ok := f.typeArgs[inc.line]; ok {
 		tup, err := rbs.ParseType(t)
 		if err != nil {
 			c.errorf(f, n, "bad include type args %q: %v", t, err)
@@ -1145,4 +1157,160 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 		m.BlockParam = *ps.Block.Name
 	}
 	return names, defaults, rest
+}
+
+// valueClass recognizes `Struct.new(...)` and `Data.define(...)`.
+func valueClass(n parser.Node) (*parser.CallNode, string) {
+	call, ok := n.(*parser.CallNode)
+	if !ok {
+		return nil, ""
+	}
+	r, ok := call.Receiver.(*parser.ConstantReadNode)
+	switch {
+	case !ok:
+	case r.Name == "Struct" && call.Name == "new":
+		return call, "struct"
+	case r.Name == "Data" && call.Name == "define":
+		return call, "data"
+	}
+	return nil, ""
+}
+
+// collectValueClass declares `Name = Struct.new(:a, :b) do ... end` or
+// `Name = Data.define(...)` as a class. Member types come from a `#: T`
+// after each member on its own line (rbs-inline's form), or a trailing
+// `#: [A, B]` on the assignment. The generated members are written as Ruby
+// and parsed; they and the block body live in the outer lexical scope, as
+// a block does not open a constant scope in Ruby.
+func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, kind string, scope []*Class) {
+	members := make([]string, 0, len(callArgs(call)))
+	for _, a := range callArgs(call) {
+		sym, ok := a.(*parser.SymbolNode)
+		if !ok {
+			c.errorf(f, a, "%s members must be symbols (keyword_init is not supported)", kind)
+		}
+		members = append(members, sym.Unescaped.Value)
+	}
+	if len(members) == 0 {
+		c.errorf(f, call, "%s needs at least one member", kind)
+	}
+	types := c.memberTypes(f, n, call, members)
+	full := qualify(scope, n.Name)
+	line := f.line(n.Location.StartOffset)
+	cls := c.declareClass(f, full, line, false)
+	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: map[string]string{"struct": "Struct", "data": "Data"}[kind]}, file: f}
+	cls.valueMembers, cls.valueKind = members, kind
+	// pad so the generated lines report the declaration's line
+	src := strings.Repeat("\n", line-1) + valueClassSource(kind, full, members, types)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	if err != nil {
+		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
+	}
+	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope)
+	if bn, ok := call.Block.(*parser.BlockNode); ok && bn.Body != nil {
+		c.collectBody(ctx, f, cls, bn.Body, scope)
+	}
+}
+
+// memberTypes reads member types: one `#: T` per member line, else a
+// trailing `#: [A, B]` tuple on the assignment.
+func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parser.CallNode, members []string) []rbs.Type {
+	args := callArgs(call)
+	perLine := true
+	types := make([]rbs.Type, len(members))
+	for i, a := range args {
+		ln := f.line(a.GetLocation().StartOffset)
+		t, ok := f.trailing[ln]
+		if !ok || (i > 0 && ln == f.line(args[i-1].GetLocation().StartOffset)) {
+			perLine = false
+			break
+		}
+		rt, err := rbs.ParseType(t)
+		if err != nil {
+			c.errorf(f, a, "%v", err)
+		}
+		types[i] = rt
+	}
+	if perLine {
+		return types
+	}
+	ann := f.trailingAnnotation(n)
+	if ann == "" {
+		c.errorf(f, n, "%s needs member types: `:a, #: T` per line, or `#: [A, B]` after the definition", n.Name)
+	}
+	t, err := rbs.ParseType(ann)
+	tup, ok := t.(rbs.Tuple)
+	if err != nil || !ok || len(tup.Elems) != len(members) {
+		c.errorf(f, n, "`#: %s` must be a %d-element tuple of member types", ann, len(members))
+	}
+	return tup.Elems
+}
+
+// valueClassSource is the Ruby for a Struct's or Data's generated members.
+func valueClassSource(kind, full string, members []string, types []rbs.Type) string {
+	var b strings.Builder
+	b.WriteString("class GeneratedValueClass\n")
+	accessor := map[string]string{"struct": "attr_accessor", "data": "attr_reader"}[kind]
+	for i, m := range members {
+		fmt.Fprintf(&b, "  %s :%s #: %s\n", accessor, m, types[i])
+	}
+	// A struct's trailing nilable members may be omitted (Ruby fills in
+	// nil); every Data member is required.
+	firstOpt := len(members)
+	for kind == "struct" && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
+		firstOpt--
+	}
+	sigs := make([]string, len(members))
+	params := make([]string, len(members))
+	syms := make([]string, len(members))
+	eqs := make([]string, len(members))
+	insp := make([]string, len(members))
+	pairs := make([]string, len(members))
+	for i, m := range members {
+		sigs[i], params[i] = types[i].String(), m
+		if i >= firstOpt {
+			sigs[i], params[i] = "?"+sigs[i], m+" = nil"
+		}
+		syms[i] = ":" + m
+		eqs[i] = m + " == other." + m
+		insp[i] = m + "=#{" + m + ".inspect}"
+		pairs[i] = m + ": " + m
+	}
+	fmt.Fprintf(&b, "  #: (%s) -> void\n  def initialize(%s)\n", strings.Join(sigs, ", "), strings.Join(params, ", "))
+	for _, m := range members {
+		fmt.Fprintf(&b, "    @%s = %s\n", m, m)
+	}
+	b.WriteString("  end\n")
+	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def self.members = [%s]\n", strings.Join(syms, ", "))
+	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def members = [%s]\n", strings.Join(syms, ", "))
+	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def to_h = { %s }\n", strings.Join(pairs, ", "))
+	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(other)\n    return false unless other.is_a?(::%s)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
+	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name} %s>\"\n", kind, strings.Join(insp, ", "))
+	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
+	if kind == "struct" {
+		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(members, ", "))
+	} else {
+		// `with(k: v)` compiles to this: a copy of the receiver's class
+		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(members, ", "), strings.Join(members, ", "))
+	}
+	b.WriteString("end\n")
+	return b.String()
+}
+
+func nilableRBS(t rbs.Type) bool {
+	switch t.(type) {
+	case rbs.Optional, rbs.Nil, rbs.Untyped:
+		return true
+	}
+	return false
+}
+
+// valueRoot finds the Struct/Data class that declared cls's members.
+func (c *Class) valueRoot() *Class {
+	for k := c; k != nil; k = k.Super {
+		if k.valueMembers != nil {
+			return k
+		}
+	}
+	return nil
 }

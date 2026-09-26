@@ -48,6 +48,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: f.selfCode, typ: f.selfType}, true
 	case *parser.SymbolNode:
 		return expr{code: "Symbol(" + strconv.Quote(n.Unescaped.Value) + ")", typ: f.cls("Symbol")}, true
+	case *withMember:
+		return f.genMethodCall(n, n.recv, n.name, nil, nil), true
 	}
 	return expr{}, false
 }
@@ -636,6 +638,11 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	if name == "class" && len(args) == 0 && block == nil {
 		if e, ok := f.genClassOf(recv); ok {
+			return e
+		}
+	}
+	if name == "with" && block == nil {
+		if e, ok := f.genDataWith(n, recv, args); ok {
 			return e
 		}
 	}
@@ -1263,6 +1270,9 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 			targs = "[" + f.c.goTypes(t.Args) + "]"
 		}
 		return expr{code: "New" + cls.Name + targs + "()", typ: t}
+	}
+	if vr := cls.valueRoot(); vr != nil && exprs == nil {
+		args = f.keywordMembers(n, vr, args)
 	}
 	init := cls.lookup("initialize")
 	var codes []string
@@ -1894,3 +1904,104 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	unify(sig.Ret, f.blockSig.Ret, env)
 	return "blk"
 }
+
+// keywordMembers turns `Point.new(x: 1, y: 2)` into positional arguments
+// in member order. Missing members are an error for Data and nil for a
+// Struct.
+func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []parser.Node {
+	if len(args) != 1 {
+		return args
+	}
+	kw, ok := args[0].(*parser.KeywordHashNode)
+	if !ok {
+		return args
+	}
+	byName := map[string]parser.Node{}
+	for _, el := range kw.Elements {
+		a, ok := el.(*parser.AssocNode)
+		sym, isSym := a.Key.(*parser.SymbolNode)
+		if !ok || !isSym {
+			return args // a Hash argument, not keywords
+		}
+		byName[sym.Unescaped.Value] = a.Value
+	}
+	out := make([]parser.Node, len(vr.valueMembers))
+	for i, m := range vr.valueMembers {
+		v, ok := byName[m]
+		switch {
+		case ok:
+			delete(byName, m)
+		case vr.valueKind == "data":
+			f.errorf(n, "missing keyword: :%s", m)
+		default:
+			v = &parser.NilNode{}
+		}
+		out[i] = v
+	}
+	for k := range byName {
+		f.errorf(n, "unknown keyword: :%s", k)
+	}
+	return out
+}
+
+// genDataWith compiles `value.with(k: v)`: a copy with some members
+// replaced, made by the receiver's own class.
+func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, bool) {
+	var cls *Class
+	switch t := recv.typ.(type) {
+	case TClass:
+		cls = t.C
+	case TVar:
+		if t.Name == "Self" {
+			cls = f.owner
+		}
+	}
+	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().valueKind != "data" {
+		return expr{}, false
+	}
+	vr := cls.valueRoot()
+	byName := map[string]parser.Node{}
+	if len(args) == 1 {
+		kw, ok := args[0].(*parser.KeywordHashNode)
+		if !ok {
+			f.errorf(n, "with takes keyword arguments")
+		}
+		for _, el := range kw.Elements {
+			a, ok := el.(*parser.AssocNode)
+			sym, isSym := a.Key.(*parser.SymbolNode)
+			if !ok || !isSym {
+				f.errorf(el, "with takes keyword arguments")
+			}
+			byName[sym.Unescaped.Value] = a.Value
+		}
+	} else if len(args) > 1 {
+		f.errorf(n, "with takes keyword arguments")
+	}
+	if !isSimpleGo(recv.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, recv.code)
+		recv.code = tmp
+	}
+	nodes := make([]parser.Node, len(vr.valueMembers))
+	for i, m := range vr.valueMembers {
+		v, ok := byName[m]
+		if !ok {
+			v = &withMember{recv: recv, name: m}
+		}
+		delete(byName, m)
+		nodes[i] = v
+	}
+	for k := range byName {
+		f.errorf(n, "unknown keyword: :%s", k)
+	}
+	return f.genMethodCall(n, recv, "__with", nodes, nil), true
+}
+
+// withMember is an argument node for `with` reading the receiver's member.
+type withMember struct {
+	parser.Node
+	recv expr
+	name string
+}
+
+func (w *withMember) GetLocation() parser.Location { return parser.Location{} }

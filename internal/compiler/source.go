@@ -21,6 +21,8 @@ type File struct {
 	leading map[int][]comment
 	// trailing `#: T` comments by line
 	trailing map[int]string
+	// trailing `#[A, B]` type arguments (`include M #[E]`) by line
+	typeArgs map[int]string
 }
 
 type comment struct {
@@ -69,6 +71,7 @@ func (f *File) lineText(n int) string {
 func (f *File) indexComments(cs []parser.Comment) {
 	f.leading = map[int][]comment{}
 	f.trailing = map[int]string{}
+	f.typeArgs = map[int]string{}
 	isComment := map[int]bool{}
 	for _, c := range cs {
 		ln := f.line(c.Location.StartOffset)
@@ -78,7 +81,7 @@ func (f *File) indexComments(cs []parser.Comment) {
 			if strings.HasPrefix(text, ":") {
 				f.trailing[ln] = strings.TrimSpace(text[1:])
 			} else if strings.HasPrefix(text, "[") {
-				f.trailing[ln] = text // include Foo #[E]
+				f.typeArgs[ln] = text // include Foo #[E]
 			}
 			continue
 		}
@@ -162,7 +165,7 @@ func (f *File) annotations(ln int) map[string][]string {
 func (f *File) trailingAnnotation(n parser.Node) string {
 	loc := n.GetLocation()
 	for _, ln := range []int{f.line(loc.StartOffset + loc.Length - 1), f.line(loc.StartOffset)} {
-		if t, ok := f.trailing[ln]; ok && !strings.HasPrefix(t, "[") {
+		if t, ok := f.trailing[ln]; ok {
 			return t
 		}
 	}
