@@ -1,0 +1,432 @@
+Compile errors and warnings for Array, Enumerable, tuples, splats and blocks over collections.
+-- return_in_closure.rb --
+# error: main.rb:4: non-local return from a block is not supported (README open decision 4)
+#: (Array[Integer]) -> Integer
+def f(nums)
+  nums.map { |n| return n }
+  0
+end
+puts f([1])
+-- break_in_closure.rb --
+# error: main.rb:3: break inside a non-iterator block is not supported
+nums = [1, 2] #: Array[Integer]
+puts nums.map { |n| break }.inspect
+-- next_value_in_closure.rb --
+# error: main.rb:3: next with a value inside a block is not supported
+nums = [1, 2] #: Array[Integer]
+puts nums.select { |n| next false if n > 1; true }.inspect
+-- break_with_value.rb --
+# error: main.rb:3: break with a value is not supported
+nums = [1, 2] #: Array[Integer]
+nums.each { |n| break n }
+-- next_with_value_in_iterator.rb --
+# error: main.rb:3: next with a value is not supported
+nums = [1, 2] #: Array[Integer]
+nums.each { |n| next n }
+-- iterator_value_assigned.rb --
+# error: main.rb:3: each with a block is an iterator and can only be used as a statement
+nums = [1, 2] #: Array[Integer]
+x = nums.each { |n| puts n }
+puts x.inspect
+-- iterator_value_argument.rb --
+# error: main.rb:3: each_with_index with a block is an iterator and can only be used as a statement
+nums = [1] #: Array[Integer]
+puts nums.each_with_index { |n, i| n }.inspect
+-- iterator_value_returned.rb --
+# error: main.rb:3: the value of an iterator call (each) cannot be used
+#: (Array[Integer]) -> Array[Integer]
+def show(nums) = nums.each { |n| puts n }
+show([1])
+-- iterator_without_block.rb --
+# error: main.rb:3: each is an iterator (its block returns void); call it as a statement with a block
+nums = [1, 2] #: Array[Integer]
+e = nums.each
+-- map_without_block.rb --
+# error: main.rb:3: map requires a block
+nums = [1, 2] #: Array[Integer]
+puts nums.map.inspect
+-- block_to_blockless_method.rb --
+# error: main.rb:3: size does not take a block
+nums = [1, 2] #: Array[Integer]
+puts nums.size { |n| n }
+-- first_without_count.rb --
+# error: main.rb:3: Enumerable#first: wrong number of arguments (given 0, expected 1)
+nums = [1, 2] #: Array[Integer]
+puts nums.first.inspect
+-- index_with_length.rb --
+# error: main.rb:3: Array#[]: wrong number of arguments (given 2, expected 1)
+nums = [1, 2, 3] #: Array[Integer]
+puts nums[0, 2].inspect
+-- index_with_range.rb --
+# error: main.rb:3: unsupported syntax: RangeNode
+nums = [1, 2, 3] #: Array[Integer]
+puts nums[0..1].inspect
+-- index_op_assign.rb --
+# error: main.rb:3: unsupported syntax: IndexOperatorWriteNode
+nums = [1, 2] #: Array[Integer]
+nums[0] += 5
+-- index_or_assign.rb --
+# error: main.rb:3: unsupported syntax: IndexOrWriteNode
+opt = [1, nil] #: Array[Integer?]
+opt[1] ||= 7
+-- push_many.rb --
+# error: main.rb:3: Array#push: wrong number of arguments (given 2, expected 1)
+nums = [1] #: Array[Integer]
+nums.push(2, 3)
+-- missing_sum.rb --
+# error: main.rb:3: undefined method sum for Array[Integer]
+nums = [1, 2] #: Array[Integer]
+puts nums.sum
+-- array_new.rb --
+# error: main.rb:2: undefined method new for singleton(Array)
+a = Array.new #: Array[Integer]
+puts a.inspect
+-- overload_signature.rb --
+# error: main.rb:4: overloaded signatures (#|) are not supported
+#: (Integer) -> Integer
+#| (String) -> String
+def ident(x) = x
+puts ident(1)
+-- splat_in_literal.rb --
+# error: main.rb:3: splat inside array literals is not supported
+nums = [1, 2] #: Array[Integer]
+puts [*nums, 3].inspect
+-- splat_of_non_array.rb --
+# error: main.rb:4: splat of non-array Integer
+#: (*Integer) -> Integer
+def total(*ns) = ns.size
+puts total(*5)
+-- splat_of_tuple.rb --
+# error: main.rb:5: splat of non-array [Integer, String]
+#: (*Integer) -> Integer
+def total(*ns) = ns.size
+pair = [1, "a"]
+puts total(*pair)
+-- splat_into_positional.rb --
+# error: main.rb:5: splat into a non-rest parameter is not supported
+#: (Integer, Integer) -> Integer
+def add(a, b) = a + b
+nums = [1, 2] #: Array[Integer]
+puts add(*nums)
+-- splat_in_multi_assign.rb --
+# error: main.rb:3: splat in multiple assignment is not supported
+nums = [1, 2, 3] #: Array[Integer]
+a, *rest = nums
+puts a.inspect, rest.inspect
+-- splat_in_dynamic_call.rb --
+# error: main.rb:4: splat arguments in a dynamic call are not supported
+u = 5 #: untyped
+nums = [1] #: Array[Integer]
+puts u.foo(*nums)
+-- rest_in_sig_not_def.rb --
+# error: main.rb:3: signature has a rest param but def does not
+#: (*Integer) -> Integer
+def total(ns) = ns.size
+puts total(1)
+-- rest_in_def_not_sig.rb --
+# error: main.rb:3: signature has 1 positional params but def has 0
+#: (Integer) -> Integer
+def total(*ns) = ns.size
+puts total(1)
+-- block_param_splat.rb --
+# error: main.rb:3: unsupported block parameter form
+nums = [1, 2] #: Array[Integer]
+nums.each { |*xs| puts xs.inspect }
+-- block_param_optional.rb --
+# error: main.rb:3: unsupported block parameter form
+nums = [1, 2] #: Array[Integer]
+nums.each { |x = 0| puts x }
+-- block_param_nested.rb --
+# error: main.rb:3: unsupported block parameter form
+pairs = [[1, "a"]] #: Array[[Integer, String]]
+pairs.each_with_index { |(n, s), i| puts n, s, i }
+-- block_tuple_arity.rb --
+# error: main.rb:3: block takes 3 params but the tuple has 2 elements
+pairs = [[1, "a"]] #: Array[[Integer, String]]
+pairs.each { |n, s, extra| puts n }
+-- block_too_many_params.rb --
+# error: main.rb:3: block takes 2 params but only 1 values are yielded
+nums = [1, 2] #: Array[Integer]
+nums.each { |a, b| puts a }
+-- block_arg_proc.rb --
+# error: main.rb:2: proc is not supported
+up = proc { |s| s.upcase }
+puts ["a"].map(&up).inspect
+-- block_arg_method.rb --
+# error: main.rb:4: only &:symbol and a method's own &block are supported as block arguments
+#: (Integer) -> Integer
+def twice(n) = n * 2
+puts [1].map(&method(:twice)).inspect
+-- symbol_block_two_params.rb --
+# error: main.rb:3: &:+ needs a single-argument block
+nums = [1, 2] #: Array[Integer]
+puts nums.reduce(0, &:+)
+-- block_returns_non_array.rb --
+# error: main.rb:3: block returns Integer, expected Array[U]
+nums = [1, 2] #: Array[Integer]
+puts nums.flat_map { |n| n }.inspect
+-- yield_without_block_sig.rb --
+# error: main.rb:4: yield in a method whose signature has no block
+#: () -> void
+def each_one
+  yield 1
+end
+each_one { |x| puts x }
+-- yield_in_closure.rb --
+# error: main.rb:3: yield inside a non-iterator block is not supported
+#: (Array[Integer]) { (Integer) -> Integer } -> Array[Integer]
+def via(nums) = nums.map { |n| yield(n) }
+puts via([1]) { |n| n + 1 }.inspect
+-- yield_arity.rb --
+# error: main.rb:4: yield passes 2 values but the block takes 1
+#: () { (Integer) -> void } -> void
+def each_one
+  yield 1, 2
+end
+each_one { |x| puts x }
+-- block_param_stored.rb --
+# error: main.rb:5: the block parameter &block can only be called (block.call) or passed on (&block)
+class Keeper
+  #: () { (Integer) -> void } -> void
+  def keep(&block)
+    @saved = block
+  end
+end
+-- block_param_without_block_sig.rb --
+# error: main.rb:3: a named &block parameter needs a block in the signature
+#: () -> void
+def run(&block)
+  block.call
+end
+run { puts 1 }
+-- forwarded_block_arity.rb --
+# error: main.rb:3: the forwarded block takes 2 values but 1 are yielded
+#: () { (Integer, Integer) -> void } -> void
+def each_pair(&block) = [1, 2].each(&block)
+each_pair { |a, b| puts a }
+-- forwarded_iterator_block_to_closure.rb --
+# error: main.rb:5: this method's block is an iterator (it yields); it can only be passed on to another iterator
+#: () { (Integer) -> void } -> void
+def each_mapped(&block)
+  yield 1
+  [1].map(&block)
+end
+each_mapped { |x| puts x }
+-- include_enumerable_without_type.rb --
+# error: main.rb:3: include Enumerable needs 1 type args (`include Enumerable #[...]`)
+class Box
+  include Enumerable
+
+  #: () { (Integer) -> void } -> void
+  def each
+    yield 1
+  end
+end
+puts Box.new.to_a.inspect
+-- extend_enumerable_without_type.rb --
+# error: main.rb:3: extend Enumerable needs 1 type args (`extend Enumerable #[...]`)
+module Nums
+  extend Enumerable
+
+  #: () { (Integer) -> void } -> void
+  def self.each
+    yield 1
+  end
+end
+puts Nums.to_a.inspect
+-- cannot_infer_type_param.rb --
+# error: main.rb:6: cannot infer type parameter T of Util_Meta#none
+class Util
+  #: [T] () -> Array[T]
+  def self.none = []
+end
+puts Util.none.inspect
+-- tuple_index_variable.rb --
+# error: main.rb:4: tuple index must be a literal in range
+pair = [1, "a"]
+i = 0
+puts pair[i].inspect
+-- tuple_index_out_of_range.rb --
+# error: main.rb:3: tuple index must be a literal in range
+pair = [1, "a"]
+puts pair[2].inspect
+-- tuple_size.rb --
+# error: main.rb:3: undefined method size for tuple [Integer, String]
+pair = [1, "a"]
+puts pair.size
+-- tuple_each.rb --
+# error: main.rb:3: undefined method each for tuple [Integer, String]
+pair = [1, "a"]
+pair.each { |x| puts x }
+-- tuple_join.rb --
+# error: main.rb:3: undefined method join for tuple [Integer, Array[Integer], String]
+x = [1, [2, 3], "a"]
+puts x.join(",")
+-- tuple_too_many_targets.rb --
+# error: main.rb:4: 3 targets for a 2-tuple
+#: () -> [Integer, String]
+def pair = [1, "a"]
+a, b, c = pair
+puts a, b, c
+-- destructure_integer.rb --
+# error: main.rb:2: cannot destructure Integer
+a, b = 5
+puts a, b
+-- tuple_four_elements.rb --
+# error: main.rb:3: only 2- and 3-tuples are supported
+#: () -> [Integer, Integer, Integer, Integer]
+def four = [1, 2, 3, 4]
+puts four.inspect
+-- return_two_values.rb --
+# error: main.rb:4: return with multiple values is not supported
+#: () -> [Integer, Integer]
+def two
+  return 1, 2
+end
+puts two.inspect
+-- multi_assign_nil.rb --
+# error: main.rb:2: cannot infer a type from nil; annotate the target first
+a, b = 1, nil
+puts a, b
+-- empty_literal_branch.rb --
+# error: main.rb:3: branches have incompatible types Array[Integer] and Array[untyped]
+nums = [1, -2] #: Array[Integer]
+puts nums.flat_map { |n| n > 0 ? [n] : [] }.inspect
+-- element_possibly_nil.rb --
+# error: main.rb:3: possibly-nil Integer? where Integer is expected; check it first
+nums = [1, 2] #: Array[Integer]
+puts 1 + nums[0]
+-- element_method_warns.rb --
+# warning: main.rb:3: succ called on possibly-nil Integer (raises NoMethodError on nil)
+nums = [1, 2] #: Array[Integer]
+puts nums[0].succ
+-- empty_literal_is_untyped.rb --
+# warning: main.rb:5: dynamic call: succ on untyped
+a = []
+a << 1
+a << "x"
+puts a[0].succ
+-- mixed_literal_is_untyped.rb --
+# warning: main.rb:3: dynamic call: succ on untyped
+row = [1, "a", :b, 2.5]
+puts row[0].succ
+-- push_wrong_element_type.rb --
+# skip: pushing a String onto an Array[Integer] is not a compile error; the Go fails to build
+# error: main.rb:4:
+nums = [1, 2] #: Array[Integer]
+nums << "x"
+-- tuple_wrong_element_type.rb --
+# skip: pushing [2, 3] onto an Array[[Integer, String]] is not a compile error; the Go fails to build
+# error: main.rb:4:
+pairs = [[1, "a"]] #: Array[[Integer, String]]
+pairs << [2, 3]
+-- block_returns_non_bool.rb --
+# skip: a select block returning String is not a compile error; the Go fails to build
+# error: main.rb:4:
+nums = [1, 2] #: Array[Integer]
+puts nums.select { |n| n.to_s }.inspect
+-- block_on_untyped.rb --
+# error: main.rb:3: blocks on untyped receivers are not supported
+u = [1] #: untyped
+u.each { |x| puts x }
+-- block_on_optional_untyped.rb --
+# skip: optCall drops the block on an untyped? receiver: compiles with warnings, then NoMethodError at run time (decision 32: blocks cannot cross a dynamic call)
+# error: main.rb:4:
+u = [[1]] #: Array[untyped]
+u[0].each { |x| puts x }
+-- super_to_block_method.rb --
+# error: main.rb:11: super to a block-taking method is not supported
+class A
+  #: () { (Integer) -> void } -> void
+  def each
+    yield 1
+  end
+end
+
+class B < A
+  def each
+    super
+  end
+end
+-- break_in_rescuing_yield.rb --
+# error: main.rb:14: break inside a non-iterator block is not supported
+#: (Array[Integer]) { (Integer) -> void } -> void
+def safe_each(nums)
+  nums.each do |n|
+    begin
+      yield n
+    rescue ZeroDivisionError
+      puts "r"
+    end
+  end
+end
+
+safe_each([1, 2]) do |n|
+  break if n > 1
+  puts n
+end
+-- block_autosplat_nested_array.rb --
+# error: main.rb:3: block takes 2 params but only 1 values are yielded
+grid = [[1, 2], [3, 4]] #: Array[Array[Integer]]
+grid.each { |a, b| puts a.inspect, b.inspect }
+-- forwarded_block_passed_arity.rb --
+# error: main.rb:3: the forwarded block takes 2 values but 1 are passed
+#: () { (Integer, Integer) -> Integer } -> Array[Integer]
+def pairs(&block) = [1, 2].map(&block)
+puts pairs { |a, b| a + b }.inspect
+-- rest_anonymous.rb --
+# error: main.rb:3: unsupported rest parameter
+#: (*Integer) -> Integer
+def total(*) = 1
+puts total(1)
+-- rest_with_post.rb --
+# error: main.rb:3: keyword and post parameters are not supported
+#: (Integer, *Integer) -> Integer
+def total(a, *rest, b) = a + b + rest.size
+puts total(1, 2)
+-- rest_in_def_not_sig_no_params.rb --
+# error: main.rb:3: def has a rest param but signature does not
+#: () -> Integer
+def total(*ns) = ns.size
+puts total
+-- tuple_negative_index.rb --
+# error: main.rb:3: tuple index must be a literal in range
+pair = [1, "a"]
+puts pair[-1].inspect
+-- index_target_multi_assign.rb --
+# error: main.rb:3: unsupported assignment target IndexTargetNode
+nums = [1, 2] #: Array[Integer]
+nums[0], nums[1] = nums[1], nums[0]
+puts nums.inspect
+-- destructure_optional_tuple.rb --
+# error: main.rb:3: cannot destructure [Integer, String]?
+pairs = [[1, "a"]] #: Array[[Integer, String]]
+a, b = pairs[0]
+puts a, b
+-- push_nil.rb --
+# error: main.rb:3: nil where Integer is expected
+nums = [1, 2] #: Array[Integer]
+nums << nil
+-- select_block_optional.rb --
+# error: main.rb:4: possibly-nil Integer? where Boolean is expected
+h = { 1 => 2 } #: Hash[Integer, Integer]
+nums = [1, 2] #: Array[Integer]
+puts nums.select { |n| h[n] }.inspect
+-- optional_array_method_warns.rb --
+# warning: main.rb:3: size called on possibly-nil Array[Integer] (raises NoMethodError on nil)
+h = { "a" => [1] } #: Hash[String, Array[Integer]]
+puts h["a"].size
+-- reassign_different_element_type.rb --
+# skip: reassigning an Array[Integer] local to ["x"] is not a compile error; the literal is generated as Array[Integer] and go build fails
+# error: main.rb:4:
+a = [1]
+a = ["x"]
+puts a.inspect
+-- subclass_array.rb --
+# skip: `class Stack < Array` compiles, but the generated Stack code uses the generic Array without type args (undefined: E), so go build fails; want a compile error
+# error: main.rb:3:
+class Stack < Array
+  #: () -> Integer
+  def top2 = 2
+end
+puts Stack.new.top2

@@ -1,0 +1,1023 @@
+-- class_then_module.rb --
+# error: main.rb:5: Thing is already defined as a class
+class Thing
+end
+
+module Thing
+end
+-- module_then_class.rb --
+# error: main.rb:5: Thing is already defined as a module
+module Thing
+end
+
+class Thing
+end
+-- class_named_like_constant.rb --
+# error: main.rb:4: Thing is already a constant
+Thing = 1
+
+class Thing
+end
+-- unknown_namespace.rb --
+# error: main.rb:2: unknown namespace Nope
+class Nope::Thing
+end
+-- namespace_is_value.rb --
+# error: main.rb:4: unknown namespace VALUE
+VALUE = 1
+
+class VALUE::Thing
+end
+-- superclass_mismatch.rb --
+# error: main.rb:11: class C reopened with a different superclass
+class A
+end
+
+class B
+end
+
+class C < A
+end
+
+class C < B
+end
+-- constant_reassigned.rb --
+# error: main.rb:3: constant LIMIT is already defined
+LIMIT = 1
+LIMIT = 2
+-- constant_reassigned_in_module.rb --
+# error: main.rb:7: constant M::X is already defined
+module M
+  X = 1
+end
+
+module M
+  X = 2
+end
+-- class_body_rescue.rb --
+# error: main.rb:2: unsupported class body
+class Guarded
+  #: () -> Integer
+  def x = 1
+rescue StandardError
+  nil
+end
+-- class_body_class_variable.rb --
+# error: main.rb:3: unsupported node in class body: ClassVariableWriteNode
+class Counter
+  @@count = 0
+end
+-- class_body_singleton_class.rb --
+# error: main.rb:3: unsupported node in class body: SingletonClassNode
+class Config
+  class << self
+    #: () -> String
+    def name = "c"
+  end
+end
+-- class_body_alias.rb --
+# error: main.rb:6: unsupported node in class body: AliasMethodNode
+class Greeter
+  #: () -> String
+  def hello = "hi"
+
+  alias hi hello
+end
+-- class_body_if.rb --
+# error: main.rb:3: unsupported node in class body: IfNode
+class Flagged
+  if true
+    #: () -> Integer
+    def x = 1
+  end
+end
+-- class_body_receiver_call.rb --
+# error: main.rb:3: unsupported statement in class body: self.to_s
+class Loud
+  self.to_s
+end
+-- class_body_puts.rb --
+# error: main.rb:3: unsupported call in class body: puts
+class Chatty
+  puts "loading"
+end
+-- class_body_protected.rb --
+# error: main.rb:3: unsupported call in class body: protected
+class Guarded
+  protected
+
+  #: () -> Integer
+  def x = 1
+end
+-- class_body_alias_method.rb --
+# error: main.rb:6: unsupported call in class body: alias_method
+class Greeter
+  #: () -> String
+  def hello = "hi"
+
+  alias_method :hi, :hello
+end
+-- class_body_module_function.rb --
+# error: main.rb:3: unsupported call in class body: module_function
+module Helpers
+  module_function
+
+  #: () -> Integer
+  def x = 1
+end
+-- class_body_define_method.rb --
+# error: main.rb:3: unsupported call in class body: define_method
+class Dyn
+  define_method(:x) { 1 }
+end
+-- private_symbol_form.rb --
+# error: main.rb:6: unsupported private form
+class Guarded
+  #: () -> Integer
+  def x = 1
+
+  private :x
+end
+-- private_many_symbols.rb --
+# error: main.rb:9: unsupported private form
+class Guarded
+  #: () -> Integer
+  def x = 1
+
+  #: () -> Integer
+  def y = 2
+
+  private :x, :y
+end
+-- include_non_constant.rb --
+# error: main.rb:6: unsupported include argument
+module M
+end
+
+class Host
+  include(M || M)
+end
+-- include_bad_type_args.rb --
+# error: main.rb:3: bad include type args "[Array[": rbs: unexpected end of type
+class Bag
+  include Enumerable #[Array[
+end
+-- include_unknown.rb --
+# error: main.rb:3: unknown class or module Missing
+class Host
+  include Missing
+end
+-- include_a_class.rb --
+# error: main.rb:6: NotAModule is not a module
+class NotAModule
+end
+
+class Host
+  include NotAModule
+end
+-- include_generic_without_args.rb --
+# error: main.rb:3: include Enumerable needs 1 type args
+class Bag
+  include Enumerable
+
+  #: () { (Integer) -> void } -> void
+  def each
+    yield 1
+  end
+end
+-- extend_a_class.rb --
+# error: main.rb:6: NotAModule is not a module
+class NotAModule
+end
+
+class Host
+  extend NotAModule
+end
+-- extend_generic_without_args.rb --
+# error: main.rb:3: extend Enumerable needs 1 type args
+module Things
+  extend Enumerable
+
+  #: () { (Integer) -> void } -> void
+  def self.each
+    yield 1
+  end
+end
+-- extend_unknown.rb --
+# error: main.rb:3: unknown class or module Missing
+class Host
+  extend Missing
+end
+-- superclass_is_module.rb --
+# error: main.rb:5: superclass Mixin is a module
+module Mixin
+end
+
+class Host < Mixin
+end
+-- superclass_unknown.rb --
+# error: main.rb:2: unknown class or module Missing
+class Host < Missing
+end
+-- go_type_on_module.rb --
+# error: main.rb:3: @go_type on a module
+# @go_type string
+module Stringy
+end
+-- go_type_inherits_struct.rb --
+# error: main.rb:6: @go_type class Small cannot inherit from struct class Base
+class Base
+end
+
+# @go_type int
+class Small < Base
+end
+-- generic_struct_class.rb --
+# error: main.rb:3: generic struct classes are not supported
+# @rbs generic T
+class Box
+end
+-- generic_module_class_method.rb --
+# error: main.rb:5: class methods on generic class Holder are not supported
+# @rbs generic T
+module Holder
+  #: () -> Integer
+  def self.count = 0
+end
+-- ivar_annotation_without_colon.rb --
+# error: main.rb:5: bad ivar annotation "@balance Integer"
+class Account
+  # @rbs @balance Integer
+
+  #: () -> void
+  def initialize
+    @balance = 0
+  end
+end
+-- ivar_annotation_bad_type.rb --
+# error: main.rb:5: rbs: unexpected end of type
+class Account
+  # @rbs @balance: Array[
+
+  #: () -> void
+  def initialize
+    @balance = 0
+  end
+end
+-- ivar_annotation_unknown_type.rb --
+# error: main.rb:5: unknown type Money
+class Account
+  # @rbs @balance: Money
+
+  #: () -> void
+  def initialize
+    @balance = 0
+  end
+end
+-- ivar_type_conflicts_with_parent.rb --
+# error: main.rb:14: ivar @id declared as String but Base has it as Integer
+class Base
+  # @rbs @id: Integer
+
+  #: () -> void
+  def initialize
+    @id = 1
+  end
+end
+
+class Child < Base
+  # @rbs @id: String
+
+  #: () -> String
+  def id = @id
+end
+-- ivar_only_nil.rb --
+# error: main.rb:5: instance variable @value has no known type
+class Lazy
+  #: () -> void
+  def initialize
+    @value = nil
+  end
+
+  #: () -> String
+  def value = "v"
+end
+-- ivar_never_assigned.rb --
+# error: main.rb:4: instance variable @count has no known type
+class Reader
+  #: () -> Integer
+  def count = @count
+end
+-- ivar_in_module.rb --
+# error: main.rb:4: instance variables are only supported in struct classes
+module Counting
+  #: () -> Integer
+  def count = @count
+end
+-- ivar_at_top_level.rb --
+# error: main.rb:2: instance variables are only supported in struct classes
+@x = 1
+-- ivar_in_primitive_class.rb --
+# error: main.rb:4: instance variables are only supported in struct classes
+class String
+  #: () -> Integer
+  def memo = @memo
+end
+-- singleton_def_on_object.rb --
+# error: main.rb:6: singleton methods are only supported as `def self.x`
+class Host
+end
+
+obj = Host.new
+def obj.hi = "hi"
+-- singleton_def_on_constant.rb --
+# error: main.rb:4: singleton methods are only supported as `def self.x`
+class Host
+  #: () -> String
+  def Host.hi = "hi"
+end
+-- top_level_def_self.rb --
+# error: main.rb:3: singleton methods are only supported as `def self.x`
+#: () -> String
+def self.hi = "hi"
+-- attr_in_module.rb --
+# error: main.rb:3: attr_reader on a non-struct class
+module Named
+  attr_reader :name #: String
+end
+-- attr_without_type.rb --
+# error: main.rb:3: attr_reader needs a trailing `#: Type` annotation
+class Person
+  attr_reader :name
+end
+-- attr_bad_type.rb --
+# error: main.rb:3: rbs: unexpected end of type
+class Person
+  attr_reader :name #: Array[
+end
+-- attr_string_name.rb --
+# error: main.rb:3: attr_reader argument must be a symbol
+class Person
+  attr_reader "name" #: String
+end
+-- attr_unknown_type.rb --
+# error: main.rb:3: unknown type Pet
+class Person
+  attr_accessor :pet #: Pet
+end
+-- singleton_type_of_kernel.rb --
+# error: main.rb:3: singleton(Kernel) has no class object type
+#: (singleton(Kernel)) -> void
+def use(k) = nil
+-- singleton_type_unknown.rb --
+# error: main.rb:3: unknown type Nope
+#: (singleton(Nope)) -> void
+def use(k) = nil
+-- self_type_outside_class.rb --
+# error: main.rb:3: `self` type outside a class
+#: () -> self
+def me = nil
+-- unannotated_method_without_parent.rb --
+# error: main.rb:3: method name has no type annotation
+class Base
+  def name = "base"
+end
+-- block_param_without_block_signature.rb --
+# error: main.rb:4: a named &block parameter needs a block in the signature
+class Bag
+  #: () -> void
+  def each(&block) = nil
+end
+-- block_param_stored.rb --
+# error: main.rb:5: the block parameter &block can only be called
+class Bag
+  #: () { (Integer) -> void } -> void
+  def each(&block)
+    @saved = block
+  end
+end
+-- struct_keyword_init.rb --
+# error: main.rb:2: struct members must be symbols (keyword_init is not supported)
+Point = Struct.new(:x, :y, keyword_init: true) #: [Integer, Integer]
+-- struct_string_member.rb --
+# error: main.rb:2: struct members must be symbols (keyword_init is not supported)
+Point = Struct.new("x") #: [Integer]
+-- struct_no_members.rb --
+# error: main.rb:2: struct needs at least one member
+Empty = Struct.new #: []
+-- data_no_members.rb --
+# error: main.rb:2: data needs at least one member
+Empty = Data.define
+-- struct_member_bad_type.rb --
+# error: main.rb:3: rbs: unexpected end of type
+Point = Struct.new(
+  :x, #: Array[
+  :y  #: Integer
+)
+-- struct_member_types_missing.rb --
+# error: main.rb:2: Point needs member types
+Point = Struct.new(:x, :y)
+-- struct_member_tuple_wrong_size.rb --
+# error: main.rb:2: `#: [Integer, Integer, Integer]` must be a 2-element tuple of member types
+Point = Struct.new(:x, :y) #: [Integer, Integer, Integer]
+-- struct_member_annotation_not_tuple.rb --
+# error: main.rb:2: `#: Integer` must be a 2-element tuple of member types
+Point = Struct.new(:x, :y) #: Integer
+-- data_missing_keyword.rb --
+# error: main.rb:4: missing keyword: :lng
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+Coord.new(lat: 1.0)
+-- data_unknown_keyword.rb --
+# error: main.rb:4: unknown keyword: :alt
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+Coord.new(lat: 1.0, lng: 2.0, alt: 3.0)
+-- struct_unknown_keyword.rb --
+# error: main.rb:4: unknown keyword: :z
+Point = Struct.new(:x, :y) #: [Integer, Integer]
+
+Point.new(x: 1, z: 2)
+-- data_positional_too_few.rb --
+# error: main.rb:4: Coord#initialize: wrong number of arguments (given 1, expected 2)
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+Coord.new(1.0)
+-- struct_too_many_args.rb --
+# error: main.rb:4: Point#initialize: wrong number of arguments (given 3, expected 2)
+Point = Struct.new(:x, :y) #: [Integer?, Integer?]
+
+Point.new(1, 2, 3)
+-- data_has_no_writer.rb --
+# error: main.rb:5: undefined method lat= for Coord
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+c = Coord.new(1.0, 2.0)
+c.lat = 3.0
+-- data_with_positional.rb --
+# error: main.rb:5: with takes keyword arguments
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+c = Coord.new(1.0, 2.0)
+c.with(3.0)
+-- data_with_unknown_keyword.rb --
+# error: main.rb:5: unknown keyword: :alt
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+c = Coord.new(1.0, 2.0)
+c.with(alt: 3.0)
+-- data_with_string_key.rb --
+# error: main.rb:5: with takes keyword arguments
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+c = Coord.new(1.0, 2.0)
+c.with("lat" => 3.0)
+-- data_with_two_args.rb --
+# error: main.rb:5: with takes keyword arguments
+Coord = Data.define(:lat, :lng) #: [Float, Float]
+
+c = Coord.new(1.0, 2.0)
+c.with({ lat: 1.0 }, { lng: 2.0 })
+-- constant_self_reference.rb --
+# error: main.rb:2: constant A depends on itself
+A = B
+B = A
+-- constant_nil.rb --
+# error: main.rb:2: cannot infer the type of constant NOTHING
+NOTHING = nil
+-- constant_bad_annotation.rb --
+# error: main.rb:2: rbs: unexpected end of type
+LIST = [] #: Array[
+-- constant_unknown.rb --
+# error: main.rb:2: uninitialized constant MISSING
+puts MISSING
+-- compact_form_no_outer_scope.rb --
+# error: main.rb:11: uninitialized constant SECRET
+module Outer
+  SECRET = "s"
+
+  class Inner
+  end
+end
+
+class Outer::Inner
+  #: () -> String
+  def peek = SECRET
+end
+-- kernel_as_value.rb --
+# error: main.rb:2: class Kernel used as a value is not supported
+k = Kernel
+-- kernel_class_method_call.rb --
+# error: main.rb:2: Kernel has no class methods
+Kernel.hello
+-- new_on_module.rb --
+# error: main.rb:5: undefined method new for singleton(Mixin)
+module Mixin
+end
+
+Mixin.new
+-- object_new.rb --
+# error: main.rb:2: undefined method new for singleton(Object)
+Object.new
+-- new_with_block.rb --
+# error: main.rb:5: Host.new with a block is not supported
+class Host
+end
+
+Host.new { 1 }
+-- new_extra_args_without_initialize.rb --
+# error: main.rb:5: Host.new takes no arguments
+class Host
+end
+
+Host.new(1)
+-- new_wrong_arity.rb --
+# error: main.rb:10: Pair#initialize: wrong number of arguments (given 1, expected 2)
+class Pair
+  #: (Integer, Integer) -> void
+  def initialize(a, b)
+    @a = a
+    @b = b
+  end
+end
+
+Pair.new(1)
+-- private_called_with_receiver.rb --
+# error: main.rb:9: private method pin called on Vault
+class Vault
+  private
+
+  #: () -> Integer
+  def pin = 1234
+end
+
+Vault.new.pin
+-- private_called_on_other_instance.rb --
+# error: main.rb:4: private method pin called on Vault
+class Vault
+  #: (Vault) -> bool
+  def same_pin?(other) = pin == other.pin
+
+  private
+
+  #: () -> Integer
+  def pin = 1234
+end
+-- undefined_method_on_instance.rb --
+# error: main.rb:7: undefined method fly for Dog
+class Dog
+  #: () -> String
+  def bark = "woof"
+end
+
+Dog.new.fly
+-- undefined_class_method.rb --
+# error: main.rb:5: undefined method fetch_all for singleton(Dog)
+class Dog
+end
+
+Dog.fetch_all
+-- super_outside_method.rb --
+# error: main.rb:2: super outside a method
+super
+-- super_without_parent_method.rb --
+# error: main.rb:7: super: no parent method name
+class Base
+end
+
+class Child < Base
+  #: () -> String
+  def name = super
+end
+-- super_to_block_method.rb --
+# error: main.rb:8: super to a block-taking method is not supported
+class Base
+  #: () { (Integer) -> Integer } -> Integer
+  def run = yield(1)
+end
+
+class Child < Base
+  def run = super
+end
+-- define_method_in_method.rb --
+# error: main.rb:5: define_method is not supported
+class Dyn
+  #: () -> void
+  def setup
+    define_method(:x) { 1 }
+  end
+end
+-- is_a_non_constant.rb --
+# error: main.rb:6: is_a? needs a class name
+class Dog
+end
+
+k = Dog
+Dog.new.is_a?(k)
+-- is_a_module_on_struct.rb --
+# error: main.rb:13: is_a?(Walker) on Animal cannot be checked
+module Walker
+end
+
+class Animal
+end
+
+class Dog < Animal
+  include Walker
+end
+
+a = Dog.new #: Animal
+puts a.is_a?(Walker)
+-- is_a_module_on_untyped.rb --
+# error: main.rb:6: is_a?(Walker) on untyped cannot be checked
+module Walker
+end
+
+x = 1 #: untyped
+puts x.is_a?(Walker)
+-- is_a_two_args.rb --
+# error: main.rb:5: is_a? takes one class
+class Dog
+end
+
+Dog.new.is_a?(Dog, Dog)
+-- warn_module_calls_includer_method.rb --
+# warning: main.rb:4: dynamic call: title on Self
+module Named
+  #: () -> String
+  def label = "[#{title}]"
+end
+
+class Doc
+  include Named
+
+  #: () -> String
+  def title = "t"
+end
+
+puts Doc.new.label
+-- warn_subclass_only_method.rb --
+# warning: main.rb:11: dynamic call: bark on Animal
+class Animal
+end
+
+class Dog < Animal
+  #: () -> String
+  def bark = "woof"
+end
+
+a = Dog.new #: Animal
+puts a.bark
+-- warn_untyped_const_get_result.rb --
+# warning: main.rb:14: dynamic call: hi on untyped
+module Mixed
+  VERSION = "1"
+
+  class Thing
+    #: () -> String
+    def self.hi = "hi"
+  end
+end
+
+#: (String) -> untyped
+def look(name) = Mixed.const_get(name)
+
+puts look("Thing").hi
+-- namespace_through_value.rb --
+# error: main.rb:4: VALUE is not a class or module
+VALUE = 1
+
+puts VALUE::Inner
+-- warn_class_typed_class_object.rb --
+# warning: main.rb:15: dynamic call: hi on Class
+module Mixed
+  class A
+    #: () -> String
+    def self.hi = "a"
+  end
+
+  class B
+    #: () -> String
+    def self.hi = "b"
+  end
+end
+
+#: (String) -> String
+def look(name) = Mixed.const_get(name).hi
+
+puts look("A")
+-- attr_accessor_type_conflict.rb --
+# error: main.rb:7: ivar @id declared as String but Base has it as Integer
+class Base
+  attr_reader :id #: Integer
+end
+
+class Child < Base
+  attr_reader :id #: String
+end
+-- extend_non_constant.rb --
+# error: main.rb:6: unsupported include argument
+module M
+end
+
+class Host
+  extend(M || M)
+end
+-- class_methods_on_kernel.rb --
+# error: class methods on Kernel are not supported
+module Kernel
+  #: () -> String
+  def self.hi = "hi"
+end
+-- class_methods_on_kernel_location.rb --
+# skip: the error for `def self.x` on Kernel/BasicObject is located in prelude/object.rb (where Kernel is declared) with the def's offset, not at the user's def main.rb:5
+# error: main.rb:5: class methods on Kernel are not supported
+module Kernel
+  #: () -> String
+  def self.hi = "hi"
+end
+-- class_methods_on_basic_object.rb --
+# error: class methods on BasicObject are not supported
+class BasicObject
+  #: () -> String
+  def self.hi = "hi"
+end
+-- ivar_reassigned_other_type.rb --
+# skip: assigning a String to an ivar already typed Integer compiles; go build then fails ("cannot use \"x\" ... as Integer value")
+# error: main.rb:12:
+# error: @id
+class Box
+  #: () -> void
+  def initialize
+    @id = 1
+  end
+
+  #: () -> void
+  def reset
+    @id = "x"
+  end
+end
+-- const_via_class_object.rb --
+# error: main.rb:6: uninitialized constant self.class::SCALE
+class Base
+  SCALE = 2
+
+  #: () -> Integer
+  def scaled = self.class::SCALE
+end
+-- anonymous_class.rb --
+# error: main.rb:5: Class.new takes no arguments
+class Base
+end
+
+Anon = Class.new(Base)
+-- superclass_mismatch_after_plain.rb --
+# skip: reopening a class with a superclass after it was first defined without one compiles; MRI raises "superclass mismatch for class C" (TypeError)
+# error: main.rb:9: class C reopened with a different superclass
+class A
+end
+
+class C
+end
+
+class C < A
+end
+-- class_lt_struct_new.rb --
+# error: main.rb:2: unknown class or module Struct.new(:a, :b)
+class Pair < Struct.new(:a, :b) #: [Integer, Integer]
+end
+-- struct_has_no_with.rb --
+# error: main.rb:5: undefined method with for Point
+Point = Struct.new(:x, :y) #: [Integer, Integer]
+
+pt = Point.new(1, 2)
+pt.with(x: 3)
+-- struct_missing_nonnil_keyword.rb --
+# skip: a keyword Struct.new that omits a non-nilable member reports the nil at main.rb:1 instead of the call's line
+# error: main.rb:5: nil where Integer is expected
+Point = Struct.new(:x, :y) #: [Integer, Integer]
+
+puts Point.new(x: 1)
+-- prepend.rb --
+# error: main.rb:6: unsupported call in class body: prepend
+module M
+end
+
+class Host
+  prepend M
+end
+-- extend_self.rb --
+# error: main.rb:3: unsupported include argument
+module Util
+  extend self
+
+  #: () -> Integer
+  def one = 1
+end
+-- private_attr_form.rb --
+# error: main.rb:3: unsupported private form
+class Vault
+  private attr_reader :pin #: Integer
+end
+-- private_class_method.rb --
+# error: main.rb:6: unsupported call in class body: private_class_method
+class Vault
+  #: () -> Integer
+  def self.pin = 1
+
+  private_class_method :pin
+end
+-- private_constant.rb --
+# error: main.rb:4: unsupported call in class body: private_constant
+class Vault
+  PIN = 1
+  private_constant :PIN
+end
+-- class_variable_read.rb --
+# error: main.rb:4: unsupported syntax: ClassVariableReadNode
+class Counter
+  #: () -> Integer
+  def count = @@count
+end
+-- class_method_on_instance.rb --
+# error: main.rb:7: undefined method create for Dog
+class Dog
+  #: () -> Dog
+  def self.create = new
+end
+
+Dog.new.create
+-- instance_method_on_class.rb --
+# error: main.rb:7: undefined method bark for singleton(Dog)
+class Dog
+  #: () -> String
+  def bark = "woof"
+end
+
+Dog.bark
+-- module_instance_method_on_module.rb --
+# error: main.rb:7: undefined method label for singleton(Named)
+module Named
+  #: () -> String
+  def label = "x"
+end
+
+Named.label
+-- module_class_method_on_includer.rb --
+# error: main.rb:11: undefined method label for Doc
+module Named
+  #: () -> String
+  def self.label = "x"
+end
+
+class Doc
+  include Named
+end
+
+Doc.new.label
+-- extended_method_on_instance.rb --
+# error: main.rb:11: undefined method twice for Widget
+module Doubling
+  #: (Integer) -> Integer
+  def twice(n) = n * 2
+end
+
+class Widget
+  extend Doubling
+end
+
+Widget.new.twice(1)
+-- module_private_called_outside.rb --
+# error: main.rb:16: private method priv called on Host
+module Helper
+  #: () -> String
+  def pub = "#{priv}!"
+
+  private
+
+  #: () -> String
+  def priv = "p"
+end
+
+class Host
+  include Helper
+end
+
+Host.new.priv
+-- super_class_method_without_parent.rb --
+# error: main.rb:7: super: no parent method kind
+class Base
+end
+
+class Child < Base
+  #: () -> String
+  def self.kind = super
+end
+-- attr_writer_has_no_reader.rb --
+# error: main.rb:11: undefined method note for Account
+class Account
+  attr_writer :note #: String
+
+  #: () -> void
+  def initialize
+    @note = ""
+  end
+end
+
+Account.new.note
+-- attr_reader_has_no_writer.rb --
+# error: main.rb:12: undefined method note= for Account
+class Account
+  attr_reader :note #: String
+
+  #: () -> void
+  def initialize
+    @note = ""
+  end
+end
+
+a = Account.new
+a.note = "x"
+-- method_wrong_arity.rb --
+# error: main.rb:7: Dog#bark: wrong number of arguments (given 1, expected 0)
+class Dog
+  #: () -> String
+  def bark = "woof"
+end
+
+Dog.new.bark(1)
+-- class_method_wrong_arity.rb --
+# error: main.rb:7: Dog_Meta#named: wrong number of arguments (given 0, expected 1)
+class Dog
+  #: (String) -> Dog
+  def self.named(n) = new
+end
+
+Dog.named
+-- iterator_called_without_block.rb --
+# error: main.rb:10: each is an iterator (its block returns void); call it as a statement with a block
+class Bag
+  #: () { (Integer) -> void } -> void
+  def each
+    yield 1
+  end
+end
+
+bag = Bag.new
+bag.each
+-- value_block_method_without_block.rb --
+# error: main.rb:8: first_as requires a block
+class Bag
+  #: () { (Integer) -> String } -> String
+  def first_as = yield(1)
+end
+
+bag = Bag.new
+puts bag.first_as
+-- block_to_blockless_method.rb --
+# error: main.rb:7: bark does not take a block
+class Dog
+  #: () -> String
+  def bark = "woof"
+end
+
+Dog.new.bark { 1 }
+-- ivar_in_class_method_untyped.rb --
+# error: main.rb:4: instance variable @count has no known type
+class Registry
+  #: () -> Integer
+  def self.count = @count
+end
+-- initialize_called_with_receiver.rb --
+# skip: calling initialize with an explicit receiver compiles and runs it; initialize is always private in MRI (NoMethodError)
+# error: main.rb:10: private method initialize called on Vault
+class Vault
+  #: () -> void
+  def initialize
+    @n = 1
+  end
+end
+
+v = Vault.new
+v.initialize
+-- top_level_def_with_receiver.rb --
+# error: main.rb:8: undefined method helper for Vault
+#: (Integer) -> String
+def helper(n) = n.to_s
+
+class Vault
+end
+
+Vault.new.helper(1)
+-- warn_optional_attr_call.rb --
+# warning: main.rb:11: upcase called on possibly-nil String
+class Profile
+  attr_accessor :nick #: String?
+
+  #: () -> void
+  def initialize
+    @nick = nil
+  end
+end
+
+puts Profile.new.nick.upcase

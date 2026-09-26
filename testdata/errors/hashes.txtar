@@ -1,0 +1,259 @@
+Compile errors and warnings for Hash (README decisions 1, 4, 5, 12, 20, 23, 34).
+-- index_op_assign.rb --
+# error: main.rb:4: unsupported syntax: IndexOperatorWriteNode
+# error: IndexOperatorWriteNode
+h = { "a" => 1 } #: Hash[String, Integer]
+h["a"] += 1
+-- index_or_assign.rb --
+# error: main.rb:3: unsupported syntax: IndexOrWriteNode
+h = {} #: Hash[String, Array[Integer]]
+(h["a"] ||= []) << 1
+-- index_and_assign.rb --
+# error: main.rb:3: unsupported syntax: IndexAndWriteNode
+h = { "a" => 1 } #: Hash[String, Integer]
+h["a"] &&= 2
+-- hash_new_default.rb --
+# error: main.rb:4:
+# error: Hash
+# error: new
+h = Hash.new(0) #: Hash[String, Integer]
+puts h.size
+-- hash_new_block.rb --
+# error: main.rb:4:
+# error: Hash
+# error: new
+h = Hash.new { |hash, key| hash[key] = 0 } #: Hash[String, Integer]
+puts h.size
+-- hash_new_unannotated.rb --
+# error: main.rb:4:
+# error: Hash
+# error: new
+h = Hash.new
+puts h.size
+-- default_setter.rb --
+# error: main.rb:3: undefined method default= for Hash[String, Integer]
+h = {} #: Hash[String, Integer]
+h.default = 0
+-- double_splat_literal.rb --
+# error: main.rb:3: unsupported syntax: AssocSplatNode
+a = { x: 1 } #: Hash[Symbol, Integer]
+puts({ y: 2, **a }.inspect)
+-- double_splat_call.rb --
+# error: main.rb:5: unsupported syntax: AssocSplatNode
+#: (Hash[Symbol, Integer]) -> String
+def show(o) = o.inspect
+a = { x: 1 } #: Hash[Symbol, Integer]
+puts show(y: 2, **a)
+-- value_omission.rb --
+# error: main.rb:3: unsupported syntax: ImplicitNode
+x = 1
+puts({ x: }.inspect)
+-- keyword_param.rb --
+# error: main.rb:3: keyword and post parameters are not supported
+#: (Integer) -> Integer
+def f(a:) = a
+puts f(a: 1)
+-- keyword_param_default.rb --
+# error: main.rb:3: keyword and post parameters are not supported
+#: (Integer) -> Integer
+def f(a: 1) = a
+puts f(a: 2)
+-- keyword_rest_param.rb --
+# error: main.rb:3: keyword and post parameters are not supported
+#: (Hash[Symbol, Integer]) -> String
+def f(**opts) = opts.inspect
+puts f(a: 1)
+-- braceless_extra_positional.rb --
+# error: main.rb:4: main#show: wrong number of arguments (given 2, expected 1)
+#: (Hash[Symbol, Integer]) -> String
+def show(o) = o.inspect
+puts show(1, a: 2)
+-- store_nil.rb --
+# error: main.rb:3: nil where Integer is expected
+h = { "a" => 1 } #: Hash[String, Integer]
+h["b"] = nil
+-- lookup_where_value_expected.rb --
+# error: main.rb:5: possibly-nil Integer? where Integer is expected
+#: (Integer) -> Integer
+def dbl(n) = n * 2
+h = { "a" => 1 } #: Hash[String, Integer]
+puts dbl(h["a"])
+-- fetch_or.rb --
+# error: main.rb:3: `||` on a non-nilable Integer is always the left side
+h = {} #: Hash[String, Integer]
+puts h.fetch("a", 0) || 1
+-- fetch_arity.rb --
+# error: main.rb:3: Hash#fetch: wrong number of arguments (given 3, expected 2)
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.fetch("a", 1, 2)
+-- index_arity.rb --
+# error: main.rb:3: Hash#[]: wrong number of arguments (given 2, expected 1)
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h["a", "b"]
+-- fetch_with_block.rb --
+# error: main.rb:3: fetch does not take a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.fetch("b") { |k| k.size }
+-- merge_with_block.rb --
+# error: main.rb:3: merge does not take a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.merge({ "a" => 2 }) { |_k, a, b| a + b }.inspect
+-- count_with_block.rb --
+# error: main.rb:3: count does not take a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.count { |_k, v| v > 0 }
+-- any_without_block.rb --
+# error: main.rb:3: any? requires a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.any?
+-- first_without_count.rb --
+# error: main.rb:3: Enumerable#first: wrong number of arguments (given 0, expected 1)
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.first.inspect
+-- reduce_without_init.rb --
+# error: main.rb:3: Enumerable#reduce: wrong number of arguments (given 0, expected 1)
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.reduce { |a, _b| a }.inspect
+-- map_without_block.rb --
+# error: main.rb:3: map requires a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.map.inspect
+-- each_without_block.rb --
+# error: main.rb:3: each is an iterator (its block returns void); call it as a statement with a block
+h = { "a" => 1 } #: Hash[String, Integer]
+e = h.each
+-- each_value_used.rb --
+# error: main.rb:3: each with a block is an iterator and can only be used as a statement
+h = { "a" => 1 } #: Hash[String, Integer]
+x = h.each { |k, _v| puts k }
+-- each_too_many_params.rb --
+# error: main.rb:3: block takes 3 params but the tuple has 2 elements
+h = { "a" => 1 } #: Hash[String, Integer]
+h.each { |k, _v, _z| puts k }
+-- each_pair_too_many_params.rb --
+# error: main.rb:3: block takes 3 params but only 2 values are yielded
+h = { "a" => 1 } #: Hash[String, Integer]
+h.each_pair { |k, _v, _z| puts k }
+-- nested_destructuring.rb --
+# error: main.rb:3: unsupported block parameter form
+h = { "a" => 1 } #: Hash[String, Integer]
+h.each_with_index { |(k, v), i| puts k, v, i }
+-- pair_index_out_of_range.rb --
+# error: main.rb:3: tuple index must be a literal in range
+h = { "a" => 1 } #: Hash[String, Integer]
+h.each { |pair| puts pair[2].inspect }
+-- destructure_hash.rb --
+# error: main.rb:3: cannot destructure Hash[String, Integer]
+h = { "a" => 1 } #: Hash[String, Integer]
+a, b = h
+-- splat_hash_arg.rb --
+# error: main.rb:5: splat of non-array Hash[String, Integer]
+#: (*untyped) -> Integer
+def n(*a) = a.size
+h = { "a" => 1 } #: Hash[String, Integer]
+puts n(*h)
+-- splat_hash_in_array.rb --
+# error: main.rb:3: splat inside array literals is not supported
+h = { "a" => 1 } #: Hash[String, Integer]
+puts [*h].inspect
+-- return_in_map_block.rb --
+# error: main.rb:4: non-local return from a block is not supported (README open decision 4)
+#: (Hash[String, Integer]) -> String?
+def first_big(h)
+  h.map { |k, v| return k if v > 1 }
+  nil
+end
+puts first_big({ "a" => 2 }).inspect
+-- break_in_select_block.rb --
+# error: main.rb:3: break inside a non-iterator block is not supported
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.select { |_k, v| break if v > 0; true }.inspect
+-- warn_method_on_lookup.rb --
+# warning: main.rb:3: succ called on possibly-nil Integer (raises NoMethodError on nil)
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h["a"].succ
+-- warn_push_on_lookup.rb --
+# warning: main.rb:3: << called on possibly-nil Array[Integer] (raises NoMethodError on nil)
+h = { "a" => [] } #: Hash[String, Array[Integer]]
+h["a"] << 1
+-- warn_untyped_value.rb --
+# warning: main.rb:4: + called on possibly-nil untyped (raises NoMethodError on nil)
+# warning: main.rb:4: dynamic call: + on untyped
+cfg = { port: 8080 } #: Hash[Symbol, untyped]
+puts cfg[:port] + 1
+-- warn_untyped_literal_value.rb --
+# warning: main.rb:4: upcase called on possibly-nil untyped
+# warning: main.rb:4: dynamic call: upcase on untyped
+h = { "a" => 1, "b" => "x" }
+puts h["b"].upcase
+-- store_value_type_mismatch.rb --
+# skip: no compile error; the String reaches IdxSet and `go build` fails (cannot use "x" as Integer)
+# error: main.rb:4:
+h = { "a" => 1 } #: Hash[String, Integer]
+h["b"] = "x"
+-- store_key_type_mismatch.rb --
+# skip: no compile error; the Symbol reaches IdxSet and `go build` fails (cannot use Symbol as String)
+# error: main.rb:4:
+h = { "a" => 1 } #: Hash[String, Integer]
+h[:b] = 2
+-- braceless_into_non_hash_param.rb --
+# skip: no compile error; the braceless Hash is passed to a String parameter and `go build` fails
+# error: main.rb:5:
+#: (String) -> String
+def f(s) = s
+puts f(a: 2)
+-- annotation_one_type_arg.rb --
+# error: main.rb:2: Hash takes 2 type args, got 1
+h = {} #: Hash[String]
+puts h.size
+-- param_annotation_no_type_args.rb --
+# error: main.rb:3: Hash takes 2 type args, got 0
+#: (Hash) -> Integer
+def f(h) = h.size
+puts f({})
+-- undefined_core_method.rb --
+# error: main.rb:3: undefined method transform_values for Hash[String, Integer]
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.transform_values { |v| v * 2 }.inspect
+-- freeze_literal.rb --
+# error: main.rb:2: undefined method freeze for Hash[String, Integer]
+LIMITS = { "a" => 1 }.freeze #: Hash[String, Integer]
+puts LIMITS.size
+-- each_value_two_params.rb --
+# error: main.rb:3: block takes 2 params but only 1 values are yielded
+h = { "a" => 1 } #: Hash[String, Integer]
+h.each_value { |v, extra| puts v, extra.inspect }
+-- sort_with_block.rb --
+# error: main.rb:3: sort does not take a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.sort { |a, b| b <=> a }.inspect
+-- delete_with_block.rb --
+# error: main.rb:3: delete does not take a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.delete("z") { |k| k.size }.inspect
+-- select_without_block.rb --
+# error: main.rb:3: select requires a block
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.select.inspect
+-- next_value_in_select.rb --
+# error: main.rb:3: next with a value inside a block is not supported
+h = { "a" => 1 } #: Hash[String, Integer]
+puts h.select { |k, v| next false if k == "b"; v > 0 }.inspect
+-- bool_block_optional_value.rb --
+# error: main.rb:3: possibly-nil Integer? where Boolean is expected
+h = { "a" => 1, "b" => nil } #: Hash[String, Integer?]
+puts h.select { |_k, v| v }.inspect
+-- literal_symbol_keys_for_string_hash.rb --
+# skip: no compile error; the Symbol keys reach NewHash[String, Integer]().__Set and `go build` fails (cannot use Symbol as String)
+# error: main.rb:3:
+h = { a: 1 } #: Hash[String, Integer]
+puts h.inspect
+-- subclass_hash.rb --
+# skip: no compile error; subclassing the @go_type Hash emits Go that does not build (cannot use generic type Hash[K, V] without instantiation)
+# error: main.rb:3:
+class MyHash < Hash
+  #: () -> Integer
+  def twice = size * 2
+end
+m = MyHash.new #: MyHash
+puts m.twice

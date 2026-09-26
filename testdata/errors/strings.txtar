@@ -1,0 +1,252 @@
+String, Symbol, literal/interpolation and Kernel output compile errors and warnings.
+
+-- xstring_top_level.rb --
+# error: main.rb:3: top-level %x{} is only allowed in the prelude
+# rbs_inline: enabled
+%x{ fmt.Println("hi") }
+-- xstring_statement.rb --
+# error: main.rb:6: %x{} is only allowed as the whole body of a prelude method
+# rbs_inline: enabled
+#: () -> void
+def hi
+  puts "a"
+  %x{ fmt.Println("hi") }
+end
+hi
+-- xstring_user_method_body.rb --
+# skip: a user method whose whole body is %x{} compiles as Go; MRI runs it as a shell command
+# error: main.rb:5: only allowed
+# rbs_inline: enabled
+#: () -> Integer
+def hi = %x{ 1 }
+puts hi
+-- xstring_expression.rb --
+# error: main.rb:3: unsupported syntax: XStringNode
+# rbs_inline: enabled
+x = %x{ls}
+puts x
+-- backtick.rb --
+# error: main.rb:3: unsupported syntax: XStringNode
+# rbs_inline: enabled
+puts `ls`
+-- interp_empty.rb --
+# error: main.rb:3: interpolation must contain a single expression
+# rbs_inline: enabled
+puts "a#{}b"
+-- interp_multi.rb --
+# error: main.rb:4: interpolation must contain a single expression
+# rbs_inline: enabled
+x = 1
+puts "a#{x; x + 1}b"
+-- interp_heredoc_multi.rb --
+# error: main.rb:5: interpolation must contain a single expression
+# rbs_inline: enabled
+x = 1
+s = <<~EOS
+  #{x; 2}
+EOS
+puts s
+-- interp_ivar_shorthand.rb --
+# error: main.rb:10: unsupported syntax: EmbeddedVariableNode
+# rbs_inline: enabled
+class A
+  #: () -> void
+  def initialize
+    @n = 1
+  end
+
+  #: () -> String
+  def show = "n=#@n"
+end
+puts A.new.show
+-- interp_gvar_shorthand.rb --
+# error: main.rb:3: unsupported syntax: EmbeddedVariableNode
+# rbs_inline: enabled
+puts "prog=#$0"
+-- interpolated_symbol.rb --
+# error: main.rb:4: unsupported syntax: InterpolatedSymbolNode
+# rbs_inline: enabled
+x = "a"
+puts :"k_#{x}".inspect
+-- upcase_bang.rb --
+# error: main.rb:4: undefined method upcase! for String
+# rbs_inline: enabled
+s = "abc"
+s.upcase!
+puts s
+-- shovel.rb --
+# error: main.rb:4: undefined method << for String
+# rbs_inline: enabled
+s = "abc"
+s << "d"
+puts s
+-- unary_plus.rb --
+# error: main.rb:3: undefined method +@ for String
+# rbs_inline: enabled
+s = +"abc"
+puts s
+-- string_format_operator.rb --
+# error: main.rb:3: undefined method % for String
+# rbs_inline: enabled
+puts "%05d" % 42
+-- kernel_format.rb --
+# error: main.rb:3: undefined method format for Object
+# rbs_inline: enabled
+puts format("%05d", 42)
+-- kernel_p.rb --
+# error: main.rb:3: undefined method p for Object
+# rbs_inline: enabled
+p "x"
+-- stdout_global.rb --
+# error: main.rb:3: unsupported syntax: GlobalVariableReadNode
+# rbs_inline: enabled
+$stdout.puts "x"
+-- string_new.rb --
+# error: main.rb:3: undefined method new for singleton(String)
+# rbs_inline: enabled
+puts String.new("x")
+-- symbol_plus.rb --
+# error: main.rb:3: undefined method + for Symbol
+# rbs_inline: enabled
+puts :a + :b
+-- symbol_to_proc.rb --
+# error: main.rb:3: undefined method to_proc for Symbol
+# rbs_inline: enabled
+puts :upcase.to_proc
+-- center_pad_arg.rb --
+# error: main.rb:3: String#center: wrong number of arguments (given 2, expected 1)
+# rbs_inline: enabled
+puts "a".center(5, "*")
+-- index_two_args.rb --
+# error: main.rb:3: String#[]: wrong number of arguments (given 2, expected 1)
+# rbs_inline: enabled
+puts "abc"[0, 2]
+-- index_range.rb --
+# error: main.rb:3: unsupported syntax: RangeNode
+# rbs_inline: enabled
+puts "abc"[0..1]
+-- index_offset.rb --
+# error: main.rb:3: String#index: wrong number of arguments (given 2, expected 1)
+# rbs_inline: enabled
+puts "abcabc".index("a", 1)
+-- split_limit.rb --
+# error: main.rb:3: String#split: wrong number of arguments (given 2, expected 1)
+# rbs_inline: enabled
+puts "a,b,c".split(",", 2).inspect
+-- start_with_many.rb --
+# error: main.rb:3: String#start_with?: wrong number of arguments (given 2, expected 1)
+# rbs_inline: enabled
+puts "abc".start_with?("x", "a")
+-- chomp_arg.rb --
+# error: main.rb:3: String#chomp: wrong number of arguments (given 1, expected 0)
+# rbs_inline: enabled
+puts "abc".chomp("c")
+-- sub_one_arg.rb --
+# error: main.rb:3: String#sub: wrong number of arguments (given 1, expected 2)
+# rbs_inline: enabled
+puts "abc".sub("a")
+-- gsub_block.rb --
+# error: main.rb:3: String#gsub: wrong number of arguments (given 1, expected 2)
+# rbs_inline: enabled
+puts "abc".gsub("b") { |m| m.upcase }
+-- each_char_value.rb --
+# error: main.rb:3: each_char with a block is an iterator and can only be used as a statement
+# rbs_inline: enabled
+x = "abc".each_char { |c| puts c }
+puts x
+-- each_char_no_block.rb --
+# error: main.rb:3: each_char is an iterator (its block returns void); call it as a statement with a block
+# rbs_inline: enabled
+e = "abc".each_char
+puts e
+-- private_puts.rb --
+# error: main.rb:3: private method puts called on String
+# rbs_inline: enabled
+"a".puts("x")
+-- private_write.rb --
+# error: main.rb:3: private method __write called on String
+# rbs_inline: enabled
+"a".__write("x")
+-- puts_value_from_nil.rb --
+# error: main.rb:3: cannot infer the type of r from nil
+# rbs_inline: enabled
+r = puts("a")
+puts r.inspect
+-- plus_possibly_nil.rb --
+# error: main.rb:4: possibly-nil String? where String is expected
+# rbs_inline: enabled
+t = "xy"[0]
+puts "a" + t
+-- or_non_nilable.rb --
+# error: main.rb:4: `||` on a non-nilable String is always the left side
+# rbs_inline: enabled
+s = "abc"
+puts s || "default"
+-- keyword_param.rb --
+# error: main.rb:4: keyword and post parameters are not supported
+# rbs_inline: enabled
+#: (String) -> String
+def greet(name:) = "hi #{name}"
+puts greet(name: "x")
+-- warn_call_on_possibly_nil.rb --
+# warning: main.rb:4: upcase called on possibly-nil String (raises NoMethodError on nil)
+# rbs_inline: enabled
+s = "abc"
+puts s[0].upcase
+-- warn_interp_on_possibly_nil.rb --
+# warning: main.rb:4: size called on possibly-nil String (raises NoMethodError on nil)
+# rbs_inline: enabled
+s = "abc"
+puts "n=#{s[9].size}"
+-- warn_dynamic_on_nil.rb --
+# warning: main.rb:3: dynamic call: upcase on nil
+# rbs_inline: enabled
+puts "#{nil.upcase}"
+-- warn_string_condition.rb --
+# warning: main.rb:4: condition of type String is always true
+# rbs_inline: enabled
+s = "x"
+puts "y" if s
+-- string_literal_as_symbol_key.rb --
+# skip: a String literal where a Symbol is expected converts silently (Go untyped constant), so h["a"] finds :a (MRI: nil); a non-literal String fails go build instead
+# error: main.rb:6:
+# rbs_inline: enabled
+
+h = { a: 1 } #: Hash[Symbol, Integer]
+puts h["a"].inspect
+-- string_literal_as_symbol_arg.rb --
+# skip: a String literal where a Symbol is expected converts silently, so :a <=> "a" is 0 and [:a].include?("a") is true (MRI: nil, false)
+# error: main.rb:5:
+# rbs_inline: enabled
+
+puts (:a <=> "a").inspect
+puts [:a, :b].include?("a").inspect
+-- subclass_string.rb --
+# skip: subclassing String (a @go_type value class) compiles to Go that does not build (undefined String_Cmp, *Name is not String); want a compile error
+# error: main.rb:4:
+# rbs_inline: enabled
+class Name < String
+  #: () -> String
+  def hi = "hi " + self
+end
+puts "x"
+-- source_file.rb --
+# error: main.rb:3: unsupported syntax: SourceFileNode
+# rbs_inline: enabled
+puts __FILE__
+-- stdout_const.rb --
+# error: main.rb:3: uninitialized constant STDOUT
+# rbs_inline: enabled
+STDOUT.puts "x"
+-- kernel_warn.rb --
+# error: main.rb:3: undefined method warn for Object
+# rbs_inline: enabled
+warn "careful"
+-- kernel_module_puts.rb --
+# error: main.rb:3: Kernel has no class methods
+# rbs_inline: enabled
+Kernel.puts "x"
+-- symbol_upcase.rb --
+# error: main.rb:3: undefined method upcase for Symbol
+# rbs_inline: enabled
+puts :abc.upcase

@@ -1,0 +1,9 @@
+# skip: Integer is a Go int and wraps on overflow; MRI promotes to Bignum (max + 1 prints -9223372036854775808, 2 ** 64 prints 0)
+# rbs_inline: enabled
+
+m = 9_223_372_036_854_775_807 #: Integer
+puts (m + 1).inspect, (m * 2).inspect, (2 ** 63).inspect, (2 ** 64).inspect, (-m - 2).inspect
+puts (-m - 1).abs.inspect, (-(-m - 1)).inspect, ((-m - 1) / -1).inspect, 1e19.to_i.inspect, 1e20.floor.inspect
+f = 1 #: Integer
+1.upto(25) { |i| f *= i }
+puts f.inspect

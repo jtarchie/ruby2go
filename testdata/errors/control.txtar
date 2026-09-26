@@ -1,0 +1,353 @@
+Compile errors and warnings for control flow, exceptions, locals and assignment forms (README decisions 4, 11, 14, 20, 33).
+-- for_loop.rb --
+# error: main.rb:3: unsupported syntax: ForNode
+arr = [1] #: Array[Integer]
+for x in arr
+  puts x
+end
+-- retry.rb --
+# error: main.rb:7: unsupported syntax: RetryNode
+n = 0
+begin
+  n += 1
+  raise "again" if n < 3
+rescue
+  retry
+end
+-- redo.rb --
+# error: main.rb:3: unsupported syntax: RedoNode
+[1].each do |x|
+  redo if x > 5
+end
+-- while_as_value.rb --
+# error: main.rb:3: unsupported syntax: WhileNode
+i = 0
+r = while i < 3
+  i += 1
+end
+-- begin_end_while.rb --
+# error: main.rb:5: begin/end while is not supported
+i = 0
+begin
+  i += 1
+end while i < 3
+-- begin_end_until.rb --
+# error: main.rb:5: begin/end while is not supported
+i = 0
+begin
+  i += 1
+end until i > 3
+-- case_without_subject.rb --
+# error: main.rb:3: case without a subject is not supported
+x = 3
+case
+when x > 1 then puts "big"
+end
+-- case_in_pattern.rb --
+# error: main.rb:3: unsupported syntax: CaseMatchNode
+x = 3 #: untyped
+case x
+in Integer then puts "int"
+end
+-- case_when_splat.rb --
+# error: main.rb:5: unsupported syntax: SplatNode
+LIST = [1, 2] #: Array[Integer]
+x = 3
+case x
+when *LIST then puts "listed"
+end
+-- begin_else.rb --
+# error: main.rb:2: begin/else is not supported
+begin
+  puts 1
+rescue
+  puts 2
+else
+  puts 3
+end
+-- rescue_non_class.rb --
+# error: main.rb:5: rescue needs exception class names
+klass = StandardError
+begin
+  puts 1
+rescue klass
+  puts 2
+end
+-- rescue_ivar_target.rb --
+# error: main.rb:7: unsupported rescue target
+class Holder
+  #: () -> void
+  def run
+    begin
+      raise "x"
+    rescue => @err
+      puts "rescued"
+    end
+  end
+end
+-- bare_reraise.rb --
+# error: main.rb:5: bare `raise` (re-raise) is not supported
+begin
+  raise "x"
+rescue
+  raise
+end
+-- raise_non_exception_class.rb --
+# error: main.rb:2: String is not an exception class
+raise String
+-- raise_non_exception_class_message.rb --
+# error: main.rb:2: Integer is not an exception class
+raise Integer, "no"
+-- raise_integer.rb --
+# error: main.rb:2: raise needs an exception class, a String, or an exception object (got Integer)
+raise 42
+-- raise_first_arg_not_class.rb --
+# error: main.rb:3: raise Class, message: first argument must be a class
+klass = "ArgumentError"
+raise klass, "message"
+-- raise_three_args.rb --
+# error: main.rb:2: raise with 3 arguments is not supported
+raise ArgumentError, "a", "b"
+-- raise_class_arity.rb --
+# error: main.rb:8: TwoArgs#initialize: wrong number of arguments (given 1, expected 2)
+class TwoArgs < StandardError
+  #: (String, String) -> void
+  def initialize(field, msg)
+    super("#{field}: #{msg}")
+  end
+end
+raise TwoArgs, "only one"
+-- return_in_closure.rb --
+# error: main.rb:4: non-local return from a block is not supported (README open decision 4)
+#: (Array[Integer]) -> Integer
+def first_even(xs)
+  xs.map { |x| return x if x.even? }
+  0
+end
+-- return_in_closure_of_rescuing_iterator.rb --
+# error: main.rb:11: non-local return from a block is not supported
+#: () { (Integer) -> void } -> void
+def guarded
+  [1, 2].each { |i| yield i }
+rescue => e
+  puts e.message
+end
+
+#: () -> Integer
+def use
+  guarded { |i| return i }
+  0
+end
+-- return_multiple_values.rb --
+# error: main.rb:4: return with multiple values is not supported
+#: () -> [Integer, Integer]
+def pair
+  return 1, 2
+end
+-- break_with_value.rb --
+# error: main.rb:3: break with a value is not supported
+while true
+  break 5
+end
+-- next_with_value.rb --
+# error: main.rb:5: next with a value is not supported
+i = 0
+while i < 3
+  i += 1
+  next 5
+end
+-- next_with_value_in_iterator.rb --
+# error: main.rb:3: next with a value is not supported
+[1, 2].each do |x|
+  next x if x > 1
+end
+-- break_in_closure.rb --
+# error: main.rb:3: break inside a non-iterator block is not supported
+xs = [1] #: Array[Integer]
+xs.map { |x| break }
+-- break_in_closure_of_rescuing_iterator.rb --
+# error: main.rb:10: break inside a non-iterator block is not supported
+#: () { (Integer) -> void } -> void
+def guarded
+  [1, 2].each { |i| yield i }
+rescue => e
+  puts e.message
+end
+
+guarded do |i|
+  break if i > 1
+end
+-- next_with_value_in_closure.rb --
+# error: main.rb:3: next with a value inside a block is not supported
+xs = [1, 2] #: Array[Integer]
+ys = xs.map { |x| next x * 2 }
+-- break_outside_loop.rb --
+# error: main.rb:4: syntax error: Invalid break
+#: () -> void
+def f
+  break
+end
+-- local_only_nil.rb --
+# error: main.rb:2: cannot infer the type of x from nil; add `#: T?`
+x = nil
+puts x.inspect
+-- local_two_types.rb --
+# error: main.rb:3: x is assigned both Integer and String
+x = 1
+x = "s"
+-- local_two_types_across_branches.rb --
+# error: main.rb:6: v is assigned both Integer and String
+flag = true
+if flag
+  v = 1
+else
+  v = "one"
+end
+-- if_branches_incompatible.rb --
+# error: main.rb:3: branches have incompatible types Integer and String
+c = true
+v = if c then 1 else "s" end
+-- ternary_incompatible.rb --
+# error: main.rb:3: branches have incompatible types Integer and String
+x = 3
+y = x > 1 ? 1 : "s"
+-- case_value_incompatible.rb --
+# error: main.rb:3: branches have incompatible types String and Integer
+x = 3
+y = case x
+    when 1 then "one"
+    else 0
+    end
+-- or_non_nilable.rb --
+# error: main.rb:3: `||` on a non-nilable String is always the left side
+s = "a"
+t = s || "b"
+-- or_non_nilable_integer.rb --
+# error: main.rb:3: `||` on a non-nilable Integer is always the left side
+count = 0
+puts(count || 1)
+-- multi_splat.rb --
+# error: main.rb:3: splat in multiple assignment is not supported
+arr = [1, 2] #: Array[Integer]
+a, *b = arr
+-- multi_leading_splat.rb --
+# error: main.rb:3: splat in multiple assignment is not supported
+arr = [1, 2] #: Array[Integer]
+*a, b = arr
+-- multi_index_target.rb --
+# error: main.rb:3: unsupported assignment target IndexTargetNode
+arr = [1, 2] #: Array[Integer]
+arr[0], arr[1] = 3, 4
+-- multi_attr_target.rb --
+# error: main.rb:9: unsupported assignment target CallTargetNode
+class Pt
+  attr_accessor :x #: Integer
+
+  #: () -> void
+  def initialize = @x = 0
+end
+pt = Pt.new
+pt.x, y = 1, 2
+-- multi_nested_target.rb --
+# error: main.rb:2: unsupported assignment target MultiTargetNode
+(a, b), c = [1, 2], 3
+-- multi_nil_into_new_local.rb --
+# error: main.rb:2: cannot infer a type from nil; annotate the target first
+a, b = nil, 1
+-- multi_tuple_arity.rb --
+# error: main.rb:4: 3 targets for a 2-tuple
+#: () -> [Integer, Integer]
+def two = [1, 2]
+a, b, c = two
+-- multi_non_array.rb --
+# error: main.rb:2: cannot destructure Integer
+a, b = 1
+-- multi_hash.rb --
+# error: main.rb:3: cannot destructure Hash[String, Integer]
+h = { "a" => 1 } #: Hash[String, Integer]
+k, v = h
+-- paren_statement_list.rb --
+# error: main.rb:2: parenthesised statement lists are not supported
+x = (a = 1; a + 1)
+-- and_assign.rb --
+# error: main.rb:3: unsupported syntax: LocalVariableAndWriteNode
+x = 1
+x &&= 2
+-- index_or_assign.rb --
+# error: main.rb:3: unsupported syntax: IndexOrWriteNode
+h = {} #: Hash[String, Array[Integer]]
+h["a"] ||= []
+-- always_true_condition.rb --
+# warning: main.rb:3: condition of type Array[Integer] is always true
+arr = [] #: Array[Integer]
+puts "truthy" if arr
+-- always_true_struct_condition.rb --
+# warning: main.rb:5: condition of type Box is always true
+class Box; end
+b = Box.new
+n = 0
+while b && n < 2
+  n += 1
+end
+-- narrowing_dropped_by_reassign.rb --
+# warning: main.rb:5: + called on possibly-nil Integer (raises NoMethodError on nil)
+x = 5 #: Integer?
+if x
+  x = nil if x > 3
+  puts x + 1
+end
+-- narrowing_ends_with_branch.rb --
+# warning: main.rb:6: + called on possibly-nil Integer (raises NoMethodError on nil)
+x = 5 #: Integer?
+if x
+  puts x + 1
+end
+puts x + 2
+-- or_return.rb --
+# error: main.rb:4: unsupported syntax: ReturnNode
+#: (Integer?) -> Integer
+def f(v)
+  x = v or return 0
+  x
+end
+-- and_next.rb --
+# error: main.rb:3: unsupported syntax: NextNode
+[1, 2].each do |v|
+  v.odd? and next
+  puts v
+end
+-- raise_untyped.rb --
+# error: main.rb:3: raise needs an exception class, a String, or an exception object (got untyped)
+e = ArgumentError.new("x") #: untyped
+raise e
+-- if_value_both_raise.rb --
+# error: main.rb:3: cannot infer the type of this expression
+c = [1].empty?
+x = if c then raise "x" else raise "y" end
+puts x
+-- def_rescue_else.rb --
+# error: main.rb:3: begin/else is not supported
+#: () -> void
+def f
+  puts 1
+rescue
+  puts 2
+else
+  puts 3
+end
+-- multi_untyped.rb --
+# error: main.rb:3: cannot destructure untyped
+u = [1, 2] #: untyped
+a, b = u
+-- multi_optional_array.rb --
+# error: main.rb:3: cannot destructure Array[Integer]?
+h = { "k" => [1, 2] } #: Hash[String, Array[Integer]]
+a, b = h["k"]
+-- multi_array_into_typed_local.rb --
+# error: main.rb:4: possibly-nil Integer? where Integer is expected
+lo = 0
+arr = [3, 4] #: Array[Integer]
+lo, hi = arr
+-- multi_trailing_comma.rb --
+# error: main.rb:2: splat in multiple assignment is not supported
+first, = [7, 8] #: Array[Integer]

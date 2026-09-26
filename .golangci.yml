@@ -79,6 +79,7 @@ linters:
           allow:
             - "$gostd"
             - "rb2go/internal/compiler"
+            - "golang.org/x/tools/txtar" # rb2go_test.go: testdata/errors archives
         # cmd/rb2go is the process boundary: flags in, exit code out.
         CLI:
           files:

@@ -1,0 +1,397 @@
+-- possibly_nil_argument.rb --
+# error: main.rb:8: possibly-nil String? where String is expected
+# rbs_inline: enabled
+#: (String) -> Integer
+def len(s) = s.size
+#: (Integer) -> String?
+def word(n) = n.positive? ? "w" * n : nil
+w = word(1)
+puts len(w)
+-- possibly_nil_return.rb --
+# error: main.rb:4: possibly-nil String? where String is expected
+# rbs_inline: enabled
+#: (Hash[String, String]) -> String
+def pick(h) = h["a"]
+puts pick({ "a" => "b" })
+-- nil_argument.rb --
+# error: main.rb:5: nil where String is expected
+# rbs_inline: enabled
+#: (String) -> Integer
+def len(s) = s.size
+puts len(nil)
+-- narrowing_dropped_by_reassign.rb --
+# error: main.rb:11: possibly-nil String? where String is expected
+# rbs_inline: enabled
+#: (String) -> Integer
+def len(s) = s.size
+#: (Integer) -> String?
+def word(n) = n.positive? ? "w" * n : nil
+w = word(1)
+if w
+  puts len(w)
+  w = word(0)
+  puts len(w)
+end
+-- attr_narrowing_dropped_by_writer.rb --
+# error: main.rb:17: possibly-nil String? where String is expected
+# rbs_inline: enabled
+#: (String) -> Integer
+def len(s) = s.size
+class Node
+  attr_accessor :label #: String?
+
+  #: () -> void
+  def initialize
+    @label = nil
+  end
+
+  #: () -> Integer
+  def go
+    if label
+      self.label = nil
+      return len(label)
+    end
+    0
+  end
+end
+puts Node.new.go
+-- narrowing_not_after_else.rb --
+# error: main.rb:11: possibly-nil String? where String is expected
+# rbs_inline: enabled
+#: (String) -> Integer
+def len(s) = s.size
+#: (Integer) -> String?
+def word(n) = n.positive? ? "w" * n : nil
+w = word(1)
+if w
+  puts "yes"
+end
+puts len(w)
+-- or_on_non_nilable.rb --
+# error: main.rb:4: `||` on a non-nilable Integer is always the left side
+# rbs_inline: enabled
+n = 5
+puts n || 3
+-- nil_local_needs_annotation.rb --
+# error: main.rb:3: cannot infer the type of x from nil; add `#: T?`
+# rbs_inline: enabled
+x = nil
+puts x.inspect
+-- nil_in_multiple_assignment.rb --
+# error: main.rb:3: cannot infer a type from nil
+# rbs_inline: enabled
+a, b = nil, 1
+puts a.inspect, b
+-- ivar_only_nil.rb --
+# error: main.rb:6: instance variable @v has no known type
+# rbs_inline: enabled
+class Box
+  #: () -> void
+  def initialize
+    @v = nil
+  end
+
+  #: () -> String
+  def show = @v.inspect
+end
+puts Box.new.show
+-- warn_call_on_optional.rb --
+# warning: main.rb:6: size called on possibly-nil String (raises NoMethodError on nil)
+# rbs_inline: enabled
+#: (Integer) -> String?
+def word(n) = n.positive? ? "w" * n : nil
+w = word(1)
+puts w.size
+-- warn_condition_always_true.rb --
+# warning: main.rb:4: condition of type Integer is always true
+# rbs_inline: enabled
+n = 5
+puts "yes" if n
+-- guards_narrow_without_warnings.rb --
+# warning: main.rb:25: condition of type String is always true
+# rbs_inline: enabled
+#: (String) -> Integer
+def len(s) = s.size
+#: (String?) -> Integer
+def a(s)
+  return 0 unless s
+  len(s)
+end
+#: (String?) -> Integer
+def b(s)
+  return 0 if s.nil?
+  len(s)
+end
+#: (String?, String?) -> Integer
+def c(s, t)
+  s && t ? len(s) + len(t) : 0
+end
+#: (String?) -> Integer
+def d(s)
+  s ||= "d"
+  len(s)
+end
+puts a("x"), b(nil), c("a", "b"), d(nil), [1].size.to_s.size
+puts 1 if nil.to_s
+-- warn_dynamic_call.rb --
+# warning: main.rb:6: dynamic call: upcase on untyped
+# rbs_inline: enabled
+#: (untyped) -> untyped
+def ident(v) = v
+v = ident("s")
+puts v.upcase
+-- warn_computed_send.rb --
+# warning: main.rb:8: dynamic call: send with a computed name
+# rbs_inline: enabled
+class Foo
+  #: () -> String
+  def hi = "hi"
+end
+name = ["hi"].first(1)[0] || "hi"
+puts Foo.new.send(name)
+puts Foo.new.respond_to?(name)
+-- warn_subclass_only_method.rb --
+# warning: main.rb:6: dynamic call: area on Self
+# warning: main.rb:13: dynamic call: area on Shape
+# rbs_inline: enabled
+class Shape
+  #: () -> String
+  def describe = "area #{area}"
+end
+class Sq < Shape
+  #: () -> Integer
+  def area = 4
+end
+#: (Shape) -> Integer
+def area_of(s) = s.area
+puts area_of(Sq.new), Sq.new.describe
+-- warn_module_typed_call.rb --
+# warning: main.rb:8: dynamic call: corners on Module
+# rbs_inline: enabled
+class Sq
+  #: () -> String
+  def self.corners = "four"
+end
+m = Sq #: Module
+puts m.corners
+-- warn_unwrappable_method.rb --
+# warning: main.rb:10: dynamic call: f on untyped
+# warning: Foo#f cannot be called dynamically
+# rbs_inline: enabled
+class Foo
+  #: (String, ?Integer) -> Integer
+  def f(a, b = a.size) = b
+end
+#: (untyped) -> untyped
+def ident(v) = v
+puts ident(Foo.new).f("abc")
+-- is_a_module_on_untyped.rb --
+# error: main.rb:4: is_a?(Comparable) on untyped cannot be checked: rb2go has no runtime record of included modules
+# rbs_inline: enabled
+#: (untyped) -> bool
+def cmp?(v) = v.is_a?(Comparable)
+puts cmp?(1)
+-- kind_of_module_on_untyped.rb --
+# error: main.rb:4: is_a?(Enumerable) on untyped cannot be checked
+# rbs_inline: enabled
+#: (untyped) -> bool
+def enum?(v) = v.kind_of?(Enumerable)
+puts enum?([1])
+-- is_a_module_on_struct_class.rb --
+# error: main.rb:11: is_a?(Named) on Vehicle cannot be checked
+# rbs_inline: enabled
+module Named
+end
+class Vehicle
+end
+class Car < Vehicle
+  include Named
+end
+#: (Vehicle) -> bool
+def named?(v) = v.is_a?(Named)
+puts named?(Car.new)
+-- is_a_needs_class_name.rb --
+# error: main.rb:4: is_a? needs a class name
+# rbs_inline: enabled
+#: (untyped, untyped) -> bool
+def check(v, k) = v.is_a?(k)
+puts check(1, Integer)
+-- is_a_takes_one_class.rb --
+# error: main.rb:4: is_a? takes one class
+# rbs_inline: enabled
+#: (untyped) -> bool
+def check(v) = v.is_a?(Integer, Float)
+puts check(1)
+-- is_a_on_type_variable.rb --
+# error: main.rb:4: is_a? on T is not supported
+# rbs_inline: enabled
+#: [T] (T) -> bool
+def int?(x) = x.is_a?(Integer)
+puts int?(1)
+-- when_module_on_untyped.rb --
+# skip: `case v when Comparable` on untyped compiles to Go `case any:` (true for every non-nil value) instead of the is_a?(Module) compile error (decision 21)
+# error: main.rb:8:
+# error: no runtime record of included modules
+# rbs_inline: enabled
+#: (untyped) -> String
+def f(v)
+  case v
+  when Comparable then "cmp"
+  else "no"
+  end
+end
+puts f(1)
+-- when_module_on_struct_class.rb --
+# skip: `case v when Named` on a struct-class subject compiles to a Go type switch that matches every value (Vehicle.new is "named") instead of the is_a?(Module) compile error (decision 21)
+# error: main.rb:15:
+# error: no runtime record of included modules
+# rbs_inline: enabled
+module Named
+end
+class Vehicle
+end
+class Car < Vehicle
+  include Named
+end
+#: (Vehicle) -> String
+def f(v)
+  case v
+  when Named then "named"
+  else "no"
+  end
+end
+puts f(Car.new), f(Vehicle.new)
+-- case_without_subject.rb --
+# error: main.rb:4: case without a subject is not supported
+# rbs_inline: enabled
+n = 3
+case
+when n > 2 then puts "big"
+end
+-- block_on_untyped.rb --
+# error: main.rb:5: blocks on untyped receivers are not supported
+# rbs_inline: enabled
+#: (untyped) -> untyped
+def ident(v) = v
+ident([1]).each { |x| puts x }
+-- splat_in_dynamic_call.rb --
+# error: main.rb:6: splat arguments in a dynamic call are not supported
+# rbs_inline: enabled
+#: (untyped) -> untyped
+def ident(v) = v
+args = [1, 2] #: Array[Integer]
+puts ident("s").center(*args)
+-- splat_in_computed_send.rb --
+# error: main.rb:12:
+# rbs_inline: enabled
+class Proxy
+  #: (untyped) -> void
+  def initialize(target)
+    @target = target #: untyped
+  end
+
+  #: (Symbol, *untyped) -> untyped
+  def method_missing(name, *args)
+    # a computed send with a splat, the usual proxy idiom
+    @target.send(name, *args)
+  end
+end
+puts Proxy.new("abc").center(9)
+-- block_with_computed_send.rb --
+# error: main.rb:4: a block with a computed send is not supported
+# rbs_inline: enabled
+name = ["map"].first(1)[0] || "map"
+puts [1].send(name) { |x| x + 1 }
+-- block_to_method_missing.rb --
+# error: main.rb:7: a block passed to haunt (handled by method_missing) is not supported
+# rbs_inline: enabled
+class Ghost
+  #: (Symbol, *untyped) -> untyped
+  def method_missing(name, *args) = nil
+end
+Ghost.new.haunt { puts "boo" }
+-- bare_send.rb --
+# error: main.rb:8: send is not supported
+# rbs_inline: enabled
+class Foo
+  #: () -> String
+  def hi = "hi"
+
+  #: () -> String
+  def call_hi = send(:hi)
+end
+puts Foo.new.call_hi
+-- bare_method_missing.rb --
+# error: main.rb:8: method_missing is not supported
+# rbs_inline: enabled
+class Foo
+  #: (Symbol, *untyped) -> String
+  def method_missing(name, *args) = "mm"
+
+  #: () -> String
+  def go = method_missing(:x)
+end
+puts Foo.new.go
+-- define_method.rb --
+# error: main.rb:6: define_method is not supported
+# rbs_inline: enabled
+class Foo
+  #: () -> void
+  def setup
+    define_method(:hi) { "hi" }
+  end
+end
+Foo.new.setup
+-- undefined_method_typed.rb --
+# error: main.rb:7: undefined method bye for Plain
+# rbs_inline: enabled
+class Plain
+  #: () -> String
+  def hello = "hi"
+end
+puts Plain.new.bye
+-- public_send_private.rb --
+# error: main.rb:9: private method hidden called on Plain
+# rbs_inline: enabled
+class Plain
+  private
+
+  #: () -> String
+  def hidden = "hidden"
+end
+puts Plain.new.public_send(:hidden)
+-- private_call_typed.rb --
+# error: main.rb:9: private method hidden called on Plain
+# rbs_inline: enabled
+class Plain
+  private
+
+  #: () -> String
+  def hidden = "hidden"
+end
+puts Plain.new.hidden
+-- respond_to_missing_is_private.rb --
+# skip: respond_to_missing? called with an explicit receiver compiles and runs; MRI makes it private whoever defines it (NoMethodError), so it should be the private-method compile error
+# error: main.rb:8: private method respond_to_missing? called on Config
+# rbs_inline: enabled
+class Config
+  #: (Symbol, ?bool) -> bool
+  def respond_to_missing?(name, include_private = false) = true
+end
+puts Config.new.respond_to_missing?(:x, false)
+-- block_on_subclass_only_method.rb --
+# error: main.rb:13: undefined method each_side for Shape
+# rbs_inline: enabled
+class Shape
+end
+class Sq < Shape
+  #: () { (Integer) -> void } -> void
+  def each_side
+    yield 1
+  end
+end
+#: (Shape) -> void
+def sides(s)
+  s.each_side { |x| puts x }
+end
+sides(Sq.new)

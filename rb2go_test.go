@@ -250,7 +250,7 @@ func transpile(t *testing.T, name string, src []byte) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(gen, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o600) //nolint:gosec // under t.TempDir()
+	err = os.WriteFile(filepath.Join(gen, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}

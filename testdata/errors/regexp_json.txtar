@@ -1,0 +1,228 @@
+Compile errors and warnings for Regexp, MatchData and JSON (README decisions 24, 25).
+-- lookahead.rb --
+# error: main.rb:3: regexp /a(?=b)/ is not supported
+# error: invalid or unsupported Perl syntax: `(?=`
+puts "ab".match?(/a(?=b)/)
+-- negative_lookahead.rb --
+# error: main.rb:3: regexp /a(?!b)/ is not supported
+# error: `(?!`
+puts "ab".match?(/a(?!b)/)
+-- lookbehind.rb --
+# error: main.rb:3: regexp /(?<=a)b/ is not supported
+# error: `(?<=a)b`
+puts "ab".match?(/(?<=a)b/)
+-- negative_lookbehind.rb --
+# error: main.rb:3: regexp /(?<!a)b/ is not supported
+# error: `(?<!a)b`
+puts "ab".match?(/(?<!a)b/)
+-- backreference.rb --
+# error: main.rb:3: regexp /(a)\1/ is not supported
+# error: invalid escape sequence: `\1`
+puts "aa".match?(/(a)\1/)
+-- named_backreference.rb --
+# error: main.rb:3: regexp /(?<x>a)\k<x>/ is not supported
+# error: invalid escape sequence: `\k`
+puts "aa".match?(/(?<x>a)\k<x>/)
+-- upper_z.rb --
+# error: main.rb:2: regexp /b\Z/ is not supported: \Z is not supported by RE2; use \z
+puts "ab".match?(/b\Z/)
+-- extended.rb --
+# error: main.rb:2: extended (/x) regexps are not supported
+puts "ab".match?(/a b/x)
+-- extended_interpolated.rb --
+# error: main.rb:3: extended (/x) regexps are not supported
+x = "a"
+puts "ab".match?(/#{x} b/x)
+-- g_anchor.rb --
+# error: main.rb:2: regexp /\Ga/ is not supported: \G is not supported by RE2
+puts "ab".match?(/\Ga/)
+-- keep.rb --
+# error: main.rb:2: regexp /a\Kb/ is not supported: \K is not supported by RE2
+puts "ab".match?(/a\Kb/)
+-- linebreak.rb --
+# error: main.rb:2: regexp /\R/ is not supported: \R is not supported by RE2
+puts "a\nb".match?(/\R/)
+-- grapheme.rb --
+# error: main.rb:2: regexp /\X/ is not supported: \X is not supported by RE2
+puts "ab".match?(/\X/)
+-- nonhex_in_class.rb --
+# error: main.rb:2: regexp /[\H]/ is not supported: \H inside a character class
+puts "ab".match?(/[\H]/)
+-- possessive.rb --
+# error: main.rb:3: regexp /a++/ is not supported
+# error: invalid nested repetition operator
+puts "aa".match?(/a++/)
+-- atomic_group.rb --
+# error: main.rb:3: regexp /(?>a)/ is not supported
+# error: `(?>`
+puts "aa".match?(/(?>a)/)
+-- absent_operator.rb --
+# error: main.rb:3: regexp /(?~a)/ is not supported
+# error: `(?~`
+puts "aa".match?(/(?~a)/)
+-- interpolated_static_part.rb --
+# error: main.rb:3: regexp is not supported: \Z is not supported by RE2; use \z
+x = "a"
+puts "aa".match?(/#{x}\Z/)
+-- interpolation_two_statements.rb --
+# error: main.rb:3: interpolation must contain a single expression
+x = "a"
+puts "aa".match?(/#{x; x}/)
+-- interpolation_empty.rb --
+# error: main.rb:2: interpolation must contain a single expression
+puts "aa".match?(/a#{}/)
+-- interpolation_ivar_shorthand.rb --
+# error: main.rb:11: unsupported syntax: EmbeddedVariableNode
+class Foo
+  attr_reader :x #: String
+
+  #: () -> void
+  def initialize
+    @x = "a"
+  end
+
+  #: () -> bool
+  def m = /#@x/.match?("a")
+end
+puts Foo.new.m
+-- named_captures_to_locals.rb --
+# error: main.rb:2: named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match
+if /(?<x>\d)/ =~ "1"
+  puts x
+end
+-- last_match_gvar.rb --
+# error: main.rb:3: unsupported syntax: GlobalVariableReadNode
+"ab" =~ /b/
+puts $~.inspect
+-- numbered_reference.rb --
+# error: main.rb:3: unsupported syntax: NumberedReferenceReadNode
+"ab" =~ /(b)/
+puts $1.inspect
+-- back_reference.rb --
+# error: main.rb:3: unsupported syntax: BackReferenceReadNode
+"ab" =~ /b/
+puts $&.inspect
+-- nil_subject.rb --
+# error: main.rb:2: nil where String is expected
+puts (/a/ =~ nil).inspect
+-- match_nil_subject.rb --
+# error: main.rb:2: nil where String is expected
+puts(/a/.match(nil).inspect)
+-- optional_group_as_string.rb --
+# error: main.rb:4: possibly-nil String? where String is expected
+m = "ab".match(/(a)/)
+if m
+  puts "x" + m[1]
+end
+-- optional_group_as_argument.rb --
+# error: main.rb:5: possibly-nil String? where String is expected
+#: (String) -> String
+def up(s) = s.upcase
+m = "ab".match(/(a)/)
+puts up(m[1]) if m
+-- eqtilde_as_block_condition.rb --
+# error: main.rb:2: possibly-nil Integer? where Boolean is expected
+puts ["a", "b"].select { |s| s =~ /a/ }.inspect
+-- string_match_arity.rb --
+# error: main.rb:2: String#match: wrong number of arguments (given 2, expected 1)
+puts "abc".match(/b/, 1).inspect
+-- regexp_match_arity.rb --
+# error: main.rb:2: Regexp#match: wrong number of arguments (given 2, expected 1)
+puts(/b/.match("abc", 1).inspect)
+-- matchdata_index_arity.rb --
+# error: main.rb:3: MatchData#[]: wrong number of arguments (given 2, expected 1)
+m = /(b)/.match("abc")
+puts m[0, 2].inspect if m
+-- match_block.rb --
+# error: main.rb:2: match does not take a block
+puts(/b/.match("abc") { |m| m }.inspect)
+-- warn_index_nil_match.rb --
+# warning: main.rb:3: [] called on possibly-nil MatchData (raises NoMethodError on nil)
+m = "ab".match(/a/)
+puts m[0].inspect
+-- warn_chain_nil_match.rb --
+# warning: main.rb:3: pre_match called on possibly-nil MatchData (raises NoMethodError on nil)
+# warning: main.rb:4: captures called on possibly-nil MatchData
+puts "ab".match(/(a)/).pre_match
+puts "ab".match(/(a)/).captures.size
+-- warn_eqtilde_arithmetic.rb --
+# warning: main.rb:2: + called on possibly-nil Integer (raises NoMethodError on nil)
+puts ("ab" =~ /b/) + 1
+-- warn_nil_group_method.rb --
+# warning: main.rb:3: upcase called on possibly-nil String
+m = /(z)?c/.match("abc")
+puts m[1].upcase if m
+-- json_parse.rb --
+# error: main.rb:3: undefined method parse for singleton(JSON)
+require "json"
+puts JSON.parse("[1]").inspect
+-- json_generate_options.rb --
+# error: main.rb:4:
+# error: generate: wrong number of arguments (given 2, expected 1)
+require "json"
+puts JSON.generate([1], {})
+-- json_generate_block.rb --
+# error: main.rb:3: generate does not take a block
+require "json"
+puts JSON.generate([1]) { |x| x }
+-- subexp_call.rb --
+# error: main.rb:3: regexp /(?<n>a)\g<n>/ is not supported
+# error: invalid escape sequence: `\g`
+puts "aa".match?(/(?<n>a)\g<n>/)
+-- inline_extended_flag.rb --
+# error: main.rb:3: regexp /(?x) a b / is not supported
+# error: `(?x`
+puts "ab".match?(/(?x) a b /)
+-- interpolated_lookahead.rb --
+# skip: lookahead in the static part of an interpolated regexp compiles, then raises RegexpError at run time (decision 24 rejects lookaround at transpile time)
+# error: main.rb:5:
+# error: not supported
+x = "a"
+puts "ab".match?(/#{x}(?=b)/)
+-- interpolated_backreference.rb --
+# skip: a backreference in the static part of an interpolated regexp compiles, then raises RegexpError at run time (decision 24 rejects backreferences at transpile time)
+# error: main.rb:5:
+# error: not supported
+x = "a"
+puts "aa".match?(/(#{x})\1/)
+-- json_generate_arity_ruby_name.rb --
+# skip: arity errors on class methods name the Go metaclass (JSON_Meta#generate) instead of the Ruby name (decision 17)
+# error: main.rb:4: JSON.generate: wrong number of arguments (given 0, expected 1)
+require "json"
+puts JSON.generate
+-- regexp_new_undefined.rb --
+# error: main.rb:2: undefined method new for singleton(Regexp)
+puts Regexp.new("a").inspect
+-- regexp_escape_undefined.rb --
+# error: main.rb:2: undefined method escape for singleton(Regexp)
+puts Regexp.escape("a.b")
+-- string_scan_undefined.rb --
+# error: main.rb:2: undefined method scan for String
+puts "a1b2".scan(/\d/).inspect
+-- grep_undefined.rb --
+# error: main.rb:2: undefined method grep for Array[String]
+puts ["a1", "b"].grep(/\d/).inspect
+-- named_captures_undefined.rb --
+# error: main.rb:3: undefined method named_captures for MatchData
+m = "ab".match(/(?<x>a)/)
+puts m.named_captures.inspect if m
+-- symbol_eqtilde_undefined.rb --
+# error: main.rb:2: undefined method =~ for Symbol
+puts (:abc =~ /b/).inspect
+-- json_pretty_generate_undefined.rb --
+# error: main.rb:3: undefined method pretty_generate for singleton(JSON)
+require "json"
+puts JSON.pretty_generate([1])
+-- regexp_where_string_expected.rb --
+# skip: no compile error; the Regexp reaches String#gsub's String parameter and `go build` fails (cannot use *Regexp as String)
+# error: main.rb:3:
+puts "abc".gsub(/b/, "x")
+-- string_where_regexp_expected.rb --
+# skip: no compile error; the String reaches String#match?'s Regexp parameter and `go build` fails (cannot use "b" as *Regexp)
+# error: main.rb:3:
+puts "abc".match?("b")
+-- matchdata_name_index.rb --
+# skip: no compile error; m[:year] passes a Symbol to MatchData#[]'s Integer parameter and `go build` fails
+# error: main.rb:4:
+m = "2024".match(/(?<year>\d+)/)
+puts m[:year].inspect if m

@@ -1,0 +1,247 @@
+Compile errors and warnings for Integer, Float, Boolean and Comparable on numbers.
+
+-- integer_undefined_method.rb --
+# error: main.rb:4: undefined method foo for Integer
+# rbs_inline: enabled
+x = 1
+puts x.foo
+-- float_undefined_method.rb --
+# error: main.rb:3: undefined method foo for Float
+# rbs_inline: enabled
+puts 1.5.foo
+-- bool_is_one_class.rb --
+# error: main.rb:4: undefined method foo for Boolean
+# rbs_inline: enabled
+t = true #: bool
+puts t.foo
+-- no_trueclass.rb --
+# error: main.rb:5: uninitialized constant TrueClass
+# rbs_inline: enabled
+x = true #: untyped
+case x
+when TrueClass then puts "t"
+end
+-- no_falseclass.rb --
+# error: main.rb:3: uninitialized constant FalseClass
+# rbs_inline: enabled
+k = FalseClass
+-- integer_abs_arity.rb --
+# error: main.rb:3: Integer#abs: wrong number of arguments (given 1, expected 0)
+# rbs_inline: enabled
+puts 1.abs(2)
+-- integer_plus_arity.rb --
+# error: main.rb:3: Integer#+: wrong number of arguments (given 2, expected 1)
+# rbs_inline: enabled
+puts 1.+(1, 2)
+-- float_round_digits.rb --
+# error: main.rb:3: Float#round: wrong number of arguments (given 1, expected 0)
+# rbs_inline: enabled
+puts 1.25.round(1)
+-- clamp_arity.rb --
+# error: main.rb:3: Comparable#clamp: wrong number of arguments (given 1, expected 2)
+# rbs_inline: enabled
+puts 1.clamp(2)
+-- between_arity.rb --
+# error: main.rb:3: Comparable#between?: wrong number of arguments (given 1, expected 2)
+# rbs_inline: enabled
+puts 1.5.between?(1.0)
+-- abs_with_block.rb --
+# error: main.rb:3: abs does not take a block
+# rbs_inline: enabled
+puts 1.abs { 2 }
+-- clamp_with_block.rb --
+# error: main.rb:3: clamp does not take a block
+# rbs_inline: enabled
+puts 3.clamp(1, 2) { 0 }
+-- times_without_block.rb --
+# error: main.rb:3: times is an iterator (its block returns void); call it as a statement with a block
+# rbs_inline: enabled
+puts 5.times
+-- upto_value_used.rb --
+# error: main.rb:3: upto with a block is an iterator and can only be used as a statement
+# rbs_inline: enabled
+x = 1.upto(3) { |i| puts i }
+-- times_block_arity.rb --
+# error: main.rb:3: block takes 2 params but only 1 values are yielded
+# rbs_inline: enabled
+3.times { |a, b| puts a }
+-- times_break_value.rb --
+# error: main.rb:3: break with a value is not supported
+# rbs_inline: enabled
+3.times { |i| break i }
+-- then_break.rb --
+# error: main.rb:3: break inside a non-iterator block is not supported
+# rbs_inline: enabled
+x = 3.then { |i| break }
+-- then_return.rb --
+# error: main.rb:5: non-local return from a block is not supported (README open decision 4)
+# rbs_inline: enabled
+#: () -> Integer
+def f
+  3.then { |i| return i }
+end
+-- rational_literal.rb --
+# error: main.rb:3: unsupported syntax: RationalNode
+# rbs_inline: enabled
+puts 3r
+-- imaginary_literal.rb --
+# error: main.rb:3: unsupported syntax: ImaginaryNode
+# rbs_inline: enabled
+puts 2i
+-- nil_where_integer.rb --
+# error: main.rb:3: nil where Integer is expected
+# rbs_inline: enabled
+puts (1 + nil).inspect
+-- possibly_nil_integer_arg.rb --
+# error: main.rb:4: possibly-nil Integer? where Integer is expected; check it first
+# rbs_inline: enabled
+x = nil #: Integer?
+puts (1 + x).inspect
+-- possibly_nil_integer_receiver.rb --
+# warning: main.rb:4: + called on possibly-nil Integer (raises NoMethodError on nil)
+# rbs_inline: enabled
+x = 1 #: Integer?
+puts (x + 1).inspect
+-- possibly_nil_float_receiver.rb --
+# warning: main.rb:4: floor called on possibly-nil Float (raises NoMethodError on nil)
+# rbs_inline: enabled
+x = 1.5 #: Float?
+puts x.floor.inspect
+-- or_on_integer.rb --
+# error: main.rb:4: `||` on a non-nilable Integer is always the left side
+# rbs_inline: enabled
+a = 1 #: Integer
+puts (a || 2).inspect
+-- or_on_float.rb --
+# error: main.rb:4: `||` on a non-nilable Float is always the left side
+# rbs_inline: enabled
+a = 0.0 #: Float
+puts (a || 1.0).inspect
+-- assigned_integer_then_float.rb --
+# error: main.rb:4: x is assigned both Integer and Float
+# rbs_inline: enabled
+x = 1
+x = 2.5
+puts x
+-- branches_integer_float.rb --
+# error: main.rb:4: branches have incompatible types Integer and Float
+# rbs_inline: enabled
+c = true #: bool
+x = c ? 1 : 2.5
+puts x
+-- integer_condition_always_true.rb --
+# warning: main.rb:4: condition of type Integer is always true
+# rbs_inline: enabled
+x = 0 #: Integer
+puts "zero is truthy" if x
+-- float_condition_always_true.rb --
+# warning: main.rb:4: condition of type Float is always true
+# rbs_inline: enabled
+y = 0.0 #: Float
+puts(y ? "t" : "f")
+-- is_a_comparable_untyped.rb --
+# error: main.rb:4: is_a?(Comparable) on untyped cannot be checked: rb2go has no runtime record of included modules
+# rbs_inline: enabled
+v = 1 #: untyped
+puts v.is_a?(Comparable)
+-- untyped_arithmetic.rb --
+# warning: main.rb:6: dynamic call: + on untyped
+# warning: main.rb:7: dynamic call: -@ on untyped
+# warning: main.rb:8: dynamic call: floor on untyped
+# rbs_inline: enabled
+v = 5 #: untyped
+puts (v + 1).inspect
+puts (-v).inspect
+puts v.floor.inspect
+-- private_kernel_on_integer.rb --
+# error: main.rb:3: private method puts called on Integer
+# rbs_inline: enabled
+1.puts
+-- integer_new.rb --
+# error: main.rb:3: undefined method new for singleton(Integer)
+# rbs_inline: enabled
+x = Integer.new
+-- float_new.rb --
+# error: main.rb:3: undefined method new for singleton(Float)
+# rbs_inline: enabled
+x = Float.new
+-- operator_def_needs_signature.rb --
+# error: main.rb:4: method + has no type annotation
+# rbs_inline: enabled
+class Vec
+  def +(o) = o
+end
+-- numeric_overload_signature.rb --
+# error: main.rb:6: overloaded signatures (#|) are not supported
+# rbs_inline: enabled
+class Integer
+  #: (Integer) -> Integer
+  #| (Float) -> Float
+  def add(o) = self + o
+end
+-- integer_to_s_base.rb --
+# error: main.rb:3: Integer#to_s: wrong number of arguments (given 1, expected 0)
+# rbs_inline: enabled
+puts 255.to_s(16)
+-- times_value_used.rb --
+# error: main.rb:3: times with a block is an iterator and can only be used as a statement
+# rbs_inline: enabled
+x = 3.times { |i| puts i }
+-- downto_block_arity.rb --
+# error: main.rb:3: block takes 2 params but only 1 values are yielded
+# rbs_inline: enabled
+3.downto(1) { |i, j| puts i }
+-- untyped_times_block.rb --
+# error: main.rb:6: blocks on untyped receivers are not supported
+# rbs_inline: enabled
+#: (untyped) -> untyped
+def ident(v) = v
+v = ident(3)
+v.times { |i| puts i }
+-- clamp_nil_bound.rb --
+# error: main.rb:3: nil where Integer is expected
+# rbs_inline: enabled
+puts 1.clamp(nil, 3)
+-- between_possibly_nil_bound.rb --
+# error: main.rb:4: possibly-nil Integer? where Integer is expected; check it first
+# rbs_inline: enabled
+h = { "a" => 1 } #: Hash[String, Integer]
+puts 5.between?(h["a"], 10)
+-- float_clamp_possibly_nil_bound.rb --
+# error: main.rb:4: possibly-nil Float? where Float is expected
+# rbs_inline: enabled
+h = { "a" => 1.5 } #: Hash[String, Float]
+puts 2.0.clamp(0.0, h["a"])
+-- bool_and_nil.rb --
+# error: main.rb:4: nil where Boolean is expected
+# rbs_inline: enabled
+t = true #: bool
+puts (t & nil).inspect
+-- float_lt_nil.rb --
+# error: main.rb:3: nil where Float is expected
+# rbs_inline: enabled
+puts (1.5 < nil).inspect
+-- float_local_assigned_nil.rb --
+# error: main.rb:4: nil where Float is expected
+# rbs_inline: enabled
+x = 1.5 #: Float
+x = nil
+puts x.inspect
+-- bool_and_assign.rb --
+# error: main.rb:4: unsupported syntax: LocalVariableAndWriteNode
+# rbs_inline: enabled
+b = true #: bool
+b &&= false
+-- boolean_plus.rb --
+# error: main.rb:3: undefined method + for Boolean
+# rbs_inline: enabled
+puts (true + 1).inspect
+-- untyped_comparable_calls.rb --
+# warning: main.rb:7: dynamic call: between? on untyped
+# warning: main.rb:8: dynamic call: clamp on untyped
+# rbs_inline: enabled
+#: (untyped) -> untyped
+def ident(v) = v
+v = ident(5)
+puts v.between?(1, 10)
+puts v.clamp(1, 3)
