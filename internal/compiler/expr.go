@@ -541,6 +541,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 			f.errorf(n, "%s is not supported", n.Name)
 		}
 	}
+	if n.Name == "call" && f.isBlockParam(n.Receiver) && n.Block == nil {
+		return f.yieldValues(n, callArgs(n))
+	}
 	if cls := f.classRef(n.Receiver); cls != nil {
 		// Foo.new is a direct constructor call unless Foo defines self.new.
 		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new"))) {
@@ -1000,9 +1003,12 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		names = f.blockParamNames(b.Parameters)
 		body = b.Body
 	case *parser.BlockArgumentNode:
+		if f.isBlockParam(b.Expression) {
+			return f.forwardClosure(b, sig, env)
+		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
-			f.errorf(b, "only &:symbol block arguments are supported")
+			f.errorf(b, "only &:symbol and a method's own &block are supported as block arguments")
 		}
 		symbolCall = sym.Unescaped.Value
 		if len(params) != 1 {
@@ -1123,9 +1129,13 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	env["Self"] = recv.typ
 	codes := f.genArgs(n, m, env, callArgs(n), nil)
 	yields := substAll(m.Block.Params, env)
-	blk := n.Block.(*parser.BlockNode)
-	names := f.blockParamNames(blk.Parameters)
 	call := f.callCode(e, recv, codes, env)
+	blk, ok := n.Block.(*parser.BlockNode)
+	if !ok {
+		f.forwardIter(n, call, yields, t)
+		return true
+	}
+	names := f.blockParamNames(blk.Parameters)
 	saved := f.enterBlock()
 	goParams, pro := f.bindBlockParams(n, names, yields)
 	allBlank := true
@@ -1156,15 +1166,20 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 // ---- yield / super / new / raise
 
 func (f *fctx) genYield(n *parser.YieldNode) expr {
+	args := []parser.Node{}
+	if n.Arguments != nil {
+		args = n.Arguments.Arguments
+	}
+	return f.yieldValues(n, args)
+}
+
+// yieldValues is `yield args` and `block.call(args)`.
+func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 	if f.blockSig == nil {
 		f.errorf(n, "yield in a method whose signature has no block")
 	}
 	if f.closures > 0 {
 		f.errorf(n, "yield inside a non-iterator block is not supported")
-	}
-	args := []parser.Node{}
-	if n.Arguments != nil {
-		args = n.Arguments.Arguments
 	}
 	codes := make([]string, 0, len(args))
 	if len(args) != len(f.blockSig.Params) {
@@ -1831,4 +1846,51 @@ func constPath(path string) parser.Node {
 		n = &parser.ConstantPathNode{Parent: n, Name: &name}
 	}
 	return n
+}
+
+// isBlockParam reports whether n reads the method's own &block parameter.
+func (f *fctx) isBlockParam(n parser.Node) bool {
+	lv, ok := n.(*parser.LocalVariableReadNode)
+	return ok && f.m != nil && f.m.BlockParam != "" && lv.Name == f.m.BlockParam && f.scope.lookup(lv.Name) == nil
+}
+
+// forwardIter passes the method's own block on to an iterator:
+// `list.each(&block)` re-yields every value (or calls the closure with it).
+func (f *fctx) forwardIter(n parser.Node, call string, yields []Type, t tail) {
+	if len(yields) != len(f.blockSig.Params) {
+		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
+	}
+	vars := make([]string, len(yields))
+	for i := range yields {
+		vars[i] = f.newTmp()
+	}
+	list := strings.Join(vars, ", ")
+	f.emit("for %s := range %s {", list, call)
+	if f.iterator {
+		f.emit("\tif !yield(%s) {", list)
+		f.emit("\t\treturn")
+		f.emit("\t}")
+	} else {
+		f.emit("\tblk(%s)", list)
+	}
+	f.emit("}")
+	if t.kind != tailNone {
+		f.emptyTail(n, t)
+	}
+}
+
+// forwardClosure passes the method's own block on to a closure-taking
+// method: `list.map(&block)`.
+func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type) string {
+	if f.iterator {
+		f.errorf(n, "this method's block is an iterator (it yields); it can only be passed on to another iterator")
+	}
+	if len(sig.Params) != len(f.blockSig.Params) {
+		f.errorf(n, "the forwarded block takes %d values but %d are passed", len(f.blockSig.Params), len(sig.Params))
+	}
+	for i, p := range sig.Params {
+		unify(p, f.blockSig.Params[i], env)
+	}
+	unify(sig.Ret, f.blockSig.Ret, env)
+	return "blk"
 }

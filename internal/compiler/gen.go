@@ -279,7 +279,8 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
 		if n.Block != nil {
-			if _, ok := n.Block.(*parser.BlockNode); ok {
+			ba, forwards := n.Block.(*parser.BlockArgumentNode)
+			if _, ok := n.Block.(*parser.BlockNode); ok || (forwards && f.isBlockParam(ba.Expression)) {
 				if f.genIterCall(n, t) {
 					return
 				}
@@ -929,6 +930,9 @@ func (f *fctx) noteUnused(v *local) {
 
 func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 	v := f.scope.lookup(n.Name)
+	if v == nil && f.m != nil && n.Name == f.m.BlockParam {
+		f.errorf(n, "the block parameter &%s can only be called (%s.call) or passed on (&%s)", n.Name, n.Name, n.Name)
+	}
 	if v == nil {
 		f.errorf(n, "undefined local %s", n.Name)
 	}

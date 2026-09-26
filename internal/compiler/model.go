@@ -33,9 +33,10 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
-	meta          *Class   // the class object's class (holds `def self.` methods)
-	metaOf        *Class   // for a metaclass: the class it describes
-	constNames    []string // constants (classes included) declared directly inside, in order
+	extends       []Include // `extend M`: included into the class object
+	meta          *Class    // the class object's class (holds `def self.` methods)
+	metaOf        *Class    // for a metaclass: the class it describes
+	constNames    []string  // constants (classes included) declared directly inside, in order
 	msetCache     []entry
 	selfCallCache map[string]bool
 }
@@ -114,7 +115,8 @@ type Method struct {
 	Params     []Param
 	Block      *BlockSig
 	Ret        Type
-	Iterator   bool // block returns void → iter.Seq
+	Iterator   bool   // block returns void → iter.Seq
+	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
 }
@@ -451,6 +453,13 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
+		}
+	case "extend":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			last := len(cls.Includes) - 1
+			cls.extends = append(cls.extends, cls.Includes[last])
+			cls.Includes = cls.Includes[:last]
 		}
 	case "private":
 		switch {
@@ -950,40 +959,7 @@ func (c *Compiler) bindParamNames(m *Method) {
 	if m.Node == nil {
 		return
 	}
-	var names []string
-	var defaults []parser.Node
-	var rest string
-	if ps := m.Node.Parameters; ps != nil {
-		for _, p := range ps.Requireds {
-			rp, ok := p.(*parser.RequiredParameterNode)
-			if !ok {
-				c.errorf(m.File, p, "unsupported parameter form")
-			}
-			names = append(names, rp.Name)
-			defaults = append(defaults, nil)
-		}
-		for _, p := range ps.Optionals {
-			op, ok := p.(*parser.OptionalParameterNode)
-			if !ok {
-				c.errorf(m.File, p, "unsupported parameter form")
-			}
-			names = append(names, op.Name)
-			defaults = append(defaults, op.Value)
-		}
-		if ps.Rest != nil {
-			rp, ok := ps.Rest.(*parser.RestParameterNode)
-			if !ok || rp.Name == nil {
-				c.errorf(m.File, ps.Rest, "unsupported rest parameter")
-			}
-			rest = *rp.Name
-		}
-		if len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil {
-			c.errorf(m.File, ps, "keyword and post parameters are not supported")
-		}
-		if ps.Block != nil {
-			c.errorf(m.File, ps, "explicit &block parameters are not supported; use yield")
-		}
-	}
+	names, defaults, rest := c.defParams(m, m.Node.Parameters)
 	nPos := 0
 	for i := range m.Params {
 		if m.Params[i].Rest {
@@ -1039,6 +1015,23 @@ func (c *Compiler) buildMetas() {
 		}
 		if cls.metaOf == nil {
 			c.metaFor(cls)
+		}
+	}
+	// `extend M` is `include M` on the class object; resolved once every
+	// class object exists, since its type args may name them.
+	for _, cls := range c.classList {
+		for _, ext := range cls.extends {
+			ext.Mod = c.resolveClassRef(&ext.ref)
+			if !ext.Mod.IsModule {
+				c.errorf(ext.file, nil, "%s:%d: %s is not a module", ext.file.Name, ext.line, ext.Mod.RubyName)
+			}
+			if len(ext.args) != len(ext.Mod.TypeParams) {
+				c.errorf(ext.file, nil, "%s:%d: extend %s needs %d type args (`extend %s #[...]`)", ext.file.Name, ext.line, ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
+			}
+			for _, a := range ext.args {
+				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, file: ext.file, line: ext.line}))
+			}
+			cls.meta.Includes = append(cls.meta.Includes, ext)
 		}
 	}
 }
@@ -1112,3 +1105,44 @@ func isSynthNew(e *entry) bool { return e != nil && e.M.Kind == kindSynth && e.M
 
 // classVar is the Go variable holding a class object.
 func classVar(cls *Class) string { return cls.Name + "_class" }
+
+// defParams reads a def's parameter list: positional names, their literal
+// defaults, the rest parameter, and the &block parameter's name.
+func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []string, defaults []parser.Node, rest string) {
+	if ps == nil {
+		return nil, nil, ""
+	}
+	for _, p := range ps.Requireds {
+		rp, ok := p.(*parser.RequiredParameterNode)
+		if !ok {
+			c.errorf(m.File, p, "unsupported parameter form")
+		}
+		names = append(names, rp.Name)
+		defaults = append(defaults, nil)
+	}
+	for _, p := range ps.Optionals {
+		op, ok := p.(*parser.OptionalParameterNode)
+		if !ok {
+			c.errorf(m.File, p, "unsupported parameter form")
+		}
+		names = append(names, op.Name)
+		defaults = append(defaults, op.Value)
+	}
+	if ps.Rest != nil {
+		rp, ok := ps.Rest.(*parser.RestParameterNode)
+		if !ok || rp.Name == nil {
+			c.errorf(m.File, ps.Rest, "unsupported rest parameter")
+		}
+		rest = *rp.Name
+	}
+	if len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil {
+		c.errorf(m.File, ps, "keyword and post parameters are not supported")
+	}
+	if ps.Block != nil {
+		if m.Block == nil || ps.Block.Name == nil {
+			c.errorf(m.File, ps, "a named &block parameter needs a block in the signature (`#: () { (T) -> U } -> R`)")
+		}
+		m.BlockParam = *ps.Block.Name
+	}
+	return names, defaults, rest
+}
