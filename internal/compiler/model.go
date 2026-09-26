@@ -845,13 +845,11 @@ func (c *Compiler) resolveMethod(m *Method) {
 			bs.Params = append(bs.Params, c.resolveType(p.Type, sc))
 		}
 		m.Block = bs
-		// A void block makes the method an inline iterator (Go range-over-
-		// func), unless the body rescues: Go forbids an iterator from
-		// recovering a panic raised in the loop body, so such methods take
-		// a closure instead.
-		m.Iterator = isVoid(bs.Ret) && !m.sig.Block.Optional && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	}
 	m.Ret = c.resolveType(m.sig.Return, sc)
+	if m.Block != nil {
+		m.Iterator = c.isIterator(m, m.Block)
+	}
 	c.bindParamNames(m)
 }
 
@@ -877,6 +875,27 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	m.Iterator = e.M.Iterator
 	c.bindParamNames(m)
 	return true
+}
+
+// isIterator decides whether a block-taking method compiles to a Go
+// iterator (its block call sites become `for range` loops) or takes the
+// block as a closure. Iterators: the block and the method both return
+// nothing, the block is only ever yielded to (a %x{} leaf must build an
+// iterator itself; one that stores or calls `blk` takes a closure), and
+// nothing rescues around the yield, since Go forbids a range function from
+// recovering a panic raised in the loop body.
+func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
+	if !isVoid(bs.Ret) || m.sig.Block.Optional {
+		return false
+	}
+	if _, ok := m.Ret.(TVoid); !ok && m.Ret != nil && !isNil(m.Ret) {
+		return false
+	}
+	if m.Kind == kindPrimitive {
+		x := m.Node.Body.(*parser.StatementsNode).Body[0].(*parser.XStringNode)
+		return strings.Contains(x.Unescaped.Value, "func(yield ")
+	}
+	return m.Kind != kindDef || !containsRescueClause(m.Node.Body)
 }
 
 func substAll(ts []Type, env map[string]Type) []Type {

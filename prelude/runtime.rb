@@ -7,6 +7,15 @@
 %x{
   var stdout = bufio.NewWriter(os.Stdout)
 
+  // stdoutMu serializes writes: threads are goroutines, and there is no GVL.
+  var stdoutMu sync.Mutex
+
+  func rbWrite(s string) {
+    stdoutMu.Lock()
+    defer stdoutMu.Unlock()
+    _, _ = stdout.WriteString(s)
+  }
+
   // rbTopRecover turns an uncaught Ruby exception into exit status 1, like
   // MRI. Output is flushed first so partial output before a crash matches.
   func rbTopRecover() {

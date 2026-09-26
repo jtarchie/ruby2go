@@ -82,7 +82,7 @@ module Enumerable
   end
 
   #: () { (E) -> void } -> void
-  def each_entry = %x{ return self.Each() }
+  def each_entry = each { |x| yield x }
 
   #: () { (E, Integer) -> void } -> void
   def each_with_index = %x{
