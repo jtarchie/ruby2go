@@ -15,13 +15,14 @@ import (
 
 // gemCmd runs a Gemfile executable through bundler, so the versions pinned
 // in Gemfile.lock are used regardless of what is on PATH.
-func gemCmd(exe string, args ...string) *exec.Cmd {
-	return exec.Command("bundle", append([]string{"exec", exe}, args...)...)
+func gemCmd(t *testing.T, exe string, args ...string) *exec.Cmd {
+	t.Helper()
+	return exec.CommandContext(t.Context(), "bundle", append([]string{"exec", exe}, args...)...) //nolint:gosec // test helper; args are ours
 }
 
 func requireRuby4(t *testing.T) {
 	t.Helper()
-	out, err := exec.Command("ruby", "-e", "print RUBY_VERSION").Output()
+	out, err := exec.CommandContext(t.Context(), "ruby", "-e", "print RUBY_VERSION").Output()
 	if err != nil {
 		t.Fatalf("ruby is required: %v", err)
 	}
@@ -29,17 +30,23 @@ func requireRuby4(t *testing.T) {
 	if major < 4 {
 		t.Fatalf("ruby >= 4.0 is required, found %s", out)
 	}
-	if out, err := gemCmd("rbs-inline", "--help").CombinedOutput(); err != nil {
+	out, err = gemCmd(t, "rbs-inline", "--help").CombinedOutput()
+	if err != nil {
 		t.Fatalf("rbs-inline is required (run `bundle install`): %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
-	if out, err := gemCmd("rbs", "--version").CombinedOutput(); err != nil {
+	out, err = gemCmd(t, "rbs", "--version").CombinedOutput()
+	if err != nil {
 		t.Fatalf("rbs is required (run `bundle install`): %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
+	}
+	_, err = exec.LookPath("golangci-lint")
+	if err != nil {
+		t.Fatalf("golangci-lint is required: %v", err)
 	}
 }
 
 func run(t *testing.T, dir string, name string, args ...string) (string, int, error) {
 	t.Helper()
-	cmd := exec.Command(name, args...)
+	cmd := exec.CommandContext(t.Context(), name, args...) //nolint:gosec // test helper; args are ours
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -80,14 +87,16 @@ func testExample(t *testing.T, dir string) {
 	tmp := t.TempDir()
 	// 1. rbs-inline + rbs validate
 	sig := filepath.Join(tmp, "sig")
-	if out, err := gemCmd("rbs-inline", "--output="+sig, filepath.Join(dir, "main.rb")).CombinedOutput(); err != nil {
+	out, err := gemCmd(t, "rbs-inline", "--output="+sig, filepath.Join(dir, "main.rb")).CombinedOutput()
+	if err != nil {
 		t.Fatalf("rbs-inline failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
-	if out, err := gemCmd("rbs", "-I", sig, "validate").CombinedOutput(); err != nil {
+	out, err = gemCmd(t, "rbs", "-I", sig, "validate").CombinedOutput()
+	if err != nil {
 		t.Fatalf("rbs validate failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
 	// 2. transpile, gofmt, vet, build
-	src, err := os.ReadFile(filepath.Join(dir, "main.rb"))
+	src, err := os.ReadFile(filepath.Join(dir, "main.rb")) //nolint:gosec // example path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,25 +108,45 @@ func testExample(t *testing.T, dir string) {
 		t.Logf("warning: %s", w)
 	}
 	gen := filepath.Join(tmp, "gen")
-	if err := os.MkdirAll(gen, 0o755); err != nil {
+	err = os.MkdirAll(gen, 0o750)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(gen, "main.go"), code, 0o644); err != nil {
+	err = os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600) //nolint:gosec // under t.TempDir()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(gen, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o644); err != nil {
+	err = os.WriteFile(filepath.Join(gen, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("generated Go: %s", filepath.Join(gen, "main.go"))
-	if out, _, err := run(t, gen, "gofmt", "-l", "main.go"); err != nil || strings.TrimSpace(out) != "" {
-		t.Fatalf("gofmt: %v %s", err, out)
+	fmtOut, _, err := run(t, gen, "gofmt", "-l", "main.go")
+	if err != nil || strings.TrimSpace(fmtOut) != "" {
+		t.Fatalf("gofmt: %v %s", err, fmtOut)
 	}
-	if out, _, err := run(t, gen, "go", "vet", "."); err != nil {
-		t.Fatalf("go vet: %v\n%s", err, out)
+	vetOut, _, err := run(t, gen, "go", "vet", ".")
+	if err != nil {
+		t.Fatalf("go vet: %v\n%s", err, vetOut)
+	}
+	// The generated code must be a good citizen too: lint it with the
+	// generated-code config.
+	lintCfg, err := os.ReadFile(".golangci.generated.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(gen, ".golangci.yml"), lintCfg, 0o600) //nolint:gosec // under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lintOut, _, err := run(t, gen, "golangci-lint", "run", "./...")
+	if err != nil {
+		t.Fatalf("golangci-lint on generated code: %v\n%s", err, lintOut)
 	}
 	bin := filepath.Join(tmp, "prog")
-	if out, _, err := run(t, gen, "go", "build", "-o", bin, "."); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
+	buildOut, _, err := run(t, gen, "go", "build", "-o", bin, ".")
+	if err != nil {
+		t.Fatalf("go build: %v\n%s", err, buildOut)
 	}
 	// 3. compare with MRI
 	wantOut, wantCode, _ := run(t, dir, "ruby", "main.rb")

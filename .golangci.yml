@@ -114,14 +114,8 @@ linters:
           disabled: true
 
   exclusions:
-    rules:
-      # The hand-written example programs are reference output, not code we
-      # maintain to lint standards.
-      - path: ^examples/
-        linters:
-          - cyclop
-          - gocognit
-          - nestif
-          - revive
-          - unparam
-          - unused
+    paths:
+      # The hand-written example programs are the reference shape of the
+      # transpiler's output, not code maintained to lint standards. The
+      # generated output is linted by the test harness instead.
+      - ^examples/

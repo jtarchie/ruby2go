@@ -534,7 +534,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		wn := w.(*parser.WhenNode)
 		var conds []string
 		for _, cond := range wn.Conditions {
-			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil, nil)
+			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil)
 			conds = append(conds, "bool("+eq.code+")")
 		}
 		f.emit("case %s:", strings.Join(conds, " || "))
@@ -615,9 +615,6 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, declared: true}
 		} else if convert != "" {
 			f.emit("_ = %s", armName)
-		}
-		if len(wn.Conditions) == 1 && armType != nil && subjLocal == nil {
-			// value is bound to the temp only; nothing to expose
 		}
 		f.genStmts(wn.Statements, t)
 		f.indent--
@@ -789,7 +786,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		}
 		classes = append(classes, f.c.classes[cr.Name])
 	}
-	var conds []string
+	conds := make([]string, 0, len(classes))
 	for _, cls := range classes {
 		conds = append(conds, fmt.Sprintf("rbIsA[%s](r)", f.c.goType(TClass{C: cls})))
 	}
@@ -807,9 +804,9 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		}
 		// A fresh binding per clause: the same Ruby name may hold a
 		// different exception class in each rescue.
-		v := f.blockParam(lt.Name, TClass{C: bind}, rc.Reference)
+		v := f.blockParam(lt.Name, TClass{C: bind})
 		f.emit("%s := r.(%s)", v.goName, f.c.goType(TClass{C: bind}))
-		f.noteUnused(v, rc.Reference)
+		f.noteUnused(v)
 	}
 	f.genStmts(rc.Statements, t)
 	if !terminates(rc.Statements) {
@@ -837,7 +834,7 @@ func terminates(st *parser.StatementsNode) bool {
 
 // ---- locals
 
-func (f *fctx) declareLocal(name string, typ Type, n parser.Node) *local {
+func (f *fctx) declareLocal(name string, typ Type) *local {
 	info := f.locals[name]
 	if info == nil {
 		info = &localInfo{declBlock: f.block, typ: typ}
@@ -862,7 +859,7 @@ func (f *fctx) declareLocal(name string, typ Type, n parser.Node) *local {
 	return v
 }
 
-func (f *fctx) noteUnused(v *local, n parser.Node) {
+func (f *fctx) noteUnused(v *local) {
 	info := f.locals[v.name]
 	if f.pass == 2 && info != nil && info.reads == 0 {
 		f.emit("_ = %s", v.goName)
@@ -907,37 +904,7 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)
 	}
 	if existing == nil {
-		v := f.declareLocal(name, typ, n)
-		if annotated != nil {
-			f.locals[name].annotated = true
-			f.locals[name].typ = annotated
-		} else if f.pass < 2 {
-			f.locals[name].typ = typ
-			if j, ok := join(f.locals[name].typ, val.typ); ok {
-				f.locals[name].typ = j
-			}
-		}
-		if f.pass == 2 {
-			v.typ = f.locals[name].typ
-		}
-		code := f.coerce(n, val, v.typ)
-		if val.lit && typeEq(val.typ, v.typ) {
-			code = f.c.goType(v.typ) + "(" + code + ")"
-		}
-		v.declared = true
-		switch {
-		case f.pass == 2 && info != nil && info.hoist:
-			f.emit("%s = %s", v.goName, code)
-		case code == "nil":
-			f.emit("var %s %s", v.goName, f.c.goType(v.typ))
-		default:
-			f.emit("%s := %s", v.goName, code)
-		}
-		if f.pass < 2 && info == nil {
-			f.locals[name].writes++
-		}
-		f.noteUnused(v, n)
-		return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
+		return f.declareAssign(n, name, typ, val, annotated)
 	}
 	if info != nil {
 		info.writes++
@@ -957,6 +924,44 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 	}
 	f.emit("%s = %s", existing.goName, f.coerce(n, val, existing.typ))
 	return expr{code: existing.goName, typ: existing.typ, stmt: true, done: true}
+}
+
+// declareAssign emits the first assignment of a local.
+func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, annotated Type) expr {
+	hoisted := f.pass == 2 && f.locals[name] != nil && f.locals[name].hoist
+	v := f.declareLocal(name, typ)
+	info := f.locals[name]
+	switch {
+	case annotated != nil:
+		info.annotated = true
+		info.typ = annotated
+	case f.pass < 2:
+		info.typ = typ
+		if j, ok := join(info.typ, val.typ); ok {
+			info.typ = j
+		}
+	}
+	if f.pass == 2 {
+		v.typ = info.typ
+	}
+	code := f.coerce(n, val, v.typ)
+	if val.lit && typeEq(val.typ, v.typ) {
+		code = f.c.goType(v.typ) + "(" + code + ")"
+	}
+	v.declared = true
+	switch {
+	case hoisted:
+		f.emit("%s = %s", v.goName, code)
+	case code == "nil":
+		f.emit("var %s %s", v.goName, f.c.goType(v.typ))
+	default:
+		f.emit("%s := %s", v.goName, code)
+	}
+	if f.pass < 2 {
+		info.writes++
+	}
+	f.noteUnused(v)
+	return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
 }
 
 // ---- function bodies
@@ -1005,7 +1010,7 @@ type namedInfo struct {
 }
 
 func sortedLocals(m map[string]*localInfo) []namedInfo {
-	var out []namedInfo
+	out := make([]namedInfo, 0, len(m))
 	for k, v := range m {
 		out = append(out, namedInfo{k, v})
 	}
@@ -1042,7 +1047,7 @@ func (c *Compiler) newFctx(f *File, owner *Class, m *Method) *fctx {
 }
 
 func (c *Compiler) paramLocals(m *Method) []*local {
-	var ps []*local
+	ps := make([]*local, 0, len(m.Params))
 	for _, p := range m.Params {
 		t := p.Type
 		if p.Rest {
@@ -1055,12 +1060,12 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 
 func (c *Compiler) emitMethod(m *Method) {
 	cls := m.Owner
-	switch m.Kind {
-	case kindAttrReader:
+	if m.Kind == kindAttrReader {
 		iv := c.findIvar(cls, m.Attr)
 		c.w("func (self *%s) %s() %s { return self.%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name))
 		return
-	case kindAttrWriter:
+	}
+	if m.Kind == kindAttrWriter {
 		iv := c.findIvar(cls, m.Attr)
 		c.w("func (self *%s) %s(v %s) { self.%s = v }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name))
 		return
@@ -1085,7 +1090,7 @@ func (c *Compiler) emitMethod(m *Method) {
 		if cls.GoType != "" {
 			self = "self " + c.recvType(cls)
 		}
-		c.w("func %s%s(%s%s) %s {\n", freeFuncName(m), c.typeParamDecl(m), self, prefixed(", ", params), retDecl)
+		c.w("func %s%s(%s%s) %s {\n", freeFuncName(m), c.typeParamDecl(m), self, comma(params), retDecl)
 	}
 	c.emitBody(m, namedRet)
 	c.w("}\n\n")
@@ -1151,7 +1156,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 
 func (c *Compiler) emitMain() {
 	c.w("var rb_main = &Object{}\n\n")
-	c.w("func main() {\n\tdefer stdout.Flush()\n\tdefer rbTopRecover()\n")
+	c.w("func main() {\n\tdefer func() { _ = stdout.Flush() }()\n\tdefer rbTopRecover()\n")
 	f := c.newFctx(c.mainFile, nil, nil)
 	f.indent = 1
 	f.retVar = ""
@@ -1164,7 +1169,7 @@ func (c *Compiler) emitMain() {
 // discoverIvars dry-runs struct class method bodies to learn ivar types
 // from assignments.
 func (c *Compiler) discoverIvars() {
-	for round := 0; round < 2; round++ {
+	for range 2 {
 		for _, cls := range c.classList {
 			if !cls.isStruct() || cls.universal {
 				continue

@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -136,8 +137,6 @@ func (c *Class) mutable() bool {
 		strings.HasPrefix(g, "struct") || strings.HasPrefix(g, "*")
 }
 
-func (c *Class) selfVar() TVar { return TVar{Name: "Self"} }
-
 func (c *Class) paramTypes() []Type {
 	out := make([]Type, len(c.TypeParams))
 	for i, p := range c.TypeParams {
@@ -225,7 +224,7 @@ func (c *Class) structChain() []*Class {
 
 // ---- declaration collection
 
-func (c *Compiler) collect(f *File) {
+func (c *Compiler) collect(ctx context.Context, f *File) {
 	for _, n := range f.Root.Statements.Body {
 		switch n := n.(type) {
 		case *parser.ClassNode:
@@ -241,7 +240,7 @@ func (c *Compiler) collect(f *File) {
 			c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
 		case *parser.CallNode:
 			if n.Receiver == nil && n.Name == "require_relative" && f.prelude {
-				c.requireRelative(f, n)
+				c.requireRelative(ctx, f, n)
 				continue
 			}
 			if n.Receiver == nil && n.Name == "require_relative" {
@@ -334,53 +333,68 @@ func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node) {
 		case *parser.DefNode:
 			c.addMethod(f, cls, n, private)
 		case *parser.CallNode:
-			if n.Receiver != nil {
-				c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
-			}
-			args := callArgs(n)
-			switch n.Name {
-			case "attr_reader", "attr_writer", "attr_accessor":
-				c.addAttrs(f, cls, n, args, private)
-			case "include":
-				for _, a := range args {
-					cr, ok := a.(*parser.ConstantReadNode)
-					if !ok {
-						c.errorf(f, a, "unsupported include argument")
-					}
-					inc := Include{name: cr.Name, line: f.line(n.Location.StartOffset), file: f}
-					if t, ok := f.trailing[inc.line]; ok && strings.HasPrefix(t, "[") {
-						tup, err := rbs.ParseType(t)
-						if err != nil {
-							c.errorf(f, n, "bad include type args %q: %v", t, err)
-						}
-						inc.args = tup.(rbs.Tuple).Elems
-					}
-					cls.Includes = append(cls.Includes, inc)
-				}
-			case "private":
-				if len(args) == 0 {
-					private = true
-				} else if d, ok := args[0].(*parser.DefNode); ok && len(args) == 1 {
-					c.addMethod(f, cls, d, true)
-				} else {
-					c.errorf(f, n, "unsupported private form")
-				}
-			case "public":
-				private = false
-			default:
-				c.errorf(f, n, "unsupported call in class body: %s", n.Name)
-			}
+			c.collectClassCall(f, cls, n, &private)
 		default:
 			c.errorf(f, n, "unsupported node in class body: %T", n)
 		}
 	}
-	// `# @rbs @x: T` annotations anywhere in the body
-	start := f.line(body.GetLocation().StartOffset)
+	c.collectIvarDecls(f, cls, body)
+}
+
+// collectClassCall handles a bare call in a class body: attr_*, include,
+// private/public.
+func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, private *bool) {
+	if n.Receiver != nil {
+		c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
+	}
+	args := callArgs(n)
+	switch n.Name {
+	case "attr_reader", "attr_writer", "attr_accessor":
+		c.addAttrs(f, cls, n, args, *private)
+	case "include":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a)
+		}
+	case "private":
+		switch {
+		case len(args) == 0:
+			*private = true
+		case len(args) == 1:
+			d, ok := args[0].(*parser.DefNode)
+			if !ok {
+				c.errorf(f, n, "unsupported private form")
+			}
+			c.addMethod(f, cls, d, true)
+		default:
+			c.errorf(f, n, "unsupported private form")
+		}
+	case "public":
+		*private = false
+	default:
+		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
+	}
+}
+
+func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.Node) {
+	cr, ok := a.(*parser.ConstantReadNode)
+	if !ok {
+		c.errorf(f, a, "unsupported include argument")
+	}
+	inc := Include{name: cr.Name, line: f.line(n.Location.StartOffset), file: f}
+	if t, ok := f.trailing[inc.line]; ok && strings.HasPrefix(t, "[") {
+		tup, err := rbs.ParseType(t)
+		if err != nil {
+			c.errorf(f, n, "bad include type args %q: %v", t, err)
+		}
+		inc.args = tup.(rbs.Tuple).Elems
+	}
+	cls.Includes = append(cls.Includes, inc)
+}
+
+// collectIvarDecls picks up `# @rbs @x: T` annotations anywhere in a body.
+func (c *Compiler) collectIvarDecls(f *File, cls *Class, body parser.Node) {
 	end := f.line(body.GetLocation().StartOffset + body.GetLocation().Length)
 	for ln := cls.Line; ln <= end+1; ln++ {
-		if ln < cls.Line {
-			continue
-		}
 		for _, iv := range f.annotations(ln)["ivar"] {
 			name, ty, ok := strings.Cut(iv, ":")
 			if !ok {
@@ -393,7 +407,6 @@ func (c *Compiler) collectBody(f *File, cls *Class, body parser.Node) {
 			cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: strings.TrimSpace(name), rbs: t, line: ln})
 		}
 	}
-	_ = start
 }
 
 func callArgs(n *parser.CallNode) []parser.Node {
@@ -564,13 +577,10 @@ func (c *Compiler) findIvar(cls *Class, name string) *Ivar {
 }
 
 type typeScope struct {
-	class      *Class
-	methodTPs  []string
-	file       *File
-	line       int
-	selfIsVar  bool
-	allowVoid  bool
-	allowUnion bool
+	class     *Class
+	methodTPs []string
+	file      *File
+	line      int
 }
 
 func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
@@ -637,28 +647,14 @@ func (c *Compiler) resolveMethod(m *Method) {
 	}
 	m.resolved = true
 	f := m.File
-	if m.sig == nil {
-		if m.sigText == "" {
-			// unannotated override inherits the parent's signature
-			if m.Owner != nil {
-				if e := c.inheritedSig(m); e != nil {
-					c.resolveMethod(e.M)
-					m.inherited = e.M
-					m.TypeParams = e.M.TypeParams
-					for _, p := range e.M.Params {
-						m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest})
-					}
-					if e.M.Block != nil {
-						m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
-					}
-					m.Ret = subst(e.M.Ret, e.Env)
-					m.Iterator = e.M.Iterator
-					c.bindParamNames(m)
-					return
-				}
-			}
-			c.errorf(f, m.Node, "method %s has no type annotation (`#: (...) -> T`)", m.Name)
+	if m.sig == nil && m.sigText == "" {
+		// unannotated override inherits the parent's signature
+		if c.inheritSignature(m) {
+			return
 		}
+		c.errorf(f, m.Node, "method %s has no type annotation (`#: (...) -> T`)", m.Name)
+	}
+	if m.sig == nil {
 		sig, err := rbs.ParseMethodType(m.sigText)
 		if err != nil {
 			c.errorf(f, m.Node, "%v", err)
@@ -680,10 +676,34 @@ func (c *Compiler) resolveMethod(m *Method) {
 		// func), unless the body rescues: Go forbids an iterator from
 		// recovering a panic raised in the loop body, so such methods take
 		// a closure instead.
-		m.Iterator = isVoid(bs.Ret) && !m.sig.Block.Optional && !(m.Kind == kindDef && containsRescueClause(m.Node.Body))
+		m.Iterator = isVoid(bs.Ret) && !m.sig.Block.Optional && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	}
 	m.Ret = c.resolveType(m.sig.Return, sc)
 	c.bindParamNames(m)
+}
+
+// inheritSignature copies the signature of the method m overrides, if any.
+func (c *Compiler) inheritSignature(m *Method) bool {
+	if m.Owner == nil {
+		return false
+	}
+	e := c.inheritedSig(m)
+	if e == nil {
+		return false
+	}
+	c.resolveMethod(e.M)
+	m.inherited = e.M
+	m.TypeParams = e.M.TypeParams
+	for _, p := range e.M.Params {
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest})
+	}
+	if e.M.Block != nil {
+		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
+	}
+	m.Ret = subst(e.M.Ret, e.Env)
+	m.Iterator = e.M.Iterator
+	c.bindParamNames(m)
+	return true
 }
 
 func substAll(ts []Type, env map[string]Type) []Type {

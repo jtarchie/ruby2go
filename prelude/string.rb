@@ -216,7 +216,7 @@ class String < Object
   #: () -> Integer
   def hash = %x{
     h := fnv.New64a()
-    h.Write([]byte(self))
+    _, _ = h.Write([]byte(self))
     return Integer(h.Sum64())
   }
 

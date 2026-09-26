@@ -22,14 +22,33 @@ methods. These are ideas, and not limited to or the strict implementation.
 ## Layout
 
 ```
-prelude.rb        core library, written in Ruby, compiled by the same transpiler
-examples/NN_*/    main.rb (user code, runs on MRI) + main.go (what the transpiler would emit)
-check.sh          runs every example under ruby and go, diffs stdout
+rb2go.go              public API: embeds the prelude, calls the compiler
+cmd/rb2go/            CLI: rb2go [-o out.go] main.rb
+internal/compiler/    Ruby → Go: declarations, types, codegen
+internal/rbs/         the RBS type-syntax subset the compiler understands
+prelude.rb            core library entry point; require_relatives prelude/*.rb
+prelude/              core library, written in Ruby, compiled by the same transpiler
+examples/NN_*/        main.rb (user code, runs on MRI) + main.go (hand-written target shape)
+rb2go_test.go         the integration suite (below)
+check.sh              runs the hand-written main.go files against MRI
+Gemfile               rbs + rbs-inline, used by the tests through `bundle exec`
+.golangci.yml         lint config for this repo
+.golangci.generated.yml  lint config the tests apply to the generated Go
 ```
 
-Every `main.go` is hand-written today, but it is the *target output*: it
-compiles, passes `go vet`, and prints byte-for-byte what MRI prints. The
-examples double as golden tests once the transpiler exists — `./check.sh`.
+`go test ./...` is the oracle. It fails fast unless `ruby` ≥ 4.0, `bundle
+install` has been run, and `golangci-lint` is on PATH; then for every
+`examples/*/main.rb`:
+
+1. `rbs-inline --output` succeeds and `rbs validate` passes on its output;
+2. the transpiled Go passes `gofmt`, `go vet`, `go build` and
+   `golangci-lint` (with `.golangci.generated.yml`);
+3. its stdout and exit code equal `ruby main.rb`.
+
+The hand-written `main.go` files are the *target shape*, not golden files:
+the transpiler's output is written to a temp dir and never compared to them
+byte for byte. Each example covers one feature; add one whenever the
+transpiler grows something the others don't exercise.
 
 ## Simplest case
 
@@ -300,15 +319,92 @@ primitive.
 
 ## Open decisions
 
-1. Ordered `Hash`: recommended (determinism), see 05. Confirm.
-2. `TrueClass`/`FalseClass` vs. a single `Boolean` (affects `nil`/truthiness
-   and `inspect`). Prelude currently uses `Boolean`.
-3. Operator name table (`==`→`Eq`, `<=>`→`Cmp`, `+`→`Plus`, `?`→`Q`, `!`→`Bang`,
-   `=`→`Set`, unary `-`→`Neg`) — must be injective (`upcase` vs `upcase!`,
-   `==` vs `equal?`).
-4. Non-local `return`/`break`/`next` inside blocks: inline-loop vs. sentinel
-   panic, and where the boundary is.
-5. `Hash.new(default)` / `Hash#[]` typing.
-6. Unwrapped-prelude coverage: `prelude.rb` currently covers examples 00 and 06 (`puts`);
-   the rest carry their prelude subset inline in `main.go`. Fold them in
-   as the prelude grows.
+Decisions taken while building `rb2go` are recorded under the item they
+resolve; anything not listed is still open.
+
+1. Ordered `Hash`: **decided, ordered.** `Hash[K, V]` is
+   `struct { keys []K; vals map[K]V }` behind `@go_type`; iteration follows
+   insertion order, so output is deterministic and MRI-diffable. Deletion is
+   O(n) over the key list (no tombstones yet; add them if a profile says so).
+2. `TrueClass`/`FalseClass` vs. `Boolean`: **decided, one `Boolean`** (a Go
+   `bool`). `true`/`false` literals are untyped constants that convert to
+   `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
+   `untyped`. `inspect`/`to_s` live on `Boolean`.
+3. Operator name table: **decided** — `==`→`Eq`, `!=`→`Ne`, `<=>`→`Cmp`,
+   `<`→`Lt`, `<=`→`Le`, `>`→`Gt`, `>=`→`Ge`, `+`→`Plus`, `-`→`Minus`,
+   `*`→`Mul`, `/`→`Div`, `%`→`Mod`, `**`→`Pow`, unary `-`→`Neg`, `+@`→`Pos`,
+   `!`→`Not`, `~`→`Inv`, `<<`→`Shl`, `>>`→`Shr`, `&`→`BitAnd`, `|`→`BitOr`,
+   `^`→`BitXor`, `=~`→`Match`, `===`→`Eqq`, `[]`→`Idx`, `[]=`→`IdxSet`.
+   Everything else camel-cases with `?`→`Q`, `!`→`Bang`, `=`→`Set`; leading
+   underscores are kept (`__write`→`__Write`). `[]` is `Idx`, not `Index`,
+   because `String#index` exists — the table has to stay injective against
+   camel-cased names too.
+4. Non-local `return`/`break`/`next` in blocks: **decided, inline loops
+   only.** A method whose block returns `void` compiles to a Go iterator
+   (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a
+   `for range` loop, so `return`, `break` and `next` are plain Go. Blocks
+   passed to value-returning methods (`map`, `select`, `then`, …) are Go
+   closures; `next` is `return`, and `return`/`break` inside them is a
+   compile error. The sentinel-panic fallback is not implemented. One
+   exception to the iterator rule: a method that `rescue`s around `yield`
+   takes a closure instead, because Go forbids a range function from
+   recovering a panic raised in the loop body.
+5. `Hash.new(default)` / `Hash#[]` typing: **decided, `Hash#[]` is
+   `(K) -> V?`** and there is no default value. `Hash#fetch(k, default)`
+   covers the common case; `tally`/`group_by` are written with `||`.
+   `Hash.new(0)` + `h[k] += 1` is not supported.
+6. Prelude coverage: **done.** Every example compiles against `prelude/`
+   alone; the subsets that used to be inlined in `examples/*/main.go` are
+   in `prelude/{object,integer,float,string,enumerable,array,hash,exception}.rb`.
+   The hand-written `main.go` files are kept as the reference shape.
+7. `T?` representation: **decided, uniformly `*T`** — including for struct
+   classes, whose non-optional representation is already an interface
+   (`Rect` is `RectI`, `Rect?` is `*RectI`). The README's "one
+   representation" shortcut would make `E?` inside a generic container mean
+   something different from `Rect?` outside it; uniform boxing keeps
+   generics honest at the cost of a `Ref`/`Opt` at the boundary.
+8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
+   method set plus `_Shape() *Shape` accessors for every struct in the
+   chain (ivar access from free functions, and the marker `rescue` matches
+   on). Methods defined on struct classes and modules are free functions
+   generic over `Self`, forwarded by a Go method on every concrete class.
+   `BasicObject`, `Object` and `Kernel` are "universal": their `Self` is
+   `any`, since primitives inherit from them too.
+9. Module constraints are derived from the module body, as the README
+   says: `Comparable_Self[Self]` lists what `Comparable`'s methods call on
+   `self` (including `self.X(` inside `%x{}`), not every module method.
+   Primitive classes get forwarders only for those; everything else is
+   called through the free function. This is also what avoids Go's
+   "instantiation cycle": a forwarder such as `Hash[K,V].Tally` would
+   instantiate `Hash[[K,V], Integer]`, whose forwarders instantiate the
+   next size up, forever.
+10. Type parameters are all constrained `comparable`. Every generated Go
+    type satisfies it (strings, ints, pointers, interfaces, tuples of
+    those), and it is what `map[K]` and `tally` need; deriving the
+    constraint per parameter bought nothing.
+11. `raise` is an intrinsic: `raise Klass, msg` ≡ `raise Klass.new(msg)`,
+    `raise "msg"` ≡ `RuntimeError.new`. Uncaught exceptions flush stdout,
+    print `message (Class)` to stderr and exit 1, like MRI. Go runtime
+    panics (`index out of range`, divide by zero) are wrapped into
+    `IndexError`/`ZeroDivisionError`/`StandardError` on the way into a
+    `rescue`.
+12. Overloads (`#|`) are not supported, so `first`/`take` require a count
+    (`arr.first(3)`; use `arr[0]` for the head) and `Array#[]` takes one
+    Integer. `split` takes an optional separator through `?String?`.
+13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
+    `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
+    type is an error, and an unannotated override inherits the parent's
+    signature (never `untyped`).
+14. Locals are inferred from their assignments (joined across branches:
+    `nil` + `String` → `String?`) and hoisted to a `var` at the top of the
+    function when Go's block scoping would otherwise hide them. Lifted
+    temporaries for `&.`, `||`, ternaries and `case`-expressions are
+    computed before the statement they belong to, so their side effects run
+    slightly earlier than MRI would run them.
+15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
+    or a dry run of the class's method bodies (`initialize` first); an ivar
+    that is only ever assigned `nil` needs an annotation.
+16. `%x{}` bodies are Ruby xstrings, so Ruby escape processing applies to
+    the Go inside them: write `\\n` for a Go `\n`, `\#{` for a literal `#{`,
+    and keep braces balanced (no `"{"` in Go strings). A one-line body of a
+    non-void method gets `return` prepended.

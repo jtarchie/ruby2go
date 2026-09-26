@@ -4,6 +4,7 @@ package rb2go
 import (
 	"context"
 	"embed"
+	"fmt"
 
 	"rb2go/internal/compiler"
 )
@@ -16,5 +17,9 @@ var Prelude embed.FS
 // Compile transpiles the Ruby source of mainName (with the embedded prelude)
 // into a single Go file.
 func Compile(ctx context.Context, mainName string, src []byte) ([]byte, []string, error) {
-	return compiler.CompileWithWarnings(ctx, Prelude, mainName, src)
+	out, warnings, err := compiler.CompileWithWarnings(ctx, Prelude, mainName, src)
+	if err != nil {
+		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+	}
+	return out, warnings, nil
 }

@@ -34,7 +34,7 @@ module Kernel
   def frozen? = true
 
   #: (?Integer) -> void
-  def exit(status = 0) = %x{ stdout.Flush(); os.Exit(int(status)) }
+  def exit(status = 0) = %x{ _ = stdout.Flush(); os.Exit(int(status)) }
 
   private
 
@@ -61,7 +61,7 @@ module Kernel
   end
 
   #: (String) -> nil
-  def __write(s) = %x{ stdout.WriteString(string(s)) }
+  def __write(s) = %x{ _, _ = stdout.WriteString(string(s)) }
 
   #: () -> String
   def __class_name = %x{ String(rbClassName(self)) }

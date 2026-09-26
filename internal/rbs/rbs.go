@@ -2,6 +2,7 @@
 package rbs
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -227,7 +228,8 @@ func ParseMethodType(s string) (*MethodType, error) {
 		}
 		p.next()
 	}
-	if err := p.expect("("); err != nil {
+	err = p.expect("(")
+	if err != nil {
 		return nil, err
 	}
 	m.Params, err = p.parseParams()
@@ -240,26 +242,30 @@ func ParseMethodType(s string) (*MethodType, error) {
 			blk.Optional = true
 			p.next() // {
 		}
-		if err := p.expect("("); err != nil {
+		err = p.expect("(")
+		if err != nil {
 			return nil, err
 		}
 		blk.Params, err = p.parseParams()
 		if err != nil {
 			return nil, err
 		}
-		if err := p.expect("->"); err != nil {
+		err = p.expect("->")
+		if err != nil {
 			return nil, err
 		}
 		blk.Return, err = p.parseType()
 		if err != nil {
 			return nil, err
 		}
-		if err := p.expect("}"); err != nil {
+		err = p.expect("}")
+		if err != nil {
 			return nil, err
 		}
 		m.Block = blk
 	}
-	if err := p.expect("->"); err != nil {
+	err = p.expect("->")
+	if err != nil {
 		return nil, err
 	}
 	m.Return, err = p.parseType()
@@ -277,7 +283,7 @@ func (p *parser) parseParams() ([]Param, error) {
 	var params []Param
 	for p.peek() != ")" {
 		if p.peek() == "" {
-			return nil, fmt.Errorf("rbs: unterminated parameter list")
+			return nil, errors.New("rbs: unterminated parameter list")
 		}
 		var prm Param
 		switch p.peek() {
@@ -298,7 +304,7 @@ func (p *parser) parseParams() ([]Param, error) {
 		if tok := p.peek(); tok != "" && tok != "," && tok != ")" && isIdentStart(tok[0]) {
 			prm.Name = p.next()
 			if p.peek() == ":" {
-				return nil, fmt.Errorf("rbs: keyword parameters are not supported")
+				return nil, errors.New("rbs: keyword parameters are not supported")
 			}
 		}
 		params = append(params, prm)
@@ -359,7 +365,7 @@ func (p *parser) parsePrimary() (Type, error) {
 	tok := p.next()
 	switch tok {
 	case "":
-		return nil, fmt.Errorf("rbs: unexpected end of type")
+		return nil, errors.New("rbs: unexpected end of type")
 	case "(":
 		t, err := p.parseType()
 		if err != nil {
@@ -393,7 +399,7 @@ func (p *parser) parsePrimary() (Type, error) {
 	case "bool", "boolish":
 		return Bool{}, nil
 	case "^":
-		return nil, fmt.Errorf("rbs: proc types are not supported")
+		return nil, errors.New("rbs: proc types are not supported")
 	}
 	if !isIdentStart(tok[0]) {
 		return nil, fmt.Errorf("rbs: unexpected %q", tok)

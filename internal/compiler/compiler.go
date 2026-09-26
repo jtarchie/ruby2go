@@ -26,7 +26,6 @@ type Compiler struct {
 	files      []*File
 	preludeFS  fs.FS
 	parser     *parser.Parser
-	ctx        context.Context
 	loaded     map[string]bool
 	out        strings.Builder
 	Warnings   []string
@@ -81,20 +80,20 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	}()
 	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest), parser.WithPoolSize(1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prism: %w", err)
 	}
-	defer p.Close(ctx)
+	defer func() { _ = p.Close(ctx) }()
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, tupleN: map[int]bool{},
-		preludeFS: preludeFS, parser: p, ctx: ctx, loaded: map[string]bool{}}
-	c.loadPrelude("prelude.rb")
+		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
+	c.loadPrelude(ctx, "prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)
 	if err != nil {
 		return nil, err
 	}
 	c.files = append(c.files, mf)
 	c.mainFile = mf
-	c.collect(mf)
+	c.collect(ctx, mf)
 	c.link()
 	c.discoverIvars()
 	c.emitProgram()
@@ -104,8 +103,8 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	if ferr != nil {
 		// Keep the raw output around for debugging.
 		tmp := filepath.Join(os.TempDir(), "rb2go-bad-output.go")
-		_ = os.WriteFile(tmp, src, 0o644)
-		return nil, fmt.Errorf("internal error: generated Go does not parse (%v); raw output written to %s", ferr, tmp)
+		_ = os.WriteFile(tmp, src, 0o600)
+		return nil, fmt.Errorf("internal error: generated Go does not parse (%w); raw output written to %s", ferr, tmp)
 	}
 	return formatted, nil
 }
@@ -130,7 +129,7 @@ func CompileWithWarnings(ctx context.Context, preludeFS fs.FS, mainName string, 
 // loadPrelude parses and collects one prelude file. `require_relative` at
 // its top level pulls in further files, in place, so emission order follows
 // require order.
-func (c *Compiler) loadPrelude(name string) {
+func (c *Compiler) loadPrelude(ctx context.Context, name string) {
 	if c.loaded[name] {
 		return
 	}
@@ -139,19 +138,19 @@ func (c *Compiler) loadPrelude(name string) {
 	if err != nil {
 		panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
 	}
-	f, err := parseFile(c.ctx, c.parser, name, src, true)
+	f, err := parseFile(ctx, c.parser, name, src, true)
 	if err != nil {
 		panic(compileError{msg: err.Error()})
 	}
 	c.files = append(c.files, f)
-	c.collect(f)
+	c.collect(ctx, f)
 	if len(c.mainStmts) > 0 {
 		c.errorf(f, c.mainStmts[0], "prelude must not have top-level statements")
 	}
 }
 
 // requireRelative resolves `require_relative "x"` inside prelude file f.
-func (c *Compiler) requireRelative(f *File, n *parser.CallNode) {
+func (c *Compiler) requireRelative(ctx context.Context, f *File, n *parser.CallNode) {
 	args := callArgs(n)
 	str, ok := args[0].(*parser.StringNode)
 	if len(args) != 1 || !ok {
@@ -161,5 +160,5 @@ func (c *Compiler) requireRelative(f *File, n *parser.CallNode) {
 	if !strings.HasSuffix(target, ".rb") {
 		target += ".rb"
 	}
-	c.loadPrelude(target)
+	c.loadPrelude(ctx, target)
 }

@@ -197,25 +197,7 @@ func unify(pattern, actual Type, env map[string]Type) bool {
 		env[p.Name] = actual
 		return true
 	case TClass:
-		a, ok := actual.(TClass)
-		if !ok {
-			return false
-		}
-		if a.C != p.C {
-			// Allow a subclass to match its ancestor's pattern.
-			if !a.C.isSubclassOf(p.C) {
-				return false
-			}
-			return true
-		}
-		if len(a.Args) != len(p.Args) {
-			return false
-		}
-		ok = true
-		for i := range p.Args {
-			ok = unify(p.Args[i], a.Args[i], env) && ok
-		}
-		return ok
+		return unifyClass(p, actual, env)
 	case TOpt:
 		switch a := actual.(type) {
 		case TOpt:
@@ -227,26 +209,41 @@ func unify(pattern, actual Type, env map[string]Type) bool {
 		}
 	case TTuple:
 		a, ok := actual.(TTuple)
-		if !ok || len(a.Elems) != len(p.Elems) {
+		if !ok {
 			return false
 		}
-		ok = true
-		for i := range p.Elems {
-			ok = unify(p.Elems[i], a.Elems[i], env) && ok
-		}
-		return ok
+		return unifyAll(p.Elems, a.Elems, env)
 	case TFunc:
 		a, ok := actual.(TFunc)
-		if !ok || len(a.Params) != len(p.Params) {
+		if !ok || !unifyAll(p.Params, a.Params, env) {
 			return false
 		}
-		ok = true
-		for i := range p.Params {
-			ok = unify(p.Params[i], a.Params[i], env) && ok
-		}
-		return unify(p.Ret, a.Ret, env) && ok
+		return unify(p.Ret, a.Ret, env)
 	}
 	return true
+}
+
+func unifyClass(p TClass, actual Type, env map[string]Type) bool {
+	a, ok := actual.(TClass)
+	if !ok {
+		return false
+	}
+	if a.C != p.C {
+		// Allow a subclass to match its ancestor's pattern.
+		return a.C.isSubclassOf(p.C)
+	}
+	return unifyAll(p.Args, a.Args, env)
+}
+
+func unifyAll(ps, as []Type, env map[string]Type) bool {
+	if len(ps) != len(as) {
+		return false
+	}
+	ok := true
+	for i := range ps {
+		ok = unify(ps[i], as[i], env) && ok
+	}
+	return ok
 }
 
 // freeVars lists the type variables mentioned in t, in order of appearance.

@@ -11,7 +11,7 @@
   // MRI. Output is flushed first so partial output before a crash matches.
   func rbTopRecover() {
     if r := recover(); r != nil {
-      stdout.Flush()
+      _ = stdout.Flush()
       if e, ok := r.(ExceptionI); ok {
         fmt.Fprintf(os.Stderr, "%s (%s)\\n", e.Message(), rbClassName(r))
       } else {
@@ -81,10 +81,10 @@
   }
 
   func rbIdentical(a, b any) bool {
-    switch a := a.(type) {
-    case String:
-      b, ok := b.(String)
-      return ok && len(a) == len(b) && unsafe.StringData(string(a)) == unsafe.StringData(string(b))
+    if as, ok := a.(String); ok {
+      bs, ok := b.(String)
+      // Identity of immutable strings is their backing pointer.
+      return ok && len(as) == len(bs) && unsafe.StringData(string(as)) == unsafe.StringData(string(bs)) //nolint:gosec // pointer compare only
     }
     return a == b
   }
@@ -99,7 +99,7 @@
       return "NilClass"
     }
     t := reflect.TypeOf(a)
-    for t.Kind() == reflect.Ptr {
+    for t.Kind() == reflect.Pointer {
       t = t.Elem()
     }
     name := t.Name()

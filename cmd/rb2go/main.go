@@ -37,10 +37,15 @@ func main() {
 		os.Exit(1)
 	}
 	if *out == "" {
-		os.Stdout.Write(code)
+		_, err = os.Stdout.Write(code)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
-	if err := os.WriteFile(*out, code, 0o644); err != nil {
+	err = os.WriteFile(*out, code, 0o600) //nolint:gosec // -o is the user's choice of path
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

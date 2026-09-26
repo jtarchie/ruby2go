@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"rb2go/internal/rbs"
 )
 
 // expr is a generated Go expression with its Ruby type.
@@ -18,24 +20,34 @@ type expr struct {
 	done     bool // already emitted; code only names the value
 }
 
-func (f *fctx) genExpr(n parser.Node, expected Type) expr {
+// genLiteral handles the leaf expressions.
+func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	switch n := n.(type) {
 	case *parser.StringNode:
-		return expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}
+		return expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}, true
 	case *parser.InterpolatedStringNode:
-		return f.genInterp(n)
+		return f.genInterp(n), true
 	case *parser.IntegerNode:
-		return expr{code: strings.ReplaceAll(f.f.text(n.Location), "_", ""), typ: f.cls("Integer"), lit: true}
+		return expr{code: strings.ReplaceAll(f.f.text(n.Location), "_", ""), typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
-		return expr{code: f.f.text(n.Location), typ: f.cls("Float"), lit: true}
+		return expr{code: f.f.text(n.Location), typ: f.cls("Float"), lit: true}, true
 	case *parser.TrueNode:
-		return expr{code: "true", typ: f.cls("Boolean"), lit: true}
+		return expr{code: "true", typ: f.cls("Boolean"), lit: true}, true
 	case *parser.FalseNode:
-		return expr{code: "false", typ: f.cls("Boolean"), lit: true}
+		return expr{code: "false", typ: f.cls("Boolean"), lit: true}, true
 	case *parser.NilNode:
-		return expr{code: "nil", typ: TNil{}}
+		return expr{code: "nil", typ: TNil{}}, true
 	case *parser.SelfNode:
-		return expr{code: f.selfCode, typ: f.selfType}
+		return expr{code: f.selfCode, typ: f.selfType}, true
+	}
+	return expr{}, false
+}
+
+func (f *fctx) genExpr(n parser.Node, expected Type) expr {
+	if e, ok := f.genLiteral(n); ok {
+		return e
+	}
+	switch n := n.(type) {
 	case *parser.LocalVariableReadNode:
 		v := f.readLocal(n)
 		return expr{code: v.goName, typ: v.typ}
@@ -59,6 +71,47 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		cur := f.genExpr(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location}, nil)
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
 		return f.assignLocal(n, n.Name, val, nil)
+	case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOperatorWriteNode:
+		return f.genIvarExpr(n)
+	case *parser.CallNode:
+		return f.genCall(n, expected)
+	case *parser.ArrayNode:
+		return f.genArray(n, expected)
+	case *parser.HashNode:
+		return f.genHash(n, expected)
+	case *parser.ParenthesesNode:
+		st, ok := n.Body.(*parser.StatementsNode)
+		if !ok || len(st.Body) != 1 {
+			f.errorf(n, "parenthesised statement lists are not supported")
+		}
+		e := f.genExpr(st.Body[0], expected)
+		e.code = "(" + e.code + ")"
+		e.lit = false
+		return e
+	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.BeginNode:
+		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
+	case *parser.OrNode:
+		return f.genOr(n)
+	case *parser.AndNode:
+		return f.genAnd(n)
+	case *parser.YieldNode:
+		return f.genYield(n)
+	case *parser.SuperNode:
+		return f.genSuper(n, n.Arguments, false)
+	case *parser.ForwardingSuperNode:
+		return f.genSuper(n, nil, true)
+	case *parser.ConstantReadNode:
+		f.errorf(n, "constant %s used as a value is not supported", n.Name)
+	case *parser.RescueModifierNode:
+		f.errorf(n, "`expr rescue expr` is not supported; use begin/rescue")
+	}
+	f.c.unsupported(f.f, n)
+	return expr{}
+}
+
+// genIvarExpr handles @x reads and writes.
+func (f *fctx) genIvarExpr(n parser.Node) expr {
+	switch n := n.(type) {
 	case *parser.InstanceVariableReadNode:
 		iv := f.ivar(n, n.Name, nil)
 		return expr{code: f.ivarCode(iv), typ: iv.Type}
@@ -80,37 +133,6 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		cur := expr{code: f.ivarCode(iv), typ: iv.Type}
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
 		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
-	case *parser.CallNode:
-		return f.genCall(n, expected)
-	case *parser.ArrayNode:
-		return f.genArray(n, expected)
-	case *parser.HashNode:
-		return f.genHash(n, expected)
-	case *parser.ParenthesesNode:
-		st, ok := n.Body.(*parser.StatementsNode)
-		if !ok || len(st.Body) != 1 {
-			f.errorf(n, "parenthesised statement lists are not supported")
-		}
-		e := f.genExpr(st.Body[0], expected)
-		e.code = "(" + e.code + ")"
-		e.lit = false
-		return e
-	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.BeginNode:
-		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
-	case *parser.OrNode:
-		return f.genOr(n, expected)
-	case *parser.AndNode:
-		return f.genAnd(n)
-	case *parser.YieldNode:
-		return f.genYield(n, expected)
-	case *parser.SuperNode:
-		return f.genSuper(n, n.Arguments, false)
-	case *parser.ForwardingSuperNode:
-		return f.genSuper(n, nil, true)
-	case *parser.ConstantReadNode:
-		f.errorf(n, "constant %s used as a value is not supported", n.Name)
-	case *parser.RescueModifierNode:
-		f.errorf(n, "`expr rescue expr` is not supported; use begin/rescue")
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
@@ -119,7 +141,7 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 func (f *fctx) cls(name string) Type { return TClass{C: f.c.classes[name]} }
 
 func (f *fctx) parseTypeAnn(n parser.Node, s string) Type {
-	t, err := parseTypeString(s)
+	t, err := rbs.ParseType(s)
 	if err != nil {
 		f.errorf(n, "%v", err)
 	}
@@ -174,10 +196,10 @@ func (f *fctx) joinAll(n parser.Node, types []Type) Type {
 // ---- operators, and/or
 
 func (f *fctx) genOp(n parser.Node, left expr, op string, right parser.Node) expr {
-	return f.genMethodCall(n, left, op, []parser.Node{right}, nil, nil)
+	return f.genMethodCall(n, left, op, []parser.Node{right}, nil)
 }
 
-func (f *fctx) genOr(n *parser.OrNode, expected Type) expr {
+func (f *fctx) genOr(n *parser.OrNode) expr {
 	l := f.genExpr(n.Left, nil)
 	if isClass(l.typ, "Boolean") {
 		r := f.genExpr(n.Right, l.typ)
@@ -262,7 +284,7 @@ func (f *fctx) toS(n parser.Node, e expr) string {
 	if isClass(e.typ, "String") {
 		return e.code
 	}
-	return f.genMethodCall(n, e, "to_s", nil, nil, nil).code
+	return f.genMethodCall(n, e, "to_s", nil, nil).code
 }
 
 // ---- ivars
@@ -307,38 +329,10 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 		elems[i] = f.genExpr(el, elemT)
 	}
 	if elemT == nil {
-		if len(elems) == 0 {
-			// Ruby's `[]` is untyped; so is ours without an annotation.
-			elemT = TAny{}
+		if t, ok := f.tupleLiteral(n, elems); ok {
+			return t
 		}
-		same := true
-		for _, e := range elems[min(1, len(elems)):] {
-			if !typeEq(e.typ, elems[0].typ) {
-				same = false
-			}
-		}
-		if !same {
-			if len(elems) < 2 || len(elems) > 3 {
-				f.errorf(n, "array literal with mixed element types; add `#: Array[T]`")
-			}
-			ts := make([]Type, len(elems))
-			codes := make([]string, len(elems))
-			for i, e := range elems {
-				if isNil(e.typ) {
-					f.errorf(n, "tuple literal with nil element needs an annotation")
-				}
-				ts[i] = e.typ
-				codes[i] = f.coerce(n, e, e.typ)
-			}
-			tt := TTuple{Elems: ts}
-			return expr{code: f.c.goType(tt) + "{" + strings.Join(codes, ", ") + "}", typ: tt}
-		}
-		if len(elems) > 0 {
-			elemT = elems[0].typ
-		}
-		if isNil(elemT) {
-			f.errorf(n, "cannot infer the element type of [nil]; add `#: Array[T?]`")
-		}
+		elemT = f.inferElemType(n, elems)
 	}
 	codes := make([]string, len(elems))
 	for i, e := range elems {
@@ -348,13 +342,52 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	return expr{code: "(&Array[" + f.c.goType(elemT) + "]{" + strings.Join(codes, ", ") + "})", typ: t}
 }
 
+// inferElemType picks the element type of an unannotated array literal.
+// Ruby's `[]` is untyped; so is ours.
+func (f *fctx) inferElemType(n parser.Node, elems []expr) Type {
+	if len(elems) == 0 {
+		return TAny{}
+	}
+	if isNil(elems[0].typ) {
+		f.errorf(n, "cannot infer the element type of [nil]; add `#: Array[T?]`")
+	}
+	return elems[0].typ
+}
+
+// tupleLiteral turns a literal with mixed element types into a tuple.
+func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
+	same := true
+	for _, e := range elems {
+		if !typeEq(e.typ, elems[0].typ) {
+			same = false
+		}
+	}
+	if same {
+		return expr{}, false
+	}
+	if len(elems) < 2 || len(elems) > 3 {
+		f.errorf(n, "array literal with mixed element types; add `#: Array[T]`")
+	}
+	ts := make([]Type, len(elems))
+	codes := make([]string, len(elems))
+	for i, e := range elems {
+		if isNil(e.typ) {
+			f.errorf(n, "tuple literal with nil element needs an annotation")
+		}
+		ts[i] = e.typ
+		codes[i] = f.coerce(n, e, e.typ)
+	}
+	tt := TTuple{Elems: ts}
+	return expr{code: f.c.goType(tt) + "{" + strings.Join(codes, ", ") + "}", typ: tt}, true
+}
+
 func (f *fctx) genHash(n *parser.HashNode, expected Type) expr {
 	var kT, vT Type
 	if ec, ok := expected.(TClass); ok && ec.C.Name == "Hash" {
 		kT, vT = ec.Args[0], ec.Args[1]
 	}
 	type kv struct{ k, v expr }
-	var pairs []kv
+	pairs := make([]kv, 0, len(n.Elements))
 	for _, el := range n.Elements {
 		a, ok := el.(*parser.AssocNode)
 		if !ok {
@@ -461,7 +494,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		return f.genNew(n, cls, callArgs(n), nil, expected)
 	}
 	if n.IsSAFE_NAVIGATION() {
-		return f.genSafeNav(n, expected)
+		return f.genSafeNav(n)
 	}
 	var recv expr
 	if n.Receiver == nil {
@@ -476,23 +509,23 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 			}
 		}
 	}
-	return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block, expected)
+	return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 }
 
-func (f *fctx) genSafeNav(n *parser.CallNode, expected Type) expr {
+func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	recv := f.genExpr(n.Receiver, nil)
 	if !isOpt(recv.typ) {
-		return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block, expected)
+		return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 	}
 	elem := recv.typ.(TOpt).Elem
 	rt := f.newTmp()
 	inner := expr{code: "(*" + rt + ")", typ: elem}
 	var probe expr
-	f.probe(func() { probe = f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block, nil) })
+	f.probe(func() { probe = f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) })
 	if isVoid(probe.typ) {
 		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 		f.indent++
-		e := f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block, nil)
+		e := f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block)
 		f.emitExprStmt(n, e)
 		f.indent--
 		f.emit("}")
@@ -506,7 +539,7 @@ func (f *fctx) genSafeNav(n *parser.CallNode, expected Type) expr {
 	f.emit("var %s %s", tmp, f.c.goType(resT))
 	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 	f.indent++
-	e := f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block, nil)
+	e := f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block)
 	f.emit("%s = %s", tmp, f.coerce(n, e, resT))
 	f.indent--
 	f.emit("}")
@@ -535,7 +568,7 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 }
 
 // genMethodCall dispatches a call on an already-generated receiver.
-func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node, expected Type) expr {
+func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch t := recv.typ.(type) {
 	case TOpt:
 		return f.optCall(n, recv, name, args)
@@ -551,17 +584,17 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		if e == nil {
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
-		return f.callEntry(n, e, recv, args, block, expected)
+		return f.callEntry(n, e, recv, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
 			if e := f.owner.lookup(name); e != nil {
-				return f.callEntry(n, e, recv, args, block, expected)
+				return f.callEntry(n, e, recv, args, block)
 			}
 			if td := f.c.topDefs[name]; td != nil {
-				return f.callEntry(n, &entry{M: td}, recv, args, block, expected)
+				return f.callEntry(n, &entry{M: td}, recv, args, block)
 			}
 			if e := f.c.classes["Object"].lookup(name); e != nil {
-				return f.callEntry(n, e, recv, args, block, expected)
+				return f.callEntry(n, e, recv, args, block)
 			}
 		}
 		return f.universalCall(n, recv, name, args, block)
@@ -585,7 +618,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		if p.Rest {
 			for ; ai < nargs; ai++ {
 				var a expr
-				var an parser.Node = n
+				an := n
 				if exprs != nil {
 					a = exprs[ai]
 				} else {
@@ -609,7 +642,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		}
 		if ai < nargs {
 			var a expr
-			var an parser.Node = n
+			an := n
 			if exprs != nil {
 				a = exprs[ai]
 			} else {
@@ -651,7 +684,7 @@ func closed(t Type, env map[string]Type) Type {
 	return s
 }
 
-func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node, expected Type) expr {
+func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
@@ -727,7 +760,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		}
 		targs = "[" + strings.Join(ts, ", ") + "]"
 	}
-	return freeFuncName(m) + targs + "(" + recv.code + prefixed(", ", argList) + ")"
+	return freeFuncName(m) + targs + "(" + recv.code + comma(argList) + ")"
 }
 
 // hasForwarder reports whether the receiver's Go type carries a method for e.
@@ -783,11 +816,6 @@ func (f *fctx) needsExplicitTypeArgs(m *Method) bool {
 
 // ---- blocks
 
-type blockParams struct {
-	names []string
-	node  parser.Node
-}
-
 func (f *fctx) blockParamNames(b parser.Node) []string {
 	switch p := b.(type) {
 	case nil:
@@ -832,17 +860,18 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 			}
 			p := f.newTmp()
 			return []string{p}, func() {
-				var lhs, rhs []string
-				var vars []*local
+				lhs := make([]string, 0, len(names))
+				rhs := make([]string, 0, len(names))
+				vars := make([]*local, 0, len(names))
 				for i, nm := range names {
-					v := f.blockParam(nm, tt.Elems[i], n)
+					v := f.blockParam(nm, tt.Elems[i])
 					lhs = append(lhs, v.goName)
 					rhs = append(rhs, fmt.Sprintf("%s.F%d", p, i))
 					vars = append(vars, v)
 				}
 				f.emit("%s := %s", strings.Join(lhs, ", "), strings.Join(rhs, ", "))
 				for _, v := range vars {
-					f.noteUnused(v, n)
+					f.noteUnused(v)
 				}
 			}
 		}
@@ -852,7 +881,7 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	}
 	for i := range yields {
 		if i < len(names) {
-			v := f.blockParam(names[i], yields[i], n)
+			v := f.blockParam(names[i], yields[i])
 			goParams = append(goParams, v.goName)
 		} else {
 			goParams = append(goParams, "_")
@@ -862,7 +891,7 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 		for i := range yields {
 			if i < len(names) {
 				if v := f.scope.lookup(names[i]); v != nil {
-					f.noteUnused(v, n)
+					f.noteUnused(v)
 				}
 			}
 		}
@@ -895,7 +924,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	gen := func(t tail) {
 		if symbolCall != "" {
 			v := f.scope.lookup("x_")
-			e := f.genMethodCall(n, expr{code: v.goName, typ: v.typ}, symbolCall, nil, nil, nil)
+			e := f.genMethodCall(n, expr{code: v.goName, typ: v.typ}, symbolCall, nil, nil)
 			f.applyTail(n, e, t)
 			return
 		}
@@ -932,7 +961,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.closures++
 	f.loops = append(f.loops, loopClosure)
 	goParams, pro := f.bindBlockParams(n, names, params)
-	var ps []string
+	ps := make([]string, 0, len(goParams))
 	for i, gp := range goParams {
 		ps = append(ps, gp+" "+f.c.goType(params[i]))
 	}
@@ -1035,18 +1064,18 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 
 // ---- yield / super / new / raise
 
-func (f *fctx) genYield(n *parser.YieldNode, expected Type) expr {
+func (f *fctx) genYield(n *parser.YieldNode) expr {
 	if f.blockSig == nil {
 		f.errorf(n, "yield in a method whose signature has no block")
 	}
 	if f.closures > 0 {
 		f.errorf(n, "yield inside a non-iterator block is not supported")
 	}
-	var codes []string
 	args := []parser.Node{}
 	if n.Arguments != nil {
 		args = n.Arguments.Arguments
 	}
+	codes := make([]string, 0, len(args))
 	if len(args) != len(f.blockSig.Params) {
 		f.errorf(n, "yield passes %d values but the block takes %d", len(args), len(f.blockSig.Params))
 	}
@@ -1101,7 +1130,7 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
-	code := freeFuncName(e.M) + "(" + f.selfCode + prefixed(", ", strings.Join(codes, ", ")) + ")"
+	code := freeFuncName(e.M) + "(" + f.selfCode + comma(strings.Join(codes, ", ")) + ")"
 	return expr{code: code, typ: subst(e.M.Ret, env)}
 }
 
@@ -1291,14 +1320,14 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 
 // blockParam declares a block parameter: a fresh local that Go syntax
 // declares, so it is never hoisted.
-func (f *fctx) blockParam(name string, typ Type, n parser.Node) *local {
+func (f *fctx) blockParam(name string, typ Type) *local {
 	info := f.locals[name]
 	if info == nil {
 		info = &localInfo{}
 		f.locals[name] = info
 	}
 	info.noHoist = true
-	v := f.declareLocal(name, typ, n)
+	v := f.declareLocal(name, typ)
 	v.declared = true
 	return v
 }

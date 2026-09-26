@@ -1,0 +1,66 @@
+# golangci-lint configuration applied to rb2go's *generated* Go, by the test
+# harness (rb2go_test.go copies it next to each transpiled example). It is
+# the repo's own linter set minus what cannot apply to a transpiler's output:
+# a whole prelude is emitted for every program (`unused`), free functions take
+# `self` for uniformity (`unparam`), and identifiers mirror Ruby names
+# (`revive` naming). The "Code generated" header would normally skip the file;
+# `generated: disable` lints it anyway.
+
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - misspell
+    - errorlint
+    - nilerr
+    - unconvert
+    - gocritic
+    - reassign
+    - exhaustive
+    - whitespace
+    - nilnil
+    - nilnesserr
+    - recvcheck
+    - wastedassign
+    - nolintlint
+    - gochecknoinits
+    - intrange
+    - copyloopvar
+    - mirror
+    - perfsprint
+    - prealloc
+    - gosec
+
+  settings:
+    gocritic:
+      disabled-checks:
+        # `//line` directives have no space after `//` by definition.
+        - commentFormatting
+        # A narrowed `T?` local is spelled `(*x)`; Go's auto-deref makes the
+        # explicit form redundant on method calls but not elsewhere.
+        - underef
+    gosec:
+      excludes:
+        # Integer width conversions: Ruby integers are unbounded, ours are
+        # int; narrowing is by design.
+        - G115
+    staticcheck:
+      checks:
+        - all
+        # The receiver is `self` on purpose: `%x{}` bodies in the prelude
+        # bind Ruby's self to it.
+        - -ST1006
+        # De Morgan rewrites: the generated condition mirrors the Ruby
+        # source's structure, which is what keeps `//line` mapping honest.
+        - -QF1001
+
+  exclusions:
+    generated: disable
