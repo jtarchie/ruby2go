@@ -13,11 +13,10 @@ import (
 	"testing"
 )
 
-// rubyCmd returns a command that runs a gem executable through the same
-// ruby, so it works even when the gem bin dir is not on PATH.
-func rubyCmd(gem, exe string, args ...string) *exec.Cmd {
-	all := append([]string{"-W0", "-e", `load Gem.bin_path("` + gem + `", "` + exe + `")`, "--"}, args...)
-	return exec.Command("ruby", all...)
+// gemCmd runs a Gemfile executable through bundler, so the versions pinned
+// in Gemfile.lock are used regardless of what is on PATH.
+func gemCmd(exe string, args ...string) *exec.Cmd {
+	return exec.Command("bundle", append([]string{"exec", exe}, args...)...)
 }
 
 func requireRuby4(t *testing.T) {
@@ -30,11 +29,11 @@ func requireRuby4(t *testing.T) {
 	if major < 4 {
 		t.Fatalf("ruby >= 4.0 is required, found %s", out)
 	}
-	if out, err := rubyCmd("rbs-inline", "rbs-inline", "--help").CombinedOutput(); err != nil {
-		t.Fatalf("rbs-inline gem is required: %v\n%s", err, out)
+	if out, err := gemCmd("rbs-inline", "--help").CombinedOutput(); err != nil {
+		t.Fatalf("rbs-inline is required (run `bundle install`): %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
-	if out, err := rubyCmd("rbs", "rbs", "--version").CombinedOutput(); err != nil {
-		t.Fatalf("rbs gem is required: %v\n%s", err, out)
+	if out, err := gemCmd("rbs", "--version").CombinedOutput(); err != nil {
+		t.Fatalf("rbs is required (run `bundle install`): %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
 }
 
@@ -81,10 +80,10 @@ func testExample(t *testing.T, dir string) {
 	tmp := t.TempDir()
 	// 1. rbs-inline + rbs validate
 	sig := filepath.Join(tmp, "sig")
-	if out, err := rubyCmd("rbs-inline", "rbs-inline", "--output="+sig, filepath.Join(dir, "main.rb")).CombinedOutput(); err != nil {
+	if out, err := gemCmd("rbs-inline", "--output="+sig, filepath.Join(dir, "main.rb")).CombinedOutput(); err != nil {
 		t.Fatalf("rbs-inline failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
-	if out, err := rubyCmd("rbs", "rbs", "-I", sig, "validate").CombinedOutput(); err != nil {
+	if out, err := gemCmd("rbs", "-I", sig, "validate").CombinedOutput(); err != nil {
 		t.Fatalf("rbs validate failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
 	// 2. transpile, gofmt, vet, build

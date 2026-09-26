@@ -1,0 +1,127 @@
+# golangci-lint v2 configuration for rb2go. The linter set is shared with
+# github.com/jtarchie/steps; the depguard rules are this repo's own.
+
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    # default
+    - errcheck      # unchecked errors are bugs (file I/O, exec)
+    - govet         # go vet superset
+    - ineffassign   # assignments to values never read
+    - staticcheck   # the SA* suite (real bugs, deadcode, simplifications)
+    - unused        # unused functions/vars/types
+    # custom
+    - misspell      # typos in identifiers/comments
+    - bodyclose     # http.Response.Body not closed
+    - errorlint     # %w vs %s on errors, typed nil
+    - nilerr        # returning nil after an err
+    - noctx         # http requests without context
+    - unconvert     # unnecessary type conversions
+    - unparam       # unused function parameters
+    - gocritic      # common pitfalls
+    - reassign      # reassigning package-level vars
+    - tagalign
+    - wrapcheck
+    - sqlclosecheck
+    - exhaustive
+    - whitespace
+    - noinlineerr
+    - importas
+    # nil
+    - nilnil
+    - nilnesserr
+    # Correctness
+    - musttag       # JSON tags required on marshaled structs
+    - recvcheck     # consistent pointer vs value receivers
+    - wastedassign  # assignments whose values are never read
+    - nolintlint    # stale or malformed //nolint directives
+    - errchkjson    # json.Marshal returns ignored where it shouldn't be
+    - loggercheck   # slog key/value mismatch and even-arg invariants
+    # Style / consistency
+    - sloglint      # consistent slog usage
+    - revive        # replacement for golint with a tight ruleset
+    - gochecknoinits # init() side effects make wiring hard to trace
+    # Modern Go idioms
+    - intrange      # `for i := range n` (Go 1.22+)
+    - copyloopvar   # loop-var capture safe by default (Go 1.22+)
+    - mirror        # bytes/strings mirror function suggestions
+    # Performance
+    - perfsprint    # replace fmt.Sprintf/Errorf with faster alternatives
+    - prealloc      # pre-allocate slices where capacity is known
+    # Concurrency / context / HTTP safety
+    - contextcheck  # context.Context must be propagated, not ignored
+    - containedctx  # context.Context must not be stored in structs
+    # Complexity
+    - cyclop        # cyclomatic complexity per function
+    - gocognit      # cognitive complexity (deeply nested / hard-to-read logic)
+    - nestif        # deeply nested if blocks
+    # Security
+    - gosec         # Go security checker
+    # Architecture
+    - depguard      # enforce the import direction
+
+  settings:
+    depguard:
+      rules:
+        # The root package is the public API: embed the prelude, call the
+        # compiler. Nothing else may leak out of internal/.
+        Root:
+          files:
+            - "$all"
+            - "!**/internal/**"
+            - "!**/cmd/**"
+            - "!**/examples/**"
+          allow:
+            - "$gostd"
+            - "rb2go/internal/compiler"
+        # cmd/rb2go is the process boundary: flags in, exit code out.
+        CLI:
+          files:
+            - "**/cmd/**"
+          allow:
+            - "$gostd"
+            - "rb2go"
+        # The compiler owns the parser and the formatter; it reaches the RBS
+        # parser but never the CLI or the root.
+        Compiler:
+          files:
+            - "**/internal/compiler/**"
+          allow:
+            - "$gostd"
+            - "github.com/danielgatis/go-ruby-prism/parser"
+            - "golang.org/x/tools/imports"
+            - "rb2go/internal/rbs"
+        # rbs is a stdlib-only leaf.
+        RBS:
+          files:
+            - "**/internal/rbs/**"
+          allow:
+            - "$gostd"
+    cyclop:
+      max-complexity: 30
+    gocognit:
+      min-complexity: 40
+    nestif:
+      min-complexity: 8
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+  exclusions:
+    rules:
+      # The hand-written example programs are reference output, not code we
+      # maintain to lint standards.
+      - path: ^examples/
+        linters:
+          - cyclop
+          - gocognit
+          - nestif
+          - revive
+          - unparam
+          - unused

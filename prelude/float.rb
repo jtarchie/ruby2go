@@ -1,0 +1,83 @@
+# prelude/float.rb
+# rbs_inline: enabled
+#
+# Float as a named Go float64.
+
+# @go_type float64
+class Float < Object
+  include Comparable
+
+  #: (Float) -> Integer
+  def <=>(other) = %x{ Integer(cmp.Compare(self, other)) }
+
+  #: (Float) -> bool
+  def <(other) = %x{ Boolean(self < other) }
+
+  #: (Float) -> bool
+  def <=(other) = %x{ Boolean(self <= other) }
+
+  #: (Float) -> bool
+  def >(other) = %x{ Boolean(self > other) }
+
+  #: (Float) -> bool
+  def >=(other) = %x{ Boolean(self >= other) }
+
+  #: (untyped) -> bool
+  def ==(other) = %x{
+    switch o := other.(type) {
+    case Float:
+      return Boolean(self == o)
+    case Integer:
+      return Boolean(self == Float(o))
+    }
+    return false
+  }
+
+  #: (Float) -> Float
+  def +(other) = %x{ self + other }
+
+  #: (Float) -> Float
+  def -(other) = %x{ self - other }
+
+  #: (Float) -> Float
+  def *(other) = %x{ self * other }
+
+  #: (Float) -> Float
+  def /(other) = %x{ self / other }
+
+  #: (Float) -> Float
+  def **(other) = %x{ Float(math.Pow(float64(self), float64(other))) }
+
+  #: () -> Float
+  def -@ = %x{ -self }
+
+  #: () -> Float
+  def abs = %x{ Float(math.Abs(float64(self))) }
+
+  #: () -> Integer
+  def to_i = %x{ Integer(self) }
+
+  #: () -> Integer
+  def floor = %x{ Integer(math.Floor(float64(self))) }
+
+  #: () -> Integer
+  def ceil = %x{ Integer(math.Ceil(float64(self))) }
+
+  #: () -> Integer
+  def round = %x{ Integer(math.RoundToEven(float64(self))) }
+
+  #: () -> Float
+  def to_f = self
+
+  #: () -> bool
+  def zero? = %x{ self == 0 }
+
+  #: () -> bool
+  def nan? = %x{ Boolean(math.IsNaN(float64(self))) }
+
+  #: () -> String
+  def to_s = %x{ rbFloatToS(float64(self)) }
+
+  #: () -> String
+  def inspect = to_s
+end

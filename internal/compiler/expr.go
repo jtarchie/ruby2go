@@ -64,10 +64,15 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return expr{code: f.ivarCode(iv), typ: iv.Type}
 	case *parser.InstanceVariableWriteNode:
 		var exp Type
-		if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
+		if t, ok := f.f.trailing[f.f.line(n.Location.StartOffset)]; ok && !strings.HasPrefix(t, "[") {
+			exp = f.parseTypeAnn(n, t)
+		} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
 			exp = iv.Type
 		}
 		val := f.genExpr(n.Value, exp)
+		if exp != nil {
+			val.typ = exp
+		}
 		iv := f.ivar(n, n.Name, val.typ)
 		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
 	case *parser.InstanceVariableOperatorWriteNode:
@@ -303,10 +308,11 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	}
 	if elemT == nil {
 		if len(elems) == 0 {
-			f.errorf(n, "cannot infer the element type of an empty array; add `#: Array[T]`")
+			// Ruby's `[]` is untyped; so is ours without an annotation.
+			elemT = TAny{}
 		}
 		same := true
-		for _, e := range elems[1:] {
+		for _, e := range elems[min(1, len(elems)):] {
 			if !typeEq(e.typ, elems[0].typ) {
 				same = false
 			}
@@ -327,7 +333,9 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 			tt := TTuple{Elems: ts}
 			return expr{code: f.c.goType(tt) + "{" + strings.Join(codes, ", ") + "}", typ: tt}
 		}
-		elemT = elems[0].typ
+		if len(elems) > 0 {
+			elemT = elems[0].typ
+		}
 		if isNil(elemT) {
 			f.errorf(n, "cannot infer the element type of [nil]; add `#: Array[T?]`")
 		}
@@ -337,7 +345,7 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 		codes[i] = f.coerce(n.Elements[i], e, elemT)
 	}
 	t := TClass{C: f.c.classes["Array"], Args: []Type{elemT}}
-	return expr{code: "&Array[" + f.c.goType(elemT) + "]{" + strings.Join(codes, ", ") + "}", typ: t}
+	return expr{code: "(&Array[" + f.c.goType(elemT) + "]{" + strings.Join(codes, ", ") + "})", typ: t}
 }
 
 func (f *fctx) genHash(n *parser.HashNode, expected Type) expr {
@@ -363,7 +371,7 @@ func (f *fctx) genHash(n *parser.HashNode, expected Type) expr {
 		pairs = append(pairs, kv{k, v})
 	}
 	if kT == nil {
-		f.errorf(n, "cannot infer the type of an empty hash; add `#: Hash[K, V]`")
+		kT, vT = TAny{}, TAny{}
 	}
 	if isNil(kT) || isNil(vT) {
 		f.errorf(n, "cannot infer hash types from nil; add `#: Hash[K, V]`")
@@ -506,16 +514,24 @@ func (f *fctx) genSafeNav(n *parser.CallNode, expected Type) expr {
 }
 
 // resolve finds the method entry for name on a receiver type, or nil.
+// Top-level defs are private methods on Object, so a receiver-less call
+// anywhere can reach them.
 func (f *fctx) resolve(recvT Type, name string) *entry {
+	var e *entry
 	switch t := recvT.(type) {
 	case TClass:
-		return t.C.lookup(name)
+		e = t.C.lookup(name)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
-			return f.owner.lookup(name)
+			e = f.owner.lookup(name)
 		}
 	}
-	return nil
+	if e == nil {
+		if td := f.c.topDefs[name]; td != nil {
+			return &entry{M: td}
+		}
+	}
+	return e
 }
 
 // genMethodCall dispatches a call on an already-generated receiver.
@@ -527,18 +543,12 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		return f.tupleCall(n, recv, name, args)
 	case TClass:
 		e := t.C.lookup(name)
+		if e == nil && recv.code == f.selfCode {
+			if td := f.c.topDefs[name]; td != nil {
+				e = &entry{M: td}
+			}
+		}
 		if e == nil {
-			// top-level defs are private methods on Object
-			if recv.code == f.selfCode && f.owner == nil {
-				if td := f.c.topDefs[name]; td != nil {
-					return f.callTopDef(n, td, args, block)
-				}
-			}
-			if recv.code == f.selfCode {
-				if td := f.c.topDefs[name]; td != nil {
-					return f.callTopDef(n, td, args, block)
-				}
-			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
 		return f.callEntry(n, e, recv, args, block, expected)
@@ -548,7 +558,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 				return f.callEntry(n, e, recv, args, block, expected)
 			}
 			if td := f.c.topDefs[name]; td != nil {
-				return f.callTopDef(n, td, args, block)
+				return f.callEntry(n, &entry{M: td}, recv, args, block, expected)
 			}
 			if e := f.c.classes["Object"].lookup(name); e != nil {
 				return f.callEntry(n, e, recv, args, block, expected)
@@ -560,15 +570,6 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
-}
-
-func (f *fctx) callTopDef(n parser.Node, m *Method, args []parser.Node, block parser.Node) expr {
-	if block != nil {
-		f.errorf(n, "blocks on top-level functions are not supported")
-	}
-	env := map[string]Type{}
-	codes := f.genArgs(n, m, env, args, nil)
-	return expr{code: m.GoName + "(" + strings.Join(codes, ", ") + ")", typ: m.Ret}
 }
 
 // genArgs generates and coerces call arguments against m's parameters,
@@ -690,7 +691,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	}
 	ret := subst(m.Ret, env)
 	code := f.callCode(e, recv, codes, env)
-	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" {
+	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" && e.Owner != nil {
 		if rc, ok := recv.typ.(TClass); ok && rc.C.isStruct() && e.Entry != rc.C {
 			code += ".(" + f.c.goType(recv.typ) + ")"
 		}
@@ -704,6 +705,9 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	argList := strings.Join(args, ", ")
 	if recv.lit {
 		recv.code = f.c.goType(recv.typ) + "(" + recv.code + ")"
+	}
+	if m.Owner == nil {
+		return m.GoName + "(" + argList + ")"
 	}
 	free := m.generic() || (m.Private && !f.c.isDirectMethod(m)) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e))
 	if !free {
@@ -728,7 +732,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 
 // hasForwarder reports whether the receiver's Go type carries a method for e.
 func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
-	if e.M.Private || e.M.generic() {
+	if e.Owner == nil || e.M.Private || e.M.generic() {
 		return false
 	}
 	switch t := recvT.(type) {
@@ -1189,7 +1193,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	elem := recv.typ.(TOpt).Elem
 	switch name {
 	case "nil?":
-		return expr{code: recv.code + " == nil", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	case "to_s":
 		return expr{code: "rbToS(Opt(" + recv.code + "))", typ: f.cls("String")}
 	case "inspect":
@@ -1205,7 +1209,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		}
 		return expr{code: code, typ: f.cls("Boolean")}
 	case "!":
-		return expr{code: recv.code + " == nil", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	}
 	f.errorf(n, "method %s called on possibly-nil %s; narrow with `if x` or use `&.`", name, elem)
 	return expr{}
@@ -1259,9 +1263,9 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "inspect":
 		return expr{code: "rbInspect(" + recv.code + ")", typ: f.cls("String")}
 	case "nil?":
-		return expr{code: "any(" + recv.code + ") == nil", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(any(" + recv.code + ") == nil)", typ: f.cls("Boolean")}
 	case "!":
-		return expr{code: "!rbTruthy(" + recv.code + ")", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(!rbTruthy(" + recv.code + "))", typ: f.cls("Boolean")}
 	case "==", "!=":
 		a := one(recv.typ)
 		code := "rbEq(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")"
@@ -1274,7 +1278,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		return expr{code: code, typ: f.cls("Boolean")}
 	case "equal?":
 		a := one(nil)
-		return expr{code: "rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + "))", typ: f.cls("Boolean")}
 	case "<=>":
 		a := one(recv.typ)
 		return expr{code: "rbCmp(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}

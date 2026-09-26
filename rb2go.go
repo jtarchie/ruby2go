@@ -3,13 +3,15 @@ package rb2go
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 
 	"rb2go/internal/compiler"
 )
 
-//go:embed prelude.rb
-var Prelude []byte
+// Prelude holds prelude.rb and the files it require_relatives.
+//
+//go:embed prelude.rb prelude/*.rb
+var Prelude embed.FS
 
 // Compile transpiles the Ruby source of mainName (with the embedded prelude)
 // into a single Go file.

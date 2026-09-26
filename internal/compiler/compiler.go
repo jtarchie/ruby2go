@@ -4,7 +4,9 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -22,6 +24,10 @@ type Compiler struct {
 	mainStmts  []parser.Node
 	mainFile   *File
 	files      []*File
+	preludeFS  fs.FS
+	parser     *parser.Parser
+	ctx        context.Context
+	loaded     map[string]bool
 	out        strings.Builder
 	Warnings   []string
 	// tuple arities used, so their types get emitted
@@ -56,13 +62,14 @@ func nodeType(n parser.Node) string {
 	return strings.TrimPrefix(fmt.Sprintf("%T", n), "*parser.")
 }
 
-// Compile transpiles prelude + main source into one Go file.
-func Compile(ctx context.Context, preludeSrc []byte, mainName string, mainSrc []byte) ([]byte, error) {
-	out, _, err := CompileWithWarnings(ctx, preludeSrc, mainName, mainSrc)
+// Compile transpiles the prelude (prelude.rb in preludeFS, plus whatever it
+// require_relatives) and the main source into one Go file.
+func Compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte) ([]byte, error) {
+	out, _, err := CompileWithWarnings(ctx, preludeFS, mainName, mainSrc)
 	return out, err
 }
 
-func compile(ctx context.Context, preludeSrc []byte, mainName string, mainSrc []byte, warnings *[]string) (out []byte, err error) {
+func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte, warnings *[]string) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -78,21 +85,15 @@ func compile(ctx context.Context, preludeSrc []byte, mainName string, mainSrc []
 	}
 	defer p.Close(ctx)
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, tupleN: map[int]bool{}}
-	pf, err := parseFile(ctx, p, "prelude.rb", preludeSrc, true)
-	if err != nil {
-		return nil, err
-	}
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, tupleN: map[int]bool{},
+		preludeFS: preludeFS, parser: p, ctx: ctx, loaded: map[string]bool{}}
+	c.loadPrelude("prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)
 	if err != nil {
 		return nil, err
 	}
-	c.files = []*File{pf, mf}
+	c.files = append(c.files, mf)
 	c.mainFile = mf
-	c.collect(pf)
-	if len(c.mainStmts) > 0 {
-		c.errorf(pf, c.mainStmts[0], "prelude must not have top-level statements")
-	}
 	c.collect(mf)
 	c.link()
 	c.discoverIvars()
@@ -120,8 +121,45 @@ func (c *Compiler) sortedClasses() []*Class {
 }
 
 // CompileWithWarnings is Compile plus the warnings collected.
-func CompileWithWarnings(ctx context.Context, preludeSrc []byte, mainName string, mainSrc []byte) ([]byte, []string, error) {
+func CompileWithWarnings(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte) ([]byte, []string, error) {
 	var warnings []string
-	out, err := compile(ctx, preludeSrc, mainName, mainSrc, &warnings)
+	out, err := compile(ctx, preludeFS, mainName, mainSrc, &warnings)
 	return out, warnings, err
+}
+
+// loadPrelude parses and collects one prelude file. `require_relative` at
+// its top level pulls in further files, in place, so emission order follows
+// require order.
+func (c *Compiler) loadPrelude(name string) {
+	if c.loaded[name] {
+		return
+	}
+	c.loaded[name] = true
+	src, err := fs.ReadFile(c.preludeFS, name)
+	if err != nil {
+		panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
+	}
+	f, err := parseFile(c.ctx, c.parser, name, src, true)
+	if err != nil {
+		panic(compileError{msg: err.Error()})
+	}
+	c.files = append(c.files, f)
+	c.collect(f)
+	if len(c.mainStmts) > 0 {
+		c.errorf(f, c.mainStmts[0], "prelude must not have top-level statements")
+	}
+}
+
+// requireRelative resolves `require_relative "x"` inside prelude file f.
+func (c *Compiler) requireRelative(f *File, n *parser.CallNode) {
+	args := callArgs(n)
+	str, ok := args[0].(*parser.StringNode)
+	if len(args) != 1 || !ok {
+		c.errorf(f, n, "require_relative needs a string literal")
+	}
+	target := path.Join(path.Dir(f.Name), str.Unescaped.Value)
+	if !strings.HasSuffix(target, ".rb") {
+		target += ".rb"
+	}
+	c.loadPrelude(target)
 }

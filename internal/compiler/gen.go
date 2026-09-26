@@ -535,7 +535,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		var conds []string
 		for _, cond := range wn.Conditions {
 			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil, nil)
-			conds = append(conds, eq.code)
+			conds = append(conds, "bool("+eq.code+")")
 		}
 		f.emit("case %s:", strings.Join(conds, " || "))
 		saved := f.enterBlock()
@@ -679,6 +679,29 @@ func containsRescue(n parser.Node) bool {
 	return false
 }
 
+// containsRescueClause is containsRescue without ensure-only begins.
+func containsRescueClause(n parser.Node) bool {
+	if n == nil {
+		return false
+	}
+	switch b := n.(type) {
+	case *parser.BeginNode:
+		if b.RescueClause != nil {
+			return true
+		}
+	case *parser.RescueModifierNode:
+		return true
+	case *parser.DefNode:
+		return false
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if containsRescueClause(ch) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 	if n.RescueClause == nil && n.EnsureClause == nil {
 		f.genStmts(n.Statements, t)
@@ -782,12 +805,14 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		if len(classes) > 1 {
 			bind = f.c.classes["Exception"]
 		}
-		v := f.declareLocal(lt.Name, TClass{C: bind}, rc.Reference)
+		// A fresh binding per clause: the same Ruby name may hold a
+		// different exception class in each rescue.
+		v := f.blockParam(lt.Name, TClass{C: bind}, rc.Reference)
 		f.emit("%s := r.(%s)", v.goName, f.c.goType(TClass{C: bind}))
 		f.noteUnused(v, rc.Reference)
 	}
 	f.genStmts(rc.Statements, t)
-	if !endsInRaise(rc.Statements) {
+	if !terminates(rc.Statements) {
 		f.emit("return")
 	}
 	f.indent--
@@ -795,12 +820,19 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 	f.emit("}")
 }
 
-func endsInRaise(st *parser.StatementsNode) bool {
+// terminates reports whether a statement list ends in a jump, so no Go
+// `return` may follow it (vet flags unreachable code).
+func terminates(st *parser.StatementsNode) bool {
 	if st == nil || len(st.Body) == 0 {
 		return false
 	}
-	c, ok := st.Body[len(st.Body)-1].(*parser.CallNode)
-	return ok && c.Receiver == nil && c.Name == "raise"
+	switch last := st.Body[len(st.Body)-1].(type) {
+	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
+		return true
+	case *parser.CallNode:
+		return last.Receiver == nil && last.Name == "raise"
+	}
+	return false
 }
 
 // ---- locals
@@ -892,11 +924,13 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		if val.lit && typeEq(val.typ, v.typ) {
 			code = f.c.goType(v.typ) + "(" + code + ")"
 		}
-		if f.pass == 2 && info != nil && info.hoist {
-			v.declared = true
+		v.declared = true
+		switch {
+		case f.pass == 2 && info != nil && info.hoist:
 			f.emit("%s = %s", v.goName, code)
-		} else {
-			v.declared = true
+		case code == "nil":
+			f.emit("var %s %s", v.goName, f.c.goType(v.typ))
+		default:
 			f.emit("%s := %s", v.goName, code)
 		}
 		if f.pass < 2 && info == nil {

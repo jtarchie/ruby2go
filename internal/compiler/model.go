@@ -240,8 +240,15 @@ func (c *Compiler) collect(f *File) {
 			}
 			c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
 		case *parser.CallNode:
-			if n.Receiver == nil && n.Name == "require" || n.Name == "require_relative" {
+			if n.Receiver == nil && n.Name == "require_relative" && f.prelude {
+				c.requireRelative(f, n)
 				continue
+			}
+			if n.Receiver == nil && n.Name == "require_relative" {
+				c.errorf(f, n, "require_relative is not supported in user code")
+			}
+			if n.Receiver == nil && n.Name == "require" {
+				continue // stdlib requires are meaningless here
 			}
 			c.mainStmts = append(c.mainStmts, n)
 		default:
@@ -669,7 +676,11 @@ func (c *Compiler) resolveMethod(m *Method) {
 			bs.Params = append(bs.Params, c.resolveType(p.Type, sc))
 		}
 		m.Block = bs
-		m.Iterator = isVoid(bs.Ret) && !m.sig.Block.Optional
+		// A void block makes the method an inline iterator (Go range-over-
+		// func), unless the body rescues: Go forbids an iterator from
+		// recovering a panic raised in the loop body, so such methods take
+		// a closure instead.
+		m.Iterator = isVoid(bs.Ret) && !m.sig.Block.Optional && !(m.Kind == kindDef && containsRescueClause(m.Node.Body))
 	}
 	m.Ret = c.resolveType(m.sig.Return, sc)
 	c.bindParamNames(m)
