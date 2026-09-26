@@ -59,7 +59,12 @@
     return "an instance of " + rbClassName(v)
   }
 
-  func rbNoMethod(name string, recv any) any {
+  // rbNoMethod is MRI's error for a missing method; a bare `name` (a
+  // "vcall": no receiver, arguments or parentheses) is a NameError.
+  func rbNoMethod(name string, recv any, vcall bool) any {
+    if vcall {
+      return NewNameError(Ref(String("undefined local variable or method '" + name + "' for " + rbDescribe(recv))))
+    }
     return NewNoMethodError(Ref(String("undefined method '" + name + "' for " + rbDescribe(recv))))
   }
 }

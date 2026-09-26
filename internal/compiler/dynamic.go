@@ -112,13 +112,13 @@ func mentionsVar(t Type) bool {
 
 func (c *Compiler) emitDynName(name string) {
 	gn := goMethodName(name)
-	c.w("func rbDyn%s(recv any, args ...any) any {\n", gn)
+	c.w("func rbDyn%s(vcall bool, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
 	if name != "method_missing" {
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
 	}
-	c.w("\tpanic(rbNoMethod(%q, recv))\n}\n\n", name)
+	c.w("\tpanic(rbNoMethod(%q, recv, vcall))\n}\n\n", name)
 	for _, cls := range c.classList {
 		if e := c.dynEntry(cls, name); e != nil {
 			c.emitDynWrapper(cls, e, name)
@@ -287,11 +287,11 @@ func (c *Compiler) allMethodNames() []string {
 func (c *Compiler) emitNameSwitches() {
 	c.w("func rbSendByName(recv any, name string, args ...any) any {\n\tswitch name {\n")
 	for _, name := range c.dynNames {
-		c.w("\tcase %q:\n\t\treturn rbDyn%s(recv, args...)\n", name, goMethodName(name))
+		c.w("\tcase %q:\n\t\treturn rbDyn%s(false, recv, args...)\n", name, goMethodName(name))
 	}
 	c.w("\t}\n\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 	c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(name)}, args...)...)\n\t}\n")
-	c.w("\tpanic(rbNoMethod(name, recv))\n}\n\n")
+	c.w("\tpanic(rbNoMethod(name, recv, false))\n}\n\n")
 	c.w("func rbRespondsByName(recv any, name string) Boolean {\n\tswitch name {\n")
 	for _, name := range c.respondNames {
 		c.w("\tcase %q:\n\t\treturn rbResponds%s(recv)\n", name, goMethodName(name))

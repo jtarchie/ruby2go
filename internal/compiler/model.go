@@ -1221,7 +1221,7 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 	for i, a := range args {
 		ln := f.line(a.GetLocation().StartOffset)
 		t, ok := f.trailing[ln]
-		if !ok || (i > 0 && ln == f.line(args[i-1].GetLocation().StartOffset)) {
+		if !ok || ln == f.line(n.Location.StartOffset) || (i > 0 && ln == f.line(args[i-1].GetLocation().StartOffset)) {
 			perLine = false
 			break
 		}

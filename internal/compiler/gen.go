@@ -28,6 +28,7 @@ type fctx struct {
 	locals       map[string]*localInfo
 	scope        *scope
 	block        string
+	rbScope      string // the block path where the current Ruby scope (method or block) starts
 	blockCtr     int
 	loops        []loopKind
 	closures     int // nesting depth of Go closures (non-iterator blocks)
@@ -47,6 +48,8 @@ const (
 
 type localInfo struct {
 	declBlock string
+	declRuby  string // Ruby scope (method or block) the local belongs to
+	declPass  int    // the generation pass that last saw its first assignment
 	hoist     bool
 	reads     int
 	writes    int
@@ -106,6 +109,33 @@ func (f *fctx) enterBlock() string {
 	f.block = fmt.Sprintf("%s.%d", f.block, f.blockCtr)
 	f.push()
 	return saved
+}
+
+// enterRubyBlock starts a Go block that is also a Ruby block (a closure or
+// an iterator's loop body): locals first assigned inside stay inside.
+func (f *fctx) enterRubyBlock() (string, string) {
+	saved := f.enterBlock()
+	savedRuby := f.rbScope
+	f.rbScope = f.block
+	return saved, savedRuby
+}
+
+func (f *fctx) leaveRubyBlock(saved, savedRuby string) {
+	f.rbScope = savedRuby
+	f.leaveBlock(saved)
+}
+
+// sameScopeLocal finds a local assigned earlier in the same Ruby scope but
+// inside another Go block (an if branch, a begin body read from ensure):
+// Ruby locals are method- or block-scoped, not branch-scoped. It is
+// hoisted to a function-level var.
+func (f *fctx) sameScopeLocal(name string) *local {
+	info := f.locals[name]
+	if info == nil || info.noHoist || info.typ == nil || info.declPass != f.pass || !isAncestorBlock(info.declRuby, f.rbScope) {
+		return nil
+	}
+	info.hoist = true
+	return &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true}
 }
 
 func (f *fctx) leaveBlock(saved string) {
@@ -410,15 +440,37 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		}
 	case *parser.AndNode:
 		l, nl := f.genCond(n.Left)
+		var r string
+		var nr []narrowInfo
 		f.push()
 		f.applyNarrow(nl)
-		r, nr := f.genCond(n.Right)
+		stmts := f.capture(func() { r, nr = f.genCond(n.Right) })
 		f.pop()
-		return l + " && " + r, append(nl, nr...)
+		if stmts == "" {
+			return l + " && " + r, append(nl, nr...)
+		}
+		// the right side needs statements: run them only if the left holds
+		tmp := f.newTmp()
+		f.emit("%s := false", tmp)
+		f.emit("if %s {", l)
+		f.buf.WriteString(stmts)
+		f.emit("\t%s = %s", tmp, r)
+		f.emit("}")
+		return tmp, nl
 	case *parser.OrNode:
 		l, _ := f.genCond(n.Left)
-		r, _ := f.genCond(n.Right)
-		return l + " || " + r, nil
+		var r string
+		stmts := f.capture(func() { r, _ = f.genCond(n.Right) })
+		if stmts == "" {
+			return l + " || " + r, nil
+		}
+		tmp := f.newTmp()
+		f.emit("%s := true", tmp)
+		f.emit("if !(%s) {", l)
+		f.buf.WriteString(stmts)
+		f.emit("\t%s = %s", tmp, r)
+		f.emit("}")
+		return tmp, nil
 	case *parser.CallNode:
 		if n.Name == "!" && n.Arguments == nil && n.Receiver != nil {
 			c, _ := f.genCond(n.Receiver)
@@ -440,6 +492,12 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
 			return f.narrowIsA(call, f.readLocal(lv))
 		}
+		if v := f.attrLocal(call.Receiver); v != nil {
+			return f.narrowIsA(call, v)
+		}
+	}
+	if v := f.attrLocal(n); v != nil && v.base == nil && isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
+		return v.goName + " != nil", []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 	}
 	e := f.genExpr(n, nil)
 	return f.truthy(n, e), nil
@@ -781,6 +839,11 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 		// probing: just collect types
 		inner = t
 	}
+	if n.EnsureClause != nil && terminates(n.EnsureClause.Statements) {
+		// an ensure ending in `return` decides the value; the body's and
+		// rescue's values are discarded, as in Ruby
+		inner = tail{}
+	}
 	needFlag := containsReturn(n.Statements) || (n.RescueClause != nil && containsReturn(n.RescueClause))
 	flag := ""
 	if needFlag && t.kind != tailReturn {
@@ -793,33 +856,64 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 	f.begins++
 	savedFlag := f.retFlag
 	f.retFlag = flag
-	if n.EnsureClause != nil {
-		f.emit("defer func() {")
+	// Generate in Ruby's order (body, rescue, ensure) so locals assigned in
+	// the body are known to rescue and ensure; emit in Go's order, since
+	// the defers must be registered before the body runs.
+	body := f.capture(func() {
+		// its own block, so the rescue/ensure closures (emitted before it)
+		// see body locals as foreign and hoist them
 		saved := f.enterBlock()
-		f.indent++
-		f.genStmts(n.EnsureClause.Statements, tail{})
-		f.indent--
+		f.genStmts(n.Statements, inner)
 		f.leaveBlock(saved)
-		f.emit("}()")
-	}
-	if n.RescueClause != nil {
-		f.emit("defer func() {")
-		saved := f.enterBlock()
-		f.indent++
-		f.emit("if r := recover(); r != nil {")
-		f.indent++
-		f.emit("r = rbWrapPanic(r)")
-		for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
-			f.genRescueClause(rc, inner)
+	})
+	rescue := f.capture(func() {
+		if n.RescueClause != nil {
+			f.emit("defer func() {")
+			saved := f.enterBlock()
+			f.indent++
+			f.emit("if r := recover(); r != nil {")
+			f.indent++
+			f.emit("r = rbWrapPanic(r)")
+			for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
+				f.genRescueClause(rc, inner)
+			}
+			f.emit("panic(r)")
+			f.indent--
+			f.emit("}")
+			f.indent--
+			f.leaveBlock(saved)
+			f.emit("}()")
 		}
-		f.emit("panic(r)")
-		f.indent--
-		f.emit("}")
-		f.indent--
-		f.leaveBlock(saved)
-		f.emit("}()")
-	}
-	f.genStmts(n.Statements, inner)
+	})
+	ensure := f.capture(func() {
+		if n.EnsureClause != nil {
+			f.emit("defer func() {")
+			saved := f.enterBlock()
+			f.indent++
+			// `return` in ensure discards a pending exception, as in Ruby:
+			// hold it, and re-raise only if the ensure body falls through.
+			pending := ""
+			switch {
+			case terminates(n.EnsureClause.Statements):
+				f.emit("_ = recover()") // it always returns: the exception is dropped
+			case containsReturn(n.EnsureClause):
+				pending = f.newTmp()
+				f.emit("%s := recover()", pending)
+			}
+			f.genStmts(n.EnsureClause.Statements, tail{})
+			if pending != "" {
+				f.emit("if %s != nil {", pending)
+				f.emit("\tpanic(%s)", pending)
+				f.emit("}")
+			}
+			f.indent--
+			f.leaveBlock(saved)
+			f.emit("}()")
+		}
+	})
+	f.buf.WriteString(ensure)
+	f.buf.WriteString(rescue)
+	f.buf.WriteString(body)
 	f.begins--
 	f.retFlag = savedFlag
 	f.indent--
@@ -900,8 +994,12 @@ func terminates(st *parser.StatementsNode) bool {
 func (f *fctx) declareLocal(name string, typ Type) *local {
 	info := f.locals[name]
 	if info == nil {
-		info = &localInfo{declBlock: f.block, typ: typ}
+		info = &localInfo{declBlock: f.block, declRuby: f.rbScope, typ: typ}
 		f.locals[name] = info
+	}
+	if info.declPass != f.pass {
+		info.declPass = f.pass
+		info.declBlock, info.declRuby = f.block, f.rbScope
 	}
 	if info.noHoist {
 		// block params are fresh per block; never share analysis
@@ -931,6 +1029,9 @@ func (f *fctx) noteUnused(v *local) {
 
 func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 	v := f.scope.lookup(n.Name)
+	if v == nil {
+		v = f.sameScopeLocal(n.Name)
+	}
 	if v == nil && f.m != nil && n.Name == f.m.BlockParam {
 		f.errorf(n, "the block parameter &%s can only be called (%s.call) or passed on (&%s)", n.Name, n.Name, n.Name)
 	}
@@ -950,6 +1051,9 @@ func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 // assignLocal emits `x := v` / `x = v` and returns the local.
 func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type) expr {
 	existing := f.scope.lookup(name)
+	if existing == nil {
+		existing = f.sameScopeLocal(name)
+	}
 	info := f.locals[name]
 	var typ Type
 	switch {
@@ -1344,4 +1448,15 @@ func (f *fctx) genConstInit(k *Const) {
 	f.buf.WriteString(sub.buf.String())
 	f.emit("\treturn %s", code)
 	f.emit("}()")
+}
+
+// capture runs gen and returns the statements it emitted instead of
+// emitting them, for code that must run conditionally.
+func (f *fctx) capture(gen func()) string {
+	saved := f.buf
+	f.buf = &strings.Builder{}
+	gen()
+	out := f.buf.String()
+	f.buf = saved
+	return out
 }
