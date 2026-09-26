@@ -485,6 +485,13 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if typeEq(e.typ, to) {
 		return e.code
 	}
+	// `untyped?` is just untyped: its nil is Ruby's nil.
+	if o, ok := e.typ.(TOpt); ok && isAny(o.Elem) {
+		e = expr{code: "Opt(" + e.code + ")", typ: TAny{}}
+		if isAny(to) {
+			return e.code
+		}
+	}
 	switch to := to.(type) {
 	case TAny:
 		switch {
@@ -510,12 +517,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		}
 
 		if isOpt(e.typ) {
-			// Ruby would raise NoMethodError on nil; Go panics on the deref.
-			return "(*" + e.code + ")"
-		}
-		if ec, ok := e.typ.(TClass); ok && to.C.GoType != "" && e.lit {
-			_ = ec
-			return e.code
+			f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
 		}
 		if isNil(e.typ) {
 			f.errorf(n, "nil where %s is expected", to)

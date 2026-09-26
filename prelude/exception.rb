@@ -27,6 +27,7 @@ class Exception < Object
 end
 
 class StandardError < Exception; end
+class IOError < StandardError; end
 
 class RuntimeError < StandardError; end
 
