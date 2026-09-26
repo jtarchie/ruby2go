@@ -27,11 +27,12 @@ cmd/rb2go/            CLI: rb2go [-o out.go] main.rb
 internal/compiler/    Ruby → Go: declarations, types, codegen
 internal/rbs/         the RBS type-syntax subset the compiler understands
 prelude.rb            core library entry point; require_relatives prelude/*.rb
-prelude/              core library, written in Ruby, compiled by the same transpiler
+prelude/              core library, written in Ruby, compiled by the same transpiler;
+                      includes net_http.rb and webrick.rb over Go's net/http
 examples/NN_*/        main.rb (user code, runs on MRI) + main.go (hand-written target shape)
 rb2go_test.go         the integration suite (below)
 check.sh              runs the hand-written main.go files against MRI
-Gemfile               rbs + rbs-inline, used by the tests through `bundle exec`
+Gemfile               rbs, rbs-inline, and webrick (the HTTP examples' MRI server)
 .golangci.yml         lint config for this repo
 .golangci.generated.yml  lint config the tests apply to the generated Go
 ```
@@ -44,6 +45,10 @@ install` has been run, and `golangci-lint` is on PATH; then for every
 2. the transpiled Go passes `gofmt`, `go vet`, `go build` and
    `golangci-lint` (with `.golangci.generated.yml`);
 3. its stdout and exit code equal `ruby main.rb`.
+
+Examples that `require "net/http"` (or any library) get the matching
+`rbs -r net-http` flags, so their annotations validate against the
+library's signatures.
 
 The hand-written `main.go` files are the *target shape*, not golden files:
 the transpiler's output is written to a temp dir and never compared to them
@@ -317,6 +322,45 @@ primitive.
   `prelude.rb`/`main.rb`, but to the wrong line inside `puts` — one directive
   per function isn't enough; emit one per statement.
 
+### 07–24 — one feature each
+
+Ruby 4.0 syntax (a line starting with `&&`, `it`), control flow, struct
+classes, strings, hashes, optionals, exception flow, an uncaught exception,
+namespaces and constants, class methods and class objects, symbols and
+braceless hash arguments, regexps, JSON, `untyped` and `is_a?`, `||=`,
+multiple assignment, threads, and a WEBrick server with a `Net::HTTP`
+client in one process. Only 00–06 have a hand-written `main.go`.
+
+### 25 — resty: a web framework over `net/http`
+
+[main.rb](examples/25_resty/main.rb) is a typed port of
+[jtarchie/resty](https://github.com/jtarchie/resty), a Rack framework that
+forces RESTful conventions. The program mounts it on WEBrick, then drives
+it with `Net::HTTP`, replaying resty's own integration specs over a real
+socket. On Go, WEBrick and `Net::HTTP` are the prelude's classes over
+`net/http`'s `http.Server` and `http.Client`; the printed transcript is
+byte-for-byte MRI's.
+
+What survives from resty is its architecture: a request picks its action
+class and its format class by asking each candidate *class* `matches?`
+(`Actions::ALL.detect { |a| a.matches?(request) }`), then instantiates the
+winner through `singleton(Actions::Base)`, and actions find the app's
+controller action by `self.class.name`. What had to change is exactly the
+README's anti-goal list:
+
+- `"#{ns}::#{path.camelize}Controller".constantize` and
+  `const_get(action_name)` become a typed registry,
+  `Hash[String, singleton(Resty::Action)]`;
+- `Actions.constants.map { const_get }` becomes an explicit `ALL` list;
+- `NullController`'s `method_missing` becomes a `NullAction` class;
+- `Rack::Request` becomes `Resty::Request`, built from WEBrick's request;
+  ActiveRecord becomes an in-memory `Resty::Model`;
+- idioms whose types are unions (`path =~ re || …` as a `bool`,
+  `match(...)[1]` on a possible nil) are spelled with `match?` and a check.
+
+Running the original files fails loudly and early, for example
+`controller.rb:5: uninitialized constant Struct`.
+
 ## Open decisions
 
 Decisions taken while building `rb2go` are recorded under the item they
@@ -334,21 +378,25 @@ resolve; anything not listed is still open.
    `<`→`Lt`, `<=`→`Le`, `>`→`Gt`, `>=`→`Ge`, `+`→`Plus`, `-`→`Minus`,
    `*`→`Mul`, `/`→`Div`, `%`→`Mod`, `**`→`Pow`, unary `-`→`Neg`, `+@`→`Pos`,
    `!`→`Not`, `~`→`Inv`, `<<`→`Shl`, `>>`→`Shr`, `&`→`BitAnd`, `|`→`BitOr`,
-   `^`→`BitXor`, `=~`→`Match`, `===`→`Eqq`, `[]`→`Idx`, `[]=`→`IdxSet`.
-   Everything else camel-cases with `?`→`Q`, `!`→`Bang`, `=`→`Set`; leading
-   underscores are kept (`__write`→`__Write`). `[]` is `Idx`, not `Index`,
-   because `String#index` exists — the table has to stay injective against
-   camel-cased names too.
+   `^`→`BitXor`, `=~`→`EqTilde`, `!~`→`NotTilde`, `===`→`Eqq`, `[]`→`Idx`,
+   `[]=`→`IdxSet`. Everything else camel-cases with `?`→`Q`, `!`→`Bang`,
+   `=`→`Set`; leading underscores are kept (`__write`→`__Write`). The table
+   has to stay injective against camel-cased names too: `[]` is not `Index`
+   because `String#index` exists, and `=~` is not `Match` because `#match`
+   exists.
 4. Non-local `return`/`break`/`next` in blocks: **decided, inline loops
    only.** A method whose block returns `void` compiles to a Go iterator
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a
    `for range` loop, so `return`, `break` and `next` are plain Go. Blocks
    passed to value-returning methods (`map`, `select`, `then`, …) are Go
    closures; `next` is `return`, and `return`/`break` inside them is a
-   compile error. The sentinel-panic fallback is not implemented. One
-   exception to the iterator rule: a method that `rescue`s around `yield`
-   takes a closure instead, because Go forbids a range function from
-   recovering a panic raised in the loop body.
+   compile error. The sentinel-panic fallback is not implemented.
+   A method is an iterator only when the block *and* the method return
+   nothing, the block is only yielded to, and nothing rescues around the
+   yield (Go forbids a range function from recovering a panic raised in
+   the loop body). A `%x{}` leaf is an iterator only if its Go builds one
+   (`func(yield ...`). Everything else takes a closure: `Thread.new { }`
+   returns a Thread, `mount_proc(path) { }` stores its block.
 5. `Hash.new(default)` / `Hash#[]` typing: **decided, `Hash#[]` is
    `(K) -> V?`** and there is no default value. `Hash#fetch(k, default)`
    covers the common case; `tally`/`group_by` are written with `||`.
@@ -408,3 +456,64 @@ resolve; anything not listed is still open.
     the Go inside them: write `\\n` for a Go `\n`, `\#{` for a literal `#{`,
     and keep braces balanced (no `"{"` in Go strings). A one-line body of a
     non-void method gets `return` prepended.
+17. Namespaces: a class's Go name joins its constant path with `_`
+    (`Resty::Actions::Show` → `Resty_Actions_Show`); a generated map gives
+    messages and `inspect` the Ruby name back. Constants resolve as Ruby
+    does: the lexical scope innermost-out (`Module.nesting`), then the
+    innermost class's ancestors, then top level; `class A::B` compact form
+    does not put `A` in scope. RBS names in annotations resolve the same way.
+18. Constants are Go package variables, typed by `#: T` or by their
+    initializer. Go orders package initialization by dependency, so
+    constants may refer to each other and to classes in any order, but all
+    of them initialize before `main`: an initializer with visible side
+    effects would run earlier than MRI runs it.
+19. Class methods: every struct class, and every class or module with
+    `def self.` methods, gets a metaclass — a struct class holding the
+    class methods, inheriting from the parent's metaclass — and one
+    instance of it is the class object. Class methods therefore inherit and
+    dispatch virtually like instance methods; `singleton(C)` is the
+    metaclass's interface; `self.class` is a per-class accessor. Each
+    metaclass gets generated `new`, `name`, `to_s` and `inspect`. `new` is
+    kept off the shared interface because subclasses may change
+    `initialize`: `klass.new(...)` through `singleton(Base)` type-asserts
+    for a matching `New`, failing at run time where Ruby would raise
+    `ArgumentError`. `Foo.new` on a constant stays a direct constructor
+    call. `class << self` is not supported.
+20. `T?` where `T` is expected is a compile error (check it first:
+    `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
+    passing it on asserts the type. Narrowing follows `if x`,
+    `if x.is_a?(C)`, `&&`, and early-exit guards (`return … unless cond`,
+    `return if x.nil?`) for the rest of the block; reassigning the local
+    drops its narrowings.
+21. `is_a?`/`kind_of?` is a constant when static types decide it and a Go
+    type assertion otherwise. There is no runtime record of included
+    modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
+    class that might have a subclass including it, is a compile error.
+    Narrowing an untyped local to `Array` views it as `Array[untyped]`.
+22. Unannotated literals infer by joining their parts; when parts share
+    no type the element type is `untyped`. A 2–3 element mixed array with
+    nothing expected of it is a tuple (sort keys, multiple returns).
+23. Symbols are a named Go string distinct from `String`. `f(a: 1)` on a
+    method without keyword parameters passes a Hash, as Ruby 3 does;
+    keyword parameters themselves are not supported.
+24. Regexps are Ruby syntax on Go's RE2. Every pattern gets `(?m)` (Ruby's
+    `^`/`$` are line anchors), Ruby `/m` becomes `(?s)`, `\h` is expanded;
+    lookaround, backreferences, `\Z` and `/x` are rejected with `file:line`
+    at transpile time. Static patterns compile once into package
+    variables; interpolated ones compile at run time and raise
+    `RegexpError`. `$~`/`$1` are not supported; use `match`.
+25. JSON matches the json gem: escapes (quotes, backslash, control
+    characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
+    e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
+26. Threads are goroutines. An exception ends only its thread (reported on
+    stderr) and `join` re-raises it. There is no GVL: stdout writes are
+    locked, other shared state is the program's problem.
+27. The `net/http` prelude is WEBrick's and `Net::HTTP`'s API on Go's
+    `http.Server` and `http.Client`, keeping what programs can observe:
+    no sniffed `Content-Type`, form bodies parsed into `query` only for
+    form content types, `mount_proc` refusing methods other than GET, HEAD,
+    POST and PUT, relative `Location` made absolute, `HTTPStatus`
+    exceptions becoming their status, no redirect following on the client.
+    Servers listen in `new` (so `Port: 0` works with `config[:Port]`),
+    `start` blocks until `shutdown`, and each request gets its own
+    goroutine and servlet instance.
