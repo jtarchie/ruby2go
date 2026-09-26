@@ -1142,6 +1142,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 		for _, p := range m.Params {
 			if p.Rest {
 				f.emit("%s := (*Array[%s])(&%s_)", goLocalName(p.Name), c.goType(p.Type), goLocalName(p.Name))
+				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}
 		if m.Iterator {

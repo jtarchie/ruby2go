@@ -49,7 +49,10 @@
     if a == nil {
       return ""
     }
-    return a.(I_ToS).ToS()
+    if s, ok := a.(I_ToS); ok {
+      return s.ToS()
+    }
+    return String("#<" + rbClassName(a) + ">")
   }
 
   func rbInspect(a any) String {

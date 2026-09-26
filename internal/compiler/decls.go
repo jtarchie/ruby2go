@@ -472,6 +472,11 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) Cmp(o %s) Integer {\n\t%s\n\treturn 0\n}\n\n", full, full, strings.Join(cmp, "\n\t"))
 		c.w("func (t %s) Inspect() String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(insp, ` + ", " + `))
 		c.w("func (t %s) ToS() String { return t.Inspect() }\n\n", full)
+		json := make([]string, 0, n)
+		for i := range n {
+			json = append(json, fmt.Sprintf("rbToJson(t.F%d)", i))
+		}
+		c.w("func (t %s) ToJson(...any) String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(json, ` + "," + `))
 		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 		_ = tos
 	}

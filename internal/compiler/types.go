@@ -302,7 +302,7 @@ func join(a, b Type) (Type, bool) {
 		return TAny{}, true
 	}
 	// Subclass / superclass: pick the ancestor.
-	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil {
+	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil && ca != cb {
 		if ca.isSubclassOf(cb) {
 			return b, true
 		}

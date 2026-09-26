@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,10 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.IntegerNode:
 		return expr{code: strings.ReplaceAll(f.f.text(n.Location), "_", ""), typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
+		if n.Value == 0 && math.Signbit(n.Value) {
+			// Go's constant -0.0 is +0; Ruby's is negative zero.
+			return expr{code: "Float(math.Copysign(0, -1))", typ: f.cls("Float")}, true
+		}
 		return expr{code: f.f.text(n.Location), typ: f.cls("Float"), lit: true}, true
 	case *parser.TrueNode:
 		return expr{code: "true", typ: f.cls("Boolean"), lit: true}, true
@@ -1274,6 +1279,8 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		return expr{code: "rbToS(Opt(" + recv.code + "))", typ: f.cls("String")}
 	case "inspect":
 		return expr{code: "rbInspect(Opt(" + recv.code + "))", typ: f.cls("String")}
+	case "to_json":
+		return expr{code: "rbToJson(Opt(" + recv.code + "))", typ: f.cls("String")}
 	case "==", "!=", "equal?":
 		if len(args) != 1 {
 			f.errorf(n, "%s takes one argument", name)
@@ -1305,7 +1312,7 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: recv.code + ".F0", typ: tt.Elems[0]}
 	case "last":
 		return expr{code: fmt.Sprintf("%s.F%d", recv.code, len(tt.Elems)-1), typ: tt.Elems[len(tt.Elems)-1]}
-	case "to_s", "inspect":
+	case "to_s", "inspect", "to_json":
 		return expr{code: recv.code + "." + goMethodName(name) + "()", typ: f.cls("String")}
 	case "<=>":
 		a := f.genExpr(args[0], recv.typ)
@@ -1338,6 +1345,8 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		return expr{code: "rbToS(" + recv.code + ")", typ: f.cls("String")}
 	case "inspect":
 		return expr{code: "rbInspect(" + recv.code + ")", typ: f.cls("String")}
+	case "to_json":
+		return expr{code: "rbToJson(" + recv.code + ")", typ: f.cls("String")}
 	case "nil?":
 		return expr{code: "Boolean(any(" + recv.code + ") == nil)", typ: f.cls("Boolean")}
 	case "!":
