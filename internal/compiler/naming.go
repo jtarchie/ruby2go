@@ -10,7 +10,7 @@ var opNames = map[string]string{
 	"==": "Eq", "!=": "Ne", "<=>": "Cmp", "<": "Lt", "<=": "Le", ">": "Gt", ">=": "Ge",
 	"+": "Plus", "-": "Minus", "*": "Mul", "/": "Div", "%": "Mod", "**": "Pow",
 	"-@": "Neg", "+@": "Pos", "!": "Not", "~": "Inv", "<<": "Shl", ">>": "Shr",
-	"&": "BitAnd", "|": "BitOr", "^": "BitXor", "=~": "Match", "===": "Eqq",
+	"&": "BitAnd", "|": "BitOr", "^": "BitXor", "=~": "EqTilde", "!~": "NotTilde", "===": "Eqq",
 	"[]": "Idx", "[]=": "IdxSet",
 }
 

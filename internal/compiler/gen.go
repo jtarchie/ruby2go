@@ -535,6 +535,14 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		wn := w.(*parser.WhenNode)
 		var conds []string
 		for _, cond := range wn.Conditions {
+			var condT Type
+			f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
+			if isClass(condT, "Regexp") {
+				// `when /re/` is Regexp#===, not ==.
+				re := f.genExpr(cond, nil)
+				conds = append(conds, "bool("+re.code+".Eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
+				continue
+			}
 			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil)
 			conds = append(conds, "bool("+eq.code+")")
 		}

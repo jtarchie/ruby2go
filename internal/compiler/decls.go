@@ -231,9 +231,14 @@ func (c *Compiler) emitProgram() {
 	for _, k := range c.constList {
 		c.emitConst(k)
 	}
+
 	c.emitRubyNames()
 	c.emitMain()
 	c.emitTuples()
+	// last: every body, main included, has registered its literals by now
+	for _, r := range c.regexps {
+		c.w("%s\n\n", r)
+	}
 }
 
 func (c *Compiler) emitClassType(cls *Class) {

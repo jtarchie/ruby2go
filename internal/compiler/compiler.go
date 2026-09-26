@@ -20,6 +20,8 @@ type Compiler struct {
 	classList  []*Class
 	topDefs    map[string]*Method
 	consts     map[string]*Const
+	regexps    []string          // package-level compiled literals
+	regexpVars map[string]string // literal → its variable, to share one per pattern
 	constList  []*Const
 	topDefList []*Method
 	verbatim   []verbatim
@@ -86,7 +88,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	}
 	defer func() { _ = p.Close(ctx) }()
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, regexpVars: map[string]string{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPrelude(ctx, "prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)

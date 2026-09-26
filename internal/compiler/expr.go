@@ -82,6 +82,10 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genArray(n, expected)
 	case *parser.HashNode:
 		return f.genHash(n, n.Elements, expected)
+	case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
+		return f.genRegexp(n)
+	case *parser.MatchWriteNode:
+		f.errorf(n, "named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match")
 	case *parser.KeywordHashNode:
 		// `f(a: 1)` on a method without keyword params passes a Hash.
 		return f.genHash(n, n.Elements, expected)
