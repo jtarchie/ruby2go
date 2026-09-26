@@ -636,22 +636,41 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 
 // genMethodCall dispatches a call on an already-generated receiver.
 func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
+		return e
+	}
+	return f.dispatch(n, recv, name, args, block)
+}
+
+// genIntrinsic compiles the methods the transpiler answers itself:
+// class, with (Data), respond_to?, is_a?/kind_of?.
+func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
 	if name == "class" && len(args) == 0 && block == nil {
 		if e, ok := f.genClassOf(recv); ok {
-			return e
+			return e, true
 		}
 	}
 	if name == "with" && block == nil {
 		if e, ok := f.genDataWith(n, recv, args); ok {
-			return e
+			return e, true
+		}
+	}
+	if name == "respond_to?" && block == nil && len(args) >= 1 {
+		if e, ok := f.genRespondTo(n, recv, args); ok {
+			return e, true
 		}
 	}
 	if name == "is_a?" || name == "kind_of?" {
 		if len(args) != 1 || block != nil {
 			f.errorf(n, "%s takes one class", name)
 		}
-		return expr{code: "Boolean(" + f.isACheck(n, recv, args[0]) + ")", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(" + f.isACheck(n, recv, args[0]) + ")", typ: f.cls("Boolean")}, true
 	}
+	return expr{}, false
+}
+
+// dispatch resolves a call by the receiver's static type.
+func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch t := recv.typ.(type) {
 	case TOpt:
 		return f.optCall(n, recv, name, args)
@@ -665,6 +684,9 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 			}
 		}
 		if e == nil {
+			if mm := t.C.lookup("method_missing"); mm != nil {
+				return f.callMissing(n, mm, recv, name, args, block)
+			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
 		return f.callEntry(n, e, recv, args, block)
@@ -675,6 +697,9 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 			}
 			if td := f.c.topDefs[name]; td != nil {
 				return f.callEntry(n, &entry{M: td}, recv, args, block)
+			}
+			if mm := f.owner.lookup("method_missing"); mm != nil {
+				return f.callMissing(n, mm, recv, name, args, block)
 			}
 			if e := f.c.classes["Object"].lookup(name); e != nil {
 				return f.callEntry(n, e, recv, args, block)
@@ -785,7 +810,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	}
 	env["Self"] = recv.typ
 	// bind vars visible in the current generic context so they count as bound
-	if m.Private && recv.code != f.selfCode {
+	if m.Private && recv.code != f.selfCode && !f.implicitCall {
 		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
 	}
 	codes := f.genArgs(n, m, env, args, nil)
@@ -2005,3 +2030,55 @@ type withMember struct {
 }
 
 func (w *withMember) GetLocation() parser.Location { return parser.Location{} }
+
+// callMissing sends an unknown method to the receiver's method_missing,
+// with the name as a Symbol; Ruby calls it even when it is private.
+func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if block != nil {
+		f.errorf(n, "a block passed to %s (handled by method_missing) is not supported", name)
+	}
+	nodes := append([]parser.Node{&parser.SymbolNode{Unescaped: parser.RubyString{Value: name}}}, args...)
+	f.implicitCall = true
+	defer func() { f.implicitCall = false }()
+	return f.callEntry(n, mm, recv, nodes, nil)
+}
+
+// rubyPrivate names methods Ruby makes private whoever defines them.
+var rubyPrivate = map[string]bool{"initialize": true, "method_missing": true, "respond_to_missing?": true, "initialize_copy": true}
+
+// genRespondTo decides `recv.respond_to?(:name)` for a typed receiver and
+// a literal name: true for a public method, else respond_to_missing?,
+// else false. Returns false when the answer depends on the runtime class.
+func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr, bool) {
+	name := literalName(args[0])
+	var cls *Class
+	switch t := recv.typ.(type) {
+	case TClass:
+		cls = t.C
+	case TVar:
+		if t.Name == "Self" {
+			cls = f.owner
+		}
+	}
+	if name == "" || cls == nil {
+		return expr{}, false
+	}
+	if e := cls.lookup(name); e != nil && !e.M.Private && !rubyPrivate[name] {
+		if !isSimpleGo(recv.code) {
+			f.emit("_ = %s", recv.code)
+		}
+		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
+	}
+	if cls.descendantDefines(name) {
+		return expr{}, false
+	}
+	if rm := cls.lookup("respond_to_missing?"); rm != nil {
+		f.implicitCall = true
+		defer func() { f.implicitCall = false }()
+		return f.callEntry(n, rm, recv, []parser.Node{args[0], &parser.FalseNode{}}, nil), true
+	}
+	if !isSimpleGo(recv.code) {
+		f.emit("_ = %s", recv.code)
+	}
+	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
+}

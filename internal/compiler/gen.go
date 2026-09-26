@@ -9,31 +9,32 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
-	c           *Compiler
-	f           *File
-	owner       *Class
-	m           *Method
-	lex         []*Class // lexical scope for constant lookup
-	selfType    Type
-	selfCode    string
-	ret         Type
-	iterator    bool
-	blockSig    *BlockSig
-	buf         *strings.Builder
-	indent      int
-	tmp         int
-	pass        int // 0 = ivar discovery, 1 = local analysis, 2 = emit
-	discover    bool
-	locals      map[string]*localInfo
-	scope       *scope
-	block       string
-	blockCtr    int
-	loops       []loopKind
-	closures    int // nesting depth of Go closures (non-iterator blocks)
-	begins      int // nesting depth of rescue wrappers
-	retVar      string
-	retFlag     string // set inside begin wrappers when a return must propagate
-	hasNamedRet bool
+	c            *Compiler
+	f            *File
+	owner        *Class
+	m            *Method
+	implicitCall bool     // calling method_missing/respond_to_missing? on the program\'s behalf
+	lex          []*Class // lexical scope for constant lookup
+	selfType     Type
+	selfCode     string
+	ret          Type
+	iterator     bool
+	blockSig     *BlockSig
+	buf          *strings.Builder
+	indent       int
+	tmp          int
+	pass         int // 0 = ivar discovery, 1 = local analysis, 2 = emit
+	discover     bool
+	locals       map[string]*localInfo
+	scope        *scope
+	block        string
+	blockCtr     int
+	loops        []loopKind
+	closures     int // nesting depth of Go closures (non-iterator blocks)
+	begins       int // nesting depth of rescue wrappers
+	retVar       string
+	retFlag      string // set inside begin wrappers when a return must propagate
+	hasNamedRet  bool
 }
 
 type loopKind int
