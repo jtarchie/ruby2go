@@ -614,8 +614,10 @@ resolve; anything not listed is still open.
     expected is a compile error, not Go's silent constant truncation.
     *Revised:* overloads by convention. A call with an argument count the
     method cannot take goes to the receiver class's `__<name>_<count>`, and
-    one whose sole argument is a `Range` to `__<name>_range` (`[]` is spelt
-    `aref`), when defined. So `arr.first` (`E?`), `arr.last(2)`,
+    one whose sole argument is of class `C` to `__<name>_<c>` (`C`
+    snake-cased; an operator is named by its Go name minus `Op_`, so
+    `[]` with a Range is `__idx_range` and `Time - Time` is
+    `__minus_time`), when defined. So `arr.first` (`E?`), `arr.last(2)`,
     `arr[1, 2]`, `arr[1..]` and `str[0...-1]` work; everything else still
     takes one signature.
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
@@ -972,3 +974,12 @@ resolve; anything not listed is still open.
     ([example 36](examples/36_ranges/main.rb)).
 38. `Kernel#p` prints each argument's `inspect` and returns nil, not its
     argument (that would need the argument's type as its return type).
+39. `Time` wraps Go's `time.Time` plus MRI's UTC flag (printed `UTC`
+    rather than `+0000`), handled as a pointer so `utc`/`localtime`
+    convert in place as MRI's do. `Time.at` takes Integer or Float
+    seconds, `Time.utc`/`gm`/`local`/`mktime`/`new` take integer parts
+    (no month names, no zone argument; `Time.new` with none is `now`).
+    `t - t2` is a Float, `t ± n` a Time (via decision 12's overloads).
+    `strftime` is MRI's, flags and widths included; `iso8601`/`xmlschema`
+    are core, as in Ruby 3.4. No `Time#to_a`: 10-tuples do not exist
+    ([example 37](examples/37_time/main.rb)).

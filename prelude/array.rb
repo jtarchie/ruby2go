@@ -56,14 +56,14 @@ class Array < Object
   }
 
   #: (Range[Integer]) -> Array[E]?
-  def __aref_range(r)
+  def __idx_range(r)
     s = r.__slice(size)
     return nil unless s
-    __aref_2(s[0], s[1])
+    __idx_2(s[0], s[1])
   end
 
   #: (Integer, Integer) -> Array[E]?
-  def __aref_2(start, count) = %x{
+  def __idx_2(start, count) = %x{
     n := Integer(len(*self))
     if start < 0 {
       start += n

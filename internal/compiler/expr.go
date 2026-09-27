@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
@@ -1370,7 +1371,9 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 
 // overload stands in for RBS overloads (decision 12): a call whose argument
 // count m cannot take goes to the receiver class's `__<name>_<count>`, and
-// one whose sole argument is a Range to `__<name>_range`, if defined.
+// one whose sole argument is of class C to `__<name>_<c>` (C snake-cased:
+// `__idx_range`, `__minus_time`), if defined. Operators use their Go name
+// minus `Op_`.
 func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	m := e.M
 	owner := m.Owner
@@ -1380,22 +1383,43 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if owner == nil || strings.HasPrefix(m.Name, "__") {
 		return nil
 	}
-	name := "__" + map[string]string{"[]": "aref", "[]=": "aset"}[m.Name]
-	if name == "__" {
-		name += strings.TrimRight(m.Name, "?!")
+	base := strings.TrimRight(m.Name, "?!")
+	if op, ok := opNames[m.Name]; ok {
+		base = strings.ToLower(strings.TrimPrefix(op, "Op_"))
 	}
-	if r := owner.lookup(name + "_range"); r != nil && len(args) == 1 {
+	name := "__" + base + "_"
+	if len(args) == 1 && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
-		if isClass(a.typ, "Range") {
-			return r
+		if c, ok := a.typ.(TClass); ok {
+			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil {
+				return r
+			}
 		}
 	}
 	rest := slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest })
 	if len(args) >= requiredArgs(m) && (rest || len(args) <= len(m.Params)) {
 		return nil
 	}
-	return owner.lookup(name + "_" + strconv.Itoa(len(args)))
+	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// snake is a class name as a method-name part: `DateTime` → `date_time`.
+func snake(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if unicode.IsUpper(r) {
+			if i > 0 {
+				b.WriteByte('_')
+			}
+			r = unicode.ToLower(r)
+		}
+		if r == ':' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
