@@ -983,3 +983,13 @@ resolve; anything not listed is still open.
     `strftime` is MRI's, flags and widths included; `iso8601`/`xmlschema`
     are core, as in Ruby 3.4. No `Time#to_a`: 10-tuples do not exist
     ([example 37](examples/37_time/main.rb)).
+40. `Rational` is a pointer to a `math/big.Rat`, so arithmetic is exact
+    and never overflows; `numerator`/`denominator`/`to_i`/`round` raise
+    RangeError past 64 bits (decision 35). Literals (`3r`, `3/4r`,
+    `0.75r`), `Rational(n, d)` (Integers only, no strings), `Integer#to_r`,
+    `Integer#quo` and exact `Float#to_r` build one. Integer and Rational
+    mix into a Rational and Float and Rational into a Float, in either
+    order, through decision 12's overloads; `r < 1` works the same way.
+    Integer `**` with a negative exponent still raises (its type is
+    Integer). `Float#round(n)` takes `n > 0` only: MRI answers an Integer
+    for `n <= 0` ([example 38](examples/38_rational/main.rb)).

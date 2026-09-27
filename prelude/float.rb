@@ -80,6 +80,26 @@ class Float < Object
   #: () -> Integer
   def round = %x{ rbFloatToI(math.Round(float64(self))) }
 
+  # MRI's round_half_up; digits <= 0 would be an Integer in MRI, so they raise.
+  #: (Integer) -> Float
+  def __round_1(digits) = %x{
+    if digits <= 0 {
+      panic(NewArgumentError(Ref(String("rb2go: Float#round(digits) needs digits > 0"))))
+    }
+    x := float64(self)
+    if digits >= 15 || math.IsInf(x, 0) || math.IsNaN(x) {
+      return self
+    }
+    s := math.Pow(10, float64(digits))
+    f := math.Round(x * s)
+    if x > 0 && (f+0.5)/s <= x {
+      f++
+    } else if x < 0 && (f-0.5)/s >= x {
+      f--
+    }
+    return Float(f / s)
+  }
+
   #: () -> Float
   def to_f = self
 
