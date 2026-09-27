@@ -45,7 +45,7 @@ module Kernel
     args.each do |a|
       case a
       when nil then __write("\n")
-      when Array then puts(*a)
+      when Array then a.each { |e| puts(e) }
       else
         s = a.to_s
         __write(s.end_with?("\n") ? s : s + "\n")
