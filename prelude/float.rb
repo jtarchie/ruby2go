@@ -60,7 +60,7 @@ class Float < Object
   def /(other) = %x{ self / other }
 
   #: (Float) -> Float
-  def **(other) = %x{ Float(math.Pow(float64(self), float64(other))) }
+  def **(other) = %x{ Float(rbFloatPow(float64(self), float64(other))) }
 
   #: () -> Float
   def -@ = %x{ -self }

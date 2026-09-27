@@ -297,6 +297,117 @@
     return Integer(f)
   }
 
+  // rbFloatPow is Float#**. MRI calls C's pow(), which glibc and macOS round
+  // correctly bar inputs a hair from a rounding midpoint; Go's math.Pow is
+  // often an ulp or more off (8.0 ** (1.0/3) is 1.9999999999999998, MRI
+  // 2.0). This evaluates exp(y*log|x|) in double-double (error under 2^-84)
+  // and rounds once. math.Pow keeps the special values, which it treats as
+  // C99's pow does, and results past the normal range.
+  // ponytail: subnormal results can be an ulp off; round them at 2^-1074 by adding 1.0 first (musl's exp specialcase) if that matters.
+  // ponytail: costs 5-10x math.Pow; square-and-multiply in double-double would make small integer exponents cheap.
+  func rbFloatPow(x, y float64) float64 {
+    const ln2lo = 0x1.abc9e3b39803fp-56 // math.Ln2 - float64(math.Ln2)
+    switch {
+    case y == 2: // MRI's own shortcut; one rounding already
+      return x * x
+    case x == 0 || y == 0 || x == 1 || x == -1 || math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0),
+      x < 0 && y != math.Trunc(y):
+      return math.Pow(x, y)
+    }
+    // log|x| = e*ln2 + 2s*sum(t^n/(2n+1)), with s = (f-1)/(f+1), t = s*s < 0.03
+    // for f in [sqrt(1/2), sqrt(2)); f-1 is exact.
+    f, e := math.Frexp(math.Abs(x))
+    if f < math.Sqrt2/2 {
+      f, e = 2*f, e-1
+    }
+    dh, dl := rbTwoSum(f, 1)
+    sh := (f - 1) / dh
+    sl := (math.FMA(-sh, dh, f-1) - sh*dl) / dh
+    th, tl := rbDDMul(sh, sl, sh, sl)
+    ah, al := 0.0, 0.0
+    for n := 18; n >= 0; n-- {
+      c := rbPowInv[n]
+      if n > 6 { // terms under 2^-39 need no low word
+        ah = ah*th + c[0]
+        continue
+      }
+      ah, al = rbDDMul(ah, al, th, tl)
+      ah, al = rbDDAdd(ah, al, c[0], c[1])
+    }
+    lh, ll := rbDDMul(sh, sl, 2*ah, 2*al)
+    fe := float64(e)
+    kh := float64(fe * math.Ln2)
+    lh, ll = rbDDAdd(kh, math.FMA(fe, math.Ln2, -kh)+fe*ln2lo, lh, ll)
+    // x**y = 2^k * exp(r), r = y*log|x| - k*ln2, |r| <= ln2/2
+    ph := float64(y * lh)
+    pl := math.FMA(y, lh, -ph) + y*ll
+    if !(ph > -708.39 && ph < 709.79) { // subnormal or overflowing
+      return math.Pow(x, y)
+    }
+    k := math.Round(ph * math.Log2E)
+    kh = float64(k * math.Ln2)
+    rh, rl := rbDDAdd(ph, pl, -kh, -math.FMA(k, math.Ln2, -kh)-k*ln2lo)
+    // expm1(r/4) by Taylor, then expm1(2a) = expm1(a)*(expm1(a)+2) twice.
+    rh, rl = rh/4, rl/4
+    eh, el := 0.0, 0.0
+    for n := 16; n >= 1; n-- {
+      c := rbPowFact[n]
+      if n > 7 { // terms under 2^-39 of the first
+        eh = (eh + c[0]) * rh
+        continue
+      }
+      eh, el = rbDDAdd(eh, el, c[0], c[1])
+      eh, el = rbDDMul(eh, el, rh, rl)
+    }
+    for range 2 {
+      mh, ml := rbDDAdd(eh, el, 2, 0)
+      eh, el = rbDDMul(eh, el, mh, ml)
+    }
+    res, _ := rbDDAdd(1, 0, eh, el)
+    res = math.Ldexp(res, int(k))
+    if x < 0 && math.Mod(y, 2) != 0 {
+      return -res
+    }
+    return res
+  }
+
+  // rbPowInv[n] is 1/(2n+1) and rbPowFact[n] is 1/n!, as double-doubles.
+  var rbPowInv, rbPowFact = func() (inv, fact [19][2]float64) {
+    nf := 1.0
+    for n := range inv {
+      d := float64(2*n + 1)
+      if n > 0 {
+        nf *= float64(n)
+      }
+      inv[n] = [2]float64{1 / d, math.FMA(-1/d, d, 1) / d}
+      fact[n] = [2]float64{1 / nf, math.FMA(-1/nf, nf, 1) / nf}
+    }
+    return inv, fact
+  }()
+
+  // Double-double arithmetic: a value is hi+lo with |lo| <= ulp(hi)/2. The
+  // float64() around a product stops Go fusing it into a later add (an FMA),
+  // which would break the error-free split.
+  func rbTwoSum(a, b float64) (float64, float64) {
+    s := a + b
+    bb := s - a
+    return s, (a - (s - bb)) + (b - bb)
+  }
+
+  func rbDDAdd(ah, al, bh, bl float64) (float64, float64) {
+    s, e := rbTwoSum(ah, bh)
+    e += al + bl
+    h := s + e
+    return h, e - (h - s)
+  }
+
+  func rbDDMul(ah, al, bh, bl float64) (float64, float64) {
+    p := float64(ah * bh)
+    e := math.FMA(ah, bh, -p) + (ah*bl + al*bh)
+    h := p + e
+    return h, e - (h - p)
+  }
+
   // rbIntOverflow raises where MRI would promote to a Bignum: Integer is a
   // Go int (decision 35). Out of line so the checked operators still inline.
   //go:noinline
