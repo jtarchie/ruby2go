@@ -68,18 +68,7 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		v := f.readLocal(&parser.LocalVariableReadNode{Name: "it", Location: n.Location})
 		return expr{code: v.goName, typ: v.typ}
 	case *parser.LocalVariableWriteNode:
-		var ann Type
-		if t := f.f.trailingAnnotation(n); t != "" {
-			ann = f.parseTypeAnn(n, t)
-		}
-		exp := ann
-		if exp == nil {
-			if v := f.scope.lookup(n.Name); v != nil {
-				exp = v.typ
-			}
-		}
-		val := f.genExpr(n.Value, exp)
-		return f.assignLocal(n, n.Name, val, ann)
+		return f.genLocalWrite(n)
 	case *parser.LocalVariableOperatorWriteNode:
 		cur := f.genExpr(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location}, nil)
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
@@ -87,7 +76,9 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOperatorWriteNode:
 		return f.genIvarExpr(n)
 	case *parser.CallNode:
-		return f.genCall(n, expected)
+		return f.genCallValue(n, expected)
+	case *assignedArg:
+		return f.genAssignedArg(n, expected)
 	case *parser.ArrayNode:
 		return f.genArray(n, expected)
 	case *parser.HashNode:
@@ -135,6 +126,21 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	return expr{}
 }
 
+func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
+	var ann Type
+	if t := f.f.trailingAnnotation(n); t != "" {
+		ann = f.parseTypeAnn(n, t)
+	}
+	exp := ann
+	if exp == nil {
+		if v := f.scope.lookup(n.Name); v != nil {
+			exp = v.typ
+		}
+	}
+	val := f.genExpr(n.Value, exp)
+	return f.assignLocal(n, n.Name, val, ann)
+}
+
 // genIvarExpr handles @x reads and writes.
 func (f *fctx) genIvarExpr(n parser.Node) expr {
 	switch n := n.(type) {
@@ -155,12 +161,19 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
 		iv := f.ivar(n, n.Name, val.typ)
-		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
+		code := f.ivarCode(iv)
+		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
+		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
+		}
+		return expr{code: code, typ: iv.Type, done: true}
 	case *parser.InstanceVariableOperatorWriteNode:
 		iv := f.ivar(n, n.Name, nil)
-		cur := expr{code: f.ivarCode(iv), typ: iv.Type}
-		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
-		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
+		code := f.ivarCode(iv)
+		val := f.genOp(n, expr{code: code, typ: iv.Type}, n.BinaryOperator, n.Value)
+		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		return expr{code: code, typ: iv.Type, done: true}
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
@@ -2196,6 +2209,47 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		f.emit("_ = %s", recv.code)
 	}
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
+}
+
+// genCallValue renders a call whose value is used. For an attribute write
+// (`recv.x = v`, `recv[k] = v`) Ruby's value is v, whatever the setter
+// returns, so v is evaluated once and named after the call.
+func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
+	args := callArgs(n)
+	if !n.IsATTRIBUTE_WRITE() || len(args) == 0 || n.IsSAFE_NAVIGATION() {
+		return f.genCall(n, expected)
+	}
+	var val expr
+	c, a := *n, *n.Arguments
+	a.Arguments = append(append([]parser.Node{}, args[:len(args)-1]...), &assignedArg{Node: args[len(args)-1], out: &val})
+	c.Arguments = &a
+	e := f.genCall(&c, expected)
+	if val.typ == nil {
+		return e // the setter never generated the value as an expression
+	}
+	f.emitExprStmt(n, e)
+	if val.lit {
+		val.code = f.c.goType(val.typ) + "(" + val.code + ")"
+	}
+	return expr{code: val.code, typ: val.typ, classObj: val.classObj, done: true}
+}
+
+// assignedArg is an attribute write's value argument: it records the
+// generated value (in a temp unless it is side-effect free) for genCallValue.
+type assignedArg struct {
+	parser.Node
+	out *expr
+}
+
+func (f *fctx) genAssignedArg(n *assignedArg, expected Type) expr {
+	e := f.genExpr(n.Node, expected)
+	if !e.lit && !isVoid(e.typ) && !isSimpleGo(e.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, e.code)
+		e.code = tmp
+	}
+	*n.out = e
+	return e
 }
 
 // exprNode carries an already generated expression where a node is

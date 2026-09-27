@@ -478,9 +478,10 @@ resolve; anything not listed is still open.
 14. Locals are inferred from their assignments (joined across branches:
     `nil` + `String` → `String?`) and hoisted to a `var` at the top of the
     function when Go's block scoping would otherwise hide them. Lifted
-    temporaries for `&.`, `||`, ternaries and `case`-expressions are
-    computed before the statement they belong to, so their side effects run
-    slightly earlier than MRI would run them.
+    temporaries for `&.`, `||`, ternaries, `case`-expressions and the value
+    of an attribute write used as a value (`r = (o.x = v)` is `v`, not the
+    setter's result) are computed before the statement they belong to, so
+    their side effects run slightly earlier than MRI would run them.
 15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
     or a dry run of the class's method bodies (`initialize` first); an ivar
     that is only ever assigned `nil` needs an annotation.

@@ -317,7 +317,12 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 				}
 			}
 		}
-		e := f.genExpr(n, t.typ)
+		var e expr
+		if t.kind == tailNone || t.kind == tailReturn && t.typ != nil && isVoid(t.typ) {
+			e = f.genCall(n, t.typ) // value unused: a setter needs no temp for it
+		} else {
+			e = f.genExpr(n, t.typ)
+		}
 		f.applyTail(n, e, t)
 	case *parser.XStringNode:
 		f.errorf(n, "%%x{} is only allowed as the whole body of a prelude method")
