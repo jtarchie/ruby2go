@@ -1,5 +1,3 @@
-# skip: Kernel#exit is os.Exit, so ensure blocks (and `rescue Exception`, which sees SystemExit in MRI) do not run
-
 # rbs_inline: enabled
 
 #: () -> void

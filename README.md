@@ -476,7 +476,10 @@ resolve; anything not listed is still open.
     print `message (Class)` to stderr and exit 1, like MRI. Go runtime
     panics (`index out of range`, divide by zero) are wrapped into
     `IndexError`/`ZeroDivisionError`/`StandardError` on the way into a
-    `rescue`.
+    `rescue`. *Revised:* `Kernel#exit` raises `SystemExit` instead of
+    calling `os.Exit`, so `ensure` blocks and `rescue Exception` run as in
+    MRI; uncaught, it exits silently with its status. In a thread it still
+    exits on the spot, skipping the main thread's `ensure`s.
 12. Overloads (`#|`) are not supported, so `first`/`take` require a count
     (`arr.first(3)`; use `arr[0]` for the head) and `Array#[]` takes one
     Integer. `split` takes an optional separator through `?String?`.

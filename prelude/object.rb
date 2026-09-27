@@ -36,7 +36,7 @@ module Kernel
   def frozen? = false
 
   #: (?Integer) -> void
-  def exit(status = 0) = %x{ _ = stdout.Flush(); os.Exit(int(status)) }
+  def exit(status = 0) = raise(SystemExit.new(status))
 
   private
 

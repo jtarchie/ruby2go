@@ -17,10 +17,14 @@
   }
 
   // rbTopRecover turns an uncaught Ruby exception into exit status 1, like
-  // MRI. Output is flushed first so partial output before a crash matches.
+  // MRI, and SystemExit (Kernel#exit) into its status. Output is flushed
+  // first so partial output before a crash matches.
   func rbTopRecover() {
     if r := recover(); r != nil {
       _ = stdout.Flush()
+      if e, ok := r.(SystemExitI); ok {
+        os.Exit(int(e.Status()))
+      }
       if e, ok := r.(ExceptionI); ok {
         fmt.Fprintf(os.Stderr, "%s (%s)\\n", e.Message(), rbClassName(r))
       } else {

@@ -61,3 +61,19 @@ class ZeroDivisionError < StandardError; end
 class ScriptError < Exception; end
 
 class NotImplementedError < ScriptError; end
+
+# Kernel#exit raises it, so ensure blocks and `rescue Exception` run first;
+# rbTopRecover exits with its status and prints nothing.
+class SystemExit < Exception
+  #: (Integer) -> void
+  def initialize(status)
+    @message = "exit"
+    @status = status
+  end
+
+  #: () -> Integer
+  def status = @status
+
+  #: () -> bool
+  def success? = @status == 0
+end

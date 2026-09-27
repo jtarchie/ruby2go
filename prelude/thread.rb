@@ -13,6 +13,11 @@ class Thread < Object
       defer close(t.done)
       defer func() {
         if r := recover(); r != nil {
+          if e, ok := r.(SystemExitI); ok {
+            // ponytail: MRI re-raises exit in the main thread, running its ensures; this exits here.
+            _ = stdout.Flush()
+            os.Exit(int(e.Status()))
+          }
           t.err = rbWrapPanic(r)
           fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(t.err), "("+rbClassName(t.err)+")")
         }
