@@ -3,6 +3,16 @@
 #
 # String as a named Go string (frozen: no mutating methods).
 
+%x{
+  // The numeric prefix String#to_i / #to_f read, as MRI scans it: leading
+  // whitespace, a sign, digits with single `_` between them; to_i takes a
+  // `0d` prefix, to_f a fraction and exponent. The rest of the string is ignored.
+  var (
+    rbIntPrefix   = regexp.MustCompile(`\\A[ \\t\\n\\v\\f\\r]*([+-]?)(?:0[dD])?(\\d+(?:_\\d+)*)`)
+    rbFloatPrefix = regexp.MustCompile(`\\A[ \\t\\n\\v\\f\\r]*([+-]?(?:\\d+(?:_\\d+)*(?:\\.(?:\\d+(?:_\\d+)*)?)?|\\.\\d+(?:_\\d+)*)(?:[eE][+-]?\\d+(?:_\\d+)*)?)`)
+  )
+}
+
 # @go_type string
 class String < Object
   include Comparable
@@ -229,21 +239,21 @@ class String < Object
 
   #: () -> Integer
   def to_i = %x{
-    s := strings.TrimLeft(string(self), " \\t\\n\\v\\f\\r")
-    end := 0
-    if end < len(s) && (s[end] == '-' || s[end] == '+') {
-      end++
+    m := rbIntPrefix.FindStringSubmatch(string(self))
+    if m == nil {
+      return 0
     }
-    for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-      end++
-    }
-    n, _ := strconv.Atoi(s[:end])
+    n, _ := strconv.Atoi(m[1] + strings.ReplaceAll(m[2], "_", ""))
     return Integer(n)
   }
 
   #: () -> Float
   def to_f = %x{
-    f, _ := strconv.ParseFloat(strings.Trim(string(self), " \\t\\n\\v\\f\\r"), 64)
+    m := rbFloatPrefix.FindStringSubmatch(string(self))
+    if m == nil {
+      return 0
+    }
+    f, _ := strconv.ParseFloat(strings.ReplaceAll(m[1], "_", ""), 64)
     return Float(f)
   }
 
