@@ -19,9 +19,7 @@ import (
 // generating a wrapper may ask for more (a default argument calling
 // something dynamically), so this runs to a fixed point.
 func (c *Compiler) emitDynamic() {
-	if len(c.dynNames) == 0 && len(c.respondNames) == 0 && !c.dynAll {
-		return
-	}
+	c.noteDyn("<=>") // rbCmp falls back to DynCmp, and which instantiations see untyped values is unknown here
 	if c.dynAll {
 		for _, name := range c.allMethodNames() {
 			c.noteDyn(name)
@@ -189,6 +187,13 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		maxArgs = -1
 	}
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
+	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
+		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
+			f.emit("if _, ok := args[0].(%s); !ok {", c.goType(t))
+			f.emit("\treturn nil")
+			f.emit("}")
+		}
+	}
 	call := func(k int, withRest bool) {
 		nodes := make([]parser.Node, 0, k+1)
 		for i := range k {

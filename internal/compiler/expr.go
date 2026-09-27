@@ -1565,6 +1565,9 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		a := one(nil)
 		return expr{code: "Boolean(rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + "))", typ: f.cls("Boolean")}
 	case "<=>":
+		if isAny(recv.typ) || isNil(recv.typ) {
+			break // DynCmp: untyped, since MRI answers nil for incomparable values
+		}
 		a := one(recv.typ)
 		return expr{code: "rbCmp(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "hash":

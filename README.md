@@ -575,6 +575,14 @@ resolve; anything not listed is still open.
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
     cycles. Blocks cannot cross a dynamic call.
+    *Revised:* `<=>` differs twice. Its wrappers are always generated:
+    `sort`/`min`/`max`/`sort_by` on untyped values reach them through
+    `rbCmp` inside generic prelude code, where the compiler cannot see
+    the instantiation. A wrong argument type answers `nil`, as MRI's `<=>`
+    does, and `rbCmp` turns `nil` into MRI's `ArgumentError: comparison
+    of X with Y failed` (which pair MRI names depends on its sort order).
+    `hash` on an untyped value calls the class's `hash`, else hashes
+    `inspect`, so plain objects are not identity-hashed.
 33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
     `ensure` discards the pending exception; `&&`/`||` return values of
     any types (unions become `untyped`) and evaluate the right side only

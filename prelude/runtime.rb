@@ -88,8 +88,37 @@
     return Boolean(any(a) == any(b))
   }
 
+  // rbCmp is <=> for sort, min and max. Typed values have Cmp(T); untyped
+  // ones (T is any) go through the generated DynCmp wrappers, which answer
+  // nil for an incomparable argument, as MRI's <=> does.
   func rbCmp[T comparable](a, b T) Integer {
-    return any(a).(interface{ Cmp(T) Integer }).Cmp(b)
+    if c, ok := any(a).(interface{ Cmp(T) Integer }); ok {
+      return c.Cmp(b)
+    }
+    if c, ok := any(a).(interface{ DynCmp(...any) any }); ok {
+      if r, ok := c.DynCmp(b).(Integer); ok {
+        return r
+      }
+    }
+    // MRI inspects immediates and names the class of anything else.
+    with := rbClassName(b)
+    switch any(b).(type) {
+    case nil, Boolean, Integer, Float, Symbol:
+      with = string(rbInspect(b))
+    }
+    panic(NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + with + " failed"))))
+  }
+
+  // rbHash is #hash on a value of unknown type.
+  func rbHash(a any) Integer {
+    if h, ok := a.(interface{ Hash() Integer }); ok {
+      return h.Hash()
+    }
+    // ponytail: no #hash (Float, Array, plain objects) hashes the inspect
+    // text; objects want an identity hash once they have an object id.
+    h := fnv.New64a()
+    _, _ = h.Write([]byte(rbInspect(a)))
+    return Integer(h.Sum64())
   }
 
   func rbIdentical(a, b any) bool {

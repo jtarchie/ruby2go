@@ -1,5 +1,3 @@
-# skip: sort/min/max/sort_by/min_by/max_by that compare untyped hash keys or values panic: rbCmp[any] asserts Cmp(any), but Integer only has Cmp(Integer)
-
 # rbs_inline: enabled
 
 scores = { "b" => 2, "a" => 1, "c" => 3 } #: Hash[String, untyped]
