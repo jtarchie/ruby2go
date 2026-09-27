@@ -539,7 +539,13 @@ resolve; anything not listed is still open.
     and silently matched RE2's meaning.)* Lookaround, backreferences, `\Z`
     and `/x` are rejected with `file:line` at transpile time. Static patterns compile once into package
     variables; interpolated ones compile at run time and raise
-    `RegexpError` (with `/o`, only until one compiles; it is kept). `$~`/`$1` are not supported; use `match`.
+    `RegexpError` (with `/o`, only until one compiles; it is kept). An
+    interpolated pattern is translated whole at run time (the compiler's
+    translator is emitted into every program), so values get the same
+    rewrites, an embedded Regexp's `(?i-mx:...)` composes, and each value is
+    evaluated once; its static parts are still checked at transpile time.
+    *(Revised: static parts were translated one at a time and values were
+    inserted untranslated.)* `$~`/`$1` are not supported; use `match`.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.

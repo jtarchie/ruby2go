@@ -174,14 +174,12 @@ puts "aa".match?(/(?<n>a)\g<n>/)
 # error: `(?x`
 puts "ab".match?(/(?x) a b /)
 -- interpolated_lookahead.rb --
-# skip: lookahead in the static part of an interpolated regexp compiles, then raises RegexpError at run time (decision 24 rejects lookaround at transpile time)
-# error: main.rb:5:
+# error: main.rb:4:
 # error: not supported
 x = "a"
 puts "ab".match?(/#{x}(?=b)/)
 -- interpolated_backreference.rb --
-# skip: a backreference in the static part of an interpolated regexp compiles, then raises RegexpError at run time (decision 24 rejects backreferences at transpile time)
-# error: main.rb:5:
+# error: main.rb:4:
 # error: not supported
 x = "a"
 puts "aa".match?(/(#{x})\1/)

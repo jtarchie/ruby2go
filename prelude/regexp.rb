@@ -16,6 +16,17 @@
     return &Regexp{re: re, src: src, opts: opts}
   }
 
+  // rbRegexpDyn compiles an interpolated regexp from its Ruby source, which
+  // only exists at run time; translateRegexp is the compiler's own
+  // (internal/compiler/rxtranslate.go, emitted into every program).
+  func rbRegexpDyn(prefix, src, opts string) *Regexp {
+    pat, err := translateRegexp(src)
+    if err != nil {
+      panic(NewRegexpError(Ref(String(err.Error()))))
+    }
+    return rbRegexpNew(prefix+pat, src, opts)
+  }
+
   // rbRegexpDesc is the source as inspect and to_s show it: a bare / is
   // escaped, as MRI's rb_reg_desc does.
   func rbRegexpDesc(src string) string {

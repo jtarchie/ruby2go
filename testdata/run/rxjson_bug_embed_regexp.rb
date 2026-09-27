@@ -1,5 +1,3 @@
-# skip: interpolating a Regexp embeds its to_s, (?i-mx:...), which RE2 rejects with RegexpError (MRI composes the patterns)
-
 # rbs_inline: enabled
 
 inner = /ab/i

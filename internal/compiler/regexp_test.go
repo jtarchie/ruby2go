@@ -67,6 +67,8 @@ func TestTranslateRegexp(t *testing.T) {
 		{`é\h`, `é[0-9a-fA-F]`},
 		{``, ``},
 		{`(?m:a)(?-m)(?mi)`, `(?s:a)(?-s)(?si)`},
+		// Regexp#to_s embedded by interpolation: x off is dropped, x on left for RE2.
+		{`(?i-mx:a)(?-x)(?mix:b)`, `(?i-s:a)(?)(?six:b)`},
 		{`a{,2}b{2}?(cd){3}+e{1,2}?`, `a{0,2}(?:b{2})?(?:(cd){3})+e{1,2}?`},
 		{`(?<a>x)(y)`, `(?<a>x)(?:y)`},
 		{`\u0062\u{61 62}\e`, `\x{0062}\x{61}\x{62}\x1b`},
