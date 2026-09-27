@@ -387,7 +387,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
-	if cls.meta != nil {
+	if cls.meta != nil || cls.metaOf != nil {
+		// a metaclass inherits _ClassOf from Class/Module; listing it lets a
+		// singleton(C) value pass where Class or Module is expected
 		c.w("\t_ClassOf() %s\n", c.goType(TClass{C: cls.root().meta}))
 	}
 	isModule := cls.isSubclassOf(c.classes["Module"])
