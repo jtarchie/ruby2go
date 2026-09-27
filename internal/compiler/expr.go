@@ -1841,10 +1841,14 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	if isOpt(v.typ) {
 		code = "(*" + v.goName + ")"
 	}
-	if cond == "true" || cond == "false" || cls.IsModule || cls.universal {
+	if cond == "true" || cond == "false" || cls.universal {
 		return cond, nil
 	}
-	if bt, ok := base.(TClass); ok && bt.C.isSubclassOf(cls) {
+	if bt, ok := base.(TClass); cls.IsModule || ok && bt.C.isSubclassOf(cls) {
+		// the class part is static: all the check can rule out is nil
+		if isOpt(v.typ) && !isAny(base) {
+			return cond, []narrowInfo{{local: v, typ: base}}
+		}
 		return cond, nil
 	}
 	typ := TClass{C: cls}

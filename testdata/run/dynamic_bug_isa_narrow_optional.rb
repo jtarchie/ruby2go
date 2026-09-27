@@ -1,5 +1,3 @@
-# skip: `if s.is_a?(String)` on a String? does not narrow away nil, so passing s as String is a compile error; MRI runs it
-
 # rbs_inline: enabled
 
 #: (Integer) -> String?
