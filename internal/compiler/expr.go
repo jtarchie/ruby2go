@@ -1202,6 +1202,12 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		}
 		f.genStmts(body, t)
 	}
+	// A block is its own Go function: a begin around the call (or in the
+	// method) must not route the block's value into the enclosing result.
+	// A begin in the block keeps the value in the closure's own ret_.
+	savedBegins, savedRetVar, savedFlag := f.begins, f.retVar, f.retFlag
+	f.begins, f.retVar, f.retFlag = 0, "ret_", ""
+	defer func() { f.begins, f.retVar, f.retFlag = savedBegins, savedRetVar, savedFlag }()
 	// probe the body's type if the block return has unbound vars
 	ret := closed(sig.Ret, env)
 	if ret == nil {
@@ -1240,6 +1246,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	retS := ""
 	if !isVoid(ret) {
 		retS = " " + f.c.goType(ret)
+		if containsRescue(body) {
+			retS = " (ret_" + retS + ")"
+		}
 	}
 	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
 	f.indent++

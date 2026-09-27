@@ -1,5 +1,3 @@
-# skip: a value-returning block (map) inside a begin/rescue/ensure body writes its value to the enclosing function's result variable, so the Go does not parse or build
-
 # rbs_inline: enabled
 
 ds = [2, 5] #: Array[Integer]
