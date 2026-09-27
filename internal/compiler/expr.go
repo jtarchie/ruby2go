@@ -2004,21 +2004,33 @@ func (f *fctx) isBlockParam(n parser.Node) bool {
 // forwardIter passes the method's own block on to an iterator:
 // `list.each(&block)` re-yields every value (or calls the closure with it).
 func (f *fctx) forwardIter(n parser.Node, call string, yields []Type, t tail) {
-	if len(yields) != len(f.blockSig.Params) {
-		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
-	}
 	vars := make([]string, len(yields))
 	for i := range yields {
 		vars[i] = f.newTmp()
 	}
 	list := strings.Join(vars, ", ")
+	args := list
+	var tt TTuple
+	if len(yields) == 1 {
+		tt, _ = yields[0].(TTuple)
+	}
+	// A proc auto-splats a lone yielded tuple, like bindBlockParams for a literal block.
+	if len(f.blockSig.Params) > 1 && len(tt.Elems) == len(f.blockSig.Params) {
+		fields := make([]string, len(tt.Elems))
+		for i := range fields {
+			fields[i] = fmt.Sprintf("%s.F%d", list, i)
+		}
+		args = strings.Join(fields, ", ")
+	} else if len(yields) != len(f.blockSig.Params) {
+		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
+	}
 	f.emit("for %s := range %s {", list, call)
 	if f.iterator {
-		f.emit("\tif !yield(%s) {", list)
+		f.emit("\tif !yield(%s) {", args)
 		f.emit("\t\treturn")
 		f.emit("\t}")
 	} else {
-		f.emit("\tblk(%s)", list)
+		f.emit("\tblk(%s)", args)
 	}
 	f.emit("}")
 	if t.kind != tailNone {

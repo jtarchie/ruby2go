@@ -37,11 +37,12 @@ class Hash < Object
     }
   }
 
-  #: () { (K, V) -> void } -> void
+  # MRI's each_pair is each: an arity-1 block gets the [k, v] pair.
+  #: () { ([K, V]) -> void } -> void
   def each_pair = %x{
-    return func(yield func(K, V) bool) {
+    return func(yield func(Tuple2[K, V]) bool) {
       for _, k := range self.keys {
-        if !yield(k, self.vals[k]) {
+        if !yield(Tuple2[K, V]{k, self.vals[k]}) {
           return
         }
       }
@@ -148,25 +149,26 @@ class Hash < Object
     return &v
   }
 
-  # Unlike Enumerable#select, Ruby's Hash#select returns a Hash.
-  #: () { ([K, V]) -> bool } -> Hash[K, V]
+  # Unlike Enumerable#select, Ruby's Hash#select returns a Hash. MRI
+  # yields (k, v), not the pair, so an arity-1 block gets the key.
+  #: () { (K, V) -> bool } -> Hash[K, V]
   def select
     out = {} #: Hash[K, V]
-    each { |k, v| out[k] = v if yield([k, v]) }
+    each { |k, v| out[k] = v if yield(k, v) }
     out
   end
 
-  #: () { ([K, V]) -> bool } -> Hash[K, V]
+  #: () { (K, V) -> bool } -> Hash[K, V]
   def filter
     out = {} #: Hash[K, V]
-    each { |k, v| out[k] = v if yield([k, v]) }
+    each { |k, v| out[k] = v if yield(k, v) }
     out
   end
 
-  #: () { ([K, V]) -> bool } -> Hash[K, V]
+  #: () { (K, V) -> bool } -> Hash[K, V]
   def reject
     out = {} #: Hash[K, V]
-    each { |k, v| out[k] = v unless yield([k, v]) }
+    each { |k, v| out[k] = v unless yield(k, v) }
     out
   end
 
