@@ -1,5 +1,3 @@
-# skip: assigning nil to a local first assigned a String fails to compile (nil where String is expected); decision 14 promises nil + String joins to String?
-
 # rbs_inline: enabled
 
 #: (Integer) -> void

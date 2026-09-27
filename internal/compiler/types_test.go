@@ -100,8 +100,6 @@ func TestTypeEq(t *testing.T) {
 	}
 }
 
-const knownOptJoin = "join does not lift subclass/sibling joins through T?, so the result depends on assignment order"
-
 func TestJoin(t *testing.T) {
 	w := newTypeWorld()
 	I, S := cl(w.integer), cl(w.str)
@@ -149,13 +147,12 @@ func TestJoin(t *testing.T) {
 		{"generic vs plain class", cl(w.array, I), D, nil, ""},
 		{"class object vs instance", cl(w.metaBase), B, nil, ""},
 		{"module vs unrelated class", cl(w.cmp), cl(w.unrelated), nil, ""},
-		// join(nil, join(D, B)) is B?, so every association order must agree:
-		// `x = nil; x = Derived.new if a; x = Base.new if b` fails with
-		// "x is assigned both Derived? and Base" (and "Base? and Derived" swapped).
-		{"opt_subclass_to_ancestor", opt(D), B, opt(B), knownOptJoin},
-		{"opt_ancestor_to_subclass", opt(B), D, opt(B), knownOptJoin},
-		{"opt_sibling_to_sibling", opt(D), O, opt(B), knownOptJoin},
-		{"opt_both_sides", opt(D), opt(B), opt(B), knownOptJoin},
+		// join(nil, join(D, B)) is B?, so every association order must agree
+		// (`x = nil; x = Derived.new if a; x = Base.new if b`).
+		{"opt_subclass_to_ancestor", opt(D), B, opt(B), ""},
+		{"opt_ancestor_to_subclass", opt(B), D, opt(B), ""},
+		{"opt_sibling_to_sibling", opt(D), O, opt(B), ""},
+		{"opt_both_sides", opt(D), opt(B), opt(B), ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

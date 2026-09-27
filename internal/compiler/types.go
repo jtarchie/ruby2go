@@ -294,12 +294,16 @@ func join(a, b Type) (Type, bool) {
 		return TOpt{Elem: a}, true
 	case typeEq(a, b):
 		return a, true
-	case isOpt(a) && typeEq(a.(TOpt).Elem, b):
-		return a, true
-	case isOpt(b) && typeEq(b.(TOpt).Elem, a):
-		return b, true
 	case isAny(a) || isAny(b):
 		return TAny{}, true
+	case isOpt(a) || isOpt(b):
+		// T? with U: join T and U, then re-add the nil, so every order of
+		// `x = nil`, `x = Derived.new`, `x = Base.new` gives Base?.
+		j, ok := join(stripOpt(a), stripOpt(b))
+		if !ok || isAny(j) {
+			return j, ok
+		}
+		return TOpt{Elem: j}, true
 	}
 	// Subclass / superclass: pick the ancestor.
 	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil && ca != cb {

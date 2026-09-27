@@ -1164,8 +1164,8 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 				f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)
 			}
 		}
-		if f.pass == 2 {
-			existing.typ = info.typ
+		if f.pass == 2 || isNil(val.typ) {
+			existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14)
 		}
 	}
 	f.emit("%s = %s", existing.goName, f.coerce(n, val, existing.typ))
