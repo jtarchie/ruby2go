@@ -1895,7 +1895,11 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
 	f.indent++
 	saved := f.enterBlock()
 	v := f.genExpr(value, elem)
-	f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+	if v.noreturn { // `x ||= raise(...)`
+		f.emit("%s", v.code)
+	} else {
+		f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+	}
 	f.leaveBlock(saved)
 	f.indent--
 	f.emit("}")
@@ -2419,7 +2423,10 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 		r = f.genExpr(n.RescueExpression, expected)
 	})
 	typ, ok := join(e.typ, r.typ)
-	if !ok {
+	switch {
+	case r.noreturn: // `expr rescue raise(...)`
+		typ = e.typ
+	case !ok:
 		typ = TAny{}
 	}
 	if isVoid(typ) && !isNil(typ) {
@@ -2438,7 +2445,11 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.emit("\t\t}")
 	f.indent += 2
 	r = f.genExpr(n.RescueExpression, typ)
-	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	if r.noreturn {
+		f.emit("%s", r.code)
+	} else {
+		f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	}
 	f.indent -= 2
 	f.emit("\t}")
 	f.emit("}()")

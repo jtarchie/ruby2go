@@ -1,5 +1,3 @@
-# skip: `expr rescue raise(...)` assigns the fallback's `panic(...)` as a value, so go build fails ((no value) used as value)
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer

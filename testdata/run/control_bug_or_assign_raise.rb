@@ -1,5 +1,3 @@
-# skip: `x ||= raise(...)` assigns the raise's `panic(...)` as a value, so go build fails ((no value) used as value); `x || raise(...)` works
-
 # rbs_inline: enabled
 
 y = 5 #: Integer?
