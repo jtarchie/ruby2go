@@ -45,7 +45,7 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.NilNode:
 		return expr{code: "nil", typ: TNil{}}, true
 	case *parser.SelfNode:
-		return expr{code: f.selfCode, typ: f.selfType}, true
+		return expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}, true
 	case *parser.SymbolNode:
 		return expr{code: "Symbol(" + strconv.Quote(n.Unescaped.Value) + ")", typ: f.cls("Symbol")}, true
 	case *withMember:
@@ -669,7 +669,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	}
 	var recv expr
 	if n.Receiver == nil {
-		recv = expr{code: f.selfCode, typ: f.selfType}
+		recv = expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}
 	} else {
 		recv = f.genExpr(n.Receiver, nil)
 	}
@@ -1258,7 +1258,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	var recv expr
 	if n.Receiver == nil {
-		recv = expr{code: f.selfCode, typ: f.selfType}
+		recv = expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}
 	} else {
 		recv = f.genExpr(n.Receiver, nil)
 	}

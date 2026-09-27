@@ -31,6 +31,7 @@ type Compiler struct {
 	regexps       []string          // package-level compiled literals
 	regexpVars    map[string]string // literal → its variable, to share one per pattern
 	constList     []*Const
+	hooks         []classHook // main.rb's inherited/included/extended sites
 	topDefList    []*Method
 	verbatim      []verbatim
 	mainStmts     []parser.Node

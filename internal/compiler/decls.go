@@ -726,9 +726,14 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 	return e.Owner.IsModule && !e.Owner.universal && c.selfCalls(e.Owner)[e.M.Name]
 }
 
-// constFctx is the codegen context a constant's initializer runs in.
+// constFctx is the codegen context a constant's initializer runs in: the
+// class body, whose self is the class object (main at top level).
 func (c *Compiler) constFctx(k *Const) *fctx {
 	f := c.newFctx(k.File, nil, nil)
+	if n := len(k.Scope); n > 0 && k.Scope[n-1].meta != nil {
+		cls := k.Scope[n-1]
+		f.selfType, f.selfCode, f.selfClassObj = TClass{C: cls.meta}, classVar(cls), true
+	}
 	f.lex = k.Scope
 	f.locals = map[string]*localInfo{}
 	f.scope = &scope{vars: map[string]*local{}}

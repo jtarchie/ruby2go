@@ -534,7 +534,12 @@ resolve; anything not listed is still open.
 18. Constants are Go package variables, typed by `#: T` or by their
     initializer, and assigned in `main` in source order (prelude first), as
     MRI evaluates them. *(Revised: they used to initialize before `main` in
-    Go's dependency order.)*
+    Go's dependency order.)* That is where main.rb's class bodies run: an
+    initializer inside a class or module has the class object as `self`
+    (`FREEZING = of(0)`), and a user-defined `inherited` is called where a
+    class is first opened, `included`/`extended` at the `include`/`extend`,
+    in the same source order. *(Revised: initializers ran with `main` as
+    `self`, and hooks were compiled but never called.)*
 19. Class methods: every class and module (except `BasicObject` and
     `Kernel`) gets a metaclass — a struct class holding the
     class methods, inheriting from the parent's metaclass — and one

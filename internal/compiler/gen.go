@@ -1,7 +1,9 @@
 package compiler
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -17,6 +19,7 @@ type fctx struct {
 	lex          []*Class // lexical scope for constant lookup
 	selfType     Type
 	selfCode     string
+	selfClassObj bool // self is exactly a class constant (a class body)
 	ret          Type
 	iterator     bool
 	blockSig     *BlockSig
@@ -1409,22 +1412,30 @@ func (ci *constInit) GetLocation() parser.Location     { return ci.k.Value.GetLo
 func (ci *constInit) CompactChildNodes() []parser.Node { return nil }
 func (ci *constInit) ChildNodes() []parser.Node        { return nil }
 
-// mainBody merges main.rb's top-level statements with every constant
-// assignment: prelude constants first, then main.rb's by position.
+// mainBody merges main.rb's top-level statements with what its class
+// bodies run, every constant assignment and hook call: prelude constants
+// first, then main.rb's by position.
 func (c *Compiler) mainBody() []parser.Node {
-	var body []parser.Node
-	var mine []*Const
+	var body, mine []parser.Node
 	for _, k := range c.constList {
 		if k.File == c.mainFile {
-			mine = append(mine, k)
+			mine = append(mine, &constInit{k: k})
 		} else {
 			body = append(body, &constInit{k: k})
 		}
 	}
+	for _, h := range c.hooks {
+		if n := c.hookCall(h); n != nil {
+			mine = append(mine, n)
+		}
+	}
+	slices.SortStableFunc(mine, func(a, b parser.Node) int {
+		return cmp.Compare(a.GetLocation().StartOffset, b.GetLocation().StartOffset)
+	})
 	stmts := c.mainStmts
 	for len(stmts) > 0 || len(mine) > 0 {
-		if len(mine) > 0 && (len(stmts) == 0 || mine[0].Value.GetLocation().StartOffset < stmts[0].GetLocation().StartOffset) {
-			body = append(body, &constInit{k: mine[0]})
+		if len(mine) > 0 && (len(stmts) == 0 || mine[0].GetLocation().StartOffset < stmts[0].GetLocation().StartOffset) {
+			body = append(body, mine[0])
 			mine = mine[1:]
 			continue
 		}
@@ -1432,6 +1443,22 @@ func (c *Compiler) mainBody() []parser.Node {
 		stmts = stmts[1:]
 	}
 	return body
+}
+
+// hookCall is the call MRI makes at hook site h, or nil when the receiver
+// does not define the hook (Ruby's own are no-ops).
+func (c *Compiler) hookCall(h classHook) parser.Node {
+	recv := h.cls.Super
+	if h.mod != nil {
+		recv = c.resolveClassRef(h.mod)
+	}
+	if recv == nil || recv.meta == nil || recv.meta.lookup(h.name) == nil {
+		return nil
+	}
+	obj := func(k *Class) parser.Node {
+		return &exprNode{e: expr{code: classVar(k), typ: TClass{C: k.meta}, classObj: true}}
+	}
+	return &parser.CallNode{Location: h.node.GetLocation(), Receiver: obj(recv), Name: h.name, Arguments: &parser.ArgumentsNode{Arguments: []parser.Node{obj(h.cls)}}}
 }
 
 // genConstInit assigns a constant's package variable.

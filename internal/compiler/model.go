@@ -460,6 +460,9 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 			cls.superRef = ref
 		}
 	}
+	if !reopen && !f.prelude {
+		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n})
+	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
 
@@ -544,6 +547,7 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
 		}
+		c.noteHooks(f, "included", cls, n, args, scope)
 	case "extend":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
@@ -551,6 +555,7 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 			cls.extends = append(cls.extends, cls.Includes[last])
 			cls.Includes = cls.Includes[:last]
 		}
+		c.noteHooks(f, "extended", cls, n, args, scope)
 	case "private":
 		switch {
 		case len(args) == 0:
@@ -568,6 +573,27 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 		*private = false
 	default:
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
+	}
+}
+
+// classHook is a hook MRI calls while it evaluates a class body in main.rb:
+// Super.inherited(cls) where the class is first opened, Mod.included(cls)
+// and Mod.extended(cls) at the include/extend.
+type classHook struct {
+	name string
+	cls  *Class
+	mod  *constRef // nil: the superclass
+	node parser.Node
+}
+
+// noteHooks records `include`/`extend`'s hooks: the last module first, as
+// MRI includes them.
+func (c *Compiler) noteHooks(f *File, name string, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
+	if f.prelude {
+		return
+	}
+	for _, a := range slices.Backward(args) {
+		c.hooks = append(c.hooks, classHook{name: name, cls: cls, mod: &constRef{node: a, scope: scope, file: f}, node: n})
 	}
 }
 
