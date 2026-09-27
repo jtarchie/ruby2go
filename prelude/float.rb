@@ -84,4 +84,8 @@ class Float < Object
 
   #: () -> String
   def inspect = to_s
+
+  # Immediates are always frozen.
+  #: () -> bool
+  def frozen? = true
 end

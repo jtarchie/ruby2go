@@ -30,8 +30,9 @@ module Kernel
   #: () -> bool
   def nil? = false
 
+  # Objects, Array, Hash and Struct values are mutable; frozen classes override.
   #: () -> bool
-  def frozen? = true
+  def frozen? = false
 
   #: (?Integer) -> void
   def exit(status = 0) = %x{ _ = stdout.Flush(); os.Exit(int(status)) }

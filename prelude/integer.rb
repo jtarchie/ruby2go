@@ -127,6 +127,10 @@ class Integer < Object
   #: () -> String
   def inspect = to_s
 
+  # Immediates are always frozen.
+  #: () -> bool
+  def frozen? = true
+
   #: () -> Integer
   def hash = self
 

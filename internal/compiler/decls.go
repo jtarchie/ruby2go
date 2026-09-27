@@ -2,7 +2,10 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -240,6 +243,13 @@ func (c *Compiler) emitProgram() {
 	for _, r := range c.regexps {
 		c.w("%s\n\n", r)
 	}
+	// The linker shares one copy of each literal's bytes, so this table's
+	// entries alias every literal in the program (rbStrFrozen).
+	c.w("var rbStringLits = [...]string{\n")
+	for _, s := range slices.Sorted(maps.Keys(c.strLits)) {
+		c.w("\t%s,\n", strconv.Quote(s))
+	}
+	c.w("}\n")
 }
 
 func (c *Compiler) emitClassType(cls *Class) {

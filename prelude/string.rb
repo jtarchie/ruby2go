@@ -232,7 +232,15 @@ class String < Object
   }
 
   #: () -> String
-  def freeze = self
+  def freeze = %x{
+    rbStrFrozen(string(self), true)
+    return self
+  }
+
+  # Literals are frozen (frozen_string_literal); strings built at run time
+  # are not until frozen. See rbStrFrozen.
+  #: () -> bool
+  def frozen? = %x{ Boolean(rbStrFrozen(string(self), false)) }
 
   #: (Integer) -> String
   def center(width) = %x{

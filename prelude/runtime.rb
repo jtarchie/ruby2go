@@ -133,6 +133,38 @@
     return a == b
   }
 
+  // rbStrID is a String's identity: backing pointer and length, as in rbIdentical.
+  type rbStrID struct {
+    p *byte
+    n int
+  }
+
+  var (
+    rbFrozenMu   sync.Mutex
+    rbFrozenStrs map[rbStrID]bool // the literals (seeded on first use) and every String#freeze receiver
+  )
+
+  // rbStrFrozen reports whether s is a literal or was frozen, and with
+  // freeze also marks it. Strings built at run time have fresh backing
+  // arrays, so they aren't in the set, like MRI's unfrozen strings.
+  // ponytail: frozen computed strings stay reachable from the set; use weak pointers if that leak shows up.
+  func rbStrFrozen(s string, freeze bool) bool {
+    id := rbStrID{unsafe.StringData(s), len(s)} //nolint:gosec // identity only
+    rbFrozenMu.Lock()
+    defer rbFrozenMu.Unlock()
+    if rbFrozenStrs == nil {
+      rbFrozenStrs = make(map[rbStrID]bool, len(rbStringLits))
+      for _, l := range rbStringLits {
+        rbFrozenStrs[rbStrID{unsafe.StringData(l), len(l)}] = true //nolint:gosec // identity only
+      }
+    }
+    was := rbFrozenStrs[id]
+    if freeze {
+      rbFrozenStrs[id] = true
+    }
+    return was
+  }
+
   func rbIsA[I any](r any) bool {
     _, ok := r.(I)
     return ok

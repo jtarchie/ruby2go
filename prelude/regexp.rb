@@ -66,6 +66,10 @@ class Regexp < Object
   #: () -> String
   def source = %x{ String(self.src) }
 
+  # Every Regexp is a literal, and literals are frozen.
+  #: () -> bool
+  def frozen? = true
+
   #: () -> String
   def inspect = %x{ String("/" + self.src + "/" + self.opts) }
 

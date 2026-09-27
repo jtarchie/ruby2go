@@ -27,6 +27,7 @@ type expr struct {
 func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	switch n := n.(type) {
 	case *parser.StringNode:
+		f.c.strLits[n.Unescaped.Value] = true
 		return expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}, true
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true

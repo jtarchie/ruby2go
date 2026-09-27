@@ -36,6 +36,10 @@ class Symbol < Object
   #: () -> Symbol
   def to_sym = self
 
+  # Immediates are always frozen.
+  #: () -> bool
+  def frozen? = true
+
   #: () -> String
   def inspect = %x{ rbSymbolInspect(string(self)) }
 

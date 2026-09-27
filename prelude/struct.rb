@@ -12,4 +12,6 @@ end
 # values with readers, keyword or positional `new` (every member required),
 # `with`, `to_h`, ==, members and inspect, all generated.
 class Data < Object
+  #: () -> bool
+  def frozen? = true
 end

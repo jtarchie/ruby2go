@@ -149,7 +149,11 @@ Rules the prelude relies on:
 - **Frozen strings.** `# frozen_string_literal: true` semantics only; no
   `upcase!`/`<<`. That's what lets `String` be a Go `string` value. `equal?`
   (identity) on a value type compares the backing pointer — a hack that only
-  works because strings are immutable.
+  works because strings are immutable. `frozen?` uses the same identity: a
+  string is frozen if it shares a literal's bytes (the compiler emits a table
+  of every literal, `rbStringLits`) or was passed to `freeze`; strings built
+  at run time are not, as in MRI. Other values: immediates, `Regexp` and
+  `Data` are frozen; objects, `Array`, `Hash` and `Struct` are not.
 - **Literals need wrapping only for interface targets** — Go's untyped
   constants convert to `String` when the parameter is `String`
   (`s.Lt("world")` compiles), but become Go `string` when the parameter is
