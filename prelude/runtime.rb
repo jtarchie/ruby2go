@@ -222,7 +222,14 @@
   func rbStringInspect(s string) String {
     var b strings.Builder
     b.WriteByte('"')
-    for _, r := range s {
+    for i := 0; i < len(s); {
+      r, n := utf8.DecodeRuneInString(s[i:])
+      if r == utf8.RuneError && n == 1 {
+        fmt.Fprintf(&b, `\\x%02X`, s[i])
+        i++
+        continue
+      }
+      i += n
       switch r {
       case '"':
         b.WriteString(`\\"`)
@@ -247,10 +254,19 @@
       case '#':
         b.WriteByte('#')
       default:
-        if r < 0x20 || r == 0x7f {
+        switch {
+        case r < 0x20 || r == 0x7f:
+          // ponytail: strings carry no encoding, so ASCII controls get the
+          // US-ASCII form (Integer#chr, ASCII-only symbols); a UTF-8 literal
+          // is \\u0000 in MRI. Needs an encoding bit on String.
           fmt.Fprintf(&b, `\\x%02X`, r)
-        } else {
+        case unicode.IsGraphic(r) || unicode.In(r, unicode.Cf, unicode.Co):
+          // MRI's "printable" for UTF-8: graphic, format or private use.
           b.WriteRune(r)
+        case r > 0xFFFF:
+          fmt.Fprintf(&b, `\\u{%X}`, r)
+        default:
+          fmt.Fprintf(&b, `\\u%04X`, r)
         }
       }
     }
