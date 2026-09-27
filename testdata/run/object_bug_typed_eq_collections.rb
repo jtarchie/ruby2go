@@ -1,5 +1,3 @@
-# skip: a user == typed on its own class (`#: (Vec) -> bool`) is ignored by Array#include?, Array#== and Hash#==, which compare by identity (rbEq only honours Eq(any)); an untyped == works
-
 # rbs_inline: enabled
 
 class Vec

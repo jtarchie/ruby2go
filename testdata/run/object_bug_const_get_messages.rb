@@ -1,5 +1,3 @@
-# skip: const_get/const_defined? errors differ from Ruby 4: TypeError "42 is not a symbol nor a string" (MRI: "no implicit conversion of Integer into String"); a malformed name gives "uninitialized constant M::lower" / false (MRI: NameError "wrong constant name lower"); const_get("") returns nil instead of raising
-
 # rbs_inline: enabled
 
 module M

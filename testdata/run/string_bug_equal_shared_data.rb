@@ -1,5 +1,3 @@
-# skip: equal? on Strings compares Go data pointers, so a result that shares the receiver's bytes (strip/sub/center with nothing to do, "#{s}", Symbol#to_s, "".dup) is identical; MRI returns a new String
-
 # frozen_string_literal: true
 
 # rbs_inline: enabled

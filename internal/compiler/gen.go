@@ -1453,7 +1453,9 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		f.emit("%s = %s", v.goName, code)
 	case code == "nil":
 		f.emit("var %s %s", v.goName, f.c.goType(v.typ))
-	case f.concreteInit(val, code, v.typ):
+	case f.concreteInit(val, code, v.typ), isAny(v.typ) && !isAny(val.typ):
+		// concreteInit, or an untyped local seeded with a typed value: `:=`
+		// would give the local the value's Go type; later writes need goType
 		f.emit("var %s %s = %s", v.goName, f.c.goType(v.typ), code)
 	default:
 		f.emit("%s := %s", v.goName, code)

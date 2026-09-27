@@ -1,4 +1,3 @@
-# skip: Comparable and sorting on a NaN Float return a value; MRI raises ArgumentError (comparison of Float with ... failed) because NaN <=> x is nil
 # rbs_inline: enabled
 
 z = 0.0 #: Float

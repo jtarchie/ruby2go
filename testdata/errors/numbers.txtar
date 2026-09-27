@@ -84,6 +84,10 @@ end
 # error: main.rb:3: unsupported syntax: RationalNode
 # rbs_inline: enabled
 puts 3r
+-- bignum_literal.rb --
+# error: main.rb:3: Integer literal 9223372036854775808 does not fit in 64 bits: there is no Bignum
+# rbs_inline: enabled
+puts 9_223_372_036_854_775_808
 -- imaginary_literal.rb --
 # error: main.rb:3: unsupported syntax: ImaginaryNode
 # rbs_inline: enabled
@@ -117,18 +121,17 @@ puts (a || 2).inspect
 # rbs_inline: enabled
 a = 0.0 #: Float
 puts (a || 1.0).inspect
--- assigned_integer_then_float.rb --
-# error: main.rb:4: x is assigned both Integer and Float
+-- integer_op_float_float_lacks.rb --
+# error: main.rb:4: Integer#% with an Integer and a Float is not supported
 # rbs_inline: enabled
-x = 1
-x = 2.5
-puts x
--- branches_integer_float.rb --
-# error: main.rb:4: branches have incompatible types Integer and Float
+a = 7 #: Integer
+puts (a % 2.5).inspect
+-- float_where_integer_expected.rb --
+# error: main.rb:5: Float where Integer is expected
 # rbs_inline: enabled
-c = true #: bool
-x = c ? 1 : 2.5
-puts x
+#: (Integer) -> Integer
+def twice(n) = n * 2
+puts twice(2.0)
 -- integer_condition_always_true.rb --
 # warning: main.rb:4: condition of type Integer is always true
 # rbs_inline: enabled

@@ -7,8 +7,8 @@ import (
 
 // typeWorld is a hand-built hierarchy: Object > Base > {Derived > Leaf, Other}, Object > {Unrelated, Integer, String}.
 type typeWorld struct {
-	object, base, derived, leaf, other, unrelated, integer, str, array, hash, cmp *Class
-	metaBase, metaDerived, metaOther                                              *Class
+	object, base, derived, leaf, other, unrelated, integer, float, str, array, hash, cmp *Class
+	metaBase, metaDerived, metaOther                                                     *Class
 }
 
 func newTypeWorld() *typeWorld {
@@ -23,6 +23,7 @@ func newTypeWorld() *typeWorld {
 	w.other = sub("Other", w.base)
 	w.unrelated = sub("Unrelated", w.object)
 	w.integer = sub("Integer", w.object)
+	w.float = sub("Float", w.object)
 	w.str = sub("String", w.object)
 	w.array = sub("Array", w.object)
 	w.array.TypeParams = []string{"E"}
@@ -166,6 +167,8 @@ func TestJoin(t *testing.T) {
 		{"module included", D, cl(w.cmp), cl(w.cmp), ""},
 		{"only Object in common", D, cl(w.unrelated), nil, ""},
 		{"unrelated primitives", I, S, nil, ""},
+		{"Integer and Float mix untyped", I, cl(w.float), TAny{}, ""}, // decision 12, revised
+		{"Integer? and Float", opt(I), cl(w.float), nil, ""},
 		{"different type args", cl(w.array, I), cl(w.array, S), nil, ""},
 		{"T? U", opt(S), I, nil, ""},
 		{"T? U?", opt(S), opt(I), nil, ""},
@@ -212,7 +215,7 @@ func TestJoin(t *testing.T) {
 func TestJoinCommutes(t *testing.T) {
 	w := newTypeWorld()
 	ts := []Type{
-		TNil{}, TAny{}, TVoid{}, cl(w.integer), cl(w.str), opt(cl(w.str)), cl(w.base), cl(w.derived), cl(w.other),
+		TNil{}, TAny{}, TVoid{}, cl(w.integer), cl(w.float), cl(w.str), opt(cl(w.str)), cl(w.base), cl(w.derived), cl(w.other),
 		cl(w.leaf), opt(cl(w.derived)), cl(w.metaDerived), cl(w.metaOther), fn(cl(w.str)),
 		cl(w.unrelated), cl(w.cmp), cl(w.array, cl(w.integer)), tv("T"), tup(cl(w.integer), cl(w.str)),
 	}

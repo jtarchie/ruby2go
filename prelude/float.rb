@@ -7,8 +7,18 @@
 class Float < Object
   include Comparable
 
-  #: (Float) -> Integer
-  def <=>(other) = %x{ Integer(cmp.Compare(self, other)) }
+  #: (Float) -> Integer?
+  def <=>(other) = %x{
+    switch {
+    case self < other:
+      return Ref(Integer(-1))
+    case self > other:
+      return Ref(Integer(1))
+    case self == other:
+      return Ref(Integer(0))
+    }
+    return nil // NaN, as MRI; Comparable and sort call the generated Cmp, which raises (decision 3)
+  }
 
   #: (Float) -> bool
   def <(other) = %x{ Boolean(self < other) }
@@ -29,8 +39,12 @@ class Float < Object
       return Boolean(self == o)
     case Integer:
       return Boolean(self == Float(o))
+    case *Integer: // a T? box that reached untyped unconverted; nil must not reach rbEq
+      return self.Eq(Opt(o))
+    case *Float:
+      return self.Eq(Opt(o))
     }
-    return false
+    return rbEq[any](other, self) // MRI asks other == self
   }
 
   #: (Float) -> Float
@@ -46,7 +60,7 @@ class Float < Object
   def /(other) = %x{ self / other }
 
   #: (Float) -> Float
-  def **(other) = %x{ Float(math.Pow(float64(self), float64(other))) }
+  def **(other) = %x{ Float(rbFloatPow(float64(self), float64(other))) }
 
   #: () -> Float
   def -@ = %x{ -self }
@@ -55,16 +69,16 @@ class Float < Object
   def abs = %x{ Float(math.Abs(float64(self))) }
 
   #: () -> Integer
-  def to_i = %x{ Integer(self) }
+  def to_i = %x{ rbFloatToI(float64(self)) }
 
   #: () -> Integer
-  def floor = %x{ Integer(math.Floor(float64(self))) }
+  def floor = %x{ rbFloatToI(math.Floor(float64(self))) }
 
   #: () -> Integer
-  def ceil = %x{ Integer(math.Ceil(float64(self))) }
+  def ceil = %x{ rbFloatToI(math.Ceil(float64(self))) }
 
   #: () -> Integer
-  def round = %x{ Integer(math.RoundToEven(float64(self))) }
+  def round = %x{ rbFloatToI(math.Round(float64(self))) }
 
   #: () -> Float
   def to_f = self
@@ -80,4 +94,8 @@ class Float < Object
 
   #: () -> String
   def inspect = to_s
+
+  # Immediates are always frozen.
+  #: () -> bool
+  def frozen? = true
 end

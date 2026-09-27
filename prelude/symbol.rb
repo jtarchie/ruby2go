@@ -33,23 +33,28 @@ class Symbol < Object
     return Boolean(ok && self == o)
   }
 
+  # A new String each call; name is the one frozen String, as in MRI.
   #: () -> String
-  def to_s = %x{ String(self) }
+  def to_s = %x{ rbStrClone(String(self)) }
 
   #: () -> String
-  def name = to_s
+  def name = %x{ String(self) }
 
   #: () -> Symbol
   def to_sym = self
+
+  # Immediates are always frozen.
+  #: () -> bool
+  def frozen? = true
 
   #: () -> String
   def inspect = %x{ rbSymbolInspect(string(self)) }
 
   #: () -> Integer
-  def size = to_s.size
+  def size = name.size
 
   #: () -> Integer
-  def hash = to_s.hash
+  def hash = name.hash
 end
 
 class String

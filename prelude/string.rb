@@ -133,10 +133,15 @@ class String < Object
   }
 
   #: (String) -> String
-  def +(other) = %x{ self + other }
+  def +(other) = %x{ rbNewStr(self, rbNewStr(other, self + other)) }
 
   #: (Integer) -> String
-  def *(n) = %x{ String(strings.Repeat(string(self), int(n))) }
+  def *(n) = %x{
+    if n < 0 {
+      panic(NewArgumentError(Ref[String]("negative argument")))
+    }
+    return rbNewStr(self, String(strings.Repeat(string(self), int(n))))
+  }
 
   #: () -> String
   def to_s = self
@@ -148,13 +153,13 @@ class String < Object
   def inspect = %x{ rbStringInspect(string(self)) }
 
   #: () -> String
-  def dup = %x{ String(strings.Clone(string(self))) }
+  def dup = %x{ rbStrClone(self) }
 
   #: () -> String
-  def upcase = %x{ String(rbCaseMap(string(self), 2, unicode.ToUpper)) }
+  def upcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 2, unicode.ToUpper))) }
 
   #: () -> String
-  def downcase = %x{ String(rbCaseMap(string(self), 0, unicode.ToLower)) }
+  def downcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 0, unicode.ToLower))) }
 
   # Titlecase the first character (ǆ -> ǅ, ß -> Ss), downcase the rest.
   #: () -> String
@@ -182,16 +187,16 @@ class String < Object
 
   # MRI's whitespace is ASCII only, plus NUL for strip; not unicode.IsSpace.
   #: () -> String
-  def strip = %x{ String(strings.Trim(string(self), " \\t\\n\\v\\f\\r\\x00")) }
+  def strip = %x{ rbNewStr(self, String(strings.Trim(string(self), " \\t\\n\\v\\f\\r\\x00"))) }
 
   #: () -> String
-  def lstrip = %x{ String(strings.TrimLeft(string(self), " \\t\\n\\v\\f\\r\\x00")) }
+  def lstrip = %x{ rbNewStr(self, String(strings.TrimLeft(string(self), " \\t\\n\\v\\f\\r\\x00"))) }
 
   #: () -> String
-  def rstrip = %x{ String(strings.TrimRight(string(self), " \\t\\n\\v\\f\\r\\x00")) }
+  def rstrip = %x{ rbNewStr(self, String(strings.TrimRight(string(self), " \\t\\n\\v\\f\\r\\x00"))) }
 
   #: () -> String
-  def chomp = %x{ String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r")) }
+  def chomp = %x{ rbNewStr(self, String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r"))) }
 
   #: () -> Integer
   def size = %x{ Integer(utf8.RuneCountInString(string(self))) }
@@ -260,7 +265,7 @@ class String < Object
     out := &Array[String]{}
     for _, l := range strings.SplitAfter(string(self), "\\n") {
       if l != "" {
-        *out = append(*out, String(l))
+        *out = append(*out, rbNewStr(self, String(l)))
       }
     }
     return out
@@ -274,7 +279,7 @@ class String < Object
     if sep == nil || *sep == " " {
       isSpace := func(r rune) bool { return r == ' ' || r >= '\\t' && r <= '\\r' }
       for _, f := range strings.FieldsFunc(string(self), isSpace) {
-        *out = append(*out, String(f))
+        *out = append(*out, rbNewStr(self, String(f)))
       }
       return out
     }
@@ -283,16 +288,16 @@ class String < Object
       parts = parts[:len(parts)-1]
     }
     for _, p := range parts {
-      *out = append(*out, String(p))
+      *out = append(*out, rbNewStr(self, String(p)))
     }
     return out
   }
 
   #: (String, String) -> String
-  def sub(from, to) = %x{ String(rbSub(string(self), string(from), string(to), 1)) }
+  def sub(from, to) = %x{ rbNewStr(self, String(rbSub(string(self), string(from), string(to), 1))) }
 
   #: (String, String) -> String
-  def gsub(from, to) = %x{ String(rbSub(string(self), string(from), string(to), -1)) }
+  def gsub(from, to) = %x{ rbNewStr(self, String(rbSub(string(self), string(from), string(to), -1))) }
 
   #: (String, String) -> String
   def tr(from, to) = %x{
@@ -333,7 +338,7 @@ class String < Object
         m[c] = t[i]
       }
     }
-    return String(strings.Map(func(r rune) rune {
+    return rbNewStr(self, String(strings.Map(func(r rune) rune {
       v, ok := m[r]
       if negate {
         if ok {
@@ -345,7 +350,7 @@ class String < Object
         return v
       }
       return r
-    }, string(self)))
+    }, string(self))))
   }
 
   #: () -> Integer
@@ -354,7 +359,11 @@ class String < Object
     if m == nil {
       return 0
     }
-    n, _ := strconv.Atoi(m[1] + strings.ReplaceAll(m[2], "_", ""))
+    digits := m[1] + strings.ReplaceAll(m[2], "_", "")
+    n, err := strconv.Atoi(digits)
+    if errors.Is(err, strconv.ErrRange) { // MRI returns a Bignum (decision 35)
+      panic(NewRangeError(Ref(String(digits + " overflows Integer (64-bit; no Bignum)"))))
+    }
     return Integer(n)
   }
 
@@ -370,7 +379,13 @@ class String < Object
 
   #: () -> Integer
   def ord = %x{
-    r, _ := utf8.DecodeRuneInString(string(self))
+    if self == "" {
+      panic(NewArgumentError(Ref[String]("empty string")))
+    }
+    r, n := utf8.DecodeRuneInString(string(self))
+    if r == utf8.RuneError && n == 1 {
+      return Integer(self[0]) // a binary byte, e.g. 200.chr
+    }
     return Integer(r)
   }
 
@@ -382,13 +397,21 @@ class String < Object
   }
 
   #: () -> String
-  def freeze = self
+  def freeze = %x{
+    rbStrFrozen(string(self), true)
+    return self
+  }
+
+  # Literals are frozen (frozen_string_literal); strings built at run time
+  # are not until frozen. See rbStrFrozen.
+  #: () -> bool
+  def frozen? = %x{ Boolean(rbStrFrozen(string(self), false)) }
 
   #: (Integer) -> String
   def center(width) = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
-      return self
+      return rbStrClone(self)
     }
     return String(strings.Repeat(" ", n/2) + string(self) + strings.Repeat(" ", n-n/2))
   }
@@ -397,7 +420,7 @@ class String < Object
   def ljust(width) = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
-      return self
+      return rbStrClone(self)
     }
     return self + String(strings.Repeat(" ", n))
   }
@@ -406,7 +429,7 @@ class String < Object
   def rjust(width) = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
-      return self
+      return rbStrClone(self)
     }
     return String(strings.Repeat(" ", n)) + self
   }

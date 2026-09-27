@@ -1,4 +1,3 @@
-# skip: Integer op Float coerces the Float literal into Integer (7 / 2.0 is 3, not 3.5); Float#clamp with Integer bounds returns 2.0, not the bound 2
 # rbs_inline: enabled
 
 a = 7 #: Integer

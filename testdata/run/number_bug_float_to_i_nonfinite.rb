@@ -1,4 +1,3 @@
-# skip: Float#to_i/floor/ceil/round on Infinity or NaN return a garbage Integer; MRI raises FloatDomainError (a RangeError)
 # rbs_inline: enabled
 
 z = 0.0 #: Float

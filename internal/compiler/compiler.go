@@ -31,6 +31,7 @@ type Compiler struct {
 	warned        map[string]bool
 	regexps       []string          // package-level compiled literals
 	regexpVars    map[string]string // literal → its variable, to share one per pattern
+	strLits       map[string]bool   // String literal texts: String#frozen? knows them by identity
 	constList     []*Const
 	hooks         []classHook // main.rb's inherited/included/extended sites
 	topDefList    []*Method
@@ -101,7 +102,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	}
 	defer func() { _ = p.Close(ctx) }()
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPrelude(ctx, "prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)

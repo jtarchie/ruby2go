@@ -1,4 +1,4 @@
-# skip: Integer is a Go int and wraps on overflow; MRI promotes to Bignum (max + 1 prints -9223372036854775808, 2 ** 64 prints 0)
+# skip: wontfix: Integer is a 64-bit Go int (README decision 35); where MRI promotes to a Bignum, rb2go raises RangeError
 # rbs_inline: enabled
 
 m = 9_223_372_036_854_775_807 #: Integer

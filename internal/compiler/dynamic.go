@@ -21,9 +21,7 @@ import (
 // generating a wrapper may ask for more (a default argument calling
 // something dynamically), so this runs to a fixed point.
 func (c *Compiler) emitDynamic() {
-	if len(c.dynNames) == 0 && len(c.respondNames) == 0 && !c.dynAll {
-		return
-	}
+	c.noteDyn("<=>") // rbCmp falls back to DynCmp, and which instantiations see untyped values is unknown here
 	if c.dynAll {
 		for _, name := range c.allMethodNames() {
 			c.noteDyn(name)
@@ -245,6 +243,16 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		maxArgs = -1
 	}
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
+	if isNumeric(recv.typ) && rest == nil && opt == 0 {
+		c.dynNumericMix(f, e, env)
+	}
+	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
+		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
+			f.emit("if _, ok := rbAs[%s](args[0]); !ok {", c.goType(t))
+			f.emit("\treturn nil")
+			f.emit("}")
+		}
+	}
 	call := func(k int, withRest bool) {
 		nodes := make([]parser.Node, 0, k+1)
 		for i := range k {
@@ -286,6 +294,38 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	f.indent--
 	f.emit("}")
 	return f.buf.String()
+}
+
+// dynNumericMix emits an Integer or Float wrapper's answer to an argument
+// of the other numeric class, as numericMix compiles typed calls:
+// Comparable's methods run on rbNum, and an Integer's own operator is
+// redone by its Float, whose wrappers widen Integer arguments (rbAs).
+func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
+	m := e.M
+	if len(m.Params) == 0 {
+		return
+	}
+	for _, p := range m.Params {
+		if !isNumeric(subst(p.Type, env)) {
+			return
+		}
+	}
+	var ret string
+	switch {
+	case m.Owner == c.classes["Comparable"]:
+		args := make([]string, len(m.Params))
+		for i := range args {
+			args[i] = fmt.Sprintf("args[%d]", i)
+		}
+		ret = f.rbNumCall(nil, m, "self", args).code
+	case isClass(env["Self"], "Integer") && c.dynEntry(c.classes["Float"], m.Name) != nil:
+		ret = "Float(self).Dyn" + goMethodName(m.Name) + "(args...)"
+	default:
+		return
+	}
+	f.emit("if rbNumMixed(self, args) {")
+	f.emit("\treturn %s", ret)
+	f.emit("}")
 }
 
 // dynArg converts argument i to type t.

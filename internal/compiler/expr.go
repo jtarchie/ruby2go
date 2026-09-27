@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -35,6 +36,7 @@ type expr struct {
 func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	switch n := n.(type) {
 	case *parser.StringNode:
+		f.c.strLits[n.Unescaped.Value] = true
 		return expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}, true
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
@@ -46,6 +48,10 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 			if strings.TrimPrefix(code, "-") == "" {
 				code += "0"
 			}
+		}
+		_, err := strconv.ParseInt(code, 0, 64)
+		if errors.Is(err, strconv.ErrRange) {
+			f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (README open decision 35)", code)
 		}
 		return expr{code: code, typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
@@ -427,8 +433,8 @@ func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
 	if allLit {
 		return expr{code: "String(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
 	}
-	if len(parts) == 1 {
-		return expr{code: parts[0], typ: f.cls("String")}
+	if len(parts) == 1 { // "#{x}" is a new String, never x or x.to_s itself
+		return expr{code: "rbStrClone(" + parts[0] + ")", typ: f.cls("String")}
 	}
 	return expr{code: "(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
 }
@@ -730,7 +736,11 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if isNil(e.typ) {
 		f.errorf(n, "nil where %s is expected", to)
 	}
-	if !fitsValue(e, to) {
+	if isClass(to, "Integer") && isClass(e.typ, "Float") {
+		if f.pass == 2 { // earlier passes may still widen the target
+			f.errorf(n, "Float where Integer is expected; convert it (to_i, round, floor)")
+		}
+	} else if !fitsValue(e, to) {
 		f.errorf(n, "%s where %s is expected", e.typ, to)
 	}
 	if isAbstract(to) { // Go any: literals need wrapping, as for untyped
@@ -1008,6 +1018,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
+		if r, ok := f.numericMix(n, recv, e, args, block); ok {
+			return r
+		}
 		return f.callEntry(n, e, recv, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
@@ -1045,6 +1058,74 @@ func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, arg
 		}
 	}
 	return d
+}
+
+// numericMix compiles a call on an Integer or Float whose numeric
+// parameter gets the other class, as MRI's coerce does: the classes' own
+// operators widen the Integer side to Float (still typed and unboxed), and
+// Comparable's methods run on rbNum, since clamp hands back the winning
+// argument itself. Arguments are generated once and passed on as exprNodes.
+func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) (expr, bool) {
+	m := e.M
+	if !isNumeric(recv.typ) || block != nil || len(args) == 0 || len(args) != len(m.Params) {
+		return expr{}, false
+	}
+	self := map[string]Type{"Self": recv.typ}
+	for i, p := range m.Params {
+		if _, splat := args[i].(*parser.SplatNode); splat || p.Rest || !isNumeric(subst(p.Type, self)) {
+			return expr{}, false
+		}
+	}
+	xs := make([]expr, len(args))
+	nodes := make([]parser.Node, len(args))
+	mixed := false
+	for i, a := range args {
+		pt := subst(m.Params[i].Type, self)
+		xs[i] = f.genExpr(a, pt)
+		mixed = mixed || isNumeric(xs[i].typ) && !typeEq(xs[i].typ, pt)
+		nodes[i] = &exprNode{Node: a, e: xs[i]}
+	}
+	if !mixed {
+		return f.callEntry(n, e, recv, nodes, nil), true
+	}
+	if m.Owner == f.c.classes["Comparable"] {
+		codes := make([]string, len(xs))
+		for i, x := range xs {
+			codes[i] = f.coerce(args[i], x, TAny{})
+		}
+		return f.rbNumCall(n, m, f.coerce(n, recv, TAny{}), codes), true
+	}
+	fe := f.c.classes["Float"].lookup(m.Name)
+	if fe == nil || len(fe.M.Params) != len(args) {
+		f.errorf(n, "%s#%s with an Integer and a Float is not supported", classOf(recv.typ).RubyName, m.Name)
+	}
+	widen := func(x expr) expr {
+		if isClass(x.typ, "Integer") {
+			return expr{code: "Float(" + x.code + ")", typ: f.cls("Float")}
+		}
+		return x
+	}
+	for i, x := range xs {
+		nodes[i] = &exprNode{Node: args[i], e: widen(x)}
+	}
+	return f.callEntry(n, fe, widen(recv), nodes, nil), true
+}
+
+// rbNumCall calls Comparable method m with Self = rbNum, one Go type for
+// Integer and Float values (recv and args are untyped Go code).
+func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) expr {
+	boxed := make([]string, 0, 1+len(args))
+	for _, a := range append([]string{recv}, args...) {
+		boxed = append(boxed, "rbNum{"+a+"}")
+	}
+	code := freeFuncName(m) + "[rbNum](" + strings.Join(boxed, ", ") + ")"
+	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" {
+		return expr{code: code + ".v", typ: TAny{}}
+	}
+	if m.generic() || mentionsVar(m.Ret) {
+		f.errorf(n, "%s with an Integer and a Float is not supported", m.Name)
+	}
+	return expr{code: code, typ: m.Ret}
 }
 
 // genArgs generates and coerces call arguments against m's parameters,
@@ -1862,7 +1943,11 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 			f.errorf(n, "%s takes one argument", name)
 		}
 		a := f.genExpr(args[0], nil)
-		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
+		arg := f.coerce(args[0], a, TAny{})
+		if name == "equal?" {
+			return expr{code: "Boolean(rbIdentical(Opt(" + recv.code + "), " + arg + "))", typ: f.cls("Boolean")}
+		}
+		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + arg + ")", typ: f.cls("Boolean")}
 	case "!":
 		if isClass(recv.typ.(TOpt).Elem, "Boolean") {
 			return expr{code: "Boolean(!" + optTruthy(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
@@ -1996,8 +2081,8 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		a := one(nil)
 		return expr{code: "Boolean(rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + "))", typ: f.cls("Boolean")}
 	case "<=>":
-		if isAny(recv.typ) {
-			break // the argument's type is unknown too: dispatch at run time
+		if isAny(recv.typ) || isNil(recv.typ) {
+			break // DynOp_cmp: untyped, since MRI answers nil for incomparable values
 		}
 		a := one(recv.typ)
 		return expr{code: "rbCmp(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
@@ -2516,11 +2601,18 @@ func (f *fctx) constGetType(recv expr, args []parser.Node) Type {
 	}
 	mod := meta.metaOf
 	if lit := literalName(args[0]); lit != "" {
-		cls, k := f.c.lookupConst(f.f, constPath(lit), []*Class{mod})
+		scope := []*Class{mod}
 		if mod.RubyName == "Object" {
-			cls, k = f.c.lookupConst(f.f, constPath(lit), nil)
+			scope = nil
 		}
-		return f.c.constTypeOf(cls, k)
+		// Through a non-module MRI raises TypeError at run time; lookupConst would fail compilation.
+		parts := strings.Split(lit, "::")
+		for i := 1; i < len(parts); i++ {
+			if cls, k := f.c.lookupConst(f.f, constPath(strings.Join(parts[:i], "::")), scope); cls == nil && k != nil {
+				return nil
+			}
+		}
+		return f.c.constTypeOf(f.c.lookupConst(f.f, constPath(lit), scope))
 	}
 	var ts []Type
 	var walk func(c *Class)
@@ -2849,7 +2941,12 @@ type exprNode struct {
 	e expr
 }
 
-func (x *exprNode) GetLocation() parser.Location     { return parser.Location{} }
+func (x *exprNode) GetLocation() parser.Location {
+	if x.Node != nil {
+		return x.Node.GetLocation() // the source node it was generated from
+	}
+	return parser.Location{}
+}
 func (x *exprNode) CompactChildNodes() []parser.Node { return nil } // a leaf: already generated
 func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 

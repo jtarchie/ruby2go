@@ -1,5 +1,3 @@
-# skip: Enumerable#first(-1) raises ArgumentError in MRI; rb2go returns []
-
 # rbs_inline: enabled
 
 h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]

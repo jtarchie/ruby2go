@@ -9,18 +9,25 @@ class Exception < Object
     @message = message
   end
 
+  # MRI order: message calls to_s, so overriding to_s changes message too.
+
   #: () -> String
-  def message
+  def to_s
     m = @message
     return m if m
     __class_name
   end
 
   #: () -> String
-  def to_s = message
+  def message = to_s
 
   #: () -> String
-  def inspect = "#<#{__class_name}: #{message}>"
+  def inspect
+    s = to_s
+    return __class_name if s.empty?
+    return "#<#{__class_name}:#{s.inspect}>" if s.include?("\n")
+    "#<#{__class_name}: #{s}>"
+  end
 
   #: () -> String?
   def backtrace = nil
@@ -47,8 +54,26 @@ class StopIteration < IndexError; end
 
 class RangeError < StandardError; end
 
+class FloatDomainError < RangeError; end
+
 class ZeroDivisionError < StandardError; end
 
 class ScriptError < Exception; end
 
 class NotImplementedError < ScriptError; end
+
+# Kernel#exit raises it, so ensure blocks and `rescue Exception` run first;
+# rbTopRecover exits with its status and prints nothing.
+class SystemExit < Exception
+  #: (Integer) -> void
+  def initialize(status)
+    @message = "exit"
+    @status = status
+  end
+
+  #: () -> Integer
+  def status = @status
+
+  #: () -> bool
+  def success? = @status == 0
+end

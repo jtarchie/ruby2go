@@ -5,6 +5,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -271,6 +272,13 @@ func (c *Compiler) emitProgram() {
 	for _, r := range c.regexps {
 		c.w("%s\n\n", r)
 	}
+	// The linker shares one copy of each literal's bytes, so this table's
+	// entries alias every literal in the program (rbStrFrozen).
+	c.w("var rbStringLits = [...]string{\n")
+	for _, s := range slices.Sorted(maps.Keys(c.strLits)) {
+		c.w("\t%s,\n", strconv.Quote(s))
+	}
+	c.w("}\n")
 }
 
 // noteUserToJson: the json generator calls to_json(state) on what it
@@ -553,6 +561,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.w("var %s = &%s{}\n\n", classVar(cls.metaOf), cls.Name)
 		return
 	}
+	c.emitIvarList(cls)
 	// constructor
 	init := cls.lookup("initialize")
 	if init != nil {
@@ -571,6 +580,70 @@ func (c *Compiler) emitStructClass(cls *Class) {
 // (`Calc#calc`) would clash with it. Lowercase with a trailing `_`, it is
 // neither a method nor an ivar name (goLocalName).
 func superField(cls *Class) string { return "super_" + cls.Name + "_" }
+
+// emitIvarList feeds Kernel#inspect; a class adding no ivars inherits its parent's through embedding.
+func (c *Compiler) emitIvarList(cls *Class) {
+	if len(cls.IvarList) == 0 {
+		return
+	}
+	var ivs []string
+	for _, iv := range c.ivarOrder(cls) {
+		val, opt := "self."+goFieldName(iv.Name), isAny(iv.Type)
+		if isOpt(iv.Type) {
+			val, opt = "Opt("+val+")", true
+		}
+		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t}", iv.Name, val, opt))
+	}
+	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
+}
+
+// ivarOrder approximates MRI's (first assignment) with initialize's write order, super splicing in the parent's.
+func (c *Compiler) ivarOrder(cls *Class) []*Ivar {
+	var out []*Ivar
+	seen := map[*Ivar]bool{}
+	add := func(iv *Ivar) {
+		if iv != nil && !seen[iv] {
+			seen[iv] = true
+			out = append(out, iv)
+		}
+	}
+	var fromInit func(k *Class)
+	fromInit = func(k *Class) {
+		if k == nil || k.universal {
+			return
+		}
+		e := k.lookup("initialize")
+		if e == nil || e.M.Node == nil {
+			return
+		}
+		var walk func(n parser.Node)
+		walk = func(n parser.Node) {
+			if n == nil {
+				return
+			}
+			for _, ch := range n.CompactChildNodes() {
+				walk(ch)
+			}
+			switch n := n.(type) {
+			case *parser.InstanceVariableWriteNode:
+				add(c.findIvar(cls, n.Name))
+			case *parser.InstanceVariableOrWriteNode:
+				add(c.findIvar(cls, n.Name))
+			case *parser.SuperNode, *parser.ForwardingSuperNode:
+				fromInit(e.Owner.Super)
+			}
+		}
+		walk(e.M.Node.Body)
+	}
+	fromInit(cls)
+	chain := cls.structChain()
+	for i := len(chain) - 1; i >= 0; i-- {
+		for _, iv := range chain[i].IvarList {
+			add(iv)
+		}
+	}
+	return out
+}
 
 // emitForwarders emits, for a concrete class, a Go method per inherited or
 // included public non-generic method so the class satisfies its interface.
@@ -634,6 +707,41 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		c.w("func (self %s) _ClassObj() %s { return %s }\n", recv, c.goType(TClass{C: c.classes["Class"]}), classVar(k))
 	}
 	c.w("\n")
+	c.emitEqAdapter(cls, recv)
+	c.emitCmpAdapter(cls, recv)
+}
+
+// emitCmpAdapter: Comparable_Self and rbCmp need Cmp(T) Integer, so a nil <=> (Float's NaN) raises there, as MRI's rb_cmpint.
+func (c *Compiler) emitCmpAdapter(cls *Class, recv string) {
+	e := cls.lookup("<=>")
+	if e == nil || e.M.GoName != "cmpNil" || len(e.M.Params) != 1 || !c.wantsForwarder(cls, *e) {
+		return
+	}
+	env := composeEnv(e.Env, nil)
+	env["Self"] = c.selfTypeFor(*e, cls)
+	ps, _ := c.sig(e.M, env)
+	arg := c.argNames(e.M)
+	c.w("func (self %s) Cmp(%s) Integer {\n\tif r := self.cmpNil(%s); r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
+		recv, ps, arg, arg)
+}
+
+// emitEqAdapter lets rbEq (include?, Array#==, == on untyped or T?) reach
+// a == typed on its argument, Eq(VecI), which Go cannot also declare as
+// Eq(any): _EqAny asserts the class and answers false for anything else.
+func (c *Compiler) emitEqAdapter(cls *Class, recv string) {
+	e := cls.lookup("==")
+	if !cls.isStruct() || e == nil || e.M.Private || e.M.generic() || len(e.M.Params) != 1 {
+		return
+	}
+	env := composeEnv(e.Env, nil)
+	env["Self"] = c.selfTypeFor(*e, cls)
+	t, ok := subst(e.M.Params[0].Type, env).(TClass)
+	r, isCls := subst(e.M.Ret, env).(TClass)
+	if !ok || !isCls || r.C != c.classes["Boolean"] || c.goType(t) == "any" {
+		return // ponytail: T? or union params keep identity; assert via rbOptArg to widen
+	}
+	c.w("func (self %s) _EqAny(o any) Boolean {\n\tif o, ok := o.(%s); ok {\n\t\treturn self.%s(o)\n\t}\n\treturn false\n}\n\n",
+		recv, c.goType(t), e.M.GoName)
 }
 
 // slotEnv binds the type variables of slot s's signature, Self included.
@@ -1021,7 +1129,8 @@ func (c *Compiler) emitConstTable(cls *Class) {
 	for _, full := range c.constEntries(desc) {
 		if v, ok := c.constValue(full); ok {
 			short := full[strings.LastIndex(full, ":")+1:]
-			c.w("\t\t{%q, %s},\n", short, v)
+			inherited := strings.Contains(full, "::") && strings.TrimSuffix(full, "::"+short) != desc.RubyName
+			c.w("\t\t{%q, %s, %t},\n", short, v, inherited)
 		}
 	}
 	c.w("\t}\n}\n\n")

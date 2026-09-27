@@ -22,19 +22,21 @@ module Kernel
   def then = yield(self)
 
   #: () -> String
-  def to_s = %x{ String("#<" + rbClassName(self) + ">") }
+  def to_s = %x{ rbObjToS(self) }
 
+  # MRI's default inspect lists the ivars and never calls to_s.
   #: () -> String
-  def inspect = to_s
+  def inspect = %x{ rbObjInspect(self) }
 
   #: () -> bool
   def nil? = false
 
+  # Objects, Array, Hash and Struct values are mutable; frozen classes override.
   #: () -> bool
-  def frozen? = true
+  def frozen? = false
 
   #: (?Integer) -> void
-  def exit(status = 0) = %x{ _ = stdout.Flush(); os.Exit(int(status)) }
+  def exit(status = 0) = raise(SystemExit.new(status))
 
   private
 
@@ -45,7 +47,7 @@ module Kernel
     args.each do |a|
       case a
       when nil then __write("\n")
-      when Array then puts(*a)
+      when Array then a.each { |e| puts(e) }
       else
         s = a.to_s
         __write(s.end_with?("\n") ? s : s + "\n")
@@ -88,11 +90,12 @@ module Comparable
   def >=(other) = (self <=> other) >= 0
 
   #: (self, self) -> bool
-  def between?(lo, hi) = !(self < lo) && !(hi < self)
+  def between?(lo, hi) = (self <=> lo) >= 0 && (self <=> hi) <= 0
 
   #: (self, self) -> self
   def clamp(lo, hi)
-    return lo if self < lo
+    raise ArgumentError, "min argument must be less than or equal to max argument" if (lo <=> hi) > 0
+    return lo if (self <=> lo) < 0
     return hi if (self <=> hi) > 0
     self
   end

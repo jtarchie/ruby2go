@@ -1,5 +1,3 @@
-# skip: Kernel#inspect is to_s; MRI default inspect is #<Class ...ivars> regardless of to_s
-
 # rbs_inline: enabled
 
 class Pt

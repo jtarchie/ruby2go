@@ -1,5 +1,3 @@
-# skip: Kernel#frozen? is always true; MRI says false for ordinary objects and Struct instances (true only for Data)
-
 # rbs_inline: enabled
 
 class Plain

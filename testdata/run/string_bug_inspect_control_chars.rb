@@ -1,4 +1,4 @@
-# skip: String#inspect writes control characters as \xNN and prints U+0085/U+2028 raw; MRI writes \u0000, \u007F, \u0085, \u2028
+# skip: an ASCII control character inspects as \xNN: strings carry no encoding, and Integer#chr (US-ASCII in MRI) must keep "\x00"; a UTF-8 literal is "\u0000" in MRI
 
 # rbs_inline: enabled
 

@@ -9,8 +9,9 @@
 
 %x{
   type rbConst struct {
-    name  string
-    value any
+    name      string
+    value     any
+    inherited bool // from a superclass; `inherit = false` skips it
   }
 
   type rbModule interface {
@@ -29,9 +30,9 @@
     panic(NewTypeError(Ref(rbInspect(name) + " is not a symbol nor a string")))
   }
 
-  func rbConstFind(m rbModule, name string) (any, bool) {
+  func rbConstFind(m rbModule, name string, inherit bool) (any, bool) {
     for _, c := range m._Consts() {
-      if c.name == name {
+      if c.name == name && (inherit || !c.inherited) {
         return c.value, true
       }
     }
@@ -47,19 +48,64 @@
     return v
   }
 
+  // MRI's rule: uppercase first letter, then identifier (or any non-ASCII) characters.
+  func rbIsConstName(s string) bool {
+    for i, r := range s {
+      switch {
+      case i == 0:
+        if !unicode.IsUpper(r) && !unicode.IsTitle(r) {
+          return false
+        }
+      case r < utf8.RuneSelf && r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r):
+        return false
+      }
+    }
+    return s != ""
+  }
+
   // rbConstResolve walks an "A::B" path from m; the first segment also
-  // falls back to the top level, as Module#const_get does. On a miss it
-  // returns the NameError message.
-  func rbConstResolve(m rbModule, path string) (any, string) {
-    parts := strings.Split(path, "::")
-    if parts[0] == "" {
-      parts, m = parts[1:], Object_class
+  // falls back to the top level, as Module#const_get does. Errors are
+  // raised segment by segment, in MRI's order. On a miss it returns the
+  // NameError message.
+  func rbConstResolve(m rbModule, name any, inherit bool) (any, string) {
+    var parts []string
+    var path string
+    switch n := name.(type) {
+    case Symbol:
+      path = string(n)
+      parts = []string{path}
+    case String:
+      path = string(n)
+      rest := path
+      if len(rest) > 2 && strings.HasPrefix(rest, "::") {
+        rest, m = rest[2:], Object_class
+      }
+      parts = strings.Split(rest, "::")
+    default:
+      what := string(rbInspect(name))
+      if _, ok := name.(Boolean); !ok && name != nil {
+        what = rbClassName(name)
+      }
+      panic(NewTypeError(Ref(String("no implicit conversion of " + what + " into String"))))
     }
     var val any
     for i, p := range parts {
-      v, ok := rbConstFind(m, p)
-      if !ok && i == 0 {
-        v, ok = rbConstFind(Object_class, p)
+      if p == "" || strings.Contains(p, ":") || (i == len(parts)-2 && parts[i+1] == "") {
+        panic(NewNameError(Ref(String("wrong constant name " + path))))
+      }
+      if i > 0 {
+        next, ok := val.(rbModule)
+        if !ok {
+          panic(NewTypeError(Ref(String(path + " does not refer to class/module"))))
+        }
+        m = next
+      }
+      if !rbIsConstName(p) {
+        panic(NewNameError(Ref(String("wrong constant name " + p))))
+      }
+      v, ok := rbConstFind(m, p, inherit)
+      if !ok && i == 0 && inherit {
+        v, ok = rbConstFind(Object_class, p, true)
       }
       if !ok {
         if owner := string(m.Name()); owner != "Object" {
@@ -68,13 +114,6 @@
         return nil, "uninitialized constant " + p
       }
       val = v
-      if i < len(parts)-1 {
-        next, ok := v.(rbModule)
-        if !ok {
-          panic(NewTypeError(Ref(rbInspect(v) + " is not a class/module")))
-        }
-        m = next
-      }
     }
     return val, ""
   }
@@ -95,7 +134,9 @@ class Module < Object
   def constants(inherit = true) = %x{
     out := &Array[Symbol]{}
     for _, c := range self._Consts() {
-      *out = append(*out, Symbol(c.name))
+      if bool(inherit) || !c.inherited {
+        *out = append(*out, Symbol(c.name))
+      }
     }
     return out
   }
@@ -104,7 +145,7 @@ class Module < Object
   # constant's type, any other name the join of the module's constants.
   #: (untyped, ?bool) -> untyped
   def const_get(name, inherit = true) = %x{
-    val, missing := rbConstResolve(self, rbConstName(name))
+    val, missing := rbConstResolve(self, name, bool(inherit))
     if missing != "" {
       panic(NewNameError(Ref(String(missing))))
     }
@@ -113,7 +154,7 @@ class Module < Object
 
   #: (untyped, ?bool) -> bool
   def const_defined?(name, inherit = true) = %x{
-    _, missing := rbConstResolve(self, rbConstName(name))
+    _, missing := rbConstResolve(self, name, bool(inherit))
     return Boolean(missing == "")
   }
 end

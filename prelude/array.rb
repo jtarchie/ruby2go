@@ -153,6 +153,10 @@ class Array < Object
     return out
   }
 
+  # MRI's Array#first(-1) message; Enumerable#first raises it.
+  #: () -> String
+  def __negative_first = "negative array size"
+
   #: () -> Integer
   def size = %x{ Integer(len(*self)) }
 
@@ -259,6 +263,9 @@ class Array < Object
         continue
       }
       parts[i] = string(rbToS(x))
+    }
+    if len(parts) == 1 { // Join would return the element itself
+      return rbStrClone(String(parts[0]))
     }
     return String(strings.Join(parts, string(sep)))
   }

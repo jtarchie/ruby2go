@@ -76,6 +76,8 @@ func isAbstract(t Type) bool {
 	return ok && (c.C.universal || c.C.IsModule)
 }
 
+func isNumeric(t Type) bool { return isClass(t, "Integer") || isClass(t, "Float") }
+
 func classOf(t Type) *Class {
 	if c, ok := t.(TClass); ok {
 		return c.C
@@ -318,6 +320,8 @@ func join(a, b Type) (Type, bool) {
 			return j, ok
 		}
 		return TOpt{Elem: j}, true
+	case isNumeric(a) && isNumeric(b):
+		return TAny{}, true // Integer and Float mix at run time (MRI's coerce); there is no Numeric type
 	}
 	// Subclass / superclass: pick the ancestor.
 	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil && ca != cb {

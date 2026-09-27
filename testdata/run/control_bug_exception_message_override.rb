@@ -1,5 +1,3 @@
-# skip: prelude Exception#to_s calls #message (MRI: #message calls #to_s), so overriding message changes to_s/inspect and overriding to_s does not change message
-
 # rbs_inline: enabled
 
 class CustomMessage < StandardError

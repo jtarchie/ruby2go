@@ -32,15 +32,48 @@
     panic(NewArgumentError(Ref(String(fmt.Sprintf("wrong number of arguments (given %d, expected %s)", given, expected)))))
   }
 
+  // rbNumMixed reports an Integer or Float argument of the other class than
+  // self (an Integer or a Float).
+  func rbNumMixed(self any, args []any) bool {
+    _, selfInt := self.(Integer)
+    for _, a := range args {
+      switch a.(type) {
+      case Integer:
+        if !selfInt {
+          return true
+        }
+      case Float:
+        if selfInt {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  // rbNum is an Integer or a Float as one Go type: Comparable's methods run
+  // on it when given both, so clamp returns the winning argument itself.
+  type rbNum struct{ v any }
+
+  func (a rbNum) Op_cmp(b rbNum) Integer { return rbCmp(a.v, b.v) }
+
+  func (a rbNum) Op_lt(b rbNum) Boolean { return rbCmp(a.v, b.v) < 0 }
+
   // rbConv is v as a T: v itself, nil for untyped, an Array or Hash of
   // another instantiation converted (rbFrom), or an Array as a tuple
   // (_FromAny, decision 22). Go instantiations are invariant, so
   // Array[Integer] where Array[untyped] is expected, or back, is a copy
-  // whose elements are converted in turn.
+  // whose elements are converted in turn. An Integer where a Float is
+  // expected widens (MRI's coerce: Float's operators take Integers).
   // ponytail: a T? element (*T) is not converted from its value; box it via OptOf when needed.
   func rbConv[T any](v any) (T, bool) {
     if t, ok := v.(T); ok {
       return t, true
+    }
+    if n, ok := v.(Integer); ok {
+      if t, ok := any(Float(n)).(T); ok {
+        return t, true
+      }
     }
     var zero T
     if v == nil {

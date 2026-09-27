@@ -1,5 +1,3 @@
-# skip: "ab" * -1 panics with a Go error rescued as StandardError; MRI raises ArgumentError (negative argument)
-
 # rbs_inline: enabled
 
 begin

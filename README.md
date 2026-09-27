@@ -151,7 +151,19 @@ Rules the prelude relies on:
 - **Frozen strings.** `# frozen_string_literal: true` semantics only; no
   `upcase!`/`<<`. That's what lets `String` be a Go `string` value. `equal?`
   (identity) on a value type compares the backing pointer — a hack that only
-  works because strings are immutable.
+  works because strings are immutable. Go hands back the input when there
+  is nothing to do (`strip`, `sub`, `Repeat(s, 1)`, a lone split part),
+  where MRI makes a new String, so a method whose result is its receiver's
+  own bytes copies them (`rbNewStr`); only that case pays for a copy, and
+  `"#{x}"`, `Symbol#to_s` and `dup` always copy. Other shared bytes still
+  read as one object: two equal slices of one string (`s.split("b")[0]`
+  twice), `strconv`'s small numbers (`5.to_s`), a `""` whose address Go
+  drops when boxing it. Fixing those takes a boxed `String`. `frozen?` uses
+  the same identity: a string is frozen if it shares a literal's bytes (the
+  compiler emits a table of every literal, `rbStringLits`) or was passed to
+  `freeze`; strings built at run time are not, as in MRI. Other values:
+  immediates, `Regexp` and `Data` are frozen; objects, `Array`, `Hash` and
+  `Struct` are not.
 - **Literals need wrapping only for interface targets** — Go's untyped
   constants convert to `String` when the parameter is `String`
   (`s.Op_lt("world")` compiles), but become Go `string` when the parameter is
@@ -449,6 +461,16 @@ resolve; anything not listed is still open.
    `IO#pos` and `idx` camel-case to as well, so a class defining both got a
    duplicate Go method or `rbDyn` dispatcher and `go build` failed; backtick
    was missing.)*
+   *Revised:* a `<=>` declared `-> Integer?` is Go's `cmpNil` (lowercase,
+   so no camel-cased name reaches it), and the compiler gives its class an
+   `Op_cmp(T) Integer` adapter that raises MRI's `ArgumentError: comparison
+   of X with Y failed` where `cmpNil` answers nil (MRI's `rb_cmpint`).
+   `Comparable_Self` and `rbCmp` call `Op_cmp`, so they still need an
+   Integer. Float's `<=>` is one: it answers nil for NaN, as MRI's does,
+   so a typed `a <=> b` on Floats is `Integer?` and needs a nil check
+   before arithmetic, while `between?`, `clamp`, `sort`, `min` and `max`
+   raise on NaN. `between?` and `clamp` now compare with `<=>`, as MRI's
+   do, since Float's own `<` answers false for NaN instead of raising.
 4. Non-local `return`/`break`/`next` in blocks: **decided, inline loops
    only.** A method whose block returns `void` compiles to a Go iterator
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a
@@ -562,7 +584,10 @@ resolve; anything not listed is still open.
     print `message (Class)` to stderr and exit 1, like MRI. Go runtime
     panics (`index out of range`, divide by zero) are wrapped into
     `IndexError`/`ZeroDivisionError`/`StandardError` on the way into a
-    `rescue`.
+    `rescue`. *Revised:* `Kernel#exit` raises `SystemExit` instead of
+    calling `os.Exit`, so `ensure` blocks and `rescue Exception` run as in
+    MRI; uncaught, it exits silently with its status. In a thread it still
+    exits on the spot, skipping the main thread's `ensure`s.
 12. Overloads (`#|`) are not supported, so `first`/`take` require a count
     (`arr.first(3)`; use `arr[0]` for the head) and `Array#[]` takes one
     Integer. `split` takes an optional separator through `?String?`.
@@ -572,6 +597,16 @@ resolve; anything not listed is still open.
     (`nil`, `T?` or `untyped`, as in every dynamic call) goes to
     `Hash#__fetch_opt`, `(K, V?) -> V?`; any other default keeps
     `(K, ?V?) -> V`, so `h.fetch(k, 0) + 1` stays an Integer.
+    *Revised:* Integer and Float mix anyway, as MRI's `coerce` does. When
+    an Integer or Float method's numeric argument is the other class, the
+    compiler widens the Integer side and calls Float's method (`a / 2.0` is
+    `Float(a).Op_div(2.0)`, still unboxed); an operator Float lacks (`%`) is a
+    compile error. Comparable's methods take both as `rbNum`, one Go type,
+    because `2.5.clamp(1, 2)` returns the bound `2` itself, so the result is
+    `untyped`. A local assigned both joins to `untyped`
+    (`total = 0; total += 1.5`), so its later arithmetic is dynamic, and
+    dynamic wrappers widen the same way. A Float where an Integer is
+    expected is a compile error, not Go's silent constant truncation.
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's
@@ -789,10 +824,12 @@ resolve; anything not listed is still open.
     `start` blocks until `shutdown`, and each request gets its own
     goroutine and servlet instance.
 28. Constant reflection: every class object has a generated constant
-    table (own constants in definition order, then inherited), behind
-    `Module#constants`, `#const_get` (`A::B` paths, top-level fallback,
-    `NameError` on a miss) and `#const_defined?`. `M.const_get(name)` is
-    typed: a literal name gets the constant's type, any other name the
+    table (own constants in definition order, then inherited ones, which
+    `inherit = false` skips), behind `Module#constants`, `#const_get`
+    (`A::B` paths, top-level fallback, `NameError` on a miss, MRI's
+    name checks and errors) and `#const_defined?`. `M.const_get(name)` is
+    typed: a literal name gets the constant's type (a literal path through
+    a non-module stays untyped and raises at run time), any other name the
     join of the constants of `M` and its subclasses; unrelated classes
     join at their nearest common superclass. MRI orders `constants` by its
     symbol table, not by definition, so programs must not depend on it.
@@ -844,6 +881,21 @@ resolve; anything not listed is still open.
     type. *(Revised: they used to resolve like concrete classes, so
     `Kernel#to_s` printed `#<String>`, `is_a?` folded to false, literals
     reached `any` as Go `string`, and module methods failed `go build`.)*
+    *Revised:* `<=>` differs twice. Its wrappers are always generated:
+    `sort`/`min`/`max`/`sort_by` on untyped values reach them through
+    `rbCmp` inside generic prelude code, where the compiler cannot see
+    the instantiation. A wrong argument type answers `nil`, as MRI's `<=>`
+    does, and `rbCmp` turns `nil` into MRI's `ArgumentError: comparison
+    of X with Y failed` (which pair MRI names depends on its sort order).
+    `hash` on an untyped value calls the class's `hash`, else hashes as a
+    Hash key does (decision 1): by value where Go `==` is `eql?`, by
+    identity for plain objects.
+    *Revised:* the default `inspect` is MRI's (`#<Foo:0x… @a=1>`, with the
+    address and the ivars, never calling `to_s`). Ivars list in
+    `initialize`'s assignment order; a non-optional ivar still nil was never
+    assigned and is left out, as MRI does, but an unassigned Integer shows
+    as `0`. An ivar-less class gets a padding byte, since Go gives every
+    zero-size object the same address and `equal?` needs identity.
 33. Ruby semantics for looser code: `expr rescue fallback`; `return`,
     `break` or `next` in `ensure` discards the pending exception;
     `&&`/`||` return values of any types (unions become `untyped`) and
@@ -853,3 +905,16 @@ resolve; anything not listed is still open.
     body; `untyped` in a `bool` position is truthiness.
 34. `Hash#inspect` prints symbol keys as labels (`{a: 1, "a b": 2}`), as
     Ruby 3.4 does.
+35. Integer is a Go `int`: **decided, 64 bits, no Bignum or Rational.**
+    Native types are Go primitives; a Bignum-capable Integer would box
+    every value or branch every `%x{}` that treats it as an `int`. Where
+    MRI would promote, rb2go raises `RangeError` instead of wrapping:
+    `+`, `-`, `*`, `/`, `-@`, `abs` and `**` check for overflow (`*` only
+    when an operand is past 32 bits, and all but `/` and `**` still
+    inline), a Float past ±2**63 converts with MRI's `float … out of
+    range of integer`, `String#to_i` raises rather than saturating, and a
+    literal past 64 bits is a compile error. A negative exponent is a
+    Rational in MRI, so `**` raises too, except for bases 0
+    (`ZeroDivisionError`) and ±1 (MRI answers an Integer). Crystal makes
+    the same trade. A Bignum would need Integer as a small-int/`*big.Int`
+    union behind a decision of its own.

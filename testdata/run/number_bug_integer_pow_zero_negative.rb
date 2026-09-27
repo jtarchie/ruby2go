@@ -1,4 +1,3 @@
-# skip: 0 ** -1 returns 1; MRI raises ZeroDivisionError (divided by 0)
 # rbs_inline: enabled
 
 z = 0 #: Integer
