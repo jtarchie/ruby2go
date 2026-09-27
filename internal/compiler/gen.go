@@ -1023,7 +1023,7 @@ func (f *fctx) declareLocal(name string, typ Type) *local {
 
 func (f *fctx) noteUnused(v *local) {
 	info := f.locals[v.name]
-	if f.pass == 2 && info != nil && info.reads == 0 {
+	if f.pass == 2 && info != nil && info.reads == 0 && v.goName != "_" { // `|_, v|`: Go's blank needs no use
 		f.emit("_ = %s", v.goName)
 	}
 }
