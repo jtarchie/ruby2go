@@ -59,14 +59,15 @@ class String < Object
     return String(r)
   }
 
+  # MRI's whitespace is ASCII only, plus NUL for strip; not unicode.IsSpace.
   #: () -> String
-  def strip = %x{ String(strings.TrimSpace(string(self))) }
+  def strip = %x{ String(strings.Trim(string(self), " \\t\\n\\v\\f\\r\\x00")) }
 
   #: () -> String
-  def lstrip = %x{ String(strings.TrimLeft(string(self), " \\t\\n\\r\\f\\v")) }
+  def lstrip = %x{ String(strings.TrimLeft(string(self), " \\t\\n\\v\\f\\r\\x00")) }
 
   #: () -> String
-  def rstrip = %x{ String(strings.TrimRight(string(self), " \\t\\n\\r\\f\\v")) }
+  def rstrip = %x{ String(strings.TrimRight(string(self), " \\t\\n\\v\\f\\r\\x00")) }
 
   #: () -> String
   def chomp = %x{ String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r")) }
@@ -144,13 +145,14 @@ class String < Object
     return out
   }
 
-  # Without a separator: split on whitespace, dropping empties. With one:
-  # split on it, dropping trailing empties, like MRI.
+  # Without a separator, or with " " (awk mode): split on ASCII whitespace,
+  # dropping empties. With one: split on it, dropping trailing empties, like MRI.
   #: (?String?) -> Array[String]
   def split(sep = nil) = %x{
     out := &Array[String]{}
-    if sep == nil {
-      for _, f := range strings.Fields(string(self)) {
+    if sep == nil || *sep == " " {
+      isSpace := func(r rune) bool { return r == ' ' || r >= '\\t' && r <= '\\r' }
+      for _, f := range strings.FieldsFunc(string(self), isSpace) {
         *out = append(*out, String(f))
       }
       return out
@@ -189,7 +191,7 @@ class String < Object
 
   #: () -> Integer
   def to_i = %x{
-    s := strings.TrimSpace(string(self))
+    s := strings.TrimLeft(string(self), " \\t\\n\\v\\f\\r")
     end := 0
     if end < len(s) && (s[end] == '-' || s[end] == '+') {
       end++
@@ -203,7 +205,7 @@ class String < Object
 
   #: () -> Float
   def to_f = %x{
-    f, _ := strconv.ParseFloat(strings.TrimSpace(string(self)), 64)
+    f, _ := strconv.ParseFloat(strings.Trim(string(self), " \\t\\n\\v\\f\\r"), 64)
     return Float(f)
   }
 
