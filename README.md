@@ -579,6 +579,8 @@ resolve; anything not listed is still open.
 31. `method_missing` on a typed receiver: an unknown method compiles to
     `method_missing(:name, *args)`, typed by its signature.
     `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.
+    `super` with no user-defined parent is Object's: `NoMethodError` for
+    the name, or `false`.
 32. Dynamic dispatch: a method called on an `untyped` value, an unknown
     method on a `Module`-typed class object, or a method only subclasses
     define compiles to `rbDynName(recv, args...)`. Each such name gets a

@@ -1388,8 +1388,23 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	}
 	e := f.c.inheritedSig(f.m)
 	if e == nil {
-		if f.m.Name == "initialize" {
+		switch f.m.Name {
+		case "initialize":
 			return expr{code: "", typ: TVoid{}, stmt: true}
+		case "respond_to_missing?": // Object's answers false
+			return expr{code: "Boolean(false)", typ: f.cls("Boolean")}
+		case "method_missing": // Object's raises NoMethodError for the name
+			var name parser.Node
+			if forwarding && len(f.m.Params) > 0 {
+				name = &parser.LocalVariableReadNode{Name: f.m.Params[0].Name, Location: n.(*parser.ForwardingSuperNode).Location}
+			} else if args != nil && len(args.Arguments) > 0 {
+				name = args.Arguments[0]
+			}
+			if name == nil {
+				f.errorf(n, "super in method_missing needs the method name")
+			}
+			sym := f.coerce(name, f.genExpr(name, f.cls("Symbol")), f.cls("Symbol"))
+			return expr{code: "panic(rbNoMethod(string(" + sym + "), " + f.selfCode + ", false))", typ: TVoid{}, stmt: true, noreturn: true}
 		}
 		f.errorf(n, "super: no parent method %s", f.m.Name)
 	}
