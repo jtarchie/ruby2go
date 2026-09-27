@@ -147,6 +147,9 @@ class Array < Object
   }
 
   #: () -> Array[E]
+  def to_a = self
+
+  #: () -> Array[E]
   def dup = %x{
     out := &Array[E]{}
     *out = append(*out, *self...)
