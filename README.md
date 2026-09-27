@@ -599,6 +599,13 @@ resolve; anything not listed is still open.
     of X with Y failed` (which pair MRI names depends on its sort order).
     `hash` on an untyped value calls the class's `hash`, else hashes
     `inspect`, so plain objects are not identity-hashed.
+    *Revised:* the default `inspect` is MRI's (`#<Foo:0x… @a=1>`, with the
+    address and the ivars, never calling `to_s`), so a plain object now
+    hashes by identity plus its ivars' current values. Ivars list in
+    `initialize`'s assignment order; a non-optional ivar still nil was never
+    assigned and is left out, as MRI does, but an unassigned Integer shows
+    as `0`. An ivar-less class gets a padding byte, since Go gives every
+    zero-size object the same address and `equal?` needs identity.
 33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
     `ensure` discards the pending exception; `&&`/`||` return values of
     any types (unions become `untyped`) and evaluate the right side only

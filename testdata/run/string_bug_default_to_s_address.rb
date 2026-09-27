@@ -1,5 +1,3 @@
-# skip: the default Kernel#to_s/inspect is "#<Foo>"; MRI prints "#<Foo:0x...>" with the object's address
-
 # rbs_inline: enabled
 
 class Foo

@@ -362,6 +362,8 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	c.w("type %s struct {\n", cls.Name)
 	if cls.Super != nil && !cls.Super.universal {
 		c.w("\t%s\n", cls.Super.Name)
+	} else if len(cls.IvarList) == 0 && cls.metaOf == nil {
+		c.w("\t_ byte // Go gives every zero-size object one address; objects need identity\n")
 	}
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
@@ -404,6 +406,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.w("var %s = &%s{}\n\n", classVar(cls.metaOf), cls.Name)
 		return
 	}
+	c.emitIvarList(cls)
 	// constructor
 	init := cls.lookup("initialize")
 	if init != nil {
@@ -415,6 +418,70 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	} else {
 		c.w("func New%s() *%s { return &%s{} }\n\n", cls.Name, cls.Name, cls.Name)
 	}
+}
+
+// emitIvarList feeds Kernel#inspect; a class adding no ivars inherits its parent's through embedding.
+func (c *Compiler) emitIvarList(cls *Class) {
+	if len(cls.IvarList) == 0 {
+		return
+	}
+	var ivs []string
+	for _, iv := range c.ivarOrder(cls) {
+		val, opt := "self."+goFieldName(iv.Name), isAny(iv.Type)
+		if isOpt(iv.Type) {
+			val, opt = "Opt("+val+")", true
+		}
+		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t}", iv.Name, val, opt))
+	}
+	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
+}
+
+// ivarOrder approximates MRI's (first assignment) with initialize's write order, super splicing in the parent's.
+func (c *Compiler) ivarOrder(cls *Class) []*Ivar {
+	var out []*Ivar
+	seen := map[*Ivar]bool{}
+	add := func(iv *Ivar) {
+		if iv != nil && !seen[iv] {
+			seen[iv] = true
+			out = append(out, iv)
+		}
+	}
+	var fromInit func(k *Class)
+	fromInit = func(k *Class) {
+		if k == nil || k.universal {
+			return
+		}
+		e := k.lookup("initialize")
+		if e == nil || e.M.Node == nil {
+			return
+		}
+		var walk func(n parser.Node)
+		walk = func(n parser.Node) {
+			if n == nil {
+				return
+			}
+			for _, ch := range n.CompactChildNodes() {
+				walk(ch)
+			}
+			switch n := n.(type) {
+			case *parser.InstanceVariableWriteNode:
+				add(c.findIvar(cls, n.Name))
+			case *parser.InstanceVariableOrWriteNode:
+				add(c.findIvar(cls, n.Name))
+			case *parser.SuperNode, *parser.ForwardingSuperNode:
+				fromInit(e.Owner.Super)
+			}
+		}
+		walk(e.M.Node.Body)
+	}
+	fromInit(cls)
+	chain := cls.structChain()
+	for i := len(chain) - 1; i >= 0; i-- {
+		for _, iv := range chain[i].IvarList {
+			add(iv)
+		}
+	}
+	return out
 }
 
 // emitForwarders emits, for a concrete class, a Go method per inherited or

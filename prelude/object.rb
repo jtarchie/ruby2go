@@ -22,10 +22,11 @@ module Kernel
   def then = yield(self)
 
   #: () -> String
-  def to_s = %x{ String("#<" + rbClassName(self) + ">") }
+  def to_s = %x{ rbObjToS(self) }
 
+  # MRI's default inspect lists the ivars and never calls to_s.
   #: () -> String
-  def inspect = to_s
+  def inspect = %x{ rbObjInspect(self) }
 
   #: () -> bool
   def nil? = false

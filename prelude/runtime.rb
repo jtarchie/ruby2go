@@ -61,7 +61,70 @@
     if s, ok := a.(I_ToS); ok {
       return s.ToS()
     }
-    return String("#<" + rbClassName(a) + ">")
+    return rbObjToS(a)
+  }
+
+  // rbObjToS is Kernel#to_s; only heap objects have an address to show.
+  func rbObjToS(a any) String {
+    s := "#<" + rbClassName(a)
+    if v := reflect.ValueOf(a); v.Kind() == reflect.Pointer {
+      s += fmt.Sprintf(":0x%016x", v.Pointer())
+    }
+    return String(s + ">")
+  }
+
+  // rbIvar feeds Kernel#inspect; !opt means nil was never assigned, which MRI doesn't list.
+  type rbIvar struct {
+    name string
+    val  any
+    opt  bool
+  }
+
+  var (
+    rbInspectMu   sync.Mutex
+    rbInspectBusy = map[any]bool{} // objects whose inspect is running, for MRI's "..."
+  )
+
+  // ponytail: the busy set is shared by threads, so concurrent inspects of one object print "..."; key it per goroutine if that shows up.
+  func rbObjInspect(a any) String {
+    o, ok := a.(interface{ _Ivars() []rbIvar })
+    if !ok {
+      return rbObjToS(a)
+    }
+    s := string(rbObjToS(a))
+    var b strings.Builder
+    b.WriteString(s[:len(s)-1])
+    rbInspectMu.Lock()
+    busy := rbInspectBusy[a]
+    rbInspectBusy[a] = true
+    rbInspectMu.Unlock()
+    if busy {
+      return String(b.String() + " ...>")
+    }
+    defer func() {
+      rbInspectMu.Lock()
+      delete(rbInspectBusy, a)
+      rbInspectMu.Unlock()
+    }()
+    sep := " "
+    for _, iv := range o._Ivars() {
+      if !iv.opt && (iv.val == nil || rbNilPtr(iv.val)) {
+        continue
+      }
+      b.WriteString(sep + iv.name + "=")
+      sep = ", "
+      if _, ok := iv.val.(I_Inspect); ok || iv.val == nil {
+        b.WriteString(string(rbInspect(iv.val)))
+      } else { // a Go value behind a prelude ivar
+        b.WriteString(string(rbObjToS(iv.val)))
+      }
+    }
+    return String(b.String() + ">")
+  }
+
+  func rbNilPtr(a any) bool {
+    v := reflect.ValueOf(a)
+    return v.Kind() == reflect.Pointer && v.IsNil()
   }
 
   func rbInspect(a any) String {
@@ -118,7 +181,8 @@
       return h.Hash()
     }
     // ponytail: no #hash (Float, Array, plain objects) hashes the inspect
-    // text; objects want an identity hash once they have an object id.
+    // text; an object's carries its address but also its ivars, so hash the
+    // address alone once objects have an object id.
     h := fnv.New64a()
     _, _ = h.Write([]byte(rbInspect(a)))
     return Integer(h.Sum64())
