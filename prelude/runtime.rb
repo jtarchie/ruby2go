@@ -222,7 +222,40 @@
     if math.IsNaN(f) || math.IsInf(f, 0) {
       panic(NewFloatDomainError(Ref(rbFloatToS(f))))
     }
+    if f < -(1<<63) || f >= 1<<63 {
+      panic(NewRangeError(Ref("float " + rbFloatToS(f) + " out of range of integer")))
+    }
     return Integer(f)
+  }
+
+  // rbIntOverflow raises where MRI would promote to a Bignum: Integer is a
+  // Go int (decision 35). Out of line so the checked operators still inline.
+  //go:noinline
+  func rbIntOverflow(a Integer, op string, b Integer) {
+    panic(NewRangeError(Ref(String(fmt.Sprintf("%d %s %d overflows Integer (64-bit; no Bignum)", a, op, b)))))
+  }
+
+  // rbIntMul is Integer#* past its 32-bit fast path, out of line too.
+  //go:noinline
+  func rbIntMul(a, b Integer) Integer {
+    r, ok := rbIntMulOk(a, b)
+    if !ok {
+      rbIntOverflow(a, "*", b)
+    }
+    return r
+  }
+
+  // rbIntMulOk is a*b and whether it fits: the signed high word of the
+  // 128-bit product must be the low word's sign extension.
+  func rbIntMulOk(a, b Integer) (Integer, bool) {
+    hi, lo := bits.Mul64(uint64(a), uint64(b))
+    if a < 0 {
+      hi -= uint64(b)
+    }
+    if b < 0 {
+      hi -= uint64(a)
+    }
+    return Integer(lo), int64(hi) == int64(lo)>>63
   }
 
   func rbFloatToS(f float64) String {

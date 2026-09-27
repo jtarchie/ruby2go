@@ -84,6 +84,10 @@ end
 # error: main.rb:3: unsupported syntax: RationalNode
 # rbs_inline: enabled
 puts 3r
+-- bignum_literal.rb --
+# error: main.rb:3: Integer literal 9223372036854775808 does not fit in 64 bits: there is no Bignum
+# rbs_inline: enabled
+puts 9_223_372_036_854_775_808
 -- imaginary_literal.rb --
 # error: main.rb:3: unsupported syntax: ImaginaryNode
 # rbs_inline: enabled

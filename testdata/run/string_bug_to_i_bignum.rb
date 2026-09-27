@@ -1,4 +1,4 @@
-# skip: to_i saturates at 2**63-1; MRI returns a Bignum
+# skip: wontfix: "99999999999999999999".to_i is a Bignum in MRI; rb2go raises RangeError (README decision 35)
 
 # rbs_inline: enabled
 

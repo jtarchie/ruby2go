@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -32,7 +33,12 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
 	case *parser.IntegerNode:
-		return expr{code: strings.ReplaceAll(f.f.text(n.Location), "_", ""), typ: f.cls("Integer"), lit: true}, true
+		code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
+		_, err := strconv.ParseInt(code, 0, 64)
+		if errors.Is(err, strconv.ErrRange) {
+			f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (README open decision 35)", code)
+		}
+		return expr{code: code, typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
 		if n.Value == 0 && math.Signbit(n.Value) {
 			// Go's constant -0.0 is +0; Ruby's is negative zero.

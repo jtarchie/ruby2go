@@ -202,7 +202,10 @@ class String < Object
     for end < len(s) && s[end] >= '0' && s[end] <= '9' {
       end++
     }
-    n, _ := strconv.Atoi(s[:end])
+    n, err := strconv.Atoi(s[:end])
+    if errors.Is(err, strconv.ErrRange) { // MRI returns a Bignum (decision 35)
+      panic(NewRangeError(Ref(String(s[:end] + " overflows Integer (64-bit; no Bignum)"))))
+    }
     return Integer(n)
   }
 

@@ -1,4 +1,4 @@
-# skip: an Integer literal beyond int64 compiles, then go build fails (constant overflows Integer); MRI prints it
+# skip: wontfix: an Integer literal beyond 64 bits is a compile error (README decision 35); MRI prints the Bignum
 # rbs_inline: enabled
 
 puts 9_223_372_036_854_775_808.inspect

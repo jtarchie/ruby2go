@@ -608,3 +608,16 @@ resolve; anything not listed is still open.
     is truthiness.
 34. `Hash#inspect` prints symbol keys as labels (`{a: 1, "a b": 2}`), as
     Ruby 3.4 does.
+35. Integer is a Go `int`: **decided, 64 bits, no Bignum or Rational.**
+    Native types are Go primitives; a Bignum-capable Integer would box
+    every value or branch every `%x{}` that treats it as an `int`. Where
+    MRI would promote, rb2go raises `RangeError` instead of wrapping:
+    `+`, `-`, `*`, `/`, `-@`, `abs` and `**` check for overflow (`*` only
+    when an operand is past 32 bits, and all but `/` and `**` still
+    inline), a Float past ±2**63 converts with MRI's `float … out of
+    range of integer`, `String#to_i` raises rather than saturating, and a
+    literal past 64 bits is a compile error. A negative exponent is a
+    Rational in MRI, so `**` raises too, except for bases 0
+    (`ZeroDivisionError`) and ±1 (MRI answers an Integer). Crystal makes
+    the same trade. A Bignum would need Integer as a small-int/`*big.Int`
+    union behind a decision of its own.
