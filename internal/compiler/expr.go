@@ -1773,6 +1773,9 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	if isNil(t) {
 		return strconv.FormatBool(cls.universal)
 	}
+	if cls.IsModule {
+		return f.moduleIsA(n, t, cls)
+	}
 	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
 		t = TClass{C: f.owner}
 	}
@@ -1783,8 +1786,6 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 			return "true"
 		case cls.isStruct() && t.C.isStruct() && cls.isSubclassOf(t.C):
 			return "rbIsA[" + f.c.goType(TClass{C: cls}) + "](" + recv.code + ")"
-		case cls.IsModule && t.C.isStruct():
-			f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", cls.RubyName, t)
 		}
 		return "false"
 	case TTuple:
@@ -1793,21 +1794,41 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 		if cls.universal {
 			return "true"
 		}
-		return "rbIsA[" + f.isAGoType(n, cls) + "](" + recv.code + ")"
+		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
 	}
 	f.errorf(n, "is_a? on %s is not supported", t)
 	return ""
 }
 
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
-func (f *fctx) isAGoType(n parser.Node, cls *Class) string {
-	switch {
-	case cls.IsModule:
-		f.errorf(n, "is_a?(%s) on untyped cannot be checked: rb2go has no runtime record of included modules", cls.RubyName)
-	case len(cls.TypeParams) > 0:
+func (f *fctx) isAGoType(cls *Class) string {
+	if len(cls.TypeParams) > 0 {
 		return cls.Name + "_Any"
 	}
 	return f.c.goType(TClass{C: cls})
+}
+
+// moduleIsA decides `x.is_a?(mod)` for a module mod and x of static type t.
+// There is no runtime record of included modules, so it is "true" or "false"
+// when t's class decides it, and a compile error when t is untyped or a
+// subclass of its class includes mod (decision 21).
+func (f *fctx) moduleIsA(n parser.Node, t Type, mod *Class) string {
+	t = stripOpt(t)
+	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
+		t = TClass{C: f.owner}
+	}
+	if _, ok := t.(TTuple); ok {
+		t = TClass{C: f.c.classes["Array"]}
+	}
+	c, ok := t.(TClass)
+	switch {
+	case mod.universal || ok && c.C.isSubclassOf(mod):
+		return "true"
+	case isNil(t):
+	case !ok || c.C.includedBelow(mod):
+		f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", mod.RubyName, t)
+	}
+	return "false"
 }
 
 // narrowIsA renders `x.is_a?(C)` in a condition and narrows x to C inside.

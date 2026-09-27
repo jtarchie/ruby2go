@@ -721,6 +721,9 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				armType = TNil{}
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
 				cls := f.classRef(c)
+				if cls.IsModule && f.moduleIsA(c, subj.typ, cls) == "false" {
+					continue
+				}
 				if len(cls.TypeParams) > 0 {
 					cases = append(cases, cls.Name+"_Any")
 					args := make([]Type, len(cls.TypeParams))
@@ -734,6 +737,9 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 					armType = TClass{C: cls}
 				}
 			}
+		}
+		if len(cases) == 0 {
+			continue // only modules the subject statically lacks: never matches
 		}
 		if len(wn.Conditions) != 1 {
 			armType = TAny{}

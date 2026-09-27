@@ -519,8 +519,8 @@ resolve; anything not listed is still open.
     operators take Integers); `"a"` is not a `Symbol` (decision 23).
 21. `is_a?`/`kind_of?` is a constant when static types decide it and a Go
     type assertion otherwise. There is no runtime record of included
-    modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
-    class that might have a subclass including it, is a compile error.
+    modules, so `is_a?(SomeModule)` (and `when SomeModule`) on an untyped
+    value, or on a class with a subclass including it, is a compile error.
     Narrowing an untyped local to `Array` views it as `Array[untyped]`.
 22. Unannotated literals infer by joining their parts; when parts share
     no type the element type is `untyped`. A 2–3 element mixed array with
