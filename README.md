@@ -530,9 +530,14 @@ resolve; anything not listed is still open.
     method without keyword parameters passes a Hash, as Ruby 3 does;
     keyword parameters themselves are not supported.
 24. Regexps are Ruby syntax on Go's RE2. Every pattern gets `(?m)` (Ruby's
-    `^`/`$` are line anchors), Ruby `/m` becomes `(?s)`, `\h` is expanded;
-    lookaround, backreferences, `\Z` and `/x` are rejected with `file:line`
-    at transpile time. Static patterns compile once into package
+    `^`/`$` are line anchors), Ruby `/m` and inline `(?m)` become `(?s)`,
+    `\h` is expanded. Onigmo syntax RE2 reads differently is rewritten: `\s`
+    includes `\v`; POSIX brackets are Unicode (Go's tables); nested classes
+    and `&&` are computed as rune ranges; `{,n}` is `{0,n}`; `X{n}?` is
+    `(?:X{n})?`; `\u`/`\e` become `\x{...}`; `\Q` is a literal `Q`; plain
+    groups don't capture once one is named. *(Revised: these passed through
+    and silently matched RE2's meaning.)* Lookaround, backreferences, `\Z`
+    and `/x` are rejected with `file:line` at transpile time. Static patterns compile once into package
     variables; interpolated ones compile at run time and raise
     `RegexpError` (with `/o`, only until one compiles; it is kept). `$~`/`$1` are not supported; use `match`.
 25. JSON matches the json gem: escapes (quotes, backslash, control

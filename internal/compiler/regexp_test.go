@@ -53,10 +53,10 @@ func TestTranslateRegexp(t *testing.T) {
 		{`[^\h]`, `[^0-9a-fA-F]`},
 		{`\H`, `[^0-9a-fA-F]`},
 		{`[a][\h]\h`, `[a][0-9a-fA-F][0-9a-fA-F]`},
-		{`[[:alpha:]\h]`, `[[:alpha:]0-9a-fA-F]`},
+		{`[[:alpha:]\h]`, "[" + rxPosix["alpha"] + "0-9a-fA-F]"},
 		{`[\]h]`, `[\]h]`},
 		{`\\h`, `\\h`},
-		{`\d\w\s\b\A\z`, `\d\w\s\b\A\z`},
+		{`\d\w\s\b\A\z`, `\d\w[\t\n\v\f\r ]\b\A\z`},
 		{`a\/b`, `a\/b`},
 		{`trailing\`, `trailing\`},
 		{`(?<y>\d+)`, `(?<y>\d+)`},
@@ -66,6 +66,12 @@ func TestTranslateRegexp(t *testing.T) {
 		{`\\\h`, `\\[0-9a-fA-F]`},
 		{`é\h`, `é[0-9a-fA-F]`},
 		{``, ``},
+		{`(?m:a)(?-m)(?mi)`, `(?s:a)(?-s)(?si)`},
+		{`a{,2}b{2}?(cd){3}+e{1,2}?`, `a{0,2}(?:b{2})?(?:(cd){3})+e{1,2}?`},
+		{`(?<a>x)(y)`, `(?<a>x)(?:y)`},
+		{`\u0062\u{61 62}\e`, `\x{0062}\x{61}\x{62}\x1b`},
+		{`[a-z&&[^b-y]]`, `[az]`},
+		{`[a[^\x00-y]]`, `[az-\x{10ffff}]`},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -79,13 +85,6 @@ func TestTranslateRegexp(t *testing.T) {
 		})
 	}
 }
-
-const (
-	knownInlineM     = "inline (?m) / (?-m) pass through with RE2's meaning (line anchors), not Ruby's (dot matches newline)"
-	knownSpace       = "RE2's \\s lacks \\v; the pattern compiles but differs from MRI"
-	knownNestedClass = "RE2 has no nested classes or && intersection; `[` inside a class is literal, so the pattern compiles to a different class instead of being rejected"
-	knownPosix       = "POSIX bracket classes are Unicode-aware in Ruby, ASCII-only in RE2"
-)
 
 // Expectations are MRI 4.0's `!!(re =~ s)`.
 func TestRegexpMatchesMRI(t *testing.T) {
@@ -129,19 +128,21 @@ func TestRegexpMatchesMRI(t *testing.T) {
 		{"escaped_backslash_then_hex_escape", `\A\\\h\z`, rubyRegexFlags{}, `\f`, true, ""},
 		{"inline_i_minus_m_group", `(?i-m:a.b)`, rubyRegexFlags{}, "A\nB", false, ""},
 		// Ruby's inline m is dot-all; RE2's is multi-line anchors, which (?m) already turns on.
-		{"inline_m_is_dotall", `(?m)a.b`, rubyRegexFlags{}, "a\nb", true, knownInlineM},
-		{"group_m_is_dotall", `(?m:a.b)`, rubyRegexFlags{}, "a\nb", true, knownInlineM},
-		{"inline_mi_is_dotall", `(?mi)a.b`, rubyRegexFlags{}, "A\nB", true, knownInlineM},
-		{"inline_minus_m_keeps_line_anchors", `(?-m)^b`, rubyRegexFlags{}, "a\nb", true, knownInlineM},
-		{"space_matches_vertical_tab", `\A\s\z`, rubyRegexFlags{}, "\v", true, knownSpace},
-		{"non_space_rejects_vertical_tab", `\A\S\z`, rubyRegexFlags{}, "\v", false, knownSpace},
-		{"class_intersection", `\A[a-z&&[^aeiou]]\z`, rubyRegexFlags{}, "b", true, knownNestedClass},
-		{"nested_class", `\A[a[bc]]\z`, rubyRegexFlags{}, "b", true, knownNestedClass},
-		{"posix_alpha_is_unicode", `\A[[:alpha:]]\z`, rubyRegexFlags{}, "é", true, knownPosix},
-		{"posix_upper_is_unicode", `\A[[:upper:]]\z`, rubyRegexFlags{}, "É", true, knownPosix},
-		{"posix_digit_is_unicode", `\A[[:digit:]]\z`, rubyRegexFlags{}, "٣", true, knownPosix},
-		{"posix_space_is_unicode", `\A[[:space:]]\z`, rubyRegexFlags{}, "\u00a0", true, knownPosix},
-		{"posix_word_is_unicode", `\A[[:word:]]\z`, rubyRegexFlags{}, "é", true, knownPosix},
+		{"inline_m_is_dotall", `(?m)a.b`, rubyRegexFlags{}, "a\nb", true, ""},
+		{"group_m_is_dotall", `(?m:a.b)`, rubyRegexFlags{}, "a\nb", true, ""},
+		{"inline_mi_is_dotall", `(?mi)a.b`, rubyRegexFlags{}, "A\nB", true, ""},
+		{"inline_minus_m_keeps_line_anchors", `(?-m)^b`, rubyRegexFlags{}, "a\nb", true, ""},
+		{"space_matches_vertical_tab", `\A\s\z`, rubyRegexFlags{}, "\v", true, ""},
+		{"non_space_rejects_vertical_tab", `\A\S\z`, rubyRegexFlags{}, "\v", false, ""},
+		{"non_space_in_negated_class", `\A[^\S\n]\z`, rubyRegexFlags{}, "\v", true, ""},
+		{"posix_negated_space", `x[[:^space:]]`, rubyRegexFlags{}, "x\u3000", false, ""},
+		{"class_intersection", `\A[a-z&&[^aeiou]]\z`, rubyRegexFlags{}, "b", true, ""},
+		{"nested_class", `\A[a[bc]]\z`, rubyRegexFlags{}, "b", true, ""},
+		{"posix_alpha_is_unicode", `\A[[:alpha:]]\z`, rubyRegexFlags{}, "é", true, ""},
+		{"posix_upper_is_unicode", `\A[[:upper:]]\z`, rubyRegexFlags{}, "É", true, ""},
+		{"posix_digit_is_unicode", `\A[[:digit:]]\z`, rubyRegexFlags{}, "٣", true, ""},
+		{"posix_space_is_unicode", `\A[[:space:]]\z`, rubyRegexFlags{}, "\u00a0", true, ""},
+		{"posix_word_is_unicode", `\A[[:word:]]\z`, rubyRegexFlags{}, "é", true, ""},
 		{"word_boundary_is_unicode", `\bcafé\b`, rubyRegexFlags{}, "un café noir", true, "Ruby's \\b treats non-ASCII letters as word characters; RE2's \\b is ASCII-only"},
 		{"caret_not_after_final_newline", `\n^`, rubyRegexFlags{}, "a\n", false, "Ruby's ^ never matches at the end of the string after a trailing newline; RE2 (?m)^ does, so gsub(/^/, \"  \") indents an extra empty line"},
 		{"open_interval_is_zero_to_n", `\Aa{,3}\z`, rubyRegexFlags{}, "aa", true, "Ruby's {,n} is {0,n}; RE2 reads it as the literal text {,n}"},
