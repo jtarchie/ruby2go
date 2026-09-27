@@ -18,6 +18,7 @@ type expr struct {
 	code     string
 	typ      Type
 	classObj bool // exactly a class constant: its Go type is the concrete metaclass
+	ctor     bool // a struct class's NewX(...): its Go type is *X, not XI
 	lit      bool // untyped Go constant
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
@@ -26,7 +27,8 @@ type expr struct {
 	// view is the untyped Go value that code converts, for an Array or Hash
 	// seen as another instantiation (decision 21): a narrowed local, or a
 	// call sent through it. Calls and untyped uses take the value itself.
-	view string
+	view    string
+	nilable bool // untyped collapsed from untyped? (Hash#[]): calls warn like T?'s
 }
 
 // genLiteral handles the leaf expressions.
@@ -146,7 +148,7 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 	}
 	exp := ann
 	if exp == nil {
-		if v := f.scope.lookup(n.Name); v != nil {
+		if v := f.visibleLocal(n.Name); v != nil {
 			exp = v.typ
 		}
 	}
@@ -223,6 +225,9 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	}
 	if isVoid(typ) {
 		gen(tail{})
+		if isNil(typ) { // every branch is nil (`if c then end`): the value is nil, not void
+			return expr{code: "nil", typ: TNil{}, lit: true}
+		}
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
 	tmp := f.newTmp()
@@ -309,7 +314,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		f.emit("if %s := %s; %s {", lt, f.materialize(l), lt)
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	default:
-		f.emit("if %s := %s; %s != nil {", lt, l.code, lt)
+		f.emit("if %s := %s; %s {", lt, l.code, optTruthy(lt, l.typ))
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: "(*" + lt + ")", typ: lElem}, typ))
 	}
 	f.emit("} else {")
@@ -355,9 +360,15 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		return f.genExpr(n.Right, nil)
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
+	// A Boolean? left may be false, not just nil: it is a possible value.
+	optBool := isOpt(l.typ) && isClass(stripOpt(l.typ), "Boolean")
 	var typ Type = TAny{}
 	if (isOpt(l.typ) || isNil(l.typ)) && !isAny(stripOpt(l.typ)) {
-		if j, ok := join(TNil{}, r.typ); ok {
+		lf := Type(TNil{})
+		if optBool {
+			lf = l.typ
+		}
+		if j, ok := join(lf, r.typ); ok {
 			typ = j
 		}
 	}
@@ -379,9 +390,9 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	f.pop()
 	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
 	f.indent--
-	if isAny(typ) {
+	if isAny(typ) || optBool {
 		f.emit("} else {")
-		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, TAny{}))
+		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	}
 	f.emit("}")
 	return expr{code: tmp, typ: typ}
@@ -734,7 +745,14 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 	if p.Want != nil && !isAny(a.typ) {
 		f.coerce(n, a, subst(p.Want, env)) // for its compile errors only
 	}
-	return f.coerce(n, a, subst(p.Type, env))
+	t := subst(p.Type, env)
+	code := f.coerce(n, a, t)
+	// A type variable bound to untyped gets an explicit any(...), or Go infers
+	// it from the argument's own type (E = String for Array[untyped]#include?("a")).
+	if _, ok := p.Type.(TVar); ok && isAny(t) && !isOpt(a.typ) && !isVoid(a.typ) && f.c.goType(a.typ) != "any" {
+		return "any(" + code + ")"
+	}
+	return code
 }
 
 // converts reports whether values of t convert between instantiations
@@ -828,12 +846,14 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 
 func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	recv := f.genExpr(n.Receiver, nil)
-	if !isOpt(recv.typ) {
+	if !isOpt(recv.typ) && !isAny(recv.typ) {
 		return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 	}
-	elem := recv.typ.(TOpt).Elem
 	rt := f.newTmp()
-	inner := expr{code: "(*" + rt + ")", typ: elem}
+	inner := expr{code: rt, typ: recv.typ} // an untyped nil is nil too
+	if o, ok := recv.typ.(TOpt); ok {
+		inner = expr{code: "(*" + rt + ")", typ: o.Elem}
+	}
 	var probe expr
 	f.probe(func() { probe = f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) })
 	if isVoid(probe.typ) {
@@ -845,10 +865,7 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 		f.emit("}")
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
-	resT := probe.typ
-	if !isOpt(resT) && !isAny(resT) {
-		resT = TOpt{Elem: resT}
-	}
+	resT := optOf(probe.typ)
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(resT))
 	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
@@ -1250,7 +1267,21 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 			out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
 		}
 	}
-	return out
+	return flatOpt(out)
+}
+
+// flatOpt collapses a nested optional result: a generic E? instantiated
+// with E = T? is a Go **T, and with E = untyped a *any, but Ruby has one nil.
+func flatOpt(e expr) expr {
+	o, ok := e.typ.(TOpt)
+	switch {
+	case !ok:
+	case isAny(o.Elem):
+		return expr{code: "Opt(" + e.code + ")", typ: o.Elem, nilable: true}
+	case isOpt(o.Elem):
+		return expr{code: "rbFlat(" + e.code + ")", typ: o.Elem}
+	}
+	return e
 }
 
 // callCode renders the call for entry e.
@@ -1456,13 +1487,13 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	if ret == nil {
 		var types []Type
 		f.probe(func() {
-			saved, savedRuby := f.enterRubyBlock()
+			saved, savedRuby := f.enterRubyBlock(block, names)
 			f.closures++
-			f.loops = append(f.loops, loopClosure)
+			f.pushLoop(loopClosure)
 			_, pro := f.bindBlockParams(n, names, params)
 			pro()
 			f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
-			f.loops = f.loops[:len(f.loops)-1]
+			f.popLoop()
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
 		})
@@ -1481,9 +1512,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	var b strings.Builder
 	savedBuf := f.buf
 	f.buf = &b
-	saved, savedRuby := f.enterRubyBlock()
+	saved, savedRuby := f.enterRubyBlock(block, names)
 	f.closures++
-	f.loops = append(f.loops, loopClosure)
+	f.pushLoop(loopClosure)
 	goParams, pro := f.bindBlockParams(n, names, params)
 	ps := make([]string, 0, len(goParams))
 	for i, gp := range goParams {
@@ -1499,6 +1530,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
 	f.indent++
 	pro()
+	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
 	if isVoid(ret) {
 		f.withNextTail(tail{}, gen)
 	} else {
@@ -1506,7 +1538,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	}
 	f.indent--
 	f.emit("}")
-	f.loops = f.loops[:len(f.loops)-1]
+	f.popLoop()
 	f.closures--
 	f.leaveRubyBlock(saved, savedRuby)
 	f.buf = savedBuf
@@ -1599,7 +1631,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 		return
 	}
 	names := f.blockParamNames(blk.Parameters)
-	saved, savedRuby := f.enterRubyBlock()
+	saved, savedRuby := f.enterRubyBlock(blk, names)
 	goParams, pro := f.bindBlockParams(n, names, yields)
 	allBlank := true
 	for _, gp := range goParams {
@@ -1607,19 +1639,20 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 			allBlank = false
 		}
 	}
+	f.pushLoop(loopIter)
 	if allBlank {
 		f.emit("for range %s {", call)
 	} else {
 		f.emit("for %s := range %s {", strings.Join(goParams, ", "), call)
 	}
 	f.indent++
-	f.loops = append(f.loops, loopIter)
 	pro()
+	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
 	f.genStmts(blk.Body, tail{})
-	f.loops = f.loops[:len(f.loops)-1]
 	f.indent--
 	f.leaveRubyBlock(saved, savedRuby)
 	f.emit("}")
+	f.popLoop()
 }
 
 // ---- yield / super / new / raise
@@ -1650,7 +1683,9 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 	}
 	if f.iterator {
 		f.emit("if !yield(%s) {", strings.Join(codes, ", "))
-		f.emit("\treturn")
+		f.indent++
+		f.emitReturn()
+		f.indent--
 		f.emit("}")
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
@@ -1766,7 +1801,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 	} else if len(args) > 0 || len(exprs) > 0 {
 		f.errorf(n, "%s.new takes no arguments", cls.Name)
 	}
-	return expr{code: "New" + cls.Name + "(" + strings.Join(codes, ", ") + ")", typ: TClass{C: cls}}
+	return expr{code: "New" + cls.Name + "(" + strings.Join(codes, ", ") + ")", typ: TClass{C: cls}, ctor: true}
 }
 
 func (f *fctx) genRaise(n *parser.CallNode) expr {
@@ -1829,6 +1864,9 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		a := f.genExpr(args[0], nil)
 		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
 	case "!":
+		if isClass(elem, "Boolean") {
+			return expr{code: "Boolean(!" + optTruthy(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
+		}
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	case "to_i", "to_f", "to_a", "to_h", "=~":
 		if e, ok := f.nilClassCall(n, recv, name, args); ok {
@@ -1958,10 +1996,16 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		a := one(nil)
 		return expr{code: "Boolean(rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + "))", typ: f.cls("Boolean")}
 	case "<=>":
+		if isAny(recv.typ) {
+			break // the argument's type is unknown too: dispatch at run time
+		}
 		a := one(recv.typ)
 		return expr{code: "rbCmp(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "hash":
 		return expr{code: "rbHash(" + recv.code + ")", typ: f.cls("Integer")}
+	}
+	if recv.nilable {
+		f.c.warn(f.f, n, "%s called on possibly-nil untyped (raises NoMethodError on nil)", name)
 	}
 	return f.genDynCall(n, recv, name, args)
 }
@@ -1969,10 +2013,11 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 // blockParam declares a block parameter: a fresh local that Go syntax
 // declares, so it is never hoisted.
 func (f *fctx) blockParam(name string, typ Type) *local {
-	info := f.locals[name]
+	key := f.localKey(name)
+	info := f.locals[key]
 	if info == nil {
 		info = &localInfo{}
-		f.locals[name] = info
+		f.locals[key] = info
 	}
 	info.noHoist = true
 	v := f.declareLocal(name, typ)
@@ -2232,6 +2277,8 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 	switch {
 	case isAny(elem):
 		cond, want = "!"+f.truthy(n, cur), TAny{}
+	case isOpt(cur.typ) && isClass(elem, "Boolean"):
+		cond, want = "!"+optTruthy(cur.code, cur.typ), cur.typ
 	case isOpt(cur.typ):
 		cond, want = cur.code+" == nil", cur.typ
 	case isClass(cur.typ, "Boolean"):
@@ -2262,7 +2309,7 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 }
 
 func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
-	if f.scope.lookup(n.Name) == nil {
+	if f.visibleLocal(n.Name) == nil {
 		// a new local starts out nil, so this is a plain assignment
 		return f.assignLocal(n, n.Name, f.genExpr(n.Value, nil), nil)
 	}
@@ -2271,7 +2318,7 @@ func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
 		return expr{code: v.goName, typ: v.typ, done: true} // narrowed: already set
 	}
 	e := f.genOrAssign(n, expr{code: v.goName, typ: v.typ}, n.Value)
-	if info := f.locals[n.Name]; info != nil {
+	if info := f.localInfo(n.Name); info != nil {
 		info.writes++
 		if !isAncestorBlock(info.declBlock, f.block) {
 			info.hoist = true
@@ -2432,7 +2479,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 				f.errorf(n, "cannot destructure %s", v.typ)
 			}
 			for i := range n.Lefts {
-				vals = append(vals, expr{code: fmt.Sprintf("%s.Op_idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
+				vals = append(vals, flatOpt(expr{code: fmt.Sprintf("%s.Op_idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}}))
 			}
 		default:
 			f.errorf(n, "cannot destructure %s", v.typ)
@@ -2445,7 +2492,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 func (f *fctx) targetType(n parser.Node) Type {
 	switch t := n.(type) {
 	case *parser.LocalVariableTargetNode:
-		if v := f.scope.lookup(t.Name); v != nil {
+		if v := f.visibleLocal(t.Name); v != nil {
 			if v.base != nil {
 				return v.base.typ
 			}

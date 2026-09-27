@@ -1,4 +1,4 @@
-# skip: h[k] on a Hash[K, untyped] is `untyped?` (*any), and collecting it (array or hash literal, map result) builds Array[*any]/Hash[K, *any]: join prints #<>, ==/include? are false, inspect panics; decision 20 says untyped? is untyped
+# skip: blocked on container-eq-instantiation: Array[untyped] == Array[String] is false across Go instantiations (the rest passes since untyped? collapses to untyped)
 
 # rbs_inline: enabled
 

@@ -1,5 +1,3 @@
-# skip: passing a T? (e.g. Integer?) to an `untyped?` parameter fails go build (*Integer is not *any); decision 20 says untyped? is untyped
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer?

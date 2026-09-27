@@ -921,7 +921,7 @@ func (c *Compiler) constFctx(k *Const) *fctx {
 		f.selfType, f.selfCode, f.selfClassObj = TClass{C: cls.meta}, classVar(cls), true
 	}
 	f.lex = k.Scope
-	f.locals = map[string]*localInfo{}
+	f.locals = map[localKey]*localInfo{}
 	f.scope = &scope{vars: map[string]*local{}}
 	f.pass = 2
 	return f

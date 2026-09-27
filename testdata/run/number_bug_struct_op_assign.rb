@@ -1,4 +1,3 @@
-# skip: a local first assigned Num.new is declared as the concrete *Num, so `c += x` / `c = c + x` with a user + returning Num (NumI) fails go build, even with `#: Num`
 # rbs_inline: enabled
 
 class Num

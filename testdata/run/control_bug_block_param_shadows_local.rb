@@ -1,5 +1,3 @@
-# skip: a block parameter named like an outer local that is read after the block marks the shared local info noHoist, so the outer local's hoisted `var` is never emitted (go build: undefined: x)
-
 # rbs_inline: enabled
 
 x = 10

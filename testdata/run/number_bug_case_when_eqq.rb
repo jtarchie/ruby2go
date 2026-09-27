@@ -1,4 +1,3 @@
-# skip: case/when outside a pure class switch tests `subject == cond` instead of `cond === subject`: `when Integer` mixed with a value `when` never matches, and a user-defined === (when Div.new(3)) is ignored
 # rbs_inline: enabled
 
 class Div

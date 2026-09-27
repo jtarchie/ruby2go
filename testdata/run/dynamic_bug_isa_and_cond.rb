@@ -1,5 +1,3 @@
-# skip: `x.is_a?(C) && <Boolean expr>` (or `|| <Boolean expr>`) as an if/ternary condition fails go build (mismatched types bool and Boolean); MRI runs it
-
 # rbs_inline: enabled
 
 class Shape

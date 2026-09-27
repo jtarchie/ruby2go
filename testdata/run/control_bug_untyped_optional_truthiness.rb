@@ -1,5 +1,3 @@
-# skip: an `untyped?` value (Hash[String, untyped]#[], Array[untyped]#[]) holding false or nil is truthy in if/?:/&& and not nil? (pointer compared with nil); decisions 20/33 say untyped? is untyped and conditions use truthiness
-
 # rbs_inline: enabled
 
 h = { "t" => true, "f" => false, "n" => nil, "z" => 0 } #: Hash[String, untyped]

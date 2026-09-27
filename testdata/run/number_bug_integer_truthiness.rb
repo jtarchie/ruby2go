@@ -1,4 +1,3 @@
-# skip: an Integer or Float in a condition emits `x != nil || true`, which go build rejects (mismatched types Integer and untyped nil)
 # rbs_inline: enabled
 
 x = 0 #: Integer

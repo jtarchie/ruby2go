@@ -88,6 +88,14 @@ func isClass(t Type, name string) bool {
 	return c != nil && c.Name == name
 }
 
+// optOf is `t?`. Ruby has one nil, so T?? is T? and untyped? is untyped.
+func optOf(t Type) Type {
+	if isOpt(t) || isAny(t) {
+		return t
+	}
+	return TOpt{Elem: t}
+}
+
 // stripOpt returns the non-optional part of t.
 func stripOpt(t Type) Type {
 	if o, ok := t.(TOpt); ok {
@@ -300,12 +308,16 @@ func join(a, b Type) (Type, bool) {
 		return TOpt{Elem: a}, true
 	case typeEq(a, b):
 		return a, true
-	case isOpt(a) && typeEq(a.(TOpt).Elem, b):
-		return a, true
-	case isOpt(b) && typeEq(b.(TOpt).Elem, a):
-		return b, true
 	case isAny(a) || isAny(b):
 		return TAny{}, true
+	case isOpt(a) || isOpt(b):
+		// T? with U: join T and U, then re-add the nil, so every order of
+		// `x = nil`, `x = Derived.new`, `x = Base.new` gives Base?.
+		j, ok := join(stripOpt(a), stripOpt(b))
+		if !ok || isAny(j) {
+			return j, ok
+		}
+		return TOpt{Elem: j}, true
 	}
 	// Subclass / superclass: pick the ancestor.
 	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil && ca != cb {

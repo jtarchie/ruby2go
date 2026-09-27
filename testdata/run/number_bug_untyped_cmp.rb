@@ -1,4 +1,3 @@
-# skip: <=> on a genuinely untyped receiver emits rbCmp[any], which asserts Cmp(any) (Integer has Cmp(Integer)): a typed argument fails go build, an untyped one panics
 # rbs_inline: enabled
 
 #: (untyped) -> untyped

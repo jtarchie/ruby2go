@@ -28,17 +28,21 @@ type fctx struct {
 	tmp          int
 	pass         int // 0 = ivar discovery, 1 = local analysis, 2 = emit
 	discover     bool
-	locals       map[string]*localInfo
+	locals       map[localKey]*localInfo
+	unset        map[localKey]bool // locals read where they may be unassigned (maybeUnset)
 	scope        *scope
 	block        string
-	rbScope      string // the block path where the current Ruby scope (method or block) starts
+	rbScope      string    // the block path where the current Ruby scope (method or block) starts
+	rbFrames     []rbFrame // the Ruby blocks enclosing the current position, outermost first
 	blockCtr     int
-	loops        []loopKind
+	loops        []*loopFrame
+	switches     int  // nesting depth of emitted Go switch statements
+	labels       int  // not rewound by probe, so labels stay unique
 	closures     int  // nesting depth of Go closures (non-iterator blocks)
 	nextTail     tail // the innermost closure's result, for `next`
 	begins       int  // nesting depth of rescue wrappers
 	retVar       string
-	retFlag      string // set inside begin wrappers when a return must propagate
+	wrap         *wrapFrame // the innermost begin wrapper
 	hasNamedRet  bool
 }
 
@@ -49,6 +53,91 @@ const (
 	loopClosure
 	loopIter
 )
+
+// loopFrame lets a `break` inside a Go switch (case/when) exit the loop via a label, not just the switch.
+type loopFrame struct {
+	kind     loopKind
+	switches int    // f.switches when the loop was entered
+	begins   int    // f.begins when the loop was entered
+	start    int    // where the label goes
+	label    string // set by the first `break` that needs it
+}
+
+// pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
+func (f *fctx) pushLoop(kind loopKind) {
+	s := f.buf.String()
+	start := len(s)
+	if i := strings.LastIndexByte(strings.TrimSuffix(s, "\n"), '\n') + 1; strings.HasPrefix(s[i:], "//line ") {
+		start = i
+	}
+	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, start: start})
+}
+
+// jumpKind is how a jump left a begin wrapper's func literal. Go's
+// return/break/continue stop at the func literal, so the wrapper records
+// the jump in its flag and the jump is re-issued after the call.
+type jumpKind int
+
+const (
+	jumpReturn jumpKind = iota + 1
+	jumpBreak
+	jumpNext
+)
+
+type wrapFrame struct {
+	flag    string
+	used    [jumpNext + 1]bool
+	endsRet bool // the call is followed by the function's return
+}
+
+// leaveWrapper jumps out of the innermost begin wrapper.
+func (f *fctx) leaveWrapper(k jumpKind) {
+	if k == jumpReturn && f.wrap.endsRet {
+		f.emit("return")
+		return
+	}
+	f.wrap.used[k] = true
+	f.emit("%s = %d", f.wrap.flag, k)
+	f.emit("return")
+}
+
+// emitReturn leaves the method once its value (if any) is in place.
+func (f *fctx) emitReturn() {
+	if f.begins > 0 {
+		f.leaveWrapper(jumpReturn)
+		return
+	}
+	f.emit("return")
+}
+
+// popLoop inserts the label only once a break used it: Go rejects unused labels.
+func (f *fctx) popLoop() {
+	l := f.loops[len(f.loops)-1]
+	f.loops = f.loops[:len(f.loops)-1]
+	if l.label == "" {
+		return
+	}
+	s := f.buf.String()
+	f.buf.Reset()
+	f.buf.WriteString(s[:l.start] + l.label + ":\n" + s[l.start:])
+}
+
+// localKey names one Ruby local: Ruby scopes are the method and each
+// block, so the same name in two blocks (or in a block and the method) is
+// two variables with their own type, hoisting and use counts.
+type localKey struct {
+	scope int // the block's source offset; methodScope for the method
+	name  string
+}
+
+const methodScope = -1
+
+// rbFrame is a Ruby block scope: the names prism puts in it (params,
+// `|x; y|` block locals, locals first assigned inside) are its own.
+type rbFrame struct {
+	key    int
+	locals []string
+}
 
 type localInfo struct {
 	declBlock string
@@ -74,6 +163,15 @@ type local struct {
 	base     *local // non-nil for a narrowed view of another local
 	view     string // see expr.view
 	declared bool
+	info     *localInfo // the Ruby local this binds; nil when not tracked
+}
+
+// owner is the Ruby local v binds, looking through narrowed views.
+func (v *local) owner() *localInfo {
+	if v.base != nil {
+		return v.base.owner()
+	}
+	return v.info
 }
 
 func (s *scope) lookup(name string) *local {
@@ -118,29 +216,73 @@ func (f *fctx) enterBlock() string {
 
 // enterRubyBlock starts a Go block that is also a Ruby block (a closure or
 // an iterator's loop body): locals first assigned inside stay inside.
-func (f *fctx) enterRubyBlock() (string, string) {
+func (f *fctx) enterRubyBlock(block parser.Node, params []string) (string, string) {
 	saved := f.enterBlock()
 	savedRuby := f.rbScope
 	f.rbScope = f.block
+	fr := rbFrame{key: block.GetLocation().StartOffset, locals: params}
+	if b, ok := block.(*parser.BlockNode); ok {
+		fr.locals = append(fr.locals, b.Locals...)
+	}
+	f.rbFrames = append(f.rbFrames, fr)
 	return saved, savedRuby
 }
 
 func (f *fctx) leaveRubyBlock(saved, savedRuby string) {
+	f.rbFrames = f.rbFrames[:len(f.rbFrames)-1]
 	f.rbScope = savedRuby
 	f.leaveBlock(saved)
+}
+
+// localKey resolves name as Ruby does: to the innermost enclosing block
+// that owns it, else to the method.
+func (f *fctx) localKey(name string) localKey {
+	for i := len(f.rbFrames) - 1; i >= 0; i-- {
+		if slices.Contains(f.rbFrames[i].locals, name) {
+			return localKey{f.rbFrames[i].key, name}
+		}
+	}
+	return localKey{methodScope, name}
+}
+
+func (f *fctx) localInfo(name string) *localInfo { return f.locals[f.localKey(name)] }
+
+// visibleLocal is the Go binding of the Ruby local name in scope here,
+// skipping a same-named local of an outer Ruby scope that a block param or
+// a `|x; y|` block local shadows.
+func (f *fctx) visibleLocal(name string) *local {
+	v := f.scope.lookup(name)
+	if v != nil && v.owner() != nil && v.owner() != f.localInfo(name) {
+		return nil
+	}
+	return v
 }
 
 // sameScopeLocal finds a local assigned earlier in the same Ruby scope but
 // inside another Go block (an if branch, a begin body read from ensure):
 // Ruby locals are method- or block-scoped, not branch-scoped. It is
-// hoisted to a function-level var.
+// hoisted to a var at the top of its Ruby scope (hoistLocals).
 func (f *fctx) sameScopeLocal(name string) *local {
-	info := f.locals[name]
+	info := f.localInfo(name)
 	if info == nil || info.noHoist || info.typ == nil || info.declPass != f.pass || !isAncestorBlock(info.declRuby, f.rbScope) {
 		return nil
 	}
 	info.hoist = true
-	return &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true}
+	return &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true, info: info}
+}
+
+// hoistLocals declares, at the top of a Ruby scope's Go body, the locals
+// of that scope that sameScopeLocal found outside their Go block: a block's
+// are fresh for each call, as in Ruby.
+func (f *fctx) hoistLocals(scope int) {
+	if f.pass != 2 {
+		return
+	}
+	for _, li := range sortedLocals(f.locals) {
+		if li.scope == scope && li.hoist && !li.noHoist && li.typ != nil && !isNil(li.typ) {
+			f.emit("var %s %s", goLocalName(li.name), f.c.goType(li.typ))
+		}
+	}
 }
 
 func (f *fctx) leaveBlock(saved string) {
@@ -248,11 +390,12 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 // ---- statements
 
 func (f *fctx) genStmts(n parser.Node, t tail) {
-	if n == nil {
+	stmts, ok := n.(*parser.StatementsNode)
+	// An empty body arrives as a typed-nil *StatementsNode, which is != nil.
+	if n == nil || ok && stmts == nil {
 		f.emptyTail(nil, t)
 		return
 	}
-	stmts, ok := n.(*parser.StatementsNode)
 	if !ok {
 		f.genStmt(n, t)
 		return
@@ -500,7 +643,7 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 	case *parser.LocalVariableReadNode:
 		v := f.readLocal(n)
 		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
-			return v.goName + " != nil", []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+			return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 		}
 	}
 	if call, ok := n.(*parser.CallNode); ok && isIsA(call) {
@@ -512,18 +655,27 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		}
 	}
 	if v := f.attrLocal(n); v != nil && v.base == nil && isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
-		return v.goName + " != nil", []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+		return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 	}
 	e := f.genExpr(n, nil)
 	return f.truthy(n, e), nil
 }
 
+// optTruthy tests a T? value: non-nil, and not false for a Boolean?.
+func optTruthy(code string, t Type) string {
+	if isClass(stripOpt(t), "Boolean") {
+		return "rbTruthyOpt(" + code + ")"
+	}
+	return code + " != nil"
+}
+
 func (f *fctx) truthy(n parser.Node, e expr) string {
 	switch {
 	case isClass(e.typ, "Boolean"):
-		return e.code
+		// genCond's other results (rbIsA, `!= nil`, temps) are Go bool; mixing in Boolean fails go build
+		return "bool(" + e.code + ")"
 	case isOpt(e.typ):
-		return e.code + " != nil"
+		return optTruthy(e.code, e.typ)
 	case isNil(e.typ):
 		return "false"
 	case isAny(e.typ):
@@ -532,28 +684,43 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		return "rbTruthy(Opt(" + e.code + "))"
 	}
 	f.c.Warnings = append(f.c.Warnings, fmt.Sprintf("%s:%d: condition of type %s is always true", f.f.Name, f.f.line(n.GetLocation().StartOffset), e.typ))
-	return "(" + e.code + " != nil || true)"
+	// value types (Integer, String) can't be compared to nil; keep the evaluation and the local's use
+	f.emit("_ = %s", e.code)
+	return "true"
 }
 
 func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bool, doWhile bool, t tail) {
 	if doWhile {
 		f.errorf(pred, "begin/end while is not supported")
 	}
-	cond, narrow := f.genCond(pred)
+	f.pushLoop(loopFor)
+	saved := f.enterBlock()
+	f.indent++
+	var cond string
+	var narrow []narrowInfo
+	// the condition reruns each iteration, so its statements (`while (x = q.shift)`) go inside the loop
+	stmts := f.capture(func() { cond, narrow = f.genCond(pred) })
 	if negate {
 		cond = "!(" + cond + ")"
 		narrow = nil
 	}
-	f.emit("for %s {", cond)
-	saved := f.enterBlock()
+	f.indent--
+	if stmts == "" {
+		f.emit("for %s {", cond)
+	} else {
+		f.emit("for {")
+		f.buf.WriteString(stmts)
+		f.emit("\tif !(%s) {", cond)
+		f.emit("\t\tbreak")
+		f.emit("\t}")
+	}
 	f.indent++
-	f.loops = append(f.loops, loopFor)
 	f.applyNarrow(narrow)
 	f.genStmts(body, tail{})
-	f.loops = f.loops[:len(f.loops)-1]
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+	f.popLoop()
 	f.emptyTail(pred, t)
 }
 
@@ -570,21 +737,11 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		e = f.genExpr(n.Arguments.Arguments[0], f.ret)
 		hasVal = true
 	}
-	if f.iterator {
+	if f.iterator || isVoid(f.ret) || f.ret == nil {
 		if hasVal {
 			f.emitExprStmt(n.Arguments.Arguments[0], e)
 		}
-		f.emit("return")
-		return
-	}
-	if isVoid(f.ret) || f.ret == nil {
-		if hasVal {
-			f.emitExprStmt(n.Arguments.Arguments[0], e)
-		}
-		if f.begins > 0 && f.retFlag != "" {
-			f.emit("%s = true", f.retFlag)
-		}
-		f.emit("return")
+		f.emitReturn()
 		return
 	}
 	if !hasVal {
@@ -592,10 +749,7 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 	}
 	if f.begins > 0 {
 		f.emit("%s = %s", f.retVar, f.coerce(n, e, f.ret))
-		if f.retFlag != "" {
-			f.emit("%s = true", f.retFlag)
-		}
-		f.emit("return")
+		f.leaveWrapper(jumpReturn)
 		return
 	}
 	f.emit("return %s", f.coerce(n, e, f.ret))
@@ -608,8 +762,25 @@ func (f *fctx) genBreak(n *parser.BreakNode) {
 	if len(f.loops) == 0 {
 		f.errorf(n, "break outside a loop")
 	}
-	if f.loops[len(f.loops)-1] == loopClosure {
+	l := f.loops[len(f.loops)-1]
+	if l.kind == loopClosure {
 		f.errorf(n, "break inside a non-iterator block is not supported")
+	}
+	f.emitBreak(l)
+}
+
+func (f *fctx) emitBreak(l *loopFrame) {
+	if f.begins > l.begins {
+		f.leaveWrapper(jumpBreak)
+		return
+	}
+	if f.switches > l.switches {
+		if l.label == "" {
+			f.labels++
+			l.label = fmt.Sprintf("loop%d", f.labels)
+		}
+		f.emit("break %s", l.label)
+		return
 	}
 	f.emit("break")
 }
@@ -618,10 +789,22 @@ func (f *fctx) genNext(n *parser.NextNode) {
 	if len(f.loops) == 0 {
 		f.errorf(n, "next outside a loop")
 	}
-	if f.loops[len(f.loops)-1] == loopClosure {
-		if n.Arguments != nil {
+	l := f.loops[len(f.loops)-1]
+	if n.Arguments != nil {
+		if l.kind == loopClosure {
 			f.errorf(n, "next with a value inside a block is not supported")
 		}
+		f.errorf(n, "next with a value is not supported")
+	}
+	f.emitNext(n, l)
+}
+
+// emitNext leaves the innermost loop's iteration; n locates coerce errors.
+func (f *fctx) emitNext(n parser.Node, l *loopFrame) {
+	switch {
+	case f.begins > l.begins:
+		f.leaveWrapper(jumpNext)
+	case l.kind == loopClosure:
 		// the block's value is nil
 		switch t := f.nextTail; {
 		case t.kind == tailNone:
@@ -634,12 +817,9 @@ func (f *fctx) genNext(n *parser.NextNode) {
 		default:
 			f.emit("return %s", f.coerce(n, expr{code: "nil", typ: TNil{}}, t.typ))
 		}
-		return
+	default:
+		f.emit("continue")
 	}
-	if n.Arguments != nil {
-		f.errorf(n, "next with a value is not supported")
-	}
-	f.emit("continue")
 }
 
 // ---- case/when
@@ -671,20 +851,12 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, f.materialize(subj))
 	f.emit("switch {")
+	f.switches++
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
 		var conds []string
 		for _, cond := range wn.Conditions {
-			var condT Type
-			f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
-			if isClass(condT, "Regexp") {
-				// `when /re/` is Regexp#===, not ==.
-				re := f.genExpr(cond, nil)
-				conds = append(conds, "bool("+re.code+".Op_eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
-				continue
-			}
-			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil)
-			conds = append(conds, "bool("+eq.code+")")
+			conds = append(conds, f.caseEqq(cond, expr{code: tmp, typ: subj.typ}))
 		}
 		f.emit("case %s:", strings.Join(conds, " || "))
 		saved := f.enterBlock()
@@ -703,7 +875,30 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	}
 	f.indent--
 	f.leaveBlock(saved)
+	f.switches--
 	f.emit("}")
+}
+
+// caseEqq renders a `when`'s `cond === subj` as a Go bool: is_a? for a
+// class, the condition's own === when its class defines one (at run time
+// when it is untyped or T?), else ==, Object#==='s default.
+func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
+	if f.classRef(cond) != nil {
+		return f.isACheck(cond, subj, cond)
+	}
+	var condT Type
+	f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
+	c := classOf(stripOpt(condT))
+	if !isAny(condT) && (c == nil || c.lookup("===") == nil) {
+		return "bool(" + f.genMethodCall(cond, subj, "==", []parser.Node{cond}, nil).code + ")"
+	}
+	e := f.genExpr(cond, nil)
+	arg := []parser.Node{&exprNode{e: subj}}
+	if isAny(condT) || isOpt(condT) {
+		e = expr{code: f.coerce(cond, e, TAny{}), typ: TAny{}}
+		return "rbTruthy(" + f.genDynCall(cond, e, "===", arg).code + ")"
+	}
+	return "bool(" + f.genMethodCall(cond, e, "===", arg, nil).code + ")"
 }
 
 func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
@@ -713,15 +908,15 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		subjLocal = f.scope.lookup(lv.Name)
 	}
 	code := f.coerce(n.Predicate, subj, TAny{})
-	name := f.newTmp()
-	if subjLocal != nil {
-		name = subjLocal.goName
-		if subjLocal.base != nil || strings.HasPrefix(name, "(") {
-			name = f.newTmp()
-			subjLocal = nil
-		}
+	// a Go type switch needs an interface operand: box a @go_type value (Integer, String)
+	if cls, ok := subj.typ.(TClass); !isOpt(subj.typ) && f.c.goType(subj.typ) != "any" && (!ok || !cls.C.isStruct()) {
+		code = "any(" + code + ")"
 	}
+	// a fresh name, not the local's: default and multi-class arms still see the local as declared
+	name := f.newTmp()
 	f.emit("switch %s := %s.(type) {", name, code)
+	f.switches++
+	hasNil := false
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
 		var cases []string
@@ -732,6 +927,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			case *parser.NilNode:
 				cases = append(cases, "nil")
 				armType = TNil{}
+				hasNil = true
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
 				cls := f.classRef(c)
 				if cls.IsModule && f.moduleIsA(c, subj.typ, cls) == "false" {
@@ -746,7 +942,6 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			continue // only modules the subject statically lacks: never matches
 		}
 		if len(wn.Conditions) != 1 {
-			armType = TAny{}
 			convert = ""
 		}
 		slices.Sort(cases) // Go rejects a type listed twice, e.g. `when nil, Object`
@@ -757,8 +952,8 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		if convert != "" {
 			armName, view = name+convert, name // converted where read, like is_a? narrowing
 		}
-		if subjLocal != nil {
-			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, view: view, declared: true}
+		if subjLocal != nil && len(wn.Conditions) == 1 {
+			f.applyNarrow([]narrowInfo{{local: subjLocal, typ: armType, code: armName, view: view}})
 		}
 		f.genStmts(wn.Statements, t)
 		f.indent--
@@ -768,6 +963,9 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	saved := f.enterBlock()
 	f.indent++
 	f.emit("_ = %s", name)
+	if o, ok := subj.typ.(TOpt); ok && hasNil && subjLocal != nil && !isAny(o.Elem) {
+		f.applyNarrow([]narrowInfo{{local: subjLocal, typ: o.Elem}})
+	}
 	if n.ElseClause != nil {
 		f.genStmts(n.ElseClause.Statements, t)
 	} else {
@@ -775,6 +973,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	}
 	f.indent--
 	f.leaveBlock(saved)
+	f.switches--
 	f.emit("}")
 }
 
@@ -796,18 +995,18 @@ func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
 
 // ---- begin/rescue/ensure
 
-func containsReturn(n parser.Node) bool {
-	if n == nil {
+// containsJump reports a return, break or next anywhere under n.
+func containsJump(n parser.Node) bool {
+	switch n.(type) {
+	case nil:
 		return false
-	}
-	if _, ok := n.(*parser.ReturnNode); ok {
+	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
 		return true
-	}
-	if _, ok := n.(*parser.DefNode); ok {
+	case *parser.DefNode:
 		return false
 	}
 	for _, ch := range n.CompactChildNodes() {
-		if containsReturn(ch) {
+		if containsJump(ch) {
 			return true
 		}
 	}
@@ -898,18 +1097,46 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 		// rescue's values are discarded, as in Ruby
 		inner = tail{}
 	}
-	needFlag := containsReturn(n.Statements) || (n.RescueClause != nil && containsReturn(n.RescueClause))
-	flag := ""
-	if needFlag && t.kind != tailReturn {
-		flag = f.newTmp()
-		f.emit("%s := false", flag)
+	w := &wrapFrame{flag: f.newTmp(), endsRet: t.kind == tailReturn && t.typ != nil && f.begins == 0}
+	call := f.capture(func() { f.genWrapper(n, inner, w) })
+	if slices.Contains(w.used[:], true) {
+		f.emit("%s := 0", w.flag)
 	}
+	f.buf.WriteString(call)
+	for k, used := range w.used {
+		if used {
+			f.emit("if %s == %d {", w.flag, k)
+			f.indent++
+			f.reissue(n, jumpKind(k))
+			f.indent--
+			f.emit("}")
+		}
+	}
+	if w.endsRet {
+		f.emit("return") // the value is already in the named result
+	}
+}
+
+// reissue repeats, after a begin wrapper's call, the jump that left it.
+func (f *fctx) reissue(n parser.Node, k jumpKind) {
+	switch k {
+	case jumpReturn:
+		f.emitReturn()
+	case jumpBreak:
+		f.emitBreak(f.loops[len(f.loops)-1])
+	case jumpNext:
+		f.emitNext(n, f.loops[len(f.loops)-1])
+	}
+}
+
+// genWrapper emits a begin/rescue/ensure as a called func literal.
+func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 	f.emit("func() {")
 	saved := f.enterBlock()
 	f.indent++
 	f.begins++
-	savedFlag := f.retFlag
-	f.retFlag = flag
+	savedWrap := f.wrap
+	f.wrap = w
 	// Generate in Ruby's order (body, rescue, ensure) so locals assigned in
 	// the body are known to rescue and ensure; emit in Go's order, since
 	// the defers must be registered before the body runs.
@@ -944,13 +1171,13 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 			f.emit("defer func() {")
 			saved := f.enterBlock()
 			f.indent++
-			// `return` in ensure discards a pending exception, as in Ruby:
+			// A jump in ensure discards a pending exception, as in Ruby:
 			// hold it, and re-raise only if the ensure body falls through.
 			pending := ""
 			switch {
 			case terminates(n.EnsureClause.Statements):
-				f.emit("_ = recover()") // it always returns: the exception is dropped
-			case containsReturn(n.EnsureClause):
+				f.emit("_ = recover()") // it always jumps: the exception is dropped
+			case containsJump(n.EnsureClause):
 				pending = f.newTmp()
 				f.emit("%s := recover()", pending)
 			}
@@ -969,20 +1196,10 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 	f.buf.WriteString(rescue)
 	f.buf.WriteString(body)
 	f.begins--
-	f.retFlag = savedFlag
+	f.wrap = savedWrap
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}()")
-	if t.kind == tailReturn && t.typ != nil && f.begins == 0 {
-		f.emit("return") // the value is already in the named result
-	} else if flag != "" {
-		f.emit("if %s {", flag)
-		if f.begins > 0 && f.retFlag != "" {
-			f.emit("\t%s = true", f.retFlag)
-		}
-		f.emit("\treturn")
-		f.emit("}")
-	}
 }
 
 func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
@@ -1013,11 +1230,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		if len(classes) > 1 {
 			bind = f.c.classes["Exception"]
 		}
-		// A fresh binding per clause: the same Ruby name may hold a
-		// different exception class in each rescue.
-		v := f.blockParam(lt.Name, TClass{C: bind})
-		f.emit("%s := r_.(%s)", v.goName, f.c.goType(TClass{C: bind}))
-		f.noteUnused(v)
+		f.bindRescue(rc.Reference, lt.Name, TClass{C: bind})
 	}
 	f.genStmts(rc.Statements, t)
 	if !terminates(rc.Statements) {
@@ -1026,6 +1239,48 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+}
+
+// bindRescue binds `rescue => name`. The name is a local of the enclosing
+// method or block, nil when nothing was rescued: when it is read outside the
+// clause, the clause assigns it and narrows it to non-nil; otherwise each
+// clause gets a fresh Go binding of its own class. A local of that name
+// assigned before keeps its one type, so the clause shadows it.
+func (f *fctx) bindRescue(n parser.Node, name string, bind Type) {
+	val := expr{code: "r.(" + f.c.goType(bind) + ")", typ: bind}
+	if outer := f.visibleLocal(name); outer != nil {
+		v := &local{name: name, goName: goLocalName(name), typ: bind, declared: true, info: outer.owner()}
+		f.scope.vars[name] = v
+		f.emit("%s := %s", v.goName, val.code)
+		f.emit("_ = %s", v.goName) // the reads counted are the outer local's too
+		return
+	}
+	key := f.localKey(name)
+	info := f.locals[key]
+	if info == nil {
+		info = &localInfo{typ: TOpt{Elem: bind}}
+		f.locals[key] = info
+	}
+	if info.declPass != f.pass {
+		info.declPass, info.declBlock, info.declRuby = f.pass, f.block, f.rbScope
+	}
+	if f.pass < 2 && !info.annotated {
+		if j, ok := join(info.typ, TOpt{Elem: bind}); ok {
+			info.typ = j
+		}
+	}
+	if f.pass < 2 || !info.hoist {
+		v := &local{name: name, goName: goLocalName(name), typ: bind, declared: true, info: info}
+		f.scope.vars[name] = v
+		f.emit("%s := %s", v.goName, val.code)
+		f.noteUnused(v)
+		return
+	}
+	outer := &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true, info: info}
+	f.emit("%s = %s", outer.goName, f.coerce(n, val, outer.typ))
+	if isOpt(outer.typ) {
+		f.applyNarrow([]narrowInfo{{local: outer, typ: stripOpt(outer.typ)}})
+	}
 }
 
 // terminates reports whether a statement list ends in a jump, so no Go
@@ -1046,10 +1301,11 @@ func terminates(st *parser.StatementsNode) bool {
 // ---- locals
 
 func (f *fctx) declareLocal(name string, typ Type) *local {
-	info := f.locals[name]
+	key := f.localKey(name)
+	info := f.locals[key]
 	if info == nil {
 		info = &localInfo{declBlock: f.block, declRuby: f.rbScope, typ: typ}
-		f.locals[name] = info
+		f.locals[key] = info
 	}
 	if info.declPass != f.pass {
 		info.declPass = f.pass
@@ -1069,20 +1325,20 @@ func (f *fctx) declareLocal(name string, typ Type) *local {
 	if f.pass == 2 && info.typ != nil {
 		typ = info.typ
 	}
-	v := &local{name: name, goName: goName, typ: typ}
+	v := &local{name: name, goName: goName, typ: typ, info: info}
 	f.scope.vars[name] = v
 	return v
 }
 
 func (f *fctx) noteUnused(v *local) {
-	info := f.locals[v.name]
-	if f.pass == 2 && info != nil && info.reads == 0 {
+	info := v.owner()
+	if f.pass == 2 && info != nil && info.reads == 0 && v.goName != "_" { // `|_, v|`: Go's blank needs no use
 		f.emit("_ = %s", v.goName)
 	}
 }
 
 func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
-	v := f.scope.lookup(n.Name)
+	v := f.visibleLocal(n.Name)
 	if v == nil {
 		v = f.sameScopeLocal(n.Name)
 	}
@@ -1092,7 +1348,7 @@ func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 	if v == nil {
 		f.errorf(n, "undefined local %s", n.Name)
 	}
-	info := f.locals[n.Name]
+	info := f.localInfo(n.Name)
 	if info != nil {
 		info.reads++
 		if !isAncestorBlock(info.declBlock, f.block) {
@@ -1104,11 +1360,11 @@ func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 
 // assignLocal emits `x := v` / `x = v` and returns the local.
 func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type) expr {
-	existing := f.scope.lookup(name)
+	existing := f.visibleLocal(name)
 	if existing == nil {
 		existing = f.sameScopeLocal(name)
 	}
-	info := f.locals[name]
+	info := f.localInfo(name)
 	var typ Type
 	switch {
 	case annotated != nil:
@@ -1121,9 +1377,9 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 			typ = info.typ
 		}
 	}
-	if existing != nil && existing.base != nil {
+	narrowed := existing != nil && existing.base != nil
+	if narrowed {
 		existing = existing.base
-		defer f.unnarrow(name)
 	}
 	if isNil(typ) && f.pass == 2 {
 		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)
@@ -1143,19 +1399,33 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 				f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)
 			}
 		}
-		if f.pass == 2 {
-			existing.typ = info.typ
+		if f.pass == 2 || isNil(val.typ) {
+			existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14)
 		}
 	}
 	f.emit("%s = %s", existing.goName, f.coerce(n, val, existing.typ))
-	return expr{code: existing.goName, typ: existing.typ, stmt: true, done: true}
+	if narrowed {
+		f.unnarrow(name)
+	}
+	return f.narrowSet(existing, val)
+}
+
+// narrowSet: a maybe-unset local is T? only for the paths that skip its assignments, so after one it is non-nil.
+func (f *fctx) narrowSet(v *local, val expr) expr {
+	if !f.unset[f.localKey(v.name)] || !isOpt(v.typ) || isOpt(val.typ) || isVoid(val.typ) || isAny(val.typ) {
+		return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
+	}
+	nw := narrowInfo{local: v, typ: stripOpt(v.typ)}
+	f.applyNarrow([]narrowInfo{nw})
+	return expr{code: "(*" + v.goName + ")", typ: nw.typ, stmt: true, done: true}
 }
 
 // declareAssign emits the first assignment of a local.
 func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, annotated Type) expr {
-	hoisted := f.pass == 2 && f.locals[name] != nil && f.locals[name].hoist
+	prev := f.localInfo(name)
+	hoisted := f.pass == 2 && prev != nil && prev.hoist
 	v := f.declareLocal(name, typ)
-	info := f.locals[name]
+	info := v.info
 	switch {
 	case annotated != nil:
 		info.annotated = true
@@ -1164,6 +1434,9 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		info.typ = typ
 		if j, ok := join(info.typ, val.typ); ok {
 			info.typ = j
+		}
+		if f.unset[f.localKey(name)] && !isVoid(info.typ) {
+			info.typ = optOf(info.typ) // a path that skips this reads nil (decision 14)
 		}
 	}
 	if f.pass == 2 {
@@ -1179,6 +1452,8 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		f.emit("%s = %s", v.goName, code)
 	case code == "nil":
 		f.emit("var %s %s", v.goName, f.c.goType(v.typ))
+	case f.concreteInit(val, code, v.typ):
+		f.emit("var %s %s = %s", v.goName, f.c.goType(v.typ), code)
 	default:
 		f.emit("%s := %s", v.goName, code)
 	}
@@ -1186,7 +1461,22 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		info.writes++
 	}
 	f.noteUnused(v)
-	return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
+	return f.narrowSet(v, val)
+}
+
+// concreteInit reports whether code, the coerced first value of a local of
+// type t, has a Go type other than the interface goType(t): `:=` would then
+// give the local the concrete type (*X, *X_Meta, Integer) and a later
+// assignment of a subclass, another class object or another value fails.
+func (f *fctx) concreteInit(val expr, code string, t Type) bool {
+	gt := f.c.goType(t)
+	if cls, ok := t.(TClass); gt != "any" && (!ok || !cls.C.isStruct()) {
+		return false
+	}
+	if code != val.code && !val.lit { // coerce converted it to gt
+		return false
+	}
+	return val.classObj || val.ctor || f.c.goType(val.typ) != gt
 }
 
 // ---- function bodies
@@ -1194,9 +1484,10 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 // genBody runs the two-pass body generation into f.buf.
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
-	f.locals = map[string]*localInfo{}
+	f.locals = map[localKey]*localInfo{}
+	f.unset = maybeUnset(body, params)
 	for _, p := range params {
-		f.locals[p.name] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
+		f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
 	}
 	for pass := 1; pass <= 2; pass++ {
 		f.pass = pass
@@ -1210,19 +1501,12 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		f.tmp, f.blockCtr, f.block = 0, 0, ""
 		f.scope = &scope{vars: map[string]*local{}}
 		for _, p := range params {
-			f.scope.vars[p.name] = &local{name: p.name, goName: p.goName, typ: p.typ, declared: true}
+			f.scope.vars[p.name] = &local{name: p.name, goName: p.goName, typ: p.typ, declared: true, info: f.locals[localKey{methodScope, p.name}]}
 		}
 		if prologue != nil {
 			prologue()
 		}
-		if pass == 2 {
-			for name, info := range sortedLocals(f.locals) {
-				_ = name
-				if info.hoist && !info.noHoist && info.typ != nil && !isNil(info.typ) {
-					f.emit("var %s %s", goLocalName(info.name), f.c.goType(info.typ))
-				}
-			}
-		}
+		f.hoistLocals(methodScope)
 		f.genStmts(body, t)
 	}
 	final.WriteString(f.buf.String())
@@ -1230,11 +1514,11 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 }
 
 type namedInfo struct {
-	name string
+	localKey
 	*localInfo
 }
 
-func sortedLocals(m map[string]*localInfo) []namedInfo {
+func sortedLocals(m map[localKey]*localInfo) []namedInfo {
 	out := make([]namedInfo, 0, len(m))
 	for k, v := range m {
 		out = append(out, namedInfo{k, v})
@@ -1533,7 +1817,7 @@ func (f *fctx) genConstInit(k *Const) {
 	sub.indent = f.indent + 1
 	e := sub.genExpr(k.Value, typ)
 	code := sub.coerce(k.Value, e, typ)
-	if e.lit {
+	if e.lit && typeEq(e.typ, typ) { // coerce boxed or converted any other literal
 		code = f.c.goType(typ) + "(" + code + ")"
 	}
 	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)

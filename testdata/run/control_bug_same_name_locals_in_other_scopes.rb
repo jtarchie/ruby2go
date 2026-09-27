@@ -1,5 +1,3 @@
-# skip: locals with the same name in unrelated Ruby scopes (two sibling blocks, or a block and a later method-level local) share one name-keyed localInfo, so their types are merged and go build fails (cannot use z.Mul(2) as String value)
-
 # rbs_inline: enabled
 
 [1, 2].each do |z|

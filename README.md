@@ -231,7 +231,9 @@ affects `Hash#[]`, `find`, `first`, and every `if x`.
   temporaries in Go; the transpiler lifts expressions to statement sequences.
   Union `String? | String` collapses to `String`.
 - **Truthiness rule:** only `nil` and `false` are falsy. `Boolean` → native
-  `!`; `T?` → `!= nil`; everything else → constant true (warn).
+  `!`; `T?` → `!= nil`, except `Boolean?`, which can hold `false` (a
+  `Hash[String, bool]` lookup): `rbTruthyOpt(x)`, i.e. `x != nil && bool(*x)`;
+  everything else → constant true (warn).
 - **Methods on `nil`.** `x.inspect` where `x: String?` → static branch:
   nil → `NilClass_Inspect()`, else `x.Inspect()`. No runtime `NilClass`
   class (`nil.class` is a bare class object, decision 19).
@@ -262,7 +264,9 @@ a design driver.
   `StandardError`s). Wrap Go runtime errors into prelude exception types in the
   recover path.
 - **`ensure`** → outer `defer`; LIFO gives rescue-then-ensure. `return` inside
-  `rescue` needs a named result.
+  `rescue` needs a named result. Go's `return`/`break`/`continue` stop at the
+  `func(){}` wrapper, so a `return`, `break`, `next` (or an iterator's stopped
+  `yield`) that leaves it sets the wrapper's flag and is re-issued after the call.
 - **Not shown:** `retry`, bare `raise` re-raise, `backtrace`, `rescue` in
   blocks. `retry` → loop around the `func(){}` wrapper.
 
@@ -310,6 +314,10 @@ primitive.
 
 - **`case a when nil / when Array` → Go type switch.** `untyped` → `any`.
   First example that needs a runtime type test — everything before was static.
+- **Any other `case` → `switch {}` over `cond === subj`.** A class is
+  `is_a?`; a condition whose class defines `===` (`Regexp`, a user class)
+  calls it, dynamically when the condition is `untyped` or `T?`; anything
+  else is `==`, `Object#===`'s default, so typed `when 0` stays a typed `==`.
 - **`when Array` vs. generics.** A Go type switch can't match `*Array[E]` for
   unknown `E`. Every `Array` instantiation implements a non-generic
   `Array_Any{ ToAAny() []any }`; the switch matches that. General rule for
@@ -490,6 +498,11 @@ resolve; anything not listed is still open.
    method set. A generated `rbUnbox` type switch over every concrete `T?`
    the program renders opens it there; `rbCmp` tries the typed `Op_cmp` first
    and only falls back to the box path when that fails.
+   Ruby has one nil, so `T??` is `T?` and `untyped?` is `untyped`: a
+   generic `E?` result instantiated with `E = T?` (Go `**T`, e.g.
+   `Array[Integer?]#[]`) or `E = untyped` (`*any`) is flattened at the
+   call site. *(Revised: the nested box used to reach user code, so a nil
+   element read as non-nil.)*
 8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
    method set plus `_Shape() *Shape` accessors for every struct in the
    chain (ivar access from free functions, and the marker `rescue` matches
@@ -564,12 +577,34 @@ resolve; anything not listed is still open.
     type is an error, and an unannotated override inherits the parent's
     signature (never `untyped`).
 14. Locals are inferred from their assignments (joined across branches:
-    `nil` + `String` → `String?`) and hoisted to a `var` at the top of the
-    function when Go's block scoping would otherwise hide them. Lifted
-    temporaries for `&.`, `||`, ternaries, `case`-expressions and the value
-    of an attribute write used as a value (`r = (o.x = v)` is `v`, not the
-    setter's result) are computed before the statement they belong to, so
-    their side effects run slightly earlier than MRI would run them.
+    `nil` + `String` → `String?`) and hoisted to a `var` at the top of
+    their Ruby scope (the method, or the block's Go body) when Go's block
+    scoping would otherwise hide them. Scopes are resolved as prism does:
+    block params, `|x; y|` block locals and locals first assigned in a
+    block belong to that block, fresh on every call and typed apart from
+    same-named locals elsewhere in the method. `rescue => e` binds a local
+    of the enclosing scope, nil after the `begin` when nothing was rescued;
+    when `e` was assigned before, it keeps its one type and the clause's
+    binding shadows it instead. *(Revised: locals used to be keyed by name
+    for the whole method, so sibling blocks shared one type and block
+    locals were hoisted to the function, keeping their value across
+    iterations.)* A local that some path reads before any assignment ran
+    (assigned in one branch only, in a loop body, or in a `begin` body a
+    raise can cut short) is `nil` there, as in Ruby, so it is typed `T?`; an
+    assignment of a non-nil value makes it read as `T` for the rest of that
+    branch or loop body. A definite-assignment pass decides this: `return`,
+    `break`, `next` and `raise` end a path, `while true` leaves only by
+    `break`, a block's assignments never count outside it, an `ensure`
+    assumes nothing of its `begin`, and a `rescue` assumes what the body
+    assigned before each explicit `raise`. A raise from a callee counts as
+    coming after the body's assignments, and an annotated local (`#: T`)
+    keeps `T`: a skipped assignment then reads Go's zero value (`nil` for
+    objects, `0` for an Integer). *(Revised: every such local was hoisted as
+    `T`, so a skipped assignment read `0`, `""` or `false`.)*
+    Lifted temporaries for `&.`, `||`, ternaries, `case`-expressions and the
+    value of an attribute write used as a value (`r = (o.x = v)` is `v`, not
+    the setter's result) are computed before the statement they belong to,
+    so their side effects run slightly earlier than MRI would run them.
 15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
     or a dry run of the class's method bodies (`initialize` first); an ivar
     that is only ever assigned `nil` needs an annotation.
@@ -647,7 +682,8 @@ resolve; anything not listed is still open.
     `[]`, `{}`, `nil`) when `T`'s method returns a type that holds it.
     *(Revised: `to_i`/`to_f`/`to_a`/`to_h`/`=~` raised, so an unmatched
     group's `m[2].to_i` failed where MRI gives 0.)*
-    Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
+    Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, `case x` (a one-class
+    `when C` arm, and the `else` after `when nil`), and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops
     the narrowings. Likewise a value of class `C` where `T` is expected
@@ -787,7 +823,9 @@ resolve; anything not listed is still open.
     non-generic, block-less method of that name: MRI's `ArgumentError` for
     arity, `TypeError` for argument types, then the typed call. Without a
     wrapper the call goes to `method_missing`, then `NoMethodError` (or
-    `NameError` for a bare name). A private method's wrapper is `_DynName`,
+    `NameError` for a bare name); `===` is every object's, so without a
+    wrapper it is `==` (a class object held `untyped` gets `==`, not
+    `Module#===`'s `is_a?`). A private method's wrapper is `_DynName`,
     which only `send` and receiver-less calls reach, as in MRI; a call with
     a receiver or `public_send` goes on to `method_missing`, then
     `NoMethodError` saying "private method". `respond_to?(name, true)`
@@ -806,12 +844,12 @@ resolve; anything not listed is still open.
     type. *(Revised: they used to resolve like concrete classes, so
     `Kernel#to_s` printed `#<String>`, `is_a?` folded to false, literals
     reached `any` as Go `string`, and module methods failed `go build`.)*
-33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
-    `ensure` discards the pending exception; `&&`/`||` return values of
-    any types (unions become `untyped`) and evaluate the right side only
-    when Ruby would; locals first assigned in a branch or `begin` body are
-    visible after it (Ruby scopes are methods and blocks); `rescue` and
-    `ensure` are generated after the body; `untyped` in a `bool` position
-    is truthiness.
+33. Ruby semantics for looser code: `expr rescue fallback`; `return`,
+    `break` or `next` in `ensure` discards the pending exception;
+    `&&`/`||` return values of any types (unions become `untyped`) and
+    evaluate the right side only when Ruby would; locals first assigned
+    in a branch or `begin` body are visible after it (Ruby scopes are
+    methods and blocks); `rescue` and `ensure` are generated after the
+    body; `untyped` in a `bool` position is truthiness.
 34. `Hash#inspect` prints symbol keys as labels (`{a: 1, "a b": 2}`), as
     Ruby 3.4 does.

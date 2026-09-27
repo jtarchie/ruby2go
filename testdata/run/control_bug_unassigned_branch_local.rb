@@ -1,5 +1,3 @@
-# skip: a local first assigned in a branch, a loop body or after a raise in a begin body reads as Go's zero value (0, "") instead of nil when that assignment did not run (hoisted `var a Integer`, not Integer?)
-
 # rbs_inline: enabled
 
 #: (bool) -> void

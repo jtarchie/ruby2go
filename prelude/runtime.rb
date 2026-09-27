@@ -45,6 +45,15 @@
     return *p
   }
 
+  // rbFlat collapses a generic E? instantiated with E = T? (a **T) to T?:
+  // Ruby has one nil.
+  func rbFlat[T any](p **T) *T {
+    if p == nil {
+      return nil
+    }
+    return *p
+  }
+
   // OptOf converts untyped to T?; want names T for rbAs's TypeError.
   func OptOf[T any](a any, want string) *T {
     if a == nil {
@@ -148,6 +157,9 @@
     }
     return true
   }
+
+  // rbTruthyOpt tests a Boolean?: false is as falsy as nil.
+  func rbTruthyOpt(p *Boolean) bool { return p != nil && bool(*p) }
 
   func rbEq[T comparable](a, b T) Boolean {
     x, y := rbUnbox(any(a)), rbUnbox(any(b))

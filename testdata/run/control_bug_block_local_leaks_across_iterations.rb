@@ -1,5 +1,3 @@
-# skip: a local first assigned inside a block is hoisted to a `var` at the top of the enclosing Go function instead of the block body, so a value from one iteration or call leaks into the next (prints "first" twice; MRI prints nil the second time)
-
 # rbs_inline: enabled
 
 # each local joins nil + T to T? (its first assignment is nil), so only the

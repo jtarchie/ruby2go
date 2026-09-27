@@ -1,5 +1,3 @@
-# skip: a constant annotated `#: T?` with a non-nil initializer emits `NAME = *String(Ref[String]("n"))`, which Go parses as a dereference: go build fails "cannot convert Ref[String]("n") (value of type *String) to type String"
-
 # rbs_inline: enabled
 
 NAME = "n" #: String?

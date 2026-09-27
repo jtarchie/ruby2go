@@ -1,5 +1,3 @@
-# skip: a local first assigned Klass.new (or a class constant) gets the concrete Go type, so reassigning a subclass or class object fails go build even with a `#: Base` / `#: singleton(Base)` annotation
-
 # rbs_inline: enabled
 
 class Base

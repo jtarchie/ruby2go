@@ -1,5 +1,3 @@
-# skip: `next` inside a begin/ensure in a closure block (a method that rescues around yield) returns only from the begin's Go func literal, so the rest of the block still runs ("after begin 2" is printed)
-
 # rbs_inline: enabled
 
 #: () { (Integer) -> void } -> void

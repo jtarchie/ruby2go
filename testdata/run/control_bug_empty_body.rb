@@ -1,5 +1,3 @@
-# skip: an empty statement body (rescue that swallows, if/unless/elsif/else, while/until, when, ensure) crashes the compiler with a nil pointer dereference; genStmts misses the typed-nil *StatementsNode
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer
@@ -44,6 +42,6 @@ begin
   puts "body"
 ensure
 end
-x = if i > 5 then end
+x = if i > 5 then end #: Integer?
 puts x.inspect
 puts "done #{i}"

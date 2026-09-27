@@ -155,14 +155,22 @@ func (c *Compiler) emitDynName(name string) {
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
 	}
-	if name != "method_missing" {
+	// every object has Kernel#===, so method_missing is never reached for it
+	if name != "method_missing" && name != "===" {
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
 	}
 	if hidden {
 		c.w("\tif _, ok := recv.(interface{ _Private%s() }); ok {\n\t\tpanic(rbPrivateMethod(%q, recv))\n\t}\n", gn, name)
 	}
-	c.w("\tpanic(rbNoMethod(%q, recv, how == rbVCall))\n}\n\n", name)
+	if name == "===" {
+		// Kernel#===: == unless its class defines one.
+		// ponytail: a class object held untyped gets ==, not Module#=== (is_a?);
+		// needs a generated per-metaclass instance check.
+		c.w("\trbArity(len(args), 1, 1)\n\treturn Boolean(rbEq[any](recv, args[0]))\n}\n\n")
+	} else {
+		c.w("\tpanic(rbNoMethod(%q, recv, how == rbVCall))\n}\n\n", name)
+	}
 	for _, cls := range c.classList {
 		if e, private := c.dynEntry(cls, name); e != nil {
 			c.emitDynWrapper(cls, e, name, private)
@@ -205,7 +213,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	}
 	f := c.newFctx(file, cls, nil)
 	f.lex = m.Scope
-	f.locals = map[string]*localInfo{}
+	f.locals = map[localKey]*localInfo{}
 	f.scope = &scope{vars: map[string]*local{}}
 	f.pass = 2
 	f.indent = 1
