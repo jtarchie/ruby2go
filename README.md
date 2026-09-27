@@ -122,6 +122,8 @@ Rules the prelude relies on:
   signature is the only source of the return type. Pure-Ruby methods can infer.
 - **`@go_type`** — tells the transpiler `String` is a named Go `string`, not a
   struct. Classes without it become structs (and are passed as pointers).
+  A `@go_type` class has no struct to embed, so subclassing one is a
+  compile error.
 - **Mixins are just Ruby** — `Comparable#<` and `#clamp` are written once;
   `String` only supplies `<=>`. Compiles to `Comparable_Op_lt[T Comparable_Self[T]]`.
   The constraint interface is *derived from the module body*: whatever the

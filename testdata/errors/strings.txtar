@@ -222,8 +222,7 @@ puts h["a"].inspect
 puts (:a <=> "a").inspect
 puts [:a, :b].include?("a").inspect
 -- subclass_string.rb --
-# skip: subclassing String (a @go_type value class) compiles to Go that does not build (undefined String_Cmp, *Name is not String); want a compile error
-# error: main.rb:4:
+# error: main.rb:3: subclassing String is not supported
 # rbs_inline: enabled
 class Name < String
   #: () -> String

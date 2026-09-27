@@ -719,6 +719,10 @@ func (c *Compiler) link() {
 			if sup.IsModule {
 				c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
 			}
+			// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
+			if sup.GoType != "" {
+				c.errorf(cls.File, nil, "%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+			}
 		case !cls.IsModule && cls.RubyName != "BasicObject":
 			sup = c.classes["Object"]
 		}
