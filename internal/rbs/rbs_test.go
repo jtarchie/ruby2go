@@ -154,12 +154,6 @@ func TestParseTypeShapes(t *testing.T) {
 	}
 }
 
-const (
-	knownTrailingNamespace = "tokenizer accepts a trailing `::` into the name token"
-	knownMissingComma      = "list loops skip an optional `,`, so a missing comma is accepted"
-	knownTypeParams        = "the type-param loop takes any token and an optional `,`"
-)
-
 // The RBS gem reads a repeated `?` as one, so these must parse.
 func TestParseTypeAccepts(t *testing.T) {
 	for _, in := range []string{"String??", "(String)??", "singleton(Foo)??"} {
@@ -199,11 +193,11 @@ func TestParseTypeErrors(t *testing.T) {
 		{"Hash[String,,Integer]", "", "", ""},
 		{"singleton(?)", "singleton", "", ""},
 		// the RBS gem rejects each of these
-		{"Foo::", "", knownTrailingNamespace, "trailing_namespace"},
-		{"Foo::Bar::", "", knownTrailingNamespace, "trailing_namespace_nested"},
-		{"Hash[String Integer]", "", knownMissingComma, "args_missing_comma"},
-		{"[Integer String]", "", knownMissingComma, "tuple_missing_comma"},
-		{"singleton", "", "bare `singleton` without `(` parses as a class name", "singleton_without_parens"},
+		{"Foo::", "", "", "trailing_namespace"},
+		{"Foo::Bar::", "", "", "trailing_namespace_nested"},
+		{"Hash[String Integer]", "", "", "args_missing_comma"},
+		{"[Integer String]", "", "", "tuple_missing_comma"},
+		{"singleton", "", "", "singleton_without_parens"},
 	}
 	for _, c := range cases {
 		t.Run(cmp.Or(c.name, c.in), func(t *testing.T) {
@@ -319,20 +313,20 @@ func TestParseMethodTypeErrors(t *testing.T) {
 		{"(String) { (String) -> void -> void", "", "", ""},
 		{"() ?{ (String) -> void }", "", "", ""},
 		{"() ? -> void", "", "", ""},
-		{"(name: String) -> void", "keyword", "`name: T` fails as an unexpected `:`, not with the keyword-parameter message", "keyword_param_message"},
-		{"(?name: String) -> void", "keyword", "`?name: T` fails as an unexpected `:`, not with the keyword-parameter message", "optional_keyword_param_message"},
+		{"(name: String) -> void", "keyword", "", "keyword_param_message"},
+		{"(?name: String) -> void", "keyword", "", "optional_keyword_param_message"},
 		{"(String,,) -> void", "", "", ""},
 		{"(String, Integer", "unterminated", "", ""},
 		{"() { () -> } -> void", "", "", ""},
 		{"() { (,) -> void } -> void", "", "", ""},
 		{"() { (String) -> void } -> ", "", "", ""},
-		{"[X (String) -> X", "", "unterminated type-param list loops forever", "type_params_unterminated"},
-		{"[(] () -> void", "", knownTypeParams, "type_params_non_ident"},
-		{"[X Y] () -> X", "", knownTypeParams, "type_params_missing_comma"},
-		{"[] () -> void", "", knownTypeParams, "type_params_empty"},
-		{"[X,] () -> X", "", knownTypeParams, "type_params_trailing_comma"},
-		{"(String a Integer b) -> void", "", knownMissingComma, "params_missing_comma"},
-		{"() ?( (String) -> void } -> void", "", "`?` block marker does not check for `{`", "optional_block_brace"},
+		{"[X (String) -> X", "", "", "type_params_unterminated"},
+		{"[(] () -> void", "", "", "type_params_non_ident"},
+		{"[X Y] () -> X", "", "", "type_params_missing_comma"},
+		{"[] () -> void", "", "", "type_params_empty"},
+		{"[X,] () -> X", "", "", "type_params_trailing_comma"},
+		{"(String a Integer b) -> void", "", "", "params_missing_comma"},
+		{"() ?( (String) -> void } -> void", "", "", "optional_block_brace"},
 	}
 	for _, c := range cases {
 		t.Run(cmp.Or(c.name, c.in), func(t *testing.T) {

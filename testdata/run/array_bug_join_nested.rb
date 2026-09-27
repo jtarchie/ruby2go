@@ -1,4 +1,3 @@
-# skip: join does not flatten nested arrays; MRI joins [3, [1, [2]]] as "3,1,2"
 
 # rbs_inline: enabled
 a = [] #: Array[untyped]

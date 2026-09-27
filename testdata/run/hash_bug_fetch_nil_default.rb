@@ -1,5 +1,3 @@
-# skip: fetch(k, nil) returns nil in MRI; rb2go treats a nil default as no default and raises KeyError (typed and untyped values alike)
-
 # rbs_inline: enabled
 
 h = { "a" => 1 } #: Hash[String, Integer]

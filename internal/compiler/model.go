@@ -1457,6 +1457,8 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def members = [%s]\n", strings.Join(syms, ", "))
 	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def to_h = { %s }\n", strings.Join(pairs, ", "))
 	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(other)\n    return false unless other.is_a?(::%s)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
+	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(other)\n    return false unless other.is_a?(::%s)\n    to_h.eql?(other.to_h)\n  end\n", full)
+	b.WriteString("  #: () -> Integer\n  def hash = to_h.hash\n")
 	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name} %s>\"\n", kind, strings.Join(insp, ", "))
 	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
 	if kind == "struct" {

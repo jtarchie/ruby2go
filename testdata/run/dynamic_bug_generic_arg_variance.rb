@@ -1,5 +1,3 @@
-# skip: a dynamic call passing Array[Integer] / a Hash literal into an Array[untyped] / Hash[Symbol, untyped] (or untyped array into Array[Integer]) parameter raises TypeError "no implicit conversion of an instance of Array into Array[untyped]"; MRI passes it
-
 # rbs_inline: enabled
 
 class Foo

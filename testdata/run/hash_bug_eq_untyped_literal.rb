@@ -1,5 +1,3 @@
-# skip: Hash#== type-asserts other to the receiver's own Go Hash[K, V], so hashes with equal contents but different element types (`typed == {}`, typed vs untyped, Integer vs Float values) compare false
-
 # rbs_inline: enabled
 
 e = {} #: Hash[String, Integer]

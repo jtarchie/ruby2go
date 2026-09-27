@@ -1,5 +1,3 @@
-# skip: to_f runs strconv.ParseFloat on the whole string: trailing text gives 0.0, and Go-only syntax (Infinity, NaN, inf, 0x1p3) parses; MRI reads the Ruby numeric prefix only
-
 # rbs_inline: enabled
 
 puts "3.5abc".to_f

@@ -606,8 +606,10 @@ func (c *Compiler) emitTuples() {
 		insp := make([]string, 0, n)
 		eq := make([]string, 0, n)
 		from := make([]string, 0, n)
+		plain := make([]string, 0, n)
 		for i := range n {
 			p := fmt.Sprintf("T%d", i)
+			plain = append(plain, "rbPlainKey["+p+"]()")
 			tps = append(tps, p)
 			fields = append(fields, fmt.Sprintf("F%d %s", i, p))
 			cmp = append(cmp, fmt.Sprintf("if c := rbCmp(t.F%d, o.F%d); c != 0 {\n\t\treturn c\n\t}", i, i))
@@ -628,6 +630,7 @@ func (c *Compiler) emitTuples() {
 		// and converts back where a dynamic call's parameter is a tuple (rbAs)
 		c.w("func (%s) _FromAny(a any) (t %s, ok bool) {\n\tarr, ok := a.(Array_Any)\n\tif !ok {\n\t\treturn t, false\n\t}\n\ts := *arr._ToAny()\n\tif len(s) != %d {\n\t\treturn t, false\n\t}\n%s\n\treturn t, true\n}\n\n", full, full, n, strings.Join(from, "\n"))
 		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
+		c.w("func (t %s) rbPlain() bool { return %s }\n\n", full, strings.Join(plain, " && "))
 	}
 }
 

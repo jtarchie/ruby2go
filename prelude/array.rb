@@ -3,6 +3,31 @@
 #
 # Array as a named Go slice, always handled as a pointer.
 
+%x{
+  // rbFrom converts v, an Array of any instantiation, into this one: a
+  // copy, each element converted (rbConv). The receiver only names the
+  // instantiation.
+  func (*Array[E]) rbFrom(v any) (*Array[E], bool) {
+    a, ok := v.(Array_Any)
+    if !ok {
+      return nil, false
+    }
+    src := a._ToAny()
+    if out, ok := any(src).(*Array[E]); ok {
+      return out, true // E is untyped: _ToAny copied
+    }
+    out := make(Array[E], 0, len(*src))
+    for _, x := range *src {
+      e, ok := rbConv[E](x)
+      if !ok {
+        return nil, false
+      }
+      out = append(out, e)
+    }
+    return &out, true
+  }
+}
+
 # Array is mutable and aliased in Ruby, so it is always handled as a pointer.
 # @rbs generic E
 # @go_type []E
@@ -12,8 +37,10 @@ class Array < Object
   #: () { (E) -> void } -> void
   def each = %x{
     return func(yield func(E) bool) {
-      for _, x := range *self {
-        if !yield(x) {
+      // An index loop re-reading the length, as MRI's: the block may
+      // append, delete or clear. (Not `range len`: that reads it once.)
+      for i := 0; ; i++ {
+        if i >= len(*self) || !yield((*self)[i]) {
           return
         }
       }
@@ -23,8 +50,8 @@ class Array < Object
   #: () { (E, Integer) -> void } -> void
   def each_with_index = %x{
     return func(yield func(E, Integer) bool) {
-      for i, x := range *self {
-        if !yield(x, Integer(i)) {
+      for i := 0; ; i++ {
+        if i >= len(*self) || !yield((*self)[i], Integer(i)) {
           return
         }
       }
@@ -60,6 +87,7 @@ class Array < Object
       i += Integer(len(*self))
     }
     for int(i) >= len(*self) {
+      // nil when E holds it; a non-nilable E pads with its zero value (decision 7)
       var zero E
       *self = append(*self, zero)
     }
@@ -147,19 +175,28 @@ class Array < Object
   }
 
   #: () -> Array[E]
+  def to_a = self
+
+  #: () -> Array[E]
   def dup = %x{
     out := &Array[E]{}
     *out = append(*out, *self...)
     return out
   }
 
+  # By eql?/hash, as Hash keys.
   #: () -> Array[E]
   def uniq = %x{
     seen := map[E]bool{}
+    idx := rbKeyIndex[E]{plain: rbPlainKey[E]()}
     out := &Array[E]{}
     for _, x := range *self {
-      if !seen[x] {
-        seen[x] = true
+      k, h, byValue := idx.find(x)
+      if !seen[k] {
+        seen[k] = true
+        if byValue {
+          idx.add(k, h)
+        }
         *out = append(*out, x)
       }
     }
@@ -216,13 +253,28 @@ class Array < Object
   def join(sep = "") = %x{
     parts := make([]string, len(*self))
     for i, x := range *self {
+      // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
+      if a, ok := any(x).(Array_Any); ok {
+        parts[i] = string(a._ToAny().Join(sep))
+        continue
+      }
       parts[i] = string(rbToS(x))
     }
     return String(strings.Join(parts, string(sep)))
   }
 
   #: () -> String
-  def inspect = "[" + map { |x| x.inspect }.join(", ") + "]"
+  def inspect = %x{
+    if !rbInspectEnter(self) {
+      return "[...]"
+    }
+    defer rbInspectLeave(self)
+    parts := make([]string, len(*self))
+    for i, x := range *self {
+      parts[i] = string(rbInspect(x))
+    }
+    return String("[" + strings.Join(parts, ", ") + "]")
+  }
 
   #: () -> String
   def to_s = inspect
@@ -230,7 +282,15 @@ class Array < Object
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(*Array[E])
-    if !ok || len(*o) != len(*self) {
+    if !ok {
+      // Another instantiation ([1] == [1.0], typed vs untyped): compare
+      // the untyped views, whose == takes the branch below.
+      if a, ok := other.(Array_Any); ok {
+        return self._ToAny().Eq(a._ToAny())
+      }
+      return false
+    }
+    if len(*o) != len(*self) {
       return false
     }
     for i, x := range *self {
@@ -239,6 +299,35 @@ class Array < Object
       }
     }
     return true
+  }
+
+  #: (untyped) -> bool
+  def eql?(other) = %x{
+    o, ok := other.(*Array[E])
+    if !ok {
+      if a, ok := other.(Array_Any); ok {
+        return self._ToAny().EqlQ(a._ToAny())
+      }
+      return false
+    }
+    if len(*o) != len(*self) {
+      return false
+    }
+    for i, x := range *self {
+      if !rbKeyEql(x, (*o)[i]) {
+        return false
+      }
+    }
+    return true
+  }
+
+  #: () -> Integer
+  def hash = %x{
+    h := uint64(len(*self))
+    for _, x := range *self {
+      h = h*31 + rbKeyHash(x)
+    }
+    return Integer(h)
   }
 
   #: () -> Array[untyped]

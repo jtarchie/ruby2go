@@ -399,6 +399,21 @@ resolve; anything not listed is still open.
    `struct { keys []K; vals map[K]V }` behind `@go_type`; iteration follows
    insertion order, so output is deterministic and MRI-diffable. Deletion is
    O(n) over the key list (no tombstones yet; add them if a profile says so).
+   *Revised:* the struct gained `iter int`, a count of running iterators
+   (MRI's `iter_lev`), so mutation during `each` behaves as in MRI: `[]=` of
+   a new key raises `RuntimeError`, and `delete` copies the key list rather
+   than shifting the one being ranged over, whose deleted keys are skipped.
+   `Array#each` likewise loops by index over the live length.
+   *Revised:* keys match by Ruby's `eql?`/`hash`, not Go `==`, which keyed
+   arrays, hashes, Regexps, Structs/Data and `T?` boxes by pointer. The
+   struct gained `idx`, hash buckets of the keys that match by value (those
+   defining `eql?` and `hash`, and `T?` boxes by what they point at); a
+   lookup first maps its key to the stored `eql?` one. Keys whose Go `==`
+   is `eql?` (`String`, `Integer`, `Symbol`, `Float`, `Boolean`, tuples of
+   them) skip the index on a flag set once per Hash, so typed hashes over
+   them cost about what they did. `uniq`
+   uses the same index; `tally`/`group_by` are Hash-based. Mutating a key
+   after inserting it is not detected (MRI needs `rehash` there too).
 2. `TrueClass`/`FalseClass` vs. `Boolean`: **decided, one `Boolean`** (a Go
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
@@ -441,6 +456,13 @@ resolve; anything not listed is still open.
    representation" shortcut would make `E?` inside a generic container mean
    something different from `Rect?` outside it; uniform boxing keeps
    generics honest at the cost of a `Ref`/`Opt` at the boundary.
+   A consequence: `Array[Integer]` is `[]Integer` and cannot hold nil, so
+   `a[i] = v` past the end pads the gap with the zero value (`0`, `""`,
+   `false`) where MRI pads with nil. That is right whenever the gap is
+   filled before it is read (`out[perm[i]] = x`); a program that reads the
+   holes needs an element type that holds nil (`Array[Integer?]`, or an
+   unannotated `[]`). Raising instead would reject the fill-later programs
+   MRI runs, and tracking holes would cost every typed read.
    Generic code holding `E = T?` passes the box itself to `any`-typed
    helpers (`inspect`, `==`, `<=>`, `to_json`, `compact`, untyped views),
    where a nil `*T` is a non-nil interface and a non-nil one has the wrong
@@ -495,6 +517,12 @@ resolve; anything not listed is still open.
 12. Overloads (`#|`) are not supported, so `first`/`take` require a count
     (`arr.first(3)`; use `arr[0]` for the head) and `Array#[]` takes one
     Integer. `split` takes an optional separator through `?String?`.
+    *Revised:* `Hash#fetch` needs MRI's second overload, since a nil
+    default is returned rather than meaning "no default" (`fetch(k, nil)`
+    is `nil` for a missing key). A `fetch(k, d)` whose `d` may be nil
+    (`nil`, `T?` or `untyped`, as in every dynamic call) goes to
+    `Hash#__fetch_opt`, `(K, V?) -> V?`; any other default keeps
+    `(K, ?V?) -> V`, so `h.fetch(k, 0) + 1` stays an Integer.
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's
@@ -571,6 +599,19 @@ resolve; anything not listed is still open.
     modules, so `is_a?(SomeModule)` (and `when SomeModule`) on an untyped
     value, or on a class with a subclass including it, is a compile error.
     Narrowing an untyped local to `Array` views it as `Array[untyped]`.
+    *Revised:* Go instantiations are invariant, so the view of a typed
+    `Array[Integer]` is a copy (`_to_any`) and writes through it were lost.
+    Block-less calls on the narrowed local are now sent to the value itself
+    through dynamic dispatch (decision 32), so `x << 1` and `x[k] = v`
+    reach the caller's container (an element it cannot hold raises
+    `TypeError`), and passing it on as `untyped` passes the value; calls
+    with a block or type parameters (`each`, `map`) and typed uses read a
+    fresh copy. Elsewhere a container where another instantiation is
+    expected (`Array[Integer]` for `Array[untyped]`, or `Array[untyped]`
+    or an untyped value for `Array[Integer]`; `Hash` alike, dynamic
+    arguments too) is converted: a copy with each element checked, so
+    writes through it do not reach the original. `T?` elements are not
+    converted.
 22. Unannotated literals infer by joining their parts; when parts share no
     type the element type is `untyped`. A 2–3 element mixed array with
     nothing expected of it is a tuple (sort keys, multiple returns). A
@@ -635,7 +676,11 @@ resolve; anything not listed is still open.
     `to_json` was skipped for the JSON of its `to_s`.)*
 26. Threads are goroutines. An exception ends only its thread (reported on
     stderr) and `join` re-raises it. There is no GVL: stdout writes are
-    locked, other shared state is the program's problem.
+    locked, other shared state is the program's problem. The set of
+    containers mid-`inspect` (what prints a self-reference as `[...]` or
+    `{...}`) is one locked set, not MRI's per-thread one: Go exposes no
+    goroutine id, so two threads inspecting one container at once may
+    see `[...]`.
 27. The `net/http` prelude is WEBrick's and `Net::HTTP`'s API on Go's
     `http.Server` and `http.Client`, keeping what programs can observe:
     no sniffed `Content-Type`, form bodies parsed into `query` only for
@@ -662,9 +707,9 @@ resolve; anything not listed is still open.
     rbs-inline's per-member form (`:x, #: Integer`) or a trailing
     `#: [A, B]`. Accessors (readers only for `Data`), `initialize`
     (trailing nilable struct members optional, every `Data` member
-    required), keyword `new`, `==`, `to_h`, `members`, `inspect`, `to_a`
-    and `with` are generated as Ruby and compiled like user code.
-    `keyword_init` is not supported.
+    required), keyword `new`, `==`, `eql?`, `hash`, `to_h`, `members`,
+    `inspect`, `to_a` and `with` are generated as Ruby and compiled like
+    user code. `keyword_init` is not supported.
 31. `method_missing` on a typed receiver: an unknown method compiles to
     `method_missing(:name, *args)`, typed by its signature.
     `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.

@@ -1,5 +1,3 @@
-# skip: narrowing an untyped value holding a typed Array (is_a?(Array), case/when Array) goes through Array#_to_any, which copies it, so writes through the narrowed view are lost; MRI mutates the same array
-
 # rbs_inline: enabled
 
 #: (untyped) -> void

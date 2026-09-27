@@ -156,6 +156,12 @@ class Regexp < Object
     o, ok := other.(*Regexp)
     return Boolean(ok && o.src == self.src && o.opts == self.opts)
   }
+
+  #: (untyped) -> bool
+  def eql?(other) = self == other
+
+  #: () -> Integer
+  def hash = %x{ Integer(maphash.String(rbHashSeed, self.src+"/"+self.opts)) }
 end
 
 # names are the groups' names ("" when unnamed), as Go's SubexpNames.

@@ -1,5 +1,3 @@
-# skip: Regexp has no value hash/eql?: equal interpolated regexps are different Hash keys and uniq keeps both
-
 # rbs_inline: enabled
 
 x = "a"

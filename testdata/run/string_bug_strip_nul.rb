@@ -1,4 +1,4 @@
-# skip: strip/lstrip/rstrip keep NUL; MRI strips "\0" as whitespace on both sides
+# skip: needs string-inspect-escapes: strip now drops NUL, but inspect prints the remaining NUL as \x00; MRI prints \u0000
 
 # rbs_inline: enabled
 

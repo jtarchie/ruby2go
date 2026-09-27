@@ -160,6 +160,9 @@ func tokenize(s string) ([]string, error) {
 			// A::B::C is one name token.
 			for j+1 < len(s) && s[j] == ':' && s[j+1] == ':' {
 				k := j + 2
+				if k == len(s) || !isIdentStart(s[k]) {
+					return nil, fmt.Errorf("rbs: expected a name after \"::\" in %q", s)
+				}
 				for k < len(s) && (isIdentStart(s[k]) || (s[k] >= '0' && s[k] <= '9')) {
 					k++
 				}
@@ -196,6 +199,20 @@ func (p *parser) expect(t string) error {
 	return nil
 }
 
+// sep consumes the `,` after a list element, or stops before `closer`.
+func (p *parser) sep(closer string) error {
+	switch p.peek() {
+	case ",":
+		p.next()
+		return nil
+	case closer:
+		return nil
+	case "":
+		return fmt.Errorf("rbs: unterminated list, expected %q", closer)
+	}
+	return fmt.Errorf("rbs: expected \",\" or %q, got %q", closer, p.peek())
+}
+
 // ParseType parses a standalone type, e.g. `Array[String]?`.
 func ParseType(s string) (Type, error) {
 	toks, err := tokenize(s)
@@ -223,13 +240,21 @@ func ParseMethodType(s string) (*MethodType, error) {
 	m := &MethodType{}
 	if p.peek() == "[" {
 		p.next()
-		for p.peek() != "]" {
-			m.TypeParams = append(m.TypeParams, p.next())
-			if p.peek() == "," {
-				p.next()
+		for {
+			tp := p.next()
+			if tp == "" || !isIdentStart(tp[0]) {
+				return nil, fmt.Errorf("rbs: expected a type parameter, got %q", tp)
 			}
+			m.TypeParams = append(m.TypeParams, tp)
+			if p.peek() != "," {
+				break
+			}
+			p.next()
 		}
-		p.next()
+		err = p.expect("]")
+		if err != nil {
+			return nil, err
+		}
 	}
 	err = p.expect("(")
 	if err != nil {
@@ -240,10 +265,13 @@ func ParseMethodType(s string) (*MethodType, error) {
 		return nil, err
 	}
 	if p.peek() == "?" || p.peek() == "{" {
-		blk := &Block{}
-		if p.next() == "?" {
-			blk.Optional = true
-			p.next() // {
+		blk := &Block{Optional: p.peek() == "?"}
+		if blk.Optional {
+			p.next()
+		}
+		err = p.expect("{")
+		if err != nil {
+			return nil, err
 		}
 		err = p.expect("(")
 		if err != nil {
@@ -299,6 +327,9 @@ func (p *parser) parseParams() ([]Param, error) {
 		case "**", "&":
 			return nil, fmt.Errorf("rbs: %q parameters are not supported", p.peek())
 		}
+		if p.pos+1 < len(p.toks) && p.toks[p.pos+1] == ":" {
+			return nil, errors.New("rbs: keyword parameters are not supported")
+		}
 		t, err := p.parseType()
 		if err != nil {
 			return nil, err
@@ -311,8 +342,9 @@ func (p *parser) parseParams() ([]Param, error) {
 			}
 		}
 		params = append(params, prm)
-		if p.peek() == "," {
-			p.next()
+		err = p.sep(")")
+		if err != nil {
+			return nil, err
 		}
 	}
 	p.next() // )
@@ -383,8 +415,9 @@ func (p *parser) parsePrimary() (Type, error) {
 				return nil, err
 			}
 			elems = append(elems, t)
-			if p.peek() == "," {
-				p.next()
+			err = p.sep("]")
+			if err != nil {
+				return nil, err
 			}
 		}
 		p.next()
@@ -415,6 +448,7 @@ func (p *parser) parsePrimary() (Type, error) {
 			}
 			return Singleton{Name: name}, p.expect(")")
 		}
+		return nil, fmt.Errorf("rbs: expected \"(\" after singleton, got %q", p.peek())
 	}
 	if !isIdentStart(tok[0]) {
 		return nil, fmt.Errorf("rbs: unexpected %q", tok)
@@ -428,8 +462,9 @@ func (p *parser) parsePrimary() (Type, error) {
 				return nil, err
 			}
 			n.Args = append(n.Args, t)
-			if p.peek() == "," {
-				p.next()
+			err = p.sep("]")
+			if err != nil {
+				return nil, err
 			}
 		}
 		p.next()

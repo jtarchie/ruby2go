@@ -1,5 +1,3 @@
-# skip: Array#each ranges over a snapshot of the slice, so appends/deletes/clear inside the loop are not seen as MRI's index loop sees them
-
 # rbs_inline: enabled
 a = [1, 2] #: Array[Integer]
 a.each do |x|

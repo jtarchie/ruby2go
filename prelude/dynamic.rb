@@ -23,6 +23,26 @@
     panic(NewArgumentError(Ref(String(fmt.Sprintf("wrong number of arguments (given %d, expected %s)", given, expected)))))
   }
 
+  // rbConv is v as a T: v itself, nil for untyped, or an Array or Hash of
+  // another instantiation converted (rbFrom). Go instantiations are
+  // invariant, so Array[Integer] where Array[untyped] is expected, or
+  // back, is a copy whose elements are converted in turn.
+  // ponytail: a T? element (*T) is not converted from its value; box it via OptOf when needed.
+  func rbConv[T any](v any) (T, bool) {
+    if t, ok := v.(T); ok {
+      return t, true
+    }
+    var zero T
+    if v == nil {
+      _, untyped := any(&zero).(*any)
+      return zero, untyped
+    }
+    if c, ok := any(zero).(interface{ rbFrom(v any) (T, bool) }); ok {
+      return c.rbFrom(v)
+    }
+    return zero, false
+  }
+
   func rbRest[T any](args []any, from int, want string) []T {
     out := make([]T, 0, len(args))
     for i := from; i < len(args); i++ {

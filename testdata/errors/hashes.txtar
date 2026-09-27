@@ -131,7 +131,7 @@ x = h.each { |k, _v| puts k }
 h = { "a" => 1 } #: Hash[String, Integer]
 h.each { |k, _v, _z| puts k }
 -- each_pair_too_many_params.rb --
-# error: main.rb:3: block takes 3 params but only 2 values are yielded
+# error: main.rb:3: block takes 3 params but the tuple has 2 elements
 h = { "a" => 1 } #: Hash[String, Integer]
 h.each_pair { |k, _v, _z| puts k }
 -- nested_destructuring.rb --

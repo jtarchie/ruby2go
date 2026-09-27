@@ -1,5 +1,3 @@
-# skip: sub/gsub replacement is literal; MRI expands \0, \&, \`, \', \1 and \\ in a String replacement even for a String pattern
-
 # rbs_inline: enabled
 
 puts "abc".sub("b", "\\0\\0").inspect
