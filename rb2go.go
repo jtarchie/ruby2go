@@ -9,9 +9,8 @@ import (
 	"rb2go/internal/compiler"
 )
 
-// Prelude holds prelude.rb and the files it require_relatives.
-//
-//go:embed prelude.rb prelude/*.rb
+// Prelude holds prelude.rb, its require_relatives, and prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo).
+//go:embed prelude.rb prelude/*.rb prelude/go/*.go
 var Prelude embed.FS
 
 // Compile transpiles the Ruby source of mainName (with the embedded prelude)

@@ -254,8 +254,33 @@ func transpile(t *testing.T, name string, src []byte) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	copyPreludeGo(t, gen)
 	t.Logf("generated Go: %s", filepath.Join(gen, "main.go"))
 	return gen
+}
+
+// copyPreludeGo mirrors prelude/go/*.go into gen at the same relative path so golangci-lint can open the //line targets it remaps positions to (nolint matching needs the real file, not just the label).
+func copyPreludeGo(t *testing.T, gen string) {
+	t.Helper()
+	files, err := filepath.Glob("prelude/go/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(gen, "prelude", "go")
+	err = os.MkdirAll(dir, 0o755) //nolint:gosec // under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		data, rerr := os.ReadFile(f) //nolint:gosec // repo path
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		err = os.WriteFile(filepath.Join(dir, filepath.Base(f)), data, 0o600) //nolint:gosec // under t.TempDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func goBuild(t *testing.T, gen string) string {

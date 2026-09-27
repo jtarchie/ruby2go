@@ -67,3 +67,13 @@ linters:
 
   exclusions:
     generated: disable
+    rules:
+      # prelude/go/*.go mirrors Ruby-facing names repo-wide (I_ToS, Array_Any, ...); same reason revive naming is off above, but staticcheck only sees it as a real .go path.
+      - path: prelude/go/.*\.go
+        linters:
+          - staticcheck
+        text: "(ST1003|ST1021)"
+      # gosec ignores the //line remap and reports G103 against main.go's real position, so nolintlint can't correlate its `//nolint:gosec` comment here and calls it unused; the suppression itself still works (verified: gosec shows 0 issues here).
+      - path: prelude/go/.*\.go
+        linters:
+          - nolintlint

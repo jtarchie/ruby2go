@@ -58,7 +58,7 @@ Smaller cases go in `testdata/`:
 - `%x{ ... }` is the Go escape hatch. `self` and parameter names bind to the Go receiver and args. The body is a Ruby xstring, so write `\\n` for a Go `\n` and `\#{` for a literal `#{`, and keep braces balanced (decision 16). A one-line body of a non-void method gets an implicit `return`. Imports are added by goimports.
 - Methods with a `%x{}` body must carry a `#:` signature (the body is opaque). Pure-Ruby methods can infer.
 - `# @go_type T` makes a class a named Go type (value semantics if frozen, e.g. `String`). Classes without it become structs, with an interface (`FooI`) and pointers.
-- Top-level `%x{}` (e.g. `prelude/runtime.rb`) is emitted verbatim: runtime helpers such as `Ref`/`Opt`, `rbTopRecover`, and output buffering. There is no separate Go runtime package.
+- Top-level `%x{}` is emitted verbatim: pure Go with no `self`/param binding. `prelude/go/*.go` holds this content as real `.go` files instead (`//go:build ignore` so it never compiles standalone; `loadPreludeGo` in `compiler.go` globs them and appends to `c.verbatim`, skipping Prism/Ruby parsing entirely). `prelude/runtime.rb` (runtime helpers: `Ref`/`Opt`, `rbTopRecover`, output buffering) has moved this way; other prelude files still mix `%x{}` leaves (bound to `self`/params, must stay in `.rb`) with top-level blocks (movable). `.golangci.generated.yml` has path-scoped exclusions for `prelude/go/*.go`: staticcheck's ST1003/ST1021 (names mirror Ruby, like decision 3) and nolintlint (gosec ignores `//line` remapping, so it can't correlate `//nolint:gosec` comments there even though the suppression itself works).
 
 ### Key representation rules (details in README decisions)
 

@@ -104,6 +104,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
+	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)
 	if err != nil {
@@ -166,6 +167,34 @@ func (c *Compiler) loadPrelude(ctx context.Context, name string) {
 	if len(c.mainStmts) > 0 {
 		c.errorf(f, c.mainStmts[0], "prelude must not have top-level statements")
 	}
+}
+
+// loadPreludeGo embeds prelude/go/*.go verbatim: pure Go with no self/param binding, so it skips Ruby parsing entirely.
+func (c *Compiler) loadPreludeGo() {
+	names, err := fs.Glob(c.preludeFS, "prelude/go/*.go")
+	if err != nil {
+		panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		src, err := fs.ReadFile(c.preludeFS, name)
+		if err != nil {
+			panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
+		}
+		body, line := stripGoPackage(src)
+		c.verbatim = append(c.verbatim, verbatim{file: &File{Name: name, prelude: true}, line: line, code: body})
+	}
+}
+
+// stripGoPackage drops the file header comment and `package` clause, keeping only what follows; line is where that remainder starts, for the //line directive.
+func stripGoPackage(src []byte) (string, int) {
+	lines := strings.Split(string(src), "\n")
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "package ") {
+			return strings.Join(lines[i+1:], "\n"), i + 2
+		}
+	}
+	return string(src), 1
 }
 
 // requireRelative resolves `require_relative "x"` inside prelude file f.
