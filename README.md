@@ -227,7 +227,8 @@ affects `Hash#[]`, `find`, `first`, and every `if x`.
 - **Truthiness rule:** only `nil` and `false` are falsy. `Boolean` → native
   `!`; `T?` → `!= nil`; everything else → constant true (warn).
 - **Methods on `nil`.** `x.inspect` where `x: String?` → static branch:
-  nil → `NilClass_Inspect()`, else `x.Inspect()`. No runtime `NilClass` object.
+  nil → `NilClass_Inspect()`, else `x.Inspect()`. No runtime `NilClass`
+  class (`nil.class` is a bare class object, decision 19).
 - **RBS core lies about `Hash#[]`.** Core signatures say `(K) -> V` (because
   of defaults); the prelude should declare `(K) -> V?`. `Hash.new(0)` +
   `h[k] += 1` then fails to typecheck — see 05.
@@ -498,7 +499,13 @@ resolve; anything not listed is still open.
     `ArgumentError`. `Foo.new` on a constant stays a direct constructor
     call. `class << self` is not supported. Metaclasses inherit from the
     parent's metaclass, else from prelude `Class` (modules: `Module`), so
-    a value typed `Module` can hold any class object.
+    a value typed `Module` can hold any class object. `x.class` whose
+    class is known only at run time (`untyped`, `Object`, a module type or
+    a module's `self`, `nil`, `T?`) is a generated type switch over the
+    `@go_type` classes and struct hierarchies, typed `Class`; nil's class
+    object is a bare `Class` named `NilClass`, not a constant code can
+    name. *(Revised: these were a build error, `NoMethodError`, or the
+    module itself.)*
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
     passing it on asserts the type. *Calling a method* on `T?` raises

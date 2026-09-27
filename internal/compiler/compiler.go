@@ -26,6 +26,7 @@ type Compiler struct {
 	dynAll        bool     // a computed send/respond_to?: every method may be named
 	respondNames  []string // names asked about with respond_to? at run time
 	respondSeen   map[string]bool
+	classOf       bool // `.class` on a value only known at run time: emit rbClassOf
 	warned        map[string]bool
 	regexps       []string          // package-level compiled literals
 	regexpVars    map[string]string // literal → its variable, to share one per pattern

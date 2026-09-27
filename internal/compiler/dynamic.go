@@ -300,3 +300,33 @@ func (c *Compiler) emitNameSwitches() {
 	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(name), Boolean(false))))\n\t}\n")
 	c.w("\treturn false\n}\n\n")
 }
+
+// emitClassOf emits rbClassOf, `.class` for a value known only at run
+// time: a type switch over the @go_type classes, and over each struct
+// hierarchy, whose instances answer _ClassOf. nil is Go nil, not an
+// instance of a class, so its class object is a bare Class named NilClass.
+func (c *Compiler) emitClassOf() {
+	if !c.classOf {
+		return
+	}
+	c.w("type rbNilClass struct{ Class }\n\n")
+	for _, m := range []string{"Name", "ToS", "Inspect"} {
+		c.w("func (*rbNilClass) %s() String { return \"NilClass\" }\n\n", m)
+	}
+	c.w("var rbNilClassObj = &rbNilClass{}\n\n")
+	c.w("func rbClassOf(a any) ClassI {\n\tswitch v := a.(type) {\n\tcase nil:\n\t\treturn rbNilClassObj\n")
+	for _, cls := range c.classList {
+		switch {
+		case cls.universal || cls.IsModule || cls.meta == nil:
+		case cls.GoType != "" && len(cls.TypeParams) > 0:
+			c.w("\tcase %s_Any:\n\t\treturn %s\n", cls.Name, classVar(cls))
+		case cls.GoType != "":
+			c.w("\tcase %s:\n\t\treturn %s\n", c.goType(TClass{C: cls}), classVar(cls))
+		case cls.root() == cls && len(cls.TypeParams) == 0:
+			// a metaclass's interface lacks the _ClassOf its struct inherits
+			c.w("\tcase %s:\n\t\treturn v._ClassOf().(ClassI)\n", c.goType(TClass{C: cls}))
+		}
+	}
+	// ponytail: generic struct classes and tuples fall to NoMethodError; give them an _Any interface to switch on
+	c.w("\t}\n\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
+}

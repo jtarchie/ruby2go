@@ -235,6 +235,7 @@ func (c *Compiler) emitProgram() {
 	c.emitRubyNames()
 	c.emitMain()
 	c.emitDynamic()
+	c.emitClassOf()
 	c.emitTuples()
 	// last: every body, main included, has registered its literals by now
 	for _, r := range c.regexps {

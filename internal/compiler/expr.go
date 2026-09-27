@@ -592,6 +592,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		}
 		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	case TClass:
+		if to.C.universal && e.lit {
+			return f.coerce(n, e, TAny{}) // Object is Go any: "a" must box as String, not string
+		}
 		if isAny(e.typ) && to.C.RubyName == "Boolean" {
 			return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
 		}
@@ -735,7 +738,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 // class, with (Data), respond_to?, is_a?/kind_of?.
 func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
 	if name == "class" && len(args) == 0 && block == nil {
-		if e, ok := f.genClassOf(recv); ok {
+		if e, ok := f.genClassOf(n, recv); ok {
 			return e, true
 		}
 	}
@@ -1622,7 +1625,9 @@ func (f *fctx) metaOfType(t Type) *Class {
 }
 
 // genClassOf renders `x.class` for an instance of a class with a metaclass.
-func (f *fctx) genClassOf(recv expr) (expr, bool) {
+// A receiver whose class is known only at run time (untyped, Object, a
+// module, nil, T?) asks rbClassOf, typed as a plain Class.
+func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 	var cls *Class
 	switch t := recv.typ.(type) {
 	case TClass:
@@ -1631,6 +1636,11 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 		if t.Name == "Self" {
 			cls = f.owner
 		}
+	case TAny, TNil, TOpt:
+		return f.dynClassOf(n, recv), true
+	}
+	if cls != nil && (cls.universal || cls.IsModule) {
+		return f.dynClassOf(n, recv), true
 	}
 	if cls != nil && cls.metaOf != nil {
 		// the class of a class object is Class; of a module, Module
@@ -1651,6 +1661,11 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 		code += ".(" + f.c.goType(TClass{C: cls.meta}) + ")"
 	}
 	return expr{code: code, typ: TClass{C: cls.meta}}, true
+}
+
+func (f *fctx) dynClassOf(n parser.Node, recv expr) expr {
+	f.c.classOf = true
+	return expr{code: "rbClassOf(" + f.coerce(n, recv, TAny{}) + ")", typ: f.cls("Class")}
 }
 
 func isIsA(n *parser.CallNode) bool {
