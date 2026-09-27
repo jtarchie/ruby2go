@@ -1,5 +1,3 @@
-# skip: operator-assign through an attribute writer (obj.x += 1, self.x -= n, obj.x ||= v, a Struct member pt.x += 1) is "unsupported syntax: CallOperatorWriteNode"
-
 # rbs_inline: enabled
 
 class Counter

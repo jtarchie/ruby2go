@@ -104,10 +104,10 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genRegexp(n)
 	case *parser.MatchWriteNode:
 		f.errorf(n, "named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match")
-	case *parser.LocalVariableOrWriteNode:
-		return f.genOrAssignLocal(n)
-	case *parser.InstanceVariableOrWriteNode:
-		return f.genOrAssignIvar(n)
+	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode:
+		return f.genOrWrite(n)
+	case *parser.CallOperatorWriteNode:
+		return f.genOpAssignAttr(n)
 	case *parser.MultiWriteNode:
 		return f.genMultiWrite(n)
 	case *parser.KeywordHashNode:
@@ -1794,7 +1794,7 @@ func isSimpleGo(code string) bool { return simpleGo.MatchString(code) }
 
 // genOrAssign renders `x ||= value` for a target whose current value is cur.
 // The value is evaluated only when x is nil (or falsy, for untyped/bool).
-func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
+func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written ...func(expr)) expr {
 	elem := stripOpt(cur.typ)
 	var cond string
 	var want Type
@@ -1814,6 +1814,9 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
 	saved := f.enterBlock()
 	v := f.genExpr(value, elem)
 	f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+	for _, w := range written {
+		w(expr{code: cur.code, typ: want})
+	}
 	f.leaveBlock(saved)
 	f.indent--
 	f.emit("}")
@@ -1861,6 +1864,62 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 		iv = f.ivar(n, n.Name, nil)
 	}
 	return f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
+}
+
+func (f *fctx) genOrWrite(n parser.Node) expr {
+	switch n := n.(type) {
+	case *parser.LocalVariableOrWriteNode:
+		return f.genOrAssignLocal(n)
+	case *parser.InstanceVariableOrWriteNode:
+		return f.genOrAssignIvar(n)
+	}
+	return f.genOrAssignAttr(n.(*parser.CallOrWriteNode))
+}
+
+// genOpAssignAttr: `recv.x += v` is recv.x=(recv.x + v), and its value is the new one, not the writer's result.
+func (f *fctx) genOpAssignAttr(n *parser.CallOperatorWriteNode) expr {
+	recv := f.attrRecv(n, n.Receiver, n.IsSAFE_NAVIGATION(), n.ReadName)
+	val := f.genOp(n, f.genMethodCall(n, recv, n.ReadName, nil, nil), n.BinaryOperator, n.Value)
+	if !isSimpleGo(val.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, val.code)
+		val.code = tmp
+	}
+	f.callWriter(n, recv, n.WriteName, val)
+	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
+}
+
+// genOrAssignAttr: Ruby's `recv.x || recv.x = v`, so the writer runs only when the reader is nil/false.
+func (f *fctx) genOrAssignAttr(n *parser.CallOrWriteNode) expr {
+	recv := f.attrRecv(n, n.Receiver, n.IsSAFE_NAVIGATION(), n.ReadName)
+	cur := f.genMethodCall(n, recv, n.ReadName, nil, nil)
+	if !isAny(cur.typ) && !isOpt(cur.typ) && !isClass(cur.typ, "Boolean") {
+		return cur // never nil or false: the writer never runs
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, cur.code)
+	return f.genOrAssign(n, expr{code: tmp, typ: cur.typ}, n.Value, func(v expr) { f.callWriter(n, recv, n.WriteName, v) })
+}
+
+// attrRecv: the reader and the writer share one evaluation of the receiver.
+func (f *fctx) attrRecv(n, rn parser.Node, safe bool, name string) expr {
+	if safe {
+		f.errorf(n, "&. with an operator assignment is not supported")
+	}
+	if isSelf(rn) {
+		f.unnarrow("attr:" + name)
+	}
+	recv := f.valueOf(f.genExpr(rn, nil))
+	if !isSimpleGo(recv.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, recv.code)
+		recv.code = tmp
+	}
+	return recv
+}
+
+func (f *fctx) callWriter(n parser.Node, recv expr, name string, val expr) {
+	f.emitExprStmt(n, f.genMethodCall(n, recv, name, []parser.Node{&exprNode{e: val}}, nil))
 }
 
 // genMultiWrite renders `a, b = x, y` and `a, b = tuple`.
