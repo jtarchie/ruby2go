@@ -1,5 +1,3 @@
-# skip: `x&.each { ... }` (an iterator with a block through &.) is a compile error ("each is an iterator (its block returns void); call it as a statement with a block"); MRI runs the block when x is not nil
-
 # rbs_inline: enabled
 
 class Sides

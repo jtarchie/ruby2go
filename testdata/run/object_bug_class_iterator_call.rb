@@ -1,5 +1,3 @@
-# skip: calling an iterator class method directly with a block (Colors.each { ... }) is a compile error "each is an iterator ...; call it as a statement with a block"
-
 # rbs_inline: enabled
 
 module Colors

@@ -327,8 +327,7 @@ puts nums.select { |n| n.to_s }.inspect
 u = [1] #: untyped
 u.each { |x| puts x }
 -- block_on_optional_untyped.rb --
-# skip: optCall drops the block on an untyped? receiver: compiles with warnings, then NoMethodError at run time (decision 32: blocks cannot cross a dynamic call)
-# error: main.rb:4:
+# error: main.rb:3:
 u = [[1]] #: Array[untyped]
 u[0].each { |x| puts x }
 -- super_to_block_method.rb --

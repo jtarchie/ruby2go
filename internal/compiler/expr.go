@@ -816,7 +816,7 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch t := recv.typ.(type) {
 	case TOpt:
-		return f.optCall(n, recv, name, args)
+		return f.optCall(n, recv, name, args, block)
 	case TTuple:
 		return f.tupleCall(n, recv, name, args)
 	case TClass:
@@ -1287,8 +1287,9 @@ func (f *fctx) withNextTail(t tail, gen func(tail)) {
 
 // genIterCall emits `for ... range recv.Each(...) { body }` for iterator
 // methods called with a block. Returns false if the call is not one.
+// A T? receiver is guarded first: `&.` skips the loop on nil, `.` raises.
 func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
-	if f.classRef(n.Receiver) != nil {
+	if cls := f.classRef(n.Receiver); cls != nil && cls.meta == nil {
 		return false
 	}
 	var recvT Type
@@ -1297,8 +1298,9 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	} else {
 		f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
 	}
-	if n.IsSAFE_NAVIGATION() {
-		return false
+	opt, isOptRecv := recvT.(TOpt)
+	if isOptRecv {
+		recvT = opt.Elem
 	}
 	e := f.resolve(recvT, n.Name)
 	if e == nil || !e.M.Iterator {
@@ -1313,6 +1315,29 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	} else {
 		recv = f.genExpr(n.Receiver, nil)
 	}
+	safe := isOptRecv && n.IsSAFE_NAVIGATION()
+	switch {
+	case safe:
+		rt := f.newTmp()
+		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+		f.indent++
+		recv = expr{code: "(*" + rt + ")", typ: opt.Elem}
+	case isOptRecv:
+		recv = f.nilGuard(n, recv, n.Name)
+	}
+	f.genIterLoop(n, e, recv)
+	if safe {
+		f.indent--
+		f.emit("}")
+	}
+	if t.kind != tailNone {
+		f.emptyTail(n, t)
+	}
+	return true
+}
+
+// genIterLoop emits the range loop of iterator entry e on recv.
+func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	m := e.M
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
@@ -1332,8 +1357,8 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	call := f.callCode(e, recv, codes, env)
 	blk, ok := n.Block.(*parser.BlockNode)
 	if !ok {
-		f.forwardIter(n, call, yields, t)
-		return true
+		f.forwardIter(n, call, yields)
+		return
 	}
 	names := f.blockParamNames(blk.Parameters)
 	saved, savedRuby := f.enterRubyBlock()
@@ -1357,10 +1382,6 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	f.indent--
 	f.leaveRubyBlock(saved, savedRuby)
 	f.emit("}")
-	if t.kind != tailNone {
-		f.emptyTail(n, t)
-	}
-	return true
 }
 
 // ---- yield / super / new / raise
@@ -1525,8 +1546,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 
 // ---- calls on nilable, tuple and untyped receivers
 
-func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
-	elem := recv.typ.(TOpt).Elem
+func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch name {
 	case "nil?":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
@@ -1549,7 +1569,13 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	case "!":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	}
-	// Ruby raises NoMethodError when the value is nil; so does this.
+	return f.genMethodCall(n, f.nilGuard(n, recv, name), name, args, block)
+}
+
+// nilGuard emits Ruby's NoMethodError for a call on a nil T? receiver and
+// returns the receiver dereferenced to T.
+func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
+	elem := recv.typ.(TOpt).Elem
 	f.c.warn(f.f, n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
 	code := recv.code
 	if !isSimpleGo(code) {
@@ -1559,7 +1585,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	f.emit("if %s == nil {", code)
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
-	return f.genMethodCall(n, expr{code: "(*" + code + ")", typ: elem}, name, args, nil)
+	return expr{code: "(*" + code + ")", typ: elem}
 }
 
 func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
@@ -2123,7 +2149,7 @@ func (f *fctx) isBlockParam(n parser.Node) bool {
 
 // forwardIter passes the method's own block on to an iterator:
 // `list.each(&block)` re-yields every value (or calls the closure with it).
-func (f *fctx) forwardIter(n parser.Node, call string, yields []Type, t tail) {
+func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 	if len(yields) != len(f.blockSig.Params) {
 		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
 	}
@@ -2141,9 +2167,6 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type, t tail) {
 		f.emit("\tblk(%s)", list)
 	}
 	f.emit("}")
-	if t.kind != tailNone {
-		f.emptyTail(n, t)
-	}
 }
 
 // forwardClosure passes the method's own block on to a closure-taking
