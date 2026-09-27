@@ -518,7 +518,7 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 	case *parser.LocalVariableReadNode:
 		v := f.readLocal(n)
 		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
-			return v.goName + " != nil", []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+			return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 		}
 	}
 	if call, ok := n.(*parser.CallNode); ok && isIsA(call) {
@@ -530,10 +530,18 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		}
 	}
 	if v := f.attrLocal(n); v != nil && v.base == nil && isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
-		return v.goName + " != nil", []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+		return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 	}
 	e := f.genExpr(n, nil)
 	return f.truthy(n, e), nil
+}
+
+// optTruthy tests a T? value: non-nil, and not false for a Boolean?.
+func optTruthy(code string, t Type) string {
+	if isClass(stripOpt(t), "Boolean") {
+		return "rbTruthyOpt(" + code + ")"
+	}
+	return code + " != nil"
 }
 
 func (f *fctx) truthy(n parser.Node, e expr) string {
@@ -542,7 +550,7 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		// genCond's other results (rbIsA, `!= nil`, temps) are Go bool; mixing in Boolean fails go build
 		return "bool(" + e.code + ")"
 	case isOpt(e.typ):
-		return e.code + " != nil"
+		return optTruthy(e.code, e.typ)
 	case isNil(e.typ):
 		return "false"
 	case isAny(e.typ):

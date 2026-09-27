@@ -280,7 +280,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		f.emit("if %s := %s; %s {", lt, l.code, lt)
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	default:
-		f.emit("if %s := %s; %s != nil {", lt, l.code, lt)
+		f.emit("if %s := %s; %s {", lt, l.code, optTruthy(lt, l.typ))
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: "(*" + lt + ")", typ: lElem}, typ))
 	}
 	f.emit("} else {")
@@ -328,9 +328,15 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		return f.genExpr(n.Right, nil)
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
+	// A Boolean? left may be false, not just nil: it is a possible value.
+	optBool := isOpt(l.typ) && isClass(stripOpt(l.typ), "Boolean")
 	var typ Type = TAny{}
 	if isOpt(l.typ) && !isAny(stripOpt(l.typ)) {
-		if j, ok := join(TNil{}, r.typ); ok {
+		lf := Type(TNil{})
+		if optBool {
+			lf = l.typ
+		}
+		if j, ok := join(lf, r.typ); ok {
 			typ = j
 		}
 	}
@@ -347,9 +353,9 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	f.pop()
 	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
 	f.indent--
-	if isAny(typ) {
+	if isAny(typ) || optBool {
 		f.emit("} else {")
-		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, TAny{}))
+		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	}
 	f.emit("}")
 	return expr{code: tmp, typ: typ}
@@ -1487,6 +1493,9 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		}
 		return expr{code: code, typ: f.cls("Boolean")}
 	case "!":
+		if isClass(elem, "Boolean") {
+			return expr{code: "Boolean(!" + optTruthy(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
+		}
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	}
 	// Ruby raises NoMethodError when the value is nil; so does this.
@@ -1767,6 +1776,8 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
 	switch {
 	case isAny(elem):
 		cond, want = "!"+f.truthy(n, cur), TAny{}
+	case isOpt(cur.typ) && isClass(elem, "Boolean"):
+		cond, want = "!"+optTruthy(cur.code, cur.typ), cur.typ
 	case isOpt(cur.typ):
 		cond, want = cur.code+" == nil", cur.typ
 	case isClass(cur.typ, "Boolean"):

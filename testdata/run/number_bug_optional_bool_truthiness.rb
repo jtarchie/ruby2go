@@ -1,4 +1,3 @@
-# skip: a `bool?` value is tested with `!= nil`, so false counts as truthy in if/?:/||/||=/&& (a Hash[String, bool] lookup of false takes the true branch)
 # rbs_inline: enabled
 
 #: (bool) -> bool?

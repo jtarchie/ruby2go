@@ -81,6 +81,9 @@
     return true
   }
 
+  // rbTruthyOpt tests a Boolean?: false is as falsy as nil.
+  func rbTruthyOpt(p *Boolean) bool { return p != nil && bool(*p) }
+
   func rbEq[T comparable](a, b T) Boolean {
     if e, ok := any(a).(interface{ Eq(any) Boolean }); ok {
       return e.Eq(any(b))

@@ -225,7 +225,9 @@ affects `Hash#[]`, `find`, `first`, and every `if x`.
   temporaries in Go; the transpiler lifts expressions to statement sequences.
   Union `String? | String` collapses to `String`.
 - **Truthiness rule:** only `nil` and `false` are falsy. `Boolean` → native
-  `!`; `T?` → `!= nil`; everything else → constant true (warn).
+  `!`; `T?` → `!= nil`, except `Boolean?`, which can hold `false` (a
+  `Hash[String, bool]` lookup): `rbTruthyOpt(x)`, i.e. `x != nil && bool(*x)`;
+  everything else → constant true (warn).
 - **Methods on `nil`.** `x.inspect` where `x: String?` → static branch:
   nil → `NilClass_Inspect()`, else `x.Inspect()`. No runtime `NilClass` object.
 - **RBS core lies about `Hash#[]`.** Core signatures say `(K) -> V` (because
