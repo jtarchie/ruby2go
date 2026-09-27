@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -724,18 +725,9 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				if cls.IsModule && f.moduleIsA(c, subj.typ, cls) == "false" {
 					continue
 				}
-				if len(cls.TypeParams) > 0 {
-					cases = append(cases, cls.Name+"_Any")
-					args := make([]Type, len(cls.TypeParams))
-					for i := range args {
-						args[i] = TAny{}
-					}
-					armType = TClass{C: cls, Args: args}
-					convert = "._ToAny()"
-				} else {
-					cases = append(cases, f.c.goType(TClass{C: cls}))
-					armType = TClass{C: cls}
-				}
+				var goTypes []string
+				goTypes, armType, convert = f.whenClass(cls)
+				cases = append(cases, goTypes...)
 			}
 		}
 		if len(cases) == 0 {
@@ -745,7 +737,8 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			armType = TAny{}
 			convert = ""
 		}
-		f.emit("case %s:", strings.Join(cases, ", "))
+		slices.Sort(cases) // Go rejects a type listed twice, e.g. `when nil, Object`
+		f.emit("case %s:", strings.Join(slices.Compact(cases), ", "))
 		saved := f.enterBlock()
 		f.indent++
 		armName := name
@@ -774,6 +767,22 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+}
+
+// whenClass is the type-switch case for `when cls`: the Go types it lists,
+// the arm's type, and the conversion that gives the arm that type.
+func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
+	switch {
+	case len(cls.TypeParams) > 0:
+		args := make([]Type, len(cls.TypeParams))
+		for i := range args {
+			args[i] = TAny{}
+		}
+		return []string{cls.Name + "_Any"}, TClass{C: cls, Args: args}, "._ToAny()"
+	case cls.universal: // nil is an Object too, but a nil interface misses `case any:`
+		return []string{f.c.goType(TClass{C: cls}), "nil"}, TClass{C: cls}, ""
+	}
+	return []string{f.c.goType(TClass{C: cls})}, TClass{C: cls}, ""
 }
 
 // ---- begin/rescue/ensure

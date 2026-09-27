@@ -1771,6 +1771,12 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	if cls == nil {
 		f.errorf(classNode, "is_a? needs a class name")
 	}
+	if cls.universal { // every value, nil included, is an Object
+		if recv.code != "nil" {
+			f.emit("_ = %s", recv.code) // keep its effects, and a local used
+		}
+		return "true"
+	}
 	if !isSimpleGo(recv.code) {
 		tmp := f.newTmp()
 		f.emit("%s := %s", tmp, recv.code)
@@ -1782,7 +1788,7 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 		return "(" + recv.code + " != nil && " + inner + ")"
 	}
 	if isNil(t) {
-		return strconv.FormatBool(cls.universal)
+		return "false"
 	}
 	if cls.IsModule {
 		return f.moduleIsA(n, t, cls)
@@ -1793,18 +1799,15 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	switch t := t.(type) {
 	case TClass:
 		switch {
-		case cls.universal || t.C.isSubclassOf(cls):
+		case t.C.isSubclassOf(cls):
 			return "true"
 		case cls.isStruct() && t.C.isStruct() && cls.isSubclassOf(t.C):
 			return "rbIsA[" + f.c.goType(TClass{C: cls}) + "](" + recv.code + ")"
 		}
 		return "false"
 	case TTuple:
-		return strconv.FormatBool(cls.universal || cls.RubyName == "Array")
+		return strconv.FormatBool(cls.RubyName == "Array")
 	case TAny:
-		if cls.universal {
-			return "true"
-		}
 		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
 	}
 	f.errorf(n, "is_a? on %s is not supported", t)

@@ -1,5 +1,3 @@
-# skip: is_a?(Object/BasicObject/Kernel) on a nil T? is false; MRI: nil is an Object, so true
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer?
