@@ -620,7 +620,10 @@ resolve; anything not listed is still open.
     (trailing nilable struct members optional, every `Data` member
     required), keyword `new`, `==`, `to_h`, `members`, `inspect`, `to_a`
     and `with` are generated as Ruby and compiled like user code.
-    `keyword_init` is not supported.
+    A `do` block's def overrides a generated method and `super` reaches
+    it, since MRI defines those on `Struct`/`Data`; the accessors are the
+    class's own, so a block def replaces them. `keyword_init` is not
+    supported.
 31. `method_missing` on a typed receiver: an unknown method compiles to
     `method_missing(:name, *args)`, typed by its signature.
     `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.

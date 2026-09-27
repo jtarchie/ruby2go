@@ -128,6 +128,7 @@ type Method struct {
 	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
+	structDef  *Method // the generated Struct/Data method a block def overrides; super reaches it
 }
 
 // root is the topmost struct class of c's hierarchy (below Object).
@@ -1162,6 +1163,9 @@ func (c *Compiler) inheritedSig(m *Method) *entry {
 			return &entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: cls}
 		}
 	}
+	if g := m.structDef; g != nil {
+		return &entry{M: g, Owner: cls, Env: map[string]Type{}, Entry: cls}
+	}
 	if cls.Super != nil {
 		return cls.Super.lookup(m.Name)
 	}
@@ -1424,7 +1428,21 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	}
 	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope)
 	if bn, ok := call.Block.(*parser.BlockNode); ok && bn.Body != nil {
+		gen := slices.Clone(cls.MethodList)
 		c.collectBody(ctx, f, cls, bn.Body, scope)
+		// MRI defines the accessors on the new class but the rest on
+		// Struct/Data, so a block def overrides those and super reaches
+		// them: keep each one under a hidden private name.
+		for _, g := range gen {
+			m := cls.Methods[g.Name]
+			if m == g || g.Kind != kindDef {
+				continue
+			}
+			m.structDef = g
+			g.Name, g.GoName, g.Private = "__struct_"+g.Name, g.GoName+"_struct", true
+			cls.Methods[g.Name] = g
+			cls.MethodList = append(cls.MethodList, g)
+		}
 	}
 }
 
