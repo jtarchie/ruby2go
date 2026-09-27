@@ -219,6 +219,11 @@ class Array < Object
   def join(sep = "") = %x{
     parts := make([]string, len(*self))
     for i, x := range *self {
+      // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
+      if a, ok := any(x).(Array_Any); ok {
+        parts[i] = string(a._ToAny().Join(sep))
+        continue
+      }
       parts[i] = string(rbToS(x))
     }
     return String(strings.Join(parts, string(sep)))
