@@ -337,6 +337,17 @@ class Array < Object
     return Integer(h)
   }
 
+  #: (Array[E]) -> Integer
+  def <=>(other) = %x{
+    n := min(len(*self), len(*other))
+    for i := range n {
+      if c := rbCmp((*self)[i], (*other)[i]); c != 0 {
+        return c
+      }
+    }
+    return Integer(len(*self) - len(*other))
+  }
+
   #: () -> Array[untyped]
   def _to_any = %x{
     if same, ok := any(self).(*Array[any]); ok {

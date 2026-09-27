@@ -1621,9 +1621,17 @@ func (c *Compiler) emitTopDef(m *Method) {
 		retDecl = "(ret_ " + ret + ")"
 	}
 	c.lineDirective(m.File, m.Line)
-	c.w("func %s(%s) %s {\n", m.GoName, params, retDecl)
+	c.w("func %s%s(%s) %s {\n", m.GoName, topTypeParamDecl(m), params, retDecl)
 	c.emitBody(m, namedRet)
 	c.w("}\n\n")
+}
+
+// topTypeParamDecl is typeParamDecl for a top-level def, which has no Owner.
+func topTypeParamDecl(m *Method) string {
+	if len(m.TypeParams) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(m.TypeParams, ", ") + " comparable]"
 }
 
 func (c *Compiler) emitBody(m *Method, namedRet bool) {
