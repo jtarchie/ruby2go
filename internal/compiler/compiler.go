@@ -106,6 +106,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	c.files = append(c.files, mf)
 	c.mainFile = mf
 	c.collect(ctx, mf)
+	c.nameGo()
 	c.link()
 	c.discoverIvars()
 	c.emitProgram()

@@ -99,7 +99,7 @@ func (f *fctx) lineOf(n parser.Node) {
 
 func (f *fctx) newTmp() string {
 	f.tmp++
-	return fmt.Sprintf("t%d", f.tmp)
+	return fmt.Sprintf("t%d_", f.tmp)
 }
 
 // enterBlock starts a new Go block scope (for local hoisting analysis).
@@ -876,13 +876,13 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 			f.emit("defer func() {")
 			saved := f.enterBlock()
 			f.indent++
-			f.emit("if r := recover(); r != nil {")
+			f.emit("if r_ := recover(); r_ != nil {")
 			f.indent++
-			f.emit("r = rbWrapPanic(r)")
+			f.emit("r_ = rbWrapPanic(r_)")
 			for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
 				f.genRescueClause(rc, inner)
 			}
-			f.emit("panic(r)")
+			f.emit("panic(r_)")
 			f.indent--
 			f.emit("}")
 			f.indent--
@@ -950,7 +950,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 	}
 	conds := make([]string, 0, len(classes))
 	for _, cls := range classes {
-		conds = append(conds, fmt.Sprintf("rbIsA[%s](r)", f.c.goType(TClass{C: cls})))
+		conds = append(conds, fmt.Sprintf("rbIsA[%s](r_)", f.c.goType(TClass{C: cls})))
 	}
 	f.emit("if %s {", strings.Join(conds, " || "))
 	saved := f.enterBlock()
@@ -967,7 +967,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		// A fresh binding per clause: the same Ruby name may hold a
 		// different exception class in each rescue.
 		v := f.blockParam(lt.Name, TClass{C: bind})
-		f.emit("%s := r.(%s)", v.goName, f.c.goType(TClass{C: bind}))
+		f.emit("%s := r_.(%s)", v.goName, f.c.goType(TClass{C: bind}))
 		f.noteUnused(v)
 	}
 	f.genStmts(rc.Statements, t)
@@ -1308,7 +1308,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	prologue := func() {
 		for _, p := range m.Params {
 			if p.Rest {
-				f.emit("%s := (*Array[%s])(&%s_)", goLocalName(p.Name), c.goType(p.Type), goLocalName(p.Name))
+				f.emit("%s := (*Array[%s])(&rest_)", goLocalName(p.Name), c.goType(p.Type))
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}

@@ -238,6 +238,11 @@ func TestGoLocalName(t *testing.T) {
 		{"bool", "bool_"},
 		{"_", "_"},
 		{"_tmp", "_tmp"},
+		// a trailing `_` is the generated locals' form (t1_, r_, ret_, rest_)
+		{"ret_", "ret__"},
+		{"x__", "x___"},
+		{"len_", "len__"},
+		{"blk", "blk_"},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {

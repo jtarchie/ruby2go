@@ -2369,10 +2369,10 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.indent++
 	saved := f.enterBlock()
 	f.emit("defer func() {")
-	f.emit("\tif p := recover(); p != nil {")
-	f.emit("\t\tp = rbWrapPanic(p)")
-	f.emit("\t\tif !rbIsA[StandardErrorI](p) {")
-	f.emit("\t\t\tpanic(p)")
+	f.emit("\tif r_ := recover(); r_ != nil {")
+	f.emit("\t\tr_ = rbWrapPanic(r_)")
+	f.emit("\t\tif !rbIsA[StandardErrorI](r_) {")
+	f.emit("\t\t\tpanic(r_)")
 	f.emit("\t\t}")
 	f.indent += 2
 	r = f.genExpr(n.RescueExpression, typ)

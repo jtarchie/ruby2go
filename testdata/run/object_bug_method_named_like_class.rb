@@ -1,5 +1,3 @@
-# skip: a method whose Go name equals its class's name (Calc#calc, Node#node) in a class that has a subclass fails go build "field and method with the same name Calc": the subclass struct embeds the parent as a field named Calc
-
 # rbs_inline: enabled
 
 class Calc

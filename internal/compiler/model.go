@@ -3,6 +3,8 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -363,6 +365,50 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 
 // goClassName maps a constant path to a Go identifier.
 func goClassName(rubyName string) string { return strings.ReplaceAll(rubyName, "::", "_") }
+
+// goDecl matches a package-level Go name declared in a top-level %x{}.
+var goDecl = regexp.MustCompile(`(?m)^\s*(?:func|type|var|const)\s+([A-Z]\w*)`)
+
+// nameGo keeps user classes and constants off every other package-level Go
+// name: runtime helpers (`Opt`) and what other classes generate (`NewUser`,
+// `ShapeI`, `Foo::Bar`'s `Foo_Bar`). Prelude names are fixed, since `%x{}`
+// spells them; a clashing user name gains `_` until it is free.
+func (c *Compiler) nameGo() {
+	taken := map[string]bool{"Tuple2": true, "Tuple3": true}
+	for _, v := range c.verbatim {
+		for _, m := range goDecl.FindAllStringSubmatch(v.code, -1) {
+			taken[m[1]] = true
+		}
+	}
+	claim := func(f *File, name *string, gen func(string) []string) {
+		for !f.prelude && slices.ContainsFunc(gen(*name), func(n string) bool { return taken[n] }) {
+			*name += "_"
+		}
+		for _, n := range gen(*name) {
+			taken[n] = true
+		}
+	}
+	for _, cls := range c.classList {
+		claim(cls.File, &cls.Name, cls.goNames)
+	}
+	for _, k := range c.constList {
+		claim(k.File, &k.GoName, func(n string) []string { return []string{n} })
+	}
+}
+
+// goNames lists the package-level Go names generated for cls if its Go
+// name is n: type, interface, constructor, metaclass and free functions.
+func (cls *Class) goNames(n string) []string {
+	out := make([]string, 0, 8+len(cls.MethodList)+len(cls.singletonDefs))
+	out = append(out, n, n+"I", "New"+n, n+"_Self", n+"_Any", n+"_class", n+"_Meta", n+"_MetaI")
+	for _, m := range cls.MethodList {
+		out = append(out, n+"_"+m.GoName)
+	}
+	for _, d := range cls.singletonDefs {
+		out = append(out, n+"_Meta_"+goMethodName(d.node.Name))
+	}
+	return out
+}
 
 // qualify names the constant `name` declared directly inside scope.
 func qualify(scope []*Class, name string) string {

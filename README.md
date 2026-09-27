@@ -499,10 +499,23 @@ resolve; anything not listed is still open.
     non-void method gets `return` prepended.
 17. Namespaces: a class's Go name joins its constant path with `_`
     (`Resty::Actions::Show` → `Resty_Actions_Show`); a generated map gives
-    messages and `inspect` the Ruby name back. Constants resolve as Ruby
+    messages and `inspect` the Ruby name back. A user class or constant
+    whose Go name, or a name generated from it (`NewX`, `XI`, `X_Meta`,
+    `X_<method>`), is already taken by a runtime helper (`Opt`, `Ref`) or an
+    earlier class (`User`'s `NewUser`, `Foo::Bar`'s `Foo_Bar`) gains a
+    trailing `_`; prelude names never change, since `%x{}` spells them.
+    Locals the compiler introduces (`t1_`, `r_`, `ret_`, `rest_`) end in a
+    single `_`, and a Ruby local ending in `_` gets another, as a Go
+    keyword or builtin already did (`len` → `len_`). A subclass struct embeds its parent
+    through an alias (`super_Calc_`), so a method named like the parent
+    (`Calc#calc`) does not meet the embedded field. Constants resolve as Ruby
     does: the lexical scope innermost-out (`Module.nesting`), then the
     innermost class's ancestors, then top level; `class A::B` compact form
     does not put `A` in scope. RBS names in annotations resolve the same way.
+    *(Revised: names used to be taken as written, so a class named `Opt` or
+    `NewUser`, `Foo_Bar` beside `Foo::Bar`, or `Calc#calc` with a subclass
+    failed `go build`, and a local named `r`, `p`, `t1` or `ret_` met a
+    generated one.)*
 18. Constants are Go package variables, typed by `#: T` or by their
     initializer, and assigned in `main` in source order (prelude first), as
     MRI evaluates them. *(Revised: they used to initialize before `main` in

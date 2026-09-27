@@ -108,7 +108,7 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
-			ps = append(ps, name+"_ ..."+c.goType(subst(p.Type, env)))
+			ps = append(ps, "rest_ ..."+c.goType(subst(p.Type, env)))
 			continue
 		}
 		ps = append(ps, name+" "+c.goType(subst(p.Type, env)))
@@ -132,7 +132,7 @@ func (c *Compiler) argNames(m *Method) string {
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
-			as = append(as, name+"_...")
+			as = append(as, "rest_...")
 			continue
 		}
 		as = append(as, name)
@@ -359,9 +359,12 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 
 func (c *Compiler) emitStructClass(cls *Class) {
 	// struct
+	if len(cls.Subclasses) > 0 && !cls.universal {
+		c.w("type %s = %s\n\n", superField(cls), cls.Name)
+	}
 	c.w("type %s struct {\n", cls.Name)
 	if cls.Super != nil && !cls.Super.universal {
-		c.w("\t%s\n", cls.Super.Name)
+		c.w("\t%s\n", superField(cls.Super))
 	} else if len(cls.IvarList) == 0 {
 		// zero-size allocations may share an address, merging distinct instances' identity
 		c.w("\t_ byte\n")
@@ -425,6 +428,12 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.w("func New%s() *%s { return &%s{} }\n\n", cls.Name, cls.Name, cls.Name)
 	}
 }
+
+// superField names the field a subclass embeds cls through: an alias, since
+// an embedded field takes its type's name and a method of that Go name
+// (`Calc#calc`) would clash with it. Lowercase with a trailing `_`, it is
+// neither a method nor an ivar name (goLocalName).
+func superField(cls *Class) string { return "super_" + cls.Name + "_" }
 
 // emitForwarders emits, for a concrete class, a Go method per inherited or
 // included public non-generic method so the class satisfies its interface.

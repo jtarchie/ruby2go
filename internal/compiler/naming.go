@@ -71,11 +71,16 @@ var goKeywords = map[string]bool{
 	"panic": true, "recover": true, "print": true, "println": true, "string": true,
 	"int": true, "bool": true, "any": true, "error": true, "nil": true, "true": true, "false": true,
 	"main": true, "init": true, "stdout": true, "self": false,
+	// the generated &block parameter
+	"blk": true,
 }
 
-// goLocalName maps a Ruby local/param name to a Go identifier.
+// goLocalName maps a Ruby local/param name to a Go identifier. Locals the
+// compiler introduces (temporaries `t1_`, recovered panics `r_`, the named
+// result `ret_`, the rest parameter `rest_`) end in a single `_`, so a Ruby
+// name ending in `_` gets another and can never meet one.
 func goLocalName(name string) string {
-	if goKeywords[name] {
+	if goKeywords[name] || name != "_" && strings.HasSuffix(name, "_") {
 		return name + "_"
 	}
 	return name

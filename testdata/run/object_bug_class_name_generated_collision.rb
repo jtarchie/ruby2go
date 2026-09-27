@@ -1,5 +1,3 @@
-# skip: user class names collide with other classes' generated Go names: NewUser with User's constructor, ShapeI with Shape's interface, Foo_Bar with Foo::Bar; go build fails "redeclared"
-
 # rbs_inline: enabled
 
 class User
