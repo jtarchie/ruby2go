@@ -1,4 +1,3 @@
-# skip: decision 3's names are not injective against camel-cased method names (+/plus -> Plus, []/idx -> Idx, -@/neg -> Neg, / and Ruby's own div -> Div, ** and pow -> Pow, empty?/empty_q -> EmptyQ), so go build fails (redeclared)
 # rbs_inline: enabled
 
 class Meter

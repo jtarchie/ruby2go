@@ -1516,10 +1516,10 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: recv.code + "." + goMethodName(name) + "()", typ: f.cls("String")}
 	case "<=>":
 		a := f.genExpr(args[0], recv.typ)
-		return expr{code: recv.code + ".Cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
+		return expr{code: recv.code + ".Op_cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "==", "!=":
 		a := f.genExpr(args[0], nil)
-		code := recv.code + ".Eq(" + f.coerce(args[0], a, TAny{}) + ")"
+		code := recv.code + ".Op_eq(" + f.coerce(args[0], a, TAny{}) + ")"
 		if name == "!=" {
 			code = "!" + code
 		}
@@ -1895,7 +1895,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 				f.errorf(n, "cannot destructure %s", v.typ)
 			}
 			for i := range n.Lefts {
-				vals = append(vals, expr{code: fmt.Sprintf("%s.Idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
+				vals = append(vals, expr{code: fmt.Sprintf("%s.Op_idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
 			}
 		default:
 			f.errorf(n, "cannot destructure %s", v.typ)

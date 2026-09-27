@@ -765,6 +765,25 @@ func (c *Compiler) link() {
 	for _, m := range c.topDefList {
 		c.resolveMethod(m)
 	}
+	for _, cls := range c.classList {
+		ms := make([]*Method, 0, len(cls.MethodList))
+		for _, e := range cls.methodSet() {
+			ms = append(ms, e.M)
+		}
+		c.checkGoNames(cls.RubyName, ms)
+	}
+	c.checkGoNames("the top level", c.topDefList)
+}
+
+// Decision 3's naming still merges capitals (`foo_bar`/`fooBar`) and digits after `_` (`utf_8`/`utf8`), so reject those here, not at go build.
+func (c *Compiler) checkGoNames(where string, ms []*Method) {
+	seen := map[string]*Method{}
+	for _, m := range ms {
+		if p := seen[m.GoName]; p != nil && p.Name != m.Name {
+			c.errorf(nil, nil, "%s:%d: `%s` and `%s` (%s:%d) both become Go %s in %s; rename one", m.File.Name, m.Line, m.Name, p.Name, p.File.Name, p.Line, m.GoName, where)
+		}
+		seen[m.GoName] = m
+	}
 }
 
 // declareIvar records an ivar on the topmost class of the chain that

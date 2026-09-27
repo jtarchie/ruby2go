@@ -110,8 +110,18 @@ func mentionsVar(t Type) bool {
 	return len(vars) > 0
 }
 
-func (c *Compiler) emitDynName(name string) {
+// dispatchers are package-level, so a capital or digit that decision 3 merges (`foo_bar`/`fooBar`) collides across classes too
+func (c *Compiler) dynGoName(name string) string {
 	gn := goMethodName(name)
+	if p, ok := c.dynGo[gn]; ok && p != name {
+		c.errorf(nil, nil, "`%s` and `%s` both become Go %s, so dynamic calls cannot tell them apart; rename one", p, name, gn)
+	}
+	c.dynGo[gn] = name
+	return gn
+}
+
+func (c *Compiler) emitDynName(name string) {
+	gn := c.dynGoName(name)
 	c.w("func rbDyn%s(vcall bool, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
 	if name != "method_missing" {
@@ -246,7 +256,7 @@ func (c *Compiler) dynArg(t Type, i int) string {
 // emitRespond emits rbRespondsByName, backed by a marker method on every
 // class that has the public method (with or without a block).
 func (c *Compiler) emitRespond(name string) {
-	gn := goMethodName(name)
+	gn := c.dynGoName(name)
 	for _, cls := range c.classList {
 		if cls.IsModule || cls.universal || rubyPrivate[name] {
 			continue

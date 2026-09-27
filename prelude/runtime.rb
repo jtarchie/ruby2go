@@ -82,14 +82,14 @@
   }
 
   func rbEq[T comparable](a, b T) Boolean {
-    if e, ok := any(a).(interface{ Eq(any) Boolean }); ok {
-      return e.Eq(any(b))
+    if e, ok := any(a).(interface{ Op_eq(any) Boolean }); ok {
+      return e.Op_eq(any(b))
     }
     return Boolean(any(a) == any(b))
   }
 
   func rbCmp[T comparable](a, b T) Integer {
-    return any(a).(interface{ Cmp(T) Integer }).Cmp(b)
+    return any(a).(interface{ Op_cmp(T) Integer }).Op_cmp(b)
   }
 
   func rbIdentical(a, b any) bool {

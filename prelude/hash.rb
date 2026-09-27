@@ -229,7 +229,7 @@ class Hash < Object
     }
     out := NewHash[any, any]()
     for _, k := range self.keys {
-      out.IdxSet(k, self.vals[k])
+      out.Op_idxSet(k, self.vals[k])
     }
     return out
   }

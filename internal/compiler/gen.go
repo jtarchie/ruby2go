@@ -654,7 +654,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 			if isClass(condT, "Regexp") {
 				// `when /re/` is Regexp#===, not ==.
 				re := f.genExpr(cond, nil)
-				conds = append(conds, "bool("+re.code+".Eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
+				conds = append(conds, "bool("+re.code+".Op_eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
 				continue
 			}
 			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil)

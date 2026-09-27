@@ -123,7 +123,7 @@ Rules the prelude relies on:
 - **`@go_type`** — tells the transpiler `String` is a named Go `string`, not a
   struct. Classes without it become structs (and are passed as pointers).
 - **Mixins are just Ruby** — `Comparable#<` and `#clamp` are written once;
-  `String` only supplies `<=>`. Compiles to `Comparable_Lt[T Comparable_Self[T]]`.
+  `String` only supplies `<=>`. Compiles to `Comparable_Op_lt[T Comparable_Self[T]]`.
   The constraint interface is *derived from the module body*: whatever the
   module calls on `self` is what an includer must provide. Including
   `Comparable` without `<=>` fails at `go build`, which is the right place.
@@ -152,7 +152,7 @@ Rules the prelude relies on:
   works because strings are immutable.
 - **Literals need wrapping only for interface targets** — Go's untyped
   constants convert to `String` when the parameter is `String`
-  (`s.Lt("world")` compiles), but become Go `string` when the parameter is
+  (`s.Op_lt("world")` compiles), but become Go `string` when the parameter is
   `any`. Always emit `String("...")` when the target type is an interface or
   `untyped` (see [06_puts](examples/06_puts/)).
 
@@ -393,16 +393,27 @@ resolve; anything not listed is still open.
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
    `untyped`. `inspect`/`to_s` live on `Boolean`.
-3. Operator name table: **decided** — `==`→`Eq`, `!=`→`Ne`, `<=>`→`Cmp`,
-   `<`→`Lt`, `<=`→`Le`, `>`→`Gt`, `>=`→`Ge`, `+`→`Plus`, `-`→`Minus`,
-   `*`→`Mul`, `/`→`Div`, `%`→`Mod`, `**`→`Pow`, unary `-`→`Neg`, `+@`→`Pos`,
-   `!`→`Not`, `~`→`Inv`, `<<`→`Shl`, `>>`→`Shr`, `&`→`BitAnd`, `|`→`BitOr`,
-   `^`→`BitXor`, `=~`→`EqTilde`, `!~`→`NotTilde`, `===`→`Eqq`, `[]`→`Idx`,
-   `[]=`→`IdxSet`. Everything else camel-cases with `?`→`Q`, `!`→`Bang`,
-   `=`→`Set`; leading underscores are kept (`__write`→`__Write`). The table
-   has to stay injective against camel-cased names too: `[]` is not `Index`
-   because `String#index` exists, and `=~` is not `Match` because `#match`
-   exists.
+3. Operator name table: **decided** — `==`→`Op_eq`, `!=`→`Op_ne`,
+   `<=>`→`Op_cmp`, `<`→`Op_lt`, `<=`→`Op_le`, `>`→`Op_gt`, `>=`→`Op_ge`,
+   `+`→`Op_plus`, `-`→`Op_minus`, `*`→`Op_mul`, `/`→`Op_div`, `%`→`Op_mod`,
+   `**`→`Op_pow`, unary `-`→`Op_neg`, `+@`→`Op_pos`, `!`→`Op_not`,
+   `~`→`Op_inv`, `<<`→`Op_shl`, `>>`→`Op_shr`, `&`→`Op_bitAnd`,
+   `|`→`Op_bitOr`, `^`→`Op_bitXor`, `=~`→`Op_eqTilde`, `!~`→`Op_notTilde`,
+   `===`→`Op_eqq`, `[]`→`Op_idx`, `[]=`→`Op_idxSet`, `` ` ``→`Op_backtick`.
+   Everything else camel-cases with `?`→`Q`, `!`→`Bang`, `=`→`Set`; leading
+   underscores are kept (`__write`→`__Write`). The table has to stay
+   injective against camel-cased names too. Camel-casing upper-cases the
+   letter after every `_`, so an `_` before a lowercase letter marks a name
+   it cannot produce: every operator carries one, and a suffix-less name
+   whose last word is `q`, `bang` or `set` keeps it as written
+   (`empty_q`→`Empty_q`, where `empty?` is `EmptyQ`). What camel-casing still
+   merges, capitals (`foo_bar`/`fooBar`) and a digit after `_`
+   (`utf_8`/`utf8`), is a compile error when both names reach one class or
+   are both called dynamically. *(Revised: the table used to be `Eq`,
+   `Plus`, `Div`, `Pos`, `Idx`, …, which `eq`, `plus`, `Integer#div`,
+   `IO#pos` and `idx` camel-case to as well, so a class defining both got a
+   duplicate Go method or `rbDyn` dispatcher and `go build` failed; backtick
+   was missing.)*
 4. Non-local `return`/`break`/`next` in blocks: **decided, inline loops
    only.** A method whose block returns `void` compiles to a Go iterator
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a

@@ -1021,3 +1021,26 @@ class Profile
 end
 
 puts Profile.new.nick.upcase
+-- go_name_collision.rb --
+# error: main.rb:6: `fooBar` and `foo_bar` (main.rb:4) both become Go FooBar in Meter; rename one
+class Meter
+  #: () -> Integer
+  def foo_bar = 1
+  #: () -> Integer
+  def fooBar = 2
+end
+
+puts Meter.new.foo_bar
+-- go_name_collision_inherited.rb --
+# error: both become Go Utf8 in Word
+class Base
+  #: () -> Integer
+  def utf_8 = 1
+end
+
+class Word < Base
+  #: () -> Integer
+  def utf8 = 2
+end
+
+puts Word.new.utf8
