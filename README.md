@@ -501,8 +501,13 @@ resolve; anything not listed is still open.
     a value typed `Module` can hold any class object.
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
-    passing it on asserts the type. *Calling a method* on `T?` raises
-    `NoMethodError` when it is nil, as in Ruby, and the compiler warns.
+    passing it on asserts the type, except to a `T | untyped` parameter
+    (the only union besides `T | nil`): typed arguments are checked
+    against `T`, untyped ones pass unasserted and the method handles
+    them. Regexp subjects use it, so a literal `nil` is an error but an
+    untyped `nil` or Symbol matches as in MRI. *Calling a method* on `T?`
+    raises `NoMethodError` when it is nil, as in Ruby, and the compiler
+    warns.
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops

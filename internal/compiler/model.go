@@ -138,6 +138,9 @@ type Param struct {
 	Type    Type
 	Default parser.Node // literal default for optional params
 	Rest    bool
+	// Want is T for a `T | untyped` parameter (Type is untyped): typed
+	// arguments are checked against T, untyped ones pass as they are.
+	Want Type
 }
 
 // BlockSig is the block a method takes.
@@ -874,7 +877,13 @@ func (c *Compiler) resolveMethod(m *Method) {
 	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
 	m.TypeParams = m.sig.TypeParams
 	for _, p := range m.sig.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: c.resolveType(p.Type, sc), Rest: p.Rest})
+		prm := Param{Name: p.Name, Rest: p.Rest}
+		if want := gradualParam(p.Type); want != nil {
+			prm.Type, prm.Want = TAny{}, c.resolveType(want, sc)
+		} else {
+			prm.Type = c.resolveType(p.Type, sc)
+		}
+		m.Params = append(m.Params, prm)
 	}
 	if m.sig.Block != nil {
 		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc)}
@@ -890,6 +899,18 @@ func (c *Compiler) resolveMethod(m *Method) {
 	c.bindParamNames(m)
 }
 
+// gradualParam returns T for a `T | untyped` parameter type, else nil.
+func gradualParam(t rbs.Type) rbs.Type {
+	u, ok := t.(rbs.Union)
+	if !ok || len(u.Elems) != 2 {
+		return nil
+	}
+	if _, ok := u.Elems[1].(rbs.Untyped); !ok {
+		return nil
+	}
+	return u.Elems[0]
+}
+
 // inheritSignature copies the signature of the method m overrides, if any.
 func (c *Compiler) inheritSignature(m *Method) bool {
 	if m.Owner == nil {
@@ -903,7 +924,7 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	m.inherited = e.M
 	m.TypeParams = e.M.TypeParams
 	for _, p := range e.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Want: subst(p.Want, e.Env)})
 	}
 	if e.M.Block != nil {
 		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
@@ -1108,7 +1129,7 @@ func (c *Compiler) resolveSynth(m *Method) {
 	env := composeEnv(init.Env, nil)
 	env["Self"] = TClass{C: cls}
 	for _, p := range init.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Want: subst(p.Want, env)})
 	}
 }
 

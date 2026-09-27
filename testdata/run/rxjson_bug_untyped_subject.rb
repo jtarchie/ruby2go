@@ -1,5 +1,3 @@
-# skip: Regexp#match?/=~/match take String only: an untyped nil subject raises TypeError (MRI: false / nil / nil) and an untyped Symbol raises StandardError (MRI matches its name)
-
 # rbs_inline: enabled
 
 #: () -> untyped

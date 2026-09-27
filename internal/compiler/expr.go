@@ -613,6 +613,15 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	return e.code
 }
 
+// coerceArg coerces a call argument to its parameter. A `T | untyped`
+// parameter holds typed arguments to T and passes untyped ones as they are.
+func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) string {
+	if p.Want != nil && !isAny(a.typ) {
+		f.coerce(n, a, subst(p.Want, env)) // for its compile errors only
+	}
+	return f.coerce(n, a, subst(p.Type, env))
+}
+
 // ---- calls
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
@@ -848,7 +857,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 					a = f.genExpr(an, closed(p.Type, env))
 				}
 				unify(p.Type, a.typ, env)
-				codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
+				codes = append(codes, f.coerceArg(an, a, p, env))
 			}
 			continue
 		}
@@ -866,13 +875,13 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			}
 			ai++
 			unify(p.Type, a.typ, env)
-			codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
+			codes = append(codes, f.coerceArg(an, a, p, env))
 			continue
 		}
 		if p.Default != nil {
 			d := f.genExpr(p.Default, closed(p.Type, env))
 			unify(p.Type, d.typ, env)
-			codes = append(codes, f.coerce(n, d, subst(p.Type, env)))
+			codes = append(codes, f.coerceArg(n, d, p, env))
 			continue
 		}
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
