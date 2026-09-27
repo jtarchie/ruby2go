@@ -1538,7 +1538,7 @@ func (f *fctx) genConstInit(k *Const) {
 	sub.indent = f.indent + 1
 	e := sub.genExpr(k.Value, typ)
 	code := sub.coerce(k.Value, e, typ)
-	if e.lit {
+	if e.lit && typeEq(e.typ, typ) { // coerce boxed or converted any other literal
 		code = f.c.goType(typ) + "(" + code + ")"
 	}
 	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)
