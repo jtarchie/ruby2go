@@ -286,7 +286,7 @@ class Array < Object
       // Another instantiation ([1] == [1.0], typed vs untyped): compare
       // the untyped views, whose == takes the branch below.
       if a, ok := other.(Array_Any); ok {
-        return self._ToAny().Eq(a._ToAny())
+        return self._ToAny().Op_eq(a._ToAny())
       }
       return false
     }

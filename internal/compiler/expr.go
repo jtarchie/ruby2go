@@ -901,7 +901,10 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 // dynamically (blocks, generic methods) use the copy.
 func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
 	t, ok := recv.typ.(TClass)
-	if !ok || !converts(t) || f.c.dynEntry(t.C, name) == nil {
+	if !ok || !converts(t) {
+		return expr{}, false
+	}
+	if e, private := f.c.dynEntry(t.C, name); e == nil || private {
 		return expr{}, false
 	}
 	for _, a := range args {
@@ -912,7 +915,7 @@ func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Nod
 	var typed expr
 	f.probe(func() { typed = f.dispatch(n, recv, name, args, nil) })
 	f.c.noteDyn(name)
-	codes := []string{"false", recv.view}
+	codes := []string{"rbCall", recv.view}
 	for _, a := range args {
 		codes = append(codes, f.coerce(a, f.genExpr(a, nil), TAny{}))
 	}

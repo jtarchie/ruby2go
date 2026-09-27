@@ -488,7 +488,7 @@ resolve; anything not listed is still open.
    helpers (`inspect`, `==`, `<=>`, `to_json`, `compact`, untyped views),
    where a nil `*T` is a non-nil interface and a non-nil one has the wrong
    method set. A generated `rbUnbox` type switch over every concrete `T?`
-   the program renders opens it there; `rbCmp` tries the typed `Cmp` first
+   the program renders opens it there; `rbCmp` tries the typed `Op_cmp` first
    and only falls back to the box path when that fails.
 8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
    method set plus `_Shape() *Shape` accessors for every struct in the

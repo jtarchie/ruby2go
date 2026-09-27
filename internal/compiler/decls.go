@@ -527,6 +527,10 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		}
 	}
 	c.emitBridgeSigs(cls, nil)
+	if c.includerCalls(cls, "class") {
+		// forwardTypeArgs binds Self to this interface, so it needs the module's `self.class` hook
+		c.w("\t_ClassObj() %s\n", c.goType(TClass{C: c.classes["Class"]}))
+	}
 	if cls.meta != nil || cls.metaOf != nil {
 		// a metaclass inherits _ClassOf from Class/Module; listing it lets a
 		// singleton(C) value pass where Class or Module is expected

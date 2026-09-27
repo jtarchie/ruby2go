@@ -411,17 +411,17 @@
 module Kernel
   # json's Object#to_json: the JSON string of to_s.
   #: (*untyped) -> String
-  def to_json(*state) = %x{ return rbToS(self).ToJson(state_...) }
+  def to_json(*state) = %x{ return rbToS(self).ToJson(rest_...) }
 end
 
 class String
   #: (*untyped) -> String
-  def to_json(*state) = %x{ rbJSONString(string(self), rbJSONStateOf(state_)) }
+  def to_json(*state) = %x{ rbJSONString(string(self), rbJSONStateOf(rest_)) }
 end
 
 class Symbol
   #: (*untyped) -> String
-  def to_json(*state) = %x{ self.ToS().ToJson(state_...) }
+  def to_json(*state) = %x{ self.ToS().ToJson(rest_...) }
 end
 
 class Integer
@@ -431,7 +431,7 @@ end
 
 class Float
   #: (*untyped) -> String
-  def to_json(*state) = %x{ rbJSONFloat(float64(self), rbJSONStateOf(state_)) }
+  def to_json(*state) = %x{ rbJSONFloat(float64(self), rbJSONStateOf(rest_)) }
 end
 
 class Boolean
@@ -441,12 +441,12 @@ end
 
 class Array
   #: (*untyped) -> String
-  def to_json(*state) = %x{ rbJSONArray(*self, state_) }
+  def to_json(*state) = %x{ rbJSONArray(*self, rest_) }
 end
 
 class Hash
   #: (*untyped) -> String
-  def to_json(*state) = %x{ rbJSONHash(self, state_) }
+  def to_json(*state) = %x{ rbJSONHash(self, rest_) }
 end
 
 module JSON

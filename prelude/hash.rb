@@ -76,7 +76,7 @@
       if !ok {
         return nil, false
       }
-      out.IdxSet(ck, cv)
+      out.Op_idxSet(ck, cv)
     }
     return out, true
   }
@@ -334,7 +334,7 @@ class Hash < Object
       // Another instantiation ({1 => 1} == {1 => 1.0}, typed vs untyped):
       // compare the untyped views, whose == takes the branch below.
       if h, ok := other.(Hash_Any); ok {
-        return self._ToAny().Eq(h._ToAny())
+        return self._ToAny().Op_eq(h._ToAny())
       }
       return false
     }
