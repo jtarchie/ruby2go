@@ -514,7 +514,12 @@ resolve; anything not listed is still open.
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
     passing it on asserts the type. *Calling a method* on `T?` raises
-    `NoMethodError` when it is nil, as in Ruby, and the compiler warns.
+    `NoMethodError` when it is nil, as in Ruby, and the compiler warns;
+    methods `NilClass` defines (`to_s`, `inspect`, `==`, `!`, `to_i`,
+    `to_f`, `to_a`, `to_h`, `=~`) give nil's answer instead (`0`, `0.0`,
+    `[]`, `{}`, `nil`) when `T`'s method returns a type that holds it.
+    *(Revised: `to_i`/`to_f`/`to_a`/`to_h`/`=~` raised, so an unmatched
+    group's `m[2].to_i` failed where MRI gives 0.)*
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops

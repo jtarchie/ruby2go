@@ -1528,6 +1528,10 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
 	case "!":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
+	case "to_i", "to_f", "to_a", "to_h", "=~":
+		if e, ok := f.nilClassCall(n, recv, name, args); ok {
+			return e
+		}
 	}
 	// Ruby raises NoMethodError when the value is nil; so does this.
 	f.c.warn(f.f, n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
@@ -1540,6 +1544,44 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
 	return f.genMethodCall(n, expr{code: "(*" + code + ")", typ: elem}, name, args, nil)
+}
+
+// nilClassCall: nil answers to_i/=~/... itself (0, nil), not NoMethodError, when T's method's type can hold that answer.
+func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
+	if (name == "=~") != (len(args) == 1) || len(args) > 1 {
+		return expr{}, false
+	}
+	rt := f.newTmp()
+	inner := expr{code: "(*" + rt + ")", typ: recv.typ.(TOpt).Elem}
+	var probe expr
+	f.probe(func() { probe = f.genMethodCall(n, inner, name, args, nil) })
+	t := probe.typ
+	var zero string // "" is Go's zero value
+	switch {
+	case name == "to_i" && isClass(t, "Integer"), name == "to_f" && isClass(t, "Float"),
+		name == "=~" && (isOpt(t) || isAny(t)):
+	case name == "to_a" && isClass(t, "Array"):
+		zero = "(&Array[" + f.c.goType(t.(TClass).Args[0]) + "]{})"
+	case name == "to_h" && isClass(t, "Hash"):
+		a := t.(TClass).Args
+		zero = "NewHash[" + f.c.goType(a[0]) + ", " + f.c.goType(a[1]) + "]()"
+	default:
+		return expr{}, false
+	}
+	// ponytail: =~'s argument is only evaluated when the receiver is non-nil; hoist it if a side-effecting pattern ever matters
+	tmp := f.newTmp()
+	f.emit("var %s %s", tmp, f.c.goType(t))
+	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+	f.indent++
+	e := f.genMethodCall(n, inner, name, args, nil)
+	f.emit("%s = %s", tmp, f.coerce(n, e, t))
+	f.indent--
+	if zero != "" {
+		f.emit("} else {")
+		f.emit("\t%s = %s", tmp, zero)
+	}
+	f.emit("}")
+	return expr{code: tmp, typ: t}, true
 }
 
 func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
