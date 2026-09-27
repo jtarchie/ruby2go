@@ -771,8 +771,7 @@ end
 
 Anon = Class.new(Base)
 -- superclass_mismatch_after_plain.rb --
-# skip: reopening a class with a superclass after it was first defined without one compiles; MRI raises "superclass mismatch for class C" (TypeError)
-# error: main.rb:9: class C reopened with a different superclass
+# error: main.rb:8: class C reopened with a different superclass
 class A
 end
 

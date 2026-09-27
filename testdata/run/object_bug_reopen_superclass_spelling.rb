@@ -1,4 +1,3 @@
-# skip: reopening a class with the same superclass spelled differently (`< ::A` after `< A`, `M::K < M::Base` after `K < Base` inside M) is a compile error "class C reopened with a different superclass": collectClass compares the superclass source text, not the resolved class
 
 # rbs_inline: enabled
 

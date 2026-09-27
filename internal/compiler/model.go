@@ -17,7 +17,8 @@ type Class struct {
 	IsModule   bool
 	GoType     string // `@go_type` underlying Go type; "" for struct classes
 	TypeParams []string
-	superRef   *constRef // superclass expression, resolved in link
+	superRef   *constRef   // superclass expression, resolved in link
+	reSupers   []*constRef // superclasses named when reopening; must resolve to Super
 	Super      *Class
 	Includes   []Include
 	Methods    map[string]*Method
@@ -392,13 +393,17 @@ func (c *Compiler) declName(f *File, path parser.Node, scope []*Class) string {
 func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNode, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	name := c.declName(f, n.ConstantPath, scope)
+	reopen := c.classes[name] != nil
 	cls := c.declareClass(f, name, line, false)
 	if n.Superclass != nil {
-		if cls.superRef != nil && f.text(cls.superRef.node.GetLocation()) != f.text(n.Superclass.GetLocation()) {
-			c.errorf(f, n, "class %s reopened with a different superclass", name)
-		}
 		// The superclass expression is evaluated outside the class body.
-		cls.superRef = &constRef{node: n.Superclass, scope: scope, file: f}
+		ref := &constRef{node: n.Superclass, scope: scope, file: f}
+		if reopen {
+			// the first declaration fixed the superclass (Object when it named none)
+			cls.reSupers = append(cls.reSupers, ref)
+		} else {
+			cls.superRef = ref
+		}
 	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
@@ -710,23 +715,34 @@ func (c *Compiler) resolveClassRef(r *constRef) *Class {
 
 // ---- resolution
 
+// superclassOf resolves cls's superclass (nil for modules and BasicObject)
+// and checks that every reopening that names one names the same class.
+func (c *Compiler) superclassOf(cls *Class) *Class {
+	var sup *Class
+	switch {
+	case cls.superRef != nil:
+		sup = c.resolveClassRef(cls.superRef)
+		if sup.IsModule {
+			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
+		}
+		// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
+		if sup.GoType != "" {
+			c.errorf(cls.File, nil, "%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+		}
+	case !cls.IsModule && cls.RubyName != "BasicObject":
+		sup = c.classes["Object"]
+	}
+	for _, r := range cls.reSupers {
+		if c.resolveClassRef(r) != sup {
+			c.errorf(r.file, r.node, "class %s reopened with a different superclass", cls.RubyName)
+		}
+	}
+	return sup
+}
+
 func (c *Compiler) link() {
 	for _, cls := range c.classList {
-		var sup *Class
-		switch {
-		case cls.superRef != nil:
-			sup = c.resolveClassRef(cls.superRef)
-			if sup.IsModule {
-				c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
-			}
-			// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
-			if sup.GoType != "" {
-				c.errorf(cls.File, nil, "%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
-			}
-		case !cls.IsModule && cls.RubyName != "BasicObject":
-			sup = c.classes["Object"]
-		}
-		if sup != nil {
+		if sup := c.superclassOf(cls); sup != nil {
 			cls.Super = sup
 			sup.Subclasses = append(sup.Subclasses, cls)
 		}
