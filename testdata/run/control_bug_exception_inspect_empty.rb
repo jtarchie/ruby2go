@@ -1,5 +1,3 @@
-# skip: Exception#inspect with an empty message prints `#<ArgumentError: >`; MRI prints just the class name
-
 # rbs_inline: enabled
 
 puts ArgumentError.new("").inspect
