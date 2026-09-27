@@ -473,6 +473,12 @@ resolve; anything not listed is still open.
 12. Overloads (`#|`) are not supported, so `first`/`take` require a count
     (`arr.first(3)`; use `arr[0]` for the head) and `Array#[]` takes one
     Integer. `split` takes an optional separator through `?String?`.
+    *Revised:* `Hash#fetch` needs MRI's second overload, since a nil
+    default is returned rather than meaning "no default" (`fetch(k, nil)`
+    is `nil` for a missing key). A `fetch(k, d)` whose `d` may be nil
+    (`nil`, `T?` or `untyped`, as in every dynamic call) goes to
+    `Hash#__fetch_opt`, `(K, V?) -> V?`; any other default keeps
+    `(K, ?V?) -> V`, so `h.fetch(k, 0) + 1` stays an Integer.
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's

@@ -975,8 +975,24 @@ func closed(t Type, env map[string]Type) Type {
 	return s
 }
 
+// nilableFetch reroutes Hash#fetch whose default may be nil: MRI returns that nil, so the result is V? (decision 12).
+func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *entry {
+	if m.Name != "fetch" || m.Owner == nil || m.Owner.RubyName != "Hash" || len(args) != 2 || block != nil {
+		return nil
+	}
+	var d expr
+	f.probe(func() { d = f.genExpr(args[1], nil) })
+	if !isNil(d.typ) && !isOpt(d.typ) && !isAny(d.typ) {
+		return nil
+	}
+	return m.Owner.lookup("__fetch_opt")
+}
+
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
+	if o := f.nilableFetch(m, args, block); o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
 		classEnv := map[string]Type{}

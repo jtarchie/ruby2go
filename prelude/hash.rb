@@ -202,6 +202,14 @@ class Hash < Object
     raise KeyError, "key not found: #{k.inspect}"
   end
 
+  #: (K, V?) -> V?
+  def __fetch_opt(k, fallback) = %x{
+    if v, ok := self.rbGet(k); ok {
+      return &v
+    }
+    return fallback
+  }
+
   # A new hash with other's pairs laid over this one's.
   #: (Hash[K, V]) -> Hash[K, V]
   def merge(other)
