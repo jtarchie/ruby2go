@@ -557,14 +557,27 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 	if doWhile {
 		f.errorf(pred, "begin/end while is not supported")
 	}
-	cond, narrow := f.genCond(pred)
+	f.pushLoop(loopFor)
+	saved := f.enterBlock()
+	f.indent++
+	var cond string
+	var narrow []narrowInfo
+	// the condition reruns each iteration, so its statements (`while (x = q.shift)`) go inside the loop
+	stmts := f.capture(func() { cond, narrow = f.genCond(pred) })
 	if negate {
 		cond = "!(" + cond + ")"
 		narrow = nil
 	}
-	f.pushLoop(loopFor)
-	f.emit("for %s {", cond)
-	saved := f.enterBlock()
+	f.indent--
+	if stmts == "" {
+		f.emit("for %s {", cond)
+	} else {
+		f.emit("for {")
+		f.buf.WriteString(stmts)
+		f.emit("\tif !(%s) {", cond)
+		f.emit("\t\tbreak")
+		f.emit("\t}")
+	}
 	f.indent++
 	f.applyNarrow(narrow)
 	f.genStmts(body, tail{})

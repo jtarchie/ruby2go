@@ -1,5 +1,3 @@
-# skip: a while/until condition that needs statements (an assignment like `while (x = q.shift)`, or a lifted `||`) is evaluated once before the loop, so it never changes
-
 # rbs_inline: enabled
 
 queue = [1, 2, 3] #: Array[Integer]
