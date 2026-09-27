@@ -22,6 +22,7 @@ type expr struct {
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
 	done     bool // already emitted; code only names the value
+	nilable  bool // untyped collapsed from untyped? (Hash#[]): calls warn like T?'s
 }
 
 // genLiteral handles the leaf expressions.
@@ -682,12 +683,14 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 
 func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	recv := f.genExpr(n.Receiver, nil)
-	if !isOpt(recv.typ) {
+	if !isOpt(recv.typ) && !isAny(recv.typ) {
 		return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 	}
-	elem := recv.typ.(TOpt).Elem
 	rt := f.newTmp()
-	inner := expr{code: "(*" + rt + ")", typ: elem}
+	inner := expr{code: rt, typ: recv.typ} // an untyped nil is nil too
+	if o, ok := recv.typ.(TOpt); ok {
+		inner = expr{code: "(*" + rt + ")", typ: o.Elem}
+	}
 	var probe expr
 	f.probe(func() { probe = f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) })
 	if isVoid(probe.typ) {
@@ -699,10 +702,7 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 		f.emit("}")
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
-	resT := probe.typ
-	if !isOpt(resT) && !isAny(resT) {
-		resT = TOpt{Elem: resT}
-	}
+	resT := optOf(probe.typ)
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(resT))
 	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
@@ -858,7 +858,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 					a = f.genExpr(an, closed(p.Type, env))
 				}
 				unify(p.Type, a.typ, env)
-				codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
+				codes = append(codes, f.coerceArg(an, a, p.Type, env))
 			}
 			continue
 		}
@@ -876,13 +876,13 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			}
 			ai++
 			unify(p.Type, a.typ, env)
-			codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
+			codes = append(codes, f.coerceArg(an, a, p.Type, env))
 			continue
 		}
 		if p.Default != nil {
 			d := f.genExpr(p.Default, closed(p.Type, env))
 			unify(p.Type, d.typ, env)
-			codes = append(codes, f.coerce(n, d, subst(p.Type, env)))
+			codes = append(codes, f.coerceArg(n, d, p.Type, env))
 			continue
 		}
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
@@ -891,6 +891,18 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
 	return codes
+}
+
+// coerceArg coerces a call argument to parameter type pt. A type variable
+// bound to untyped gets an explicit any(...), or Go infers it from the
+// argument's own type (E = String for Array[untyped]#include?("a")).
+func (f *fctx) coerceArg(n parser.Node, a expr, pt Type, env map[string]Type) string {
+	t := subst(pt, env)
+	code := f.coerce(n, a, t)
+	if _, ok := pt.(TVar); ok && isAny(t) && !isOpt(a.typ) && !isVoid(a.typ) && f.c.goType(a.typ) != "any" {
+		return "any(" + code + ")"
+	}
+	return code
 }
 
 // closed returns subst(t, env) if it has no unbound method type vars.
@@ -964,7 +976,21 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 			code += ".(" + f.c.goType(recv.typ) + ")"
 		}
 	}
-	return expr{code: code, typ: ret}
+	return flatOpt(expr{code: code, typ: ret})
+}
+
+// flatOpt collapses a nested optional result: a generic E? instantiated
+// with E = T? is a Go **T, and with E = untyped a *any, but Ruby has one nil.
+func flatOpt(e expr) expr {
+	o, ok := e.typ.(TOpt)
+	switch {
+	case !ok:
+	case isAny(o.Elem):
+		return expr{code: "Opt(" + e.code + ")", typ: o.Elem, nilable: true}
+	case isOpt(o.Elem):
+		return expr{code: "rbFlat(" + e.code + ")", typ: o.Elem}
+	}
+	return e
 }
 
 // callCode renders the call for entry e.
@@ -1586,6 +1612,9 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "hash":
 		return expr{code: "rbHash(" + recv.code + ")", typ: f.cls("Integer")}
 	}
+	if recv.nilable {
+		f.c.warn(f.f, n, "%s called on possibly-nil untyped (raises NoMethodError on nil)", name)
+	}
 	return f.genDynCall(n, recv, name, args)
 }
 
@@ -1913,7 +1942,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 				f.errorf(n, "cannot destructure %s", v.typ)
 			}
 			for i := range n.Lefts {
-				vals = append(vals, expr{code: fmt.Sprintf("%s.Idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
+				vals = append(vals, flatOpt(expr{code: fmt.Sprintf("%s.Idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}}))
 			}
 		default:
 			f.errorf(n, "cannot destructure %s", v.typ)

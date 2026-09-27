@@ -1,5 +1,3 @@
-# skip: h[k] and h.delete(k) on a Hash[K, T?] holding nil return a non-nil **T typed as T?, so nil? is false, `if h[k]` is truthy, `h[k] || d` yields nil and inspect panics; MRI sees nil
-
 # rbs_inline: enabled
 
 h = { "a" => nil, "b" => 2 } #: Hash[String, Integer?]

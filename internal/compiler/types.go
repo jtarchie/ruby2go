@@ -82,6 +82,14 @@ func isClass(t Type, name string) bool {
 	return c != nil && c.Name == name
 }
 
+// optOf is `t?`. Ruby has one nil, so T?? is T? and untyped? is untyped.
+func optOf(t Type) Type {
+	if isOpt(t) || isAny(t) {
+		return t
+	}
+	return TOpt{Elem: t}
+}
+
 // stripOpt returns the non-optional part of t.
 func stripOpt(t Type) Type {
 	if o, ok := t.(TOpt); ok {

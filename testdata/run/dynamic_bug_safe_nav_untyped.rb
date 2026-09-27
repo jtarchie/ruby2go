@@ -1,5 +1,3 @@
-# skip: `&.` on an untyped nil (or an untyped? such as Hash[String, untyped]#[] holding nil) calls the method and raises NoMethodError; MRI returns nil
-
 # rbs_inline: enabled
 
 #: (untyped) -> untyped

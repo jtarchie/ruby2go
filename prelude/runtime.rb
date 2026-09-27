@@ -42,6 +42,15 @@
     return *p
   }
 
+  // rbFlat collapses a generic E? instantiated with E = T? (a **T) to T?:
+  // Ruby has one nil.
+  func rbFlat[T any](p **T) *T {
+    if p == nil {
+      return nil
+    }
+    return *p
+  }
+
   // OptOf converts untyped to T?.
   func OptOf[T any](a any) *T {
     if a == nil {

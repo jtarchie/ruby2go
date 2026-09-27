@@ -819,7 +819,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		}
 		return TClass{C: cls.meta}
 	case rbs.Optional:
-		return TOpt{Elem: c.resolveType(t.Elem, sc)}
+		return optOf(c.resolveType(t.Elem, sc))
 	case rbs.Tuple:
 		elems := make([]Type, len(t.Elems))
 		for i, e := range t.Elems {

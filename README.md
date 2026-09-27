@@ -435,7 +435,11 @@ resolve; anything not listed is still open.
    (`Rect` is `RectI`, `Rect?` is `*RectI`). The README's "one
    representation" shortcut would make `E?` inside a generic container mean
    something different from `Rect?` outside it; uniform boxing keeps
-   generics honest at the cost of a `Ref`/`Opt` at the boundary.
+   generics honest at the cost of a `Ref`/`Opt` at the boundary. Ruby has
+   one nil, so `T??` is `T?` and `untyped?` is `untyped`: a generic `E?`
+   result instantiated with `E = T?` (Go `**T`, e.g. `Array[Integer?]#[]`)
+   or `E = untyped` (`*any`) is flattened at the call site. *(Revised: the
+   nested box used to reach user code, so a nil element read as non-nil.)*
 8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
    method set plus `_Shape() *Shape` accessors for every struct in the
    chain (ivar access from free functions, and the marker `rescue` matches
