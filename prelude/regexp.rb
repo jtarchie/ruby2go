@@ -3,17 +3,18 @@
 #
 # Regexp on Go's RE2. The transpiler translates literals (every Ruby regexp
 # gets `(?m)`: `^`/`$` are line anchors in Ruby) and rejects what RE2 cannot
-# match; see internal/compiler/regexp.go.
+# match; see internal/compiler/regexp.go. rxRegexp (rxtranslate.go) matches
+# Onigmo's `^`, `\b` and multi-character `/i` folds where RE2's differ.
 
 %x{
   // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
   // may fail at run time, like Ruby's.
   func rbRegexpNew(pattern, src, opts string) *Regexp {
-    re, err := regexp.Compile(pattern)
+    re, err := regexp.Compile(rxFold(pattern))
     if err != nil {
       panic(NewRegexpError(Ref(String(err.Error()))))
     }
-    return &Regexp{re: re, src: src, opts: opts}
+    return &Regexp{re: rxNew(re), src: src, opts: opts}
   }
 
   // rbRegexpDyn compiles an interpolated regexp from its Ruby source, which
@@ -79,7 +80,7 @@
   }
 }
 
-# @go_type struct { re *regexp.Regexp; src string; opts string }
+# @go_type struct { re *rxRegexp; src string; opts string }
 class Regexp < Object
   # A subject is a String for typed callers; an untyped one may also be a
   # Symbol (its name is matched) or nil (no match), as in MRI.

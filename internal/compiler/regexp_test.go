@@ -3,21 +3,24 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"regexp/syntax"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// compileRuby mirrors genRegexp's static path: translate, then compile under the flag prefix.
-func compileRuby(src string, f rubyRegexFlags) (*regexp.Regexp, error) {
+// compileRuby mirrors genRegexp's static path and rbRegexpNew: translate,
+// then compile under the flag prefix.
+func compileRuby(src string, f rubyRegexFlags) (*rxRegexp, error) {
 	pat, err := translateRegexp(src)
 	if err != nil {
 		return nil, err
 	}
-	re, err := regexp.Compile(f.goPrefix() + pat)
+	re, err := regexp.Compile(rxFold(f.goPrefix() + pat))
 	if err != nil {
 		return nil, fmt.Errorf("RE2: %w", err)
 	}
-	return re, nil
+	return rxNew(re), nil
 }
 
 func TestRegexpFlags(t *testing.T) {
@@ -145,8 +148,15 @@ func TestRegexpMatchesMRI(t *testing.T) {
 		{"posix_digit_is_unicode", `\A[[:digit:]]\z`, rubyRegexFlags{}, "٣", true, ""},
 		{"posix_space_is_unicode", `\A[[:space:]]\z`, rubyRegexFlags{}, "\u00a0", true, ""},
 		{"posix_word_is_unicode", `\A[[:word:]]\z`, rubyRegexFlags{}, "é", true, ""},
-		{"word_boundary_is_unicode", `\bcafé\b`, rubyRegexFlags{}, "un café noir", true, "Ruby's \\b treats non-ASCII letters as word characters; RE2's \\b is ASCII-only"},
-		{"caret_not_after_final_newline", `\n^`, rubyRegexFlags{}, "a\n", false, "Ruby's ^ never matches at the end of the string after a trailing newline; RE2 (?m)^ does, so gsub(/^/, \"  \") indents an extra empty line"},
+		{"word_boundary_is_unicode", `\bcafé\b`, rubyRegexFlags{}, "un café noir", true, ""},
+		{"caret_not_after_final_newline", `\n^`, rubyRegexFlags{}, "a\n", false, ""},
+		{"caret_before_final_newline", `^$`, rubyRegexFlags{}, "a\n\n", true, ""},
+		{"word_boundary_beside_non_ascii", `caf\b`, rubyRegexFlags{}, "café", false, ""},
+		{"i_flag_multichar_fold", `STRASSE`, i, "straße", true, ""},
+		{"i_flag_multichar_fold_in_pattern", `ß`, i, "SS", true, ""},
+		{"i_flag_multichar_fold_overlap", `sss`, i, "sß", true, ""},
+		{"i_flag_multichar_fold_stays_in_literal", `s+`, i, "ß", false, ""},
+		{"multichar_fold_needs_i", `ss`, rubyRegexFlags{}, "ß", false, ""},
 		{"open_interval_is_zero_to_n", `\Aa{,3}\z`, rubyRegexFlags{}, "aa", true, "Ruby's {,n} is {0,n}; RE2 reads it as the literal text {,n}"},
 		{"fixed_interval_then_question_is_optional", `\Aa{2}?\z`, rubyRegexFlags{}, "", true, "Ruby's X{n}? is (?:X{n})?; RE2 reads it as a lazy X{n}"},
 		{"Q_is_literal", `\Q.`, rubyRegexFlags{}, "Qx", true, "Ruby reads \\Q as a literal Q; RE2 starts a quoted run"},
@@ -164,6 +174,23 @@ func TestRegexpMatchesMRI(t *testing.T) {
 				t.Errorf("/%s/%s =~ %q: got %v, MRI gives %v", c.src, c.f.opts(), c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// Where Onigmo's ^ and \b agree with RE2's (ASCII, no final newline), the
+// backtracker must find RE2's match, captures included.
+func TestBacktrackMatchesRE2(t *testing.T) {
+	pats := []string{`(?m)^(a+)(b*?)$`, `(?m)\b(\w+)\b`, `(?m)(a|ab)(c|bcd)(d*)`, `(?mi)^x(?:(y)|z)*`, `(?m)(?P<n>\d+)?-\B`, `(?ms)a.*?b|$`}
+	subjects := []string{"", "aab", "abcd", "xyzY", "foo bar", "12-x", "-", "a\nb", "b\naab"}
+	for _, p := range pats {
+		tree, _ := syntax.Parse(p, syntax.Perl)
+		prog, _ := syntax.Compile(tree.Simplify())
+		r := &rxRegexp{Regexp: regexp.MustCompile(p), prog: prog}
+		for _, s := range subjects {
+			if got, want := r.backtrack(s), r.Regexp.FindStringSubmatchIndex(s); !slices.Equal(got, want) {
+				t.Errorf("/%s/ on %q: backtrack %v, RE2 %v", p, s, got, want)
+			}
+		}
 	}
 }
 

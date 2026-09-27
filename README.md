@@ -545,7 +545,20 @@ resolve; anything not listed is still open.
     rewrites, an embedded Regexp's `(?i-mx:...)` composes, and each value is
     evaluated once; its static parts are still checked at transpile time.
     *(Revised: static parts were translated one at a time and values were
-    inserted untranslated.)* `$~`/`$1` are not supported; use `match`.
+    inserted untranslated.)* Matching semantics no rewrite can express are
+    handled at match time: Onigmo's `^` never matches at the end after a
+    final newline, and its `\b` counts non-ASCII letters as word characters
+    (`\w` stays ASCII). A pattern using either also gets a backtracker (Go's
+    own algorithm, leftmost-first) with Onigmo's assertions; it runs only
+    for subjects where RE2's answer can differ (a non-ASCII word character,
+    or an RE2 match ending at a final newline), so other matches stay on
+    RE2. Under `/i`, a literal also matches Unicode's multi-character case
+    folds (`STRASSE` matches `straße`, `FF` matches `ﬀ`), spelled as
+    alternations. As in Onigmo, a fold doesn't span a group or a quantified
+    atom; unlike it, nor a one-character class (`/[s]s/i` misses `ß`), and
+    a literal is expanded in pieces of about 8 characters, so a fold
+    straddling two pieces is missed. *(Revised: these matched RE2's
+    meaning.)* `$~`/`$1` are not supported; use `match`.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
