@@ -1143,7 +1143,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		synth = append(synth, "new")
 	}
 	for _, name := range synth {
-		if m.Methods[name] != nil {
+		if m.Methods[name] != nil || inheritsUserDef(sup, name) {
 			continue
 		}
 		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, File: cls.File, Line: cls.Line}
@@ -1151,6 +1151,16 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		m.MethodList = append(m.MethodList, sm)
 	}
 	return m
+}
+
+// inheritsUserDef: a user-defined class-level name/to_s/inspect wins over a subclass's generated one.
+func inheritsUserDef(m *Class, name string) bool {
+	for ; m != nil && m.metaOf != nil; m = m.Super {
+		if d := m.Methods[name]; d != nil && d.Kind != kindSynth {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSynth fills in a metaclass's generated methods. `new` takes the

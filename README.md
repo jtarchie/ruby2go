@@ -505,7 +505,9 @@ resolve; anything not listed is still open.
     instance of it is the class object. Class methods therefore inherit and
     dispatch virtually like instance methods; `singleton(C)` is the
     metaclass's interface; `self.class` is a per-class accessor. Each
-    metaclass gets generated `new`, `name`, `to_s` and `inspect`. `new` is
+    metaclass gets generated `new`, `name`, `to_s` and `inspect`, except
+    `name`/`to_s`/`inspect` that a user's `def self.` on it or an ancestor
+    already defines, so they inherit as in MRI. `new` is
     kept off the shared interface because subclasses may change
     `initialize`: `klass.new(...)` through `singleton(Base)` type-asserts
     for a matching `New`, failing at run time where Ruby would raise
