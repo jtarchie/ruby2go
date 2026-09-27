@@ -18,7 +18,14 @@ func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
 	case String:
 		rbStrUpto(string(b), string(any(r.e).(String)), r.excl, r.endless, func(s string) bool { return yield(any(String(s)).(E)) })
 	default:
-		panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(r.b)))))
+		if _, ok := any(r.b).(interface{ Succ() E }); !ok {
+			panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(r.b)))))
+		}
+		for x := r.b; r.endless || rbCmp(x, r.e) < 0 || (!r.excl && rbCmp(x, r.e) == 0); x = any(x).(interface{ Succ() E }).Succ() {
+			if !yield(x) {
+				return
+			}
+		}
 	}
 }
 

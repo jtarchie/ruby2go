@@ -993,3 +993,12 @@ resolve; anything not listed is still open.
     Integer `**` with a negative exponent still raises (its type is
     Integer). `Float#round(n)` takes `n > 0` only: MRI answers an Integer
     for `n <= 0` ([example 38](examples/38_rational/main.rb)).
+41. `Date` is a Julian Day Number on the proleptic Gregorian calendar
+    (MRI switches to the Julian calendar before 1582-10-15; rb2go does
+    not). It is always defined, `require "date"` or not. `Date.parse`
+    reads ISO dates, `y/m/d`, `Mar 5, 2024` and `5 March 2024`, not all
+    of MRI's heuristics; `strptime` reads date fields only. `d - d2` is a
+    Rational, `d ± n` a Date, `>>`/`<<` clamp to the month's end, and a
+    Range of Dates iterates, since Range iterates anything with `succ`.
+    `strftime`'s `%Z` prints `UTC` where MRI's Date prints `+00:00`
+    ([example 39](examples/39_date/main.rb)).
