@@ -1,5 +1,3 @@
-# skip: Symbol#inspect quotes :é, :@iv, :@@cv, :$g, :$1 and :` which MRI prints bare
-
 # rbs_inline: enabled
 
 puts :"é".inspect
@@ -8,3 +6,27 @@ puts :"@@cv".inspect
 puts :"$g".inspect
 puts :"$1".inspect
 puts :"`".inspect
+puts :"a?=".inspect
+puts :"A?".inspect
+puts :"A=".inspect
+puts :"a!=".inspect
+puts :"@1".inspect
+puts :"@a?".inspect
+puts :"@@".inspect
+puts :"@é".inspect
+puts :"$".inspect
+puts :"$-w".inspect
+puts :"$-".inspect
+puts :"$-ww".inspect
+puts :"$12".inspect
+puts :"$01".inspect
+puts :"$0".inspect
+puts :"$ab?".inspect
+puts :"$\\".inspect
+puts :"$`".inspect
+puts :"$'".inspect
+puts :"$%".inspect
+puts :"~@".inspect
+puts :"!@".inspect
+puts :"&.".inspect
+puts :"=".inspect

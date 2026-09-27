@@ -5,8 +5,8 @@
 
 %x{
   // Ruby 3.4+ prints symbol keys as labels: `a: 1`, or `"a b": 1` when the
-  // symbol is not an identifier.
-  var rbLabelSymbol = regexp.MustCompile(`^[\\p{L}_][\\p{L}\\p{N}_]*[?!]?$`)
+  // symbol is not an identifier (rbIdentRe, prelude/symbol.rb).
+  var rbLabelSymbol = regexp.MustCompile(`\\A` + rbIdentRe + `[?!]?\\z`)
 
   func rbInspectPair(k, v any) string {
     if s, ok := k.(Symbol); ok {
