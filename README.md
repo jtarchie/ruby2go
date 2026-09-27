@@ -321,8 +321,10 @@ primitive.
   runs on return and on panic, so partial output before a crash matches Ruby.
   `os.Exit` skips defers: `Kernel#exit` must flush first. Interleaving with
   `$stderr` would need `$stdout.sync`-style flushing; not handled yet.
-- **Return type `nil` → no Go return value.** `puts`'s result is never
-  meaningfully used; if it is, the call site substitutes `nil`.
+- **Return type `nil` → no Go return value.** `puts`'s result is rarely
+  used; when it is (`x || puts(...)`, `puts(...).inspect`), the call runs as
+  a statement and the value is `nil`. A block whose value is nil
+  (`map { |n| puts n }`) binds its type variable to `untyped`.
 - **`//line` directive granularity.** The panic trace mapped back to
   `prelude.rb`/`main.rb`, but to the wrong line inside `puts` — one directive
   per function isn't enough; emit one per statement.
@@ -408,8 +410,9 @@ resolve; anything not listed is still open.
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a
    `for range` loop, so `return`, `break` and `next` are plain Go. Blocks
    passed to value-returning methods (`map`, `select`, `then`, …) are Go
-   closures; `next` is `return`, and `return`/`break` inside them is a
-   compile error. The sentinel-panic fallback is not implemented.
+   closures; `next` is `return` of nil (`false` in a `bool` block), and
+   `return`/`break` inside them is a compile error. The sentinel-panic
+   fallback is not implemented.
    A method is an iterator only when the block *and* the method return
    nothing, the block is only yielded to, and nothing rescues around the
    yield (Go forbids a range function from recovering a panic raised in

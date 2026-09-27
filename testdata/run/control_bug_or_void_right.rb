@@ -1,5 +1,3 @@
-# skip: `x || puts(...)` / `cond or puts ...` with a void right side drops the call when the left is falsy
-
 # rbs_inline: enabled
 
 h = { "a" => 1 } #: Hash[String, Integer]

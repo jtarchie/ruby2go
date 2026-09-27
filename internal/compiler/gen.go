@@ -31,8 +31,9 @@ type fctx struct {
 	rbScope      string // the block path where the current Ruby scope (method or block) starts
 	blockCtr     int
 	loops        []loopKind
-	closures     int // nesting depth of Go closures (non-iterator blocks)
-	begins       int // nesting depth of rescue wrappers
+	closures     int  // nesting depth of Go closures (non-iterator blocks)
+	nextTail     tail // the innermost closure's result, for `next`
+	begins       int  // nesting depth of rescue wrappers
 	retVar       string
 	retFlag      string // set inside begin wrappers when a return must propagate
 	hasNamedRet  bool
@@ -607,7 +608,18 @@ func (f *fctx) genNext(n *parser.NextNode) {
 		if n.Arguments != nil {
 			f.errorf(n, "next with a value inside a block is not supported")
 		}
-		f.emit("return")
+		// the block's value is nil
+		switch t := f.nextTail; {
+		case t.kind == tailNone:
+			f.emit("return")
+		case t.typ == nil:
+			t.record(TNil{})
+			f.emit("return")
+		case isClass(t.typ, "Boolean"): // nil is falsy
+			f.emit("return false")
+		default:
+			f.emit("return %s", f.coerce(n, expr{code: "nil", typ: TNil{}}, t.typ))
+		}
 		return
 	}
 	if n.Arguments != nil {

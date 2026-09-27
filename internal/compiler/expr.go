@@ -559,11 +559,28 @@ func joinOrAny(ts []Type) Type {
 
 // ---- coercion
 
+// valueOf runs a nil-typed call as a statement: `-> nil` methods have no Go result (isVoid).
+func (f *fctx) valueOf(e expr) expr {
+	if !isNil(e.typ) || e.done {
+		return e
+	}
+	c := e.code
+	for strings.HasPrefix(c, "(") && strings.HasSuffix(c, ")") {
+		c = c[1 : len(c)-1]
+	}
+	if !strings.HasSuffix(c, ")") { // nil itself, or a temp holding it
+		return e
+	}
+	f.emit("%s", c)
+	return expr{code: "nil", typ: TNil{}}
+}
+
 // coerce converts e to the representation of type `to`.
 func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) && !isNil(to) {
 		return e.code
 	}
+	e = f.valueOf(e)
 	if typeEq(e.typ, to) {
 		return e.code
 	}
@@ -658,7 +675,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if n.Receiver == nil {
 		recv = expr{code: f.selfCode, typ: f.selfType}
 	} else {
-		recv = f.genExpr(n.Receiver, nil)
+		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
 	if n.Block != nil {
 		if _, ok := n.Block.(*parser.BlockNode); ok {
@@ -1173,14 +1190,17 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.loops = append(f.loops, loopClosure)
 			_, pro := f.bindBlockParams(n, names, params)
 			pro()
-			gen(tail{kind: tailReturn, types: &types})
+			f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
 			f.loops = f.loops[:len(f.loops)-1]
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
 		})
 		got := f.joinAll(n, types)
-		if got == nil {
+		if got == nil || isNil(got) {
 			got = TNil{}
+			if _, ok := sig.Ret.(TVar); ok {
+				got = TAny{} // Go has no nil type
+			}
 		}
 		if !unify(sig.Ret, got, env) {
 			f.errorf(n, "block returns %s, expected %s", got, subst(sig.Ret, env))
@@ -1206,9 +1226,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.indent++
 	pro()
 	if isVoid(ret) {
-		gen(tail{})
+		f.withNextTail(tail{}, gen)
 	} else {
-		gen(tail{kind: tailReturn, typ: ret})
+		f.withNextTail(tail{kind: tailReturn, typ: ret}, gen)
 	}
 	f.indent--
 	f.emit("}")
@@ -1219,6 +1239,14 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	code := strings.TrimSpace(b.String())
 	// re-indent: the closure is embedded in an expression on the current line
 	return code
+}
+
+// withNextTail runs gen(t) with t as the tail a bare `next` returns through.
+func (f *fctx) withNextTail(t tail, gen func(tail)) {
+	saved := f.nextTail
+	f.nextTail = t
+	gen(t)
+	f.nextTail = saved
 }
 
 // genIterCall emits `for ... range recv.Each(...) { body }` for iterator
