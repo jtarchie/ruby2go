@@ -68,7 +68,7 @@ class Float < Object
   def ceil = %x{ Integer(math.Ceil(float64(self))) }
 
   #: () -> Integer
-  def round = %x{ Integer(math.RoundToEven(float64(self))) }
+  def round = %x{ Integer(math.Round(float64(self))) }
 
   #: () -> Float
   def to_f = self
