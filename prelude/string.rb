@@ -67,6 +67,56 @@
     }
     return b.String()
   }
+
+  // rbSub replaces the first n (all if n < 0) occurrences of pat, expanding
+  // MRI's backslash sequences in rep: \\0 \\& match, \\` \\' pre/post-match,
+  // \\\\ a backslash; \\1-\\9 and \\+ are empty (a String pattern has no groups).
+  // ponytail: \\k<name> stays literal; MRI raises IndexError.
+  func rbSub(s, pat, rep string, n int) string {
+    if !strings.Contains(rep, "\\\\") {
+      return strings.Replace(s, pat, rep, n)
+    }
+    var b strings.Builder
+    done, pos := 0, 0
+    for ; n != 0; n-- {
+      i := strings.Index(s[pos:], pat)
+      if i < 0 {
+        break
+      }
+      m, e := pos+i, pos+i+len(pat)
+      b.WriteString(s[done:m])
+      for j := 0; j < len(rep); j++ {
+        if rep[j] != '\\\\' || j+1 == len(rep) {
+          b.WriteByte(rep[j])
+          continue
+        }
+        j++
+        switch rep[j] {
+        case '0', '&':
+          b.WriteString(pat)
+        case '`':
+          b.WriteString(s[:m])
+        case '\\'':
+          b.WriteString(s[e:])
+        case '\\\\':
+          b.WriteByte('\\\\')
+        case '1', '2', '3', '4', '5', '6', '7', '8', '9', '+':
+        default:
+          b.WriteString(rep[j-1 : j+1])
+        }
+      }
+      done, pos = e, e
+      if pat == "" { // step past a rune so an empty pattern matches between each
+        if pos == len(s) {
+          break
+        }
+        _, w := utf8.DecodeRuneInString(s[pos:])
+        pos += w
+      }
+    }
+    b.WriteString(s[done:])
+    return b.String()
+  }
 }
 
 # @go_type string
@@ -239,10 +289,10 @@ class String < Object
   }
 
   #: (String, String) -> String
-  def sub(from, to) = %x{ String(strings.Replace(string(self), string(from), string(to), 1)) }
+  def sub(from, to) = %x{ String(rbSub(string(self), string(from), string(to), 1)) }
 
   #: (String, String) -> String
-  def gsub(from, to) = %x{ String(strings.ReplaceAll(string(self), string(from), string(to))) }
+  def gsub(from, to) = %x{ String(rbSub(string(self), string(from), string(to), -1)) }
 
   #: (String, String) -> String
   def tr(from, to) = %x{
