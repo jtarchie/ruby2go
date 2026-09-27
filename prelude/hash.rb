@@ -210,7 +210,15 @@ class Hash < Object
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(*Hash[K, V])
-    if !ok || len(o.keys) != len(self.keys) {
+    if !ok {
+      // Another instantiation ({1 => 1} == {1 => 1.0}, typed vs untyped):
+      // compare the untyped views, whose == takes the branch below.
+      if h, ok := other.(Hash_Any); ok {
+        return self._ToAny().Eq(h._ToAny())
+      }
+      return false
+    }
+    if len(o.keys) != len(self.keys) {
       return false
     }
     for k, v := range self.vals {

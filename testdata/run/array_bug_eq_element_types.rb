@@ -1,5 +1,3 @@
-# skip: Array#== is false when the other array has a different Go element type (Float vs Integer, untyped vs typed, a literal containing [])
-
 # rbs_inline: enabled
 ints = [1, 2] #: Array[Integer]
 floats = [1.0, 2.0] #: Array[Float]

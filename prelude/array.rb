@@ -230,7 +230,15 @@ class Array < Object
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(*Array[E])
-    if !ok || len(*o) != len(*self) {
+    if !ok {
+      // Another instantiation ([1] == [1.0], typed vs untyped): compare
+      // the untyped views, whose == takes the branch below.
+      if a, ok := other.(Array_Any); ok {
+        return self._ToAny().Eq(a._ToAny())
+      }
+      return false
+    }
+    if len(*o) != len(*self) {
       return false
     }
     for i, x := range *self {
