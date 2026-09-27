@@ -362,6 +362,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	c.w("type %s struct {\n", cls.Name)
 	if cls.Super != nil && !cls.Super.universal {
 		c.w("\t%s\n", cls.Super.Name)
+	} else if len(cls.IvarList) == 0 {
+		// zero-size allocations may share an address, merging distinct instances' identity
+		c.w("\t_ byte\n")
 	}
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
