@@ -1,4 +1,4 @@
-# skip: needs string-inspect-escapes: strip now drops NUL, but inspect prints the remaining NUL as \x00; MRI prints \u0000
+# skip: blocked: by string_bug_inspect_control_chars; strip drops NUL as MRI does, but inspect prints the remaining NUL as \x00 where MRI prints \u0000
 
 # rbs_inline: enabled
 
