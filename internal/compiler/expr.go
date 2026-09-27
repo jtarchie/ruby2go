@@ -1940,9 +1940,14 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 	iv := f.c.findIvar(f.owner, n.Name)
 	if iv == nil && f.discover {
 		// first seen through ||=: it starts out nil
-		var v expr
-		f.probe(func() { v = f.genExpr(n.Value, nil) })
-		t := v.typ
+		var t Type
+		if a := f.f.trailingAnnotation(n); a != "" {
+			t = f.parseTypeAnn(n, a) // `@x ||= [] #: Array[T]` declares the ivar's type
+		} else {
+			var v expr
+			f.probe(func() { v = f.genExpr(n.Value, nil) })
+			t = v.typ
+		}
 		if !isOpt(t) && !isAny(t) && !isClass(t, "Boolean") && !isNil(t) {
 			t = TOpt{Elem: t}
 		}

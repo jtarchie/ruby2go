@@ -1,5 +1,3 @@
-# skip: a trailing `#: T` on `@x ||= []` / `@x ||= {}` is ignored, so the ivar is Array[untyped] / Hash[untyped, untyped] and go build fails "cannot use ... *Array[any] as *Array[String]"; a class-level ivar has no other way to be annotated
-
 # rbs_inline: enabled
 
 class Box
