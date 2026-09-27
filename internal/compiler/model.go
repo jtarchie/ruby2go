@@ -256,6 +256,23 @@ func (c *Class) lookup(name string) *entry {
 	return nil
 }
 
+// ancestors is c then what MRI's Module#ancestors lists after it, short of
+// Object (whose constants are the top-level ones): included modules last
+// first, each followed by its own, then the superclass's ancestors.
+// Includes not yet resolved (during link) are skipped.
+func (c *Class) ancestors() []*Class {
+	out := []*Class{c}
+	for i := len(c.Includes) - 1; i >= 0; i-- {
+		if m := c.Includes[i].Mod; m != nil {
+			out = append(out, m.ancestors()...)
+		}
+	}
+	if c.Super != nil && !c.Super.universal {
+		out = append(out, c.Super.ancestors()...)
+	}
+	return out
+}
+
 // ancestors of a struct class up to (excluding) Object, nearest first.
 func (c *Class) structChain() []*Class {
 	var out []*Class
@@ -647,8 +664,12 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 			}
 			return nil, nil
 		}
-		full := parent.RubyName + "::" + *n.Name
-		return c.classes[full], c.consts[full]
+		for _, anc := range parent.ancestors() {
+			full := anc.RubyName + "::" + *n.Name
+			if cls, k := c.classes[full], c.consts[full]; cls != nil || k != nil {
+				return cls, k
+			}
+		}
 	}
 	return nil, nil
 }
@@ -668,7 +689,7 @@ func (c *Compiler) lookupName(scope []*Class, name string) (*Class, *Const) {
 		}
 	}
 	if len(scope) > 0 {
-		for anc := scope[len(scope)-1].Super; anc != nil && !anc.universal; anc = anc.Super {
+		for _, anc := range scope[len(scope)-1].ancestors()[1:] {
 			if cls, k := find(anc.RubyName + "::" + head); cls != nil || k != nil {
 				return cls, k
 			}

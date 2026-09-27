@@ -1,5 +1,3 @@
-# skip: constants/const_get/const_defined? on a class skip the constants of its included modules (const_get raises NameError); MRI lists and finds them
-
 # rbs_inline: enabled
 
 module Config

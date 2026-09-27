@@ -563,14 +563,15 @@ func (c *Compiler) emitConst(k *Const) {
 }
 
 // constEntries lists the constants a class object answers to: its own in
-// definition order, then inherited ones (Object's are the top-level ones).
+// definition order, then those of its ancestors (Object's are the top-level
+// ones).
 func (c *Compiler) constEntries(cls *Class) []string {
 	if cls.RubyName == "Object" {
 		return c.topConstNames
 	}
 	seen := map[string]bool{}
 	var out []string
-	for k := cls; k != nil && !k.universal; k = k.Super {
+	for _, k := range cls.ancestors() {
 		for _, n := range k.constNames {
 			if !seen[n] {
 				seen[n] = true
