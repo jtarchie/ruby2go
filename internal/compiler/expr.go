@@ -76,7 +76,7 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		}
 		exp := ann
 		if exp == nil {
-			if v := f.scope.lookup(n.Name); v != nil {
+			if v := f.visibleLocal(n.Name); v != nil {
 				exp = v.typ
 			}
 		}
@@ -1204,7 +1204,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	if ret == nil {
 		var types []Type
 		f.probe(func() {
-			saved, savedRuby := f.enterRubyBlock()
+			saved, savedRuby := f.enterRubyBlock(block, names)
 			f.closures++
 			f.pushLoop(loopClosure)
 			_, pro := f.bindBlockParams(n, names, params)
@@ -1226,7 +1226,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	var b strings.Builder
 	savedBuf := f.buf
 	f.buf = &b
-	saved, savedRuby := f.enterRubyBlock()
+	saved, savedRuby := f.enterRubyBlock(block, names)
 	f.closures++
 	f.pushLoop(loopClosure)
 	goParams, pro := f.bindBlockParams(n, names, params)
@@ -1241,6 +1241,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
 	f.indent++
 	pro()
+	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
 	if isVoid(ret) {
 		gen(tail{})
 	} else {
@@ -1308,7 +1309,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		return true
 	}
 	names := f.blockParamNames(blk.Parameters)
-	saved, savedRuby := f.enterRubyBlock()
+	saved, savedRuby := f.enterRubyBlock(blk, names)
 	goParams, pro := f.bindBlockParams(n, names, yields)
 	allBlank := true
 	for _, gp := range goParams {
@@ -1324,6 +1325,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	f.indent++
 	pro()
+	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
 	f.genStmts(blk.Body, tail{})
 	f.indent--
 	f.leaveRubyBlock(saved, savedRuby)
@@ -1621,10 +1623,11 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 // blockParam declares a block parameter: a fresh local that Go syntax
 // declares, so it is never hoisted.
 func (f *fctx) blockParam(name string, typ Type) *local {
-	info := f.locals[name]
+	key := f.localKey(name)
+	info := f.locals[key]
 	if info == nil {
 		info = &localInfo{}
-		f.locals[name] = info
+		f.locals[key] = info
 	}
 	info.noHoist = true
 	v := f.declareLocal(name, typ)
@@ -1830,7 +1833,7 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
 }
 
 func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
-	if f.scope.lookup(n.Name) == nil {
+	if f.visibleLocal(n.Name) == nil {
 		// a new local starts out nil, so this is a plain assignment
 		return f.assignLocal(n, n.Name, f.genExpr(n.Value, nil), nil)
 	}
@@ -1839,7 +1842,7 @@ func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
 		return expr{code: v.goName, typ: v.typ, done: true} // narrowed: already set
 	}
 	e := f.genOrAssign(n, expr{code: v.goName, typ: v.typ}, n.Value)
-	if info := f.locals[n.Name]; info != nil {
+	if info := f.localInfo(n.Name); info != nil {
 		info.writes++
 		if !isAncestorBlock(info.declBlock, f.block) {
 			info.hoist = true
@@ -1955,7 +1958,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 func (f *fctx) targetType(n parser.Node) Type {
 	switch t := n.(type) {
 	case *parser.LocalVariableTargetNode:
-		if v := f.scope.lookup(t.Name); v != nil {
+		if v := f.visibleLocal(t.Name); v != nil {
 			if v.base != nil {
 				return v.base.typ
 			}

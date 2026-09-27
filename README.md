@@ -473,11 +473,20 @@ resolve; anything not listed is still open.
     type is an error, and an unannotated override inherits the parent's
     signature (never `untyped`).
 14. Locals are inferred from their assignments (joined across branches:
-    `nil` + `String` → `String?`) and hoisted to a `var` at the top of the
-    function when Go's block scoping would otherwise hide them. Lifted
-    temporaries for `&.`, `||`, ternaries and `case`-expressions are
-    computed before the statement they belong to, so their side effects run
-    slightly earlier than MRI would run them.
+    `nil` + `String` → `String?`) and hoisted to a `var` at the top of
+    their Ruby scope (the method, or the block's Go body) when Go's block
+    scoping would otherwise hide them. Scopes are resolved as prism does:
+    block params, `|x; y|` block locals and locals first assigned in a
+    block belong to that block, fresh on every call and typed apart from
+    same-named locals elsewhere in the method. `rescue => e` binds a local
+    of the enclosing scope, nil after the `begin` when nothing was rescued;
+    when `e` was assigned before, it keeps its one type and the clause's
+    binding shadows it instead. *(Revised: locals used to be keyed by name
+    for the whole method, so sibling blocks shared one type and block
+    locals were hoisted to the function, keeping their value across
+    iterations.)* Lifted temporaries for `&.`, `||`, ternaries and
+    `case`-expressions are computed before the statement they belong to, so
+    their side effects run slightly earlier than MRI would run them.
 15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
     or a dry run of the class's method bodies (`initialize` first); an ivar
     that is only ever assigned `nil` needs an annotation.

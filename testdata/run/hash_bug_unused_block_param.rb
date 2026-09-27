@@ -1,5 +1,3 @@
-# skip: a block param unused in one block but read in another block of the same method gets no `_ = k`; go build fails "declared and not used"
-
 # rbs_inline: enabled
 
 h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]

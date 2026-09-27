@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -25,10 +26,11 @@ type fctx struct {
 	tmp          int
 	pass         int // 0 = ivar discovery, 1 = local analysis, 2 = emit
 	discover     bool
-	locals       map[string]*localInfo
+	locals       map[localKey]*localInfo
 	scope        *scope
 	block        string
-	rbScope      string // the block path where the current Ruby scope (method or block) starts
+	rbScope      string    // the block path where the current Ruby scope (method or block) starts
+	rbFrames     []rbFrame // the Ruby blocks enclosing the current position, outermost first
 	blockCtr     int
 	loops        []*loopFrame
 	switches     int // nesting depth of emitted Go switch statements
@@ -78,6 +80,23 @@ func (f *fctx) popLoop() {
 	f.buf.WriteString(s[:l.start] + l.label + ":\n" + s[l.start:])
 }
 
+// localKey names one Ruby local: Ruby scopes are the method and each
+// block, so the same name in two blocks (or in a block and the method) is
+// two variables with their own type, hoisting and use counts.
+type localKey struct {
+	scope int // the block's source offset; methodScope for the method
+	name  string
+}
+
+const methodScope = -1
+
+// rbFrame is a Ruby block scope: the names prism puts in it (params,
+// `|x; y|` block locals, locals first assigned inside) are its own.
+type rbFrame struct {
+	key    int
+	locals []string
+}
+
 type localInfo struct {
 	declBlock string
 	declRuby  string // Ruby scope (method or block) the local belongs to
@@ -101,6 +120,15 @@ type local struct {
 	typ      Type
 	base     *local // non-nil for a narrowed view of another local
 	declared bool
+	info     *localInfo // the Ruby local this binds; nil when not tracked
+}
+
+// owner is the Ruby local v binds, looking through narrowed views.
+func (v *local) owner() *localInfo {
+	if v.base != nil {
+		return v.base.owner()
+	}
+	return v.info
 }
 
 func (s *scope) lookup(name string) *local {
@@ -145,29 +173,73 @@ func (f *fctx) enterBlock() string {
 
 // enterRubyBlock starts a Go block that is also a Ruby block (a closure or
 // an iterator's loop body): locals first assigned inside stay inside.
-func (f *fctx) enterRubyBlock() (string, string) {
+func (f *fctx) enterRubyBlock(block parser.Node, params []string) (string, string) {
 	saved := f.enterBlock()
 	savedRuby := f.rbScope
 	f.rbScope = f.block
+	fr := rbFrame{key: block.GetLocation().StartOffset, locals: params}
+	if b, ok := block.(*parser.BlockNode); ok {
+		fr.locals = append(fr.locals, b.Locals...)
+	}
+	f.rbFrames = append(f.rbFrames, fr)
 	return saved, savedRuby
 }
 
 func (f *fctx) leaveRubyBlock(saved, savedRuby string) {
+	f.rbFrames = f.rbFrames[:len(f.rbFrames)-1]
 	f.rbScope = savedRuby
 	f.leaveBlock(saved)
+}
+
+// localKey resolves name as Ruby does: to the innermost enclosing block
+// that owns it, else to the method.
+func (f *fctx) localKey(name string) localKey {
+	for i := len(f.rbFrames) - 1; i >= 0; i-- {
+		if slices.Contains(f.rbFrames[i].locals, name) {
+			return localKey{f.rbFrames[i].key, name}
+		}
+	}
+	return localKey{methodScope, name}
+}
+
+func (f *fctx) localInfo(name string) *localInfo { return f.locals[f.localKey(name)] }
+
+// visibleLocal is the Go binding of the Ruby local name in scope here,
+// skipping a same-named local of an outer Ruby scope that a block param or
+// a `|x; y|` block local shadows.
+func (f *fctx) visibleLocal(name string) *local {
+	v := f.scope.lookup(name)
+	if v != nil && v.owner() != nil && v.owner() != f.localInfo(name) {
+		return nil
+	}
+	return v
 }
 
 // sameScopeLocal finds a local assigned earlier in the same Ruby scope but
 // inside another Go block (an if branch, a begin body read from ensure):
 // Ruby locals are method- or block-scoped, not branch-scoped. It is
-// hoisted to a function-level var.
+// hoisted to a var at the top of its Ruby scope (hoistLocals).
 func (f *fctx) sameScopeLocal(name string) *local {
-	info := f.locals[name]
+	info := f.localInfo(name)
 	if info == nil || info.noHoist || info.typ == nil || info.declPass != f.pass || !isAncestorBlock(info.declRuby, f.rbScope) {
 		return nil
 	}
 	info.hoist = true
-	return &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true}
+	return &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true, info: info}
+}
+
+// hoistLocals declares, at the top of a Ruby scope's Go body, the locals
+// of that scope that sameScopeLocal found outside their Go block: a block's
+// are fresh for each call, as in Ruby.
+func (f *fctx) hoistLocals(scope int) {
+	if f.pass != 2 {
+		return
+	}
+	for _, li := range sortedLocals(f.locals) {
+		if li.scope == scope && li.hoist && !li.noHoist && li.typ != nil && !isNil(li.typ) {
+			f.emit("var %s %s", goLocalName(li.name), f.c.goType(li.typ))
+		}
+	}
 }
 
 func (f *fctx) leaveBlock(saved string) {
@@ -1044,11 +1116,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		if len(classes) > 1 {
 			bind = f.c.classes["Exception"]
 		}
-		// A fresh binding per clause: the same Ruby name may hold a
-		// different exception class in each rescue.
-		v := f.blockParam(lt.Name, TClass{C: bind})
-		f.emit("%s := r.(%s)", v.goName, f.c.goType(TClass{C: bind}))
-		f.noteUnused(v)
+		f.bindRescue(rc.Reference, lt.Name, TClass{C: bind})
 	}
 	f.genStmts(rc.Statements, t)
 	if !terminates(rc.Statements) {
@@ -1057,6 +1125,48 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+}
+
+// bindRescue binds `rescue => name`. The name is a local of the enclosing
+// method or block, nil when nothing was rescued: when it is read outside the
+// clause, the clause assigns it and narrows it to non-nil; otherwise each
+// clause gets a fresh Go binding of its own class. A local of that name
+// assigned before keeps its one type, so the clause shadows it.
+func (f *fctx) bindRescue(n parser.Node, name string, bind Type) {
+	val := expr{code: "r.(" + f.c.goType(bind) + ")", typ: bind}
+	if outer := f.visibleLocal(name); outer != nil {
+		v := &local{name: name, goName: goLocalName(name), typ: bind, declared: true, info: outer.owner()}
+		f.scope.vars[name] = v
+		f.emit("%s := %s", v.goName, val.code)
+		f.emit("_ = %s", v.goName) // the reads counted are the outer local's too
+		return
+	}
+	key := f.localKey(name)
+	info := f.locals[key]
+	if info == nil {
+		info = &localInfo{typ: TOpt{Elem: bind}}
+		f.locals[key] = info
+	}
+	if info.declPass != f.pass {
+		info.declPass, info.declBlock, info.declRuby = f.pass, f.block, f.rbScope
+	}
+	if f.pass < 2 && !info.annotated {
+		if j, ok := join(info.typ, TOpt{Elem: bind}); ok {
+			info.typ = j
+		}
+	}
+	if f.pass < 2 || !info.hoist {
+		v := &local{name: name, goName: goLocalName(name), typ: bind, declared: true, info: info}
+		f.scope.vars[name] = v
+		f.emit("%s := %s", v.goName, val.code)
+		f.noteUnused(v)
+		return
+	}
+	outer := &local{name: name, goName: goLocalName(name), typ: info.typ, declared: true, info: info}
+	f.emit("%s = %s", outer.goName, f.coerce(n, val, outer.typ))
+	if isOpt(outer.typ) {
+		f.applyNarrow([]narrowInfo{{local: outer, typ: stripOpt(outer.typ)}})
+	}
 }
 
 // terminates reports whether a statement list ends in a jump, so no Go
@@ -1077,10 +1187,11 @@ func terminates(st *parser.StatementsNode) bool {
 // ---- locals
 
 func (f *fctx) declareLocal(name string, typ Type) *local {
-	info := f.locals[name]
+	key := f.localKey(name)
+	info := f.locals[key]
 	if info == nil {
 		info = &localInfo{declBlock: f.block, declRuby: f.rbScope, typ: typ}
-		f.locals[name] = info
+		f.locals[key] = info
 	}
 	if info.declPass != f.pass {
 		info.declPass = f.pass
@@ -1100,20 +1211,20 @@ func (f *fctx) declareLocal(name string, typ Type) *local {
 	if f.pass == 2 && info.typ != nil {
 		typ = info.typ
 	}
-	v := &local{name: name, goName: goName, typ: typ}
+	v := &local{name: name, goName: goName, typ: typ, info: info}
 	f.scope.vars[name] = v
 	return v
 }
 
 func (f *fctx) noteUnused(v *local) {
-	info := f.locals[v.name]
+	info := v.owner()
 	if f.pass == 2 && info != nil && info.reads == 0 && v.goName != "_" { // `|_, v|`: Go's blank needs no use
 		f.emit("_ = %s", v.goName)
 	}
 }
 
 func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
-	v := f.scope.lookup(n.Name)
+	v := f.visibleLocal(n.Name)
 	if v == nil {
 		v = f.sameScopeLocal(n.Name)
 	}
@@ -1123,7 +1234,7 @@ func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 	if v == nil {
 		f.errorf(n, "undefined local %s", n.Name)
 	}
-	info := f.locals[n.Name]
+	info := f.localInfo(n.Name)
 	if info != nil {
 		info.reads++
 		if !isAncestorBlock(info.declBlock, f.block) {
@@ -1135,11 +1246,11 @@ func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 
 // assignLocal emits `x := v` / `x = v` and returns the local.
 func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type) expr {
-	existing := f.scope.lookup(name)
+	existing := f.visibleLocal(name)
 	if existing == nil {
 		existing = f.sameScopeLocal(name)
 	}
-	info := f.locals[name]
+	info := f.localInfo(name)
 	var typ Type
 	switch {
 	case annotated != nil:
@@ -1184,9 +1295,10 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 
 // declareAssign emits the first assignment of a local.
 func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, annotated Type) expr {
-	hoisted := f.pass == 2 && f.locals[name] != nil && f.locals[name].hoist
+	prev := f.localInfo(name)
+	hoisted := f.pass == 2 && prev != nil && prev.hoist
 	v := f.declareLocal(name, typ)
-	info := f.locals[name]
+	info := v.info
 	switch {
 	case annotated != nil:
 		info.annotated = true
@@ -1242,9 +1354,9 @@ func (f *fctx) concreteInit(val expr, code string, t Type) bool {
 // genBody runs the two-pass body generation into f.buf.
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
-	f.locals = map[string]*localInfo{}
+	f.locals = map[localKey]*localInfo{}
 	for _, p := range params {
-		f.locals[p.name] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
+		f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
 	}
 	for pass := 1; pass <= 2; pass++ {
 		f.pass = pass
@@ -1258,19 +1370,12 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		f.tmp, f.blockCtr, f.block = 0, 0, ""
 		f.scope = &scope{vars: map[string]*local{}}
 		for _, p := range params {
-			f.scope.vars[p.name] = &local{name: p.name, goName: p.goName, typ: p.typ, declared: true}
+			f.scope.vars[p.name] = &local{name: p.name, goName: p.goName, typ: p.typ, declared: true, info: f.locals[localKey{methodScope, p.name}]}
 		}
 		if prologue != nil {
 			prologue()
 		}
-		if pass == 2 {
-			for name, info := range sortedLocals(f.locals) {
-				_ = name
-				if info.hoist && !info.noHoist && info.typ != nil && !isNil(info.typ) {
-					f.emit("var %s %s", goLocalName(info.name), f.c.goType(info.typ))
-				}
-			}
-		}
+		f.hoistLocals(methodScope)
 		f.genStmts(body, t)
 	}
 	final.WriteString(f.buf.String())
@@ -1278,11 +1383,11 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 }
 
 type namedInfo struct {
-	name string
+	localKey
 	*localInfo
 }
 
-func sortedLocals(m map[string]*localInfo) []namedInfo {
+func sortedLocals(m map[localKey]*localInfo) []namedInfo {
 	out := make([]namedInfo, 0, len(m))
 	for k, v := range m {
 		out = append(out, namedInfo{k, v})

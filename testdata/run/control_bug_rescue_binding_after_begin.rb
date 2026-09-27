@@ -1,5 +1,3 @@
-# skip: a `rescue => err` binding read after the begin/end fails to compile (undefined local err); in Ruby it is a method local, nil when nothing was rescued
-
 # rbs_inline: enabled
 
 #: (bool) -> void

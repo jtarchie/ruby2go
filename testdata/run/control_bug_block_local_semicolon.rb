@@ -1,5 +1,3 @@
-# skip: block-local variables declared after `;` in the block parameters (`|v; x|`) are ignored, so assigning them overwrites the outer local of the same name
-
 # rbs_inline: enabled
 
 x = 5

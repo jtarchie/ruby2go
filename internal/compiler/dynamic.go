@@ -165,7 +165,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	}
 	f := c.newFctx(file, cls, nil)
 	f.lex = m.Scope
-	f.locals = map[string]*localInfo{}
+	f.locals = map[localKey]*localInfo{}
 	f.scope = &scope{vars: map[string]*local{}}
 	f.pass = 2
 	f.indent = 1
