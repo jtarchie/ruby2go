@@ -106,10 +106,6 @@ puts h.count { |_k, v| v > 0 }
 # error: main.rb:3: any? requires a block
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h.any?
--- first_without_count.rb --
-# error: main.rb:3: Enumerable#first: wrong number of arguments (given 0, expected 1)
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.first.inspect
 -- reduce_without_init.rb --
 # error: main.rb:3: Enumerable#reduce: wrong number of arguments (given 0, expected 1)
 h = { "a" => 1 } #: Hash[String, Integer]

@@ -607,6 +607,12 @@ resolve; anything not listed is still open.
     (`total = 0; total += 1.5`), so its later arithmetic is dynamic, and
     dynamic wrappers widen the same way. A Float where an Integer is
     expected is a compile error, not Go's silent constant truncation.
+    *Revised:* overloads by convention. A call with an argument count the
+    method cannot take goes to the receiver class's `__<name>_<count>`, and
+    one whose sole argument is a `Range` to `__<name>_range` (`[]` is spelt
+    `aref`), when defined. So `arr.first` (`E?`), `arr.last(2)`,
+    `arr[1, 2]`, `arr[1..]` and `str[0...-1]` work; everything else still
+    takes one signature.
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's
@@ -949,3 +955,15 @@ resolve; anything not listed is still open.
     of an inferred method takes the parent's inferred type. Parameter
     types are never inferred: that would make a method's type depend on
     its callers ([example 34](examples/34_inferred_returns/main.rb)).
+37. `Range[E]` is a struct `{b, e E; excl, endless bool}` handled as a
+    pointer; `a..b`, `a...b` and `a..` build it inline (generic classes
+    have no class methods, so there is no `Range.new`). Beginless ranges
+    are a compile error. Iteration (`each`, `step`, `to_a`, Enumerable)
+    needs `Integer` or `String` (MRI's `String#succ`, without its
+    all-digits mode); other `E` only compare (`cover?`, `include?`, `===`
+    in `case/when`). `sum` and `size` are arithmetic, and `size` of an
+    endless range raises (no Infinity), as does `last`; its `end` is
+    `E`'s zero value, not nil
+    ([example 36](examples/36_ranges/main.rb)).
+38. `Kernel#p` prints each argument's `inspect` and returns nil, not its
+    argument (that would need the argument's type as its return type).

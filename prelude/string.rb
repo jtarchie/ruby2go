@@ -124,6 +124,27 @@ class String < Object
     return Ref(String(r[i]))
   }
 
+  #: (Range[Integer]) -> String?
+  def __aref_range(r)
+    s = r.__slice(length)
+    return nil unless s
+    __aref_2(s[0], s[1])
+  end
+
+  #: (Integer, Integer) -> String?
+  def __aref_2(start, count) = %x{
+    r := []rune(string(self))
+    n := Integer(len(r))
+    if start < 0 {
+      start += n
+    }
+    if start < 0 || start > n || count < 0 {
+      return nil
+    }
+    end := min(start+count, n)
+    return Ref(rbNewStr(self, String(r[start:end])))
+  }
+
   #: () -> Array[String]
   def chars = %x{
     out := &Array[String]{}

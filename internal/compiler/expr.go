@@ -142,6 +142,8 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genConstRead(n)
 	case *parser.RescueModifierNode:
 		return f.genRescueModifier(n, expected)
+	case *parser.RangeNode:
+		return f.genRange(n, expected)
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
@@ -1366,10 +1368,43 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 	return m.Owner.lookup("__fetch_opt")
 }
 
+// overload stands in for RBS overloads (decision 12): a call whose argument
+// count m cannot take goes to the receiver class's `__<name>_<count>`, and
+// one whose sole argument is a Range to `__<name>_range`, if defined.
+func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
+	m := e.M
+	owner := m.Owner
+	if rc, ok := recvT.(TClass); ok {
+		owner = rc.C
+	}
+	if owner == nil || strings.HasPrefix(m.Name, "__") {
+		return nil
+	}
+	name := "__" + map[string]string{"[]": "aref", "[]=": "aset"}[m.Name]
+	if name == "__" {
+		name += strings.TrimRight(m.Name, "?!")
+	}
+	if r := owner.lookup(name + "_range"); r != nil && len(args) == 1 {
+		var a expr
+		f.probe(func() { a = f.genExpr(args[0], nil) })
+		if isClass(a.typ, "Range") {
+			return r
+		}
+	}
+	rest := slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest })
+	if len(args) >= requiredArgs(m) && (rest || len(args) <= len(m.Params)) {
+		return nil
+	}
+	return owner.lookup(name + "_" + strconv.Itoa(len(args)))
+}
+
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
 	f.c.inferRet(m)
 	if o := f.nilableFetch(m, args, block); o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
+	if o := f.overload(e, recv.typ, args); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
 	env := map[string]Type{}
@@ -3216,4 +3251,50 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.indent--
 	f.emit("}()")
 	return expr{code: tmp, typ: typ}
+}
+
+// genRange builds a Range literal directly: generic classes have no class methods.
+func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
+	if n.Left == nil {
+		f.errorf(n, "beginless ranges are not supported")
+	}
+	var want Type
+	if et, ok := expected.(TClass); ok && et.C.RubyName == "Range" && len(et.Args) == 1 {
+		want = et.Args[0]
+	}
+	parts := []parser.Node{n.Left}
+	if n.Right != nil {
+		parts = append(parts, n.Right)
+	}
+	var types []Type
+	f.probe(func() {
+		for _, p := range parts {
+			types = append(types, f.genExpr(p, want).typ)
+		}
+	})
+	elem := want
+	if elem == nil {
+		elem = f.joinAll(n, types)
+	}
+	t := TClass{C: f.c.classes["Range"], Args: []Type{elem}}
+	code := "(&" + strings.TrimPrefix(f.c.goType(t), "*") + "{b: " + f.coerce(n.Left, f.genExpr(n.Left, elem), elem)
+	if n.Right != nil {
+		code += ", e: " + f.coerce(n.Right, f.genExpr(n.Right, elem), elem)
+	} else {
+		code += ", endless: true"
+	}
+	if n.IsEXCLUDE_END() {
+		code += ", excl: true"
+	}
+	return expr{code: code + "})", typ: t}
+}
+
+func requiredArgs(m *Method) int {
+	n := 0
+	for _, p := range m.Params {
+		if !p.Rest && p.Default == nil {
+			n++
+		}
+	}
+	return n
 }

@@ -92,10 +92,6 @@ puts "%05d" % 42
 # error: main.rb:3: undefined method format for Object
 # rbs_inline: enabled
 puts format("%05d", 42)
--- kernel_p.rb --
-# error: main.rb:3: undefined method p for Object
-# rbs_inline: enabled
-p "x"
 -- stdout_global.rb --
 # error: main.rb:3: unsupported syntax: GlobalVariableReadNode
 # rbs_inline: enabled
@@ -116,14 +112,6 @@ puts :upcase.to_proc
 # error: main.rb:3: String#center: wrong number of arguments (given 2, expected 1)
 # rbs_inline: enabled
 puts "a".center(5, "*")
--- index_two_args.rb --
-# error: main.rb:3: String#[]: wrong number of arguments (given 2, expected 1)
-# rbs_inline: enabled
-puts "abc"[0, 2]
--- index_range.rb --
-# error: main.rb:3: unsupported syntax: RangeNode
-# rbs_inline: enabled
-puts "abc"[0..1]
 -- index_offset.rb --
 # error: main.rb:3: String#index: wrong number of arguments (given 2, expected 1)
 # rbs_inline: enabled

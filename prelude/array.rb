@@ -55,6 +55,31 @@ class Array < Object
     return &(*self)[i]
   }
 
+  #: (Range[Integer]) -> Array[E]?
+  def __aref_range(r)
+    s = r.__slice(size)
+    return nil unless s
+    __aref_2(s[0], s[1])
+  end
+
+  #: (Integer, Integer) -> Array[E]?
+  def __aref_2(start, count) = %x{
+    n := Integer(len(*self))
+    if start < 0 {
+      start += n
+    }
+    if start < 0 || start > n || count < 0 {
+      return nil
+    }
+    end := min(start+count, n)
+    out := make(Array[E], end-start)
+    copy(out, (*self)[start:end])
+    return Ref(&out)
+  }
+
+  #: (Range[Integer]) -> Array[E]?
+  def slice(r) = self[r]
+
   #: (Integer, E) -> E
   def []=(i, v)
     %x{
@@ -143,6 +168,12 @@ class Array < Object
 
   #: () -> E?
   def last = self[-1]
+
+  #: (Integer) -> Array[E]
+  def __last_1(n)
+    raise ArgumentError, "negative array size" if n < 0
+    self[[size - n, 0].max.to_i, n] || []
+  end
 
   #: () -> Array[E]
   def reverse = %x{

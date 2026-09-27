@@ -49,18 +49,6 @@ puts nums.map.inspect
 # error: main.rb:3: size does not take a block
 nums = [1, 2] #: Array[Integer]
 puts nums.size { |n| n }
--- first_without_count.rb --
-# error: main.rb:3: Enumerable#first: wrong number of arguments (given 0, expected 1)
-nums = [1, 2] #: Array[Integer]
-puts nums.first.inspect
--- index_with_length.rb --
-# error: main.rb:3: Array#[]: wrong number of arguments (given 2, expected 1)
-nums = [1, 2, 3] #: Array[Integer]
-puts nums[0, 2].inspect
--- index_with_range.rb --
-# error: main.rb:3: unsupported syntax: RangeNode
-nums = [1, 2, 3] #: Array[Integer]
-puts nums[0..1].inspect
 -- index_op_assign.rb --
 # error: main.rb:3: unsupported syntax: IndexOperatorWriteNode
 nums = [1, 2] #: Array[Integer]

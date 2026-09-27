@@ -135,6 +135,12 @@ module Enumerable
   end
 
   # first's message varies by class (Array overrides it), take's does not.
+  #: () -> E?
+  def __first_0
+    each { |x| return x }
+    nil
+  end
+
   #: (Integer) -> Array[E]
   def take(n)
     raise ArgumentError, "attempt to take negative size" if n < 0
