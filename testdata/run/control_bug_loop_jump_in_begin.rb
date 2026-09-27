@@ -1,5 +1,3 @@
-# skip: `next`/`break` inside a begin/rescue/ensure body within a loop become Go continue/break inside the rescue func literal, so go build fails (continue is not in a loop)
-
 # rbs_inline: enabled
 
 i = 0

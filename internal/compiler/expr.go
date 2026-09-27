@@ -1365,7 +1365,9 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 	}
 	if f.iterator {
 		f.emit("if !yield(%s) {", strings.Join(codes, ", "))
-		f.emit("\treturn")
+		f.indent++
+		f.emitReturn()
+		f.indent--
 		f.emit("}")
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}

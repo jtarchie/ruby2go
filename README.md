@@ -257,7 +257,9 @@ a design driver.
   `StandardError`s). Wrap Go runtime errors into prelude exception types in the
   recover path.
 - **`ensure`** → outer `defer`; LIFO gives rescue-then-ensure. `return` inside
-  `rescue` needs a named result.
+  `rescue` needs a named result. Go's `return`/`break`/`continue` stop at the
+  `func(){}` wrapper, so a `return`, `break`, `next` (or an iterator's stopped
+  `yield`) that leaves it sets the wrapper's flag and is re-issued after the call.
 - **Not shown:** `retry`, bare `raise` re-raise, `backtrace`, `rescue` in
   blocks. `retry` → loop around the `func(){}` wrapper.
 
@@ -597,12 +599,12 @@ resolve; anything not listed is still open.
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
     cycles. Blocks cannot cross a dynamic call.
-33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
-    `ensure` discards the pending exception; `&&`/`||` return values of
-    any types (unions become `untyped`) and evaluate the right side only
-    when Ruby would; locals first assigned in a branch or `begin` body are
-    visible after it (Ruby scopes are methods and blocks); `rescue` and
-    `ensure` are generated after the body; `untyped` in a `bool` position
-    is truthiness.
+33. Ruby semantics for looser code: `expr rescue fallback`; `return`,
+    `break` or `next` in `ensure` discards the pending exception;
+    `&&`/`||` return values of any types (unions become `untyped`) and
+    evaluate the right side only when Ruby would; locals first assigned
+    in a branch or `begin` body are visible after it (Ruby scopes are
+    methods and blocks); `rescue` and `ensure` are generated after the
+    body; `untyped` in a `bool` position is truthiness.
 34. `Hash#inspect` prints symbol keys as labels (`{a: 1, "a b": 2}`), as
     Ruby 3.4 does.

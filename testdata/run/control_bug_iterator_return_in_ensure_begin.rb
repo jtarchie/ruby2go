@@ -1,5 +1,3 @@
-# skip: in an iterator method (yields, compiles to iter.Seq), a `return` or a caller's `break` passing through a yield inside begin/ensure only leaves the begin's Go func literal, so the loop keeps going ("got 2", "loop done"; after a break Go panics: range function continued iteration, exit 1)
-
 # rbs_inline: enabled
 
 #: (Integer) { (Integer) -> void } -> void

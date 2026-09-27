@@ -38,7 +38,7 @@ type fctx struct {
 	closures     int // nesting depth of Go closures (non-iterator blocks)
 	begins       int // nesting depth of rescue wrappers
 	retVar       string
-	retFlag      string // set inside begin wrappers when a return must propagate
+	wrap         *wrapFrame // the innermost begin wrapper
 	hasNamedRet  bool
 }
 
@@ -54,6 +54,7 @@ const (
 type loopFrame struct {
 	kind     loopKind
 	switches int    // f.switches when the loop was entered
+	begins   int    // f.begins when the loop was entered
 	start    int    // where the label goes
 	label    string // set by the first `break` that needs it
 }
@@ -65,7 +66,44 @@ func (f *fctx) pushLoop(kind loopKind) {
 	if i := strings.LastIndexByte(strings.TrimSuffix(s, "\n"), '\n') + 1; strings.HasPrefix(s[i:], "//line ") {
 		start = i
 	}
-	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, start: start})
+	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, start: start})
+}
+
+// jumpKind is how a jump left a begin wrapper's func literal. Go's
+// return/break/continue stop at the func literal, so the wrapper records
+// the jump in its flag and the jump is re-issued after the call.
+type jumpKind int
+
+const (
+	jumpReturn jumpKind = iota + 1
+	jumpBreak
+	jumpNext
+)
+
+type wrapFrame struct {
+	flag    string
+	used    [jumpNext + 1]bool
+	endsRet bool // the call is followed by the function's return
+}
+
+// leaveWrapper jumps out of the innermost begin wrapper.
+func (f *fctx) leaveWrapper(k jumpKind) {
+	if k == jumpReturn && f.wrap.endsRet {
+		f.emit("return")
+		return
+	}
+	f.wrap.used[k] = true
+	f.emit("%s = %d", f.wrap.flag, k)
+	f.emit("return")
+}
+
+// emitReturn leaves the method once its value (if any) is in place.
+func (f *fctx) emitReturn() {
+	if f.begins > 0 {
+		f.leaveWrapper(jumpReturn)
+		return
+	}
+	f.emit("return")
 }
 
 // popLoop inserts the label only once a break used it: Go rejects unused labels.
@@ -684,21 +722,11 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		e = f.genExpr(n.Arguments.Arguments[0], f.ret)
 		hasVal = true
 	}
-	if f.iterator {
+	if f.iterator || isVoid(f.ret) || f.ret == nil {
 		if hasVal {
 			f.emitExprStmt(n.Arguments.Arguments[0], e)
 		}
-		f.emit("return")
-		return
-	}
-	if isVoid(f.ret) || f.ret == nil {
-		if hasVal {
-			f.emitExprStmt(n.Arguments.Arguments[0], e)
-		}
-		if f.begins > 0 && f.retFlag != "" {
-			f.emit("%s = true", f.retFlag)
-		}
-		f.emit("return")
+		f.emitReturn()
 		return
 	}
 	if !hasVal {
@@ -706,10 +734,7 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 	}
 	if f.begins > 0 {
 		f.emit("%s = %s", f.retVar, f.coerce(n, e, f.ret))
-		if f.retFlag != "" {
-			f.emit("%s = true", f.retFlag)
-		}
-		f.emit("return")
+		f.leaveWrapper(jumpReturn)
 		return
 	}
 	f.emit("return %s", f.coerce(n, e, f.ret))
@@ -726,6 +751,14 @@ func (f *fctx) genBreak(n *parser.BreakNode) {
 	if l.kind == loopClosure {
 		f.errorf(n, "break inside a non-iterator block is not supported")
 	}
+	f.emitBreak(l)
+}
+
+func (f *fctx) emitBreak(l *loopFrame) {
+	if f.begins > l.begins {
+		f.leaveWrapper(jumpBreak)
+		return
+	}
 	if f.switches > l.switches {
 		if l.label == "" {
 			f.labels++
@@ -741,17 +774,25 @@ func (f *fctx) genNext(n *parser.NextNode) {
 	if len(f.loops) == 0 {
 		f.errorf(n, "next outside a loop")
 	}
-	if f.loops[len(f.loops)-1].kind == loopClosure {
-		if n.Arguments != nil {
+	l := f.loops[len(f.loops)-1]
+	if n.Arguments != nil {
+		if l.kind == loopClosure {
 			f.errorf(n, "next with a value inside a block is not supported")
 		}
-		f.emit("return")
-		return
-	}
-	if n.Arguments != nil {
 		f.errorf(n, "next with a value is not supported")
 	}
-	f.emit("continue")
+	f.emitNext(l)
+}
+
+func (f *fctx) emitNext(l *loopFrame) {
+	switch {
+	case f.begins > l.begins:
+		f.leaveWrapper(jumpNext)
+	case l.kind == loopClosure:
+		f.emit("return")
+	default:
+		f.emit("continue")
+	}
 }
 
 // ---- case/when
@@ -916,18 +957,18 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 
 // ---- begin/rescue/ensure
 
-func containsReturn(n parser.Node) bool {
-	if n == nil {
+// containsJump reports a return, break or next anywhere under n.
+func containsJump(n parser.Node) bool {
+	switch n.(type) {
+	case nil:
 		return false
-	}
-	if _, ok := n.(*parser.ReturnNode); ok {
+	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
 		return true
-	}
-	if _, ok := n.(*parser.DefNode); ok {
+	case *parser.DefNode:
 		return false
 	}
 	for _, ch := range n.CompactChildNodes() {
-		if containsReturn(ch) {
+		if containsJump(ch) {
 			return true
 		}
 	}
@@ -1001,18 +1042,46 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 		// rescue's values are discarded, as in Ruby
 		inner = tail{}
 	}
-	needFlag := containsReturn(n.Statements) || (n.RescueClause != nil && containsReturn(n.RescueClause))
-	flag := ""
-	if needFlag && t.kind != tailReturn {
-		flag = f.newTmp()
-		f.emit("%s := false", flag)
+	w := &wrapFrame{flag: f.newTmp(), endsRet: t.kind == tailReturn && t.typ != nil && f.begins == 0}
+	call := f.capture(func() { f.genWrapper(n, inner, w) })
+	if slices.Contains(w.used[:], true) {
+		f.emit("%s := 0", w.flag)
 	}
+	f.buf.WriteString(call)
+	for k, used := range w.used {
+		if used {
+			f.emit("if %s == %d {", w.flag, k)
+			f.indent++
+			f.reissue(jumpKind(k))
+			f.indent--
+			f.emit("}")
+		}
+	}
+	if w.endsRet {
+		f.emit("return") // the value is already in the named result
+	}
+}
+
+// reissue repeats, after a begin wrapper's call, the jump that left it.
+func (f *fctx) reissue(k jumpKind) {
+	switch k {
+	case jumpReturn:
+		f.emitReturn()
+	case jumpBreak:
+		f.emitBreak(f.loops[len(f.loops)-1])
+	case jumpNext:
+		f.emitNext(f.loops[len(f.loops)-1])
+	}
+}
+
+// genWrapper emits a begin/rescue/ensure as a called func literal.
+func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 	f.emit("func() {")
 	saved := f.enterBlock()
 	f.indent++
 	f.begins++
-	savedFlag := f.retFlag
-	f.retFlag = flag
+	savedWrap := f.wrap
+	f.wrap = w
 	// Generate in Ruby's order (body, rescue, ensure) so locals assigned in
 	// the body are known to rescue and ensure; emit in Go's order, since
 	// the defers must be registered before the body runs.
@@ -1047,13 +1116,13 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 			f.emit("defer func() {")
 			saved := f.enterBlock()
 			f.indent++
-			// `return` in ensure discards a pending exception, as in Ruby:
+			// A jump in ensure discards a pending exception, as in Ruby:
 			// hold it, and re-raise only if the ensure body falls through.
 			pending := ""
 			switch {
 			case terminates(n.EnsureClause.Statements):
-				f.emit("_ = recover()") // it always returns: the exception is dropped
-			case containsReturn(n.EnsureClause):
+				f.emit("_ = recover()") // it always jumps: the exception is dropped
+			case containsJump(n.EnsureClause):
 				pending = f.newTmp()
 				f.emit("%s := recover()", pending)
 			}
@@ -1072,20 +1141,10 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 	f.buf.WriteString(rescue)
 	f.buf.WriteString(body)
 	f.begins--
-	f.retFlag = savedFlag
+	f.wrap = savedWrap
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}()")
-	if t.kind == tailReturn && t.typ != nil && f.begins == 0 {
-		f.emit("return") // the value is already in the named result
-	} else if flag != "" {
-		f.emit("if %s {", flag)
-		if f.begins > 0 && f.retFlag != "" {
-			f.emit("\t%s = true", f.retFlag)
-		}
-		f.emit("\treturn")
-		f.emit("}")
-	}
 }
 
 func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
