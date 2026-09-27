@@ -327,6 +327,6 @@ func (c *Compiler) emitClassOf() {
 			c.w("\tcase %s:\n\t\treturn v._ClassOf().(ClassI)\n", c.goType(TClass{C: cls}))
 		}
 	}
-	// ponytail: generic struct classes and tuples fall to NoMethodError; give them an _Any interface to switch on
+	// ponytail: generic struct classes fall to NoMethodError; give them an _Any interface to switch on
 	c.w("\t}\n\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
 }

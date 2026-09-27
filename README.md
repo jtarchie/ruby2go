@@ -537,9 +537,21 @@ resolve; anything not listed is still open.
     modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
     class that might have a subclass including it, is a compile error.
     Narrowing an untyped local to `Array` views it as `Array[untyped]`.
-22. Unannotated literals infer by joining their parts; when parts share
-    no type the element type is `untyped`. A 2–3 element mixed array with
-    nothing expected of it is a tuple (sort keys, multiple returns).
+22. Unannotated literals infer by joining their parts; when parts share no
+    type the element type is `untyped`. A 2–3 element mixed array with
+    nothing expected of it is a tuple (sort keys, multiple returns). A
+    literal nested in one that `untyped` is expected of is untyped-expected
+    too, so it is an Array. A tuple that reaches `untyped` is converted to
+    an `Array[untyped]` copy, so untyped code sees an Array (`is_a?`, `when
+    Array`, `puts`, `==`, dynamic calls); writes to the copy are not seen by
+    the tuple, and like any Array it keys a Hash by identity (a tuple key
+    used to compare by value). A tuple still inside a typed container
+    answers as an Array to `is_a?`/`when`/`.class` but not to dynamic calls.
+    The way back is checked: a dynamic call converts an Array of the right
+    size and element types into a tuple parameter, else raises `TypeError`;
+    no other untyped value converts to a tuple. *(Revised: tuples used to
+    reach untyped as Go structs, so `is_a?(Array)` was false and `puts`
+    printed their inspect.)*
 23. Symbols are a named Go string distinct from `String`. `f(a: 1)` on a
     method without keyword parameters passes a Hash, as Ruby 3 does;
     keyword parameters themselves are not supported.

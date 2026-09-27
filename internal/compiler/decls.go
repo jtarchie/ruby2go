@@ -472,17 +472,19 @@ func (c *Compiler) emitTuples() {
 		tps := make([]string, 0, n)
 		fields := make([]string, 0, n)
 		cmp := make([]string, 0, n)
-		tos := make([]string, 0, n)
+		vals := make([]string, 0, n)
 		insp := make([]string, 0, n)
 		eq := make([]string, 0, n)
+		from := make([]string, 0, n)
 		for i := range n {
 			p := fmt.Sprintf("T%d", i)
 			tps = append(tps, p)
 			fields = append(fields, fmt.Sprintf("F%d %s", i, p))
 			cmp = append(cmp, fmt.Sprintf("if c := rbCmp(t.F%d, o.F%d); c != 0 {\n\t\treturn c\n\t}", i, i))
-			tos = append(tos, fmt.Sprintf("rbInspect(t.F%d)", i))
+			vals = append(vals, fmt.Sprintf("t.F%d", i))
 			insp = append(insp, fmt.Sprintf("rbInspect(t.F%d)", i))
 			eq = append(eq, fmt.Sprintf("rbEq(t.F%d, o2.F%d)", i, i))
+			from = append(from, fmt.Sprintf("\tif t.F%d, ok = s[%d].(T%d); !ok {\n\t\treturn t, false\n\t}", i, i, i))
 		}
 		name := fmt.Sprintf("Tuple%d", n)
 		c.w("type %s[%s comparable] struct {\n\t%s\n}\n\n", name, strings.Join(tps, ", "), strings.Join(fields, "\n\t"))
@@ -495,8 +497,11 @@ func (c *Compiler) emitTuples() {
 			json = append(json, fmt.Sprintf("rbToJson(t.F%d)", i))
 		}
 		c.w("func (t %s) ToJson(...any) String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(json, ` + "," + `))
-		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
-		_ = tos
+		// a tuple that reaches untyped answers as an Array (decision 22)
+		c.w("func (t %s) _ToAny() *Array[any] { return &Array[any]{%s} }\n\n", full, strings.Join(vals, ", "))
+		// and converts back where a dynamic call's parameter is a tuple (rbArg)
+		c.w("func (%s) _FromAny(a any) (t %s, ok bool) {\n\tarr, ok := a.(Array_Any)\n\tif !ok {\n\t\treturn t, false\n\t}\n\ts := *arr._ToAny()\n\tif len(s) != %d {\n\t\treturn t, false\n\t}\n%s\n\treturn t, true\n}\n\n", full, full, n, strings.Join(from, "\n"))
+		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 	}
 }
 
@@ -622,7 +627,7 @@ func (c *Compiler) emitConstTable(cls *Class) {
 // emitRubyNames maps Go type names back to Ruby constant paths for the
 // classes whose names differ (namespaced ones), for messages and #inspect.
 func (c *Compiler) emitRubyNames() {
-	c.w("var rbRubyNames = map[string]string{\n")
+	c.w("var rbRubyNames = map[string]string{\n\t\"Tuple2\": \"Array\",\n\t\"Tuple3\": \"Array\",\n")
 	for _, cls := range c.classList {
 		if cls.Name != cls.RubyName {
 			c.w("\t%q: %q,\n", cls.Name, cls.RubyName)

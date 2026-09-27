@@ -449,12 +449,16 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	if ec, ok := expected.(TClass); ok && ec.C.Name == "Array" {
 		elemT = ec.Args[0]
 	}
+	hint := elemT
+	if isAny(expected) {
+		hint = TAny{} // a nested literal is untyped-expected too: an Array, not a tuple
+	}
 	elems := make([]expr, len(n.Elements))
 	for i, el := range n.Elements {
 		if _, ok := el.(*parser.SplatNode); ok {
 			f.errorf(el, "splat inside array literals is not supported")
 		}
-		elems[i] = f.genExpr(el, elemT)
+		elems[i] = f.genExpr(el, hint)
 	}
 	if elemT == nil {
 		elemT = inferElemType(elems)
@@ -588,6 +592,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 			return "Opt(" + e.code + ")"
 		case e.lit:
 			return f.c.goType(e.typ) + "(" + e.code + ")"
+		}
+		if _, ok := e.typ.(TTuple); ok {
+			return e.code + "._ToAny()" // untyped code sees an Array (decision 22)
 		}
 		return e.code
 	case TOpt:
@@ -1646,7 +1653,11 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: recv.code + ".Cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "==":
 		a := f.genExpr(args[0], nil)
-		return expr{code: recv.code + ".Eq(" + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
+		code := a.code // the same tuple type compares field-wise, without converting
+		if !typeEq(a.typ, recv.typ) {
+			code = f.coerce(args[0], a, TAny{})
+		}
+		return expr{code: recv.code + ".Eq(" + code + ")", typ: f.cls("Boolean")}
 	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}

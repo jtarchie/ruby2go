@@ -1,5 +1,3 @@
-# skip: a tuple that reaches untyped stays a Tuple2 struct, not an Array: is_a?(Array)/when Array are false, puts prints its inspect, == with an equal Array is false, and nested mixed literals under an untyped expectation become tuples
-
 # rbs_inline: enabled
 #: (untyped) -> bool
 def arr?(x) = x.is_a?(Array)
