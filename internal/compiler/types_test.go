@@ -168,7 +168,7 @@ func TestJoin(t *testing.T) {
 		{"only Object in common", D, cl(w.unrelated), nil, ""},
 		{"unrelated primitives", I, S, nil, ""},
 		{"Integer and Float mix untyped", I, cl(w.float), TAny{}, ""}, // decision 12, revised
-		{"Integer? and Float", opt(I), cl(w.float), nil, ""},
+		{"Integer? and Float", opt(I), cl(w.float), TAny{}, ""}, // T? joins T, then untyped absorbs the nil
 		{"different type args", cl(w.array, I), cl(w.array, S), nil, ""},
 		{"T? U", opt(S), I, nil, ""},
 		{"T? U?", opt(S), opt(I), nil, ""},

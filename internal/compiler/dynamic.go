@@ -21,7 +21,7 @@ import (
 // generating a wrapper may ask for more (a default argument calling
 // something dynamically), so this runs to a fixed point.
 func (c *Compiler) emitDynamic() {
-	c.noteDyn("<=>") // rbCmp falls back to DynCmp, and which instantiations see untyped values is unknown here
+	c.noteDyn("<=>") // rbCmp falls back to DynOp_cmp, and which instantiations see untyped values is unknown here
 	if c.dynAll {
 		for _, name := range c.allMethodNames() {
 			c.noteDyn(name)
@@ -248,7 +248,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	}
 	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
 		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
-			f.emit("if _, ok := rbAs[%s](args[0]); !ok {", c.goType(t))
+			f.emit("if _, ok := rbConv[%s](args[0]); !ok {", c.goType(t))
 			f.emit("\treturn nil")
 			f.emit("}")
 		}
@@ -318,7 +318,10 @@ func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 			args[i] = fmt.Sprintf("args[%d]", i)
 		}
 		ret = f.rbNumCall(nil, m, "self", args).code
-	case isClass(env["Self"], "Integer") && c.dynEntry(c.classes["Float"], m.Name) != nil:
+	case isClass(env["Self"], "Integer"):
+		if fe, private := c.dynEntry(c.classes["Float"], m.Name); fe == nil || private {
+			return
+		}
 		ret = "Float(self).Dyn" + goMethodName(m.Name) + "(args...)"
 	default:
 		return

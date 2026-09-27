@@ -880,9 +880,7 @@ func (c *Compiler) link() {
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
 			c.resolveMethod(m)
-			if r, ok := m.Ret.(TOpt); ok && m.Name == "<=>" && isClass(r.Elem, "Integer") {
-				m.GoName = "cmpNil" // Cmp is the Integer one Comparable and rbCmp call (emitCmpAdapter)
-			}
+			nameCmpNil(m)
 		}
 	}
 	for _, m := range c.topDefList {
@@ -1158,6 +1156,14 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	}
 	c.errorf(sc.file, nil, "%s:%d: unsupported type %s", sc.file.Name, sc.line, t)
 	return nil
+}
+
+// nameCmpNil gives a `<=>` returning Integer? the Go name cmpNil: Op_cmp is
+// the Integer one Comparable and rbCmp call (emitCmpAdapter).
+func nameCmpNil(m *Method) {
+	if r, ok := m.Ret.(TOpt); ok && m.Name == "<=>" && isClass(r.Elem, "Integer") {
+		m.GoName = "cmpNil"
+	}
 }
 
 func (c *Compiler) resolveMethod(m *Method) {

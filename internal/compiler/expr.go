@@ -1018,10 +1018,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
-		if r, ok := f.numericMix(n, recv, e, args, block); ok {
-			return r
-		}
-		return f.callEntry(n, e, recv, args, block)
+		return f.numericMix(n, recv, e, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
 			if e := f.owner.lookup(name); e != nil {
@@ -1065,15 +1062,16 @@ func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, arg
 // operators widen the Integer side to Float (still typed and unboxed), and
 // Comparable's methods run on rbNum, since clamp hands back the winning
 // argument itself. Arguments are generated once and passed on as exprNodes.
-func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) (expr, bool) {
+// Any other call is plain callEntry.
+func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) expr {
 	m := e.M
 	if !isNumeric(recv.typ) || block != nil || len(args) == 0 || len(args) != len(m.Params) {
-		return expr{}, false
+		return f.callEntry(n, e, recv, args, block)
 	}
 	self := map[string]Type{"Self": recv.typ}
 	for i, p := range m.Params {
 		if _, splat := args[i].(*parser.SplatNode); splat || p.Rest || !isNumeric(subst(p.Type, self)) {
-			return expr{}, false
+			return f.callEntry(n, e, recv, args, block)
 		}
 	}
 	xs := make([]expr, len(args))
@@ -1086,14 +1084,14 @@ func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node
 		nodes[i] = &exprNode{Node: a, e: xs[i]}
 	}
 	if !mixed {
-		return f.callEntry(n, e, recv, nodes, nil), true
+		return f.callEntry(n, e, recv, nodes, nil)
 	}
 	if m.Owner == f.c.classes["Comparable"] {
 		codes := make([]string, len(xs))
 		for i, x := range xs {
 			codes[i] = f.coerce(args[i], x, TAny{})
 		}
-		return f.rbNumCall(n, m, f.coerce(n, recv, TAny{}), codes), true
+		return f.rbNumCall(n, m, f.coerce(n, recv, TAny{}), codes)
 	}
 	fe := f.c.classes["Float"].lookup(m.Name)
 	if fe == nil || len(fe.M.Params) != len(args) {
@@ -1108,7 +1106,7 @@ func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node
 	for i, x := range xs {
 		nodes[i] = &exprNode{Node: args[i], e: widen(x)}
 	}
-	return f.callEntry(n, fe, widen(recv), nodes, nil), true
+	return f.callEntry(n, fe, widen(recv), nodes, nil)
 }
 
 // rbNumCall calls Comparable method m with Self = rbNum, one Go type for

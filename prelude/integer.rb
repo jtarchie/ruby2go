@@ -31,9 +31,9 @@ class Integer < Object
     case Float:
       return Boolean(Float(self) == o)
     case *Integer: // a T? box that reached untyped unconverted; nil must not reach rbEq
-      return self.Eq(Opt(o))
+      return self.Op_eq(Opt(o))
     case *Float:
-      return self.Eq(Opt(o))
+      return self.Op_eq(Opt(o))
     }
     return rbEq[any](other, self) // MRI asks other == self
   }
@@ -140,7 +140,7 @@ class Integer < Object
   #: () -> Integer
   def abs = %x{
     if self < 0 {
-      return self.Neg()
+      return self.Op_neg()
     }
     return self
   }

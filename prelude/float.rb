@@ -17,7 +17,7 @@ class Float < Object
     case self == other:
       return Ref(Integer(0))
     }
-    return nil // NaN, as MRI; Comparable and sort call the generated Cmp, which raises (decision 3)
+    return nil // NaN, as MRI; Comparable and sort call the generated Op_cmp, which raises (decision 3)
   }
 
   #: (Float) -> bool
@@ -40,9 +40,9 @@ class Float < Object
     case Integer:
       return Boolean(self == Float(o))
     case *Integer: // a T? box that reached untyped unconverted; nil must not reach rbEq
-      return self.Eq(Opt(o))
+      return self.Op_eq(Opt(o))
     case *Float:
-      return self.Eq(Opt(o))
+      return self.Op_eq(Opt(o))
     }
     return rbEq[any](other, self) // MRI asks other == self
   }

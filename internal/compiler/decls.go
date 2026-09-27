@@ -711,7 +711,7 @@ func (c *Compiler) emitForwarders(cls *Class) {
 	c.emitCmpAdapter(cls, recv)
 }
 
-// emitCmpAdapter: Comparable_Self and rbCmp need Cmp(T) Integer, so a nil <=> (Float's NaN) raises there, as MRI's rb_cmpint.
+// emitCmpAdapter: Comparable_Self and rbCmp need Op_cmp(T) Integer, so a nil <=> (Float's NaN) raises there, as MRI's rb_cmpint.
 func (c *Compiler) emitCmpAdapter(cls *Class, recv string) {
 	e := cls.lookup("<=>")
 	if e == nil || e.M.GoName != "cmpNil" || len(e.M.Params) != 1 || !c.wantsForwarder(cls, *e) {
@@ -721,13 +721,13 @@ func (c *Compiler) emitCmpAdapter(cls *Class, recv string) {
 	env["Self"] = c.selfTypeFor(*e, cls)
 	ps, _ := c.sig(e.M, env)
 	arg := c.argNames(e.M)
-	c.w("func (self %s) Cmp(%s) Integer {\n\tif r := self.cmpNil(%s); r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
+	c.w("func (self %s) Op_cmp(%s) Integer {\n\tif r := self.cmpNil(%s); r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
 		recv, ps, arg, arg)
 }
 
 // emitEqAdapter lets rbEq (include?, Array#==, == on untyped or T?) reach
-// a == typed on its argument, Eq(VecI), which Go cannot also declare as
-// Eq(any): _EqAny asserts the class and answers false for anything else.
+// a == typed on its argument, Op_eq(VecI), which Go cannot also declare as
+// Op_eq(any): _EqAny asserts the class and answers false for anything else.
 func (c *Compiler) emitEqAdapter(cls *Class, recv string) {
 	e := cls.lookup("==")
 	if !cls.isStruct() || e == nil || e.M.Private || e.M.generic() || len(e.M.Params) != 1 {
