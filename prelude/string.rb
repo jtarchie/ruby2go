@@ -175,15 +175,53 @@ class String < Object
 
   #: (String, String) -> String
   def tr(from, to) = %x{
-    f, t := []rune(string(from)), []rune(string(to))
-    return String(strings.Map(func(r rune) rune {
-      for i, c := range f {
-        if c == r {
-          if i < len(t) {
-            return t[i]
+    // ponytail: a reversed range ("z-a") expands to nothing; MRI raises ArgumentError.
+    expand := func(s []rune) []rune {
+      var out []rune
+      for i := 0; i < len(s); i++ {
+        switch {
+        case s[i] == '\\\\' && i+1 < len(s):
+          i++
+          out = append(out, s[i])
+        case i+2 < len(s) && s[i+1] == '-':
+          for r := s[i]; r <= s[i+2]; r++ {
+            out = append(out, r)
           }
-          return t[len(t)-1]
+          i += 2
+        default:
+          out = append(out, s[i])
         }
+      }
+      return out
+    }
+    f := []rune(string(from))
+    negate := len(f) > 1 && f[0] == '^'
+    if negate {
+      f = f[1:]
+    }
+    f, t := expand(f), expand([]rune(string(to)))
+    // An empty to-list deletes; otherwise it pads with its last rune.
+    last := rune(-1)
+    if len(t) > 0 {
+      last = t[len(t)-1]
+    }
+    m := make(map[rune]rune, len(f))
+    for i, c := range f {
+      m[c] = last
+      if !negate && i < len(t) {
+        m[c] = t[i]
+      }
+    }
+    return String(strings.Map(func(r rune) rune {
+      v, ok := m[r]
+      if negate {
+        if ok {
+          return r
+        }
+        return last
+      }
+      if ok {
+        return v
       }
       return r
     }, string(self)))
