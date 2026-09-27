@@ -130,8 +130,14 @@ class Integer < Object
   #: () -> Integer
   def hash = self
 
+  # MRI's Integer#chr without an encoding: one byte, RangeError outside 0..255.
   #: () -> String
-  def chr = %x{ String(rune(self)) }
+  def chr = %x{
+    if self < 0 || self > 255 {
+      panic(NewRangeError(Ref(String(strconv.Itoa(int(self)) + " out of char range"))))
+    }
+    return String([]byte{byte(self)})
+  }
 
   #: () { (Integer) -> void } -> void
   def times = %x{

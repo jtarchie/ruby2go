@@ -217,7 +217,10 @@ class String < Object
     if self == "" {
       panic(NewArgumentError(Ref[String]("empty string")))
     }
-    r, _ := utf8.DecodeRuneInString(string(self))
+    r, n := utf8.DecodeRuneInString(string(self))
+    if r == utf8.RuneError && n == 1 {
+      return Integer(self[0]) // a binary byte, e.g. 200.chr
+    }
     return Integer(r)
   }
 
