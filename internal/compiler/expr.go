@@ -990,7 +990,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		}
 		targs = "[" + strings.Join(ts, ", ") + "]"
 	}
-	return freeFuncName(m) + targs + "(" + recv.code + comma(argList) + ")"
+	return staticCallCode(m, targs, recv.code, argList)
 }
 
 // hasForwarder reports whether the receiver's Go type carries a method for e.
@@ -1372,7 +1372,7 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
-	code := freeFuncName(e.M) + "(" + f.selfCode + comma(strings.Join(codes, ", ")) + ")"
+	code := staticCallCode(e.M, "", f.selfCode, strings.Join(codes, ", "))
 	return expr{code: code, typ: subst(e.M.Ret, env)}
 }
 

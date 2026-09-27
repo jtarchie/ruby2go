@@ -146,6 +146,16 @@ func (c *Compiler) argNames(m *Method) string {
 // freeFuncName is the Go name of a method emitted as a free function.
 func freeFuncName(m *Method) string { return m.Owner.Name + "_" + m.GoName }
 
+// staticCallCode renders a non-virtual call of m on recv (private calls,
+// super). Attr accessors have no free func: they are plain methods on the
+// owner's struct, reached through the `_Owner()` every struct constraint has.
+func staticCallCode(m *Method, targs, recv, args string) string {
+	if m.Kind == kindAttrReader || m.Kind == kindAttrWriter {
+		return recv + "._" + m.Owner.Name + "()." + m.GoName + "(" + args + ")"
+	}
+	return freeFuncName(m) + targs + "(" + recv + comma(args) + ")"
+}
+
 // isDirectMethod reports whether m is emitted as a plain Go method on its
 // owner (primitive classes' own non-generic methods, attr accessors).
 func (c *Compiler) isDirectMethod(m *Method) bool {

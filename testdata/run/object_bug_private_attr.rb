@@ -1,5 +1,3 @@
-# skip: attr_reader/attr_accessor under `private` fails go build ("undefined: Vault_Pin")
-
 # rbs_inline: enabled
 
 class Vault
