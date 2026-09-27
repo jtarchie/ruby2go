@@ -195,6 +195,9 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	}
 	if isVoid(typ) {
 		gen(tail{})
+		if isNil(typ) { // every branch is nil (`if c then end`): the value is nil, not void
+			return expr{code: "nil", typ: TNil{}, lit: true}
+		}
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
 	tmp := f.newTmp()

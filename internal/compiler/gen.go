@@ -239,11 +239,12 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 // ---- statements
 
 func (f *fctx) genStmts(n parser.Node, t tail) {
-	if n == nil {
+	stmts, ok := n.(*parser.StatementsNode)
+	// An empty body arrives as a typed-nil *StatementsNode, which is != nil.
+	if n == nil || ok && stmts == nil {
 		f.emptyTail(nil, t)
 		return
 	}
-	stmts, ok := n.(*parser.StatementsNode)
 	if !ok {
 		f.genStmt(n, t)
 		return

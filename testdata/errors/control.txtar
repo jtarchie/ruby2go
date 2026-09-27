@@ -191,6 +191,11 @@ end
 # error: main.rb:2: cannot infer the type of x from nil; add `#: T?`
 x = nil
 puts x.inspect
+-- local_only_nil_from_empty_if.rb --
+# error: main.rb:3: cannot infer the type of x from nil; add `#: T?`
+i = 0
+x = if i > 5 then end
+puts x.inspect
 -- local_two_types.rb --
 # error: main.rb:3: x is assigned both Integer and String
 x = 1
