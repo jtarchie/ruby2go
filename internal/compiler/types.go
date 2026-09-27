@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -67,6 +68,23 @@ func isVoid(t Type) bool {
 }
 
 func isAny(t Type) bool { _, ok := t.(TAny); return ok }
+
+// holdsAny reports whether t is or contains untyped.
+func holdsAny(t Type) bool {
+	switch t := t.(type) {
+	case TAny:
+		return true
+	case TOpt:
+		return holdsAny(t.Elem)
+	case TClass:
+		return slices.ContainsFunc(t.Args, holdsAny)
+	case TTuple:
+		return slices.ContainsFunc(t.Elems, holdsAny)
+	case TFunc:
+		return slices.ContainsFunc(t.Params, holdsAny) || holdsAny(t.Ret)
+	}
+	return false
+}
 func isOpt(t Type) bool { _, ok := t.(TOpt); return ok }
 func isNil(t Type) bool { _, ok := t.(TNil); return ok }
 

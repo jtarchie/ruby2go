@@ -611,6 +611,16 @@ resolve; anything not listed is still open.
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's
     signature (never `untyped`).
+    *Amended:* a local first assigned an unannotated `[]`/`{}` is typed by
+    the join of what the same method later puts in it (`x << v`, `push`,
+    `unshift`, `x[i] = v`, which adds nil for the gap, `h[k] = v`,
+    `store`), re-running local analysis until nothing new is typed, since
+    one typed literal can type the next. It stays untyped when that join
+    is or holds `untyped`, when the typed version fails to compile, or when
+    it adds an `rbAs` conversion: a typed array converted to another
+    instantiation is a copy, and Ruby's aliasing would be lost. This is
+    unification local to one method body; types never flow between
+    methods ([example 33](examples/33_empty_literals/main.rb)).
 14. Locals are inferred from their assignments (joined across branches:
     `nil` + `String` → `String?`) and hoisted to a `var` at the top of
     their Ruby scope (the method, or the block's Go body) when Go's block

@@ -158,8 +158,73 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 			exp = v.typ
 		}
 	}
+	empty := ann == nil && isEmptyLit(n.Value)
+	if exp == nil && empty {
+		exp = f.refined[f.localKey(n.Name)]
+	}
 	val := f.genExpr(n.Value, exp)
-	return f.assignLocal(n, n.Name, val, ann)
+	e := f.assignLocal(n, n.Name, val, ann)
+	if info := f.localInfo(n.Name); empty && f.pass == 1 && info != nil {
+		info.open = true
+	}
+	return e
+}
+
+func isEmptyLit(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.ArrayNode:
+		return len(n.Elements) == 0
+	case *parser.HashNode:
+		return len(n.Elements) == 0
+	}
+	return false
+}
+
+// noteElems records for analyze what `x << v`, `x.push(v)`, `x[i] = v`
+// and `h[k] = v` put in an open local.
+func (f *fctx) noteElems(n *parser.CallNode) {
+	if f.pass != 1 || n.Block != nil {
+		return
+	}
+	r, ok := n.Receiver.(*parser.LocalVariableReadNode)
+	if !ok {
+		return
+	}
+	info := f.localInfo(r.Name)
+	if info == nil || !info.open {
+		return
+	}
+	args := callArgs(n)
+	switch hash := isClass(stripOpt(info.typ), "Hash"); {
+	case !hash && slices.Contains([]string{"<<", "push", "append", "unshift", "prepend"}, n.Name):
+		f.noteElem(info, 0, args...)
+	case !hash && n.Name == "[]=" && len(args) == 2:
+		f.noteElem(info, 0, args[1])
+		info.elems[0] = append(info.elems[0], TNil{}) // a gap before the index reads nil
+	case hash && (n.Name == "[]=" || n.Name == "store") && len(args) == 2:
+		f.noteElem(info, 0, args[0])
+		f.noteElem(info, 1, args[1])
+	}
+}
+
+func (f *fctx) noteElem(info *localInfo, slot int, args ...parser.Node) {
+	for _, a := range args {
+		if _, ok := a.(*parser.SplatNode); ok {
+			info.open = false
+			return
+		}
+		var t Type
+		f.probe(func() { t = f.genExpr(a, nil).typ })
+		info.elems[slot] = append(info.elems[slot], t)
+	}
+}
+
+// noteConv records a conversion site for analyze.
+func (f *fctx) noteConv(n parser.Node, code string) string {
+	if f.pass == 1 && f.convs != nil {
+		f.convs[n.GetLocation().StartOffset] = true
+	}
+	return code
 }
 
 // genIvarExpr handles @x reads and writes.
@@ -701,7 +766,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		case isOpt(e.typ):
 			return e.code
 		case isAny(e.typ):
-			return fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())
+			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String()))
 		}
 		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	case TClass:
@@ -722,12 +787,12 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	}
 	// rbAs also converts an Array/Hash of another instantiation (rbConv).
 	if isAny(e.typ) {
-		return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}
 	// Go instantiations are invariant: Array[Integer] where
 	// Array[untyped] is expected (or back) is a converted copy.
 	if converts(to) && sameButUntyped(e.typ, to) && f.c.goType(e.typ) != f.c.goType(to) {
-		return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}
 
 	if isOpt(e.typ) {
@@ -844,6 +909,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	} else {
 		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
+	f.noteElems(n)
 	if n.Block != nil {
 		if _, ok := n.Block.(*parser.BlockNode); ok {
 			if e := f.resolve(recv.typ, n.Name); e != nil && e.M.Iterator {

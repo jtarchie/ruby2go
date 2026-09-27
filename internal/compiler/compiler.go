@@ -221,6 +221,14 @@ func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
 	c.Warnings = append(c.Warnings, msg)
 }
 
+// dropWarnings forgets the warnings after the first n, for a re-run pass.
+func (c *Compiler) dropWarnings(n int) {
+	for _, w := range c.Warnings[n:] {
+		delete(c.warned, w)
+	}
+	c.Warnings = c.Warnings[:n]
+}
+
 // noteDyn asks for dynamic wrappers of a method name.
 func (c *Compiler) noteDyn(name string) {
 	if c.dynSeen[name] {

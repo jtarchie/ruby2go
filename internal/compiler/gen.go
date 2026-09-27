@@ -3,6 +3,7 @@ package compiler
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -29,6 +30,8 @@ type fctx struct {
 	pass         int // 0 = ivar discovery, 1 = local analysis, 2 = emit
 	discover     bool
 	locals       map[localKey]*localInfo
+	refined      map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
+	convs        map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
 	unset        map[localKey]bool // locals read where they may be unassigned (maybeUnset)
 	scope        *scope
 	block        string
@@ -148,7 +151,9 @@ type localInfo struct {
 	writes    int
 	typ       Type
 	annotated bool
-	noHoist   bool // params and block params: declared by Go syntax
+	noHoist   bool      // params and block params: declared by Go syntax
+	open      bool      // an unannotated `[]`/`{}` that later writes may type (analyze)
+	elems     [2][]Type // what those writes put in it: elements, or keys and values
 }
 
 type scope struct {
@@ -1487,19 +1492,15 @@ func (f *fctx) concreteInit(val expr, code string, t Type) bool {
 // genBody runs the two-pass body generation into f.buf.
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
-	f.locals = map[localKey]*localInfo{}
 	f.unset = maybeUnset(body, params)
-	for _, p := range params {
-		f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
-	}
-	for pass := 1; pass <= 2; pass++ {
-		f.pass = pass
-		if f.discover {
-			f.pass = 0
-			if pass == 2 {
-				break
-			}
+	fresh := func() {
+		f.locals = map[localKey]*localInfo{}
+		for _, p := range params {
+			f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
 		}
+	}
+	run := func(pass int) {
+		f.pass = pass
 		f.buf = &strings.Builder{}
 		f.tmp, f.blockCtr, f.block = 0, 0, ""
 		f.scope = &scope{vars: map[string]*local{}}
@@ -1512,8 +1513,122 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		f.hoistLocals(methodScope)
 		f.genStmts(body, t)
 	}
+	fresh()
+	if f.discover {
+		run(0)
+	} else {
+		f.analyze(fresh, run)
+	}
 	final.WriteString(f.buf.String())
 	f.buf = final
+}
+
+// analyze runs the local-analysis pass and the emitting pass (decision 13).
+// An unannotated `x = []`/`{}` is typed by the join of what later writes
+// put in it (x << v, x.push(v), x[i] = v, h[k] = v), re-running pass 1
+// until no more locals are typed: one typed literal can type the next.
+// A typing that fails to compile or adds a conversion is dropped, and its
+// literal stays untyped: an rbAs between instantiations copies, and the
+// copy would lose Ruby's aliasing.
+func (f *fctx) analyze(fresh func(), run func(int)) {
+	nw := len(f.c.Warnings)
+	saved := *f
+	f.convs = map[int]bool{}
+	orig := catchCompileError(func() { run(1) }) // `[].max` fails until the literal is typed
+	before := f.convs
+	refined := map[localKey]Type{}
+	var order []localKey
+	for range 8 {
+		add := f.emptyRefinements()
+		if len(add) == 0 {
+			break
+		}
+		for _, k := range slices.SortedFunc(maps.Keys(add), func(a, b localKey) int { return strings.Compare(a.name, b.name) }) {
+			order = append(order, k)
+			refined[k] = add[k]
+		}
+		*f = saved
+		f.refined, f.convs = refined, map[int]bool{}
+		fresh()
+		_ = catchCompileError(func() { run(1) }) // discovery only: try() decides
+	}
+	try := func(set map[localKey]Type) bool {
+		f.c.dropWarnings(nw) // the untyped run's, e.g. dynamic calls on elements
+		*f = saved
+		f.refined, f.convs = set, map[int]bool{}
+		fresh()
+		return catchCompileError(func() { run(1) }) == nil && !f.newConv(before) &&
+			catchCompileError(func() { run(2) }) == nil
+	}
+	if len(order) > 0 {
+		if try(refined) {
+			return
+		}
+		keep := map[localKey]Type{} // greedily, in the order they were found
+		for _, k := range order {
+			if keep[k] = refined[k]; !try(keep) {
+				delete(keep, k)
+			}
+		}
+		if len(keep) > 0 && try(keep) {
+			return
+		}
+		f.c.dropWarnings(nw)
+		*f = saved
+		fresh()
+		run(1)
+	} else if orig != nil {
+		panic(*orig)
+	}
+	run(2)
+}
+
+func (f *fctx) newConv(before map[int]bool) bool {
+	for off := range f.convs {
+		if !before[off] {
+			return true
+		}
+	}
+	return false
+}
+
+// catchCompileError runs fn, returning the compile error it raised, if any.
+func catchCompileError(fn func()) (ce *compileError) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(compileError)
+			if !ok {
+				panic(r)
+			}
+			ce = &e
+		}
+	}()
+	fn()
+	return nil
+}
+
+// emptyRefinements types each open, still untyped local by the join of
+// what pass 1 saw put in it. No evidence, or evidence that is or holds
+// untyped, leaves it untyped.
+func (f *fctx) emptyRefinements() map[localKey]Type {
+	out := map[localKey]Type{}
+	for k, li := range f.locals {
+		t, ok := stripOpt(li.typ).(TClass)
+		if !li.open || !ok || slices.ContainsFunc(t.Args, func(a Type) bool { return !isAny(a) }) {
+			continue
+		}
+		args := make([]Type, len(t.Args))
+		for i := range args {
+			if args[i] = joinOrAny(li.elems[i]); len(li.elems[i]) == 0 || holdsAny(args[i]) {
+				args = nil
+				break
+			}
+		}
+		if args != nil {
+			out[k] = TClass{C: t.C, Args: args}
+		}
+	}
+	return out
 }
 
 type namedInfo struct {
