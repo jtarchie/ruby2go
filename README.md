@@ -540,10 +540,12 @@ resolve; anything not listed is still open.
     `start` blocks until `shutdown`, and each request gets its own
     goroutine and servlet instance.
 28. Constant reflection: every class object has a generated constant
-    table (own constants in definition order, then inherited), behind
-    `Module#constants`, `#const_get` (`A::B` paths, top-level fallback,
-    `NameError` on a miss) and `#const_defined?`. `M.const_get(name)` is
-    typed: a literal name gets the constant's type, any other name the
+    table (own constants in definition order, then inherited ones, which
+    `inherit = false` skips), behind `Module#constants`, `#const_get`
+    (`A::B` paths, top-level fallback, `NameError` on a miss, MRI's
+    name checks and errors) and `#const_defined?`. `M.const_get(name)` is
+    typed: a literal name gets the constant's type (a literal path through
+    a non-module stays untyped and raises at run time), any other name the
     join of the constants of `M` and its subclasses; unrelated classes
     join at their nearest common superclass. MRI orders `constants` by its
     symbol table, not by definition, so programs must not depend on it.

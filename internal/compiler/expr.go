@@ -1935,11 +1935,18 @@ func (f *fctx) constGetType(recv expr, args []parser.Node) Type {
 	}
 	mod := meta.metaOf
 	if lit := literalName(args[0]); lit != "" {
-		cls, k := f.c.lookupConst(f.f, constPath(lit), []*Class{mod})
+		scope := []*Class{mod}
 		if mod.RubyName == "Object" {
-			cls, k = f.c.lookupConst(f.f, constPath(lit), nil)
+			scope = nil
 		}
-		return f.c.constTypeOf(cls, k)
+		// Through a non-module MRI raises TypeError at run time; lookupConst would fail compilation.
+		parts := strings.Split(lit, "::")
+		for i := 1; i < len(parts); i++ {
+			if cls, k := f.c.lookupConst(f.f, constPath(strings.Join(parts[:i], "::")), scope); cls == nil && k != nil {
+				return nil
+			}
+		}
+		return f.c.constTypeOf(f.c.lookupConst(f.f, constPath(lit), scope))
 	}
 	var ts []Type
 	var walk func(c *Class)

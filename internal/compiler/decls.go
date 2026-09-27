@@ -623,7 +623,8 @@ func (c *Compiler) emitConstTable(cls *Class) {
 	for _, full := range c.constEntries(desc) {
 		if v, ok := c.constValue(full); ok {
 			short := full[strings.LastIndex(full, ":")+1:]
-			c.w("\t\t{%q, %s},\n", short, v)
+			inherited := strings.Contains(full, "::") && strings.TrimSuffix(full, "::"+short) != desc.RubyName
+			c.w("\t\t{%q, %s, %t},\n", short, v, inherited)
 		}
 	}
 	c.w("\t}\n}\n\n")

@@ -1,5 +1,3 @@
-# skip: the inherit=false argument of constants/const_get/const_defined? is ignored: inherited constants are still listed and found
-
 # rbs_inline: enabled
 
 class Parent

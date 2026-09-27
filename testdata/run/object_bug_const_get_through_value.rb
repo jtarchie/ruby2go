@@ -1,5 +1,3 @@
-# skip: const_get with a literal path through a non-module constant ("Plugins::VERSION::X") is a compile error reported at line 1; MRI raises TypeError at run time
-
 # rbs_inline: enabled
 
 module Plugins
