@@ -34,7 +34,7 @@ For each `examples/*/main.rb`, `TestExamples` (rb2go_test.go):
 Add one new example per new feature, numbered next in sequence. User code must run on MRI unchanged. There are no golden Go files; MRI's output is the only expectation.
 
 Smaller cases go in `testdata/`:
-- `testdata/run/<area>_*.rb`: `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (about 7.8k lines, since the whole prelude is emitted). Group many checks per file.
+- `testdata/run/<area>_*.rb`: `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (~12k lines, since the whole prelude is emitted; ~2s compile, built with `-gcflags=-l` to skip inlining). File count, not size, drives suite time: add checks to an existing `<area>_bugs.rb`/`<area>_mid.rb` (renaming top-level defs, constants and locals that collide, decision 14) rather than a new file. Files that exit non-zero, call `exit`, or need a file-wide magic comment stay standalone.
 - `testdata/errors/<area>.txtar`: each `-- name.rb --` is compiled as `main.rb`. `# error: text` lines must all appear in the compile error. `# warning: text` lines must each match a warning. A case with no `# error:` must compile.
 - `# skip: reason` in either marks a known failure, which is skipped unless `RB2GO_RUN_SKIPPED=1`. When you fix the bug, remove the line.
 
