@@ -550,7 +550,9 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		return "rbTruthy(Opt(" + e.code + "))"
 	}
 	f.c.Warnings = append(f.c.Warnings, fmt.Sprintf("%s:%d: condition of type %s is always true", f.f.Name, f.f.line(n.GetLocation().StartOffset), e.typ))
-	return "(" + e.code + " != nil || true)"
+	// value types (Integer, String) can't be compared to nil; keep the evaluation and the local's use
+	f.emit("_ = %s", e.code)
+	return "true"
 }
 
 func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bool, doWhile bool, t tail) {
