@@ -654,6 +654,14 @@ resolve; anything not listed is still open.
 15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
     or a dry run of the class's method bodies (`initialize` first); an ivar
     that is only ever assigned `nil` needs an annotation.
+    *Amended:* an ivar first assigned an unannotated `[]`/`{}` is typed
+    as decision 13 types locals, from what the class's methods put in it,
+    re-discovering until nothing new is typed. Evidence that is untyped
+    only because it reads the container itself (`h[k] = (h[k] || 0) + 1`)
+    is skipped. Every typing is checked by a dry-run emission of the
+    classes that see the ivar: one that fails to compile or adds a
+    conversion is dropped, trying all, then all but one, then one at a
+    time ([example 35](examples/35_ivar_containers/main.rb)).
 16. `%x{}` bodies are Ruby xstrings, so Ruby escape processing applies to
     the Go inside them: write `\\n` for a Go `\n`, `\#{` for a literal `#{`,
     and keep braces balanced (no `"{"` in Go strings). A one-line body of a

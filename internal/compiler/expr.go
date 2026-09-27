@@ -180,42 +180,53 @@ func isEmptyLit(n parser.Node) bool {
 	return false
 }
 
-// noteElems records for analyze what `x << v`, `x.push(v)`, `x[i] = v`
-// and `h[k] = v` put in an open local.
+// noteElems records what `x << v`, `x.push(v)`, `x[i] = v` and
+// `h[k] = v` put in an open `[]`/`{}`: a local in pass 1 (analyze), an
+// ivar during discovery (refineIvars).
 func (f *fctx) noteElems(n *parser.CallNode) {
-	if f.pass != 1 || n.Block != nil {
+	if n.Block != nil {
 		return
 	}
-	r, ok := n.Receiver.(*parser.LocalVariableReadNode)
-	if !ok {
-		return
+	var t Type
+	var open *bool
+	var elems *[2][]Type
+	switch r := n.Receiver.(type) {
+	case *parser.LocalVariableReadNode:
+		if info := f.localInfo(r.Name); f.pass == 1 && info != nil && info.open {
+			t, open, elems = info.typ, &info.open, &info.elems
+		}
+	case *parser.InstanceVariableReadNode:
+		if f.discover && f.owner != nil {
+			if iv := f.c.findIvar(f.owner, r.Name); iv != nil && iv.open {
+				t, open, elems = iv.Type, &iv.open, &iv.elems
+			}
+		}
 	}
-	info := f.localInfo(r.Name)
-	if info == nil || !info.open {
+	if elems == nil {
 		return
 	}
 	args := callArgs(n)
-	switch hash := isClass(stripOpt(info.typ), "Hash"); {
+	switch hash := isClass(stripOpt(t), "Hash"); {
 	case !hash && slices.Contains([]string{"<<", "push", "append", "unshift", "prepend"}, n.Name):
-		f.noteElem(info, 0, args...)
+		f.noteElem(open, &elems[0], args...)
 	case !hash && n.Name == "[]=" && len(args) == 2:
-		f.noteElem(info, 0, args[1])
-		info.elems[0] = append(info.elems[0], TNil{}) // a gap before the index reads nil
+		f.noteElem(open, &elems[0], args[1])
+		elems[0] = append(elems[0], TNil{}) // a gap before the index reads nil
 	case hash && (n.Name == "[]=" || n.Name == "store") && len(args) == 2:
-		f.noteElem(info, 0, args[0])
-		f.noteElem(info, 1, args[1])
+		f.noteElem(open, &elems[0], args[0])
+		f.noteElem(open, &elems[1], args[1])
 	}
 }
 
-func (f *fctx) noteElem(info *localInfo, slot int, args ...parser.Node) {
+func (f *fctx) noteElem(open *bool, elems *[]Type, args ...parser.Node) {
 	for _, a := range args {
 		if _, ok := a.(*parser.SplatNode); ok {
-			info.open = false
+			*open = false
 			return
 		}
 		var t Type
 		f.probe(func() { t = f.genExpr(a, nil).typ })
-		info.elems[slot] = append(info.elems[slot], t)
+		*elems = append(*elems, t)
 	}
 }
 
@@ -223,6 +234,9 @@ func (f *fctx) noteElem(info *localInfo, slot int, args ...parser.Node) {
 func (f *fctx) noteConv(n parser.Node, code string) string {
 	if f.pass == 1 && f.convs != nil {
 		f.convs[n.GetLocation().StartOffset] = true
+	}
+	if f.pass == 2 && f.c.convs != nil {
+		f.c.convs[fmt.Sprintf("%s:%d", f.f.Name, n.GetLocation().StartOffset)] = true
 	}
 	return code
 }
@@ -247,6 +261,9 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
 		iv := f.ivar(n, n.Name, val.typ)
+		if f.discover && ann == nil && isEmptyLit(n.Value) {
+			iv.open = true
+		}
 		if !fitsValue(val, iv.Type) {
 			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 		}

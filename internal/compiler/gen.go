@@ -1572,16 +1572,13 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 			catchCompileError(func() { run(2) }) == nil
 	}
 	if len(order) > 0 {
-		if try(refined) {
-			return
-		}
-		keep := map[localKey]Type{} // greedily, in the order they were found
-		for _, k := range order {
-			if keep[k] = refined[k]; !try(keep) {
-				delete(keep, k)
+		if salvage(order, func(set map[localKey]bool) bool {
+			sub := map[localKey]Type{}
+			for k := range set {
+				sub[k] = refined[k]
 			}
-		}
-		if len(keep) > 0 && try(keep) {
+			return len(sub) > 0 && try(sub)
+		}) {
 			return
 		}
 		f.c.dropWarnings(nw)
@@ -1624,22 +1621,30 @@ func catchCompileError(fn func()) (ce *compileError) {
 func (f *fctx) emptyRefinements() map[localKey]Type {
 	out := map[localKey]Type{}
 	for k, li := range f.locals {
-		t, ok := stripOpt(li.typ).(TClass)
-		if !li.open || !ok || slices.ContainsFunc(t.Args, func(a Type) bool { return !isAny(a) }) {
-			continue
-		}
-		args := make([]Type, len(t.Args))
-		for i := range args {
-			if args[i] = joinOrAny(li.elems[i]); len(li.elems[i]) == 0 || holdsAny(args[i]) {
-				args = nil
-				break
-			}
-		}
-		if args != nil {
-			out[k] = TClass{C: t.C, Args: args}
+		if t := refineContainer(li.typ, li.open, li.elems); t != nil {
+			out[k] = t
 		}
 	}
 	return out
+}
+
+// refineContainer is the type an open `[]`/`{}` of type t gets from what
+// was put in it, or nil: still typed, or no typed evidence to join.
+// Untyped evidence is skipped (`h[k] = h[k] + 1` is untyped only because h
+// is): if it really is untyped, the typed run converts it and is rejected.
+func refineContainer(t Type, open bool, elems [2][]Type) Type {
+	c, ok := stripOpt(t).(TClass)
+	if !open || !ok || slices.ContainsFunc(c.Args, func(a Type) bool { return !isAny(a) }) {
+		return nil
+	}
+	args := make([]Type, len(c.Args))
+	for i := range args {
+		typed := slices.DeleteFunc(slices.Clone(elems[i]), holdsAny)
+		if args[i] = joinOrAny(typed); len(typed) == 0 || holdsAny(args[i]) {
+			return nil
+		}
+	}
+	return TClass{C: c.C, Args: args}
 }
 
 type namedInfo struct {
@@ -1835,6 +1840,112 @@ func (c *Compiler) emitMain() {
 	c.w("}\n\n")
 }
 
+// refineIvars types an ivar first assigned an unannotated `[]`/`{}` by
+// what the class's methods put in it (decision 15), as analyze does for
+// locals. A typing is dropped when a dry-run emission of the classes that
+// see the ivar fails to compile or adds a conversion; the rest are kept,
+// greedily in name order.
+func (c *Compiler) refineIvars() {
+	var cands []*Ivar
+	typed, orig := map[*Ivar]Type{}, map[*Ivar]Type{}
+	for range 8 { // one typed ivar can type the next: re-discover with it typed
+		n := len(cands)
+		for _, cls := range c.classList {
+			for _, name := range slices.Sorted(maps.Keys(cls.Ivars)) {
+				iv := cls.Ivars[name]
+				if t := refineContainer(iv.Type, iv.open, iv.elems); t != nil && typed[iv] == nil {
+					cands = append(cands, iv)
+					typed[iv], orig[iv] = t, iv.Type
+					iv.Type = t
+				}
+			}
+		}
+		if len(cands) == n {
+			break
+		}
+		c.discoverIvars()
+	}
+	if len(cands) == 0 {
+		return
+	}
+	for _, iv := range cands {
+		iv.Type = orig[iv]
+	}
+	base, _ := c.dryRunIvarUsers(cands)
+	try := func(set map[*Ivar]bool) bool {
+		for _, iv := range cands {
+			iv.Type = orig[iv]
+			if set[iv] {
+				iv.Type = typed[iv]
+			}
+		}
+		convs, ok := c.dryRunIvarUsers(cands)
+		for k := range convs {
+			ok = ok && base[k]
+		}
+		return ok
+	}
+	salvage(cands, try) // a failed last try leaves the original types
+}
+
+// salvage finds a set of typings that try accepts: all of them, else all
+// but one (the usual lone culprit; an untyped baseline may not compile,
+// so adding one at a time can fail throughout), else those that pass when
+// added one at a time. The last try's state is left applied; the result
+// says whether it passed.
+func salvage[K comparable](cands []K, try func(map[K]bool) bool) bool {
+	set := map[K]bool{}
+	for _, k := range cands {
+		set[k] = true
+	}
+	if try(set) {
+		return true
+	}
+	for _, k := range cands {
+		delete(set, k)
+		if try(set) {
+			return true
+		}
+		set[k] = true
+	}
+	clear(set)
+	for _, k := range cands {
+		if set[k] = true; !try(set) {
+			delete(set, k)
+		}
+	}
+	return try(set)
+}
+
+// dryRunIvarUsers emits, and discards, every method of the classes that
+// can see one of ivs, returning the conversion sites and whether it compiled.
+func (c *Compiler) dryRunIvarUsers(ivs []*Ivar) (map[string]bool, bool) {
+	saved, nw := c.out.String(), len(c.Warnings)
+	for _, m := range c.inferredMethods() {
+		m.Ret = nil // provisional: may depend on the ivar types being tried
+	}
+	c.convs = map[string]bool{}
+	err := catchCompileError(func() {
+		for _, cls := range c.classList {
+			if !slices.ContainsFunc(ivs, func(iv *Ivar) bool { return cls.isSubclassOf(iv.Owner) }) {
+				continue
+			}
+			for _, m := range cls.MethodList {
+				if m.Kind == kindDef {
+					c.inferRet(m)
+					c.emitMethod(m)
+				}
+			}
+		}
+	})
+	convs := c.convs
+	c.convs = nil
+	c.out.Reset()
+	c.out.WriteString(saved)
+	c.dropWarnings(nw)
+	return convs, err == nil
+}
+
 // inferReturns re-infers every unannotated return type (decision 36): the
 // ones inferred during discoverIvars saw ivars not yet typed.
 func (c *Compiler) inferReturns() {
@@ -1868,6 +1979,11 @@ func (c *Compiler) inferredMethods() []*Method {
 func (c *Compiler) discoverIvars() {
 	for range 2 {
 		for _, cls := range c.classList {
+			for _, iv := range cls.Ivars {
+				iv.elems = [2][]Type{} // the last round's, when every ivar has a type
+			}
+		}
+		for _, cls := range c.classList {
 			if !cls.isStruct() || cls.universal {
 				continue
 			}
@@ -1878,29 +1994,23 @@ func (c *Compiler) discoverIvars() {
 				}
 			}
 			for _, m := range ms {
-				if m.Kind != kindDef {
-					continue
+				if m.Kind == kindDef {
+					_ = catchCompileError(func() { c.discoverMethod(cls, m) }) // a dry run: emitMethod reports errors
 				}
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							if _, ok := r.(compileError); !ok {
-								panic(r)
-							}
-						}
-					}()
-					f := c.newFctx(m.File, cls, m)
-					f.discover = true
-					f.retVar = "ret_"
-					t := tail{kind: tailReturn, typ: m.Ret}
-					if m.Iterator {
-						t = tail{}
-					}
-					f.genBody(m.Node.Body, c.paramLocals(m), t, nil)
-				}()
 			}
 		}
 	}
+}
+
+func (c *Compiler) discoverMethod(cls *Class, m *Method) {
+	f := c.newFctx(m.File, cls, m)
+	f.discover = true
+	f.retVar = "ret_"
+	t := tail{kind: tailReturn, typ: m.Ret}
+	if m.Iterator {
+		t = tail{}
+	}
+	f.genBody(m.Node.Body, c.paramLocals(m), t, nil)
 }
 
 // emitSynth emits a metaclass's generated method as a Go method.

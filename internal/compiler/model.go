@@ -92,6 +92,8 @@ type Ivar struct {
 	Name  string // with @
 	Type  Type
 	Owner *Class
+	open  bool      // first assigned an unannotated `[]`/`{}` (refineIvars)
+	elems [2][]Type // what the class's methods put in it
 }
 
 type methodKind int

@@ -43,6 +43,7 @@ type Compiler struct {
 	parser        *parser.Parser
 	loaded        map[string]bool
 	out           strings.Builder
+	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
 	// tuple arities used, so their types get emitted
 	tupleN map[int]bool
@@ -116,6 +117,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	c.nameGo()
 	c.link()
 	c.discoverIvars()
+	c.refineIvars()
 	c.inferReturns()
 	c.emitProgram()
 	*warnings = c.Warnings
