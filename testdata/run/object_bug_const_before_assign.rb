@@ -1,5 +1,3 @@
-# skip: reading a constant before its assignment has run gives the Go zero value (0) instead of raising NameError "uninitialized constant LIMIT"
-
 # rbs_inline: enabled
 
 #: () -> Integer

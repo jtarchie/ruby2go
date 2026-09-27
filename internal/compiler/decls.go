@@ -223,6 +223,7 @@ func (c *Compiler) emitProgram() {
 		c.lineDirective(v.file, v.line)
 		c.w("%s\n\n", strings.TrimSpace(v.code))
 	}
+	c.guardConsts()
 	classes := c.sortedClasses()
 	for _, cls := range classes {
 		c.emitClassType(cls)
@@ -775,7 +776,13 @@ func (c *Compiler) constType(k *Const) Type {
 func (c *Compiler) emitConst(k *Const) {
 	c.lineDirective(k.File, k.Line)
 	c.w("var %s %s\n\n", k.GoName, c.goType(c.constType(k)))
+	if k.guarded {
+		c.w("var %s bool\n\n", constSet(k))
+	}
 }
+
+// constSet names the flag main sets once a guarded constant is assigned.
+func constSet(k *Const) string { return "rbSet_" + k.GoName }
 
 // constEntries lists the constants a class object answers to: its own in
 // definition order, then those of its ancestors (Object's are the top-level

@@ -84,6 +84,7 @@ type Const struct {
 	ann       string   // trailing `#: T`
 	Type      Type
 	resolving bool
+	guarded   bool // may be read before its assignment runs (guardConsts)
 }
 
 // Ivar is an instance variable of a struct class.

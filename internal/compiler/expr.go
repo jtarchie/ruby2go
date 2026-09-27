@@ -1614,6 +1614,9 @@ func (f *fctx) classRef(n parser.Node) *Class {
 func (f *fctx) genConstRead(n parser.Node) expr {
 	cls, k := f.c.lookupConst(f.f, n, f.lex)
 	switch {
+	case k != nil && k.guarded:
+		code := fmt.Sprintf("rbConstRead(%s, %s, %q)", constSet(k), k.GoName, f.constMissing(n))
+		return expr{code: code, typ: f.c.constType(k)}
 	case k != nil:
 		return expr{code: k.GoName, typ: f.c.constType(k)}
 	case cls != nil && cls.meta != nil:
@@ -1623,6 +1626,19 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	}
 	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
 	return expr{}
+}
+
+// constMissing is MRI's name for constant read n in a NameError: a bare
+// name is qualified by the innermost class or module around it.
+func (f *fctx) constMissing(n parser.Node) string {
+	r, ok := n.(*parser.ConstantReadNode)
+	if !ok {
+		return strings.TrimPrefix(f.f.text(n.GetLocation()), "::")
+	}
+	if len(f.lex) > 0 {
+		return f.lex[len(f.lex)-1].RubyName + "::" + r.Name
+	}
+	return r.Name
 }
 
 // metaOfType returns the metaclass a receiver type denotes, if any.

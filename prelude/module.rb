@@ -38,6 +38,15 @@
     return nil, false
   }
 
+  // rbConstRead reads a constant that code may reach before main assigns
+  // it; MRI raises NameError there.
+  func rbConstRead[T any](set bool, v T, name string) T {
+    if !set {
+      panic(NewNameError(Ref(String("uninitialized constant " + name))))
+    }
+    return v
+  }
+
   // rbConstResolve walks an "A::B" path from m; the first segment also
   // falls back to the top level, as Module#const_get does. On a miss it
   // returns the NameError message.

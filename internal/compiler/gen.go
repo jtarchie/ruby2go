@@ -1474,12 +1474,77 @@ func (f *fctx) genConstInit(k *Const) {
 	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)
 	if sub.buf.Len() == 0 {
 		f.emit("%s = %s", k.GoName, code)
-		return
+	} else {
+		f.emit("%s = func() %s {", k.GoName, f.c.goType(typ))
+		f.buf.WriteString(sub.buf.String())
+		f.emit("\treturn %s", code)
+		f.emit("}()")
 	}
-	f.emit("%s = func() %s {", k.GoName, f.c.goType(typ))
-	f.buf.WriteString(sub.buf.String())
-	f.emit("\treturn %s", code)
-	f.emit("}()")
+	if k.guarded {
+		f.emit("%s = true", constSet(k))
+	}
+}
+
+// guardConsts marks main.rb's constants that may be read before their
+// assignment runs, where MRI raises NameError but a Go package variable
+// reads as its zero value. A constant needs no guard when only other
+// constant assignments precede it that call no method main.rb defines and
+// read no constant not yet assigned, which is how programs usually start.
+func (c *Compiler) guardConsts() {
+	defs := map[string]bool{}
+	anyNode(c.mainFile.Root, func(n parser.Node) bool {
+		if d, ok := n.(*parser.DefNode); ok {
+			defs[d.Name] = true
+		}
+		return false
+	})
+	done := map[*Const]bool{}
+	ran := false
+	for _, n := range c.mainBody() {
+		ci, ok := n.(*constInit)
+		if !ok {
+			ran = true
+			continue
+		}
+		k := ci.k
+		if k.File == c.mainFile && (ran || c.initRuns(k, defs, done)) {
+			k.guarded, ran = true, true
+		}
+		done[k] = true
+	}
+}
+
+// initRuns reports whether k's initializer may run main.rb's code or read
+// a constant not yet assigned. Methods match by name, erring toward a guard.
+func (c *Compiler) initRuns(k *Const, defs map[string]bool, done map[*Const]bool) bool {
+	return anyNode(k.Value, func(n parser.Node) bool {
+		switch n := n.(type) {
+		case *parser.CallNode:
+			return defs[n.Name] || n.Name == "new" && defs["initialize"]
+		case *parser.EmbeddedStatementsNode:
+			return defs["to_s"]
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			_, r := c.lookupConst(k.File, n, k.Scope)
+			return r != nil && !done[r]
+		}
+		return false
+	})
+}
+
+// anyNode reports whether pred holds for n or any node below it.
+func anyNode(n parser.Node, pred func(parser.Node) bool) bool {
+	if n == nil {
+		return false
+	}
+	if pred(n) {
+		return true
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if anyNode(ch, pred) {
+			return true
+		}
+	}
+	return false
 }
 
 // capture runs gen and returns the statements it emitted instead of

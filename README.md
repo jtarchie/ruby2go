@@ -539,7 +539,12 @@ resolve; anything not listed is still open.
     (`FREEZING = of(0)`), and a user-defined `inherited` is called where a
     class is first opened, `included`/`extended` at the `include`/`extend`,
     in the same source order. *(Revised: initializers ran with `main` as
-    `self`, and hooks were compiled but never called.)*
+    `self`, and hooks were compiled but never called.)* A constant that
+    code can read before its assignment runs (one assigned after a
+    statement, a hook, or an initializer that may call a main.rb method)
+    gets a flag, and its reads raise `NameError` while it is unset, as in
+    MRI. Constants assigned before any such code, the usual case, are read
+    directly. *(Revised: such reads saw the Go zero value.)*
 19. Class methods: every class and module (except `BasicObject` and
     `Kernel`) gets a metaclass — a struct class holding the
     class methods, inheriting from the parent's metaclass — and one
