@@ -1,5 +1,3 @@
-# skip: Hash#!= is BasicObject#!=, which calls BasicObject#== (identity) statically, so equal hashes are !=
-
 # rbs_inline: enabled
 
 a = { "x" => 1, "y" => 2 } #: Hash[String, Integer]

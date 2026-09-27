@@ -761,6 +761,13 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		}
 		return expr{code: "Boolean(" + f.isACheck(n, recv, args[0]) + ")", typ: f.cls("Boolean")}, true
 	}
+	// `!=` is `!(==)` unless overridden: BasicObject#!= as a free func over any would bind == to identity.
+	if name == "!=" {
+		if e := f.resolve(recv.typ, name); e == nil || e.Owner == f.c.classes["BasicObject"] {
+			eq := f.genMethodCall(n, recv, "==", args, block)
+			return expr{code: "Boolean(!(" + f.truthy(n, eq) + "))", typ: f.cls("Boolean")}, true
+		}
+	}
 	return expr{}, false
 }
 
@@ -1472,16 +1479,12 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		return expr{code: "rbInspect(Opt(" + recv.code + "))", typ: f.cls("String")}
 	case "to_json":
 		return expr{code: "rbToJson(Opt(" + recv.code + "))", typ: f.cls("String")}
-	case "==", "!=", "equal?":
+	case "==", "equal?":
 		if len(args) != 1 {
 			f.errorf(n, "%s takes one argument", name)
 		}
 		a := f.genExpr(args[0], nil)
-		code := "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")"
-		if name == "!=" {
-			code = "!" + code
-		}
-		return expr{code: code, typ: f.cls("Boolean")}
+		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
 	case "!":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	}
@@ -1517,13 +1520,9 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 	case "<=>":
 		a := f.genExpr(args[0], recv.typ)
 		return expr{code: recv.code + ".Cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
-	case "==", "!=":
+	case "==":
 		a := f.genExpr(args[0], nil)
-		code := recv.code + ".Eq(" + f.coerce(args[0], a, TAny{}) + ")"
-		if name == "!=" {
-			code = "!" + code
-		}
-		return expr{code: code, typ: f.cls("Boolean")}
+		return expr{code: recv.code + ".Eq(" + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
 	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}
@@ -1551,14 +1550,11 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		return expr{code: "Boolean(any(" + recv.code + ") == nil)", typ: f.cls("Boolean")}
 	case "!":
 		return expr{code: "Boolean(!rbTruthy(" + recv.code + "))", typ: f.cls("Boolean")}
-	case "==", "!=":
+	case "==":
 		a := one(recv.typ)
 		code := "rbEq(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")"
 		if isAny(recv.typ) || isNil(recv.typ) {
 			code = "rbEq[any](" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")"
-		}
-		if name == "!=" {
-			code = "!" + code
 		}
 		return expr{code: code, typ: f.cls("Boolean")}
 	case "equal?":

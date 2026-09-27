@@ -1,4 +1,3 @@
-# skip: BasicObject#!= calls BasicObject#== (identity) statically, so 1 != 1.0 is true and a user-defined == is ignored
 # rbs_inline: enabled
 
 class Money

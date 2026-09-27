@@ -1,5 +1,3 @@
-# skip: String#!= is BasicObject#!=, which negates BasicObject#== (data-pointer identity), so equal Strings built at run time are != ("abc".chars[1] != "b" is true)
-
 # rbs_inline: enabled
 
 ch = "abc".chars[1]

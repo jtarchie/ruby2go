@@ -11,7 +11,7 @@ class BasicObject
   def ==(other) = %x{ Boolean(rbIdentical(self, other)) }
 
   #: (untyped) -> bool
-  def !=(other) = !(self == other)
+  def !=(other) = %x{ !rbEq[any](self, other) }
 
   #: () -> bool
   def ! = false
