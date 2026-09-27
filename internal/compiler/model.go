@@ -578,7 +578,7 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		}
 		m.sigText = sig
 	}
-	if body, ok := n.Body.(*parser.StatementsNode); ok && len(body.Body) == 1 {
+	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {
 		if _, ok := body.Body[0].(*parser.XStringNode); ok {
 			m.Kind = kindPrimitive
 		}
