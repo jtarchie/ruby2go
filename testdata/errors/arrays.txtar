@@ -235,7 +235,7 @@ module Nums
 end
 puts Nums.to_a.inspect
 -- cannot_infer_type_param.rb --
-# error: main.rb:6: cannot infer type parameter T of Util_Meta#none
+# error: main.rb:6: cannot infer type parameter T of Util.none
 class Util
   #: [T] () -> Array[T]
   def self.none = []

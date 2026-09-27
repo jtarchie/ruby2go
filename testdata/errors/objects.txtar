@@ -730,8 +730,7 @@ module Kernel
   def self.hi = "hi"
 end
 -- class_methods_on_kernel_location.rb --
-# skip: the error for `def self.x` on Kernel/BasicObject is located in prelude/object.rb (where Kernel is declared) with the def's offset, not at the user's def main.rb:5
-# error: main.rb:5: class methods on Kernel are not supported
+# error: main.rb:4: class methods on Kernel are not supported
 module Kernel
   #: () -> String
   def self.hi = "hi"
@@ -793,8 +792,7 @@ Point = Struct.new(:x, :y) #: [Integer, Integer]
 pt = Point.new(1, 2)
 pt.with(x: 3)
 -- struct_missing_nonnil_keyword.rb --
-# skip: a keyword Struct.new that omits a non-nilable member reports the nil at main.rb:1 instead of the call's line
-# error: main.rb:5: nil where Integer is expected
+# error: main.rb:4: nil where Integer is expected
 Point = Struct.new(:x, :y) #: [Integer, Integer]
 
 puts Point.new(x: 1)
@@ -947,7 +945,7 @@ end
 
 Dog.new.bark(1)
 -- class_method_wrong_arity.rb --
-# error: main.rb:7: Dog_Meta#named: wrong number of arguments (given 0, expected 1)
+# error: main.rb:7: Dog.named: wrong number of arguments (given 0, expected 1)
 class Dog
   #: (String) -> Dog
   def self.named(n) = new

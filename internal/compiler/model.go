@@ -1049,7 +1049,10 @@ func (c *Compiler) bindParamNames(m *Method) {
 
 func (m *Method) String() string {
 	owner := "main"
-	if m.Owner != nil {
+	switch {
+	case m.Owner != nil && m.Owner.metaOf != nil:
+		return m.Owner.RubyName + "." + m.Name
+	case m.Owner != nil:
 		owner = m.Owner.Name
 	}
 	return fmt.Sprintf("%s#%s", owner, m.Name)
@@ -1066,7 +1069,7 @@ func (c *Compiler) buildMetas() {
 	for _, cls := range append([]*Class(nil), c.classList...) {
 		if cls.RubyName == "BasicObject" || cls.RubyName == "Kernel" {
 			if len(cls.singletonDefs) > 0 {
-				c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
+				c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
 			}
 			continue
 		}
@@ -1098,7 +1101,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		return cls.meta
 	}
 	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 {
-		c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
+		c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
 	}
 	// A class object is a Class (a module's, a Module); a subclass's class
 	// object inherits from its superclass's, so class methods inherit.

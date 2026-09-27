@@ -2071,7 +2071,7 @@ func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []pa
 		case vr.valueKind == "data":
 			f.errorf(n, "missing keyword: :%s", m)
 		default:
-			v = &parser.NilNode{}
+			v = &parser.NilNode{Location: n.GetLocation()}
 		}
 		out[i] = v
 	}
