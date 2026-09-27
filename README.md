@@ -456,6 +456,10 @@ resolve; anything not listed is still open.
    chain (ivar access from free functions, and the marker `rescue` matches
    on). Methods defined on struct classes and modules are free functions
    generic over `Self`, forwarded by a Go method on every concrete class.
+   A struct class's forwarder instantiates `Self` with the interface its
+   own signature uses for `self` (`Comparable_Op_lt[VersionI]`, not
+   `[*Version]`): `*Version`'s methods take `VersionI`, so it can't satisfy
+   `Comparable_Self[*Version]` or pass a `(self)` argument on.
    `BasicObject`, `Object` and `Kernel` are "universal": their `Self` is
    `any`, since primitives inherit from them too.
 9. Module constraints are derived from the module body, as the README

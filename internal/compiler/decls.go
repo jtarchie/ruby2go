@@ -493,7 +493,12 @@ func (c *Compiler) seqAdapterSig(m *Method, env map[string]Type) (name, params, 
 // forwardTypeArgs renders explicit type args for a forwarder call.
 func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 	var args []string
-	if e.Owner.GoType == "" {
+	switch {
+	case e.Owner.GoType != "":
+	case cls.isStruct() && !e.Owner.universal:
+		// Self matches the forwarder's `self` (CI), else *C fails Comparable_Self[*C] and `(self)` args don't pass
+		args = append(args, c.goType(c.selfTypeFor(e, cls)))
+	default:
 		args = append(args, c.recvType(cls))
 	}
 	for _, p := range e.Owner.TypeParams {
