@@ -1,5 +1,3 @@
-# skip: Regexp#source keeps the \/ escape and inspect/to_s leave a bare / unescaped (MRI: source "a/b", inspect /a\/b/)
-
 # rbs_inline: enabled
 
 x = "b/c"

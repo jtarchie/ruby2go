@@ -16,6 +16,24 @@
     return &Regexp{re: re, src: src, opts: opts}
   }
 
+  // rbRegexpDesc is the source as inspect and to_s show it: a bare / is
+  // escaped, as MRI's rb_reg_desc does.
+  func rbRegexpDesc(src string) string {
+    var b strings.Builder
+    for i := 0; i < len(src); i++ {
+      switch {
+      case src[i] == '\\\\' && i+1 < len(src):
+        b.WriteString(src[i : i+2])
+        i++
+      case src[i] == '/':
+        b.WriteString(`\\/`)
+      default:
+        b.WriteByte(src[i])
+      }
+    }
+    return b.String()
+  }
+
   func rbMatch(r *Regexp, s string) *MatchData {
     loc := r.re.FindStringSubmatchIndex(s)
     if loc == nil {
@@ -102,7 +120,7 @@ class Regexp < Object
   def source = %x{ String(self.src) }
 
   #: () -> String
-  def inspect = %x{ String("/" + self.src + "/" + self.opts) }
+  def inspect = %x{ String("/" + rbRegexpDesc(self.src) + "/" + self.opts) }
 
   #: () -> String
   def to_s = %x{
@@ -118,7 +136,7 @@ class Regexp < Object
     if off.Len() > 0 {
       flags += "-" + off.String()
     }
-    return String("(?" + flags + ":" + self.src + ")")
+    return String("(?" + flags + ":" + rbRegexpDesc(self.src) + ")")
   }
 
   #: (untyped) -> bool

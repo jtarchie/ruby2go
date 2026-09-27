@@ -78,15 +78,36 @@ func translateRegexp(src string) (string, error) {
 	return b.String(), nil
 }
 
+// regexpSource is a literal's Regexp#source: as in MRI's lexer, an escaped
+// terminator loses its backslash unless it is a regexp metacharacter
+// (/a\/b/ is "a/b"; %r{a\}b} keeps "a\\}b").
+func regexpSource(raw string, term byte) string {
+	if strings.IndexByte("$*+.?^|)]}>", term) >= 0 {
+		return raw
+	}
+	var b strings.Builder
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '\\' && i+1 < len(raw) {
+			i++
+			if raw[i] != term {
+				b.WriteByte('\\')
+			}
+		}
+		b.WriteByte(raw[i])
+	}
+	return b.String()
+}
+
 // genRegexp renders a regexp literal. Static ones are validated now and
 // compiled once into a package variable.
 func (f *fctx) genRegexp(n parser.Node) expr {
 	var flags rubyRegexFlags
 	var parts []parser.Node
+	var term byte
 	switch n := n.(type) {
 	case *parser.RegularExpressionNode:
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
-		src := f.f.text(n.ContentLoc)
+		src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
 		goPat, err := translateRegexp(src)
 		if err == nil {
 			_, err = regexp.Compile(flags.goPrefix() + goPat)
@@ -108,6 +129,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	case *parser.InterpolatedRegularExpressionNode:
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
 		parts = n.Parts
+		term = f.f.text(n.ClosingLoc)[0]
 	}
 	if flags.extended {
 		f.errorf(n, "extended (/x) regexps are not supported")
@@ -118,7 +140,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	for _, p := range parts {
 		switch p := p.(type) {
 		case *parser.StringNode:
-			raw := f.f.text(p.Location)
+			raw := regexpSource(f.f.text(p.Location), term)
 			goPat, err := translateRegexp(raw)
 			if err != nil {
 				f.errorf(p, "regexp is not supported: %v", err)
