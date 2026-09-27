@@ -717,7 +717,7 @@ class RestyServlet < WEBrick::HTTPServlet::AbstractServlet
   def service(req, res)
     # Rack would nest post[title]; build that from WEBrick's flat query.
     params = {} #: Hash[String, untyped]
-    post = {} #: Hash[String, String]
+    post = {}
     req.query.each do |key, value|
       match = key.match(/\Apost\[(\w+)\]\z/)
       if match
@@ -727,7 +727,7 @@ class RestyServlet < WEBrick::HTTPServlet::AbstractServlet
       end
     end
     params["post"] = post unless post.empty?
-    env = { "REQUEST_METHOD" => req.request_method, "PATH_INFO" => req.path, "rack.params" => params } #: Hash[String, untyped]
+    env = { "REQUEST_METHOD" => req.request_method, "PATH_INFO" => req.path, "rack.params" => params }
     status, headers, body = APP.call(env)
     res.status = status
     headers.each { |name, value| res[name] = value }

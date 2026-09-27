@@ -2037,7 +2037,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 // returns the receiver dereferenced to T.
 func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	elem := recv.typ.(TOpt).Elem
-	f.c.warn(f.f, n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
+	f.warn(n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
 	code := recv.code
 	if !isSimpleGo(code) {
 		code = f.newTmp()
@@ -2162,7 +2162,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		return expr{code: "rbHash(" + recv.code + ")", typ: f.cls("Integer")}
 	}
 	if recv.nilable {
-		f.c.warn(f.f, n, "%s called on possibly-nil untyped (raises NoMethodError on nil)", name)
+		f.warn(n, "%s called on possibly-nil untyped (raises NoMethodError on nil)", name)
 	}
 	return f.genDynCall(n, recv, name, args)
 }
@@ -2473,6 +2473,9 @@ func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
 	v := f.readLocal(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location})
 	if v.base != nil {
 		return expr{code: v.goName, typ: v.typ, done: true} // narrowed: already set
+	}
+	if isNil(v.typ) { // only ever nil so far (`x = nil; x ||= v`): an assignment, which widens x to T?
+		return f.assignLocal(n, n.Name, f.genExpr(n.Value, nil), nil)
 	}
 	e := f.genOrAssign(n, expr{code: v.goName, typ: v.typ}, n.Value)
 	if info := f.localInfo(n.Name); info != nil {
@@ -3027,7 +3030,7 @@ func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
-	f.c.warn(f.f, n, "dynamic call: %s on %s", name, recv.typ)
+	f.warn(n, "dynamic call: %s on %s", name, recv.typ)
 	how := "rbCall"
 	call, _ := n.(*parser.CallNode)
 	switch {
@@ -3090,7 +3093,7 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		f.errorf(n, "a block with a computed send is not supported")
 	}
 	f.c.dynAll = true
-	f.c.warn(f.f, n, "dynamic call: %s with a computed name", name)
+	f.warn(n, "dynamic call: %s with a computed name", name)
 	nameExpr := f.genExpr(args[0], nil)
 	how := "rbFCall"
 	if name == "public_send" {

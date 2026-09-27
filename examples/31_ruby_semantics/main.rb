@@ -4,7 +4,7 @@
 # returning values (and short-circuiting), locals first set in a branch,
 # narrowing attribute reads, subclass-only methods, truthiness of untyped.
 
-values = [1, 2] #: Array[Integer]
+values = [1, 2]
 missing_value = values.fetch(5) rescue -1
 present_value = values.fetch(1) rescue -1
 puts missing_value, present_value
@@ -40,7 +40,7 @@ rescue NoMethodError => e
   puts e.message
 end
 
-log = [] #: Array[String]
+log = []
 none = nil #: Integer?
 some = 5 #: Integer?
 puts (none && none + 1).inspect, (some && some + 1).inspect
@@ -85,5 +85,5 @@ end
 
 flag = nil #: untyped
 puts(flag ? "yes" : "no")
-mixed = [1, nil, "x", false] #: Array[untyped]
+mixed = [1, nil, "x", false]
 puts mixed.select { |v| v }.inspect

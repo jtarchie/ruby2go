@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 # Thread.new / join. An exception in a thread re-raises on join.
 
-results = [] #: Array[Integer]
+results = []
 worker = Thread.new { results << 42 }
 worker.join
 puts results.inspect

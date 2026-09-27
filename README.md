@@ -622,7 +622,8 @@ resolve; anything not listed is still open.
     unification local to one method body; types never flow between
     methods ([example 33](examples/33_empty_literals/main.rb)).
 14. Locals are inferred from their assignments (joined across branches:
-    `nil` + `String` → `String?`) and hoisted to a `var` at the top of
+    `nil` + `String` → `String?`, and `x = nil` then `x ||= v` counts as
+    assigning `v`) and hoisted to a `var` at the top of
     their Ruby scope (the method, or the block's Go body) when Go's block
     scoping would otherwise hide them. Scopes are resolved as prism does:
     block params, `|x; y|` block locals and locals first assigned in a

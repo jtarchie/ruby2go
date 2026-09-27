@@ -17,5 +17,5 @@ end
 
 puts teen?(15), teen?(20)
 puts describe(3), describe(10), describe(42)
-words = ["it", "works"] #: Array[String]
+words = ["it", "works"]
 puts words.map { it.upcase }.join(" ")

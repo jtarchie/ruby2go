@@ -2,7 +2,7 @@
 
 # Blocks on untyped receivers are unsupported, so these only compile once each `[]`/`{}` is typed.
 
-words = %w[pear fig apple fig] #: Array[String]
+words = %w[pear fig apple fig]
 
 shout = []
 words.each { |w| shout << w.upcase }

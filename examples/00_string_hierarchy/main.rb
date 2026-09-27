@@ -6,7 +6,7 @@ def assert(value, msg)
   raise msg unless value
 end
 
-s = "hello, world" #: String
+s = "hello, world"
 assert(s.upcase == "HELLO, WORLD", "upcase")               # String
 assert(s < "world", "<")                                   # Comparable
 assert(s.clamp("a", "c") == "c", "clamp")                  # Comparable

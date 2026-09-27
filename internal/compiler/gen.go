@@ -195,6 +195,13 @@ func (f *fctx) errorf(n parser.Node, format string, args ...any) {
 	f.c.errorf(f.f, n, format, args...)
 }
 
+// warn reports from the emitting pass only: earlier passes see provisional types.
+func (f *fctx) warn(n parser.Node, format string, args ...any) {
+	if f.pass == 2 {
+		f.c.warn(f.f, n, format, args...)
+	}
+}
+
 func (f *fctx) emit(format string, args ...any) {
 	f.buf.WriteString(strings.Repeat("\t", f.indent))
 	fmt.Fprintf(f.buf, format, args...)

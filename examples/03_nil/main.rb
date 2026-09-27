@@ -9,6 +9,6 @@ h = { "a" => "hi" }
 puts greeting(h, "a")
 puts greeting(h, "b")
 
-name = h["a"] #: String?
+name = h["a"]
 puts name.size if name
 puts name.inspect, h["zz"].inspect

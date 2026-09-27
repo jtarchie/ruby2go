@@ -27,10 +27,10 @@ end
 cache = Cache.new
 puts cache.value, cache.value, cache.calls
 
-name = nil #: String?
+name = nil
 name ||= "default"
 puts name
-count = nil #: Integer?
+count = nil
 count ||= 1
 count ||= 2
 puts count

@@ -45,7 +45,7 @@ class Bird < Animal
   def speak = "#{name} tweets"
 end
 
-zoo = [Dog.new("Rex"), Bird.new("Tweety"), Animal.new("Blob", 0)] #: Array[Animal]
+zoo = [Dog.new("Rex"), Bird.new("Tweety"), Animal.new("Blob", 0)]
 zoo.each { |a| puts a.speak }
 zoo.each { |a| puts a }
 

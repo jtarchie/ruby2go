@@ -1,5 +1,5 @@
 # rbs_inline: enabled
-ages = { "alice" => 30, "bob" => 25 } #: Hash[String, Integer]
+ages = { "alice" => 30, "bob" => 25 }
 ages["carol"] = 35
 puts ages.size, ages.inspect
 puts ages.key?("bob"), ages.key?("dave")
@@ -20,7 +20,7 @@ by_len = words.group_by { |w| w.size }
 puts by_len.inspect
 puts words.tally.inspect
 puts words.uniq.sort.inspect, words.tally.sort_by { |w, n| [-n, w] }.inspect
-nested = { "k" => [1, 2] } #: Hash[String, Array[Integer]]
+nested = { "k" => [1, 2] }
 puts nested.inspect, nested == { "k" => [1, 2] }
 words.each_with_index { |w, i| print w, i }
 puts

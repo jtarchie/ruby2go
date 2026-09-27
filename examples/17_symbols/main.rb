@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 # Symbols, and braceless hash arguments (`f(a: 1)` passes a Hash).
 
-config = { port: 8080, host: "localhost" } #: Hash[Symbol, untyped]
+config = { port: 8080, host: "localhost" }
 puts config[:port], config[:host], config.keys.inspect
 puts :abc.inspect, :abc.to_s, :a == :a, :a == :b
 

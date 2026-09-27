@@ -36,14 +36,14 @@ puts list.next_node&.next_node&.next_node&.value.inspect
 #: (Array[Integer], Integer) -> Integer?
 def find_gt(nums, n) = nums.find { |x| x > n }
 
-nums = [1, 5, 9] #: Array[Integer]
+nums = [1, 5, 9]
 found = find_gt(nums, 4)
 puts found.inspect, find_gt(nums, 100).inspect
 puts found.nil?, find_gt(nums, 100).nil?
 puts(found ? found * 2 : -1)
 v = find_gt(nums, 100) || 0
 puts v + 1
-name = nil #: String?
+name = nil
 puts name.to_s + "|", name.inspect
 name = "x" if nums.size > 2
 puts name.inspect
