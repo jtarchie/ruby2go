@@ -154,7 +154,9 @@ Rules the prelude relies on:
   constants convert to `String` when the parameter is `String`
   (`s.Lt("world")` compiles), but become Go `string` when the parameter is
   `any`. Always emit `String("...")` when the target type is an interface or
-  `untyped` (see [06_puts](examples/06_puts/)).
+  `untyped` (see [06_puts](examples/06_puts/)), and when the literal is a
+  receiver or bound with `:=` (`(-1).abs`, `case 3`, `false && x`), where Go
+  would infer `int`/`string`/`bool`.
 
 ## Examples
 

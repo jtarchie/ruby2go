@@ -121,7 +121,6 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		}
 		e := f.genExpr(st.Body[0], expected)
 		e.code = "(" + e.code + ")"
-		e.lit = false
 		return e
 	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.BeginNode:
 		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
@@ -252,7 +251,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 			return expr{code: "(" + l.code + " || " + rc.code + ")", typ: l.typ}
 		}
 		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, l.code)
+		f.emit("%s := %s", tmp, f.materialize(l))
 		f.emit("if !%s {", tmp)
 		f.buf.WriteString(stmts)
 		f.emit("\t%s = %s", tmp, rc.code)
@@ -285,7 +284,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		f.emit("if %s := %s; rbTruthy(%s) {", lt, f.coerce(n, l, TAny{}), lt)
 		f.emit("\t%s = %s", tmp, lt)
 	case boolL:
-		f.emit("if %s := %s; %s {", lt, l.code, lt)
+		f.emit("if %s := %s; %s {", lt, f.materialize(l), lt)
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	default:
 		f.emit("if %s := %s; %s != nil {", lt, l.code, lt)
@@ -321,7 +320,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 			return expr{code: "(" + l.code + " && " + rc.code + ")", typ: l.typ}
 		}
 		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, l.code)
+		f.emit("%s := %s", tmp, f.materialize(l))
 		f.emit("if %s {", tmp)
 		f.buf.WriteString(stmts)
 		f.emit("\t%s = %s", tmp, rc.code)
@@ -344,7 +343,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	}
 	tmp, lt := f.newTmp(), f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
-	f.emit("if %s := %s; %s {", lt, l.code, f.truthy(n.Left, expr{code: lt, typ: l.typ}))
+	f.emit("if %s := %s; %s {", lt, f.materialize(l), f.truthy(n.Left, expr{code: lt, typ: l.typ}))
 	f.indent++
 	f.push()
 	for _, nw := range narrow {
@@ -593,6 +592,15 @@ func (f *fctx) valueOf(e expr) expr {
 // a Symbol, would convert silently too, so it is rejected.
 func fitsValue(e expr, to Type) bool {
 	return fits(e.typ, to) || e.lit && isClass(e.typ, "Integer") && isClass(stripOpt(to), "Float")
+}
+
+// materialize is e's code as a typed Go value: an untyped constant bound
+// with := or used as a receiver would otherwise become int/string/bool.
+func (f *fctx) materialize(e expr) string {
+	if e.lit {
+		return f.c.goType(e.typ) + "(" + e.code + ")"
+	}
+	return e.code
 }
 
 // coerce converts e to the representation of type `to`.
@@ -1008,9 +1016,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type) string {
 	m := e.M
 	argList := strings.Join(args, ", ")
-	if recv.lit {
-		recv.code = f.c.goType(recv.typ) + "(" + recv.code + ")"
-	}
+	recv.code = f.materialize(recv)
 	if m.Owner == nil {
 		return m.GoName + "(" + argList + ")"
 	}
@@ -1978,10 +1984,7 @@ func (f *fctx) multiLiteral(arr *parser.ArrayNode, lefts []parser.Node) []expr {
 			e.typ = t
 		}
 		tmp := f.newTmp()
-		code := e.code
-		if e.lit {
-			code = f.c.goType(e.typ) + "(" + code + ")"
-		}
+		code := f.materialize(e)
 		if isNil(e.typ) || code == "nil" {
 			f.emit("var %s %s", tmp, f.c.goType(e.typ))
 		} else {

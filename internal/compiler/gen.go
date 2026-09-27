@@ -656,7 +656,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	}
 	subj := f.genExpr(n.Predicate, nil)
 	tmp := f.newTmp()
-	f.emit("%s := %s", tmp, subj.code)
+	f.emit("%s := %s", tmp, f.materialize(subj))
 	f.emit("switch {")
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)

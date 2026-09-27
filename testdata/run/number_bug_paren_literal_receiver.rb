@@ -1,4 +1,3 @@
-# skip: a parenthesised expression whose value is a numeric literal loses its Integer()/Float() conversion when used as a receiver, so go build fails ((-2).Pow undefined on untyped int)
 # rbs_inline: enabled
 
 puts ((-2) ** 3).inspect
