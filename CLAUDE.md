@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the design record. Its numbered "Open decisions" list (1–34) is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made.
 
 ## Commands
@@ -40,13 +38,10 @@ Smaller cases go in `testdata/`:
 
 ## Architecture
 
-- `rb2go.go`: public `Compile`. It embeds `prelude.rb` + `prelude/*.rb` via `//go:embed`, so new prelude files must be `require_relative`d from `prelude.rb`.
-- `internal/rbs`: parser for the RBS subset used by annotations.
+- `rb2go.go`: public `Compile`. It embeds `prelude.rb` + `prelude/*.rb` + `prelude/go/*.go` via `//go:embed`. New `.rb` prelude files must be `require_relative`d from `prelude.rb`; `prelude/go/*.go` files are globbed.
 - `internal/compiler`: one `Compiler` holds the closed world (prelude + one user file). Parsing uses Prism via `go-ruby-prism` (WASM/wazero). Pipeline in `compiler.go`:
   `loadPrelude` → `collect` (declare classes/methods/consts, `model.go`) → `link` (resolve supers, includes, signatures) → `discoverIvars` (dry-run bodies for ivar types) → `emitProgram` (`decls.go`) → `goimports` (`format.go`).
   - `gen.go`: per-function statement codegen (`fctx`). A "tail" (none/return/assign) threads the value-producing position through statements. Type inference works by running gen inside `probe` (output discarded, types recorded) and then running it again for real.
-  - `expr.go`: expressions, method resolution/dispatch, blocks (iterator `for range` vs closure), argument coercion.
-  - `types.go`: `Type` (TClass, TOpt, TTuple, TVar, TFunc, TAny, …), unify/subst/join.
   - `dynamic.go`: generated `rbDynName` dispatchers + `DynName(...any) any` wrappers for calls on `untyped` values. There is no `reflect`: everything comes from the closed world.
   - `naming.go`: the operator → Go name table. It must stay injective against camel-cased names (decision 3).
   - Errors are `panic(compileError)` via `errorf`/`unsupported`, recovered in `compile`. Messages carry `file:line`. Warnings (`warn`) are deduped and printed by the CLI/test.
