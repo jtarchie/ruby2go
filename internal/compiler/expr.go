@@ -836,28 +836,8 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	ai := 0
 	for _, p := range m.Params {
 		if p.Rest {
-			for ; ai < nargs; ai++ {
-				var a expr
-				an := n
-				if exprs != nil {
-					a = exprs[ai]
-				} else {
-					an = args[ai]
-					if sp, ok := an.(*parser.SplatNode); ok {
-						a = f.genExpr(sp.Expression, nil)
-						ac, ok := a.typ.(TClass)
-						if !ok || ac.C.Name != "Array" {
-							f.errorf(an, "splat of non-array %s", a.typ)
-						}
-						unify(p.Type, ac.Args[0], env)
-						codes = append(codes, "(*"+a.code+")...")
-						continue
-					}
-					a = f.genExpr(an, closed(p.Type, env))
-				}
-				unify(p.Type, a.typ, env)
-				codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
-			}
+			codes = append(codes, f.genRestArgs(n, p, env, args, exprs, ai, nargs)...)
+			ai = nargs
 			continue
 		}
 		if ai < nargs {
@@ -889,6 +869,69 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
 	return codes
+}
+
+// genRestArgs: with a splat, one fresh slice, since Go spreads only a lone slice and Ruby's rest param never aliases the caller's array.
+func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []parser.Node, exprs []expr, ai, nargs int) []string {
+	var codes []string
+	var splats map[int]bool
+	for ; ai < nargs; ai++ {
+		var a expr
+		an := n
+		if exprs != nil {
+			a = exprs[ai]
+		} else {
+			an = args[ai]
+			if sp, ok := an.(*parser.SplatNode); ok {
+				a = f.genExpr(sp.Expression, nil)
+				ac, ok := a.typ.(TClass)
+				if !ok || ac.C.Name != "Array" {
+					f.errorf(an, "splat of non-array %s", a.typ)
+				}
+				unify(p.Type, ac.Args[0], env)
+				if splats == nil {
+					splats = map[int]bool{}
+				}
+				splats[len(codes)] = true
+				codes = append(codes, f.splatSlice(an, a.code, ac.Args[0], subst(p.Type, env)))
+				continue
+			}
+			a = f.genExpr(an, closed(p.Type, env))
+		}
+		unify(p.Type, a.typ, env)
+		codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
+	}
+	if splats == nil {
+		return codes
+	}
+	et := f.c.goType(subst(p.Type, env))
+	var parts, lit []string
+	flush := func() {
+		if len(lit) > 0 {
+			parts = append(parts, "[]"+et+"{"+strings.Join(lit, ", ")+"}")
+			lit = nil
+		}
+	}
+	for i, c := range codes {
+		if splats[i] {
+			flush()
+			parts = append(parts, c)
+			continue
+		}
+		lit = append(lit, c)
+	}
+	flush()
+	return []string{"slices.Concat[[]" + et + "](" + strings.Join(parts, ", ") + ")..."}
+}
+
+// splatSlice converts elements only when the Go types differ ([]Integer is not []any).
+func (f *fctx) splatSlice(n parser.Node, code string, from, to Type) string {
+	ft, tt := f.c.goType(from), f.c.goType(to)
+	if ft == tt {
+		return "*" + code
+	}
+	conv := f.coerce(n, expr{code: "x", typ: from}, to)
+	return "rbSplat(*" + code + ", func(x " + ft + ") " + tt + " { return " + conv + " })"
 }
 
 // closed returns subst(t, env) if it has no unbound method type vars.

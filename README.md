@@ -317,7 +317,10 @@ primitive.
 - **Untyped literals into `any` become Go `string`**, not `String` — the
   first run of this example panicked on exactly that. Emit `String("...")`
   for interface-typed targets.
-- **`puts(*a)` splat** → `Kernel_Puts(a.ToAAny()...)`.
+- **Splats into a rest param** → one fresh slice: `f(1, *a)` →
+  `f(slices.Concat[[]T]([]T{1}, *a)...)`. Go spreads only a lone slice, and
+  Ruby's rest param is a new array, so the callee must not alias the caller's.
+  Elements convert (`rbSplat`) when the Go types differ (`Array[Integer]` into `*untyped`).
 - **Output is buffered** (`bufio.Writer`), flushed by `defer` in `main` —
   runs on return and on panic, so partial output before a crash matches Ruby.
   `os.Exit` skips defers: `Kernel#exit` must flush first. Interleaving with

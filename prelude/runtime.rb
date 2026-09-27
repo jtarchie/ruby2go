@@ -106,6 +106,15 @@
     return ok
   }
 
+  // rbSplat converts a splatted array's elements to a rest param's type.
+  func rbSplat[T, E any](s []T, conv func(T) E) []E {
+    out := make([]E, len(s))
+    for i, v := range s {
+      out[i] = conv(v)
+    }
+    return out
+  }
+
   func rbClassName(a any) string {
     if a == nil {
       return "NilClass"
