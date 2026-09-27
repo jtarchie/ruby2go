@@ -1,5 +1,3 @@
-# skip: Struct/Data == uses is_a? on the declaring class, so a subclass instance equals a parent instance with the same members; MRI requires the same class
-
 # rbs_inline: enabled
 
 Point = Struct.new(:x, :y) #: [Integer, Integer]

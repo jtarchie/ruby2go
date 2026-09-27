@@ -1,5 +1,3 @@
-# skip: a Struct/Data member named `other` breaks the generated ==, whose parameter is also named other (`other == other.other`), so equal values compare false
-
 # rbs_inline: enabled
 
 Edge = Struct.new(:from, :other) #: [String, String]

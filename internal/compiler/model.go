@@ -1281,38 +1281,46 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	for kind == "struct" && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
 		firstOpt--
 	}
+	// Parameters are __v0, __v1, ... and members are read as self.m, so
+	// a member may be named like a keyword (:end) or like a generated
+	// parameter (:other).
 	sigs := make([]string, len(members))
 	params := make([]string, len(members))
+	vars := make([]string, len(members))
 	syms := make([]string, len(members))
+	reads := make([]string, len(members))
 	eqs := make([]string, len(members))
 	insp := make([]string, len(members))
 	pairs := make([]string, len(members))
 	for i, m := range members {
-		sigs[i], params[i] = types[i].String(), m
+		vars[i] = fmt.Sprintf("__v%d", i)
+		sigs[i], params[i] = types[i].String(), vars[i]
 		if i >= firstOpt {
-			sigs[i], params[i] = "?"+sigs[i], m+" = nil"
+			sigs[i], params[i] = "?"+sigs[i], vars[i]+" = nil"
 		}
 		syms[i] = ":" + m
-		eqs[i] = m + " == other." + m
-		insp[i] = m + "=#{" + m + ".inspect}"
-		pairs[i] = m + ": " + m
+		reads[i] = "self." + m
+		eqs[i] = "self." + m + " == __other." + m
+		insp[i] = m + "=#{self." + m + ".inspect}"
+		pairs[i] = m + ": self." + m
 	}
 	fmt.Fprintf(&b, "  #: (%s) -> void\n  def initialize(%s)\n", strings.Join(sigs, ", "), strings.Join(params, ", "))
-	for _, m := range members {
-		fmt.Fprintf(&b, "    @%s = %s\n", m, m)
+	for i, m := range members {
+		fmt.Fprintf(&b, "    @%s = %s\n", m, vars[i])
 	}
 	b.WriteString("  end\n")
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def self.members = [%s]\n", strings.Join(syms, ", "))
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def members = [%s]\n", strings.Join(syms, ", "))
 	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def to_h = { %s }\n", strings.Join(pairs, ", "))
-	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(other)\n    return false unless other.is_a?(::%s)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
+	// MRI's == wants the same class, not a subclass
+	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
 	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name} %s>\"\n", kind, strings.Join(insp, ", "))
 	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
 	if kind == "struct" {
-		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(members, ", "))
+		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
 	} else {
 		// `with(k: v)` compiles to this: a copy of the receiver's class
-		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(members, ", "), strings.Join(members, ", "))
+		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(vars, ", "), strings.Join(vars, ", "))
 	}
 	b.WriteString("end\n")
 	return b.String()

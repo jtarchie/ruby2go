@@ -2096,6 +2096,9 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().valueKind != "data" {
 		return expr{}, false
 	}
+	if len(args) == 0 {
+		return recv, true // MRI: `with` without keywords is the receiver
+	}
 	vr := cls.valueRoot()
 	byName := map[string]parser.Node{}
 	if len(args) == 1 {
