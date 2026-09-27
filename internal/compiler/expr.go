@@ -240,6 +240,10 @@ func (f *fctx) genOp(n parser.Node, left expr, op string, right parser.Node) exp
 
 func (f *fctx) genOr(n *parser.OrNode) expr {
 	l := f.genExpr(n.Left, nil)
+	if isNil(l.typ) { // `nil || x` is x
+		f.valueOf(l)
+		return f.genExpr(n.Right, nil)
+	}
 	lElem := stripOpt(l.typ)
 	var r expr
 	f.probe(func() { r = f.genExpr(n.Right, lElem) })
@@ -327,7 +331,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		f.emit("}")
 		return expr{code: tmp, typ: l.typ}
 	}
-	if !boolL && !isOpt(l.typ) && !isAny(l.typ) {
+	if !boolL && !isOpt(l.typ) && !isAny(l.typ) && !isNil(l.typ) {
 		// the left is never nil or false: the value is the right
 		if !isSimpleGo(l.code) {
 			f.emit("_ = %s", l.code)
@@ -336,14 +340,19 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
 	var typ Type = TAny{}
-	if isOpt(l.typ) && !isAny(stripOpt(l.typ)) {
+	if (isOpt(l.typ) || isNil(l.typ)) && !isAny(stripOpt(l.typ)) {
 		if j, ok := join(TNil{}, r.typ); ok {
 			typ = j
 		}
 	}
 	tmp, lt := f.newTmp(), f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
-	f.emit("if %s := %s; %s {", lt, f.materialize(l), f.truthy(n.Left, expr{code: lt, typ: l.typ}))
+	if isNil(l.typ) { // `nil && x`: x is dead, but still compiled (like `if nil`)
+		lt = f.valueOf(l).code
+		f.emit("if false {")
+	} else {
+		f.emit("if %s := %s; %s {", lt, f.materialize(l), f.truthy(n.Left, expr{code: lt, typ: l.typ}))
+	}
 	f.indent++
 	f.push()
 	for _, nw := range narrow {
