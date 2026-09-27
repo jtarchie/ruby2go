@@ -1,5 +1,3 @@
-# skip: nil passed dynamically into a `*untyped` rest parameter (e.g. method_missing's *args) raises TypeError "no implicit conversion of nil into untyped"; MRI passes nil
-
 # rbs_inline: enabled
 
 class Ghost

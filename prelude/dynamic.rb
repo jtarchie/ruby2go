@@ -24,10 +24,38 @@
   }
 
   func rbArg[T any](args []any, i int, want string) T {
-    if v, ok := args[i].(T); ok {
+    if v, ok := rbConv[T](args[i]); ok {
       return v
     }
     panic(NewTypeError(Ref(String("no implicit conversion of " + rbDescribe(args[i]) + " into " + want))))
+  }
+
+  // rbConv is v as a T: v itself, nil for untyped, or an Array or Hash of
+  // another instantiation converted (rbFrom). Go instantiations are
+  // invariant, so Array[Integer] where Array[untyped] is expected, or
+  // back, is a copy whose elements are converted in turn.
+  // ponytail: a T? element (*T) is not converted from its value; box it via OptOf when needed.
+  func rbConv[T any](v any) (T, bool) {
+    if t, ok := v.(T); ok {
+      return t, true
+    }
+    var zero T
+    if v == nil {
+      _, untyped := any(&zero).(*any)
+      return zero, untyped
+    }
+    if c, ok := any(zero).(interface{ rbFrom(v any) (T, bool) }); ok {
+      return c.rbFrom(v)
+    }
+    return zero, false
+  }
+
+  // rbAs asserts an untyped value's type, converting as rbConv does.
+  func rbAs[T any](v any) T {
+    if t, ok := rbConv[T](v); ok {
+      return t
+    }
+    return v.(T) // fails as the plain assertion would
   }
 
   func rbOptArg[T any](args []any, i int, want string) *T {

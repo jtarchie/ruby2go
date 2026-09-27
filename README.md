@@ -527,6 +527,19 @@ resolve; anything not listed is still open.
     modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
     class that might have a subclass including it, is a compile error.
     Narrowing an untyped local to `Array` views it as `Array[untyped]`.
+    *Revised:* Go instantiations are invariant, so the view of a typed
+    `Array[Integer]` is a copy (`_to_any`) and writes through it were lost.
+    Block-less calls on the narrowed local are now sent to the value itself
+    through dynamic dispatch (decision 32), so `x << 1` and `x[k] = v`
+    reach the caller's container (an element it cannot hold raises
+    `TypeError`), and passing it on as `untyped` passes the value; calls
+    with a block or type parameters (`each`, `map`) and typed uses read a
+    fresh copy. Elsewhere a container where another instantiation is
+    expected (`Array[Integer]` for `Array[untyped]`, or `Array[untyped]`
+    or an untyped value for `Array[Integer]`; `Hash` alike, dynamic
+    arguments too) is converted: a copy with each element checked, so
+    writes through it do not reach the original. `T?` elements are not
+    converted.
 22. Unannotated literals infer by joining their parts; when parts share
     no type the element type is `untyped`. A 2–3 element mixed array with
     nothing expected of it is a tuple (sort keys, multiple returns).

@@ -55,6 +55,32 @@
     idx.byHash[h] = slices.DeleteFunc(idx.byHash[h], func(c K) bool { return c == k })
   }
 
+  // rbFrom converts v, a Hash of any instantiation, into this one: a
+  // copy, keys and values converted (rbConv), as Array's rbFrom.
+  func (*Hash[K, V]) rbFrom(v any) (*Hash[K, V], bool) {
+    h, ok := v.(Hash_Any)
+    if !ok {
+      return nil, false
+    }
+    src := h._ToAny()
+    if out, ok := any(src).(*Hash[K, V]); ok {
+      return out, true
+    }
+    out := NewHash[K, V]()
+    for _, k := range src.keys {
+      ck, ok := rbConv[K](k)
+      if !ok {
+        return nil, false
+      }
+      cv, ok := rbConv[V](src.vals[k])
+      if !ok {
+        return nil, false
+      }
+      out.IdxSet(ck, cv)
+    }
+    return out, true
+  }
+
   // rbGet is the value at k. It is kept out of line so that Hash#[] fits
   // Go's inlining budget: inlined, the V? it returns is not heap-allocated.
   //go:noinline

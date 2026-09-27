@@ -21,6 +21,10 @@ type expr struct {
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
 	done     bool // already emitted; code only names the value
+	// view is the untyped Go value that code converts, for an Array or Hash
+	// seen as another instantiation (decision 21): a narrowed local, or a
+	// call sent through it. Calls and untyped uses take the value itself.
+	view string
 }
 
 // genLiteral handles the leaf expressions.
@@ -63,10 +67,10 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	switch n := n.(type) {
 	case *parser.LocalVariableReadNode:
 		v := f.readLocal(n)
-		return expr{code: v.goName, typ: v.typ}
+		return expr{code: v.goName, typ: v.typ, view: v.view}
 	case *parser.ItLocalVariableReadNode:
 		v := f.readLocal(&parser.LocalVariableReadNode{Name: "it", Location: n.Location})
-		return expr{code: v.goName, typ: v.typ}
+		return expr{code: v.goName, typ: v.typ, view: v.view}
 	case *parser.LocalVariableWriteNode:
 		var ann Type
 		if t := f.f.trailingAnnotation(n); t != "" {
@@ -567,6 +571,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if typeEq(e.typ, to) {
 		return e.code
 	}
+	if e.view != "" && isAny(to) {
+		return e.view // the value itself, not a converted copy
+	}
 	// `untyped?` is just untyped: its nil is Ruby's nil.
 	if o, ok := e.typ.(TOpt); ok && isAny(o.Elem) {
 		e = expr{code: "Opt(" + e.code + ")", typ: TAny{}}
@@ -597,8 +604,16 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		if isAny(e.typ) && to.C.RubyName == "Boolean" {
 			return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
 		}
+		if isAny(e.typ) && converts(to) {
+			return "rbAs[" + f.c.goType(to) + "](" + e.code + ")"
+		}
 		if isAny(e.typ) {
 			return e.code + ".(" + f.c.goType(to) + ")"
+		}
+		// Go instantiations are invariant: Array[Integer] where
+		// Array[untyped] is expected (or back) is a converted copy.
+		if converts(to) && sameButUntyped(e.typ, to) && f.c.goType(e.typ) != f.c.goType(to) {
+			return "rbAs[" + f.c.goType(to) + "](" + e.code + ")"
 		}
 
 		if isOpt(e.typ) {
@@ -611,6 +626,38 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		return e.code
 	}
 	return e.code
+}
+
+// converts reports whether values of t convert between instantiations
+// (rbAs): Array and Hash, which every instantiation of implements
+// _to_any and rbFrom.
+func converts(t TClass) bool {
+	return len(t.Args) > 0 && t.C.lookup("_to_any") != nil
+}
+
+// sameButUntyped reports whether a and b differ only where one of them is
+// untyped (Hash[Symbol, Integer] and Hash[Symbol, untyped]).
+func sameButUntyped(a, b Type) bool {
+	if isAny(a) || isAny(b) || typeEq(a, b) {
+		return true
+	}
+	switch a := a.(type) {
+	case TClass:
+		b, ok := b.(TClass)
+		if !ok || a.C != b.C || len(a.Args) != len(b.Args) {
+			return false
+		}
+		for i := range a.Args {
+			if !sameButUntyped(a.Args[i], b.Args[i]) {
+				return false
+			}
+		}
+		return true
+	case TOpt:
+		b, ok := b.(TOpt)
+		return ok && sameButUntyped(a.Elem, b.Elem)
+	}
+	return false
 }
 
 // ---- calls
@@ -730,7 +777,39 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	if recv.view != "" && block == nil {
+		if e, ok := f.viewCall(n, recv, name, args); ok {
+			return e
+		}
+	}
 	return f.dispatch(n, recv, name, args, block)
+}
+
+// viewCall sends a block-less call on a converted Array/Hash (expr.view)
+// to the value itself, dynamically: the conversion is a copy unless the
+// value already is Array[untyped], and Ruby's call would mutate the value.
+// The result is typed as the typed call's. Calls that cannot be sent
+// dynamically (blocks, generic methods) use the copy.
+func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
+	t, ok := recv.typ.(TClass)
+	if !ok || !converts(t) || f.c.dynEntry(t.C, name) == nil {
+		return expr{}, false
+	}
+	for _, a := range args {
+		if _, ok := a.(*parser.SplatNode); ok {
+			return expr{}, false
+		}
+	}
+	var typed expr
+	f.probe(func() { typed = f.dispatch(n, recv, name, args, nil) })
+	f.c.noteDyn(name)
+	codes := []string{"false", recv.view}
+	for _, a := range args {
+		codes = append(codes, f.coerce(a, f.genExpr(a, nil), TAny{}))
+	}
+	raw := expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+	// The raw result stays the view: `x << 1 << 2` sends both to the value.
+	return expr{code: f.coerce(n, raw, typed.typ), typ: typed.typ, view: raw.code}, true
 }
 
 // genIntrinsic compiles the methods the transpiler answers itself:
@@ -1741,7 +1820,7 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 		for range cls.TypeParams {
 			typ.Args = append(typ.Args, TAny{})
 		}
-		return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + cls.Name + "_Any)._ToAny()"}}
+		return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + cls.Name + "_Any)._ToAny()", view: code}}
 	}
 	return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + f.c.goType(typ) + ")"}}
 }

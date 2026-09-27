@@ -1,5 +1,3 @@
-# skip: a typed Hash passed where Hash[Symbol, untyped] or Hash[untyped, untyped] is expected (or back) is not converted; go build fails
-
 # rbs_inline: enabled
 
 #: (Hash[Symbol, untyped]) -> Integer

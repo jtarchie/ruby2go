@@ -1,5 +1,3 @@
-# skip: a hash literal where Hash[K, V]? is expected ignores the expectation (genHash only looks through TClass), so fetch(k, {}), `{}` into a ?Hash[...]? param or return, a `#: Hash[...]?` local, and `a: 1` into Hash[Symbol, untyped]? fail go build
-
 # rbs_inline: enabled
 
 #: (?Hash[String, Integer]?) -> Integer

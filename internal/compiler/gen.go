@@ -68,6 +68,7 @@ type local struct {
 	goName   string
 	typ      Type
 	base     *local // non-nil for a narrowed view of another local
+	view     string // see expr.view
 	declared bool
 }
 
@@ -219,6 +220,9 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 	switch n.(type) {
 	case *parser.NilNode, *parser.SelfNode, *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode:
 		return
+	}
+	if e.view != "" {
+		e.code = e.view // the same call, without converting its result
 	}
 	switch n.(type) {
 	case *parser.CallNode, *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode,
@@ -376,6 +380,7 @@ type narrowInfo struct {
 	local *local
 	typ   Type
 	code  string // Go expression for the narrowed view; "" means deref
+	view  string // see expr.view
 }
 
 // applyNarrow shadows narrowed locals in the current scope.
@@ -389,7 +394,7 @@ func (f *fctx) applyNarrow(ns []narrowInfo) {
 		if code == "" {
 			code = "(*" + nw.local.goName + ")"
 		}
-		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: code, typ: nw.typ, base: base, declared: true}
+		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: code, typ: nw.typ, base: base, view: nw.view, declared: true}
 	}
 }
 
@@ -729,15 +734,12 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		f.emit("case %s:", strings.Join(cases, ", "))
 		saved := f.enterBlock()
 		f.indent++
-		armName := name
+		armName, view := name, ""
 		if convert != "" {
-			armName = f.newTmp()
-			f.emit("%s := %s%s", armName, name, convert)
+			armName, view = name+convert, name // converted where read, like is_a? narrowing
 		}
 		if subjLocal != nil {
-			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, declared: true}
-		} else if convert != "" {
-			f.emit("_ = %s", armName)
+			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, view: view, declared: true}
 		}
 		f.genStmts(wn.Statements, t)
 		f.indent--
