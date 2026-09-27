@@ -1,5 +1,3 @@
-# skip: a T? key type is a Go map of *T, so lookups by an equal but distinct value (every String literal) miss, []= duplicates the key, and group_by/tally over T? values make one group per pointer
-
 # rbs_inline: enabled
 
 nk = { nil => 1, "a" => 2 } #: Hash[String?, Integer]

@@ -116,6 +116,93 @@
     return Boolean(any(a) == any(b))
   }
 
+  // Hash keys, uniq and tally match by Ruby's eql?/hash. For most keys that
+  // is Go ==: strings, numbers, symbols, and objects by identity. Arrays,
+  // hashes, Regexps, Structs and anything else defining both eql? and hash
+  // match by value, and so does a T? box (*T) by what it points at.
+
+  // rbPlainKey reports whether K's Go == is eql?, so a map can key by K.
+  func rbPlainKey[K comparable]() bool {
+    var z K
+    switch z := any(z).(type) {
+    case String, Symbol, Integer, Float, Boolean:
+      return true
+    case interface{ rbPlain() bool }:
+      return z.rbPlain()
+    }
+    return false
+  }
+
+  type rbEqlHash interface {
+    EqlQ(other any) Boolean
+    Hash() Integer
+  }
+
+  var rbHashSeed = maphash.MakeSeed()
+
+  // rbValueKey is k's hash when k matches by value rather than Go ==.
+  func rbValueKey(k any) (uint64, bool) {
+    if p, ok := rbUnbox(k); ok {
+      return rbKeyHash(p), true
+    }
+    if v, ok := k.(rbEqlHash); ok {
+      return uint64(v.Hash()), true
+    }
+    return 0, false
+  }
+
+  func rbKeyHash(k any) uint64 {
+    if h, ok := rbValueKey(k); ok {
+      return h
+    }
+    return maphash.Comparable(rbHashSeed, k)
+  }
+
+  func rbKeyEql(a, b any) bool {
+    if p, ok := rbUnbox(a); ok {
+      a = p
+    }
+    if p, ok := rbUnbox(b); ok {
+      b = p
+    }
+    if a == b {
+      return true
+    }
+    if e, ok := a.(rbEqlHash); ok {
+      return bool(e.EqlQ(b))
+    }
+    return false
+  }
+
+  // rbHash is #hash on an untyped value.
+  func rbHash(a any) Integer {
+    if h, ok := a.(interface{ Hash() Integer }); ok {
+      return h.Hash()
+    }
+    return Integer(rbKeyHash(a))
+  }
+
+  // rbUnbox returns what a T? box holds. Boxes point at values (named basic
+  // types, tuples, interfaces, pointers); pointers to other structs, and to
+  // slices and maps, are objects.
+  func rbUnbox(k any) (any, bool) {
+    t := reflect.TypeOf(k)
+    if t == nil || t.Kind() != reflect.Pointer {
+      return nil, false
+    }
+    e := t.Elem()
+    if kind := e.Kind(); kind == reflect.Slice || kind == reflect.Map || kind == reflect.Struct && !e.Implements(rbPlainType) {
+      return nil, false
+    }
+    v := reflect.ValueOf(k)
+    if v.IsNil() {
+      return nil, true
+    }
+    return v.Elem().Interface(), true
+  }
+
+  var rbPlainType = reflect.TypeFor[interface{ rbPlain() bool }]()
+
   func rbCmp[T comparable](a, b T) Integer {
     return any(a).(interface{ Cmp(T) Integer }).Cmp(b)
   }
@@ -174,7 +261,9 @@
     return NewStandardError(Ref[String](String(fmt.Sprint(r))))
   }
 
-  func NewHash[K, V comparable]() *Hash[K, V] { return &Hash[K, V]{vals: map[K]V{}} }
+  func NewHash[K, V comparable]() *Hash[K, V] {
+    return &Hash[K, V]{vals: map[K]V{}, idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}}
+  }
 
   // `when Array` / `when Hash` in a type switch can't match a generic
   // instantiation; every instantiation implements these instead.

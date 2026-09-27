@@ -1,4 +1,3 @@
-# skip: #hash on an untyped receiver emits rbHash(...), which is not defined anywhere, so go build fails
 # rbs_inline: enabled
 
 #: (untyped) -> untyped

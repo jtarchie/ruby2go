@@ -394,6 +394,16 @@ resolve; anything not listed is still open.
    a new key raises `RuntimeError`, and `delete` copies the key list rather
    than shifting the one being ranged over, whose deleted keys are skipped.
    `Array#each` likewise loops by index over the live length.
+   *Revised:* keys match by Ruby's `eql?`/`hash`, not Go `==`, which keyed
+   arrays, hashes, Regexps, Structs/Data and `T?` boxes by pointer. The
+   struct gained `idx`, hash buckets of the keys that match by value (those
+   defining `eql?` and `hash`, and `T?` boxes by what they point at); a
+   lookup first maps its key to the stored `eql?` one. Keys whose Go `==`
+   is `eql?` (`String`, `Integer`, `Symbol`, `Float`, `Boolean`, tuples of
+   them) skip the index on a flag set once per Hash, so typed hashes over
+   them cost about what they did. `uniq`
+   uses the same index; `tally`/`group_by` are Hash-based. Mutating a key
+   after inserting it is not detected (MRI needs `rehash` there too).
 2. `TrueClass`/`FalseClass` vs. `Boolean`: **decided, one `Boolean`** (a Go
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
@@ -565,9 +575,9 @@ resolve; anything not listed is still open.
     rbs-inline's per-member form (`:x, #: Integer`) or a trailing
     `#: [A, B]`. Accessors (readers only for `Data`), `initialize`
     (trailing nilable struct members optional, every `Data` member
-    required), keyword `new`, `==`, `to_h`, `members`, `inspect`, `to_a`
-    and `with` are generated as Ruby and compiled like user code.
-    `keyword_init` is not supported.
+    required), keyword `new`, `==`, `eql?`, `hash`, `to_h`, `members`,
+    `inspect`, `to_a` and `with` are generated as Ruby and compiled like
+    user code. `keyword_init` is not supported.
 31. `method_missing` on a typed receiver: an unknown method compiles to
     `method_missing(:name, *args)`, typed by its signature.
     `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.

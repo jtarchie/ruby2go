@@ -1,5 +1,3 @@
-# skip: Array and Hash keys are Go map keys by pointer, so an equal but distinct array/hash misses and a second []= adds a duplicate key (tally, group_by and uniq too); MRI hashes them by value
-
 # rbs_inline: enabled
 
 ak = {} #: Hash[Array[Integer], String]

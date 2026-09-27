@@ -158,13 +158,19 @@ class Array < Object
     return out
   }
 
+  # By eql?/hash, as Hash keys.
   #: () -> Array[E]
   def uniq = %x{
     seen := map[E]bool{}
+    idx := rbKeyIndex[E]{plain: rbPlainKey[E]()}
     out := &Array[E]{}
     for _, x := range *self {
-      if !seen[x] {
-        seen[x] = true
+      k, h, byValue := idx.find(x)
+      if !seen[k] {
+        seen[k] = true
+        if byValue {
+          idx.add(k, h)
+        }
         *out = append(*out, x)
       }
     }
@@ -267,6 +273,35 @@ class Array < Object
       }
     }
     return true
+  }
+
+  #: (untyped) -> bool
+  def eql?(other) = %x{
+    o, ok := other.(*Array[E])
+    if !ok {
+      if a, ok := other.(Array_Any); ok {
+        return self._ToAny().EqlQ(a._ToAny())
+      }
+      return false
+    }
+    if len(*o) != len(*self) {
+      return false
+    }
+    for i, x := range *self {
+      if !rbKeyEql(x, (*o)[i]) {
+        return false
+      }
+    }
+    return true
+  }
+
+  #: () -> Integer
+  def hash = %x{
+    h := uint64(len(*self))
+    for _, x := range *self {
+      h = h*31 + rbKeyHash(x)
+    }
+    return Integer(h)
   }
 
   #: () -> Array[untyped]

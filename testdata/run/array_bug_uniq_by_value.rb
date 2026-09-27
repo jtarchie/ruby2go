@@ -1,5 +1,3 @@
-# skip: Array#uniq dedupes through a Go map keyed by the element, so equal inner arrays, Structs and Data (pointers) are all kept; MRI uses eql?/hash (by value)
-
 # rbs_inline: enabled
 Pair = Struct.new(:a, :b) #: [Integer, Integer]
 Val = Data.define(:v) #: [Integer]

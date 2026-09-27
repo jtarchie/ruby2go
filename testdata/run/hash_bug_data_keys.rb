@@ -1,5 +1,3 @@
-# skip: Data/Struct keys hash by value in MRI (eql?/hash), but rb2go keys the Go map by pointer, so an equal instance misses and []= adds a second key
-
 # rbs_inline: enabled
 
 Point = Data.define(:x, :y) #: [Integer, Integer]

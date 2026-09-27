@@ -465,8 +465,10 @@ func (c *Compiler) emitTuples() {
 		tos := make([]string, 0, n)
 		insp := make([]string, 0, n)
 		eq := make([]string, 0, n)
+		plain := make([]string, 0, n)
 		for i := range n {
 			p := fmt.Sprintf("T%d", i)
+			plain = append(plain, "rbPlainKey["+p+"]()")
 			tps = append(tps, p)
 			fields = append(fields, fmt.Sprintf("F%d %s", i, p))
 			cmp = append(cmp, fmt.Sprintf("if c := rbCmp(t.F%d, o.F%d); c != 0 {\n\t\treturn c\n\t}", i, i))
@@ -485,6 +487,7 @@ func (c *Compiler) emitTuples() {
 			json = append(json, fmt.Sprintf("rbToJson(t.F%d)", i))
 		}
 		c.w("func (t %s) ToJson(...any) String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(json, ` + "," + `))
+		c.w("func (t %s) rbPlain() bool { return %s }\n\n", full, strings.Join(plain, " && "))
 		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 		_ = tos
 	}
