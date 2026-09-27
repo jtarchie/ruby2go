@@ -318,9 +318,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	}
 	if !boolL && !isOpt(l.typ) && !isAny(l.typ) {
 		// the left is never nil or false: the value is the right
-		if !isSimpleGo(l.code) {
-			f.emit("_ = %s", l.code)
-		}
+		f.discard(l)
 		return f.genExpr(n.Right, nil)
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
@@ -1666,14 +1664,22 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	if cls == nil {
 		f.errorf(classNode, "is_a? needs a class name")
 	}
-	if !isSimpleGo(recv.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, recv.code)
-		recv.code = tmp
+	c := f.isA(n, recv, cls)
+	if c == "true" || c == "false" {
+		f.discard(recv)
 	}
+	return c
+}
+
+func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
-		inner := f.isACheck(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, classNode)
+		if !isSimpleGo(recv.code) {
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, recv.code)
+			recv.code = tmp
+		}
+		inner := f.isA(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, cls)
 		return "(" + recv.code + " != nil && " + inner + ")"
 	}
 	if isNil(t) {
@@ -1746,6 +1752,15 @@ var simpleGo = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|\(\*[A-Za-z_][A-Za
 
 // isSimpleGo reports whether code can be evaluated twice without effects.
 func isSimpleGo(code string) bool { return simpleGo.MatchString(code) }
+
+// discard evaluates e for its effects where a fold drops its value. It
+// discards simple code too: readLocal already counted a local's read, so
+// noteUnused will not, and Go rejects the unused variable.
+func (f *fctx) discard(e expr) {
+	if e.code != "" && e.code != "nil" && !e.lit {
+		f.emit("_ = %s", e.code)
+	}
+}
 
 // genOrAssign renders `x ||= value` for a target whose current value is cur.
 // The value is evaluated only when x is nil (or falsy, for untyped/bool).
@@ -2172,9 +2187,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		return expr{}, false
 	}
 	if e := cls.lookup(name); e != nil && !e.M.Private && !rubyPrivate[name] {
-		if !isSimpleGo(recv.code) {
-			f.emit("_ = %s", recv.code)
-		}
+		f.discard(recv)
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
 	if cls.descendantDefines(name) {
@@ -2185,9 +2198,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		defer func() { f.implicitCall = false }()
 		return f.callEntry(n, rm, recv, []parser.Node{args[0], &parser.FalseNode{}}, nil), true
 	}
-	if !isSimpleGo(recv.code) {
-		f.emit("_ = %s", recv.code)
-	}
+	f.discard(recv)
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
 }
 

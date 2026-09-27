@@ -734,10 +734,11 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			armName = f.newTmp()
 			f.emit("%s := %s%s", armName, name, convert)
 		}
+		if convert != "" {
+			f.emit("_ = %s", armName) // the arm may never read it
+		}
 		if subjLocal != nil {
 			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, declared: true}
-		} else if convert != "" {
-			f.emit("_ = %s", armName)
 		}
 		f.genStmts(wn.Statements, t)
 		f.indent--

@@ -1,5 +1,3 @@
-# skip: `case x when Hash` on an untyped local rebinds x through _to_any into a temp that gets no `_ = t`, so an arm that never reads x fails go build "declared and not used" (when Array too)
-
 # rbs_inline: enabled
 
 #: (untyped) -> String
