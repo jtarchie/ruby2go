@@ -1027,21 +1027,34 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	if !free {
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
-	targs := ""
-	if f.needsExplicitTypeArgs(m) {
-		var ts []string
-		if m.Owner.GoType == "" {
-			ts = append(ts, f.c.goType(recv.typ))
-		}
-		for _, p := range m.Owner.TypeParams {
-			ts = append(ts, f.c.goType(env[p]))
-		}
-		for _, p := range m.TypeParams {
-			ts = append(ts, f.c.goType(env[p]))
-		}
-		targs = "[" + strings.Join(ts, ", ") + "]"
+	return freeFuncName(m) + f.typeArgs(m, recv.typ, env) + "(" + recv.code + comma(argList) + ")"
+}
+
+// typeArgs are explicit because Go would infer from argument Go types (untyped const, *Foo, *Foo_Meta), not the Ruby binding.
+func (f *fctx) typeArgs(m *Method, recvT Type, env map[string]Type) string {
+	ts := []Type{}
+	if m.Owner.GoType == "" {
+		ts = append(ts, recvT)
 	}
-	return freeFuncName(m) + targs + "(" + recv.code + comma(argList) + ")"
+	for _, p := range m.Owner.TypeParams {
+		ts = append(ts, env[p])
+	}
+	for _, p := range m.TypeParams {
+		ts = append(ts, env[p])
+	}
+	if len(ts) == 0 {
+		return ""
+	}
+	gs := make([]string, len(ts))
+	for i, t := range ts {
+		if t == nil {
+			return "" // unbound: leave it to Go's inference
+		}
+		if gs[i] = f.c.goType(t); gs[i] == "" {
+			return ""
+		}
+	}
+	return "[" + strings.Join(gs, ", ") + "]"
 }
 
 // hasForwarder reports whether the receiver's Go type carries a method for e.
@@ -1066,31 +1079,6 @@ func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
 			return f.c.selfCalls(f.owner)[e.M.Name]
 		}
 		return e.Owner == f.owner
-	}
-	return false
-}
-
-func (f *fctx) needsExplicitTypeArgs(m *Method) bool {
-	var mentioned []string
-	for _, p := range m.Params {
-		freeVars(p.Type, &mentioned)
-	}
-	if m.Block != nil {
-		for _, p := range m.Block.Params {
-			freeVars(p, &mentioned)
-		}
-		freeVars(m.Block.Ret, &mentioned)
-	}
-	for _, tp := range m.TypeParams {
-		found := false
-		for _, v := range mentioned {
-			if v == tp {
-				found = true
-			}
-		}
-		if !found {
-			return true
-		}
 	}
 	return false
 }

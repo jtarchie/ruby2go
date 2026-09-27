@@ -186,7 +186,9 @@ each feature compiles to.
 
 [main.rb](examples/02_enumerable/main.rb)
 
-`Enumerable` written once in the prelude against `each`; Go generics inference.
+`Enumerable` written once in the prelude against `each`; Go generics, with
+type arguments spelled out from the Ruby types (Go would infer `*Foo` or an
+untyped constant from the arguments).
 
 - **`each` → `iter.Seq[E]`** (Go 1.23+ range-over-func). A Ruby
   `def each; ...; yield x; ...; end` body compiles to a push iterator:
