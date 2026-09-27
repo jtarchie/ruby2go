@@ -708,16 +708,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		wn := w.(*parser.WhenNode)
 		var conds []string
 		for _, cond := range wn.Conditions {
-			var condT Type
-			f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
-			if isClass(condT, "Regexp") {
-				// `when /re/` is Regexp#===, not ==.
-				re := f.genExpr(cond, nil)
-				conds = append(conds, "bool("+re.code+".Eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
-				continue
-			}
-			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil)
-			conds = append(conds, "bool("+eq.code+")")
+			conds = append(conds, f.caseEqq(cond, expr{code: tmp, typ: subj.typ}))
 		}
 		f.emit("case %s:", strings.Join(conds, " || "))
 		saved := f.enterBlock()
@@ -738,6 +729,28 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	f.leaveBlock(saved)
 	f.switches--
 	f.emit("}")
+}
+
+// caseEqq renders a `when`'s `cond === subj` as a Go bool: is_a? for a
+// class, the condition's own === when its class defines one (at run time
+// when it is untyped or T?), else ==, Object#==='s default.
+func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
+	if f.classRef(cond) != nil {
+		return f.isACheck(cond, subj, cond)
+	}
+	var condT Type
+	f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
+	c := classOf(stripOpt(condT))
+	if !isAny(condT) && (c == nil || c.lookup("===") == nil) {
+		return "bool(" + f.genMethodCall(cond, subj, "==", []parser.Node{cond}, nil).code + ")"
+	}
+	e := f.genExpr(cond, nil)
+	arg := []parser.Node{&exprNode{e: subj}}
+	if isAny(condT) || isOpt(condT) {
+		e = expr{code: f.coerce(cond, e, TAny{}), typ: TAny{}}
+		return "rbTruthy(" + f.genDynCall(cond, e, "===", arg).code + ")"
+	}
+	return "bool(" + f.genMethodCall(cond, e, "===", arg, nil).code + ")"
 }
 
 func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {

@@ -114,11 +114,19 @@ func (c *Compiler) emitDynName(name string) {
 	gn := goMethodName(name)
 	c.w("func rbDyn%s(vcall bool, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
-	if name != "method_missing" {
+	switch name {
+	case "===":
+		// every object has Kernel#===: == unless its class defines one.
+		// ponytail: a class object held untyped gets ==, not Module#=== (is_a?);
+		// needs a generated per-metaclass instance check.
+		c.w("\trbArity(len(args), 1, 1)\n\treturn Boolean(rbEq[any](recv, args[0]))\n}\n\n")
+	case "method_missing":
+		c.w("\tpanic(rbNoMethod(%q, recv, vcall))\n}\n\n", name)
+	default:
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
+		c.w("\tpanic(rbNoMethod(%q, recv, vcall))\n}\n\n", name)
 	}
-	c.w("\tpanic(rbNoMethod(%q, recv, vcall))\n}\n\n", name)
 	for _, cls := range c.classList {
 		if e := c.dynEntry(cls, name); e != nil {
 			c.emitDynWrapper(cls, e, name)

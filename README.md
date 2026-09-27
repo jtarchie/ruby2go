@@ -303,6 +303,10 @@ primitive.
 
 - **`case a when nil / when Array` → Go type switch.** `untyped` → `any`.
   First example that needs a runtime type test — everything before was static.
+- **Any other `case` → `switch {}` over `cond === subj`.** A class is
+  `is_a?`; a condition whose class defines `===` (`Regexp`, a user class)
+  calls it, dynamically when the condition is `untyped` or `T?`; anything
+  else is `==`, `Object#===`'s default, so typed `when 0` stays a typed `==`.
 - **`when Array` vs. generics.** A Go type switch can't match `*Array[E]` for
   unknown `E`. Every `Array` instantiation implements a non-generic
   `Array_Any{ ToAAny() []any }`; the switch matches that. General rule for
@@ -569,7 +573,9 @@ resolve; anything not listed is still open.
     non-generic, block-less method of that name: MRI's `ArgumentError` for
     arity, `TypeError` for argument types, then the typed call. Without a
     wrapper the call goes to `method_missing`, then `NoMethodError` (or
-    `NameError` for a bare name). `send`/`public_send` with a literal name
+    `NameError` for a bare name); `===` is every object's, so without a
+    wrapper it is `==` (a class object held `untyped` gets `==`, not
+    `Module#===`'s `is_a?`). `send`/`public_send` with a literal name
     are ordinary calls; a computed name switches over every method name
     and makes the output larger, so it is generated only when used. On
     generic classes, methods whose signatures nest the type parameters in
