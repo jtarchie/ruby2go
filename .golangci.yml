@@ -95,7 +95,6 @@ linters:
           allow:
             - "$gostd"
             - "github.com/danielgatis/go-ruby-prism/parser"
-            - "golang.org/x/tools/imports"
             - "rb2go/internal/rbs"
         # rbs is a stdlib-only leaf.
         RBS:
