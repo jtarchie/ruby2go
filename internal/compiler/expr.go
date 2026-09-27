@@ -402,8 +402,8 @@ func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
 	if allLit {
 		return expr{code: "String(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
 	}
-	if len(parts) == 1 {
-		return expr{code: parts[0], typ: f.cls("String")}
+	if len(parts) == 1 { // "#{x}" is a new String, never x or x.to_s itself
+		return expr{code: "rbStrClone(" + parts[0] + ")", typ: f.cls("String")}
 	}
 	return expr{code: "(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
 }
@@ -1558,7 +1558,11 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 			f.errorf(n, "%s takes one argument", name)
 		}
 		a := f.genExpr(args[0], nil)
-		code := "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")"
+		arg := f.coerce(args[0], a, TAny{})
+		code := "rbEq[any](Opt(" + recv.code + "), " + arg + ")"
+		if name == "equal?" {
+			code = "Boolean(rbIdentical(Opt(" + recv.code + "), " + arg + "))"
+		}
 		if name == "!=" {
 			code = "!" + code
 		}

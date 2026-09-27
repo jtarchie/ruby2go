@@ -17,14 +17,14 @@ class String < Object
   }
 
   #: (String) -> String
-  def +(other) = %x{ self + other }
+  def +(other) = %x{ rbNewStr(self, rbNewStr(other, self + other)) }
 
   #: (Integer) -> String
   def *(n) = %x{
     if n < 0 {
       panic(NewArgumentError(Ref[String]("negative argument")))
     }
-    return String(strings.Repeat(string(self), int(n)))
+    return rbNewStr(self, String(strings.Repeat(string(self), int(n))))
   }
 
   #: () -> String
@@ -37,13 +37,13 @@ class String < Object
   def inspect = %x{ rbStringInspect(string(self)) }
 
   #: () -> String
-  def dup = %x{ String(strings.Clone(string(self))) }
+  def dup = %x{ rbStrClone(self) }
 
   #: () -> String
-  def upcase = %x{ String(strings.ToUpper(string(self))) }
+  def upcase = %x{ rbNewStr(self, String(strings.ToUpper(string(self)))) }
 
   #: () -> String
-  def downcase = %x{ String(strings.ToLower(string(self))) }
+  def downcase = %x{ rbNewStr(self, String(strings.ToLower(string(self)))) }
 
   #: () -> String
   def capitalize = %x{
@@ -65,16 +65,16 @@ class String < Object
   }
 
   #: () -> String
-  def strip = %x{ String(strings.TrimSpace(string(self))) }
+  def strip = %x{ rbNewStr(self, String(strings.TrimSpace(string(self)))) }
 
   #: () -> String
-  def lstrip = %x{ String(strings.TrimLeft(string(self), " \\t\\n\\r\\f\\v")) }
+  def lstrip = %x{ rbNewStr(self, String(strings.TrimLeft(string(self), " \\t\\n\\r\\f\\v"))) }
 
   #: () -> String
-  def rstrip = %x{ String(strings.TrimRight(string(self), " \\t\\n\\r\\f\\v")) }
+  def rstrip = %x{ rbNewStr(self, String(strings.TrimRight(string(self), " \\t\\n\\r\\f\\v"))) }
 
   #: () -> String
-  def chomp = %x{ String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r")) }
+  def chomp = %x{ rbNewStr(self, String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r"))) }
 
   #: () -> Integer
   def size = %x{ Integer(utf8.RuneCountInString(string(self))) }
@@ -143,7 +143,7 @@ class String < Object
     out := &Array[String]{}
     for _, l := range strings.SplitAfter(string(self), "\\n") {
       if l != "" {
-        *out = append(*out, String(l))
+        *out = append(*out, rbNewStr(self, String(l)))
       }
     }
     return out
@@ -156,7 +156,7 @@ class String < Object
     out := &Array[String]{}
     if sep == nil {
       for _, f := range strings.Fields(string(self)) {
-        *out = append(*out, String(f))
+        *out = append(*out, rbNewStr(self, String(f)))
       }
       return out
     }
@@ -165,21 +165,21 @@ class String < Object
       parts = parts[:len(parts)-1]
     }
     for _, p := range parts {
-      *out = append(*out, String(p))
+      *out = append(*out, rbNewStr(self, String(p)))
     }
     return out
   }
 
   #: (String, String) -> String
-  def sub(from, to) = %x{ String(strings.Replace(string(self), string(from), string(to), 1)) }
+  def sub(from, to) = %x{ rbNewStr(self, String(strings.Replace(string(self), string(from), string(to), 1))) }
 
   #: (String, String) -> String
-  def gsub(from, to) = %x{ String(strings.ReplaceAll(string(self), string(from), string(to))) }
+  def gsub(from, to) = %x{ rbNewStr(self, String(strings.ReplaceAll(string(self), string(from), string(to)))) }
 
   #: (String, String) -> String
   def tr(from, to) = %x{
     f, t := []rune(string(from)), []rune(string(to))
-    return String(strings.Map(func(r rune) rune {
+    return rbNewStr(self, String(strings.Map(func(r rune) rune {
       for i, c := range f {
         if c == r {
           if i < len(t) {
@@ -189,7 +189,7 @@ class String < Object
         }
       }
       return r
-    }, string(self)))
+    }, string(self))))
   }
 
   #: () -> Integer
@@ -249,7 +249,7 @@ class String < Object
   def center(width) = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
-      return self
+      return rbStrClone(self)
     }
     return String(strings.Repeat(" ", n/2) + string(self) + strings.Repeat(" ", n-n/2))
   }
@@ -258,7 +258,7 @@ class String < Object
   def ljust(width) = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
-      return self
+      return rbStrClone(self)
     }
     return self + String(strings.Repeat(" ", n))
   }
@@ -267,7 +267,7 @@ class String < Object
   def rjust(width) = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
-      return self
+      return rbStrClone(self)
     }
     return String(strings.Repeat(" ", n)) + self
   }

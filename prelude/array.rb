@@ -222,6 +222,9 @@ class Array < Object
     for i, x := range *self {
       parts[i] = string(rbToS(x))
     }
+    if len(parts) == 1 { // Join would return the element itself
+      return rbStrClone(String(parts[0]))
+    }
     return String(strings.Join(parts, string(sep)))
   }
 

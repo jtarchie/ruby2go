@@ -202,6 +202,26 @@
     return a == b
   }
 
+  // rbNewStr is a String method's result, a new object in MRI: when it is
+  // the receiver's own bytes (nothing to strip, replace or pad), it is
+  // copied, so equal? and frozen? don't take it for the receiver. Only that
+  // case pays for the copy.
+  // ponytail: other shared bytes still look identical (equal slices of one string, strconv's small-number table, a "" Go boxes to zeroVal); a boxed String would fix them.
+  func rbNewStr(recv, s String) String {
+    if len(s) == len(recv) && unsafe.StringData(string(s)) == unsafe.StringData(string(recv)) { //nolint:gosec // pointer compare only
+      return rbStrClone(s)
+    }
+    return s
+  }
+
+  // rbStrClone copies s to bytes of its own; "" gets an address of its own.
+  func rbStrClone(s String) String {
+    if s == "" {
+      return String(unsafe.String(new(byte), 0)) //nolint:gosec // an address for identity only
+    }
+    return String(strings.Clone(string(s)))
+  }
+
   // rbStrID is a String's identity: backing pointer and length, as in rbIdentical.
   type rbStrID struct {
     p *byte
