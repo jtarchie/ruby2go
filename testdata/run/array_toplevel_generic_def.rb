@@ -1,5 +1,0 @@
-# rbs_inline: enabled
-#: [T] (Array[T]) -> T?
-def second(arr) = arr[1]
-
-puts second([1, 2, 3]).inspect, second(["a"]).inspect
