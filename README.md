@@ -443,6 +443,14 @@ resolve; anything not listed is still open.
    generic over `Self`, forwarded by a Go method on every concrete class.
    `BasicObject`, `Object` and `Kernel` are "universal": their `Self` is
    `any`, since primitives inherit from them too.
+   Default arguments: a plain literal default is filled in at the call
+   site. Any other (`b = a.size`, `x = @x`, `g = helper`, a constant) runs
+   in the callee, as in MRI: the method's Go func takes `rbArgc int` (the
+   count of positional args given) first, callers pass zero values for the
+   rest, and the body evaluates the missing defaults in order. Every def
+   of that name along an ancestor chain takes `rbArgc` too, so overrides
+   keep one Go signature and run their own defaults. *(Revised: all
+   defaults used to be evaluated at the call site, in the caller's scope.)*
 9. Module constraints are derived from the module body, as the README
    says: `Comparable_Self[Self]` lists what `Comparable`'s methods call on
    `self` (including `self.X(` inside `%x{}`), not every module method.

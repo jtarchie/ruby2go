@@ -105,6 +105,9 @@ func (c *Compiler) iterGoType(b *BlockSig, env map[string]Type) string {
 // sig renders the Go parameter list and result of method m under env.
 func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret string) {
 	var ps []string
+	if m.calleeDefaults {
+		ps = append(ps, "rbArgc int")
+	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
@@ -129,6 +132,9 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 // argNames lists the Go argument names used to forward a call.
 func (c *Compiler) argNames(m *Method) string {
 	var as []string
+	if m.calleeDefaults {
+		as = append(as, "rbArgc")
+	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
@@ -337,6 +343,9 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 	for _, m := range mod.MethodList {
 		if m.Node != nil {
 			walk(m.Node.Body)
+			if m.Node.Parameters != nil {
+				walk(m.Node.Parameters) // defaults run in the callee
+			}
 		}
 	}
 	for _, inc := range mod.Includes {

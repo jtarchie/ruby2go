@@ -866,6 +866,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			codes = append(codes, f.coerce(an, a, subst(p.Type, env)))
 			continue
 		}
+		if p.Default != nil && m.calleeDefaults {
+			codes = append(codes, "rbZero["+f.c.goType(subst(p.Type, env))+"]()")
+			continue
+		}
 		if p.Default != nil {
 			d := f.genExpr(p.Default, closed(p.Type, env))
 			unify(p.Type, d.typ, env)
@@ -876,6 +880,13 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	}
 	if ai < nargs {
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
+	}
+	if m.calleeDefaults {
+		pos := len(m.Params)
+		if pos > 0 && m.Params[pos-1].Rest {
+			pos--
+		}
+		codes = append([]string{strconv.Itoa(min(nargs, pos))}, codes...)
 	}
 	return codes
 }

@@ -33,6 +33,9 @@
   // Ref boxes a value into T? (represented as *T).
   func Ref[T any](v T) *T { return &v }
 
+  // rbZero fills a left-out argument; the callee sees rbArgc and runs its own default.
+  func rbZero[T any]() (z T) { return z }
+
   // Opt converts T? to untyped: a nil *T must become an untyped nil or a
   // `case nil` type switch misses it.
   func Opt[T any](p *T) any {

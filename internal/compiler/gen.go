@@ -1308,6 +1308,11 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}
+		for i, p := range m.Params {
+			if m.calleeDefaults && p.Default != nil {
+				f.fillDefault(i, p)
+			}
+		}
 		if m.Iterator {
 			ps := make([]string, len(m.Block.Params))
 			for i, p := range m.Block.Params {
@@ -1328,6 +1333,20 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 		f.emit("}")
 	}
 	c.out.WriteString(f.buf.String())
+}
+
+// fillDefault runs a left-out param's default where Ruby does: in the callee, after the params before it.
+func (f *fctx) fillDefault(i int, p Param) {
+	name := goLocalName(p.Name)
+	if info := f.locals[p.Name]; f.pass == 2 && info != nil && info.reads == 1 {
+		name = "_" // never read: evaluated for its effects only
+	}
+	f.emit("if rbArgc <= %d {", i)
+	f.indent++
+	d := f.genExpr(p.Default, p.Type)
+	f.emit("%s = %s", name, f.coerce(p.Default, d, p.Type))
+	f.indent--
+	f.emit("}")
 }
 
 func (c *Compiler) emitMain() {
