@@ -157,9 +157,9 @@ func TestRegexpMatchesMRI(t *testing.T) {
 		{"i_flag_multichar_fold_overlap", `sss`, i, "sß", true, ""},
 		{"i_flag_multichar_fold_stays_in_literal", `s+`, i, "ß", false, ""},
 		{"multichar_fold_needs_i", `ss`, rubyRegexFlags{}, "ß", false, ""},
-		{"open_interval_is_zero_to_n", `\Aa{,3}\z`, rubyRegexFlags{}, "aa", true, "Ruby's {,n} is {0,n}; RE2 reads it as the literal text {,n}"},
-		{"fixed_interval_then_question_is_optional", `\Aa{2}?\z`, rubyRegexFlags{}, "", true, "Ruby's X{n}? is (?:X{n})?; RE2 reads it as a lazy X{n}"},
-		{"Q_is_literal", `\Q.`, rubyRegexFlags{}, "Qx", true, "Ruby reads \\Q as a literal Q; RE2 starts a quoted run"},
+		{"open_interval_is_zero_to_n", `\Aa{,3}\z`, rubyRegexFlags{}, "aa", true, ""},
+		{"fixed_interval_then_question_is_optional", `\Aa{2}?\z`, rubyRegexFlags{}, "", true, ""},
+		{"Q_is_literal", `\Q.`, rubyRegexFlags{}, "Qx", true, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
