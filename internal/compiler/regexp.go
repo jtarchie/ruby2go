@@ -104,6 +104,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	var flags rubyRegexFlags
 	var parts []parser.Node
 	var term byte
+	var once bool
 	switch n := n.(type) {
 	case *parser.RegularExpressionNode:
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
@@ -130,6 +131,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
 		parts = n.Parts
 		term = f.f.text(n.ClosingLoc)[0]
+		once = n.IsONCE()
 	}
 	if flags.extended {
 		f.errorf(n, "extended (/x) regexps are not supported")
@@ -162,6 +164,14 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	if len(srcParts) == 0 {
 		srcParts = []string{`""`}
 	}
-	return expr{code: fmt.Sprintf("rbRegexpNew(%s, %s, %q)", strings.Join(goParts, " + "), strings.Join(srcParts, " + "), flags.opts()),
-		typ: f.cls("Regexp")}
+	code := fmt.Sprintf("rbRegexpNew(%s, %s, %q)", strings.Join(goParts, " + "), strings.Join(srcParts, " + "), flags.opts())
+	if once {
+		// /o interpolates on first evaluation and keeps that Regexp. Not
+		// sync.Once: a raise (RegexpError) must leave it unset to retry, as
+		// MRI does; the lock is because threads are goroutines.
+		name := fmt.Sprintf("rbRe%d", len(f.c.regexps))
+		f.c.regexps = append(f.c.regexps, "var "+name+" struct {\n\tsync.Mutex\n\tre *Regexp\n}")
+		code = fmt.Sprintf("func() *Regexp {\n%[1]s.Lock()\ndefer %[1]s.Unlock()\nif %[1]s.re == nil {\n%[1]s.re = %[2]s\n}\nreturn %[1]s.re\n}()", name, code)
+	}
+	return expr{code: code, typ: f.cls("Regexp")}
 }

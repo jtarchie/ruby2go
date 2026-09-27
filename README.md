@@ -528,7 +528,7 @@ resolve; anything not listed is still open.
     lookaround, backreferences, `\Z` and `/x` are rejected with `file:line`
     at transpile time. Static patterns compile once into package
     variables; interpolated ones compile at run time and raise
-    `RegexpError`. `$~`/`$1` are not supported; use `match`.
+    `RegexpError` (with `/o`, only until one compiles; it is kept). `$~`/`$1` are not supported; use `match`.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
