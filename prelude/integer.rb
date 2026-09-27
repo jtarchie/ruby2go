@@ -29,8 +29,12 @@ class Integer < Object
       return Boolean(self == o)
     case Float:
       return Boolean(Float(self) == o)
+    case *Integer: // a T? box that reached untyped unconverted; nil must not reach rbEq
+      return self.Eq(Opt(o))
+    case *Float:
+      return self.Eq(Opt(o))
     }
-    return false
+    return rbEq[any](other, self) // MRI asks other == self
   }
 
   #: (Integer) -> Integer

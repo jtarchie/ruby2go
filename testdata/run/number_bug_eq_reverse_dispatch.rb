@@ -1,4 +1,3 @@
-# skip: Integer#== and Float#== return false for a non-numeric argument; MRI calls `other == self`, so a user == that accepts numbers makes 1 == obj true
 # rbs_inline: enabled
 
 class One

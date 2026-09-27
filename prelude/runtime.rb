@@ -85,6 +85,9 @@
     if e, ok := any(a).(interface{ Eq(any) Boolean }); ok {
       return e.Eq(any(b))
     }
+    if e, ok := any(a).(interface{ _EqAny(any) Boolean }); ok {
+      return e._EqAny(any(b)) // a == typed on its argument; see emitEqAdapter
+    }
     return Boolean(any(a) == any(b))
   }
 

@@ -437,6 +437,26 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		}
 	}
 	c.w("\n")
+	c.emitEqAdapter(cls, recv)
+}
+
+// emitEqAdapter lets rbEq (include?, Array#==, == on untyped or T?) reach
+// a == typed on its argument, Eq(VecI), which Go cannot also declare as
+// Eq(any): _EqAny asserts the class and answers false for anything else.
+func (c *Compiler) emitEqAdapter(cls *Class, recv string) {
+	e := cls.lookup("==")
+	if !cls.isStruct() || e == nil || e.M.Private || e.M.generic() || len(e.M.Params) != 1 {
+		return
+	}
+	env := composeEnv(e.Env, nil)
+	env["Self"] = c.selfTypeFor(*e, cls)
+	t, ok := subst(e.M.Params[0].Type, env).(TClass)
+	r, isCls := subst(e.M.Ret, env).(TClass)
+	if !ok || !isCls || r.C != c.classes["Boolean"] || c.goType(t) == "any" {
+		return // ponytail: T? or union params keep identity; assert via rbOptArg to widen
+	}
+	c.w("func (self %s) _EqAny(o any) Boolean {\n\tif o, ok := o.(%s); ok {\n\t\treturn self.%s(o)\n\t}\n\treturn false\n}\n\n",
+		recv, c.goType(t), e.M.GoName)
 }
 
 // forwardTypeArgs renders explicit type args for a forwarder call.
