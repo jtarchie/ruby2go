@@ -739,6 +739,9 @@ func (c *Compiler) link() {
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
 			c.resolveMethod(m)
+			if r, ok := m.Ret.(TOpt); ok && m.Name == "<=>" && isClass(r.Elem, "Integer") {
+				m.GoName = "cmpNil" // Cmp is the Integer one Comparable and rbCmp call (emitCmpAdapter)
+			}
 		}
 	}
 	for _, m := range c.topDefList {

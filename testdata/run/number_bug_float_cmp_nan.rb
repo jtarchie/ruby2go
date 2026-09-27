@@ -1,4 +1,3 @@
-# skip: Float#<=> with NaN returns -1/1 (cmp.Compare orders NaN first); MRI returns nil
 # rbs_inline: enabled
 
 z = 0.0 #: Float

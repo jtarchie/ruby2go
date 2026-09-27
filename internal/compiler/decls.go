@@ -515,6 +515,21 @@ func (c *Compiler) emitForwarders(cls *Class) {
 	}
 	c.w("\n")
 	c.emitEqAdapter(cls, recv)
+	c.emitCmpAdapter(cls, recv)
+}
+
+// emitCmpAdapter: Comparable_Self and rbCmp need Cmp(T) Integer, so a nil <=> (Float's NaN) raises there, as MRI's rb_cmpint.
+func (c *Compiler) emitCmpAdapter(cls *Class, recv string) {
+	e := cls.lookup("<=>")
+	if e == nil || e.M.GoName != "cmpNil" || len(e.M.Params) != 1 || !c.wantsForwarder(cls, *e) {
+		return
+	}
+	env := composeEnv(e.Env, nil)
+	env["Self"] = c.selfTypeFor(*e, cls)
+	ps, _ := c.sig(e.M, env)
+	arg := c.argNames(e.M)
+	c.w("func (self %s) Cmp(%s) Integer {\n\tif r := self.cmpNil(%s); r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
+		recv, ps, arg, arg)
 }
 
 // emitEqAdapter lets rbEq (include?, Array#==, == on untyped or T?) reach

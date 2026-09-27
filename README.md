@@ -407,6 +407,16 @@ resolve; anything not listed is still open.
    has to stay injective against camel-cased names too: `[]` is not `Index`
    because `String#index` exists, and `=~` is not `Match` because `#match`
    exists.
+   *Revised:* a `<=>` declared `-> Integer?` is Go's `cmpNil` (lowercase,
+   so no camel-cased name reaches it), and the compiler gives its class a
+   `Cmp(T) Integer` adapter that raises MRI's `ArgumentError: comparison
+   of X with Y failed` where `cmpNil` answers nil (MRI's `rb_cmpint`).
+   `Comparable_Self` and `rbCmp` call `Cmp`, so they still need an
+   Integer. Float's `<=>` is one: it answers nil for NaN, as MRI's does,
+   so a typed `a <=> b` on Floats is `Integer?` and needs a nil check
+   before arithmetic, while `between?`, `clamp`, `sort`, `min` and `max`
+   raise on NaN. `between?` and `clamp` now compare with `<=>`, as MRI's
+   do, since Float's own `<` answers false for NaN instead of raising.
 4. Non-local `return`/`break`/`next` in blocks: **decided, inline loops
    only.** A method whose block returns `void` compiles to a Go iterator
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a

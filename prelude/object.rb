@@ -90,12 +90,12 @@ module Comparable
   def >=(other) = (self <=> other) >= 0
 
   #: (self, self) -> bool
-  def between?(lo, hi) = !(self < lo) && !(hi < self)
+  def between?(lo, hi) = (self <=> lo) >= 0 && (self <=> hi) <= 0
 
   #: (self, self) -> self
   def clamp(lo, hi)
     raise ArgumentError, "min argument must be less than or equal to max argument" if (lo <=> hi) > 0
-    return lo if self < lo
+    return lo if (self <=> lo) < 0
     return hi if (self <=> hi) > 0
     self
   end

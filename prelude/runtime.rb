@@ -166,13 +166,18 @@
         return r
       }
     }
-    // MRI inspects immediates and names the class of anything else.
+    panic(rbCmpErr(a, b))
+  }
+
+  // rbCmpErr is MRI's rb_cmperr, raised where <=> answered nil: it
+  // inspects immediates and Floats and names the class of anything else.
+  func rbCmpErr(a, b any) *ArgumentError {
     with := rbClassName(b)
-    switch any(b).(type) {
+    switch b.(type) {
     case nil, Boolean, Integer, Float, Symbol:
       with = string(rbInspect(b))
     }
-    panic(NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + with + " failed"))))
+    return NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + with + " failed")))
   }
 
   // rbHash is #hash on a value of unknown type.

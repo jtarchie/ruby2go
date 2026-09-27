@@ -7,8 +7,18 @@
 class Float < Object
   include Comparable
 
-  #: (Float) -> Integer
-  def <=>(other) = %x{ Integer(cmp.Compare(self, other)) }
+  #: (Float) -> Integer?
+  def <=>(other) = %x{
+    switch {
+    case self < other:
+      return Ref(Integer(-1))
+    case self > other:
+      return Ref(Integer(1))
+    case self == other:
+      return Ref(Integer(0))
+    }
+    return nil // NaN, as MRI; Comparable and sort call the generated Cmp, which raises (decision 3)
+  }
 
   #: (Float) -> bool
   def <(other) = %x{ Boolean(self < other) }
