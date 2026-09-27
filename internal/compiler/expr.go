@@ -968,8 +968,11 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 	}
 	if e == nil {
 		if td := f.c.topDefs[name]; td != nil {
-			return &entry{M: td}
+			e = &entry{M: td}
 		}
+	}
+	if e != nil {
+		f.c.inferRet(e.M)
 	}
 	return e
 }
@@ -1116,6 +1119,7 @@ func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, arg
 	d := f.universalCall(n, recv, name, args, block)
 	// the declared result keeps the caller typed instead of cascading dynamic calls
 	if e := t.C.lookup(name); e != nil && isAny(d.typ) {
+		f.c.inferRet(e.M)
 		if ret := subst(e.M.Ret, e.Env); !isVoid(ret) && !mentionsVar(ret) {
 			d = expr{code: f.coerce(n, d, ret), typ: ret}
 		}
@@ -1347,6 +1351,7 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
+	f.c.inferRet(m)
 	if o := f.nilableFetch(m, args, block); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
@@ -1842,6 +1847,9 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		f.errorf(n, "super outside a method")
 	}
 	e := f.c.inheritedSig(f.m)
+	if e != nil {
+		f.c.inferRet(e.M)
+	}
 	if e == nil && f.m.superBridge {
 		// the target depends on the includer: its bridge calls it (superBridges)
 		env := map[string]Type{"Self": f.selfType}

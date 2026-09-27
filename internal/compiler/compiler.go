@@ -116,6 +116,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	c.nameGo()
 	c.link()
 	c.discoverIvars()
+	c.inferReturns()
 	c.emitProgram()
 	*warnings = c.Warnings
 	src := []byte(c.out.String())

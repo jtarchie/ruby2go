@@ -169,7 +169,7 @@ x = Integer.new
 # rbs_inline: enabled
 x = Float.new
 -- operator_def_needs_signature.rb --
-# error: main.rb:4: method + has no type annotation
+# error: main.rb:4: method + has no type for parameter o
 # rbs_inline: enabled
 class Vec
   def +(o) = o

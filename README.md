@@ -928,3 +928,15 @@ resolve; anything not listed is still open.
     (`ZeroDivisionError`) and ±1 (MRI answers an Integer). Crystal makes
     the same trade. A Bignum would need Integer as a small-int/`*big.Int`
     union behind a decision of its own.
+36. Return types can be inferred. A def with no `#:` takes rbs-inline's
+    per-parameter form (`# @rbs x: T`, `# @rbs *xs: T`, optional
+    `# @rbs return: T`); a def with no parameters needs no annotation at
+    all. Without a return annotation the return type is the join of what
+    the body returns (tail values and `return`s; `nil` + `T` is `T?`),
+    found by a dry run of its generation when a caller first needs it,
+    and again for every method after ivar discovery, whose types it
+    depends on. Returns with no common type, recursion (direct or
+    mutual) and blocks still need an annotation. An unannotated override
+    of an inferred method takes the parent's inferred type. Parameter
+    types are never inferred: that would make a method's type depend on
+    its callers ([example 34](examples/34_inferred_returns/main.rb)).

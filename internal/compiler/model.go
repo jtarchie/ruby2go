@@ -128,6 +128,8 @@ type Method struct {
 	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
+	inferRet   bool    // no return annotation: Ret comes from the body (inferRet)
+	inferring  bool
 	structDef  *Method // the generated Struct/Data method a block def overrides; super reaches it
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
@@ -1181,7 +1183,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 		if c.inheritSignature(m) {
 			return
 		}
-		c.errorf(f, m.Node, "method %s has no type annotation (`#: (...) -> T`)", m.Name)
+		m.sigText, m.inferRet = c.paramSig(m)
 	}
 	if m.sig == nil {
 		sig, err := rbs.ParseMethodType(m.sigText)
@@ -1209,6 +1211,9 @@ func (c *Compiler) resolveMethod(m *Method) {
 		m.Block = bs
 	}
 	m.Ret = c.resolveType(m.sig.Return, sc)
+	if m.inferRet {
+		m.Ret = nil
+	}
 	if m.Block != nil {
 		m.Iterator = c.isIterator(m, m.Block)
 	}
@@ -1225,6 +1230,82 @@ func gradualParam(t rbs.Type) rbs.Type {
 		return nil
 	}
 	return u.Elems[0]
+}
+
+// paramSig builds a def's signature from rbs-inline's per-parameter form
+// (`# @rbs x: T`, `# @rbs *xs: T`, `# @rbs return: T`). Without a return
+// annotation the return type is inferred from the body (inferRet). A def
+// with no parameters needs no annotation at all.
+func (c *Compiler) paramSig(m *Method) (string, bool) {
+	ann := m.File.annotations(m.Line)
+	names, defaults, rest := c.defParams(m, m.Node.Parameters)
+	var ps []string
+	for i, n := range names {
+		t := c.paramAnn(m, ann, n)
+		if defaults[i] != nil {
+			t = "?" + t
+		}
+		ps = append(ps, t)
+	}
+	if rest != "" {
+		ps = append(ps, "*"+c.paramAnn(m, ann, "*"+rest))
+	}
+	sig := "(" + strings.Join(ps, ", ") + ") -> "
+	if r := ann["return:"]; len(r) > 0 {
+		return sig + r[0], false
+	}
+	return sig + "untyped", true
+}
+
+func (c *Compiler) paramAnn(m *Method, ann map[string][]string, name string) string {
+	t := ann[name+":"]
+	if len(t) == 0 {
+		c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`)", m.Name, strings.TrimPrefix(name, "*"), name)
+	}
+	return t[0]
+}
+
+// inferRet types an unannotated return from the body: a dry run of its
+// generation whose returned values are joined. Recursion needs an
+// annotation. Before ivar discovery finishes the result is provisional
+// (discoverIvars clears it).
+func (c *Compiler) inferRet(m *Method) {
+	if !m.inferRet || m.Ret != nil {
+		return
+	}
+	if m.inferring {
+		c.errorf(m.File, m.Node, "method %s is recursive; annotate its return type (`# @rbs return: T`)", m.Name)
+	}
+	m.inferring = true
+	defer func() { m.inferring = false }()
+	if m.inherited != nil {
+		c.inferRet(m.inherited)
+		m.Ret = m.inherited.Ret
+		return
+	}
+	nw := len(c.Warnings)
+	f := c.newFctx(m.File, m.Owner, m)
+	f.retVar = "ret_"
+	var ts []Type
+	f.retTypes = &ts
+	f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+	c.dropWarnings(nw) // emitMethod warns for real
+	var ret Type = TNil{}
+	for i, t := range ts {
+		if isVoid(t) {
+			t = TNil{}
+		}
+		if i == 0 {
+			ret = t
+			continue
+		}
+		j, ok := join(ret, t)
+		if !ok {
+			c.errorf(m.File, m.Node, "method %s returns both %s and %s; annotate its return type (`# @rbs return: T`)", m.Name, ret, t)
+		}
+		ret = j
+	}
+	m.Ret = ret
 }
 
 // inheritSignature copies the signature of the method m overrides, if any.
@@ -1246,6 +1327,7 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
 	}
 	m.Ret = subst(e.M.Ret, e.Env)
+	m.inferRet = e.M.inferRet // the parent's inferred type, once it has one (inferRet)
 	// decision 4 holds for the override's own body: a rescue around yield makes it a closure
 	m.Iterator = e.M.Iterator && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	c.bindParamNames(m)

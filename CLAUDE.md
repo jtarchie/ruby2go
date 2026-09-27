@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the design record. Its numbered "Open decisions" list (1–34) is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made.
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the design record. Its numbered "Open decisions" list (1–36) is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made.
 
 ## Commands
 

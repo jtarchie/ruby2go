@@ -32,6 +32,7 @@ type fctx struct {
 	locals       map[localKey]*localInfo
 	refined      map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
 	convs        map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
+	retTypes     *[]Type           // `return` values, while inferring the method's return type
 	unset        map[localKey]bool // locals read where they may be unassigned (maybeUnset)
 	scope        *scope
 	block        string
@@ -741,6 +742,9 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		}
 		e = f.genExpr(n.Arguments.Arguments[0], f.ret)
 		hasVal = true
+	}
+	if f.retTypes != nil && f.closures == 0 {
+		*f.retTypes = append(*f.retTypes, e.typ)
 	}
 	if f.iterator || isVoid(f.ret) || f.ret == nil {
 		if hasVal {
@@ -1822,6 +1826,34 @@ func (c *Compiler) emitMain() {
 	f.genBody(stmts, nil, tail{}, nil)
 	c.out.WriteString(f.buf.String())
 	c.w("}\n\n")
+}
+
+// inferReturns re-infers every unannotated return type (decision 36): the
+// ones inferred during discoverIvars saw ivars not yet typed.
+func (c *Compiler) inferReturns() {
+	for _, m := range c.inferredMethods() {
+		m.Ret = nil
+	}
+	for _, m := range c.inferredMethods() {
+		c.inferRet(m)
+	}
+}
+
+func (c *Compiler) inferredMethods() []*Method {
+	var out []*Method
+	for _, m := range c.topDefList {
+		if m.inferRet {
+			out = append(out, m)
+		}
+	}
+	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if m.inferRet {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
 }
 
 // discoverIvars dry-runs struct class method bodies to learn ivar types
