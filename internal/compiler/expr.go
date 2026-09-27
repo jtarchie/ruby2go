@@ -666,6 +666,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		if !fitsValue(e, to) {
 			f.errorf(n, "%s where %s is expected", e.typ, to)
 		}
+		if isAbstract(to) { // Go any: literals need wrapping, as for untyped
+			return f.coerce(n, e, TAny{})
+		}
 	case TVar:
 		return e.code
 	}
@@ -831,6 +834,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	case TTuple:
 		return f.tupleCall(n, recv, name, args)
 	case TClass:
+		if isAbstract(t) && recv.code != f.selfCode {
+			return f.abstractCall(n, t, recv, name, args, block)
+		}
 		e := t.C.lookup(name)
 		if e == nil && recv.code == f.selfCode {
 			if td := f.c.topDefs[name]; td != nil {
@@ -874,6 +880,18 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
+}
+
+// abstractCall: an Object or module value is Go any, so it dispatches as untyped.
+func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	d := f.universalCall(n, recv, name, args, block)
+	// the declared result keeps the caller typed instead of cascading dynamic calls
+	if e := t.C.lookup(name); e != nil && isAny(d.typ) {
+		if ret := subst(e.M.Ret, e.Env); !isVoid(ret) && !mentionsVar(ret) {
+			d = expr{code: f.coerce(n, d, ret), typ: ret}
+		}
+	}
+	return d
 }
 
 // genArgs generates and coerces call arguments against m's parameters,
@@ -1655,7 +1673,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "==", "!=":
 		a := one(recv.typ)
 		code := "rbEq(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")"
-		if isAny(recv.typ) || isNil(recv.typ) {
+		if isAny(recv.typ) || isNil(recv.typ) || isAbstract(recv.typ) {
 			code = "rbEq[any](" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")"
 		}
 		if name == "!=" {
@@ -1733,6 +1751,9 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 	var cls *Class
 	switch t := recv.typ.(type) {
 	case TClass:
+		if isAbstract(t) && recv.code != f.selfCode {
+			return expr{}, false // Go any: asked at run time, as for untyped
+		}
 		cls = t.C
 	case TVar:
 		if t.Name == "Self" {
@@ -1801,6 +1822,9 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 		if f.owner.IsModule { // self is some includer: ask it at run time
 			t = TAny{}
 		}
+	}
+	if isAbstract(t) && recv.code != f.selfCode {
+		t = TAny{}
 	}
 	switch t := t.(type) {
 	case TClass:

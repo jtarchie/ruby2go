@@ -70,6 +70,12 @@ func isAny(t Type) bool { _, ok := t.(TAny); return ok }
 func isOpt(t Type) bool { _, ok := t.(TOpt); return ok }
 func isNil(t Type) bool { _, ok := t.(TNil); return ok }
 
+// isAbstract: Object and modules are Go `any` (goType), so their values' classes are known only at run time.
+func isAbstract(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && (c.C.universal || c.C.IsModule)
+}
+
 func classOf(t Type) *Class {
 	if c, ok := t.(TClass); ok {
 		return c.C

@@ -592,7 +592,12 @@ resolve; anything not listed is still open.
     and makes the output larger, so it is generated only when used. On
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
-    cycles. Blocks cannot cross a dynamic call.
+    cycles. Blocks cannot cross a dynamic call. A value typed `Object` or
+    a module is Go `any` too, so it is dispatched, boxed and `is_a?`-tested
+    like `untyped`; a method the module declares keeps its declared result
+    type. *(Revised: they used to resolve like concrete classes, so
+    `Kernel#to_s` printed `#<String>`, `is_a?` folded to false, literals
+    reached `any` as Go `string`, and module methods failed `go build`.)*
 33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
     `ensure` discards the pending exception; `&&`/`||` return values of
     any types (unions become `untyped`) and evaluate the right side only

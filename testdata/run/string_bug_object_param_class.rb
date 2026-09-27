@@ -1,4 +1,4 @@
-# skip: .class on an Object-typed value emits o._ClassOf() on Go any, which go build rejects; MRI gives String/Symbol
+# skip: an Object-typed value is Go any and dispatches as untyped, and .class on untyped raises NoMethodError (no DynClass wrapper, see dynamic_bug_untyped_class); MRI gives String/Symbol
 
 # rbs_inline: enabled
 

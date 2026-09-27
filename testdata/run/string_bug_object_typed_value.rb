@@ -1,5 +1,3 @@
-# skip: a value typed Object is statically dispatched to Kernel#to_s/inspect ("#<String>") and is_a? folds to false; a literal argument is not wrapped (Go string, "#<string>"); Array[Object]#inspect panics
-
 # rbs_inline: enabled
 
 #: (Object) -> String
