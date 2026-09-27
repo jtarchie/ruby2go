@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -298,7 +299,81 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
+	c.emitBridgeSigs(mod, TVar{Name: "Self"})
 	c.w("}\n\n")
+}
+
+// bridgeName is the includer method a module method's `super` calls.
+func bridgeName(m *Method) string { return "_Super_" + m.Owner.Name + "_" + m.GoName }
+
+// superBridges lists, as seen from cls, the module methods in its
+// ancestors (itself, for a module) whose `super` target differs per
+// includer. The module's constraint requires a bridge for each, and every
+// concrete includer implements it by calling whatever follows the module
+// method in its own ancestors.
+func (c *Compiler) superBridges(cls *Class) []entry {
+	var out []entry
+	seen := map[*Method]bool{}
+	for _, anc := range append([]*Class{cls}, cls.ancestors()...) {
+		if !anc.IsModule {
+			continue
+		}
+		for _, m := range anc.MethodList {
+			if !m.superBridge || seen[m] {
+				continue
+			}
+			seen[m] = true
+			for _, e := range cls.defsOf(m.Name) {
+				if e.M == m {
+					out = append(out, e)
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// emitBridgeSigs lists cls's super bridges in its interface.
+func (c *Compiler) emitBridgeSigs(cls *Class, self Type) {
+	for _, e := range c.superBridges(cls) {
+		env := composeEnv(e.Env, nil)
+		env["Self"] = self
+		if self == nil {
+			env["Self"] = c.selfTypeFor(e, cls)
+		}
+		ps, ret := c.sig(e.M, env)
+		c.w("\t%s(%s) %s\n", bridgeName(e.M), ps, ret)
+	}
+}
+
+// emitBridges implements cls's super bridges: each calls the definition
+// after the module method in cls's ancestors, or fails as MRI does.
+func (c *Compiler) emitBridges(cls *Class, recv string) {
+	for _, e := range c.superBridges(cls) {
+		m := e.M
+		env := composeEnv(e.Env, nil)
+		env["Self"] = c.selfTypeFor(e, cls)
+		ps, ret := c.sig(m, env)
+		defs := cls.defsOf(m.Name)
+		i := slices.IndexFunc(defs, func(d entry) bool { return d.M == m })
+		var body string
+		switch {
+		case i+1 < len(defs):
+			t := defs[i+1]
+			if c.isDirectMethod(t.M) {
+				c.errorf(m.File, m.Node, "super into a primitive class method is not supported")
+			}
+			body = fmt.Sprintf("%s%s(self%s)", freeFuncName(t.M), c.forwardTypeArgs(t, cls), comma(c.argNames(m)))
+			if ret != "" {
+				body = "return " + body
+			}
+		case m.Name == "initialize": // BasicObject's does nothing
+		default:
+			body = fmt.Sprintf("panic(NewNoMethodError(Ref(String(\"super: no superclass method '%s' for \" + rbDescribe(self)))))", m.Name)
+		}
+		c.w("func (self %s) %s(%s) %s { %s }\n", recv, bridgeName(m), ps, ret, body)
+	}
 }
 
 var goSelfCall = regexp.MustCompile(`\bself\.([A-Za-z_]\w*)\(`)
@@ -384,6 +459,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
+	c.emitBridgeSigs(cls, nil)
 	if cls.meta != nil {
 		c.w("\t_ClassOf() %s\n", c.goType(TClass{C: cls.root().meta}))
 	}
@@ -446,6 +522,7 @@ func (c *Compiler) emitForwarders(cls *Class) {
 			c.w("func (self %s) %s(%s) %s { return %s }\n", recv, m.GoName, ps, ret, body)
 		}
 	}
+	c.emitBridges(cls, recv)
 	c.w("\n")
 }
 

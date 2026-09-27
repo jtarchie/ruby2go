@@ -459,6 +459,12 @@ resolve; anything not listed is still open.
    "instantiation cycle": a forwarder such as `Hash[K,V].Tally` would
    instantiate `Hash[[K,V], Integer]`, whose forwarders instantiate the
    next size up, forever.
+   A `super` the module cannot resolve itself (its target is the
+   includer's superclass or a later module, different per includer) is a
+   call to `self._Super_M_name(...)`: the constraint requires it, and
+   every includer implements it by calling the definition that follows
+   `M#name` in its own ancestors, or raising MRI's `NoMethodError`.
+   *(Revised: this was a compile error.)*
 10. Type parameters are all constrained `comparable`. Every generated Go
     type satisfies it (strings, ints, pointers, interfaces, tuples of
     those), and it is what `map[K]` and `tally` need; deriving the

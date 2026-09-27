@@ -123,6 +123,7 @@ type Method struct {
 	inherited  *Method // signature source for unannotated overrides
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
+	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
 }
 
 // root is the topmost struct class of c's hierarchy (below Object).
@@ -747,6 +748,57 @@ func (c *Compiler) link() {
 		c.resolveMethod(m)
 	}
 	c.markCalleeDefaults()
+	c.markSuperBridges()
+}
+
+// markSuperBridges flags module methods whose `super` finds nothing in the
+// module itself: the target is whatever follows the module in each
+// includer's ancestors. Object's fallbacks (decision 31) stay static.
+func (c *Compiler) markSuperBridges() {
+	for _, mod := range c.classList {
+		if !mod.IsModule || mod.universal {
+			continue
+		}
+		for _, m := range mod.MethodList {
+			if m.Kind != kindDef || m.Block != nil || m.generic() || m.Name == "method_missing" || m.Name == "respond_to_missing?" {
+				continue
+			}
+			m.superBridge = containsSuper(m.Node.Body) && c.inheritedSig(m) == nil
+		}
+	}
+}
+
+// defsOf lists every definition of name in c's lookup order (methodSet
+// without the shadowing): a module method's `super` target follows it.
+func (c *Class) defsOf(name string) []entry {
+	var out []entry
+	if m := c.Methods[name]; m != nil {
+		identity := map[string]Type{}
+		for _, p := range c.TypeParams {
+			identity[p] = TVar{Name: p}
+		}
+		out = append(out, entry{M: m, Owner: c, Env: identity, Entry: c})
+	}
+	for i := len(c.Includes) - 1; i >= 0; i-- {
+		inc := c.Includes[i]
+		env := map[string]Type{}
+		for j, p := range inc.Mod.TypeParams {
+			if j < len(inc.Args) {
+				env[p] = inc.Args[j]
+			}
+		}
+		for _, e := range inc.Mod.defsOf(name) {
+			e2 := entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: c}
+			if c.IsModule {
+				e2.Entry = e.Entry
+			}
+			out = append(out, e2)
+		}
+	}
+	if c.Super != nil {
+		out = append(out, c.Super.defsOf(name)...)
+	}
+	return out
 }
 
 // markCalleeDefaults: only a literal default means the same at the call site; defs along an ancestor chain share one Go signature, so the mark spreads (universal free funcs take `any` and need not match).

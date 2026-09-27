@@ -801,6 +801,23 @@ func containsRescue(n parser.Node) bool {
 }
 
 // containsRescueClause is containsRescue without ensure-only begins.
+// containsSuper reports whether a method body calls super (nested defs
+// are other methods).
+func containsSuper(n parser.Node) bool {
+	switch n.(type) {
+	case nil, *parser.DefNode:
+		return false
+	case *parser.SuperNode, *parser.ForwardingSuperNode:
+		return true
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if containsSuper(ch) {
+			return true
+		}
+	}
+	return false
+}
+
 func containsRescueClause(n parser.Node) bool {
 	if n == nil {
 		return false

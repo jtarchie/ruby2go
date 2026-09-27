@@ -1420,6 +1420,12 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		f.errorf(n, "super outside a method")
 	}
 	e := f.c.inheritedSig(f.m)
+	if e == nil && f.m.superBridge {
+		// the target depends on the includer: its bridge calls it (superBridges)
+		env := map[string]Type{"Self": f.selfType}
+		codes := f.genArgs(n, f.m, env, f.superArgs(n, args, forwarding), nil)
+		return expr{code: f.selfCode + "." + bridgeName(f.m) + "(" + strings.Join(codes, ", ") + ")", typ: subst(f.m.Ret, env)}
+	}
 	if e == nil {
 		switch f.m.Name {
 		case "initialize":
@@ -1449,27 +1455,34 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		env[k] = v
 	}
 	env["Self"] = f.selfType
-	var an []parser.Node
-	if forwarding {
-		// zsuper re-reads the current params as locals so genArgs coerces them
-		// to the parent's types and fills the parent's remaining defaults
-		loc := n.(*parser.ForwardingSuperNode).Location
-		for _, p := range f.m.Params {
-			var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
-			if p.Rest {
-				a = &parser.SplatNode{Expression: a, Location: loc}
-			}
-			an = append(an, a)
-		}
-	} else if args != nil {
-		an = args.Arguments
-	}
-	codes := f.genArgs(n, e.M, env, an, nil)
+	codes := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
 	code := freeFuncName(e.M) + "(" + f.selfCode + comma(strings.Join(codes, ", ")) + ")"
 	return expr{code: code, typ: subst(e.M.Ret, env)}
+}
+
+// superArgs is what `super` passes: its arguments, or for a zsuper the
+// current params re-read as locals, so genArgs coerces them to the
+// parent's types and fills the parent's remaining defaults.
+func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding bool) []parser.Node {
+	if !forwarding {
+		if args == nil {
+			return nil
+		}
+		return args.Arguments
+	}
+	var an []parser.Node
+	loc := n.(*parser.ForwardingSuperNode).Location
+	for _, p := range f.m.Params {
+		var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
+		if p.Rest {
+			a = &parser.SplatNode{Expression: a, Location: loc}
+		}
+		an = append(an, a)
+	}
+	return an
 }
 
 func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type) expr {
