@@ -506,7 +506,9 @@ resolve; anything not listed is still open.
     a value typed `Module` can hold any class object.
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
-    passing it on asserts the type. *Calling a method* on `T?` raises
+    passing it on checks the type at run time, raising MRI's `TypeError`
+    ("no implicit conversion of Integer into String") as a dynamic call's
+    arguments do (decision 32). *Calling a method* on `T?` raises
     `NoMethodError` when it is nil, as in Ruby, and the compiler warns.
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the

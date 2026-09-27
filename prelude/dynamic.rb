@@ -23,25 +23,10 @@
     panic(NewArgumentError(Ref(String(fmt.Sprintf("wrong number of arguments (given %d, expected %s)", given, expected)))))
   }
 
-  func rbArg[T any](args []any, i int, want string) T {
-    if v, ok := args[i].(T); ok {
-      return v
-    }
-    panic(NewTypeError(Ref(String("no implicit conversion of " + rbDescribe(args[i]) + " into " + want))))
-  }
-
-  func rbOptArg[T any](args []any, i int, want string) *T {
-    if args[i] == nil {
-      return nil
-    }
-    v := rbArg[T](args, i, want)
-    return &v
-  }
-
   func rbRest[T any](args []any, from int, want string) []T {
     out := make([]T, 0, len(args))
     for i := from; i < len(args); i++ {
-      out = append(out, rbArg[T](args, i, want))
+      out = append(out, rbAs[T](args[i], want))
     }
     return out
   }

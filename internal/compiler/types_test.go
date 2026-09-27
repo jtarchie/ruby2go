@@ -410,7 +410,7 @@ func TestFreeVars(t *testing.T) {
 	})
 }
 
-// String() is what diagnostics and rbArg's runtime messages print, in RBS syntax.
+// String() is what diagnostics and rbAs's runtime TypeErrors print, in RBS syntax.
 func TestTypeString(t *testing.T) {
 	w := newTypeWorld()
 	I, S := cl(w.integer), cl(w.str)

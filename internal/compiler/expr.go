@@ -637,7 +637,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		case isOpt(e.typ):
 			return e.code
 		case isAny(e.typ):
-			return "OptOf[" + f.c.goType(to.Elem) + "](" + e.code + ")"
+			return fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())
 		}
 		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	case TClass:
@@ -645,7 +645,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 			return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
 		}
 		if isAny(e.typ) {
-			return e.code + ".(" + f.c.goType(to) + ")"
+			return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
 		}
 
 		if isOpt(e.typ) {
