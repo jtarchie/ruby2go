@@ -440,6 +440,11 @@ resolve; anything not listed is still open.
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
    `untyped`. `inspect`/`to_s` live on `Boolean`.
+   *Amended:* `TrueClass`, `FalseClass` and `NilClass` exist as marker
+   classes with no instances: `.class` of a Boolean picks one by value,
+   and `is_a?`/`case`-`when` against them test the value (so `when
+   TrueClass` leaves the Go type switch). nil's `to_a`/`to_h`/`to_i`/`to_f`
+   work on a nil literal and on an untyped nil.
 3. Operator name table: **decided** — `==`→`Op_eq`, `!=`→`Op_ne`,
    `<=>`→`Op_cmp`, `<`→`Op_lt`, `<=`→`Op_le`, `>`→`Op_gt`, `>=`→`Op_ge`,
    `+`→`Op_plus`, `-`→`Op_minus`, `*`→`Op_mul`, `/`→`Op_div`, `%`→`Op_mod`,

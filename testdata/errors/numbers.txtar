@@ -14,17 +14,6 @@ puts 1.5.foo
 # rbs_inline: enabled
 t = true #: bool
 puts t.foo
--- no_trueclass.rb --
-# error: main.rb:5: uninitialized constant TrueClass
-# rbs_inline: enabled
-x = true #: untyped
-case x
-when TrueClass then puts "t"
-end
--- no_falseclass.rb --
-# error: main.rb:3: uninitialized constant FalseClass
-# rbs_inline: enabled
-k = FalseClass
 -- integer_abs_arity.rb --
 # error: main.rb:3: Integer#abs: wrong number of arguments (given 1, expected 0)
 # rbs_inline: enabled

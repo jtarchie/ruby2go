@@ -851,7 +851,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 			switch c := cond.(type) {
 			case *parser.NilNode:
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
-				if f.classRef(c) == nil {
+				if cls := f.classRef(c); cls == nil || slices.Contains([]string{"TrueClass", "FalseClass", "NilClass"}, cls.RubyName) {
 					typeSwitch = false
 				}
 			default:

@@ -434,6 +434,9 @@ func rbClassName(a any) string {
 	if a == nil {
 		return "NilClass"
 	}
+	if b, ok := a.(Boolean); ok {
+		return map[Boolean]string{true: "TrueClass", false: "FalseClass"}[b]
+	}
 	t := reflect.TypeOf(a)
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()

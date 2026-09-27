@@ -2213,11 +2213,20 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "hash":
 		return expr{code: "rbHash(" + recv.code + ")", typ: f.cls("Integer")}
 	}
+	if isNil(recv.typ) && len(args) == 0 {
+		if t, ok := map[string]Type{"to_a": TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}, "to_h": TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}, "to_i": f.cls("Integer"), "to_f": f.cls("Float")}[name]; ok {
+			f.discard(recv)
+			return expr{code: nilConversions[name], typ: t}
+		}
+	}
 	if recv.nilable {
 		f.warn(n, "%s called on possibly-nil untyped (raises NoMethodError on nil)", name)
 	}
 	return f.genDynCall(n, recv, name, args)
 }
+
+// nilConversions are NilClass's conversions, for nil held statically or untyped.
+var nilConversions = map[string]string{"to_a": "(&Array[any]{})", "to_h": "NewHash[any, any]()", "to_i": "Integer(0)", "to_f": "Float(0)"}
 
 // blockParam declares a block parameter: a fresh local that Go syntax
 // declares, so it is never hoisted.
@@ -2322,6 +2331,9 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 	if cls == nil || cls.meta == nil {
 		return expr{}, false
 	}
+	if cls.RubyName == "Boolean" {
+		return expr{code: "rbBoolClass(" + recv.code + ")", typ: f.cls("Class")}, true
+	}
 	if !cls.isStruct() {
 		return expr{code: classVar(cls), typ: TClass{C: cls.meta}}, true
 	}
@@ -2358,6 +2370,9 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	if cls.universal { // every value, nil included, is an Object
 		return "true"
+	}
+	if c, ok := f.markerIsA(recv, cls); ok {
+		return c
 	}
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
@@ -2400,6 +2415,37 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	}
 	f.errorf(n, "is_a? on %s is not supported", t)
 	return ""
+}
+
+// markerIsA is is_a? for TrueClass, FalseClass and NilClass, which have no
+// instances of their own: the Boolean or nil value decides.
+func (f *fctx) markerIsA(recv expr, cls *Class) (string, bool) {
+	name := cls.RubyName
+	if name != "TrueClass" && name != "FalseClass" && name != "NilClass" {
+		return "", false
+	}
+	t := recv.typ
+	if name == "NilClass" {
+		switch {
+		case isNil(t):
+			return "true", true
+		case isOpt(t):
+			return "(" + recv.code + " == nil)", true
+		case isAny(t) || isAbstract(t):
+			return "(rbUnbox(" + f.coerce(nil, recv, TAny{}) + ") == nil)", true
+		}
+		return "false", true
+	}
+	not := map[bool]string{true: "", false: "!"}[name == "TrueClass"]
+	switch {
+	case isClass(t, "Boolean"):
+		return not + "bool(" + recv.code + ")", true
+	case isClass(stripOpt(t), "Boolean"):
+		return "(" + recv.code + " != nil && " + not + "bool(*" + recv.code + "))", true
+	case isAny(t) || isAbstract(t):
+		return "rbIsBool(" + f.coerce(nil, recv, TAny{}) + ", " + strconv.FormatBool(name == "TrueClass") + ")", true
+	}
+	return "false", true
 }
 
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).

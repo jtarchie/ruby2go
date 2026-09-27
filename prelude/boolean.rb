@@ -34,3 +34,13 @@ class Boolean < Object
   #: (bool) -> bool
   def ^(other) = %x{ self != other }
 end
+
+# Markers only: values stay Boolean/nil; is_a?, case/when and .class test the value.
+class TrueClass < Object
+end
+
+class FalseClass < Object
+end
+
+class NilClass < Object
+end

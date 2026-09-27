@@ -97,3 +97,25 @@ bh = { "on" => true, "off" => false } #: Hash[String, bool]
 puts bh["on"].inspect, bh["off"].inspect, bh["x"].inspect, bh.inspect
 bk = { true => 1, false => 0 } #: Hash[bool, Integer]
 puts bk[true].inspect, bk[1 > 2].inspect, bk.inspect
+
+# TrueClass/FalseClass/NilClass: markers over Boolean and nil
+puts true.class, false.class, nil.class
+bc_flag = 1 > 0
+puts bc_flag.class, bc_flag.is_a?(TrueClass), bc_flag.is_a?(FalseClass)
+bc_vals = [true, false, nil, 1] #: Array[untyped]
+bc_vals.each do |e|
+  case e
+  when TrueClass then puts "t"
+  when FalseClass then puts "f"
+  when NilClass then puts "n #{e.to_a.inspect} #{e.to_i}"
+  else puts "other"
+  end
+end
+puts nil.to_a.inspect, nil.to_i, nil.to_f
+bc_opt = nil #: Integer?
+puts bc_opt.is_a?(NilClass)
+bc_opt = 3
+puts bc_opt.is_a?(NilClass)
+bc_b = true #: bool?
+puts bc_b.is_a?(TrueClass), 1.is_a?(TrueClass)
+puts true.class == TrueClass, TrueClass, NilClass

@@ -150,6 +150,9 @@ func (c *Compiler) emitDynName(name string) {
 	hidden := len(c.privateIn(name)) > 0
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
+	if v, ok := nilConversions[name]; ok {
+		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
+	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
 	}
@@ -421,6 +424,8 @@ func (c *Compiler) emitClassOf() {
 	for _, cls := range c.classList {
 		switch {
 		case cls.universal || cls.IsModule || cls.meta == nil:
+		case cls.RubyName == "Boolean":
+			c.w("\tcase Boolean:\n\t\treturn rbBoolClass(v)\n")
 		case cls.GoType != "" && len(cls.TypeParams) > 0:
 			c.w("\tcase %s_Any:\n\t\treturn %s\n", cls.Name, classVar(cls))
 		case cls.GoType != "":
