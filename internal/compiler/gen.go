@@ -539,7 +539,8 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 func (f *fctx) truthy(n parser.Node, e expr) string {
 	switch {
 	case isClass(e.typ, "Boolean"):
-		return e.code
+		// genCond's other results (rbIsA, `!= nil`, temps) are Go bool; mixing in Boolean fails go build
+		return "bool(" + e.code + ")"
 	case isOpt(e.typ):
 		return e.code + " != nil"
 	case isNil(e.typ):
