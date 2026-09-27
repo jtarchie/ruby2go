@@ -486,9 +486,22 @@ resolve; anything not listed is still open.
     binding shadows it instead. *(Revised: locals used to be keyed by name
     for the whole method, so sibling blocks shared one type and block
     locals were hoisted to the function, keeping their value across
-    iterations.)* Lifted temporaries for `&.`, `||`, ternaries and
-    `case`-expressions are computed before the statement they belong to, so
-    their side effects run slightly earlier than MRI would run them.
+    iterations.)* A local that some path reads before any assignment ran
+    (assigned in one branch only, in a loop body, or in a `begin` body a
+    raise can cut short) is `nil` there, as in Ruby, so it is typed `T?`; an
+    assignment of a non-nil value makes it read as `T` for the rest of that
+    branch or loop body. A definite-assignment pass decides this: `return`,
+    `break`, `next` and `raise` end a path, `while true` leaves only by
+    `break`, a block's assignments never count outside it, an `ensure`
+    assumes nothing of its `begin`, and a `rescue` assumes what the body
+    assigned before each explicit `raise`. A raise from a callee counts as
+    coming after the body's assignments, and an annotated local (`#: T`)
+    keeps `T`: a skipped assignment then reads Go's zero value (`nil` for
+    objects, `0` for an Integer). *(Revised: every such local was hoisted as
+    `T`, so a skipped assignment read `0`, `""` or `false`.)*
+    Lifted temporaries for `&.`, `||`, ternaries and `case`-expressions are
+    computed before the statement they belong to, so their side effects run
+    slightly earlier than MRI would run them.
 15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
     or a dry run of the class's method bodies (`initialize` first); an ivar
     that is only ever assigned `nil` needs an annotation.

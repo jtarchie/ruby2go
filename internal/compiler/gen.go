@@ -27,6 +27,7 @@ type fctx struct {
 	pass         int // 0 = ivar discovery, 1 = local analysis, 2 = emit
 	discover     bool
 	locals       map[localKey]*localInfo
+	unset        map[localKey]bool // locals read where they may be unassigned (maybeUnset)
 	scope        *scope
 	block        string
 	rbScope      string    // the block path where the current Ruby scope (method or block) starts
@@ -1322,9 +1323,9 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 			typ = info.typ
 		}
 	}
-	if existing != nil && existing.base != nil {
+	narrowed := existing != nil && existing.base != nil
+	if narrowed {
 		existing = existing.base
-		defer f.unnarrow(name)
 	}
 	if isNil(typ) && f.pass == 2 {
 		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)
@@ -1349,7 +1350,20 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		}
 	}
 	f.emit("%s = %s", existing.goName, f.coerce(n, val, existing.typ))
-	return expr{code: existing.goName, typ: existing.typ, stmt: true, done: true}
+	if narrowed {
+		f.unnarrow(name)
+	}
+	return f.narrowSet(existing, val)
+}
+
+// narrowSet: a maybe-unset local is T? only for the paths that skip its assignments, so after one it is non-nil.
+func (f *fctx) narrowSet(v *local, val expr) expr {
+	if !f.unset[f.localKey(v.name)] || !isOpt(v.typ) || isOpt(val.typ) || isVoid(val.typ) || isAny(val.typ) {
+		return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
+	}
+	nw := narrowInfo{local: v, typ: stripOpt(v.typ)}
+	f.applyNarrow([]narrowInfo{nw})
+	return expr{code: "(*" + v.goName + ")", typ: nw.typ, stmt: true, done: true}
 }
 
 // declareAssign emits the first assignment of a local.
@@ -1366,6 +1380,9 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		info.typ = typ
 		if j, ok := join(info.typ, val.typ); ok {
 			info.typ = j
+		}
+		if f.unset[f.localKey(name)] && !isVoid(info.typ) {
+			info.typ = optOf(info.typ) // a path that skips this reads nil (decision 14)
 		}
 	}
 	if f.pass == 2 {
@@ -1390,7 +1407,7 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		info.writes++
 	}
 	f.noteUnused(v)
-	return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
+	return f.narrowSet(v, val)
 }
 
 // concreteInit reports whether code, the coerced first value of a local of
@@ -1414,6 +1431,7 @@ func (f *fctx) concreteInit(val expr, code string, t Type) bool {
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
 	f.locals = map[localKey]*localInfo{}
+	f.unset = maybeUnset(body, params)
 	for _, p := range params {
 		f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
 	}
