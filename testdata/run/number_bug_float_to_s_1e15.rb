@@ -1,4 +1,3 @@
-# skip: Float#to_s switches to exponent form only at 1e16 (rbFloatToS); MRI also uses it for integral values from 1e15: 1e15 prints 1000000000000000.0 instead of 1.0e+15
 # rbs_inline: enabled
 
 puts 1e15.inspect, 1.5e15.inspect, -1.2e15.inspect, 1234567890123456.0.to_s, 9999999999999998.0.inspect

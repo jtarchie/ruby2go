@@ -202,9 +202,12 @@
     case math.IsInf(f, -1):
       return "-Infinity"
     }
+    // MRI's flo_to_s: exponent form when the decimal point sits more than
+    // DBL_DIG (15) digits in and the shortest digits have no fraction. In
+    // [1e15, 1e16) the shortest digits lack a fraction iff f is integral.
     abs := math.Abs(f)
     var s string
-    if abs != 0 && (abs >= 1e16 || abs < 1e-4) {
+    if abs != 0 && (abs >= 1e16 || abs < 1e-4 || abs >= 1e15 && f == math.Trunc(f)) {
       s = strconv.FormatFloat(f, 'e', -1, 64)
       mant, exp, _ := strings.Cut(s, "e")
       if !strings.Contains(mant, ".") {
