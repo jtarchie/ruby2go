@@ -768,16 +768,15 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		subjLocal = f.scope.lookup(lv.Name)
 	}
 	code := f.coerce(n.Predicate, subj, TAny{})
-	name := f.newTmp()
-	if subjLocal != nil {
-		name = subjLocal.goName
-		if subjLocal.base != nil || strings.HasPrefix(name, "(") {
-			name = f.newTmp()
-			subjLocal = nil
-		}
+	// a Go type switch needs an interface operand: box a @go_type value (Integer, String)
+	if cls, ok := subj.typ.(TClass); !isOpt(subj.typ) && f.c.goType(subj.typ) != "any" && (!ok || !cls.C.isStruct()) {
+		code = "any(" + code + ")"
 	}
+	// a fresh name, not the local's: default and multi-class arms still see the local as declared
+	name := f.newTmp()
 	f.emit("switch %s := %s.(type) {", name, code)
 	f.switches++
+	hasNil := false
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
 		var cases []string
@@ -788,6 +787,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			case *parser.NilNode:
 				cases = append(cases, "nil")
 				armType = TNil{}
+				hasNil = true
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
 				cls := f.classRef(c)
 				if len(cls.TypeParams) > 0 {
@@ -805,7 +805,6 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			}
 		}
 		if len(wn.Conditions) != 1 {
-			armType = TAny{}
 			convert = ""
 		}
 		f.emit("case %s:", strings.Join(cases, ", "))
@@ -816,8 +815,8 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			armName = f.newTmp()
 			f.emit("%s := %s%s", armName, name, convert)
 		}
-		if subjLocal != nil {
-			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, declared: true}
+		if subjLocal != nil && len(wn.Conditions) == 1 {
+			f.applyNarrow([]narrowInfo{{local: subjLocal, typ: armType, code: armName}})
 		} else if convert != "" {
 			f.emit("_ = %s", armName)
 		}
@@ -829,6 +828,9 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	saved := f.enterBlock()
 	f.indent++
 	f.emit("_ = %s", name)
+	if o, ok := subj.typ.(TOpt); ok && hasNil && subjLocal != nil && !isAny(o.Elem) {
+		f.applyNarrow([]narrowInfo{{local: subjLocal, typ: o.Elem}})
+	}
 	if n.ElseClause != nil {
 		f.genStmts(n.ElseClause.Statements, t)
 	} else {

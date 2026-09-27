@@ -1,5 +1,3 @@
-# skip: `case n when Integer` with n a typed primitive (Integer, String, ...) emits a Go type switch on a non-interface value: go build fails "n is not an interface"; MRI matches Integer === n
-
 # rbs_inline: enabled
 
 #: (Integer) -> String

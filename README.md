@@ -509,7 +509,8 @@ resolve; anything not listed is still open.
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
     passing it on asserts the type. *Calling a method* on `T?` raises
     `NoMethodError` when it is nil, as in Ruby, and the compiler warns.
-    Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
+    Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, `case x` (a one-class
+    `when C` arm, and the `else` after `when nil`), and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops
     the narrowings.

@@ -1,5 +1,3 @@
-# skip: in `case x when C ... else <uses x> end` with x a T? local, the Go type switch shadows x as `any` but the else arm still treats it as *T: go build fails "cannot indirect x"; MRI runs it
-
 # rbs_inline: enabled
 
 class Animal
