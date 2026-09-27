@@ -210,8 +210,9 @@
     return String(b.String())
   }
 
-  // rbJSONFloat ports the json gem's fpconv emit_digits: shortest digits,
-  // plain decimal for moderate exponents, otherwise d.ddde[+-]N.
+  // rbJSONFloat ports the json gem's fpconv_dtoa: Grisu2's digits (not
+  // always the shortest: 1e23 is 9.999999999999999e+22), then
+  // emit_digits' plain decimal for moderate exponents, else d.ddde[+-]N.
   func rbJSONFloat(f float64, st *rbJSONState) String {
     if math.IsNaN(f) || math.IsInf(f, 0) {
       if st.allowNaN {
@@ -227,13 +228,9 @@
     if f == 0 {
       return String(sign + "0.0")
     }
-    sci := strconv.FormatFloat(f, 'e', -1, 64)
-    mant, expStr, _ := strings.Cut(sci, "e")
-    digits := strings.Replace(mant, ".", "", 1)
-    e, _ := strconv.Atoi(expStr)
+    digits, k := rbGrisu2(f)
     nd := len(digits)
-    k := e - nd + 1
-    exp := e
+    exp := k + nd - 1
     if exp < 0 {
       exp = -exp
     }
@@ -247,15 +244,167 @@
       }
       return String(sign + digits[:offset] + "." + digits[offset:])
     }
+    nd = min(nd, 18-len(sign))
     out := sign + digits[:1]
     if nd > 1 {
-      out += "." + digits[1:]
+      out += "." + digits[1:nd]
     }
     esign := "+"
-    if e < 0 {
+    if k+nd-1 < 0 {
       esign = "-"
     }
     return String(out + "e" + esign + strconv.Itoa(exp))
+  }
+
+  // rbFp is fpconv's Fp: frac * 2^exp.
+  type rbFp struct {
+    frac uint64
+    exp  int
+  }
+
+  // rbPowersTen is fpconv's cached powers of ten, 10^-348 to 10^340 in
+  // steps of 8.
+  var rbPowersTen = [...]rbFp{
+    {18054884314459144840, -1220}, {13451937075301367670, -1193},
+    {10022474136428063862, -1166}, {14934650266808366570, -1140},
+    {11127181549972568877, -1113}, {16580792590934885855, -1087},
+    {12353653155963782858, -1060}, {18408377700990114895, -1034},
+    {13715310171984221708, -1007}, {10218702384817765436, -980},
+    {15227053142812498563, -954}, {11345038669416679861, -927},
+    {16905424996341287883, -901}, {12595523146049147757, -874},
+    {9384396036005875287, -847}, {13983839803942852151, -821},
+    {10418772551374772303, -794}, {15525180923007089351, -768},
+    {11567161174868858868, -741}, {17236413322193710309, -715},
+    {12842128665889583758, -688}, {9568131466127621947, -661},
+    {14257626930069360058, -635}, {10622759856335341974, -608},
+    {15829145694278690180, -582}, {11793632577567316726, -555},
+    {17573882009934360870, -529}, {13093562431584567480, -502},
+    {9755464219737475723, -475}, {14536774485912137811, -449},
+    {10830740992659433045, -422}, {16139061738043178685, -396},
+    {12024538023802026127, -369}, {17917957937422433684, -343},
+    {13349918974505688015, -316}, {9946464728195732843, -289},
+    {14821387422376473014, -263}, {11042794154864902060, -236},
+    {16455045573212060422, -210}, {12259964326927110867, -183},
+    {18268770466636286478, -157}, {13611294676837538539, -130},
+    {10141204801825835212, -103}, {15111572745182864684, -77},
+    {11258999068426240000, -50}, {16777216000000000000, -24},
+    {12500000000000000000, 3}, {9313225746154785156, 30},
+    {13877787807814456755, 56}, {10339757656912845936, 83},
+    {15407439555097886824, 109}, {11479437019748901445, 136},
+    {17105694144590052135, 162}, {12744735289059618216, 189},
+    {9495567745759798747, 216}, {14149498560666738074, 242},
+    {10542197943230523224, 269}, {15709099088952724970, 295},
+    {11704190886730495818, 322}, {17440603504673385349, 348},
+    {12994262207056124023, 375}, {9681479787123295682, 402},
+    {14426529090290212157, 428}, {10748601772107342003, 455},
+    {16016664761464807395, 481}, {11933345169920330789, 508},
+    {17782069995880619868, 534}, {13248674568444952270, 561},
+    {9871031767461413346, 588}, {14708983551653345445, 614},
+    {10959046745042015199, 641}, {16330252207878254650, 667},
+    {12166986024289022870, 694}, {18130221999122236476, 720},
+    {13508068024458167312, 747}, {10064294952495520794, 774},
+    {14996968138956309548, 800}, {11173611982879273257, 827},
+    {16649979327439178909, 853}, {12405201291620119593, 880},
+    {9242595204427927429, 907}, {13772540099066387757, 933},
+    {10261342003245940623, 960}, {15290591125556738113, 986},
+    {11392378155556871081, 1013}, {16975966327722178521, 1039},
+    {12648080533535911531, 1066},
+  }
+
+  // rbFpMul is fpconv's multiply: the high 64 bits of a*b, rounded.
+  func rbFpMul(a, b rbFp) rbFp {
+    hi, lo := bits.Mul64(a.frac, b.frac)
+    _, c := bits.Add64(lo, 1<<63, 0)
+    return rbFp{hi + c, a.exp + b.exp + 64}
+  }
+
+  // rbGrisu2 is fpconv's grisu2 and generate_digits on a positive finite
+  // f: its digits d and exponent k, f ~= d * 10^k.
+  func rbGrisu2(f float64) (string, int) {
+    b := math.Float64bits(f)
+    w := rbFp{b & (1<<52 - 1), int(b >> 52)}
+    if w.exp != 0 {
+      w.frac += 1 << 52
+      w.exp -= 1075
+    } else {
+      w.exp = -1074
+    }
+    upper := rbFp{w.frac<<1 + 1, w.exp - 1}
+    for upper.frac&(1<<53) == 0 {
+      upper.frac <<= 1
+      upper.exp--
+    }
+    upper.frac <<= 10
+    upper.exp -= 10
+    ls := 1
+    if w.frac == 1<<52 {
+      ls = 2
+    }
+    lower := rbFp{(w.frac<<ls - 1) << (w.exp - ls - upper.exp), upper.exp}
+    for w.frac&(1<<52) == 0 {
+      w.frac <<= 1
+      w.exp--
+    }
+    w.frac <<= 11
+    w.exp -= 11
+
+    idx := (int(float64(-(upper.exp+87))*0.30102999566398114) + 348) / 8
+    for {
+      if c := upper.exp + rbPowersTen[idx].exp + 64; c < -60 {
+        idx++
+      } else if c > -32 {
+        idx--
+      } else {
+        break
+      }
+    }
+    k := 348 - idx*8
+    cp := rbPowersTen[idx]
+    w, upper, lower = rbFpMul(w, cp), rbFpMul(upper, cp), rbFpMul(lower, cp)
+    lower.frac++
+    upper.frac--
+
+    wfrac := upper.frac - w.frac
+    delta := upper.frac - lower.frac
+    sh := uint(-upper.exp)
+    one := uint64(1) << sh
+    part1, part2 := upper.frac>>sh, upper.frac&(one-1)
+    var d []byte
+    kappa := 10
+    for div := uint64(1e9); kappa > 0; div /= 10 {
+      digit := part1 / div
+      if digit != 0 || len(d) > 0 {
+        d = append(d, byte('0'+digit))
+      }
+      part1 -= digit * div
+      kappa--
+      if rem := part1<<sh + part2; rem <= delta {
+        rbRoundDigit(d, delta, rem, div<<sh, wfrac)
+        return string(d), k + kappa
+      }
+    }
+    for unit := uint64(10); ; unit *= 10 {
+      part2 *= 10
+      delta *= 10
+      kappa--
+      if digit := part2 >> sh; digit != 0 || len(d) > 0 {
+        d = append(d, byte('0'+digit))
+      }
+      part2 &= one - 1
+      if part2 < delta {
+        rbRoundDigit(d, delta, part2, one, wfrac*unit)
+        return string(d), k + kappa
+      }
+    }
+  }
+
+  // rbRoundDigit is fpconv's round_digit: step the last digit down while
+  // that moves closer to w and stays inside the boundaries.
+  func rbRoundDigit(d []byte, delta, rem, kappa, frac uint64) {
+    for rem < frac && delta-rem >= kappa && (rem+kappa < frac || frac-rem > rem+kappa-frac) {
+      d[len(d)-1]--
+      rem += kappa
+    }
   }
 }
 
