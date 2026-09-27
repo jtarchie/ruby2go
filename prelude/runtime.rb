@@ -54,7 +54,10 @@
   type I_ToS interface{ ToS() String }
   type I_Inspect interface{ Inspect() String }
 
+  // rbToS, rbInspect, rbEq and rbCmp take E = T? values from generic
+  // code as the box itself; rbUnbox (generated) opens it.
   func rbToS(a any) String {
+    a = rbUnbox(a)
     if a == nil {
       return ""
     }
@@ -65,6 +68,7 @@
   }
 
   func rbInspect(a any) String {
+    a = rbUnbox(a)
     if a == nil {
       return "nil"
     }
@@ -82,14 +86,37 @@
   }
 
   func rbEq[T comparable](a, b T) Boolean {
-    if e, ok := any(a).(interface{ Eq(any) Boolean }); ok {
-      return e.Eq(any(b))
+    x, y := rbUnbox(any(a)), rbUnbox(any(b))
+    if e, ok := x.(interface{ Eq(any) Boolean }); ok {
+      return e.Eq(y)
     }
-    return Boolean(any(a) == any(b))
+    return Boolean(x == y)
   }
 
   func rbCmp[T comparable](a, b T) Integer {
-    return any(a).(interface{ Cmp(T) Integer }).Cmp(b)
+    if c, ok := any(a).(interface{ Cmp(T) Integer }); ok {
+      return c.Cmp(b)
+    }
+    return rbCmpBox(any(a), any(b))
+  }
+
+  // rbCmpOpt compares the values in two T? boxes (see rbCmpBox).
+  func rbCmpOpt[T comparable](a, b *T) Integer {
+    if a == nil || b == nil {
+      return rbCmpFailed(a, b)
+    }
+    return rbCmp(*a, *b)
+  }
+
+  // rbCmpFailed is MRI's rb_cmperr.
+  func rbCmpFailed(a, b any) Integer {
+    a, b = rbUnbox(a), rbUnbox(b)
+    desc := rbClassName(b)
+    switch b.(type) {
+    case nil, Boolean, Integer, Float:
+      desc = string(rbInspect(b))
+    }
+    panic(NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + desc + " failed"))))
   }
 
   func rbIdentical(a, b any) bool {

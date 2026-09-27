@@ -1,5 +1,3 @@
-# skip: a negative MatchData#[] index that lands on group 0 returns the whole match; MRI returns nil
-
 # rbs_inline: enabled
 
 m = "abc".match(/b/)

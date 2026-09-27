@@ -3,21 +3,24 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"regexp/syntax"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// compileRuby mirrors genRegexp's static path: translate, then compile under the flag prefix.
-func compileRuby(src string, f rubyRegexFlags) (*regexp.Regexp, error) {
+// compileRuby mirrors genRegexp's static path and rbRegexpNew: translate,
+// then compile under the flag prefix.
+func compileRuby(src string, f rubyRegexFlags) (*rxRegexp, error) {
 	pat, err := translateRegexp(src)
 	if err != nil {
 		return nil, err
 	}
-	re, err := regexp.Compile(f.goPrefix() + pat)
+	re, err := regexp.Compile(rxFold(f.goPrefix() + pat))
 	if err != nil {
 		return nil, fmt.Errorf("RE2: %w", err)
 	}
-	return re, nil
+	return rxNew(re), nil
 }
 
 func TestRegexpFlags(t *testing.T) {
@@ -53,10 +56,10 @@ func TestTranslateRegexp(t *testing.T) {
 		{`[^\h]`, `[^0-9a-fA-F]`},
 		{`\H`, `[^0-9a-fA-F]`},
 		{`[a][\h]\h`, `[a][0-9a-fA-F][0-9a-fA-F]`},
-		{`[[:alpha:]\h]`, `[[:alpha:]0-9a-fA-F]`},
+		{`[[:alpha:]\h]`, "[" + rxPosix["alpha"] + "0-9a-fA-F]"},
 		{`[\]h]`, `[\]h]`},
 		{`\\h`, `\\h`},
-		{`\d\w\s\b\A\z`, `\d\w\s\b\A\z`},
+		{`\d\w\s\b\A\z`, `\d\w[\t\n\v\f\r ]\b\A\z`},
 		{`a\/b`, `a\/b`},
 		{`trailing\`, `trailing\`},
 		{`(?<y>\d+)`, `(?<y>\d+)`},
@@ -66,6 +69,14 @@ func TestTranslateRegexp(t *testing.T) {
 		{`\\\h`, `\\[0-9a-fA-F]`},
 		{`é\h`, `é[0-9a-fA-F]`},
 		{``, ``},
+		{`(?m:a)(?-m)(?mi)`, `(?s:a)(?-s)(?si)`},
+		// Regexp#to_s embedded by interpolation: x off is dropped, x on left for RE2.
+		{`(?i-mx:a)(?-x)(?mix:b)`, `(?i-s:a)(?)(?six:b)`},
+		{`a{,2}b{2}?(cd){3}+e{1,2}?`, `a{0,2}(?:b{2})?(?:(cd){3})+e{1,2}?`},
+		{`(?<a>x)(y)`, `(?<a>x)(?:y)`},
+		{`\u0062\u{61 62}\e`, `\x{0062}\x{61}\x{62}\x1b`},
+		{`[a-z&&[^b-y]]`, `[az]`},
+		{`[a[^\x00-y]]`, `[az-\x{10ffff}]`},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -79,13 +90,6 @@ func TestTranslateRegexp(t *testing.T) {
 		})
 	}
 }
-
-const (
-	knownInlineM     = "inline (?m) / (?-m) pass through with RE2's meaning (line anchors), not Ruby's (dot matches newline)"
-	knownSpace       = "RE2's \\s lacks \\v; the pattern compiles but differs from MRI"
-	knownNestedClass = "RE2 has no nested classes or && intersection; `[` inside a class is literal, so the pattern compiles to a different class instead of being rejected"
-	knownPosix       = "POSIX bracket classes are Unicode-aware in Ruby, ASCII-only in RE2"
-)
 
 // Expectations are MRI 4.0's `!!(re =~ s)`.
 func TestRegexpMatchesMRI(t *testing.T) {
@@ -129,21 +133,30 @@ func TestRegexpMatchesMRI(t *testing.T) {
 		{"escaped_backslash_then_hex_escape", `\A\\\h\z`, rubyRegexFlags{}, `\f`, true, ""},
 		{"inline_i_minus_m_group", `(?i-m:a.b)`, rubyRegexFlags{}, "A\nB", false, ""},
 		// Ruby's inline m is dot-all; RE2's is multi-line anchors, which (?m) already turns on.
-		{"inline_m_is_dotall", `(?m)a.b`, rubyRegexFlags{}, "a\nb", true, knownInlineM},
-		{"group_m_is_dotall", `(?m:a.b)`, rubyRegexFlags{}, "a\nb", true, knownInlineM},
-		{"inline_mi_is_dotall", `(?mi)a.b`, rubyRegexFlags{}, "A\nB", true, knownInlineM},
-		{"inline_minus_m_keeps_line_anchors", `(?-m)^b`, rubyRegexFlags{}, "a\nb", true, knownInlineM},
-		{"space_matches_vertical_tab", `\A\s\z`, rubyRegexFlags{}, "\v", true, knownSpace},
-		{"non_space_rejects_vertical_tab", `\A\S\z`, rubyRegexFlags{}, "\v", false, knownSpace},
-		{"class_intersection", `\A[a-z&&[^aeiou]]\z`, rubyRegexFlags{}, "b", true, knownNestedClass},
-		{"nested_class", `\A[a[bc]]\z`, rubyRegexFlags{}, "b", true, knownNestedClass},
-		{"posix_alpha_is_unicode", `\A[[:alpha:]]\z`, rubyRegexFlags{}, "é", true, knownPosix},
-		{"posix_upper_is_unicode", `\A[[:upper:]]\z`, rubyRegexFlags{}, "É", true, knownPosix},
-		{"posix_digit_is_unicode", `\A[[:digit:]]\z`, rubyRegexFlags{}, "٣", true, knownPosix},
-		{"posix_space_is_unicode", `\A[[:space:]]\z`, rubyRegexFlags{}, "\u00a0", true, knownPosix},
-		{"posix_word_is_unicode", `\A[[:word:]]\z`, rubyRegexFlags{}, "é", true, knownPosix},
-		{"word_boundary_is_unicode", `\bcafé\b`, rubyRegexFlags{}, "un café noir", true, "Ruby's \\b treats non-ASCII letters as word characters; RE2's \\b is ASCII-only"},
-		{"caret_not_after_final_newline", `\n^`, rubyRegexFlags{}, "a\n", false, "Ruby's ^ never matches at the end of the string after a trailing newline; RE2 (?m)^ does, so gsub(/^/, \"  \") indents an extra empty line"},
+		{"inline_m_is_dotall", `(?m)a.b`, rubyRegexFlags{}, "a\nb", true, ""},
+		{"group_m_is_dotall", `(?m:a.b)`, rubyRegexFlags{}, "a\nb", true, ""},
+		{"inline_mi_is_dotall", `(?mi)a.b`, rubyRegexFlags{}, "A\nB", true, ""},
+		{"inline_minus_m_keeps_line_anchors", `(?-m)^b`, rubyRegexFlags{}, "a\nb", true, ""},
+		{"space_matches_vertical_tab", `\A\s\z`, rubyRegexFlags{}, "\v", true, ""},
+		{"non_space_rejects_vertical_tab", `\A\S\z`, rubyRegexFlags{}, "\v", false, ""},
+		{"non_space_in_negated_class", `\A[^\S\n]\z`, rubyRegexFlags{}, "\v", true, ""},
+		{"posix_negated_space", `x[[:^space:]]`, rubyRegexFlags{}, "x\u3000", false, ""},
+		{"class_intersection", `\A[a-z&&[^aeiou]]\z`, rubyRegexFlags{}, "b", true, ""},
+		{"nested_class", `\A[a[bc]]\z`, rubyRegexFlags{}, "b", true, ""},
+		{"posix_alpha_is_unicode", `\A[[:alpha:]]\z`, rubyRegexFlags{}, "é", true, ""},
+		{"posix_upper_is_unicode", `\A[[:upper:]]\z`, rubyRegexFlags{}, "É", true, ""},
+		{"posix_digit_is_unicode", `\A[[:digit:]]\z`, rubyRegexFlags{}, "٣", true, ""},
+		{"posix_space_is_unicode", `\A[[:space:]]\z`, rubyRegexFlags{}, "\u00a0", true, ""},
+		{"posix_word_is_unicode", `\A[[:word:]]\z`, rubyRegexFlags{}, "é", true, ""},
+		{"word_boundary_is_unicode", `\bcafé\b`, rubyRegexFlags{}, "un café noir", true, ""},
+		{"caret_not_after_final_newline", `\n^`, rubyRegexFlags{}, "a\n", false, ""},
+		{"caret_before_final_newline", `^$`, rubyRegexFlags{}, "a\n\n", true, ""},
+		{"word_boundary_beside_non_ascii", `caf\b`, rubyRegexFlags{}, "café", false, ""},
+		{"i_flag_multichar_fold", `STRASSE`, i, "straße", true, ""},
+		{"i_flag_multichar_fold_in_pattern", `ß`, i, "SS", true, ""},
+		{"i_flag_multichar_fold_overlap", `sss`, i, "sß", true, ""},
+		{"i_flag_multichar_fold_stays_in_literal", `s+`, i, "ß", false, ""},
+		{"multichar_fold_needs_i", `ss`, rubyRegexFlags{}, "ß", false, ""},
 		{"open_interval_is_zero_to_n", `\Aa{,3}\z`, rubyRegexFlags{}, "aa", true, "Ruby's {,n} is {0,n}; RE2 reads it as the literal text {,n}"},
 		{"fixed_interval_then_question_is_optional", `\Aa{2}?\z`, rubyRegexFlags{}, "", true, "Ruby's X{n}? is (?:X{n})?; RE2 reads it as a lazy X{n}"},
 		{"Q_is_literal", `\Q.`, rubyRegexFlags{}, "Qx", true, "Ruby reads \\Q as a literal Q; RE2 starts a quoted run"},
@@ -161,6 +174,23 @@ func TestRegexpMatchesMRI(t *testing.T) {
 				t.Errorf("/%s/%s =~ %q: got %v, MRI gives %v", c.src, c.f.opts(), c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// Where Onigmo's ^ and \b agree with RE2's (ASCII, no final newline), the
+// backtracker must find RE2's match, captures included.
+func TestBacktrackMatchesRE2(t *testing.T) {
+	pats := []string{`(?m)^(a+)(b*?)$`, `(?m)\b(\w+)\b`, `(?m)(a|ab)(c|bcd)(d*)`, `(?mi)^x(?:(y)|z)*`, `(?m)(?P<n>\d+)?-\B`, `(?ms)a.*?b|$`}
+	subjects := []string{"", "aab", "abcd", "xyzY", "foo bar", "12-x", "-", "a\nb", "b\naab"}
+	for _, p := range pats {
+		tree, _ := syntax.Parse(p, syntax.Perl)
+		prog, _ := syntax.Compile(tree.Simplify())
+		r := &rxRegexp{Regexp: regexp.MustCompile(p), prog: prog}
+		for _, s := range subjects {
+			if got, want := r.backtrack(s), r.Regexp.FindStringSubmatchIndex(s); !slices.Equal(got, want) {
+				t.Errorf("/%s/ on %q: backtrack %v, RE2 %v", p, s, got, want)
+			}
+		}
 	}
 }
 

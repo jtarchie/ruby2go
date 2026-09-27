@@ -3,17 +3,47 @@
 #
 # Regexp on Go's RE2. The transpiler translates literals (every Ruby regexp
 # gets `(?m)`: `^`/`$` are line anchors in Ruby) and rejects what RE2 cannot
-# match; see internal/compiler/regexp.go.
+# match; see internal/compiler/regexp.go. rxRegexp (rxtranslate.go) matches
+# Onigmo's `^`, `\b` and multi-character `/i` folds where RE2's differ.
 
 %x{
   // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
   // may fail at run time, like Ruby's.
   func rbRegexpNew(pattern, src, opts string) *Regexp {
-    re, err := regexp.Compile(pattern)
+    re, err := regexp.Compile(rxFold(pattern))
     if err != nil {
       panic(NewRegexpError(Ref(String(err.Error()))))
     }
-    return &Regexp{re: re, src: src, opts: opts}
+    return &Regexp{re: rxNew(re), src: src, opts: opts}
+  }
+
+  // rbRegexpDyn compiles an interpolated regexp from its Ruby source, which
+  // only exists at run time; translateRegexp is the compiler's own
+  // (internal/compiler/rxtranslate.go, emitted into every program).
+  func rbRegexpDyn(prefix, src, opts string) *Regexp {
+    pat, err := translateRegexp(src)
+    if err != nil {
+      panic(NewRegexpError(Ref(String(err.Error()))))
+    }
+    return rbRegexpNew(prefix+pat, src, opts)
+  }
+
+  // rbRegexpDesc is the source as inspect and to_s show it: a bare / is
+  // escaped, as MRI's rb_reg_desc does.
+  func rbRegexpDesc(src string) string {
+    var b strings.Builder
+    for i := 0; i < len(src); i++ {
+      switch {
+      case src[i] == '\\\\' && i+1 < len(src):
+        b.WriteString(src[i : i+2])
+        i++
+      case src[i] == '/':
+        b.WriteString(`\\/`)
+      default:
+        b.WriteByte(src[i])
+      }
+    }
+    return b.String()
   }
 
   func rbMatch(r *Regexp, s string) *MatchData {
@@ -28,18 +58,45 @@
         groups[i] = &g
       }
     }
-    return &MatchData{groups: groups, pre: s[:loc[0]], post: s[loc[1]:]}
+    return &MatchData{groups: groups, names: r.re.SubexpNames(), pre: s[:loc[0]], post: s[loc[1]:]}
+  }
+
+  // rbSubject is the text a Regexp matches: a String, or a Symbol's name.
+  // nil matches nothing (ok is false); anything else is MRI's TypeError, and
+  // a String that is not valid UTF-8 is MRI's ArgumentError.
+  func rbSubject(v any) (string, bool) {
+    switch s := v.(type) {
+    case nil:
+      return "", false
+    case String:
+      if !utf8.ValidString(string(s)) {
+        panic(NewArgumentError(Ref(String("invalid byte sequence in UTF-8"))))
+      }
+      return string(s), true
+    case Symbol:
+      return string(s), true
+    }
+    panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into String"))))
   }
 }
 
-# @go_type struct { re *regexp.Regexp; src string; opts string }
+# @go_type struct { re *rxRegexp; src string; opts string }
 class Regexp < Object
-  #: (String) -> bool
-  def match?(s) = %x{ Boolean(self.re.MatchString(string(s))) }
+  # A subject is a String for typed callers; an untyped one may also be a
+  # Symbol (its name is matched) or nil (no match), as in MRI.
+  #: (String | untyped) -> bool
+  def match?(s) = %x{
+    str, ok := rbSubject(s)
+    return Boolean(ok && self.re.MatchString(str))
+  }
 
-  #: (String) -> MatchData?
+  #: (String | untyped) -> MatchData?
   def match(s) = %x{
-    m := rbMatch(self, string(s))
+    str, ok := rbSubject(s)
+    if !ok {
+      return nil
+    }
+    m := rbMatch(self, str)
     if m == nil {
       return nil
     }
@@ -47,27 +104,35 @@ class Regexp < Object
   }
 
   # The character (not byte) index of the first match.
-  #: (String) -> Integer?
+  #: (String | untyped) -> Integer?
   def =~(s) = %x{
-    loc := self.re.FindStringIndex(string(s))
+    str, ok := rbSubject(s)
+    if !ok {
+      return nil
+    }
+    loc := self.re.FindStringIndex(str)
     if loc == nil {
       return nil
     }
-    return Ref(Integer(utf8.RuneCountInString(string(s)[:loc[0]])))
+    return Ref(Integer(utf8.RuneCountInString(str[:loc[0]])))
   }
 
-  # `case str when /re/` calls this.
+  # `case x when /re/` calls this; unlike match?, other types are false.
   #: (untyped) -> bool
   def ===(other) = %x{
-    s, ok := other.(String)
-    return Boolean(ok && self.re.MatchString(string(s)))
+    switch other.(type) {
+    case String, Symbol:
+      s, _ := rbSubject(other)
+      return Boolean(self.re.MatchString(s))
+    }
+    return false
   }
 
   #: () -> String
   def source = %x{ String(self.src) }
 
   #: () -> String
-  def inspect = %x{ String("/" + self.src + "/" + self.opts) }
+  def inspect = %x{ String("/" + rbRegexpDesc(self.src) + "/" + self.opts) }
 
   #: () -> String
   def to_s = %x{
@@ -83,7 +148,7 @@ class Regexp < Object
     if off.Len() > 0 {
       flags += "-" + off.String()
     }
-    return String("(?" + flags + ":" + self.src + ")")
+    return String("(?" + flags + ":" + rbRegexpDesc(self.src) + ")")
   }
 
   #: (untyped) -> bool
@@ -93,14 +158,19 @@ class Regexp < Object
   }
 end
 
-# @go_type struct { groups []*String; pre string; post string }
+# names are the groups' names ("" when unnamed), as Go's SubexpNames.
+# @go_type struct { groups []*String; names []string; pre string; post string }
 class MatchData < Object
   #: (Integer) -> String?
   def [](i) = %x{
     if i < 0 {
+      // MRI (rb_reg_nth_match): a negative index never reaches group 0.
       i += Integer(len(self.groups))
+      if i <= 0 {
+        return nil
+      }
     }
-    if i < 0 || int(i) >= len(self.groups) {
+    if int(i) >= len(self.groups) {
       return nil
     }
     return self.groups[i]
@@ -127,7 +197,11 @@ class MatchData < Object
     var b strings.Builder
     b.WriteString("#<MatchData ")
     for i, g := range self.groups {
-      if i > 0 {
+      switch {
+      case i == 0:
+      case self.names[i] != "":
+        b.WriteString(" " + self.names[i] + ":")
+      default:
         fmt.Fprintf(&b, " %d:", i)
       }
       if g == nil {

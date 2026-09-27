@@ -1,5 +1,3 @@
-# skip: Array[T?] equality compares the *T pointers, so == and include? are false for equal non-nil values; MRI compares values
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer?

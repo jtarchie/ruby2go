@@ -1,5 +1,3 @@
-# skip: a nil element of an Array[T?] (MatchData#captures, a destructured capture, map { =~ }) panics on a nil *T in inspect and join instead of printing nil / ""
-
 # rbs_inline: enabled
 
 m = /(a)(b)?/.match("a")

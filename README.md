@@ -430,6 +430,12 @@ resolve; anything not listed is still open.
    representation" shortcut would make `E?` inside a generic container mean
    something different from `Rect?` outside it; uniform boxing keeps
    generics honest at the cost of a `Ref`/`Opt` at the boundary.
+   Generic code holding `E = T?` passes the box itself to `any`-typed
+   helpers (`inspect`, `==`, `<=>`, `to_json`, `compact`, untyped views),
+   where a nil `*T` is a non-nil interface and a non-nil one has the wrong
+   method set. A generated `rbUnbox` type switch over every concrete `T?`
+   the program renders opens it there; `rbCmp` tries the typed `Cmp` first
+   and only falls back to the box path when that fails.
 8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
    method set plus `_Shape() *Shape` accessors for every struct in the
    chain (ivar access from free functions, and the marker `rescue` matches
@@ -501,8 +507,13 @@ resolve; anything not listed is still open.
     a value typed `Module` can hold any class object.
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
-    passing it on asserts the type. *Calling a method* on `T?` raises
-    `NoMethodError` when it is nil, as in Ruby, and the compiler warns.
+    passing it on asserts the type, except to a `T | untyped` parameter
+    (the only union besides `T | nil`): typed arguments are checked
+    against `T`, untyped ones pass unasserted and the method handles
+    them. Regexp subjects use it, so a literal `nil` is an error but an
+    untyped `nil` or Symbol matches as in MRI. *Calling a method* on `T?`
+    raises `NoMethodError` when it is nil, as in Ruby, and the compiler
+    warns.
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops
@@ -519,14 +530,49 @@ resolve; anything not listed is still open.
     method without keyword parameters passes a Hash, as Ruby 3 does;
     keyword parameters themselves are not supported.
 24. Regexps are Ruby syntax on Go's RE2. Every pattern gets `(?m)` (Ruby's
-    `^`/`$` are line anchors), Ruby `/m` becomes `(?s)`, `\h` is expanded;
-    lookaround, backreferences, `\Z` and `/x` are rejected with `file:line`
-    at transpile time. Static patterns compile once into package
+    `^`/`$` are line anchors), Ruby `/m` and inline `(?m)` become `(?s)`,
+    `\h` is expanded. Onigmo syntax RE2 reads differently is rewritten: `\s`
+    includes `\v`; POSIX brackets are Unicode (Go's tables); nested classes
+    and `&&` are computed as rune ranges; `{,n}` is `{0,n}`; `X{n}?` is
+    `(?:X{n})?`; `\u`/`\e` become `\x{...}`; `\Q` is a literal `Q`; plain
+    groups don't capture once one is named. *(Revised: these passed through
+    and silently matched RE2's meaning.)* Lookaround, backreferences, `\Z`
+    and `/x` are rejected with `file:line` at transpile time. Static patterns compile once into package
     variables; interpolated ones compile at run time and raise
-    `RegexpError`. `$~`/`$1` are not supported; use `match`.
+    `RegexpError` (with `/o`, only until one compiles; it is kept). An
+    interpolated pattern is translated whole at run time (the compiler's
+    translator is emitted into every program), so values get the same
+    rewrites, an embedded Regexp's `(?i-mx:...)` composes, and each value is
+    evaluated once; its static parts are still checked at transpile time.
+    *(Revised: static parts were translated one at a time and values were
+    inserted untranslated.)* Matching semantics no rewrite can express are
+    handled at match time: Onigmo's `^` never matches at the end after a
+    final newline, and its `\b` counts non-ASCII letters as word characters
+    (`\w` stays ASCII). A pattern using either also gets a backtracker (Go's
+    own algorithm, leftmost-first) with Onigmo's assertions; it runs only
+    for subjects where RE2's answer can differ (a non-ASCII word character,
+    or an RE2 match ending at a final newline), so other matches stay on
+    RE2. Under `/i`, a literal also matches Unicode's multi-character case
+    folds (`STRASSE` matches `straße`, `FF` matches `ﬀ`), spelled as
+    alternations. As in Onigmo, a fold doesn't span a group or a quantified
+    atom; unlike it, nor a one-character class (`/[s]s/i` misses `ß`), and
+    a literal is expanded in pieces of about 8 characters, so a fold
+    straddling two pieces is missed. *(Revised: these matched RE2's
+    meaning.)* `$~`/`$1` are not supported; use `match`.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
+    `to_json(opts)` takes the generator options `indent`, `space`,
+    `space_before`, `object_nl`, `array_nl`, `depth`, `script_safe`
+    (`escape_slash`), `ascii_only` and `allow_nan`; `sort_keys`, `strict`
+    and `as_json` raise `NotImplementedError`, other keys are ignored as
+    the gem ignores unknown ones, and `max_nesting` is not checked.
+    `JSON.generate` takes no options. Like the gem, the generator calls
+    every value's `to_json` with one (opaque) state argument: a user
+    `to_json` declared other than `(*untyped) -> String` is reached
+    through its dynamic wrapper, so `(?untyped)` gets the state and `()`
+    raises `ArgumentError`. *(Revised: options were ignored, and such a
+    `to_json` was skipped for the JSON of its `to_s`.)*
 26. Threads are goroutines. An exception ends only its thread (reported on
     stderr) and `join` re-raises it. There is no GVL: stdout writes are
     locked, other shared state is the program's problem.

@@ -1,5 +1,3 @@
-# skip: inside Array/Hash to_json, a user to_json not declared (*untyped) is skipped for the to_s JSON: (state = nil) prints "#<OptState>", () prints "noarg" where MRI raises ArgumentError
-
 # rbs_inline: enabled
 
 require "json"

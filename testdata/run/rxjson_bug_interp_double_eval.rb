@@ -1,5 +1,3 @@
-# skip: each #{} in a regexp is evaluated twice (once for the pattern, once for source), so side effects repeat and source can differ from the pattern
-
 # rbs_inline: enabled
 
 class Ctr

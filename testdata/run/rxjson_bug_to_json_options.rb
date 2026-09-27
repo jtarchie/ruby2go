@@ -1,5 +1,3 @@
-# skip: to_json(opts) ignores json generator options (space:, indent:, object_nl:, script_safe:); MRI formats with them. JSON.generate(obj, opts) is rejected, to_json(opts) compiles and prints compact JSON
-
 # rbs_inline: enabled
 
 require "json"

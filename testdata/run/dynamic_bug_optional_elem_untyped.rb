@@ -1,5 +1,3 @@
-# skip: a nil element of an Array[T?] seen through untyped (is_a?(Array) / when Array narrowing, a dynamic [] call) is a typed nil *T, so nil? is false; MRI says true
-
 # rbs_inline: enabled
 
 #: (untyped) -> untyped

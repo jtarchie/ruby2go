@@ -1,5 +1,3 @@
-# skip: Hash#inspect with a T? value (or key) type panics: a nil value reaches rbInspect as a typed nil *T (Inspect called on nil pointer), and a non-nil *FooI / **Array is not I_Inspect at all (interface conversion)
-
 # rbs_inline: enabled
 
 class Foo

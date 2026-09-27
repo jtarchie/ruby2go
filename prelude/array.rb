@@ -170,7 +170,7 @@ class Array < Object
   def compact = %x{
     out := &Array[E]{}
     for _, x := range *self {
-      if any(x) != nil {
+      if rbUnbox(any(x)) != nil {
         *out = append(*out, x)
       }
     }
@@ -248,7 +248,7 @@ class Array < Object
     }
     out := &Array[any]{}
     for _, x := range *self {
-      *out = append(*out, x)
+      *out = append(*out, rbUnbox(x))
     }
     return out
   }
