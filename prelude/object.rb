@@ -92,6 +92,7 @@ module Comparable
 
   #: (self, self) -> self
   def clamp(lo, hi)
+    raise ArgumentError, "min argument must be less than or equal to max argument" if (lo <=> hi) > 0
     return lo if self < lo
     return hi if (self <=> hi) > 0
     self

@@ -1,4 +1,3 @@
-# skip: Comparable#clamp with min > max returns a bound; MRI raises ArgumentError (min argument must be less than or equal to max argument)
 # rbs_inline: enabled
 
 begin

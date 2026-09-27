@@ -125,6 +125,10 @@ class Array < Object
     return out
   }
 
+  # MRI's Array#first(-1) message; Enumerable#first raises it.
+  #: () -> String
+  def __negative_first = "negative array size"
+
   #: () -> Integer
   def size = %x{ Integer(len(*self)) }
 

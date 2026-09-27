@@ -73,6 +73,9 @@ class Integer < Object
 
   #: (Integer) -> Integer
   def **(other) = %x{
+    if self == 0 && other < 0 {
+      panic(NewZeroDivisionError(Ref[String]("divided by 0")))
+    }
     result := Integer(1)
     for i := Integer(0); i < other; i++ {
       result *= self

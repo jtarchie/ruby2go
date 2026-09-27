@@ -185,6 +185,14 @@
   type Array_Any interface{ _ToAny() *Array[any] }
   type Hash_Any interface{ _ToAny() *Hash[any, any] }
 
+  // rbFloatToI converts like MRI: a non-finite Float raises FloatDomainError.
+  func rbFloatToI(f float64) Integer {
+    if math.IsNaN(f) || math.IsInf(f, 0) {
+      panic(NewFloatDomainError(Ref(rbFloatToS(f))))
+    }
+    return Integer(f)
+  }
+
   func rbFloatToS(f float64) String {
     switch {
     case math.IsNaN(f):

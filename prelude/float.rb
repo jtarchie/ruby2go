@@ -59,16 +59,16 @@ class Float < Object
   def abs = %x{ Float(math.Abs(float64(self))) }
 
   #: () -> Integer
-  def to_i = %x{ Integer(self) }
+  def to_i = %x{ rbFloatToI(float64(self)) }
 
   #: () -> Integer
-  def floor = %x{ Integer(math.Floor(float64(self))) }
+  def floor = %x{ rbFloatToI(math.Floor(float64(self))) }
 
   #: () -> Integer
-  def ceil = %x{ Integer(math.Ceil(float64(self))) }
+  def ceil = %x{ rbFloatToI(math.Ceil(float64(self))) }
 
   #: () -> Integer
-  def round = %x{ Integer(math.Round(float64(self))) }
+  def round = %x{ rbFloatToI(math.Round(float64(self))) }
 
   #: () -> Float
   def to_f = self

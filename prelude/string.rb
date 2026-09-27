@@ -20,7 +20,12 @@ class String < Object
   def +(other) = %x{ self + other }
 
   #: (Integer) -> String
-  def *(n) = %x{ String(strings.Repeat(string(self), int(n))) }
+  def *(n) = %x{
+    if n < 0 {
+      panic(NewArgumentError(Ref[String]("negative argument")))
+    }
+    return String(strings.Repeat(string(self), int(n)))
+  }
 
   #: () -> String
   def to_s = self
@@ -209,6 +214,9 @@ class String < Object
 
   #: () -> Integer
   def ord = %x{
+    if self == "" {
+      panic(NewArgumentError(Ref[String]("empty string")))
+    }
     r, _ := utf8.DecodeRuneInString(string(self))
     return Integer(r)
   }

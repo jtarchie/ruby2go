@@ -125,6 +125,7 @@ module Enumerable
 
   #: (Integer) -> Array[E]
   def first(n)
+    raise ArgumentError, __negative_first if n < 0
     out = [] #: Array[E]
     each do |x|
       break if out.size >= n
@@ -133,8 +134,15 @@ module Enumerable
     out
   end
 
+  # first's message varies by class (Array overrides it), take's does not.
   #: (Integer) -> Array[E]
-  def take(n) = first(n)
+  def take(n)
+    raise ArgumentError, "attempt to take negative size" if n < 0
+    first(n)
+  end
+
+  #: () -> String
+  def __negative_first = "attempt to take negative size"
 
   # Keys are computed once, then sorted by <=>. Stable, unlike MRI.
   #: [K] () { (E) -> K } -> Array[E]

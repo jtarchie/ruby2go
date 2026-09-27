@@ -54,6 +54,8 @@ class StopIteration < IndexError; end
 
 class RangeError < StandardError; end
 
+class FloatDomainError < RangeError; end
+
 class ZeroDivisionError < StandardError; end
 
 class ScriptError < Exception; end
