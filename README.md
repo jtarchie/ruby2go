@@ -462,6 +462,16 @@ resolve; anything not listed is still open.
 12. Overloads (`#|`) are not supported, so `first`/`take` require a count
     (`arr.first(3)`; use `arr[0]` for the head) and `Array#[]` takes one
     Integer. `split` takes an optional separator through `?String?`.
+    *Revised:* Integer and Float mix anyway, as MRI's `coerce` does. When
+    an Integer or Float method's numeric argument is the other class, the
+    compiler widens the Integer side and calls Float's method (`a / 2.0` is
+    `Float(a).Div(2.0)`, still unboxed); an operator Float lacks (`%`) is a
+    compile error. Comparable's methods take both as `rbNum`, one Go type,
+    because `2.5.clamp(1, 2)` returns the bound `2` itself, so the result is
+    `untyped`. A local assigned both joins to `untyped`
+    (`total = 0; total += 1.5`), so its later arithmetic is dynamic, and
+    dynamic wrappers widen the same way. A Float where an Integer is
+    expected is a compile error, not Go's silent constant truncation.
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's

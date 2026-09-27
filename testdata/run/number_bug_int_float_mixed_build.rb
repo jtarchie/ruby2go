@@ -1,4 +1,3 @@
-# skip: Integer op non-integral Float (or a Float-typed value) fails go build (constant 1.5 truncated / cannot use Float as Integer); MRI promotes to Float
 # rbs_inline: enabled
 
 a = 7 #: Integer

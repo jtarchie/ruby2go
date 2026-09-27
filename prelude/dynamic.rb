@@ -23,8 +23,49 @@
     panic(NewArgumentError(Ref(String(fmt.Sprintf("wrong number of arguments (given %d, expected %s)", given, expected)))))
   }
 
+  // rbAs converts v to T, widening an Integer where a Float is expected
+  // (MRI's coerce: Float's operators take Integers).
+  func rbAs[T any](v any) (T, bool) {
+    if t, ok := v.(T); ok {
+      return t, true
+    }
+    if n, ok := v.(Integer); ok {
+      t, ok := any(Float(n)).(T)
+      return t, ok
+    }
+    var zero T
+    return zero, false
+  }
+
+  // rbNumMixed reports an Integer or Float argument of the other class than
+  // self (an Integer or a Float).
+  func rbNumMixed(self any, args []any) bool {
+    _, selfInt := self.(Integer)
+    for _, a := range args {
+      switch a.(type) {
+      case Integer:
+        if !selfInt {
+          return true
+        }
+      case Float:
+        if selfInt {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  // rbNum is an Integer or a Float as one Go type: Comparable's methods run
+  // on it when given both, so clamp returns the winning argument itself.
+  type rbNum struct{ v any }
+
+  func (a rbNum) Cmp(b rbNum) Integer { return rbCmp(a.v, b.v) }
+
+  func (a rbNum) Lt(b rbNum) Boolean { return rbCmp(a.v, b.v) < 0 }
+
   func rbArg[T any](args []any, i int, want string) T {
-    if v, ok := args[i].(T); ok {
+    if v, ok := rbAs[T](args[i]); ok {
       return v
     }
     panic(NewTypeError(Ref(String("no implicit conversion of " + rbDescribe(args[i]) + " into " + want))))

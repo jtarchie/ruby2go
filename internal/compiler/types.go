@@ -70,6 +70,8 @@ func isAny(t Type) bool { _, ok := t.(TAny); return ok }
 func isOpt(t Type) bool { _, ok := t.(TOpt); return ok }
 func isNil(t Type) bool { _, ok := t.(TNil); return ok }
 
+func isNumeric(t Type) bool { return isClass(t, "Integer") || isClass(t, "Float") }
+
 func classOf(t Type) *Class {
 	if c, ok := t.(TClass); ok {
 		return c.C
@@ -300,6 +302,8 @@ func join(a, b Type) (Type, bool) {
 		return b, true
 	case isAny(a) || isAny(b):
 		return TAny{}, true
+	case isNumeric(a) && isNumeric(b):
+		return TAny{}, true // Integer and Float mix at run time (MRI's coerce); there is no Numeric type
 	}
 	// Subclass / superclass: pick the ancestor.
 	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil && ca != cb {

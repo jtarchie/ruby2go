@@ -1,4 +1,3 @@
-# skip: Integer#+ through untyped raises TypeError (no implicit conversion of Float into Integer); MRI gives 6.5
 # rbs_inline: enabled
 
 v = 5 #: untyped

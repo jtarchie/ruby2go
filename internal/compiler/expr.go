@@ -601,6 +601,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		if isAny(e.typ) {
 			return e.code + ".(" + f.c.goType(to) + ")"
 		}
+		if isClass(to, "Integer") && isClass(e.typ, "Float") && f.pass == 2 { // earlier passes may still widen the target
+			f.errorf(n, "Float where Integer is expected; convert it (to_i, round, floor)")
+		}
 
 		if isOpt(e.typ) {
 			f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
@@ -791,6 +794,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
 		}
+		if r, ok := f.numericMix(n, recv, e, args, block); ok {
+			return r
+		}
 		return f.callEntry(n, e, recv, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
@@ -816,6 +822,74 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
+}
+
+// numericMix compiles a call on an Integer or Float whose numeric
+// parameter gets the other class, as MRI's coerce does: the classes' own
+// operators widen the Integer side to Float (still typed and unboxed), and
+// Comparable's methods run on rbNum, since clamp hands back the winning
+// argument itself. Arguments are generated once and passed on as exprNodes.
+func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) (expr, bool) {
+	m := e.M
+	if !isNumeric(recv.typ) || block != nil || len(args) == 0 || len(args) != len(m.Params) {
+		return expr{}, false
+	}
+	self := map[string]Type{"Self": recv.typ}
+	for i, p := range m.Params {
+		if _, splat := args[i].(*parser.SplatNode); splat || p.Rest || !isNumeric(subst(p.Type, self)) {
+			return expr{}, false
+		}
+	}
+	xs := make([]expr, len(args))
+	nodes := make([]parser.Node, len(args))
+	mixed := false
+	for i, a := range args {
+		pt := subst(m.Params[i].Type, self)
+		xs[i] = f.genExpr(a, pt)
+		mixed = mixed || isNumeric(xs[i].typ) && !typeEq(xs[i].typ, pt)
+		nodes[i] = &exprNode{Node: a, e: xs[i]}
+	}
+	if !mixed {
+		return f.callEntry(n, e, recv, nodes, nil), true
+	}
+	if m.Owner == f.c.classes["Comparable"] {
+		codes := make([]string, len(xs))
+		for i, x := range xs {
+			codes[i] = f.coerce(args[i], x, TAny{})
+		}
+		return f.rbNumCall(n, m, f.coerce(n, recv, TAny{}), codes), true
+	}
+	fe := f.c.classes["Float"].lookup(m.Name)
+	if fe == nil || len(fe.M.Params) != len(args) {
+		f.errorf(n, "%s#%s with an Integer and a Float is not supported", classOf(recv.typ).RubyName, m.Name)
+	}
+	widen := func(x expr) expr {
+		if isClass(x.typ, "Integer") {
+			return expr{code: "Float(" + x.code + ")", typ: f.cls("Float")}
+		}
+		return x
+	}
+	for i, x := range xs {
+		nodes[i] = &exprNode{Node: args[i], e: widen(x)}
+	}
+	return f.callEntry(n, fe, widen(recv), nodes, nil), true
+}
+
+// rbNumCall calls Comparable method m with Self = rbNum, one Go type for
+// Integer and Float values (recv and args are untyped Go code).
+func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) expr {
+	boxed := make([]string, 0, 1+len(args))
+	for _, a := range append([]string{recv}, args...) {
+		boxed = append(boxed, "rbNum{"+a+"}")
+	}
+	code := freeFuncName(m) + "[rbNum](" + strings.Join(boxed, ", ") + ")"
+	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" {
+		return expr{code: code + ".v", typ: TAny{}}
+	}
+	if m.generic() || mentionsVar(m.Ret) {
+		f.errorf(n, "%s with an Integer and a Float is not supported", m.Name)
+	}
+	return expr{code: code, typ: m.Ret}
 }
 
 // genArgs generates and coerces call arguments against m's parameters,
@@ -2213,7 +2287,12 @@ type exprNode struct {
 	e expr
 }
 
-func (x *exprNode) GetLocation() parser.Location { return parser.Location{} }
+func (x *exprNode) GetLocation() parser.Location {
+	if x.Node != nil {
+		return x.Node.GetLocation() // the source node it was generated from
+	}
+	return parser.Location{}
+}
 
 // genDynCall sends a method to an untyped value: see prelude/dynamic.rb.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
