@@ -621,9 +621,17 @@ resolve; anything not listed is still open.
     non-generic, block-less method of that name: MRI's `ArgumentError` for
     arity, `TypeError` for argument types, then the typed call. Without a
     wrapper the call goes to `method_missing`, then `NoMethodError` (or
-    `NameError` for a bare name). `send`/`public_send` with a literal name
-    are ordinary calls; a computed name switches over every method name
-    and makes the output larger, so it is generated only when used. On
+    `NameError` for a bare name). A private method's wrapper is `_DynName`,
+    which only `send` and receiver-less calls reach, as in MRI; a call with
+    a receiver or `public_send` goes on to `method_missing`, then
+    `NoMethodError` saying "private method". `respond_to?(name, true)`
+    counts private methods. `send`/`public_send` with a literal name
+    are ordinary calls; a computed name switches over every method name,
+    private ones included, and makes the output larger, so it is generated
+    only when used. *(Revised: the tables used to hold public methods only,
+    so `send` could not reach a private method dynamically,
+    `respond_to?(name, true)` ignored its flag, and the error said
+    "undefined method".)* On
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
     cycles. Blocks cannot cross a dynamic call.

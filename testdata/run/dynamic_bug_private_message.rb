@@ -1,5 +1,3 @@
-# skip: calling a private method on an untyped receiver (or via public_send) says "undefined method 'secret' for ..."; MRI says "private method 'secret' called for an instance of Vault"
-
 # rbs_inline: enabled
 
 class Vault

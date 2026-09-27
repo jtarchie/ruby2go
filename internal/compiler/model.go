@@ -1512,16 +1512,17 @@ func (c *Class) valueRoot() *Class {
 	return nil
 }
 
-// descendantDefines reports whether a subclass of c defines a public name.
-func (c *Class) descendantDefines(name string) bool {
+// descendantDefines reports whether a subclass of c defines a public name
+// (or a private one, with private).
+func (c *Class) descendantDefines(name string, private bool) bool {
 	for _, sub := range c.Subclasses {
 		if sub.metaOf != nil && c.metaOf == nil {
 			continue
 		}
-		if m := sub.Methods[name]; m != nil && !m.Private {
+		if m := sub.Methods[name]; m != nil && (private || !m.Private) {
 			return true
 		}
-		if sub.descendantDefines(name) {
+		if sub.descendantDefines(name, private) {
 			return true
 		}
 	}

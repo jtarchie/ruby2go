@@ -798,7 +798,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			// a Module/Class-typed value is some class object, and a
 			// struct-typed value may be a subclass defining the method:
 			// either way the method is found at run time
-			if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name))) && block == nil {
+			if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 				return f.genDynCall(n, recv, name, args)
 			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
@@ -815,7 +815,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			if mm := f.owner.lookup("method_missing"); mm != nil {
 				return f.callMissing(n, mm, recv, name, args, block)
 			}
-			if f.owner.isStruct() && f.owner.descendantDefines(name) && block == nil {
+			if f.owner.isStruct() && f.owner.descendantDefines(name, false) && block == nil {
 				return f.genDynCall(n, recv, name, args)
 			}
 			if e := f.c.classes["Object"].lookup(name); e != nil {
@@ -2174,11 +2174,23 @@ func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, arg
 // rubyPrivate names methods Ruby makes private whoever defines them.
 var rubyPrivate = map[string]bool{"initialize": true, "respond_to_missing?": true, "initialize_copy": true}
 
-// genRespondTo decides `recv.respond_to?(:name)` for a typed receiver and
-// a literal name: true for a public method, else respond_to_missing?,
-// else false. Returns false when the answer depends on the runtime class.
+// genRespondTo decides `recv.respond_to?(:name, include_all)` for a typed
+// receiver, a literal name and a literal include_all: true for a public
+// method (any method with include_all), else respond_to_missing?, else
+// false. Returns false when the answer depends on the runtime class.
 func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr, bool) {
 	name := literalName(args[0])
+	var includeAll parser.Node = &parser.FalseNode{}
+	if len(args) > 1 {
+		switch args[1].(type) {
+		case *parser.TrueNode:
+			includeAll = args[1]
+		case *parser.FalseNode, *parser.NilNode:
+		default:
+			return expr{}, false
+		}
+	}
+	_, priv := includeAll.(*parser.TrueNode)
 	var cls *Class
 	switch t := recv.typ.(type) {
 	case TClass:
@@ -2191,19 +2203,19 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	if name == "" || cls == nil {
 		return expr{}, false
 	}
-	if e := cls.lookup(name); e != nil && !e.M.Private && !rubyPrivate[name] {
+	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name]) {
 		if !isSimpleGo(recv.code) {
 			f.emit("_ = %s", recv.code)
 		}
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
-	if cls.descendantDefines(name) {
+	if cls.descendantDefines(name, priv) {
 		return expr{}, false
 	}
 	if rm := cls.lookup("respond_to_missing?"); rm != nil {
 		f.implicitCall = true
 		defer func() { f.implicitCall = false }()
-		return f.callEntry(n, rm, recv, []parser.Node{args[0], &parser.FalseNode{}}, nil), true
+		return f.callEntry(n, rm, recv, []parser.Node{args[0], includeAll}, nil), true
 	}
 	if !isSimpleGo(recv.code) {
 		f.emit("_ = %s", recv.code)
@@ -2262,15 +2274,21 @@ type exprNode struct {
 func (x *exprNode) GetLocation() parser.Location { return parser.Location{} }
 
 // genDynCall sends a method to an untyped value: see prelude/dynamic.rb.
+// Like MRI, only a call with an explicit receiver (other than self) cannot
+// reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
 	f.c.warn(f.f, n, "dynamic call: %s on %s", name, recv.typ)
-	vcall := false
-	if call, ok := n.(*parser.CallNode); ok && call.IsVARIABLE_CALL() {
-		vcall = true
+	how := "rbCall"
+	call, _ := n.(*parser.CallNode)
+	switch {
+	case call != nil && call.IsVARIABLE_CALL():
+		how = "rbVCall"
+	case f.implicitCall || call != nil && (call.Receiver == nil || isSelf(call.Receiver)):
+		how = "rbFCall"
 	}
 	codes := make([]string, 0, 2+len(args))
-	codes = append(codes, strconv.FormatBool(vcall), f.coerce(n, recv, TAny{}))
+	codes = append(codes, how, f.coerce(n, recv, TAny{}))
 	for _, a := range args {
 		if _, ok := a.(*parser.SplatNode); ok {
 			f.errorf(a, "splat arguments in a dynamic call are not supported")
@@ -2299,7 +2317,11 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	f.c.dynAll = true
 	f.c.warn(f.f, n, "dynamic call: %s with a computed name", name)
 	nameExpr := f.genExpr(args[0], nil)
-	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")"}
+	how := "rbFCall"
+	if name == "public_send" {
+		how = "rbCall"
+	}
+	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")", how}
 	for _, a := range args[1:] {
 		e := f.genExpr(a, nil)
 		codes = append(codes, f.coerce(a, e, TAny{}))
@@ -2315,16 +2337,22 @@ var universalNames = map[string]bool{"to_s": true, "inspect": true, "==": true, 
 // genDynRespondTo answers respond_to? when the static type cannot.
 func (f *fctx) genDynRespondTo(n parser.Node, recv expr, args []parser.Node) expr {
 	r := f.coerce(n, recv, TAny{})
+	includeAll := func() string {
+		if len(args) < 2 {
+			return "false"
+		}
+		return "rbTruthy(" + f.coerce(args[1], f.genExpr(args[1], nil), TAny{}) + ")"
+	}
 	if lit := literalName(args[0]); lit != "" {
 		if universalNames[lit] {
 			return expr{code: "Boolean(true)", typ: f.cls("Boolean")}
 		}
 		f.c.noteRespond(lit)
-		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ")", typ: f.cls("Boolean")}
+		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ", " + includeAll() + ")", typ: f.cls("Boolean")}
 	}
 	f.c.dynAll = true
 	nameExpr := f.genExpr(args[0], nil)
-	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "))", typ: f.cls("Boolean")}
+	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "), " + includeAll() + ")", typ: f.cls("Boolean")}
 }
 
 func isSelf(n parser.Node) bool { _, ok := n.(*parser.SelfNode); return ok }

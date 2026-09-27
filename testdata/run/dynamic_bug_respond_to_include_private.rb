@@ -1,5 +1,3 @@
-# skip: respond_to?(:private_method, true) ignores include_private and returns false (typed and untyped receivers); MRI returns true
-
 # rbs_inline: enabled
 
 class Plain
