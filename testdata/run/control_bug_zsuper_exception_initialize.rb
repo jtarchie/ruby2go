@@ -1,5 +1,3 @@
-# skip: implicit-argument `super` in an exception subclass's initialize passes String where Exception#initialize takes String?, so go build fails
-
 # rbs_inline: enabled
 
 class Plain < StandardError

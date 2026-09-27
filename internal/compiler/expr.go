@@ -1360,22 +1360,22 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		env[k] = v
 	}
 	env["Self"] = f.selfType
-	var codes []string
+	var an []parser.Node
 	if forwarding {
+		// zsuper re-reads the current params as locals so genArgs coerces them
+		// to the parent's types and fills the parent's remaining defaults
+		loc := n.(*parser.ForwardingSuperNode).Location
 		for _, p := range f.m.Params {
+			var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
 			if p.Rest {
-				codes = append(codes, "(*"+goLocalName(p.Name)+")...")
-			} else {
-				codes = append(codes, goLocalName(p.Name))
+				a = &parser.SplatNode{Expression: a, Location: loc}
 			}
+			an = append(an, a)
 		}
-	} else {
-		var an []parser.Node
-		if args != nil {
-			an = args.Arguments
-		}
-		codes = f.genArgs(n, e.M, env, an, nil)
+	} else if args != nil {
+		an = args.Arguments
 	}
+	codes := f.genArgs(n, e.M, env, an, nil)
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
