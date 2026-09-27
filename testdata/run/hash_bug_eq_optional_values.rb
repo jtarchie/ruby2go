@@ -1,5 +1,3 @@
-# skip: Hash#== compares T? values as *T pointers, so equal contents with an optional value type compare false
-
 # rbs_inline: enabled
 
 a = { "a" => 1, "b" => nil } #: Hash[String, Integer?]

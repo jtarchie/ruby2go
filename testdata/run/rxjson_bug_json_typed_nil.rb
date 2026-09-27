@@ -1,5 +1,3 @@
-# skip: to_json panics on nil elements of typed optional containers (Array[Integer?], Hash[String, Integer?], tuples, nil keys); MRI emits null
-
 # rbs_inline: enabled
 
 require "json"

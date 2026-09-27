@@ -1,5 +1,3 @@
-# skip: to_json of a container of T? where T is a reference type (Array, Hash, Regexp, MatchData, a class) prints the to_s fallback "#<Array>"/"#<MatchData>" for every element, nil included
-
 # rbs_inline: enabled
 
 require "json"

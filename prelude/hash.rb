@@ -9,7 +9,7 @@
   var rbLabelSymbol = regexp.MustCompile(`^[\\p{L}_][\\p{L}\\p{N}_]*[?!]?$`)
 
   func rbInspectPair(k, v any) string {
-    if s, ok := k.(Symbol); ok {
+    if s, ok := rbUnbox(k).(Symbol); ok {
       if rbLabelSymbol.MatchString(string(s)) {
         return string(s) + ": " + string(rbInspect(v))
       }
@@ -229,7 +229,7 @@ class Hash < Object
     }
     out := NewHash[any, any]()
     for _, k := range self.keys {
-      out.IdxSet(k, self.vals[k])
+      out.IdxSet(rbUnbox(k), rbUnbox(self.vals[k]))
     }
     return out
   }

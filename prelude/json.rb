@@ -8,6 +8,7 @@
   type I_ToJson interface{ ToJson(...any) String }
 
   func rbToJson(a any) String {
+    a = rbUnbox(a)
     if a == nil {
       return "null"
     }

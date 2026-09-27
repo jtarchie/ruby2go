@@ -1,5 +1,3 @@
-# skip: inspect/to_s of an Array[Integer?] holding nil panics (typed nil *Integer reaches rbInspect)
-
 # rbs_inline: enabled
 opt = [1, nil, 3] #: Array[Integer?]
 puts opt.inspect

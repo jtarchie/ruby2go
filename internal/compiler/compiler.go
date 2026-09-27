@@ -42,6 +42,9 @@ type Compiler struct {
 	Warnings      []string
 	// tuple arities used, so their types get emitted
 	tupleN map[int]bool
+	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
+	// says whether T is itself optional
+	boxes map[string]bool
 }
 
 type verbatim struct {
@@ -95,7 +98,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	}
 	defer func() { _ = p.Close(ctx) }()
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, regexpVars: map[string]string{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPrelude(ctx, "prelude.rb")
 	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)

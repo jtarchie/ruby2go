@@ -578,6 +578,10 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	case TAny:
 		switch {
 		case isOpt(e.typ):
+			switch e.typ.(TOpt).Elem.(type) {
+			case TVar, TOpt: // E? with E = T?: Opt leaves the inner box
+				return "rbUnbox(Opt(" + e.code + "))"
+			}
 			return "Opt(" + e.code + ")"
 		case e.lit:
 			return f.c.goType(e.typ) + "(" + e.code + ")"

@@ -2,7 +2,9 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -35,7 +37,14 @@ func (c *Compiler) goType(t Type) string {
 			return cls.Name + "I"
 		}
 	case TOpt:
-		return "*" + c.goType(t.Elem)
+		s := "*" + c.goType(t.Elem)
+		var vars []string
+		if freeVars(t, &vars); len(vars) == 0 && s != "*" {
+			if _, fn := t.Elem.(TFunc); !fn {
+				c.boxes[s] = isOpt(t.Elem)
+			}
+		}
+		return s
 	case TTuple:
 		c.tupleN[len(t.Elems)] = true
 		return fmt.Sprintf("Tuple%d[%s]", len(t.Elems), c.goTypes(t.Elems))
@@ -236,6 +245,7 @@ func (c *Compiler) emitProgram() {
 	c.emitMain()
 	c.emitDynamic()
 	c.emitTuples()
+	c.emitBoxes()
 	// last: every body, main included, has registered its literals by now
 	for _, r := range c.regexps {
 		c.w("%s\n\n", r)
@@ -488,6 +498,28 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 		_ = tos
 	}
+}
+
+// emitBoxes emits the helpers that open a T? box (*T) seen as `any`: generic
+// code holding E = T? hands the box itself to rbInspect, rbEq, rbCmp...,
+// where a nil *T is not a nil interface and a non-nil one has the wrong
+// method set. Only concrete T? types rendered somewhere can reach them.
+func (c *Compiler) emitBoxes() {
+	boxes := slices.Sorted(maps.Keys(c.boxes))
+	c.w("func rbUnbox(a any) any {\n\tswitch v := a.(type) {\n")
+	for _, b := range boxes {
+		if c.boxes[b] {
+			c.w("\tcase %s:\n\t\treturn rbUnbox(Opt(v))\n", b)
+		} else {
+			c.w("\tcase %s:\n\t\treturn Opt(v)\n", b)
+		}
+	}
+	c.w("\t}\n\treturn a\n}\n\n")
+	c.w("func rbCmpBox(a, b any) Integer {\n\tswitch v := a.(type) {\n")
+	for _, b := range boxes {
+		c.w("\tcase %s:\n\t\treturn rbCmpOpt(v, b.(%s))\n", b, b)
+	}
+	c.w("\t}\n\treturn rbCmpFailed(a, b)\n}\n\n")
 }
 
 // wantsForwarder decides whether class cls gets a Go method forwarding to

@@ -430,6 +430,12 @@ resolve; anything not listed is still open.
    representation" shortcut would make `E?` inside a generic container mean
    something different from `Rect?` outside it; uniform boxing keeps
    generics honest at the cost of a `Ref`/`Opt` at the boundary.
+   Generic code holding `E = T?` passes the box itself to `any`-typed
+   helpers (`inspect`, `==`, `<=>`, `to_json`, `compact`, untyped views),
+   where a nil `*T` is a non-nil interface and a non-nil one has the wrong
+   method set. A generated `rbUnbox` type switch over every concrete `T?`
+   the program renders opens it there; `rbCmp` tries the typed `Cmp` first
+   and only falls back to the box path when that fails.
 8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
    method set plus `_Shape() *Shape` accessors for every struct in the
    chain (ivar access from free functions, and the marker `rescue` matches
