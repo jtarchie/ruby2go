@@ -22,11 +22,11 @@ func known(t *testing.T, reason string) {
 func TestGoMethodName(t *testing.T) {
 	cases := []struct{ in, want string }{
 		// decision 3 table
-		{"==", "Eq"}, {"!=", "Ne"}, {"<=>", "Cmp"}, {"<", "Lt"}, {"<=", "Le"}, {">", "Gt"}, {">=", "Ge"},
-		{"+", "Plus"}, {"-", "Minus"}, {"*", "Mul"}, {"/", "Div"}, {"%", "Mod"}, {"**", "Pow"},
-		{"-@", "Neg"}, {"+@", "Pos"}, {"!", "Not"}, {"~", "Inv"}, {"<<", "Shl"}, {">>", "Shr"},
-		{"&", "BitAnd"}, {"|", "BitOr"}, {"^", "BitXor"}, {"=~", "EqTilde"}, {"!~", "NotTilde"},
-		{"===", "Eqq"}, {"[]", "Idx"}, {"[]=", "IdxSet"},
+		{"==", "Op_eq"}, {"!=", "Op_ne"}, {"<=>", "Op_cmp"}, {"<", "Op_lt"}, {"<=", "Op_le"}, {">", "Op_gt"}, {">=", "Op_ge"},
+		{"+", "Op_plus"}, {"-", "Op_minus"}, {"*", "Op_mul"}, {"/", "Op_div"}, {"%", "Op_mod"}, {"**", "Op_pow"},
+		{"-@", "Op_neg"}, {"+@", "Op_pos"}, {"!", "Op_not"}, {"~", "Op_inv"}, {"<<", "Op_shl"}, {">>", "Op_shr"},
+		{"&", "Op_bitAnd"}, {"|", "Op_bitOr"}, {"^", "Op_bitXor"}, {"=~", "Op_eqTilde"}, {"!~", "Op_notTilde"},
+		{"===", "Op_eqq"}, {"[]", "Op_idx"}, {"[]=", "Op_idxSet"}, {"`", "Op_backtick"},
 		// camel-casing and suffixes
 		{"x", "X"},
 		{"to_s", "ToS"},
@@ -35,6 +35,12 @@ func TestGoMethodName(t *testing.T) {
 		{"empty?", "EmptyQ"},
 		{"upcase!", "UpcaseBang"},
 		{"name=", "NameSet"},
+		// a trailing suffix word stays as written (decision 3)
+		{"empty_q", "Empty_q"},
+		{"upcase_bang", "Upcase_bang"},
+		{"name_set", "Name_set"},
+		{"__set", "__Set"},
+		{"reset", "Reset"},
 		{"utf8?", "Utf8Q"},
 		{"a2b", "A2b"},
 		{"Integer", "Integer"},
@@ -57,11 +63,11 @@ func TestGoMethodName(t *testing.T) {
 // The table must match decision 3 exactly: no extra or missing operators.
 func TestOpNamesMatchReadme(t *testing.T) {
 	readme := map[string]string{
-		"==": "Eq", "!=": "Ne", "<=>": "Cmp", "<": "Lt", "<=": "Le", ">": "Gt", ">=": "Ge",
-		"+": "Plus", "-": "Minus", "*": "Mul", "/": "Div", "%": "Mod", "**": "Pow",
-		"-@": "Neg", "+@": "Pos", "!": "Not", "~": "Inv", "<<": "Shl", ">>": "Shr",
-		"&": "BitAnd", "|": "BitOr", "^": "BitXor", "=~": "EqTilde", "!~": "NotTilde",
-		"===": "Eqq", "[]": "Idx", "[]=": "IdxSet",
+		"==": "Op_eq", "!=": "Op_ne", "<=>": "Op_cmp", "<": "Op_lt", "<=": "Op_le", ">": "Op_gt", ">=": "Op_ge",
+		"+": "Op_plus", "-": "Op_minus", "*": "Op_mul", "/": "Op_div", "%": "Op_mod", "**": "Op_pow",
+		"-@": "Op_neg", "+@": "Op_pos", "!": "Op_not", "~": "Op_inv", "<<": "Op_shl", ">>": "Op_shr",
+		"&": "Op_bitAnd", "|": "Op_bitOr", "^": "Op_bitXor", "=~": "Op_eqTilde", "!~": "Op_notTilde",
+		"===": "Op_eqq", "[]": "Op_idx", "[]=": "Op_idxSet", "`": "Op_backtick",
 	}
 	if len(opNames) != len(readme) {
 		t.Errorf("opNames has %d entries, README decision 3 lists %d", len(opNames), len(readme))
@@ -153,9 +159,7 @@ func TestGoMethodNameInjective(t *testing.T) {
 // sit on the same class as the operator (Integer has `/` and `div`, `**` and
 // `pow`; Pathname has `+` and private `plus`), or are core names a user class
 // can define beside it (IO#pos next to `+@`). The prelude defines none of the
-// four yet, so TestGoMethodNameInjective cannot see them. A user class with
-// both `def /(o)` and `def div(o)` transpiles to Go with a duplicate `Div`
-// method, while MRI runs it.
+// four yet, so TestGoMethodNameInjective cannot see them.
 func TestGoMethodNameCoreCollisions(t *testing.T) {
 	cases := []struct{ a, b, known string }{
 		{"[]", "index", ""},
@@ -170,10 +174,10 @@ func TestGoMethodNameCoreCollisions(t *testing.T) {
 		{"name=", "name", ""},
 		{"__write", "write", ""},
 		{"_foo", "foo", ""},
-		{"/", "div", "`/` and Integer#div both map to Div"},
-		{"**", "pow", "`**` and Integer#pow both map to Pow"},
-		{"+@", "pos", "`+@` and IO#pos both map to Pos"},
-		{"+", "plus", "`+` and Pathname#plus both map to Plus"},
+		{"/", "div", ""},
+		{"**", "pow", ""},
+		{"+@", "pos", ""},
+		{"+", "plus", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.b, func(t *testing.T) {
@@ -198,7 +202,7 @@ func TestGoMethodNameIsIdentifier(t *testing.T) {
 		{"café", "", ""},
 		{"naïve?", "", ""},
 		{"call", "", ""},
-		{"`", "backtick", "backtick is not in the decision 3 table and camel-cases to itself; a class that defines it gets \"generated Go does not parse\""},
+		{"`", "backtick", ""},
 	}
 	for _, c := range cases {
 		t.Run(cmp.Or(c.label, c.name), func(t *testing.T) {
@@ -234,6 +238,11 @@ func TestGoLocalName(t *testing.T) {
 		{"bool", "bool_"},
 		{"_", "_"},
 		{"_tmp", "_tmp"},
+		// a trailing `_` is the generated locals' form (t1_, r_, ret_, rest_)
+		{"ret_", "ret__"},
+		{"x__", "x___"},
+		{"len_", "len__"},
+		{"blk", "blk_"},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {

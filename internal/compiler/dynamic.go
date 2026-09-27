@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,8 +13,9 @@ import (
 // no reflection. For every method name called on an untyped value there is
 // a `rbDynName` dispatcher, and a `DynName(args ...any) any` wrapper on
 // every concrete class whose public, non-generic, block-less method has
-// that name. Wrappers check arity, convert arguments to the declared types
-// and box the result, reusing the typed call path.
+// that name (`_DynName` when the method is private: only send and
+// receiver-less calls reach it). Wrappers check arity, convert arguments to
+// the declared types and box the result, reusing the typed call path.
 
 // emitDynamic emits wrappers and dispatchers for every name asked for;
 // generating a wrapper may ask for more (a default argument calling
@@ -37,28 +39,50 @@ func (c *Compiler) emitDynamic() {
 	for _, name := range c.respondNames {
 		c.emitRespond(name)
 	}
+	marked := map[string]bool{}
+	for _, name := range slices.Concat(c.dynNames, c.respondNames) {
+		if !marked[name] {
+			marked[name] = true
+			for _, cls := range c.privateIn(name) {
+				c.w("func (self %s) _Private%s() {}\n\n", c.recvType(cls), goMethodName(name))
+			}
+		}
+	}
 	if c.dynAll {
 		c.emitNameSwitches()
 	}
 }
 
 // dynEntry is the method a dynamic call of name reaches on cls, if it can
-// be called without a block and without type arguments.
-func (c *Compiler) dynEntry(cls *Class, name string) *entry {
+// be called without a block and without type arguments, and whether it is
+// private (the dispatchers call method_missing and respond_to_missing?
+// whatever their visibility).
+func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 	if cls.IsModule || cls.universal || name == "initialize" {
-		return nil
+		return nil, false
 	}
 	e := cls.lookup(name)
 	if e == nil || e.M.generic() || e.M.Block != nil {
-		return nil
-	}
-	if e.M.Private && !rubyPrivate[name] {
-		return nil
+		return nil, false
 	}
 	if len(cls.TypeParams) > 0 && growsTypeParams(cls, e) {
-		return nil
+		return nil, false
 	}
-	return e
+	return e, e.M.Private && !rubyPrivate[name] && name != "method_missing"
+}
+
+// privateIn lists the concrete classes on which name is a private method.
+func (c *Compiler) privateIn(name string) []*Class {
+	var out []*Class
+	for _, cls := range c.classList {
+		if cls.IsModule || cls.universal {
+			continue
+		}
+		if e := cls.lookup(name); e != nil && e.M.Private {
+			out = append(out, cls)
+		}
+	}
+	return out
 }
 
 // growsTypeParams reports whether a generic class's method mentions its
@@ -110,26 +134,46 @@ func mentionsVar(t Type) bool {
 	return len(vars) > 0
 }
 
-func (c *Compiler) emitDynName(name string) {
+// dispatchers are package-level, so a capital or digit that decision 3 merges (`foo_bar`/`fooBar`) collides across classes too
+func (c *Compiler) dynGoName(name string) string {
 	gn := goMethodName(name)
-	c.w("func rbDyn%s(vcall bool, recv any, args ...any) any {\n", gn)
+	if p, ok := c.dynGo[gn]; ok && p != name {
+		c.errorf(nil, nil, "`%s` and `%s` both become Go %s, so dynamic calls cannot tell them apart; rename one", p, name, gn)
+	}
+	c.dynGo[gn] = name
+	return gn
+}
+
+// emitDynName emits rbDynName(how, recv, args...): the public wrapper, the
+// private one unless the call had a receiver (how is rbCall), then
+// method_missing, then NoMethodError.
+func (c *Compiler) emitDynName(name string) {
+	gn := c.dynGoName(name)
+	hidden := len(c.privateIn(name)) > 0
+	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
+	if hidden {
+		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
+	}
 	if name != "method_missing" {
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
 	}
-	c.w("\tpanic(rbNoMethod(%q, recv, vcall))\n}\n\n", name)
+	if hidden {
+		c.w("\tif _, ok := recv.(interface{ _Private%s() }); ok {\n\t\tpanic(rbPrivateMethod(%q, recv))\n\t}\n", gn, name)
+	}
+	c.w("\tpanic(rbNoMethod(%q, recv, how == rbVCall))\n}\n\n", name)
 	for _, cls := range c.classList {
-		if e := c.dynEntry(cls, name); e != nil {
-			c.emitDynWrapper(cls, e, name)
+		if e, private := c.dynEntry(cls, name); e != nil {
+			c.emitDynWrapper(cls, e, name, private)
 		}
 	}
 }
 
-// emitDynWrapper emits cls's DynName. A method that cannot be wrapped (its
-// types cannot cross `any`) is left out with a warning: calling it
-// dynamically raises NoMethodError.
-func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string) {
+// emitDynWrapper emits cls's DynName (_DynName for a private method). A
+// method that cannot be wrapped (its types cannot cross `any`) is left out
+// with a warning: calling it dynamically raises NoMethodError.
+func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string, private bool) {
 	var body string
 	func() {
 		defer func() {
@@ -145,7 +189,11 @@ func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string) {
 		body = c.dynWrapperBody(cls, e)
 	}()
 	if body != "" {
-		c.w("func (self %s) Dyn%s(args ...any) any {\n%s}\n\n", c.recvType(cls), goMethodName(name), body)
+		prefix := "Dyn"
+		if private {
+			prefix = "_Dyn"
+		}
+		c.w("func (self %s) %s%s(args ...any) any {\n%s}\n\n", c.recvType(cls), prefix, goMethodName(name), body)
 	}
 }
 
@@ -161,7 +209,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	f.scope = &scope{vars: map[string]*local{}}
 	f.pass = 2
 	f.indent = 1
-	f.implicitCall = true // method_missing and respond_to_missing? may be private
+	f.implicitCall = true // the method may be private: method_missing, or one send reaches
 	recv := expr{code: "self", typ: cls.instance()}
 	if cls.metaOf != nil || cls.isStruct() {
 		recv.typ = TClass{C: cls}
@@ -243,10 +291,11 @@ func (c *Compiler) dynArg(t Type, i int) string {
 	return fmt.Sprintf("rbAs[%s](args[%d], %q)", c.goType(t), i, t.String())
 }
 
-// emitRespond emits rbRespondsByName, backed by a marker method on every
-// class that has the public method (with or without a block).
+// emitRespond emits rbRespondsName(recv, priv), backed by a
+// marker method on every class that has the public method (with or without
+// a block) and, when private methods count, the _PrivateName markers.
 func (c *Compiler) emitRespond(name string) {
-	gn := goMethodName(name)
+	gn := c.dynGoName(name)
 	for _, cls := range c.classList {
 		if cls.IsModule || cls.universal || rubyPrivate[name] {
 			continue
@@ -255,14 +304,17 @@ func (c *Compiler) emitRespond(name string) {
 			c.w("func (self %s) _Responds%s() {}\n\n", c.recvType(cls), gn)
 		}
 	}
-	c.w("func rbResponds%s(recv any) Boolean {\n", gn)
+	c.w("func rbResponds%s(recv any, priv bool) Boolean {\n", gn)
 	c.w("\tif _, ok := recv.(interface{ _Responds%s() }); ok {\n\t\treturn true\n\t}\n", gn)
+	if len(c.privateIn(name)) > 0 {
+		c.w("\tif _, ok := recv.(interface{ _Private%s() }); ok && priv {\n\t\treturn true\n\t}\n", gn)
+	}
 	c.w("\tif r, ok := recv.(interface{ DynRespondToMissingQ(...any) any }); ok {\n")
-	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(%q), Boolean(false))))\n\t}\n", name)
+	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(%q), Boolean(priv))))\n\t}\n", name)
 	c.w("\treturn false\n}\n\n")
 }
 
-// allMethodNames lists every public method name a computed send may name.
+// allMethodNames lists every method name a computed send may name.
 func (c *Compiler) allMethodNames() []string {
 	seen := map[string]bool{}
 	for _, cls := range c.classList {
@@ -270,7 +322,7 @@ func (c *Compiler) allMethodNames() []string {
 			continue
 		}
 		for _, e := range cls.methodSet() {
-			if !e.M.Private && e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") {
+			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") {
 				seen[e.M.Name] = true
 			}
 		}
@@ -285,19 +337,19 @@ func (c *Compiler) allMethodNames() []string {
 
 // emitNameSwitches backs send and respond_to? with computed names.
 func (c *Compiler) emitNameSwitches() {
-	c.w("func rbSendByName(recv any, name string, args ...any) any {\n\tswitch name {\n")
+	c.w("func rbSendByName(recv any, name string, how int, args ...any) any {\n\tswitch name {\n")
 	for _, name := range c.dynNames {
-		c.w("\tcase %q:\n\t\treturn rbDyn%s(false, recv, args...)\n", name, goMethodName(name))
+		c.w("\tcase %q:\n\t\treturn rbDyn%s(how, recv, args...)\n", name, goMethodName(name))
 	}
 	c.w("\t}\n\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 	c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(name)}, args...)...)\n\t}\n")
 	c.w("\tpanic(rbNoMethod(name, recv, false))\n}\n\n")
-	c.w("func rbRespondsByName(recv any, name string) Boolean {\n\tswitch name {\n")
+	c.w("func rbRespondsByName(recv any, name string, priv bool) Boolean {\n\tswitch name {\n")
 	for _, name := range c.respondNames {
-		c.w("\tcase %q:\n\t\treturn rbResponds%s(recv)\n", name, goMethodName(name))
+		c.w("\tcase %q:\n\t\treturn rbResponds%s(recv, priv)\n", name, goMethodName(name))
 	}
 	c.w("\t}\n\tif r, ok := recv.(interface{ DynRespondToMissingQ(...any) any }); ok {\n")
-	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(name), Boolean(false))))\n\t}\n")
+	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(name), Boolean(priv))))\n\t}\n")
 	c.w("\treturn false\n}\n\n")
 }
 

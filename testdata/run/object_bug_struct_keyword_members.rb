@@ -1,5 +1,3 @@
-# skip: a Struct/Data member named like a Ruby keyword (:begin, :end, :in) is an internal error: the generated initialize uses the member names as parameter names and does not parse
-
 # rbs_inline: enabled
 
 Span = Struct.new(:begin, :end) #: [Integer, Integer]

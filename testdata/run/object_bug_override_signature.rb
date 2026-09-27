@@ -1,5 +1,3 @@
-# skip: an annotated override whose signature differs from the parent's (other arity, or a narrower return type Sub for Base) fails go build "*Sub does not implement BaseI (wrong type for method F)"; Ruby allows both
-
 # rbs_inline: enabled
 
 class Base

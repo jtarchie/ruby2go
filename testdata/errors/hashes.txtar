@@ -245,8 +245,7 @@ puts h.select { |_k, v| v }.inspect
 h = { a: 1 } #: Hash[String, Integer]
 puts h.inspect
 -- subclass_hash.rb --
-# skip: no compile error; subclassing the @go_type Hash emits Go that does not build (cannot use generic type Hash[K, V] without instantiation)
-# error: main.rb:3:
+# error: main.rb:2: subclassing Hash is not supported
 class MyHash < Hash
   #: () -> Integer
   def twice = size * 2

@@ -1,5 +1,3 @@
-# skip: the value of `@x = expr` has the ivar's type (Integer?) instead of the value's (Integer), so `def f = @x = n` fails to compile with "possibly-nil Integer?"
-
 # rbs_inline: enabled
 
 class Memo

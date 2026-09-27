@@ -14,8 +14,7 @@ def hi
 end
 hi
 -- xstring_user_method_body.rb --
-# skip: a user method whose whole body is %x{} compiles as Go; MRI runs it as a shell command
-# error: main.rb:5: only allowed
+# error: main.rb:4: %x{} is only allowed as the whole body of a prelude method
 # rbs_inline: enabled
 #: () -> Integer
 def hi = %x{ 1 }
@@ -220,8 +219,7 @@ puts h["a"].inspect
 puts (:a <=> "a").inspect
 puts [:a, :b].include?("a").inspect
 -- subclass_string.rb --
-# skip: subclassing String (a @go_type value class) compiles to Go that does not build (undefined String_Cmp, *Name is not String); want a compile error
-# error: main.rb:4:
+# error: main.rb:3: subclassing String is not supported
 # rbs_inline: enabled
 class Name < String
   #: () -> String

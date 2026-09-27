@@ -1,5 +1,3 @@
-# skip: instances of a class with no ivars are Go zero-size structs, whose pointers compare equal, so distinct objects are equal?/== and collapse into one Hash key; MRI keeps them apart
-
 # rbs_inline: enabled
 
 class Token

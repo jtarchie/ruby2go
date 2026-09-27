@@ -1,5 +1,3 @@
-# skip: a class method name/to_s/inspect defined on a parent is shadowed in subclasses by their generated ones, so SubGadget prints "SubGadget" where MRI inherits "GadgetClass"
-
 # rbs_inline: enabled
 
 class Widget

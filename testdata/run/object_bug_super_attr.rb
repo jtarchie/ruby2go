@@ -1,5 +1,3 @@
-# skip: `super` into an attr_reader/attr_writer (overriding an accessor) calls a free function Base_Name that is never emitted, so go build fails "undefined: Base_Name"
-
 # rbs_inline: enabled
 
 class Base

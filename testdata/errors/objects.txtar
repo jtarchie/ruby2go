@@ -730,8 +730,7 @@ module Kernel
   def self.hi = "hi"
 end
 -- class_methods_on_kernel_location.rb --
-# skip: the error for `def self.x` on Kernel/BasicObject is located in prelude/object.rb (where Kernel is declared) with the def's offset, not at the user's def main.rb:5
-# error: main.rb:5: class methods on Kernel are not supported
+# error: main.rb:4: class methods on Kernel are not supported
 module Kernel
   #: () -> String
   def self.hi = "hi"
@@ -771,8 +770,7 @@ end
 
 Anon = Class.new(Base)
 -- superclass_mismatch_after_plain.rb --
-# skip: reopening a class with a superclass after it was first defined without one compiles; MRI raises "superclass mismatch for class C" (TypeError)
-# error: main.rb:9: class C reopened with a different superclass
+# error: main.rb:8: class C reopened with a different superclass
 class A
 end
 
@@ -792,8 +790,7 @@ Point = Struct.new(:x, :y) #: [Integer, Integer]
 pt = Point.new(1, 2)
 pt.with(x: 3)
 -- struct_missing_nonnil_keyword.rb --
-# skip: a keyword Struct.new that omits a non-nilable member reports the nil at main.rb:1 instead of the call's line
-# error: main.rb:5: nil where Integer is expected
+# error: main.rb:4: nil where Integer is expected
 Point = Struct.new(:x, :y) #: [Integer, Integer]
 
 puts Point.new(x: 1)
@@ -946,7 +943,7 @@ end
 
 Dog.new.bark(1)
 -- class_method_wrong_arity.rb --
-# error: main.rb:7: Dog_Meta#named: wrong number of arguments (given 0, expected 1)
+# error: main.rb:7: Dog.named: wrong number of arguments (given 0, expected 1)
 class Dog
   #: (String) -> Dog
   def self.named(n) = new
@@ -988,7 +985,6 @@ class Registry
   def self.count = @count
 end
 -- initialize_called_with_receiver.rb --
-# skip: calling initialize with an explicit receiver compiles and runs it; initialize is always private in MRI (NoMethodError)
 # error: main.rb:10: private method initialize called on Vault
 class Vault
   #: () -> void
@@ -1020,3 +1016,52 @@ class Profile
 end
 
 puts Profile.new.nick.upcase
+-- go_name_collision.rb --
+# error: main.rb:6: `fooBar` and `foo_bar` (main.rb:4) both become Go FooBar in Meter; rename one
+class Meter
+  #: () -> Integer
+  def foo_bar = 1
+  #: () -> Integer
+  def fooBar = 2
+end
+
+puts Meter.new.foo_bar
+-- go_name_collision_inherited.rb --
+# error: both become Go Utf8 in Word
+class Base
+  #: () -> Integer
+  def utf_8 = 1
+end
+
+class Word < Base
+  #: () -> Integer
+  def utf8 = 2
+end
+
+puts Word.new.utf8
+-- override_unrelated_return.rb --
+# error: main.rb:9: Sub#size: () -> String overrides Base#size: () -> Integer, but its String result cannot stand in for Integer
+class Base
+  #: () -> Integer
+  def size = 1
+end
+
+class Sub < Base
+  #: () -> String
+  def size = "one"
+end
+
+puts Sub.new.size
+-- override_optional_param.rb --
+# error: main.rb:9: Sub#greet: (String) -> String overrides Base#greet: (String?) -> String, but argument 1 cannot pass a String? as a String
+class Base
+  #: (String?) -> String
+  def greet(s) = "hi #{s}"
+end
+
+class Sub < Base
+  #: (String) -> String
+  def greet(s) = "yo #{s}"
+end
+
+puts Sub.new.greet("x")

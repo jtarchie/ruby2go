@@ -120,7 +120,7 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
-			ps = append(ps, name+"_ ..."+c.goType(subst(p.Type, env)))
+			ps = append(ps, "rest_ ..."+c.goType(subst(p.Type, env)))
 			continue
 		}
 		ps = append(ps, name+" "+c.goType(subst(p.Type, env)))
@@ -147,7 +147,7 @@ func (c *Compiler) argNames(m *Method) string {
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
-			as = append(as, name+"_...")
+			as = append(as, "rest_...")
 			continue
 		}
 		as = append(as, name)
@@ -160,6 +160,16 @@ func (c *Compiler) argNames(m *Method) string {
 
 // freeFuncName is the Go name of a method emitted as a free function.
 func freeFuncName(m *Method) string { return m.Owner.Name + "_" + m.GoName }
+
+// staticCallCode renders a non-virtual call of m on recv (private calls,
+// super). Attr accessors have no free func: they are plain methods on the
+// owner's struct, reached through the `_Owner()` every struct constraint has.
+func staticCallCode(m *Method, targs, recv, args string) string {
+	if m.Kind == kindAttrReader || m.Kind == kindAttrWriter {
+		return recv + "._" + m.Owner.Name + "()." + m.GoName + "(" + args + ")"
+	}
+	return freeFuncName(m) + targs + "(" + recv + comma(args) + ")"
+}
 
 // isDirectMethod reports whether m is emitted as a plain Go method on its
 // owner (primitive classes' own non-generic methods, attr accessors).
@@ -230,6 +240,7 @@ func (c *Compiler) emitProgram() {
 		c.lineDirective(v.file, v.line)
 		c.w("%s\n\n", strings.TrimSpace(v.code))
 	}
+	c.guardConsts()
 	classes := c.sortedClasses()
 	for _, cls := range classes {
 		c.emitClassType(cls)
@@ -354,7 +365,7 @@ func bridgeName(m *Method) string { return "_Super_" + m.Owner.Name + "_" + m.Go
 func (c *Compiler) superBridges(cls *Class) []entry {
 	var out []entry
 	seen := map[*Method]bool{}
-	for _, anc := range append([]*Class{cls}, cls.ancestors()...) {
+	for _, anc := range append([]*Class{cls}, cls.allAncestors()...) {
 		if !anc.IsModule {
 			continue
 		}
@@ -476,9 +487,15 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 
 func (c *Compiler) emitStructClass(cls *Class) {
 	// struct
+	if len(cls.Subclasses) > 0 && !cls.universal {
+		c.w("type %s = %s\n\n", superField(cls), cls.Name)
+	}
 	c.w("type %s struct {\n", cls.Name)
 	if cls.Super != nil && !cls.Super.universal {
-		c.w("\t%s\n", cls.Super.Name)
+		c.w("\t%s\n", superField(cls.Super))
+	} else if len(cls.IvarList) == 0 {
+		// zero-size allocations may share an address, merging distinct instances' identity
+		c.w("\t_ byte\n")
 	}
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
@@ -500,9 +517,19 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		env["Self"] = c.selfTypeFor(e, cls)
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
+		if e.M.seqAdapter {
+			name, ps, ret := c.seqAdapterSig(e.M, env)
+			c.w("\t%s(%s) %s\n", name, ps, ret)
+		}
+		for _, s := range e.M.shadowed {
+			ps, ret := c.sig(s.e.M, c.slotEnv(s))
+			c.w("\t%s(%s) %s\n", s.e.M.GoName, ps, ret)
+		}
 	}
 	c.emitBridgeSigs(cls, nil)
-	if cls.meta != nil {
+	if cls.meta != nil || cls.metaOf != nil {
+		// a metaclass inherits _ClassOf from Class/Module; listing it lets a
+		// singleton(C) value pass where Class or Module is expected
 		c.w("\t_ClassOf() %s\n", c.goType(TClass{C: cls.root().meta}))
 	}
 	isModule := cls.isSubclassOf(c.classes["Module"])
@@ -535,6 +562,12 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 }
 
+// superField names the field a subclass embeds cls through: an alias, since
+// an embedded field takes its type's name and a method of that Go name
+// (`Calc#calc`) would clash with it. Lowercase with a trailing `_`, it is
+// neither a method nor an ivar name (goLocalName).
+func superField(cls *Class) string { return "super_" + cls.Name + "_" }
+
 // emitForwarders emits, for a concrete class, a Go method per inherited or
 // included public non-generic method so the class satisfies its interface.
 func (c *Compiler) emitForwarders(cls *Class) {
@@ -565,6 +598,26 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		}
 	}
 	c.emitBridges(cls, recv)
+	for _, e := range c.publicEntries(cls) {
+		if !e.M.seqAdapter {
+			continue
+		}
+		env := composeEnv(e.Env, nil)
+		env["Self"] = c.selfTypeFor(e, cls)
+		name, ps, ret := c.seqAdapterSig(e.M, env)
+		seq := "rbSeq"
+		if len(e.M.Block.Params) == 2 {
+			seq = "rbSeq2"
+		}
+		c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk %s) { self.%s(%s) })\n}\n",
+			recv, name, ps, ret, seq, c.blockGoType(e.M.Block, env), e.M.GoName, c.argNames(e.M))
+	}
+	for _, e := range c.publicEntries(cls) {
+		for _, s := range e.M.shadowed {
+			ps, ret := c.sig(s.e.M, c.slotEnv(s))
+			c.w("func (self %s) %s(%s) %s {\n%s}\n", recv, s.e.M.GoName, ps, ret, c.adapterBody(cls, e, s))
+		}
+	}
 	if c.includerCalls(cls, "class") {
 		// a module's `self.class`; a class object's class is Class (a module's, Module)
 		k := cls
@@ -579,10 +632,178 @@ func (c *Compiler) emitForwarders(cls *Class) {
 	c.w("\n")
 }
 
+// slotEnv binds the type variables of slot s's signature, Self included.
+func (c *Compiler) slotEnv(s slot) map[string]Type {
+	env := composeEnv(s.e.Env, nil)
+	env["Self"] = c.selfTypeFor(s.e, s.in)
+	return env
+}
+
+// slotKey is slot s's Go signature without parameter names.
+func (c *Compiler) slotKey(s slot) string {
+	m := *s.e.M
+	m.Params = make([]Param, len(s.e.M.Params))
+	for i, p := range s.e.M.Params {
+		m.Params[i] = Param{Name: "_", Type: p.Type, Rest: p.Rest}
+	}
+	ps, ret := c.sig(&m, c.slotEnv(s))
+	return "(" + ps + ") " + ret
+}
+
+// sigText renders slot s's signature, block aside, in RBS for messages.
+func (c *Compiler) sigText(s slot) string {
+	env := c.slotEnv(s)
+	ps := make([]string, len(s.e.M.Params))
+	for i, p := range s.e.M.Params {
+		ps[i] = subst(p.Type, env).String()
+		if p.Rest {
+			ps[i] = "*" + ps[i]
+		}
+	}
+	return "(" + strings.Join(ps, ", ") + ") -> " + subst(s.e.M.Ret, env).String()
+}
+
+// arity is the argument count range m takes; max is -1 with a rest param.
+func arity(m *Method) (req, maxArgs int) {
+	for _, p := range m.Params {
+		switch {
+		case p.Rest:
+			return req, -1
+		case p.Default == nil:
+			req++
+		}
+		maxArgs++
+	}
+	return req, maxArgs
+}
+
+// paramAt is the parameter taking positional argument i.
+func paramAt(m *Method, i int) Param {
+	for j, p := range m.Params {
+		if p.Rest || j == i {
+			return p
+		}
+	}
+	panic("paramAt: out of range")
+}
+
+// adapts reports whether an adapter can hand a from where a to is expected:
+// the same Go type, through untyped, or up a struct hierarchy (down, with a
+// type assertion, for arguments).
+func (c *Compiler) adapts(from, to Type, arg bool) bool {
+	switch {
+	case isVoid(to) && !arg:
+		return true
+	case isVoid(from):
+		return false
+	case c.goType(from) == c.goType(to) || isAny(to):
+		return true
+	case isAny(from):
+		_, ok := to.(TClass)
+		_, opt := to.(TOpt)
+		return ok || opt
+	}
+	fc, ok1 := from.(TClass)
+	tc, ok2 := to.(TClass)
+	if !ok1 || !ok2 || !fc.C.isStruct() || !tc.C.isStruct() {
+		return false
+	}
+	return fc.C.isSubclassOf(tc.C) || arg && tc.C.isSubclassOf(fc.C)
+}
+
+// checkAdaptable rejects an override whose class cannot answer slot s of an
+// ancestor's interface through an adapter.
+func (c *Compiler) checkAdaptable(own, s slot) {
+	m, sm := own.e.M, s.e.M
+	fail := func(why string) {
+		c.errorf(nil, nil, "%s:%d: %s: %s overrides %s: %s, but %s; give it the parent's signature or another name",
+			m.File.Name, m.Line, m, c.sigText(own), sm, c.sigText(s), why)
+	}
+	if m.Block != nil || sm.Block != nil {
+		fail("a block-taking override must keep the signature")
+	}
+	for _, p := range sm.Params {
+		if p.Rest {
+			fail("an override of a rest-parameter method must keep the signature")
+		}
+	}
+	req, maxArgs := arity(m)
+	if n := len(sm.Params); n < req || maxArgs >= 0 && n > maxArgs {
+		return // the adapter raises ArgumentError, as MRI would
+	}
+	env, oenv := c.slotEnv(s), c.slotEnv(own)
+	for i, p := range sm.Params {
+		from, to := subst(p.Type, env), subst(paramAt(m, i).Type, oenv)
+		if !c.adapts(from, to, true) {
+			fail(fmt.Sprintf("argument %d cannot pass a %s as a %s", i+1, from, to))
+		}
+	}
+	from, to := subst(m.Ret, oenv), subst(sm.Ret, env)
+	if !c.adapts(from, to, false) {
+		fail(fmt.Sprintf("its %s result cannot stand in for %s", from, to))
+	}
+}
+
+// adapterBody answers slot s of an ancestor's interface with cls's method e
+// (checked by checkAdaptable): an argument count e cannot take raises MRI's
+// ArgumentError, anything else converts across the two signatures.
+func (c *Compiler) adapterBody(cls *Class, e entry, s slot) string {
+	file := cls.File
+	if e.M.File != nil {
+		file = e.M.File
+	}
+	f := c.newFctx(file, cls, nil)
+	f.lex = e.M.Scope
+	f.locals = map[string]*localInfo{}
+	f.scope = &scope{vars: map[string]*local{}}
+	f.pass = 2
+	f.indent = 1
+	n := len(s.e.M.Params)
+	if req, maxArgs := arity(e.M); n < req || maxArgs >= 0 && n > maxArgs {
+		f.emit("rbArity(%d, %d, %d)\n\tpanic(\"unreachable\")", n, req, maxArgs)
+		return f.buf.String()
+	}
+	recv := expr{code: "self", typ: TClass{C: cls}}
+	env, oenv := c.slotEnv(s), composeEnv(e.Env, nil)
+	oenv["Self"] = recv.typ
+	args := make([]parser.Node, n)
+	for i, p := range s.e.M.Params {
+		a := expr{code: goLocalName(p.Name), typ: subst(p.Type, env)}
+		to := subst(paramAt(e.M, i).Type, oenv)
+		if tc, ok := to.(TClass); ok && tc.C.isStruct() && !c.adapts(a.typ, to, false) {
+			a = expr{code: a.code + ".(" + c.goType(to) + ")", typ: to} // narrower: assert
+		}
+		args[i] = &exprNode{e: a}
+	}
+	res := f.callEntry(&parser.NilNode{}, &e, recv, args, nil)
+	ret := subst(s.e.M.Ret, env)
+	switch {
+	case !isVoid(ret):
+		f.emit("return %s", f.coerce(&parser.NilNode{}, res, ret))
+	case res.code != "":
+		f.emit("%s", res.code)
+	}
+	return f.buf.String()
+}
+
+// seqAdapterSig renders the iter.Seq adapter a closure override of an
+// iterator answers to under the iterator's Go name (decision 4).
+func (c *Compiler) seqAdapterSig(m *Method, env map[string]Type) (name, params, ret string) {
+	it := *m
+	it.Iterator = true
+	params, ret = c.sig(&it, env)
+	return goMethodName(m.Name), params, ret
+}
+
 // forwardTypeArgs renders explicit type args for a forwarder call.
 func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 	var args []string
-	if e.Owner.GoType == "" {
+	switch {
+	case e.Owner.GoType != "":
+	case cls.isStruct() && !e.Owner.universal:
+		// Self matches the forwarder's `self` (CI), else *C fails Comparable_Self[*C] and `(self)` args don't pass
+		args = append(args, c.goType(c.selfTypeFor(e, cls)))
+	default:
 		args = append(args, c.recvType(cls))
 	}
 	for _, p := range e.Owner.TypeParams {
@@ -621,7 +842,7 @@ func (c *Compiler) emitTuples() {
 		name := fmt.Sprintf("Tuple%d", n)
 		c.w("type %s[%s comparable] struct {\n\t%s\n}\n\n", name, strings.Join(tps, ", "), strings.Join(fields, "\n\t"))
 		full := fmt.Sprintf("%s[%s]", name, strings.Join(tps, ", "))
-		c.w("func (t %s) Cmp(o %s) Integer {\n\t%s\n\treturn 0\n}\n\n", full, full, strings.Join(cmp, "\n\t"))
+		c.w("func (t %s) Op_cmp(o %s) Integer {\n\t%s\n\treturn 0\n}\n\n", full, full, strings.Join(cmp, "\n\t"))
 		c.w("func (t %s) Inspect() String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(insp, ` + ", " + `))
 		c.w("func (t %s) ToS() String { return t.Inspect() }\n\n", full)
 		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(vals, ", "))
@@ -629,7 +850,7 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) _ToAny() *Array[any] { return &Array[any]{%s} }\n\n", full, strings.Join(vals, ", "))
 		// and converts back where a dynamic call's parameter is a tuple (rbAs)
 		c.w("func (%s) _FromAny(a any) (t %s, ok bool) {\n\tarr, ok := a.(Array_Any)\n\tif !ok {\n\t\treturn t, false\n\t}\n\ts := *arr._ToAny()\n\tif len(s) != %d {\n\t\treturn t, false\n\t}\n%s\n\treturn t, true\n}\n\n", full, full, n, strings.Join(from, "\n"))
-		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
+		c.w("func (t %s) Op_eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Op_eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 		c.w("func (t %s) rbPlain() bool { return %s }\n\n", full, strings.Join(plain, " && "))
 	}
 }
@@ -687,9 +908,14 @@ func (c *Compiler) includerCalls(cls *Class, name string) bool {
 	return false
 }
 
-// constFctx is the codegen context a constant's initializer runs in.
+// constFctx is the codegen context a constant's initializer runs in: the
+// class body, whose self is the class object (main at top level).
 func (c *Compiler) constFctx(k *Const) *fctx {
 	f := c.newFctx(k.File, nil, nil)
+	if n := len(k.Scope); n > 0 && k.Scope[n-1].meta != nil {
+		cls := k.Scope[n-1]
+		f.selfType, f.selfCode, f.selfClassObj = TClass{C: cls.meta}, classVar(cls), true
+	}
 	f.lex = k.Scope
 	f.locals = map[string]*localInfo{}
 	f.scope = &scope{vars: map[string]*local{}}
@@ -731,17 +957,24 @@ func (c *Compiler) constType(k *Const) Type {
 func (c *Compiler) emitConst(k *Const) {
 	c.lineDirective(k.File, k.Line)
 	c.w("var %s %s\n\n", k.GoName, c.goType(c.constType(k)))
+	if k.guarded {
+		c.w("var %s bool\n\n", constSet(k))
+	}
 }
 
+// constSet names the flag main sets once a guarded constant is assigned.
+func constSet(k *Const) string { return "rbSet_" + k.GoName }
+
 // constEntries lists the constants a class object answers to: its own in
-// definition order, then inherited ones (Object's are the top-level ones).
+// definition order, then those of its ancestors (Object's are the top-level
+// ones).
 func (c *Compiler) constEntries(cls *Class) []string {
 	if cls.RubyName == "Object" {
 		return c.topConstNames
 	}
 	seen := map[string]bool{}
 	var out []string
-	for k := cls; k != nil && !k.universal; k = k.Super {
+	for _, k := range cls.ancestors() {
 		for _, n := range k.constNames {
 			if !seen[n] {
 				seen[n] = true

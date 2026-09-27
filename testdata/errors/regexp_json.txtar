@@ -184,8 +184,7 @@ puts "ab".match?(/#{x}(?=b)/)
 x = "a"
 puts "aa".match?(/(#{x})\1/)
 -- json_generate_arity_ruby_name.rb --
-# skip: arity errors on class methods name the Go metaclass (JSON_Meta#generate) instead of the Ruby name (decision 17)
-# error: main.rb:4: JSON.generate: wrong number of arguments (given 0, expected 1)
+# error: main.rb:3: JSON.generate: wrong number of arguments (given 0, expected 1)
 require "json"
 puts JSON.generate
 -- regexp_new_undefined.rb --

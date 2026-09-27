@@ -1,5 +1,3 @@
-# skip: a singleton(C) value held in a variable, array or block param cannot be passed where Class or Module is expected: go build fails "Shape_MetaI does not implement ClassI (missing method _ClassOf)"; a class constant passes fine
-
 # rbs_inline: enabled
 
 class Shape

@@ -1,5 +1,3 @@
-# skip: a user class named like a Go runtime helper (Opt, Ref) is emitted unmangled and go build fails with "Opt redeclared"
-
 # rbs_inline: enabled
 
 class Opt

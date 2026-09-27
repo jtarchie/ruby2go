@@ -1,5 +1,3 @@
-# skip: Data#with with no arguments returns a copy; MRI returns the receiver itself, so equal? is true
-
 # rbs_inline: enabled
 
 Coord = Data.define(:lat, :lng) #: [Float, Float]

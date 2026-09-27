@@ -1,5 +1,3 @@
-# skip: constants of an included module are not visible through the includer: LIMIT inside the class and Uses::LIMIT are "uninitialized constant"; decision 17 says the ancestors are searched
-
 # rbs_inline: enabled
 
 module Config

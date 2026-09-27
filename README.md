@@ -122,8 +122,10 @@ Rules the prelude relies on:
   signature is the only source of the return type. Pure-Ruby methods can infer.
 - **`@go_type`** — tells the transpiler `String` is a named Go `string`, not a
   struct. Classes without it become structs (and are passed as pointers).
+  A `@go_type` class has no struct to embed, so subclassing one is a
+  compile error.
 - **Mixins are just Ruby** — `Comparable#<` and `#clamp` are written once;
-  `String` only supplies `<=>`. Compiles to `Comparable_Lt[T Comparable_Self[T]]`.
+  `String` only supplies `<=>`. Compiles to `Comparable_Op_lt[T Comparable_Self[T]]`.
   The constraint interface is *derived from the module body*: whatever the
   module calls on `self` is what an includer must provide. Including
   `Comparable` without `<=>` fails at `go build`, which is the right place.
@@ -152,7 +154,7 @@ Rules the prelude relies on:
   works because strings are immutable.
 - **Literals need wrapping only for interface targets** — Go's untyped
   constants convert to `String` when the parameter is `String`
-  (`s.Lt("world")` compiles), but become Go `string` when the parameter is
+  (`s.Op_lt("world")` compiles), but become Go `string` when the parameter is
   `any`. Always emit `String("...")` when the target type is an interface or
   `untyped` (see [06_puts](examples/06_puts/)), and when the literal is a
   receiver or bound with `:=` (`(-1).abs`, `case 3`, `false && x`), where Go
@@ -418,16 +420,27 @@ resolve; anything not listed is still open.
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
    `untyped`. `inspect`/`to_s` live on `Boolean`.
-3. Operator name table: **decided** — `==`→`Eq`, `!=`→`Ne`, `<=>`→`Cmp`,
-   `<`→`Lt`, `<=`→`Le`, `>`→`Gt`, `>=`→`Ge`, `+`→`Plus`, `-`→`Minus`,
-   `*`→`Mul`, `/`→`Div`, `%`→`Mod`, `**`→`Pow`, unary `-`→`Neg`, `+@`→`Pos`,
-   `!`→`Not`, `~`→`Inv`, `<<`→`Shl`, `>>`→`Shr`, `&`→`BitAnd`, `|`→`BitOr`,
-   `^`→`BitXor`, `=~`→`EqTilde`, `!~`→`NotTilde`, `===`→`Eqq`, `[]`→`Idx`,
-   `[]=`→`IdxSet`. Everything else camel-cases with `?`→`Q`, `!`→`Bang`,
-   `=`→`Set`; leading underscores are kept (`__write`→`__Write`). The table
-   has to stay injective against camel-cased names too: `[]` is not `Index`
-   because `String#index` exists, and `=~` is not `Match` because `#match`
-   exists.
+3. Operator name table: **decided** — `==`→`Op_eq`, `!=`→`Op_ne`,
+   `<=>`→`Op_cmp`, `<`→`Op_lt`, `<=`→`Op_le`, `>`→`Op_gt`, `>=`→`Op_ge`,
+   `+`→`Op_plus`, `-`→`Op_minus`, `*`→`Op_mul`, `/`→`Op_div`, `%`→`Op_mod`,
+   `**`→`Op_pow`, unary `-`→`Op_neg`, `+@`→`Op_pos`, `!`→`Op_not`,
+   `~`→`Op_inv`, `<<`→`Op_shl`, `>>`→`Op_shr`, `&`→`Op_bitAnd`,
+   `|`→`Op_bitOr`, `^`→`Op_bitXor`, `=~`→`Op_eqTilde`, `!~`→`Op_notTilde`,
+   `===`→`Op_eqq`, `[]`→`Op_idx`, `[]=`→`Op_idxSet`, `` ` ``→`Op_backtick`.
+   Everything else camel-cases with `?`→`Q`, `!`→`Bang`, `=`→`Set`; leading
+   underscores are kept (`__write`→`__Write`). The table has to stay
+   injective against camel-cased names too. Camel-casing upper-cases the
+   letter after every `_`, so an `_` before a lowercase letter marks a name
+   it cannot produce: every operator carries one, and a suffix-less name
+   whose last word is `q`, `bang` or `set` keeps it as written
+   (`empty_q`→`Empty_q`, where `empty?` is `EmptyQ`). What camel-casing still
+   merges, capitals (`foo_bar`/`fooBar`) and a digit after `_`
+   (`utf_8`/`utf8`), is a compile error when both names reach one class or
+   are both called dynamically. *(Revised: the table used to be `Eq`,
+   `Plus`, `Div`, `Pos`, `Idx`, …, which `eq`, `plus`, `Integer#div`,
+   `IO#pos` and `idx` camel-case to as well, so a class defining both got a
+   duplicate Go method or `rbDyn` dispatcher and `go build` failed; backtick
+   was missing.)*
 4. Non-local `return`/`break`/`next` in blocks: **decided, inline loops
    only.** A method whose block returns `void` compiles to a Go iterator
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a
@@ -442,6 +455,14 @@ resolve; anything not listed is still open.
    the loop body). A `%x{}` leaf is an iterator only if its Go builds one
    (`func(yield ...`). Everything else takes a closure: `Thread.new { }`
    returns a Thread, `mount_proc(path) { }` stores its block.
+   A closure that overrides an iterator (an `each` that rescues around
+   `yield`, under `include Enumerable`) moves to `Each_blk`, and an
+   `iter.Seq` adapter (`rbSeq`) keeps `Each` for the iterator's callers.
+   A loop that stops early unwinds the closure with a sentinel panic, so
+   `ensure` runs as on MRI's `break`; an exception from the loop body that
+   the closure rescues aborts the Go program instead, since a range
+   function cannot recover one. *(Revised: such a class failed `go build`,
+   and an unannotated override inherited iterator-ness despite its rescue.)*
 5. `Hash.new(default)` / `Hash#[]` typing: **decided, `Hash#[]` is
    `(K) -> V?`** and there is no default value. `Hash#fetch(k, default)`
    covers the common case; `tally`/`group_by` are written with `||`.
@@ -474,6 +495,10 @@ resolve; anything not listed is still open.
    chain (ivar access from free functions, and the marker `rescue` matches
    on). Methods defined on struct classes and modules are free functions
    generic over `Self`, forwarded by a Go method on every concrete class.
+   A struct class's forwarder instantiates `Self` with the interface its
+   own signature uses for `self` (`Comparable_Op_lt[VersionI]`, not
+   `[*Version]`): `*Version`'s methods take `VersionI`, so it can't satisfy
+   `Comparable_Self[*Version]` or pass a `(self)` argument on.
    `BasicObject`, `Object` and `Kernel` are "universal": their `Self` is
    `any`, since primitives inherit from them too.
    Default arguments: a plain literal default is filled in at the call
@@ -484,6 +509,17 @@ resolve; anything not listed is still open.
    of that name along an ancestor chain takes `rbArgc` too, so overrides
    keep one Go signature and run their own defaults. *(Revised: all
    defaults used to be evaluated at the call site, in the caller's scope.)*
+   A subclass interface must hold every ancestor's method with the same Go
+   signature, so an override whose signature differs from its parent's
+   (another arity, a narrower return such as `-> Sub` for `-> Base`) gets
+   its own Go name (`F_ofSub`), and the class answers to the parent's name
+   through an adapter: it converts arguments and result (up a struct
+   hierarchy, or through `untyped`), or raises MRI's ArgumentError for an
+   argument count the override cannot take. Calls typed as the subclass
+   reach the override directly. An override the adapter cannot bridge (an
+   unrelated return type, a block, a parent's rest parameter) is a compile
+   error naming both signatures. *(Revised: every such override failed
+   `go build`, "wrong type for method".)*
 9. Module constraints are derived from the module body, as the README
    says: `Comparable_Self[Self]` lists what `Comparable`'s methods call on
    `self` (including `self.X(` inside `%x{}`), not every module method.
@@ -530,9 +566,10 @@ resolve; anything not listed is still open.
 14. Locals are inferred from their assignments (joined across branches:
     `nil` + `String` → `String?`) and hoisted to a `var` at the top of the
     function when Go's block scoping would otherwise hide them. Lifted
-    temporaries for `&.`, `||`, ternaries and `case`-expressions are
-    computed before the statement they belong to, so their side effects run
-    slightly earlier than MRI would run them.
+    temporaries for `&.`, `||`, ternaries, `case`-expressions and the value
+    of an attribute write used as a value (`r = (o.x = v)` is `v`, not the
+    setter's result) are computed before the statement they belong to, so
+    their side effects run slightly earlier than MRI would run them.
 15. Instance variables are typed from `attr_*` annotations, `# @rbs @x: T`,
     or a dry run of the class's method bodies (`initialize` first); an ivar
     that is only ever assigned `nil` needs an annotation.
@@ -542,21 +579,46 @@ resolve; anything not listed is still open.
     non-void method gets `return` prepended.
 17. Namespaces: a class's Go name joins its constant path with `_`
     (`Resty::Actions::Show` → `Resty_Actions_Show`); a generated map gives
-    messages and `inspect` the Ruby name back. Constants resolve as Ruby
+    messages and `inspect` the Ruby name back. A user class or constant
+    whose Go name, or a name generated from it (`NewX`, `XI`, `X_Meta`,
+    `X_<method>`), is already taken by a runtime helper (`Opt`, `Ref`) or an
+    earlier class (`User`'s `NewUser`, `Foo::Bar`'s `Foo_Bar`) gains a
+    trailing `_`; prelude names never change, since `%x{}` spells them.
+    Locals the compiler introduces (`t1_`, `r_`, `ret_`, `rest_`) end in a
+    single `_`, and a Ruby local ending in `_` gets another, as a Go
+    keyword or builtin already did (`len` → `len_`). A subclass struct embeds its parent
+    through an alias (`super_Calc_`), so a method named like the parent
+    (`Calc#calc`) does not meet the embedded field. Constants resolve as Ruby
     does: the lexical scope innermost-out (`Module.nesting`), then the
     innermost class's ancestors, then top level; `class A::B` compact form
     does not put `A` in scope. RBS names in annotations resolve the same way.
+    *(Revised: names used to be taken as written, so a class named `Opt` or
+    `NewUser`, `Foo_Bar` beside `Foo::Bar`, or `Calc#calc` with a subclass
+    failed `go build`, and a local named `r`, `p`, `t1` or `ret_` met a
+    generated one.)*
 18. Constants are Go package variables, typed by `#: T` or by their
     initializer, and assigned in `main` in source order (prelude first), as
     MRI evaluates them. *(Revised: they used to initialize before `main` in
-    Go's dependency order.)*
+    Go's dependency order.)* That is where main.rb's class bodies run: an
+    initializer inside a class or module has the class object as `self`
+    (`FREEZING = of(0)`), and a user-defined `inherited` is called where a
+    class is first opened, `included`/`extended` at the `include`/`extend`,
+    in the same source order. *(Revised: initializers ran with `main` as
+    `self`, and hooks were compiled but never called.)* A constant that
+    code can read before its assignment runs (one assigned after a
+    statement, a hook, or an initializer that may call a main.rb method)
+    gets a flag, and its reads raise `NameError` while it is unset, as in
+    MRI. Constants assigned before any such code, the usual case, are read
+    directly. *(Revised: such reads saw the Go zero value.)*
 19. Class methods: every class and module (except `BasicObject` and
     `Kernel`) gets a metaclass — a struct class holding the
     class methods, inheriting from the parent's metaclass — and one
     instance of it is the class object. Class methods therefore inherit and
     dispatch virtually like instance methods; `singleton(C)` is the
     metaclass's interface; `self.class` is a per-class accessor. Each
-    metaclass gets generated `new`, `name`, `to_s` and `inspect`. `new` is
+    metaclass gets generated `new`, `name`, `to_s` and `inspect`, except
+    `name`/`to_s`/`inspect` that a user's `def self.` on it or an ancestor
+    already defines, so they inherit as in MRI. `new` is
     kept off the shared interface because subclasses may change
     `initialize`: `klass.new(...)` through `singleton(Base)` type-asserts
     for a matching `New`, failing at run time where Ruby would raise
@@ -709,7 +771,10 @@ resolve; anything not listed is still open.
     (trailing nilable struct members optional, every `Data` member
     required), keyword `new`, `==`, `eql?`, `hash`, `to_h`, `members`,
     `inspect`, `to_a` and `with` are generated as Ruby and compiled like
-    user code. `keyword_init` is not supported.
+    user code. A `do` block's def overrides a generated method and `super`
+    reaches it, since MRI defines those on `Struct`/`Data`; the accessors
+    are the class's own, so a block def replaces them. `keyword_init` is
+    not supported.
 31. `method_missing` on a typed receiver: an unknown method compiles to
     `method_missing(:name, *args)`, typed by its signature.
     `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.
@@ -722,9 +787,17 @@ resolve; anything not listed is still open.
     non-generic, block-less method of that name: MRI's `ArgumentError` for
     arity, `TypeError` for argument types, then the typed call. Without a
     wrapper the call goes to `method_missing`, then `NoMethodError` (or
-    `NameError` for a bare name). `send`/`public_send` with a literal name
-    are ordinary calls; a computed name switches over every method name
-    and makes the output larger, so it is generated only when used. On
+    `NameError` for a bare name). A private method's wrapper is `_DynName`,
+    which only `send` and receiver-less calls reach, as in MRI; a call with
+    a receiver or `public_send` goes on to `method_missing`, then
+    `NoMethodError` saying "private method". `respond_to?(name, true)`
+    counts private methods. `send`/`public_send` with a literal name
+    are ordinary calls; a computed name switches over every method name,
+    private ones included, and makes the output larger, so it is generated
+    only when used. *(Revised: the tables used to hold public methods only,
+    so `send` could not reach a private method dynamically,
+    `respond_to?(name, true)` ignored its flag, and the error said
+    "undefined method".)* On
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
     cycles. Blocks cannot cross a dynamic call. A value typed `Object` or

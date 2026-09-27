@@ -59,7 +59,7 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.NilNode:
 		return expr{code: "nil", typ: TNil{}}, true
 	case *parser.SelfNode:
-		return expr{code: f.selfCode, typ: f.selfType}, true
+		return expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}, true
 	case *parser.SymbolNode:
 		return expr{code: "Symbol(" + strconv.Quote(n.Unescaped.Value) + ")", typ: f.cls("Symbol")}, true
 	case *withMember:
@@ -82,18 +82,7 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		v := f.readLocal(&parser.LocalVariableReadNode{Name: "it", Location: n.Location})
 		return expr{code: v.goName, typ: v.typ, view: v.view}
 	case *parser.LocalVariableWriteNode:
-		var ann Type
-		if t := f.f.trailingAnnotation(n); t != "" {
-			ann = f.parseTypeAnn(n, t)
-		}
-		exp := ann
-		if exp == nil {
-			if v := f.scope.lookup(n.Name); v != nil {
-				exp = v.typ
-			}
-		}
-		val := f.genExpr(n.Value, exp)
-		return f.assignLocal(n, n.Name, val, ann)
+		return f.genLocalWrite(n)
 	case *parser.LocalVariableOperatorWriteNode:
 		cur := f.genExpr(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location}, nil)
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
@@ -101,7 +90,9 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOperatorWriteNode:
 		return f.genIvarExpr(n)
 	case *parser.CallNode:
-		return f.genCall(n, expected)
+		return f.genCallValue(n, expected)
+	case *assignedArg:
+		return f.genAssignedArg(n, expected)
 	case *parser.ArrayNode:
 		return f.genArray(n, expected)
 	case *parser.HashNode:
@@ -148,6 +139,21 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	return expr{}
 }
 
+func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
+	var ann Type
+	if t := f.f.trailingAnnotation(n); t != "" {
+		ann = f.parseTypeAnn(n, t)
+	}
+	exp := ann
+	if exp == nil {
+		if v := f.scope.lookup(n.Name); v != nil {
+			exp = v.typ
+		}
+	}
+	val := f.genExpr(n.Value, exp)
+	return f.assignLocal(n, n.Name, val, ann)
+}
+
 // genIvarExpr handles @x reads and writes.
 func (f *fctx) genIvarExpr(n parser.Node) expr {
 	switch n := n.(type) {
@@ -171,12 +177,19 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		if !fitsValue(val, iv.Type) {
 			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 		}
-		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
+		code := f.ivarCode(iv)
+		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
+		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
+		}
+		return expr{code: code, typ: iv.Type, done: true}
 	case *parser.InstanceVariableOperatorWriteNode:
 		iv := f.ivar(n, n.Name, nil)
-		cur := expr{code: f.ivarCode(iv), typ: iv.Type}
-		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
-		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
+		code := f.ivarCode(iv)
+		val := f.genOp(n, expr{code: code, typ: iv.Type}, n.BinaryOperator, n.Value)
+		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		return expr{code: code, typ: iv.Type, done: true}
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
@@ -799,7 +812,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	}
 	var recv expr
 	if n.Receiver == nil {
-		recv = expr{code: f.selfCode, typ: f.selfType}
+		recv = expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}
 	} else {
 		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
@@ -970,7 +983,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			// a Module/Class-typed value is some class object, and a
 			// struct-typed value may be a subclass defining the method:
 			// either way the method is found at run time
-			if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name))) && block == nil {
+			if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 				return f.genDynCall(n, recv, name, args)
 			}
 			f.errorf(n, "undefined method %s for %s", name, recv.typ)
@@ -987,7 +1000,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			if mm := f.owner.lookup("method_missing"); mm != nil {
 				return f.callMissing(n, mm, recv, name, args, block)
 			}
-			if f.owner.isStruct() && f.owner.descendantDefines(name) && block == nil {
+			if f.owner.isStruct() && f.owner.descendantDefines(name, false) && block == nil {
 				return f.genDynCall(n, recv, name, args)
 			}
 			if e := f.c.classes["Object"].lookup(name); e != nil {
@@ -1254,7 +1267,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	if !free {
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
-	return freeFuncName(m) + f.typeArgs(m, recv.typ, env) + "(" + recv.code + comma(argList) + ")"
+	return staticCallCode(m, f.typeArgs(m, recv.typ, env), recv.code, argList)
 }
 
 // typeArgs are explicit because Go would infer from argument Go types (untyped const, *Foo, *Foo_Meta), not the Ruby binding.
@@ -1533,7 +1546,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	var recv expr
 	if n.Receiver == nil {
-		recv = expr{code: f.selfCode, typ: f.selfType}
+		recv = expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}
 	} else {
 		recv = f.genExpr(n.Receiver, nil)
 	}
@@ -1685,7 +1698,7 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
-	code := freeFuncName(e.M) + "(" + f.selfCode + comma(strings.Join(codes, ", ")) + ")"
+	code := staticCallCode(e.M, "", f.selfCode, strings.Join(codes, ", "))
 	return expr{code: code, typ: subst(e.M.Ret, env)}
 }
 
@@ -1896,14 +1909,14 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: recv.code + ".ToJson(" + strings.Join(f.jsonArgs(args), ", ") + ")", typ: f.cls("String")}
 	case "<=>":
 		a := f.genExpr(args[0], recv.typ)
-		return expr{code: recv.code + ".Cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
+		return expr{code: recv.code + ".Op_cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "==":
 		a := f.genExpr(args[0], nil)
 		code := a.code // the same tuple type compares field-wise, without converting
 		if !typeEq(a.typ, recv.typ) {
 			code = f.coerce(args[0], a, TAny{})
 		}
-		return expr{code: recv.code + ".Eq(" + code + ")", typ: f.cls("Boolean")}
+		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
 	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}
@@ -1978,6 +1991,9 @@ func (f *fctx) classRef(n parser.Node) *Class {
 func (f *fctx) genConstRead(n parser.Node) expr {
 	cls, k := f.c.lookupConst(f.f, n, f.lex)
 	switch {
+	case k != nil && k.guarded:
+		code := fmt.Sprintf("rbConstRead(%s, %s, %q)", constSet(k), k.GoName, f.constMissing(n))
+		return expr{code: code, typ: f.c.constType(k)}
 	case k != nil:
 		return expr{code: k.GoName, typ: f.c.constType(k)}
 	case cls != nil && cls.meta != nil:
@@ -1987,6 +2003,19 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	}
 	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
 	return expr{}
+}
+
+// constMissing is MRI's name for constant read n in a NameError: a bare
+// name is qualified by the innermost class or module around it.
+func (f *fctx) constMissing(n parser.Node) string {
+	r, ok := n.(*parser.ConstantReadNode)
+	if !ok {
+		return strings.TrimPrefix(f.f.text(n.GetLocation()), "::")
+	}
+	if len(f.lex) > 0 {
+		return f.lex[len(f.lex)-1].RubyName + "::" + r.Name
+	}
+	return r.Name
 }
 
 // metaOfType returns the metaclass a receiver type denotes, if any.
@@ -2400,7 +2429,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 				f.errorf(n, "cannot destructure %s", v.typ)
 			}
 			for i := range n.Lefts {
-				vals = append(vals, expr{code: fmt.Sprintf("%s.Idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
+				vals = append(vals, expr{code: fmt.Sprintf("%s.Op_idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}})
 			}
 		default:
 			f.errorf(n, "cannot destructure %s", v.typ)
@@ -2585,7 +2614,7 @@ func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []pa
 		case vr.valueKind == "data":
 			f.errorf(n, "missing keyword: :%s", m)
 		default:
-			v = &parser.NilNode{}
+			v = &parser.NilNode{Location: n.GetLocation()}
 		}
 		out[i] = v
 	}
@@ -2609,6 +2638,9 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 	}
 	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().valueKind != "data" {
 		return expr{}, false
+	}
+	if len(args) == 0 {
+		return recv, true // MRI: `with` without keywords is the receiver
 	}
 	vr := cls.valueRoot()
 	byName := map[string]parser.Node{}
@@ -2670,13 +2702,25 @@ func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, arg
 }
 
 // rubyPrivate names methods Ruby makes private whoever defines them.
-var rubyPrivate = map[string]bool{"initialize": true, "method_missing": true, "respond_to_missing?": true, "initialize_copy": true}
+var rubyPrivate = map[string]bool{"initialize": true, "respond_to_missing?": true, "initialize_copy": true}
 
-// genRespondTo decides `recv.respond_to?(:name)` for a typed receiver and
-// a literal name: true for a public method, else respond_to_missing?,
-// else false. Returns false when the answer depends on the runtime class.
+// genRespondTo decides `recv.respond_to?(:name, include_all)` for a typed
+// receiver, a literal name and a literal include_all: true for a public
+// method (any method with include_all), else respond_to_missing?, else
+// false. Returns false when the answer depends on the runtime class.
 func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr, bool) {
 	name := literalName(args[0])
+	var includeAll parser.Node = &parser.FalseNode{}
+	if len(args) > 1 {
+		switch args[1].(type) {
+		case *parser.TrueNode:
+			includeAll = args[1]
+		case *parser.FalseNode, *parser.NilNode:
+		default:
+			return expr{}, false
+		}
+	}
+	_, priv := includeAll.(*parser.TrueNode)
 	var cls *Class
 	switch t := recv.typ.(type) {
 	case TClass:
@@ -2689,11 +2733,11 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	if name == "" || cls == nil {
 		return expr{}, false
 	}
-	if e := cls.lookup(name); e != nil && !e.M.Private && !rubyPrivate[name] {
+	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name]) {
 		f.discard(recv)
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
-	if cls.IsModule || cls.descendantDefines(name) { // a module's value is some includer
+	if cls.IsModule || cls.descendantDefines(name, priv) { // a module's value is some includer
 		return expr{}, false
 	}
 	if rm := cls.lookup("respond_to_missing?"); rm != nil {
@@ -2701,10 +2745,51 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		defer func() { f.implicitCall = false }()
 		// Ruby hands respond_to_missing? a Symbol even for respond_to?("x").
 		sym := &parser.SymbolNode{Unescaped: parser.RubyString{Value: name}, Location: args[0].GetLocation()}
-		return f.callEntry(n, rm, recv, []parser.Node{sym, &parser.FalseNode{}}, nil), true
+		return f.callEntry(n, rm, recv, []parser.Node{sym, includeAll}, nil), true
 	}
 	f.discard(recv)
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
+}
+
+// genCallValue renders a call whose value is used. For an attribute write
+// (`recv.x = v`, `recv[k] = v`) Ruby's value is v, whatever the setter
+// returns, so v is evaluated once and named after the call.
+func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
+	args := callArgs(n)
+	if !n.IsATTRIBUTE_WRITE() || len(args) == 0 || n.IsSAFE_NAVIGATION() {
+		return f.genCall(n, expected)
+	}
+	var val expr
+	c, a := *n, *n.Arguments
+	a.Arguments = append(append([]parser.Node{}, args[:len(args)-1]...), &assignedArg{Node: args[len(args)-1], out: &val})
+	c.Arguments = &a
+	e := f.genCall(&c, expected)
+	if val.typ == nil {
+		return e // the setter never generated the value as an expression
+	}
+	f.emitExprStmt(n, e)
+	if val.lit {
+		val.code = f.c.goType(val.typ) + "(" + val.code + ")"
+	}
+	return expr{code: val.code, typ: val.typ, classObj: val.classObj, done: true}
+}
+
+// assignedArg is an attribute write's value argument: it records the
+// generated value (in a temp unless it is side-effect free) for genCallValue.
+type assignedArg struct {
+	parser.Node
+	out *expr
+}
+
+func (f *fctx) genAssignedArg(n *assignedArg, expected Type) expr {
+	e := f.genExpr(n.Node, expected)
+	if !e.lit && !isVoid(e.typ) && !isSimpleGo(e.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, e.code)
+		e.code = tmp
+	}
+	*n.out = e
+	return e
 }
 
 // exprNode carries an already generated expression where a node is
@@ -2717,14 +2802,20 @@ type exprNode struct {
 func (x *exprNode) GetLocation() parser.Location { return parser.Location{} }
 
 // genDynCall sends a method to an untyped value: see prelude/dynamic.rb.
+// Like MRI, only a call with an explicit receiver (other than self) cannot
+// reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
 	f.c.warn(f.f, n, "dynamic call: %s on %s", name, recv.typ)
-	vcall := false
-	if call, ok := n.(*parser.CallNode); ok && call.IsVARIABLE_CALL() {
-		vcall = true
+	how := "rbCall"
+	call, _ := n.(*parser.CallNode)
+	switch {
+	case call != nil && call.IsVARIABLE_CALL():
+		how = "rbVCall"
+	case f.implicitCall || call != nil && (call.Receiver == nil || isSelf(call.Receiver)):
+		how = "rbFCall"
 	}
-	codes := append([]string{strconv.FormatBool(vcall), f.coerce(n, recv, TAny{})}, f.anyArgs(args)...)
+	codes := append([]string{how, f.coerce(n, recv, TAny{})}, f.anyArgs(args)...)
 	return expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 }
 
@@ -2780,7 +2871,11 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	f.c.dynAll = true
 	f.c.warn(f.f, n, "dynamic call: %s with a computed name", name)
 	nameExpr := f.genExpr(args[0], nil)
-	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")"}
+	how := "rbFCall"
+	if name == "public_send" {
+		how = "rbCall"
+	}
+	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")", how}
 	for _, a := range args[1:] {
 		e := f.genExpr(a, nil)
 		codes = append(codes, f.coerce(a, e, TAny{}))
@@ -2796,16 +2891,22 @@ var universalNames = map[string]bool{"to_s": true, "inspect": true, "==": true, 
 // genDynRespondTo answers respond_to? when the static type cannot.
 func (f *fctx) genDynRespondTo(n parser.Node, recv expr, args []parser.Node) expr {
 	r := f.coerce(n, recv, TAny{})
+	includeAll := func() string {
+		if len(args) < 2 {
+			return "false"
+		}
+		return "rbTruthy(" + f.coerce(args[1], f.genExpr(args[1], nil), TAny{}) + ")"
+	}
 	if lit := literalName(args[0]); lit != "" {
 		if universalNames[lit] {
 			return expr{code: "Boolean(true)", typ: f.cls("Boolean")}
 		}
 		f.c.noteRespond(lit)
-		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ")", typ: f.cls("Boolean")}
+		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ", " + includeAll() + ")", typ: f.cls("Boolean")}
 	}
 	f.c.dynAll = true
 	nameExpr := f.genExpr(args[0], nil)
-	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "))", typ: f.cls("Boolean")}
+	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "), " + includeAll() + ")", typ: f.cls("Boolean")}
 }
 
 func isSelf(n parser.Node) bool { _, ok := n.(*parser.SelfNode); return ok }
@@ -2853,10 +2954,10 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.indent++
 	saved := f.enterBlock()
 	f.emit("defer func() {")
-	f.emit("\tif p := recover(); p != nil {")
-	f.emit("\t\tp = rbWrapPanic(p)")
-	f.emit("\t\tif !rbIsA[StandardErrorI](p) {")
-	f.emit("\t\t\tpanic(p)")
+	f.emit("\tif r_ := recover(); r_ != nil {")
+	f.emit("\t\tr_ = rbWrapPanic(r_)")
+	f.emit("\t\tif !rbIsA[StandardErrorI](r_) {")
+	f.emit("\t\t\tpanic(r_)")
 	f.emit("\t\t}")
 	f.indent += 2
 	r = f.genExpr(n.RescueExpression, typ)

@@ -1,5 +1,3 @@
-# skip: include Enumerable on a class whose each is a closure (it rescues around yield, decision 4) fails go build: Each(func(Integer)) does not satisfy Enumerable_Self, which wants Each() iter.Seq[E]
-
 # rbs_inline: enabled
 class Safe
   include Enumerable #[Integer]

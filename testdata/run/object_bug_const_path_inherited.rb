@@ -1,5 +1,3 @@
-# skip: a scoped constant path (Child::COLOR, Child::Nested) only looks in Child itself, so a constant inherited from the superclass is "uninitialized constant"; MRI searches Child's ancestors
-
 # rbs_inline: enabled
 
 class Parent

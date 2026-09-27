@@ -1,5 +1,3 @@
-# skip: the value of an attribute assignment (x = (obj.attr = 42), a = b.attr = v) is void, a compile error; Ruby returns the assigned value
-
 # rbs_inline: enabled
 
 class Box

@@ -3,11 +3,20 @@
 #
 # Runtime support for calls on untyped values. The transpiler generates, per
 # method name called that way, a `DynName(args ...any) any` wrapper on each
-# class having the method, and an `rbDynName` dispatcher: the wrapper, else
-# method_missing, else NoMethodError. These helpers check arity and convert
-# arguments the way a typed call would have.
+# class having the method (`_DynName` if it is private), and an `rbDynName`
+# dispatcher: the wrapper, else method_missing, else NoMethodError. These
+# helpers check arity and convert arguments the way a typed call would have.
 
 %x{
+  // How a dynamic call was made, as MRI tells them apart: with a receiver
+  // (public methods only), without one or through send (private methods
+  // too), or as a bare name (NameError when missing).
+  const (
+    rbCall = iota
+    rbFCall
+    rbVCall
+  )
+
   // rbArity raises MRI's ArgumentError for a wrong argument count.
   func rbArity(given, min, max int) {
     if given >= min && (max < 0 || given <= max) {
@@ -75,5 +84,10 @@
       return NewNameError(Ref(String("undefined local variable or method '" + name + "' for " + rbDescribe(recv))))
     }
     return NewNoMethodError(Ref(String("undefined method '" + name + "' for " + rbDescribe(recv))))
+  }
+
+  // rbPrivateMethod is MRI's error for a private method called with a receiver.
+  func rbPrivateMethod(name string, recv any) any {
+    return NewNoMethodError(Ref(String("private method '" + name + "' called for " + rbDescribe(recv))))
   }
 }

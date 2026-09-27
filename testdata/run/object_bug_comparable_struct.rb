@@ -1,5 +1,3 @@
-# skip: include Comparable in a user class fails go build (Cmp takes VersionI, Comparable_Self wants Cmp(*Version))
-
 # rbs_inline: enabled
 
 class Version

@@ -22,7 +22,7 @@
     if err != nil {
       panic(NewIOError(Ref(String(err.Error()))))
     }
-    config.IdxSet(Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
+    config.Op_idxSet(Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
     mux := http.NewServeMux()
     srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
     return &WEBrick_HTTPServer{srv: srv, ln: ln, mux: mux, config: config}
@@ -45,7 +45,7 @@
       k, _ = url.QueryUnescape(k)
       v, _ = url.QueryUnescape(v)
       if _, seen := h.vals[String(k)]; !seen {
-        h.IdxSet(String(k), String(v))
+        h.Op_idxSet(String(k), String(v))
       }
     }
   }

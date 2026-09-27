@@ -5,14 +5,16 @@ import (
 	"unicode"
 )
 
-// Operator name table (README open decision 3). Must be injective.
+// Operator name table (README open decision 3): `_` + lowercase never comes out of camel-casing, so `plus`, Integer#div, IO#pos cannot meet an operator.
 var opNames = map[string]string{
-	"==": "Eq", "!=": "Ne", "<=>": "Cmp", "<": "Lt", "<=": "Le", ">": "Gt", ">=": "Ge",
-	"+": "Plus", "-": "Minus", "*": "Mul", "/": "Div", "%": "Mod", "**": "Pow",
-	"-@": "Neg", "+@": "Pos", "!": "Not", "~": "Inv", "<<": "Shl", ">>": "Shr",
-	"&": "BitAnd", "|": "BitOr", "^": "BitXor", "=~": "EqTilde", "!~": "NotTilde", "===": "Eqq",
-	"[]": "Idx", "[]=": "IdxSet",
+	"==": "Op_eq", "!=": "Op_ne", "<=>": "Op_cmp", "<": "Op_lt", "<=": "Op_le", ">": "Op_gt", ">=": "Op_ge",
+	"+": "Op_plus", "-": "Op_minus", "*": "Op_mul", "/": "Op_div", "%": "Op_mod", "**": "Op_pow",
+	"-@": "Op_neg", "+@": "Op_pos", "!": "Op_not", "~": "Op_inv", "<<": "Op_shl", ">>": "Op_shr",
+	"&": "Op_bitAnd", "|": "Op_bitOr", "^": "Op_bitXor", "=~": "Op_eqTilde", "!~": "Op_notTilde", "===": "Op_eqq",
+	"[]": "Op_idx", "[]=": "Op_idxSet", "`": "Op_backtick",
 }
+
+var suffixWords = map[string]bool{"q": true, "bang": true, "set": true}
 
 // goMethodName maps a Ruby method name to an exported Go identifier.
 // `end_with?` → EndWithQ, `upcase!` → UpcaseBang, `x=` → XSet, `__write` → __Write.
@@ -39,9 +41,15 @@ func goMethodName(name string) string {
 		b.WriteByte('_')
 		i++
 	}
-	for _, part := range strings.Split(name[i:], "_") {
+	parts := strings.Split(name[i:], "_")
+	for j, part := range parts {
 		if part == "" {
 			b.WriteByte('_')
+			continue
+		}
+		// `empty_q` → Empty_q, so it cannot meet `empty?` → EmptyQ
+		if j > 0 && j == len(parts)-1 && suffix == "" && suffixWords[part] {
+			b.WriteString("_" + part)
 			continue
 		}
 		r := []rune(part)
@@ -63,11 +71,16 @@ var goKeywords = map[string]bool{
 	"panic": true, "recover": true, "print": true, "println": true, "string": true,
 	"int": true, "bool": true, "any": true, "error": true, "nil": true, "true": true, "false": true,
 	"main": true, "init": true, "stdout": true, "self": false,
+	// the generated &block parameter
+	"blk": true,
 }
 
-// goLocalName maps a Ruby local/param name to a Go identifier.
+// goLocalName maps a Ruby local/param name to a Go identifier. Locals the
+// compiler introduces (temporaries `t1_`, recovered panics `r_`, the named
+// result `ret_`, the rest parameter `rest_`) end in a single `_`, so a Ruby
+// name ending in `_` gets another and can never meet one.
 func goLocalName(name string) string {
-	if goKeywords[name] {
+	if goKeywords[name] || name != "_" && strings.HasSuffix(name, "_") {
 		return name + "_"
 	}
 	return name

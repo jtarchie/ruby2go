@@ -1,5 +1,3 @@
-# skip: respond_to?(:method_missing) is false for a user-defined (public) method_missing; MRI makes only initialize/respond_to_missing? private, so true
-
 # rbs_inline: enabled
 
 class Config

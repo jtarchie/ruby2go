@@ -1,5 +1,3 @@
-# skip: hook class methods (self.inherited, self.included, self.extended) compile but are never called; MRI calls them when the class body is evaluated
-
 # rbs_inline: enabled
 
 class Plugin

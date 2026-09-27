@@ -1,5 +1,3 @@
-# skip: send cannot reach a private method dynamically (a computed name, or any name on an untyped receiver) and raises NoMethodError; MRI's send calls private methods
-
 # rbs_inline: enabled
 
 class Vault

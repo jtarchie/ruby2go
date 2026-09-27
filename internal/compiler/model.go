@@ -3,6 +3,8 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -17,7 +19,8 @@ type Class struct {
 	IsModule   bool
 	GoType     string // `@go_type` underlying Go type; "" for struct classes
 	TypeParams []string
-	superRef   *constRef // superclass expression, resolved in link
+	superRef   *constRef   // superclass expression, resolved in link
+	reSupers   []*constRef // superclasses named when reopening; must resolve to Super
 	Super      *Class
 	Includes   []Include
 	Methods    map[string]*Method
@@ -41,6 +44,7 @@ type Class struct {
 	valueKind     string    // "struct" or "data"
 	msetCache     []entry
 	selfCallCache map[string]bool
+	slotsLinked   bool // linkOverrides ran
 }
 
 type ivarDecl struct {
@@ -80,6 +84,7 @@ type Const struct {
 	ann       string   // trailing `#: T`
 	Type      Type
 	resolving bool
+	guarded   bool // may be read before its assignment runs (guardConsts)
 }
 
 // Ivar is an instance variable of a struct class.
@@ -118,9 +123,12 @@ type Method struct {
 	Block      *BlockSig
 	Ret        Type
 	Iterator   bool   // block returns void → iter.Seq
+	seqAdapter bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
+	shadowed   []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
 	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
+	structDef  *Method // the generated Struct/Data method a block def overrides; super reaches it
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
@@ -153,6 +161,12 @@ type BlockSig struct {
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
+
+// slot is method entry e as its Go signature appears in class in's interface.
+type slot struct {
+	e  entry
+	in *Class
+}
 
 // entry is a method as seen from a concrete class's method set.
 type entry struct {
@@ -272,6 +286,23 @@ func (c *Class) lookup(name string) *entry {
 	return nil
 }
 
+// ancestors is c then what MRI's Module#ancestors lists after it, short of
+// Object (whose constants are the top-level ones): included modules last
+// first, each followed by its own, then the superclass's ancestors.
+// Includes not yet resolved (during link) are skipped.
+func (c *Class) ancestors() []*Class {
+	out := []*Class{c}
+	for i := len(c.Includes) - 1; i >= 0; i-- {
+		if m := c.Includes[i].Mod; m != nil {
+			out = append(out, m.ancestors()...)
+		}
+	}
+	if c.Super != nil && !c.Super.universal {
+		out = append(out, c.Super.ancestors()...)
+	}
+	return out
+}
+
 // ancestors of a struct class up to (excluding) Object, nearest first.
 func (c *Class) structChain() []*Class {
 	var out []*Class
@@ -361,6 +392,50 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 // goClassName maps a constant path to a Go identifier.
 func goClassName(rubyName string) string { return strings.ReplaceAll(rubyName, "::", "_") }
 
+// goDecl matches a package-level Go name declared in a top-level %x{}.
+var goDecl = regexp.MustCompile(`(?m)^\s*(?:func|type|var|const)\s+([A-Z]\w*)`)
+
+// nameGo keeps user classes and constants off every other package-level Go
+// name: runtime helpers (`Opt`) and what other classes generate (`NewUser`,
+// `ShapeI`, `Foo::Bar`'s `Foo_Bar`). Prelude names are fixed, since `%x{}`
+// spells them; a clashing user name gains `_` until it is free.
+func (c *Compiler) nameGo() {
+	taken := map[string]bool{"Tuple2": true, "Tuple3": true}
+	for _, v := range c.verbatim {
+		for _, m := range goDecl.FindAllStringSubmatch(v.code, -1) {
+			taken[m[1]] = true
+		}
+	}
+	claim := func(f *File, name *string, gen func(string) []string) {
+		for !f.prelude && slices.ContainsFunc(gen(*name), func(n string) bool { return taken[n] }) {
+			*name += "_"
+		}
+		for _, n := range gen(*name) {
+			taken[n] = true
+		}
+	}
+	for _, cls := range c.classList {
+		claim(cls.File, &cls.Name, cls.goNames)
+	}
+	for _, k := range c.constList {
+		claim(k.File, &k.GoName, func(n string) []string { return []string{n} })
+	}
+}
+
+// goNames lists the package-level Go names generated for cls if its Go
+// name is n: type, interface, constructor, metaclass and free functions.
+func (cls *Class) goNames(n string) []string {
+	out := make([]string, 0, 8+len(cls.MethodList)+len(cls.singletonDefs))
+	out = append(out, n, n+"I", "New"+n, n+"_Self", n+"_Any", n+"_class", n+"_Meta", n+"_MetaI")
+	for _, m := range cls.MethodList {
+		out = append(out, n+"_"+m.GoName)
+	}
+	for _, d := range cls.singletonDefs {
+		out = append(out, n+"_Meta_"+goMethodName(d.node.Name))
+	}
+	return out
+}
+
 // qualify names the constant `name` declared directly inside scope.
 func qualify(scope []*Class, name string) string {
 	if len(scope) == 0 {
@@ -391,13 +466,20 @@ func (c *Compiler) declName(f *File, path parser.Node, scope []*Class) string {
 func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNode, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	name := c.declName(f, n.ConstantPath, scope)
+	reopen := c.classes[name] != nil
 	cls := c.declareClass(f, name, line, false)
 	if n.Superclass != nil {
-		if cls.superRef != nil && f.text(cls.superRef.node.GetLocation()) != f.text(n.Superclass.GetLocation()) {
-			c.errorf(f, n, "class %s reopened with a different superclass", name)
-		}
 		// The superclass expression is evaluated outside the class body.
-		cls.superRef = &constRef{node: n.Superclass, scope: scope, file: f}
+		ref := &constRef{node: n.Superclass, scope: scope, file: f}
+		if reopen {
+			// the first declaration fixed the superclass (Object when it named none)
+			cls.reSupers = append(cls.reSupers, ref)
+		} else {
+			cls.superRef = ref
+		}
+	}
+	if !reopen && !f.prelude {
+		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n})
 	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
@@ -448,7 +530,8 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 	for _, n := range stmts.Body {
 		switch n := n.(type) {
 		case *parser.DefNode:
-			c.addMethod(f, cls, n, private, scope)
+			// a bare `private` does not reach `def self.x`
+			c.addMethod(f, cls, n, private && n.Receiver == nil, scope)
 		case *parser.CallNode:
 			c.collectClassCall(f, cls, n, &private, scope)
 		case *parser.ClassNode:
@@ -482,6 +565,7 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
 		}
+		c.noteHooks(f, "included", cls, n, args, scope)
 	case "extend":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
@@ -489,6 +573,7 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 			cls.extends = append(cls.extends, cls.Includes[last])
 			cls.Includes = cls.Includes[:last]
 		}
+		c.noteHooks(f, "extended", cls, n, args, scope)
 	case "private":
 		switch {
 		case len(args) == 0:
@@ -506,6 +591,27 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 		*private = false
 	default:
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
+	}
+}
+
+// classHook is a hook MRI calls while it evaluates a class body in main.rb:
+// Super.inherited(cls) where the class is first opened, Mod.included(cls)
+// and Mod.extended(cls) at the include/extend.
+type classHook struct {
+	name string
+	cls  *Class
+	mod  *constRef // nil: the superclass
+	node parser.Node
+}
+
+// noteHooks records `include`/`extend`'s hooks: the last module first, as
+// MRI includes them.
+func (c *Compiler) noteHooks(f *File, name string, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
+	if f.prelude {
+		return
+	}
+	for _, a := range slices.Backward(args) {
+		c.hooks = append(c.hooks, classHook{name: name, cls: cls, mod: &constRef{node: a, scope: scope, file: f}, node: n})
 	}
 }
 
@@ -564,14 +670,14 @@ func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private boo
 
 func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
-	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private, Scope: scope}
+	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private || cls != nil && cls.metaOf == nil && rubyPrivate[n.Name], Scope: scope}
 	if sig, found := f.sigComment(line); found {
 		if sig == "" {
 			c.errorf(f, n, "overloaded signatures (#|) are not supported")
 		}
 		m.sigText = sig
 	}
-	if body, ok := n.Body.(*parser.StatementsNode); ok && len(body.Body) == 1 {
+	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {
 		if _, ok := body.Body[0].(*parser.XStringNode); ok {
 			m.Kind = kindPrimitive
 		}
@@ -663,8 +769,12 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 			}
 			return nil, nil
 		}
-		full := parent.RubyName + "::" + *n.Name
-		return c.classes[full], c.consts[full]
+		for _, anc := range parent.ancestors() {
+			full := anc.RubyName + "::" + *n.Name
+			if cls, k := c.classes[full], c.consts[full]; cls != nil || k != nil {
+				return cls, k
+			}
+		}
 	}
 	return nil, nil
 }
@@ -684,7 +794,7 @@ func (c *Compiler) lookupName(scope []*Class, name string) (*Class, *Const) {
 		}
 	}
 	if len(scope) > 0 {
-		for anc := scope[len(scope)-1].Super; anc != nil && !anc.universal; anc = anc.Super {
+		for _, anc := range scope[len(scope)-1].ancestors()[1:] {
 			if cls, k := find(anc.RubyName + "::" + head); cls != nil || k != nil {
 				return cls, k
 			}
@@ -704,19 +814,34 @@ func (c *Compiler) resolveClassRef(r *constRef) *Class {
 
 // ---- resolution
 
+// superclassOf resolves cls's superclass (nil for modules and BasicObject)
+// and checks that every reopening that names one names the same class.
+func (c *Compiler) superclassOf(cls *Class) *Class {
+	var sup *Class
+	switch {
+	case cls.superRef != nil:
+		sup = c.resolveClassRef(cls.superRef)
+		if sup.IsModule {
+			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
+		}
+		// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
+		if sup.GoType != "" {
+			c.errorf(cls.File, nil, "%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+		}
+	case !cls.IsModule && cls.RubyName != "BasicObject":
+		sup = c.classes["Object"]
+	}
+	for _, r := range cls.reSupers {
+		if c.resolveClassRef(r) != sup {
+			c.errorf(r.file, r.node, "class %s reopened with a different superclass", cls.RubyName)
+		}
+	}
+	return sup
+}
+
 func (c *Compiler) link() {
 	for _, cls := range c.classList {
-		var sup *Class
-		switch {
-		case cls.superRef != nil:
-			sup = c.resolveClassRef(cls.superRef)
-			if sup.IsModule {
-				c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
-			}
-		case !cls.IsModule && cls.RubyName != "BasicObject":
-			sup = c.classes["Object"]
-		}
-		if sup != nil {
+		if sup := c.superclassOf(cls); sup != nil {
 			cls.Super = sup
 			sup.Subclasses = append(sup.Subclasses, cls)
 		}
@@ -762,6 +887,36 @@ func (c *Compiler) link() {
 	}
 	c.markCalleeDefaults()
 	c.markSuperBridges()
+	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if c.overridesIterator(m) {
+				m.seqAdapter = true
+				m.GoName += "_blk"
+			}
+		}
+	}
+	for _, cls := range c.classList {
+		c.linkOverrides(cls)
+	}
+	for _, cls := range c.classList {
+		ms := make([]*Method, 0, len(cls.MethodList))
+		for _, e := range cls.methodSet() {
+			ms = append(ms, e.M)
+		}
+		c.checkGoNames(cls.RubyName, ms)
+	}
+	c.checkGoNames("the top level", c.topDefList)
+}
+
+// Decision 3's naming still merges capitals (`foo_bar`/`fooBar`) and digits after `_` (`utf_8`/`utf8`), so reject those here, not at go build.
+func (c *Compiler) checkGoNames(where string, ms []*Method) {
+	seen := map[string]*Method{}
+	for _, m := range ms {
+		if p := seen[m.GoName]; p != nil && p.Name != m.Name {
+			c.errorf(nil, nil, "%s:%d: `%s` and `%s` (%s:%d) both become Go %s in %s; rename one", m.File.Name, m.Line, m.Name, p.Name, p.File.Name, p.Line, m.GoName, where)
+		}
+		seen[m.GoName] = m
+	}
 }
 
 // markSuperBridges flags module methods whose `super` finds nothing in the
@@ -831,7 +986,7 @@ func (c *Compiler) markCalleeDefaults() {
 	for changed := len(names) > 0; changed; {
 		changed = false
 		for _, cls := range c.classList {
-			for _, anc := range cls.ancestors() {
+			for _, anc := range cls.allAncestors() {
 				for name := range names {
 					m, a := cls.Methods[name], anc.Methods[name]
 					if cls.universal || anc.universal || m == nil || a == nil || m.Kind != kindDef || a.Kind != kindDef || m.calleeDefaults == a.calleeDefaults {
@@ -886,16 +1041,17 @@ func literalDefault(n parser.Node) bool {
 	return false
 }
 
-// ancestors: superclasses and included modules above c, transitively, with repeats.
-func (c *Class) ancestors() []*Class {
+// allAncestors: superclasses and included modules above c, transitively,
+// with repeats, universal ones included (unlike ancestors).
+func (c *Class) allAncestors() []*Class {
 	var out []*Class
 	for _, inc := range c.Includes {
 		if inc.Mod != nil {
-			out = append(append(out, inc.Mod), inc.Mod.ancestors()...)
+			out = append(append(out, inc.Mod), inc.Mod.allAncestors()...)
 		}
 	}
 	if c.Super != nil {
-		out = append(append(out, c.Super), c.Super.ancestors()...)
+		out = append(append(out, c.Super), c.Super.allAncestors()...)
 	}
 	return out
 }
@@ -1081,7 +1237,8 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
 	}
 	m.Ret = subst(e.M.Ret, e.Env)
-	m.Iterator = e.M.Iterator
+	// decision 4 holds for the override's own body: a rescue around yield makes it a closure
+	m.Iterator = e.M.Iterator && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	c.bindParamNames(m)
 	return true
 }
@@ -1107,6 +1264,54 @@ func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
 	return m.Kind != kindDef || !containsRescueClause(m.Node.Body)
 }
 
+// overridesIterator reports whether m takes its block as a closure yet
+// overrides an iterator, e.g. an `each` that rescues around yield under
+// Enumerable's. Callers of the iterator (Enumerable's bodies, through its
+// constraint) keep its Go name, now an iter.Seq adapter over the closure.
+func (c *Compiler) overridesIterator(m *Method) bool {
+	if m.Owner == nil || m.Block == nil || m.Iterator || !isVoid(m.Block.Ret) {
+		return false
+	}
+	e := c.inheritedSig(m)
+	return e != nil && e.M.Block != nil && (e.M.Iterator || c.overridesIterator(e.M))
+}
+
+// linkOverrides names the Go slot each override of a struct class fills. An
+// override with the parent's Go signature takes the parent's Go name; one
+// that differs (another arity, a narrower return) gets its own name, and the
+// class keeps answering to the parent's slot through an adapter (decision 8).
+func (c *Compiler) linkOverrides(cls *Class) {
+	sup := cls.Super
+	if cls.slotsLinked || !cls.isStruct() || cls.universal || sup == nil || sup.universal {
+		return
+	}
+	cls.slotsLinked = true
+	c.linkOverrides(sup)
+	for _, m := range cls.MethodList {
+		pe := sup.lookup(m.Name)
+		if pe == nil || !inInterface(m) || !inInterface(pe.M) || m.seqAdapter != pe.M.seqAdapter {
+			continue
+		}
+		own := entry{M: m, Owner: cls, Env: map[string]Type{}, Entry: cls}
+		if c.slotKey(slot{own, cls}) == c.slotKey(slot{*pe, sup}) {
+			m.GoName = pe.M.GoName
+			m.shadowed = pe.M.shadowed
+			continue
+		}
+		// `_` + lowercase never comes out of camel-casing (decision 3)
+		m.GoName = goMethodName(m.Name) + "_of" + cls.Name
+		m.shadowed = append([]slot{{*pe, sup}}, pe.M.shadowed...)
+		for _, s := range m.shadowed {
+			c.checkAdaptable(slot{own, cls}, s)
+		}
+	}
+}
+
+// inInterface reports whether m is a slot of its owner's Go interface.
+func inInterface(m *Method) bool {
+	return !m.Private && !m.generic() && m.Name != "initialize" && (m.Owner.metaOf == nil || m.Name != "new")
+}
+
 func substAll(ts []Type, env map[string]Type) []Type {
 	out := make([]Type, len(ts))
 	for i, t := range ts {
@@ -1130,6 +1335,9 @@ func (c *Compiler) inheritedSig(m *Method) *entry {
 			}
 			return &entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: cls}
 		}
+	}
+	if g := m.structDef; g != nil {
+		return &entry{M: g, Owner: cls, Env: map[string]Type{}, Entry: cls}
 	}
 	if cls.Super != nil {
 		return cls.Super.lookup(m.Name)
@@ -1176,7 +1384,10 @@ func (c *Compiler) bindParamNames(m *Method) {
 
 func (m *Method) String() string {
 	owner := "main"
-	if m.Owner != nil {
+	switch {
+	case m.Owner != nil && m.Owner.metaOf != nil:
+		return m.Owner.RubyName + "." + m.Name
+	case m.Owner != nil:
 		owner = m.Owner.Name
 	}
 	return fmt.Sprintf("%s#%s", owner, m.Name)
@@ -1193,7 +1404,7 @@ func (c *Compiler) buildMetas() {
 	for _, cls := range append([]*Class(nil), c.classList...) {
 		if cls.RubyName == "BasicObject" || cls.RubyName == "Kernel" {
 			if len(cls.singletonDefs) > 0 {
-				c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
+				c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
 			}
 			continue
 		}
@@ -1225,7 +1436,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		return cls.meta
 	}
 	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 {
-		c.errorf(cls.File, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
+		c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
 	}
 	// A class object is a Class (a module's, a Module); a subclass's class
 	// object inherits from its superclass's, so class methods inherit.
@@ -1251,7 +1462,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		synth = append(synth, "new")
 	}
 	for _, name := range synth {
-		if m.Methods[name] != nil {
+		if m.Methods[name] != nil || inheritsUserDef(sup, name) {
 			continue
 		}
 		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, File: cls.File, Line: cls.Line}
@@ -1259,6 +1470,16 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		m.MethodList = append(m.MethodList, sm)
 	}
 	return m
+}
+
+// inheritsUserDef: a user-defined class-level name/to_s/inspect wins over a subclass's generated one.
+func inheritsUserDef(m *Class, name string) bool {
+	for ; m != nil && m.metaOf != nil; m = m.Super {
+		if d := m.Methods[name]; d != nil && d.Kind != kindSynth {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSynth fills in a metaclass's generated methods. `new` takes the
@@ -1380,7 +1601,21 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	}
 	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope)
 	if bn, ok := call.Block.(*parser.BlockNode); ok && bn.Body != nil {
+		gen := slices.Clone(cls.MethodList)
 		c.collectBody(ctx, f, cls, bn.Body, scope)
+		// MRI defines the accessors on the new class but the rest on
+		// Struct/Data, so a block def overrides those and super reaches
+		// them: keep each one under a hidden private name.
+		for _, g := range gen {
+			m := cls.Methods[g.Name]
+			if m == g || g.Kind != kindDef {
+				continue
+			}
+			m.structDef = g
+			g.Name, g.GoName, g.Private = "__struct_"+g.Name, g.GoName+"_struct", true
+			cls.Methods[g.Name] = g
+			cls.MethodList = append(cls.MethodList, g)
+		}
 	}
 }
 
@@ -1432,40 +1667,48 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	for kind == "struct" && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
 		firstOpt--
 	}
+	// Parameters are __v0, __v1, ... and members are read as self.m, so
+	// a member may be named like a keyword (:end) or like a generated
+	// parameter (:other).
 	sigs := make([]string, len(members))
 	params := make([]string, len(members))
+	vars := make([]string, len(members))
 	syms := make([]string, len(members))
+	reads := make([]string, len(members))
 	eqs := make([]string, len(members))
 	insp := make([]string, len(members))
 	pairs := make([]string, len(members))
 	for i, m := range members {
-		sigs[i], params[i] = types[i].String(), m
+		vars[i] = fmt.Sprintf("__v%d", i)
+		sigs[i], params[i] = types[i].String(), vars[i]
 		if i >= firstOpt {
-			sigs[i], params[i] = "?"+sigs[i], m+" = nil"
+			sigs[i], params[i] = "?"+sigs[i], vars[i]+" = nil"
 		}
 		syms[i] = ":" + m
-		eqs[i] = m + " == other." + m
-		insp[i] = m + "=#{" + m + ".inspect}"
-		pairs[i] = m + ": " + m
+		reads[i] = "self." + m
+		eqs[i] = "self." + m + " == __other." + m
+		insp[i] = m + "=#{self." + m + ".inspect}"
+		pairs[i] = m + ": self." + m
 	}
 	fmt.Fprintf(&b, "  #: (%s) -> void\n  def initialize(%s)\n", strings.Join(sigs, ", "), strings.Join(params, ", "))
-	for _, m := range members {
-		fmt.Fprintf(&b, "    @%s = %s\n", m, m)
+	for i, m := range members {
+		fmt.Fprintf(&b, "    @%s = %s\n", m, vars[i])
 	}
 	b.WriteString("  end\n")
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def self.members = [%s]\n", strings.Join(syms, ", "))
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def members = [%s]\n", strings.Join(syms, ", "))
 	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def to_h = { %s }\n", strings.Join(pairs, ", "))
-	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(other)\n    return false unless other.is_a?(::%s)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
-	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(other)\n    return false unless other.is_a?(::%s)\n    to_h.eql?(other.to_h)\n  end\n", full)
+	// MRI's ==/eql? want the same class, not a subclass
+	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
+	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    to_h.eql?(__other.to_h)\n  end\n", full)
 	b.WriteString("  #: () -> Integer\n  def hash = to_h.hash\n")
 	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name} %s>\"\n", kind, strings.Join(insp, ", "))
 	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
 	if kind == "struct" {
-		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(members, ", "))
+		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
 	} else {
 		// `with(k: v)` compiles to this: a copy of the receiver's class
-		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(members, ", "), strings.Join(members, ", "))
+		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(vars, ", "), strings.Join(vars, ", "))
 	}
 	b.WriteString("end\n")
 	return b.String()
@@ -1489,16 +1732,17 @@ func (c *Class) valueRoot() *Class {
 	return nil
 }
 
-// descendantDefines reports whether a subclass of c defines a public name.
-func (c *Class) descendantDefines(name string) bool {
+// descendantDefines reports whether a subclass of c defines a public name
+// (or a private one, with private).
+func (c *Class) descendantDefines(name string, private bool) bool {
 	for _, sub := range c.Subclasses {
 		if sub.metaOf != nil && c.metaOf == nil {
 			continue
 		}
-		if m := sub.Methods[name]; m != nil && !m.Private {
+		if m := sub.Methods[name]; m != nil && (private || !m.Private) {
 			return true
 		}
-		if sub.descendantDefines(name) {
+		if sub.descendantDefines(name, private) {
 			return true
 		}
 	}

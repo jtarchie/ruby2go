@@ -392,7 +392,7 @@ class Hash < Object
     }
     out := NewHash[any, any]()
     for _, k := range self.keys {
-      out.IdxSet(rbUnbox(k), rbUnbox(self.vals[k]))
+      out.Op_idxSet(rbUnbox(k), rbUnbox(self.vals[k]))
     }
     return out
   }

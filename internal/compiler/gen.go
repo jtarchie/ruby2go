@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -18,6 +19,7 @@ type fctx struct {
 	lex          []*Class // lexical scope for constant lookup
 	selfType     Type
 	selfCode     string
+	selfClassObj bool // self is exactly a class constant (a class body)
 	ret          Type
 	iterator     bool
 	blockSig     *BlockSig
@@ -102,7 +104,7 @@ func (f *fctx) lineOf(n parser.Node) {
 
 func (f *fctx) newTmp() string {
 	f.tmp++
-	return fmt.Sprintf("t%d", f.tmp)
+	return fmt.Sprintf("t%d_", f.tmp)
 }
 
 // enterBlock starts a new Go block scope (for local hoisting analysis).
@@ -324,7 +326,12 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 				}
 			}
 		}
-		e := f.genExpr(n, t.typ)
+		var e expr
+		if t.kind == tailNone || t.kind == tailReturn && t.typ != nil && isVoid(t.typ) {
+			e = f.genCall(n, t.typ) // value unused: a setter needs no temp for it
+		} else {
+			e = f.genExpr(n, t.typ)
+		}
 		f.applyTail(n, e, t)
 	case *parser.XStringNode:
 		f.errorf(n, "%%x{} is only allowed as the whole body of a prelude method")
@@ -673,7 +680,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 			if isClass(condT, "Regexp") {
 				// `when /re/` is Regexp#===, not ==.
 				re := f.genExpr(cond, nil)
-				conds = append(conds, "bool("+re.code+".Eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
+				conds = append(conds, "bool("+re.code+".Op_eqq("+f.coerce(cond, expr{code: tmp, typ: subj.typ}, TAny{})+"))")
 				continue
 			}
 			eq := f.genMethodCall(cond, expr{code: tmp, typ: subj.typ}, "==", []parser.Node{cond}, nil)
@@ -918,13 +925,13 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 			f.emit("defer func() {")
 			saved := f.enterBlock()
 			f.indent++
-			f.emit("if r := recover(); r != nil {")
+			f.emit("if r_ := recover(); r_ != nil {")
 			f.indent++
-			f.emit("r = rbWrapPanic(r)")
+			f.emit("r_ = rbWrapPanic(r_)")
 			for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
 				f.genRescueClause(rc, inner)
 			}
-			f.emit("panic(r)")
+			f.emit("panic(r_)")
 			f.indent--
 			f.emit("}")
 			f.indent--
@@ -992,7 +999,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 	}
 	conds := make([]string, 0, len(classes))
 	for _, cls := range classes {
-		conds = append(conds, fmt.Sprintf("rbIsA[%s](r)", f.c.goType(TClass{C: cls})))
+		conds = append(conds, fmt.Sprintf("rbIsA[%s](r_)", f.c.goType(TClass{C: cls})))
 	}
 	f.emit("if %s {", strings.Join(conds, " || "))
 	saved := f.enterBlock()
@@ -1009,7 +1016,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		// A fresh binding per clause: the same Ruby name may hold a
 		// different exception class in each rescue.
 		v := f.blockParam(lt.Name, TClass{C: bind})
-		f.emit("%s := r.(%s)", v.goName, f.c.goType(TClass{C: bind}))
+		f.emit("%s := r_.(%s)", v.goName, f.c.goType(TClass{C: bind}))
 		f.noteUnused(v)
 	}
 	f.genStmts(rc.Statements, t)
@@ -1350,7 +1357,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	prologue := func() {
 		for _, p := range m.Params {
 			if p.Rest {
-				f.emit("%s := (*Array[%s])(&%s_)", goLocalName(p.Name), c.goType(p.Type), goLocalName(p.Name))
+				f.emit("%s := (*Array[%s])(&rest_)", goLocalName(p.Name), c.goType(p.Type))
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}
@@ -1470,22 +1477,30 @@ func (ci *constInit) GetLocation() parser.Location     { return ci.k.Value.GetLo
 func (ci *constInit) CompactChildNodes() []parser.Node { return nil }
 func (ci *constInit) ChildNodes() []parser.Node        { return nil }
 
-// mainBody merges main.rb's top-level statements with every constant
-// assignment: prelude constants first, then main.rb's by position.
+// mainBody merges main.rb's top-level statements with what its class
+// bodies run, every constant assignment and hook call: prelude constants
+// first, then main.rb's by position.
 func (c *Compiler) mainBody() []parser.Node {
-	var body []parser.Node
-	var mine []*Const
+	var body, mine []parser.Node
 	for _, k := range c.constList {
 		if k.File == c.mainFile {
-			mine = append(mine, k)
+			mine = append(mine, &constInit{k: k})
 		} else {
 			body = append(body, &constInit{k: k})
 		}
 	}
+	for _, h := range c.hooks {
+		if n := c.hookCall(h); n != nil {
+			mine = append(mine, n)
+		}
+	}
+	slices.SortStableFunc(mine, func(a, b parser.Node) int {
+		return cmp.Compare(a.GetLocation().StartOffset, b.GetLocation().StartOffset)
+	})
 	stmts := c.mainStmts
 	for len(stmts) > 0 || len(mine) > 0 {
-		if len(mine) > 0 && (len(stmts) == 0 || mine[0].Value.GetLocation().StartOffset < stmts[0].GetLocation().StartOffset) {
-			body = append(body, &constInit{k: mine[0]})
+		if len(mine) > 0 && (len(stmts) == 0 || mine[0].GetLocation().StartOffset < stmts[0].GetLocation().StartOffset) {
+			body = append(body, mine[0])
 			mine = mine[1:]
 			continue
 		}
@@ -1493,6 +1508,22 @@ func (c *Compiler) mainBody() []parser.Node {
 		stmts = stmts[1:]
 	}
 	return body
+}
+
+// hookCall is the call MRI makes at hook site h, or nil when the receiver
+// does not define the hook (Ruby's own are no-ops).
+func (c *Compiler) hookCall(h classHook) parser.Node {
+	recv := h.cls.Super
+	if h.mod != nil {
+		recv = c.resolveClassRef(h.mod)
+	}
+	if recv == nil || recv.meta == nil || recv.meta.lookup(h.name) == nil {
+		return nil
+	}
+	obj := func(k *Class) parser.Node {
+		return &exprNode{e: expr{code: classVar(k), typ: TClass{C: k.meta}, classObj: true}}
+	}
+	return &parser.CallNode{Location: h.node.GetLocation(), Receiver: obj(recv), Name: h.name, Arguments: &parser.ArgumentsNode{Arguments: []parser.Node{obj(h.cls)}}}
 }
 
 // genConstInit assigns a constant's package variable.
@@ -1508,12 +1539,77 @@ func (f *fctx) genConstInit(k *Const) {
 	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)
 	if sub.buf.Len() == 0 {
 		f.emit("%s = %s", k.GoName, code)
-		return
+	} else {
+		f.emit("%s = func() %s {", k.GoName, f.c.goType(typ))
+		f.buf.WriteString(sub.buf.String())
+		f.emit("\treturn %s", code)
+		f.emit("}()")
 	}
-	f.emit("%s = func() %s {", k.GoName, f.c.goType(typ))
-	f.buf.WriteString(sub.buf.String())
-	f.emit("\treturn %s", code)
-	f.emit("}()")
+	if k.guarded {
+		f.emit("%s = true", constSet(k))
+	}
+}
+
+// guardConsts marks main.rb's constants that may be read before their
+// assignment runs, where MRI raises NameError but a Go package variable
+// reads as its zero value. A constant needs no guard when only other
+// constant assignments precede it that call no method main.rb defines and
+// read no constant not yet assigned, which is how programs usually start.
+func (c *Compiler) guardConsts() {
+	defs := map[string]bool{}
+	anyNode(c.mainFile.Root, func(n parser.Node) bool {
+		if d, ok := n.(*parser.DefNode); ok {
+			defs[d.Name] = true
+		}
+		return false
+	})
+	done := map[*Const]bool{}
+	ran := false
+	for _, n := range c.mainBody() {
+		ci, ok := n.(*constInit)
+		if !ok {
+			ran = true
+			continue
+		}
+		k := ci.k
+		if k.File == c.mainFile && (ran || c.initRuns(k, defs, done)) {
+			k.guarded, ran = true, true
+		}
+		done[k] = true
+	}
+}
+
+// initRuns reports whether k's initializer may run main.rb's code or read
+// a constant not yet assigned. Methods match by name, erring toward a guard.
+func (c *Compiler) initRuns(k *Const, defs map[string]bool, done map[*Const]bool) bool {
+	return anyNode(k.Value, func(n parser.Node) bool {
+		switch n := n.(type) {
+		case *parser.CallNode:
+			return defs[n.Name] || n.Name == "new" && defs["initialize"]
+		case *parser.EmbeddedStatementsNode:
+			return defs["to_s"]
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			_, r := c.lookupConst(k.File, n, k.Scope)
+			return r != nil && !done[r]
+		}
+		return false
+	})
+}
+
+// anyNode reports whether pred holds for n or any node below it.
+func anyNode(n parser.Node, pred func(parser.Node) bool) bool {
+	if n == nil {
+		return false
+	}
+	if pred(n) {
+		return true
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if anyNode(ch, pred) {
+			return true
+		}
+	}
+	return false
 }
 
 // capture runs gen and returns the statements it emitted instead of

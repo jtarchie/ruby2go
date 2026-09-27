@@ -1,5 +1,3 @@
-# skip: Ruby locals named like rb2go's generated Go identifiers collide: `r` read in a rescue body is the recovered panic (prints "boom", not 10), `t1` is redeclared by a lifted temp, `p` in a rescue-modifier fallback is the recovered panic, `ret_` is a rescuing method's named result (go build fails)
-
 # rbs_inline: enabled
 
 r = 10

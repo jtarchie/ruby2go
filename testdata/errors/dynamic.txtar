@@ -369,8 +369,7 @@ class Plain
 end
 puts Plain.new.hidden
 -- respond_to_missing_is_private.rb --
-# skip: respond_to_missing? called with an explicit receiver compiles and runs; MRI makes it private whoever defines it (NoMethodError), so it should be the private-method compile error
-# error: main.rb:8: private method respond_to_missing? called on Config
+# error: main.rb:7: private method respond_to_missing? called on Config
 # rbs_inline: enabled
 class Config
   #: (Symbol, ?bool) -> bool
@@ -393,3 +392,21 @@ def sides(s)
   s.each_side { |x| puts x }
 end
 sides(Sq.new)
+-- go_name_collision_dynamic.rb --
+# error: `foo_bar` and `fooBar` both become Go FooBar, so dynamic calls cannot tell them apart
+# rbs_inline: enabled
+class A
+  #: () -> Integer
+  def foo_bar = 1
+end
+
+class B
+  #: () -> Integer
+  def fooBar = 2
+end
+
+#: (untyped) -> untyped
+def ident(v) = v
+
+puts ident(A.new).foo_bar
+puts ident(B.new).fooBar

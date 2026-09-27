@@ -235,7 +235,7 @@ module Nums
 end
 puts Nums.to_a.inspect
 -- cannot_infer_type_param.rb --
-# error: main.rb:6: cannot infer type parameter T of Util_Meta#none
+# error: main.rb:6: cannot infer type parameter T of Util.none
 class Util
   #: [T] () -> Array[T]
   def self.none = []
@@ -418,8 +418,7 @@ a = [1]
 a = ["x"]
 puts a.inspect
 -- subclass_array.rb --
-# skip: `class Stack < Array` compiles, but the generated Stack code uses the generic Array without type args (undefined: E), so go build fails; want a compile error
-# error: main.rb:3:
+# error: main.rb:2: subclassing Array is not supported
 class Stack < Array
   #: () -> Integer
   def top2 = 2
