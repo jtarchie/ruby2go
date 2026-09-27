@@ -449,7 +449,8 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 	for _, n := range stmts.Body {
 		switch n := n.(type) {
 		case *parser.DefNode:
-			c.addMethod(f, cls, n, private, scope)
+			// a bare `private` does not reach `def self.x`
+			c.addMethod(f, cls, n, private && n.Receiver == nil, scope)
 		case *parser.CallNode:
 			c.collectClassCall(f, cls, n, &private, scope)
 		case *parser.ClassNode:
@@ -565,7 +566,7 @@ func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private boo
 
 func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
-	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private, Scope: scope}
+	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private || cls != nil && cls.metaOf == nil && rubyPrivate[n.Name], Scope: scope}
 	if sig, found := f.sigComment(line); found {
 		if sig == "" {
 			c.errorf(f, n, "overloaded signatures (#|) are not supported")

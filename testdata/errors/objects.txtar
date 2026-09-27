@@ -989,7 +989,6 @@ class Registry
   def self.count = @count
 end
 -- initialize_called_with_receiver.rb --
-# skip: calling initialize with an explicit receiver compiles and runs it; initialize is always private in MRI (NoMethodError)
 # error: main.rb:10: private method initialize called on Vault
 class Vault
   #: () -> void

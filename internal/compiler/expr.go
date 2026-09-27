@@ -2159,7 +2159,7 @@ func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, arg
 }
 
 // rubyPrivate names methods Ruby makes private whoever defines them.
-var rubyPrivate = map[string]bool{"initialize": true, "method_missing": true, "respond_to_missing?": true, "initialize_copy": true}
+var rubyPrivate = map[string]bool{"initialize": true, "respond_to_missing?": true, "initialize_copy": true}
 
 // genRespondTo decides `recv.respond_to?(:name)` for a typed receiver and
 // a literal name: true for a public method, else respond_to_missing?,

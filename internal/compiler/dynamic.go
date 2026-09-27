@@ -52,7 +52,7 @@ func (c *Compiler) dynEntry(cls *Class, name string) *entry {
 	if e == nil || e.M.generic() || e.M.Block != nil {
 		return nil
 	}
-	if e.M.Private && !rubyPrivate[name] {
+	if e.M.Private && !rubyPrivate[name] && name != "method_missing" {
 		return nil
 	}
 	if len(cls.TypeParams) > 0 && growsTypeParams(cls, e) {
