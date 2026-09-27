@@ -133,9 +133,13 @@ class MatchData < Object
   #: (Integer) -> String?
   def [](i) = %x{
     if i < 0 {
+      // MRI (rb_reg_nth_match): a negative index never reaches group 0.
       i += Integer(len(self.groups))
+      if i <= 0 {
+        return nil
+      }
     }
-    if i < 0 || int(i) >= len(self.groups) {
+    if int(i) >= len(self.groups) {
       return nil
     }
     return self.groups[i]
