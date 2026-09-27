@@ -1,5 +1,3 @@
-# skip: NilClass methods on a nil T? raise NoMethodError: an unmatched group's m[2].to_i / .to_f (MRI 0 / 0.0) and nil =~ /re/ (MRI nil)
-
 # rbs_inline: enabled
 
 m = /(\d+)(?:\.(\d+))?/.match("v12")

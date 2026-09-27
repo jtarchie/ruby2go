@@ -33,6 +33,9 @@
   // Ref boxes a value into T? (represented as *T).
   func Ref[T any](v T) *T { return &v }
 
+  // rbZero fills a left-out argument; the callee sees rbArgc and runs its own default.
+  func rbZero[T any]() (z T) { return z }
+
   // Opt converts T? to untyped: a nil *T must become an untyped nil or a
   // `case nil` type switch misses it.
   func Opt[T any](p *T) any {
@@ -131,6 +134,15 @@
   func rbIsA[I any](r any) bool {
     _, ok := r.(I)
     return ok
+  }
+
+  // rbSplat converts a splatted array's elements to a rest param's type.
+  func rbSplat[T, E any](s []T, conv func(T) E) []E {
+    out := make([]E, len(s))
+    for i, v := range s {
+      out[i] = conv(v)
+    }
+    return out
   }
 
   func rbClassName(a any) string {

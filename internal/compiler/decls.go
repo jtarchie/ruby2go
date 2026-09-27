@@ -114,6 +114,9 @@ func (c *Compiler) iterGoType(b *BlockSig, env map[string]Type) string {
 // sig renders the Go parameter list and result of method m under env.
 func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret string) {
 	var ps []string
+	if m.calleeDefaults {
+		ps = append(ps, "rbArgc int")
+	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
@@ -138,6 +141,9 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 // argNames lists the Go argument names used to forward a call.
 func (c *Compiler) argNames(m *Method) string {
 	var as []string
+	if m.calleeDefaults {
+		as = append(as, "rbArgc")
+	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
@@ -247,6 +253,7 @@ func (c *Compiler) emitProgram() {
 	c.emitMain()
 	c.noteUserToJson()
 	c.emitDynamic()
+	c.emitClassOf()
 	c.emitTuples()
 	c.emitBoxes()
 	// last: every body, main included, has registered its literals by now
@@ -320,7 +327,81 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
+	c.emitBridgeSigs(mod, TVar{Name: "Self"})
 	c.w("}\n\n")
+}
+
+// bridgeName is the includer method a module method's `super` calls.
+func bridgeName(m *Method) string { return "_Super_" + m.Owner.Name + "_" + m.GoName }
+
+// superBridges lists, as seen from cls, the module methods in its
+// ancestors (itself, for a module) whose `super` target differs per
+// includer. The module's constraint requires a bridge for each, and every
+// concrete includer implements it by calling whatever follows the module
+// method in its own ancestors.
+func (c *Compiler) superBridges(cls *Class) []entry {
+	var out []entry
+	seen := map[*Method]bool{}
+	for _, anc := range append([]*Class{cls}, cls.ancestors()...) {
+		if !anc.IsModule {
+			continue
+		}
+		for _, m := range anc.MethodList {
+			if !m.superBridge || seen[m] {
+				continue
+			}
+			seen[m] = true
+			for _, e := range cls.defsOf(m.Name) {
+				if e.M == m {
+					out = append(out, e)
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// emitBridgeSigs lists cls's super bridges in its interface.
+func (c *Compiler) emitBridgeSigs(cls *Class, self Type) {
+	for _, e := range c.superBridges(cls) {
+		env := composeEnv(e.Env, nil)
+		env["Self"] = self
+		if self == nil {
+			env["Self"] = c.selfTypeFor(e, cls)
+		}
+		ps, ret := c.sig(e.M, env)
+		c.w("\t%s(%s) %s\n", bridgeName(e.M), ps, ret)
+	}
+}
+
+// emitBridges implements cls's super bridges: each calls the definition
+// after the module method in cls's ancestors, or fails as MRI does.
+func (c *Compiler) emitBridges(cls *Class, recv string) {
+	for _, e := range c.superBridges(cls) {
+		m := e.M
+		env := composeEnv(e.Env, nil)
+		env["Self"] = c.selfTypeFor(e, cls)
+		ps, ret := c.sig(m, env)
+		defs := cls.defsOf(m.Name)
+		i := slices.IndexFunc(defs, func(d entry) bool { return d.M == m })
+		var body string
+		switch {
+		case i+1 < len(defs):
+			t := defs[i+1]
+			if c.isDirectMethod(t.M) {
+				c.errorf(m.File, m.Node, "super into a primitive class method is not supported")
+			}
+			body = fmt.Sprintf("%s%s(self%s)", freeFuncName(t.M), c.forwardTypeArgs(t, cls), comma(c.argNames(m)))
+			if ret != "" {
+				body = "return " + body
+			}
+		case m.Name == "initialize": // BasicObject's does nothing
+		default:
+			body = fmt.Sprintf("panic(NewNoMethodError(Ref(String(\"super: no superclass method '%s' for \" + rbDescribe(self)))))", m.Name)
+		}
+		c.w("func (self %s) %s(%s) %s { %s }\n", recv, bridgeName(m), ps, ret, body)
+	}
 }
 
 var goSelfCall = regexp.MustCompile(`\bself\.([A-Za-z_]\w*)\(`)
@@ -365,6 +446,9 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 	for _, m := range mod.MethodList {
 		if m.Node != nil {
 			walk(m.Node.Body)
+			if m.Node.Parameters != nil {
+				walk(m.Node.Parameters) // defaults run in the callee
+			}
 		}
 	}
 	for _, inc := range mod.Includes {
@@ -403,6 +487,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
+	c.emitBridgeSigs(cls, nil)
 	if cls.meta != nil {
 		c.w("\t_ClassOf() %s\n", c.goType(TClass{C: cls.root().meta}))
 	}
@@ -465,6 +550,7 @@ func (c *Compiler) emitForwarders(cls *Class) {
 			c.w("func (self %s) %s(%s) %s { return %s }\n", recv, m.GoName, ps, ret, body)
 		}
 	}
+	c.emitBridges(cls, recv)
 	c.w("\n")
 }
 
@@ -491,17 +577,19 @@ func (c *Compiler) emitTuples() {
 		tps := make([]string, 0, n)
 		fields := make([]string, 0, n)
 		cmp := make([]string, 0, n)
-		tos := make([]string, 0, n)
+		vals := make([]string, 0, n)
 		insp := make([]string, 0, n)
 		eq := make([]string, 0, n)
+		from := make([]string, 0, n)
 		for i := range n {
 			p := fmt.Sprintf("T%d", i)
 			tps = append(tps, p)
 			fields = append(fields, fmt.Sprintf("F%d %s", i, p))
 			cmp = append(cmp, fmt.Sprintf("if c := rbCmp(t.F%d, o.F%d); c != 0 {\n\t\treturn c\n\t}", i, i))
-			tos = append(tos, fmt.Sprintf("rbInspect(t.F%d)", i))
+			vals = append(vals, fmt.Sprintf("t.F%d", i))
 			insp = append(insp, fmt.Sprintf("rbInspect(t.F%d)", i))
 			eq = append(eq, fmt.Sprintf("rbEq(t.F%d, o2.F%d)", i, i))
+			from = append(from, fmt.Sprintf("\tif t.F%d, ok = s[%d].(T%d); !ok {\n\t\treturn t, false\n\t}", i, i, i))
 		}
 		name := fmt.Sprintf("Tuple%d", n)
 		c.w("type %s[%s comparable] struct {\n\t%s\n}\n\n", name, strings.Join(tps, ", "), strings.Join(fields, "\n\t"))
@@ -509,13 +597,12 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) Cmp(o %s) Integer {\n\t%s\n\treturn 0\n}\n\n", full, full, strings.Join(cmp, "\n\t"))
 		c.w("func (t %s) Inspect() String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(insp, ` + ", " + `))
 		c.w("func (t %s) ToS() String { return t.Inspect() }\n\n", full)
-		elems := make([]string, 0, n)
-		for i := range n {
-			elems = append(elems, fmt.Sprintf("t.F%d", i))
-		}
-		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(elems, ", "))
-		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
-		_ = tos
+		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(vals, ", "))
+		// a tuple that reaches untyped answers as an Array (decision 22)
+		c.w("func (t %s) _ToAny() *Array[any] { return &Array[any]{%s} }\n\n", full, strings.Join(vals, ", "))
+		// and converts back where a dynamic call's parameter is a tuple (rbArg)
+		c.w("func (%s) _FromAny(a any) (t %s, ok bool) {\n\tarr, ok := a.(Array_Any)\n\tif !ok {\n\t\treturn t, false\n\t}\n\ts := *arr._ToAny()\n\tif len(s) != %d {\n\t\treturn t, false\n\t}\n%s\n\treturn t, true\n}\n\n", full, full, n, strings.Join(from, "\n"))
+		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 	}
 }
 
@@ -663,7 +750,7 @@ func (c *Compiler) emitConstTable(cls *Class) {
 // emitRubyNames maps Go type names back to Ruby constant paths for the
 // classes whose names differ (namespaced ones), for messages and #inspect.
 func (c *Compiler) emitRubyNames() {
-	c.w("var rbRubyNames = map[string]string{\n")
+	c.w("var rbRubyNames = map[string]string{\n\t\"Tuple2\": \"Array\",\n\t\"Tuple3\": \"Array\",\n")
 	for _, cls := range c.classList {
 		if cls.Name != cls.RubyName {
 			c.w("\t%q: %q,\n", cls.Name, cls.RubyName)

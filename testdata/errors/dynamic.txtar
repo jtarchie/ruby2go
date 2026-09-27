@@ -180,7 +180,7 @@ puts m.corners
 # rbs_inline: enabled
 class Foo
   #: (String, ?Integer) -> Integer
-  def f(a, b = a.size) = b
+  def f(a, b = nil) = b
 end
 #: (untyped) -> untyped
 def ident(v) = v

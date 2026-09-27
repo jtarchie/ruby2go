@@ -224,7 +224,7 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 	case *parser.CallNode, *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode,
 		*parser.LocalVariableWriteNode, *parser.InstanceVariableWriteNode,
 		*parser.LocalVariableOperatorWriteNode, *parser.InstanceVariableOperatorWriteNode:
-		if e.stmt || strings.HasSuffix(e.code, ")") {
+		if e.stmt || strings.HasSuffix(e.code, ")") && !e.assert {
 			f.emit("%s", e.code)
 			return
 		}
@@ -734,10 +734,11 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			armName = f.newTmp()
 			f.emit("%s := %s%s", armName, name, convert)
 		}
+		if convert != "" {
+			f.emit("_ = %s", armName) // the arm may never read it
+		}
 		if subjLocal != nil {
 			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, declared: true}
-		} else if convert != "" {
-			f.emit("_ = %s", armName)
 		}
 		f.genStmts(wn.Statements, t)
 		f.indent--
@@ -800,6 +801,23 @@ func containsRescue(n parser.Node) bool {
 }
 
 // containsRescueClause is containsRescue without ensure-only begins.
+// containsSuper reports whether a method body calls super (nested defs
+// are other methods).
+func containsSuper(n parser.Node) bool {
+	switch n.(type) {
+	case nil, *parser.DefNode:
+		return false
+	case *parser.SuperNode, *parser.ForwardingSuperNode:
+		return true
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if containsSuper(ch) {
+			return true
+		}
+	}
+	return false
+}
+
 func containsRescueClause(n parser.Node) bool {
 	if n == nil {
 		return false
@@ -1307,6 +1325,11 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}
+		for i, p := range m.Params {
+			if m.calleeDefaults && p.Default != nil {
+				f.fillDefault(i, p)
+			}
+		}
 		if m.Iterator {
 			ps := make([]string, len(m.Block.Params))
 			for i, p := range m.Block.Params {
@@ -1327,6 +1350,20 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 		f.emit("}")
 	}
 	c.out.WriteString(f.buf.String())
+}
+
+// fillDefault runs a left-out param's default where Ruby does: in the callee, after the params before it.
+func (f *fctx) fillDefault(i int, p Param) {
+	name := goLocalName(p.Name)
+	if info := f.locals[p.Name]; f.pass == 2 && info != nil && info.reads == 1 {
+		name = "_" // never read: evaluated for its effects only
+	}
+	f.emit("if rbArgc <= %d {", i)
+	f.indent++
+	d := f.genExpr(p.Default, p.Type)
+	f.emit("%s = %s", name, f.coerce(p.Default, d, p.Type))
+	f.indent--
+	f.emit("}")
 }
 
 func (c *Compiler) emitMain() {

@@ -1,5 +1,3 @@
-# skip: `super` inside method_missing / respond_to_missing? (the standard fallback idiom) is a compile error ("super: no parent method method_missing"); MRI raises NoMethodError / returns false
-
 # rbs_inline: enabled
 
 class Picky

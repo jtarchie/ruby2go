@@ -1,5 +1,3 @@
-# skip: const_get of a constant typed T? that holds nil panics "interface conversion: interface {} is nil, not *main.String" (exit 1); MRI returns nil
-
 # rbs_inline: enabled
 
 module Settings

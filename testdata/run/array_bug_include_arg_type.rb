@@ -1,5 +1,3 @@
-# skip: include?(x) fails go build when x's Go type differs from the element type (struct object *Pt vs PtI, Integer vs untyped): Go infers Enumerable_IncludeQ's E from the argument
-
 # rbs_inline: enabled
 class Pt
   attr_reader :x #: Integer

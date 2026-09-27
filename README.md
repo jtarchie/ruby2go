@@ -186,7 +186,9 @@ each feature compiles to.
 
 [main.rb](examples/02_enumerable/main.rb)
 
-`Enumerable` written once in the prelude against `each`; Go generics inference.
+`Enumerable` written once in the prelude against `each`; Go generics, with
+type arguments spelled out from the Ruby types (Go would infer `*Foo` or an
+untyped constant from the arguments).
 
 - **`each` → `iter.Seq[E]`** (Go 1.23+ range-over-func). A Ruby
   `def each; ...; yield x; ...; end` body compiles to a push iterator:
@@ -227,7 +229,8 @@ affects `Hash#[]`, `find`, `first`, and every `if x`.
 - **Truthiness rule:** only `nil` and `false` are falsy. `Boolean` → native
   `!`; `T?` → `!= nil`; everything else → constant true (warn).
 - **Methods on `nil`.** `x.inspect` where `x: String?` → static branch:
-  nil → `NilClass_Inspect()`, else `x.Inspect()`. No runtime `NilClass` object.
+  nil → `NilClass_Inspect()`, else `x.Inspect()`. No runtime `NilClass`
+  class (`nil.class` is a bare class object, decision 19).
 - **RBS core lies about `Hash#[]`.** Core signatures say `(K) -> V` (because
   of defaults); the prelude should declare `(K) -> V?`. `Hash.new(0)` +
   `h[k] += 1` then fails to typecheck — see 05.
@@ -316,7 +319,10 @@ primitive.
 - **Untyped literals into `any` become Go `string`**, not `String` — the
   first run of this example panicked on exactly that. Emit `String("...")`
   for interface-typed targets.
-- **`puts(*a)` splat** → `Kernel_Puts(a.ToAAny()...)`.
+- **Splats into a rest param** → one fresh slice: `f(1, *a)` →
+  `f(slices.Concat[[]T]([]T{1}, *a)...)`. Go spreads only a lone slice, and
+  Ruby's rest param is a new array, so the callee must not alias the caller's.
+  Elements convert (`rbSplat`) when the Go types differ (`Array[Integer]` into `*untyped`).
 - **Output is buffered** (`bufio.Writer`), flushed by `defer` in `main` —
   runs on return and on panic, so partial output before a crash matches Ruby.
   `os.Exit` skips defers: `Kernel#exit` must flush first. Interleaving with
@@ -443,6 +449,14 @@ resolve; anything not listed is still open.
    generic over `Self`, forwarded by a Go method on every concrete class.
    `BasicObject`, `Object` and `Kernel` are "universal": their `Self` is
    `any`, since primitives inherit from them too.
+   Default arguments: a plain literal default is filled in at the call
+   site. Any other (`b = a.size`, `x = @x`, `g = helper`, a constant) runs
+   in the callee, as in MRI: the method's Go func takes `rbArgc int` (the
+   count of positional args given) first, callers pass zero values for the
+   rest, and the body evaluates the missing defaults in order. Every def
+   of that name along an ancestor chain takes `rbArgc` too, so overrides
+   keep one Go signature and run their own defaults. *(Revised: all
+   defaults used to be evaluated at the call site, in the caller's scope.)*
 9. Module constraints are derived from the module body, as the README
    says: `Comparable_Self[Self]` lists what `Comparable`'s methods call on
    `self` (including `self.X(` inside `%x{}`), not every module method.
@@ -451,6 +465,12 @@ resolve; anything not listed is still open.
    "instantiation cycle": a forwarder such as `Hash[K,V].Tally` would
    instantiate `Hash[[K,V], Integer]`, whose forwarders instantiate the
    next size up, forever.
+   A `super` the module cannot resolve itself (its target is the
+   includer's superclass or a later module, different per includer) is a
+   call to `self._Super_M_name(...)`: the constraint requires it, and
+   every includer implements it by calling the definition that follows
+   `M#name` in its own ancestors, or raising MRI's `NoMethodError`.
+   *(Revised: this was a compile error.)*
 10. Type parameters are all constrained `comparable`. Every generated Go
     type satisfies it (strings, ints, pointers, interfaces, tuples of
     those), and it is what `map[K]` and `tally` need; deriving the
@@ -504,7 +524,13 @@ resolve; anything not listed is still open.
     `ArgumentError`. `Foo.new` on a constant stays a direct constructor
     call. `class << self` is not supported. Metaclasses inherit from the
     parent's metaclass, else from prelude `Class` (modules: `Module`), so
-    a value typed `Module` can hold any class object.
+    a value typed `Module` can hold any class object. `x.class` whose
+    class is known only at run time (`untyped`, `Object`, a module type or
+    a module's `self`, `nil`, `T?`) is a generated type switch over the
+    `@go_type` classes and struct hierarchies, typed `Class`; nil's class
+    object is a bare `Class` named `NilClass`, not a constant code can
+    name. *(Revised: these were a build error, `NoMethodError`, or the
+    module itself.)*
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
     passing it on asserts the type, except to a `T | untyped` parameter
@@ -513,7 +539,11 @@ resolve; anything not listed is still open.
     them. Regexp subjects use it, so a literal `nil` is an error but an
     untyped `nil` or Symbol matches as in MRI. *Calling a method* on `T?`
     raises `NoMethodError` when it is nil, as in Ruby, and the compiler
-    warns.
+    warns; methods `NilClass` defines (`to_s`, `inspect`, `==`, `!`,
+    `to_i`, `to_f`, `to_a`, `to_h`, `=~`) give nil's answer instead (`0`,
+    `0.0`, `[]`, `{}`, `nil`) when `T`'s method returns a type that holds
+    it. *(Revised: `to_i`/`to_f`/`to_a`/`to_h`/`=~` raised, so an
+    unmatched group's `m[2].to_i` failed where MRI gives 0.)*
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops
@@ -523,9 +553,21 @@ resolve; anything not listed is still open.
     modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
     class that might have a subclass including it, is a compile error.
     Narrowing an untyped local to `Array` views it as `Array[untyped]`.
-22. Unannotated literals infer by joining their parts; when parts share
-    no type the element type is `untyped`. A 2–3 element mixed array with
-    nothing expected of it is a tuple (sort keys, multiple returns).
+22. Unannotated literals infer by joining their parts; when parts share no
+    type the element type is `untyped`. A 2–3 element mixed array with
+    nothing expected of it is a tuple (sort keys, multiple returns). A
+    literal nested in one that `untyped` is expected of is untyped-expected
+    too, so it is an Array. A tuple that reaches `untyped` is converted to
+    an `Array[untyped]` copy, so untyped code sees an Array (`is_a?`, `when
+    Array`, `puts`, `==`, dynamic calls); writes to the copy are not seen by
+    the tuple, and like any Array it keys a Hash by identity (a tuple key
+    used to compare by value). A tuple still inside a typed container
+    answers as an Array to `is_a?`/`when`/`.class` but not to dynamic calls.
+    The way back is checked: a dynamic call converts an Array of the right
+    size and element types into a tuple parameter, else raises `TypeError`;
+    no other untyped value converts to a tuple. *(Revised: tuples used to
+    reach untyped as Go structs, so `is_a?(Array)` was false and `puts`
+    printed their inspect.)*
 23. Symbols are a named Go string distinct from `String`. `f(a: 1)` on a
     method without keyword parameters passes a Hash, as Ruby 3 does;
     keyword parameters themselves are not supported.
@@ -608,6 +650,8 @@ resolve; anything not listed is still open.
 31. `method_missing` on a typed receiver: an unknown method compiles to
     `method_missing(:name, *args)`, typed by its signature.
     `respond_to?(:name)` folds to a constant, or asks `respond_to_missing?`.
+    `super` with no user-defined parent is Object's: `NoMethodError` for
+    the name, or `false`.
 32. Dynamic dispatch: a method called on an `untyped` value, an unknown
     method on a `Module`-typed class object, or a method only subclasses
     define compiles to `rbDynName(recv, args...)`. Each such name gets a

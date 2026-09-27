@@ -1,5 +1,3 @@
-# skip: `a != b` ignores a user-defined or Struct-generated ==: BasicObject#!= calls BasicObject#== (identity) statically, so equal but distinct objects are !=
-
 # rbs_inline: enabled
 
 class Vec

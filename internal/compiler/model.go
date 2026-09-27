@@ -121,6 +121,9 @@ type Method struct {
 	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
+
+	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
+	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
 }
 
 // root is the topmost struct class of c's hierarchy (below Object).
@@ -747,6 +750,144 @@ func (c *Compiler) link() {
 	for _, m := range c.topDefList {
 		c.resolveMethod(m)
 	}
+	c.markCalleeDefaults()
+	c.markSuperBridges()
+}
+
+// markSuperBridges flags module methods whose `super` finds nothing in the
+// module itself: the target is whatever follows the module in each
+// includer's ancestors. Object's fallbacks (decision 31) stay static.
+func (c *Compiler) markSuperBridges() {
+	for _, mod := range c.classList {
+		if !mod.IsModule || mod.universal {
+			continue
+		}
+		for _, m := range mod.MethodList {
+			if m.Kind != kindDef || m.Block != nil || m.generic() || m.Name == "method_missing" || m.Name == "respond_to_missing?" {
+				continue
+			}
+			m.superBridge = containsSuper(m.Node.Body) && c.inheritedSig(m) == nil
+		}
+	}
+}
+
+// defsOf lists every definition of name in c's lookup order (methodSet
+// without the shadowing): a module method's `super` target follows it.
+func (c *Class) defsOf(name string) []entry {
+	var out []entry
+	if m := c.Methods[name]; m != nil {
+		identity := map[string]Type{}
+		for _, p := range c.TypeParams {
+			identity[p] = TVar{Name: p}
+		}
+		out = append(out, entry{M: m, Owner: c, Env: identity, Entry: c})
+	}
+	for i := len(c.Includes) - 1; i >= 0; i-- {
+		inc := c.Includes[i]
+		env := map[string]Type{}
+		for j, p := range inc.Mod.TypeParams {
+			if j < len(inc.Args) {
+				env[p] = inc.Args[j]
+			}
+		}
+		for _, e := range inc.Mod.defsOf(name) {
+			e2 := entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: c}
+			if c.IsModule {
+				e2.Entry = e.Entry
+			}
+			out = append(out, e2)
+		}
+	}
+	if c.Super != nil {
+		out = append(out, c.Super.defsOf(name)...)
+	}
+	return out
+}
+
+// markCalleeDefaults: only a literal default means the same at the call site; defs along an ancestor chain share one Go signature, so the mark spreads (universal free funcs take `any` and need not match).
+func (c *Compiler) markCalleeDefaults() {
+	names := map[string]bool{}
+	for _, m := range c.topDefList {
+		m.calleeDefaults = m.Kind == kindDef && scopedDefault(m)
+	}
+	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if !cls.universal && m.Kind == kindDef && scopedDefault(m) {
+				m.calleeDefaults = true
+				names[m.Name] = true
+			}
+		}
+	}
+	for changed := len(names) > 0; changed; {
+		changed = false
+		for _, cls := range c.classList {
+			for _, anc := range cls.ancestors() {
+				for name := range names {
+					m, a := cls.Methods[name], anc.Methods[name]
+					if cls.universal || anc.universal || m == nil || a == nil || m.Kind != kindDef || a.Kind != kindDef || m.calleeDefaults == a.calleeDefaults {
+						continue
+					}
+					m.calleeDefaults, a.calleeDefaults, changed = true, true, true
+				}
+			}
+		}
+	}
+	for _, cls := range c.classList {
+		if cls.metaOf == nil {
+			continue
+		}
+		if m, init := cls.Methods["new"], cls.metaOf.lookup("initialize"); m != nil && m.Kind == kindSynth && init != nil {
+			m.calleeDefaults = init.M.calleeDefaults
+		}
+	}
+}
+
+// scopedDefault reports whether some default of m is not a plain literal.
+func scopedDefault(m *Method) bool {
+	for _, p := range m.Params {
+		if p.Default != nil && !literalDefault(p.Default) {
+			return true
+		}
+	}
+	return false
+}
+
+// literalDefault reports whether a default means the same in any scope.
+func literalDefault(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.IntegerNode, *parser.FloatNode, *parser.StringNode, *parser.SymbolNode,
+		*parser.NilNode, *parser.TrueNode, *parser.FalseNode, *parser.RegularExpressionNode:
+		return true
+	case *parser.ArrayNode:
+		for _, e := range n.Elements {
+			if !literalDefault(e) {
+				return false
+			}
+		}
+		return true
+	case *parser.HashNode:
+		for _, e := range n.Elements {
+			if a, ok := e.(*parser.AssocNode); !ok || !literalDefault(a.Key) || !literalDefault(a.Value) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// ancestors: superclasses and included modules above c, transitively, with repeats.
+func (c *Class) ancestors() []*Class {
+	var out []*Class
+	for _, inc := range c.Includes {
+		if inc.Mod != nil {
+			out = append(append(out, inc.Mod), inc.Mod.ancestors()...)
+		}
+	}
+	if c.Super != nil {
+		out = append(append(out, c.Super), c.Super.ancestors()...)
+	}
+	return out
 }
 
 // declareIvar records an ivar on the topmost class of the chain that

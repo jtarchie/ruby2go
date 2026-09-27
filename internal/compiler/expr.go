@@ -21,6 +21,7 @@ type expr struct {
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
 	done     bool // already emitted; code only names the value
+	assert   bool // ends in a Go type assertion, which is not a statement
 }
 
 // genLiteral handles the leaf expressions.
@@ -318,9 +319,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	}
 	if !boolL && !isOpt(l.typ) && !isAny(l.typ) {
 		// the left is never nil or false: the value is the right
-		if !isSimpleGo(l.code) {
-			f.emit("_ = %s", l.code)
-		}
+		f.discard(l)
 		return f.genExpr(n.Right, nil)
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
@@ -367,22 +366,7 @@ func (f *fctx) leftNarrowing(n parser.Node, l expr) []narrowInfo {
 // ---- strings
 
 func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
-	var parts []string
-	for _, p := range n.Parts {
-		switch p := p.(type) {
-		case *parser.StringNode:
-			parts = append(parts, strconv.Quote(p.Unescaped.Value))
-		case *parser.EmbeddedStatementsNode:
-			st := p.Statements
-			if st == nil || len(st.Body) != 1 {
-				f.errorf(p, "interpolation must contain a single expression")
-			}
-			e := f.genExpr(st.Body[0], nil)
-			parts = append(parts, f.toS(st.Body[0], e))
-		default:
-			f.c.unsupported(f.f, p)
-		}
-	}
+	parts := f.interpParts(n.Parts, nil)
 	if len(parts) == 0 {
 		return expr{code: `""`, typ: f.cls("String"), lit: true}
 	}
@@ -399,6 +383,29 @@ func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
 		return expr{code: parts[0], typ: f.cls("String")}
 	}
 	return expr{code: "(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
+}
+
+// interpParts appends the Go string pieces of an interpolation's parts.
+// Adjacent literals (`"a" "#{b}"`) nest an InterpolatedStringNode as a part.
+func (f *fctx) interpParts(ps []parser.Node, parts []string) []string {
+	for _, p := range ps {
+		switch p := p.(type) {
+		case *parser.StringNode:
+			parts = append(parts, strconv.Quote(p.Unescaped.Value))
+		case *parser.InterpolatedStringNode:
+			parts = f.interpParts(p.Parts, parts)
+		case *parser.EmbeddedStatementsNode:
+			st := p.Statements
+			if st == nil || len(st.Body) != 1 {
+				f.errorf(p, "interpolation must contain a single expression")
+			}
+			e := f.genExpr(st.Body[0], nil)
+			parts = append(parts, f.toS(st.Body[0], e))
+		default:
+			f.c.unsupported(f.f, p)
+		}
+	}
+	return parts
 }
 
 func (f *fctx) toS(n parser.Node, e expr) string {
@@ -442,12 +449,16 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	if ec, ok := expected.(TClass); ok && ec.C.Name == "Array" {
 		elemT = ec.Args[0]
 	}
+	hint := elemT
+	if isAny(expected) {
+		hint = TAny{} // a nested literal is untyped-expected too: an Array, not a tuple
+	}
 	elems := make([]expr, len(n.Elements))
 	for i, el := range n.Elements {
 		if _, ok := el.(*parser.SplatNode); ok {
 			f.errorf(el, "splat inside array literals is not supported")
 		}
-		elems[i] = f.genExpr(el, elemT)
+		elems[i] = f.genExpr(el, hint)
 	}
 	if elemT == nil {
 		elemT = inferElemType(elems)
@@ -586,6 +597,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		case e.lit:
 			return f.c.goType(e.typ) + "(" + e.code + ")"
 		}
+		if _, ok := e.typ.(TTuple); ok {
+			return e.code + "._ToAny()" // untyped code sees an Array (decision 22)
+		}
 		return e.code
 	case TOpt:
 		switch {
@@ -598,6 +612,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		}
 		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	case TClass:
+		if to.C.universal && e.lit {
+			return f.coerce(n, e, TAny{}) // Object is Go any: "a" must box as String, not string
+		}
 		if isAny(e.typ) && to.C.RubyName == "Boolean" {
 			return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
 		}
@@ -750,7 +767,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 // class, with (Data), respond_to?, is_a?/kind_of?.
 func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
 	if name == "class" && len(args) == 0 && block == nil {
-		if e, ok := f.genClassOf(recv); ok {
+		if e, ok := f.genClassOf(n, recv); ok {
 			return e, true
 		}
 	}
@@ -773,6 +790,13 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 			f.errorf(n, "%s takes one class", name)
 		}
 		return expr{code: "Boolean(" + f.isACheck(n, recv, args[0]) + ")", typ: f.cls("Boolean")}, true
+	}
+	// `!=` is `!(==)` unless overridden: BasicObject#!= as a free func over any would bind == to identity.
+	if name == "!=" {
+		if e := f.resolve(recv.typ, name); e == nil || e.Owner == f.c.classes["BasicObject"] {
+			eq := f.genMethodCall(n, recv, "==", args, block)
+			return expr{code: "Boolean(!(" + f.truthy(n, eq) + "))", typ: f.cls("Boolean")}, true
+		}
 	}
 	return expr{}, false
 }
@@ -841,28 +865,8 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	ai := 0
 	for _, p := range m.Params {
 		if p.Rest {
-			for ; ai < nargs; ai++ {
-				var a expr
-				an := n
-				if exprs != nil {
-					a = exprs[ai]
-				} else {
-					an = args[ai]
-					if sp, ok := an.(*parser.SplatNode); ok {
-						a = f.genExpr(sp.Expression, nil)
-						ac, ok := a.typ.(TClass)
-						if !ok || ac.C.Name != "Array" {
-							f.errorf(an, "splat of non-array %s", a.typ)
-						}
-						unify(p.Type, ac.Args[0], env)
-						codes = append(codes, "(*"+a.code+")...")
-						continue
-					}
-					a = f.genExpr(an, closed(p.Type, env))
-				}
-				unify(p.Type, a.typ, env)
-				codes = append(codes, f.coerceArg(an, a, p, env))
-			}
+			codes = append(codes, f.genRestArgs(n, p, env, args, exprs, ai, nargs)...)
+			ai = nargs
 			continue
 		}
 		if ai < nargs {
@@ -882,6 +886,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			codes = append(codes, f.coerceArg(an, a, p, env))
 			continue
 		}
+		if p.Default != nil && m.calleeDefaults {
+			codes = append(codes, "rbZero["+f.c.goType(subst(p.Type, env))+"]()")
+			continue
+		}
 		if p.Default != nil {
 			d := f.genExpr(p.Default, closed(p.Type, env))
 			unify(p.Type, d.typ, env)
@@ -893,7 +901,77 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	if ai < nargs {
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
+	if m.calleeDefaults {
+		pos := len(m.Params)
+		if pos > 0 && m.Params[pos-1].Rest {
+			pos--
+		}
+		codes = append([]string{strconv.Itoa(min(nargs, pos))}, codes...)
+	}
 	return codes
+}
+
+// genRestArgs: with a splat, one fresh slice, since Go spreads only a lone slice and Ruby's rest param never aliases the caller's array.
+func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []parser.Node, exprs []expr, ai, nargs int) []string {
+	var codes []string
+	var splats map[int]bool
+	for ; ai < nargs; ai++ {
+		var a expr
+		an := n
+		if exprs != nil {
+			a = exprs[ai]
+		} else {
+			an = args[ai]
+			if sp, ok := an.(*parser.SplatNode); ok {
+				a = f.genExpr(sp.Expression, nil)
+				ac, ok := a.typ.(TClass)
+				if !ok || ac.C.Name != "Array" {
+					f.errorf(an, "splat of non-array %s", a.typ)
+				}
+				unify(p.Type, ac.Args[0], env)
+				if splats == nil {
+					splats = map[int]bool{}
+				}
+				splats[len(codes)] = true
+				codes = append(codes, f.splatSlice(an, a.code, ac.Args[0], subst(p.Type, env)))
+				continue
+			}
+			a = f.genExpr(an, closed(p.Type, env))
+		}
+		unify(p.Type, a.typ, env)
+		codes = append(codes, f.coerceArg(an, a, p, env))
+	}
+	if splats == nil {
+		return codes
+	}
+	et := f.c.goType(subst(p.Type, env))
+	var parts, lit []string
+	flush := func() {
+		if len(lit) > 0 {
+			parts = append(parts, "[]"+et+"{"+strings.Join(lit, ", ")+"}")
+			lit = nil
+		}
+	}
+	for i, c := range codes {
+		if splats[i] {
+			flush()
+			parts = append(parts, c)
+			continue
+		}
+		lit = append(lit, c)
+	}
+	flush()
+	return []string{"slices.Concat[[]" + et + "](" + strings.Join(parts, ", ") + ")..."}
+}
+
+// splatSlice converts elements only when the Go types differ ([]Integer is not []any).
+func (f *fctx) splatSlice(n parser.Node, code string, from, to Type) string {
+	ft, tt := f.c.goType(from), f.c.goType(to)
+	if ft == tt {
+		return "*" + code
+	}
+	conv := f.coerce(n, expr{code: "x", typ: from}, to)
+	return "rbSplat(*" + code + ", func(x " + ft + ") " + tt + " { return " + conv + " })"
 }
 
 // closed returns subst(t, env) if it has no unbound method type vars.
@@ -948,26 +1026,32 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 		}
 	}
 	ret := subst(m.Ret, env)
-	code := f.callCode(e, recv, codes, env)
+	out := expr{code: f.callCode(e, recv, codes, env), typ: ret}
 	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
 		if t := f.constGetType(recv, args); t != nil {
-			code, ret = code+".("+f.c.goType(t)+")", t
+			if isOpt(t) {
+				// the constant table holds T? as T or nil (see Opt)
+				out.code = f.coerce(n, expr{code: out.code, typ: TAny{}}, t)
+			} else {
+				out.code, out.assert = out.code+".("+f.c.goType(t)+")", true
+			}
+			out.typ = t
 		}
 	}
 	// `klass.new` returns the hierarchy's root type; narrow to the class the
 	// receiver is statically known to be.
 	if m.Kind == kindSynth && m.Name == "new" {
 		if meta := f.metaOfType(recv.typ); meta != nil && meta.metaOf != meta.metaOf.root() {
-			ret = TClass{C: meta.metaOf}
-			code += ".(" + f.c.goType(ret) + ")"
+			out.typ = TClass{C: meta.metaOf}
+			out.code, out.assert = out.code+".("+f.c.goType(out.typ)+")", true
 		}
 	}
 	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" && e.Owner != nil {
 		if rc, ok := recv.typ.(TClass); ok && rc.C.isStruct() && e.Entry != rc.C {
-			code += ".(" + f.c.goType(recv.typ) + ")"
+			out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
 		}
 	}
-	return expr{code: code, typ: ret}
+	return out
 }
 
 // callCode renders the call for entry e.
@@ -989,21 +1073,34 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	if !free {
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
-	targs := ""
-	if f.needsExplicitTypeArgs(m) {
-		var ts []string
-		if m.Owner.GoType == "" {
-			ts = append(ts, f.c.goType(recv.typ))
-		}
-		for _, p := range m.Owner.TypeParams {
-			ts = append(ts, f.c.goType(env[p]))
-		}
-		for _, p := range m.TypeParams {
-			ts = append(ts, f.c.goType(env[p]))
-		}
-		targs = "[" + strings.Join(ts, ", ") + "]"
+	return freeFuncName(m) + f.typeArgs(m, recv.typ, env) + "(" + recv.code + comma(argList) + ")"
+}
+
+// typeArgs are explicit because Go would infer from argument Go types (untyped const, *Foo, *Foo_Meta), not the Ruby binding.
+func (f *fctx) typeArgs(m *Method, recvT Type, env map[string]Type) string {
+	ts := []Type{}
+	if m.Owner.GoType == "" {
+		ts = append(ts, recvT)
 	}
-	return freeFuncName(m) + targs + "(" + recv.code + comma(argList) + ")"
+	for _, p := range m.Owner.TypeParams {
+		ts = append(ts, env[p])
+	}
+	for _, p := range m.TypeParams {
+		ts = append(ts, env[p])
+	}
+	if len(ts) == 0 {
+		return ""
+	}
+	gs := make([]string, len(ts))
+	for i, t := range ts {
+		if t == nil {
+			return "" // unbound: leave it to Go's inference
+		}
+		if gs[i] = f.c.goType(t); gs[i] == "" {
+			return ""
+		}
+	}
+	return "[" + strings.Join(gs, ", ") + "]"
 }
 
 // hasForwarder reports whether the receiver's Go type carries a method for e.
@@ -1028,31 +1125,6 @@ func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
 			return f.c.selfCalls(f.owner)[e.M.Name]
 		}
 		return e.Owner == f.owner
-	}
-	return false
-}
-
-func (f *fctx) needsExplicitTypeArgs(m *Method) bool {
-	var mentioned []string
-	for _, p := range m.Params {
-		freeVars(p.Type, &mentioned)
-	}
-	if m.Block != nil {
-		for _, p := range m.Block.Params {
-			freeVars(p, &mentioned)
-		}
-		freeVars(m.Block.Ret, &mentioned)
-	}
-	for _, tp := range m.TypeParams {
-		found := false
-		for _, v := range mentioned {
-			if v == tp {
-				found = true
-			}
-		}
-		if !found {
-			return true
-		}
 	}
 	return false
 }
@@ -1176,6 +1248,12 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		}
 		f.genStmts(body, t)
 	}
+	// A block is its own Go function: a begin around the call (or in the
+	// method) must not route the block's value into the enclosing result.
+	// A begin in the block keeps the value in the closure's own ret_.
+	savedBegins, savedRetVar, savedFlag := f.begins, f.retVar, f.retFlag
+	f.begins, f.retVar, f.retFlag = 0, "ret_", ""
+	defer func() { f.begins, f.retVar, f.retFlag = savedBegins, savedRetVar, savedFlag }()
 	// probe the body's type if the block return has unbound vars
 	ret := closed(sig.Ret, env)
 	if ret == nil {
@@ -1214,6 +1292,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	retS := ""
 	if !isVoid(ret) {
 		retS = " " + f.c.goType(ret)
+		if containsRescue(body) {
+			retS = " (ret_" + retS + ")"
+		}
 	}
 	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
 	f.indent++
@@ -1352,9 +1433,30 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		f.errorf(n, "super outside a method")
 	}
 	e := f.c.inheritedSig(f.m)
+	if e == nil && f.m.superBridge {
+		// the target depends on the includer: its bridge calls it (superBridges)
+		env := map[string]Type{"Self": f.selfType}
+		codes := f.genArgs(n, f.m, env, f.superArgs(n, args, forwarding), nil)
+		return expr{code: f.selfCode + "." + bridgeName(f.m) + "(" + strings.Join(codes, ", ") + ")", typ: subst(f.m.Ret, env)}
+	}
 	if e == nil {
-		if f.m.Name == "initialize" {
+		switch f.m.Name {
+		case "initialize":
 			return expr{code: "", typ: TVoid{}, stmt: true}
+		case "respond_to_missing?": // Object's answers false
+			return expr{code: "Boolean(false)", typ: f.cls("Boolean")}
+		case "method_missing": // Object's raises NoMethodError for the name
+			var name parser.Node
+			if forwarding && len(f.m.Params) > 0 {
+				name = &parser.LocalVariableReadNode{Name: f.m.Params[0].Name, Location: n.(*parser.ForwardingSuperNode).Location}
+			} else if args != nil && len(args.Arguments) > 0 {
+				name = args.Arguments[0]
+			}
+			if name == nil {
+				f.errorf(n, "super in method_missing needs the method name")
+			}
+			sym := f.coerce(name, f.genExpr(name, f.cls("Symbol")), f.cls("Symbol"))
+			return expr{code: "panic(rbNoMethod(string(" + sym + "), " + f.selfCode + ", false))", typ: TVoid{}, stmt: true, noreturn: true}
 		}
 		f.errorf(n, "super: no parent method %s", f.m.Name)
 	}
@@ -1366,27 +1468,34 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		env[k] = v
 	}
 	env["Self"] = f.selfType
-	var codes []string
-	if forwarding {
-		for _, p := range f.m.Params {
-			if p.Rest {
-				codes = append(codes, "(*"+goLocalName(p.Name)+")...")
-			} else {
-				codes = append(codes, goLocalName(p.Name))
-			}
-		}
-	} else {
-		var an []parser.Node
-		if args != nil {
-			an = args.Arguments
-		}
-		codes = f.genArgs(n, e.M, env, an, nil)
-	}
+	codes := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
 	code := freeFuncName(e.M) + "(" + f.selfCode + comma(strings.Join(codes, ", ")) + ")"
 	return expr{code: code, typ: subst(e.M.Ret, env)}
+}
+
+// superArgs is what `super` passes: its arguments, or for a zsuper the
+// current params re-read as locals, so genArgs coerces them to the
+// parent's types and fills the parent's remaining defaults.
+func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding bool) []parser.Node {
+	if !forwarding {
+		if args == nil {
+			return nil
+		}
+		return args.Arguments
+	}
+	var an []parser.Node
+	loc := n.(*parser.ForwardingSuperNode).Location
+	for _, p := range f.m.Params {
+		var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
+		if p.Rest {
+			a = &parser.SplatNode{Expression: a, Location: loc}
+		}
+		an = append(an, a)
+	}
+	return an
 }
 
 func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type) expr {
@@ -1485,18 +1594,18 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		return expr{code: "rbInspect(Opt(" + recv.code + "))", typ: f.cls("String")}
 	case "to_json":
 		return expr{code: "rbToJson(" + strings.Join(append([]string{"Opt(" + recv.code + ")"}, f.jsonArgs(args)...), ", ") + ")", typ: f.cls("String")}
-	case "==", "!=", "equal?":
+	case "==", "equal?":
 		if len(args) != 1 {
 			f.errorf(n, "%s takes one argument", name)
 		}
 		a := f.genExpr(args[0], nil)
-		code := "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")"
-		if name == "!=" {
-			code = "!" + code
-		}
-		return expr{code: code, typ: f.cls("Boolean")}
+		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
 	case "!":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
+	case "to_i", "to_f", "to_a", "to_h", "=~":
+		if e, ok := f.nilClassCall(n, recv, name, args); ok {
+			return e
+		}
 	}
 	// Ruby raises NoMethodError when the value is nil; so does this.
 	f.c.warn(f.f, n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
@@ -1509,6 +1618,44 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
 	return f.genMethodCall(n, expr{code: "(*" + code + ")", typ: elem}, name, args, nil)
+}
+
+// nilClassCall: nil answers to_i/=~/... itself (0, nil), not NoMethodError, when T's method's type can hold that answer.
+func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
+	if (name == "=~") != (len(args) == 1) || len(args) > 1 {
+		return expr{}, false
+	}
+	rt := f.newTmp()
+	inner := expr{code: "(*" + rt + ")", typ: recv.typ.(TOpt).Elem}
+	var probe expr
+	f.probe(func() { probe = f.genMethodCall(n, inner, name, args, nil) })
+	t := probe.typ
+	var zero string // "" is Go's zero value
+	switch {
+	case name == "to_i" && isClass(t, "Integer"), name == "to_f" && isClass(t, "Float"),
+		name == "=~" && (isOpt(t) || isAny(t)):
+	case name == "to_a" && isClass(t, "Array"):
+		zero = "(&Array[" + f.c.goType(t.(TClass).Args[0]) + "]{})"
+	case name == "to_h" && isClass(t, "Hash"):
+		a := t.(TClass).Args
+		zero = "NewHash[" + f.c.goType(a[0]) + ", " + f.c.goType(a[1]) + "]()"
+	default:
+		return expr{}, false
+	}
+	// ponytail: =~'s argument is only evaluated when the receiver is non-nil; hoist it if a side-effecting pattern ever matters
+	tmp := f.newTmp()
+	f.emit("var %s %s", tmp, f.c.goType(t))
+	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+	f.indent++
+	e := f.genMethodCall(n, inner, name, args, nil)
+	f.emit("%s = %s", tmp, f.coerce(n, e, t))
+	f.indent--
+	if zero != "" {
+		f.emit("} else {")
+		f.emit("\t%s = %s", tmp, zero)
+	}
+	f.emit("}")
+	return expr{code: tmp, typ: t}, true
 }
 
 func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
@@ -1532,13 +1679,13 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 	case "<=>":
 		a := f.genExpr(args[0], recv.typ)
 		return expr{code: recv.code + ".Cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
-	case "==", "!=":
+	case "==":
 		a := f.genExpr(args[0], nil)
-		code := recv.code + ".Eq(" + f.coerce(args[0], a, TAny{}) + ")"
-		if name == "!=" {
-			code = "!" + code
+		code := a.code // the same tuple type compares field-wise, without converting
+		if !typeEq(a.typ, recv.typ) {
+			code = f.coerce(args[0], a, TAny{})
 		}
-		return expr{code: code, typ: f.cls("Boolean")}
+		return expr{code: recv.code + ".Eq(" + code + ")", typ: f.cls("Boolean")}
 	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}
@@ -1566,14 +1713,11 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		return expr{code: "Boolean(any(" + recv.code + ") == nil)", typ: f.cls("Boolean")}
 	case "!":
 		return expr{code: "Boolean(!rbTruthy(" + recv.code + "))", typ: f.cls("Boolean")}
-	case "==", "!=":
+	case "==":
 		a := one(recv.typ)
 		code := "rbEq(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")"
 		if isAny(recv.typ) || isNil(recv.typ) {
 			code = "rbEq[any](" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")"
-		}
-		if name == "!=" {
-			code = "!" + code
 		}
 		return expr{code: code, typ: f.cls("Boolean")}
 	case "equal?":
@@ -1643,7 +1787,9 @@ func (f *fctx) metaOfType(t Type) *Class {
 }
 
 // genClassOf renders `x.class` for an instance of a class with a metaclass.
-func (f *fctx) genClassOf(recv expr) (expr, bool) {
+// A receiver whose class is known only at run time (untyped, Object, a
+// module, nil, T?) asks rbClassOf, typed as a plain Class.
+func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 	var cls *Class
 	switch t := recv.typ.(type) {
 	case TClass:
@@ -1652,6 +1798,11 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 		if t.Name == "Self" {
 			cls = f.owner
 		}
+	case TAny, TNil, TOpt:
+		return f.dynClassOf(n, recv), true
+	}
+	if cls != nil && (cls.universal || cls.IsModule) {
+		return f.dynClassOf(n, recv), true
 	}
 	if cls != nil && cls.metaOf != nil {
 		// the class of a class object is Class; of a module, Module
@@ -1667,11 +1818,16 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 	if !cls.isStruct() {
 		return expr{code: classVar(cls), typ: TClass{C: cls.meta}}, true
 	}
-	code := recv.code + "._ClassOf()"
+	out := expr{code: recv.code + "._ClassOf()", typ: TClass{C: cls.meta}}
 	if cls != cls.root() {
-		code += ".(" + f.c.goType(TClass{C: cls.meta}) + ")"
+		out.code, out.assert = out.code+".("+f.c.goType(out.typ)+")", true
 	}
-	return expr{code: code, typ: TClass{C: cls.meta}}, true
+	return out, true
+}
+
+func (f *fctx) dynClassOf(n parser.Node, recv expr) expr {
+	f.c.classOf = true
+	return expr{code: "rbClassOf(" + f.coerce(n, recv, TAny{}) + ")", typ: f.cls("Class")}
 }
 
 func isIsA(n *parser.CallNode) bool {
@@ -1685,14 +1841,22 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	if cls == nil {
 		f.errorf(classNode, "is_a? needs a class name")
 	}
-	if !isSimpleGo(recv.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, recv.code)
-		recv.code = tmp
+	c := f.isA(n, recv, cls)
+	if c == "true" || c == "false" {
+		f.discard(recv)
 	}
+	return c
+}
+
+func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
-		inner := f.isACheck(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, classNode)
+		if !isSimpleGo(recv.code) {
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, recv.code)
+			recv.code = tmp
+		}
+		inner := f.isA(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, cls)
 		return "(" + recv.code + " != nil && " + inner + ")"
 	}
 	if isNil(t) {
@@ -1766,6 +1930,15 @@ var simpleGo = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|\(\*[A-Za-z_][A-Za
 // isSimpleGo reports whether code can be evaluated twice without effects.
 func isSimpleGo(code string) bool { return simpleGo.MatchString(code) }
 
+// discard evaluates e for its effects where a fold drops its value. It
+// discards simple code too: readLocal already counted a local's read, so
+// noteUnused will not, and Go rejects the unused variable.
+func (f *fctx) discard(e expr) {
+	if e.code != "" && e.code != "nil" && !e.lit {
+		f.emit("_ = %s", e.code)
+	}
+}
+
 // genOrAssign renders `x ||= value` for a target whose current value is cur.
 // The value is evaluated only when x is nil (or falsy, for untyped/bool).
 func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
@@ -1787,7 +1960,11 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
 	f.indent++
 	saved := f.enterBlock()
 	v := f.genExpr(value, elem)
-	f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+	if v.noreturn { // `x ||= raise(...)`
+		f.emit("%s", v.code)
+	} else {
+		f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+	}
 	f.leaveBlock(saved)
 	f.indent--
 	f.emit("}")
@@ -2191,9 +2368,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		return expr{}, false
 	}
 	if e := cls.lookup(name); e != nil && !e.M.Private && !rubyPrivate[name] {
-		if !isSimpleGo(recv.code) {
-			f.emit("_ = %s", recv.code)
-		}
+		f.discard(recv)
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
 	if cls.descendantDefines(name) {
@@ -2204,9 +2379,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		defer func() { f.implicitCall = false }()
 		return f.callEntry(n, rm, recv, []parser.Node{args[0], &parser.FalseNode{}}, nil), true
 	}
-	if !isSimpleGo(recv.code) {
-		f.emit("_ = %s", recv.code)
-	}
+	f.discard(recv)
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
 }
 
@@ -2341,7 +2514,10 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 		r = f.genExpr(n.RescueExpression, expected)
 	})
 	typ, ok := join(e.typ, r.typ)
-	if !ok {
+	switch {
+	case r.noreturn: // `expr rescue raise(...)`
+		typ = e.typ
+	case !ok:
 		typ = TAny{}
 	}
 	if isVoid(typ) && !isNil(typ) {
@@ -2360,7 +2536,11 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.emit("\t\t}")
 	f.indent += 2
 	r = f.genExpr(n.RescueExpression, typ)
-	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	if r.noreturn {
+		f.emit("%s", r.code)
+	} else {
+		f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	}
 	f.indent -= 2
 	f.emit("\t}")
 	f.emit("}()")

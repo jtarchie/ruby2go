@@ -1,5 +1,3 @@
-# skip: default arguments are evaluated at the call site, in the caller's scope: `b = a.size` is a compile error ("undefined local a") and leaves no dynamic wrapper; `a = @x` / `g = helper` read the caller's ivar / method, silently; MRI evaluates them in the callee
-
 # rbs_inline: enabled
 
 class Foo

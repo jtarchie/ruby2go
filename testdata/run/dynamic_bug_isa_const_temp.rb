@@ -1,5 +1,3 @@
-# skip: is_a? on a non-local receiver whose static type decides the answer leaves an unused temp: go build fails "declared and not used"
-
 # rbs_inline: enabled
 
 class Vehicle

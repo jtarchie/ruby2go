@@ -1,5 +1,3 @@
-# skip: a Klass.new value or class constant passed straight to a generic method (then, reduce's seed, include?) has Go type *Vec / *Vec_Meta while the element or block type is VecI / Vec_MetaI, so Go infers the wrong type parameter and go build fails
-
 # rbs_inline: enabled
 
 class Vec

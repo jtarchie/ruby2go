@@ -27,6 +27,12 @@
     if v, ok := args[i].(T); ok {
       return v
     }
+    var zero T
+    if tup, ok := any(zero).(interface{ _FromAny(any) (T, bool) }); ok { // an Array into a tuple param
+      if v, ok := tup._FromAny(args[i]); ok {
+        return v
+      }
+    }
     panic(NewTypeError(Ref(String("no implicit conversion of " + rbDescribe(args[i]) + " into " + want))))
   }
 
