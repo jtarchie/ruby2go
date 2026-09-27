@@ -71,6 +71,34 @@
     return a.(I_Inspect).Inspect()
   }
 
+  // rbInspecting holds the containers whose inspect is on the stack, so one
+  // that holds itself prints [...] / {...} like MRI instead of overflowing.
+  // ponytail: one set for all threads (MRI's is per-thread), so two threads
+  // inspecting the same container at once may see [...]; a goroutine-local
+  // set needs a goroutine id Go does not expose.
+  var (
+    rbInspectingMu sync.Mutex
+    rbInspecting   = map[any]struct{}{}
+  )
+
+  // rbInspectEnter marks p as being inspected; false means it already is.
+  // A true result must be paired with a deferred rbInspectLeave(p).
+  func rbInspectEnter(p any) bool {
+    rbInspectingMu.Lock()
+    defer rbInspectingMu.Unlock()
+    if _, ok := rbInspecting[p]; ok {
+      return false
+    }
+    rbInspecting[p] = struct{}{}
+    return true
+  }
+
+  func rbInspectLeave(p any) {
+    rbInspectingMu.Lock()
+    defer rbInspectingMu.Unlock()
+    delete(rbInspecting, p)
+  }
+
   func rbTruthy(a any) bool {
     switch v := a.(type) {
     case nil:

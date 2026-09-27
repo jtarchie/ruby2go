@@ -222,7 +222,17 @@ class Array < Object
   }
 
   #: () -> String
-  def inspect = "[" + map { |x| x.inspect }.join(", ") + "]"
+  def inspect = %x{
+    if !rbInspectEnter(self) {
+      return "[...]"
+    }
+    defer rbInspectLeave(self)
+    parts := make([]string, len(*self))
+    for i, x := range *self {
+      parts[i] = string(rbInspect(x))
+    }
+    return String("[" + strings.Join(parts, ", ") + "]")
+  }
 
   #: () -> String
   def to_s = inspect

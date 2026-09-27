@@ -529,7 +529,11 @@ resolve; anything not listed is still open.
     e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
 26. Threads are goroutines. An exception ends only its thread (reported on
     stderr) and `join` re-raises it. There is no GVL: stdout writes are
-    locked, other shared state is the program's problem.
+    locked, other shared state is the program's problem. The set of
+    containers mid-`inspect` (what prints a self-reference as `[...]` or
+    `{...}`) is one locked set, not MRI's per-thread one: Go exposes no
+    goroutine id, so two threads inspecting one container at once may
+    see `[...]`.
 27. The `net/http` prelude is WEBrick's and `Net::HTTP`'s API on Go's
     `http.Server` and `http.Client`, keeping what programs can observe:
     no sniffed `Content-Type`, form bodies parsed into `query` only for

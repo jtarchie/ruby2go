@@ -199,6 +199,10 @@ class Hash < Object
 
   #: () -> String
   def inspect = %x{
+    if !rbInspectEnter(self) {
+      return "{...}"
+    }
+    defer rbInspectLeave(self)
     parts := make([]string, 0, len(self.keys))
     for _, k := range self.keys {
       parts = append(parts, rbInspectPair(k, self.vals[k]))
