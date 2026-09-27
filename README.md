@@ -445,6 +445,13 @@ resolve; anything not listed is still open.
    representation" shortcut would make `E?` inside a generic container mean
    something different from `Rect?` outside it; uniform boxing keeps
    generics honest at the cost of a `Ref`/`Opt` at the boundary.
+   A consequence: `Array[Integer]` is `[]Integer` and cannot hold nil, so
+   `a[i] = v` past the end pads the gap with the zero value (`0`, `""`,
+   `false`) where MRI pads with nil. That is right whenever the gap is
+   filled before it is read (`out[perm[i]] = x`); a program that reads the
+   holes needs an element type that holds nil (`Array[Integer?]`, or an
+   unannotated `[]`). Raising instead would reject the fill-later programs
+   MRI runs, and tracking holes would cost every typed read.
 8. Dispatch shape: struct classes get an interface (`ShapeI`) of their full
    method set plus `_Shape() *Shape` accessors for every struct in the
    chain (ivar access from free functions, and the marker `rescue` matches

@@ -87,6 +87,7 @@ class Array < Object
       i += Integer(len(*self))
     }
     for int(i) >= len(*self) {
+      // nil when E holds it; a non-nilable E pads with its zero value (decision 7)
       var zero E
       *self = append(*self, zero)
     }
