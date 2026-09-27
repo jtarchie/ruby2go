@@ -44,6 +44,7 @@ type Class struct {
 	valueKind     string    // "struct" or "data"
 	msetCache     []entry
 	selfCallCache map[string]bool
+	slotsLinked   bool // linkOverrides ran
 }
 
 type ivarDecl struct {
@@ -122,6 +123,7 @@ type Method struct {
 	Ret        Type
 	Iterator   bool   // block returns void → iter.Seq
 	seqAdapter bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
+	shadowed   []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
 	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
@@ -151,6 +153,12 @@ type BlockSig struct {
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
+
+// slot is method entry e as its Go signature appears in class in's interface.
+type slot struct {
+	e  entry
+	in *Class
+}
 
 // entry is a method as seen from a concrete class's method set.
 type entry struct {
@@ -842,6 +850,9 @@ func (c *Compiler) link() {
 		}
 	}
 	for _, cls := range c.classList {
+		c.linkOverrides(cls)
+	}
+	for _, cls := range c.classList {
 		ms := make([]*Method, 0, len(cls.MethodList))
 		for _, e := range cls.methodSet() {
 			ms = append(ms, e.M)
@@ -1062,6 +1073,42 @@ func (c *Compiler) overridesIterator(m *Method) bool {
 	}
 	e := c.inheritedSig(m)
 	return e != nil && e.M.Block != nil && (e.M.Iterator || c.overridesIterator(e.M))
+}
+
+// linkOverrides names the Go slot each override of a struct class fills. An
+// override with the parent's Go signature takes the parent's Go name; one
+// that differs (another arity, a narrower return) gets its own name, and the
+// class keeps answering to the parent's slot through an adapter (decision 8).
+func (c *Compiler) linkOverrides(cls *Class) {
+	sup := cls.Super
+	if cls.slotsLinked || !cls.isStruct() || cls.universal || sup == nil || sup.universal {
+		return
+	}
+	cls.slotsLinked = true
+	c.linkOverrides(sup)
+	for _, m := range cls.MethodList {
+		pe := sup.lookup(m.Name)
+		if pe == nil || !inInterface(m) || !inInterface(pe.M) || m.seqAdapter != pe.M.seqAdapter {
+			continue
+		}
+		own := entry{M: m, Owner: cls, Env: map[string]Type{}, Entry: cls}
+		if c.slotKey(slot{own, cls}) == c.slotKey(slot{*pe, sup}) {
+			m.GoName = pe.M.GoName
+			m.shadowed = pe.M.shadowed
+			continue
+		}
+		// `_` + lowercase never comes out of camel-casing (decision 3)
+		m.GoName = goMethodName(m.Name) + "_of" + cls.Name
+		m.shadowed = append([]slot{{*pe, sup}}, pe.M.shadowed...)
+		for _, s := range m.shadowed {
+			c.checkAdaptable(slot{own, cls}, s)
+		}
+	}
+}
+
+// inInterface reports whether m is a slot of its owner's Go interface.
+func inInterface(m *Method) bool {
+	return !m.Private && !m.generic() && m.Name != "initialize" && (m.Owner.metaOf == nil || m.Name != "new")
 }
 
 func substAll(ts []Type, env map[string]Type) []Type {

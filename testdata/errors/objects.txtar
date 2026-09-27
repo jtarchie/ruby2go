@@ -1040,3 +1040,29 @@ class Word < Base
 end
 
 puts Word.new.utf8
+-- override_unrelated_return.rb --
+# error: main.rb:9: Sub#size: () -> String overrides Base#size: () -> Integer, but its String result cannot stand in for Integer
+class Base
+  #: () -> Integer
+  def size = 1
+end
+
+class Sub < Base
+  #: () -> String
+  def size = "one"
+end
+
+puts Sub.new.size
+-- override_optional_param.rb --
+# error: main.rb:9: Sub#greet: (String) -> String overrides Base#greet: (String?) -> String, but argument 1 cannot pass a String? as a String
+class Base
+  #: (String?) -> String
+  def greet(s) = "hi #{s}"
+end
+
+class Sub < Base
+  #: (String) -> String
+  def greet(s) = "yo #{s}"
+end
+
+puts Sub.new.greet("x")

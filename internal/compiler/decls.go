@@ -393,6 +393,10 @@ func (c *Compiler) emitStructClass(cls *Class) {
 			name, ps, ret := c.seqAdapterSig(e.M, env)
 			c.w("\t%s(%s) %s\n", name, ps, ret)
 		}
+		for _, s := range e.M.shadowed {
+			ps, ret := c.sig(s.e.M, c.slotEnv(s))
+			c.w("\t%s(%s) %s\n", s.e.M.GoName, ps, ret)
+		}
 	}
 	if cls.meta != nil || cls.metaOf != nil {
 		// a metaclass inherits _ClassOf from Class/Module; listing it lets a
@@ -478,7 +482,167 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk %s) { self.%s(%s) })\n}\n",
 			recv, name, ps, ret, seq, c.blockGoType(e.M.Block, env), e.M.GoName, c.argNames(e.M))
 	}
+	for _, e := range c.publicEntries(cls) {
+		for _, s := range e.M.shadowed {
+			ps, ret := c.sig(s.e.M, c.slotEnv(s))
+			c.w("func (self %s) %s(%s) %s {\n%s}\n", recv, s.e.M.GoName, ps, ret, c.adapterBody(cls, e, s))
+		}
+	}
 	c.w("\n")
+}
+
+// slotEnv binds the type variables of slot s's signature, Self included.
+func (c *Compiler) slotEnv(s slot) map[string]Type {
+	env := composeEnv(s.e.Env, nil)
+	env["Self"] = c.selfTypeFor(s.e, s.in)
+	return env
+}
+
+// slotKey is slot s's Go signature without parameter names.
+func (c *Compiler) slotKey(s slot) string {
+	m := *s.e.M
+	m.Params = make([]Param, len(s.e.M.Params))
+	for i, p := range s.e.M.Params {
+		m.Params[i] = Param{Name: "_", Type: p.Type, Rest: p.Rest}
+	}
+	ps, ret := c.sig(&m, c.slotEnv(s))
+	return "(" + ps + ") " + ret
+}
+
+// sigText renders slot s's signature, block aside, in RBS for messages.
+func (c *Compiler) sigText(s slot) string {
+	env := c.slotEnv(s)
+	ps := make([]string, len(s.e.M.Params))
+	for i, p := range s.e.M.Params {
+		ps[i] = subst(p.Type, env).String()
+		if p.Rest {
+			ps[i] = "*" + ps[i]
+		}
+	}
+	return "(" + strings.Join(ps, ", ") + ") -> " + subst(s.e.M.Ret, env).String()
+}
+
+// arity is the argument count range m takes; max is -1 with a rest param.
+func arity(m *Method) (req, maxArgs int) {
+	for _, p := range m.Params {
+		switch {
+		case p.Rest:
+			return req, -1
+		case p.Default == nil:
+			req++
+		}
+		maxArgs++
+	}
+	return req, maxArgs
+}
+
+// paramAt is the parameter taking positional argument i.
+func paramAt(m *Method, i int) Param {
+	for j, p := range m.Params {
+		if p.Rest || j == i {
+			return p
+		}
+	}
+	panic("paramAt: out of range")
+}
+
+// adapts reports whether an adapter can hand a from where a to is expected:
+// the same Go type, through untyped, or up a struct hierarchy (down, with a
+// type assertion, for arguments).
+func (c *Compiler) adapts(from, to Type, arg bool) bool {
+	switch {
+	case isVoid(to) && !arg:
+		return true
+	case isVoid(from):
+		return false
+	case c.goType(from) == c.goType(to) || isAny(to):
+		return true
+	case isAny(from):
+		_, ok := to.(TClass)
+		_, opt := to.(TOpt)
+		return ok || opt
+	}
+	fc, ok1 := from.(TClass)
+	tc, ok2 := to.(TClass)
+	if !ok1 || !ok2 || !fc.C.isStruct() || !tc.C.isStruct() {
+		return false
+	}
+	return fc.C.isSubclassOf(tc.C) || arg && tc.C.isSubclassOf(fc.C)
+}
+
+// checkAdaptable rejects an override whose class cannot answer slot s of an
+// ancestor's interface through an adapter.
+func (c *Compiler) checkAdaptable(own, s slot) {
+	m, sm := own.e.M, s.e.M
+	fail := func(why string) {
+		c.errorf(nil, nil, "%s:%d: %s: %s overrides %s: %s, but %s; give it the parent's signature or another name",
+			m.File.Name, m.Line, m, c.sigText(own), sm, c.sigText(s), why)
+	}
+	if m.Block != nil || sm.Block != nil {
+		fail("a block-taking override must keep the signature")
+	}
+	for _, p := range sm.Params {
+		if p.Rest {
+			fail("an override of a rest-parameter method must keep the signature")
+		}
+	}
+	req, maxArgs := arity(m)
+	if n := len(sm.Params); n < req || maxArgs >= 0 && n > maxArgs {
+		return // the adapter raises ArgumentError, as MRI would
+	}
+	env, oenv := c.slotEnv(s), c.slotEnv(own)
+	for i, p := range sm.Params {
+		from, to := subst(p.Type, env), subst(paramAt(m, i).Type, oenv)
+		if !c.adapts(from, to, true) {
+			fail(fmt.Sprintf("argument %d cannot pass a %s as a %s", i+1, from, to))
+		}
+	}
+	from, to := subst(m.Ret, oenv), subst(sm.Ret, env)
+	if !c.adapts(from, to, false) {
+		fail(fmt.Sprintf("its %s result cannot stand in for %s", from, to))
+	}
+}
+
+// adapterBody answers slot s of an ancestor's interface with cls's method e
+// (checked by checkAdaptable): an argument count e cannot take raises MRI's
+// ArgumentError, anything else converts across the two signatures.
+func (c *Compiler) adapterBody(cls *Class, e entry, s slot) string {
+	file := cls.File
+	if e.M.File != nil {
+		file = e.M.File
+	}
+	f := c.newFctx(file, cls, nil)
+	f.lex = e.M.Scope
+	f.locals = map[string]*localInfo{}
+	f.scope = &scope{vars: map[string]*local{}}
+	f.pass = 2
+	f.indent = 1
+	n := len(s.e.M.Params)
+	if req, maxArgs := arity(e.M); n < req || maxArgs >= 0 && n > maxArgs {
+		f.emit("rbArity(%d, %d, %d)\n\tpanic(\"unreachable\")", n, req, maxArgs)
+		return f.buf.String()
+	}
+	recv := expr{code: "self", typ: TClass{C: cls}}
+	env, oenv := c.slotEnv(s), composeEnv(e.Env, nil)
+	oenv["Self"] = recv.typ
+	args := make([]parser.Node, n)
+	for i, p := range s.e.M.Params {
+		a := expr{code: goLocalName(p.Name), typ: subst(p.Type, env)}
+		to := subst(paramAt(e.M, i).Type, oenv)
+		if tc, ok := to.(TClass); ok && tc.C.isStruct() && !c.adapts(a.typ, to, false) {
+			a = expr{code: a.code + ".(" + c.goType(to) + ")", typ: to} // narrower: assert
+		}
+		args[i] = &exprNode{e: a}
+	}
+	res := f.callEntry(&parser.NilNode{}, &e, recv, args, nil)
+	ret := subst(s.e.M.Ret, env)
+	switch {
+	case !isVoid(ret):
+		f.emit("return %s", f.coerce(&parser.NilNode{}, res, ret))
+	case res.code != "":
+		f.emit("%s", res.code)
+	}
+	return f.buf.String()
 }
 
 // seqAdapterSig renders the iter.Seq adapter a closure override of an

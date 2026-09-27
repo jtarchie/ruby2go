@@ -462,6 +462,17 @@ resolve; anything not listed is still open.
    `Comparable_Self[*Version]` or pass a `(self)` argument on.
    `BasicObject`, `Object` and `Kernel` are "universal": their `Self` is
    `any`, since primitives inherit from them too.
+   A subclass interface must hold every ancestor's method with the same Go
+   signature, so an override whose signature differs from its parent's
+   (another arity, a narrower return such as `-> Sub` for `-> Base`) gets
+   its own Go name (`F_ofSub`), and the class answers to the parent's name
+   through an adapter: it converts arguments and result (up a struct
+   hierarchy, or through `untyped`), or raises MRI's ArgumentError for an
+   argument count the override cannot take. Calls typed as the subclass
+   reach the override directly. An override the adapter cannot bridge (an
+   unrelated return type, a block, a parent's rest parameter) is a compile
+   error naming both signatures. *(Revised: every such override failed
+   `go build`, "wrong type for method".)*
 9. Module constraints are derived from the module body, as the README
    says: `Comparable_Self[Self]` lists what `Comparable`'s methods call on
    `self` (including `self.X(` inside `%x{}`), not every module method.
