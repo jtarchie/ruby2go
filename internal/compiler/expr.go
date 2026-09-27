@@ -31,7 +31,15 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
 	case *parser.IntegerNode:
-		return expr{code: strings.ReplaceAll(f.f.text(n.Location), "_", ""), typ: f.cls("Integer"), lit: true}, true
+		code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
+		if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
+			// Ruby's 0d decimal prefix has no Go spelling; 0x/0o/0b/0 carry over.
+			code = code[:len(code)-len(digits)] + strings.TrimLeft(digits[2:], "0")
+			if strings.TrimPrefix(code, "-") == "" {
+				code += "0"
+			}
+		}
+		return expr{code: code, typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
 		if n.Value == 0 && math.Signbit(n.Value) {
 			// Go's constant -0.0 is +0; Ruby's is negative zero.
@@ -887,7 +895,12 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			continue
 		}
 		if p.Default != nil {
+			// The default is a node of the def's file (often the prelude):
+			// literal text and error positions must come from there.
+			caller := f.f
+			f.f = m.File
 			d := f.genExpr(p.Default, closed(p.Type, env))
+			f.f = caller
 			unify(p.Type, d.typ, env)
 			codes = append(codes, f.coerce(n, d, subst(p.Type, env)))
 			continue
