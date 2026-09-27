@@ -688,8 +688,8 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		f.unnarrow("attr:" + strings.TrimSuffix(n.Name, "="))
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
-		// Foo.new is a direct constructor call unless Foo defines self.new.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new"))) {
+		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"]) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
