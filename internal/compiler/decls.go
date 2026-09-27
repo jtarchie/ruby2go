@@ -291,6 +291,18 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
+	// self is some includer, whose to_s/inspect/... may override Object's
+	if mod.lookup("method_missing") == nil {
+		for _, e := range c.publicEntries(c.classes["Object"]) {
+			if called[e.M.Name] && mod.lookup(e.M.Name) == nil && c.topDefs[e.M.Name] == nil {
+				ps, ret := c.sig(e.M, map[string]Type{"Self": TVar{Name: "Self"}})
+				c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
+			}
+		}
+	}
+	if called["class"] {
+		c.w("\t_ClassObj() %s\n", c.goType(TClass{C: c.classes["Class"]}))
+	}
 	c.w("}\n\n")
 }
 
@@ -318,6 +330,8 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 				out[n.Name] = true
 			} else if _, ok := n.Receiver.(*parser.SelfNode); ok {
 				out[n.Name] = true
+			} else if n.Name == "class" {
+				out[n.Name] = true // the receiver may be a copy of self
 			}
 		case *parser.XStringNode:
 			for _, m := range goSelfCall.FindAllStringSubmatch(n.Unescaped.Value, -1) {
@@ -436,6 +450,17 @@ func (c *Compiler) emitForwarders(cls *Class) {
 			c.w("func (self %s) %s(%s) %s { return %s }\n", recv, m.GoName, ps, ret, body)
 		}
 	}
+	if c.includerCalls(cls, "class") {
+		// a module's `self.class`; a class object's class is Class (a module's, Module)
+		k := cls
+		switch {
+		case cls.metaOf != nil && cls.metaOf.IsModule:
+			k = c.classes["Module"]
+		case cls.metaOf != nil:
+			k = c.classes["Class"]
+		}
+		c.w("func (self %s) _ClassObj() %s { return %s }\n", recv, c.goType(TClass{C: c.classes["Class"]}), classVar(k))
+	}
 	c.w("\n")
 }
 
@@ -503,7 +528,22 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 	if cls.isStruct() {
 		return true
 	}
-	return e.Owner.IsModule && !e.Owner.universal && c.selfCalls(e.Owner)[e.M.Name]
+	if e.Owner.universal {
+		return c.includerCalls(cls, e.M.Name)
+	}
+	return e.Owner.IsModule && c.selfCalls(e.Owner)[e.M.Name]
+}
+
+// includerCalls: a module method calling name on self needs cls to answer it.
+func (c *Compiler) includerCalls(cls *Class, name string) bool {
+	for k := cls; k != nil && !k.universal; k = k.Super {
+		for _, inc := range k.Includes {
+			if c.selfCalls(inc.Mod)[name] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // constFctx is the codegen context a constant's initializer runs in.

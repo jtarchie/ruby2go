@@ -1,5 +1,3 @@
-# skip: to_s/inspect on self inside a module method ("#{self}", to_s.upcase) emit self.ToS() on the generic Self, whose derived constraint lacks ToS (go build: type Self has no field or method ToS)
-
 # rbs_inline: enabled
 
 module Tagged

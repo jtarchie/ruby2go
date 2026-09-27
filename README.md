@@ -449,7 +449,13 @@ resolve; anything not listed is still open.
    called through the free function. This is also what avoids Go's
    "instantiation cycle": a forwarder such as `Hash[K,V].Tally` would
    instantiate `Hash[[K,V], Integer]`, whose forwarders instantiate the
-   next size up, forever.
+   next size up, forever. Inside a module method `self` is some includer,
+   not the module: `Object` methods called on it (`to_s`, `inspect`,
+   `"#{self}"`) join the constraint so the includer's overrides run,
+   `self.class` is a `_ClassObj()` accessor (typed `Class`) the constraint
+   lists, and `is_a?(C)`/`respond_to?(:m)` ask the includer at run time.
+   *(Revised: `self` used to be typed as the module, so `self.class` was
+   the module and `is_a?`/`respond_to?` folded to the module's answer.)*
 10. Type parameters are all constrained `comparable`. Every generated Go
     type satisfies it (strings, ints, pointers, interfaces, tuples of
     those), and it is what `map[K]` and `tally` need; deriving the

@@ -1738,6 +1738,9 @@ func (f *fctx) genClassOf(recv expr) (expr, bool) {
 		if t.Name == "Self" {
 			cls = f.owner
 		}
+		if cls != nil && cls.IsModule && !cls.universal { // self is some includer
+			return expr{code: recv.code + "._ClassObj()", typ: TClass{C: f.c.classes["Class"]}}, true
+		}
 	}
 	if cls != nil && cls.metaOf != nil {
 		// the class of a class object is Class; of a module, Module
@@ -1795,6 +1798,9 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	}
 	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
 		t = TClass{C: f.owner}
+		if f.owner.IsModule { // self is some includer: ask it at run time
+			t = TAny{}
+		}
 	}
 	switch t := t.(type) {
 	case TClass:
@@ -2368,7 +2374,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		}
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
-	if cls.descendantDefines(name) {
+	if cls.IsModule || cls.descendantDefines(name) { // a module's value is some includer
 		return expr{}, false
 	}
 	if rm := cls.lookup("respond_to_missing?"); rm != nil {
