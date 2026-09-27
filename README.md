@@ -619,9 +619,9 @@ resolve; anything not listed is still open.
     too, so it is an Array. A tuple that reaches `untyped` is converted to
     an `Array[untyped]` copy, so untyped code sees an Array (`is_a?`, `when
     Array`, `puts`, `==`, dynamic calls); writes to the copy are not seen by
-    the tuple, and like any Array it keys a Hash by identity (a tuple key
-    used to compare by value). A tuple still inside a typed container
-    answers as an Array to `is_a?`/`when`/`.class` but not to dynamic calls.
+    the tuple, and like any Array it keys a Hash by value (decision 1). A
+    tuple still inside a typed container answers as an Array to
+    `is_a?`/`when`/`.class` but not to dynamic calls.
     The way back is checked: a dynamic call converts an Array of the right
     size and element types into a tuple parameter, else raises `TypeError`;
     no other untyped value converts to a tuple. *(Revised: tuples used to

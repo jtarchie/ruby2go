@@ -64,13 +64,11 @@
     return v
   }
 
-  // rbAsSlow converts an Array into a tuple T (decision 22), else raises.
+  // rbAsSlow converts as rbConv does (nil for untyped, other Array/Hash
+  // instantiations, an Array into a tuple), else raises.
   func rbAsSlow[T any](a any, want string) T {
-    var zero T
-    if tup, ok := any(zero).(interface{ _FromAny(any) (T, bool) }); ok {
-      if v, ok := tup._FromAny(a); ok {
-        return v
-      }
+    if v, ok := rbConv[T](a); ok {
+      return v
     }
     panic(rbConvError(a, want))
   }
@@ -185,7 +183,7 @@
 
   // rbValueKey is k's hash when k matches by value rather than Go ==.
   func rbValueKey(k any) (uint64, bool) {
-    if p, ok := rbUnbox(k); ok {
+    if p, ok := rbKeyUnbox(k); ok {
       return rbKeyHash(p), true
     }
     if v, ok := k.(rbEqlHash); ok {
@@ -202,10 +200,10 @@
   }
 
   func rbKeyEql(a, b any) bool {
-    if p, ok := rbUnbox(a); ok {
+    if p, ok := rbKeyUnbox(a); ok {
       a = p
     }
-    if p, ok := rbUnbox(b); ok {
+    if p, ok := rbKeyUnbox(b); ok {
       b = p
     }
     if a == b {
@@ -225,10 +223,12 @@
     return Integer(rbKeyHash(a))
   }
 
-  // rbUnbox returns what a T? box holds. Boxes point at values (named basic
-  // types, tuples, interfaces, pointers); pointers to other structs, and to
-  // slices and maps, are objects.
-  func rbUnbox(k any) (any, bool) {
+  // rbKeyUnbox returns what a T? box holds, for any box (the generated
+  // rbUnbox knows only the T? types the program renders; a prelude generic
+  // can make others). Boxes point at values (named basic types, tuples,
+  // interfaces, pointers); pointers to other structs, and to slices and
+  // maps, are objects.
+  func rbKeyUnbox(k any) (any, bool) {
     t := reflect.TypeOf(k)
     if t == nil || t.Kind() != reflect.Pointer {
       return nil, false

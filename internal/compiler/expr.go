@@ -675,38 +675,42 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		}
 		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	case TClass:
-		if to.C.universal && e.lit {
-			return f.coerce(n, e, TAny{}) // Object is Go any: "a" must box as String, not string
-		}
-		if isAny(e.typ) && to.C.RubyName == "Boolean" {
-			return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
-		}
-		if isAny(e.typ) && converts(to) {
-			return "rbAs[" + f.c.goType(to) + "](" + e.code + ")"
-		}
-		if isAny(e.typ) {
-			return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
-		}
-		// Go instantiations are invariant: Array[Integer] where
-		// Array[untyped] is expected (or back) is a converted copy.
-		if converts(to) && sameButUntyped(e.typ, to) && f.c.goType(e.typ) != f.c.goType(to) {
-			return "rbAs[" + f.c.goType(to) + "](" + e.code + ")"
-		}
-
-		if isOpt(e.typ) {
-			f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
-		}
-		if isNil(e.typ) {
-			f.errorf(n, "nil where %s is expected", to)
-		}
-		if !fitsValue(e, to) {
-			f.errorf(n, "%s where %s is expected", e.typ, to)
-		}
-		if isAbstract(to) { // Go any: literals need wrapping, as for untyped
-			return f.coerce(n, e, TAny{})
-		}
+		return f.coerceClass(n, e, to)
 	case TVar:
 		return e.code
+	}
+	return e.code
+}
+
+// coerceClass is coerce to a class type.
+func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
+	if to.C.universal && e.lit {
+		return f.coerce(n, e, TAny{}) // Object is Go any: "a" must box as String, not string
+	}
+	if isAny(e.typ) && to.C.RubyName == "Boolean" {
+		return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
+	}
+	// rbAs also converts an Array/Hash of another instantiation (rbConv).
+	if isAny(e.typ) {
+		return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
+	}
+	// Go instantiations are invariant: Array[Integer] where
+	// Array[untyped] is expected (or back) is a converted copy.
+	if converts(to) && sameButUntyped(e.typ, to) && f.c.goType(e.typ) != f.c.goType(to) {
+		return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
+	}
+
+	if isOpt(e.typ) {
+		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
+	}
+	if isNil(e.typ) {
+		f.errorf(n, "nil where %s is expected", to)
+	}
+	if !fitsValue(e, to) {
+		f.errorf(n, "%s where %s is expected", e.typ, to)
+	}
+	if isAbstract(to) { // Go any: literals need wrapping, as for untyped
+		return f.coerce(n, e, TAny{})
 	}
 	return e.code
 }

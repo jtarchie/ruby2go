@@ -750,9 +750,6 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		if convert != "" {
 			armName, view = name+convert, name // converted where read, like is_a? narrowing
 		}
-		if convert != "" {
-			f.emit("_ = %s", armName) // the arm may never read it
-		}
 		if subjLocal != nil {
 			f.scope.vars[subjLocal.name] = &local{name: subjLocal.name, goName: armName, typ: armType, base: subjLocal, view: view, declared: true}
 		}
