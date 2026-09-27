@@ -12,8 +12,10 @@ class Array < Object
   #: () { (E) -> void } -> void
   def each = %x{
     return func(yield func(E) bool) {
-      for _, x := range *self {
-        if !yield(x) {
+      // An index loop re-reading the length, as MRI's: the block may
+      // append, delete or clear. (Not `range len`: that reads it once.)
+      for i := 0; ; i++ {
+        if i >= len(*self) || !yield((*self)[i]) {
           return
         }
       }
@@ -23,8 +25,8 @@ class Array < Object
   #: () { (E, Integer) -> void } -> void
   def each_with_index = %x{
     return func(yield func(E, Integer) bool) {
-      for i, x := range *self {
-        if !yield(x, Integer(i)) {
+      for i := 0; ; i++ {
+        if i >= len(*self) || !yield((*self)[i], Integer(i)) {
           return
         }
       }

@@ -20,17 +20,22 @@
 }
 
 # Insertion-ordered, like Ruby. Deletion is O(n) (README open decision 1).
+# iter counts running iterators, as MRI's iter_lev: while it is non-zero []=
+# of a new key raises and delete copies the key list instead of shifting the
+# one being ranged over; iterators skip keys deleted under them.
 # @rbs generic K
 # @rbs generic V
-# @go_type struct { keys []K; vals map[K]V }
+# @go_type struct { keys []K; vals map[K]V; iter int }
 class Hash < Object
   include Enumerable #[[K, V]]
 
   #: () { ([K, V]) -> void } -> void
   def each = %x{
     return func(yield func(Tuple2[K, V]) bool) {
+      self.iter++
+      defer func() { self.iter-- }()
       for _, k := range self.keys {
-        if !yield(Tuple2[K, V]{k, self.vals[k]}) {
+        if v, ok := self.vals[k]; ok && !yield(Tuple2[K, V]{k, v}) {
           return
         }
       }
@@ -41,8 +46,10 @@ class Hash < Object
   #: () { ([K, V]) -> void } -> void
   def each_pair = %x{
     return func(yield func(Tuple2[K, V]) bool) {
+      self.iter++
+      defer func() { self.iter-- }()
       for _, k := range self.keys {
-        if !yield(Tuple2[K, V]{k, self.vals[k]}) {
+        if v, ok := self.vals[k]; ok && !yield(Tuple2[K, V]{k, v}) {
           return
         }
       }
@@ -52,8 +59,10 @@ class Hash < Object
   #: () { (K) -> void } -> void
   def each_key = %x{
     return func(yield func(K) bool) {
+      self.iter++
+      defer func() { self.iter-- }()
       for _, k := range self.keys {
-        if !yield(k) {
+        if _, ok := self.vals[k]; ok && !yield(k) {
           return
         }
       }
@@ -63,8 +72,10 @@ class Hash < Object
   #: () { (V) -> void } -> void
   def each_value = %x{
     return func(yield func(V) bool) {
+      self.iter++
+      defer func() { self.iter-- }()
       for _, k := range self.keys {
-        if !yield(self.vals[k]) {
+        if v, ok := self.vals[k]; ok && !yield(v) {
           return
         }
       }
@@ -85,6 +96,9 @@ class Hash < Object
   def []=(k, v)
     %x{
     if _, ok := self.vals[k]; !ok {
+      if self.iter > 0 {
+        panic(NewRuntimeError(Ref[String]("can't add a new key into hash during iteration")))
+      }
       self.keys = append(self.keys, k)
     }
     self.vals[k] = v
@@ -142,7 +156,11 @@ class Hash < Object
     delete(self.vals, k)
     for i, key := range self.keys {
       if key == k {
-        self.keys = append(self.keys[:i], self.keys[i+1:]...)
+        head := self.keys[:i]
+        if self.iter > 0 {
+          head = head[:i:i] // force a copy
+        }
+        self.keys = append(head, self.keys[i+1:]...)
         break
       }
     }

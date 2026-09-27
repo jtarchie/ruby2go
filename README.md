@@ -389,6 +389,11 @@ resolve; anything not listed is still open.
    `struct { keys []K; vals map[K]V }` behind `@go_type`; iteration follows
    insertion order, so output is deterministic and MRI-diffable. Deletion is
    O(n) over the key list (no tombstones yet; add them if a profile says so).
+   *Revised:* the struct gained `iter int`, a count of running iterators
+   (MRI's `iter_lev`), so mutation during `each` behaves as in MRI: `[]=` of
+   a new key raises `RuntimeError`, and `delete` copies the key list rather
+   than shifting the one being ranged over, whose deleted keys are skipped.
+   `Array#each` likewise loops by index over the live length.
 2. `TrueClass`/`FalseClass` vs. `Boolean`: **decided, one `Boolean`** (a Go
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is

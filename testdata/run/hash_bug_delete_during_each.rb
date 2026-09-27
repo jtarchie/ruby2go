@@ -1,5 +1,3 @@
-# skip: Hash#delete/clear shrink the key slice in place under a running each: after a delete the next key is skipped and the last key is yielded twice, and after clear the stale keys are yielded with zero values
-
 # rbs_inline: enabled
 
 h = { "a" => 1, "b" => 2, "c" => 3, "d" => 4 } #: Hash[String, Integer]

@@ -1,5 +1,3 @@
-# skip: adding a key during iteration raises RuntimeError in MRI; rb2go silently appends the key
-
 # rbs_inline: enabled
 
 h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
