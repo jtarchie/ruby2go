@@ -1,4 +1,4 @@
-# skip: `next` without a value in a value-returning block (map/select) emits a bare Go return, so go build fails (not enough return values); Ruby yields nil
+# skip: blocked on optional-box-in-any-helpers: `next` now yields nil (map is Array[Integer?], select drops the element), but Array[Integer?]#inspect panics on the nil *Integer (rbInspect gets the box)
 
 # rbs_inline: enabled
 

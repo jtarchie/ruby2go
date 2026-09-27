@@ -1,5 +1,3 @@
-# skip: `expr rescue puts(...)` as a statement drops the fallback call: its side effect never runs
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer

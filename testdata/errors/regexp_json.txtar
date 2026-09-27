@@ -212,15 +212,12 @@ puts (:abc =~ /b/).inspect
 require "json"
 puts JSON.pretty_generate([1])
 -- regexp_where_string_expected.rb --
-# skip: no compile error; the Regexp reaches String#gsub's String parameter and `go build` fails (cannot use *Regexp as String)
-# error: main.rb:3:
+# error: main.rb:2:
 puts "abc".gsub(/b/, "x")
 -- string_where_regexp_expected.rb --
-# skip: no compile error; the String reaches String#match?'s Regexp parameter and `go build` fails (cannot use "b" as *Regexp)
-# error: main.rb:3:
+# error: main.rb:2:
 puts "abc".match?("b")
 -- matchdata_name_index.rb --
-# skip: no compile error; m[:year] passes a Symbol to MatchData#[]'s Integer parameter and `go build` fails
-# error: main.rb:4:
+# error: main.rb:3:
 m = "2024".match(/(?<year>\d+)/)
 puts m[:year].inspect if m

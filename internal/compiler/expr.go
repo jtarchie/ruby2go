@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -32,7 +33,15 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
 	case *parser.IntegerNode:
-		return expr{code: strings.ReplaceAll(f.f.text(n.Location), "_", ""), typ: f.cls("Integer"), lit: true}, true
+		code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
+		if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
+			// Ruby's 0d decimal prefix has no Go spelling; 0x/0o/0b/0 carry over.
+			code = code[:len(code)-len(digits)] + strings.TrimLeft(digits[2:], "0")
+			if strings.TrimPrefix(code, "-") == "" {
+				code += "0"
+			}
+		}
+		return expr{code: code, typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
 		if n.Value == 0 && math.Signbit(n.Value) {
 			// Go's constant -0.0 is +0; Ruby's is negative zero.
@@ -97,10 +106,10 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genRegexp(n)
 	case *parser.MatchWriteNode:
 		f.errorf(n, "named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match")
-	case *parser.LocalVariableOrWriteNode:
-		return f.genOrAssignLocal(n)
-	case *parser.InstanceVariableOrWriteNode:
-		return f.genOrAssignIvar(n)
+	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode:
+		return f.genOrWrite(n)
+	case *parser.CallOperatorWriteNode:
+		return f.genOpAssignAttr(n)
 	case *parser.MultiWriteNode:
 		return f.genMultiWrite(n)
 	case *parser.KeywordHashNode:
@@ -113,7 +122,6 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		}
 		e := f.genExpr(st.Body[0], expected)
 		e.code = "(" + e.code + ")"
-		e.lit = false
 		return e
 	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.BeginNode:
 		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
@@ -156,6 +164,9 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
 		iv := f.ivar(n, n.Name, val.typ)
+		if !fitsValue(val, iv.Type) {
+			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
+		}
 		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
 	case *parser.InstanceVariableOperatorWriteNode:
 		iv := f.ivar(n, n.Name, nil)
@@ -230,6 +241,10 @@ func (f *fctx) genOp(n parser.Node, left expr, op string, right parser.Node) exp
 
 func (f *fctx) genOr(n *parser.OrNode) expr {
 	l := f.genExpr(n.Left, nil)
+	if isNil(l.typ) { // `nil || x` is x
+		f.valueOf(l)
+		return f.genExpr(n.Right, nil)
+	}
 	lElem := stripOpt(l.typ)
 	var r expr
 	f.probe(func() { r = f.genExpr(n.Right, lElem) })
@@ -241,7 +256,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 			return expr{code: "(" + l.code + " || " + rc.code + ")", typ: l.typ}
 		}
 		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, l.code)
+		f.emit("%s := %s", tmp, f.materialize(l))
 		f.emit("if !%s {", tmp)
 		f.buf.WriteString(stmts)
 		f.emit("\t%s = %s", tmp, rc.code)
@@ -274,7 +289,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		f.emit("if %s := %s; rbTruthy(%s) {", lt, f.coerce(n, l, TAny{}), lt)
 		f.emit("\t%s = %s", tmp, lt)
 	case boolL:
-		f.emit("if %s := %s; %s {", lt, l.code, lt)
+		f.emit("if %s := %s; %s {", lt, f.materialize(l), lt)
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	default:
 		f.emit("if %s := %s; %s != nil {", lt, l.code, lt)
@@ -310,28 +325,33 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 			return expr{code: "(" + l.code + " && " + rc.code + ")", typ: l.typ}
 		}
 		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, l.code)
+		f.emit("%s := %s", tmp, f.materialize(l))
 		f.emit("if %s {", tmp)
 		f.buf.WriteString(stmts)
 		f.emit("\t%s = %s", tmp, rc.code)
 		f.emit("}")
 		return expr{code: tmp, typ: l.typ}
 	}
-	if !boolL && !isOpt(l.typ) && !isAny(l.typ) {
+	if !boolL && !isOpt(l.typ) && !isAny(l.typ) && !isNil(l.typ) {
 		// the left is never nil or false: the value is the right
 		f.discard(l)
 		return f.genExpr(n.Right, nil)
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
 	var typ Type = TAny{}
-	if isOpt(l.typ) && !isAny(stripOpt(l.typ)) {
+	if (isOpt(l.typ) || isNil(l.typ)) && !isAny(stripOpt(l.typ)) {
 		if j, ok := join(TNil{}, r.typ); ok {
 			typ = j
 		}
 	}
 	tmp, lt := f.newTmp(), f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
-	f.emit("if %s := %s; %s {", lt, l.code, f.truthy(n.Left, expr{code: lt, typ: l.typ}))
+	if isNil(l.typ) { // `nil && x`: x is dead, but still compiled (like `if nil`)
+		lt = f.valueOf(l).code
+		f.emit("if false {")
+	} else {
+		f.emit("if %s := %s; %s {", lt, f.materialize(l), f.truthy(n.Left, expr{code: lt, typ: l.typ}))
+	}
 	f.indent++
 	f.push()
 	for _, nw := range narrow {
@@ -438,6 +458,8 @@ func (f *fctx) ivarCode(iv *Ivar) string {
 // ---- literals
 
 func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
+	// A literal is never nil, so an expected T? means T.
+	expected = stripOpt(expected)
 	if tt, ok := expected.(TTuple); ok && len(tt.Elems) == len(n.Elements) {
 		codes := make([]string, len(n.Elements))
 		for i, el := range n.Elements {
@@ -519,7 +541,7 @@ func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
 
 func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) expr {
 	var kT, vT Type
-	if ec, ok := expected.(TClass); ok && ec.C.RubyName == "Hash" {
+	if ec, ok := stripOpt(expected).(TClass); ok && ec.C.RubyName == "Hash" {
 		kT, vT = ec.Args[0], ec.Args[1]
 	}
 	type kv struct{ k, v expr }
@@ -570,11 +592,45 @@ func joinOrAny(ts []Type) Type {
 
 // ---- coercion
 
+// valueOf runs a nil-typed call as a statement: `-> nil` methods have no Go result (isVoid).
+func (f *fctx) valueOf(e expr) expr {
+	if !isNil(e.typ) || e.done {
+		return e
+	}
+	c := e.code
+	for strings.HasPrefix(c, "(") && strings.HasSuffix(c, ")") {
+		c = c[1 : len(c)-1]
+	}
+	if !strings.HasSuffix(c, ")") { // nil itself, or a temp holding it
+		return e
+	}
+	f.emit("%s", c)
+	return expr{code: "nil", typ: TNil{}}
+}
+
+// fitsValue is fits plus the one literal conversion Go makes exactly: an
+// Integer literal where a Float is expected (Float's operators take
+// Integers in Ruby). Any other literal of the wrong class, such as "a" for
+// a Symbol, would convert silently too, so it is rejected.
+func fitsValue(e expr, to Type) bool {
+	return fits(e.typ, to) || e.lit && isClass(e.typ, "Integer") && isClass(stripOpt(to), "Float")
+}
+
+// materialize is e's code as a typed Go value: an untyped constant bound
+// with := or used as a receiver would otherwise become int/string/bool.
+func (f *fctx) materialize(e expr) string {
+	if e.lit {
+		return f.c.goType(e.typ) + "(" + e.code + ")"
+	}
+	return e.code
+}
+
 // coerce converts e to the representation of type `to`.
 func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) && !isNil(to) {
 		return e.code
 	}
+	e = f.valueOf(e)
 	if typeEq(e.typ, to) {
 		return e.code
 	}
@@ -608,7 +664,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		case isOpt(e.typ):
 			return e.code
 		case isAny(e.typ):
-			return "OptOf[" + f.c.goType(to.Elem) + "](" + e.code + ")"
+			return fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())
 		}
 		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	case TClass:
@@ -619,7 +675,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 			return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
 		}
 		if isAny(e.typ) {
-			return e.code + ".(" + f.c.goType(to) + ")"
+			return fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())
 		}
 
 		if isOpt(e.typ) {
@@ -627,6 +683,12 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		}
 		if isNil(e.typ) {
 			f.errorf(n, "nil where %s is expected", to)
+		}
+		if !fitsValue(e, to) {
+			f.errorf(n, "%s where %s is expected", e.typ, to)
+		}
+		if isAbstract(to) { // Go any: literals need wrapping, as for untyped
+			return f.coerce(n, e, TAny{})
 		}
 	case TVar:
 		return e.code
@@ -668,8 +730,8 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		f.unnarrow("attr:" + strings.TrimSuffix(n.Name, "="))
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
-		// Foo.new is a direct constructor call unless Foo defines self.new.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new"))) {
+		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"]) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
@@ -688,7 +750,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if n.Receiver == nil {
 		recv = expr{code: f.selfCode, typ: f.selfType}
 	} else {
-		recv = f.genExpr(n.Receiver, nil)
+		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
 	if n.Block != nil {
 		if _, ok := n.Block.(*parser.BlockNode); ok {
@@ -805,10 +867,13 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch t := recv.typ.(type) {
 	case TOpt:
-		return f.optCall(n, recv, name, args)
+		return f.optCall(n, recv, name, args, block)
 	case TTuple:
 		return f.tupleCall(n, recv, name, args)
 	case TClass:
+		if isAbstract(t) && recv.code != f.selfCode {
+			return f.abstractCall(n, t, recv, name, args, block)
+		}
 		e := t.C.lookup(name)
 		if e == nil && recv.code == f.selfCode {
 			if td := f.c.topDefs[name]; td != nil {
@@ -854,6 +919,18 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	return expr{}
 }
 
+// abstractCall: an Object or module value is Go any, so it dispatches as untyped.
+func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	d := f.universalCall(n, recv, name, args, block)
+	// the declared result keeps the caller typed instead of cascading dynamic calls
+	if e := t.C.lookup(name); e != nil && isAny(d.typ) {
+		if ret := subst(e.M.Ret, e.Env); !isVoid(ret) && !mentionsVar(ret) {
+			d = expr{code: f.coerce(n, d, ret), typ: ret}
+		}
+	}
+	return d
+}
+
 // genArgs generates and coerces call arguments against m's parameters,
 // binding type variables in env. exprs, if non-nil, are pre-generated.
 func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []parser.Node, exprs []expr) []string {
@@ -861,6 +938,11 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	nargs := len(args)
 	if exprs != nil {
 		nargs = len(exprs)
+	}
+	// Too many arguments is checked first: it is the error Ruby raises, and
+	// the surplus would otherwise be coerced to the wrong parameter's type.
+	if nargs > len(m.Params) && !slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest }) {
+		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
 	ai := 0
 	for _, p := range m.Params {
@@ -891,14 +973,16 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			continue
 		}
 		if p.Default != nil {
+			// The default is a node of the def's file (often the prelude):
+			// literal text and error positions must come from there.
+			caller := f.f
+			f.f = m.File
 			d := f.genExpr(p.Default, closed(p.Type, env))
+			f.f = caller
 			unify(p.Type, d.typ, env)
 			codes = append(codes, f.coerceArg(n, d, p, env))
 			continue
 		}
-		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
-	}
-	if ai < nargs {
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
 	if m.calleeDefaults {
@@ -1058,9 +1142,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type) string {
 	m := e.M
 	argList := strings.Join(args, ", ")
-	if recv.lit {
-		recv.code = f.c.goType(recv.typ) + "(" + recv.code + ")"
-	}
+	recv.code = f.materialize(recv)
 	if m.Owner == nil {
 		return m.GoName + "(" + argList + ")"
 	}
@@ -1264,14 +1346,17 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.loops = append(f.loops, loopClosure)
 			_, pro := f.bindBlockParams(n, names, params)
 			pro()
-			gen(tail{kind: tailReturn, types: &types})
+			f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
 			f.loops = f.loops[:len(f.loops)-1]
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
 		})
 		got := f.joinAll(n, types)
-		if got == nil {
+		if got == nil || isNil(got) {
 			got = TNil{}
+			if _, ok := sig.Ret.(TVar); ok {
+				got = TAny{} // Go has no nil type
+			}
 		}
 		if !unify(sig.Ret, got, env) {
 			f.errorf(n, "block returns %s, expected %s", got, subst(sig.Ret, env))
@@ -1300,9 +1385,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.indent++
 	pro()
 	if isVoid(ret) {
-		gen(tail{})
+		f.withNextTail(tail{}, gen)
 	} else {
-		gen(tail{kind: tailReturn, typ: ret})
+		f.withNextTail(tail{kind: tailReturn, typ: ret}, gen)
 	}
 	f.indent--
 	f.emit("}")
@@ -1315,10 +1400,19 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	return code
 }
 
+// withNextTail runs gen(t) with t as the tail a bare `next` returns through.
+func (f *fctx) withNextTail(t tail, gen func(tail)) {
+	saved := f.nextTail
+	f.nextTail = t
+	gen(t)
+	f.nextTail = saved
+}
+
 // genIterCall emits `for ... range recv.Each(...) { body }` for iterator
 // methods called with a block. Returns false if the call is not one.
+// A T? receiver is guarded first: `&.` skips the loop on nil, `.` raises.
 func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
-	if f.classRef(n.Receiver) != nil {
+	if cls := f.classRef(n.Receiver); cls != nil && cls.meta == nil {
 		return false
 	}
 	var recvT Type
@@ -1327,8 +1421,9 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	} else {
 		f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
 	}
-	if n.IsSAFE_NAVIGATION() {
-		return false
+	opt, isOptRecv := recvT.(TOpt)
+	if isOptRecv {
+		recvT = opt.Elem
 	}
 	e := f.resolve(recvT, n.Name)
 	if e == nil || !e.M.Iterator {
@@ -1343,6 +1438,29 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	} else {
 		recv = f.genExpr(n.Receiver, nil)
 	}
+	safe := isOptRecv && n.IsSAFE_NAVIGATION()
+	switch {
+	case safe:
+		rt := f.newTmp()
+		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+		f.indent++
+		recv = expr{code: "(*" + rt + ")", typ: opt.Elem}
+	case isOptRecv:
+		recv = f.nilGuard(n, recv, n.Name)
+	}
+	f.genIterLoop(n, e, recv)
+	if safe {
+		f.indent--
+		f.emit("}")
+	}
+	if t.kind != tailNone {
+		f.emptyTail(n, t)
+	}
+	return true
+}
+
+// genIterLoop emits the range loop of iterator entry e on recv.
+func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	m := e.M
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
@@ -1362,8 +1480,8 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	call := f.callCode(e, recv, codes, env)
 	blk, ok := n.Block.(*parser.BlockNode)
 	if !ok {
-		f.forwardIter(n, call, yields, t)
-		return true
+		f.forwardIter(n, call, yields)
+		return
 	}
 	names := f.blockParamNames(blk.Parameters)
 	saved, savedRuby := f.enterRubyBlock()
@@ -1387,10 +1505,6 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	f.indent--
 	f.leaveRubyBlock(saved, savedRuby)
 	f.emit("}")
-	if t.kind != tailNone {
-		f.emptyTail(n, t)
-	}
-	return true
 }
 
 // ---- yield / super / new / raise
@@ -1583,8 +1697,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 
 // ---- calls on nilable, tuple and untyped receivers
 
-func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
-	elem := recv.typ.(TOpt).Elem
+func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch name {
 	case "nil?":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
@@ -1607,7 +1720,13 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 			return e
 		}
 	}
-	// Ruby raises NoMethodError when the value is nil; so does this.
+	return f.genMethodCall(n, f.nilGuard(n, recv, name), name, args, block)
+}
+
+// nilGuard emits Ruby's NoMethodError for a call on a nil T? receiver and
+// returns the receiver dereferenced to T.
+func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
+	elem := recv.typ.(TOpt).Elem
 	f.c.warn(f.f, n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
 	code := recv.code
 	if !isSimpleGo(code) {
@@ -1617,7 +1736,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	f.emit("if %s == nil {", code)
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
-	return f.genMethodCall(n, expr{code: "(*" + code + ")", typ: elem}, name, args, nil)
+	return expr{code: "(*" + code + ")", typ: elem}
 }
 
 // nilClassCall: nil answers to_i/=~/... itself (0, nil), not NoMethodError, when T's method's type can hold that answer.
@@ -1716,7 +1835,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "==":
 		a := one(recv.typ)
 		code := "rbEq(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")"
-		if isAny(recv.typ) || isNil(recv.typ) {
+		if isAny(recv.typ) || isNil(recv.typ) || isAbstract(recv.typ) {
 			code = "rbEq[any](" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")"
 		}
 		return expr{code: code, typ: f.cls("Boolean")}
@@ -1798,10 +1917,13 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 		if t.Name == "Self" {
 			cls = f.owner
 		}
+		if cls != nil && cls.IsModule && !cls.universal { // self is some includer
+			return expr{code: recv.code + "._ClassObj()", typ: TClass{C: f.c.classes["Class"]}}, true
+		}
 	case TAny, TNil, TOpt:
 		return f.dynClassOf(n, recv), true
 	}
-	if cls != nil && (cls.universal || cls.IsModule) {
+	if cls != nil && (cls.universal || cls.IsModule) { // Go any: asked at run time
 		return f.dynClassOf(n, recv), true
 	}
 	if cls != nil && cls.metaOf != nil {
@@ -1849,6 +1971,9 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 }
 
 func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
+	if cls.universal { // every value, nil included, is an Object
+		return "true"
+	}
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
 		if !isSimpleGo(recv.code) {
@@ -1860,43 +1985,67 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 		return "(" + recv.code + " != nil && " + inner + ")"
 	}
 	if isNil(t) {
-		return strconv.FormatBool(cls.universal)
+		return "false"
+	}
+	if cls.IsModule {
+		return f.moduleIsA(n, t, cls)
 	}
 	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
 		t = TClass{C: f.owner}
+		if f.owner.IsModule { // self is some includer: ask it at run time
+			t = TAny{}
+		}
+	}
+	if isAbstract(t) && recv.code != f.selfCode {
+		t = TAny{}
 	}
 	switch t := t.(type) {
 	case TClass:
 		switch {
-		case cls.universal || t.C.isSubclassOf(cls):
+		case t.C.isSubclassOf(cls):
 			return "true"
 		case cls.isStruct() && t.C.isStruct() && cls.isSubclassOf(t.C):
 			return "rbIsA[" + f.c.goType(TClass{C: cls}) + "](" + recv.code + ")"
-		case cls.IsModule && t.C.isStruct():
-			f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", cls.RubyName, t)
 		}
 		return "false"
 	case TTuple:
-		return strconv.FormatBool(cls.universal || cls.RubyName == "Array")
+		return strconv.FormatBool(cls.RubyName == "Array")
 	case TAny:
-		if cls.universal {
-			return "true"
-		}
-		return "rbIsA[" + f.isAGoType(n, cls) + "](" + recv.code + ")"
+		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
 	}
 	f.errorf(n, "is_a? on %s is not supported", t)
 	return ""
 }
 
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
-func (f *fctx) isAGoType(n parser.Node, cls *Class) string {
-	switch {
-	case cls.IsModule:
-		f.errorf(n, "is_a?(%s) on untyped cannot be checked: rb2go has no runtime record of included modules", cls.RubyName)
-	case len(cls.TypeParams) > 0:
+func (f *fctx) isAGoType(cls *Class) string {
+	if len(cls.TypeParams) > 0 {
 		return cls.Name + "_Any"
 	}
 	return f.c.goType(TClass{C: cls})
+}
+
+// moduleIsA decides `x.is_a?(mod)` for a module mod and x of static type t.
+// There is no runtime record of included modules, so it is "true" or "false"
+// when t's class decides it, and a compile error when t is untyped or a
+// subclass of its class includes mod (decision 21).
+func (f *fctx) moduleIsA(n parser.Node, t Type, mod *Class) string {
+	t = stripOpt(t)
+	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
+		t = TClass{C: f.owner}
+	}
+	if _, ok := t.(TTuple); ok {
+		t = TClass{C: f.c.classes["Array"]}
+	}
+	c, ok := t.(TClass)
+	switch {
+	case mod.universal || ok && c.C.isSubclassOf(mod):
+		return "true"
+	case isNil(t):
+	case !ok || c.C.includedBelow(mod):
+		f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", mod.RubyName, t)
+	}
+	return "false"
 }
 
 // narrowIsA renders `x.is_a?(C)` in a condition and narrows x to C inside.
@@ -1909,10 +2058,14 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	if isOpt(v.typ) {
 		code = "(*" + v.goName + ")"
 	}
-	if cond == "true" || cond == "false" || cls.IsModule || cls.universal {
+	if cond == "true" || cond == "false" || cls.universal {
 		return cond, nil
 	}
-	if bt, ok := base.(TClass); ok && bt.C.isSubclassOf(cls) {
+	if bt, ok := base.(TClass); cls.IsModule || ok && bt.C.isSubclassOf(cls) {
+		// the class part is static: all the check can rule out is nil
+		if isOpt(v.typ) && !isAny(base) {
+			return cond, []narrowInfo{{local: v, typ: base}}
+		}
 		return cond, nil
 	}
 	typ := TClass{C: cls}
@@ -1941,7 +2094,7 @@ func (f *fctx) discard(e expr) {
 
 // genOrAssign renders `x ||= value` for a target whose current value is cur.
 // The value is evaluated only when x is nil (or falsy, for untyped/bool).
-func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
+func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written ...func(expr)) expr {
 	elem := stripOpt(cur.typ)
 	var cond string
 	var want Type
@@ -1964,6 +2117,9 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node) expr {
 		f.emit("%s", v.code)
 	} else {
 		f.emit("%s = %s", cur.code, f.coerce(value, v, want))
+		for _, w := range written {
+			w(expr{code: cur.code, typ: want})
+		}
 	}
 	f.leaveBlock(saved)
 	f.indent--
@@ -2000,9 +2156,14 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 	iv := f.c.findIvar(f.owner, n.Name)
 	if iv == nil && f.discover {
 		// first seen through ||=: it starts out nil
-		var v expr
-		f.probe(func() { v = f.genExpr(n.Value, nil) })
-		t := v.typ
+		var t Type
+		if a := f.f.trailingAnnotation(n); a != "" {
+			t = f.parseTypeAnn(n, a) // `@x ||= [] #: Array[T]` declares the ivar's type
+		} else {
+			var v expr
+			f.probe(func() { v = f.genExpr(n.Value, nil) })
+			t = v.typ
+		}
 		if !isOpt(t) && !isAny(t) && !isClass(t, "Boolean") && !isNil(t) {
 			t = TOpt{Elem: t}
 		}
@@ -2012,6 +2173,62 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 		iv = f.ivar(n, n.Name, nil)
 	}
 	return f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
+}
+
+func (f *fctx) genOrWrite(n parser.Node) expr {
+	switch n := n.(type) {
+	case *parser.LocalVariableOrWriteNode:
+		return f.genOrAssignLocal(n)
+	case *parser.InstanceVariableOrWriteNode:
+		return f.genOrAssignIvar(n)
+	}
+	return f.genOrAssignAttr(n.(*parser.CallOrWriteNode))
+}
+
+// genOpAssignAttr: `recv.x += v` is recv.x=(recv.x + v), and its value is the new one, not the writer's result.
+func (f *fctx) genOpAssignAttr(n *parser.CallOperatorWriteNode) expr {
+	recv := f.attrRecv(n, n.Receiver, n.IsSAFE_NAVIGATION(), n.ReadName)
+	val := f.genOp(n, f.genMethodCall(n, recv, n.ReadName, nil, nil), n.BinaryOperator, n.Value)
+	if !isSimpleGo(val.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, val.code)
+		val.code = tmp
+	}
+	f.callWriter(n, recv, n.WriteName, val)
+	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
+}
+
+// genOrAssignAttr: Ruby's `recv.x || recv.x = v`, so the writer runs only when the reader is nil/false.
+func (f *fctx) genOrAssignAttr(n *parser.CallOrWriteNode) expr {
+	recv := f.attrRecv(n, n.Receiver, n.IsSAFE_NAVIGATION(), n.ReadName)
+	cur := f.genMethodCall(n, recv, n.ReadName, nil, nil)
+	if !isAny(cur.typ) && !isOpt(cur.typ) && !isClass(cur.typ, "Boolean") {
+		return cur // never nil or false: the writer never runs
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, cur.code)
+	return f.genOrAssign(n, expr{code: tmp, typ: cur.typ}, n.Value, func(v expr) { f.callWriter(n, recv, n.WriteName, v) })
+}
+
+// attrRecv: the reader and the writer share one evaluation of the receiver.
+func (f *fctx) attrRecv(n, rn parser.Node, safe bool, name string) expr {
+	if safe {
+		f.errorf(n, "&. with an operator assignment is not supported")
+	}
+	if isSelf(rn) {
+		f.unnarrow("attr:" + name)
+	}
+	recv := f.valueOf(f.genExpr(rn, nil))
+	if !isSimpleGo(recv.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, recv.code)
+		recv.code = tmp
+	}
+	return recv
+}
+
+func (f *fctx) callWriter(n parser.Node, recv expr, name string, val expr) {
+	f.emitExprStmt(n, f.genMethodCall(n, recv, name, []parser.Node{&exprNode{e: val}}, nil))
 }
 
 // genMultiWrite renders `a, b = x, y` and `a, b = tuple`.
@@ -2053,10 +2270,7 @@ func (f *fctx) multiLiteral(arr *parser.ArrayNode, lefts []parser.Node) []expr {
 			e.typ = t
 		}
 		tmp := f.newTmp()
-		code := e.code
-		if e.lit {
-			code = f.c.goType(e.typ) + "(" + code + ")"
-		}
+		code := f.materialize(e)
 		if isNil(e.typ) || code == "nil" {
 			f.emit("var %s %s", tmp, f.c.goType(e.typ))
 		} else {
@@ -2195,7 +2409,7 @@ func (f *fctx) isBlockParam(n parser.Node) bool {
 
 // forwardIter passes the method's own block on to an iterator:
 // `list.each(&block)` re-yields every value (or calls the closure with it).
-func (f *fctx) forwardIter(n parser.Node, call string, yields []Type, t tail) {
+func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 	if len(yields) != len(f.blockSig.Params) {
 		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
 	}
@@ -2213,9 +2427,6 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type, t tail) {
 		f.emit("\tblk(%s)", list)
 	}
 	f.emit("}")
-	if t.kind != tailNone {
-		f.emptyTail(n, t)
-	}
 }
 
 // forwardClosure passes the method's own block on to a closure-taking
@@ -2371,13 +2582,15 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		f.discard(recv)
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
-	if cls.descendantDefines(name) {
+	if cls.IsModule || cls.descendantDefines(name) { // a module's value is some includer
 		return expr{}, false
 	}
 	if rm := cls.lookup("respond_to_missing?"); rm != nil {
 		f.implicitCall = true
 		defer func() { f.implicitCall = false }()
-		return f.callEntry(n, rm, recv, []parser.Node{args[0], &parser.FalseNode{}}, nil), true
+		// Ruby hands respond_to_missing? a Symbol even for respond_to?("x").
+		sym := &parser.SymbolNode{Unescaped: parser.RubyString{Value: name}, Location: args[0].GetLocation()}
+		return f.callEntry(n, rm, recv, []parser.Node{sym, &parser.FalseNode{}}, nil), true
 	}
 	f.discard(recv)
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true

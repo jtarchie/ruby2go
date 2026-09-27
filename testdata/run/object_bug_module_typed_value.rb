@@ -1,5 +1,3 @@
-# skip: a value typed as a module (Array[Printable]) is Go `any`, and calling the module's methods on it instantiates Printable_ToS[any], which go build rejects (any does not satisfy Printable_Self)
-
 # rbs_inline: enabled
 
 module Printable

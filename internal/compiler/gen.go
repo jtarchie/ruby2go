@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -31,8 +32,9 @@ type fctx struct {
 	rbScope      string // the block path where the current Ruby scope (method or block) starts
 	blockCtr     int
 	loops        []loopKind
-	closures     int // nesting depth of Go closures (non-iterator blocks)
-	begins       int // nesting depth of rescue wrappers
+	closures     int  // nesting depth of Go closures (non-iterator blocks)
+	nextTail     tail // the innermost closure's result, for `next`
+	begins       int  // nesting depth of rescue wrappers
 	retVar       string
 	retFlag      string // set inside begin wrappers when a return must propagate
 	hasNamedRet  bool
@@ -223,7 +225,8 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 	switch n.(type) {
 	case *parser.CallNode, *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode,
 		*parser.LocalVariableWriteNode, *parser.InstanceVariableWriteNode,
-		*parser.LocalVariableOperatorWriteNode, *parser.InstanceVariableOperatorWriteNode:
+		*parser.LocalVariableOperatorWriteNode, *parser.InstanceVariableOperatorWriteNode,
+		*parser.CallOperatorWriteNode, *parser.CallOrWriteNode:
 		if e.stmt || strings.HasSuffix(e.code, ")") && !e.assert {
 			f.emit("%s", e.code)
 			return
@@ -607,7 +610,18 @@ func (f *fctx) genNext(n *parser.NextNode) {
 		if n.Arguments != nil {
 			f.errorf(n, "next with a value inside a block is not supported")
 		}
-		f.emit("return")
+		// the block's value is nil
+		switch t := f.nextTail; {
+		case t.kind == tailNone:
+			f.emit("return")
+		case t.typ == nil:
+			t.record(TNil{})
+			f.emit("return")
+		case isClass(t.typ, "Boolean"): // nil is falsy
+			f.emit("return false")
+		default:
+			f.emit("return %s", f.coerce(n, expr{code: "nil", typ: TNil{}}, t.typ))
+		}
 		return
 	}
 	if n.Arguments != nil {
@@ -643,7 +657,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	}
 	subj := f.genExpr(n.Predicate, nil)
 	tmp := f.newTmp()
-	f.emit("%s := %s", tmp, subj.code)
+	f.emit("%s := %s", tmp, f.materialize(subj))
 	f.emit("switch {")
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
@@ -708,25 +722,23 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				armType = TNil{}
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
 				cls := f.classRef(c)
-				if len(cls.TypeParams) > 0 {
-					cases = append(cases, cls.Name+"_Any")
-					args := make([]Type, len(cls.TypeParams))
-					for i := range args {
-						args[i] = TAny{}
-					}
-					armType = TClass{C: cls, Args: args}
-					convert = "._ToAny()"
-				} else {
-					cases = append(cases, f.c.goType(TClass{C: cls}))
-					armType = TClass{C: cls}
+				if cls.IsModule && f.moduleIsA(c, subj.typ, cls) == "false" {
+					continue
 				}
+				var goTypes []string
+				goTypes, armType, convert = f.whenClass(cls)
+				cases = append(cases, goTypes...)
 			}
+		}
+		if len(cases) == 0 {
+			continue // only modules the subject statically lacks: never matches
 		}
 		if len(wn.Conditions) != 1 {
 			armType = TAny{}
 			convert = ""
 		}
-		f.emit("case %s:", strings.Join(cases, ", "))
+		slices.Sort(cases) // Go rejects a type listed twice, e.g. `when nil, Object`
+		f.emit("case %s:", strings.Join(slices.Compact(cases), ", "))
 		saved := f.enterBlock()
 		f.indent++
 		armName := name
@@ -756,6 +768,22 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+}
+
+// whenClass is the type-switch case for `when cls`: the Go types it lists,
+// the arm's type, and the conversion that gives the arm that type.
+func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
+	switch {
+	case len(cls.TypeParams) > 0:
+		args := make([]Type, len(cls.TypeParams))
+		for i := range args {
+			args[i] = TAny{}
+		}
+		return []string{cls.Name + "_Any"}, TClass{C: cls, Args: args}, "._ToAny()"
+	case cls.universal: // nil is an Object too, but a nil interface misses `case any:`
+		return []string{f.c.goType(TClass{C: cls}), "nil"}, TClass{C: cls}, ""
+	}
+	return []string{f.c.goType(TClass{C: cls})}, TClass{C: cls}, ""
 }
 
 // ---- begin/rescue/ensure

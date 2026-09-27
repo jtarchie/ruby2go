@@ -328,6 +328,18 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 	}
 	c.emitBridgeSigs(mod, TVar{Name: "Self"})
+	// self is some includer, whose to_s/inspect/... may override Object's
+	if mod.lookup("method_missing") == nil {
+		for _, e := range c.publicEntries(c.classes["Object"]) {
+			if called[e.M.Name] && mod.lookup(e.M.Name) == nil && c.topDefs[e.M.Name] == nil {
+				ps, ret := c.sig(e.M, map[string]Type{"Self": TVar{Name: "Self"}})
+				c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
+			}
+		}
+	}
+	if called["class"] {
+		c.w("\t_ClassObj() %s\n", c.goType(TClass{C: c.classes["Class"]}))
+	}
 	c.w("}\n\n")
 }
 
@@ -428,6 +440,8 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 				out[n.Name] = true
 			} else if _, ok := n.Receiver.(*parser.SelfNode); ok {
 				out[n.Name] = true
+			} else if n.Name == "class" {
+				out[n.Name] = true // the receiver may be a copy of self
 			}
 		case *parser.XStringNode:
 			for _, m := range goSelfCall.FindAllStringSubmatch(n.Unescaped.Value, -1) {
@@ -551,6 +565,17 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		}
 	}
 	c.emitBridges(cls, recv)
+	if c.includerCalls(cls, "class") {
+		// a module's `self.class`; a class object's class is Class (a module's, Module)
+		k := cls
+		switch {
+		case cls.metaOf != nil && cls.metaOf.IsModule:
+			k = c.classes["Module"]
+		case cls.metaOf != nil:
+			k = c.classes["Class"]
+		}
+		c.w("func (self %s) _ClassObj() %s { return %s }\n", recv, c.goType(TClass{C: c.classes["Class"]}), classVar(k))
+	}
 	c.w("\n")
 }
 
@@ -600,7 +625,7 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(vals, ", "))
 		// a tuple that reaches untyped answers as an Array (decision 22)
 		c.w("func (t %s) _ToAny() *Array[any] { return &Array[any]{%s} }\n\n", full, strings.Join(vals, ", "))
-		// and converts back where a dynamic call's parameter is a tuple (rbArg)
+		// and converts back where a dynamic call's parameter is a tuple (rbAs)
 		c.w("func (%s) _FromAny(a any) (t %s, ok bool) {\n\tarr, ok := a.(Array_Any)\n\tif !ok {\n\t\treturn t, false\n\t}\n\ts := *arr._ToAny()\n\tif len(s) != %d {\n\t\treturn t, false\n\t}\n%s\n\treturn t, true\n}\n\n", full, full, n, strings.Join(from, "\n"))
 		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 	}
@@ -641,7 +666,22 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 	if cls.isStruct() {
 		return true
 	}
-	return e.Owner.IsModule && !e.Owner.universal && c.selfCalls(e.Owner)[e.M.Name]
+	if e.Owner.universal {
+		return c.includerCalls(cls, e.M.Name)
+	}
+	return e.Owner.IsModule && c.selfCalls(e.Owner)[e.M.Name]
+}
+
+// includerCalls: a module method calling name on self needs cls to answer it.
+func (c *Compiler) includerCalls(cls *Class, name string) bool {
+	for k := cls; k != nil && !k.universal; k = k.Super {
+		for _, inc := range k.Includes {
+			if c.selfCalls(inc.Mod)[name] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // constFctx is the codegen context a constant's initializer runs in.

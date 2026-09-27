@@ -45,13 +45,48 @@
     return *p
   }
 
-  // OptOf converts untyped to T?.
-  func OptOf[T any](a any) *T {
+  // OptOf converts untyped to T?; want names T for rbAs's TypeError.
+  func OptOf[T any](a any, want string) *T {
     if a == nil {
       return nil
     }
-    v := a.(T)
+    v := rbAs[T](a, want)
     return &v
+  }
+
+  // rbAs converts untyped to T, raising MRI's TypeError when a is not one:
+  // a bare a.(T) would panic as a Go error, a StandardError.
+  func rbAs[T any](a any, want string) T {
+    v, ok := a.(T)
+    if !ok {
+      return rbAsSlow[T](a, want)
+    }
+    return v
+  }
+
+  // rbAsSlow converts an Array into a tuple T (decision 22), else raises.
+  func rbAsSlow[T any](a any, want string) T {
+    var zero T
+    if tup, ok := any(zero).(interface{ _FromAny(any) (T, bool) }); ok {
+      if v, ok := tup._FromAny(a); ok {
+        return v
+      }
+    }
+    panic(rbConvError(a, want))
+  }
+
+  // rbConvError is MRI's "no implicit conversion" TypeError.
+  func rbConvError(a any, want string) any {
+    name := rbClassName(a)
+    switch r := a.(type) {
+    case nil:
+      name = "nil"
+    case Boolean:
+      name = strconv.FormatBool(bool(r))
+    case rbModule:
+      name = strings.ToUpper(r._Kind()[:1]) + r._Kind()[1:]
+    }
+    return NewTypeError(Ref(String("no implicit conversion of " + name + " into " + want)))
   }
 
   type I_ToS interface{ ToS() String }

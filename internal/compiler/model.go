@@ -176,6 +176,16 @@ func (c *Class) isSubclassOf(other *Class) bool {
 	return false
 }
 
+// includedBelow reports whether a subclass of c includes mod.
+func (c *Class) includedBelow(mod *Class) bool {
+	for _, sub := range c.Subclasses {
+		if sub.isSubclassOf(mod) || sub.includedBelow(mod) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Class) isStruct() bool { return !c.IsModule && c.GoType == "" }
 
 // mutable reports whether the @go_type is a reference-like Go type, in which

@@ -743,8 +743,7 @@ class BasicObject
   def self.hi = "hi"
 end
 -- ivar_reassigned_other_type.rb --
-# skip: assigning a String to an ivar already typed Integer compiles; go build then fails ("cannot use \"x\" ... as Integer value")
-# error: main.rb:12:
+# error: main.rb:11:
 # error: @id
 class Box
   #: () -> void

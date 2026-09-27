@@ -1,5 +1,3 @@
-# skip: is_a?/kind_of?(C) on self inside a module method folds to false (the module is not a subclass of C), so an includer that is a C answers false; MRI checks the receiver's class
-
 # rbs_inline: enabled
 
 module Named

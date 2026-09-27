@@ -311,18 +311,15 @@ puts a[0].succ
 row = [1, "a", :b, 2.5]
 puts row[0].succ
 -- push_wrong_element_type.rb --
-# skip: pushing a String onto an Array[Integer] is not a compile error; the Go fails to build
-# error: main.rb:4:
+# error: main.rb:3:
 nums = [1, 2] #: Array[Integer]
 nums << "x"
 -- tuple_wrong_element_type.rb --
-# skip: pushing [2, 3] onto an Array[[Integer, String]] is not a compile error; the Go fails to build
-# error: main.rb:4:
+# error: main.rb:3:
 pairs = [[1, "a"]] #: Array[[Integer, String]]
 pairs << [2, 3]
 -- block_returns_non_bool.rb --
-# skip: a select block returning String is not a compile error; the Go fails to build
-# error: main.rb:4:
+# error: main.rb:3:
 nums = [1, 2] #: Array[Integer]
 puts nums.select { |n| n.to_s }.inspect
 -- block_on_untyped.rb --
@@ -330,8 +327,7 @@ puts nums.select { |n| n.to_s }.inspect
 u = [1] #: untyped
 u.each { |x| puts x }
 -- block_on_optional_untyped.rb --
-# skip: optCall drops the block on an untyped? receiver: compiles with warnings, then NoMethodError at run time (decision 32: blocks cannot cross a dynamic call)
-# error: main.rb:4:
+# error: main.rb:3:
 u = [[1]] #: Array[untyped]
 u[0].each { |x| puts x }
 -- super_to_block_method.rb --
@@ -417,8 +413,7 @@ puts nums.select { |n| h[n] }.inspect
 h = { "a" => [1] } #: Hash[String, Array[Integer]]
 puts h["a"].size
 -- reassign_different_element_type.rb --
-# skip: reassigning an Array[Integer] local to ["x"] is not a compile error; the literal is generated as Array[Integer] and go build fails
-# error: main.rb:4:
+# error: main.rb:3:
 a = [1]
 a = ["x"]
 puts a.inspect

@@ -198,6 +198,9 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		if withRest {
 			t := subst(rest.Type, env)
 			code := fmt.Sprintf("rbRest[%s](args, %d, %q)...", c.goType(t), k, t.String())
+			if isAny(t) {
+				code = fmt.Sprintf("args[%d:]...", k) // untyped takes anything, nil included
+			}
 			nodes = append(nodes, &exprNode{e: expr{code: code, typ: t}})
 		}
 		res := f.callEntry(&parser.NilNode{}, e, recv, nodes, nil)
@@ -235,12 +238,9 @@ func (c *Compiler) dynArg(t Type, i int) string {
 	case TAny:
 		return fmt.Sprintf("args[%d]", i)
 	case TOpt:
-		if isAny(t.Elem) {
-			return fmt.Sprintf("rbOptArg[any](args, %d, %q)", i, "untyped")
-		}
-		return fmt.Sprintf("rbOptArg[%s](args, %d, %q)", c.goType(t.Elem), i, t.Elem.String())
+		return fmt.Sprintf("OptOf[%s](args[%d], %q)", c.goType(t.Elem), i, t.Elem.String())
 	}
-	return fmt.Sprintf("rbArg[%s](args, %d, %q)", c.goType(t), i, t.String())
+	return fmt.Sprintf("rbAs[%s](args[%d], %q)", c.goType(t), i, t.String())
 }
 
 // emitRespond emits rbRespondsByName, backed by a marker method on every

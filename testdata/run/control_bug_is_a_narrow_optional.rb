@@ -1,5 +1,3 @@
-# skip: `if x.is_a?(C)` on a C? local does not narrow it to C (narrowIsA returns no narrowing when the static class already is C), so passing x where C is expected is a compile error (possibly-nil Integer? where Integer is expected); decision 20 promises is_a? narrowing
-
 # rbs_inline: enabled
 
 #: (Integer) -> Integer

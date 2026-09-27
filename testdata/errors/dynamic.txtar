@@ -229,8 +229,7 @@ puts check(1)
 def int?(x) = x.is_a?(Integer)
 puts int?(1)
 -- when_module_on_untyped.rb --
-# skip: `case v when Comparable` on untyped compiles to Go `case any:` (true for every non-nil value) instead of the is_a?(Module) compile error (decision 21)
-# error: main.rb:8:
+# error: main.rb:7:
 # error: no runtime record of included modules
 # rbs_inline: enabled
 #: (untyped) -> String
@@ -242,8 +241,7 @@ def f(v)
 end
 puts f(1)
 -- when_module_on_struct_class.rb --
-# skip: `case v when Named` on a struct-class subject compiles to a Go type switch that matches every value (Vehicle.new is "named") instead of the is_a?(Module) compile error (decision 21)
-# error: main.rb:15:
+# error: main.rb:14:
 # error: no runtime record of included modules
 # rbs_inline: enabled
 module Named

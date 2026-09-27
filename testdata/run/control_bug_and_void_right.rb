@@ -1,5 +1,3 @@
-# skip: `cond && puts(...)`, `cond and puts ...`, and `untyped || puts(...)` use the void (nil-returning) call as a value, so go build fails ((no value) used as value)
-
 # rbs_inline: enabled
 
 h = { "a" => 1 } #: Hash[String, Integer]

@@ -1,5 +1,3 @@
-# skip: a dynamic call's TypeError says "no implicit conversion of an instance of Integer into String"; MRI says "of Integer into String"
-
 # rbs_inline: enabled
 
 class Greeter

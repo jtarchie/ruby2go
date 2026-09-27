@@ -1,5 +1,3 @@
-# skip: a case whose subject is a bare literal (`case 3`) stores it in an untyped Go temp, so go build fails (t.Eq undefined on int)
-
 # rbs_inline: enabled
 
 v = case 3

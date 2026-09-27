@@ -154,7 +154,9 @@ Rules the prelude relies on:
   constants convert to `String` when the parameter is `String`
   (`s.Lt("world")` compiles), but become Go `string` when the parameter is
   `any`. Always emit `String("...")` when the target type is an interface or
-  `untyped` (see [06_puts](examples/06_puts/)).
+  `untyped` (see [06_puts](examples/06_puts/)), and when the literal is a
+  receiver or bound with `:=` (`(-1).abs`, `case 3`, `false && x`), where Go
+  would infer `int`/`string`/`bool`.
 
 ## Examples
 
@@ -327,8 +329,10 @@ primitive.
   runs on return and on panic, so partial output before a crash matches Ruby.
   `os.Exit` skips defers: `Kernel#exit` must flush first. Interleaving with
   `$stderr` would need `$stdout.sync`-style flushing; not handled yet.
-- **Return type `nil` → no Go return value.** `puts`'s result is never
-  meaningfully used; if it is, the call site substitutes `nil`.
+- **Return type `nil` → no Go return value.** `puts`'s result is rarely
+  used; when it is (`x || puts(...)`, `puts(...).inspect`), the call runs as
+  a statement and the value is `nil`. A block whose value is nil
+  (`map { |n| puts n }`) binds its type variable to `untyped`.
 - **`//line` directive granularity.** The panic trace mapped back to
   `prelude.rb`/`main.rb`, but to the wrong line inside `puts` — one directive
   per function isn't enough; emit one per statement.
@@ -414,8 +418,9 @@ resolve; anything not listed is still open.
    (`iter.Seq`/`iter.Seq2`) and every call site with a block becomes a
    `for range` loop, so `return`, `break` and `next` are plain Go. Blocks
    passed to value-returning methods (`map`, `select`, `then`, …) are Go
-   closures; `next` is `return`, and `return`/`break` inside them is a
-   compile error. The sentinel-panic fallback is not implemented.
+   closures; `next` is `return` of nil (`false` in a `bool` block), and
+   `return`/`break` inside them is a compile error. The sentinel-panic
+   fallback is not implemented.
    A method is an iterator only when the block *and* the method return
    nothing, the block is only yielded to, and nothing rescues around the
    yield (Go forbids a range function from recovering a panic raised in
@@ -464,7 +469,13 @@ resolve; anything not listed is still open.
    called through the free function. This is also what avoids Go's
    "instantiation cycle": a forwarder such as `Hash[K,V].Tally` would
    instantiate `Hash[[K,V], Integer]`, whose forwarders instantiate the
-   next size up, forever.
+   next size up, forever. Inside a module method `self` is some includer,
+   not the module: `Object` methods called on it (`to_s`, `inspect`,
+   `"#{self}"`) join the constraint so the includer's overrides run,
+   `self.class` is a `_ClassObj()` accessor (typed `Class`) the constraint
+   lists, and `is_a?(C)`/`respond_to?(:m)` ask the includer at run time.
+   *(Revised: `self` used to be typed as the module, so `self.class` was
+   the module and `is_a?`/`respond_to?` folded to the module's answer.)*
    A `super` the module cannot resolve itself (its target is the
    includer's superclass or a later module, different per includer) is a
    call to `self._Super_M_name(...)`: the constraint requires it, and
@@ -525,33 +536,40 @@ resolve; anything not listed is still open.
     call. `class << self` is not supported. Metaclasses inherit from the
     parent's metaclass, else from prelude `Class` (modules: `Module`), so
     a value typed `Module` can hold any class object. `x.class` whose
-    class is known only at run time (`untyped`, `Object`, a module type or
-    a module's `self`, `nil`, `T?`) is a generated type switch over the
-    `@go_type` classes and struct hierarchies, typed `Class`; nil's class
-    object is a bare `Class` named `NilClass`, not a constant code can
-    name. *(Revised: these were a build error, `NoMethodError`, or the
-    module itself.)*
+    class is known only at run time (`untyped`, `Object`, a module type,
+    `nil`, `T?`) is a generated type switch over the `@go_type` classes
+    and struct hierarchies, typed `Class`; a module's `self` asks the
+    includer instead (decision 9). nil's class object is a bare `Class`
+    named `NilClass`, not a constant code can name. *(Revised: these were
+    a build error, `NoMethodError`, or the module itself.)*
 20. `T?` where `T` is expected is a compile error (check it first:
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
-    passing it on asserts the type, except to a `T | untyped` parameter
-    (the only union besides `T | nil`): typed arguments are checked
-    against `T`, untyped ones pass unasserted and the method handles
-    them. Regexp subjects use it, so a literal `nil` is an error but an
-    untyped `nil` or Symbol matches as in MRI. *Calling a method* on `T?`
-    raises `NoMethodError` when it is nil, as in Ruby, and the compiler
-    warns; methods `NilClass` defines (`to_s`, `inspect`, `==`, `!`,
-    `to_i`, `to_f`, `to_a`, `to_h`, `=~`) give nil's answer instead (`0`,
-    `0.0`, `[]`, `{}`, `nil`) when `T`'s method returns a type that holds
-    it. *(Revised: `to_i`/`to_f`/`to_a`/`to_h`/`=~` raised, so an
-    unmatched group's `m[2].to_i` failed where MRI gives 0.)*
+    passing it on checks the type at run time, raising MRI's `TypeError`
+    ("no implicit conversion of Integer into String") as a dynamic call's
+    arguments do (decision 32), except to a `T | untyped` parameter (the
+    only union besides `T | nil`): typed arguments are checked against
+    `T`, untyped ones pass unasserted and the method handles them. Regexp
+    subjects use it, so a literal `nil` is an error but an untyped `nil`
+    or Symbol matches as in MRI. *Calling a method* on `T?` raises
+    `NoMethodError` when it is nil, as in Ruby, and the compiler warns;
+    methods `NilClass` defines (`to_s`, `inspect`, `==`, `!`, `to_i`,
+    `to_f`, `to_a`, `to_h`, `=~`) give nil's answer instead (`0`, `0.0`,
+    `[]`, `{}`, `nil`) when `T`'s method returns a type that holds it.
+    *(Revised: `to_i`/`to_f`/`to_a`/`to_h`/`=~` raised, so an unmatched
+    group's `m[2].to_i` failed where MRI gives 0.)*
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops
-    the narrowings.
+    the narrowings. Likewise a value of class `C` where `T` is expected
+    (an argument, element, key, block result or ivar write) is a compile
+    error unless `C` is `T` or inherits/includes it, with type arguments
+    checked the same way. Go would convert a literal silently, so only
+    an Integer literal where a Float is expected passes (Float's
+    operators take Integers); `"a"` is not a `Symbol` (decision 23).
 21. `is_a?`/`kind_of?` is a constant when static types decide it and a Go
     type assertion otherwise. There is no runtime record of included
-    modules, so `is_a?(SomeModule)` on an untyped value, or on a struct
-    class that might have a subclass including it, is a compile error.
+    modules, so `is_a?(SomeModule)` (and `when SomeModule`) on an untyped
+    value, or on a class with a subclass including it, is a compile error.
     Narrowing an untyped local to `Array` views it as `Array[untyped]`.
 22. Unannotated literals infer by joining their parts; when parts share no
     type the element type is `untyped`. A 2–3 element mixed array with
@@ -664,7 +682,12 @@ resolve; anything not listed is still open.
     and makes the output larger, so it is generated only when used. On
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
-    cycles. Blocks cannot cross a dynamic call.
+    cycles. Blocks cannot cross a dynamic call. A value typed `Object` or
+    a module is Go `any` too, so it is dispatched, boxed and `is_a?`-tested
+    like `untyped`; a method the module declares keeps its declared result
+    type. *(Revised: they used to resolve like concrete classes, so
+    `Kernel#to_s` printed `#<String>`, `is_a?` folded to false, literals
+    reached `any` as Go `string`, and module methods failed `go build`.)*
 33. Ruby semantics for looser code: `expr rescue fallback`; `return` in
     `ensure` discards the pending exception; `&&`/`||` return values of
     any types (unions become `untyped`) and evaluate the right side only

@@ -1,5 +1,3 @@
-# skip: respond_to?(:m) on self inside a module method folds to false when the module lacks m, even if the includer defines it; MRI asks the receiver's class
-
 # rbs_inline: enabled
 
 module Named
