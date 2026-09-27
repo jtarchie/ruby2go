@@ -17,6 +17,7 @@ type expr struct {
 	code     string
 	typ      Type
 	classObj bool // exactly a class constant: its Go type is the concrete metaclass
+	ctor     bool // a struct class's NewX(...): its Go type is *X, not XI
 	lit      bool // untyped Go constant
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
@@ -1415,7 +1416,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 	} else if len(args) > 0 || len(exprs) > 0 {
 		f.errorf(n, "%s.new takes no arguments", cls.Name)
 	}
-	return expr{code: "New" + cls.Name + "(" + strings.Join(codes, ", ") + ")", typ: TClass{C: cls}}
+	return expr{code: "New" + cls.Name + "(" + strings.Join(codes, ", ") + ")", typ: TClass{C: cls}, ctor: true}
 }
 
 func (f *fctx) genRaise(n *parser.CallNode) expr {
@@ -1565,6 +1566,9 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		a := one(nil)
 		return expr{code: "Boolean(rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + "))", typ: f.cls("Boolean")}
 	case "<=>":
+		if isAny(recv.typ) {
+			break // the argument's type is unknown too: dispatch at run time
+		}
 		a := one(recv.typ)
 		return expr{code: "rbCmp(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "hash":

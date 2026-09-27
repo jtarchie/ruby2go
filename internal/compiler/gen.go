@@ -1125,6 +1125,8 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		f.emit("%s = %s", v.goName, code)
 	case code == "nil":
 		f.emit("var %s %s", v.goName, f.c.goType(v.typ))
+	case f.concreteInit(val, code, v.typ):
+		f.emit("var %s %s = %s", v.goName, f.c.goType(v.typ), code)
 	default:
 		f.emit("%s := %s", v.goName, code)
 	}
@@ -1133,6 +1135,21 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 	}
 	f.noteUnused(v)
 	return expr{code: v.goName, typ: v.typ, stmt: true, done: true}
+}
+
+// concreteInit reports whether code, the coerced first value of a local of
+// type t, has a Go type other than the interface goType(t): `:=` would then
+// give the local the concrete type (*X, *X_Meta, Integer) and a later
+// assignment of a subclass, another class object or another value fails.
+func (f *fctx) concreteInit(val expr, code string, t Type) bool {
+	gt := f.c.goType(t)
+	if cls, ok := t.(TClass); gt != "any" && (!ok || !cls.C.isStruct()) {
+		return false
+	}
+	if code != val.code && !val.lit { // coerce converted it to gt
+		return false
+	}
+	return val.classObj || val.ctor || f.c.goType(val.typ) != gt
 }
 
 // ---- function bodies
