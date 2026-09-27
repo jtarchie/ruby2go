@@ -1479,9 +1479,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	// A block is its own Go function: a begin around the call (or in the
 	// method) must not route the block's value into the enclosing result.
 	// A begin in the block keeps the value in the closure's own ret_.
-	savedBegins, savedRetVar, savedFlag := f.begins, f.retVar, f.retFlag
-	f.begins, f.retVar, f.retFlag = 0, "ret_", ""
-	defer func() { f.begins, f.retVar, f.retFlag = savedBegins, savedRetVar, savedFlag }()
+	savedBegins, savedRetVar, savedWrap := f.begins, f.retVar, f.wrap
+	f.begins, f.retVar, f.wrap = 0, "ret_", nil
+	defer func() { f.begins, f.retVar, f.wrap = savedBegins, savedRetVar, savedWrap }()
 	// probe the body's type if the block return has unbound vars
 	ret := closed(sig.Ret, env)
 	if ret == nil {
@@ -1864,7 +1864,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		a := f.genExpr(args[0], nil)
 		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
 	case "!":
-		if isClass(elem, "Boolean") {
+		if isClass(recv.typ.(TOpt).Elem, "Boolean") {
 			return expr{code: "Boolean(!" + optTruthy(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
 		}
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
@@ -2849,7 +2849,9 @@ type exprNode struct {
 	e expr
 }
 
-func (x *exprNode) GetLocation() parser.Location { return parser.Location{} }
+func (x *exprNode) GetLocation() parser.Location     { return parser.Location{} }
+func (x *exprNode) CompactChildNodes() []parser.Node { return nil } // a leaf: already generated
+func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 
 // genDynCall sends a method to an untyped value: see prelude/dynamic.rb.
 // Like MRI, only a call with an explicit receiver (other than self) cannot

@@ -883,8 +883,9 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 // class, the condition's own === when its class defines one (at run time
 // when it is untyped or T?), else ==, Object#==='s default.
 func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
-	if f.classRef(cond) != nil {
-		return f.isACheck(cond, subj, cond)
+	if cls := f.classRef(cond); cls != nil {
+		// not isACheck: its discard of a folded subject would land in the previous arm's body
+		return f.isA(cond, subj, cls)
 	}
 	var condT Type
 	f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
@@ -1247,7 +1248,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 // clause gets a fresh Go binding of its own class. A local of that name
 // assigned before keeps its one type, so the clause shadows it.
 func (f *fctx) bindRescue(n parser.Node, name string, bind Type) {
-	val := expr{code: "r.(" + f.c.goType(bind) + ")", typ: bind}
+	val := expr{code: "r_.(" + f.c.goType(bind) + ")", typ: bind}
 	if outer := f.visibleLocal(name); outer != nil {
 		v := &local{name: name, goName: goLocalName(name), typ: bind, declared: true, info: outer.owner()}
 		f.scope.vars[name] = v
@@ -1675,7 +1676,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 // fillDefault runs a left-out param's default where Ruby does: in the callee, after the params before it.
 func (f *fctx) fillDefault(i int, p Param) {
 	name := goLocalName(p.Name)
-	if info := f.locals[p.Name]; f.pass == 2 && info != nil && info.reads == 1 {
+	if info := f.localInfo(p.Name); f.pass == 2 && info != nil && info.reads == 1 {
 		name = "_" // never read: evaluated for its effects only
 	}
 	f.emit("if rbArgc <= %d {", i)

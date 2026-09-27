@@ -1,5 +1,3 @@
-# skip: blocked on container-eq-instantiation: Array[untyped] == Array[String] is false across Go instantiations (the rest passes since untyped? collapses to untyped)
-
 # rbs_inline: enabled
 
 people = [{ name: "a", age: 30 }, { name: "b", age: 20 }]
