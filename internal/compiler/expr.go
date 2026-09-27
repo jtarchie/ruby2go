@@ -21,6 +21,7 @@ type expr struct {
 	stmt     bool // already a complete statement (assignment, panic)
 	noreturn bool // panic/exit: terminates the statement list
 	done     bool // already emitted; code only names the value
+	assert   bool // ends in a Go type assertion, which is not a statement
 }
 
 // genLiteral handles the leaf expressions.
@@ -986,26 +987,32 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 		}
 	}
 	ret := subst(m.Ret, env)
-	code := f.callCode(e, recv, codes, env)
+	out := expr{code: f.callCode(e, recv, codes, env), typ: ret}
 	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
 		if t := f.constGetType(recv, args); t != nil {
-			code, ret = code+".("+f.c.goType(t)+")", t
+			if isOpt(t) {
+				// the constant table holds T? as T or nil (see Opt)
+				out.code = f.coerce(n, expr{code: out.code, typ: TAny{}}, t)
+			} else {
+				out.code, out.assert = out.code+".("+f.c.goType(t)+")", true
+			}
+			out.typ = t
 		}
 	}
 	// `klass.new` returns the hierarchy's root type; narrow to the class the
 	// receiver is statically known to be.
 	if m.Kind == kindSynth && m.Name == "new" {
 		if meta := f.metaOfType(recv.typ); meta != nil && meta.metaOf != meta.metaOf.root() {
-			ret = TClass{C: meta.metaOf}
-			code += ".(" + f.c.goType(ret) + ")"
+			out.typ = TClass{C: meta.metaOf}
+			out.code, out.assert = out.code+".("+f.c.goType(out.typ)+")", true
 		}
 	}
 	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" && e.Owner != nil {
 		if rc, ok := recv.typ.(TClass); ok && rc.C.isStruct() && e.Entry != rc.C {
-			code += ".(" + f.c.goType(recv.typ) + ")"
+			out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
 		}
 	}
-	return expr{code: code, typ: ret}
+	return out
 }
 
 // callCode renders the call for entry e.
@@ -1753,11 +1760,11 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 	if !cls.isStruct() {
 		return expr{code: classVar(cls), typ: TClass{C: cls.meta}}, true
 	}
-	code := recv.code + "._ClassOf()"
+	out := expr{code: recv.code + "._ClassOf()", typ: TClass{C: cls.meta}}
 	if cls != cls.root() {
-		code += ".(" + f.c.goType(TClass{C: cls.meta}) + ")"
+		out.code, out.assert = out.code+".("+f.c.goType(out.typ)+")", true
 	}
-	return expr{code: code, typ: TClass{C: cls.meta}}, true
+	return out, true
 }
 
 func (f *fctx) dynClassOf(n parser.Node, recv expr) expr {

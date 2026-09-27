@@ -1,5 +1,3 @@
-# skip: a call whose result gets a Go type assertion (inherited `-> self`, literal const_get, klass.new through singleton(Sub)) is emitted bare in statement position, and go build rejects the unused `x.(T)`
-
 # rbs_inline: enabled
 
 class Builder
