@@ -366,22 +366,7 @@ func (f *fctx) leftNarrowing(n parser.Node, l expr) []narrowInfo {
 // ---- strings
 
 func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
-	var parts []string
-	for _, p := range n.Parts {
-		switch p := p.(type) {
-		case *parser.StringNode:
-			parts = append(parts, strconv.Quote(p.Unescaped.Value))
-		case *parser.EmbeddedStatementsNode:
-			st := p.Statements
-			if st == nil || len(st.Body) != 1 {
-				f.errorf(p, "interpolation must contain a single expression")
-			}
-			e := f.genExpr(st.Body[0], nil)
-			parts = append(parts, f.toS(st.Body[0], e))
-		default:
-			f.c.unsupported(f.f, p)
-		}
-	}
+	parts := f.interpParts(n.Parts, nil)
 	if len(parts) == 0 {
 		return expr{code: `""`, typ: f.cls("String"), lit: true}
 	}
@@ -398,6 +383,29 @@ func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
 		return expr{code: parts[0], typ: f.cls("String")}
 	}
 	return expr{code: "(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
+}
+
+// interpParts appends the Go string pieces of an interpolation's parts.
+// Adjacent literals (`"a" "#{b}"`) nest an InterpolatedStringNode as a part.
+func (f *fctx) interpParts(ps []parser.Node, parts []string) []string {
+	for _, p := range ps {
+		switch p := p.(type) {
+		case *parser.StringNode:
+			parts = append(parts, strconv.Quote(p.Unescaped.Value))
+		case *parser.InterpolatedStringNode:
+			parts = f.interpParts(p.Parts, parts)
+		case *parser.EmbeddedStatementsNode:
+			st := p.Statements
+			if st == nil || len(st.Body) != 1 {
+				f.errorf(p, "interpolation must contain a single expression")
+			}
+			e := f.genExpr(st.Body[0], nil)
+			parts = append(parts, f.toS(st.Body[0], e))
+		default:
+			f.c.unsupported(f.f, p)
+		}
+	}
+	return parts
 }
 
 func (f *fctx) toS(n parser.Node, e expr) string {
