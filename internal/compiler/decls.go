@@ -386,6 +386,10 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		env["Self"] = c.selfTypeFor(e, cls)
 		ps, ret := c.sig(e.M, env)
 		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
+		if e.M.seqAdapter {
+			name, ps, ret := c.seqAdapterSig(e.M, env)
+			c.w("\t%s(%s) %s\n", name, ps, ret)
+		}
 	}
 	if cls.meta != nil || cls.metaOf != nil {
 		// a metaclass inherits _ClassOf from Class/Module; listing it lets a
@@ -451,7 +455,30 @@ func (c *Compiler) emitForwarders(cls *Class) {
 			c.w("func (self %s) %s(%s) %s { return %s }\n", recv, m.GoName, ps, ret, body)
 		}
 	}
+	for _, e := range c.publicEntries(cls) {
+		if !e.M.seqAdapter {
+			continue
+		}
+		env := composeEnv(e.Env, nil)
+		env["Self"] = c.selfTypeFor(e, cls)
+		name, ps, ret := c.seqAdapterSig(e.M, env)
+		seq := "rbSeq"
+		if len(e.M.Block.Params) == 2 {
+			seq = "rbSeq2"
+		}
+		c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk %s) { self.%s(%s) })\n}\n",
+			recv, name, ps, ret, seq, c.blockGoType(e.M.Block, env), e.M.GoName, c.argNames(e.M))
+	}
 	c.w("\n")
+}
+
+// seqAdapterSig renders the iter.Seq adapter a closure override of an
+// iterator answers to under the iterator's Go name (decision 4).
+func (c *Compiler) seqAdapterSig(m *Method, env map[string]Type) (name, params, ret string) {
+	it := *m
+	it.Iterator = true
+	params, ret = c.sig(&it, env)
+	return goMethodName(m.Name), params, ret
 }
 
 // forwardTypeArgs renders explicit type args for a forwarder call.

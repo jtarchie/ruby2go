@@ -119,6 +119,7 @@ type Method struct {
 	Block      *BlockSig
 	Ret        Type
 	Iterator   bool   // block returns void → iter.Seq
+	seqAdapter bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
 	BlockParam string // name of an explicit &block parameter
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
@@ -787,6 +788,14 @@ func (c *Compiler) link() {
 		c.resolveMethod(m)
 	}
 	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if c.overridesIterator(m) {
+				m.seqAdapter = true
+				m.GoName += "_blk"
+			}
+		}
+	}
+	for _, cls := range c.classList {
 		ms := make([]*Method, 0, len(cls.MethodList))
 		for _, e := range cls.methodSet() {
 			ms = append(ms, e.M)
@@ -970,7 +979,8 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
 	}
 	m.Ret = subst(e.M.Ret, e.Env)
-	m.Iterator = e.M.Iterator
+	// decision 4 holds for the override's own body: a rescue around yield makes it a closure
+	m.Iterator = e.M.Iterator && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	c.bindParamNames(m)
 	return true
 }
@@ -994,6 +1004,18 @@ func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
 		return strings.Contains(x.Unescaped.Value, "func(yield ")
 	}
 	return m.Kind != kindDef || !containsRescueClause(m.Node.Body)
+}
+
+// overridesIterator reports whether m takes its block as a closure yet
+// overrides an iterator, e.g. an `each` that rescues around yield under
+// Enumerable's. Callers of the iterator (Enumerable's bodies, through its
+// constraint) keep its Go name, now an iter.Seq adapter over the closure.
+func (c *Compiler) overridesIterator(m *Method) bool {
+	if m.Owner == nil || m.Block == nil || m.Iterator || !isVoid(m.Block.Ret) {
+		return false
+	}
+	e := c.inheritedSig(m)
+	return e != nil && e.M.Block != nil && (e.M.Iterator || c.overridesIterator(e.M))
 }
 
 func substAll(ts []Type, env map[string]Type) []Type {

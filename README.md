@@ -429,6 +429,14 @@ resolve; anything not listed is still open.
    the loop body). A `%x{}` leaf is an iterator only if its Go builds one
    (`func(yield ...`). Everything else takes a closure: `Thread.new { }`
    returns a Thread, `mount_proc(path) { }` stores its block.
+   A closure that overrides an iterator (an `each` that rescues around
+   `yield`, under `include Enumerable`) moves to `Each_blk`, and an
+   `iter.Seq` adapter (`rbSeq`) keeps `Each` for the iterator's callers.
+   A loop that stops early unwinds the closure with a sentinel panic, so
+   `ensure` runs as on MRI's `break`; an exception from the loop body that
+   the closure rescues aborts the Go program instead, since a range
+   function cannot recover one. *(Revised: such a class failed `go build`,
+   and an unannotated override inherited iterator-ness despite its rescue.)*
 5. `Hash.new(default)` / `Hash#[]` typing: **decided, `Hash#[]` is
    `(K) -> V?`** and there is no default value. `Hash#fetch(k, default)`
    covers the common case; `tally`/`group_by` are written with `||`.

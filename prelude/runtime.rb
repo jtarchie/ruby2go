@@ -127,7 +127,8 @@
   // rbWrapPanic converts Go runtime panics into Ruby exceptions so a
   // catch-all rescue sees a StandardError.
   func rbWrapPanic(r any) any {
-    if _, ok := r.(ExceptionI); ok {
+    switch r.(type) {
+    case ExceptionI, rbStop:
       return r
     }
     if err, ok := r.(runtime.Error); ok {
@@ -144,6 +145,48 @@
       return NewStandardError(Ref[String](String(msg)))
     }
     return NewStandardError(Ref[String](String(fmt.Sprint(r))))
+  }
+
+  // rbStop unwinds a closure-taking each when the loop over its rbSeq
+  // adapter stops early, like MRI's break: ensure runs, rescue passes it on.
+  type rbStop struct{}
+
+  // rbSeq adapts a closure-taking each to the iter.Seq its callers range
+  // over (decision 4). A loop body's own exception still unwinds through
+  // each; if each rescues it, Go aborts, since a range function may not
+  // recover one.
+  func rbSeq[E any](each func(func(E))) iter.Seq[E] {
+    return func(yield func(E) bool) {
+      defer rbStopped()
+      stopped := false
+      each(func(x E) {
+        if stopped || !yield(x) {
+          stopped = true
+          panic(rbStop{})
+        }
+      })
+    }
+  }
+
+  func rbSeq2[K, V any](each func(func(K, V))) iter.Seq2[K, V] {
+    return func(yield func(K, V) bool) {
+      defer rbStopped()
+      stopped := false
+      each(func(k K, v V) {
+        if stopped || !yield(k, v) {
+          stopped = true
+          panic(rbStop{})
+        }
+      })
+    }
+  }
+
+  func rbStopped() {
+    if r := recover(); r != nil {
+      if _, ok := r.(rbStop); !ok {
+        panic(r)
+      }
+    }
   }
 
   func NewHash[K, V comparable]() *Hash[K, V] { return &Hash[K, V]{vals: map[K]V{}} }

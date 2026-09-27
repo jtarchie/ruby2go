@@ -108,6 +108,26 @@ class Naturals
   end
 end
 
+class Tolerant
+  include Enumerable #[Integer]
+
+  # unannotated, and it rescues around yield: a closure, adapted for Enumerable
+  def each
+    n = 0
+    while true
+      n += 1
+      begin
+        yield n
+      rescue ZeroDivisionError
+        puts "tolerant #{n}"
+      ensure
+        puts "ensure #{n}" if n == 2
+      end
+      return if n == 3
+    end
+  end
+end
+
 cd = Countdown.new(4)
 cd.each { |n| puts "cd #{n}" }
 cd.each do |n|
@@ -174,3 +194,7 @@ nat.each_with_index do |n, i|
   break if i >= 2
   puts "#{i}:#{n}"
 end
+
+tol = Tolerant.new
+tol.each { |n| puts 6 / (n - 2) }
+puts tol.find(&:even?).inspect, tol.map { |n| n * 2 }.inspect, tol.include?(2)
