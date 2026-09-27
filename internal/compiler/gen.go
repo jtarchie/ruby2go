@@ -30,7 +30,9 @@ type fctx struct {
 	block        string
 	rbScope      string // the block path where the current Ruby scope (method or block) starts
 	blockCtr     int
-	loops        []loopKind
+	loops        []*loopFrame
+	switches     int // nesting depth of emitted Go switch statements
+	labels       int // not rewound by probe, so labels stay unique
 	closures     int // nesting depth of Go closures (non-iterator blocks)
 	begins       int // nesting depth of rescue wrappers
 	retVar       string
@@ -45,6 +47,36 @@ const (
 	loopClosure
 	loopIter
 )
+
+// loopFrame lets a `break` inside a Go switch (case/when) exit the loop via a label, not just the switch.
+type loopFrame struct {
+	kind     loopKind
+	switches int    // f.switches when the loop was entered
+	start    int    // where the label goes
+	label    string // set by the first `break` that needs it
+}
+
+// pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
+func (f *fctx) pushLoop(kind loopKind) {
+	s := f.buf.String()
+	start := len(s)
+	if i := strings.LastIndexByte(strings.TrimSuffix(s, "\n"), '\n') + 1; strings.HasPrefix(s[i:], "//line ") {
+		start = i
+	}
+	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, start: start})
+}
+
+// popLoop inserts the label only once a break used it: Go rejects unused labels.
+func (f *fctx) popLoop() {
+	l := f.loops[len(f.loops)-1]
+	f.loops = f.loops[:len(f.loops)-1]
+	if l.label == "" {
+		return
+	}
+	s := f.buf.String()
+	f.buf.Reset()
+	f.buf.WriteString(s[:l.start] + l.label + ":\n" + s[l.start:])
+}
 
 type localInfo struct {
 	declBlock string
@@ -530,16 +562,16 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 		cond = "!(" + cond + ")"
 		narrow = nil
 	}
+	f.pushLoop(loopFor)
 	f.emit("for %s {", cond)
 	saved := f.enterBlock()
 	f.indent++
-	f.loops = append(f.loops, loopFor)
 	f.applyNarrow(narrow)
 	f.genStmts(body, tail{})
-	f.loops = f.loops[:len(f.loops)-1]
 	f.indent--
 	f.leaveBlock(saved)
 	f.emit("}")
+	f.popLoop()
 	f.emptyTail(pred, t)
 }
 
@@ -594,8 +626,17 @@ func (f *fctx) genBreak(n *parser.BreakNode) {
 	if len(f.loops) == 0 {
 		f.errorf(n, "break outside a loop")
 	}
-	if f.loops[len(f.loops)-1] == loopClosure {
+	l := f.loops[len(f.loops)-1]
+	if l.kind == loopClosure {
 		f.errorf(n, "break inside a non-iterator block is not supported")
+	}
+	if f.switches > l.switches {
+		if l.label == "" {
+			f.labels++
+			l.label = fmt.Sprintf("loop%d", f.labels)
+		}
+		f.emit("break %s", l.label)
+		return
 	}
 	f.emit("break")
 }
@@ -604,7 +645,7 @@ func (f *fctx) genNext(n *parser.NextNode) {
 	if len(f.loops) == 0 {
 		f.errorf(n, "next outside a loop")
 	}
-	if f.loops[len(f.loops)-1] == loopClosure {
+	if f.loops[len(f.loops)-1].kind == loopClosure {
 		if n.Arguments != nil {
 			f.errorf(n, "next with a value inside a block is not supported")
 		}
@@ -646,6 +687,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, subj.code)
 	f.emit("switch {")
+	f.switches++
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
 		var conds []string
@@ -678,6 +720,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	}
 	f.indent--
 	f.leaveBlock(saved)
+	f.switches--
 	f.emit("}")
 }
 
@@ -697,6 +740,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		}
 	}
 	f.emit("switch %s := %s.(type) {", name, code)
+	f.switches++
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
 		var cases []string
@@ -755,6 +799,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	}
 	f.indent--
 	f.leaveBlock(saved)
+	f.switches--
 	f.emit("}")
 }
 

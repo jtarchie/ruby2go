@@ -1174,11 +1174,11 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		f.probe(func() {
 			saved, savedRuby := f.enterRubyBlock()
 			f.closures++
-			f.loops = append(f.loops, loopClosure)
+			f.pushLoop(loopClosure)
 			_, pro := f.bindBlockParams(n, names, params)
 			pro()
 			gen(tail{kind: tailReturn, types: &types})
-			f.loops = f.loops[:len(f.loops)-1]
+			f.popLoop()
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
 		})
@@ -1196,7 +1196,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.buf = &b
 	saved, savedRuby := f.enterRubyBlock()
 	f.closures++
-	f.loops = append(f.loops, loopClosure)
+	f.pushLoop(loopClosure)
 	goParams, pro := f.bindBlockParams(n, names, params)
 	ps := make([]string, 0, len(goParams))
 	for i, gp := range goParams {
@@ -1216,7 +1216,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	}
 	f.indent--
 	f.emit("}")
-	f.loops = f.loops[:len(f.loops)-1]
+	f.popLoop()
 	f.closures--
 	f.leaveRubyBlock(saved, savedRuby)
 	f.buf = savedBuf
@@ -1284,19 +1284,19 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 			allBlank = false
 		}
 	}
+	f.pushLoop(loopIter)
 	if allBlank {
 		f.emit("for range %s {", call)
 	} else {
 		f.emit("for %s := range %s {", strings.Join(goParams, ", "), call)
 	}
 	f.indent++
-	f.loops = append(f.loops, loopIter)
 	pro()
 	f.genStmts(blk.Body, tail{})
-	f.loops = f.loops[:len(f.loops)-1]
 	f.indent--
 	f.leaveRubyBlock(saved, savedRuby)
 	f.emit("}")
+	f.popLoop()
 	if t.kind != tailNone {
 		f.emptyTail(n, t)
 	}

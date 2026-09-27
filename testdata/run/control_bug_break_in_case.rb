@@ -1,5 +1,3 @@
-# skip: `break` inside a case/when arm inside a loop compiles to a Go break of the switch, so the loop keeps running
-
 # rbs_inline: enabled
 
 i = 0
