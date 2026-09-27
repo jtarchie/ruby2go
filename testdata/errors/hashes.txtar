@@ -187,18 +187,15 @@ puts cfg[:port] + 1
 h = { "a" => 1, "b" => "x" }
 puts h["b"].upcase
 -- store_value_type_mismatch.rb --
-# skip: no compile error; the String reaches IdxSet and `go build` fails (cannot use "x" as Integer)
-# error: main.rb:4:
+# error: main.rb:3:
 h = { "a" => 1 } #: Hash[String, Integer]
 h["b"] = "x"
 -- store_key_type_mismatch.rb --
-# skip: no compile error; the Symbol reaches IdxSet and `go build` fails (cannot use Symbol as String)
-# error: main.rb:4:
+# error: main.rb:3:
 h = { "a" => 1 } #: Hash[String, Integer]
 h[:b] = 2
 -- braceless_into_non_hash_param.rb --
-# skip: no compile error; the braceless Hash is passed to a String parameter and `go build` fails
-# error: main.rb:5:
+# error: main.rb:4:
 #: (String) -> String
 def f(s) = s
 puts f(a: 2)
@@ -244,8 +241,7 @@ puts h.select { |k, v| next false if k == "b"; v > 0 }.inspect
 h = { "a" => 1, "b" => nil } #: Hash[String, Integer?]
 puts h.select { |_k, v| v }.inspect
 -- literal_symbol_keys_for_string_hash.rb --
-# skip: no compile error; the Symbol keys reach NewHash[String, Integer]().__Set and `go build` fails (cannot use Symbol as String)
-# error: main.rb:3:
+# error: main.rb:2:
 h = { a: 1 } #: Hash[String, Integer]
 puts h.inspect
 -- subclass_hash.rb --

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -163,6 +164,9 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
 		iv := f.ivar(n, n.Name, val.typ)
+		if !fitsValue(val, iv.Type) {
+			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
+		}
 		return expr{code: f.ivarCode(iv) + " = " + f.coerce(n, val, iv.Type), typ: iv.Type, stmt: true}
 	case *parser.InstanceVariableOperatorWriteNode:
 		iv := f.ivar(n, n.Name, nil)
@@ -583,6 +587,14 @@ func (f *fctx) valueOf(e expr) expr {
 	return expr{code: "nil", typ: TNil{}}
 }
 
+// fitsValue is fits plus the one literal conversion Go makes exactly: an
+// Integer literal where a Float is expected (Float's operators take
+// Integers in Ruby). Any other literal of the wrong class, such as "a" for
+// a Symbol, would convert silently too, so it is rejected.
+func fitsValue(e expr, to Type) bool {
+	return fits(e.typ, to) || e.lit && isClass(e.typ, "Integer") && isClass(stripOpt(to), "Float")
+}
+
 // coerce converts e to the representation of type `to`.
 func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) && !isNil(to) {
@@ -631,6 +643,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		}
 		if isNil(e.typ) {
 			f.errorf(n, "nil where %s is expected", to)
+		}
+		if !fitsValue(e, to) {
+			f.errorf(n, "%s where %s is expected", e.typ, to)
 		}
 	case TVar:
 		return e.code
@@ -850,6 +865,11 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	if exprs != nil {
 		nargs = len(exprs)
 	}
+	// Too many arguments is checked first: it is the error Ruby raises, and
+	// the surplus would otherwise be coerced to the wrong parameter's type.
+	if nargs > len(m.Params) && !slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest }) {
+		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
+	}
 	ai := 0
 	for _, p := range m.Params {
 		if p.Rest {
@@ -905,9 +925,6 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			codes = append(codes, f.coerce(n, d, subst(p.Type, env)))
 			continue
 		}
-		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
-	}
-	if ai < nargs {
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
 	return codes
@@ -2287,7 +2304,9 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	if rm := cls.lookup("respond_to_missing?"); rm != nil {
 		f.implicitCall = true
 		defer func() { f.implicitCall = false }()
-		return f.callEntry(n, rm, recv, []parser.Node{args[0], &parser.FalseNode{}}, nil), true
+		// Ruby hands respond_to_missing? a Symbol even for respond_to?("x").
+		sym := &parser.SymbolNode{Unescaped: parser.RubyString{Value: name}, Location: args[0].GetLocation()}
+		return f.callEntry(n, rm, recv, []parser.Node{sym, &parser.FalseNode{}}, nil), true
 	}
 	if !isSimpleGo(recv.code) {
 		f.emit("_ = %s", recv.code)

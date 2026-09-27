@@ -102,6 +102,41 @@ func TestTypeEq(t *testing.T) {
 
 const knownOptJoin = "join does not lift subclass/sibling joins through T?, so the result depends on assignment order"
 
+func TestFits(t *testing.T) {
+	w := newTypeWorld()
+	I, S := cl(w.integer), cl(w.str)
+	cases := []struct {
+		name  string
+		t, to Type
+		want  bool
+	}{
+		{"same class", I, I, true},
+		{"different class", S, I, false},
+		{"subclass", cl(w.leaf), cl(w.base), true},
+		{"superclass", cl(w.base), cl(w.derived), false},
+		{"sibling", cl(w.other), cl(w.derived), false},
+		{"includer", cl(w.leaf), cl(w.cmp), true},
+		{"metaclass subclass", cl(w.metaDerived), cl(w.metaBase), true},
+		{"args", cl(w.hash, S, I), cl(w.hash, S, I), true},
+		{"key arg", cl(w.hash, cl(w.unrelated), I), cl(w.hash, S, I), false},
+		{"nested arg", cl(w.array, cl(w.array, S)), cl(w.array, cl(w.array, I)), false},
+		{"untyped arg", cl(w.array, TAny{}), cl(w.array, I), true},
+		{"tvar arg", cl(w.array, I), cl(w.array, tv("E")), true},
+		{"opt arg", cl(w.array, opt(S)), cl(w.array, opt(I)), false},
+		{"tuple arg", cl(w.array, tup(I, I)), cl(w.array, tup(I, S)), false},
+		{"untyped", TAny{}, I, true},
+		{"tvar", tv("Self"), I, true},
+		{"tuple where class", tup(I, S), cl(w.array, I), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := fits(c.t, c.to); got != c.want {
+				t.Errorf("fits(%s, %s) = %v, want %v", show(c.t), show(c.to), got, c.want)
+			}
+		})
+	}
+}
+
 func TestJoin(t *testing.T) {
 	w := newTypeWorld()
 	I, S := cl(w.integer), cl(w.str)

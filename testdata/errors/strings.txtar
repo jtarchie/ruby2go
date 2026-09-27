@@ -208,15 +208,13 @@ puts "#{nil.upcase}"
 s = "x"
 puts "y" if s
 -- string_literal_as_symbol_key.rb --
-# skip: a String literal where a Symbol is expected converts silently (Go untyped constant), so h["a"] finds :a (MRI: nil); a non-literal String fails go build instead
-# error: main.rb:6:
+# error: main.rb:5:
 # rbs_inline: enabled
 
 h = { a: 1 } #: Hash[Symbol, Integer]
 puts h["a"].inspect
 -- string_literal_as_symbol_arg.rb --
-# skip: a String literal where a Symbol is expected converts silently, so :a <=> "a" is 0 and [:a].include?("a") is true (MRI: nil, false)
-# error: main.rb:5:
+# error: main.rb:4:
 # rbs_inline: enabled
 
 puts (:a <=> "a").inspect

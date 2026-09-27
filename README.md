@@ -509,7 +509,12 @@ resolve; anything not listed is still open.
     Narrowing follows `if x`, `if x.is_a?(C)`, `&&`, and early-exit guards
     (`return … unless cond`, `return if x.nil?`) for the rest of the
     block; attribute reads on `self` narrow like locals; reassigning drops
-    the narrowings.
+    the narrowings. Likewise a value of class `C` where `T` is expected
+    (an argument, element, key, block result or ivar write) is a compile
+    error unless `C` is `T` or inherits/includes it, with type arguments
+    checked the same way. Go would convert a literal silently, so only
+    an Integer literal where a Float is expected passes (Float's
+    operators take Integers); `"a"` is not a `Symbol` (decision 23).
 21. `is_a?`/`kind_of?` is a constant when static types decide it and a Go
     type assertion otherwise. There is no runtime record of included
     modules, so `is_a?(SomeModule)` on an untyped value, or on a struct

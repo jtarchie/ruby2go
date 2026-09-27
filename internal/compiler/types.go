@@ -320,3 +320,38 @@ func join(a, b Type) (Type, bool) {
 	}
 	return nil, false
 }
+
+// fits reports whether a value of type t can stand where `to` is expected:
+// the same class or a subclass, with type args that fit in turn. Only
+// class-vs-class mismatches are rejected; type variables, untyped and
+// shapes the codegen converts (tuples, blocks) are left to the caller.
+func fits(t, to Type) bool {
+	switch to := to.(type) {
+	case TClass:
+		c, ok := t.(TClass)
+		if !ok {
+			return true
+		}
+		if c.C != to.C {
+			return c.C.isSubclassOf(to.C)
+		}
+		for i := range min(len(c.Args), len(to.Args)) {
+			if !fits(c.Args[i], to.Args[i]) {
+				return false
+			}
+		}
+	case TOpt:
+		return fits(stripOpt(t), to.Elem)
+	case TTuple:
+		tt, ok := t.(TTuple)
+		if !ok || len(tt.Elems) != len(to.Elems) {
+			return true
+		}
+		for i := range tt.Elems {
+			if !fits(tt.Elems[i], to.Elems[i]) {
+				return false
+			}
+		}
+	}
+	return true
+}
