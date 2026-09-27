@@ -19,7 +19,11 @@
 
   // rbJSONString escapes like the json gem's default generator: quotes,
   // backslashes and control characters; "/" and non-ASCII stay as-is.
+  // Invalid UTF-8 is the gem's GeneratorError.
   func rbJSONString(s string) String {
+    if !utf8.ValidString(s) {
+      panic(NewJSON_GeneratorError(Ref(String("source sequence is illegal/malformed utf-8"))))
+    }
     var b strings.Builder
     b.WriteByte('"')
     for i := range len(s) {

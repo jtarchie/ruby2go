@@ -1,5 +1,3 @@
-# skip: to_json on a string with invalid UTF-8 emits the bytes; MRI raises JSON::GeneratorError "source sequence is illegal/malformed utf-8"
-
 # rbs_inline: enabled
 
 require "json"

@@ -32,12 +32,16 @@
   }
 
   // rbSubject is the text a Regexp matches: a String, or a Symbol's name.
-  // nil matches nothing (ok is false); anything else is MRI's TypeError.
+  // nil matches nothing (ok is false); anything else is MRI's TypeError, and
+  // a String that is not valid UTF-8 is MRI's ArgumentError.
   func rbSubject(v any) (string, bool) {
     switch s := v.(type) {
     case nil:
       return "", false
     case String:
+      if !utf8.ValidString(string(s)) {
+        panic(NewArgumentError(Ref(String("invalid byte sequence in UTF-8"))))
+      }
       return string(s), true
     case Symbol:
       return string(s), true
