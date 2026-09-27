@@ -46,7 +46,7 @@
         groups[i] = &g
       }
     }
-    return &MatchData{groups: groups, pre: s[:loc[0]], post: s[loc[1]:]}
+    return &MatchData{groups: groups, names: r.re.SubexpNames(), pre: s[:loc[0]], post: s[loc[1]:]}
   }
 
   // rbSubject is the text a Regexp matches: a String, or a Symbol's name.
@@ -146,7 +146,8 @@ class Regexp < Object
   }
 end
 
-# @go_type struct { groups []*String; pre string; post string }
+# names are the groups' names ("" when unnamed), as Go's SubexpNames.
+# @go_type struct { groups []*String; names []string; pre string; post string }
 class MatchData < Object
   #: (Integer) -> String?
   def [](i) = %x{
@@ -184,7 +185,11 @@ class MatchData < Object
     var b strings.Builder
     b.WriteString("#<MatchData ")
     for i, g := range self.groups {
-      if i > 0 {
+      switch {
+      case i == 0:
+      case self.names[i] != "":
+        b.WriteString(" " + self.names[i] + ":")
+      default:
         fmt.Fprintf(&b, " %d:", i)
       }
       if g == nil {
