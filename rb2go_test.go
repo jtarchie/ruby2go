@@ -104,7 +104,8 @@ func TestRun(t *testing.T) {
 			}
 			skipIfMarked(t, src)
 			gen := transpile(t, filepath.Base(rb), src)
-			sameAsRuby(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen))
+			// -l skips inlining, ~40% of compile CPU; TestExamples keeps the default build users get.
+			sameAsRuby(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-gcflags=-l"))
 		})
 	}
 }
@@ -283,10 +284,11 @@ func copyPreludeGo(t *testing.T, gen string) {
 	}
 }
 
-func goBuild(t *testing.T, gen string) string {
+func goBuild(t *testing.T, gen string, flags ...string) string {
 	t.Helper()
 	bin := filepath.Join(gen, "prog")
-	out, _, err := run(t, gen, "go", "build", "-o", bin, ".")
+	args := append(append([]string{"build"}, flags...), "-o", bin, ".")
+	out, _, err := run(t, gen, "go", args...)
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
