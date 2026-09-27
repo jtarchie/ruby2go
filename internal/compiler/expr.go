@@ -442,6 +442,8 @@ func (f *fctx) ivarCode(iv *Ivar) string {
 // ---- literals
 
 func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
+	// A literal is never nil, so an expected T? means T.
+	expected = stripOpt(expected)
 	if tt, ok := expected.(TTuple); ok && len(tt.Elems) == len(n.Elements) {
 		codes := make([]string, len(n.Elements))
 		for i, el := range n.Elements {
@@ -519,7 +521,7 @@ func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
 
 func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) expr {
 	var kT, vT Type
-	if ec, ok := expected.(TClass); ok && ec.C.RubyName == "Hash" {
+	if ec, ok := stripOpt(expected).(TClass); ok && ec.C.RubyName == "Hash" {
 		kT, vT = ec.Args[0], ec.Args[1]
 	}
 	type kv struct{ k, v expr }
