@@ -245,12 +245,29 @@ func (c *Compiler) emitProgram() {
 
 	c.emitRubyNames()
 	c.emitMain()
+	c.noteUserToJson()
 	c.emitDynamic()
 	c.emitTuples()
 	c.emitBoxes()
 	// last: every body, main included, has registered its literals by now
 	for _, r := range c.regexps {
 		c.w("%s\n\n", r)
+	}
+}
+
+// noteUserToJson: the json generator calls to_json(state) on what it
+// renders, which reaches a user to_json declared other than
+// (*untyped) -> String only through its Dyn wrapper (README decision 25).
+func (c *Compiler) noteUserToJson() {
+	for _, cls := range c.classList {
+		m := cls.Methods["to_json"]
+		if m == nil || m.File.prelude {
+			continue
+		}
+		if len(m.Params) != 1 || !m.Params[0].Rest || !isAny(m.Params[0].Type) || !isClass(m.Ret, "String") {
+			c.noteDyn("to_json")
+			return
+		}
 	}
 }
 
@@ -492,11 +509,11 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) Cmp(o %s) Integer {\n\t%s\n\treturn 0\n}\n\n", full, full, strings.Join(cmp, "\n\t"))
 		c.w("func (t %s) Inspect() String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(insp, ` + ", " + `))
 		c.w("func (t %s) ToS() String { return t.Inspect() }\n\n", full)
-		json := make([]string, 0, n)
+		elems := make([]string, 0, n)
 		for i := range n {
-			json = append(json, fmt.Sprintf("rbToJson(t.F%d)", i))
+			elems = append(elems, fmt.Sprintf("t.F%d", i))
 		}
-		c.w("func (t %s) ToJson(...any) String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(json, ` + "," + `))
+		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(elems, ", "))
 		c.w("func (t %s) Eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
 		_ = tos
 	}

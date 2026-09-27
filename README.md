@@ -562,6 +562,17 @@ resolve; anything not listed is still open.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
+    `to_json(opts)` takes the generator options `indent`, `space`,
+    `space_before`, `object_nl`, `array_nl`, `depth`, `script_safe`
+    (`escape_slash`), `ascii_only` and `allow_nan`; `sort_keys`, `strict`
+    and `as_json` raise `NotImplementedError`, other keys are ignored as
+    the gem ignores unknown ones, and `max_nesting` is not checked.
+    `JSON.generate` takes no options. Like the gem, the generator calls
+    every value's `to_json` with one (opaque) state argument: a user
+    `to_json` declared other than `(*untyped) -> String` is reached
+    through its dynamic wrapper, so `(?untyped)` gets the state and `()`
+    raises `ArgumentError`. *(Revised: options were ignored, and such a
+    `to_json` was skipped for the JSON of its `to_s`.)*
 26. Threads are goroutines. An exception ends only its thread (reported on
     stderr) and `join` re-raises it. There is no GVL: stdout writes are
     locked, other shared state is the program's problem.

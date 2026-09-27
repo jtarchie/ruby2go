@@ -1484,7 +1484,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	case "inspect":
 		return expr{code: "rbInspect(Opt(" + recv.code + "))", typ: f.cls("String")}
 	case "to_json":
-		return expr{code: "rbToJson(Opt(" + recv.code + "))", typ: f.cls("String")}
+		return expr{code: "rbToJson(" + strings.Join(append([]string{"Opt(" + recv.code + ")"}, f.jsonArgs(args)...), ", ") + ")", typ: f.cls("String")}
 	case "==", "!=", "equal?":
 		if len(args) != 1 {
 			f.errorf(n, "%s takes one argument", name)
@@ -1525,8 +1525,10 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: recv.code + ".F0", typ: tt.Elems[0]}
 	case "last":
 		return expr{code: fmt.Sprintf("%s.F%d", recv.code, len(tt.Elems)-1), typ: tt.Elems[len(tt.Elems)-1]}
-	case "to_s", "inspect", "to_json":
+	case "to_s", "inspect":
 		return expr{code: recv.code + "." + goMethodName(name) + "()", typ: f.cls("String")}
+	case "to_json":
+		return expr{code: recv.code + ".ToJson(" + strings.Join(f.jsonArgs(args), ", ") + ")", typ: f.cls("String")}
 	case "<=>":
 		a := f.genExpr(args[0], recv.typ)
 		return expr{code: recv.code + ".Cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
@@ -1559,7 +1561,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "inspect":
 		return expr{code: "rbInspect(" + recv.code + ")", typ: f.cls("String")}
 	case "to_json":
-		return expr{code: "rbToJson(" + recv.code + ")", typ: f.cls("String")}
+		return expr{code: "rbToJson(" + strings.Join(append([]string{recv.code}, f.jsonArgs(args)...), ", ") + ")", typ: f.cls("String")}
 	case "nil?":
 		return expr{code: "Boolean(any(" + recv.code + ") == nil)", typ: f.cls("Boolean")}
 	case "!":
@@ -2225,8 +2227,34 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 	if call, ok := n.(*parser.CallNode); ok && call.IsVARIABLE_CALL() {
 		vcall = true
 	}
-	codes := make([]string, 0, 2+len(args))
-	codes = append(codes, strconv.FormatBool(vcall), f.coerce(n, recv, TAny{}))
+	codes := append([]string{strconv.FormatBool(vcall), f.coerce(n, recv, TAny{})}, f.anyArgs(args)...)
+	return expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+}
+
+// jsonArgs is anyArgs for to_json, plus its `to_json(*a)` idiom: a lone
+// splat of an Array passes the elements on.
+func (f *fctx) jsonArgs(args []parser.Node) []string {
+	if len(args) != 1 {
+		return f.anyArgs(args)
+	}
+	sp, ok := args[0].(*parser.SplatNode)
+	if !ok {
+		return f.anyArgs(args)
+	}
+	a := f.genExpr(sp.Expression, nil)
+	ac, ok := a.typ.(TClass)
+	if !ok || ac.C.Name != "Array" {
+		f.errorf(sp, "splat of non-array %s", a.typ)
+	}
+	if !isAny(ac.Args[0]) {
+		a.code += "._ToAny()"
+	}
+	return []string{"(*" + a.code + ")..."}
+}
+
+// anyArgs generates call arguments for an `...any` parameter.
+func (f *fctx) anyArgs(args []parser.Node) []string {
+	codes := make([]string, 0, len(args))
 	for _, a := range args {
 		if _, ok := a.(*parser.SplatNode); ok {
 			f.errorf(a, "splat arguments in a dynamic call are not supported")
@@ -2234,7 +2262,7 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 		e := f.genExpr(a, nil)
 		codes = append(codes, f.coerce(a, e, TAny{}))
 	}
-	return expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+	return codes
 }
 
 // genSend compiles send/public_send/__send__. A literal name is an
