@@ -115,10 +115,10 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genRegexp(n)
 	case *parser.MatchWriteNode:
 		f.errorf(n, "named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match")
-	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode:
+	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode:
 		return f.genOrWrite(n)
-	case *parser.CallOperatorWriteNode:
-		return f.genOpAssignAttr(n)
+	case *parser.CallOperatorWriteNode, *parser.IndexOperatorWriteNode:
+		return f.genOpWrite(n)
 	case *parser.MultiWriteNode:
 		return f.genMultiWrite(n)
 	case *parser.KeywordHashNode:
@@ -1404,7 +1404,8 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 
 // overload stands in for RBS overloads (decision 12): a call whose argument
 // count m cannot take goes to the receiver class's `__<name>_<count>`, and
-// one whose sole argument is of class C to `__<name>_<c>` (C snake-cased:
+// one whose first argument is of class C to `__<name>_<c>` when that takes
+// the call's argument count (C snake-cased:
 // `__idx_range`, `__minus_time`), if defined. Operators use their Go name
 // minus `Op_`.
 func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
@@ -1421,14 +1422,26 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		base = strings.ToLower(strings.TrimPrefix(op, "Op_"))
 	}
 	name := "__" + base + "_"
+	// String#scan's result shape depends on the pattern: a literal with
+	// groups yields each match's groups.
+	if m.Name == "scan" && owner.RubyName == "String" && len(args) == 1 {
+		if g, ok := f.literalGroups(args[0]); ok && g > 0 {
+			return owner.lookup("__scan_groups")
+		}
+	}
 	if f.curBlock != nil && m.Block == nil {
 		return owner.lookup(name + "block") // `xs.sum { |x| x.price }`
 	}
-	if len(args) == 1 && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
+	if f.curBlock == nil && m.Block != nil {
+		if r := owner.lookup(name + "enum"); r != nil {
+			return r // `xs.each_slice(2)` without a block: an Array standing in for the Enumerator
+		}
+	}
+	if len(args) >= 1 && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
 		if c, ok := a.typ.(TClass); ok {
-			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil {
+			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && len(args) <= len(r.M.Params) {
 				return r
 			}
 		}
@@ -1648,11 +1661,26 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 		}
 		var names []string
 		for _, r := range ps.Requireds {
-			rp, ok := r.(*parser.RequiredParameterNode)
-			if !ok {
+			switch rp := r.(type) {
+			case *parser.RequiredParameterNode:
+				names = append(names, rp.Name)
+			case *parser.MultiTargetNode:
+				// `|(k, v), acc|`: spelt "(k,v)", which no Ruby name can be
+				if rp.Rest != nil || len(rp.Rights) > 0 {
+					f.errorf(r, "unsupported block parameter form")
+				}
+				var sub []string
+				for _, l := range rp.Lefts {
+					lp, ok := l.(*parser.RequiredParameterNode)
+					if !ok {
+						f.errorf(l, "unsupported block parameter form")
+					}
+					sub = append(sub, lp.Name)
+				}
+				names = append(names, "("+strings.Join(sub, ",")+")")
+			default:
 				f.errorf(r, "unsupported block parameter form")
 			}
-			names = append(names, rp.Name)
 		}
 		return names
 	case *parser.NumberedParametersNode:
@@ -1670,42 +1698,92 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 
 // bindBlockParams declares block params for the yielded types, returning
 // the Go loop/closure parameter names and a destructuring prologue.
-func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (goParams []string, prologue func()) {
-	if len(yields) == 1 {
-		if tt, ok := yields[0].(TTuple); ok && len(names) > 1 {
-			if len(names) != len(tt.Elems) {
-				f.errorf(n, "block takes %d params but the tuple has %d elements", len(names), len(tt.Elems))
+// bindTupleParams destructures one yielded tuple across several block params.
+func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]string, func()) {
+	if len(names) != len(tt.Elems) {
+		f.errorf(n, "block takes %d params but the tuple has %d elements", len(names), len(tt.Elems))
+	}
+	p := f.newTmp()
+	return []string{p}, func() {
+		lhs := make([]string, 0, len(names))
+		rhs := make([]string, 0, len(names))
+		vars := make([]*local, 0, len(names))
+		var nested []func()
+		for i, nm := range names {
+			if strings.HasPrefix(nm, "(") { // `|(k, v), i|`
+				sub, t, src := strings.Split(strings.Trim(nm, "()"), ","), tt.Elems[i], fmt.Sprintf("%s.F%d", p, i)
+				nested = append(nested, func() {
+					gp, pro := f.bindBlockParams(n, sub, []Type{t})
+					f.emit("%s := %s", gp[0], src)
+					pro()
+				})
+				continue
 			}
-			p := f.newTmp()
-			return []string{p}, func() {
-				lhs := make([]string, 0, len(names))
-				rhs := make([]string, 0, len(names))
-				vars := make([]*local, 0, len(names))
-				for i, nm := range names {
-					v := f.blockParam(nm, tt.Elems[i])
-					lhs = append(lhs, v.goName)
-					rhs = append(rhs, fmt.Sprintf("%s.F%d", p, i))
-					vars = append(vars, v)
-				}
-				f.emit("%s := %s", strings.Join(lhs, ", "), strings.Join(rhs, ", "))
-				for _, v := range vars {
-					f.noteUnused(v)
-				}
-			}
+			v := f.blockParam(nm, tt.Elems[i])
+			lhs = append(lhs, v.goName)
+			rhs = append(rhs, fmt.Sprintf("%s.F%d", p, i))
+			vars = append(vars, v)
 		}
+		if len(lhs) > 0 {
+			f.emit("%s := %s", strings.Join(lhs, ", "), strings.Join(rhs, ", "))
+		}
+		for _, d := range nested {
+			d()
+		}
+		for _, v := range vars {
+			f.noteUnused(v)
+		}
+	}
+}
+
+// bindArraySplat splats a yielded Array[elem] across several block params.
+func (f *fctx) bindArraySplat(names []string, elem Type) ([]string, func()) {
+	p := f.newTmp()
+	return []string{p}, func() {
+		for i, nm := range names {
+			e := flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: elem}})
+			v := f.blockParam(nm, e.typ)
+			f.emit("%s := %s", v.goName, e.code)
+			f.noteUnused(v)
+		}
+	}
+}
+
+func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (goParams []string, prologue func()) {
+	if tt, ok := firstType(yields).(TTuple); ok && len(yields) == 1 && len(names) > 1 {
+		return f.bindTupleParams(n, names, tt)
+	}
+	// Ruby splats a yielded Array across several block params; each gets
+	// its element, or nil past the end.
+	if ac, ok := firstType(yields).(TClass); len(yields) == 1 && len(names) > 1 && ok && ac.C.RubyName == "Array" && len(ac.Args) == 1 {
+		return f.bindArraySplat(names, ac.Args[0])
 	}
 	if len(names) > len(yields) {
 		f.errorf(n, "block takes %d params but only %d values are yielded", len(names), len(yields))
 	}
+	var destructure []func()
 	for i := range yields {
-		if i < len(names) {
+		switch {
+		case i < len(names) && strings.HasPrefix(names[i], "("):
+			p := f.newTmp()
+			goParams = append(goParams, p)
+			sub, t := strings.Split(strings.Trim(names[i], "()"), ","), yields[i]
+			destructure = append(destructure, func() {
+				gp, pro := f.bindBlockParams(n, sub, []Type{t})
+				f.emit("%s := %s", gp[0], p)
+				pro()
+			})
+		case i < len(names):
 			v := f.blockParam(names[i], yields[i])
 			goParams = append(goParams, v.goName)
-		} else {
+		default:
 			goParams = append(goParams, "_")
 		}
 	}
 	return goParams, func() {
+		for _, d := range destructure {
+			d()
+		}
 		for i := range yields {
 			if i < len(names) {
 				if v := f.scope.lookup(names[i]); v != nil {
@@ -2709,8 +2787,25 @@ func (f *fctx) genOrWrite(n parser.Node) expr {
 		return f.genOrAssignLocal(n)
 	case *parser.InstanceVariableOrWriteNode:
 		return f.genOrAssignIvar(n)
+	case *parser.IndexOrWriteNode:
+		return f.genIndexOrWrite(n)
 	}
 	return f.genOrAssignAttr(n.(*parser.CallOrWriteNode))
+}
+
+func (f *fctx) genOpWrite(n parser.Node) expr {
+	if n, ok := n.(*parser.IndexOperatorWriteNode); ok {
+		return f.genIndexOpWrite(n)
+	}
+	return f.genOpAssignAttr(n.(*parser.CallOperatorWriteNode))
+}
+
+// firstType is ts[0], or nil when ts is empty.
+func firstType(ts []Type) Type {
+	if len(ts) == 0 {
+		return nil
+	}
+	return ts[0]
 }
 
 // genOpAssignAttr: `recv.x += v` is recv.x=(recv.x + v), and its value is the new one, not the writer's result.
@@ -2736,6 +2831,58 @@ func (f *fctx) genOrAssignAttr(n *parser.CallOrWriteNode) expr {
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, cur.code)
 	return f.genOrAssign(n, expr{code: tmp, typ: cur.typ}, n.Value, func(v expr) { f.callWriter(n, recv, n.WriteName, v) })
+}
+
+// indexOperands evaluates an index assignment's receiver and arguments
+// once, for both its `[]` read and its `[]=` write.
+func (f *fctx) indexOperands(n, rn parser.Node, args *parser.ArgumentsNode, block *parser.BlockArgumentNode, safe bool) (expr, []parser.Node) {
+	if block != nil {
+		f.errorf(n, "a block argument in an index assignment is not supported")
+	}
+	recv := f.attrRecv(n, rn, safe, "[]")
+	var as []parser.Node
+	if args != nil {
+		for _, a := range args.Arguments {
+			e := f.valueOf(f.genExpr(a, nil))
+			if !isSimpleGo(e.code) {
+				tmp := f.newTmp()
+				f.emit("%s := %s", tmp, f.materialize(e))
+				e.code = tmp
+			}
+			as = append(as, &exprNode{Node: a, e: e})
+		}
+	}
+	return recv, as
+}
+
+// genIndexOrWrite: `h[k] ||= v` is `h[k] || h[k] = v`, with h and k evaluated once.
+func (f *fctx) genIndexOrWrite(n *parser.IndexOrWriteNode) expr {
+	recv, as := f.indexOperands(n, n.Receiver, n.Arguments, n.Block, n.IsSAFE_NAVIGATION())
+	cur := f.genMethodCall(n, recv, "[]", as, nil)
+	if !isAny(cur.typ) && !isOpt(cur.typ) && !isClass(cur.typ, "Boolean") {
+		return cur // never nil or false: the writer never runs
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, cur.code)
+	return f.genOrAssign(n, expr{code: tmp, typ: cur.typ}, n.Value, func(v expr) {
+		if isOpt(v.typ) && !isAny(stripOpt(v.typ)) {
+			v = expr{code: "(*" + v.code + ")", typ: stripOpt(v.typ)} // just assigned: not nil
+		}
+		f.emitExprStmt(n, f.genMethodCall(n, recv, "[]=", append(slices.Clone(as), &exprNode{Node: n.Value, e: v}), nil))
+	})
+}
+
+// genIndexOpWrite: `a[i] += v` is `a[i] = a[i] + v`, with a and i evaluated once; its value is the new one.
+func (f *fctx) genIndexOpWrite(n *parser.IndexOperatorWriteNode) expr {
+	recv, as := f.indexOperands(n, n.Receiver, n.Arguments, n.Block, n.IsSAFE_NAVIGATION())
+	val := f.genOp(n, f.genMethodCall(n, recv, "[]", as, nil), n.BinaryOperator, n.Value)
+	if !isSimpleGo(val.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, val.code)
+		val.code = tmp
+	}
+	f.emitExprStmt(n, f.genMethodCall(n, recv, "[]=", append(slices.Clone(as), &exprNode{Node: n.Value, e: val}), nil))
+	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
 }
 
 // attrRecv: the reader and the writer share one evaluation of the receiver.

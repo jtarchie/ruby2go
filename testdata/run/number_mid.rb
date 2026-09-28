@@ -96,3 +96,12 @@ puts 2 ** 62, t ** 63, 3 ** 39, 10 ** 18, (t - 1) ** 3, 7 ** 0
 puts 1 ** 1_000_000_000_000, o ** 1_000_000_000_001, o ** -4, o ** -3, 1 ** -5
 puts (-m).abs, m.pred.succ, n / 1, n / 2, n % -1, -m / -1
 puts 9.2e18.to_i, -9.2e18.floor, "-9223372036854775808".to_i, "9223372036854775807".to_i
+
+p 10.gcd(4), -12.gcd(18), 4.lcm(6), 0.lcm(5), 10.pow(3, 7), 3.pow(4), 2.pow(10, -7), 1234.digits, 255.digits(16), 0.digits
+p 7.fdiv(2), 7.fdiv(0.5), 7.divmod(2), -7.divmod(2), 7.div(2), -7.remainder(2), -7.modulo(2), 255.bit_length, -1.bit_length, 0.bit_length
+p 255.to_s(2), 255.to_s(16), -255.to_s(36), Integer.sqrt(17), Integer.sqrt(10**12), 3.integer?, 3.finite?
+p 1.step(10, 3).to_a, 10.step(1, -4).to_a, 3.times.map { it * 2 }, 1.upto(3).to_a, 3.downto(1).map { |i| i }
+1.step(7, 2) { |i| print i, " " }
+puts
+p 3.14159.floor(2), 3.14159.ceil(2), -3.14159.floor(1), 2.5.truncate, -2.5.truncate, 3.7 % 1, -3.7 % 1, 7.5 % -2.0, 7.5.divmod(2.0), 7.0.fdiv(2.0)
+p 1.0.finite?, (1.0 / 0).infinite?, (-1.0 / 0).infinite?, 1.0.infinite?, 1.5.integer?, 0.1.floor(1), 1.1.ceil(1), 12.34.floor(5)

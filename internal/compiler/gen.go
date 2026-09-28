@@ -394,7 +394,7 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 	case *parser.CallNode, *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode,
 		*parser.LocalVariableWriteNode, *parser.InstanceVariableWriteNode,
 		*parser.LocalVariableOperatorWriteNode, *parser.InstanceVariableOperatorWriteNode,
-		*parser.CallOperatorWriteNode, *parser.CallOrWriteNode:
+		*parser.CallOperatorWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode, *parser.IndexOperatorWriteNode:
 		if e.stmt || strings.HasSuffix(e.code, ")") && !e.assert {
 			f.emit("%s", e.code)
 			return

@@ -91,3 +91,32 @@ func (self *Hash[K, V]) rbGet(k K) (V, bool) {
 	v, ok := self.vals[k]
 	return v, ok
 }
+
+// rbKeySet is a set keyed by eql?/hash, as Hash keys are (Array#-, #&).
+type rbKeySet[K comparable] struct {
+	m   map[K]bool
+	idx rbKeyIndex[K]
+}
+
+func rbNewKeySet[K comparable](xs []K) *rbKeySet[K] {
+	s := &rbKeySet[K]{m: map[K]bool{}, idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}}
+	for _, x := range xs {
+		s.put(x)
+	}
+	return s
+}
+
+func (s *rbKeySet[K]) put(x K) {
+	k, h, byValue := s.idx.find(x)
+	if !s.m[k] {
+		s.m[k] = true
+		if byValue {
+			s.idx.add(k, h)
+		}
+	}
+}
+
+func (s *rbKeySet[K]) has(x K) bool {
+	k, _, _ := s.idx.find(x)
+	return s.m[k]
+}

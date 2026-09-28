@@ -537,7 +537,7 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			// a bare `private` does not reach `def self.x`
 			c.addMethod(f, cls, n, private && n.Receiver == nil, scope)
 		case *parser.CallNode:
-			c.collectClassCall(f, cls, n, &private, scope)
+			c.collectClassCall(ctx, f, cls, n, &private, scope)
 		case *parser.ClassNode:
 			c.collectClass(ctx, f, n, scope)
 		case *parser.ModuleNode:
@@ -557,7 +557,7 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 
 // collectClassCall handles a bare call in a class body: attr_*, include,
 // private/public.
-func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, private *bool, scope []*Class) {
+func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, private *bool, scope []*Class) {
 	if n.Receiver != nil {
 		c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
 	}
@@ -568,6 +568,9 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
+			if r, ok := a.(*parser.ConstantReadNode); ok && r.Name == "Singleton" && !cls.IsModule {
+				c.addSingletonInstance(ctx, f, n, cls, scope)
+			}
 		}
 		c.noteHooks(f, "included", cls, n, args, scope)
 	case "extend":
@@ -596,6 +599,17 @@ func (c *Compiler) collectClassCall(f *File, cls *Class, n *parser.CallNode, pri
 	default:
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
+}
+
+// addSingletonInstance gives a class that includes Singleton its
+// `instance`, memoized in a class-level ivar (decision 54).
+func (c *Compiler) addSingletonInstance(ctx context.Context, f *File, n *parser.CallNode, cls *Class, scope []*Class) {
+	src := fmt.Sprintf("#: () -> %s\ndef self.instance = @__singleton_instance ||= new\n", cls.RubyName)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	if err != nil {
+		c.errorf(f, n, "%v", err)
+	}
+	c.addMethod(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, scope)
 }
 
 // classHook is a hook MRI calls while it evaluates a class body in main.rb:

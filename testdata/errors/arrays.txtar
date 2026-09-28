@@ -33,26 +33,10 @@ puts nums.each_with_index { |n, i| n }.inspect
 #: (Array[Integer]) -> Array[Integer]
 def show(nums) = nums.each { |n| puts n }
 show([1])
--- iterator_without_block.rb --
-# error: main.rb:3: each is an iterator (its block returns void); call it as a statement with a block
-nums = [1, 2] #: Array[Integer]
-e = nums.each
--- map_without_block.rb --
-# error: main.rb:3: map requires a block
-nums = [1, 2] #: Array[Integer]
-puts nums.map.inspect
 -- block_to_blockless_method.rb --
 # error: main.rb:3: size does not take a block
 nums = [1, 2] #: Array[Integer]
 puts nums.size { |n| n }
--- index_op_assign.rb --
-# error: main.rb:3: unsupported syntax: IndexOperatorWriteNode
-nums = [1, 2] #: Array[Integer]
-nums[0] += 5
--- index_or_assign.rb --
-# error: main.rb:3: unsupported syntax: IndexOrWriteNode
-opt = [1, nil] #: Array[Integer?]
-opt[1] ||= 7
 -- push_many.rb --
 # error: main.rb:3: Array#push: wrong number of arguments (given 2, expected 1)
 nums = [1] #: Array[Integer]
@@ -112,10 +96,6 @@ nums.each { |*xs| puts xs.inspect }
 # error: main.rb:3: unsupported block parameter form
 nums = [1, 2] #: Array[Integer]
 nums.each { |x = 0| puts x }
--- block_param_nested.rb --
-# error: main.rb:3: unsupported block parameter form
-pairs = [[1, "a"]] #: Array[[Integer, String]]
-pairs.each_with_index { |(n, s), i| puts n, s, i }
 -- block_tuple_arity.rb --
 # error: main.rb:3: block takes 3 params but the tuple has 2 elements
 pairs = [[1, "a"]] #: Array[[Integer, String]]
@@ -337,10 +317,6 @@ safe_each([1, 2]) do |n|
   break if n > 1
   puts n
 end
--- block_autosplat_nested_array.rb --
-# error: main.rb:3: block takes 2 params but only 1 values are yielded
-grid = [[1, 2], [3, 4]] #: Array[Array[Integer]]
-grid.each { |a, b| puts a.inspect, b.inspect }
 -- forwarded_block_passed_arity.rb --
 # error: main.rb:3: the forwarded block takes 2 values but 1 are passed
 #: () { (Integer, Integer) -> Integer } -> Array[Integer]

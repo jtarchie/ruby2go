@@ -38,10 +38,6 @@ puts 1.abs { 2 }
 # error: main.rb:3: clamp does not take a block
 # rbs_inline: enabled
 puts 3.clamp(1, 2) { 0 }
--- times_without_block.rb --
-# error: main.rb:3: times is an iterator (its block returns void); call it as a statement with a block
-# rbs_inline: enabled
-puts 5.times
 -- upto_value_used.rb --
 # error: main.rb:3: upto with a block is an iterator and can only be used as a statement
 # rbs_inline: enabled
@@ -98,11 +94,6 @@ puts (a || 2).inspect
 # rbs_inline: enabled
 a = 0.0 #: Float
 puts (a || 1.0).inspect
--- integer_op_float_float_lacks.rb --
-# error: main.rb:4: Integer#% with an Integer and a Float is not supported
-# rbs_inline: enabled
-a = 7 #: Integer
-puts (a % 2.5).inspect
 -- float_where_integer_expected.rb --
 # error: main.rb:5: Float where Integer is expected
 # rbs_inline: enabled
@@ -159,10 +150,6 @@ class Integer
   #| (Float) -> Float
   def add(o) = self + o
 end
--- integer_to_s_base.rb --
-# error: main.rb:3: Integer#to_s: wrong number of arguments (given 1, expected 0)
-# rbs_inline: enabled
-puts 255.to_s(16)
 -- times_value_used.rb --
 # error: main.rb:3: times with a block is an iterator and can only be used as a statement
 # rbs_inline: enabled

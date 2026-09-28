@@ -1,13 +1,4 @@
 Compile errors and warnings for Hash (README decisions 1, 4, 5, 12, 20, 23, 34).
--- index_op_assign.rb --
-# error: main.rb:4: unsupported syntax: IndexOperatorWriteNode
-# error: IndexOperatorWriteNode
-h = { "a" => 1 } #: Hash[String, Integer]
-h["a"] += 1
--- index_or_assign.rb --
-# error: main.rb:3: unsupported syntax: IndexOrWriteNode
-h = {} #: Hash[String, Array[Integer]]
-(h["a"] ||= []) << 1
 -- index_and_assign.rb --
 # error: main.rb:3: unsupported syntax: IndexAndWriteNode
 h = { "a" => 1 } #: Hash[String, Integer]
@@ -94,22 +85,10 @@ puts h["a", "b"]
 # error: main.rb:3: fetch does not take a block
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h.fetch("b") { |k| k.size }
--- merge_with_block.rb --
-# error: main.rb:3: merge does not take a block
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.merge({ "a" => 2 }) { |_k, a, b| a + b }.inspect
--- count_with_block.rb --
-# error: main.rb:3: count does not take a block
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.count { |_k, v| v > 0 }
 -- any_without_block.rb --
 # error: main.rb:3: any? requires a block
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h.any?
--- reduce_without_init.rb --
-# error: main.rb:3: Enumerable#reduce: wrong number of arguments (given 0, expected 1)
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.reduce { |a, _b| a }.inspect
 -- map_without_block.rb --
 # error: main.rb:3: map requires a block
 h = { "a" => 1 } #: Hash[String, Integer]
@@ -130,10 +109,6 @@ h.each { |k, _v, _z| puts k }
 # error: main.rb:3: block takes 3 params but the tuple has 2 elements
 h = { "a" => 1 } #: Hash[String, Integer]
 h.each_pair { |k, _v, _z| puts k }
--- nested_destructuring.rb --
-# error: main.rb:3: unsupported block parameter form
-h = { "a" => 1 } #: Hash[String, Integer]
-h.each_with_index { |(k, v), i| puts k, v, i }
 -- pair_index_out_of_range.rb --
 # error: main.rb:3: tuple index must be a literal in range
 h = { "a" => 1 } #: Hash[String, Integer]
@@ -204,10 +179,6 @@ puts h.size
 #: (Hash) -> Integer
 def f(h) = h.size
 puts f({})
--- undefined_core_method.rb --
-# error: main.rb:3: undefined method transform_values for Hash[String, Integer]
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.transform_values { |v| v * 2 }.inspect
 -- freeze_literal.rb --
 # error: main.rb:2: undefined method freeze for Hash[String, Integer]
 LIMITS = { "a" => 1 }.freeze #: Hash[String, Integer]
@@ -216,10 +187,6 @@ puts LIMITS.size
 # error: main.rb:3: block takes 2 params but only 1 values are yielded
 h = { "a" => 1 } #: Hash[String, Integer]
 h.each_value { |v, extra| puts v, extra.inspect }
--- sort_with_block.rb --
-# error: main.rb:3: sort does not take a block
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.sort { |a, b| b <=> a }.inspect
 -- delete_with_block.rb --
 # error: main.rb:3: delete does not take a block
 h = { "a" => 1 } #: Hash[String, Integer]

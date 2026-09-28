@@ -149,3 +149,34 @@ puts any_size(typed)
 loose = {}
 loose["a"] = 2
 puts total(loose)
+
+groups = {} #: Hash[String, Array[Integer]]
+[["a", 1], ["b", 2], ["a", 3]].each { |k, v| (groups[k] ||= []) << v }
+p groups
+memo = {} #: Hash[Integer, String]
+p(memo[1] ||= "one", memo[1] ||= "uno", memo)
+arr = [1, 2, 3]
+arr[0] += 10
+arr[-1] *= 2
+p arr, (arr[1] -= 1)
+counts = {"x" => 0}
+counts["x"] += 5
+p counts
+nested = {} #: Hash[Symbol, Hash[Symbol, Integer]]
+(nested[:a] ||= {})[:b] = 1
+p nested
+flags = {} #: Hash[String, bool]
+flags["on"] ||= true
+p flags
+
+hs_h = {a: 1, b: 2, c: 3}
+p hs_h.transform_values { |v| v * 10 }, hs_h.transform_keys(&:to_s), hs_h.to_h { |k, v| [v, k] }, hs_h.to_h, hs_h.invert, hs_h.key(2), hs_h.key(9), hs_h.value?(3), hs_h.has_value?(0), hs_h.member?(:a)
+p hs_h.values_at(:a, :z), hs_h.fetch_values(:a, :b), hs_h.slice(:a, :c, :z), hs_h.except(:b), hs_h.store(:d, 4), hs_h
+p hs_h.merge({a: 100, e: 5}) { |k, old, new| old + new }, hs_h.count { |k, v| v.odd? }, hs_h.any? { |k, v| v > 3 }, hs_h.all? { |k, v| v > 0 }, hs_h.none? { |k, v| v > 9 }
+hs_h2 = hs_h.merge({})
+hs_h2.delete_if { |k, v| v.even? }
+p hs_h2, hs_h.reject { |k, v| v > 2 }, hs_h.select { |k, v| v > 2 }
+hs_h.update({z: 26})
+hs_h.keep_if { |k, v| v != 1 }
+p hs_h, hs_h.sort_by { |k, v| -v }.first(2), hs_h.min_by { |k, v| v }, hs_h.sum { |k, v| v }, hs_h.map { |k, v| "#{k}=#{v}" }.join("&")
+p hs_h.find { |k, v| v > 3 }, hs_h.sort, hs_h.max_by { |k, v| v }, hs_h.to_a.last, hs_h.each_with_index.map { |(k, v), i| "#{i}:#{k}" }

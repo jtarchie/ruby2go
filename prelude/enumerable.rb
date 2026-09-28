@@ -282,4 +282,305 @@ module Enumerable
     end
     out
   end
+  #: () { (E) -> bool } -> Integer
+  def __count_block
+    n = 0
+    each { |x| n += 1 if yield(x) }
+    n
+  end
+
+  #: (E) -> Integer
+  def __count_1(v)
+    n = 0
+    each { |x| n += 1 if x == v }
+    n
+  end
+
+  # No initial value: the first element starts the fold; nil when empty.
+  #: () { (E, E) -> E } -> E?
+  def __inject_0 = %x{
+    var acc *E
+    for x := range self.Each() {
+      if acc == nil {
+        x := x
+        acc = &x
+        continue
+      }
+      v := blk(*acc, x)
+      acc = &v
+    }
+    return acc
+  }
+
+  #: () { (E, E) -> E } -> E?
+  def __reduce_0 = %x{
+    var acc *E
+    for x := range self.Each() {
+      if acc == nil {
+        x := x
+        acc = &x
+        continue
+      }
+      v := blk(*acc, x)
+      acc = &v
+    }
+    return acc
+  }
+
+  #: [A] (A) { (E, A) -> void } -> A
+  def each_with_object(memo)
+    each { |x| yield(x, memo) }
+    memo
+  end
+
+  # Keeps the block's truthy results.
+  #: [U] () { (E) -> U? } -> Array[U]
+  def filter_map
+    out = [] #: Array[U]
+    each do |x|
+      v = yield(x)
+      out << v if v
+    end
+    out
+  end
+
+  #: () { (E) -> bool } -> [Array[E], Array[E]]
+  def partition
+    yes = [] #: Array[E]
+    no = [] #: Array[E]
+    each { |x| yield(x) ? yes << x : no << x }
+    [yes, no]
+  end
+
+  #: () -> [E?, E?]
+  def minmax = [min, max]
+
+  #: (Integer) -> Array[E]
+  def __min_1(n) = sort.first(n)
+
+  #: (Integer) -> Array[E]
+  def __max_1(n) = sort.reverse.first(n)
+
+  #: () { (E, E) -> Integer } -> Array[E]
+  def __sort_block = %x{
+    out := &Array[E]{}
+    for x := range self.Each() {
+      *out = append(*out, x)
+    }
+    slices.SortStableFunc(*out, func(a, b E) int { return int(blk(a, b)) })
+    return out
+  }
+
+  #: () { (E) -> bool } -> Array[E]
+  def take_while
+    out = [] #: Array[E]
+    each do |x|
+      break unless yield(x)
+      out << x
+    end
+    out
+  end
+
+  #: () { (E) -> bool } -> Array[E]
+  def drop_while
+    out = [] #: Array[E]
+    dropping = true
+    each do |x|
+      dropping = false if dropping && !yield(x)
+      out << x unless dropping
+    end
+    out
+  end
+
+  #: (Integer) -> Array[E]
+  def drop(n)
+    raise ArgumentError, "attempt to drop negative size" if n < 0
+    out = [] #: Array[E]
+    i = 0
+    each do |x|
+      out << x if i >= n
+      i += 1
+    end
+    out
+  end
+
+  #: (Integer) { (Array[E]) -> void } -> void
+  def each_slice(n)
+    raise ArgumentError, "invalid slice size" if n <= 0
+    cur = [] #: Array[E]
+    each do |x|
+      cur << x
+      if cur.size == n
+        yield cur
+        cur = []
+      end
+    end
+    yield cur unless cur.empty?
+  end
+
+  #: (Integer) -> Array[Array[E]]
+  def __each_slice_enum(n)
+    raise ArgumentError, "invalid slice size" if n <= 0
+    out = [] #: Array[Array[E]]
+    cur = [] #: Array[E]
+    each do |x|
+      cur << x
+      if cur.size == n
+        out << cur
+        cur = []
+      end
+    end
+    out << cur unless cur.empty?
+    out
+  end
+
+  #: (Integer) { (Array[E]) -> void } -> void
+  def each_cons(n)
+    raise ArgumentError, "invalid size" if n <= 0
+    all = to_a
+    i = 0
+    while i + n <= all.size
+      yield(all[i, n] || [])
+      i += 1
+    end
+  end
+
+  #: (Integer) -> Array[Array[E]]
+  def __each_cons_enum(n)
+    raise ArgumentError, "invalid size" if n <= 0
+    all = to_a
+    out = [] #: Array[Array[E]]
+    i = 0
+    while i + n <= all.size
+      out << (all[i, n] || [])
+      i += 1
+    end
+    out
+  end
+
+  #: () -> Array[[E, Integer]]
+  def __each_with_index_enum
+    out = [] #: Array[[E, Integer]]
+    i = 0
+    each do |x|
+      out << [x, i]
+      i += 1
+    end
+    out
+  end
+
+  #: [U] (Array[U]) -> Array[[E, U?]]
+  def zip(other)
+    out = [] #: Array[[E, U?]]
+    i = 0
+    each do |x|
+      out << [x, other[i]]
+      i += 1
+    end
+    out
+  end
+
+  #: () { (E, E) -> bool } -> Array[Array[E]]
+  def chunk_while = %x{
+    out := &Array[*Array[E]]{}
+    var cur *Array[E]
+    var prev E
+    for x := range self.Each() {
+      if cur != nil && bool(blk(prev, x)) {
+        *cur = append(*cur, x)
+      } else {
+        cur = &Array[E]{x}
+        *out = append(*out, cur)
+      }
+      prev = x
+    }
+    return out
+  }
+
+  #: () { (E, E) -> bool } -> Array[Array[E]]
+  def slice_when = %x{
+    out := &Array[*Array[E]]{}
+    var cur *Array[E]
+    var prev E
+    for x := range self.Each() {
+      if cur != nil && !bool(blk(prev, x)) {
+        *cur = append(*cur, x)
+      } else {
+        cur = &Array[E]{x}
+        *out = append(*out, cur)
+      }
+      prev = x
+    }
+    return out
+  }
+
+  #: [K] () { (E) -> K } -> Array[E]
+  def uniq_by
+    seen = {} #: Hash[K, bool]
+    out = [] #: Array[E]
+    each do |x|
+      k = yield(x)
+      next if seen.key?(k)
+      seen[k] = true
+      out << x
+    end
+    out
+  end
+
+  #: () { (E) -> bool } -> Array[E]
+  def find_all
+    out = [] #: Array[E]
+    each { |x| out << x if yield(x) }
+    out
+  end
+
+  #: () { (E) -> bool } -> Array[E]
+  def filter
+    out = [] #: Array[E]
+    each { |x| out << x if yield(x) }
+    out
+  end
+
+  #: (Integer) { (E, Integer) -> void } -> void
+  def each_with_index_from(offset)
+    i = offset
+    each do |x|
+      yield(x, i)
+      i += 1
+    end
+  end
+
+  # Eager: an Array of every combination, not an Enumerator.
+  #: (Integer) -> Array[Array[E]]
+  def combination(k) = %x{ return rbCombinations(slices.Collect(self.Each()), int(k)) }
+
+  # Eager, in MRI's order.
+  #: (Integer) -> Array[Array[E]]
+  def __permutation_1(k) = %x{ return rbPermutations(slices.Collect(self.Each()), int(k)) }
+
+  #: () -> Array[Array[E]]
+  def permutation = %x{
+    all := slices.Collect(self.Each())
+    return rbPermutations(all, len(all))
+  }
+
+  #: (?Integer) -> Array[[E, Integer]]
+  def __with_index_enum(offset = 0)
+    out = [] #: Array[[E, Integer]]
+    i = offset
+    each do |x|
+      out << [x, i]
+      i += 1
+    end
+    out
+  end
+
+
+  # Array's values_at (Hash has its own): a Go instantiation cycle forbids
+  # an Array[E] method building an Array[E?], so it lives here.
+  #: (*Integer) -> Array[E?]
+  def values_at(*idx)
+    all = to_a
+    idx.map { |i| all[i] }
+  end
 end

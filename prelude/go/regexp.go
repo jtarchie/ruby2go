@@ -74,3 +74,82 @@ func rbSubject(v any) (string, bool) {
 	}
 	panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into String"))))
 }
+
+// rbPattern is a sub/gsub pattern: a Regexp, or a String matched literally.
+func rbPattern(p any) *Regexp {
+	switch v := rbUnbox(p).(type) {
+	case *Regexp:
+		return v
+	case String:
+		return rbRegexpNew(regexp.QuoteMeta(string(v)), string(v), "")
+	}
+	panic(NewTypeError(Ref(String("wrong argument type " + rbClassName(p) + " (expected Regexp)"))))
+}
+
+// rbReRepl expands a replacement string's back-references for one match.
+func rbReRepl(rep string) func(s string, loc []int, names []string) string {
+	return func(s string, loc []int, names []string) string {
+		group := func(i int) string {
+			if 2*i+1 >= len(loc) || loc[2*i] < 0 {
+				return ""
+			}
+			return s[loc[2*i]:loc[2*i+1]]
+		}
+		var b strings.Builder
+		for j := 0; j < len(rep); j++ {
+			if rep[j] != '\\' || j+1 == len(rep) {
+				b.WriteByte(rep[j])
+				continue
+			}
+			j++
+			switch c := rep[j]; {
+			case c == '&':
+				b.WriteString(group(0))
+			case c >= '0' && c <= '9':
+				b.WriteString(group(int(c - '0')))
+			case c == '`':
+				b.WriteString(s[:loc[0]])
+			case c == '\'':
+				b.WriteString(s[loc[1]:])
+			case c == '\\':
+				b.WriteByte('\\')
+			case c == 'k' && j+1 < len(rep) && rep[j+1] == '<':
+				end := strings.IndexByte(rep[j:], '>')
+				if end < 0 {
+					b.WriteString(rep[j-1 : j+1])
+					continue
+				}
+				name := rep[j+2 : j+end]
+				if i := slices.Index(names, name); i > 0 {
+					b.WriteString(group(i))
+				}
+				j += end
+			default:
+				b.WriteString(rep[j-1 : j+1])
+			}
+		}
+		return b.String()
+	}
+}
+
+// rbReBlock replaces each match with the block's value, as a String.
+func rbReBlock(blk func(String) any) func(s string, loc []int, names []string) string {
+	return func(s string, loc []int, _ []string) string {
+		return string(rbToS(blk(String(s[loc[0]:loc[1]]))))
+	}
+}
+
+// rbReSub replaces the first n matches of re in s (all when n < 0).
+// ponytail: matches come from RE2's FindAll, so the Onigmo corrections of
+// rxRegexp (Unicode \b, ^ before a final newline) do not apply here.
+func rbReSub(re *Regexp, s string, n int, repl func(s string, loc []int, names []string) string) string {
+	var b strings.Builder
+	last := 0
+	for _, loc := range re.re.FindAllStringSubmatchIndex(s, n) {
+		b.WriteString(s[last:loc[0]])
+		b.WriteString(repl(s, loc, re.re.SubexpNames()))
+		last = loc[1]
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}

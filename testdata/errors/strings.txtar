@@ -84,14 +84,6 @@ puts s
 # rbs_inline: enabled
 s = +"abc"
 puts s
--- string_format_operator.rb --
-# error: main.rb:3: undefined method % for String
-# rbs_inline: enabled
-puts "%05d" % 42
--- kernel_format.rb --
-# error: main.rb:3: undefined method format for Object
-# rbs_inline: enabled
-puts format("%05d", 42)
 -- stdout_global.rb --
 # error: main.rb:3: unsupported syntax: GlobalVariableReadNode
 # rbs_inline: enabled
@@ -108,22 +100,10 @@ puts :a + :b
 # error: main.rb:3: undefined method to_proc for Symbol
 # rbs_inline: enabled
 puts :upcase.to_proc
--- center_pad_arg.rb --
-# error: main.rb:3: String#center: wrong number of arguments (given 2, expected 1)
-# rbs_inline: enabled
-puts "a".center(5, "*")
 -- index_offset.rb --
 # error: main.rb:3: String#index: wrong number of arguments (given 2, expected 1)
 # rbs_inline: enabled
 puts "abcabc".index("a", 1)
--- split_limit.rb --
-# error: main.rb:3: String#split: wrong number of arguments (given 2, expected 1)
-# rbs_inline: enabled
-puts "a,b,c".split(",", 2).inspect
--- start_with_many.rb --
-# error: main.rb:3: String#start_with?: wrong number of arguments (given 2, expected 1)
-# rbs_inline: enabled
-puts "abc".start_with?("x", "a")
 -- chomp_arg.rb --
 # error: main.rb:3: String#chomp: wrong number of arguments (given 1, expected 0)
 # rbs_inline: enabled
@@ -132,20 +112,11 @@ puts "abc".chomp("c")
 # error: main.rb:3: String#sub: wrong number of arguments (given 1, expected 2)
 # rbs_inline: enabled
 puts "abc".sub("a")
--- gsub_block.rb --
-# error: main.rb:3: String#gsub: wrong number of arguments (given 1, expected 2)
-# rbs_inline: enabled
-puts "abc".gsub("b") { |m| m.upcase }
 -- each_char_value.rb --
 # error: main.rb:3: each_char with a block is an iterator and can only be used as a statement
 # rbs_inline: enabled
 x = "abc".each_char { |c| puts c }
 puts x
--- each_char_no_block.rb --
-# error: main.rb:3: each_char is an iterator (its block returns void); call it as a statement with a block
-# rbs_inline: enabled
-e = "abc".each_char
-puts e
 -- private_puts.rb --
 # error: main.rb:3: private method puts called on String
 # rbs_inline: enabled

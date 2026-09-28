@@ -21,6 +21,12 @@ module Kernel
   # @rbs [X] () { (self) -> X } -> X
   def then = yield(self)
 
+  # @rbs [X] () { (self) -> X } -> self
+  def tap
+    yield(self)
+    self
+  end
+
   #: () -> String
   def to_s = %x{ rbObjToS(self) }
 
@@ -60,6 +66,18 @@ module Kernel
   #: (*untyped) -> nil
   def p(*args)
     args.each { |a| __write(a.inspect + "\n") }
+    nil
+  end
+
+  #: (String, *untyped) -> String
+  def format(fmt, *args) = %x{ String(rbFormat(string(fmt), rest_)) }
+
+  #: (String, *untyped) -> String
+  def sprintf(fmt, *args) = %x{ String(rbFormat(string(fmt), rest_)) }
+
+  #: (String, *untyped) -> nil
+  def printf(fmt, *args)
+    __write(format(fmt, *args))
     nil
   end
 

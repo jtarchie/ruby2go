@@ -1093,3 +1093,109 @@ resolve; anything not listed is still open.
     compiles (and lints) only the prelude it reaches: `puts 1` is 7k
     lines instead of 18.5k. `RB2GO_NO_PRUNE=1` turns it off.
 
+50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
+    or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
+    `decode64` skips non-alphabet bytes, `strict_decode64` raises
+    `ArgumentError`), `Digest::MD5/SHA1/SHA256/SHA384/SHA512` (class
+    `digest`/`hexdigest`/`base64digest`; `new` returns a `Digest::Base`
+    that buffers `update`/`<<` and sums on demand), `Zlib.crc32`/`adler32`
+    (resumable from a prior value), `SecureRandom` on `crypto/rand`, and
+    `cgi/escape`'s `CGI.escape`/`unescape`/`escapeHTML`/`unescapeHTML`/
+    `escapeURIComponent`, decoding only the entities MRI does. Keyword
+    options arrive as a Hash (decision 23): `urlsafe_encode64(s,
+    padding: false)`. `String#ljust`/`rjust`/`center` take a pad string;
+    `String#delete` takes one character set
+    ([example 46](examples/46_digests/main.rb)).
+51. `StringScanner` keeps a byte pointer and matches each Regexp against
+    the rest of the string, so `^`/`\A` match at the pointer (MRI's default
+    `fixed_anchor: false`). `scan`/`skip`/`check`/`match?` use a cached
+    `\A(?:…)` twin of the pattern, so a failed attempt costs one try at
+    the pointer, not a search; the `_until` forms and `exist?` search.
+    `[]` takes an Integer (no named groups), and only Regexp patterns are
+    accepted. `Shellwords` is MRI's scan loop unrolled by hand (RE2 has no
+    `\G` or atomic groups), with the same `Unmatched quote at N: …`
+    errors. `Kernel#tap` joins `then`
+    ([example 47](examples/47_strscan/main.rb)).
+52. `require "time"`'s parsers are always defined. `Time.iso8601`/
+    `xmlschema`, `httpdate`, `rfc2822` and `parse` each try a fixed list
+    of Go layouts, not `Date._parse`'s heuristics, so `Time.parse` reads
+    ISO, RFC 2822/1123, `asctime` and a few `Mon D YYYY` shapes. A string
+    without a zone is local time; a `Z`, `UTC` or `GMT` zone gives MRI's
+    UTC mode, any other offset a fixed zone. `Time.strptime` rewrites the
+    format into a Go layout, so literal text that spells a Go layout
+    token is misread, and a directive without a Go twin fails to parse.
+    `Time#httpdate`/`rfc2822` format, and `Benchmark.realtime` times a
+    block ([example 48](examples/48_time_parse/main.rb)).
+53. `CSV` covers strings, not files: `parse`/`parse_line`/`String#parse_csv`
+    return `Array[Array[String?]]` (an empty unquoted field is nil, a
+    quoted one `""`, a blank line `[]`), and `generate_line`/
+    `Array#to_csv`/`generate { |csv| csv << row }` quote a field holding
+    the separator, the quote or a line break, and an empty String. Options
+    are `col_sep` and `quote_char`; `headers:` is not supported, since its
+    result (a `CSV::Table`) could not share `parse`'s type. Errors are
+    MRI's `CSV::MalformedCSVError` messages. `Array#index`/`find_index`
+    (value or block) and `rindex` join Array
+    ([example 49](examples/49_csv/main.rb)).
+54. `include Singleton` in a class makes the compiler add
+    `def self.instance = @__singleton_instance ||= new` (typed as the
+    class); `Singleton` itself is an empty marker module, so `is_a?`
+    works. `new` stays public, and the memo is not thread-safe
+    (MRI's is): two threads racing the first `instance` may build two.
+55. `format`/`sprintf`/`printf`/`String#%` follow MRI's directives: flags
+    `-+ 0#`, width and precision (also `*`), `%<name>…`/`%{name}` from a
+    Hash, and `%d %i %u %f %e %E %g %G %x %X %o %b %B %s %p %c %%`, each
+    argument converted as MRI does (a Float for `%d` truncates, a String
+    is parsed, nil raises `TypeError`). `%g` gets C's default precision 6.
+    Not supported: `%a`, and MRI's two's-complement `..f` for negative
+    `%x`/`%o`/`%b` (rb2go prints `-ff`).
+56. `sub`/`gsub`/`split` take a Regexp and `scan` exists, through decision
+    12's overloads, now keyed on the *first* argument's class when the
+    overload takes the call's argument count (`gsub(/re/, "x")` →
+    `__gsub_regexp`). Replacements expand `\0 \& \1-\9 \k<name> \` \'
+    \\`; the block forms (`gsub(/re/) { |m| … }`) take a Regexp or a
+    String. `scan` returns `Array[String]`, or `Array[Array[String?]]`
+    when its argument is a regexp literal with groups (the compiler picks
+    `__scan_groups`); a non-literal Regexp with groups raises
+    `NotImplementedError`. `split(/re/)` keeps captured groups and splits
+    between characters on an empty match. Matches come from RE2's
+    `FindAll`, so rxRegexp's Onigmo corrections (decision 24) do not
+    apply to these.
+57. Index assignments `h[k] ||= v` and `a[i] op= v` evaluate the receiver
+    and index once, then call `[]` and `[]=` as Ruby does (`||=` writes
+    only when `[]` gave nil or false). A block taking several params over
+    an `Array[T]` element splats it, as Ruby does for any yielded Array:
+    each param is `T?`, nil past the end (tuples keep their exact
+    element types) ([example 50](examples/50_format_regexp/main.rb)).
+58. Core gaps filled in the prelude, each checked against MRI in
+    `testdata/run/*_mid.rb`: Enumerable (`each_slice`, `each_cons`,
+    `each_with_object`, `filter_map`, `partition`, `minmax`, `min(n)`,
+    `max(n)`, `sort { }`, `count(x)`/`count { }`, `inject`/`reduce`
+    without an initial value, `take_while`, `drop_while`, `drop`, `zip`
+    with one Array, `chunk_while`, `slice_when`, `combination`,
+    `permutation`, `values_at`); Array (`-`, `&`, `|` by eql?/hash,
+    `rotate`, `product`, `bsearch`, `insert`, `fill`, and the mutating
+    `sort!`, `sort_by!`, `map!`, `select!`, `reject!`, `keep_if`,
+    `delete_if`, `uniq!`, `reverse!`); Hash (`transform_values`/`keys`,
+    `to_h { }`, `invert`, `key`, `value?`, `values_at`, `fetch_values`,
+    `slice`, `except`, `store`, `update`/`merge!`, `merge { }`,
+    `delete_if`/`keep_if` and bang forms, `any?`/`all?`/`none?`/`count`
+    over `|k, v|`); Integer (`gcd`, `lcm`, `pow(e, m)`, `digits`, `fdiv`,
+    `divmod`, `div`, `remainder`, `bit_length`, `to_s(base)`,
+    `Integer.sqrt`, `step`); Float (`floor(n)`/`ceil(n)` as MRI's
+    rb_float_floor, `truncate`, `%`, `divmod`, `finite?`, `infinite?`);
+    String (`to_i(base)`, `hex`, `oct`, `succ`, `count`, `squeeze`,
+    `swapcase`, `casecmp(?)`, `delete_prefix`/`suffix`, `partition`,
+    `rpartition`, `chop`, `chr`, `ascii_only?`, `split(sep, limit)`,
+    `start_with?`/`end_with?` with up to three candidates).
+    A blockless call to a block-taking method goes to `__<name>_enum`
+    when defined: an Array standing in for the Enumerator
+    (`each_slice(2).to_a`, `each_with_index.map`, `3.times.map`), so
+    chaining works but `puts`/`p` of it print elements, not
+    `#<Enumerator…>`. Blockless `map`/`select`/`filter`/`reject` return
+    `Enumerator::Map`/`Select`, whose `with_index` maps or filters as MRI's
+    and whose inspect is MRI's. Block params may destructure one level
+    (`|(k, v), i|`). Go forbids a method of `Array[E]` from building an
+    `Array[Array[E]]`, `Array[E?]` or `Hash[E, …]` (an instantiation
+    cycle), so such methods live in Enumerable or Go helpers.
+    String stays immutable (see "Frozen strings"): no `<<`, `insert`,
+    `prepend`.

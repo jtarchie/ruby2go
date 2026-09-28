@@ -263,3 +263,53 @@ func rbStrftime(t time.Time, format string, utc bool) string {
 	}
 	return b.String()
 }
+
+var (
+	rbTimeISOLayouts     = []string{"2006-01-02T15:04:05.999999999Z07:00", "2006-01-02T15:04:05.999999999", "2006-01-02"}
+	rbTimeRFC2822Layouts = []string{"Mon, 2 Jan 2006 15:04:05 -0700", "2 Jan 2006 15:04:05 -0700", "Mon, 2 Jan 2006 15:04:05 MST", "2 Jan 2006 15:04:05 MST"}
+	// ponytail: Time.parse's shapes are a fixed list; Date._parse's free-form heuristics would replace it.
+	rbTimeLayouts = slices.Concat(rbTimeISOLayouts, rbTimeRFC2822Layouts, []string{
+		"2006-01-02 15:04:05.999999999 -0700", "2006-01-02 15:04:05.999999999 -07:00", "2006-01-02 15:04:05.999999999 MST",
+		"2006-01-02 15:04:05.999999999", "2006-01-02 15:04", "2006/01/02 15:04:05", "2006/01/02",
+		time.ANSIC, time.UnixDate, "Jan 2 2006 15:04:05", "Jan 2 2006", "January 2, 2006", "2 January 2006",
+	})
+)
+
+// rbTimeParseOr parses s with the first layout that fits, in local time
+// unless s carries a zone; a Z, UTC or GMT zone is MRI's UTC mode.
+func rbTimeParseOr(s string, layouts []string, msg string) *Time {
+	for _, l := range layouts {
+		if t, err := time.ParseInLocation(l, strings.TrimSpace(s), time.Local); err == nil {
+			if name, off := t.Zone(); off == 0 && (name == "UTC" || name == "GMT") && t.Location() != time.Local {
+				return &Time{t: t.UTC(), utc: true}
+			}
+			return &Time{t: t}
+		}
+	}
+	panic(NewArgumentError(Ref(String(msg))))
+}
+
+// rbStrptimeLayout turns a strptime format into a Go layout.
+// ponytail: literal text that spells a Go layout token (Jan, PM, 1, …) is
+// read as one; a directive with no Go twin makes the layout fail to match.
+func rbStrptimeLayout(format string) string {
+	directives := map[byte]string{
+		'Y': "2006", 'y': "06", 'm': "1", 'd': "2", 'e': "_2", 'j': "002", 'H': "15", 'I': "3", 'M': "4", 'S': "5",
+		'p': "PM", 'z': "-0700", 'Z': "MST", 'b': "Jan", 'h': "Jan", 'B': "January", 'a': "Mon", 'A': "Monday",
+		'T': "15:4:5", 'R': "15:4", 'F': "2006-1-2", 'D': "1/2/06", '%': "%",
+	}
+	var b strings.Builder
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' || i+1 >= len(format) {
+			b.WriteByte(format[i])
+			continue
+		}
+		i++
+		l, ok := directives[format[i]]
+		if !ok {
+			return "\x00unsupported"
+		}
+		b.WriteString(l)
+	}
+	return b.String()
+}

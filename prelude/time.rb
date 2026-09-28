@@ -38,6 +38,29 @@ class Time < Object
   #: () -> Time
   def self.__new_0 = now
 
+  # `require "time"`'s parsers; each tries a fixed list of layouts
+  # (rbTimeLayouts), not Date._parse's heuristics.
+  #: (String) -> Time
+  def self.parse(s) = %x{ return rbTimeParseOr(string(s), rbTimeLayouts, "no time information in "+string(rbStringInspect(string(s)))) }
+
+  #: (String) -> Time
+  def self.iso8601(s) = %x{ return rbTimeParseOr(string(s), rbTimeISOLayouts, "invalid xmlschema format: "+string(rbStringInspect(string(s)))) }
+
+  #: (String) -> Time
+  def self.xmlschema(s) = iso8601(s)
+
+  #: (String) -> Time
+  def self.httpdate(s) = %x{ return rbTimeParseOr(string(s), []string{"Mon, 02 Jan 2006 15:04:05 MST"}, "not RFC 2616 compliant date: "+string(rbStringInspect(string(s)))) }
+
+  #: (String) -> Time
+  def self.rfc2822(s) = %x{ return rbTimeParseOr(string(s), rbTimeRFC2822Layouts, "not RFC 2822 compliant date: "+string(rbStringInspect(string(s)))) }
+
+  #: (String) -> Time
+  def self.rfc822(s) = rfc2822(s)
+
+  #: (String, String) -> Time
+  def self.strptime(s, fmt) = %x{ return rbTimeParseOr(string(s), []string{rbStrptimeLayout(string(fmt))}, "invalid date or strptime format - '"+string(s)+"' '"+string(fmt)+"'") }
+
   #: () -> Integer
   def year = %x{ Integer(self.t.Year()) }
 
@@ -197,4 +220,19 @@ class Time < Object
 
   #: (?Integer) -> String
   def xmlschema(digits = 0) = iso8601(digits)
+
+  #: () -> String
+  def httpdate = %x{ String(self.t.UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT")) }
+
+  # UTC mode prints -0000, as MRI's.
+  #: () -> String
+  def rfc2822 = %x{
+    if self.utc {
+      return String(self.t.Format("Mon, 02 Jan 2006 15:04:05 -0000"))
+    }
+    return String(self.t.Format("Mon, 02 Jan 2006 15:04:05 -0700"))
+  }
+
+  #: () -> String
+  def rfc822 = rfc2822
 end

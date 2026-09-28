@@ -116,3 +116,156 @@ func rbSub(s, pat, rep string, n int) string {
 	b.WriteString(s[done:])
 	return b.String()
 }
+
+// rbPad is n runes of pad repeated, as String#ljust/rjust/center fill.
+func rbPad(pad string, n int) string {
+	if pad == "" {
+		panic(NewArgumentError(Ref(String("zero width padding"))))
+	}
+	r := []rune(pad)
+	out := make([]rune, n)
+	for i := range out {
+		out[i] = r[i%len(r)]
+	}
+	return string(out)
+}
+
+// rbCharSet is a tr/count/squeeze character set: ranges (a-z), \-escapes,
+// and a leading ^ to negate.
+func rbCharSet(spec string) func(rune) bool {
+	rs := []rune(spec)
+	negate := len(rs) > 1 && rs[0] == '^'
+	if negate {
+		rs = rs[1:]
+	}
+	set := map[rune]bool{}
+	for i := 0; i < len(rs); i++ {
+		switch {
+		case rs[i] == '\\' && i+1 < len(rs):
+			i++
+			set[rs[i]] = true
+		case i+2 < len(rs) && rs[i+1] == '-':
+			for r := rs[i]; r <= rs[i+2]; r++ {
+				set[r] = true
+			}
+			i += 2
+		default:
+			set[rs[i]] = true
+		}
+	}
+	return func(r rune) bool { return set[r] != negate }
+}
+
+// rbSqueeze collapses runs of one repeated character that in accepts.
+func rbSqueeze(s string, in func(rune) bool) string {
+	var b strings.Builder
+	prev := rune(-1)
+	for _, r := range s {
+		if r == prev && in(r) {
+			continue
+		}
+		b.WriteRune(r)
+		prev = r
+	}
+	return b.String()
+}
+
+// rbStrToIBase is String#to_i(base) (base -8 is #oct: octal unless a
+// prefix names another base). Leading whitespace, a sign and single
+// underscores between digits are allowed; parsing stops at the first
+// invalid digit.
+func rbStrToIBase(s string, base int) int {
+	if base == 1 || base > 36 || base < -8 {
+		panic(NewArgumentError(Ref(String("invalid radix " + strconv.Itoa(base)))))
+	}
+	s = strings.TrimLeft(s, " \t\n\v\f\r")
+	neg := false
+	if s != "" && (s[0] == '+' || s[0] == '-') {
+		neg, s = s[0] == '-', s[1:]
+	}
+	prefixes := map[string]int{"0b": 2, "0B": 2, "0o": 8, "0O": 8, "0x": 16, "0X": 16, "0d": 10, "0D": 10}
+	if len(s) >= 2 {
+		if pb, ok := prefixes[s[:2]]; ok && (base <= 0 || base == pb) {
+			base, s = pb, s[2:]
+		}
+	}
+	switch {
+	case base == 0 && strings.HasPrefix(s, "0"):
+		base = 8
+	case base == 0:
+		base = 10
+	case base < 0:
+		base = -base
+	}
+	n := 0
+	for i := range len(s) {
+		c := s[i]
+		if c == '_' && i > 0 && i+1 < len(s) && s[i-1] != '_' {
+			continue
+		}
+		d := 99
+		switch {
+		case c >= '0' && c <= '9':
+			d = int(c - '0')
+		case c >= 'a' && c <= 'z':
+			d = int(c-'a') + 10
+		case c >= 'A' && c <= 'Z':
+			d = int(c-'A') + 10
+		}
+		if d >= base {
+			break
+		}
+		n = n*base + d
+	}
+	if neg {
+		return -n
+	}
+	return n
+}
+
+// rbSplitLimit is String#split(sep, limit); sep nil or " " is awk mode.
+func rbSplitLimit(s string, sep *String, limit int) []string {
+	awk := sep == nil || *sep == " "
+	var parts []string
+	switch {
+	case limit == 1:
+		if s == "" {
+			return nil
+		}
+		return []string{s}
+	case awk:
+		rest := strings.TrimLeft(s, " \t\n\v\f\r")
+		for rest != "" {
+			if limit > 0 && len(parts) == limit-1 {
+				parts = append(parts, rest)
+				rest = ""
+				break
+			}
+			i := strings.IndexAny(rest, " \t\n\v\f\r")
+			if i < 0 {
+				parts = append(parts, rest)
+				rest = ""
+				break
+			}
+			parts = append(parts, rest[:i])
+			rest = strings.TrimLeft(rest[i:], " \t\n\v\f\r")
+		}
+		if limit < 0 && len(s) > 0 && strings.ContainsAny(s[len(s)-1:], " \t\n\v\f\r") {
+			parts = append(parts, "")
+		}
+		return parts
+	case limit > 0:
+		parts = strings.SplitN(s, string(*sep), limit)
+	default:
+		parts = strings.Split(s, string(*sep))
+	}
+	if limit == 0 {
+		for len(parts) > 0 && parts[len(parts)-1] == "" {
+			parts = parts[:len(parts)-1]
+		}
+	}
+	if s == "" {
+		return nil
+	}
+	return parts
+}

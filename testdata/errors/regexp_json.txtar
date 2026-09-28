@@ -190,9 +190,6 @@ puts Regexp.new("a").inspect
 -- regexp_escape_undefined.rb --
 # error: main.rb:2: undefined method escape for singleton(Regexp)
 puts Regexp.escape("a.b")
--- string_scan_undefined.rb --
-# error: main.rb:2: undefined method scan for String
-puts "a1b2".scan(/\d/).inspect
 -- grep_undefined.rb --
 # error: main.rb:2: undefined method grep for Array[String]
 puts ["a1", "b"].grep(/\d/).inspect
@@ -207,9 +204,6 @@ puts (:abc =~ /b/).inspect
 # error: main.rb:3: undefined method pretty_generate for singleton(JSON)
 require "json"
 puts JSON.pretty_generate([1])
--- regexp_where_string_expected.rb --
-# error: main.rb:2:
-puts "abc".gsub(/b/, "x")
 -- string_where_regexp_expected.rb --
 # error: main.rb:2:
 puts "abc".match?("b")

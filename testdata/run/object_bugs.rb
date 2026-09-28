@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+require "singleton"
 
 # user classes named like runtime helpers (Opt, Ref) must not clash with them
 class Opt
@@ -126,3 +127,45 @@ LinkOther = Data.define(:other) #: [Integer]
 
 puts (Edge.new("a", "b") == Edge.new("a", "b")).inspect, (Edge.new("a", "b") == Edge.new("a", "c")).inspect
 puts (LinkOther.new(1) == LinkOther.new(1)).inspect, (LinkOther.new(1) == LinkOther.new(2)).inspect
+
+class TapBox
+  attr_reader :n #: Integer
+
+  #: (Integer) -> void
+  def initialize(n)
+    @n = n
+  end
+end
+tb = TapBox.new(4).tap { |b| puts b.n }
+puts tb.n, 7.tap { |x| puts x + 1 }, "s".tap { |s| puts s.upcase }.size, [1, 2].tap { |a| a << 3 }.inspect
+
+class SgConfig
+  include Singleton
+  attr_accessor :level #: Integer
+
+  #: () -> void
+  def initialize
+    @level = 1
+    puts "init"
+  end
+end
+
+module SgApp
+  class Registry
+    include Singleton
+
+    #: () -> void
+    def initialize
+      @names = [] #: Array[String]
+    end
+
+    #: (String) -> Array[String]
+    def add(n) = @names << n
+  end
+end
+
+SgConfig.instance.level = 3
+puts SgConfig.instance.level, SgConfig.instance.equal?(SgConfig.instance)
+SgApp::Registry.instance.add("a")
+p SgApp::Registry.instance.add("b")
+p SgConfig.instance.is_a?(Singleton)

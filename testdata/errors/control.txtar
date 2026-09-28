@@ -274,10 +274,6 @@ x = (a = 1; a + 1)
 # error: main.rb:3: unsupported syntax: LocalVariableAndWriteNode
 x = 1
 x &&= 2
--- index_or_assign.rb --
-# error: main.rb:3: unsupported syntax: IndexOrWriteNode
-h = {} #: Hash[String, Array[Integer]]
-h["a"] ||= []
 -- always_true_condition.rb --
 # warning: main.rb:3: condition of type Array[Integer] is always true
 arr = [] #: Array[Integer]

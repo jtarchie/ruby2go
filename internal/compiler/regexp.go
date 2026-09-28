@@ -77,6 +77,24 @@ func regexpSource(raw string, term byte) string {
 	return b.String()
 }
 
+// literalGroups is the number of capture groups in a static regexp
+// literal; ok is false for anything else.
+func (f *fctx) literalGroups(n parser.Node) (int, bool) {
+	r, ok := n.(*parser.RegularExpressionNode)
+	if !ok {
+		return 0, false
+	}
+	goPat, err := translateRegexp(regexpSource(f.f.text(r.ContentLoc), f.f.text(r.ClosingLoc)[0]))
+	if err != nil {
+		return 0, false
+	}
+	re, err := regexp.Compile(goPat)
+	if err != nil {
+		return 0, false
+	}
+	return re.NumSubexp(), true
+}
+
 // genRegexp renders a regexp literal. Static ones are validated now and
 // compiled once into a package variable.
 func (f *fctx) genRegexp(n parser.Node) expr {

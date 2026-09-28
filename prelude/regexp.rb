@@ -163,6 +163,87 @@ class String
 
   #: (Regexp) -> bool
   def match?(re) = re.match?(self)
+
+  # Replacement strings expand \0 \& \1-\9 \k<name> \` \' and \\.
+  #: (Regexp, String) -> String
+  def __sub_regexp(re, to) = %x{ String(rbReSub(re, string(self), 1, rbReRepl(string(to)))) }
+
+  #: (Regexp, String) -> String
+  def __gsub_regexp(re, to) = %x{ String(rbReSub(re, string(self), -1, rbReRepl(string(to)))) }
+
+  # The block gets each match; its value's to_s replaces it.
+  #: (untyped) { (String) -> untyped } -> String
+  def __sub_block(pat) = %x{ String(rbReSub(rbPattern(pat), string(self), 1, rbReBlock(blk))) }
+
+  #: (untyped) { (String) -> untyped } -> String
+  def __gsub_block(pat) = %x{ String(rbReSub(rbPattern(pat), string(self), -1, rbReBlock(blk))) }
+
+  # A pattern with groups yields each match's groups instead: that is
+  # __scan_groups, which the compiler picks for a literal with groups.
+  #: (Regexp) -> Array[String]
+  def scan(re) = %x{
+    if re.re.NumSubexp() > 0 {
+      panic(NewNotImplementedError(Ref(String("rb2go: String#scan with capture groups needs a Regexp literal"))))
+    }
+    out := &Array[String]{}
+    for _, loc := range re.re.FindAllStringIndex(string(self), -1) {
+      *out = append(*out, self[loc[0]:loc[1]])
+    }
+    return out
+  }
+
+  #: (Regexp) -> Array[Array[String?]]
+  def __scan_groups(re) = %x{
+    out := &Array[*Array[*String]]{}
+    for _, loc := range re.re.FindAllStringSubmatchIndex(string(self), -1) {
+      row := &Array[*String]{}
+      for i := 2; i < len(loc); i += 2 {
+        if loc[i] < 0 {
+          *row = append(*row, nil)
+        } else {
+          *row = append(*row, Ref(self[loc[i]:loc[i+1]]))
+        }
+      }
+      *out = append(*out, row)
+    }
+    return out
+  }
+
+  # MRI's: captured groups are kept, trailing empty fields dropped, and a
+  # pattern matching the empty string splits between characters.
+  #: (Regexp) -> Array[String]
+  def __split_regexp(re) = %x{
+    s := string(self)
+    out := &Array[String]{}
+    start := 0
+    for _, loc := range re.re.FindAllStringSubmatchIndex(s, -1) {
+      if loc[1] == 0 || loc[0] == len(s) && loc[0] == loc[1] {
+        continue
+      }
+      if loc[1] == start { // an empty match (loc[0] >= start)
+        // right at the field start: split off one character
+        _, w := utf8.DecodeRuneInString(s[start:])
+        if start+w > len(s) {
+          continue
+        }
+        *out = append(*out, String(s[start:start+w]))
+        start += w
+        continue
+      }
+      *out = append(*out, String(s[start:loc[0]]))
+      for i := 2; i < len(loc); i += 2 {
+        if loc[i] >= 0 {
+          *out = append(*out, String(s[loc[i]:loc[i+1]]))
+        }
+      }
+      start = loc[1]
+    }
+    *out = append(*out, String(s[start:]))
+    for len(*out) > 0 && (*out)[len(*out)-1] == "" {
+      *out = (*out)[:len(*out)-1]
+    }
+    return out
+  }
 end
 
 class RegexpError < StandardError; end

@@ -43,6 +43,37 @@ class Array < Object
     }
   }
 
+  #: (E) -> Integer?
+  def index(v)
+    each_with_index { |x, i| return i if x == v }
+    nil
+  end
+
+  #: () { (E) -> bool } -> Integer?
+  def __index_block
+    each_with_index { |x, i| return i if yield(x) }
+    nil
+  end
+
+  #: (E) -> Integer?
+  def find_index(v) = index(v)
+
+  #: () { (E) -> bool } -> Integer?
+  def __find_index_block
+    each_with_index { |x, i| return i if yield(x) }
+    nil
+  end
+
+  #: (E) -> Integer?
+  def rindex(v)
+    i = size - 1
+    while i >= 0
+      return i if self[i] == v
+      i -= 1
+    end
+    nil
+  end
+
   #: () { (E, Integer) -> void } -> void
   def each_with_index = %x{
     return func(yield func(E, Integer) bool) {
@@ -173,6 +204,242 @@ class Array < Object
     *out = append(append(*out, *self...), *other...)
     return out
   }
+
+  # Set operations match elements by eql?/hash, as MRI's.
+  #: (Array[E]) -> Array[E]
+  def -(other) = %x{
+    drop := rbNewKeySet(*other)
+    out := &Array[E]{}
+    for _, x := range *self {
+      if !drop.has(x) {
+        *out = append(*out, x)
+      }
+    }
+    return out
+  }
+
+  #: (Array[E]) -> Array[E]
+  def difference(other) = self - other
+
+  #: (Array[E]) -> Array[E]
+  def &(other) = %x{
+    keep := rbNewKeySet(*other)
+    seen := rbNewKeySet[E](nil)
+    out := &Array[E]{}
+    for _, x := range *self {
+      if keep.has(x) && !seen.has(x) {
+        seen.put(x)
+        *out = append(*out, x)
+      }
+    }
+    return out
+  }
+
+  #: (Array[E]) -> Array[E]
+  def intersection(other) = self & other
+
+  #: (Array[E]) -> bool
+  def intersect?(other) = !(self & other).empty?
+
+  #: (Array[E]) -> Array[E]
+  def |(other) = (self + other).uniq
+
+  #: (Array[E]) -> Array[E]
+  def union(other) = self | other
+
+  #: (?Integer) -> Array[E]
+  def rotate(n = 1)
+    return [] if empty?
+    k = n % size
+    (self[k..] || []) + (self[0, k] || [])
+  end
+
+
+  #: [U] (Array[U]) -> Array[[E, U]]
+  def product(other)
+    out = [] #: Array[[E, U]]
+    each { |x| other.each { |y| out << [x, y] } }
+    out
+  end
+
+  # Find-minimum mode: the first element for which the block is true.
+  #: () { (E) -> bool } -> E?
+  def bsearch = %x{
+    i := sort.Search(len(*self), func(i int) bool { return bool(blk((*self)[i])) })
+    if i == len(*self) {
+      return nil
+    }
+    return &(*self)[i]
+  }
+
+  #: () -> self
+  def sort! = %x{
+    slices.SortStableFunc(*self, func(a, b E) int { return int(rbCmp(a, b)) })
+    return self
+  }
+
+  #: [K] () { (E) -> K } -> self
+  def sort_by! = %x{
+    keys := make(map[int]K, len(*self))
+    idx := make([]int, len(*self))
+    for i, x := range *self {
+      idx[i], keys[i] = i, blk(x)
+    }
+    slices.SortStableFunc(idx, func(a, b int) int { return int(rbCmp(keys[a], keys[b])) })
+    out := make(Array[E], len(*self))
+    for i, j := range idx {
+      out[i] = (*self)[j]
+    }
+    *self = out
+    return self
+  }
+
+  #: () { (E) -> E } -> self
+  def map! = %x{
+    for i, x := range *self {
+      (*self)[i] = blk(x)
+    }
+    return self
+  }
+
+  #: () { (E) -> E } -> self
+  def collect!(&block) = map!(&block)
+
+  #: () { (E) -> bool } -> self
+  def keep_if = %x{
+    out := (*self)[:0]
+    for _, x := range *self {
+      if bool(blk(x)) {
+        out = append(out, x)
+      }
+    }
+    clear((*self)[len(out):])
+    *self = out
+    return self
+  }
+
+  #: () { (E) -> bool } -> self
+  def delete_if = %x{
+    out := (*self)[:0]
+    for _, x := range *self {
+      if !bool(blk(x)) {
+        out = append(out, x)
+      }
+    }
+    clear((*self)[len(out):])
+    *self = out
+    return self
+  }
+
+  # nil when nothing was removed, as MRI's.
+  #: () { (E) -> bool } -> Array[E]?
+  def select!(&block)
+    n = size
+    keep_if(&block)
+    size == n ? nil : self
+  end
+
+  #: () { (E) -> bool } -> Array[E]?
+  def filter!(&block)
+    n = size
+    keep_if(&block)
+    size == n ? nil : self
+  end
+
+  #: () { (E) -> bool } -> Array[E]?
+  def reject!(&block)
+    n = size
+    delete_if(&block)
+    size == n ? nil : self
+  end
+
+  #: () -> Array[E]?
+  def uniq! = %x{
+    u := self.Uniq()
+    if len(*u) == len(*self) {
+      return nil
+    }
+    *self = *u
+    return &self
+  }
+
+  #: () -> self
+  def reverse! = %x{
+    slices.Reverse(*self)
+    return self
+  }
+
+  #: (Integer, *E) -> self
+  def insert(i, *objs) = %x{
+    n := int(i)
+    if n < 0 {
+      n += len(*self) + 1
+    }
+    if n < 0 {
+      panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", int(i), len(*self)+1)))))
+    }
+    for len(*self) < n {
+      var zero E
+      *self = append(*self, zero)
+    }
+    *self = slices.Insert(*self, n, rest_...)
+    return self
+  }
+
+  #: (E) -> self
+  def fill(v) = %x{
+    for i := range *self {
+      (*self)[i] = v
+    }
+    return self
+  }
+
+  #: () { (Integer) -> void } -> void
+  def each_index = %x{
+    return func(yield func(Integer) bool) {
+      for i := 0; i < len(*self); i++ {
+        if !yield(Integer(i)) {
+          return
+        }
+      }
+    }
+  }
+
+  #: () -> Array[Integer]
+  def __each_index_enum = %x{
+    out := &Array[Integer]{}
+    for i := range len(*self) {
+      *out = append(*out, Integer(i))
+    }
+    return out
+  }
+
+  #: () -> Array[E]
+  def __each_enum = self
+
+  # `each.with_index(1) { |x, i| … }`: blockless each is the Array itself.
+  #: (?Integer) { (E, Integer) -> void } -> void
+  def with_index(offset = 0) = %x{
+    return func(yield func(E, Integer) bool) {
+      for i := 0; i < len(*self); i++ {
+        if !yield((*self)[i], Integer(i)+offset) {
+          return
+        }
+      }
+    }
+  }
+
+  #: () -> Enumerator::Map[E]
+  def __map_enum = Enumerator::Map.new(self)
+
+  #: () -> Enumerator::Select[E]
+  def __select_enum = Enumerator::Select.new(self, false, "select")
+
+  #: () -> Enumerator::Select[E]
+  def __filter_enum = Enumerator::Select.new(self, false, "filter")
+
+  #: () -> Enumerator::Select[E]
+  def __reject_enum = Enumerator::Select.new(self, true, "reject")
 
   # MRI's Array#first(-1) message; Enumerable#first raises it.
   #: () -> String

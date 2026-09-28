@@ -196,6 +196,171 @@ class Hash < Object
     out
   end
 
+  #: [U] () { (V) -> U } -> Hash[K, U]
+  def transform_values
+    out = {} #: Hash[K, U]
+    each { |k, v| out[k] = yield(v) }
+    out
+  end
+
+  #: [U] () { (K) -> U } -> Hash[U, V]
+  def transform_keys
+    out = {} #: Hash[U, V]
+    each { |k, v| out[yield(k)] = v }
+    out
+  end
+
+  #: [A, B] () { (K, V) -> [A, B] } -> Hash[A, B]
+  def __to_h_block
+    out = {} #: Hash[A, B]
+    each do |k, v|
+      pair = yield(k, v)
+      out[pair[0]] = pair[1]
+    end
+    out
+  end
+
+  #: () -> Hash[K, V]
+  def to_h = merge({})
+
+  #: () -> Hash[V, K]
+  def invert
+    out = {} #: Hash[V, K]
+    each { |k, v| out[v] = k }
+    out
+  end
+
+  #: (V) -> K?
+  def key(value)
+    each { |k, v| return k if v == value }
+    nil
+  end
+
+  #: (V) -> bool
+  def value?(value)
+    each { |_k, v| return true if v == value }
+    false
+  end
+
+  #: (V) -> bool
+  def has_value?(value) = value?(value)
+
+  #: (K) -> bool
+  def member?(k) = key?(k)
+
+  #: (*K) -> Array[V?]
+  def values_at(*ks) = ks.map { |k| self[k] }
+
+  #: (*K) -> Array[V]
+  def fetch_values(*ks) = ks.map { |k| fetch(k) }
+
+  #: (*K) -> Hash[K, V]
+  def slice(*ks) = %x{
+    out := NewHash[K, V]()
+    for _, k := range rest_ {
+      if v, ok := self.vals[k]; ok {
+        out.Op_idxSet(k, v)
+      }
+    }
+    return out
+  }
+
+  #: (*K) -> Hash[K, V]
+  def except(*ks)
+    out = {} #: Hash[K, V]
+    each { |k, v| out[k] = v unless ks.include?(k) }
+    out
+  end
+
+  #: (K, V) -> V
+  def store(k, v) = self[k] = v
+
+  #: (Hash[K, V]) -> self
+  def update(other)
+    other.each { |k, v| self[k] = v }
+    self
+  end
+
+  #: (Hash[K, V]) -> self
+  def merge!(other) = update(other)
+
+  # The block resolves a key both hashes hold: (key, old, new) -> value.
+  #: (Hash[K, V]) { (K, V, V) -> V } -> Hash[K, V]
+  def __merge_block(other) = %x{
+    out := NewHash[K, V]()
+    for _, k := range self.keys {
+      out.Op_idxSet(k, self.vals[k])
+    }
+    for _, k := range other.keys {
+      if old, ok := out.vals[k]; ok {
+        out.Op_idxSet(k, blk(k, old, other.vals[k]))
+      } else {
+        out.Op_idxSet(k, other.vals[k])
+      }
+    }
+    return out
+  }
+
+  #: () { (K, V) -> bool } -> self
+  def delete_if = %x{
+    for _, k := range slices.Clone(self.keys) {
+      if v, ok := self.vals[k]; ok && bool(blk(k, v)) {
+        self.Delete(k)
+      }
+    }
+    return self
+  }
+
+  #: () { (K, V) -> bool } -> self
+  def keep_if = %x{
+    for _, k := range slices.Clone(self.keys) {
+      if v, ok := self.vals[k]; ok && !bool(blk(k, v)) {
+        self.Delete(k)
+      }
+    }
+    return self
+  }
+
+  #: () { (K, V) -> bool } -> self
+  def reject!(&block) = delete_if(&block)
+
+  #: () { (K, V) -> bool } -> self
+  def select!(&block) = keep_if(&block)
+
+  #: () { (K, V) -> bool } -> self
+  def filter!(&block) = keep_if(&block)
+
+  #: () { (K, V) -> bool } -> Integer
+  def __count_block
+    n = 0
+    each { |k, v| n += 1 if yield(k, v) }
+    n
+  end
+
+  #: () { (K, V) -> bool } -> bool
+  def any?
+    each { |k, v| return true if yield(k, v) }
+    false
+  end
+
+  #: () { (K, V) -> bool } -> bool
+  def all?
+    each { |k, v| return false unless yield(k, v) }
+    true
+  end
+
+  #: () { (K, V) -> bool } -> bool
+  def none?
+    each { |k, v| return false if yield(k, v) }
+    true
+  end
+
+  #: () -> [K, V]?
+  def first_pair
+    each { |k, v| return [k, v] }
+    nil
+  end
+
   #: () -> Integer
   def size = %x{ Integer(len(self.keys)) }
 

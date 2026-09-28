@@ -106,3 +106,12 @@ begin
 rescue StandardError => subj_err
   puts "symbol: #{subj_err.class}"
 end
+
+p "a1b22c333".gsub(/\d+/, "#"), "a1b2".sub(/\d/, "<\\0>"), "John Smith".sub(/(\w+) (\w+)/, "\\2, \\1")
+p "a1b2".gsub(/\d/) { |d| (d.to_i * 2).to_s }, "hello world".gsub(/o/) { |m| m.upcase }, "x-y".gsub("-") { "+" }
+p "2024-03-05".sub(/(?<y>\d+)-(?<m>\d+)-(?<d>\d+)/, "\\k<d>/\\k<m>/\\k<y>"), "a.b".gsub(".", "!"), "path/to".gsub("/", "\\\\")
+p "abc".gsub(/x*/, "-"), "aaa".gsub(/a/, "\\\\"), "abc".sub(/b/, "[\\`|\\']"), "abc".gsub(/(b)|(z)/, "<\\2>")
+p "a1b22c333".scan(/\d+/), "k1=v1; k2=v2".scan(/(\w+)=(\w+)/), "ab".scan(/(a)|(b)/), "none".scan(/\d/)
+p "a, b,c ,d".split(/\s*,\s*/), "a1b2c3".split(/\d/), "abc".split(//), "a-b_c".split(/([-_])/), "1,2,,".split(/,/), ",a".split(/,/)
+p "one  two".split(/ /), "camelCaseString".gsub(/([A-Z])/) { |m| "_" + m.downcase }
+p 1234567.to_s.reverse.scan(/\d{1,3}/).join(",").reverse

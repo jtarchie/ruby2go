@@ -100,6 +100,42 @@ class String < Object
   #: (String) -> bool
   def start_with?(s) = %x{ Boolean(strings.HasPrefix(string(self), string(s))) }
 
+  #: (String, String) -> bool
+  def __start_with_q_2(a, b) = start_with?(a) || start_with?(b)
+
+  #: (String, String, String) -> bool
+  def __start_with_q_3(a, b, c) = start_with?(a) || start_with?(b) || start_with?(c)
+
+  #: (String, String) -> bool
+  def __end_with_q_2(a, b) = end_with?(a) || end_with?(b)
+
+  #: (String, String, String) -> bool
+  def __end_with_q_3(a, b, c) = end_with?(a) || end_with?(b) || end_with?(c)
+
+  #: (String) -> String
+  def delete_prefix(s) = %x{ rbNewStr(self, String(strings.TrimPrefix(string(self), string(s)))) }
+
+  #: (String) -> String
+  def delete_suffix(s) = %x{ rbNewStr(self, String(strings.TrimSuffix(string(self), string(s)))) }
+
+  #: (String) -> [String, String, String]
+  def partition(sep) = %x{
+    before, after, ok := strings.Cut(string(self), string(sep))
+    if !ok {
+      return Tuple3[String, String, String]{rbNewStr(self, self), "", ""}
+    }
+    return Tuple3[String, String, String]{String(before), rbNewStr(sep, sep), String(after)}
+  }
+
+  #: (String) -> [String, String, String]
+  def rpartition(sep) = %x{
+    i := strings.LastIndex(string(self), string(sep))
+    if i < 0 {
+      return Tuple3[String, String, String]{"", "", rbNewStr(self, self)}
+    }
+    return Tuple3[String, String, String]{self[:i], rbNewStr(sep, sep), self[i+len(sep):]}
+  }
+
   #: (String) -> bool
   def include?(s) = %x{ Boolean(strings.Contains(string(self), string(s))) }
 
@@ -162,6 +198,17 @@ class String < Object
     }
     return out
   }
+
+  #: () -> Array[String]
+  def __each_char_enum = chars
+
+  #: () { (String) -> void } -> void
+  def each_line
+    lines.each { |l| yield l }
+  end
+
+  #: () -> Array[String]
+  def __each_line_enum = lines
 
   #: () { (String) -> void } -> void
   def each_char = %x{
@@ -267,6 +314,130 @@ class String < Object
     }, string(self))))
   }
 
+  # An Array argument supplies every directive's value, as MRI's.
+  #: (untyped) -> String
+  def %(arg) = %x{
+    if a, ok := rbUnbox(arg).(Array_Any); ok {
+      return String(rbFormat(string(self), *a._ToAny()))
+    }
+    return String(rbFormat(string(self), []any{arg}))
+  }
+
+  # Base 0 reads a 0b/0o/0x prefix (or a bare leading 0 as octal); a
+  # prefix matching the base is skipped. Invalid digits end the number.
+  #: (Integer) -> Integer
+  def __to_i_1(base) = %x{ Integer(rbStrToIBase(string(self), int(base))) }
+
+  #: () -> Integer
+  def hex = %x{ Integer(rbStrToIBase(string(self), 16)) }
+
+  # Octal, unless a 0b/0o/0x prefix says otherwise.
+  #: () -> Integer
+  def oct = %x{ Integer(rbStrToIBase(string(self), -8)) }
+
+  # MRI's String#succ: the rightmost alphanumeric increments with carry
+  # (a digit to a digit, a letter to a letter of its case), growing on the
+  # left; without alphanumerics the rightmost character increments.
+  #: () -> String
+  def succ = %x{ String(rbStrSucc(string(self))) }
+
+  #: () -> String
+  def next = succ
+
+  # One character set only (no intersection of several, as MRI's).
+  #: (String) -> Integer
+  def count(chars) = %x{
+    in := rbCharSet(string(chars))
+    n := 0
+    for _, r := range string(self) {
+      if in(r) {
+        n++
+      }
+    }
+    return Integer(n)
+  }
+
+  #: () -> String
+  def squeeze = %x{ String(rbSqueeze(string(self), func(rune) bool { return true })) }
+
+  #: (String) -> String
+  def __squeeze_1(chars) = %x{ String(rbSqueeze(string(self), rbCharSet(string(chars)))) }
+
+  #: () -> String
+  def swapcase = %x{
+    return String(strings.Map(func(r rune) rune {
+      switch {
+      case unicode.IsUpper(r):
+        return unicode.ToLower(r)
+      case unicode.IsLower(r):
+        return unicode.ToUpper(r)
+      }
+      return r
+    }, string(self)))
+  }
+
+  # ASCII-only case folding, as MRI's casecmp.
+  #: (String) -> Integer
+  def casecmp(other) = %x{
+    lower := func(s string) string {
+      return strings.Map(func(r rune) rune {
+        if r >= 'A' && r <= 'Z' {
+          return r + 32
+        }
+        return r
+      }, s)
+    }
+    return Integer(strings.Compare(lower(string(self)), lower(string(other))))
+  }
+
+  #: (String) -> bool
+  def casecmp?(other) = %x{ Boolean(strings.EqualFold(string(self), string(other))) }
+
+  # Drops the last character; a trailing \r\n goes as one.
+  #: () -> String
+  def chop = %x{
+    s := string(self)
+    if strings.HasSuffix(s, "\\r\\n") {
+      return String(s[:len(s)-2])
+    }
+    _, w := utf8.DecodeLastRuneInString(s)
+    return String(s[:len(s)-w])
+  }
+
+  #: () -> String
+  def chr = %x{
+    _, w := utf8.DecodeRuneInString(string(self))
+    return self[:w]
+  }
+
+  #: () -> bool
+  def ascii_only? = %x{
+    for i := range len(self) {
+      if self[i] >= 0x80 {
+        return false
+      }
+    }
+    return true
+  }
+
+  # A positive limit caps the field count, the last field keeping the rest;
+  # a negative one keeps trailing empty fields.
+  #: (String?, Integer) -> Array[String]
+  def __split_2(sep, limit) = %x{
+    out := &Array[String]{}
+    for _, p := range rbSplitLimit(string(self), sep, int(limit)) {
+      *out = append(*out, String(p))
+    }
+    return out
+  }
+
+  #: (Integer, Integer) -> String?
+  def slice(start, len) = self[start, len]
+
+  # One character set only (no intersection of several, as MRI's).
+  #: (String) -> String
+  def delete(chars) = tr(chars, "")
+
   #: () -> Integer
   def to_i = %x{
     m := rbIntPrefix.FindStringSubmatch(string(self))
@@ -321,30 +492,30 @@ class String < Object
   #: () -> bool
   def frozen? = %x{ Boolean(rbStrFrozen(string(self), false)) }
 
-  #: (Integer) -> String
-  def center(width) = %x{
+  #: (Integer, ?String) -> String
+  def center(width, pad = " ") = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
       return rbStrClone(self)
     }
-    return String(strings.Repeat(" ", n/2) + string(self) + strings.Repeat(" ", n-n/2))
+    return String(rbPad(string(pad), n/2) + string(self) + rbPad(string(pad), n-n/2))
   }
 
-  #: (Integer) -> String
-  def ljust(width) = %x{
+  #: (Integer, ?String) -> String
+  def ljust(width, pad = " ") = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
       return rbStrClone(self)
     }
-    return self + String(strings.Repeat(" ", n))
+    return self + String(rbPad(string(pad), n))
   }
 
-  #: (Integer) -> String
-  def rjust(width) = %x{
+  #: (Integer, ?String) -> String
+  def rjust(width, pad = " ") = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
     if n <= 0 {
       return rbStrClone(self)
     }
-    return String(strings.Repeat(" ", n)) + self
+    return String(rbPad(string(pad), n)) + self
   }
 end

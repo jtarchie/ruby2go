@@ -101,6 +101,81 @@ class Float < Object
     return Float(f / s)
   }
 
+  # MRI's rb_float_floor/ceil: scale, floor, then step back if the scaled
+  # result overshot. digits <= 0 would be an Integer in MRI, so they raise.
+  #: (Integer) -> Float
+  def __floor_1(digits) = %x{
+    x := float64(self)
+    if digits <= 0 {
+      panic(NewArgumentError(Ref(String("rb2go: Float#floor(digits) needs digits > 0"))))
+    }
+    if digits >= 15 || math.IsInf(x, 0) || math.IsNaN(x) {
+      return self
+    }
+    f := math.Pow(10, float64(digits))
+    mul := math.Floor(x * f)
+    if res := (mul + 1) / f; res <= x {
+      return Float(res)
+    }
+    return Float(mul / f)
+  }
+
+  #: (Integer) -> Float
+  def __ceil_1(digits) = %x{
+    x := float64(self)
+    if digits <= 0 {
+      panic(NewArgumentError(Ref(String("rb2go: Float#ceil(digits) needs digits > 0"))))
+    }
+    if digits >= 15 || math.IsInf(x, 0) || math.IsNaN(x) {
+      return self
+    }
+    f := math.Pow(10, float64(digits))
+    mul := math.Ceil(x * f)
+    if res := (mul - 1) / f; res >= x {
+      return Float(res)
+    }
+    return Float(mul / f)
+  }
+
+  #: () -> Integer
+  def truncate = to_i
+
+  # The result takes the divisor's sign, as MRI's flo_mod.
+  #: (Float) -> Float
+  def %(other) = %x{
+    m := math.Mod(float64(self), float64(other))
+    if m != 0 && (m < 0) != (other < 0) {
+      m += float64(other)
+    }
+    return Float(m)
+  }
+
+  #: (Float) -> Float
+  def modulo(other) = self % other
+
+  #: (Float) -> [Integer, Float]
+  def divmod(other) = [(self / other).floor, self % other]
+
+  #: (Float) -> Float
+  def fdiv(other) = self / other
+
+  #: () -> bool
+  def finite? = %x{ Boolean(!math.IsInf(float64(self), 0) && !math.IsNaN(float64(self))) }
+
+  #: () -> Integer?
+  def infinite? = %x{
+    switch {
+    case math.IsInf(float64(self), 1):
+      return Ref(Integer(1))
+    case math.IsInf(float64(self), -1):
+      return Ref(Integer(-1))
+    }
+    return nil
+  }
+
+  #: () -> bool
+  def integer? = false
+
   #: () -> Float
   def to_f = self
 
