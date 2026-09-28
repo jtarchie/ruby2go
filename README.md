@@ -1245,3 +1245,23 @@ resolve; anything not listed is still open.
     `# stderr: match` adds stderr to the MRI comparison
     ([example 51](examples/51_argv_env/main.rb),
     [example 52](examples/52_stdin/main.rb)).
+62. Files: `File` is its own `@go_type` class over `*os.File` with
+    buffered reader/writer (a `@go_type` class can't subclass `IO`), and
+    shares `print`/`puts`/`printf` and `each_line`/`readlines` with `IO`
+    through the `IOWritable`/`IOReadable` modules, where MRI uses
+    `IO::generic_writable`/`readable`. `File.new(path, mode)` takes
+    `r`/`w`/`a` and their `+` forms; `File.open` takes a block only and
+    closes the file in `ensure`. Class methods: `read`, `write`,
+    `readlines`, `foreach`, `exist?`, `file?`, `directory?`, `size`,
+    `delete`/`unlink`, `rename`, `basename` (with a suffix or `".*"`),
+    `dirname`, `extname`, `join`, `expand_path`, `absolute_path?`, all
+    checked against MRI on edge cases (`"a."`, `".profile"`, `"//"`,
+    `File.join("a//", "//b")`). `Dir`: `pwd`, `children`, `entries`,
+    `glob`, `exist?`, `mkdir`, `rmdir`, and `mktmpdir` with a block (MRI
+    needs `require "tmpdir"`, a no-op here). `children`/`entries` come back
+    sorted where MRI uses readdir order, and `glob` is `filepath.Glob`
+    (no `**` or `{a,b}`). A failed call raises MRI's `Errno::*` class
+    (`ENOENT`, `EEXIST`, `EISDIR`, `ENOTDIR`, `EACCES`, `ENOTEMPTY`, all
+    under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
+    function> - <path>"`. Anything else is an `IOError`
+    ([example 53](examples/53_files/main.rb)).

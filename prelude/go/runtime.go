@@ -32,6 +32,15 @@ func rbFlushIfTTY() {
 
 var rbStdin = bufio.NewReader(os.Stdin)
 
+func (self *File) rbReadable() {
+	if self.f == nil {
+		panic(NewIOError(Ref[String]("closed stream")))
+	}
+	if self.r == nil {
+		panic(NewIOError(Ref[String]("not opened for reading")))
+	}
+}
+
 func (self *IO) rbReadable() {
 	if self.fd != 0 {
 		panic(NewIOError(Ref[String]("not opened for reading")))

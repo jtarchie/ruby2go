@@ -1,7 +1,67 @@
 # rbs_inline: enabled
 
+# Shared by IO and File, as MRI's IO::generic_writable/readable; includers supply write and gets.
+module IOWritable
+  #: (untyped) -> Integer
+  def write(x) = raise(NotImplementedError)
+
+  #: (*untyped) -> nil
+  def print(*args)
+    args.each { |a| write(a) }
+    nil
+  end
+
+  #: (*untyped) -> nil
+  def puts(*args)
+    if args.empty?
+      write("\n")
+      return nil
+    end
+    args.each do |a|
+      case a
+      when nil then write("\n")
+      when Array then a.each { |e| puts(e) }
+      else
+        s = a.to_s
+        write(s.end_with?("\n") ? s : s + "\n")
+      end
+    end
+    nil
+  end
+
+  #: (String, *untyped) -> nil
+  def printf(fmt, *args)
+    write(format(fmt, *args))
+    nil
+  end
+end
+
+module IOReadable
+  #: () -> String?
+  def gets = raise(NotImplementedError)
+
+  #: () { (String) -> void } -> void
+  def each_line
+    while (line = gets)
+      yield line
+    end
+  end
+
+  #: () -> Array[String]
+  def readlines
+    out = [] #: Array[String]
+    while (line = gets)
+      out << line
+    end
+    out
+  end
+end
+
 # @go_type struct { fd int }
 class IO < Object
+  include IOWritable
+  include IOReadable
+
   #: (Integer) -> IO
   def self.__new(fd) = %x{ return &IO{fd: int(fd)} }
 
@@ -33,36 +93,6 @@ class IO < Object
   def <<(x)
     write(x)
     self
-  end
-
-  #: (*untyped) -> nil
-  def print(*args)
-    args.each { |a| write(a) }
-    nil
-  end
-
-  #: (*untyped) -> nil
-  def puts(*args)
-    if args.empty?
-      write("\n")
-      return nil
-    end
-    args.each do |a|
-      case a
-      when nil then write("\n")
-      when Array then a.each { |e| puts(e) }
-      else
-        s = a.to_s
-        write(s.end_with?("\n") ? s : s + "\n")
-      end
-    end
-    nil
-  end
-
-  #: (String, *untyped) -> nil
-  def printf(fmt, *args)
-    write(format(fmt, *args))
-    nil
   end
 
   #: () -> IO
@@ -99,22 +129,6 @@ class IO < Object
     b, _ := io.ReadAll(rbStdin)
     return String(b)
   }
-
-  #: () { (String) -> void } -> void
-  def each_line
-    while (line = gets)
-      yield line
-    end
-  end
-
-  #: () -> Array[String]
-  def readlines
-    out = [] #: Array[String]
-    while (line = gets)
-      out << line
-    end
-    out
-  end
 
   #: () -> bool
   def eof? = %x{

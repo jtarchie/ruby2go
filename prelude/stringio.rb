@@ -152,6 +152,3 @@ class StringIO < Object
   def length = size
 end
 
-module Errno
-  class EINVAL < StandardError; end
-end

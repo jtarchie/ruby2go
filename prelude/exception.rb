@@ -36,6 +36,18 @@ end
 class StandardError < Exception; end
 class IOError < StandardError; end
 
+class SystemCallError < StandardError; end
+
+module Errno
+  class EINVAL < SystemCallError; end
+  class ENOENT < SystemCallError; end
+  class EEXIST < SystemCallError; end
+  class EISDIR < SystemCallError; end
+  class ENOTDIR < SystemCallError; end
+  class EACCES < SystemCallError; end
+  class ENOTEMPTY < SystemCallError; end
+end
+
 class RuntimeError < StandardError; end
 
 class ArgumentError < StandardError; end
