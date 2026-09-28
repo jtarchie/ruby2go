@@ -1265,3 +1265,22 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `Timeout.timeout(sec, klass = nil, message = nil) { ... }` races the
+    block against a second goroutine that only sleeps (`time.After`); no
+    compiler support, so it is a prelude-only library (decision 26: threads
+    are goroutines, and Go still has no thread preemption). `sec: nil`
+    skips the race and just runs the block. On timeout it raises `klass`
+    (default `Timeout::Error < RuntimeError`) constructed with `message`
+    (default `"execution expired"`), through the same dynamic
+    `singleton(StandardError)` dispatch as decision 19's `klass.new(...)`,
+    not a compiler intrinsic. **This is not MRI's semantics and cannot be
+    made to be:** MRI's `Timeout.timeout` can interrupt a genuinely stuck
+    or CPU-bound block, because it raises an exception *into* that
+    thread. A goroutine cannot be preempted from outside, so this
+    implementation can only detect that the deadline passed and raise
+    from the *caller's* side; if the block never returns on its own, its
+    goroutine keeps running in the background forever (leaked), racing
+    whatever it touches after the caller has already moved on. Programs
+    that rely on `Timeout` to actually kill a stuck computation (rather
+    than just bound how long they wait for it) will not observe MRI's
+    behavior here ([example 54](examples/54_timeout/main.rb)).
