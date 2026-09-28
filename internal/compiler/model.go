@@ -1528,7 +1528,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 	if cls.meta != nil {
 		return cls.meta
 	}
-	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 {
+	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 && cls.GoType == "" {
 		c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
 	}
 	// A class object is a Class (a module's, a Module); a subclass's class

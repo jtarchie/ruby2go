@@ -65,10 +65,6 @@ nums.push(2, 3)
 # error: main.rb:3: undefined method sum for Array[Integer]
 nums = [1, 2] #: Array[Integer]
 puts nums.sum
--- array_new.rb --
-# error: main.rb:2: undefined method new for singleton(Array)
-a = Array.new #: Array[Integer]
-puts a.inspect
 -- overload_signature.rb --
 # error: main.rb:4: overloaded signatures (#|) are not supported
 #: (Integer) -> Integer
@@ -391,11 +387,6 @@ puts a, b
 # error: main.rb:3: nil where Integer is expected
 nums = [1, 2] #: Array[Integer]
 nums << nil
--- select_block_optional.rb --
-# error: main.rb:4: possibly-nil Integer? where Boolean is expected
-h = { 1 => 2 } #: Hash[Integer, Integer]
-nums = [1, 2] #: Array[Integer]
-puts nums.select { |n| h[n] }.inspect
 -- optional_array_method_warns.rb --
 # warning: main.rb:3: size called on possibly-nil Array[Integer] (raises NoMethodError on nil)
 h = { "a" => [1] } #: Hash[String, Array[Integer]]

@@ -232,10 +232,6 @@ puts h.select.inspect
 # error: main.rb:3: next with a value inside a block is not supported
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h.select { |k, v| next false if k == "b"; v > 0 }.inspect
--- bool_block_optional_value.rb --
-# error: main.rb:3: possibly-nil Integer? where Boolean is expected
-h = { "a" => 1, "b" => nil } #: Hash[String, Integer?]
-puts h.select { |_k, v| v }.inspect
 -- literal_symbol_keys_for_string_hash.rb --
 # error: main.rb:2:
 h = { a: 1 } #: Hash[String, Integer]

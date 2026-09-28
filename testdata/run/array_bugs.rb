@@ -180,3 +180,14 @@ puts key_grid.sort.inspect, key_grid.min.inspect
 def second(arr) = arr[1]
 
 puts second([1, 2, 3]).inspect, second(["a"]).inspect
+
+# T? in a predicate block is truthiness; bare Array.new takes its annotation
+tb_h = { "a" => 1, "b" => nil } #: Hash[String, Integer?]
+puts tb_h.select { |_k, v| v }.inspect
+tb_h2 = { 1 => 2 } #: Hash[Integer, Integer]
+tb_nums = [1, 2] #: Array[Integer]
+puts tb_nums.select { |n| tb_h2[n] }.inspect
+puts ["a", "b"].select { |s| s =~ /a/ }.inspect
+tb_a = Array.new #: Array[Integer]
+tb_a << 1
+puts tb_a.inspect

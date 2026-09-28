@@ -25,3 +25,5 @@ func (*Array[E]) rbFrom(v any) (*Array[E], bool) {
 	}
 	return &out, true
 }
+
+func NewArray[E comparable]() *Array[E] { return &Array[E]{} }

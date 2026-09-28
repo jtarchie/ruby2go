@@ -120,9 +120,6 @@ end
 def up(s) = s.upcase
 m = "ab".match(/(a)/)
 puts up(m[1]) if m
--- eqtilde_as_block_condition.rb --
-# error: main.rb:2: possibly-nil Integer? where Boolean is expected
-puts ["a", "b"].select { |s| s =~ /a/ }.inspect
 -- string_match_arity.rb --
 # error: main.rb:2: String#match: wrong number of arguments (given 2, expected 1)
 puts "abc".match(/b/, 1).inspect

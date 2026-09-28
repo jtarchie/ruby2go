@@ -740,7 +740,10 @@ resolve; anything not listed is still open.
     ("no implicit conversion of Integer into String") as a dynamic call's
     arguments do (decision 32), except to a `T | untyped` parameter (the
     only union besides `T | nil`): typed arguments are checked against
-    `T`, untyped ones pass unasserted and the method handles them. Regexp
+    `T`, untyped ones pass unasserted and the method handles them.
+    *Amended:* where a Boolean is expected (a predicate block's result, a
+    `bool` parameter) `T?` is its truthiness, as `untyped` already was:
+    `xs.reject { |x| seen.add?(x) }`. Regexp
     subjects use it, so a literal `nil` is an error but an untyped `nil`
     or Symbol matches as in MRI. *Calling a method* on `T?` raises
     `NoMethodError` when it is nil, as in Ruby, and the compiler warns;
@@ -1023,3 +1026,13 @@ resolve; anything not listed is still open.
     than nanoseconds. `Float::INFINITY`/`NAN`/`EPSILON`/`MAX`/`MIN`/`DIG`
     exist. `Float#*` converts its result explicitly, since Go may fuse
     `a * b + c` into one FMA rounding where MRI rounds twice.
+44. `Set[E]` (core in Ruby 4) wraps a `Hash[E, Boolean]`, so it is
+    insertion-ordered and matches elements by `eql?`/`hash`; it prints
+    as Ruby 4's `Set[1, 2]`. `Set.new(array)` and `Set[a, b]` infer `E`;
+    an empty `Set.new` needs an annotation (`#: Set[Integer]`), as
+    `Hash.new` does. A generic `@go_type` class may now define class
+    methods whose signatures use only their own type parameters (`[X]
+    (Array[X]) -> Set[X]`); generic struct classes still may not.
+    There is no `Array#to_set`: Go rejects the instantiation cycle
+    `Array[E]` → `Set[E]` → `Hash[E, …]` → `Array[[E, …]]` (see decision
+    9); `Set.new(xs)` is the spelling ([example 41](examples/41_set/main.rb)).

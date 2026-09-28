@@ -810,6 +810,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if isAny(e.typ) && to.C.RubyName == "Boolean" {
 		return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
 	}
+	if isOpt(e.typ) && to.C.RubyName == "Boolean" {
+		return "Boolean(" + optTruthy(e.code, e.typ) + ")" // a predicate block's `seen.add?(x)`
+	}
 	// rbAs also converts an Array/Hash of another instantiation (rbConv).
 	if isAny(e.typ) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
@@ -913,7 +916,8 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"]) {
+		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
