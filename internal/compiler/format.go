@@ -14,12 +14,12 @@ import (
 
 // stdImports replaces goimports, which runs the go command; a package missing here fails `go build` with "undefined: name".
 var stdImports = map[string]string{
-	"big": "math/big", "bits": "math/bits", "bufio": "bufio", "bytes": "bytes", "cmp": "cmp", "context": "context",
+	"big": "math/big", "bits": "math/bits", "binary": "encoding/binary", "bufio": "bufio", "bytes": "bytes", "cmp": "cmp", "context": "context",
 	"errors": "errors", "fmt": "fmt", "fnv": "hash/fnv", "http": "net/http",
 	"io": "io", "iter": "iter", "maphash": "hash/maphash", "math": "math",
-	"net": "net", "os": "os", "reflect": "reflect", "regexp": "regexp",
+	"net": "net", "os": "os", "rand": "crypto/rand", "reflect": "reflect", "regexp": "regexp",
 	"runtime": "runtime", "slices": "slices", "strconv": "strconv",
-	"strings": "strings", "sync": "sync", "syntax": "regexp/syntax",
+	"strings": "strings", "sync": "sync", "atomic": "sync/atomic", "syntax": "regexp/syntax",
 	"time": "time", "unicode": "unicode", "unsafe": "unsafe", "url": "net/url",
 	"utf16": "unicode/utf16", "utf8": "unicode/utf8",
 }

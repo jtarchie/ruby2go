@@ -615,7 +615,8 @@ resolve; anything not listed is still open.
     *Revised:* overloads by convention. A call with an argument count the
     method cannot take goes to the receiver class's `__<name>_<count>`, and
     one whose sole argument is of class `C` to `__<name>_<c>` (`C`
-    snake-cased; an operator is named by its Go name minus `Op_`, so
+    snake-cased; an operator is named by its Go name minus `Op_`, `?` and
+    `!` are spelt `_q` and `_bang`, so
     `[]` with a Range is `__idx_range` and `Time - Time` is
     `__minus_time`), when defined. So `arr.first` (`E?`), `arr.last(2)`,
     `arr[1, 2]`, `arr[1..]` and `str[0...-1]` work; everything else still
@@ -1036,3 +1037,25 @@ resolve; anything not listed is still open.
     There is no `Array#to_set`: Go rejects the instantiation cycle
     `Array[E]` → `Set[E]` → `Hash[E, …]` → `Array[[E, …]]` (see decision
     9); `Set.new(xs)` is the spelling ([example 41](examples/41_set/main.rb)).
+45. `Mutex`, `ConditionVariable`, `Queue[E]` and `SizedQueue[E]` are Go
+    `sync` primitives. `Queue#pop` is `E?`: nil once the queue is closed
+    and drained, so `while (job = q.pop)` is the consumer loop (an
+    assignment in an `if`/`while` condition now narrows its local, as a
+    read does). `Queue.new` needs an annotation; `SizedQueue.new(n)` takes
+    its element type from one (`#: SizedQueue[String]`): a call whose type
+    parameters its arguments leave open unifies its return type with the
+    expected type. Relocking a Mutex from its owner deadlocks rather than
+    raising, `owned?` is missing (goroutines have no identity), and a
+    deadlock is Go's "all goroutines are asleep" rather than MRI's fatal
+    error. An iterator called with `&:name` is `{ |x| x.name }`
+    ([example 42](examples/42_queues/main.rb)).
+46. `Random` is MRI's MT19937 seeded as MRI seeds it (one 32-bit word
+    through `init_genrand`, more through `init_by_array`), and `rand(n)`,
+    `rand`, `rand(a..b)`, `rand(Float)`, `bytes`, `Array#shuffle`/`shuffle!`
+    and `Array#sample` draw exactly as MRI does, so a seeded program prints
+    the same numbers. Seeds are 64-bit (MRI's `new_seed` is 128); an
+    unseeded generator is seeded from `crypto/rand`. `Kernel#rand`/`srand`
+    use one shared generator; `rand(0)` raises (MRI returns a Float) and
+    Float ranges are not supported. `random:` is passed as a Hash
+    (decision 23). Also `Array.new(n, v)`, `Array.new(n) { |i| … }` and
+    `String#bytes` ([example 43](examples/43_random/main.rb)).

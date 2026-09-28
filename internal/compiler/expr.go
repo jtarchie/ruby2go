@@ -1392,7 +1392,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if owner == nil || strings.HasPrefix(m.Name, "__") {
 		return nil
 	}
-	base := strings.TrimRight(m.Name, "?!")
+	base := strings.NewReplacer("?", "_q", "!", "_bang").Replace(m.Name)
 	if op, ok := opNames[m.Name]; ok {
 		base = strings.ToLower(strings.TrimPrefix(op, "Op_"))
 	}
@@ -1429,6 +1429,20 @@ func snake(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// bindTypeParams checks every type parameter of m is bound, first
+// unifying m's return type with the call's expected type, if any
+// (`SizedQueue.new(2) #: SizedQueue[Integer]`).
+func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
+	if n == f.retHintNode && f.retHint != nil {
+		unify(m.Ret, f.retHint, env)
+	}
+	for _, tp := range m.TypeParams {
+		if _, ok := env[tp]; !ok {
+			f.errorf(n, "cannot infer type parameter %s of %s", tp, m)
+		}
+	}
 }
 
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
@@ -1471,11 +1485,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	} else if block != nil {
 		f.errorf(n, "%s does not take a block", m.Name)
 	}
-	for _, tp := range m.TypeParams {
-		if _, ok := env[tp]; !ok {
-			f.errorf(n, "cannot infer type parameter %s of %s", tp, m)
-		}
-	}
+	f.bindTypeParams(n, m, env)
 	ret := subst(m.Ret, env)
 	out := expr{code: f.callCode(e, recv, codes, env), typ: ret}
 	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
@@ -3103,6 +3113,11 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 // (`recv.x = v`, `recv[k] = v`) Ruby's value is v, whatever the setter
 // returns, so v is evaluated once and named after the call.
 func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
+	if expected != nil {
+		saved, savedNode := f.retHint, f.retHintNode
+		f.retHint, f.retHintNode = expected, n
+		defer func() { f.retHint, f.retHintNode = saved, savedNode }()
+	}
 	args := callArgs(n)
 	if !n.IsATTRIBUTE_WRITE() || len(args) == 0 || n.IsSAFE_NAVIGATION() {
 		return f.genCall(n, expected)

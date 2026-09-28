@@ -145,6 +145,15 @@ class String < Object
     return Ref(rbNewStr(self, String(r[start:end])))
   }
 
+  #: () -> Array[Integer]
+  def bytes = %x{
+    out := make(Array[Integer], len(self))
+    for i := range len(self) {
+      out[i] = Integer(self[i])
+    }
+    return &out
+  }
+
   #: () -> Array[String]
   def chars = %x{
     out := &Array[String]{}

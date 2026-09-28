@@ -12,6 +12,8 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
+	retHint      Type // the expected type of retHintNode's result, for type params its arguments leave open
+	retHintNode  parser.Node
 	c            *Compiler
 	f            *File
 	owner        *Class
@@ -474,6 +476,15 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
+		if ba, ok := n.Block.(*parser.BlockArgumentNode); ok {
+			if sym, ok := ba.Expression.(*parser.SymbolNode); ok {
+				c := *n
+				c.Block = symbolBlock(ba, sym.Unescaped.Value)
+				if f.genIterCall(&c, t) { // `workers.each(&:join)`
+					return
+				}
+			}
+		}
 		if n.Block != nil {
 			ba, forwards := n.Block.(*parser.BlockArgumentNode)
 			if _, ok := n.Block.(*parser.BlockNode); ok || (forwards && f.isBlockParam(ba.Expression)) {
@@ -658,6 +669,10 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
 			return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 		}
+	case *parser.LocalVariableWriteNode:
+		// `if (x = h[k])` / `while (job = q.pop)`: assign, then test and narrow x like a read
+		f.genStmt(n, tail{})
+		return f.genCond(&parser.LocalVariableReadNode{Name: n.Name, Depth: n.Depth, Location: n.Location})
 	}
 	if call, ok := n.(*parser.CallNode); ok && isIsA(call) {
 		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
@@ -2180,4 +2195,17 @@ func (f *fctx) capture(gen func()) string {
 	out := f.buf.String()
 	f.buf = saved
 	return out
+}
+
+// symbolBlock desugars `&:name` to `{ |x_| x_.name }`.
+func symbolBlock(ba *parser.BlockArgumentNode, name string) *parser.BlockNode {
+	loc := ba.Location
+	x := &parser.RequiredParameterNode{Location: loc, Name: "x_"}
+	call := &parser.CallNode{Location: loc, Receiver: &parser.LocalVariableReadNode{Location: loc, Name: "x_"}, Name: name}
+	return &parser.BlockNode{
+		Location:   loc,
+		Locals:     []string{"x_"},
+		Parameters: &parser.BlockParametersNode{Location: loc, Parameters: &parser.ParametersNode{Location: loc, Requireds: []parser.Node{x}}},
+		Body:       &parser.StatementsNode{Location: loc, Body: []parser.Node{call}},
+	}
 }

@@ -9,6 +9,27 @@
 class Array < Object
   include Enumerable #[E]
 
+  # Every slot holds the same v, as MRI's (mutating a shared Array element shows in all).
+  #: [X] (Integer, X) -> Array[X]
+  def self.new(n, v) = %x{
+    if n < 0 {
+      panic(NewArgumentError(Ref(String("negative array size"))))
+    }
+    out := make(Array[X], n)
+    for i := range out {
+      out[i] = v
+    }
+    return &out
+  }
+
+  #: [X] (Integer) { (Integer) -> X } -> Array[X]
+  def self.__new_1(n)
+    raise ArgumentError, "negative array size" if n < 0
+    out = [] #: Array[X]
+    n.times { |i| out << yield(i) }
+    out
+  end
+
   #: () { (E) -> void } -> void
   def each = %x{
     return func(yield func(E) bool) {
