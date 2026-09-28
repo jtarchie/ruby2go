@@ -1265,3 +1265,22 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `URI.parse`/`URI()` return `URI::Generic`, or `URI::HTTP`/`URI::HTTPS`
+    (`HTTPS < HTTP < Generic`, matching MRI's own hierarchy so
+    `is_a?(URI::HTTP)` holds for both) on Go's `net/url`. `port` defaults
+    to 80/443 for `http`/`https` and is `nil` otherwise (only those two
+    schemes' `default_port` is modeled). `to_s` concatenates components
+    like MRI's own, not `net/url.URL.String` (which keeps an explicit
+    default port MRI drops). `URI.join`/`URI#merge`/`#+` use
+    `ResolveReference`, checked against MRI on trailing-slash, `..`,
+    absolute-path and absolute-override cases. `URI.decode_www_form`
+    splits on `&` only (not `;`, unlike old CGI query parsing) and is the
+    inverse of the existing `encode_www_form`. `URI::InvalidURIError`
+    (`< URI::Error < StandardError`) is raised with MRI's
+    `bad URI (is not URI?): "<str>"` wording, both when `net/url.Parse`
+    itself fails and when the string carries a raw byte MRI's stricter
+    RFC 3986 parser never accepts unencoded (space, control bytes,
+    `` "<>\^`{|} ``) that `net/url` would otherwise silently accept or
+    percent-encode. *ponytail: not full RFC 3986 validation, so some
+    strings MRI rejects still parse here*, checked against MRI in
+    `testdata/run/uri_mid.rb`.
