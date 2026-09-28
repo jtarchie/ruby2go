@@ -92,6 +92,12 @@ class File < Object
   }
 
   #: (String) -> bool
+  def self.symlink?(path) = %x{
+    fi, err := os.Lstat(string(path))
+    return Boolean(err == nil && fi.Mode()&os.ModeSymlink != 0)
+  }
+
+  #: (String) -> bool
   def self.directory?(path) = %x{
     fi, err := os.Stat(string(path))
     return Boolean(err == nil && fi.IsDir())

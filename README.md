@@ -1265,3 +1265,43 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+    *Amended:* `File.symlink?` added (`os.Lstat`, `ModeSymlink`), needed to
+    verify decision 63's `FileUtils.ln_s`.
+63. FileUtils and Tempfile, on `os`/`io`/`path/filepath` only (no new
+    dependencies). `FileUtils.mkdir_p`, `rm_rf`, `rm_f`, `rm`, `cp`, `cp_r`,
+    `mv`, `touch`, `ln_s`: each takes MRI's `pathlist` first argument (a
+    single path or an `Array` of paths, checked against MRI's actual method
+    signatures via `Method#parameters`, not guessed), so the `Array` case is
+    routed through decision 12's overload-by-argument-class convention to a
+    `__<name>_array` method that loops the plain-path body — no compiler
+    changes needed. `cp`/`cp_r`/`mv`/`ln_s` copy/move/link into
+    `dest/basename(src)` when `dest` is an existing directory, matching
+    MRI's documented behavior. `rm` delegates straight to `File.delete`
+    (decision 62), which already raises MRI's exact message, since real
+    FileUtils.rm hits the same C function internally; `rm_f`/`rm_rf` swallow
+    any error (MRI's implicit `force: true`). Keyword arguments (`noop:`,
+    `verbose:`, `force:`, `preserve:`, `secure:`, ...) are not implemented —
+    only each method's default, no-keyword behavior. `mv` falls back to
+    copy+remove on `EXDEV` (cross-device), untested here since a temp dir is
+    one filesystem. `cp` on a directory source raises `Errno::EISDIR`, not
+    MRI's oddly-shaped `"Is a directory - read"` message from
+    `IO.copy_stream` — a known, untested mismatch, since nothing here
+    depends on its exact text.
+    `Tempfile.new(basename)`/`.create(basename) { |f| }` wrap `File` over
+    `os.CreateTemp` rather than subclassing it (`@go_type` classes can't be
+    subclassed, decision 62); `Tempfile` is a plain struct holding a `File`
+    ivar and delegating `write`/`gets`/`read`/`eof?`/`close` to it, the
+    same delegation-not-reimplementation shape the Net::HTTP work used for
+    `@go_type` limits. `.new` returns a `Tempfile` (`path`/`unlink`/`delete`
+    plus `IOWritable`/`IOReadable`), matching MRI's `path` going `nil` after
+    `unlink` (verified against real MRI, which was surprising — `unlink`
+    doesn't just remove the file, it also clears `path`); `.create` returns
+    a plain `File` and auto-deletes at block exit, also verified against
+    MRI (`Tempfile.create` returns `File`, not `Tempfile`, and only the
+    block form auto-unlinks — the blockless form leaves an open file the
+    caller must close and unlink itself, both confirmed by running real
+    MRI). No finalizer (Go has no GC hook comparable to MRI's): an
+    unclosed, unreferenced `Tempfile` leaks until the process exits, same
+    as the tmp file MRI's own docs warn `close`/`unlink` guards against.
+    `Pathname`/`Find`/`Open3` etc. remain open, tracked in issue #1
+    ([example 54](examples/54_fileutils/main.rb)).
