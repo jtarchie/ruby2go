@@ -1157,6 +1157,12 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		return TAny{}
 	case rbs.Union:
 		c.errorf(sc.file, nil, "%s:%d: union types are not supported: %s", sc.file.Name, sc.line, t)
+	case rbs.Proc:
+		ps := make([]Type, len(t.Params))
+		for i, p := range t.Params {
+			ps[i] = c.resolveType(p, sc)
+		}
+		return TFunc{Params: ps, Ret: c.resolveType(t.Ret, sc), Proc: true}
 	}
 	c.errorf(sc.file, nil, "%s:%d: unsupported type %s", sc.file.Name, sc.line, t)
 	return nil

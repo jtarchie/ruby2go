@@ -150,6 +150,8 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return f.genRescueModifier(n, expected)
 	case *parser.RangeNode:
 		return f.genRange(n, expected)
+	case *parser.LambdaNode:
+		return f.genLambda(n, n, n.Parameters, expected)
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
@@ -892,15 +894,28 @@ func sameButUntyped(a, b Type) bool {
 
 // ---- calls
 
+// genKernelIntrinsic handles the receiverless calls the compiler builds itself.
+func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool) {
+	switch n.Name {
+	case "raise":
+		return f.genRaise(n), true
+	case "require", "require_relative":
+		return expr{code: "", stmt: true, typ: TVoid{}}, true
+	case "lambda", "proc":
+		if bn, ok := n.Block.(*parser.BlockNode); ok && n.Arguments == nil {
+			return f.genLambda(n, bn, bn.Parameters, expected), true
+		}
+		f.errorf(n, "%s needs a literal block", n.Name)
+	case "block_given?", "binding", "send", "method_missing", "define_method":
+		f.errorf(n, "%s is not supported", n.Name)
+	}
+	return expr{}, false
+}
+
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if n.Receiver == nil {
-		switch n.Name {
-		case "raise":
-			return f.genRaise(n)
-		case "require", "require_relative":
-			return expr{code: "", stmt: true, typ: TVoid{}}
-		case "block_given?", "lambda", "proc", "binding", "send", "method_missing", "define_method":
-			f.errorf(n, "%s is not supported", n.Name)
+		if e, ok := f.genKernelIntrinsic(n, expected); ok {
+			return e
 		}
 	}
 	if n.Name == "call" && f.isBlockParam(n.Receiver) && n.Block == nil {
@@ -1094,29 +1109,12 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 		return f.optCall(n, recv, name, args, block)
 	case TTuple:
 		return f.tupleCall(n, recv, name, args)
+	case TFunc:
+		if t.Proc {
+			return f.procCall(n, recv, t, name, args, block)
+		}
 	case TClass:
-		if isAbstract(t) && recv.code != f.selfCode {
-			return f.abstractCall(n, t, recv, name, args, block)
-		}
-		e := t.C.lookup(name)
-		if e == nil && recv.code == f.selfCode {
-			if td := f.c.topDefs[name]; td != nil {
-				e = &entry{M: td}
-			}
-		}
-		if e == nil {
-			if mm := t.C.lookup("method_missing"); mm != nil {
-				return f.callMissing(n, mm, recv, name, args, block)
-			}
-			// a Module/Class-typed value is some class object, and a
-			// struct-typed value may be a subclass defining the method:
-			// either way the method is found at run time
-			if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
-				return f.genDynCall(n, recv, name, args)
-			}
-			f.errorf(n, "undefined method %s for %s", name, recv.typ)
-		}
-		return f.numericMix(n, recv, e, args, block)
+		return f.classCall(n, t, recv, name, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
 			if e := f.owner.lookup(name); e != nil {
@@ -1141,6 +1139,32 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
+}
+
+// classCall dispatches on a class-typed receiver.
+func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if isAbstract(t) && recv.code != f.selfCode {
+		return f.abstractCall(n, t, recv, name, args, block)
+	}
+	e := t.C.lookup(name)
+	if e == nil && recv.code == f.selfCode {
+		if td := f.c.topDefs[name]; td != nil {
+			e = &entry{M: td}
+		}
+	}
+	if e == nil {
+		if mm := t.C.lookup("method_missing"); mm != nil {
+			return f.callMissing(n, mm, recv, name, args, block)
+		}
+		// a Module/Class-typed value is some class object, and a
+		// struct-typed value may be a subclass defining the method:
+		// either way the method is found at run time
+		if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
+			return f.genDynCall(n, recv, name, args)
+		}
+		f.errorf(n, "undefined method %s for %s", name, recv.typ)
+	}
+	return f.numericMix(n, recv, e, args, block)
 }
 
 // abstractCall: an Object or module value is Go any, so it dispatches as untyped.
@@ -1696,13 +1720,19 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	case *parser.BlockNode:
 		names = f.blockParamNames(b.Parameters)
 		body = b.Body
+	case *parser.LambdaNode:
+		names = f.blockParamNames(b.Parameters)
+		body = b.Body
 	case *parser.BlockArgumentNode:
 		if f.isBlockParam(b.Expression) {
 			return f.forwardClosure(b, sig, env)
 		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
-			f.errorf(b, "only &:symbol and a method's own &block are supported as block arguments")
+			if pb := f.procBlock(b); pb != nil {
+				return f.genClosure(n, pb, sig, env)
+			}
+			f.errorf(b, "only &:symbol, a Proc and a method's own &block are supported as block arguments")
 		}
 		symbolCall = sym.Unescaped.Value
 		if len(params) != 1 {
@@ -2359,6 +2389,10 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 		}
 	case TAny, TNil, TOpt:
 		return f.dynClassOf(n, recv), true
+	case TFunc:
+		p := f.c.classes["Proc"]
+		f.discard(recv)
+		return expr{code: classVar(p), typ: TClass{C: p.meta}}, true
 	}
 	if cls != nil && (cls.universal || cls.IsModule) { // Go any: asked at run time
 		return f.dynClassOf(n, recv), true
@@ -2464,10 +2498,19 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 // instances of their own: the Boolean or nil value decides.
 func (f *fctx) markerIsA(recv expr, cls *Class) (string, bool) {
 	name := cls.RubyName
+	t := recv.typ
+	if name == "Proc" {
+		if ft, ok := t.(TFunc); ok && ft.Proc {
+			return "true", true
+		}
+		if isAny(t) || isAbstract(t) {
+			return "rbIsProc(" + f.coerce(nil, recv, TAny{}) + ")", true
+		}
+		return "false", true
+	}
 	if name != "TrueClass" && name != "FalseClass" && name != "NilClass" {
 		return "", false
 	}
-	t := recv.typ
 	if name == "NilClass" {
 		switch {
 		case isNil(t):
@@ -3391,4 +3434,110 @@ func requiredArgs(m *Method) int {
 		}
 	}
 	return n
+}
+
+// genLambda builds a Proc value (`->(x) { }`, `lambda { |x| }`, `proc { }`)
+// as a pointer to a Go closure. Its parameter types come from the expected
+// type (`#: ^(Integer) -> Integer`); a lambda without parameters may infer
+// its return type from its body.
+func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
+	sig := &BlockSig{Ret: TVar{Name: "Ret_"}}
+	if ft, ok := expected.(TFunc); ok && ft.Proc {
+		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret}
+	} else if len(f.blockParamNames(params)) > 0 {
+		f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`)")
+	}
+	env := map[string]Type{}
+	saved := f.lambdaClosure
+	f.lambdaClosure = f.closures + 1
+	code := f.genClosure(n, block, sig, env)
+	f.lambdaClosure = saved
+	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true}}
+}
+
+// procBlock desugars `&f` for a Proc f to `{ |x_0, ...| f.call(x_0, ...) }`, or nil when f is not a Proc.
+func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
+	var pt Type
+	f.probe(func() { pt = f.genExpr(ba.Expression, nil).typ })
+	ft, ok := pt.(TFunc)
+	if !ok || !ft.Proc {
+		return nil
+	}
+	loc := ba.Location
+	var ps, args []parser.Node
+	var locals []string
+	for i := range ft.Params {
+		name := "x_" + strconv.Itoa(i)
+		locals = append(locals, name)
+		ps = append(ps, &parser.RequiredParameterNode{Location: loc, Name: name})
+		args = append(args, &parser.LocalVariableReadNode{Location: loc, Name: name})
+	}
+	call := &parser.CallNode{Location: loc, Receiver: ba.Expression, Name: "call", Arguments: &parser.ArgumentsNode{Location: loc, Arguments: args}}
+	return &parser.BlockNode{
+		Location:   loc,
+		Locals:     locals,
+		Parameters: &parser.BlockParametersNode{Location: loc, Parameters: &parser.ParametersNode{Location: loc, Requireds: ps}},
+		Body:       &parser.StatementsNode{Location: loc, Body: []parser.Node{call}},
+	}
+}
+
+// procCall is a method on a Proc value.
+func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []parser.Node, block parser.Node) expr {
+	if block != nil {
+		f.errorf(n, "a Proc's %s does not take a block", name)
+	}
+	switch name {
+	case "call", "()", "[]", "yield", "===":
+		if len(args) != len(t.Params) {
+			f.errorf(n, "wrong number of arguments (given %d, expected %d)", len(args), len(t.Params))
+		}
+		codes := make([]string, len(args))
+		for i, a := range args {
+			codes[i] = f.coerce(a, f.genExpr(a, t.Params[i]), t.Params[i])
+		}
+		return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
+	case "arity":
+		f.discard(recv)
+		return expr{code: strconv.Itoa(len(t.Params)), typ: f.cls("Integer"), lit: true}
+	case "lambda?":
+		f.discard(recv)
+		return expr{code: "true", typ: f.cls("Boolean"), lit: true}
+	case "to_proc":
+		return recv
+	case ">>", "<<":
+		if len(args) != 1 {
+			f.errorf(n, "%s takes one Proc", name)
+		}
+		g := f.genExpr(args[0], nil)
+		gt, ok := g.typ.(TFunc)
+		if !ok || !gt.Proc {
+			f.errorf(n, "%s takes a Proc, got %s", name, g.typ)
+		}
+		first, firstT, second, secondT := recv.code, t, g.code, gt
+		if name == "<<" {
+			first, firstT, second, secondT = g.code, gt, recv.code, t
+		}
+		if len(secondT.Params) != 1 || !typeEq(secondT.Params[0], firstT.Ret) {
+			f.errorf(n, "cannot compose %s with %s", firstT, secondT)
+		}
+		out := TFunc{Params: firstT.Params, Ret: secondT.Ret, Proc: true}
+		var ps, as []string
+		for i, p := range firstT.Params {
+			ps = append(ps, "a"+strconv.Itoa(i)+" "+f.c.goType(p))
+			as = append(as, "a"+strconv.Itoa(i))
+		}
+		inner := "(*first)(" + strings.Join(as, ", ") + ")"
+		body := "return (*second)(" + inner + ")"
+		if isVoid(secondT.Ret) {
+			body = "(*second)(" + inner + ")"
+		}
+		ret := ""
+		if !isVoid(secondT.Ret) {
+			ret = " " + f.c.goType(secondT.Ret)
+		}
+		code := fmt.Sprintf("func(first %s, second %s) %s { return Ref(func(%s)%s { %s }) }(%s, %s)",
+			f.c.goType(firstT), f.c.goType(secondT), f.c.goType(out), strings.Join(ps, ", "), ret, body, first, second)
+		return expr{code: code, typ: out}
+	}
+	return f.universalCall(n, recv, name, args, block)
 }

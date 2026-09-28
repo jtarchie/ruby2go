@@ -44,3 +44,7 @@ end
 
 class NilClass < Object
 end
+
+# Proc values are Go *func; this class exists for is_a?, .class and constant references.
+class Proc < Object
+end

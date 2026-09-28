@@ -176,3 +176,10 @@ e_truthy = ""
 puts(e_truthy ? "empty string is truthy" : "falsy")
 sym_truthy = :a
 puts "symbol is truthy" if sym_truthy
+
+# next with a value gives the block's value
+nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
+puts nv_h.select { |k, v| next false if k == "b"; v > 0 }.inspect
+nv_xs = [1, 2] #: Array[Integer]
+puts nv_xs.map { |x| next x * 2 }.inspect
+puts nv_xs.select { |n| next false if n > 1; true }.inspect

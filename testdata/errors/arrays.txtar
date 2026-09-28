@@ -11,10 +11,6 @@ puts f([1])
 # error: main.rb:3: break inside a non-iterator block is not supported
 nums = [1, 2] #: Array[Integer]
 puts nums.map { |n| break }.inspect
--- next_value_in_closure.rb --
-# error: main.rb:3: next with a value inside a block is not supported
-nums = [1, 2] #: Array[Integer]
-puts nums.select { |n| next false if n > 1; true }.inspect
 -- break_with_value.rb --
 # error: main.rb:3: break with a value is not supported
 nums = [1, 2] #: Array[Integer]
@@ -133,11 +129,11 @@ pairs.each { |n, s, extra| puts n }
 nums = [1, 2] #: Array[Integer]
 nums.each { |a, b| puts a }
 -- block_arg_proc.rb --
-# error: main.rb:2: proc is not supported
+# error: main.rb:2: a lambda with parameters needs a type annotation (`#: ^(T) -> R`)
 up = proc { |s| s.upcase }
 puts ["a"].map(&up).inspect
 -- block_arg_method.rb --
-# error: main.rb:4: only &:symbol and a method's own &block are supported as block arguments
+# error: main.rb:4: undefined method method for Object
 #: (Integer) -> Integer
 def twice(n) = n * 2
 puts [1].map(&method(:twice)).inspect

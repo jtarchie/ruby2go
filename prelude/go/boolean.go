@@ -15,3 +15,9 @@ func rbIsBool(a any, want bool) bool {
 	b, ok := rbUnbox(a).(Boolean)
 	return ok && bool(b) == want
 }
+
+// rbIsProc is is_a?(Proc) on an untyped value: procs are pointers to Go funcs.
+func rbIsProc(a any) bool {
+	t := reflect.TypeOf(a)
+	return t != nil && t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Func
+}

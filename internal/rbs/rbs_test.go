@@ -37,7 +37,7 @@ func TestParseMethodType(t *testing.T) {
 }
 
 func TestParseType(t *testing.T) {
-	for _, in := range []string{"String", "Array[String]?", "[Integer, String]", "Hash[String, Array[Integer]]", "singleton(A::B)", "Array[singleton(Base)]", "Integer | String", "Array[Integer | String]"} {
+	for _, in := range []string{"String", "Array[String]?", "[Integer, String]", "Hash[String, Array[Integer]]", "singleton(A::B)", "Array[singleton(Base)]", "Integer | String", "Array[Integer | String]", "^(Integer) -> String", "^() -> void", "Array[^(Integer, String) -> Integer?]"} {
 		ty, err := ParseType(in)
 		if err != nil {
 			t.Errorf("%q: %v", in, err)
@@ -180,7 +180,6 @@ func TestParseTypeErrors(t *testing.T) {
 		{"?", "", "", ""},
 		{"()", "", "", ""},
 		{"String name", "trailing", "", ""},
-		{"^(Integer) -> String", "proc types", "", ""},
 		{":sym", "", "", ""},
 		{`"str"`, "", "", ""},
 		{"1", "", "", ""},
@@ -307,7 +306,6 @@ func TestParseMethodTypeErrors(t *testing.T) {
 		{"(**String) -> void", "not supported", "", ""},
 		{"(&Proc) -> void", "not supported", "", ""},
 		{"^() -> void", "", "", ""},
-		{"() -> ^() -> void", "proc types", "", ""},
 		{"(String) {} -> void", "", "", ""},
 		{"(String) { (String) } -> void", "", "", ""},
 		{"(String) { (String) -> void -> void", "", "", ""},

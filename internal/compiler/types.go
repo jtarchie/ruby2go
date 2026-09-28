@@ -21,10 +21,12 @@ type (
 	// TVar is a type variable: a class/module type param, a method type
 	// param, or Self.
 	TVar struct{ Name string }
-	// TFunc is the type of a block/proc value.
+	// TFunc is the type of a block; with Proc, of a Proc value (RBS
+	// `^(A) -> R`), which is a Go *func so that it is comparable.
 	TFunc struct {
 		Params []Type
 		Ret    Type
+		Proc   bool
 	}
 	// TAny is `untyped`.
 	TAny struct{}
@@ -156,7 +158,7 @@ func typeEq(a, b Type) bool {
 		return ok && a.Name == b.Name
 	case TFunc:
 		b, ok := b.(TFunc)
-		if !ok || len(a.Params) != len(b.Params) || !typeEq(a.Ret, b.Ret) {
+		if !ok || a.Proc != b.Proc || len(a.Params) != len(b.Params) || !typeEq(a.Ret, b.Ret) {
 			return false
 		}
 		for i := range a.Params {
@@ -211,7 +213,7 @@ func subst(t Type, env map[string]Type) Type {
 		for i, p := range t.Params {
 			ps[i] = subst(p, env)
 		}
-		return TFunc{Params: ps, Ret: subst(t.Ret, env)}
+		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc}
 	}
 	return t
 }

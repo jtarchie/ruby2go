@@ -35,6 +35,11 @@ type (
 	Bool struct{}
 	// Singleton is `singleton(Foo)`: the class object Foo.
 	Singleton struct{ Name string }
+	// Proc is `^(A, B) -> R`.
+	Proc struct {
+		Params []Type
+		Ret    Type
+	}
 )
 
 func (t Name) String() string {
@@ -435,7 +440,7 @@ func (p *parser) parsePrimary() (Type, error) {
 	case "bool", "boolish":
 		return Bool{}, nil
 	case "^":
-		return nil, errors.New("rbs: proc types are not supported")
+		return p.parseProc()
 	case "singleton":
 		if p.peek() == "(" {
 			p.next()
@@ -470,4 +475,37 @@ func (p *parser) parsePrimary() (Type, error) {
 		p.next()
 	}
 	return n, nil
+}
+
+func (t Proc) String() string { return "^(" + join(t.Params) + ") -> " + t.Ret.String() }
+
+// parseProc reads a proc type after its `^`: `(A, B) -> R`.
+func (p *parser) parseProc() (Type, error) {
+	err := p.expect("(")
+	if err != nil {
+		return nil, err
+	}
+	var out Proc
+	for p.peek() != ")" {
+		t, err := p.parseType()
+		if err != nil {
+			return nil, err
+		}
+		out.Params = append(out.Params, t)
+		err = p.sep(")")
+		if err != nil {
+			return nil, err
+		}
+	}
+	p.next()
+	err = p.expect("->")
+	if err != nil {
+		return nil, err
+	}
+	ret, err := p.parseType()
+	if err != nil {
+		return nil, err
+	}
+	out.Ret = ret
+	return out, nil
 }

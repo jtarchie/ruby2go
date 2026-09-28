@@ -1059,3 +1059,16 @@ resolve; anything not listed is still open.
     Float ranges are not supported. `random:` is passed as a Hash
     (decision 23). Also `Array.new(n, v)`, `Array.new(n) { |i| … }` and
     `String#bytes` ([example 43](examples/43_random/main.rb)).
+47. Procs are typed by RBS proc types (`^(Integer) -> Integer`) and are a
+    Go `*func(Integer) Integer`: a pointer, so they satisfy `comparable`
+    (decision 10) and can sit in Arrays and Hashes, and `==` is identity
+    as for MRI's distinct procs. `->(x) { }`, `lambda { |x| }` and
+    `proc { |x| }` build one; a lambda with parameters takes its types
+    from the expected type (`#:` on the local, the parameter or the
+    ivar), and one without infers its return type. `call`, `.()`, `[]`,
+    `yield`, `===`, `arity`, `>>`/`<<` (composition), `&f` (as a block,
+    iterators included), `is_a?(Proc)` and `.class` work. Every Proc
+    behaves as a lambda: `return` leaves only the Proc, arity is strict,
+    and `lambda?` is true. `next v` now works in any block, giving the
+    block's value. A Proc held `untyped` cannot be called dynamically
+    ([example 44](examples/44_procs/main.rb)).

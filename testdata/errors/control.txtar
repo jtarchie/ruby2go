@@ -177,10 +177,6 @@ end
 guarded do |i|
   break if i > 1
 end
--- next_with_value_in_closure.rb --
-# error: main.rb:3: next with a value inside a block is not supported
-xs = [1, 2] #: Array[Integer]
-ys = xs.map { |x| next x * 2 }
 -- break_outside_loop.rb --
 # error: main.rb:4: syntax error: Invalid break
 #: () -> void

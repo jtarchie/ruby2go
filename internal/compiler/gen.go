@@ -12,44 +12,45 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
-	retHint      Type // the expected type of retHintNode's result, for type params its arguments leave open
-	retHintNode  parser.Node
-	c            *Compiler
-	f            *File
-	owner        *Class
-	m            *Method
-	implicitCall bool     // calling method_missing/respond_to_missing? on the program\'s behalf
-	lex          []*Class // lexical scope for constant lookup
-	selfType     Type
-	selfCode     string
-	selfClassObj bool // self is exactly a class constant (a class body)
-	ret          Type
-	iterator     bool
-	blockSig     *BlockSig
-	buf          *strings.Builder
-	indent       int
-	tmp          int
-	pass         int // 0 = ivar discovery, 1 = local analysis, 2 = emit
-	discover     bool
-	locals       map[localKey]*localInfo
-	refined      map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
-	convs        map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
-	retTypes     *[]Type           // `return` values, while inferring the method's return type
-	unset        map[localKey]bool // locals read where they may be unassigned (maybeUnset)
-	scope        *scope
-	block        string
-	rbScope      string    // the block path where the current Ruby scope (method or block) starts
-	rbFrames     []rbFrame // the Ruby blocks enclosing the current position, outermost first
-	blockCtr     int
-	loops        []*loopFrame
-	switches     int  // nesting depth of emitted Go switch statements
-	labels       int  // not rewound by probe, so labels stay unique
-	closures     int  // nesting depth of Go closures (non-iterator blocks)
-	nextTail     tail // the innermost closure's result, for `next`
-	begins       int  // nesting depth of rescue wrappers
-	retVar       string
-	wrap         *wrapFrame // the innermost begin wrapper
-	hasNamedRet  bool
+	lambdaClosure int  // f.closures inside the innermost lambda body, whose `return` is its own
+	retHint       Type // the expected type of retHintNode's result, for type params its arguments leave open
+	retHintNode   parser.Node
+	c             *Compiler
+	f             *File
+	owner         *Class
+	m             *Method
+	implicitCall  bool     // calling method_missing/respond_to_missing? on the program\'s behalf
+	lex           []*Class // lexical scope for constant lookup
+	selfType      Type
+	selfCode      string
+	selfClassObj  bool // self is exactly a class constant (a class body)
+	ret           Type
+	iterator      bool
+	blockSig      *BlockSig
+	buf           *strings.Builder
+	indent        int
+	tmp           int
+	pass          int // 0 = ivar discovery, 1 = local analysis, 2 = emit
+	discover      bool
+	locals        map[localKey]*localInfo
+	refined       map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
+	convs         map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
+	retTypes      *[]Type           // `return` values, while inferring the method's return type
+	unset         map[localKey]bool // locals read where they may be unassigned (maybeUnset)
+	scope         *scope
+	block         string
+	rbScope       string    // the block path where the current Ruby scope (method or block) starts
+	rbFrames      []rbFrame // the Ruby blocks enclosing the current position, outermost first
+	blockCtr      int
+	loops         []*loopFrame
+	switches      int  // nesting depth of emitted Go switch statements
+	labels        int  // not rewound by probe, so labels stay unique
+	closures      int  // nesting depth of Go closures (non-iterator blocks)
+	nextTail      tail // the innermost closure's result, for `next`
+	begins        int  // nesting depth of rescue wrappers
+	retVar        string
+	wrap          *wrapFrame // the innermost begin wrapper
+	hasNamedRet   bool
 }
 
 type loopKind int
@@ -236,7 +237,10 @@ func (f *fctx) enterRubyBlock(block parser.Node, params []string) (string, strin
 	savedRuby := f.rbScope
 	f.rbScope = f.block
 	fr := rbFrame{key: block.GetLocation().StartOffset, locals: params}
-	if b, ok := block.(*parser.BlockNode); ok {
+	switch b := block.(type) {
+	case *parser.BlockNode:
+		fr.locals = append(fr.locals, b.Locals...)
+	case *parser.LambdaNode:
 		fr.locals = append(fr.locals, b.Locals...)
 	}
 	f.rbFrames = append(f.rbFrames, fr)
@@ -476,30 +480,7 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
-		if ba, ok := n.Block.(*parser.BlockArgumentNode); ok {
-			if sym, ok := ba.Expression.(*parser.SymbolNode); ok {
-				c := *n
-				c.Block = symbolBlock(ba, sym.Unescaped.Value)
-				if f.genIterCall(&c, t) { // `workers.each(&:join)`
-					return
-				}
-			}
-		}
-		if n.Block != nil {
-			ba, forwards := n.Block.(*parser.BlockArgumentNode)
-			if _, ok := n.Block.(*parser.BlockNode); ok || (forwards && f.isBlockParam(ba.Expression)) {
-				if f.genIterCall(n, t) {
-					return
-				}
-			}
-		}
-		var e expr
-		if t.kind == tailNone || t.kind == tailReturn && t.typ != nil && isVoid(t.typ) {
-			e = f.genCall(n, t.typ) // value unused: a setter needs no temp for it
-		} else {
-			e = f.genExpr(n, t.typ)
-		}
-		f.applyTail(n, e, t)
+		f.genCallStmt(n, t)
 	case *parser.XStringNode:
 		f.errorf(n, "%%x{} is only allowed as the whole body of a prelude method")
 	default:
@@ -753,6 +734,10 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 }
 
 func (f *fctx) genReturn(n *parser.ReturnNode) {
+	if f.closures > 0 && f.closures == f.lambdaClosure {
+		f.closureValue(n, n.Arguments) // a lambda's return leaves only the lambda
+		return
+	}
 	if f.closures > 0 {
 		f.errorf(n, "non-local return from a block is not supported (README open decision 4)")
 	}
@@ -823,11 +808,28 @@ func (f *fctx) genNext(n *parser.NextNode) {
 	l := f.loops[len(f.loops)-1]
 	if n.Arguments != nil {
 		if l.kind == loopClosure {
-			f.errorf(n, "next with a value inside a block is not supported")
+			f.closureValue(n, n.Arguments)
+			return
 		}
 		f.errorf(n, "next with a value is not supported")
 	}
 	f.emitNext(n, l)
+}
+
+// closureValue ends a value-returning block (`next v`) or lambda (`return v`) with v.
+func (f *fctx) closureValue(n parser.Node, args *parser.ArgumentsNode) {
+	if args == nil {
+		f.emitNext(n, f.loops[len(f.loops)-1])
+		return
+	}
+	if len(args.Arguments) != 1 {
+		f.errorf(n, "multiple values are not supported")
+	}
+	t := f.nextTail
+	if t.kind != tailReturn {
+		f.errorf(n, "a block's value is not used here")
+	}
+	f.applyTail(n, f.genExpr(args.Arguments[0], t.typ), t)
 }
 
 // emitNext leaves the innermost loop's iteration; n locates coerce errors.
@@ -866,7 +868,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 			switch c := cond.(type) {
 			case *parser.NilNode:
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
-				if cls := f.classRef(c); cls == nil || slices.Contains([]string{"TrueClass", "FalseClass", "NilClass"}, cls.RubyName) {
+				if cls := f.classRef(c); cls == nil || slices.Contains([]string{"TrueClass", "FalseClass", "NilClass", "Proc"}, cls.RubyName) {
 					typeSwitch = false
 				}
 			default:
@@ -2208,4 +2210,35 @@ func symbolBlock(ba *parser.BlockArgumentNode, name string) *parser.BlockNode {
 		Parameters: &parser.BlockParametersNode{Location: loc, Parameters: &parser.ParametersNode{Location: loc, Requireds: []parser.Node{x}}},
 		Body:       &parser.StatementsNode{Location: loc, Body: []parser.Node{call}},
 	}
+}
+
+// genCallStmt is a call in statement position: an iterator with a block
+// (literal, `&:name` or `&proc`) becomes a loop.
+func (f *fctx) genCallStmt(n *parser.CallNode, t tail) {
+	if ba, ok := n.Block.(*parser.BlockArgumentNode); ok && !f.isBlockParam(ba.Expression) {
+		c := *n
+		if sym, ok := ba.Expression.(*parser.SymbolNode); ok {
+			c.Block = symbolBlock(ba, sym.Unescaped.Value) // `workers.each(&:join)`
+		} else if pb := f.procBlock(ba); pb != nil {
+			c.Block = pb // `xs.each(&printer)`
+		}
+		if c.Block != n.Block && f.genIterCall(&c, t) {
+			return
+		}
+	}
+	if n.Block != nil {
+		ba, forwards := n.Block.(*parser.BlockArgumentNode)
+		if _, ok := n.Block.(*parser.BlockNode); ok || (forwards && f.isBlockParam(ba.Expression)) {
+			if f.genIterCall(n, t) {
+				return
+			}
+		}
+	}
+	var e expr
+	if t.kind == tailNone || t.kind == tailReturn && t.typ != nil && isVoid(t.typ) {
+		e = f.genCall(n, t.typ) // value unused: a setter needs no temp for it
+	} else {
+		e = f.genExpr(n, t.typ)
+	}
+	f.applyTail(n, e, t)
 }

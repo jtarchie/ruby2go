@@ -56,6 +56,9 @@ func (c *Compiler) goType(t Type) string {
 		if !isVoid(t.Ret) {
 			s += " " + c.goType(t.Ret)
 		}
+		if t.Proc {
+			return "*" + s
+		}
 		return s
 	case TAny, TNil:
 		return "any"
