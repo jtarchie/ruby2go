@@ -27,8 +27,21 @@ module SecureRandom
   #: () -> String
   def self.uuid = %x{ String(rbUUID4()) }
 
-  #: (?Integer) -> String
-  def self.alphanumeric(n = 16) = %x{
+  #: () -> String
+  def self.uuid_v4 = uuid
+
+  #: () -> String
+  def self.uuid_v7 = %x{ String(rbUUID7()) }
+
+  #: (?Integer, ?Hash[Symbol, Array[String]]) -> String
+  def self.alphanumeric(n = 16, opts = {})
+    chars = opts[:chars]
+    return __alphanumeric_default(n) if chars.nil?
+    (0...n).map { chars.fetch(random_number(chars.size)) }.join
+  end
+
+  #: (Integer) -> String
+  def self.__alphanumeric_default(n) = %x{
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     b := make([]byte, n)
     for i := range b {

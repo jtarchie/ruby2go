@@ -43,7 +43,16 @@ module Digest
 
     #: () -> String
     def inspect = "#<Digest::#{name}: #{hexdigest}>"
+
+    #: (untyped) -> bool
+    def ==(other) = %x{
+      o, ok := other.(*Digest_Base)
+      return Boolean(ok && bytes.Equal(rbDigestSum(self.algo, self.buf), rbDigestSum(o.algo, o.buf)))
+    }
   end
+
+  #: (String) -> String
+  def self.hexencode(s) = %x{ String(hex.EncodeToString([]byte(s))) }
 
   class MD5 < Object
     #: () -> Base
@@ -54,6 +63,8 @@ module Digest
     def self.hexdigest(s) = Base.__for("MD5").update(s).hexdigest
     #: (String) -> String
     def self.base64digest(s) = Base.__for("MD5").update(s).base64digest
+    #: (String) -> Base
+    def self.file(path) = Base.__for("MD5").update(File.read(path))
   end
 
   class SHA1 < Object
@@ -65,6 +76,8 @@ module Digest
     def self.hexdigest(s) = Base.__for("SHA1").update(s).hexdigest
     #: (String) -> String
     def self.base64digest(s) = Base.__for("SHA1").update(s).base64digest
+    #: (String) -> Base
+    def self.file(path) = Base.__for("SHA1").update(File.read(path))
   end
 
   class SHA256 < Object
@@ -76,6 +89,8 @@ module Digest
     def self.hexdigest(s) = Base.__for("SHA256").update(s).hexdigest
     #: (String) -> String
     def self.base64digest(s) = Base.__for("SHA256").update(s).base64digest
+    #: (String) -> Base
+    def self.file(path) = Base.__for("SHA256").update(File.read(path))
   end
 
   class SHA384 < Object
@@ -87,6 +102,8 @@ module Digest
     def self.hexdigest(s) = Base.__for("SHA384").update(s).hexdigest
     #: (String) -> String
     def self.base64digest(s) = Base.__for("SHA384").update(s).base64digest
+    #: (String) -> Base
+    def self.file(path) = Base.__for("SHA384").update(File.read(path))
   end
 
   class SHA512 < Object
@@ -98,5 +115,19 @@ module Digest
     def self.hexdigest(s) = Base.__for("SHA512").update(s).hexdigest
     #: (String) -> String
     def self.base64digest(s) = Base.__for("SHA512").update(s).base64digest
+    #: (String) -> Base
+    def self.file(path) = Base.__for("SHA512").update(File.read(path))
+  end
+
+  # SHA2.new(bitlen): 256/384/512, defaulting to 256, as MRI's.
+  class SHA2 < Object
+    #: (?Integer) -> Base
+    def self.new(bitlen = 256) = %x{
+      switch bitlen {
+      case 256, 384, 512:
+        return &Digest_Base{algo: fmt.Sprintf("SHA%d", bitlen)}
+      }
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("unsupported bit length: %d", bitlen)))))
+    }
   end
 end

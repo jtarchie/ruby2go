@@ -33,7 +33,7 @@ func (s *StringScanner) do(re *Regexp, anchored, advance, str bool) *String {
 		}
 	}
 	from := s.pos
-	s.last, s.mbeg, s.mend, s.groups = s.pos, s.pos+loc[0], s.pos+loc[1], groups
+	s.last, s.mbeg, s.mend, s.groups, s.names = s.pos, s.pos+loc[0], s.pos+loc[1], groups, rx.SubexpNames()
 	if advance {
 		s.pos = s.mend
 	}
@@ -47,7 +47,7 @@ func (s *StringScanner) do(re *Regexp, anchored, advance, str bool) *String {
 // advance records [beg, end) as a match with no groups past 0 and moves the pointer.
 func (s *StringScanner) advance(beg, end int) *String {
 	m := Ref(String(s.str[beg:end]))
-	s.last, s.mbeg, s.mend, s.groups, s.pos = s.pos, beg, end, []*String{m}, end
+	s.last, s.mbeg, s.mend, s.groups, s.names, s.pos = s.pos, beg, end, []*String{m}, nil, end
 	return m
 }
 

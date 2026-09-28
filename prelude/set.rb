@@ -6,11 +6,68 @@
 class Set < Object
   include Enumerable #[E]
 
+  #: [X] (untyped) -> Set[X]
+  def self.new(xs = nil) = %x{
+    s := NewSet[X]()
+    if xs == nil {
+      return s
+    }
+    elems, ok := rbEnumElems(any(xs))
+    if !ok {
+      panic(NewTypeError(Ref(String("no implicit conversion into Set"))))
+    }
+    for _, e := range *elems {
+      s.Add(e.(X))
+    }
+    return s
+  }
+
   #: [X] (Array[X]) -> Set[X]
-  def self.new(xs) = %x{
+  def self.__new_array(xs) = %x{
     s := NewSet[X]()
     for _, x := range *xs {
       s.Add(x)
+    }
+    return s
+  }
+
+  #: [X] (Range[X]) -> Set[X]
+  def self.__new_range(xs) = %x{
+    s := NewSet[X]()
+    for x := range xs.Each() {
+      s.Add(x)
+    }
+    return s
+  }
+
+  #: [X] (Set[X]) -> Set[X]
+  def self.__new_set(xs) = %x{
+    s := NewSet[X]()
+    for x := range xs.Each() {
+      s.Add(x)
+    }
+    return s
+  }
+
+  #: [K, V] (Hash[K, V]) -> Set[[K, V]]
+  def self.__new_hash(xs) = %x{
+    s := NewSet[Tuple2[K, V]]()
+    for t := range xs.Each() {
+      s.Add(t)
+    }
+    return s
+  }
+
+  # ponytail: block param is untyped (dynamic dispatch, see decision 32) instead of the source's real element type; add per-class block overloads (__new_array_block etc.) if this shows up hot.
+  #: [X] (untyped) { (untyped) -> X } -> Set[X]
+  def self.__new_block(xs) = %x{
+    s := NewSet[X]()
+    elems, ok := rbEnumElems(any(xs))
+    if !ok {
+      panic(NewTypeError(Ref(String("no implicit conversion into Set"))))
+    }
+    for _, e := range *elems {
+      s.Add(blk(e))
     }
     return s
   }
@@ -91,6 +148,44 @@ class Set < Object
 
   #: () -> Set[E]
   def to_set = self
+
+  #: () { (E) -> E } -> self
+  def map!
+    old = to_a
+    clear
+    old.each { |x| add(yield(x)) }
+    self
+  end
+
+  #: () { (E) -> E } -> self
+  def collect!(&block) = map!(&block)
+
+  #: () { (E) -> bool } -> Set[E]?
+  def select!
+    n = size
+    to_a.each { |x| delete(x) unless yield(x) }
+    size == n ? nil : self
+  end
+
+  #: () { (E) -> bool } -> Set[E]?
+  def filter!(&block) = select!(&block)
+
+  #: () { (E) -> bool } -> Set[E]?
+  def reject!
+    n = size
+    to_a.each { |x| delete(x) if yield(x) }
+    size == n ? nil : self
+  end
+
+  #: [U] () { (E) -> U } -> Hash[U, Set[E]]
+  def classify
+    h = {} #: Hash[U, Set[E]]
+    each { |x| (h[yield(x)] ||= Set.new) << x }
+    h
+  end
+
+  #: [U] () { (E) -> U } -> Set[Set[E]]
+  def divide(&block) = Set.new(classify(&block).values)
 
   #: (Set[E]) -> self
   def merge(xs)
