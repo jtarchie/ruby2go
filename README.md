@@ -1265,3 +1265,25 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `Open3` execs argv directly, never a shell: `Open3.capture2("echo", "hello
+    world")` is `os/exec.Command("echo", "hello world")`, not `sh -c`; MRI's
+    other form, a single joined command string parsed by the shell, is not
+    supported. `capture2`/`capture2e`/`capture3` return `[String,
+    Process::Status]`/`[merged, Process::Status]`/`[String, String,
+    Process::Status]`; `capture2e` reuses `Cmd.CombinedOutput`, whose single
+    shared pipe keeps MRI's dup2 ordering between stdout and stderr. `popen3`
+    is block-only (`{ (Open3::Writer, Open3::Reader, Open3::Reader,
+    Process::Waiter) -> T } -> T`): rb2go has no finalizer to reap a process
+    a non-block caller forgot to wait on, and the block form already fits
+    `File.open`'s ensure-based close (decision 62). `Process::Status` (`pid`,
+    `exitstatus`, `success?`) and `Process::Waiter` (`pid`, `value`, memoized
+    so a block calling `wait_thr.value` and `popen3`'s own cleanup don't
+    `Wait` twice) cover only what `Open3` needs of MRI's wait-status object.
+    A start failure raises `Errno::ENOENT`/`EACCES` with MRI's `Open3`
+    message shape (`"<strerror> - <cmd>"`, no ` @ <fn>`, unlike decision 62's
+    File errors). This also taught the compiler to let a method take both
+    `*rest` and a block: `sig`/`argNames` (decls.go) and `genArgs`
+    (expr.go) now place the Go `blk` parameter, and the call-site block
+    argument, before the trailing variadic, since Ruby allows `*rest` before
+    a block but Go requires the variadic parameter last
+    ([example 54](examples/54_open3/main.rb)).

@@ -1256,8 +1256,10 @@ func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) e
 
 // genArgs generates and coerces call arguments against m's parameters,
 // binding type variables in env. exprs, if non-nil, are pre-generated.
-func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []parser.Node, exprs []expr) []string {
+// genArgs also returns where *rest's codes start (-1 if none), so a block arg can splice in before them, not after.
+func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []parser.Node, exprs []expr) ([]string, int) {
 	var codes []string
+	restIdx := -1
 	nargs := len(args)
 	if exprs != nil {
 		nargs = len(exprs)
@@ -1270,6 +1272,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	ai := 0
 	for _, p := range m.Params {
 		if p.Rest {
+			restIdx = len(codes)
 			codes = append(codes, f.genRestArgs(n, p, env, args, exprs, ai, nargs)...)
 			ai = nargs
 			continue
@@ -1314,8 +1317,11 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			pos--
 		}
 		codes = append([]string{strconv.Itoa(min(nargs, pos))}, codes...)
+		if restIdx >= 0 {
+			restIdx++
+		}
 	}
-	return codes
+	return codes, restIdx
 }
 
 // genRestArgs: with a splat, one fresh slice, since Go spreads only a lone slice and Ruby's rest param never aliases the caller's array.
@@ -1521,7 +1527,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	if m.Private && recv.code != f.selfCode && !f.implicitCall {
 		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
 	}
-	codes := f.genArgs(n, m, env, args, nil)
+	codes, restIdx := f.genArgs(n, m, env, args, nil)
 	if m.Block != nil {
 		if m.Iterator {
 			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
@@ -1529,7 +1535,12 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 		if block == nil {
 			f.errorf(n, "%s requires a block", m.Name)
 		}
-		codes = append(codes, f.genClosure(n, block, m.Block, env))
+		blkCode := f.genClosure(n, block, m.Block, env)
+		if restIdx >= 0 {
+			codes = slices.Insert(codes, restIdx, blkCode)
+		} else {
+			codes = append(codes, blkCode)
+		}
 	} else if block != nil {
 		f.errorf(n, "%s does not take a block", m.Name)
 	}
@@ -1986,7 +1997,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 		}
 	}
 	env["Self"] = recv.typ
-	codes := f.genArgs(n, m, env, callArgs(n), nil)
+	codes, _ := f.genArgs(n, m, env, callArgs(n), nil)
 	yields := substAll(m.Block.Params, env)
 	call := f.callCode(e, recv, codes, env)
 	blk, ok := n.Block.(*parser.BlockNode)
@@ -2067,7 +2078,7 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e == nil && f.m.superBridge {
 		// the target depends on the includer: its bridge calls it (superBridges)
 		env := map[string]Type{"Self": f.selfType}
-		codes := f.genArgs(n, f.m, env, f.superArgs(n, args, forwarding), nil)
+		codes, _ := f.genArgs(n, f.m, env, f.superArgs(n, args, forwarding), nil)
 		return expr{code: f.selfCode + "." + bridgeName(f.m) + "(" + strings.Join(codes, ", ") + ")", typ: subst(f.m.Ret, env)}
 	}
 	if e == nil {
@@ -2099,7 +2110,7 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		env[k] = v
 	}
 	env["Self"] = f.selfType
-	codes := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
+	codes, _ := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
@@ -2164,7 +2175,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 			env[k] = v
 		}
 		env["Self"] = TClass{C: cls}
-		codes = f.genArgs(n, init.M, env, args, exprs)
+		codes, _ = f.genArgs(n, init.M, env, args, exprs)
 	} else if len(args) > 0 || len(exprs) > 0 {
 		f.errorf(n, "%s.new takes no arguments", cls.Name)
 	}

@@ -118,19 +118,23 @@ func (c *Compiler) iterGoType(b *BlockSig, env map[string]Type) string {
 // sig renders the Go parameter list and result of method m under env.
 func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret string) {
 	var ps []string
+	var restParam string // held back and appended last: Go requires the variadic param to be final, but Ruby puts a block after *rest
 	if m.calleeDefaults {
 		ps = append(ps, "rbArgc int")
 	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
-			ps = append(ps, "rest_ ..."+c.goType(subst(p.Type, env)))
+			restParam = "rest_ ..." + c.goType(subst(p.Type, env))
 			continue
 		}
 		ps = append(ps, name+" "+c.goType(subst(p.Type, env)))
 	}
 	if m.Block != nil && !m.Iterator {
 		ps = append(ps, "blk "+c.blockGoType(m.Block, env))
+	}
+	if restParam != "" {
+		ps = append(ps, restParam)
 	}
 	if m.Iterator {
 		return strings.Join(ps, ", "), c.iterGoType(m.Block, env)
@@ -145,19 +149,23 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 // argNames lists the Go argument names used to forward a call.
 func (c *Compiler) argNames(m *Method) string {
 	var as []string
+	var restArg string // held back and appended last, matching sig()'s reordering
 	if m.calleeDefaults {
 		as = append(as, "rbArgc")
 	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
 		if p.Rest {
-			as = append(as, "rest_...")
+			restArg = "rest_..."
 			continue
 		}
 		as = append(as, name)
 	}
 	if m.Block != nil && !m.Iterator {
 		as = append(as, "blk")
+	}
+	if restArg != "" {
+		as = append(as, restArg)
 	}
 	return strings.Join(as, ", ")
 }
