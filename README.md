@@ -860,7 +860,45 @@ resolve; anything not listed is still open.
     exceptions becoming their status, no redirect following on the client.
     Servers listen in `new` (so `Port: 0` works with `config[:Port]`),
     `start` blocks until `shutdown`, and each request gets its own
-    goroutine and servlet instance.
+    goroutine and servlet instance. *Revised:* `Net::HTTPResponse` dropped
+    `@go_type` and became a plain ivar-based class so it can have real
+    subclasses (a `@go_type` class has no struct to embed, so subclassing
+    one is a compile error, per the `@go_type` note above) — one per MRI's
+    `Net::HTTPResponse::CODE_TO_OBJ` (checked against
+    `ruby -rnet/http -e 'p Net::HTTPResponse::CODE_TO_OBJ'`), under
+    category classes (`HTTPInformation`/`HTTPSuccess`/`HTTPRedirection`/
+    `HTTPClientError`/`HTTPServerError`) picked by status digit, falling
+    back to `HTTPUnknownResponse`, so `case res when Net::HTTPSuccess` and
+    `res.is_a?(Net::HTTPNotFound)` work like MRI's. Request objects
+    (`Net::HTTP::Get.new(path, initheader = nil)` and the other five verbs,
+    `req["H"] = v`, `#body=`, `#basic_auth`, `#set_form_data`) and
+    `http.request(req)` share the same sender as `get`/`post`/etc; header
+    names are folded to lowercase everywhere (`Net::HTTPHeader`'s and
+    WEBrick's own convention), not Go's `Title-Case` canonical form.
+    `use_ssl=` switches the request URL to `https://`; `open_timeout=`/
+    `read_timeout=` (Float seconds) wrap `http.Transport.DialContext` and
+    `http.Client.Timeout` respectively, raising `Net::OpenTimeout`/
+    `Net::ReadTimeout` (`Timeout::Error < RuntimeError`, matching MRI's
+    hierarchy) by tagging the dial-phase error to tell it apart from a
+    client-wide timeout. *Ponytail: MRI times each response chunk
+    separately; this times the whole remaining round trip as one span.*
+    `Net::HTTP.get`/`get_response`/`post_form` take a `URI::HTTP`/`HTTPS`
+    (decision 63), not a `String` — overloads aren't supported (decision
+    12). `Net::HTTP.start(host, port) { |http| ... }` yields but doesn't
+    thread the block's return value out. On the server side, `WEBrick::
+    HTTPStatus` gained `BadRequest`/`Unauthorized`/`Forbidden`/
+    `InternalServerError` and a `Redirect` category
+    (`MovedPermanently`/`Found`); `HTTPResponse#set_redirect(status, url)`
+    sets body/`Location` then raises `status` like MRI's does, reusing
+    `mount`'s `singleton(C).New` type-assertion idiom (decision 19) since
+    raising a dynamically-typed class value has no other path yet. A
+    raised `HTTPStatus` now keeps whatever body/header the handler already
+    set instead of wiping them to a bare 500 — only a non-`HTTPStatus`
+    panic still resets to 500, matching WEBrick's own default error page.
+    `HTTPRequest#header`/`#each` enumerate headers as a lowercase-keyed
+    `Hash`. `HTTPRequest#cookies`/`HTTPResponse#cookies` are a plain
+    `WEBrick::Cookie` name/value pair (no path/domain/expires attributes);
+    response cookies are written out as repeated `Set-Cookie` headers.
 28. Constant reflection: every class object has a generated constant
     table (own constants in definition order, then inherited ones, which
     `inherit = false` skips), behind `Module#constants`, `#const_get`

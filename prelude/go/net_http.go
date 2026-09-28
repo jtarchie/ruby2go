@@ -3,16 +3,59 @@
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
 package prelude
 
-var rbHTTPClient = &http.Client{
-	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+// rbHTTPCanonKey is MRI's Net::HTTPHeader/WEBrick key form: lowercase, unlike Go's Title-Case canonical form.
+func rbHTTPCanonKey(name string) string { return strings.ToLower(name) }
+
+// rbHTTPHeaderHash turns a Go http.Header into the insertion-ordered, lowercase-keyed Hash Net::HTTPHeader/WEBrick expose; sorted so output is deterministic.
+func rbHTTPHeaderHash(h http.Header) *Hash[String, String] {
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := NewHash[String, String]()
+	for _, k := range keys {
+		out.Op_idxSet(String(rbHTTPCanonKey(k)), String(strings.Join(h[k], ", ")))
+	}
+	return out
 }
 
-func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash[String, String]) *Net_HTTPResponse {
+// rbHTTPOpenErr tags a dial-phase failure so rbHTTPRequest can tell Net::OpenTimeout from Net::ReadTimeout.
+type rbHTTPOpenErr struct{ error }
+
+func (e *rbHTTPOpenErr) Unwrap() error { return e.error }
+
+// rbHTTPClientFor builds a client per h's use_ssl/open_timeout/read_timeout; open_timeout bounds dialing, read_timeout the rest of the round trip.
+func rbHTTPClientFor(h *Net_HTTP) *http.Client {
+	open := time.Duration(float64(h.openTimeout) * float64(time.Second))
+	read := time.Duration(float64(h.readTimeout) * float64(time.Second))
+	dialer := &net.Dialer{Timeout: open}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, &rbHTTPOpenErr{err}
+			}
+			return conn, nil
+		},
+	}
+	return &http.Client{
+		Transport:     transport,
+		Timeout:       open + read,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash[String, String]) Net_HTTPResponseI {
 	var rd io.Reader
 	if body != nil {
 		rd = strings.NewReader(string(*body))
 	}
-	target := "http://" + net.JoinHostPort(string(h.address), strconv.Itoa(int(h.port))) + path
+	scheme := "http"
+	if h.useSSL {
+		scheme = "https"
+	}
+	target := scheme + "://" + net.JoinHostPort(string(h.address), strconv.Itoa(int(h.port))) + path
 	req, err := http.NewRequestWithContext(context.Background(), method, target, rd)
 	if err != nil {
 		panic(NewArgumentError(Ref(String(err.Error()))))
@@ -21,19 +64,165 @@ func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash
 	for _, k := range headers.keys {
 		req.Header.Set(string(k), string(headers.vals[k]))
 	}
-	resp, err := rbHTTPClient.Do(req)
+	resp, err := rbHTTPClientFor(h).Do(req)
 	if err != nil {
-		panic(NewIOError(Ref(String(err.Error()))))
+		var openErr *rbHTTPOpenErr
+		switch {
+		case errors.As(err, &openErr):
+			panic(NewNet_OpenTimeout(Ref(String("execution expired"))))
+		case errors.Is(err, context.DeadlineExceeded):
+			panic(NewNet_ReadTimeout(Ref(String("execution expired"))))
+		default:
+			panic(NewIOError(Ref(String(err.Error()))))
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		panic(NewIOError(Ref(String(err.Error()))))
 	}
-	return &Net_HTTPResponse{
-		code:    String(strconv.Itoa(resp.StatusCode)),
-		message: String(http.StatusText(resp.StatusCode)),
-		body:    String(data),
-		header:  resp.Header,
+	return rbHTTPResponseFor(strconv.Itoa(resp.StatusCode), http.StatusText(resp.StatusCode), string(data), rbHTTPHeaderHash(resp.Header))
+}
+
+// rbHTTPResponseFor picks Net::HTTPResponse's subclass by status code, matching MRI's CODE_TO_OBJ (checked against `ruby -rnet/http -e 'p Net::HTTPResponse::CODE_TO_OBJ'`), falling back to the category by first digit and then HTTPUnknownResponse.
+func rbHTTPResponseFor(code, message, body string, header *Hash[String, String]) Net_HTTPResponseI {
+	c, m, b := String(code), String(message), String(body)
+	switch code {
+	case "100":
+		return NewNet_HTTPContinue(c, m, b, header)
+	case "101":
+		return NewNet_HTTPSwitchProtocol(c, m, b, header)
+	case "102":
+		return NewNet_HTTPProcessing(c, m, b, header)
+	case "103":
+		return NewNet_HTTPEarlyHints(c, m, b, header)
+	case "200":
+		return NewNet_HTTPOK(c, m, b, header)
+	case "201":
+		return NewNet_HTTPCreated(c, m, b, header)
+	case "202":
+		return NewNet_HTTPAccepted(c, m, b, header)
+	case "203":
+		return NewNet_HTTPNonAuthoritativeInformation(c, m, b, header)
+	case "204":
+		return NewNet_HTTPNoContent(c, m, b, header)
+	case "205":
+		return NewNet_HTTPResetContent(c, m, b, header)
+	case "206":
+		return NewNet_HTTPPartialContent(c, m, b, header)
+	case "207":
+		return NewNet_HTTPMultiStatus(c, m, b, header)
+	case "208":
+		return NewNet_HTTPAlreadyReported(c, m, b, header)
+	case "226":
+		return NewNet_HTTPIMUsed(c, m, b, header)
+	case "300":
+		return NewNet_HTTPMultipleChoices(c, m, b, header)
+	case "301":
+		return NewNet_HTTPMovedPermanently(c, m, b, header)
+	case "302":
+		return NewNet_HTTPFound(c, m, b, header)
+	case "303":
+		return NewNet_HTTPSeeOther(c, m, b, header)
+	case "304":
+		return NewNet_HTTPNotModified(c, m, b, header)
+	case "305":
+		return NewNet_HTTPUseProxy(c, m, b, header)
+	case "307":
+		return NewNet_HTTPTemporaryRedirect(c, m, b, header)
+	case "308":
+		return NewNet_HTTPPermanentRedirect(c, m, b, header)
+	case "400":
+		return NewNet_HTTPBadRequest(c, m, b, header)
+	case "401":
+		return NewNet_HTTPUnauthorized(c, m, b, header)
+	case "402":
+		return NewNet_HTTPPaymentRequired(c, m, b, header)
+	case "403":
+		return NewNet_HTTPForbidden(c, m, b, header)
+	case "404":
+		return NewNet_HTTPNotFound(c, m, b, header)
+	case "405":
+		return NewNet_HTTPMethodNotAllowed(c, m, b, header)
+	case "406":
+		return NewNet_HTTPNotAcceptable(c, m, b, header)
+	case "407":
+		return NewNet_HTTPProxyAuthenticationRequired(c, m, b, header)
+	case "408":
+		return NewNet_HTTPRequestTimeout(c, m, b, header)
+	case "409":
+		return NewNet_HTTPConflict(c, m, b, header)
+	case "410":
+		return NewNet_HTTPGone(c, m, b, header)
+	case "411":
+		return NewNet_HTTPLengthRequired(c, m, b, header)
+	case "412":
+		return NewNet_HTTPPreconditionFailed(c, m, b, header)
+	case "413":
+		return NewNet_HTTPPayloadTooLarge(c, m, b, header)
+	case "414":
+		return NewNet_HTTPURITooLong(c, m, b, header)
+	case "415":
+		return NewNet_HTTPUnsupportedMediaType(c, m, b, header)
+	case "416":
+		return NewNet_HTTPRangeNotSatisfiable(c, m, b, header)
+	case "417":
+		return NewNet_HTTPExpectationFailed(c, m, b, header)
+	case "421":
+		return NewNet_HTTPMisdirectedRequest(c, m, b, header)
+	case "422":
+		return NewNet_HTTPUnprocessableEntity(c, m, b, header)
+	case "423":
+		return NewNet_HTTPLocked(c, m, b, header)
+	case "424":
+		return NewNet_HTTPFailedDependency(c, m, b, header)
+	case "426":
+		return NewNet_HTTPUpgradeRequired(c, m, b, header)
+	case "428":
+		return NewNet_HTTPPreconditionRequired(c, m, b, header)
+	case "429":
+		return NewNet_HTTPTooManyRequests(c, m, b, header)
+	case "431":
+		return NewNet_HTTPRequestHeaderFieldsTooLarge(c, m, b, header)
+	case "451":
+		return NewNet_HTTPUnavailableForLegalReasons(c, m, b, header)
+	case "500":
+		return NewNet_HTTPInternalServerError(c, m, b, header)
+	case "501":
+		return NewNet_HTTPNotImplemented(c, m, b, header)
+	case "502":
+		return NewNet_HTTPBadGateway(c, m, b, header)
+	case "503":
+		return NewNet_HTTPServiceUnavailable(c, m, b, header)
+	case "504":
+		return NewNet_HTTPGatewayTimeout(c, m, b, header)
+	case "505":
+		return NewNet_HTTPVersionNotSupported(c, m, b, header)
+	case "506":
+		return NewNet_HTTPVariantAlsoNegotiates(c, m, b, header)
+	case "507":
+		return NewNet_HTTPInsufficientStorage(c, m, b, header)
+	case "508":
+		return NewNet_HTTPLoopDetected(c, m, b, header)
+	case "510":
+		return NewNet_HTTPNotExtended(c, m, b, header)
+	case "511":
+		return NewNet_HTTPNetworkAuthenticationRequired(c, m, b, header)
 	}
+	if len(code) == 0 {
+		return NewNet_HTTPUnknownResponse(c, m, b, header)
+	}
+	switch code[0] {
+	case '1':
+		return NewNet_HTTPInformation(c, m, b, header)
+	case '2':
+		return NewNet_HTTPSuccess(c, m, b, header)
+	case '3':
+		return NewNet_HTTPRedirection(c, m, b, header)
+	case '4':
+		return NewNet_HTTPClientError(c, m, b, header)
+	case '5':
+		return NewNet_HTTPServerError(c, m, b, header)
+	}
+	return NewNet_HTTPUnknownResponse(c, m, b, header)
 }
