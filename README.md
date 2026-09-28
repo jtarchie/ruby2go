@@ -1265,3 +1265,33 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `TSort` is a mixin: a class `include`s it and defines
+    `tsort_each_node`/`tsort_each_child`, structurally the same as
+    Comparable's `<=>` and Enumerable's `each` (decision 9); it gets
+    `tsort`, `tsort_each`, `strongly_connected_components` and
+    `each_strongly_connected_component` for free, via Tarjan's algorithm
+    written to match MRI's `tsort` gem: ids are assigned in
+    `tsort_each_node`'s visitation order and each finished component is
+    popped off the DFS stack in push order, so output order is
+    bit-identical to MRI whenever both walk the same insertion-ordered
+    Hash/Array. A cycle raises `TSort::Cyclic` with MRI's exact
+    `"topological sort failed: #{component.inspect}"` message. The
+    module-function form (`TSort.tsort(each_node, each_child)`,
+    `TSort.strongly_connected_components(each_node, each_child)`) is
+    **not implemented**: there, `each_node`/`each_child` are objects that
+    themselves take a block (`each_node.call { |n| ... }`), which needs
+    an RBS proc type with a block clause (`^() { (Node) -> void } ->
+    void`); rb2go's proc grammar is `^(A, B) -> R` only
+    (`internal/rbs/rbs.go`), so typing it would be a compiler change,
+    out of scope here. Separately, a block passed to
+    `each_strongly_connected_component` (a Go-iterator-shaped method:
+    void return, void block, no `rescue`) can only be `yield`ed to
+    directly or forwarded whole via `&block` to another iterator-shaped
+    method, not stored, passed as a plain value, or forwarded to the
+    closure-shaped recursive helper (it returns `Integer`, so decision
+    4's iterator rule excludes it) — so the Tarjan recursion collects
+    finished components into an `Array[Array[Node]]` and
+    `each_strongly_connected_component` yields them after the walk
+    completes, rather than streaming them one at a time as MRI's
+    Enumerator does; the visible behavior (order, `Cyclic`) is unchanged
+    ([example 54](examples/54_tsort/main.rb)).
