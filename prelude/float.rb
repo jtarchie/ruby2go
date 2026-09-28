@@ -53,8 +53,9 @@ class Float < Object
   #: (Float) -> Float
   def -(other) = %x{ self - other }
 
+  # The conversion stops Go fusing a*b+c into one FMA rounding; MRI rounds each op.
   #: (Float) -> Float
-  def *(other) = %x{ self * other }
+  def *(other) = %x{ Float(float64(self * other)) }
 
   #: (Float) -> Float
   def /(other) = %x{ self / other }

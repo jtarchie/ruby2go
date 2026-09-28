@@ -1002,3 +1002,24 @@ resolve; anything not listed is still open.
     Range of Dates iterates, since Range iterates anything with `succ`.
     `strftime`'s `%Z` prints `UTC` where MRI's Date prints `+00:00`
     ([example 39](examples/39_date/main.rb)).
+42. `Complex` is a pointer to `{re, im any}`: each part keeps its class
+    (Integer, Rational or Float) and arithmetic follows MRI's rules for
+    mixing them (`Complex(1, 2) / Complex(3, 4)` is exact, `Complex * real`
+    scales part by part, Integer quotients that are whole come back as
+    Integers). `real`, `imaginary`, `abs` and `abs2` are `untyped`, since
+    their class depends on the parts. `3i`, `Complex(a, b)`,
+    `Complex.polar`/`rectangular` build one; mixing with Integer, Float
+    and Rational goes through decision 12's overloads. `**` takes an
+    Integer (exact) or a Float (polar form)
+    ([example 40](examples/40_complex_math/main.rb)).
+43. `Math` evaluates every transcendental function in 128-bit
+    `math/big` and rounds once, so results are correctly rounded. Go's
+    `math` is only within 1 ulp (and its `Sin`/`Cos` lose digits near
+    multiples of π/2), which diverged from MRI's printed output on a few
+    percent of inputs. MRI inherits the platform libm, which on macOS
+    misrounds `tan`, `sin`, `cos`, `cbrt`, `hypot` and `atan` on a few
+    percent of inputs; there rb2go is right and MRI is off by one digit.
+    `Math.sqrt` stays Go's (IEEE-exact). A call costs microseconds rather
+    than nanoseconds. `Float::INFINITY`/`NAN`/`EPSILON`/`MAX`/`MIN`/`DIG`
+    exist. `Float#*` converts its result explicitly, since Go may fuse
+    `a * b + c` into one FMA rounding where MRI rounds twice.

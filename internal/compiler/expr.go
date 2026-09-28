@@ -63,6 +63,9 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: f.f.text(n.Location), typ: f.cls("Float"), lit: true}, true
 	case *parser.RationalNode:
 		return expr{code: fmt.Sprintf("rbRat(%d, %d)", n.Numerator, n.Denominator), typ: f.cls("Rational")}, true
+	case *parser.ImaginaryNode:
+		im := f.genExpr(n.Numeric, nil)
+		return expr{code: "(&Complex{Integer(0), " + f.coerce(n, im, TAny{}) + "})", typ: f.cls("Complex")}, true
 	case *parser.TrueNode:
 		return expr{code: "true", typ: f.cls("Boolean"), lit: true}, true
 	case *parser.FalseNode:
