@@ -23,6 +23,21 @@ func rbWrite(s string) {
 	}
 }
 
+// rbFlushIfTTY keeps a terminal's stdout ahead of stderr; on a pipe MRI leaves it buffered.
+func rbFlushIfTTY() {
+	if stdoutTTY {
+		rbFlush()
+	}
+}
+
+var rbStdin = bufio.NewReader(os.Stdin)
+
+func (self *IO) rbReadable() {
+	if self.fd != 0 {
+		panic(NewIOError(Ref[String]("not opened for reading")))
+	}
+}
+
 func rbFlush() {
 	stdoutMu.Lock()
 	defer stdoutMu.Unlock()

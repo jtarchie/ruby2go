@@ -41,6 +41,11 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}, true
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
+	case *parser.SourceFileNode:
+		f.c.strLits[f.f.Name] = true
+		return expr{code: strconv.Quote(f.f.Name), typ: f.cls("String"), lit: true}, true
+	case *parser.GlobalVariableReadNode:
+		return f.genGlobalRead(n), true
 	case *parser.IntegerNode:
 		code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
 		if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
@@ -3693,4 +3698,18 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 		return expr{code: code, typ: out}
 	}
 	return f.universalCall(n, recv, name, args, block)
+}
+
+// genGlobalRead maps the read-only globals rb2go knows (decision 61); $0 is the Ruby file as named at compile time, as `ruby main.rb` sets it.
+func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
+	switch n.Name {
+	case "$0", "$PROGRAM_NAME":
+		name := f.c.mainFile.Name
+		f.c.strLits[name] = true
+		return expr{code: strconv.Quote(name), typ: f.cls("String"), lit: true}
+	case "$stdin", "$stdout", "$stderr":
+		return f.genConstRead(&parser.ConstantReadNode{Name: strings.ToUpper(n.Name[1:]), Location: n.Location})
+	}
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout and $stderr are (README open decision 61)", n.Name)
+	return expr{}
 }

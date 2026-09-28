@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -52,27 +53,39 @@ func requireRuby4(t *testing.T) {
 	}
 }
 
-func run(t *testing.T, dir string, name string, args ...string) (string, int, error) {
+func run(t *testing.T, dir string, name string, args ...string) (string, error) {
+	t.Helper()
+	out, stderr, code, err := runIO(t, dir, progIO{}, name, args...)
+	if err == nil && code != 0 {
+		err = errors.New(stderr)
+	}
+	return out, err
+}
+
+// progIO is what a case feeds its program: `# args:` (space-separated), `# env: K=V` and `# stdin: "Go-quoted"` lines.
+type progIO struct {
+	env   []string
+	stdin string
+}
+
+func runIO(t *testing.T, dir string, pio progIO, name string, args ...string) (stdout, stderr string, code int, err error) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), name, args...) //nolint:gosec // test helper; args are ours
 	cmd.Dir = dir
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	code := 0
+	cmd.Env = append(os.Environ(), pio.env...)
+	cmd.Stdin = strings.NewReader(pio.stdin)
+	var out, errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	err = cmd.Run()
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
-		code = ee.ExitCode()
-		err = nil
+		return out.String(), errOut.String(), ee.ExitCode(), nil
 	}
 	if err != nil {
-		return stdout.String() + stderr.String(), -1, err
+		return out.String() + errOut.String(), errOut.String(), -1, err
 	}
-	if code != 0 {
-		return stdout.String(), code, errors.New(stderr.String())
-	}
-	return stdout.String(), 0, nil
+	return out.String(), errOut.String(), 0, nil
 }
 
 func TestExamples(t *testing.T) {
@@ -103,7 +116,7 @@ func TestExamples(t *testing.T) {
 // lintGenerated vets and lints every generated example at once with the generated-code config.
 func lintGenerated(t *testing.T, mod string) {
 	t.Helper()
-	vetOut, _, err := run(t, mod, "go", "vet", "./...")
+	vetOut, err := run(t, mod, "go", "vet", "./...")
 	if err != nil {
 		t.Fatalf("go vet: %v\n%s", err, vetOut)
 	}
@@ -116,7 +129,7 @@ func lintGenerated(t *testing.T, mod string) {
 		t.Fatal(err)
 	}
 	copyPreludeGo(t, mod)
-	lintOut, _, err := run(t, mod, "golangci-lint", "run", "--allow-parallel-runners", "./...")
+	lintOut, err := run(t, mod, "golangci-lint", "run", "--allow-parallel-runners", "./...")
 	if err != nil {
 		t.Fatalf("golangci-lint on generated code: %v\n%s", err, lintOut)
 	}
@@ -158,7 +171,7 @@ func TestRun(t *testing.T) {
 	}
 }
 
-var directive = regexp.MustCompile(`(?m)^# (error|warning|skip): (.*)$`)
+var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.
 func directives(src []byte, kind string) []string {
@@ -247,7 +260,7 @@ func testExample(t *testing.T, dir, gen string) {
 		t.Fatal(err)
 	}
 	writeGenerated(t, gen, "main.rb", src)
-	fmtOut, _, err := run(t, gen, "gofmt", "-l", "main.go")
+	fmtOut, err := run(t, gen, "gofmt", "-l", "main.go")
 	if err != nil || strings.TrimSpace(fmtOut) != "" {
 		t.Fatalf("gofmt: %v %s", err, fmtOut)
 	}
@@ -325,23 +338,43 @@ func goBuild(t *testing.T, gen string, flags ...string) string {
 	bin := filepath.Join(gen, "prog")
 	// -race: generated threads and queues must be race-free; -trimpath: the build cache hits across temp dirs.
 	args := append(append([]string{"build", "-race", "-trimpath"}, flags...), "-o", bin, ".")
-	out, _, err := run(t, gen, "go", args...)
+	out, err := run(t, gen, "go", args...)
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 	return bin
 }
 
-// sameAsRuby runs `ruby file` and bin in dir; stdout and exit code must match.
+// sameAsRuby runs `ruby file` and bin in dir; stdout and exit code must match, and stderr too under `# stderr: match`.
 func sameAsRuby(t *testing.T, dir, file, bin string) {
 	t.Helper()
-	wantOut, wantCode := rubyOutput(t, dir, file)
-	gotOut, gotCode, _ := run(t, dir, bin)
-	if wantOut != gotOut {
-		t.Errorf("stdout differs\n--- ruby ---\n%s\n--- go ---\n%s", wantOut, gotOut)
+	src, err := os.ReadFile(filepath.Join(dir, file)) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
 	}
-	if wantCode != gotCode {
-		t.Errorf("exit code: ruby %d, go %d", wantCode, gotCode)
+	pio := progIO{env: directives(src, "env")}
+	args := []string{} //nolint:prealloc // field count unknown until split
+	for _, a := range directives(src, "args") {
+		args = append(args, strings.Fields(a)...)
+	}
+	for _, q := range directives(src, "stdin") {
+		in, qerr := strconv.Unquote(q)
+		if qerr != nil {
+			t.Fatalf("# stdin: %s: %v", q, qerr)
+		}
+		pio.stdin += in
+	}
+	want := rubyOutput(t, dir, file, src, pio, args)
+	var got mriResult
+	got.Stdout, got.Stderr, got.Code, _ = runIO(t, dir, pio, bin, args...)
+	if want.Stdout != got.Stdout {
+		t.Errorf("stdout differs\n--- ruby ---\n%s\n--- go ---\n%s", want.Stdout, got.Stdout)
+	}
+	if want.Code != got.Code {
+		t.Errorf("exit code: ruby %d, go %d", want.Code, got.Code)
+	}
+	if slices.Contains(directives(src, "stderr"), "match") && want.Stderr != got.Stderr {
+		t.Errorf("stderr differs\n--- ruby ---\n%s\n--- go ---\n%s", want.Stderr, got.Stderr)
 	}
 }
 
@@ -351,30 +384,42 @@ var rubyDescription = sync.OnceValue(func() string {
 	return string(out)
 })
 
-// rubyOutput is `ruby file`'s stdout and exit code, cached by source, Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
-func rubyOutput(t *testing.T, dir, file string) (string, int) {
+type mriResult struct {
+	Stdout, Stderr string
+	Code           int
+}
+
+// mriCached holds output as []byte (base64 in JSON): a string field would turn non-UTF-8 bytes into U+FFFD.
+type mriCached struct {
+	Stdout []byte `json:"stdout"`
+	Stderr []byte `json:"stderr"`
+	Code   int    `json:"code"`
+}
+
+// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
+func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
-	src, err := os.ReadFile(filepath.Join(dir, file)) //nolint:gosec // test path
-	if err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(slices.Concat([]byte(rubyDescription()+"\x00"+os.Getenv("TZ")+"\x00"), src))
+	sum := sha256.Sum256(slices.Concat([]byte("v3\x00"+rubyDescription()+"\x00"+os.Getenv("TZ")+"\x00"), src))
 	cacheDir, err := os.UserCacheDir()
 	cached := filepath.Join(cacheDir, "rb2go-test", "mri", hex.EncodeToString(sum[:]))
 	if err == nil && os.Getenv("RB2GO_NO_MRI_CACHE") == "" {
 		data, rerr := os.ReadFile(cached) //nolint:gosec // our cache path
-		code, out, _ := strings.Cut(string(data), "\n")
-		n, cerr := strconv.Atoi(code)
-		if rerr == nil && cerr == nil {
-			return out, n
+		var c mriCached
+		if rerr == nil && json.Unmarshal(data, &c) == nil {
+			return mriResult{Stdout: string(c.Stdout), Stderr: string(c.Stderr), Code: c.Code}
 		}
 	}
-	out, code, _ := run(t, dir, "ruby", file)
-	if err == nil && code >= 0 {
-		_ = os.MkdirAll(filepath.Dir(cached), 0o755)                         //nolint:gosec // cache dir
-		_ = os.WriteFile(cached, []byte(strconv.Itoa(code)+"\n"+out), 0o600) //nolint:gosec // cache path
+	var r mriResult
+	r.Stdout, r.Stderr, r.Code, _ = runIO(t, dir, pio, "ruby", append([]string{file}, args...)...)
+	if err == nil && r.Code >= 0 {
+		data, err := json.Marshal(mriCached{Stdout: []byte(r.Stdout), Stderr: []byte(r.Stderr), Code: r.Code})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.MkdirAll(filepath.Dir(cached), 0o755) //nolint:gosec // cache dir
+		_ = os.WriteFile(cached, data, 0o600)        //nolint:gosec // cache path
 	}
-	return out, code
+	return r
 }
 
 var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)

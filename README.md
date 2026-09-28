@@ -1226,3 +1226,22 @@ resolve; anything not listed is still open.
     job) keeps ignoring it, where MRI would still take it. `rb2go run`
     catches both signals so it outlives the child, forwards them, removes
     its temp module, and exits 128+signal when the child died by one.
+61. The process boundary: `ARGV : Array[String]` (built from `os.Args[1:]`),
+    `ENV` (an `ENVClass`, Hash-like as MRI's ENV but not a Hash: `[]` is
+    `String?`, `[]=` with nil unsets, `fetch`, `key?`, `delete`, `to_h`,
+    `keys`, `each`), and `IO` with `STDIN`/`STDOUT`/`STDERR` (`write`,
+    `print`, `puts`, `printf`, `<<`, `flush`, `fileno`, `tty?`; `gets`,
+    `read`, `each_line`, `readlines`, `eof?` on stdin). STDOUT shares
+    Kernel#puts's buffer; STDERR is unbuffered, and a write to it flushes
+    stdout first only on a terminal (decision 60), so on a pipe the two
+    streams keep MRI's order. `warn` and `abort(msg)` write to STDERR;
+    `abort` exits 1. Globals are a fixed read-only set: `$stdin`,
+    `$stdout`, `$stderr` read the constants, and `$0`/`$PROGRAM_NAME` and
+    `__FILE__` are the Ruby file's name as given to the compiler, which is
+    what `ruby main.rb` reports and keeps `__FILE__ == $0` true; any other
+    `$name` is a compile error. `Kernel#gets` reads stdin only, where MRI
+    reads the files named in ARGV first (ARGF). Tests feed programs with
+    `# args:`, `# env: K=V` and `# stdin: "Go-quoted"` lines, and
+    `# stderr: match` adds stderr to the MRI comparison
+    ([example 51](examples/51_argv_env/main.rb),
+    [example 52](examples/52_stdin/main.rb)).

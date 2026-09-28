@@ -7,7 +7,7 @@ rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a sing
 ```sh
 bundle install                      # rbs, rbs-inline, webrick (needed by tests)
 go test ./...                       # the oracle; see below
-go test -run 'TestExamples/05_word_count' .   # one example
+go test -run 'TestExamples/each/05_word_count' .   # one example
 go test -run 'TestRun/^string_' .             # behaviour snippets by prefix
 go test -run 'TestErrors/^regexp$' .          # one compile-error archive
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
@@ -38,6 +38,7 @@ Add one new example per new feature, numbered next in sequence. User code must r
 Smaller cases go in `testdata/`:
 - `testdata/run/<area>_*.rb`: `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (the prelude is pruned to what the file reaches, decision 49; built with `-race -gcflags=-l`). File count, not size, drives suite time: add checks to an existing `<area>_bugs.rb`/`<area>_mid.rb` (renaming top-level defs, constants and locals that collide, decision 14) rather than a new file. Files that exit non-zero, call `exit`, or need a file-wide magic comment stay standalone.
 - `testdata/errors/<area>.txtar`: each `-- name.rb --` is compiled as `main.rb`. `# error: text` lines must all appear in the compile error. `# warning: text` lines must each match a warning. A case with no `# error:` must compile.
+- `# args: a b`, `# env: K=V` and `# stdin: "Go-quoted\n"` (repeatable) feed both MRI and the binary; `# stderr: match` also compares stderr (only where MRI prints no backtrace).
 - `# skip: reason` in either marks a known failure, which is skipped unless `RB2GO_RUN_SKIPPED=1`. When you fix the bug, remove the line.
 
 ## Architecture

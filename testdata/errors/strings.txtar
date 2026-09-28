@@ -84,10 +84,10 @@ puts s
 # rbs_inline: enabled
 s = +"abc"
 puts s
--- stdout_global.rb --
-# error: main.rb:3: unsupported syntax: GlobalVariableReadNode
+-- global_write.rb --
+# error: main.rb:3: unsupported syntax: GlobalVariableWriteNode
 # rbs_inline: enabled
-$stdout.puts "x"
+$verbose = true
 -- string_new.rb --
 # error: main.rb:3: undefined method new for singleton(String)
 # rbs_inline: enabled
@@ -185,18 +185,6 @@ class Name < String
   def hi = "hi " + self
 end
 puts "x"
--- source_file.rb --
-# error: main.rb:3: unsupported syntax: SourceFileNode
-# rbs_inline: enabled
-puts __FILE__
--- stdout_const.rb --
-# error: main.rb:3: uninitialized constant STDOUT
-# rbs_inline: enabled
-STDOUT.puts "x"
--- kernel_warn.rb --
-# error: main.rb:3: undefined method warn for Object
-# rbs_inline: enabled
-warn "careful"
 -- kernel_module_puts.rb --
 # error: main.rb:3: Kernel has no class methods
 # rbs_inline: enabled

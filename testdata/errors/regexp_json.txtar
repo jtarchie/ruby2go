@@ -91,7 +91,7 @@ if /(?<x>\d)/ =~ "1"
   puts x
 end
 -- last_match_gvar.rb --
-# error: main.rb:3: unsupported syntax: GlobalVariableReadNode
+# error: main.rb:3: global variable $~ is unsupported
 "ab" =~ /b/
 puts $~.inspect
 -- numbered_reference.rb --
