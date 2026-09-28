@@ -1265,3 +1265,30 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `IPAddr` is `@go_type struct { addr netip.Addr; bits int }`, always
+    defined like decision 50. `IPAddr.new` parses a v4 or v6 literal, with
+    an optional `/prefixlen` or `/netmask` suffix (dotted-quad for v4, hex
+    groups for v6), and masks the host bits immediately, like MRI:
+    `IPAddr.new("10.0.0.5/24").to_s` is `"10.0.0.0"`. `ipv4?`/`ipv6?` are
+    `netip.Addr.Is4`/`Is6`, so `"::ffff:1.2.3.4"` (written with colons)
+    counts as v6, matching MRI. `mask` takes an Integer prefix length or a
+    netmask string; `include?` takes an `IPAddr` or address string and
+    checks the whole argument's range is inside `self`'s (its prefix must
+    be at least as specific, and its network address must fall on `self`'s
+    prefix), raising `InvalidAddressError` on a bad string, same as MRI.
+    `succ` adds 1 to the raw address integer (not clamped to the prefix)
+    and raises `InvalidAddressError` with MRI's overflowed decimal value
+    past `255.255.255.255`/`ffff:...:ffff`. `to_range` is `network..broadcast`
+    (both endpoints get a full-width prefix, like MRI's `to_range`).
+    `<=>` is typed `(IPAddr) -> Integer?` (Comparable's adapter needs
+    `Op_cmp(Self)`, decision 3), so unlike MRI it doesn't accept a String
+    and returns `nil` only across address families; `==` is `untyped` and
+    coerces a `String` argument, returning `false` on a parse failure or
+    a family mismatch. Both compare address value only; `eql?`/`hash`
+    additionally require the same prefix length, so `10/8 == 10/16` but
+    `!10/8.eql?(10/16)`, matching MRI exactly. `inspect`
+    prints the address and netmask fully expanded (no `::` compression,
+    unlike `to_s`). Not implemented: `&`/`|`/`~`/`<<`/`>>`, `native`,
+    `hton`, `ip6_arpa`/`ip6_int`, `ipv4_compat`/`mapped`, `link_local?`/
+    `loopback?`/`private?`, `zone_id`, and the in-place `mask!`/`succ!`
+    family ([example 55](examples/55_ipaddr/main.rb)).
