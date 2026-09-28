@@ -13,6 +13,9 @@ import (
 //go:embed prelude.rb prelude/*.rb prelude/go/*.go
 var Prelude embed.FS
 
+// GoVersion is the go directive for the module generated code builds in.
+const GoVersion = "1.24"
+
 // Compile transpiles the Ruby source of mainName (with the embedded prelude)
 // into a single Go file.
 func Compile(ctx context.Context, mainName string, src []byte) ([]byte, []string, error) {

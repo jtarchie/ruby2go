@@ -1848,7 +1848,7 @@ func (f *fctx) fillDefault(i int, p Param) {
 
 func (c *Compiler) emitMain() {
 	c.w("var rb_main = &Object{}\n\n")
-	c.w("func main() {\n\tdefer func() { _ = stdout.Flush() }()\n\tdefer rbTopRecover()\n")
+	c.w("func main() {\n\trbTrapSignals()\n\tdefer rbFlush()\n\tdefer rbTopRecover()\n")
 	f := c.newFctx(c.mainFile, nil, nil)
 	f.indent = 1
 	f.retVar = ""

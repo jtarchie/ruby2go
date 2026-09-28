@@ -129,7 +129,7 @@ func writeModule(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o600)
+	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module gen\n\ngo "+GoVersion+"\n"), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}

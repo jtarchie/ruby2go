@@ -27,7 +27,7 @@ methods. These are ideas, and not limited to or the strict implementation.
 
 ```
 rb2go.go              public API: embeds the prelude, calls the compiler
-cmd/rb2go/            CLI: rb2go [-o out.go] main.rb
+cmd/rb2go/            CLI: rb2go build|run main.rb, like go build|run
 internal/compiler/    Ruby → Go: declarations, types, codegen
 internal/rbs/         the RBS type-syntax subset the compiler understands
 prelude.rb            core library entry point; require_relatives prelude/*.rb
@@ -58,7 +58,7 @@ library's signatures.
 Each example covers one feature; add one whenever the transpiler grows
 something the others don't exercise. There are no golden Go files: MRI's
 output is the only expectation, and the generated Go is inspected with
-`go run ./cmd/rb2go main.rb` when needed.
+`go run ./cmd/rb2go build -work main.rb` when needed (it keeps `main.go`).
 
 `TestRun` holds `testdata/run/*.rb` to the same MRI comparison but skips the
 rbs and lint gates, so each file costs one `go build`. `TestErrors` compiles
@@ -349,8 +349,10 @@ primitive.
   Elements convert (`rbSplat`) when the Go types differ (`Array[Integer]` into `*untyped`).
 - **Output is buffered** (`bufio.Writer`), flushed by `defer` in `main` —
   runs on return and on panic, so partial output before a crash matches Ruby.
-  `os.Exit` skips defers: `Kernel#exit` must flush first. Interleaving with
-  `$stderr` would need `$stdout.sync`-style flushing; not handled yet.
+  `os.Exit` skips defers: `Kernel#exit` must flush first. A terminal
+  stdout flushes on every write, and SIGINT/SIGTERM flush (decision 60).
+  Interleaving with `$stderr` on a pipe would need `$stdout.sync`-style
+  flushing; not handled yet.
 - **Return type `nil` → no Go return value.** `puts`'s result is rarely
   used; when it is (`x || puts(...)`, `puts(...).inspect`), the call runs as
   a statement and the value is `nil`. A block whose value is nil
@@ -1199,3 +1201,28 @@ resolve; anything not listed is still open.
     cycle), so such methods live in Enumerable or Go helpers.
     String stays immutable (see "Frozen strings"): no `<<`, `insert`,
     `prepend`.
+59. The CLI is `rb2go build [-o prog] main.rb` and `rb2go run main.rb
+    [args...]`, shaped like `go build`/`go run`; there is no emit-Go-only
+    mode. Each call writes `main.go` and a `go.mod` (`go` directive
+    `rb2go.GoVersion`, shared with the tests) into a fresh temp module and
+    runs `go build -trimpath` there with `GOWORK=off` and an empty
+    `GOFLAGS`, so the user's workspace can't leak in. Generated code is
+    stdlib-only, so the build never touches the network, and Go's
+    content-keyed build cache makes a warm `run` about 0.8s, mostly
+    transpiling; there is no rb2go-level cache. `-work` keeps the module
+    and prints its path (the way to read the generated Go); `-race` and
+    `-gcflags` pass through. `run` executes the binary in the caller's
+    directory, as `ruby main.rb` does, with stdio inherited, and exits
+    with its status; transpile and build failures exit 1, bad usage 2.
+60. Output and signals follow MRI where it shows at a terminal. stdout is
+    buffered, but when it is a character device every write flushes, as
+    MRI's does on a tty (`print "a"` shows before a later `$stderr` write;
+    on a pipe both keep MRI's buffered order). SIGINT and SIGTERM flush
+    stdout, then the program re-raises the signal with the default action,
+    so it dies by it (130/143 in a shell) like MRI. Unlike MRI, no
+    `Interrupt`/`SignalException` is raised: `rescue` and `ensure` don't
+    run, because Go can't inject a panic into the main goroutine. A
+    program started with SIGINT ignored (a non-interactive shell's `&`
+    job) keeps ignoring it, where MRI would still take it. `rb2go run`
+    catches both signals so it outlives the child, forwards them, removes
+    its temp module, and exits 128+signal when the child died by one.

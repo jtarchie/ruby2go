@@ -12,20 +12,17 @@ go test -run 'TestRun/^string_' .             # behaviour snippets by prefix
 go test -run 'TestErrors/^regexp$' .          # one compile-error archive
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
 RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (~/Library/Caches/rb2go-test/mri)
-RB2GO_NO_PRUNE=1 go run ./cmd/rb2go ...        # emit the whole prelude (debugging the pruner)
+RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (debugging the pruner)
 go test -run '^$' -fuzz FuzzCompile -fuzztime 60s .              # fuzz targets: FuzzCompile (.),
 go test -run '^$' -fuzz FuzzParseType -fuzztime 30s ./internal/rbs # FuzzParseType/FuzzParseMethodType (rbs),
 go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMethodName/FuzzTranslateRegexp (compiler)
 go test ./internal/rbs              # RBS parser unit tests
 golangci-lint run ./...             # repo lint (.golangci.yml)
-go run ./cmd/rb2go -o out.go examples/NN_x/main.rb   # transpile one file; warnings go to stderr
-./dev.sh NN_x [lines]               # transpile + `go build -gcflags=-e` into a scratch dir, show first N errors
+go run ./cmd/rb2go run examples/NN_x/main.rb        # transpile, build, run; warnings go to stderr
+go run ./cmd/rb2go build -work -gcflags=-e examples/NN_x/main.rb  # keep main.go (WORK= path on stderr), show every Go error
 ```
 
 `go test` fails fast unless `ruby` ≥ 4.0, `bundle install` has been run, and `golangci-lint` is on PATH. Gem executables are not on PATH on this machine, so use `bundle exec rbs-inline ...` for manual runs. Stderr lines like rdoc "already initialized constant" warnings are noise.
-
-`dev.sh` hardcodes a scratch path from an earlier session. Edit `S=` if needed.
-
 
 ## What a passing example means
 

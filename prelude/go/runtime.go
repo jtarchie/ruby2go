@@ -8,10 +8,39 @@ var stdout = bufio.NewWriter(os.Stdout)
 // stdoutMu serializes writes: threads are goroutines, and there is no GVL.
 var stdoutMu sync.Mutex
 
+// stdoutTTY: MRI flushes a terminal's stdout on every write, so prompts and progress show at once; pipes stay buffered, as in MRI.
+var stdoutTTY = func() bool {
+	fi, err := os.Stdout.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}()
+
 func rbWrite(s string) {
 	stdoutMu.Lock()
 	defer stdoutMu.Unlock()
 	_, _ = stdout.WriteString(s)
+	if stdoutTTY {
+		_ = stdout.Flush()
+	}
+}
+
+func rbFlush() {
+	stdoutMu.Lock()
+	defer stdoutMu.Unlock()
+	_ = stdout.Flush()
+}
+
+// rbTrapSignals: on SIGINT/SIGTERM MRI flushes stdout, then dies by the signal (exit 130/143 in a shell).
+// ponytail: MRI raises Interrupt/SignalException in the main thread, so rescue and ensure run; Go can't inject a panic into another goroutine.
+func rbTrapSignals() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		rbFlush()
+		signal.Reset(sig)
+		p, _ := os.FindProcess(os.Getpid())
+		_ = p.Signal(sig)
+	}()
 }
 
 // rbTopRecover turns an uncaught Ruby exception into exit status 1, like
@@ -19,7 +48,7 @@ func rbWrite(s string) {
 // first so partial output before a crash matches.
 func rbTopRecover() {
 	if r := recover(); r != nil {
-		_ = stdout.Flush()
+		rbFlush()
 		if e, ok := r.(SystemExitI); ok {
 			os.Exit(int(e.Status()))
 		}
