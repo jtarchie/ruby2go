@@ -135,6 +135,25 @@ module Enumerable
   end
 
   # first's message varies by class (Array overrides it), take's does not.
+  # MRI's sum: Integers and Rationals exactly, Floats with Kahan-Babuska compensation.
+  #: () -> E
+  def sum = %x{
+    s := rbSummer{}
+    for x := range self.Each() {
+      s.add(any(x))
+    }
+    return rbAs[E](s.result(), "numeric")
+  }
+
+  #: [N] () { (E) -> N } -> N
+  def __sum_block = %x{
+    s := rbSummer{}
+    for x := range self.Each() {
+      s.add(any(blk(x)))
+    }
+    return rbAs[N](s.result(), "numeric")
+  }
+
   #: () -> E?
   def __first_0
     each { |x| return x }

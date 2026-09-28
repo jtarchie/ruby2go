@@ -12,8 +12,9 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
-	lambdaClosure int  // f.closures inside the innermost lambda body, whose `return` is its own
-	retHint       Type // the expected type of retHintNode's result, for type params its arguments leave open
+	curBlock      parser.Node // the block of the call overload is resolving
+	lambdaClosure int         // f.closures inside the innermost lambda body, whose `return` is its own
+	retHint       Type        // the expected type of retHintNode's result, for type params its arguments leave open
 	retHintNode   parser.Node
 	c             *Compiler
 	f             *File

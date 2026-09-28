@@ -1421,6 +1421,9 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		base = strings.ToLower(strings.TrimPrefix(op, "Op_"))
 	}
 	name := "__" + base + "_"
+	if f.curBlock != nil && m.Block == nil {
+		return owner.lookup(name + "block") // `xs.sum { |x| x.price }`
+	}
 	if len(args) == 1 && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
@@ -1475,7 +1478,10 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	if o := f.nilableFetch(m, args, block); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
-	if o := f.overload(e, recv.typ, args); o != nil {
+	f.curBlock = block
+	o := f.overload(e, recv.typ, args)
+	f.curBlock = nil
+	if o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
 	env := map[string]Type{}

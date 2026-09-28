@@ -270,3 +270,59 @@ func rbComplexScalar(op byte, c *Complex, r any, left bool) *Complex {
 	}
 	return &Complex{rbNumOp(op, c.re, r), c.im}
 }
+
+// rbSummer is MRI's ary_sum/enum_sum: an exact Integer/Rational phase, then
+// Kahan-Babuska compensated Float addition once a Float appears.
+type rbSummer struct {
+	exact    any // Integer or *Rational; nil until the first value
+	floating bool
+	f, c     float64
+}
+
+func (s *rbSummer) add(x any) {
+	x = rbUnbox(x)
+	if !s.floating {
+		if _, isFloat := x.(Float); !isFloat {
+			if s.exact == nil {
+				s.exact = Integer(0)
+			}
+			s.exact = rbNumCanon(rbNumOp('+', s.exact, rbNumArg(x)))
+			return
+		}
+		s.floating = true
+		if s.exact != nil {
+			s.f = rbNumFloat(s.exact)
+		}
+	}
+	v := rbNumFloat(rbNumArg(x))
+	switch {
+	case math.IsNaN(s.f):
+	case math.IsNaN(v):
+		s.f = v
+	case math.IsInf(v, 0):
+		if math.IsInf(s.f, 0) && math.Signbit(v) != math.Signbit(s.f) {
+			s.f = math.NaN()
+		} else {
+			s.f = v
+		}
+	case math.IsInf(s.f, 0):
+	default:
+		t := s.f + v
+		if math.Abs(s.f) >= math.Abs(v) {
+			s.c += (s.f - t) + v
+		} else {
+			s.c += (v - t) + s.f
+		}
+		s.f = t
+	}
+}
+
+func (s *rbSummer) result() any {
+	if s.floating {
+		return Float(s.f + s.c)
+	}
+	if s.exact == nil {
+		return Integer(0)
+	}
+	return s.exact
+}
