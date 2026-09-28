@@ -1,10 +1,34 @@
 # rbs_inline: enabled
 
-# An in-memory IO over a byte buffer; writes overwrite at pos and extend, as MRI's.
-# @go_type struct { buf []byte; pos int; lineno int }
+# @go_type struct { buf []byte; pos int; lineno int; readOpen bool; writeOpen bool; canWrite bool; appendMode bool }
 class StringIO < Object
-  #: (?String) -> StringIO
-  def self.new(s = "") = %x{ return &StringIO{buf: []byte(string(s))} }
+  #: (?String, ?String) -> StringIO
+  def self.new(s = "", mode = "r+") = %x{
+    canRead, canWrite, appendMode, truncate := true, true, false, false
+    switch string(mode) {
+    case "r":
+      canWrite = false
+    case "r+":
+    case "w":
+      canRead, truncate = false, true
+    case "w+":
+      truncate = true
+    case "a":
+      canRead, appendMode = false, true
+    case "a+":
+      appendMode = true
+    default:
+      panic(NewArgumentError(Ref(String("invalid access mode " + string(mode)))))
+    }
+    buf := []byte(string(s))
+    if truncate {
+      buf = []byte{}
+    }
+    return &StringIO{
+      buf: buf, readOpen: canRead, writeOpen: canWrite,
+      canWrite: canWrite, appendMode: appendMode,
+    }
+  }
 
   #: () -> String
   def string = %x{ String(self.buf) }
@@ -18,7 +42,11 @@ class StringIO < Object
 
   #: (untyped) -> Integer
   def write(x) = %x{
+    self.rbWritable()
     s := string(rbToS(x))
+    if self.appendMode {
+      self.pos = len(self.buf)
+    }
     if gap := self.pos - len(self.buf); gap > 0 {
       self.buf = append(self.buf, make([]byte, gap)...)
     }
@@ -60,14 +88,15 @@ class StringIO < Object
 
   #: () -> String
   def read = %x{
+    self.rbReadable()
     s := String(self.buf[min(self.pos, len(self.buf)):])
     self.pos = max(self.pos, len(self.buf))
     return s
   }
 
-  # nil at EOF, as MRI's read(n).
   #: (Integer) -> String?
-  def __read_1(n) = %x{
+  def __read_1(n) = %x{ // nil at EOF, as MRI's read(n)
+    self.rbReadable()
     if self.pos >= len(self.buf) && n > 0 {
       return nil
     }
@@ -79,6 +108,7 @@ class StringIO < Object
 
   #: () -> String?
   def gets = %x{
+    self.rbReadable()
     if self.pos >= len(self.buf) {
       return nil
     }
@@ -95,6 +125,7 @@ class StringIO < Object
 
   #: () -> String?
   def getc = %x{
+    self.rbReadable()
     if self.pos >= len(self.buf) {
       return nil
     }
@@ -102,6 +133,56 @@ class StringIO < Object
     s := String(self.buf[self.pos : self.pos+n])
     self.pos += n
     return &s
+  }
+
+  #: () -> Integer?
+  def getbyte = %x{
+    self.rbReadable()
+    if self.pos >= len(self.buf) {
+      return nil
+    }
+    b := Integer(self.buf[self.pos])
+    self.pos++
+    return &b
+  }
+
+  #: () { (Integer) -> void } -> void
+  def each_byte
+    while (b = getbyte)
+      yield b
+    end
+  end
+
+  #: () { (String) -> void } -> void
+  def each_char
+    while (c = getc)
+      yield c
+    end
+  end
+
+  #: (untyped) -> nil
+  def ungetc(c) = %x{ // replaces the last-read char's bytes at pos with c, or prepends c at pos 0
+    self.rbReadable()
+    var s string
+    switch v := c.(type) {
+    case nil:
+      return
+    case Integer:
+      s = string(rune(v))
+    default:
+      s = string(rbToS(c))
+    }
+    if s == "" {
+      return
+    }
+    start := self.pos
+    if start > 0 {
+      _, n := utf8.DecodeLastRune(self.buf[:start])
+      start -= n
+    }
+    tail := append([]byte{}, self.buf[self.pos:]...)
+    self.buf = append(self.buf[:start:start], append([]byte(s), tail...)...)
+    self.pos = start
   }
 
   #: () { (String) -> void } -> void
@@ -121,7 +202,10 @@ class StringIO < Object
   end
 
   #: () -> bool
-  def eof? = %x{ Boolean(self.pos >= len(self.buf)) }
+  def eof? = %x{
+    self.rbReadable()
+    return Boolean(self.pos >= len(self.buf))
+  }
 
   #: () -> Integer
   def rewind = %x{
@@ -150,5 +234,60 @@ class StringIO < Object
 
   #: () -> Integer
   def length = size
+
+  #: (Integer, ?Integer) -> Integer
+  def seek(offset, whence = IO::SEEK_SET) = %x{
+    if !self.readOpen && !self.writeOpen {
+      panic(NewIOError(Ref[String]("closed stream")))
+    }
+    var base int
+    switch whence {
+    case IO_SEEK_CUR:
+      base = self.pos
+    case IO_SEEK_END:
+      base = len(self.buf)
+    default:
+      base = 0
+    }
+    n := base + int(offset)
+    if n < 0 {
+      panic(NewErrno_EINVAL(Ref(String("Invalid argument"))))
+    }
+    self.pos = n
+    return Integer(0)
+  }
+
+  #: () -> Integer
+  def tell = pos
+
+  #: () -> nil
+  def close = %x{ self.readOpen, self.writeOpen = false, false }
+
+  #: () -> bool
+  def closed? = %x{ Boolean(!self.readOpen && !self.writeOpen) }
+
+  #: () -> nil
+  def close_write = %x{
+    if !self.canWrite {
+      panic(NewIOError(Ref[String]("closing non-duplex IO for writing")))
+    }
+    self.writeOpen = false
+  }
+
+  #: (Integer) -> Integer
+  def truncate(newlen) = %x{
+    self.rbWritable()
+    if newlen < 0 {
+      panic(NewErrno_EINVAL(Ref(String("Invalid argument - negative length"))))
+    }
+    n := int(newlen)
+    switch {
+    case n < len(self.buf):
+      self.buf = self.buf[:n]
+    case n > len(self.buf):
+      self.buf = append(self.buf, make([]byte, n-len(self.buf))...)
+    }
+    return Integer(0)
+  }
 end
 
