@@ -3,28 +3,50 @@
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
 package prelude
 
-func rbCSVOpt(opts *Hash[Symbol, String], key, def string) string {
-	if v, ok := opts.vals[Symbol(key)]; ok {
-		return string(v)
+func rbCSVStrOpt(opts *Hash[Symbol, any], key, def string) string {
+	if v, ok := opts.vals[Symbol(key)]; ok && v != nil {
+		if s, ok2 := v.(String); ok2 {
+			return string(s)
+		}
 	}
 	return def
 }
 
-// rbCSVParse splits s into rows of fields; err is MRI's MalformedCSVError message.
-func rbCSVParse(s, sep, quote string) (rows [][]*String, err string) {
+func rbCSVBoolOpt(opts *Hash[Symbol, any], key string) bool {
+	if v, ok := opts.vals[Symbol(key)]; ok && v != nil {
+		if b, ok2 := v.(Boolean); ok2 {
+			return bool(b)
+		}
+	}
+	return false
+}
+
+// rbCSVParse splits s into rows; rowSep "" auto-detects LF/CRLF, skipBlanks drops empty lines, err is MRI's MalformedCSVError message.
+func rbCSVParse(s, sep, quote, rowSep string, skipBlanks bool) (rows [][]*String, err string) {
 	line := 1
 	i := 0
-	atEOL := func(j int) bool { return j >= len(s) || s[j] == '\n' || strings.HasPrefix(s[j:], "\r\n") }
-	eol := func(j int) int {
-		if strings.HasPrefix(s[j:], "\r\n") {
-			return j + 2
+	auto := rowSep == ""
+	atEOL := func(j int) bool {
+		if auto {
+			return j >= len(s) || s[j] == '\n' || strings.HasPrefix(s[j:], "\r\n")
 		}
-		return j + 1
+		return j >= len(s) || strings.HasPrefix(s[j:], rowSep)
+	}
+	eol := func(j int) int {
+		if auto {
+			if strings.HasPrefix(s[j:], "\r\n") {
+				return j + 2
+			}
+			return j + 1
+		}
+		return j + len(rowSep)
 	}
 	for i < len(s) {
 		var row []*String
 		if atEOL(i) {
-			rows = append(rows, row)
+			if !skipBlanks {
+				rows = append(rows, row)
+			}
 			i = eol(i)
 			line++
 			continue
@@ -87,24 +109,26 @@ func rbCSVParse(s, sep, quote string) (rows [][]*String, err string) {
 	return rows, ""
 }
 
-// rbCSVLine is one generated row: nil is empty, "" and fields holding the
-// separator, quote or a line break are quoted, with the quote doubled.
-func rbCSVLine(row []any, sep, quote string) string {
+// rbCSVLine is one generated row: nil is empty (or "" if force), fields holding the separator, quote, a line break, or force are quoted with the quote doubled.
+func rbCSVLine(row []any, sep, quote, rowSep string, force bool) string {
 	var b strings.Builder
 	for i, v := range row {
 		if i > 0 {
 			b.WriteString(sep)
 		}
 		if v == nil {
+			if force {
+				b.WriteString(quote + quote)
+			}
 			continue
 		}
 		f := string(rbToS(v))
 		_, isStr := v.(String)
-		if isStr && f == "" || strings.Contains(f, sep) || strings.Contains(f, quote) || strings.ContainsAny(f, "\r\n") {
+		if force || isStr && f == "" || strings.Contains(f, sep) || strings.Contains(f, quote) || strings.ContainsAny(f, "\r\n") {
 			f = quote + strings.ReplaceAll(f, quote, quote+quote) + quote
 		}
 		b.WriteString(f)
 	}
-	b.WriteString("\n")
+	b.WriteString(rowSep)
 	return b.String()
 }

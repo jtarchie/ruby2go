@@ -1128,16 +1128,36 @@ resolve; anything not listed is still open.
     token is misread, and a directive without a Go twin fails to parse.
     `Time#httpdate`/`rfc2822` format, and `Benchmark.realtime` times a
     block ([example 48](examples/48_time_parse/main.rb)).
-53. `CSV` covers strings, not files: `parse`/`parse_line`/`String#parse_csv`
+53. `CSV` covers strings and files: `parse`/`parse_line`/`String#parse_csv`
     return `Array[Array[String?]]` (an empty unquoted field is nil, a
     quoted one `""`, a blank line `[]`), and `generate_line`/
     `Array#to_csv`/`generate { |csv| csv << row }` quote a field holding
-    the separator, the quote or a line break, and an empty String. Options
-    are `col_sep` and `quote_char`; `headers:` is not supported, since its
-    result (a `CSV::Table`) could not share `parse`'s type. Errors are
-    MRI's `CSV::MalformedCSVError` messages. `Array#index`/`find_index`
+    the separator, the quote or a line break, and an empty String.
+    *Revised:* `read`, `foreach(path) { |row| }` (an Array of rows without
+    a block, decision 58's Enumerator stand-in) and
+    `open(path, mode = "r") { |csv| csv << row }` (writing only; `<<` on a
+    file opened `"r"` raises `IOError`, matching `File#write`) go through
+    the real `File` class (decision 62); `foreach`/`open` read the whole
+    file rather than streaming row-by-row, since the parser already works
+    on a full string. Options are a `Hash[Symbol, untyped]` (not
+    `Hash[Symbol, String]`, so booleans can mix with strings): `col_sep`,
+    `quote_char`, `row_sep` (a literal separator; MRI's `:auto` LF/CRLF
+    sniffing is kept only as the *default* when `row_sep` is omitted, not
+    as an explicit value a caller can pass — a `Symbol` there doesn't
+    typecheck against `String`, and detecting bare `\r` on top of the
+    existing LF/CRLF sniff wasn't worth it for how rarely classic-Mac line
+    endings show up), `skip_blanks` (drops empty lines, not rows of empty
+    fields), `force_quotes` (quotes every field, and turns a nil field
+    into `""` instead of empty). `headers:` and `converters:` remain
+    unsupported: `headers: true`'s result (a `CSV::Table`/`CSV::Row`) and
+    a `converters:` result's type both need compiler-level literal-keyword
+    dispatch (extending decision 12's overloads) or an `untyped` result,
+    which is undecided, so both keys are simply not recognized (ignored,
+    like any other unknown key in the options Hash) rather than raising —
+    tracked in [issue #1](https://github.com/jtarchie/ruby2go/issues/1).
+    Errors are MRI's `CSV::MalformedCSVError` messages. `Array#index`/`find_index`
     (value or block) and `rindex` join Array
-    ([example 49](examples/49_csv/main.rb)).
+    ([example 49](examples/49_csv/main.rb), [testdata/run/csv_mid.rb](testdata/run/csv_mid.rb)).
 54. `include Singleton` in a class makes the compiler add
     `def self.instance = @__singleton_instance ||= new` (typed as the
     class); `Singleton` itself is an empty marker module, so `is_a?`
