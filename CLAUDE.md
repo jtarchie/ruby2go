@@ -73,3 +73,4 @@ Smaller cases go in `testdata/`:
 
 - Lint: `.golangci.yml` covers the repo (depguard, cyclop, wrapcheck, …). `.golangci.generated.yml` is the same set minus `unused`/`unparam`/`revive` naming, and it applies to transpiler output. Fix codegen instead of loosening it.
 - Commit after each green milestone (e.g. a new example passing), in the style `rb2go: <feature> (example NN)`.
+- GitHub issues use three sections: `## Why` (the problem, and what Ruby code fails today), `## What` (a bullet list of the behaviour to build, ending with which example or testdata file proves it against MRI), and `## Notes` (pointers to existing helpers, gotchas, and relevant README decisions). Write for a junior PM and a junior engineer: plain words, a short explanation of any Ruby or Go term, and no assumed context. Before filing, check the roadmap issues (#1 stdlib, #2 CLI) so you don't duplicate them, and link #1 or #2 from new issues.
