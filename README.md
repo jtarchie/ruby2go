@@ -1265,3 +1265,26 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `Find`: `Find.find(*paths) { |path| ... }` is `path/filepath.WalkDir`,
+    pre-order with sorted siblings (MRI's own `find.rb` sorts
+    `Dir.children` before recursing, so the order already matches). All
+    roots are checked to exist before anything is yielded, like MRI's
+    upfront `File.exist?` pass, and a missing one raises `Errno::ENOENT`
+    with MRI's un-tagged message (`raise Errno::ENOENT, d` names no C
+    function, unlike decision 62's Errno raises). Errors found deeper in
+    the tree (permission, a race) are swallowed, matching MRI's default
+    `ignore_error: true`; there is no way to pass `ignore_error: false`.
+    Both the block and method return void, so `Find.find` is a Go
+    iterator (decision 4) and `break`/`next`/`return` in the block are
+    plain Go, unlike MRI's `break value` there is no way to make
+    `Find.find` itself return that value. `Find.prune` doesn't throw:
+    it sets a package-level flag that the `WalkDir` callback checks right
+    after the `yield(path)` call that ran it returns, translating a set
+    flag on a directory entry into `filepath.SkipDir`; the flag is reset
+    before every `yield`, so a `Find.find` nested inside another's block
+    clears its own signal before control returns to the outer one. This
+    only reproduces MRI's `throw :prune` when the call is the last thing
+    the block does in that branch (the normal idiom, including MRI's own
+    doc example); code after `Find.prune` in the same branch keeps
+    running, where MRI would have unwound past it
+    ([example 54](examples/54_find/main.rb)).
