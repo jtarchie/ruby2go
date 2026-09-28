@@ -3,6 +3,8 @@ package rb2go
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/tools/txtar"
@@ -78,12 +81,57 @@ func TestExamples(t *testing.T) {
 	if err != nil || len(dirs) == 0 {
 		t.Fatalf("no examples found: %v", err)
 	}
-	for _, rb := range dirs {
-		dir := filepath.Dir(rb)
-		t.Run(filepath.Base(dir), func(t *testing.T) {
-			t.Parallel()
-			testExample(t, dir)
-		})
+	// Every example's Go lands in one module, so vet and golangci-lint load
+	// the standard library once for all of them instead of once per example.
+	mod := filepath.Join(t.TempDir(), "gen")
+	writeModule(t, mod)
+	t.Run("each", func(t *testing.T) {
+		for _, rb := range dirs {
+			dir := filepath.Dir(rb)
+			t.Run(filepath.Base(dir), func(t *testing.T) {
+				t.Parallel()
+				testExample(t, dir, filepath.Join(mod, filepath.Base(dir)))
+			})
+		}
+	})
+	if t.Failed() {
+		return
+	}
+	lintGenerated(t, mod)
+}
+
+// lintGenerated vets and lints every generated example at once with the generated-code config.
+func lintGenerated(t *testing.T, mod string) {
+	t.Helper()
+	vetOut, _, err := run(t, mod, "go", "vet", "./...")
+	if err != nil {
+		t.Fatalf("go vet: %v\n%s", err, vetOut)
+	}
+	lintCfg, err := os.ReadFile(".golangci.generated.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(mod, ".golangci.yml"), lintCfg, 0o600) //nolint:gosec // under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyPreludeGo(t, mod)
+	lintOut, _, err := run(t, mod, "golangci-lint", "run", "--allow-parallel-runners", "./...")
+	if err != nil {
+		t.Fatalf("golangci-lint on generated code: %v\n%s", err, lintOut)
+	}
+}
+
+// writeModule makes dir a Go module the generated programs build in.
+func writeModule(t *testing.T, dir string) {
+	t.Helper()
+	err := os.MkdirAll(dir, 0o755) //nolint:gosec // under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -180,7 +228,7 @@ func TestErrors(t *testing.T) {
 
 var rdocNoise = regexp.MustCompile(`(?m)^.*rdoc.*warning.*\n`)
 
-func testExample(t *testing.T, dir string) {
+func testExample(t *testing.T, dir, gen string) {
 	tmp := t.TempDir()
 	// 1. rbs-inline + rbs validate
 	sig := filepath.Join(tmp, "sig")
@@ -193,35 +241,17 @@ func testExample(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatalf("rbs validate failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
-	// 2. transpile, gofmt, vet, lint, build
+	// 2. transpile and build (vet and lint run once over all examples: lintGenerated)
 	src, err := os.ReadFile(filepath.Join(dir, "main.rb")) //nolint:gosec // example path
 	if err != nil {
 		t.Fatal(err)
 	}
-	gen := transpile(t, "main.rb", src)
+	writeGenerated(t, gen, "main.rb", src)
 	fmtOut, _, err := run(t, gen, "gofmt", "-l", "main.go")
 	if err != nil || strings.TrimSpace(fmtOut) != "" {
 		t.Fatalf("gofmt: %v %s", err, fmtOut)
 	}
-	vetOut, _, err := run(t, gen, "go", "vet", ".")
-	if err != nil {
-		t.Fatalf("go vet: %v\n%s", err, vetOut)
-	}
-	// The generated code must be a good citizen too: lint it with the
-	// generated-code config.
-	lintCfg, err := os.ReadFile(".golangci.generated.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.WriteFile(filepath.Join(gen, ".golangci.yml"), lintCfg, 0o600) //nolint:gosec // under t.TempDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	lintOut, _, err := run(t, gen, "golangci-lint", "run", "--allow-parallel-runners", "./...")
-	if err != nil {
-		t.Fatalf("golangci-lint on generated code: %v\n%s", err, lintOut)
-	}
-	// 3. compare with MRI
+	// 3. compare with MRI; examples keep inlining, the default build users get
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen))
 }
 
@@ -239,6 +269,15 @@ func compileSafe(name string, src []byte) (code []byte, warnings []string, err e
 // transpile compiles src into a fresh Go module and returns its directory.
 func transpile(t *testing.T, name string, src []byte) string {
 	t.Helper()
+	gen := t.TempDir()
+	writeModule(t, gen)
+	writeGenerated(t, gen, name, src)
+	return gen
+}
+
+// writeGenerated compiles src into dir/main.go.
+func writeGenerated(t *testing.T, dir, name string, src []byte) {
+	t.Helper()
 	code, warnings, err := compileSafe(name, src)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
@@ -246,18 +285,15 @@ func transpile(t *testing.T, name string, src []byte) string {
 	for _, w := range warnings {
 		t.Logf("warning: %s", w)
 	}
-	gen := t.TempDir()
-	err = os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600) //nolint:gosec // under t.TempDir()
+	err = os.MkdirAll(dir, 0o755) //nolint:gosec // under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(filepath.Join(gen, "go.mod"), []byte("module gen\n\ngo 1.24\n"), 0o600)
+	err = os.WriteFile(filepath.Join(dir, "main.go"), code, 0o600) //nolint:gosec // under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	copyPreludeGo(t, gen)
-	t.Logf("generated Go: %s", filepath.Join(gen, "main.go"))
-	return gen
+	t.Logf("generated Go: %s", filepath.Join(dir, "main.go"))
 }
 
 // copyPreludeGo mirrors prelude/go/*.go into gen at the same relative path so golangci-lint can open the //line targets it remaps positions to (nolint matching needs the real file, not just the label).
@@ -287,7 +323,8 @@ func copyPreludeGo(t *testing.T, gen string) {
 func goBuild(t *testing.T, gen string, flags ...string) string {
 	t.Helper()
 	bin := filepath.Join(gen, "prog")
-	args := append(append([]string{"build"}, flags...), "-o", bin, ".")
+	// -race: generated threads and queues must be race-free; -trimpath: the build cache hits across temp dirs.
+	args := append(append([]string{"build", "-race", "-trimpath"}, flags...), "-o", bin, ".")
 	out, _, err := run(t, gen, "go", args...)
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
@@ -298,7 +335,7 @@ func goBuild(t *testing.T, gen string, flags ...string) string {
 // sameAsRuby runs `ruby file` and bin in dir; stdout and exit code must match.
 func sameAsRuby(t *testing.T, dir, file, bin string) {
 	t.Helper()
-	wantOut, wantCode, _ := run(t, dir, "ruby", file)
+	wantOut, wantCode := rubyOutput(t, dir, file)
 	gotOut, gotCode, _ := run(t, dir, bin)
 	if wantOut != gotOut {
 		t.Errorf("stdout differs\n--- ruby ---\n%s\n--- go ---\n%s", wantOut, gotOut)
@@ -306,6 +343,38 @@ func sameAsRuby(t *testing.T, dir, file, bin string) {
 	if wantCode != gotCode {
 		t.Errorf("exit code: ruby %d, go %d", wantCode, gotCode)
 	}
+}
+
+// rubyDescription keys the MRI output cache: another Ruby may print differently.
+var rubyDescription = sync.OnceValue(func() string {
+	out, _ := exec.Command("ruby", "-e", "print RUBY_DESCRIPTION").Output()
+	return string(out)
+})
+
+// rubyOutput is `ruby file`'s stdout and exit code, cached by source, Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
+func rubyOutput(t *testing.T, dir, file string) (string, int) {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join(dir, file)) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(slices.Concat([]byte(rubyDescription()+"\x00"+os.Getenv("TZ")+"\x00"), src))
+	cacheDir, err := os.UserCacheDir()
+	cached := filepath.Join(cacheDir, "rb2go-test", "mri", hex.EncodeToString(sum[:]))
+	if err == nil && os.Getenv("RB2GO_NO_MRI_CACHE") == "" {
+		data, rerr := os.ReadFile(cached) //nolint:gosec // our cache path
+		code, out, _ := strings.Cut(string(data), "\n")
+		n, cerr := strconv.Atoi(code)
+		if rerr == nil && cerr == nil {
+			return out, n
+		}
+	}
+	out, code, _ := run(t, dir, "ruby", file)
+	if err == nil && code >= 0 {
+		_ = os.MkdirAll(filepath.Dir(cached), 0o755)                         //nolint:gosec // cache dir
+		_ = os.WriteFile(cached, []byte(strconv.Itoa(code)+"\n"+out), 0o600) //nolint:gosec // cache path
+	}
+	return out, code
 }
 
 var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)

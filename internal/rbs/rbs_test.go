@@ -72,7 +72,7 @@ func within[T any](t *testing.T, s string, parse func(string) (T, error)) (T, er
 	select {
 	case r := <-ch:
 		return r.v, r.err
-	case <-time.After(250 * time.Millisecond):
+	case <-time.After(2 * time.Second): // generous: only an infinite loop should trip it, even on a loaded machine
 	}
 	select {
 	case r := <-ch:

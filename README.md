@@ -1084,3 +1084,12 @@ resolve; anything not listed is still open.
     decision 12's overloads, which now also route a call with a block
     to `__<name>_block` when the method takes none
     ([example 45](examples/45_stringio/main.rb)).
+49. Generated Go is pruned like a linker would: from `main`, `init` and
+    `_` vars, a function, type or var is kept when an identifier names it,
+    and a method when its receiver type is kept and its name is selected
+    somewhere, declared by a kept interface, or one the standard library
+    calls (`String`, `Error`, …). Names match without scoping, so it only
+    ever keeps too much; `iota` const blocks stay whole. A program then
+    compiles (and lints) only the prelude it reaches: `puts 1` is 7k
+    lines instead of 18.5k. `RB2GO_NO_PRUNE=1` turns it off.
+

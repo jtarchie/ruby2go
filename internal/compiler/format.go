@@ -1,12 +1,14 @@
 package compiler
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/format"
 	"go/parser"
 	"go/token"
 	"maps"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,12 +26,15 @@ var stdImports = map[string]string{
 	"utf16": "unicode/utf16", "utf8": "unicode/utf8",
 }
 
-// formatGo adds the imports of the std packages src refers to, and gofmts it.
+// formatGo prunes src to what main reaches (RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it.
 func formatGo(src []byte) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("gofmt: %w", err)
+	}
+	if os.Getenv("RB2GO_NO_PRUNE") == "" {
+		pruneDecls(f)
 	}
 	used := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -40,16 +45,23 @@ func formatGo(src []byte) ([]byte, error) {
 		}
 		return true
 	})
+	var buf bytes.Buffer
+	err = format.Node(&buf, fset, f)
+	if err != nil {
+		return nil, fmt.Errorf("gofmt: %w", err)
+	}
+	out := buf.Bytes()
+	if len(used) == 0 {
+		return out, nil
+	}
+	// the printed file is gofmt's: `package x`, a blank line, the decls; the import block goes between
 	var imp strings.Builder
 	imp.WriteString("\nimport (\n")
 	for _, p := range slices.Sorted(maps.Keys(used)) {
 		imp.WriteString("\t" + strconv.Quote(p) + "\n")
 	}
 	imp.WriteString(")\n")
-	at := fset.Position(f.Name.End()).Offset
-	out, err := format.Source(slices.Concat(src[:at], []byte(imp.String()), src[at:]))
-	if err != nil {
-		return nil, fmt.Errorf("gofmt: %w", err)
-	}
-	return out, nil
+	pkg := bytes.Index(out, []byte("package "+f.Name.Name+"\n"))
+	at := pkg + len("package "+f.Name.Name+"\n")
+	return slices.Concat(out[:at], []byte(imp.String()), out[at:]), nil
 }

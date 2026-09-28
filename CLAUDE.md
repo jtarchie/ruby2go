@@ -11,6 +11,11 @@ go test -run 'TestExamples/05_word_count' .   # one example
 go test -run 'TestRun/^string_' .             # behaviour snippets by prefix
 go test -run 'TestErrors/^regexp$' .          # one compile-error archive
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
+RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (~/Library/Caches/rb2go-test/mri)
+RB2GO_NO_PRUNE=1 go run ./cmd/rb2go ...        # emit the whole prelude (debugging the pruner)
+go test -run '^$' -fuzz FuzzCompile -fuzztime 60s .              # fuzz targets: FuzzCompile (.),
+go test -run '^$' -fuzz FuzzParseType -fuzztime 30s ./internal/rbs # FuzzParseType/FuzzParseMethodType (rbs),
+go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMethodName/FuzzTranslateRegexp (compiler)
 go test ./internal/rbs              # RBS parser unit tests
 golangci-lint run ./...             # repo lint (.golangci.yml)
 go run ./cmd/rb2go -o out.go examples/NN_x/main.rb   # transpile one file; warnings go to stderr
@@ -29,10 +34,12 @@ For each `examples/*/main.rb`, `TestExamples` (rb2go_test.go):
 2. runs `Compile`, then `gofmt`, `go vet`, `golangci-lint` with `.golangci.generated.yml` (the generated Go must lint clean), and `go build`.
 3. requires stdout **and** exit code to equal `ruby main.rb`.
 
+Generated programs are built with `-race -trimpath` (`-trimpath` lets the build cache hit across temp dirs; the first run after a Go upgrade rebuilds the race std once). Examples are vetted and linted in one pass over a shared module after all of them pass. MRI output is cached by source, Ruby version and TZ.
+
 Add one new example per new feature, numbered next in sequence. User code must run on MRI unchanged. There are no golden Go files; MRI's output is the only expectation.
 
 Smaller cases go in `testdata/`:
-- `testdata/run/<area>_*.rb`: `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (~12k lines, since the whole prelude is emitted; ~2s compile, built with `-gcflags=-l` to skip inlining). File count, not size, drives suite time: add checks to an existing `<area>_bugs.rb`/`<area>_mid.rb` (renaming top-level defs, constants and locals that collide, decision 14) rather than a new file. Files that exit non-zero, call `exit`, or need a file-wide magic comment stay standalone.
+- `testdata/run/<area>_*.rb`: `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (the prelude is pruned to what the file reaches, decision 49; built with `-race -gcflags=-l`). File count, not size, drives suite time: add checks to an existing `<area>_bugs.rb`/`<area>_mid.rb` (renaming top-level defs, constants and locals that collide, decision 14) rather than a new file. Files that exit non-zero, call `exit`, or need a file-wide magic comment stay standalone.
 - `testdata/errors/<area>.txtar`: each `-- name.rb --` is compiled as `main.rb`. `# error: text` lines must all appear in the compile error. `# warning: text` lines must each match a warning. A case with no `# error:` must compile.
 - `# skip: reason` in either marks a known failure, which is skipped unless `RB2GO_RUN_SKIPPED=1`. When you fix the bug, remove the line.
 

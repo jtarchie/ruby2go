@@ -8,8 +8,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -80,6 +82,11 @@ func nodeType(n parser.Node) string {
 	return strings.TrimPrefix(fmt.Sprintf("%T", n), "*parser.")
 }
 
+// sharedParser is one Prism pool per process: instantiating the WASM module costs ~0.5s, more than the rest of a compile.
+var sharedParser = sync.OnceValues(func() (*parser.Parser, error) {
+	return parser.NewParser(context.Background(), parser.WithVersion(parser.SyntaxVersionLatest), parser.WithPoolSize(runtime.GOMAXPROCS(0)))
+})
+
 // Compile transpiles the prelude (prelude.rb in preludeFS, plus whatever it
 // require_relatives) and the main source into one Go file.
 func Compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte) ([]byte, error) {
@@ -97,11 +104,10 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 			panic(r)
 		}
 	}()
-	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest), parser.WithPoolSize(1))
+	p, err := sharedParser()
 	if err != nil {
 		return nil, fmt.Errorf("prism: %w", err)
 	}
-	defer func() { _ = p.Close(ctx) }()
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
