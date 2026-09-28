@@ -833,18 +833,38 @@ resolve; anything not listed is still open.
     meaning.)* `$~`/`$1` are not supported; use `match`.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
-    e.g. `1e+20`, `0.0000123`) are ported. Generation only; no parsing.
-    `to_json(opts)` takes the generator options `indent`, `space`,
-    `space_before`, `object_nl`, `array_nl`, `depth`, `script_safe`
-    (`escape_slash`), `ascii_only` and `allow_nan`; `sort_keys`, `strict`
-    and `as_json` raise `NotImplementedError`, other keys are ignored as
-    the gem ignores unknown ones, and `max_nesting` is not checked.
-    `JSON.generate` takes no options. Like the gem, the generator calls
-    every value's `to_json` with one (opaque) state argument: a user
-    `to_json` declared other than `(*untyped) -> String` is reached
-    through its dynamic wrapper, so `(?untyped)` gets the state and `()`
-    raises `ArgumentError`. *(Revised: options were ignored, and such a
-    `to_json` was skipped for the JSON of its `to_s`.)*
+    e.g. `1e+20`, `0.0000123`) are ported.
+    `to_json(opts)` and `JSON.generate(obj, opts)` take the generator
+    options `indent`, `space`, `space_before`, `object_nl`, `array_nl`,
+    `depth`, `script_safe` (`escape_slash`), `ascii_only` and
+    `allow_nan`; `sort_keys`, `strict` and `as_json` raise
+    `NotImplementedError`, other keys are ignored as the gem ignores
+    unknown ones, and `max_nesting` is not checked. `JSON.pretty_generate`
+    is `generate` with the gem's `PRETTY_STATE_PROTOTYPE` (two-space
+    indent, one value per line) and `JSON.dump` is `generate`. Like the
+    gem, the generator calls every value's `to_json` with one (opaque)
+    state argument: a user `to_json` declared other than
+    `(*untyped) -> String` is reached through its dynamic wrapper, so
+    `(?untyped)` gets the state and `()` raises `ArgumentError`.
+    *(Revised: options were ignored, and such a `to_json` was skipped
+    for the JSON of its `to_s`.)*
+
+    `JSON.parse`/`.load` walk the token stream directly (not
+    `json.Unmarshal` into a Go map) so object keys keep insertion order
+    in rb2go's `Hash`: an object becomes `Hash[String, untyped]`
+    (`Hash[Symbol, untyped]` with `symbolize_names: true`, keys chosen
+    once for the whole document), an array `Array[untyped]`, and
+    string/true/false/null map to themselves. Numbers are decoded with
+    `json.Decoder.UseNumber`, so a literal with no `.`/`e`/`E` is
+    Integer and any other is Float, as the gem. A duplicate object key
+    keeps its first position and takes the last value, as Ruby Hash
+    assignment. An integer literal that does not fit in 64 bits raises
+    `RangeError` rather than the gem's Bignum (decision 35: no Bignum),
+    matching `String#to_i`'s and a literal's own overflow. Malformed
+    input raises `JSON::ParserError`; message text is Go's decode error,
+    not ported from the gem's parser. `JSON.load` is `.parse`: the
+    gem's docs call `.load` unsafe for arbitrary Ruby objects, but
+    rb2go's closed, untyped-only world has no such objects to inject.
 26. Threads are goroutines. An exception ends only its thread (reported on
     stderr) and `join` re-raises it. There is no GVL: stdout writes are
     locked, other shared state is the program's problem. The set of

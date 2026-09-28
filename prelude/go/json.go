@@ -26,6 +26,127 @@ func rbToJson(a any, args ...any) String {
 	return rbToS(a).ToJson(args...)
 }
 
+// rbJSONSymbolizeNames reads JSON.parse/.load's symbolize_names: option.
+func rbJSONSymbolizeNames(opts *Hash[Symbol, any]) bool {
+	if opts == nil {
+		return false
+	}
+	v, ok := opts.vals[Symbol("symbolize_names")]
+	return ok && rbTruthy(v)
+}
+
+// rbJSONParse walks the token stream itself, not json.Unmarshal into a map, so object keys keep insertion order (rb2go's Hash).
+func rbJSONParse(s string, symbolizeNames bool) any {
+	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
+
+	var (
+		rv  rbJSONVal
+		err error
+	)
+	if symbolizeNames {
+		rv, err = rbJSONDecodeValue(dec, func(k string) Symbol { return Symbol(k) })
+	} else {
+		rv, err = rbJSONDecodeValue(dec, func(k string) String { return String(k) })
+	}
+	if err == nil {
+		if dec.More() {
+			tok, terr := dec.Token()
+			if terr != nil {
+				err = terr
+			} else {
+				err = fmt.Errorf("unexpected token at end of stream %v", tok)
+			}
+		} else if _, terr := dec.Token(); terr != nil && !errors.Is(terr, io.EOF) {
+			err = terr
+		}
+	}
+	if err != nil {
+		panic(NewJSON_ParserError(Ref(String(rbJSONDecodeErr(err)))))
+	}
+	return rv.v
+}
+
+// rbJSONVal wraps a decoded value: a JSON null is a real `any(nil)` v, not a decode failure, so rbJSONDecodeValue returns this struct rather than (any, error), which would read as nilnil's ambiguous "nil value, nil error".
+type rbJSONVal struct{ v any }
+
+// rbJSONDecodeValue decodes one JSON value; keyOf (String or Symbol per symbolize_names) fixes every nested Hash to the same key type.
+func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (rbJSONVal, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return rbJSONVal{}, err
+	}
+	switch t := tok.(type) {
+	case json.Delim:
+		switch t {
+		case '{':
+			h := NewHash[K, any]()
+			for dec.More() {
+				kt, kerr := dec.Token()
+				if kerr != nil {
+					return rbJSONVal{}, kerr
+				}
+				ks, ok := kt.(string)
+				if !ok {
+					return rbJSONVal{}, fmt.Errorf("expected object key, got %v", kt)
+				}
+				v, verr := rbJSONDecodeValue(dec, keyOf)
+				if verr != nil {
+					return rbJSONVal{}, verr
+				}
+				h.Op_idxSet(keyOf(ks), v.v)
+			}
+			if _, cerr := dec.Token(); cerr != nil { // consume '}'
+				return rbJSONVal{}, cerr
+			}
+			return rbJSONVal{h}, nil
+		case '[':
+			arr := &Array[any]{}
+			for dec.More() {
+				v, verr := rbJSONDecodeValue(dec, keyOf)
+				if verr != nil {
+					return rbJSONVal{}, verr
+				}
+				*arr = append(*arr, v.v)
+			}
+			if _, cerr := dec.Token(); cerr != nil { // consume ']'
+				return rbJSONVal{}, cerr
+			}
+			return rbJSONVal{arr}, nil
+		}
+	case string:
+		return rbJSONVal{String(t)}, nil
+	case json.Number:
+		return rbJSONVal{rbJSONParseNumber(string(t))}, nil
+	case bool:
+		return rbJSONVal{Boolean(t)}, nil
+	case nil:
+		return rbJSONVal{}, nil // v's zero value is untyped nil: JSON null
+	}
+	return rbJSONVal{}, fmt.Errorf("unexpected token %v", tok)
+}
+
+// rbJSONParseNumber: a decimal point or exponent is a Float (MRI's json gem); past 64 bits raises RangeError, as String#to_i (decision 35: no Bignum).
+func rbJSONParseNumber(s string) any {
+	if strings.ContainsAny(s, ".eE") {
+		f, _ := strconv.ParseFloat(s, 64) // ErrRange (too large) saturates to +-Inf, as MRI
+		return Float(f)
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		panic(NewRangeError(Ref(String(s + " overflows Integer (64-bit; no Bignum)"))))
+	}
+	return Integer(n)
+}
+
+// rbJSONDecodeErr turns a decode error into JSON::ParserError's message.
+func rbJSONDecodeErr(err error) string {
+	if errors.Is(err, io.EOF) {
+		return "unexpected end of input"
+	}
+	return err.Error()
+}
+
 // rbJSONState is the gem's generator State. It is handed to every
 // nested to_json, which is how depth reaches the indentation.
 type rbJSONState struct {

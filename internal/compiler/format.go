@@ -18,7 +18,7 @@ import (
 var stdImports = map[string]string{
 	"big": "math/big", "bits": "math/bits", "binary": "encoding/binary", "bufio": "bufio", "bytes": "bytes", "cmp": "cmp", "context": "context",
 	"errors": "errors", "fmt": "fmt", "fnv": "hash/fnv", "fs": "io/fs", "filepath": "path/filepath", "http": "net/http",
-	"io": "io", "iter": "iter", "maphash": "hash/maphash", "math": "math",
+	"io": "io", "iter": "iter", "json": "encoding/json", "maphash": "hash/maphash", "math": "math",
 	"net": "net", "os": "os", "rand": "crypto/rand", "reflect": "reflect", "regexp": "regexp",
 	"runtime": "runtime", "signal": "os/signal", "syscall": "syscall", "slices": "slices", "sort": "sort", "strconv": "strconv",
 	"strings": "strings", "sync": "sync", "atomic": "sync/atomic",
