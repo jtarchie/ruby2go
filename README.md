@@ -1265,3 +1265,26 @@ resolve; anything not listed is still open.
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](examples/53_files/main.rb)).
+63. `Pathname` is `@go_type string` (value semantics, like `String`/`Symbol`),
+    a thin OO wrapper: `basename`/`dirname`/`extname`/`exist?`/`file?`/
+    `directory?`/`read`/`write`/`children` (`Dir.children`, sorted per
+    decision 62) all delegate straight to `File`/`Dir`, wrapping the result
+    back in a `Pathname` where MRI does. `Kernel#Pathname(path)` is real MRI
+    API and works unmodified (a capitalized method name, parsed as a call
+    because it's followed by `(`). `+`/`/`/`join` reset to the right-hand
+    side when it is absolute, otherwise concatenate with `File.join`'s
+    seam-trimming (no `..` collapsing — same simplification as `File.join`,
+    decision 62); MRI's `Pathname#+` additionally cancels a literal `..`
+    component against the preceding one (`Pathname("/a/b") + ".."` is
+    `/a`), which this skips. `relative_path_from` delegates to
+    `path/filepath.Rel`, which matches MRI's `cleanpath`-based algorithm on
+    every case checked by hand (common prefix, `.`/`..` components, the
+    root-clamped case, and MRI's "different prefix"/"base_directory has
+    .." `ArgumentError`s, which `Rel` also errors on) — `ArgumentError`'s
+    message text is not matched, only its class and MRI's success/failure
+    split. `==`/`eql?`/`hash`/`<=>` compare by path string; `<=>` and `+`
+    require both sides to be `Pathname`, `==` accepts `untyped` and is
+    `false` for anything else, like `String`/`Symbol`. Not implemented:
+    `cleanpath`, `realpath`, `ascend`/`descend`, `find`, `glob`, `sub`/
+    `sub_ext`, stat methods (`mtime`, `size`, …), and the write/rename
+    family beyond `write` ([example 54](examples/54_pathname/main.rb)).
