@@ -5,14 +5,23 @@
 class Time < Object
   include Comparable
 
-  #: () -> Time
-  def self.now = %x{ return &Time{t: time.Now()} }
+  #: (?untyped) -> Time
+  def self.now(zone = nil) = %x{
+    loc, utc := rbTimeZoneArg(zone, time.Local)
+    return &Time{t: time.Now().In(loc), utc: utc}
+  }
 
-  #: (Integer) -> Time
-  def self.at(sec) = %x{ return &Time{t: time.Unix(int64(sec), 0)} }
+  #: (Integer, ?untyped) -> Time
+  def self.at(sec, zone = nil) = %x{
+    loc, utc := rbTimeZoneArg(zone, time.Local)
+    return &Time{t: time.Unix(int64(sec), 0).In(loc), utc: utc}
+  }
 
-  #: (Float) -> Time
-  def self.__at_float(sec) = %x{ return &Time{t: rbTimeFromFloat(float64(sec))} }
+  #: (Float, ?untyped) -> Time
+  def self.__at_float(sec, zone = nil) = %x{
+    loc, utc := rbTimeZoneArg(zone, time.Local)
+    return &Time{t: rbTimeFromFloat(float64(sec)).In(loc), utc: utc}
+  }
 
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
   def self.utc(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = %x{
@@ -32,8 +41,12 @@ class Time < Object
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
   def self.mktime(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = local(y, mo, d, h, mi, s)
 
-  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
-  def self.new(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = local(y, mo, d, h, mi, s)
+  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
+  def self.new(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, zone = nil) = %x{
+    rbTimeArgs(y, mo, d, h, mi, s)
+    loc, utc := rbTimeZoneArg(zone, time.Local)
+    return &Time{t: time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(s), 0, loc), utc: utc}
+  }
 
   #: () -> Time
   def self.__new_0 = now
@@ -149,23 +162,57 @@ class Time < Object
   #: () -> Time
   def gmtime = utc
 
-  #: () -> Time
-  def localtime = %x{
-    self.t, self.utc = self.t.Local(), false
+  #: (?untyped) -> Time
+  def localtime(off = nil) = %x{
+    loc, utc := rbTimeZoneArg(off, time.Local)
+    self.t, self.utc = self.t.In(loc), utc
     return self
   }
 
   #: () -> Time
   def getutc = %x{ return &Time{t: self.t.UTC(), utc: true} }
 
-  #: () -> Time
-  def getlocal = %x{ return &Time{t: self.t.Local()} }
+  #: (?untyped) -> Time
+  def getlocal(off = nil) = %x{
+    loc, utc := rbTimeZoneArg(off, time.Local)
+    return &Time{t: self.t.In(loc), utc: utc}
+  }
 
   #: () -> Integer
   def to_i = %x{ Integer(self.t.Unix()) }
 
+  #: () -> Integer
+  def tv_sec = to_i
+
+  #: () -> Integer
+  def tv_usec = usec
+
+  #: () -> Integer
+  def tv_nsec = nsec
+
   #: () -> Float
   def to_f = %x{ Float(float64(self.t.UnixNano()) / 1e9) }
+
+  #: () -> bool
+  def dst? = %x{ Boolean(self.t.IsDST()) }
+
+  #: () -> bool
+  def isdst = dst?
+
+  #: (?Integer) -> Time
+  def round(digits = 0) = %x{ return &Time{t: rbTimeRound(self.t, int(digits), 0), utc: self.utc} }
+
+  #: (?Integer) -> Time
+  def floor(digits = 0) = %x{ return &Time{t: rbTimeRound(self.t, int(digits), -1), utc: self.utc} }
+
+  #: (?Integer) -> Time
+  def ceil(digits = 0) = %x{ return &Time{t: rbTimeRound(self.t, int(digits), 1), utc: self.utc} }
+
+  #: () -> String
+  def ctime = %x{ String(self.t.Format(time.ANSIC)) }
+
+  #: () -> String
+  def asctime = ctime
 
   #: (Integer) -> Time
   def +(secs) = %x{ return &Time{t: self.t.Add(time.Duration(secs) * time.Second), utc: self.utc} }

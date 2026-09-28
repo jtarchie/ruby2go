@@ -983,12 +983,35 @@ resolve; anything not listed is still open.
 39. `Time` wraps Go's `time.Time` plus MRI's UTC flag (printed `UTC`
     rather than `+0000`), handled as a pointer so `utc`/`localtime`
     convert in place as MRI's do. `Time.at` takes Integer or Float
-    seconds, `Time.utc`/`gm`/`local`/`mktime`/`new` take integer parts
+    seconds, `Time.utc`/`gm`/`local`/`mktime` take integer parts only
     (no month names, no zone argument; `Time.new` with none is `now`).
     `t - t2` is a Float, `t ± n` a Time (via decision 12's overloads).
     `strftime` is MRI's, flags and widths included; `iso8601`/`xmlschema`
     are core, as in Ruby 3.4. No `Time#to_a`: 10-tuples do not exist
-    ([example 37](examples/37_time/main.rb)).
+    ([example 37](examples/37_time/main.rb)). *Revised:* `Time.new`,
+    `Time.at` and `Time.now` take a zone: `Time.new`'s 7th positional arg,
+    or `in:` on any of the three, which (decision 23: no real keyword
+    params) arrives as a trailing `{in: ...}` Hash; `localtime`/`getlocal`
+    take the same zone as their one optional arg. A zone is an Integer
+    offset in seconds, or a String — `"UTC"` (case-insensitive), `"Z"`,
+    a single military letter (`A`.."I","K".."Z"`, `J` unused), or
+    `"±HH[:MM[:SS]]"`/`"±HHMM[SS]"` (`"-00:00"`/`"-0000"` is UTC, MRI's
+    quirk for an explicitly-unknown offset; `"+00:00"` is a real, merely
+    zero, offset). An offset outside `(-86400, 86400)` or an unparseable
+    String raises MRI's `ArgumentError`, with its exact message; any other
+    argument class is silently treated as "no zone" (`Time.at`'s unused
+    subsec argument, say), not MRI's `TypeError`. A zone is always a fixed
+    UTC offset, via Go's `time.FixedZone`: there is no IANA tz database
+    lookup (`Time.new(..., in: "Asia/Tokyo")` does not work), since that
+    needs `time/tzdata`, an opt-in embed MRI-style named zones don't
+    otherwise call for. `round`/`floor`/`ceil` round the fractional second
+    to `digits` decimal places (default 0), ties toward +infinity as
+    MRI's Time does (`Float#round`'s ties go away from zero instead);
+    negative `digits` raises `ArgumentError`. `dst?`/`isdst` is
+    `time.Time.IsDST()`, always `false` for a `FixedZone` or `UTC` time,
+    as MRI's is. `ctime`/`asctime` format with `time.ANSIC`. `tv_sec`,
+    `tv_usec`, `tv_nsec` alias `to_i`, `usec`, `nsec`
+    ([testdata/run/time_mid.rb](testdata/run/time_mid.rb)).
 40. `Rational` is a pointer to a `math/big.Rat`, so arithmetic is exact
     and never overflows; `numerator`/`denominator`/`to_i`/`round` raise
     RangeError past 64 bits (decision 35). Literals (`3r`, `3/4r`,
