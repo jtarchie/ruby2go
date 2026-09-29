@@ -62,6 +62,10 @@ class IO < Object
   include IOWritable
   include IOReadable
 
+  SEEK_SET = 0 #: Integer
+  SEEK_CUR = 1 #: Integer
+  SEEK_END = 2 #: Integer
+
   #: (Integer) -> IO
   def self.__new(fd) = %x{ return &IO{fd: int(fd)} }
 

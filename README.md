@@ -1157,16 +1157,37 @@ resolve; anything not listed is still open.
     ([example 44](examples/44_procs/main.rb)).
 48. `StringIO` is a byte buffer with a position: `write`/`<<`/`print`/
     `puts` (Kernel#puts's rules) overwrite at `pos` and extend, and
-    `read`, `read(n)` (nil at EOF), `gets`, `getc`, `each_line`,
-    `readlines`, `rewind`, `pos=`, `eof?` and `lineno` read, as MRI's.
-    It is always defined, `require "stringio"` or not; there is no shared
-    IO base class, so a method taking `StringIO` does not take `$stdout`.
+    `read`, `read(n)` (nil at EOF), `gets`, `getc`, `getbyte`, `each_byte`,
+    `each_char`, `each_line`, `readlines`, `rewind`, `pos=`, `seek`
+    (`IO::SEEK_SET`/`CUR`/`END`), `tell` (a `pos` alias), `eof?` and
+    `lineno` read, as MRI's. It is always defined, `require "stringio"`
+    or not; there is no shared IO base class, so a method taking
+    `StringIO` does not take `$stdout`, though `close`/`closed?` and
+    `rbReadable()`/`not opened for reading`/`not opened for writing`
+    follow the same naming as `File`'s (decision 62) for consistency.
+    `StringIO.new(str, mode)` takes File's `r`/`r+`/`w`/`w+`/`a`/`a+`
+    (an unknown mode raises MRI's `ArgumentError`); the default (no mode
+    given) is a duplex, non-truncating `r+`. `w`/`w+` truncate the string;
+    `a`/`a+` always write at the buffer's end regardless of `pos`, like an
+    `os.O_APPEND` file. `close` blocks both read and write (unlike
+    `File`, there is no distinct "closed stream" message — reading or
+    writing a fully closed `StringIO` raises the same `not opened for
+    reading`/`writing` `IOError` as a stream never opened that way); only
+    `seek` raises `IOError, "closed stream"` on a fully closed stream.
+    `close_write` closes the write side only, raising `IOError, "closing
+    non-duplex IO for writing"` if the stream was never writable;
+    `truncate(len)` (MRI: zero-pads on growth, raises `Errno::EINVAL` on a
+    negative length) needs the write side open. `ungetc(c)` (a `String`
+    or `Integer` codepoint) overwrites the last-read character's bytes
+    with `c` and rewinds `pos` before it (at `pos` 0 it prepends), matching
+    MRI's splice rather than a real pushback buffer.
     `Enumerable#sum` is MRI's: Integers and Rationals add exactly, and
     once a Float appears the rest adds with Kahan-Babuska compensation
     (`[0.1, 0.2, 0.3].sum` is `0.6`); `sum { |x| … }` goes through
     decision 12's overloads, which now also route a call with a block
     to `__<name>_block` when the method takes none
-    ([example 45](examples/45_stringio/main.rb)).
+    ([example 45](examples/45_stringio/main.rb),
+    [testdata/run/stringio_mid.rb](testdata/run/stringio_mid.rb)).
 49. Generated Go is pruned like a linker would: from `main`, `init` and
     `_` vars, a function, type or var is kept when an identifier names it,
     and a method when its receiver type is kept and its name is selected

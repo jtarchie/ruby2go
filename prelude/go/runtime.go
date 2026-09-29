@@ -47,6 +47,18 @@ func (self *IO) rbReadable() {
 	}
 }
 
+func (self *StringIO) rbReadable() {
+	if !self.readOpen {
+		panic(NewIOError(Ref[String]("not opened for reading")))
+	}
+}
+
+func (self *StringIO) rbWritable() {
+	if !self.writeOpen {
+		panic(NewIOError(Ref[String]("not opened for writing")))
+	}
+}
+
 func rbFlush() {
 	stdoutMu.Lock()
 	defer stdoutMu.Unlock()
