@@ -39,9 +39,34 @@ module WEBrick
       }
       return Ref(String(strings.Join(values, ", ")))
     }
+
+    #: () -> Hash[String, String]
+    def header = %x{ rbHTTPHeaderHash(self.r.Header) }
+
+    #: () { (String, String) -> void } -> void
+    def each
+      header.each { |k, v| yield k, v }
+    end
+
+    #: () -> Array[Cookie]
+    def cookies = %x{ rbWEBrickParseCookies(self.r.Header.Get("Cookie")) }
   end
 
-  # @go_type struct { status Integer; body String; header http.Header }
+  class Cookie < Object
+    #: (String, String) -> void
+    def initialize(name, value)
+      @name = name
+      @value = value
+    end
+
+    attr_accessor :name #: String
+    attr_accessor :value #: String
+
+    #: () -> String
+    def to_s = "#{name}=#{value}"
+  end
+
+  # @go_type struct { status Integer; body String; header http.Header; cookies *Array[WEBrick_CookieI] }
   class HTTPResponse < Object
     #: () -> Integer
     def status = %x{ self.status }
@@ -80,6 +105,18 @@ module WEBrick
 
     #: () -> String?
     def content_type = self["Content-Type"]
+
+    #: () -> Array[Cookie]
+    def cookies = %x{ self.cookies }
+
+    #: (singleton(HTTPStatus::Redirect), String) -> void
+    def set_redirect(status, url) = %x{
+      loc := string(url)
+      self.body = String("<HTML><A HREF=\\"" + loc + "\\">" + loc + "</A>.</HTML>\\n")
+      self.header.Set("Location", loc)
+      inst := any(status).(interface{ New(*String) ExceptionI }).New(nil)
+      panic(inst)
+    }
   end
 
   # @go_type struct { srv *http.Server; ln net.Listener; mux *http.ServeMux; config *Hash[Symbol, any] }
@@ -140,12 +177,38 @@ module WEBrick
       def code = 500
     end
 
+    class BadRequest < Status
+      def code = 400
+    end
+
+    class Unauthorized < Status
+      def code = 401
+    end
+
+    class Forbidden < Status
+      def code = 403
+    end
+
     class NotFound < Status
       def code = 404
     end
 
     class MethodNotAllowed < Status
       def code = 405
+    end
+
+    class InternalServerError < Status
+      def code = 500
+    end
+
+    class Redirect < Status; end
+
+    class MovedPermanently < Redirect
+      def code = 301
+    end
+
+    class Found < Redirect
+      def code = 302
     end
   end
 

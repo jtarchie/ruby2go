@@ -22,6 +22,20 @@ func rbWEBrickNew(config *Hash[Symbol, any]) *WEBrick_HTTPServer {
 	return &WEBrick_HTTPServer{srv: srv, ln: ln, mux: mux, config: config}
 }
 
+// rbWEBrickParseCookies is WEBrick::HTTPRequest#cookies: the Cookie header split on ";", trimmed, name=value pairs kept in order.
+func rbWEBrickParseCookies(raw string) *Array[WEBrick_CookieI] {
+	out := NewArray[WEBrick_CookieI]()
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		k, v, _ := strings.Cut(part, "=")
+		out.Push(NewWEBrick_Cookie(String(strings.TrimSpace(k)), String(v)))
+	}
+	return out
+}
+
 // rbWEBrickMount registers h for dir and everything below it.
 func rbWEBrickMount(mux *http.ServeMux, dir string, h http.HandlerFunc) {
 	dir = "/" + strings.Trim(dir, "/")
@@ -60,18 +74,18 @@ func rbWEBrickRequest(r *http.Request) *WEBrick_HTTPRequest {
 	return &WEBrick_HTTPRequest{r: r, query: query, body: body}
 }
 
-// rbWEBrickServe runs a handler and writes its response like WEBrick.
+// rbWEBrickServe runs a handler and writes its response like WEBrick; a raised HTTPStatus keeps the body/header already set (set_redirect relies on this).
 func rbWEBrickServe(w http.ResponseWriter, r *http.Request, handle func(*WEBrick_HTTPRequest, *WEBrick_HTTPResponse)) {
 	req := rbWEBrickRequest(r)
-	res := &WEBrick_HTTPResponse{status: 200, header: http.Header{}}
+	res := &WEBrick_HTTPResponse{status: 200, header: http.Header{}, cookies: NewArray[WEBrick_CookieI]()}
 	func() {
 		defer func() {
 			if p := recover(); p != nil {
 				p = rbWrapPanic(p)
-				res.status, res.body, res.header = 500, "", http.Header{}
 				if st, ok := p.(WEBrick_HTTPStatus_StatusI); ok {
 					res.status = st.Code()
 				} else {
+					res.status, res.body, res.header = 500, "", http.Header{}
 					fmt.Fprintln(os.Stderr, "ERROR", rbToS(p), "("+rbClassName(p)+")")
 				}
 			}
@@ -87,6 +101,9 @@ func rbWEBrickServe(w http.ResponseWriter, r *http.Request, handle func(*WEBrick
 	h := w.Header()
 	for k, v := range res.header {
 		h[k] = v
+	}
+	for _, ck := range *res.cookies {
+		h.Add("Set-Cookie", string(rbToS(ck)))
 	}
 	if _, ok := h["Content-Type"]; !ok {
 		h["Content-Type"] = nil // WEBrick sends none; stop Go sniffing one
