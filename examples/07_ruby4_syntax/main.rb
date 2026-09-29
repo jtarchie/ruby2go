@@ -1,5 +1,8 @@
 # rbs_inline: enabled
+# args: --seed 1
 # Ruby 4.0: a continuation line may start with `&&` / `||`.
+
+require "minitest/autorun"
 
 #: (Integer) -> bool
 def teen?(n)
@@ -15,7 +18,22 @@ def describe(n)
   "#{n} is #{kind}"
 end
 
-puts teen?(15), teen?(20)
-puts describe(3), describe(10), describe(42)
-words = ["it", "works"]
-puts words.map { it.upcase }.join(" ")
+class Ruby4SyntaxTest < Minitest::Test
+  #: () -> void
+  def test_leading_and
+    assert_equal true, teen?(15)
+    assert_equal false, teen?(20)
+  end
+
+  #: () -> void
+  def test_leading_or
+    assert_equal ["3 is small", "10 is small", "42 is big"], [3, 10, 42].map { |n| describe(n) }
+  end
+
+  # `it` names a block's single parameter.
+  #: () -> void
+  def test_it_parameter
+    words = ["it", "works"]
+    assert_equal "IT WORKS", words.map { it.upcase }.join(" ")
+  end
+end

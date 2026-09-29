@@ -1,4 +1,7 @@
 # rbs_inline: enabled
+# args: --seed 1
+
+require "minitest/autorun"
 
 class Node
   attr_reader :value #: Integer
@@ -28,26 +31,65 @@ class Node
   end
 end
 
-list = Node.new(1, Node.new(2, Node.new(3, nil)))
-puts list.length, list.sum
-puts list.next_node&.next_node&.value.inspect
-puts list.next_node&.next_node&.next_node&.value.inspect
-
 #: (Array[Integer], Integer) -> Integer?
 def find_gt(nums, n) = nums.find { |x| x > n }
 
-nums = [1, 5, 9]
-found = find_gt(nums, 4)
-puts found.inspect, find_gt(nums, 100).inspect
-puts found.nil?, find_gt(nums, 100).nil?
-puts(found ? found * 2 : -1)
-v = find_gt(nums, 100) || 0
-puts v + 1
-name = nil
-puts name.to_s + "|", name.inspect
-name = "x" if nums.size > 2
-puts name.inspect
-puts "big" if found && found > 3
-puts "none" unless find_gt(nums, 100)
-puts nums.min.inspect, nums.max.inspect, [].min.inspect #: Array[Integer]
-puts nums.pop.inspect, nums.inspect, nums.last.inspect
+class OptionalsTest < Minitest::Test
+  #: () -> Node
+  def list = Node.new(1, Node.new(2, Node.new(3, nil)))
+
+  # A `Node?` field: the ternary and `while cur` both narrow it.
+  #: () -> void
+  def test_narrowing_optional_field
+    assert_equal 3, list.length
+    assert_equal 6, list.sum
+  end
+
+  # `&.` chains stop at the first nil.
+  #: () -> void
+  def test_safe_navigation_chain
+    assert_equal 3, list.next_node&.next_node&.value
+    assert_nil list.next_node&.next_node&.next_node&.value
+  end
+
+  #: () -> void
+  def test_find_returns_optional
+    nums = [1, 5, 9]
+    found = find_gt(nums, 4)
+    assert_equal 5, found
+    assert_nil find_gt(nums, 100)
+    assert_equal false, found.nil?
+    assert_equal true, find_gt(nums, 100).nil?
+    assert_equal 10, (found ? found * 2 : -1)
+    assert_equal "big", ("big" if found && found > 3)
+    assert_equal "none", ("none" unless find_gt(nums, 100))
+  end
+
+  # `|| 0` turns Integer? into Integer.
+  #: () -> void
+  def test_or_default
+    v = find_gt([1, 5, 9], 100) || 0
+    assert_equal 1, v + 1
+  end
+
+  #: () -> void
+  def test_nil_local_then_assigned
+    nums = [1, 5, 9]
+    name = nil
+    assert_equal "|", name.to_s + "|"
+    assert_equal "nil", name.inspect
+    name = "x" if nums.size > 2
+    assert_equal '"x"', name.inspect
+  end
+
+  #: () -> void
+  def test_min_max_pop
+    nums = [1, 5, 9]
+    assert_equal 1, nums.min
+    assert_equal 9, nums.max
+    assert_nil [].min #: Array[Integer]
+    assert_equal 9, nums.pop
+    assert_equal [1, 5], nums
+    assert_equal 5, nums.last
+  end
+end

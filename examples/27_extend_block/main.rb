@@ -1,7 +1,10 @@
 # rbs_inline: enabled
+# args: --seed 1
 # `extend Enumerable` on a module whose `each` walks its own constants,
 # `&block` parameters forwarded into iterators and closures, and user code
 # reopening a core class.
+
+require "minitest/autorun"
 
 class String
   #: () -> String
@@ -56,12 +59,29 @@ class Registry
   def first_transformed(&block) = block.call(@names[0].to_s)
 end
 
-puts Handlers.detect { |h| h.matches?("/users/1") }.inspect
-puts Handlers.map { |h| h.name }.inspect, Handlers.count
-puts Handlers.select { |h| h.matches?("/posts/9") }.inspect
-puts "user_sessions".camelize, "posts".camelize
+class ExtendBlockTest < Minitest::Test
+  # Enumerable's methods, driven by the module's own `each`.
+  #: () -> void
+  def test_extend_enumerable
+    assert_equal "Handlers::Users", Handlers.detect { |h| h.matches?("/users/1") }.inspect
+    assert_equal ["Handlers::Base", "Handlers::Posts", "Handlers::Users"], Handlers.map { |h| h.name }
+    assert_equal 3, Handlers.count
+    assert_equal "[Handlers::Posts]", Handlers.select { |h| h.matches?("/posts/9") }.inspect
+  end
 
-registry = Registry.new.add("a").add("b")
-registry.each { |name| puts name }
-puts registry.transform { |name| name.upcase }.inspect
-puts registry.first_transformed { |name| name * 3 }
+  #: () -> void
+  def test_reopened_core_class
+    assert_equal "UserSessions", "user_sessions".camelize
+    assert_equal "Posts", "posts".camelize
+  end
+
+  #: () -> void
+  def test_block_forwarding
+    registry = Registry.new.add("a").add("b")
+    seen = [] #: Array[String]
+    registry.each { |name| seen << name }
+    assert_equal ["a", "b"], seen
+    assert_equal ["A", "B"], registry.transform { |name| name.upcase }
+    assert_equal "aaa", registry.first_transformed { |name| name * 3 }
+  end
+end

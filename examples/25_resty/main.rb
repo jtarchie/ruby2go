@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+# args: --seed 1
 #
 # A typed port of https://github.com/jtarchie/resty, a web framework that
 # forces RESTful conventions, served by WEBrick and driven over HTTP with
@@ -19,6 +20,7 @@
 require "json"
 require "net/http"
 require "webrick"
+require "minitest/autorun"
 
 module Resty
   VERSION = "0.0.1" #: String
@@ -462,7 +464,7 @@ end
 
 FORM = { "Content-Type" => "application/x-www-form-urlencoded" } #: Hash[String, String]
 
-#: (Net::HTTP, String, String, ?Hash[String, String]) -> void
+#: (Net::HTTP, String, String, ?Hash[String, String]) -> String
 def call(http, verb, path, form = {})
   data = URI.encode_www_form(form)
   res = case verb
@@ -477,51 +479,125 @@ def call(http, verb, path, form = {})
   line += " Location: #{location[1]}" if location
   content_type = res["Content-Type"]
   line += " Content-Type: #{content_type}" if content_type
-  puts line
-  puts "  #{res.body}" unless res.body.empty?
+  line += "\n  #{res.body}" unless res.body.empty?
+  "#{line}\n"
 end
 
-server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1")
-server.mount("/", RestyServlet)
-thread = Thread.new { server.start }
-http = Net::HTTP.new("127.0.0.1", server.config[:Port])
+# Replays resty's integration specs over a real socket; each test compares
+# the transcript of its requests.
+class RestyTest < Minitest::Test
+  #: () -> void
+  def setup
+    @server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1")
+    @server.mount("/", RestyServlet)
+    @thread = Thread.new { @server.start }
+    @http = Net::HTTP.new("127.0.0.1", @server.config[:Port])
+    seed
+  end
 
-puts "resty #{Resty::VERSION}", "# errors"
-seed
-call(http, "GET", "/entries")
-call(http, "GET", "/entries/1.json")
-call(http, "GET", "/entries/1/edit")
-call(http, "POST", "/entries.json")
-call(http, "PUT", "/entries/1")
-call(http, "POST", "/entries/1/asdfasdfasdfsadfasdft")
-call(http, "GET", "/entries/1.format")
-call(http, "GET", "/users")
-call(http, "POST", "/posts")
+  # Every test makes a request first, so the server has started by now;
+  # WEBrick's shutdown before its start would leave the thread running.
+  #: () -> void
+  def teardown
+    @server.shutdown
+    @thread.join
+  end
 
-puts "# show, new, edit, index"
-seed
-call(http, "GET", "/posts/123")
-call(http, "GET", "/posts/f0429391-ee0c-4c74-b9e1-3aa102bed145")
-call(http, "GET", "/posts/1")
-call(http, "GET", "/posts/1.json")
-call(http, "GET", "/posts/1.html")
-call(http, "GET", "/posts/new")
-call(http, "GET", "/posts/1/edit")
-call(http, "GET", "/posts")
-call(http, "GET", "/posts.json")
+  #: () -> void
+  def test_errors
+    assert_equal "0.0.1", Resty::VERSION
+    got = [
+      call(@http, "GET", "/entries"),
+      call(@http, "GET", "/entries/1.json"),
+      call(@http, "GET", "/entries/1/edit"),
+      call(@http, "POST", "/entries.json"),
+      call(@http, "PUT", "/entries/1"),
+      call(@http, "POST", "/entries/1/asdfasdfasdfsadfasdft"),
+      call(@http, "GET", "/entries/1.format"),
+      call(@http, "GET", "/users"),
+      call(@http, "POST", "/posts"),
+    ].join
+    assert_equal <<~TRANSCRIPT, got
+      GET /entries -> 404
+      GET /entries/1.json -> 404 Content-Type: application/json
+        {}
+      GET /entries/1/edit -> 404
+      POST /entries.json -> 404 Content-Type: application/json
+        {}
+      PUT /entries/1 -> 404
+      POST /entries/1/asdfasdfasdfsadfasdft -> 501
+      GET /entries/1.format -> 404
+      GET /users -> 501
+      POST /posts -> 422
+    TRANSCRIPT
+  end
 
-puts "# full api"
-seed
-post = { "post[id]" => "100", "post[title]" => "Title", "post[body]" => "Body" }
-call(http, "GET", "/posts/100.json")
-call(http, "GET", "/posts/new.json")
-call(http, "POST", "/posts.json", post)
-call(http, "GET", "/posts/100.json")
-call(http, "GET", "/posts/100/edit.json")
-call(http, "GET", "/posts.json")
-call(http, "PUT", "/posts/100.json", { "post[title]" => "Title 123", "post[body]" => "Body 456" })
-call(http, "DELETE", "/posts/100.json")
-call(http, "GET", "/posts/100.json")
+  #: () -> void
+  def test_show_new_edit_index
+    got = [
+      call(@http, "GET", "/posts/123"),
+      call(@http, "GET", "/posts/f0429391-ee0c-4c74-b9e1-3aa102bed145"),
+      call(@http, "GET", "/posts/1"),
+      call(@http, "GET", "/posts/1.json"),
+      call(@http, "GET", "/posts/1.html"),
+      call(@http, "GET", "/posts/new"),
+      call(@http, "GET", "/posts/1/edit"),
+      call(@http, "GET", "/posts"),
+      call(@http, "GET", "/posts.json"),
+    ].join
+    assert_equal <<~TRANSCRIPT, got
+      GET /posts/123 -> 404
+      GET /posts/f0429391-ee0c-4c74-b9e1-3aa102bed145 -> 404
+      GET /posts/1 -> 200
+        <h1>Post 1</h1>
+      GET /posts/1.json -> 200 Content-Type: application/json
+        {"post":{"id":1,"title":"Title","body":null}}
+      GET /posts/1.html -> 200
+        <h1>Post 1</h1>
+      GET /posts/new -> 200
+        <h1>Post not persisted</h1>
+      GET /posts/1/edit -> 200
+        <h1>Post 1</h1>
+      GET /posts -> 200
+        <h1>Post 1</h1><h1>Post 2</h1><h1>Post 3</h1>
+      GET /posts.json -> 200 Content-Type: application/json
+        [{"post":{"id":1,"title":"Title","body":null}},{"post":{"id":2,"title":"Title","body":null}},{"post":{"id":3,"title":"Title","body":null}}]
+    TRANSCRIPT
+  end
 
-server.shutdown
-thread.join
+  #: () -> void
+  def test_full_api
+    post = { "post[id]" => "100", "post[title]" => "Title", "post[body]" => "Body" }
+    got = [
+      call(@http, "GET", "/posts/100.json"),
+      call(@http, "GET", "/posts/new.json"),
+      call(@http, "POST", "/posts.json", post),
+      call(@http, "GET", "/posts/100.json"),
+      call(@http, "GET", "/posts/100/edit.json"),
+      call(@http, "GET", "/posts.json"),
+      call(@http, "PUT", "/posts/100.json", { "post[title]" => "Title 123", "post[body]" => "Body 456" }),
+      call(@http, "DELETE", "/posts/100.json"),
+      call(@http, "GET", "/posts/100.json"),
+    ].join
+    assert_equal <<~TRANSCRIPT, got
+      GET /posts/100.json -> 404 Content-Type: application/json
+        {}
+      GET /posts/new.json -> 200 Content-Type: application/json
+        {"post":{"id":null,"title":null,"body":null}}
+      POST /posts.json -> 201 Location: /posts/100.json Content-Type: application/json
+        {"post":{"id":100,"title":"Title","body":"Body"}}
+      GET /posts/100.json -> 200 Content-Type: application/json
+        {"post":{"id":100,"title":"Title","body":"Body"}}
+      GET /posts/100/edit.json -> 200 Content-Type: application/json
+        {"post":{"id":100,"title":"Title","body":"Body"}}
+      GET /posts.json -> 200 Content-Type: application/json
+        [{"post":{"id":1,"title":"Title","body":null}},{"post":{"id":2,"title":"Title","body":null}},{"post":{"id":3,"title":"Title","body":null}},{"post":{"id":100,"title":"Title","body":"Body"}}]
+      PUT /posts/100.json -> 201 Location: /posts/100.json Content-Type: application/json
+        {"post":{"id":100,"title":"Title 123","body":"Body 456"}}
+      DELETE /posts/100.json -> 200 Content-Type: application/json
+        {"post":{"id":100,"title":"Title 123","body":"Body 456"}}
+      GET /posts/100.json -> 404 Content-Type: application/json
+        {}
+    TRANSCRIPT
+  end
+end

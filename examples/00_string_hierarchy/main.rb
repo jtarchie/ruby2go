@@ -1,15 +1,32 @@
 # frozen_string_literal: true
 # rbs_inline: enabled
+# args: --seed 1
 
-#: (bool, String) -> void
-def assert(value, msg)
-  raise msg unless value
+require "minitest/autorun"
+
+# One String value answers methods from every level of its ancestry.
+class StringHierarchyTest < Minitest::Test
+  S = "hello, world"
+
+  #: () -> void
+  def test_string
+    assert_equal "HELLO, WORLD", S.upcase
+  end
+
+  #: () -> void
+  def test_comparable
+    assert S < "world"
+    assert_equal "c", S.clamp("a", "c")
+  end
+
+  #: () -> void
+  def test_kernel
+    assert_equal S + S, S.then { |x| x + x }
+  end
+
+  #: () -> void
+  def test_basic_object
+    assert S.equal?(S)
+    refute S.equal?(S.dup)
+  end
 end
-
-s = "hello, world"
-assert(s.upcase == "HELLO, WORLD", "upcase")               # String
-assert(s < "world", "<")                                   # Comparable
-assert(s.clamp("a", "c") == "c", "clamp")                  # Comparable
-assert(s.then { |x| x + x } == s + s, "then")              # Kernel
-assert(s.equal?(s), "equal?")                              # BasicObject
-assert(!s.equal?(s.dup), "equal? on dup")
