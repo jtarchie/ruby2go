@@ -1771,3 +1771,33 @@ resolve; anything not listed is still open.
     `to_s` first (a no-op for `Array[String]`, since `String#to_s` is
     `self`) because Go generics can't pass a generic `Array[E]` where
     `Array[String]` is wanted ([example 63](examples/63_abbrev/main.rb)).
+74. `Observable` (MRI's `require "observer"`; the gem name doesn't match
+    its RBS stdlib signature directory, "observable", so the test harness's
+    `require` → `-r` mapping (rb2go_test.go) special-cases it):
+    `add_observer(observer, func = :update)`, `delete_observer`,
+    `delete_observers`, `count_observers`, `changed(state = true)`,
+    `changed?`, `notify_observers(*args)` calling each registered
+    observer's `func` with `*args` only while `changed?`, then clearing
+    it. Unlike Comparable/`<=>`, Enumerable/`each` (decision 9) or TSort
+    (decision 72), it needs nothing from the
+    including class, but it still can't hold its state (the peers list,
+    the dirty flag) in `@ivar`s the way a plain class method would: a
+    mixin module's methods compile to a Go function generic over `Self`
+    (struct/module methods become free funcs), and an ivar write needs a
+    concrete Go struct field on the owning class, which a module has
+    none of (confirmed by trying it: `instance variables are only
+    supported in struct classes`). So the state lives in a Go-stdlib side
+    table keyed by object identity (`prelude/go/observable.go`, a
+    `map[any]*state` behind a `sync.Mutex`; entries are never evicted,
+    a deliberate leak for process-lifetime objects) instead. The
+    observer's method is still invoked through plain Ruby `send` inside
+    `notify_observers`, going through rb2go's ordinary computed-name
+    `send` codegen (decision 32) — except that codegen doesn't forward a
+    splat (`observer.send(func, *args)` fails to compile: "unsupported
+    syntax: SplatNode"), so the actual call is a one-line `%x{}` to the
+    generated `rbSendByName` directly, spreading the rest array with
+    Go's own `(*args)...`. `notify_observers` keeps a (MRI doesn't have
+    this) `observer.respond_to?(func)` recheck right before that
+    specifically to guarantee `rbSendByName` is generated whenever
+    `notify_observers` itself is compiled, rather than depending on
+    `add_observer` being reachable too ([example 64](examples/64_observable/main.rb)).
