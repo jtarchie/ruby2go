@@ -1756,3 +1756,18 @@ resolve; anything not listed is still open.
     completes, rather than streaming them one at a time as MRI's
     Enumerator does; the visible behavior (order, `Cyclic`) is unchanged
     ([example 62](examples/62_tsort/main.rb)).
+73. `Abbrev` (`require "abbrev"` is a no-op, like decision 50's libraries):
+    `Abbrev.abbrev(words, pattern = nil)` and `Array#abbrev` port MRI's
+    `lib/abbrev.rb` verbatim (a prefix seen once maps to its word, seen
+    twice it's ambiguous and dropped, and `case`'s `else`/`break` stops
+    shortening further once that happens; full words always map to
+    themselves even when some other word's prefix collides, e.g. `"car"`
+    stays `"car"` alongside `"cars"`). `pattern` is `untyped`, since
+    rb2go's `Regexp` is compile-time literals only (no `Regexp.new` from a
+    runtime string, decision 24): a `String` pattern is matched with
+    `start_with?` instead of MRI's anchored `/\A.../` (same result, no
+    Regexp construction needed), and a `Regexp` pattern calls `match?`
+    directly, unanchored like MRI's. `Array#abbrev` maps `self` through
+    `to_s` first (a no-op for `Array[String]`, since `String#to_s` is
+    `self`) because Go generics can't pass a generic `Array[E]` where
+    `Array[String]` is wanted ([example 63](examples/63_abbrev/main.rb)).
