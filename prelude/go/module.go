@@ -129,14 +129,3 @@ func rbIsInstanceOf(k, v any) bool {
 	}
 	return t._IsInstance(v)
 }
-
-// rbClassIn reports whether v's class is one of names: an _IsInstance test.
-func rbClassIn(v any, names ...string) bool {
-	return slices.Contains(names, rbClassName(rbUnbox(v)))
-}
-
-// rbIsClassObject is Class === v (a class object) or Module === v (any class or module object).
-func rbIsClassObject(v any, class bool) bool {
-	m, ok := rbUnbox(v).(rbModule)
-	return ok && (!class || m._Kind() == "class")
-}

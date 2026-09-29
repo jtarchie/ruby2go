@@ -38,8 +38,17 @@ linters:
     - perfsprint
     - prealloc
     - gosec
+    - depguard
 
   settings:
+    depguard:
+      rules:
+        # Generated programs are compiled Ruby: class names, is_a? and the like
+        # come from generated class metadata, never from reflect (decision 82).
+        compiled:
+          deny:
+            - pkg: reflect
+              desc: generated programs use generated class metadata, not reflect (decision 82)
     gocritic:
       disabled-checks:
         # `//line` directives have no space after `//` by definition.

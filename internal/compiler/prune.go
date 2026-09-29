@@ -24,6 +24,8 @@ type pruneMethod struct {
 // is kept and its name is selected. A method whose name a kept interface declares but no kept code
 // selects is kept as a stub (its body a panic, not visited): Go calls methods only through
 // selectors, so nothing can run it, but its type still has to satisfy the interface.
+// A type switch's case of one concrete type names it weakly: a case whose type nothing else keeps can never match
+// (no value of such a type can exist), so it is dropped, body and all, rather than keeping them.
 type pruner struct {
 	byName      map[string][]ast.Node     // funcs, type specs and value specs by declared name
 	constBlock  map[ast.Node]*ast.GenDecl // an iota block stays whole: its specs repeat the one before
@@ -34,12 +36,13 @@ type pruner struct {
 	methodNames map[string]bool // selectors used by kept code, and methods the standard library calls
 	declared    map[string]bool // methods declared by kept interfaces
 	stubs       map[*ast.FuncDecl]bool
+	pending     map[*ast.CaseClause][]string // type-switch cases waiting for their declared type names to be kept
 	queue       []ast.Node
 }
 
 // pruneDecls drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps.
 func pruneDecls(f *ast.File) {
-	p := &pruner{byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, stubs: map[*ast.FuncDecl]bool{}}
+	p := &pruner{byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
 	for n := range stdMethodNames {
 		p.methodNames[n] = true
 	}
@@ -54,6 +57,12 @@ func pruneDecls(f *ast.File) {
 			n := p.queue[len(p.queue)-1]
 			p.queue = p.queue[:len(p.queue)-1]
 			ast.Inspect(n, p.visit)
+		}
+		for cc, names := range p.pending {
+			if !slices.ContainsFunc(names, func(n string) bool { return !p.names[n] }) {
+				delete(p.pending, cc)
+				p.queue = append(p.queue, cc)
+			}
 		}
 		for _, m := range p.methods {
 			if !p.names[m.recv] {
@@ -125,6 +134,22 @@ func (p *pruner) keep(n ast.Node) {
 
 func (p *pruner) visit(x ast.Node) bool {
 	switch x := x.(type) {
+	case *ast.TypeSwitchStmt:
+		if x.Init != nil {
+			ast.Inspect(x.Init, p.visit)
+		}
+		ast.Inspect(x.Assign, p.visit)
+		for _, st := range x.Body.List {
+			cc := st.(*ast.CaseClause)
+			// only a single concrete type: narrowing `case A, B:` would change its variable's type,
+			// and values implementing an interface exist without anything naming the interface
+			if names := p.caseTypeNames(cc); len(cc.List) == 1 && !p.isInterface(cc.List[0]) && len(names) > 0 {
+				p.pending[cc] = names // visited once every name is kept
+				continue
+			}
+			ast.Inspect(cc, p.visit)
+		}
+		return false
 	case *ast.Ident:
 		if !p.names[x.Name] {
 			p.names[x.Name] = true
@@ -144,8 +169,74 @@ func (p *pruner) visit(x ast.Node) bool {
 	return true
 }
 
+// isInterface reports whether type expression e is an interface: a literal, or a declared interface type.
+func (p *pruner) isInterface(e ast.Expr) bool {
+	switch x := e.(type) {
+	case *ast.InterfaceType:
+		return true
+	case *ast.IndexExpr:
+		return p.isInterface(x.X)
+	case *ast.IndexListExpr:
+		return p.isInterface(x.X)
+	case *ast.Ident:
+		for _, d := range p.byName[x.Name] {
+			if ts, ok := d.(*ast.TypeSpec); ok {
+				if _, iface := ts.Type.(*ast.InterfaceType); iface {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// dropDeadCases removes the cases whose type nothing kept. The closing brace
+// moves up to the last case left (else the printer keeps the gap as blank
+// lines), and a switch left with no case drops its variable (else Go reports
+// it unused).
+func (p *pruner) dropDeadCases(ts *ast.TypeSwitchStmt) {
+	n := len(ts.Body.List)
+	ts.Body.List = slices.DeleteFunc(ts.Body.List, func(st ast.Stmt) bool {
+		_, dead := p.pending[st.(*ast.CaseClause)]
+		return dead
+	})
+	if len(ts.Body.List) == n {
+		return
+	}
+	if len(ts.Body.List) == 0 {
+		ts.Body.Rbrace = ts.Body.Lbrace + 1
+		if as, ok := ts.Assign.(*ast.AssignStmt); ok {
+			ts.Assign = &ast.ExprStmt{X: as.Rhs[0]}
+		}
+		return
+	}
+	ts.Body.Rbrace = ts.Body.List[len(ts.Body.List)-1].End()
+}
+
+// caseTypeNames lists the declared names a type-switch case's types use that kept code has not named yet.
+func (p *pruner) caseTypeNames(cc *ast.CaseClause) []string {
+	var out []string
+	for _, e := range cc.List {
+		ast.Inspect(e, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && len(p.byName[id.Name]) > 0 && !p.names[id.Name] && !slices.Contains(out, id.Name) {
+				out = append(out, id.Name)
+			}
+			return true
+		})
+	}
+	return out
+}
+
 // sweep deletes unkept declarations and the comments (//line directives included) no longer inside one; a stub's body becomes a panic.
 func (p *pruner) sweep(f *ast.File) {
+	for _, d := range f.Decls {
+		ast.Inspect(d, func(n ast.Node) bool {
+			if ts, ok := n.(*ast.TypeSwitchStmt); ok {
+				p.dropDeadCases(ts)
+			}
+			return true
+		})
+	}
 	var dropped [][2]token.Pos // deleted declarations: their comments go
 	f.Decls = slices.DeleteFunc(f.Decls, func(d ast.Decl) bool {
 		span := [2]token.Pos{declStart(d), d.End()} // before the specs go: a GenDecl's End reads its last spec

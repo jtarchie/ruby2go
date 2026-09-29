@@ -148,8 +148,8 @@ var rbExitStatusNow atomic.Int64
 
 // rbObjectID is Kernel#object_id: a pointer's address, else the value's hash.
 func rbObjectID(a any) Integer {
-	if v := reflect.ValueOf(a); v.Kind() == reflect.Pointer {
-		return Integer(v.Pointer() >> 3) //nolint:gosec // an id, not arithmetic
+	if _, ok := a.(interface{ _Ref() }); ok {
+		return Integer(maphash.Comparable(rbHashSeed, a) >> 2) //nolint:gosec // an id, not arithmetic
 	}
 	return rbHash(a) & (1<<62 - 1)
 }
@@ -256,17 +256,19 @@ func rbToS(a any) String {
 // rbObjToS is Kernel#to_s; only heap objects have an address to show.
 func rbObjToS(a any) String {
 	s := "#<" + rbClassName(a)
-	if v := reflect.ValueOf(a); v.Kind() == reflect.Pointer {
-		s += fmt.Sprintf(":0x%016x", v.Pointer())
+	if _, ok := a.(interface{ _Ref() }); ok {
+		addr := strings.TrimPrefix(fmt.Sprintf("%p", a), "0x") // %p is a pointer's address
+		s += ":0x" + strings.Repeat("0", max(16-len(addr), 0)) + addr
 	}
 	return String(s + ">")
 }
 
 // rbIvar feeds Kernel#inspect; !opt means nil was never assigned, which MRI doesn't list.
 type rbIvar struct {
-	name string
-	val  any
-	opt  bool
+	name  string
+	val   any
+	opt   bool
+	isNil bool // a nil pointer or interface, decided from the field's type when _Ivars is generated
 }
 
 // rbObjInspect is Kernel#inspect; rbInspectEnter gives MRI's "..." for an object that holds itself.
@@ -284,7 +286,7 @@ func rbObjInspect(a any) String {
 	defer rbInspectLeave(a)
 	sep := " "
 	for _, iv := range o._Ivars() {
-		if !iv.opt && (iv.val == nil || rbNilPtr(iv.val)) {
+		if !iv.opt && (iv.val == nil || iv.isNil) {
 			continue
 		}
 		b.WriteString(sep + iv.name + "=")
@@ -296,11 +298,6 @@ func rbObjInspect(a any) String {
 		}
 	}
 	return String(b.String() + ">")
-}
-
-func rbNilPtr(a any) bool {
-	v := reflect.ValueOf(a)
-	return v.Kind() == reflect.Pointer && v.IsNil()
 }
 
 func rbInspect(a any) String {
@@ -429,28 +426,6 @@ func rbHash(a any) Integer {
 	return Integer(rbKeyHash(a))
 }
 
-// rbKeyUnbox returns what a T? box holds, for any box (the generated
-// rbUnbox knows only the T? types the program renders; a prelude generic
-// can make others). Boxes point at values (named basic types, tuples,
-// interfaces, pointers); pointers to other structs, and to slices and
-// maps, are objects.
-func rbKeyUnbox(k any) (any, bool) {
-	t := reflect.TypeOf(k)
-	if t == nil || t.Kind() != reflect.Pointer {
-		return nil, false
-	}
-	e := t.Elem()
-	if kind := e.Kind(); kind == reflect.Slice || kind == reflect.Map || kind == reflect.Struct && !e.Implements(rbPlainType) {
-		return nil, false
-	}
-	v := reflect.ValueOf(k)
-	if v.IsNil() {
-		return nil, true
-	}
-	return v.Elem().Interface(), true
-}
-
-var rbPlainType = reflect.TypeFor[interface{ rbPlain() bool }]()
 
 // rbCmp is <=> for sort, min and max. Typed values have Op_cmp(T);
 // T? boxes compare their values (rbCmpBox); untyped ones (T is any) go
@@ -570,24 +545,31 @@ func rbSplat[T, E any](s []T, conv func(T) E) []E {
 }
 
 func rbClassName(a any) string {
-	if a == nil {
-		return "NilClass"
+	if id := rbClassID(a); id >= 0 {
+		return rbClassNames[id]
 	}
-	if b, ok := a.(Boolean); ok {
-		return map[Boolean]string{true: "TrueClass", false: "FalseClass"}[b]
+	return "Object" // a Go value behind a prelude ivar
+}
+
+// rbClassID is the generated ID of a's class (decision 82): nil and procs
+// by value, a T? box by what it holds, anything else by its _ClassID.
+func rbClassID(a any) int {
+	switch v := rbUnbox(a).(type) {
+	case nil:
+		return rbNilClassID
+	case interface{ _ClassID() int }:
+		return v._ClassID()
 	}
-	t := reflect.TypeOf(a)
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
+	if rbIsProc(a) {
+		return rbProcClassID
 	}
-	name := t.Name()
-	if i := strings.IndexByte(name, '['); i >= 0 {
-		name = name[:i]
-	}
-	if ruby, ok := rbRubyNames[name]; ok {
-		return ruby
-	}
-	return name
+	return -1
+}
+
+// rbKindOf is is_a?(target) by ID: target is among a's class's ancestors.
+func rbKindOf(a any, target int) bool {
+	id := rbClassID(a)
+	return id >= 0 && slices.Contains(rbAncestry[id], target)
 }
 
 // rbWrapPanic converts Go runtime panics into Ruby exceptions so a

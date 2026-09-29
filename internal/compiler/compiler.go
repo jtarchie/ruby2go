@@ -49,7 +49,10 @@ type Compiler struct {
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
 	// tuple arities used, so their types get emitted
-	tupleN map[int]bool
+	tupleN    map[int]bool
+	procTypes map[string]bool // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	argBoxes  map[string]bool // T? boxes of generic type arguments, which generic code may hold
+	classIDs  map[*Class]int  // index in classList: the class's ID in the generated tables
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes map[string]bool
@@ -110,7 +113,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 		return nil, fmt.Errorf("prism: %w", err)
 	}
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")

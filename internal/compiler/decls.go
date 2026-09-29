@@ -29,6 +29,7 @@ func (c *Compiler) goType(t Type) string {
 			name := cls.Name
 			if len(t.Args) > 0 {
 				name += "[" + c.goTypes(t.Args) + "]"
+				c.noteArgBoxes(t.Args)
 			}
 			if cls.mutable() {
 				return "*" + name
@@ -57,6 +58,10 @@ func (c *Compiler) goType(t Type) string {
 			s += " " + c.goType(t.Ret)
 		}
 		if t.Proc {
+			var vars []string
+			if freeVars(t, &vars); len(vars) == 0 {
+				c.procTypes["*"+s] = true
+			}
 			return "*" + s
 		}
 		return s
@@ -272,13 +277,13 @@ func (c *Compiler) emitProgram() {
 		c.emitConst(k)
 	}
 
-	c.emitRubyNames()
 	c.emitMain()
 	c.noteUserToJson()
 	c.emitDynamic()
 	c.emitClassOf()
 	c.emitTuples()
 	c.emitBoxes()
+	c.emitClassMeta()
 	// last: every body, main included, has registered its literals by now
 	for _, r := range c.regexps {
 		c.w("%s\n\n", r)
@@ -599,11 +604,21 @@ func (c *Compiler) emitIvarList(cls *Class) {
 	}
 	var ivs []string
 	for _, iv := range c.ivarOrder(cls) {
-		val, opt := "self."+goFieldName(iv.Name), isAny(iv.Type)
-		if isOpt(iv.Type) {
+		field := "self." + goFieldName(iv.Name)
+		val, opt, isNilCode := field, isAny(iv.Type), "false"
+		switch t := iv.Type.(type) {
+		case TOpt:
 			val, opt = "Opt("+val+")", true
+		case TFunc:
+			isNilCode = field + " == nil"
+		case TVar:
+			isNilCode = "rbUnbox(any(" + field + ")) == nil"
+		case TClass:
+			if t.C.isStruct() || t.C.mutable() { // an interface or a pointer
+				isNilCode = field + " == nil"
+			}
 		}
-		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t}", iv.Name, val, opt))
+		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
 	}
 	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
 }
@@ -984,15 +999,24 @@ func (c *Compiler) emitTuples() {
 // method set. Only concrete T? types rendered somewhere can reach them.
 func (c *Compiler) emitBoxes() {
 	boxes := slices.Sorted(maps.Keys(c.boxes))
+	all := maps.Clone(c.argBoxes)
+	maps.Copy(all, c.boxes)
+	unbox := slices.Sorted(maps.Keys(all))
 	c.w("func rbUnbox(a any) any {\n\tswitch v := a.(type) {\n")
-	for _, b := range boxes {
-		if c.boxes[b] {
+	for _, b := range unbox {
+		if all[b] {
 			c.w("\tcase %s:\n\t\treturn rbUnbox(Opt(v))\n", b)
 		} else {
 			c.w("\tcase %s:\n\t\treturn Opt(v)\n", b)
 		}
 	}
 	c.w("\t}\n\treturn a\n}\n\n")
+	// rbKeyUnbox opens one level of a box used as a Hash key or in uniq/tally, which match by what it holds
+	c.w("func rbKeyUnbox(k any) (any, bool) {\n\tswitch v := k.(type) {\n")
+	for _, b := range unbox {
+		c.w("\tcase %s:\n\t\treturn Opt(v), true\n", b)
+	}
+	c.w("\t}\n\treturn nil, false\n}\n\n")
 	c.w("func rbCmpBox(a, b any) Integer {\n\tswitch v := a.(type) {\n")
 	for _, b := range boxes {
 		c.w("\tcase %s:\n\t\treturn rbCmpOpt(v, b.(%s))\n", b, b)
@@ -1133,6 +1157,9 @@ func (c *Compiler) emitConstTable(cls *Class) {
 	}
 	c.w("func (self *%s) _Kind() string { return %q }\n\n", cls.Name, kind)
 	c.w("func (self *%s) _IsInstance(v any) bool { return %s }\n\n", cls.Name, c.isInstanceTest(desc))
+	if desc != nil {
+		c.w("func (self *%s) _DescID() int { return %d }\n\n", cls.Name, c.classID(desc))
+	}
 	c.emitMethodTable(cls, desc)
 	if desc == nil {
 		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
@@ -1174,41 +1201,110 @@ func (c *Compiler) emitMethodTable(cls, desc *Class) {
 }
 
 // isInstanceTest is Module#=== for desc's class object, over an untyped v:
-// the run-time half of is_a? (decision 76). It compares v's class name
-// with desc's and its subclasses' (for a module, its includers'), since a
-// module has no run-time record of its includers. Names, not Go types:
-// naming a type here would keep every class in every program (decision 49).
+// the run-time half of is_a? (decision 76), a lookup in the generated
+// ancestry table by class ID (decision 82).
 func (c *Compiler) isInstanceTest(desc *Class) string {
 	switch {
 	case desc == nil:
 		return "false"
 	case desc.universal:
 		return "true"
-	case desc.RubyName == "Proc":
-		return "rbIsProc(v)"
-	case desc.RubyName == "Module" || desc.RubyName == "Class":
-		return fmt.Sprintf("rbIsClassObject(v, %t)", desc.RubyName == "Class")
 	}
-	var names []string
-	for _, k := range c.classList {
-		if !k.IsModule && k.metaOf == nil && k.isSubclassOf(desc) {
-			names = append(names, strconv.Quote(k.RubyName))
-		}
-	}
-	if len(names) == 0 {
-		return "false"
-	}
-	return "rbClassIn(v, " + strings.Join(names, ", ") + ")"
+	return fmt.Sprintf("rbKindOf(v, %d)", c.classID(desc))
 }
 
-// emitRubyNames maps Go type names back to Ruby constant paths for the
-// classes whose names differ (namespaced ones), for messages and #inspect.
-func (c *Compiler) emitRubyNames() {
-	c.w("var rbRubyNames = map[string]string{\n\t\"Tuple2\": \"Array\",\n\t\"Tuple3\": \"Array\",\n")
+// emitClassMeta gives every Go type that holds a Ruby value its class ID,
+// and the program the tables they index: names, and ancestors (the class,
+// its superclasses, and every module they include). Class names, is_a? on a
+// class value and Module#=== read these instead of reflect (decision 82).
+// Each piece is kept only where selected (decision 49).
+func (c *Compiler) emitClassMeta() {
+	id := func(name string) int { return c.classID(c.classes[name]) }
+	c.w("const (\n\trbNilClassID = %d\n\trbProcClassID = %d\n)\n\n", id("NilClass"), id("Proc"))
+	names := make([]string, 0, len(c.classList))
+	ancestry := make([]string, 0, len(c.classList))
 	for _, cls := range c.classList {
-		if cls.Name != cls.RubyName {
-			c.w("\t%q: %q,\n", cls.Name, cls.RubyName)
+		names = append(names, strconv.Quote(cls.RubyName))
+		var ids []string
+		for _, k := range c.classList {
+			if !k.universal && cls.isSubclassOf(k) {
+				ids = append(ids, strconv.Itoa(c.classID(k)))
+			}
+		}
+		ancestry = append(ancestry, "{"+strings.Join(ids, ", ")+"}")
+		c.emitClassID(cls)
+	}
+	c.w("var rbClassNames = [...]string{%s}\n\n", strings.Join(names, ", "))
+	c.w("var rbAncestry = [...][]int{%s}\n\n", strings.Join(ancestry, ", "))
+	array := c.classID(c.classes["Array"])
+	for n := 2; n <= 3; n++ {
+		if c.tupleN[n] {
+			tps := make([]string, n)
+			for i := range n {
+				tps[i] = fmt.Sprintf("T%d", i)
+			}
+			c.w("func (Tuple%d[%s]) _ClassID() int { return %d }\n\n", n, strings.Join(tps, ", "), array)
 		}
 	}
-	c.w("}\n\n")
+	// func types carry no methods: a type switch over those the program renders
+	c.w("func rbIsProc(a any) bool {\n")
+	if procs := slices.Sorted(maps.Keys(c.procTypes)); len(procs) > 0 {
+		c.w("\tswitch a.(type) {\n")
+		for _, p := range procs { // one case each, so the pruner can drop the unused (decision 49)
+			c.w("\tcase %s:\n\t\treturn true\n", p)
+		}
+		c.w("\t}\n")
+	}
+	c.w("\treturn false\n}\n\n")
 }
+
+// emitClassID emits cls's _ClassID, and the _Ref marker where its values
+// are pointers, whose address is their identity (#inspect, object_id).
+func (c *Compiler) emitClassID(cls *Class) {
+	if cls.IsModule || cls.universal || cls.GoType == "" && !cls.isStruct() {
+		return
+	}
+	recv := c.recvType(cls)
+	if cls == c.classes["Boolean"] { // a metaclass shares its class's RubyName, so compare the class itself
+		c.w("func (self Boolean) _ClassID() int {\n\tif self {\n\t\treturn %d\n\t}\n\treturn %d\n}\n\n",
+			c.classID(c.classes["TrueClass"]), c.classID(c.classes["FalseClass"]))
+		return
+	}
+	c.w("func (self %s) _ClassID() int { return %d }\n\n", recv, c.classID(cls))
+	if strings.HasPrefix(recv, "*") {
+		c.w("func (self %s) _Ref() {}\n\n", recv)
+	}
+}
+
+// classID is cls's index in the class list: its ID in the generated tables.
+func (c *Compiler) classID(cls *Class) int {
+	if cls == nil {
+		return -1
+	}
+	if c.classIDs == nil {
+		c.classIDs = make(map[*Class]int, len(c.classList))
+		for i, k := range c.classList {
+			c.classIDs[k] = i
+		}
+	}
+	return c.classIDs[cls]
+}
+
+// noteArgBoxes records a T? box for each concrete type argument: generic code may hold E? (*E) of it.
+func (c *Compiler) noteArgBoxes(args []Type) {
+	for _, a := range args {
+		var vars []string
+		if freeVars(a, &vars); len(vars) > 0 {
+			continue
+		}
+		switch a.(type) {
+		case TFunc, TAny, TVoid:
+			continue
+		}
+		if isNil(a) {
+			continue
+		}
+		c.argBoxes["*"+c.goType(a)] = isOpt(a)
+	}
+}
+

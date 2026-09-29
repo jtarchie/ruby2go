@@ -41,9 +41,12 @@ module Kernel
   #: () -> Integer
   def object_id = %x{ return rbObjectID(self) }
 
-  # Exact class, unlike is_a?; matched by name (decision 76).
+  # Exact class, unlike is_a?: the generated class IDs are equal (decision 82).
   #: (Module) -> bool
-  def instance_of?(klass) = %x{ Boolean(rbClassName(self) == string(klass.Name())) }
+  def instance_of?(klass) = %x{
+    d, ok := any(klass).(interface{ _DescID() int })
+    return Boolean(ok && rbClassID(self) == d._DescID())
+  }
 
   # Objects, Array, Hash and Struct values are mutable; frozen classes override.
   #: () -> bool

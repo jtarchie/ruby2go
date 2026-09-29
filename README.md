@@ -1261,6 +1261,15 @@ resolve; anything not listed is still open.
     out of generated interfaces: class-object tables (`_Consts`,
     `_Methods`, `_IsInstance`) are asked for through interfaces declared
     at their use (`rbConstTable`, `rbInstanceTest`), never by `ModuleI`.
+    *Amended:* a type-switch case of one concrete type names that type
+    weakly: if nothing else keeps it, no value of it can exist, so the case
+    (body and all) is dropped instead of keeping the type. That lets the
+    generated switches over every box and Proc type (`rbUnbox`,
+    `rbKeyUnbox`, `rbCmpBox`, `rbIsProc`) list everything the compiler saw
+    and still cost a program only the types it uses. Interface cases stay
+    strong (values implement an interface without naming it), and so do
+    cases listing several types (narrowing them would change the case
+    variable's type). `puts 1` is 2.7k lines.
 
 50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
     or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
@@ -1830,17 +1839,14 @@ resolve; anything not listed is still open.
     ([testdata/run/control_at_exit.rb](testdata/run/control_at_exit.rb)).
 76. Class values at run time. Every class object gets a generated
     `_IsInstance(any) bool` (next to decision 28's constant table), the
-    run-time half of `is_a?`: it compares the value's class name
-    (`rbClassName`) with the names of the class and its subclasses; for a
-    module, of the classes that include it, since there is no other
-    run-time record of includers (decision 21's static check still errors
-    where the static type can't decide). Names rather than Go type
-    assertions, because naming a type would keep it, and so every class,
-    in every build (decision 49). On it:
+    run-time half of `is_a?`: it looks the class up in the value's class
+    ancestry by ID (decision 82); for a module, that ancestry is where its
+    includers are recorded (decision 21's static check still errors where
+    the static type can't decide). On it:
     `Module#===` (so `when k` with a class value works),
     `x.is_a?(k)`/`kind_of?(k)` where `k` is a `singleton(C)`/`Module`
     value or untyped (a TypeError "class or module required" otherwise),
-    and `Kernel#instance_of?(k)` by class name. `rescue k`/
+    and `Kernel#instance_of?(k)` by class ID. `rescue k`/
     `rescue *list` with class values stay unsupported: rescue a common
     ancestor and test `k === e`, re-raising on no match
     ([testdata/run/dynamic_is_a.rb](testdata/run/dynamic_is_a.rb)).
@@ -1945,3 +1951,34 @@ resolve; anything not listed is still open.
     world), three builds instead of sixteen. What tests output itself
     (`puts`/`print`/`p` formatting, exit status, an uncaught crash) stays
     print-and-compare in `testdata/run`, as do `# skip:` known failures.
+82. Generated programs never use `reflect` (the Go package for inspecting
+    types while a program runs): rb2go compiles Ruby, so what MRI asks its
+    object model while running, the compiler writes out as class metadata.
+    - **Class IDs.** Each class's ID is its position in the class list.
+      Every Go type that holds Ruby values gets a generated `_ClassID()`:
+      struct classes, metaclasses, `@go_type` classes, generics and
+      tuples (`Array`'s). `Boolean`'s answers `TrueClass` or `FalseClass`
+      by value.
+    - **Tables.** `rbClassNames` holds the names. `rbAncestry` lists each
+      class's ancestors: itself, its superclasses, and every module they
+      include.
+    - **Readers.** `rbClassName`, `is_a?`/`kind_of?`/`instance_of?` with
+      a class value, and `Module#===` read these tables (`rbClassID`,
+      `rbKindOf`). A class object's `_DescID` names the class it describes.
+    - **Values that can't carry methods.** nil and Go func types can't
+      have methods, so nil is `NilClass` by value, and Procs are
+      recognized by a generated type switch over every Proc type the
+      program uses (`rbIsProc`).
+    - **Boxes.** A `T?` box is opened by the generated `rbUnbox`/
+      `rbKeyUnbox` switches. They cover every box type rendered, plus a
+      box of each concrete type argument of a generic, since generic code
+      may hold `E?`.
+    - **Identity.** Classes whose values are pointers get a `_Ref()`
+      marker: `#inspect` prints the pointer's address (`%p`), and
+      `object_id` hashes it. No `unsafe` either. `_Ivars` records whether each field is
+      nil, decided from the field's type when it is generated.
+    - **Enforcement.** `reflect` is out of the import table
+      (`format.go`), so a prelude helper that uses it doesn't compile, and
+      `.golangci.generated.yml`'s depguard denies it.
+    - **Remaining gap.** A Go value held in a prelude ivar has no class,
+      and prints as `Object`.
