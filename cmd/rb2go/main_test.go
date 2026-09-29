@@ -2,13 +2,13 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 )
 
 func TestBuildAndRun(t *testing.T) {
@@ -46,7 +46,7 @@ func TestBuildAndRun(t *testing.T) {
 func TestSignalFlushes(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "spin.rb")
-	err := os.WriteFile(src, []byte("print \"x\"\ni = 0\nwhile true\n  i += 1\nend\n"), 0o600)
+	err := os.WriteFile(src, []byte("print \"x\"\n$stderr.puts \"ready\"\ni = 0\nwhile true\n  i += 1\nend\n"), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,11 +60,19 @@ func TestSignalFlushes(t *testing.T) {
 		var out strings.Builder
 		cmd := exec.CommandContext(t.Context(), bin) //nolint:gosec // built above
 		cmd.Stdout = &out
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
 		err = cmd.Start()
 		if err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(time.Second) // ponytail: a startup race under load; a readiness signal needs stderr or File support
+		ready := make([]byte, 6) // wait for the child's own readiness signal instead of a fixed sleep, which raced under load
+		_, err = io.ReadFull(stderr, ready)
+		if err != nil {
+			t.Fatal(err)
+		}
 		_ = cmd.Process.Signal(sig)
 		err = cmd.Wait()
 		// MRI flushes buffered output, then dies by the signal.
