@@ -1229,7 +1229,18 @@ resolve; anything not listed is still open.
     format into a Go layout, so literal text that spells a Go layout
     token is misread, and a directive without a Go twin fails to parse.
     `Time#httpdate`/`rfc2822` format, and `Benchmark.realtime` times a
-    block ([example 48](examples/48_time_parse/main.rb)).
+    block ([example 48](examples/48_time_parse/main.rb)). `Benchmark.measure`
+    and `Tms` (`utime`/`stime`/`cutime`/`cstime`/`real`/`total`/`label`,
+    `+`/`-`/`*`/`/`, `format`/`to_s`/`to_a`) read CPU time from
+    `syscall.Getrusage` (`RUSAGE_SELF`/`RUSAGE_CHILDREN`), microsecond
+    granularity, coarser than MRI's. `Benchmark.bm`/`bmbm` print MRI's exact
+    `CAPTION`/`FORMAT`; `bmbm` runs a rehearsal pass, `GC.start`s between
+    reports in the real pass as MRI's, but Go's GC is not MRI's generational
+    one, so the pass evens out allocation load only approximately. Storing a
+    named `&block` parameter is a compile error (decision 29), so `bmbm`'s
+    `Job` (the object its block registers reports on) keeps its deferred
+    blocks in a raw Go slice behind `%x{}`, not as Ruby-visible Procs; `bm`'s
+    `Report` needs no such escape, since it measures each report immediately.
 53. `CSV` covers strings and files: `parse`/`parse_line`/`String#parse_csv`
     return `Array[Array[String?]]` (an empty unquoted field is nil, a
     quoted one `""`, a blank line `[]`), and `generate_line`/
