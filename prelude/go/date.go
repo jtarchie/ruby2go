@@ -144,3 +144,47 @@ func rbDateStrptime(s, format string) (y, m, d int, ok bool) {
 	}
 	return y, m, d, true
 }
+
+// rbEras are the JIS X 0301 Japanese era codes, most recent first, each with its first Gregorian day and the year it calls 1.
+var rbEras = []struct {
+	y, m, d  int
+	code     byte
+	yearBase int
+}{
+	{2019, 5, 1, 'R', 2019},
+	{1989, 1, 8, 'H', 1989},
+	{1926, 12, 25, 'S', 1926},
+	{1912, 7, 30, 'T', 1912},
+	{1873, 1, 1, 'M', 1868}, // Japan adopted the Gregorian calendar in Meiji 6; MRI's jisx0301 has no Meiji dates before it
+}
+
+// rbJISX0301 is jd's JIS X 0301 date, or plain ISO before the Meiji era (as MRI's).
+func rbJISX0301(jd int) string {
+	t := rbJDTime(jd)
+	for _, e := range rbEras {
+		if start, ok := rbCivilJD(e.y, e.m, e.d); ok && jd >= start {
+			return fmt.Sprintf("%c%02d.%02d.%02d", e.code, t.Year()-e.yearBase+1, int(t.Month()), t.Day())
+		}
+	}
+	return rbStrftime(t, "%Y-%m-%d", true)
+}
+
+var rbJISX0301Re = regexp.MustCompile(`^([MTSHR])(\d{2})\.(\d{2})\.(\d{2})$`)
+
+// rbJISX0301Parse reads a JIS X 0301 date, or falls back to rbDateParse's ISO shape.
+func rbJISX0301Parse(s string) (y, m, d int, ok bool) {
+	g := rbJISX0301Re.FindStringSubmatch(s)
+	if g == nil {
+		return rbDateParse(s)
+	}
+	for _, e := range rbEras {
+		if e.code != g[1][0] {
+			continue
+		}
+		yy, _ := strconv.Atoi(g[2])
+		mm, _ := strconv.Atoi(g[3])
+		dd, _ := strconv.Atoi(g[4])
+		return e.yearBase + yy - 1, mm, dd, true
+	}
+	return 0, 0, 0, false
+}

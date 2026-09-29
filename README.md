@@ -1087,7 +1087,14 @@ resolve; anything not listed is still open.
     of MRI's heuristics; `strptime` reads date fields only. `d - d2` is a
     Rational, `d ± n` a Date, `>>`/`<<` clamp to the month's end, and a
     Range of Dates iterates, since Range iterates anything with `succ`.
-    `strftime`'s `%Z` prints `UTC` where MRI's Date prints `+00:00`
+    `strftime`'s `%Z` prints `UTC` where MRI's Date prints `+00:00`.
+    `httpdate`/`rfc3339` format (and `Date.httpdate`/`rfc3339` parse
+    through `Date.parse`, which already reads both shapes) at midnight
+    UTC, since a Date has no time of day. `jisx0301` prints MRI's Japanese
+    era code (`M`/`T`/`S`/`H`/`R` + 2-digit era year) for a date on or
+    after Meiji 6 (1873-01-01, when Japan adopted the Gregorian calendar;
+    MRI's own table has no era code before it), plain ISO otherwise;
+    `Date.jisx0301` parses either shape back
     ([example 39](examples/39_date/main.rb)).
 42. `Complex` is a pointer to `{re, im any}`: each part keeps its class
     (Integer, Rational or Float) and arithmetic follows MRI's rules for
@@ -1119,7 +1126,26 @@ resolve; anything not listed is still open.
     (Array[X]) -> Set[X]`); generic struct classes still may not.
     There is no `Array#to_set`: Go rejects the instantiation cycle
     `Array[E]` → `Set[E]` → `Hash[E, …]` → `Array[[E, …]]` (see decision
-    9); `Set.new(xs)` is the spelling ([example 41](examples/41_set/main.rb)).
+    9); `Set.new(xs)` is the spelling.
+    `Set.new` also takes a `Range`, another `Set` or a `Hash` (as
+    `[key, value]` pairs), not just an `Array`: decision 12's overload
+    mechanism (`__new_<class>`, keyed on the first argument's static
+    class) picks a concretely-typed sibling per source class, so `E` is
+    still inferred with no annotation, same as the plain-`Array` case;
+    this sidesteps the instantiation cycle above since each sibling is
+    its own free function, not a forwarder on the source's own class. An
+    untyped or otherwise-unmatched argument falls back to a duck-typed
+    `self.new` that switches on the source's `_to_any` at run time (every
+    Array/Range/Set/Hash has one) and needs an annotation, since `E` can't
+    be inferred from `untyped`. `Set.new(xs) { |o| ... }` transforms each
+    element (decision 12's block-overload, `__new_block`); its block
+    param is `untyped` (see the `ponytail` note on `__new_block`), so `E`
+    comes from the block's inferred return type or an annotation, not
+    from `xs`. `Set#map!`/`select!`/`reject!` mutate in place
+    (`select!`/`reject!` return `nil` on no change, as `Array`'s do);
+    `classify` groups into a `Hash[U, Set[E]]`, `divide` into a
+    `Set[Set[E]]` (`classify(&block).values`)
+    ([example 41](examples/41_set/main.rb)).
 45. `Mutex`, `ConditionVariable`, `Queue[E]` and `SizedQueue[E]` are Go
     `sync` primitives. `Queue#pop` is `E?`: nil once the queue is closed
     and drained, so `while (job = q.pop)` is the consumer loop (an
@@ -1230,16 +1256,42 @@ resolve; anything not listed is still open.
     `escapeURIComponent`, decoding only the entities MRI does. Keyword
     options arrive as a Hash (decision 23): `urlsafe_encode64(s,
     padding: false)`. `String#ljust`/`rjust`/`center` take a pad string;
-    `String#delete` takes one character set
-    ([example 46](examples/46_digests/main.rb)).
+    `String#delete` takes one character set. `Digest::X.file(path)` reads
+    the whole file (via `File.read`, decision 62) and digests it, raising
+    `File.read`'s `Errno::*` on a bad path; `Digest::Base#==` recomputes
+    and compares each side's current digest bytes (two untouched digests
+    of the same algorithm are equal).
+    `Digest::SHA2.new(bitlen)` picks SHA256/384/512 (default 256),
+    `ArgumentError` on any other length. `Digest.hexencode(str)` is a
+    standalone module function (raw bytes → hex), not on `Digest::Base`.
+    `SecureRandom.uuid_v4` is `uuid` under another name (it was already
+    v4); `uuid_v7` is RFC 9562: a 48-bit unix-ms timestamp, then a version
+    nibble (`7`), 12 random bits, the variant bits (`10`), then 62 more
+    random bits — time-ordered, unlike v4. `SecureRandom.alphanumeric`
+    takes a real MRI keyword, `chars:` (an `Array[String]`, checked
+    against `ruby -rsecurerandom -e 'p SecureRandom.method(:alphanumeric).parameters'`
+    before assuming it existed): picking `n` elements from it, joined:
+    the pool need not be single characters. Passing `chars:` alone,
+    skipping the positional `n` default, is not supported (`n` must be
+    given); MRI itself hangs on `chars: []`, so that case is untested
+    either side ([example 46](examples/46_digests/main.rb)).
 51. `StringScanner` keeps a byte pointer and matches each Regexp against
     the rest of the string, so `^`/`\A` match at the pointer (MRI's default
     `fixed_anchor: false`). `scan`/`skip`/`check`/`match?` use a cached
     `\A(?:…)` twin of the pattern, so a failed attempt costs one try at
     the pointer, not a search; the `_until` forms and `exist?` search.
-    `[]` takes an Integer (no named groups), and only Regexp patterns are
-    accepted. `Shellwords` is MRI's scan loop unrolled by hand (RE2 has no
-    `\G` or atomic groups), with the same `Unmatched quote at N: …`
+    `[]` takes an Integer, and only Regexp patterns are accepted;
+    `named_captures` (a `Hash[String, String?]` from the pattern's
+    `SubexpNames`) and `values_at(*is)` (`is.map { |i| self[i] }`) round
+    out group access. `<<`/`concat` append to the scan buffer without
+    touching the pointer or the last match. `scan_full`/`search_full`
+    take MRI's `(pattern, advance_pointer_p, return_string_p)`: anchored
+    or searching, same as `scan`/`scan_until`, with the pointer move and
+    the string-vs-length result each gated by their own flag, so all four
+    combinations of the two booleans are real call shapes, not just
+    `scan`/`scan_until` with extra steps. `Shellwords` is MRI's scan loop
+    unrolled by hand (RE2 has no `\G` or atomic groups), with the same
+    `Unmatched quote at N: …`
     errors. `Kernel#tap` joins `then`
     ([example 47](examples/47_strscan/main.rb)).
 52. `require "time"`'s parsers are always defined. `Time.iso8601`/

@@ -61,6 +61,21 @@ class Date < Object
   #: (String) -> Date
   def self.iso8601(s) = parse(s)
 
+  #: (String) -> Date
+  def self.rfc3339(s) = parse(s)
+
+  #: (String) -> Date
+  def self.httpdate(s) = parse(s)
+
+  #: (String) -> Date
+  def self.jisx0301(s) = %x{
+    y, m, d, ok := rbJISX0301Parse(string(s))
+    if !ok {
+      panic(NewDate_Error(Ref(String("invalid date"))))
+    }
+    return Date_class.New(Integer(y), Integer(m), Integer(d))
+  }
+
   #: (String, ?String) -> Date
   def self.strptime(s, fmt = "%F") = %x{
     y, m, d, ok := rbDateStrptime(string(s), string(fmt))
@@ -248,6 +263,15 @@ class Date < Object
 
   #: () -> String
   def iso8601 = to_s
+
+  #: () -> String
+  def rfc3339 = strftime("%Y-%m-%dT%H:%M:%S+00:00")
+
+  #: () -> String
+  def httpdate = strftime("%a, %d %b %Y 00:00:00 GMT")
+
+  #: () -> String
+  def jisx0301 = %x{ String(rbJISX0301(self.jd)) }
 
   #: () -> String
   def inspect = "#<Date: #{self} ((#{jd}j,0s,0n),+0s,2299161j)>"

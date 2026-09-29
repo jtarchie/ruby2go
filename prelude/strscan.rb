@@ -7,7 +7,7 @@
 
 # last is the previous pointer (for unscan); mbeg/mend bound the last match
 # (absolute byte offsets); groups is nil after a failed match.
-# @go_type struct { str string; pos int; last int; mbeg int; mend int; groups []*String }
+# @go_type struct { str string; pos int; last int; mbeg int; mend int; groups []*String; names []string }
 class StringScanner < Object
   #: (String) -> StringScanner
   def self.new(s) = %x{ return &StringScanner{str: string(s)} }
@@ -175,6 +175,50 @@ class StringScanner < Object
     out := &Array[*String]{}
     *out = append(*out, self.groups[1:]...)
     return &out
+  }
+
+  #: () -> Hash[String, String?]
+  def named_captures = %x{
+    out := NewHash[String, *String]()
+    if self.groups == nil {
+      return out
+    }
+    for i, name := range self.names {
+      if name != "" {
+        out.Op_idxSet(String(name), self.groups[i])
+      }
+    }
+    return out
+  }
+
+  #: (*Integer) -> Array[String?]
+  def values_at(*indices) = indices.map { |i| self[i] }
+
+  #: (String) -> self
+  def <<(s) = %x{
+    self.str += string(s)
+    return self
+  }
+
+  #: (String) -> self
+  def concat(s) = self << s
+
+  #: (Regexp, bool, bool) -> untyped
+  def scan_full(re, advance_pointer_p, return_string_p) = %x{
+    m := self.do(re, true, bool(advance_pointer_p), true)
+    if !bool(return_string_p) {
+      return Opt(rbScanLen(m, self))
+    }
+    return Opt(m)
+  }
+
+  #: (Regexp, bool, bool) -> untyped
+  def search_full(re, advance_pointer_p, return_string_p) = %x{
+    m := self.do(re, false, bool(advance_pointer_p), true)
+    if !bool(return_string_p) {
+      return Opt(rbScanLen(m, self))
+    }
+    return Opt(m)
   }
 
   #: () -> String
