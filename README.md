@@ -1687,3 +1687,23 @@ resolve; anything not listed is still open.
     `hton`, `ip6_arpa`/`ip6_int`, `ipv4_compat`/`mapped`, `link_local?`/
     `loopback?`/`private?`, `zone_id`, and the in-place `mask!`/`succ!`
     family ([example 59](examples/59_ipaddr/main.rb)).
+70. `Etc` is a small, partial library over `os/user` and `runtime`, per the
+    tracking issue (part of getpwuid): `getlogin` (`os/user.Current`, nil if
+    it fails), `nprocessors` (`runtime.NumCPU`), `systmpdir` (`os.TempDir`,
+    matches MRI on every platform Go's `os.TempDir` covers), and
+    `getpwuid(uid = nil)`/`getpwnam(name)` (`os/user.Current`/`LookupId`/
+    `Lookup`, raising MRI's `ArgumentError` message `"can't find user for
+    <uid-or-name>"`). `Etc::Passwd` keeps MRI's full 10-member order
+    (`name`, `passwd`, `uid`, `gid`, `gecos`, `dir`, `shell`, `change`,
+    `uclass`, `expire`) so `members`/`to_h.keys` match MRI, but only
+    `name`/`uid`/`gid`/`dir` are real (from `os/user.User`'s `Username`/
+    `Uid`/`Gid`/`HomeDir`) and `gecos` is best-effort (Go's `User.Name`,
+    which is only the GECOS field's first comma-separated component, not
+    MRI's full string). `passwd`, `shell`, `change`, `uclass` and `expire`
+    have no `os/user` equivalent on any platform and are always `nil`.
+    `sysconfdir` is Ruby's own `--sysconfdir` configure-time constant, not
+    an OS fact Go's stdlib knows, so it is not implemented; nor is
+    enumerating the whole passwd/group database (`Etc.passwd { }`,
+    `Etc.group { }`, `getpwent`, `getgrent`/`getgrnam`/`getgrgid`), since
+    `os/user` only look up one entry at a time
+    ([example 60](examples/60_etc/main.rb)).
