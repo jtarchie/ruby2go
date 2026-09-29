@@ -264,7 +264,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		return expr{code: f.ivarCode(iv), typ: iv.Type}
 	case *parser.InstanceVariableWriteNode:
 		var exp, ann Type
-		if t := f.f.trailingAnnotation(n); t != "" {
+		if t := f.f.trailingAnnotation(n); t != "" && !isLetFlag(n.Name) {
 			ann = f.parseTypeAnn(n, t)
 			exp = ann
 		} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {

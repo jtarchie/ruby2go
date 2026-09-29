@@ -2036,7 +2036,7 @@ func (c *Compiler) emitSynth(m *Method) {
 	meta := m.Owner
 	cls := meta.metaOf
 	params, ret := c.sig(m, map[string]Type{"Self": TClass{C: cls}})
-	body := fmt.Sprintf("return String(%q)", cls.RubyName)
+	body := fmt.Sprintf("return String(%q)", cls.displayName())
 	if m.Name == "new" {
 		body = "return New" + cls.Name + "(" + c.argNames(m) + ")"
 	}

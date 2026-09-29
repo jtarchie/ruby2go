@@ -1207,6 +1207,9 @@ func (c *Compiler) emitMethodTable(cls, desc *Class) {
 			if m.Private || m.Name == "initialize" || strings.HasPrefix(m.Name, "__") || seen[m.Name] {
 				continue
 			}
+			if desc.specChild && k != desc && strings.HasPrefix(m.Name, "test_") {
+				continue // a nested describe runs only its own tests: MRI undefines the rest (nuke_test_methods!)
+			}
 			seen[m.Name] = true
 			c.w("\t\t{%q, nil, %t},\n", m.Name, k != desc)
 		}
@@ -1238,7 +1241,7 @@ func (c *Compiler) emitClassMeta() {
 	names := make([]string, 0, len(c.classList))
 	ancestry := make([]string, 0, len(c.classList))
 	for _, cls := range c.classList {
-		names = append(names, strconv.Quote(cls.RubyName))
+		names = append(names, strconv.Quote(cls.displayName()))
 		var ids []string
 		for _, k := range c.classList {
 			if !k.universal && cls.isSubclassOf(k) {
@@ -1321,4 +1324,3 @@ func (c *Compiler) noteArgBoxes(args []Type) {
 		c.argBoxes["*"+c.goType(a)] = isOpt(a)
 	}
 }
-

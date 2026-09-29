@@ -44,7 +44,18 @@ type Class struct {
 	valueKind     string    // "struct" or "data"
 	msetCache     []entry
 	selfCallCache map[string]bool
-	slotsLinked   bool // linkOverrides ran
+	slotsLinked   bool   // linkOverrides ran
+	Display       string // the name Ruby shows, when the declaration has none of its own (a describe's class)
+	specChild     bool   // a nested describe's class: MRI undefines the test methods it inherits
+	specTests     int    // its it/specify count, for MRI's test_0001_ names
+}
+
+// displayName is the class's name as Ruby shows it.
+func (c *Class) displayName() string {
+	if c.Display != "" {
+		return c.Display
+	}
+	return c.RubyName
 }
 
 type ivarDecl struct {
@@ -137,6 +148,7 @@ type Method struct {
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
 	quietDynamic   bool // prelude `# @dynamic`: dynamic by design, so no dynamic-call warnings (decision 78)
+	specForm       bool // declared by a Minitest::Spec DSL call, not a def (decision 83)
 }
 
 // root is the topmost struct class of c's hierarchy (below Object).
@@ -346,6 +358,10 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 			}
 			if n.Receiver == nil && n.Name == "require_relative" {
 				c.errorf(f, n, "require_relative is not supported in user code")
+			}
+			if !f.prelude && isDescribe(n) {
+				c.collectDescribe(ctx, f, nil, n)
+				continue
 			}
 			if n.Receiver == nil && n.Name == "require" {
 				// stdlib requires are meaningless here, unless the prelude
@@ -629,6 +645,10 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	case "public":
 		*private = false
 	default:
+		if specForms[n.Name] && !f.prelude {
+			c.collectSpecForm(ctx, f, cls, n, scope)
+			return
+		}
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
 }
@@ -917,6 +937,7 @@ func (c *Compiler) link() {
 		}
 	}
 	c.buildMetas()
+	c.checkSpecUses() // before signatures: a bad let name would otherwise surface as an override mismatch
 	for _, cls := range c.classList {
 		if cls.GoType != "" && cls.Super != nil && cls.Super.isStruct() && !cls.Super.universal {
 			c.errorf(cls.File, nil, "%s:%d: @go_type class %s cannot inherit from struct class %s", cls.File.Name, cls.Line, cls.Name, cls.Super.Name)

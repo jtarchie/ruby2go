@@ -1,0 +1,39 @@
+Minitest::Spec's DSL is compiled (decision 83), so what MRI decides at run time is a compile error here.
+
+-- it_outside_spec.rb --
+# error: main.rb:4: it is Minitest::Spec's DSL: call it in a describe block or a Minitest::Spec subclass
+require "minitest/autorun"
+class Foo
+  it("x") { nil }
+end
+-- let_test_prefix.rb --
+# error: main.rb:4: let 'test_it' cannot begin with 'test'. Please use another name.
+require "minitest/autorun"
+describe "x" do
+  let(:test_it) { 1 }
+end
+-- let_overrides_spec_method.rb --
+# error: main.rb:4: let 'name' cannot override a method in Minitest::Spec. Please use another name.
+require "minitest/autorun"
+describe "x" do
+  let(:name) { 1 }
+end
+-- describe_computed_name.rb --
+# error: main.rb:4: describe needs a literal description (a string, symbol or constant)
+require "minitest/autorun"
+n = "x"
+describe n do
+end
+-- describe_body_local.rb --
+# error: main.rb:4: unsupported node in class body: LocalVariableWriteNode
+require "minitest/autorun"
+describe "x" do
+  y = 1
+  it { y }
+end
+-- it_block_params.rb --
+# error: main.rb:4: it's block takes no parameters
+require "minitest/autorun"
+describe "x" do
+  it("a") { |z| z }
+end

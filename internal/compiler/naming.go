@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 )
@@ -57,6 +58,19 @@ func goMethodName(name string) string {
 		b.WriteString(string(r))
 	}
 	b.WriteString(suffix)
+	return goIdent(b.String())
+}
+
+// goIdent escapes what a Go identifier can't hold (a spec's `it "has spaces"` method): each such rune becomes _XX, its code in hex.
+func goIdent(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		fmt.Fprintf(&b, "_%X_", r)
+	}
 	return b.String()
 }
 

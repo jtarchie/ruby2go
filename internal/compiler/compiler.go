@@ -49,10 +49,12 @@ type Compiler struct {
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
 	// tuple arities used, so their types get emitted
-	tupleN    map[int]bool
-	procTypes map[string]bool // Proc Go types rendered (*func(...)), for the generated rbIsProc
-	argBoxes  map[string]bool // T? boxes of generic type arguments, which generic code may hold
-	classIDs  map[*Class]int  // index in classList: the class's ID in the generated tables
+	tupleN      map[int]bool
+	procTypes   map[string]bool // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	argBoxes    map[string]bool // T? boxes of generic type arguments, which generic code may hold
+	classIDs    map[*Class]int  // index in classList: the class's ID in the generated tables
+	specClasses int             // describes declared, for their classes' Go names
+	specUses    []specUse       // Minitest::Spec DSL calls, checked after link
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes map[string]bool

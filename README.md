@@ -1885,8 +1885,8 @@ resolve; anything not listed is still open.
     `Finished in` timings. `require "minitest/autorun"` is a require hook
     (decision 78) calling `Minitest.autorun`, an `at_exit` (decision 75).
     The run order reproduces minitest's `srand(seed); shuffle` with the
-    MT19937 of decision 46, so `Minitest::Spec` is registered (empty) to
-    keep `Runnable.runnables` MRI's length. No `inherited` hook fills the
+    MT19937 of decision 46, so `Minitest::Spec` is registered to keep
+    `Runnable.runnables` MRI's length. No `inherited` hook fills the
     list while the program runs: every class object has a generated
     `_Descendants` list in definition order, the order the hook would
     have seen (classes are declared statically), and `runnables` reads
@@ -1913,7 +1913,7 @@ resolve; anything not listed is still open.
     assertion, as minitest's rule, else the first. rb2go has no
     backtraces yet, so an error's report and `exception_details` print
     `No backtrace` where MRI lists frames: tests that error differ from
-    MRI there. Not ported: `Minitest::Spec`'s `describe`/`it`,
+    MRI there. Spec's DSL is compiled (decision 83). Not ported:
     `assert_output`/`capture_io` (no `$stdout` reassignment),
     `assert_throws`, `assert_pattern`, `parallelize_me!`, class-body
     calls like `i_suck_and_my_tests_are_order_dependent!`, plugins,
@@ -1984,3 +1984,39 @@ resolve; anything not listed is still open.
       `.golangci.generated.yml`'s depguard denies it.
     - **Remaining gap.** A Go value held in a prelude ivar has no class,
       and prints as `Object`.
+83. `Minitest::Spec`'s DSL is compiled, not run. MRI builds specs while
+    the program runs: `describe` makes an anonymous `Class.new(Spec)` and
+    `class_eval`s its block, and `it`/`let`/`before`/`after` call
+    `define_method`. rb2go's closed world has neither, so the compiler
+    does that work and a spec is ordinary classes and methods:
+    - **`describe X do ... end`** (top level, or inside a spec) is a
+      class declaration: a subclass of `Minitest::Spec`, or of the
+      enclosing spec, named as MRI names it (`Stack`,
+      `Stack::when empty`) through a display name, since the class itself
+      is anonymous in MRI. Its block is the class body, so `def` works
+      in it; a local variable doesn't (it would be a class-body local).
+      The description must be a literal string, symbol or constant.
+    - **In a `Minitest::Spec` descendant's body** (`describe` blocks and
+      `class FooSpec < Minitest::Spec` alike):
+      - `it "does x" do ... end` (and `specify`) declares
+        `test_0001_does x`, numbered per class. With no block, it
+        skips "(no tests defined)". The Go method name escapes the
+        characters Go can't hold (`goIdent`).
+      - `before`/`after` declare `setup`/`teardown` calling `super`
+        first/last; the last of each wins, as with `define_method`.
+      - `let(:x) { ... }` and `subject { ... }` declare `x`, memoized
+        per test behind a flag, so `false` and `nil` memoize too. Its
+        type is the block's; a `#:` on the `let` line types it, which a
+        `nil`-only block needs.
+    - **Nesting.** A nested describe inherits the outer's lets, hooks
+      and helpers, but not its tests (MRI's `nuke_test_methods!`).
+    - **Checks at compile time.** The DSL outside a spec, a `let` named
+      `test*` or shadowing a Minitest::Spec method, and a block with
+      parameters are compile errors, with MRI's wording where MRI has
+      one.
+    - **Known difference.** An `it` without a block reports its skip at
+      the user's line, where MRI reports its own `lib/minitest` path.
+
+    Not supported: `register_spec_type`, `describe` with a computed
+    name, and the expectation methods (`_(x).must_equal`), which come
+    next ([testdata/run/minitest_spec.rb](testdata/run/minitest_spec.rb)).
