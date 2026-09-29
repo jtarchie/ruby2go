@@ -61,6 +61,15 @@ class ConditionVariable < Object
     return self
   }
 
+  # 0 once signalled, nil on timeout, as MRI's.
+  #: (Mutex, Float) -> Integer?
+  def __wait_2(m, timeout) = %x{
+    if self.cv.waitTimeout(m, time.Duration(math.Round(float64(timeout)*1e9))) {
+      return Ref(Integer(0))
+    }
+    return nil
+  }
+
   #: () -> self
   def signal = %x{
     self.cv.wake(false)
@@ -78,6 +87,15 @@ end
 # @go_type struct { q *rbQueue[E] }
 class Queue < Object
 
+  # @rbs [X] (Array[X]) -> Queue[X]
+  def self.new(items) = %x{
+    q := &Queue[X]{q: newRbQueue[X](0)}
+    for _, x := range *items {
+      q.q.push(x)
+    }
+    return q
+  }
+
   #: (E) -> self
   def push(x) = %x{
     self.q.push(x)
@@ -94,11 +112,26 @@ class Queue < Object
   #: (?bool) -> E?
   def pop(non_block = false) = %x{ return self.q.pop(bool(non_block)) }
 
+  # `timeout:` from a Hash (decision 23), since keyword params are not supported.
+  #: (Hash[Symbol, Float]) -> E?
+  def __pop_hash(opts) = %x{
+    if t := opts.Op_idx(Symbol("timeout")); t != nil {
+      return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(float64(*t) * 1e9))))
+    }
+    return self.q.pop(false)
+  }
+
   #: (?bool) -> E?
   def shift(non_block = false) = pop(non_block)
 
+  #: (Hash[Symbol, Float]) -> E?
+  def __shift_hash(opts) = __pop_hash(opts)
+
   #: (?bool) -> E?
   def deq(non_block = false) = pop(non_block)
+
+  #: (Hash[Symbol, Float]) -> E?
+  def __deq_hash(opts) = __pop_hash(opts)
 
   #: () -> Integer
   def size = %x{ self.q.size() }
@@ -125,7 +158,7 @@ class Queue < Object
   }
 
   #: () -> Integer
-  def num_waiting = 0
+  def num_waiting = %x{ Integer(self.q.waiting.Load()) }
 
   #: () -> Queue[untyped]
   def _to_any = %x{
@@ -150,6 +183,16 @@ class SizedQueue < Object
   #: () -> Integer
   def max = %x{ Integer(self.q.max) }
 
+  #: (Integer) -> Integer
+  def max=(m)
+    %x{
+    if m <= 0 {
+      panic(NewArgumentError(Ref(String("queue size must be positive"))))
+    }
+    self.q.setMax(int(m))
+    return m}
+  end
+
   #: (E) -> self
   def push(x) = %x{
     self.q.push(x)
@@ -166,11 +209,26 @@ class SizedQueue < Object
   #: (?bool) -> E?
   def pop(non_block = false) = %x{ return self.q.pop(bool(non_block)) }
 
+  # `timeout:` from a Hash (decision 23), since keyword params are not supported.
+  #: (Hash[Symbol, Float]) -> E?
+  def __pop_hash(opts) = %x{
+    if t := opts.Op_idx(Symbol("timeout")); t != nil {
+      return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(float64(*t) * 1e9))))
+    }
+    return self.q.pop(false)
+  }
+
   #: (?bool) -> E?
   def shift(non_block = false) = pop(non_block)
 
+  #: (Hash[Symbol, Float]) -> E?
+  def __shift_hash(opts) = __pop_hash(opts)
+
   #: (?bool) -> E?
   def deq(non_block = false) = pop(non_block)
+
+  #: (Hash[Symbol, Float]) -> E?
+  def __deq_hash(opts) = __pop_hash(opts)
 
   #: () -> Integer
   def size = %x{ self.q.size() }
@@ -197,7 +255,7 @@ class SizedQueue < Object
   }
 
   #: () -> Integer
-  def num_waiting = 0
+  def num_waiting = %x{ Integer(self.q.waiting.Load()) }
 
   #: () -> SizedQueue[untyped]
   def _to_any = %x{

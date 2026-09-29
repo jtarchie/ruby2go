@@ -1131,7 +1131,29 @@ resolve; anything not listed is still open.
     raising, `owned?` is missing (goroutines have no identity), and a
     deadlock is Go's "all goroutines are asleep" rather than MRI's fatal
     error. An iterator called with `&:name` is `{ |x| x.name }`
-    ([example 42](examples/42_queues/main.rb)).
+    ([example 42](examples/42_queues/main.rb)). *(Revised: `Thread.new(1, 2)
+    { |a, b| ... }` forwards up to 3 constructor args into the block, by
+    decision 12's arity overloads (`__new_1`/`__new_2`/`__new_3`).
+    `join(timeout)` is `nil` on timeout, the Thread on success; `value`
+    blocks and re-raises like `join`, but the block stays `-> void` (an
+    arg-forwarding overload's block can end on a void call, and this
+    compiler cannot coerce that to a value type), so `value` is always
+    `nil` rather than the block's actual return. `name`/`name=` read and
+    write an `atomic.Pointer[String]`. `status` is `"run"`, `"aborting"`
+    while unwinding a panic, `false` once finished normally, or `nil` once
+    finished with an unhandled exception; MRI's `"sleep"` is never
+    reported, the same "goroutines have no identity" limit as `owned?`.
+    `ConditionVariable#wait(mutex, timeout)` is `0` once signalled, `nil`
+    on timeout, via a `time.AfterFunc` alongside the existing per-waiter
+    channel. `Queue.new(array)` pre-fills from an Array. `SizedQueue#max=`
+    resizes a running queue and wakes blocked pushers.
+    `Queue#pop(timeout: n)`/`SizedQueue#pop(timeout: n)` (also `shift`,
+    `deq`) take the timeout as a Hash (decision 23), routed by decision
+    12's class-based overload (`__pop_hash`); a real `num_waiting` counts
+    goroutines currently parked in a blocking `push` or `pop`, via an
+    `atomic.Int64` incremented before `cond.Wait()` and decremented after.
+    `Thread.current`, thread-locals and `Monitor`/`MonitorMixin` remain
+    unsupported for the same reason as `owned?`.)*
 46. `Random` is MRI's MT19937 seeded as MRI seeds it (one 32-bit word
     through `init_genrand`, more through `init_by_array`), and `rand(n)`,
     `rand`, `rand(a..b)`, `rand(Float)`, `bytes`, `Array#shuffle`/`shuffle!`
