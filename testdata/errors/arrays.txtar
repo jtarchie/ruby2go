@@ -109,7 +109,7 @@ nums.each { |a, b| puts a }
 up = proc { |s| s.upcase }
 puts ["a"].map(&up).inspect
 -- block_arg_method.rb --
-# error: main.rb:4: undefined method method for Object
+# error: main.rb:4: only &:symbol, a Proc and a method's own &block are supported as block arguments
 #: (Integer) -> Integer
 def twice(n) = n * 2
 puts [1].map(&method(:twice)).inspect
