@@ -40,17 +40,17 @@ func rbCopyTree(src, dst string) error {
 		target := filepath.Join(dst, rel)
 		switch {
 		case d.Type()&fs.ModeSymlink != 0:
-			link, err := os.Readlink(path)
+			link, err := os.Readlink(path) //nolint:gosec // cp_r walks the caller's own tree, as MRI's does
 			if err != nil {
 				return err
 			}
-			return os.Symlink(link, target)
+			return os.Symlink(link, target) //nolint:gosec // as above
 		case d.IsDir():
 			fi, err := d.Info()
 			if err != nil {
 				return err
 			}
-			return os.MkdirAll(target, fi.Mode().Perm())
+			return os.MkdirAll(target, fi.Mode().Perm()) //nolint:gosec // as above
 		default:
 			return rbCopyFile(path, target)
 		}

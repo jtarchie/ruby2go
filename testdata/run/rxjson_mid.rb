@@ -115,3 +115,6 @@ p "a1b22c333".scan(/\d+/), "k1=v1; k2=v2".scan(/(\w+)=(\w+)/), "ab".scan(/(a)|(b
 p "a, b,c ,d".split(/\s*,\s*/), "a1b2c3".split(/\d/), "abc".split(//), "a-b_c".split(/([-_])/), "1,2,,".split(/,/), ",a".split(/,/)
 p "one  two".split(/ /), "camelCaseString".gsub(/([A-Z])/) { |m| "_" + m.downcase }
 p 1234567.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
+
+# Regexp.escape quotes metacharacters, space and whitespace escapes (MRI's rb_reg_quote).
+p Regexp.escape("a.b*c?d+e^f$g|h(i)j[k]l{m}n\\o/p-q r\tt\nu#y"), "1.5".match?(/\A#{Regexp.escape("1.5")}\z/), "105".match?(/#{Regexp.escape("1.5")}/)

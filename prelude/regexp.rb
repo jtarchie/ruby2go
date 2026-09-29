@@ -43,6 +43,10 @@ class Regexp < Object
     return Ref(Integer(utf8.RuneCountInString(str[:loc[0]])))
   }
 
+  # Ruby's rb_reg_quote: metacharacters, space and the whitespace escapes.
+  #: (String) -> String
+  def self.escape(str) = %x{ return String(rbRegexpEscape(string(str))) }
+
   # `case x when /re/` calls this; unlike match?, other types are false.
   #: (untyped) -> bool
   def ===(other) = %x{

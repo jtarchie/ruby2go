@@ -39,6 +39,7 @@ module Abbrev
   # A String pattern is a prefix, not a literal Regexp (rb2go has no runtime Regexp.new).
 
   #: (String, untyped) -> bool
+  # @dynamic
   def self.__abbrev_match?(candidate, pattern)
     return true if pattern.nil?
     return candidate.start_with?(pattern) if pattern.is_a?(String)

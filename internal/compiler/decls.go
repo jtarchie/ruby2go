@@ -557,7 +557,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	isModule := cls.isSubclassOf(c.classes["Module"])
 	if isModule {
-		c.w("\t_Consts() []rbConst\n\t_Kind() string\n")
+		c.w("\t_Kind() string\n")
 	}
 	c.w("}\n\n")
 	c.w("func (self *%s) _%s() *%s { return self }\n\n", cls.Name, cls.Name, cls.Name)
@@ -1132,6 +1132,8 @@ func (c *Compiler) emitConstTable(cls *Class) {
 		kind = "module"
 	}
 	c.w("func (self *%s) _Kind() string { return %q }\n\n", cls.Name, kind)
+	c.w("func (self *%s) _IsInstance(v any) bool { return %s }\n\n", cls.Name, c.isInstanceTest(desc))
+	c.emitMethodTable(cls, desc)
 	if desc == nil {
 		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
 		return
@@ -1145,6 +1147,58 @@ func (c *Compiler) emitConstTable(cls *Class) {
 		}
 	}
 	c.w("\t}\n}\n\n")
+}
+
+// emitMethodTable gives a class object the names of its public instance
+// methods, its ancestors' included (decision 77). Object, Kernel and
+// BasicObject are left out; MRI lists theirs too. Only
+// Module#public_instance_methods selects _Methods, so the pruner drops the
+// tables from programs that don't reflect.
+func (c *Compiler) emitMethodTable(cls, desc *Class) {
+	if desc == nil {
+		c.w("func (self *%s) _Methods() []rbConst { return nil }\n\n", cls.Name)
+		return
+	}
+	c.w("func (self *%s) _Methods() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	seen := map[string]bool{}
+	for _, k := range desc.ancestors() {
+		for _, m := range k.MethodList {
+			if m.Private || m.Name == "initialize" || strings.HasPrefix(m.Name, "__") || seen[m.Name] {
+				continue
+			}
+			seen[m.Name] = true
+			c.w("\t\t{%q, nil, %t},\n", m.Name, k != desc)
+		}
+	}
+	c.w("\t}\n}\n\n")
+}
+
+// isInstanceTest is Module#=== for desc's class object, over an untyped v:
+// the run-time half of is_a? (decision 76). It compares v's class name
+// with desc's and its subclasses' (for a module, its includers'), since a
+// module has no run-time record of its includers. Names, not Go types:
+// naming a type here would keep every class in every program (decision 49).
+func (c *Compiler) isInstanceTest(desc *Class) string {
+	switch {
+	case desc == nil:
+		return "false"
+	case desc.universal:
+		return "true"
+	case desc.RubyName == "Proc":
+		return "rbIsProc(v)"
+	case desc.RubyName == "Module" || desc.RubyName == "Class":
+		return fmt.Sprintf("rbIsClassObject(v, %t)", desc.RubyName == "Class")
+	}
+	var names []string
+	for _, k := range c.classList {
+		if !k.IsModule && k.metaOf == nil && k.isSubclassOf(desc) {
+			names = append(names, strconv.Quote(k.RubyName))
+		}
+	}
+	if len(names) == 0 {
+		return "false"
+	}
+	return "rbClassIn(v, " + strings.Join(names, ", ") + ")"
 }
 
 // emitRubyNames maps Go type names back to Ruby constant paths for the

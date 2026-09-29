@@ -135,7 +135,7 @@ func (f *File) sigComment(ln int) (string, bool) {
 	return sig, found
 }
 
-// annotations returns the `@rbs ...` and `@go_type ...` directives attached
+// annotations returns the `@rbs ...`, `@go_type ...` and `@dynamic` directives attached
 // to the code line ln.
 func (f *File) annotations(ln int) map[string][]string {
 	out := map[string][]string{}
@@ -153,6 +153,8 @@ func (f *File) annotations(ln int) map[string][]string {
 				continue
 			}
 			out[key] = append(out[key], strings.TrimSpace(strings.TrimPrefix(t[5:], key)))
+		case t == "@dynamic":
+			out["dynamic"] = nil
 		case strings.HasPrefix(t, "@go_type "):
 			out["go_type"] = append(out["go_type"], strings.TrimSpace(t[9:]))
 		}

@@ -12,8 +12,8 @@ func rbThreadRun(run func()) *Thread {
 			if r := recover(); r != nil {
 				if e, ok := r.(SystemExitI); ok {
 					// ponytail: MRI re-raises exit in the main thread, running its ensures; this exits here.
-					rbFlush()
-					os.Exit(int(e.Status()))
+					rbFinish(int(e.Status()), nil)
+					os.Exit(0)
 				}
 				t.aborting.Store(true)
 				t.err = rbWrapPanic(r)

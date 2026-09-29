@@ -77,3 +77,65 @@ func TestSignalFlushes(t *testing.T) {
 		}
 	}
 }
+
+func TestTestCommand(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{ //nolint:gosec // Ruby sources, not credentials
+		"pass_test.rb":     "require \"minitest/autorun\"\n\nclass PassTest < Minitest::Test\n  def test_ok = assert_equal(2, 1 + 1)\nend\n",
+		"sub/fail_test.rb": "require \"minitest/autorun\"\n\nclass FailTest < Minitest::Test\n  def test_bad = assert_equal(3, 1 + 1)\n  def test_good = assert(true)\nend\n",
+		"helper.rb":        "puts \"not a test file\"\n",
+	}
+	for name, src := range files {
+		p := filepath.Join(dir, name)
+		err := os.MkdirAll(filepath.Dir(p), 0o750)
+		if err == nil {
+			err = os.WriteFile(p, []byte(src), 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out, code := captureStdout(t, func() int { return testCmd([]string{dir}) })
+	if code != 1 {
+		t.Errorf("exit %d, want 1 (one file fails)", code)
+	}
+	for _, want := range []string{
+		"ok  \t" + filepath.Join(dir, "pass_test.rb") + "\t",
+		"FailTest#test_bad [fail_test.rb:4]:\nExpected: 3\n  Actual: 2\n",
+		"FAIL\t" + filepath.Join(dir, "sub", "fail_test.rb") + "\t",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "helper.rb") {
+		t.Errorf("helper.rb isn't a test file:\n%s", out)
+	}
+
+	// -run filters by name (minitest -i /re/); -args reach the binary.
+	out, code = captureStdout(t, func() int {
+		return testCmd([]string{"-v", "-run", "good", filepath.Join(dir, "sub", "fail_test.rb"), "-args", "--seed", "7"})
+	})
+	if code != 0 || !strings.Contains(out, "Run options: -i /good/ -v --seed 7\n") || !strings.Contains(out, "FailTest#test_good = ") {
+		t.Errorf("-v -run good: exit %d\n%s", code, out)
+	}
+}
+
+// captureStdout runs f with os.Stdout sent to a file, returning what it wrote.
+func captureStdout(t *testing.T, f func() int) (string, int) {
+	t.Helper()
+	tmp, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stdout
+	os.Stdout = tmp
+	code := f()
+	os.Stdout = orig
+	out, err := os.ReadFile(tmp.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out), code
+}

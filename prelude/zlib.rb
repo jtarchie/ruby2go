@@ -144,6 +144,7 @@ module Zlib
     }
 
     #: () -> untyped
+    # @dynamic
     def finish
       io = __io
       io.write(__finish_bytes) # leaves io open, so e.g. StringIO#string still reads afterwards
@@ -151,6 +152,7 @@ module Zlib
     end
 
     #: () -> untyped
+    # @dynamic
     def close
       io = finish
       io.close
@@ -163,6 +165,7 @@ module Zlib
     include IOReadable
 
     #: (untyped) -> GzipReader
+    # @dynamic
     def self.new(io)
       __from_raw(io, io.read)
     end
@@ -215,6 +218,7 @@ module Zlib
     }
 
     #: () -> untyped
+    # @dynamic
     def close
       io = __io
       io.close

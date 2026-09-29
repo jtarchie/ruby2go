@@ -280,3 +280,31 @@ class Box < Node
 end
 
 puts Box.new.id.inspect
+
+# Method-name tables (decision 77): public_instance_methods/instance_methods
+# list public methods of the class and its ancestors, short of Object.
+module PimShared
+  def test_shared = 1
+end
+
+class PimBase
+  def test_base = 1
+  def helper = 2
+
+  private
+
+  def test_private = 3
+end
+
+class PimChild < PimBase
+  include PimShared
+
+  def test_child = 4
+  def ==(other) = true
+end
+
+p PimChild.public_instance_methods(true).grep(/^test_/).sort
+p PimChild.public_instance_methods(false).sort, PimChild.instance_methods(false).sort
+p PimChild.method_defined?(:test_base), PimChild.public_method_defined?("test_private"), PimChild.method_defined?(:test_base, false)
+pim_k = PimChild #: singleton(PimBase)
+p pim_k.public_instance_methods.grep(/^test_/).map(&:to_s).sort, PimShared.instance_methods.sort

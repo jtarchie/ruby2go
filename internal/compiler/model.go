@@ -136,6 +136,7 @@ type Method struct {
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
+	quietDynamic   bool // prelude `# @dynamic`: dynamic by design, so no dynamic-call warnings (decision 78)
 }
 
 // root is the topmost struct class of c's hierarchy (below Object).
@@ -347,7 +348,12 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 				c.errorf(f, n, "require_relative is not supported in user code")
 			}
 			if n.Receiver == nil && n.Name == "require" {
-				continue // stdlib requires are meaningless here
+				// stdlib requires are meaningless here, unless the prelude
+				// hooks one (decision 78): `require "a/b"` → __require_a_b
+				if hook := c.requireHook(f, n); hook != nil {
+					c.mainStmts = append(c.mainStmts, hook)
+				}
+				continue
 			}
 			c.mainStmts = append(c.mainStmts, n)
 		default:
@@ -355,6 +361,32 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 		}
 	}
 }
+
+// requireHook is the call to Kernel#__require_<lib> that stands in for a
+// user file's top-level `require "lib"`, or nil when the prelude has none.
+func (c *Compiler) requireHook(f *File, n *parser.CallNode) *parser.CallNode {
+	if f.prelude || n.Arguments == nil || len(n.Arguments.Arguments) != 1 {
+		return nil
+	}
+	lib, ok := n.Arguments.Arguments[0].(*parser.StringNode)
+	if !ok {
+		return nil
+	}
+	name := "__require_" + strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '_'
+	}, lib.Unescaped.Value)
+	if k := c.classes["Kernel"]; k == nil || k.Methods[name] == nil {
+		return nil
+	}
+	hook := *n
+	hook.Name = name
+	hook.Arguments = nil
+	return &hook
+}
+
 func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *Class {
 	cls := c.classes[name]
 	if cls == nil {
@@ -694,6 +726,12 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 			c.errorf(f, n, "overloaded signatures (#|) are not supported")
 		}
 		m.sigText = sig
+	}
+	if _, ok := f.annotations(line)["dynamic"]; ok {
+		if !f.prelude {
+			c.errorf(f, n, "@dynamic is only allowed in the prelude")
+		}
+		m.quietDynamic = true
 	}
 	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {
 		if _, ok := body.Body[0].(*parser.XStringNode); ok {
@@ -1364,8 +1402,8 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 // nothing rescues around the yield, since Go forbids a range function from
 // recovering a panic raised in the loop body.
 func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
-	if !isVoid(bs.Ret) || m.sig.Block.Optional {
-		return false
+	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) == 0 || len(bs.Params) > 2 {
+		return false // an iter.Seq yields one or two values; other blocks are closures
 	}
 	if _, ok := m.Ret.(TVoid); !ok && m.Ret != nil && !isNil(m.Ret) {
 		return false

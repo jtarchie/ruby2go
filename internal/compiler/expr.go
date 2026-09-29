@@ -2535,7 +2535,18 @@ func isIsA(n *parser.CallNode) bool {
 func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string {
 	cls := f.classRef(classNode)
 	if cls == nil {
-		f.errorf(classNode, "is_a? needs a class name")
+		// a class value: its class object answers at run time (decision 76)
+		k := f.genExpr(classNode, nil)
+		switch t := k.typ.(type) {
+		case TAny:
+		case TClass:
+			if !t.C.isSubclassOf(f.c.classes["Module"]) {
+				f.errorf(classNode, "is_a? needs a class or module, not %s", k.typ)
+			}
+		default:
+			f.errorf(classNode, "is_a? needs a class or module, not %s", k.typ)
+		}
+		return "rbIsInstanceOf(" + f.coerce(classNode, k, TAny{}) + ", " + f.coerce(n, recv, TAny{}) + ")"
 	}
 	c := f.isA(n, recv, cls)
 	if c == "true" || c == "false" {
@@ -2635,11 +2646,13 @@ func (f *fctx) markerIsA(recv expr, cls *Class) (string, bool) {
 }
 
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
-func (f *fctx) isAGoType(cls *Class) string {
+func (f *fctx) isAGoType(cls *Class) string { return f.c.isAGoType(cls) }
+
+func (c *Compiler) isAGoType(cls *Class) string {
 	if len(cls.TypeParams) > 0 {
 		return cls.Name + "_Any"
 	}
-	return f.c.goType(TClass{C: cls})
+	return c.goType(TClass{C: cls})
 }
 
 // moduleIsA decides `x.is_a?(mod)` for a module mod and x of static type t.
@@ -2670,6 +2683,9 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	recv := expr{code: v.goName, typ: v.typ}
 	cond := f.isACheck(call, recv, call.Arguments.Arguments[0])
 	cls := f.classRef(call.Arguments.Arguments[0])
+	if cls == nil { // a class value: nothing static to narrow to
+		return cond, nil
+	}
 	base := stripOpt(v.typ)
 	code := v.goName
 	if isOpt(v.typ) {
@@ -3388,7 +3404,9 @@ func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
-	f.warn(n, "dynamic call: %s on %s", name, recv.typ)
+	if f.m == nil || !f.m.quietDynamic {
+		f.warn(n, "dynamic call: %s on %s", name, recv.typ)
+	}
 	how := "rbCall"
 	call, _ := n.(*parser.CallNode)
 	switch {
@@ -3451,7 +3469,9 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		f.errorf(n, "a block with a computed send is not supported")
 	}
 	f.c.dynAll = true
-	f.warn(n, "dynamic call: %s with a computed name", name)
+	if f.m == nil || !f.m.quietDynamic {
+		f.warn(n, "dynamic call: %s with a computed name", name)
+	}
 	nameExpr := f.genExpr(args[0], nil)
 	how := "rbFCall"
 	if name == "public_send" {

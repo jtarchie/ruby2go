@@ -72,6 +72,13 @@ class ZeroDivisionError < StandardError; end
 
 class ScriptError < Exception; end
 
+class NoMemoryError < Exception; end
+
+# Never raised by rb2go (signals end the program, decision 60); rescue clauses may name them.
+class SignalException < Exception; end
+
+class Interrupt < SignalException; end
+
 class NotImplementedError < ScriptError; end
 
 # Kernel#exit raises it, so ensure blocks and `rescue Exception` run first;

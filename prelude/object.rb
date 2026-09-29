@@ -37,6 +37,14 @@ module Kernel
   #: () -> bool
   def nil? = false
 
+  # Heap objects by address, other values by hash: unique while alive, but not MRI's numbers.
+  #: () -> Integer
+  def object_id = %x{ return rbObjectID(self) }
+
+  # Exact class, unlike is_a?; matched by name (decision 76).
+  #: (Module) -> bool
+  def instance_of?(klass) = %x{ Boolean(rbClassName(self) == string(klass.Name())) }
+
   # Objects, Array, Hash and Struct values are mutable; frozen classes override.
   #: () -> bool
   def frozen? = false
@@ -45,6 +53,18 @@ module Kernel
   def exit(status = 0) = raise(SystemExit.new(status))
 
   private
+
+  # Kernel#exit! skips at_exit handlers and doesn't flush stdout.
+  #: (?Integer) -> void
+  def __exit_bang(status = 0) = %x{ os.Exit(int(status)) }
+
+  # For at_exit handlers, in place of `$!`: true unless an uncaught exception or a failing exit is pending.
+  #: () -> bool
+  def __exit_status_ok? = %x{ return Boolean(rbExitStatusNow.Load() == 0) }
+
+  # Handlers run LIFO after main, exit or an uncaught exception (rbTopRecover).
+  #: () { () -> void } -> void
+  def at_exit = %x{ rbAtExitPush(blk) }
 
   #: (*untyped) -> nil
   def puts(*args)

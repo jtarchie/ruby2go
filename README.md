@@ -27,7 +27,7 @@ methods. These are ideas, and not limited to or the strict implementation.
 
 ```
 rb2go.go              public API: embeds the prelude, calls the compiler
-cmd/rb2go/            CLI: rb2go build|run main.rb, like go build|run
+cmd/rb2go/            CLI: rb2go build|run main.rb and rb2go test [paths], like go build|run|test
 internal/compiler/    Ruby → Go: declarations, types, codegen
 internal/rbs/         the RBS type-syntax subset the compiler understands
 prelude.rb            core library entry point; require_relatives prelude/*.rb
@@ -35,6 +35,7 @@ prelude/              core library, written in Ruby, compiled by the same transp
                       includes net_http.rb and webrick.rb over Go's net/http
 examples/NN_*/main.rb  one feature per program; runs on MRI unchanged
 testdata/run/*.rb     smaller behaviour cases, same MRI oracle, no rbs/lint gate
+testdata/test/*_test.rb  minitest behaviour checks: MRI must pass them, rb2go must match
 testdata/errors/*.txtar  compile-error and warning cases
 rb2go_test.go         the integration suite (below)
 Gemfile               rbs, rbs-inline, and webrick (the HTTP examples' MRI server)
@@ -61,7 +62,10 @@ output is the only expectation, and the generated Go is inspected with
 `go run ./cmd/rb2go build -work main.rb` when needed (it keeps `main.go`).
 
 `TestRun` holds `testdata/run/*.rb` to the same MRI comparison but skips the
-rbs and lint gates, so each file costs one `go build`. `TestErrors` compiles
+rbs and lint gates, so each file costs one `go build`. `TestMinitest` runs
+`testdata/test/*_test.rb` with `--seed 1`: MRI must pass each file (else the
+test is wrong), and rb2go's output must equal MRI's apart from timings
+(decision 81). `TestErrors` compiles
 each case in `testdata/errors/*.txtar` and checks the `# error: text` /
 `# warning: text` lines it declares. A `# skip: reason` line marks a known
 failure in either; `RB2GO_RUN_SKIPPED=1` runs them anyway.
@@ -1244,6 +1248,19 @@ resolve; anything not listed is still open.
     ever keeps too much; `iota` const blocks stay whole. A program then
     compiles (and lints) only the prelude it reaches: `puts 1` is 7k
     lines instead of 18.5k. `RB2GO_NO_PRUNE=1` turns it off.
+    *Amended:* a method whose name a kept interface declares but no kept
+    code selects is kept as a stub, its body `panic("rb2go: pruned")` and
+    not visited. Go calls a method only through a selector (the standard
+    library's calls are the `stdMethodNames` list), so a stub can't run,
+    but its type still satisfies the interface. Before, an interface
+    declaration kept the whole body, and since every metaclass interface
+    declares every `Module` method, constant reflection was always
+    reachable and its tables named every class: `puts 1` had grown to 35k
+    lines. It is 4k now, and a minitest program 15k. Code that must not
+    reach every program keeps its costly paths behind unique names and
+    out of generated interfaces: class-object tables (`_Consts`,
+    `_Methods`, `_IsInstance`) are asked for through interfaces declared
+    at their use (`rbConstTable`, `rbInstanceTest`), never by `ModuleI`.
 
 50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
     or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
@@ -1801,3 +1818,130 @@ resolve; anything not listed is still open.
     specifically to guarantee `rbSendByName` is generated whenever
     `notify_observers` itself is compiled, rather than depending on
     `add_observer` being reachable too ([example 64](examples/64_observable/main.rb)).
+75. `Kernel#at_exit { }` pushes onto a Go slice; the generated main's
+    deferred `rbTopRecover` (and a thread's `exit`) pops handlers LIFO,
+    so one registered inside a handler runs next. Probed on MRI 4.0: the
+    handlers run after main returns, after `exit` and after an uncaught
+    exception, and the uncaught error's message prints *after* them. A
+    handler's `exit n` replaces the status (even after an uncaught error,
+    which still prints); a handler's own exception prints at once and
+    makes the status 1. `$!` isn't available inside a handler. The
+    method returns nil rather than the Proc
+    ([testdata/run/control_at_exit.rb](testdata/run/control_at_exit.rb)).
+76. Class values at run time. Every class object gets a generated
+    `_IsInstance(any) bool` (next to decision 28's constant table), the
+    run-time half of `is_a?`: it compares the value's class name
+    (`rbClassName`) with the names of the class and its subclasses; for a
+    module, of the classes that include it, since there is no other
+    run-time record of includers (decision 21's static check still errors
+    where the static type can't decide). Names rather than Go type
+    assertions, because naming a type would keep it, and so every class,
+    in every build (decision 49). On it:
+    `Module#===` (so `when k` with a class value works),
+    `x.is_a?(k)`/`kind_of?(k)` where `k` is a `singleton(C)`/`Module`
+    value or untyped (a TypeError "class or module required" otherwise),
+    and `Kernel#instance_of?(k)` by class name. `rescue k`/
+    `rescue *list` with class values stay unsupported: rescue a common
+    ancestor and test `k === e`, re-raising on no match
+    ([testdata/run/dynamic_is_a.rb](testdata/run/dynamic_is_a.rb)).
+77. Method-name tables: every class object gets a generated `_Methods`
+    list of its public instance methods, then its ancestors' (included
+    modules and superclasses), short of Object/Kernel/BasicObject, whose
+    methods MRI also lists; `initialize`, private methods and `__`-named
+    prelude internals are left out. `public_instance_methods(inherit =
+    true)`, `instance_methods` (the same: there is no `protected`),
+    `method_defined?` and `public_method_defined?` read it; only the
+    first selects `_Methods`, so the pruner (decision 49) drops the
+    tables from programs that don't reflect. Order follows definition,
+    ancestors after; MRI's differs, so sort. minitest finds `test_*`
+    methods this way. `Enumerable#grep`/`grep_v` (by `pattern === x`,
+    no block form) came along ([testdata/run/object_mid2.rb](testdata/run/object_mid2.rb)).
+78. Small enablers for minitest (issue #6), each general:
+    - **Require hooks.** A user file's top-level `require "a/b"` calls
+      the prelude's private `Kernel#__require_a_b` (non-alphanumerics
+      become `_`) when one exists; otherwise it stays a no-op (decision
+      50). `require "minitest/autorun"` is the first hook.
+    - **`# @dynamic`** on a prelude method silences decision 32's
+      dynamic-call warnings inside it: the method is duck-typed by
+      design (Logger's device, Zlib's IO, `grep`'s pattern), and the
+      warning pointed users at prelude lines they can't change. The
+      test harness now fails on any warning from `prelude/`. In user
+      code it is a compile error.
+    - **`Process.clock_gettime(id)`** for `CLOCK_REALTIME`,
+      `CLOCK_MONOTONIC` (counted from process start; MRI's from boot, so
+      only differences agree) and `CLOCK_PROCESS_CPUTIME_ID`, as a Float
+      (no unit argument); any other id raises `Errno::EINVAL`. Plus
+      `Process.pid`.
+79. minitest (issue #6): `prelude/minitest.rb` ports minitest 6.0.6, the
+    version MRI 4.0 bundles, so a test file runs unchanged on both, and
+    rb2go's output (run order, dots, failure reports, diffs, counts,
+    `-v`, `--show-skips`, filters) equals MRI's apart from the
+    `Finished in` timings. `require "minitest/autorun"` is a require hook
+    (decision 78) calling `Minitest.autorun`, an `at_exit` (decision 75).
+    The run order reproduces minitest's `srand(seed); shuffle` with the
+    MT19937 of decision 46, so `Minitest::Spec` is registered (empty) to
+    keep `Runnable.runnables` MRI's length (rb2go runs no `inherited`
+    hook for prelude classes, so `runnables` puts Test and Spec first
+    itself, and user classes are kept in a Go slice). Tests are found
+    through `public_instance_methods` (decision 77). They are called, and
+    `assert_operator`/`assert_predicate` send their operator, without
+    `rbSendByName`, whose switch over every method name keeps the whole
+    prelude (a 235k-line, 20-second build): each user-defined class gets a
+    generated `_Call(name, args...)` over the methods user code defined on
+    it (through decision 32's Dyn wrappers), and core values answer a
+    fixed list of common operators and predicates (`==`, `<`, `include?`,
+    `even?`, `empty?`, ...), a NoMethodError for any other. Shape changes, each marked `port:` in the source:
+    `@@vars` become constants; OptionParser is hand-parsed (same options
+    and help text); Reportable and Assertions' methods live on
+    Runnable/Test, because a module can't see its includers' attribute
+    types; messages are typed procs, so a user's `msg` is a String, not a
+    Proc; `rescue *exp` is a catch-all testing `k === e` (decision 76), and
+    `assert_raises` returns `Exception`; `mu_pp` has no encoding lines;
+    `diff -u` runs over temp files as in minitest. A failure's
+    `[file:line]` is found when the Assertion is made, from the Go stack
+    (`rbMtLocation`): of the frames in user code (prelude frames stand for
+    MRI's filtered `lib/minitest` ones; generated forwarders, Go methods,
+    are skipped), the one after the last whose method is named like an
+    assertion, as minitest's rule, else the first. rb2go has no
+    backtraces yet, so an error's report and `exception_details` print
+    `No backtrace` where MRI lists frames: tests that error differ from
+    MRI there. Not ported: `Minitest::Spec`'s `describe`/`it`,
+    `assert_output`/`capture_io` (no `$stdout` reassignment),
+    `assert_throws`, `assert_pattern`, `parallelize_me!`, class-body
+    calls like `i_suck_and_my_tests_are_order_dependent!`, plugins,
+    `stub`/`Mock` ([example 65](examples/65_minitest/main.rb)).
+    Along the way: a method whose block yields no values is a closure,
+    not an `iter.Seq` (iterators yield one or two values); `Regexp.escape`,
+    `Kernel#object_id` (addresses, not MRI's numbers), `exit!`-like
+    `__exit_bang`, and the `NoMemoryError`, `SignalException` and
+    `Interrupt` classes, which rb2go never raises.
+80. `rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags f] [-work]
+    [paths...] [-args ...]`, shaped like `go test`: directories expand
+    recursively to `*_test.rb`/`test_*.rb` (minitest's glob, without
+    spec files; dot directories skipped); each file is its own closed
+    world and program, built in parallel (`-p`, default GOMAXPROCS), then
+    run in order in its own directory, as `ruby x_test.rb` would be, so
+    failure locations match MRI's. A passing file prints `ok  <path>
+    <secs>`; a failing one its captured output, then `FAIL <path>`; a
+    build error `FAIL <path> [build failed]`. `-v` streams output and
+    passes minitest `-v`; `-run re` becomes minitest's `-i /re/`; words
+    after `-args` go to every test binary (`--seed 7`, `-e /x/`). The exit
+    status is 1 when any file fails. No `--mri` comparison yet: the repo's
+    TestMinitest does that. Multi-file tests wait on `require_relative`
+    in user code.
+81. Behaviour checks move to minitest. `TestMinitest` runs
+    `testdata/test/*_test.rb` with `--seed 1` (the MRI cache key now
+    includes extra arguments): MRI must pass, or the harness reports that
+    the test itself is wrong, and rb2go's stdout and exit code must equal
+    MRI's with the timing lines blanked. Because a passing assertion is
+    checked by rb2go's own `==`, the expected side is a literal (MRI
+    passing proves it right), `assert_raises` also checks `.message`, and
+    `refute_*`/`assert_in_delta` are never a check's only evidence; a
+    trace oracle logging every operand would lift that rule (issue #6).
+    The String checks moved first: `testdata/run/string_*.rb` became
+    `testdata/test/string_test.rb`, `string_frozen_test.rb` (the
+    `frozen_string_literal` pragma is file-wide) and
+    `string_reopen_test.rb` (reopening String changes the whole closed
+    world), three builds instead of sixteen. What tests output itself
+    (`puts`/`print`/`p` formatting, exit status, an uncaught crash) stays
+    print-and-compare in `testdata/run`, as do `# skip:` known failures.

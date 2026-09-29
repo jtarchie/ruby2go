@@ -28,8 +28,9 @@ type Compiler struct {
 	dynAll        bool     // a computed send/respond_to?: every method may be named
 	respondNames  []string // names asked about with respond_to? at run time
 	respondSeen   map[string]bool
-	classOf       bool              // `.class` on a value only known at run time: emit rbClassOf
-	dynGo         map[string]string // Go name → the Ruby name its dispatchers serve
+	classOf       bool                    // `.class` on a value only known at run time: emit rbClassOf
+	dynGo         map[string]string       // Go name → the Ruby name its dispatchers serve
+	dynWrapped    map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
 	warned        map[string]bool
 	regexps       []string          // package-level compiled literals
 	regexpVars    map[string]string // literal → its variable, to share one per pattern
@@ -109,7 +110,7 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 		return nil, fmt.Errorf("prism: %w", err)
 	}
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")

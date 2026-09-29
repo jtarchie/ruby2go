@@ -17,7 +17,7 @@ class File < Object
     if !ok {
       panic(NewArgumentError(Ref("invalid access mode " + mode)))
     }
-    f, err := os.OpenFile(string(path), flag, 0o666)
+    f, err := os.OpenFile(string(path), flag, 0o666) //nolint:gosec // MRI's mode; the umask applies
     if err != nil {
       panic(rbSysErr(err, "rb_sysopen", string(path)))
     }

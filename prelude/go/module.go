@@ -10,10 +10,14 @@ type rbConst struct {
 }
 
 type rbModule interface {
-	_Consts() []rbConst
 	_Kind() string // "class" or "module", for messages
 	Name() String
 }
+
+// rbConstTable is a class object's generated constant table. Only constant reflection asks for
+// it, and no generated interface declares it, so the pruner keeps the tables (and every class
+// they name) only in programs that reflect (decision 49).
+type rbConstTable interface{ _Consts() []rbConst }
 
 func rbConstName(name any) string {
 	switch n := name.(type) {
@@ -26,7 +30,7 @@ func rbConstName(name any) string {
 }
 
 func rbConstFind(m rbModule, name string, inherit bool) (any, bool) {
-	for _, c := range m._Consts() {
+	for _, c := range m.(rbConstTable)._Consts() {
 		if c.name == name && (inherit || !c.inherited) {
 			return c.value, true
 		}
@@ -111,4 +115,28 @@ func rbConstResolve(m rbModule, name any, inherit bool) (any, string) {
 		val = v
 	}
 	return val, ""
+}
+
+// rbInstanceTest is a class object's generated _IsInstance (decision 76). It is asked for only
+// here, not declared by ModuleI, so the pruner keeps the tests only in programs that use them.
+type rbInstanceTest interface{ _IsInstance(v any) bool }
+
+// rbIsInstanceOf is Module#===, and is_a? with a class value.
+func rbIsInstanceOf(k, v any) bool {
+	t, ok := rbUnbox(k).(rbInstanceTest)
+	if !ok {
+		panic(NewTypeError(Ref(String("class or module required"))))
+	}
+	return t._IsInstance(v)
+}
+
+// rbClassIn reports whether v's class is one of names: an _IsInstance test.
+func rbClassIn(v any, names ...string) bool {
+	return slices.Contains(names, rbClassName(rbUnbox(v)))
+}
+
+// rbIsClassObject is Class === v (a class object) or Module === v (any class or module object).
+func rbIsClassObject(v any, class bool) bool {
+	m, ok := rbUnbox(v).(rbModule)
+	return ok && (!class || m._Kind() == "class")
 }

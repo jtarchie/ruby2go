@@ -79,21 +79,95 @@ func rbTrapSignals() {
 	}()
 }
 
-// rbTopRecover turns an uncaught Ruby exception into exit status 1, like
-// MRI, and SystemExit (Kernel#exit) into its status. Output is flushed
-// first so partial output before a crash matches.
+// rbAtExit holds Kernel#at_exit handlers; rbTopRecover pops them LIFO, so
+// one registered while handlers run is next.
+var (
+	rbAtExitMu sync.Mutex
+	rbAtExit   []func()
+)
+
+func rbAtExitPush(f func()) {
+	rbAtExitMu.Lock()
+	defer rbAtExitMu.Unlock()
+	rbAtExit = append(rbAtExit, f)
+}
+
+func rbAtExitPop() func() {
+	rbAtExitMu.Lock()
+	defer rbAtExitMu.Unlock()
+	if len(rbAtExit) == 0 {
+		return nil
+	}
+	f := rbAtExit[len(rbAtExit)-1]
+	rbAtExit = rbAtExit[:len(rbAtExit)-1]
+	return f
+}
+
+// rbTopRecover ends the program as MRI does: at_exit handlers run first;
+// then the uncaught exception, if any, prints `msg (Class)`. The status is
+// 1 after an uncaught exception, SystemExit's status after exit, and a
+// handler's exit or exception replaces it. Output is flushed first so
+// partial output before a crash matches.
 func rbTopRecover() {
+	status, main := 0, any(nil)
 	if r := recover(); r != nil {
-		rbFlush()
-		if e, ok := r.(SystemExitI); ok {
-			os.Exit(int(e.Status()))
-		}
-		if e, ok := r.(ExceptionI); ok {
-			fmt.Fprintf(os.Stderr, "%s (%s)\n", e.Message(), rbClassName(r))
-		} else {
-			fmt.Fprintf(os.Stderr, "%v\n", r)
-		}
-		os.Exit(1)
+		status, main = rbExitStatus(r)
+	}
+	rbFinish(status, main)
+}
+
+// rbFinish runs the at_exit handlers, prints main (an uncaught exception
+// or nil) and exits with the resulting status; it returns only for 0.
+func rbFinish(status int, main any) {
+	for f := rbAtExitPop(); f != nil; f = rbAtExitPop() {
+		rbExitStatusNow.Store(int64(status))
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					var err any
+					if status, err = rbExitStatus(r); err != nil {
+						rbFlushIfTTY()
+						rbPrintUncaught(err)
+					}
+				}
+			}()
+			f()
+		}()
+	}
+	rbFlush()
+	if main != nil {
+		rbPrintUncaught(main)
+	}
+	if status != 0 {
+		os.Exit(status)
+	}
+}
+
+// rbExitStatusNow is the status the program would exit with, for at_exit handlers.
+var rbExitStatusNow atomic.Int64
+
+// rbObjectID is Kernel#object_id: a pointer's address, else the value's hash.
+func rbObjectID(a any) Integer {
+	if v := reflect.ValueOf(a); v.Kind() == reflect.Pointer {
+		return Integer(v.Pointer() >> 3) //nolint:gosec // an id, not arithmetic
+	}
+	return rbHash(a) & (1<<62 - 1)
+}
+
+// rbExitStatus is the exit status r ends the program with, and r itself
+// when it is an error to print rather than a SystemExit.
+func rbExitStatus(r any) (int, any) {
+	if e, ok := r.(SystemExitI); ok {
+		return int(e.Status()), nil
+	}
+	return 1, r
+}
+
+func rbPrintUncaught(r any) {
+	if e, ok := r.(ExceptionI); ok {
+		fmt.Fprintf(os.Stderr, "%s (%s)\n", e.Message(), rbClassName(r))
+	} else {
+		fmt.Fprintf(os.Stderr, "%v\n", r)
 	}
 }
 

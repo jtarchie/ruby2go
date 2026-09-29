@@ -111,6 +111,7 @@ class Logger < Object
   private
 
   #: (Integer, untyped) -> void
+  # @dynamic
   def __write_entry(severity, msg)
     label = SEV_LABEL[severity] || "ANY"
     now = Time.now

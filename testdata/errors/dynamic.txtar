@@ -210,12 +210,6 @@ end
 #: (Vehicle) -> bool
 def named?(v) = v.is_a?(Named)
 puts named?(Car.new)
--- is_a_needs_class_name.rb --
-# error: main.rb:4: is_a? needs a class name
-# rbs_inline: enabled
-#: (untyped, untyped) -> bool
-def check(v, k) = v.is_a?(k)
-puts check(1, Integer)
 -- is_a_takes_one_class.rb --
 # error: main.rb:4: is_a? takes one class
 # rbs_inline: enabled
@@ -410,3 +404,8 @@ def ident(v) = v
 
 puts ident(A.new).foo_bar
 puts ident(B.new).fooBar
+-- dynamic_annotation_in_user_code.rb --
+# error: main.rb:4: @dynamic is only allowed in the prelude
+# @dynamic
+#: (untyped) -> untyped
+def f(x) = x.foo

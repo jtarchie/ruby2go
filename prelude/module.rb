@@ -18,16 +18,44 @@ class Module < Object
   #: () -> String
   def inspect = name
 
+  # Case equality: obj is an instance of this class (or includes this
+  # module). The class object's generated _IsInstance answers (decision 76).
+  #: (untyped) -> bool
+  def ===(obj) = %x{ Boolean(rbIsInstanceOf(self, obj)) }
+
   #: (?bool) -> Array[Symbol]
   def constants(inherit = true) = %x{
     out := &Array[Symbol]{}
-    for _, c := range self._Consts() {
+    for _, c := range any(self).(rbConstTable)._Consts() {
       if bool(inherit) || !c.inherited {
         *out = append(*out, Symbol(c.name))
       }
     }
     return out
   }
+
+  # Public instance methods from a generated table, without Object's and
+  # Kernel's (decision 77). instance_methods is the same: there is no
+  # protected.
+  #: (?bool) -> Array[Symbol]
+  def public_instance_methods(inherit = true) = %x{
+    out := &Array[Symbol]{}
+    for _, m := range any(self).(interface{ _Methods() []rbConst })._Methods() {
+      if bool(inherit) || !m.inherited {
+        *out = append(*out, Symbol(m.name))
+      }
+    }
+    return out
+  }
+
+  #: (?bool) -> Array[Symbol]
+  def instance_methods(inherit = true) = public_instance_methods(inherit)
+
+  #: (untyped, ?bool) -> bool
+  def public_method_defined?(name, inherit = true) = public_instance_methods(inherit).include?(name.to_s.to_sym)
+
+  #: (untyped, ?bool) -> bool
+  def method_defined?(name, inherit = true) = public_method_defined?(name, inherit)
 
   # The transpiler narrows the result type: a literal name gets that
   # constant's type, any other name the join of the module's constants.

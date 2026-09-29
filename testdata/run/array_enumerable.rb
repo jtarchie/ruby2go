@@ -70,3 +70,8 @@ flag = false
 puts bools.include?(true), bools.include?(false), [true].include?(false), syms.include?(:a), syms.include?(:c)
 puts bools.include?(flag), bools.tally.inspect, bools.uniq.inspect, bools.count
 puts bools.select { |b| b }.inspect, bools.reject { |b| b }.size, bools.map { |b| !b }.inspect, bools.all? { |b| b }
+
+# grep / grep_v go through pattern === x.
+p [1, "a", :b, 2.5, nil].grep(Integer), (1..10).grep(2..4), %w[a bb cb].grep(/b/), [1, 2, 3, 2].grep(2)
+grep_mixed = [1, "a", 2.5] #: Array[untyped]
+p %w[a bb cb].grep_v(/b/), [:ab, :cd].grep(/a/), grep_mixed.grep_v(Float)

@@ -171,6 +171,29 @@ func TestRun(t *testing.T) {
 	}
 }
 
+// TestMinitest runs each testdata/test/*_test.rb (minitest) with a fixed seed. MRI must pass it,
+// or the test itself is wrong; rb2go's output must then match MRI's apart from timings. Like
+// TestRun, it skips rbs and lint: one go build per file.
+func TestMinitest(t *testing.T) {
+	requireRuby4(t)
+	files, err := filepath.Glob("testdata/test/*_test.rb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rb := range files {
+		t.Run(strings.TrimSuffix(filepath.Base(rb), "_test.rb"), func(t *testing.T) {
+			t.Parallel()
+			src, err := os.ReadFile(rb) //nolint:gosec // testdata path
+			if err != nil {
+				t.Fatal(err)
+			}
+			skipIfMarked(t, src)
+			gen := transpile(t, filepath.Base(rb), src)
+			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-gcflags=-l"), []string{"--seed", "1"})
+		})
+	}
+}
+
 var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.
@@ -297,6 +320,9 @@ func writeGenerated(t *testing.T, dir, name string, src []byte) {
 	}
 	for _, w := range warnings {
 		t.Logf("warning: %s", w)
+		if strings.HasPrefix(w, "prelude/") {
+			t.Errorf("a prelude warning reaches users (mark the method # @dynamic if intended): %s", w)
+		}
 	}
 	err = os.MkdirAll(dir, 0o755) //nolint:gosec // under t.TempDir()
 	if err != nil {
@@ -345,8 +371,20 @@ func goBuild(t *testing.T, gen string, flags ...string) string {
 	return bin
 }
 
+// mtTiming matches minitest's run timings: the `Finished in` line and -v's per-test seconds.
+var mtTiming = regexp.MustCompile(`(?m)^Finished in .*$| = \d+\.\d\d s = `)
+
+// mtTimings blanks minitest's timings, the only output that differs between two runs with one seed.
+func mtTimings(s string) string { return mtTiming.ReplaceAllString(s, "<timing>") }
+
 // sameAsRuby runs `ruby file` and bin in dir; stdout and exit code must match, and stderr too under `# stderr: match`.
 func sameAsRuby(t *testing.T, dir, file, bin string) {
+	t.Helper()
+	sameAsRubyWith(t, dir, file, bin, nil)
+}
+
+// sameAsRubyWith is sameAsRuby with extra arguments after the file's `# args:`.
+func sameAsRubyWith(t *testing.T, dir, file, bin string, extra []string) {
 	t.Helper()
 	src, err := os.ReadFile(filepath.Join(dir, file)) //nolint:gosec // test path
 	if err != nil {
@@ -357,6 +395,7 @@ func sameAsRuby(t *testing.T, dir, file, bin string) {
 	for _, a := range directives(src, "args") {
 		args = append(args, strings.Fields(a)...)
 	}
+	args = append(args, extra...)
 	for _, q := range directives(src, "stdin") {
 		in, qerr := strconv.Unquote(q)
 		if qerr != nil {
@@ -365,8 +404,14 @@ func sameAsRuby(t *testing.T, dir, file, bin string) {
 		pio.stdin += in
 	}
 	want := rubyOutput(t, dir, file, src, pio, args)
+	if extra != nil && want.Code != 0 {
+		t.Fatalf("MRI fails %s, so the test itself is wrong:\n%s%s", file, want.Stdout, want.Stderr)
+	}
 	var got mriResult
 	got.Stdout, got.Stderr, got.Code, _ = runIO(t, dir, pio, bin, args...)
+	if bytes.Contains(src, []byte(`require "minitest`)) {
+		want.Stdout, got.Stdout = mtTimings(want.Stdout), mtTimings(got.Stdout)
+	}
 	if want.Stdout != got.Stdout {
 		t.Errorf("stdout differs\n--- ruby ---\n%s\n--- go ---\n%s", want.Stdout, got.Stdout)
 	}
@@ -399,7 +444,11 @@ type mriCached struct {
 // rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
-	sum := sha256.Sum256(slices.Concat([]byte("v3\x00"+rubyDescription()+"\x00"+os.Getenv("TZ")+"\x00"), src))
+	key := "v3\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00"
+	if len(args) > 0 { // `# args:` are in src; TestMinitest adds more
+		key += strings.Join(args, "\x00") + "\x00args\x00"
+	}
+	sum := sha256.Sum256(slices.Concat([]byte(key), src))
 	cacheDir, err := os.UserCacheDir()
 	cached := filepath.Join(cacheDir, "rb2go-test", "mri", hex.EncodeToString(sum[:]))
 	if err == nil && os.Getenv("RB2GO_NO_MRI_CACHE") == "" {
@@ -425,7 +474,7 @@ func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []s
 var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)
 
 // rbsLibraryNames covers requires whose gem name differs from its RBS stdlib signature directory, like `require "observer"` (defines Observable) shipping sigs under "observable".
-var rbsLibraryNames = map[string]string{"observer": "observable"}
+var rbsLibraryNames = map[string]string{"observer": "observable", "minitest-autorun": "minitest"}
 
 // rbsLibraries turns an example's `require "net/http"` lines into the `-r net-http` flags rbs needs to see those libraries' signatures.
 func rbsLibraries(t *testing.T, path string) []string {

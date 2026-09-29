@@ -15,6 +15,23 @@ module Enumerable
     out
   end
 
+  # The elements where pattern === x: a Regexp, a class, a Range, a value.
+  # @dynamic
+  #: (untyped) -> Array[E]
+  def grep(pattern)
+    out = [] #: Array[E]
+    each { |x| out << x if pattern === x }
+    out
+  end
+
+  # @dynamic
+  #: (untyped) -> Array[E]
+  def grep_v(pattern)
+    out = [] #: Array[E]
+    each { |x| out << x unless pattern === x }
+    out
+  end
+
   #: () { (E) -> bool } -> Array[E]
   def select
     out = [] #: Array[E]

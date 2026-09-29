@@ -48,6 +48,33 @@ func (c *Compiler) emitDynamic() {
 	}
 	if c.dynAll {
 		c.emitNameSwitches()
+		c.emitCallTables()
+	}
+}
+
+// dynWrapped is one Dyn wrapper emitted on a class; own when a user file defines the method.
+type dynWrapped struct {
+	name, goName string
+	own          bool
+}
+
+// emitCallTables gives each user-defined class _Call(name, args...): send
+// over the methods user code defined on it, own or inherited. It is the
+// narrow alternative to rbSendByName, whose switch over every method name
+// keeps the whole prelude in a build; minitest calls tests through it
+// (decision 79). Only rbMtCall asks for _Call, so other programs prune it.
+func (c *Compiler) emitCallTables() {
+	for _, cls := range c.classList {
+		if cls.File == nil || cls.File.prelude || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
+			continue
+		}
+		c.w("func (self %s) _Call(name string, args ...any) (any, bool) {\n", c.recvType(cls))
+		for _, w := range c.dynWrapped[cls] {
+			if w.own { // ifs, not a switch: gocritic rejects a one-case switch
+				c.w("\tif name == %q {\n\t\treturn self.%s(args...), true\n\t}\n", w.name, w.goName)
+			}
+		}
+		c.w("\treturn nil, false\n}\n\n")
 	}
 }
 
@@ -203,6 +230,7 @@ func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string, private boo
 			prefix = "_Dyn"
 		}
 		c.w("func (self %s) %s%s(args ...any) any {\n%s}\n\n", c.recvType(cls), prefix, goMethodName(name), body)
+		c.dynWrapped[cls] = append(c.dynWrapped[cls], dynWrapped{name: name, goName: prefix + goMethodName(name), own: !e.M.File.prelude})
 	}
 }
 

@@ -46,3 +46,14 @@ puts ct.ctime, ct.asctime
 require "date"
 d = Time.new(2024, 3, 15, 10, 0, 0, "+02:00").to_date
 puts d, d.class
+
+# Process clocks (decision 78): only differences of the monotonic clock mean anything.
+clk0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+clk1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+p clk1 >= clk0, clk0.class, Process.clock_gettime(Process::CLOCK_REALTIME) > 1_700_000_000, Process.pid > 0
+p Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID) >= 0, [Process::CLOCK_REALTIME, Process::CLOCK_MONOTONIC]
+begin
+  Process.clock_gettime(99)
+rescue SystemCallError => e
+  p e.class
+end

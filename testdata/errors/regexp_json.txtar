@@ -178,12 +178,6 @@ puts JSON.generate
 -- regexp_new_undefined.rb --
 # error: main.rb:2: undefined method new for singleton(Regexp)
 puts Regexp.new("a").inspect
--- regexp_escape_undefined.rb --
-# error: main.rb:2: undefined method escape for singleton(Regexp)
-puts Regexp.escape("a.b")
--- grep_undefined.rb --
-# error: main.rb:2: undefined method grep for Array[String]
-puts ["a1", "b"].grep(/\d/).inspect
 -- named_captures_undefined.rb --
 # error: main.rb:3: undefined method named_captures for MatchData
 m = "ab".match(/(?<x>a)/)

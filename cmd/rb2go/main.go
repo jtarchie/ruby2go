@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,12 +18,16 @@ import (
 )
 
 const usage = `usage: rb2go build [-o prog] [-race] [-gcflags flags] [-work] main.rb
-       rb2go run [-race] [-gcflags flags] [-work] main.rb [args...]`
+       rb2go run [-race] [-gcflags flags] [-work] main.rb [args...]
+       rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]`
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" {
+	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
+	}
+	if os.Args[1] == "test" {
+		os.Exit(testCmd(os.Args[2:]))
 	}
 	cmd := os.Args[1]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
@@ -67,7 +72,7 @@ func build(file, bin string, opts buildOpts) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	dir, err := compile(file, abs, opts)
+	dir, err := compile(file, abs, opts, os.Stderr)
 	defer cleanup(dir, opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -77,7 +82,7 @@ func build(file, bin string, opts buildOpts) int {
 }
 
 func run(file string, args []string, opts buildOpts) int {
-	dir, err := compile(file, "", opts)
+	dir, err := compile(file, "", opts, os.Stderr)
 	defer cleanup(dir, opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -115,15 +120,15 @@ func run(file string, args []string, opts buildOpts) int {
 	return 0
 }
 
-// compile builds into a fresh temp module each time: stdlib-only, so no network, and Go's content-keyed cache keeps rebuilds fast.
-func compile(file, bin string, opts buildOpts) (string, error) {
+// compile builds into a fresh temp module each time: stdlib-only, so no network, and Go's content-keyed cache keeps rebuilds fast. Warnings and go build's output go to diag.
+func compile(file, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	src, err := os.ReadFile(file) //nolint:gosec // the user's program
 	if err != nil {
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
 	code, warnings, err := rb2go.Compile(context.Background(), file, src)
 	for _, w := range warnings {
-		fmt.Fprintln(os.Stderr, "warning:", w)
+		_, _ = fmt.Fprintln(diag, "warning:", w)
 	}
 	if err != nil {
 		return "", err //nolint:wrapcheck // compile errors carry file:line
@@ -153,7 +158,7 @@ func compile(file, bin string, opts buildOpts) (string, error) {
 	cmd.Dir = dir
 	// The user's go.work and GOFLAGS belong to their projects, not this module.
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	cmd.Stdout, cmd.Stderr = diag, diag
 	if errors.Is(cmd.Err, exec.ErrNotFound) {
 		return dir, errors.New("rb2go needs the go command on PATH to build")
 	}

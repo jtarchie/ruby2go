@@ -612,13 +612,11 @@ class Dyn
     define_method(:x) { 1 }
   end
 end
--- is_a_non_constant.rb --
-# error: main.rb:6: is_a? needs a class name
+-- is_a_non_class.rb --
+# error: main.rb:4: is_a? needs a class or module, not Integer
 class Dog
 end
-
-k = Dog
-Dog.new.is_a?(k)
+Dog.new.is_a?(1)
 -- is_a_module_on_struct.rb --
 # error: main.rb:13: is_a?(Walker) on Animal cannot be checked
 module Walker

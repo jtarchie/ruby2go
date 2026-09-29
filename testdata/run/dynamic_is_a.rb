@@ -120,3 +120,21 @@ puts ex.is_a?(IndexError), ex.is_a?(StandardError), ex.is_a?(ArgumentError), ex.
 
 puts "-- is_a? on self in a class method body is a run-time check"
 puts Vehicle.new.car?, Car.new.car?, Truck.new.car?, Truck.new.self_truck?, Car.new.self_truck?
+
+# Class values (decision 76): Module#===, is_a?/kind_of? with a class held in
+# a variable, instance_of?, and === through untyped values.
+cv_k = Car #: singleton(Vehicle)
+puts [cv_k === Car.new, cv_k === Truck.new, Vehicle === Car.new, Named === Car.new, Named === Truck.new].inspect
+puts [Integer === 3, Comparable === "s", String === :s, NilClass === nil, TrueClass === true, FalseClass === true].inspect
+cv_e = KeyError.new("x")
+puts [Exception === cv_e, StandardError === cv_e, IndexError === cv_e, ArgumentError === cv_e].inspect
+cv_kinds = [KeyError, ArgumentError, IndexError] #: Array[singleton(StandardError)]
+puts cv_kinds.map { |c| cv_e.is_a?(c) }.inspect, cv_kinds.map { |c| c === cv_e }.inspect
+cv_m = Named #: Module
+puts [Car.new.is_a?(cv_m), 3.kind_of?(cv_m)].inspect
+puts [Car.new.instance_of?(Vehicle), Car.new.instance_of?(Car), 3.instance_of?(Integer), cv_e.instance_of?(IndexError)].inspect
+puts cv_kinds.map { |c| ident(c) === cv_e }.inspect, cv_e.is_a?(ident(IndexError))
+cv_vals = [1, "a", nil, :x, 2.0, [1], { a: 1 }] #: Array[untyped]
+[Integer, String, NilClass, Symbol, Float, Array, Hash].each do |c|
+  puts "#{c}: #{cv_vals.map { |v| c === v }.inspect}"
+end

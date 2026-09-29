@@ -153,3 +153,30 @@ func rbReSub(re *Regexp, s string, n int, repl func(s string, loc []int, names [
 	b.WriteString(s[last:])
 	return b.String()
 }
+
+// rbRegexpEscape is Regexp.escape (MRI's rb_reg_quote).
+func rbRegexpEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '[', ']', '{', '}', '(', ')', '|', '-', '*', '.', '\\', '?', '+', '^', '$', '#':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case ' ':
+			b.WriteString(`\ `)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\v':
+			b.WriteString(`\v`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
