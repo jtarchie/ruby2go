@@ -159,7 +159,7 @@ class Ghost
   def method_missing(name, *args) = "ghost #{name}(#{args.inspect})"
 end
 
-class Logger
+class LogStub
   #: (*untyped) -> String
   def log(*parts) = parts.inspect
 end
@@ -168,7 +168,7 @@ end
 def ident_rest(v) = v
 
 puts ident_rest(Ghost.new).fly(1, nil)
-puts ident_rest(Logger.new).log(nil, 2)
+puts ident_rest(LogStub.new).log(nil, 2)
 
 # nil elements of an untyped array survive is_a?/case narrowing
 

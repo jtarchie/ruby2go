@@ -1629,3 +1629,34 @@ resolve; anything not listed is still open.
     argument, before the trailing variadic, since Ruby allows `*rest` before
     a block but Go requires the variadic parameter last
     ([example 57](examples/57_open3/main.rb)).
+68. `Logger` holds its device `untyped` and writes/flushes it through the
+    dynamic dispatcher (no shared IO base, decision 48), since a device can
+    be `$stdout`, a `File`, a `StringIO`, or a path String, which `Logger.new`
+    opens itself in append mode, as MRI's `LogDevice` does; `nil` disables
+    logging (MRI's `nil`/`File::NULL`). `debug`/`info`/`warn`/`error`/
+    `fatal`/`unknown` take a message or a block (the block's value is the
+    message, evaluated only when the level is enabled); since `block_given?`
+    is unsupported, each has a paired `__<name>_block` (decision 48's
+    block-routing) that repeats its own level check and write rather than
+    forwarding a captured block through `add`, so a call can't override
+    `progname` the way MRI's block form can. `level=`/`level` coerce a
+    String/Symbol through the same table as MRI's `Severity.coerce` and
+    raise its exact `invalid log level: X` message; `Logger::DEBUG` through
+    `UNKNOWN` are `0..5`. `progname`/`progname=`, `formatter=` (a
+    `^(String, Time, String?, untyped) -> String` Proc, MRI's four-arg
+    signature) and `datetime_format=`/`datetime_format` are plain
+    accessors. The default formatter reproduces MRI's exact
+    `"%.1s, [%s #%d] %5s -- %s: %s\n"`, `Time#strftime`'s already-supported
+    `%6N` giving the same microsecond default; a message that isn't a
+    String or Exception is `inspect`ed, as MRI's `msg2str`. Not supported:
+    `Logger.new`'s rotation/`level:`/`progname:`/`formatter:`/
+    `datetime_format:` keyword arguments (decision 23; use the setters),
+    `close`, `<<`, and the "Logfile created on …" header MRI writes to a
+    new file (itself a timestamp, so never MRI-diffable). Tests can't
+    byte-compare the default formatter's output, since MRI always embeds
+    the real PID and `Time.now` with no way to fix either from outside a
+    custom `formatter=`; example 58 sets a `formatter=` that drops time,
+    pid and (when absent) progname, and checks `datetime_format=` and the
+    default formatter's shape with `start_with?`/`end_with?`/`include?`
+    instead of printing their output raw
+    ([example 58](examples/58_logger/main.rb)).

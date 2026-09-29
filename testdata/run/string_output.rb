@@ -37,7 +37,7 @@ class Mixed
   include Greets
 end
 
-class Logger
+class LogStub
   #: (String) -> void
   def self.log(msg)
     puts "[log] #{msg}"
@@ -119,8 +119,8 @@ puts "abc".index("z").inspect, "abc".index("c").inspect, "abc"[9].inspect, "abc"
 b = Sub.new #: Base
 puts b, "#{b}", [b, Base.new].map(&:to_s).inspect
 puts Mixed.new, "#{Mixed.new}"
-Logger.log("x")
-Logger.new.show
+LogStub.log("x")
+LogStub.new.show
 Util.say(21)
 pr = Pair.new(1, "s")
 puts pr, "#{pr}", Val.new("q")
