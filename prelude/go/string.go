@@ -238,13 +238,11 @@ func rbSplitLimit(s string, sep *String, limit int) []string {
 		for rest != "" {
 			if limit > 0 && len(parts) == limit-1 {
 				parts = append(parts, rest)
-				rest = ""
 				break
 			}
 			i := strings.IndexAny(rest, " \t\n\v\f\r")
 			if i < 0 {
 				parts = append(parts, rest)
-				rest = ""
 				break
 			}
 			parts = append(parts, rest[:i])
