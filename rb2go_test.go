@@ -424,8 +424,10 @@ func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []s
 
 var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)
 
-// rbsLibraries turns an example's `require "net/http"` lines into the
-// `-r net-http` flags rbs needs to see those libraries' signatures.
+// rbsLibraryNames covers requires whose gem name differs from its RBS stdlib signature directory, like `require "observer"` (defines Observable) shipping sigs under "observable".
+var rbsLibraryNames = map[string]string{"observer": "observable"}
+
+// rbsLibraries turns an example's `require "net/http"` lines into the `-r net-http` flags rbs needs to see those libraries' signatures.
 func rbsLibraries(t *testing.T, path string) []string {
 	t.Helper()
 	src, err := os.ReadFile(path) //nolint:gosec // example path
@@ -435,7 +437,11 @@ func rbsLibraries(t *testing.T, path string) []string {
 	matches := requireLine.FindAllStringSubmatch(string(src), -1)
 	args := make([]string, 0, 2*len(matches))
 	for _, m := range matches {
-		args = append(args, "-r", strings.ReplaceAll(m[1], "/", "-"))
+		name := strings.ReplaceAll(m[1], "/", "-")
+		if alias, ok := rbsLibraryNames[name]; ok {
+			name = alias
+		}
+		args = append(args, "-r", name)
 	}
 	return args
 }
