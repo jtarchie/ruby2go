@@ -175,8 +175,8 @@ func TestRun(t *testing.T) {
 // pass it, or the test itself is wrong; rb2go's output must then match MRI's
 // apart from timings. One build per file for now: the files load together
 // as one program (decision 84, `rb2go test testdata/test`), but that program
-// takes Go ~30 minutes to build, because dynamic_test's computed send keeps
-// a dispatch wrapper for every method of every test class (decision 81).
+// takes Go ~30 minutes to build: Dyn wrappers grow as classes × names
+// (decision 81).
 func TestMinitest(t *testing.T) {
 	requireRuby4(t)
 	files, err := filepath.Glob("testdata/test/*_test.rb")

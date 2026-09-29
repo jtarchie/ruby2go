@@ -1956,11 +1956,14 @@ resolve; anything not listed is still open.
     still builds each file on its own (`--seed 1`; MRI must pass, or the
     harness reports that the test itself is wrong, and rb2go's stdout
     and exit code must equal MRI's with the timing lines blanked): as one
-    program the suite is 946k lines of Go that take ~30 minutes to build,
-    because dynamic_test's computed `send` needs a dispatch wrapper for
-    every method of every test class, 12 files' worth. Making computed
-    send's cost not scale with the program is the next step, and then the
-    harness becomes one build. Because a passing assertion is
+    program the suite is 946k lines of Go that take ~30 minutes to build.
+    Dyn wrappers (decision 32) are emitted per class per name, so they
+    grow as classes × names: dynamic_test's computed `send` asks for every
+    name, and 27 Kernel/Object names alone land on all ~1650 classes
+    (44k of 66k wrappers). Without dynamic_test it is still 480k lines,
+    since each file's untyped call names get wrappers on the other files'
+    classes. Making wrappers scale with definitions, not classes, is the
+    next step, and then the harness becomes one build. Because a passing assertion is
     checked by rb2go's own `==`, the expected side is a literal (MRI
     passing proves it right), `assert_raises` also checks `.message`, and
     `refute_*`/`assert_in_delta` are never a check's only evidence; a
