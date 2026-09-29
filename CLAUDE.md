@@ -10,6 +10,8 @@ go test ./...                       # the oracle; see below
 go test -run 'TestExamples/each/05_word_count' .   # one example
 go test -run 'TestRun/^string_' .             # behaviour snippets by prefix
 go test -run 'TestErrors/^regexp$' .          # one compile-error archive
+go test -run 'TestMinitest/^string$' .        # one minitest file (testdata/test/string_test.rb)
+go run ./cmd/rb2go test -v testdata/test      # rb2go's own `go test`-style runner over *_test.rb
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
 RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (~/Library/Caches/rb2go-test/mri)
 RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (debugging the pruner)
@@ -36,7 +38,8 @@ Generated programs are built with `-race -trimpath` (`-trimpath` lets the build 
 Add one new example per new feature, numbered next in sequence. User code must run on MRI unchanged. There are no golden Go files; MRI's output is the only expectation.
 
 Smaller cases go in `testdata/`:
-- `testdata/run/<area>_*.rb`: `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (the prelude is pruned to what the file reaches, decision 49; built with `-race -gcflags=-l`). File count, not size, drives suite time: add checks to an existing `<area>_bugs.rb`/`<area>_mid.rb` (renaming top-level defs, constants and locals that collide, decision 14) rather than a new file. Files that exit non-zero, call `exit`, or need a file-wide magic comment stay standalone.
+- `testdata/test/<area>_test.rb`: minitest files (decision 81), preferred for new behaviour checks. `TestMinitest` runs each with `--seed 1`; MRI must pass (else the test is wrong), then rb2go's output must equal MRI's apart from timings. rb2go checks its own assertions, so: expected values are literals (MRI passing proves them), `assert_raises` also asserts `.message`, and `refute_*`/`assert_in_delta` are never a check's only evidence. Tests must not print. One file per build, so add test classes/methods to an existing file; a file-wide pragma or a core-class reopen needs its own file.
+- `testdata/run/<area>_*.rb` (print-and-compare; keep for what tests output itself: `puts`/`p`/`print` formatting, exit status, crashes, stdin): `TestRun` gives each file the MRI stdout/exit-code comparison but skips rbs and lint, so each file costs one `go build` (the prelude is pruned to what the file reaches, decision 49; built with `-race -gcflags=-l`). File count, not size, drives suite time: add checks to an existing `<area>_bugs.rb`/`<area>_mid.rb` (renaming top-level defs, constants and locals that collide, decision 14) rather than a new file. Files that exit non-zero, call `exit`, or need a file-wide magic comment stay standalone.
 - `testdata/errors/<area>.txtar`: each `-- name.rb --` is compiled as `main.rb`. `# error: text` lines must all appear in the compile error. `# warning: text` lines must each match a warning. A case with no `# error:` must compile.
 - `# args: a b`, `# env: K=V` and `# stdin: "Go-quoted\n"` (repeatable) feed both MRI and the binary; `# stderr: match` also compares stderr (only where MRI prints no backtrace).
 - `# skip: reason` in either marks a known failure, which is skipped unless `RB2GO_RUN_SKIPPED=1`. When you fix the bug, remove the line.

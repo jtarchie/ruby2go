@@ -136,6 +136,31 @@ print missing, "|", ident(nil), "|\n"
 
 Speaker.new.hi
 
+# puts flattens arrays and prints nil elements as blank lines
+b_opt = ["x", nil] #: Array[String?]
+puts b_opt
+puts "after"
+u_nested = [1, [2, nil]] #: untyped
+puts u_nested
+puts "end"
+
+# puts [] prints a blank line, nested empties print nothing
+puts "a"
+puts []
+puts "b"
+puts [[], []]
+puts "c"
+
+# puts flattens nested arrays and tuples
+puts [1, [2, [3]]]
+tup = [1, "a"]
+puts tup
+
+# puts and print return nil; printf writes format's result
+puts puts("a").inspect
+puts print("b\n").nil?
+printf("%d-%s\n", 1, "two")
+
 # Output written before exit is flushed, and the status is kept.
 puts "before exit"
 print "no newline before exit"
