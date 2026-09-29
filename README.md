@@ -34,8 +34,8 @@ prelude.rb            core library entry point; require_relatives prelude/*.rb
 prelude/              core library, written in Ruby, compiled by the same transpiler;
                       includes net_http.rb and webrick.rb over Go's net/http
 examples/NN_*/main.rb  one feature per program; runs on MRI unchanged
-testdata/run/*.rb     smaller behaviour cases, same MRI oracle, no rbs/lint gate
-testdata/test/*_test.rb  minitest behaviour checks: MRI must pass them, rb2go must match
+testdata/run/*.rb     what output itself shows (puts/print, exit, crashes, stdin): print-and-compare
+testdata/test/*_test.rb  behaviour checks, one minitest file per area: MRI must pass, rb2go must match
 testdata/errors/*.txtar  compile-error and warning cases
 rb2go_test.go         the integration suite (below)
 Gemfile               rbs, rbs-inline, and webrick (the HTTP examples' MRI server)
@@ -1956,9 +1956,22 @@ resolve; anything not listed is still open.
     `testdata/test/string_test.rb`, `string_frozen_test.rb` (the
     `frozen_string_literal` pragma is file-wide) and
     `string_reopen_test.rb` (reopening String changes the whole closed
-    world), three builds instead of sixteen. What tests output itself
-    (`puts`/`print`/`p` formatting, exit status, an uncaught crash) stays
-    print-and-compare in `testdata/run`, as do `# skip:` known failures.
+    world), three builds instead of sixteen. Then every area: array,
+    hash, control, dynamic, number, object, rxjson and the stdlib files
+    are one `testdata/test/<area>_test.rb` each, so `testdata/run` went
+    from 142 files to 27. Each file is still its own program and build
+    (the closed world is one user file); fewer files is what makes the
+    suite faster. What tests output itself (`puts`/`print`/`p`
+    formatting, exit status, an uncaught crash, ARGV/stdin) stays
+    print-and-compare in `testdata/run`, mostly in one `<area>_output.rb`
+    per area, as do the `# skip:` known failures. A value compared
+    through its printed form is asserted as that string (`assert_equal
+    "1.0e+20", x.to_s`), so Float, Hash and inspect formatting stay
+    checked exactly. The examples stay print-and-compare programs, as a
+    Ruby project keeps `examples/` as scripts and its tests in `test/`:
+    converting them to minitest tested nothing new (MRI's output is
+    already an exact oracle) and made every example carry minitest's
+    ~12k lines of Go, TestExamples 7x slower.
 82. Generated programs never use `reflect` (the Go package for inspecting
     types while a program runs): rb2go compiles Ruby, so what MRI asks its
     object model while running, the compiler writes out as class metadata.
