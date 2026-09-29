@@ -230,10 +230,6 @@ module Minitest
     #: (Regexp) -> Array[String]
     def self.methods_matching(re) = public_instance_methods(true).grep(re).map(&:to_s)
 
-    # port: @@runnables lives in Go (rbMtRunnables): a Ruby constant typed with a minitest class would keep minitest in every program's build.
-    #: (singleton(Minitest::Runnable)) -> void
-    def self.inherited(klass) = %x{ rbMtRunnables = append(rbMtRunnables, klass) }
-
     #: (Options) -> Array[String]
     def self.filter_runnable_methods(options)
       pos = __filter(options.include, true)
@@ -284,11 +280,15 @@ module Minitest
     #: () -> Array[String]
     def self.runnable_methods = raise(NotImplementedError, "subclass responsibility")
 
-    # port: Test and Spec come first, as their inherited hooks put them in MRI; rb2go runs no hooks for prelude classes.
+    # port: no inherited hook filling @@runnables while the program runs: the compiler lists every descendant in definition order (decision 79), which is the order the hook would have seen. Result is left out: MRI defines the hook after it.
     #: () -> Array[singleton(Minitest::Runnable)]
     def self.runnables = %x{
-      out := &Array[Minitest_Runnable_MetaI]{Minitest_Test_class, Minitest_Spec_class}
-      *out = append(*out, rbMtRunnables...)
+      out := &Array[Minitest_Runnable_MetaI]{}
+      for _, k := range rbDescendants(Minitest_Runnable_class) {
+        if k != any(Minitest_Result_class) {
+          *out = append(*out, k.(Minitest_Runnable_MetaI))
+        }
+      }
       return out
     }
 

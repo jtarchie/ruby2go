@@ -129,3 +129,8 @@ func rbIsInstanceOf(k, v any) bool {
 	}
 	return t._IsInstance(v)
 }
+
+// rbDescendants is a class object's generated descendant list, in definition order.
+func rbDescendants(k any) []any {
+	return k.(interface{ _Descendants() []any })._Descendants()
+}

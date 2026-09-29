@@ -1886,9 +1886,11 @@ resolve; anything not listed is still open.
     (decision 78) calling `Minitest.autorun`, an `at_exit` (decision 75).
     The run order reproduces minitest's `srand(seed); shuffle` with the
     MT19937 of decision 46, so `Minitest::Spec` is registered (empty) to
-    keep `Runnable.runnables` MRI's length (rb2go runs no `inherited`
-    hook for prelude classes, so `runnables` puts Test and Spec first
-    itself, and user classes are kept in a Go slice). Tests are found
+    keep `Runnable.runnables` MRI's length. No `inherited` hook fills the
+    list while the program runs: every class object has a generated
+    `_Descendants` list in definition order, the order the hook would
+    have seen (classes are declared statically), and `runnables` reads
+    Runnable's, less `Result`, which MRI defines before its hook. Tests are found
     through `public_instance_methods` (decision 77). They are called, and
     `assert_operator`/`assert_predicate` send their operator, without
     `rbSendByName`, whose switch over every method name keeps the whole

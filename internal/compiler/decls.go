@@ -1159,6 +1159,7 @@ func (c *Compiler) emitConstTable(cls *Class) {
 	c.w("func (self *%s) _IsInstance(v any) bool { return %s }\n\n", cls.Name, c.isInstanceTest(desc))
 	if desc != nil {
 		c.w("func (self *%s) _DescID() int { return %d }\n\n", cls.Name, c.classID(desc))
+		c.emitDescendants(cls, desc)
 	}
 	c.emitMethodTable(cls, desc)
 	if desc == nil {
@@ -1174,6 +1175,19 @@ func (c *Compiler) emitConstTable(cls *Class) {
 		}
 	}
 	c.w("\t}\n}\n\n")
+}
+
+// emitDescendants gives a class object its descendant classes in definition
+// order, which is the order MRI's inherited hooks would see them (rb2go's
+// classes are all declared statically). Only rbDescendants asks for it.
+func (c *Compiler) emitDescendants(meta, desc *Class) {
+	var subs []string
+	for _, k := range c.classList {
+		if k != desc && !k.IsModule && k.metaOf == nil && k.meta != nil && k.isSubclassOf(desc) {
+			subs = append(subs, classVar(k))
+		}
+	}
+	c.w("func (self *%s) _Descendants() []any { return []any{%s} }\n\n", meta.Name, strings.Join(subs, ", "))
 }
 
 // emitMethodTable gives a class object the names of its public instance

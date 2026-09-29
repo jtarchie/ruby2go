@@ -68,11 +68,23 @@ func (c *Compiler) emitCallTables() {
 		if cls.File == nil || cls.File.prelude || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
 			continue
 		}
-		c.w("func (self %s) _Call(name string, args ...any) (any, bool) {\n", c.recvType(cls))
+		var cases []dynWrapped
 		for _, w := range c.dynWrapped[cls] {
-			if w.own { // ifs, not a switch: gocritic rejects a one-case switch
-				c.w("\tif name == %q {\n\t\treturn self.%s(args...), true\n\t}\n", w.name, w.goName)
+			if w.own {
+				cases = append(cases, w)
 			}
+		}
+		c.w("func (self %s) _Call(name string, args ...any) (any, bool) {\n", c.recvType(cls))
+		switch len(cases) {
+		case 0:
+		case 1: // gocritic rejects a one-case switch
+			c.w("\tif name == %q {\n\t\treturn self.%s(args...), true\n\t}\n", cases[0].name, cases[0].goName)
+		default: // Go compiles a string switch to a search, not a chain of compares
+			c.w("\tswitch name {\n")
+			for _, w := range cases {
+				c.w("\tcase %q:\n\t\treturn self.%s(args...), true\n", w.name, w.goName)
+			}
+			c.w("\t}\n")
 		}
 		c.w("\treturn nil, false\n}\n\n")
 	}

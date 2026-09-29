@@ -148,9 +148,6 @@ func rbMtPPForDiff(s String) String {
 // rbMtAfterRun holds Minitest.after_run blocks; autorun calls them last-first.
 var rbMtAfterRun []func()
 
-// rbMtRunnables is @@runnables past Test and Spec: user test classes, in definition order.
-var rbMtRunnables []Minitest_Runnable_MetaI
-
 // rbMtCall is send for minitest: a user class's generated _Call table, else NoMethodError.
 func rbMtCall(recv any, name string, args ...any) any {
 	if c, ok := rbUnbox(recv).(interface {
