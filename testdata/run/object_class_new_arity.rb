@@ -1,6 +1,7 @@
 # rbs_inline: enabled
 
 # klass.new through singleton(Base) where a subclass's initialize takes other arguments fails at run time (decision 19).
+# Kept as print-and-compare: rb2go's error is a Go type assertion, not MRI's ArgumentError, so only stdout and exit code match.
 
 class Base
   #: (Integer) -> void
@@ -22,7 +23,6 @@ end
 class Same < Base
 end
 
-puts Two.new(2, 3).n.inspect
 ks = [Base, Same, Two] #: Array[singleton(Base)]
 ks.each { |k| puts "#{k.name}: #{k.new(1).n}" }
 puts "unreachable"

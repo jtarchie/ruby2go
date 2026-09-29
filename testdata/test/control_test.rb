@@ -1,0 +1,4182 @@
+# rbs_inline: enabled
+
+require "minitest/autorun"
+
+# Helpers for the checks that were control_and_or.rb.
+#: (String?) -> bool
+def blank?(s) = s.nil? || s.empty?
+
+#: (Integer?) -> bool
+def big?(n) = !n.nil? && n > 10
+
+#: (Integer?, Integer) -> Integer
+def pick(a, b)
+  return a || b
+end
+
+#: (Integer) -> String
+def show(n) = "n=#{n}"
+
+# Helpers for the checks that were control_assign.rb.
+#: (Array[String], String, Integer?) -> Integer?
+def trace(log, name, v)
+  log << name
+  v
+end
+
+class Memo
+  #: () -> void
+  def initialize
+    @hits = 0
+  end
+
+  #: () -> Integer
+  def hits = @hits
+
+  #: () -> String
+  def value
+    @value ||= compute
+  end
+
+  #: () -> Array[Integer]
+  def list
+    @list ||= [@hits]
+  end
+
+  #: () -> bool
+  def ready
+    @ready ||= @hits > 0
+  end
+
+  private
+
+  #: () -> String
+  def compute
+    @hits += 1
+    "v#{@hits}"
+  end
+end
+
+#: (Integer, Integer) -> [Integer, Integer]
+def divmod2(x, y) = [x / y, x % y]
+
+#: () -> [String, Integer, bool]
+def triple = ["t", 3, true]
+
+class Point
+  attr_reader :x #: Integer
+  attr_reader :y #: Integer
+
+  #: (Integer, Integer) -> void
+  def initialize(x, y)
+    @x, @y = x, y
+  end
+
+  #: () -> void
+  def flip
+    @x, @y = @y, @x
+  end
+
+  #: () -> String
+  def to_s = "(#{@x}, #{@y})"
+end
+
+#: (Array[String], String, bool) -> bool
+def tb(log, name, v)
+  log << name
+  v
+end
+
+#: (Array[Integer], Integer) -> Integer
+def note(c, v)
+  c << v
+  v
+end
+
+# Helpers for the checks that were control_begin_jumps.rb.
+#: (Array[String], Integer) -> Integer
+def nested(out, n)
+  i = 0
+  while i < 10
+    i += 1
+    begin
+      case i
+      when 3
+        begin
+          next
+        ensure
+          out << "inner ensure #{i}"
+        end
+      when 6
+        begin
+          break
+        rescue
+          out << "no"
+        end
+      end
+      begin
+        return i * 100 if i == n
+      ensure
+        out << "ens #{i}"
+      end
+    rescue => e
+      out << e.message
+    end
+  end
+  -i
+end
+
+#: (Array[String]) -> String
+def ens_ret(out)
+  begin
+    out << "body"
+  ensure
+    return "from ensure"
+  end
+  "after"
+end
+
+#: () -> Integer
+def ens_ret2
+  x = 0
+  [1, 2, 3].each do |v|
+    begin
+      x += v
+    ensure
+      return x if v == 2
+    end
+  end
+  x
+end
+
+#: (Array[String], Integer) -> Integer
+def tail_ret(out, n)
+  begin
+    return 5 if n == 1
+    raise "x" if n == 2
+    n * 10
+  rescue
+    return -1
+  ensure
+    out << "ens #{n}"
+  end
+end
+
+#: (Array[String], Integer) -> void
+def tail_void(out, n)
+  out << "start"
+  begin
+    return if n == 1
+    out << "mid #{n}"
+  ensure
+    out << "ens #{n}"
+  end
+end
+
+# Helpers for the checks that were control_loops_nested.rb.
+#: (Hash[String, Integer], Integer) -> String?
+def key_for(h, v)
+  h.each do |k, val|
+    return k if val == v
+  end
+  nil
+end
+
+#: (Array[Integer]) -> Integer
+def count_until_neg(xs)
+  count = 0
+  xs.each do |x|
+    break if x < 0
+    count += 1
+  end
+  count
+end
+
+# Helpers for the checks that were control_bugs.rb.
+# a rescue binding is nil after a begin that did not raise
+#: (Array[String], bool) -> void
+def check(out, fail)
+  begin
+    raise ArgumentError, "bad" if fail
+  rescue ArgumentError => err
+    out << "rescued"
+  end
+  out << err.inspect
+end
+
+#: (Integer) -> Integer
+def bugs_risky(n)
+  raise ArgumentError, "neg" if n < 0
+  n
+end
+
+# Helpers for the checks that were control_conditionals.rb.
+#: (Integer) -> String
+def sign(n)
+  if n > 0
+    "positive"
+  elsif n < 0
+    "negative"
+  else
+    "zero"
+  end
+end
+
+#: (Integer) -> String?
+def only_positive(n)
+  if n > 0
+    "yes #{n}"
+  end
+end
+
+#: (Integer) -> String?
+def unless_zero(n)
+  unless n.zero?
+    "nonzero"
+  end
+end
+
+#: (Integer) -> String
+def unless_else(n)
+  unless n.even?
+    "odd"
+  else
+    "even"
+  end
+end
+
+#: (Integer) -> String
+def bucket(n)
+  if n < 0 then "neg"
+  elsif n < 10 then "digit"
+  elsif n < 100 then "tens"
+  elsif n < 100 then "never"
+  else "big"
+  end
+end
+
+#: (Integer) -> String
+def grade(n)
+  case n
+  when 90, 100 then "A"
+  when 80 then "B"
+  when -1 then "negative one"
+  else "F"
+  end
+end
+
+#: (String) -> Symbol?
+def color(s)
+  case s
+  when "red" then :warm
+  when "blue", "green"
+    :cool
+  when ""
+    :empty
+  when "ünï"
+    :unicode
+  end
+end
+
+#: (Symbol) -> Integer
+def sym_case(s)
+  case s
+  when :a then 1
+  when :b, :c then 2
+  else 0
+  end
+end
+
+#: (Array[String], Integer) -> Integer
+def subject(log, v)
+  log << "subject"
+  v
+end
+
+#: (Integer?) -> String
+def nil_case(x)
+  case x
+  when nil then "nil"
+  when 0 then "zero"
+  else "other #{x.inspect}"
+  end
+end
+
+#: (String) -> String
+def kind(s)
+  case s
+  when /\A\d+\z/ then "digits"
+  when /\A[a-z]+\z/ then "lower"
+  when /é/ then "has é"
+  else "other"
+  end
+end
+
+#: (bool) -> String
+def bool_case(b)
+  case b
+  when true then "T"
+  when false then "F"
+  else "?"
+  end
+end
+
+# case on classes is a type test, most specific first
+class Animal; end
+
+class Dog < Animal; end
+
+class Cat < Animal; end
+
+#: (untyped) -> String
+def what(x)
+  case x
+  when nil then "nil"
+  when Integer then "int #{x + 1}"
+  when String then "str #{x.upcase}"
+  when Dog then "dog"
+  when Animal then "animal"
+  when Array then "array of #{x.size}"
+  when Hash then "hash of #{x.size}"
+  else "other"
+  end
+end
+
+#: (Animal) -> String
+def typed(a)
+  case a
+  when Dog then "D"
+  when Cat then "C"
+  else "A"
+  end
+end
+
+#: (Animal) -> String
+def shadowed(a)
+  case a
+  when Animal then "animal first"
+  when Dog then "never"
+  else "else"
+  end
+end
+
+#: (bool) -> String
+def yn(flag) = flag ? "yes" : "no"
+
+#: (String?) -> String
+def guarded(s)
+  return "none" unless s
+  "got #{s.upcase}"
+end
+
+#: (String?) -> Integer
+def guarded_nil(s)
+  return -1 if s.nil?
+  s.size
+end
+
+# Helpers for the checks that were control_conditions_more.rb.
+LIMIT = 3
+
+#: (Integer) -> String
+def vs_const(n)
+  case n
+  when LIMIT then "at limit"
+  when LIMIT * 2 then "double"
+  else "no"
+  end
+end
+
+#: (untyped) -> String
+def multi(v)
+  case v
+  when String, Symbol then "text #{v}"
+  when Integer, Float then "num #{v}"
+  when nil then "nil"
+  else "?"
+  end
+end
+
+#: (Integer?) -> String
+def nil_or_zero(v)
+  case v
+  when nil, 0 then "empty"
+  else "val #{v}"
+  end
+end
+
+# a value `when` listed before `when nil` must not call == on nil
+
+#: (Integer?) -> String
+def zero_first(v)
+  case v
+  when 0 then "zero"
+  when nil then "nil"
+  else "other"
+  end
+end
+
+#: (String?) -> String
+def str_first(s)
+  case s
+  when "a" then "A"
+  else "other #{s.inspect}"
+  end
+end
+
+#: (Integer) -> String
+def early(n)
+  return "neg" if n < 0
+  return "zero" if n.zero?
+  unless n > 10
+    return "small"
+  end
+  "big"
+end
+
+#: (Integer) -> Integer
+def abs_val(n) = n < 0 ? -n : n
+
+# Helpers for the checks that were control_bug_empty_body.rb.
+#: (Integer) -> Integer
+def empty_risky(n)
+  raise ArgumentError, "neg" if n < 0
+  n
+end
+
+#: (Array[Integer], Integer) -> void
+def quiet(out, n)
+  out << empty_risky(n)
+rescue ArgumentError => e
+end
+
+# Helpers for the checks that were control_bug_iterator_return_in_ensure_begin.rb.
+#: (Array[String], Integer) { (Integer) -> void } -> void
+def upto_stop(out, n)
+  i = 0
+  while i < n
+    begin
+      return if i == 2
+    ensure
+      out << "ensure #{i}"
+    end
+    yield i
+    i += 1
+  end
+  out << "loop done"
+end
+
+#: (Array[String]) { (Integer) -> void } -> void
+def each_logged_ensure(out)
+  i = 0
+  while i < 3
+    i += 1
+    begin
+      yield i
+    ensure
+      out << "after #{i}"
+    end
+  end
+  out << "each_logged done"
+end
+
+# Helpers for the checks that were control_bug_local_name_collision.rb.
+#: (Integer?) -> Integer
+def collide_pick(x)
+  t1 = 100
+  y = x || t1
+  y + t1
+end
+
+#: (Integer) -> Integer
+def collide_risky(n)
+  raise ArgumentError, "neg" if n < 0
+  n
+end
+
+#: (Integer) -> String
+def doubled(n)
+  ret_ = n * 2
+  raise "x" if n < 0
+  "v#{ret_}"
+rescue
+  "rescued"
+end
+
+# Helpers for the checks that were control_bug_unassigned_branch_local.rb.
+#: (bool) -> Integer?
+def branch_local(flag)
+  if flag
+    a = 1
+  end
+  a
+end
+
+#: (Integer) -> String?
+def loop_local(n)
+  i = 0
+  while i < n
+    last = "v#{i}"
+    i += 1
+  end
+  last
+end
+
+#: (Array[String], Integer) -> void
+def half(out, n)
+  begin
+    raise ArgumentError, "odd" if n.odd?
+    h = n / 2
+  rescue ArgumentError
+    out << "rescue sees #{h.inspect}"
+  end
+  out << h.inspect
+end
+
+# Helpers for the checks that were control_definite_assign.rb.
+# twice/shout reject nil: a local assigned on every path must stay non-optional.
+
+#: (Integer) -> Integer
+def twice(n)
+  n * 2
+end
+
+#: (String) -> String
+def shout(s)
+  s.upcase
+end
+
+#: (bool) -> Integer
+def both_branches(flag)
+  if flag
+    a = 1
+  else
+    a = 2
+  end
+  twice(a)
+end
+
+#: (Integer) -> String
+def case_else(n)
+  case n
+  when 1 then s = "one"
+  else s = "many"
+  end
+  shout(s)
+end
+
+#: (Array[Integer], Integer) -> void
+def definite_guarded(out, n)
+  if n > 0
+    v = n
+  else
+    return
+  end
+  out << twice(v)
+end
+
+#: (Integer) -> Integer
+def raised(n)
+  if n > 0
+    v = n
+  else
+    raise ArgumentError, "neg"
+  end
+  twice(v)
+end
+
+#: () -> Integer
+def definite_countdown
+  i = 3
+  while true
+    last = i
+    i -= 1
+    break if i == 0
+  end
+  twice(last)
+end
+
+#: (Array[Integer], Integer) -> void
+def rescued(out, n)
+  begin
+    got = n
+    raise ArgumentError, "big" if n > 1
+    out << twice(got)
+  rescue ArgumentError
+    out << twice(got)
+  end
+end
+
+#: (Array[String]) -> void
+def ensured(out)
+  begin
+    out << "body"
+  ensure
+    e = 5
+  end
+  out << twice(e).to_s
+end
+
+#: (Array[String], bool) -> void
+def narrowed(out, flag)
+  if flag
+    a = 3
+    out << twice(a).to_s
+    a += 1
+    out << twice(a).to_s
+  end
+  out << a.inspect
+end
+
+# Helpers for the checks that were control_edges.rb.
+#: (Integer) -> Integer
+def edges_risky(n)
+  raise ArgumentError, "neg" if n < 0
+  n
+end
+
+# method-level rescue that returns nil into a T? result, and `return` from it
+
+#: (Integer) -> Integer?
+def safe(n)
+  edges_risky(n)
+rescue ArgumentError
+  nil
+end
+
+#: (Integer) -> Integer
+def rescue_return(n)
+  edges_risky(n)
+rescue ArgumentError
+  return -1
+end
+
+#: (Integer) -> String
+def cased(n)
+  begin
+    case n
+    when 1 then return "one"
+    when 2 then raise ArgumentError, "two"
+    end
+    "other"
+  rescue ArgumentError => e
+    "err #{e.message}"
+  end
+end
+
+class EdgesAppError < StandardError; end
+
+module EdgesApp
+  class Missing < StandardError; end
+end
+
+# rescue by a module the exception class includes
+module Tag; end
+class TaggedError < StandardError
+  include Tag
+end
+
+# while as the last statement of a value method, a void method and a block
+
+#: (Integer) -> String
+def tail_while(n)
+  i = 0
+  while i < n
+    i += 1
+  end
+  "done #{i}"
+end
+
+#: (Array[String]) -> void
+def void_while(out)
+  k = 0
+  while k < 2
+    out << "k#{k}"
+    k += 1
+  end
+end
+
+#: (Hash[String, Integer], String) -> String
+def probe(h, k)
+  if k == "x"
+    "x"
+  elsif (m = h[k])
+    "found #{m}"
+  else
+    "missing"
+  end
+end
+
+#: (Array[String], Integer) -> String
+def label(out, n)
+  case n
+  when 1
+    out << "matched one"
+    "one"
+  when 2, 3
+    t = n * 10
+    "few #{t}"
+  else
+    "many"
+  end
+end
+
+#: () -> Array[String]
+def parts = ["x", "y", "z"]
+
+#: (Array[Integer?]) -> Integer
+def total_until_nil(xs)
+  sum = 0
+  xs.each do |x|
+    break unless x
+    sum += x
+  end
+  sum
+end
+
+# decision 20: attribute reads on self narrow like locals
+class Box
+  attr_reader :v #: Integer?
+
+  #: (Integer?) -> void
+  def initialize(v)
+    @v = v
+  end
+
+  #: () -> String
+  def show
+    return "empty" unless v
+    "v=#{v + 1}"
+  end
+
+  #: () -> String
+  def show2 = v ? "v=#{v * 2}" : "none"
+
+  #: () -> String
+  def show3
+    if v && v > 3
+      "big #{v}"
+    else
+      "small"
+    end
+  end
+end
+
+# rescue/ensure in initialize, in a class method and in a module function
+class Parser
+  attr_reader :ok #: bool
+
+  #: (String) -> void
+  def initialize(s)
+    @ok = true
+    raise ArgumentError, "empty" if s.empty?
+  rescue ArgumentError
+    @ok = false
+  end
+
+  #: (Array[String], String) -> Integer
+  def self.parse(out, s)
+    raise ArgumentError, "bad" unless s == "1"
+    1
+  rescue ArgumentError => e
+    out << "class method rescued #{e.message}"
+    0
+  ensure
+    out << "class method ensure"
+  end
+end
+
+module Util
+  #: (Integer) -> String
+  def self.check(n)
+    return "neg" if n < 0
+    raise KeyError, "zero" if n.zero?
+    "pos"
+  rescue KeyError => e
+    "rescued #{e.message}"
+  end
+end
+
+# an iterator that yields inside begin/ensure runs the ensure after each block call
+
+#: (Array[String]) { (Integer) -> void } -> void
+def edges_each_logged(out)
+  i = 0
+  while i < 3
+    i += 1
+    begin
+      yield i
+    ensure
+      out << "after #{i}"
+    end
+  end
+  out << "each_logged done"
+end
+
+# value `when`s on untyped and optional subjects, mixed with `when nil`
+
+#: (untyped) -> String
+def classify(v)
+  case v
+  when 1 then "one"
+  when "a", :b then "a or b"
+  when nil then "nil"
+  when 2.5 then "float"
+  else "other"
+  end
+end
+
+#: (String?) -> String
+def opt_str(s)
+  case s
+  when nil then "nil"
+  when "x", "y" then "xy"
+  else "other"
+  end
+end
+
+# rescue/ensure in inherited, overriding (super inside rescue) and mixed-in methods
+class Base
+  #: () -> String
+  def run = raise(NotImplementedError, "abstract run")
+
+  #: (Array[String]) -> String
+  def safe_run(out)
+    run
+  rescue NotImplementedError => e
+    "base caught #{e.message}"
+  ensure
+    out << "base ensure #{self.class}"
+  end
+end
+
+class Impl < Base
+  #: () -> String
+  def run
+    super
+  rescue NotImplementedError => e
+    "impl fallback: #{e.message}"
+  end
+end
+
+class EdgesPlain < Base; end
+
+module Retrying
+  #: (Integer) -> String
+  def attempt(n)
+    raise ArgumentError, "attempt #{n} failed" if n < 2
+    "attempt #{n} ok"
+  rescue ArgumentError => e
+    "#{worker_name}: #{e.message}"
+  end
+end
+
+class Worker
+  include Retrying
+
+  #: () -> String
+  def worker_name = "worker"
+end
+
+# Helpers for the checks that were control_exception_flow.rb.
+class Fixed < StandardError
+  #: () -> void
+  def initialize
+    super("fixed message")
+  end
+end
+
+class Blank < StandardError
+  #: () -> void
+  def initialize
+    super()
+  end
+end
+
+class WithCode < StandardError
+  attr_reader :code #: Integer
+
+  #: (Integer) -> void
+  def initialize(code)
+    @code = code
+    super("code #{code}")
+  end
+end
+
+# rescue that raises, with ensure in the same method
+
+#: (Array[String]) -> Integer
+def rescue_raises(out)
+  raise ArgumentError, "a"
+rescue ArgumentError
+  raise KeyError, "b"
+ensure
+  out << "ens"
+end
+
+# the same name bound in two rescue clauses with different classes
+
+#: (Integer) -> String
+def two_bindings(k)
+  raise ArgumentError, "arg" if k == 0
+  raise KeyError, "key" if k == 1
+  "none"
+rescue ArgumentError => e
+  "A #{e.message}"
+rescue KeyError => e
+  "K #{e.message}"
+end
+
+# raise in a deeply nested call inside a loop inside a method with rescue
+
+#: (Array[Integer]) -> String
+def sum_positive(xs)
+  total = 0
+  xs.each do |x|
+    raise ArgumentError, "negative #{x}" if x < 0
+    total += x
+  end
+  "sum #{total}"
+rescue ArgumentError => e
+  "failed: #{e.message} after #{total}"
+end
+
+# raise message built from interpolation and a to_s
+class Thing
+  #: () -> String
+  def to_s = "thing"
+end
+
+module FlowApp
+  class Error < StandardError; end
+  class Missing < Error; end
+
+  #: (String) -> String
+  def self.find(k)
+    raise Missing, "no #{k}" if k.empty?
+    k
+  end
+end
+
+# an exception raised in initialize escapes new
+class Strict
+  attr_reader :n #: Integer
+
+  #: (Integer) -> void
+  def initialize(n)
+    raise ArgumentError, "n must be positive, got #{n}" unless n > 0
+    @n = n
+  end
+end
+
+#: (Integer) -> Integer
+def depth(n)
+  return depth(n - 1) + 1 if n > 0
+  raise ArgumentError, "bottom"
+rescue ArgumentError
+  n * 1000
+end
+
+#: (Array[String], bool) -> void
+def void_ensure_return(out, flag)
+  out << "body"
+  raise "x" if flag
+ensure
+  out << "ensure"
+  return
+end
+
+#: (Array[String], Integer) -> String
+def rescue_then_ensure_return(out, n)
+  raise ArgumentError, "a" if n > 0
+  "body"
+rescue ArgumentError
+  "rescue"
+ensure
+  out << "ensure #{n}"
+end
+
+# rescue clauses see locals assigned before the raise, even in a loop
+
+#: (Array[Integer]) -> String
+def progress(xs)
+  done = 0
+  xs.each do |x|
+    raise ArgumentError, "stop at #{x}" if x < 0
+    done += 1
+  end
+  "all #{done}"
+rescue ArgumentError => e
+  "#{e.message} after #{done}"
+end
+
+#: (Array[String], Array[Integer]) -> Integer
+def first_ok(out, xs)
+  xs.each do |x|
+    begin
+      raise "bad #{x}" if x < 0
+      return x * 10
+    rescue => e
+      out << "skip #{e.message}"
+    end
+  end
+  -1
+end
+
+#: (Integer) -> String
+def case_tail(n)
+  raise ArgumentError, "neg" if n < 0
+  case n
+  when 0 then "zero"
+  else "pos"
+  end
+rescue ArgumentError
+  "rescued"
+end
+
+class Cache
+  #: () -> void
+  def initialize
+    @calls = 0
+  end
+
+  #: () -> Integer
+  def value
+    @v ||= compute
+  rescue ArgumentError
+    -1
+  end
+
+  #: () -> Integer
+  def compute
+    @calls += 1
+    raise ArgumentError, "first call fails" if @calls == 1
+    @calls * 100
+  end
+end
+
+#: (Integer) -> Integer
+def flow_risky(n)
+  raise ArgumentError, "neg" if n < 0
+  n
+end
+
+class Holder
+  attr_reader :v #: Integer
+
+  #: (Integer) -> void
+  def initialize(n)
+    @v = begin
+      flow_risky(n)
+    rescue ArgumentError
+      0
+    end
+  end
+end
+
+#: (Array[Integer]) -> Array[String]
+def labels(xs)
+  xs.map do |x|
+    x > 0 ? "p#{x}" : raise(ArgumentError, "bad #{x}")
+  end
+end
+
+#: (Array[Integer]) -> Array[String]
+def names(xs)
+  xs.map do |x|
+    case x
+    when 1 then "one"
+    else raise ArgumentError, "unknown #{x}"
+    end
+  end
+end
+
+#: (Array[Integer]) -> Array[Integer]
+def divs(xs) = xs.map { |d| 10 / d }
+
+#: () -> Integer
+def multi_in_begin
+  begin
+    a, b = 3, 4
+  rescue
+    a = 0
+    b = 0
+  end
+  a + b
+end
+
+# Helpers for the checks that were control_exceptions.rb.
+class AppError < StandardError; end
+class NotFound < AppError; end
+class Fatal < Exception; end
+
+class ValidationError < StandardError
+  attr_reader :field #: String
+
+  #: (String, String) -> void
+  def initialize(field, msg)
+    super(msg)
+    @field = field
+  end
+end
+
+class DefaultMsg < StandardError
+  #: (?String) -> void
+  def initialize(msg = "default message")
+    super(msg)
+  end
+end
+
+#: (Array[String], Integer) -> void
+def boom(out, kind)
+  case kind
+  when 0 then raise ArgumentError, "bad arg"
+  when 1 then raise "plain"
+  when 2 then raise NotFound
+  when 3 then raise NotFound.new("built")
+  when 4 then raise KeyError, "k"
+  when 5 then raise AppError.new
+  when 6 then raise ValidationError.new("name", "too short")
+  when 7 then raise DefaultMsg
+  when 8 then raise IndexError, ""
+  when 9 then raise TypeError, "ünïcode ✓"
+  end
+  out << "no raise #{kind}"
+end
+
+#: (Array[String], Integer) -> String
+def which(out, k)
+  boom(out, k)
+  "none"
+rescue NotFound => e
+  "NotFound #{e.message}"
+rescue AppError, KeyError => e
+  "AppError|KeyError #{e.class} #{e.message}"
+rescue ValidationError => e
+  "#{e.field}: #{e.message}"
+rescue StandardError => e
+  "StandardError #{e.class}"
+end
+
+#: () -> String
+def outer
+  begin
+    begin
+      raise Fatal, "deep"
+    rescue => e
+      "inner caught #{e.class}"
+    end
+  rescue Exception => e
+    "outer caught #{e.class} #{e.message}"
+  end
+end
+
+#: (Array[String], bool) -> Integer
+def ordered(out, fail)
+  out << "body"
+  raise "f" if fail
+  1
+rescue
+  out << "rescue"
+  2
+ensure
+  out << "ensure"
+end
+
+#: () -> String
+def ensure_value
+  "body value"
+ensure
+  "ensure value"
+end
+
+#: (Integer) -> String
+def value_if(n)
+  if n > 0 then "pos" else raise ArgumentError, "nonpositive" end
+rescue ArgumentError => e
+  "rescued #{e.message}"
+end
+
+#: () -> Integer
+def ensure_overrides
+  return 1
+ensure
+  return 2
+end
+
+#: () -> String
+def swallow
+  raise ArgumentError, "lost"
+ensure
+  return "ensure wins"
+end
+
+#: (Integer) -> String
+def ensure_after_rescue(n)
+  raise ArgumentError, "a" if n > 0
+  "body"
+rescue ArgumentError
+  raise "from rescue"
+ensure
+  return "ensure #{n}" if n > 1
+end
+
+#: (Array[String], Array[Integer]) -> String
+def scan(out, list)
+  i = 0
+  while i < list.size
+    begin
+      begin
+        raise ArgumentError, "neg #{list[i]}" if (list[i] || 0) < 0
+        return "found #{list[i]}" if list[i] == 7
+      ensure
+        out << "inner #{i}"
+      end
+    rescue ArgumentError => e
+      return "error #{e.message}"
+    end
+    i += 1
+  end
+  "none"
+end
+
+#: (Array[String], bool) -> void
+def void_ensure(out, flag)
+  begin
+    return if flag
+    out << "not returned"
+  ensure
+    out << "ensure #{flag}"
+  end
+  out << "after"
+end
+
+#: (Array[String], Array[Integer]) -> Integer
+def first_big(out, list)
+  list.each do |x|
+    begin
+      return x if x > 10
+    ensure
+      out << "checked #{x}"
+    end
+  end
+  -1
+end
+
+#: (Array[String]) { () -> void } -> void
+def exc_risky(out)
+  yield
+rescue StandardError => e
+  out << "caught #{e.message}"
+end
+
+#: (Integer) -> String
+def name_of(n)
+  case n
+  when 1 then "one"
+  else raise ArgumentError, "unknown #{n}"
+  end
+end
+
+#: (Integer?) -> Integer
+def must(v)
+  x = v || raise(KeyError, "missing")
+  x + 1
+end
+
+#: (bool) -> Integer
+def tern(c)
+  c ? 10 : raise("no")
+end
+
+#: (Integer) -> Integer
+def risky_int(n)
+  raise ArgumentError, "neg" if n < 0
+  raise NotImplementedError, "nie" if n == 99
+  n * 2
+end
+
+#: (String) -> Integer
+def safe_fetch(k)
+  { "a" => 1 }.fetch(k) rescue -1
+end
+
+# Helpers for the checks that were control_locals.rb.
+#: (Integer) -> String
+def size_word(n)
+  if n > 100
+    word = "large"
+  elsif n > 10
+    word = "medium"
+  else
+    word = "small"
+  end
+  word + "!"
+end
+
+#: (Symbol) -> Integer
+def weight(s)
+  case s
+  when :a
+    w = 1
+  when :b
+    w = 2
+  else
+    w = 0
+  end
+  w * 10
+end
+
+#: (Array[String], Integer) -> String
+def parse(out, d)
+  begin
+    step = "start"
+    q = 100 / d
+    step = "divided"
+  rescue ZeroDivisionError
+    out << "rescue sees #{step}"
+    q = -1
+  ensure
+    out << "ensure sees #{step}"
+  end
+  "#{step} #{q}"
+end
+
+#: (Integer) -> String
+def nil_first(n)
+  if n > 0
+    label = nil
+  else
+    label = "non-positive"
+  end
+  label.inspect
+end
+
+#: (Array[Integer]) -> Array[Integer]
+def running(xs)
+  total = 0
+  xs.map { |x| total += x }
+end
+
+#: (Integer) -> Integer
+def bump(n)
+  n += 1
+  n *= 2
+  n -= 3
+  n
+end
+
+#: (Integer) -> String
+def shadow(v)
+  out = [] #: Array[String]
+  [v, v + 1].each do |w|
+    tmp = "#{w}!"
+    out << tmp
+  end
+  tmp = "outer"
+  out << tmp
+  out.join(",")
+end
+
+# Helpers for the checks that were control_locals_scope.rb.
+#: () -> String
+def ens_local
+  begin
+    a = 1
+  ensure
+    cleaned = "cleaned #{a}"
+  end
+  cleaned
+end
+
+#: (Integer) -> String
+def rescue_local(d)
+  begin
+    q = 10 / d
+  rescue ZeroDivisionError
+    note = "div by zero"
+    q = 0
+  end
+  "#{q} #{note.inspect}"
+end
+
+#: (bool) -> Integer
+def writes_only(flag)
+  unused = 1
+  if flag
+    unused2 = "x"
+  end
+  3.times { |t| inner_unused = t }
+  7
+end
+
+#: (String?) -> String
+def default_name(name)
+  name ||= "anon"
+  name.upcase
+end
+
+#: (Integer?) -> Integer
+def or_value(v) = (v ||= 42)
+
+#: (Integer) -> [Integer, Integer]
+def step(n) = [n / 2, n % 2]
+
+# swap through ivars and locals mixed
+class Pair
+  attr_reader :l #: Integer
+  attr_reader :r #: Integer
+
+  #: (Integer, Integer) -> void
+  def initialize(l, r)
+    @l = l
+    @r = r
+  end
+
+  #: () -> [Integer, Integer]
+  def swapped
+    lo, hi = @r, @l
+    [lo, hi]
+  end
+end
+
+#: (String, Integer) -> String
+def kw(type, range) = "#{type}#{range}"
+
+# Helpers for the checks that were control_loops.rb.
+#: (Integer) -> Integer
+def collatz(n)
+  steps = 0
+  while n != 1
+    n = n.even? ? n / 2 : 3 * n + 1
+    steps += 1
+  end
+  steps
+end
+
+#: (Array[String]) -> Integer?
+def index_of_empty(list)
+  list.each_with_index do |s, idx|
+    return idx if s.empty?
+  end
+  nil
+end
+
+#: (Array[Array[Integer]], Integer) -> String
+def find_pair(rows, target)
+  rows.each_with_index do |row, r|
+    row.each_with_index do |v, c|
+      return "#{r},#{c}" if v == target
+    end
+  end
+  "missing"
+end
+
+#: (Integer) -> Integer?
+def first_square_over(limit)
+  i = 1
+  while true
+    return i * i if i * i > limit
+    return nil if i > 100
+    i += 1
+  end
+end
+
+#: (Array[String], Integer) -> void
+def void_early(out, n)
+  return if n > 1
+  out << "small #{n}"
+end
+
+#: (Array[String]) { (Integer) -> void } -> void
+def with_cleanup(out)
+  yield 1
+  yield 2
+ensure
+  out << "cleanup"
+end
+
+#: (Array[String], Array[Integer]) -> Integer?
+def find_neg(out, list)
+  with_cleanup(out) do |v|
+    return v * 100 if list.include?(-v)
+  end
+  nil
+end
+
+#: (Integer) { (Integer) -> void } -> void
+def loops_countdown(from)
+  while from > 0
+    yield from
+    from -= 1
+  end
+end
+
+#: (Array[String]) { (Integer) -> void } -> void
+def loops_guarded(out)
+  [1, 2, 3].each { |g| yield g }
+rescue => e
+  out << "guarded caught #{e.message}"
+end
+
+#: (Array[untyped]) -> String
+def first_string(items)
+  items.each do |item|
+    case item
+    when String then return "string #{item}"
+    when nil then next
+    end
+  end
+  "no string"
+end
+
+# Helpers for the checks that were control_mid.rb.
+#: (Array[String]) -> Array[String]
+def tags(words)
+  out = [] #: Array[String]
+  words.each do |w|
+    tag = nil if w.empty?
+    tag = "long" if w.size > 3
+    out << "#{w}: #{tag.inspect}"
+  end
+  out
+end
+
+#: (Array[String], Array[String]) -> String
+def last_seen(out, items)
+  item = "none"
+  items.each do |item|
+    out << "item #{item}"
+  end
+  item
+end
+
+# an overridden message or to_s drives what inspect and rescue see
+class CustomMessage < StandardError
+  #: () -> String
+  def message = "custom"
+end
+
+class CustomToS < StandardError
+  #: () -> String
+  def to_s = "tos"
+end
+
+#: (Integer) -> Integer
+def dbl(n) = n * 2
+
+class MidAnimal
+  #: () -> String
+  def name = "animal"
+end
+
+#: (MidAnimal) -> String
+def greet(a) = "hi #{a.name}"
+
+#: (Array[String]) { (Integer) -> void } -> void
+def mid_guarded(out)
+  [1, 2, 3].each { |g| yield g }
+rescue => e
+  out << "guarded caught #{e.message}"
+end
+
+# nil assigned after a typed assignment joins the local to T?
+#: (Array[String], Integer) -> void
+def joined(out, n)
+  y = "a"
+  y = nil if n > 5
+  out << y.inspect
+  if n > 0
+    label = "pos"
+  else
+    label = nil
+  end
+  out << label.inspect
+end
+
+#: (Integer) -> Integer
+def mid_risky(n)
+  raise ArgumentError, "neg" if n < 0
+  n
+end
+
+#: (Array[String]) -> Array[String]
+def later_outer(out)
+  labels = [1, 2].map do |z|
+    item = z.to_s
+    item
+  end
+  out << labels.inspect
+  item = 5
+  out << (item + 1).to_s
+end
+
+#: (Array[String], Array[Integer]) -> Array[Integer]
+def halves(out, list)
+  list.map { |d| d / 2 }
+ensure
+  out << "done"
+end
+
+# zsuper in an exception initialize forwards the (defaulted) message
+class MidPlain < StandardError
+  #: (String) -> void
+  def initialize(msg)
+    super
+  end
+end
+
+class MidDefaultMsg < StandardError
+  #: (?String) -> void
+  def initialize(msg = "default message")
+    super
+  end
+end
+
+class ControlAndOrTest < Minitest::Test
+  def test_optional_and_untyped_operands
+    assert_equal true, blank?(nil)
+    assert_equal true, blank?("")
+    assert_equal false, blank?("x")
+    assert_equal false, big?(nil)
+    assert_equal false, big?(5)
+    assert_equal true, big?(50)
+    assert_equal 2, (pick(nil, 2))
+    assert_equal 1, (pick(1, 2))
+    flag = true
+    opt = nil #: Integer?
+    mixed = flag && opt
+    assert_nil mixed
+    mixed2 = !flag || opt
+    assert_nil mixed2
+    values = [opt || 1, (flag && 2) || 3] #: Array[Integer]
+    assert_equal [1, 2], values
+    assert_equal "n=5", (show(opt || 5))
+    u = nil #: untyped
+    w = 3 #: untyped
+    assert_equal "dflt", (u || "dflt")
+    assert_equal 3, (w || "dflt")
+    assert_nil (u && "x")
+    assert_equal "x", (w && "x")
+    name = nil #: String?
+    greeting = name && "hi #{name}"
+    assert_nil greeting
+    name = "zed"
+    greeting = name && "hi #{name}"
+    assert_equal "hi zed", greeting
+
+    # assignment inside && in a condition
+    store = { "k" => 5 } #: Hash[String, Integer]
+    seen = "" #: String
+    if flag && (got = store["k"])
+      seen = "got #{got}"
+    end
+    assert_equal "got 5", seen
+
+    # not / ! on optional and untyped values
+    assert_equal true, (not opt)
+    assert_equal true, (!u)
+    assert_equal false, (!w)
+  end
+
+  # && binding tighter than ||, and `and`/`or` equal precedence left to right
+  def test_binding_tighter_than_and_and
+    t = true
+    f = false
+    assert_equal true, (t || f && f)
+    r = (f or t and f)
+    assert_equal false, r
+  end
+
+  # || on an optional with a side-effecting right side, only when nil
+  def test_or_on_optional_side_effect_only_when_nil
+    hits = 0
+    vals = [] #: Array[Integer]
+    3.times do |i|
+      cached = (i == 1 ? 7 : nil) #: Integer?
+      val = cached || (hits += 1)
+      vals << val
+    end
+    assert_equal [1, 7, 2], vals
+    assert_equal 2, hits
+  end
+
+  # multiple assignment from Arrays, untyped values and optionals
+  def test_multiple_assignment_from_arrays_untyped
+    kname, kval = "a=1".split("=")
+    assert_equal "a", kname
+    assert_equal "1", kval
+    k2, v2 = "novalue".split("=")
+    assert_equal "novalue", k2
+    assert_nil v2
+    un = [1, "two"] #: Array[untyped]
+    u1, u2, u3 = un
+    assert_equal 1, u1
+    assert_equal "two", u2
+    assert_nil u3
+    o1 = 1 #: Integer?
+    o2 = nil #: Integer?
+    o1, o2 = o2, o1
+    assert_nil o1
+    assert_equal 1, o2
+    h = { "x" => 1, "y" => 2 } #: Hash[String, Integer]
+    got = [] #: Array[String]
+    h.each do |pair|
+      kk, vv = pair
+      got << "#{kk}:#{vv}"
+    end
+    h.to_a.each do |kk, vv|
+      got << kk + vv.to_s
+    end
+    assert_equal ["x:1", "y:2", "x1", "y2"], got
+    ix = 0
+    while ix < 3
+      ix, dummy = ix + 1, ix
+    end
+    assert_equal 3, ix
+  end
+
+  # multiple assignment inside a closure block writes outer locals
+  def test_multiple_assignment_inside_a_closure
+    lo = 0
+    hi = 0
+    pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
+    pairs.each { |pair| lo, hi = pair[1], pair[0] }
+    assert_equal 8, lo
+    assert_equal 2, hi
+    ww = 0
+    res = [5].map { |x| ww, z = x, x * 2; z }
+    assert_equal 5, ww
+    assert_equal [10], res
+  end
+end
+
+class ControlAssignTest < Minitest::Test
+  def test_or_assign_multiple_assign_and_short_circuit
+    calls = [] #: Array[String]
+    a = nil #: Integer?
+    a ||= trace(calls, "first", 1)
+    a ||= trace(calls, "second", 2)
+    assert_equal 1, a
+    assert_equal ["first"], calls
+    fresh ||= "made"
+    assert_equal "made", fresh
+    n = 0
+    n ||= trace(calls, "never", 9) || 0
+    assert_equal 0, n
+    assert_equal ["first"], calls
+    flag = false
+    flag ||= true
+    assert_equal true, flag
+    t = true
+    t ||= false
+    assert_equal true, t
+    untyped_vals = [false, nil, 0, "", [], :s] #: Array[untyped]
+    filled = [] #: Array[String]
+    untyped_vals.each do |u|
+      u ||= "was falsy"
+      filled << u.inspect
+    end
+    assert_equal ["\"was falsy\"", "\"was falsy\"", "0", "\"\"", "[]", ":s"], filled
+    m = nil #: String?
+    m ||= nil
+    assert_nil m
+    m ||= "later"
+    assert_equal "later", m
+    m ||= "ignored"
+    assert_equal "later", m
+    memo = Memo.new
+    assert_equal false, memo.ready
+    assert_equal "v1", memo.value
+    assert_equal "v1", memo.value
+    assert_equal 1, memo.hits
+    assert_equal [1], memo.list
+    assert_equal true, memo.ready
+    cache = nil #: Array[Integer]?
+    3.times do |i|
+      cache ||= []
+      cache << i
+    end
+    assert_equal [0, 1, 2], cache
+    q, r = divmod2(17, 5)
+    assert_equal 3, q
+    assert_equal 2, r
+    q, r = divmod2(-7, 2)
+    assert_equal(-4, q)
+    assert_equal 1, r
+    s, i, b = triple
+    assert_equal "t", s
+    assert_equal 3, i
+    assert_equal true, b
+    a1, b1 = 1, 2
+    a1, b1 = b1, a1
+    assert_equal 2, a1
+    assert_equal 1, b1
+    x, y, z = "x", "y", "z"
+    x, y, z = y, z, x
+    assert_equal ["y", "z", "x"], ([x, y, z])
+    f0, f1 = 0, 1
+    10.times { f0, f1 = f1, f0 + f1 }
+    assert_equal 55, f0
+    assert_equal 89, f1
+    arr = [10, 20] #: Array[Integer]
+    p1, p2, p3 = arr
+    assert_equal 10, p1
+    assert_equal 20, p2
+    assert_nil p3
+    e1, e2 = [] #: Array[String]
+    assert_nil e1
+    assert_nil e2
+    one, two = [5] #: Array[Integer]
+    assert_equal 5, one
+    assert_nil two
+    h1, h2 = 1, 2, 3
+    assert_equal 1, h1
+    assert_equal 2, h2
+    mm = 0
+    nn = 0
+    mm, nn = 3, 4
+    assert_equal 7, (mm + nn)
+    pt = Point.new(1, 2)
+    pt.flip
+    assert_equal "(2, 1)", pt.to_s
+    pairs = [[1, "one"], [2, "two"]] #: Array[[Integer, String]]
+    ranges = [] #: Array[String]
+    pairs.each do |num, word|
+      lo, hi = num, num * 100
+      ranges << "#{word}: #{lo}..#{hi}"
+    end
+    assert_equal ["one: 1..100", "two: 2..200"], ranges
+    maybe = "set" #: String?
+    other = 1
+    maybe, other = nil, 2
+    assert_nil maybe
+    assert_equal 2, other
+    log = [] #: Array[String]
+    r1 = tb(log, "a", false) && tb(log, "b", true)
+    r2 = tb(log, "c", true) || tb(log, "d", true)
+    r3 = tb(log, "e", true) && tb(log, "f", false)
+    r4 = tb(log, "g", false) || tb(log, "h", false)
+    assert_equal [false, true, false, false], ([r1, r2, r3, r4])
+    assert_equal ["a", "c", "e", "f", "g", "h"], log
+    log.clear
+    r5 = (tb(log, "i", true) and tb(log, "j", true))
+    r6 = (tb(log, "k", false) or tb(log, "l", true))
+    r7 = (not tb(log, "m", true))
+    assert_equal [true, true, false], ([r5, r6, r7])
+    assert_equal ["i", "j", "k", "l", "m"], log
+    none = nil #: Integer?
+    some = 3 #: Integer?
+    assert_equal 10, (none || 10)
+    assert_equal 3, (some || 10)
+    assert_nil (none && none + 1)
+    assert_equal 4, (some && some + 1)
+    str = nil #: String?
+    assert_equal "", (str || "")
+    assert_nil (str && str.size)
+    str = "abc"
+    assert_equal 3, (str && str.size)
+    other_nil = nil #: Integer?
+    assert_nil (none || other_nil)
+    yes = true
+    no = false
+    assert_equal "fallback", (no || "fallback")
+    assert_equal "yes", (yes && "yes")
+    assert_equal false, (no && "never")
+    assert_equal true, (yes || "never")
+    assert_equal false, (none || false)
+    assert_equal "three", (some && "three")
+    assert_nil (none && "none")
+    zero_and = 0 && "zero is truthy"
+    assert_equal "zero is truthy", zero_and
+    empty_and = "" && :empty_is_truthy
+    assert_equal :empty_is_truthy, empty_and
+    xn = nil #: Integer?
+    yn = nil #: Integer?
+    zn = 7 #: Integer?
+    assert_equal 7, (xn || yn || zn)
+    assert_equal "big", (zn && zn > 5 && "big")
+    assert_equal 0, (xn || yn || 0)
+    counter = [] #: Array[Integer]
+    one_opt = 1 #: Integer?
+    got = one_opt || note(counter, 2)
+    got2 = none || note(counter, 3)
+    got3 = none && note(counter, 4)
+    got4 = one_opt && note(counter, 5)
+    assert_equal 1, got
+    assert_equal 3, got2
+    assert_nil got3
+    assert_equal 5, got4
+    assert_equal [3, 5], counter
+    vals = [nil, false, 0, "s"] #: Array[untyped]
+    rows = [] #: Array[String]
+    vals.each do |v|
+      rows << (v || "right").inspect + " " + (v && "right").inspect
+    end
+    assert_equal ["\"right\" nil", "\"right\" false", "0 \"right\"", "\"s\" \"right\""], rows
+    assert_equal true, (!none)
+    assert_equal false, (!some)
+    assert_equal true, (!!some)
+    assert_equal false, (!yes)
+    assert_equal false, (!!no)
+    h = { "a" => 1 } #: Hash[String, Integer]
+    v = h["a"] or raise "missing"
+    assert_equal 1, v
+    e = assert_raises(KeyError) do
+      w = h["b"] or raise KeyError, "missing b"
+      flunk "got #{w.inspect}"
+    end
+    assert_equal "missing b", e.message
+    ok = h.key?("a")
+    got_unless = "" #: String
+    got_unless = "unless-and" unless ok && h.empty?
+    assert_equal "unless-and", got_unless
+  end
+end
+
+class ControlBeginJumpsTest < Minitest::Test
+  def test_next_break_return_through_nested_begin
+    out = [] #: Array[String]
+    assert_equal 400, nested(out, 4)
+    assert_equal ["ens 1", "ens 2", "inner ensure 3", "ens 4"], out
+    out = [] #: Array[String]
+    assert_equal(-6, nested(out, 8))
+    assert_equal ["ens 1", "ens 2", "inner ensure 3", "ens 4", "ens 5"], out
+  end
+
+  def test_return_from_ensure
+    out = [] #: Array[String]
+    assert_equal "from ensure", ens_ret(out)
+    assert_equal ["body"], out
+    assert_equal 3, ens_ret2
+  end
+
+  def test_next_and_break_in_nested_blocks_with_ensure
+    out = [] #: Array[String]
+    [1, 2, 3].each do |v|
+      begin
+        [10, 20].each do |w|
+          begin
+            next if w == 10
+            break if v == 2
+            out << "#{v} #{w}"
+          ensure
+            out << "e #{v} #{w}"
+          end
+        end
+      ensure
+        out << "outer e #{v}"
+      end
+    end
+    assert_equal ["e 1 10", "1 20", "e 1 20", "outer e 1", "e 2 10", "e 2 20", "outer e 2", "e 3 10", "3 20", "e 3 20", "outer e 3"], out
+  end
+
+  def test_next_and_break_in_ensure_swallow_the_raise
+    out = [] #: Array[String]
+    i = 0
+    while i < 4
+      i += 1
+      begin
+        raise "boom #{i}" if i.even?
+        out << "body #{i}"
+      ensure
+        next if i == 2
+        break if i == 4
+      end
+      out << "after #{i}"
+    end
+    assert_equal ["body 1", "after 1", "body 3", "after 3"], out
+    assert_equal 4, i
+
+    xs = [] #: Array[String]
+    [1, 2, 3].each do |x|
+      begin
+        raise "a" if x == 2
+      ensure
+        next if x == 2
+      end
+      xs << "x #{x}"
+    end
+    assert_equal ["x 1", "x 3"], xs
+  end
+
+  def test_tail_begin_with_return
+    out = [] #: Array[String]
+    assert_equal [5, -1, 30], [tail_ret(out, 1), tail_ret(out, 2), tail_ret(out, 3)]
+    assert_equal ["ens 1", "ens 2", "ens 3"], out
+    out = [] #: Array[String]
+    tail_void(out, 1)
+    tail_void(out, 2)
+    assert_equal ["start", "ens 1", "start", "mid 2", "ens 2"], out
+  end
+end
+
+class ControlLoopsNestedTest < Minitest::Test
+  def test_while_and_until_conditions
+    arr = [3, 8, 0, 5] #: Array[Integer]
+    i = 0
+    while i < arr.size && arr[i] != 0
+      i += 1
+    end
+    assert_equal 2, i
+
+    opt = [1, 2] #: Array[Integer]
+    j = 0
+    until opt[j].nil?
+      j += 1
+    end
+    assert_equal 2, j
+  end
+
+  # break from an if/else arm leaves only the inner iterator
+  def test_break_from_if_else_arm_leaves_inner_iterator
+    found = [] #: Array[String]
+    [1, 2, 3].each do |a|
+      [10, 20, 30].each do |b|
+        if b > 10 * a
+          break
+        else
+          found << "#{a}-#{b}"
+        end
+      end
+    end
+    assert_equal ["1-10", "2-10", "2-20", "3-10", "3-20", "3-30"], found
+  end
+
+  def test_next_and_break_in_while
+    k = 0
+    odds = [] #: Array[Integer]
+    while k < 6
+      k += 1
+      if k.even?
+        if k == 4
+          next
+        end
+        odds << -k
+        next
+      end
+      odds << k
+    end
+    assert_equal [1, -2, 3, 5, -6], odds
+
+    w = 0
+    while true
+      break
+    end
+    assert_equal 0, w
+
+    n = 0
+    total = 0
+    (total += n; n += 1) while n < 4
+    assert_equal 6, total
+  end
+
+  def test_next_break_return_in_blocks
+    res = [] #: Array[String]
+    %w[a b c].each_with_index do |s, idx|
+      2.times do |t|
+        next if t == idx
+        res << "#{s}#{t}"
+      end
+    end
+    assert_equal ["a1", "b0", "c0", "c1"], res
+
+    hh = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
+    assert_equal "b", key_for(hh, 2)
+    assert_nil key_for(hh, 3)
+    assert_equal 2, count_until_neg([1, 2, -1, 4])
+    assert_equal 0, count_until_neg([])
+
+    acc = [] #: Array[Integer]
+    10.downto(1) do |d|
+      next if d.odd?
+      break if d < 4
+      acc << d
+    end
+    assert_equal [10, 8, 6, 4], acc
+
+    evens = [] #: Array[String]
+    [1, 2, 3, 4].select(&:even?).each do |e|
+      evens << "even #{e}"
+      break
+    end
+    assert_equal ["even 2"], evens
+
+    chars = [] #: Array[String]
+    "abcd".each_char do |ch|
+      next if ch == "b"
+      chars << ch
+    end
+    assert_equal "acd", chars.join
+  end
+
+  # break and next inside a while stay in the while when it sits in a closure block
+  def test_while_inside_closure_block
+    sums = [3, 5].map do |lim|
+      sum = 0
+      m = 0
+      while true
+        m += 1
+        next if m == 2
+        break if m > lim
+        sum += m
+      end
+      sum
+    end
+    assert_equal [4, 13], sums
+  end
+end
+
+class ControlBugsTest < Minitest::Test
+  # block-local params after `;` shadow the outer local instead of assigning it
+  def test_block_local_params_shadow_outer
+    x_semi = 5
+    [1, 2].each { |v; x_semi| x_semi = v * 100 }
+    assert_equal 5, x_semi
+    total_semi = 0
+    sums_semi = [3, 4].map do |v; total_semi|
+      total_semi = v + 1
+      total_semi
+    end
+    assert_equal [4, 5], sums_semi
+    assert_equal 0, total_semi
+  end
+
+  # literal true/false/nil on the left of &&/|| still yields the right value
+  def test_literal_left_of_and_or
+    assert_equal false, (false && "never")
+    assert_equal true, (true || "never")
+    assert_equal "yes", (true && "yes")
+    assert_equal "fallback", (false || "fallback")
+    x_nil = nil && 5
+    assert_nil x_nil
+    s_nil = "a"
+    y_nil = nil && s_nil
+    assert_nil y_nil
+    assert_equal false, (nil || false)
+    assert_equal "right", (nil || "right")
+  end
+
+  # case on a literal subject, with and without an else
+  def test_case_on_literal_subject
+    v_case = case 3
+             when 1 then "one"
+             when 3 then "three"
+             end
+    assert_equal "three", v_case
+    w_case = case "s"
+             when "s" then :matched
+             else :no
+             end
+    assert_equal :matched, w_case
+  end
+
+  # a condition's right side lifted out of &&/|| keeps short-circuiting
+  def test_lifted_condition_keeps_short_circuit
+    out = [] #: Array[String]
+    h_cond = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
+    if h_cond["c"].nil? && (h_cond["b"] || 0) > 1
+      out << "lifted and"
+    end
+    if h_cond["a"].nil? || (h_cond["b"] || 0) > 1
+      out << "lifted or"
+    end
+    ok_cond = true
+    unless ok_cond && (h_cond["zz"] || 0) > 1
+      out << "unless lifted and"
+    end
+    assert_equal ["lifted and", "lifted or", "unless lifted and"], out
+  end
+
+  # Exception#inspect with an empty message shows the class name; control characters are escaped
+  def test_exception_inspect
+    assert_equal "ArgumentError", ArgumentError.new("").inspect
+    e_empty = assert_raises(KeyError) { raise KeyError, "" }
+    assert_equal "KeyError", e_empty.inspect
+    assert_equal "", e_empty.message
+    assert_equal "#<RuntimeError:\"a\\nb\">", RuntimeError.new("a\nb").inspect
+    assert_equal "#<ArgumentError: tab\there>", ArgumentError.new("tab\there").inspect
+  end
+
+  # a bare `next` in a value block yields nil for that element
+  def test_bare_next_in_value_block
+    xs_next = [1, 2, 3] #: Array[Integer]
+    ys_next = xs_next.map do |x|
+      next if x == 2
+      x * 10
+    end
+    assert_equal "[10, nil, 30]", ys_next.inspect
+    picked_next = xs_next.select do |x|
+      next if x.odd?
+      true
+    end
+    assert_equal [2], picked_next
+  end
+
+  # ||= with a raising right side only raises when the left is nil
+  def test_or_assign_with_raising_right_side
+    y_raise = 5 #: Integer?
+    y_raise ||= raise(ArgumentError, "never")
+    assert_equal 5, y_raise
+    x_raise = nil #: Integer?
+    e = assert_raises(KeyError) do
+      x_raise ||= raise(KeyError, "x missing")
+      flunk "unreachable #{x_raise}"
+    end
+    assert_equal "x missing", e.message
+  end
+
+  def test_rescue_binding_nil_without_raise
+    out = [] #: Array[String]
+    check(out, true)
+    check(out, false)
+    assert_equal ["rescued", "#<ArgumentError: bad>", "nil"], out
+  end
+
+  # an untyped local takes new literal types and ||= replaces false
+  def test_untyped_local_retyped_and_or_assign
+    v_untyped = 1 #: untyped
+    assert_equal 1, v_untyped
+    v_untyped = "s"
+    assert_equal "s", v_untyped
+    u_untyped = false #: untyped
+    u_untyped ||= "was false"
+    assert_equal "was false", u_untyped
+    # ||= on an untyped hash read fills false and missing alike
+    h_fill = { "f" => false, "s" => "set" } #: Hash[String, untyped]
+    filled = [] #: Array[String]
+    %w[f s missing].each do |k|
+      v = h_fill[k]
+      v ||= "filled"
+      filled << v.inspect
+    end
+    assert_equal ["\"filled\"", "\"set\"", "\"filled\""], filled
+  end
+
+  # truthiness of untyped values read from a hash or array
+  def test_truthiness_of_untyped_reads
+    out = [] #: Array[String]
+    h_truthy = { "t" => true, "f" => false, "n" => nil, "z" => 0 } #: Hash[String, untyped]
+    %w[t f n z missing].each do |k|
+      out << "#{k}: #{h_truthy[k] ? "truthy" : "falsy"}"
+      out << "  if" if h_truthy[k]
+      v = h_truthy[k]
+      out << "  local if" if v
+      out << "  nil? #{h_truthy[k].nil?}"
+      out << "  && #{(h_truthy[k] && "rhs").inspect}"
+    end
+    arr_truthy = [false, nil, 1] #: Array[untyped]
+    out << "arr[0] truthy" if arr_truthy[0]
+    out << "arr[1] truthy" if arr_truthy[1]
+    out << "arr[2] truthy" if arr_truthy[2]
+    assert_equal [
+      "t: truthy", "  if", "  local if", "  nil? false", "  && \"rhs\"",
+      "f: falsy", "  nil? false", "  && false",
+      "n: falsy", "  nil? true", "  && nil",
+      "z: truthy", "  if", "  local if", "  nil? false", "  && \"rhs\"",
+      "missing: falsy", "  nil? true", "  && nil",
+      "arr[2] truthy",
+    ], out
+  end
+
+  # value types (String, "", Symbol) are always truthy
+  def test_value_types_always_truthy
+    out = [] #: Array[String]
+    s_truthy = "x"
+    out << "string is truthy" if s_truthy
+    e_truthy = ""
+    out << (e_truthy ? "empty string is truthy" : "falsy")
+    sym_truthy = :a
+    out << "symbol is truthy" if sym_truthy
+    assert_equal ["string is truthy", "empty string is truthy", "symbol is truthy"], out
+  end
+
+  # next with a value gives the block's value
+  def test_next_with_value
+    nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
+    assert_equal "{\"a\" => 1}", nv_h.select { |k, v| next false if k == "b"; v > 0 }.inspect
+    nv_xs = [1, 2] #: Array[Integer]
+    assert_equal [2, 4], nv_xs.map { |x| next x * 2 }
+    assert_equal [1], nv_xs.select { |n| next false if n > 1; true }
+  end
+end
+
+class ControlConditionalsTest < Minitest::Test
+  def test_if_unless_ternary_and_case
+    assert_equal "positive", sign(5)
+    assert_equal "negative", sign(-3)
+    assert_equal "zero", sign(0)
+    assert_equal "yes 1", only_positive(1)
+    assert_nil only_positive(0)
+    assert_nil only_positive(-1)
+    assert_nil unless_zero(0)
+    assert_equal "nonzero", unless_zero(-2)
+    assert_equal "odd", unless_else(3)
+    assert_equal "even", unless_else(0)
+    assert_equal "even", unless_else(-4)
+    assert_equal ["neg", "digit", "digit", "tens", "tens", "big", "big"], ([-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
+    x = 3
+    assert_equal "big", (x > 2 ? "big" : "small")
+    assert_equal 2, (x.even? ? 1 : 2)
+    z = if x == 3 then 30 else 0 end
+    assert_equal 30, z
+    w = unless x == 3 then 1 else 2 end
+    assert_equal 2, w
+    v = x > 100 ? nil : x * 2
+    assert_equal 6, v
+    v2 = x < 100 ? nil : x * 2
+    assert_nil v2
+    nested = x > 1 ? (x > 2 ? "gt2" : "eq2") : "le1"
+    assert_equal "gt2", nested
+    assert_equal "arg if", (if x > 1 then "arg if" else "arg else" end)
+    s = "a" + (x.odd? ? "odd" : "even") + "z"
+    assert_equal "aoddz", s
+    mods = [] #: Array[String]
+    mods << "mod-if" if x == 3
+    mods << "mod-if never" if x == 4
+    mods << "mod-unless" unless x == 4
+    mods << "mod-unless never" unless x == 3
+    assert_equal ["mod-if", "mod-unless"], mods
+    # Ruby 4: a line starting with && / || continues the condition
+    teen = x >= 13
+      || x == 3
+    assert_equal true, teen
+    assert_equal ["A", "A", "B", "negative one", "F", "F"], ([90, 100, 80, -1, 0, 85].map { |n| grade(n) })
+    assert_equal :warm, color("red")
+    assert_equal :cool, color("green")
+    assert_equal :empty, color("")
+    assert_equal :unicode, color("ünï")
+    assert_nil color("RED")
+    assert_equal 1, sym_case(:a)
+    assert_equal 2, sym_case(:c)
+    assert_equal 0, sym_case(:zz)
+    log = [] #: Array[String]
+    lim = 3
+    r = case subject(log, 4)
+        when lim then "lim"
+        when lim + 1 then "lim+1"
+        else "other"
+        end
+    assert_equal "lim+1", r
+    assert_equal ["subject"], log
+    assert_equal "nil", nil_case(nil)
+    assert_equal "zero", nil_case(0)
+    assert_equal "other 5", nil_case(5)
+    assert_equal "digits", kind("123")
+    assert_equal "lower", kind("abc")
+    assert_equal "has é", kind("café")
+    assert_equal "other", kind("A1")
+    assert_equal "other", kind("")
+    assert_equal "T", bool_case(true)
+    assert_equal "F", bool_case(false)
+    assert_equal "nil", what(nil)
+    assert_equal "int 42", what(41)
+    assert_equal "str HI", what("hi")
+    assert_equal "dog", what(Dog.new)
+    assert_equal "animal", what(Cat.new)
+    assert_equal "array of 2", (what([1, 2]))
+    assert_equal "hash of 1", (what({ "a" => 1 }))
+    assert_equal "other", what(2.5)
+    assert_equal "other", what(:sym)
+    assert_equal "other", what(false)
+    assert_equal "D", typed(Dog.new)
+    assert_equal "C", typed(Cat.new)
+    assert_equal "A", typed(Animal.new)
+    assert_equal "animal first", shadowed(Dog.new)
+  end
+
+  # case without a match and without else is nil; untyped truthiness
+  def test_case_without_match_and_truthiness
+    three = 3
+    none = case three
+           when 1 then "x"
+           end
+    assert_nil none
+    assert_equal "three", (case three when 3 then "three" else "other" end)
+    assert_equal "n=III", ("n=#{case three when 3 then "III" else "?" end}")
+    vals = [nil, false, 0, "", [], true, 0.0] #: Array[untyped]
+    rows = vals.map do |val|
+      word = val ? "T" : "F"
+      word2 = "F"
+      word2 = "T" if val
+      word3 = "T"
+      word3 = "F" unless val
+      "#{val.inspect} #{word} #{word2} #{word3} #{yn(val)} #{(!val).inspect}"
+    end
+    assert_equal ["nil F F F no true", "false F F F no true", "0 T T T yes false", "\"\" T T T yes false", "[] T T T yes false", "true T T T yes false", "0.0 T T T yes false"], rows
+  end
+
+  # narrowing: `if x`, `x && ...`, ternary, and early-exit guards
+  def test_narrowing_guards
+    maybe = 5 #: Integer?
+    nothing = nil #: Integer?
+    got = [] #: Array[Integer]
+    got << maybe + 1 if maybe
+    got << nothing + 1 if nothing
+    assert_equal [6], got
+    assert_equal 10, (maybe ? maybe * 2 : 0)
+    assert_equal 0, (nothing ? nothing * 2 : 0)
+    msg = "" #: String
+    if maybe && maybe > 4
+      msg = "maybe #{maybe} > 4"
+    end
+    assert_equal "maybe 5 > 4", msg
+    assert_equal "none", guarded(nil)
+    assert_equal "got OK", guarded("ok")
+    assert_equal(-1, guarded_nil(nil))
+    assert_equal 4, guarded_nil("four")
+  end
+end
+
+class ControlConditionsMoreTest < Minitest::Test
+  # an assignment as the condition: the value decides, the local stays set
+  def test_assignment_as_condition
+    h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
+    got = [] #: Array[String]
+    if (m = h["a"])
+      got << "found #{m + 1}"
+    end
+    if (m2 = h["zz"])
+      got << "never #{m2}"
+    else
+      got << "missing #{m2.inspect}"
+    end
+    assert_equal ["found 2", "missing nil"], got
+  end
+
+  # nested ternaries without parentheses associate to the right
+  def test_nested_ternaries_associate_right
+    x = 4
+    assert_equal "b", (x > 5 ? "a" : x > 3 ? "b" : "c")
+    assert_equal "c", (x > 5 ? "a" : x > 4 ? "b" : "c")
+    assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
+  end
+
+  # `when` with constant values and expressions on constants is ==, not a type test
+  def test_when_with_constants_and_several_classes
+    assert_equal "at limit", vs_const(3)
+    assert_equal "double", vs_const(6)
+    assert_equal "no", vs_const(1)
+    assert_equal ["text s", "text y", "num 2", "num 2.5", "nil", "?"], [multi("s"), multi(:y), multi(2), multi(2.5), multi(nil), multi([1])]
+    assert_equal ["empty", "empty", "val 3"], [nil_or_zero(nil), nil_or_zero(0), nil_or_zero(3)]
+    assert_equal ["zero", "other", "nil"], [zero_first(0), zero_first(5), zero_first(nil)]
+    assert_equal "A", str_first("a")
+    assert_equal "other nil", str_first(nil)
+  end
+
+  # case and if as the value of a block
+  def test_case_and_if_as_block_value
+    words = [1, 5, 12].map do |n|
+      case n
+      when 1 then "one"
+      when 5 then "five"
+      else "many"
+      end
+    end
+    assert_equal ["one", "five", "many"], words
+    labels = [1, 5].map { |n| if n > 2 then "big" end }
+    assert_equal [nil, "big"], labels
+  end
+
+  # and/or/not keywords and their precedence
+  def test_and_or_not_keywords
+    a = true
+    b = false
+    got = [] #: Array[String]
+    got << "and-not" if a and not b
+    got << "unless-or" unless a || b
+    got << "not-or" if !(a || b)
+    got << "neither" unless a or b
+    assert_equal ["and-not"], got
+    assert_equal true, (a || b && b)
+    r = (b or a and b)
+    assert_equal false, r
+    y = z = 5
+    assert_equal 10, y + z
+  end
+
+  def test_early_returns_and_modifiers
+    assert_equal ["neg", "zero", "small", "big"], [early(-1), early(0), early(5), early(50)]
+    assert_equal 4, abs_val(-4)
+    assert_equal 4, abs_val(4)
+    c = 0
+    c += 1 if true
+    c += 10 unless false
+    c += 100 if false
+    assert_equal 11, c
+  end
+end
+
+class ControlBugEmptyBodyTest < Minitest::Test
+  def test_empty_bodies
+    begin
+      empty_risky(-1)
+    rescue ArgumentError
+    end
+    out = [] #: Array[Integer]
+    quiet(out, 1)
+    quiet(out, -1)
+    assert_equal [1], out
+
+    seen = [] #: Array[String]
+    i = 0
+    if i > 2
+    end
+    unless i.zero?
+    end
+    if i > 5
+      seen << "big"
+    elsif i > 3
+    else
+    end
+    while i > 5
+    end
+    i += 1 until i >= 3
+    case i
+    when 1, 2
+    when 3 then seen << "three"
+    else
+    end
+    begin
+      seen << "body"
+    ensure
+    end
+    assert_equal ["three", "body"], seen
+    x = if i > 5 then end #: Integer?
+    assert_nil x
+    assert_equal 3, i
+  end
+end
+
+class ControlBugIteratorReturnInEnsureBeginTest < Minitest::Test
+  def test_return_in_ensure_begin_inside_iterator
+    out = [] #: Array[String]
+    upto_stop(out, 4) { |x| out << "got #{x}" }
+    assert_equal ["ensure 0", "got 0", "ensure 1", "got 1", "ensure 2"], out
+  end
+
+  def test_break_through_ensure_inside_iterator
+    out = [] #: Array[String]
+    each_logged_ensure(out) do |v|
+      break if v == 2
+      out << "b#{v}"
+    end
+    assert_equal ["b1", "after 1", "after 2"], out
+  end
+end
+
+class ControlBugLocalNameCollisionTest < Minitest::Test
+  def test_locals_named_like_generated_temps
+    r = 10
+    assert_equal 10, r
+    seen = 0
+    begin
+      raise "boom"
+    rescue
+      seen = r
+    end
+    assert_equal 10, seen
+    assert_equal 200, collide_pick(nil)
+    assert_equal 101, collide_pick(1)
+    p = 7
+    v = collide_risky(-1) rescue p
+    assert_equal 7, v
+    assert_equal "v2", doubled(1)
+    assert_equal "rescued", doubled(-1)
+  end
+end
+
+class ControlBugUnassignedBranchLocalTest < Minitest::Test
+  def test_unassigned_branch_locals_are_nil
+    assert_equal 1, branch_local(true)
+    assert_nil branch_local(false)
+    assert_equal "v1", loop_local(2)
+    assert_nil loop_local(0)
+    b = 5 if [].size > 0
+    assert_nil b
+    out = [] #: Array[String]
+    half(out, 4)
+    half(out, 3)
+    assert_equal ["2", "rescue sees nil", "nil"], out
+  end
+end
+
+class ControlDefiniteAssignTest < Minitest::Test
+  def test_definite_assignment_keeps_locals_non_optional
+    assert_equal 2, both_branches(true)
+    assert_equal 4, both_branches(false)
+    assert_equal "ONE", case_else(1)
+    assert_equal "MANY", case_else(2)
+    out = [] #: Array[Integer]
+    definite_guarded(out, 4)
+    definite_guarded(out, -1)
+    assert_equal [8], out
+    assert_equal 10, raised(5)
+    assert_equal 2, definite_countdown
+    out2 = [] #: Array[Integer]
+    rescued(out2, 1)
+    rescued(out2, 2)
+    assert_equal [2, 4], out2
+    out3 = [] #: Array[String]
+    ensured(out3)
+    assert_equal ["body", "10"], out3
+    out4 = [] #: Array[String]
+    narrowed(out4, true)
+    narrowed(out4, false)
+    assert_equal ["6", "8", "4", "nil"], out4
+  end
+
+  def test_branch_locals_in_blocks_and_loops
+    got = [] #: Array[String?]
+    [1, 2].each do |k|
+      if k == 1
+        m = "set"
+      end
+      got << m
+    end
+    assert_equal ["set", nil], got
+    zs = [] #: Array[Integer?]
+    i = 0
+    while i < 2
+      if i == 0
+        z = 1
+      end
+      zs << z
+      i += 1
+    end
+    assert_equal [1, 1], zs
+    w = 1 unless [1].empty?
+    assert_equal 1, w
+  end
+end
+
+class ControlEdgesTest < Minitest::Test
+  # a local assigned on every pass of a block is fresh each iteration
+  def test_block_local_fresh_each_iteration
+    seen = [] #: Array[String]
+    [1, 2, 3].each do |v|
+      acc = [] #: Array[Integer]
+      acc << v
+      seen << acc.inspect
+    end
+    assert_equal ["[1]", "[2]", "[3]"], seen
+    doubled = [1, 2].map do |v|
+      tmp = v * 2
+      tmp
+    end
+    assert_equal [2, 4], doubled
+  end
+
+  # an if modifier / ternary with a nil branch inside interpolation is ""
+  def test_nil_branch_in_interpolation
+    x = 3
+    assert_equal "ac", "a#{"b" if x > 5}c"
+    assert_equal "abc", "a#{"b" if x < 5}c"
+    assert_equal "n=.", "n=#{x > 5 ? "big" : nil}."
+  end
+
+  def test_method_level_rescue
+    assert_equal 1, safe(1)
+    assert_nil safe(-1)
+    assert_equal 2, rescue_return(2)
+    assert_equal(-1, rescue_return(-2))
+    assert_equal ["one", "err two", "other"], [cased(1), cased(2), cased(3)]
+  end
+
+  # nested rescue modifiers: the outer one catches the inner fallback's raise
+  def test_nested_rescue_modifiers
+    v = (edges_risky(-1) rescue edges_risky(-2)) rescue 3
+    assert_equal 3, v
+    v2 = (edges_risky(-1) rescue edges_risky(4)) rescue 3
+    assert_equal 4, v2
+  end
+
+  # begin/ensure as a value keeps the body's value
+  def test_begin_ensure_value
+    out = [] #: Array[String]
+    y = begin
+      5
+    ensure
+      out << "y ensure"
+    end
+    assert_equal ["y ensure"], out
+    assert_equal 5, y
+  end
+
+  # a rescued exception can be the subject of a type case
+  def test_rescued_exception_in_type_case
+    kinds = [] #: Array[String]
+    [KeyError.new("k"), ArgumentError.new("a"), IOError.new("io")].each do |ex|
+      begin
+        raise ex
+      rescue => e
+        kind = case e
+               when KeyError then "key"
+               when ArgumentError then "arg"
+               else "other #{e.class}"
+               end
+        kinds << kind
+      end
+    end
+    assert_equal ["key", "arg", "other IOError"], kinds
+  end
+
+  # exceptions show their message through to_s, interpolation and untyped
+  # (puts/print of an exception stays in testdata/run/control_output.rb)
+  def test_exception_message_through_to_s_and_interpolation
+    e = assert_raises(EdgesAppError) { raise EdgesAppError, "boom" }
+    assert_equal "boom", e.to_s
+    assert_equal "Error: boom", "Error: #{e}"
+    err = KeyError.new("k") #: untyped
+    assert_equal "k", err.to_s
+    assert_equal "u: k", "u: #{err}"
+    assert_equal "ArgumentError", ArgumentError.new.to_s
+    assert_equal "RuntimeError", "#{RuntimeError.new}"
+    list = [ArgumentError.new("a1"), TypeError.new("t1")] #: Array[StandardError]
+    assert_equal ["a1", "t1"], list.map(&:message)
+    assert_equal ["ArgumentError", "TypeError"], list.map { |l| l.class.name }
+    assert_equal "[#<ArgumentError: a1>, #<TypeError: t1>]", list.inspect
+    assert_equal "#<EdgesApp::Missing: x>", EdgesApp::Missing.new("x").inspect
+    assert_equal "EdgesApp::Missing", EdgesApp::Missing.new.message
+  end
+
+  # messages built from nil optionals, and used as hash keys
+  def test_messages_from_nil_optionals_and_as_keys
+    none = nil #: Integer?
+    e = assert_raises(ArgumentError) { raise ArgumentError, "value was #{none.inspect}" }
+    assert_equal "value was nil", e.message
+    e2 = assert_raises(RuntimeError) { raise "count: #{none || 0}" }
+    assert_equal "count: 0", e2.message
+    assert_equal RuntimeError, e2.class
+    msgs = {} #: Hash[String, Integer]
+    [ArgumentError.new("a"), KeyError.new("a"), TypeError.new("b")].each do |ex|
+      msgs[ex.message] = (msgs[ex.message] || 0) + 1
+    end
+    assert_equal "{\"a\" => 2, \"b\" => 1}", msgs.inspect
+  end
+
+  # rescue by a module the exception class includes
+  def test_rescue_by_included_module
+    got = "" #: String
+    begin
+      raise TaggedError, "t"
+    rescue Tag
+      got = "rescued by module"
+    end
+    assert_equal "rescued by module", got
+  end
+
+  # while as the last statement of a value method, a void method and a block
+  def test_while_as_last_statement
+    assert_equal "done 3", tail_while(3)
+    out = [] #: Array[String]
+    void_while(out)
+    assert_equal ["k0", "k1"], out
+    ws = [] #: Array[Integer]
+    [1].each do |z|
+      w = 0
+      w += 1 while w < z
+      ws << w
+    end
+    assert_equal [1], ws
+    a = 0
+    while a < 2 do a += 1 end
+    assert_equal 2, a
+    b = 10
+    until b < 5 || b.even? && b < 8
+      b -= 1
+    end
+    assert_equal 6, b
+  end
+
+  # break from a while inside a begin body, and a loop inside ensure
+  def test_loops_inside_begin_and_ensure
+    out = [] #: Array[String]
+    begin
+      n = 0
+      while true
+        n += 1
+        break if n == 3
+      end
+      out << n.to_s
+    rescue => e
+      out << e.message
+    end
+    begin
+      out << "body"
+    ensure
+      c = 0
+      while c < 2
+        c += 1
+        next if c == 1
+        out << "ensure loop #{c}"
+      end
+    end
+    # break inside an iterator in a rescue clause
+    begin
+      raise "x"
+    rescue => e
+      [1, 2, 3].each do |q|
+        break if q == 2
+        out << "#{e.message}#{q}"
+      end
+    end
+    assert_equal ["3", "body", "ensure loop 2", "x1"], out
+  end
+
+  # retry by hand: an until loop around begin/rescue
+  def test_retry_by_hand
+    out = [] #: Array[String]
+    attempts = 0
+    done = false
+    until done
+      begin
+        attempts += 1
+        raise "flaky" if attempts < 3
+        done = true
+      rescue
+        out << "retrying #{attempts}"
+      end
+    end
+    assert_equal ["retrying 1", "retrying 2"], out
+    assert_equal 3, attempts
+  end
+
+  # conditions that need lifted statements outside && / ||
+  def test_lifted_conditions
+    x = 3
+    h = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
+    assert_equal ["x", "found 1", "missing"], [probe(h, "x"), probe(h, "a"), probe(h, "zz")]
+    assert_equal "zero", ((h["q"] || 0) > 0 ? "pos" : "zero")
+    out = [] #: Array[String]
+    unless (h["b"] || 0) > 100
+      out << "unless lifted"
+    end
+    if (h["b"] || 0) > 1 && x > 2
+      out << "lifted left"
+    end
+    assert_equal ["unless lifted", "lifted left"], out
+    # ! and not on values that are never nil
+    s = "s"
+    assert_equal false, (!x)
+    assert_equal false, (not x)
+    assert_equal false, (!s)
+    assert_equal true, (!!s)
+  end
+
+  def test_case_values
+    out = [] #: Array[String]
+    assert_equal ["one", "few 30", "many"], [label(out, 1), label(out, 3), label(out, 9)]
+    assert_equal ["matched one"], out
+    sym = :b
+    res = case sym
+          when :a then 1
+          when :b then 2
+          end
+    assert_equal 2, res
+    res2 = case sym
+           when :zz then 1
+           end
+    assert_nil res2
+  end
+
+  # ||= in a while loop, and ||= from another optional
+  def test_or_assign_in_loop_and_from_optional
+    got = nil #: String?
+    i = 0
+    while i < 3
+      got ||= "set at #{i}"
+      i += 1
+    end
+    assert_equal "set at 0", got
+    o1 = nil #: Integer?
+    o2 = nil #: Integer?
+    o1 ||= o2
+    assert_nil o1
+    o2 = 4
+    o1 ||= o2
+    assert_equal 4, o1
+  end
+
+  # && / || chains mixing optionals, Booleans and interpolation
+  def test_and_or_chains
+    none = nil #: Integer?
+    some = 3 #: Integer?
+    assert_equal "x", ((some && "x") || "y")
+    assert_equal "y", ((none && "x") || "y")
+    name = nil #: String?
+    assert_equal "hi anon", "hi #{name || "anon"}"
+    big = some && some > 2
+    big2 = none && none > 2
+    assert_equal true, big
+    assert_nil big2
+    flag = false
+    assert_equal 3, (flag || some)
+    assert_nil (flag || none)
+  end
+
+  # multiple assignment from an Array-returning method and from a pair
+  def test_multiple_assignment_from_method_and_pair
+    p1, p2 = parts
+    assert_equal "x", p1
+    assert_equal "y", p2
+    h = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
+    pair = h.to_a[0] || ["none", 0]
+    kk, vv = pair
+    assert_equal "a", kk
+    assert_equal 1, vv
+    arr = [1, 2] #: Array[Integer]
+    f0, f1 = arr[1], arr[0]
+    assert_equal [2, 1], [f0, f1]
+  end
+
+  # next/break guards narrow the block parameter for the rest of the block
+  def test_guards_narrow_block_param
+    opts = [1, nil, 3] #: Array[Integer?]
+    got = [] #: Array[Integer]
+    opts.each do |o|
+      next unless o
+      got << o + 1
+    end
+    opts.each do |o|
+      next if o.nil?
+      got << o * 2
+    end
+    assert_equal [2, 4, 2, 6], got
+    assert_equal 3, total_until_nil([1, 2, nil, 4])
+    # break in an iterator nested in a while leaves only the iterator
+    laps = 0
+    while true
+      [1, 2].each { |q| break if q == 1 }
+      laps += 1
+      break if laps > 1
+    end
+    assert_equal 2, laps
+  end
+
+  # decision 20: attribute reads on self narrow like locals
+  def test_attribute_reads_narrow
+    assert_equal ["v=2", "empty", "v=4", "none", "big 5", "small"],
+      [Box.new(1).show, Box.new(nil).show, Box.new(2).show2, Box.new(nil).show2, Box.new(5).show3, Box.new(nil).show3]
+  end
+
+  # rescue/ensure in initialize, in a class method and in a module function
+  def test_rescue_in_initialize_class_method_and_module_function
+    assert_equal true, Parser.new("x").ok
+    assert_equal false, Parser.new("").ok
+    out = [] #: Array[String]
+    assert_equal 1, Parser.parse(out, "1")
+    assert_equal 0, Parser.parse(out, "2")
+    assert_equal ["class method ensure", "class method rescued bad", "class method ensure"], out
+    assert_equal ["neg", "rescued zero", "pos"], [Util.check(-1), Util.check(0), Util.check(1)]
+  end
+
+  # rescue modifiers as conditions and as the left of ||
+  def test_rescue_modifiers_as_conditions
+    out = [] #: Array[String]
+    out << "cond ok" if (edges_risky(1) rescue nil)
+    out << "cond never" if (edges_risky(-1) rescue nil)
+    out << ((edges_risky(-1) rescue false) ? "t" : "f")
+    assert_equal ["cond ok", "f"], out
+    rx = (edges_risky(2) rescue nil) || 9
+    ry = (edges_risky(-2) rescue nil) || 9
+    assert_equal 2, rx
+    assert_equal 9, ry
+  end
+
+  # an iterator that yields inside begin/ensure runs the ensure after each block call
+  def test_iterator_yield_inside_ensure
+    out = [] #: Array[String]
+    edges_each_logged(out) { |lv| out << "v#{lv}" }
+    assert_equal ["v1", "after 1", "v2", "after 2", "v3", "after 3", "each_logged done"], out
+  end
+
+  # value `when`s on untyped and optional subjects, mixed with `when nil`
+  def test_value_whens_on_untyped_and_optional
+    assert_equal ["one", "a or b", "a or b", "nil", "float", "other", "other"],
+      [classify(1), classify("a"), classify(:b), classify(nil), classify(2.5), classify([1]), classify(false)]
+    assert_equal ["nil", "xy", "other"], [opt_str(nil), opt_str("y"), opt_str("z")]
+  end
+
+  # rescue/ensure in inherited, overriding (super inside rescue) and mixed-in methods
+  def test_rescue_in_inherited_overriding_and_mixed_in
+    out = [] #: Array[String]
+    assert_equal "impl fallback: abstract run", Impl.new.run
+    assert_equal "impl fallback: abstract run", Impl.new.safe_run(out)
+    assert_equal "base caught abstract run", EdgesPlain.new.safe_run(out)
+    assert_equal ["base ensure Impl", "base ensure EdgesPlain"], out
+    wk = Worker.new
+    assert_equal "worker: attempt 1 failed", wk.attempt(1)
+    assert_equal "attempt 2 ok", wk.attempt(2)
+  end
+end
+
+class ControlExceptionFlowTest < Minitest::Test
+  def test_custom_exception_initialize
+    e = assert_raises(Fixed) { raise Fixed }
+    assert_equal "fixed message", e.message
+    e2 = assert_raises(Blank) { raise Blank }
+    assert_equal "Blank", e2.message
+    assert_equal "#<Blank: Blank>", e2.inspect
+    e3 = assert_raises(WithCode) { raise WithCode.new(42) }
+    assert_equal 42, e3.code
+    assert_equal "code 42", e3.message
+  end
+
+  # an exception raised in ensure replaces the pending one
+  def test_raise_in_ensure_replaces_pending
+    out = [] #: Array[String]
+    e = assert_raises(KeyError) do
+      begin
+        raise ArgumentError, "first"
+      ensure
+        out << "ensure raising"
+        raise KeyError, "from ensure"
+      end
+    end
+    assert_equal ["ensure raising"], out
+    assert_equal "KeyError: from ensure", "#{e.class}: #{e.message}"
+  end
+
+  def test_rescue_that_raises_with_ensure
+    out = [] #: Array[String]
+    e = assert_raises(KeyError) { rescue_raises(out) }
+    assert_equal ["ens"], out
+    assert_equal "b", e.message
+  end
+
+  # nested rescue inside a rescue body, outer binding still visible
+  def test_nested_rescue_sees_outer_binding
+    got = "" #: String
+    begin
+      raise "x"
+    rescue => e
+      begin
+        raise ArgumentError, "inner #{e.message}"
+      rescue ArgumentError => e2
+        got = "nested #{e2.message} outer #{e.message}"
+      end
+    end
+    assert_equal "nested inner x outer x", got
+    assert_equal ["A arg", "K key", "none"], [two_bindings(0), two_bindings(1), two_bindings(2)]
+  end
+
+  # exception objects stored in collections and passed through untyped
+  def test_exceptions_in_collections_and_untyped
+    errors = [] #: Array[StandardError]
+    [ArgumentError.new("a"), KeyError.new("k")].each { |x| errors << x }
+    assert_equal ["ArgumentError: a", "KeyError: k"], errors.map { |x| "#{x.class}: #{x.message}" }
+    anything = RuntimeError.new("untyped") #: untyped
+    assert_equal "untyped", anything.message
+    e = assert_raises(KeyError) { raise errors[1] || StandardError.new("fallback") }
+    assert_equal "stored k", "stored #{e.message}"
+  end
+
+  def test_rescue_clause_matching
+    got = [] #: Array[String]
+    # rescue matches a superclass in a list with a non-match first
+    begin
+      raise KeyError, "kk"
+    rescue TypeError, IndexError => e
+      got << "list: #{e.class} #{e.is_a?(IndexError)}"
+    end
+    # rescue Exception catches StandardError too
+    begin
+      raise "std"
+    rescue Exception => e
+      got << "Exception caught #{e.class}"
+    end
+    # rescue with no binding and a class list
+    begin
+      raise TypeError, "t"
+    rescue ArgumentError, TypeError
+      got << "no binding"
+    end
+    assert_equal ["list: KeyError true", "Exception caught RuntimeError", "no binding"], got
+  end
+
+  def test_raise_inside_loop_inside_method
+    assert_equal "sum 6", sum_positive([1, 2, 3])
+    assert_equal "failed: negative -2 after 1", sum_positive([1, -2, 3])
+  end
+
+  # ensure runs on normal completion inside a loop, every iteration
+  def test_ensure_every_iteration
+    out = [] #: Array[String]
+    3.times do |t|
+      begin
+        out << "try #{t}"
+      ensure
+        out << "done #{t}"
+      end
+    end
+    assert_equal ["try 0", "done 0", "try 1", "done 1", "try 2", "done 2"], out
+  end
+
+  def test_message_is_a_string
+    e = assert_raises(ArgumentError) { raise ArgumentError, "bad #{Thing.new}" }
+    assert_equal "bad thing", e.message
+    e2 = assert_raises(RuntimeError) { raise "Mixed Case" }
+    assert_equal "MIXED CASE", e2.message.upcase
+    assert_equal 10, e2.message.size
+    assert_equal true, ArgumentError.new("x").class == ArgumentError
+    assert_equal "KeyError", KeyError.name
+  end
+
+  def test_rescue_by_namespaced_superclass
+    e = assert_raises(FlowApp::Error) { FlowApp.find("") }
+    assert_equal "FlowApp::Missing: no  true", "#{e.class}: #{e.message} #{e.is_a?(FlowApp::Missing)}"
+  end
+
+  # re-raise the same object from a rescue
+  def test_reraise_same_object
+    out = [] #: Array[String]
+    outer = assert_raises(KeyError) do
+      begin
+        raise KeyError, "orig"
+      rescue KeyError => e
+        out << "logging #{e.message}"
+        raise e
+      end
+    end
+    assert_equal ["logging orig"], out
+    assert_equal "outer KeyError orig", "outer #{outer.class} #{outer.message}"
+  end
+
+  # an exception raised in initialize escapes new
+  def test_raise_in_initialize
+    e = assert_raises(ArgumentError) { Strict.new(-1) }
+    assert_equal "n must be positive, got -1", e.message
+    assert_equal 2, Strict.new(2).n
+    assert_equal 3, depth(3)
+  end
+
+  def test_ensure_return_and_rescue_values
+    out = [] #: Array[String]
+    void_ensure_return(out, false)
+    void_ensure_return(out, true)
+    assert_equal ["body", "ensure", "body", "ensure"], out
+    out = [] #: Array[String]
+    assert_equal "body", rescue_then_ensure_return(out, 0)
+    assert_equal "rescue", rescue_then_ensure_return(out, 1)
+    assert_equal ["ensure 0", "ensure 1"], out
+    assert_equal "all 2", progress([1, 2])
+    assert_equal "stop at -1 after 1", progress([1, -1, 2])
+    out = [] #: Array[String]
+    assert_equal 30, first_ok(out, [-1, -2, 3, 4])
+    assert_equal(-1, first_ok(out, [-5]))
+    assert_equal ["skip bad -1", "skip bad -2", "skip bad -5"], out
+    assert_equal ["zero", "pos", "rescued"], [case_tail(0), case_tail(3), case_tail(-3)]
+  end
+
+  def test_rescue_values_in_ivars_and_blocks
+    cc = Cache.new
+    assert_equal [-1, 200, 200], [cc.value, cc.value, cc.value]
+    assert_equal 5, Holder.new(5).v
+    assert_equal 0, Holder.new(-5).v
+    got = begin
+      flow_risky(-2)
+    rescue ArgumentError => err
+      err.message.size
+    end
+    assert_equal 3, got
+    assert_equal ["p1", "p2"], labels([1, 2])
+    e = assert_raises(ArgumentError) { labels([1, -2]) }
+    assert_equal "bad -2", e.message
+    assert_equal ["one", "one"], names([1, 1])
+    e = assert_raises(ArgumentError) { names([1, 2]) }
+    assert_equal "unknown 2", e.message
+    e2 = assert_raises(ZeroDivisionError) { divs([1, 0]) }
+    assert_equal "from map: divided by 0", "from map: #{e2.message}"
+    assert_equal 7, multi_in_begin
+  end
+
+  # rescue modifier on the right of ||=
+  def test_rescue_modifier_right_of_or_assign
+    opt = nil #: Integer?
+    opt ||= (flow_risky(-1) rescue 5)
+    assert_equal 5, opt
+  end
+
+  # ensure sees the loop variable of an enclosing iterator
+  def test_ensure_sees_iterator_variable
+    out = [] #: Array[String]
+    [1, 2].each do |i|
+      begin
+        raise "odd" if i.odd?
+      rescue
+        out << "rescued #{i}"
+      ensure
+        out << "ensure #{i}"
+      end
+    end
+    assert_equal ["rescued 1", "ensure 1", "ensure 2"], out
+  end
+
+  # exceptions from an untyped call
+  def test_exception_from_untyped_call
+    u = [1, 2] #: untyped
+    e = assert_raises(IndexError) { u.fetch(10) }
+    assert_equal "untyped fetch: IndexError", "untyped fetch: #{e.class}"
+  end
+end
+
+class ControlExceptionsTest < Minitest::Test
+  def test_raise_forms_and_messages
+    out = [] #: Array[String]
+    rows = [] #: Array[String]
+    11.times do |k|
+      begin
+        boom(out, k)
+      rescue => e
+        rows << "#{e.class}: #{e.message.inspect} #{e.to_s.inspect}"
+      end
+    end
+    assert_equal [
+      "ArgumentError: \"bad arg\" \"bad arg\"",
+      "RuntimeError: \"plain\" \"plain\"",
+      "NotFound: \"NotFound\" \"NotFound\"",
+      "NotFound: \"built\" \"built\"",
+      "KeyError: \"k\" \"k\"",
+      "AppError: \"AppError\" \"AppError\"",
+      "ValidationError: \"too short\" \"too short\"",
+      "DefaultMsg: \"default message\" \"default message\"",
+      "IndexError: \"\" \"\"",
+      "TypeError: \"ünïcode ✓\" \"ünïcode ✓\"",
+    ], rows
+    assert_equal ["no raise 10"], out
+  end
+
+  def test_rescue_clause_order_and_hierarchy
+    out = [] #: Array[String]
+    assert_equal [
+      "NotFound NotFound", "AppError|KeyError AppError AppError", "AppError|KeyError KeyError k",
+      "name: too short", "StandardError ArgumentError", "StandardError RuntimeError", "none",
+    ], [which(out, 2), which(out, 5), which(out, 4), which(out, 6), which(out, 0), which(out, 1), which(out, 10)]
+    assert_equal ["no raise 10"], out
+    got = [] #: Array[String]
+    begin
+      raise NotFound, "nf"
+    rescue AppError => e
+      got << "superclass clause first: #{e.class}"
+    rescue NotFound
+      got << "never"
+    end
+    begin
+      raise StopIteration, "stop"
+    rescue IndexError => e
+      got << "index family: #{e.class} #{e.message}"
+    end
+    assert_equal ["superclass clause first: NotFound", "index family: StopIteration stop"], got
+    assert_equal "outer caught Fatal deep", outer
+    se = assert_raises(ScriptError) do
+      begin
+        raise NotImplementedError, "nie"
+      rescue StandardError
+        got << "never"
+      end
+    end
+    assert_equal "script: NotImplementedError nie false", "script: #{se.class} #{se.message} #{se.is_a?(StandardError)}"
+  end
+
+  def test_raise_stored_exception_and_constructors
+    err = ArgumentError.new("stored")
+    e = assert_raises(ArgumentError) { raise err }
+    assert_equal true, e.equal?(err)
+    assert_equal "stored", e.message
+    assert_equal "ArgumentError", e.class.name
+    assert_equal true, e.is_a?(StandardError)
+    assert_equal false, e.is_a?(IndexError)
+    assert_equal "ArgumentError", ArgumentError.new.message
+    assert_equal "#<ArgumentError: ArgumentError>", ArgumentError.new.inspect
+    assert_equal "ArgumentError", ArgumentError.new.to_s
+    assert_equal "#<RuntimeError: ö ü>", RuntimeError.new("ö ü").inspect
+    assert_equal "x", StandardError.new("x").message
+    assert_equal "#<Exception: e>", Exception.new("e").inspect
+    assert_equal "RuntimeError", RuntimeError.new(nil).message
+    assert_nil Exception.new.backtrace
+  end
+
+  def test_rescue_ensure_ordering_and_values
+    out = [] #: Array[String]
+    assert_equal [1, 2], [ordered(out, false), ordered(out, true)]
+    assert_equal ["body", "ensure", "body", "rescue", "ensure"], out
+    assert_equal "body value", ensure_value
+    assert_equal "pos", value_if(1)
+    assert_equal "rescued nonpositive", value_if(0)
+  end
+
+  def test_nested_ensures_and_raise_from_rescue
+    out = [] #: Array[String]
+    begin
+      begin
+        begin
+          raise ArgumentError, "x"
+        ensure
+          out << "e1"
+        end
+      ensure
+        out << "e2"
+      end
+    rescue ArgumentError => e
+      out << "caught #{e.message}"
+    ensure
+      out << "e3"
+    end
+    ae = assert_raises(AppError) do
+      begin
+        raise "first"
+      rescue => e1
+        raise AppError, "second from #{e1.message}"
+      ensure
+        out << "inner ensure"
+      end
+    end
+    assert_equal "second from first", ae.message
+    assert_equal ["e1", "e2", "caught x", "e3", "inner ensure"], out
+  end
+
+  def test_return_in_ensure
+    assert_equal 2, ensure_overrides
+    assert_equal "ensure wins", swallow
+    assert_equal "body", ensure_after_rescue(0)
+    assert_equal "ensure 2", ensure_after_rescue(2)
+    e = assert_raises(RuntimeError) { ensure_after_rescue(1) }
+    assert_equal "escaped RuntimeError: from rescue", "escaped #{e.class}: #{e.message}"
+  end
+
+  def test_return_through_ensure_in_loops
+    out = [] #: Array[String]
+    assert_equal ["found 7", "error neg -1", "none"], [scan(out, [1, 7, 3]), scan(out, [2, -1]), scan(out, [])]
+    assert_equal ["inner 0", "inner 1", "inner 0", "inner 1"], out
+    out = [] #: Array[String]
+    void_ensure(out, true)
+    void_ensure(out, false)
+    assert_equal ["ensure true", "not returned", "ensure false", "after"], out
+    out = [] #: Array[String]
+    assert_equal 20, first_big(out, [1, 20, 30])
+    assert_equal(-1, first_big(out, [1]))
+    assert_equal ["checked 1", "checked 20", "checked 1"], out
+  end
+
+  def test_rescue_and_ensure_in_blocks
+    out = [] #: Array[String]
+    [1, 0, 2].each do |d|
+      out << (10 / d).to_s
+    rescue ZeroDivisionError => e
+      out << e.message
+    ensure
+      out << "e#{d}"
+    end
+    assert_equal ["10", "e1", "divided by 0", "e0", "5", "e2"], out
+    out = [] #: Array[String]
+    exc_risky(out) { raise "in block" }
+    exc_risky(out) { out << "no error" }
+    assert_equal ["caught in block", "no error"], out
+  end
+
+  def test_runtime_errors_from_go
+    out = [] #: Array[String]
+    [0, 3, -3].each do |d|
+      begin
+        out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
+      rescue ZeroDivisionError => e
+        out << "zde #{e.message} #{e.class}"
+      end
+    end
+    assert_equal ["zde divided by 0 ZeroDivisionError", "3", "1", "-3", "-4", "-2", "2"], out
+    arr = [1, 2] #: Array[Integer]
+    e = assert_raises(IndexError) { arr[-10] = 5 }
+    assert_equal IndexError, e.class
+    caught = "" #: String
+    begin
+      arr[-10] = 5
+    rescue => e2
+      caught = "catch-all sees #{e2.class} #{e2.is_a?(StandardError)}"
+    end
+    assert_equal "catch-all sees IndexError true", caught
+  end
+
+  def test_method_calls_on_nil
+    none = nil #: Integer?
+    e = assert_raises(NoMethodError) { none + 1 }
+    assert_equal "undefined method '+' for nil", e.message
+    e2 = assert_raises(NameError) { none.abs }
+    assert_equal "NoMethodError: undefined method 'abs' for nil", "#{e2.class}: #{e2.message}"
+  end
+
+  def test_raise_as_an_expression
+    assert_equal "one", name_of(1)
+    e = assert_raises(ArgumentError) { name_of(7) }
+    assert_equal "unknown 7", e.message
+    assert_equal 2, must(1)
+    e2 = assert_raises(KeyError) { must(nil) }
+    assert_equal "missing", e2.message
+    assert_equal 10, tern(true)
+  end
+
+  def test_rescue_modifiers
+    a = risky_int(2) rescue 0
+    b = risky_int(-1) rescue 0
+    assert_equal 4, a
+    assert_equal 0, b
+    c = (risky_int(-5) rescue nil)
+    assert_nil c
+    d = risky_int(-1) rescue "failed"
+    assert_equal "failed", d
+    e2 = risky_int(3) rescue "failed"
+    assert_equal 6, e2
+    assert_equal(-10, (tern(false) rescue -10))
+    hits = [] #: Array[String]
+    f = risky_int(1) rescue hits.push("f").size
+    f2 = risky_int(-1) rescue hits.push("f2").size
+    assert_equal 2, f
+    assert_equal 1, f2
+    assert_equal ["f2"], hits
+    ex = assert_raises(NotImplementedError) do
+      g = risky_int(99) rescue -1
+      flunk "got #{g}"
+    end
+    assert_equal "nie", ex.message
+    list = [1, 2, 3] #: Array[Integer]
+    assert_equal [100, 0, 2], list.map { |v| risky_int(v - 2) rescue 100 }
+    assert_equal 1, safe_fetch("a")
+    assert_equal(-1, safe_fetch("b"))
+  end
+
+  def test_begin_as_value_and_std_hierarchy
+    out = [] #: Array[String]
+    y = begin
+      1 / 0
+    rescue ZeroDivisionError
+      -5
+    ensure
+      out << "y ensure"
+    end
+    assert_equal ["y ensure"], out
+    assert_equal(-5, y)
+    z = begin 5 end
+    assert_equal 5, z
+    e = assert_raises(IOError) { raise IOError, "closed stream" }
+    assert_equal "IOError: closed stream true", "#{e.class}: #{e.message} #{e.is_a?(StandardError)}"
+    e2 = assert_raises(RangeError) { raise RangeError, "out of range" }
+    assert_equal "#<RangeError: out of range>", e2.inspect
+    assert_equal false, e2.is_a?(IndexError)
+  end
+end
+
+class ControlLocalsTest < Minitest::Test
+  def test_locals_in_branches_loops_blocks_and_op_assign
+    assert_equal "large!", size_word(1000)
+    assert_equal "medium!", size_word(50)
+    assert_equal "small!", size_word(0)
+    assert_equal 10, weight(:a)
+    assert_equal 20, weight(:b)
+    assert_equal 0, weight(:c)
+    out = [] #: Array[String]
+    assert_equal "divided 20", parse(out, 5)
+    assert_equal "start -1", parse(out, 0)
+    assert_equal ["ensure sees divided", "rescue sees start", "ensure sees start"], out
+    assert_equal "nil", nil_first(1)
+    assert_equal "\"non-positive\"", nil_first(0)
+    i = 0
+    while i < 3
+      last = i * 10
+      i += 1
+    end
+    assert_equal 20, last
+    unless i.zero?
+      msg = "i=#{i}"
+    else
+      msg = "zero"
+    end
+    assert_equal "i=3", msg
+    maybe = nil
+    maybe = "now" if i == 3
+    assert_equal "now", maybe
+    unset = nil
+    unset = "never" if i == 99
+    assert_nil unset
+    count = nil #: Integer?
+    assert_nil count
+    count = 5
+    assert_equal 5, count
+    count = nil
+    assert_nil count
+    count = -1
+    assert_equal(-1, count)
+    sum = 0
+    doubled = [1, 2, 3].map { |x| sum += x; x * 2 }
+    assert_equal 6, sum
+    assert_equal [2, 4, 6], doubled
+    seen = 0
+    [4, 5].each { |v| seen = v }
+    assert_equal 5, seen
+    grid = [] #: Array[String]
+    [1, 2].each do |r|
+      [3, 4].each do |c|
+        cell = "#{r}x#{c}"
+        grid << cell
+      end
+    end
+    assert_equal ["1x3", "1x4", "2x3", "2x4"], grid
+    assert_equal [1, 3, 6, 0], (running([1, 2, 3, -6]))
+    assert_equal [], running([])
+    assert_equal 7, bump(4)
+    assert_equal(-9, bump(-4))
+    assert_equal(-1, bump(0))
+    s = "a"
+    s += "b"
+    s *= 2
+    assert_equal "abab", s
+    f = 1.5
+    f /= 2
+    f -= 0.25
+    assert_equal "0.5", (f).inspect
+    b = 7
+    b %= 4
+    b **= 3
+    b /= 2
+    assert_equal 13, b
+    nb = -7
+    nb /= 2
+    assert_equal(-4, nb)
+    nm = -7
+    nm %= 3
+    assert_equal 2, nm
+    list = [1] #: Array[Integer]
+    list += [2, 3]
+    assert_equal [1, 2, 3], list
+    x1 = 1
+    x1 = x1 + 1 while x1 < 100
+    assert_equal 100, x1
+    assert_equal "1!,2!,outer", shadow(1)
+    nums = [1, 2, 3] #: Array[Integer]
+    evens = [] #: Array[Integer]
+    odds = 0
+    nums.each do |n|
+      if n.even?
+        evens << n
+      else
+        odds += 1
+      end
+    end
+    assert_equal [2], evens
+    assert_equal 2, odds
+    flag = false
+    nums.each { |n| flag = true if n > 2 }
+    assert_equal true, flag
+    it_sum = 0
+    nums.each { it_sum += it }
+    assert_equal 6, it_sum
+  end
+end
+
+class ControlLocalsScopeTest < Minitest::Test
+  # locals assigned inside ensure or first assigned inside rescue are visible after
+  def test_locals_from_ensure_and_rescue
+    assert_equal "cleaned 1", ens_local
+    assert_equal "0 \"div by zero\"", rescue_local(0)
+  end
+
+  # locals assigned in while loop bodies accumulate across iterations
+  def test_locals_assigned_in_while_loop
+    i = 0
+    parts = [] #: Array[String]
+    while i < 3
+      piece = "p#{i}"
+      parts << piece
+      i += 1
+    end
+    assert_equal "p0,p1,p2", parts.join(",")
+    assert_equal "p2", piece
+    assert_equal 7, writes_only(true)
+  end
+
+  # chained assignment and assignment as an expression
+  def test_chained_assignment_and_assignment_as
+    a = b = c = 0
+    a += 1
+    assert_equal 1, a
+    assert_equal 0, b
+    assert_equal 0, c
+    d = (e = 5) + 1
+    assert_equal 6, d
+    assert_equal 5, e
+    arr = [] #: Array[Integer]
+    arr << (f = 9)
+    assert_equal [9], arr
+    assert_equal 9, f
+  end
+
+  # op-assign on a narrowed optional
+  def test_op_assign_on_a_narrowed
+    maybe = 3 #: Integer?
+    inside = "" #: String
+    if maybe
+      maybe += 1
+      inside = maybe.to_s
+    end
+    assert_equal "4", inside
+    assert_equal 4, maybe
+    assert_equal "ANON", default_name(nil)
+    assert_equal "BO", default_name("bo")
+    assert_equal 42, or_value(nil)
+    assert_equal 1, or_value(1)
+    n = 13
+    bits = [] #: Array[Integer]
+    while n > 0
+      n, bit = step(n)
+      bits << bit
+    end
+    assert_equal [1, 0, 1, 1], bits
+    lo, hi = Pair.new(1, 2).swapped
+    assert_equal 2, lo
+    assert_equal 1, hi
+  end
+
+  # multiple assignment of a mixed-type literal
+  def test_multiple_assignment_of_a_mixed
+    name, age, admin = "ann", 30, false
+    assert_equal "ann", name
+    assert_equal 30, age
+    assert_equal false, admin
+  end
+
+  # destructure with an optional element used after a check
+  def test_destructure_with_an_optional_element
+    first, second = [7] #: Array[Integer]
+    got = 0
+    got = first + 1 if first
+    assert_equal 8, got
+    assert_equal(-1, (second || -1))
+  end
+
+  # `it` and numbered params
+  def test_it_and_numbered_params
+    assert_equal [2, 4], ([1, 2].map { it * 2 })
+    assert_equal [4, 5], ([3, 4].map { _1 + 1 })
+  end
+
+  # Ruby locals, params and rescue bindings may use Go keywords and predeclared names
+  def test_ruby_locals_params_and_rescue
+    type = "t"
+    range = 1
+    default = :d
+    select = [1, 2] #: Array[Integer]
+    len = select.size
+    string = "s"
+    error = ArgumentError.new("e")
+    new = 5
+    copy = new + 1
+    max = [3, 9].max
+    min = 2
+    func = true
+    go = "go"
+    var = 1
+    map = { "a" => 1 } #: Hash[String, Integer]
+    interface = nil #: Integer?
+    chan = 3
+    struct = "st"
+    package = "pkg"
+    import = "imp"
+    fallthrough = 1
+    defer = 2
+    goto = 3
+    const = 4
+    main = "main"
+    init = "init"
+    stdout = "out"
+    any = select.empty?
+    bool = false
+    int = 7
+    append = [1] #: Array[Integer]
+    append << 2
+    panic = "p"
+    recover = "r"
+    real = 1.5
+    iota = 0
+    byte = "b"
+    rune = "r"
+    float64 = 2.5
+    assert_equal "[\"t\", 1, :d, 2, \"s\", \"e\", 5, 6, 9, 2, true, \"go\", 1, 1, \"nil\", 3, \"st\", \"pkg\", \"imp\", 1, 2, 3, 4, \"main\", \"init\", \"out\", false, false, 7, \"[1, 2]\", \"p\", \"r\", 1.5, 0, \"b\", \"r\", 2.5]", (([type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
+      map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
+      main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64])).inspect
+    assert_equal "a1", (kw("a", 1))
+    msg = "" #: String
+    begin
+      raise "x"
+    rescue => error
+      msg = error.message
+    end
+    assert_equal "x", msg
+    types = [] #: Array[Integer]
+    [1].each { |type| types << type }
+    assert_equal [1], types
+  end
+end
+
+class ControlLoopsTest < Minitest::Test
+  def test_while_and_until
+    i = 0
+    while i < 3
+      i += 1
+    end
+    assert_equal 3, i
+    j = 10
+    until j <= 7
+      j -= 1
+    end
+    assert_equal 7, j
+    never = 0
+    while false
+      never += 1
+    end
+    until true
+      never += 1
+    end
+    assert_equal 0, never
+    k = 0
+    k += 2 while k < 9
+    assert_equal 10, k
+    m = 5
+    m -= 1 until m.zero?
+    assert_equal 0, m
+    neg = -3
+    neg += 1 while neg.negative?
+    assert_equal 0, neg
+    acc = [] #: Array[Integer]
+    n = 0
+    while true
+      n += 1
+      next if n.odd?
+      break if n > 8
+      acc << n
+    end
+    assert_equal [2, 4, 6, 8], acc
+    assert_equal 10, n
+  end
+
+  # break and next only affect the innermost loop
+  def test_break_and_next_only_affect
+    out = [] #: Array[String]
+    a = 0
+    while a < 3
+      b = 0
+      while true
+        b += 1
+        break if b > a
+        next if b == 2
+        out << "#{a}#{b}"
+      end
+      a += 1
+    end
+    assert_equal ["11", "21"], out
+    xs = [3, 1, 2] #: Array[Integer]
+    popped = [] #: Array[Integer]
+    until xs.empty?
+      popped << xs.size
+      xs.pop
+    end
+    assert_equal [3, 2, 1], popped
+    assert_equal [], xs
+    assert_equal 0, collatz(1)
+    assert_equal 8, collatz(6)
+    assert_equal 111, collatz(27)
+    total = 0
+    10.times do |t|
+      next if t.even?
+      break if t > 7
+      total += t
+    end
+    assert_equal 16, total
+    never = 0
+    0.times { never += 1 }
+    neg = 0
+    neg.pred.pred.times { never += 1 }
+    assert_equal 0, never
+    steps = [] #: Array[Integer]
+    5.downto(1) do |d|
+      next if d == 3
+      steps << d
+    end
+    1.upto(0) { |u| steps << 100 + u }
+    -1.upto(1) { |u| steps << u }
+    assert_equal [5, 4, 2, 1, -1, 0, 1], steps
+    words = ["a", "b", "c", "d"] #: Array[String]
+    got = [] #: Array[String]
+    words.each_with_index do |s, idx|
+      next if idx.zero?
+      break if s == "d"
+      got << "#{idx}:#{s}"
+    end
+    words.reverse_each do |s|
+      next if s == "c"
+      got << s
+      break if s == "b"
+    end
+    h = { "x" => 1, "y" => 2, "z" => 3 } #: Hash[String, Integer]
+    h.each do |key, val|
+      next if val == 1
+      got << "#{key}=#{val}"
+      break if key == "y"
+    end
+    assert_equal ["1:b", "2:c", "d", "b", "y=2"], got
+    assert_equal 1, (index_of_empty(["a", "", "b"]))
+    assert_nil index_of_empty(["a"])
+    assert_nil index_of_empty([])
+    grid = [[1, 2], [3, 4]] #: Array[Array[Integer]]
+    assert_equal "1,1", (find_pair(grid, 4))
+    assert_equal "0,0", (find_pair(grid, 1))
+    assert_equal "missing", (find_pair(grid, 9))
+    assert_equal 64, first_square_over(50)
+    assert_equal 1, first_square_over(0)
+    assert_nil first_square_over(100_000)
+  end
+
+  # break, next, return and raise out of blocks given to methods with ensure/rescue
+  def test_jumps_out_of_yielding_methods
+    out = [] #: Array[String]
+    void_early(out, 1)
+    void_early(out, 5)
+    with_cleanup(out) do |v|
+      out << "got #{v}"
+      break if v == 1
+    end
+    with_cleanup(out) do |v|
+      next if v == 1
+      out << "next skipped to #{v}"
+    end
+    e = assert_raises(ArgumentError) do
+      with_cleanup(out) { |v| raise ArgumentError, "from block #{v}" }
+    end
+    assert_equal "from block 1", e.message
+    assert_equal ["small 1", "got 1", "cleanup", "next skipped to 2", "cleanup", "cleanup"], out
+    out = [] #: Array[String]
+    assert_equal 200, find_neg(out, [-2])
+    assert_nil find_neg(out, [])
+    assert_equal ["cleanup", "cleanup"], out
+    out = [] #: Array[String]
+    loops_countdown(5) do |c|
+      next if c == 4
+      break if c == 2
+      out << "countdown #{c}"
+    end
+    loops_guarded(out) do |g|
+      next if g == 2
+      out << "guarded #{g}"
+      raise "stop at #{g}" if g == 3
+    end
+    assert_equal ["countdown 5", "countdown 3", "guarded 1", "guarded 3", "guarded caught stop at 3"], out
+  end
+
+  def test_next_in_case_inside_loop
+    kinds = [] #: Array[String]
+    v = 0
+    while v < 5
+      v += 1
+      case v
+      when 2, 4 then next
+      when 5 then kinds << "last"
+      else kinds << "v#{v}"
+      end
+    end
+    assert_equal ["v1", "v3", "last"], kinds
+    assert_equal "string s", (first_string([1, nil, "s", "t"]))
+    assert_equal "no string", first_string([nil])
+    assert_equal "no string", first_string([])
+  end
+end
+
+class ControlMidTest < Minitest::Test
+  # a block local first assigned nil joins to T?; only hoisting scope is under test, not a never-assigned zero value
+  def test_block_local_first_assigned_nil
+    marks = [] #: Array[String]
+    [1, 2].each do |v|
+      if v > 5
+        mark = nil
+      elsif v == 1
+        mark = "first"
+      end
+      marks << mark.inspect
+    end
+    assert_equal ["\"first\"", "nil"], marks
+    out = [1, 2, 3].map do |v|
+      seen = nil if v > 100
+      seen = v * 10 if v.odd?
+      seen.inspect
+    end
+    assert_equal ["10", "nil", "30"], out
+    assert_equal ["ruby: \"long\"", "go: nil", "rust: \"long\"", "c: nil"], tags(["ruby", "go", "rust", "c"])
+  end
+
+  # a block param shadows an outer local of the same name without assigning it
+  def test_block_param_shadows_outer_local
+    x = 10
+    got = [] #: Array[Integer]
+    [1, 2].each { |x| got << x }
+    assert_equal [1, 2], got
+    assert_equal 10, x
+    ys = [1, 2].map { |x| x * 3 }
+    assert_equal [3, 6], ys
+    assert_equal 10, x
+    out = [] #: Array[String]
+    assert_equal "none", last_seen(out, ["a", "b"])
+    assert_equal ["item a", "item b"], out
+  end
+
+  # break inside a case arm leaves the enclosing loop, not the case
+  def test_break_inside_case_arm
+    i_break = 0
+    while i_break < 10
+      i_break += 1
+      case i_break
+      when 3 then break
+      end
+    end
+    assert_equal 3, i_break
+    out_break = [] #: Array[String]
+    [1, 2, 3].each do |x|
+      case x
+      when 2 then break
+      else out_break << x.to_s
+      end
+    end
+    assert_equal ["1"], out_break
+    vals = [1, "s", nil] #: Array[untyped]
+    n_break = 0
+    vals.each do |v|
+      n_break += 1
+      case v
+      when String then break
+      end
+    end
+    assert_equal 2, n_break
+  end
+
+  # an overridden message or to_s drives what inspect and rescue see
+  def test_overridden_message_and_to_s
+    assert_equal "x", CustomMessage.new("x").to_s
+    assert_equal "#<CustomMessage: x>", CustomMessage.new("x").inspect
+    assert_equal "custom", CustomMessage.new("x").message
+    assert_equal "tos", CustomToS.new("x").message
+    assert_equal "#<CustomToS: tos>", CustomToS.new("x").inspect
+    e = assert_raises(CustomToS) { raise CustomToS, "zz" }
+    assert_equal "tos", e.message
+  end
+
+  # is_a? narrows a T? local so the typed call accepts it
+  def test_is_a_narrows_optional
+    got = [] #: Array[Integer]
+    x_narrow = 5 #: Integer?
+    if x_narrow.is_a?(Integer)
+      got << dbl(x_narrow)
+    end
+    y_narrow = nil #: Integer?
+    got << (y_narrow.is_a?(Integer) ? dbl(y_narrow) : -1)
+    assert_equal [10, -1], got
+    pet = MidAnimal.new #: MidAnimal?
+    hi = "" #: String
+    hi = greet(pet) if pet.is_a?(MidAnimal)
+    assert_equal "hi animal", hi
+  end
+
+  # loop jumps from inside begin/rescue/ensure must still reach the enclosing loop
+  def test_loop_jumps_from_begin_rescue_ensure
+    i_jump = 0
+    seen_jump = [] #: Array[Integer]
+    while i_jump < 6
+      i_jump += 1
+      begin
+        next if i_jump == 2
+        break if i_jump == 5
+        raise "odd" if i_jump.odd?
+        seen_jump << i_jump
+      rescue
+        seen_jump << -i_jump
+      end
+    end
+    assert_equal [-1, -3, 4], seen_jump
+    assert_equal 5, i_jump
+    out_jump = [] #: Array[Integer]
+    [1, 2, 3].each do |x|
+      begin
+        raise "two" if x == 2
+        out_jump << x
+      rescue
+        next
+      ensure
+        out_jump << 0
+      end
+      out_jump << 10
+    end
+    assert_equal [1, 0, 10, 0, 3, 0, 10], out_jump
+  end
+
+  # a closure-style block: `next` inside begin still runs ensure and skips the rest
+  def test_next_inside_begin_in_closure_block
+    out = [] #: Array[String]
+    mid_guarded(out) do |g|
+      begin
+        next if g == 2
+        out << "in begin #{g}"
+      ensure
+        out << "ensure #{g}"
+      end
+      out << "after begin #{g}"
+    end
+    mid_guarded(out) do |g|
+      begin
+        raise "odd" if g.odd?
+      rescue
+        next
+      end
+      out << "even #{g}"
+    end
+    assert_equal ["in begin 1", "ensure 1", "after begin 1", "ensure 2", "in begin 3", "ensure 3", "after begin 3", "even 2"], out
+  end
+
+  def test_nil_joins_local_to_optional
+    out = [] #: Array[String]
+    joined(out, 1)
+    joined(out, 9)
+    joined(out, -1)
+    assert_equal ["\"a\"", "\"pos\"", "nil", "\"pos\"", "\"a\"", "nil"], out
+  end
+
+  # rescue and ensure bodies on a value-returning block
+  def test_rescue_and_ensure_on_value_block
+    ds_rescue = [2, 0, 5] #: Array[Integer]
+    q_rescue = ds_rescue.map do |d|
+      10 / d
+    rescue ZeroDivisionError
+      -1
+    end
+    assert_equal [5, -1, 2], q_rescue
+    r_rescue = ds_rescue.map { |d| begin; 10 / d; rescue ZeroDivisionError; -2; end }
+    assert_equal [5, -2, 2], r_rescue
+    ens = [] #: Array[String]
+    s_ensure = [2, 5].map do |d|
+      10 / d
+    ensure
+      ens << "ensure #{d}"
+    end
+    assert_equal ["ensure 2", "ensure 5"], ens
+    assert_equal [5, 2], s_ensure
+  end
+
+  # a rescue modifier whose fallback itself raises
+  def test_rescue_modifier_fallback_raises
+    e = assert_raises(KeyError) do
+      v_wrap = mid_risky(-1) rescue raise(KeyError, "wrapped")
+      flunk "got #{v_wrap}"
+    end
+    assert_equal "wrapped", e.message
+    w_risky = mid_risky(2) rescue raise("no")
+    assert_equal 2, w_risky
+  end
+
+  # same-named locals in sibling blocks are separate, even with different types
+  def test_same_named_locals_in_sibling_blocks
+    got = [] #: Array[String]
+    [1, 2].each do |z|
+      w = z * 2
+      got << w.to_s
+    end
+    [3].each do |z|
+      w = "s#{z}"
+      got << w
+    end
+    names = ["ann", "bo"] #: Array[String]
+    names.each { |n| s = n.upcase; got << s }
+    [4, 5].each { |c| s = c * 2; got << s.to_s }
+    assert_equal ["2", "4", "s3", "ANN", "BO", "8", "10"], got
+    out = [] #: Array[String]
+    later_outer(out)
+    assert_equal ["[\"1\", \"2\"]", "6"], out
+  end
+
+  # a value block inside begin, and a method-level ensure around one
+  def test_value_block_inside_begin_and_method_ensure
+    ds_begin = [2, 5] #: Array[Integer]
+    got = [] #: Array[Integer]
+    begin
+      q_begin = ds_begin.map { |d| 10 / d }
+      got = q_begin
+    rescue ZeroDivisionError => e_div
+      flunk e_div.message
+    end
+    assert_equal [5, 2], got
+    out = [] #: Array[String]
+    assert_equal [2, 3], halves(out, [4, 6])
+    assert_equal ["done"], out
+  end
+
+  # assignments and calls inside while/until conditions
+  def test_assignments_in_loop_conditions
+    queue = [1, 2, 3] #: Array[Integer]
+    got = [] #: Array[String]
+    guard = 0
+    while (item = queue.shift)
+      guard += 1
+      break if guard > 5
+      got << item.to_s
+    end
+    assert_equal ["1", "2", "3"], got
+    assert_equal [], queue
+    assert_equal 3, guard
+
+    q_while = [1, 2, 5, 1] #: Array[Integer]
+    shifted = [] #: Array[String]
+    guard = 0
+    while (q_while[0] || 0) < 3
+      guard += 1
+      break if guard > 5
+      shifted << q_while.shift.inspect
+    end
+    assert_equal ["1", "2"], shifted
+    assert_equal 2, guard
+
+    stack = [4, 0] #: Array[Integer]
+    popped = [] #: Array[String]
+    guard = 0
+    until (top = stack.pop).nil?
+      guard += 1
+      break if guard > 5
+      popped << top.to_s
+    end
+    assert_equal ["0", "4"], popped
+    assert_equal 2, guard
+  end
+
+  # zsuper in an exception initialize forwards the (defaulted) message
+  def test_zsuper_in_exception_initialize
+    assert_equal "x", MidPlain.new("x").message
+    e = assert_raises(MidDefaultMsg) { raise MidDefaultMsg }
+    assert_equal "default message", e.message
+  end
+
+  # next in value blocks yields nil for that element
+  def test_next_in_value_blocks
+    xs = [1, 2, 3] #: Array[Integer]
+    ys_next = xs.map do |x|
+      next if x == 2
+      x * 10
+    end
+    assert_equal "10,nil,30", ys_next.map { |y| y ? y.to_s : "nil" }.join(",")
+    picked = xs.select do |x|
+      next if x.odd?
+      true
+    end
+    assert_equal [2], picked
+    assert_equal "[nil, nil, nil]", xs.map { next }.inspect
+    printed = [] #: Array[Integer]
+    ws = xs.map do |x|
+      next if x == 1
+      printed << x
+      nil
+    end
+    assert_equal [2, 3], printed
+    assert_equal "[nil, nil, nil]", ws.inspect
+  end
+end
