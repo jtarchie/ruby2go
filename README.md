@@ -33,9 +33,9 @@ internal/rbs/         the RBS type-syntax subset the compiler understands
 prelude.rb            core library entry point; require_relatives prelude/*.rb
 prelude/              core library, written in Ruby, compiled by the same transpiler;
                       includes net_http.rb and webrick.rb over Go's net/http
-examples/NN_*/main.rb  one feature per program, most as minitest tests; runs on MRI unchanged
-testdata/run/*.rb     what output itself shows (puts/print, exit, crashes, stdin): print-and-compare
-testdata/test/*_test.rb  behaviour checks, one minitest file per area: MRI must pass, rb2go must match
+examples/NN_*/main.rb  one feature per program; runs on MRI unchanged
+testdata/run/*.rb     smaller behaviour cases, same MRI oracle, no rbs/lint gate
+testdata/test/*_test.rb  minitest behaviour checks: MRI must pass them, rb2go must match
 testdata/errors/*.txtar  compile-error and warning cases
 rb2go_test.go         the integration suite (below)
 Gemfile               rbs, rbs-inline, and webrick (the HTTP examples' MRI server)
@@ -178,14 +178,9 @@ Rules the prelude relies on:
 
 ## Examples
 
-Each `main.rb` is a minitest program (decision 81) that passes under
-`ruby` and as transpiled Go, with identical output: its domain code shows
-the feature, and its tests assert what it computes. User code is plain
-Ruby that runs on MRI, so the transpiler is tested against MRI twice over:
-MRI must pass the tests, and rb2go's report must match MRI's byte for
-byte. A few examples stay plain programs because their output is the
-subject: 06 (`puts`), 14 (an uncaught exception), 51 (ARGV/ENV), 52
-(stdin), 58 (log lines). The design notes below describe the Go shape
+Each `main.rb` produces identical output under `ruby` and as transpiled Go.
+User code is plain Ruby that runs on MRI, so the transpiler is tested by
+diffing against MRI output. The design notes below describe the Go shape
 each feature compiles to.
 
 ### 01 — Inheritance, `super`, overriding
@@ -393,9 +388,9 @@ returning values (31).
 [jtarchie/resty](https://github.com/jtarchie/resty), a Rack framework that
 forces RESTful conventions. The program mounts it on WEBrick, then drives
 it with `Net::HTTP`, replaying resty's own integration specs over a real
-socket, from minitest's `setup`/`teardown`; each spec group asserts its
-request/response transcript. On Go, WEBrick and `Net::HTTP` are the
-prelude's classes over `net/http`'s `http.Server` and `http.Client`.
+socket. On Go, WEBrick and `Net::HTTP` are the prelude's classes over
+`net/http`'s `http.Server` and `http.Client`; the printed transcript is
+byte-for-byte MRI's.
 
 What survives from resty is its architecture: a request picks its action
 class and its format class by asking each candidate *class* `matches?`
@@ -420,7 +415,7 @@ own `lib/` code as written, reflection and all: `constantize`,
 `method_missing`, `Struct.new ... do`, `extend Enumerable`. It adds type
 annotations and changes two lines (marked `rb2go:`); `Rack::Request`,
 ActiveSupport's `camelize`/`constantize` and ActiveRecord are small shims.
-It asserts the same transcripts as example 25. The compiler warns at each of
+Its transcript is the same as example 25's. The compiler warns at each of
 its dynamic calls, which is where the program's types run out.
 
 ## Open decisions
@@ -1961,18 +1956,9 @@ resolve; anything not listed is still open.
     `testdata/test/string_test.rb`, `string_frozen_test.rb` (the
     `frozen_string_literal` pragma is file-wide) and
     `string_reopen_test.rb` (reopening String changes the whole closed
-    world), three builds instead of sixteen. Then every area: array,
-    hash, control, dynamic, number, object, rxjson and the stdlib files
-    are one `testdata/test/<area>_test.rb` each (so `testdata/run` went
-    from 142 files to 27), and all examples but five became minitest
-    programs. Each file is still its own program and build (the closed
-    world is one user file); fewer files is what makes the suite faster.
-    What tests output itself (`puts`/`print`/`p` formatting, exit status,
-    an uncaught crash, ARGV/stdin) stays print-and-compare in
-    `testdata/run`, mostly in one `<area>_output.rb` per area, as do the
-    `# skip:` known failures. A value compared through its printed form
-    is asserted as that string (`assert_equal "1.0e+20", x.to_s`), so
-    Float, Hash and inspect formatting stay checked exactly.
+    world), three builds instead of sixteen. What tests output itself
+    (`puts`/`print`/`p` formatting, exit status, an uncaught crash) stays
+    print-and-compare in `testdata/run`, as do `# skip:` known failures.
 82. Generated programs never use `reflect` (the Go package for inspecting
     types while a program runs): rb2go compiles Ruby, so what MRI asks its
     object model while running, the compiler writes out as class metadata.

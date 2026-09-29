@@ -1,8 +1,5 @@
 # rbs_inline: enabled
-# args: --seed 1
 # Nested modules and classes, `A::B` paths, constants, lexical lookup.
-
-require "minitest/autorun"
 
 module Geometry
   VERSION = "1.2.0" #: String
@@ -64,32 +61,14 @@ end
 
 LIMIT = 3
 
-class NamespacesTest < Minitest::Test
-  #: () -> void
-  def test_nested_class_and_lexical_lookup
-    labeled = Geometry::Labeled.new(1, 2, "a")
-    assert_equal "a@(1, 2)", labeled.to_s
-    assert_equal 100, labeled.scaled_x
-  end
+labeled = Geometry::Labeled.new(1, 2, "a")
+puts labeled, labeled.scaled_x
+puts Geometry::VERSION, Geometry::Units::SCALE, Geometry::ORIGIN
+puts Geometry::Circle.new(0, 0, 5)
+puts LIMIT + 1
 
-  #: () -> void
-  def test_constant_paths
-    assert_equal "1.2.0", Geometry::VERSION
-    assert_equal 100, Geometry::Units::SCALE
-    assert_equal "(0, 0)", Geometry::ORIGIN.to_s
-    assert_equal 4, LIMIT + 1
-  end
-
-  # A class defined in the compact `Geometry::Circle` form.
-  #: () -> void
-  def test_compact_class_definition
-    assert_equal "circle (0, 0) r=5", Geometry::Circle.new(0, 0, 5).to_s
-  end
-
-  # With no message, an exception's message is its class name.
-  #: () -> void
-  def test_namespaced_exception
-    e = assert_raises(Geometry::Error) { raise Geometry::Error }
-    assert_equal "Geometry::Error", e.message
-  end
+begin
+  raise Geometry::Error
+rescue Geometry::Error => e
+  puts "rescued #{e.message}"
 end

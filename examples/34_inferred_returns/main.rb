@@ -1,8 +1,4 @@
 # rbs_inline: enabled
-# args: --seed 1
-
-require "stringio"
-require "minitest/autorun"
 
 class Rect
   attr_reader :w #: Integer
@@ -34,9 +30,8 @@ class Rect
     w / 2
   end
 
-  # @rbs io: StringIO
-  def shout(io)
-    io.puts label.upcase
+  def shout
+    puts label.upcase
   end
 end
 
@@ -56,36 +51,10 @@ def greet(name) = "hi #{name}"
 
 def origin = Rect.new(0, 0)
 
-class InferredReturnsTest < Minitest::Test
-  def test_methods_without_annotations_infer_their_return_type
-    r = Rect.new(3, 4)
-    assert_equal 12, r.area
-    assert_equal "rect 12", r.label
-    assert_equal true, r.big?
-    assert_equal 20, r.grow(1).area
-  end
-
-  def test_early_return_nil_makes_the_result_optional
-    assert_nil Rect.new(3, 4).half_width
-    assert_equal 1, Rect.new(2, 2).half_width
-    assert_equal "square", Rect.new(2, 2).label
-  end
-
-  def test_a_void_method_is_inferred_too
-    io = StringIO.new
-    Rect.new(3, 4).shout(io)
-    assert_equal "RECT 12\n", io.string
-  end
-
-  def test_an_unannotated_override_keeps_the_parent_type
-    s = Square.new(1, 1) #: Rect
-    assert_equal "sq", s.label
-  end
-
-  def test_per_parameter_rbs_annotations
-    assert_equal 6, widest([1, 2, 3])
-    assert_nil widest([], 5)
-    assert_equal "hi bo", greet("bo")
-    assert_equal 0, origin.area
-  end
-end
+r = Rect.new(3, 4)
+puts r.area, r.label, r.big?, r.grow(1).area, r.half_width.inspect
+r.shout
+puts Rect.new(2, 2).label, Rect.new(2, 2).half_width.inspect
+s = Square.new(1, 1) #: Rect
+puts s.label
+puts widest([1, 2, 3]).inspect, widest([], 5).inspect, greet("bo"), origin.area

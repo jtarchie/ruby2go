@@ -1,7 +1,5 @@
 # rbs_inline: enabled
-# args: --seed 1
 require "timeout"
-require "minitest/autorun"
 
 # Timeout.timeout races a block against a wall-clock deadline. Go has no
 # thread preemption, so a stuck block cannot actually be interrupted: this
@@ -28,24 +26,20 @@ def fast_computation
   1 + 1
 end
 
-class TimeoutTest < Minitest::Test
-  def test_a_block_past_its_deadline_raises_timeout_error
-    e = assert_raises(Timeout::Error) { Timeout.timeout(0.1) { slow_computation } }
-    assert_equal "execution expired", e.message
-  end
-
-  def test_a_block_within_its_deadline_returns_its_value
-    assert_equal 2, Timeout.timeout(5.0) { fast_computation }
-  end
-
-  def test_a_custom_error_class_and_message
-    e = assert_raises(RetryBudgetExceeded) do
-      Timeout.timeout(0.1, RetryBudgetExceeded, "retry budget exceeded") { slow_computation }
-    end
-    assert_equal "retry budget exceeded", e.message
-  end
-
-  def test_nil_means_no_deadline
-    assert_equal 2, Timeout.timeout(nil) { fast_computation }
-  end
+begin
+  Timeout.timeout(0.1) { slow_computation }
+rescue Timeout::Error => e
+  puts "#{e.class}: #{e.message}"
 end
+
+result = Timeout.timeout(5.0) { fast_computation }
+puts "fast_computation: #{result}"
+
+begin
+  Timeout.timeout(0.1, RetryBudgetExceeded, "retry budget exceeded") { slow_computation }
+rescue RetryBudgetExceeded => e
+  puts "#{e.class}: #{e.message}"
+end
+
+result2 = Timeout.timeout(nil) { fast_computation }
+puts "no deadline: #{result2}"

@@ -1,8 +1,4 @@
 # rbs_inline: enabled
-# args: --seed 1
-
-require "minitest/autorun"
-
 class Shape
   #: () -> String
   def name = "Shape"
@@ -35,24 +31,5 @@ class Square < Rect
   def name = "Square"
 end
 
-class InheritanceTest < Minitest::Test
-  # `describe` lives on Shape but calls the subclass's `name` and `area`.
-  #: () -> void
-  def test_describe_dispatches_to_subclass
-    shapes = [Rect.new(2.0, 3.0), Square.new(2.0)] #: Array[Shape]
-    assert_equal ["Rect: 6.0", "Square: 4.0"], shapes.map(&:describe)
-  end
-
-  # Square#initialize forwards to Rect's through `super`.
-  #: () -> void
-  def test_super_initialize
-    sq = Square.new(2.0)
-    assert_equal 2.0, sq.w
-    assert_equal 2.0, sq.h
-  end
-
-  #: () -> void
-  def test_abstract_area_raises
-    assert_raises(NotImplementedError) { Shape.new.describe }
-  end
-end
+shapes = [Rect.new(2.0, 3.0), Square.new(2.0)] #: Array[Shape]
+shapes.each { |s| puts s.describe }

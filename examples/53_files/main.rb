@@ -1,7 +1,5 @@
 # rbs_inline: enabled
-# args: --seed 1
 require "tmpdir"
-require "minitest/autorun"
 
 # File and Dir: read a fixture next to the program, write and reread files
 # in a temp dir, and rescue the Errno classes MRI raises.
@@ -19,112 +17,88 @@ def load_scores(path)
   scores
 end
 
-class FixtureTest < Minitest::Test
-  def test_foreach_reads_the_fixture_line_by_line
-    scores = load_scores("scores.csv")
-    assert_equal [["alice", 90], ["carol", 85], ["bob", 72]], scores.sort_by { |_, s| -s }
+scores = load_scores("scores.csv")
+scores.sort_by { |_, s| -s }.each { |n, s| puts "#{n}: #{s}" }
+puts "lines: #{File.readlines("scores.csv").size}"
+puts "exist? #{File.exist?("scores.csv")} file? #{File.file?("scores.csv")} dir? #{File.directory?("scores.csv")}"
+puts "size: #{File.size("scores.csv")}"
+
+%w[a/b.rb /usr/lib/ report.tar.gz .profile x.].each do |p|
+  puts "#{p}: #{File.basename(p)} #{File.basename(p, ".*")} #{File.dirname(p)} #{File.extname(p).inspect}"
+end
+puts File.join("logs", "2026", "app.log")
+puts File.join("root/", "/leaf")
+puts File.absolute_path?(File.expand_path("scores.csv"))
+puts File.expand_path("scores.csv") == File.join(Dir.pwd, "scores.csv")
+
+Dir.mktmpdir do |dir|
+  report = File.join(dir, "report.txt")
+  n = File.write(report, "total #{scores.values.sum}\n")
+  puts "wrote #{n} bytes"
+
+  File.open(report, "a") do |f|
+    f.puts "best #{scores.max_by { |_, s| s }&.first}"
+    f.print "count ", scores.size, "\n"
+    f << "done" << "\n"
+    f.printf("%05.1f\n", 72.25)
+  end
+  print File.read(report)
+
+  first = File.open(report) do |f|
+    f.gets
+  end
+  p first
+
+  File.open(report) do |f|
+    f.each_line { |l| puts "> #{l}" }
+    puts "eof? #{f.eof?}"
+    p f.gets
   end
 
-  def test_file_queries
-    assert_equal 4, File.readlines("scores.csv").size
-    assert File.exist?("scores.csv")
-    assert File.file?("scores.csv")
-    refute File.directory?("scores.csv")
-    assert_equal 36, File.size("scores.csv")
+  Dir.mkdir(File.join(dir, "sub"))
+  File.write(File.join(dir, "sub", "x.txt"), "x")
+  File.rename(report, File.join(dir, "final.txt"))
+  p Dir.children(dir).sort
+  p Dir.entries(dir).sort
+  p Dir.glob(File.join(dir, "*.txt")).map { |f| File.basename(f) }
+  puts "dir exist? #{Dir.exist?(File.join(dir, "sub"))}"
+
+  begin
+    Dir.rmdir(File.join(dir, "sub"))
+  rescue SystemCallError => e
+    puts "#{e.class}: not empty" if e.is_a?(Errno::ENOTEMPTY)
+  end
+  File.delete(File.join(dir, "sub", "x.txt"))
+  Dir.rmdir(File.join(dir, "sub"))
+  p Dir.children(dir)
+
+  begin
+    Dir.mkdir(dir)
+  rescue Errno::EEXIST
+    puts "EEXIST"
   end
 end
 
-class PathTest < Minitest::Test
-  def test_basename_dirname_extname
-    parts = %w[a/b.rb /usr/lib/ report.tar.gz .profile x.].map do |p|
-      [File.basename(p), File.basename(p, ".*"), File.dirname(p), File.extname(p)]
-    end
-    assert_equal [
-      ["b.rb", "b", "a", ".rb"],
-      ["lib", "lib", "/usr", ""],
-      ["report.tar.gz", "report.tar", ".", ".gz"],
-      [".profile", ".profile", ".", ""],
-      ["x.", "x", ".", "."],
-    ], parts
-  end
-
-  def test_join_and_expand_path
-    assert_equal "logs/2026/app.log", File.join("logs", "2026", "app.log")
-    assert_equal "root/leaf", File.join("root/", "/leaf")
-    assert File.absolute_path?(File.expand_path("scores.csv"))
-    assert_equal File.join(Dir.pwd, "scores.csv"), File.expand_path("scores.csv")
-  end
+begin
+  File.read("missing.txt")
+rescue Errno::ENOENT => e
+  puts "#{e.class}: #{e.message}"
 end
 
-class TempDirTest < Minitest::Test
-  def test_write_append_and_read_back
-    scores = load_scores("scores.csv")
-    Dir.mktmpdir do |dir|
-      report = File.join(dir, "report.txt")
-      assert_equal 10, File.write(report, "total #{scores.values.sum}\n")
-
-      File.open(report, "a") do |f|
-        f.puts "best #{scores.max_by { |_, s| s }&.first}"
-        f.print "count ", scores.size, "\n"
-        f << "done" << "\n"
-        f.printf("%05.1f\n", 72.25)
-      end
-      assert_equal "total 247\nbest alice\ncount 3\ndone\n072.2\n", File.read(report)
-
-      first = File.open(report) do |f|
-        f.gets
-      end
-      assert_equal "total 247\n", first
-
-      File.open(report) do |f|
-        lines = [] #: Array[String]
-        f.each_line { |l| lines << l }
-        assert_equal ["total 247\n", "best alice\n", "count 3\n", "done\n", "072.2\n"], lines
-        assert f.eof?
-        assert_nil f.gets
-      end
-    end
-  end
-
-  def test_directories_rename_and_glob
-    Dir.mktmpdir do |dir|
-      File.write(File.join(dir, "report.txt"), "r")
-      Dir.mkdir(File.join(dir, "sub"))
-      File.write(File.join(dir, "sub", "x.txt"), "x")
-      File.rename(File.join(dir, "report.txt"), File.join(dir, "final.txt"))
-      assert_equal ["final.txt", "sub"], Dir.children(dir).sort
-      assert_equal [".", "..", "final.txt", "sub"], Dir.entries(dir).sort
-      assert_equal ["final.txt"], Dir.glob(File.join(dir, "*.txt")).map { |f| File.basename(f) }
-      assert Dir.exist?(File.join(dir, "sub"))
-
-      assert_raises(Errno::ENOTEMPTY) { Dir.rmdir(File.join(dir, "sub")) }
-      File.delete(File.join(dir, "sub", "x.txt"))
-      Dir.rmdir(File.join(dir, "sub"))
-      assert_equal ["final.txt"], Dir.children(dir)
-
-      assert_raises(Errno::EEXIST) { Dir.mkdir(dir) }
-    end
-  end
+begin
+  File.read(".")
+rescue Errno::EISDIR => e
+  puts "#{e.class}: #{e.message}"
 end
 
-class ErrnoTest < Minitest::Test
-  def test_missing_file
-    e = assert_raises(Errno::ENOENT) { File.read("missing.txt") }
-    assert_equal "No such file or directory @ rb_sysopen - missing.txt", e.message
-  end
+begin
+  File.open("scores.csv") { |f| f.write("nope") }
+rescue IOError => e
+  puts "IOError: #{e.message}"
+end
 
-  def test_reading_a_directory
-    e = assert_raises(Errno::EISDIR) { File.read(".") }
-    assert_equal "Is a directory @ io_fread - .", e.message
-  end
-
-  def test_writing_a_read_only_handle
-    e = assert_raises(IOError) { File.open("scores.csv") { |f| f.write("nope") } }
-    assert_equal "not opened for writing", e.message
-  end
-
-  def test_missing_directory
-    e = assert_raises(SystemCallError) { Dir.children("no_such_dir") }
-    assert_equal "No such file or directory @ dir_initialize - no_such_dir", e.message
-  end
+begin
+  Dir.children("no_such_dir")
+rescue SystemCallError => e
+  puts e.message
 end
