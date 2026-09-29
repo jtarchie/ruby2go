@@ -171,9 +171,12 @@ func TestRun(t *testing.T) {
 	}
 }
 
-// TestMinitest runs each testdata/test/*_test.rb (minitest) with a fixed seed. MRI must pass it,
-// or the test itself is wrong; rb2go's output must then match MRI's apart from timings. Like
-// TestRun, it skips rbs and lint: one go build per file.
+// TestMinitest runs each testdata/test/*_test.rb with a fixed seed. MRI must
+// pass it, or the test itself is wrong; rb2go's output must then match MRI's
+// apart from timings. One build per file for now: the files load together
+// as one program (decision 84, `rb2go test testdata/test`), but that program
+// takes Go ~30 minutes to build, because dynamic_test's computed send keeps
+// a dispatch wrapper for every method of every test class (decision 81).
 func TestMinitest(t *testing.T) {
 	requireRuby4(t)
 	files, err := filepath.Glob("testdata/test/*_test.rb")
@@ -190,6 +193,54 @@ func TestMinitest(t *testing.T) {
 			skipIfMarked(t, src)
 			gen := transpile(t, filepath.Base(rb), src)
 			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-gcflags=-l"), []string{"--seed", "1"})
+		})
+	}
+}
+
+// TestMulti compiles each testdata/multi/<case>/*.rb, sorted, as one program
+// (decision 84) and compares it with MRI loading the same files in one
+// process, as rake's test loader does.
+func TestMulti(t *testing.T) {
+	requireRuby4(t)
+	dirs, err := filepath.Glob("testdata/multi/*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			t.Parallel()
+			paths, err := filepath.Glob(filepath.Join(dir, "*.rb"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			files := make([]File, 0, len(paths))
+			for _, p := range paths {
+				src, rerr := os.ReadFile(p) //nolint:gosec // testdata path
+				if rerr != nil {
+					t.Fatal(rerr)
+				}
+				files = append(files, File{Name: p, Src: src})
+			}
+			code, warnings, err := CompileFiles(t.Context(), files)
+			if err != nil {
+				t.Fatalf("rb2go: %v", err)
+			}
+			for _, w := range warnings {
+				t.Logf("warning: %s", w)
+			}
+			gen := t.TempDir()
+			writeModule(t, gen)
+			err = os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := goBuild(t, gen, "-gcflags=-l")
+			loader := append([]string{"-e", "ARGV.each { |f| require File.expand_path(f) }"}, paths...)
+			wantOut, _, wantCode, _ := runIO(t, ".", progIO{}, "ruby", loader...)
+			gotOut, _, gotCode, _ := runIO(t, ".", progIO{}, bin)
+			if wantOut != gotOut || wantCode != gotCode {
+				t.Errorf("ruby (exit %d):\n%s\n--- go (exit %d):\n%s", wantCode, wantOut, gotCode, gotOut)
+			}
 		})
 	}
 }
@@ -444,8 +495,14 @@ type mriCached struct {
 // rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
+	return mriRun(t, dir, src, pio, append([]string{file}, args...))
+}
+
+// mriRun runs `ruby rubyArgs...` in dir, cached by src (every source it reads), Ruby's version, TZ and the arguments past the first.
+func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string) mriResult {
+	t.Helper()
 	key := "v3\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00"
-	if len(args) > 0 { // `# args:` are in src; TestMinitest adds more
+	if args := rubyArgs[1:]; len(args) > 0 { // `# args:` are in src; TestMinitest adds more
 		key += strings.Join(args, "\x00") + "\x00args\x00"
 	}
 	sum := sha256.Sum256(slices.Concat([]byte(key), src))
@@ -459,7 +516,7 @@ func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []s
 		}
 	}
 	var r mriResult
-	r.Stdout, r.Stderr, r.Code, _ = runIO(t, dir, pio, "ruby", append([]string{file}, args...)...)
+	r.Stdout, r.Stderr, r.Code, _ = runIO(t, dir, pio, "ruby", rubyArgs...)
 	if err == nil && r.Code >= 0 {
 		data, err := json.Marshal(mriCached{Stdout: []byte(r.Stdout), Stderr: []byte(r.Stderr), Code: r.Code})
 		if err != nil {

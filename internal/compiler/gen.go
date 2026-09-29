@@ -1849,12 +1849,24 @@ func (f *fctx) fillDefault(i int, p Param) {
 func (c *Compiler) emitMain() {
 	c.w("var rb_main = &Object{}\n\n")
 	c.w("func main() {\n\trbTrapSignals()\n\tdefer rbFlush()\n\tdefer rbTopRecover()\n")
-	f := c.newFctx(c.mainFile, nil, nil)
-	f.indent = 1
-	f.retVar = ""
-	stmts := &parser.StatementsNode{Body: c.mainBody()}
-	f.genBody(stmts, nil, tail{}, nil)
-	c.out.WriteString(f.buf.String())
+	prelude, bodies := c.mainBodies()
+	gen := func(file *File, stmts []parser.Node, indent int) {
+		f := c.newFctx(file, nil, nil)
+		f.indent = indent
+		f.retVar = ""
+		f.genBody(&parser.StatementsNode{Body: stmts}, nil, tail{}, nil)
+		c.out.WriteString(f.buf.String())
+	}
+	if len(bodies) == 1 { // one file: its top level is main's
+		gen(bodies[0].f, append(prelude, bodies[0].stmts...), 1)
+	} else {
+		gen(c.mainFile, prelude, 1)
+		for _, b := range bodies { // top-level locals are file-scoped in Ruby: a Go block each
+			c.w("\t{\n")
+			gen(b.f, b.stmts, 2)
+			c.w("\t}\n")
+		}
+	}
 	c.w("}\n\n")
 }
 
@@ -2054,37 +2066,61 @@ func (ci *constInit) GetLocation() parser.Location     { return ci.k.Value.GetLo
 func (ci *constInit) CompactChildNodes() []parser.Node { return nil }
 func (ci *constInit) ChildNodes() []parser.Node        { return nil }
 
-// mainBody merges main.rb's top-level statements with what its class
-// bodies run, every constant assignment and hook call: prelude constants
-// first, then main.rb's by position.
-func (c *Compiler) mainBody() []parser.Node {
-	var body, mine []parser.Node
+// fileBody is what one user file's top level runs, in source order.
+type fileBody struct {
+	f     *File
+	stmts []parser.Node
+}
+
+// mainBodies splits what main runs into the prelude's constant assignments
+// and each user file's top level, in load order (decision 84): the file's
+// statements, and what its class bodies run (constant assignments, hook
+// calls), by position. A file runs whole before the next, as `require` does.
+func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
+	var prelude []parser.Node
+	own := map[*File][]parser.Node{}
 	for _, k := range c.constList {
-		if k.File == c.mainFile {
-			mine = append(mine, &constInit{k: k})
+		if k.File.prelude {
+			prelude = append(prelude, &constInit{k: k})
 		} else {
-			body = append(body, &constInit{k: k})
+			own[k.File] = append(own[k.File], &constInit{k: k})
 		}
 	}
 	for _, h := range c.hooks {
 		if n := c.hookCall(h); n != nil {
-			mine = append(mine, n)
+			own[h.file] = append(own[h.file], n)
 		}
 	}
-	slices.SortStableFunc(mine, func(a, b parser.Node) int {
-		return cmp.Compare(a.GetLocation().StartOffset, b.GetLocation().StartOffset)
-	})
-	stmts := c.mainStmts
-	for len(stmts) > 0 || len(mine) > 0 {
-		if len(mine) > 0 && (len(stmts) == 0 || mine[0].GetLocation().StartOffset < stmts[0].GetLocation().StartOffset) {
-			body = append(body, mine[0])
-			mine = mine[1:]
-			continue
-		}
-		body = append(body, stmts[0])
-		stmts = stmts[1:]
+	stmts := map[*File][]parser.Node{}
+	for _, n := range c.mainStmts {
+		stmts[c.stmtFile[n]] = append(stmts[c.stmtFile[n]], n)
 	}
-	return body
+	bodies := make([]fileBody, 0, len(c.userFiles))
+	for _, f := range c.userFiles {
+		mine, rest := own[f], stmts[f]
+		slices.SortStableFunc(mine, func(a, b parser.Node) int {
+			return cmp.Compare(a.GetLocation().StartOffset, b.GetLocation().StartOffset)
+		})
+		var body []parser.Node
+		for len(rest) > 0 || len(mine) > 0 {
+			if len(mine) > 0 && (len(rest) == 0 || mine[0].GetLocation().StartOffset < rest[0].GetLocation().StartOffset) {
+				body, mine = append(body, mine[0]), mine[1:]
+				continue
+			}
+			body, rest = append(body, rest[0]), rest[1:]
+		}
+		bodies = append(bodies, fileBody{f: f, stmts: body})
+	}
+	return prelude, bodies
+}
+
+// mainBody is everything main runs, flattened.
+func (c *Compiler) mainBody() []parser.Node {
+	prelude, bodies := c.mainBodies()
+	for _, b := range bodies {
+		prelude = append(prelude, b.stmts...)
+	}
+	return prelude
 }
 
 // hookCall is the call MRI makes at hook site h, or nil when the receiver
@@ -2134,12 +2170,14 @@ func (f *fctx) genConstInit(k *Const) {
 // read no constant not yet assigned, which is how programs usually start.
 func (c *Compiler) guardConsts() {
 	defs := map[string]bool{}
-	anyNode(c.mainFile.Root, func(n parser.Node) bool {
-		if d, ok := n.(*parser.DefNode); ok {
-			defs[d.Name] = true
-		}
-		return false
-	})
+	for _, uf := range c.userFiles {
+		anyNode(uf.Root, func(n parser.Node) bool {
+			if d, ok := n.(*parser.DefNode); ok {
+				defs[d.Name] = true
+			}
+			return false
+		})
+	}
 	done := map[*Const]bool{}
 	ran := false
 	for _, n := range c.mainBody() {
@@ -2149,7 +2187,7 @@ func (c *Compiler) guardConsts() {
 			continue
 		}
 		k := ci.k
-		if k.File == c.mainFile && (ran || c.initRuns(k, defs, done)) {
+		if !k.File.prelude && (ran || c.initRuns(k, defs, done)) {
 			k.guarded, ran = true, true
 		}
 		done[k] = true

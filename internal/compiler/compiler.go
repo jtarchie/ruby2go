@@ -3,6 +3,7 @@ package compiler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -16,7 +17,7 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// Compiler holds the whole program: prelude + one user file.
+// Compiler holds the whole program: the prelude and the user files, one closed world.
 type Compiler struct {
 	classes       map[string]*Class
 	classList     []*Class
@@ -40,7 +41,9 @@ type Compiler struct {
 	topDefList    []*Method
 	verbatim      []verbatim
 	mainStmts     []parser.Node
-	mainFile      *File
+	mainFile      *File   // the first user file: $0, and the generated header
+	userFiles     []*File // in load order
+	stmtFile      map[parser.Node]*File
 	files         []*File
 	preludeFS     fs.FS
 	parser        *parser.Parser
@@ -100,7 +103,13 @@ func Compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 	return out, err
 }
 
-func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte, warnings *[]string) (out []byte, err error) {
+// Source is one user file: its name as messages and //line show it, and its text.
+type Source struct {
+	Name string
+	Src  []byte
+}
+
+func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[]string) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -119,13 +128,16 @@ func compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")
-	mf, err := parseFile(ctx, p, filepath.Base(mainName), mainSrc, false)
-	if err != nil {
-		return nil, err
+	for _, src := range sources {
+		uf, perr := parseFile(ctx, p, src.Name, src.Src, false)
+		if perr != nil {
+			return nil, perr
+		}
+		c.files = append(c.files, uf)
+		c.userFiles = append(c.userFiles, uf)
+		c.collect(ctx, uf)
 	}
-	c.files = append(c.files, mf)
-	c.mainFile = mf
-	c.collect(ctx, mf)
+	c.mainFile = c.userFiles[0]
 	c.nameGo()
 	c.link()
 	c.discoverIvars()
@@ -156,8 +168,16 @@ func (c *Compiler) sortedClasses() []*Class {
 
 // CompileWithWarnings is Compile plus the warnings collected.
 func CompileWithWarnings(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte) ([]byte, []string, error) {
+	return CompileFilesWithWarnings(ctx, preludeFS, []Source{{Name: filepath.Base(mainName), Src: mainSrc}})
+}
+
+// CompileFilesWithWarnings compiles several user files into one program, loaded in order (decision 84).
+func CompileFilesWithWarnings(ctx context.Context, preludeFS fs.FS, sources []Source) ([]byte, []string, error) {
+	if len(sources) == 0 {
+		return nil, nil, errors.New("no Ruby files to compile")
+	}
 	var warnings []string
-	out, err := compile(ctx, preludeFS, mainName, mainSrc, &warnings)
+	out, err := compile(ctx, preludeFS, sources, &warnings)
 	return out, warnings, err
 }
 

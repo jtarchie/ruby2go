@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -104,29 +105,35 @@ func TestTestCommand(t *testing.T) {
 		}
 	}
 
-	out, code := captureStdout(t, func() int { return testCmd([]string{dir}) })
+	// one program, one run, one report, as `minitest dir` gives
+	out, code := captureStdout(t, func() int { return testCmd([]string{dir, "--seed", "7"}) })
 	if code != 1 {
-		t.Errorf("exit %d, want 1 (one file fails)", code)
+		t.Errorf("exit %d, want 1 (a test fails)", code)
 	}
 	for _, want := range []string{
-		"ok  \t" + filepath.Join(dir, "pass_test.rb") + "\t",
-		"FailTest#test_bad [fail_test.rb:4]:\nExpected: 3\n  Actual: 2\n",
-		"FAIL\t" + filepath.Join(dir, "sub", "fail_test.rb") + "\t",
+		"Run options: --seed 7\n",
+		"FailTest#test_bad [" + filepath.Join(dir, "sub", "fail_test.rb") + ":4]:\nExpected: 3\n  Actual: 2\n",
+		"3 runs, 3 assertions, 1 failures, 0 errors, 0 skips",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "helper.rb") {
+	if strings.Contains(out, "not a test file") {
 		t.Errorf("helper.rb isn't a test file:\n%s", out)
 	}
 
-	// -run filters by name (minitest -i /re/); -args reach the binary.
+	// minitest's own flags pass through; rb2go's are taken out by name
 	out, code = captureStdout(t, func() int {
-		return testCmd([]string{"-v", "-run", "good", filepath.Join(dir, "sub", "fail_test.rb"), "-args", "--seed", "7"})
+		return testCmd([]string{"-n", "/good/", filepath.Join(dir, "sub", "fail_test.rb"), "-v", "--seed", "7"})
 	})
-	if code != 0 || !strings.Contains(out, "Run options: -i /good/ -v --seed 7\n") || !strings.Contains(out, "FailTest#test_good = ") {
-		t.Errorf("-v -run good: exit %d\n%s", code, out)
+	if code != 0 || !strings.Contains(out, "Run options: -n /good/ -v --seed 7\n") || !strings.Contains(out, "FailTest#test_good = ") {
+		t.Errorf("-n /good/ -v: exit %d\n%s", code, out)
+	}
+
+	opts, rest, err := testBuildFlags([]string{"-v", "-race", "x_test.rb", "-gcflags", "-l", "--seed", "3", "-gcflags=-e"})
+	if err != nil || !*opts.race || *opts.gcflags != "-e" || !slices.Equal(rest, []string{"-v", "x_test.rb", "--seed", "3"}) {
+		t.Errorf("testBuildFlags: race=%v gcflags=%q rest=%q err=%v", *opts.race, *opts.gcflags, rest, err)
 	}
 }
 

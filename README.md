@@ -1929,25 +1929,38 @@ resolve; anything not listed is still open.
     `Kernel#object_id` (addresses, not MRI's numbers), `exit!`-like
     `__exit_bang`, and the `NoMemoryError`, `SignalException` and
     `Interrupt` classes, which rb2go never raises.
-80. `rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags f] [-work]
-    [paths...] [-args ...]`, shaped like `go test`: directories expand
-    recursively to `*_test.rb`/`test_*.rb` (minitest's glob, without
-    spec files; dot directories skipped); each file is its own closed
-    world and program, built in parallel (`-p`, default GOMAXPROCS), then
-    run in order in its own directory, as `ruby x_test.rb` would be, so
-    failure locations match MRI's. A passing file prints `ok  <path>
-    <secs>`; a failing one its captured output, then `FAIL <path>`; a
-    build error `FAIL <path> [build failed]`. `-v` streams output and
-    passes minitest `-v`; `-run re` becomes minitest's `-i /re/`; words
-    after `-args` go to every test binary (`--seed 7`, `-e /x/`). The exit
-    status is 1 when any file fails. No `--mri` comparison yet: the repo's
-    TestMinitest does that. Multi-file tests wait on `require_relative`
-    in user code.
-81. Behaviour checks move to minitest. `TestMinitest` runs
-    `testdata/test/*_test.rb` with `--seed 1` (the MRI cache key now
-    includes extra arguments): MRI must pass, or the harness reports that
-    the test itself is wrong, and rb2go's stdout and exit code must equal
-    MRI's with the timing lines blanked. Because a passing assertion is
+80. `rb2go test [-race] [-gcflags f] [-work] [paths and minitest flags...]`
+    is Ruby's `minitest` command (minitest 6's `bin/minitest`; `rake test`
+    loads files the same way): every test file is compiled into one
+    program (decision 84), which runs once, with one seed, and prints one
+    report, byte for byte MRI's apart from timings. Arguments are sorted
+    as minitest's PathExpander does: one that exists on disk is a path (a
+    directory expands to `**/{test_*,*_test,spec_*,*_spec}.rb`, sorted;
+    `-path` excludes one), and any other is a flag for the program
+    (`--seed 1`, `-v`, `-n /re/`); with no path, `test`. Files load in
+    argument order, which sets the class order and so the seeded shuffle.
+    rb2go's own build flags are recognized by name wherever they appear
+    (minitest's never share them). The program runs in the caller's
+    directory, and failure locations name files as given
+    (`testdata/test/array_test.rb:12`), as MRI's do. Not yet: `path:LINE`
+    selection. (Superseded: an earlier `go test`-shaped command built each
+    file as its own program and printed `ok`/`FAIL` per file, which no Ruby
+    runner does.)
+81. Behaviour checks move to minitest. The suite loads the way Ruby's
+    does: `minitest testdata/test --seed 1` (one MRI process) and
+    `rb2go test testdata/test --seed 1` (one rb2go program, decision 84)
+    both pass, with the same report. Sharing one process, the files keep
+    to a namespace each (`module ArrayTests`, ...; top-level helper defs
+    get a file prefix, since a top-level def is a private method on every
+    object), and core-class reopens only add methods. `TestMinitest`
+    still builds each file on its own (`--seed 1`; MRI must pass, or the
+    harness reports that the test itself is wrong, and rb2go's stdout
+    and exit code must equal MRI's with the timing lines blanked): as one
+    program the suite is 946k lines of Go that take ~30 minutes to build,
+    because dynamic_test's computed `send` needs a dispatch wrapper for
+    every method of every test class, 12 files' worth. Making computed
+    send's cost not scale with the program is the next step, and then the
+    harness becomes one build. Because a passing assertion is
     checked by rb2go's own `==`, the expected side is a literal (MRI
     passing proves it right), `assert_raises` also checks `.message`, and
     `refute_*`/`assert_in_delta` are never a check's only evidence; a
@@ -2050,3 +2063,26 @@ resolve; anything not listed is still open.
     name ([example 66](examples/66_minitest_spec/main.rb),
     [testdata/run/minitest_spec.rb](testdata/run/minitest_spec.rb),
     [testdata/test/spec_test.rb](testdata/test/spec_test.rb)).
+84. A program may be several Ruby files, compiled as one closed world
+    (`rb2go.CompileFiles`), as Ruby loads files into one process:
+    - **Load order.** Files load in the given order, each one's top level
+      (its statements, and what its class bodies run: constant
+      assignments, hook calls) running whole before the next's, as
+      `require` does.
+    - **Scope.** Top-level locals are file-scoped, as in Ruby: each file's
+      top level is its own Go block in `main`.
+    - **Reopening.** A class reopened in a later file adds to it, and a
+      method or top-level def defined again replaces the earlier one.
+      Ruby does that when the later file loads; a closed world has every
+      method from the start, so code that runs while an earlier file
+      loads already sees the later definition. Suites never notice: tests
+      run after every file has loaded.
+    - **Constants.** One assigned in two files is a compile error (Ruby
+      only warns, but the two values may not share a type).
+    - **Names.** Files keep the names they were given in messages and
+      `//line`, so failure locations read `testdata/test/x_test.rb:12`, as
+      MRI's do (the one-file `Compile` passes a basename, as before).
+      `$0` is the first file.
+    - **Proof:** [testdata/multi](testdata/multi) (`TestMulti` compares
+      with MRI loading the same files) and the whole `testdata/test` suite.
+    - **Groundwork** for `require_relative` in user code.

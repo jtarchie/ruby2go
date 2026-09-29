@@ -25,3 +25,24 @@ func Compile(ctx context.Context, mainName string, src []byte) ([]byte, []string
 	}
 	return out, warnings, nil
 }
+
+// File is one Ruby source file of a multi-file program.
+type File struct {
+	Name string // as given, relative to where the program runs: it is what messages and failure locations show
+	Src  []byte
+}
+
+// CompileFiles transpiles several Ruby files into one Go program, as Ruby
+// loads them into one process: in order, each file's top level running
+// before the next's (decision 84).
+func CompileFiles(ctx context.Context, files []File) ([]byte, []string, error) {
+	srcs := make([]compiler.Source, len(files))
+	for i, f := range files {
+		srcs[i] = compiler.Source{Name: f.Name, Src: f.Src}
+	}
+	out, warnings, err := compiler.CompileFilesWithWarnings(ctx, Prelude, srcs)
+	if err != nil {
+		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+	}
+	return out, warnings, nil
+}

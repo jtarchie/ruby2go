@@ -368,13 +368,13 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 				// stdlib requires are meaningless here, unless the prelude
 				// hooks one (decision 78): `require "a/b"` → __require_a_b
 				if hook := c.requireHook(f, n); hook != nil {
-					c.mainStmts = append(c.mainStmts, hook)
+					c.addMainStmt(f, hook)
 				}
 				continue
 			}
-			c.mainStmts = append(c.mainStmts, n)
+			c.addMainStmt(f, n)
 		default:
-			c.mainStmts = append(c.mainStmts, n)
+			c.addMainStmt(f, n)
 		}
 	}
 }
@@ -532,7 +532,7 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 		}
 	}
 	if !reopen && !f.prelude {
-		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n})
+		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
 }
@@ -673,6 +673,16 @@ type classHook struct {
 	cls  *Class
 	mod  *constRef // nil: the superclass
 	node parser.Node
+	file *File // where the hook site is, for its place in load order
+}
+
+// addMainStmt records a top-level statement and the file it runs in.
+func (c *Compiler) addMainStmt(f *File, n parser.Node) {
+	if c.stmtFile == nil {
+		c.stmtFile = map[parser.Node]*File{}
+	}
+	c.stmtFile[n] = f
+	c.mainStmts = append(c.mainStmts, n)
 }
 
 // noteHooks records `include`/`extend`'s hooks: the last module first, as
@@ -682,7 +692,7 @@ func (c *Compiler) noteHooks(f *File, name string, cls *Class, n *parser.CallNod
 		return
 	}
 	for _, a := range slices.Backward(args) {
-		c.hooks = append(c.hooks, classHook{name: name, cls: cls, mod: &constRef{node: a, scope: scope, file: f}, node: n})
+		c.hooks = append(c.hooks, classHook{name: name, cls: cls, mod: &constRef{node: a, scope: scope, file: f}, node: n, file: f})
 	}
 }
 
@@ -760,10 +770,10 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		}
 	}
 	if cls == nil {
-		if c.topDefs[n.Name] != nil {
-			c.errorf(f, n, "duplicate top-level def %s", n.Name)
-		}
 		m.GoName = goFuncName(n.Name)
+		if old := c.topDefs[n.Name]; old != nil { // as Ruby: a later def replaces an earlier one
+			c.topDefList = deleteMethod(c.topDefList, old)
+		}
 		c.topDefs[n.Name] = m
 		c.topDefList = append(c.topDefList, m)
 		return

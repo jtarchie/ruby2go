@@ -127,11 +127,30 @@ func compile(file, bin string, opts buildOpts, diag io.Writer) (string, error) {
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
 	code, warnings, err := rb2go.Compile(context.Background(), file, src)
+	return buildModule(code, warnings, err, bin, opts, diag)
+}
+
+// compileFiles builds several files as one program, as Ruby loads them into one process (decision 84).
+func compileFiles(files []string, bin string, opts buildOpts, diag io.Writer) (string, error) {
+	srcs := make([]rb2go.File, 0, len(files))
+	for _, f := range files {
+		src, err := os.ReadFile(f) //nolint:gosec // the user's program
+		if err != nil {
+			return "", err //nolint:wrapcheck // the *PathError already names the file
+		}
+		srcs = append(srcs, rb2go.File{Name: f, Src: src})
+	}
+	code, warnings, err := rb2go.CompileFiles(context.Background(), srcs)
+	return buildModule(code, warnings, err, bin, opts, diag)
+}
+
+// buildModule writes the compiled Go into a fresh module and builds it.
+func buildModule(code []byte, warnings []string, err error, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	for _, w := range warnings {
 		_, _ = fmt.Fprintln(diag, "warning:", w)
 	}
 	if err != nil {
-		return "", err //nolint:wrapcheck // compile errors carry file:line
+		return "", err
 	}
 	dir, err := os.MkdirTemp("", "rb2go-")
 	if err != nil {
