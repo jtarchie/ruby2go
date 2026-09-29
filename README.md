@@ -1275,6 +1275,36 @@ resolve; anything not listed is still open.
     skipping the positional `n` default, is not supported (`n` must be
     given); MRI itself hangs on `chars: []`, so that case is untested
     either side ([example 46](examples/46_digests/main.rb)).
+    *Amended:* `Zlib::Deflate.deflate`/`Zlib::Inflate.inflate`
+    and the `Zlib.deflate`/`inflate` convenience wrap `compress/zlib`;
+    `Zlib.gzip`/`gunzip` wrap `compress/gzip`. Go's `compress/flate` (both
+    packages sit on it) does not emit byte-identical output to MRI's C
+    zlib at the same level — different implementations, valid but
+    different compressed bytes for the same input and level, and gzip
+    headers differ too (mtime, OS byte). So compressed output can never
+    be compared to MRI's byte-for-byte; what's checked instead is
+    round-tripping (compress then decompress returns the input) and
+    inflating a literal MRI-produced deflate/gzip blob embedded in the
+    test, which does check this reads real zlib's output correctly, the
+    direction that matters for files written by real Ruby elsewhere
+    ([testdata/run/zlib_mid.rb](testdata/run/zlib_mid.rb)). `DEFAULT_COMPRESSION`
+    (`-1`), `NO_COMPRESSION` (`0`), `BEST_SPEED` (`1`) and
+    `BEST_COMPRESSION` (`9`) match MRI's values. `Zlib::GzipWriter`/
+    `GzipReader` dispatch `write`/`read`/`close` dynamically on whatever
+    they wrap (decision 32), so any object with those Ruby methods works
+    — not just `File` — without a shared IO interface to require
+    statically (decision 48 already declined one for `StringIO`).
+    `GzipWriter` buffers the whole compressed stream in memory; `write`
+    feeds the deflate stream, and `finish`/`close` make one `write` call
+    with the finished bytes (`finish` leaves the wrapped object open, so
+    a `StringIO`'s `#string` still reads afterwards; `close` then also
+    calls the wrapped object's `close`, so it does not work over
+    `StringIO`, which has none, decision 48). `GzipReader.new` makes one
+    `read` call to slurp the compressed bytes and decompresses eagerly,
+    then serves `read`/`gets`/`each_line` from the plain buffer like
+    `StringIO`. A malformed zlib stream raises `Zlib::DataError`; a bad
+    gzip header or corrupt body raises `Zlib::GzipFile::Error` — a
+    module here, not MRI's class, since nothing subclasses it.
 51. `StringScanner` keeps a byte pointer and matches each Regexp against
     the rest of the string, so `^`/`\A` match at the pointer (MRI's default
     `fixed_anchor: false`). `scan`/`skip`/`check`/`match?` use a cached

@@ -55,6 +55,8 @@ linters:
         # Integer width conversions: Ruby integers are unbounded, ours are
         # int; narrowing is by design.
         - G115
+        # Every class's Ruby name is a Go string literal (decisions 17/28); gosec's entropy check occasionally flags one as a credential (verified false positive: `Zlib::GzipWriter`'s name literal alone triggers it, reported at an unrelated import line, the //line-confusion below for G103).
+        - G101
     staticcheck:
       checks:
         - all
