@@ -228,7 +228,7 @@ module Minitest
     end
 
     #: (Regexp) -> Array[String]
-    def self.methods_matching(re) = public_instance_methods(true).grep(re).map(&:to_s)
+    def self.methods_matching(re) = public_instance_methods(true).map(&:to_s).select { |m| re.match?(m) } # port: not grep, whose untyped `pattern === x` keeps === on every class
 
     #: (Options) -> Array[String]
     def self.filter_runnable_methods(options)
@@ -622,7 +622,7 @@ module Minitest
 
       result = __mt_diff(expect, butwas)
       if result.empty?
-        klass = exp.class.name
+        klass = __mt_class_name(exp)
         result = [
           "No visible difference in the #{klass}#inspect output.\n",
           "You should look at the implementation of #== on ",
@@ -661,7 +661,7 @@ module Minitest
     def assert(test, msg = nil)
       return __assert(test, -> { "Expected #{mu_pp(test)} to be truthy." }) if msg.nil?
 
-      __assert(test, -> { msg.to_s })
+      __assert(test, -> { __s(msg) })
     end
 
     # port: every assertion ends here and counts one, as minitest's `assert` does.
@@ -693,7 +693,7 @@ module Minitest
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def assert_in_delta(exp, act, delta = 0.001, msg = nil)
       n = (exp - act).abs
-      m = message(msg, ".", -> { "Expected |#{exp} - #{act}| (#{n}) to be <= #{delta}" })
+      m = message(msg, ".", -> { "Expected |#{__s(exp)} - #{__s(act)}| (#{__s(n)}) to be <= #{__s(delta)}" })
       __assert(delta >= n, m)
     end
 
@@ -713,13 +713,13 @@ module Minitest
 
     #: (untyped, untyped, ?untyped) -> bool
     def assert_instance_of(cls, obj, msg = nil)
-      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be an instance of #{cls}, not #{obj.class}" })
-      __assert(__mt_class_name(obj) == cls.to_s, m)
+      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be an instance of #{__s(cls)}, not #{__mt_class_name(obj)}" })
+      __assert(__mt_class_name(obj) == __s(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def assert_kind_of(cls, obj, msg = nil)
-      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be a kind of #{cls}, not #{obj.class}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be a kind of #{__s(cls)}, not #{__mt_class_name(obj)}" })
       __assert(obj.kind_of?(cls), m)
     end
 
@@ -745,13 +745,13 @@ module Minitest
       return assert_predicate(o1, op, msg) if Assertions::UNDEFINED.equal?(o2)
 
       assert_respond_to(o1, op)
-      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to be #{op} #{mu_pp(o2)}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to be #{__s(op)} #{mu_pp(o2)}" })
       __assert(__mt_send(o1, op, o2), m)
     end
 
     #: (String, ?untyped) -> bool
     def assert_path_exists(path, msg = nil)
-      m = message(msg, ".", -> { "Expected path '#{path}' to exist" })
+      m = message(msg, ".", -> { "Expected path '#{__s(path)}' to exist" })
       __assert(File.exist?(path), m)
     end
 
@@ -759,7 +759,7 @@ module Minitest
     #: (untyped, untyped, ?untyped) -> bool
     def assert_predicate(o1, op, msg = nil)
       assert_respond_to(o1, op)
-      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to be #{op}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to be #{__s(op)}" })
       __assert(__mt_send(o1, op), m)
     end
 
@@ -772,24 +772,24 @@ module Minitest
       begin
         yield
       rescue Exception => e
-        if exp.any? { |k| k === e }
+        if exp.any? { |k| __mt_kind_of(k, e) }
           pass # count assertion
           return e
         end
         raise e if e.is_a?(Minitest::Assertion) || e.is_a?(SignalException) || e.is_a?(SystemExit)
 
-        flunk(exception_details(e, "#{msg}#{mu_pp(exp)} exception expected, not"))
+        flunk(exception_details(e, "#{__s(msg)}#{mu_pp(exp)} exception expected, not"))
       end
 
       shown = exp.size == 1 ? exp.first : exp
-      flunk("#{msg}#{mu_pp(shown)} expected but nothing was raised.")
+      flunk("#{__s(msg)}#{mu_pp(shown)} expected but nothing was raised.")
       raise "unreachable: flunk raises"
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def assert_respond_to(obj, meth, msg = nil)
-      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} (#{obj.class}) to respond to ##{meth}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} (#{__mt_class_name(obj)}) to respond to ##{__s(meth)}" })
       __assert(obj.respond_to?(meth), m)
     end
 
@@ -824,7 +824,7 @@ module Minitest
     #: (untyped, String?, ^() -> String) -> ^() -> String
     def message(msg, ending, default)
       lambda do
-        custom_message = msg.nil? || msg.to_s.empty? ? "" : "#{msg}.\n"
+        custom_message = msg.nil? || __s(msg).empty? ? "" : "#{__s(msg)}.\n"
         "#{custom_message}#{default.call}#{ending}"
       end
     end
@@ -836,7 +836,7 @@ module Minitest
     def refute(test, msg = nil)
       return __assert(!test, message(nil, ".", -> { "Expected #{mu_pp(test)} to not be truthy" })) if msg.nil?
 
-      __assert(!test, -> { msg.to_s })
+      __assert(!test, -> { __s(msg) })
     end
 
     # @dynamic
@@ -858,7 +858,7 @@ module Minitest
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def refute_in_delta(exp, act, delta = 0.001, msg = nil)
       n = (exp - act).abs
-      m = message(msg, ".", -> { "Expected |#{exp} - #{act}| (#{n}) to not be <= #{delta}" })
+      m = message(msg, ".", -> { "Expected |#{__s(exp)} - #{__s(act)}| (#{__s(n)}) to not be <= #{__s(delta)}" })
       __assert(!(delta >= n), m)
     end
 
@@ -878,13 +878,13 @@ module Minitest
 
     #: (untyped, untyped, ?untyped) -> bool
     def refute_instance_of(cls, obj, msg = nil)
-      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be an instance of #{cls}" })
-      __assert(__mt_class_name(obj) != cls.to_s, m)
+      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be an instance of #{__s(cls)}" })
+      __assert(__mt_class_name(obj) != __s(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def refute_kind_of(cls, obj, msg = nil)
-      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be a kind of #{cls}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be a kind of #{__s(cls)}" })
       __assert(!obj.kind_of?(cls), m)
     end
 
@@ -908,13 +908,13 @@ module Minitest
       return refute_predicate(o1, op, msg) if Assertions::UNDEFINED.equal?(o2)
 
       assert_respond_to(o1, op)
-      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to not be #{op} #{mu_pp(o2)}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to not be #{__s(op)} #{mu_pp(o2)}" })
       __assert(!__mt_send(o1, op, o2), m)
     end
 
     #: (String, ?untyped) -> bool
     def refute_path_exists(path, msg = nil)
-      m = message(msg, ".", -> { "Expected path '#{path}' to not exist" })
+      m = message(msg, ".", -> { "Expected path '#{__s(path)}' to not exist" })
       __assert(!File.exist?(path), m)
     end
 
@@ -922,14 +922,14 @@ module Minitest
     #: (untyped, untyped, ?untyped) -> bool
     def refute_predicate(o1, op, msg = nil)
       assert_respond_to(o1, op)
-      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to not be #{op}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to not be #{__s(op)}" })
       __assert(!__mt_send(o1, op), m)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def refute_respond_to(obj, meth, msg = nil)
-      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not respond to #{meth}" })
+      m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not respond to #{__s(meth)}" })
       __assert(!obj.respond_to?(meth), m)
     end
 
@@ -944,7 +944,7 @@ module Minitest
 
     #: (?untyped, ?untyped) -> bool
     def skip(msg = nil, _ignored = nil)
-      raise Minitest::Skip, (msg || "Skipped, no message given").to_s
+      raise Minitest::Skip, msg.nil? ? "Skipped, no message given" : __s(msg)
     end
 
     # port: `Regexp.new Regexp.escape matcher if String === matcher`.
@@ -957,7 +957,7 @@ module Minitest
     def __mt_match(re, obj)
       return nil if obj.nil?
 
-      re.match(obj.to_s)
+      re.match(__s(obj))
     end
 
     # port: `recv.__send__(op, *args)`. rbSendByName would keep every method of every class in the build, so user classes answer through their _Call tables and core values through the common operators and predicates here.
@@ -1009,6 +1009,13 @@ module Minitest
 
     #: (untyped, String, Array[untyped]) -> untyped
     def __mt_call(recv, name, args) = %x{ return rbMtCall(recv, string(name), *args...) }
+
+    # port: to_s, `===` and class names on untyped operands go through Go helpers (rbToS, rbIsInstanceOf, the class-name table): a dynamic call keeps a wrapper on every class in the program.
+    #: (untyped) -> String
+    def __s(obj) = %x{ return rbToS(obj) }
+
+    #: (untyped, untyped) -> bool
+    def __mt_kind_of(klass, obj) = %x{ return Boolean(rbIsInstanceOf(klass, obj)) }
 
     #: (untyped) -> String
     def __mt_class_name(obj) = %x{ return String(rbClassName(rbUnbox(obj))) }
@@ -1150,10 +1157,10 @@ module Minitest
     def must_be_same_as(exp, msg = nil) = ctx.assert_same(exp, target, msg)
 
     #: (?untyped) -> bool
-    def path_must_exist(msg = nil) = ctx.assert_path_exists(target.to_s, msg)
+    def path_must_exist(msg = nil) = ctx.assert_path_exists(ctx.__s(target), msg)
 
     #: (?untyped) -> bool
-    def path_wont_exist(msg = nil) = ctx.refute_path_exists(target.to_s, msg)
+    def path_wont_exist(msg = nil) = ctx.refute_path_exists(ctx.__s(target), msg)
 
     #: (?untyped) -> bool
     def wont_be_empty(msg = nil) = ctx.refute_empty(target, msg)

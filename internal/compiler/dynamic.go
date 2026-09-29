@@ -58,6 +58,14 @@ type dynWrapped struct {
 	own          bool
 }
 
+// callByName: what minitest calls by name, tests and the predicates and operators of
+// assert_predicate/assert_operator. Only these, because naming a common method
+// (to_s, name) here would keep its Dyn wrapper on every class (decision 49).
+func callByName(name string) bool {
+	_, op := opNames[name]
+	return strings.HasPrefix(name, "test_") || strings.HasSuffix(name, "?") || op
+}
+
 // emitCallTables gives each user-defined class _Call(name, args...): send
 // over the methods user code defined on it, own or inherited. It is the
 // narrow alternative to rbSendByName, whose switch over every method name
@@ -70,7 +78,7 @@ func (c *Compiler) emitCallTables() {
 		}
 		var cases []dynWrapped
 		for _, w := range c.dynWrapped[cls] {
-			if w.own {
+			if w.own && callByName(w.name) {
 				cases = append(cases, w)
 			}
 		}

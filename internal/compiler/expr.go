@@ -1915,7 +1915,10 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		f.withNextTail(tail{kind: tailReturn, typ: ret}, gen)
 	}
 	f.indent--
-	f.lineOf(n) // what follows the block on the Go side (the rest of the call) is the call's line again, not the block's last
+	if strings.Contains(b.String(), "\n//line ") {
+		// the block's statements moved the line mapping; what follows it on the Go side is the call's line again. Only then: a block without its own directives (&:sym) would look to linters like it ends in blank lines.
+		f.lineOf(n)
+	}
 	f.emit("}")
 	f.popLoop()
 	f.closures--
