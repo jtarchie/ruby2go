@@ -23,8 +23,23 @@ func rbMtLocation() String {
 	mod := strings.TrimSuffix(self, "prelude/go/minitest.go")
 	var locs []string
 	idx := -1
+	deferred, skipTo := "", ""
 	for {
 		f, more := frames.Next()
+		// An Assertion made in a rescue (assert_raises's flunk) runs in a deferred recover, above the frames that panicked, which MRI's stack has already unwound: skip from the panic to the function whose defer this is.
+		if f.Function == "runtime.gopanic" {
+			skipTo = rbMtFuncLit.ReplaceAllString(deferred, "")
+		}
+		deferred = f.Function
+		if skipTo != "" {
+			if f.Function != skipTo {
+				if !more {
+					break
+				}
+				continue
+			}
+			skipTo = ""
+		}
 		f.File = strings.TrimPrefix(f.File, mod)
 		// Ruby bodies are free funcs (Owner_Name); a Go method, "(*T).Name", is a generated forwarder that only inherits the last //line
 		if strings.HasSuffix(f.File, ".rb") && !strings.HasPrefix(f.File, "prelude/") && !strings.Contains(f.Function, ".(") {
@@ -158,4 +173,13 @@ func rbMtCall(recv any, name string, args ...any) any {
 		}
 	}
 	panic(rbNoMethod(name, recv, false))
+}
+
+// rbProcOrNil is an optional block as a Proc?: a missing block (a nil func) is nil.
+func rbProcOrNil(blk func()) **func() {
+	if blk == nil {
+		return nil
+	}
+	p := &blk
+	return &p
 }

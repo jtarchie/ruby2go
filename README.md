@@ -1910,7 +1910,13 @@ resolve; anything not listed is still open.
     (`rbMtLocation`): of the frames in user code (prelude frames stand for
     MRI's filtered `lib/minitest` ones; generated forwarders, Go methods,
     are skipped), the one after the last whose method is named like an
-    assertion, as minitest's rule, else the first. rb2go has no
+    assertion, as minitest's rule, else the first. An Assertion made
+    inside a `rescue` (`assert_raises`'s `flunk`) is created by a deferred
+    recover, whose stack still holds the frames that panicked, frames
+    MRI has already unwound; those are skipped, from `runtime.gopanic` to
+    the function that deferred the recover. The Go code after a block's
+    closing brace gets a `//line` for the call that took the block, so a
+    multi-line statement doesn't drift to later Ruby lines. rb2go has no
     backtraces yet, so an error's report and `exception_details` print
     `No backtrace` where MRI lists frames: tests that error differ from
     MRI there. Spec's DSL is compiled (decision 83). Not ported:
@@ -2017,6 +2023,17 @@ resolve; anything not listed is still open.
     - **Known difference.** An `it` without a block reports its skip at
       the user's line, where MRI reports its own `lib/minitest` path.
 
-    Not supported: `register_spec_type`, `describe` with a computed
-    name, and the expectation methods (`_(x).must_equal`), which come
-    next ([testdata/run/minitest_spec.rb](testdata/run/minitest_spec.rb)).
+    - **Expectations.** `_(x)`, `value(x)` and `expect(x)`, or
+      `_ { ... }` for `must_raise`, return a `Minitest::Expectation`.
+      Its 30 `must_*`/`wont_*` methods are written out, each calling its
+      assertion the way minitest's `infect_an_assertion` does, so failure
+      messages and assertion counts match MRI's. Not ported:
+      `must_output`, `must_be_silent`, `must_throw`, and
+      `must_pattern_match`/`wont_pattern_match`.
+    - **Optional blocks.** Methods take an optional block (`?{ ... }` in
+      RBS); a call without one passes a nil func.
+
+    Not supported: `register_spec_type` and `describe` with a computed
+    name ([example 66](examples/66_minitest_spec/main.rb),
+    [testdata/run/minitest_spec.rb](testdata/run/minitest_spec.rb),
+    [testdata/test/spec_test.rb](testdata/test/spec_test.rb)).

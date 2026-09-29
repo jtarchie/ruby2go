@@ -1532,10 +1532,13 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 		if m.Iterator {
 			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
 		}
-		if block == nil {
+		blkCode := "nil"
+		switch {
+		case block != nil:
+			blkCode = f.genClosure(n, block, m.Block, env)
+		case !m.Block.Optional:
 			f.errorf(n, "%s requires a block", m.Name)
 		}
-		blkCode := f.genClosure(n, block, m.Block, env)
 		if restIdx >= 0 {
 			codes = slices.Insert(codes, restIdx, blkCode)
 		} else {
@@ -1912,6 +1915,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		f.withNextTail(tail{kind: tailReturn, typ: ret}, gen)
 	}
 	f.indent--
+	f.lineOf(n) // what follows the block on the Go side (the rest of the call) is the call's line again, not the block's last
 	f.emit("}")
 	f.popLoop()
 	f.closures--

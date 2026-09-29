@@ -1085,7 +1085,126 @@ module Minitest
     end
   end
 
-  # port: Spec has no describe/it; it is registered because the run order depends on how many runnables there are.
+  # port: Expectation is a typed class, and each must_/wont_ method is written out: MRI generates them with infect_an_assertion's class_eval. target is untyped, as the assertions' operands are (issue #29).
+  class Expectation < Object
+    attr_reader :target #: untyped
+    attr_reader :ctx #: Minitest::Test
+
+    #: (untyped, Minitest::Test, (^() -> void)?) -> void
+    def initialize(target, ctx, block)
+      @target = target
+      @ctx = ctx
+      @block = block
+    end
+
+    # port: must_raise runs the block _ was given, where MRI finds it as a Proc target.
+    #: () -> void
+    def __call_block = %x{
+      b := self._Minitest_Expectation().block
+      if b == nil {
+        panic(NewArgumentError(Ref(String("must_raise needs a block: _ { ... }.must_raise(...)"))))
+      }
+      (**b)() // a Proc? is a pointer to the Proc, itself a pointer to the func
+    }
+
+    #: (?untyped) -> bool
+    def must_be_empty(msg = nil) = ctx.assert_empty(target, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def must_equal(exp, msg = nil) = ctx.assert_equal(exp, target, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def must_be_close_to(exp, delta = 0.001, msg = nil) = ctx.assert_in_delta(exp, target, delta, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def must_be_within_delta(exp, delta = 0.001, msg = nil) = ctx.assert_in_delta(exp, target, delta, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def must_be_within_epsilon(exp, epsilon = 0.001, msg = nil) = ctx.assert_in_epsilon(exp, target, epsilon, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def must_include(obj, msg = nil) = ctx.assert_includes(target, obj, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def must_be_instance_of(cls, msg = nil) = ctx.assert_instance_of(cls, target, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def must_be_kind_of(cls, msg = nil) = ctx.assert_kind_of(cls, target, msg)
+
+    #: (untyped, ?untyped) -> MatchData?
+    def must_match(matcher, msg = nil) = ctx.assert_match(matcher, target, msg)
+
+    #: (?untyped) -> bool
+    def must_be_nil(msg = nil) = ctx.assert_nil(target, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def must_be(op, o2 = Assertions::UNDEFINED, msg = nil) = ctx.assert_operator(target, op, o2, msg)
+
+    #: (*untyped) -> Exception
+    def must_raise(*exp) = ctx.assert_raises(*exp) { __call_block }
+
+    #: (untyped, ?untyped) -> bool
+    def must_respond_to(meth, msg = nil) = ctx.assert_respond_to(target, meth, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def must_be_same_as(exp, msg = nil) = ctx.assert_same(exp, target, msg)
+
+    #: (?untyped) -> bool
+    def path_must_exist(msg = nil) = ctx.assert_path_exists(target.to_s, msg)
+
+    #: (?untyped) -> bool
+    def path_wont_exist(msg = nil) = ctx.refute_path_exists(target.to_s, msg)
+
+    #: (?untyped) -> bool
+    def wont_be_empty(msg = nil) = ctx.refute_empty(target, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_equal(exp, msg = nil) = ctx.refute_equal(exp, target, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def wont_be_close_to(exp, delta = 0.001, msg = nil) = ctx.refute_in_delta(exp, target, delta, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def wont_be_within_delta(exp, delta = 0.001, msg = nil) = ctx.refute_in_delta(exp, target, delta, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def wont_be_within_epsilon(exp, epsilon = 0.001, msg = nil) = ctx.refute_in_epsilon(exp, target, epsilon, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_include(obj, msg = nil) = ctx.refute_includes(target, obj, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_be_instance_of(cls, msg = nil) = ctx.refute_instance_of(cls, target, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_be_kind_of(cls, msg = nil) = ctx.refute_kind_of(cls, target, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_match(matcher, msg = nil) = ctx.refute_match(matcher, target, msg)
+
+    #: (?untyped) -> bool
+    def wont_be_nil(msg = nil) = ctx.refute_nil(target, msg)
+
+    #: (untyped, ?untyped, ?untyped) -> bool
+    def wont_be(op, o2 = Assertions::UNDEFINED, msg = nil) = ctx.refute_operator(target, op, o2, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_respond_to(meth, msg = nil) = ctx.refute_respond_to(target, meth, msg)
+
+    #: (untyped, ?untyped) -> bool
+    def wont_be_same_as(exp, msg = nil) = ctx.refute_same(exp, target, msg)
+  end
+
+  # port: the DSL (describe, it, let, before, after, subject) is compiled into classes and methods (decision 83); what is left is the expectation entry point.
   class Spec < Test
+    # MRI's Spec::DSL::InstanceMethods#_, with value and expect as its aliases.
+    #: (?untyped) ?{ () -> void } -> Minitest::Expectation
+    def _(value = nil) = %x{ return NewMinitest_Expectation(value, self, rbProcOrNil(blk)) }
+
+    #: (?untyped) ?{ () -> void } -> Minitest::Expectation
+    def value(value = nil) = %x{ return NewMinitest_Expectation(value, self, rbProcOrNil(blk)) }
+
+    #: (?untyped) ?{ () -> void } -> Minitest::Expectation
+    def expect(value = nil) = %x{ return NewMinitest_Expectation(value, self, rbProcOrNil(blk)) }
   end
 end

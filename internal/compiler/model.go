@@ -173,8 +173,9 @@ type Param struct {
 
 // BlockSig is the block a method takes.
 type BlockSig struct {
-	Params []Type
-	Ret    Type
+	Params   []Type
+	Ret      Type
+	Optional bool // `?{ ... }`: a call may leave the block out, and the method sees a nil func
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
@@ -1285,7 +1286,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 		m.Params = append(m.Params, prm)
 	}
 	if m.sig.Block != nil {
-		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc)}
+		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc), Optional: m.sig.Block.Optional}
 		for _, p := range m.sig.Block.Params {
 			bs.Params = append(bs.Params, c.resolveType(p.Type, sc))
 		}
