@@ -2496,3 +2496,21 @@ resolve; anything not listed is still open.
       completion lists, `Regexp` patterns, `accept`, `summarize` with a
       block, `on`'s long-description Hash, `OptionParser::Arguable`.
     ([example 76](../examples/76_optparse/main.rb)).
+102. `rb2go web` (#2) is a local playground: Ruby on the left, the Go it
+    compiles to on the right (recompiled 300 ms after typing stops), a Run
+    button, the examples in a picker, and the source in the URL hash for
+    sharing. It is a stdlib `net/http` server around `Compile`, not a
+    static page: `Compile` builds for `js/wasm` unchanged, but measured
+    ~5.6 s per compile there against ~0.7 s native (most of it
+    `emitDynamic`'s walk over the prelude, not Prism), and Run needs the
+    local `go` command anyway. Compiles are serialized (one user). `/run`
+    builds without `-race`, runs in a temp dir with empty stdin, a 10 s
+    wall clock and 1 MB per stream. Because `/run` executes what it is
+    sent, the server binds to `127.0.0.1` by default and refuses a Host
+    other than loopback or `-addr`'s (DNS rebinding), a foreign `Origin`,
+    and a POST that isn't `application/json` (a "simple" cross-site POST
+    gets no CORS preflight); `-addr` off loopback warns. The Go pane
+    scrolls to the first `//line main.rb:` because the prelude comes
+    first. Not done: syntax highlighting, a hosted wasm build (needs the
+    `emitDynamic` cost fixed first), multi-file programs, stdin/args for
+    Run. (`cmd/rb2go/web_test.go`.)

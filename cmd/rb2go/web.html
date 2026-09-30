@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rb2go playground</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #fafaf9; --panel: #ffffff; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4;
+  --accent: #b91c1c; --accent-fg: #ffffff; --err-bg: #fef2f2; --err-fg: #991b1b; --warn-fg: #92400e;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09; --panel: #1c1917; --fg: #e7e5e4; --muted: #a8a29e; --line: #292524;
+    --accent: #ef4444; --accent-fg: #0c0a09; --err-bg: #2a1212; --err-fg: #fca5a5; --warn-fg: #fcd34d;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; }
+header { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+h1 { font-size: 15px; margin: 0; }
+select, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); cursor: pointer; }
+button:disabled { opacity: .6; cursor: progress; }
+#status { color: var(--muted); font-size: 13px; margin-left: auto; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; }
+.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-right: 1px solid var(--line); }
+main h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0; padding: 6px 16px; }
+textarea, pre { flex: 1; min-height: 0; margin: 0; padding: 8px 16px; border: 0; resize: none; overflow: auto;
+  background: var(--panel); color: var(--fg); font: 13px/1.5 var(--mono); tab-size: 2; white-space: pre; }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#go.stale { opacity: .45; }
+#diag:empty { display: none; }
+#diag { margin: 0; padding: 8px 16px; font: 12px/1.5 var(--mono); white-space: pre-wrap; max-height: 30%; overflow: auto; }
+#diag.error { background: var(--err-bg); color: var(--err-fg); }
+#diag.warn { color: var(--warn-fg); }
+#output { grid-column: 1 / -1; border-top: 1px solid var(--line); max-height: 35vh; display: flex; flex-direction: column; }
+#output[hidden] { display: none; }
+#output pre { white-space: pre-wrap; }
+.err { color: var(--err-fg); }
+@media (max-width: 700px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr auto; }
+  .pane { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>rb2go</h1>
+  <label>Example <select id="examples"><option value="">—</option></select></label>
+  <button id="run" title="Ctrl/Cmd+Enter">Run</button>
+  <span id="status" role="status"></span>
+</header>
+<main>
+  <section class="pane">
+    <h2 id="rb-h">Ruby</h2>
+    <textarea id="rb" aria-labelledby="rb-h" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  </section>
+  <section class="pane">
+    <h2 id="go-h">Go</h2>
+    <pre id="go" aria-labelledby="go-h" tabindex="0"></pre>
+    <pre id="diag" aria-live="polite"></pre>
+  </section>
+  <section id="output" hidden>
+    <h2 id="out-h">Output</h2>
+    <pre id="out" aria-labelledby="out-h" tabindex="0"></pre>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const rb = $('rb'), go = $('go'), diag = $('diag'), status = $('status'), run = $('run');
+let seq = 0, timer = 0, examples = [], ctl = null, jump = true;
+
+const post = (path, src, signal) => fetch(path, {
+  method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({src}), signal,
+}).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
+
+async function compile() {
+  const n = ++seq, t0 = performance.now();
+  status.textContent = 'compiling…';
+  ctl?.abort(); // the server drops a superseded compile still queued behind the last
+  ctl = new AbortController();
+  try {
+    const res = await post('/compile', rb.value, ctl.signal);
+    if (n !== seq) return; // a newer edit is in flight
+    const ms = Math.round(performance.now() - t0);
+    if (res.error) {
+      go.classList.add('stale');
+      diag.className = 'error';
+      diag.textContent = res.error;
+      status.textContent = `error · ${ms} ms`;
+    } else {
+      go.classList.remove('stale');
+      go.textContent = res.go;
+      // the prelude comes first; show where the user's code landed, once per loaded program so edits don't yank the pane
+      const at = jump ? res.go.split('\n').findIndex(l => l.startsWith('//line main.rb:')) : -1;
+      if (at >= 0) { go.scrollTop = at * parseFloat(getComputedStyle(go).lineHeight); jump = false; }
+      diag.className = 'warn';
+      diag.textContent = (res.warnings || []).map(w => 'warning: ' + w).join('\n');
+      status.textContent = `${res.go.split('\n').length} lines · ${ms} ms`;
+    }
+  } catch (e) {
+    if (n === seq) status.textContent = 'server unreachable: ' + e.message;
+  }
+}
+
+function edited() {
+  try { history.replaceState(null, '', '#' + encodeURIComponent(rb.value)); } catch {}
+  clearTimeout(timer);
+  timer = setTimeout(compile, 300);
+}
+
+async function runProgram() {
+  if (run.disabled) return; // Ctrl/Cmd+Enter doesn't go through the disabled button
+  run.disabled = true;
+  status.textContent = 'building…';
+  const out = $('out');
+  $('output').hidden = false;
+  out.textContent = '';
+  try {
+    const res = await post('/run', rb.value);
+    out.replaceChildren(res.stdout);
+    if (res.stderr) out.append(Object.assign(document.createElement('span'), {className: 'err', textContent: res.stderr}));
+    const nl = /\n$|^$/.test(res.stdout + res.stderr) ? '' : '\n';
+    const tail = nl + (res.error ? `[${res.error}]` : `[exit ${res.exit}]`);
+    out.append(Object.assign(document.createElement('span'), {className: res.exit ? 'err' : '', textContent: tail}));
+    status.textContent = res.error ? 'run failed' : `exit ${res.exit}`;
+  } catch (e) {
+    status.textContent = 'server unreachable: ' + e.message;
+  } finally {
+    run.disabled = false;
+  }
+}
+
+rb.addEventListener('input', edited);
+rb.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runProgram(); }
+});
+run.addEventListener('click', runProgram);
+$('examples').addEventListener('change', e => {
+  const ex = examples.find(x => x.name === e.target.value);
+  if (ex) { rb.value = ex.src; jump = true; edited(); }
+});
+
+fetch('/examples').then(r => r.json()).then(list => {
+  examples = list;
+  for (const ex of list) $('examples').append(new Option(ex.name, ex.name));
+}).catch(() => {});
+
+let shared = '';
+try { shared = decodeURIComponent(location.hash.slice(1)); } catch {} // a truncated or hand-edited link
+rb.value = shared ||
+  '# rbs_inline: enabled\n\nclass Greeter\n  #: (String name) -> void\n  def initialize(name)\n    @name = name\n  end\n\n  #: () -> String\n  def greet = "Hello, #{@name}!"\nend\n\nputs Greeter.new("world").greet\n';
+compile();
+</script>
+</body>
+</html>

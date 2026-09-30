@@ -87,6 +87,7 @@ rb2go build -work main.rb          # keep the generated main.go; prints its dire
 rb2go gen main.rb > main.go        # print the generated Go (no go command needed)
 rb2go test test/                   # compile minitest files into one binary and run them
 rb2go test test/foo_test.rb --seed 1 -v   # minitest flags pass through
+rb2go web                          # playground at http://127.0.0.1:8080: Ruby in, Go out, Run button
 ```
 
 `-race` and `-gcflags` pass through to `go build`. Compile errors and warnings

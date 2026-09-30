@@ -20,15 +20,19 @@ import (
 const usage = `usage: rb2go build [-o prog] [-race] [-gcflags flags] [-work] main.rb
        rb2go run [-race] [-gcflags flags] [-work] main.rb [args...]
        rb2go gen main.rb > main.go
-       rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]`
+       rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
+       rb2go web [-addr 127.0.0.1:8080]`
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" {
+	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" && os.Args[1] != "web" {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
 	if os.Args[1] == "test" {
 		os.Exit(testCmd(os.Args[2:]))
+	}
+	if os.Args[1] == "web" {
+		os.Exit(webCmd(os.Args[2:]))
 	}
 	if os.Args[1] == "gen" {
 		if len(os.Args) != 3 {
@@ -137,16 +141,21 @@ func run(file string, args []string, opts buildOpts) int {
 	err = cmd.Wait()
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
-		if ws, ok := exit.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-			return 128 + int(ws.Signal()) // the shell's convention
-		}
-		return exit.ExitCode()
+		return exitStatus(exit)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	return 0
+}
+
+// exitStatus is the child's exit code, or 128+signal for a signaled child (the shell's convention).
+func exitStatus(exit *exec.ExitError) int {
+	if ws, ok := exit.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return exit.ExitCode()
 }
 
 // compile builds into a fresh temp module each time: stdlib-only, so no network, and Go's content-keyed cache keeps rebuilds fast. Warnings and go build's output go to diag.
@@ -156,7 +165,7 @@ func compile(file, bin string, opts buildOpts, diag io.Writer) (string, error) {
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
 	code, warnings, err := rb2go.Compile(context.Background(), file, src)
-	return buildModule(code, warnings, err, bin, opts, diag)
+	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
 }
 
 // compileFiles builds several files as one program, as Ruby loads them into one process (decision 84).
@@ -170,11 +179,11 @@ func compileFiles(files []string, bin string, opts buildOpts, diag io.Writer) (s
 		srcs = append(srcs, rb2go.File{Name: f, Src: src})
 	}
 	code, warnings, err := rb2go.CompileFiles(context.Background(), srcs)
-	return buildModule(code, warnings, err, bin, opts, diag)
+	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
 }
 
 // buildModule writes the compiled Go into a fresh module and builds it.
-func buildModule(code []byte, warnings []string, err error, bin string, opts buildOpts, diag io.Writer) (string, error) {
+func buildModule(ctx context.Context, code []byte, warnings []string, err error, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	for _, w := range warnings {
 		_, _ = fmt.Fprintln(diag, "warning:", w)
 	}
@@ -202,7 +211,7 @@ func buildModule(code []byte, warnings []string, err error, bin string, opts bui
 	if *opts.gcflags != "" {
 		args = append(args, "-gcflags="+*opts.gcflags)
 	}
-	cmd := exec.CommandContext(context.Background(), "go", append(args, "-o", bin, ".")...) //nolint:gosec // flags are the user's own
+	cmd := exec.CommandContext(ctx, "go", append(args, "-o", bin, ".")...) //nolint:gosec // flags are the user's own
 	cmd.Dir = dir
 	// The user's go.work and GOFLAGS belong to their projects, not this module.
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
