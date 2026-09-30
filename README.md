@@ -2401,3 +2401,14 @@ resolve; anything not listed is still open.
     per-thread. Not done: an env Hash or options, `exec`, `spawn`,
     `Process.wait`, a signalled child's nil `exitstatus`.
     ([example 73](examples/73_shell/main.rb)).
+98. Operands run left to right. Some expressions hoist statements ahead
+    of the Go expression that uses them (`x&.y`, `a || b` into a temp);
+    when a later call argument or array element did, an earlier one
+    already generated as a plain Go expression ran after it
+    (`[log.push(2).size, log.last&.succ]` saw the push late). Now, when
+    an operand's generation emits statements (not just `//line`s), the
+    earlier operands' codes are evaluated into temporaries inserted before
+    those statements (`pinBefore`/`pinExprs`, with the buffer spliced at
+    the operand's start). Literals and nil are left alone. Covered: call
+    arguments (positional and rest) and array literal elements; a
+    receiver, hash literal pairs and interpolation parts are not yet.

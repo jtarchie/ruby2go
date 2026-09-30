@@ -604,7 +604,10 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	if tt, ok := expected.(TTuple); ok && len(tt.Elems) == len(n.Elements) {
 		codes := make([]string, len(n.Elements))
 		for i, el := range n.Elements {
-			codes[i] = f.coerce(el, f.genExpr(el, tt.Elems[i]), tt.Elems[i])
+			mark := f.buf.Len()
+			e := f.genExpr(el, tt.Elems[i])
+			f.pinBefore(mark, codes[:i])
+			codes[i] = f.coerce(el, e, tt.Elems[i])
 		}
 		return expr{code: f.c.goType(tt) + "{" + strings.Join(codes, ", ") + "}", typ: tt}
 	}
@@ -621,7 +624,9 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 		if _, ok := el.(*parser.SplatNode); ok {
 			f.errorf(el, "splat inside array literals is not supported")
 		}
+		mark := f.buf.Len()
 		elems[i] = f.genExpr(el, hint)
+		f.pinExprs(mark, elems[:i])
 	}
 	if elemT == nil {
 		elemT = inferElemType(elems)
@@ -639,6 +644,80 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	}
 	t := TClass{C: f.c.classes["Array"], Args: []Type{elemT}}
 	return expr{code: "(&Array[" + f.c.goType(elemT) + "]{" + strings.Join(codes, ", ") + "})", typ: t}
+}
+
+// pinBefore keeps Ruby's left-to-right evaluation when generating an
+// operand emitted statements (a hoisted temporary, `x&.y`) after earlier
+// operands were generated as plain Go expressions: those earlier codes
+// are evaluated into temporaries placed before the new statements.
+// Constants need no pinning.
+func (f *fctx) pinBefore(mark int, codes []string) {
+	if !f.emittedSince(mark) {
+		return
+	}
+	f.insertAt(mark, func() {
+		for i, c := range codes {
+			if pinnable(c) {
+				t := f.newTmp()
+				f.emit("%s := %s", t, c)
+				codes[i] = t
+			}
+		}
+	})
+}
+
+// pinExprs is pinBefore for operands not yet coerced.
+func (f *fctx) pinExprs(mark int, es []expr) {
+	if !f.emittedSince(mark) {
+		return
+	}
+	f.insertAt(mark, func() {
+		for i, e := range es {
+			if !e.lit && !isVoid(e.typ) && pinnable(e.code) {
+				t := f.newTmp()
+				f.emit("%s := %s", t, e.code)
+				es[i].code, es[i].view = t, ""
+			}
+		}
+	})
+}
+
+// emittedSince reports whether statements (not just //line directives)
+// were written to the buffer after mark.
+func (f *fctx) emittedSince(mark int) bool {
+	for l := range strings.SplitSeq(f.buf.String()[mark:], "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "//line ") {
+			return true
+		}
+	}
+	return false
+}
+
+// insertAt runs gen with its output placed at mark instead of the end.
+func (f *fctx) insertAt(mark int, gen func()) {
+	all := f.buf.String()
+	var ins strings.Builder
+	saved := f.buf
+	f.buf = &ins
+	gen()
+	f.buf = saved
+	f.buf.Reset()
+	f.buf.WriteString(all[:mark])
+	f.buf.WriteString(ins.String())
+	f.buf.WriteString(all[mark:])
+}
+
+// pinnable is false for Go code whose value can't change: literals and nil.
+func pinnable(code string) bool {
+	switch {
+	case code == "" || code == "nil" || code == "true" || code == "false":
+		return false
+	case code[0] == '"' || code[0] == '`' || code[0] >= '0' && code[0] <= '9':
+		return false
+	case code[0] == '-' && len(code) > 1 && code[1] >= '0' && code[1] <= '9':
+		return false
+	}
+	return true
 }
 
 // inferElemType picks the element type of an unannotated array literal.
@@ -1286,7 +1365,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	for _, p := range m.Params {
 		if p.Rest {
 			restIdx = len(codes)
-			codes = append(codes, f.genRestArgs(n, p, env, args, exprs, ai, nargs)...)
+			mark := f.buf.Len()
+			rest := f.genRestArgs(n, p, env, args, exprs, ai, nargs)
+			f.pinBefore(mark, codes)
+			codes = append(codes, rest...)
 			ai = nargs
 			continue
 		}
@@ -1300,7 +1382,9 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 				if _, ok := an.(*parser.SplatNode); ok {
 					f.errorf(an, "splat into a non-rest parameter is not supported")
 				}
+				mark := f.buf.Len()
 				a = f.genExpr(an, closed(p.Type, env))
+				f.pinBefore(mark, codes)
 			}
 			ai++
 			unify(p.Type, a.typ, env)
@@ -1409,7 +1493,9 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 				codes = append(codes, f.splatSlice(an, a.code, ac.Args[0], subst(p.Type, env)))
 				continue
 			}
+			mark := f.buf.Len()
 			a = f.genExpr(an, closed(p.Type, env))
+			f.pinBefore(mark, codes)
 		}
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))

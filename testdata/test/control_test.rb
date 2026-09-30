@@ -4280,4 +4280,17 @@ module ControlTests
       assert_equal "uncaught throw :nope", a.message
     end
   end
+
+  # Operands run left to right even when a later one hoists a temporary (`x&.y`) (decision 98).
+  class ControlEvalOrderTest < Minitest::Test
+    def test_args_and_array_elements
+      log = [] #: Array[Integer]
+      h = { a: 1 } #: Hash[Symbol, Integer]
+      assert_equal [2, 3], [log.push(2).size, log.last&.succ].then { |a| [a[0] + 1, a[1] || 0] }
+      log.clear
+      assert_equal [1, 2], [log.push(1).size, log.last&.succ]
+      assert_equal [1, 2, 2], [log.size, h[:a]&.succ, log.push(9).size]
+      assert_equal "1 8", format("%d %d", log.shift, log.first&.pred || 0)
+    end
+  end
 end
