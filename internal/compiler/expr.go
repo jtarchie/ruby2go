@@ -1534,18 +1534,10 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	return r
 }
 
-func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+// callEnv binds the type variables a call to e on recv starts from: the
+// receiver's class arguments, Self, and what its `@self` binds (decision 92).
+func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
 	m := e.M
-	f.c.inferRet(m)
-	if o := f.nilableFetch(m, args, block); o != nil {
-		return f.callEntry(n, o, recv, args, block)
-	}
-	f.curBlock = block
-	o := f.overload(e, recv.typ, args)
-	f.curBlock = nil
-	if o != nil {
-		return f.callEntry(n, o, recv, args, block)
-	}
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
 		classEnv := map[string]Type{}
@@ -1564,6 +1556,22 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	if m.SelfType != nil && !unify(m.SelfType, recv.typ, env) {
 		f.errorf(n, "%s needs a receiver of type %s, not %s", m.Name, m.SelfType, recv.typ)
 	}
+	return env
+}
+
+func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	m := e.M
+	f.c.inferRet(m)
+	if o := f.nilableFetch(m, args, block); o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
+	f.curBlock = block
+	o := f.overload(e, recv.typ, args)
+	f.curBlock = nil
+	if o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
+	env := f.callEnv(n, e, recv)
 	// bind vars visible in the current generic context so they count as bound
 	if m.Private && recv.code != f.selfCode && !f.implicitCall {
 		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
