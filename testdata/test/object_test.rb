@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require "singleton"
+require "forwardable"
 
 # Helpers for the checks that were testdata/run/object_bug_class_name_generated_collision.rb.
 class User
@@ -3829,6 +3830,44 @@ module ObjectTests
       assert_equal 5, d.set(5)
       assert_equal [60, 70], d.scaled(10)
       assert_equal false, d.respond_to?(:pin=)
+    end
+  end
+
+  # Forwardable (decision 99).
+  class Deck
+    extend Forwardable
+    include Enumerable #[Integer]
+
+    # @rbs @cards: Array[Integer]
+
+    def_delegators :@cards, :size, :each, :<<, :first, :[]
+    def_delegator :@cards, :join, :to_text
+    def_delegator :tally, :fetch, :count_of
+    delegate %i[keys] => :@marks
+
+    #: () -> void
+    def initialize
+      @cards = [3, 1, 2]
+      @marks = { "a" => 1 } #: Hash[String, Integer]
+    end
+
+    #: () -> Hash[Integer, Integer]
+    def tally = @cards.tally
+  end
+
+  class ForwardableTest < Minitest::Test
+    def test_delegators
+      d = Deck.new
+      d << 5
+      assert_equal [4, 3, 1, 5], [d.size, d.first, d[1], d[3]]
+      assert_equal "3-1-2-5", d.to_text("-")
+      assert_equal "3125", d.to_text
+      assert_equal [1, 2, 3, 5], d.sort
+      assert_equal 11, d.sum
+      assert_equal 1, d.count_of(3)
+      assert_equal 0, d.count_of(9, 0)
+      assert_equal ["a"], d.keys
+      assert_equal "key not found: 9", assert_raises(KeyError) { d.count_of(9) }.message
     end
   end
 end

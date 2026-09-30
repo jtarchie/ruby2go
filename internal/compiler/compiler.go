@@ -140,7 +140,7 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[
 	}
 	c.mainFile = c.userFiles[0]
 	c.nameGo()
-	c.link()
+	c.link(ctx)
 	c.discoverIvars()
 	c.refineIvars()
 	c.inferReturns()

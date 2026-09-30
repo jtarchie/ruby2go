@@ -2412,3 +2412,26 @@ resolve; anything not listed is still open.
     the operand's start). Literals and nil are left alone. Covered: call
     arguments (positional and rest) and array literal elements; a
     receiver, hash literal pairs and interpolation parts are not yet.
+99. Forwardable (#1) is compile-time codegen. `extend Forwardable` (an
+    empty prelude module) and, in the class body, `def_delegators :@x,
+    :a, :b`, `def_delegator :@x, :a, :alias` and `delegate [:a, :b] =>
+    :@x` (also `instance_delegate`) are recorded while collecting; in
+    `link`, once supers and includes are resolved and before signatures
+    are, each becomes an ordinary def written out as Ruby and parsed:
+    `#: (T) -> R` / `def a(a0) @x.a(a0) end`, with the target method's
+    signature after substituting the accessor's type (`E` → `Integer`,
+    `self` → the accessor's type, as Forwardable returns the target's
+    value). A block is forwarded as `{ |b0| yield b0 }`, so a delegated
+    `each` is an iterator and `include Enumerable` works over it. Each
+    optional parameter adds a `__<name>_<n>` def taking that many
+    arguments (decision 12's arity overloads), annotated per parameter
+    with its return inferred, so an omitted argument stays omitted and
+    the target's own default runs (`fetch(k)` raises, `fetch(k, 0)`
+    doesn't). The accessor's type must be known at link time: a
+    `# @rbs @x: T` declaration, a `#:` on an assignment to it in
+    `initialize` (found by syntax), or a method with a declared return.
+    The generated source is padded so its errors and `//line`s point at
+    the `def_delegators` line. Method-set caches are cleared after the
+    defs are added. Not done: `def_delegator` to a constant or an
+    expression string (`"@a.b"`), `SingleForwardable`.
+    ([example 74](examples/74_forwardable/main.rb)).

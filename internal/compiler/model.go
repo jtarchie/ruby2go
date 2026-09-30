@@ -38,6 +38,7 @@ type Class struct {
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
 	extends       []Include // `extend M`: included into the class object
+	delegations   []delegation
 	meta          *Class    // the class object's class (holds `def self.` methods)
 	metaOf        *Class    // for a metaclass: the class it describes
 	constNames    []string  // constants (classes included) declared directly inside, in order
@@ -649,6 +650,8 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		}
 	case "public":
 		*private = false
+	case "def_delegators", "def_delegator", "delegate", "instance_delegate":
+		c.collectDelegation(f, cls, n, args, scope)
 	default:
 		if specForms[n.Name] && !f.prelude {
 			c.collectSpecForm(ctx, f, cls, n, scope)
@@ -937,7 +940,7 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 	return sup
 }
 
-func (c *Compiler) link() {
+func (c *Compiler) link(ctx context.Context) {
 	for _, cls := range c.classList {
 		if sup := c.superclassOf(cls); sup != nil {
 			cls.Super = sup
@@ -975,6 +978,7 @@ func (c *Compiler) link() {
 			c.declareIvar(cls, d.name, t, cls.File, d.line)
 		}
 	}
+	c.expandDelegations(ctx)
 	// method signatures
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {

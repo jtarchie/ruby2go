@@ -1068,3 +1068,24 @@ class Sub < Base
 end
 
 puts Sub.new.greet("x")
+-- delegate_untyped_ivar.rb --
+# error: main.rb:5: def_delegators: the type of @x must be declared to delegate to it
+# rbs_inline: enabled
+class A
+  extend Forwardable
+  def_delegators :@x, :size
+
+  #: () -> void
+  def initialize
+    @x = []
+  end
+end
+-- delegate_missing_method.rb --
+# error: main.rb:6: def_delegator: undefined method nope for Array[Integer]
+# rbs_inline: enabled
+class A
+  extend Forwardable
+  # @rbs @x: Array[Integer]
+  def_delegator :@x, :nope
+end
+
