@@ -4,30 +4,12 @@ String, Symbol, literal/interpolation and Kernel output compile errors and warni
 # error: main.rb:3: top-level %x{} is only allowed in the prelude
 # rbs_inline: enabled
 %x{ fmt.Println("hi") }
--- xstring_statement.rb --
-# error: main.rb:6: %x{} is only allowed as the whole body of a prelude method
-# rbs_inline: enabled
-#: () -> void
-def hi
-  puts "a"
-  %x{ fmt.Println("hi") }
-end
-hi
 -- xstring_user_method_body.rb --
-# error: main.rb:4: %x{} is only allowed as the whole body of a prelude method
+# error: main.rb:4: String where Integer is expected
 # rbs_inline: enabled
 #: () -> Integer
 def hi = %x{ 1 }
 puts hi
--- xstring_expression.rb --
-# error: main.rb:3: unsupported syntax: XStringNode
-# rbs_inline: enabled
-x = %x{ls}
-puts x
--- backtick.rb --
-# error: main.rb:3: unsupported syntax: XStringNode
-# rbs_inline: enabled
-puts `ls`
 -- interp_empty.rb --
 # error: main.rb:3: interpolation must contain a single expression
 # rbs_inline: enabled

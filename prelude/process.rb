@@ -16,3 +16,24 @@ module Process
   #: () -> Integer
   def self.pid = %x{ Integer(os.Getpid()) }
 end
+
+# Kernel#system, backticks and $? (decision 97). Backticks and %x() in user
+# code compile to __backtick; $? to __last_status.
+module Kernel
+  private
+
+  # true on exit 0, false on another status, nil when the command could not run.
+  #: (String, *String) -> bool?
+  def system(cmd, *args) = %x{ return rbSystem(string(cmd), rest_) }
+
+  #: (String) -> String
+  def __backtick(cmd) = %x{ return rbBacktick(string(cmd)) }
+
+  #: () -> Process::Status?
+  def __last_status = %x{
+    if st := rbLastStatus.Load(); st != nil {
+      return &st
+    }
+    return nil
+  }
+end

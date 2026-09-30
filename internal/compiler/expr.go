@@ -41,6 +41,16 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}, true
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
+	case *parser.XStringNode:
+		if f.f.prelude {
+			f.errorf(n, "%%x{} is only allowed as the whole body of a prelude method")
+		}
+		f.c.strLits[n.Unescaped.Value] = true
+		cmd := expr{code: strconv.Quote(n.Unescaped.Value), typ: f.cls("String"), lit: true}
+		return f.kernelCall(n, "__backtick", []parser.Node{&exprNode{Node: n, e: cmd}}), true
+	case *parser.InterpolatedXStringNode:
+		cmd := f.genInterp(&parser.InterpolatedStringNode{Location: n.Location, Parts: n.Parts})
+		return f.kernelCall(n, "__backtick", []parser.Node{&exprNode{Node: n, e: cmd}}), true
 	case *parser.SourceFileNode:
 		f.c.strLits[f.f.Name] = true
 		return expr{code: strconv.Quote(f.f.Name), typ: f.cls("String"), lit: true}, true
@@ -3970,7 +3980,17 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: strconv.Quote(name), typ: f.cls("String"), lit: true}
 	case "$stdin", "$stdout", "$stderr":
 		return f.genConstRead(&parser.ConstantReadNode{Name: strings.ToUpper(n.Name[1:]), Location: n.Location})
+	case "$?":
+		return f.kernelCall(n, "__last_status", nil)
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout and $stderr are (README open decision 61)", n.Name)
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout, $stderr and $? are (README open decision 61)", n.Name)
 	return expr{}
+}
+
+// kernelCall calls a private Kernel prelude method as a receiverless call
+// on main would: what user syntax like backticks and $? stands for.
+func (f *fctx) kernelCall(n parser.Node, name string, args []parser.Node) expr {
+	f.implicitCall = true
+	defer func() { f.implicitCall = false }()
+	return f.genMethodCall(n, expr{code: "rb_main", typ: f.cls("Object")}, name, args, nil)
 }

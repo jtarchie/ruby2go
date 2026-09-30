@@ -685,7 +685,8 @@ resolve; anything not listed is still open.
 16. `%x{}` bodies are Ruby xstrings, so Ruby escape processing applies to
     the Go inside them: write `\\n` for a Go `\n`, `\#{` for a literal `#{`,
     and keep braces balanced (no `"{"` in Go strings). A one-line body of a
-    non-void method gets `return` prepended.
+    non-void method gets `return` prepended. In user code a backtick or
+    `%x()` is a shell command, as in Ruby (decision 97).
 17. Namespaces: a class's Go name joins its constant path with `_`
     (`Resty::Actions::Show` → `Resty_Actions_Show`); a generated map gives
     messages and `inspect` the Ruby name back. A user class or constant
@@ -1503,7 +1504,7 @@ resolve; anything not listed is still open.
     `$stdout`, `$stderr` read the constants, and `$0`/`$PROGRAM_NAME` and
     `__FILE__` are the Ruby file's name as given to the compiler, which is
     what `ruby main.rb` reports and keeps `__FILE__ == $0` true; any other
-    `$name` is a compile error. `Kernel#gets` reads stdin only, where MRI
+    `$name` is a compile error (*`$?` added by decision 97*). `Kernel#gets` reads stdin only, where MRI
     reads the files named in ARGV first (ARGF; *revised by decision 95*). Tests feed programs with
     `# args:`, `# env: K=V` and `# stdin: "Go-quoted"` lines, and
     `# stderr: match` adds stderr to the MRI comparison
@@ -2383,3 +2384,20 @@ resolve; anything not listed is still open.
     for the program's life (a ponytail: weak pointers if that matters).
     Strings keep their own frozen set (literals and `String#freeze`).
     ([example 72](examples/72_freeze/main.rb)).
+97. `Kernel#system`, backticks and `$?` (#2), over `os/exec`. A command
+    string with shell syntax (MRI's metacharacters, or a first word that
+    is a shell reserved word or special built-in such as `exit`) runs as
+    `/bin/sh -c`; otherwise, like several arguments, it is exec'd directly,
+    so `system("echo", "$HOME")` passes `$HOME` through. stdout is flushed
+    before every spawn, as MRI does, so a child's output lands in order.
+    `system` returns true for exit 0, false for another status, and nil
+    when the program could not run (`$?` then reports 127); a backtick
+    (`` `cmd` ``, `%x(cmd)`, interpolation included) in user code compiles
+    to `Kernel#__backtick`, returns the child's stdout, and raises MRI's
+    `Errno::ENOENT: No such file or directory - cmd` for a missing
+    program. In the prelude `%x{}` stays the Go escape hatch (decision
+    16). `$?` is `Process::Status?` (Open3's class: `exitstatus`,
+    `success?`, `pid`, `to_s`), one for the program where MRI's is
+    per-thread. Not done: an env Hash or options, `exec`, `spawn`,
+    `Process.wait`, a signalled child's nil `exitstatus`.
+    ([example 73](examples/73_shell/main.rb)).

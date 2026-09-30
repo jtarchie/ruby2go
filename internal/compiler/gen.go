@@ -488,8 +488,6 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
 		f.genCallStmt(n, t)
-	case *parser.XStringNode:
-		f.errorf(n, "%%x{} is only allowed as the whole body of a prelude method")
 	default:
 		e := f.genExpr(n, t.typ)
 		f.applyTail(n, e, t)

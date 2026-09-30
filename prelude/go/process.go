@@ -21,3 +21,82 @@ func rbClockGettime(id int) Float {
 	}
 	panic(NewErrno_EINVAL(Ref(String("Invalid argument - clock_gettime"))))
 }
+
+// rbLastStatus is `$?`: the status of the last system or backtick command.
+// ponytail: one for the program, where MRI's is per thread.
+var rbLastStatus atomic.Pointer[Process_Status]
+
+// rbShellMeta are the characters that make MRI hand a command string to
+// /bin/sh rather than exec its words directly.
+const rbShellMeta = "*?{}[]<>()~&|\\$;'`\"\n#="
+
+// rbShellWords are the reserved words and special built-ins MRI also sends to sh.
+var rbShellWords = map[string]bool{
+	"!": true, ".": true, ":": true, "break": true, "case": true, "continue": true, "do": true, "done": true,
+	"elif": true, "else": true, "esac": true, "eval": true, "exec": true, "exit": true, "export": true,
+	"fi": true, "for": true, "if": true, "in": true, "readonly": true, "return": true, "set": true,
+	"shift": true, "then": true, "times": true, "trap": true, "unset": true, "until": true, "while": true,
+}
+
+// rbCommand builds a system/backtick command as MRI does: several
+// arguments exec directly, one string goes through sh -c when it has
+// shell syntax and is split on whitespace otherwise.
+func rbCommand(cmd string, args []String) *exec.Cmd {
+	if len(args) > 0 {
+		rest := make([]string, len(args))
+		for i, a := range args {
+			rest[i] = string(a)
+		}
+		return exec.Command(cmd, rest...) //nolint:gosec // running the program's command is the point
+	}
+	words := strings.Fields(cmd)
+	if len(words) == 0 {
+		words = []string{""}
+	}
+	if strings.ContainsAny(cmd, rbShellMeta) || rbShellWords[words[0]] {
+		return exec.Command("/bin/sh", "-c", cmd) //nolint:gosec // as MRI, a string with shell syntax goes to sh
+	}
+	return exec.Command(words[0], words[1:]...) //nolint:gosec // running the program's command is the point
+}
+
+// rbRunCommand runs c after flushing stdout, as MRI does before a spawn,
+// and records $?. started is false when the program could not be run.
+func rbRunCommand(c *exec.Cmd) (started bool) {
+	rbFlush()
+	err := c.Run()
+	st := &Process_Status{code: 0}
+	if c.Process != nil {
+		st.pid = c.Process.Pid
+	}
+	var ee *exec.ExitError
+	switch {
+	case err == nil:
+	case errors.As(err, &ee):
+		st.code = ee.ExitCode()
+	default:
+		st.code = 127
+		rbLastStatus.Store(st)
+		return false
+	}
+	rbLastStatus.Store(st)
+	return true
+}
+
+func rbSystem(cmd string, args []String) *Boolean {
+	c := rbCommand(cmd, args)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if !rbRunCommand(c) {
+		return nil
+	}
+	return Ref(Boolean(rbLastStatus.Load().code == 0))
+}
+
+func rbBacktick(cmd string) String {
+	c := rbCommand(cmd, nil)
+	var out strings.Builder
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, &out, os.Stderr
+	if !rbRunCommand(c) {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
+	}
+	return String(out.String())
+}
