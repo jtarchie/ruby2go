@@ -1270,6 +1270,8 @@ resolve; anything not listed is still open.
     strong (values implement an interface without naming it), and so do
     cases listing several types (narrowing them would change the case
     variable's type). `puts 1` is 2.7k lines.
+    *Amended:* a stub survives only for a name an interface literal
+    asserts or a `_` marker; named interfaces drop the rest (decision 89).
 
 50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
     or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
@@ -2191,3 +2193,28 @@ resolve; anything not listed is still open.
     - **What it doesn't do:** a program's entry is as big as its function
       count (array_test: 38k functions from 41k lines, 18k of them generic
       instantiations), which is decision 86's next step, not this one.
+89. Named interfaces declare only what kept code selects. A class's
+    interface (`FooI`, `Foo_MetaI`) declared every method the class has,
+    inherited Kernel ones included, so the pruner (decision 49) kept a
+    `panic("rb2go: pruned")` stub of each unselected method on every
+    class and Go compiled them all: 114k of the 332k functions across the
+    105 test programs were stubs (`_Ref`, `object_id`, `!=`, `nil?`,
+    `to_json`, ...), and a cache entry's size follows its function count,
+    not its lines. `sweep` now drops from a named interface each method
+    whose name nothing kept selects; a stub survives only for a name an
+    interface literal in kept code asserts at run time
+    (`x.(interface{ _Ref() })`) or a `_` marker a kept interface declares
+    (`_Foo()` is what makes `rescue Foo` and `is_a?` match through
+    `FooI`; without it the interface would match every class).
+    - **Why safe:** dropping an unselected method from an interface only
+      widens its method set, nothing selects the name on any value, and
+      the markers still decide membership. Generic forwarders (decision
+      86) still key on `declared`, which named interfaces fill before
+      they are slimmed.
+    - **Measured** (105 programs): 332k → 242k functions, 114k → 24k
+      stubs, 1.52M → 1.38M lines; cache entries (no DWARF, decision 88)
+      array_test 82 → 66 MB, dynamic_test 274 → 161 MB, `05_word_count`
+      6 → 3 MB. Test output unchanged.
+    - **Left:** most of the 24k remaining stubs are `_Ref` (11k), an
+      inline-asserted marker that could answer from the class ID as
+      decision 85's markers do.

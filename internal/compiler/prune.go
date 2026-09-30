@@ -21,12 +21,7 @@ type pruneMethod struct {
 	fwd  bool // a generic type's forwarder to its free func: kept only when a kept interface declares it (decision 86)
 }
 
-// pruner marks what main reaches: a type when an identifier names it, a method when its receiver
-// is kept and its name is selected. A method whose name a kept interface declares but no kept code
-// selects is kept as a stub (its body a panic, not visited): Go calls methods only through
-// selectors, so nothing can run it, but its type still has to satisfy the interface.
-// A type switch's case of one concrete type names it weakly: a case whose type nothing else keeps can never match
-// (no value of such a type can exist), so it is dropped, body and all, rather than keeping them.
+// pruner keeps what main reaches like a linker would; names match unscoped, which only over-keeps (decision 49), and a method nothing selects survives only as a stub for an interface literal's run-time assertion, since named interfaces drop it instead (decision 89).
 type pruner struct {
 	byName      map[string][]ast.Node     // funcs, type specs and value specs by declared name
 	constBlock  map[ast.Node]*ast.GenDecl // an iota block stays whole: its specs repeat the one before
@@ -36,6 +31,8 @@ type pruner struct {
 	names       map[string]bool // identifiers used by kept code
 	methodNames map[string]bool // selectors used by kept code, and methods the standard library calls
 	declared    map[string]bool // methods declared by kept interfaces
+	asserted    map[string]bool // methods declared by interface literals in kept code: runtime assertions, so every type keeps them (decision 89)
+	named       map[*ast.InterfaceType]bool
 	stubs       map[*ast.FuncDecl]bool
 	pending     map[*ast.CaseClause][]string // type-switch cases waiting for their declared type names to be kept
 	queue       []ast.Node
@@ -43,7 +40,7 @@ type pruner struct {
 
 // pruneDecls drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps.
 func pruneDecls(f *ast.File) {
-	p := &pruner{byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
+	p := &pruner{byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
 	for n := range stdMethodNames {
 		p.methodNames[n] = true
 	}
@@ -79,7 +76,7 @@ func pruneDecls(f *ast.File) {
 				p.queue = append(p.queue, m.decl.Body)
 			case selected:
 				p.keep(m.decl)
-			case p.declared[name] && !p.kept[m.decl]:
+			case p.mustDeclare(name) && !p.kept[m.decl]:
 				p.kept[m.decl] = true
 				p.stubs[m.decl] = true
 				p.queue = append(p.queue, m.decl.Recv, m.decl.Type)
@@ -111,6 +108,9 @@ func (p *pruner) indexSpec(d *ast.GenDecl, s ast.Spec) {
 	switch s := s.(type) {
 	case *ast.TypeSpec:
 		p.byName[s.Name.Name] = append(p.byName[s.Name.Name], s)
+		if it, ok := s.Type.(*ast.InterfaceType); ok {
+			p.named[it] = true
+		}
 	case *ast.ValueSpec:
 		if d.Tok == token.CONST {
 			p.constBlock[s] = d
@@ -168,10 +168,37 @@ func (p *pruner) visit(x ast.Node) bool {
 		for _, m := range x.Methods.List {
 			for _, mn := range m.Names {
 				p.declared[mn.Name] = true
+				if !p.named[x] {
+					p.asserted[mn.Name] = true
+				}
 			}
 		}
 	}
 	return true
+}
+
+// mustDeclare reports whether every kept type has to keep a method of this name even when nothing calls it: an interface literal asserts it at run time, or it is a `_` marker (`_Foo()` decides `rescue`/`is_a?` matches through FooI).
+func (p *pruner) mustDeclare(name string) bool {
+	return p.asserted[name] || (p.declared[name] && strings.HasPrefix(name, "_"))
+}
+
+// slimInterfaces drops from named interfaces the methods kept code never selects: the classes then need no stub for them (decision 89).
+func (p *pruner) slimInterfaces(f *ast.File) {
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, s := range gd.Specs {
+			it, ok := s.(*ast.TypeSpec).Type.(*ast.InterfaceType)
+			if !ok {
+				continue
+			}
+			it.Methods.List = slices.DeleteFunc(it.Methods.List, func(m *ast.Field) bool {
+				return len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name)
+			})
+		}
+	}
 }
 
 // isInterface reports whether type expression e is an interface: a literal, or a declared interface type.
@@ -265,6 +292,7 @@ func (p *pruner) sweep(f *ast.File) {
 		}
 		return drop
 	})
+	p.slimInterfaces(f)
 	for d := range p.stubs {
 		if d.Body != nil { // `{ panic(...) }` on the brace's line; the old body's //line comments now sit between declarations
 			at := d.Body.Lbrace + 1
