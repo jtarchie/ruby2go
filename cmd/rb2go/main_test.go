@@ -154,3 +154,22 @@ func captureStdout(t *testing.T, f func() int) (string, int) {
 	}
 	return string(out), code
 }
+
+func TestGen(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "prog.rb")
+	err := os.WriteFile(src, []byte("puts \"hi\"\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if code := gen(src, &out); code != 0 {
+		t.Fatalf("gen: exit %d", code)
+	}
+	if !strings.Contains(out.String(), "\npackage main\n") {
+		t.Errorf("not Go source: %.200q", out.String())
+	}
+	if code := gen(filepath.Join(dir, "missing.rb"), io.Discard); code != 1 {
+		t.Errorf("gen missing file: exit %d, want 1", code)
+	}
+}

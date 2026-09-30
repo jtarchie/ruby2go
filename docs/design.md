@@ -30,7 +30,7 @@ methods. These are ideas, and not limited to or the strict implementation.
 
 ```
 rb2go.go              public API: embeds the prelude, calls the compiler
-cmd/rb2go/            CLI: rb2go build|run main.rb and rb2go test [paths], like go build|run|test
+cmd/rb2go/            CLI: rb2go build|run|gen main.rb and rb2go test [paths], like go build|run|test
 internal/compiler/    Ruby → Go: declarations, types, codegen
 internal/rbs/         the RBS type-syntax subset the compiler understands
 prelude.rb            core library entry point; require_relatives prelude/*.rb
@@ -62,7 +62,7 @@ library's signatures.
 Each example covers one feature; add one whenever the transpiler grows
 something the others don't exercise. There are no golden Go files: MRI's
 output is the only expectation, and the generated Go is inspected with
-`go run ./cmd/rb2go build -work main.rb` when needed (it keeps `main.go`).
+`go run ./cmd/rb2go gen main.rb` when needed.
 
 `TestRun` holds `testdata/run/*.rb` to the same MRI comparison but skips the
 rbs and lint gates, so each file costs one `go build`. `TestMinitest` runs
@@ -1470,15 +1470,18 @@ resolve; anything not listed is still open.
     String stays immutable (see "Frozen strings"): no `<<`, `insert`,
     `prepend`.
 59. The CLI is `rb2go build [-o prog] main.rb` and `rb2go run main.rb
-    [args...]`, shaped like `go build`/`go run`; there is no emit-Go-only
-    mode. Each call writes `main.go` and a `go.mod` (`go` directive
+    [args...]`, shaped like `go build`/`go run`. `rb2go gen main.rb`
+    is the emit-Go-only mode: it prints the generated source to stdout
+    (warnings to stderr) and needs no go command, so the output can be
+    read, diffed or vendored; it takes no flags, since redirecting stdout
+    covers `-o`. Each build/run call writes `main.go` and a `go.mod` (`go` directive
     `rb2go.GoVersion`, shared with the tests) into a fresh temp module and
     runs `go build -trimpath` there with `GOWORK=off` and an empty
     `GOFLAGS`, so the user's workspace can't leak in. Generated code is
     stdlib-only, so the build never touches the network, and Go's
     content-keyed build cache makes a warm `run` about 0.8s, mostly
     transpiling; there is no rb2go-level cache. `-work` keeps the module
-    and prints its path (the way to read the generated Go); `-race` and
+    and prints its path (for rebuilding the module by hand); `-race` and
     `-gcflags` pass through. `run` executes the binary in the caller's
     directory, as `ruby main.rb` does, with stdio inherited, and exits
     with its status; transpile and build failures exit 1, bad usage 2.

@@ -1,4 +1,4 @@
-// Command rb2go builds or runs a typed Ruby file as Go, like `go build` and `go run`.
+// Command rb2go builds or runs a typed Ruby file as Go, like `go build` and `go run`, or prints the Go it compiles to.
 package main
 
 import (
@@ -19,15 +19,23 @@ import (
 
 const usage = `usage: rb2go build [-o prog] [-race] [-gcflags flags] [-work] main.rb
        rb2go run [-race] [-gcflags flags] [-work] main.rb [args...]
+       rb2go gen main.rb > main.go
        rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]`
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" {
+	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
 	if os.Args[1] == "test" {
 		os.Exit(testCmd(os.Args[2:]))
+	}
+	if os.Args[1] == "gen" {
+		if len(os.Args) != 3 {
+			fmt.Fprintln(os.Stderr, usage)
+			os.Exit(2)
+		}
+		os.Exit(gen(os.Args[2], os.Stdout))
 	}
 	cmd := os.Args[1]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
@@ -58,6 +66,27 @@ func main() {
 		os.Exit(build(file, bin, opts))
 	}
 	os.Exit(run(file, fs.Args()[1:], opts))
+}
+
+// gen writes the generated Go to out and warnings to stderr: the main.go that build -work keeps, without needing the go command.
+func gen(file string, out io.Writer) int {
+	src, err := os.ReadFile(file) //nolint:gosec // the user's program
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	code, warnings, err := rb2go.Compile(context.Background(), file, src)
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, "warning:", w)
+	}
+	if err == nil {
+		_, err = out.Write(code)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
 }
 
 type buildOpts struct {

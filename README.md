@@ -84,6 +84,7 @@ The CLI is shaped like `go build` / `go run` / `go test`:
 rb2go run main.rb [args...]        # compile, build, run; exits with the program's status
 rb2go build -o prog main.rb        # write a binary
 rb2go build -work main.rb          # keep the generated main.go; prints its directory as WORK=...
+rb2go gen main.rb > main.go        # print the generated Go (no go command needed)
 rb2go test test/                   # compile minitest files into one binary and run them
 rb2go test test/foo_test.rb --seed 1 -v   # minitest flags pass through
 ```
