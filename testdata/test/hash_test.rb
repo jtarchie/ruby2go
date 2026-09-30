@@ -1847,4 +1847,19 @@ module HashTests
       assert_equal 2, pair[1]
     end
   end
+
+  # Hash#freeze (decision 96).
+  class HashFreezeTest < Minitest::Test
+    FROZEN = { a: 1 }.freeze
+
+    def test_freeze
+      assert_equal true, FROZEN.frozen?
+      assert_equal false, {}.frozen?
+      assert_equal "can't modify frozen Hash: {a: 1}", assert_raises(FrozenError) { FROZEN[:b] = 2 }.message
+      assert_equal "can't modify frozen Hash: {a: 1}", assert_raises(FrozenError) { FROZEN.delete(:a) }.message
+      assert_equal "can't modify frozen Hash: {a: 1}", assert_raises(FrozenError) { FROZEN.merge!({ c: 3 }) }.message
+      assert_equal({ a: 1, z: 0 }, FROZEN.merge({ z: 0 }))
+      assert_equal 1, FROZEN.fetch(:a)
+    end
+  end
 end

@@ -2239,4 +2239,23 @@ module ArrayTests
       assert_equal "element size differs (1 should be 2)", e.message
     end
   end
+
+  # Array#freeze (decision 96).
+  class ArrayFreezeTest < Minitest::Test
+    FROZEN = [1, 2].freeze
+
+    def test_freeze
+      assert_equal true, FROZEN.frozen?
+      assert_equal false, [1].frozen?
+      assert_equal "can't modify frozen Array: [1, 2]", assert_raises(FrozenError) { FROZEN << 3 }.message
+      assert_equal "can't modify frozen Array: [1, 2]", assert_raises(FrozenError) { FROZEN[0] = 9 }.message
+      assert_equal "can't modify frozen Array: [1, 2]", assert_raises(FrozenError) { FROZEN.sort! }.message
+      assert_equal "can't modify frozen Array: [1, 2]", assert_raises(FrozenError) { FROZEN.shift }.message
+      copy = FROZEN.dup
+      copy << 3
+      assert_equal [[1, 2, 3], false], [copy, copy.frozen?]
+      assert_equal [2, 4], FROZEN.map { |x| x * 2 }
+      assert_same FROZEN, FROZEN.freeze
+    end
+  end
 end

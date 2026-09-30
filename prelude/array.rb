@@ -135,6 +135,7 @@ class Array < Object
   #: (Integer, E) -> E
   def []=(i, v)
     %x{
+    rbFrozenCheck(self)
     if i < 0 {
       i += Integer(len(*self))
     }
@@ -156,6 +157,7 @@ class Array < Object
 
   #: (E) -> self
   def <<(x) = %x{
+    rbFrozenCheck(self)
     *self = append(*self, x)
     return self
   }
@@ -168,6 +170,7 @@ class Array < Object
 
   #: () -> E?
   def pop = %x{
+    rbFrozenCheck(self)
     if len(*self) == 0 {
       return nil
     }
@@ -178,6 +181,7 @@ class Array < Object
 
   #: () -> E?
   def shift = %x{
+    rbFrozenCheck(self)
     if len(*self) == 0 {
       return nil
     }
@@ -188,12 +192,14 @@ class Array < Object
 
   #: (E) -> self
   def unshift(x) = %x{
+    rbFrozenCheck(self)
     *self = append([]E{x}, *self...)
     return self
   }
 
   #: (Array[E]) -> self
   def concat(other) = %x{
+    rbFrozenCheck(self)
     *self = append(*self, *other...)
     return self
   }
@@ -274,12 +280,14 @@ class Array < Object
 
   #: () -> self
   def sort! = %x{
+    rbFrozenCheck(self)
     slices.SortStableFunc(*self, func(a, b E) int { return int(rbCmp(a, b)) })
     return self
   }
 
   #: [K] () { (E) -> K } -> self
   def sort_by! = %x{
+    rbFrozenCheck(self)
     keys := make(map[int]K, len(*self))
     idx := make([]int, len(*self))
     for i, x := range *self {
@@ -296,6 +304,7 @@ class Array < Object
 
   #: () { (E) -> E } -> self
   def map! = %x{
+    rbFrozenCheck(self)
     for i, x := range *self {
       (*self)[i] = blk(x)
     }
@@ -307,6 +316,7 @@ class Array < Object
 
   #: () { (E) -> bool } -> self
   def keep_if = %x{
+    rbFrozenCheck(self)
     out := (*self)[:0]
     for _, x := range *self {
       if bool(blk(x)) {
@@ -320,6 +330,7 @@ class Array < Object
 
   #: () { (E) -> bool } -> self
   def delete_if = %x{
+    rbFrozenCheck(self)
     out := (*self)[:0]
     for _, x := range *self {
       if !bool(blk(x)) {
@@ -355,6 +366,7 @@ class Array < Object
 
   #: () -> Array[E]?
   def uniq! = %x{
+    rbFrozenCheck(self)
     u := Array_Uniq(self)
     if len(*u) == len(*self) {
       return nil
@@ -365,12 +377,14 @@ class Array < Object
 
   #: () -> self
   def reverse! = %x{
+    rbFrozenCheck(self)
     slices.Reverse(*self)
     return self
   }
 
   #: (Integer, *E) -> self
   def insert(i, *objs) = %x{
+    rbFrozenCheck(self)
     n := int(i)
     if n < 0 {
       n += len(*self) + 1
@@ -388,6 +402,7 @@ class Array < Object
 
   #: (E) -> self
   def fill(v) = %x{
+    rbFrozenCheck(self)
     for i := range *self {
       (*self)[i] = v
     }
@@ -514,12 +529,14 @@ class Array < Object
 
   #: () -> self
   def clear = %x{
+    rbFrozenCheck(self)
     *self = (*self)[:0]
     return self
   }
 
   #: (E) -> E?
   def delete(v) = %x{
+    rbFrozenCheck(self)
     var found *E
     out := (*self)[:0]
     for _, x := range *self {
@@ -536,6 +553,7 @@ class Array < Object
 
   #: (Integer) -> E?
   def delete_at(i) = %x{
+    rbFrozenCheck(self)
     if i < 0 {
       i += Integer(len(*self))
     }
@@ -740,4 +758,14 @@ class Array < Object
     }
     return out
   }
+
+  # Frozen by identity (rbFreeze); every mutator above checks first (decision 96).
+  #: () -> self
+  def freeze = %x{
+    rbFreeze(self)
+    return self
+  }
+
+  #: () -> bool
+  def frozen? = %x{ Boolean(rbIsFrozen(self)) }
 end

@@ -50,6 +50,8 @@ end
 
 class RuntimeError < StandardError; end
 
+class FrozenError < RuntimeError; end
+
 class ArgumentError < StandardError; end
 
 class TypeError < StandardError; end

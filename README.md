@@ -2370,3 +2370,16 @@ resolve; anything not listed is still open.
     which flushes and then flushes after every write, pipe or terminal, so
     stdout and stderr interleave as written.
     ([example 71](examples/71_argf/main.rb)).
+96. `Array#freeze` and `Hash#freeze`. A frozen Array or Hash is recorded
+    by pointer (`rbFreeze`, a `sync.Map`), and every prelude method that
+    mutates one (`<<`, `[]=`, `push`, `pop`, `shift`, `unshift`,
+    `insert`, `concat`, `delete*`, `clear`, `fill`, the `!` forms, Hash's
+    `[]=`/`store`/`delete`/`delete_if`/`keep_if`/`clear`/`update`) first
+    calls `rbFrozenCheck`, raising MRI's `FrozenError: can't modify
+    frozen Array: [1, 2]` (`FrozenError < RuntimeError`). An atomic flag
+    set by the first freeze keeps a program that never freezes one to a
+    single atomic load per mutation. `dup` is a new, unfrozen object;
+    `clone` keeping the flag is not done. Frozen objects stay in the set
+    for the program's life (a ponytail: weak pointers if that matters).
+    Strings keep their own frozen set (literals and `String#freeze`).
+    ([example 72](examples/72_freeze/main.rb)).

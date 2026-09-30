@@ -80,6 +80,7 @@ class Hash < Object
   #: (K, V) -> V
   def []=(k, v)
     %x{
+    rbFrozenCheck(self)
     var h uint64
     byValue := false
     if !self.idx.plain {
@@ -131,6 +132,7 @@ class Hash < Object
 
   #: () -> self
   def clear = %x{
+    rbFrozenCheck(self)
     self.keys = self.keys[:0]
     clear(self.vals)
     clear(self.idx.byHash)
@@ -151,6 +153,7 @@ class Hash < Object
 
   #: (K) -> V?
   def delete(k) = %x{
+    rbFrozenCheck(self)
     k, h, byValue := self.idx.find(k)
     v, ok := self.vals[k]
     if !ok {
@@ -303,6 +306,7 @@ class Hash < Object
 
   #: () { (K, V) -> bool } -> self
   def delete_if = %x{
+    rbFrozenCheck(self)
     for _, k := range slices.Clone(self.keys) {
       if v, ok := self.vals[k]; ok && bool(blk(k, v)) {
         Hash_Delete(self, k)
@@ -313,6 +317,7 @@ class Hash < Object
 
   #: () { (K, V) -> bool } -> self
   def keep_if = %x{
+    rbFrozenCheck(self)
     for _, k := range slices.Clone(self.keys) {
       if v, ok := self.vals[k]; ok && !bool(blk(k, v)) {
         Hash_Delete(self, k)
@@ -471,4 +476,14 @@ class Hash < Object
     }
     return out
   }
+
+  # Frozen by identity (rbFreeze); every mutator above checks first (decision 96).
+  #: () -> self
+  def freeze = %x{
+    rbFreeze(self)
+    return self
+  }
+
+  #: () -> bool
+  def frozen? = %x{ Boolean(rbIsFrozen(self)) }
 end

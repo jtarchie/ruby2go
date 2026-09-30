@@ -179,10 +179,6 @@ puts h.size
 #: (Hash) -> Integer
 def f(h) = h.size
 puts f({})
--- freeze_literal.rb --
-# error: main.rb:2: undefined method freeze for Hash[String, Integer]
-LIMITS = { "a" => 1 }.freeze #: Hash[String, Integer]
-puts LIMITS.size
 -- each_value_two_params.rb --
 # error: main.rb:3: block takes 2 params but only 1 values are yielded
 h = { "a" => 1 } #: Hash[String, Integer]

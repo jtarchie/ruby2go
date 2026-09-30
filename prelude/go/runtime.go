@@ -958,3 +958,31 @@ func rbSleep(secs float64) Integer {
 func rbSleepForever() Integer {
 	select {}
 }
+
+// Frozen Arrays and Hashes, by pointer (decision 96). rbAnyFrozen keeps a
+// program that never freezes one to an atomic load per mutation.
+// ponytail: frozen objects stay reachable from the set; use weak pointers if that leak shows up.
+var (
+	rbAnyFrozen  atomic.Bool
+	rbFrozenObjs sync.Map
+)
+
+func rbFreeze(p any) {
+	rbFrozenObjs.Store(p, true)
+	rbAnyFrozen.Store(true)
+}
+
+func rbIsFrozen(p any) bool {
+	if !rbAnyFrozen.Load() {
+		return false
+	}
+	_, ok := rbFrozenObjs.Load(p)
+	return ok
+}
+
+// rbFrozenCheck raises MRI's FrozenError before a mutation of a frozen p.
+func rbFrozenCheck(p any) {
+	if rbIsFrozen(p) {
+		panic(NewFrozenError(Ref("can't modify frozen " + String(rbClassName(p)) + ": " + rbInspect(p))))
+	}
+}
