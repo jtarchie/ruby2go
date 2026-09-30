@@ -1627,18 +1627,18 @@ func (f *fctx) mtLiteral(n parser.Node, e *entry, recv expr, args []parser.Node)
 	}
 	a := hold(args[0])
 	opStr := expr{code: "String(" + strconv.Quote(op) + ")", typ: f.cls("String")}
-	var litArgs []parser.Node
+	litArgs := make([]parser.Node, 0, 6)
 	switch lit {
 	case "__assert_operator_lit":
 		b := hold(args[2])
 		test := f.genMethodCall(n, a, op, []parser.Node{&exprNode{Node: args[2], e: b}}, nil)
-		litArgs = []parser.Node{&exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: args[2], e: b}, &exprNode{Node: n, e: test}}
+		litArgs = append(litArgs, &exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: args[2], e: b}, &exprNode{Node: n, e: test})
 	case "__assert_predicate_lit":
 		test := f.genMethodCall(n, a, op, nil, nil)
-		litArgs = []parser.Node{&exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: n, e: test}}
+		litArgs = append(litArgs, &exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: n, e: test})
 	default:
 		test := f.genMethodCall(n, a, "respond_to?", []parser.Node{sym}, nil)
-		litArgs = []parser.Node{&exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: n, e: test}}
+		litArgs = append(litArgs, &exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: n, e: test})
 	}
 	msg := parser.Node(&exprNode{Node: n, e: expr{code: "nil", typ: TNil{}}})
 	if len(args) > msgAt {
