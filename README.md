@@ -240,3 +240,8 @@ docs/               design record and deep dives
 `%x{}` escapes), [Crystal](https://crystal-lang.org) (Ruby-like syntax,
 static types, same 64-bit Integer trade-off), and TruffleRuby/Rubinius (core
 written in Ruby over primitives).
+
+## License
+
+[MIT](LICENSE). The minitest port in `prelude/minitest.rb` keeps minitest's
+own MIT license ([prelude/minitest.LICENSE](prelude/minitest.LICENSE)).
