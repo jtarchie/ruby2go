@@ -1026,6 +1026,169 @@ module Minitest
     #: (String, String) -> String
     def __mt_diff(expect, butwas) = %x{ return rbMtDiff(string(expect), string(butwas)) }
 
+    # Typed twins of the untyped assertions above (decision 93). A call
+    # takes one when its arguments allow: `__<name>_same` when both sides
+    # have one static type (T and T? count as T?), `__<name>_<class>` by the
+    # collection's class, `__<name>_lit` for a literal operator symbol. Then
+    # `==`, `include?`, `empty?` and the operator are compiled calls, and
+    # no respond_to?-by-name table is kept. Each counts the assertions its
+    # untyped twin would (assert_respond_to is one of them).
+
+    # @rbs [T] (T) -> String
+    def __mt_pp(obj) = %x{ return rbInspect(obj) }
+
+    # @rbs [T] (T, T) -> bool
+    def __mt_same(a, b) = %x{ return Boolean(rbIdentical(rbUnbox(any(a)), rbUnbox(any(b)))) }
+
+    # @rbs [T] (T) -> Integer
+    def __mt_oid(obj) = %x{ return rbObjectID(rbUnbox(any(obj))) }
+
+    # @rbs [T] (T, T, ?untyped) -> bool
+    def __assert_equal_same(exp, act, msg = nil)
+      m = message(msg, nil, -> { diff(exp, act) })
+      __assert(false, message(nil, ".", -> { "Use assert_nil if expecting nil" })) if exp.nil? # refute_nil with a proc message
+      __assert(exp == act, m)
+    end
+
+    # @rbs [T] (T, T, ?untyped) -> bool
+    def __refute_equal_same(exp, act, msg = nil)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(act)} to not be equal to #{__mt_pp(exp)}" })
+      __assert(!(exp == act), m)
+    end
+
+    # @rbs [T] (T, T, ?untyped) -> bool
+    def __assert_same_same(exp, act, msg = nil)
+      m = message(msg, ".", lambda do
+        "Expected %s (oid=%d) to be the same as %s (oid=%d)" % [__mt_pp(act), __mt_oid(act), __mt_pp(exp), __mt_oid(exp)]
+      end)
+      __assert(false, message(nil, ".", -> { "Use assert_nil if expecting nil" })) if exp.nil? # refute_nil with a proc message
+      __assert(__mt_same(exp, act), m)
+    end
+
+    # @rbs [T] (T, T, ?untyped) -> bool
+    def __refute_same_same(exp, act, msg = nil)
+      m = message(msg, ".", lambda do
+        "Expected %s (oid=%d) to not be the same as %s (oid=%d)" % [__mt_pp(act), __mt_oid(act), __mt_pp(exp), __mt_oid(exp)]
+      end)
+      __assert(!__mt_same(exp, act), m)
+    end
+
+    #: (Float, Float, ?Float, ?untyped) -> bool
+    def __assert_in_delta_same(exp, act, delta = 0.001, msg = nil)
+      n = (exp - act).abs
+      m = message(msg, ".", -> { "Expected |#{exp} - #{act}| (#{n}) to be <= #{delta}" })
+      __assert(delta >= n, m)
+    end
+
+    #: (Float, Float, ?Float, ?untyped) -> bool
+    def __refute_in_delta_same(exp, act, delta = 0.001, msg = nil)
+      n = (exp - act).abs
+      m = message(msg, ".", -> { "Expected |#{exp} - #{act}| (#{n}) to not be <= #{delta}" })
+      __assert(!(delta >= n), m)
+    end
+
+    # @rbs [E] (Array[E], E, ?untyped) -> bool
+    def __assert_includes_array(collection, obj, msg = nil) = __mt_includes(collection, obj, collection.include?(obj), msg)
+
+    # @rbs [K, V] (Hash[K, V], K, ?untyped) -> bool
+    def __assert_includes_hash(collection, obj, msg = nil) = __mt_includes(collection, obj, collection.include?(obj), msg)
+
+    # @rbs [E] (Set[E], E, ?untyped) -> bool
+    def __assert_includes_set(collection, obj, msg = nil) = __mt_includes(collection, obj, collection.include?(obj), msg)
+
+    #: (String, String, ?untyped) -> bool
+    def __assert_includes_string(collection, obj, msg = nil) = __mt_includes(collection, obj, collection.include?(obj), msg)
+
+    # @rbs [E] (Array[E], E, ?untyped) -> bool
+    def __refute_includes_array(collection, obj, msg = nil) = __mt_excludes(collection, obj, collection.include?(obj), msg)
+
+    # @rbs [K, V] (Hash[K, V], K, ?untyped) -> bool
+    def __refute_includes_hash(collection, obj, msg = nil) = __mt_excludes(collection, obj, collection.include?(obj), msg)
+
+    # @rbs [E] (Set[E], E, ?untyped) -> bool
+    def __refute_includes_set(collection, obj, msg = nil) = __mt_excludes(collection, obj, collection.include?(obj), msg)
+
+    #: (String, String, ?untyped) -> bool
+    def __refute_includes_string(collection, obj, msg = nil) = __mt_excludes(collection, obj, collection.include?(obj), msg)
+
+    # @rbs [C, T] (C, T, bool, untyped) -> bool
+    def __mt_includes(collection, obj, test, msg)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(collection)} to include #{__mt_pp(obj)}" })
+      self.assertions += 1 # assert_respond_to(collection, :include?)
+      __assert(test, m)
+    end
+
+    # @rbs [C, T] (C, T, bool, untyped) -> bool
+    def __mt_excludes(collection, obj, test, msg)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(collection)} to not include #{__mt_pp(obj)}" })
+      self.assertions += 1 # assert_respond_to(collection, :include?)
+      __assert(!test, m)
+    end
+
+    # @rbs [E] (Array[E], ?untyped) -> bool
+    def __assert_empty_array(obj, msg = nil) = __mt_empty(obj, obj.empty?, msg)
+
+    # @rbs [K, V] (Hash[K, V], ?untyped) -> bool
+    def __assert_empty_hash(obj, msg = nil) = __mt_empty(obj, obj.empty?, msg)
+
+    # @rbs [E] (Set[E], ?untyped) -> bool
+    def __assert_empty_set(obj, msg = nil) = __mt_empty(obj, obj.empty?, msg)
+
+    #: (String, ?untyped) -> bool
+    def __assert_empty_string(obj, msg = nil) = __mt_empty(obj, obj.empty?, msg)
+
+    # @rbs [E] (Array[E], ?untyped) -> bool
+    def __refute_empty_array(obj, msg = nil) = __mt_not_empty(obj, obj.empty?, msg)
+
+    # @rbs [K, V] (Hash[K, V], ?untyped) -> bool
+    def __refute_empty_hash(obj, msg = nil) = __mt_not_empty(obj, obj.empty?, msg)
+
+    # @rbs [E] (Set[E], ?untyped) -> bool
+    def __refute_empty_set(obj, msg = nil) = __mt_not_empty(obj, obj.empty?, msg)
+
+    #: (String, ?untyped) -> bool
+    def __refute_empty_string(obj, msg = nil) = __mt_not_empty(obj, obj.empty?, msg)
+
+    # @rbs [C] (C, bool, untyped) -> bool
+    def __mt_empty(obj, test, msg)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(obj)} to be empty" })
+      self.assertions += 1 # assert_respond_to(obj, :empty?)
+      __assert(test, m)
+    end
+
+    # @rbs [C] (C, bool, untyped) -> bool
+    def __mt_not_empty(obj, test, msg)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(obj)} to not be empty" })
+      self.assertions += 1 # assert_respond_to(obj, :empty?)
+      __assert(!test, m)
+    end
+
+    # The compiler's rewrite of `assert_operator a, :op, b` with a literal
+    # operator: test is `a.op(b)`, already computed (decision 93).
+    # @rbs [A, B] (A, String, B, untyped, untyped, bool) -> bool
+    def __assert_operator_lit(o1, op, o2, test, msg, refute)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(o1)} to #{refute ? "not " : ""}be #{op} #{__mt_pp(o2)}" })
+      self.assertions += 1 # assert_respond_to(o1, op)
+      __assert(refute ? !test : test, m)
+    end
+
+    # @rbs [A] (A, String, untyped, untyped, bool) -> bool
+    def __assert_predicate_lit(o1, op, test, msg, refute)
+      m = message(msg, ".", -> { "Expected #{__mt_pp(o1)} to #{refute ? "not " : ""}be #{op}" })
+      self.assertions += 1 # assert_respond_to(o1, op)
+      __assert(refute ? !test : test, m)
+    end
+
+    # @rbs [A] (A, String, bool, untyped, bool) -> bool
+    def __assert_respond_to_lit(obj, meth, test, msg, refute)
+      m = if refute
+        message(msg, ".", -> { "Expected #{__mt_pp(obj)} to not respond to #{meth}" })
+      else
+        message(msg, ".", -> { "Expected #{__mt_pp(obj)} (#{__mt_class_name(obj)}) to respond to ##{meth}" })
+      end
+      __assert(refute ? !test : test, m)
+    end
+
 
     #: () -> Array[String]
     def self.runnable_methods

@@ -1269,6 +1269,9 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	if nargs > len(m.Params) && !slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest }) {
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
 	}
+	if exprs == nil {
+		f.optJoin(m, env, args)
+	}
 	ai := 0
 	for _, p := range m.Params {
 		if p.Rest {
@@ -1322,6 +1325,53 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		}
 	}
 	return codes, restIdx
+}
+
+// optJoin binds a method type variable that several arguments share as
+// X? when they are X and X? (or nil): `assert_equal 3, h[:a]` takes T as
+// Integer?, where binding T from the first argument would reject the
+// second (decision 93).
+func (f *fctx) optJoin(m *Method, env map[string]Type, args []parser.Node) {
+	if len(m.TypeParams) == 0 {
+		return
+	}
+	at := map[string][]int{}
+	for i, p := range m.Params {
+		if p.Rest || i >= len(args) {
+			break
+		}
+		if v, ok := p.Type.(TVar); ok && slices.Contains(m.TypeParams, v.Name) {
+			if _, bound := env[v.Name]; !bound {
+				at[v.Name] = append(at[v.Name], i)
+			}
+		}
+	}
+	for name, idx := range at {
+		if len(idx) < 2 {
+			continue
+		}
+		var j Type
+		for k, i := range idx {
+			if _, ok := args[i].(*parser.SplatNode); ok {
+				j = nil
+				break
+			}
+			var a expr
+			f.probe(func() { a = f.genExpr(args[i], nil) })
+			if k == 0 {
+				j = a.typ
+				continue
+			}
+			var ok bool
+			if j, ok = join(j, a.typ); !ok {
+				j = nil
+				break
+			}
+		}
+		if o, ok := j.(TOpt); ok && !isAny(o.Elem) {
+			env[name] = o
+		}
+	}
 }
 
 // genRestArgs: with a splat, one fresh slice, since Go spreads only a lone slice and Ruby's rest param never aliases the caller's array.
@@ -1451,6 +1501,9 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 			return r // `xs.each_slice(2)` without a block: an Array standing in for the Enumerator
 		}
 	}
+	if r := owner.lookup(name + "same"); r != nil && len(args) >= 2 && f.sameArgs(r.M, args) {
+		return r // `assert_equal 3, h[:a]`: both sides one static type
+	}
 	if len(args) >= 1 && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
@@ -1492,6 +1545,109 @@ func (f *fctx) selfOverload(m *Method, owner *Class, name string, recvT Type, ar
 	return nil
 }
 
+// sameArgs reports whether a call's first two arguments have one static
+// type (T and T? or nil counting as T?) that m's first parameter takes
+// and m takes the argument count: then its `__<name>_same` overload
+// applies (decision 93).
+func (f *fctx) sameArgs(m *Method, args []parser.Node) bool {
+	f.c.resolveMethod(m)
+	if len(args) < requiredArgs(m) || len(args) > len(m.Params) {
+		return false
+	}
+	var a, b expr
+	f.probe(func() {
+		a = f.genExpr(args[0], nil)
+		b = f.genExpr(args[1], nil)
+	})
+	ea, eb := a.typ, b.typ
+	if o, ok := ea.(TOpt); ok {
+		ea = o.Elem
+	}
+	if o, ok := eb.(TOpt); ok {
+		eb = o.Elem
+	}
+	switch {
+	case isNil(ea) && isNil(eb), isAny(ea), isAny(eb):
+		return false
+	case !isNil(ea) && !isNil(eb) && !typeEq(ea, eb):
+		return false
+	}
+	j, ok := join(a.typ, b.typ)
+	return ok && unify(m.Params[0].Type, j, map[string]Type{})
+}
+
+// mtLitAsserts are the assertions that send a Symbol, and their typed
+// twin for a literal one (decision 93).
+var mtLitAsserts = map[string]string{
+	"assert_operator": "__assert_operator_lit", "refute_operator": "__assert_operator_lit",
+	"assert_predicate": "__assert_predicate_lit", "refute_predicate": "__assert_predicate_lit",
+	"assert_respond_to": "__assert_respond_to_lit", "refute_respond_to": "__assert_respond_to_lit",
+}
+
+// mtLiteral compiles minitest's `assert_operator a, :<, b` (and the
+// predicate and respond_to forms) with a literal Symbol on a typed value
+// into the call itself, `a < b`, handed to a typed twin that builds the
+// message: no send by name at run time (decision 93).
+func (f *fctx) mtLiteral(n parser.Node, e *entry, recv expr, args []parser.Node) (expr, bool) {
+	lit, ok := mtLitAsserts[e.M.Name]
+	if !ok || e.M.Owner == nil || e.M.Owner.RubyName != "Minitest::Test" || len(args) < 2 || len(args) > 4 {
+		return expr{}, false
+	}
+	sym, ok := args[1].(*parser.SymbolNode)
+	if !ok {
+		return expr{}, false
+	}
+	var o1 expr
+	f.probe(func() { o1 = f.genExpr(args[0], nil) })
+	if isAny(o1.typ) || isVoid(o1.typ) {
+		return expr{}, false
+	}
+	op := sym.Unescaped.Value
+	refute := strings.HasPrefix(e.M.Name, "refute_")
+	msgAt := 2
+	if strings.HasSuffix(e.M.Name, "_operator") {
+		if len(args) == 2 {
+			lit = "__assert_predicate_lit" // assert_operator(o1, :even?) is assert_predicate
+		} else {
+			msgAt = 3
+		}
+	}
+	if len(args) > msgAt+1 {
+		return expr{}, false
+	}
+	target := e.M.Owner.lookup(lit)
+	if target == nil {
+		return expr{}, false
+	}
+	hold := func(x parser.Node) expr {
+		v := f.genExpr(x, nil)
+		t := f.newTmp()
+		f.emit("%s := %s", t, f.materialize(v))
+		return expr{code: t, typ: v.typ}
+	}
+	a := hold(args[0])
+	opStr := expr{code: "String(" + strconv.Quote(op) + ")", typ: f.cls("String")}
+	var litArgs []parser.Node
+	switch lit {
+	case "__assert_operator_lit":
+		b := hold(args[2])
+		test := f.genMethodCall(n, a, op, []parser.Node{&exprNode{Node: args[2], e: b}}, nil)
+		litArgs = []parser.Node{&exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: args[2], e: b}, &exprNode{Node: n, e: test}}
+	case "__assert_predicate_lit":
+		test := f.genMethodCall(n, a, op, nil, nil)
+		litArgs = []parser.Node{&exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: n, e: test}}
+	default:
+		test := f.genMethodCall(n, a, "respond_to?", []parser.Node{sym}, nil)
+		litArgs = []parser.Node{&exprNode{Node: args[0], e: a}, &exprNode{Node: args[1], e: opStr}, &exprNode{Node: n, e: test}}
+	}
+	msg := parser.Node(&exprNode{Node: n, e: expr{code: "nil", typ: TNil{}}})
+	if len(args) > msgAt {
+		msg = args[msgAt]
+	}
+	litArgs = append(litArgs, msg, &exprNode{Node: n, e: expr{code: "Boolean(" + strconv.FormatBool(refute) + ")", typ: f.cls("Boolean")}})
+	return f.callMethod(n, target, recv, litArgs, nil), true
+}
+
 // snake is a class name as a method-name part: `DateTime` → `date_time`.
 func snake(s string) string {
 	var b strings.Builder
@@ -1527,6 +1683,11 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 // callEntry calls e; a call to a `bot` method is noreturn, and Go must
 // see its panic to know the statement list ends there.
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	if block == nil {
+		if r, ok := f.mtLiteral(n, e, recv, args); ok {
+			return r
+		}
+	}
 	r := f.callMethod(n, e, recv, args, block)
 	if e.M.noReturn && !r.noreturn {
 		r = expr{code: r.code + "\npanic(\"rb2go: unreachable\")", typ: TVoid{}, stmt: true, noreturn: true}
@@ -2433,7 +2594,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "to_json":
 		return expr{code: "rbToJson(" + strings.Join(append([]string{recv.code}, f.jsonArgs(args)...), ", ") + ")", typ: f.cls("String")}
 	case "nil?":
-		return expr{code: "Boolean(any(" + recv.code + ") == nil)", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(rbUnbox(any(" + recv.code + ")) == nil)", typ: f.cls("Boolean")} // T may be X?, a *X box
 	case "!":
 		return expr{code: "Boolean(!rbTruthy(" + recv.code + "))", typ: f.cls("Boolean")}
 	case "==":

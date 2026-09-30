@@ -269,6 +269,35 @@ func skipIfMarked(t *testing.T, src []byte) {
 	}
 }
 
+// TestTypedAssertionsStayStatic checks decision 93's point: typed
+// assertions with literal operators keep no run-time lookup by method name.
+func TestTypedAssertionsStayStatic(t *testing.T) {
+	t.Parallel()
+	src := []byte(`require "minitest/autorun"
+
+class T < Minitest::Test
+  def test_x
+    h = { a: 3 } #: Hash[Symbol, Integer]
+    assert_equal 3, h[:a]
+    assert_includes [1, 2], 2
+    refute_empty "x"
+    assert_operator 1, :<, 2
+    assert_predicate 2, :even?
+    assert_respond_to "x", :upcase
+  end
+end
+`)
+	out, _, err := compileSafe("main.rb", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"func rbRespondsByName", "func rbDyn"} {
+		if bytes.Contains(out, []byte(name)) {
+			t.Errorf("generated code has %s", name)
+		}
+	}
+}
+
 // TestErrors compiles each file of testdata/errors/*.txtar as main.rb.
 // Every `# error: text` must appear in the compile error (so compilation
 // must fail), and every `# warning: text` in some warning; with no expected

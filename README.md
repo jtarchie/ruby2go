@@ -2297,3 +2297,37 @@ resolve; anything not listed is still open.
       k] }` on a `Hash[Integer, Integer]` used to be a compile error).
     `sum` of Arrays is not supported.
     ([example 69](examples/69_nested_arrays/main.rb)).
+93. Typed minitest assertions (issue #29). The assertions stay `untyped`
+    (decision 79), and each gains typed twins a call takes when its
+    arguments allow, so `==`, `include?`, `empty?` and the operator are
+    compiled calls and no by-name table (`rbRespondsByName`, the `rbDyn`
+    dispatchers) is kept: a test file of `assert_includes`/`assert_empty`
+    /`assert_operator` generates about 15k lines of Go, not 36–40k.
+    - **`T` with `T?`.** Arguments that share a method type variable and
+      are `X` and `X?` (or `nil`) bind it to `X?` before any is coerced
+      (`optJoin` in `genArgs`), so `[T] (T, T)` takes `(3, h[:a])`. A
+      variable bound from the receiver (a class's `E`) is never widened.
+    - **`__<name>_same`** (decision 12's overloads): chosen when the first
+      two arguments have one static type, `T` and `T?` or `nil` counting
+      as `T?`, not `untyped`, and the twin's first parameter takes it:
+      `assert_equal`/`refute_equal`/`assert_same`/`refute_same` as `[T]`,
+      `assert_in_delta`/`refute_in_delta` for two Floats. Two different
+      types (`assert_equal 1, 1.0`, a subclass) keep the untyped method,
+      so a mismatch is still a failed assertion and never a conversion
+      error.
+    - **`__<name>_<class>`**: `assert_includes`/`refute_includes` on an
+      Array, Hash, Set or String and `assert_empty`/`refute_empty` on the
+      same call `include?`/`empty?` directly.
+    - **Literal operators.** `assert_operator a, :<, b`,
+      `assert_predicate a, :even?` and `assert_respond_to a, :m` (and the
+      `refute_` forms) on a typed `a` are rewritten by the compiler
+      (`mtLiteral`): `a` and `b` are evaluated once into temporaries,
+      `a < b` is an ordinary call, and a `__assert_*_lit` twin builds
+      MRI's message from it. A computed symbol, an untyped `a` or a block
+      keeps the run-time send, with its dynamic-call warning.
+    - Each twin counts the assertions its untyped original does (the
+      `assert_respond_to` inside `assert_includes`, `assert_empty` and
+      `assert_operator` counts one), and failure messages are MRI's,
+      checked in `testdata/test/assertion_test.rb`.
+    - `x.nil?` on a type variable now unboxes first: `T` may be `X?`, whose
+      nil `*X` is a non-nil `any`.
