@@ -146,9 +146,15 @@ func rbFinish(status int, main any) {
 // rbExitStatusNow is the status the program would exit with, for at_exit handlers.
 var rbExitStatusNow atomic.Int64
 
+// rbIsRef reports whether a's address is its identity: its class's Go type is a pointer (rbClassRefs, decision 89).
+func rbIsRef(a any) bool {
+	v, ok := a.(interface{ _ClassID() int })
+	return ok && rbClassRefs[v._ClassID()]
+}
+
 // rbObjectID is Kernel#object_id: a pointer's address, else the value's hash.
 func rbObjectID(a any) Integer {
-	if _, ok := a.(interface{ _Ref() }); ok {
+	if rbIsRef(a) {
 		return Integer(maphash.Comparable(rbHashSeed, a) >> 2) //nolint:gosec // an id, not arithmetic
 	}
 	return rbHash(a) & (1<<62 - 1)
@@ -256,7 +262,7 @@ func rbToS(a any) String {
 // rbObjToS is Kernel#to_s; only heap objects have an address to show.
 func rbObjToS(a any) String {
 	s := "#<" + rbClassName(a)
-	if _, ok := a.(interface{ _Ref() }); ok {
+	if rbIsRef(a) {
 		addr := strings.TrimPrefix(fmt.Sprintf("%p", a), "0x") // %p is a pointer's address
 		s += ":0x" + strings.Repeat("0", max(16-len(addr), 0)) + addr
 	}

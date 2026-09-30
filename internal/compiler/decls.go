@@ -1244,6 +1244,7 @@ func (c *Compiler) emitClassMeta() {
 	c.w("const (\n\trbNilClassID = %d\n\trbProcClassID = %d\n)\n\n", id("NilClass"), id("Proc"))
 	names := make([]string, 0, len(c.classList))
 	ancestry := make([]string, 0, len(c.classList))
+	refs := make([]string, 0, len(c.classList))
 	for _, cls := range c.classList {
 		names = append(names, strconv.Quote(cls.displayName()))
 		var ids []string
@@ -1253,10 +1254,12 @@ func (c *Compiler) emitClassMeta() {
 			}
 		}
 		ancestry = append(ancestry, "{"+strings.Join(ids, ", ")+"}")
-		c.emitClassID(cls)
+		refs = append(refs, strconv.FormatBool(c.emitClassID(cls)))
 	}
 	c.w("var rbClassNames = [...]string{%s}\n\n", strings.Join(names, ", "))
 	c.w("var rbAncestry = [...][]int{%s}\n\n", strings.Join(ancestry, ", "))
+	// a table, not a marker method: a `_Ref()` on every pointer class was 11k of the test programs' functions (decision 89)
+	c.w("var rbClassRefs = [...]bool{%s}\n\n", strings.Join(refs, ", "))
 	array := c.classID(c.classes["Array"])
 	for n := 2; n <= 3; n++ {
 		if c.tupleN[n] {
@@ -1279,22 +1282,19 @@ func (c *Compiler) emitClassMeta() {
 	c.w("\treturn false\n}\n\n")
 }
 
-// emitClassID emits cls's _ClassID, and the _Ref marker where its values
-// are pointers, whose address is their identity (#inspect, object_id).
-func (c *Compiler) emitClassID(cls *Class) {
+// emitClassID emits cls's _ClassID and reports whether its values are pointers, whose address is their identity (rbClassRefs: #inspect, object_id).
+func (c *Compiler) emitClassID(cls *Class) bool {
 	if cls.IsModule || cls.universal || cls.GoType == "" && !cls.isStruct() {
-		return
+		return false
 	}
 	recv := c.recvType(cls)
 	if cls == c.classes["Boolean"] { // a metaclass shares its class's RubyName, so compare the class itself
 		c.w("func (self Boolean) _ClassID() int {\n\tif self {\n\t\treturn %d\n\t}\n\treturn %d\n}\n\n",
 			c.classID(c.classes["TrueClass"]), c.classID(c.classes["FalseClass"]))
-		return
+		return false
 	}
 	c.w("func (self %s) _ClassID() int { return %d }\n\n", recv, c.classID(cls))
-	if strings.HasPrefix(recv, "*") {
-		c.w("func (self %s) _Ref() {}\n\n", recv)
-	}
+	return strings.HasPrefix(recv, "*")
 }
 
 // classID is cls's index in the class list: its ID in the generated tables.

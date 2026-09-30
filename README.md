@@ -2012,8 +2012,9 @@ resolve; anything not listed is still open.
       `rbKeyUnbox` switches. They cover every box type rendered, plus a
       box of each concrete type argument of a generic, since generic code
       may hold `E?`.
-    - **Identity.** Classes whose values are pointers get a `_Ref()`
-      marker: `#inspect` prints the pointer's address (`%p`), and
+    - **Identity.** Classes whose values are pointers are flagged in
+      the `rbClassRefs` table (`rbIsRef`; a `_Ref()` marker method until
+      decision 89): `#inspect` prints the pointer's address (`%p`), and
       `object_id` hashes it. No `unsafe` either. `_Ivars` records whether each field is
       nil, decided from the field's type when it is generated.
     - **Enforcement.** `reflect` is out of the import table
@@ -2215,6 +2216,13 @@ resolve; anything not listed is still open.
       stubs, 1.52M → 1.38M lines; cache entries (no DWARF, decision 88)
       array_test 82 → 66 MB, dynamic_test 274 → 161 MB, `05_word_count`
       6 → 3 MB. Test output unchanged.
-    - **Left:** most of the 24k remaining stubs are `_Ref` (11k), an
-      inline-asserted marker that could answer from the class ID as
-      decision 85's markers do.
+    - **`_Ref` too:** the marker was 11k of the 24k stubs left, an empty
+      method on every pointer class so `rbObjToS`/`rbObjectID` could ask
+      whether a value's address is its identity. It is now the
+      `rbClassRefs` table by class ID (`rbIsRef`), as decision 85's
+      markers are. A tuple reports Array's ID, so its `object_id` hashes
+      it with `maphash.Comparable` instead of `rbHash`: a value hash
+      either way. Measured: 242k → 231k functions, 24k → 13k stubs, but
+      cache entries only 66 → 65 MB (array_test) and 161 → 159 MB
+      (dynamic_test): an empty method costs far less than the average
+      function, so the remaining size is in real bodies.
