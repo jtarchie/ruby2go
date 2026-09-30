@@ -2446,6 +2446,12 @@ module DynamicTests
       assert_equal true, dynamic_ident([]).respond_to?(:each)
       assert_equal true, dynamic_ident({}).respond_to?(:key?)
       assert_equal true, dynamic_ident(:s).respond_to?(:to_sym)
+      # generic classes answer by class ID (decision 87); a tuple is an Array
+      pair = [1, "a"] #: [Integer, String]
+      assert_equal [true, true, false], [dynamic_ident(pair).respond_to?(:size), dynamic_ident(pair).respond_to?(:first), dynamic_ident(pair).respond_to?(:keys)]
+      assert_equal [true, false], [dynamic_ident([1, 2]).respond_to?(:push), dynamic_ident([1, 2]).respond_to?(:keys)]
+      assert_equal [true, false], [dynamic_ident({ a: 1 }).respond_to?(:keys), dynamic_ident({ a: 1 }).respond_to?(:push)]
+      assert_equal [true, false], [dynamic_ident(1..3).respond_to?(:each), dynamic_ident(1..3).respond_to?(:push)]
     end
 
     def test_inherited_included_and_comparable_methods_reached_dynamically

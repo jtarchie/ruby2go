@@ -535,8 +535,9 @@ func (c *Compiler) dynArg(t Type, i int) string {
 }
 
 // emitMarkers emits rbHas<marker>(recv), true for the classes given: a
-// marker method on each primitive class, and for struct classes, which may
-// be many, one switch on the class ID instead of a method on each.
+// marker method on each non-generic primitive class, and one switch on the
+// class ID for struct classes, which may be many, and generic classes, where
+// Go would compile a marker per instantiation (decision 87).
 func (c *Compiler) emitMarkers(marker string, classes []*Class) {
 	if c.markers[marker] {
 		return
@@ -544,7 +545,7 @@ func (c *Compiler) emitMarkers(marker string, classes []*Class) {
 	c.markers[marker] = true
 	var ids []string
 	for _, cls := range classes {
-		if cls.isStruct() && len(cls.TypeParams) == 0 {
+		if cls.isStruct() || len(cls.TypeParams) > 0 {
 			ids = append(ids, strconv.Itoa(c.classID(cls)))
 		} else {
 			c.w("func (self %s) %s() {}\n\n", c.recvType(cls), marker)

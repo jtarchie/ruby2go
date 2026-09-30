@@ -2147,3 +2147,18 @@ resolve; anything not listed is still open.
     - **Proof:** `testdata/test/array_test.rb`, `hash_test.rb`,
       `stdlib_test.rb` (Set, Queue) and `dynamic_test.rb` unchanged; the
       prelude's raw Go compiles in every example.
+87. `respond_to?` markers (decision 85) are a class-ID switch for generic
+    classes too, not a `_RespondsName()` method on each. A marker is never
+    called, only asserted for, so the pruner kept it as a stub on every
+    instantiation: in the whole `testdata/test` suite as one program,
+    each of Array's 390 instantiations carried 146 marker stubs, and
+    Hash, Set and Range as many again. Every generic class has a
+    `_ClassID` (tuples report Array's, which is what Ruby answers for
+    them), so one `case` covers every instantiation. Non-generic
+    primitives (`String`, `Boolean`, whose `_ClassID` answers TrueClass
+    or FalseClass) keep their one marker each.
+    - **Why:** the suite as one program went from 513k to 372k compiled
+      functions, and its `rb2go test testdata/test -race -gcflags=-l`
+      from 202s to 144s.
+    - **Proof:** `testdata/test/dynamic_test.rb` (`respond_to?` on
+      untyped Arrays, Hashes and tuples) and the whole suite.
