@@ -167,7 +167,7 @@ func TestRun(t *testing.T) {
 			skipIfMarked(t, src)
 			gen := transpile(t, filepath.Base(rb), src)
 			// -l skips inlining, ~40% of compile CPU; TestExamples keeps the default build users get.
-			sameAsRuby(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-gcflags=-l"))
+			sameAsRuby(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-l"))
 		})
 	}
 }
@@ -193,7 +193,7 @@ func TestMinitest(t *testing.T) {
 			}
 			skipIfMarked(t, src)
 			gen := transpile(t, filepath.Base(rb), src)
-			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-gcflags=-l"), []string{"--seed", "1"})
+			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-l"), []string{"--seed", "1"})
 		})
 	}
 }
@@ -235,7 +235,7 @@ func TestMulti(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bin := goBuild(t, gen, "-gcflags=-l")
+			bin := goBuild(t, gen, "-l")
 			loader := append([]string{"-e", "ARGV.each { |f| require File.expand_path(f) }"}, paths...)
 			wantOut, _, wantCode, _ := runIO(t, ".", progIO{}, "ruby", loader...)
 			gotOut, _, gotCode, _ := runIO(t, ".", progIO{}, bin)
@@ -340,7 +340,7 @@ func testExample(t *testing.T, dir, gen string) {
 		t.Fatalf("gofmt: %v %s", err, fmtOut)
 	}
 	// 3. compare with MRI; examples keep inlining, the default build users get
-	sameAsRuby(t, dir, "main.rb", goBuild(t, gen))
+	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
 // compileSafe is Compile with an internal compiler panic turned into an
@@ -360,7 +360,23 @@ func transpile(t *testing.T, name string, src []byte) string {
 	gen := t.TempDir()
 	writeModule(t, gen)
 	writeGenerated(t, gen, name, src)
+	stablePreludeLines(t, filepath.Join(gen, "main.go"))
 	return gen
+}
+
+var preludeLine = regexp.MustCompile(`(//line prelude/[^:\s]+):\d+`)
+
+// stablePreludeLines sets every prelude //line to line 1, so the Go build cache keys on what the program reaches, not where in the prelude it sits (decision 88); the examples keep real lines for lint.
+func stablePreludeLines(t *testing.T, path string) {
+	t.Helper()
+	code, err := os.ReadFile(path) //nolint:gosec // under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(path, preludeLine.ReplaceAll(code, []byte("${1}:1")), 0o600) //nolint:gosec // under t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // writeGenerated compiles src into dir/main.go.
@@ -411,11 +427,14 @@ func copyPreludeGo(t *testing.T, gen string) {
 	}
 }
 
-func goBuild(t *testing.T, gen string, flags ...string) string {
+// goBuild builds gen's program; gcflags is extra compiler flags ("-l" skips inlining).
+func goBuild(t *testing.T, gen string, gcflags string) string {
 	t.Helper()
 	bin := filepath.Join(gen, "prog")
+	// -dwarf=false: debug info is a quarter of each cache entry and no test reads it (decision 88); a repeated -gcflags replaces the earlier one, so it is composed here
+	gcflags = strings.TrimSpace(gcflags + " -dwarf=false")
 	// -race: generated threads and queues must be race-free; -trimpath: the build cache hits across temp dirs.
-	args := append(append([]string{"build", "-race", "-trimpath"}, flags...), "-o", bin, ".")
+	args := []string{"build", "-race", "-trimpath", "-gcflags=" + gcflags, "-o", bin, "."}
 	out, err := run(t, gen, "go", args...)
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)

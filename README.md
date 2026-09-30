@@ -2162,3 +2162,32 @@ resolve; anything not listed is still open.
       from 202s to 144s.
     - **Proof:** `testdata/test/dynamic_test.rb` (`respond_to?` on
       untyped Arrays, Hashes and tuples) and the whole suite.
+88. Test builds keep the Go build cache to what a prelude edit really
+    changes. Go caches a compile by the package's source bytes, and each
+    generated program's entry is 100–270 MB, so a run after a prelude edit
+    was writing gigabytes: every `//line prelude/x.rb:N` shifts when a
+    line is added above it, so a comment in `string.rb` changed all 105
+    generated programs (1.5M lines) though none compiled differently.
+    - **Stable prelude lines.** `TestRun`, `TestMinitest` and `TestMulti`
+      set every prelude `//line` to `:1` before building
+      (`stablePreludeLines`). A line shift then changes nothing; adding a
+      method changes only the programs that reach it, plus the ones whose
+      dispatch tables list every name (computed `send`; minitest's
+      `assert_respond_to`, a leak to fix). Only the file name is
+      observable at run time (`rbMtLocation` filters `prelude/` frames),
+      so a prelude line in a Go panic trace reads `:1`; `rb2go build
+      -work` keeps the real lines, as do the examples, whose lint
+      correlates `//nolint` comments through them.
+    - **No debug info.** Every test build passes `-gcflags=-dwarf=false`:
+      DWARF was a quarter of each cache entry (array_test: 106 MB to 82
+      MB), and panics and `runtime.Callers` read the pclntab, not DWARF.
+      A repeated `-gcflags` replaces the earlier one, so `goBuild` composes
+      one.
+    - **Measured** (105 programs, 1.5M lines of Go): a comment or blank
+      line in `string.rb` rebuilt 105 programs, now 0; a new method at the
+      top of `string.rb` rebuilt 105, now 10 (the every-name programs, 52%
+      of the lines); a body change inside `squeeze` rebuilt 4 before and
+      after.
+    - **What it doesn't do:** a program's entry is as big as its function
+      count (array_test: 38k functions from 41k lines, 18k of them generic
+      instantiations), which is decision 86's next step, not this one.
