@@ -129,7 +129,8 @@ func lintGenerated(t *testing.T, mod string) {
 		t.Fatal(err)
 	}
 	copyPreludeGo(t, mod)
-	lintOut, err := run(t, mod, "golangci-lint", "run", "--allow-parallel-runners", "./...")
+	// --timeout=0: under the full suite's parallel builds this pass outlasts the config's 5m; go test's -timeout still bounds it
+	lintOut, err := run(t, mod, "golangci-lint", "run", "--allow-parallel-runners", "--timeout=0", "./...")
 	if err != nil {
 		t.Fatalf("golangci-lint on generated code: %v\n%s", err, lintOut)
 	}

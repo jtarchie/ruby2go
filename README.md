@@ -2089,3 +2089,27 @@ resolve; anything not listed is still open.
     - **Proof:** [testdata/multi](testdata/multi) (`TestMulti` compares
       with MRI loading the same files) and the whole `testdata/test` suite.
     - **Groundwork** for `require_relative` in user code.
+85. Dynamic dispatch (decision 32) grows with method definitions, not with
+    classes × names. A wrapper whose body is the same on many classes (an
+    inherited prelude method, `rbArity(...); return self.ToS()`, or a
+    Kernel free func over `Self any`) is one `case <class IDs>:` arm in
+    `rbDynName`, which asserts the method's Go signature
+    (`interface{ ToS() String }`) and calls it. The class ID switch keeps
+    dispatch nominal: only classes that reach the method take the arm,
+    never a Go type that merely has a method of that shape. The same
+    applies to the `respond_to?` and private markers: `rbHas_RespondsName`
+    and `rbHas_PrivateName` switch on the class ID for struct classes
+    instead of a marker method on each.
+    - **Kept per class:** primitive (`@go_type`) classes, generic
+      classes, a body that names its class (a metaclass's `new`), a
+      user's own methods (`_Call` calls them by Go name, decision 79),
+      and the names Go helpers assert for (`<=>` for rbCmp,
+      `method_missing`, `respond_to_missing?`). A body shared by only one
+      class stays a wrapper too.
+    - **Why:** with computed `send` every name is dispatchable, and 27
+      Kernel names on ~1650 classes made 44k identical wrappers: the
+      whole `testdata/test` suite as one program was 946k lines of Go
+      and a ~30 minute build. It is now 393k lines, and dynamic_test
+      alone went from 329k to 151k.
+    - **Proof:** the dynamic dispatch checks in `testdata/test` (send,
+      respond_to?, private methods, method_missing) and `testdata/run`.

@@ -2,8 +2,10 @@ package compiler
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -41,9 +43,7 @@ func (c *Compiler) emitDynamic() {
 	for _, name := range slices.Concat(c.dynNames, c.respondNames) {
 		if !marked[name] {
 			marked[name] = true
-			for _, cls := range c.privateIn(name) {
-				c.w("func (self %s) _Private%s() {}\n\n", c.recvType(cls), goMethodName(name))
-			}
+			c.emitMarkers("_Private"+goMethodName(name), c.privateIn(name))
 		}
 	}
 	if c.dynAll {
@@ -191,25 +191,30 @@ func (c *Compiler) dynGoName(name string) string {
 
 // emitDynName emits rbDynName(how, recv, args...): the public wrapper, the
 // private one unless the call had a receiver (how is rbCall), then
-// method_missing, then NoMethodError.
+// method_missing, then NoMethodError. Wrappers whose bodies are the same
+// for many classes (an inherited prelude method: `self.ToS()`) become one
+// arm of the dispatcher, chosen by class ID, instead of a copy per class.
 func (c *Compiler) emitDynName(name string) {
 	gn := c.dynGoName(name)
 	hidden := len(c.privateIn(name)) > 0
+	own, shared := c.dynWrappers(name)
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
+	c.emitDynArms(shared, false)
 	if v, ok := nilConversions[name]; ok {
 		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
 	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
 	}
+	c.emitDynArms(shared, true)
 	// every object has Kernel#===, so method_missing is never reached for it
 	if name != "method_missing" && name != "===" {
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
 	}
 	if hidden {
-		c.w("\tif _, ok := recv.(interface{ _Private%s() }); ok {\n\t\tpanic(rbPrivateMethod(%q, recv))\n\t}\n", gn, name)
+		c.w("\tif rbHas_Private%s(recv) {\n\t\tpanic(rbPrivateMethod(%q, recv))\n\t}\n", gn, name)
 	}
 	if name == "===" {
 		// Kernel#===: == unless its class defines one.
@@ -219,39 +224,175 @@ func (c *Compiler) emitDynName(name string) {
 	} else {
 		c.w("\tpanic(rbNoMethod(%q, recv, how == rbVCall))\n}\n\n", name)
 	}
-	for _, cls := range c.classList {
-		if e, private := c.dynEntry(cls, name); e != nil {
-			c.emitDynWrapper(cls, e, name, private)
-		}
+	for _, w := range own {
+		c.emitDynWrapper(w.cls, w.e, name, w.private, w.body)
 	}
 }
 
-// emitDynWrapper emits cls's DynName (_DynName for a private method). A
-// method that cannot be wrapped (its types cannot cross `any`) is left out
-// with a warning: calling it dynamically raises NoMethodError.
-func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string, private bool) {
-	var body string
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				ce, ok := r.(compileError)
-				if !ok {
-					panic(r)
-				}
-				c.Warnings = append(c.Warnings, fmt.Sprintf("%s#%s cannot be called dynamically: %s", cls.RubyName, name, ce.msg))
-				body = ""
-			}
-		}()
-		body = c.dynWrapperBody(cls, e)
-	}()
-	if body != "" {
-		prefix := "Dyn"
-		if private {
-			prefix = "_Dyn"
+// dynWrapper is one class's wrapper for a name, before emission.
+type dynWrapper struct {
+	cls     *Class
+	e       *entry
+	private bool
+	body    string
+}
+
+// dynArm is a wrapper body shared by the classes in ids: self is recv
+// asserted to iface, or recv itself when iface is empty.
+type dynArm struct {
+	ids     []string
+	iface   string
+	body    string
+	private bool
+	members []dynWrapper
+}
+
+// dynPinned names wrappers Go code asserts for by method (rbCmp's DynOp_cmp,
+// the dispatchers' fallbacks): each class keeps its own. (rbToJson asserts
+// DynToJson only after ToJson(...any), the signature of every prelude to_json.)
+var dynPinned = map[string]bool{"<=>": true, "method_missing": true, "respond_to_missing?": true}
+
+// dynWrappers splits name's wrappers into those emitted per class and the
+// arms shared by two or more classes. Growing with definitions, not with
+// classes × names, is what keeps a program of many classes buildable
+// (decision 85).
+func (c *Compiler) dynWrappers(name string) ([]dynWrapper, []*dynArm) {
+	var own []dynWrapper
+	arms := map[string]*dynArm{}
+	var keys []string
+	for _, cls := range c.classList {
+		e, private := c.dynEntry(cls, name)
+		if e == nil {
+			continue
 		}
-		c.w("func (self %s) %s%s(args ...any) any {\n%s}\n\n", c.recvType(cls), prefix, goMethodName(name), body)
-		c.dynWrapped[cls] = append(c.dynWrapped[cls], dynWrapped{name: name, goName: prefix + goMethodName(name), own: !e.M.File.prelude})
+		w := dynWrapper{cls: cls, e: e, private: private, body: c.dynWrapperBodyOrWarn(cls, e, name)}
+		if w.body == "" {
+			continue
+		}
+		iface, body, ok := c.dynShareable(w, name)
+		if !ok {
+			own = append(own, w)
+			continue
+		}
+		key := fmt.Sprintf("%t\x00%s\x00%s", private, iface, body)
+		a := arms[key]
+		if a == nil {
+			a = &dynArm{iface: iface, body: body, private: private}
+			arms[key] = a
+			keys = append(keys, key)
+		}
+		a.ids = append(a.ids, strconv.Itoa(c.classID(cls)))
+		a.members = append(a.members, w)
 	}
+	var shared []*dynArm
+	for _, k := range keys {
+		if a := arms[k]; len(a.members) > 1 {
+			shared = append(shared, a)
+		} else {
+			own = append(own, a.members[0])
+		}
+	}
+	return own, shared
+}
+
+// dynGenerated: e comes from the prelude, or is a metaclass's generated
+// new/name/to_s/inspect; a user's own method keeps its wrapper for _Call.
+func (c *Compiler) dynGenerated(e *entry) bool {
+	return e.M.Kind == kindSynth || e.M.File != nil && e.M.File.prelude
+}
+
+var selfIdent = regexp.MustCompile(`\bself\b`)
+
+// dynShareable is w's body with nothing particular to its class, and the
+// interface its self must satisfy: a struct class (it has a _ClassID) reaching
+// a prelude or generated method whose body only calls that method on self, or passes self
+// to a universal owner's free func, whose Self is any.
+func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, ok bool) {
+	cls, e := w.cls, w.e
+	if !cls.isStruct() || len(cls.TypeParams) > 0 || dynPinned[name] || !c.dynGenerated(e) {
+		return "", "", false
+	}
+	body = w.body
+	if e.Owner.universal {
+		for _, t := range []string{c.goType(TClass{C: cls}), c.recvType(cls)} {
+			body = strings.ReplaceAll(body, "["+t+"](self", "[any](self")
+		}
+	}
+	rest := strings.ReplaceAll(body, "[any](self", "")
+	call := "self." + e.M.GoName + "("
+	if !w.private && strings.Contains(rest, call) {
+		env := composeEnv(e.Env, nil)
+		env["Self"] = c.selfTypeFor(*e, cls)
+		ps, ret := c.sig(e.M, env)
+		iface = fmt.Sprintf("interface{ %s(%s) %s }", e.M.GoName, ps, ret)
+		rest = strings.ReplaceAll(rest, call, "")
+	}
+	if selfIdent.MatchString(rest) || strings.Contains(body+iface, cls.Name) {
+		return "", "", false
+	}
+	return iface, body, true
+}
+
+// emitDynArms emits the shared public (or private) arms: a switch on the
+// receiver's class ID, so only the classes that reach the method take it.
+func (c *Compiler) emitDynArms(arms []*dynArm, private bool) {
+	var cases []*dynArm
+	for _, a := range arms {
+		if a.private == private {
+			cases = append(cases, a)
+		}
+	}
+	if len(cases) == 0 {
+		return
+	}
+	cond := ""
+	if private {
+		cond = " && how != rbCall"
+	}
+	c.w("\tif id, ok := recv.(interface{ _ClassID() int }); ok%s {\n", cond)
+	arm := func(a *dynArm) {
+		switch {
+		case a.iface != "":
+			c.w("\tif self, ok := recv.(%s); ok {\n%s}\n", a.iface, a.body)
+		case selfIdent.MatchString(a.body):
+			c.w("\tself := recv\n%s", a.body)
+		default:
+			c.w("%s", a.body)
+		}
+	}
+	c.w("\tswitch id._ClassID() {\n")
+	for _, a := range cases {
+		c.w("\tcase %s:\n", strings.Join(a.ids, ", "))
+		arm(a)
+	}
+	c.w("\tdefault:\n\t}\n\t}\n") // default: gocritic rejects a one-case switch; Go compiles the cases to a binary search
+}
+
+// dynWrapperBodyOrWarn is cls's wrapper body for e, or "" with a warning
+// when its types cannot cross `any`: calling it dynamically raises
+// NoMethodError.
+func (c *Compiler) dynWrapperBodyOrWarn(cls *Class, e *entry, name string) (body string) {
+	defer func() {
+		if r := recover(); r != nil {
+			ce, ok := r.(compileError)
+			if !ok {
+				panic(r)
+			}
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s#%s cannot be called dynamically: %s", cls.RubyName, name, ce.msg))
+			body = ""
+		}
+	}()
+	return c.dynWrapperBody(cls, e)
+}
+
+// emitDynWrapper emits cls's DynName (_DynName for a private method).
+func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string, private bool, body string) {
+	prefix := "Dyn"
+	if private {
+		prefix = "_Dyn"
+	}
+	c.w("func (self %s) %s%s(args ...any) any {\n%s}\n\n", c.recvType(cls), prefix, goMethodName(name), body)
+	c.dynWrapped[cls] = append(c.dynWrapped[cls], dynWrapped{name: name, goName: prefix + goMethodName(name), own: !e.M.File.prelude})
 }
 
 func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
@@ -393,23 +534,50 @@ func (c *Compiler) dynArg(t Type, i int) string {
 	return fmt.Sprintf("rbAs[%s](args[%d], %q)", c.goType(t), i, t.String())
 }
 
+// emitMarkers emits rbHas<marker>(recv), true for the classes given: a
+// marker method on each primitive class, and for struct classes, which may
+// be many, one switch on the class ID instead of a method on each.
+func (c *Compiler) emitMarkers(marker string, classes []*Class) {
+	if c.markers[marker] {
+		return
+	}
+	c.markers[marker] = true
+	var ids []string
+	for _, cls := range classes {
+		if cls.isStruct() && len(cls.TypeParams) == 0 {
+			ids = append(ids, strconv.Itoa(c.classID(cls)))
+		} else {
+			c.w("func (self %s) %s() {}\n\n", c.recvType(cls), marker)
+		}
+	}
+	c.w("func rbHas%s(recv any) bool {\n", marker)
+	c.w("\tif _, ok := recv.(interface{ %s() }); ok {\n\t\treturn true\n\t}\n", marker)
+	if len(ids) > 0 {
+		c.w("\tif id, ok := recv.(interface{ _ClassID() int }); ok {\n")
+		c.w("\t\tswitch id._ClassID() {\n\t\tcase %s:\n\t\t\treturn true\n\t\tdefault:\n\t\t}\n\t}\n", strings.Join(ids, ", "))
+	}
+	c.w("\treturn false\n}\n\n")
+}
+
 // emitRespond emits rbRespondsName(recv, priv), backed by a
 // marker method on every class that has the public method (with or without
 // a block) and, when private methods count, the _PrivateName markers.
 func (c *Compiler) emitRespond(name string) {
 	gn := c.dynGoName(name)
+	var public []*Class
 	for _, cls := range c.classList {
 		if cls.IsModule || cls.universal || rubyPrivate[name] {
 			continue
 		}
 		if e := cls.lookup(name); e != nil && !e.M.Private {
-			c.w("func (self %s) _Responds%s() {}\n\n", c.recvType(cls), gn)
+			public = append(public, cls)
 		}
 	}
+	c.emitMarkers("_Responds"+gn, public)
 	c.w("func rbResponds%s(recv any, priv bool) Boolean {\n", gn)
-	c.w("\tif _, ok := recv.(interface{ _Responds%s() }); ok {\n\t\treturn true\n\t}\n", gn)
+	c.w("\tif rbHas_Responds%s(recv) {\n\t\treturn true\n\t}\n", gn)
 	if len(c.privateIn(name)) > 0 {
-		c.w("\tif _, ok := recv.(interface{ _Private%s() }); ok && priv {\n\t\treturn true\n\t}\n", gn)
+		c.w("\tif priv && rbHas_Private%s(recv) {\n\t\treturn true\n\t}\n", gn)
 	}
 	c.w("\tif r, ok := recv.(interface{ DynRespondToMissingQ(...any) any }); ok {\n")
 	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(%q), Boolean(priv))))\n\t}\n", name)
