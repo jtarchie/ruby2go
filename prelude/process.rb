@@ -15,6 +15,15 @@ module Process
 
   #: () -> Integer
   def self.pid = %x{ Integer(os.Getpid()) }
+
+  # Signals one process; MRI's return, the count signalled, is always 1 here.
+  #: (untyped, Integer) -> Integer
+  def self.kill(sig, pid) = %x{
+    if err := syscall.Kill(int(pid), rbSignalArg(sig)); err != nil {
+      panic(rbSysErr(err, "rb_f_kill", strconv.Itoa(int(pid))))
+    }
+    return 1
+  }
 end
 
 # Kernel#system, backticks and $? (decision 97). Backticks and %x() in user
@@ -36,4 +45,24 @@ module Kernel
     }
     return nil
   }
+end
+
+# Kernel#trap / Signal.trap (decision 100): a block runs on the signal
+# goroutine when the signal arrives; "IGNORE", "DEFAULT" and "EXIT" work.
+module Kernel
+  private
+
+  #: (untyped) { (Integer) -> void } -> String?
+  def trap(sig) = %x{ return rbSetTrap(sig, blk, "") }
+
+  #: (untyped, String) -> String?
+  def __trap_2(sig, command) = %x{ return rbSetTrap(sig, nil, string(command)) }
+end
+
+module Signal
+  #: (untyped) { (Integer) -> void } -> String?
+  def self.trap(sig) = %x{ return rbSetTrap(sig, blk, "") }
+
+  #: (untyped, String) -> String?
+  def self.__trap_2(sig, command) = %x{ return rbSetTrap(sig, nil, string(command)) }
 end

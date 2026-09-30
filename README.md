@@ -2435,3 +2435,20 @@ resolve; anything not listed is still open.
     defs are added. Not done: `def_delegator` to a constant or an
     expression string (`"@a.b"`), `SingleForwardable`.
     ([example 74](examples/74_forwardable/main.rb)).
+100. `Kernel#trap` / `Signal.trap` and `Process.kill` (#2). The signal
+    goroutine of decision 60 now consults a table: a trapped signal runs
+    its block there (MRI runs it in the main thread; here it runs beside
+    it, so share state through a Queue or Mutex), `"IGNORE"` drops it, and
+    `"DEFAULT"`/`"SYSTEM_DEFAULT"` restore decision 60's flush-and-die for
+    INT/TERM or Go's default for others. Signals are named as MRI takes
+    them (`"INT"`, `"SIGINT"`, `:INT`, a number); an unknown one is MRI's
+    `ArgumentError: unsupported signal 'SIGFOO'`, KILL/STOP are
+    `Errno::EINVAL`, and SEGV/BUS/ILL/FPE/VTALRM are reserved as in MRI.
+    `trap("EXIT") { }` is an at_exit handler. An exception from a trap
+    block ends the program like an uncaught one. `trap` returns the
+    previous command (`"DEFAULT"` the first time); where MRI returns the
+    previous Proc, this returns nil. A signal already queued when its
+    trap changes is handled by the new setting. `Process.kill(sig, pid)`
+    is `syscall.Kill` and returns 1. Interrupt/SignalException are still
+    never raised (decision 60).
+    ([example 75](examples/75_trap/main.rb)).

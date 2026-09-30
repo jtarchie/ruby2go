@@ -68,18 +68,133 @@ func rbFlush() {
 	_ = stdout.Flush()
 }
 
-// rbTrapSignals: on SIGINT/SIGTERM MRI flushes stdout, then dies by the signal (exit 130/143 in a shell).
+// rbTrapSignals starts the signal loop. Untrapped, SIGINT/SIGTERM flush
+// stdout and then kill the program by the signal (exit 130/143 in a shell),
+// as MRI's default does; Kernel#trap replaces that per signal (decision 100).
 // ponytail: MRI raises Interrupt/SignalException in the main thread, so rescue and ensure run; Go can't inject a panic into another goroutine.
 func rbTrapSignals() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(rbSigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		sig := <-sigs
-		rbFlush()
-		signal.Reset(sig)
-		p, _ := os.FindProcess(os.Getpid())
-		_ = p.Signal(sig)
+		for sig := range rbSigCh {
+			rbTrapMu.Lock()
+			h, ok := rbTraps[sig]
+			rbTrapMu.Unlock()
+			switch {
+			case ok && h.blk != nil:
+				rbRunTrap(h.blk, sig)
+			case ok && h.cmd == "IGNORE":
+			default:
+				rbFlush()
+				signal.Reset(sig)
+				p, _ := os.FindProcess(os.Getpid())
+				_ = p.Signal(sig)
+			}
+		}
 	}()
+}
+
+// rbTrap is one Kernel#trap handler: a block, or a command string.
+type rbTrap struct {
+	blk func(Integer)
+	cmd string
+}
+
+var (
+	rbSigCh  = make(chan os.Signal, 8)
+	rbTrapMu sync.Mutex
+	rbTraps  = map[os.Signal]rbTrap{}
+)
+
+// rbRunTrap runs a trap block on the signal goroutine (MRI: the main
+// thread). An exception from it ends the program as an uncaught one.
+func rbRunTrap(blk func(Integer), sig os.Signal) {
+	defer func() {
+		if r := recover(); r != nil {
+			status, e := rbExitStatus(rbWrapPanic(r))
+			rbFinish(status, e)
+			os.Exit(0)
+		}
+	}()
+	blk(Integer(sig.(syscall.Signal)))
+}
+
+var rbSignalNums = map[string]syscall.Signal{
+	"HUP": syscall.SIGHUP, "INT": syscall.SIGINT, "QUIT": syscall.SIGQUIT, "ILL": syscall.SIGILL,
+	"TRAP": syscall.SIGTRAP, "ABRT": syscall.SIGABRT, "IOT": syscall.SIGABRT, "BUS": syscall.SIGBUS,
+	"FPE": syscall.SIGFPE, "KILL": syscall.SIGKILL, "USR1": syscall.SIGUSR1, "SEGV": syscall.SIGSEGV,
+	"USR2": syscall.SIGUSR2, "PIPE": syscall.SIGPIPE, "ALRM": syscall.SIGALRM, "TERM": syscall.SIGTERM,
+	"CHLD": syscall.SIGCHLD, "CONT": syscall.SIGCONT, "STOP": syscall.SIGSTOP, "TSTP": syscall.SIGTSTP,
+	"TTIN": syscall.SIGTTIN, "TTOU": syscall.SIGTTOU, "URG": syscall.SIGURG, "XCPU": syscall.SIGXCPU,
+	"XFSZ": syscall.SIGXFSZ, "VTALRM": syscall.SIGVTALRM, "PROF": syscall.SIGPROF, "WINCH": syscall.SIGWINCH,
+	"IO": syscall.SIGIO, "SYS": syscall.SIGSYS, "EXIT": 0,
+}
+
+// rbSignalArg reads a signal as MRI's trap and Process.kill take it: a
+// name with or without SIG (String or Symbol) or a number.
+func rbSignalArg(v any) syscall.Signal {
+	switch v := rbUnbox(v).(type) {
+	case Integer:
+		for _, s := range rbSignalNums {
+			if int(s) == int(v) {
+				return s
+			}
+		}
+		panic(NewArgumentError(Ref(String(fmt.Sprintf("invalid signal number (%d)", v)))))
+	case String, Symbol:
+		name := strings.TrimPrefix(fmt.Sprint(v), "SIG")
+		if s, ok := rbSignalNums[name]; ok {
+			return s
+		}
+		panic(NewArgumentError(Ref(String("unsupported signal 'SIG" + name + "'"))))
+	}
+	panic(NewArgumentError(Ref(String("bad signal type " + rbClassName(v)))))
+}
+
+// rbSetTrap is Kernel#trap: it installs blk or cmd ("IGNORE", "DEFAULT",
+// "SYSTEM_DEFAULT", "EXIT" or "") and returns the previous command, nil
+// when that was a block (MRI returns the Proc).
+func rbSetTrap(v any, blk func(Integer), cmd string) *String {
+	sig := rbSignalArg(v)
+	switch {
+	case sig == syscall.SIGKILL || sig == syscall.SIGSTOP:
+		panic(NewErrno_EINVAL(Ref(String("Invalid argument - SIG" + rbSignalName(sig)))))
+	case slices.Contains([]syscall.Signal{syscall.SIGSEGV, syscall.SIGBUS, syscall.SIGILL, syscall.SIGFPE, syscall.SIGVTALRM}, sig):
+		panic(NewArgumentError(Ref(String("can't trap reserved signal: SIG" + rbSignalName(sig)))))
+	case sig == 0: // "EXIT": an at_exit handler
+		if blk != nil {
+			rbAtExitPush(func() { blk(0) })
+		}
+		return nil
+	}
+	if cmd == "SYSTEM_DEFAULT" {
+		cmd = "DEFAULT"
+	}
+	rbTrapMu.Lock()
+	defer rbTrapMu.Unlock()
+	old, had := rbTraps[sig]
+	rbTraps[sig] = rbTrap{blk: blk, cmd: cmd}
+	switch {
+	case blk != nil || cmd == "IGNORE":
+		signal.Notify(rbSigCh, sig)
+	case sig != syscall.SIGINT && sig != syscall.SIGTERM:
+		signal.Reset(sig)
+	}
+	switch {
+	case !had:
+		return Ref(String("DEFAULT"))
+	case old.blk != nil:
+		return nil
+	}
+	return Ref(String(old.cmd))
+}
+
+func rbSignalName(sig syscall.Signal) string {
+	for n, s := range rbSignalNums {
+		if s == sig && n != "IOT" {
+			return n
+		}
+	}
+	return strconv.Itoa(int(sig))
 }
 
 // rbAtExit holds Kernel#at_exit handlers; rbTopRecover pops them LIFO, so
