@@ -14,11 +14,14 @@ var stdoutTTY = func() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }()
 
+// stdoutSync is `$stdout.sync = true`: flush every write, terminal or not.
+var stdoutSync atomic.Bool
+
 func rbWrite(s string) {
 	stdoutMu.Lock()
 	defer stdoutMu.Unlock()
 	_, _ = stdout.WriteString(s)
-	if stdoutTTY {
+	if stdoutTTY || stdoutSync.Load() {
 		_ = stdout.Flush()
 	}
 }

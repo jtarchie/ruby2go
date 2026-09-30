@@ -1504,7 +1504,7 @@ resolve; anything not listed is still open.
     `__FILE__` are the Ruby file's name as given to the compiler, which is
     what `ruby main.rb` reports and keeps `__FILE__ == $0` true; any other
     `$name` is a compile error. `Kernel#gets` reads stdin only, where MRI
-    reads the files named in ARGV first (ARGF). Tests feed programs with
+    reads the files named in ARGV first (ARGF; *revised by decision 95*). Tests feed programs with
     `# args:`, `# env: K=V` and `# stdin: "Go-quoted"` lines, and
     `# stderr: match` adds stderr to the MRI comparison
     ([example 51](examples/51_argv_env/main.rb),
@@ -2357,3 +2357,16 @@ resolve; anything not listed is still open.
     forever (Go's deadlock detector ends a program with nothing else
     running, where MRI would hang).
     ([example 70](examples/70_glob/main.rb)).
+95. `ARGF` and `$stdout.sync` (#2). `Kernel#gets` is `ARGF.gets`: at the
+    first read, an empty ARGV means stdin (named `-`); otherwise each file
+    named in ARGV opens in turn, shifted out of ARGV as it opens (so a
+    program may push paths onto ARGV before reading), and once they are
+    spent `gets` is nil and `eof?` raises MRI's `IOError: closed stream`.
+    A missing file raises `Errno::ENOENT` with MRI's `rb_sysopen`
+    message. `ARGF` has `gets`, `read`, `readlines`, `each_line`,
+    `filename` and `eof?`; `$<` stays a compile error (decision 61's fixed
+    set). `STDIN.gets` still reads stdin, sharing its buffer with ARGF.
+    `IO#sync` is true for STDERR and false for STDOUT until `sync = true`,
+    which flushes and then flushes after every write, pipe or terminal, so
+    stdout and stderr interleave as written.
+    ([example 71](examples/71_argf/main.rb)).

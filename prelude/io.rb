@@ -110,6 +110,23 @@ class IO < Object
   #: () -> Integer
   def fileno = %x{ Integer(self.fd) }
 
+  # STDERR is always sync, as in MRI; STDOUT until `sync = true` only flushes per write on a terminal.
+  #: () -> bool
+  def sync = %x{ Boolean(self.fd == 2 || self.fd == 1 && stdoutSync.Load()) }
+
+  #: (bool) -> bool
+  def sync=(on)
+    %x{
+    if self.fd == 1 {
+      stdoutSync.Store(bool(on))
+      if on {
+        rbFlush()
+      }
+    }
+    return on
+    }
+  end
+
   #: () -> bool
   def tty? = %x{
     fi, err := []*os.File{os.Stdin, os.Stdout, os.Stderr}[self.fd].Stat()
@@ -224,6 +241,94 @@ end
 
 ENV = ENVClass.new #: ENVClass
 
+# ARGF (decision 95): the files named in ARGV, read in turn and shifted out
+# of it as each opens, or stdin when ARGV is empty at the first read.
+# @go_type struct { r *bufio.Reader; f *os.File; name string; started, stdin, done bool }
+class ARGFClass < Object
+  #: () -> ARGFClass
+  def self.new = %x{ return &ARGFClass{} }
+
+  #: () -> String?
+  def gets = __gets(ARGV)
+
+  #: () -> String
+  def read = __read(ARGV)
+
+  #: () -> Array[String]
+  def readlines
+    out = [] #: Array[String]
+    while (line = gets)
+      out << line
+    end
+    out
+  end
+
+  #: () { (String) -> void } -> void
+  def each_line
+    while (line = gets)
+      yield line
+    end
+  end
+
+  #: () -> String
+  def filename = __filename(ARGV)
+
+  #: () -> bool
+  def eof? = __eof(ARGV)
+
+  #: () -> String
+  def inspect = "ARGF"
+
+  #: () -> String
+  def to_s = "ARGF"
+
+  #: (Array[String]) -> String?
+  def __gets(argv) = %x{
+    for r := self.next(argv); r != nil; r = self.next(argv) {
+      line, err := r.ReadString('\\n')
+      if err != nil {
+        self.spent()
+      }
+      if line != "" {
+        s := String(line)
+        return &s
+      }
+    }
+    return nil
+  }
+
+  #: (Array[String]) -> String
+  def __read(argv) = %x{
+    var b strings.Builder
+    for r := self.next(argv); r != nil; r = self.next(argv) {
+      _, _ = io.Copy(&b, r)
+      self.spent()
+    }
+    return String(b.String())
+  }
+
+  #: (Array[String]) -> String
+  def __filename(argv) = %x{
+    self.next(argv)
+    return String(self.name)
+  }
+
+  #: (Array[String]) -> bool
+  def __eof(argv) = %x{
+    r := self.next(argv)
+    if r == nil && !self.stdin {
+      panic(NewIOError(Ref[String]("closed stream"))) // the last file is closed, as in MRI
+    }
+    if r == nil {
+      return true
+    }
+    _, err := r.Peek(1)
+    return Boolean(err != nil)
+  }
+end
+
+ARGF = ARGFClass.new #: ARGFClass
+
 module Kernel
   private
 
@@ -239,7 +344,6 @@ module Kernel
     raise SystemExit.new(1)
   end
 
-  # ponytail: MRI's Kernel#gets reads the files named in ARGV first (ARGF); this reads stdin only.
   #: () -> String?
-  def gets = STDIN.gets
+  def gets = ARGF.gets
 end
