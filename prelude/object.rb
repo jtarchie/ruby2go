@@ -55,6 +55,17 @@ module Kernel
   #: (?Integer) -> void
   def exit(status = 0) = raise(SystemExit.new(status))
 
+  # Seconds slept, rounded, as MRI returns them. The argument's class picks the overload (decision 12).
+  #: (Float) -> Integer
+  def sleep(secs) = %x{ return rbSleep(float64(secs)) }
+
+  #: (Integer) -> Integer
+  def __sleep_integer(secs) = %x{ return rbSleep(float64(secs)) }
+
+  # No argument: forever, as MRI (nothing wakes it; Go reports a deadlock if no other goroutine runs).
+  #: () -> Integer
+  def __sleep_0 = %x{ rbSleepForever() }
+
   # A labelled break that carries a value (decision 91): throw unwinds to
   # the innermost catch with an identical tag, running ensures, passing
   # rescues. The thrown value's type is only known at the throw, so the

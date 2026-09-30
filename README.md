@@ -1524,7 +1524,7 @@ resolve; anything not listed is still open.
     `glob`, `exist?`, `mkdir`, `rmdir`, and `mktmpdir` with a block (MRI
     needs `require "tmpdir"`, a no-op here). `children`/`entries` come back
     sorted where MRI uses readdir order, and `glob` is `filepath.Glob`
-    (no `**` or `{a,b}`). A failed call raises MRI's `Errno::*` class
+    (no `**` or `{a,b}`; *revised by decision 94*). A failed call raises MRI's `Errno::*` class
     (`ENOENT`, `EEXIST`, `EISDIR`, `ENOTDIR`, `EACCES`, `ENOTEMPTY`, all
     under `SystemCallError`) with MRI's message: `"<strerror> @ <MRI C
     function> - <path>"`. Anything else is an `IOError`
@@ -2331,3 +2331,29 @@ resolve; anything not listed is still open.
       checked in `testdata/test/assertion_test.rb`.
     - `x.nil?` on a type variable now unboxes first: `T` may be `X?`, whose
       nil `*X` is a non-nil `any`.
+94. File and Dir gaps from the roadmap (#1 Phase 0, #2). `Dir.glob` is
+    `rbGlob`, not `filepath.Glob`: `{a,b}` alternatives expand first, in
+    order and nested; then each `/`-segment matches with
+    `filepath.Match` (`*`, `?`, `[set]`), a leading dot only by a
+    pattern's leading dot; `**/` is any depth of non-hidden directories,
+    a bare `**` is `*`, and a trailing `/` keeps directories only, shown
+    with the slash. Each directory's entries are visited sorted, an
+    entry before its subtree, which is the order MRI's `sort: true`
+    default gives (`**/*` lists `a`, `a/1.rb`, `a/b`, ...; `**/*.rb`
+    lists `a/...` before `top.rb`). A literal segment is a stat, not a
+    listing. Not done: `File::FNM_*` flags, `base:`, an Array of
+    patterns, `.`/`..` from `.*`. `Dir[*patterns]` concatenates globs;
+    `Dir.each_child` (sorted, like `children`); `Dir.chdir(path) { }`
+    returns the block's value and restores the directory in `ensure`
+    (process-wide, as MRI's), and without a block returns 0.
+    `File::SEPARATOR`/`PATH_SEPARATOR`/`ALT_SEPARATOR` (`nil`);
+    `File.stat` is a `File::Stat` over one `os.Stat` (`size`, `mtime`,
+    `file?`, `directory?`, `zero?`, `mode` with the file-type bits, from
+    `syscall.Stat_t`); `File.mtime` is its `mtime`. A blockless
+    `File.open` is `File.new`, through decision 12's no-block overload
+    (`__open_enum`, the same hook `Dir.chdir` uses). `Kernel#sleep(secs)`
+    rounds the seconds actually slept, as MRI, raises MRI's
+    `ArgumentError` for a negative interval, and with no argument blocks
+    forever (Go's deadlock detector ends a program with nothing else
+    running, where MRI would hang).
+    ([example 70](examples/70_glob/main.rb)).

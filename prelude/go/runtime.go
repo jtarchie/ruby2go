@@ -941,3 +941,17 @@ func rbStringInspect(s string) String {
 	}
 	return String(res)
 }
+
+// rbSleep is Kernel#sleep: MRI's errors, and the whole seconds slept.
+func rbSleep(secs float64) Integer {
+	if secs < 0 {
+		panic(NewArgumentError(Ref(String("time interval must not be negative"))))
+	}
+	start := time.Now()
+	time.Sleep(time.Duration(secs * float64(time.Second)))
+	return Integer(math.Round(time.Since(start).Seconds()))
+}
+
+func rbSleepForever() Integer {
+	select {}
+}

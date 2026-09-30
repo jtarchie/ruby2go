@@ -31,6 +31,26 @@ class File < Object
     return out
   }
 
+  SEPARATOR = "/" #: String
+  ALT_SEPARATOR = nil #: String?
+  PATH_SEPARATOR = ":" #: String
+
+  # Blockless File.open is File.new (decision 12's `__<name>_enum` stands for "no block").
+  #: (String, ?String) -> File
+  def self.__open_enum(path, mode = "r") = File.new(path, mode)
+
+  #: (String) -> Time
+  def self.mtime(path) = stat(path).mtime
+
+  #: (String) -> File::Stat
+  def self.stat(path) = %x{
+    fi, err := os.Stat(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_file_s_stat", string(path)))
+    }
+    return &File_Stat{fi: fi}
+  }
+
   #: [T] (String, ?String) { (File) -> T } -> T
   def self.open(path, mode = "r")
     f = File.new(path, mode)
@@ -252,6 +272,34 @@ class File < Object
   }
 end
 
+# File.stat's result: a snapshot of os.Stat.
+# @go_type struct { fi os.FileInfo }
+class File::Stat < Object
+  #: () -> Integer
+  def size = %x{ Integer(self.fi.Size()) }
+
+  #: () -> Time
+  def mtime = %x{ &Time{t: self.fi.ModTime()} }
+
+  #: () -> bool
+  def file? = %x{ Boolean(self.fi.Mode().IsRegular()) }
+
+  #: () -> bool
+  def directory? = %x{ Boolean(self.fi.IsDir()) }
+
+  #: () -> bool
+  def zero? = size == 0
+
+  # st_mode, file type bits included (0100644 for a plain file), as MRI's.
+  #: () -> Integer
+  def mode = %x{
+    if st, ok := self.fi.Sys().(*syscall.Stat_t); ok {
+      return Integer(st.Mode)
+    }
+    return Integer(self.fi.Mode().Perm())
+  }
+end
+
 class Dir < Object
   #: () -> String
   def self.pwd = %x{
@@ -279,14 +327,47 @@ class Dir < Object
   #: (String) -> Array[String]
   def self.entries(path) = [".", ".."] + children(path)
 
-  # ponytail: filepath.Glob syntax, so no `**` or `{a,b}`; walk the tree for those.
+  # `*`, `?`, `[set]`, `**/`, `{a,b}` and a trailing `/`, in MRI's sorted order (rbGlob, decision 94).
   #: (String) -> Array[String]
-  def self.glob(pattern) = %x{
-    ms, err := filepath.Glob(string(pattern))
-    if err != nil {
-      return &Array[String]{}
+  def self.glob(pattern) = %x{ return rbStrs(rbGlob(string(pattern))) }
+
+  #: (*String) -> Array[String]
+  def self.[](*patterns)
+    out = [] #: Array[String]
+    patterns.each { |pat| out.concat(glob(pat)) }
+    out
+  end
+
+  # ponytail: sorted, like children.
+  #: (String) { (String) -> void } -> void
+  def self.each_child(path)
+    children(path).each { |c| yield c }
+  end
+
+  # The working directory is the process's: other threads see the change too, as in MRI.
+  #: [T] (String) { (String) -> T } -> T
+  def self.chdir(path)
+    old = pwd
+    __chdir(path)
+    begin
+      yield path
+    ensure
+      __chdir(old)
+    end
+  end
+
+  # Blockless Dir.chdir (decision 12's `__<name>_enum` stands for "no block").
+  #: (String) -> Integer
+  def self.__chdir_enum(path)
+    __chdir(path)
+    0
+  end
+
+  #: (String) -> void
+  def self.__chdir(path) = %x{
+    if err := os.Chdir(string(path)); err != nil {
+      panic(rbSysErr(err, "dir_s_chdir", string(path)))
     }
-    return rbStrs(ms)
   }
 
   #: (String) -> bool

@@ -858,4 +858,60 @@ module StdlibTests
       assert_equal true, Zlib::NO_COMPRESSION < Zlib::BEST_SPEED && Zlib::BEST_SPEED < Zlib::BEST_COMPRESSION && Zlib::DEFAULT_COMPRESSION < Zlib::NO_COMPRESSION
     end
   end
+
+  # Dir.glob's ** and {a,b}, Dir[], each_child, chdir, File.stat/mtime, blockless File.open, sleep (decision 94).
+  class FileGlobTest < Minitest::Test
+    #: (^() -> void) -> void
+    def in_tree(check)
+      Dir.mktmpdir do |root|
+        Dir.chdir(root) do
+          %w[a a/b a/b/c x .hid].each { |d| Dir.mkdir(d) }
+          %w[a/1.rb a/b/2.rb a/b/c/3.rb x/4.txt top.rb .hid/5.rb a/.dot.rb b.txt].each { |f| File.write(f, f) }
+          check.call
+        end
+      end
+    end
+
+    def test_glob
+      in_tree(lambda do
+        assert_equal ["a/1.rb", "a/b/2.rb", "a/b/c/3.rb", "top.rb"], Dir.glob("**/*.rb")
+        assert_equal ["a", "a/1.rb", "a/b", "a/b/2.rb", "a/b/c", "a/b/c/3.rb", "b.txt", "top.rb", "x", "x/4.txt"], Dir.glob("**/*")
+        assert_equal ["a/1.rb", "a/b", "x/4.txt"], Dir.glob("{a,x}/*")
+        assert_equal ["top.rb", "b.txt"], Dir.glob("*.{rb,txt}")
+        assert_equal ["x/4.txt", "a/1.rb"], Dir.glob("{x,a}/*.{txt,rb}")
+        assert_equal ["a/1.rb", "a/b/2.rb", "a/b/c/3.rb"], Dir.glob("a/**/*.rb")
+        assert_equal ["a/", "a/b/", "a/b/c/", "x/"], Dir.glob("**/")
+        assert_equal ["a/1.rb", "a/b"], Dir.glob("a/**")
+        assert_equal ["a/b"], Dir.glob("**/b")
+        assert_equal ["a/b/"], Dir.glob("a/*/")
+        assert_equal [], Dir.glob("nope/*")
+        assert_equal ["top.rb", "x/4.txt"], Dir["*.rb", "x/*"]
+      end)
+    end
+
+    def test_dir_and_file
+      in_tree(lambda do
+        assert_equal ["1.rb", "b"], Dir.chdir("a") { Dir.glob("*") }
+        assert_equal 42, Dir.chdir("x") { 42 }
+        assert_equal ["a", "b.txt", "top.rb", "x"], Dir.glob("*")
+        seen = [] #: Array[String]
+        Dir.each_child("a") { |c| seen << c }
+        assert_equal [".dot.rb", "1.rb", "b"], seen.sort
+        st = File.stat("top.rb")
+        assert_equal [6, true, false, false, "100644"], [st.size, st.file?, st.directory?, st.zero?, st.mode.to_s(8)]
+        assert_equal true, File.stat("a").directory?
+        assert_equal true, File.mtime("top.rb") <= Time.now
+        f = File.open("top.rb")
+        assert_equal "top.rb", f.read
+        f.close
+        assert_equal ["/", ":", nil], [File::SEPARATOR, File::PATH_SEPARATOR, File::ALT_SEPARATOR]
+      end)
+    end
+
+    def test_sleep
+      assert_equal 0, sleep(0.01)
+      assert_equal 0, sleep(0)
+      assert_equal "time interval must not be negative", assert_raises(ArgumentError) { sleep(-1) }.message
+    end
+  end
 end
