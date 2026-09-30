@@ -2109,7 +2109,9 @@ resolve; anything not listed is still open.
     - **Why:** with computed `send` every name is dispatchable, and 27
       Kernel names on ~1650 classes made 44k identical wrappers: the
       whole `testdata/test` suite as one program was 946k lines of Go
-      and a ~30 minute build. It is now 393k lines, and dynamic_test
-      alone went from 329k to 151k.
+      and a ~36 minute build (`-race -gcflags=-l`). It is now 393k lines
+      and ~20 minutes, and dynamic_test alone went from 329k to 151k. Most
+      of what is left is forwarders (one per inherited Kernel method per
+      class, ~150k lines): the next step before TestMinitest is one build.
     - **Proof:** the dynamic dispatch checks in `testdata/test` (send,
       respond_to?, private methods, method_missing) and `testdata/run`.
