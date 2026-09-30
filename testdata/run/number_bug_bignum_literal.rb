@@ -1,4 +1,4 @@
-# skip: wontfix: an Integer literal beyond 64 bits is a compile error (README decision 35); MRI prints the Bignum
+# skip: wontfix: an Integer literal beyond 64 bits is a compile error (docs/design.md decision 35); MRI prints the Bignum
 # rbs_inline: enabled
 
 puts 9_223_372_036_854_775_808.inspect

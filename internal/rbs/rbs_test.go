@@ -49,7 +49,7 @@ func TestParseType(t *testing.T) {
 	}
 }
 
-// known skips a case that disagrees with the README or RBS unless RB2GO_RUN_SKIPPED=1.
+// known skips a case that disagrees with docs/design.md or RBS unless RB2GO_RUN_SKIPPED=1.
 func known(t *testing.T, reason string) {
 	t.Helper()
 	if os.Getenv("RB2GO_RUN_SKIPPED") == "" {

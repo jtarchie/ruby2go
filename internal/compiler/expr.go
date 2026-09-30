@@ -67,7 +67,7 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		}
 		_, err := strconv.ParseInt(code, 0, 64)
 		if errors.Is(err, strconv.ErrRange) {
-			f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (README open decision 35)", code)
+			f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (docs/design.md decision 35)", code)
 		}
 		return expr{code: code, typ: f.cls("Integer"), lit: true}, true
 	case *parser.FloatNode:
@@ -4082,7 +4082,7 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	case "$?":
 		return f.kernelCall(n, "__last_status", nil)
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout, $stderr and $? are (README open decision 61)", n.Name)
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout, $stderr and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
 }
 

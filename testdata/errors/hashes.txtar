@@ -1,4 +1,4 @@
-Compile errors and warnings for Hash (README decisions 1, 4, 5, 12, 20, 23, 34).
+Compile errors and warnings for Hash (docs/design.md decisions 1, 4, 5, 12, 20, 23, 34).
 -- index_and_assign.rb --
 # error: main.rb:3: unsupported syntax: IndexAndWriteNode
 h = { "a" => 1 } #: Hash[String, Integer]
@@ -128,7 +128,7 @@ puts n(*h)
 h = { "a" => 1 } #: Hash[String, Integer]
 puts [*h].inspect
 -- return_in_map_block.rb --
-# error: main.rb:4: non-local return from a block is not supported (README open decision 4)
+# error: main.rb:4: non-local return from a block is not supported (docs/design.md decision 4)
 #: (Hash[String, Integer]) -> String?
 def first_big(h)
   h.map { |k, v| return k if v > 1 }

@@ -303,7 +303,7 @@ func (c *Compiler) emitProgram() {
 
 // noteUserToJson: the json generator calls to_json(state) on what it
 // renders, which reaches a user to_json declared other than
-// (*untyped) -> String only through its Dyn wrapper (README decision 25).
+// (*untyped) -> String only through its Dyn wrapper (docs/design.md decision 25).
 func (c *Compiler) noteUserToJson() {
 	for _, cls := range c.classList {
 		m := cls.Methods["to_json"]
@@ -355,7 +355,7 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		tps = ", " + strings.Join(mod.TypeParams, ", ") + " comparable"
 	}
 	c.w("type %s_Self[Self any%s] interface {\n", mod.Name, tps)
-	// Constraint = what the module's bodies call on self (README).
+	// Constraint = what the module's bodies call on self (docs/design.md).
 	called := c.selfCalls(mod)
 	for _, e := range c.publicEntries(mod) {
 		if !called[e.M.Name] {

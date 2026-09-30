@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-// Operator name table (README open decision 3): `_` + lowercase never comes out of camel-casing, so `plus`, Integer#div, IO#pos cannot meet an operator.
+// Operator name table (docs/design.md decision 3): `_` + lowercase never comes out of camel-casing, so `plus`, Integer#div, IO#pos cannot meet an operator.
 var opNames = map[string]string{
 	"==": "Op_eq", "!=": "Op_ne", "<=>": "Op_cmp", "<": "Op_lt", "<=": "Op_le", ">": "Op_gt", ">=": "Op_ge",
 	"+": "Op_plus", "-": "Op_minus", "*": "Op_mul", "/": "Op_div", "%": "Op_mod", "**": "Op_pow",

@@ -188,7 +188,7 @@ module Benchmark
     end
   end
 
-  # Registers labelled blocks for bmbm without running them: storing a `&block` param is a compile error (README decision 29), so #report stashes the closure in a raw Go slice and #run_at is the only way to call it back.
+  # Registers labelled blocks for bmbm without running them: storing a `&block` param is a compile error (docs/design.md decision 29), so #report stashes the closure in a raw Go slice and #run_at is the only way to call it back.
 
   # @go_type struct { width Integer; items []rbBenchJobItem }
   class Job < Object

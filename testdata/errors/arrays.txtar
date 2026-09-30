@@ -1,6 +1,6 @@
 Compile errors and warnings for Array, Enumerable, tuples, splats and blocks over collections.
 -- return_in_closure.rb --
-# error: main.rb:4: non-local return from a block is not supported (README open decision 4)
+# error: main.rb:4: non-local return from a block is not supported (docs/design.md decision 4)
 #: (Array[Integer]) -> Integer
 def f(nums)
   nums.map { |n| return n }

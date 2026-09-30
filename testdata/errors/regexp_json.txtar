@@ -1,4 +1,4 @@
-Compile errors and warnings for Regexp, MatchData and JSON (README decisions 24, 25).
+Compile errors and warnings for Regexp, MatchData and JSON (docs/design.md decisions 24, 25).
 -- lookahead.rb --
 # error: main.rb:3: regexp /a(?=b)/ is not supported
 # error: invalid or unsupported Perl syntax: `(?=`

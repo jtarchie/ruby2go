@@ -3,7 +3,7 @@
 #
 # Hash: insertion-ordered, a struct over a Go map plus a key list.
 
-# Insertion-ordered, like Ruby. Deletion is O(n) (README open decision 1).
+# Insertion-ordered, like Ruby. Deletion is O(n) (docs/design.md decision 1).
 # Keys match by eql?/hash: see rbKeyIndex.
 # iter counts running iterators, as MRI's iter_lev: while it is non-zero []=
 # of a new key raises and delete copies the key list instead of shifting the

@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// known skips a README-disagreeing case unless RB2GO_RUN_SKIPPED=1, like `# skip:` in testdata.
+// known skips a design-record-disagreeing case unless RB2GO_RUN_SKIPPED=1, like `# skip:` in testdata.
 func known(t *testing.T, reason string) {
 	t.Helper()
 	if os.Getenv("RB2GO_RUN_SKIPPED") == "" {
@@ -70,11 +70,11 @@ func TestOpNamesMatchReadme(t *testing.T) {
 		"===": "Op_eqq", "[]": "Op_idx", "[]=": "Op_idxSet", "`": "Op_backtick",
 	}
 	if len(opNames) != len(readme) {
-		t.Errorf("opNames has %d entries, README decision 3 lists %d", len(opNames), len(readme))
+		t.Errorf("opNames has %d entries, docs/design.md decision 3 lists %d", len(opNames), len(readme))
 	}
 	for op, want := range readme {
 		if got := opNames[op]; got != want {
-			t.Errorf("opNames[%q] = %q, README says %q", op, got, want)
+			t.Errorf("opNames[%q] = %q, docs/design.md says %q", op, got, want)
 		}
 	}
 }

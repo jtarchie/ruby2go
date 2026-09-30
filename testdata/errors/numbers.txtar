@@ -55,7 +55,7 @@ x = 1.upto(3) { |i| puts i }
 # rbs_inline: enabled
 x = 3.then { |i| break }
 -- then_return.rb --
-# error: main.rb:5: non-local return from a block is not supported (README open decision 4)
+# error: main.rb:5: non-local return from a block is not supported (docs/design.md decision 4)
 # rbs_inline: enabled
 #: () -> Integer
 def f

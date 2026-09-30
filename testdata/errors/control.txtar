@@ -1,4 +1,4 @@
-Compile errors and warnings for control flow, exceptions, locals and assignment forms (README decisions 4, 11, 14, 20, 33).
+Compile errors and warnings for control flow, exceptions, locals and assignment forms (docs/design.md decisions 4, 11, 14, 20, 33).
 -- for_loop.rb --
 # error: main.rb:3: unsupported syntax: ForNode
 arr = [1] #: Array[Integer]
@@ -118,7 +118,7 @@ class TwoArgs < StandardError
 end
 raise TwoArgs, "only one"
 -- return_in_closure.rb --
-# error: main.rb:4: non-local return from a block is not supported (README open decision 4)
+# error: main.rb:4: non-local return from a block is not supported (docs/design.md decision 4)
 #: (Array[Integer]) -> Integer
 def first_even(xs)
   xs.map { |x| return x if x.even? }

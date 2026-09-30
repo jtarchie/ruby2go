@@ -744,7 +744,7 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		return
 	}
 	if f.closures > 0 {
-		f.errorf(n, "non-local return from a block is not supported (README open decision 4)")
+		f.errorf(n, "non-local return from a block is not supported (docs/design.md decision 4)")
 	}
 	var e expr
 	hasVal := false

@@ -2,7 +2,7 @@
 # rbs_inline: enabled
 #
 # Pathname: a frozen-string wrapper with a fluent API over File/Dir
-# (decision 62). See README decision 65 for scope and limitations.
+# (decision 62). See docs/design.md decision 65 for scope and limitations.
 
 # @go_type string
 class Pathname < Object

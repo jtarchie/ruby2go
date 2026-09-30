@@ -1,4 +1,4 @@
-# skip: wontfix: Integer is a 64-bit Go int (README decision 35); where MRI promotes to a Bignum, rb2go raises RangeError
+# skip: wontfix: Integer is a 64-bit Go int (docs/design.md decision 35); where MRI promotes to a Bignum, rb2go raises RangeError
 # rbs_inline: enabled
 
 m = 9_223_372_036_854_775_807 #: Integer

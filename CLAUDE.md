@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the design record. Its numbered "Open decisions" list (1–36) is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made.
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made.
 
 ## Commands
 
@@ -64,7 +64,7 @@ Smaller cases go in `testdata/`:
 - `# @go_type T` makes a class a named Go type (value semantics if frozen, e.g. `String`). Classes without it become structs, with an interface (`FooI`) and pointers.
 - Package-level Go helpers (no `self`/param binding) live in `prelude/go/<name>.go`, next to the `prelude/<name>.rb` whose methods use them: real, gofmt-clean Go, no xstring escaping. `//go:build ignore` keeps them out of `go build ./...` (they reference generated types); `loadPreludeGo` in `compiler.go` globs them and appends each body (minus its `package` line) to `c.verbatim`, skipping Prism. Imports come from the `stdImports` table in `format.go`; a new std package must be added there. A top-level `%x{}` in a `.rb` still works, but new helpers go in `prelude/go/`. `runtime.rb` and `dynamic.rb` are now doc-only. `.golangci.generated.yml` has path-scoped exclusions for `prelude/go/*.go`: staticcheck's ST1003/ST1021 (names mirror Ruby, like decision 3) and nolintlint (gosec ignores `//line` remapping, so it can't correlate `//nolint:gosec` comments there even though the suppression itself works).
 
-### Key representation rules (details in README decisions)
+### Key representation rules (details in docs/design.md decisions)
 
 - `T?` → `*T` uniformly. `Opt()`/`Ref()` at `untyped`/optional boundaries.
 - Methods on struct classes/modules → free funcs `Owner_Name[Self]` + forwarding methods on each concrete class (Go embedding would bind `self` wrongly). Module constraints are derived from what the module body calls on `self`.
@@ -77,4 +77,4 @@ Smaller cases go in `testdata/`:
 
 - Lint: `.golangci.yml` covers the repo (depguard, cyclop, wrapcheck, …). `.golangci.generated.yml` is the same set minus `unused`/`unparam`/`revive` naming, and it applies to transpiler output. Fix codegen instead of loosening it.
 - Commit after each green milestone (e.g. a new example passing), in the style `rb2go: <feature> (example NN)`.
-- GitHub issues use three sections: `## Why` (the problem, and what Ruby code fails today), `## What` (a bullet list of the behaviour to build, ending with which example or testdata file proves it against MRI), and `## Notes` (pointers to existing helpers, gotchas, and relevant README decisions). Write for a junior PM and a junior engineer: plain words, a short explanation of any Ruby or Go term, and no assumed context. Before filing, check the roadmap issues (#1 stdlib, #2 CLI) so you don't duplicate them, and link #1 or #2 from new issues.
+- GitHub issues use three sections: `## Why` (the problem, and what Ruby code fails today), `## What` (a bullet list of the behaviour to build, ending with which example or testdata file proves it against MRI), and `## Notes` (pointers to existing helpers, gotchas, and relevant docs/design.md decisions). Write for a junior PM and a junior engineer: plain words, a short explanation of any Ruby or Go term, and no assumed context. Before filing, check the roadmap issues (#1 stdlib, #2 CLI) so you don't duplicate them, and link #1 or #2 from new issues.
