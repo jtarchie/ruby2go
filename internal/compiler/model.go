@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"rb2go/internal/rbs"
+	"github.com/jtarchie/ruby2go/internal/rbs"
 )
 
 // Class is a Ruby class or module.

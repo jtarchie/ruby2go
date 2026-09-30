@@ -71,14 +71,10 @@ produce the binary. Ruby is *not* needed to compile programs (the Ruby parser,
 Prism, is embedded as WebAssembly).
 
 ```sh
-git clone https://github.com/jtarchie/ruby2go
-cd ruby2go
-go install ./cmd/rb2go
+go install github.com/jtarchie/ruby2go/cmd/rb2go@latest
 ```
 
-(The Go module is named `rb2go`, not its GitHub path, so
-`go install github.com/jtarchie/ruby2go/...@latest` does not work; install
-from a clone.)
+Or from a clone: `go install ./cmd/rb2go`.
 
 ## Usage
 

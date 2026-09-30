@@ -1,4 +1,4 @@
-module rb2go
+module github.com/jtarchie/ruby2go
 
 go 1.26.0
 

@@ -78,7 +78,7 @@ linters:
             - "!**/examples/**"
           allow:
             - "$gostd"
-            - "rb2go/internal/compiler"
+            - "github.com/jtarchie/ruby2go/internal/compiler"
             - "golang.org/x/tools/txtar" # rb2go_test.go: testdata/errors archives
         # cmd/rb2go is the process boundary: flags in, exit code out.
         CLI:
@@ -86,7 +86,7 @@ linters:
             - "**/cmd/**"
           allow:
             - "$gostd"
-            - "rb2go"
+            - "github.com/jtarchie/ruby2go"
         # The compiler owns the parser and the formatter; it reaches the RBS
         # parser but never the CLI or the root.
         Compiler:
@@ -95,7 +95,7 @@ linters:
           allow:
             - "$gostd"
             - "github.com/danielgatis/go-ruby-prism/parser"
-            - "rb2go/internal/rbs"
+            - "github.com/jtarchie/ruby2go/internal/rbs"
         # rbs is a stdlib-only leaf.
         RBS:
           files:

@@ -6,7 +6,7 @@ import (
 	"embed"
 	"fmt"
 
-	"rb2go/internal/compiler"
+	"github.com/jtarchie/ruby2go/internal/compiler"
 )
 
 // Prelude holds prelude.rb, its require_relatives, and prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo).

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"rb2go"
+	"github.com/jtarchie/ruby2go"
 )
 
 const usage = `usage: rb2go build [-o prog] [-race] [-gcflags flags] [-work] main.rb
