@@ -2452,3 +2452,41 @@ resolve; anything not listed is still open.
     is `syscall.Kill` and returns 1. Interrupt/SignalException are still
     never raised (decision 60).
     ([example 75](examples/75_trap/main.rb)).
+101. OptionParser (#1, Phase 3), over a Go engine (`prelude/go/optparse.go`,
+    no `flag`). The one typing problem is `on`'s block, whose parameter
+    MRI decides at run time; here the compiler decides it from `on`'s
+    literal arguments (`optKind`, a decision 12 overload like `scan`'s):
+    a switch string with no argument is a flag (`bool`, false for
+    `--no-x`), `--name NAME`/`-n NAME`/`--name=NAME` a required argument,
+    `[NAME]` an optional one, and a coercion class sets the type: none or
+    `String` → `String`, `Integer` → `Integer` (MRI's `Integer()`, so
+    `0x10` works), `Float`, `Array` → `Array[String]` split on commas; an
+    optional argument makes it `T?` (nil when absent; no optional Array).
+    The call goes to `__on_<kind>` (and `__on_tail_`/`__on_head_`); a
+    non-literal switch string keeps the untyped `on`. Other coercions,
+    completion lists and patterns are compile errors.
+    - **Parsing** is MRI's permute mode: switches anywhere, operands
+      returned in order, all after `--` untouched; `-abc` clusters,
+      `-nVALUE`/`--name=VALUE` attached values, a required argument
+      taking the next word even if it starts with `-`, an optional one
+      only if it doesn't; long names and `--no-` forms complete by unique
+      prefix, and a short letter with no switch completes against long
+      names (`-h` is `--help`). `parse(argv)` returns the operands,
+      `parse!(argv = ARGV)` also leaves them in `argv`, and a trailing
+      `into: hash` stores each value under the long name's Symbol (a
+      `Hash[Symbol, untyped]` or an unannotated `{}`).
+    - **Errors** are MRI's classes under `OptionParser::ParseError <
+      RuntimeError` with its messages: `invalid option: -z`, `missing
+      argument: -n`, `invalid argument: --count=abc`, `needless argument:
+      --extra=1`, `ambiguous option: --l`.
+    - **Help** (`help`, `to_s`, `puts parser`) is Switch#summarize ported
+      line for line: `banner` (default `Usage: <$0's basename> [options]`),
+      a 4-space indent, a 32-column switch field, descriptions after one
+      space, a switch field too wide on its own line, extra description
+      lines aligned, `separator` lines as given, `on_head` first and
+      `on_tail` last. `--help` (or any prefix, `-h`) prints it and exits
+      0; `--version` prints `version=`'s value or MRI's `version unknown`.
+    - Not done: `order!`/`permute!`, POSIXLY_CORRECT, `getopts`,
+      completion lists, `Regexp` patterns, `accept`, `summarize` with a
+      block, `on`'s long-description Hash, `OptionParser::Arguable`.
+    ([example 76](examples/76_optparse/main.rb)).

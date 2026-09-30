@@ -1579,12 +1579,8 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		base = strings.ToLower(strings.TrimPrefix(op, "Op_"))
 	}
 	name := "__" + base + "_"
-	// String#scan's result shape depends on the pattern: a literal with
-	// groups yields each match's groups.
-	if m.Name == "scan" && owner.RubyName == "String" && len(args) == 1 {
-		if g, ok := f.literalGroups(args[0]); ok && g > 0 {
-			return owner.lookup("__scan_groups")
-		}
+	if r := f.literalOverload(m, owner, args); r != nil {
+		return r
 	}
 	if r := f.selfOverload(m, owner, name, recvT, args); r != nil {
 		return r
@@ -1614,6 +1610,23 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// literalOverload picks an overload from literal arguments: String#scan
+// with a pattern that has groups yields each match's groups; OptionParser#on
+// is typed by its switch strings (decision 101).
+func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *entry {
+	switch {
+	case m.Name == "scan" && owner.RubyName == "String" && len(args) == 1:
+		if g, ok := f.literalGroups(args[0]); ok && g > 0 {
+			return owner.lookup("__scan_groups")
+		}
+	case owner.RubyName == "OptionParser" && (m.Name == "on" || m.Name == "on_tail" || m.Name == "on_head"):
+		if k := f.optKind(args); k != "" {
+			return owner.lookup("__" + m.Name + "_" + k)
+		}
+	}
+	return nil
 }
 
 // selfOverload picks, for a method whose own `@self` the receiver doesn't

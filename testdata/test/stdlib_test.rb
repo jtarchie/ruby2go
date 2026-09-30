@@ -8,6 +8,7 @@ require "date"
 require "digest"
 require "json"
 require "net/http"
+require "optparse"
 require "securerandom"
 require "set"
 require "stringio"
@@ -912,6 +913,84 @@ module StdlibTests
       assert_equal 0, sleep(0.01)
       assert_equal 0, sleep(0)
       assert_equal "time interval must not be negative", assert_raises(ArgumentError) { sleep(-1) }.message
+    end
+  end
+
+  # OptionParser (decision 101): typed blocks, MRI's help layout, parse forms and errors.
+  class OptionParserTest < Minitest::Test
+    #: (Hash[Symbol, untyped]) -> OptionParser
+    def parser_into(seen)
+      OptionParser.new do |o|
+        o.banner = "Usage: tool [options] FILE"
+        o.on("-v", "--[no-]verbose", "Run verbosely") { |v| seen[:verbose] = v }
+        o.on("-n", "--name NAME", "Name to use") { |v| seen[:name] = v.upcase }
+        o.on("-c", "--count N", Integer, "How many") { |v| seen[:count] = v + 1 }
+        o.on("--ratio R", Float, "A ratio") { |v| seen[:ratio] = v * 2 }
+        o.on("-l", "--list A,B", Array, "A list") { |v| seen[:list] = v.size }
+        o.on("--level [LEVEL]", "Optional level") { |v| seen[:level] = v }
+        o.on("--depth [N]", Integer, "Optional depth") { |v| seen[:depth] = v }
+        o.separator ""
+        o.separator "Specific:"
+        o.on("--a-very-long-option-name-that-overflows VALUE", "Desc after overflow") { |v| seen[:long] = v }
+        o.on("-x", "--extra", "Multi line", "second line") { |v| seen[:extra] = v }
+        o.on_tail("-h", "--help", "Show help") { |_| seen[:help] = true }
+      end
+    end
+
+    def test_help
+      assert_equal <<~HELP, parser_into({}).help
+        Usage: tool [options] FILE
+            -v, --[no-]verbose               Run verbosely
+            -n, --name NAME                  Name to use
+            -c, --count N                    How many
+                --ratio R                    A ratio
+            -l, --list A,B                   A list
+                --level [LEVEL]              Optional level
+                --depth [N]                  Optional depth
+
+        Specific:
+                --a-very-long-option-name-that-overflows VALUE
+                                             Desc after overflow
+            -x, --extra                      Multi line
+                                             second line
+            -h, --help                       Show help
+      HELP
+    end
+
+    def test_parse
+      seen = {} #: Hash[Symbol, untyped]
+      argv = %w[-v --name bob -c 3 file1 --ratio=0.5 -lx,y,z --level --no-verbose --depth 4 file2 -- -z]
+      assert_equal %w[file1 file2 -z], parser_into(seen).parse!(argv)
+      assert_equal %w[file1 file2 -z], argv
+      assert_equal({ verbose: false, name: "BOB", count: 4, ratio: 1.0, list: 3, level: nil, depth: 4 }, seen)
+      seen.clear
+      assert_equal [], parser_into(seen).parse(%w[--verb --lev 3 -c 0x10 --dep -xnjoe])
+      assert_equal({ verbose: true, level: "3", count: 17, depth: nil, extra: true, name: "JOE" }, seen)
+    end
+
+    def test_errors
+      got = %w[-z --nope -n --count=abc --extra=1 --ratio=x --verbose=1].map do |a|
+        e = assert_raises(OptionParser::ParseError) { parser_into({}).parse([a]) }
+        "#{e.class}: #{e.message}"
+      end
+      assert_equal ["OptionParser::InvalidOption: invalid option: -z", "OptionParser::InvalidOption: invalid option: --nope",
+                    "OptionParser::MissingArgument: missing argument: -n", "OptionParser::InvalidArgument: invalid argument: --count=abc",
+                    "OptionParser::NeedlessArgument: needless argument: --extra=1", "OptionParser::InvalidArgument: invalid argument: --ratio=x",
+                    "OptionParser::NeedlessArgument: needless argument: --verbose=1"], got
+      e = assert_raises(OptionParser::AmbiguousOption) { parser_into({}).parse(%w[--l]) }
+      assert_equal "ambiguous option: --l", e.message
+    end
+
+    def test_into
+      h = {} #: Hash[Symbol, untyped]
+      o = OptionParser.new do |x|
+        x.on("-v", "--verbose")
+        x.on("-c", "--count N", Integer)
+        x.on("--[no-]color")
+        x.on("-l [LEVEL]")
+      end
+      assert_equal [], o.parse(%w[-v -c 2 --no-color -l rest], into: h)
+      assert_equal({ verbose: true, count: 2, color: false, l: "rest" }, h)
     end
   end
 end

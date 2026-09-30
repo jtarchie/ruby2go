@@ -1088,4 +1088,19 @@ class A
   # @rbs @x: Array[Integer]
   def_delegator :@x, :nope
 end
+-- optparse_coercion.rb --
+# error: main.rb:4: OptionParser#on: coercion to Symbol is not supported (Integer, Float, Array or String)
+# rbs_inline: enabled
+require "optparse"
+OptionParser.new { |o| o.on("--mode M", Symbol) { |m| p m } }
+-- optparse_completion_list.rb --
+# error: main.rb:4: OptionParser#on: completion lists and patterns are not supported
+# rbs_inline: enabled
+require "optparse"
+OptionParser.new { |o| o.on("--type T", %w[text binary]) { |t| p t } }
+-- optparse_typed_block.rb --
+# error: main.rb:4: undefined method upcase for Integer
+# rbs_inline: enabled
+require "optparse"
+OptionParser.new { |o| o.on("-c N", Integer) { |n| p n.upcase } }
 
