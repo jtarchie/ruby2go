@@ -355,7 +355,7 @@ class Array < Object
 
   #: () -> Array[E]?
   def uniq! = %x{
-    u := self.Uniq()
+    u := Array_Uniq(self)
     if len(*u) == len(*self) {
       return nil
     }
@@ -553,7 +553,7 @@ class Array < Object
     for i, x := range *self {
       // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
       if a, ok := any(x).(Array_Any); ok {
-        parts[i] = string(a._ToAny().Join(sep))
+        parts[i] = string(Array_Join(a._ToAny(), sep))
         continue
       }
       parts[i] = string(rbToS(x))

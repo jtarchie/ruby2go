@@ -16,7 +16,7 @@ func rbWEBrickNew(config *Hash[Symbol, any]) *WEBrick_HTTPServer {
 	if err != nil {
 		panic(NewIOError(Ref(String(err.Error()))))
 	}
-	config.Op_idxSet(Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
+	Hash_Op_idxSet[Symbol, any](config, Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
 	mux := http.NewServeMux()
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	return &WEBrick_HTTPServer{srv: srv, ln: ln, mux: mux, config: config}
@@ -31,7 +31,7 @@ func rbWEBrickParseCookies(raw string) *Array[WEBrick_CookieI] {
 			continue
 		}
 		k, v, _ := strings.Cut(part, "=")
-		out.Push(NewWEBrick_Cookie(String(strings.TrimSpace(k)), String(v)))
+		Array_Push[WEBrick_CookieI](out, NewWEBrick_Cookie(String(strings.TrimSpace(k)), String(v)))
 	}
 	return out
 }
@@ -53,7 +53,7 @@ func rbParseQuery(h *Hash[String, String], q string) {
 		k, _ = url.QueryUnescape(k)
 		v, _ = url.QueryUnescape(v)
 		if _, seen := h.vals[String(k)]; !seen {
-			h.Op_idxSet(String(k), String(v))
+			Hash_Op_idxSet(h, String(k), String(v))
 		}
 	}
 }

@@ -116,7 +116,7 @@ class Array
   #: (Hash[Symbol, Random]) -> Array[E]
   def shuffle!(opts) = %x{
     rng := rbDefaultRandom
-    if r := opts.Op_idx(Symbol("random")); r != nil {
+    if r := Hash_Op_idx(opts, Symbol("random")); r != nil {
       rng = *r
     }
     rbShuffle(*self, &rng.mt)
@@ -129,7 +129,7 @@ class Array
       panic(NewArgumentError(Ref(String("negative sample number"))))
     }
     rng := rbDefaultRandom
-    if r := opts.Op_idx(Symbol("random")); r != nil {
+    if r := Hash_Op_idx(opts, Symbol("random")); r != nil {
       rng = *r
     }
     out := &Array[E]{}

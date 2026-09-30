@@ -259,7 +259,7 @@ class Hash < Object
     out := NewHash[K, V]()
     for _, k := range rest_ {
       if v, ok := self.vals[k]; ok {
-        out.Op_idxSet(k, v)
+        Hash_Op_idxSet(out, k, v)
       }
     }
     return out
@@ -289,13 +289,13 @@ class Hash < Object
   def __merge_block(other) = %x{
     out := NewHash[K, V]()
     for _, k := range self.keys {
-      out.Op_idxSet(k, self.vals[k])
+      Hash_Op_idxSet(out, k, self.vals[k])
     }
     for _, k := range other.keys {
       if old, ok := out.vals[k]; ok {
-        out.Op_idxSet(k, blk(k, old, other.vals[k]))
+        Hash_Op_idxSet(out, k, blk(k, old, other.vals[k]))
       } else {
-        out.Op_idxSet(k, other.vals[k])
+        Hash_Op_idxSet(out, k, other.vals[k])
       }
     }
     return out
@@ -305,7 +305,7 @@ class Hash < Object
   def delete_if = %x{
     for _, k := range slices.Clone(self.keys) {
       if v, ok := self.vals[k]; ok && bool(blk(k, v)) {
-        self.Delete(k)
+        Hash_Delete(self, k)
       }
     }
     return self
@@ -315,7 +315,7 @@ class Hash < Object
   def keep_if = %x{
     for _, k := range slices.Clone(self.keys) {
       if v, ok := self.vals[k]; ok && !bool(blk(k, v)) {
-        self.Delete(k)
+        Hash_Delete(self, k)
       }
     }
     return self
@@ -467,7 +467,7 @@ class Hash < Object
     }
     out := NewHash[any, any]()
     for _, k := range self.keys {
-      out.Op_idxSet(rbUnbox(k), rbUnbox(self.vals[k]))
+      Hash_Op_idxSet(out, rbUnbox(k), rbUnbox(self.vals[k]))
     }
     return out
   }

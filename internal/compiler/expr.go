@@ -691,12 +691,12 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 	if kT == nil {
 		kT, vT = joinOrAny(ks), joinOrAny(vs)
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "NewHash[%s, %s]()", f.c.goType(kT), f.c.goType(vT))
-	for _, p := range pairs {
-		fmt.Fprintf(&b, ".__Set(%s, %s)", f.coerce(n, p.k, kT), f.coerce(n, p.v, vT))
+	targs := "[" + f.c.goType(kT) + ", " + f.c.goType(vT) + "]"
+	code := "NewHash" + targs + "()"
+	for _, p := range pairs { // Hash's methods are free funcs (decision 86)
+		code = "Hash___Set" + targs + "(" + code + ", " + f.coerce(n, p.k, kT) + ", " + f.coerce(n, p.v, vT) + ")"
 	}
-	return expr{code: b.String(), typ: TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}}
+	return expr{code: code, typ: TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}}
 }
 
 // joinOrAny is the element type of an unannotated literal: the join of its
@@ -1604,7 +1604,9 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		ps, ret := f.c.sig(m, env)
 		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
 	}
-	free := m.generic() || (m.Private && !f.c.isDirectMethod(m)) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e))
+	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
+	direct := f.c.isDirectMethod(m)
+	free := m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
 	if !free {
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
@@ -3015,7 +3017,7 @@ func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
 				f.errorf(n, "cannot destructure %s", v.typ)
 			}
 			for i := range n.Lefts {
-				vals = append(vals, flatOpt(expr{code: fmt.Sprintf("%s.Op_idx(%d)", tmp, i), typ: TOpt{Elem: t.Args[0]}}))
+				vals = append(vals, flatOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", f.c.goType(t.Args[0]), tmp, i), typ: TOpt{Elem: t.Args[0]}}))
 			}
 		default:
 			f.errorf(n, "cannot destructure %s", v.typ)

@@ -18,6 +18,7 @@ var stdMethodNames = map[string]bool{
 type pruneMethod struct {
 	recv string
 	decl *ast.FuncDecl
+	fwd  bool // a generic type's forwarder to its free func: kept only when a kept interface declares it (decision 86)
 }
 
 // pruner marks what main reaches: a type when an identifier names it, a method when its receiver
@@ -68,11 +69,15 @@ func pruneDecls(f *ast.File) {
 			if !p.names[m.recv] {
 				continue
 			}
-			switch name := m.decl.Name.Name; {
-			case p.methodNames[name] && p.stubs[m.decl]:
+			name := m.decl.Name.Name
+			// a selector matches unscoped, and Ruby's names (size, first, ...) are on every class: a generic
+			// type's forwarder taken on such a match would instantiate its free func for every type argument
+			selected := p.methodNames[name] && (!m.fwd || p.declared[name])
+			switch {
+			case selected && p.stubs[m.decl]:
 				delete(p.stubs, m.decl)
 				p.queue = append(p.queue, m.decl.Body)
-			case p.methodNames[name]:
+			case selected:
 				p.keep(m.decl)
 			case p.declared[name] && !p.kept[m.decl]:
 				p.kept[m.decl] = true
@@ -89,7 +94,7 @@ func (p *pruner) index(d ast.Decl) {
 	case *ast.FuncDecl:
 		switch {
 		case d.Recv != nil:
-			p.methods = append(p.methods, pruneMethod{recvName(d.Recv.List[0].Type), d})
+			p.methods = append(p.methods, pruneMethod{recvName(d.Recv.List[0].Type), d, isGenericForwarder(d)})
 		case d.Name.Name == "main" || d.Name.Name == "init":
 			p.roots = append(p.roots, d)
 		default:
@@ -321,4 +326,46 @@ func recvName(e ast.Expr) string {
 			return ""
 		}
 	}
+}
+
+// isGenericForwarder reports whether d is a method on a generic type whose whole body calls the
+// free func of the same name (`func (self *Array[E]) Size() Integer { return Array_Size[E](self) }`).
+func isGenericForwarder(d *ast.FuncDecl) bool {
+	recv := d.Recv.List[0].Type
+	if s, ok := recv.(*ast.StarExpr); ok {
+		recv = s.X
+	}
+	switch recv.(type) {
+	case *ast.IndexExpr, *ast.IndexListExpr:
+	default:
+		return false
+	}
+	if d.Body == nil || len(d.Body.List) != 1 {
+		return false
+	}
+	var call ast.Expr
+	switch st := d.Body.List[0].(type) {
+	case *ast.ReturnStmt:
+		if len(st.Results) != 1 {
+			return false
+		}
+		call = st.Results[0]
+	case *ast.ExprStmt:
+		call = st.X
+	default:
+		return false
+	}
+	ce, ok := call.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	fun := ce.Fun
+	switch x := fun.(type) {
+	case *ast.IndexExpr:
+		fun = x.X
+	case *ast.IndexListExpr:
+		fun = x.X
+	}
+	id, ok := fun.(*ast.Ident)
+	return ok && id.Name == recvName(recv)+"_"+d.Name.Name
 }

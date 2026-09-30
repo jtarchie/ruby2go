@@ -115,7 +115,7 @@ class Queue < Object
   # `timeout:` from a Hash (decision 23), since keyword params are not supported.
   #: (Hash[Symbol, Float]) -> E?
   def __pop_hash(opts) = %x{
-    if t := opts.Op_idx(Symbol("timeout")); t != nil {
+    if t := Hash_Op_idx(opts, Symbol("timeout")); t != nil {
       return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(float64(*t) * 1e9))))
     }
     return self.q.pop(false)
@@ -212,7 +212,7 @@ class SizedQueue < Object
   # `timeout:` from a Hash (decision 23), since keyword params are not supported.
   #: (Hash[Symbol, Float]) -> E?
   def __pop_hash(opts) = %x{
-    if t := opts.Op_idx(Symbol("timeout")); t != nil {
+    if t := Hash_Op_idx(opts, Symbol("timeout")); t != nil {
       return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(float64(*t) * 1e9))))
     }
     return self.q.pop(false)

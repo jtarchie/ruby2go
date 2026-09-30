@@ -94,7 +94,7 @@ func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (r
 				if verr != nil {
 					return rbJSONVal{}, verr
 				}
-				h.Op_idxSet(keyOf(ks), v.v)
+				Hash_Op_idxSet(h, keyOf(ks), v.v)
 			}
 			if _, cerr := dec.Token(); cerr != nil { // consume '}'
 				return rbJSONVal{}, cerr

@@ -205,7 +205,7 @@ class ENVClass < Object
     h := NewHash[String, String]()
     for _, kv := range os.Environ() {
       k, v, _ := strings.Cut(kv, "=")
-      h.Op_idxSet(String(k), String(v))
+      Hash_Op_idxSet(h, String(k), String(v))
     }
     return h
   }

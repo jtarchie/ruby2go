@@ -129,7 +129,7 @@ module Net
 
       #: (String, String) -> void
       def []=(name, value)
-        %x{ self.Header().Op_idxSet(String(rbHTTPCanonKey(string(name))), value) }
+        %x{ Hash_Op_idxSet(self.Header(), String(rbHTTPCanonKey(string(name))), value) }
       end
 
       #: (String) -> void

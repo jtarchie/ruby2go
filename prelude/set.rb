@@ -17,7 +17,7 @@ class Set < Object
       panic(NewTypeError(Ref(String("no implicit conversion into Set"))))
     }
     for _, e := range *elems {
-      s.Add(e.(X))
+      Set_Add(s, e.(X))
     }
     return s
   }
@@ -26,7 +26,7 @@ class Set < Object
   def self.__new_array(xs) = %x{
     s := NewSet[X]()
     for _, x := range *xs {
-      s.Add(x)
+      Set_Add(s, x)
     }
     return s
   }
@@ -35,7 +35,7 @@ class Set < Object
   def self.__new_range(xs) = %x{
     s := NewSet[X]()
     for x := range xs.Each() {
-      s.Add(x)
+      Set_Add(s, x)
     }
     return s
   }
@@ -44,7 +44,7 @@ class Set < Object
   def self.__new_set(xs) = %x{
     s := NewSet[X]()
     for x := range xs.Each() {
-      s.Add(x)
+      Set_Add(s, x)
     }
     return s
   }
@@ -53,7 +53,7 @@ class Set < Object
   def self.__new_hash(xs) = %x{
     s := NewSet[Tuple2[K, V]]()
     for t := range xs.Each() {
-      s.Add(t)
+      Set_Add(s, t)
     }
     return s
   }
@@ -67,7 +67,7 @@ class Set < Object
       panic(NewTypeError(Ref(String("no implicit conversion into Set"))))
     }
     for _, e := range *elems {
-      s.Add(blk(e))
+      Set_Add(s, blk(e))
     }
     return s
   }
@@ -78,7 +78,7 @@ class Set < Object
   #: () { (E) -> void } -> void
   def each = %x{
     return func(yield func(E) bool) {
-      for k := range self.h.EachKey() {
+      for k := range Hash_EachKey(self.h) {
         if !yield(k) {
           return
         }
@@ -88,7 +88,7 @@ class Set < Object
 
   #: (E) -> self
   def add(x) = %x{
-    self.h.Op_idxSet(x, true)
+    Hash_Op_idxSet(self.h, x, true)
     return self
   }
 
@@ -103,7 +103,7 @@ class Set < Object
 
   #: (E) -> self
   def delete(x) = %x{
-    self.h.Delete(x)
+    Hash_Delete(self.h, x)
     return self
   }
 
@@ -114,7 +114,7 @@ class Set < Object
   end
 
   #: (E) -> bool
-  def include?(x) = %x{ self.h.KeyQ(x) }
+  def include?(x) = %x{ Hash_KeyQ(self.h, x) }
 
   #: (E) -> bool
   def member?(x) = include?(x)
@@ -123,7 +123,7 @@ class Set < Object
   def ===(x) = include?(x)
 
   #: () -> Integer
-  def size = %x{ self.h.Size() }
+  def size = %x{ Hash_Size(self.h) }
 
   #: () -> Integer
   def length = size
@@ -132,16 +132,16 @@ class Set < Object
   def count = size
 
   #: () -> bool
-  def empty? = %x{ self.h.EmptyQ() }
+  def empty? = %x{ Hash_EmptyQ(self.h) }
 
   #: () -> self
   def clear = %x{
-    self.h.Clear()
+    Hash_Clear(self.h)
     return self
   }
 
   #: () -> Array[E]
-  def to_a = %x{ self.h.Keys() }
+  def to_a = %x{ Hash_Keys(self.h) }
 
   #: () -> Set[E]
   def dup = Set.new(to_a)
@@ -262,7 +262,7 @@ class Set < Object
       }
       return false
     }
-    return Boolean(o.Size() == self.Size() && bool(self.SubsetQ(o)))
+    return Boolean(Set_Size(o) == Set_Size(self) && bool(Set_SubsetQ(self, o)))
   }
 
   #: (untyped) -> bool
@@ -271,7 +271,7 @@ class Set < Object
   #: () -> Integer
   def hash = %x{
     var h Integer
-    for k := range self.h.EachKey() {
+    for k := range Hash_EachKey(self.h) {
       h += rbHash(k) // order-independent, as == is
     }
     return h
@@ -289,8 +289,8 @@ class Set < Object
       return same
     }
     out := NewSet[any]()
-    for k := range self.h.EachKey() {
-      out.Add(rbUnbox(k))
+    for k := range Hash_EachKey(self.h) {
+      Set_Add(out, rbUnbox(k))
     }
     return out
   }

@@ -23,7 +23,7 @@ func (*Set[E]) rbFrom(v any) (*Set[E], bool) {
 		if !ok {
 			return nil, false
 		}
-		out.Add(e)
+		Set_Add(out, e)
 	}
 	return out, true
 }
@@ -34,12 +34,12 @@ func rbEnumElems(xs any) (*Array[any], bool) {
 	case interface{ _ToAny() *Array[any] }:
 		return v._ToAny(), true
 	case interface{ _ToAny() *Range[any] }:
-		return v._ToAny().ToA(), true
+		return Range_ToA(v._ToAny()), true
 	case interface{ _ToAny() *Set[any] }:
-		return v._ToAny().ToA(), true
+		return Set_ToA(v._ToAny()), true
 	case interface{ _ToAny() *Hash[any, any] }:
 		out := &Array[any]{}
-		for _, t := range *v._ToAny().ToA() {
+		for _, t := range *v._ToAny().ToA() { // Enumerable's forwarder
 			*out = append(*out, t)
 		}
 		return out, true

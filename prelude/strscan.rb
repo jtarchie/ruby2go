@@ -185,7 +185,7 @@ class StringScanner < Object
     }
     for i, name := range self.names {
       if name != "" {
-        out.Op_idxSet(String(name), self.groups[i])
+        Hash_Op_idxSet(out, String(name), self.groups[i])
       }
     }
     return out

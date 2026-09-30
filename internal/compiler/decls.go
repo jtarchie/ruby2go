@@ -189,7 +189,11 @@ func staticCallCode(m *Method, targs, recv, args string) string {
 }
 
 // isDirectMethod reports whether m is emitted as a plain Go method on its
-// owner (primitive classes' own non-generic methods, attr accessors).
+// owner (non-generic primitive classes' own non-generic methods, attr
+// accessors). A generic primitive's (Array, Hash) methods are free funcs
+// with a forwarder, since Go compiles every method of a generic type for
+// every instantiation, used or not, but a free func only when called
+// (decision 86).
 func (c *Compiler) isDirectMethod(m *Method) bool {
 	if m.Owner == nil {
 		return false
@@ -197,7 +201,7 @@ func (c *Compiler) isDirectMethod(m *Method) bool {
 	if m.Kind == kindAttrReader || m.Kind == kindAttrWriter || m.Kind == kindSynth {
 		return true
 	}
-	return m.Owner.GoType != "" && !m.generic()
+	return m.Owner.GoType != "" && !m.generic() && len(m.Owner.TypeParams) == 0
 }
 
 // constraint renders the Self constraint for free funcs of owner.

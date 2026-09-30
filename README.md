@@ -2115,3 +2115,35 @@ resolve; anything not listed is still open.
       class, ~150k lines): the next step before TestMinitest is one build.
     - **Proof:** the dynamic dispatch checks in `testdata/test` (send,
       respond_to?, private methods, method_missing) and `testdata/run`.
+86. A generic primitive's methods (`Array`, `Hash`, `Set`, `Range`,
+    `Enumerator`, `Queue`: `@go_type` with `@rbs generic`) are free funcs,
+    `Array_Push[E](self *Array[E], v E)`, as struct and module methods
+    already are, and a call site names the free func with the receiver's
+    type args (`Array_Push[FooI](a, NewFoo())`: Go infers a free func's
+    type from every argument and won't widen `*Foo` to `FooI` on its own).
+    Each also gets a one-line forwarder method, which the pruner keeps
+    only when a kept interface declares the name (a module constraint's
+    `Each`, a dynamic-dispatch `interface{ Size() Integer }`, `Op_eq`
+    for rbEq), not on a bare selector match: Ruby's names (`size`,
+    `first`, `join`) are on every class, so an unscoped match would keep
+    Array's forwarder whenever a String is measured. Raw Go in the
+    prelude (`%x{}`, `prelude/go`) therefore calls these by free func too
+    (`Hash_Op_idxSet(h, k, v)`), and a hash literal is
+    `Hash___Set[K, V](NewHash[K, V](), k, v)`. Non-generic primitives
+    (`String`, `Integer`) keep plain Go methods.
+    - **Why:** Go compiles every method of a generic type for every
+      instantiation, used or not, both the shaped body and a wrapper
+      (golang/go#70511, closed as not planned); a free generic func is
+      compiled only where it is called. array_test's program had 42
+      `Array[...]` instantiations × 93 methods: the Go compiler emitted
+      54.8k functions and the linker kept 10.1k, with 77% of compile time
+      in the backend. It now emits 39.7k, and the uncached build went from
+      12.4s to 7.6s (25.4s to 15.4s with `-race`), same test output.
+      Crystal's compiler has the same top cost (crystal#4864: `Array(T)`
+      methods re-instantiated per T) and the same answer: only a called
+      (type, method) pair is emitted. What remains per shape is the
+      `Dyn*` wrappers and the interface-declared forwarders; emitting
+      only the pairs the type checker resolved is the next step.
+    - **Proof:** `testdata/test/array_test.rb`, `hash_test.rb`,
+      `stdlib_test.rb` (Set, Queue) and `dynamic_test.rb` unchanged; the
+      prelude's raw Go compiles in every example.

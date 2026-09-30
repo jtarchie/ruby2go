@@ -140,7 +140,7 @@ module URI
       if err != nil {
         panic(NewArgumentError(Ref(String("invalid %-encoding (" + string(s) + ")"))))
       }
-      out.Push(Tuple2[String, String]{String(dk), String(dv)})
+      Array_Push(out, Tuple2[String, String]{String(dk), String(dv)})
     }
     return out
   }

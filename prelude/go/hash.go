@@ -75,7 +75,7 @@ func (*Hash[K, V]) rbFrom(v any) (*Hash[K, V], bool) {
 		if !ok {
 			return nil, false
 		}
-		out.Op_idxSet(ck, cv)
+		Hash_Op_idxSet(out, ck, cv)
 	}
 	return out, true
 }
