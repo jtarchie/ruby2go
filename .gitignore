@@ -1,2 +1,8 @@
 dev.sh
 .claude/worktrees/
+# stray binaries from `go build` / `rb2go build` in the repo root
+/main
+/mt
+/g
+/fz
+/resc
