@@ -1947,4 +1947,82 @@ module NumberTests
       assert_equal "[1.0e+20, -0.0, 100.0, 1.0e-05, 7, -3, true, nil]", (([1e20, -0.0, 100.0, 1e-5, 7, -3, true, nil])).inspect
     end
   end
+
+  # Kernel#Integer / Kernel#Float: strict, whole-string conversion (issue #3).
+  class NumberStrictConversionTest < Minitest::Test
+    def test_integer_strings
+      got = ["42", " 42\n", "-42", "+7", "1_000", "0x1f", "0X1F", "-0x1f", "0b101", "0o17", "017", "0_7", "0d19", "00"].map { |s| Integer(s) }
+      assert_equal [42, 42, -42, 7, 1000, 31, 31, -31, 5, 15, 15, 7, 19, 0], got
+    end
+
+    def test_integer_bad_strings
+      got = ["1__0", "_1", "1_", "08", "abc", "", " ", "4 2", "42abc", "0x", "- 42", "1e3", "12.5", "+-1"].map do |s|
+        assert_raises(ArgumentError) { Integer(s) }.message
+      end
+      assert_equal ["invalid value for Integer(): \"1__0\"", "invalid value for Integer(): \"_1\"",
+                    "invalid value for Integer(): \"1_\"", "invalid value for Integer(): \"08\"",
+                    "invalid value for Integer(): \"abc\"", "invalid value for Integer(): \"\"",
+                    "invalid value for Integer(): \" \"", "invalid value for Integer(): \"4 2\"",
+                    "invalid value for Integer(): \"42abc\"", "invalid value for Integer(): \"0x\"",
+                    "invalid value for Integer(): \"- 42\"", "invalid value for Integer(): \"1e3\"",
+                    "invalid value for Integer(): \"12.5\"", "invalid value for Integer(): \"+-1\""], got
+    end
+
+    def test_integer_base
+      assert_equal 255, Integer("ff", 16)
+      assert_equal 255, Integer("0xff", 16)
+      assert_equal 35, Integer("z", 36)
+      assert_equal 2833, Integer("0b11", 16)
+      assert_equal(-255, Integer(" -ff ", 16))
+      assert_equal 8, Integer("010", 0)
+      assert_equal "invalid value for Integer(): \"12\"", assert_raises(ArgumentError) { Integer("12", 2) }.message
+      assert_equal "invalid value for Integer(): \"0xff\"", assert_raises(ArgumentError) { Integer("0xff", 10) }.message
+      assert_equal "invalid radix 37", assert_raises(ArgumentError) { Integer("1", 37) }.message
+    end
+
+    def test_integer_numbers
+      assert_equal 3, Integer(3.9)
+      assert_equal(-3, Integer(-3.9))
+      assert_equal 5, Integer(5)
+      assert_equal "NaN", assert_raises(FloatDomainError) { Integer(Float::NAN) }.message
+      assert_equal "-Infinity", assert_raises(FloatDomainError) { Integer(-Float::INFINITY) }.message
+    end
+
+    def test_nil_and_untyped
+      h = { a: "12", f: "2.5" } #: Hash[Symbol, String]
+      assert_equal 12, Integer(h[:a])
+      assert_equal 2.5, Float(h[:f])
+      assert_equal "can't convert nil into Integer", assert_raises(TypeError) { Integer(h[:b]) }.message
+      assert_equal "can't convert nil into Float", assert_raises(TypeError) { Float(h[:b]) }.message
+      v = number_ident("0x10") #: untyped
+      assert_equal 16, Integer(v)
+      assert_equal 16, Integer(v, 16)
+      assert_equal 3, Integer(number_ident(3.5))
+      assert_equal "base specified for non string value", assert_raises(ArgumentError) { Integer(number_ident(5), 2) }.message
+    end
+
+    def test_float_strings
+      got = ["3.5", " 3.5 ", "1e5", "1E-2", "-1.5", "+1.5", "1_000.5", ".5", "5.", "1.e5", "0x1A", "0x1.8p1", "3", "1e5_0", "017", "1e+5", "0.1_2"].map { |s| Float(s) }
+      assert_equal [3.5, 3.5, 100000.0, 0.01, -1.5, 1.5, 1000.5, 0.5, 5.0, 100000.0, 26.0, 3.0, 3.0, 1.0e+50, 17.0, 100000.0, 0.12], got
+    end
+
+    def test_float_bad_strings
+      got = ["1__0.5", "Infinity", "NaN", "abc", "", "1.5abc", "1_e5", "0b11", "1e", "_1.5", "1.5_", "1._5", "0x", "- 1.5", "1e_5", "+-1"].map do |s|
+        assert_raises(ArgumentError) { Float(s) }.message
+      end
+      assert_equal ["invalid value for Float(): \"1__0.5\"", "invalid value for Float(): \"Infinity\"",
+                    "invalid value for Float(): \"NaN\"", "invalid value for Float(): \"abc\"",
+                    "invalid value for Float(): \"\"", "invalid value for Float(): \"1.5abc\"",
+                    "invalid value for Float(): \"1_e5\"", "invalid value for Float(): \"0b11\"",
+                    "invalid value for Float(): \"1e\"", "invalid value for Float(): \"_1.5\"",
+                    "invalid value for Float(): \"1.5_\"", "invalid value for Float(): \"1._5\"",
+                    "invalid value for Float(): \"0x\"", "invalid value for Float(): \"- 1.5\"",
+                    "invalid value for Float(): \"1e_5\"", "invalid value for Float(): \"+-1\""], got
+    end
+
+    def test_float_numbers
+      assert_equal 3.0, Float(3)
+      assert_equal 2.5, Float(2.5)
+    end
+  end
 end

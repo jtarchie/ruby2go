@@ -380,3 +380,42 @@ class Integer < Object
     out
   end
 end
+
+# Kernel#Integer: strict conversion. A String argument must be a number
+# entirely; `nil` raises TypeError. The argument's class picks the overload
+# at compile time (decision 12), so only an untyped or nilable one is boxed.
+module Kernel
+  private
+
+  #: (untyped) -> Integer
+  def Integer(x) = %x{
+    switch v := rbUnbox(x).(type) {
+    case Integer:
+      return v
+    case Float:
+      return rbFloatToI(float64(v))
+    case String:
+      return rbStrictInt(v, 0)
+    case nil:
+      panic(NewTypeError(Ref(String("can't convert nil into Integer"))))
+    }
+    panic(NewTypeError(Ref(String("can't convert " + rbClassName(x) + " into Integer"))))
+  }
+
+  #: (untyped, Integer) -> Integer
+  def __Integer_2(x, base) = %x{
+    if v, ok := rbUnbox(x).(String); ok {
+      return rbStrictInt(v, int(base))
+    }
+    panic(NewArgumentError(Ref(String("base specified for non string value"))))
+  }
+
+  #: (Integer) -> Integer
+  def __Integer_integer(x) = x
+
+  #: (Float) -> Integer
+  def __Integer_float(x) = x.to_i
+
+  #: (String, ?Integer) -> Integer
+  def __Integer_string(x, base = 0) = %x{ rbStrictInt(x, int(base)) }
+end

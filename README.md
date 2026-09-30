@@ -2226,3 +2226,17 @@ resolve; anything not listed is still open.
       cache entries only 66 → 65 MB (array_test) and 161 → 159 MB
       (dynamic_test): an empty method costs far less than the average
       function, so the remaining size is in real bodies.
+90. `Kernel#Integer(x, base = 0)` and `Kernel#Float(x)` (issue #3) are
+    strict: a String must be a number from end to end bar surrounding
+    whitespace, else `ArgumentError: invalid value for Integer(): "abc"`;
+    `nil` is a `TypeError`. The argument's static class picks the
+    overload (decision 12): `__Integer_string`, `__Integer_float`,
+    `__Integer_integer` and Float's twins take their argument unboxed,
+    and only an untyped or nilable one reaches the `(untyped)` base,
+    which switches on its run-time class. A two-argument call on a
+    non-String goes to `__Integer_2`, which raises MRI's `base specified
+    for non string value` unless the value turns out to be a String.
+    Past 64 bits is a `RangeError`, as `to_i` (decision 35). `Float()`
+    of an out-of-range string is ±Infinity or 0 without MRI's warning.
+    `exception: false` is not supported yet.
+    ([example 67](examples/67_strict_numbers/main.rb)).

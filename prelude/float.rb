@@ -195,3 +195,32 @@ class Float < Object
   #: () -> bool
   def frozen? = true
 end
+
+# Kernel#Float: strict conversion, overloaded like Kernel#Integer.
+module Kernel
+  private
+
+  #: (untyped) -> Float
+  def Float(x) = %x{
+    switch v := rbUnbox(x).(type) {
+    case Integer:
+      return Float(v)
+    case Float:
+      return v
+    case String:
+      return rbStrictFloat(v)
+    case nil:
+      panic(NewTypeError(Ref(String("can't convert nil into Float"))))
+    }
+    panic(NewTypeError(Ref(String("can't convert " + rbClassName(x) + " into Float"))))
+  }
+
+  #: (Integer) -> Float
+  def __Float_integer(x) = x.to_f
+
+  #: (Float) -> Float
+  def __Float_float(x) = x
+
+  #: (String) -> Float
+  def __Float_string(x) = %x{ rbStrictFloat(x) }
+end
