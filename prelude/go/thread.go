@@ -4,7 +4,7 @@
 package prelude
 
 // rbThreadRun starts run on a goroutine and returns its Thread handle: a panic re-raises on join (or, for SystemExit, exits like MRI's main thread would).
-func rbThreadRun(run func()) *Thread {
+func rbThreadRun(run func() any) *Thread {
 	t := &Thread{done: make(chan struct{})}
 	go func() {
 		defer close(t.done)
@@ -20,7 +20,7 @@ func rbThreadRun(run func()) *Thread {
 				fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(t.err), "("+rbClassName(t.err)+")")
 			}
 		}()
-		run()
+		t.val = run()
 	}()
 	return t
 }

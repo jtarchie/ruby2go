@@ -582,7 +582,7 @@ func rbKindOf(a any, target int) bool {
 // catch-all rescue sees a StandardError.
 func rbWrapPanic(r any) any {
 	switch r.(type) {
-	case ExceptionI, rbStop:
+	case ExceptionI, rbStop, rbThrow:
 		return r
 	}
 	if err, ok := r.(runtime.Error); ok {
@@ -599,6 +599,54 @@ func rbWrapPanic(r any) any {
 		return NewStandardError(Ref[String](String(msg)))
 	}
 	return NewStandardError(Ref[String](String(fmt.Sprint(r))))
+}
+
+// rbThrow unwinds from Kernel#throw to its Kernel#catch. Like rbStop it
+// is not an exception: ensure runs, rescue passes it on.
+type rbThrow struct{ tag, val any }
+
+// rbCatchTags are the tags of the running catch blocks, so a throw with no
+// match raises UncaughtThrowError where it is, as in MRI.
+// ponytail: one list for all threads (MRI's is per-thread), so a thread
+// may throw to another's tag and die with the throw uncaught; a
+// goroutine-local list needs a goroutine id Go does not expose.
+var (
+	rbCatchMu   sync.Mutex
+	rbCatchTags []any
+)
+
+func rbCatch(tag any, blk func(any) any) (res any) {
+	rbCatchMu.Lock()
+	rbCatchTags = append(rbCatchTags, tag)
+	rbCatchMu.Unlock()
+	defer func() {
+		rbCatchMu.Lock()
+		for i := len(rbCatchTags) - 1; i >= 0; i-- {
+			if rbIdentical(rbCatchTags[i], tag) {
+				rbCatchTags = slices.Delete(rbCatchTags, i, i+1)
+				break
+			}
+		}
+		rbCatchMu.Unlock()
+		if r := recover(); r != nil {
+			if t, ok := r.(rbThrow); ok && rbIdentical(t.tag, tag) {
+				res = t.val
+				return
+			}
+			panic(r)
+		}
+	}()
+	return blk(tag)
+}
+
+func rbThrowTag(tag, val any) {
+	rbCatchMu.Lock()
+	caught := slices.ContainsFunc(rbCatchTags, func(t any) bool { return rbIdentical(t, tag) })
+	rbCatchMu.Unlock()
+	if !caught {
+		panic(NewUncaughtThrowError("uncaught throw "+rbInspect(tag), tag, val))
+	}
+	panic(rbThrow{tag, val})
 }
 
 // rbStop unwinds a closure-taking each when the loop over its rbSeq

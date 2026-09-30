@@ -397,8 +397,8 @@ class Array < Object
   #: () { (Integer) -> void } -> void
   def each_index = %x{
     return func(yield func(Integer) bool) {
-      for i := 0; i < len(*self); i++ {
-        if !yield(Integer(i)) {
+      for i := 0; ; i++ { // not range len: the block may grow the array
+        if i >= len(*self) || !yield(Integer(i)) {
           return
         }
       }
@@ -421,8 +421,8 @@ class Array < Object
   #: (?Integer) { (E, Integer) -> void } -> void
   def with_index(offset = 0) = %x{
     return func(yield func(E, Integer) bool) {
-      for i := 0; i < len(*self); i++ {
-        if !yield((*self)[i], Integer(i)+offset) {
+      for i := 0; ; i++ { // not range len: the block may grow the array
+        if i >= len(*self) || !yield((*self)[i], Integer(i)+offset) {
           return
         }
       }
@@ -650,6 +650,93 @@ class Array < Object
     out := &Array[any]{}
     for _, x := range *self {
       *out = append(*out, rbUnbox(x))
+    }
+    return out
+  }
+
+  # flatten on elements that are not Arrays: a copy, or, for untyped
+  # elements, MRI's dynamic splice. Typed nesting goes to the @self forms
+  # below (decision 92).
+  #: (?Integer) -> Array[E]
+  def flatten(depth = -1) = %x{
+    if a, ok := any(self).(*Array[any]); ok {
+      out := &Array[any]{}
+      rbFlattenInto(out, *a, int(depth))
+      return any(out).(*Array[E])
+    }
+    out := slices.Clone(*self)
+    return &out
+  }
+
+  # @self Array[Array[Array[U]]]
+  # @rbs [U] () -> Array[U]
+  def __flatten_nested3 = %x{
+    rows := make([]*Array[U], 0, len(*self))
+    for _, r := range *self {
+      rows = append(rows, *r...)
+    }
+    return rbFlattenRows(rows, -1)
+  }
+
+  # @self Array[Array[U]]
+  # @rbs [U] (?Integer) -> Array[U]
+  def __flatten_nested(depth = -1) = %x{
+    if depth == 0 { // the result would be Array[Array[U]], not this signature's Array[U]
+      panic(NewNotImplementedError(Ref(String("rb2go: flatten(0) of nested Arrays; use dup"))))
+    }
+    return rbFlattenRows(*self, int(depth))
+  }
+
+  # @self Array[[K, V]]
+  # @rbs [K, V] () -> Hash[K, V]
+  def to_h
+    out = {} #: Hash[K, V]
+    each { |pair| out[pair[0]] = pair[1] }
+    out
+  end
+
+  # Pairs as two-element Arrays: the length is checked as MRI does.
+  # @self Array[Array[U]]
+  # @rbs [U] () -> Hash[U, U]
+  def __to_h_arrays
+    out = {} #: Hash[U, U]
+    each_with_index do |r, i|
+      raise ArgumentError, "wrong array length at #{i} (expected 2, was #{r.size})" unless r.size == 2
+      out[r.fetch(0)] = r.fetch(1)
+    end
+    out
+  end
+
+  # @rbs [K, V] () { (E) -> [K, V] } -> Hash[K, V]
+  def __to_h_block
+    out = {} #: Hash[K, V]
+    each do |x|
+      pair = yield(x)
+      out[pair[0]] = pair[1]
+    end
+    out
+  end
+
+  # Rows of different lengths raise IndexError, as in MRI.
+  # @self Array[Array[U]]
+  # @rbs [U] () -> Array[Array[U]]
+  def transpose = %x{
+    out := &Array[*Array[U]]{}
+    if len(*self) == 0 {
+      return out
+    }
+    n := len(*(*self)[0])
+    for _, r := range *self {
+      if len(*r) != n {
+        panic(NewIndexError(Ref(String(fmt.Sprintf("element size differs (%d should be %d)", len(*r), n)))))
+      }
+    }
+    for j := range n {
+      col := make(Array[U], len(*self))
+      for i, r := range *self {
+        col[i] = (*r)[j]
+      }
+      *out = append(*out, &col)
     }
     return out
   }

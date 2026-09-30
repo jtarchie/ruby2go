@@ -351,6 +351,12 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 		f.emit("%s", e.code)
 		return
 	}
+	if _, void := e.typ.(TVoid); void && t.kind != tailNone && isAny(t.typ) {
+		// A void call where an untyped value is wanted (`tap { work }`,
+		// a Thread's block) runs as a statement and yields nil.
+		f.emitExprStmt(n, e)
+		e = expr{code: "nil", typ: TNil{}}
+	}
 	switch t.kind {
 	case tailNone:
 		f.emitExprStmt(n, e)
@@ -1328,7 +1334,7 @@ func terminates(st *parser.StatementsNode) bool {
 	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
 		return true
 	case *parser.CallNode:
-		return last.Receiver == nil && last.Name == "raise"
+		return last.Receiver == nil && (last.Name == "raise" || last.Name == "throw")
 	}
 	return false
 }
@@ -1699,6 +1705,9 @@ func (c *Compiler) newFctx(f *File, owner *Class, m *Method) *fctx {
 		fc.selfType = TVar{Name: "Self"}
 		fc.selfCode = "self"
 	}
+	if m != nil && m.SelfType != nil {
+		fc.selfType = m.SelfType
+	}
 	if m != nil {
 		fc.ret = m.Ret
 		fc.iterator = m.Iterator
@@ -1753,7 +1762,10 @@ func (c *Compiler) emitMethod(m *Method) {
 		c.w("func (self %s) %s(%s) %s {\n", c.recvType(cls), m.GoName, params, retDecl)
 	} else {
 		self := "self Self"
-		if cls.GoType != "" {
+		switch {
+		case m.SelfType != nil:
+			self = "self " + c.goType(m.SelfType)
+		case cls.GoType != "":
 			self = "self " + c.recvType(cls)
 		}
 		c.w("func %s%s(%s%s) %s {\n", freeFuncName(m), c.typeParamDecl(m), self, comma(params), retDecl)

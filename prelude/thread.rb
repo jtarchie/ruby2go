@@ -1,18 +1,19 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; aborting atomic.Bool; name atomic.Pointer[String] }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String] }
 class Thread < Object
-  #: () { () -> void } -> Thread
-  def self.new = %x{ return rbThreadRun(func() { blk() }) }
+  # The block's value is kept for #value, untyped: Thread is not generic.
+  #: () { () -> untyped } -> Thread
+  def self.new = %x{ return rbThreadRun(func() any { return blk() }) }
 
-  # @rbs [A] (A) { (A) -> void } -> Thread
-  def self.__new_1(a) = %x{ return rbThreadRun(func() { blk(a) }) }
+  # @rbs [A] (A) { (A) -> untyped } -> Thread
+  def self.__new_1(a) = %x{ return rbThreadRun(func() any { return blk(a) }) }
 
-  # @rbs [A, B] (A, B) { (A, B) -> void } -> Thread
-  def self.__new_2(a, b) = %x{ return rbThreadRun(func() { blk(a, b) }) }
+  # @rbs [A, B] (A, B) { (A, B) -> untyped } -> Thread
+  def self.__new_2(a, b) = %x{ return rbThreadRun(func() any { return blk(a, b) }) }
 
-  # @rbs [A, B, C] (A, B, C) { (A, B, C) -> void } -> Thread
-  def self.__new_3(a, b, c) = %x{ return rbThreadRun(func() { blk(a, b, c) }) }
+  # @rbs [A, B, C] (A, B, C) { (A, B, C) -> untyped } -> Thread
+  def self.__new_3(a, b, c) = %x{ return rbThreadRun(func() any { return blk(a, b, c) }) }
 
   #: () -> self
   def join = %x{
@@ -37,14 +38,14 @@ class Thread < Object
     }
   }
 
-  # Blocks and re-raises like join; the block's return value is not captured (it is void, decision 45), so this is always nil.
+  # Blocks and re-raises like join, then answers the block's value.
   #: () -> untyped
   def value = %x{
     <-self.done
     if self.err != nil {
       panic(self.err)
     }
-    return nil
+    return self.val
   }
 
   #: () -> String?

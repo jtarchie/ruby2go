@@ -464,7 +464,9 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 			if res.code != "" {
 				f.emit("%s", res.code)
 			}
-			f.emit("return nil")
+			if !res.noreturn {
+				f.emit("return nil")
+			}
 			return
 		}
 		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))

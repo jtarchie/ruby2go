@@ -1440,6 +1440,9 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 			return owner.lookup("__scan_groups")
 		}
 	}
+	if r := f.selfOverload(m, owner, name, recvT, args); r != nil {
+		return r
+	}
 	if f.curBlock != nil && m.Block == nil {
 		return owner.lookup(name + "block") // `xs.sum { |x| x.price }`
 	}
@@ -1462,6 +1465,31 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// selfOverload picks, for a method whose own `@self` the receiver doesn't
+// fit, the first `__<name>_*` sibling whose `@self` it does and that takes
+// the call's arguments and block (`[[1], [2]].flatten` is
+// `__flatten_nested`, decision 92).
+func (f *fctx) selfOverload(m *Method, owner *Class, name string, recvT Type, args []parser.Node) *entry {
+	if !owner.selfDefs {
+		return nil
+	}
+	fits := func(x *Method) bool {
+		f.c.resolveMethod(x)
+		return x.SelfType != nil && (x.Block != nil) == (f.curBlock != nil) &&
+			len(args) >= requiredArgs(x) && len(args) <= len(x.Params) &&
+			unify(x.SelfType, recvT, map[string]Type{})
+	}
+	if m.SelfType != nil && fits(m) {
+		return nil
+	}
+	for _, x := range owner.methodSet() {
+		if strings.HasPrefix(x.M.Name, name) && fits(x.M) {
+			return owner.lookup(x.M.Name)
+		}
+	}
+	return nil
 }
 
 // snake is a class name as a method-name part: `DateTime` → `date_time`.
@@ -1496,7 +1524,17 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 	}
 }
 
+// callEntry calls e; a call to a `bot` method is noreturn, and Go must
+// see its panic to know the statement list ends there.
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	r := f.callMethod(n, e, recv, args, block)
+	if e.M.noReturn && !r.noreturn {
+		r = expr{code: r.code + "\npanic(\"rb2go: unreachable\")", typ: TVoid{}, stmt: true, noreturn: true}
+	}
+	return r
+}
+
+func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
 	f.c.inferRet(m)
 	if o := f.nilableFetch(m, args, block); o != nil {
@@ -1523,6 +1561,9 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 		}
 	}
 	env["Self"] = recv.typ
+	if m.SelfType != nil && !unify(m.SelfType, recv.typ, env) {
+		f.errorf(n, "%s needs a receiver of type %s, not %s", m.Name, m.SelfType, recv.typ)
+	}
 	// bind vars visible in the current generic context so they count as bound
 	if m.Private && recv.code != f.selfCode && !f.implicitCall {
 		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
@@ -1882,6 +1923,17 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			got = TNil{}
 			if _, ok := sig.Ret.(TVar); ok {
 				got = TAny{} // Go has no nil type
+			}
+		}
+		// the probe typed `[k, v]` without the tuple it is wanted as: a
+		// same-typed pair reads as Array[X], which the real pass builds as [X, X]
+		if tt, ok := sig.Ret.(TTuple); ok {
+			if ga, ok := got.(TClass); ok && ga.C.RubyName == "Array" && len(ga.Args) == 1 {
+				elems := make([]Type, len(tt.Elems))
+				for i := range elems {
+					elems[i] = ga.Args[0]
+				}
+				got = TTuple{Elems: elems}
 			}
 		}
 		if !unify(sig.Ret, got, env) {

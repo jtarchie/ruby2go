@@ -18,6 +18,10 @@ require "uri"
 require "webrick"
 require "zlib"
 
+# Returns nil on MRI; void to rb2go.
+#: () -> void
+def stdlib_noop = nil
+
 module StdlibTests
   # Was testdata/run/benchmark_mid.rb. bm/bmbm print real timings, so only their Report/Job machinery is tested.
   class BenchmarkTest < Minitest::Test
@@ -595,6 +599,14 @@ module StdlibTests
       label_t.join
       assert_equal "7", got.pop
       assert_equal "x5", got.pop
+    end
+
+    # value is the block's last value; a void call there (tap's too) gives nil.
+    def test_value
+      assert_equal 42, Thread.new { 6 * 7 }.value
+      assert_equal "ab", Thread.new("a") { |s| s + "b" }.value
+      assert_nil Thread.new { stdlib_noop }.value
+      assert_equal [1, 2], [1, 2].tap { stdlib_noop }
     end
 
     def test_join_status_and_name

@@ -18,6 +18,7 @@ type Class struct {
 	RubyName   string // constant path: "Resty::Actions::Show"
 	IsModule   bool
 	GoType     string // `@go_type` underlying Go type; "" for struct classes
+	selfDefs   bool   // some method has `# @self` (selfOverload)
 	TypeParams []string
 	superRef   *constRef   // superclass expression, resolved in link
 	reSupers   []*constRef // superclasses named when reopening; must resolve to Super
@@ -149,6 +150,9 @@ type Method struct {
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
 	quietDynamic   bool // prelude `# @dynamic`: dynamic by design, so no dynamic-call warnings (decision 78)
 	specForm       bool // declared by a Minitest::Spec DSL call, not a def (decision 83)
+	noReturn       bool // RBS `bot`: a call ends its statement list, like raise (decision 91)
+	selfText       string
+	SelfType       Type // prelude `# @self T`: the receiver must unify with T, binding the method's type params (decision 92)
 }
 
 // root is the topmost struct class of c's hierarchy (below Object).
@@ -764,6 +768,13 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		}
 		m.quietDynamic = true
 	}
+	if st := f.annotations(line)["self"]; len(st) > 0 {
+		if !f.prelude || cls == nil || cls.GoType == "" {
+			c.errorf(f, n, "@self is only allowed on a prelude @go_type class's methods")
+		}
+		m.selfText = st[0]
+		cls.selfDefs = true
+	}
 	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {
 		if _, ok := body.Body[0].(*parser.XStringNode); ok {
 			m.Kind = kindPrimitive
@@ -1233,7 +1244,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 			c.errorf(sc.file, nil, "%s:%d: `self` type outside a class", sc.file.Name, sc.line)
 		}
 		return TVar{Name: "Self"}
-	case rbs.Void:
+	case rbs.Void, rbs.Bot:
 		return TVoid{}
 	case rbs.Nil:
 		return TNil{}
@@ -1303,6 +1314,17 @@ func (c *Compiler) resolveMethod(m *Method) {
 		m.Block = bs
 	}
 	m.Ret = c.resolveType(m.sig.Return, sc)
+	_, m.noReturn = m.sig.Return.(rbs.Bot)
+	if m.selfText != "" {
+		st, err := rbs.ParseType(m.selfText)
+		if err != nil {
+			c.errorf(f, m.Node, "@self: %v", err)
+		}
+		if len(m.TypeParams) == 0 {
+			c.errorf(f, m.Node, "@self needs type parameters for the receiver to bind")
+		}
+		m.SelfType = c.resolveType(st, sc)
+	}
 	if m.inferRet {
 		m.Ret = nil
 	}

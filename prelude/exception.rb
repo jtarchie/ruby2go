@@ -64,6 +64,22 @@ class KeyError < IndexError; end
 
 class StopIteration < IndexError; end
 
+# Kernel#throw raises it when no active catch has the tag (decision 91).
+class UncaughtThrowError < ArgumentError
+  #: (String, untyped, untyped) -> void
+  def initialize(message, tag, value)
+    @message = message
+    @tag = tag
+    @value = value
+  end
+
+  #: () -> untyped
+  def tag = @tag
+
+  #: () -> untyped
+  def value = @value
+end
+
 class RangeError < StandardError; end
 
 class FloatDomainError < RangeError; end

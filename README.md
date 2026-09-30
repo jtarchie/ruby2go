@@ -1165,10 +1165,9 @@ resolve; anything not listed is still open.
     { |a, b| ... }` forwards up to 3 constructor args into the block, by
     decision 12's arity overloads (`__new_1`/`__new_2`/`__new_3`).
     `join(timeout)` is `nil` on timeout, the Thread on success; `value`
-    blocks and re-raises like `join`, but the block stays `-> void` (an
-    arg-forwarding overload's block can end on a void call, and this
-    compiler cannot coerce that to a value type), so `value` is always
-    `nil` rather than the block's actual return. `name`/`name=` read and
+    blocks and re-raises like `join`, then answers the block's value,
+    `untyped` since Thread is not generic (decision 91: a block ending on
+    a void call gives `nil`). `name`/`name=` read and
     write an `atomic.Pointer[String]`. `status` is `"run"`, `"aborting"`
     while unwinding a panic, `false` once finished normally, or `nil` once
     finished with an unhandled exception; MRI's `"sleep"` is never
@@ -2240,3 +2239,61 @@ resolve; anything not listed is still open.
     of an out-of-range string is ±Infinity or 0 without MRI's warning.
     `exception: false` is not supported yet.
     ([example 67](examples/67_strict_numbers/main.rb)).
+91. `Kernel#catch(tag = Object.new) { |tag| }` / `Kernel#throw(tag, value
+    = nil)` (issue #4). `throw` panics with an `rbThrow{tag, val}`, which,
+    like `rbStop`, is not an exception: `rbWrapPanic` passes it through, so
+    `rescue` (even `rescue Exception`) re-panics it and `ensure` runs;
+    `catch` recovers it when the tag is identical (`rbIdentical`) and
+    re-panics otherwise, so the innermost matching catch wins. A throw
+    with no running catch for its tag raises `UncaughtThrowError`
+    (`< ArgumentError`, with `tag`/`value`) where it is, as MRI does, so it
+    is rescuable and exits 1 uncaught; the running tags are one
+    mutex-guarded list for all threads (MRI's is per-thread). `catch`
+    returns `untyped`: the thrown value's type is known only at the throw.
+    Two equal string literals share Go's backing bytes, so they match as
+    tags where MRI's two objects would not (`rbNewStr`'s ponytail).
+    - **RBS `bot`** is now read as a return type: a call to a `bot` method
+      is `noreturn` like `raise` (it ends a statement list, so `x > 0 ? x
+      : throw(:neg)` and a method whose last statement is a throw type-check
+      as the other branch), and the Go call is followed by a `panic` Go
+      can see. `terminates` and the unset-local walk recognise a
+      receiverless `throw` by name, as they do `raise`.
+    - **A void call where `untyped` is wanted** runs as a statement and
+      yields `nil` (issue #28): `1.tap { work }` and a Thread block ending
+      on a void call used to emit `return <void call>`. MRI returns what
+      the method returns, usually nil; a void prelude method that returns
+      something else in MRI (an iterator's receiver) reads as nil here.
+      A void call where a typed value is wanted is still an error.
+    ([example 68](examples/68_catch_throw/main.rb)).
+92. A prelude method on a `@go_type` class may carry `# @self T` (issue
+    #5): the receiver must unify with `T`, which binds the method's own
+    type parameters, and `self` inside it (and the Go free function's
+    `self` parameter) has type `T`. So `Array[E]#transpose` declares
+    `# @self Array[Array[U]]` / `[U] () -> Array[Array[U]]` and works on
+    `*Array[*Array[U]]` directly. It needs type parameters, so it is always
+    a free function and never a forwarder on `Array[E]`, which is what
+    keeps Go's instantiation cycle away (decision 9). A receiver that does
+    not fit is a compile error naming both types. When the method found
+    by name does not fit (or has no `@self`), decision 12's overloads also
+    try each `__<name>_*` sibling with an `@self` the receiver fits and
+    that takes the call's arguments and block, first defined first.
+    - `flatten(depth = -1)` on non-Array elements copies, or for untyped
+      elements splices nested Arrays (tuples too) at run time.
+      `__flatten_nested3` (`@self Array[Array[Array[U]]]`, no arguments)
+      and `__flatten_nested` (`@self Array[Array[U]]`, `(?Integer)`)
+      take typed nesting to `Array[U]`; after them an untyped `U` goes on
+      splicing dynamically. `flatten(0)` of nested Arrays, and
+      `flatten(n >= 2)` or a no-argument flatten past three typed levels,
+      raise `NotImplementedError` rather than mistype the result. A tuple
+      (`[[1, [2]], 3]`) has no flatten.
+    - `to_h` is `@self Array[[K, V]]`; `__to_h_arrays` takes
+      `Array[Array[U]]` to `Hash[U, U]`, checking each length with MRI's
+      `wrong array length at i (expected 2, was n)`; `to_h { |x| [k, v] }`
+      is `__to_h_block` on any element type.
+    - `transpose` raises MRI's `IndexError: element size differs (n
+      should be m)`.
+    - A block wanted as `[K, V]` whose probe typed a same-typed `[a, b]`
+      literal as `Array[X]` now unifies as `[X, X]` (`h.to_h { |k, v| [v,
+      k] }` on a `Hash[Integer, Integer]` used to be a compile error).
+    `sum` of Arrays is not supported.
+    ([example 69](examples/69_nested_arrays/main.rb)).

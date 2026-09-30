@@ -1296,6 +1296,25 @@ ensure
   out << "done"
 end
 
+# Helpers for catch/throw (issue #4): throw from a typed method, in each tail form.
+#: (Integer) -> Integer
+def control_pos(x)
+  return x if x > 0
+  throw :neg, x
+end
+
+#: (Integer) -> Integer
+def control_pos_ternary(x) = x > 0 ? x : throw(:neg, x)
+
+#: (Integer) -> Integer
+def control_pos_if(x)
+  if x > 0
+    x
+  else
+    throw :neg, x
+  end
+end
+
 module ControlTests
   class Memo
     #: () -> void
@@ -4182,6 +4201,83 @@ module ControlTests
       end
       assert_equal [2, 3], printed
       assert_equal "[nil, nil, nil]", ws.inspect
+    end
+  end
+
+  # Kernel#catch / #throw (issue #4, decision 91).
+  class ControlCatchThrowTest < Minitest::Test
+    def test_grid_search
+      grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+      found = catch(:found) do
+        grid.each_with_index do |row, r|
+          row.each_with_index do |v, c|
+            throw :found, [r, c] if v == 5
+          end
+        end
+        nil
+      end
+      assert_equal [1, 1], found
+    end
+
+    def test_results
+      assert_equal 42, catch(:x) { 42 }
+      assert_nil catch(:x) { throw :x }
+      r = catch(:done) do
+        10.times { |i| throw :done, i * 10 if i == 3 }
+        :never
+      end
+      assert_equal 30, r
+      assert_equal 7, catch { |tag| throw tag, 7 }
+    end
+
+    def test_typed_methods_throw
+      assert_equal 3, catch(:neg) { control_pos(3) }
+      assert_equal(-3, catch(:neg) { control_pos(-3) })
+      assert_equal(-4, catch(:neg) { control_pos_ternary(-4) })
+      assert_equal(-5, catch(:neg) { control_pos_if(-5) + 1 })
+      assert_equal(-6, catch(:neg) { [1, 2, -6].map { |v| control_pos_if(v) } })
+    end
+
+    def test_innermost_matching_tag
+      log = [] #: Array[String]
+      v = catch(:a) do
+        catch(:b) do
+          catch(:a) { throw :a, 1 }
+          log << "after inner a"
+          throw :b, 2
+        end
+        log << "after b"
+        3
+      end
+      assert_equal 3, v
+      assert_equal ["after inner a", "after b"], log
+    end
+
+    def test_ensure_runs_rescue_passes
+      log = [] #: Array[String]
+      v = catch(:outer) do
+        catch(:inner) do
+          begin
+            throw :outer, "deep"
+          rescue Exception
+            log << "rescued"
+          ensure
+            log << "ensure"
+          end
+        end
+        "not reached"
+      end
+      assert_equal "deep", v
+      assert_equal ["ensure"], log
+    end
+
+    def test_uncaught
+      e = assert_raises(UncaughtThrowError) { throw :nope, 1 }
+      assert_equal "uncaught throw :nope", e.message
+      assert_equal :nope, e.tag
+      assert_equal 1, e.value
+      a = assert_raises(ArgumentError) { catch(:other) { throw :nope } }
+      assert_equal "uncaught throw :nope", a.message
     end
   end
 end

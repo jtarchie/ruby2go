@@ -55,6 +55,19 @@ module Kernel
   #: (?Integer) -> void
   def exit(status = 0) = raise(SystemExit.new(status))
 
+  # A labelled break that carries a value (decision 91): throw unwinds to
+  # the innermost catch with an identical tag, running ensures, passing
+  # rescues. The thrown value's type is only known at the throw, so the
+  # result is untyped.
+  #: (?untyped) { (untyped) -> untyped } -> untyped
+  def catch(tag = __fresh_object) = %x{ return rbCatch(tag, blk) }
+
+  #: () -> untyped
+  def __fresh_object = %x{ return &Object{} }
+
+  #: (untyped, ?untyped) -> bot
+  def throw(tag, value = nil) = %x{ rbThrowTag(tag, value) }
+
   private
 
   # Kernel#exit! skips at_exit handlers and doesn't flush stdout.

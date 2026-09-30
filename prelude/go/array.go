@@ -97,3 +97,39 @@ func rbPermutations[E comparable](all []E, k int) *Array[*Array[E]] {
 	rec()
 	return out
 }
+
+// rbFlattenInto appends xs to out, splicing in Arrays (any instantiation,
+// tuples too) down to depth levels; depth < 0 is all of them.
+// ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
+func rbFlattenInto(out *Array[any], xs []any, depth int) {
+	for _, x := range xs {
+		if a, ok := x.(Array_Any); ok && depth != 0 {
+			rbFlattenInto(out, *a._ToAny(), depth-1)
+			continue
+		}
+		*out = append(*out, x)
+	}
+}
+
+// rbFlattenRows is one level of flatten over typed rows. When U is untyped
+// the rest of depth flattens dynamically; a typed U that is itself an
+// Array only arises past what flatten's @self forms cover.
+func rbFlattenRows[U comparable](rows []*Array[U], depth int) *Array[U] {
+	out := &Array[U]{}
+	for _, r := range rows {
+		*out = append(*out, *r...)
+	}
+	if depth == 1 {
+		return out
+	}
+	if a, ok := any(out).(*Array[any]); ok {
+		flat := &Array[any]{}
+		rbFlattenInto(flat, *a, depth-1)
+		return any(flat).(*Array[U])
+	}
+	var z U
+	if _, ok := any(z).(Array_Any); ok {
+		panic(NewNotImplementedError(Ref(String("rb2go: flatten of this depth over typed Arrays nested this deep"))))
+	}
+	return out
+}

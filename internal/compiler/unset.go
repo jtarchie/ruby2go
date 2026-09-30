@@ -145,7 +145,7 @@ func (w *unsetWalk) walk(n parser.Node) {
 		w.st.dead = true
 	case *parser.CallNode:
 		w.children(n)
-		if n.Receiver == nil && n.Name == "raise" {
+		if n.Receiver == nil && (n.Name == "raise" || n.Name == "throw") {
 			for _, r := range w.raises {
 				*r = append(*r, w.st.clone())
 			}

@@ -2191,4 +2191,52 @@ module ArrayTests
       assert_equal "[nil, 2.5, 3, \"x\"]", ((mix.sort_by { |e| e.to_s })).inspect
     end
   end
+
+  # flatten / to_h / transpose, which need the element type to be an Array or pair (issue #5, decision 92).
+  class ArrayNestedTest < Minitest::Test
+    def test_flatten
+      assert_equal [1, 2, 3], [[1, 2], [3]].flatten
+      assert_equal [1, 2, 3], [[1, 2], [3]].flatten(1)
+      assert_equal [1, 2, 3], [[[1, 2]], [[3]]].flatten
+      assert_equal [[1, 2], [3]], [[[1, 2]], [[3]]].flatten(1)
+      assert_equal %w[a b c], [%w[a b], %w[c]].flatten
+      assert_equal [1, 2], [1, 2].flatten
+      flat = [1, 2]
+      refute_same flat, flat.flatten
+      assert_equal [1, 2], flat.flatten
+    end
+
+    def test_flatten_untyped
+      x = [] #: Array[untyped]
+      x << 1
+      x << [2, [3, [4]]]
+      x << [:a, "b"]
+      assert_equal [1, 2, 3, 4, :a, "b"], x.flatten
+      assert_equal [1, 2, [3, [4]], :a, "b"], x.flatten(1)
+      nested = [array_ident([1, [2]]), array_ident([3])] #: Array[Array[untyped]]
+      assert_equal [1, 2, 3], nested.flatten
+      assert_equal [1, [2], 3], nested.flatten(1)
+    end
+
+    def test_to_h
+      assert_equal({ a: 1, b: 2 }, [[:a, 1], [:b, 2]].to_h)
+      assert_equal({ a: 2 }, [[:a, 1], [:a, 2]].to_h)
+      assert_equal({ 1 => 2, 3 => 4 }, [[1, 2], [3, 4]].to_h)
+      assert_equal({ "a" => 1, "b" => 2 }, %w[a b].zip([1, 2]).to_h)
+      assert_equal({ a: 1 }, { a: 1 }.to_a.to_h)
+      assert_equal({ 1 => 1, 2 => 4 }, [1, 2].to_h { |v| [v, v * v] })
+      assert_equal({ "1" => 1 }, [1].to_h { |v| [v.to_s, v] })
+      e = assert_raises(ArgumentError) { [[1, 2], [3, 4, 5]].to_h }
+      assert_equal "wrong array length at 1 (expected 2, was 3)", e.message
+    end
+
+    def test_transpose
+      assert_equal [[1, 3], [2, 4]], [[1, 2], [3, 4]].transpose
+      assert_equal %w[ac bd], [%w[a b], %w[c d]].transpose.map(&:join)
+      none = [] #: Array[Array[Integer]]
+      assert_equal [], none.transpose
+      e = assert_raises(IndexError) { [[1, 2], [3]].transpose }
+      assert_equal "element size differs (1 should be 2)", e.message
+    end
+  end
 end
