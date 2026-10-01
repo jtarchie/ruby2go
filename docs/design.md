@@ -3073,6 +3073,39 @@ resolve; anything not listed is still open.
     the exception is a `K`. Several classes, a computed class or
     `Exception` itself keep `Exception`. With it, `KeyError` gained MRI's
     `key` and `receiver` (`no key is available` when none was set),
-    filled in by `Hash#fetch` and `ENV.fetch`.
-    (`testdata/test/assertion_test.rb` `test_raises_is_typed`,
-    `testdata/test/spec_test.rb`.)
+    filled in by `Hash#fetch` and `ENV.fetch`. Narrowing exposed an
+    older gap, now closed: a local assigned two sibling classes (`e =
+    IOError…; e = ArgumentError…`, or `x = B.new; x = C.new`) was checked
+    against its first type during analysis; it is now checked against the
+    join so far, so it takes the nearest common superclass, as decision 14
+    always intended. (`testdata/test/assertion_test.rb`
+    `test_raises_is_typed`, `testdata/test/spec_test.rb`,
+    `testdata/test/object_test.rb` `SiblingAssignTest`.)
+117. CSV's `headers: true` and `converters:` (#36), chosen by the compiler
+    from the literal options (`csvOverload`, a literal overload like
+    decisions 101 and 112): `CSV.parse`/`read`/`foreach` with `headers:
+    true` go to `__<name>_headers` and give a `CSV::Table` of `CSV::Row`s;
+    with `converters:` alone, `__<name>_converted` gives rows of untyped
+    fields. Iterator calls (`CSV.foreach(path, headers: true) { }`) take
+    literal overloads too (`genIterCall`). `Row#[]` takes a header (the
+    first, when headers repeat) or an index; `fetch` raises MRI's
+    `KeyError`; `to_h`, `fields`, `headers`, `each`, `to_s` (the CSV
+    line) and `inspect` (`#<CSV::Row "name":"Ada" ...>`) are MRI's. A
+    short row is padded with nil and a long one gets nil headers, as MRI
+    does. `Table#[]` is a Row for an Integer and a column's values for a
+    header; `to_a` is the rows as Arrays with the header row first,
+    which is why Table is not Enumerable in rb2go (Enumerable's `to_a`
+    would be the Rows): it has `each`, `map`, `select`, `reject`, `find`,
+    `each_with_index`, `first`, `count` and `rows` itself. `inspect` is
+    MRI's `#<CSV::Table mode:col_or_row row_count:N>` followed by the
+    text. Converters are MRI's: `:integer` is `Integer(field)`, `:float`
+    `Float(field)`, each kept when it raises (so `" 08 "` becomes `8.0`
+    and `"0x1A"` `26`), `:numeric` both, or an Array of them; nil stays
+    nil and headers are not converted. Any other literal option key, any
+    other converter, or a `headers:` that is not literally true or false
+    is a compile error instead of being ignored, as decision 53 used to.
+    Not done: `headers:` as an Array or String of names,
+    `header_converters:`, `return_headers:`, `by_col`/`by_row` modes,
+    custom converter lambdas, `CSV.parse_line` with headers. ([example
+    85](../examples/85_csv_headers/main.rb), `testdata/test/stdlib_test.rb`
+    `test_headers_and_converters`, `testdata/errors/regexp_json.txtar`.)

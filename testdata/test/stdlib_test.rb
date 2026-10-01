@@ -132,6 +132,49 @@ module StdlibTests
         assert_equal "\"a\",\"\"\n", CSV.generate_line(["a", nil], force_quotes: true)
       end
     end
+
+    # headers: true and converters: (decision 117, #36).
+    def test_headers_and_converters
+      src = "name,age,score\nAda,36,9.5\nGrace,,1_000\n Linus , 08 ,0x1A\n"
+      t = CSV.parse(src, headers: true)
+      assert_equal ["name", "age", "score"], t.headers
+      assert_equal 3, t.size
+      assert_equal "Ada", t[0]["name"]
+      assert_equal "36", t[0][1]
+      assert_nil t[1]["age"]
+      assert_equal ["Ada", "Grace", " Linus "], t["name"]
+      assert_equal({ "name" => "Ada", "age" => "36", "score" => "9.5" }, t[0].to_h)
+      assert_equal "#<CSV::Row \"name\":\"Ada\" \"age\":\"36\" \"score\":\"9.5\">", t[0].inspect
+      assert_equal "Ada,36,9.5\n", t[0].to_s
+      assert_equal src, t.to_s
+      assert_equal "#<CSV::Table mode:col_or_row row_count:4>\n#{src}", t.inspect
+      assert_equal [["name", "age", "score"], ["Ada", "36", "9.5"], ["Grace", nil, "1_000"], [" Linus ", " 08 ", "0x1A"]], t.to_a
+      assert_equal ["Ada", "Grace", " Linus "], t.map { |r| r["name"] }
+      e = assert_raises(KeyError) { t[0].fetch("missing") }
+      assert_equal "key not found: missing", e.message
+      n = CSV.parse(src, headers: true, converters: :numeric)
+      assert_equal ["Grace", nil, 1000], n[1].fields
+      assert_equal [" Linus ", 8.0, 26], n[2].fields
+      assert_equal 1, n.select { |r| r["age"].nil? }.size
+      assert_equal [["name", "age", "score"], ["Ada", 36, 9.5], ["Grace", nil, 1000], [" Linus ", 8.0, 26]], CSV.parse(src, converters: :numeric)
+      assert_equal [["a", "b"], [1.5, 2.0]], CSV.parse("a,b\n1.5,2", converters: :float)
+      assert_equal [["a", "b"], [1.5, 2]], CSV.parse("a,b\n1.5,2", converters: [:integer, :float])
+      assert_equal [1, 2.5, "x"], CSV.parse_line("1,2.5,x", converters: :numeric)
+      assert_equal [{ "a" => "1", "b" => "2", nil => "3" }, { "a" => "4", "b" => nil }], CSV.parse("a,b\n1,2,3\n4", headers: true).map(&:to_h)
+      assert_equal({ "a" => "1" }, CSV.parse("a,a\n1,2", headers: true)[0].to_h)
+      assert_equal [], CSV.parse("", headers: true).headers
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "p.csv")
+        File.write(path, "sku,qty\na1,4\na2,7\n")
+        assert_equal 11, CSV.read(path, headers: true, converters: :integer).map { |r| r["qty"] }.sum
+        skus = [] #: Array[untyped]
+        CSV.foreach(path, headers: true) { |row| skus << row["sku"] }
+        assert_equal ["a1", "a2"], skus
+        sums = [] #: Array[untyped]
+        CSV.foreach(path, converters: :integer) { |row| sums << row[1] }
+        assert_equal ["qty", 4, 7], sums
+      end
+    end
   end
 
   # Was testdata/run/date_mid.rb.

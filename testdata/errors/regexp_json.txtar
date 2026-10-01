@@ -192,3 +192,16 @@ puts "abc".match?("b")
 # error: main.rb:3:
 m = "2024".match(/(?<year>\d+)/)
 puts m[:year].inspect if m
+-- csv_unknown_option.rb --
+# error: main.rb:3: CSV option header_converters: is not supported
+require "csv"
+p CSV.parse("a\n1", headers: true, header_converters: :symbol)
+-- csv_unknown_converter.rb --
+# error: main.rb:3: CSV converters: takes :numeric, :integer or :float
+require "csv"
+p CSV.parse("a\n1", converters: :date)
+-- csv_headers_not_literal.rb --
+# error: main.rb:4: CSV headers: must be a literal true or false
+require "csv"
+want = true
+p CSV.parse("a\n1", headers: want)

@@ -1686,6 +1686,8 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 		if k := f.optKind(args); k != "" {
 			return owner.lookup("__" + m.Name + "_" + k)
 		}
+	case owner.RubyName == "CSV" && owner.metaOf != nil:
+		return f.csvOverload(m, owner, args)
 	case owner.RubyName == "BigDecimal" && m.Name == "round" && len(args) == 1:
 		// round(n) is a BigDecimal for n >= 1 and an Integer otherwise (decision 112): a literal n decides the type
 		if lit, ok := args[0].(*parser.IntegerNode); ok {
@@ -2358,6 +2360,11 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	e := f.resolve(recvT, n.Name)
 	if e == nil || !e.M.Iterator {
 		return false
+	}
+	if rc, ok := recvT.(TClass); ok { // literal options pick a twin here too (CSV.foreach(path, headers: true), decision 117)
+		if o := f.literalOverload(e.M, rc.C, callArgs(n)); o != nil && o.M.Iterator {
+			e = o
+		}
 	}
 	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) {
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
@@ -4179,4 +4186,76 @@ func (f *fctx) kernelCall(n parser.Node, name string, args []parser.Node) expr {
 	f.implicitCall = true
 	defer func() { f.implicitCall = false }()
 	return f.genMethodCall(n, expr{code: "rb_main", typ: f.cls("Object")}, name, args, nil)
+}
+
+// csvOptions are the CSV options rb2go implements; any other literal key
+// is a compile error rather than silently ignored (decision 117).
+var csvOptions = map[string]bool{"col_sep": true, "quote_char": true, "row_sep": true, "skip_blanks": true, "force_quotes": true, "headers": true, "converters": true}
+
+// csvConverters are the converters CSV's literal `converters:` may name.
+var csvConverters = map[string]bool{"numeric": true, "integer": true, "float": true}
+
+// csvOverload routes CSV.parse/read/foreach/parse_line by their literal
+// options (decision 117): `headers: true` reads a CSV::Table, `converters:`
+// gives untyped fields; unknown keys and converters are compile errors.
+func (f *fctx) csvOverload(m *Method, owner *Class, args []parser.Node) *entry {
+	if len(args) == 0 {
+		return nil
+	}
+	kw, ok := args[len(args)-1].(*parser.KeywordHashNode)
+	if !ok {
+		return nil
+	}
+	headers, converters := false, false
+	for _, el := range kw.Elements {
+		a, ok := el.(*parser.AssocNode)
+		key, _ := a.Key.(*parser.SymbolNode)
+		if !ok || key == nil {
+			continue
+		}
+		name := key.Unescaped.Value
+		if !csvOptions[name] {
+			f.errorf(el, "CSV option %s: is not supported (docs/design.md decision 117)", name)
+		}
+		switch name {
+		case "headers":
+			switch a.Value.(type) {
+			case *parser.TrueNode:
+				headers = true
+			case *parser.FalseNode, *parser.NilNode:
+			default:
+				f.errorf(a.Value, "CSV headers: must be a literal true or false (an Array of names is not supported)")
+			}
+		case "converters":
+			converters = true
+			f.csvCheckConverters(a.Value)
+		}
+	}
+	if (headers || converters) && m.Name != "parse" && m.Name != "read" && m.Name != "foreach" && m.Name != "parse_line" {
+		f.errorf(kw, "CSV.%s does not take headers: or converters:", m.Name)
+	}
+	switch {
+	case headers && m.Name == "parse_line":
+		f.errorf(kw, "CSV.parse_line with headers: is not supported")
+	case headers:
+		return owner.lookup("__" + m.Name + "_headers")
+	case converters:
+		return owner.lookup("__" + m.Name + "_converted")
+	}
+	return nil
+}
+
+func (f *fctx) csvCheckConverters(v parser.Node) {
+	var names []parser.Node
+	if arr, ok := v.(*parser.ArrayNode); ok {
+		names = arr.Elements
+	} else {
+		names = []parser.Node{v}
+	}
+	for _, n := range names {
+		sym, ok := n.(*parser.SymbolNode)
+		if !ok || !csvConverters[sym.Unescaped.Value] {
+			f.errorf(n, "CSV converters: takes :numeric, :integer or :float (or an Array of them)")
+		}
+	}
 }
