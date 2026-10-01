@@ -8,6 +8,30 @@
 
 # @go_type struct { re *rxRegexp; src string; opts string }
 class Regexp < Object
+  IGNORECASE = 1 #: Integer
+  EXTENDED = 2 #: Integer
+  MULTILINE = 4 #: Integer
+
+  # A Regexp from a String at run time, translated from Ruby's syntax as an
+  # interpolated literal is (decision 115). options: an Integer of
+  # IGNORECASE | MULTILINE, a String of "m"/"i" flags, true for /i, or nil.
+  #: (untyped, ?untyped) -> Regexp
+  def self.new(pattern, options = nil) = %x{ return rbRegexpFromValue(pattern, options) }
+
+  #: (untyped, ?untyped) -> Regexp
+  def self.compile(pattern, options = nil) = %x{ return rbRegexpFromValue(pattern, options) }
+
+  #: () -> Integer
+  def options = %x{
+    n := 0
+    for _, f := range self.opts {
+      n |= map[rune]int{'i': 1, 'x': 2, 'm': 4}[f]
+    }
+    return Integer(n)
+  }
+
+  #: () -> bool
+  def casefold? = %x{ return Boolean(strings.ContainsRune(self.opts, 'i')) }
   # A subject is a String for typed callers; an untyped one may also be a
   # Symbol (its name is matched) or nil (no match), as in MRI.
   #: (String | untyped) -> bool

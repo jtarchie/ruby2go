@@ -175,9 +175,9 @@ puts "aa".match?(/(#{x})\1/)
 # error: main.rb:3: JSON.generate: wrong number of arguments (given 0, expected 2)
 require "json"
 puts JSON.generate
--- regexp_new_undefined.rb --
-# error: main.rb:2: undefined method new for singleton(Regexp)
-puts Regexp.new("a").inspect
+-- regexp_new_arity.rb --
+# error: main.rb:2: Regexp.new: wrong number of arguments (given 3
+puts Regexp.new("a", "i", 1).inspect
 -- named_captures_undefined.rb --
 # error: main.rb:3: undefined method named_captures for MatchData
 m = "ab".match(/(?<x>a)/)

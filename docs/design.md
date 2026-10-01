@@ -1859,8 +1859,8 @@ resolve; anything not listed is still open.
     shortening further once that happens; full words always map to
     themselves even when some other word's prefix collides, e.g. `"car"`
     stays `"car"` alongside `"cars"`). `pattern` is `untyped`, since
-    rb2go's `Regexp` is compile-time literals only (no `Regexp.new` from a
-    runtime string, decision 24): a `String` pattern is matched with
+    rb2go's `Regexp` was compile-time literals only then (no `Regexp.new` from a
+    runtime string, decision 24; *since added, decision 115*): a `String` pattern is matched with
     `start_with?` instead of MRI's anchored `/\A.../` (same result, no
     Regexp construction needed), and a `Regexp` pattern calls `match?`
     directly, unanchored like MRI's. `Array#abbrev` maps `self` through
@@ -3053,3 +3053,15 @@ resolve; anything not listed is still open.
     above, `REXML::Security` limits, SAX2/stream/pull parsers,
     `Transitive`, `attribute_quote` and `:raw`/whitespace contexts.
     ([example 84](../examples/84_rexml/main.rb), `testdata/test/rexml_test.rb`.)
+115. `Regexp.new(pattern, options = nil)` and `Regexp.compile` (#34)
+    build a Regexp from a String at run time the way an interpolated
+    literal already is (decision 24): `rbRegexpFromValue` translates the
+    Ruby source with the compiler's own translator, which every program
+    carries (`rbRegexpDyn`), and a bad pattern raises `RegexpError` with
+    Onigmo's wording where rb2go has a twin (decision 105). Options are
+    MRI's: an Integer of `IGNORECASE | MULTILINE`, a String of `"m"`/`"i"`
+    (`unknown regexp option: z` otherwise), `true` or any truthy value for
+    `/i`, nil for none; a Regexp argument is returned as is. `EXTENDED`
+    and `"x"` raise `NotImplementedError`, as `/x` literals are a compile
+    error. `options` and `casefold?` read the flags back.
+    (`testdata/test/rxjson_test.rb` `RxjsonRegexpNewTest`.)

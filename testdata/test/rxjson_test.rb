@@ -1731,4 +1731,45 @@ b/
       assert_equal "Infinity not allowed in JSON", e2.message
     end
   end
+
+  # Regexp.new / Regexp.compile from a String at run time (decision 115, #34).
+  class RxjsonRegexpNewTest < Minitest::Test
+    #: (String) -> String
+    def rx_error(src)
+      Regexp.new(src)
+      "compiled"
+    rescue RegexpError => e
+      e.message
+    end
+
+    def test_new_from_string
+      re = Regexp.new("a+")
+      assert_equal true, re.match?("caat")
+      assert_equal "/a+/", re.inspect
+      assert_equal "a+", re.source
+      assert_equal 0, re.options
+      assert_equal "/a+/mi", Regexp.new("a+", "im").inspect
+      assert_equal "/a/i", Regexp.new("a", Regexp::IGNORECASE).inspect
+      assert_equal "/a/m", Regexp.new("a", Regexp::MULTILINE).inspect
+      assert_equal "/a/i", Regexp.new("a", true).inspect
+      assert_equal "/a/", Regexp.new("a", nil).inspect
+      assert_equal 5, Regexp.new("a", "im").options
+      assert_equal true, Regexp.new("A", "i").casefold?
+      assert_equal "/x/i", Regexp.new(/x/i).inspect
+      assert_equal "/q/", Regexp.compile("q").inspect
+      assert_equal true, Regexp.new("x", "m").match?("x")
+      assert_equal "ruby", Regexp.new("(?<lang>r\\w+)").match("I like ruby")&.[](1)
+      assert_equal true, Regexp.new("\\Ahello\\z").match?("hello")
+      assert_equal true, Regexp.new("^b$").match?("a\nb\nc")
+      assert_equal ["ab", "AB"], %w[ab AB cd].grep(Regexp.new("ab", "i"))
+      assert_equal Regexp.new("a+"), /a+/
+    end
+
+    def test_new_errors
+      assert_equal "end pattern with unmatched parenthesis: /a(b/", rx_error("a(b")
+      assert_equal "unmatched close parenthesis: /a)b/", rx_error("a)b")
+      e = assert_raises(ArgumentError) { Regexp.new("a", "z") }
+      assert_equal "unknown regexp option: z", e.message
+    end
+  end
 end

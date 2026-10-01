@@ -58,6 +58,60 @@ func rbRegexpDyn(prefix, src, opts string) *Regexp {
 	return rbRegexpNew(prefix+pat, src, opts)
 }
 
+// rbRegexpFromValue is Regexp.new(pattern, options): a Regexp is copied
+// (options ignored, as MRI warns); a String is translated like an
+// interpolated literal's source.
+func rbRegexpFromValue(pattern, options any) *Regexp {
+	switch p := rbUnbox(pattern).(type) {
+	case *Regexp:
+		return p
+	case String:
+		ignore, multi := false, false
+		switch o := rbUnbox(options).(type) {
+		case nil:
+		case Boolean:
+			ignore = bool(o)
+		case Integer:
+			ignore, multi = o&1 != 0, o&4 != 0
+			if o&2 != 0 {
+				rbRegexpNoExtended()
+			}
+		case String:
+			for _, f := range string(o) {
+				switch f {
+				case 'i':
+					ignore = true
+				case 'm':
+					multi = true
+				case 'x':
+					rbRegexpNoExtended()
+				default:
+					panic(NewArgumentError(Ref(String("unknown regexp option: " + string(o)))))
+				}
+			}
+		default:
+			ignore = true // any other truthy value is /i, as MRI
+		}
+		prefix, opts := "(?m", ""
+		if ignore {
+			prefix += "i"
+		}
+		if multi {
+			prefix += "s"
+			opts += "m"
+		}
+		if ignore {
+			opts += "i"
+		}
+		return rbRegexpDyn(prefix+")", string(p), opts)
+	}
+	panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(pattern) + " into String"))))
+}
+
+func rbRegexpNoExtended() {
+	panic(NewNotImplementedError(Ref(String("rb2go: extended (x) regexps are not supported (docs/design.md decision 24)"))))
+}
+
 // rbRegexpDesc is the source as inspect and to_s show it: a bare / is
 // escaped, as MRI's rb_reg_desc does.
 func rbRegexpDesc(src string) string {
