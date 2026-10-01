@@ -3870,6 +3870,17 @@ module ObjectTests
       assert_equal "key not found: 9", assert_raises(KeyError) { d.count_of(9) }.message
     end
   end
+  # A local assigned two sibling classes takes their common superclass (decision 116).
+  class SiblingAssignTest < Minitest::Test
+    def test_sibling_reassignment
+      e = IOError.new("a")
+      assert_equal "a", e.message
+      e = ArgumentError.new("b")
+      assert_equal "ArgumentError", e.class.name
+      assert_equal "b", e.message
+    end
+  end
+
   # Exception#backtrace (decision 106): MRI 4.0's labels, first frame exact.
   class BacktraceTest < Minitest::Test
     #: (Exception) -> Array[String]

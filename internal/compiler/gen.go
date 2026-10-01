@@ -1452,7 +1452,11 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 			existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14)
 		}
 	}
-	f.emit("%s = %s", existing.goName, f.coerce(n, val, existing.typ))
+	target := existing.typ
+	if f.pass < 2 && info != nil && !info.annotated && !isOpt(val.typ) && !isOpt(info.typ) {
+		target = info.typ // the join so far: `x = B.new; x = C.new` makes x their common superclass, decided by pass 2; a T? into a T local stays an error (decision 20)
+	}
+	f.emit("%s = %s", existing.goName, f.coerce(n, val, target))
 	if narrowed {
 		f.unnarrow(name)
 	}
