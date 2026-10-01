@@ -2534,3 +2534,13 @@ resolve; anything not listed is still open.
     textarea over a highlighted mirror. Not done: a hosted wasm build (needs the
     `emitDynamic` cost fixed first), multi-file programs, stdin/args for
     Run. (`cmd/rb2go/web_test.go`.)
+    *Amended:* a static build for hosting without a server:
+    `cmd/rb2go-wasm` (`GOOS=js GOARCH=wasm`, `-ldflags=-s -w`) defines
+    `rb2goCompile(src)`, returning `/compile`'s shape; the "your code"
+    filter is `rb2go.UserCode`, shared by both. The wasm (12.5 MB, 3.2 MB
+    gzipped) and its matching `wasm_exec.js` live in the public R2 bucket
+    `ruby2go` under a content-hash prefix (stored gzipped with
+    `Content-Encoding: gzip`, immutable cache, CORS GET from anywhere), so
+    a static page on another host streams it. Not done: the page's
+    worker mode, and compile speed: ~6 s per compile in Chrome, against
+    0.7 s native, which has to come down before the page ships.
