@@ -3018,3 +3018,38 @@ resolve; anything not listed is still open.
     overrides, `fill_breakable`, MatchData and File::Stat layouts.
     ([example 83](../examples/83_pp/main.rb), `testdata/test/pp_test.rb`,
     whose layouts are MRI's at each width.)
+114. REXML (#1, Phase 3), the subset scripts reach for. A Go tokenizer
+    (`prelude/go/rexml.go`) turns the source into events and keeps text
+    and attribute values as written, entities intact, as REXML's tree
+    parser keeps them raw; the DOM is Ruby (`prelude/rexml.rb`): `Child`,
+    `Parent`, `Element`, `Document`, `Text` (`to_s` escaped, `value` with
+    the five predefined entities and numeric references replaced; text
+    made through the API escapes `& < > " '` on output, as
+    `Text::normalize`), `CData`, `Comment`, `Instruction`, `XMLDecl`
+    (written only when the source had one), `Attribute`/`Attributes`
+    (insertion-ordered; `[]=` normalizes, `[]` unnormalizes) and
+    `Elements` (1-based, or by XPath). Whitespace text before the root is
+    kept as REXML keeps it, after the root dropped. `Document#write(out,
+    indent)` and `Element#to_s` use the two formatters ported line for
+    line: Default (attributes sorted by name) and Pretty (insertion
+    order, whitespace-only text dropped, text squeezed and wrapped at 80
+    columns less the indent, instructions unindented, `compact`), so
+    output is MRI's byte for byte on everything tried. XPath is a
+    subset: absolute and relative paths, `//`, `.`, `..`, `*`, names,
+    `text()`, `node()`, `comment()`, `@name`, `@*`, and predicates `[n]`,
+    `[last()]`, `[@a]`, `[@a='v']`, `[@a!='v']`, `[name]`, `[name='v']`,
+    `[text()='v']`; anything else raises at run time naming the
+    predicate. `XPath.first`/`match`/`each` return `untyped` (an Element,
+    Text or Attribute); `Elements#[]`/`each`/`to_a` keep the Elements.
+    Errors are `REXML::ParseException` with the first line of REXML's
+    message (`Missing end tag for 'b' (got 'a')`, `Duplicate attribute
+    "x"`, `Malformed XML: Content at the start of the document (got
+    'x')`); REXML goes on with the line, position and unconsumed input,
+    which rb2go does not. Output goes to `$stdout`, an IO or a StringIO
+    (a String cannot be appended in place: use `to_s`). Signatures are
+    vendored in `sig/rexml.rbs` (decision 110). Not done: DOCTYPE and
+    DTDs (a ParseException), namespaces beyond prefixed names passing
+    through, entity declarations, XPath functions and axes beyond those
+    above, `REXML::Security` limits, SAX2/stream/pull parsers,
+    `Transitive`, `attribute_quote` and `:raw`/whitespace contexts.
+    ([example 84](../examples/84_rexml/main.rb), `testdata/test/rexml_test.rb`.)

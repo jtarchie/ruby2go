@@ -1,0 +1,128 @@
+# REXML's signatures, vendored: neither the rbs gem nor rexml ships any (decision 110).
+# The subset rb2go ports (decision 114).
+module REXML
+  class ParseException < RuntimeError
+  end
+
+  class Child
+    attr_accessor parent: Parent?
+    def next_sibling: () -> Child?
+    def previous_sibling: () -> Child?
+    def remove: () -> self
+    def document: () -> Document?
+  end
+
+  class Text < Child
+    def initialize: (String string, ?bool respect_whitespace, ?Parent? parent, ?bool raw) -> void
+    def value: () -> String
+    def value=: (String) -> String
+  end
+
+  class CData < Text
+    def initialize: (String) -> void
+  end
+
+  class Comment < Child
+    attr_accessor string: String
+    def initialize: (String) -> void
+  end
+
+  class Instruction < Child
+    attr_accessor target: String
+    attr_accessor content: String?
+    def initialize: (String target, ?String? content) -> void
+  end
+
+  class XMLDecl < Child
+    attr_accessor version: String
+    def initialize: (?String version, ?String? encoding, ?String? standalone) -> void
+    def encoding: () -> String
+  end
+
+  class Parent < Child
+    def children: () -> Array[Child]
+    def add: (Child) -> Child
+    def <<: (Child) -> Child
+    def delete: (Child) -> Child?
+    def size: () -> Integer
+  end
+
+  class Element < Parent
+    attr_reader name: String
+    attr_reader attributes: Attributes
+    attr_reader elements: Elements
+    def initialize: (?String name, ?Parent? parent) -> void
+    def add_element: (String | Element element, ?Hash[String, String]? attrs) -> Element
+    def delete_element: (Element | String | Integer) -> Element?
+    def each_element: (?String? xpath) { (Element) -> void } -> void
+    def get_elements: (String xpath) -> Array[Element]
+    def text: (?String? path) -> String?
+    def text=: (String?) -> String?
+    def get_text: (?String? path) -> Text?
+    def add_text: (String) -> Element?
+    def attribute: (String) -> Attribute?
+    def add_attribute: (String, String) -> void
+    def add_attributes: (Hash[String, String]) -> void
+    def delete_attribute: (String) -> Attribute?
+    def has_text?: () -> bool
+    def has_elements?: () -> bool
+    def has_attributes?: () -> bool
+    def root: () -> Element?
+    def texts: () -> Array[Text]
+    def write: (?untyped output, ?Integer indent) -> void
+  end
+
+  class Document < Element
+    def initialize: (?String? source) -> void
+    def root: () -> Element?
+    def xml_decl: () -> XMLDecl
+    def version: () -> String
+    def encoding: () -> String
+  end
+
+  class Attribute
+    attr_reader name: String
+    def initialize: (String name, String value, ?Element? element) -> void
+    def value: () -> String
+    def to_string: () -> String
+  end
+
+  class Attributes
+    def []: (String) -> String?
+    def []=: (String, String?) -> String?
+    def get_attribute: (String) -> Attribute?
+    def each_attribute: () { (Attribute) -> void } -> void
+    def each: () { (String, String) -> void } -> void
+    def to_a: () -> Array[Attribute]
+    def size: () -> Integer
+    def empty?: () -> bool
+  end
+
+  class Elements
+    def []: (Integer | String) -> Element?
+    def each: (?String? xpath) { (Element) -> void } -> void
+    def to_a: (?String? xpath) -> Array[Element]
+    def size: () -> Integer
+    def empty?: () -> bool
+    def <<: (Element) -> Element
+  end
+
+  module XPath
+    def self.first: (untyped node, String path) -> untyped
+    def self.each: (untyped node, String path) { (untyped) -> void } -> void
+    def self.match: (untyped node, String path) -> Array[untyped]
+  end
+
+  module Formatters
+    class Default
+      def initialize: (?bool ie_hack) -> void
+      def write: (untyped node, untyped output) -> void
+    end
+
+    class Pretty < Default
+      attr_accessor compact: bool
+      attr_accessor width: Integer
+      def initialize: (?Integer indentation, ?bool ie_hack) -> void
+    end
+  end
+end

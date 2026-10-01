@@ -694,7 +694,7 @@ func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string)
 var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)
 
 // rbsLibraryNames covers requires whose gem name differs from its RBS stdlib signature directory, like `require "observer"` (defines Observable) shipping sigs under "observable".
-var rbsLibraryNames = map[string]string{"observer": "observable", "minitest-autorun": "minitest", "bigdecimal-util": "bigdecimal"}
+var rbsLibraryNames = map[string]string{"observer": "observable", "minitest-autorun": "minitest", "bigdecimal-util": "bigdecimal", "rexml-document": "rexml"}
 
 // rbsLibraries turns an example's `require "net/http"` lines into the `-r net-http` flags rbs needs to see those libraries' signatures. A library the rbs gem has no signatures for (`weakref`, `rexml`) has them vendored in sig/<name>.rbs (decision 110), loaded with -I instead.
 func rbsLibraries(t *testing.T, path string) []string {
