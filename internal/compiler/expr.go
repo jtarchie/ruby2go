@@ -1665,6 +1665,14 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 		if k := f.optKind(args); k != "" {
 			return owner.lookup("__" + m.Name + "_" + k)
 		}
+	case owner.RubyName == "BigDecimal" && m.Name == "round" && len(args) == 1:
+		// round(n) is a BigDecimal for n >= 1 and an Integer otherwise (decision 112): a literal n decides the type
+		if lit, ok := args[0].(*parser.IntegerNode); ok {
+			n, err := strconv.Atoi(f.f.text(lit.Location))
+			if err == nil && n >= 1 {
+				return owner.lookup("__round_digits")
+			}
+		}
 	}
 	return nil
 }

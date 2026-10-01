@@ -2941,3 +2941,50 @@ resolve; anything not listed is still open.
     `eoutvar:`, templates on the file's first line. ([example
     81](../examples/81_erb/main.rb), `testdata/test/erb_test.rb`,
     `testdata/errors/erb.txtar`.)
+112. BigDecimal (#1, Phase 3) over `math/big`, with bigdecimal 4.1's
+    rules taken from its C source (`prelude/go/bigdecimal.go`). A value
+    is a sign, a mantissa `*big.Int` with trailing zeros stripped and a
+    decimal exponent, or Infinity/NaN. `+`, `-` and `*` are exact (MRI
+    sizes them to fit); `add`/`sub`/`mult(v, digits)` round to digits
+    significant digits half-up. `/` and `quo` give
+    `max(precision(a), precision(b)) + 16` significant digits, at least
+    32 (`BigDecimal_div2`), rounded half-up with the remainder as the
+    sticky digit; `div(v, digits)` gives digits; `div(v)` is the floored
+    quotient as an Integer, `divmod` `[Integer, BigDecimal]` floored,
+    `remainder` truncated, as `BigDecimal_DoDivmod`. Rounding (`round`,
+    `floor`, `ceil`, `truncate`, `fix`, `frac`) is `VpMidRound` at a
+    digit position, with all seven modes by Symbol (`:half_even`,
+    `:banker`, `:ceiling`, …) or `ROUND_*` constant. `round` with no
+    argument, or with n < 1, is an Integer, otherwise a BigDecimal, as
+    MRI's: the compiler types `round(2)` with a literal n ≥ 1 as
+    BigDecimal (`__round_digits`, a literal overload like decision
+    101's), a computed n as `untyped`; with a mode it is always a
+    BigDecimal. `to_s` is MRI's E form (`0.123e1`); `"F"`, a leading
+    `+`/space and a group size (`"3F"`, `to_s(4)`) follow
+    `VpToString`/`VpToFString`. `BigDecimal(str)` parses as `VpAlloc`
+    (spaces, `_` between digits, `e`/`d` exponents; MRI's `invalid value
+    for BigDecimal(): "x"`); `String#to_d` takes the longest valid
+    prefix. A Float converts by its shortest round-trip digits capped at
+    16 (`rb_float_convert_to_BigDecimal`), or digits significant digits;
+    a Rational needs digits (`can't omit precision for a Rational.`),
+    and as an operand is divided to the receiver's coerce precision.
+    `**`/`power` with an Integer exponent is exact (a negative one is 1
+    divided by the power, by the division rule); any other exponent and
+    `sqrt` are computed with `big.Float` (ln and exp by series) past the
+    target precision and rounded to `max(digits(x), digits(y), 16) + 16`
+    (`sqrt`: the requested digits, or digits + 16): the same digits as
+    MRI's Newton loops in every case tried, not a port of them.
+    Comparisons take any number, `==` with a non-number is false and an
+    order raises `comparison of BigDecimal with String failed`; NaN
+    compares false and `<=>` is nil. `hash`/`eql?` agree for equal values
+    (`1.0` and `1`), so BigDecimals work as Hash keys. An Integer or Float
+    on the left (`2 * price`) goes through decision 12's class twins on
+    Integer/Float (`__mul_big_decimal`). Integers past 64 bits from
+    `to_i` raise `RangeError` (decision 35). `to_digits` keeps
+    bigdecimal/util's own algorithm, sign quirk included (`-0.5` is
+    `"0.5"`); `split` is an Array (tuples stop at 3). Not done:
+    `BigDecimal.mode`/`limit`/`save_*` (global precision and exception
+    modes: the defaults always apply), `BigMath`, `_dump`/`_load`,
+    `nil.to_d`, Complex operands. ([example
+    82](../examples/82_bigdecimal/main.rb), `testdata/test/bigdecimal_test.rb`,
+    whose expected values are MRI's own output.)
