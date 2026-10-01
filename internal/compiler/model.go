@@ -534,7 +534,11 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 	cls := c.declareClass(f, name, line, false)
 	if n.Superclass != nil {
 		// The superclass expression is evaluated outside the class body.
-		ref := &constRef{node: n.Superclass, scope: scope, file: f}
+		sup := n.Superclass
+		if call, ok := sup.(*parser.CallNode); ok && call.Name == "DelegateClass" {
+			sup = c.delegateClassSuper(ctx, f, call, scope)
+		}
+		ref := &constRef{node: sup, scope: scope, file: f}
 		if reopen {
 			// the first declaration fixed the superclass (Object when it named none)
 			cls.reSupers = append(cls.reSupers, ref)

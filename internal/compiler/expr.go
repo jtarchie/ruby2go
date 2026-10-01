@@ -1281,6 +1281,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			if mm := f.owner.lookup("method_missing"); mm != nil {
 				return f.callMissing(n, mm, recv, name, args, block)
 			}
+			if f.c.isDelegator(f.owner) && f.c.classes["Object"].lookup(name) == nil {
+				return f.delegateCall(n, recv, name, args, block)
+			}
 			if f.owner.isStruct() && f.owner.descendantDefines(name, false) && block == nil {
 				return f.genDynCall(n, recv, name, args)
 			}
@@ -1294,6 +1297,20 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
+}
+
+// isDelegator reports whether cls is a Delegator (SimpleDelegator, a DelegateClass) or a subclass of one.
+func (c *Compiler) isDelegator(cls *Class) bool {
+	d := c.classes["Delegator"]
+	return d != nil && cls != nil && cls != d && cls.isSubclassOf(d)
+}
+
+// delegateCall is a method a delegator doesn't define, compiled to the same
+// call on its __getobj__ (decision 118): untyped, so dispatched at run time,
+// for SimpleDelegator; typed for DelegateClass(Foo).
+func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	obj := f.genMethodCall(n, recv, "__getobj__", nil, nil)
+	return f.genMethodCall(n, obj, name, args, block)
 }
 
 // classCall dispatches on a class-typed receiver.
@@ -1310,6 +1327,9 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 	if e == nil {
 		if mm := t.C.lookup("method_missing"); mm != nil {
 			return f.callMissing(n, mm, recv, name, args, block)
+		}
+		if f.c.isDelegator(t.C) {
+			return f.delegateCall(n, recv, name, args, block)
 		}
 		// a Module/Class-typed value is some class object, and a
 		// struct-typed value may be a subclass defining the method:

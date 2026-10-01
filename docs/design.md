@@ -3109,3 +3109,31 @@ resolve; anything not listed is still open.
     custom converter lambdas, `CSV.parse_line` with headers. ([example
     85](../examples/85_csv_headers/main.rb), `testdata/test/stdlib_test.rb`
     `test_headers_and_converters`, `testdata/errors/regexp_json.txtar`.)
+118. OpenStruct, SimpleDelegator and DelegateClass (#35).
+    - **OpenStruct** is Ruby in the prelude over decision 31's
+      `method_missing`: a field read is `method_missing(:name)` and a
+      write `method_missing(:name=, v)`, both on an ordered
+      `Hash[Symbol, untyped]`, so fields are untyped. `[]`/`[]=` (Symbol
+      or String keys), `to_h`, `each_pair`, `dig`, `delete_field` (MRI's
+      `NameError: no field 'x' in #<OpenStruct ...>`), `==`,
+      `respond_to?` through `respond_to_missing?`, and MRI's inspect
+      (`#<OpenStruct name="Ada", age=36>`). Signatures are vendored in
+      `sig/ostruct.rbs` (decision 110).
+    - **Delegation** is resolved at compile time, not by a run-time send:
+      a method a `Delegator` subclass doesn't define (called on it, or
+      receiverless in its body) compiles to the same call on its
+      `__getobj__` (`delegateCall`). For `SimpleDelegator` the object is
+      untyped, so the forwarded call is a dynamic call (decision 32) and
+      warns as one; `to_s`, `inspect`, `==`, `!=`, `hash` and
+      `respond_to?` forward too, as MRI's Delegator does, while `class`
+      stays the wrapper's. `class W < DelegateClass(Foo)` makes the
+      compiler generate, once per Foo, a `DelegateClass_Foo` Delegator
+      whose `__getobj__` is typed Foo (`delegateClassSuper`), so W's
+      forwarded calls are typed. Not done: forwarded calls with a block
+      on SimpleDelegator (dynamic calls take no block), `method_missing`
+      on the delegator itself overriding forwarding, `DelegateClass` of
+      a generic or `@go_type` class beyond what its typed calls allow,
+      and a dynamic call that needs an arity twin (`delegated.first` with
+      no count reaches `Array#first(n)`, decision 12). WeakRef (decision
+      110) keeps `__getobj__`. ([example 86](../examples/86_delegation/main.rb),
+      `testdata/test/stdlib_test.rb` `DelegationTest`.)

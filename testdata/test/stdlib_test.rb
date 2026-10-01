@@ -1,6 +1,8 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "ostruct"
+require "delegate"
 require "benchmark"
 require "base64"
 require "csv"
@@ -1089,6 +1091,84 @@ module StdlibTests
       end
       assert_equal [], o.parse(%w[-v -c 2 --no-color -l rest], into: h)
       assert_equal({ verbose: true, count: 2, color: false, l: "rest" }, h)
+    end
+  end
+
+  # OpenStruct, SimpleDelegator and DelegateClass (decision 118, #35).
+  class LoudString < SimpleDelegator
+    #: () -> String
+    def shout = "#{__getobj__.upcase}!"
+  end
+
+  class DelegPt
+    attr_reader :x #: Integer
+
+    #: (Integer) -> void
+    def initialize(x)
+      @x = x
+    end
+
+    #: () -> Integer
+    def dbl = x * 2
+  end
+
+  class DelegWrapped < DelegateClass(DelegPt)
+    #: () -> Integer
+    def triple = x * 3
+  end
+
+  class DelegationTest < Minitest::Test
+    def test_open_struct
+      o = OpenStruct.new(name: "Ada", age: 36)
+      o.email = "a@x"
+      assert_equal "Ada", o.name
+      assert_equal "a@x", o.email
+      assert_nil o.missing
+      assert_equal 36, o[:age]
+      assert_equal "Ada", o["name"]
+      assert_equal({ name: "Ada", age: 36, email: "a@x" }, o.to_h)
+      assert_equal true, o.respond_to?(:name)
+      assert_equal false, o.respond_to?(:nope)
+      assert_equal "#<OpenStruct name=\"Ada\", age=36, email=\"a@x\">", o.inspect
+      o[:age] = 37
+      assert_equal 37, o.age
+      assert_equal "a@x", o.delete_field(:email)
+      assert_equal "#<OpenStruct>", OpenStruct.new.inspect
+      assert_equal true, o == OpenStruct.new(name: "Ada", age: 37)
+      assert_equal 3, OpenStruct.new(a: { b: [1, 2, 3] }).dig(:a, :b, 2)
+      pairs = [] #: Array[untyped]
+      o.each_pair { |k, v| pairs << [k, v] }
+      assert_equal [[:name, "Ada"], [:age, 37]], pairs
+      err = begin
+        o.delete_field(:zzz)
+        nil
+      rescue NameError => e
+        e.message
+      end
+      assert_equal "no field 'zzz' in #<OpenStruct name=\"Ada\", age=37>", err
+    end
+
+    def test_simple_delegator
+      s = LoudString.new("hi")
+      assert_equal 2, s.length
+      assert_equal "HI!", s.shout
+      assert_equal "HI", s.upcase
+      assert_equal "\"hi\"", s.inspect
+      assert_equal "hi", s.to_s
+      assert_equal true, s == "hi"
+      assert_equal "StdlibTests::LoudString", s.class.name
+      assert_equal true, s.respond_to?(:length)
+      s.__setobj__("bye")
+      assert_equal 3, s.length
+    end
+
+    def test_delegate_class
+      w = DelegWrapped.new(DelegPt.new(4))
+      assert_equal 4, w.x
+      assert_equal 8, w.dbl
+      assert_equal 12, w.triple
+      w.__setobj__(DelegPt.new(5))
+      assert_equal 10, w.dbl
     end
   end
 end

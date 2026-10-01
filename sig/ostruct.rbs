@@ -1,0 +1,12 @@
+# OpenStruct's signatures, vendored: the rbs gem ships none (decision 110). Fields are untyped, read through method_missing.
+class OpenStruct
+  def initialize: (?Hash[untyped, untyped] hash) -> void
+  def method_missing: (Symbol name, *untyped args) -> untyped
+  def respond_to_missing?: (Symbol name, ?bool include_private) -> bool
+  def []: (untyped name) -> untyped
+  def []=: (untyped name, untyped value) -> untyped
+  def to_h: () -> Hash[Symbol, untyped]
+  def each_pair: () { (Symbol, untyped) -> void } -> void
+  def dig: (untyped name, *untyped rest) -> untyped
+  def delete_field: (untyped name) -> untyped
+end
