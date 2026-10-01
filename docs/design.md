@@ -2261,6 +2261,25 @@ resolve; anything not listed is still open.
       stubs, 1.52M → 1.38M lines; cache entries (no DWARF, decision 88)
       array_test 82 → 66 MB, dynamic_test 274 → 161 MB, `05_word_count`
       6 → 3 MB. Test output unchanged.
+    - *Amended:* the marker rule is `_X()` with X a declared type
+      (`identity`), not every `_`-prefixed name: `_ClassOf()`, `_Kind()`
+      and the `__Sleep*`/`__FreshObject` helpers were kept on every kept
+      interface too, and `_ClassOf` alone pulled each exception's
+      metaclass and the Module layer into `puts "hello"` (1199 → 1080
+      lines). `RB2GO_PRUNE_WHY=1` prints, per kept declaration, the chain
+      of visits that kept it, back to a statement of main: how these
+      were found.
+    - *Amended:* a named interface's unselected methods are parked, not
+      visited, until something selects them (like a pending type-switch
+      case): sweep would slim them away anyway, but their signatures had
+      already kept their types (`_ClassOf() Exception_MetaI` kept the
+      metaclass layer). And a selector on a std package (`os.Interrupt`,
+      `sync.Mutex`) no longer names a class of ours: the unscoped match
+      kept `Interrupt` and `Mutex` in every program. `puts "hello"` is
+      772 lines (from 1080). A type switch left with only `default`
+      becomes that body (`inlineDefaultOnly`, its guard kept as `_ = e`),
+      and the blank lines dropped cases leave at a brace are tidied after
+      printing (`tidyBraces`): the generated code still lints.
     - **`_Ref` too:** the marker was 11k of the 24k stubs left, an empty
       method on every pointer class so `rbObjToS`/`rbObjectID` could ask
       whether a value's address is its identity. It is now the
@@ -2496,6 +2515,10 @@ resolve; anything not listed is still open.
     trap changes is handled by the new setting. `Process.kill(sig, pid)`
     is `syscall.Kill` and returns 1. Interrupt/SignalException are still
     never raised (decision 60).
+    *Amended:* the signal loop consults the trap table through
+    `rbTrapHook`, which only `Kernel#trap` sets, so a program without
+    `trap` carries neither the table nor `rbRunTrap` and what it reaches
+    (decision 49): `puts "hello"` lost 160 lines.
     ([example 75](../examples/75_trap/main.rb)).
 101. OptionParser (#1, Phase 3), over a Go engine (`prelude/go/optparse.go`,
     no `flag`). The one typing problem is `on`'s block, whose parameter

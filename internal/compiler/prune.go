@@ -2,8 +2,10 @@ package compiler
 
 import (
 	"cmp"
+	"fmt"
 	"go/ast"
 	"go/token"
+	"io"
 	"slices"
 	"strings"
 )
@@ -36,6 +38,9 @@ type pruner struct {
 	named       map[*ast.InterfaceType]bool
 	stubs       map[*ast.FuncDecl]bool
 	pending     map[*ast.CaseClause][]string // type-switch cases waiting for their declared type names to be kept
+	parked      map[*ast.Field]string        // named interfaces' unselected methods: visited (their types kept) only once selected, as sweep slims them otherwise
+	cur         ast.Node                     // the node being visited, for why
+	why         map[ast.Node]ast.Node        // the node whose visit first kept each kept node (RB2GO_PRUNE_WHY=1 dumps the chains)
 	lazy        map[string]bool              // prelude constants: main's assignment to one waits for something else to name it
 	deferred    map[ast.Stmt]string          // those assignments, by constant
 	queue       []ast.Node
@@ -43,7 +48,7 @@ type pruner struct {
 
 // newPruner drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps. Declarations arrive in batches (add, then run): the dynamic dispatchers are emitted only for what the first batch reaches.
 func newPruner(lazy map[string]bool) *pruner {
-	p := &pruner{lazy: lazy, deferred: map[ast.Stmt]string{}, byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
+	p := &pruner{lazy: lazy, deferred: map[ast.Stmt]string{}, byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}, parked: map[*ast.Field]string{}, why: map[ast.Node]ast.Node{}}
 	for n := range stdMethodNames {
 		p.methodNames[n] = true
 	}
@@ -107,12 +112,19 @@ func (p *pruner) run() {
 		for len(p.queue) > 0 {
 			n := p.queue[len(p.queue)-1]
 			p.queue = p.queue[:len(p.queue)-1]
+			p.cur = n
 			ast.Inspect(n, p.visit)
 		}
 		for st, name := range p.deferred {
 			if p.names[name] {
 				delete(p.deferred, st)
 				p.queue = append(p.queue, st)
+			}
+		}
+		for m, name := range p.parked {
+			if p.methodNames[name] || p.mustDeclare(name) {
+				delete(p.parked, m)
+				p.queue = append(p.queue, m)
 			}
 		}
 		for cc, names := range p.pending {
@@ -134,6 +146,9 @@ func (p *pruner) run() {
 				delete(p.stubs, m.decl)
 				p.queue = append(p.queue, m.decl.Body)
 			case selected:
+				if ts := p.byName[m.recv]; len(ts) > 0 { // kept for its receiver, as far as why can tell
+					p.cur = ts[0]
+				}
 				p.keep(m.decl)
 			case p.mustDeclare(name) && !p.kept[m.decl]:
 				p.kept[m.decl] = true
@@ -214,6 +229,9 @@ func (p *pruner) keep(n ast.Node) {
 		return
 	}
 	p.kept[n] = true
+	if p.cur != nil {
+		p.why[n] = p.cur
+	}
 	p.queue = append(p.queue, n)
 	if d := p.constBlock[n]; d != nil {
 		for _, s := range d.Specs {
@@ -249,6 +267,9 @@ func (p *pruner) visit(x ast.Node) bool {
 		}
 	case *ast.SelectorExpr:
 		p.methodNames[x.Sel.Name] = true
+		if id, ok := x.X.(*ast.Ident); ok && stdImports[id.Name] != "" && len(p.byName[id.Name]) == 0 {
+			return false // a std package's member: os.Interrupt is not class Interrupt, sync.Mutex not class Mutex
+		}
 	case *ast.InterfaceType:
 		for _, m := range x.Methods.List {
 			for _, mn := range m.Names {
@@ -258,13 +279,31 @@ func (p *pruner) visit(x ast.Node) bool {
 				}
 			}
 		}
+		if p.named[x] {
+			for _, m := range x.Methods.List {
+				if len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name) {
+					p.parked[m] = m.Names[0].Name
+					continue
+				}
+				ast.Inspect(m, p.visit)
+			}
+			return false
+		}
 	}
 	return true
 }
 
 // mustDeclare reports whether every kept type has to keep a method of this name even when nothing calls it: an interface literal asserts it at run time, or it is a `_` marker (`_Foo()` decides `rescue`/`is_a?` matches through FooI).
 func (p *pruner) mustDeclare(name string) bool {
-	return p.asserted[name] || (p.declared[name] && strings.HasPrefix(name, "_"))
+	return p.asserted[name] || (p.declared[name] && p.identity(name))
+}
+
+// identity: `_X()` on a kept interface, X a declared type, is what makes a value of XI an X (decision 89); other `_` methods (`_ClassOf`, `__Sleep0`) are accessors, kept only when selected.
+func (p *pruner) identity(name string) bool {
+	if !strings.HasPrefix(name, "_") || strings.HasPrefix(name, "__") {
+		return false
+	}
+	return slices.ContainsFunc(p.byName[name[1:]], func(n ast.Node) bool { _, ok := n.(*ast.TypeSpec); return ok })
 }
 
 // slimInterfaces drops from named interfaces the methods kept code never selects: the classes then need no stub for them (decision 89).
@@ -331,6 +370,37 @@ func (p *pruner) dropDeadCases(ts *ast.TypeSwitchStmt) {
 	}
 }
 
+// inlineDefaultOnly replaces a type switch whose typed cases were all dropped with its default body (gocritic's singleCaseSwitch); the guard's expression stays as `_ = e` in case it has effects.
+func inlineDefaultOnly(list []ast.Stmt) []ast.Stmt {
+	out := make([]ast.Stmt, 0, len(list))
+	for _, st := range list {
+		ts, ok := st.(*ast.TypeSwitchStmt)
+		if !ok || len(ts.Body.List) != 1 || ts.Body.List[0].(*ast.CaseClause).List != nil {
+			out = append(out, st)
+			continue
+		}
+		var body []ast.Stmt
+		if ts.Init != nil {
+			body = append(body, ts.Init)
+		}
+		var guard ast.Expr
+		switch a := ts.Assign.(type) {
+		case *ast.ExprStmt:
+			guard = a.X.(*ast.TypeAssertExpr).X
+		case *ast.AssignStmt:
+			guard = a.Rhs[0].(*ast.TypeAssertExpr).X
+		}
+		if _, ident := guard.(*ast.Ident); guard != nil && !ident {
+			body = append(body, &ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{NamePos: ts.Pos(), Name: "_"}}, TokPos: ts.Pos(), Tok: token.ASSIGN, Rhs: []ast.Expr{guard}})
+		}
+		body = append(body, ts.Body.List[0].(*ast.CaseClause).Body...)
+		if len(body) > 0 {
+			out = append(out, &ast.BlockStmt{Lbrace: ts.Pos(), List: body, Rbrace: ts.End() - 1})
+		}
+	}
+	return out
+}
+
 // mentions reports whether n uses the identifier name anywhere.
 func mentions(n ast.Node, name string) bool {
 	found := false
@@ -363,6 +433,17 @@ func (p *pruner) sweep(f *ast.File) {
 		ast.Inspect(d, func(n ast.Node) bool {
 			if ts, ok := n.(*ast.TypeSwitchStmt); ok {
 				p.dropDeadCases(ts)
+			}
+			return true
+		})
+		ast.Inspect(d, func(n ast.Node) bool { // after every switch is slimmed: one left with only `default` becomes its body
+			switch n := n.(type) {
+			case *ast.BlockStmt:
+				n.List = inlineDefaultOnly(n.List)
+			case *ast.CaseClause:
+				n.Body = inlineDefaultOnly(n.Body)
+			case *ast.CommClause:
+				n.Body = inlineDefaultOnly(n.Body)
 			}
 			return true
 		})
@@ -512,4 +593,59 @@ func isGenericForwarder(d *ast.FuncDecl) bool {
 	}
 	id, ok := fun.(*ast.Ident)
 	return ok && id.Name == recvName(recv)+"_"+d.Name.Name
+}
+
+// explain writes one line per kept declaration: its name, then the chain of nodes whose visits kept it, back to a root.
+func (p *pruner) explain(f *ast.File, w io.Writer) {
+	name := func(n ast.Node) string {
+		switch n := n.(type) {
+		case *ast.FuncDecl:
+			if n.Recv != nil {
+				return recvName(n.Recv.List[0].Type) + "." + n.Name.Name
+			}
+			return n.Name.Name
+		case *ast.TypeSpec:
+			return n.Name.Name
+		case *ast.ValueSpec:
+			return n.Names[0].Name
+		case *ast.CaseClause:
+			return "case"
+		case ast.Stmt: // one of main's, queued one by one (lazyConst)
+			call := "main"
+			ast.Inspect(n, func(x ast.Node) bool {
+				if c, ok := x.(*ast.CallExpr); ok && call == "main" {
+					if id, ok := c.Fun.(*ast.Ident); ok {
+						call = "main:" + id.Name
+					}
+				}
+				return call == "main"
+			})
+			return call
+		}
+		return fmt.Sprintf("%T", n)
+	}
+	for _, d := range f.Decls {
+		var nodes []ast.Node
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			nodes = []ast.Node{d}
+		case *ast.GenDecl:
+			nodes = make([]ast.Node, 0, len(d.Specs))
+			for _, s := range d.Specs {
+				nodes = append(nodes, s)
+			}
+		}
+		for _, n := range nodes {
+			chain := []string{name(n)}
+			for seen := map[ast.Node]bool{n: true}; ; {
+				n = p.why[n]
+				if n == nil || seen[n] {
+					break
+				}
+				seen[n] = true
+				chain = append(chain, name(n))
+			}
+			_, _ = fmt.Fprintln(w, strings.Join(chain, " <- "))
+		}
+	}
 }

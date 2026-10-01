@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/format"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"maps"
 	"os"
@@ -75,6 +76,9 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	}
 	if p != nil {
 		p.sweep(f)
+		if os.Getenv("RB2GO_PRUNE_WHY") != "" {
+			p.explain(f, os.Stderr)
+		}
 	}
 	used := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -90,7 +94,7 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	if err != nil {
 		return nil, fmt.Errorf("gofmt: %w", err)
 	}
-	out := buf.Bytes()
+	out := tidyBraces(buf.Bytes())
 	if len(used) == 0 {
 		return out, nil
 	}
@@ -104,4 +108,41 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	pkg := bytes.Index(out, []byte("package "+f.Name.Name+"\n"))
 	at := pkg + len("package "+f.Name.Name+"\n")
 	return slices.Concat(out[:at], []byte(imp.String()), out[at:]), nil
+}
+
+// tidyBraces drops the blank line pruning leaves after `{` (a dropped first type-switch case) or before `}` (a switch shortened inside its block); the scanner keeps braces inside literals out of it.
+func tidyBraces(src []byte) []byte {
+	var sc scanner.Scanner
+	file := token.NewFileSet().AddFile("", -1, len(src))
+	sc.Init(file, src, nil, 0)
+	var cuts []int
+	for {
+		pos, tok, _ := sc.Scan()
+		if tok == token.EOF {
+			break
+		}
+		o := file.Offset(pos)
+		switch {
+		case tok == token.LBRACE && o+2 < len(src) && src[o+1] == '\n' && src[o+2] == '\n':
+			cuts = append(cuts, o+1)
+		case tok == token.RBRACE:
+			i := o - 1
+			for i >= 0 && (src[i] == '\t' || src[i] == ' ') {
+				i--
+			}
+			if i >= 1 && src[i] == '\n' && src[i-1] == '\n' {
+				cuts = append(cuts, i)
+			}
+		}
+	}
+	if len(cuts) == 0 {
+		return src
+	}
+	out := make([]byte, 0, len(src))
+	prev := 0
+	for _, c := range cuts {
+		out = append(out, src[prev:c]...)
+		prev = c + 1
+	}
+	return append(out, src[prev:]...)
 }
