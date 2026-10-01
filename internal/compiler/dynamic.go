@@ -176,6 +176,7 @@ func growsTypeParams(cls *Class, e *entry) bool {
 			return mentionsVar(t)
 		case TClass:
 			return !own(t) && mentionsVar(t)
+		case TAny, TFunc, TNil, TVar, TVoid: // no class of its own whose wrappers could grow
 		}
 		return false
 	}
@@ -560,6 +561,7 @@ func (c *Compiler) dynArg(t Type, i int) string {
 		return arg
 	case TOpt:
 		return fmt.Sprintf("OptOf[%s](%s, %q)", c.goType(t.Elem), arg, t.Elem.String())
+	case TClass, TFunc, TNil, TTuple, TVar, TVoid: // converted and checked by rbAs below
 	}
 	return fmt.Sprintf("rbAs[%s](%s, %q)", c.goType(t), arg, t.String())
 }

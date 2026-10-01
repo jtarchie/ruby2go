@@ -3137,3 +3137,33 @@ resolve; anything not listed is still open.
       no count reaches `Array#first(n)`, decision 12). WeakRef (decision
       110) keeps `__getobj__`. ([example 86](../examples/86_delegation/main.rb),
       `testdata/test/stdlib_test.rb` `DelegationTest`.)
+119. The compiler's two `Type` interfaces (`rbs.Type`, the annotation as
+    written; `compiler.Type`, the resolved type) are sealed sum types
+    (#33): each has an unexported `isType()` only its members implement,
+    and `//sumtype:decl` lets `gochecksumtype` (enabled in `.golangci.yml`
+    only; generated programs have no sealed interfaces) require every
+    type switch on them to list every member. `default:` does not count,
+    so a member cannot be forgotten behind one; a deliberate fallthrough
+    is an explicit arm listing the members that take it, with a comment
+    saying why. Adding a member means visiting each switch the linter
+    names. Turning it on listed 22 switches. 19 were deliberate and now
+    say so; three were real gaps, each a valid Ruby program rb2go
+    rejected:
+    - a call on a void method's value (`log(x).nil?`, `.class`,
+      `is_a?`) was "undefined method for void". The void call now runs
+      as a statement and the call goes to nil (`voidAsNil`, in
+      `genMethodCall`), as decision 91 already did for an untyped slot;
+    - `.class` on a tuple was "undefined method"; it is `Array`
+      (decision 22);
+    - `x.is_a?(K)` on a generic `T` was "not supported"; it is checked at
+      run time as for untyped. That exposed a fourth bug: a literal
+      passed for a type variable (`string?("a")`) was an untyped Go
+      constant, so Go inferred `string`, not `String`, and the check
+      failed. `coerceArg` now names the literal's type.
+    The issue also asked whether a sum-type linter could narrow `untyped`
+    in generated programs. It cannot: `untyped` holds Go builtins
+    (`int`, `string`, decision 35), which no sealed interface can
+    contain, and calls on it go through interface assertions in the
+    `rbDyn*` dispatchers, not switches. A Ruby `case` with no `else`
+    is also legal and yields nil, so generated switches must not be
+    exhaustive anyway. (`testdata/test/object_test.rb` `SumTypeGapsTest`.)

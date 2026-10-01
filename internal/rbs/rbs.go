@@ -9,7 +9,28 @@ import (
 
 // Type is an RBS type. Names are unresolved: a bare identifier may be a
 // class, a type variable or an alias; the compiler decides.
-type Type interface{ String() string }
+// Type is a sealed sum type (decision 119): only the members below
+// implement isType, and gochecksumtype makes every type switch on it list
+// all of them.
+//
+//sumtype:decl
+type Type interface {
+	String() string
+	isType()
+}
+
+func (Name) isType()      {}
+func (Optional) isType()  {}
+func (Tuple) isType()     {}
+func (Union) isType()     {}
+func (Self) isType()      {}
+func (Void) isType()      {}
+func (Bot) isType()       {}
+func (Nil) isType()       {}
+func (Untyped) isType()   {}
+func (Bool) isType()      {}
+func (Singleton) isType() {}
+func (Proc) isType()      {}
 
 type (
 	// Name is `Foo` or `Foo[A, B]`.

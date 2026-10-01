@@ -3870,6 +3870,39 @@ module ObjectTests
       assert_equal "key not found: 9", assert_raises(KeyError) { d.count_of(9) }.message
     end
   end
+  # Gaps the sealed Type sum types turned up (decision 119): a call on a void
+  # method's nil, `.class` on a tuple, `is_a?` on a generic value.
+  class SumTypeGapsTest < Minitest::Test
+    #: () -> void
+    def nothing
+    end
+
+    # @rbs [T] (T) -> bool
+    def string?(x) = x.is_a?(String)
+
+    def test_void_value_is_nil
+      assert_equal true, nothing.nil?
+      assert_equal "NilClass", nothing.class.name
+      assert_equal true, nothing.is_a?(NilClass)
+      assert_equal "nil", nothing.inspect
+    end
+
+    def test_tuple_class
+      pair = [1, "a"] #: [Integer, String]
+      assert_equal "Array", pair.class.name
+    end
+
+    def test_generic_is_a
+      assert_equal true, string?("a")
+      assert_equal false, string?(1)
+      assert_equal false, string?(:s)
+      assert_equal true, int?(1)
+    end
+
+    # @rbs [T] (T) -> bool
+    def int?(x) = x.is_a?(Integer)
+  end
+
   # A local assigned two sibling classes takes their common superclass (decision 116).
   class SiblingAssignTest < Minitest::Test
     def test_sibling_reassignment

@@ -879,6 +879,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 			switch e.typ.(TOpt).Elem.(type) {
 			case TVar, TOpt: // E? with E = T?: Opt leaves the inner box
 				return "rbUnbox(Opt(" + e.code + "))"
+			case TAny, TClass, TFunc, TNil, TTuple, TVoid: // a plain T?: Opt boxes it below
 			}
 			return "Opt(" + e.code + ")"
 		case e.lit:
@@ -902,6 +903,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		return f.coerceClass(n, e, to)
 	case TVar:
 		return e.code
+	case TFunc, TNil, TTuple, TVoid: // converted by the general rules below
 	}
 	return e.code
 }
@@ -959,6 +961,11 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 	if _, ok := p.Type.(TVar); ok && isAny(t) && !isOpt(a.typ) && !isVoid(a.typ) && f.c.goType(a.typ) != "any" {
 		return "any(" + code + ")"
 	}
+	// A literal for a type variable is an untyped Go constant, from which Go
+	// would infer string or int, not String or Integer: name its type.
+	if _, ok := p.Type.(TVar); ok && a.lit && typeEq(a.typ, t) && code == a.code {
+		return f.c.goType(t) + "(" + code + ")"
+	}
 	return code
 }
 
@@ -990,6 +997,7 @@ func sameButUntyped(a, b Type) bool {
 	case TOpt:
 		b, ok := b.(TOpt)
 		return ok && sameButUntyped(a.Elem, b.Elem)
+	case TAny, TFunc, TNil, TTuple, TVar, TVoid: // the same only when typeEq, checked above
 	}
 	return false
 }
@@ -1115,6 +1123,7 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 		if t.Name == "Self" && f.owner != nil {
 			e = f.owner.lookup(name)
 		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no class here to look in: only a top-level def can answer
 	}
 	if e == nil {
 		if td := f.c.topDefs[name]; td != nil {
@@ -1129,6 +1138,9 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 
 // genMethodCall dispatches a call on an already-generated receiver.
 func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if _, ok := recv.typ.(TVoid); ok { // a void call's value is nil, as in Ruby: run it, then call on nil (decision 119)
+		recv = f.voidAsNil(recv)
+	}
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
@@ -1294,9 +1306,19 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 		return f.universalCall(n, recv, name, args, block)
 	case TAny, TNil:
 		return f.universalCall(n, recv, name, args, block)
+	case TVoid: // a void call's value is nil, as in Ruby: run it, then call on nil (`log(x).nil?`)
+		return f.universalCall(n, f.voidAsNil(recv), name, args, block)
 	}
 	f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	return expr{}
+}
+
+// voidAsNil runs a void call as a statement and stands nil in for its value (decision 119).
+func (f *fctx) voidAsNil(recv expr) expr {
+	if recv.code != "" && !recv.done {
+		f.emit("%s", recv.code)
+	}
+	return expr{code: "nil", typ: TNil{}}
 }
 
 // isDelegator reports whether cls is a Delegator (SimpleDelegator, a DelegateClass) or a subclass of one.
@@ -2072,6 +2094,7 @@ func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
 			return f.c.selfCalls(f.owner)[e.M.Name]
 		}
 		return e.Owner == f.owner
+	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no Go method set to forward to
 	}
 	return false
 }
@@ -2907,6 +2930,7 @@ func (f *fctx) metaOfType(t Type) *Class {
 		if t.Name == "Self" && f.owner != nil && f.owner.metaOf != nil {
 			return f.owner
 		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // not a class object
 	}
 	return nil
 }
@@ -2932,6 +2956,12 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 		p := f.c.classes["Proc"]
 		f.discard(recv)
 		return expr{code: classVar(p), typ: TClass{C: p.meta}}, true
+	case TTuple: // a tuple is an Array at run time (decision 22)
+		a := f.c.classes["Array"]
+		f.discard(recv)
+		return expr{code: classVar(a), typ: TClass{C: a.meta}}, true
+	case TVoid: // a void call's value is nil
+		return f.dynClassOf(n, f.voidAsNil(recv)), true
 	}
 	if cls != nil && (cls.universal || cls.IsModule) { // Go any: asked at run time
 		return f.dynClassOf(n, recv), true
@@ -3037,8 +3067,12 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 		return "false"
 	case TTuple:
 		return strconv.FormatBool(cls.RubyName == "Array")
-	case TAny:
+	case TAny, TVar: // a generic T is some value known at run time, as untyped is (Self was resolved above)
 		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
+	case TVoid: // a void call's value is nil
+		f.voidAsNil(recv)
+		return "false"
+	case TFunc, TNil, TOpt: // handled before the switch
 	}
 	f.errorf(n, "is_a? on %s is not supported", t)
 	return ""
@@ -3660,6 +3694,7 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 		if t.Name == "Self" {
 			cls = f.owner
 		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no class known here: not a Data value's with
 	}
 	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().valueKind != "data" {
 		return expr{}, false
@@ -3754,6 +3789,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		if t.Name == "Self" {
 			cls = f.owner
 		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no class known here: answered at run time
 	}
 	if name == "" || cls == nil {
 		return expr{}, false

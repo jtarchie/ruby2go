@@ -216,12 +216,13 @@ puts named?(Car.new)
 #: (untyped) -> bool
 def check(v) = v.is_a?(Integer, Float)
 puts check(1)
--- is_a_on_type_variable.rb --
-# error: main.rb:4: is_a? on T is not supported
+-- is_a_module_on_type_variable.rb --
+# error: main.rb:5: is_a?(Tag) on T cannot be checked: rb2go has no runtime record of included modules
 # rbs_inline: enabled
+module Tag; end
 #: [T] (T) -> bool
-def int?(x) = x.is_a?(Integer)
-puts int?(1)
+def tagged?(x) = x.is_a?(Tag)
+puts tagged?(1)
 -- when_module_on_untyped.rb --
 # error: main.rb:7:
 # error: no runtime record of included modules

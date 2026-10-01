@@ -6,7 +6,24 @@ import (
 )
 
 // Type is a resolved Ruby type.
-type Type interface{ String() string }
+// Type is a sealed sum type (decision 119): only the members below
+// implement isType, and gochecksumtype makes every type switch on it list
+// all of them, so adding a member means visiting every switch it names.
+//
+//sumtype:decl
+type Type interface {
+	String() string
+	isType()
+}
+
+func (TClass) isType() {}
+func (TOpt) isType()   {}
+func (TTuple) isType() {}
+func (TVar) isType()   {}
+func (TFunc) isType()  {}
+func (TAny) isType()   {}
+func (TNil) isType()   {}
+func (TVoid) isType()  {}
 
 type (
 	// TClass is an instance of a class or module, possibly with type args.
@@ -65,6 +82,7 @@ func isVoid(t Type) bool {
 	switch t.(type) {
 	case TVoid, TNil, nil:
 		return true
+	case TAny, TClass, TFunc, TOpt, TTuple, TVar: // values, not the absence of one
 	}
 	return false
 }
@@ -84,6 +102,7 @@ func holdsAny(t Type) bool {
 		return slices.ContainsFunc(t.Elems, holdsAny)
 	case TFunc:
 		return slices.ContainsFunc(t.Params, holdsAny) || holdsAny(t.Ret)
+	case TNil, TVar, TVoid: // leaves with nothing untyped inside
 	}
 	return false
 }
@@ -214,6 +233,7 @@ func subst(t Type, env map[string]Type) Type {
 			ps[i] = subst(p, env)
 		}
 		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc}
+	case TAny, TNil, TVoid: // no type variables inside
 	}
 	return t
 }
@@ -258,6 +278,7 @@ func unify(pattern, actual Type, env map[string]Type) bool {
 			return false
 		}
 		return unify(p.Ret, a.Ret, env)
+	case TAny, TNil, TVoid: // match anything at this level; Go decides the rest
 	}
 	return true
 }
@@ -310,6 +331,7 @@ func freeVars(t Type, out *[]string) {
 			freeVars(p, out)
 		}
 		freeVars(t.Ret, out)
+	case TAny, TNil, TVoid: // no type variables inside
 	}
 }
 
@@ -394,6 +416,7 @@ func fits(t, to Type) bool {
 				return false
 			}
 		}
+	case TAny, TFunc, TNil, TVar, TVoid: // not a class-vs-class check: left to the caller (doc above)
 	}
 	return true
 }

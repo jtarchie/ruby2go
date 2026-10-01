@@ -9,6 +9,7 @@ run:
 linters:
   default: none
   enable:
+    - gochecksumtype # the compiler's two Type interfaces are sealed sum types: every type switch lists every member (decision 119)
     # default
     - errcheck      # unchecked errors are bugs (file I/O, exec)
     - govet         # go vet superset

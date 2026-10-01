@@ -670,6 +670,7 @@ func (c *Compiler) emitIvarList(cls *Class) {
 			if t.C.isStruct() || t.C.mutable() { // an interface or a pointer
 				isNilCode = field + " == nil"
 			}
+		case TAny, TNil, TTuple, TVoid: // held by value: never a nil pointer of its own
 		}
 		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
 	}
@@ -1382,6 +1383,7 @@ func (c *Compiler) noteArgBoxes(args []Type) {
 		switch a.(type) {
 		case TFunc, TAny, TVoid:
 			continue
+		case TClass, TNil, TOpt, TTuple, TVar: // a concrete argument type: boxed below (nil is skipped there)
 		}
 		if isNil(a) {
 			continue
