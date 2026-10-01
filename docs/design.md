@@ -1186,6 +1186,7 @@ resolve; anything not listed is still open.
     goroutines currently parked in a blocking `push` or `pop`, via an
     `atomic.Int64` incremented before `cond.Wait()` and decremented after.
     `Thread.current`, thread-locals and `Monitor`/`MonitorMixin` remain
+    *(all three since: decisions 104 and 108)*
     unsupported for the same reason as `owned?`.)* *(Amended by decision
     104: goroutines now have an identity, so `Thread.current`,
     `Thread.main`, `Mutex#owned?`, MRI's `ThreadError: deadlock; recursive
@@ -2729,8 +2730,8 @@ resolve; anything not listed is still open.
     started (main's, or a ractor's own) is `Thread.main`, which is what
     MRI answers inside a ractor too (each ractor has its own main thread).
     This supersedes the "goroutines have no identity" limits in decisions
-    26, 45 and 103. Not done: thread-locals (`Thread#[]`), `status`
-    `"sleep"`, `Monitor`, the per-thread inspect set of decision 26.
+    26, 45 and 103. Not done: `status` `"sleep"`, the per-thread inspect
+    set of decision 26 *(thread-locals and `Monitor`: decision 108)*.
     (`testdata/test/stdlib_test.rb` `test_thread_identity`,
     `testdata/test/ractor_test.rb` `test_receive_in_method_and_thread`,
     `test_port_owner`.) Identity also gives `Thread#join`/`value` on the
@@ -2848,3 +2849,23 @@ resolve; anything not listed is still open.
     `:out`/`:err` redirection, `chdir:`), `Process.detach`,
     `Process.kill` of a child by name, `wait` flags (`WNOHANG`).
     (`testdata/run/process_spawn.rb`.)
+108. `Monitor`, `MonitorMixin` and thread-locals (#1's won't-do table,
+    lifted by decision 104's goroutine identity). `Monitor` is a `Mutex`
+    plus an entry count: the owning thread may `enter` again, `exit`
+    releases at zero, `try_enter`, `synchronize`, the `mon_*` names,
+    `mon_locked?`/`mon_owned?`, and `mon_check_owner` raising MRI's
+    `ThreadError: current fiber not owner`. `new_cond` is a
+    `MonitorMixin::ConditionVariable` over the monitor: `wait(timeout =
+    nil)` releases it however deep it is entered (`wait_for_cond`), waits
+    on decision 45's `rbCondVar`, and takes it back as deep;
+    `wait_while`/`wait_until` loop; `signal`/`broadcast`. `MonitorMixin`
+    gives an including (or extending) object those methods through a
+    monitor kept in a Go-side table by identity (`rbMonitorFor`, decision
+    74's pattern, since a module has no ivars); `mon_initialize` is a
+    no-op. `Thread#[]`/`[]=`/`key?`/`keys` and `thread_variable_get`/
+    `set`/`thread_variable?`/`thread_variables` are two `sync.Map`s on the
+    Thread, keyed by Symbol or String (MRI takes either; `keys` answers
+    Symbols, sorted, since a map has no order), a nil value deleting the
+    key. MRI's `Thread#[]` is fiber-local; rb2go has no fibers, so the two
+    maps differ only in name. `require "monitor"` is a no-op (decision
+    50). ([example 79](../examples/79_monitor/main.rb).)

@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map }
 class Thread < Object
   # The block's value is kept for #value, untyped: Thread is not generic.
   #: () { () -> untyped } -> Thread
@@ -68,6 +68,59 @@ class Thread < Object
     }
     return self.val
   }
+
+  # Fiber-local variables (decision 108): a Symbol or String key, any value; a missing key is nil.
+  #: (untyped) -> untyped
+  def [](key) = %x{
+    v, _ := self.locals.Load(rbThreadKey(key))
+    return v
+  }
+
+  #: (untyped, untyped) -> untyped
+  def []=(key, val)
+    %x{
+    if val == nil {
+      self.locals.Delete(rbThreadKey(key))
+    } else {
+      self.locals.Store(rbThreadKey(key), val)
+    }
+    return val
+    }
+  end
+
+  #: (untyped) -> bool
+  def key?(key) = %x{
+    _, ok := self.locals.Load(rbThreadKey(key))
+    return Boolean(ok)
+  }
+
+  #: () -> Array[Symbol]
+  def keys = %x{ return rbThreadKeys(&self.locals) }
+
+  #: (untyped) -> untyped
+  def thread_variable_get(key) = %x{
+    v, _ := self.tvars.Load(rbThreadKey(key))
+    return v
+  }
+
+  #: (untyped, untyped) -> untyped
+  def thread_variable_set(key, val) = %x{
+    if val == nil {
+      self.tvars.Delete(rbThreadKey(key))
+    } else {
+      self.tvars.Store(rbThreadKey(key), val)
+    }
+    return val
+  }
+
+  #: (untyped) -> bool
+  def thread_variable?(key) = %x{
+    _, ok := self.tvars.Load(rbThreadKey(key))
+    return Boolean(ok)
+  }
+
+  #: () -> Array[Symbol]
+  def thread_variables = %x{ return rbThreadKeys(&self.tvars) }
 
   #: () -> String?
   def name = %x{

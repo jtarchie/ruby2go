@@ -72,3 +72,25 @@ func rbThreadAbort(r any) any {
 	fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(err), "("+rbClassName(err)+")")
 	return err
 }
+
+// rbThreadKey is a thread-local's key: a Symbol or String, as MRI takes either (decision 108).
+func rbThreadKey(key any) string {
+	switch k := rbUnbox(key).(type) {
+	case Symbol:
+		return string(k)
+	case String:
+		return string(k)
+	}
+	panic(NewTypeError(Ref(String(string(rbInspect(key)) + " is not a symbol nor a string"))))
+}
+
+// rbThreadKeys lists a local map's keys as Symbols, sorted (sync.Map has no order).
+func rbThreadKeys(m *sync.Map) *Array[Symbol] {
+	out := &Array[Symbol]{}
+	m.Range(func(k, _ any) bool {
+		*out = append(*out, Symbol(k.(string)))
+		return true
+	})
+	slices.Sort(*out)
+	return out
+}
