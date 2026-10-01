@@ -26,7 +26,12 @@ class Thread < Object
   #: () -> self
   def join = %x{
     self.notSelf()
-    <-self.done
+    select {
+    case <-self.done:
+    case <-rbInterruptC(): // Ctrl-C (decision 60)
+      rbTakeInterrupt()
+      <-self.done
+    }
     if self.err != nil {
       panic(self.err)
     }
@@ -52,7 +57,12 @@ class Thread < Object
   #: () -> untyped
   def value = %x{
     self.notSelf()
-    <-self.done
+    select {
+    case <-self.done:
+    case <-rbInterruptC(): // Ctrl-C (decision 60)
+      rbTakeInterrupt()
+      <-self.done
+    }
     if self.err != nil {
       panic(self.err)
     }

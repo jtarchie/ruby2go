@@ -100,3 +100,83 @@ func rbBacktick(cmd string) String {
 	}
 	return String(out.String())
 }
+
+// rbChildren are the processes Process.spawn started and nothing has
+// waited for yet, by pid; each has a goroutine waiting on it that closes
+// done (decision 107).
+var (
+	rbChildrenMu sync.Mutex
+	rbChildren   = map[int]*rbChild{}
+)
+
+type rbChild struct {
+	cmd  *exec.Cmd
+	done chan struct{}
+	err  error
+}
+
+// rbSpawn starts a child with the program's standard streams and answers its pid.
+func rbSpawn(cmd string, args []String) Integer {
+	c := rbCommand(cmd, args)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	rbFlush()
+	if err := c.Start(); err != nil {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
+	}
+	ch := &rbChild{cmd: c, done: make(chan struct{})}
+	rbChildrenMu.Lock()
+	rbChildren[c.Process.Pid] = ch
+	rbChildrenMu.Unlock()
+	go func() {
+		ch.err = c.Wait()
+		close(ch.done)
+	}()
+	return Integer(c.Process.Pid)
+}
+
+// rbWait reaps pid (-1: the first child to finish), records $? and answers the pid.
+func rbWait(pid int) Integer {
+	rbChildrenMu.Lock()
+	var ch *rbChild
+	if pid >= 0 {
+		ch = rbChildren[pid]
+	} else {
+		for p, c := range rbChildren { // any finished one, else any
+			if ch == nil {
+				pid, ch = p, c
+			}
+			select {
+			case <-c.done:
+				pid, ch = p, c
+			default:
+			}
+		}
+	}
+	if ch != nil {
+		delete(rbChildren, pid)
+	}
+	rbChildrenMu.Unlock()
+	if ch == nil {
+		panic(NewErrno_ECHILD(Ref(String("No child processes"))))
+	}
+	<-ch.done
+	st := &Process_Status{pid: pid}
+	var ee *exec.ExitError
+	if errors.As(ch.err, &ee) {
+		st.code = ee.ExitCode()
+	}
+	rbLastStatus.Store(st)
+	return Integer(pid)
+}
+
+// rbExec replaces the process with the command, as MRI's exec; stdout is flushed first.
+func rbExec(cmd string, args []String) {
+	c := rbCommand(cmd, args)
+	if c.Err != nil {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
+	}
+	rbFlush()
+	if err := syscall.Exec(c.Path, c.Args, os.Environ()); err != nil {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
+	}
+}

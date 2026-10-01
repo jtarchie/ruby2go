@@ -44,7 +44,7 @@ func (q *rbQueue[E]) push(x E) {
 func (q *rbQueue[E]) pop(nonBlock bool) *E {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	waiting := false
+	waiting, main := false, false
 	for len(q.items) == 0 && !q.closed {
 		if nonBlock {
 			panic(NewThreadError(Ref(String("queue empty"))))
@@ -52,8 +52,21 @@ func (q *rbQueue[E]) pop(nonBlock bool) *E {
 		if !waiting {
 			q.waiting.Add(1)
 			waiting = true
+			if main = rbGoID() == rbMainGoID; main { // Ctrl-C wakes this wait (decision 60)
+				rbInterruptWake.Store(q, func() {
+					q.mu.Lock()
+					q.cond.Broadcast()
+					q.mu.Unlock()
+				})
+				defer rbInterruptWake.Delete(q)
+			}
 		}
 		q.cond.Wait()
+		if main && rbInterruptPending() {
+			q.waiting.Add(-1)
+			rbTakeInterrupt() // raises; the deferred unlock runs
+			q.waiting.Add(1)
+		}
 	}
 	if waiting {
 		q.waiting.Add(-1)
@@ -145,7 +158,21 @@ func (c *rbCondVar) wait(m *Mutex) {
 	c.waiters = append(c.waiters, ch)
 	c.mu.Unlock()
 	m.Unlock()
-	<-ch
+	select {
+	case <-ch:
+	case <-rbInterruptC(): // Ctrl-C (decision 60): the main goroutine re-locks and raises
+		if rbGoID() == rbMainGoID {
+			c.mu.Lock()
+			if i := slices.Index(c.waiters, ch); i >= 0 {
+				c.waiters = slices.Delete(c.waiters, i, i+1)
+			}
+			c.mu.Unlock()
+			m.Lock()
+			rbTakeInterrupt()
+			m.Unlock()
+		}
+		<-ch
+	}
 	m.Lock()
 }
 

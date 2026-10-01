@@ -64,6 +64,7 @@ class SystemCallError < StandardError; end
 module Errno
   class EINVAL < SystemCallError; end
   class ENOENT < SystemCallError; end
+  class ECHILD < SystemCallError; end
   class EEXIST < SystemCallError; end
   class EISDIR < SystemCallError; end
   class ENOTDIR < SystemCallError; end
@@ -116,9 +117,37 @@ class ScriptError < Exception; end
 class NoMemoryError < Exception; end
 
 # Never raised by rb2go (signals end the program, decision 60); rescue clauses may name them.
-class SignalException < Exception; end
+# A signal received: `signo`, and "SIGTERM" as the message. An untrapped
+# Ctrl-C raises Interrupt in the main thread's blocking calls (decision 60).
+class SignalException < Exception
+  # @rbs @signo: Integer
 
-class Interrupt < SignalException; end
+  #: (untyped) -> void
+  def initialize(sig)
+    @signo = __signo(sig)
+    super("SIG#{__signame(@signo)}")
+  end
+
+  #: (untyped) -> Integer
+  def __signo(sig) = %x{ return Integer(rbSignalArg(sig)) }
+
+  #: (Integer) -> String
+  def __signame(n) = %x{ return String(rbSignalName(syscall.Signal(n))) }
+
+  #: () -> Integer
+  def signo = @signo
+
+  #: () -> String
+  def signm = message
+end
+
+class Interrupt < SignalException
+  #: (?String?) -> void
+  def initialize(message = nil)
+    super("INT")
+    @message = message || "Interrupt"
+  end
+end
 
 class NotImplementedError < ScriptError; end
 

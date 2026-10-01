@@ -16,6 +16,27 @@ module Process
   #: () -> Integer
   def self.pid = %x{ Integer(os.Getpid()) }
 
+  # Process.spawn / wait / wait2 / waitpid (decision 107): a child started like
+  # system's (decision 97's shell rule), reaped by wait, which sets $?.
+  #: (String, *String) -> Integer
+  def self.spawn(cmd, *args) = %x{ return rbSpawn(string(cmd), rest_) }
+
+  # pid -1 (the default) reaps whichever child finishes first; Errno::ECHILD with none left.
+  #: (?Integer) -> Integer
+  def self.wait(pid = -1) = %x{ return rbWait(int(pid)) }
+
+  #: (?Integer) -> Integer
+  def self.waitpid(pid = -1) = wait(pid)
+
+  #: (?Integer) -> [Integer, Process::Status]
+  def self.wait2(pid = -1)
+    reaped = wait(pid)
+    [reaped, __status]
+  end
+
+  #: () -> Process::Status
+  def self.__status = %x{ return rbLastStatus.Load() }
+
   # Signals one process; MRI's return, the count signalled, is always 1 here.
   #: (untyped, Integer) -> Integer
   def self.kill(sig, pid) = %x{
@@ -37,6 +58,10 @@ module Kernel
 
   #: (String) -> String
   def __backtick(cmd) = %x{ return rbBacktick(string(cmd)) }
+
+  # Replaces the program with the command (decision 107); only a failure to start returns, as Errno::ENOENT.
+  #: (String, *String) -> void
+  def exec(cmd, *args) = %x{ rbExec(string(cmd), rest_) }
 
   #: () -> Process::Status?
   def __last_status = %x{

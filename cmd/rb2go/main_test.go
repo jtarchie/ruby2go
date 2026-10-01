@@ -44,6 +44,72 @@ func TestBuildAndRun(t *testing.T) {
 	}
 }
 
+// TestInterrupt checks decision 60's catchable Ctrl-C: an untrapped SIGINT or
+// SIGTERM reaches a blocking call on the main thread as Interrupt or
+// SignalException, so rescue and ensure run; uncaught, it ends the program by
+// the signal.
+func TestInterrupt(t *testing.T) {
+	cases := []struct {
+		name, src string
+		sig       os.Signal
+		stdout    string
+		exit0     bool
+	}{
+		{"rescued_sleep", "$stderr.puts \"ready\"\nbegin\n  sleep 10\nrescue Interrupt => e\n  puts \"caught #{e.class} #{e.message} #{e.signo}\"\nensure\n  puts \"ensure\"\nend\nputs \"after\"\n", os.Interrupt, "caught Interrupt Interrupt 2\nensure\nafter\n", true},
+		{"term_in_join", "$stderr.puts \"ready\"\nbegin\n  Thread.new { sleep 10 }.join\nrescue SignalException => e\n  puts \"#{e.class} #{e.message} #{e.signo}\"\nend\n", syscall.SIGTERM, "SignalException SIGTERM 15\n", true},
+		{"queue_pop", "q = Queue.new #: Queue[Integer]\n$stderr.puts \"ready\"\nbegin\n  q.pop\nrescue Interrupt\n  puts \"pop interrupted\"\nend\n", os.Interrupt, "pop interrupted\n", true},
+		{"uncaught", "$stderr.puts \"ready\"\nsleep 10\n", os.Interrupt, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "main.rb")
+			err := os.WriteFile(src, []byte(tc.src), 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := false
+			e := ""
+			bin := filepath.Join(dir, "main")
+			if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+				t.Fatalf("build: exit %d", code)
+			}
+			var out, errOut strings.Builder
+			cmd := exec.CommandContext(t.Context(), bin) //nolint:gosec // built above
+			cmd.Stdout = &out
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = cmd.Start()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ready := make([]byte, 6)
+			_, err = io.ReadFull(stderr, ready)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = cmd.Process.Signal(tc.sig)
+			rest, _ := io.ReadAll(stderr)
+			errOut.Write(rest)
+			err = cmd.Wait()
+			if out.String() != tc.stdout {
+				t.Errorf("stdout %q, want %q (stderr %q)", out.String(), tc.stdout, errOut.String())
+			}
+			var exit *exec.ExitError
+			switch {
+			case tc.exit0 && err != nil:
+				t.Errorf("want exit 0, got %v (stderr %q)", err, errOut.String())
+			case !tc.exit0 && (!errors.As(err, &exit) || exit.Sys().(syscall.WaitStatus).Signal() != tc.sig):
+				t.Errorf("want death by %v, got %v", tc.sig, err)
+			case !tc.exit0 && !strings.Contains(errOut.String(), "Interrupt (Interrupt)"):
+				t.Errorf("stderr %q, want the uncaught Interrupt", errOut.String())
+			}
+		})
+	}
+}
+
 func TestSignalFlushes(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "spin.rb")

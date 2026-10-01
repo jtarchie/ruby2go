@@ -1534,11 +1534,23 @@ resolve; anything not listed is still open.
     MRI's does on a tty (`print "a"` shows before a later `$stderr` write;
     on a pipe both keep MRI's buffered order). SIGINT and SIGTERM flush
     stdout, then the program re-raises the signal with the default action,
-    so it dies by it (130/143 in a shell) like MRI. Unlike MRI, no
-    `Interrupt`/`SignalException` is raised: `rescue` and `ensure` don't
-    run, because Go can't inject a panic into the main goroutine. A
-    program started with SIGINT ignored (a non-interactive shell's `&`
-    job) keeps ignoring it, where MRI would still take it. `rb2go run`
+    so it dies by it (130/143 in a shell) like MRI. *Amended (#2):*
+    Ctrl-C is catchable where the main thread blocks. An untrapped
+    SIGINT/SIGTERM is posted (`rbInterruptPost`), and `sleep`,
+    `Thread#join`/`value`, `Queue#pop` and `ConditionVariable#wait` on
+    the main goroutine take it (`rbTakeInterrupt`) and raise `Interrupt`
+    (`message` "Interrupt", `signo` 2) or `SignalException` ("SIGTERM",
+    15), so `rescue` and `ensure` run as in MRI; uncaught, it prints
+    `Interrupt (Interrupt)` and ends the program by the signal. Go can't
+    inject a panic into a computing goroutine, so a program that takes
+    nothing within 200ms (`rbInterruptGrace`) dies by the signal as
+    before; so does one blocked in `gets` (stdin is not pollable, so the
+    read can't be woken), `Mutex#lock` or `SizedQueue#push`. A thread
+    blocked in those calls sleeps on: the signal is the main thread's.
+    `trap` (decision 100) still comes first. A program started with
+    SIGINT ignored (a non-interactive shell's `&` job) now exits 130
+    after the grace instead of ignoring it; MRI raises Interrupt there,
+    which stays undone (`TestInterrupt`). `rb2go run`
     catches both signals so it outlives the child, forwards them, removes
     its temp module, and exits 128+signal when the child died by one.
 61. The process boundary: `ARGV : Array[String]` (built from `os.Args[1:]`),
@@ -1566,7 +1578,11 @@ resolve; anything not listed is still open.
     through the `IOWritable`/`IOReadable` modules, where MRI uses
     `IO::generic_writable`/`readable`. `File.new(path, mode)` takes
     `r`/`w`/`a` and their `+` forms; `File.open` takes a block only and
-    closes the file in `ensure`. Class methods: `read`, `write`,
+    closes the file in `ensure`. *(Settled, #2: `File` stays no subclass
+    of `IO`, so `is_a?(IO)` is false for a `File`; the shared modules
+    give it IO's methods, and nothing has needed the ancestry.
+    `Dir.children`/`entries` stay sorted: MRI's readdir order depends on
+    the filesystem, so no test could compare it.)* Class methods: `read`, `write`,
     `readlines`, `foreach`, `exist?`, `file?`, `directory?`, `size`,
     `delete`/`unlink`, `rename`, `basename` (with a suffix or `".*"`),
     `dirname`, `extname`, `join`, `expand_path`, `absolute_path?`, all
@@ -2468,8 +2484,8 @@ resolve; anything not listed is still open.
     program. In the prelude `%x{}` stays the Go escape hatch (decision
     16). `$?` is `Process::Status?` (Open3's class: `exitstatus`,
     `success?`, `pid`, `to_s`), one for the program where MRI's is
-    per-thread. Not done: an env Hash or options, `exec`, `spawn`,
-    `Process.wait`, a signalled child's nil `exitstatus`.
+    per-thread. Not done: an env Hash or options, a signalled child's nil
+    `exitstatus`. *(`exec`, `spawn` and `Process.wait`: decision 107.)*
     ([example 73](../examples/73_shell/main.rb)).
 98. Operands run left to right. Some expressions hoist statements ahead
     of the Go expression that uses them (`x&.y`, `a || b` into a temp);
@@ -2747,7 +2763,8 @@ resolve; anything not listed is still open.
     nothing is written and an assertion costs one flag read. The oracle's
     first run found, and this decision fixed: a UTF-8 String's controls
     inspect as `\u0001` (a Symbol's stay `\x01`, MRI's US-ASCII form;
-    `Integer#chr`'s US-ASCII result still inspects the UTF-8 way, #28);
+    `Integer#chr`'s US-ASCII result still inspects the UTF-8 way: an
+    encoding on `String` is not planned, which settles #28);
     `Array#[]=` past the front raises `IndexError: index -3 too small for
     array; minimum: -2` instead of Go's bounds panic; a failed `<=>` in a
     sort names (earlier, later) and in `min`/`max`/`min_by`/`max_by` (best
@@ -2816,3 +2833,18 @@ resolve; anything not listed is still open.
     when wanted. `backtrace_locations` is not done. ([example
     78](../examples/78_backtrace/main.rb), `testdata/test/object_test.rb`
     `BacktraceTest`, `testdata/run/minitest_error.rb`.)
+107. `Process.spawn`, `wait`, `wait2`, `waitpid` and `Kernel#exec` (#2),
+    over `os/exec` with decision 97's command rule (several arguments
+    exec directly; one string goes to `sh -c` when it has shell syntax).
+    `spawn` starts the child on the program's standard streams, after
+    flushing stdout as MRI does, and answers its pid; a goroutine waits
+    on it, so it is reaped when `wait` asks. `wait(pid)` answers the pid
+    and sets `$?` (`Process::Status`, decision 97); `wait` with no pid
+    reaps a finished child first, else any, and raises `Errno::ECHILD:
+    No child processes` with none left; `wait2` answers `[pid, status]`.
+    `exec` flushes stdout and `syscall.Exec`s the command, so nothing
+    after it runs; a missing program raises `Errno::ENOENT: No such file
+    or directory - cmd` from both. Not done: `spawn` options (env Hash,
+    `:out`/`:err` redirection, `chdir:`), `Process.detach`,
+    `Process.kill` of a child by name, `wait` flags (`WNOHANG`).
+    (`testdata/run/process_spawn.rb`.)

@@ -73,18 +73,96 @@ func rbFlush() {
 // as MRI's default does; Kernel#trap replaces that per signal (decision 100).
 // ponytail: MRI raises Interrupt/SignalException in the main thread, so rescue and ensure run; Go can't inject a panic into another goroutine.
 func rbTrapSignals() {
+	rbMainGoID = rbGoID()
 	signal.Notify(rbSigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for sig := range rbSigCh {
 			if rbTrapHook != nil && rbTrapHook(sig) {
 				continue
 			}
-			rbFlush()
-			signal.Reset(sig)
-			p, _ := os.FindProcess(os.Getpid())
-			_ = p.Signal(sig)
+			rbInterruptPost(sig)
 		}
 	}()
+}
+
+// Catchable Ctrl-C (decision 60). An untrapped SIGINT/SIGTERM is posted
+// here; a blocking call on the main goroutine (sleep, Thread#join/value,
+// Queue#pop, ConditionVariable#wait) takes it (rbTakeInterrupt) and raises
+// Interrupt/SignalException there, so rescue and ensure run as in MRI.
+// Go cannot interrupt a computing goroutine, so after rbInterruptGrace
+// with nothing taking it the program dies by the signal, as before.
+var (
+	rbMainGoID       int64
+	rbInterruptMu    sync.Mutex
+	rbInterruptSig   os.Signal             // pending, not yet taken
+	rbInterruptCh    = make(chan struct{}) // closed while one is pending; a fresh one after it is taken
+	rbInterruptTimer *time.Timer
+	rbInterruptWake  sync.Map // blocked main-goroutine waiters that need a nudge (a Queue's cond), by owner → func()
+)
+
+const rbInterruptGrace = 200 * time.Millisecond
+
+func rbInterruptPost(sig os.Signal) {
+	rbInterruptMu.Lock()
+	defer rbInterruptMu.Unlock()
+	if rbInterruptSig != nil {
+		return
+	}
+	rbInterruptSig = sig
+	close(rbInterruptCh)
+	rbInterruptTimer = time.AfterFunc(rbInterruptGrace, func() { rbDieBySignal(sig) })
+	rbInterruptWake.Range(func(_, f any) bool {
+		f.(func())()
+		return true
+	})
+}
+
+// rbInterruptC is the channel a blocking call selects on: closed while a signal is pending.
+func rbInterruptC() <-chan struct{} {
+	rbInterruptMu.Lock()
+	defer rbInterruptMu.Unlock()
+	return rbInterruptCh
+}
+
+func rbInterruptPending() bool {
+	rbInterruptMu.Lock()
+	defer rbInterruptMu.Unlock()
+	return rbInterruptSig != nil
+}
+
+// rbTakeInterrupt raises the pending signal on the main goroutine as
+// Interrupt (SIGINT) or SignalException; on another goroutine, or with
+// none pending, it returns.
+func rbTakeInterrupt() {
+	if rbGoID() != rbMainGoID {
+		return
+	}
+	rbInterruptMu.Lock()
+	sig := rbInterruptSig
+	if sig == nil {
+		rbInterruptMu.Unlock()
+		return
+	}
+	rbInterruptSig = nil
+	rbInterruptTimer.Stop()
+	rbInterruptCh = make(chan struct{})
+	rbInterruptMu.Unlock()
+	if sig == os.Interrupt {
+		panic(NewInterrupt(nil))
+	}
+	panic(NewSignalException(Integer(sig.(syscall.Signal))))
+}
+
+// rbDieBySignal flushes and ends the program by sig's default action, as
+// MRI does for an unhandled one; 128+sig if the signal is ignored (a
+// background job) and does not end it.
+func rbDieBySignal(sig os.Signal) {
+	rbFlush()
+	signal.Reset(sig)
+	p, _ := os.FindProcess(os.Getpid())
+	_ = p.Signal(sig)
+	time.Sleep(100 * time.Millisecond)
+	os.Exit(128 + int(sig.(syscall.Signal)))
 }
 
 // rbTrapHook consults the trap table; Kernel#trap sets it, so a program without trap carries no table (decision 49).
@@ -268,6 +346,9 @@ func rbFinish(status int, main any) {
 	rbFlush()
 	if main != nil {
 		rbPrintUncaught(main)
+		if se, ok := main.(interface{ Signo() Integer }); ok { // an uncaught Interrupt ends the program by its signal, as in MRI
+			rbDieBySignal(syscall.Signal(se.Signo()))
+		}
 	}
 	if status != 0 {
 		os.Exit(status)
@@ -1105,11 +1186,20 @@ func rbSleep(secs float64) Integer {
 		panic(NewArgumentError(Ref(String("time interval must not be negative"))))
 	}
 	start := time.Now()
-	time.Sleep(time.Duration(secs * float64(time.Second)))
+	timer := time.NewTimer(time.Duration(secs * float64(time.Second)))
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-rbInterruptC():
+		rbTakeInterrupt() // Interrupt on the main goroutine; another sleeps on
+		<-timer.C
+	}
 	return Integer(math.Round(time.Since(start).Seconds()))
 }
 
 func rbSleepForever() Integer {
+	<-rbInterruptC()
+	rbTakeInterrupt()
 	select {}
 }
 
