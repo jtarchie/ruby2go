@@ -1310,6 +1310,10 @@ resolve; anything not listed is still open.
     and a binary search in the comment sweep, a compile is ~0.2 s native
     (was 0.69 s) and ~0.9 s as wasm in Chrome (was 5.5 s). `RB2GO_TIMING=1`
     prints the phases.
+    *Amended:* a blank name is neither a root nor an index entry: `var
+    x, _ = f()` was kept as if it were a `var _ = ...` marker, and again
+    by the first `_` any kept code used, so `rbHalfPi` (π/2 to 110 digits
+    for `Math.sin`'s argument reduction) sat in `puts "hello"`.
 
 50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
     or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,

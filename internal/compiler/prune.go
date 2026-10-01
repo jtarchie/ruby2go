@@ -186,11 +186,13 @@ func (p *pruner) indexSpec(d *ast.GenDecl, s ast.Spec) {
 		if d.Tok == token.CONST {
 			p.constBlock[s] = d
 		}
+		if !slices.ContainsFunc(s.Names, func(n *ast.Ident) bool { return n.Name != "_" }) {
+			p.roots = append(p.roots, s) // `var _ = ...` is a marker; `var x, _ = f()` is kept by x alone
+		}
 		for _, n := range s.Names {
-			if n.Name == "_" {
-				p.roots = append(p.roots, s)
+			if n.Name != "_" { // kept code's own blanks would name it
+				p.byName[n.Name] = append(p.byName[n.Name], s)
 			}
-			p.byName[n.Name] = append(p.byName[n.Name], s)
 		}
 	}
 }
