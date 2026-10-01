@@ -38,4 +38,8 @@ class WeakRef < Object
 
   #: () -> String
   def inspect = "#<WeakRef: #{weakref_alive? ? __getobj__.inspect : "(dead)"}>"
+
+  # The untyped view a class switch asks for (rbClassOf): the fields do not depend on T.
+  #: () -> WeakRef[untyped]
+  def _to_any = %x{ return rbWeakAny(self) }
 end

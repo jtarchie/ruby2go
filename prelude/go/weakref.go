@@ -33,3 +33,11 @@ func rbWeakGet[T comparable](r *WeakRef[T]) T {
 	words[0], words[1] = r.typ, unsafe.Pointer(p)
 	return a.(T)
 }
+
+// WeakRef_Any is the untyped view a class switch asks for (rbClassOf), as Queue_Any is.
+type WeakRef_Any interface{ _ToAny() *WeakRef[any] }
+
+// rbWeakAny views a WeakRef[T] as WeakRef[any]: the fields do not depend on T.
+func rbWeakAny[T comparable](r *WeakRef[T]) *WeakRef[any] {
+	return (*WeakRef[any])(unsafe.Pointer(r)) //nolint:gosec // same layout for every T
+}
