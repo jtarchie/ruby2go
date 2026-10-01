@@ -711,8 +711,11 @@ func rbKindOf(a any, target int) bool {
 // rbWrapPanic converts Go runtime panics into Ruby exceptions so a
 // catch-all rescue sees a StandardError.
 func rbWrapPanic(r any) any {
-	switch r.(type) {
-	case ExceptionI, rbStop, rbThrow:
+	switch e := r.(type) {
+	case ExceptionI:
+		e._Exception().__seen = true // a later capture knows this is a re-raise (decision 106)
+		return r
+	case rbStop, rbThrow:
 		return r
 	}
 	if err, ok := r.(runtime.Error); ok {

@@ -34,6 +34,45 @@ var stdImports = map[string]string{
 // errPruneIncomplete: a dispatcher became reachable after the tables went out (a type-switch case unlocked late); the caller recompiles emitting every one first.
 var errPruneIncomplete = errors.New("pruning reached dispatchers emitted lazily")
 
+// addFrameLabels emits rbFrameLabels, the Go function → Ruby label table
+// Exception#backtrace reads (decision 106), when the pruned program kept
+// its reader: one entry per kept function the compiler labelled.
+func addFrameLabels(fset *token.FileSet, f *ast.File, labels map[string]string) error {
+	kept := map[string]bool{}
+	reader := false
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		name := fd.Name.Name
+		if fd.Recv != nil && len(fd.Recv.List) > 0 {
+			name = recvName(fd.Recv.List[0].Type) + "." + name
+		}
+		kept[name] = true
+		if name == "rbBacktraceFrames" {
+			reader = true
+		}
+	}
+	if !reader {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("package main\n\nvar rbFrameLabels = map[string]string{\n")
+	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		if kept[k] {
+			fmt.Fprintf(&b, "\t%q: %q,\n", k, labels[k])
+		}
+	}
+	b.WriteString("}\n")
+	t, err := parser.ParseFile(fset, "labels.go", b.String(), parser.ParseComments)
+	if err != nil {
+		return fmt.Errorf("gofmt: %w", err)
+	}
+	merge(f, t)
+	return nil
+}
+
 // merge appends t's declarations and comments to f: both came from one FileSet, t after f, so positions stay in order for the printer.
 func merge(f, t *ast.File) {
 	f.Decls = append(f.Decls, t.Decls...)
@@ -41,7 +80,7 @@ func merge(f, t *ast.File) {
 }
 
 // formatGo prunes src to what main reaches (RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
-func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error)) ([]byte, error) {
+func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
@@ -79,6 +118,10 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 		if os.Getenv("RB2GO_PRUNE_WHY") != "" {
 			p.explain(f, os.Stderr)
 		}
+	}
+	err = addFrameLabels(fset, f, labels)
+	if err != nil {
+		return nil, err
 	}
 	used := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {

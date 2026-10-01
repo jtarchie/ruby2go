@@ -1171,7 +1171,7 @@ func (f *fctx) reissue(n parser.Node, k jumpKind) {
 
 // genWrapper emits a begin/rescue/ensure as a called func literal.
 func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
-	f.emit("func() {")
+	f.emit("rbBegin(func() {") // through rbBegin, so a backtrace knows this literal is no block (decision 106)
 	saved := f.enterBlock()
 	f.indent++
 	f.begins++
@@ -1194,6 +1194,12 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 			f.indent++
 			f.emit("if r_ := recover(); r_ != nil {")
 			f.indent++
+			for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
+				if rc.Reference != nil { // `=> e` may ask for e.backtrace: record the frames now (decision 106)
+					f.emit("r_ = rbCaptureBacktrace(r_)")
+					break
+				}
+			}
 			f.emit("r_ = rbWrapPanic(r_)")
 			for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
 				f.genRescueClause(rc, inner)
@@ -1239,7 +1245,7 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 	f.wrap = savedWrap
 	f.indent--
 	f.leaveBlock(saved)
-	f.emit("}()")
+	f.emit("})")
 }
 
 func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
@@ -1760,8 +1766,10 @@ func (c *Compiler) emitMethod(m *Method) {
 	}
 	c.lineDirective(m.File, m.Line)
 	if c.isDirectMethod(m) {
+		c.labels[cls.Name+"."+m.GoName] = c.frameLabel(m)
 		c.w("func (self %s) %s(%s) %s {\n", c.recvType(cls), m.GoName, params, retDecl)
 	} else {
+		c.labels[freeFuncName(m)] = c.frameLabel(m)
 		self := "self Self"
 		switch {
 		case m.SelfType != nil:
@@ -1783,9 +1791,29 @@ func (c *Compiler) emitTopDef(m *Method) {
 		retDecl = "(ret_ " + ret + ")"
 	}
 	c.lineDirective(m.File, m.Line)
+	c.labels[m.GoName] = "Object#" + m.Name
 	c.w("func %s%s(%s) %s {\n", m.GoName, topTypeParamDecl(m), params, retDecl)
 	c.emitBody(m, namedRet)
 	c.w("}\n\n")
+}
+
+// frameLabel is m's name as MRI 4.0 labels its frames: 'K#m', 'K.s' for a
+// singleton method. A prelude overload twin (`__integer_string`, decision
+// 12) is labelled as the public method it stands in for.
+func (c *Compiler) frameLabel(m *Method) string {
+	owner, name := m.Owner, m.Name
+	if m.File.prelude && strings.HasPrefix(name, "__") {
+		for pub := range owner.Methods {
+			if strings.HasPrefix(strings.ToLower(name), "__"+strings.ToLower(pub)+"_") {
+				name = pub
+				break
+			}
+		}
+	}
+	if owner.metaOf != nil {
+		return owner.RubyName + "." + name
+	}
+	return owner.RubyName + "#" + name
 }
 
 // topTypeParamDecl is typeParamDecl for a top-level def, which has no Owner.
@@ -1861,6 +1889,7 @@ func (f *fctx) fillDefault(i int, p Param) {
 
 func (c *Compiler) emitMain() {
 	c.w("var rb_main = &Object{}\n\n")
+	c.labels["main"] = "<main>"
 	c.w("func main() {\n\trbTrapSignals()\n\tdefer rbFlush()\n\tdefer rbTopRecover()\n")
 	prelude, bodies := c.mainBodies()
 	gen := func(file *File, stmts []parser.Node, indent int) {
@@ -2065,6 +2094,9 @@ func (c *Compiler) emitSynth(m *Method) {
 	if m.Name == "new" {
 		body = "return New" + cls.Name + "(" + c.argNames(m) + ")"
 	}
+	if m.Name == "new" {
+		c.labels[meta.Name+"."+m.GoName] = "Class#new"
+	}
 	c.w("func (self *%s) %s(%s) %s { %s }\n\n", meta.Name, m.GoName, params, ret, body)
 }
 
@@ -2166,10 +2198,10 @@ func (f *fctx) genConstInit(k *Const) {
 	if sub.buf.Len() == 0 {
 		f.emit("%s = %s", k.GoName, code)
 	} else {
-		f.emit("%s = func() %s {", k.GoName, f.c.goType(typ))
+		f.emit("%s = rbBeginV(func() %s {", k.GoName, f.c.goType(typ))
 		f.buf.WriteString(sub.buf.String())
 		f.emit("\treturn %s", code)
-		f.emit("}()")
+		f.emit("})")
 	}
 	if k.guarded {
 		f.emit("%s = true", constSet(k))

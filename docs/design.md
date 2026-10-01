@@ -1968,10 +1968,9 @@ resolve; anything not listed is still open.
     MRI has already unwound; those are skipped, from `runtime.gopanic` to
     the function that deferred the recover. The Go code after a block's
     closing brace gets a `//line` for the call that took the block, so a
-    multi-line statement doesn't drift to later Ruby lines. rb2go has no
-    backtraces yet, so an error's report and `exception_details` print
-    `No backtrace` where MRI lists frames: tests that error differ from
-    MRI there. Spec's DSL is compiled (decision 83). Not ported:
+    multi-line statement doesn't drift to later Ruby lines. An error's
+    report and `exception_details` list the frames as MRI does, filtered
+    to the test's own (decision 106). Spec's DSL is compiled (decision 83). Not ported:
     `assert_output`/`capture_io` (no `$stdout` reassignment),
     `assert_throws`, `assert_pattern`, `parallelize_me!`, class-body
     calls like `i_suck_and_my_tests_are_order_dependent!`, plugins,
@@ -2767,3 +2766,53 @@ resolve; anything not listed is still open.
     once `Float` is reopened (MRI's generic path names them the other way
     round). Also found: MRI numbers ractors and ports differently from
     rb2go, so they are masked, not matched.
+106. `Exception#backtrace` (issue #30). A `rescue` that binds (`=> e`)
+    records the Go stack's program counters on the exception
+    (`rbCaptureBacktrace`, inside the deferred recover, where the
+    panicking frames still are), once: a re-raise keeps the original
+    frames. `backtrace` builds MRI 4.0's lines from them lazily
+    (`prelude/go/backtrace.go`): `file:line:in 'K#m'`, `'K.s'`,
+    `'Object#top_def'`, `'<main>'`, `'block in K#m'`, `'block (2 levels)
+    in K#m'`, and a Ruby-written prelude method (`Array#each`,
+    `Kernel#Integer`) as MRI shows a C method: its label at the caller's
+    `file:line`. `set_backtrace` overrides; an exception never rescued
+    with a binding answers nil, as MRI's never-raised one does. Labels
+    come from `rbFrameLabels`, a table the compiler emits after pruning
+    for the functions kept (`addFrameLabels`): a struct class's free
+    funcs, direct methods, top-level defs, `main`, constructors as
+    `Class#new`; an overload twin (`__Integer_string`, decision 12) is
+    labelled as the public method it stands in for. Closures take their
+    enclosing function's label with the Go name's suffixes
+    (`.func1`, `.1`, `-range1`) counted as block levels, which is why the
+    compiler's own func literals must be told apart: a
+    begin/rescue/ensure body runs through `rbBegin(func() {...})`
+    (`//go:noinline`, so its frame shows), so the literal is skipped and
+    its line goes to the method's frame; a deferred rescue/ensure
+    handler (called by the runtime, or by its literal at a normal
+    return) counts as the method's own frame, and when it raises, the
+    frames the old panic unwound (up to its literal) and the method's
+    frame below are not shown twice. A fresh exception's frames start
+    after the first `runtime.gopanic`; one that had already been through
+    a rescue (`rbWrapPanic` marks it) starts after the deepest, so a
+    re-raise through a non-binding rescue keeps its origin. Runtime
+    frames, prelude Go helpers, forwarders and `Kernel#raise` are left
+    out; one Ruby-level call of a prelude method is several Go frames
+    (closures, what it calls), of which the outermost entry stays, so
+    `each` is one `Array#each`, and `sort_by` is `Array#each` then
+    `Enumerable#sort_by` as MRI's. Best effort past the first frame:
+    `map` shows `Array#each` then `Enumerable#map` where MRI has one
+    `Array#map`, since that is rb2go's implementation; class bodies show
+    as `<main>`, not `<class:K>`. A rescue that does not bind pays
+    nothing (a loop of `Integer(s) rescue nil` is unchanged at ~0.6µs a
+    rescue); a binding one pays `runtime.Callers`, about a microsecond. A
+    thread's exception is captured when the thread dies, so `join` and
+    `value` re-raise it with the thread's frames. minitest prints them:
+    `UnexpectedError#message` and `exception_details` list
+    `Minitest.filter_backtrace(e.backtrace)`, the frames up to the first
+    with a `Minitest::` label, as MRI drops its `lib/minitest` ones;
+    `rbMtLocation` (decision 79) keeps its own walk. Uncaught exceptions
+    still print `msg (Class)` alone (decision 11): MRI's full report with
+    `from` lines would change every program's stderr, its own decision
+    when wanted. `backtrace_locations` is not done. ([example
+    78](../examples/78_backtrace/main.rb), `testdata/test/object_test.rb`
+    `BacktraceTest`, `testdata/run/minitest_error.rb`.)

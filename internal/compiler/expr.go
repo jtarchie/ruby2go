@@ -3900,7 +3900,7 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	}
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
-	f.emit("func() {")
+	f.emit("rbBegin(func() {")
 	f.indent++
 	saved := f.enterBlock()
 	f.emit("defer func() {")
@@ -3923,7 +3923,7 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.emit("%s = %s", tmp, f.coerce(n, e, typ))
 	f.leaveBlock(saved)
 	f.indent--
-	f.emit("}()")
+	f.emit("})")
 	return expr{code: tmp, typ: typ}
 }
 

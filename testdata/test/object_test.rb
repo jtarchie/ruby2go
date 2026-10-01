@@ -3870,4 +3870,59 @@ module ObjectTests
       assert_equal "key not found: 9", assert_raises(KeyError) { d.count_of(9) }.message
     end
   end
+  # Exception#backtrace (decision 106): MRI 4.0's labels, first frame exact.
+  class BacktraceTest < Minitest::Test
+    #: (Exception) -> Array[String]
+    def frames(e) = e.backtrace || []
+
+    #: () -> void
+    def deep
+      [1].each { |x| [x].each { raise IOError, "deep" } }
+    end
+
+    #: () -> void
+    def reraise
+      deep
+    rescue IOError => e
+      raise e
+    end
+
+    #: () -> void
+    def wrap
+      deep
+    rescue IOError
+      raise ArgumentError, "wrapped"
+    end
+
+    def test_frames
+      e = assert_raises(IOError) { deep }
+      bt = frames(e)
+      assert_match(/object_test\.rb:\d+:in 'block \(2 levels\) in ObjectTests::BacktraceTest#deep'\z/, bt.fetch(0))
+      assert_match(/object_test\.rb:\d+:in 'Array#each'\z/, bt.fetch(1))
+      assert_match(/object_test\.rb:\d+:in 'block in ObjectTests::BacktraceTest#deep'\z/, bt.fetch(2))
+      assert_match(/object_test\.rb:\d+:in 'Array#each'\z/, bt.fetch(3))
+      assert_match(/object_test\.rb:\d+:in 'ObjectTests::BacktraceTest#deep'\z/, bt.fetch(4))
+      assert_match(/object_test\.rb:\d+:in 'block in ObjectTests::BacktraceTest#test_frames'\z/, bt.fetch(5))
+      assert_equal bt.fetch(0).split(":").fetch(1), bt.fetch(1).split(":").fetch(1) # Array#each at the block's line
+    end
+
+    def test_reraise_keeps_frames_and_a_handler_starts_new_ones
+      e = assert_raises(IOError) { reraise }
+      assert_match(/in 'block \(2 levels\) in ObjectTests::BacktraceTest#deep'\z/, frames(e).fetch(0))
+      e2 = assert_raises(ArgumentError) { wrap }
+      assert_match(/object_test\.rb:\d+:in 'ObjectTests::BacktraceTest#wrap'\z/, frames(e2).fetch(0))
+      assert_match(/in 'block in ObjectTests::BacktraceTest#test_reraise_keeps_frames_and_a_handler_starts_new_ones'\z/, frames(e2).fetch(1))
+      assert_equal IOError, e2.cause.class
+    end
+
+    def test_set_backtrace_and_never_raised
+      made = RuntimeError.new("made")
+      assert_nil made.backtrace
+      made.set_backtrace(["x.rb:1:in 'Object#y'"])
+      assert_equal ["x.rb:1:in 'Object#y'"], made.backtrace
+      e = assert_raises(RuntimeError) { raise made }
+      assert_equal ["x.rb:1:in 'Object#y'"], e.backtrace
+    end
+  end
+
 end

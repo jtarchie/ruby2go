@@ -5,6 +5,9 @@
 
 class Exception < Object
   # @rbs @cause: Exception?
+  # @rbs @__pcs: untyped
+  # @rbs @__bt: Array[String]?
+  # @rbs @__seen: bool
 
   #: (?String?) -> void
   def initialize(message = nil)
@@ -42,8 +45,15 @@ class Exception < Object
     "#<#{__class_name}: #{s}>"
   end
 
-  #: () -> String?
-  def backtrace = nil
+  # The frames where this was raised, once a rescue bound it (decision 106); nil before, as MRI's is for an exception never raised.
+  #: () -> Array[String]?
+  def backtrace = %x{ return rbBacktrace(self) }
+
+  #: (Array[String]) -> Array[String]
+  def set_backtrace(bt)
+    @__bt = bt
+    bt
+  end
 end
 
 class StandardError < Exception; end

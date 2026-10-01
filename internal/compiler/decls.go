@@ -636,6 +636,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		env := composeEnv(init.Env, nil)
 		env["Self"] = TClass{C: cls}
 		ps, _ := c.sig(init.M, env)
+		c.labels["New"+cls.Name] = "Class#new"
 		c.w("func New%s(%s) *%s {\n\tself := &%s{}\n\t%s(self, %s)\n\treturn self\n}\n\n",
 			cls.Name, ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
 	} else {

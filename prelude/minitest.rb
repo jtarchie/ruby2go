@@ -178,6 +178,17 @@ module Minitest
   #: () -> Float
   def self.clock_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+  # port: BacktraceFilter#filter. MRI drops its own lib/minitest frames; here the runner's frames carry Minitest:: labels (decision 106).
+  #: (Array[String]?) -> Array[String]
+  def self.filter_backtrace(bt)
+    return ["No backtrace"] unless bt
+
+    new_bt = bt.take_while { |line| !line.include?("in 'Minitest::") }
+    new_bt = bt.reject { |line| line.include?("in 'Minitest::") } if new_bt.empty?
+    new_bt = bt.dup if new_bt.empty?
+    new_bt
+  end
+
   # port: the options hash, typed.
   class Options < Object
     attr_accessor :seed #: Integer?
@@ -579,9 +590,8 @@ module Minitest
       @error = error
     end
 
-    # port: the wrapped error has no backtrace to show.
     #: () -> String
-    def message = "#{error.class.name}: #{error.message}\n    No backtrace"
+    def message = "#{error.class.name}: #{error.message}\n    #{Minitest.filter_backtrace(error.backtrace).join("\n    ")}"
 
     #: () -> String
     def result_label = "Error"
@@ -874,7 +884,7 @@ module Minitest
         "Class: <#{e.class.name}>",
         "Message: <#{e.message.inspect}>",
         "---Backtrace---",
-        "No backtrace", # port: no backtraces
+        Minitest.filter_backtrace(e.backtrace).join("\n"),
         "---------------",
       ].join("\n")
     end
