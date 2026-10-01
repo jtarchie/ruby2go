@@ -6,3 +6,6 @@ dev.sh
 /g
 /fz
 /resc
+# scripts/deploy-web.sh output
+/dist/
+/.wrangler/

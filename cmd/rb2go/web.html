@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>rb2go playground</title>
+<meta name="description" content="Write typed Ruby and see the Go that rb2go compiles it to, side by side, as you type.">
 <link rel="icon" href="data:,">
 <style>
 :root {
@@ -93,7 +94,9 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 <script>
 const $ = id => document.getElementById(id);
 const rb = $('rb'), go = $('go'), diag = $('diag'), status = $('status'), run = $('run');
-let seq = 0, timer = 0, examples = [], ctl = null, jump = true, last = null;
+let seq = 0, timer = 0, examples = [], ctl = null, jump = true, last = null, busy = false, again = false, loaded = false;
+// set by `rb2go web -static`: no server, so the compiler runs here as wasm fetched from this base URL
+const ASSETS = window.rb2goAssets;
 const prelude = $('prelude'), rbHl = $('rb-hl');
 // if the script fails to load, the panes still work, just plain
 const hl = (code, language) => window.hljs ? hljs.highlight(code, {language, ignoreIllegals: true}).value
@@ -120,13 +123,44 @@ const post = (path, src, signal) => fetch(path, {
   method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({src}), signal,
 }).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t); }));
 
+let request = (src, signal) => post('/compile', src, signal);
+if (ASSETS) {
+  // a Worker's script must share the page's origin, so it's a Blob; it may still import from the asset host
+  const code = `importScripts(${JSON.stringify(ASSETS + 'wasm_exec.js')});
+const ready = (async () => {
+  const go = new Go();
+  const { instance } = await WebAssembly.instantiateStreaming(fetch(${JSON.stringify(ASSETS + 'rb2go.wasm')}), go.importObject);
+  go.run(instance);
+})();
+onmessage = async e => {
+  try { await ready; postMessage({id: e.data.id, res: rb2goCompile(e.data.src)}); }
+  catch (err) { postMessage({id: e.data.id, err: String(err)}); }
+};`;
+  const worker = new Worker(URL.createObjectURL(new Blob([code], {type: 'text/javascript'})));
+  const waiting = new Map();
+  let next = 0;
+  worker.onmessage = e => {
+    const w = waiting.get(e.data.id);
+    waiting.delete(e.data.id);
+    if (e.data.err) w.reject(new Error(e.data.err)); else w.resolve(e.data.res);
+  };
+  request = src => new Promise((resolve, reject) => {
+    const id = ++next;
+    waiting.set(id, {resolve, reject});
+    worker.postMessage({id, src});
+  });
+}
+
 async function compile() {
+  if (ASSETS && busy) { again = true; return; } // the worker compiles one at a time; only the latest edit matters
+  busy = true;
   const n = ++seq, t0 = performance.now();
-  status.textContent = 'compiling…';
+  status.textContent = ASSETS && !loaded ? 'loading compiler (3 MB)…' : 'compiling…';
   ctl?.abort(); // the server drops a superseded compile still queued behind the last
   ctl = new AbortController();
   try {
-    const res = await post('/compile', rb.value, ctl.signal);
+    const res = await request(rb.value, ctl.signal);
+    loaded = true;
     if (n !== seq) return; // a newer edit is in flight
     const ms = Math.round(performance.now() - t0);
     if (res.error) {
@@ -143,7 +177,10 @@ async function compile() {
       status.textContent = `${lines} lines · ${ms} ms`;
     }
   } catch (e) {
-    if (n === seq) status.textContent = 'server unreachable: ' + e.message;
+    if (n === seq) status.textContent = (ASSETS ? 'compiler failed: ' : 'server unreachable: ') + e.message;
+  } finally {
+    busy = false;
+    if (again) { again = false; compile(); }
   }
 }
 
@@ -155,6 +192,12 @@ function edited() {
 }
 
 async function runProgram() {
+  if (ASSETS) { // no go command here: hand over the whole file, the one `go run` builds
+    if (!last) return;
+    try { await navigator.clipboard.writeText(last.go); status.textContent = 'copied main.go'; }
+    catch (e) { status.textContent = 'copy failed: ' + e.message; }
+    return;
+  }
   if (run.disabled) return; // Ctrl/Cmd+Enter doesn't go through the disabled button
   run.disabled = true;
   status.textContent = 'building…';
@@ -192,7 +235,8 @@ $('examples').addEventListener('change', e => {
   if (ex) { rb.value = ex.src; jump = true; edited(); }
 });
 
-fetch('/examples').then(r => r.json()).then(list => {
+if (ASSETS) Object.assign(run, {textContent: 'Copy Go', title: 'Copy the whole Go file, to go run it (Ctrl/Cmd+Enter)'});
+fetch(ASSETS ? ASSETS + 'examples.json' : '/examples').then(r => r.json()).then(list => {
   examples = list;
   for (const ex of list) $('examples').append(new Option(ex.name, ex.name));
 }).catch(() => {});

@@ -2541,6 +2541,19 @@ resolve; anything not listed is still open.
     gzipped) and its matching `wasm_exec.js` live in the public R2 bucket
     `ruby2go` under a content-hash prefix (stored gzipped with
     `Content-Encoding: gzip`, immutable cache, CORS GET from anywhere), so
-    a static page on another host streams it. Not done: the page's
-    worker mode, and compile speed: ~6 s per compile in Chrome, against
-    0.7 s native, which has to come down before the page ships.
+    a static page on another host streams it. `rb2go web -static DIR
+    -assets URL` writes that page: `index.html` sets `rb2goAssets`, runs
+    the compiler in a Worker made from a Blob (a Worker's script must be
+    same-origin; it `importScripts` wasm_exec.js from the assets),
+    compiles only the latest edit while one is in flight, and turns Run
+    into Copy Go. highlight.js is inlined into the page (140 KB, under
+    Top Banana's 256 KB file cap): its lint fails a cross-origin
+    `<script src>` and any `.js` outside `functions/`; `examples.json`
+    and the wasm are fetched, which it doesn't lint. `scripts/deploy-web.sh` builds,
+    uploads to R2 (`wrangler`), and deploys the page to the Top Banana
+    site `$TOPBANANA_SLUG` (default `ruby2go`) through
+    `scripts/topbanana.mjs`, which talks to Top Banana's MCP endpoint over
+    JSON-RPC (it has no other upload API), signing in once by OAuth PKCE
+    in the browser; a deploy is the whole site, so files an earlier one
+    left are deleted. Live at https://ruby2go.apps.topbanana.dev. Not done: compile speed, ~6.5 s per compile in
+    Chrome against 0.7 s native.

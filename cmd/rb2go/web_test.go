@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -88,5 +90,39 @@ func TestWeb(t *testing.T) {
 	decode(do("POST", "/run", `{"src":"while true\nend\n"}`, nil), &r)
 	if r.Exit != -1 || !strings.Contains(r.Error, "killed after") {
 		t.Errorf("run timeout: %+v", r)
+	}
+}
+
+func TestWebStatic(t *testing.T) {
+	dir := t.TempDir()
+	err := writeStatic(dir, "https://assets.example/abc/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := os.ReadFile(filepath.Join(dir, "index.html")) //nolint:gosec // our temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`window.rb2goAssets = "https://assets.example/abc/";`, "<script>/*!\n  Highlight.js"} {
+		if !strings.Contains(string(page), want) {
+			t.Errorf("index.html lacks %q", want)
+		}
+	}
+	_, err = os.Stat(filepath.Join(dir, "highlight.min.js"))
+	if err == nil {
+		t.Error("highlight.min.js written beside index.html; it's inlined")
+	}
+	var ex []example
+	raw, err := os.ReadFile(filepath.Join(dir, "examples.json")) //nolint:gosec // our temp dir
+	if err == nil {
+		err = json.Unmarshal(raw, &ex)
+	}
+	if err != nil || len(ex) == 0 {
+		t.Errorf("examples.json: %d examples, %v", len(ex), err)
+	}
+	for _, bad := range []string{"", "/rel/", "https://no-slash", "javascript:alert(1)/", "https://x/</script>/"} {
+		if writeStatic(t.TempDir(), bad) == nil {
+			t.Errorf("-assets %q accepted", bad)
+		}
 	}
 }

@@ -12,11 +12,14 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,7 +46,17 @@ const (
 func webCmd(args []string) int {
 	fset := flag.NewFlagSet("web", flag.ExitOnError)
 	addr := fset.String("addr", "127.0.0.1:8080", "listen address; /run executes code, so keep it on loopback")
+	static := fset.String("static", "", "instead of serving, write a static playground to this dir: index.html for any host, the rest for -assets")
+	assets := fset.String("assets", "", "with -static: the URL (ending in /) that serves rb2go.wasm, wasm_exec.js and examples.json")
 	_ = fset.Parse(args) // ExitOnError
+	if *static != "" {
+		err := writeStatic(*static, *assets)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	host, _, err := net.SplitHostPort(*addr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -108,17 +121,56 @@ type example struct {
 }
 
 func (w *web) examples(rw http.ResponseWriter, _ *http.Request) {
+	out, err := loadExamples()
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(rw, out)
+}
+
+func loadExamples() ([]example, error) {
 	paths, _ := fs.Glob(examples.FS, "*/main.rb") // the pattern is constant, so no ErrBadPattern
 	out := make([]example, 0, len(paths))
 	for _, p := range paths {
 		src, err := fs.ReadFile(examples.FS, p)
 		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
+			return nil, fmt.Errorf("examples: %w", err)
 		}
 		out = append(out, example{Name: path.Base(path.Dir(p)), Src: string(src)})
 	}
-	writeJSON(rw, out)
+	return out, nil
+}
+
+// writeStatic writes the serverless playground: index.html for the web host, compiling with cmd/rb2go-wasm fetched from assets, and examples.json for assets (rb2go.wasm and wasm_exec.js come from scripts/deploy-web.sh).
+func writeStatic(dir, assets string) error {
+	u, err := url.Parse(assets)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || !strings.HasSuffix(assets, "/") || u.String() != assets { // round-trips only if nothing needed escaping (no <, ", space)
+		return fmt.Errorf("-assets must be an http(s) URL ending in /, got %q", assets)
+	}
+	ex, err := loadExamples()
+	if err != nil {
+		return err
+	}
+	exJSON, err := json.Marshal(ex)
+	if err != nil {
+		return fmt.Errorf("examples: %w", err)
+	}
+	cfg := strconv.Quote(assets) // a Go quoted string is a JS one, and the round-trip check above rules out "</script>"
+	// inlined: hosts lint a cross-origin <script src>, and Top Banana any .js outside functions/; escaped so nothing in it ends or comments the element
+	hl := strings.NewReplacer("</script", `<\/script`, "<!--", `<\!--`).Replace(string(highlightJS))
+	page := strings.Replace(string(webPage), `<script src="/highlight.min.js"></script>`,
+		"<script>window.rb2goAssets = "+cfg+";</script>\n<script>"+hl+"</script>", 1)
+	err = os.MkdirAll(dir, 0o750)
+	for name, body := range map[string][]byte{"index.html": []byte(page), "examples.json": exJSON} {
+		if err == nil {
+			err = os.WriteFile(filepath.Join(dir, name), body, 0o600)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("static: %w", err)
+	}
+	return nil
 }
 
 type compileResult struct {

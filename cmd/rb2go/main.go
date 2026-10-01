@@ -21,7 +21,8 @@ const usage = `usage: rb2go build [-o prog] [-race] [-gcflags flags] [-work] mai
        rb2go run [-race] [-gcflags flags] [-work] main.rb [args...]
        rb2go gen main.rb > main.go
        rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
-       rb2go web [-addr 127.0.0.1:8080]`
+       rb2go web [-addr 127.0.0.1:8080]
+       rb2go web -static dir -assets https://host/path/`
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" && os.Args[1] != "web" {
