@@ -183,3 +183,29 @@ func rbProcOrNil(blk func()) **func() {
 	p := &blk
 	return &p
 }
+
+// rbMtTraceFile is the trace oracle's sink (decision 105): the file
+// RB2GO_MT_TRACE names, opened for append once, or nil when unset.
+var rbMtTraceFile = sync.OnceValue(func() *os.File {
+	path := os.Getenv("RB2GO_MT_TRACE")
+	if path == "" {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // the harness's own path
+	if err != nil {
+		panic(NewIOError(Ref(String(err.Error()))))
+	}
+	return f
+})
+
+// rbMtTraceDepth is how many assert_raises blocks are running: assertions inside one are not logged.
+var rbMtTraceDepth int
+
+func rbMtTraceOn() bool { return rbMtTraceDepth == 0 && rbMtTraceFile() != nil }
+
+// rbMtTrace appends one assertion's line to the trace file.
+func rbMtTrace(line String) {
+	if _, err := rbMtTraceFile().WriteString(string(line) + "\n"); err != nil {
+		panic(NewIOError(Ref(String(err.Error()))))
+	}
+}

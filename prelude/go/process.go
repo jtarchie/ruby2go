@@ -19,7 +19,7 @@ func rbClockGettime(id int) Float {
 		}
 		return Float(time.Duration(ru.Utime.Nano() + ru.Stime.Nano()).Seconds())
 	}
-	panic(NewErrno_EINVAL(Ref(String("Invalid argument - clock_gettime"))))
+	panic(NewErrno_EINVAL(Ref(String(fmt.Sprintf("Invalid argument - clock_gettime(%d)", id)))))
 }
 
 // rbLastStatus is `$?`: the status of the last system or backtick command.

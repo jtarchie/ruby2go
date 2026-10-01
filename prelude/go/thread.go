@@ -39,7 +39,7 @@ func (t *Thread) notSelf() {
 
 // rbThreadRun starts run on a goroutine and returns its Thread handle: a panic re-raises on join (or, for SystemExit, exits like MRI's main thread would). The thread belongs to the ractor that started it, so Ractor.receive inside it reads that ractor's port.
 func rbThreadRun(run func() any) *Thread {
-	t := &Thread{done: make(chan struct{})}
+	t := &Thread{done: make(chan struct{}), loc: rbCallerLoc()}
 	ractor, inRactor := rbRactorOf.Load(rbGoID())
 	go func() {
 		id := rbGoID()

@@ -1013,7 +1013,30 @@ func rbFloatToS(f float64) String {
 	return String(s)
 }
 
-func rbStringInspect(s string) String {
+// rbCallerLoc is the "file:line" of the nearest user-code frame (a Ruby
+// body outside the prelude), as MRI shows where a Thread or Ractor was made.
+func rbCallerLoc() string {
+	pcs := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	_, self, _, _ := runtime.Caller(0)
+	mod := strings.TrimSuffix(self, "prelude/go/runtime.go")
+	for {
+		f, more := frames.Next()
+		file := strings.TrimPrefix(f.File, mod)
+		if strings.HasSuffix(file, ".rb") && !strings.HasPrefix(file, "prelude/") && !strings.Contains(f.Function, ".(") {
+			return file + ":" + strconv.Itoa(f.Line)
+		}
+		if !more {
+			return ""
+		}
+	}
+}
+
+// rbStringInspect is String#inspect for a UTF-8 string: controls are \u00XX, as MRI prints them for a UTF-8 string.
+func rbStringInspect(s string) String { return rbStringInspectAs(s, true) }
+
+// rbStringInspectAs inspects s; utf8 false gives the US-ASCII form of a control (\xXX), which Symbol#inspect uses.
+func rbStringInspectAs(s string, utf8Controls bool) String {
 	var b strings.Builder
 	b.WriteByte('"')
 	for i := 0; i < len(s); {
@@ -1049,10 +1072,11 @@ func rbStringInspect(s string) String {
 			b.WriteByte('#')
 		default:
 			switch {
+			case (r < 0x20 || r == 0x7f) && utf8Controls:
+				// ponytail: strings carry no encoding, so every String gets the
+				// UTF-8 form; MRI prints a US-ASCII string's controls (Integer#chr) as \x00.
+				fmt.Fprintf(&b, `\u%04X`, r)
 			case r < 0x20 || r == 0x7f:
-				// ponytail: strings carry no encoding, so ASCII controls get the
-				// US-ASCII form (Integer#chr, ASCII-only symbols); a UTF-8 literal
-				// is \u0000 in MRI. Needs an encoding bit on String.
 				fmt.Fprintf(&b, `\x%02X`, r)
 			case unicode.IsGraphic(r) || unicode.In(r, unicode.Cf, unicode.Co):
 				// MRI's "printable" for UTF-8: graphic, format or private use.

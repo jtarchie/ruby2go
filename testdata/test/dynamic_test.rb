@@ -2861,7 +2861,14 @@ module DynamicTests
       assert_equal "none", opt_desc(dynamic_ident(nil))
       assert_equal "n=4", opt_desc(dynamic_ident(4))
       assert_equal 6, total_of(dynamic_ident([1, 2, 3]))
-      assert_raises(StandardError) { dynamic_up(dynamic_ident(5)) }
+      # rb2go checks the untyped argument at the call (TypeError, decision 20) where MRI fails inside (NoMethodError), so the message is not compared.
+      err = begin
+        dynamic_up(dynamic_ident(5))
+        nil
+      rescue StandardError => e
+        e
+      end
+      assert_equal false, err.nil?
     end
   end
 end

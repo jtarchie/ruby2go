@@ -1378,7 +1378,7 @@ module NumberTests
       assert_equal "~", 126.chr
       assert_equal " ", 32.chr
       assert_equal "\n", 10.chr
-      assert_equal "\x00", 0.chr
+      assert_equal [0], 0.chr.bytes # MRI's chr is US-ASCII and inspects as "\x00"; rb2go's strings are all UTF-8 ("\u0000")
 
       # literals
       assert_equal 1000000, 1_000_000
@@ -1539,8 +1539,20 @@ module NumberTests
       nan = nz / nz #: Float
       assert_raises(ArgumentError) { nan.between?(0.0, 1.0) }
       assert_raises(ArgumentError) { nan.clamp(0.0, 1.0) }
-      assert_raises(ArgumentError) { [1.0, nan].sort }
-      assert_raises(ArgumentError) { [nan, 1.0].max }
+      # the failed comparison names (earlier, later) in a sort and (best so far, candidate) in min/max, as MRI's do
+      e = assert_raises(ArgumentError) { [1.0, nan].sort }
+      assert_equal "comparison of Float with NaN failed", e.message
+      e = assert_raises(ArgumentError) { [nan, 2.0, 1.0].sort }
+      assert_equal "comparison of Float with 2.0 failed", e.message
+      # min/max name (best so far, candidate) as MRI's Float fast path does; with Float reopened (this file) MRI's
+      # generic path names them the other way round, so the message is not compared here.
+      err = begin
+        [nan, 1.0].max
+        nil
+      rescue ArgumentError => e
+        e
+      end
+      assert_equal false, err.nil?
     end
 
     # != follows ==, across Integer/Float and a user-defined ==
@@ -1919,7 +1931,7 @@ module NumberTests
       assert_equal false, v.negative?
       assert_equal "6", (v.succ).inspect
       assert_equal "4", (v.pred).inspect
-      assert_equal "\x05", v.chr
+      assert_equal [5], v.chr.bytes # MRI's chr is US-ASCII and inspects as "\x05"; rb2go's strings are all UTF-8 ("\u0005")
       assert_equal "5", (v.abs).inspect
       assert_equal "2", (w.floor).inspect
       assert_equal "3", (w.ceil).inspect

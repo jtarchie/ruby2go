@@ -15,5 +15,5 @@ func rbSymbolInspect(s string) String {
 	if rbPlainSymbol.MatchString(s) {
 		return String(":" + s)
 	}
-	return ":" + rbStringInspect(s)
+	return ":" + rbStringInspectAs(s, false)
 }

@@ -1309,7 +1309,13 @@ b/
     def test_untyped_integer_subject_raises
       assert_raises(TypeError) { /a/.match?(five) }
       assert_raises(TypeError) { /a/ =~ five }
-      assert_raises(TypeError) { "abc".match?(five) }
+      err = begin # rb2go's dynamic argument check (decision 20) words this TypeError differently from MRI's Regexp check
+        "abc".match?(five)
+        nil
+      rescue TypeError => e
+        e
+      end
+      assert_equal false, err.nil?
     end
 
     # untyped nil/Symbol subjects through dynamic and typed regexps

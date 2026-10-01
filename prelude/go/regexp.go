@@ -8,9 +8,43 @@ package prelude
 func rbRegexpNew(pattern, src, opts string) *Regexp {
 	re, err := regexp.Compile(rxFold(pattern))
 	if err != nil {
-		panic(NewRegexpError(Ref(String(err.Error()))))
+		panic(NewRegexpError(Ref(String(rbRegexpErr(err, src)))))
 	}
 	return &Regexp{re: rxNew(re), src: src, opts: opts}
+}
+
+// rbRegexpErr words a Go regexp syntax error as Onigmo words the same
+// mistake, with the Ruby source after it (`end pattern with unmatched
+// parenthesis: /a(b/`); an error with no Onigmo twin keeps Go's wording.
+func rbRegexpErr(err error, src string) string {
+	var se *syntax.Error
+	if !errors.As(err, &se) {
+		return err.Error()
+	}
+	msg := ""
+	//exhaustive:ignore // the codes with an Onigmo twin; the rest keep Go's wording
+	switch se.Code {
+	case syntax.ErrMissingParen:
+		msg = "end pattern with unmatched parenthesis"
+	case syntax.ErrUnexpectedParen:
+		msg = "unmatched close parenthesis"
+	case syntax.ErrMissingBracket:
+		msg = "premature end of char-class"
+	case syntax.ErrMissingRepeatArgument:
+		msg = "target of repeat operator is not specified"
+	case syntax.ErrTrailingBackslash:
+		msg = "too short escape sequence"
+	case syntax.ErrInvalidCharRange:
+		msg = "empty range in char class"
+	case syntax.ErrInvalidRepeatSize:
+		if lo, hi, ok := strings.Cut(strings.Trim(se.Expr, "{}"), ","); ok && hi != "" && len(hi) <= len(lo) && hi < lo {
+			msg = "upper is smaller than lower in repeat range"
+		}
+	}
+	if msg == "" {
+		return err.Error()
+	}
+	return msg + ": /" + rbRegexpDesc(src) + "/"
 }
 
 // rbRegexpDyn compiles an interpolated regexp from its Ruby source, which

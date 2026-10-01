@@ -66,6 +66,7 @@ func run(t *testing.T, dir string, name string, args ...string) (string, error) 
 type progIO struct {
 	env   []string
 	stdin string
+	trace bool // the trace oracle (decision 105): RB2GO_MT_TRACE on both runs, MRI with testdata/mt_trace.rb preloaded
 }
 
 func runIO(t *testing.T, dir string, pio progIO, name string, args ...string) (stdout, stderr string, code int, err error) {
@@ -266,6 +267,38 @@ func skipIfMarked(t *testing.T, src []byte) {
 	reasons := directives(src, "skip")
 	if len(reasons) > 0 && os.Getenv("RB2GO_RUN_SKIPPED") == "" {
 		t.Skip("known failure: " + strings.Join(reasons, "; "))
+	}
+}
+
+// TestTraceOracle checks decision 105's point: an assertion that passes on
+// both sides but sees a different operand (here a process id) is reported.
+func TestTraceOracle(t *testing.T) {
+	requireRuby4(t)
+	t.Parallel()
+	dir := t.TempDir()
+	src := []byte(`require "minitest/autorun"
+
+class PidTest < Minitest::Test
+  def test_pid = refute_equal(0, Process.pid)
+end
+`)
+	err := os.WriteFile(filepath.Join(dir, "pid_test.rb"), src, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := goBuild(t, transpile(t, "pid_test.rb", src), "-l")
+	pio := progIO{trace: true}
+	want := rubyOutput(t, dir, "pid_test.rb", src, pio, []string{"--seed", "1"})
+	got := binOutput(t, dir, pio, bin, []string{"--seed", "1"})
+	if want.Code != 0 || got.Code != 0 {
+		t.Fatalf("both runs should pass: ruby %d, go %d\n%s%s", want.Code, got.Code, want.Stdout, got.Stdout)
+	}
+	d := traceDiff(want.Trace, got.Trace)
+	if !strings.Contains(d, "PidTest#test_pid refute_equal 0 ") {
+		t.Fatalf("the oracle should report the operand difference, got:\n%q\n--- traces ---\n%s---\n%s", d, want.Trace, got.Trace)
+	}
+	if traceDiff(want.Trace, want.Trace) != "" {
+		t.Error("identical traces should not differ")
 	}
 }
 
@@ -503,13 +536,14 @@ func sameAsRubyWith(t *testing.T, dir, file, bin string, extra []string) {
 		}
 		pio.stdin += in
 	}
+	mt := bytes.Contains(src, []byte(`require "minitest`))
+	pio.trace = mt
 	want := rubyOutput(t, dir, file, src, pio, args)
 	if extra != nil && want.Code != 0 {
 		t.Fatalf("MRI fails %s, so the test itself is wrong:\n%s%s", file, want.Stdout, want.Stderr)
 	}
-	var got mriResult
-	got.Stdout, got.Stderr, got.Code, _ = runIO(t, dir, pio, bin, args...)
-	if bytes.Contains(src, []byte(`require "minitest`)) {
+	got := binOutput(t, dir, pio, bin, args)
+	if mt {
 		want.Stdout, got.Stdout = mtTimings(want.Stdout), mtTimings(got.Stdout)
 	}
 	if want.Stdout != got.Stdout {
@@ -521,6 +555,60 @@ func sameAsRubyWith(t *testing.T, dir, file, bin string, extra []string) {
 	if slices.Contains(directives(src, "stderr"), "match") && want.Stderr != got.Stderr {
 		t.Errorf("stderr differs\n--- ruby ---\n%s\n--- go ---\n%s", want.Stderr, got.Stderr)
 	}
+	if d := traceDiff(want.Trace, got.Trace); d != "" {
+		t.Errorf("assertion operands differ from MRI's (trace oracle, decision 105):\n%s", d)
+	}
+}
+
+// binOutput runs the compiled program as rubyOutput runs MRI, collecting its trace when pio.trace is set.
+func binOutput(t *testing.T, dir string, pio progIO, bin string, args []string) mriResult {
+	t.Helper()
+	var got mriResult
+	var tracePath string
+	if pio.trace {
+		tracePath = filepath.Join(t.TempDir(), "trace")
+		pio.env = append(slices.Clone(pio.env), "RB2GO_MT_TRACE="+tracePath)
+	}
+	got.Stdout, got.Stderr, got.Code, _ = runIO(t, dir, pio, bin, args...)
+	if pio.trace {
+		got.Trace = readTrace(t, tracePath)
+	}
+	return got
+}
+
+// readTrace is the trace file's content, empty when the program wrote none.
+func readTrace(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path) //nolint:gosec // our temp path
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// traceAddr masks object addresses and ids, as minitest's own diff does (rbMtPPForDiff), and Ractor numbers: none agree across runs.
+var traceAddr = regexp.MustCompile(`0x[0-9a-f]+|oid=\d+|Ractor:#\d+|id:\d+`)
+
+// traceDiff describes the first line where two assertion traces differ, or is empty when they agree.
+func traceDiff(want, got string) string {
+	if want == got {
+		return ""
+	}
+	w := strings.Split(strings.TrimSuffix(traceAddr.ReplaceAllString(want, "#"), "\n"), "\n")
+	g := strings.Split(strings.TrimSuffix(traceAddr.ReplaceAllString(got, "#"), "\n"), "\n")
+	for i := range max(len(w), len(g)) {
+		wl, gl := "<end>", "<end>"
+		if i < len(w) {
+			wl = w[i]
+		}
+		if i < len(g) {
+			gl = g[i]
+		}
+		if wl != gl {
+			return fmt.Sprintf("line %d of %d (ruby) / %d (go):\n--- ruby ---\n%s\n--- go ---\n%s", i+1, len(w), len(g), wl, gl)
+		}
+	}
+	return ""
 }
 
 // rubyDescription keys the MRI output cache: another Ruby may print differently.
@@ -531,6 +619,7 @@ var rubyDescription = sync.OnceValue(func() string {
 
 type mriResult struct {
 	Stdout, Stderr string
+	Trace          string // the assertion trace (decision 105), when asked for
 	Code           int
 }
 
@@ -538,8 +627,22 @@ type mriResult struct {
 type mriCached struct {
 	Stdout []byte `json:"stdout"`
 	Stderr []byte `json:"stderr"`
+	Trace  []byte `json:"trace,omitempty"`
 	Code   int    `json:"code"`
 }
+
+// mtTracePreload is the MRI half of the trace oracle, read once: its source keys the cache too.
+var mtTracePreload = sync.OnceValues(func() (string, []byte) {
+	path, err := filepath.Abs("testdata/mt_trace.rb")
+	if err != nil {
+		panic(err)
+	}
+	src, err := os.ReadFile(path) //nolint:gosec // testdata path
+	if err != nil {
+		panic(err)
+	}
+	return path, src
+})
 
 // rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
@@ -550,9 +653,17 @@ func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []s
 // mriRun runs `ruby rubyArgs...` in dir, cached by src (every source it reads), Ruby's version, TZ and the arguments past the first.
 func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string) mriResult {
 	t.Helper()
-	key := "v3\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00"
+	key := "v4\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00"
 	if args := rubyArgs[1:]; len(args) > 0 { // `# args:` are in src; TestMinitest adds more
 		key += strings.Join(args, "\x00") + "\x00args\x00"
+	}
+	var tracePath string
+	if pio.trace {
+		preload, preloadSrc := mtTracePreload()
+		key += "trace\x00" + string(preloadSrc) + "\x00"
+		tracePath = filepath.Join(t.TempDir(), "trace")
+		pio.env = append(slices.Clone(pio.env), "RB2GO_MT_TRACE="+tracePath)
+		rubyArgs = append([]string{"-r", preload}, rubyArgs...)
 	}
 	sum := sha256.Sum256(slices.Concat([]byte(key), src))
 	cacheDir, err := os.UserCacheDir()
@@ -561,13 +672,16 @@ func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string)
 		data, rerr := os.ReadFile(cached) //nolint:gosec // our cache path
 		var c mriCached
 		if rerr == nil && json.Unmarshal(data, &c) == nil {
-			return mriResult{Stdout: string(c.Stdout), Stderr: string(c.Stderr), Code: c.Code}
+			return mriResult{Stdout: string(c.Stdout), Stderr: string(c.Stderr), Trace: string(c.Trace), Code: c.Code}
 		}
 	}
 	var r mriResult
 	r.Stdout, r.Stderr, r.Code, _ = runIO(t, dir, pio, "ruby", rubyArgs...)
+	if pio.trace {
+		r.Trace = readTrace(t, tracePath)
+	}
 	if err == nil && r.Code >= 0 {
-		data, err := json.Marshal(mriCached{Stdout: []byte(r.Stdout), Stderr: []byte(r.Stderr), Code: r.Code})
+		data, err := json.Marshal(mriCached{Stdout: []byte(r.Stdout), Stderr: []byte(r.Stderr), Trace: []byte(r.Trace), Code: r.Code})
 		if err != nil {
 			t.Fatal(err)
 		}

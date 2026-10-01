@@ -197,7 +197,7 @@ module Enumerable
     for x := range self.Each() {
       tmp = append(tmp, kv{blk(x), x})
     }
-    slices.SortStableFunc(tmp, func(a, b kv) int { return int(rbCmp(a.k, b.k)) })
+    slices.SortStableFunc(tmp, func(a, b kv) int { return -int(rbCmp(b.k, a.k)) })
     out := &Array[E]{}
     for _, p := range tmp {
       *out = append(*out, p.v)
@@ -211,7 +211,7 @@ module Enumerable
     for x := range self.Each() {
       *out = append(*out, x)
     }
-    slices.SortStableFunc(*out, func(a, b E) int { return int(rbCmp(a, b)) })
+    slices.SortStableFunc(*out, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return out
   }
 
@@ -219,7 +219,7 @@ module Enumerable
   def min = %x{
     var best *E
     for x := range self.Each() {
-      if best == nil || rbCmp(x, *best) < 0 {
+      if best == nil || rbCmp(*best, x) > 0 { // (best, candidate), as MRI's failure names them
         x := x
         best = &x
       }
@@ -231,7 +231,7 @@ module Enumerable
   def max = %x{
     var best *E
     for x := range self.Each() {
-      if best == nil || rbCmp(x, *best) > 0 {
+      if best == nil || rbCmp(*best, x) < 0 {
         x := x
         best = &x
       }
@@ -260,7 +260,7 @@ module Enumerable
     var bestK K
     for x := range self.Each() {
       k := blk(x)
-      if best == nil || rbCmp(k, bestK) < 0 {
+      if best == nil || rbCmp(bestK, k) > 0 {
         x := x
         best, bestK = &x, k
       }
@@ -274,7 +274,7 @@ module Enumerable
     var bestK K
     for x := range self.Each() {
       k := blk(x)
-      if best == nil || rbCmp(k, bestK) > 0 {
+      if best == nil || rbCmp(bestK, k) < 0 {
         x := x
         best, bestK = &x, k
       }

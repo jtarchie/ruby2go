@@ -6,7 +6,7 @@
 # Ractor.current is the ractor registered for the running goroutine
 # (rbCurrentRactor, decision 104), main when none.
 
-# @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int }
+# @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int; loc string }
 class Ractor < Object
   class Error < RuntimeError; end
   class IsolationError < Error; end
@@ -28,10 +28,10 @@ class Ractor < Object
   end
 
   # An unbounded message queue, owned by the ractor that created it: only it may receive.
-  # @go_type struct { q rbPort; owner *Ractor }
+  # @go_type struct { q rbPort; owner *Ractor; id int }
   class Port < Object
     #: () -> Port
-    def self.new = %x{ return &Ractor_Port{owner: rbCurrentRactor()} }
+    def self.new = %x{ return &Ractor_Port{owner: rbCurrentRactor(), id: int(rbPortIDs.Add(1))} }
 
     # The message is deep-copied first; a frozen Array/Hash is shared, as MRI shares shareable objects.
     #: (untyped) -> self
@@ -58,7 +58,7 @@ class Ractor < Object
     def closed? = %x{ Boolean(self.q.isClosed()) }
 
     #: () -> String
-    def inspect = %x{ return String("#<Ractor::Port>") }
+    def inspect = %x{ return String(fmt.Sprintf("#<Ractor::Port to:#%d id:%d>", self.owner.id, self.id)) }
   end
 
   # Arguments are deep-copied into the block (Thread.new's arity overloads, decision 45).
@@ -164,7 +164,10 @@ class Ractor < Object
       status = "terminated"
     default:
     }
-    return String(fmt.Sprintf("#<Ractor:#%d %s>", self.id, status))
+    if self.loc == "" {
+      return String(fmt.Sprintf("#<Ractor:#%d %s>", self.id, status))
+    }
+    return String(fmt.Sprintf("#<Ractor:#%d %s %s>", self.id, self.loc, status))
   }
 
   #: () -> String

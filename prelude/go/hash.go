@@ -12,7 +12,7 @@ func rbInspectPair(k, v any) string {
 		if rbLabelSymbol.MatchString(string(s)) {
 			return string(s) + ": " + string(rbInspect(v))
 		}
-		return string(rbStringInspect(string(s))) + ": " + string(rbInspect(v))
+		return string(rbStringInspectAs(string(s), false)) + ": " + string(rbInspect(v))
 	}
 	return string(rbInspect(k)) + " => " + string(rbInspect(v))
 }

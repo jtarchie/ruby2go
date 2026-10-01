@@ -19,6 +19,7 @@ type rbWaiter struct {
 
 var (
 	rbRactorIDs  atomic.Int64 // main is #1
+	rbPortIDs    atomic.Int64 // for Port#inspect
 	rbRactorLive atomic.Int64 // started and not yet finished, for Ractor.count
 	rbRactorOf   sync.Map     // goroutine id → *Ractor, for a ractor's goroutine and the threads it starts (rbThreadRun)
 	rbMainRactor = rbNewMainRactor()
@@ -188,8 +189,8 @@ func (p *Ractor_Port) receiveOwned() any {
 }
 
 func rbNewRactor() *Ractor {
-	r := &Ractor{done: make(chan struct{}), id: int(rbRactorIDs.Add(1)) + 1}
-	r.port = &Ractor_Port{owner: r}
+	r := &Ractor{done: make(chan struct{}), id: int(rbRactorIDs.Add(1)) + 1, loc: rbCallerLoc()}
+	r.port = &Ractor_Port{owner: r, id: int(rbPortIDs.Add(1))}
 	return r
 }
 

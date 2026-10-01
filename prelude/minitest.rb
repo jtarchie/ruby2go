@@ -657,8 +657,29 @@ module Minitest
     #: (String) -> String
     def __mt_pp_for_diff(str) = %x{ return rbMtPPForDiff(str) }
 
+    # The trace oracle (decision 105): with RB2GO_MT_TRACE set, each assertion a test calls logs
+    # one line, "Class#test assertion operand...", operands inspected. Only the outermost
+    # assertion logs: the ones an assertion calls itself go through __mt_* twins that don't,
+    # and assert_raises's block runs nested (__mt_trace_nest), as MRI's depth counter sees it.
+    #: (String, *untyped) -> void
+    def __mt_trace(kind, *operands)
+      return unless __mt_trace_on?
+
+      __mt_trace_line("#{__mt_class_name(self)}##{name} #{kind} #{operands.map { |o| __mt_pp(o) }.join(" ")}")
+    end
+
+    #: () -> bool
+    def __mt_trace_on? = %x{ return Boolean(rbMtTraceOn()) }
+
+    #: (Integer) -> void
+    def __mt_trace_nest(by) = %x{ rbMtTraceDepth += int(by) }
+
+    #: (String) -> void
+    def __mt_trace_line(line) = %x{ rbMtTrace(line) }
+
     #: (untyped, ?untyped) -> bool
     def assert(test, msg = nil)
+      __mt_trace("assert", test)
       return __assert(test, -> { "Expected #{mu_pp(test)} to be truthy." }) if msg.nil?
 
       __assert(test, -> { __s(msg) })
@@ -676,14 +697,16 @@ module Minitest
     # @dynamic
     #: (untyped, ?untyped) -> bool
     def assert_empty(obj, msg = nil)
+      __mt_trace("assert_empty", obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be empty" })
-      assert_respond_to(obj, :empty?)
+      __mt_respond_to(obj, :empty?)
       __assert(obj.empty?, m)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def assert_equal(exp, act, msg = nil)
+      __mt_trace("assert_equal", exp, act)
       m = message(msg, nil, -> { diff(exp, act) })
       __assert(false, message(nil, ".", -> { "Use assert_nil if expecting nil" })) if exp.nil? # refute_nil with a proc message
       __assert(exp == act, m)
@@ -692,40 +715,53 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def assert_in_delta(exp, act, delta = 0.001, msg = nil)
+      __mt_trace("assert_in_delta", exp, act, delta)
+      __mt_in_delta(exp, act, delta, msg, false)
+    end
+
+    # port: assert_in_delta's body, shared with assert_in_epsilon and the refutes, so each logs once.
+    # @dynamic
+    #: (untyped, untyped, untyped, untyped, bool) -> bool
+    def __mt_in_delta(exp, act, delta, msg, refute)
       n = (exp - act).abs
-      m = message(msg, ".", -> { "Expected |#{__s(exp)} - #{__s(act)}| (#{__s(n)}) to be <= #{__s(delta)}" })
-      __assert(delta >= n, m)
+      m = message(msg, ".", -> { "Expected |#{__s(exp)} - #{__s(act)}| (#{__s(n)}) to #{refute ? "not " : ""}be <= #{__s(delta)}" })
+      __assert(refute ? !(delta >= n) : delta >= n, m)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def assert_in_epsilon(exp, act, epsilon = 0.001, msg = nil)
-      assert_in_delta(exp, act, (exp.abs < act.abs ? exp.abs : act.abs) * epsilon, msg)
+      __mt_trace("assert_in_epsilon", exp, act, epsilon)
+      __mt_in_delta(exp, act, (exp.abs < act.abs ? exp.abs : act.abs) * epsilon, msg, false)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def assert_includes(collection, obj, msg = nil)
+      __mt_trace("assert_includes", collection, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(collection)} to include #{mu_pp(obj)}" })
-      assert_respond_to(collection, :include?)
+      __mt_respond_to(collection, :include?)
       __assert(collection.include?(obj), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def assert_instance_of(cls, obj, msg = nil)
+      __mt_trace("assert_instance_of", cls, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be an instance of #{__s(cls)}, not #{__mt_class_name(obj)}" })
       __assert(__mt_class_name(obj) == __s(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def assert_kind_of(cls, obj, msg = nil)
+      __mt_trace("assert_kind_of", cls, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be a kind of #{__s(cls)}, not #{__mt_class_name(obj)}" })
       __assert(obj.kind_of?(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> MatchData?
     def assert_match(matcher, obj, msg = nil)
-      assert_respond_to(matcher, :=~)
+      __mt_trace("assert_match", matcher, obj)
+      __mt_respond_to(matcher, :=~)
       re = __mt_regexp(matcher) # before the message, which MRI builds lazily after this conversion
       m = message(msg, ".", -> { "Expected #{mu_pp(re)} to match #{mu_pp(obj)}" })
       md = __mt_match(re, obj)
@@ -735,6 +771,7 @@ module Minitest
 
     #: (untyped, ?untyped) -> bool
     def assert_nil(obj, msg = nil)
+      __mt_trace("assert_nil", obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be nil" })
       __assert(obj.nil?, m)
     end
@@ -742,15 +779,20 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def assert_operator(o1, op, o2 = Assertions::UNDEFINED, msg = nil)
-      return assert_predicate(o1, op, msg) if Assertions::UNDEFINED.equal?(o2)
+      if Assertions::UNDEFINED.equal?(o2)
+        __mt_trace("assert_predicate", o1, op)
+        return __mt_predicate(o1, op, msg, false)
+      end
 
-      assert_respond_to(o1, op)
+      __mt_trace("assert_operator", o1, op, o2)
+      __mt_respond_to(o1, op)
       m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to be #{__s(op)} #{mu_pp(o2)}" })
       __assert(__mt_send(o1, op, o2), m)
     end
 
     #: (String, ?untyped) -> bool
     def assert_path_exists(path, msg = nil)
+      __mt_trace("assert_path_exists", path)
       m = message(msg, ".", -> { "Expected path '#{__s(path)}' to exist" })
       __assert(File.exist?(path), m)
     end
@@ -758,9 +800,18 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def assert_predicate(o1, op, msg = nil)
-      assert_respond_to(o1, op)
-      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to be #{__s(op)}" })
-      __assert(__mt_send(o1, op), m)
+      __mt_trace("assert_predicate", o1, op)
+      __mt_predicate(o1, op, msg, false)
+    end
+
+    # port: assert_predicate's body, shared with assert_operator and the refutes, so each logs once.
+    # @dynamic
+    #: (untyped, untyped, untyped, bool) -> bool
+    def __mt_predicate(o1, op, msg, refute)
+      __mt_respond_to(o1, op)
+      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to #{refute ? "not " : ""}be #{__s(op)}" })
+      test = __mt_send(o1, op)
+      __assert(refute ? !test : test, m)
     end
 
     # @dynamic
@@ -769,26 +820,38 @@ module Minitest
       msg = exp.last.is_a?(String) ? "#{exp.pop}.\n" : ""
       exp << StandardError if exp.empty?
 
+      __mt_trace_nest(1)
       begin
         yield
       rescue Exception => e
+        __mt_trace_nest(-1)
         if exp.any? { |k| __mt_kind_of(k, e) }
-          pass # count assertion
+          __mt_trace("assert_raises", *exp, e.class, e.message) # the classes expected, then what came
+          __assert(true, -> { "" }) # pass: count assertion
           return e
         end
         raise e if e.is_a?(Minitest::Assertion) || e.is_a?(SignalException) || e.is_a?(SystemExit)
 
-        flunk(exception_details(e, "#{__s(msg)}#{mu_pp(exp)} exception expected, not"))
+        __mt_flunk(exception_details(e, "#{__s(msg)}#{mu_pp(exp)} exception expected, not"))
       end
+      __mt_trace_nest(-1)
 
       shown = exp.size == 1 ? exp.first : exp
-      flunk("#{__s(msg)}#{mu_pp(shown)} expected but nothing was raised.")
+      __mt_flunk("#{__s(msg)}#{mu_pp(shown)} expected but nothing was raised.")
       raise "unreachable: flunk raises"
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def assert_respond_to(obj, meth, msg = nil)
+      __mt_trace("assert_respond_to", obj, meth)
+      __mt_respond_to(obj, meth, msg)
+    end
+
+    # port: assert_respond_to's body, which other assertions call, so each logs once.
+    # @dynamic
+    #: (untyped, untyped, ?untyped) -> bool
+    def __mt_respond_to(obj, meth, msg = nil)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} (#{__mt_class_name(obj)}) to respond to ##{__s(meth)}" })
       __assert(obj.respond_to?(meth), m)
     end
@@ -796,6 +859,7 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def assert_same(exp, act, msg = nil)
+      __mt_trace("assert_same", exp, act)
       m = message(msg, ".", lambda do
         "Expected %s (oid=%d) to be the same as %s (oid=%d)" % [mu_pp(act), act.object_id, mu_pp(exp), exp.object_id]
       end)
@@ -817,8 +881,13 @@ module Minitest
 
     #: (?untyped) -> bool
     def flunk(msg = nil)
-      assert(false, msg || "Epic Fail!")
+      __mt_trace("flunk", msg)
+      __mt_flunk(msg)
     end
+
+    # port: flunk's body, which assert_raises calls, so each logs once.
+    #: (untyped) -> bool
+    def __mt_flunk(msg) = __assert(false, -> { __s(msg || "Epic Fail!") })
 
     # port: the default message is a lambda argument, not a block: a lambda can't call its method's block.
     #: (untyped, String?, ^() -> String) -> ^() -> String
@@ -830,10 +899,14 @@ module Minitest
     end
 
     #: (?untyped) -> bool
-    def pass(_msg = nil) = assert(true)
+    def pass(_msg = nil)
+      __mt_trace("pass")
+      __assert(true, -> { "" })
+    end
 
     #: (untyped, ?untyped) -> bool
     def refute(test, msg = nil)
+      __mt_trace("refute", test)
       return __assert(!test, message(nil, ".", -> { "Expected #{mu_pp(test)} to not be truthy" })) if msg.nil?
 
       __assert(!test, -> { __s(msg) })
@@ -842,14 +915,16 @@ module Minitest
     # @dynamic
     #: (untyped, ?untyped) -> bool
     def refute_empty(obj, msg = nil)
+      __mt_trace("refute_empty", obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be empty" })
-      assert_respond_to(obj, :empty?)
+      __mt_respond_to(obj, :empty?)
       __assert(!obj.empty?, m)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def refute_equal(exp, act, msg = nil)
+      __mt_trace("refute_equal", exp, act)
       m = message(msg, ".", -> { "Expected #{mu_pp(act)} to not be equal to #{mu_pp(exp)}" })
       __assert(!(exp == act), m)
     end
@@ -857,47 +932,52 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def refute_in_delta(exp, act, delta = 0.001, msg = nil)
-      n = (exp - act).abs
-      m = message(msg, ".", -> { "Expected |#{__s(exp)} - #{__s(act)}| (#{__s(n)}) to not be <= #{__s(delta)}" })
-      __assert(!(delta >= n), m)
+      __mt_trace("refute_in_delta", exp, act, delta)
+      __mt_in_delta(exp, act, delta, msg, true)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def refute_in_epsilon(exp, act, epsilon = 0.001, msg = nil)
-      refute_in_delta(exp, act, (exp.abs < act.abs ? exp.abs : act.abs) * epsilon, msg)
+      __mt_trace("refute_in_epsilon", exp, act, epsilon)
+      __mt_in_delta(exp, act, (exp.abs < act.abs ? exp.abs : act.abs) * epsilon, msg, true)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def refute_includes(obj, sub, msg = nil)
+      __mt_trace("refute_includes", obj, sub)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not include #{mu_pp(sub)}" })
-      assert_respond_to(obj, :include?)
+      __mt_respond_to(obj, :include?)
       __assert(!obj.include?(sub), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def refute_instance_of(cls, obj, msg = nil)
+      __mt_trace("refute_instance_of", cls, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be an instance of #{__s(cls)}" })
       __assert(__mt_class_name(obj) != __s(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def refute_kind_of(cls, obj, msg = nil)
+      __mt_trace("refute_kind_of", cls, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be a kind of #{__s(cls)}" })
       __assert(!obj.kind_of?(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool
     def refute_match(matcher, obj, msg = nil)
+      __mt_trace("refute_match", matcher, obj)
       re = __mt_regexp(matcher)
       m = message(msg, ".", -> { "Expected #{mu_pp(re)} to not match #{mu_pp(obj)}" })
-      assert_respond_to(re, :=~)
+      __mt_respond_to(re, :=~)
       __assert(!__mt_match(re, obj), m)
     end
 
     #: (untyped, ?untyped) -> bool
     def refute_nil(obj, msg = nil)
+      __mt_trace("refute_nil", obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be nil" })
       __assert(!obj.nil?, m)
     end
@@ -905,15 +985,20 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped, ?untyped) -> bool
     def refute_operator(o1, op, o2 = Assertions::UNDEFINED, msg = nil)
-      return refute_predicate(o1, op, msg) if Assertions::UNDEFINED.equal?(o2)
+      if Assertions::UNDEFINED.equal?(o2)
+        __mt_trace("refute_predicate", o1, op)
+        return __mt_predicate(o1, op, msg, true)
+      end
 
-      assert_respond_to(o1, op)
+      __mt_trace("refute_operator", o1, op, o2)
+      __mt_respond_to(o1, op)
       m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to not be #{__s(op)} #{mu_pp(o2)}" })
       __assert(!__mt_send(o1, op, o2), m)
     end
 
     #: (String, ?untyped) -> bool
     def refute_path_exists(path, msg = nil)
+      __mt_trace("refute_path_exists", path)
       m = message(msg, ".", -> { "Expected path '#{__s(path)}' to not exist" })
       __assert(!File.exist?(path), m)
     end
@@ -921,14 +1006,14 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def refute_predicate(o1, op, msg = nil)
-      assert_respond_to(o1, op)
-      m = message(msg, ".", -> { "Expected #{mu_pp(o1)} to not be #{__s(op)}" })
-      __assert(!__mt_send(o1, op), m)
+      __mt_trace("refute_predicate", o1, op)
+      __mt_predicate(o1, op, msg, true)
     end
 
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def refute_respond_to(obj, meth, msg = nil)
+      __mt_trace("refute_respond_to", obj, meth)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not respond to #{__s(meth)}" })
       __assert(!obj.respond_to?(meth), m)
     end
@@ -936,6 +1021,7 @@ module Minitest
     # @dynamic
     #: (untyped, untyped, ?untyped) -> bool
     def refute_same(exp, act, msg = nil)
+      __mt_trace("refute_same", exp, act)
       m = message(msg, ".", lambda do
         "Expected %s (oid=%d) to not be the same as %s (oid=%d)" % [mu_pp(act), act.object_id, mu_pp(exp), exp.object_id]
       end)
@@ -1045,6 +1131,7 @@ module Minitest
 
     # @rbs [T] (T, T, ?untyped) -> bool
     def __assert_equal_same(exp, act, msg = nil)
+      __mt_trace("assert_equal", exp, act)
       m = message(msg, nil, -> { diff(exp, act) })
       __assert(false, message(nil, ".", -> { "Use assert_nil if expecting nil" })) if exp.nil? # refute_nil with a proc message
       __assert(exp == act, m)
@@ -1052,12 +1139,14 @@ module Minitest
 
     # @rbs [T] (T, T, ?untyped) -> bool
     def __refute_equal_same(exp, act, msg = nil)
+      __mt_trace("refute_equal", exp, act)
       m = message(msg, ".", -> { "Expected #{__mt_pp(act)} to not be equal to #{__mt_pp(exp)}" })
       __assert(!(exp == act), m)
     end
 
     # @rbs [T] (T, T, ?untyped) -> bool
     def __assert_same_same(exp, act, msg = nil)
+      __mt_trace("assert_same", exp, act)
       m = message(msg, ".", lambda do
         "Expected %s (oid=%d) to be the same as %s (oid=%d)" % [__mt_pp(act), __mt_oid(act), __mt_pp(exp), __mt_oid(exp)]
       end)
@@ -1067,6 +1156,7 @@ module Minitest
 
     # @rbs [T] (T, T, ?untyped) -> bool
     def __refute_same_same(exp, act, msg = nil)
+      __mt_trace("refute_same", exp, act)
       m = message(msg, ".", lambda do
         "Expected %s (oid=%d) to not be the same as %s (oid=%d)" % [__mt_pp(act), __mt_oid(act), __mt_pp(exp), __mt_oid(exp)]
       end)
@@ -1075,6 +1165,7 @@ module Minitest
 
     #: (Float, Float, ?Float, ?untyped) -> bool
     def __assert_in_delta_same(exp, act, delta = 0.001, msg = nil)
+      __mt_trace("assert_in_delta", exp, act, delta)
       n = (exp - act).abs
       m = message(msg, ".", -> { "Expected |#{exp} - #{act}| (#{n}) to be <= #{delta}" })
       __assert(delta >= n, m)
@@ -1082,6 +1173,7 @@ module Minitest
 
     #: (Float, Float, ?Float, ?untyped) -> bool
     def __refute_in_delta_same(exp, act, delta = 0.001, msg = nil)
+      __mt_trace("refute_in_delta", exp, act, delta)
       n = (exp - act).abs
       m = message(msg, ".", -> { "Expected |#{exp} - #{act}| (#{n}) to not be <= #{delta}" })
       __assert(!(delta >= n), m)
@@ -1113,6 +1205,7 @@ module Minitest
 
     # @rbs [C, T] (C, T, bool, untyped) -> bool
     def __mt_includes(collection, obj, test, msg)
+      __mt_trace("assert_includes", collection, obj)
       m = message(msg, ".", -> { "Expected #{__mt_pp(collection)} to include #{__mt_pp(obj)}" })
       self.assertions += 1 # assert_respond_to(collection, :include?)
       __assert(test, m)
@@ -1120,6 +1213,7 @@ module Minitest
 
     # @rbs [C, T] (C, T, bool, untyped) -> bool
     def __mt_excludes(collection, obj, test, msg)
+      __mt_trace("refute_includes", collection, obj)
       m = message(msg, ".", -> { "Expected #{__mt_pp(collection)} to not include #{__mt_pp(obj)}" })
       self.assertions += 1 # assert_respond_to(collection, :include?)
       __assert(!test, m)
@@ -1151,6 +1245,7 @@ module Minitest
 
     # @rbs [C] (C, bool, untyped) -> bool
     def __mt_empty(obj, test, msg)
+      __mt_trace("assert_empty", obj)
       m = message(msg, ".", -> { "Expected #{__mt_pp(obj)} to be empty" })
       self.assertions += 1 # assert_respond_to(obj, :empty?)
       __assert(test, m)
@@ -1158,6 +1253,7 @@ module Minitest
 
     # @rbs [C] (C, bool, untyped) -> bool
     def __mt_not_empty(obj, test, msg)
+      __mt_trace("refute_empty", obj)
       m = message(msg, ".", -> { "Expected #{__mt_pp(obj)} to not be empty" })
       self.assertions += 1 # assert_respond_to(obj, :empty?)
       __assert(!test, m)
@@ -1167,6 +1263,7 @@ module Minitest
     # operator: test is `a.op(b)`, already computed (decision 93).
     # @rbs [A, B] (A, String, B, untyped, untyped, bool) -> bool
     def __assert_operator_lit(o1, op, o2, test, msg, refute)
+      __mt_trace(refute ? "refute_operator" : "assert_operator", o1, op.to_sym, o2)
       m = message(msg, ".", -> { "Expected #{__mt_pp(o1)} to #{refute ? "not " : ""}be #{op} #{__mt_pp(o2)}" })
       self.assertions += 1 # assert_respond_to(o1, op)
       __assert(refute ? !test : test, m)
@@ -1174,6 +1271,7 @@ module Minitest
 
     # @rbs [A] (A, String, untyped, untyped, bool) -> bool
     def __assert_predicate_lit(o1, op, test, msg, refute)
+      __mt_trace(refute ? "refute_predicate" : "assert_predicate", o1, op.to_sym)
       m = message(msg, ".", -> { "Expected #{__mt_pp(o1)} to #{refute ? "not " : ""}be #{op}" })
       self.assertions += 1 # assert_respond_to(o1, op)
       __assert(refute ? !test : test, m)
@@ -1181,6 +1279,7 @@ module Minitest
 
     # @rbs [A] (A, String, bool, untyped, bool) -> bool
     def __assert_respond_to_lit(obj, meth, test, msg, refute)
+      __mt_trace(refute ? "refute_respond_to" : "assert_respond_to", obj, meth.to_sym)
       m = if refute
         message(msg, ".", -> { "Expected #{__mt_pp(obj)} to not respond to #{meth}" })
       else

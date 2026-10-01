@@ -2018,8 +2018,10 @@ resolve; anything not listed is still open.
     next step, and then the harness becomes one build. Because a passing assertion is
     checked by rb2go's own `==`, the expected side is a literal (MRI
     passing proves it right), `assert_raises` also checks `.message`, and
-    `refute_*`/`assert_in_delta` are never a check's only evidence; a
-    trace oracle logging every operand would lift that rule (issue #6).
+    `refute_*`/`assert_in_delta` are never a check's only evidence. *(Lifted
+    by decision 105's trace oracle, which compares every operand with
+    MRI's; what remains is that a message rb2go words differently by
+    design is not put through `assert_raises`.)*
     The String checks moved first: `testdata/run/string_*.rb` became
     `testdata/test/string_test.rb`, `string_frozen_test.rb` (the
     `frozen_string_literal` pragma is file-wide) and
@@ -2721,3 +2723,47 @@ resolve; anything not listed is still open.
     thread` instead of a goroutine waiting on itself, and `Ractor.select`
     over a port another ractor created raises `ClosedError`, as MRI's
     select does (`Port#receive` there is `Ractor::Error`, above).
+105. The trace oracle (issue #31). A passing assertion was checked by
+    rb2go's own `==`, so two identical reports never proved an operand
+    right; decision 81 answered with authoring rules. Now `TestMinitest`
+    runs both sides with `RB2GO_MT_TRACE=<file>` and diffs the files:
+    each assertion a test calls appends `Class#test assertion operand…`,
+    operands inspected (minitest's `mu_pp` minus its encoding note, which
+    rb2go strings cannot carry), `assert_raises` after its block with the
+    classes expected, then the class and message of what came. The MRI
+    half is `testdata/mt_trace.rb`, preloaded with `-r` (its source keys
+    the MRI cache): a module prepended to `Minitest::Assertions` with a
+    depth counter, so an assertion another assertion calls
+    (`assert_empty`'s `assert_respond_to`, `assert_raises`'s `pass`, and
+    any assertion inside an `assert_raises` block) is not logged. rb2go's
+    half is in `prelude/minitest.rb`: each public assertion and each of
+    decision 93's typed twins logs once through `__mt_trace`, and what an
+    assertion calls itself goes through `__mt_respond_to`/`__mt_predicate`
+    /`__mt_in_delta`/`__mt_flunk`, which don't; `assert_raises` nests its
+    block (`rbMtTraceDepth`). `assert_operator a, :pred` logs as
+    `assert_predicate`, which it delegates to. The harness masks what
+    never agrees across two processes: object addresses, `oid=`, Ractor
+    and Port numbers. `TestTraceOracle` proves the hole is closed:
+    `refute_equal 0, Process.pid` passes on both and is reported. Unset,
+    nothing is written and an assertion costs one flag read. The oracle's
+    first run found, and this decision fixed: a UTF-8 String's controls
+    inspect as `\u0001` (a Symbol's stay `\x01`, MRI's US-ASCII form;
+    `Integer#chr`'s US-ASCII result still inspects the UTF-8 way, #28);
+    `Array#[]=` past the front raises `IndexError: index -3 too small for
+    array; minimum: -2` instead of Go's bounds panic; a failed `<=>` in a
+    sort names (earlier, later) and in `min`/`max`/`min_by`/`max_by` (best
+    so far, candidate), as MRI's messages do (the sorts compare
+    `-rbCmp(b, a)`: Go's insertion sort calls `cmp(later, earlier)`); JSON,
+    Regexp (`end pattern with unmatched parenthesis: /a(b/`), Zlib
+    (`incorrect header check`, `Zlib::BufError`) and `clock_gettime(99)`
+    errors are worded as the json gem, Onigmo and zlib word them, each by
+    a table from Go's error to MRI's text (an error with no twin keeps
+    Go's); `Thread#inspect` and `Ractor#inspect` show the creating call
+    site (`#<Thread:0x… main.rb:12 dead>`, `rbCallerLoc`: the nearest
+    user-code frame) and `Ractor::Port#inspect` its owner and number. Not
+    fixed, by design, and so not asserted through `assert_raises` in the
+    suite: a `TypeError` from decision 20's argument check where MRI fails
+    later and differently (`"abc".match?(5)`), and `min`/`max`'s order
+    once `Float` is reopened (MRI's generic path names them the other way
+    round). Also found: MRI numbers ractors and ports differently from
+    rb2go, so they are masked, not matched.

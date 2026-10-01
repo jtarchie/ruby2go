@@ -230,9 +230,37 @@ module StdlibTests
     end
 
     def test_malformed_input
-      assert_raises(JSON::ParserError) { JSON.parse("{bad json") }
-      assert_raises(JSON::ParserError) { JSON.parse("") }
-      assert_raises(JSON::ParserError) { JSON.parse(%({"a":1,})) }
+      {
+        "{bad json" => "expected object key, got 'bad' at line 1 column 2",
+        "" => "unexpected end of input at line 1 column 1",
+        %({"a":1,}) => "expected object key, got: '}' at line 1 column 8",
+        "{bad}" => "expected object key, got 'bad}' at line 1 column 2",
+        "{  bad" => "expected object key, got 'bad' at line 1 column 4",
+        "[1,]" => "unexpected character: ']' at line 1 column 4",
+        "[1,,2]" => "unexpected character: ',2]' at line 1 column 4",
+        "[1 2]" => "expected ',' or ']' after array value at line 1 column 4",
+        %([truee]) => "expected ',' or ']' after array value at line 1 column 6",
+        %({"a" 1}) => "expected ':' after object key at line 1 column 6",
+        %({"a":1 "b":2}) => "expected ',' or '}' after object value, got: '\"b\":2}' at line 1 column 8",
+        "nul" => "unexpected token 'nul' at line 1 column 1",
+        "nulx" => "unexpected token 'nulx' at line 1 column 1",
+        %({"a":nul}) => "unexpected token 'nul}' at line 1 column 6",
+        "falsy" => "unexpected token 'falsy' at line 1 column 1",
+        %({"a":}) => "unexpected character: '}' at line 1 column 6",
+        "[" => "unexpected end of input at line 1 column 2",
+        "{" => "expected object key, got EOF at line 1 column 2",
+        "\"abc" => "unexpected end of input, expected closing \" at line 1 column 5",
+        "1 2" => "unexpected token at end of stream '2' at line 1 column 3",
+        %({"a":1}x) => "unexpected token at end of stream 'x' at line 1 column 8",
+        "[1,2]  3 4" => "unexpected token at end of stream '3' at line 1 column 8",
+        "[1]]" => "unexpected token at end of stream ']' at line 1 column 4",
+        "[-]" => "invalid number: '-]' at line 1 column 2",
+        "[1.]" => "invalid number: '1.]' at line 1 column 2",
+        "\n\n  [1,\n 2,]" => "unexpected character: ']' at line 4 column 4",
+      }.each do |src, msg|
+        e = assert_raises(JSON::ParserError) { JSON.parse(src) }
+        assert_equal msg, e.message
+      end
     end
 
     def test_pretty_generate
@@ -644,6 +672,8 @@ module StdlibTests
       assert_same Thread.main, Thread.current
       t = Thread.new { Thread.current }
       assert_same t, t.value
+      assert_match(/#<Thread:0x[0-9a-f]+ \S*stdlib_test\.rb:\d+ dead>\z/, t.inspect)
+      assert_match(/#<Thread:0x[0-9a-f]+ run>\z/, Thread.main.inspect)
       assert_equal false, Thread.new { Thread.current.equal?(Thread.main) }.value
       m = Mutex.new
       assert_equal false, m.owned?

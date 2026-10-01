@@ -878,7 +878,13 @@ B
       assert_equal "", dn.to_s
       assert_equal "nil", dn.inspect
       assert_raises(TypeError) { d.center("x") }
-      assert_raises(TypeError) { d.split(1) }
+      err = begin # rb2go's dynamic argument check (decision 20) words this TypeError differently from MRI's Regexp check
+        d.split(1)
+        nil
+      rescue TypeError => e
+        e
+      end
+      assert_equal false, err.nil?
       assert_raises(ArgumentError) { d.sub("a") }
     end
   end
@@ -1089,6 +1095,7 @@ B
     # ASCII-only symbols are US-ASCII in MRI, so controls stay \xNN.
     def test_ascii_only_symbols_are_us
       assert_equal ":\"a\\x00b\"", :"a\x00b".inspect
+      assert_equal "\"\\u0001\\u007F\\e\"", "\x01\x7f\e".inspect # a UTF-8 string's controls; a Symbol's are \x00
       assert_equal "{\"a\\x7F\": 1}", {"a\x7f": 1}.inspect
     end
   end

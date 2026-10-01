@@ -49,22 +49,96 @@ func rbJSONParse(s string, symbolizeNames bool) any {
 	} else {
 		rv, err = rbJSONDecodeValue(dec, func(k string) String { return String(k) })
 	}
-	if err == nil {
-		if dec.More() {
-			tok, terr := dec.Token()
-			if terr != nil {
-				err = terr
-			} else {
-				err = fmt.Errorf("unexpected token at end of stream %v", tok)
-			}
-		} else if _, terr := dec.Token(); terr != nil && !errors.Is(terr, io.EOF) {
-			err = terr
-		}
-	}
 	if err != nil {
-		panic(NewJSON_ParserError(Ref(String(rbJSONDecodeErr(err)))))
+		panic(NewJSON_ParserError(Ref(String(rbJSONDecodeErr(err, s)))))
+	}
+	if rest := rbJSONSkipSpace(s, int(dec.InputOffset())); rest < len(s) {
+		panic(NewJSON_ParserError(Ref(String("unexpected token at end of stream '" + rbJSONSnippet(s, rest) + "'" + rbJSONAt(s, rest)))))
 	}
 	return rv.v
+}
+
+// rbJSONSkipSpace is the index of the first non-whitespace byte of s at or after i.
+func rbJSONSkipSpace(s string, i int) int {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
+		i++
+	}
+	return i
+}
+
+// rbJSONSnippet is the input from i to the next whitespace, at most 32 bytes: what the json gem quotes in its messages.
+func rbJSONSnippet(s string, i int) string {
+	end := i
+	for end < len(s) && end-i < 32 && !(s[end] == ' ' || s[end] == '\t' || s[end] == '\n' || s[end] == '\r') {
+		end++
+	}
+	return s[i:end]
+}
+
+// rbJSONAt is the json gem's " at line L column C" for the byte at i.
+func rbJSONAt(s string, i int) string {
+	if i > len(s) {
+		i = len(s)
+	}
+	line := 1 + strings.Count(s[:i], "\n")
+	col := i - strings.LastIndexByte(s[:i], '\n')
+	return fmt.Sprintf(" at line %d column %d", line, col)
+}
+
+// rbJSONContext scans s up to i: the containers still open, the last
+// significant byte, whether i is inside a string, and where a bare word
+// (a literal like `nul`) started, or -1.
+func rbJSONContext(s string, upto int) (stack []byte, lastSig byte, inString bool, litStart int) {
+	escaped := false
+	litStart = -1
+	for i := 0; i < upto && i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inString:
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+		case c == '"':
+			inString, lastSig, litStart = true, c, -1
+		case c == '{' || c == '[':
+			stack, lastSig, litStart = append(stack, c), c, -1
+		case c == '}' || c == ']':
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			lastSig, litStart = c, -1
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			litStart = -1
+		case c >= 'a' && c <= 'z':
+			if litStart < 0 {
+				litStart = i
+			}
+			lastSig = c
+		default:
+			lastSig, litStart = c, -1
+		}
+	}
+	return stack, lastSig, inString, litStart
+}
+
+// rbJSONEOFErr is the message for input that ends too soon: inside a
+// string, inside a literal, after an object's `{` or `,`, or anywhere else.
+func rbJSONEOFErr(s string) string {
+	stack, lastSig, inString, litStart := rbJSONContext(s, len(s))
+	switch {
+	case inString:
+		return "unexpected end of input, expected closing \"" + rbJSONAt(s, len(s))
+	case litStart >= 0:
+		return "unexpected token '" + rbJSONSnippet(s, litStart) + "'" + rbJSONAt(s, litStart)
+	case len(stack) > 0 && stack[len(stack)-1] == '{' && (lastSig == '{' || lastSig == ','):
+		return "expected object key, got EOF" + rbJSONAt(s, len(s))
+	}
+	return "unexpected end of input" + rbJSONAt(s, len(s))
 }
 
 // rbJSONVal wraps a decoded value: a JSON null is a real `any(nil)` v, not a decode failure, so rbJSONDecodeValue returns this struct rather than (any, error), which would read as nilnil's ambiguous "nil value, nil error".
@@ -139,12 +213,57 @@ func rbJSONParseNumber(s string) any {
 	return Integer(n)
 }
 
-// rbJSONDecodeErr turns a decode error into JSON::ParserError's message.
-func rbJSONDecodeErr(err error) string {
-	if errors.Is(err, io.EOF) {
-		return "unexpected end of input"
+// rbJSONDecodeErr turns a decode error into JSON::ParserError's message,
+// worded as the json gem's parser words it for the same input (its tests
+// are MRI's own messages); an error with no twin keeps Go's wording.
+func rbJSONDecodeErr(err error, s string) string {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return rbJSONEOFErr(s)
 	}
-	return err.Error()
+	var se *json.SyntaxError
+	if !errors.As(err, &se) {
+		return err.Error()
+	}
+	msg := se.Error()
+	pos := min(max(int(se.Offset)-1, 0), len(s)-1) // Offset is past the offending byte
+	switch {
+	case strings.HasPrefix(msg, "unexpected end of JSON input"):
+		return rbJSONEOFErr(s)
+	case strings.HasSuffix(msg, "looking for beginning of value"), strings.HasPrefix(msg, "missing value after object key"), strings.HasPrefix(msg, "object member name must be a string"):
+		stack, lastSig, _, _ := rbJSONContext(s, pos)
+		if s[pos] == ',' && lastSig != ',' { // a trailing comma is reported at the comma; the gem reports what follows it
+			if next := rbJSONSkipSpace(s, pos+1); next < len(s) && (s[next] == ']' || s[next] == '}') {
+				pos = next
+				stack, lastSig, _, _ = rbJSONContext(s, pos)
+			}
+		}
+		if len(stack) > 0 && stack[len(stack)-1] == '{' && lastSig != ':' { // where a key should be
+			if lastSig == ',' {
+				return "expected object key, got: '" + rbJSONSnippet(s, pos) + "'" + rbJSONAt(s, pos)
+			}
+			return "expected object key, got '" + rbJSONSnippet(s, pos) + "'" + rbJSONAt(s, pos)
+		}
+		return "unexpected character: '" + rbJSONSnippet(s, pos) + "'" + rbJSONAt(s, pos)
+	case strings.HasSuffix(msg, "after array element"):
+		return "expected ',' or ']' after array value" + rbJSONAt(s, pos)
+	case strings.HasSuffix(msg, "after object key"):
+		return "expected ':' after object key" + rbJSONAt(s, pos)
+	case strings.HasSuffix(msg, "after object key:value pair"):
+		return "expected ',' or '}' after object value, got: '" + rbJSONSnippet(s, pos) + "'" + rbJSONAt(s, pos)
+	case strings.Contains(msg, " in literal "):
+		start := pos
+		for start > 0 && s[start-1] >= 'a' && s[start-1] <= 'z' {
+			start--
+		}
+		return "unexpected token '" + rbJSONSnippet(s, start) + "'" + rbJSONAt(s, start)
+	case strings.Contains(msg, "numeric literal") || strings.Contains(msg, "after decimal point") || strings.Contains(msg, "in exponent"):
+		start := pos
+		for start > 0 && strings.IndexByte("0123456789+-.eE", s[start-1]) >= 0 {
+			start--
+		}
+		return "invalid number: '" + rbJSONSnippet(s, start) + "'" + rbJSONAt(s, start)
+	}
+	return msg + rbJSONAt(s, pos)
 }
 
 // rbJSONState is the gem's generator State. It is handed to every

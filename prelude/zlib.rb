@@ -25,6 +25,8 @@ module Zlib
 
   class DataError < Error; end
 
+  class BufError < Error; end
+
   # A module, not MRI's class: GzipWriter/GzipReader dispatch dynamically instead of subclassing it.
   module GzipFile
     class Error < Zlib::Error; end
@@ -51,11 +53,11 @@ module Zlib
     def self.inflate(str) = %x{
       zr, err := zlib.NewReader(bytes.NewReader([]byte(str)))
       if err != nil {
-        panic(NewZlib_DataError(Ref(String(err.Error()))))
+        panic(rbZlibErr(err))
       }
       b, err := io.ReadAll(zr)
       if err != nil {
-        panic(NewZlib_DataError(Ref(String(err.Error()))))
+        panic(rbZlibErr(err))
       }
       return String(b)
     }
@@ -76,7 +78,7 @@ module Zlib
     }
     _, _ = zw.Write([]byte(str))
     if err := zw.Close(); err != nil {
-      panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+      panic(rbGzipErr(err))
     }
     return String(buf.Bytes())
   }
@@ -85,11 +87,11 @@ module Zlib
   def self.gunzip(str) = %x{
     zr, err := gzip.NewReader(bytes.NewReader([]byte(str)))
     if err != nil {
-      panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+      panic(rbGzipErr(err))
     }
     b, err := io.ReadAll(zr)
     if err != nil {
-      panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+      panic(rbGzipErr(err))
     }
     return String(b)
   }
@@ -116,7 +118,7 @@ module Zlib
       s := string(rbToS(x))
       n, err := self.gzw.Write([]byte(s))
       if err != nil {
-        panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+        panic(rbGzipErr(err))
       }
       return Integer(n)
     }
@@ -130,7 +132,7 @@ module Zlib
     #: () -> GzipWriter
     def flush = %x{
       if err := self.gzw.Flush(); err != nil {
-        panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+        panic(rbGzipErr(err))
       }
       return self
     }
@@ -138,7 +140,7 @@ module Zlib
     #: () -> String
     def __finish_bytes = %x{
       if err := self.gzw.Close(); err != nil {
-        panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+        panic(rbGzipErr(err))
       }
       return String(self.buf.Bytes())
     }
@@ -174,11 +176,11 @@ module Zlib
     def self.__from_raw(src, raw) = %x{
       zr, err := gzip.NewReader(bytes.NewReader([]byte(raw)))
       if err != nil {
-        panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+        panic(rbGzipErr(err))
       }
       b, err := io.ReadAll(zr)
       if err != nil {
-        panic(NewZlib_GzipFile_Error(Ref(String(err.Error()))))
+        panic(rbGzipErr(err))
       }
       return &Zlib_GzipReader{io: src, buf: b}
     }

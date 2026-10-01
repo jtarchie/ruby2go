@@ -137,6 +137,9 @@ class Array < Object
     %x{
     rbFrozenCheck(self)
     if i < 0 {
+      if -i > Integer(len(*self)) {
+        panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", i, len(*self))))))
+      }
       i += Integer(len(*self))
     }
     for int(i) >= len(*self) {
@@ -281,7 +284,7 @@ class Array < Object
   #: () -> self
   def sort! = %x{
     rbFrozenCheck(self)
-    slices.SortStableFunc(*self, func(a, b E) int { return int(rbCmp(a, b)) })
+    slices.SortStableFunc(*self, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return self
   }
 
@@ -293,7 +296,7 @@ class Array < Object
     for i, x := range *self {
       idx[i], keys[i] = i, blk(x)
     }
-    slices.SortStableFunc(idx, func(a, b int) int { return int(rbCmp(keys[a], keys[b])) })
+    slices.SortStableFunc(idx, func(a, b int) int { return -int(rbCmp(keys[b], keys[a])) })
     out := make(Array[E], len(*self))
     for i, j := range idx {
       out[i] = (*self)[j]
