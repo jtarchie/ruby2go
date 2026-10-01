@@ -629,6 +629,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		return
 	}
 	c.emitIvarList(cls)
+	c.emitCopy(cls)
 	// constructor
 	init := cls.lookup("initialize")
 	if init != nil {
@@ -672,6 +673,18 @@ func (c *Compiler) emitIvarList(cls *Class) {
 		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
 	}
 	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
+}
+
+// emitCopy feeds Ractor's deep copy (decision 103): a fresh struct with every
+// ivar copied through rbCopyAs, identity kept through seen. Pruned with
+// rbCopyDeep when no Ractor is used.
+func (c *Compiler) emitCopy(cls *Class) {
+	c.w("func (self *%s) _Copy(seen map[any]any) any {\n\tif self == nil {\n\t\treturn self\n\t}\n\tdup := *self\n\tseen[self] = &dup\n", cls.Name)
+	for _, iv := range c.ivarOrder(cls) {
+		field := goFieldName(iv.Name)
+		c.w("\tdup.%s = rbCopyAs(self.%s, seen)\n", field, field)
+	}
+	c.w("\treturn &dup\n}\n\n")
 }
 
 // ivarOrder approximates MRI's (first assignment) with initialize's write order, super splicing in the parent's.

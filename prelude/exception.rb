@@ -4,9 +4,22 @@
 # The exception hierarchy.
 
 class Exception < Object
+  # @rbs @cause: Exception?
+
   #: (?String?) -> void
   def initialize(message = nil)
     @message = message
+  end
+
+  # The exception being handled when this one was raised: `raise` inside a
+  # rescue clause sets it (lexically; a raise in a method the clause calls
+  # does not, decision 103).
+  #: () -> Exception?
+  def cause = @cause
+
+  #: (Exception) -> void
+  def __set_cause(c)
+    @cause = c unless @cause
   end
 
   # MRI order: message calls to_s, so overriding to_s changes message too.

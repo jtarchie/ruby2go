@@ -1,0 +1,30 @@
+Compile errors for Ractor isolation (docs/design.md decision 103): what MRI raises at run time, rb2go rejects at compile time.
+-- outer_local.rb --
+# error: main.rb:4: can not isolate a Proc because it accesses outer variables (x, y).
+x = 1
+y = 2
+Ractor.new { x + y }
+-- outer_local_nested_block.rb --
+# error: main.rb:3: can not isolate a Proc because it accesses outer variables (total).
+total = 0
+Ractor.new { [1, 2].each { |v| total += v } }
+-- receive_in_method.rb --
+# error: main.rb:2: Ractor.receive in a method: rb2go cannot tell which ractor is running (decision 103)
+def helper = Ractor.receive
+Ractor.new { helper }
+-- current_in_method.rb --
+# error: main.rb:3: Ractor.current in a method: rb2go cannot tell which ractor is running (decision 103)
+class Worker
+  def me = Ractor.current
+end
+-- proc_arg.rb --
+# error: main.rb:3: allocator undefined for Proc: a Proc cannot be passed to a Ractor
+f = ->(x) { x } #: ^(Integer) -> Integer
+Ractor.new(f) { |g| g.call(1) }
+-- main_q_in_method.rb --
+# error: main.rb:2: Ractor.main? in a method: rb2go cannot tell which ractor is running (decision 103)
+def on_main? = Ractor.main?
+puts on_main?
+-- no_block.rb --
+# error: main.rb:2: Ractor.new needs a literal block
+Ractor.new

@@ -125,6 +125,7 @@ How Ruby types land in Go:
 | a module | generic free functions constrained by what the module calls on `self` |
 | `raise` / `rescue` / `ensure` | `panic` / `recover` / `defer` |
 | `Thread`, `Queue`, `Mutex` | goroutines, channels, `sync` |
+| `Ractor`, `Ractor::Port` | a goroutine and a queue; messages are deep-copied, isolation is checked at compile time |
 | `untyped` | Go `any`, with calls dispatched through generated switches (the compiler warns at each one) |
 
 `untyped` is the escape hatch for code the type system can't follow: `send`,
@@ -142,7 +143,8 @@ whole program at compile time rather than looked up by reflection.
   `Complex`, `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,
   `Comparable`, `Regexp`/`MatchData` (Ruby syntax on Go's RE2), `Time`,
   `Random` (same sequence as MRI for a given seed), `Math`, `File`, `Dir`,
-  `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks.
+  `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,
+  `Thread`, `Queue`, `Mutex`, `Ractor`.
 - **Standard library:** `json`, `set`, `time`, `date`, `csv`, `stringio`,
   `strscan`, `digest`, `base64`, `zlib`, `securerandom`, `shellwords`, `uri`,
   `net/http`, `webrick`, `fileutils`, `find`, `pathname`, `tempfile`,
@@ -173,6 +175,9 @@ The roadmap for the rest of the standard library is issue
   `h[k] = (h[k] || 0) + 1`, or `fetch`. `Hash#[]` returns `V?`.
 - **`return`/`break` inside a closure block** is a compile error unless the
   block can be inlined as a loop (e.g. `each` on an `Array`).
+- **No goroutine identity.** `Thread.current`, `Mutex#owned?` and
+  `Ractor.receive`/`Ractor.current` inside a method body are unsupported;
+  in a `Ractor.new` block or at the top level they resolve lexically.
 - **No pattern matching (`case`/`in`) and no keyword parameters** on
   methods you define.
 - **Overloaded RBS signatures** (`(Integer) -> T | () -> T`) are not

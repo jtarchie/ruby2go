@@ -2613,3 +2613,71 @@ resolve; anything not listed is still open.
     pay for it, and runs with the GC tuned for throughput (a compile
     allocates ~130 MB and is done in well under a second, so collecting
     mid-way only costs time).
+103. `Ractor` (Ruby 4.0's API: `Ractor::Port`, `value`/`join`, no
+    `yield`/`take`) is a goroutine with a port, in `prelude/ractor.rb` and
+    `prelude/go/ractor.go`; `Ractor::Port` is an unbounded queue, every
+    port sharing one lock and condition so `Ractor.select(*ports)` can wait
+    on several and answer `[port, message]`. Not a channel: a port never
+    blocks the sender, `select` over N ports is dynamic (`reflect.Select`
+    is out, decision 82), and `closed?`/`ClosedError` need a flag a channel
+    doesn't expose, the same reasons as decision 45's `Queue`. A ponytail:
+    one shared condition means every `send` wakes every parked receiver;
+    the upgrade is a lock per port with a one-slot channel per waiter
+    (`select` registers its channel on each port), as `rbCondVar` does. MRI checks most of Ractor's
+    rules at run time; rb2go checks them at compile time
+    (`internal/compiler/ractor.go`):
+    - **Isolation.** A `Ractor.new` block that reads or writes an outer
+      local (Prism's `Depth` past the blocks nested in it), an instance
+      variable, a global or a class variable is a compile error with MRI's
+      message (`can not isolate a Proc because it accesses outer variables
+      (x)`). Reading an unfrozen constant, MRI's one run-time-only
+      `IsolationError`, is not checked: an MRI-valid program never does it,
+      so rb2go is merely more permissive, as with the GVL (decision 26).
+    - **Copying.** Constructor arguments and messages are deep-copied, as
+      MRI copies non-shareable objects, through `rbCopier` (`_Copy(seen)`):
+      generated on every struct class (`emitCopy`, next to `_Ivars`),
+      written for `Array` and `Hash`, and raising MRI's errors for `Set`
+      with unshareable members (`Ractor::Error: can not copy Set object.`),
+      `Queue`/`SizedQueue` (`NoMethodError ... initialize_copy`) and
+      `Thread` (`TypeError: allocator undefined for Thread`); a Proc
+      argument is a compile error. Value types, class objects, ractors and
+      ports pass as is, and so does a frozen Array/Hash (`rbIsFrozen`,
+      decision 96), as MRI shares shareable objects. `seen` keeps identity
+      inside one message (`[s, s]` arrives as two references to one copy, a
+      cycle stays a cycle). The whole mechanism prunes away with
+      `rbCopyDeep` when a program has no Ractor (decision 49). `move: true`
+      is a plain send: the sender keeps a usable object where MRI leaves a
+      `MovedObject`, since every method of a typed Go value cannot be
+      proxied.
+    - **Which ractor.** Goroutines have no identity (decision 45), so
+      `Ractor.receive`/`recv`, `Ractor.current` and `Ractor.main?` resolve
+      lexically: `Ractor.new` compiles to a hidden `tmp := rbNewRactor()`
+      and `Ractor.__start*(tmp, args...) { block }`, with the block
+      compiled under `f.ractor = tmp`; at the top level they mean
+      `rbMainRactor`; in a method body they are a compile error. MRI
+      resolves them at run time, so `def helper = Ractor.receive` works
+      there and not here. Port ownership (MRI: `Port#receive` only from
+      the creator) is not checked for the same reason. The upgrade path, if
+      it bites, is a goroutine id parsed from `runtime.Stack`, which would
+      also unlock `Thread.current` and `Mutex#owned?`.
+    - **Errors.** The block's exception is kept and reported on stderr like
+      a thread's (`rbThreadAbort`, shared with `rbThreadRun`); `value` and
+      `join` raise `Ractor::RemoteError` ("thrown by remote Ractor.") with
+      `ractor` and the original as `cause`. A ractor's port closes when its
+      block ends, so a later `send` raises `Ractor::ClosedError` ("The port
+      was already closed"), as does `receive` on a closed, drained port.
+      `Ractor.count` is main plus the live ractors; `inspect` is
+      `#<Ractor:#N running|terminated>` (MRI's own is timing-dependent, so
+      no test prints it). `name:` is `__start_named` (a keyword Hash,
+      decision 23); other keyword forms are unsupported.
+    - **`Exception#cause`**, general and needed by `RemoteError`: `raise`
+      lexically inside a rescue clause body compiles to
+      `panic(rbWithCause(e, r_))`, which sets the cause to the exception
+      being handled unless one is set or it is that exception itself (so
+      `raise e` re-raises cleanly). A raise in a method the clause calls
+      does not set it, where MRI's dynamic `$!` would.
+    - **Not done:** `make_shareable`/`shareable?` (need `Object#freeze` on
+      struct classes, decision 96 covers only Array/Hash/String),
+      `Ractor[]`/`store_if_absent`, `shareable_proc`, `monitor`,
+      `receive_if`. ([example 77](../examples/77_ractor/main.rb),
+      `testdata/test/ractor_test.rb`, `testdata/errors/ractor.txtar`.)

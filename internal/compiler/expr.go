@@ -1024,6 +1024,11 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		f.unnarrow("attr:" + strings.TrimSuffix(n.Name, "="))
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
+		if cls.RubyName == "Ractor" {
+			if e, ok := f.genRactorCall(n, cls); ok {
+				return e
+			}
+		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
 		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
@@ -1177,7 +1182,7 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		}
 		return f.genDynRespondTo(n, recv, args), true
 	}
-	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 {
+	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !isRactorRecv(recv.typ) {
 		return f.genSend(n, recv, name, args, block), true
 	}
 	if name == "is_a?" || name == "kind_of?" {
@@ -2559,7 +2564,11 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 	default:
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
-	return expr{code: "panic(" + val.code + ")", typ: TVoid{}, stmt: true, noreturn: true}
+	code := val.code
+	if f.rescues > 0 {
+		code = "rbWithCause(" + code + ", r_)" // raised while handling r_: MRI's cause
+	}
+	return expr{code: "panic(" + code + ")", typ: TVoid{}, stmt: true, noreturn: true}
 }
 
 // ---- calls on nilable, tuple and untyped receivers

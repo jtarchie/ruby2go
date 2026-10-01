@@ -3245,6 +3245,47 @@ module ControlTests
   end
 
   class ControlExceptionsTest < Minitest::Test
+    # Exception#cause: a raise inside a rescue clause records the exception being handled (decision 103).
+    def test_cause
+      outer = assert_raises(TypeError) do
+        begin
+          raise "inner"
+        rescue RuntimeError
+          raise TypeError, "outer"
+        end
+      end
+      cause = outer.cause
+      refute_nil cause
+      assert_equal "inner", cause.message if cause
+      assert_equal RuntimeError, cause.class
+      plain = assert_raises(ArgumentError) { raise ArgumentError, "alone" }
+      assert_nil plain.cause
+      # re-raising the handled exception itself does not make it its own cause
+      same = assert_raises(ArgumentError) do
+        begin
+          raise ArgumentError, "once"
+        rescue ArgumentError => e
+          raise e
+        end
+      end
+      assert_nil same.cause
+      # an exception that already has a cause keeps it
+      kept = assert_raises(ArgumentError) do
+        begin
+          raise "first"
+        rescue RuntimeError
+          begin
+            raise ArgumentError, "second"
+          rescue ArgumentError => e
+            raise e
+          end
+        end
+      end
+      kept_cause = kept.cause
+      assert_equal "first", kept_cause.message if kept_cause
+      refute_nil kept_cause
+    end
+
     def test_raise_forms_and_messages
       out = [] #: Array[String]
       rows = [] #: Array[String]

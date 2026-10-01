@@ -10,17 +10,23 @@ func rbThreadRun(run func() any) *Thread {
 		defer close(t.done)
 		defer func() {
 			if r := recover(); r != nil {
-				if e, ok := r.(SystemExitI); ok {
-					// ponytail: MRI re-raises exit in the main thread, running its ensures; this exits here.
-					rbFinish(int(e.Status()), nil)
-					os.Exit(0)
-				}
 				t.aborting.Store(true)
-				t.err = rbWrapPanic(r)
-				fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(t.err), "("+rbClassName(t.err)+")")
+				t.err = rbThreadAbort(r)
 			}
 		}()
 		t.val = run()
 	}()
 	return t
+}
+
+// rbThreadAbort ends a thread's or ractor's goroutine on a panic: SystemExit exits the program, anything else is reported on stderr as MRI does and returned wrapped, for join to re-raise.
+func rbThreadAbort(r any) any {
+	if e, ok := r.(SystemExitI); ok {
+		// ponytail: MRI re-raises exit in the main thread, running its ensures; this exits here.
+		rbFinish(int(e.Status()), nil)
+		os.Exit(0)
+	}
+	err := rbWrapPanic(r)
+	fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(err), "("+rbClassName(err)+")")
+	return err
 }
