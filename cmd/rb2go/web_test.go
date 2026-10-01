@@ -38,6 +38,17 @@ func TestWeb(t *testing.T) {
 	if c.Error != "" || !strings.Contains(c.Go, "\npackage main\n") {
 		t.Errorf("compile: error %q, go %.200q", c.Error, c.Go)
 	}
+	// the prelude-hidden view: the class's struct and method, the top-level statement, none of the prelude
+	c = compileResult{}
+	decode(do("POST", "/compile", `{"src":"class Pt\n  #: (Integer x) -> void\n  def initialize(x) = @x = x\nend\nputs Pt.new(3).inspect\n"}`, nil), &c)
+	for _, want := range []string{"//line main.rb:1\ntype Pt struct {", "//line main.rb:3\nfunc Pt_Initialize[", "\t// … prelude setup\n//line main.rb:5\n"} {
+		if !strings.Contains(c.User, want) {
+			t.Errorf("user view lacks %q:\n%s", want, c.User)
+		}
+	}
+	if strings.Contains(c.User, "prelude/") || strings.Contains(c.User, "type Object struct") {
+		t.Errorf("user view has prelude code:\n%s", c.User)
+	}
 	c = compileResult{}
 	decode(do("POST", "/compile", `{"src":"def (\n"}`, nil), &c)
 	if !strings.Contains(c.Error, "main.rb:1") {
@@ -56,6 +67,10 @@ func TestWeb(t *testing.T) {
 	}
 	if rec := do("POST", "/compile", `{}`, func(r *http.Request) { r.Header.Set("Origin", "http://127.0.0.1:8080") }); rec.Code != http.StatusOK {
 		t.Errorf("same origin: status %d", rec.Code)
+	}
+
+	if rec := do("GET", "/highlight.min.js", "", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Highlight.js") {
+		t.Errorf("highlight.min.js: status %d", rec.Code)
 	}
 
 	var ex []example

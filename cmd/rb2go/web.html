@@ -10,11 +10,13 @@
   --bg: #fafaf9; --panel: #ffffff; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4;
   --accent: #b91c1c; --accent-fg: #ffffff; --err-bg: #fef2f2; --err-fg: #991b1b; --warn-fg: #92400e;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --hl-kw: #cf222e; --hl-str: #0a3069; --hl-com: #6e7781; --hl-num: #0550ae; --hl-fn: #8250df; --hl-type: #953800; --hl-sym: #116329;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0c0a09; --panel: #1c1917; --fg: #e7e5e4; --muted: #a8a29e; --line: #292524;
     --accent: #ef4444; --accent-fg: #0c0a09; --err-bg: #2a1212; --err-fg: #fca5a5; --warn-fg: #fcd34d;
+    --hl-kw: #ff7b72; --hl-str: #a5d6ff; --hl-com: #8b949e; --hl-num: #79c0ff; --hl-fn: #d2a8ff; --hl-type: #ffa657; --hl-sym: #7ee787;
   }
 }
 * { box-sizing: border-box; }
@@ -31,6 +33,20 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gr
 main h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0; padding: 6px 16px; }
 textarea, pre { flex: 1; min-height: 0; margin: 0; padding: 8px 16px; border: 0; resize: none; overflow: auto;
   background: var(--panel); color: var(--fg); font: 13px/1.5 var(--mono); tab-size: 2; white-space: pre; }
+/* the Ruby editor is a transparent textarea over a highlighted pre that mirrors its text and scroll */
+.editor { position: relative; flex: 1; min-height: 0; }
+.editor > * { position: absolute; inset: 0; }
+#rb { color: transparent; background: transparent; caret-color: var(--fg); z-index: 1; }
+#rb::selection { color: transparent; background: color-mix(in srgb, var(--hl-num) 25%, transparent); }
+#rb-hl { overflow: hidden; pointer-events: none; }
+.hljs-keyword, .hljs-meta .hljs-keyword { color: var(--hl-kw); }
+.hljs-string, .hljs-regexp { color: var(--hl-str); }
+.hljs-comment, .hljs-meta { color: var(--hl-com); }
+.hljs-number, .hljs-literal { color: var(--hl-num); }
+.hljs-title, .hljs-title.function_ { color: var(--hl-fn); }
+.hljs-type, .hljs-built_in, .hljs-title.class_ { color: var(--hl-type); }
+.hljs-symbol, .hljs-variable, .hljs-attr { color: var(--hl-sym); }
+.hljs-subst { color: var(--fg); }
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 #go.stale { opacity: .45; }
 #diag:empty { display: none; }
@@ -51,13 +67,17 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 <header>
   <h1>rb2go</h1>
   <label>Example <select id="examples"><option value="">—</option></select></label>
+  <label><input type="checkbox" id="prelude"> Show prelude</label>
   <button id="run" title="Ctrl/Cmd+Enter">Run</button>
   <span id="status" role="status"></span>
 </header>
 <main>
   <section class="pane">
     <h2 id="rb-h">Ruby</h2>
-    <textarea id="rb" aria-labelledby="rb-h" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    <div class="editor">
+      <pre id="rb-hl" aria-hidden="true"></pre>
+      <textarea id="rb" aria-labelledby="rb-h" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    </div>
   </section>
   <section class="pane">
     <h2 id="go-h">Go</h2>
@@ -69,10 +89,32 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
     <pre id="out" aria-labelledby="out-h" tabindex="0"></pre>
   </section>
 </main>
+<script src="/highlight.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const rb = $('rb'), go = $('go'), diag = $('diag'), status = $('status'), run = $('run');
-let seq = 0, timer = 0, examples = [], ctl = null, jump = true;
+let seq = 0, timer = 0, examples = [], ctl = null, jump = true, last = null;
+const prelude = $('prelude'), rbHl = $('rb-hl');
+// if the script fails to load, the panes still work, just plain
+const hl = (code, language) => window.hljs ? hljs.highlight(code, {language, ignoreIllegals: true}).value
+  : code.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'})[c]);
+
+function paintRb() {
+  rbHl.innerHTML = hl(rb.value, 'ruby') + '\n\n '; // spare lines so the pre can scroll as far as the textarea
+  rbHl.scrollTop = rb.scrollTop;
+  rbHl.scrollLeft = rb.scrollLeft;
+}
+try { prelude.checked = localStorage.getItem('rb2go.prelude') === '1'; } catch {}
+
+// the full file puts the prelude first; when it's shown, jump to the user's code once per loaded program so edits don't yank the pane
+function render() {
+  if (!last) return;
+  const text = prelude.checked ? last.go : last.user;
+  go.innerHTML = hl(text, 'go');
+  const at = prelude.checked && jump ? text.split('\n').findIndex(l => l.startsWith('//line main.rb:')) : -1;
+  if (at >= 0) { go.scrollTop = at * parseFloat(getComputedStyle(go).lineHeight); jump = false; }
+  return text.split('\n').length;
+}
 
 const post = (path, src, signal) => fetch(path, {
   method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({src}), signal,
@@ -94,13 +136,11 @@ async function compile() {
       status.textContent = `error · ${ms} ms`;
     } else {
       go.classList.remove('stale');
-      go.textContent = res.go;
-      // the prelude comes first; show where the user's code landed, once per loaded program so edits don't yank the pane
-      const at = jump ? res.go.split('\n').findIndex(l => l.startsWith('//line main.rb:')) : -1;
-      if (at >= 0) { go.scrollTop = at * parseFloat(getComputedStyle(go).lineHeight); jump = false; }
+      last = res;
+      const lines = render();
       diag.className = 'warn';
       diag.textContent = (res.warnings || []).map(w => 'warning: ' + w).join('\n');
-      status.textContent = `${res.go.split('\n').length} lines · ${ms} ms`;
+      status.textContent = `${lines} lines · ${ms} ms`;
     }
   } catch (e) {
     if (n === seq) status.textContent = 'server unreachable: ' + e.message;
@@ -108,6 +148,7 @@ async function compile() {
 }
 
 function edited() {
+  paintRb();
   try { history.replaceState(null, '', '#' + encodeURIComponent(rb.value)); } catch {}
   clearTimeout(timer);
   timer = setTimeout(compile, 300);
@@ -136,10 +177,16 @@ async function runProgram() {
 }
 
 rb.addEventListener('input', edited);
+rb.addEventListener('scroll', () => { rbHl.scrollTop = rb.scrollTop; rbHl.scrollLeft = rb.scrollLeft; });
 rb.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runProgram(); }
 });
 run.addEventListener('click', runProgram);
+prelude.addEventListener('change', () => {
+  try { localStorage.setItem('rb2go.prelude', prelude.checked ? '1' : '0'); } catch {}
+  jump = true;
+  render();
+});
 $('examples').addEventListener('change', e => {
   const ex = examples.find(x => x.name === e.target.value);
   if (ex) { rb.value = ex.src; jump = true; edited(); }
@@ -154,6 +201,7 @@ let shared = '';
 try { shared = decodeURIComponent(location.hash.slice(1)); } catch {} // a truncated or hand-edited link
 rb.value = shared ||
   '# rbs_inline: enabled\n\nclass Greeter\n  #: (String name) -> void\n  def initialize(name)\n    @name = name\n  end\n\n  #: () -> String\n  def greet = "Hello, #{@name}!"\nend\n\nputs Greeter.new("world").greet\n';
+paintRb();
 compile();
 </script>
 </body>

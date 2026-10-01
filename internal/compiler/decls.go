@@ -514,9 +514,12 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 }
 
 func (c *Compiler) emitStructClass(cls *Class) {
-	// struct
 	if len(cls.Subclasses) > 0 && !cls.universal {
 		c.w("type %s = %s\n\n", superField(cls), cls.Name)
+	}
+	// a user class's struct maps to its `class` line, so a Go error in it points at Ruby and `rb2go web` can tell it from the prelude's
+	if cls.File != nil && !cls.File.prelude && cls.metaOf == nil {
+		c.lineDirective(cls.File, cls.Line)
 	}
 	c.w("type %s struct {\n", cls.Name)
 	if cls.Super != nil && !cls.Super.universal {

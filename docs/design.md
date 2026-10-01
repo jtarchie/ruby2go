@@ -2510,7 +2510,15 @@ resolve; anything not listed is still open.
     other than loopback or `-addr`'s (DNS rebinding), a foreign `Origin`,
     and a POST that isn't `application/json` (a "simple" cross-site POST
     gets no CORS preflight); `-addr` off loopback warns. The Go pane
-    scrolls to the first `//line main.rb:` because the prelude comes
-    first. Not done: syntax highlighting, a hosted wasm build (needs the
+    shows only the user's code unless "Show prelude" is ticked: the
+    top-level decls whose last preceding `//line` is the user file, and
+    of the top-level function the part from its first such directive
+    (prelude constant setup runs before it). For that, a user class's
+    struct now carries a `//line` to its `class` line (it had none, so a
+    Go error in it pointed at the prelude). Forwarders, interfaces and
+    metaclass plumbing stay hidden. Both panes are highlighted by a
+    vendored highlight.js (`cmd/rb2go/highlight.min.js`, served from the
+    binary so the page works offline); the Ruby editor is a transparent
+    textarea over a highlighted mirror. Not done: a hosted wasm build (needs the
     `emitDynamic` cost fixed first), multi-file programs, stdin/args for
     Run. (`cmd/rb2go/web_test.go`.)

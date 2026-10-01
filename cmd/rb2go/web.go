@@ -8,6 +8,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"mime"
 	"net"
@@ -17,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,7 +30,12 @@ import (
 //go:embed web.html
 var webPage []byte
 
+// highlight.js 11.11.1 (BSD-3-Clause, notice in its banner), from cdnjs; its common bundle has Ruby and Go.
+//go:embed highlight.min.js
+var highlightJS []byte
+
 const (
+	webFile    = "main.rb"
 	runTimeout = 10 * time.Second
 	outputCap  = 1 << 20 // per stream
 	maxSource  = 1 << 20
@@ -71,6 +79,10 @@ func newWeb(host string, timeout time.Duration) *web {
 		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = rw.Write(webPage)
 	})
+	w.mux.HandleFunc("GET /highlight.min.js", func(rw http.ResponseWriter, _ *http.Request) {
+		rw.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		_, _ = rw.Write(highlightJS)
+	})
 	w.mux.HandleFunc("GET /examples", w.examples)
 	w.mux.HandleFunc("POST /compile", w.compile)
 	w.mux.HandleFunc("POST /run", w.run)
@@ -113,6 +125,7 @@ func (w *web) examples(rw http.ResponseWriter, _ *http.Request) {
 
 type compileResult struct {
 	Go       string   `json:"go"`
+	User     string   `json:"user"` // Go from main.rb only: the prelude-hidden view
 	Warnings []string `json:"warnings"`
 	Error    string   `json:"error,omitempty"`
 }
@@ -123,11 +136,39 @@ func (w *web) compile(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code, warnings, err := w.transpile(r.Context(), src)
-	res := compileResult{Go: string(code), Warnings: warnings}
+	res := compileResult{Go: string(code), User: userDecls(code), Warnings: warnings}
 	if err != nil {
 		res.Error = err.Error()
 	}
 	writeJSON(rw, res)
+}
+
+// userDecls keeps the top-level decls a `//line main.rb:` directive precedes, and of a decl with one inside (the top-level function, prelude constant setup first) the part from there on.
+func userDecls(code []byte) string {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", code, parser.ParseComments|parser.SkipObjectResolution)
+	if err != nil {
+		return string(code)
+	}
+	tf := fset.File(f.Pos())
+	marker := []byte("//line " + webFile + ":")
+	var out []string
+	prev := tf.Offset(f.Name.End())
+	for _, d := range f.Decls {
+		start, end := tf.Offset(d.Pos()), tf.Offset(d.End())
+		gap, body := code[prev:start], code[start:end]
+		prev = end
+		if i := bytes.LastIndex(gap, marker); i >= 0 && !bytes.Contains(gap[i+len(marker):], []byte("//line ")) {
+			out = append(out, string(bytes.TrimSpace(gap[i:]))+"\n"+string(body))
+		} else if i := bytes.Index(body, marker); i >= 0 {
+			header := body[:bytes.IndexByte(body, '\n')+1]
+			if bytes.Contains(body[len(header):i], []byte("//line ")) {
+				header = append(header[:len(header):len(header)], "\t// … prelude setup\n"...)
+			}
+			out = append(out, string(header)+string(body[i:]))
+		}
+	}
+	return strings.Join(out, "\n\n") + "\n"
 }
 
 func (w *web) transpile(ctx context.Context, src []byte) ([]byte, []string, error) {
@@ -137,7 +178,7 @@ func (w *web) transpile(ctx context.Context, src []byte) ([]byte, []string, erro
 	if err != nil {
 		return nil, nil, fmt.Errorf("rb2go web: %w", err) // superseded by a newer edit while queued
 	}
-	return rb2go.Compile(ctx, "main.rb", src) //nolint:wrapcheck // already rb2go-prefixed
+	return rb2go.Compile(ctx, webFile, src) //nolint:wrapcheck // already rb2go-prefixed
 }
 
 type runResult struct {
