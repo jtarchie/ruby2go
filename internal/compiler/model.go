@@ -1919,6 +1919,9 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	b.WriteString("  #: () -> Integer\n  def hash = to_h.hash\n")
 	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name} %s>\"\n", kind, strings.Join(insp, ", "))
 	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
+	// pp's Struct/Data layout (decision 113): the kind and the values, in members order
+	fmt.Fprintf(&b, "  #: () -> String\n  def __pp_kind = %q\n", kind)
+	fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def __pp_values = [%s]\n", strings.Join(reads, ", "))
 	if kind == "struct" {
 		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
 	} else {

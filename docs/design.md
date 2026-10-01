@@ -2988,3 +2988,33 @@ resolve; anything not listed is still open.
     `nil.to_d`, Complex operands. ([example
     82](../examples/82_bigdecimal/main.rb), `testdata/test/bigdecimal_test.rb`,
     whose expected values are MRI's own output.)
+113. `pp`, `pretty_inspect` and `PP` (#1, Phase 3). MRI's PrettyPrint
+    (prettyprint.rb 0.2.0, Oppen's algorithm: Text and Breakable buffers,
+    groups queued by depth, the outermost broken first) is ported line
+    for line to Go (`prelude/go/pp.go`); pp.rb 0.6.3's per-class
+    `pretty_print` methods become one type switch over the closed world:
+    Array, Hash (Ruby 3.4's pairs: `key: v`, `"odd key": v` when the
+    Symbol's inspect needs quotes, `k => v` otherwise), Set (`Set[...]`,
+    Ruby 4.0's), Range, a multi-line String (its lines joined by ` +`),
+    Struct and Data (`#<struct Point` with `x=` members, from two
+    generated methods `__pp_kind`/`__pp_values` next to the generated
+    `inspect`), an object whose `inspect` is the default (`pp_object`:
+    its ivars sorted by name, each `@a=` group breakable), and anything
+    else as its `inspect`. Cycles print `[...]`/`{...}`/`Set[...]`/
+    `#<struct X:...>` by identity, as pp.rb's inspect keys. A class may
+    define `pretty_print(q)` typed `(PP) -> void`: `PP` offers `text`,
+    `breakable`, `comma_breakable`, `group(indent, open, close) { }`,
+    `nest`, `pp`, `object_group` and `seplist(list) { |x| }`, and the
+    type switch calls it before any default (`rbPPUser`). Width is
+    `PP.width_for`'s: the terminal's (`TIOCGWINSZ`), else `$COLUMNS`,
+    else 80, minus one, so 79 on a pipe; `pretty_inspect` has no
+    terminal (MRI's String target). `Kernel#pp` writes through `$stdout`
+    (decision 109) and returns its argument (the arguments as an Array),
+    as MRI's. `PP.pp(obj, out = $stdout, width = nil)` writes to an IO or
+    StringIO and returns a String target with the text appended (rb2go
+    strings are values, so the caller uses the result). Not done:
+    `PrettyPrint.format`/`singleline_format`, `PP.singleline_pp`,
+    `pretty_print_inspect`, `pretty_print_cycle`/`pretty_print_instance_variables`
+    overrides, `fill_breakable`, MatchData and File::Stat layouts.
+    ([example 83](../examples/83_pp/main.rb), `testdata/test/pp_test.rb`,
+    whose layouts are MRI's at each width.)
