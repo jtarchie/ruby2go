@@ -1,0 +1,16 @@
+# WeakRef's signatures, vendored: the rbs gem ships none (decision 110).
+# Generic over the referent, where MRI's delegates every method to it.
+class WeakRef[T]
+  class RefError < StandardError
+  end
+
+  def initialize: (T orig) -> void
+
+  # true while the referent is alive, nil once it was collected.
+  def weakref_alive?: () -> bool?
+
+  # The referent; RefError once it was collected.
+  def __getobj__: () -> T
+
+  def __setobj__: (T obj) -> T
+end

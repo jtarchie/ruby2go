@@ -27,7 +27,7 @@ var stdImports = map[string]string{
 	"base64": "encoding/base64", "hex": "encoding/hex", "md5": "crypto/md5", "sha1": "crypto/sha1",
 	"sha256": "crypto/sha256", "sha512": "crypto/sha512", "crc32": "hash/crc32", "syntax": "regexp/syntax",
 	"gzip": "compress/gzip", "zlib": "compress/zlib",
-	"time": "time", "unicode": "unicode", "unsafe": "unsafe", "url": "net/url", "user": "os/user",
+	"time": "time", "unicode": "unicode", "unsafe": "unsafe", "weak": "weak", "url": "net/url", "user": "os/user",
 	"utf16": "unicode/utf16", "utf8": "unicode/utf8",
 }
 

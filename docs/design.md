@@ -2892,3 +2892,25 @@ resolve; anything not listed is still open.
     `In stdout.`/`In stderr.` as MRI's) and `assert_silent`, logged by
     decision 105's oracle like the others.
     (`testdata/test/assertion_test.rb` `test_output`.)
+110. Vendored signatures, and `WeakRef` (#1, Phase 3). A library the rbs
+    gem ships no signatures for (`weakref`, `rexml`, `ostruct`, `prime`)
+    gets a minimal `sig/<name>.rbs` in the repository, covering what the
+    prelude ports; the harness passes `-I sig` to `rbs validate` and skips
+    `-r name` for a library found there (`rbsLibraries`), so `require`
+    lines stay valid RBS without weakening validation. `WeakRef[T]` is
+    generic over the referent, where MRI's delegates every method through
+    `method_missing`: callers go through `__getobj__`, typed `T`
+    (`RefError: Invalid Reference - probably recycled` once collected),
+    `weakref_alive?` is true or nil as MRI's, `__setobj__`. An object with
+    identity (a struct class, `rbClassRefs`) is held through Go's weak
+    pointer to its first byte: `T` is usually the class's interface, so
+    the pointer is the data word of the value as `any` and the type word
+    is kept to rebuild it on access (`rbWeakSet`/`rbWeakGet`,
+    `prelude/go/weakref.go`, no `reflect`). A value (String, Integer) is
+    held outright and always alive, as MRI's immediates are. `GC.start`
+    (`runtime.GC`) clears a weak pointer whose object nothing reaches,
+    deterministically enough that the example prints it; MRI's own
+    `GC.start` collected it on every run tried. Not done: `WeakRef` as a
+    `Delegator` (no `method_missing`), `ObjectSpace::WeakMap`, finalizers
+    (`ObjectSpace.define_finalizer`). ([example
+    80](../examples/80_weakref/main.rb).)

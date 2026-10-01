@@ -696,19 +696,27 @@ var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)
 // rbsLibraryNames covers requires whose gem name differs from its RBS stdlib signature directory, like `require "observer"` (defines Observable) shipping sigs under "observable".
 var rbsLibraryNames = map[string]string{"observer": "observable", "minitest-autorun": "minitest"}
 
-// rbsLibraries turns an example's `require "net/http"` lines into the `-r net-http` flags rbs needs to see those libraries' signatures.
+// rbsLibraries turns an example's `require "net/http"` lines into the `-r net-http` flags rbs needs to see those libraries' signatures. A library the rbs gem has no signatures for (`weakref`, `rexml`) has them vendored in sig/<name>.rbs (decision 110), loaded with -I instead.
 func rbsLibraries(t *testing.T, path string) []string {
 	t.Helper()
 	src, err := os.ReadFile(path) //nolint:gosec // example path
 	if err != nil {
 		t.Fatal(err)
 	}
+	vendored, err := filepath.Abs("sig")
+	if err != nil {
+		t.Fatal(err)
+	}
 	matches := requireLine.FindAllStringSubmatch(string(src), -1)
-	args := make([]string, 0, 2*len(matches))
+	args := []string{"-I", vendored}
 	for _, m := range matches {
 		name := strings.ReplaceAll(m[1], "/", "-")
 		if alias, ok := rbsLibraryNames[name]; ok {
 			name = alias
+		}
+		_, serr := os.Stat(filepath.Join(vendored, name+".rbs")) //nolint:gosec // a require name from our own examples
+		if serr == nil {
+			continue
 		}
 		args = append(args, "-r", name)
 	}
