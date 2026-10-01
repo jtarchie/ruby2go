@@ -1,14 +1,14 @@
 //go:build ignore
 
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
-package prelude
-
+//
 // BigDecimal (decision 112): sign, a non-negative mantissa and a decimal
 // exponent (value = mant × 10^exp, trailing zeros stripped), or Infinity
 // / NaN. The rules are bigdecimal 4.1's (its C source): a quotient gets
 // max(precision(a), precision(b)) + 16 significant digits (at least 32)
 // rounded half-up, add/sub/mult are exact unless given digits, Floats
 // convert by their shortest representation capped at 16 digits.
+package prelude
 
 const (
 	rbBDFinite = 0

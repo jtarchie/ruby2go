@@ -1,12 +1,12 @@
 //go:build ignore
 
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
-package prelude
-
+//
 // PP (decision 113): MRI's PrettyPrint (Oppen's algorithm, prettyprint.rb
 // 0.2.0) ported line for line, and pp.rb 0.6.3's layouts for each kind of
 // value, chosen by a Go type switch over the closed world instead of
 // per-class pretty_print methods.
+package prelude
 
 type rbPPGroup struct {
 	depth      int

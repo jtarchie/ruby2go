@@ -1,14 +1,14 @@
 //go:build ignore
 
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
-package prelude
-
+//
 // Exception#backtrace (decision 106). A rescue that binds `=> e` records
 // the Go call stack's program counters on the exception (rbCaptureBacktrace);
 // Exception#backtrace turns them into MRI's lines lazily
 // (rbBacktraceFrames), through rbFrameLabels: the table the compiler emits
 // from Go function name to Ruby label ('K#m', 'K.s', '<main>'), for the
 // functions the pruned program kept.
+package prelude
 
 // rbBegin runs a begin/rescue/ensure body. The compiler wraps the func
 // literal it makes for one in this call, so a backtrace can tell the
