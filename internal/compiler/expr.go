@@ -1137,7 +1137,28 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 			return e
 		}
 	}
-	return f.dispatch(n, recv, name, args, block)
+	return f.narrowRaises(name, args, f.dispatch(n, recv, name, args, block))
+}
+
+// narrowRaises types `assert_raises(K) { }` and `_ { }.must_raise(K)` with
+// one class literal as K, not Exception (decision 116, #37): the result is
+// an exception the assertion checked is a K, so the Go type assertion
+// cannot fail.
+func (f *fctx) narrowRaises(name string, args []parser.Node, e expr) expr {
+	if name != "assert_raises" && name != "must_raise" || len(args) != 1 {
+		return e
+	}
+	exc := f.c.classes["Exception"]
+	got, ok := e.typ.(TClass)
+	if !ok || got.C != exc {
+		return e
+	}
+	cls := f.classRef(args[0])
+	if cls == nil || cls == exc || !cls.isSubclassOf(exc) {
+		return e
+	}
+	want := TClass{C: cls}
+	return expr{code: "(" + e.code + ").(" + f.c.goType(want) + ")", typ: want, assert: true}
 }
 
 // genBareName is a receiverless, argumentless call that names a narrowed

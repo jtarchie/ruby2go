@@ -46,6 +46,8 @@ describe "expectations" do
 
   it "checks raised errors" do
     e = _ { list.fetch(5) }.must_raise IndexError
+    k = _ { { a: 1 }.fetch(:z) }.must_raise KeyError
+    _(k.key).must_equal :z
     _(e.message).must_equal "index 5 outside of array bounds: -2...2"
   end
 end

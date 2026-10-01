@@ -110,7 +110,7 @@ class Hash < Object
     v = self[k]
     return v if v
     return default if default
-    raise KeyError, "key not found: #{k.inspect}"
+    raise KeyError.__for("key not found: #{k.inspect}", self, k)
   end
 
   #: (K, V?) -> V?

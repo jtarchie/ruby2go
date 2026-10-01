@@ -205,7 +205,7 @@ class ENVClass < Object
     return v if v
     return default if default
 
-    raise KeyError, "key not found: #{name.inspect}"
+    raise KeyError.__for("key not found: #{name.inspect}", self, name)
   end
 
   #: (String) -> bool

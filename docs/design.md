@@ -3065,3 +3065,14 @@ resolve; anything not listed is still open.
     and `"x"` raise `NotImplementedError`, as `/x` literals are a compile
     error. `options` and `casefold?` read the flags back.
     (`testdata/test/rxjson_test.rb` `RxjsonRegexpNewTest`.)
+116. `assert_raises(K) { }` and `_ { }.must_raise(K)` with exactly one
+    class literal are typed `K` (#37), so `e.key` on a `KeyError`
+    compiles. The assertions stay untyped and return `Exception` (decision
+    93); the compiler wraps the call in a Go type assertion to `K`'s type
+    (`narrowRaises`), which cannot fail, since the assertion has checked
+    the exception is a `K`. Several classes, a computed class or
+    `Exception` itself keep `Exception`. With it, `KeyError` gained MRI's
+    `key` and `receiver` (`no key is available` when none was set),
+    filled in by `Hash#fetch` and `ENV.fetch`.
+    (`testdata/test/assertion_test.rb` `test_raises_is_typed`,
+    `testdata/test/spec_test.rb`.)

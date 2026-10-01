@@ -112,6 +112,21 @@ module AssertionTests
       assert_equal 1, counted(-> { assert_respond_to [], :each })
     end
 
+    # assert_raises(K) / must_raise(K) with one class literal is typed K (decision 116, #37).
+    def test_raises_is_typed
+      e = assert_raises(KeyError) { { a: 1 }.fetch(:b) }
+      assert_equal :b, e.key
+      assert_equal({ a: 1 }, e.receiver)
+      t = assert_raises(UncaughtThrowError) { throw :nope }
+      assert_equal :nope, t.tag
+      f = assert_raises(FrozenError) { [1].freeze << 2 }
+      assert_equal "can't modify frozen Array: [1]", f.message
+      x = assert_raises(SystemExit) { exit 3 }
+      assert_equal 3, x.status
+      either = assert_raises(KeyError, IndexError) { [].fetch(5) }
+      assert_equal "IndexError", either.class.name
+    end
+
     # $stdout/$stderr assignment, capture_io, assert_output and assert_silent (decision 109).
     def test_output
       assert_output("hi\n") { puts "hi" }

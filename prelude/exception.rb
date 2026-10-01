@@ -86,7 +86,40 @@ class NoMethodError < NameError; end
 
 class IndexError < StandardError; end
 
-class KeyError < IndexError; end
+# key and receiver are the Hash#fetch (or ENV.fetch) that failed, as MRI's.
+class KeyError < IndexError
+  # @rbs @key: untyped
+  # @rbs @receiver: untyped
+  # @rbs @has_key: bool
+
+  #: () -> untyped
+  def key
+    raise ArgumentError, "no key is available" unless @has_key
+
+    @key
+  end
+
+  #: () -> untyped
+  def receiver
+    raise ArgumentError, "no receiver is available" unless @has_key
+
+    @receiver
+  end
+
+  #: (String, untyped, untyped) -> KeyError
+  def self.__for(message, receiver, key)
+    e = new(message)
+    e.__set(receiver, key)
+    e
+  end
+
+  #: (untyped, untyped) -> void
+  def __set(receiver, key)
+    @receiver = receiver
+    @key = key
+    @has_key = true
+  end
+end
 
 class StopIteration < IndexError; end
 
