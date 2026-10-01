@@ -131,6 +131,7 @@ const ready = (async () => {
   const go = new Go();
   const { instance } = await WebAssembly.instantiateStreaming(fetch(${JSON.stringify(ASSETS + 'rb2go.wasm')}), go.importObject);
   go.run(instance);
+  rb2goCompile('puts 1\\n'); // the first compile parses the prelude, cached after; pay for it before the first keystroke
 })();
 onmessage = async e => {
   try { await ready; postMessage({id: e.data.id, res: rb2goCompile(e.data.src)}); }
