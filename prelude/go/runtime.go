@@ -76,21 +76,33 @@ func rbTrapSignals() {
 	signal.Notify(rbSigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for sig := range rbSigCh {
-			rbTrapMu.Lock()
-			h, ok := rbTraps[sig]
-			rbTrapMu.Unlock()
-			switch {
-			case ok && h.blk != nil:
-				rbRunTrap(h.blk, sig)
-			case ok && h.cmd == "IGNORE":
-			default:
-				rbFlush()
-				signal.Reset(sig)
-				p, _ := os.FindProcess(os.Getpid())
-				_ = p.Signal(sig)
+			if rbTrapHook != nil && rbTrapHook(sig) {
+				continue
 			}
+			rbFlush()
+			signal.Reset(sig)
+			p, _ := os.FindProcess(os.Getpid())
+			_ = p.Signal(sig)
 		}
 	}()
+}
+
+// rbTrapHook consults the trap table; Kernel#trap sets it, so a program without trap carries no table (decision 49).
+var rbTrapHook func(sig os.Signal) bool
+
+// rbTrapped runs or ignores a trapped signal, reporting whether sig had a handler.
+func rbTrapped(sig os.Signal) bool {
+	rbTrapMu.Lock()
+	h, ok := rbTraps[sig]
+	rbTrapMu.Unlock()
+	switch {
+	case ok && h.blk != nil:
+		rbRunTrap(h.blk, sig)
+	case ok && h.cmd == "IGNORE":
+	default:
+		return false
+	}
+	return true
 }
 
 // rbTrap is one Kernel#trap handler: a block, or a command string.
@@ -171,6 +183,7 @@ func rbSetTrap(v any, blk func(Integer), cmd string) *String {
 	}
 	rbTrapMu.Lock()
 	defer rbTrapMu.Unlock()
+	rbTrapHook = rbTrapped
 	old, had := rbTraps[sig]
 	rbTraps[sig] = rbTrap{blk: blk, cmd: cmd}
 	switch {
@@ -549,7 +562,6 @@ func rbHash(a any) Integer {
 	}
 	return Integer(rbKeyHash(a))
 }
-
 
 // rbCmp is <=> for sort, min and max. Typed values have Op_cmp(T);
 // T? boxes compare their values (rbCmpBox); untyped ones (T is any) go
