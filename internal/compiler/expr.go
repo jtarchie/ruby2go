@@ -189,6 +189,12 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 	if exp == nil && empty {
 		exp = f.refined[f.localKey(n.Name)]
 	}
+	if r, ok := n.Value.(*parser.LocalVariableReadNode); ok && r.Name == n.Name && f.erbDepth > 0 { // `x = x` declares x for the template's parse: a no-op
+		if v := f.visibleLocal(n.Name); v != nil {
+			return expr{code: v.goName, typ: v.typ, view: v.view, done: true}
+		}
+		return expr{code: "", typ: TNil{}, done: true} // declared later in the def: not in scope here
+	}
 	val := f.genExpr(n.Value, exp)
 	e := f.assignLocal(n, n.Name, val, ann)
 	if info := f.localInfo(n.Name); empty && f.pass == 1 && info != nil {
@@ -1017,19 +1023,18 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if n.Name == "call" && f.isBlockParam(n.Receiver) && n.Block == nil {
 		return f.yieldValues(n, callArgs(n))
 	}
-	if n.Receiver == nil && n.Arguments == nil && n.Block == nil {
-		if v := f.scope.lookup("attr:" + n.Name); v != nil {
-			return expr{code: v.goName, typ: v.typ} // narrowed attribute read
-		}
+	if e, ok := f.genBareName(n, expected); ok {
+		return e
 	}
 	if strings.HasSuffix(n.Name, "=") && (n.Receiver == nil || isSelf(n.Receiver)) {
 		f.unnarrow("attr:" + strings.TrimSuffix(n.Name, "="))
 	}
+	if e, ok := f.genERBCall(n); ok {
+		return e
+	}
 	if cls := f.classRef(n.Receiver); cls != nil {
-		if cls.RubyName == "Ractor" {
-			if e, ok := f.genRactorCall(n, cls); ok {
-				return e
-			}
+		if e, ok := f.genSpecialClassCall(n, cls); ok {
+			return e
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
@@ -1133,6 +1138,34 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		}
 	}
 	return f.dispatch(n, recv, name, args, block)
+}
+
+// genBareName is a receiverless, argumentless call that names a narrowed
+// attribute, or a caller's local inside a template parsed on its own
+// (decision 111).
+func (f *fctx) genBareName(n *parser.CallNode, expected Type) (expr, bool) {
+	if n.Receiver != nil || n.Arguments != nil || n.Block != nil {
+		return expr{}, false
+	}
+	if v := f.scope.lookup("attr:" + n.Name); v != nil {
+		return expr{code: v.goName, typ: v.typ}, true
+	}
+	if f.erbDepth > 0 && f.visibleLocal(n.Name) != nil {
+		return f.genExpr(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location}, expected), true
+	}
+	return expr{}, false
+}
+
+// genSpecialClassCall is the class-method calls the compiler answers itself: Ractor.new (decision 103) and ERB.new (decision 111).
+func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) {
+	switch {
+	case cls.RubyName == "Ractor":
+		return f.genRactorCall(n, cls)
+	case cls.RubyName == "ERB" && n.Name == "new":
+		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
+		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
+	}
+	return expr{}, false
 }
 
 // viewCall sends a block-less call on a converted Array/Hash (expr.view)

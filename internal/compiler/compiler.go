@@ -21,6 +21,8 @@ import (
 
 // Compiler holds the whole program: the prelude and the user files, one closed world.
 type Compiler struct {
+	erbSnippets   map[*parser.CallNode]*File // compiled ERB templates by their result call (decision 111)
+	erbCounter    int
 	labels        map[string]string // Go function (its table key) → Ruby backtrace label, for every function emitted (decision 106)
 	classes       map[string]*Class
 	classList     []*Class
@@ -149,7 +151,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, warning
 	tick("parser")
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
-		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}}
+		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}}
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")
 	tick("prelude")
@@ -161,6 +163,9 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, warning
 		c.files = append(c.files, uf)
 		c.userFiles = append(c.userFiles, uf)
 		c.collect(ctx, uf)
+	}
+	for _, uf := range c.userFiles {
+		c.collectERB(ctx, uf) // templates need every constant collected (decision 111)
 	}
 	tick("user")
 	c.mainFile = c.userFiles[0]

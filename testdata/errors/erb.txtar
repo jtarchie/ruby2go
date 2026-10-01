@@ -1,0 +1,17 @@
+-- dynamic_template.rb --
+# error: main.rb:5: ERB.new needs a literal template
+# rbs_inline: enabled
+require "erb"
+src = "x" * 2
+puts ERB.new(src).result(binding)
+-- bad_option.rb --
+# error: main.rb:4: invalid ERB trim mode "x"
+# rbs_inline: enabled
+require "erb"
+puts ERB.new("a", trim_mode: "x").result
+-- hash_with_computed_keys.rb --
+# error: main.rb:5: ERB#result_with_hash takes a literal Hash with Symbol keys
+# rbs_inline: enabled
+require "erb"
+h = { name: "x" } #: Hash[Symbol, String]
+puts ERB.new("<%= name %>").result_with_hash(h)
