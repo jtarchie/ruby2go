@@ -10,9 +10,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -45,6 +47,13 @@ type Compiler struct {
 	mainFile      *File   // the first user file: $0, and the generated header
 	userFiles     []*File // in load order
 	stmtFile      map[parser.Node]*File
+	dynEvery      bool            // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
+	dynLazy       map[string]bool // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
+	dynOut        map[string]bool // dispatchers emitted
+	respondOut    map[string]bool // respond_to? checks emitted
+	fwdOut        map[*Class]bool // forwarders emitted
+	tablesOut     bool
+	tablesAt      [8]int // tableInputs when the tables went out
 	files         []*File
 	preludeFS     fs.FS
 	parser        *parser.Parser
@@ -110,7 +119,18 @@ type Source struct {
 	Src  []byte
 }
 
-func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[]string) (out []byte, err error) {
+func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[]string) ([]byte, error) {
+	out, err := compileWith(ctx, preludeFS, sources, warnings, false)
+	if errors.Is(err, errPruneIncomplete) {
+		if os.Getenv("RB2GO_TIMING") != "" {
+			fmt.Fprintln(os.Stderr, "rb2go: fallback: recompiling with every dispatcher")
+		}
+		out, err = compileWith(ctx, preludeFS, sources, warnings, true)
+	}
+	return out, err
+}
+
+func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[]string, dynEvery bool) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -120,15 +140,18 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[
 			panic(r)
 		}
 	}()
+	tick := phaseTimer()
 	p, err := sharedParser()
 	if err != nil {
 		return nil, fmt.Errorf("prism: %w", err)
 	}
+	tick("parser")
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
-		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}}
+		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}}
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")
+	tick("prelude")
 	for _, src := range sources {
 		uf, perr := parseFile(ctx, p, src.Name, src.Src, false)
 		if perr != nil {
@@ -138,14 +161,17 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[
 		c.userFiles = append(c.userFiles, uf)
 		c.collect(ctx, uf)
 	}
+	tick("user")
 	c.mainFile = c.userFiles[0]
 	c.nameGo()
 	c.link(ctx)
+	tick("link")
 	c.discoverIvars()
 	c.refineIvars()
 	c.inferReturns()
+	tick("infer")
 	c.emitProgram()
-	*warnings = c.Warnings
+	tick("emit")
 	src := []byte(c.out.String())
 	lazy := map[string]bool{}
 	for _, k := range c.constList {
@@ -153,11 +179,16 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[
 			lazy[k.GoName] = true
 		}
 	}
-	formatted, ferr := formatGo(src, lazy)
+	formatted, ferr := formatGo(src, lazy, c.emitNext)
+	tick("format")
+	*warnings = c.Warnings // the tail's bodies warn too
+	if errors.Is(ferr, errPruneIncomplete) {
+		return nil, ferr
+	}
 	if ferr != nil {
 		// Keep the raw output around for debugging.
 		tmp := filepath.Join(os.TempDir(), "rb2go-bad-output.go")
-		_ = os.WriteFile(tmp, src, 0o600)
+		_ = os.WriteFile(tmp, slices.Concat(src, []byte("\n// ---- tail ----\n"), []byte(c.out.String())), 0o600)
 		return nil, fmt.Errorf("internal error: generated Go does not parse (%w); raw output written to %s", ferr, tmp)
 	}
 	return formatted, nil
@@ -200,7 +231,7 @@ func (c *Compiler) loadPrelude(ctx context.Context, name string) {
 	if err != nil {
 		panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
 	}
-	f, err := parseFile(ctx, c.parser, name, src, true)
+	f, err := preludeFile(ctx, c.parser, name, src)
 	if err != nil {
 		panic(compileError{msg: err.Error()})
 	}
@@ -209,6 +240,21 @@ func (c *Compiler) loadPrelude(ctx context.Context, name string) {
 	if len(c.mainStmts) > 0 {
 		c.errorf(f, c.mainStmts[0], "prelude must not have top-level statements")
 	}
+}
+
+// preludeFiles caches each prelude file's parse for the process: the prelude is constant, a File is never written after parseFile, and under wasm Prism runs interpreted, where parsing it costs 2.5 s of a 5.5 s compile.
+var preludeFiles sync.Map // name → *File
+
+func preludeFile(ctx context.Context, p *parser.Parser, name string, src []byte) (*File, error) {
+	if f, ok := preludeFiles.Load(name); ok {
+		return f.(*File), nil
+	}
+	f, err := parseFile(ctx, p, name, src, true)
+	if err != nil {
+		return nil, err
+	}
+	preludeFiles.Store(name, f)
+	return f, nil
 }
 
 // loadPreludeGo embeds prelude/go/*.go verbatim: pure Go with no self/param binding, so it skips Ruby parsing entirely.
@@ -289,4 +335,17 @@ func (c *Compiler) noteRespond(name string) {
 	c.respondSeen[name] = true
 	c.respondNames = append(c.respondNames, name)
 	c.noteDyn("respond_to_missing?")
+}
+
+// phaseTimer reports each phase's duration to stderr when RB2GO_TIMING is set: where a compile spends its time, natively or as wasm.
+func phaseTimer() func(string) {
+	if os.Getenv("RB2GO_TIMING") == "" {
+		return func(string) {}
+	}
+	last := time.Now()
+	return func(name string) {
+		now := time.Now()
+		fmt.Fprintf(os.Stderr, "rb2go: %-8s %6dms\n", name, now.Sub(last).Milliseconds())
+		last = now
+	}
 }

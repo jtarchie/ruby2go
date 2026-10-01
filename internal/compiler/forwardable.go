@@ -89,7 +89,7 @@ func (c *Compiler) expandDelegations(ctx context.Context) {
 	}
 	if added { // lookups above cached method sets without the new defs
 		for _, cls := range c.classList {
-			cls.msetCache = nil
+			cls.msetCache, cls.msetIndex = nil, nil
 		}
 	}
 }

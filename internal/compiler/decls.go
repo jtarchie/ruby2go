@@ -271,9 +271,6 @@ func (c *Compiler) emitProgram() {
 			c.emitMethod(m)
 		}
 	}
-	for _, cls := range classes {
-		c.emitForwarders(cls)
-	}
 	for _, m := range c.topDefList {
 		c.emitTopDef(m)
 	}
@@ -283,7 +280,49 @@ func (c *Compiler) emitProgram() {
 
 	c.emitMain()
 	c.noteUserToJson()
-	c.emitDynamic()
+}
+
+// emitNext is one batch of the rest of the program, given what the pruned program so far reaches: forwarders of reached classes and dispatchers of reached names, until a round adds nothing; then the tables every body has contributed to by now, once; then nil. The tables open paths to more code, so rounds go on after them; a late body that adds to a table's inputs (a tuple type, a literal) is errPruneIncomplete, and the caller recompiles with everything eager.
+func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error) {
+	c.out.Reset()
+	for _, cls := range c.sortedClasses() {
+		if !c.fwdOut[cls] && (c.dynEvery || reached(cls.Name)) {
+			c.fwdOut[cls] = true
+			c.emitForwarders(cls)
+		}
+	}
+	c.emitDynamic(reached, selected)
+	if c.tablesOut && c.tableInputs() != c.tablesAt {
+		return nil, errPruneIncomplete
+	}
+	if c.out.Len() == 0 {
+		if c.tablesOut {
+			return nil, nil
+		}
+		c.tablesOut = true
+		c.tablesAt = c.tableInputs()
+		c.emitTables()
+	}
+	return []byte(c.out.String()), nil
+}
+
+// tableInputs fingerprints what emitTables reads; the maps only grow, so sizes tell.
+func (c *Compiler) tableInputs() [8]int {
+	b2i := func(b bool) int {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	return [8]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery)}
+}
+
+// emitTables: what every emitted body has contributed to.
+func (c *Compiler) emitTables() {
+	if c.dynEvery {
+		c.emitNameSwitches()
+		c.emitCallTables()
+	}
 	c.emitClassOf()
 	c.emitTuples()
 	c.emitBoxes()

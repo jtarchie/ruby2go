@@ -22,34 +22,53 @@ import (
 // emitDynamic emits wrappers and dispatchers for every name asked for;
 // generating a wrapper may ask for more (a default argument calling
 // something dynamically), so this runs to a fixed point.
-func (c *Compiler) emitDynamic() {
-	c.noteDyn("<=>") // rbCmp falls back to DynOp_cmp, and which instantiations see untyped values is unknown here
-	if c.dynAll {
-		for _, name := range c.allMethodNames() {
-			c.noteDyn(name)
-			c.noteRespond(name)
+// emitDynamic emits the dispatchers that became needed (dynNeeded) and reports whether there were any: with the computed-send switches in play (dynAll) nearly every method is noted, and a program reaches few of them. A wrapper body notes what it calls, and a name noted that late is needed by what noted it.
+func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
+	if c.dynLazy == nil {
+		c.noteDyn("<=>") // rbCmp falls back to DynOp_cmp, and which instantiations see untyped values is unknown here
+		if c.dynAll {
+			for _, name := range c.allMethodNames() {
+				c.noteDyn(name)
+				c.noteRespond(name)
+			}
+		}
+		c.dynLazy = map[string]bool{}
+		for _, n := range slices.Concat(c.dynNames, c.respondNames) {
+			c.dynLazy[n] = true
 		}
 	}
-	// a wrapper may ask for more names, so walk the growing list
-	done := 0
-	for done < len(c.dynNames) {
-		c.emitDynName(c.dynNames[done])
-		done++
-	}
-	for _, name := range c.respondNames {
-		c.emitRespond(name)
-	}
-	marked := map[string]bool{}
-	for _, name := range slices.Concat(c.dynNames, c.respondNames) {
-		if !marked[name] {
-			marked[name] = true
-			c.emitMarkers("_Private"+goMethodName(name), c.privateIn(name))
+	c.dynEvery = c.dynEvery || c.dynAll && (reached("rbSendByName") || reached("rbRespondsByName") || selected("_Call"))
+	var emitted []string
+	for progress := true; progress; {
+		progress = false
+		for i := 0; i < len(c.dynNames); i++ { //nolint:intrange // emitDynName appends what a wrapper body notes, so len is re-read
+			if n := c.dynNames[i]; !c.dynOut[n] && c.dynNeeded(n, reached, selected) {
+				c.dynOut[n] = true
+				c.emitDynName(n)
+				emitted, progress = append(emitted, n), true
+			}
+		}
+		for i := 0; i < len(c.respondNames); i++ { //nolint:intrange // same
+			if n := c.respondNames[i]; !c.respondOut[n] && c.dynNeeded(n, reached, selected) {
+				c.respondOut[n] = true
+				c.emitRespond(n)
+				emitted, progress = append(emitted, n), true
+			}
 		}
 	}
-	if c.dynAll {
-		c.emitNameSwitches()
-		c.emitCallTables()
+	for _, name := range emitted {
+		c.emitMarkers("_Private"+goMethodName(name), c.privateIn(name))
 	}
+	return len(emitted) > 0
+}
+
+// dynNeeded: name was noted by an emitted body, or kept code calls its dispatcher, asks respond_to? of it, or asserts its wrapper (rbCmp's DynOp_cmp, the json generator's DynToJson).
+func (c *Compiler) dynNeeded(name string, reached, selected func(string) bool) bool {
+	if c.dynEvery || !c.dynLazy[name] {
+		return true
+	}
+	gn := goMethodName(name)
+	return reached("rbDyn"+gn) || reached("rbResponds"+gn) || reached("rbHas_Private"+gn) || selected("Dyn"+gn) || selected("_Dyn"+gn)
 }
 
 // dynWrapped is one Dyn wrapper emitted on a class; own when a user file defines the method.
@@ -210,6 +229,7 @@ func (c *Compiler) emitDynName(name string) {
 	c.emitDynArms(shared, true)
 	// every object has Kernel#===, so method_missing is never reached for it
 	if name != "method_missing" && name != "===" {
+		delete(c.dynLazy, "method_missing") // the fallback below needs its wrappers
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
 	}
@@ -582,6 +602,7 @@ func (c *Compiler) emitRespond(name string) {
 	if len(c.privateIn(name)) > 0 {
 		c.w("\tif priv && rbHas_Private%s(recv) {\n\t\treturn true\n\t}\n", gn)
 	}
+	delete(c.dynLazy, "respond_to_missing?") // the fallback below needs its wrappers
 	c.w("\tif r, ok := recv.(interface{ DynRespondToMissingQ(...any) any }); ok {\n")
 	c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(%q), Boolean(priv))))\n\t}\n", name)
 	c.w("\treturn false\n}\n\n")

@@ -1285,6 +1285,31 @@ resolve; anything not listed is still open.
     initializer may print or read input. The compiler hands the pruner the
     prelude constants' Go names. `05_word_count` went from 3.5k lines to
     2.4k, `puts 1` to 1.4k.
+    *Amended:* pruning now runs before most of the output exists. With
+    the computed-send switches in play (`dynAll`, which any prelude
+    method's `send(name)` sets) nearly every method name was noted, so
+    `emitDynamic` wrote a dispatcher per name over every class: 1.7 MB of
+    a 4.7 MB emit, all of it pruned for a typical program, and 66% of a
+    compile's CPU; forwarders were another 1.3 MB. Now `emitProgram`
+    stops before forwarders and dispatchers, the pruner (`newPruner`,
+    `add`, `run`) takes that as its first batch, and `emitNext` adds
+    batches for what the kept code so far reaches: forwarders of reached
+    classes, dispatchers of names it calls (`rbDyn<X>`), asks
+    `respond_to?` of, or asserts (`Dyn<X>` in an interface literal), and a
+    name a wrapper body notes while being emitted (`dynLazy` marks the
+    names from before). When a round adds nothing, the tables every body
+    contributes to (tuples, boxes, regexps, string literals, class
+    tables) go out once; rounds continue after them, since they open
+    paths too, and a late body that changes a table's inputs
+    (`tableInputs`) is `errPruneIncomplete`: the compile reruns with
+    everything eager (`dynEvery`), which is the old output. No program
+    in examples/ or testdata/ needs that. Each batch is parsed into the
+    same FileSet and merged for the printer. With the prelude's parse
+    cached per process (`preludeFiles`; Prism runs interpreted under
+    wasm, where it was 2.5 s of 5.5 s), a method index on `Class.lookup`
+    and a binary search in the comment sweep, a compile is ~0.2 s native
+    (was 0.69 s) and ~0.9 s as wasm in Chrome (was 5.5 s). `RB2GO_TIMING=1`
+    prints the phases.
 
 50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
     or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
@@ -2555,5 +2580,9 @@ resolve; anything not listed is still open.
     `scripts/topbanana.mjs`, which talks to Top Banana's MCP endpoint over
     JSON-RPC (it has no other upload API), signing in once by OAuth PKCE
     in the browser; a deploy is the whole site, so files an earlier one
-    left are deleted. Live at https://ruby2go.apps.topbanana.dev. Not done: compile speed, ~6.5 s per compile in
-    Chrome against 0.7 s native.
+    left are deleted. Live at https://ruby2go.apps.topbanana.dev. A
+    compile there is under a second (decision 49's last amendment); the
+    worker warms the compiler up at load so the first keystroke doesn't
+    pay for it, and runs with the GC tuned for throughput (a compile
+    allocates ~130 MB and is done in well under a second, so collecting
+    mid-way only costs time).

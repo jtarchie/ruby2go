@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -29,15 +30,51 @@ var stdImports = map[string]string{
 	"utf16": "unicode/utf16", "utf8": "unicode/utf8",
 }
 
-// formatGo prunes src to what main reaches (RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it.
-func formatGo(src []byte, lazy map[string]bool) ([]byte, error) {
+// errPruneIncomplete: a dispatcher became reachable after the tables went out (a type-switch case unlocked late); the caller recompiles emitting every one first.
+var errPruneIncomplete = errors.New("pruning reached dispatchers emitted lazily")
+
+// merge appends t's declarations and comments to f: both came from one FileSet, t after f, so positions stay in order for the printer.
+func merge(f, t *ast.File) {
+	f.Decls = append(f.Decls, t.Decls...)
+	f.Comments = append(f.Comments, t.Comments...)
+}
+
+// formatGo prunes src to what main reaches (RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
+func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error)) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("gofmt: %w", err)
 	}
+	all := func(string) bool { return true }
+	var p *pruner
+	reached, selected := all, all
 	if os.Getenv("RB2GO_NO_PRUNE") == "" {
-		pruneDecls(f, lazy)
+		p = newPruner(lazy)
+		p.add(f.Decls)
+		p.run()
+		reached, selected = p.reached, p.selected
+	}
+	for i := 0; ; i++ {
+		more, err := next(reached, selected)
+		if err != nil {
+			return nil, err
+		}
+		if more == nil {
+			break
+		}
+		t, err := parser.ParseFile(fset, fmt.Sprintf("tail%d.go", i), append([]byte("package main\n"), more...), parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("gofmt: %w", err)
+		}
+		merge(f, t)
+		if p != nil {
+			p.add(t.Decls)
+			p.run()
+		}
+	}
+	if p != nil {
+		p.sweep(f)
 	}
 	used := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {

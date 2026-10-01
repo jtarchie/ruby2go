@@ -39,12 +39,13 @@ type Class struct {
 	singletonDefs []singletonDef
 	extends       []Include // `extend M`: included into the class object
 	delegations   []delegation
-	meta          *Class    // the class object's class (holds `def self.` methods)
-	metaOf        *Class    // for a metaclass: the class it describes
-	constNames    []string  // constants (classes included) declared directly inside, in order
-	valueMembers  []string  // Struct.new / Data.define members, in order
-	valueKind     string    // "struct" or "data"
+	meta          *Class   // the class object's class (holds `def self.` methods)
+	metaOf        *Class   // for a metaclass: the class it describes
+	constNames    []string // constants (classes included) declared directly inside, in order
+	valueMembers  []string // Struct.new / Data.define members, in order
+	valueKind     string   // "struct" or "data"
 	msetCache     []entry
+	msetIndex     map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
 	selfCallCache map[string]bool
 	slotsLinked   bool   // linkOverrides ran
 	Display       string // the name Ruby shows, when the declaration has none of its own (a describe's class)
@@ -300,11 +301,16 @@ func composeEnv(inner, outer map[string]Type) map[string]Type {
 }
 
 func (c *Class) lookup(name string) *entry {
-	for _, e := range c.methodSet() {
-		if e.M.Name == name {
-			e := e
-			return &e
+	set := c.methodSet()
+	if c.msetIndex == nil {
+		c.msetIndex = make(map[string]int, len(set))
+		for i, e := range set {
+			c.msetIndex[e.M.Name] = i
 		}
+	}
+	if i, ok := c.msetIndex[name]; ok {
+		e := set[i]
+		return &e
 	}
 	return nil
 }

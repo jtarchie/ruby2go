@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"cmp"
 	"go/ast"
 	"go/token"
 	"slices"
@@ -40,19 +41,69 @@ type pruner struct {
 	queue       []ast.Node
 }
 
-// pruneDecls drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps.
-func pruneDecls(f *ast.File, lazy map[string]bool) {
+// newPruner drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps. Declarations arrive in batches (add, then run): the dynamic dispatchers are emitted only for what the first batch reaches.
+func newPruner(lazy map[string]bool) *pruner {
 	p := &pruner{lazy: lazy, deferred: map[ast.Stmt]string{}, byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
 	for n := range stdMethodNames {
 		p.methodNames[n] = true
 	}
-	for _, d := range f.Decls {
+	return p
+}
+
+// add indexes a batch; a root, or a declaration an earlier batch already named, is kept.
+func (p *pruner) add(decls []ast.Decl) {
+	roots := len(p.roots)
+	for _, d := range decls {
 		p.index(d)
+		for _, n := range declNodes(d) {
+			if p.names[n.name] {
+				p.keep(n.node)
+			}
+		}
 	}
-	for _, r := range p.roots {
+	for _, r := range p.roots[roots:] {
 		p.keep(r)
 	}
-	for len(p.queue) > 0 {
+}
+
+// reached reports whether kept code names ident, selected whether it selects or asserts method m.
+func (p *pruner) reached(ident string) bool { return p.names[ident] }
+func (p *pruner) selected(m string) bool {
+	return p.methodNames[m] || p.asserted[m] || p.declared[m]
+}
+
+type declNode struct {
+	name string
+	node ast.Node
+}
+
+// declNodes is what d declares by name: funcs, types and vars (not methods, which the run loop takes by receiver).
+func declNodes(d ast.Decl) []declNode {
+	switch d := d.(type) {
+	case *ast.FuncDecl:
+		if d.Recv == nil {
+			return []declNode{{d.Name.Name, d}}
+		}
+	case *ast.GenDecl:
+		var out []declNode
+		for _, s := range d.Specs {
+			switch s := s.(type) {
+			case *ast.TypeSpec:
+				out = append(out, declNode{s.Name.Name, s})
+			case *ast.ValueSpec:
+				for _, n := range s.Names {
+					out = append(out, declNode{n.Name, s})
+				}
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// run keeps everything the queue reaches; the method pass runs at least once, since a batch of only methods leaves the queue empty.
+func (p *pruner) run() {
+	for {
 		for len(p.queue) > 0 {
 			n := p.queue[len(p.queue)-1]
 			p.queue = p.queue[:len(p.queue)-1]
@@ -90,8 +141,10 @@ func pruneDecls(f *ast.File, lazy map[string]bool) {
 				p.queue = append(p.queue, m.decl.Recv, m.decl.Type)
 			}
 		}
+		if len(p.queue) == 0 {
+			break
+		}
 	}
-	p.sweep(f)
 }
 
 func (p *pruner) index(d ast.Decl) {
@@ -326,10 +379,11 @@ func (p *pruner) sweep(f *ast.File) {
 			})
 		}
 	}
-	var dropped [][2]token.Pos // deleted declarations: their comments go
+	var dropped [][2]token.Pos // deleted declarations, or specs of kept ones: their comments go; in order and disjoint, for within's search
 	f.Decls = slices.DeleteFunc(f.Decls, func(d ast.Decl) bool {
 		span := [2]token.Pos{declStart(d), d.End()} // before the specs go: a GenDecl's End reads its last spec
 		drop := false
+		var specs [][2]token.Pos
 		switch d := d.(type) {
 		case *ast.FuncDecl:
 			drop = !p.kept[d]
@@ -337,7 +391,7 @@ func (p *pruner) sweep(f *ast.File) {
 			if d.Tok != token.IMPORT {
 				d.Specs = slices.DeleteFunc(d.Specs, func(s ast.Spec) bool {
 					if !p.kept[s] {
-						dropped = append(dropped, [2]token.Pos{s.Pos(), s.End()})
+						specs = append(specs, [2]token.Pos{s.Pos(), s.End()})
 					}
 					return !p.kept[s]
 				})
@@ -346,6 +400,8 @@ func (p *pruner) sweep(f *ast.File) {
 		}
 		if drop {
 			dropped = append(dropped, span)
+		} else {
+			dropped = append(dropped, specs...)
 		}
 		return drop
 	})
@@ -363,13 +419,12 @@ func (p *pruner) sweep(f *ast.File) {
 	for _, d := range f.Decls {
 		spans = append(spans, [2]token.Pos{declStart(d), d.End()})
 	}
-	within := func(c *ast.CommentGroup, spans [][2]token.Pos) bool {
-		for _, s := range spans {
-			if c.Pos() >= s[0] && c.End() <= s[1] {
-				return true
-			}
+	within := func(c *ast.CommentGroup, spans [][2]token.Pos) bool { // spans are sorted and disjoint: the candidate is the last one starting at or before c
+		i, _ := slices.BinarySearchFunc(spans, c.Pos(), func(s [2]token.Pos, p token.Pos) int { return cmp.Compare(s[0], p) })
+		if i < len(spans) && spans[i][0] == c.Pos() {
+			return c.End() <= spans[i][1]
 		}
-		return false
+		return i > 0 && c.End() <= spans[i-1][1]
 	}
 	f.Comments = slices.DeleteFunc(f.Comments, func(c *ast.CommentGroup) bool {
 		switch {
