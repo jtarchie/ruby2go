@@ -458,6 +458,9 @@ func rbPrintUncaught(r any) {
 	}
 }
 
+// rbArg is a dispatcher's args[i], once rbArity has checked the count (dynArg).
+func rbArg(args []any, i int) any { return args[i] }
+
 // Ref boxes a value into T? (represented as *T).
 func Ref[T any](v T) *T { return &v }
 

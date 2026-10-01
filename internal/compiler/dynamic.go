@@ -529,7 +529,7 @@ func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 	case m.Owner == c.classes["Comparable"]:
 		args := make([]string, len(m.Params))
 		for i := range args {
-			args[i] = fmt.Sprintf("args[%d]", i)
+			args[i] = c.dynArg(TAny{}, i)
 		}
 		ret = f.rbNumCall(nil, m, "self", args).code
 	case isClass(env["Self"], "Integer"):
@@ -545,15 +545,23 @@ func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 	f.emit("}")
 }
 
-// dynArg converts argument i to type t.
+// dynArg converts argument i to type t. Past the first it is read through
+// rbArg: gosec's G602 tracks the argument count of each call site, and a
+// dispatcher branch for more arguments than one site passes (Logger's
+// one-argument `write` against REXML's two) reads past it, though rbArity
+// has already ruled that branch out.
 func (c *Compiler) dynArg(t Type, i int) string {
+	arg := fmt.Sprintf("args[%d]", i)
+	if i > 0 {
+		arg = fmt.Sprintf("rbArg(args, %d)", i)
+	}
 	switch t := t.(type) {
 	case TAny:
-		return fmt.Sprintf("args[%d]", i)
+		return arg
 	case TOpt:
-		return fmt.Sprintf("OptOf[%s](args[%d], %q)", c.goType(t.Elem), i, t.Elem.String())
+		return fmt.Sprintf("OptOf[%s](%s, %q)", c.goType(t.Elem), arg, t.Elem.String())
 	}
-	return fmt.Sprintf("rbAs[%s](args[%d], %q)", c.goType(t), i, t.String())
+	return fmt.Sprintf("rbAs[%s](%s, %q)", c.goType(t), arg, t.String())
 }
 
 // emitMarkers emits rbHas<marker>(recv), true for the classes given: a
