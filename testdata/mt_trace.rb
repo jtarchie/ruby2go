@@ -24,7 +24,7 @@ module RB2GoMtTrace
     refute_includes: [nil, nil], refute_instance_of: [nil, nil], refute_kind_of: [nil, nil],
     refute_match: [nil, nil], refute_nil: [nil], refute_operator: [nil, nil, UNDEFINED],
     refute_path_exists: [nil], refute_predicate: [nil, nil], refute_respond_to: [nil, nil],
-    refute_same: [nil, nil],
+    refute_same: [nil, nil], assert_output: [nil, nil], assert_silent: [],
   }.freeze
 
   FILE = File.open(ENV.fetch("RB2GO_MT_TRACE"), "a")

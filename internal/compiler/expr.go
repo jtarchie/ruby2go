@@ -56,6 +56,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return expr{code: strconv.Quote(f.f.Name), typ: f.cls("String"), lit: true}, true
 	case *parser.GlobalVariableReadNode:
 		return f.genGlobalRead(n), true
+	case *parser.GlobalVariableWriteNode:
+		return f.genGlobalWrite(n), true
 	case *parser.IntegerNode:
 		code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
 		if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
@@ -4086,13 +4088,27 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		name := f.c.mainFile.Name
 		f.c.strLits[name] = true
 		return expr{code: strconv.Quote(name), typ: f.cls("String"), lit: true}
-	case "$stdin", "$stdout", "$stderr":
-		return f.genConstRead(&parser.ConstantReadNode{Name: strings.ToUpper(n.Name[1:]), Location: n.Location})
+	case "$stdin":
+		return f.genConstRead(&parser.ConstantReadNode{Name: "STDIN", Location: n.Location})
+	case "$stdout", "$stderr": // the IO bound to the assigned object, if any (decision 109)
+		return expr{code: "rb" + strings.ToUpper(n.Name[1:2]) + n.Name[2:] + "IO()", typ: f.cls("IO")}
 	case "$?":
 		return f.kernelCall(n, "__last_status", nil)
 	}
 	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout, $stderr and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
+}
+
+// genGlobalWrite is `$stdout = io` / `$stderr = io` (decision 109): the
+// object takes the stream's writes. Reading the global still answers the
+// IO constant (decision 61), so the assignment's value is what was given.
+func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
+	fn := map[string]string{"$stdout": "rbSetStdout", "$stderr": "rbSetStderr"}[n.Name]
+	if fn == "" {
+		f.errorf(n, "global variable %s cannot be assigned; only $stdout and $stderr can (docs/design.md decision 109)", n.Name)
+	}
+	v := f.genExpr(n.Value, nil)
+	return expr{code: fn + "(" + f.coerce(n.Value, v, TAny{}) + ")", typ: TAny{}, stmt: true}
 }
 
 // kernelCall calls a private Kernel prelude method as a receiverless call

@@ -1567,7 +1567,8 @@ resolve; anything not listed is still open.
     `$stdout`, `$stderr` read the constants, and `$0`/`$PROGRAM_NAME` and
     `__FILE__` are the Ruby file's name as given to the compiler, which is
     what `ruby main.rb` reports and keeps `__FILE__ == $0` true; any other
-    `$name` is a compile error (*`$?` added by decision 97*). `Kernel#gets` reads stdin only, where MRI
+    `$name` is a compile error (*`$?` added by decision 97; `$stdout`
+    and `$stderr` assignable, decision 109*). `Kernel#gets` reads stdin only, where MRI
     reads the files named in ARGV first (ARGF; *revised by decision 95*). Tests feed programs with
     `# args:`, `# env: K=V` and `# stdin: "Go-quoted"` lines, and
     `# stderr: match` adds stderr to the MRI comparison
@@ -1988,7 +1989,6 @@ resolve; anything not listed is still open.
     multi-line statement doesn't drift to later Ruby lines. An error's
     report and `exception_details` list the frames as MRI does, filtered
     to the test's own (decision 106). Spec's DSL is compiled (decision 83). Not ported:
-    `assert_output`/`capture_io` (no `$stdout` reassignment),
     `assert_throws`, `assert_pattern`, `parallelize_me!`, class-body
     calls like `i_suck_and_my_tests_are_order_dependent!`, plugins,
     `stub`/`Mock` ([example 65](../examples/65_minitest/main.rb)).
@@ -2869,3 +2869,26 @@ resolve; anything not listed is still open.
     key. MRI's `Thread#[]` is fiber-local; rb2go has no fibers, so the two
     maps differ only in name. `require "monitor"` is a no-op (decision
     50). ([example 79](../examples/79_monitor/main.rb).)
+109. `$stdout = io` and `$stderr = io` (#1's minitest follow-ups), the
+    first assignable globals (decision 61 amended). The compiler turns the
+    assignment into `rbSetStdout(v)`/`rbSetStderr(v)`: `v` must answer
+    `write` (`TypeError: $stdout must have write method, Integer given`,
+    MRI's wording) and is kept as the stream's target, an `IO` on the same
+    fd clearing it. `Kernel#puts`/`print`/`p`/`printf` write through
+    `rbWriteOut`, which hands the text to the target when one is set (a
+    program that never assigns pays one atomic load); `warn` goes through
+    `$stderr`. Reading `$stdout` while one is set answers an `IO` bound
+    to the target (`via`), so `$stdout.puts` reaches it, and `orig =
+    $stdout; …; $stdout = orig` restores exactly orig's object; `STDOUT`
+    itself keeps writing to the real stream, as in MRI. `$stdout.sync`,
+    `flush`, `fileno` and `tty?` stay the real stream's. Not done: a
+    `$stdout` that is not an IO at the type level (reading it is typed
+    `IO`, so `$stdout.string` on an assigned StringIO does not compile;
+    keep the StringIO in a local, as minitest does), `$stdin`
+    assignment, and MRI's `$stdout` as a Ractor-local. minitest gains
+    `capture_io` (a StringIO per stream, restored to STDOUT/STDERR in
+    `ensure`), `assert_output(stdout = nil, stderr = nil) { }` (a String
+    is `assert_equal`, a Regexp `assert_match`, each counted, messages
+    `In stdout.`/`In stderr.` as MRI's) and `assert_silent`, logged by
+    decision 105's oracle like the others.
+    (`testdata/test/assertion_test.rb` `test_output`.)

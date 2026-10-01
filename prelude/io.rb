@@ -57,7 +57,7 @@ module IOReadable
   end
 end
 
-# @go_type struct { fd int }
+# @go_type struct { fd int; via rbWriter }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -81,6 +81,10 @@ class IO < Object
   #: (untyped) -> Integer
   def write(x) = %x{
     s := string(rbToS(x))
+    if self.via != nil { // $stdout/$stderr read while assigned (decision 109)
+      self.via.Write(String(s))
+      return Integer(len(s))
+    }
     switch self.fd {
     case 1:
       rbWrite(s)
@@ -334,7 +338,7 @@ module Kernel
 
   #: (*untyped) -> nil
   def warn(*msgs)
-    msgs.each { |m| STDERR.puts(m) }
+    msgs.each { |m| $stderr.puts(m) }
     nil
   end
 

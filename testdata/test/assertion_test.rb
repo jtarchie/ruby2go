@@ -111,5 +111,35 @@ module AssertionTests
       assert_equal "Expected \"x\" to not respond to upcase.", failure(-> { refute_respond_to "x", :upcase })
       assert_equal 1, counted(-> { assert_respond_to [], :each })
     end
+
+    # $stdout/$stderr assignment, capture_io, assert_output and assert_silent (decision 109).
+    def test_output
+      assert_output("hi\n") { puts "hi" }
+      assert_output(nil, "e\n") { $stderr.puts "e" }
+      assert_output(/h.+!/, "\n") { print "hello!"; warn "" }
+      assert_output("\"a 1\"\n", /^w/) { p "a 1"; warn "warned" }
+      assert_silent { nil }
+      out, err = capture_io do
+        puts "out"
+        $stderr.print "err"
+      end
+      assert_equal ["out\n", "err"], [out, err]
+      assert_equal "In stdout.\nExpected: \"x\"\n  Actual: \"y\"", failure(-> { assert_output("x") { print "y" } })
+      assert_equal "In stderr.\nExpected /z/ to match \"\".", failure(-> { assert_output(nil, /z/) { nil } })
+      assert_equal 2, counted(-> { assert_output("", "") { nil } })
+      assert_equal 2, counted(-> { assert_silent { nil } })
+      sio = StringIO.new
+      $stdout = sio
+      begin
+        puts "redirected"
+        printf("%d%%", 5)
+        STDOUT.print "!"
+      ensure
+        $stdout = STDOUT
+      end
+      assert_equal "redirected\n5%", sio.string # STDOUT itself is not redirected
+      e = assert_raises(TypeError) { $stdout = 1 }
+      assert_equal "$stdout must have write method, Integer given", e.message
+    end
   end
 end

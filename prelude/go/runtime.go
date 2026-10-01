@@ -17,6 +17,17 @@ var stdoutTTY = func() bool {
 // stdoutSync is `$stdout.sync = true`: flush every write, terminal or not.
 var stdoutSync atomic.Bool
 
+// rbWriteOut is Kernel#puts/print/p's write: to $stdout's object when one is assigned (decision 109), else stdout.
+func rbWriteOut(s string) {
+	if rbRedirected.Load() {
+		if t := rbRedirectTarget(1); t != nil {
+			t.Write(String(s))
+			return
+		}
+	}
+	rbWrite(s)
+}
+
 func rbWrite(s string) {
 	stdoutMu.Lock()
 	defer stdoutMu.Unlock()
@@ -24,6 +35,64 @@ func rbWrite(s string) {
 	if stdoutTTY || stdoutSync.Load() {
 		_ = stdout.Flush()
 	}
+}
+
+// `$stdout = io` / `$stderr = io` (decision 109): Kernel's output and
+// writes through `$stdout`/`$stderr` go to the object, through its
+// `write`, until an IO on that fd is assigned back; STDOUT itself keeps
+// writing to the real stream, as in MRI. Reading `$stdout` while one is
+// assigned gives an IO bound to the object (rbStdoutIO), so `orig =
+// $stdout` restores exactly it. A program that never assigns pays one
+// atomic load per Kernel write.
+var (
+	rbRedirected atomic.Bool
+	rbRedirectMu sync.RWMutex
+	rbRedirects  [3]rbWriter
+)
+
+type rbWriter interface{ Write(any) Integer }
+
+func rbRedirectTarget(fd int) rbWriter {
+	rbRedirectMu.RLock()
+	defer rbRedirectMu.RUnlock()
+	return rbRedirects[fd]
+}
+
+func rbSetStdout(v any) any { return rbRedirect(1, v, "$stdout") }
+func rbSetStderr(v any) any { return rbRedirect(2, v, "$stderr") }
+
+func rbStdoutIO() *IO { return rbStreamIO(1, STDOUT) }
+func rbStderrIO() *IO { return rbStreamIO(2, STDERR) }
+
+func rbStreamIO(fd int, real *IO) *IO {
+	if rbRedirected.Load() {
+		if t := rbRedirectTarget(fd); t != nil {
+			return &IO{fd: fd, via: t}
+		}
+	}
+	return real
+}
+
+func rbRedirect(fd int, v any, name string) any {
+	var w rbWriter
+	switch x := rbUnbox(v).(type) {
+	case *IO:
+		switch {
+		case x.fd != fd: // STDERR as $stdout: writes go to fd 2
+			w = x
+		case x.via != nil: // an earlier $stdout, bound to its object
+			w = x.via
+		}
+	case rbWriter:
+		w = x
+	default:
+		panic(NewTypeError(Ref(String(name + " must have write method, " + rbClassName(v) + " given"))))
+	}
+	rbRedirectMu.Lock()
+	rbRedirects[fd] = w
+	rbRedirected.Store(rbRedirects[1] != nil || rbRedirects[2] != nil)
+	rbRedirectMu.Unlock()
+	return v
 }
 
 // rbFlushIfTTY keeps a terminal's stdout ahead of stderr; on a pipe MRI leaves it buffered.

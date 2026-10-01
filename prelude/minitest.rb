@@ -877,6 +877,57 @@ module Minitest
       __assert(exp.equal?(act), m)
     end
 
+    # Captures what the block writes to $stdout and $stderr (decision 109).
+    #: () { () -> void } -> [String, String]
+    def capture_io
+      captured_stdout = StringIO.new
+      captured_stderr = StringIO.new
+      $stdout = captured_stdout
+      $stderr = captured_stderr
+      begin
+        yield
+      ensure
+        $stdout = STDOUT
+        $stderr = STDERR
+      end
+      [captured_stdout.string, captured_stderr.string]
+    end
+
+    # Each expectation is a String (assert_equal) or a Regexp (assert_match); nil leaves that stream unchecked.
+    #: (?untyped, ?untyped) { () -> void } -> bool
+    def assert_output(stdout = nil, stderr = nil, &blk)
+      __mt_trace("assert_output", stdout, stderr)
+      out, err = capture_io(&blk)
+      y = __mt_output(stderr, err, "In stderr") if stderr
+      x = __mt_output(stdout, out, "In stdout") if stdout
+      (!stdout || x) && (!stderr || y)
+    rescue Minitest::Assertion => e
+      raise e
+    rescue StandardError => e
+      raise UnexpectedError.new(e)
+    end
+
+    #: () { () -> void } -> bool
+    def assert_silent(&blk)
+      __mt_trace("assert_silent")
+      out, err = capture_io(&blk)
+      y = __mt_output("", err, "In stderr")
+      x = __mt_output("", out, "In stdout")
+      x && y
+    end
+
+    # port: assert_output's `send out_msg, ...`: assert_match for a Regexp, assert_equal otherwise, neither logged.
+    #: (untyped, String, String) -> bool
+    def __mt_output(exp, act, where)
+      if exp.is_a?(Regexp)
+        self.assertions += 1 # assert_match's assert_respond_to(matcher, :=~)
+        m = message(where, ".", -> { "Expected #{mu_pp(exp)} to match #{mu_pp(act)}" })
+        return __assert(__mt_match(exp, act), m)
+      end
+      m = message(where, nil, -> { diff(exp, act) })
+      __assert(exp == act, m)
+    end
+
     #: (Exception, String) -> String
     def exception_details(e, msg)
       [

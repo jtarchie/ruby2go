@@ -135,7 +135,7 @@ module Kernel
   end
 
   #: (String) -> nil
-  def __write(s) = %x{ rbWrite(string(s)) }
+  def __write(s) = %x{ rbWriteOut(string(s)) }
 
   #: () -> String
   def __class_name = %x{ String(rbClassName(self)) }
