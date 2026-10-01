@@ -35,12 +35,14 @@ type pruner struct {
 	named       map[*ast.InterfaceType]bool
 	stubs       map[*ast.FuncDecl]bool
 	pending     map[*ast.CaseClause][]string // type-switch cases waiting for their declared type names to be kept
+	lazy        map[string]bool              // prelude constants: main's assignment to one waits for something else to name it
+	deferred    map[ast.Stmt]string          // those assignments, by constant
 	queue       []ast.Node
 }
 
 // pruneDecls drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps.
-func pruneDecls(f *ast.File) {
-	p := &pruner{byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
+func pruneDecls(f *ast.File, lazy map[string]bool) {
+	p := &pruner{lazy: lazy, deferred: map[ast.Stmt]string{}, byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}}
 	for n := range stdMethodNames {
 		p.methodNames[n] = true
 	}
@@ -55,6 +57,12 @@ func pruneDecls(f *ast.File) {
 			n := p.queue[len(p.queue)-1]
 			p.queue = p.queue[:len(p.queue)-1]
 			ast.Inspect(n, p.visit)
+		}
+		for st, name := range p.deferred {
+			if p.names[name] {
+				delete(p.deferred, st)
+				p.queue = append(p.queue, st)
+			}
 		}
 		for cc, names := range p.pending {
 			if !slices.ContainsFunc(names, func(n string) bool { return !p.names[n] }) {
@@ -92,7 +100,17 @@ func (p *pruner) index(d ast.Decl) {
 		switch {
 		case d.Recv != nil:
 			p.methods = append(p.methods, pruneMethod{recvName(d.Recv.List[0].Type), d, isGenericForwarder(d)})
-		case d.Name.Name == "main" || d.Name.Name == "init":
+		case d.Name.Name == "main":
+			p.kept[d] = true
+			p.queue = append(p.queue, d.Type)
+			for _, st := range d.Body.List {
+				if name := p.lazyConst(st); name != "" {
+					p.deferred[st] = name
+				} else {
+					p.queue = append(p.queue, st)
+				}
+			}
+		case d.Name.Name == "init":
 			p.roots = append(p.roots, d)
 		default:
 			p.byName[d.Name.Name] = append(p.byName[d.Name.Name], d)
@@ -122,6 +140,18 @@ func (p *pruner) indexSpec(d *ast.GenDecl, s ast.Spec) {
 			p.byName[n.Name] = append(p.byName[n.Name], s)
 		}
 	}
+}
+
+// lazyConst is the prelude constant st assigns, or "": an unused one's initializer (an allocation, never a side effect) need not run, and what it alone reaches goes too.
+func (p *pruner) lazyConst(st ast.Stmt) string {
+	as, ok := st.(*ast.AssignStmt)
+	if !ok || as.Tok != token.ASSIGN || len(as.Lhs) != 1 {
+		return ""
+	}
+	if id, ok := as.Lhs[0].(*ast.Ident); ok && p.lazy[id.Name] {
+		return id.Name
+	}
+	return ""
 }
 
 func (p *pruner) keep(n ast.Node) {
@@ -237,12 +267,25 @@ func (p *pruner) dropDeadCases(ts *ast.TypeSwitchStmt) {
 	}
 	if len(ts.Body.List) == 0 {
 		ts.Body.Rbrace = ts.Body.Lbrace + 1
-		if as, ok := ts.Assign.(*ast.AssignStmt); ok {
-			ts.Assign = &ast.ExprStmt{X: as.Rhs[0]}
-		}
-		return
+	} else {
+		ts.Body.Rbrace = ts.Body.List[len(ts.Body.List)-1].End()
 	}
-	ts.Body.Rbrace = ts.Body.List[len(ts.Body.List)-1].End()
+	// `x :=` with no surviving case that reads x would be "declared and not used"
+	if as, ok := ts.Assign.(*ast.AssignStmt); ok && !slices.ContainsFunc(ts.Body.List, func(st ast.Stmt) bool { return mentions(st, as.Lhs[0].(*ast.Ident).Name) }) {
+		ts.Assign = &ast.ExprStmt{X: as.Rhs[0]}
+	}
+}
+
+// mentions reports whether n uses the identifier name anywhere.
+func mentions(n ast.Node, name string) bool {
+	found := false
+	ast.Inspect(n, func(x ast.Node) bool {
+		if id, ok := x.(*ast.Ident); ok && id.Name == name {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // caseTypeNames lists the declared names a type-switch case's types use that kept code has not named yet.
@@ -268,6 +311,20 @@ func (p *pruner) sweep(f *ast.File) {
 			}
 			return true
 		})
+	}
+	var dead [][2]token.Pos // main's unreached constant assignments, each with the //line before it
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Name.Name == "main" {
+			prev := fd.Body.Lbrace + 1
+			fd.Body.List = slices.DeleteFunc(fd.Body.List, func(st ast.Stmt) bool {
+				_, drop := p.deferred[st]
+				if drop {
+					dead = append(dead, [2]token.Pos{prev, st.End()})
+				}
+				prev = st.End()
+				return drop
+			})
+		}
 	}
 	var dropped [][2]token.Pos // deleted declarations: their comments go
 	f.Decls = slices.DeleteFunc(f.Decls, func(d ast.Decl) bool {
@@ -316,6 +373,8 @@ func (p *pruner) sweep(f *ast.File) {
 	}
 	f.Comments = slices.DeleteFunc(f.Comments, func(c *ast.CommentGroup) bool {
 		switch {
+		case within(c, dead):
+			return true
 		case within(c, spans), c.Pos() < f.Name.End(): // inside a kept declaration, or the header above the package clause
 			return false
 		case within(c, dropped):

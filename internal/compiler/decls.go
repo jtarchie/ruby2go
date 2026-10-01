@@ -349,11 +349,19 @@ func (c *Compiler) publicEntries(cls *Class) []entry {
 	return out
 }
 
+// userTypeLine maps a user class's struct or module's constraint to its `class`/`module` line, so a Go error in it points at Ruby and `rb2go web` can tell the type, and what it names, from the prelude's.
+func (c *Compiler) userTypeLine(cls *Class) {
+	if cls.File != nil && !cls.File.prelude && cls.metaOf == nil {
+		c.lineDirective(cls.File, cls.Line)
+	}
+}
+
 func (c *Compiler) emitModuleInterface(mod *Class) {
 	tps := ""
 	if len(mod.TypeParams) > 0 {
 		tps = ", " + strings.Join(mod.TypeParams, ", ") + " comparable"
 	}
+	c.userTypeLine(mod)
 	c.w("type %s_Self[Self any%s] interface {\n", mod.Name, tps)
 	// Constraint = what the module's bodies call on self (docs/design.md).
 	called := c.selfCalls(mod)
@@ -517,10 +525,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	if len(cls.Subclasses) > 0 && !cls.universal {
 		c.w("type %s = %s\n\n", superField(cls), cls.Name)
 	}
-	// a user class's struct maps to its `class` line, so a Go error in it points at Ruby and `rb2go web` can tell it from the prelude's
-	if cls.File != nil && !cls.File.prelude && cls.metaOf == nil {
-		c.lineDirective(cls.File, cls.Line)
-	}
+	c.userTypeLine(cls)
 	c.w("type %s struct {\n", cls.Name)
 	if cls.Super != nil && !cls.Super.universal {
 		c.w("\t%s\n", superField(cls.Super))

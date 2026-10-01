@@ -30,14 +30,14 @@ var stdImports = map[string]string{
 }
 
 // formatGo prunes src to what main reaches (RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it.
-func formatGo(src []byte) ([]byte, error) {
+func formatGo(src []byte, lazy map[string]bool) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("gofmt: %w", err)
 	}
 	if os.Getenv("RB2GO_NO_PRUNE") == "" {
-		pruneDecls(f)
+		pruneDecls(f, lazy)
 	}
 	used := map[string]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {

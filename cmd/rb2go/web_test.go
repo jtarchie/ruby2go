@@ -38,10 +38,10 @@ func TestWeb(t *testing.T) {
 	if c.Error != "" || !strings.Contains(c.Go, "\npackage main\n") {
 		t.Errorf("compile: error %q, go %.200q", c.Error, c.Go)
 	}
-	// the prelude-hidden view: the class's struct and method, the top-level statement, none of the prelude
+	// the prelude-hidden view: the class's struct, method and generated plumbing, the top-level statement, none of the prelude
 	c = compileResult{}
 	decode(do("POST", "/compile", `{"src":"class Pt\n  #: (Integer x) -> void\n  def initialize(x) = @x = x\nend\nputs Pt.new(3).inspect\n"}`, nil), &c)
-	for _, want := range []string{"//line main.rb:1\ntype Pt struct {", "//line main.rb:3\nfunc Pt_Initialize[", "\t// … prelude setup\n//line main.rb:5\n"} {
+	for _, want := range []string{"//line main.rb:1\ntype Pt struct {", "//line main.rb:3\nfunc Pt_Initialize[", "func main() {\n//line main.rb:5\n", "type PtI interface {", "func NewPt(x Integer) *Pt {"} {
 		if !strings.Contains(c.User, want) {
 			t.Errorf("user view lacks %q:\n%s", want, c.User)
 		}

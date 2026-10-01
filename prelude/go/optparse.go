@@ -329,26 +329,12 @@ func (sw *rbOptSwitch) rbConvert(val *string, shown string) any {
 // rbOptFire runs a switch: its block, and the into: hash.
 func (sw *rbOptSwitch) rbOptFire(v any, into any) {
 	if into != nil {
-		key := ""
-		if len(sw.names) > 0 {
-			key = sw.names[0]
-		} else if len(sw.short) > 0 {
-			key = sw.short[0][1:]
-		}
-		iv := v
-		switch x := v.(type) { // an absent optional argument stores nil
-		case *String:
-			iv = Opt(x)
-		case *Integer:
-			iv = Opt(x)
-		case *Float:
-			iv = Opt(x)
-		}
+		// key and value are computed inside the cases: a program with no Hash type prunes them (decision 49), and locals only they read would be unused
 		switch h := rbUnbox(into).(type) {
 		case *Hash[Symbol, any]:
-			Hash_Op_idxSet(h, Symbol(key), iv)
+			Hash_Op_idxSet(h, sw.rbOptKey(), rbOptStored(v))
 		case *Hash[any, any]:
-			Hash_Op_idxSet[any, any](h, Symbol(key), iv)
+			Hash_Op_idxSet[any, any](h, sw.rbOptKey(), rbOptStored(v))
 		default:
 			panic(NewTypeError(Ref(String("into: needs a Hash[Symbol, untyped]"))))
 		}
@@ -356,6 +342,30 @@ func (sw *rbOptSwitch) rbOptFire(v any, into any) {
 	if sw.call != nil {
 		sw.call(v)
 	}
+}
+
+// rbOptKey is the into: key for a switch: its first long name, else its first short letter.
+func (sw *rbOptSwitch) rbOptKey() Symbol {
+	if len(sw.names) > 0 {
+		return Symbol(sw.names[0])
+	}
+	if len(sw.short) > 0 {
+		return Symbol(sw.short[0][1:])
+	}
+	return ""
+}
+
+// rbOptStored is the value into: stores; an absent optional argument stores nil.
+func rbOptStored(v any) any {
+	switch x := v.(type) {
+	case *String:
+		return Opt(x)
+	case *Integer:
+		return Opt(x)
+	case *Float:
+		return Opt(x)
+	}
+	return v
 }
 
 // rbParse is OptionParser#parse in permute mode (MRI's default): switches

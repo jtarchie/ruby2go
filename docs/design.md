@@ -1275,6 +1275,16 @@ resolve; anything not listed is still open.
     variable's type). `puts 1` is 2.7k lines.
     *Amended:* a stub survives only for a name an interface literal
     asserts or a `_` marker; named interfaces drop the rest (decision 89).
+    *Amended:* a prelude constant's assignment in `main` names it weakly,
+    like a type-switch case: it runs only if something else names the
+    constant, so an unused library's constants (`Logger::LEVELS`,
+    `Minitest::HELP`, `Zlib::BEST_SPEED`, …) no longer keep their
+    initializers and what those reach (`Minitest::Undefined`, `Hash`
+    setters). Prelude initializers are allocations, so skipping one is
+    unobservable; main.rb's constants stay strong, since a user's
+    initializer may print or read input. The compiler hands the pruner the
+    prelude constants' Go names. `05_word_count` went from 3.5k lines to
+    2.4k, `puts 1` to 1.4k.
 
 50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
     or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
@@ -2513,10 +2523,12 @@ resolve; anything not listed is still open.
     shows only the user's code unless "Show prelude" is ticked: the
     top-level decls whose last preceding `//line` is the user file, and
     of the top-level function the part from its first such directive
-    (prelude constant setup runs before it). For that, a user class's
-    struct now carries a `//line` to its `class` line (it had none, so a
-    Go error in it pointed at the prelude). Forwarders, interfaces and
-    metaclass plumbing stay hidden. Both panes are highlighted by a
+    (prelude constant setup runs before it), plus the plumbing the
+    compiler generates for the user's types, found by name from those
+    types (`X`, `XI`, `NewX`, `X_…` incl. the metaclass, `super_X_`, and
+    methods on them). For that, a user class's struct and a user module's
+    `M_Self` constraint carry a `//line` to their `class`/`module` line
+    (they had none, so a Go error in one pointed at the prelude). Both panes are highlighted by a
     vendored highlight.js (`cmd/rb2go/highlight.min.js`, served from the
     binary so the page works offline); the Ruby editor is a transparent
     textarea over a highlighted mirror. Not done: a hosted wasm build (needs the

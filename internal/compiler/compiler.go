@@ -147,7 +147,13 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[
 	c.emitProgram()
 	*warnings = c.Warnings
 	src := []byte(c.out.String())
-	formatted, ferr := formatGo(src)
+	lazy := map[string]bool{}
+	for _, k := range c.constList {
+		if k.File.prelude {
+			lazy[k.GoName] = true
+		}
+	}
+	formatted, ferr := formatGo(src, lazy)
 	if ferr != nil {
 		// Keep the raw output around for debugging.
 		tmp := filepath.Join(os.TempDir(), "rb2go-bad-output.go")
