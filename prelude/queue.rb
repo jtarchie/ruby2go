@@ -4,25 +4,33 @@ class ThreadError < StandardError; end
 
 class ClosedQueueError < StopIteration; end
 
-# sync.Mutex plus a flag for locked?; unlike MRI, relocking from the owning thread deadlocks instead of raising.
-# @go_type struct { mu sync.Mutex; held atomic.Bool }
+# sync.Mutex plus the owning goroutine's id (decision 104), for owned?, MRI's recursive-locking error and the non-owner unlock error.
+# ponytail: a dead thread's mutexes stay locked (MRI releases them); the upgrade is a per-Thread set of held mutexes, unlocked in rbThreadRun's exit defer.
+# @go_type struct { mu sync.Mutex; owner atomic.Int64 }
 class Mutex < Object
   #: () -> Mutex
   def self.new = %x{ return &Mutex{} }
 
   #: () -> self
   def lock = %x{
+    id := rbGoID()
+    if self.owner.Load() == id {
+      panic(NewThreadError(Ref(String("deadlock; recursive locking"))))
+    }
     self.mu.Lock()
-    self.held.Store(true)
+    self.owner.Store(id)
     return self
   }
 
   #: () -> self
   def unlock = %x{
-    if !self.held.Load() {
+    switch owner := self.owner.Load(); {
+    case owner == 0:
       panic(NewThreadError(Ref(String("Attempt to unlock a mutex which is not locked"))))
+    case owner != rbGoID():
+      panic(NewThreadError(Ref(String("Attempt to unlock a mutex which is locked by another thread/fiber"))))
     }
-    self.held.Store(false)
+    self.owner.Store(0)
     self.mu.Unlock()
     return self
   }
@@ -32,12 +40,15 @@ class Mutex < Object
     if !self.mu.TryLock() {
       return false
     }
-    self.held.Store(true)
+    self.owner.Store(rbGoID())
     return true
   }
 
   #: () -> bool
-  def locked? = %x{ Boolean(self.held.Load()) }
+  def locked? = %x{ Boolean(self.owner.Load() != 0) }
+
+  #: () -> bool
+  def owned? = %x{ Boolean(self.owner.Load() == rbGoID()) }
 
   # @rbs [X] () { () -> X } -> X
   def synchronize

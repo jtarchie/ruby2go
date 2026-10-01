@@ -8,23 +8,16 @@ Ractor.new { x + y }
 # error: main.rb:3: can not isolate a Proc because it accesses outer variables (total).
 total = 0
 Ractor.new { [1, 2].each { |v| total += v } }
--- receive_in_method.rb --
-# error: main.rb:2: Ractor.receive in a method: rb2go cannot tell which ractor is running (decision 103)
-def helper = Ractor.receive
-Ractor.new { helper }
--- current_in_method.rb --
-# error: main.rb:3: Ractor.current in a method: rb2go cannot tell which ractor is running (decision 103)
-class Worker
-  def me = Ractor.current
-end
 -- proc_arg.rb --
 # error: main.rb:3: allocator undefined for Proc: a Proc cannot be passed to a Ractor
 f = ->(x) { x } #: ^(Integer) -> Integer
 Ractor.new(f) { |g| g.call(1) }
--- main_q_in_method.rb --
-# error: main.rb:2: Ractor.main? in a method: rb2go cannot tell which ractor is running (decision 103)
-def on_main? = Ractor.main?
-puts on_main?
 -- no_block.rb --
 # error: main.rb:2: Ractor.new needs a literal block
 Ractor.new
+-- name_with_positional.rb --
+# error: main.rb:2: Ractor.new: name: together with positional arguments is not supported
+Ractor.new(1, name: "w") { |x| x }
+-- too_many_args.rb --
+# error: main.rb:2: Ractor.new takes at most 3 arguments
+Ractor.new(1, 2, 3, 4) { |a, b, c, d| a + b + c + d }

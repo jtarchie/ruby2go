@@ -2,73 +2,28 @@ package compiler
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
 // Ractor (decision 103). Ractor.new's block is checked for isolation here,
-// at compile time, where MRI checks at run time, and is compiled with a
-// hidden Go local naming its ractor, which Ractor.receive/current/main?
-// inside it resolve to lexically: goroutines have no identity (decision 45).
+// at compile time, where MRI checks at run time; the call itself is an
+// ordinary prelude call (Ractor.new / __new_N by arity).
 
-// genRactorCall compiles the Ractor class methods the compiler answers
-// itself; ok is false for the rest (main, count, select).
+// genRactorCall runs the compile-time checks on Ractor.new and routes a
+// `name:` keyword to __new_named (a Hash argument is a message); otherwise
+// ok is false and the call compiles as any other.
 func (f *fctx) genRactorCall(n *parser.CallNode, cls *Class) (expr, bool) {
-	switch n.Name {
-	case "new":
-		return f.genRactorNew(n, cls), true
-	case "receive", "recv":
-		return f.genMethodCall(n, f.currentRactor(n), "__receive", nil, nil), true
-	case "current":
-		return f.currentRactor(n), true
-	case "main?":
-		f.currentRactor(n) // the same lexical rule
-		return expr{code: "Boolean(" + strconv.FormatBool(f.ractor == "") + ")", typ: f.cls("Boolean")}, true
+	if n.Name != "new" {
+		return expr{}, false
 	}
-	return expr{}, false
-}
-
-// currentRactor is the ractor the code at n runs in: the enclosing
-// Ractor.new block's, or main at the top level. A method body cannot tell,
-// so it is a compile error there.
-func (f *fctx) currentRactor(n *parser.CallNode) expr {
-	t := f.cls("Ractor")
-	if f.ractor != "" {
-		return expr{code: f.ractor, typ: t}
-	}
-	if f.m == nil && f.owner == nil {
-		return expr{code: "rbMainRactor", typ: t}
-	}
-	f.errorf(n, "Ractor.%s in a method: rb2go cannot tell which ractor is running (decision 103); call it in the Ractor.new block or at the top level", n.Name)
-	return expr{}
-}
-
-// genRactorNew emits `tmp := rbNewRactor()` and calls Ractor.__start*(tmp,
-// args...) { block }, the block compiled with f.ractor = tmp.
-func (f *fctx) genRactorNew(n *parser.CallNode, cls *Class) expr {
 	bn, ok := n.Block.(*parser.BlockNode)
 	if !ok {
 		f.errorf(n, "Ractor.new needs a literal block")
 	}
 	f.checkIsolated(bn)
 	args := callArgs(n)
-	name := "__start"
-	var kw *parser.KeywordHashNode
-	if len(args) > 0 {
-		kw, _ = args[len(args)-1].(*parser.KeywordHashNode)
-	}
-	switch {
-	case kw != nil && len(args) == 1:
-		name = "__start_named"
-	case kw != nil:
-		f.errorf(kw, "Ractor.new: name: together with positional arguments is not supported")
-	case len(args) > 3:
-		f.errorf(n, "Ractor.new takes at most 3 arguments")
-	case len(args) > 0:
-		name = "__start_" + strconv.Itoa(len(args)+1)
-	}
 	for _, a := range args {
 		var e expr
 		f.probe(func() { e = f.genExpr(a, nil) })
@@ -76,14 +31,20 @@ func (f *fctx) genRactorNew(n *parser.CallNode, cls *Class) expr {
 			f.errorf(a, "allocator undefined for Proc: a Proc cannot be passed to a Ractor")
 		}
 	}
-	tmp := f.newTmp()
-	f.emit("%s := rbNewRactor()", tmp)
-	saved := f.ractor
-	f.ractor = tmp
-	defer func() { f.ractor = saved }()
-	recv := expr{code: classVar(cls), typ: TClass{C: cls.meta}, classObj: true}
-	nodes := append([]parser.Node{&exprNode{Node: n, e: expr{code: tmp, typ: TClass{C: cls}}}}, args...)
-	return f.genMethodCall(n, recv, name, nodes, n.Block)
+	var kw *parser.KeywordHashNode
+	if len(args) > 0 {
+		kw, _ = args[len(args)-1].(*parser.KeywordHashNode)
+	}
+	switch {
+	case kw != nil && len(args) == 1:
+		recv := expr{code: classVar(cls), typ: TClass{C: cls.meta}, classObj: true}
+		return f.genMethodCall(n, recv, "__new_named", args, n.Block), true
+	case kw != nil:
+		f.errorf(kw, "Ractor.new: name: together with positional arguments is not supported")
+	case len(args) > 3:
+		f.errorf(n, "Ractor.new takes at most 3 arguments")
+	}
+	return expr{}, false
 }
 
 // checkIsolated rejects what MRI's Proc isolation and IsolationError reject

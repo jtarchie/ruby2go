@@ -175,9 +175,6 @@ The roadmap for the rest of the standard library is issue
   `h[k] = (h[k] || 0) + 1`, or `fetch`. `Hash#[]` returns `V?`.
 - **`return`/`break` inside a closure block** is a compile error unless the
   block can be inlined as a loop (e.g. `each` on an `Array`).
-- **No goroutine identity.** `Thread.current`, `Mutex#owned?` and
-  `Ractor.receive`/`Ractor.current` inside a method body are unsupported;
-  in a `Ractor.new` block or at the top level they resolve lexically.
 - **No pattern matching (`case`/`in`) and no keyword parameters** on
   methods you define.
 - **Overloaded RBS signatures** (`(Integer) -> T | () -> T`) are not

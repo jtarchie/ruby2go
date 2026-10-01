@@ -15,8 +15,17 @@ class Thread < Object
   # @rbs [A, B, C] (A, B, C) { (A, B, C) -> untyped } -> Thread
   def self.__new_3(a, b, c) = %x{ return rbThreadRun(func() any { return blk(a, b, c) }) }
 
+  # The Thread this goroutine runs (decision 104); main for the main goroutine and a ractor's own, as MRI's per-ractor main thread.
+  #: () -> Thread
+  def self.current = %x{ return rbCurrentThread() }
+
+  #: () -> Thread
+  def self.main = %x{ return rbMainThread }
+
+  # Joining yourself is MRI's ThreadError, where a bare channel read would wait forever.
   #: () -> self
   def join = %x{
+    self.notSelf()
     <-self.done
     if self.err != nil {
       panic(self.err)
@@ -27,6 +36,7 @@ class Thread < Object
   # nil on timeout, self once the thread finishes within it.
   #: (Float) -> Thread?
   def __join_1(timeout) = %x{
+    self.notSelf()
     select {
     case <-self.done:
       if self.err != nil {
@@ -41,6 +51,7 @@ class Thread < Object
   # Blocks and re-raises like join, then answers the block's value.
   #: () -> untyped
   def value = %x{
+    self.notSelf()
     <-self.done
     if self.err != nil {
       panic(self.err)

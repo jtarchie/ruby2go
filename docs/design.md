@@ -1186,7 +1186,12 @@ resolve; anything not listed is still open.
     goroutines currently parked in a blocking `push` or `pop`, via an
     `atomic.Int64` incremented before `cond.Wait()` and decremented after.
     `Thread.current`, thread-locals and `Monitor`/`MonitorMixin` remain
-    unsupported for the same reason as `owned?`.)*
+    unsupported for the same reason as `owned?`.)* *(Amended by decision
+    104: goroutines now have an identity, so `Thread.current`,
+    `Thread.main`, `Mutex#owned?`, MRI's `ThreadError: deadlock; recursive
+    locking` on relocking and `Attempt to unlock a mutex which is locked
+    by another thread/fiber` from a non-owner all work. Thread-locals, `status` `"sleep"`
+    and `Monitor` are still not done.)*
 46. `Random` is MRI's MT19937 seeded as MRI seeds it (one 32-bit word
     through `init_genrand`, more through `init_by_array`), and `rand(n)`,
     `rand`, `rand(a..b)`, `rand(Float)`, `bytes`, `Array#shuffle`/`shuffle!`
@@ -2615,15 +2620,20 @@ resolve; anything not listed is still open.
     mid-way only costs time).
 103. `Ractor` (Ruby 4.0's API: `Ractor::Port`, `value`/`join`, no
     `yield`/`take`) is a goroutine with a port, in `prelude/ractor.rb` and
-    `prelude/go/ractor.go`; `Ractor::Port` is an unbounded queue, every
-    port sharing one lock and condition so `Ractor.select(*ports)` can wait
-    on several and answer `[port, message]`. Not a channel: a port never
+    `prelude/go/ractor.go`; `Ractor::Port` is an unbounded queue with a
+    lock per port. A blocked `receive` or `Ractor.select(*ports)` parks on
+    its own one-slot channel (`rbWaiter`), registered on every port it
+    watches, so a `send` wakes exactly one receiver, as a channel would;
+    `select` answers `[port, message]`. Not a channel outright: a port never
     blocks the sender, `select` over N ports is dynamic (`reflect.Select`
     is out, decision 82), and `closed?`/`ClosedError` need a flag a channel
-    doesn't expose, the same reasons as decision 45's `Queue`. A ponytail:
-    one shared condition means every `send` wakes every parked receiver;
-    the upgrade is a lock per port with a one-slot channel per waiter
-    (`select` registers its channel on each port), as `rbCondVar` does. MRI checks most of Ractor's
+    doesn't expose, the same reasons as decision 45's `Queue`. Checking
+    for a message and parking happen under one lock (`park`), which is
+    what rules out a lost wake-up; a select that finishes through one port
+    leaves the others (`leave`) and passes on a wake that may have been
+    spent on it. Only the creating ractor may `receive` from a port
+    (`Ractor::Error: only allowed from the creator Ractor of this port`),
+    checked through decision 104. MRI checks most of Ractor's
     rules at run time; rb2go checks them at compile time
     (`internal/compiler/ractor.go`):
     - **Isolation.** A `Ractor.new` block that reads or writes an outer
@@ -2649,17 +2659,18 @@ resolve; anything not listed is still open.
       is a plain send: the sender keeps a usable object where MRI leaves a
       `MovedObject`, since every method of a typed Go value cannot be
       proxied.
-    - **Which ractor.** Goroutines have no identity (decision 45), so
-      `Ractor.receive`/`recv`, `Ractor.current` and `Ractor.main?` resolve
-      lexically: `Ractor.new` compiles to a hidden `tmp := rbNewRactor()`
-      and `Ractor.__start*(tmp, args...) { block }`, with the block
-      compiled under `f.ractor = tmp`; at the top level they mean
-      `rbMainRactor`; in a method body they are a compile error. MRI
-      resolves them at run time, so `def helper = Ractor.receive` works
-      there and not here. Port ownership (MRI: `Port#receive` only from
-      the creator) is not checked for the same reason. The upgrade path, if
-      it bites, is a goroutine id parsed from `runtime.Stack`, which would
-      also unlock `Thread.current` and `Mutex#owned?`.
+    - **Which ractor.** `Ractor.current`, `Ractor.receive`/`recv` and
+      `Ractor.main?` are run-time lookups by goroutine id (decision 104):
+      `start` registers its goroutine in `rbRactorOf`, `rbThreadRun`
+      registers a thread under the ractor that started it, and anything
+      unregistered is main. So `def helper = Ractor.receive` works as in
+      MRI, from a helper method or from a thread inside the ractor.
+      `Ractor.new` is an ordinary prelude call (`new`/`__new_1..3` by
+      arity; a `name:` keyword literal is routed to `__new_named` by the
+      compiler, since a Hash argument is a message); only the isolation
+      check is otherwise the compiler's. *(The first cut resolved these lexically, with a hidden
+      local per `Ractor.new` and a compile error in method bodies; it was
+      replaced the same day.)*
     - **Errors.** The block's exception is kept and reported on stderr like
       a thread's (`rbThreadAbort`, shared with `rbThreadRun`); `value` and
       `join` raise `Ractor::RemoteError` ("thrown by remote Ractor.") with
@@ -2681,3 +2692,32 @@ resolve; anything not listed is still open.
       `Ractor[]`/`store_if_absent`, `shareable_proc`, `monitor`,
       `receive_if`. ([example 77](../examples/77_ractor/main.rb),
       `testdata/test/ractor_test.rb`, `testdata/errors/ractor.txtar`.)
+104. Goroutines have an identity after all: `rbGoID()` parses the running
+    goroutine's id from the first line of `runtime.Stack(buf, false)`
+    (`goroutine N [running]:`), about a microsecond, into a 64-byte buffer.
+    The format is not a documented API, but it has not changed in a
+    decade and a wrong parse gives id 0, which only degrades to the old
+    "unknown" behaviour (main). Registries are `sync.Map`s from id to
+    `*Thread` (`rbThreadOf`, written by `rbThreadRun`) and to `*Ractor`
+    (`rbRactorOf`, written by `Ractor#start` and inherited by the threads
+    a ractor starts), each entry deleted when its goroutine ends. Only
+    blocking or locking paths pay for the lookup: `Thread.current`,
+    `Ractor.current`/`receive`/`main?`, `Port#receive`'s owner check,
+    `Mutex#lock`/`unlock`/`try_lock`/`owned?` (the Mutex now stores the
+    owner's id instead of a held flag, so relocking raises
+    `ThreadError: deadlock; recursive locking` and a non-owner's unlock
+    `Attempt to unlock a mutex which is locked by another thread/fiber`,
+    both MRI's messages, where it used to deadlock; MRI also releases a
+    dead thread's mutexes, which is not done). `Thread.current` on a goroutine no Thread
+    started (main's, or a ractor's own) is `Thread.main`, which is what
+    MRI answers inside a ractor too (each ractor has its own main thread).
+    This supersedes the "goroutines have no identity" limits in decisions
+    26, 45 and 103. Not done: thread-locals (`Thread#[]`), `status`
+    `"sleep"`, `Monitor`, the per-thread inspect set of decision 26.
+    (`testdata/test/stdlib_test.rb` `test_thread_identity`,
+    `testdata/test/ractor_test.rb` `test_receive_in_method_and_thread`,
+    `test_port_owner`.) Identity also gives `Thread#join`/`value` on the
+    current thread MRI's `ThreadError: Target thread must not be current
+    thread` instead of a goroutine waiting on itself, and `Ractor.select`
+    over a port another ractor created raises `ClosedError`, as MRI's
+    select does (`Port#receive` there is `Ractor::Error`, above).

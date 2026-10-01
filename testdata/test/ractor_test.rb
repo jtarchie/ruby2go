@@ -137,13 +137,39 @@ module RactorTests
       assert_equal "The port was already closed", e.message
     end
 
-    # Ractor.main?/current/receive resolve lexically, so inside a method (a test is one) only the Ractor.new block form is available (decision 103).
     def test_main
+      assert_equal true, Ractor.main?
       assert_equal false, Ractor.new { Ractor.main? }.value
+      assert_same Ractor.main, Ractor.current
       me = Ractor.new { Ractor.current }
       assert_same me, me.value
       Ractor.new(Ractor.main) { |m| m << :hello }
-      assert_equal :hello, Ractor.main.default_port.receive
+      assert_equal :hello, Ractor.receive
+    end
+
+    # Ractor.receive is resolved at run time (decision 104): from a helper method, and from a thread the ractor started.
+    def test_receive_in_method_and_thread
+      doubler = Ractor.new { ractor_helper_receive * 2 }
+      doubler << 21
+      assert_equal 42, doubler.value
+      via_thread = Ractor.new { Thread.new { Ractor.receive }.value }
+      via_thread << :via_thread
+      assert_equal :via_thread, via_thread.value
+      assert_equal true, Ractor.new { Thread.current.equal?(Thread.main) }.value
+    end
+
+    def test_port_owner
+      port = Ractor::Port.new
+      e = assert_raises(Ractor::RemoteError) { Ractor.new(port) { |pt| pt.receive }.value }
+      cause = e.cause
+      refute_nil cause
+      assert_equal Ractor::Error, cause.class
+      assert_equal "only allowed from the creator Ractor of this port", cause.message if cause
+      e = assert_raises(Ractor::RemoteError) { Ractor.new(port) { |pt| Ractor.select(pt) }.value }
+      cause = e.cause
+      refute_nil cause
+      assert_equal Ractor::ClosedError, cause.class
+      assert_equal "The port was already closed", cause.message if cause
     end
 
     def test_remote_error
@@ -182,3 +208,9 @@ end
 
 #: () -> void
 def ractor_noop; end
+
+#: () -> Integer
+def ractor_helper_receive
+  v = Ractor.receive #: Integer
+  v
+end

@@ -3,8 +3,8 @@
 # Ractor (decision 103): an isolated goroutine with a port. Ractor.new's
 # block is checked for isolation at compile time (internal/compiler/ractor.go),
 # messages and constructor arguments are deep-copied (rbRactorCopy), and
-# Ractor.receive/current/main? resolve lexically to the enclosing block's
-# ractor, or to main at the top level.
+# Ractor.current is the ractor registered for the running goroutine
+# (rbCurrentRactor, decision 104), main when none.
 
 # @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int }
 class Ractor < Object
@@ -27,11 +27,11 @@ class Ractor < Object
     def ractor = @ractor
   end
 
-  # An unbounded message queue; every port shares one lock so Ractor.select can wait on several.
-  # @go_type struct { q rbPort }
+  # An unbounded message queue, owned by the ractor that created it: only it may receive.
+  # @go_type struct { q rbPort; owner *Ractor }
   class Port < Object
     #: () -> Port
-    def self.new = %x{ return &Ractor_Port{} }
+    def self.new = %x{ return &Ractor_Port{owner: rbCurrentRactor()} }
 
     # The message is deep-copied first; a frozen Array/Hash is shared, as MRI shares shareable objects.
     #: (untyped) -> self
@@ -47,8 +47,9 @@ class Ractor < Object
     #: (untyped, Hash[Symbol, bool]) -> self
     def __send_2(obj, opts) = self << obj
 
+    # Ractor::Error unless called by the creating ractor, as MRI.
     #: () -> untyped
-    def receive = %x{ return self.q.receive() }
+    def receive = %x{ return self.receiveOwned() }
 
     #: () -> void
     def close = %x{ self.q.close() }
@@ -60,36 +61,51 @@ class Ractor < Object
     def inspect = %x{ return String("#<Ractor::Port>") }
   end
 
-  # Ractor.new compiles to a hidden `rbNewRactor()` local plus one of these, by argument count; arguments are copied into the block.
-  #: (Ractor) { () -> untyped } -> Ractor
-  def self.__start(r) = %x{ return r.start(func() any { return blk() }) }
+  # Arguments are deep-copied into the block (Thread.new's arity overloads, decision 45).
+  #: () { () -> untyped } -> Ractor
+  def self.new = %x{ return rbNewRactor().start(func() any { return blk() }) }
 
-  # @rbs [A] (Ractor, A) { (A) -> untyped } -> Ractor
-  def self.__start_2(r, a) = %x{
+  # @rbs [A] (A) { (A) -> untyped } -> Ractor
+  def self.__new_1(a) = %x{
     a = rbCopyAs(a, map[any]any{})
-    return r.start(func() any { return blk(a) })
+    return rbNewRactor().start(func() any { return blk(a) })
   }
 
-  # @rbs [A, B] (Ractor, A, B) { (A, B) -> untyped } -> Ractor
-  def self.__start_3(r, a, b) = %x{
+  # @rbs [A, B] (A, B) { (A, B) -> untyped } -> Ractor
+  def self.__new_2(a, b) = %x{
     seen := map[any]any{}
     a, b = rbCopyAs(a, seen), rbCopyAs(b, seen)
-    return r.start(func() any { return blk(a, b) })
+    return rbNewRactor().start(func() any { return blk(a, b) })
   }
 
-  # @rbs [A, B, C] (Ractor, A, B, C) { (A, B, C) -> untyped } -> Ractor
-  def self.__start_4(r, a, b, c) = %x{
+  # @rbs [A, B, C] (A, B, C) { (A, B, C) -> untyped } -> Ractor
+  def self.__new_3(a, b, c) = %x{
     seen := map[any]any{}
     a, b, c = rbCopyAs(a, seen), rbCopyAs(b, seen), rbCopyAs(c, seen)
-    return r.start(func() any { return blk(a, b, c) })
+    return rbNewRactor().start(func() any { return blk(a, b, c) })
   }
 
-  # `Ractor.new(name: "w") { }`
-  #: (Ractor, Hash[Symbol, String]) { () -> untyped } -> Ractor
-  def self.__start_named(r, opts) = %x{
+  # `Ractor.new(name: "w") { }`, routed by the compiler from a keyword literal (a Hash argument is a message, `__new_1`).
+  #: (Hash[Symbol, String]) { () -> untyped } -> Ractor
+  def self.__new_named(opts) = %x{
+    r := rbNewRactor()
     r.name = Hash_Op_idx(opts, Symbol("name"))
     return r.start(func() any { return blk() })
   }
+
+  # The ractor running this goroutine (or the one that started this thread); main otherwise.
+  #: () -> Ractor
+  def self.current = %x{ return rbCurrentRactor() }
+
+  #: () -> bool
+  def self.main? = %x{ Boolean(rbCurrentRactor() == rbMainRactor) }
+
+  # Blocks for the next message on the current ractor's port.
+  #: () -> untyped
+  def self.receive = %x{ return rbCurrentRactor().port.q.receive() }
+
+  #: () -> untyped
+  def self.recv = receive
 
   #: () -> Ractor
   def self.main = %x{ return rbMainRactor }
@@ -118,10 +134,6 @@ class Ractor < Object
   # `move: true` is a plain send (see Port#__send_2).
   #: (untyped, Hash[Symbol, bool]) -> self
   def __send_2(obj, opts) = self << obj
-
-  # Ractor.receive inside this ractor's block.
-  #: () -> untyped
-  def __receive = %x{ return self.port.q.receive() }
 
   # Blocks until the block finishes; an exception there is re-raised as RemoteError with it as cause.
   #: () -> untyped

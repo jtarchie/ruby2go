@@ -3,101 +3,203 @@
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
 package prelude
 
-// rbPort is Ractor::Port's queue. Every port shares one lock and condition so rbPortSelect can wait on several at once.
-// ponytail: one condition wakes every parked receiver per send; a lock per port plus a one-slot channel per waiter (as rbCondVar) when many ractors idle on receive.
+// rbPort is Ractor::Port's queue, a lock per port; a blocked receive or select parks on its own one-slot channel (rbWaiter), so a send wakes one receiver, as a channel would, while the queue stays unbounded and `closed?` stays a flag (decision 103).
 type rbPort struct {
-	items  []any
-	closed bool
+	mu      sync.Mutex
+	items   []any
+	closed  bool
+	waiters []*rbWaiter
+}
+
+// rbWaiter is one parked receive or select; done marks a select that finished through another port, so a wake spent on it is passed on (leave).
+type rbWaiter struct {
+	ch   chan struct{}
+	done atomic.Bool
 }
 
 var (
-	rbPortMu     sync.Mutex
-	rbPortCond   = sync.NewCond(&rbPortMu)
 	rbRactorIDs  atomic.Int64 // main is #1
 	rbRactorLive atomic.Int64 // started and not yet finished, for Ractor.count
-	rbMainRactor = &Ractor{port: &Ractor_Port{}, done: make(chan struct{}), id: 1}
+	rbRactorOf   sync.Map     // goroutine id → *Ractor, for a ractor's goroutine and the threads it starts (rbThreadRun)
+	rbMainRactor = rbNewMainRactor()
 )
+
+func rbNewMainRactor() *Ractor {
+	r := &Ractor{done: make(chan struct{}), id: 1}
+	r.port = &Ractor_Port{owner: r}
+	return r
+}
+
+// rbCurrentRactor is the ractor whose goroutine (or thread) this is, main when none (decision 104).
+func rbCurrentRactor() *Ractor {
+	if r, ok := rbRactorOf.Load(rbGoID()); ok {
+		return r.(*Ractor)
+	}
+	return rbMainRactor
+}
 
 func rbPortClosed() any {
 	return NewRactor_ClosedError(Ref(String("The port was already closed")))
 }
 
 func (p *rbPort) send(x any) {
-	rbPortMu.Lock()
-	defer rbPortMu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.closed {
 		panic(rbPortClosed())
 	}
 	p.items = append(p.items, x)
-	rbPortCond.Broadcast()
+	p.wake(false)
 }
 
-// receive blocks until a message arrives; a closed, drained port raises ClosedError, as MRI's.
-func (p *rbPort) receive() any {
-	rbPortMu.Lock()
-	defer rbPortMu.Unlock()
-	for len(p.items) == 0 && !p.closed {
-		rbPortCond.Wait()
+// wake signals one parked waiter (all for close), skipping selects already done elsewhere; the one-slot send never blocks.
+func (p *rbPort) wake(all bool) {
+	for len(p.waiters) > 0 {
+		w := p.waiters[0]
+		p.waiters = p.waiters[1:]
+		if w.done.Load() {
+			continue
+		}
+		select {
+		case w.ch <- struct{}{}:
+		default:
+		}
+		if !all {
+			return
+		}
 	}
-	return p.take()
 }
 
-// take pops under the lock; the port must have a message or be closed.
-func (p *rbPort) take() any {
+// tryTake pops a message (ok) or reports the port closed and drained.
+func (p *rbPort) tryTake() (x any, ok, closed bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.items) == 0 {
-		panic(rbPortClosed())
+		return nil, false, p.closed
 	}
-	x := p.items[0]
+	x = p.items[0]
 	p.items[0] = nil
 	p.items = p.items[1:]
-	return x
+	return x, true, false
+}
+
+// park registers w under the lock unless a message or close arrived since tryTake (then the caller polls again): checking and parking in one step is what rules out a lost wake-up.
+func (p *rbPort) park(w *rbWaiter) (again bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.items) > 0 || p.closed {
+		return true
+	}
+	if !slices.Contains(p.waiters, w) {
+		p.waiters = append(p.waiters, w)
+	}
+	return false
+}
+
+// leave forgets a finished waiter; a message still queued wakes the next one, since the wake for it may have gone to w.
+func (p *rbPort) leave(w *rbWaiter) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.waiters = slices.DeleteFunc(p.waiters, func(x *rbWaiter) bool { return x == w })
+	if len(p.items) > 0 {
+		p.wake(false)
+	}
 }
 
 func (p *rbPort) close() {
-	rbPortMu.Lock()
-	defer rbPortMu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.closed = true
-	rbPortCond.Broadcast()
+	p.wake(true)
 }
 
 func (p *rbPort) isClosed() bool {
-	rbPortMu.Lock()
-	defer rbPortMu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.closed
 }
 
-// rbPortSelect answers the first port holding a message, as Ractor.select does; every port closed raises ClosedError.
+// rbPortReceive blocks for the first message on any of ports, answering its index; every port closed and drained raises ClosedError.
+func rbPortReceive(ports []*rbPort) (int, any) {
+	var w *rbWaiter // allocated on the first miss: a message already queued never parks
+	defer func() {
+		if w == nil {
+			return
+		}
+		w.done.Store(true)
+		for _, p := range ports {
+			p.leave(w)
+		}
+	}()
+	for {
+		allClosed := true
+		for i, p := range ports {
+			x, ok, closed := p.tryTake()
+			if ok {
+				return i, x
+			}
+			allClosed = allClosed && closed
+		}
+		if allClosed {
+			panic(rbPortClosed())
+		}
+		if w == nil {
+			w = &rbWaiter{ch: make(chan struct{}, 1)}
+		}
+		again := false
+		for _, p := range ports {
+			again = p.park(w) || again
+		}
+		if again {
+			continue
+		}
+		<-w.ch
+	}
+}
+
+func (p *rbPort) receive() any {
+	_, x := rbPortReceive([]*rbPort{p})
+	return x
+}
+
+// rbPortSelect is Ractor.select: the first port holding a message, with it. A port another ractor created is ClosedError, as MRI's select treats it.
 func rbPortSelect(ports []*Ractor_Port) (*Ractor_Port, any) {
 	if len(ports) == 0 {
 		panic(NewArgumentError(Ref(String("specify at least one port"))))
 	}
-	rbPortMu.Lock()
-	defer rbPortMu.Unlock()
-	for {
-		open := false
-		for _, p := range ports {
-			if len(p.q.items) > 0 {
-				return p, p.q.take()
-			}
-			if !p.q.closed {
-				open = true
-			}
-		}
-		if !open {
+	cur := rbCurrentRactor()
+	qs := make([]*rbPort, len(ports))
+	for i, p := range ports {
+		if p.owner != cur {
 			panic(rbPortClosed())
 		}
-		rbPortCond.Wait()
+		qs[i] = &p.q
 	}
+	i, x := rbPortReceive(qs)
+	return ports[i], x
+}
+
+// receiveOwned is Port#receive: only the creating ractor may receive, as MRI's.
+func (p *Ractor_Port) receiveOwned() any {
+	if p.owner != rbCurrentRactor() {
+		panic(NewRactor_Error(Ref(String("only allowed from the creator Ractor of this port"))))
+	}
+	return p.q.receive()
 }
 
 func rbNewRactor() *Ractor {
-	return &Ractor{port: &Ractor_Port{}, done: make(chan struct{}), id: int(rbRactorIDs.Add(1)) + 1}
+	r := &Ractor{done: make(chan struct{}), id: int(rbRactorIDs.Add(1)) + 1}
+	r.port = &Ractor_Port{owner: r}
+	return r
 }
 
-// start runs the block on a goroutine. Its port closes when it ends, so later sends raise ClosedError; an exception is kept for value/join and reported on stderr like a thread's.
+// start runs the block on a goroutine registered as r's. Its port closes when it ends, so later sends raise ClosedError; an exception is kept for value/join and reported on stderr like a thread's.
 func (r *Ractor) start(run func() any) *Ractor {
 	rbRactorLive.Add(1)
 	go func() {
+		id := rbGoID()
+		rbRactorOf.Store(id, r)
+		defer rbRactorOf.Delete(id)
 		defer close(r.done)
 		defer r.port.q.close()
 		defer rbRactorLive.Add(-1)
@@ -191,7 +293,6 @@ func (self *Set[E]) _Copy(seen map[any]any) any {
 }
 
 // What MRI cannot copy into a ractor, with its errors.
-
 func (*Queue[E]) _Copy(map[any]any) any {
 	panic(NewNoMethodError(Ref(String("undefined method 'initialize_copy' for an instance of Thread::Queue"))))
 }

@@ -639,6 +639,31 @@ module StdlibTests
       stuck.join
     end
 
+    # Goroutine identity (decision 104): Thread.current, Mutex#owned? and MRI's locking errors.
+    def test_thread_identity
+      assert_same Thread.main, Thread.current
+      t = Thread.new { Thread.current }
+      assert_same t, t.value
+      assert_equal false, Thread.new { Thread.current.equal?(Thread.main) }.value
+      m = Mutex.new
+      assert_equal false, m.owned?
+      m.lock
+      assert_equal true, m.owned?
+      assert_equal false, Thread.new { m.owned? }.value
+      e = assert_raises(ThreadError) { m.lock }
+      assert_equal "deadlock; recursive locking", e.message
+      e = assert_raises(ThreadError) { Thread.new { m.unlock }.value }
+      assert_equal "Attempt to unlock a mutex which is locked by another thread/fiber", e.message
+      assert_equal true, m.locked?
+      m.unlock
+      assert_equal false, m.owned?
+      m.synchronize { assert_equal true, m.owned? }
+      e = assert_raises(ThreadError) { Thread.new { Thread.current.join }.value }
+      assert_equal "Target thread must not be current thread", e.message
+      e = assert_raises(ThreadError) { Thread.main.value }
+      assert_equal "Target thread must not be current thread", e.message
+    end
+
     # ConditionVariable#wait(timeout): nobody signals gate_cv, so this always times out.
     def test_condition_variable_wait_timeout
       gate_m = Mutex.new

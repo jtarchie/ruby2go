@@ -52,8 +52,7 @@ type fctx struct {
 	retVar        string
 	wrap          *wrapFrame // the innermost begin wrapper
 	hasNamedRet   bool
-	rescues       int    // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
-	ractor        string // the Go local holding the Ractor whose block is being compiled; "" outside one (decision 103)
+	rescues       int // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 }
 
 type loopKind int
