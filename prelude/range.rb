@@ -60,6 +60,17 @@ class Range < Object
     }
   }
 
+  # An Array standing in for MRI's ArithmeticSequence: to_a, each and map read the same.
+  #: (Integer) -> Array[E]
+  def %(n)
+    out = [] #: Array[E]
+    step(n) { |x| out << x }
+    out
+  end
+
+  #: (Integer) -> Array[E]
+  def __step_enum(n) = self % n
+
   #: () -> E
   def begin = %x{ self.b }
 

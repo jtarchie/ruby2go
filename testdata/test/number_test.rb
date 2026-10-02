@@ -2160,4 +2160,11 @@ module NumberTests
       assert_equal [[3, 0], [3, Math::PI], [2.5, 0], [2.5, Math::PI], [0, 0]], [3.polar, -3.polar, 2.5.polar, -2.5.polar, 0.polar]
     end
   end
+
+  # ruby/spec core/range gaps (#49): % and step without a block
+  class NumberRubySpecRangeStepTest < Minitest::Test
+    def test_range_percent
+      assert_equal [[1, 4, 7, 10], [1, 4, 7], [2, 10, 18], %w[a c e]], [((1..10) % 3).to_a, (1...10).step(3).to_a, ((1..10) % 4).map { |x| x * 2 }, ("a".."e").step(2).to_a]
+    end
+  end
 end
