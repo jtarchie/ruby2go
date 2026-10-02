@@ -47,10 +47,6 @@ nums.push(2, 3)
 #| (String) -> String
 def ident(x) = x
 puts ident(1)
--- splat_in_literal.rb --
-# error: main.rb:3: splat inside array literals is not supported
-nums = [1, 2] #: Array[Integer]
-puts [*nums, 3].inspect
 -- splat_of_non_array.rb --
 # error: main.rb:4: splat of non-array Integer
 #: (*Integer) -> Integer

@@ -2351,4 +2351,15 @@ module ArrayTests
       assert_nil mixed.rassoc(nil)
     end
   end
+
+  # ruby/spec language gaps (#49): splats inside array literals
+  class ArrayRubySpecSplatLiteralTest < Minitest::Test
+    def test_splat_literal
+      a = [1, 2]
+      b = [3]
+      assert_equal [[1, 2, 3], [0, 1, 2, 9], [1, 2], [5]], [[*a, *b], [0, *a, 9], [*a], [*[], 5]]
+      words = %w[x y]
+      assert_equal ["a", "x", "y"], ["a", *words]
+    end
+  end
 end

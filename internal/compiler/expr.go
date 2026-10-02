@@ -701,6 +701,46 @@ func (f *fctx) ivarCode(iv *Ivar) string {
 
 // ---- literals
 
+// genSplatArray is a literal with `*xs` among its elements: the elements
+// appended in order, each splatted Array's spread in its place.
+func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
+	parts := make([]expr, len(n.Elements))
+	var ts []Type
+	for i, el := range n.Elements {
+		mark := f.buf.Len()
+		if sp, ok := el.(*parser.SplatNode); ok {
+			var want Type
+			if hint != nil {
+				want = TClass{C: f.c.classes["Array"], Args: []Type{hint}}
+			}
+			parts[i] = f.genExpr(sp.Expression, want)
+			ac, ok := parts[i].typ.(TClass)
+			if !ok || ac.C.RubyName != "Array" {
+				f.errorf(el, "*%s inside an array literal must be an Array, not %s", f.f.text(sp.Expression.GetLocation()), parts[i].typ)
+			}
+			ts = append(ts, ac.Args[0])
+		} else {
+			parts[i] = f.genExpr(el, hint)
+			ts = append(ts, parts[i].typ)
+		}
+		f.pinExprs(mark, parts[:i])
+	}
+	if elemT == nil {
+		elemT = joinOrAny(ts)
+	}
+	at := TClass{C: f.c.classes["Array"], Args: []Type{elemT}}
+	out := f.newTmp()
+	f.emit("%s := Array[%s]{}", out, f.c.goType(elemT))
+	for i, el := range n.Elements {
+		if _, ok := el.(*parser.SplatNode); ok {
+			f.emit("%s = append(%s, *%s...)", out, out, f.coerce(el, parts[i], at))
+			continue
+		}
+		f.emit("%s = append(%s, %s)", out, out, f.coerce(el, parts[i], elemT))
+	}
+	return expr{code: "(&" + out + ")", typ: at}
+}
+
 func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	// A literal is never nil, so an expected T? means T.
 	expected = stripOpt(expected)
@@ -722,11 +762,11 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	if isAny(expected) {
 		hint = TAny{} // a nested literal is untyped-expected too: an Array, not a tuple
 	}
+	if slices.ContainsFunc(n.Elements, isSplat) {
+		return f.genSplatArray(n, elemT, hint)
+	}
 	elems := make([]expr, len(n.Elements))
 	for i, el := range n.Elements {
-		if _, ok := el.(*parser.SplatNode); ok {
-			f.errorf(el, "splat inside array literals is not supported")
-		}
 		mark := f.buf.Len()
 		elems[i] = f.genExpr(el, hint)
 		f.pinExprs(mark, elems[:i])
