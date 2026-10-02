@@ -2153,4 +2153,11 @@ module NumberTests
       assert_raises(Math::DomainError) { Math.lgamma(-Float::INFINITY) }
     end
   end
+
+  # ruby/spec core/numeric gaps (#49): polar
+  class NumberRubySpecPolarTest < Minitest::Test
+    def test_polar
+      assert_equal [[3, 0], [3, Math::PI], [2.5, 0], [2.5, Math::PI], [0, 0]], [3.polar, -3.polar, 2.5.polar, -2.5.polar, 0.polar]
+    end
+  end
 end

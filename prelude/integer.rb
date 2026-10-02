@@ -483,6 +483,10 @@ class Integer
 
   #: () -> [Integer, Integer]
   def rect = [self, 0]
+
+  # [abs, arg]: the angle is Integer 0 for a non-negative number and π for a negative one, as MRI's.
+  #: () -> [Integer, untyped]
+  def polar = negative? ? [abs, Math::PI] : [self, 0]
 end
 
 # Kernel#Integer: strict conversion. A String argument must be a number

@@ -239,6 +239,9 @@ class Float
   #: () -> [Float, Integer]
   def rect = [self, 0]
 
+  #: () -> [Float, untyped]
+  def polar = negative? ? [abs, Math::PI] : [self, 0]
+
   # MRI's ruby_float_step: a counted loop, so 1.0.step(2.0, 0.1) ends at 2.0 exactly.
   #: (Float, ?Float) { (Float) -> void } -> void
   def step(limit, by = 1.0) = %x{
