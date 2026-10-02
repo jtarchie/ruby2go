@@ -440,3 +440,77 @@ func rbUnpack(s, format string) *Array[any] {
 	}
 	return out
 }
+
+// rbStrUndump is String#undump, dump's inverse: a double-quoted ASCII
+// string whose escapes (\n \t \r \f \v \b \a \e \" \\ \# \xHH \uHHHH
+// \u{H...}) are decoded; another escaped character keeps its backslash.
+func rbStrUndump(s string) String {
+	fail := func(msg string) { panic(NewRuntimeError(Ref(String(msg)))) }
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			fail("non-ASCII character detected")
+		}
+	}
+	if !strings.HasPrefix(s, `"`) {
+		fail(`invalid dumped string; not wrapped with '"' nor '"...".force_encoding("...")' form`)
+	}
+	if len(s) < 2 || !strings.HasSuffix(s, `"`) || strings.HasSuffix(s, `\"`) && !strings.HasSuffix(s, `\\"`) {
+		fail("unterminated dumped string")
+	}
+	hex := func(t string) (int, int) { // value and digits read
+		n, v := 0, 0
+		for ; n < len(t); n++ {
+			d := strings.IndexByte("0123456789abcdef", t[n]|0x20)
+			if d < 0 {
+				break
+			}
+			v = v*16 + d
+		}
+		return v, n
+	}
+	in, out := s[1:len(s)-1], []byte{}
+	for i := 0; i < len(in); i++ {
+		if in[i] != '\\' || i+1 == len(in) {
+			out = append(out, in[i])
+			continue
+		}
+		i++
+		c := in[i]
+		switch {
+		case strings.IndexByte(`"\#`, c) >= 0:
+			out = append(out, c)
+		case strings.IndexByte("ntrfvbae", c) >= 0:
+			out = append(out, "\n\t\r\f\v\b\a\x1b"[strings.IndexByte("ntrfvbae", c)])
+		case c == 'x':
+			v, n := hex(in[i+1 : min(i+3, len(in))])
+			if n == 0 {
+				fail("invalid hex escape")
+			}
+			out = append(out, byte(v))
+			i += n
+		case c == 'u' && i+1 < len(in) && in[i+1] == '{':
+			end := strings.IndexByte(in[i:], '}')
+			if end < 0 {
+				fail("unterminated Unicode escape")
+			}
+			for _, h := range strings.Fields(in[i+2 : i+end]) {
+				v, n := hex(h)
+				if n != len(h) {
+					fail("invalid Unicode escape")
+				}
+				out = utf8.AppendRune(out, rune(v))
+			}
+			i += end
+		case c == 'u':
+			v, n := hex(in[i+1 : min(i+5, len(in))])
+			if n != 4 {
+				fail("invalid Unicode escape")
+			}
+			out = utf8.AppendRune(out, rune(v))
+			i += 4
+		default:
+			out = append(out, '\\', c)
+		}
+	}
+	return String(out)
+}

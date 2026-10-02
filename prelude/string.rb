@@ -657,6 +657,9 @@ class String < Object
   #: () -> String
   def dump = %x{ String(rbStrDump(string(self))) }
 
+  #: () -> String
+  def undump = %x{ return rbStrUndump(string(self)) }
+
   #: (String) -> Array[untyped]
   def unpack(format) = %x{ return rbUnpack(string(self), string(format)) }
 

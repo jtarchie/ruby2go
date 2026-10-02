@@ -1236,4 +1236,22 @@ B
       assert_equal [["hello"], "hello", 97, nil], ["aGVsbG8=".unpack("m"), "aGVsbG8=\n".unpack1("m"), "abc".unpack1("C"), "".unpack1("C")]
     end
   end
+
+  # ruby/spec core/string gaps (#49): undump
+  class StringRubySpecUndumpTest < Minitest::Test
+    def test_undump
+      bs = 92.chr
+      u = bs + "u"
+      assert_equal "a\né😀AA\"\\\#{", ('"a' + bs + "n" + u + "00E9" + u + "{1F600 41}" + bs + "x41" + bs + '"' + bs + bs + bs + '#{"').undump
+      s = "tab\t" + "é" + "\x00" + bs + "e" + 27.chr
+      assert_equal s, s.dump.undump
+      errors = ["abc", '"a', '"' + bs + 'xZZ"', '"é"'].map do |bad|
+        bad.undump
+      rescue RuntimeError => e
+        e.message
+      end
+      assert_equal ["invalid dumped string; not wrapped with '\"' nor '\"...\".force_encoding(\"...\")' form", "unterminated dumped string", "invalid hex escape", "non-ASCII character detected"], errors
+      assert_equal "a" + bs + "q", ('"a' + bs + 'q"').undump
+    end
+  end
 end
