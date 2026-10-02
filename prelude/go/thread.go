@@ -41,6 +41,7 @@ func (t *Thread) notSelf() {
 func rbThreadRun(run func() any) *Thread {
 	t := &Thread{done: make(chan struct{}), loc: rbCallerLoc()}
 	ractor, inRactor := rbRactorOf.Load(rbGoID())
+	rbLiveThreads.Store(t, rbThreadSeq.Add(1))
 	go func() {
 		id := rbGoID()
 		rbThreadOf.Store(id, t)
@@ -50,6 +51,7 @@ func rbThreadRun(run func() any) *Thread {
 			defer rbRactorOf.Delete(id)
 		}
 		defer close(t.done)
+		defer rbLiveThreads.Delete(t) // before done closes: a joined thread is off the list
 		defer func() {
 			if r := recover(); r != nil {
 				t.aborting.Store(true)
@@ -92,5 +94,30 @@ func rbThreadKeys(m *sync.Map) *Array[Symbol] {
 		return true
 	})
 	slices.Sort(*out)
+	return out
+}
+
+// rbLiveThreads are the threads not yet finished, each with its creation number, for Thread.list.
+var (
+	rbLiveThreads sync.Map
+	rbThreadSeq   atomic.Int64
+)
+
+// rbThreadList is Thread.list: the main thread, then the live threads in creation order.
+func rbThreadList() *Array[*Thread] {
+	type entry struct {
+		t   *Thread
+		seq int64
+	}
+	var live []entry
+	rbLiveThreads.Range(func(k, v any) bool {
+		live = append(live, entry{k.(*Thread), v.(int64)})
+		return true
+	})
+	slices.SortFunc(live, func(a, b entry) int { return cmp.Compare(a.seq, b.seq) })
+	out := &Array[*Thread]{rbMainThread}
+	for _, e := range live {
+		*out = append(*out, e.t)
+	}
 	return out
 }

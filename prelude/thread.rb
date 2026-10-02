@@ -28,6 +28,9 @@ class Thread < Object
   #: () -> Thread
   def self.current = %x{ return rbCurrentThread() }
 
+  #: () -> Array[Thread]
+  def self.list = %x{ return rbThreadList() }
+
   #: () -> nil
   def self.pass
     __gosched

@@ -1352,4 +1352,20 @@ module StdlibTests
       assert_equal [1, 2, 4, 8], [File::LOCK_SH, File::LOCK_EX, File::LOCK_NB, File::LOCK_UN]
     end
   end
+
+  # ruby/spec core/thread gaps (#49): list
+  class RubySpecThreadListTest < Minitest::Test
+    def test_thread_list
+      q = Queue.new #: Queue[Integer]
+      t1 = Thread.new { q.pop }
+      t2 = Thread.new { q.pop }
+      l = Thread.list
+      assert_equal [true, true, true], [l.first == Thread.main, l.include?(t1), l.index(t1).to_i < l.index(t2).to_i]
+      q << 1
+      q << 2
+      t1.join
+      t2.join
+      assert_equal [false, false], [Thread.list.include?(t1), Thread.list.include?(t2)]
+    end
+  end
 end
