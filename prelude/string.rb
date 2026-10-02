@@ -656,4 +656,15 @@ class String < Object
 
   #: () -> String
   def dump = %x{ String(rbStrDump(string(self))) }
+
+  #: (String) -> Array[untyped]
+  def unpack(format) = %x{ return rbUnpack(string(self), string(format)) }
+
+  #: (String) -> untyped
+  def unpack1(format) = %x{
+    if out := *rbUnpack(string(self), string(format)); len(out) > 0 {
+      return out[0]
+    }
+    return nil
+  }
 end

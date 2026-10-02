@@ -1218,4 +1218,22 @@ B
       assert_nil word
     end
   end
+
+  # ruby/spec core/string gaps (#49): unpack and unpack1
+  class StringRubySpecUnpackTest < Minitest::Test
+    def test_unpack_integers
+      assert_equal [[97, 98, 99], [97, 98], [-1, 1], [97, 98, nil]], ["abc".unpack("C*"), "abc".unpack("c2"), "\xff\x01".b.unpack("c*"), "ab".unpack("C3")]
+      assert_equal [[513, 1027], [258], [513], [16909060], [67305985], [16909060], [-1]],
+                   ["\x01\x02\x03\x04".unpack("S*"), "\x01\x02".unpack("n"), "\x01\x02".unpack("v"), "\x01\x02\x03\x04".unpack("N"), "\x01\x02\x03\x04".unpack("V"), "\x01\x02\x03\x04".unpack("L>"), "\xff\xff".b.unpack("s")]
+      assert_equal [[1], [-1]], ["\x01\x00\x00\x00\x00\x00\x00\x00".unpack("Q"), "\xff\xff\xff\xff\xff\xff\xff\xff".b.unpack("q")]
+    end
+
+    def test_unpack_strings
+      assert_equal [["hello", "world"], ["hi"], ["hi", "there"], ["ab", "c"], [104, 233]],
+                   ["hello world".unpack("a5 x a*"), "hi  \0".unpack("A*"), "hi\0there".unpack("Z*a*"), "abc".unpack("a2a"), "hé".unpack("U*")]
+      assert_equal [["4142"], ["1424"], ["0100000101000010"], ["1000001001000010"], ["414"]],
+                   ["AB".unpack("H*"), "AB".unpack("h*"), "AB".unpack("B*"), "AB".unpack("b*"), "AB".unpack("H3")]
+      assert_equal [["hello"], "hello", 97, nil], ["aGVsbG8=".unpack("m"), "aGVsbG8=\n".unpack1("m"), "abc".unpack1("C"), "".unpack1("C")]
+    end
+  end
 end
