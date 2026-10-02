@@ -508,6 +508,9 @@ class Hash < Object
   #: () -> self
   def to_hash = self
 
+  #: (K, *untyped) -> untyped
+  def dig(k, *rest) = %x{ return rbDig(self, append([]any{k}, rest_...)) }
+
   # Without the nil values. V keeps its type: a Hash[K, V?] result is still V?, though it holds no nil.
   #: () -> Hash[K, V]
   def compact

@@ -775,6 +775,9 @@ class Array < Object
   #: (Integer) -> E?
   def at(i) = self[i]
 
+  #: (Integer, *untyped) -> untyped
+  def dig(i, *rest) = %x{ return rbDig(self, append([]any{i}, rest_...)) }
+
   #: (*Integer) -> Array[E]
   def fetch_values(*idx) = idx.map { |i| fetch(i) }
 

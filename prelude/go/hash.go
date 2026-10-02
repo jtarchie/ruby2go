@@ -130,3 +130,32 @@ func rbHashSplat[K, V comparable](h, o *Hash[K, V]) *Hash[K, V] {
 	}
 	return h
 }
+
+// rbDig is Array#dig and Hash#dig: each key indexes the value before it,
+// through its untyped view; nil ends the walk, as MRI's does.
+func rbDig(v any, keys []any) any {
+	for _, k := range keys {
+		switch x := rbUnbox(v).(type) {
+		case nil:
+			return nil
+		case interface{ _ToAny() *Array[any] }:
+			i, ok := rbUnbox(k).(Integer)
+			if !ok {
+				panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(k) + " into Integer"))))
+			}
+			a := *x._ToAny()
+			if i < 0 {
+				i += Integer(len(a))
+			}
+			if i < 0 || int(i) >= len(a) {
+				return nil
+			}
+			v = a[i]
+		case interface{ _ToAny() *Hash[any, any] }:
+			v, _ = x._ToAny().rbGet(rbUnbox(k))
+		default:
+			panic(NewTypeError(Ref(String(rbClassName(x) + " does not have #dig method"))))
+		}
+	}
+	return rbUnbox(v)
+}
