@@ -3278,9 +3278,13 @@ resolve; anything not listed is still open.
       Kernel and BasicObject have no class objects in rb2go, so its
       output could not match MRI's; `Integer.superclass` is Object until
       Numeric exists (#39).
-    Not done here (still listed on #49): `redo`, `rescue *ERRS`,
-    `when *LIST`, beginless ranges, `/x`, named-capture locals, `BEGIN`,
-    `DATA`, class variables, instance-variable reflection, and
+    - `when *LIST` tests each element's `===`; `rescue *ERRORS` checks
+      each class object at run time (`rbIsInstanceOf`), binding
+      `=> e` as Exception.
+    - `DATA` in the main file is one StringIO over the text after
+      `__END__` (MRI's is a File at that offset; reads see the same).
+    Not done here (still listed on #49): `redo`, `BEGIN`/`END`, class
+    variables, instance-variable reflection, `Module#ancestors`, and
     `Array#to_set` (decision 44's instantiation cycle).
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method
