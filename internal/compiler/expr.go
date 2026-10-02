@@ -942,7 +942,7 @@ func (f *fctx) valueOf(e expr) expr {
 		return e
 	}
 	c := e.code
-	for strings.HasPrefix(c, "(") && strings.HasSuffix(c, ")") {
+	for wrapped(c) {
 		c = c[1 : len(c)-1]
 	}
 	if !strings.HasSuffix(c, ")") { // nil itself, or a temp holding it
@@ -950,6 +950,34 @@ func (f *fctx) valueOf(e expr) expr {
 	}
 	f.emit("%s", c)
 	return expr{code: "nil", typ: TNil{}}
+}
+
+// wrapped reports whether c's first "(" closes at its last ")", so the
+// pair can go: `(f(x))` is, `(*File).Close(f)` is not.
+func wrapped(c string) bool {
+	if !strings.HasPrefix(c, "(") || !strings.HasSuffix(c, ")") {
+		return false
+	}
+	depth := 0
+	for i := 0; i < len(c); i++ {
+		switch c[i] {
+		case '"', '`', '\'': // skip a literal: its parens don't count
+			q := c[i]
+			for i++; i < len(c) && c[i] != q; i++ {
+				if c[i] == '\\' && q != '`' {
+					i++
+				}
+			}
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i == len(c)-1
+			}
+		}
+	}
+	return false
 }
 
 // fitsValue is fits plus the one literal conversion Go makes exactly: an

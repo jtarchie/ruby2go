@@ -474,3 +474,19 @@ func TestTypePredicates(t *testing.T) {
 		}
 	}
 }
+
+func TestWrapped(t *testing.T) {
+	for c, want := range map[string]bool{
+		"(f(x))":           true,
+		"(*File).Close(f)": false,
+		`(String(")"))`:    true,
+		`(a)(")")`:         false,
+		"x":                false,
+		"((x))":            true,
+		`(f('('))`:         true,
+	} {
+		if got := wrapped(c); got != want {
+			t.Errorf("wrapped(%q) = %t, want %t", c, got, want)
+		}
+	}
+}

@@ -4640,4 +4640,17 @@ module ControlTests
       assert_nil NameError.new("plain").name
     end
   end
+
+  # a nil-returning call as a block's value: method expressions like (*File).Close(f) kept their parens
+  class ControlBugVoidCallValueTest < Minitest::Test
+    def test_void_call_as_block_value
+      v = [1].map { |_| File.open("/dev/null").close }
+      assert_equal [nil], v
+      r = Dir.mktmpdir do |d|
+        f = File.open(File.join(d, "x"), "w")
+        f.close
+      end
+      assert_nil r
+    end
+  end
 end
