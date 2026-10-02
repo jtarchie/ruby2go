@@ -56,6 +56,12 @@ func (f *fctx) genMatchWrite(n *parser.MatchWriteNode) expr {
 func (f *fctx) genSugar(n parser.Node) expr {
 	switch n := n.(type) {
 	case *parser.DefinedNode:
+		if _, ok := n.Value.(*parser.YieldNode); ok && f.m.optionalBlockLocal() != "" { // the block may be missing: answered at run time
+			c, _ := f.genCond(&parser.LocalVariableReadNode{Name: f.m.optionalBlockLocal(), Location: n.Location})
+			f.c.strLits["yield"] = true
+			t := TOpt{Elem: f.cls("String")}
+			return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"yield\") }; return nil }()", f.c.goType(t), c), typ: t}
+		}
 		kind := f.definedKind(n.Value)
 		if kind == "" {
 			return expr{code: "nil", typ: TNil{}}
@@ -3522,9 +3528,7 @@ func (f *fctx) insideClass(cls *Class) bool {
 	return o != nil && o.isSubclassOf(cls)
 }
 
-// definedKind answers `defined?(v)` at compile time: the closed world knows
-// every local, constant and method. "" is nil. Run-time state (whether an
-// ivar was ever assigned, whether a block was passed) is not tracked.
+// definedKind answers `defined?(v)` at compile time: the closed world knows every local, constant, method and global; "" is nil.
 func (f *fctx) definedKind(v parser.Node) string {
 	switch v := v.(type) {
 	case *parser.ParenthesesNode:
@@ -3564,15 +3568,30 @@ func (f *fctx) definedKind(v parser.Node) string {
 			return "class variable"
 		}
 		return ""
-	case *parser.InstanceVariableReadNode, *parser.GlobalVariableReadNode:
+	case *parser.GlobalVariableReadNode: // MRI's builtins always are; rb2go rejects assigning any other (decision 109), so it never is
+		if slices.Contains(mriGlobals, v.Name) {
+			return "global-variable"
+		}
+		return ""
+	case *parser.InstanceVariableReadNode:
 		f.errorf(v, "defined?(%s) depends on whether it was ever assigned, which rb2go does not track", f.f.text(v.GetLocation()))
-	case *parser.YieldNode:
-		f.errorf(v, "defined?(yield) is not supported; use block_given?")
+	case *parser.YieldNode: // a bare defined?(yield) with an optional block is genSugar's run-time answer
+		if f.m.optionalBlockLocal() != "" {
+			f.errorf(v, "defined?(yield) inside another expression is not supported with an optional block; use block_given?")
+		}
+		if f.m != nil && f.m.Block != nil {
+			return "yield"
+		}
+		return ""
 	case *parser.CallNode:
 		return f.definedCall(v)
 	}
 	return "expression"
 }
+
+// mriGlobals is MRI 4.0's startup `global_variables` minus $& $` $' $+ (Prism's back references).
+var mriGlobals = strings.Fields(`$! $" $$ $* $, $-0 $-F $-I $-W $-a $-d $-i $-l $-p $-v $-w $. $/ $0 $: $; $< $= $> $? $@
+	$DEBUG $FILENAME $LOADED_FEATURES $LOAD_PATH $PROGRAM_NAME $VERBOSE $\ $_ $stderr $stdin $stdout $~`)
 
 // definedCall is `defined?(recv.name)`: "method" when the receiver's static type has a public name (any visibility without a receiver).
 func (f *fctx) definedCall(v *parser.CallNode) string {
