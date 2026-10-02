@@ -312,3 +312,152 @@ func rbAsinh(x float64) float64 {
 	v := rbF(rbBigLog(r.Add(r.Sqrt(r), a)))
 	return math.Copysign(v, x)
 }
+
+// rbSqrtPi is √π in rbMathPrec bits.
+var rbSqrtPi = rbBF().Sqrt(rbPiBF)
+
+// rbErfSeries is erf(x) = 2/√π · Σ (-1)ⁿ x^(2n+1) / (n!(2n+1)), for |x| < 6
+// (the terms peak near e^(x²), which 128 bits still clear by 20 digits).
+func rbErfSeries(x float64) *big.Float {
+	bx := rbBF().SetFloat64(x)
+	x2 := rbBF().Mul(bx, bx)
+	sum, term := rbBF().Set(bx), rbBF().Set(bx) // term = (-1)ⁿ x^(2n+1)/n!
+	for n := int64(1); ; n++ {
+		term.Mul(term, x2)
+		term.Quo(term, rbBFInt(-n))
+		t := rbBF().Quo(term, rbBFInt(2*n+1))
+		sum.Add(sum, t)
+		if rbBF().Abs(t).Cmp(rbMathEps) < 0 {
+			break
+		}
+	}
+	sum.Mul(sum, rbBFInt(2))
+	return sum.Quo(sum, rbSqrtPi)
+}
+
+// rbErfcCF is erfc(x) for x >= 3 by its continued fraction,
+// e^(-x²)/√π · 1/(x + ½/(x + 1/(x + 3⁄2/(x + …)))), evaluated from the tail.
+func rbErfcCF(x float64) *big.Float {
+	bx := rbBF().SetFloat64(x)
+	terms := int64(40 + 2000/(x*x))
+	t := rbBF().Set(bx)
+	for n := terms; n >= 1; n-- {
+		t = rbBF().Add(bx, rbBF().Quo(rbBF().Quo(rbBFInt(n), rbBFInt(2)), t))
+	}
+	e := rbBigExp(rbBF().Neg(rbBF().Mul(bx, bx)))
+	return e.Quo(e, rbBF().Mul(rbSqrtPi, t))
+}
+
+func rbErf(x float64) float64 {
+	switch {
+	case math.IsNaN(x) || x == 0:
+		return x
+	case math.Abs(x) >= 6:
+		return math.Copysign(1, x)
+	}
+	return rbF(rbErfSeries(x))
+}
+
+func rbErfc(x float64) float64 {
+	switch {
+	case math.IsNaN(x):
+		return x
+	case x < -6:
+		return 2
+	case x > 27:
+		return 0
+	case x >= 3:
+		return rbF(rbErfcCF(x))
+	case x <= -3:
+		return rbF(rbBF().Sub(rbBFInt(2), rbErfcCF(-x)))
+	}
+	return rbF(rbBF().Sub(rbBFInt(1), rbErfSeries(x)))
+}
+
+// rbBernoulli are B₂, B₄, …, B₄₀ (Akiyama–Tanigawa), for Stirling's series.
+var rbBernoulli = func() []*big.Rat {
+	const n = 40
+	a := make([]*big.Rat, n+1)
+	var out []*big.Rat
+	for m := 0; m <= n; m++ {
+		a[m] = big.NewRat(1, int64(m+1))
+		for j := m; j >= 1; j-- {
+			d := new(big.Rat).Sub(a[j-1], a[j])
+			a[j-1] = d.Mul(d, big.NewRat(int64(j), 1))
+		}
+		if m >= 2 && m%2 == 0 {
+			out = append(out, new(big.Rat).Set(a[0]))
+		}
+	}
+	return out
+}()
+
+// rbLnGammaBig is ln Γ(z) for z >= 30 by Stirling's series.
+func rbLnGammaBig(z *big.Float) *big.Float {
+	half := rbBF().Quo(rbBFInt(1), rbBFInt(2))
+	r := rbBF().Mul(rbBF().Sub(z, half), rbBigLog(z))
+	r.Sub(r, z)
+	r.Add(r, rbBF().Mul(half, rbBigLog(rbBF().Mul(rbPiBF, rbBFInt(2)))))
+	zk, z2 := rbBF().Set(z), rbBF().Mul(z, z) // z^(2k-1)
+	for i, b := range rbBernoulli {
+		k := int64(i + 1)
+		t := rbBF().SetRat(b)
+		t.Quo(t, rbBF().Mul(rbBFInt(2*k*(2*k-1)), zk))
+		r.Add(r, t)
+		zk.Mul(zk, z2)
+	}
+	return r
+}
+
+// rbLnGammaShift is ln|Γ(x)| and Γ's sign: Γ(x) = Γ(x+N)/(x(x+1)…(x+N-1)), with x+N >= 30.
+func rbLnGammaShift(x float64) (*big.Float, int) {
+	bx := rbBF().SetFloat64(x)
+	prod := rbBFInt(1)
+	for bx.Cmp(rbBFInt(30)) < 0 {
+		prod.Mul(prod, bx)
+		bx.Add(bx, rbBFInt(1))
+	}
+	sign := prod.Sign()
+	return rbBF().Sub(rbLnGammaBig(bx), rbBigLog(prod.Abs(prod))), sign
+}
+
+func rbGamma(x float64) float64 {
+	switch {
+	case math.IsNaN(x) || math.IsInf(x, 1):
+		return x
+	case x == 0:
+		return math.Copysign(math.Inf(1), x)
+	case x == math.Trunc(x) && x < 0, math.IsInf(x, -1):
+		rbMathDomain(true, "gamma")
+	case x > 171.7:
+		return math.Inf(1)
+	}
+	lg, sign := rbLnGammaShift(x)
+	g := rbBigExp(lg)
+	if sign < 0 {
+		g.Neg(g)
+	}
+	return rbF(g)
+}
+
+func rbLgamma(x float64) (float64, int) {
+	switch {
+	case math.IsInf(x, -1):
+		rbMathDomain(true, "lgamma")
+	case math.IsNaN(x):
+		return x, 1
+	case math.IsInf(x, 1):
+		return x, 1
+	case x == 0:
+		if math.Signbit(x) {
+			return math.Inf(1), -1
+		}
+		return math.Inf(1), 1
+	case x == math.Trunc(x) && x < 0:
+		return math.Inf(1), 1
+	case x == 1 || x == 2:
+		return 0, 1
+	}
+	lg, sign := rbLnGammaShift(x)
+	return rbF(lg), sign
+}

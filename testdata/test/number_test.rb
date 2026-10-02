@@ -2129,4 +2129,28 @@ module NumberTests
       assert_equal [[1.0, 0.75, 0.5, 0.25, 0.0], [1.0, 2.0], []], [b, c, d]
     end
   end
+
+  # ruby/spec core/math gaps (#49): erf, erfc, gamma, lgamma; inputs where macOS libm is correctly rounded too (decision 43)
+  class NumberRubySpecMathSpecialTest < Minitest::Test
+    def test_erf
+      assert_equal [0.5204998778130465, 0.9661051464753108, 0.999593047982555, -0.5204998778130465, 1.0, -1.0, 0.0],
+                   [Math.erf(0.5), Math.erf(1.5), Math.erf(2.5), Math.erf(-0.5), Math.erf(10.0), Math.erf(-7.0), Math.erf(0.0)]
+      assert_equal [0.4795001221869535, 0.033894853524689274, 1.5204998778130465, 1.9661051464753108, 0.0, 2.0],
+                   [Math.erfc(0.5), Math.erfc(1.5), Math.erfc(-0.5), Math.erfc(-1.5), Math.erfc(30.0), Math.erfc(-10.0)]
+    end
+
+    def test_gamma
+      assert_equal [1.772453850905516, 0.886226925452758, 1.329340388179137, 2.363271801207355, 24.0, 362880.0, 1.21645100408832e+17],
+                   [Math.gamma(0.5), Math.gamma(1.5), Math.gamma(2.5), Math.gamma(-1.5), Math.gamma(5.0), Math.gamma(10.0), Math.gamma(20.0)]
+      assert_equal [Float::INFINITY, -Float::INFINITY, Float::INFINITY], [Math.gamma(0.0), Math.gamma(-0.0), Math.gamma(172.0)]
+      assert_raises(Math::DomainError) { Math.gamma(-1.0) }
+    end
+
+    def test_lgamma
+      assert_equal [[0.2846828704729192, 1], [1.2655121234846454, -1], [0.860047015376481, 1], [39.339884187199495, 1], [0.0, 1], [0.0, 1]],
+                   [Math.lgamma(2.5), Math.lgamma(-0.5), Math.lgamma(-1.5), Math.lgamma(20.0), Math.lgamma(1.0), Math.lgamma(2.0)]
+      assert_equal [[Float::INFINITY, 1], [Float::INFINITY, -1], [Float::INFINITY, 1]], [Math.lgamma(0.0), Math.lgamma(-0.0), Math.lgamma(-1.0)]
+      assert_raises(Math::DomainError) { Math.lgamma(-Float::INFINITY) }
+    end
+  end
 end

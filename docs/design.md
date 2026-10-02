@@ -1145,7 +1145,13 @@ resolve; anything not listed is still open.
     percent of inputs. MRI inherits the platform libm, which on macOS
     misrounds `tan`, `sin`, `cos`, `cbrt`, `hypot` and `atan` on a few
     percent of inputs; there rb2go is right and MRI is off by one digit.
-    `Math.sqrt` stays Go's (IEEE-exact). A call costs microseconds rather
+    `Math.sqrt` stays Go's (IEEE-exact). `erf` is its Taylor series below
+    |x| = 6 (±1 beyond), `erfc` that series' complement below 3 and its
+    continued fraction above; `gamma` and `lgamma` are Stirling's series
+    with Bernoulli numbers up to B₄₀, shifted to x ≥ 30 by the recurrence.
+    macOS's libm rounds these four wrong far more often (about 40% of a
+    grid of 416 inputs for lgamma and erfc, all checked against mpmath),
+    so printed results differ from MRI there in the last digit. A call costs microseconds rather
     than nanoseconds. `Float::INFINITY`/`NAN`/`EPSILON`/`MAX`/`MIN`/`DIG`
     exist. `Float#*` converts its result explicitly, since Go may fuse
     `a * b + c` into one FMA rounding where MRI rounds twice.
@@ -3243,9 +3249,7 @@ resolve; anything not listed is still open.
       with negative digits (half away from zero), `allbits?` and friends;
       `<<` past 64 bits raises `RangeError` (decision 35). `Math.asinh`,
       `acosh`, `atanh`, `log1p` and `expm1` are big-float like the rest
-      (decision 43); `erf`, `erfc`, `gamma` and `lgamma` are not added,
-      since Go's `math` misses MRI's digits on many inputs and a
-      correctly rounded port is a series each.
+      (decision 43), and so are `erf`, `erfc`, `gamma` and `lgamma`.
     - `MatchData` keeps its subject and byte offsets, so `begin`, `end`,
       `offset`, `byteoffset`, `named_captures` and `m[:name]` work; with
       a duplicated group name, `m[:name]` is the last group that matched,

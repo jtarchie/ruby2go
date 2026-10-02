@@ -127,6 +127,21 @@ module Math
 
   #: (Float, Integer) -> Float
   def self.ldexp(x, e) = %x{ Float(math.Ldexp(float64(x), int(e))) }
+
+  #: (Float) -> Float
+  def self.erf(x) = %x{ Float(rbErf(float64(x))) }
+
+  #: (Float) -> Float
+  def self.erfc(x) = %x{ Float(rbErfc(float64(x))) }
+
+  #: (Float) -> Float
+  def self.gamma(x) = %x{ Float(rbGamma(float64(x))) }
+
+  #: (Float) -> [Float, Integer]
+  def self.lgamma(x) = %x{
+    v, sign := rbLgamma(float64(x))
+    return Tuple2[Float, Integer]{Float(v), Integer(sign)}
+  }
 end
 
 class Float
