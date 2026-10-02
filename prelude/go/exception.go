@@ -14,3 +14,30 @@ func rbWithCause(e, handled any) any {
 	}
 	return e
 }
+
+// rbErrnoOf is SystemCallError#errno: the platform's number for an Errno class rb2go raises.
+func rbErrnoOf(e any) *Integer {
+	var n syscall.Errno
+	switch e.(type) {
+	case *Errno_ENOENT:
+		n = syscall.ENOENT
+	case *Errno_EEXIST:
+		n = syscall.EEXIST
+	case *Errno_EACCES:
+		n = syscall.EACCES
+	case *Errno_EISDIR:
+		n = syscall.EISDIR
+	case *Errno_ENOTDIR:
+		n = syscall.ENOTDIR
+	case *Errno_ENOTEMPTY:
+		n = syscall.ENOTEMPTY
+	case *Errno_EINVAL:
+		n = syscall.EINVAL
+	case *Errno_ECHILD:
+		n = syscall.ECHILD
+	default:
+		return nil
+	}
+	v := Integer(n)
+	return &v
+}

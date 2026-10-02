@@ -109,9 +109,13 @@ func rbDescribe(v any) string {
 // "vcall": no receiver, arguments or parentheses) is a NameError.
 func rbNoMethod(name string, recv any, vcall bool) any {
 	if vcall {
-		return NewNameError(Ref(String("undefined local variable or method '" + name + "' for " + rbDescribe(recv))))
+		e := NewNameError(Ref(String("undefined local variable or method '" + name + "' for " + rbDescribe(recv))))
+		e.__SetCall(Symbol(name), recv)
+		return e
 	}
-	return NewNoMethodError(Ref(String("undefined method '" + name + "' for " + rbDescribe(recv))))
+	e := NewNoMethodError(Ref(String("undefined method '" + name + "' for " + rbDescribe(recv))))
+	e.__SetCall(Symbol(name), recv)
+	return e
 }
 
 // rbPrivateMethod is MRI's error for a private method called with a receiver.

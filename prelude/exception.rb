@@ -37,6 +37,15 @@ class Exception < Object
   #: () -> String
   def message = to_s
 
+  # MRI's message with the class name after its first line; highlighting is never applied.
+  #: (?highlight: bool) -> String
+  def detailed_message(highlight: false)
+    m = message
+    return "unhandled exception" if m.empty?
+    first, nl, rest = m.partition("\n")
+    "#{first} (#{__class_name})#{nl}#{rest}"
+  end
+
   #: () -> String
   def inspect
     s = to_s
@@ -60,7 +69,11 @@ class StandardError < Exception; end
 class IOError < StandardError; end
 class EOFError < IOError; end
 
-class SystemCallError < StandardError; end
+class SystemCallError < StandardError
+  # The C errno for this class (Errno::ENOENT's is 2); nil for SystemCallError itself.
+  #: () -> Integer?
+  def errno = %x{ return rbErrnoOf(self) }
+end
 
 module Errno
   class EINVAL < SystemCallError; end
@@ -81,7 +94,29 @@ class ArgumentError < StandardError; end
 
 class TypeError < StandardError; end
 
-class NameError < StandardError; end
+# name and receiver are the call that failed, when rb2go raised it (a dynamic call on an untyped value).
+class NameError < StandardError
+  # @rbs @name: Symbol?
+  # @rbs @receiver: untyped
+  # @rbs @has_receiver: bool
+
+  #: () -> Symbol?
+  def name = @name
+
+  #: () -> untyped
+  def receiver
+    raise ArgumentError, "no receiver is available" unless @has_receiver
+
+    @receiver
+  end
+
+  #: (Symbol, untyped) -> void
+  def __set_call(name, receiver)
+    @name = name
+    @receiver = receiver
+    @has_receiver = true
+  end
+end
 
 class NoMethodError < NameError; end
 

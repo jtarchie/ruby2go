@@ -4609,4 +4609,35 @@ module ControlTests
       assert_equal [[:net, "io"], [:net, "arg"], [:other, "type"]], seen
     end
   end
+
+  # ruby/spec core/exception gaps (#49): detailed_message, errno, NameError#name and #receiver
+  class ControlRubySpecExceptionTest < Minitest::Test
+    def test_detailed_message
+      assert_equal ["boom (RuntimeError)", "unhandled exception", "a (RuntimeError)\nb", "boom (RuntimeError)"],
+                   [RuntimeError.new("boom").detailed_message, RuntimeError.new("").detailed_message, RuntimeError.new("a\nb").detailed_message, RuntimeError.new("boom").detailed_message(highlight: false)]
+    end
+
+    def test_errno
+      no = nil #: Integer?
+      begin
+        File.read("/nope/nope")
+      rescue SystemCallError => e
+        no = e.errno
+      end
+      assert_equal 2, no
+      assert_nil SystemCallError.new("x").errno
+    end
+
+    def test_name_error_call
+      x = nil #: untyped
+      e = assert_raises(NoMethodError) { x.upcase }
+      assert_equal [:upcase, nil], [e.name, e.receiver]
+      y = 5 #: untyped
+      e2 = assert_raises(NoMethodError) { y.nope }
+      assert_equal [:nope, 5], [e2.name, e2.receiver]
+      e3 = assert_raises(ArgumentError) { NameError.new("plain").receiver }
+      assert_equal "no receiver is available", e3.message
+      assert_nil NameError.new("plain").name
+    end
+  end
 end
