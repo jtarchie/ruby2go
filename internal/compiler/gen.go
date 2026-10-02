@@ -715,15 +715,8 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		f.emit("}")
 		return tmp, nil
 	case *parser.CallNode:
-		if n.Name == "!" && n.Arguments == nil && n.Receiver != nil {
-			c, _ := f.genCond(n.Receiver)
-			return "!(" + c + ")", nil
-		}
-		if n.Name == "nil?" && n.Arguments == nil && n.Receiver != nil {
-			e := f.genExpr(n.Receiver, nil)
-			if isOpt(e.typ) || isAny(e.typ) {
-				return e.code + " == nil", nil
-			}
+		if c, nw, ok := f.genCondCall(n); ok {
+			return c, nw
 		}
 	case *parser.LocalVariableReadNode:
 		v := f.readLocal(n)
@@ -748,6 +741,26 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 	}
 	e := f.genExpr(n, nil)
 	return f.truthy(n, e), nil
+}
+
+// genCondCall is genCond for the calls it reads directly: block_given?
+// (narrowing an optional block), !x and x.nil?.
+func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
+	if name := f.m.optionalBlockLocal(); name != "" && n.Name == "block_given?" && n.Receiver == nil && n.Arguments == nil {
+		c, nw := f.genCond(&parser.LocalVariableReadNode{Name: name, Location: n.Location}) // narrows the block to present
+		return c, nw, true
+	}
+	if n.Name == "!" && n.Arguments == nil && n.Receiver != nil {
+		c, _ := f.genCond(n.Receiver)
+		return "!(" + c + ")", nil, true
+	}
+	if n.Name == "nil?" && n.Arguments == nil && n.Receiver != nil {
+		e := f.genExpr(n.Receiver, nil)
+		if isOpt(e.typ) || isAny(e.typ) {
+			return e.code + " == nil", nil, true
+		}
+	}
+	return "", nil, false
 }
 
 // optTruthy tests a T? value: non-nil, and not false for a Boolean?.
@@ -1992,7 +2005,17 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 		}
 		ps = append(ps, &local{name: p.Name, goName: goLocalName(p.Name), typ: t, declared: true})
 	}
+	if name := m.optionalBlockLocal(); name != "" {
+		ps = append(ps, &local{name: name, goName: optBlockGo, typ: optBlockType(m), declared: true})
+	}
 	return ps
+}
+
+// optBlockGo is the Go variable of a def's optional block as a Proc? (optionalBlockLocal).
+const optBlockGo = "blkOpt_"
+
+func optBlockType(m *Method) Type {
+	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true}}
 }
 
 func (c *Compiler) emitMethod(m *Method) {
@@ -2117,6 +2140,14 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 			if p.Keyword {
 				kwBit++
 			}
+		}
+		if m.optionalBlockLocal() != "" {
+			f.emit("var %s %s", optBlockGo, c.goType(optBlockType(m)))
+			f.emit("if blk != nil {")
+			f.emit("\tp := &blk")
+			f.emit("\t%s = &p", optBlockGo)
+			f.emit("}")
+			f.emit("_ = %s", optBlockGo)
 		}
 		if m.Iterator {
 			ps := make([]string, len(m.Block.Params))

@@ -2160,7 +2160,8 @@ resolve; anything not listed is still open.
       `must_output`, `must_be_silent`, `must_throw`, and
       `must_pattern_match`/`wont_pattern_match`.
     - **Optional blocks.** Methods take an optional block (`?{ ... }` in
-      RBS); a call without one passes a nil func.
+      RBS); a call without one passes a nil func, which a def sees as a
+      `Proc?` (decision 126).
 
     Not supported: `register_spec_type` and `describe` with a computed
     name ([example 66](../examples/66_minitest_spec/main.rb),
@@ -3412,3 +3413,13 @@ resolve; anything not listed is still open.
     rb2go's own prelude modules too (File's IOReadable and IOWritable),
     which MRI's ancestors lack. (`testdata/test/object_test.rb`
     `ObjectRubySpecAncestorsTest`.)
+126. An optional block (`?{ ... }`) in a def is a `Proc?` local (the
+    `&blk` name, or a hidden one for `yield`), so the type system guards
+    it rather than a nil func crashing at run time: `yield` and `blk.call`
+    where the block may be missing are compile errors (MRI's
+    LocalJumpError, caught early); `block_given?`, `if blk` and
+    `return x unless block_given?` narrow it to present, as any optional
+    value narrows; `blk&.call` answers nil without one. `block_given?` is
+    a constant true in a def with a required block and false in one
+    without a block. (`testdata/test/control_test.rb`
+    `ControlOptionalBlockTest`, `testdata/errors/control.txtar`.)

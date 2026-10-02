@@ -2114,6 +2114,20 @@ func (m *Method) hasKeywords() bool {
 	return slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword })
 }
 
+// optionalBlockLocal names the local that holds an optional block (`?{ }`)
+// in a def: its &block name, or a hidden one for yield and block_given?.
+// The local is a Proc?, so calling it unchecked is a compile error and
+// `if block_given?` / `blk&.call` narrow it like any optional value.
+func (m *Method) optionalBlockLocal() string {
+	if m == nil || m.Block == nil || !m.Block.Optional || m.Kind != kindDef || m.Iterator {
+		return ""
+	}
+	if m.BlockParam != "" {
+		return m.BlockParam
+	}
+	return "__block"
+}
+
 // postCount is how many post params m has.
 func (m *Method) postCount() int {
 	n := 0

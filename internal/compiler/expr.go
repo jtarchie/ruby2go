@@ -1213,7 +1213,19 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 			return f.genLambda(n, bn, bn.Parameters, expected), true
 		}
 		f.errorf(n, "%s needs a literal block", n.Name)
-	case "block_given?", "binding", "send", "method_missing", "define_method":
+	case "block_given?":
+		if n.Arguments != nil || n.Block != nil {
+			break
+		}
+		switch {
+		case f.m.optionalBlockLocal() != "":
+			c, _ := f.genCond(n)
+			return expr{code: "Boolean(" + c + ")", typ: f.cls("Boolean")}, true
+		case f.m != nil && f.m.Block != nil: // a required block (or an iterator's loop body) is always there
+			return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
+		}
+		return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
+	case "binding", "send", "method_missing", "define_method":
 		f.errorf(n, "%s is not supported", n.Name)
 	}
 	return expr{}, false
@@ -1225,8 +1237,8 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 			return e
 		}
 	}
-	if n.Name == "call" && f.isBlockParam(n.Receiver) && n.Block == nil {
-		return f.yieldValues(n, callArgs(n))
+	if e, ok := f.genBlockCall(n); ok {
+		return e
 	}
 	if e, ok := f.genBareName(n, expected); ok {
 		return e
@@ -3035,7 +3047,40 @@ func (f *fctx) genYield(n *parser.YieldNode) expr {
 	if n.Arguments != nil {
 		args = n.Arguments.Arguments
 	}
+	if name := f.m.optionalBlockLocal(); name != "" {
+		f.checkBlockPresent(n, name)
+		call := f.c.rewrite(n, func() parser.Node {
+			return &parser.CallNode{Location: n.Location, Receiver: &parser.LocalVariableReadNode{Name: name, Location: n.Location}, Name: "call", Arguments: n.Arguments}
+		})
+		return f.genExpr(call, nil)
+	}
 	return f.yieldValues(n, args)
+}
+
+// genBlockCall is `blk.call(args)` on the method's own &block: a direct
+// call of a required block; an optional one (a Proc? local) must be present.
+func (f *fctx) genBlockCall(n *parser.CallNode) (expr, bool) {
+	if n.Name != "call" || n.Block != nil {
+		return expr{}, false
+	}
+	if name := f.m.optionalBlockLocal(); name != "" {
+		if lv, ok := n.Receiver.(*parser.LocalVariableReadNode); ok && lv.Name == name && !n.IsSAFE_NAVIGATION() {
+			f.checkBlockPresent(n, name)
+		}
+		return expr{}, false
+	}
+	if f.isBlockParam(n.Receiver) {
+		return f.yieldValues(n, callArgs(n)), true
+	}
+	return expr{}, false
+}
+
+// checkBlockPresent rejects calling an optional block (`?{ }`) where it may be
+// missing: MRI's LocalJumpError (or a nil Proc's NoMethodError) at compile time.
+func (f *fctx) checkBlockPresent(n parser.Node, name string) {
+	if v := f.visibleLocal(name); v != nil && isOpt(v.typ) {
+		f.errorf(n, "the block is optional (?{ ... }) and may be missing here: check block_given? first, or call it with &.call")
+	}
 }
 
 // yieldValues is `yield args` and `block.call(args)`.
@@ -3496,7 +3541,7 @@ func (f *fctx) definedKind(v parser.Node) string {
 	case *parser.InstanceVariableReadNode, *parser.GlobalVariableReadNode:
 		f.errorf(v, "defined?(%s) depends on whether it was ever assigned, which rb2go does not track", f.f.text(v.GetLocation()))
 	case *parser.YieldNode:
-		f.errorf(v, "defined?(yield) is not supported (block_given? is not either)")
+		f.errorf(v, "defined?(yield) is not supported; use block_given?")
 	case *parser.CallNode:
 		return f.definedCall(v)
 	}
@@ -4303,7 +4348,11 @@ func constPath(path string) parser.Node {
 // isBlockParam reports whether n reads the method's own &block parameter.
 func (f *fctx) isBlockParam(n parser.Node) bool {
 	lv, ok := n.(*parser.LocalVariableReadNode)
-	return ok && f.m != nil && f.m.BlockParam != "" && lv.Name == f.m.BlockParam && f.scope.lookup(lv.Name) == nil
+	if !ok || f.m == nil || f.m.BlockParam == "" || lv.Name != f.m.BlockParam {
+		return false
+	}
+	v := f.scope.lookup(lv.Name)
+	return v == nil || v.goName == optBlockGo || v.base != nil && v.base.goName == optBlockGo
 }
 
 // forwardIter passes the method's own block on to an iterator:

@@ -4689,4 +4689,35 @@ module ControlTests
       assert_equal [[1, 1], [2, 4], [1, 1], [3, 3], [10, 2], [20, 3]], seen
     end
   end
+
+  # an optional block (?{ }) is a Proc?: blk&.call, block_given? and `if blk` check it; it used to be called unchecked
+  class ControlOptionalBlockTest < Minitest::Test
+    #: (Integer) ?{ (Integer) -> Integer } -> Integer?
+    def control_safe(x, &blk) = blk&.call(x)
+
+    #: (Integer) ?{ (Integer) -> Integer } -> Integer
+    def control_guarded(x)
+      return x unless block_given?
+      yield x
+    end
+
+    #: () ?{ () -> String } -> String
+    def control_either(&b)
+      if b
+        b.call
+      else
+        "none"
+      end
+    end
+
+    #: () ?{ () -> String } -> bool
+    def control_given = block_given?
+
+    def test_optional_block
+      assert_equal [nil, 20], [control_safe(1), control_safe(2) { |v| v * 10 }]
+      assert_equal [3, 4], [control_guarded(3), control_guarded(3) { |v| v + 1 }]
+      assert_equal ["none", "some"], [control_either, control_either { "some" }]
+      assert_equal [false, true], [control_given, control_given { "x" }]
+    end
+  end
 end
