@@ -1245,7 +1245,11 @@ resolve; anything not listed is still open.
     behaves as a lambda: `return` leaves only the Proc, arity is strict,
     and `lambda?` is true. `next v` now works in any block, giving the
     block's value. A Proc held `untyped` cannot be called dynamically
-    ([example 44](../examples/44_procs/main.rb)).
+    ([example 44](../examples/44_procs/main.rb)). Kernel and Object
+    methods (a user's included, `frozen?`, `tap`) are called statically
+    with the func type as Self, and `.class` on an untyped Proc is
+    `Proc`; a method a user defines on Proc itself is a compile error,
+    since a func type carries no methods.
 48. `StringIO` is a byte buffer with a position: `write`/`<<`/`print`/
     `puts` (Kernel#puts's rules) overwrite at `pos` and extend, and
     `read`, `read(n)` (nil at EOF), `gets`, `getc`, `getbyte`, `each_byte`,

@@ -3469,6 +3469,9 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	return f.genDynCall(n, recv, name, args)
 }
 
+// untypedIntrinsics are what universalCall answers inline, for any value.
+var untypedIntrinsics = map[string]bool{"to_s": true, "inspect": true, "to_json": true, "nil?": true, "!": true, "==": true, "equal?": true, "<=>": true, "hash": true}
+
 // nilConversions are NilClass's conversions, for nil held statically or untyped.
 var nilConversions = map[string]string{"to_a": "(&Array[any]{})", "to_h": "NewHash[any, any]()", "to_i": "Integer(0)", "to_f": "Float(0)"}
 
@@ -4915,7 +4918,7 @@ func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
 
 // procCall is a method on a Proc value.
 func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []parser.Node, block parser.Node) expr {
-	if block != nil {
+	if block != nil && slices.Contains([]string{"call", "()", "[]", "yield", "===", "arity", "lambda?", "to_proc", ">>", "<<"}, name) {
 		f.errorf(n, "a Proc's %s does not take a block", name)
 	}
 	switch name {
@@ -4970,6 +4973,12 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 		code := fmt.Sprintf("func(first %s, second %s) %s { return Ref(func(%s)%s { %s }) }(%s, %s)",
 			f.c.goType(firstT), f.c.goType(secondT), f.c.goType(out), strings.Join(ps, ", "), ret, body, first, second)
 		return expr{code: code, typ: out}
+	}
+	if e := f.c.classes["Proc"].lookup(name); e != nil && !untypedIntrinsics[name] {
+		if e.Owner.Name == "Proc" {
+			f.errorf(n, "a Proc is a Go func: a method defined on Proc (%s) cannot be called on one", name)
+		}
+		return f.callEntry(n, e, recv, args, block)
 	}
 	return f.universalCall(n, recv, name, args, block)
 }

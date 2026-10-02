@@ -725,6 +725,10 @@ func (c *Compiler) emitClassOf() {
 			c.w("\tcase %s:\n\t\treturn v._ClassOf().(ClassI)\n", c.goType(TClass{C: cls}))
 		}
 	}
+	c.w("\t}\n")
+	if proc := c.classes["Proc"]; proc.meta != nil { // a func type has no methods to switch on
+		c.w("\tif rbIsProc(a) {\n\t\treturn %s\n\t}\n", classVar(proc))
+	}
 	// ponytail: generic struct classes fall to NoMethodError; give them an _Any interface to switch on
-	c.w("\t}\n\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
+	c.w("\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
 }

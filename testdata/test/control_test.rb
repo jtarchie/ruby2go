@@ -1315,6 +1315,11 @@ def control_pos_if(x)
   end
 end
 
+module Kernel
+  #: () -> String
+  def control_tag = "<#{self.class}>"
+end
+
 module ControlTests
   class Memo
     #: () -> void
@@ -4733,6 +4738,17 @@ module ControlTests
       z = 5
       z
       assert_equal 2, n
+    end
+  end
+
+  # a Kernel method called on a lambda was a dynamic call: NoMethodError at run time
+  class ControlBugProcKernelTest < Minitest::Test
+    def test_kernel_method_on_proc
+      f = -> { 1 }
+      assert_equal "<Proc>", f.control_tag
+      assert_equal false, f.frozen?
+      x = f #: untyped
+      assert_equal Proc, x.class
     end
   end
 end
