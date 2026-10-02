@@ -4720,4 +4720,19 @@ module ControlTests
       assert_equal [false, true], [control_given, control_given { "x" }]
     end
   end
+
+  # a local read only as a statement (`{ |x| x }`, `z` alone) was a Go "declared and not used" error
+  class ControlBugLoneLocalReadTest < Minitest::Test
+    def test_lone_local_read
+      n = 0
+      [1, 2].each { |x| x }
+      (1..2).each do |y|
+        y
+        n += 1
+      end
+      z = 5
+      z
+      assert_equal 2, n
+    end
+  end
 end

@@ -2108,8 +2108,7 @@ module NumberTests
       assert_equal ["..5", "...5", true, false, true, 5, 5], [r.inspect, (...5).inspect, r.cover?(3), r.cover?(6), r.include?(-100), r.end, r.max]
       assert_equal %w[F C A], [number_grade(10), number_grade(65), number_grade(99)]
       assert_equal [true, false, true, false], [(..3).overlap?(2..4), (..1).overlap?(2..4), (..5) == (..5), (..5) == (...5)]
-      seen = [] #: Array[Integer]
-      e = assert_raises(TypeError) { (..3).each { |x| seen << x } }
+      e = assert_raises(TypeError) { (..3).each { |x| x } }
       assert_equal "can't iterate from NilClass", e.message
     end
   end

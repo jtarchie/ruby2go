@@ -446,7 +446,10 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 		return
 	}
 	switch n.(type) {
-	case *parser.NilNode, *parser.SelfNode, *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode:
+	case *parser.NilNode, *parser.SelfNode, *parser.InstanceVariableReadNode:
+		return
+	case *parser.LocalVariableReadNode: // a read alone (`{ |x| x }`) still counts as a use, or Go rejects the variable
+		f.emit("_ = %s", e.code)
 		return
 	}
 	if e.view != "" {
