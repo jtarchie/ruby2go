@@ -91,6 +91,7 @@ func runIO(t *testing.T, dir string, pio progIO, name string, args ...string) (s
 
 func TestExamples(t *testing.T) {
 	requireRuby4(t)
+	t.Parallel()
 	dirs, err := filepath.Glob("examples/*/main.rb")
 	if err != nil || len(dirs) == 0 {
 		t.Fatalf("no examples found: %v", err)
@@ -117,8 +118,11 @@ func TestExamples(t *testing.T) {
 // lintGenerated vets and lints every generated example at once with the generated-code config.
 func lintGenerated(t *testing.T, mod string) {
 	t.Helper()
-	vetOut, err := run(t, mod, "go", "vet", "./...")
-	if err != nil {
+	// GOFLAGS=-trimpath: vet and golangci-lint compile the module for export data through the Go build cache, keyed by directory unless trimmed; with it, the fresh t.TempDir hits what the examples' builds and the last run's lint already cached (4s instead of ~5 min when nothing changed).
+	trim := progIO{env: []string{"GOFLAGS=-trimpath"}}
+	vetOut, vetErr, code, err := runIO(t, mod, trim, "go", "vet", "./...")
+	if err != nil || code != 0 {
+		err = errors.Join(err, errors.New(vetErr))
 		t.Fatalf("go vet: %v\n%s", err, vetOut)
 	}
 	lintCfg, err := os.ReadFile(".golangci.generated.yml")
@@ -131,8 +135,9 @@ func lintGenerated(t *testing.T, mod string) {
 	}
 	copyPreludeGo(t, mod)
 	// --timeout=0: under the full suite's parallel builds this pass outlasts the config's 5m; go test's -timeout still bounds it
-	lintOut, err := run(t, mod, "golangci-lint", "run", "--allow-parallel-runners", "--timeout=0", "./...")
-	if err != nil {
+	lintOut, lintErr, code, err := runIO(t, mod, trim, "golangci-lint", "run", "--allow-parallel-runners", "--timeout=0", "./...")
+	if err != nil || code != 0 {
+		err = errors.Join(err, errors.New(lintErr))
 		t.Fatalf("golangci-lint on generated code: %v\n%s", err, lintOut)
 	}
 }
@@ -154,6 +159,7 @@ func writeModule(t *testing.T, dir string) {
 // examples, without the rbs and lint gates: one go build per file.
 func TestRun(t *testing.T) {
 	requireRuby4(t)
+	t.Parallel()
 	files, err := filepath.Glob("testdata/run/*.rb")
 	if err != nil {
 		t.Fatal(err)
@@ -181,6 +187,7 @@ func TestRun(t *testing.T) {
 // (decision 81).
 func TestMinitest(t *testing.T) {
 	requireRuby4(t)
+	t.Parallel()
 	files, err := filepath.Glob("testdata/test/*_test.rb")
 	if err != nil {
 		t.Fatal(err)
@@ -204,6 +211,7 @@ func TestMinitest(t *testing.T) {
 // process, as rake's test loader does.
 func TestMulti(t *testing.T) {
 	requireRuby4(t)
+	t.Parallel()
 	dirs, err := filepath.Glob("testdata/multi/*")
 	if err != nil {
 		t.Fatal(err)
@@ -336,6 +344,7 @@ end
 // must fail), and every `# warning: text` in some warning; with no expected
 // error, compilation must succeed.
 func TestErrors(t *testing.T) {
+	t.Parallel()
 	archives, err := filepath.Glob("testdata/errors/*.txtar")
 	if err != nil {
 		t.Fatal(err)

@@ -2262,6 +2262,31 @@ resolve; anything not listed is still open.
     - **What it doesn't do:** a program's entry is as big as its function
       count (array_test: 38k functions from 41k lines, 18k of them generic
       instantiations), which is decision 86's next step, not this one.
+    - **Deterministic output, and the lint pass cached too** (2026-10-01).
+      A full `go test ./...` took 937s, over Go's default 10m `-timeout`,
+      with the examples built by 121s. Three causes. (1) `frameLabel`
+      picked a `__helper`'s public name by map order (`__each_with_index_enum`
+      was `each` or `each_with_index` per run), so the `rbFrameLabels`
+      table, and every program that reads it (the ten every-name programs,
+      75% of the lines), differed byte-wise run to run: no cache ever hit
+      them. Now the longest public prefix wins. A sweep generates each of
+      the 145 programs twice and compares. (2) `go vet` and golangci-lint
+      load the module through `go list`, whose compile is cached by
+      directory unless `-trimpath` is set, so the fresh `t.TempDir` paid a
+      full recompile of 1.16M lines for export data every run (283s with
+      golangci-lint's own cache warm; 670s and 10.8 GB cold), serially after
+      the examples. `lintGenerated` now runs both under `GOFLAGS=-trimpath`:
+      4s when nothing changed. (3) The top-level suites ran one after
+      another; they are `t.Parallel()` now, so TestRun, TestMinitest and
+      TestErrors overlap the lint pass (the global `-parallel` budget still
+      bounds concurrent builds). Measured: 937s before; 180s on the first
+      run after the fix (caches fill); 135s steady, of which TestErrors'
+      492 compiles are 91s of overlapped wall and FuzzCompile's seeds 39s
+      serial at the end. After a prelude edit, only the programs whose
+      bytes change rebuild and re-lint; the every-name ten are ~30s of
+      `go build -race` each and most of the lint CPU (staticcheck alone is
+      27s on `64_observable`), which is decision 81's classes × names
+      problem, not the harness's.
 89. Named interfaces declare only what kept code selects. A class's
     interface (`FooI`, `Foo_MetaI`) declared every method the class has,
     inherited Kernel ones included, so the pruner (decision 49) kept a

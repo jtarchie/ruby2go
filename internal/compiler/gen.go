@@ -1808,10 +1808,11 @@ func (c *Compiler) emitTopDef(m *Method) {
 func (c *Compiler) frameLabel(m *Method) string {
 	owner, name := m.Owner, m.Name
 	if m.File.prelude && strings.HasPrefix(name, "__") {
+		// the longest public prefix: `__each_with_index_enum` is each_with_index's helper, not each's. Map order
+		// used to pick, so the label table (and the Go build cache key of every program that reads it) varied per run.
 		for pub := range owner.Methods {
-			if strings.HasPrefix(strings.ToLower(name), "__"+strings.ToLower(pub)+"_") {
+			if strings.HasPrefix(strings.ToLower(m.Name), "__"+strings.ToLower(pub)+"_") && (name == m.Name || len(pub) > len(name)) {
 				name = pub
-				break
 			}
 		}
 	}
