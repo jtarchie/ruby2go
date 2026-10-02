@@ -30,3 +30,35 @@ func rbStrictFloat(s String) Float {
 	}
 	return Float(f)
 }
+
+// rbFloatStep is MRI's ruby_float_step: n steps counted up front with its
+// rounding allowance, each value beg + i*unit, the last clamped to end.
+func rbFloatStep(beg, end, unit float64, yield func(Float) bool) {
+	if unit == 0 {
+		panic(NewArgumentError(Ref(String("step can't be 0"))))
+	}
+	n := (end - beg) / unit
+	errAllow := (math.Abs(beg) + math.Abs(end) + math.Abs(end-beg)) / math.Abs(unit) * 2.220446049250313e-16
+	if math.IsInf(unit, 0) {
+		if unit > 0 && beg <= end || unit < 0 && beg >= end {
+			yield(Float(beg))
+		}
+		return
+	}
+	if errAllow > 0.5 {
+		errAllow = 0.5
+	}
+	if n < 0 {
+		return
+	}
+	n = math.Floor(n + errAllow)
+	for i := 0.0; i <= n; i++ {
+		d := i*unit + beg
+		if unit >= 0 && end < d || unit < 0 && end > d {
+			d = end
+		}
+		if !yield(Float(d)) {
+			return
+		}
+	}
+}

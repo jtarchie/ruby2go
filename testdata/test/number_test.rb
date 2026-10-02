@@ -2113,4 +2113,20 @@ module NumberTests
       assert_equal "can't iterate from NilClass", e.message
     end
   end
+
+  # ruby/spec core/float gaps (#49): step
+  class NumberRubySpecFloatStepTest < Minitest::Test
+    def test_float_step
+      a = [] #: Array[Float]
+      1.0.step(2.0, 0.1) { |x| a << x }
+      assert_equal [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9000000000000001, 2.0], a
+      b = [] #: Array[Float]
+      1.0.step(0.0, -0.25) { |x| b << x }
+      c = [] #: Array[Float]
+      1.0.step(2.0) { |x| c << x }
+      d = [] #: Array[Float]
+      2.0.step(1.0, 0.5) { |x| d << x }
+      assert_equal [[1.0, 0.75, 0.5, 0.25, 0.0], [1.0, 2.0], []], [b, c, d]
+    end
+  end
 end

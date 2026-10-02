@@ -238,6 +238,12 @@ class Float
 
   #: () -> [Float, Integer]
   def rect = [self, 0]
+
+  # MRI's ruby_float_step: a counted loop, so 1.0.step(2.0, 0.1) ends at 2.0 exactly.
+  #: (Float, ?Float) { (Float) -> void } -> void
+  def step(limit, by = 1.0) = %x{
+    return func(yield func(Float) bool) { rbFloatStep(float64(self), float64(limit), float64(by), yield) }
+  }
 end
 
 # Kernel#Float: strict conversion, overloaded like Kernel#Integer.
