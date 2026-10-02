@@ -3295,6 +3295,14 @@ resolve; anything not listed is still open.
       however often the statement runs. As with any constant,
       `defined?(X)` inside BEGIN answers "constant" for an X the file
       assigns later, where MRI says nil.
+    - Post parameters (`def f(a, b = 1, c)`, `def f(a, *r, z)`) take the
+      last arguments; with callee-side defaults `rbArgc` counts only the
+      arguments before them. Anonymous `*`, `**` and `&` bind reserved
+      locals that `g(*)`, `g(**)`, `g(&)` and `[*]` read. `def f(...)`
+      takes the parameters and block of the one method it forwards to (a
+      method of its own class, a top-level def, or `super(...)`), and its
+      `(...)` call passes them on; an override keeps its parent's result,
+      any other's is inferred. Literal splats `[*a, 1, *b]` concatenate.
     `Array#to_set` stays out (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder

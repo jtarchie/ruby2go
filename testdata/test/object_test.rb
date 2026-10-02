@@ -4301,4 +4301,34 @@ module ObjectTests
       assert_equal [6, 0, [:a, :b], [10, 20], 3], [object_fwd(1, 2, 3), object_fwd, object_kw_fwd(a: 1, b: 2), object_blk_fwd { |x| x * 10 }, object_sum_all(1, 2)]
     end
   end
+
+  # ruby/spec language gaps (#49): def f(...) forwarding
+  class FwdP
+    #: (Integer, ?y: Integer) -> Integer
+    def m(x, y: 0) = x + y
+  end
+
+  class FwdC < FwdP
+    def m(...) = super(...) * 2
+  end
+
+  class FwdSvc
+    #: (String, ?times: Integer) -> String
+    def run(name, times: 1) = name * times
+
+    #: (Integer) { (Integer) -> Integer } -> Integer
+    def twice(x) = yield(yield(x))
+
+    def call(...) = run(...)
+
+    def via(...) = twice(...)
+  end
+
+  class ObjectRubySpecForwardAllTest < Minitest::Test
+    def test_forward_all
+      assert_equal [6, 8], [FwdC.new.m(1, y: 2), FwdC.new.m(4)]
+      svc = FwdSvc.new
+      assert_equal ["abab", "x", 12], [svc.call("ab", times: 2), svc.call("x"), svc.via(3) { |v| v * 2 }]
+    end
+  end
 end

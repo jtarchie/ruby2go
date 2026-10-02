@@ -146,6 +146,7 @@ type Method struct {
 	seqAdapter bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
 	shadowed   []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
 	BlockParam string // name of an explicit &block parameter
+	forwardAll bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
 	resolved   bool
 	inherited  *Method // signature source for unannotated overrides
 	inferRet   bool    // no return annotation: Ret comes from the body (inferRet)
@@ -1562,6 +1563,10 @@ func (c *Compiler) resolveMethod(m *Method) {
 		return
 	}
 	f := m.File
+	if m.sig == nil && m.sigText == "" && isForwardAll(m.Node) {
+		c.resolveForwarding(m)
+		return
+	}
 	if m.sig == nil && m.sigText == "" {
 		// unannotated override inherits the parent's signature
 		if c.inheritSignature(m) {
@@ -1622,6 +1627,151 @@ func (c *Compiler) resolveMethod(m *Method) {
 		m.Iterator = c.isIterator(m, m.Block)
 	}
 	c.bindParamNames(m)
+}
+
+// isForwardAll reports `def f(...)` with no other parameters.
+func isForwardAll(d *parser.DefNode) bool {
+	if d == nil || d.Parameters == nil {
+		return false
+	}
+	ps := d.Parameters
+	_, ok := ps.KeywordRest.(*parser.ForwardingParameterNode)
+	return ok && len(ps.Requireds) == 0 && len(ps.Optionals) == 0 && ps.Rest == nil && len(ps.Posts) == 0 && len(ps.Keywords) == 0
+}
+
+// resolveForwarding types `def f(...)` from the one call in its body that
+// forwards (`g(...)` on its own class or a top-level def, or `super(...)`):
+// f takes g's parameters and block, under their names, its return is
+// inferred, and the call's `...` becomes those parameters passed on.
+func (c *Compiler) resolveForwarding(m *Method) {
+	call := c.forwardingCall(m)
+	target := c.forwardingTarget(m, call)
+	c.resolveMethod(target)
+	if target.forwardAll {
+		c.errorf(m.File, call, "def %s(...) forwards to another (...) method; annotate one of them", m.Name)
+	}
+	m.forwardAll = true
+	m.TypeParams = target.TypeParams
+	for _, p := range target.Params {
+		if p.Default != nil && target.File != m.File {
+			c.errorf(m.File, call, "def %s(...): %s's defaults are in another file; annotate %s instead", m.Name, target, m.Name)
+		}
+		m.Params = append(m.Params, p)
+	}
+	if target.Block != nil {
+		b := *target.Block
+		m.Block, m.BlockParam = &b, anonBlock
+	}
+	m.inferRet = true
+	if e := c.forwardParent(m); e != nil { // an override keeps its parent's result, as decision 8's slots need it before inference
+		c.resolveMethod(e.M)
+		m.inherited, m.Ret, m.inferRet = e.M, subst(e.M.Ret, e.Env), e.M.inferRet
+	}
+	c.forwardArgs(m, call)
+}
+
+// forwardingCall finds the one call or super in m's body whose only argument is `...`.
+func (c *Compiler) forwardingCall(m *Method) parser.Node {
+	var call parser.Node
+	anyNode(m.Node.Body, func(n parser.Node) bool {
+		var args *parser.ArgumentsNode
+		switch n := n.(type) {
+		case *parser.CallNode:
+			args = n.Arguments
+		case *parser.SuperNode:
+			args = n.Arguments
+		case *parser.DefNode, *parser.BlockNode, *parser.LambdaNode:
+			return false
+		}
+		if args == nil || len(args.Arguments) != 1 {
+			return false
+		}
+		if _, ok := args.Arguments[0].(*parser.ForwardingArgumentsNode); ok {
+			if call != nil {
+				c.errorf(m.File, n, "def %s(...) forwards more than once; annotate its signature instead", m.Name)
+			}
+			call = n
+		}
+		return false
+	})
+	if call == nil {
+		c.errorf(m.File, m.Node, "def %s(...) needs one call that forwards with (...) and no other arguments", m.Name)
+	}
+	return call
+}
+
+// forwardingTarget is the method call reaches: on m's class (or self), a top-level def, or m's parent for super.
+func (c *Compiler) forwardingTarget(m *Method, call parser.Node) *Method {
+	var target *Method
+	switch n := call.(type) {
+	case *parser.CallNode:
+		if _, self := n.Receiver.(*parser.SelfNode); n.Receiver != nil && !self {
+			c.errorf(m.File, n, "def %s(...) can only forward to a method of its own class or a top-level def", m.Name)
+		}
+		if m.Owner != nil {
+			if e := m.Owner.lookup(n.Name); e != nil {
+				target = e.M
+			}
+		}
+		if target == nil {
+			target = c.topDefs[n.Name]
+		}
+	case *parser.SuperNode:
+		if e := c.forwardParent(m); e != nil {
+			target = e.M
+		}
+	}
+	if target == nil || target == m {
+		c.errorf(m.File, call, "def %s(...): its forwarding target is not a method rb2go can see", m.Name)
+	}
+	return target
+}
+
+// forwardArgs rewrites call's `...` into m's parameters in Ruby's order:
+// positional, *rest, posts, keywords, then the block.
+func (c *Compiler) forwardArgs(m *Method, call parser.Node) {
+	var pos, posts, kws []parser.Node
+	var rest parser.Node
+	loc := call.GetLocation()
+	for _, p := range m.Params {
+		var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
+		switch {
+		case p.KwRest:
+			kws = append(kws, &parser.AssocSplatNode{Value: a, Location: loc})
+		case p.Keyword:
+			kws = append(kws, &parser.AssocNode{Key: &parser.SymbolNode{Location: loc, Unescaped: parser.RubyString{Value: p.Name}}, Value: a, Location: loc})
+		case p.Rest:
+			rest = &parser.SplatNode{Expression: a, Location: loc}
+		case p.Post:
+			posts = append(posts, a)
+		default:
+			pos = append(pos, a)
+		}
+	}
+	args := pos
+	if rest != nil {
+		args = append(args, rest)
+	}
+	args = append(args, posts...)
+	if len(kws) > 0 {
+		args = append(args, &parser.KeywordHashNode{Elements: kws, Location: loc})
+	}
+	var blk parser.Node
+	if m.Block != nil {
+		blk = &parser.BlockArgumentNode{Expression: &parser.LocalVariableReadNode{Name: anonBlock, Location: loc}, Location: loc}
+	}
+	switch n := call.(type) {
+	case *parser.CallNode:
+		n.Arguments.Arguments = args
+		if n.Block == nil {
+			n.Block = blk
+		}
+	case *parser.SuperNode:
+		n.Arguments.Arguments = args
+		if n.Block == nil {
+			n.Block = blk
+		}
+	}
 }
 
 // gradualParam returns T for a `T | untyped` parameter type, else nil.
@@ -1823,6 +1973,14 @@ func substAll(ts []Type, env map[string]Type) []Type {
 		out[i] = subst(t, env)
 	}
 	return out
+}
+
+// forwardParent is inheritedSig for a method that may be a top-level def.
+func (c *Compiler) forwardParent(m *Method) *entry {
+	if m.Owner == nil {
+		return nil
+	}
+	return c.inheritedSig(m)
 }
 
 // inheritedSig finds the method an unannotated def overrides.
@@ -2136,7 +2294,7 @@ func (c *Compiler) defKeywords(m *Method, ps *parser.ParametersNode) []defKeywor
 		}
 	}
 	switch r := ps.KeywordRest.(type) {
-	case nil:
+	case nil, *parser.ForwardingParameterNode: // `...` is resolveForwarding's
 	case *parser.KeywordRestParameterNode:
 		name := anonKwrest // `def f(**)`: g(**) reads it
 		if r.Name != nil {

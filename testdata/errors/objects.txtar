@@ -1053,3 +1053,11 @@ class K
   undef a
 end
 puts K.new.a
+-- forward_all_without_call.rb --
+# error: main.rb:2: def f(...) needs one call that forwards with (...)
+def f(...) = 1
+p f
+-- forward_all_unknown_target.rb --
+# error: main.rb:2: def f(...): its forwarding target is not a method rb2go can see
+def f(...) = nope(...)
+p f
