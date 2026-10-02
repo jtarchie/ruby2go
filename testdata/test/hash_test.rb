@@ -1936,4 +1936,11 @@ module HashTests
       assert_equal [[:a, 1, :b, [2, [3]]], [:a, 1, :b, 2, [3]], [:a, 1, :b, 2, 3], []], [h.flatten, h.flatten(2), h.flatten(3), {}.flatten]
     end
   end
+
+  # ruby/spec core/set gaps (#49): flatten
+  class HashRubySpecSetFlattenTest < Minitest::Test
+    def test_set_flatten
+      assert_equal [Set[1, 2, 3], Set[1, 2]], [Set[Set[1, 2], Set[2, 3]].flatten, Set[1, 2].flatten]
+    end
+  end
 end

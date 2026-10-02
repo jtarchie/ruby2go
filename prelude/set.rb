@@ -219,6 +219,18 @@ class Set < Object
   #: (?String) -> String
   def join(sep = "") = to_a.join(sep)
 
+  # A Set of plain elements is already flat; a Set of Sets goes to the @self form (decision 92).
+  #: () -> Set[E]
+  def flatten = Set.new(to_a)
+
+  # @self Set[Set[U]]
+  # @rbs [U] () -> Set[U]
+  def __flatten_nested
+    out = Set.new #: Set[U]
+    each { |inner| inner.each { |x| out << x } }
+    out
+  end
+
   #: [U] () { (E) -> U } -> Hash[U, Set[E]]
   def classify
     h = {} #: Hash[U, Set[E]]
