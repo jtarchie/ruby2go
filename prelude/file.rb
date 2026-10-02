@@ -42,6 +42,22 @@ class File < Object
   #: (String) -> Time
   def self.mtime(path) = stat(path).mtime
 
+  LOCK_SH = 1 #: Integer
+  LOCK_EX = 2 #: Integer
+  LOCK_NB = 4 #: Integer
+  LOCK_UN = 8 #: Integer
+
+  # Sets access and modification times; the count of paths, as MRI's.
+  #: (Time, Time, *String) -> Integer
+  def self.utime(atime, mtime, *paths) = %x{
+    for _, p := range rest_ {
+      if err := os.Chtimes(string(p), atime.t, mtime.t); err != nil {
+        panic(rbSysErr(err, "rb_file_s_utime", string(p)))
+      }
+    }
+    return Integer(len(rest_))
+  }
+
   #: (String) -> File::Stat
   def self.stat(path) = %x{
     fi, err := os.Stat(string(path))
@@ -404,6 +420,21 @@ class File < Object
 
   #: () -> Integer
   def tell = pos
+
+  # LOCK_SH, LOCK_EX or LOCK_UN, with LOCK_NB not to wait: 0, or false when LOCK_NB finds it held.
+  #: (Integer) -> untyped
+  def flock(op) = %x{
+    if self.w != nil {
+      _ = self.w.Flush()
+    }
+    if err := syscall.Flock(int(self.f.Fd()), int(op)); err != nil {
+      if errors.Is(err, syscall.EWOULDBLOCK) {
+        return Boolean(false)
+      }
+      panic(rbSysErr(err, "rb_file_flock", self.path))
+    }
+    return Integer(0)
+  }
 
   #: (Integer, ?Integer) -> Integer
   def seek(offset, whence = 0) = %x{

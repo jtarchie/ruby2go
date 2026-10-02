@@ -1330,4 +1330,26 @@ module StdlibTests
       assert_equal "invalid resource name: NOPE", e.message
     end
   end
+
+  # ruby/spec core/file gaps (#49): utime and flock
+  class RubySpecFileLockTest < Minitest::Test
+    def test_utime_and_flock
+      Dir.mktmpdir do |d|
+        f = File.join(d, "a")
+        File.write(f, "x")
+        t = Time.at(1_000_000_000)
+        assert_equal [1, true], [File.utime(t, t, f), File.mtime(f) == t]
+        shared = File.open(f) { |io| [io.flock(File::LOCK_SH), io.flock(File::LOCK_UN)] }
+        assert_equal [0, 0], shared
+        a = File.open(f, "r+")
+        a.flock(File::LOCK_EX)
+        b = File.open(f, "r+")
+        assert_equal false, b.flock(File::LOCK_EX | File::LOCK_NB)
+        a.close
+        b.close
+        nil
+      end
+      assert_equal [1, 2, 4, 8], [File::LOCK_SH, File::LOCK_EX, File::LOCK_NB, File::LOCK_UN]
+    end
+  end
 end
