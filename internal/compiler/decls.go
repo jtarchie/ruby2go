@@ -315,20 +315,22 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 }
 
 // tableInputs fingerprints what emitTables reads; the maps only grow, so sizes tell.
-func (c *Compiler) tableInputs() [8]int {
+func (c *Compiler) tableInputs() [9]int {
 	b2i := func(b bool) int {
 		if b {
 			return 1
 		}
 		return 0
 	}
-	return [8]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery)}
+	return [9]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil)}
 }
 
 // emitTables: what every emitted body has contributed to.
 func (c *Compiler) emitTables() {
 	if c.dynEvery {
 		c.emitNameSwitches()
+	}
+	if c.dynEvery || c.callable != nil {
 		c.emitCallTables()
 	}
 	c.emitClassOf()

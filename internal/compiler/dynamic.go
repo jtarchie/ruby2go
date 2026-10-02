@@ -37,7 +37,10 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 			c.dynLazy[n] = true
 		}
 	}
-	c.dynEvery = c.dynEvery || c.dynAll && (reached("rbSendByName") || reached("rbRespondsByName") || selected("_Call"))
+	c.dynEvery = c.dynEvery || c.dynAll && (reached("rbSendByName") || reached("rbRespondsByName"))
+	if !c.dynEvery && c.callable == nil && selected("_Call") {
+		c.callable = c.callableNames()
+	}
 	var emitted []string
 	for progress := true; progress; {
 		progress = false
@@ -64,7 +67,7 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 
 // dynNeeded: name was noted by an emitted body, or kept code calls its dispatcher, asks respond_to? of it, or asserts its wrapper (rbCmp's DynOp_cmp, the json generator's DynToJson).
 func (c *Compiler) dynNeeded(name string, reached, selected func(string) bool) bool {
-	if c.dynEvery || !c.dynLazy[name] {
+	if c.dynEvery || !c.dynLazy[name] || c.callable[name] {
 		return true
 	}
 	gn := goMethodName(name)
@@ -83,6 +86,22 @@ type dynWrapped struct {
 func callByName(name string) bool {
 	_, op := opNames[name]
 	return strings.HasPrefix(name, "test_") || strings.HasSuffix(name, "?") || op
+}
+
+// callableNames are what the _Call tables switch over: the callByName methods user code defines on user classes, own or inherited. Only their dispatchers go out, where a computed send needs every one.
+func (c *Compiler) callableNames() map[string]bool {
+	out := map[string]bool{}
+	for _, cls := range c.classList {
+		if cls.File == nil || cls.File.prelude || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
+			continue
+		}
+		for _, e := range cls.methodSet() {
+			if !e.M.File.prelude && callByName(e.M.Name) {
+				out[e.M.Name] = true
+			}
+		}
+	}
+	return out
 }
 
 // emitCallTables gives each user-defined class _Call(name, args...): send

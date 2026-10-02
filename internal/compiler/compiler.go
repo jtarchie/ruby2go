@@ -40,11 +40,11 @@ type Compiler struct {
 	dynGo         map[string]string       // Go name → the Ruby name its dispatchers serve
 	dynWrapped    map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
 	warned        map[string]bool
-	regexps       []string          // package-level compiled literals (and DATA's StringIO)
-	dataVar       bool              // rbDATA is declared
+	regexps       []string                // package-level compiled literals (and DATA's StringIO)
+	dataVar       bool                    // rbDATA is declared
 	beginStmts    map[*File][]parser.Node // BEGIN { } bodies, run first in their file
-	regexpVars    map[string]string // literal → its variable, to share one per pattern
-	strLits       map[string]bool   // String literal texts: String#frozen? knows them by identity
+	regexpVars    map[string]string       // literal → its variable, to share one per pattern
+	strLits       map[string]bool         // String literal texts: String#frozen? knows them by identity
 	constList     []*Const
 	hooks         []classHook // main.rb's inherited/included/extended sites
 	topDefList    []*Method
@@ -59,7 +59,8 @@ type Compiler struct {
 	respondOut    map[string]bool // respond_to? checks emitted
 	fwdOut        map[*Class]bool // forwarders emitted
 	tablesOut     bool
-	tablesAt      [8]int // tableInputs when the tables went out
+	tablesAt      [9]int          // tableInputs when the tables went out
+	callable      map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	files         []*File
 	preludeFS     fs.FS
 	parser        *parser.Parser

@@ -7,7 +7,7 @@ module Kernel
   #: () -> void
   def __require_minitest_autorun = Minitest.autorun
 
-  # Never called: a computed send in the closed world makes the compiler emit every class's Dyn wrappers and _Call table, which minitest's sends use (rbMtCall).
+  # Never called: a computed send in the closed world notes every method name for Dyn wrappers; rbMtCall's _Call tables then take the ones user classes define (callableNames).
   # @dynamic
   #: (untyped, untyped) -> untyped
   def __mt_send_probe(recv, name) = recv.__send__(name)

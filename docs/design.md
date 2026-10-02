@@ -1998,7 +1998,12 @@ resolve; anything not listed is still open.
     generated `_Call(name, args...)` over the methods user code defined on
     it (through decision 32's Dyn wrappers), and core values answer a
     fixed list of common operators and predicates (`==`, `<`, `include?`,
-    `even?`, `empty?`, ...), a NoMethodError for any other. Shape changes, each marked `port:` in the source:
+    `even?`, `empty?`, ...), a NoMethodError for any other. The tables
+    need only the dispatchers of the names they switch over, so kept
+    code selecting `_Call` emits those (`callableNames`), not every
+    method name as a computed send does: a one-test file's compile went
+    from 0.9 s to 0.4 s, most of it 3 MB of Go generated to be pruned.
+    Shape changes, each marked `port:` in the source:
     `@@vars` become constants; OptionParser is hand-parsed (same options
     and help text); Reportable and Assertions' methods live on
     Runnable/Test, because a module can't see its includers' attribute
