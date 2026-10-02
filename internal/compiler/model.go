@@ -384,29 +384,34 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 			}
 			c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
 		case *parser.CallNode:
-			if n.Receiver == nil && n.Name == "require_relative" && f.prelude {
-				c.requireRelative(ctx, f, n)
-				continue
-			}
-			if n.Receiver == nil && n.Name == "require_relative" {
-				c.errorf(f, n, "require_relative is not supported in user code")
-			}
-			if !f.prelude && isDescribe(n) {
-				c.collectDescribe(ctx, f, nil, n)
-				continue
-			}
-			if n.Receiver == nil && n.Name == "require" {
-				// stdlib requires are meaningless here, unless the prelude
-				// hooks one (decision 78): `require "a/b"` → __require_a_b
-				if hook := c.requireHook(f, n); hook != nil {
-					c.addMainStmt(f, hook)
-				}
-				continue
-			}
-			c.addMainStmt(f, n)
+			c.collectTopCall(ctx, f, n)
 		default:
 			c.addMainStmt(f, n)
 		}
+	}
+}
+
+// collectTopCall takes the top-level calls that act at compile time: require_relative, describe, include, require.
+func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNode) {
+	switch {
+	case n.Receiver == nil && n.Name == "require_relative" && f.prelude:
+		c.requireRelative(ctx, f, n)
+	case n.Receiver == nil && n.Name == "require_relative":
+		c.errorf(f, n, "require_relative is not supported in user code")
+	case !f.prelude && isDescribe(n):
+		c.collectDescribe(ctx, f, nil, n)
+	case n.Receiver == nil && n.Name == "include" && !f.prelude:
+		for _, a := range callArgs(n) { // main's include is Object's, as in MRI
+			c.addInclude(f, n, c.classes["Object"], a, nil)
+		}
+	case n.Receiver == nil && n.Name == "require":
+		// stdlib requires are meaningless here, unless the prelude
+		// hooks one (decision 78): `require "a/b"` → __require_a_b
+		if hook := c.requireHook(f, n); hook != nil {
+			c.addMainStmt(f, hook)
+		}
+	default:
+		c.addMainStmt(f, n)
 	}
 }
 

@@ -3427,7 +3427,11 @@ resolve; anything not listed is still open.
     re-including it. `included_modules` is its modules. The table lists
     rb2go's own prelude modules too (File's IOReadable and IOWritable),
     which MRI's ancestors lack. (`testdata/test/object_test.rb`
-    `ObjectRubySpecAncestorsTest`.)
+    `ObjectRubySpecAncestorsTest`.) A top-level `include M` is Object's,
+    as MRI's main object includes into Object: M's methods are on every
+    object and in every ancestors list. *(Revised: it was a dynamic call
+    that raised NoMethodError when run.)*
+    (`testdata/run/object_top_include.rb`.)
 126. An optional block (`?{ ... }`) in a def is a `Proc?` local (the
     `&blk` name, or a hidden one for `yield`), so the type system guards
     it rather than a nil func crashing at run time: `yield` and `blk.call`
