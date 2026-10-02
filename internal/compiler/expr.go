@@ -1488,7 +1488,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	case TOpt:
 		return f.optCall(n, recv, name, args, block)
 	case TTuple:
-		return f.tupleCall(n, recv, name, args)
+		return f.tupleCall(n, recv, name, args, block)
 	case TFunc:
 		if t.Proc {
 			return f.procCall(n, recv, t, name, args, block)
@@ -3390,7 +3390,7 @@ func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser
 	return expr{code: tmp, typ: t}, true
 }
 
-func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
+func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	tt := recv.typ.(TTuple)
 	switch name {
 	case "[]":
@@ -3418,6 +3418,9 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 			code = f.coerce(args[0], a, TAny{})
 		}
 		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+	}
+	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
+		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
 	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}

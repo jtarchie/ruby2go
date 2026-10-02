@@ -243,6 +243,11 @@ def array_kind(x)
   end
 end
 
+module Kernel
+  #: () -> String
+  def array_tag = "<#{self.class}>"
+end
+
 module ArrayTests
   PRIMES = [2, 3, 5, 7] #: Array[Integer]
 
@@ -2360,6 +2365,16 @@ module ArrayTests
       assert_equal [[1, 2, 3], [0, 1, 2, 9], [1, 2], [5]], [[*a, *b], [0, *a, 9], [*a], [*[], 5]]
       words = %w[x y]
       assert_equal ["a", "x", "y"], ["a", *words]
+    end
+  end
+
+  # a tuple (divmod's [q, r]) had no Kernel methods: undefined method for tuple
+  class ArrayBugTupleKernelTest < Minitest::Test
+    def test_kernel_methods_on_tuple
+      t = 7.divmod(2)
+      assert_equal "<Array>", t.array_tag
+      assert_equal false, t.frozen?
+      assert_equal 4, t.then { |q, r| q + r }
     end
   end
 end
