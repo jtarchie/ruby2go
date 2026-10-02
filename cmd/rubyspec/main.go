@@ -47,7 +47,7 @@ func main() {
 	reasons := flag.Int("reasons", 10, "list this many of the commonest unsupported reasons")
 	var opts options
 	flag.BoolVar(&opts.verbose, "v", false, "list every unsupported example and each program's failures")
-	flag.DurationVar(&opts.timeout, "timeout", 10*time.Second, "per program run; a test still running then is skipped as hung")
+	flag.DurationVar(&opts.timeout, "timeout", 3*time.Second, "a test that prints nothing for this long is skipped as hung")
 	flag.BoolVar(&opts.keep, "work", false, "keep each program's module (main.go) and print its path")
 	flag.Parse()
 	root, err := specRoot(*spec)
@@ -247,9 +247,48 @@ var specFrame = regexp.MustCompile(`(?m)^\s+(?:gen/)?(\S+_spec\.rb):(\d+)`)
 // testLine is one example's line in minitest's -v report.
 var testLine = regexp.MustCompile(`#test_\d{4}_.* = [\d.]+ s = ([.FES])$`)
 
+// idleWriter collects output and when it last came: minitest -v prints each test's name before running it, so silence means a test hangs.
+type idleWriter struct {
+	mu   sync.Mutex
+	buf  strings.Builder
+	last time.Time
+}
+
+func (w *idleWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.last = time.Now()
+	return w.buf.Write(p) //nolint:wrapcheck // a Builder never fails
+}
+
+func (w *idleWriter) idle() time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return time.Since(w.last)
+}
+
+// watch cancels a run that has printed nothing for timeout.
+func watch(ctx context.Context, cancel context.CancelFunc, w *idleWriter, timeout time.Duration) {
+	tick := time.NewTicker(timeout / 10)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if w.idle() > timeout {
+				cancel()
+				return
+			}
+		}
+	}
+}
+
 func (r *result) run(ctx context.Context, root, bin string, timeout time.Duration, excluded []string) *crashSite {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	out := &idleWriter{last: time.Now()}
+	go watch(ctx, cancel, out, timeout)
 	args := []string{"--seed", "1", "-v"}
 	if len(excluded) > 0 {
 		args = append(args, "-e", "/^(?:"+strings.Join(excluded, "|")+")$/")
@@ -259,8 +298,9 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 	cmd.Env = append(os.Environ(), "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                 // Go dumps every goroutine: the hung example's frame is in it
 	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.CombinedOutput()
-	r.output = string(out)
+	cmd.Stdout, cmd.Stderr = out, out
+	err := cmd.Run()
+	r.output = out.buf.String()
 	r.pass, r.fail, r.errored, r.skipped, r.crashed = 0, 0, 0, 0, ""
 	r.why = r.why[:0]
 	for _, m := range rbSkip.FindAllStringSubmatch(r.output, -1) {
@@ -287,7 +327,7 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 	}
 	reason := "crashed: " + panicLine(r.output)
 	if ctx.Err() != nil {
-		reason = fmt.Sprintf("hung: no result in %v", timeout)
+		reason = fmt.Sprintf("hung: no output for %v", timeout)
 	}
 	r.crashed = fmt.Sprintf("%s (%v)", reason, err)
 	site := &crashSite{reason: reason}

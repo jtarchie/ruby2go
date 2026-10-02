@@ -3462,6 +3462,9 @@ resolve; anything not listed is still open.
     elsewhere (a fixture method, a top-level statement) and `go build`
     errors (mapped back by `//line`) are cut from the source by the
     runner, which compiles again. Rewrites keep line numbers: removed
-    text keeps its newlines. The report counts pass, fail, error and
+    text keeps its newlines. A crash ends a whole run, so the test
+    minitest `-v` named last is excluded by name and the same binary
+    runs again; a run silent for 3 s is a hung test, sent SIGQUIT so a
+    nameless one is found in the goroutine dump. The report counts pass, fail, error and
     skip per directory, and the commonest unsupported reasons, which is
     the work list.
