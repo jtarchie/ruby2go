@@ -69,7 +69,7 @@ module IOReadable
   end
 end
 
-# @go_type struct { fd int; via rbWriter }
+# @go_type struct { fd int; via rbWriter; lineno int }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -208,9 +208,21 @@ class IO < Object
     if line == "" && err != nil {
       return nil
     }
+    self.lineno++
     s := String(line)
     return &s
   }
+
+  #: () -> Integer
+  def lineno = %x{ Integer(self.lineno) }
+
+  #: (Integer) -> Integer
+  def lineno=(n)
+    %x{
+    self.lineno = int(n)
+    return n
+    }
+  end
 
   #: () -> String
   def read = %x{

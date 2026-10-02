@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { f *os.File; r *bufio.Reader; w *bufio.Writer; path string; sync bool }
+# @go_type struct { f *os.File; r *bufio.Reader; w *bufio.Writer; path string; sync bool; lineno int }
 class File < Object
   include IOWritable
   include IOReadable
@@ -351,9 +351,22 @@ class File < Object
     if line == "" && err != nil {
       return nil
     }
+    self.lineno++
     s := String(line)
     return &s
   }
+
+  # The count of lines gets has read (each_line and readline too); rewind sets it back to 0.
+  #: () -> Integer
+  def lineno = %x{ Integer(self.lineno) }
+
+  #: (Integer) -> Integer
+  def lineno=(n)
+    %x{
+    self.lineno = int(n)
+    return n
+    }
+  end
 
   #: () -> String
   def read = %x{
@@ -471,7 +484,10 @@ class File < Object
   }
 
   #: () -> Integer
-  def rewind = seek(0)
+  def rewind
+    self.lineno = 0
+    seek(0)
+  end
 
   #: () -> File
   def flush = %x{

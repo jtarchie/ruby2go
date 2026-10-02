@@ -1402,4 +1402,30 @@ module StdlibTests
       assert_equal ["1\n", "2\n"], IO.popen("printf '1\\n2\\n'") { |io| io.readlines }
     end
   end
+
+  # ruby/spec core/io gaps (#49): lineno
+  class RubySpecLinenoTest < Minitest::Test
+    def test_lineno
+      Dir.mktmpdir do |d|
+        f = File.join(d, "a")
+        File.write(f, "a\nb\nc\n")
+        seen = [] #: Array[Integer]
+        File.open(f) do |io|
+          seen << io.lineno
+          io.gets
+          seen << io.lineno
+          io.readline
+          seen << io.lineno
+          io.lineno = 10
+          io.gets
+          seen << io.lineno
+          io.rewind
+          seen << io.lineno
+          io.each_line { |_l| nil }
+          seen << io.lineno
+        end
+        assert_equal [0, 1, 2, 11, 0, 3], seen
+      end
+    end
+  end
 end
