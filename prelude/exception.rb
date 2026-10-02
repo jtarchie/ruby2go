@@ -58,6 +58,7 @@ end
 
 class StandardError < Exception; end
 class IOError < StandardError; end
+class EOFError < IOError; end
 
 class SystemCallError < StandardError; end
 

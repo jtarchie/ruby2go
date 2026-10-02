@@ -1237,4 +1237,32 @@ module StdlibTests
       %w[SPECENV_A SPECENV_B SPECENV_C SPECENV_D].each { |k| ENV.delete(k) }
     end
   end
+
+  # ruby/spec core/io gaps (#49): reading by character and byte, pos and seek
+  class RubySpecIOReadTest < Minitest::Test
+    def test_char_reads
+      Dir.mktmpdir do |d|
+        path = File.join(d, "f.txt")
+        File.write(path, "hé\nline2\nend")
+        File.open(path) do |f|
+          assert_equal ["h", "é", 10, 4, "line2\n", 10], [f.getc, f.getc, f.getbyte, f.pos, f.readline, f.tell]
+          f.ungetc("X")
+          assert_equal ["X", 101], [f.readchar, f.readbyte]
+          f.rewind
+          assert_equal [0, "hé\n"], [f.pos, f.gets]
+          f.seek(4)
+          chars = [] #: Array[String]
+          f.each_char { |c| chars << c }
+          assert_equal ["line2\nend", nil, true], [chars.join, f.getc, f.eof?]
+          e = assert_raises(EOFError) { f.readline }
+          assert_equal "end of file reached", e.message
+          f.seek(0)
+          bytes = [] #: Array[Integer]
+          f.each_byte { |b| bytes << b }
+          assert_equal 13, bytes.size
+        end
+      end
+      assert_equal IOError, EOFError.superclass
+    end
+  end
 end

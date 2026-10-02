@@ -336,6 +336,95 @@ class File < Object
     return Boolean(err != nil)
   }
 
+  #: () -> String?
+  def getc = %x{
+    self.rbReadable()
+    return rbGetc(self.r)
+  }
+
+  #: () -> Integer?
+  def getbyte = %x{
+    self.rbReadable()
+    return rbGetbyte(self.r)
+  }
+
+  #: () -> String
+  def readchar = %x{
+    self.rbReadable()
+    return *rbEOF(rbGetc(self.r))
+  }
+
+  #: () -> Integer
+  def readbyte = %x{
+    self.rbReadable()
+    return *rbEOF(rbGetbyte(self.r))
+  }
+
+  #: () -> String
+  def readline
+    line = gets
+    raise EOFError, "end of file reached" unless line
+    line
+  end
+
+  #: (String) -> nil
+  def ungetc(s) = %x{
+    self.rbReadable()
+    rbUngetc(&self.r, string(s))
+  }
+
+  #: () { (String) -> void } -> void
+  def each_char
+    while (c = getc)
+      yield c
+    end
+  end
+
+  #: () { (Integer) -> void } -> void
+  def each_byte
+    while (b = getbyte)
+      yield b
+    end
+  end
+
+  #: () -> Integer
+  def pos = %x{
+    off, err := self.f.Seek(0, io.SeekCurrent)
+    if err != nil {
+      panic(rbSysErr(err, "rb_io_tell", self.path))
+    }
+    if self.r != nil {
+      off -= int64(self.r.Buffered())
+    }
+    if self.w != nil {
+      off += int64(self.w.Buffered())
+    }
+    return Integer(off)
+  }
+
+  #: () -> Integer
+  def tell = pos
+
+  #: (Integer, ?Integer) -> Integer
+  def seek(offset, whence = 0) = %x{
+    if self.w != nil {
+      _ = self.w.Flush()
+    }
+    if whence == 1 && self.r != nil {
+      offset -= Integer(self.r.Buffered())
+    }
+    if _, err := self.f.Seek(int64(offset), int(whence)); err != nil {
+      panic(rbSysErr(err, "rb_io_seek", self.path))
+    }
+    if self.r != nil {
+      self.r.Reset(self.f)
+    }
+    return 0
+  }
+
+  #: () -> Integer
+  def rewind = seek(0)
+
   #: () -> File
   def flush = %x{
     if self.w != nil {

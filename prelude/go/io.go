@@ -42,3 +42,36 @@ func (self *ARGFClass) spent() {
 		self.done = true
 	}
 }
+
+// rbGetc is IO#getc: one UTF-8 character, or nil at end of file.
+func rbGetc(r *bufio.Reader) *String {
+	c, _, err := r.ReadRune()
+	if err != nil {
+		return nil
+	}
+	s := String(string(c))
+	return &s
+}
+
+// rbGetbyte is IO#getbyte: one byte, or nil at end of file.
+func rbGetbyte(r *bufio.Reader) *Integer {
+	b, err := r.ReadByte()
+	if err != nil {
+		return nil
+	}
+	n := Integer(b)
+	return &n
+}
+
+// rbEOF is readchar/readbyte's EOFError where getc/getbyte answer nil.
+func rbEOF[T any](v *T) *T {
+	if v == nil {
+		panic(NewEOFError(Ref(String("end of file reached"))))
+	}
+	return v
+}
+
+// rbUngetc is IO#ungetc: s goes back in front of what is still unread.
+func rbUngetc(r **bufio.Reader, s string) {
+	*r = bufio.NewReader(io.MultiReader(strings.NewReader(s), *r))
+}
