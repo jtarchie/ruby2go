@@ -164,6 +164,8 @@ type result struct {
 	dropped                      []skipped // statements outside examples removed
 	fatal                        string    // why the program produced no results
 	crashed                      string    // the last run's crash or hang
+	why                          []string  // each skipped example's rb2go reason, from the run
+	excluded                     []string  // why each test a crash or hang took out did
 	output                       string    // the run's report, for -v
 	took                         time.Duration
 	compiles, builds             int           // rounds of each, for -v
@@ -192,6 +194,10 @@ func runTarget(ctx context.Context, p *parser.Parser, root string, t target, opt
 		if crash == nil {
 			return r
 		}
+		if crash.file == "" { // before any test, or nowhere a spec names
+			r.fatal = r.crashed
+			return r
+		}
 		// no test name to exclude: skip the example its stack was in, and build again
 		err = prog.skipAt(ctx, r, crash.file, crash.line, crash.reason, nil)
 		if err != nil {
@@ -213,6 +219,7 @@ func (r *result) runAll(ctx context.Context, root, bin string, timeout time.Dura
 		}
 		excluded = append(excluded, regexp.QuoteMeta(crash.test))
 		r.unsupported = append(r.unsupported, skipped{crash.test, crash.reason})
+		r.excluded = append(r.excluded, crash.reason)
 	}
 	return nil
 }
@@ -227,6 +234,9 @@ type crashSite struct {
 	line   int
 	reason string
 }
+
+// rbSkip is a skip rb2go put in an example, in minitest -v's report: its reason follows "rb2go: ".
+var rbSkip = regexp.MustCompile(`(?m)\) Skipped:\n.*\n\s*rb2go: (.*)$`)
 
 // startedTest is minitest -v's "Class#test_name = " a test prints before its result.
 var startedTest = regexp.MustCompile(`(?m)^(.*#test_\d{4}_.*?) = `)
@@ -251,6 +261,10 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 	out, err := cmd.CombinedOutput()
 	r.output = string(out)
 	r.pass, r.fail, r.errored, r.skipped, r.crashed = 0, 0, 0, 0, ""
+	r.why = r.why[:0]
+	for _, m := range rbSkip.FindAllStringSubmatch(r.output, -1) {
+		r.why = append(r.why, m[1])
+	}
 	for _, line := range strings.Split(r.output, "\n") {
 		m := testLine.FindStringSubmatch(line)
 		if m == nil {
@@ -287,9 +301,6 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 		site.file = m[1]
 		site.line, _ = strconv.Atoi(m[2])
 	}
-	if site.test == "" && site.file == "" {
-		return nil
-	}
 	return site
 }
 
@@ -316,7 +327,7 @@ func (r *result) print(verbose bool) {
 	} else {
 		total := r.pass + r.fail + r.errored + r.skipped
 		fmt.Printf("%-28s %4d examples  %4d pass  %3d fail  %3d error  %4d skip (%d unsupported)  %.1fs\n",
-			r.name, total, r.pass, r.fail, r.errored, r.skipped, len(r.unsupported)+len(r.compileSkips), r.took.Seconds())
+			r.name, total+len(r.excluded), r.pass, r.fail, r.errored, r.skipped+len(r.excluded), len(r.why)+len(r.excluded), r.took.Seconds())
 	}
 	if !verbose {
 		return
@@ -338,17 +349,17 @@ func (r *result) print(verbose bool) {
 // specOwner is a describe's name ending a message (`undefined method mock for Integer#div::fixnum`), which would split one reason per describe.
 var specOwner = regexp.MustCompile(`( for )[^ ]*[#:.][^,]*$`)
 
-// report totals every program and lists the commonest reasons examples were unsupported.
+// report totals every program and lists the commonest reasons examples were unsupported: each skipped example once, as the run reported it.
 func report(results []*result, reasons int) {
 	var pass, fail, errored, skip, unsup, fatal int
 	why := map[string]int{}
 	for _, r := range results {
-		pass, fail, errored, skip, unsup = pass+r.pass, fail+r.fail, errored+r.errored, skip+r.skipped, unsup+len(r.unsupported)+len(r.compileSkips)
+		pass, fail, errored, skip, unsup = pass+r.pass, fail+r.fail, errored+r.errored, skip+r.skipped+len(r.excluded), unsup+len(r.why)+len(r.excluded)
 		if r.fatal != "" {
 			fatal++
 		}
-		for _, s := range slices.Concat(r.unsupported, r.compileSkips, r.dropped) {
-			why[specOwner.ReplaceAllString(s.reason, "${1}a spec")]++
+		for _, reason := range slices.Concat(r.why, r.excluded) {
+			why[specOwner.ReplaceAllString(reason, "${1}a spec")]++
 		}
 	}
 	fmt.Printf("\ntotal: %d examples  %d pass  %d fail  %d error  %d skip (%d unsupported)  %d programs failed\n",
