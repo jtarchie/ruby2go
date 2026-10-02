@@ -369,6 +369,13 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 				continue
 			}
 			c.addConst(f, n, n.Name, nil, nil)
+		case *parser.PreExecutionNode: // BEGIN runs before the rest of its file, in the top-level scope
+			if c.beginStmts == nil {
+				c.beginStmts = map[*File][]parser.Node{}
+			}
+			if n.Statements != nil {
+				c.beginStmts[f] = append(c.beginStmts[f], n.Statements.Body...)
+			}
 		case *parser.XStringNode:
 			if !f.prelude {
 				c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")

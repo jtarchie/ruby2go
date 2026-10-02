@@ -3289,8 +3289,13 @@ resolve; anything not listed is still open.
     - `redo` jumps (`goto`) to a label that opens the loop body of a
       while, until, for or iterator loop; inside a closure block or a
       begin/rescue wrapper (both Go func literals) it is a compile error.
-    Not done here (still listed on #49): `BEGIN`/`END`, and
-    `Array#to_set` (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
+    - `BEGIN { }` bodies move to the front of their file's statements, in
+      the top-level scope, so their locals are the file's. `END { }` is
+      `at_exit` with its block, behind a package flag so it registers once
+      however often the statement runs. As with any constant,
+      `defined?(X)` inside BEGIN answers "constant" for an X the file
+      assigns later, where MRI says nil.
+    `Array#to_set` stays out (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method

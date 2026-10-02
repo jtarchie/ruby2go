@@ -88,6 +88,25 @@ func (f *fctx) pushLoop(kind loopKind) {
 	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, closures: f.closures, start: start})
 }
 
+// genEnd is `END { }`: Kernel#at_exit with that block, registered the
+// first time the statement runs only, as MRI's.
+func (f *fctx) genEnd(n *parser.PostExecutionNode) {
+	guard := fmt.Sprintf("rbEnd%d", n.Location.StartOffset)
+	if !slices.Contains(f.c.regexps, "var "+guard+" bool") {
+		f.c.regexps = append(f.c.regexps, "var "+guard+" bool")
+	}
+	call := f.c.rewrite(n, func() parser.Node {
+		blk := &parser.BlockNode{Location: n.Location, Body: n.Statements}
+		return &parser.CallNode{Location: n.Location, Name: "at_exit", Block: blk}
+	})
+	f.emit("if !%s {", guard)
+	f.indent++
+	f.emit("%s = true", guard)
+	f.genStmt(call, tail{})
+	f.indent--
+	f.emit("}")
+}
+
 // redoLabel opens a loop body that contains `redo` with a label for its goto.
 func (f *fctx) redoLabel(body parser.Node) {
 	if body == nil || !hasRedo(body) {
@@ -523,6 +542,8 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genBreak(n)
 	case *parser.NextNode:
 		f.genNext(n)
+	case *parser.PostExecutionNode:
+		f.genEnd(n)
 	case *parser.RedoNode:
 		var l *loopFrame
 		if len(f.loops) > 0 {
@@ -2392,7 +2413,7 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 		slices.SortStableFunc(mine, func(a, b parser.Node) int {
 			return cmp.Compare(a.GetLocation().StartOffset, b.GetLocation().StartOffset)
 		})
-		var body []parser.Node
+		body := append([]parser.Node(nil), c.beginStmts[f]...)
 		for len(rest) > 0 || len(mine) > 0 {
 			if len(mine) > 0 && (len(rest) == 0 || mine[0].GetLocation().StartOffset < rest[0].GetLocation().StartOffset) {
 				body, mine = append(body, mine[0]), mine[1:]

@@ -42,6 +42,7 @@ type Compiler struct {
 	warned        map[string]bool
 	regexps       []string          // package-level compiled literals (and DATA's StringIO)
 	dataVar       bool              // rbDATA is declared
+	beginStmts    map[*File][]parser.Node // BEGIN { } bodies, run first in their file
 	regexpVars    map[string]string // literal → its variable, to share one per pattern
 	strLits       map[string]bool   // String literal texts: String#frozen? knows them by identity
 	constList     []*Const
