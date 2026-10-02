@@ -196,6 +196,69 @@ func rbRlimit(v any) int {
 	panic(NewArgumentError(Ref(String("invalid resource name: " + string(rbToS(v))))))
 }
 
+// rbPopens are IO.popen's children by the File reading their output.
+var rbPopens sync.Map
+
+// rbPopen starts IO.popen's command with its stdout on a pipe, for the block to read.
+func rbPopen(cmd any) *File {
+	var c *exec.Cmd
+	switch v := rbUnbox(cmd).(type) {
+	case String:
+		c = rbCommand(string(v), nil)
+	case *Array[String]:
+		if len(*v) == 0 {
+			panic(NewArgumentError(Ref(String("wrong number of arguments"))))
+		}
+		c = rbCommand(string((*v)[0]), (*v)[1:])
+	case *Array[any]:
+		args := make([]String, 0, len(*v))
+		for _, a := range *v {
+			args = append(args, rbToS(a))
+		}
+		if len(args) == 0 {
+			panic(NewArgumentError(Ref(String("wrong number of arguments"))))
+		}
+		c = rbCommand(string(args[0]), args[1:])
+	default:
+		panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(cmd) + " into String"))))
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		panic(rbSysErr(err, "rb_io_s_popen", ""))
+	}
+	rbFlush()
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, w, os.Stderr
+	if err := c.Start(); err != nil {
+		_ = r.Close()
+		_ = w.Close()
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
+	}
+	_ = w.Close()
+	f := &File{f: r, r: bufio.NewReader(r), path: "popen"}
+	rbPopens.Store(f, c)
+	return f
+}
+
+// rbPopenWait closes popen's reader, reaps the child and records $?.
+func rbPopenWait(f *File) {
+	v, ok := rbPopens.LoadAndDelete(f)
+	if !ok {
+		return
+	}
+	if f.f != nil {
+		_ = f.f.Close()
+		f.f = nil
+	}
+	c := v.(*exec.Cmd)
+	err := c.Wait()
+	st := &Process_Status{code: 0, pid: c.Process.Pid}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		st.code = ee.ExitCode()
+	}
+	rbLastStatus.Store(st)
+}
+
 // rbLastStatusOpt is $?: the last child's status, nil before any.
 func rbLastStatusOpt() **Process_Status {
 	if st := rbLastStatus.Load(); st != nil {

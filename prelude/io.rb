@@ -101,6 +101,34 @@ class IO < Object
     File.foreach(path) { |line| yield line }
   end
 
+  # A connected [reader, writer]; the writer is sync, as MRI's. Both are Files here, so their class prints File, not IO.
+  #: () -> [File, File]
+  def self.pipe = %x{
+    r, w, err := os.Pipe()
+    if err != nil {
+      panic(rbSysErr(err, "rb_io_s_pipe", ""))
+    }
+    return Tuple2[*File, *File]{&File{f: r, r: bufio.NewReader(r), path: "pipe"}, &File{f: w, w: bufio.NewWriter(w), path: "pipe", sync: true}}
+  }
+
+  # The command's standard output as a File for the block; $? is its status after. A String
+  # follows system's shell rule, an Array of Strings runs directly.
+  # @rbs [T] (untyped) { (File) -> T } -> T
+  def self.popen(cmd)
+    io = __popen_start(cmd)
+    begin
+      yield io
+    ensure
+      __popen_finish(io)
+    end
+  end
+
+  #: (untyped) -> File
+  def self.__popen_start(cmd) = %x{ return rbPopen(cmd) }
+
+  #: (File) -> void
+  def self.__popen_finish(io) = %x{ rbPopenWait(io) }
+
   # Path to path, as MRI's with two filenames; the count of bytes copied.
   #: (String, String) -> Integer
   def self.copy_stream(src, dst) = File.write(dst, File.read(src))

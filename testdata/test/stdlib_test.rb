@@ -1383,4 +1383,23 @@ module StdlibTests
       end
     end
   end
+
+  # ruby/spec core/io gaps (#49): IO.pipe and IO.popen
+  class RubySpecPipeTest < Minitest::Test
+    def test_pipe
+      r, w = IO.pipe
+      assert_equal true, w.sync
+      w.puts "x"
+      w.close
+      assert_equal "x\n", r.read
+    end
+
+    def test_popen
+      assert_equal "hi\n", IO.popen(["echo", "hi"]) { |io| io.read }
+      assert_equal true, $?&.success?
+      assert_equal "a\n", IO.popen("echo a; exit 3") { |io| io.gets }
+      assert_equal 3, $?&.exitstatus
+      assert_equal ["1\n", "2\n"], IO.popen("printf '1\\n2\\n'") { |io| io.readlines }
+    end
+  end
 end
