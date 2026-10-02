@@ -3468,3 +3468,12 @@ resolve; anything not listed is still open.
     nameless one is found in the goroutine dump. The report counts pass, fail, error and
     skip per directory, and the commonest unsupported reasons, which is
     the work list.
+128. Exception classes rb2go never raises exist so `rescue` clauses
+    naming them compile (#43): `SystemStackError` (Go's stack overflow
+    is a fatal runtime error `recover` cannot catch, so infinite
+    recursion exits with Go's `goroutine stack exceeds` message and
+    status 2; counting call depth in every function would tax every
+    call to report a bug), `LoadError` (an unknown `require` stays a
+    compile error, decision 68), `SyntaxError` (no `eval`),
+    `SecurityError`, `EncodingError`, and `LocalJumpError` (a `yield`
+    whose block may be missing is a compile error, decision 126).
