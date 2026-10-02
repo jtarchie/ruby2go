@@ -3283,9 +3283,10 @@ resolve; anything not listed is still open.
       `=> e` as Exception.
     - `DATA` in the main file is one StringIO over the text after
       `__END__` (MRI's is a File at that offset; reads see the same).
-    Not done here (still listed on #49): `redo`, `BEGIN`/`END`, class
-    variables, instance-variable reflection, `Module#ancestors`, and
-    `Array#to_set` (decision 44's instantiation cycle).
+    Not done here (still listed on #49): `redo`, `BEGIN`/`END`,
+    `Module#ancestors`, and `Array#to_set` (decision 44's instantiation
+    cycle). Instance-variable reflection is decision 123, class variables
+    decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method
     used to call it through the receiver (`self.Sleep(...)`, or
@@ -3374,3 +3375,11 @@ resolve; anything not listed is still open.
     cannot. A class cannot gain an ivar at run time, so setting one it
     lacks is a NameError. `remove_instance_variable` is not supported.
     (`testdata/test/object_test.rb` `ObjectRubySpecIvarTest`.)
+124. Class variables (#49) are package variables. `@@x = v` in a class or
+    module body declares one, typed and initialized like a constant
+    (`#: T` annotates it) where the body runs; methods, class methods and
+    subclasses read and assign it through the class's ancestors, so a
+    subclass shares its parent's, as in MRI. The first assignment must be
+    in a body: one first made inside a method is a compile error, as is a
+    second assignment in the same body. (`testdata/test/object_test.rb`
+    `ObjectRubySpecClassVarTest`.)

@@ -4167,4 +4167,51 @@ module ObjectTests
       assert_equal [], 5.instance_variables
     end
   end
+
+  # ruby/spec language gaps (#49): class variables
+  class CvCounter
+    @@count = 0
+    @@names = [] #: Array[String]
+
+    #: (String) -> void
+    def initialize(name)
+      @@count += 1
+      @@names << name
+    end
+
+    #: () -> Integer
+    def self.count = @@count
+
+    #: () -> Array[String]
+    def self.names = @@names
+
+    #: () -> void
+    def self.reset
+      @@count = 0
+    end
+  end
+
+  class CvSubCounter < CvCounter
+    #: () -> Integer
+    def peek = @@count
+  end
+
+  module CvTally
+    @@hits = 10
+    #: () -> Integer
+    def self.hit = @@hits += 1
+  end
+
+  class ObjectRubySpecClassVarTest < Minitest::Test
+    def test_class_variables
+      CvCounter.reset
+      CvCounter.new("a")
+      CvSubCounter.new("b")
+      assert_equal [2, 3, 3], [CvCounter.count, CvSubCounter.new("c").peek, CvSubCounter.count]
+      assert_equal %w[a b c], CvCounter.names.last(3)
+      CvCounter.reset
+      assert_equal 0, CvCounter.count
+      assert_equal [11, 12], [CvTally.hit, CvTally.hit]
+    end
+  end
 end

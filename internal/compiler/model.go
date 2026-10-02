@@ -37,9 +37,10 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
-	privateNew    bool            // `private_class_method :new`
-	undefs        map[string]bool // `undef x`: calls through this class find nothing, even inherited
-	extends       []Include       // `extend M`: included into the class object
+	privateNew    bool              // `private_class_method :new`
+	undefs        map[string]bool   // `undef x`: calls through this class find nothing, even inherited
+	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
+	extends       []Include         // `extend M`: included into the class object
 	delegations   []delegation
 	meta          *Class   // the class object's class (holds `def self.` methods)
 	metaOf        *Class   // for a metaclass: the class it describes
@@ -619,6 +620,8 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			c.collectSingletonClass(f, cls, n, scope)
 		case *parser.AliasMethodNode:
 			c.addAlias(f, cls, n, n.NewName, n.OldName)
+		case *parser.ClassVariableWriteNode:
+			c.addClassVar(f, cls, n, scope)
 		case *parser.UndefNode:
 			for _, name := range c.symbolArgs(f, nil, n.Names) {
 				c.removeMethod(cls, name, true)
@@ -816,6 +819,21 @@ func (c *Compiler) collectMethodTableCall(f *File, cls *Class, n *parser.CallNod
 			c.removeMethod(cls, name, n.Name == "undef_method")
 		}
 	}
+}
+
+// addClassVar declares `@@x = v` in a class body: a constant-like package
+// variable, initialized where the body runs, that methods may also assign.
+func (c *Compiler) addClassVar(f *File, cls *Class, n *parser.ClassVariableWriteNode, scope []*Class) {
+	if cls.cvars[n.Name] != nil {
+		c.errorf(f, n, "class variable %s is assigned twice in %s's body; assign it again in a method", n.Name, cls.RubyName)
+	}
+	k := &Const{RubyName: cls.RubyName + "::" + n.Name, GoName: cls.Name + "_cv_" + strings.TrimPrefix(n.Name, "@@"), Value: n.Value, File: f, Line: f.line(n.Location.StartOffset), Scope: scope}
+	k.ann = f.trailingAnnotation(n)
+	if cls.cvars == nil {
+		cls.cvars = map[string]*Const{}
+	}
+	cls.cvars[n.Name] = k
+	c.constList = append(c.constList, k)
 }
 
 // symbolArgs are a visibility call's method names (`private :a, "b"`).

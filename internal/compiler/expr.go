@@ -161,7 +161,8 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		cur := f.genExpr(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location}, nil)
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
 		return f.assignLocal(n, n.Name, val, nil)
-	case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOperatorWriteNode:
+	case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOperatorWriteNode,
+		*parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
 		return f.genIvarExpr(n)
 	case *parser.CallNode:
 		return f.genCallValue(n, expected)
@@ -317,9 +318,11 @@ func (f *fctx) noteConv(n parser.Node, code string) string {
 	return code
 }
 
-// genIvarExpr handles @x reads and writes.
+// genIvarExpr handles @x reads and writes (and hands @@x to genClassVarExpr).
 func (f *fctx) genIvarExpr(n parser.Node) expr {
 	switch n := n.(type) {
+	case *parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
+		return f.genClassVarExpr(n)
 	case *parser.InstanceVariableReadNode:
 		iv := f.ivar(n, n.Name, nil)
 		return expr{code: f.ivarCode(iv), typ: iv.Type}
@@ -359,6 +362,55 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
+}
+
+// genClassVarExpr handles @@x: a package variable of the class whose body
+// first assigned it, shared by its subclasses (and a module's includers).
+func (f *fctx) genClassVarExpr(n parser.Node) expr {
+	switch n := n.(type) {
+	case *parser.ClassVariableReadNode:
+		k := f.classVar(n, n.Name)
+		return expr{code: k.GoName, typ: f.c.constType(k)}
+	case *parser.ClassVariableWriteNode:
+		k := f.classVar(n, n.Name)
+		t := f.c.constType(k)
+		val := f.genExpr(n.Value, t)
+		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		return expr{code: k.GoName, typ: t, done: true}
+	case *parser.ClassVariableOperatorWriteNode:
+		k := f.classVar(n, n.Name)
+		t := f.c.constType(k)
+		val := f.genOp(n, expr{code: k.GoName, typ: t}, n.BinaryOperator, n.Value)
+		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		return expr{code: k.GoName, typ: t, done: true}
+	}
+	f.c.unsupported(f.f, n)
+	return expr{}
+}
+
+// classVar finds @@name from the code's class: its own, an ancestor's, or an included module's.
+func (f *fctx) classVar(n parser.Node, name string) *Const {
+	if k := f.lookupClassVar(name); k != nil {
+		return k
+	}
+	f.errorf(n, "uninitialized class variable %s (rb2go needs its first assignment in a class or module body)", name)
+	return nil
+}
+
+func (f *fctx) lookupClassVar(name string) *Const {
+	cls := f.owner
+	if cls != nil && cls.metaOf != nil {
+		cls = cls.metaOf
+	}
+	if cls == nil {
+		return nil
+	}
+	for _, a := range cls.ancestors() {
+		if k := a.cvars[name]; k != nil {
+			return k
+		}
+	}
+	return nil
 }
 
 func (f *fctx) cls(name string) Type { return TClass{C: f.c.classes[name]} }
@@ -3347,7 +3399,12 @@ func (f *fctx) definedKind(v parser.Node) string {
 		*parser.LocalVariableOperatorWriteNode, *parser.LocalVariableOrWriteNode, *parser.LocalVariableAndWriteNode,
 		*parser.InstanceVariableOperatorWriteNode, *parser.InstanceVariableOrWriteNode, *parser.MultiWriteNode:
 		return "assignment"
-	case *parser.InstanceVariableReadNode, *parser.ClassVariableReadNode, *parser.GlobalVariableReadNode:
+	case *parser.ClassVariableReadNode:
+		if f.lookupClassVar(v.Name) != nil {
+			return "class variable"
+		}
+		return ""
+	case *parser.InstanceVariableReadNode, *parser.GlobalVariableReadNode:
 		f.errorf(v, "defined?(%s) depends on whether it was ever assigned, which rb2go does not track", f.f.text(v.GetLocation()))
 	case *parser.YieldNode:
 		f.errorf(v, "defined?(yield) is not supported (block_given? is not either)")

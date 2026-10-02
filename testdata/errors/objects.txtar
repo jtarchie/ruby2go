@@ -62,11 +62,6 @@ class Guarded
 rescue StandardError
   nil
 end
--- class_body_class_variable.rb --
-# error: main.rb:3: unsupported node in class body: ClassVariableWriteNode
-class Counter
-  @@count = 0
-end
 -- class_body_if.rb --
 # error: main.rb:3: unsupported node in class body: IfNode
 class Flagged
@@ -760,7 +755,7 @@ class Vault
   private attr_reader :pin #: Integer
 end
 -- class_variable_read.rb --
-# error: main.rb:4: unsupported syntax: ClassVariableReadNode
+# error: main.rb:4: uninitialized class variable @@count
 class Counter
   #: () -> Integer
   def count = @@count
