@@ -24,6 +24,7 @@ golangci-lint run ./...             # repo lint (.golangci.yml)
 go run ./cmd/rb2go run examples/NN_x/main.rb        # transpile, build, run; warnings go to stderr
 go run ./cmd/rb2go build -work -gcflags=-e examples/NN_x/main.rb  # keep main.go (WORK= path on stderr), show every Go error
 scripts/rubyspec-coverage --missing   # ruby/spec core method files the prelude names, per class (#49; clones ruby/spec to the cache)
+go run ./cmd/rubyspec -reasons 20 core/integer   # run ruby/spec directories under rb2go (decision 127); `core` runs each core/* dir, -v lists every skip
 ```
 
 `go test` fails fast unless `ruby` ≥ 4.0, `bundle install` has been run, and `golangci-lint` is on PATH. Gem executables are not on PATH on this machine, so use `bundle exec rbs-inline ...` for manual runs. Stderr lines like rdoc "already initialized constant" warnings are noise.

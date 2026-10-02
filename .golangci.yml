@@ -85,9 +85,18 @@ linters:
         CLI:
           files:
             - "**/cmd/**"
+            - "!**/cmd/rubyspec/**"
           allow:
             - "$gostd"
             - "github.com/jtarchie/ruby2go"
+        # cmd/rubyspec finds the example an error lands in, so it parses Ruby too.
+        RubySpec:
+          files:
+            - "**/cmd/rubyspec/**"
+          allow:
+            - "$gostd"
+            - "github.com/jtarchie/ruby2go"
+            - "github.com/danielgatis/go-ruby-prism/parser"
         # The compiler owns the parser and the formatter; it reaches the RBS
         # parser but never the CLI or the root.
         Compiler:

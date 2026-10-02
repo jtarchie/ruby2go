@@ -3438,3 +3438,23 @@ resolve; anything not listed is still open.
     a constant true in a def with a required block and false in one
     without a block. (`testdata/test/control_test.rb`
     `ControlOptionalBlockTest`, `testdata/errors/control.txtar`.)
+127. ruby/spec runs under rb2go through `cmd/rubyspec`, one minitest
+    program per spec directory, compiled in the runner's process (Prism
+    and the prelude parse once). `cmd/rubyspec/mspec.rb` is mspec's
+    expectations over minitest (`x.should == y`, `x.should.equal?(y)`,
+    `-> { }.should.raise(E)`); the runner makes static what mspec decides
+    at run time: `context` is `describe`, version and platform guards are
+    decided for MRI 4.0 on this machine (kept bodies are unwrapped,
+    others removed), `it_behaves_like` inlines the shared describe with
+    `@method`/`@object` substituted, `require_relative`d fixtures load
+    first, and a lambda's `.should` becomes `ProcExpectation.new(...)`
+    (a Proc has no methods, decision 47). `rb2go.CompileTestsSkipping`
+    dry-emits every user `test_` method and spec form (`before`, `let`)
+    after type inference and gives one that fails `skip "rb2go: <error>"`
+    for a body, so one compile reports every unsupported example; errors
+    elsewhere (a fixture method, a top-level statement) and `go build`
+    errors (mapped back by `//line`) are cut from the source by the
+    runner, which compiles again. Rewrites keep line numbers: removed
+    text keeps its newlines. The report counts pass, fail, error and
+    skip per directory, and the commonest unsupported reasons, which is
+    the work list.
