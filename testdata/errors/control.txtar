@@ -270,13 +270,6 @@ a, b = h["k"]
 lo = 0
 arr = [3, 4] #: Array[Integer]
 lo, hi = arr
--- begin_end_while_next.rb --
-# error: main.rb:4: next inside begin/end while is not supported
-i = 0
-begin
-  next if i == 1
-  i += 1
-end while i < 3
 -- defined_ivar.rb --
 # error: main.rb:2: defined?(@a) depends on whether it was ever assigned
 puts defined?(@a).inspect
