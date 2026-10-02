@@ -1368,4 +1368,19 @@ module StdlibTests
       assert_equal [false, false], [Thread.list.include?(t1), Thread.list.include?(t2)]
     end
   end
+
+  # ruby/spec core/io gaps (#49): File#sync
+  class RubySpecFileSyncTest < Minitest::Test
+    def test_sync
+      Dir.mktmpdir do |d|
+        path = File.join(d, "s")
+        File.open(path, "w") do |f|
+          assert_equal false, f.sync
+          f.sync = true
+          f.write("now")
+          assert_equal [true, "now"], [f.sync, File.read(path)]
+        end
+      end
+    end
+  end
 end

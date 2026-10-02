@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { f *os.File; r *bufio.Reader; w *bufio.Writer; path string }
+# @go_type struct { f *os.File; r *bufio.Reader; w *bufio.Writer; path string; sync bool }
 class File < Object
   include IOWritable
   include IOReadable
@@ -318,8 +318,25 @@ class File < Object
     }
     s := string(rbToS(x))
     _, _ = self.w.WriteString(s)
+    if self.sync {
+      _ = self.w.Flush()
+    }
     return Integer(len(s))
   }
+
+  #: () -> bool
+  def sync = %x{ Boolean(self.sync) }
+
+  #: (bool) -> bool
+  def sync=(on)
+    %x{
+    self.sync = bool(on)
+    if self.sync && self.w != nil {
+      _ = self.w.Flush()
+    }
+    return on
+    }
+  end
 
   #: (untyped) -> File
   def <<(x)
