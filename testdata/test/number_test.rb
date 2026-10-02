@@ -2089,4 +2089,28 @@ module NumberTests
       assert_equal [3, nil, 100, nil], [(1..5).bsearch { |x| x >= 3 }, (1..5).bsearch { |x| x > 9 }, (0..).bsearch { |x| x >= 100 }, (1...3).bsearch { |x| x >= 3 }]
     end
   end
+
+  # ruby/spec language gaps (#49): beginless ranges
+  class NumberRubySpecBeginlessTest < Minitest::Test
+    #: (Integer) -> String
+    def number_grade(n)
+      case n
+      when ..59 then "F"
+      when 60..79 then "C"
+      else "A"
+      end
+    end
+
+    def test_beginless_ranges
+      a = [10, 20, 30, 40]
+      assert_equal [[10, 20], [10, 20], [10, 20, 30], "hel"], [a[..1], a[...2], a[..-2], "hello"[..2]]
+      r = ..5
+      assert_equal ["..5", "...5", true, false, true, 5, 5], [r.inspect, (...5).inspect, r.cover?(3), r.cover?(6), r.include?(-100), r.end, r.max]
+      assert_equal %w[F C A], [number_grade(10), number_grade(65), number_grade(99)]
+      assert_equal [true, false, true, false], [(..3).overlap?(2..4), (..1).overlap?(2..4), (..5) == (..5), (..5) == (...5)]
+      seen = [] #: Array[Integer]
+      e = assert_raises(TypeError) { (..3).each { |x| seen << x } }
+      assert_equal "can't iterate from NilClass", e.message
+    end
+  end
 end

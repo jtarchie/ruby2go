@@ -1059,8 +1059,9 @@ resolve; anything not listed is still open.
     its callers ([example 34](../examples/34_inferred_returns/main.rb)).
 37. `Range[E]` is a struct `{b, e E; excl, endless bool}` handled as a
     pointer; `a..b`, `a...b` and `a..` build it inline (generic classes
-    have no class methods, so there is no `Range.new`). Beginless ranges
-    are a compile error. Iteration (`each`, `step`, `to_a`, Enumerable)
+    have no class methods, so there is no `Range.new`). A beginless range
+    (`..5`) sets `beginless`: it covers, slices (`a[..1]`), matches in
+    `case/when` and prints, and iterating it raises MRI's TypeError. Iteration (`each`, `step`, `to_a`, Enumerable)
     needs `Integer` or `String` (MRI's `String#succ`, without its
     all-digits mode); other `E` only compare (`cover?`, `include?`, `===`
     in `case/when`). `sum` and `size` are arithmetic, and `size` of an
