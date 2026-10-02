@@ -3321,3 +3321,36 @@ resolve; anything not listed is still open.
       `const_get` and friends. The dispatchers themselves (1,062 names ×
       dispatcher + `respond_to?` + marker) are the cost of `send` with a
       name nothing bounds.
+122. Calls on a statically known receiver are method expressions, so the
+    pruner can scope them (issue #50). `x.Upcase()` with `x` a String is
+    emitted `String.Upcase(x)`; a call on a struct-typed value, or on
+    `self` inside a struct class's method (`Self` constrained by `FooI`),
+    is `FooI.Bar(x)`; `klass.new` on a class object is
+    `(*Foo_Meta).New(Foo_class, ...)`, since `new` is not in the
+    metaclass's interface. The pruner (decision 49) used to take every
+    selector by name on every reached class: `Boolean.Op_not` in REXML
+    kept `Op_not` on 531 classes, String's own `frozen?` wrapper kept
+    `FrozenQ` on 539. A method expression selects the method on that type
+    alone: on a struct, on the implementers of an interface (the types
+    with its `_Foo` marker, own or through the embedded `super_Foo_`), and
+    on the struct a subclass promotes it from (a call through
+    `Minitest_ResultI` reaches `AssertionsSet` on `Minitest_Runnable`).
+    A name selected on an ancestor's interface stays declared in every
+    descendant's, so a `Self` constrained by `SignalExceptionI` still
+    satisfies `ExceptionI` in a super call, and a plain selector
+    (raw Go in `prelude/go`, `self.x` on a module's `Self`, which has no
+    method expressions) still selects unscoped. A struct's Dyn wrapper
+    body keeps the plain form (`plainCalls`), since decision 85's shared
+    arms and decision 121's `freeCall` read it textually.
+    - **Measured** (functions): hello world 91 → 78; `58_logger` 719 →
+      633; `array_test` 7,837 → 6,144; `string_test` 14,349 → 10,904;
+      `object_test` 37,688 → 25,622; `dynamic_test` 33,973 → 31,209;
+      `64_observable` 26,875 → 24,774. The computed-send programs move
+      least: with every name dispatchable, the dispatchers' interface
+      literals (asserted, decision 89) and Module reflection keep most of
+      what they keep.
+    - **Why method expressions and not a side table:** the pruner reads
+      the emitted Go, and a method expression is the one call form that
+      carries the receiver's static type in the syntax, lint-clean and
+      without comments to correlate. The generated code reads
+      `Integer.ToS(i)` where it read `i.ToS()` (README sample updated).

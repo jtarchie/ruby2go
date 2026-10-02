@@ -444,6 +444,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	f.pass = 2
 	f.indent = 1
 	f.implicitCall = true // the method may be private: method_missing, or one send reaches
+	f.plainCalls = cls.isStruct()
 	recv := expr{code: "self", typ: cls.instance()}
 	if cls.metaOf != nil || cls.isStruct() {
 		recv.typ = TClass{C: cls}

@@ -2253,9 +2253,43 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	direct := f.c.isDirectMethod(m)
 	free := m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
 	if !free {
+		if t := f.methodExprType(m, recv); t != "" {
+			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
+		}
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
 	return staticCallCode(m, f.typeArgs(m, recv.typ, env), recv.code, argList)
+}
+
+// methodExprType is the Go type a call on a receiver of static type t is written as a method expression of
+// (`String.Upcase(s)`, `FooI.Bar(x)`), so the pruner keeps the method on that type and its implementers alone
+// instead of on every class with the name (decision 122); "" keeps the plain `x.M()` form: a generic class, a
+// module constraint (no method expressions on type parameters), or a struct's Dyn wrapper body, which shared
+// arms compare textually.
+func (f *fctx) methodExprType(m *Method, recv expr) string {
+	if f.plainCalls {
+		return ""
+	}
+	switch t := recv.typ.(type) {
+	case TClass:
+		if t.C.universal || t.C.IsModule || len(t.C.TypeParams) > 0 {
+			return ""
+		}
+		if t.C.metaOf != nil && m.Name == "new" { // `new` is not in a metaclass's interface (its signature is the class's own); a class object is the concrete *Foo_Meta
+			return "(*" + t.C.Name + ")"
+		}
+		if gt := f.c.goType(t); strings.HasPrefix(gt, "*") {
+			return "(" + gt + ")"
+		} else {
+			return gt
+		}
+	case TVar:
+		if t.Name == "Self" && f.owner != nil && f.owner.isStruct() && !f.owner.universal && !f.owner.IsModule && len(f.owner.TypeParams) == 0 {
+			return f.owner.Name + "I"
+		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TVoid:
+	}
+	return ""
 }
 
 // typeArgs are explicit because Go would infer from argument Go types (untyped const, *Foo, *Foo_Meta), not the Ruby binding.

@@ -18,6 +18,11 @@ var stdMethodNames = map[string]bool{
 	"Len": true, "Less": true, "Swap": true, "Lock": true, "Unlock": true,
 }
 
+// parkedField is a named interface's method waiting to be selected: by name anywhere, or by a method expression on that interface.
+type parkedField struct {
+	iface, name string
+}
+
 type pruneMethod struct {
 	recv string
 	decl *ast.FuncDecl
@@ -31,14 +36,20 @@ type pruner struct {
 	methods     []pruneMethod
 	roots       []ast.Node
 	kept        map[ast.Node]bool
-	names       map[string]bool // identifiers used by kept code
-	methodNames map[string]bool // selectors used by kept code, and methods the standard library calls
-	declared    map[string]bool // methods declared by kept interfaces
-	asserted    map[string]bool // methods declared by interface literals in kept code: runtime assertions, so every type keeps them (decision 89)
+	names       map[string]bool            // identifiers used by kept code
+	methodNames map[string]bool            // selectors used by kept code, and methods the standard library calls
+	scoped      map[string]map[string]bool // method expressions in kept code, by type: `String.Upcase(s)` selects Upcase on String alone, `FooI.Bar(x)` on FooI and its implementers (decision 122)
+	ifaceName   map[*ast.InterfaceType]string
+	recvMethods map[string]map[string]bool // method names by receiver type, for the `_Foo` markers that say which named interfaces a type implements
+	recvIfaces  map[string][]string        // memo of ifacesOf
+	ifaceAnc    map[string][]string        // memo of ancestorsOf
+	scopedBy    map[string][]string        // the types a method name is scoped on, for scopedOn
+	declared    map[string]bool            // methods declared by kept interfaces
+	asserted    map[string]bool            // methods declared by interface literals in kept code: runtime assertions, so every type keeps them (decision 89)
 	named       map[*ast.InterfaceType]bool
 	stubs       map[*ast.FuncDecl]bool
 	pending     map[*ast.CaseClause][]string // type-switch cases waiting for their declared type names to be kept
-	parked      map[*ast.Field]string        // named interfaces' unselected methods: visited (their types kept) only once selected, as sweep slims them otherwise
+	parked      map[*ast.Field]parkedField   // named interfaces' unselected methods: visited (their types kept) only once selected, as sweep slims them otherwise
 	cur         ast.Node                     // the node being visited, for why
 	why         map[ast.Node]ast.Node        // the node whose visit first kept each kept node (RB2GO_PRUNE_WHY=1 dumps the chains)
 	lazy        map[string]bool              // prelude constants: main's assignment to one waits for something else to name it
@@ -48,7 +59,7 @@ type pruner struct {
 
 // newPruner drops what main cannot reach, like the linker, so a program compiles only the prelude it uses; names match unscoped, which only over-keeps. Declarations arrive in batches (add, then run): the dynamic dispatchers are emitted only for what the first batch reaches.
 func newPruner(lazy map[string]bool) *pruner {
-	p := &pruner{lazy: lazy, deferred: map[ast.Stmt]string{}, byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}, parked: map[*ast.Field]string{}, why: map[ast.Node]ast.Node{}}
+	p := &pruner{lazy: lazy, deferred: map[ast.Stmt]string{}, byName: map[string][]ast.Node{}, constBlock: map[ast.Node]*ast.GenDecl{}, kept: map[ast.Node]bool{}, names: map[string]bool{}, methodNames: map[string]bool{}, declared: map[string]bool{}, asserted: map[string]bool{}, named: map[*ast.InterfaceType]bool{}, stubs: map[*ast.FuncDecl]bool{}, pending: map[*ast.CaseClause][]string{}, parked: map[*ast.Field]parkedField{}, why: map[ast.Node]ast.Node{}, scoped: map[string]map[string]bool{}, ifaceName: map[*ast.InterfaceType]string{}, recvMethods: map[string]map[string]bool{}, recvIfaces: map[string][]string{}, ifaceAnc: map[string][]string{}, scopedBy: map[string][]string{}}
 	for n := range stdMethodNames {
 		p.methodNames[n] = true
 	}
@@ -121,8 +132,8 @@ func (p *pruner) run() {
 				p.queue = append(p.queue, st)
 			}
 		}
-		for m, name := range p.parked {
-			if p.methodNames[name] || p.mustDeclare(name) {
+		for m, pf := range p.parked {
+			if name := pf.name; p.methodNames[name] || p.mustDeclare(name) || p.ifaceSelected(pf.iface, name) {
 				delete(p.parked, m)
 				p.queue = append(p.queue, m)
 			}
@@ -140,7 +151,7 @@ func (p *pruner) run() {
 			name := m.decl.Name.Name
 			// a selector matches unscoped, and Ruby's names (size, first, ...) are on every class: a generic
 			// type's forwarder taken on such a match would instantiate its free func for every type argument
-			selected := p.methodNames[name] && (!m.fwd || p.declared[name])
+			selected := (p.methodNames[name] || p.scopedOn(m.recv, name)) && (!m.fwd || p.declared[name])
 			switch {
 			case selected && p.stubs[m.decl]:
 				delete(p.stubs, m.decl)
@@ -167,7 +178,13 @@ func (p *pruner) index(d ast.Decl) {
 	case *ast.FuncDecl:
 		switch {
 		case d.Recv != nil:
-			p.methods = append(p.methods, pruneMethod{recvName(d.Recv.List[0].Type), d, isGenericForwarder(d)})
+			recv := recvName(d.Recv.List[0].Type)
+			p.methods = append(p.methods, pruneMethod{recv, d, isGenericForwarder(d)})
+			if p.recvMethods[recv] == nil {
+				p.recvMethods[recv] = map[string]bool{}
+			}
+			p.recvMethods[recv][d.Name.Name] = true
+			delete(p.recvIfaces, recv)
 		case d.Name.Name == "main":
 			p.kept[d] = true
 			p.queue = append(p.queue, d.Type)
@@ -196,6 +213,7 @@ func (p *pruner) indexSpec(d *ast.GenDecl, s ast.Spec) {
 		p.byName[s.Name.Name] = append(p.byName[s.Name.Name], s)
 		if it, ok := s.Type.(*ast.InterfaceType); ok {
 			p.named[it] = true
+			p.ifaceName[it] = s.Name.Name
 		}
 	case *ast.ValueSpec:
 		if d.Tok == token.CONST {
@@ -266,12 +284,7 @@ func (p *pruner) visit(x ast.Node) bool {
 			}
 		}
 	case *ast.SelectorExpr:
-		// a std package's member (Obj == nil: not a local such as `net`, as format.go's import scan tells them apart):
-		// os.Interrupt is not class Interrupt, sync.Mutex not class Mutex, and time.Sleep selects no class's Sleep
-		if id, ok := x.X.(*ast.Ident); ok && id.Obj == nil && stdImports[id.Name] != "" && len(p.byName[id.Name]) == 0 {
-			return false
-		}
-		p.methodNames[x.Sel.Name] = true
+		return p.visitSelector(x)
 	case *ast.InterfaceType:
 		for _, m := range x.Methods.List {
 			for _, mn := range m.Names {
@@ -283,8 +296,8 @@ func (p *pruner) visit(x ast.Node) bool {
 		}
 		if p.named[x] {
 			for _, m := range x.Methods.List {
-				if len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name) {
-					p.parked[m] = m.Names[0].Name
+				if len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name) && !p.ifaceSelected(p.ifaceName[x], m.Names[0].Name) {
+					p.parked[m] = parkedField{p.ifaceName[x], m.Names[0].Name}
 					continue
 				}
 				ast.Inspect(m, p.visit)
@@ -293,6 +306,155 @@ func (p *pruner) visit(x ast.Node) bool {
 		}
 	}
 	return true
+}
+
+// visitSelector records what a selector selects: nothing for a std package's member (Obj == nil: not a local such as
+// `net`, as format.go's import scan tells them apart; os.Interrupt is not class Interrupt, time.Sleep selects no
+// class's Sleep), the method on one type for a method expression (`String.Upcase(s)`; the Ident keeps the type), else
+// the name on every class.
+func (p *pruner) visitSelector(x *ast.SelectorExpr) bool {
+	if id, ok := x.X.(*ast.Ident); ok && id.Obj == nil && stdImports[id.Name] != "" && len(p.byName[id.Name]) == 0 {
+		return false
+	}
+	if t := p.methodExprType(x.X); t != "" {
+		if p.scoped[t] == nil {
+			p.scoped[t] = map[string]bool{}
+		}
+		if !p.scoped[t][x.Sel.Name] {
+			p.scoped[t][x.Sel.Name] = true
+			p.scopedBy[x.Sel.Name] = append(p.scopedBy[x.Sel.Name], t)
+		}
+		return true
+	}
+	p.methodNames[x.Sel.Name] = true
+	return true
+}
+
+// methodExprType is the declared type a method expression selects on (`String` in `String.Upcase(s)`, `Regexp` in `(*Regexp).Match(r)`), or "".
+func (p *pruner) methodExprType(x ast.Expr) string {
+	if pe, ok := x.(*ast.ParenExpr); ok {
+		if se, ok := pe.X.(*ast.StarExpr); ok {
+			x = se.X
+		}
+	}
+	id, ok := x.(*ast.Ident)
+	if !ok || id.Obj != nil && id.Obj.Kind != ast.Typ { // resolved to a local or a func, not a type
+		return ""
+	}
+	for _, d := range p.byName[id.Name] {
+		if _, ok := d.(*ast.TypeSpec); ok {
+			return id.Name
+		}
+	}
+	return ""
+}
+
+// scopedOn reports whether a method expression selects name on recv: on the type itself, on a named interface recv
+// implements (a call through the superclass's interface reaches the subclass's override), or on the interface of a
+// class that descends from recv (a call through the subclass's interface reaches the method recv's struct promotes).
+func (p *pruner) scopedOn(recv, name string) bool {
+	for _, t := range p.scopedBy[name] {
+		if t == recv || t == recv+"I" || slices.Contains(p.ifacesOf(recv), t) || slices.Contains(p.ancestorsOf(t), recv+"I") {
+			return true
+		}
+	}
+	return false
+}
+
+// ifacesOf lists the named interfaces recv implements, read off its `_Foo` markers (decision 89): `_Foo` on a type
+// means it is a Foo, so it is a FooI. A subclass's markers come through its embedded `super_Foo_` alias, so the
+// struct's embedded fields are followed.
+func (p *pruner) ifacesOf(recv string) []string {
+	if out, ok := p.recvIfaces[recv]; ok {
+		return out
+	}
+	var out []string
+	seen := map[string]bool{}
+	var walk func(t string)
+	walk = func(t string) {
+		if seen[t] {
+			return
+		}
+		seen[t] = true
+		for name := range p.recvMethods[t] {
+			if i := markerIface(name); i != "" && p.isInterface(&ast.Ident{Name: i}) {
+				out = append(out, i)
+			}
+		}
+		for _, d := range p.byName[t] {
+			ts, ok := d.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			if ts.Assign.IsValid() { // `type super_Foo_ = Foo`
+				if n := recvName(ts.Type); n != "" {
+					walk(n)
+				}
+				continue
+			}
+			if st, ok := ts.Type.(*ast.StructType); ok {
+				for _, f := range st.Fields.List {
+					if len(f.Names) == 0 {
+						if n := recvName(f.Type); n != "" {
+							walk(n)
+						}
+					}
+				}
+			}
+		}
+	}
+	walk(recv)
+	slices.Sort(out)
+	p.recvIfaces[recv] = out
+	return out
+}
+
+// markerIface is the interface a `_Foo` marker stands for (FooI), or "".
+func markerIface(name string) string {
+	if !strings.HasPrefix(name, "_") || strings.HasPrefix(name, "__") || len(name) < 2 {
+		return ""
+	}
+	return name[1:] + "I"
+}
+
+// ancestorsOf lists the named interfaces iface's class descends from, itself included: the `_Foo()` markers a class's
+// interface declares. A method selected on an ancestor's interface stays declared in iface, so a `Self` constrained by
+// iface still satisfies the ancestor's (a subclass's super call, `Exception_Initialize[Self](self)`).
+func (p *pruner) ancestorsOf(iface string) []string {
+	if out, ok := p.ifaceAnc[iface]; ok {
+		return out
+	}
+	var out []string
+	for _, d := range p.byName[iface] {
+		ts, ok := d.(*ast.TypeSpec)
+		if !ok {
+			continue
+		}
+		if it, ok := ts.Type.(*ast.InterfaceType); ok {
+			for _, m := range it.Methods.List {
+				if len(m.Names) > 0 {
+					if i := markerIface(m.Names[0].Name); i != "" && i != iface && p.isInterface(&ast.Ident{Name: i}) {
+						out = append(out, i)
+					}
+				}
+			}
+		}
+	}
+	p.ifaceAnc[iface] = out
+	return out
+}
+
+// ifaceSelected reports whether a method expression selects name on iface or on an interface iface's class descends from.
+func (p *pruner) ifaceSelected(iface, name string) bool {
+	if p.scoped[iface][name] {
+		return true
+	}
+	for _, a := range p.ancestorsOf(iface) {
+		if p.scoped[a][name] {
+			return true
+		}
+	}
+	return false
 }
 
 // mustDeclare reports whether every kept type has to keep a method of this name even when nothing calls it: an interface literal asserts it at run time, or it is a `_` marker (`_Foo()` decides `rescue`/`is_a?` matches through FooI).
@@ -320,8 +482,9 @@ func (p *pruner) slimInterfaces(f *ast.File) {
 			if !ok {
 				continue
 			}
+			iface := s.(*ast.TypeSpec).Name.Name
 			it.Methods.List = slices.DeleteFunc(it.Methods.List, func(m *ast.Field) bool {
-				return len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name)
+				return len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name) && !p.ifaceSelected(iface, m.Names[0].Name)
 			})
 		}
 	}

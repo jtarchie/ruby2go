@@ -22,6 +22,7 @@ type fctx struct {
 	owner         *Class
 	m             *Method
 	implicitCall  bool     // calling method_missing/respond_to_missing? on the program\'s behalf
+	plainCalls    bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
 	lex           []*Class // lexical scope for constant lookup
 	selfType      Type
 	selfCode      string

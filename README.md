@@ -59,7 +59,7 @@ type Greeter struct {
 
 func Greeter_Greet[Self GreeterI](self Self, times Integer) *Array[String] {
 	return Enumerable_Map[*Range[Integer], Integer, String]((&Range[Integer]{b: 1, e: times}), func(i Integer) String {
-		return (i.ToS() + ". hello, " + self._Greeter().name)
+		return (Integer.ToS(i) + ". hello, " + self._Greeter().name)
 	})
 }
 ```
