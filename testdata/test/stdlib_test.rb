@@ -1265,4 +1265,19 @@ module StdlibTests
       assert_equal IOError, EOFError.superclass
     end
   end
+
+  # ruby/spec core/io gaps (#49): IO's class-level file helpers
+  class RubySpecIOClassTest < Minitest::Test
+    def test_io_file_helpers
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        b = File.join(d, "b")
+        assert_equal [4, "x\ny\n", ["x\n", "y\n"]], [IO.write(a, "x\ny\n"), IO.read(a), IO.readlines(a)]
+        assert_equal [1, "z", 4, "x\ny\n"], [IO.binwrite(b, "z"), IO.binread(b), IO.copy_stream(a, b), IO.read(b)]
+        lines = [] #: Array[String]
+        IO.foreach(a) { |l| lines << l }
+        assert_equal ["x\n", "y\n"], lines
+      end
+    end
+  end
 end

@@ -69,6 +69,30 @@ class IO < Object
   #: (Integer) -> IO
   def self.__new(fd) = %x{ return &IO{fd: int(fd)} }
 
+  #: (String) -> String
+  def self.read(path) = File.read(path)
+
+  #: (String) -> String
+  def self.binread(path) = File.read(path)
+
+  #: (String, untyped) -> Integer
+  def self.write(path, data) = File.write(path, data)
+
+  #: (String, untyped) -> Integer
+  def self.binwrite(path, data) = File.write(path, data)
+
+  #: (String) -> Array[String]
+  def self.readlines(path) = File.readlines(path)
+
+  #: (String) { (String) -> void } -> void
+  def self.foreach(path)
+    File.foreach(path) { |line| yield line }
+  end
+
+  # Path to path, as MRI's with two filenames; the count of bytes copied.
+  #: (String, String) -> Integer
+  def self.copy_stream(src, dst) = File.write(dst, File.read(src))
+
   #: () -> Array[String]
   def self.__argv = %x{
     a := make(Array[String], 0, len(os.Args)-1)
@@ -162,30 +186,6 @@ class IO < Object
     return Boolean(err != nil)
   }
 
-  #: () -> String
-  def inspect = %x{ String([]string{"#<IO:<STDIN>>", "#<IO:<STDOUT>>", "#<IO:<STDERR>>"}[self.fd]) }
-end
-
-STDIN = IO.__new(0) #: IO
-STDOUT = IO.__new(1) #: IO
-STDERR = IO.__new(2) #: IO
-
-ARGV = IO.__argv #: Array[String]
-
-# @go_type struct{}
-class ENVClass < Object
-  #: () -> ENVClass
-  def self.new = %x{ return &ENVClass{} }
-
-  #: (String) -> String?
-  def [](name) = %x{
-    v, ok := os.LookupEnv(string(name))
-    if !ok {
-      return nil
-    }
-    s := String(v)
-    return &s
-  }
   #: () -> String?
   def getc = %x{
     self.rbReadable()
@@ -237,6 +237,30 @@ class ENVClass < Object
     end
   end
 
+  #: () -> String
+  def inspect = %x{ String([]string{"#<IO:<STDIN>>", "#<IO:<STDOUT>>", "#<IO:<STDERR>>"}[self.fd]) }
+end
+
+STDIN = IO.__new(0) #: IO
+STDOUT = IO.__new(1) #: IO
+STDERR = IO.__new(2) #: IO
+
+ARGV = IO.__argv #: Array[String]
+
+# @go_type struct{}
+class ENVClass < Object
+  #: () -> ENVClass
+  def self.new = %x{ return &ENVClass{} }
+
+  #: (String) -> String?
+  def [](name) = %x{
+    v, ok := os.LookupEnv(string(name))
+    if !ok {
+      return nil
+    }
+    s := String(v)
+    return &s
+  }
 
   #: (String, String?) -> String?
   def []=(name, value)
