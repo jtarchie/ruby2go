@@ -46,6 +46,7 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, p
 	for _, e := range res.Errors {
 		return nil, fmt.Errorf("%s:%d: syntax error: %s", name, f.line(e.Location.StartOffset), e.Message)
 	}
+	fillAnonForwards(f.Root)
 	f.indexComments(res.Comments)
 	if d := res.DataLoc; d != nil {
 		text := string(src[d.StartOffset : d.StartOffset+d.Length])
@@ -184,4 +185,46 @@ func (f *File) trailingAnnotation(n parser.Node) string {
 		}
 	}
 	return ""
+}
+
+// The locals that anonymous parameters bind (`def f(*, **, &) = g(*, **, &)`).
+const (
+	anonRest   = "__anon_rest"
+	anonKwrest = "__anon_kwrest"
+	anonBlock  = "__anon_block"
+)
+
+// fillAnonForwards gives each anonymous forward (`g(*)`, `g(**)`, `g(&)`) a
+// read of its parameter's local, so later passes see ordinary arguments.
+func fillAnonForwards(n parser.Node) {
+	read := func(name string, loc parser.Location) parser.Node {
+		return &parser.LocalVariableReadNode{Name: name, Location: loc}
+	}
+	switch n := n.(type) {
+	case nil:
+		return
+	case *parser.ArgumentsNode:
+		for _, a := range n.Arguments {
+			if sp, ok := a.(*parser.SplatNode); ok && sp.Expression == nil {
+				sp.Expression = read(anonRest, sp.Location)
+			}
+		}
+	case *parser.ArrayNode: // `[*]`
+		for _, a := range n.Elements {
+			if sp, ok := a.(*parser.SplatNode); ok && sp.Expression == nil {
+				sp.Expression = read(anonRest, sp.Location)
+			}
+		}
+	case *parser.AssocSplatNode:
+		if n.Value == nil {
+			n.Value = read(anonKwrest, n.Location)
+		}
+	case *parser.BlockArgumentNode:
+		if n.Expression == nil {
+			n.Expression = read(anonBlock, n.Location)
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		fillAnonForwards(ch)
+	}
 }

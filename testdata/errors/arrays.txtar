@@ -136,7 +136,7 @@ class Keeper
   end
 end
 -- block_param_without_block_sig.rb --
-# error: main.rb:3: a named &block parameter needs a block in the signature
+# error: main.rb:3: a &block parameter needs a block in the signature
 #: () -> void
 def run(&block)
   block.call
@@ -309,11 +309,6 @@ end
 #: () { (Integer, Integer) -> Integer } -> Array[Integer]
 def pairs(&block) = [1, 2].map(&block)
 puts pairs { |a, b| a + b }.inspect
--- rest_anonymous.rb --
-# error: main.rb:3: unsupported rest parameter
-#: (*Integer) -> Integer
-def total(*) = 1
-puts total(1)
 -- rest_with_post.rb --
 # error: main.rb:3: signature has 1 positional params but def has 2
 #: (Integer, *Integer) -> Integer

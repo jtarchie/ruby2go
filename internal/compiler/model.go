@@ -1652,12 +1652,12 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		ps = append(ps, t)
 	}
 	if rest != "" {
-		ps = append(ps, "*"+c.paramAnn(m, ann, "*"+rest))
+		ps = append(ps, "*"+c.paramAnn(m, ann, "*"+strings.TrimPrefix(rest, anonRest)))
 	}
 	for _, k := range c.defKeywords(m, m.Node.Parameters) {
 		switch {
 		case k.rest:
-			ps = append(ps, "**"+c.paramAnn(m, ann, "**"+k.name)+" "+k.name)
+			ps = append(ps, "**"+c.paramAnn(m, ann, "**"+strings.TrimPrefix(k.name, anonKwrest))+" "+k.name)
 		case k.def != nil:
 			ps = append(ps, "?"+k.name+": "+c.paramAnn(m, ann, k.name))
 		default:
@@ -2138,10 +2138,11 @@ func (c *Compiler) defKeywords(m *Method, ps *parser.ParametersNode) []defKeywor
 	switch r := ps.KeywordRest.(type) {
 	case nil:
 	case *parser.KeywordRestParameterNode:
-		if r.Name == nil {
-			c.errorf(m.File, r, "an anonymous ** parameter is not supported; name it")
+		name := anonKwrest // `def f(**)`: g(**) reads it
+		if r.Name != nil {
+			name = *r.Name
 		}
-		out = append(out, defKeyword{name: *r.Name, rest: true})
+		out = append(out, defKeyword{name: name, rest: true})
 	default:
 		c.errorf(m.File, r, "unsupported keyword rest parameter")
 	}
@@ -2170,10 +2171,13 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 	}
 	if ps.Rest != nil {
 		rp, ok := ps.Rest.(*parser.RestParameterNode)
-		if !ok || rp.Name == nil {
+		if !ok {
 			c.errorf(m.File, ps.Rest, "unsupported rest parameter")
 		}
-		rest = *rp.Name
+		rest = anonRest // `def f(*)`: g(*) reads it
+		if rp.Name != nil {
+			rest = *rp.Name
+		}
 	}
 	for _, p := range ps.Posts {
 		rp, ok := p.(*parser.RequiredParameterNode)
@@ -2184,10 +2188,13 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 		defaults = append(defaults, nil)
 	}
 	if ps.Block != nil {
-		if m.Block == nil || ps.Block.Name == nil {
-			c.errorf(m.File, ps, "a named &block parameter needs a block in the signature (`#: () { (T) -> U } -> R`)")
+		if m.Block == nil {
+			c.errorf(m.File, ps, "a &block parameter needs a block in the signature (`#: () { (T) -> U } -> R`)")
 		}
-		m.BlockParam = *ps.Block.Name
+		m.BlockParam = anonBlock // `def f(&)`: g(&) forwards it
+		if ps.Block.Name != nil {
+			m.BlockParam = *ps.Block.Name
+		}
 	}
 	return names, defaults, rest
 }

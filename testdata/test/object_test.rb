@@ -4272,4 +4272,33 @@ module ObjectTests
       assert_equal "1[2]3!", PostKid.new.f(1, 2, 3)
     end
   end
+
+  # ruby/spec language gaps (#49): anonymous *, ** and & forwarding
+  class ObjectRubySpecAnonForwardTest < Minitest::Test
+    #: (*Integer) -> Integer
+    def object_total(*nums) = nums.sum
+
+    #: (*Integer) -> Integer
+    def object_fwd(*) = object_total(*)
+
+    #: (**Integer opts) -> Array[Symbol]
+    def object_keys_of(**opts) = opts.keys
+
+    #: (**Integer) -> Array[Symbol]
+    def object_kw_fwd(**) = object_keys_of(**)
+
+    #: () { (Integer) -> Integer } -> Array[Integer]
+    def object_apply(&blk) = [1, 2].map(&blk)
+
+    #: () { (Integer) -> Integer } -> Array[Integer]
+    def object_blk_fwd(&) = object_apply(&)
+
+    # @rbs *: Integer
+    # @rbs return: Integer
+    def object_sum_all(*) = [*].sum
+
+    def test_anonymous_forwarding
+      assert_equal [6, 0, [:a, :b], [10, 20], 3], [object_fwd(1, 2, 3), object_fwd, object_kw_fwd(a: 1, b: 2), object_blk_fwd { |x| x * 10 }, object_sum_all(1, 2)]
+    end
+  end
 end

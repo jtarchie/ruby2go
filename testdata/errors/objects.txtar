@@ -320,7 +320,7 @@ puts fact(5)
 def pick(b) = b ? 1 : "x"
 puts pick(true)
 -- block_param_without_block_signature.rb --
-# error: main.rb:4: a named &block parameter needs a block in the signature
+# error: main.rb:4: a &block parameter needs a block in the signature
 class Bag
   #: () -> void
   def each(&block) = nil
