@@ -26,11 +26,8 @@ puts "aa".match?(/(?<x>a)\k<x>/)
 -- upper_z.rb --
 # error: main.rb:2: regexp /b\Z/ is not supported: \Z is not supported by RE2; use \z
 puts "ab".match?(/b\Z/)
--- extended.rb --
-# error: main.rb:2: extended (/x) regexps are not supported
-puts "ab".match?(/a b/x)
 -- extended_interpolated.rb --
-# error: main.rb:3: extended (/x) regexps are not supported
+# error: main.rb:3: interpolated extended (/x) regexps are not supported
 x = "a"
 puts "ab".match?(/#{x} b/x)
 -- g_anchor.rb --
@@ -85,11 +82,6 @@ class Foo
   def m = /#@x/.match?("a")
 end
 puts Foo.new.m
--- named_captures_to_locals.rb --
-# error: main.rb:2: named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match
-if /(?<x>\d)/ =~ "1"
-  puts x
-end
 -- last_match_gvar.rb --
 # error: main.rb:3: global variable $~ is unsupported
 "ab" =~ /b/

@@ -1193,4 +1193,29 @@ B
       assert_equal "a\\.b\\*c", Regexp.quote("a.b*c")
     end
   end
+
+  # ruby/spec language gaps (#49): /x regexps and named captures assigned to locals
+  STRING_DATE_RE = /
+    (\d{4}) - # year
+    (\d{2}) - # month
+    (\d{2})   # day
+  /x
+
+  class StringRubySpecRegexpSyntaxTest < Minitest::Test
+    def test_extended_regexp
+      m = "on 2024-03-09 ok".match(STRING_DATE_RE)
+      assert_equal ["2024", "09"], [m&.[](1), m&.[](3)]
+      assert_equal [true, 2], [STRING_DATE_RE.source.include?("year"), STRING_DATE_RE.options]
+      assert_equal [0, 0, 0, 0], ["a b" =~ /a\ b/x, "a#b" =~ /a\#b/x, "a b" =~ /a[ ]b/x, "ab" =~ /a b/xi]
+    end
+
+    def test_named_capture_locals
+      line = "user=ann id=42"
+      found = /user=(?<name>\w+) id=(?<id>\d+)/ =~ line
+      assert_equal [0, "ann", "42"], [found, name, id]
+      pos = /(?<word>z+)/ =~ "abc"
+      assert_nil pos
+      assert_nil word
+    end
+  end
 end

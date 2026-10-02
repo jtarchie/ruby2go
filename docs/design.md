@@ -835,8 +835,10 @@ resolve; anything not listed is still open.
     and `&&` are computed as rune ranges; `{,n}` is `{0,n}`; `X{n}?` is
     `(?:X{n})?`; `\u`/`\e` become `\x{...}`; `\Q` is a literal `Q`; plain
     groups don't capture once one is named. *(Revised: these passed through
-    and silently matched RE2's meaning.)* Lookaround, backreferences, `\Z`
-    and `/x` are rejected with `file:line` at transpile time. Static patterns compile once into package
+    and silently matched RE2's meaning.)* Lookaround, backreferences and `\Z`
+    are rejected with `file:line` at transpile time. A literal `/x` pattern
+    drops its whitespace and `#` comments before translation (`source`
+    and `inspect` keep them); an interpolated `/x` is still rejected. Static patterns compile once into package
     variables; interpolated ones compile at run time and raise
     `RegexpError` (with `/o`, only until one compiles; it is kept). An
     interpolated pattern is translated whole at run time (the compiler's
@@ -857,7 +859,9 @@ resolve; anything not listed is still open.
     atom; unlike it, nor a one-character class (`/[s]s/i` misses `ß`), and
     a literal is expanded in pieces of about 8 characters, so a fold
     straddling two pieces is missed. *(Revised: these matched RE2's
-    meaning.)* `$~`/`$1` are not supported; use `match`.
+    meaning.)* `$~`/`$1` are not supported; use `match`. A literal
+    pattern with named groups on the left of `=~` assigns them to locals
+    (nil without a match), since the names are known statically.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported.
