@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -46,7 +47,7 @@ func main() {
 	reasons := flag.Int("reasons", 10, "list this many of the commonest unsupported reasons")
 	var opts options
 	flag.BoolVar(&opts.verbose, "v", false, "list every unsupported example and each program's failures")
-	flag.DurationVar(&opts.timeout, "timeout", time.Minute, "per program run")
+	flag.DurationVar(&opts.timeout, "timeout", 10*time.Second, "per program run; a test still running then is skipped as hung")
 	flag.BoolVar(&opts.keep, "work", false, "keep each program's module (main.go) and print its path")
 	flag.Parse()
 	root, err := specRoot(*spec)
@@ -162,6 +163,7 @@ type result struct {
 	compileSkips                 []skipped // examples the compiler skipped (CompileTestsSkipping)
 	dropped                      []skipped // statements outside examples removed
 	fatal                        string    // why the program produced no results
+	crashed                      string    // the last run's crash or hang
 	output                       string    // the run's report, for -v
 	took                         time.Duration
 	compiles, builds             int           // rounds of each, for -v
@@ -177,26 +179,78 @@ func runTarget(ctx context.Context, p *parser.Parser, root string, t target, opt
 		r.fatal = err.Error()
 		return r
 	}
-	bin, cleanup, err := prog.build(ctx, r, opts.keep)
-	defer cleanup()
-	if err != nil {
-		r.fatal = err.Error()
-		return r
+	r.dropped = append(r.dropped, prog.unloadable...)
+	for range maxCrashes {
+		bin, cleanup, err := prog.build(ctx, r, opts.keep)
+		if err != nil {
+			cleanup()
+			r.fatal = err.Error()
+			return r
+		}
+		crash := r.runAll(ctx, root, bin, opts.timeout)
+		cleanup()
+		if crash == nil {
+			return r
+		}
+		// no test name to exclude: skip the example its stack was in, and build again
+		err = prog.skipAt(ctx, r, crash.file, crash.line, crash.reason, nil)
+		if err != nil {
+			r.fatal = r.crashed
+			return r
+		}
 	}
-	r.run(ctx, root, bin, opts.timeout)
+	r.fatal = r.crashed
 	return r
 }
+
+// runAll runs bin until it finishes, excluding each test that crashes or hangs it (a crash ends the whole run) by name, which needs no rebuild.
+func (r *result) runAll(ctx context.Context, root, bin string, timeout time.Duration) *crashSite {
+	var excluded []string
+	for range maxCrashes * 3 {
+		crash := r.run(ctx, root, bin, timeout, excluded)
+		if crash == nil || crash.test == "" {
+			return crash
+		}
+		excluded = append(excluded, regexp.QuoteMeta(crash.test))
+		r.unsupported = append(r.unsupported, skipped{crash.test, crash.reason})
+	}
+	return nil
+}
+
+// maxCrashes bounds the runs of one program that end in a crash or hang.
+const maxCrashes = 10
+
+// crashSite is where a crashed or hung run was: the first spec frame of its goroutine dump.
+type crashSite struct {
+	test   string // the test minitest -v named before running it
+	file   string
+	line   int
+	reason string
+}
+
+// startedTest is minitest -v's "Class#test_name = " a test prints before its result.
+var startedTest = regexp.MustCompile(`(?m)^(.*#test_\d{4}_.*?) = `)
+
+// specFrame is a stack frame in a spec file, as the //line directives name it.
+var specFrame = regexp.MustCompile(`(?m)^\s+(?:gen/)?(\S+_spec\.rb):(\d+)`)
 
 // testLine is one example's line in minitest's -v report.
 var testLine = regexp.MustCompile(`#test_\d{4}_.* = [\d.]+ s = ([.FES])$`)
 
-func (r *result) run(ctx context.Context, root, bin string, timeout time.Duration) {
+func (r *result) run(ctx context.Context, root, bin string, timeout time.Duration, excluded []string) *crashSite {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "--seed", "1", "-v")
-	cmd.Dir = root // specs name fixtures relative to the checkout
+	args := []string{"--seed", "1", "-v"}
+	if len(excluded) > 0 {
+		args = append(args, "-e", "/^(?:"+strings.Join(excluded, "|")+")$/")
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = root                                                           // specs name fixtures relative to the checkout
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) } // Go dumps every goroutine: the hung example's frame is in it
+	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.CombinedOutput()
 	r.output = string(out)
+	r.pass, r.fail, r.errored, r.skipped, r.crashed = 0, 0, 0, 0, ""
 	for _, line := range strings.Split(r.output, "\n") {
 		m := testLine.FindStringSubmatch(line)
 		if m == nil {
@@ -213,9 +267,42 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 			r.skipped++
 		}
 	}
-	if !strings.Contains(r.output, " runs, ") {
-		r.fatal = fmt.Sprintf("crashed (%v): %s", err, lastLines(r.output, 3))
+	if strings.Contains(r.output, " runs, ") {
+		return nil
 	}
+	reason := "crashed: " + panicLine(r.output)
+	if ctx.Err() != nil {
+		reason = fmt.Sprintf("hung: no result in %v", timeout)
+	}
+	r.crashed = fmt.Sprintf("%s (%v)", reason, err)
+	site := &crashSite{reason: reason}
+	if all := startedTest.FindAllStringIndex(r.output, -1); len(all) > 0 {
+		at := all[len(all)-1][0]
+		line, _, _ := strings.Cut(r.output[at:], "\n")
+		if !testLine.MatchString(line) { // started, never finished
+			site.test = startedTest.FindStringSubmatch(line)[1]
+		}
+	}
+	if m := specFrame.FindStringSubmatch(r.output); m != nil {
+		site.file = m[1]
+		site.line, _ = strconv.Atoi(m[2])
+	}
+	if site.test == "" && site.file == "" {
+		return nil
+	}
+	return site
+}
+
+// panicLine is a Go crash's cause, which its goroutine dump buries.
+func panicLine(out string) string {
+	for _, prefix := range []string{"fatal error: ", "panic: "} {
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, prefix) {
+				return l
+			}
+		}
+	}
+	return lastLines(out, 3)
 }
 
 func lastLines(s string, n int) string {
@@ -280,11 +367,12 @@ func report(results []*result, reasons int) {
 
 // program is the files compiled together: mspec.rb, then each spec after the fixtures it requires.
 type program struct {
-	p      *parser.Parser
-	root   string
-	files  []*source
-	byName map[string]*source
-	shared map[string]sharedSpec
+	p          *parser.Parser
+	root       string
+	files      []*source
+	byName     map[string]*source
+	shared     map[string]sharedSpec
+	unloadable []skipped // files rewrite could not parse, left out
 }
 
 type source struct {
@@ -319,10 +407,11 @@ func (prog *program) load(ctx context.Context, name string) error {
 	}
 	prog.byName[name] = nil // a require cycle stops here
 	text, err := prog.rewrite(ctx, name, string(src), 0)
-	if err != nil {
-		return err
+	if err == nil {
+		prog.add(&source{name: name, text: text})
+	} else { // a file that won't parse is left out, not its directory
+		prog.unloadable = append(prog.unloadable, skipped{name, err.Error()})
 	}
-	prog.add(&source{name: name, text: text})
 	return nil
 }
 
@@ -393,7 +482,7 @@ func (prog *program) compile(ctx context.Context, r *result) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("compile: %s", firstLine(msg))
 	}
-	return nil, prog.skipAt(ctx, r, name, line, reason)
+	return nil, prog.skipAt(ctx, r, name, line, reason, nil)
 }
 
 // goError is a go build error at a Ruby line (the //line directives map them back).
@@ -404,9 +493,10 @@ func (prog *program) skipBuildErrors(ctx context.Context, r *result, out string)
 	if len(ms) == 0 {
 		return fmt.Errorf("go build: %s", lastLines(out, 3))
 	}
+	seen := map[string]bool{}
 	for _, m := range ms {
 		line, _ := strconv.Atoi(m[2])
-		err := prog.skipAt(ctx, r, m[1], line, "go build: "+m[3])
+		err := prog.skipAt(ctx, r, m[1], line, "go build: "+m[3], seen)
 		if err != nil {
 			return err
 		}

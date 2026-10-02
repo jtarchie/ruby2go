@@ -156,23 +156,25 @@ func (rw *rewriter) require(call *parser.CallNode, arg parser.Node) {
 	}
 }
 
-// methodRef is mspec's @method/@object in a shared spec: it_behaves_like's second and third arguments.
-var methodRef = regexp.MustCompile(`@(method|object)\b`)
+// methodRef is a read of mspec's @method/@object in a shared spec (it_behaves_like's second and third arguments); group 2 is what follows, so an assignment is left alone.
+var methodRef = regexp.MustCompile(`@(method|object)\b(\s*=[^=~>]|)`)
 
 func (rw *rewriter) inline(call *parser.CallNode, args []parser.Node) {
 	spec, ok := rw.prog.shared[literal(args[0])]
 	if !ok {
 		return // left for rb2go to reject, which drops the statement
 	}
-	object := "nil"
-	if len(args) > 2 {
-		object = rw.text(args[2])
-	}
 	body := methodRef.ReplaceAllStringFunc(spec.body, func(m string) string {
-		if m == "@method" {
+		sub := methodRef.FindStringSubmatch(m)
+		switch {
+		case sub[2] != "": // assigned: the spec's own
+			return m
+		case sub[1] == "method":
 			return rw.text(args[1])
+		case len(args) > 2:
+			return rw.text(args[2])
 		}
-		return object
+		return m
 	})
 	body, err := rw.prog.rewrite(rw.ctx, rw.name, body, rw.depth+1)
 	if err != nil {
@@ -320,7 +322,8 @@ func literal(n parser.Node) string {
 }
 
 // skipAt turns the example holding name:line into a skip carrying reason, or else drops the innermost statement there.
-func (prog *program) skipAt(ctx context.Context, r *result, name string, line int, reason string) error {
+// seen holds the examples one batch of errors (a go build's) already skipped, as name:offset, since one example can have several.
+func (prog *program) skipAt(ctx context.Context, r *result, name string, line int, reason string, seen map[string]bool) error {
 	src := prog.byName[name]
 	if src == nil || src.name == "mspec.rb" {
 		return fmt.Errorf("%s:%d: %s", name, line, reason)
@@ -332,18 +335,27 @@ func (prog *program) skipAt(ctx context.Context, r *result, name string, line in
 	lines := newLineIndex(src.text)
 	where := fmt.Sprintf("%s:%d", name, line)
 	if ex := findExample(res.Value, lines, line); ex != nil {
+		key := fmt.Sprintf("%s:%d", name, ex.Location.StartOffset)
+		if seen[key] {
+			return nil
+		}
+		if seen != nil {
+			seen[key] = true
+		}
 		blk := ex.Block.(*parser.BlockNode)
 		s, e := blk.OpeningLoc.StartOffset+blk.OpeningLoc.Length, blk.ClosingLoc.StartOffset
 		body := src.text[s:e]
-		if strings.HasPrefix(body, " skip \"rb2go: ") {
-			return fmt.Errorf("%s: an error remains in an example already skipped: %s", where, reason)
+		if strings.HasPrefix(body, " skip \"rb2go: ") { // the error is in the example's own code (its def line), not its body
+			src.text = apply(src.text, []edit{blankLoc(src.text, ex.Location)})
+			r.dropped = append(r.dropped, skipped{where, reason})
+			return nil
 		}
 		msg := strings.ReplaceAll(strconv.Quote("rb2go: "+reason), "#", `\#`)
 		src.text = apply(src.text, []edit{{s, e, " skip " + msg + strings.Repeat("\n", strings.Count(body, "\n"))}})
 		r.unsupported = append(r.unsupported, skipped{where + " " + literal(callArg(ex)), reason})
 		return nil
 	}
-	st := innermostStatement(res.Value.Statements, lines, line)
+	st := innermostStatement(res.Value.Statements, lines, line, strings.HasSuffix(name, "_spec.rb"))
 	if st == nil {
 		return fmt.Errorf("%s: %s", where, reason)
 	}
@@ -405,8 +417,8 @@ func findExample(n parser.Node, lines lineIndex, line int) *parser.CallNode {
 	return found
 }
 
-// innermostStatement is the statement holding line, descending into describe, class and module bodies.
-func innermostStatement(stmts *parser.StatementsNode, lines lineIndex, line int) parser.Node {
+// innermostStatement is the statement holding line, descending into describe, class and module bodies; a fixture's class goes whole, since its unannotated methods fail one round each.
+func innermostStatement(stmts *parser.StatementsNode, lines lineIndex, line int, spec bool) parser.Node {
 	if stmts == nil {
 		return nil
 	}
@@ -421,14 +433,16 @@ func innermostStatement(stmts *parser.StatementsNode, lines lineIndex, line int)
 				body = blk.Body
 			}
 		case *parser.ClassNode:
-			body = n.Body
+			if spec {
+				body = n.Body
+			}
 		case *parser.ModuleNode:
 			body = n.Body
 		case *parser.SingletonClassNode:
 			body = n.Body
 		}
 		if inner, ok := body.(*parser.StatementsNode); ok {
-			if deeper := innermostStatement(inner, lines, line); deeper != nil {
+			if deeper := innermostStatement(inner, lines, line, spec); deeper != nil {
 				return deeper
 			}
 		}
