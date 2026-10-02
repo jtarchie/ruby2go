@@ -3969,4 +3969,175 @@ module ObjectTests
     end
   end
 
+  # ruby/spec language/alias and core/struct gaps (#49)
+  class AliasGreeter
+    attr_reader :name #: String
+
+    #: (String) -> void
+    def initialize(name)
+      @name = name
+    end
+
+    #: () -> String
+    def hello = "hi #{name}"
+    alias greet hello
+    alias_method :salute, :hello
+    alias_method "title", :name
+
+    #: () -> String
+    def hello = "hello #{name}"
+  end
+
+  class AliasSub < AliasGreeter
+    #: () -> String
+    def greet = "sub " + super
+  end
+
+  RubySpecPoint = Struct.new(:x, :y) #: [Integer, String]
+
+  class ObjectRubySpecTest < Minitest::Test
+    def test_alias
+      g = AliasGreeter.new("ann")
+      assert_equal ["hello ann", "hi ann", "hi ann", "ann"], [g.hello, g.greet, g.salute, g.title]
+      assert_equal "sub hi bo", AliasSub.new("bo").greet
+    end
+
+    def test_struct_enumeration
+      pt = RubySpecPoint.new(1, "a")
+      assert_equal [2, 2, [1, "a"], [1, "a"]], [pt.size, pt.length, pt.values, pt.deconstruct]
+      seen = [] #: Array[untyped]
+      pt.each { |v| seen << v }
+      pt.each_pair { |k, v| seen << [k, v] }
+      assert_equal [1, "a", [:x, 1], [:y, "a"]], seen
+    end
+  end
+
+  # ruby/spec language gaps (#49): visibility forms, undef, class structure, keyword parameters
+  class VisConfig
+    class << self
+      #: () -> String
+      def default_name = "cfg"
+
+      private
+
+      #: () -> Integer
+      def secret = 42
+    end
+
+    #: () -> Integer
+    def self.reveal = secret
+  end
+
+  module VisUtil
+    module_function
+
+    #: (Integer) -> Integer
+    def double(x) = x * 2
+  end
+
+  module VisHelpers
+    #: (String) -> String
+    def shout(s) = s.upcase
+    module_function :shout
+  end
+
+  class VisAccount
+    #: (Integer) -> void
+    def initialize(balance)
+      @balance = balance
+    end
+
+    #: (VisAccount) -> bool
+    def richer_than?(other) = balance > other.balance
+
+    protected
+
+    #: () -> Integer
+    def balance = @balance
+  end
+
+  class VisFactory
+    #: () -> VisFactory
+    def self.build = new
+    private_class_method :new
+    LIMIT = 3 #: Integer
+    private_constant :LIMIT
+    #: () -> Integer
+    def limit = LIMIT
+  end
+
+  class VisBase
+    #: () -> String
+    def greet = "base"
+  end
+
+  class VisKid < VisBase
+    #: () -> String
+    def greet = "kid"
+    remove_method :greet
+  end
+
+  class VisDog < VisBase; end
+  class VisCat < VisBase; end
+
+  class KwPoint
+    attr_reader :x #: Integer
+    attr_reader :y #: Integer
+
+    #: (x: Integer, ?y: Integer) -> void
+    def initialize(x:, y: 0)
+      @x = x
+      @y = y
+    end
+
+    #: (?by: Integer) -> KwPoint
+    def shift(by: 1) = KwPoint.new(x: x + by, y: y + by)
+  end
+
+  class KwBase
+    #: (Integer, ?label: String) -> String
+    def show(n, label: "n") = "#{label}=#{n}"
+  end
+
+  class KwKid < KwBase
+    #: (Integer, ?label: String) -> String
+    def show(n, label: "k") = super + "!"
+  end
+
+  class ObjectRubySpecLanguageTest < Minitest::Test
+    def test_visibility_forms
+      assert_equal ["cfg", 42, 8, "HI", true, 3], [VisConfig.default_name, VisConfig.reveal, VisUtil.double(4), VisHelpers.shout("hi"), VisAccount.new(10).richer_than?(VisAccount.new(5)), VisFactory.build.limit]
+      assert_equal "base", VisKid.new.greet
+    end
+
+    def test_class_structure
+      assert_equal [VisCat, VisDog, VisKid], VisBase.subclasses
+      assert_equal [VisBase, Object], [VisDog.superclass, VisBase.superclass]
+      assert_equal StandardError, ArgumentError.superclass
+    end
+
+    #: (String, ?greeting: String, punct: String) -> String
+    def object_greet(name, greeting: "hello", punct:) = "#{greeting} #{name}#{punct}"
+
+    # @rbs a: Integer
+    # @rbs b: Integer
+    # @rbs return: Integer
+    def object_kw_add(a:, b: a * 2) = a + b
+
+    #: (**Integer opts) -> Array[Symbol]
+    def object_keys_of(**opts) = opts.keys
+
+    #: (Integer, *Integer, scale: Integer, **String rest) -> String
+    def object_mix(first, *more, scale:, **rest) = "#{(first + more.sum) * scale} #{rest.inspect}"
+
+    def test_keyword_parameters
+      assert_equal ["hello ann!", "hi bo?", "yo cy."], [object_greet("ann", punct: "!"), object_greet("bo", greeting: "hi", punct: "?"), object_greet("cy", punct: ".", greeting: "yo")]
+      assert_equal [3, 6, 4], [object_kw_add(a: 1), object_kw_add(a: 1, b: 5), object_kw_add(b: 1, a: 3)]
+      assert_equal [[:x, :y], [], [:q], [:a, :b]], [object_keys_of(x: 1, y: 2), object_keys_of, object_keys_of(**{ q: 1 }), object_keys_of(**{ a: 1 }, b: 2)]
+      assert_equal ["12 {tag: \"a\"}", "4 {}"], [object_mix(1, 2, 3, scale: 2, tag: "a"), object_mix(4, scale: 1)]
+      pt = KwPoint.new(x: 1).shift(by: 2)
+      assert_equal [3, 2, 6], [pt.x, pt.y, KwPoint.new(y: 5, x: 2).shift.y]
+      assert_equal ["k=3!", "z=4!", "n=5"], [KwKid.new.show(3), KwKid.new.show(4, label: "z"), KwBase.new.show(5)]
+    end
+  end
 end

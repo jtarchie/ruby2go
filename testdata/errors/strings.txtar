@@ -44,11 +44,6 @@ puts A.new.show
 # error: main.rb:3: unsupported syntax: EmbeddedVariableNode
 # rbs_inline: enabled
 puts "prog=#$0"
--- interpolated_symbol.rb --
-# error: main.rb:4: unsupported syntax: InterpolatedSymbolNode
-# rbs_inline: enabled
-x = "a"
-puts :"k_#{x}".inspect
 -- upcase_bang.rb --
 # error: main.rb:4: undefined method upcase! for String
 # rbs_inline: enabled
@@ -123,7 +118,7 @@ puts "a" + t
 s = "abc"
 puts s || "default"
 -- keyword_param.rb --
-# error: main.rb:4: keyword and post parameters are not supported
+# error: main.rb:4: def has 1 keyword parameters but its signature has 0
 # rbs_inline: enabled
 #: (String) -> String
 def greet(name:) = "hi #{name}"
@@ -171,7 +166,7 @@ puts "x"
 # error: main.rb:3: Kernel has no class methods
 # rbs_inline: enabled
 Kernel.puts "x"
--- symbol_upcase.rb --
-# error: main.rb:3: undefined method upcase for Symbol
+-- symbol_encoding.rb --
+# error: main.rb:3: undefined method encoding for Symbol
 # rbs_inline: enabled
-puts :abc.upcase
+puts :abc.encoding

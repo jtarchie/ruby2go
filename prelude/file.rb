@@ -123,6 +123,103 @@ class File < Object
     return Boolean(err == nil && fi.IsDir())
   }
 
+  NULL = "/dev/null" #: String
+
+  #: (String) -> bool
+  def self.zero?(path) = exist?(path) && size(path) == 0
+
+  #: (String) -> bool
+  def self.empty?(path) = zero?(path)
+
+  #: (String) -> bool
+  def self.readable?(path) = %x{ Boolean(syscall.Access(string(path), 4) == nil) }
+
+  #: (String) -> bool
+  def self.writable?(path) = %x{ Boolean(syscall.Access(string(path), 2) == nil) }
+
+  #: (String) -> bool
+  def self.executable?(path) = %x{ Boolean(syscall.Access(string(path), 1) == nil) }
+
+  #: (String) -> bool
+  def self.owned?(path) = %x{
+    fi, err := os.Stat(string(path))
+    if err != nil {
+      return false
+    }
+    st, ok := fi.Sys().(*syscall.Stat_t)
+    return Boolean(ok && int(st.Uid) == os.Geteuid())
+  }
+
+  #: (String) -> String
+  def self.realpath(path) = %x{
+    p, err := filepath.Abs(string(path))
+    if err == nil {
+      p, err = filepath.EvalSymlinks(p)
+    }
+    if err != nil {
+      panic(rbSysErr(err, "rb_check_realpath_internal", string(path)))
+    }
+    return String(p)
+  }
+
+  #: (String) -> [String, String]
+  def self.split(path) = [dirname(path), basename(path)]
+
+  #: (String) -> String
+  def self.ftype(path) = lstat(path).ftype
+
+  #: (String) -> File::Stat
+  def self.lstat(path) = %x{
+    fi, err := os.Lstat(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_file_s_lstat", string(path)))
+    }
+    return &File_Stat{fi: fi}
+  }
+
+  #: (String) -> String
+  def self.readlink(path) = %x{
+    s, err := os.Readlink(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_readlink", string(path)))
+    }
+    return String(s)
+  }
+
+  #: (Integer, *String) -> Integer
+  def self.chmod(mode, *paths) = %x{
+    for _, p := range rest_ {
+      if err := os.Chmod(string(p), fs.FileMode(mode&0o777)); err != nil {
+        panic(rbSysErr(err, "apply2files", string(p)))
+      }
+    }
+    return Integer(len(rest_))
+  }
+
+  #: (String, String) -> Integer
+  def self.symlink(old, dst) = %x{
+    if err := os.Symlink(string(old), string(dst)); err != nil {
+      panic(rbSysErr(err, "rb_file_s_symlink", "("+string(old)+", "+string(dst)+")"))
+    }
+    return 0
+  }
+
+  #: (String, String) -> Integer
+  def self.link(old, dst) = %x{
+    if err := os.Link(string(old), string(dst)); err != nil {
+      panic(rbSysErr(err, "rb_file_s_link", "("+string(old)+", "+string(dst)+")"))
+    }
+    return 0
+  }
+
+  #: (String, Integer) -> Integer
+  def self.truncate(path, n) = %x{
+    if err := os.Truncate(string(path), int64(n)); err != nil {
+      panic(rbSysErr(err, "rb_file_s_truncate", string(path)))
+    }
+    return 0
+  }
+
   #: (String) -> Integer
   def self.size(path) = %x{
     fi, err := os.Stat(string(path))
@@ -290,6 +387,31 @@ class File::Stat < Object
   #: () -> bool
   def zero? = size == 0
 
+  #: () -> bool
+  def symlink? = %x{ Boolean(self.fi.Mode()&fs.ModeSymlink != 0) }
+
+  #: () -> String
+  def ftype = %x{
+    m := self.fi.Mode()
+    switch {
+    case m.IsRegular():
+      return "file"
+    case m.IsDir():
+      return "directory"
+    case m&fs.ModeSymlink != 0:
+      return "link"
+    case m&fs.ModeCharDevice != 0:
+      return "characterSpecial"
+    case m&fs.ModeDevice != 0:
+      return "blockSpecial"
+    case m&fs.ModeNamedPipe != 0:
+      return "fifo"
+    case m&fs.ModeSocket != 0:
+      return "socket"
+    }
+    return "unknown"
+  }
+
   # st_mode, file type bits included (0100644 for a plain file), as MRI's.
   #: () -> Integer
   def mode = %x{
@@ -301,6 +423,33 @@ class File::Stat < Object
 end
 
 class Dir < Object
+  #: () -> String
+  def self.home = %x{
+    if h := os.Getenv("HOME"); h != "" {
+      return String(h)
+    }
+    h, err := os.UserHomeDir()
+    if err != nil {
+      panic(NewArgumentError(Ref(String("couldn't find login name -- expanding '~'"))))
+    }
+    return String(h)
+  }
+
+  #: () -> String
+  def self.getwd = pwd
+
+  #: (String) -> bool
+  def self.empty?(path) = %x{
+    es, err := os.ReadDir(string(path))
+    return Boolean(err == nil && len(es) == 0)
+  }
+
+  #: (String) -> Integer
+  def self.delete(path) = rmdir(path)
+
+  #: (String) -> Integer
+  def self.unlink(path) = rmdir(path)
+
   #: () -> String
   def self.pwd = %x{
     d, err := os.Getwd()

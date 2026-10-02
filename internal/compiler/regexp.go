@@ -37,6 +37,9 @@ func (r rubyRegexFlags) opts() string {
 	if r.ignoreCase {
 		o += "i"
 	}
+	if r.extended {
+		o += "x"
+	}
 	return o
 }
 
@@ -106,15 +109,16 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	case *parser.RegularExpressionNode:
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
 		src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
-		goPat, err := translateRegexp(src)
+		pat := src
+		if flags.extended {
+			pat = stripExtended(src) // source and inspect keep the spacing; only the matcher drops it
+		}
+		goPat, err := translateRegexp(pat)
 		if err == nil {
 			_, err = regexp.Compile(flags.goPrefix() + goPat)
 		}
 		if err != nil {
 			f.errorf(n, "regexp /%s/ is not supported: %v", src, err)
-		}
-		if flags.extended {
-			f.errorf(n, "extended (/x) regexps are not supported")
 		}
 		args := fmt.Sprintf("%s, %s, %q", strconv.Quote(flags.goPrefix()+goPat), strconv.Quote(src), flags.opts())
 		name, ok := f.c.regexpVars[args]
@@ -131,7 +135,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 		once = n.IsONCE()
 	}
 	if flags.extended {
-		f.errorf(n, "extended (/x) regexps are not supported")
+		f.errorf(n, "interpolated extended (/x) regexps are not supported")
 	}
 	// Interpolated values are inserted raw, as Ruby does, so the joined
 	// source is translated at run time (rbRegexpDyn); each value is
@@ -181,4 +185,35 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 		code = fmt.Sprintf("func() *Regexp {\n%[1]s.Lock()\ndefer %[1]s.Unlock()\nif %[1]s.re == nil {\n%[1]s.re = %[2]s\n}\nreturn %[1]s.re\n}()", name, code)
 	}
 	return expr{code: code, typ: f.cls("Regexp")}
+}
+
+// stripExtended drops /x's insignificant whitespace and `#` comments,
+// leaving escapes (`\ `, `\#`) and character classes as they are.
+func stripExtended(src string) string {
+	var b strings.Builder
+	depth := 0 // inside [...], where space and # are literal
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch {
+		case c == '\\' && i+1 < len(src):
+			b.WriteByte(c)
+			i++
+			b.WriteByte(src[i])
+			continue
+		case c == '[':
+			depth++
+		case c == ']' && depth > 0:
+			depth--
+		case depth > 0:
+		case strings.IndexByte(" \t\n\r\f\v", c) >= 0:
+			continue
+		case c == '#':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }

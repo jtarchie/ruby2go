@@ -453,6 +453,11 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		env[p] = TVar{Name: p}
 	}
 	env["Self"] = recv.typ
+	if m.hasKeywords() {
+		// ponytail: an untyped call passes keywords as a trailing Hash; unpacking it per keyword (and running defaults) would make these callable
+		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rb2go: "+m.String()+" takes keyword arguments, which a call on an untyped value cannot pass (decision 23)")
+		return f.buf.String()
+	}
 	var req, opt int
 	var rest *Param
 	for i := range m.Params {

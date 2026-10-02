@@ -21,6 +21,19 @@ module Kernel
   # @rbs [X] () { (self) -> X } -> X
   def then = yield(self)
 
+  # @rbs [X] () { (self) -> X } -> X
+  def yield_self = yield(self)
+
+  #: () -> self
+  def itself = self
+
+  #: () { () -> void } -> void
+  def loop
+    while true
+      yield
+    end
+  end
+
   # @rbs [X] () { (self) -> X } -> self
   def tap
     yield(self)

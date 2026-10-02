@@ -223,3 +223,15 @@ func rbGlobStep(p, shown string, isDir bool, rest []string, out *[]string) {
 	}
 }
 
+
+// rbSourceDir is Kernel#__dir__: the source file's absolute directory, resolved against the working directory as MRI does at load.
+func rbSourceDir(name string) String {
+	p, err := filepath.Abs(name)
+	if err != nil {
+		return String(filepath.Dir(name))
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	return String(filepath.Dir(p))
+}

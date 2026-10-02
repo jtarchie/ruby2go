@@ -80,6 +80,53 @@ module Math
 
   #: (Float, Float) -> Float
   def self.hypot(x, y) = %x{ Float(rbHypot(float64(x), float64(y))) }
+
+  #: (Float) -> Float
+  def self.log1p(x) = %x{
+    rbMathDomain(x < -1, "log1p")
+    return Float(rbMathBig(float64(x), 1e-20, -1, func(b *big.Float) *big.Float { return rbBigLog(b.Add(b, rbBFInt(1))) }))
+  }
+
+  #: (Float) -> Float
+  def self.expm1(x) = %x{
+    if x > 710 || x < -50 {
+      return Float(math.Expm1(float64(x)))
+    }
+    return Float(rbMathBig(float64(x), 1e-20, 0, func(b *big.Float) *big.Float { return b.Sub(rbBigExp(b), rbBFInt(1)) }))
+  }
+
+  #: (Float) -> Float
+  def self.asinh(x) = %x{ Float(rbAsinh(float64(x))) }
+
+  #: (Float) -> Float
+  def self.acosh(x) = %x{
+    rbMathDomain(x < 1, "acosh")
+    return Float(rbMathBig(float64(x), 0, 1, func(b *big.Float) *big.Float {
+      r := rbBF().Sub(rbBF().Mul(b, b), rbBFInt(1))
+      return rbBigLog(r.Add(r.Sqrt(r), b))
+    }))
+  }
+
+  #: (Float) -> Float
+  def self.atanh(x) = %x{
+    rbMathDomain(x < -1 || x > 1, "atanh")
+    if x == 1 || x == -1 {
+      return Float(math.Inf(int(x)))
+    }
+    return Float(rbMathBig(float64(x), 1e-20, -1, func(b *big.Float) *big.Float {
+      q := rbBF().Quo(rbBF().Add(rbBFInt(1), b), rbBF().Sub(rbBFInt(1), b))
+      return q.Quo(rbBigLog(q), rbBFInt(2))
+    }))
+  }
+
+  #: (Float) -> [Float, Integer]
+  def self.frexp(x) = %x{
+    f, e := math.Frexp(float64(x))
+    return Tuple2[Float, Integer]{Float(f), Integer(e)}
+  }
+
+  #: (Float, Integer) -> Float
+  def self.ldexp(x, e) = %x{ Float(math.Ldexp(float64(x), int(e))) }
 end
 
 class Float

@@ -1128,4 +1128,69 @@ B
       assert_equal "none", string_label(s[3])
     end
   end
+
+  # ruby/spec core/symbol gaps (#49)
+  class StringRubySpecSymbolTest < Minitest::Test
+    def test_symbol_string_methods
+      assert_equal [2, true, false], [:ab.length, :"".empty?, :a.empty?]
+      assert_equal %i[AB ab Ab aB b ba], [:ab.upcase, :AB.downcase, :ab.capitalize, :Ab.swapcase, :a.succ, :az.next]
+      assert_equal [0, 1, true], [:a.casecmp(:A), :b.casecmp(:a), :a.casecmp?(:A)]
+      assert_equal [true, false, true], [:abc.start_with?("a"), :abc.start_with?("b"), :abc.end_with?("bc")]
+      assert_equal ["a", "b", "bc", "ab"], [:a.id2name, :abc[1], :abc[1, 2], :abc[0..1]]
+      assert_nil :abc[5]
+    end
+  end
+
+  # ruby/spec core/string, core/matchdata and core/regexp gaps (#49)
+  class StringRubySpecTest < Minitest::Test
+    def test_byte_methods
+      assert_equal [3, nil, 3, 4], ["abcb".rindex("b"), "abc".rindex("z"), "héllo".byteindex("l"), "héllo".byterindex("l")]
+      assert_equal ["é", nil, "", "c"], ["héllo".byteslice(1, 2), "abc".byteslice(3), "abc".byteslice(3, 1), "abc".byteslice(-1)]
+      assert_equal [195, nil, 195], ["é".getbyte(0), "é".getbyte(5), "ab".sum]
+      assert_equal [104, 233], "hé".codepoints
+      bytes = [] #: Array[Integer]
+      "hé".each_byte { |b| bytes << b }
+      "hé".each_codepoint { |c| bytes << c }
+      assert_equal [104, 195, 169, 104, 233], bytes
+    end
+
+    def test_upto
+      out = [] #: Array[String]
+      "a".upto("e") { |s| out << s }
+      "9".upto("11") { |s| out << s }
+      "09".upto("11") { |s| out << s }
+      "az".upto("bc") { |s| out << s }
+      "b".upto("a") { |s| out << s }
+      assert_equal %w[a b c d e 9 10 11 09 10 11 az ba bb bc], out
+    end
+
+    def test_misc
+      assert_equal [:a, "ab", true, false], ["a".intern, "ab".b, "a".eql?("a"), "a".eql?(:a)]
+      assert_equal "\"a\\\"\\\\\\n\\e\\\#{x}\\u00E9\\u{1F600}\\x00\"", "a\"\\\n\e\#{x}é😀\x00".dump
+    end
+
+    def test_matchdata
+      m = "héllo world".match(/(?<first>l+)(?<o>o)? (?<w>w)(?<x>x)?/)
+      refute_nil m
+      return unless m
+      assert_equal [5, 5, "héllo world"], [m.size, m.length, m.string]
+      assert_equal %w[first o w x], m.names
+      assert_equal({ "first" => "ll", "o" => "o", "w" => "w", "x" => nil }, m.named_captures)
+      assert_equal ["ll", "o", nil, nil], m.values_at(1, 2, 4, 7)
+      assert_equal ["ll", "w", "ll", 2, nil], [m[:first], m["w"], m.match(1), m.match_length(1), m.match_length(4)]
+      assert_equal [2, 7, nil], [m.begin(0), m.end(0), m.begin(4)]
+      assert_equal [2, 4], m.offset(1)
+      assert_equal [nil, nil], m.offset(4)
+      assert_equal [3, 8], m.byteoffset(0)
+      assert_raises(IndexError) { m.begin(9) }
+      assert_raises(IndexError) { m.match(9) }
+    end
+
+    def test_regexp_names
+      assert_equal %w[a b], /(?<a>x)(?<b>y)(?<a>z)/.names
+      assert_equal({ "a" => [1], "b" => [2] }, /(?<a>x)(?<b>y)/.named_captures)
+      assert_equal [], /a/.names
+      assert_equal "a\\.b\\*c", Regexp.quote("a.b*c")
+    end
+  end
 end

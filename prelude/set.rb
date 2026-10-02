@@ -177,6 +177,48 @@ class Set < Object
     size == n ? nil : self
   end
 
+  #: () { (E) -> bool } -> self
+  def delete_if
+    to_a.each { |x| delete(x) if yield(x) }
+    self
+  end
+
+  #: () { (E) -> bool } -> self
+  def keep_if
+    to_a.each { |x| delete(x) unless yield(x) }
+    self
+  end
+
+  #: (Set[E]) -> self
+  def subtract(xs)
+    xs.each { |x| delete(x) }
+    self
+  end
+
+  #: (Array[E]) -> self
+  def __subtract_array(xs)
+    xs.each { |x| delete(x) }
+    self
+  end
+
+  #: (Set[E]) -> self
+  def replace(xs)
+    items = xs.to_a
+    clear
+    items.each { |x| add(x) }
+    self
+  end
+
+  #: (Array[E]) -> self
+  def __replace_array(xs)
+    clear
+    xs.each { |x| add(x) }
+    self
+  end
+
+  #: (?String) -> String
+  def join(sep = "") = to_a.join(sep)
+
   #: [U] () { (E) -> U } -> Hash[U, Set[E]]
   def classify
     h = {} #: Hash[U, Set[E]]

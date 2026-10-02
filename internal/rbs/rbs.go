@@ -99,8 +99,10 @@ func join(ts []Type) string {
 type Param struct {
 	Type     Type
 	Name     string
-	Optional bool // `?T`
+	Optional bool // `?T`, or `?name: T` for a keyword
 	Rest     bool // `*T`
+	Keyword  bool // `name: T`: Name is the keyword
+	KwRest   bool // `**T`: the other keywords, a Hash[Symbol, T]
 }
 
 // Block is `{ (A) -> R }`.
@@ -128,11 +130,18 @@ func (m *MethodType) String() string {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		if p.Rest {
+		switch {
+		case p.Rest:
 			b.WriteString("*")
+		case p.KwRest:
+			b.WriteString("**")
 		}
 		if p.Optional {
 			b.WriteString("?")
+		}
+		if p.Keyword {
+			b.WriteString(p.Name + ": " + p.Type.String())
+			continue
 		}
 		b.WriteString(p.Type.String())
 		if p.Name != "" {
@@ -349,24 +358,28 @@ func (p *parser) parseParams() ([]Param, error) {
 		case "*":
 			p.next()
 			prm.Rest = true
+		case "**":
+			p.next()
+			prm.KwRest = true
 		case "?":
 			p.next()
 			prm.Optional = true
-		case "**", "&":
+		case "&":
 			return nil, fmt.Errorf("rbs: %q parameters are not supported", p.peek())
 		}
-		if p.pos+1 < len(p.toks) && p.toks[p.pos+1] == ":" {
-			return nil, errors.New("rbs: keyword parameters are not supported")
+		if tok := p.peek(); !prm.Rest && !prm.KwRest && tok != "" && isIdentStart(tok[0]) && p.pos+1 < len(p.toks) && p.toks[p.pos+1] == ":" {
+			prm.Keyword, prm.Name = true, p.next()
+			p.next() // :
 		}
 		t, err := p.parseType()
 		if err != nil {
 			return nil, err
 		}
 		prm.Type = t
-		if tok := p.peek(); tok != "" && tok != "," && tok != ")" && isIdentStart(tok[0]) {
+		if tok := p.peek(); !prm.Keyword && tok != "" && tok != "," && tok != ")" && isIdentStart(tok[0]) {
 			prm.Name = p.next()
 			if p.peek() == ":" {
-				return nil, errors.New("rbs: keyword parameters are not supported")
+				return nil, errors.New("rbs: a keyword parameter is spelt `name: T`")
 			}
 		}
 		params = append(params, prm)

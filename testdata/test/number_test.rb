@@ -2037,4 +2037,56 @@ module NumberTests
       assert_equal 2.5, Float(2.5)
     end
   end
+
+  # ruby/spec core/integer and core/float gaps (#49)
+  class NumberRubySpecTest < Minitest::Test
+    def test_integer_bits
+      assert_equal [1, 7, 6, -6], [5 & 3, 5 | 3, 5 ^ 3, ~5]
+      assert_equal [16, -4, 4, 0], [1 << 4, -16 >> 2, 1 >> -2, 1 >> 70]
+      assert_equal [1, 0, 1, 0], [5[0], 5[1], -1[100], 5[-1]]
+      assert_equal [true, true, true], [6.allbits?(2), 6.anybits?(3), 6.nobits?(1)]
+    end
+
+    def test_integer_rounding
+      assert_equal [1200, 1300, -1300, 1200, -1300], [1234.round(-2), 1250.round(-2), -1250.round(-2), 1234.floor(-2), -1234.floor(-2)]
+      assert_equal [1300, -1200, 7, 7, 7, 0], [1234.ceil(-2), -1234.truncate(-2), 7.round, 7.floor(1), 7.ceil(2), 7.truncate(-20)]
+    end
+
+    def test_integer_misc
+      assert_equal [4, -3, 4, 3, 3], [7.ceildiv(2), -7.ceildiv(2), 3.next, -3.magnitude, 3.to_int]
+      assert_equal [2, 12], 4.gcdlcm(6)
+      assert_nil 0.nonzero?
+      assert_equal [3, 9, 3, 0, true], [3.nonzero?, 3.abs2, 3.conj, 3.imag, 3.real?]
+      assert_equal [3, 0], 3.rect
+      assert_equal [true, false, 8], [1.eql?(1), 1.eql?(1.0), 3.size]
+    end
+
+    def test_float_misc
+      assert_equal [1.0000000000000002, -5.0e-324], [1.0.next_float, 0.0.prev_float]
+      assert_equal [true, true, false], [1.5.positive?, -1.5.negative?, -0.0.negative?]
+      assert_equal [2.5, 2, true, false], [-2.5.magnitude, 2.5.to_int, 1.5.eql?(1.5), 1.0.eql?(1)]
+      assert_nil 0.0.nonzero?
+      assert_equal [1.5, 2.25, 1.5, 0, true], [1.5.nonzero?, 1.5.abs2, 1.5.conj, 1.5.imag, 1.5.real?]
+      assert_equal [1.5, 0], 1.5.rect
+    end
+  end
+
+  # ruby/spec core/math and core/range gaps (#49); inputs avoid the few where macOS libm misrounds (decision 43)
+  class NumberRubySpecMathTest < Minitest::Test
+    def test_math
+      assert_equal [0.881373587019543, 1.762747174039086, 0.5493061443340549], [Math.asinh(1.0), Math.acosh(3.0), Math.atanh(0.5)]
+      assert_equal [0.6931471805599453, 1.7182818284590453, 9.999999999995e-13, 1.0000000000005e-12], [Math.log1p(1.0), Math.expm1(1.0), Math.log1p(1.0e-12), Math.expm1(1.0e-12)]
+      assert_equal [-Float::INFINITY, Float::INFINITY, 0.0], [Math.log1p(-1.0), Math.atanh(1.0), Math.acosh(1.0)]
+      assert_equal [[0.5, 4], [-0.6, -1], [0.0, 0]], [Math.frexp(8.0), Math.frexp(-0.3), Math.frexp(0.0)]
+      assert_equal [8.0, 0.75], [Math.ldexp(0.5, 4), Math.ldexp(3.0, -2)]
+      assert_raises(Math::DomainError) { Math.acosh(0.5) }
+      assert_raises(Math::DomainError) { Math.atanh(2.0) }
+      assert_raises(Math::DomainError) { Math.log1p(-2.0) }
+    end
+
+    def test_range
+      assert_equal [true, false, false, true, false, false], [(1..3).overlap?(3..4), (1...3).overlap?(3..4), (3..1).overlap?(1..3), (1..).overlap?(5..6), (1...1).overlap?(1..1), (1..3).overlap?(4..)]
+      assert_equal [3, nil, 100, nil], [(1..5).bsearch { |x| x >= 3 }, (1..5).bsearch { |x| x > 9 }, (0..).bsearch { |x| x >= 100 }, (1...3).bsearch { |x| x >= 3 }]
+    end
+  end
 end

@@ -518,4 +518,142 @@ class String < Object
     }
     return String(rbPad(string(pad), n)) + self
   }
+
+  #: (String) -> Integer?
+  def rindex(s) = %x{
+    i := strings.LastIndex(string(self), string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(Integer(utf8.RuneCountInString(string(self)[:i])))
+  }
+
+  #: (String) -> Integer?
+  def byteindex(s) = %x{
+    i := strings.Index(string(self), string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(Integer(i))
+  }
+
+  #: (String) -> Integer?
+  def byterindex(s) = %x{
+    i := strings.LastIndex(string(self), string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(Integer(i))
+  }
+
+  # One byte without a length, as MRI (byteslice(3) of "abc" is nil, byteslice(3, 1) is "").
+  #: (Integer, ?Integer?) -> String?
+  def byteslice(start, count = nil) = %x{
+    n := Integer(len(self))
+    if start < 0 {
+      start += n
+    }
+    if count == nil {
+      if start < 0 || start >= n {
+        return nil
+      }
+      return Ref(String(self[start : start+1]))
+    }
+    if start < 0 || start > n || *count < 0 {
+      return nil
+    }
+    return Ref(String(strings.Clone(string(self[start:min(start+*count, n)]))))
+  }
+
+  #: (Integer) -> Integer?
+  def getbyte(i) = %x{
+    if i < 0 {
+      i += Integer(len(self))
+    }
+    if i < 0 || int(i) >= len(self) {
+      return nil
+    }
+    return Ref(Integer(self[i]))
+  }
+
+  #: () -> Array[Integer]
+  def codepoints = %x{
+    out := &Array[Integer]{}
+    for _, r := range string(self) {
+      *out = append(*out, Integer(r))
+    }
+    return out
+  }
+
+  #: () { (Integer) -> void } -> void
+  def each_byte = %x{
+    return func(yield func(Integer) bool) {
+      for i := range len(self) {
+        if !yield(Integer(self[i])) {
+          return
+        }
+      }
+    }
+  }
+
+  #: () { (Integer) -> void } -> void
+  def each_codepoint = %x{
+    return func(yield func(Integer) bool) {
+      for _, r := range string(self) {
+        if !yield(Integer(r)) {
+          return
+        }
+      }
+    }
+  }
+
+  #: (?Integer) -> Integer
+  def sum(bits = 16) = %x{
+    var t uint64
+    for i := range len(self) {
+      t += uint64(self[i])
+    }
+    if bits > 0 && bits < 64 {
+      t &= 1<<bits - 1
+    }
+    return Integer(t)
+  }
+
+  #: (String) { (String) -> void } -> void
+  def upto(last)
+    if __digits? && last.__digits?
+      i = to_i
+      while i <= last.to_i
+        yield i.to_s.rjust(size, "0")
+        i += 1
+      end
+      return
+    end
+    return if (self <=> last) > 0
+    s = self
+    while true
+      yield s
+      break if s == last
+      s = s.succ
+      break if s.size > last.size || s.empty?
+    end
+  end
+
+  #: () -> bool
+  def __digits? = %x{ Boolean(self != "" && strings.Trim(string(self), "0123456789") == "") }
+
+  #: () -> Symbol
+  def intern = to_sym
+
+  #: () -> String
+  def b = %x{ rbStrClone(self) }
+
+  #: (untyped) -> bool
+  def eql?(other) = %x{
+    o, ok := rbUnbox(other).(String)
+    return Boolean(ok && o == self)
+  }
+
+  #: () -> String
+  def dump = %x{ String(rbStrDump(string(self))) }
 end

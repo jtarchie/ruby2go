@@ -172,6 +172,15 @@ class Time < Object
   #: () -> Time
   def getutc = %x{ return &Time{t: self.t.UTC(), utc: true} }
 
+  #: () -> Time
+  def getgm = getutc
+
+  #: () -> bool
+  def gmt? = utc?
+
+  #: () -> Integer
+  def gmtoff = utc_offset
+
   #: (?untyped) -> Time
   def getlocal(off = nil) = %x{
     loc, utc := rbTimeZoneArg(off, time.Local)

@@ -142,7 +142,7 @@ func rbMatch(r *Regexp, s string) *MatchData {
 			groups[i] = &g
 		}
 	}
-	return &MatchData{groups: groups, names: r.re.SubexpNames(), pre: s[:loc[0]], post: s[loc[1]:]}
+	return &MatchData{groups: groups, names: r.re.SubexpNames(), pre: s[:loc[0]], post: s[loc[1]:], subj: s, loc: loc}
 }
 
 // rbSubject is the text a Regexp matches: a String, or a Symbol's name.
@@ -267,4 +267,61 @@ func rbRegexpEscape(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// rbUniqNames is the named groups in order, each once (MRI's Regexp#names).
+func rbUniqNames(names []string) *Array[String] {
+	out := &Array[String]{}
+	for _, n := range names {
+		if n != "" && !slices.Contains(*out, String(n)) {
+			*out = append(*out, String(n))
+		}
+	}
+	return out
+}
+
+// rbMatchNamed is MatchData#[] by group name: the last group of that name that matched, as Onigmo picks.
+func rbMatchNamed(m *MatchData, name string) *String {
+	found := false
+	var out *String
+	for i, n := range m.names {
+		if n == name {
+			found = true
+			if m.groups[i] != nil {
+				out = m.groups[i]
+			}
+		}
+	}
+	if !found {
+		panic(NewIndexError(Ref(String("undefined group name reference: " + name))))
+	}
+	return out
+}
+
+// rbMatchOffset is MatchData#begin (side 0) or #end (side 1) in characters.
+func rbMatchOffset(m *MatchData, n Integer, side int) *Integer {
+	if n < 0 || int(n) >= len(m.groups) {
+		panic(NewIndexError(Ref(String(fmt.Sprintf("index %d out of matches", n)))))
+	}
+	b := m.loc[2*int(n)+side]
+	if b < 0 {
+		return nil
+	}
+	return Ref(Integer(utf8.RuneCountInString(m.subj[:b])))
+}
+
+// rbMatchCapture is a named group's local after `/(?<name>..)/ =~ s`: nil without a match.
+func rbMatchCapture(m **MatchData, name string) *String {
+	if m == nil {
+		return nil
+	}
+	return rbMatchNamed(*m, name)
+}
+
+// rbMatchPos is that =~'s value: the match's character index, or nil.
+func rbMatchPos(m **MatchData) *Integer {
+	if m == nil {
+		return nil
+	}
+	return rbMatchOffset(*m, 0, 0)
 }

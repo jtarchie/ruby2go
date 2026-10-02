@@ -67,22 +67,6 @@ end
 class Counter
   @@count = 0
 end
--- class_body_singleton_class.rb --
-# error: main.rb:3: unsupported node in class body: SingletonClassNode
-class Config
-  class << self
-    #: () -> String
-    def name = "c"
-  end
-end
--- class_body_alias.rb --
-# error: main.rb:6: unsupported node in class body: AliasMethodNode
-class Greeter
-  #: () -> String
-  def hello = "hi"
-
-  alias hi hello
-end
 -- class_body_if.rb --
 # error: main.rb:3: unsupported node in class body: IfNode
 class Flagged
@@ -101,53 +85,10 @@ end
 class Chatty
   puts "loading"
 end
--- class_body_protected.rb --
-# error: main.rb:3: unsupported call in class body: protected
-class Guarded
-  protected
-
-  #: () -> Integer
-  def x = 1
-end
--- class_body_alias_method.rb --
-# error: main.rb:6: unsupported call in class body: alias_method
-class Greeter
-  #: () -> String
-  def hello = "hi"
-
-  alias_method :hi, :hello
-end
--- class_body_module_function.rb --
-# error: main.rb:3: unsupported call in class body: module_function
-module Helpers
-  module_function
-
-  #: () -> Integer
-  def x = 1
-end
 -- class_body_define_method.rb --
 # error: main.rb:3: unsupported call in class body: define_method
 class Dyn
   define_method(:x) { 1 }
-end
--- private_symbol_form.rb --
-# error: main.rb:6: unsupported private form
-class Guarded
-  #: () -> Integer
-  def x = 1
-
-  private :x
-end
--- private_many_symbols.rb --
-# error: main.rb:9: unsupported private form
-class Guarded
-  #: () -> Integer
-  def x = 1
-
-  #: () -> Integer
-  def y = 2
-
-  private :x, :y
 end
 -- include_non_constant.rb --
 # error: main.rb:6: unsupported include argument
@@ -818,20 +759,6 @@ end
 class Vault
   private attr_reader :pin #: Integer
 end
--- private_class_method.rb --
-# error: main.rb:6: unsupported call in class body: private_class_method
-class Vault
-  #: () -> Integer
-  def self.pin = 1
-
-  private_class_method :pin
-end
--- private_constant.rb --
-# error: main.rb:4: unsupported call in class body: private_constant
-class Vault
-  PIN = 1
-  private_constant :PIN
-end
 -- class_variable_read.rb --
 # error: main.rb:4: unsupported syntax: ClassVariableReadNode
 class Counter
@@ -1104,3 +1031,37 @@ OptionParser.new { |o| o.on("--type T", %w[text binary]) { |t| p t } }
 require "optparse"
 OptionParser.new { |o| o.on("-c N", Integer) { |n| p n.upcase } }
 
+-- alias_inherited.rb --
+# error: main.rb:7: undefined method 'hello' for class 'B'
+class A
+  #: () -> String
+  def hello = "hi"
+end
+class B < A
+  alias hi hello
+end
+-- protected_outside.rb --
+# error: main.rb:8: protected method x called on P
+class P
+  protected
+
+  #: () -> Integer
+  def x = 1
+end
+puts P.new.x
+-- private_new_outside.rb --
+# error: main.rb:7: private method 'new' called for class F
+class F
+  #: () -> F
+  def self.make = new
+  private_class_method :new
+end
+F.new
+-- undef_then_call.rb --
+# error: main.rb:7: undefined method a for K
+class K
+  #: () -> Integer
+  def a = 1
+  undef a
+end
+puts K.new.a

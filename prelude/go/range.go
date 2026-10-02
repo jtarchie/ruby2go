@@ -7,6 +7,7 @@ type Range_Any interface{ _ToAny() *Range[any] }
 
 // rbRangeEach is MRI's Range#each for the element types with succ.
 func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
+	rbRangeNoBegin(r)
 	switch b := any(r.b).(type) {
 	case Integer:
 		e, _ := any(r.e).(Integer)
@@ -109,7 +110,7 @@ func rbStrSucc(s string) string {
 }
 
 func rbRangeCover[E comparable](r *Range[E], v E) bool {
-	if rbCmp(r.b, v) > 0 {
+	if !r.beginless && rbCmp(r.b, v) > 0 {
 		return false
 	}
 	if r.endless {
@@ -131,8 +132,75 @@ func rbRangeStr[E comparable](r *Range[E], str func(any) String) String {
 	if r.excl {
 		op = "..."
 	}
-	if r.endless {
+	switch {
+	case r.endless:
 		return str(r.b) + String(op)
+	case r.beginless:
+		return String(op) + str(r.e)
 	}
 	return str(r.b) + String(op) + str(r.e)
+}
+
+// rbRangeEmpty reports a range that covers nothing (3..1, 1...1).
+func rbRangeEmpty[E comparable](r *Range[E]) bool {
+	if r.endless || r.beginless {
+		return false
+	}
+	c := rbCmp(r.b, r.e)
+	return c > 0 || c == 0 && r.excl
+}
+
+// rbRangeOverlap is Range#overlap?: each range starts before the other ends.
+func rbRangeOverlap[E comparable](a, b *Range[E]) bool {
+	if rbRangeEmpty(a) || rbRangeEmpty(b) {
+		return false
+	}
+	before := func(x, y *Range[E]) bool { // x starts no later than y ends
+		if x.beginless || y.endless {
+			return true
+		}
+		c := rbCmp(x.b, y.e)
+		return c < 0 || c == 0 && !y.excl
+	}
+	return before(a, b) && before(b, a)
+}
+
+// rbRangeBsearch is Range#bsearch over Integer bounds; other element types raise TypeError, as MRI does for non-numeric ones.
+func rbRangeBsearch[E comparable](r *Range[E], ok func(E) bool) *E {
+	lo, isInt := any(r.b).(Integer)
+	if !isInt || r.beginless {
+		panic(NewTypeError(Ref(String("can't do binary search for " + rbClassName(r.b)))))
+	}
+	var hi Integer
+	if r.endless {
+		hi = lo + 1
+		for !ok(any(hi).(E)) {
+			if hi > math.MaxInt/2 {
+				return nil
+			}
+			hi = lo + (hi-lo)*2
+		}
+	} else {
+		hi = any(r.e).(Integer)
+		if r.excl {
+			hi--
+		}
+	}
+	var found *E
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+		if v := any(mid).(E); ok(v) {
+			found, hi = &v, mid-1
+		} else {
+			lo = mid + 1
+		}
+	}
+	return found
+}
+
+// rbRangeNoBegin is MRI's TypeError for iterating a beginless range, which has no first element.
+func rbRangeNoBegin[E comparable](r *Range[E]) {
+	if r.beginless {
+		panic(NewTypeError(Ref(String("can't iterate from NilClass"))))
+	}
 }

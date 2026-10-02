@@ -771,4 +771,36 @@ class Array < Object
 
   #: () -> bool
   def frozen? = %x{ Boolean(rbIsFrozen(self)) }
+
+  #: (Integer) -> E?
+  def at(i) = self[i]
+
+  #: (*Integer) -> Array[E]
+  def fetch_values(*idx) = idx.map { |i| fetch(i) }
+
+  #: () { (E) -> bool } -> Integer?
+  def bsearch_index = %x{
+    i := sort.Search(len(*self), func(i int) bool { return bool(blk((*self)[i])) })
+    if i == len(*self) {
+      return nil
+    }
+    return Ref(Integer(i))
+  }
+
+  #: () { (E) -> bool } -> E?
+  def rfind = %x{
+    for i := len(*self) - 1; i >= 0; i-- {
+      if bool(blk((*self)[i])) {
+        return &(*self)[i]
+      }
+    }
+    return nil
+  }
+
+  #: (Array[E]) -> self
+  def replace(other) = %x{
+    rbFrozenCheck(self)
+    *self = append(Array[E]{}, *other...)
+    return self
+  }
 end

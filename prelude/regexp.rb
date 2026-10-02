@@ -85,6 +85,31 @@ class Regexp < Object
   #: () -> String
   def source = %x{ String(self.src) }
 
+  #: (String) -> String
+  def self.quote(str) = escape(str)
+
+  #: () -> Array[String]
+  def names = %x{ return rbUniqNames(self.re.SubexpNames()) }
+
+  #: () -> Hash[String, Array[Integer]]
+  def named_captures
+    out = {} #: Hash[String, Array[Integer]]
+    __group_names.each_with_index do |n, i|
+      next if n.empty?
+      (out[n] ||= []) << i
+    end
+    out
+  end
+
+  #: () -> Array[String]
+  def __group_names = %x{
+    out := &Array[String]{}
+    for _, n := range self.re.SubexpNames() {
+      *out = append(*out, String(n))
+    }
+    return out
+  }
+
   # Every Regexp is a literal, and literals are frozen.
   #: () -> bool
   def frozen? = true
@@ -122,8 +147,8 @@ class Regexp < Object
   def hash = %x{ Integer(maphash.String(rbHashSeed, self.src+"/"+self.opts)) }
 end
 
-# names are the groups' names ("" when unnamed), as Go's SubexpNames.
-# @go_type struct { groups []*String; names []string; pre string; post string }
+# names are the groups' names ("" when unnamed), as Go's SubexpNames; loc holds byte offsets into subj.
+# @go_type struct { groups []*String; names []string; pre string; post string; subj string; loc []int }
 class MatchData < Object
   #: (Integer) -> String?
   def [](i) = %x{
@@ -145,6 +170,63 @@ class MatchData < Object
     out := &Array[*String]{}
     *out = append(*out, self.groups[1:]...)
     return out
+  }
+
+  #: (String) -> String?
+  def __idx_string(name) = %x{ return rbMatchNamed(self, string(name)) }
+
+  #: (Symbol) -> String?
+  def __idx_symbol(name) = %x{ return rbMatchNamed(self, string(name)) }
+
+  #: () -> Integer
+  def size = %x{ Integer(len(self.groups)) }
+
+  #: () -> Integer
+  def length = size
+
+  #: () -> String
+  def string = %x{ String(self.subj) }
+
+  #: () -> Array[String]
+  def names = %x{ return rbUniqNames(self.names) }
+
+  #: () -> Hash[String, String?]
+  def named_captures
+    out = {} #: Hash[String, String?]
+    names.each { |n| out[n] = self[n] }
+    out
+  end
+
+  #: (*Integer) -> Array[String?]
+  def values_at(*idx) = idx.map { |i| self[i] }
+
+  #: (Integer) -> String?
+  def match(n)
+    self.begin(n)
+    self[n]
+  end
+
+  #: (Integer) -> Integer?
+  def match_length(n) = match(n)&.size
+
+  #: (Integer) -> Integer?
+  def begin(n) = %x{ return rbMatchOffset(self, n, 0) }
+
+  #: (Integer) -> Integer?
+  def end(n) = %x{ return rbMatchOffset(self, n, 1) }
+
+  #: (Integer) -> [Integer?, Integer?]
+  def offset(n) = [self.begin(n), self.end(n)]
+
+  #: (Integer) -> [Integer?, Integer?]
+  def byteoffset(n) = %x{
+    if n < 0 || int(n) >= len(self.groups) {
+      panic(NewIndexError(Ref(String(fmt.Sprintf("index %d out of matches", n)))))
+    }
+    if self.loc[2*n] < 0 {
+      return Tuple2[*Integer, *Integer]{}
+    }
+    return Tuple2[*Integer, *Integer]{Ref(Integer(self.loc[2*n])), Ref(Integer(self.loc[2*n+1]))}
   }
 
   #: () -> String

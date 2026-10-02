@@ -507,6 +507,10 @@ resolve; anything not listed is still open.
    the closure rescues aborts the Go program instead, since a range
    function cannot recover one. *(Revised: such a class failed `go build`,
    and an unannotated override inherited iterator-ness despite its rescue.)*
+   A block that takes no values qualifies too: the method returns a
+   `func(func() bool)`, which Go ranges over with no loop variables, so
+   `Kernel#loop { ... break }` is a plain `for range`. *(Revised: blocks
+   with no parameters were always closures, and `loop` did not exist.)*
 5. `Hash.new(default)` / `Hash#[]` typing: **decided, `Hash#[]` is
    `(K) -> V?`** and there is no default value. `Hash#fetch(k, default)`
    covers the common case; `tally`/`group_by` are written with `||`.
@@ -807,8 +811,23 @@ resolve; anything not listed is still open.
     reach untyped as Go structs, so `is_a?(Array)` was false and `puts`
     printed their inspect.)*
 23. Symbols are a named Go string distinct from `String`. `f(a: 1)` on a
-    method without keyword parameters passes a Hash, as Ruby 3 does;
-    keyword parameters themselves are not supported.
+    method without keyword parameters passes a Hash, as Ruby 3 does.
+    Keyword parameters (`a:`, `b: 1`, `**opts`) are ordinary Go
+    parameters after the positional ones (`*rest` stays last, Go's
+    variadic): every call site knows its target, so the compiler matches
+    `name: value` arguments by name, fills a literal default at the call,
+    and reports a missing or unknown keyword as a compile error (MRI's
+    ArgumentError). A default that reads other parameters or `self`
+    (decision 8's `rbArgc` scheme) runs in the callee: the Go function
+    then also takes `rbKw int`, one bit per optional keyword the caller
+    passed. `**opts` is a `Hash[Symbol, T]` of the call's other keywords
+    and `**h` splats, in source order. The signature spells them as RBS
+    does (`(a: Integer, ?b: String, **untyped opts)`) or per parameter
+    with `# @rbs a: T`. A `**h` into named keywords cannot be matched
+    statically and is a compile error; so is a call on an untyped value
+    that would reach a keyword method (its dynamic wrapper raises
+    ArgumentError). Keyword block parameters (`|a:|`) are not supported.
+    *(Revised: keyword parameters were a compile error.)*
 24. Regexps are Ruby syntax on Go's RE2. Every pattern gets `(?m)` (Ruby's
     `^`/`$` are line anchors), Ruby `/m` and inline `(?m)` become `(?s)`,
     `\h` is expanded. Onigmo syntax RE2 reads differently is rewritten: `\s`
@@ -1992,8 +2011,7 @@ resolve; anything not listed is still open.
     `assert_throws`, `assert_pattern`, `parallelize_me!`, class-body
     calls like `i_suck_and_my_tests_are_order_dependent!`, plugins,
     `stub`/`Mock` ([example 65](../examples/65_minitest/main.rb)).
-    Along the way: a method whose block yields no values is a closure,
-    not an `iter.Seq` (iterators yield one or two values); `Regexp.escape`,
+    Along the way: `Regexp.escape`,
     `Kernel#object_id` (addresses, not MRI's numbers), `exit!`-like
     `__exit_bang`, and the `NoMemoryError`, `SignalException` and
     `Interrupt` classes, which rb2go never raises.
@@ -3192,6 +3210,73 @@ resolve; anything not listed is still open.
     `rbDyn*` dispatchers, not switches. A Ruby `case` with no `else`
     is also legal and yields nil, so generated switches must not be
     exhaustive anyway. (`testdata/test/object_test.rb` `SumTypeGapsTest`.)
+120. ruby/spec gaps (#49): syntax that rewrites into what rb2go already
+    compiles, and core methods with a direct Go form. Each is checked
+    against MRI in `testdata/test` (`*RubySpec*Test` classes) and shown in
+    [example 87](../examples/87_ruby_spec_syntax/main.rb).
+    - `case` with no subject is `if`/`elsif` (`caseAsIf`, one synthetic
+      `IfNode` chain per case, cached so every pass sees the same nodes);
+      `when a, b` is `a || b`.
+    - `begin ... end while c` runs the body, then tests `c`, which may
+      read the body's locals. `next` inside it is a compile error, since
+      Go's `continue` would skip the test.
+    - `begin/rescue/else/ensure`: the rescues guard the body only, in an
+      inner `rbBegin` literal; `else` runs after it when the body finished
+      (a flag), still under `ensure`. Its value (or a rescue's) is the
+      result; the body's is dropped, as in MRI.
+    - `alias new old` and `alias_method :new, :old` copy the method as it
+      stands at that point (a second `Method` with the same body), so a
+      later `def old` leaves `new` alone, as in MRI. Only a method this
+      class defined above can be aliased; inherited ones are an error.
+    - `{ a: }` reads `a`; `{ **h, k: v }` merges `h` in order
+      (`rbHashSplat`), its key and value types joined with the literal's;
+      `:"x#{y}"` is the interpolated String as a Symbol; `fail` is
+      `raise`; `__LINE__` is the literal line; `__method__` is the
+      enclosing def's name (nil at top level); `__dir__` is resolved at
+      run time against the working directory, as MRI does at load.
+    - Integer gained `& | ^ ~ << >> []`, `round`/`floor`/`ceil`/`truncate`
+      with negative digits (half away from zero), `allbits?` and friends;
+      `<<` past 64 bits raises `RangeError` (decision 35). `Math.asinh`,
+      `acosh`, `atanh`, `log1p` and `expm1` are big-float like the rest
+      (decision 43); `erf`, `erfc`, `gamma` and `lgamma` are not added,
+      since Go's `math` misses MRI's digits on many inputs and a
+      correctly rounded port is a series each.
+    - `MatchData` keeps its subject and byte offsets, so `begin`, `end`,
+      `offset`, `byteoffset`, `named_captures` and `m[:name]` work; with
+      a duplicated group name, `m[:name]` is the last group that matched,
+      as Onigmo picks.
+    - `retry` sets a flag and leaves the rescue; the begin runs again in a
+      `for` loop around its wrapper. With an `ensure` the begin is split
+      in two, so `ensure` runs once, as MRI's does. A `retry` inside a
+      closure block is a compile error.
+    - `for x in coll` is `coll.each` as a Go range loop whose variables
+      and body locals stay in the enclosing scope (Ruby's `for` opens no
+      block), so `x` is readable after the loop.
+    - `defined?` is answered at compile time: locals, constants, methods
+      (on a receiver's static type; private ones only without a
+      receiver), `super`, `self`, `nil`/`true`/`false`, assignments and
+      other expressions. `defined?(@ivar)`, `$global` and `yield` depend
+      on run-time state rb2go does not track and are compile errors.
+    - Multiple assignment takes `*rest`, `a, = xs` and nested targets; an
+      Array gives each target its element or nil and `*rest` the middle
+      (`rbMidSplat`, `rbTrailIdx`), a tuple splits statically. Block
+      params take a trailing `*rest` too (`|a, *r|`).
+    - `class << self` holds class methods (a bare `private` there makes
+      them private); `module_function` (bare or with names),
+      `protected` (checked at compile time: an explicit receiver is
+      allowed only inside the owner's family), `private :x`,
+      `private_class_method` (including `:new`) and `undef`,
+      `undef_method`, `remove_method`. `private_constant` is accepted but
+      not enforced.
+    - `Class#superclass` and `#subclasses` come from per-class tables
+      (newest subclass first, as MRI). `Module#ancestors` is not added:
+      Kernel and BasicObject have no class objects in rb2go, so its
+      output could not match MRI's; `Integer.superclass` is Object until
+      Numeric exists (#39).
+    Not done here (still listed on #49): `redo`, `rescue *ERRS`,
+    `when *LIST`, beginless ranges, `/x`, named-capture locals, `BEGIN`,
+    `DATA`, class variables, instance-variable reflection, and
+    `Array#to_set` (decision 44's instantiation cycle).
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method
     used to call it through the receiver (`self.Sleep(...)`, or

@@ -16,6 +16,7 @@ type File struct {
 	Root    *parser.ProgramNode
 	lines   []int // byte offset of each line start
 	prelude bool
+	data    *string // the text after `__END__`, which DATA reads
 
 	// standalone annotation comments by the line they precede (first code line after)
 	leading map[int][]comment
@@ -46,6 +47,15 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, p
 		return nil, fmt.Errorf("%s:%d: syntax error: %s", name, f.line(e.Location.StartOffset), e.Message)
 	}
 	f.indexComments(res.Comments)
+	if d := res.DataLoc; d != nil {
+		text := string(src[d.StartOffset : d.StartOffset+d.Length])
+		if _, after, ok := strings.Cut(text, "\n"); ok {
+			text = after
+		} else {
+			text = ""
+		}
+		f.data = &text
+	}
 	return f, nil
 }
 

@@ -112,12 +112,14 @@ func (c *Compiler) blockGoType(b *BlockSig, env map[string]Type) string {
 func (c *Compiler) iterGoType(b *BlockSig, env map[string]Type) string {
 	ps := substAll(b.Params, env)
 	switch len(ps) {
+	case 0:
+		return "func(func() bool)"
 	case 1:
 		return "iter.Seq[" + c.goType(ps[0]) + "]"
 	case 2:
 		return "iter.Seq2[" + c.goTypes(ps) + "]"
 	}
-	panic(compileError{msg: "iterator blocks must yield 1 or 2 values"})
+	panic(compileError{msg: "iterator blocks must yield at most 2 values"})
 }
 
 // sig renders the Go parameter list and result of method m under env.
@@ -126,6 +128,9 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 	var restParam string // held back and appended last: Go requires the variadic param to be final, but Ruby puts a block after *rest
 	if m.calleeDefaults {
 		ps = append(ps, "rbArgc int")
+	}
+	if m.kwMask() {
+		ps = append(ps, "rbKw int")
 	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
@@ -157,6 +162,9 @@ func (c *Compiler) argNames(m *Method) string {
 	var restArg string // held back and appended last, matching sig()'s reordering
 	if m.calleeDefaults {
 		as = append(as, "rbArgc")
+	}
+	if m.kwMask() {
+		as = append(as, "rbKw")
 	}
 	for _, p := range m.Params {
 		name := goLocalName(p.Name)
@@ -1254,6 +1262,22 @@ func (c *Compiler) emitDescendants(meta, desc *Class) {
 		}
 	}
 	c.w("func (self *%s) _Descendants() []any { return []any{%s} }\n\n", meta.Name, strings.Join(subs, ", "))
+	if desc.IsModule {
+		return
+	}
+	// Class#subclasses: the direct ones, newest first as MRI lists them
+	var direct []string
+	for _, k := range slices.Backward(c.classList) {
+		if k.Super == desc && k.metaOf == nil && k.meta != nil {
+			direct = append(direct, classVar(k))
+		}
+	}
+	c.w("func (self *%s) _Subclasses() []any { return []any{%s} }\n\n", meta.Name, strings.Join(direct, ", "))
+	sup := "nil"
+	if desc.Super != nil && desc.Super.meta != nil {
+		sup = classVar(desc.Super)
+	}
+	c.w("func (self *%s) _Superclass() any { return %s }\n\n", meta.Name, sup)
 }
 
 // emitMethodTable gives a class object the names of its public instance

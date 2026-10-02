@@ -486,4 +486,25 @@ class Hash < Object
 
   #: () -> bool
   def frozen? = %x{ Boolean(rbIsFrozen(self)) }
+
+  #: () -> [K, V]?
+  def shift
+    pair = first_pair
+    delete(pair[0]) if pair
+    pair
+  end
+
+  #: (K) -> [K, V]?
+  def assoc(k) = key?(k) ? [k, fetch(k)] : nil
+
+  #: (Hash[K, V]) -> self
+  def replace(other)
+    pairs = other.to_a
+    clear
+    pairs.each { |k, v| self[k] = v }
+    self
+  end
+
+  #: () -> self
+  def to_hash = self
 end

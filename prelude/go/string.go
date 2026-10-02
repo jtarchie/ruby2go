@@ -267,3 +267,36 @@ func rbSplitLimit(s string, sep *String, limit int) []string {
 	}
 	return parts
 }
+
+// rbStrDump is String#dump: inspect's escapes, with every non-ASCII character as \u and invalid bytes as \x.
+func rbStrDump(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && n == 1:
+			fmt.Fprintf(&b, "\\x%02X", s[i])
+		case r == '"' || r == '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case r == '#' && i+1 < len(s) && strings.IndexByte("{$@", s[i+1]) >= 0:
+			b.WriteString("\\#")
+		case r >= 0x20 && r < 0x7f:
+			b.WriteRune(r)
+		case r < 0x80:
+			if e, ok := map[rune]string{'\n': "n", '\t': "t", '\r': "r", '\f': "f", '\v': "v", '\b': "b", '\a': "a", 0x1b: "e"}[r]; ok {
+				b.WriteString("\\" + e)
+			} else {
+				fmt.Fprintf(&b, "\\x%02X", r)
+			}
+		case r > 0xffff:
+			fmt.Fprintf(&b, "\\u{%X}", r)
+		default:
+			fmt.Fprintf(&b, "\\u%04X", r)
+		}
+		i += n
+	}
+	b.WriteByte('"')
+	return b.String()
+}

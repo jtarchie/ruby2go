@@ -37,7 +37,9 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
-	extends       []Include // `extend M`: included into the class object
+	privateNew    bool            // `private_class_method :new`
+	undefs        map[string]bool // `undef x`: calls through this class find nothing, even inherited
+	extends       []Include       // `extend M`: included into the class object
 	delegations   []delegation
 	meta          *Class   // the class object's class (holds `def self.` methods)
 	metaOf        *Class   // for a metaclass: the class it describes
@@ -128,6 +130,7 @@ type Method struct {
 	Kind       methodKind
 	Attr       string // ivar for attr kinds
 	Private    bool
+	Protected  bool // callable with an explicit receiver only from inside the owner's family
 	Node       *parser.DefNode
 	File       *File
 	Line       int
@@ -172,6 +175,8 @@ type Param struct {
 	Type    Type
 	Default parser.Node // literal default for optional params
 	Rest    bool
+	Keyword bool // `name:`: passed by name, a positional Go param after the positional ones
+	KwRest  bool // `**opts`: the call's other keywords, a Hash[Symbol, T]
 	// Want is T for a `T | untyped` parameter (Type is untyped): typed
 	// arguments are checked against T, untyped ones pass as they are.
 	Want Type
@@ -310,6 +315,11 @@ func (c *Class) lookup(name string) *entry {
 	}
 	if i, ok := c.msetIndex[name]; ok {
 		e := set[i]
+		for k := c; k != nil && k != e.Owner; k = k.Super {
+			if k.undefs[name] {
+				return nil
+			}
+		}
 		return &e
 	}
 	return nil
@@ -594,14 +604,25 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 	if !ok {
 		c.errorf(f, body, "unsupported class body %T", body)
 	}
-	private := false
+	vis := &visibility{}
 	for _, n := range stmts.Body {
 		switch n := n.(type) {
 		case *parser.DefNode:
 			// a bare `private` does not reach `def self.x`
-			c.addMethod(f, cls, n, private && n.Receiver == nil, scope)
+			c.addMethod(f, cls, n, (vis.private || vis.moduleFunction) && n.Receiver == nil, scope)
+			if n.Receiver == nil {
+				c.applyVisibility(f, cls, n, vis, scope)
+			}
 		case *parser.CallNode:
-			c.collectClassCall(ctx, f, cls, n, &private, scope)
+			c.collectClassCall(ctx, f, cls, n, vis, scope)
+		case *parser.SingletonClassNode:
+			c.collectSingletonClass(f, cls, n, scope)
+		case *parser.AliasMethodNode:
+			c.addAlias(f, cls, n, n.NewName, n.OldName)
+		case *parser.UndefNode:
+			for _, name := range c.symbolArgs(f, nil, n.Names) {
+				c.removeMethod(cls, name, true)
+			}
 		case *parser.ClassNode:
 			c.collectClass(ctx, f, n, scope)
 		case *parser.ModuleNode:
@@ -621,14 +642,210 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 
 // collectClassCall handles a bare call in a class body: attr_*, include,
 // private/public.
-func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, private *bool, scope []*Class) {
+// visibility is the mode a bare private/protected/module_function sets for the defs after it.
+type visibility struct {
+	private, protected, moduleFunction bool
+}
+
+// applyVisibility marks instance method n under the current mode: protected, or with module_function also a module method.
+func (c *Compiler) applyVisibility(f *File, cls *Class, n *parser.DefNode, vis *visibility, scope []*Class) {
+	if vis.protected {
+		cls.Methods[n.Name].Protected = true
+	}
+	if vis.moduleFunction {
+		cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: n, scope: scope, file: f})
+	}
+}
+
+// collectSingletonClass is `class << self`: its defs are class methods, as `def self.x` (a bare private there makes them private).
+func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.SingletonClassNode, scope []*Class) {
+	if _, ok := n.Expression.(*parser.SelfNode); !ok || cls == nil {
+		c.errorf(f, n, "only `class << self` in a class or module body is supported")
+	}
+	st, _ := n.Body.(*parser.StatementsNode)
+	if st == nil {
+		return
+	}
+	private := false
+	for _, s := range st.Body {
+		switch s := s.(type) {
+		case *parser.DefNode:
+			if s.Receiver != nil {
+				c.errorf(f, s, "a def with a receiver inside `class << self` is not supported")
+			}
+			cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: s, private: private, scope: scope, file: f})
+		case *parser.CallNode:
+			switch {
+			case s.Name == "private" && s.Receiver == nil && s.Arguments == nil:
+				private = true
+			case s.Name == "public" && s.Receiver == nil && s.Arguments == nil:
+				private = false
+			default:
+				c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
+			}
+		default:
+			c.errorf(f, s, "unsupported node in `class << self`: %s", nodeType(s))
+		}
+	}
+}
+
+// removeMethod drops cls's own def of name; undef also hides inherited ones from calls on cls.
+func (c *Compiler) removeMethod(cls *Class, name string, undef bool) {
+	if m := cls.Methods[name]; m != nil {
+		delete(cls.Methods, name)
+		cls.MethodList = deleteMethod(cls.MethodList, m)
+	}
+	if undef {
+		if cls.undefs == nil {
+			cls.undefs = map[string]bool{}
+		}
+		cls.undefs[name] = true
+	}
+}
+
+// collectVisibilityCall handles private/public/protected, module_function,
+// private_class_method and undef_method/remove_method in a class body.
+func (c *Compiler) collectVisibilityCall(f *File, cls *Class, n *parser.CallNode, args []parser.Node, vis *visibility, scope []*Class) {
+	defArg := func() *parser.DefNode { // `private def x ... end`
+		if len(args) != 1 {
+			return nil
+		}
+		d, _ := args[0].(*parser.DefNode)
+		return d
+	}
+	named := func(name string) *Method {
+		m := cls.Methods[name]
+		if m == nil {
+			c.errorf(f, n, "undefined method '%s' for class '%s'", name, cls.RubyName)
+		}
+		return m
+	}
+	switch n.Name {
+	case "private":
+		switch d := defArg(); {
+		case len(args) == 0:
+			*vis = visibility{private: true}
+		case d != nil:
+			c.addMethod(f, cls, d, true, scope)
+		default:
+			for _, name := range c.symbolArgs(f, n, args) {
+				named(name).Private = true
+			}
+		}
+	case "public":
+		if len(args) == 0 {
+			*vis = visibility{}
+		}
+		for _, name := range c.symbolArgs(f, n, args) {
+			m := named(name)
+			m.Private, m.Protected = false, false
+		}
+	case "protected":
+		switch d := defArg(); {
+		case len(args) == 0:
+			*vis = visibility{protected: true}
+		case d != nil:
+			c.addMethod(f, cls, d, false, scope)
+			cls.Methods[d.Name].Protected = true
+		default:
+			for _, name := range c.symbolArgs(f, n, args) {
+				named(name).Protected = true
+			}
+		}
+	}
+}
+
+// collectMethodTableCall handles module_function, private_class_method and
+// undef_method/remove_method: calls that copy, hide or drop methods.
+func (c *Compiler) collectMethodTableCall(f *File, cls *Class, n *parser.CallNode, args []parser.Node, vis *visibility, scope []*Class) {
+	named := func(name string) *Method {
+		m := cls.Methods[name]
+		if m == nil {
+			c.errorf(f, n, "undefined method '%s' for class '%s'", name, cls.RubyName)
+		}
+		return m
+	}
+	switch n.Name {
+	case "module_function":
+		if !cls.IsModule {
+			c.errorf(f, n, "module_function is only for modules")
+		}
+		if len(args) == 0 {
+			*vis = visibility{moduleFunction: true}
+		}
+		for _, name := range c.symbolArgs(f, n, args) {
+			m := named(name)
+			if m.Node == nil {
+				c.errorf(f, n, "module_function needs a def, not %s", name)
+			}
+			m.Private = true
+			cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: m.Node, scope: scope, file: f})
+		}
+	case "private_class_method", "public_class_method":
+		names := []string{}
+		var d *parser.DefNode // `private_class_method def self.x ... end`
+		if len(args) == 1 {
+			d, _ = args[0].(*parser.DefNode)
+		}
+		if d != nil && d.Receiver != nil {
+			c.addMethod(f, cls, d, false, scope)
+			names = append(names, d.Name)
+		} else {
+			names = c.symbolArgs(f, n, args)
+		}
+		for _, name := range names {
+			if name == "new" {
+				cls.privateNew = n.Name == "private_class_method"
+				continue
+			}
+			found := false
+			for i := range cls.singletonDefs {
+				if cls.singletonDefs[i].node.Name == name {
+					cls.singletonDefs[i].private, found = n.Name == "private_class_method", true
+				}
+			}
+			if !found {
+				c.errorf(f, n, "undefined method '%s' for class '%s'", name, cls.RubyName)
+			}
+		}
+	case "undef_method", "remove_method":
+		for _, name := range c.symbolArgs(f, n, args) {
+			if cls.Methods[name] == nil && n.Name == "remove_method" { // undef_method may hide an inherited one, unknown until link
+				c.errorf(f, n, "method '%s' not defined in %s", name, cls.RubyName)
+			}
+			c.removeMethod(cls, name, n.Name == "undef_method")
+		}
+	}
+}
+
+// symbolArgs are a visibility call's method names (`private :a, "b"`).
+func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) []string {
+	var out []string
+	for _, a := range args {
+		switch a := a.(type) {
+		case *parser.SymbolNode:
+			out = append(out, a.Unescaped.Value)
+		case *parser.StringNode:
+			out = append(out, a.Unescaped.Value)
+		default:
+			form := "undef"
+			if n != nil {
+				form = n.Name
+			}
+			c.errorf(f, a, "unsupported %s form", form)
+		}
+	}
+	return out
+}
+
+func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, vis *visibility, scope []*Class) {
 	if n.Receiver != nil {
 		c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
 	}
 	args := callArgs(n)
 	switch n.Name {
 	case "attr_reader", "attr_writer", "attr_accessor":
-		c.addAttrs(f, cls, n, args, *private, scope)
+		c.addAttrs(f, cls, n, args, vis.private, scope)
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
@@ -645,21 +862,18 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 			cls.Includes = cls.Includes[:last]
 		}
 		c.noteHooks(f, "extended", cls, n, args, scope)
-	case "private":
-		switch {
-		case len(args) == 0:
-			*private = true
-		case len(args) == 1:
-			d, ok := args[0].(*parser.DefNode)
-			if !ok {
-				c.errorf(f, n, "unsupported private form")
-			}
-			c.addMethod(f, cls, d, true, scope)
-		default:
-			c.errorf(f, n, "unsupported private form")
+	case "private", "public", "protected":
+		c.collectVisibilityCall(f, cls, n, args, vis, scope)
+	case "module_function", "private_class_method", "public_class_method", "undef_method", "remove_method":
+		c.collectMethodTableCall(f, cls, n, args, vis, scope)
+	case "private_constant", "public_constant":
+		// ponytail: accepted, not enforced; M::X from outside works where MRI raises NameError. Check access in lookupConst to enforce.
+		c.symbolArgs(f, n, args)
+	case "alias_method":
+		if len(args) != 2 {
+			c.errorf(f, n, "alias_method takes a new and an old name")
 		}
-	case "public":
-		*private = false
+		c.addAlias(f, cls, n, args[0], args[1])
 	case "def_delegators", "def_delegator", "delegate", "instance_delegate":
 		c.collectDelegation(f, cls, n, args, scope)
 	default:
@@ -669,6 +883,33 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		}
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
+}
+
+// addAlias is `alias new old` / `alias_method :new, :old`: a copy of the
+// method as it stands now, so redefining old later leaves new alone (as MRI).
+func (c *Compiler) addAlias(f *File, cls *Class, n parser.Node, newName, oldName parser.Node) {
+	name := func(x parser.Node) string {
+		switch x := x.(type) {
+		case *parser.SymbolNode:
+			return x.Unescaped.Value
+		case *parser.StringNode:
+			return x.Unescaped.Value
+		}
+		c.errorf(f, x, "alias names must be literal symbols")
+		return ""
+	}
+	nn, on := name(newName), name(oldName)
+	old := cls.Methods[on]
+	if old == nil {
+		c.errorf(f, n, "undefined method '%s' for class '%s' (rb2go aliases only a method this class defined above)", on, cls.RubyName)
+	}
+	m := *old
+	m.Name, m.GoName = nn, goMethodName(nn)
+	if prev := cls.Methods[nn]; prev != nil {
+		cls.MethodList = deleteMethod(cls.MethodList, prev)
+	}
+	cls.MethodList = append(cls.MethodList, &m)
+	cls.Methods[nn] = &m
 }
 
 // addSingletonInstance gives a class that includes Singleton its
@@ -1311,15 +1552,24 @@ func (c *Compiler) resolveMethod(m *Method) {
 	}
 	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
 	m.TypeParams = m.sig.TypeParams
+	var rest []Param // Ruby puts *rest before the keywords; it goes last, the Go variadic
 	for _, p := range m.sig.Params {
-		prm := Param{Name: p.Name, Rest: p.Rest}
+		prm := Param{Name: p.Name, Rest: p.Rest, Keyword: p.Keyword || p.KwRest, KwRest: p.KwRest}
 		if want := gradualParam(p.Type); want != nil {
 			prm.Type, prm.Want = TAny{}, c.resolveType(want, sc)
 		} else {
 			prm.Type = c.resolveType(p.Type, sc)
 		}
+		if p.KwRest {
+			prm.Type = TClass{C: c.classes["Hash"], Args: []Type{TClass{C: c.classes["Symbol"]}, prm.Type}}
+		}
+		if p.Rest {
+			rest = append(rest, prm)
+			continue
+		}
 		m.Params = append(m.Params, prm)
 	}
+	m.Params = append(m.Params, rest...)
 	if m.sig.Block != nil {
 		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc), Optional: m.sig.Block.Optional}
 		for _, p := range m.sig.Block.Params {
@@ -1377,6 +1627,16 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 	}
 	if rest != "" {
 		ps = append(ps, "*"+c.paramAnn(m, ann, "*"+rest))
+	}
+	for _, k := range c.defKeywords(m, m.Node.Parameters) {
+		switch {
+		case k.rest:
+			ps = append(ps, "**"+c.paramAnn(m, ann, "**"+k.name)+" "+k.name)
+		case k.def != nil:
+			ps = append(ps, "?"+k.name+": "+c.paramAnn(m, ann, k.name))
+		default:
+			ps = append(ps, k.name+": "+c.paramAnn(m, ann, k.name))
+		}
 	}
 	sig := "(" + strings.Join(ps, ", ") + ") -> "
 	if r := ann["return:"]; len(r) > 0 {
@@ -1449,7 +1709,7 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	m.inherited = e.M
 	m.TypeParams = e.M.TypeParams
 	for _, p := range e.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Want: subst(p.Want, e.Env)})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Want: subst(p.Want, e.Env)})
 	}
 	if e.M.Block != nil {
 		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
@@ -1470,8 +1730,8 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 // nothing rescues around the yield, since Go forbids a range function from
 // recovering a panic raised in the loop body.
 func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
-	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) == 0 || len(bs.Params) > 2 {
-		return false // an iter.Seq yields one or two values; other blocks are closures
+	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) > 2 {
+		return false // a range func yields at most two values; other blocks are closures
 	}
 	if _, ok := m.Ret.(TVoid); !ok && m.Ret != nil && !isNil(m.Ret) {
 		return false
@@ -1571,8 +1831,12 @@ func (c *Compiler) bindParamNames(m *Method) {
 		return
 	}
 	names, defaults, rest := c.defParams(m, m.Node.Parameters)
+	c.bindKeywords(m)
 	nPos := 0
 	for i := range m.Params {
+		if m.Params[i].Keyword {
+			continue
+		}
 		if m.Params[i].Rest {
 			if rest == "" {
 				c.errorf(m.File, m.Node, "signature has a rest param but def does not")
@@ -1590,6 +1854,9 @@ func (c *Compiler) bindParamNames(m *Method) {
 	if nPos != len(names) {
 		c.errorf(m.File, m.Node, "signature has %d positional params but def has %d", nPos, len(names))
 	}
+	if len(m.Params) > 0 {
+		c.checkKeywordSig(m)
+	}
 	if rest != "" {
 		found := false
 		for _, p := range m.Params {
@@ -1599,6 +1866,84 @@ func (c *Compiler) bindParamNames(m *Method) {
 			c.errorf(m.File, m.Node, "def has a rest param but signature does not")
 		}
 	}
+}
+
+// bindKeywords matches the signature's keywords to the def's by name and takes their defaults.
+func (c *Compiler) bindKeywords(m *Method) {
+	ks := c.defKeywords(m, m.Node.Parameters)
+	byName := map[string]defKeyword{}
+	for _, k := range ks {
+		byName[k.name] = k
+	}
+	seen := 0
+	for i := range m.Params {
+		p := &m.Params[i]
+		if !p.Keyword {
+			continue
+		}
+		if p.KwRest {
+			var r *defKeyword
+			for j := range ks {
+				if ks[j].rest {
+					r = &ks[j]
+				}
+			}
+			if r == nil {
+				c.errorf(m.File, m.Node, "signature has **%s but def has no ** parameter", p.Type)
+			}
+			p.Name = r.name
+			seen++
+			continue
+		}
+		k, ok := byName[p.Name]
+		if !ok || k.rest {
+			c.errorf(m.File, m.Node, "signature has keyword %s: but def does not", p.Name)
+		}
+		p.Default = k.def
+		seen++
+	}
+	if seen != len(ks) {
+		c.errorf(m.File, m.Node, "def has %d keyword parameters but its signature has %d: write them as `name: T` (`?name: T` with a default, `**T` for **opts)", len(ks), seen)
+	}
+}
+
+// checkKeywordSig: an optional keyword in the signature (`?b:`) must have a default in the def, and a required one none.
+func (c *Compiler) checkKeywordSig(m *Method) {
+	if m.sig == nil {
+		return
+	}
+	for _, sp := range m.sig.Params {
+		if !sp.Keyword {
+			continue
+		}
+		for _, p := range m.Params {
+			if p.Keyword && !p.KwRest && p.Name == sp.Name && sp.Optional != (p.Default != nil) {
+				c.errorf(m.File, m.Node, "keyword %s: is optional in only one of the signature and the def", p.Name)
+			}
+		}
+	}
+}
+
+// hasKeywords reports keyword parameters (`a:` or `**opts`).
+func (m *Method) hasKeywords() bool {
+	return slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword })
+}
+
+// positionalCount is how many positional arguments m takes, *rest aside.
+func (m *Method) positionalCount() int {
+	n := 0
+	for _, p := range m.Params {
+		if !p.Keyword && !p.Rest {
+			n++
+		}
+	}
+	return n
+}
+
+// kwMask reports a Go `rbKw int` parameter: which optional keywords the
+// caller passed, for defaults run in the callee (calleeDefaults).
+func (m *Method) kwMask() bool {
+	return m.calleeDefaults && slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword && !p.KwRest && p.Default != nil })
 }
 
 func (m *Method) String() string {
@@ -1684,7 +2029,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		if m.Methods[name] != nil || inheritsUserDef(sup, name) {
 			continue
 		}
-		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, File: cls.File, Line: cls.Line}
+		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, File: cls.File, Line: cls.Line, Private: name == "new" && cls.privateNew}
 		m.Methods[name] = sm
 		m.MethodList = append(m.MethodList, sm)
 	}
@@ -1720,7 +2065,7 @@ func (c *Compiler) resolveSynth(m *Method) {
 	env := composeEnv(init.Env, nil)
 	env["Self"] = TClass{C: cls}
 	for _, p := range init.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Want: subst(p.Want, env)})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Want: subst(p.Want, env)})
 	}
 }
 
@@ -1732,6 +2077,42 @@ func classVar(cls *Class) string { return cls.Name + "_class" }
 
 // defParams reads a def's parameter list: positional names, their literal
 // defaults, the rest parameter, and the &block parameter's name.
+// defKeyword is a def's keyword parameter (`a:`, `b: 1`) or its `**opts` (rest).
+type defKeyword struct {
+	name string
+	def  parser.Node // nil: required
+	rest bool
+}
+
+// defKeywords lists a def's keyword parameters in order, `**opts` last.
+func (c *Compiler) defKeywords(m *Method, ps *parser.ParametersNode) []defKeyword {
+	if ps == nil {
+		return nil
+	}
+	var out []defKeyword
+	for _, k := range ps.Keywords {
+		switch k := k.(type) {
+		case *parser.RequiredKeywordParameterNode:
+			out = append(out, defKeyword{name: k.Name})
+		case *parser.OptionalKeywordParameterNode:
+			out = append(out, defKeyword{name: k.Name, def: k.Value})
+		default:
+			c.errorf(m.File, k, "unsupported keyword parameter")
+		}
+	}
+	switch r := ps.KeywordRest.(type) {
+	case nil:
+	case *parser.KeywordRestParameterNode:
+		if r.Name == nil {
+			c.errorf(m.File, r, "an anonymous ** parameter is not supported; name it")
+		}
+		out = append(out, defKeyword{name: *r.Name, rest: true})
+	default:
+		c.errorf(m.File, r, "unsupported keyword rest parameter")
+	}
+	return out
+}
+
 func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []string, defaults []parser.Node, rest string) {
 	if ps == nil {
 		return nil, nil, ""
@@ -1759,8 +2140,8 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 		}
 		rest = *rp.Name
 	}
-	if len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil {
-		c.errorf(m.File, ps, "keyword and post parameters are not supported")
+	if len(ps.Posts) > 0 {
+		c.errorf(m.File, ps, "post parameters (after *rest or optional ones) are not supported")
 	}
 	if ps.Block != nil {
 		if m.Block == nil || ps.Block.Name == nil {
@@ -1928,6 +2309,12 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def __pp_values = [%s]\n", strings.Join(reads, ", "))
 	if kind == "struct" {
 		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
+		b.WriteString("  #: () -> Array[untyped]\n  def values = to_a\n")
+		b.WriteString("  #: () -> Array[untyped]\n  def deconstruct = to_a\n")
+		fmt.Fprintf(&b, "  #: () -> Integer\n  def size = %d\n", len(members))
+		fmt.Fprintf(&b, "  #: () -> Integer\n  def length = %d\n", len(members))
+		b.WriteString("  #: () { (untyped) -> void } -> void\n  def each\n    to_a.each { |__x| yield __x }\n  end\n")
+		b.WriteString("  #: () { (Symbol, untyped) -> void } -> void\n  def each_pair\n    to_h.each { |__k, __x| yield __k, __x }\n  end\n")
 	} else {
 		// `with(k: v)` compiles to this: a copy of the receiver's class
 		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(vars, ", "), strings.Join(vars, ", "))

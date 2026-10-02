@@ -120,3 +120,13 @@ func (s *rbKeySet[K]) has(x K) bool {
 	k, _, _ := s.idx.find(x)
 	return s.m[k]
 }
+
+// rbHashSplat is `{ **o }` inside a Hash literal: o's pairs in order, later keys overwriting.
+func rbHashSplat[K, V comparable](h, o *Hash[K, V]) *Hash[K, V] {
+	for _, k := range o.keys {
+		if v, ok := o.vals[k]; ok {
+			Hash___Set(h, k, v)
+		}
+	}
+	return h
+}

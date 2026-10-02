@@ -4334,4 +4334,234 @@ module ControlTests
       assert_equal "1 8", format("%d %d", log.shift, log.first&.pred || 0)
     end
   end
+
+  # ruby/spec core/kernel gaps (#49)
+  class ControlRubySpecKernelTest < Minitest::Test
+    def test_loop
+      i = 0
+      loop do
+        i += 1
+        next if i == 1
+        break if i > 3
+      end
+      assert_equal 4, i
+    end
+
+    def test_loop_returns_from_method
+      assert_equal 3, control_loop_find([1, 3, 5])
+    end
+
+    def test_itself_and_yield_self
+      assert_equal 1, 1.itself
+      assert_equal({ 1 => [1, 1], 2 => [2] }, [1, 1, 2].group_by(&:itself))
+      assert_equal 3, 2.yield_self { |x| x + 1 }
+    end
+
+    def test_fail
+      e = assert_raises(RuntimeError) { fail "boom" }
+      assert_equal "boom", e.message
+      e2 = assert_raises(ArgumentError) { fail ArgumentError, "bad" }
+      assert_equal "bad", e2.message
+    end
+
+    #: (Array[Integer]) -> Integer
+    def control_loop_find(xs)
+      i = 0
+      loop do
+        x = xs[i] || 0
+        return x if x > 2
+        i += 1
+      end
+      -1
+    end
+  end
+
+  # ruby/spec language gaps (#49): subject-less case, begin/end while, begin/else
+  class ControlRubySpecLanguageTest < Minitest::Test
+    #: (Integer) -> String
+    def control_size_of(x)
+      case
+      when x > 100, x < -100 then "huge"
+      when x > 10 then "big"
+      else "small"
+      end
+    end
+
+    def test_case_without_subject
+      assert_equal %w[huge huge big small], [control_size_of(500), control_size_of(-500), control_size_of(50), control_size_of(1)]
+      y = nil #: Integer?
+      r = case
+          when y.nil? then "none"
+          end
+      assert_equal "none", r
+    end
+
+    def test_begin_end_while
+      i = 0
+      begin
+        i += 1
+      end while i < 0
+      j = 10
+      begin
+        j -= 1
+      end until j < 3
+      seen = [] #: Array[Integer?]
+      q = [3, 2, 1]
+      begin
+        x = q.shift
+        seen << x
+      end while x && x > 1
+      assert_equal [1, 2, [3, 2, 1]], [i, j, seen]
+    end
+
+    #: (String) -> Integer?
+    def control_parse(s)
+      x = Integer(s)
+    rescue ArgumentError
+      nil
+    else
+      x * 2
+    end
+
+    #: (Integer) -> String
+    def control_flow(n)
+      log = [] #: Array[String]
+      begin
+        log << "body"
+        raise "boom" if n == 1
+        return "early" if n == 2
+      rescue
+        log << "rescue"
+      else
+        log << "else"
+      ensure
+        log << "ensure"
+      end
+      log.join(",")
+    end
+
+    def test_begin_else
+      assert_equal [42, nil], [control_parse("21"), control_parse("zz")]
+      assert_equal ["body,else,ensure", "body,rescue,ensure", "early"], [control_flow(0), control_flow(1), control_flow(2)]
+      e = assert_raises(ArgumentError) do
+        begin
+          1
+        rescue
+          2
+        else
+          raise ArgumentError, "from else"
+        end
+      end
+      assert_equal "from else", e.message
+      v = begin
+        10
+      rescue
+        0
+      else
+        20
+      end
+      assert_equal 20, v
+    end
+
+    def test_source_position
+      line = __LINE__
+      assert_equal line + 1, __LINE__
+      assert_equal :test_source_position, __method__
+      assert_equal [:test_source_position], [1].map { |_| __method__ }
+      assert_equal File.dirname(File.expand_path(__FILE__)), __dir__
+    end
+
+    def test_interpolated_symbol
+      x = "dyn"
+      assert_equal [:dyn_sym, :plain2], [:"#{x}_sym", :"plain#{1 + 1}"]
+    end
+  end
+
+  # ruby/spec language gaps (#49): retry, for, defined?
+  class ControlRubySpecLoopsTest < Minitest::Test
+    #: () -> Integer
+    def control_fetch_with_retry
+      tries = 0
+      begin
+        tries += 1
+        raise "x" if tries < 4
+        tries * 10
+      rescue
+        retry if tries < 5
+        -1
+      end
+    end
+
+    #: (Integer) -> String
+    def control_give_up(limit)
+      n = 0
+      begin
+        n += 1
+        raise IOError, "nope"
+      rescue IOError
+        retry if n < limit
+        "gave up after #{n}"
+      ensure
+        n += 100
+      end
+    end
+
+    def test_retry
+      attempts = 0
+      seen = [] #: Array[String]
+      begin
+        attempts += 1
+        raise ArgumentError, "flaky #{attempts}" if attempts < 3
+      rescue ArgumentError => e
+        seen << e.message
+        retry
+      end
+      assert_equal [3, ["flaky 1", "flaky 2"]], [attempts, seen]
+      assert_equal [40, "gave up after 3"], [control_fetch_with_retry, control_give_up(3)]
+    end
+
+    #: (Array[Integer]) -> Integer
+    def control_first_big(xs)
+      for x in xs
+        return x if x > 10
+      end
+      0
+    end
+
+    def test_for
+      sum = 0
+      for i in 1..4
+        next if i == 2
+        sum += i
+        last = i
+      end
+      assert_equal [8, 4, 4], [sum, i, last]
+      pairs = [[1, 2], [3, 4]] #: Array[[Integer, Integer]]
+      totals = [] #: Array[Integer]
+      for a, b in pairs
+        totals << a + b
+      end
+      seen = [] #: Array[untyped]
+      for k, v in { x: 1, y: 2 }
+        seen << [k, v]
+      end
+      for w in %w[a b c]
+        break if w == "b"
+      end
+      assert_equal [[3, 7], [[:x, 1], [:y, 2]], "b"], [totals, seen, w]
+      assert_equal [20, 0], [control_first_big([1, 20, 30]), control_first_big([1])]
+    end
+
+    #: () -> Integer
+    def control_helper = 1
+
+    def test_defined
+      x = 1
+      assert_equal ["local-variable", nil, "constant", nil, "method", nil], [defined?(x), defined?(y), defined?(String), defined?(Nope), defined?(puts), defined?(nope_method)]
+      assert_equal ["method", nil, "method", "method", "self", "nil", "true", "assignment", "expression"], [defined?(x.succ), defined?(x.nope), defined?("a".upcase), defined?(1 + 1), defined?(self), defined?(nil), defined?(true), defined?(z = 2), defined?(3)]
+      assert_equal ["method", "method", nil, "method", nil, "method"], [defined?(control_helper), defined?(String.new), defined?(Nope.x), defined?(Integer.sqrt), defined?(Integer.nope), defined?(File.join)]
+      r = defined?(x)
+      assert_equal true, r.frozen?
+    end
+  end
 end

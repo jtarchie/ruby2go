@@ -21,7 +21,8 @@ import (
 
 // Compiler holds the whole program: the prelude and the user files, one closed world.
 type Compiler struct {
-	erbSnippets   map[*parser.CallNode]*File // compiled ERB templates by their result call (decision 111)
+	erbSnippets   map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)
+	rewrites      map[parser.Node]parser.Node // desugared nodes, built once so every pass sees one tree
 	erbCounter    int
 	labels        map[string]string // Go function (its table key) → Ruby backtrace label, for every function emitted (decision 106)
 	classes       map[string]*Class
@@ -39,7 +40,8 @@ type Compiler struct {
 	dynGo         map[string]string       // Go name → the Ruby name its dispatchers serve
 	dynWrapped    map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
 	warned        map[string]bool
-	regexps       []string          // package-level compiled literals
+	regexps       []string          // package-level compiled literals (and DATA's StringIO)
+	dataVar       bool              // rbDATA is declared
 	regexpVars    map[string]string // literal → its variable, to share one per pattern
 	strLits       map[string]bool   // String literal texts: String#frozen? knows them by identity
 	constList     []*Const

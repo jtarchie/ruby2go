@@ -1862,4 +1862,48 @@ module HashTests
       assert_equal 1, FROZEN.fetch(:a)
     end
   end
+
+  # ruby/spec core/hash and core/set gaps (#49)
+  class HashRubySpecTest < Minitest::Test
+    def test_hash_shift_assoc_replace
+      h = { a: 1, b: 2 }
+      assert_equal [:a, 1], h.shift
+      assert_equal({ b: 2 }, h)
+      assert_equal [:b, 2], h.assoc(:b)
+      assert_nil h.assoc(:z)
+      e = {} #: Hash[Symbol, Integer]
+      assert_nil e.shift
+      assert_same h, h.replace({ c: 3 })
+      assert_equal({ c: 3 }, h)
+      assert_same h, h.to_hash
+    end
+
+    def test_hash_literal_sugar
+      a = 1
+      b = "x"
+      assert_equal({ a: 1, b: "x" }, { a:, b: })
+      h = { a: 1, b: 2 }
+      assert_equal({ a: 1, b: 2, c: 3 }, { **h, c: 3 })
+      assert_equal({ z: 0, a: 9, b: 2 }, { z: 0, **h, a: 9 })
+      assert_equal({ color: "red", size: "l" }, { **{ color: "red", size: "m" }, **{ size: "l" } })
+    end
+
+    def test_set_mutators
+      s = Set[1, 2, 3, 4]
+      assert_same s, s.delete_if(&:odd?)
+      assert_equal Set[2, 4], s
+      t = Set[1, 2, 3]
+      t.keep_if(&:odd?)
+      assert_equal Set[1, 3], t
+      u = Set[1, 2, 3]
+      u.subtract(Set[1])
+      u.subtract([2])
+      assert_equal Set[3], u
+      u.replace(Set[7, 8])
+      assert_equal Set[7, 8], u
+      u.replace([9])
+      assert_equal Set[9], u
+      assert_equal ["1-2", "12"], [Set[1, 2].join("-"), Set[1, 2].join]
+    end
+  end
 end

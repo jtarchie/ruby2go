@@ -254,13 +254,6 @@ def f(v)
   end
 end
 puts f(Car.new), f(Vehicle.new)
--- case_without_subject.rb --
-# error: main.rb:4: case without a subject is not supported
-# rbs_inline: enabled
-n = 3
-case
-when n > 2 then puts "big"
-end
 -- block_on_untyped.rb --
 # error: main.rb:5: blocks on untyped receivers are not supported
 # rbs_inline: enabled

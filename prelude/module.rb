@@ -76,4 +76,28 @@ class Module < Object
 end
 
 class Class < Module
+  # The parent's class object; nil above Object, whose BasicObject has none in rb2go.
+  #: () -> Class?
+  def superclass = %x{
+    t, ok := any(self).(interface{ _Superclass() any })
+    if !ok {
+      return nil
+    }
+    k, ok := t._Superclass().(ClassI)
+    if !ok {
+      return nil
+    }
+    return &k
+  }
+
+  #: () -> Array[Class]
+  def subclasses = %x{
+    out := &Array[ClassI]{}
+    if t, ok := any(self).(interface{ _Subclasses() []any }); ok {
+      for _, k := range t._Subclasses() {
+        *out = append(*out, k.(ClassI))
+      }
+    }
+    return out
+  }
 end

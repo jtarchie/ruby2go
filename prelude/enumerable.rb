@@ -600,4 +600,131 @@ module Enumerable
     all = to_a
     idx.map { |i| all[i] }
   end
+
+  #: () { (E) -> bool } -> bool
+  def one?
+    n = 0
+    each do |x|
+      n += 1 if yield(x)
+      return false if n > 1
+    end
+    n == 1
+  end
+
+  #: (E) -> Integer?
+  def find_index(v)
+    i = 0
+    each do |x|
+      return i if x == v
+      i += 1
+    end
+    nil
+  end
+
+  #: () { (E) -> bool } -> Integer?
+  def __find_index_block
+    i = 0
+    each do |x|
+      return i if yield(x)
+      i += 1
+    end
+    nil
+  end
+
+  # One pass, so the block runs once per element as in MRI.
+  #: [K] () { (E) -> K } -> [E?, E?]
+  def minmax_by = %x{
+    var lo, hi *E
+    var loK, hiK K
+    for x := range self.Each() {
+      k := blk(x)
+      if lo == nil || rbCmp(loK, k) > 0 {
+        lo, loK = &x, k
+      }
+      if hi == nil || rbCmp(hiK, k) < 0 {
+        hi, hiK = &x, k
+      }
+    }
+    return Tuple2[*E, *E]{lo, hi}
+  }
+
+  #: [U] () { (E) -> Array[U] } -> Array[U]
+  def collect_concat(&block) = flat_map(&block)
+
+  #: [A] (A) { (E, A) -> void } -> A
+  def with_object(memo)
+    each { |x| yield(x, memo) }
+    memo
+  end
+
+  #: (?Integer?) { (E) -> void } -> void
+  def cycle(n = nil)
+    all = to_a
+    return if all.empty?
+    if n
+      n.times { all.each { |x| yield x } }
+      return
+    end
+    while true
+      all.each { |x| yield x }
+    end
+  end
+
+  #: () { (E) -> bool } -> Array[Array[E]]
+  def slice_before = %x{
+    out := &Array[*Array[E]]{}
+    var cur *Array[E]
+    for x := range self.Each() {
+      if cur == nil || bool(blk(x)) {
+        cur = &Array[E]{}
+        *out = append(*out, cur)
+      }
+      *cur = append(*cur, x)
+    }
+    return out
+  }
+
+  #: () { (E) -> bool } -> Array[Array[E]]
+  def slice_after = %x{
+    out := &Array[*Array[E]]{}
+    var cur *Array[E]
+    for x := range self.Each() {
+      if cur == nil {
+        cur = &Array[E]{}
+        *out = append(*out, cur)
+      }
+      *cur = append(*cur, x)
+      if bool(blk(x)) {
+        cur = nil
+      }
+    }
+    return out
+  }
+
+  # Consecutive runs by key; a nil key drops the element, as in MRI.
+  #: [K] () { (E) -> K? } -> Array[[K, Array[E]]]
+  def chunk = %x{
+    out := &Array[Tuple2[K, *Array[E]]]{}
+    var cur *Array[E]
+    var last K
+    for x := range self.Each() {
+      k := blk(x)
+      switch {
+      case k == nil:
+        cur = nil
+      case cur != nil && bool(rbEq(last, *k)):
+        *cur = append(*cur, x)
+      default:
+        cur, last = &Array[E]{x}, *k
+        *out = append(*out, Tuple2[K, *Array[E]]{*k, cur})
+      }
+    }
+    return out
+  }
+
+  #: (Integer) -> Array[Array[E]]
+  def repeated_combination(k) = %x{ return rbRepeated(slices.Collect(self.Each()), int(k), true) }
+
+  #: (Integer) -> Array[Array[E]]
+  def repeated_permutation(k) = %x{ return rbRepeated(slices.Collect(self.Each()), int(k), false) }
 end

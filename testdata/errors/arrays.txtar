@@ -68,11 +68,6 @@ puts total(*pair)
 def add(a, b) = a + b
 nums = [1, 2] #: Array[Integer]
 puts add(*nums)
--- splat_in_multi_assign.rb --
-# error: main.rb:3: splat in multiple assignment is not supported
-nums = [1, 2, 3] #: Array[Integer]
-a, *rest = nums
-puts a.inspect, rest.inspect
 -- splat_in_dynamic_call.rb --
 # error: main.rb:4: splat arguments in a dynamic call are not supported
 u = 5 #: untyped
@@ -88,10 +83,6 @@ puts total(1)
 #: (Integer) -> Integer
 def total(*ns) = ns.size
 puts total(1)
--- block_param_splat.rb --
-# error: main.rb:3: unsupported block parameter form
-nums = [1, 2] #: Array[Integer]
-nums.each { |*xs| puts xs.inspect }
 -- block_param_optional.rb --
 # error: main.rb:3: unsupported block parameter form
 nums = [1, 2] #: Array[Integer]
@@ -328,7 +319,7 @@ puts pairs { |a, b| a + b }.inspect
 def total(*) = 1
 puts total(1)
 -- rest_with_post.rb --
-# error: main.rb:3: keyword and post parameters are not supported
+# error: main.rb:3: post parameters (after *rest or optional ones) are not supported
 #: (Integer, *Integer) -> Integer
 def total(a, *rest, b) = a + b + rest.size
 puts total(1, 2)

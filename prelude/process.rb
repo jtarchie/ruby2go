@@ -16,6 +16,24 @@ module Process
   #: () -> Integer
   def self.pid = %x{ Integer(os.Getpid()) }
 
+  #: () -> Integer
+  def self.ppid = %x{ Integer(os.Getppid()) }
+
+  #: () -> Integer
+  def self.uid = %x{ Integer(os.Getuid()) }
+
+  #: () -> Integer
+  def self.euid = %x{ Integer(os.Geteuid()) }
+
+  #: () -> Integer
+  def self.gid = %x{ Integer(os.Getgid()) }
+
+  #: () -> Integer
+  def self.egid = %x{ Integer(os.Getegid()) }
+
+  #: () -> Integer
+  def self.getpgrp = %x{ Integer(syscall.Getpgrp()) }
+
   # Process.spawn / wait / wait2 / waitpid (decision 107): a child started like
   # system's (decision 97's shell rule), reaped by wait, which sets $?.
   #: (String, *String) -> Integer
@@ -90,4 +108,29 @@ module Signal
 
   #: (untyped, String) -> String?
   def self.__trap_2(sig, command) = %x{ return rbSetTrap(sig, nil, string(command)) }
+
+  # ponytail: rb2go's signal table lacks platform extras (macOS EMT, INFO); add them per GOOS if a program lists them.
+  #: () -> Hash[String, Integer]
+  def self.list = %x{
+    names := slices.Collect(maps.Keys(rbSignalNums))
+    slices.SortFunc(names, func(a, b string) int {
+      return cmp.Or(cmp.Compare(rbSignalNums[a], rbSignalNums[b]), cmp.Compare(a, b))
+    })
+    out := NewHash[String, Integer]()
+    for _, n := range names {
+      Hash_Op_idxSet(out, String(n), Integer(rbSignalNums[n]))
+    }
+    return out
+  }
+
+  #: (Integer) -> String?
+  def self.signame(n) = %x{
+    if n == 0 {
+      return Ref(String("EXIT"))
+    }
+    if name := rbSignalName(syscall.Signal(n)); name != strconv.Itoa(int(n)) {
+      return Ref(String(name))
+    }
+    return nil
+  }
 end

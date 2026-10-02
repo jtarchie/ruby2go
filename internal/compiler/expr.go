@@ -33,6 +33,47 @@ type expr struct {
 	nilable bool // untyped collapsed from untyped? (Hash#[]): calls warn like T?'s
 }
 
+// genMatchWrite is `/(?<year>\d+)/ =~ s`: =~ through Regexp#match, then
+// each named group into the local of its name (nil when nothing matched).
+func (f *fctx) genMatchWrite(n *parser.MatchWriteNode) expr {
+	call := n.Call
+	re := f.genExpr(call.Receiver, nil)
+	m := f.genMethodCall(call, re, "match", callArgs(call), nil)
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, f.materialize(m))
+	for _, t := range n.Targets {
+		lt, ok := t.(*parser.LocalVariableTargetNode)
+		if !ok {
+			f.errorf(t, "unsupported named capture target %s", nodeType(t))
+		}
+		f.assignLocal(lt, lt.Name, expr{code: fmt.Sprintf("rbMatchCapture(%s, %q)", tmp, lt.Name), typ: TOpt{Elem: f.cls("String")}}, nil)
+	}
+	return expr{code: "rbMatchPos(" + tmp + ")", typ: TOpt{Elem: f.cls("Integer")}}
+}
+
+// genSugar renders syntax that reduces to a literal or a plain read:
+// `defined?` (answered at compile time), `__LINE__`, `{ a: }`, `:"#{x}"`.
+func (f *fctx) genSugar(n parser.Node) expr {
+	switch n := n.(type) {
+	case *parser.DefinedNode:
+		kind := f.definedKind(n.Value)
+		if kind == "" {
+			return expr{code: "nil", typ: TNil{}}
+		}
+		f.c.strLits[kind] = true // MRI's answers are frozen literals
+		return expr{code: strconv.Quote(kind), typ: f.cls("String"), lit: true}
+	case *parser.SourceLineNode:
+		return expr{code: strconv.Itoa(f.f.line(n.Location.StartOffset)), typ: f.cls("Integer"), lit: true}
+	case *parser.ImplicitNode: // `{ a: }` reads the local or method a
+		return f.genExpr(n.Value, nil)
+	case *parser.InterpolatedSymbolNode:
+		s := f.genInterp(&parser.InterpolatedStringNode{Location: n.Location, Parts: n.Parts})
+		return expr{code: "Symbol(" + s.code + ")", typ: f.cls("Symbol")}
+	}
+	f.c.unsupported(f.f, n)
+	return expr{}
+}
+
 // genLiteral handles the leaf expressions.
 func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	switch n := n.(type) {
@@ -54,6 +95,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.SourceFileNode:
 		f.c.strLits[f.f.Name] = true
 		return expr{code: strconv.Quote(f.f.Name), typ: f.cls("String"), lit: true}, true
+	case *parser.DefinedNode, *parser.SourceLineNode, *parser.ImplicitNode, *parser.InterpolatedSymbolNode:
+		return f.genSugar(n), true
 	case *parser.GlobalVariableReadNode:
 		return f.genGlobalRead(n), true
 	case *parser.GlobalVariableWriteNode:
@@ -131,7 +174,7 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
 		return f.genRegexp(n)
 	case *parser.MatchWriteNode:
-		f.errorf(n, "named captures assigned to locals (/(?<x>..)/ =~ s) are not supported; use match")
+		return f.genMatchWrite(n)
 	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode:
 		return f.genOrWrite(n)
 	case *parser.CallOperatorWriteNode, *parser.IndexOperatorWriteNode:
@@ -772,10 +815,27 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 	if ec, ok := stripOpt(expected).(TClass); ok && ec.C.RubyName == "Hash" {
 		kT, vT = ec.Args[0], ec.Args[1]
 	}
-	type kv struct{ k, v expr }
+	type kv struct {
+		k, v  expr
+		splat parser.Node // `**h`: v is the Hash merged in
+	}
 	pairs := make([]kv, 0, len(elements))
 	ks, vs := make([]Type, 0, len(elements)), make([]Type, 0, len(elements))
 	for _, el := range elements {
+		if sp, ok := el.(*parser.AssocSplatNode); ok {
+			var want Type
+			if kT != nil {
+				want = TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}
+			}
+			h := f.genExpr(sp.Value, want)
+			ht, ok := h.typ.(TClass)
+			if !ok || ht.C.RubyName != "Hash" {
+				f.errorf(sp, "**%s must be a Hash, not %s", f.f.text(sp.Value.GetLocation()), h.typ)
+			}
+			ks, vs = append(ks, ht.Args[0]), append(vs, ht.Args[1])
+			pairs = append(pairs, kv{v: h, splat: sp})
+			continue
+		}
 		a, ok := el.(*parser.AssocNode)
 		if !ok {
 			f.c.unsupported(f.f, el)
@@ -783,7 +843,7 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 		k := f.genExpr(a.Key, kT)
 		v := f.genExpr(a.Value, vT)
 		ks, vs = append(ks, k.typ), append(vs, v.typ)
-		pairs = append(pairs, kv{k, v})
+		pairs = append(pairs, kv{k: k, v: v})
 	}
 	if kT == nil {
 		kT, vT = joinOrAny(ks), joinOrAny(vs)
@@ -791,6 +851,10 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 	targs := "[" + f.c.goType(kT) + ", " + f.c.goType(vT) + "]"
 	code := "NewHash" + targs + "()"
 	for _, p := range pairs { // Hash's methods are free funcs (decision 86)
+		if p.splat != nil {
+			code = "rbHashSplat(" + code + ", " + f.coerce(p.splat, p.v, TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}) + ")"
+			continue
+		}
 		code = "Hash___Set" + targs + "(" + code + ", " + f.coerce(n, p.k, kT) + ", " + f.coerce(n, p.v, vT) + ")"
 	}
 	return expr{code: code, typ: TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}}
@@ -1007,10 +1071,23 @@ func sameButUntyped(a, b Type) bool {
 // genKernelIntrinsic handles the receiverless calls the compiler builds itself.
 func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool) {
 	switch n.Name {
-	case "raise":
+	case "raise", "fail":
 		return f.genRaise(n), true
 	case "require", "require_relative":
 		return expr{code: "", stmt: true, typ: TVoid{}}, true
+	case "__method__":
+		if n.Arguments != nil || n.Block != nil {
+			return expr{}, false
+		}
+		if f.m == nil {
+			return expr{code: "nil", typ: TNil{}}, true
+		}
+		return expr{code: "Symbol(" + strconv.Quote(f.m.Name) + ")", typ: f.cls("Symbol")}, true
+	case "__dir__":
+		if n.Arguments != nil || n.Block != nil {
+			return expr{}, false
+		}
+		return expr{code: "rbSourceDir(" + strconv.Quote(f.f.Name) + ")", typ: f.cls("String")}, true
 	case "lambda", "proc":
 		if bn, ok := n.Block.(*parser.BlockNode); ok && n.Arguments == nil {
 			return f.genLambda(n, bn, bn.Parameters, expected), true
@@ -1452,20 +1529,42 @@ func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) e
 func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []parser.Node, exprs []expr) ([]string, int) {
 	var codes []string
 	restIdx := -1
+	var kw *kwArgs
+	if exprs == nil && m.hasKeywords() {
+		args, kw = f.splitKeywordArgs(m, args)
+	}
 	nargs := len(args)
 	if exprs != nil {
 		nargs = len(exprs)
 	}
+	npos := m.positionalCount()
+	hasRest := slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest })
+	expected := npos // what the messages have always counted: positional params, *rest as one
+	if hasRest {
+		expected++
+	}
 	// Too many arguments is checked first: it is the error Ruby raises, and
 	// the surplus would otherwise be coerced to the wrong parameter's type.
-	if nargs > len(m.Params) && !slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest }) {
-		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
+	if nargs > npos && !hasRest {
+		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, expected)
 	}
 	if exprs == nil {
 		f.optJoin(m, env, args)
 	}
 	ai := 0
+	kwMask, kwBit := 0, 0
 	for _, p := range m.Params {
+		if p.Keyword {
+			mark := f.buf.Len()
+			code, given := f.keywordArg(n, m, p, env, kw)
+			f.pinBefore(mark, codes)
+			if given {
+				kwMask |= 1 << kwBit
+			}
+			kwBit++
+			codes = append(codes, code)
+			continue
+		}
 		if p.Rest {
 			restIdx = len(codes)
 			mark := f.buf.Len()
@@ -1509,19 +1608,122 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			codes = append(codes, f.coerceArg(n, d, p, env))
 			continue
 		}
-		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, len(m.Params))
+		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, expected)
+	}
+	kw.checkUnknown(f, m)
+	if m.kwMask() {
+		codes = append([]string{strconv.Itoa(kwMask)}, codes...)
+		if restIdx >= 0 {
+			restIdx++
+		}
 	}
 	if m.calleeDefaults {
-		pos := len(m.Params)
-		if pos > 0 && m.Params[pos-1].Rest {
-			pos--
-		}
-		codes = append([]string{strconv.Itoa(min(nargs, pos))}, codes...)
+		codes = append([]string{strconv.Itoa(min(nargs, npos))}, codes...)
 		if restIdx >= 0 {
 			restIdx++
 		}
 	}
 	return codes, restIdx
+}
+
+// kwArgs is a call's `name: value` arguments, matched to keyword parameters by name.
+type kwArgs struct {
+	named  map[string]*parser.AssocNode
+	order  []*parser.AssocNode
+	splats []parser.Node // `**h`
+	all    []parser.Node // both, in source order: `**opts` keeps it
+	used   map[string]bool
+}
+
+// splitKeywordArgs takes a trailing `k: v, **h` off args when m has keyword parameters (a braced Hash stays positional, as in Ruby 3).
+func (f *fctx) splitKeywordArgs(m *Method, args []parser.Node) ([]parser.Node, *kwArgs) {
+	kw := &kwArgs{named: map[string]*parser.AssocNode{}, used: map[string]bool{}}
+	if len(args) == 0 {
+		return args, kw
+	}
+	kh, ok := args[len(args)-1].(*parser.KeywordHashNode)
+	if !ok {
+		return args, kw
+	}
+	kw.all = kh.Elements
+	for _, el := range kh.Elements {
+		switch el := el.(type) {
+		case *parser.AssocNode:
+			sym, ok := el.Key.(*parser.SymbolNode)
+			if !ok {
+				f.errorf(el.Key, "%s takes keyword arguments: keys must be symbols", m.Name)
+			}
+			name := sym.Unescaped.Value
+			if kw.named[name] != nil {
+				f.errorf(el, "duplicated keyword %s:", name)
+			}
+			kw.named[name] = el
+			kw.order = append(kw.order, el)
+		case *parser.AssocSplatNode:
+			kw.splats = append(kw.splats, el)
+		default:
+			f.errorf(el, "unsupported keyword argument")
+		}
+	}
+	return args[:len(args)-1], kw
+}
+
+// keywordArg renders keyword parameter p's argument: the call's value, a
+// default (callee-side ones get a zero value and a clear bit in rbKw), or
+// for `**opts` the call's other keywords as a Hash.
+func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type, kw *kwArgs) (string, bool) {
+	if p.KwRest {
+		var els []parser.Node
+		for _, el := range kw.all {
+			if a, ok := el.(*parser.AssocNode); !ok || !kw.used[a.Key.(*parser.SymbolNode).Unescaped.Value] {
+				els = append(els, el)
+			}
+		}
+		kw.splats = nil
+		for _, a := range kw.order {
+			kw.used[a.Key.(*parser.SymbolNode).Unescaped.Value] = true
+		}
+		h := f.genHash(n, els, closed(p.Type, env))
+		unify(p.Type, h.typ, env)
+		return f.coerceArg(n, h, p, env), true
+	}
+	if len(kw.splats) > 0 {
+		f.errorf(kw.splats[0], "**splat into %s's named keyword parameters is not supported; pass them by name", m.Name)
+	}
+	if a := kw.named[p.Name]; a != nil {
+		kw.used[p.Name] = true
+		v := f.genExpr(a.Value, closed(p.Type, env))
+		unify(p.Type, v.typ, env)
+		return f.coerceArg(a.Value, v, p, env), true
+	}
+	switch {
+	case p.Default != nil && m.calleeDefaults:
+		return "rbZero[" + f.c.goType(subst(p.Type, env)) + "]()", false
+	case p.Default != nil:
+		caller := f.f
+		f.f = m.File
+		d := f.genExpr(p.Default, closed(p.Type, env))
+		f.f = caller
+		unify(p.Type, d.typ, env)
+		return f.coerceArg(n, d, p, env), false
+	}
+	f.errorf(n, "%s: missing keyword: :%s", m, p.Name)
+	return "", false
+}
+
+// checkUnknown rejects keywords the method has no parameter for (MRI's ArgumentError, at compile time).
+func (kw *kwArgs) checkUnknown(f *fctx, m *Method) {
+	if kw == nil {
+		return
+	}
+	for _, a := range kw.order {
+		if name := a.Key.(*parser.SymbolNode).Unescaped.Value; !kw.used[name] {
+			f.errorf(a, "%s: unknown keyword: :%s", m, name)
+		}
+	}
+	if len(kw.splats) > 0 {
+		f.errorf(kw.splats[0], "%s takes no **keywords", m)
+	}
 }
 
 // optJoin binds a method type variable that several arguments share as
@@ -1942,6 +2144,19 @@ func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
 	return env
 }
 
+// checkVisibility rejects at compile time what MRI's NoMethodError would: a private method with a receiver, a protected one from outside its owner's family.
+func (f *fctx) checkVisibility(n parser.Node, m *Method, recv expr) {
+	if recv.code == f.selfCode || f.implicitCall {
+		return
+	}
+	if m.Private {
+		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
+	}
+	if m.Protected && (f.owner == nil || !f.owner.isSubclassOf(m.Owner)) {
+		f.errorf(n, "protected method %s called on %s", m.Name, recv.typ)
+	}
+}
+
 func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
 	f.c.inferRet(m)
@@ -1956,9 +2171,7 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	}
 	env := f.callEnv(n, e, recv)
 	// bind vars visible in the current generic context so they count as bound
-	if m.Private && recv.code != f.selfCode && !f.implicitCall {
-		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
-	}
+	f.checkVisibility(n, m, recv)
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
 	if m.Block != nil {
 		if m.Iterator {
@@ -2110,7 +2323,7 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 			return nil
 		}
 		ps := p.Parameters
-		if len(ps.Optionals) > 0 || ps.Rest != nil || len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil {
+		if len(ps.Optionals) > 0 || len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil {
 			f.errorf(b, "unsupported block parameter form")
 		}
 		var names []string
@@ -2136,6 +2349,17 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 				f.errorf(r, "unsupported block parameter form")
 			}
 		}
+		switch r := ps.Rest.(type) {
+		case nil, *parser.ImplicitRestNode: // `|a, |` takes the first element, as `|a|` would of a splat
+		case *parser.RestParameterNode:
+			name := ""
+			if r.Name != nil {
+				name = *r.Name
+			}
+			names = append(names, "*"+name) // "*" alone: an anonymous rest
+		default:
+			f.errorf(r, "unsupported block parameter form")
+		}
 		return names
 	case *parser.NumberedParametersNode:
 		var names []string
@@ -2148,6 +2372,82 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 	}
 	f.c.unsupported(f.f, b)
 	return nil
+}
+
+// bindRestParams binds `|a, *rest|`: one yielded tuple or Array is split
+// across the params when there are leading ones (Ruby's auto-splat);
+// otherwise rest collects the yielded values past the leading params.
+func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]string, func()) {
+	lead, rest := names[:len(names)-1], strings.TrimPrefix(names[len(names)-1], "*")
+	bind := func(name string, e expr) {
+		if name == "" {
+			return
+		}
+		v := f.blockParam(name, e.typ)
+		f.emit("%s := %s", v.goName, e.code)
+		f.noteUnused(v)
+	}
+	arrayOf := func(parts []expr) expr {
+		ts := make([]Type, len(parts))
+		for i, p := range parts {
+			ts[i] = p.typ
+		}
+		et := joinOrAny(ts)
+		codes := make([]string, len(parts))
+		for i, p := range parts {
+			codes[i] = f.coerce(n, p, et)
+		}
+		return expr{code: fmt.Sprintf("&Array[%s]{%s}", f.c.goType(et), strings.Join(codes, ", ")), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
+	}
+	if len(yields) == 1 && len(lead) > 0 {
+		p := f.newTmp()
+		switch t := yields[0].(type) {
+		case TTuple:
+			if len(t.Elems) < len(lead) {
+				f.errorf(n, "block takes %d params but the tuple has %d elements", len(lead), len(t.Elems))
+			}
+			return []string{p}, func() {
+				parts := make([]expr, len(t.Elems))
+				for i, et := range t.Elems {
+					parts[i] = expr{code: fmt.Sprintf("%s.F%d", p, i), typ: et}
+				}
+				for i, nm := range lead {
+					bind(nm, parts[i])
+				}
+				bind(rest, arrayOf(parts[len(lead):]))
+			}
+		case TClass:
+			if t.C.RubyName == "Array" {
+				return []string{p}, func() {
+					for i, nm := range lead {
+						bind(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
+					}
+					bind(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
+				}
+			}
+		case TAny, TFunc, TNil, TOpt, TVar, TVoid: // a lone value: no splat
+		}
+	}
+	if len(lead) > len(yields) {
+		f.errorf(n, "block takes %d params but only %d values are yielded", len(lead), len(yields))
+	}
+	tmps := make([]string, len(yields))
+	for i := range tmps {
+		tmps[i] = f.newTmp()
+	}
+	return tmps, func() {
+		parts := make([]expr, len(yields))
+		for i, y := range yields {
+			parts[i] = expr{code: tmps[i], typ: y}
+		}
+		for i, nm := range lead {
+			bind(nm, parts[i])
+		}
+		bind(rest, arrayOf(parts[len(lead):]))
+		for i := len(lead); i < len(tmps) && rest == ""; i++ {
+			f.emit("_ = %s", tmps[i])
+		}
+	}
 }
 
 // bindBlockParams declares block params for the yielded types, returning
@@ -2204,6 +2504,9 @@ func (f *fctx) bindArraySplat(names []string, elem Type) ([]string, func()) {
 }
 
 func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (goParams []string, prologue func()) {
+	if len(names) > 0 && strings.HasPrefix(names[len(names)-1], "*") {
+		return f.bindRestParams(n, names, yields)
+	}
 	if tt, ok := firstType(yields).(TTuple); ok && len(yields) == 1 && len(names) > 1 {
 		return f.bindTupleParams(n, names, tt)
 	}
@@ -2439,9 +2742,8 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	return true
 }
 
-// genIterLoop emits the range loop of iterator entry e on recv.
-func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
-	m := e.M
+// iterEnv is the type environment of iterator entry e called on recv.
+func iterEnv(e *entry, recv expr) map[string]Type {
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
 		classEnv := map[string]Type{}
@@ -2455,6 +2757,74 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 		}
 	}
 	env["Self"] = recv.typ
+	return env
+}
+
+// genFor is `for x in coll`: coll.each as a range loop whose variables and
+// body locals stay in the enclosing scope, since Ruby's for opens no block.
+func (f *fctx) genFor(n *parser.ForNode, t tail) {
+	var recvT Type
+	f.probe(func() { recvT = f.genExpr(n.Collection, nil).typ })
+	e := f.resolve(recvT, "each")
+	if e == nil || !e.M.Iterator {
+		f.errorf(n.Collection, "for needs a collection whose each is an iterator (Array, Range, Hash, Set, ...), not %s", recvT)
+	}
+	recv := f.genExpr(n.Collection, nil)
+	env := iterEnv(e, recv)
+	yields := substAll(e.M.Block.Params, env)
+	call := f.callCode(e, recv, nil, env)
+	tmps := make([]string, len(yields))
+	for i := range tmps {
+		tmps[i] = f.newTmp()
+	}
+	f.pushLoop(loopIter)
+	saved := f.enterBlock()
+	if len(tmps) == 0 {
+		f.emit("for range %s {", call)
+	} else {
+		f.emit("for %s := range %s {", strings.Join(tmps, ", "), call)
+	}
+	f.indent++
+	vals := make([]expr, len(yields))
+	for i, y := range yields {
+		vals[i] = expr{code: tmps[i], typ: y}
+	}
+	switch ix := n.Index.(type) {
+	case *parser.LocalVariableTargetNode:
+		if len(vals) != 1 {
+			f.errorf(ix, "for with one variable over a %d-value each", len(vals))
+		}
+		f.assignLocal(ix, ix.Name, vals[0], nil)
+	case *parser.MultiTargetNode:
+		if len(vals) == 1 {
+			f.genMultiWrite(&parser.MultiWriteNode{Location: ix.Location, Lefts: ix.Lefts, Rest: ix.Rest, Rights: ix.Rights, Value: &exprNode{Node: ix, e: vals[0]}})
+			break
+		}
+		if ix.Rest != nil || len(ix.Rights) > 0 || len(ix.Lefts) != len(vals) {
+			f.errorf(ix, "for needs %d variables here", len(vals))
+		}
+		for i, l := range ix.Lefts {
+			lt, ok := l.(*parser.LocalVariableTargetNode)
+			if !ok {
+				f.errorf(l, "unsupported for variable %s", nodeType(l))
+			}
+			f.assignLocal(lt, lt.Name, vals[i], nil)
+		}
+	default:
+		f.errorf(n.Index, "unsupported for variable %s", nodeType(n.Index))
+	}
+	f.genStmts(n.Statements, tail{})
+	f.indent--
+	f.leaveBlock(saved)
+	f.emit("}")
+	f.popLoop()
+	f.emptyTail(n, t)
+}
+
+// genIterLoop emits the range loop of iterator entry e on recv.
+func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
+	m := e.M
+	env := iterEnv(e, recv)
 	codes, _ := f.genArgs(n, m, env, callArgs(n), nil)
 	yields := substAll(m.Block.Params, env)
 	call := f.callCode(e, recv, codes, env)
@@ -2587,18 +2957,37 @@ func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding b
 		return args.Arguments
 	}
 	var an []parser.Node
+	var kws []parser.Node // zsuper passes keywords on by name
 	loc := n.(*parser.ForwardingSuperNode).Location
 	for _, p := range f.m.Params {
 		var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
-		if p.Rest {
+		switch {
+		case p.KwRest:
+			kws = append(kws, &parser.AssocSplatNode{Value: a, Location: loc})
+			continue
+		case p.Keyword:
+			key := &parser.SymbolNode{Location: loc, Unescaped: parser.RubyString{Value: p.Name}}
+			kws = append(kws, &parser.AssocNode{Key: key, Value: a, Location: loc})
+			continue
+		case p.Rest:
 			a = &parser.SplatNode{Expression: a, Location: loc}
 		}
 		an = append(an, a)
+	}
+	if len(kws) > 0 {
+		an = append(an, &parser.KeywordHashNode{Elements: kws, Location: loc})
 	}
 	return an
 }
 
 func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type) expr {
+	if c, ok := n.(*parser.CallNode); ok && c.Receiver != nil && !f.insideClass(cls) {
+		for k := cls; k != nil; k = k.Super {
+			if k.privateNew {
+				f.errorf(n, "private method 'new' called for class %s", cls.RubyName)
+			}
+		}
+	}
 	switch {
 	case cls.IsModule:
 		f.errorf(n, "cannot instantiate module %s", cls.Name)
@@ -2878,6 +3267,94 @@ func (f *fctx) blockParam(name string, typ Type) *local {
 	return v
 }
 
+// insideClass reports code in cls's own class or instance methods (or a subclass's), where a private class method may be called.
+func (f *fctx) insideClass(cls *Class) bool {
+	o := f.owner
+	if o != nil && o.metaOf != nil {
+		o = o.metaOf
+	}
+	return o != nil && o.isSubclassOf(cls)
+}
+
+// definedKind answers `defined?(v)` at compile time: the closed world knows
+// every local, constant and method. "" is nil. Run-time state (whether an
+// ivar was ever assigned, whether a block was passed) is not tracked.
+func (f *fctx) definedKind(v parser.Node) string {
+	switch v := v.(type) {
+	case *parser.ParenthesesNode:
+		if st, ok := v.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
+			return f.definedKind(st.Body[0])
+		}
+		return "expression"
+	case *parser.LocalVariableReadNode:
+		if e := f.genExpr(v, nil); e.code != "" {
+			f.emit("_ = %s", e.code) // read only by defined?: Go still wants it used
+		}
+		return "local-variable"
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		if cls, k := f.c.lookupConst(f.f, v, f.lex); cls != nil || k != nil {
+			return "constant"
+		}
+		return ""
+	case *parser.SelfNode:
+		return "self"
+	case *parser.NilNode:
+		return "nil"
+	case *parser.TrueNode:
+		return "true"
+	case *parser.FalseNode:
+		return "false"
+	case *parser.SuperNode, *parser.ForwardingSuperNode:
+		if f.m != nil && f.owner != nil && f.c.inheritedSig(f.m) != nil {
+			return "super"
+		}
+		return ""
+	case *parser.LocalVariableWriteNode, *parser.InstanceVariableWriteNode, *parser.ConstantWriteNode,
+		*parser.LocalVariableOperatorWriteNode, *parser.LocalVariableOrWriteNode, *parser.LocalVariableAndWriteNode,
+		*parser.InstanceVariableOperatorWriteNode, *parser.InstanceVariableOrWriteNode, *parser.MultiWriteNode:
+		return "assignment"
+	case *parser.InstanceVariableReadNode, *parser.ClassVariableReadNode, *parser.GlobalVariableReadNode:
+		f.errorf(v, "defined?(%s) depends on whether it was ever assigned, which rb2go does not track", f.f.text(v.GetLocation()))
+	case *parser.YieldNode:
+		f.errorf(v, "defined?(yield) is not supported (block_given? is not either)")
+	case *parser.CallNode:
+		return f.definedCall(v)
+	}
+	return "expression"
+}
+
+// definedCall is `defined?(recv.name)`: "method" when the receiver's static type has a public name (any visibility without a receiver).
+func (f *fctx) definedCall(v *parser.CallNode) string {
+	if v.Receiver == nil {
+		switch {
+		case f.c.topDefs[v.Name] != nil, f.resolve(f.selfType, v.Name) != nil:
+			return "method"
+		case slices.Contains([]string{"raise", "fail", "require", "require_relative", "lambda", "proc"}, v.Name):
+			return "method"
+		}
+		return ""
+	}
+	if f.definedKind(v.Receiver) == "" {
+		return ""
+	}
+	if cls := f.classRef(v.Receiver); cls != nil {
+		if v.Name == "new" && !cls.IsModule || cls.meta != nil && f.resolve(TClass{C: cls.meta}, v.Name) != nil {
+			return "method"
+		}
+		return ""
+	}
+	var rt Type
+	f.probe(func() { rt = f.genExpr(v.Receiver, nil).typ })
+	if isAny(rt) {
+		f.errorf(v, "defined?(...%s) on an untyped receiver is not supported; use respond_to?", v.Name)
+	}
+	e := f.resolve(stripOpt(rt), v.Name)
+	if e == nil || e.M.Private {
+		return ""
+	}
+	return "method"
+}
+
 // classRef resolves n to a class or module when it is a constant naming one.
 func (f *fctx) classRef(n parser.Node) *Class {
 	switch n.(type) {
@@ -2902,8 +3379,23 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	case cls != nil:
 		f.errorf(n, "class %s used as a value is not supported", cls.RubyName)
 	}
+	if r, ok := n.(*parser.ConstantReadNode); ok && r.Name == "DATA" && f.f.data != nil {
+		return f.genData()
+	}
 	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
 	return expr{}
+}
+
+// genData is the main file's DATA: one StringIO over the text after `__END__` (MRI's is a File at that offset; reading it reads the same).
+func (f *fctx) genData() expr {
+	t := f.cls("StringIO")
+	if !f.c.dataVar {
+		f.c.dataVar = true
+		text := &exprNode{e: expr{code: strconv.Quote(*f.f.data), typ: f.cls("String"), lit: true}}
+		io := f.genMethodCall(&parser.NilNode{}, f.genConstRead(&parser.ConstantReadNode{Name: "StringIO"}), "new", []parser.Node{text}, nil)
+		f.c.regexps = append(f.c.regexps, "var rbDATA = "+io.code)
+	}
+	return expr{code: "rbDATA", typ: t}
 }
 
 // constMissing is MRI's name for constant read n in a NameError: a bare
@@ -3411,29 +3903,98 @@ func (f *fctx) callWriter(n parser.Node, recv expr, name string, val expr) {
 	f.emitExprStmt(n, f.genMethodCall(n, recv, name, []parser.Node{&exprNode{e: val}}, nil))
 }
 
-// genMultiWrite renders `a, b = x, y` and `a, b = tuple`.
+// genMultiWrite renders `a, b = x, y`, `a, b = tuple`, and with splat or
+// nested targets `a, *rest, z = arr` and `a, (b, c) = x`.
 func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
-	if n.Rest != nil || len(n.Rights) > 0 {
-		f.errorf(n, "splat in multiple assignment is not supported")
-	}
-	var vals []expr
-	if arr, ok := n.Value.(*parser.ArrayNode); ok && len(arr.Elements) == len(n.Lefts) {
-		vals = f.multiLiteral(arr, n.Lefts)
-	} else {
-		vals = f.multiDestructure(n)
-	}
-	for i, target := range n.Lefts {
-		switch t := target.(type) {
-		case *parser.LocalVariableTargetNode:
-			f.assignLocal(t, t.Name, vals[i], nil)
-		case *parser.InstanceVariableTargetNode:
-			iv := f.ivar(t, t.Name, vals[i].typ)
-			f.emit("%s = %s", f.ivarCode(iv), f.coerce(t, vals[i], iv.Type))
-		default:
-			f.errorf(target, "unsupported assignment target %s", nodeType(target))
+	if arr, ok := n.Value.(*parser.ArrayNode); ok && n.Rest == nil && len(n.Rights) == 0 && len(arr.Elements) == len(n.Lefts) && !slices.ContainsFunc(arr.Elements, isSplat) {
+		for i, v := range f.multiLiteral(arr, n.Lefts) {
+			f.assignTarget(n.Lefts[i], v)
 		}
+		return expr{code: "", typ: TVoid{}, stmt: true, done: true}
 	}
+	v := f.genExpr(n.Value, nil)
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, v.code)
+	f.destructureInto(n, expr{code: tmp, typ: v.typ}, n.Lefts, n.Rest, n.Rights)
 	return expr{code: "", typ: TVoid{}, stmt: true, done: true}
+}
+
+func isSplat(n parser.Node) bool {
+	_, ok := n.(*parser.SplatNode)
+	return ok
+}
+
+// destructureInto assigns tuple or Array v (held in a temporary) to the
+// leading targets, a `*rest` target and the trailing ones, as Ruby: an
+// Array gives each target its element or nil, rest the middle.
+func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest parser.Node, rights []parser.Node) {
+	lead, trail := len(lefts), len(rights)
+	var restT parser.Node // the rest's target; nil for a bare `*`
+	switch r := rest.(type) {
+	case nil, *parser.ImplicitRestNode: // `a, = xs` drops the rest
+	case *parser.SplatNode:
+		restT = r.Expression
+	default:
+		f.errorf(rest, "unsupported rest target %s", nodeType(rest))
+	}
+	switch t := v.typ.(type) {
+	case TTuple:
+		m := len(t.Elems)
+		if rest == nil && m != lead || rest != nil && m < lead+trail {
+			f.errorf(n, "%d targets for a %d-tuple", lead+trail, m)
+		}
+		for i, l := range lefts {
+			f.assignTarget(l, expr{code: fmt.Sprintf("%s.F%d", v.code, i), typ: t.Elems[i]})
+		}
+		if restT != nil {
+			midTs := t.Elems[lead : m-trail]
+			et := joinOrAny(midTs)
+			parts := make([]string, len(midTs))
+			for i, mt := range midTs {
+				parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", v.code, lead+i), typ: mt}, et)
+			}
+			f.assignTarget(restT, expr{code: fmt.Sprintf("&Array[%s]{%s}", f.c.goType(et), strings.Join(parts, ", ")), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}})
+		}
+		for j, r := range rights {
+			f.assignTarget(r, expr{code: fmt.Sprintf("%s.F%d", v.code, m-trail+j), typ: t.Elems[m-trail+j]})
+		}
+	case TClass:
+		if t.C.RubyName != "Array" {
+			f.errorf(n, "cannot destructure %s", v.typ)
+		}
+		et := f.c.goType(t.Args[0])
+		for i, l := range lefts {
+			f.assignTarget(l, flatOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", et, v.code, i), typ: TOpt{Elem: t.Args[0]}}))
+		}
+		if restT != nil {
+			f.assignTarget(restT, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, %d)", v.code, lead, trail), typ: v.typ})
+		}
+		for j, r := range rights {
+			f.assignTarget(r, flatOpt(expr{code: fmt.Sprintf("rbTrailIdx(%s, %d, %d, %d)", v.code, lead, trail, j), typ: TOpt{Elem: t.Args[0]}}))
+		}
+	case TAny, TFunc, TNil, TOpt, TVar, TVoid: // only tuples and Arrays split
+		f.errorf(n, "cannot destructure %s", v.typ)
+	}
+}
+
+// assignTarget writes v to one target of a multiple assignment.
+func (f *fctx) assignTarget(target parser.Node, v expr) {
+	switch t := target.(type) {
+	case *parser.LocalVariableTargetNode:
+		f.assignLocal(t, t.Name, v, nil)
+	case *parser.InstanceVariableTargetNode:
+		iv := f.ivar(t, t.Name, v.typ)
+		f.emit("%s = %s", f.ivarCode(iv), f.coerce(t, v, iv.Type))
+	case *parser.MultiTargetNode:
+		if isOpt(v.typ) {
+			f.errorf(t, "nested destructuring of a possibly-nil %s is not supported", v.typ)
+		}
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, f.materialize(v))
+		f.destructureInto(t, expr{code: tmp, typ: v.typ}, t.Lefts, t.Rest, t.Rights)
+	default:
+		f.errorf(target, "unsupported assignment target %s", nodeType(target))
+	}
 }
 
 // multiLiteral evaluates every right-hand side into a temporary before any
@@ -3457,35 +4018,6 @@ func (f *fctx) multiLiteral(arr *parser.ArrayNode, lefts []parser.Node) []expr {
 			f.emit("%s := %s", tmp, code)
 		}
 		vals = append(vals, expr{code: tmp, typ: e.typ})
-	}
-	return vals
-}
-
-// multiDestructure splits a tuple (or an Array, into T? values).
-func (f *fctx) multiDestructure(n *parser.MultiWriteNode) []expr {
-	var vals []expr
-	{
-		v := f.genExpr(n.Value, nil)
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, v.code)
-		switch t := v.typ.(type) {
-		case TTuple:
-			if len(t.Elems) != len(n.Lefts) {
-				f.errorf(n, "%d targets for a %d-tuple", len(n.Lefts), len(t.Elems))
-			}
-			for i, et := range t.Elems {
-				vals = append(vals, expr{code: fmt.Sprintf("%s.F%d", tmp, i), typ: et})
-			}
-		case TClass:
-			if t.C.RubyName != "Array" {
-				f.errorf(n, "cannot destructure %s", v.typ)
-			}
-			for i := range n.Lefts {
-				vals = append(vals, flatOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", f.c.goType(t.Args[0]), tmp, i), typ: TOpt{Elem: t.Args[0]}}))
-			}
-		default:
-			f.errorf(n, "cannot destructure %s", v.typ)
-		}
 	}
 	return vals
 }
@@ -4056,16 +4588,18 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 
 // genRange builds a Range literal directly: generic classes have no class methods.
 func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
-	if n.Left == nil {
-		f.errorf(n, "beginless ranges are not supported")
+	if n.Left == nil && n.Right == nil {
+		f.errorf(n, "a range needs a begin or an end")
 	}
 	var want Type
 	if et, ok := expected.(TClass); ok && et.C.RubyName == "Range" && len(et.Args) == 1 {
 		want = et.Args[0]
 	}
-	parts := []parser.Node{n.Left}
-	if n.Right != nil {
-		parts = append(parts, n.Right)
+	var parts []parser.Node
+	for _, p := range []parser.Node{n.Left, n.Right} {
+		if p != nil {
+			parts = append(parts, p)
+		}
 	}
 	var types []Type
 	f.probe(func() {
@@ -4078,7 +4612,12 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 		elem = f.joinAll(n, types)
 	}
 	t := TClass{C: f.c.classes["Range"], Args: []Type{elem}}
-	code := "(&" + strings.TrimPrefix(f.c.goType(t), "*") + "{b: " + f.coerce(n.Left, f.genExpr(n.Left, elem), elem)
+	code := "(&" + strings.TrimPrefix(f.c.goType(t), "*") + "{"
+	if n.Left != nil {
+		code += "b: " + f.coerce(n.Left, f.genExpr(n.Left, elem), elem)
+	} else {
+		code += "beginless: true"
+	}
 	if n.Right != nil {
 		code += ", e: " + f.coerce(n.Right, f.genExpr(n.Right, elem), elem)
 	} else {
@@ -4093,7 +4632,7 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 func requiredArgs(m *Method) int {
 	n := 0
 	for _, p := range m.Params {
-		if !p.Rest && p.Default == nil {
+		if !p.Rest && !p.Keyword && p.Default == nil {
 			n++
 		}
 	}

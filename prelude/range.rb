@@ -3,7 +3,7 @@
 # Iteration needs Integer or String (MRI's succ); other E only compare.
 
 # @rbs generic E
-# @go_type struct { b E; e E; excl bool; endless bool }
+# @go_type struct { b E; e E; excl bool; endless bool; beginless bool }
 class Range < Object
   include Enumerable #[E]
 
@@ -15,6 +15,7 @@ class Range < Object
   #: () { (E) -> void } -> void
   def reverse_each = %x{
     return func(yield func(E) bool) {
+      rbRangeNoBegin(self)
       if self.endless {
         panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(self.e)))))
       }
@@ -100,6 +101,7 @@ class Range < Object
 
   #: () -> Integer
   def size = %x{
+    rbRangeNoBegin(self)
     b, ok := any(self.b).(Integer)
     if !ok {
       panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(self.b)))))
@@ -112,7 +114,7 @@ class Range < Object
 
   #: () -> Integer
   def count = %x{
-    if b, ok := any(self.b).(Integer); ok && !self.endless {
+    if b, ok := any(self.b).(Integer); ok && !self.endless && !self.beginless {
       return rbRangeIntCount(b, any(self.e).(Integer), self.excl)
     }
     n := Integer(0)
@@ -127,7 +129,7 @@ class Range < Object
   def sum = %x{
     b, bok := any(self.b).(Integer)
     e, eok := any(self.e).(Integer)
-    if !bok || !eok || self.endless {
+    if !bok || !eok || self.endless || self.beginless {
       panic(NewTypeError(Ref(String("rb2go: Range#sum needs an Integer range"))))
     }
     if self.excl {
@@ -141,6 +143,9 @@ class Range < Object
 
   #: () -> E?
   def min = %x{
+    if self.beginless {
+      panic(NewRangeError(Ref(String("cannot get the minimum of beginless range"))))
+    }
     if self.endless {
       return &self.b
     }
@@ -155,7 +160,7 @@ class Range < Object
     if self.endless {
       panic(NewRangeError(Ref(String("cannot get the maximum of endless range"))))
     }
-    if c := rbCmp(self.b, self.e); c > 0 || (c == 0 && self.excl) {
+    if c := rbCmp(self.b, self.e); !self.beginless && (c > 0 || (c == 0 && self.excl)) {
       return nil
     }
     if !self.excl {
@@ -194,7 +199,7 @@ class Range < Object
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(*Range[E])
-    return Boolean(ok && o.excl == self.excl && o.endless == self.endless && rbKeyEql(o.b, self.b) && rbKeyEql(o.e, self.e))
+    return Boolean(ok && o.excl == self.excl && o.endless == self.endless && o.beginless == self.beginless && rbKeyEql(o.b, self.b) && rbKeyEql(o.e, self.e))
   }
 
   #: (untyped) -> bool
@@ -217,6 +222,9 @@ class Range < Object
   #: (Integer) -> [Integer, Integer]?
   def __slice(n) = %x{
     b, ok := any(self.b).(Integer)
+    if self.beginless {
+      b, ok = 0, true
+    }
     if !ok {
       panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(self.b) + " into Integer"))))
     }
@@ -245,6 +253,13 @@ class Range < Object
     if same, ok := any(self).(*Range[any]); ok {
       return same
     }
-    return &Range[any]{b: rbUnbox(self.b), e: rbUnbox(self.e), excl: self.excl, endless: self.endless}
+    return &Range[any]{b: rbUnbox(self.b), e: rbUnbox(self.e), excl: self.excl, endless: self.endless, beginless: self.beginless}
   }
+
+  #: (Range[E]) -> bool
+  def overlap?(other) = %x{ Boolean(rbRangeOverlap(self, other)) }
+
+  # Integer ranges only: the smallest value the block is true for (find-minimum mode).
+  #: () { (E) -> bool } -> E?
+  def bsearch = %x{ return rbRangeBsearch(self, func(x E) bool { return bool(blk(x)) }) }
 end

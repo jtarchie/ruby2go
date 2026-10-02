@@ -1,19 +1,4 @@
 Compile errors and warnings for control flow, exceptions, locals and assignment forms (docs/design.md decisions 4, 11, 14, 20, 33).
--- for_loop.rb --
-# error: main.rb:3: unsupported syntax: ForNode
-arr = [1] #: Array[Integer]
-for x in arr
-  puts x
-end
--- retry.rb --
-# error: main.rb:7: unsupported syntax: RetryNode
-n = 0
-begin
-  n += 1
-  raise "again" if n < 3
-rescue
-  retry
-end
 -- redo.rb --
 # error: main.rb:3: unsupported syntax: RedoNode
 [1].each do |x|
@@ -24,24 +9,6 @@ end
 i = 0
 r = while i < 3
   i += 1
-end
--- begin_end_while.rb --
-# error: main.rb:5: begin/end while is not supported
-i = 0
-begin
-  i += 1
-end while i < 3
--- begin_end_until.rb --
-# error: main.rb:5: begin/end while is not supported
-i = 0
-begin
-  i += 1
-end until i > 3
--- case_without_subject.rb --
-# error: main.rb:3: case without a subject is not supported
-x = 3
-case
-when x > 1 then puts "big"
 end
 -- case_in_pattern.rb --
 # error: main.rb:3: unsupported syntax: CaseMatchNode
@@ -55,15 +22,6 @@ LIST = [1, 2] #: Array[Integer]
 x = 3
 case x
 when *LIST then puts "listed"
-end
--- begin_else.rb --
-# error: main.rb:2: begin/else is not supported
-begin
-  puts 1
-rescue
-  puts 2
-else
-  puts 3
 end
 -- rescue_non_class.rb --
 # error: main.rb:5: rescue needs exception class names
@@ -227,14 +185,6 @@ t = s || "b"
 # error: main.rb:3: `||` on a non-nilable Integer is always the left side
 count = 0
 puts(count || 1)
--- multi_splat.rb --
-# error: main.rb:3: splat in multiple assignment is not supported
-arr = [1, 2] #: Array[Integer]
-a, *b = arr
--- multi_leading_splat.rb --
-# error: main.rb:3: splat in multiple assignment is not supported
-arr = [1, 2] #: Array[Integer]
-*a, b = arr
 -- multi_index_target.rb --
 # error: main.rb:3: unsupported assignment target IndexTargetNode
 arr = [1, 2] #: Array[Integer]
@@ -249,9 +199,6 @@ class Pt
 end
 pt = Pt.new
 pt.x, y = 1, 2
--- multi_nested_target.rb --
-# error: main.rb:2: unsupported assignment target MultiTargetNode
-(a, b), c = [1, 2], 3
 -- multi_nil_into_new_local.rb --
 # error: main.rb:2: cannot infer a type from nil; annotate the target first
 a, b = nil, 1
@@ -322,16 +269,6 @@ raise e
 c = [1].empty?
 x = if c then raise "x" else raise "y" end
 puts x
--- def_rescue_else.rb --
-# error: main.rb:3: begin/else is not supported
-#: () -> void
-def f
-  puts 1
-rescue
-  puts 2
-else
-  puts 3
-end
 -- multi_untyped.rb --
 # error: main.rb:3: cannot destructure untyped
 u = [1, 2] #: untyped
@@ -345,6 +282,20 @@ a, b = h["k"]
 lo = 0
 arr = [3, 4] #: Array[Integer]
 lo, hi = arr
--- multi_trailing_comma.rb --
-# error: main.rb:2: splat in multiple assignment is not supported
-first, = [7, 8] #: Array[Integer]
+-- begin_end_while_next.rb --
+# error: main.rb:4: next inside begin/end while is not supported
+i = 0
+begin
+  next if i == 1
+  i += 1
+end while i < 3
+-- defined_ivar.rb --
+# error: main.rb:2: defined?(@a) depends on whether it was ever assigned
+puts defined?(@a).inspect
+-- retry_in_block.rb --
+# error: main.rb:5: retry is only supported directly in a rescue clause
+begin
+  raise "x"
+rescue
+  [1].map { retry }
+end

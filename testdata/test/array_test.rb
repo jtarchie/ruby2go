@@ -2258,4 +2258,85 @@ module ArrayTests
       assert_same FROZEN, FROZEN.freeze
     end
   end
+
+  # ruby/spec core/array and core/enumerable gaps (#49)
+  class ArrayRubySpecTest < Minitest::Test
+    def test_enumerable_queries
+      assert_equal [true, false], [[1, 2, 3].one? { |x| x > 2 }, [1, 2, 3].one? { |x| x > 1 }]
+      assert_equal [1, 1, nil], [(1..3).find_index(2), (1..3).find_index { |x| x > 1 }, (1..3).find_index(9)]
+      assert_equal ["a", "dd"], %w[a b c dd ee].minmax_by(&:size)
+      assert_equal [1, 1, 2, 2], [1, 2].collect_concat { |x| [x, x] }
+      assert_equal [2, 4], [1, 2].each.with_object([]) { |x, acc| acc << x * 2 }
+    end
+
+    def test_enumerable_cycle
+      out = [] #: Array[Integer]
+      [1, 2].cycle do |x|
+        out << x
+        break if out.size > 4
+      end
+      [3].cycle(2) { |x| out << x }
+      [].cycle { |x| out << x }
+      assert_equal [1, 2, 1, 2, 1, 3, 3], out
+    end
+
+    def test_enumerable_slicing
+      assert_equal [[1], [2, 3], [4]], [1, 2, 3, 4].slice_before(&:even?).to_a
+      assert_equal [[1, 2], [3, 4]], [1, 2, 3, 4].slice_after(&:even?).to_a
+      assert_equal [[true, [1]], [false, [2]], [true, [1, 3]]], [1, 2, 1, 3].chunk(&:odd?).to_a
+      assert_equal [[true, [1]], [true, [3]]], [1, 2, 3].chunk { |x| x == 2 ? nil : x.odd? }.to_a
+    end
+
+    def test_repeated_combinations
+      assert_equal [[1, 1], [1, 2], [2, 2]], [1, 2].repeated_combination(2).to_a
+      assert_equal [[1, 1], [1, 2], [2, 1], [2, 2]], [1, 2].repeated_permutation(2).to_a
+      assert_equal [[]], [1].repeated_combination(0).to_a
+      assert_equal [], [1].repeated_permutation(-1).to_a
+    end
+
+    def test_array_access
+      a = [1, 3, 5, 7]
+      assert_equal [7, nil], [a.at(-1), a.at(9)]
+      assert_equal [1, 5], a.fetch_values(0, 2)
+      assert_raises(IndexError) { a.fetch_values(9) }
+      assert_equal [1, nil], [a.bsearch_index { |x| x >= 3 }, a.bsearch_index { |x| x > 9 }]
+      assert_equal [7, nil], [a.rfind(&:odd?), a.rfind(&:even?)]
+      b = [1]
+      assert_same b, b.replace([2, 3])
+      assert_equal [2, 3], b
+    end
+  end
+
+  # ruby/spec language gaps (#49): splat and nested multiple assignment, |a, *rest|
+  class ArrayRubySpecDestructureTest < Minitest::Test
+    #: () -> [Integer, String, Float]
+    def array_triple = [1, "s", 2.5]
+
+    def test_multiple_assignment
+      a, *b = [1, 2, 3]
+      *c, d = [1, 2, 3]
+      e, *f, g = [1, 2, 3, 4]
+      h, *i, j = [1]
+      assert_equal [1, [2, 3], [1, 2], 3, 1, [2, 3], 4, 1, [], nil], [a, b, c, d, e, f, g, h, i, j]
+      k, (l, m) = 1, [2, 3]
+      n, = [7, 8]
+      o, * = [5, 6]
+      q, *r = array_triple
+      s1, (s2, s3), s4 = 1, [2, 3], 4
+      assert_equal [1, 2, 3, 7, 5, 1, ["s", 2.5], [1, 2, 3, 4]], [k, l, m, n, o, q, r, [s1, s2, s3, s4]]
+    end
+
+    def test_block_rest_params
+      seen = [] #: Array[untyped]
+      [[1, 2, 3], [4]].each { |a, *r| seen << [a, r] }
+      tuples = [[1, "a", 2.5]] #: Array[[Integer, String, Float]]
+      tuples.each { |a, *r| seen << [a, r] }
+      { x: 1 }.each { |k, *v| seen << [k, v] }
+      [1, 2].each_with_index { |*all| seen << all }
+      [[1, 2]].each { |*all| seen << all }
+      [[1, 2, 3]].each { |a, *| seen << a }
+      assert_equal [[1, [2, 3]], [4, []], [1, ["a", 2.5]], [:x, [1]], [1, 0], [2, 1], [[1, 2]], 1], seen
+      assert_equal [3, 5], [[1, 2, 3], [4, 5]].map { |first, *rest| rest.size + (first || 0) }
+    end
+  end
 end

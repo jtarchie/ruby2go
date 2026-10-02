@@ -25,32 +25,18 @@ puts h.size
 # error: main.rb:3: undefined method default= for Hash[String, Integer]
 h = {} #: Hash[String, Integer]
 h.default = 0
--- double_splat_literal.rb --
-# error: main.rb:3: unsupported syntax: AssocSplatNode
-a = { x: 1 } #: Hash[Symbol, Integer]
-puts({ y: 2, **a }.inspect)
--- double_splat_call.rb --
-# error: main.rb:5: unsupported syntax: AssocSplatNode
-#: (Hash[Symbol, Integer]) -> String
-def show(o) = o.inspect
-a = { x: 1 } #: Hash[Symbol, Integer]
-puts show(y: 2, **a)
--- value_omission.rb --
-# error: main.rb:3: unsupported syntax: ImplicitNode
-x = 1
-puts({ x: }.inspect)
 -- keyword_param.rb --
-# error: main.rb:3: keyword and post parameters are not supported
+# error: main.rb:3: def has 1 keyword parameters but its signature has 0
 #: (Integer) -> Integer
 def f(a:) = a
 puts f(a: 1)
 -- keyword_param_default.rb --
-# error: main.rb:3: keyword and post parameters are not supported
+# error: main.rb:3: def has 1 keyword parameters but its signature has 0
 #: (Integer) -> Integer
 def f(a: 1) = a
 puts f(a: 2)
 -- keyword_rest_param.rb --
-# error: main.rb:3: keyword and post parameters are not supported
+# error: main.rb:3: def has 1 keyword parameters but its signature has 0
 #: (Hash[Symbol, Integer]) -> String
 def f(**opts) = opts.inspect
 puts f(a: 1)
@@ -203,3 +189,28 @@ class MyHash < Hash
 end
 m = MyHash.new #: MyHash
 puts m.twice
+-- double_splat_not_hash.rb --
+# error: main.rb:3: **a must be a Hash
+a = [1]
+puts({ **a }.inspect)
+-- keyword_missing.rb --
+# error: main.rb:4: main#f: missing keyword: :a
+#: (a: Integer) -> Integer
+def f(a:) = a
+puts f
+-- keyword_unknown.rb --
+# error: main.rb:4: main#f: unknown keyword: :b
+#: (a: Integer) -> Integer
+def f(a:) = a
+puts f(a: 1, b: 2)
+-- keyword_splat_into_named.rb --
+# error: main.rb:5: **splat into f's named keyword parameters is not supported
+#: (a: Integer) -> Integer
+def f(a:) = a
+h = { a: 1 }
+puts f(**h)
+-- keyword_optional_mismatch.rb --
+# error: main.rb:3: keyword b: is optional in only one of the signature and the def
+#: (b: Integer) -> Integer
+def f(b: 1) = b
+puts f(b: 2)

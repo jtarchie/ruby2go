@@ -381,6 +381,110 @@ class Integer < Object
   end
 end
 
+# Shifts past 64 bits raise RangeError where MRI would promote to a Bignum (decision 35).
+class Integer
+  #: (Integer) -> Integer
+  def &(other) = %x{ self & other }
+
+  #: (Integer) -> Integer
+  def |(other) = %x{ self | other }
+
+  #: (Integer) -> Integer
+  def ^(other) = %x{ self ^ other }
+
+  #: () -> Integer
+  def ~ = %x{ ^self }
+
+  #: (Integer) -> Integer
+  def <<(other) = %x{ rbIntShl(self, other) }
+
+  #: (Integer) -> Integer
+  def >>(other) = %x{ rbIntShl(self, -other) }
+
+  #: (Integer) -> Integer
+  def [](i) = %x{
+    if i < 0 {
+      return 0
+    }
+    return (self >> min(i, 63)) & 1
+  }
+
+  #: (Integer) -> bool
+  def allbits?(mask) = %x{ self&mask == mask }
+
+  #: (Integer) -> bool
+  def anybits?(mask) = %x{ self&mask != 0 }
+
+  #: (Integer) -> bool
+  def nobits?(mask) = %x{ self&mask == 0 }
+
+  #: (Integer) -> Integer
+  def ceildiv(other) = -((-self) / other)
+
+  #: () -> Integer
+  def next = self + 1
+
+  #: () -> Integer
+  def magnitude = abs
+
+  #: () -> Integer
+  def to_int = self
+
+  #: () -> Integer
+  def size = 8
+
+  #: (Integer) -> [Integer, Integer]
+  def gcdlcm(other) = [gcd(other), lcm(other)]
+
+  #: (untyped) -> bool
+  def eql?(other) = %x{
+    o, ok := rbUnbox(other).(Integer)
+    return Boolean(ok && o == self)
+  }
+
+  #: () -> Integer
+  def round = self
+
+  #: () -> Integer
+  def floor = self
+
+  #: () -> Integer
+  def ceil = self
+
+  #: () -> Integer
+  def truncate = self
+
+  #: (Integer) -> Integer
+  def __round_1(digits) = %x{ rbIntRoundTo(self, digits, 3) }
+
+  #: (Integer) -> Integer
+  def __floor_1(digits) = %x{ rbIntRoundTo(self, digits, 0) }
+
+  #: (Integer) -> Integer
+  def __ceil_1(digits) = %x{ rbIntRoundTo(self, digits, 1) }
+
+  #: (Integer) -> Integer
+  def __truncate_1(digits) = %x{ rbIntRoundTo(self, digits, 2) }
+
+  #: () -> Integer?
+  def nonzero? = zero? ? nil : self
+
+  #: () -> Integer
+  def abs2 = self * self
+
+  #: () -> Integer
+  def conj = self
+
+  #: () -> Integer
+  def imag = 0
+
+  #: () -> bool
+  def real? = true
+
+  #: () -> [Integer, Integer]
+  def rect = [self, 0]
+end
+
 # Kernel#Integer: strict conversion. A String argument must be a number
 # entirely; `nil` raises TypeError. The argument's class picks the overload
 # at compile time (decision 12), so only an untyped or nilable one is boxed.

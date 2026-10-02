@@ -285,3 +285,30 @@ func rbHypot(x, y float64) float64 {
 	bx, by := rbBF().SetFloat64(x), rbBF().SetFloat64(y)
 	return rbF(rbBF().Sqrt(rbBF().Add(rbBF().Mul(bx, bx), rbBF().Mul(by, by))))
 }
+
+// rbMathBig evaluates f in big precision and rounds once (decision 43). |x| below tiny
+// returns x itself (f(x) ≈ x there); x == edge or a non-finite x goes to Go's math.
+func rbMathBig(x, tiny, edge float64, f func(*big.Float) *big.Float) float64 {
+	switch {
+	case math.IsNaN(x) || math.IsInf(x, 0):
+		return map[float64]func(float64) float64{-1: math.Log1p, 0: math.Expm1, 1: math.Acosh}[edge](x)
+	case math.Abs(x) < tiny:
+		return x
+	case x == edge && edge == -1:
+		return math.Inf(-1)
+	case x == edge && edge == 1:
+		return 0
+	}
+	return rbF(f(rbBF().SetFloat64(x)))
+}
+
+// rbAsinh is Math.asinh: ln(|x| + sqrt(x²+1)) with x's sign, in big precision.
+func rbAsinh(x float64) float64 {
+	if math.IsNaN(x) || math.IsInf(x, 0) || math.Abs(x) < 1e-20 {
+		return x
+	}
+	a := rbBF().SetFloat64(math.Abs(x))
+	r := rbBF().Add(rbBF().Mul(a, a), rbBFInt(1))
+	v := rbF(rbBigLog(r.Add(r.Sqrt(r), a)))
+	return math.Copysign(v, x)
+}

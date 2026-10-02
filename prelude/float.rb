@@ -196,6 +196,50 @@ class Float < Object
   def frozen? = true
 end
 
+class Float
+  #: () -> Float
+  def next_float = %x{ Float(math.Nextafter(float64(self), math.Inf(1))) }
+
+  #: () -> Float
+  def prev_float = %x{ Float(math.Nextafter(float64(self), math.Inf(-1))) }
+
+  #: () -> bool
+  def positive? = self > 0
+
+  #: () -> bool
+  def negative? = self < 0
+
+  #: () -> Float
+  def magnitude = abs
+
+  #: () -> Integer
+  def to_int = to_i
+
+  #: (untyped) -> bool
+  def eql?(other) = %x{
+    o, ok := rbUnbox(other).(Float)
+    return Boolean(ok && o == self)
+  }
+
+  #: () -> Float?
+  def nonzero? = zero? ? nil : self
+
+  #: () -> Float
+  def abs2 = self * self
+
+  #: () -> Float
+  def conj = self
+
+  #: () -> Integer
+  def imag = 0
+
+  #: () -> bool
+  def real? = true
+
+  #: () -> [Float, Integer]
+  def rect = [self, 0]
+end
+
 # Kernel#Float: strict conversion, overloaded like Kernel#Integer.
 module Kernel
   private

@@ -38,6 +38,54 @@ class Symbol < Object
 
   #: () -> Integer
   def hash = name.hash
+
+  #: () -> Integer
+  def length = name.size
+
+  #: () -> bool
+  def empty? = name.empty?
+
+  #: () -> Symbol
+  def upcase = name.upcase.to_sym
+
+  #: () -> Symbol
+  def downcase = name.downcase.to_sym
+
+  #: () -> Symbol
+  def capitalize = name.capitalize.to_sym
+
+  #: () -> Symbol
+  def swapcase = name.swapcase.to_sym
+
+  #: () -> Symbol
+  def succ = name.succ.to_sym
+
+  #: () -> Symbol
+  def next = succ
+
+  #: (Symbol) -> Integer
+  def casecmp(other) = name.casecmp(other.name)
+
+  #: (Symbol) -> bool
+  def casecmp?(other) = name.casecmp?(other.name)
+
+  #: (String) -> bool
+  def start_with?(prefix) = name.start_with?(prefix)
+
+  #: (String) -> bool
+  def end_with?(suffix) = name.end_with?(suffix)
+
+  #: () -> String
+  def id2name = to_s
+
+  #: (Integer) -> String?
+  def [](i) = name[i]
+
+  #: (Integer, Integer) -> String?
+  def __idx_2(start, count) = name[start, count]
+
+  #: (Range[Integer]) -> String?
+  def __idx_range(r) = name[r]
 end
 
 class String

@@ -133,3 +133,54 @@ func rbFlattenRows[U comparable](rows []*Array[U], depth int) *Array[U] {
 	}
 	return out
 }
+
+// rbRepeated is Array#repeated_combination (combo) or #repeated_permutation, eagerly in MRI's order.
+func rbRepeated[E comparable](all []E, k int, combo bool) *Array[*Array[E]] {
+	out := &Array[*Array[E]]{}
+	n := len(all)
+	if k < 0 || n == 0 && k > 0 {
+		return out
+	}
+	idx := make([]int, k)
+	for {
+		c := make(Array[E], k)
+		for i, j := range idx {
+			c[i] = all[j]
+		}
+		*out = append(*out, &c)
+		i := k - 1
+		for i >= 0 && idx[i] == n-1 {
+			i--
+		}
+		if i < 0 {
+			return out
+		}
+		idx[i]++
+		for j := i + 1; j < k; j++ {
+			if combo {
+				idx[j] = idx[i]
+			} else {
+				idx[j] = 0
+			}
+		}
+	}
+}
+
+// rbMidSplat is `a, *mid, z = arr`'s mid: what the lead and trail targets leave, possibly empty.
+func rbMidSplat[E comparable](a *Array[E], lead, trail int) *Array[E] {
+	end := max(len(*a)-trail, lead)
+	if lead >= len(*a) {
+		return &Array[E]{}
+	}
+	out := append(Array[E]{}, (*a)[lead:end]...)
+	return &out
+}
+
+// rbTrailIdx is trailing target j's element: counted from the end, never overlapping the leading targets.
+func rbTrailIdx[E comparable](a *Array[E], lead, trail, j int) *E {
+	i := max(len(*a)-trail, lead) + j
+	if i >= len(*a) {
+		return nil
+	}
+	return &(*a)[i]
+}

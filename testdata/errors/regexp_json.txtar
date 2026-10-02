@@ -178,20 +178,12 @@ puts JSON.generate
 -- regexp_new_arity.rb --
 # error: main.rb:2: Regexp.new: wrong number of arguments (given 3
 puts Regexp.new("a", "i", 1).inspect
--- named_captures_undefined.rb --
-# error: main.rb:3: undefined method named_captures for MatchData
-m = "ab".match(/(?<x>a)/)
-puts m.named_captures.inspect if m
 -- symbol_eqtilde_undefined.rb --
 # error: main.rb:2: undefined method =~ for Symbol
 puts (:abc =~ /b/).inspect
 -- string_where_regexp_expected.rb --
 # error: main.rb:2:
 puts "abc".match?("b")
--- matchdata_name_index.rb --
-# error: main.rb:3:
-m = "2024".match(/(?<year>\d+)/)
-puts m[:year].inspect if m
 -- csv_unknown_option.rb --
 # error: main.rb:3: CSV option header_converters: is not supported
 require "csv"

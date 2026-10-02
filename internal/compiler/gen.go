@@ -52,6 +52,8 @@ type fctx struct {
 	begins        int  // nesting depth of rescue wrappers
 	retVar        string
 	wrap          *wrapFrame // the innermost begin wrapper
+	retryFlag     string     // set by `retry` in the rescue clauses being generated
+	retryDepth    int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet   bool
 	rescues       int // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 }
@@ -480,12 +482,20 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genWhile(n.Predicate, n.Statements, false, n.IsBEGIN_MODIFIER(), t)
 	case *parser.UntilNode:
 		f.genWhile(n.Predicate, n.Statements, true, n.IsBEGIN_MODIFIER(), t)
+	case *parser.ForNode:
+		f.genFor(n, t)
 	case *parser.ReturnNode:
 		f.genReturn(n)
 	case *parser.BreakNode:
 		f.genBreak(n)
 	case *parser.NextNode:
 		f.genNext(n)
+	case *parser.RetryNode:
+		if f.retryFlag == "" || f.closures != f.retryDepth {
+			f.errorf(n, "retry is only supported directly in a rescue clause")
+		}
+		f.emit("%s = true", f.retryFlag)
+		f.emit("return")
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
@@ -707,7 +717,8 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 
 func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bool, doWhile bool, t tail) {
 	if doWhile {
-		f.errorf(pred, "begin/end while is not supported")
+		f.genDoWhile(pred, body, negate, t)
+		return
 	}
 	f.pushLoop(loopFor)
 	saved := f.enterBlock()
@@ -738,6 +749,54 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 	f.emit("}")
 	f.popLoop()
 	f.emptyTail(pred, t)
+}
+
+// genDoWhile is `begin ... end while c`: the body runs first and the condition, which may read its locals, ends each pass.
+func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate bool, t tail) {
+	if nx := loopNext(body); body != nil && nx != nil {
+		// ponytail: Go's continue would skip the condition; a flag or label scheme could carry it
+		f.errorf(nx, "next inside begin/end while is not supported")
+	}
+	f.pushLoop(loopFor)
+	saved := f.enterBlock()
+	f.emit("for {")
+	f.indent++
+	f.genStmts(body, tail{})
+	cond, _ := f.genCond(pred)
+	if negate {
+		f.emit("if %s {", cond)
+	} else {
+		f.emit("if !(%s) {", cond)
+	}
+	f.emit("\tbreak")
+	f.emit("}")
+	f.indent--
+	f.leaveBlock(saved)
+	f.emit("}")
+	f.popLoop()
+	f.emptyTail(pred, t)
+}
+
+// loopNext finds a `next` that targets the enclosing loop, not a nested loop, block or def.
+func loopNext(n parser.Node) parser.Node {
+	switch n := n.(type) {
+	case nil:
+		return nil
+	case *parser.StatementsNode:
+		if n == nil {
+			return nil
+		}
+	case *parser.NextNode:
+		return n
+	case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+		return nil
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if nx := loopNext(ch); nx != nil {
+			return nx
+		}
+	}
+	return nil
 }
 
 func (f *fctx) genReturn(n *parser.ReturnNode) {
@@ -866,7 +925,8 @@ func (f *fctx) emitNext(n parser.Node, l *loopFrame) {
 
 func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	if n.Predicate == nil {
-		f.errorf(n, "case without a subject is not supported")
+		f.genStmt(f.c.caseAsIf(n), t)
+		return
 	}
 	typeSwitch := true
 	for _, w := range n.Conditions {
@@ -919,10 +979,52 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	f.emit("}")
 }
 
+// caseAsIf is `case; when a, b then x; else y; end` as `if a || b then x else y end`.
+func (c *Compiler) caseAsIf(n *parser.CaseNode) *parser.IfNode {
+	return c.rewrite(n, func() parser.Node {
+		var els parser.Node
+		if n.ElseClause != nil {
+			els = n.ElseClause
+		}
+		for i := len(n.Conditions) - 1; i >= 0; i-- {
+			w := n.Conditions[i].(*parser.WhenNode)
+			pred := w.Conditions[0]
+			for _, c := range w.Conditions[1:] {
+				pred = &parser.OrNode{Location: c.GetLocation(), Left: pred, Right: c}
+			}
+			els = &parser.IfNode{Location: w.Location, Predicate: pred, Statements: w.Statements, Subsequent: els}
+		}
+		return els
+	}).(*parser.IfNode)
+}
+
+// rewrite returns n's desugared form, building it once so every pass (probe and emit) sees the same nodes.
+func (c *Compiler) rewrite(n parser.Node, build func() parser.Node) parser.Node {
+	if r := c.rewrites[n]; r != nil {
+		return r
+	}
+	if c.rewrites == nil {
+		c.rewrites = map[parser.Node]parser.Node{}
+	}
+	c.rewrites[n] = build()
+	return c.rewrites[n]
+}
+
 // caseEqq renders a `when`'s `cond === subj` as a Go bool: is_a? for a
 // class, the condition's own === when its class defines one (at run time
 // when it is untyped or T?), else ==, Object#==='s default.
 func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
+	if sp, ok := cond.(*parser.SplatNode); ok { // `when *LIST`: any element's === matches
+		e := f.genExpr(sp.Expression, nil)
+		at, ok := e.typ.(TClass)
+		if !ok || at.C.RubyName != "Array" {
+			f.errorf(cond, "when *%s needs an Array", f.f.text(sp.Expression.GetLocation()))
+		}
+		list := f.materialize(e)
+		x := f.newTmp()
+		eqq := f.caseEqq(&exprNode{Node: sp, e: expr{code: x, typ: at.Args[0]}}, subj)
+		return fmt.Sprintf("slices.ContainsFunc(*%s, func(%s %s) bool { return %s })", list, x, f.c.goType(at.Args[0]), eqq)
+	}
 	if cls := f.classRef(cond); cls != nil {
 		// not isACheck: its discard of a folded subject would land in the previous arm's body
 		return f.isA(cond, subj, cls)
@@ -1121,9 +1223,6 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 		f.genStmts(n.Statements, t)
 		return
 	}
-	if n.ElseClause != nil {
-		f.errorf(n, "begin/else is not supported")
-	}
 	// Where does the value go?
 	inner := t
 	if t.kind == tailReturn && t.typ != nil && !isVoid(t.typ) {
@@ -1138,12 +1237,43 @@ func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
 		// rescue's values are discarded, as in Ruby
 		inner = tail{}
 	}
+	retry := n.RescueClause != nil && hasRetry(n.RescueClause)
+	if retry && n.EnsureClause != nil {
+		// retry reruns the body, not ensure: ensure goes in an outer begin around the retried one
+		f.genBegin(f.c.rewrite(n, func() parser.Node {
+			in := &parser.BeginNode{Location: n.Location, Statements: n.Statements, RescueClause: n.RescueClause, ElseClause: n.ElseClause}
+			return &parser.BeginNode{Location: n.Location, Statements: &parser.StatementsNode{Location: n.Location, Body: []parser.Node{in}}, EnsureClause: n.EnsureClause}
+		}).(*parser.BeginNode), t)
+		return
+	}
 	w := &wrapFrame{flag: f.newTmp(), endsRet: t.kind == tailReturn && t.typ != nil && f.begins == 0}
-	call := f.capture(func() { f.genWrapper(n, inner, w) })
+	retryFlag := ""
+	if retry {
+		retryFlag = f.newTmp()
+		f.indent++
+	}
+	call := f.capture(func() {
+		saved, savedDepth := f.retryFlag, f.retryDepth
+		f.retryFlag, f.retryDepth = retryFlag, f.closures
+		f.genWrapper(n, inner, w)
+		f.retryFlag, f.retryDepth = saved, savedDepth
+	})
 	if slices.Contains(w.used[:], true) {
 		f.emit("%s := 0", w.flag)
 	}
-	f.buf.WriteString(call)
+	if retry {
+		// `retry` leaves the rescue with the flag set; the begin runs again
+		f.indent--
+		f.emit("for {")
+		f.emit("\t%s := false", retryFlag)
+		f.buf.WriteString(call)
+		f.emit("\tif !%s {", retryFlag)
+		f.emit("\t\tbreak")
+		f.emit("\t}")
+		f.emit("}")
+	} else {
+		f.buf.WriteString(call)
+	}
 	for k, used := range w.used {
 		if used {
 			f.emit("if %s == %d {", w.flag, k)
@@ -1181,11 +1311,20 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 	// Generate in Ruby's order (body, rescue, ensure) so locals assigned in
 	// the body are known to rescue and ensure; emit in Go's order, since
 	// the defers must be registered before the body runs.
+	// With an else clause the body's value is dropped: else's (or a rescue's) is the result.
+	bodyTail, ran := inner, ""
+	if n.ElseClause != nil {
+		bodyTail, ran = tail{}, f.newTmp()
+		f.indent++ // body and rescues go one level down, in their own literal
+	}
 	body := f.capture(func() {
 		// its own block, so the rescue/ensure closures (emitted before it)
 		// see body locals as foreign and hoist them
 		saved := f.enterBlock()
-		f.genStmts(n.Statements, inner)
+		f.genStmts(n.Statements, bodyTail)
+		if ran != "" && !terminates(n.Statements) {
+			f.emit("%s = true", ran)
+		}
 		f.leaveBlock(saved)
 	})
 	rescue := f.capture(func() {
@@ -1213,6 +1352,9 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 			f.emit("}()")
 		}
 	})
+	if ran != "" {
+		f.indent--
+	}
 	ensure := f.capture(func() {
 		if n.EnsureClause != nil {
 			f.emit("defer func() {")
@@ -1240,8 +1382,25 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 		}
 	})
 	f.buf.WriteString(ensure)
-	f.buf.WriteString(rescue)
-	f.buf.WriteString(body)
+	if ran == "" {
+		f.buf.WriteString(rescue)
+		f.buf.WriteString(body)
+	} else {
+		// begin/else: the rescues guard the body only, so they live in an inner
+		// literal; else runs after it when the body finished, under ensure
+		f.emit("%s := false", ran)
+		f.emit("rbBegin(func() {")
+		f.buf.WriteString(rescue)
+		f.buf.WriteString(body)
+		f.emit("})")
+		f.emit("if %s {", ran)
+		saved := f.enterBlock()
+		f.indent++
+		f.genStmts(n.ElseClause.Statements, inner)
+		f.indent--
+		f.leaveBlock(saved)
+		f.emit("}")
+	}
 	f.begins--
 	f.wrap = savedWrap
 	f.indent--
@@ -1249,20 +1408,50 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 	f.emit("})")
 }
 
+// hasRetry reports a `retry` in rescue clauses rc (not in a nested begin's own rescues, a block or a def).
+func hasRetry(n parser.Node) bool {
+	switch n := n.(type) {
+	case nil:
+		return false
+	case *parser.RetryNode:
+		return true
+	case *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+		return false
+	case *parser.BeginNode: // its own rescues own their retries; nil clauses are typed nils
+		return n.Statements != nil && hasRetry(n.Statements) || n.ElseClause != nil && hasRetry(n.ElseClause) || n.EnsureClause != nil && hasRetry(n.EnsureClause)
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if hasRetry(ch) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 	var classes []*Class
 	if len(rc.Exceptions) == 0 {
 		classes = append(classes, f.c.classes["StandardError"])
 	}
+	var conds []string
+	for _, cls := range classes { // the bare rescue's StandardError
+		conds = append(conds, fmt.Sprintf("rbIsA[%s](r_)", f.c.goType(TClass{C: cls})))
+	}
 	for _, ex := range rc.Exceptions {
+		if sp, ok := ex.(*parser.SplatNode); ok { // `rescue *ERRORS`: class objects checked at run time
+			e := f.genExpr(sp.Expression, nil)
+			if !isClass(e.typ, "Array") {
+				f.errorf(ex, "rescue *%s needs an Array of exception classes", f.f.text(sp.Expression.GetLocation()))
+			}
+			conds = append(conds, fmt.Sprintf("slices.ContainsFunc(*%s, func(k %s) bool { return rbIsInstanceOf(k, r_) })", f.materialize(e), f.c.goType(e.typ.(TClass).Args[0])))
+			classes = append(classes, f.c.classes["Exception"])
+			continue
+		}
 		cls := f.classRef(ex)
 		if cls == nil {
 			f.errorf(ex, "rescue needs exception class names")
 		}
 		classes = append(classes, cls)
-	}
-	conds := make([]string, 0, len(classes))
-	for _, cls := range classes {
 		conds = append(conds, fmt.Sprintf("rbIsA[%s](r_)", f.c.goType(TClass{C: cls})))
 	}
 	f.emit("if %s {", strings.Join(conds, " || "))
@@ -1339,10 +1528,10 @@ func terminates(st *parser.StatementsNode) bool {
 		return false
 	}
 	switch last := st.Body[len(st.Body)-1].(type) {
-	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
+	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode, *parser.RetryNode:
 		return true
 	case *parser.CallNode:
-		return last.Receiver == nil && (last.Name == "raise" || last.Name == "throw")
+		return last.Receiver == nil && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
 	}
 	return false
 }
@@ -1852,9 +2041,16 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}
+		kwBit := 0
 		for i, p := range m.Params {
-			if m.calleeDefaults && p.Default != nil {
-				f.fillDefault(i, p)
+			switch {
+			case p.Keyword && m.calleeDefaults && p.Default != nil:
+				f.fillDefault(fmt.Sprintf("rbKw&%d == 0", 1<<kwBit), p)
+			case m.calleeDefaults && p.Default != nil:
+				f.fillDefault(fmt.Sprintf("rbArgc <= %d", i), p)
+			}
+			if p.Keyword {
+				kwBit++
 			}
 		}
 		if m.Iterator {
@@ -1880,12 +2076,12 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 }
 
 // fillDefault runs a left-out param's default where Ruby does: in the callee, after the params before it.
-func (f *fctx) fillDefault(i int, p Param) {
+func (f *fctx) fillDefault(missing string, p Param) {
 	name := goLocalName(p.Name)
 	if info := f.localInfo(p.Name); f.pass == 2 && info != nil && info.reads == 1 {
 		name = "_" // never read: evaluated for its effects only
 	}
-	f.emit("if rbArgc <= %d {", i)
+	f.emit("if %s {", missing)
 	f.indent++
 	d := f.genExpr(p.Default, p.Type)
 	f.emit("%s = %s", name, f.coerce(p.Default, d, p.Type))

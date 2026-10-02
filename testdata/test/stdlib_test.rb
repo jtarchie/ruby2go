@@ -1171,4 +1171,47 @@ module StdlibTests
       assert_equal 10, w.dbl
     end
   end
+
+  # ruby/spec core/file, dir, process, signal, time and thread gaps (#49)
+  class RubySpecSystemTest < Minitest::Test
+    def test_file_predicates
+      Dir.mktmpdir do |d|
+        f = File.join(d, "a.txt")
+        File.write(f, "hi")
+        e = File.join(d, "e.txt")
+        File.write(e, "")
+        l = File.join(d, "l")
+        File.symlink(f, l)
+        assert_equal [true, false, false], [File.zero?(e), File.empty?(f), File.zero?(File.join(d, "nope"))]
+        assert_equal [true, true, false, true, true], [File.readable?(f), File.writable?(f), File.executable?(f), File.executable?(d), File.owned?(f)]
+        assert_equal ["file", "directory", "link", "characterSpecial"], [File.ftype(f), File.ftype(d), File.ftype(l), File.ftype("/dev/null")]
+        assert_equal [true, true, true], [File.readlink(l) == f, File.lstat(l).symlink?, File.lstat(d).directory?]
+        assert_equal true, File.realpath(f) == File.realpath(File.join(d, ".", "a.txt"))
+        assert_equal [2, "100600"], [File.chmod(0o600, f, e), File.stat(f).mode.to_s(8)]
+        assert_equal [0, "h"], [File.truncate(f, 1), File.read(f)]
+        sub = File.join(d, "sub")
+        Dir.mkdir(sub)
+        assert_equal [true, false, 0, false], [Dir.empty?(sub), Dir.empty?(d), Dir.delete(sub), Dir.exist?(sub)]
+        missing = false
+        begin
+          File.realpath(File.join(d, "nope"))
+        rescue Errno::ENOENT
+          missing = true
+        end
+        assert missing
+      end
+      assert_equal [["/a/b", "c.rb"], "/dev/null"], [File.split("/a/b/c.rb"), File::NULL]
+      assert_equal [ENV["HOME"], Dir.pwd], [Dir.home, Dir.getwd]
+    end
+
+    def test_process_signal_time_thread
+      assert_equal [true, true, true], [Process.ppid > 0, Process.uid == Process.euid, Process.gid == Process.egid]
+      assert_equal true, Process.getpgrp > 0
+      assert_equal [2, 0, 9], [Signal.list["INT"], Signal.list["EXIT"], Signal.list["KILL"]]
+      assert_equal ["INT", "TERM", "EXIT", nil], [Signal.signame(2), Signal.signame(15), Signal.signame(0), Signal.signame(99)]
+      t = Time.at(0).utc
+      assert_equal [true, 0, 1970], [t.gmt?, t.gmtoff, t.getgm.year]
+      assert_nil Thread.pass
+    end
+  end
 end

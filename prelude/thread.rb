@@ -19,6 +19,15 @@ class Thread < Object
   #: () -> Thread
   def self.current = %x{ return rbCurrentThread() }
 
+  #: () -> nil
+  def self.pass
+    __gosched
+    nil
+  end
+
+  #: () -> void
+  def self.__gosched = %x{ runtime.Gosched() }
+
   #: () -> Thread
   def self.main = %x{ return rbMainThread }
 
