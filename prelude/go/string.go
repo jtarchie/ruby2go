@@ -376,7 +376,7 @@ func rbUnpack(s, format string) *Array[any] {
 				n = len(rest) * per
 			}
 			var b strings.Builder
-			for k := 0; k < n; k++ {
+			for k := range n {
 				c := rest[k/per]
 				switch d {
 				case 'H':
@@ -402,7 +402,8 @@ func rbUnpack(s, format string) *Array[any] {
 			*out = append(*out, String(b))
 			pos = len(s)
 		default:
-			size, signed, big := 0, strings.IndexByte("csqlj", d) >= 0, order == '>'
+			var size int
+			signed, big := strings.IndexByte("csqlj", d) >= 0, order == '>'
 			switch d {
 			case 'C', 'c':
 				size = 1
@@ -446,7 +447,7 @@ func rbUnpack(s, format string) *Array[any] {
 // \u{H...}) are decoded; another escaped character keeps its backslash.
 func rbStrUndump(s string) String {
 	fail := func(msg string) { panic(NewRuntimeError(Ref(String(msg)))) }
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] >= 0x80 {
 			fail("non-ASCII character detected")
 		}
