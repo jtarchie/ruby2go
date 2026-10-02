@@ -83,6 +83,7 @@ func rbExtname(path string) string {
 	}
 	return b[i:]
 }
+
 // rbGlob is Dir.glob: `*`, `?`, `[set]` per path segment (a leading dot
 // only matched by a dot), `**/` for any depth of non-hidden directories,
 // `{a,b}` alternatives expanded in order, and a trailing `/` for
@@ -222,7 +223,6 @@ func rbGlobStep(p, shown string, isDir bool, rest []string, out *[]string) {
 		rbGlobWalk(p, shown+"/", rest, out)
 	}
 }
-
 
 // rbSourceDir is Kernel#__dir__: the source file's absolute directory, resolved against the working directory as MRI does at load.
 func rbSourceDir(name string) String {

@@ -5,4 +5,6 @@ package prelude
 
 type Enumerator_Map_Any interface{ _ToAny() *Enumerator_Map[any] }
 
-type Enumerator_Select_Any interface{ _ToAny() *Enumerator_Select[any] }
+type Enumerator_Select_Any interface {
+	_ToAny() *Enumerator_Select[any]
+}

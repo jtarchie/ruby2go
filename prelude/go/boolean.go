@@ -15,4 +15,3 @@ func rbIsBool(a any, want bool) bool {
 	b, ok := rbUnbox(a).(Boolean)
 	return ok && bool(b) == want
 }
-
