@@ -255,8 +255,9 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 		args = append(args, "-e", "/^(?:"+strings.Join(excluded, "|")+")$/")
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = root                                                           // specs name fixtures relative to the checkout
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) } // Go dumps every goroutine: the hung example's frame is in it
+	cmd.Dir = root                                                                           // specs name fixtures relative to the checkout
+	cmd.Env = append(os.Environ(), "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                 // Go dumps every goroutine: the hung example's frame is in it
 	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.CombinedOutput()
 	r.output = string(out)

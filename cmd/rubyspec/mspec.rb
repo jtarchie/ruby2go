@@ -2,6 +2,7 @@
 # mspec's expectations over minitest, for running ruby/spec under rb2go (cmd/rubyspec).
 # The runner rewrites what must be static first: context → describe, guards, shared specs.
 require "minitest/autorun"
+require "fileutils"
 
 # `actual.should == x`, `actual.should.equal?(x)`, `-> { }.should.raise(E)`; should_not negates.
 class SpecExpectation
@@ -130,3 +131,83 @@ def nan_value = 0.0 / 0.0
 
 #: () -> Float
 def infinity_value = 1.0 / 0.0
+
+# mspec's helpers (mspec/lib/mspec/helpers), typed.
+
+# What a spec records to check later, as mspec's.
+module ScratchPad
+  @@record = nil #: untyped
+
+  #: () -> nil
+  def self.clear
+    @@record = nil
+  end
+
+  #: (untyped) -> untyped
+  def self.record(arg)
+    @@record = arg
+  end
+
+  #: (untyped) -> untyped
+  def self.<<(arg)
+    @@record << arg
+  end
+
+  #: () -> untyped
+  def self.recorded = @@record
+end
+
+SPEC_TEMP_DIR = ENV["SPEC_TEMP_DIR"] || File.join(Dir.pwd, "rubyspec_temp", Process.pid.to_s) #: String
+SPEC_TEMP_UNIQUIFIER = [0] #: Array[Integer]
+
+# A path under SPEC_TEMP_DIR, made unique by a counter before its basename.
+#: (String, ?bool) -> String
+def tmp(name, uniquify = true)
+  FileUtils.mkdir_p(SPEC_TEMP_DIR)
+  if uniquify && !name.empty?
+    SPEC_TEMP_UNIQUIFIER[0] += 1
+    slash = name.rindex("/")
+    at = slash.nil? ? 0 : slash + 1
+    name = "#{name[0, at]}#{SPEC_TEMP_UNIQUIFIER[0]}-#{name[at..]}"
+  end
+  File.join(SPEC_TEMP_DIR, name)
+end
+
+#: (String) -> void
+def mkdir_p(path) = FileUtils.mkdir_p(path)
+
+# Removes paths under SPEC_TEMP_DIR only, as mspec's guard.
+#: (*String) -> void
+def rm_r(*paths)
+  paths.each do |path|
+    path = File.expand_path(path)
+    raise ArgumentError, "#{path} is not prefixed by #{SPEC_TEMP_DIR}" unless path.start_with?(SPEC_TEMP_DIR)
+
+    FileUtils.rm_rf(path)
+  end
+end
+
+#: (String, ?String) ?{ (File) -> void } -> void
+def touch(name, mode = "w", &blk)
+  FileUtils.mkdir_p(File.dirname(name))
+  File.open(name, mode) { |f| blk&.call(f) }
+end
+
+#: (String, String) -> void
+def cp(source, dest) = FileUtils.cp(source, dest)
+
+# The fixtures directory beside file (a shared spec's is its parent's), joined with args.
+#: (String, *String) -> String
+def fixture(file, *args)
+  path = File.dirname(file).delete_suffix("/shared")
+  fixtures = path.end_with?("/fixtures") ? "" : "fixtures"
+  File.join(File.expand_path(path), fixtures, *args)
+end
+
+#: (String, ?String) -> File
+def new_io(name, mode = "w:utf-8") = File.new(name, mode)
+
+#: (?String) -> bot
+def flunk(message = "This example is a failure") = mspec_fail(message)
+
+at_exit { FileUtils.rm_rf(SPEC_TEMP_DIR) }
