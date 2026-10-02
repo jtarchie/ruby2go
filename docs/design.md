@@ -1008,7 +1008,10 @@ resolve; anything not listed is still open.
     method x for C`: no run time can reach a method then. *(Revised: it
     was a dynamic call, a warning, and a NoMethodError when run.)* A
     module's body still dispatches, since an includer may define the
-    name. A value typed `Object` or
+    name. nil held untyped answers Kernel's and Object's public methods
+    (`nil.should`, `frozen?`) through its dispatcher's `recv == nil` arm,
+    since a nil interface has no Go methods to assert. *(Revised: those
+    were NoMethodError.)* A value typed `Object` or
     a module is Go `any` too, so it is dispatched, boxed and `is_a?`-tested
     like `untyped`; a method the module declares keeps its declared result
     type. *(Revised: they used to resolve like concrete classes, so

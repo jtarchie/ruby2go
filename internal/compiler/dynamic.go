@@ -242,6 +242,8 @@ func (c *Compiler) emitDynName(name string) {
 	c.emitDynArms(shared, false)
 	if v, ok := nilConversions[name]; ok {
 		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
+	} else if body := c.nilKernelBody(name); body != "" {
+		c.w("\tif recv == nil {\n\t\tself := recv\n%s\t}\n", body)
 	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
@@ -267,6 +269,16 @@ func (c *Compiler) emitDynName(name string) {
 	for _, w := range own {
 		c.emitDynWrapper(w.cls, w.e, name, w.private, w.body)
 	}
+}
+
+// nilKernelBody is the wrapper body for nil held untyped calling a public Kernel/Object method (`nil.should`): nil has no Go methods to assert.
+func (c *Compiler) nilKernelBody(name string) string {
+	obj := c.classes["Object"]
+	e := obj.lookup(name)
+	if e == nil || e.M.Private || e.M.generic() || e.M.Block != nil || name == "initialize" {
+		return ""
+	}
+	return c.dynWrapperBodyOrWarn(obj, e, name)
 }
 
 // dynWrapper is one class's wrapper for a name, before emission.

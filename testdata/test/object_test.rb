@@ -122,6 +122,11 @@ def tsum(t) = t.val + t.kids.reduce(0) { |a, k| a + tsum(k) }
 #: (Integer) -> String
 def top_helper(n) = "top#{n}"
 
+module Kernel
+  #: () -> String
+  def object_tag = "<#{self.class}>"
+end
+
 module ObjectTests
   # Helpers for the checks that were testdata/run/object_attrs.rb.
   class Account
@@ -4343,6 +4348,15 @@ module ObjectTests
       assert_equal true, IsALiar.new.is_a?(Integer)
       1.is_a?(String)
       assert_equal false, 1.is_a?(String)
+    end
+  end
+
+  # a Kernel method on nil held untyped was NoMethodError: nil has no Go methods for the dispatcher to find
+  class ObjectBugUntypedNilKernelTest < Minitest::Test
+    def test_kernel_method_on_untyped_nil
+      x = nil #: untyped
+      assert_equal "<NilClass>", x.object_tag
+      assert_equal true, x.frozen?
     end
   end
 end

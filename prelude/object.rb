@@ -76,9 +76,9 @@ module Kernel
     return Boolean(ok && rbClassID(self) == d._DescID())
   }
 
-  # Objects, Array, Hash and Struct values are mutable; frozen classes override.
+  # Objects, Array, Hash and Struct values are mutable; frozen classes override. nil reaches here held untyped (NilClass has no Go type).
   #: () -> bool
-  def frozen? = false
+  def frozen? = %x{ return Boolean(any(self) == nil) }
 
   #: (?Integer) -> void
   def exit(status = 0) = raise(SystemExit.new(status))
