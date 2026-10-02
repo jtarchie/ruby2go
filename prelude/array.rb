@@ -778,6 +778,14 @@ class Array < Object
   #: (Integer, *untyped) -> untyped
   def dig(i, *rest) = %x{ return rbDig(self, append([]any{i}, rest_...)) }
 
+  # The first element that is an Array (or tuple) whose first item == key.
+  #: (untyped) -> E?
+  def assoc(key) = %x{ return rbAssoc(self, key, 0) }
+
+  # The first element that is an Array (or tuple) whose second item == value.
+  #: (untyped) -> E?
+  def rassoc(value) = %x{ return rbAssoc(self, value, 1) }
+
   #: (*Integer) -> Array[E]
   def fetch_values(*idx) = idx.map { |i| fetch(i) }
 

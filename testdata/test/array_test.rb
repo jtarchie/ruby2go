@@ -2339,4 +2339,16 @@ module ArrayTests
       assert_equal [3, 5], [[1, 2, 3], [4, 5]].map { |first, *rest| rest.size + (first || 0) }
     end
   end
+
+  # ruby/spec core/array gaps (#49): assoc and rassoc
+  class ArrayRubySpecAssocTest < Minitest::Test
+    def test_assoc
+      pairs = [[1, "one"], [2, "two"]] #: Array[[Integer, String]]
+      assert_equal [[2, "two"], [1, "one"]], [pairs.assoc(2), pairs.rassoc("one")]
+      assert_nil pairs.assoc(9)
+      mixed = [[:a, 1], [:b], [:c, 3, 4]] #: Array[Array[untyped]]
+      assert_equal [[:c, 3, 4], [:a, 1]], [mixed.assoc(:c), mixed.rassoc(1)]
+      assert_nil mixed.rassoc(nil)
+    end
+  end
 end

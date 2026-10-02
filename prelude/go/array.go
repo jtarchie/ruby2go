@@ -184,3 +184,16 @@ func rbTrailIdx[E comparable](a *Array[E], lead, trail, j int) *E {
 	}
 	return &(*a)[i]
 }
+
+// rbAssoc is Array#assoc (at 0) and #rassoc (at 1): elements that are not Arrays are skipped.
+func rbAssoc[E comparable](a *Array[E], key any, at int) *E {
+	key = rbUnbox(key)
+	for i := range *a {
+		if x, ok := any((*a)[i]).(interface{ _ToAny() *Array[any] }); ok {
+			if xs := *x._ToAny(); len(xs) > at && bool(rbEq[any](xs[at], key)) {
+				return &(*a)[i]
+			}
+		}
+	}
+	return nil
+}
