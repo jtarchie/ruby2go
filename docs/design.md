@@ -3363,3 +3363,14 @@ resolve; anything not listed is still open.
       carries the receiver's static type in the syntax, lint-clean and
       without comments to correlate. The generated code reads
       `Integer.ToS(i)` where it read `i.ToS()` (README sample updated).
+123. Instance-variable reflection (#49) reads the tables the closed world
+    already has. `instance_variables` lists what `inspect` lists (decision
+    82's `_Ivars`): a non-optional ivar that is still nil reads as never
+    assigned and is left out, while a `T?` ivar is listed even before its
+    first write, where MRI would omit it. `instance_variable_get` returns
+    the value untyped (nil for an ivar the class lacks);
+    `instance_variable_set` goes through a generated `_IvarSet` that
+    converts the value to the field's type, raising TypeError when it
+    cannot. A class cannot gain an ivar at run time, so setting one it
+    lacks is a NameError. `remove_instance_variable` is not supported.
+    (`testdata/test/object_test.rb` `ObjectRubySpecIvarTest`.)

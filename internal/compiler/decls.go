@@ -683,6 +683,17 @@ func (c *Compiler) emitIvarList(cls *Class) {
 		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
 	}
 	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
+	// Kernel#instance_variable_set: the closed world knows every ivar's type, so a write converts to it
+	c.w("func (self *%s) _IvarSet(name string, v any) bool {\n\tswitch name {\n", cls.Name)
+	for _, iv := range c.ivarOrder(cls) {
+		field := "&self." + goFieldName(iv.Name)
+		if o, ok := iv.Type.(TOpt); ok {
+			c.w("\tcase %q:\n\t\trbIvarAssignOpt[%s](%s, v, %q)\n", iv.Name, c.goType(o.Elem), field, iv.Name)
+			continue
+		}
+		c.w("\tcase %q:\n\t\trbIvarAssign(%s, v, %q)\n", iv.Name, field, iv.Name)
+	}
+	c.w("\tdefault:\n\t\treturn false\n\t}\n\treturn true\n}\n\n")
 }
 
 // emitCopy feeds Ractor's deep copy (decision 103): a fresh struct with every

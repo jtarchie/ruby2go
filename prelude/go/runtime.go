@@ -1302,3 +1302,80 @@ func rbFrozenCheck(p any) {
 		panic(NewFrozenError(Ref("can't modify frozen " + String(rbClassName(p)) + ": " + rbInspect(p))))
 	}
 }
+
+// rbIvarNames is Kernel#instance_variables: the ivars inspect would list (one not assigned yet reads as nil and is left out).
+func rbIvarNames(a any) *Array[Symbol] {
+	out := &Array[Symbol]{}
+	if o, ok := a.(interface{ _Ivars() []rbIvar }); ok {
+		for _, iv := range o._Ivars() {
+			if iv.opt || iv.val != nil && !iv.isNil {
+				*out = append(*out, Symbol(iv.name))
+			}
+		}
+	}
+	return out
+}
+
+// rbIvarName reads an ivar name argument (Symbol or String), checking MRI's "@" form.
+func rbIvarName(name any) string {
+	var s string
+	switch n := rbUnbox(name).(type) {
+	case Symbol, String:
+		s = fmt.Sprint(n)
+	default:
+		panic(NewTypeError(Ref(rbInspect(name) + " is not a symbol nor a string")))
+	}
+	if !strings.HasPrefix(s, "@") || strings.HasPrefix(s, "@@") || len(s) < 2 {
+		panic(NewNameError(Ref(String("'" + s + "' is not allowed as an instance variable name"))))
+	}
+	return s
+}
+
+// rbIvarGet is Kernel#instance_variable_get: nil for an ivar the class never has.
+func rbIvarGet(a, name any) any {
+	n := rbIvarName(name)
+	if o, ok := a.(interface{ _Ivars() []rbIvar }); ok {
+		for _, iv := range o._Ivars() {
+			if iv.name == n && !iv.isNil {
+				return iv.val
+			}
+		}
+	}
+	return nil
+}
+
+// rbIvarDefined is Kernel#instance_variable_defined?.
+func rbIvarDefined(a, name any) bool {
+	n := rbIvarName(name)
+	return slices.Contains(*rbIvarNames(a), Symbol(n))
+}
+
+// rbIvarSet is Kernel#instance_variable_set over the generated _IvarSet; an ivar the class lacks cannot be added.
+func rbIvarSet(a, name, v any) any {
+	n := rbIvarName(name)
+	rbFrozenCheck(a)
+	o, ok := a.(interface{ _IvarSet(string, any) bool })
+	if !ok || !o._IvarSet(n, rbUnbox(v)) {
+		panic(NewNameError(Ref(String("rb2go: " + rbClassName(a) + " has no instance variable " + n + " (the closed world fixes each class's ivars)"))))
+	}
+	return v
+}
+
+// rbIvarAssign converts an untyped value to an ivar's type, as instance_variable_set writes it.
+func rbIvarAssign[T any](dst *T, v any, name string) {
+	x, ok := rbConv[T](v)
+	if !ok {
+		panic(NewTypeError(Ref(String("rb2go: " + rbClassName(v) + " cannot be stored in " + name))))
+	}
+	*dst = x
+}
+
+func rbIvarAssignOpt[T any](dst **T, v any, name string) {
+	if v == nil {
+		*dst = nil
+		return
+	}
+	var x T
+	rbIvarAssign(&x, v, name)
+	*dst = &x
+}

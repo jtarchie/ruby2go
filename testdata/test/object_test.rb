@@ -4140,4 +4140,31 @@ module ObjectTests
       assert_equal ["k=3!", "z=4!", "n=5"], [KwKid.new.show(3), KwKid.new.show(4, label: "z"), KwBase.new.show(5)]
     end
   end
+
+  # ruby/spec core/kernel gaps (#49): instance variable reflection
+  class IvarPt
+    attr_reader :x #: Integer
+    attr_accessor :label #: String?
+
+    #: (Integer) -> void
+    def initialize(x)
+      @x = x
+      @tags = [] #: Array[String]
+      @label = nil
+    end
+  end
+
+  class ObjectRubySpecIvarTest < Minitest::Test
+    def test_instance_variables
+      pt = IvarPt.new(3)
+      assert_equal [[:@x, :@tags, :@label], 3, [], nil], [pt.instance_variables, pt.instance_variable_get(:@x), pt.instance_variable_get("@tags"), pt.instance_variable_get(:@nope)]
+      assert_equal [true, false], [pt.instance_variable_defined?(:@x), pt.instance_variable_defined?(:@nope)]
+      pt.instance_variable_set(:@x, 9)
+      pt.instance_variable_set(:@label, "hi")
+      assert_equal [9, "hi"], [pt.x, pt.label]
+      e = assert_raises(NameError) { pt.instance_variable_get(:x) }
+      assert_equal "'x' is not allowed as an instance variable name", e.message
+      assert_equal [], 5.instance_variables
+    end
+  end
 end

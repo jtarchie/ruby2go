@@ -30,6 +30,18 @@ module Kernel
   #: () -> nil
   def display = %x{ rbWriteOut(string(rbToS(self))) }
 
+  #: () -> Array[Symbol]
+  def instance_variables = %x{ return rbIvarNames(self) }
+
+  #: (untyped) -> untyped
+  def instance_variable_get(name) = %x{ return rbIvarGet(self, name) }
+
+  #: (untyped, untyped) -> untyped
+  def instance_variable_set(name, value) = %x{ return rbIvarSet(self, name, value) }
+
+  #: (untyped) -> bool
+  def instance_variable_defined?(name) = %x{ Boolean(rbIvarDefined(self, name)) }
+
   #: () { () -> void } -> void
   def loop
     while true
