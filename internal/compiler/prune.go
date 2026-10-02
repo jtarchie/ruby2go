@@ -266,10 +266,12 @@ func (p *pruner) visit(x ast.Node) bool {
 			}
 		}
 	case *ast.SelectorExpr:
-		p.methodNames[x.Sel.Name] = true
-		if id, ok := x.X.(*ast.Ident); ok && stdImports[id.Name] != "" && len(p.byName[id.Name]) == 0 {
-			return false // a std package's member: os.Interrupt is not class Interrupt, sync.Mutex not class Mutex
+		// a std package's member (Obj == nil: not a local such as `net`, as format.go's import scan tells them apart):
+		// os.Interrupt is not class Interrupt, sync.Mutex not class Mutex, and time.Sleep selects no class's Sleep
+		if id, ok := x.X.(*ast.Ident); ok && id.Obj == nil && stdImports[id.Name] != "" && len(p.byName[id.Name]) == 0 {
+			return false
 		}
+		p.methodNames[x.Sel.Name] = true
 	case *ast.InterfaceType:
 		for _, m := range x.Methods.List {
 			for _, mn := range m.Names {

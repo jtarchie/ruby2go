@@ -290,6 +290,7 @@ func (c *Compiler) dynWrappers(name string) ([]dynWrapper, []*dynArm) {
 		if w.body == "" {
 			continue
 		}
+		w.body = c.freeCall(e, w.body)
 		iface, body, ok := c.dynShareable(w, name)
 		if !ok {
 			own = append(own, w)
@@ -314,6 +315,20 @@ func (c *Compiler) dynWrappers(name string) ([]dynWrapper, []*dynArm) {
 		}
 	}
 	return own, shared
+}
+
+// freeCall rewrites a wrapper's forwarder call of a Kernel method (`self.Sleep(`) into the free func over
+// `any` (`Kernel_Sleep[any](self, `): one instantiation for every class, and no selector or interface
+// literal naming the method, which would keep the forwarder on every reached class (decision 121). Only a
+// universal owner: a named constraint's free func (`Module_Name[ModuleI]`) is not the method a metaclass's
+// synth `Name()` overrides in Go, and a module constraint (`Comparable_Self[Self]`) needs the concrete class.
+func (c *Compiler) freeCall(e *entry, body string) string {
+	call := "self." + e.M.GoName + "("
+	if !strings.Contains(body, call) || c.isDirectMethod(e.M) || !e.Owner.universal {
+		return body
+	}
+	body = strings.ReplaceAll(body, call, freeFuncName(e.M)+"[any](self, ")
+	return strings.ReplaceAll(body, "(self, )", "(self)")
 }
 
 // dynGenerated: e comes from the prelude, or is a metaclass's generated

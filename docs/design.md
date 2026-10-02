@@ -3192,3 +3192,47 @@ resolve; anything not listed is still open.
     `rbDyn*` dispatchers, not switches. A Ruby `case` with no `else`
     is also legal and yields nil, so generated switches must not be
     exhaustive anyway. (`testdata/test/object_test.rb` `SumTypeGapsTest`.)
+121. Dynamic wrappers call Kernel's free func, not the class's forwarder
+    (issue #50). A wrapper or shared arm for an inherited Kernel method
+    used to call it through the receiver (`self.Sleep(...)`, or
+    `recv.(interface{ Sleep(secs Float) Integer })`), and the pruner
+    (decision 49) matches a selector or an interface literal by name on
+    every reached class: with a computed `send` (decision 32) naming
+    every method, ~17 Kernel names kept a one-line forwarder, each its own
+    generic instantiation (`Kernel_Sleep[*Recorder]`), on all ~530 struct
+    classes. `freeCall` now rewrites the call to `Kernel_Sleep[any](self,
+    ...)`: one instantiation serves every class, and nothing names the
+    forwarder. Only a universal owner: routing Module's methods through
+    `Module_Name[ModuleI]` skipped the Go-level override a metaclass's
+    synth `Name()` is (`klass.name` came back empty, `Integer === 1`
+    false), and a module constraint (`Comparable_Self[Self]`) needs the
+    concrete class; both keep the forwarder call. The pruner also no
+    longer takes a std package's member as a selector (`time.Sleep` kept
+    `Sleep` on every class, `os.Exit` kept `Exit`); it tells a package from
+    a local of the same name (`net`) by go/parser's object resolution, as
+    format.go's import scan does. Raw Go in `prelude/go` calls a generic
+    primitive's free func (decision 86): `rbHTTPHeaderHash` called the
+    `Op_idxSet` forwarder and built only while an unrelated interface
+    happened to declare the name.
+    - **Measured** (functions, `grep -c '^func '`): `64_observable`
+      30,053 → 26,875 (176k → 167k lines), `30_dynamic_send` 29,947 →
+      26,781, `32_resty_reflective` 17,052 → 15,792, `dynamic_test`
+      38,153 → 33,973, `object_test` 38,894 → 37,688. The empty
+      dispatchers #50 also lists (a name no reached class can be sent)
+      are 129 of 1,062 and ~1k lines in `64_observable`: not worth code.
+    - **What is left, and why:** these programs still keep ~12k per-class
+      methods. `Inspect`, `ToS` and `Op_eq` are asserted by Go helpers
+      (`rbInspect`, `rbEq`) and are the object protocol. `FrozenQ`,
+      `Op_not`, `Exit`, `InstanceOfQ`, `EqualQ`, `Op_eqq` and Module's
+      `PublicInstanceMethods` are kept by typed prelude code calling them
+      on a concrete receiver (`Boolean.Op_not` in REXML, String's own
+      `FrozenQ` in its wrapper): the pruner has no types, so a selector
+      matches on every class. Scoping it would mean emitting such calls
+      as method expressions (`Boolean.Op_not(x)`), which the pruner could
+      read as that type's method alone; that changes the shape of every
+      generated call on a primitive and is a separate decision. The
+      metaclass tables (`_Consts`, `_Methods`, `_Descendants`, ... × 318)
+      are Module reflection, reached because a computed send names
+      `const_get` and friends. The dispatchers themselves (1,062 names ×
+      dispatcher + `respond_to?` + marker) are the cost of `send` with a
+      name nothing bounds.

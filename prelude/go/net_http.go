@@ -15,7 +15,7 @@ func rbHTTPHeaderHash(h http.Header) *Hash[String, String] {
 	sort.Strings(keys)
 	out := NewHash[String, String]()
 	for _, k := range keys {
-		out.Op_idxSet(String(rbHTTPCanonKey(k)), String(strings.Join(h[k], ", ")))
+		Hash_Op_idxSet(out, String(rbHTTPCanonKey(k)), String(strings.Join(h[k], ", ")))
 	}
 	return out
 }
