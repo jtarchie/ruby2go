@@ -1317,10 +1317,17 @@ module StdlibTests
     end
   end
 
-  # ruby/spec core/thread gaps (#49): Thread.start/fork
+  # ruby/spec core/thread and core/process gaps (#49): Thread.start/fork, Process.getrlimit
   class RubySpecThreadProcessTest < Minitest::Test
     def test_thread_start
       assert_equal [2, 10, :f], [Thread.start { 1 + 1 }.value, Thread.start(5) { |x| x * 2 }.value, Thread.fork { :f }.value]
+    end
+
+    def test_getrlimit
+      cur, max = Process.getrlimit(:NOFILE)
+      assert_equal [true, true], [cur <= max, Process.getrlimit("CORE") == Process.getrlimit(:CORE)]
+      e = assert_raises(ArgumentError) { Process.getrlimit(:NOPE) }
+      assert_equal "invalid resource name: NOPE", e.message
     end
   end
 end

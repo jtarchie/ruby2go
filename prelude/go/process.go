@@ -180,3 +180,18 @@ func rbExec(cmd string, args []String) {
 		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
 	}
 }
+
+// rbRlimit reads Process.getrlimit's resource argument.
+func rbRlimit(v any) int {
+	names := map[string]int{"AS": syscall.RLIMIT_AS, "CORE": syscall.RLIMIT_CORE, "CPU": syscall.RLIMIT_CPU,
+		"DATA": syscall.RLIMIT_DATA, "FSIZE": syscall.RLIMIT_FSIZE, "NOFILE": syscall.RLIMIT_NOFILE, "STACK": syscall.RLIMIT_STACK}
+	switch r := rbUnbox(v).(type) {
+	case Integer:
+		return int(r)
+	case Symbol, String:
+		if n, ok := names[fmt.Sprint(r)]; ok {
+			return n
+		}
+	}
+	panic(NewArgumentError(Ref(String("invalid resource name: " + string(rbToS(v))))))
+}

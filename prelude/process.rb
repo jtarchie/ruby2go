@@ -34,6 +34,16 @@ module Process
   #: () -> Integer
   def self.getpgrp = %x{ Integer(syscall.Getpgrp()) }
 
+  # resource: an Integer or a name (:NOFILE, "CORE").
+  #: (untyped) -> [Integer, Integer]
+  def self.getrlimit(resource) = %x{
+    var lim syscall.Rlimit
+    if err := syscall.Getrlimit(rbRlimit(resource), &lim); err != nil {
+      panic(NewErrno_EINVAL(Ref(String("Invalid argument - getrlimit"))))
+    }
+    return Tuple2[Integer, Integer]{Integer(min(lim.Cur, math.MaxInt64)), Integer(min(lim.Max, math.MaxInt64))}
+  }
+
   # Process.spawn / wait / wait2 / waitpid (decision 107): a child started like
   # system's (decision 97's shell rule), reaped by wait, which sets $?.
   #: (String, *String) -> Integer
