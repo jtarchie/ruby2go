@@ -1069,3 +1069,10 @@ class Proc
 end
 f = -> { 1 }
 p f.foo
+-- undefined_self_call.rb --
+# error: main.rb:4: undefined method nope for A
+class A
+  #: () -> void
+  def f = nope(1)
+end
+A.new.f

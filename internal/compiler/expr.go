@@ -1511,6 +1511,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			if e := f.c.classes["Object"].lookup(name); e != nil {
 				return f.callEntry(n, e, recv, args, block)
 			}
+			if !f.owner.IsModule && !untypedIntrinsics[name] && !descendantResponds(f.owner, name) {
+				f.errorf(n, "undefined method %s for %s", name, f.owner.displayName())
+			}
 		}
 		return f.universalCall(n, recv, name, args, block)
 	case TAny, TNil:
@@ -3467,6 +3470,19 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		f.warn(n, "%s called on possibly-nil untyped (raises NoMethodError on nil)", name)
 	}
 	return f.genDynCall(n, recv, name, args)
+}
+
+// descendantResponds: a self call the class can't answer may still reach a subclass's method (or one it includes) at run time.
+func descendantResponds(c *Class, name string) bool {
+	for _, sub := range c.Subclasses {
+		if sub.metaOf != nil && c.metaOf == nil {
+			continue
+		}
+		if sub.lookup(name) != nil || descendantResponds(sub, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // untypedIntrinsics are what universalCall answers inline, for any value.

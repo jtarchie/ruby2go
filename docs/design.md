@@ -1002,7 +1002,13 @@ resolve; anything not listed is still open.
     "undefined method".)* On
     generic classes, methods whose signatures nest the type parameters in
     another type get no wrapper: wrapping them makes Go instantiation
-    cycles. Blocks cannot cross a dynamic call. A value typed `Object` or
+    cycles. Blocks cannot cross a dynamic call. A receiver-less call in a
+    class that neither the class, a subclass (or what it includes),
+    `method_missing` nor Object answers is a compile error, `undefined
+    method x for C`: no run time can reach a method then. *(Revised: it
+    was a dynamic call, a warning, and a NoMethodError when run.)* A
+    module's body still dispatches, since an includer may define the
+    name. A value typed `Object` or
     a module is Go `any` too, so it is dispatched, boxed and `is_a?`-tested
     like `untyped`; a method the module declares keeps its declared result
     type. *(Revised: they used to resolve like concrete classes, so
