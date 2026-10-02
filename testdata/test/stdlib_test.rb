@@ -1280,4 +1280,32 @@ module StdlibTests
       end
     end
   end
+
+  # ruby/spec core/dir gaps (#49): Dir objects
+  class RubySpecDirTest < Minitest::Test
+    def test_dir_objects
+      Dir.mktmpdir do |root|
+        File.write(File.join(root, "b"), "")
+        File.write(File.join(root, "a"), "")
+        d = Dir.new(root)
+        assert_equal [true, %w[a b], %w[. .. a b]], [d.path == root, d.children.sort, d.entries.sort]
+        seen = [] #: Array[String]
+        d.each { |e| seen << e }
+        d.close
+        assert_equal %w[. .. a b], seen.sort
+        assert_equal 2, Dir.open(root) { |x| x.children.size }
+        kids = [] #: Array[String]
+        o = Dir.open(root)
+        o.each_child { |c| kids << c }
+        assert_equal [%w[a b], true, true], [kids.sort, o.to_path == root, o.inspect == "#<Dir:#{root}>"]
+        missing = false
+        begin
+          Dir.new(File.join(root, "nope"))
+        rescue Errno::ENOENT
+          missing = true
+        end
+        assert missing
+      end
+    end
+  end
 end

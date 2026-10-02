@@ -512,6 +512,50 @@ class File::Stat < Object
 end
 
 class Dir < Object
+  attr_reader :path #: String
+
+  #: (String) -> void
+  def initialize(path)
+    raise Errno::ENOTDIR, "Not a directory @ dir_initialize - #{path}" if File.exist?(path) && !File.directory?(path)
+    Dir.children(path) # ENOENT, as MRI's dir_initialize
+    @path = path
+  end
+
+  #: [T] (String) { (Dir) -> T } -> T
+  def self.open(path)
+    d = Dir.new(path)
+    yield d
+  end
+
+  #: (String) -> Dir
+  def self.__open_enum(path) = Dir.new(path)
+
+  # ponytail: sorted, as Dir.children; MRI walks readdir order.
+  #: () { (String) -> void } -> void
+  def each
+    Dir.entries(path).each { |e| yield e }
+  end
+
+  #: () -> Array[String]
+  def children = Dir.children(path)
+
+  #: () -> Array[String]
+  def entries = Dir.entries(path)
+
+  #: () { (String) -> void } -> void
+  def each_child
+    Dir.children(path).each { |e| yield e }
+  end
+
+  #: () -> String
+  def to_path = path
+
+  #: () -> nil
+  def close = nil
+
+  #: () -> String
+  def inspect = "#<Dir:#{path}>"
+
   #: () -> String
   def self.home = %x{
     if h := os.Getenv("HOME"); h != "" {
