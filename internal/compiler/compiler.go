@@ -126,18 +126,34 @@ type Source struct {
 	Src  []byte
 }
 
-func compile(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[]string) ([]byte, error) {
-	out, err := compileWith(ctx, preludeFS, sources, warnings, false)
+// options are a compile's settings beyond its sources.
+type options struct {
+	skipTests bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
+	skipped   []SkippedTest // what skipTests skipped
+	warnings  []string
+}
+
+// SkippedTest is a test method skipTests turned into a minitest skip.
+type SkippedTest struct {
+	File   string
+	Line   int
+	Name   string // the Go method's Ruby name: test_0001_desc for an `it`
+	Reason string // the compile error, without its file:line
+}
+
+func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) ([]byte, error) {
+	out, err := compileWith(ctx, preludeFS, sources, opts, false)
 	if errors.Is(err, errPruneIncomplete) {
 		if os.Getenv("RB2GO_TIMING") != "" {
 			fmt.Fprintln(os.Stderr, "rb2go: fallback: recompiling with every dispatcher")
 		}
-		out, err = compileWith(ctx, preludeFS, sources, warnings, true)
+		opts.skipped = nil
+		out, err = compileWith(ctx, preludeFS, sources, opts, true)
 	}
 	return out, err
 }
 
-func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, warnings *[]string, dynEvery bool) (out []byte, err error) {
+func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options, dynEvery bool) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -178,6 +194,9 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, warning
 	tick("link")
 	c.discoverIvars()
 	c.refineIvars()
+	if opts.skipTests {
+		opts.skipped = c.skipFailingTests()
+	}
 	c.inferReturns()
 	tick("infer")
 	c.emitProgram()
@@ -191,7 +210,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, warning
 	}
 	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels)
 	tick("format")
-	*warnings = c.Warnings // the tail's bodies warn too
+	opts.warnings = c.Warnings // the tail's bodies warn too
 	if errors.Is(ferr, errPruneIncomplete) {
 		return nil, ferr
 	}
@@ -224,9 +243,19 @@ func CompileFilesWithWarnings(ctx context.Context, preludeFS fs.FS, sources []So
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	var warnings []string
-	out, err := compile(ctx, preludeFS, sources, &warnings)
-	return out, warnings, err
+	var opts options
+	out, err := compile(ctx, preludeFS, sources, &opts)
+	return out, opts.warnings, err
+}
+
+// CompileTestsSkipping is CompileFilesWithWarnings for a test suite that should run what compiles: each test_ method rb2go cannot compile becomes a skip carrying the error, and is listed.
+func CompileTestsSkipping(ctx context.Context, preludeFS fs.FS, sources []Source) ([]byte, []string, []SkippedTest, error) {
+	if len(sources) == 0 {
+		return nil, nil, nil, errors.New("no Ruby files to compile")
+	}
+	opts := options{skipTests: true}
+	out, err := compile(ctx, preludeFS, sources, &opts)
+	return out, opts.warnings, opts.skipped, err
 }
 
 // loadPrelude parses and collects one prelude file. `require_relative` at

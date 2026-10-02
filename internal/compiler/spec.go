@@ -226,3 +226,41 @@ func deleteMethod(ms []*Method, m *Method) []*Method {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// skipFailingTests dry-emits each user test_ method and spec form (before, let), and one that fails to compile gets `skip "rb2go: <error>"` for a body, so one compile finds every failing test.
+func (c *Compiler) skipFailingTests() []SkippedTest {
+	var out []SkippedTest
+	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if m.Kind != kindDef || m.File.prelude || !strings.HasPrefix(m.Name, "test_") && !m.specForm {
+				continue
+			}
+			nw := len(c.Warnings)
+			err := catchCompileError(func() {
+				if m.inferRet {
+					m.Ret = nil
+					c.inferRet(m)
+				}
+				c.emitMethod(m)
+			})
+			c.out.Reset() // nothing is emitted before emitProgram
+			c.dropWarnings(nw)
+			if err == nil {
+				continue
+			}
+			reason := err.msg
+			if _, after, ok := strings.Cut(reason, ": "); ok && strings.HasPrefix(reason, m.File.Name+":") {
+				reason = after
+			}
+			out = append(out, SkippedTest{File: m.File.Name, Line: m.Line, Name: m.Name, Reason: reason})
+			loc := m.Node.Location
+			m.Node = &parser.DefNode{Location: loc, Name: m.Node.Name, NameLoc: loc, DefKeywordLoc: loc, Body: &parser.StatementsNode{Location: loc, Body: []parser.Node{
+				&parser.CallNode{Location: loc, Name: "skip", Arguments: &parser.ArgumentsNode{Location: loc, Arguments: []parser.Node{
+					&parser.StringNode{Location: loc, Unescaped: parser.RubyString{Value: "rb2go: " + reason}},
+				}}},
+			}}}
+			m.Ret = nil
+		}
+	}
+	return out
+}

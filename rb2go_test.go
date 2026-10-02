@@ -731,3 +731,37 @@ func rbsLibraries(t *testing.T, path string) []string {
 	}
 	return args
 }
+
+func TestCompileTestsSkipping(t *testing.T) {
+	src := `require "minitest/autorun"
+
+describe "s" do
+  before do
+    @x = nope_before
+  end
+
+  it "compiles" do
+    assert_equal 1, 1
+  end
+
+  it "does not" do
+    nope_it(1)
+  end
+end
+`
+	code, _, skipped, err := CompileTestsSkipping(context.Background(), []File{{Name: "s_test.rb", Src: []byte(src)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(skipped))
+	for _, s := range skipped {
+		got = append(got, fmt.Sprintf("%s:%d %s: %s", s.File, s.Line, s.Name, s.Reason))
+	}
+	want := []string{"s_test.rb:4 setup: undefined method nope_before for s", "s_test.rb:12 test_0002_does not: undefined method nope_it for s"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("skipped:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if !bytes.Contains(code, []byte(`rb2go: undefined method nope_it for s`)) {
+		t.Fatal("the failing test's body is not its skip")
+	}
+}
