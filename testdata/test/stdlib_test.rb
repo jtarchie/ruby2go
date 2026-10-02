@@ -1214,4 +1214,27 @@ module StdlibTests
       assert_nil Thread.pass
     end
   end
+
+  # ruby/spec core/env gaps (#49): ENV answers the Hash methods
+  class RubySpecEnvTest < Minitest::Test
+    def test_env_hash_methods
+      ENV["SPECENV_A"] = "1"
+      ENV.update("SPECENV_B" => "2")
+      ENV.merge!("SPECENV_C" => "3")
+      ENV.store("SPECENV_D", "4")
+      assert_equal({ "SPECENV_A" => "1", "SPECENV_B" => "2", "SPECENV_C" => "3", "SPECENV_D" => "4" }, ENV.select { |k, _v| k.start_with?("SPECENV_") }.sort.to_h)
+      assert_equal [{ "SPECENV_A" => "1" }, ["2", nil]], [ENV.slice("SPECENV_A", "SPECENV_NOPE"), ENV.values_at("SPECENV_B", "SPECENV_NOPE")]
+      assert_equal [true, false, true, "SPECENV_D", ["SPECENV_A", "1"]], [ENV.key?("SPECENV_C"), ENV.has_key?("SPECENV_Z"), ENV.value?("4"), ENV.key("4"), ENV.assoc("SPECENV_A")]
+      assert_equal [["4"], true, false], [ENV.filter_map { |k, v| v if k == "SPECENV_D" }, ENV.map { |k, _v| k }.include?("SPECENV_A"), ENV.empty?]
+      assert_equal [%w[SPECENV_A SPECENV_B SPECENV_C SPECENV_D], false, true], [ENV.reject { |k, _v| !k.start_with?("SPECENV_") }.keys.sort, ENV.except("SPECENV_A").key?("SPECENV_A"), ENV.to_a.size == ENV.size]
+      ENV.delete_if { |k, _v| k == "SPECENV_A" }
+      ENV.keep_if { |k, _v| k != "SPECENV_B" }
+      assert_equal [nil, nil, true, "SPECENV_D"], [ENV["SPECENV_A"], ENV["SPECENV_B"], ENV.any? { |k, _v| k == "SPECENV_C" }, ENV.invert["4"]]
+      keys = [] #: Array[String]
+      ENV.each_key { |k| keys << k if k.start_with?("SPECENV_") }
+      assert_equal %w[SPECENV_C SPECENV_D], keys.sort
+    ensure
+      %w[SPECENV_A SPECENV_B SPECENV_C SPECENV_D].each { |k| ENV.delete(k) }
+    end
+  end
 end

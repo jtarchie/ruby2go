@@ -241,6 +241,152 @@ class ENVClass < Object
 
   #: () -> String
   def inspect = to_h.inspect
+
+  #: () { (String, String) -> void } -> void
+  def each_pair
+    to_h.each { |k, v| yield k, v }
+  end
+
+  #: () { (String) -> void } -> void
+  def each_key
+    to_h.each { |k, _v| yield k }
+  end
+
+  #: () { (String) -> void } -> void
+  def each_value
+    to_h.each { |_k, v| yield v }
+  end
+
+  #: () -> Hash[String, String]
+  def to_hash = to_h
+
+  #: () -> Array[[String, String]]
+  def to_a = to_h.to_a
+
+  #: () -> Array[String]
+  def values = to_h.values
+
+  #: (*String) -> Array[String?]
+  def values_at(*names) = names.map { |n| self[n] }
+
+  #: () -> Integer
+  def size = to_h.size
+
+  #: () -> Integer
+  def length = size
+
+  #: () -> bool
+  def empty? = size == 0
+
+  #: (String) -> bool
+  def has_key?(name) = key?(name)
+
+  #: (String) -> bool
+  def member?(name) = key?(name)
+
+  #: (String) -> bool
+  def value?(value) = to_h.value?(value)
+
+  #: (String) -> bool
+  def has_value?(value) = value?(value)
+
+  #: (String) -> String?
+  def key(value) = to_h.key(value)
+
+  #: () -> Hash[String, String]
+  def invert = to_h.invert
+
+  #: (String) -> [String, String]?
+  def assoc(name) = to_h.assoc(name)
+
+  #: (*String) -> Hash[String, String]
+  def slice(*names) = to_h.slice(*names)
+
+  #: (*String) -> Hash[String, String]
+  def except(*names) = to_h.except(*names)
+
+  #: [U] () { (String, String) -> U } -> Array[U]
+  def map
+    out = [] #: Array[U]
+    to_h.each { |k, v| out << yield(k, v) }
+    out
+  end
+
+  #: [U] () { (String, String) -> U? } -> Array[U]
+  def filter_map
+    out = [] #: Array[U]
+    to_h.each do |k, v|
+      x = yield(k, v)
+      out << x if x
+    end
+    out
+  end
+
+  #: () { (String, String) -> bool } -> Hash[String, String]
+  def select
+    out = {} #: Hash[String, String]
+    to_h.each { |k, v| out[k] = v if yield(k, v) }
+    out
+  end
+
+  #: () { (String, String) -> bool } -> Hash[String, String]
+  def filter
+    out = {} #: Hash[String, String]
+    to_h.each { |k, v| out[k] = v if yield(k, v) }
+    out
+  end
+
+  #: () { (String, String) -> bool } -> Hash[String, String]
+  def reject
+    out = {} #: Hash[String, String]
+    to_h.each { |k, v| out[k] = v unless yield(k, v) }
+    out
+  end
+
+  #: () { (String, String) -> bool } -> bool
+  def any?
+    to_h.each { |k, v| return true if yield(k, v) }
+    false
+  end
+
+  #: (String, String) -> String
+  def store(name, value)
+    self[name] = value
+    value
+  end
+
+  #: (Hash[String, String]) -> self
+  def update(other)
+    other.each { |k, v| self[k] = v }
+    self
+  end
+
+  #: (Hash[String, String]) -> self
+  def merge!(other) = update(other)
+
+  #: () { (String, String) -> bool } -> self
+  def delete_if
+    to_h.each { |k, v| self[k] = nil if yield(k, v) }
+    self
+  end
+
+  #: () { (String, String) -> bool } -> self
+  def keep_if
+    to_h.each { |k, v| self[k] = nil unless yield(k, v) }
+    self
+  end
+
+  #: (Hash[String, String]) -> self
+  def replace(other)
+    to_h.each { |k, _v| self[k] = nil unless other.key?(k) }
+    update(other)
+  end
+
+  #: () -> self
+  def clear
+    to_h.each { |k, _v| self[k] = nil }
+    self
+  end
 end
 
 ENV = ENVClass.new #: ENVClass
