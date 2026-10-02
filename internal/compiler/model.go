@@ -177,6 +177,7 @@ type Param struct {
 	Default parser.Node // literal default for optional params
 	Rest    bool
 	Keyword bool // `name:`: passed by name, a positional Go param after the positional ones
+	Post    bool // after *rest or the optional params (`def f(a, *r, z)`): bound from the last arguments
 	KwRest  bool // `**opts`: the call's other keywords, a Hash[Symbol, T]
 	// Want is T for a `T | untyped` parameter (Type is untyped): typed
 	// arguments are checked against T, untyped ones pass as they are.
@@ -1734,7 +1735,7 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	m.inherited = e.M
 	m.TypeParams = e.M.TypeParams
 	for _, p := range e.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Want: subst(p.Want, e.Env)})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, e.Env)})
 	}
 	if e.M.Block != nil {
 		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
@@ -1874,6 +1875,7 @@ func (c *Compiler) bindParamNames(m *Method) {
 		}
 		m.Params[i].Name = names[nPos]
 		m.Params[i].Default = defaults[nPos]
+		m.Params[i].Post = m.Node.Parameters != nil && nPos >= len(m.Node.Parameters.Requireds)+len(m.Node.Parameters.Optionals)
 		nPos++
 	}
 	if nPos != len(names) {
@@ -1952,6 +1954,17 @@ func (c *Compiler) checkKeywordSig(m *Method) {
 // hasKeywords reports keyword parameters (`a:` or `**opts`).
 func (m *Method) hasKeywords() bool {
 	return slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword })
+}
+
+// postCount is how many post params m has.
+func (m *Method) postCount() int {
+	n := 0
+	for _, p := range m.Params {
+		if p.Post {
+			n++
+		}
+	}
+	return n
 }
 
 // positionalCount is how many positional arguments m takes, *rest aside.
@@ -2087,7 +2100,7 @@ func (c *Compiler) resolveSynth(m *Method) {
 	env := composeEnv(init.Env, nil)
 	env["Self"] = TClass{C: cls}
 	for _, p := range init.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Want: subst(p.Want, env)})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, env)})
 	}
 }
 
@@ -2162,8 +2175,13 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 		}
 		rest = *rp.Name
 	}
-	if len(ps.Posts) > 0 {
-		c.errorf(m.File, ps, "post parameters (after *rest or optional ones) are not supported")
+	for _, p := range ps.Posts {
+		rp, ok := p.(*parser.RequiredParameterNode)
+		if !ok {
+			c.errorf(m.File, p, "unsupported parameter form")
+		}
+		names = append(names, rp.Name)
+		defaults = append(defaults, nil)
 	}
 	if ps.Block != nil {
 		if m.Block == nil || ps.Block.Name == nil {

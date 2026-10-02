@@ -319,7 +319,7 @@ puts pairs { |a, b| a + b }.inspect
 def total(*) = 1
 puts total(1)
 -- rest_with_post.rb --
-# error: main.rb:3: post parameters (after *rest or optional ones) are not supported
+# error: main.rb:3: signature has 1 positional params but def has 2
 #: (Integer, *Integer) -> Integer
 def total(a, *rest, b) = a + b + rest.size
 puts total(1, 2)

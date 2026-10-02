@@ -1633,7 +1633,35 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	}
 	ai := 0
 	kwMask, kwBit := 0, 0
+	npost := m.postCount() // post params (`def f(a, *r, z)`) take the last arguments
+	posts := 0
+	take := func(p Param, i int) {
+		var a expr
+		an := n
+		if exprs != nil {
+			a = exprs[i]
+		} else {
+			an = args[i]
+			if _, ok := an.(*parser.SplatNode); ok {
+				f.errorf(an, "splat into a non-rest parameter is not supported")
+			}
+			mark := f.buf.Len()
+			a = f.genExpr(an, closed(p.Type, env))
+			f.pinBefore(mark, codes)
+		}
+		unify(p.Type, a.typ, env)
+		codes = append(codes, f.coerceArg(an, a, p, env))
+	}
 	for _, p := range m.Params {
+		if p.Post {
+			i := nargs - npost + posts
+			if i < ai {
+				f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, expected)
+			}
+			take(p, i)
+			posts++
+			continue
+		}
 		if p.Keyword {
 			mark := f.buf.Len()
 			code, given := f.keywordArg(n, m, p, env, kw)
@@ -1648,29 +1676,15 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		if p.Rest {
 			restIdx = len(codes)
 			mark := f.buf.Len()
-			rest := f.genRestArgs(n, p, env, args, exprs, ai, nargs)
+			rest := f.genRestArgs(n, p, env, args, exprs, ai, max(nargs-npost, ai))
 			f.pinBefore(mark, codes)
 			codes = append(codes, rest...)
 			ai = nargs
 			continue
 		}
-		if ai < nargs {
-			var a expr
-			an := n
-			if exprs != nil {
-				a = exprs[ai]
-			} else {
-				an = args[ai]
-				if _, ok := an.(*parser.SplatNode); ok {
-					f.errorf(an, "splat into a non-rest parameter is not supported")
-				}
-				mark := f.buf.Len()
-				a = f.genExpr(an, closed(p.Type, env))
-				f.pinBefore(mark, codes)
-			}
+		if ai < nargs-npost {
+			take(p, ai)
 			ai++
-			unify(p.Type, a.typ, env)
-			codes = append(codes, f.coerceArg(an, a, p, env))
 			continue
 		}
 		if p.Default != nil && m.calleeDefaults {
@@ -1697,8 +1711,8 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			restIdx++
 		}
 	}
-	if m.calleeDefaults {
-		codes = append([]string{strconv.Itoa(min(nargs, npos))}, codes...)
+	if m.calleeDefaults { // optional params at Go index i ran their default when rbArgc <= i
+		codes = append([]string{strconv.Itoa(max(min(nargs, npos)-npost, 0))}, codes...)
 		if restIdx >= 0 {
 			restIdx++
 		}
@@ -3075,9 +3089,13 @@ func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding b
 	var an []parser.Node
 	var kws []parser.Node // zsuper passes keywords on by name
 	loc := n.(*parser.ForwardingSuperNode).Location
+	var posts []parser.Node // Ruby passes them after *rest, which Params keeps last
 	for _, p := range f.m.Params {
 		var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
 		switch {
+		case p.Post:
+			posts = append(posts, a)
+			continue
 		case p.KwRest:
 			kws = append(kws, &parser.AssocSplatNode{Value: a, Location: loc})
 			continue
@@ -3090,6 +3108,7 @@ func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding b
 		}
 		an = append(an, a)
 	}
+	an = append(an, posts...)
 	if len(kws) > 0 {
 		an = append(an, &parser.KeywordHashNode{Elements: kws, Location: loc})
 	}

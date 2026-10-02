@@ -4236,4 +4236,40 @@ module ObjectTests
       assert_equal [true, false], [Integer.ancestors.include?(Comparable), AncA.ancestors.include?(AncGreets)]
     end
   end
+
+  # ruby/spec language gaps (#49): post parameters
+  class PostBase
+    #: (Integer, *Integer, Integer) -> String
+    def f(a, *m, z) = "#{a}#{m}#{z}"
+  end
+
+  class PostKid < PostBase
+    #: (Integer, *Integer, Integer) -> String
+    def f(a, *m, z) = super + "!"
+  end
+
+  class ObjectRubySpecPostParamsTest < Minitest::Test
+    #: (Integer, ?Integer, Integer) -> Array[Integer]
+    def object_om(a, b = 2, c) = [a, b, c]
+
+    #: (Integer, *Integer, Integer) -> String
+    def object_mid(a, *rest, z) = "#{a} #{rest} #{z}"
+
+    #: (*String, String) -> String
+    def object_last(*xs, y) = "#{xs.size}:#{y}"
+
+    # @rbs a: Integer
+    # @rbs b: Integer
+    # @rbs c: Integer
+    # @rbs return: Integer
+    def object_scoped(a, b = a * 10, c) = a + b + c
+
+    def test_post_params
+      assert_equal [[1, 2, 3], [1, 5, 3]], [object_om(1, 3), object_om(1, 5, 3)]
+      assert_equal ["1 [] 2", "1 [2, 3] 4"], [object_mid(1, 2), object_mid(1, 2, 3, 4)]
+      assert_equal ["0:a", "2:c"], [object_last("a"), object_last("a", "b", "c")]
+      assert_equal [13, 8], [object_scoped(1, 2), object_scoped(1, 5, 2)]
+      assert_equal "1[2]3!", PostKid.new.f(1, 2, 3)
+    end
+  end
 end
