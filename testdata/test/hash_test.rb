@@ -1928,4 +1928,12 @@ module HashTests
       assert_nil({ "x" => { "y" => nil } }.dig("x", "y", "z"))
     end
   end
+
+  # ruby/spec core/hash gaps (#49): flatten
+  class HashRubySpecFlattenTest < Minitest::Test
+    def test_flatten
+      h = { a: 1, b: [2, [3]] }
+      assert_equal [[:a, 1, :b, [2, [3]]], [:a, 1, :b, 2, [3]], [:a, 1, :b, 2, 3], []], [h.flatten, h.flatten(2), h.flatten(3), {}.flatten]
+    end
+  end
 end

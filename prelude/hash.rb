@@ -511,6 +511,16 @@ class Hash < Object
   #: (K, *untyped) -> untyped
   def dig(k, *rest) = %x{ return rbDig(self, append([]any{k}, rest_...)) }
 
+  #: (?Integer) -> Array[untyped]
+  def flatten(depth = 1)
+    out = [] #: Array[untyped]
+    each do |k, v|
+      out << k
+      out << v
+    end
+    depth > 1 ? out.flatten(depth - 1) : out
+  end
+
   # Without the nil values. V keeps its type: a Hash[K, V?] result is still V?, though it holds no nil.
   #: () -> Hash[K, V]
   def compact
