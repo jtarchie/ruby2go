@@ -1906,4 +1906,16 @@ module HashTests
       assert_equal ["1-2", "12"], [Set[1, 2].join("-"), Set[1, 2].join]
     end
   end
+
+  # ruby/spec core/hash gaps (#49): compact
+  class HashRubySpecCompactTest < Minitest::Test
+    def test_compact
+      h = { a: 1, b: nil, c: 3 } #: Hash[Symbol, Integer?]
+      assert_equal [{ a: 1, c: 3 }, { a: 1, b: nil, c: 3 }], [h.compact, h]
+      assert_same h, h.compact!
+      assert_equal({ a: 1, c: 3 }, h)
+      assert_nil h.compact!
+      assert_equal({ x: "y" }, { x: "y" }.compact)
+    end
+  end
 end

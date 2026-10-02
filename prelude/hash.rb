@@ -507,4 +507,19 @@ class Hash < Object
 
   #: () -> self
   def to_hash = self
+
+  # Without the nil values. V keeps its type: a Hash[K, V?] result is still V?, though it holds no nil.
+  #: () -> Hash[K, V]
+  def compact
+    out = {} #: Hash[K, V]
+    each { |k, v| out[k] = v unless v.nil? }
+    out
+  end
+
+  #: () -> Hash[K, V]?
+  def compact!
+    n = size
+    delete_if { |_k, v| v.nil? }
+    size == n ? nil : self
+  end
 end
