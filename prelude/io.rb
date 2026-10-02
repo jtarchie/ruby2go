@@ -11,6 +11,18 @@ module IOWritable
     nil
   end
 
+  #: (Integer) -> Integer
+  def putc(c)
+    write((c & 0xff).chr)
+    c
+  end
+
+  #: (String) -> String
+  def __putc_string(s)
+    write(s[0] || "")
+    s
+  end
+
   #: (*untyped) -> nil
   def puts(*args)
     if args.empty?

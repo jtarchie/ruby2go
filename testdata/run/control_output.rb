@@ -102,6 +102,21 @@ rescue => error
 end
 [1].each { |type| puts type }
 
+# Kernel#display and putc (ruby/spec core/kernel, #49)
+class OutDisplayed
+  #: () -> String
+  def to_s = "shown"
+end
+p putc(65), putc("hi"), putc(10)
+1.display
+[1, 2].display
+:s.display
+OutDisplayed.new.display
+p "x".display
+$stdout.putc("!")
+$stdout.putc(321)
+puts
+
 # modifiers on a return at top level end the program quietly (keep last)
 xs = [1] #: Array[Integer]
 return if xs.empty?

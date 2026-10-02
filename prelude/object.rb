@@ -27,6 +27,9 @@ module Kernel
   #: () -> self
   def itself = self
 
+  #: () -> nil
+  def display = %x{ rbWriteOut(string(rbToS(self))) }
+
   #: () { () -> void } -> void
   def loop
     while true
@@ -149,6 +152,19 @@ module Kernel
 
   #: (String) -> nil
   def __write(s) = %x{ rbWriteOut(string(s)) }
+
+  # One byte of an Integer (its low 8 bits), or a String's first character.
+  #: (Integer) -> Integer
+  def putc(c)
+    __write((c & 0xff).chr)
+    c
+  end
+
+  #: (String) -> String
+  def __putc_string(s)
+    __write(s[0] || "")
+    s
+  end
 
   #: () -> String
   def __class_name = %x{ String(rbClassName(self)) }
