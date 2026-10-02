@@ -1,9 +1,4 @@
 Compile errors and warnings for control flow, exceptions, locals and assignment forms (docs/design.md decisions 4, 11, 14, 20, 33).
--- redo.rb --
-# error: main.rb:3: unsupported syntax: RedoNode
-[1].each do |x|
-  redo if x > 5
-end
 -- while_as_value.rb --
 # error: main.rb:3: unsupported syntax: WhileNode
 i = 0
@@ -292,3 +287,6 @@ begin
 rescue
   [1].map { retry }
 end
+-- redo_in_closure_block.rb --
+# error: main.rb:2: redo is only supported directly in a while, until, for or iterator loop body
+p [1].map { |x| redo if x > 5; x }

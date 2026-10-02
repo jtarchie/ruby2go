@@ -4661,4 +4661,32 @@ module ControlTests
       assert_equal [true, 0], [$?&.success?, $?&.exitstatus]
     end
   end
+
+  # ruby/spec language gaps (#49): redo
+  class ControlRubySpecRedoTest < Minitest::Test
+    def test_redo
+      seen = [] #: Array[[Integer, Integer]]
+      tries = 0
+      [1, 2].each do |x|
+        tries += 1
+        redo if x == 2 && tries < 4
+        seen << [x, tries]
+      end
+      i = 0
+      n = 0
+      while i < 3
+        i += 1
+        n += 1
+        redo if n == 2
+        seen << [i, n]
+      end
+      k = 0
+      for v in [10, 20]
+        k += 1
+        redo if k == 1
+        seen << [v, k]
+      end
+      assert_equal [[1, 1], [2, 4], [1, 1], [3, 3], [10, 2], [20, 3]], seen
+    end
+  end
 end

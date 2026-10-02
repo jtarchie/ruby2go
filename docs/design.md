@@ -3286,7 +3286,10 @@ resolve; anything not listed is still open.
       `=> e` as Exception.
     - `DATA` in the main file is one StringIO over the text after
       `__END__` (MRI's is a File at that offset; reads see the same).
-    Not done here (still listed on #49): `redo`, `BEGIN`/`END`, and
+    - `redo` jumps (`goto`) to a label that opens the loop body of a
+      while, until, for or iterator loop; inside a closure block or a
+      begin/rescue wrapper (both Go func literals) it is a compile error.
+    Not done here (still listed on #49): `BEGIN`/`END`, and
     `Array#to_set` (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder

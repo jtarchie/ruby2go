@@ -2927,6 +2927,7 @@ func (f *fctx) genFor(n *parser.ForNode, t tail) {
 	default:
 		f.errorf(n.Index, "unsupported for variable %s", nodeType(n.Index))
 	}
+	f.redoLabel(n.Statements)
 	f.genStmts(n.Statements, tail{})
 	f.indent--
 	f.leaveBlock(saved)
@@ -2965,6 +2966,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	f.indent++
 	pro()
 	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
+	f.redoLabel(blk.Body)
 	f.genStmts(blk.Body, tail{})
 	f.indent--
 	f.leaveRubyBlock(saved, savedRuby)

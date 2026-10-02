@@ -72,8 +72,10 @@ type loopFrame struct {
 	kind     loopKind
 	switches int    // f.switches when the loop was entered
 	begins   int    // f.begins when the loop was entered
+	closures int    // f.closures when the loop was entered
 	start    int    // where the label goes
 	label    string // set by the first `break` that needs it
+	redo     string // the label opening the body, when it has a `redo`
 }
 
 // pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
@@ -83,7 +85,37 @@ func (f *fctx) pushLoop(kind loopKind) {
 	if i := strings.LastIndexByte(strings.TrimSuffix(s, "\n"), '\n') + 1; strings.HasPrefix(s[i:], "//line ") {
 		start = i
 	}
-	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, start: start})
+	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, closures: f.closures, start: start})
+}
+
+// redoLabel opens a loop body that contains `redo` with a label for its goto.
+func (f *fctx) redoLabel(body parser.Node) {
+	if body == nil || !hasRedo(body) {
+		return
+	}
+	l := f.loops[len(f.loops)-1]
+	l.redo = "redo" + f.newTmp()
+	f.emit("%s:", l.redo)
+}
+
+// hasRedo finds a `redo` for the enclosing loop (not one in a nested loop, block or def).
+func hasRedo(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.RedoNode:
+		return true
+	case *parser.StatementsNode:
+		if n == nil {
+			return false
+		}
+	case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+		return false
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if hasRedo(ch) {
+			return true
+		}
+	}
+	return false
 }
 
 // jumpKind is how a jump left a begin wrapper's func literal. Go's
@@ -491,6 +523,15 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genBreak(n)
 	case *parser.NextNode:
 		f.genNext(n)
+	case *parser.RedoNode:
+		var l *loopFrame
+		if len(f.loops) > 0 {
+			l = f.loops[len(f.loops)-1]
+		}
+		if l == nil || l.redo == "" || l.closures != f.closures || l.begins != f.begins {
+			f.errorf(n, "redo is only supported directly in a while, until, for or iterator loop body (not in a closure block or begin/rescue)")
+		}
+		f.emit("goto %s", l.redo)
 	case *parser.RetryNode:
 		if f.retryFlag == "" || f.closures != f.retryDepth {
 			f.errorf(n, "retry is only supported directly in a rescue clause")
@@ -744,6 +785,7 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 	}
 	f.indent++
 	f.applyNarrow(narrow)
+	f.redoLabel(body)
 	f.genStmts(body, tail{})
 	f.indent--
 	f.leaveBlock(saved)
@@ -762,6 +804,7 @@ func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate 
 	saved := f.enterBlock()
 	f.emit("for {")
 	f.indent++
+	f.redoLabel(body)
 	f.genStmts(body, tail{})
 	cond, _ := f.genCond(pred)
 	if negate {
@@ -1529,7 +1572,7 @@ func terminates(st *parser.StatementsNode) bool {
 		return false
 	}
 	switch last := st.Body[len(st.Body)-1].(type) {
-	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode, *parser.RetryNode:
+	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode, *parser.RetryNode, *parser.RedoNode:
 		return true
 	case *parser.CallNode:
 		return last.Receiver == nil && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
