@@ -4214,4 +4214,26 @@ module ObjectTests
       assert_equal [11, 12], [CvTally.hit, CvTally.hit]
     end
   end
+
+  # ruby/spec core/module gaps (#49): ancestors, included_modules, include?
+  module AncGreets; end
+  module AncMarks; end
+
+  class AncA
+    include AncMarks
+  end
+
+  class AncB < AncA
+    include AncMarks
+    include AncGreets
+  end
+
+  class ObjectRubySpecAncestorsTest < Minitest::Test
+    def test_ancestors
+      assert_equal [AncB, AncGreets, AncA, AncMarks, Object, Kernel, BasicObject], AncB.ancestors
+      assert_equal [[Object, Kernel, BasicObject], [Comparable], [Kernel], [BasicObject]], [Object.ancestors, Comparable.ancestors, Kernel.ancestors, BasicObject.ancestors]
+      assert_equal [AncGreets, AncMarks, Kernel], AncB.included_modules
+      assert_equal [true, false], [Integer.ancestors.include?(Comparable), AncA.ancestors.include?(AncGreets)]
+    end
+  end
 end

@@ -301,10 +301,6 @@ end
 class Person
   attr_accessor :pet #: Pet
 end
--- singleton_type_of_kernel.rb --
-# error: main.rb:3: singleton(Kernel) has no class object type
-#: (singleton(Kernel)) -> void
-def use(k) = nil
 -- singleton_type_unknown.rb --
 # error: main.rb:3: unknown type Nope
 #: (singleton(Nope)) -> void
@@ -445,11 +441,8 @@ class Outer::Inner
   #: () -> String
   def peek = SECRET
 end
--- kernel_as_value.rb --
-# error: main.rb:2: class Kernel used as a value is not supported
-k = Kernel
 -- kernel_class_method_call.rb --
-# error: main.rb:2: Kernel has no class methods
+# error: main.rb:2: undefined method hello for singleton(Kernel)
 Kernel.hello
 -- new_on_module.rb --
 # error: main.rb:5: undefined method new for singleton(Mixin)

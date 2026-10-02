@@ -1984,11 +1984,8 @@ func (m *Method) String() string {
 // class object.
 func (c *Compiler) buildMetas() {
 	for _, cls := range append([]*Class(nil), c.classList...) {
-		if cls.RubyName == "BasicObject" || cls.RubyName == "Kernel" {
-			if len(cls.singletonDefs) > 0 {
-				c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
-			}
-			continue
+		if (cls.RubyName == "BasicObject" || cls.RubyName == "Kernel") && len(cls.singletonDefs) > 0 {
+			c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
 		}
 		if cls.metaOf == nil {
 			c.metaFor(cls)

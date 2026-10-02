@@ -51,6 +51,31 @@ class Module < Object
   #: (?bool) -> Array[Symbol]
   def instance_methods(inherit = true) = public_instance_methods(inherit)
 
+  # Itself, its modules and its superclasses' (with Object, Kernel and BasicObject), from a generated table.
+  #: () -> Array[Module]
+  def ancestors = %x{
+    out := &Array[ModuleI]{}
+    if t, ok := any(self).(interface{ _Ancestors() []any }); ok {
+      for _, k := range t._Ancestors() {
+        *out = append(*out, k.(ModuleI))
+      }
+    }
+    return out
+  }
+
+  #: () -> Array[Module]
+  def included_modules = %x{
+    out := &Array[ModuleI]{}
+    if t, ok := any(self).(interface{ _Ancestors() []any }); ok {
+      for _, k := range t._Ancestors() {
+        if m, ok := k.(interface{ _Kind() string }); ok && m._Kind() == "module" {
+          *out = append(*out, k.(ModuleI))
+        }
+      }
+    }
+    return out
+  }
+
   #: (untyped, ?bool) -> bool
   def public_method_defined?(name, inherit = true) = public_instance_methods(inherit).include?(name.to_s.to_sym)
 

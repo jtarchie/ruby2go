@@ -3278,18 +3278,16 @@ resolve; anything not listed is still open.
       `undef_method`, `remove_method`. `private_constant` is accepted but
       not enforced.
     - `Class#superclass` and `#subclasses` come from per-class tables
-      (newest subclass first, as MRI). `Module#ancestors` is not added:
-      Kernel and BasicObject have no class objects in rb2go, so its
-      output could not match MRI's; `Integer.superclass` is Object until
-      Numeric exists (#39).
+      (newest subclass first, as MRI); `Integer.superclass` is Object
+      until Numeric exists (#39). `Module#ancestors` and
+      `included_modules` are decision 125.
     - `when *LIST` tests each element's `===`; `rescue *ERRORS` checks
       each class object at run time (`rbIsInstanceOf`), binding
       `=> e` as Exception.
     - `DATA` in the main file is one StringIO over the text after
       `__END__` (MRI's is a File at that offset; reads see the same).
-    Not done here (still listed on #49): `redo`, `BEGIN`/`END`,
-    `Module#ancestors`, and `Array#to_set` (decision 44's instantiation
-    cycle). Instance-variable reflection is decision 123, class variables
+    Not done here (still listed on #49): `redo`, `BEGIN`/`END`, and
+    `Array#to_set` (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method
@@ -3387,3 +3385,14 @@ resolve; anything not listed is still open.
     in a body: one first made inside a method is a compile error, as is a
     second assignment in the same body. (`testdata/test/object_test.rb`
     `ObjectRubySpecClassVarTest`.)
+125. Kernel and BasicObject have class objects (#49), like every other
+    class and module, so `Kernel` and `BasicObject` are values, print
+    their names, and `singleton(Kernel)` is a type. They still take no
+    class methods. `Module#ancestors` reads a generated per-class table:
+    the class, its modules (last included first, each with its own), then
+    its superclass's, through Object, Kernel and BasicObject; a module an
+    ancestor already includes keeps only that place, as MRI skips
+    re-including it. `included_modules` is its modules. The table lists
+    rb2go's own prelude modules too (File's IOReadable and IOWritable),
+    which MRI's ancestors lack. (`testdata/test/object_test.rb`
+    `ObjectRubySpecAncestorsTest`.)

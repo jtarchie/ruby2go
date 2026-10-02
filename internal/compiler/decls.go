@@ -1273,6 +1273,13 @@ func (c *Compiler) emitDescendants(meta, desc *Class) {
 		}
 	}
 	c.w("func (self *%s) _Descendants() []any { return []any{%s} }\n\n", meta.Name, strings.Join(subs, ", "))
+	var anc []string
+	for _, k := range fullAncestors(desc) {
+		if k.meta != nil {
+			anc = append(anc, classVar(k))
+		}
+	}
+	c.w("func (self *%s) _Ancestors() []any { return []any{%s} }\n\n", meta.Name, strings.Join(anc, ", "))
 	if desc.IsModule {
 		return
 	}
@@ -1289,6 +1296,34 @@ func (c *Compiler) emitDescendants(meta, desc *Class) {
 		sup = classVar(desc.Super)
 	}
 	c.w("func (self *%s) _Superclass() any { return %s }\n\n", meta.Name, sup)
+}
+
+// fullAncestors is Module#ancestors: k, its modules (last included first,
+// each with its own), then its superclass's, through Object, Kernel and
+// BasicObject. A module already above keeps that place only, as MRI skips
+// re-including it.
+func fullAncestors(k *Class) []*Class {
+	var all []*Class
+	var walk func(k *Class)
+	walk = func(k *Class) {
+		all = append(all, k)
+		for i := len(k.Includes) - 1; i >= 0; i-- {
+			if m := k.Includes[i].Mod; m != nil {
+				walk(m)
+			}
+		}
+		if k.Super != nil && !k.IsModule {
+			walk(k.Super)
+		}
+	}
+	walk(k)
+	out := make([]*Class, 0, len(all))
+	for i, x := range all {
+		if !slices.Contains(all[i+1:], x) {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // emitMethodTable gives a class object the names of its public instance

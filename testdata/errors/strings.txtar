@@ -163,7 +163,7 @@ class Name < String
 end
 puts "x"
 -- kernel_module_puts.rb --
-# error: main.rb:3: Kernel has no class methods
+# error: main.rb:3: private method puts called on singleton(Kernel)
 # rbs_inline: enabled
 Kernel.puts "x"
 -- symbol_encoding.rb --
