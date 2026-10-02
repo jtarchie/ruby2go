@@ -1316,4 +1316,11 @@ module StdlibTests
       assert_equal Rational, Time.at(1.5).subsec.class
     end
   end
+
+  # ruby/spec core/thread gaps (#49): Thread.start/fork
+  class RubySpecThreadProcessTest < Minitest::Test
+    def test_thread_start
+      assert_equal [2, 10, :f], [Thread.start { 1 + 1 }.value, Thread.start(5) { |x| x * 2 }.value, Thread.fork { :f }.value]
+    end
+  end
 end

@@ -15,6 +15,15 @@ class Thread < Object
   # @rbs [A, B, C] (A, B, C) { (A, B, C) -> untyped } -> Thread
   def self.__new_3(a, b, c) = %x{ return rbThreadRun(func() any { return blk(a, b, c) }) }
 
+  #: () { () -> untyped } -> Thread
+  def self.start = %x{ return rbThreadRun(func() any { return blk() }) }
+
+  # @rbs [A] (A) { (A) -> untyped } -> Thread
+  def self.__start_1(a) = %x{ return rbThreadRun(func() any { return blk(a) }) }
+
+  #: () { () -> untyped } -> Thread
+  def self.fork = %x{ return rbThreadRun(func() any { return blk() }) }
+
   # The Thread this goroutine runs (decision 104); main for the main goroutine and a ractor's own, as MRI's per-ractor main thread.
   #: () -> Thread
   def self.current = %x{ return rbCurrentThread() }
