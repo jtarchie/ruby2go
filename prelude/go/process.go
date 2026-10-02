@@ -195,3 +195,11 @@ func rbRlimit(v any) int {
 	}
 	panic(NewArgumentError(Ref(String("invalid resource name: " + string(rbToS(v))))))
 }
+
+// rbLastStatusOpt is $?: the last child's status, nil before any.
+func rbLastStatusOpt() **Process_Status {
+	if st := rbLastStatus.Load(); st != nil {
+		return &st
+	}
+	return nil
+}

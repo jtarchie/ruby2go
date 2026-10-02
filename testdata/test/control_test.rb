@@ -4653,4 +4653,12 @@ module ControlTests
       assert_nil r
     end
   end
+
+  # $? inside another class's method compiled to a dynamic call on main that could not see Kernel's private helper
+  class ControlBugLastStatusInMethodTest < Minitest::Test
+    def test_last_status_in_method
+      system("true")
+      assert_equal [true, 0], [$?&.success?, $?&.exitstatus]
+    end
+  end
 end

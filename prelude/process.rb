@@ -76,7 +76,7 @@ module Process
 end
 
 # Kernel#system, backticks and $? (decision 97). Backticks and %x() in user
-# code compile to __backtick; $? to __last_status.
+# code compile to __backtick; $? reads rbLastStatusOpt.
 module Kernel
   private
 
@@ -91,13 +91,6 @@ module Kernel
   #: (String, *String) -> void
   def exec(cmd, *args) = %x{ rbExec(string(cmd), rest_) }
 
-  #: () -> Process::Status?
-  def __last_status = %x{
-    if st := rbLastStatus.Load(); st != nil {
-      return &st
-    }
-    return nil
-  }
 end
 
 # Kernel#trap / Signal.trap (decision 100): a block runs on the signal
