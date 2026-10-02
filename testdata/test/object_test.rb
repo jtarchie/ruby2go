@@ -4331,4 +4331,18 @@ module ObjectTests
       assert_equal ["abab", "x", 12], [svc.call("ab", times: 2), svc.call("x"), svc.via(3) { |v| v * 2 }]
     end
   end
+
+  # a class's own is_a? was folded away (MRI calls it), and a folded is_a? alone as a statement was a Go "is not used" error
+  class IsALiar
+    #: (untyped) -> bool
+    def is_a?(_klass) = true
+  end
+
+  class ObjectBugIsAOverrideTest < Minitest::Test
+    def test_is_a_override
+      assert_equal true, IsALiar.new.is_a?(Integer)
+      1.is_a?(String)
+      assert_equal false, 1.is_a?(String)
+    end
+  end
 end

@@ -1443,6 +1443,9 @@ func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Nod
 // genIntrinsic compiles the methods the transpiler answers itself:
 // class, with (Data), respond_to?, is_a?/kind_of?.
 func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.prelude {
+		return expr{}, false // a user's override, as MRI calls it
+	}
 	if name == "class" && len(args) == 0 && block == nil {
 		if e, ok := f.genClassOf(n, recv); ok {
 			return e, true
@@ -1466,7 +1469,8 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		if len(args) != 1 || block != nil {
 			f.errorf(n, "%s takes one class", name)
 		}
-		return expr{code: "Boolean(" + f.isACheck(n, recv, args[0]) + ")", typ: f.cls("Boolean")}, true
+		check := f.isACheck(n, recv, args[0])
+		return expr{code: "Boolean(" + check + ")", typ: f.cls("Boolean"), lit: check == "true" || check == "false"}, true
 	}
 	// `!=` is `!(==)` unless overridden: BasicObject#!= as a free func over any would bind == to identity.
 	if name == "!=" {
