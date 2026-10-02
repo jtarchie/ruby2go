@@ -1308,4 +1308,12 @@ module StdlibTests
       end
     end
   end
+
+  # ruby/spec core/time gaps (#49): subsec
+  class RubySpecTimeSubsecTest < Minitest::Test
+    def test_subsec
+      assert_equal [Rational(1, 2), 0, Rational(1, 4)], [Time.at(1.5).subsec, Time.at(0).subsec, Time.at(1.25).subsec]
+      assert_equal Rational, Time.at(1.5).subsec.class
+    end
+  end
 end

@@ -104,6 +104,14 @@ class Time < Object
   #: () -> Integer
   def nsec = %x{ Integer(self.t.Nanosecond()) }
 
+  # The fraction of a second: a Rational, or Integer 0 on a whole second, as MRI's.
+  #: () -> untyped
+  def subsec
+    return 0 if nsec.zero?
+
+    Rational(nsec, 1_000_000_000)
+  end
+
   #: () -> Integer
   def wday = %x{ Integer(self.t.Weekday()) }
 
