@@ -16,13 +16,6 @@ x = 3 #: untyped
 case x
 in Integer then puts "int"
 end
--- case_when_splat.rb --
-# error: main.rb:5: unsupported syntax: SplatNode
-LIST = [1, 2] #: Array[Integer]
-x = 3
-case x
-when *LIST then puts "listed"
-end
 -- rescue_non_class.rb --
 # error: main.rb:5: rescue needs exception class names
 klass = StandardError

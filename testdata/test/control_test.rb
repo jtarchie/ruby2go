@@ -4564,4 +4564,49 @@ module ControlTests
       assert_equal true, r.frozen?
     end
   end
+
+  # ruby/spec language gaps (#49): when *LIST and rescue *ERRORS
+  CONTROL_VOWELS = %w[a e i o u]
+  CONTROL_RANGES = [1..3, 10..12]
+  CONTROL_NET_ERRORS = [IOError, ArgumentError]
+
+  class ControlRubySpecSplatTest < Minitest::Test
+    #: (String) -> Symbol
+    def control_kind(c)
+      case c
+      when *CONTROL_VOWELS then :vowel
+      when "y", *%w[w h] then :semi
+      else :consonant
+      end
+    end
+
+    #: (Integer) -> bool
+    def control_in_ranges?(n)
+      case n
+      when *CONTROL_RANGES then true
+      else false
+      end
+    end
+
+    def test_when_splat
+      assert_equal %i[vowel semi semi consonant], [control_kind("e"), control_kind("y"), control_kind("h"), control_kind("z")]
+      assert_equal [true, true, false], [control_in_ranges?(2), control_in_ranges?(11), control_in_ranges?(5)]
+    end
+
+    def test_rescue_splat
+      seen = [] #: Array[untyped]
+      [1, 2, 3].each do |i|
+        begin
+          raise IOError, "io" if i == 1
+          raise ArgumentError, "arg" if i == 2
+          raise TypeError, "type"
+        rescue *CONTROL_NET_ERRORS => e
+          seen << [:net, e.message]
+        rescue TypeError, *[KeyError] => e
+          seen << [:other, e.message]
+        end
+      end
+      assert_equal [[:net, "io"], [:net, "arg"], [:other, "type"]], seen
+    end
+  end
 end
