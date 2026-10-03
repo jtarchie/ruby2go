@@ -16,6 +16,7 @@ type File struct {
 	Root    *parser.ProgramNode
 	lines   []int // byte offset of each line start
 	prelude bool
+	path    string  // a user file's real path on disk, which require_relative resolves against
 	data    *string // the text after `__END__`, which DATA reads
 
 	// standalone annotation comments by the line they precede (first code line after)

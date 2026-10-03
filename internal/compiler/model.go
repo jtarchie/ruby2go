@@ -397,7 +397,9 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 	case n.Receiver == nil && n.Name == "require_relative" && f.prelude:
 		c.requireRelative(ctx, f, n)
 	case n.Receiver == nil && n.Name == "require_relative":
-		c.errorf(f, n, "require_relative is not supported in user code")
+		if uf := c.userRequireRelative(ctx, f, n); uf != nil {
+			c.addMainStmt(f, &loadFile{call: n, file: uf})
+		}
 	case !f.prelude && isDescribe(n):
 		c.collectDescribe(ctx, f, nil, n)
 	case n.Receiver == nil && n.Name == "include" && !f.prelude:

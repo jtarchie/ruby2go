@@ -3487,8 +3487,9 @@ resolve; anything not listed is still open.
     is a fatal runtime error `recover` cannot catch, so infinite
     recursion exits with Go's `goroutine stack exceeds` message and
     status 2; counting call depth in every function would tax every
-    call to report a bug), `LoadError` (an unknown `require` stays a
-    compile error, decision 68), `SyntaxError` (no `eval`),
+    call to report a bug), `LoadError` (an unknown `require` is a no-op,
+    decision 78; a `require_relative` of a missing file is a compile
+    error, decision 130), `SyntaxError` (no `eval`),
     `SecurityError`, `EncodingError`, and `LocalJumpError` (a `yield`
     whose block may be missing is a compile error, decision 126).
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
@@ -3517,3 +3518,41 @@ resolve; anything not listed is still open.
     (`category: "deprecated"`, which MRI converts) and `$VERBOSE = nil`
     silencing are not done. (`testdata/test/stdlib_test.rb`
     `WarningTest`, `testdata/run/io_warning_hook.rb`.)
+130. `require_relative` in user code loads the file at compile time,
+    building on decision 84's closed world of several files:
+    - **Resolution.** The path is joined to the requiring file's
+      directory, `.rb` added unless present, and keyed by real path
+      (symlinks resolved), as MRI's loaded features are. A file already
+      loaded, by an earlier `require_relative` or as one of the given
+      files, is a no-op, which also ends require cycles. MRI does not
+      list the main script as loaded, so a library requiring `main.rb`
+      back would run it twice there; here it is a no-op.
+    - **Run order.** A required file's top level runs where its
+      `require_relative` stands, as a Go block nested in the requirer's
+      (a `loadFile` marker in the statement list), so output before and
+      after the require interleaves as in MRI, and its locals stay its
+      own. Its code is generated once, before its requirer's (it comes
+      later in load order), and spliced into every pass of the
+      requirer's analysis.
+    - **Names.** A required file's `__FILE__`, `//line` and messages
+      use its real path, as MRI's do; `$0` stays the first file as
+      given, so `__FILE__ == $0` works in both.
+    - **Static only.** The argument must be a string literal and the
+      call a top-level statement of its file (not inside `if`, `begin`,
+      a def or a class body): a closed world cannot load a file
+      conditionally. Otherwise, or for a missing file (`cannot load such
+      file -- path`, MRI's `LoadError` message), it is a compile error.
+      Before this, a nested `require_relative` compiled to nothing.
+    - **Where files come from.** `Source.Path` (the path on disk;
+      `Compile` passes the name it was given, `CompileFiles` each
+      `Name`), read with `os.ReadFile`. The wasm playground has no file
+      system, so its picker leaves out examples that `require_relative`.
+    - `cmd/rubyspec` keeps its own fixture loading (decision 127): it
+      rewrites fixtures before compiling, so the compiler must not read
+      them from disk.
+    - Not done: `require "x"` of user files through `$LOAD_PATH` or a
+      `-I` flag, `load`, `autoload`, and top-level `return` in a
+      required file.
+    ([example 89](../examples/89_require_relative/main.rb),
+    [testdata/multi/require](../testdata/multi/require),
+    `testdata/errors/require.txtar`.)

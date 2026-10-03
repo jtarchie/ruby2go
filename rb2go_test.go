@@ -172,7 +172,7 @@ func TestRun(t *testing.T) {
 				t.Fatal(err)
 			}
 			skipIfMarked(t, src)
-			gen := transpile(t, filepath.Base(rb), src)
+			gen := transpile(t, rb, src) // Compile names it by its base; the path is for require_relative
 			// -l skips inlining, ~40% of compile CPU; TestExamples keeps the default build users get.
 			sameAsRuby(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-l"))
 		})
@@ -200,7 +200,7 @@ func TestMinitest(t *testing.T) {
 				t.Fatal(err)
 			}
 			skipIfMarked(t, src)
-			gen := transpile(t, filepath.Base(rb), src)
+			gen := transpile(t, rb, src) // Compile names it by its base; the path is for require_relative
 			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-l"), []string{"--seed", "1"})
 		})
 	}
@@ -391,7 +391,7 @@ func testExample(t *testing.T, dir, gen string) {
 	tmp := t.TempDir()
 	// 1. rbs-inline + rbs validate
 	sig := filepath.Join(tmp, "sig")
-	out, err := gemCmd(t, "rbs-inline", "--output="+sig, filepath.Join(dir, "main.rb")).CombinedOutput()
+	out, err := gemCmd(t, "rbs-inline", "--output="+sig, dir).CombinedOutput() // the whole directory: main.rb and what it require_relatives
 	if err != nil {
 		t.Fatalf("rbs-inline failed: %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
 	}
@@ -405,7 +405,7 @@ func testExample(t *testing.T, dir, gen string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeGenerated(t, gen, "main.rb", src)
+	writeGenerated(t, gen, filepath.Join(dir, "main.rb"), src) // its real path, for require_relative
 	fmtOut, err := run(t, gen, "gofmt", "-l", "main.go")
 	if err != nil || strings.TrimSpace(fmtOut) != "" {
 		t.Fatalf("gofmt: %v %s", err, fmtOut)

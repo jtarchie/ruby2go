@@ -520,6 +520,10 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genConstInit(ci.k)
 		return
 	}
+	if lf, ok := n.(*loadFile); ok {
+		f.buf.WriteString("{\n" + f.c.loadCode[lf.file] + "}\n")
+		return
+	}
 	f.lineOf(n)
 	switch n := n.(type) {
 	case *parser.IfNode:
@@ -2207,22 +2211,32 @@ func (c *Compiler) emitMain() {
 	c.w("var rb_main = &Object{}\n\n")
 	c.labels["main"] = "<main>"
 	c.w("func main() {\n\trbTrapSignals()\n\tdefer rbFlush()\n\tdefer rbTopRecover()\n")
-	prelude, bodies := c.mainBodies()
-	gen := func(file *File, stmts []parser.Node, indent int) {
+	prelude, all := c.mainBodies()
+	gen := func(file *File, stmts []parser.Node, indent int) string {
 		f := c.newFctx(file, nil, nil)
 		f.indent = indent
 		f.retVar = ""
 		f.genBody(&parser.StatementsNode{Body: stmts}, nil, tail{}, nil)
-		c.out.WriteString(f.buf.String())
+		return f.buf.String()
+	}
+	// a required file runs where its require_relative is, as a nested block
+	// (decision 130); it comes later in load order than its requirer, so
+	// generating backwards has its code ready for the loadFile that splices it
+	c.loadCode = map[*File]string{}
+	var bodies []fileBody
+	for i := len(all) - 1; i >= 0; i-- {
+		if c.required[all[i].f] {
+			c.loadCode[all[i].f] = gen(all[i].f, all[i].stmts, 2)
+		} else {
+			bodies = append([]fileBody{all[i]}, bodies...)
+		}
 	}
 	if len(bodies) == 1 { // one file: its top level is main's
-		gen(bodies[0].f, append(prelude, bodies[0].stmts...), 1)
+		c.w("%s", gen(bodies[0].f, append(prelude, bodies[0].stmts...), 1))
 	} else {
-		gen(c.mainFile, prelude, 1)
+		c.w("%s", gen(c.mainFile, prelude, 1))
 		for _, b := range bodies { // top-level locals are file-scoped in Ruby: a Go block each
-			c.w("\t{\n")
-			gen(b.f, b.stmts, 2)
-			c.w("\t}\n")
+			c.w("\t{\n%s\t}\n", gen(b.f, b.stmts, 2))
 		}
 	}
 	c.w("}\n\n")
@@ -2427,6 +2441,18 @@ func (ci *constInit) GetLocation() parser.Location     { return ci.k.Value.GetLo
 func (ci *constInit) CompactChildNodes() []parser.Node { return nil }
 func (ci *constInit) ChildNodes() []parser.Node        { return nil }
 
+// loadFile stands in main's statement list for a top-level
+// `require_relative`: the required file's top level runs there (decision 130).
+type loadFile struct {
+	parser.Node
+	call *parser.CallNode
+	file *File
+}
+
+func (lf *loadFile) GetLocation() parser.Location     { return lf.call.Location }
+func (lf *loadFile) CompactChildNodes() []parser.Node { return nil }
+func (lf *loadFile) ChildNodes() []parser.Node        { return nil }
+
 // fileBody is what one user file's top level runs, in source order.
 type fileBody struct {
 	f     *File
@@ -2475,11 +2501,27 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 	return prelude, bodies
 }
 
-// mainBody is everything main runs, flattened.
+// mainBody is everything main runs, flattened, required files where they load.
 func (c *Compiler) mainBody() []parser.Node {
 	prelude, bodies := c.mainBodies()
+	of := map[*File][]parser.Node{}
 	for _, b := range bodies {
-		prelude = append(prelude, b.stmts...)
+		of[b.f] = b.stmts
+	}
+	var add func([]parser.Node)
+	add = func(stmts []parser.Node) {
+		for _, n := range stmts {
+			if lf, ok := n.(*loadFile); ok {
+				add(of[lf.file])
+				continue
+			}
+			prelude = append(prelude, n)
+		}
+	}
+	for _, b := range bodies {
+		if !c.required[b.f] {
+			add(b.stmts)
+		}
 	}
 	return prelude
 }

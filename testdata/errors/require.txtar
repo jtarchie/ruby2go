@@ -1,0 +1,20 @@
+Compile errors for require_relative in user code (docs/design.md decision 130): files load at compile time, so the path must be a literal at the top level.
+-- computed_path.rb --
+# error: main.rb:3: require_relative needs a string literal
+name = "lib"
+require_relative name
+-- missing_file.rb --
+# error: main.rb:2: cannot load such file -- 
+require_relative "testdata/no_such_file"
+-- inside_if.rb --
+# error: main.rb:3: require_relative must be a top-level statement
+if ARGV.empty?
+  require_relative "lib"
+end
+-- inside_def.rb --
+# error: main.rb:4: require_relative must be a top-level statement
+#: () -> void
+def load_lib
+  require_relative "lib"
+end
+load_lib

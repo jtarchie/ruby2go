@@ -95,8 +95,11 @@ rb2go web -static dir -assets URL  # the same playground as static files, compil
 point at `file:line` in your Ruby source, and runtime panics map back to Ruby
 lines through `//line` directives.
 
-A program is one Ruby file. `require` of a supported standard library works;
-`require_relative` and gems do not (yet).
+A program is a Ruby file plus whatever it `require_relative`s: each file
+loads once, where it is required, as in Ruby. The path must be a string
+literal at a file's top level, since rb2go reads the files when it compiles.
+`require` of a supported standard library works; gems and `require` of your
+own files through `$LOAD_PATH` do not (yet).
 
 ## Writing Ruby for rb2go
 

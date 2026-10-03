@@ -50,8 +50,10 @@ type Compiler struct {
 	topDefList    []*Method
 	verbatim      []verbatim
 	mainStmts     []parser.Node
-	mainFile      *File   // the first user file: $0, and the generated header
-	userFiles     []*File // in load order
+	mainFile      *File            // the first user file: $0, and the generated header
+	userFiles     []*File          // in load order
+	loadCode      map[*File]string // a required file's top level, generated, for the loadFile that splices it
+	required      map[*File]bool   // user files require_relative loaded: they run where required, not as a top level of their own
 	stmtFile      map[parser.Node]*File
 	dynEvery      bool            // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
 	dynLazy       map[string]bool // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
@@ -64,7 +66,7 @@ type Compiler struct {
 	files         []*File
 	preludeFS     fs.FS
 	parser        *parser.Parser
-	loaded        map[string]bool
+	loaded        map[string]bool // prelude names, and user files' real paths
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
@@ -124,6 +126,7 @@ func Compile(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []by
 type Source struct {
 	Name string
 	Src  []byte
+	Path string // where it is on disk, for require_relative; Name when empty
 }
 
 // options are a compile's settings beyond its sources.
@@ -176,10 +179,20 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.loadPrelude(ctx, "prelude.rb")
 	tick("prelude")
 	for _, src := range sources {
+		path := src.Path
+		if path == "" {
+			path = src.Name
+		}
+		path = realPath(path)
+		if c.loaded[path] { // a file an earlier one require_relative'd: Ruby loads it once
+			continue
+		}
+		c.loaded[path] = true
 		uf, perr := parseFile(ctx, p, src.Name, src.Src, false)
 		if perr != nil {
 			return nil, perr
 		}
+		uf.path = path
 		c.files = append(c.files, uf)
 		c.userFiles = append(c.userFiles, uf)
 		c.collect(ctx, uf)
@@ -235,7 +248,7 @@ func (c *Compiler) sortedClasses() []*Class {
 
 // CompileWithWarnings is Compile plus the warnings collected.
 func CompileWithWarnings(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte) ([]byte, []string, error) {
-	return CompileFilesWithWarnings(ctx, preludeFS, []Source{{Name: filepath.Base(mainName), Src: mainSrc}})
+	return CompileFilesWithWarnings(ctx, preludeFS, []Source{{Name: filepath.Base(mainName), Src: mainSrc, Path: mainName}})
 }
 
 // CompileFilesWithWarnings compiles several user files into one program, loaded in order (decision 84).
@@ -336,6 +349,60 @@ func (c *Compiler) requireRelative(ctx context.Context, f *File, n *parser.CallN
 		target += ".rb"
 	}
 	c.loadPrelude(ctx, target)
+}
+
+// userRequireRelative loads the file a user file's top-level
+// `require_relative "x"` names (decision 130), as MRI does: by real path,
+// once, its `__FILE__` that path. It returns nil when the file is already
+// loaded.
+func (c *Compiler) userRequireRelative(ctx context.Context, f *File, n *parser.CallNode) *File {
+	args := callArgs(n)
+	if len(args) != 1 {
+		c.errorf(f, n, "require_relative needs a string literal")
+	}
+	str, ok := args[0].(*parser.StringNode)
+	if !ok {
+		c.errorf(f, n, "require_relative needs a string literal: rb2go loads files at compile time")
+	}
+	target := filepath.Join(filepath.Dir(f.path), filepath.FromSlash(str.Unescaped.Value))
+	if filepath.Ext(target) != ".rb" {
+		target += ".rb"
+	}
+	src, err := os.ReadFile(target) //nolint:gosec // the user's program names it
+	if err != nil {
+		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
+	}
+	path := realPath(target)
+	if c.loaded[path] {
+		return nil
+	}
+	c.loaded[path] = true
+	uf, err := parseFile(ctx, c.parser, path, src, false)
+	if err != nil {
+		panic(compileError{msg: err.Error()})
+	}
+	uf.path = path
+	c.files = append(c.files, uf)
+	c.userFiles = append(c.userFiles, uf)
+	if c.required == nil {
+		c.required = map[*File]bool{}
+	}
+	c.required[uf] = true
+	c.collect(ctx, uf)
+	return uf
+}
+
+// realPath is name absolute with symlinks resolved, as MRI keys loaded features; name itself when that fails.
+func realPath(name string) string {
+	p, err := filepath.Abs(name)
+	if err != nil {
+		return name
+	}
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return p
+	}
+	return r
 }
 
 // warn records a warning once, with its source position.
