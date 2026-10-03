@@ -36,7 +36,7 @@ For each `examples/*/main.rb`, `TestExamples` (rb2go_test.go):
 2. runs `Compile`, then `gofmt`, `go vet`, `golangci-lint` with `.golangci.generated.yml` (the generated Go must lint clean), and `go build`.
 3. requires stdout **and** exit code to equal `ruby main.rb`.
 
-Generated programs are built with `-race -trimpath` (`-trimpath` lets the build cache hit across temp dirs; the first run after a Go upgrade rebuilds the race std once). Examples are vetted and linted in one pass over a shared module after all of them pass. MRI output is cached by source, Ruby version and TZ.
+Generated programs are built with `-race -trimpath` (`-trimpath` lets the build cache hit across temp dirs; the first run after a Go upgrade rebuilds the race std once). Examples are vetted and linted in one pass over a shared module after all of them pass. MRI output is cached by source, Ruby version, TZ and checkout directory (so worktrees do not share entries holding `__dir__`).
 
 Add one new example per new feature, numbered next in sequence: a plain program that shows the feature and prints what it computes (examples are scripts, as in a Ruby project's `examples/`; behaviour checks go in `testdata/test`). User code must run on MRI unchanged. There are no golden Go files; MRI's output is the only expectation.
 
