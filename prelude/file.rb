@@ -245,6 +245,9 @@ class File < Object
     return Integer(fi.Size())
   }
 
+  #: (String) -> Integer?
+  def self.size?(path) = zero?(path) || !exist?(path) ? nil : size(path)
+
   #: (String) -> Integer
   def self.delete(path) = %x{
     err := os.Remove(string(path))
@@ -573,6 +576,45 @@ class File::Stat < Object
     }
     return Integer(self.fi.Mode().Perm())
   }
+end
+
+# FileTest: File's predicates as module functions.
+module FileTest
+  #: (String) -> bool
+  def self.exist?(path) = File.exist?(path)
+
+  #: (String) -> bool
+  def self.file?(path) = File.file?(path)
+
+  #: (String) -> bool
+  def self.directory?(path) = File.directory?(path)
+
+  #: (String) -> bool
+  def self.symlink?(path) = File.symlink?(path)
+
+  #: (String) -> bool
+  def self.zero?(path) = File.zero?(path)
+
+  #: (String) -> bool
+  def self.empty?(path) = File.empty?(path)
+
+  #: (String) -> Integer
+  def self.size(path) = File.size(path)
+
+  #: (String) -> Integer?
+  def self.size?(path) = File.size?(path)
+
+  #: (String) -> bool
+  def self.readable?(path) = File.readable?(path)
+
+  #: (String) -> bool
+  def self.writable?(path) = File.writable?(path)
+
+  #: (String) -> bool
+  def self.executable?(path) = File.executable?(path)
+
+  #: (String) -> bool
+  def self.owned?(path) = File.owned?(path)
 end
 
 class Dir < Object

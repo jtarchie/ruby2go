@@ -1016,6 +1016,34 @@ module StdlibTests
     end
   end
 
+  # FileTest forwards to File's predicates (#44).
+  class FileTestTest < Minitest::Test
+    def test_predicates
+      Dir.mktmpdir do |dir|
+        full = File.join(dir, "full")
+        File.write(full, "abc")
+        empty = File.join(dir, "empty")
+        File.write(empty, "")
+        link = File.join(dir, "link")
+        File.symlink(full, link)
+        gone = File.join(dir, "gone")
+        assert_equal [true, true, true, false], [full, empty, dir, gone].map { |p| FileTest.exist?(p) }
+        assert_equal [true, false, false], [full, dir, gone].map { |p| FileTest.file?(p) }
+        assert_equal [false, true, false], [full, dir, gone].map { |p| FileTest.directory?(p) }
+        assert_equal [true, false], [link, full].map { |p| FileTest.symlink?(p) }
+        assert_equal [false, true, false], [full, empty, gone].map { |p| FileTest.zero?(p) }
+        assert_equal [false, true], [full, empty].map { |p| FileTest.empty?(p) }
+        assert_equal [3, nil, nil], [full, empty, gone].map { |p| FileTest.size?(p) }
+        assert_equal [3, nil, nil], [full, empty, gone].map { |p| File.size?(p) }
+        assert_equal [3, 0], [full, empty].map { |p| FileTest.size(p) }
+        assert_equal [true, true, false], [FileTest.readable?(full), FileTest.writable?(full), FileTest.executable?(full)]
+        File.chmod(0o755, full)
+        assert_equal [true, true], [FileTest.executable?(full), FileTest.owned?(full)]
+        assert_equal false, FileTest.readable?(gone)
+      end
+    end
+  end
+
   # OptionParser (decision 101): typed blocks, MRI's help layout, parse forms and errors.
   class OptionParserTest < Minitest::Test
     #: (Hash[Symbol, untyped]) -> OptionParser
