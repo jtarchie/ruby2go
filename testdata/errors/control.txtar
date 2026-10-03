@@ -273,6 +273,11 @@ lo, hi = arr
 -- defined_ivar.rb --
 # error: main.rb:2: defined?(@a) depends on whether it was ever assigned
 puts defined?(@a).inspect
+-- defined_yield_nested_optional.rb --
+# error: main.rb:3: defined?(yield) inside another expression is not supported with an optional block
+#: () ?{ () -> String } -> String?
+def f = defined?(yield.upcase)
+p f
 -- retry_in_block.rb --
 # error: main.rb:5: retry is only supported directly in a rescue clause
 begin

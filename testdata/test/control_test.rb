@@ -4654,6 +4654,7 @@ module ControlTests
       assert_equal ["method", "method", nil, "method", nil, "method"], [defined?(control_helper), defined?(String.new), defined?(Nope.x), defined?(Integer.sqrt), defined?(Integer.nope), defined?(File.join)]
       r = defined?(x)
       assert_equal true, r.frozen?
+      assert_equal ["global-variable", "global-variable", "global-variable", "global-variable", nil], [defined?($stdout), defined?($0), defined?($;), defined?($VERBOSE), defined?($control_never_set)]
     end
   end
 
@@ -4804,6 +4805,23 @@ module ControlTests
 
     #: () ?{ () -> String } -> bool
     def control_given = block_given?
+
+    #: () ?{ () -> void } -> String?
+    def control_def_yield = defined?(yield)
+
+    #: () { () -> void } -> String?
+    def control_def_yield_required = defined?(yield)
+
+    #: () -> String?
+    def control_def_yield_none = defined?(yield)
+
+    #: () ?{ () -> void } -> Array[String?]
+    def control_def_yield_in_block = [1].map { defined?(yield) }
+
+    def test_defined_yield
+      assert_equal [nil, "yield", "yield", nil], [control_def_yield, control_def_yield {}, control_def_yield_required {}, control_def_yield_none]
+      assert_equal [[nil], ["yield"]], [control_def_yield_in_block, control_def_yield_in_block {}]
+    end
 
     def test_optional_block
       assert_equal [nil, 20], [control_safe(1), control_safe(2) { |v| v * 10 }]

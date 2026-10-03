@@ -3287,8 +3287,18 @@ resolve; anything not listed is still open.
     - `defined?` is answered at compile time: locals, constants, methods
       (on a receiver's static type; private ones only without a
       receiver), `super`, `self`, `nil`/`true`/`false`, assignments and
-      other expressions. `defined?(@ivar)`, `$global` and `yield` depend
-      on run-time state rb2go does not track and are compile errors.
+      other expressions. `defined?($g)` is "global-variable" for MRI's
+      startup globals (MRI answers so whatever their value, even ones
+      rb2go cannot read, like `$;`) and nil for any other: rb2go rejects
+      assigning a user global (decision 109), so one is never set and no
+      run-time flag is needed. `defined?(yield)` is "yield" in a def with
+      a required block (or an iterator), nil without one or outside a
+      def; with an optional block (decision 126) it is the one run-time
+      answer, a `String?` read off the block local as `block_given?` is
+      (nested in another expression there, `defined?(yield.x)`, it is a
+      compile error). `defined?(@ivar)` depends on run-time state rb2go
+      does not track and is a compile error. (`testdata/test/control_test.rb`
+      `test_defined`, `test_defined_yield`.)
     - Multiple assignment takes `*rest`, `a, = xs` and nested targets; an
       Array gives each target its element or nil and `*rest` the middle
       (`rbMidSplat`, `rbTrailIdx`), a tuple splits statically. Block
