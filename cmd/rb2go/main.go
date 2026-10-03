@@ -17,10 +17,10 @@ import (
 	"github.com/jtarchie/ruby2go"
 )
 
-const usage = `usage: rb2go build [-o prog] [-race] [-gcflags flags] [-work] main.rb
-       rb2go run [-race] [-gcflags flags] [-work] main.rb [args...]
-       rb2go gen main.rb > main.go
-       rb2go test [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
+const usage = `usage: rb2go build [-o prog] [-I dir]... [-race] [-gcflags flags] [-work] main.rb
+       rb2go run [-I dir]... [-race] [-gcflags flags] [-work] main.rb [args...]
+       rb2go gen [-I dir]... main.rb > main.go
+       rb2go test [-I dir]... [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
        rb2go web [-addr 127.0.0.1:8080]
        rb2go web -static dir -assets https://host/path/`
 
@@ -34,13 +34,6 @@ func main() {
 	}
 	if os.Args[1] == "web" {
 		os.Exit(webCmd(os.Args[2:]))
-	}
-	if os.Args[1] == "gen" {
-		if len(os.Args) != 3 {
-			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
-		}
-		os.Exit(gen(os.Args[2], os.Stdout))
 	}
 	cmd := os.Args[1]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
@@ -57,12 +50,19 @@ func main() {
 		gcflags: fs.String("gcflags", "", "passed to go build (e.g. -e for every error)"),
 		work:    fs.Bool("work", false, "keep the temp module (main.go, go.mod) and print its path"),
 	}
+	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
+		opts.loadPath = append(opts.loadPath, dir)
+		return nil
+	})
 	_ = fs.Parse(os.Args[2:]) // ExitOnError
-	if fs.NArg() < 1 || cmd == "build" && fs.NArg() != 1 {
+	if fs.NArg() < 1 || cmd != "run" && fs.NArg() != 1 {
 		fs.Usage()
 		os.Exit(2)
 	}
 	file := fs.Arg(0)
+	if cmd == "gen" {
+		os.Exit(gen(file, opts.loadPath, os.Stdout))
+	}
 	if cmd == "build" {
 		bin := *out
 		if bin == "" {
@@ -74,13 +74,13 @@ func main() {
 }
 
 // gen writes the generated Go to out and warnings to stderr: the main.go that build -work keeps, without needing the go command.
-func gen(file string, out io.Writer) int {
+func gen(file string, loadPath []string, out io.Writer) int {
 	src, err := os.ReadFile(file) //nolint:gosec // the user's program
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	code, warnings, err := rb2go.Compile(context.Background(), file, src)
+	code, warnings, err := rb2go.Compile(context.Background(), file, src, loadPath...)
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
@@ -95,9 +95,10 @@ func gen(file string, out io.Writer) int {
 }
 
 type buildOpts struct {
-	race    *bool
-	gcflags *string
-	work    *bool
+	race     *bool
+	gcflags  *string
+	work     *bool
+	loadPath []string // -I
 }
 
 func build(file, bin string, opts buildOpts) int {
@@ -165,7 +166,7 @@ func compile(file, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	if err != nil {
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
-	code, warnings, err := rb2go.Compile(context.Background(), file, src)
+	code, warnings, err := rb2go.Compile(context.Background(), file, src, opts.loadPath...)
 	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
 }
 
@@ -179,7 +180,7 @@ func compileFiles(files []string, bin string, opts buildOpts, diag io.Writer) (s
 		}
 		srcs = append(srcs, rb2go.File{Name: f, Src: src})
 	}
-	code, warnings, err := rb2go.CompileFiles(context.Background(), srcs)
+	code, warnings, err := rb2go.CompileFiles(context.Background(), srcs, opts.loadPath...)
 	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
 }
 

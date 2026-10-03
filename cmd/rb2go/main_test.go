@@ -197,9 +197,9 @@ func TestTestCommand(t *testing.T) {
 		t.Errorf("-n /good/ -v: exit %d\n%s", code, out)
 	}
 
-	opts, rest, err := testBuildFlags([]string{"-v", "-race", "x_test.rb", "-gcflags", "-l", "--seed", "3", "-gcflags=-e"})
-	if err != nil || !*opts.race || *opts.gcflags != "-e" || !slices.Equal(rest, []string{"-v", "x_test.rb", "--seed", "3"}) {
-		t.Errorf("testBuildFlags: race=%v gcflags=%q rest=%q err=%v", *opts.race, *opts.gcflags, rest, err)
+	opts, rest, err := testBuildFlags([]string{"-v", "-race", "x_test.rb", "-gcflags", "-l", "--seed", "3", "-gcflags=-e", "-I", "a", "-Ib", "-I=c"})
+	if err != nil || !*opts.race || *opts.gcflags != "-e" || !slices.Equal(rest, []string{"-v", "x_test.rb", "--seed", "3"}) || !slices.Equal(opts.loadPath, []string{"a", "b", "c"}) {
+		t.Errorf("testBuildFlags: race=%v gcflags=%q -I=%q rest=%q err=%v", *opts.race, *opts.gcflags, opts.loadPath, rest, err)
 	}
 }
 
@@ -229,13 +229,13 @@ func TestGen(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	if code := gen(src, &out); code != 0 {
+	if code := gen(src, nil, &out); code != 0 {
 		t.Fatalf("gen: exit %d", code)
 	}
 	if !strings.Contains(out.String(), "\npackage main\n") {
 		t.Errorf("not Go source: %.200q", out.String())
 	}
-	if code := gen(filepath.Join(dir, "missing.rb"), io.Discard); code != 1 {
+	if code := gen(filepath.Join(dir, "missing.rb"), nil, io.Discard); code != 1 {
 		t.Errorf("gen missing file: exit %d, want 1", code)
 	}
 }

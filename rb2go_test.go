@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,7 +256,7 @@ func TestMulti(t *testing.T) {
 	}
 }
 
-var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr): (.*)$`)
+var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.
 func directives(src []byte, kind string) []string {
@@ -422,7 +423,28 @@ func compileSafe(name string, src []byte) (code []byte, warnings []string, err e
 			err = fmt.Errorf("compiler panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	return Compile(context.Background(), name, src)
+	return Compile(context.Background(), name, src, loadPath(filepath.Dir(name), src)...)
+}
+
+// onLoadPath reports whether `require name` finds a file on src's `# load_path:`.
+func onLoadPath(dir string, src []byte, name string) bool {
+	for _, d := range loadPath(dir, src) {
+		_, err := os.Stat(filepath.Join(d, name+".rb"))
+		if err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// loadPath is src's `# load_path: dir` directories, relative to dir where the file is: `ruby -I` for MRI, -I for rb2go.
+func loadPath(dir string, src []byte) []string {
+	dirs := directives(src, "load_path")
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		out = append(out, filepath.Join(dir, d))
+	}
+	return out
 }
 
 // transpile compiles src into a fresh Go module and returns its directory.
@@ -656,7 +678,33 @@ var mtTracePreload = sync.OnceValues(func() (string, []byte) {
 // rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby, TZ and checkout (RB2GO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
-	return mriRun(t, dir, src, pio, append([]string{file}, args...))
+	dirs := directives(src, "load_path")
+	flags := make([]string, 0, 2*len(dirs))
+	for _, d := range dirs { // ruby runs in dir, so as written
+		flags = append(flags, "-I", d)
+	}
+	if file == "main.rb" { // an example: key the cache on the files it requires too
+		src = exampleSources(t, dir)
+	}
+	return mriRun(t, dir, src, pio, slices.Concat(flags, []string{file}, args))
+}
+
+// exampleSources is every .rb file under an example's directory, main.rb and what it requires, with their paths.
+func exampleSources(t *testing.T, dir string) []byte {
+	t.Helper()
+	var out []byte
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(p) != ".rb" {
+			return err
+		}
+		src, err := os.ReadFile(p) //nolint:gosec // example path
+		out = append(append(append(out, p...), 0), src...)
+		return err //nolint:wrapcheck // the *PathError names the file
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 // mriRun runs `ruby rubyArgs...` in dir, cached by src (every source it reads), Ruby's version, TZ, the checkout and the arguments past the first.
@@ -720,6 +768,9 @@ func rbsLibraries(t *testing.T, path string) []string {
 	matches := requireLine.FindAllStringSubmatch(string(src), -1)
 	args := []string{"-I", vendored}
 	for _, m := range matches {
+		if onLoadPath(filepath.Dir(path), src, m[1]) {
+			continue // the program's own file, not a library
+		}
 		name := strings.ReplaceAll(m[1], "/", "-")
 		if alias, ok := rbsLibraryNames[name]; ok {
 			name = alias

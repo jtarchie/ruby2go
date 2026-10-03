@@ -3550,9 +3550,27 @@ resolve; anything not listed is still open.
     - `cmd/rubyspec` keeps its own fixture loading (decision 127): it
       rewrites fixtures before compiling, so the compiler must not read
       them from disk.
-    - Not done: `require "x"` of user files through `$LOAD_PATH` or a
-      `-I` flag, `load`, `autoload`, and top-level `return` in a
-      required file.
+    - Not done: `load`, `autoload`, and top-level `return` in a
+      required file. `require` through `-I` is decision 131.
     ([example 89](../examples/89_require_relative/main.rb),
     [testdata/multi/require](../testdata/multi/require),
+    `testdata/errors/require.txtar`.)
+131. `-I dir` (repeatable, on `build`, `run`, `gen` and `test`; the
+    `loadPath` variadic of `Compile`/`CompileFiles`) is `ruby -I`: a
+    user file's top-level `require "x"` searches each directory in order
+    for `x.rb` and loads the first found as decision 130's
+    `require_relative` does (real-path key, once, run where required),
+    so the two share one loaded set. The `-I` directories come before the
+    prelude's require hooks (decision 78), as MRI puts `-I` ahead of the
+    standard library on `$LOAD_PATH`; a name found in neither stays a
+    no-op. A `require` nested in `if`/`begin`/a def is a compile error
+    only when it names a file on the path: `begin; require "x"; rescue
+    LoadError; end` around a library still compiles. `$LOAD_PATH` and
+    `$:` themselves are not modeled: a program that pushes onto them at
+    run time needs `-I` instead. The test harness's `# load_path: dir`
+    directive (relative to the file) passes the same directories to
+    `ruby -I` and the compile, and `rbs validate` skips `-r` for a
+    `require` it finds there. Examples' cached MRI output is keyed on
+    every `.rb` under the example's directory, not just `main.rb`.
+    ([example 90](../examples/90_load_path/main.rb),
     `testdata/errors/require.txtar`.)

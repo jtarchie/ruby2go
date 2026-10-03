@@ -42,25 +42,29 @@ func testBuildFlags(argv []string) (buildOpts, []string, error) {
 	race, work, gcflags := false, false, ""
 	opts := buildOpts{race: &race, gcflags: &gcflags, work: &work}
 	var rest []string
-	wantValue := false
+	want := "" // the flag whose value is the next argument
 	for _, a := range argv {
 		switch {
-		case wantValue:
-			gcflags, wantValue = a, false
+		case want == "-gcflags":
+			gcflags, want = a, ""
+		case want == "-I":
+			opts.loadPath, want = append(opts.loadPath, a), ""
 		case a == "-race":
 			race = true
 		case a == "-work":
 			work = true
-		case a == "-gcflags":
-			wantValue = true
+		case a == "-gcflags", a == "-I":
+			want = a
 		case strings.HasPrefix(a, "-gcflags="):
 			gcflags = strings.TrimPrefix(a, "-gcflags=")
+		case strings.HasPrefix(a, "-I"): // -Idir, as ruby's, or -I=dir, as the flag package's
+			opts.loadPath = append(opts.loadPath, strings.TrimPrefix(strings.TrimPrefix(a, "-I"), "="))
 		default:
 			rest = append(rest, a)
 		}
 	}
-	if wantValue {
-		return opts, nil, errors.New("rb2go test: -gcflags needs a value")
+	if want != "" {
+		return opts, nil, fmt.Errorf("rb2go test: %s needs a value", want)
 	}
 	return opts, rest, nil
 }

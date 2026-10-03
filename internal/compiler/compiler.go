@@ -67,6 +67,7 @@ type Compiler struct {
 	preludeFS     fs.FS
 	parser        *parser.Parser
 	loaded        map[string]bool // prelude names, and user files' real paths
+	loadPath      []string        // -I directories (decision 131)
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
@@ -134,6 +135,7 @@ type options struct {
 	skipTests bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
 	skipped   []SkippedTest // what skipTests skipped
 	warnings  []string
+	loadPath  []string // -I directories, which a user `require` searches first
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -175,6 +177,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}}
+	c.loadPath = opts.loadPath
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")
 	tick("prelude")
@@ -247,16 +250,16 @@ func (c *Compiler) sortedClasses() []*Class {
 }
 
 // CompileWithWarnings is Compile plus the warnings collected.
-func CompileWithWarnings(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte) ([]byte, []string, error) {
-	return CompileFilesWithWarnings(ctx, preludeFS, []Source{{Name: filepath.Base(mainName), Src: mainSrc, Path: mainName}})
+func CompileWithWarnings(ctx context.Context, preludeFS fs.FS, mainName string, mainSrc []byte, loadPath ...string) ([]byte, []string, error) {
+	return CompileFilesWithWarnings(ctx, preludeFS, []Source{{Name: filepath.Base(mainName), Src: mainSrc, Path: mainName}}, loadPath...)
 }
 
 // CompileFilesWithWarnings compiles several user files into one program, loaded in order (decision 84).
-func CompileFilesWithWarnings(ctx context.Context, preludeFS fs.FS, sources []Source) ([]byte, []string, error) {
+func CompileFilesWithWarnings(ctx context.Context, preludeFS fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	var opts options
+	opts := options{loadPath: loadPath}
 	out, err := compile(ctx, preludeFS, sources, &opts)
 	return out, opts.warnings, err
 }
@@ -372,6 +375,55 @@ func (c *Compiler) userRequireRelative(ctx context.Context, f *File, n *parser.C
 	if err != nil {
 		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
 	}
+	return c.loadUserFile(ctx, target, src)
+}
+
+// userRequire loads the file a user file's top-level `require "x"` finds
+// on the load path (-I, decision 131), as userRequireRelative does; ok is
+// false when it names none, so the require is the prelude's to handle.
+func (c *Compiler) userRequire(ctx context.Context, f *File, n *parser.CallNode) (*File, bool) {
+	target := c.findRequire(f, n)
+	if target == "" {
+		return nil, false
+	}
+	src, err := os.ReadFile(target) //nolint:gosec // found on the user's -I path
+	if err != nil {
+		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
+	}
+	return c.loadUserFile(ctx, target, src), true
+}
+
+// findRequire is the file `require "x"` names on the load path, the first
+// -I directory holding x.rb, as MRI searches $LOAD_PATH; "" when none does.
+func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
+	if f.prelude || len(c.loadPath) == 0 {
+		return ""
+	}
+	args := callArgs(n)
+	if len(args) != 1 {
+		return ""
+	}
+	str, ok := args[0].(*parser.StringNode)
+	if !ok {
+		return ""
+	}
+	name := filepath.FromSlash(str.Unescaped.Value)
+	if filepath.Ext(name) != ".rb" {
+		name += ".rb"
+	}
+	for _, dir := range c.loadPath {
+		target := filepath.Join(dir, name)
+		info, err := os.Stat(target) //nolint:gosec // a -I directory the user gave, and a name their program requires
+		if err == nil && !info.IsDir() {
+			return target
+		}
+	}
+	return ""
+}
+
+// loadUserFile parses and collects a required file, keyed by real path as
+// MRI's loaded features are; nil when it is already loaded.
+func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) *File {
 	path := realPath(target)
 	if c.loaded[path] {
 		return nil

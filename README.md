@@ -98,8 +98,10 @@ lines through `//line` directives.
 A program is a Ruby file plus whatever it `require_relative`s: each file
 loads once, where it is required, as in Ruby. The path must be a string
 literal at a file's top level, since rb2go reads the files when it compiles.
-`require` of a supported standard library works; gems and `require` of your
-own files through `$LOAD_PATH` do not (yet).
+`require "x"` finds your own files in the directories given with `-I`, as
+`ruby -I lib main.rb` does (`rb2go run -I lib main.rb`), and otherwise loads a
+supported standard library. Gems and run-time `$LOAD_PATH` changes are not
+supported.
 
 ## Writing Ruby for rb2go
 

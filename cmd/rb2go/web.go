@@ -137,7 +137,7 @@ func loadExamples() ([]example, error) {
 		if err != nil {
 			return nil, fmt.Errorf("examples: %w", err)
 		}
-		if strings.Contains(string(src), "\nrequire_relative ") { // ponytail: the playground compiles one file; ship lib files in examples.json to show multi-file examples
+		if strings.Contains(string(src), "\nrequire_relative ") || strings.Contains(string(src), "\n# load_path: ") { // ponytail: the playground compiles one file; ship lib files in examples.json to show multi-file examples
 			continue
 		}
 		out = append(out, example{Name: path.Base(path.Dir(p)), Src: string(src)})

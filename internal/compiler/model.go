@@ -407,9 +407,14 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 			c.addInclude(f, n, c.classes["Object"], a, nil)
 		}
 	case n.Receiver == nil && n.Name == "require":
+		// a file on the -I path loads like require_relative (decision 131);
 		// stdlib requires are meaningless here, unless the prelude
 		// hooks one (decision 78): `require "a/b"` → __require_a_b
-		if hook := c.requireHook(f, n); hook != nil {
+		if uf, ok := c.userRequire(ctx, f, n); ok {
+			if uf != nil {
+				c.addMainStmt(f, &loadFile{call: n, file: uf})
+			}
+		} else if hook := c.requireHook(f, n); hook != nil {
 			c.addMainStmt(f, hook)
 		}
 	default:

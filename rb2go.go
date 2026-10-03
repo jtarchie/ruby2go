@@ -17,9 +17,10 @@ var Prelude embed.FS
 const GoVersion = "1.24"
 
 // Compile transpiles the Ruby source of mainName (with the embedded prelude)
-// into a single Go file.
-func Compile(ctx context.Context, mainName string, src []byte) ([]byte, []string, error) {
-	out, warnings, err := compiler.CompileWithWarnings(ctx, Prelude, mainName, src)
+// into a single Go file. loadPath is `ruby -I`'s: directories a `require`
+// searches for the program's own files.
+func Compile(ctx context.Context, mainName string, src []byte, loadPath ...string) ([]byte, []string, error) {
+	out, warnings, err := compiler.CompileWithWarnings(ctx, Prelude, mainName, src, loadPath...)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("rb2go: %w", err)
 	}
@@ -35,12 +36,12 @@ type File struct {
 // CompileFiles transpiles several Ruby files into one Go program, as Ruby
 // loads them into one process: in order, each file's top level running
 // before the next's (decision 84).
-func CompileFiles(ctx context.Context, files []File) ([]byte, []string, error) {
+func CompileFiles(ctx context.Context, files []File, loadPath ...string) ([]byte, []string, error) {
 	srcs := make([]compiler.Source, len(files))
 	for i, f := range files {
 		srcs[i] = compiler.Source{Name: f.Name, Src: f.Src}
 	}
-	out, warnings, err := compiler.CompileFilesWithWarnings(ctx, Prelude, srcs)
+	out, warnings, err := compiler.CompileFilesWithWarnings(ctx, Prelude, srcs, loadPath...)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("rb2go: %w", err)
 	}

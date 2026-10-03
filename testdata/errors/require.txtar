@@ -1,4 +1,4 @@
-Compile errors for require_relative in user code (docs/design.md decision 130): files load at compile time, so the path must be a literal at the top level.
+Compile errors for require_relative, and require on the -I path, in user code (docs/design.md decisions 130, 131): files load at compile time, so the path must be a literal at the top level.
 -- computed_path.rb --
 # error: main.rb:3: require_relative needs a string literal
 name = "lib"
@@ -18,3 +18,9 @@ def load_lib
   require_relative "lib"
 end
 load_lib
+-- require_inside_if.rb --
+# load_path: testdata/multi/require
+# error: main.rb:4: require of a file on the -I path must be a top-level statement
+if ARGV.empty?
+  require "b"
+end

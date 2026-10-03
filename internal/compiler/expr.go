@@ -1205,6 +1205,9 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 		}
 		return expr{code: "", stmt: true, typ: TVoid{}}, true
 	case "require":
+		if f.c.findRequire(f.f, n) != "" {
+			f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")
+		}
 		return expr{code: "", stmt: true, typ: TVoid{}}, true
 	case "__method__":
 		if n.Arguments != nil || n.Block != nil {
