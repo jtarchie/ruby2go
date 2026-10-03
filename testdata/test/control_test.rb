@@ -3348,6 +3348,32 @@ module ControlTests
       assert_equal "script: NotImplementedError nie false", "script: #{se.class} #{se.message} #{se.is_a?(StandardError)}"
     end
 
+    # #43: the rest of MRI's exception tree, with its parents and default messages.
+    def test_exception_tree_rest
+      assert_equal [ScriptError, ScriptError, StandardError, Exception, Exception, StandardError],
+                   [LoadError.superclass, SyntaxError.superclass, LocalJumpError.superclass,
+                    SystemStackError.superclass, SecurityError.superclass, EncodingError.superclass]
+      assert_equal ["LoadError", "compile error", "LocalJumpError", "SystemStackError", "bad"],
+                   [LoadError.new.message, SyntaxError.new.message, LocalJumpError.new.message,
+                    SystemStackError.new.message, SyntaxError.new("bad").message]
+      got = [] #: Array[String]
+      begin
+        raise LoadError, "cannot load such file -- nope"
+      rescue StandardError
+        got << "never"
+      rescue ScriptError => e
+        got << "#{e.class}: #{e.message}"
+      end
+      begin
+        raise SecurityError, "unsafe"
+      rescue StandardError
+        got << "never"
+      rescue Exception => e
+        got << "#{e.class}: #{e.message}"
+      end
+      assert_equal ["LoadError: cannot load such file -- nope", "SecurityError: unsafe"], got
+    end
+
     def test_raise_stored_exception_and_constructors
       err = ArgumentError.new("stored")
       e = assert_raises(ArgumentError) { raise err }

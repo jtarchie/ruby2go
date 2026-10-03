@@ -515,6 +515,17 @@ module StdlibTests
 
   # Was testdata/run/stringio_mid.rb.
   class StringIOTest < Minitest::Test
+    def test_read_at_eof
+      eof_io = StringIO.new("hé\nx")
+      assert_equal ["hé\n", "x"], [eof_io.readline, eof_io.readchar]
+      e = assert_raises(EOFError) { eof_io.readline }
+      assert_equal "end of file reached", e.message
+      assert_raises(EOFError) { eof_io.readchar }
+      assert_raises(EOFError) { eof_io.readbyte }
+      eof_io.rewind
+      assert_equal [104, 195], [eof_io.readbyte, eof_io.readbyte]
+    end
+
     def test_seek
       seek_io = StringIO.new("hello world")
       seek_io.seek(2)

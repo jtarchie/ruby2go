@@ -146,6 +146,27 @@ class StringIO < Object
     return &b
   }
 
+  #: () -> String
+  def readline
+    line = gets
+    raise EOFError, "end of file reached" unless line
+    line
+  end
+
+  #: () -> String
+  def readchar
+    c = getc
+    raise EOFError, "end of file reached" unless c
+    c
+  end
+
+  #: () -> Integer
+  def readbyte
+    b = getbyte
+    raise EOFError, "end of file reached" unless b
+    b
+  end
+
   #: () { (Integer) -> void } -> void
   def each_byte
     while (b = getbyte)
