@@ -1171,7 +1171,10 @@ func rbFloatToS(f float64) String {
 
 // rbCallerLoc is the "file:line" of the nearest user-code frame (a Ruby
 // body outside the prelude), as MRI shows where a Thread or Ractor was made.
-func rbCallerLoc() string {
+func rbCallerLoc() string { return rbCallerLocN(0) }
+
+// rbCallerLocN skips n user-code frames first (warn's uplevel:); "" past the stack.
+func rbCallerLocN(n int) string {
 	pcs := make([]uintptr, 64)
 	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
 	_, self, _, _ := runtime.Caller(0)
@@ -1180,7 +1183,10 @@ func rbCallerLoc() string {
 		f, more := frames.Next()
 		file := strings.TrimPrefix(f.File, mod)
 		if strings.HasSuffix(file, ".rb") && !strings.HasPrefix(file, "prelude/") && !strings.Contains(f.Function, ".(") {
-			return file + ":" + strconv.Itoa(f.Line)
+			if n == 0 {
+				return file + ":" + strconv.Itoa(f.Line)
+			}
+			n--
 		}
 		if !more {
 			return ""

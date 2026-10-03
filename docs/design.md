@@ -3468,3 +3468,29 @@ resolve; anything not listed is still open.
     nameless one is found in the goroutine dump. The report counts pass, fail, error and
     skip per directory, and the commonest unsupported reasons, which is
     the work list.
+128. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
+    `warn` builds one string as MRI's `rb_warn_m`: messages flatten
+    (`warn []` prints nothing), each gets a newline unless it has one,
+    and the whole goes to `Warning.warn(str, category:)`, which writes it
+    to `$stderr` as is. A `category:` whose switch is off prints nothing;
+    the switches start at MRI 4.0's (`:deprecated` false, `:experimental`
+    true, `:performance` and `:strict_unused_block` false), a Hash in the
+    prelude, and an unknown category raises `ArgumentError: unknown
+    category: x`. minitest's `autorun` turns `:deprecated` on, as MRI's
+    does. A user `module Warning; def self.warn` replaces the prelude's
+    (the closed world sees it, so every `warn` reaches it) but needs its
+    own `#: (String, ?category: Symbol?) -> nil`: an unannotated
+    redefinition inherits from an ancestor, here `Kernel#warn`, not from
+    the method it replaces, and `category:` is always passed (MRI checks
+    the override's arity; rb2go would need two call shapes). `super`
+    from it is not supported (MRI's reaches `Warning#warn`, rb2go's
+    `Warning` has only the singleton). `uplevel: n` is the n-th
+    user-code frame above `warn`'s caller from the Go stack
+    (`rbCallerLocN`, as decision 106 labels frames): `file:line:
+    warning: `, the file as `//line` names it (the path rb2go was given
+    relative to the module, where MRI shows the path as run), and a
+    level past the stack drops the location as MRI does. A block counts
+    as a frame only where it is a Go closure. Category Strings
+    (`category: "deprecated"`, which MRI converts) and `$VERBOSE = nil`
+    silencing are not done. (`testdata/test/stdlib_test.rb`
+    `WarningTest`, `testdata/run/io_warning_hook.rb`.)
