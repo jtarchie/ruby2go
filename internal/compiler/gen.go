@@ -1779,6 +1779,8 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		// concreteInit, or an untyped local seeded with a typed value: `:=`
 		// would give the local the value's Go type; later writes need goType
 		f.emit("var %s %s = %s", v.goName, f.c.goType(v.typ), code)
+	case v.goName == "_": // `_, err = capture_io { }`: Go's blank declares nothing
+		f.emit("_ = %s", code)
 	default:
 		f.emit("%s := %s", v.goName, code)
 	}

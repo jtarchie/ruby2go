@@ -606,14 +606,62 @@ end
 
 ARGF = ARGFClass.new #: ARGFClass
 
+# Kernel#warn writes through Warning.warn; the category switches are MRI 4.0's defaults (decision 129).
+module Warning
+  CATEGORIES__ = {deprecated: false, experimental: true, performance: false, strict_unused_block: false} #: Hash[Symbol, bool]
+
+  #: (Symbol) -> bool
+  def self.[](category)
+    on = CATEGORIES__[category]
+    raise ArgumentError, "unknown category: #{category}" if on.nil?
+
+    on
+  end
+
+  #: (Symbol, bool) -> bool
+  def self.[]=(category, flag)
+    self[category]
+    CATEGORIES__[category] = flag
+  end
+
+  #: () -> Array[Symbol]
+  def self.categories = CATEGORIES__.keys
+
+  #: (String, ?category: Symbol?) -> nil
+  def self.warn(msg, category: nil)
+    self[category] if category
+    $stderr.write(msg)
+    nil
+  end
+end
+
 module Kernel
   private
 
-  #: (*untyped) -> nil
-  def warn(*msgs)
-    msgs.each { |m| $stderr.puts(m) }
-    nil
+  # Built as MRI's rb_warn_m: arrays flatten, each message gets a newline unless it has one, and the whole goes to Warning.warn.
+  #: (*untyped, ?uplevel: Integer?, ?category: Symbol?) -> nil
+  def warn(*msgs, uplevel: nil, category: nil)
+    msgs = msgs.flatten
+    return nil if msgs.empty? || (category && !Warning[category])
+
+    s = ""
+    if uplevel
+      raise ArgumentError, "negative level (#{uplevel})" if uplevel < 0
+
+      loc = __caller_loc(uplevel)
+      s += "#{loc}: " unless loc.empty?
+      s += "warning: "
+    end
+    msgs.each do |m|
+      t = m.to_s
+      s += (t.end_with?("\n") ? t : t + "\n")
+    end
+    Warning.warn(s, category: category)
   end
+
+  # The user-code frame uplevel frames up from warn's caller (decision 129).
+  #: (Integer) -> String
+  def __caller_loc(n) = %x{ return String(rbCallerLocN(int(n))) }
 
   #: (?String?) -> void
   def abort(msg = nil)

@@ -1467,4 +1467,62 @@ module StdlibTests
       end
     end
   end
+
+  # Warning and Kernel#warn(uplevel:, category:) (#44, decision 129).
+  class WarningTest < Minitest::Test
+    def warning_helper = warn("up", uplevel: 1)
+
+    def test_categories
+      # minitest's autorun turns :deprecated on (MRI's default is false)
+      assert_equal [true, true, false, false], [Warning[:deprecated], Warning[:experimental], Warning[:performance], Warning[:strict_unused_block]]
+      assert_equal [:deprecated, :experimental, :performance, :strict_unused_block], Warning.categories
+      e = assert_raises(ArgumentError) { Warning[:nope] }
+      assert_equal "unknown category: nope", e.message
+      assert_raises(ArgumentError) { Warning[:nope] = true }
+      assert_raises(ArgumentError) { Warning.warn("x", category: :nope) }
+      assert_raises(ArgumentError) { warn("x", category: :nope) }
+    end
+
+    def test_warn
+      _, err = capture_io do
+        warn
+        warn []
+        warn nil
+        warn [1, [2, "x\n"]], 3
+        warn "a\n"
+        warn "e", category: :experimental
+        warn "p", category: :performance
+        Warning.warn("raw")
+      end
+      assert_equal "\n1\n2\nx\n3\na\ne\nraw", err
+      _, err = capture_io { assert_nil warn("r") }
+      assert_equal "r\n", err
+      _, err = capture_io { assert_nil Warning.warn("w\n") }
+      assert_equal "w\n", err
+    end
+
+    def test_deprecated_switch
+      assert_equal false, (Warning[:deprecated] = false)
+      _, err = capture_io { warn "old api", category: :deprecated }
+      assert_equal "", err
+      Warning[:deprecated] = true
+      _, err = capture_io { warn "old api", category: :deprecated }
+      assert_equal "old api\n", err
+    ensure
+      Warning[:deprecated] = true
+    end
+
+    def test_uplevel
+      _, err = capture_io { warn "here", uplevel: 0 }
+      line = __LINE__ - 1
+      assert_equal "#{line}: warning: here\n", err.sub(/\A[^:]*:/, "")
+      _, err = capture_io { warning_helper }
+      line = __LINE__ - 1
+      assert_equal "#{line}: warning: up\n", err.sub(/\A[^:]*:/, "")
+      _, err = capture_io { warn "far", uplevel: 1000 }
+      assert_equal "warning: far\n", err
+      e = assert_raises(ArgumentError) { warn "x", uplevel: -1 }
+      assert_equal "negative level (-1)", e.message
+    end
+  end
 end

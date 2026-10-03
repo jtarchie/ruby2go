@@ -50,6 +50,7 @@ module Minitest
 
   #: () -> void
   def self.autorun
+    Warning[:deprecated] = true
     return unless AUTORUN.empty?
 
     AUTORUN << true
