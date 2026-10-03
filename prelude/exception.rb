@@ -183,6 +183,26 @@ class ZeroDivisionError < StandardError; end
 
 class ScriptError < Exception; end
 
+# Never raised by rb2go: require of an unknown library is a compile error (decision 68), so `rescue LoadError` never runs.
+class LoadError < ScriptError; end
+
+# Never raised by rb2go (there is no eval); MRI's default message.
+class SyntaxError < ScriptError
+  #: (?String?) -> void
+  def initialize(message = nil)
+    @message = message || "compile error"
+  end
+end
+
+class LocalJumpError < StandardError; end
+
+# Never raised: Go's stack overflow is fatal and recover cannot catch it (decision 128).
+class SystemStackError < Exception; end
+
+class SecurityError < Exception; end
+
+class EncodingError < StandardError; end
+
 class NoMemoryError < Exception; end
 
 # Never raised by rb2go (signals end the program, decision 60); rescue clauses may name them.
