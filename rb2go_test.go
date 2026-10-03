@@ -653,16 +653,17 @@ var mtTracePreload = sync.OnceValues(func() (string, []byte) {
 	return path, src
 })
 
-// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby and TZ (RB2GO_NO_MRI_CACHE=1 skips the cache).
+// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby, TZ and checkout (RB2GO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
 	return mriRun(t, dir, src, pio, append([]string{file}, args...))
 }
 
-// mriRun runs `ruby rubyArgs...` in dir, cached by src (every source it reads), Ruby's version, TZ and the arguments past the first.
+// mriRun runs `ruby rubyArgs...` in dir, cached by src (every source it reads), Ruby's version, TZ, the checkout and the arguments past the first.
 func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string) mriResult {
 	t.Helper()
-	key := "v4\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00"
+	wd, _ := os.Getwd() // the checkout: output holding __dir__ or a testdata path differs per worktree
+	key := "v4\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00" + wd + "\x00"
 	if args := rubyArgs[1:]; len(args) > 0 { // `# args:` are in src; TestMinitest adds more
 		key += strings.Join(args, "\x00") + "\x00args\x00"
 	}
