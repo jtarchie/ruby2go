@@ -76,6 +76,7 @@ type loopFrame struct {
 	start    int    // where the label goes
 	label    string // set by the first `break` that needs it
 	redo     string // the label opening the body, when it has a `redo`
+	next     string // a do-while's label before its condition, when the body has a `next`
 }
 
 // pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
@@ -833,16 +834,26 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 
 // genDoWhile is `begin ... end while c`: the body runs first and the condition, which may read its locals, ends each pass.
 func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate bool, t tail) {
-	if nx := loopNext(body); body != nil && nx != nil {
-		// ponytail: Go's continue would skip the condition; a flag or label scheme could carry it
-		f.errorf(nx, "next inside begin/end while is not supported")
-	}
 	f.pushLoop(loopFor)
 	saved := f.enterBlock()
 	f.emit("for {")
 	f.indent++
 	f.redoLabel(body)
-	f.genStmts(body, tail{})
+	if body != nil && loopNext(body) != nil {
+		// continue would skip the condition, so next is a goto; the inner block keeps it from jumping over declarations
+		l := f.loops[len(f.loops)-1]
+		l.next = "next" + f.newTmp()
+		f.emit("{")
+		inner := f.enterBlock()
+		f.indent++
+		f.genStmts(body, tail{})
+		f.indent--
+		f.leaveBlock(inner)
+		f.emit("}")
+		f.emit("%s:", l.next)
+	} else {
+		f.genStmts(body, tail{})
+	}
 	cond, _ := f.genCond(pred)
 	if negate {
 		f.emit("if %s {", cond)
@@ -997,6 +1008,8 @@ func (f *fctx) emitNext(n parser.Node, l *loopFrame) {
 		default:
 			f.emit("return %s", f.coerce(n, expr{code: "nil", typ: TNil{}}, t.typ))
 		}
+	case l.next != "":
+		f.emit("goto %s", l.next)
 	default:
 		f.emit("continue")
 	}

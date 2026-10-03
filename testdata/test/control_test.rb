@@ -4445,6 +4445,67 @@ module ControlTests
       assert_equal [1, 2, [3, 2, 1]], [i, j, seen]
     end
 
+    # a skipped condition would loop forever here
+    def test_next_in_begin_end_while
+      i = 0
+      odd = [] #: Array[Integer]
+      begin
+        i += 1
+        next if i.even?
+        odd << i
+      end while i < 5
+      j = 0
+      begin
+        j += 1
+        next
+      end until j >= 3
+      log = [] #: Array[String]
+      q = [1, 2, 3]
+      begin
+        x = q.shift
+        case x
+        when 2 then next
+        end
+        log << "x#{x}"
+      end while x && x < 3
+      assert_equal [[1, 3, 5], 5, 3, ["x1", "x3"]], [odd, i, j, log]
+    end
+
+    def test_next_in_begin_end_while_nested
+      out = [] #: Array[String]
+      k = 0
+      tries = 0
+      redone = false
+      begin
+        k += 1
+        if k == 2 && !redone
+          redone = true
+          redo
+        end
+        m = 0
+        while m < 3
+          m += 1
+          next if m == 2
+          out << "#{k}w#{m}"
+        end
+        [1, 2].each do |v|
+          next if v == 1
+          out << "#{k}e#{v}"
+        end
+        begin
+          tries += 1
+          raise "again" if k == 3 && tries < 5
+          next if k == 1
+        rescue
+          retry
+        end
+        break if k == 4
+        out << "#{k}end"
+      end until k > 9
+      assert_equal ["1w1", "1w3", "1e2", "3w1", "3w3", "3e2", "3end", "4w1", "4w3", "4e2"], out
+      assert_equal [4, 6, true], [k, tries, redone]
+    end
+
     #: (String) -> Integer?
     def control_parse(s)
       x = Integer(s)

@@ -3248,8 +3248,12 @@ resolve; anything not listed is still open.
       `IfNode` chain per case, cached so every pass sees the same nodes);
       `when a, b` is `a || b`.
     - `begin ... end while c` runs the body, then tests `c`, which may
-      read the body's locals. `next` inside it is a compile error, since
-      Go's `continue` would skip the test.
+      read the body's locals. Go's `continue` would skip the test, so when
+      the body has a `next` for this loop it goes in its own `{ }` block
+      followed by a `nextN:` label before the test, and `next` (or one
+      re-issued after a begin wrapper) is `goto nextN`. The inner block
+      means the forward goto jumps over no declarations; locals the test
+      reads are hoisted as for any other block.
     - `begin/rescue/else/ensure`: the rescues guard the body only, in an
       inner `rbBegin` literal; `else` runs after it when the body finished
       (a flag), still under `ensure`. Its value (or a rescue's) is the
