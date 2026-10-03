@@ -3468,7 +3468,7 @@ resolve; anything not listed is still open.
     nameless one is found in the goroutine dump. The report counts pass, fail, error and
     skip per directory, and the commonest unsupported reasons, which is
     the work list.
-128. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
+129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,
     and the whole goes to `Warning.warn(str, category:)`, which writes it

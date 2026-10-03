@@ -1,5 +1,5 @@
 # rbs_inline: enabled
-# A reopened Warning.warn receives every Kernel#warn (decision 128); standalone, since the hook is program-wide.
+# A reopened Warning.warn receives every Kernel#warn (decision 129); standalone, since the hook is program-wide.
 # stderr: match
 
 module Warning

@@ -606,7 +606,7 @@ end
 
 ARGF = ARGFClass.new #: ARGFClass
 
-# Kernel#warn writes through Warning.warn; the category switches are MRI 4.0's defaults (decision 128).
+# Kernel#warn writes through Warning.warn; the category switches are MRI 4.0's defaults (decision 129).
 module Warning
   CATEGORIES__ = {deprecated: false, experimental: true, performance: false, strict_unused_block: false} #: Hash[Symbol, bool]
 
@@ -659,7 +659,7 @@ module Kernel
     Warning.warn(s, category: category)
   end
 
-  # The user-code frame uplevel frames up from warn's caller (decision 128).
+  # The user-code frame uplevel frames up from warn's caller (decision 129).
   #: (Integer) -> String
   def __caller_loc(n) = %x{ return String(rbCallerLocN(int(n))) }
 

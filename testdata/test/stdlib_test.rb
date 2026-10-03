@@ -1429,7 +1429,7 @@ module StdlibTests
     end
   end
 
-  # Warning and Kernel#warn(uplevel:, category:) (#44, decision 128).
+  # Warning and Kernel#warn(uplevel:, category:) (#44, decision 129).
   class WarningTest < Minitest::Test
     def warning_helper = warn("up", uplevel: 1)
 
