@@ -140,9 +140,9 @@ whole program at compile time rather than looked up by reflection.
 ## What works
 
 - **Language:** classes, modules, `include`/`extend`, inheritance and `super`,
-  blocks, procs and lambdas, iterators, `case`/`when`, exceptions with
-  custom hierarchies, `catch`/`throw`, `Struct` and `Data`, optional and splat
-  arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
+  blocks, procs and lambdas, `Method` objects (`&method(:name)`), iterators,
+  `case`/`when`, exceptions with custom hierarchies, `catch`/`throw`, `Struct`
+  and `Data`, optional and splat arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
   `at_exit`, signal traps.
 - **Core classes:** `String`, `Symbol`, `Integer`, `Float`, `Rational`,
   `Complex`, `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,

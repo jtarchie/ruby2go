@@ -1527,6 +1527,9 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		if cls == nil {
 			c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
 		}
+		if len(t.Args) == 0 && (cls.RubyName == "Method" || cls.RubyName == "UnboundMethod") {
+			return TClass{C: cls, Args: []Type{TAny{}}} // RBS's Method has no signature: called through dyn (decision 141)
+		}
 		if len(t.Args) != len(cls.TypeParams) {
 			c.errorf(sc.file, nil, "%s:%d: %s takes %d type args, got %d", sc.file.Name, sc.line, cls.Name, len(cls.TypeParams), len(t.Args))
 		}

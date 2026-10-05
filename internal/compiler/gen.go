@@ -2661,6 +2661,8 @@ func (f *fctx) genCallStmt(n *parser.CallNode, t tail) {
 		c := *n
 		if sym, ok := ba.Expression.(*parser.SymbolNode); ok {
 			c.Block = symbolBlock(ba, sym.Unescaped.Value) // `workers.each(&:join)`
+		} else if mb := f.methodRefBlock(ba, f.blockArity(n)); mb != nil {
+			c.Block = mb // `xs.each(&method(:show))`
 		} else if pb := f.procBlock(ba); pb != nil {
 			c.Block = pb // `xs.each(&printer)`
 		}
