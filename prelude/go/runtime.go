@@ -623,6 +623,37 @@ func rbInspectLeave(p any) {
 	delete(rbInspecting, p)
 }
 
+// rbRecursing holds the (op, a, b) comparisons and hashes on the stack, so
+// a container holding itself compares and hashes like MRI's
+// rb_exec_recursive_paired: re-entering the same pair answers as if equal
+// (and hashes as a constant) instead of overflowing Go's stack.
+// ponytail: shares rbInspecting's one-set-for-all-threads tradeoff.
+type rbRecKey struct {
+	op   byte
+	a, b any
+}
+
+var rbRecursing = map[rbRecKey]struct{}{}
+
+// rbRecurseEnter marks (op, a, b) as running; false means it already is.
+// A true result must be paired with a deferred rbRecurseLeave.
+func rbRecurseEnter(op byte, a, b any) bool {
+	rbInspectingMu.Lock()
+	defer rbInspectingMu.Unlock()
+	k := rbRecKey{op, a, b}
+	if _, ok := rbRecursing[k]; ok {
+		return false
+	}
+	rbRecursing[k] = struct{}{}
+	return true
+}
+
+func rbRecurseLeave(op byte, a, b any) {
+	rbInspectingMu.Lock()
+	defer rbInspectingMu.Unlock()
+	delete(rbRecursing, rbRecKey{op, a, b})
+}
+
 func rbTruthy(a any) bool {
 	switch v := a.(type) {
 	case nil:

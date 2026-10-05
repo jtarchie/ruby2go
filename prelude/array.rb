@@ -611,6 +611,10 @@ class Array < Object
     if len(*o) != len(*self) {
       return false
     }
+    if !rbRecurseEnter('=', self, o) {
+      return true
+    }
+    defer rbRecurseLeave('=', self, o)
     for i, x := range *self {
       if !rbEq(x, (*o)[i]) {
         return false
@@ -631,6 +635,10 @@ class Array < Object
     if len(*o) != len(*self) {
       return false
     }
+    if !rbRecurseEnter('e', self, o) {
+      return true
+    }
+    defer rbRecurseLeave('e', self, o)
     for i, x := range *self {
       if !rbKeyEql(x, (*o)[i]) {
         return false
@@ -641,6 +649,10 @@ class Array < Object
 
   #: () -> Integer
   def hash = %x{
+    if !rbRecurseEnter('h', self, nil) {
+      return 0
+    }
+    defer rbRecurseLeave('h', self, nil)
     h := uint64(len(*self))
     for _, x := range *self {
       h = h*31 + rbKeyHash(x)

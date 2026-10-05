@@ -3501,7 +3501,11 @@ resolve; anything not listed is still open.
     error, decision 130), `SyntaxError` (no `eval`),
     `SecurityError`, `EncodingError` (its subclasses are raised since
     decision 136), and `LocalJumpError` (raised since decision 132 by a
-    `yield` whose optional block is missing).
+    `yield` whose optional block is missing). *Revised (#56):* a Hash or Array
+    holding itself no longer reaches that overflow through `==`, `eql?`
+    or `hash`: a paired guard (`rbRecurseEnter`, beside inspect's) answers
+    a re-entered pair as equal and hashes it as a constant, as MRI's
+    `rb_exec_recursive_paired` does.
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,

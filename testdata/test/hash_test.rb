@@ -1943,4 +1943,22 @@ module HashTests
       assert_equal [Set[1, 2, 3], Set[1, 2]], [Set[Set[1, 2], Set[2, 3]].flatten, Set[1, 2].flatten]
     end
   end
+  # #56: a container holding itself compares and hashes like MRI's, not a Go stack overflow
+  class HashRecursiveTest < Minitest::Test
+    def test_recursive_equality
+      h = {} #: Hash[Symbol, untyped]
+      h[:self] = h
+      g = {} #: Hash[Symbol, untyped]
+      g[:self] = g
+      assert_equal [true, true, true, true], [h == h, h.eql?(h), h == g, h.eql?(g)]
+      assert h.hash == h.hash
+      a = [] #: Array[untyped]
+      a << a
+      b = [] #: Array[untyped]
+      b << b
+      assert_equal [true, true, true, false], [a == a, a.eql?(b), a == b, a == [a, 1]]
+      assert a.hash == a.hash
+      assert_equal false, h == { self: 1 }
+    end
+  end
 end

@@ -425,6 +425,10 @@ class Hash < Object
     if len(o.keys) != len(self.keys) {
       return false
     }
+    if !rbRecurseEnter('=', self, o) {
+      return true
+    }
+    defer rbRecurseLeave('=', self, o)
     for k, v := range self.vals {
       k, _, _ = o.idx.find(k)
       ov, ok := o.vals[k]
@@ -449,6 +453,10 @@ class Hash < Object
     if len(o.keys) != len(self.keys) {
       return false
     }
+    if !rbRecurseEnter('e', self, o) {
+      return true
+    }
+    defer rbRecurseLeave('e', self, o)
     for k, v := range self.vals {
       k, _, _ = o.idx.find(k)
       ov, ok := o.vals[k]
@@ -462,6 +470,10 @@ class Hash < Object
   # Order-independent, as eql? is.
   #: () -> Integer
   def hash = %x{
+    if !rbRecurseEnter('h', self, nil) {
+      return 0
+    }
+    defer rbRecurseLeave('h', self, nil)
     h := uint64(len(self.keys))
     for k, v := range self.vals {
       h += rbKeyHash(k)*31 ^ rbKeyHash(v)
