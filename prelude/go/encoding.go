@@ -3,8 +3,8 @@
 // Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
 package prelude
 
-// rbStdoutConv is $stdout's write conversion for Kernel#puts/print/p once `$stdout.set_encoding` names one; a func var so other programs carry no transcoder.
-var rbStdoutConv func(string) string
+// rbStdoutConv is STDOUT's write conversion for Kernel#puts/print/p once `$stdout.set_encoding` names one; a func so other programs carry no transcoder, atomic since threads print.
+var rbStdoutConv atomic.Pointer[func(string) string]
 
 // nil is MRI's start: default_external answers UTF-8, default_internal nil.
 var rbEncDefaultExternal, rbEncDefaultInternal *Encoding
@@ -20,8 +20,17 @@ var rbEncAliases = map[string]string{
 	"ISO-8859-1": "ISO-8859-1", "ISO8859-1": "ISO-8859-1",
 }
 
-// rbEncCanon is name's canonical spelling, "" for an encoding rb2go lacks.
-func rbEncCanon(name string) string { return rbEncAliases[strings.ToUpper(name)] }
+// rbEncCanon is name's canonical spelling, "" for an encoding rb2go lacks; "external" and "internal" follow the defaults, as MRI's aliases do.
+func rbEncCanon(name string) string {
+	switch u := strings.ToUpper(name); {
+	case u == "EXTERNAL" && rbEncDefaultExternal != nil:
+		return rbEncDefaultExternal.name
+	case u == "INTERNAL" && rbEncDefaultInternal != nil:
+		return rbEncDefaultInternal.name
+	default:
+		return rbEncAliases[u]
+	}
+}
 
 // rbEncNameArg is the name an encoding argument gives: a String as is, an Encoding's own.
 func rbEncNameArg(x any) string {
@@ -177,16 +186,14 @@ func rbEncode1(out []byte, enc string, r rune) ([]byte, bool) {
 	case "ISO-8859-1":
 		return append(out, byte(r)), r < 0x100
 	case "UTF-16LE", "UTF-16BE", "UTF-16":
-		var units []uint16
-		units = utf16.AppendRune(units, r)
-		for _, u := range units {
-			if enc == "UTF-16LE" {
-				out = binary.LittleEndian.AppendUint16(out, u)
-			} else {
-				out = binary.BigEndian.AppendUint16(out, u)
-			}
+		put := binary.BigEndian.AppendUint16
+		if enc == "UTF-16LE" {
+			put = binary.LittleEndian.AppendUint16
 		}
-		return out, true
+		if hi, lo := utf16.EncodeRune(r); hi != unicode.ReplacementChar {
+			return put(put(out, uint16(hi)), uint16(lo)), true
+		}
+		return put(out, uint16(r)), true // decoders never yield a surrogate, so r fits one unit
 	case "UTF-32LE":
 		return binary.LittleEndian.AppendUint32(out, uint32(r)), true
 	case "UTF-32BE", "UTF-32":
@@ -578,6 +585,7 @@ type rbTranscodeReader struct {
 	from, to string
 	pend     []byte
 	out      []byte
+	buf      []byte
 	eof      bool
 }
 
@@ -587,9 +595,11 @@ func (t *rbTranscodeReader) Read(p []byte) (int, error) {
 			return 0, io.EOF
 		}
 		if !t.eof {
-			buf := make([]byte, 4096)
-			n, err := t.src.Read(buf)
-			t.pend = append(t.pend, buf[:n]...)
+			if t.buf == nil {
+				t.buf = make([]byte, 4096)
+			}
+			n, err := t.src.Read(t.buf)
+			t.pend = append(t.pend, t.buf[:n]...)
 			if err != nil {
 				t.eof = true
 			}
@@ -620,17 +630,24 @@ func (t *rbTranscodeReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// rbIOEnc: "" is the default encoding; bomOut keeps a dummy UTF-16/UTF-32 file to one BOM.
+// rbIOEnc: "" is the default encoding; bomOut keeps a dummy UTF-16/UTF-32 file to one BOM. unread and restart are funcs, not the transcoder itself, so File#seek links no transcoder.
 type rbIOEnc struct {
 	ext, intern string
 	bin, bomOut bool
 	raw         *bufio.Reader
+	unread      func(cur *bufio.Reader) *bufio.Reader // the transcoder's read-ahead back in front of raw, in the source encoding
+	restart     func() *bufio.Reader                  // a fresh transcoder over raw, after a seek
 }
 
-// rbFileEncHook stays nil until the compiler sees a File.open, File.new or CSV.open whose mode may name encodings (rbFileEncModes), so other programs carry no transcoder (decision 136).
-var rbFileEncHook func(access, spec string, bin bool) func(*File)
+// rbFileEncHook stays nil until the compiler sees a File.open, File.new or CSV.open whose mode may name encodings (rbFileEncModes), so other programs carry no transcoder (decision 136). Atomic: every such call site sets it, and threads open files.
+var rbFileEncHook atomic.Pointer[func(access, spec string, bin bool) func(*File)]
 
-func rbFileEncModes() { rbFileEncHook = rbFileModeEnc }
+func rbFileEncModes() {
+	if rbFileEncHook.Load() == nil {
+		fn := rbFileModeEnc
+		rbFileEncHook.Store(&fn)
+	}
+}
 
 // rbFileModeEnc checks a mode's ":ext[:int]" part before the file is opened, as MRI does, and returns what to set up once it is.
 func rbFileModeEnc(access, spec string, bin bool) func(*File) {
@@ -675,13 +692,12 @@ func rbFileModeEnc(access, spec string, bin bool) func(*File) {
 
 // rbWarnLoc prints `file:line: warning: msg` to $stderr for the nearest user-code frame.
 func rbWarnLoc(msg string) {
-	rbFlushIfTTY()
 	if loc := rbCallerLoc(); loc != "" {
 		msg = loc + ": warning: " + msg
 	} else {
 		msg = "warning: " + msg
 	}
-	_, _ = os.Stderr.WriteString(msg + "\n")
+	rbStderrIO().Write(String(msg + "\n")) // $stderr, which may be assigned, as MRI's rb_warn writes
 }
 
 // rbSkipBOM is `r:BOM|UTF-8`: the mark, when there is one, overrides ext.
@@ -702,15 +718,29 @@ func rbSkipBOM(r *bufio.Reader, ext string) string {
 	return ext
 }
 
-// readerFor wraps the file's own reader, never an earlier transcoder, so a second set_encoding does not convert twice.
+// readerFor wraps the file's own reader, never an earlier transcoder, so a second set_encoding does not convert twice; what that transcoder read ahead (through r) goes back in front, as MRI keeps it.
 func (e *rbIOEnc) readerFor(r *bufio.Reader) *bufio.Reader {
 	if e.raw == nil {
 		e.raw = r
 	}
+	if e.unread != nil {
+		e.raw = e.unread(r)
+	}
+	e.unread, e.restart = nil, nil
 	if e.intern == "" || e.ext == "" || e.ext == e.intern {
 		return e.raw
 	}
-	return bufio.NewReader(&rbTranscodeReader{src: e.raw, from: e.ext, to: e.intern})
+	t := &rbTranscodeReader{src: e.raw, from: e.ext, to: e.intern}
+	e.unread = func(cur *bufio.Reader) *bufio.Reader {
+		ahead, _ := cur.Peek(cur.Buffered())
+		back := rbTranscode(string(ahead)+string(t.out), t.to, t.from, rbEncOpts{})
+		return bufio.NewReader(io.MultiReader(strings.NewReader(back), bytes.NewReader(t.pend), t.src))
+	}
+	e.restart = func() *bufio.Reader {
+		e.unread = nil
+		return e.readerFor(e.raw)
+	}
+	return bufio.NewReader(t)
 }
 
 // writeConv: MRI converts on write whenever the external encoding differs from the String's.

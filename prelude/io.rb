@@ -317,8 +317,9 @@ class IO < Object
     e.bin = self.enc.bin
     self.enc = e
     self.conv = self.enc.writeConv
-    if self.fd == 1 {
-      rbStdoutConv = self.conv
+    if self.fd == 1 && self.via == nil { // a $stdout bound to a StringIO keeps its encoding to itself
+      c := self.conv
+      rbStdoutConv.Store(&c)
     }
     return self
   }
@@ -327,8 +328,8 @@ class IO < Object
   def binmode = %x{
     self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true}
     self.conv = nil
-    if self.fd == 1 {
-      rbStdoutConv = nil
+    if self.fd == 1 && self.via == nil {
+      rbStdoutConv.Store(nil)
     }
     return self
   }

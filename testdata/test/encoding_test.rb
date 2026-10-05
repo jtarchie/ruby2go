@@ -64,6 +64,8 @@ module EncodingTests
         Encoding.default_internal = Encoding::UTF_16LE
         assert_same Encoding::UTF_16LE, Encoding.default_internal
         assert_equal [104, 0, 105, 0], "hi".encode.bytes
+        assert_equal [233], "é".encode("external").bytes
+        assert_equal [233, 0], "é".encode("internal").bytes
       ensure
         Encoding.default_external = Encoding::UTF_8
         Encoding.default_internal = nil
@@ -255,6 +257,13 @@ module EncodingTests
       assert_equal "invalid codepoint 0x110000 in UTF-32LE", assert_raises(RangeError) { 0x110000.chr("UTF-32LE") }.message
     end
 
+    def test_pack_u
+      assert_equal [237, 160, 128], [0xD800].pack("U").bytes
+      assert_equal [244, 144, 128, 128], [0x110000].pack("U").bytes
+      assert_equal [253, 191, 191, 191, 191, 191], [0x7FFFFFFF].pack("U").bytes
+      assert_equal "pack(U): value out of range", assert_raises(RangeError) { [0x80000000].pack("U") }.message
+    end
+
     def test_unicode_normalize
       assert_equal 6, "café".unicode_normalize(:nfd).bytesize
       assert_equal [65, 778], "Å".unicode_normalize(:nfd).codepoints
@@ -363,6 +372,14 @@ module EncodingTests
           assert_equal "café\n", f.gets
           f.set_encoding(Encoding::ISO_8859_1, Encoding::UTF_8)
           assert_equal "naïve\n", f.gets
+        end
+        File.open(path, "r:ISO-8859-1:UTF-8") do |f|
+          assert_equal "café\n", f.gets
+          f.set_encoding("ISO-8859-1")
+          assert_equal "na\xefve\n".b, f.gets.b
+          f.set_encoding("ISO-8859-1", "UTF-8")
+          f.rewind
+          assert_equal "café\n", f.gets
         end
         File.open(path) do |f|
           f.set_encoding(nil)

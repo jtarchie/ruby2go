@@ -234,15 +234,36 @@ func rbPack(items []any, format string) string {
 				panic(rbConvError(items[next], "Integer"))
 			}
 			next++
-			switch {
-			case d != 'U':
+			if d != 'U' {
 				out = append(out, byte(n))
-			case n < 0:
-				panic(NewRangeError(Ref(String("pack(U): value out of range"))))
-			default:
-				out = utf8.AppendRune(out, rune(n))
+			} else {
+				out = rbPackU(out, int(n))
 			}
 		}
 	}
 	return string(out)
+}
+
+// rbPackU is MRI's rb_uv_to_utf8: UTF-8's bit pattern up to six bytes, surrogates and values past U+10FFFF included.
+func rbPackU(out []byte, n int) []byte {
+	size := 0
+	for i, limit := range []int{0x80, 0x800, 0x10000, 0x200000, 0x4000000, 0x80000000} {
+		if n >= 0 && n < limit {
+			size = i + 1
+			break
+		}
+	}
+	switch size {
+	case 0:
+		panic(NewRangeError(Ref(String("pack(U): value out of range"))))
+	case 1:
+		return append(out, byte(n))
+	}
+	b := make([]byte, size)
+	for i := size - 1; i > 0; i-- {
+		b[i] = byte(0x80 | n&0x3F)
+		n >>= 6
+	}
+	b[0] = byte(0xFF<<(8-size)) | byte(n)
+	return append(out, b...)
 }

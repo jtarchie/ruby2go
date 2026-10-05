@@ -22,10 +22,11 @@ class File < Object
     }
     var withEnc func(*File)
     if spec != "" {
-      if rbFileEncHook == nil {
+      hook := rbFileEncHook.Load()
+      if hook == nil {
         panic(NewNotImplementedError(Ref(String("rb2go: a File mode naming encodings must be passed to File.open, File.new or CSV.open directly (decision 136)"))))
       }
-      withEnc = rbFileEncHook(access, spec, bin)
+      withEnc = (*hook)(access, spec, bin)
     }
     f, err := os.OpenFile(string(path), flag, 0o666) //nolint:gosec // MRI's mode; the umask applies
     if err != nil {
@@ -354,7 +355,7 @@ class File < Object
   #: (untyped, ?untyped) -> File
   def set_encoding(ext, intern = nil) = %x{
     e := rbSetEncoding(ext, intern)
-    e.bin, e.raw = self.enc.bin, self.enc.raw
+    e.bin, e.raw, e.unread, e.restart = self.enc.bin, self.enc.raw, self.enc.unread, self.enc.restart
     same := e.ext == self.enc.ext && e.intern == self.enc.intern // keep the transcoder and what it has read ahead
     self.enc = e
     if self.r != nil && !same {
@@ -367,7 +368,7 @@ class File < Object
   # Binary from here on: no conversion either way, external encoding ASCII-8BIT.
   #: () -> File
   def binmode = %x{
-    self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true, raw: self.enc.raw}
+    self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true, raw: self.enc.raw, unread: self.enc.unread}
     if self.r != nil {
       self.r = self.enc.readerFor(self.r)
     }
@@ -556,7 +557,15 @@ class File < Object
     if _, err := self.f.Seek(int64(offset), int(whence)); err != nil {
       panic(rbSysErr(err, "rb_io_seek", self.path))
     }
-    if self.r != nil {
+    if self.enc.raw != nil { // the file's own reader under any transcoder
+      self.enc.raw.Reset(self.f)
+    }
+    switch {
+    case self.enc.restart != nil: // what the transcoder read ahead is stale
+      self.r = self.enc.restart()
+    case self.enc.raw != nil:
+      self.r = self.enc.raw
+    case self.r != nil:
       self.r.Reset(self.f)
     }
     return 0
