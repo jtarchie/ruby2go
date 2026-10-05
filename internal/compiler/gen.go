@@ -1226,6 +1226,15 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	saved := f.enterBlock()
 	f.indent++
 	f.emit("_ = %s", name)
+	f.genCaseDefault(n, t, subj.typ, subjLocal, hasNil, numArm, numSubj)
+	f.indent--
+	f.leaveBlock(saved)
+	f.switches--
+	f.emit("}")
+}
+
+// genCaseDefault is a type switch's default arm: the `when Numeric` arm, asked of the ancestry table, then else.
+func (f *fctx) genCaseDefault(n *parser.CaseNode, t tail, subjT Type, subjLocal *local, hasNil bool, numArm *parser.WhenNode, numSubj string) {
 	var elseSaved string
 	if numArm != nil {
 		f.emit("if rbKindOf(%s, %d) {", numSubj, f.c.classID(f.c.classes["Numeric"]))
@@ -1241,7 +1250,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		elseSaved = f.enterBlock()
 		f.indent++
 	}
-	if o, ok := subj.typ.(TOpt); ok && hasNil && subjLocal != nil && !isAny(o.Elem) {
+	if o, ok := subjT.(TOpt); ok && hasNil && subjLocal != nil && !isAny(o.Elem) {
 		f.applyNarrow([]narrowInfo{{local: subjLocal, typ: o.Elem}})
 	}
 	if n.ElseClause != nil {
@@ -1254,10 +1263,6 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		f.leaveBlock(elseSaved)
 		f.emit("}")
 	}
-	f.indent--
-	f.leaveBlock(saved)
-	f.switches--
-	f.emit("}")
 }
 
 // numericWhen is Numeric when wn is `when Numeric` alone on a subject whose class only the run time knows.

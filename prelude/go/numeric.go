@@ -16,8 +16,9 @@ func rbNumTowerLevel(v any) int {
 		return 3
 	case *Complex:
 		return 4
+	default: // gocritic rejects a one-case switch, which pruning can leave
+		return -1
 	}
-	return -1
 }
 
 // rbNumOther reports an argument that is a number of another class than self, which Comparable's methods then compare through rbNum.
@@ -42,18 +43,19 @@ func rbNumCoerce(a, b any) (any, any, bool) {
 	if lb > la {
 		hi = b
 	}
-	switch hi.(type) {
+	switch h := hi.(type) {
 	case *Rational:
 		return rbNumTo(a, 1), rbNumTo(b, 1), true
 	case Float:
 		return Float(rbNumFloat(a)), Float(rbNumFloat(b)), true
 	case *BigDecimal:
-		prec := rbBDCoercePrec(hi.(*BigDecimal)) // as rbBDRel: a fixed precision loses digits of a longer BigDecimal
+		prec := rbBDCoercePrec(h) // as rbBDRel: a fixed precision loses digits of a longer BigDecimal
 		return rbBDArg(a, prec), rbBDArg(b, prec), true
 	case *Complex:
 		return rbNumComplex(a), rbNumComplex(b), la != 3 && lb != 3
+	default: // gocritic rejects a one-case switch, which pruning can leave
+		return nil, nil, false
 	}
-	return nil, nil, false
 }
 
 // rbNumComplex is a real number as a Complex, or a Complex itself.

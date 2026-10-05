@@ -642,8 +642,13 @@ func (c *Compiler) dynNumericTower(f *fctx, cls *Class, e *entry, env map[string
 		return
 	}
 	f.emit("if _, ok := rbConv[%s](args[0]); !ok {", c.goType(TClass{C: cls}))
+	gn := "Dyn" + c.dynGoName(m.Name)
 	f.emit("\tif x, y, ok := rbNumCoerce(self, args[0]); ok {")
-	f.emit("\t\treturn rbDyn%s(rbCall, x, y)", c.dynGoName(m.Name))
+	// x's own wrapper, not the rbDyn dispatcher, which a pinned wrapper (DynOp_cmp) would keep in every program
+	f.emit("\t\tif r, ok := x.(interface{ %s(...any) any }); ok {", gn)
+	f.emit("\t\t\treturn r.%s(y)", gn)
+	f.emit("\t\t}")
+	f.emit("\t\tpanic(rbNoMethod(%q, x, false))", m.Name)
 	f.emit("\t}")
 	f.emit("}")
 }
