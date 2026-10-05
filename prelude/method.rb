@@ -70,16 +70,16 @@ class UnboundMethod < Object
   }
 
   #: () -> Integer
-  def arity = %x{ return Integer(self.info.arity) }
+  def arity = %x{ return Integer(rbMethodKnown(self.info, "arity").arity) }
 
   #: () -> Array[Array[Symbol]]
-  def parameters = %x{ return rbMethodParams(self.info) }
+  def parameters = %x{ return rbMethodParams(rbMethodKnown(self.info, "parameters")) }
 
   #: () -> Symbol
   def name = %x{ return Symbol(self.info.name) }
 
   #: () -> Module
-  def owner = %x{ return self.info.owner }
+  def owner = %x{ return rbMethodKnown(self.info, "owner").owner }
 
   #: () -> String
   def inspect = %x{ return rbMethodInspect("UnboundMethod", nil, self.info) }

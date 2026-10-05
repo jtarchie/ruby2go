@@ -98,7 +98,7 @@ func rbMethodUnbind[F comparable](m *Method[F]) *UnboundMethod[any] {
 
 // rbUnboundBind is UnboundMethod#bind on an untyped one, MRI's TypeError for a receiver that is not an owner's instance.
 func rbUnboundBind(dyn func(any, ...any) any, info *rbMethodInfo, obj any) *Method[any] {
-	if s, ok := info.owner.(*rbSingletonClass); ok {
+	if s, ok := rbMethodKnown(info, "bind").owner.(*rbSingletonClass); ok {
 		if !rbIdentical(rbUnbox(obj), s.of) {
 			panic(NewTypeError(Ref(String("singleton method called for a different object"))))
 		}
@@ -122,11 +122,11 @@ func rbMethodEq(bound bool, recv any, info *rbMethodInfo, other any) bool {
 	return ok && o._ToAny().info.key == info.key
 }
 
-// rbMethodHash is Method#hash: equal methods hash alike.
+// rbMethodHash hashes the receiver by identity, as rbMethodEq compares it: its own #hash changes when it is mutated.
 func rbMethodHash(recv any, info *rbMethodInfo) Integer {
 	h := Integer(rbKeyHash(String(info.key)))
 	if recv != nil {
-		h = h*31 + Integer(rbKeyHash(rbUnbox(recv)))
+		h = h*31 + Integer(maphash.Comparable(rbHashSeed, rbUnbox(recv)))
 	}
 	return h
 }

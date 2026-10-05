@@ -23,6 +23,7 @@ type fctx struct {
 	m             *Method
 	implicitCall  bool     // calling method_missing/respond_to_missing? on the program\'s behalf
 	plainCalls    bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
+	staticDef     *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
 	lex           []*Class // lexical scope for constant lookup
 	selfType      Type
 	selfCode      string

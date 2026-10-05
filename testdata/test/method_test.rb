@@ -72,6 +72,19 @@ module MethodTests
     def adder = method(:add)
   end
 
+  class Shape
+    #: (String, ?String) -> String
+    def label(s, suffix = "") = "shape " + s + suffix
+
+    #: (Integer, ?k: Integer) -> Integer
+    def scale(n, k: 2) = n * k
+  end
+
+  class Square < Shape
+    #: (String, ?String) -> String
+    def label(s, suffix = "") = "square " + s + suffix
+  end
+
   class MethodTest < Minitest::Test
     def test_block_argument
       assert_equal [2, 4], [1, 2].map(&method(:method_twice))
@@ -284,6 +297,24 @@ module MethodTests
       assert_equal 7, m.call(2)
       assert_equal :+, m.name
       assert_equal 5, m.receiver
+    end
+
+    def test_optional_args_bind_the_definition
+      # through dyn too: MRI binds Shape's label, not Square's override
+      assert_equal "shape a!", Shape.instance_method(:label).bind_call(Square.new, "a", "!")
+      assert_equal "shape a!", Shape.instance_method(:label).bind(Square.new).call("a", "!")
+    end
+
+    def test_struct_target_with_keywords
+      assert_equal 6, Shape.new.method(:scale).call(3)
+      assert_equal 8, Shape.instance_method(:scale).bind_call(Square.new, 4)
+    end
+
+    def test_hash_key_survives_receiver_mutation
+      a = [1] #: Array[Integer]
+      h = { a.method(:size) => 1 } #: Hash[Method[^() -> Integer], Integer]
+      a << 2
+      assert_equal 1, h[a.method(:size)]
     end
 
     def test_class

@@ -134,8 +134,8 @@ func (f *fctx) funcClosure(n parser.Node, params []Type, ret Type, call func(arg
 	return "func(" + strings.Join(ps, ", ") + ")" + retS + " {\n" + body + "}"
 }
 
-// dynClosure is a Method's dyn: the target called from an untyped argument list on receiver o, as decision 32's wrappers call it.
-func (f *fctx) dynClosure(e *entry, recvT Type, env map[string]Type, private bool) string {
+// dynClosure is a Method's dyn: the target called from an untyped argument list on receiver o, as decision 32's wrappers call it; static calls e's own definition, not an override (an UnboundMethod's).
+func (f *fctx) dynClosure(e *entry, recvT Type, env map[string]Type, private, static bool) string {
 	if o := e.M.Owner; o != nil && o.IsModule && !o.universal && f.c.goType(recvT) == "any" {
 		// a module's free func needs its includer's Go type, known only at run time: the dispatcher finds it
 		f.c.noteDyn(e.M.Name)
@@ -146,14 +146,18 @@ func (f *fctx) dynClosure(e *entry, recvT Type, env map[string]Type, private boo
 		return fmt.Sprintf("func(o_ any, args ...any) any { return rbDyn%s(%s, o_, args...) }", goMethodName(e.M.Name), how)
 	}
 	var b strings.Builder
-	savedBuf, savedIndent, savedImplicit := f.buf, f.indent, f.implicitCall
+	savedBuf, savedIndent, savedImplicit, savedStatic := f.buf, f.indent, f.implicitCall, f.staticDef
 	f.buf, f.indent, f.implicitCall = &b, 1, private
+	if static {
+		f.staticDef = e.M
+	}
 	f.closures++
 	r := expr{code: "o_", typ: recvT}
 	switch {
 	case e.M.Owner == nil: // a top-level def ignores its receiver
 		r = expr{code: f.selfCode, typ: f.selfType}
 		f.emit("_ = o_")
+	case e.M.hasKeywords() || e.M.postCount() > 0: // emitDynCall only panics: r_ would be unused
 	case f.c.goType(recvT) != "any":
 		r.code = "r_"
 		f.emit("r_ := rbAs[%s](o_, %q)", f.c.goType(recvT), recvT.String())
@@ -161,7 +165,7 @@ func (f *fctx) dynClosure(e *entry, recvT Type, env map[string]Type, private boo
 	f.c.emitDynCall(f, e, r, env, false)
 	f.closures--
 	body := b.String()
-	f.buf, f.indent, f.implicitCall = savedBuf, savedIndent, savedImplicit
+	f.buf, f.indent, f.implicitCall, f.staticDef = savedBuf, savedIndent, savedImplicit, savedStatic
 	return "func(o_ any, args ...any) any {\n" + body + "}"
 }
 
@@ -193,7 +197,7 @@ func (f *fctx) genBoundMethod(n parser.Node, recv expr, name string, public bool
 		defer func() { f.implicitCall = saved }()
 		return f.genMethodCall(n, r, name, args, nil)
 	})
-	dyn := f.dynClosure(e, recv.typ, env, !public)
+	dyn := f.dynClosure(e, recv.typ, env, !public, false)
 	t := TClass{C: mc, Args: []Type{ft}}
 	code := fmt.Sprintf("&%s{fn: Ref(%s), dyn: %s, recv: %s, info: %s}",
 		strings.TrimPrefix(f.c.goType(t), "*"), fn, dyn, f.coerce(n, r, TAny{}), f.boundInfo(n, e, r, name))
@@ -238,10 +242,11 @@ func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bo
 	}
 	env := f.callEnv(n, e, expr{typ: self})
 	ft := f.methodFnType(n, e, env, self)
+	m := e.M
+	static := !m.File.prelude && m.Kind == kindDef && m.Owner != nil && m.Owner.isStruct()
 	fn := f.funcClosure(n, ft.Params, ft.Ret, func(args []parser.Node) expr {
 		r := args[0].(*exprNode).e
-		m := e.M
-		if !m.File.prelude && m.Kind == kindDef && m.Owner != nil && m.Owner.isStruct() {
+		if static {
 			// MRI binds this definition, not a subclass's override
 			codes, _ := f.genArgs(n, m, env, args[1:], nil)
 			return expr{code: staticCallCode(m, "", r.code, strings.Join(codes, ", ")), typ: ft.Ret}
@@ -251,7 +256,7 @@ func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bo
 		defer func() { f.implicitCall = saved }()
 		return f.genMethodCall(n, r, name, args[1:], nil)
 	})
-	dyn := f.dynClosure(e, self, env, !public)
+	dyn := f.dynClosure(e, self, env, !public, static)
 	t := TClass{C: f.c.classes["UnboundMethod"], Args: []Type{ft}}
 	code := fmt.Sprintf("&%s{fn: Ref(%s), dyn: %s, info: %s}", strings.TrimPrefix(f.c.goType(t), "*"), fn, dyn, f.methodInfo(n, e))
 	return expr{code: code, typ: t}
@@ -491,7 +496,11 @@ func (f *fctx) methodCallTyped(n parser.Node, recv expr, kind string, ft TFunc, 
 		return expr{code: "(*" + fieldOf(recv.code, "fn") + ")(" + strings.Join(codes, ", ") + ")", typ: ft.Ret}
 	}
 	if f.m == nil || !f.m.quietDynamic {
-		f.warn(n, "dynamic call: %s#call with more than its %d required arguments", kind, len(ft.Params))
+		op := kind + "#call"
+		if kind == "UnboundMethod" {
+			op = "UnboundMethod#bind_call"
+		}
+		f.warn(n, "dynamic call: %s with more than its %d required arguments", op, len(ft.Params))
 	}
 	m := f.methodRecv(recv)
 	o := m.code + ".recv"
@@ -583,11 +592,14 @@ func (f *fctx) methodRefBlock(ba *parser.BlockArgumentNode, nparams int) *parser
 		return nil
 	}
 	recvT := f.selfType
+	if call.Receiver != nil {
+		f.probe(func() { recvT = f.genExpr(call.Receiver, nil).typ })
+	}
+	if f.resolve(recvT, "method") != nil {
+		return nil // the receiver's own `method`; checked before the receiver's temp is emitted
+	}
 	var recv parser.Node
 	if call.Receiver != nil {
-		var r expr
-		f.probe(func() { r = f.genExpr(call.Receiver, nil) })
-		recvT = r.typ
 		switch call.Receiver.(type) {
 		case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode, *parser.SelfNode, *parser.ConstantReadNode, *parser.ConstantPathNode,
 			*parser.IntegerNode, *parser.FloatNode, *parser.SymbolNode:
@@ -599,20 +611,16 @@ func (f *fctx) methodRefBlock(ba *parser.BlockArgumentNode, nparams int) *parser
 			recv = &exprNode{Node: call.Receiver, e: expr{code: tmp, typ: e.typ, classObj: e.classObj}}
 		}
 	}
-	if f.resolve(recvT, "method") != nil {
-		return nil
-	}
 	loc := ba.Location
-	var ps, locals []string
+	var locals []string
 	args := []parser.Node{&parser.SymbolNode{Location: loc, Unescaped: parser.RubyString{Value: literalName(callArgs(call)[0])}}}
 	var params []parser.Node
 	for i := range nparams {
 		name := "x_" + strconv.Itoa(i)
-		ps, locals = append(ps, name), append(locals, name)
+		locals = append(locals, name)
 		params = append(params, &parser.RequiredParameterNode{Location: loc, Name: name})
 		args = append(args, &parser.LocalVariableReadNode{Location: loc, Name: name})
 	}
-	_ = ps
 	body := &parser.CallNode{Location: loc, Receiver: recv, Name: "__send__", Arguments: &parser.ArgumentsNode{Location: loc, Arguments: args}}
 	return &parser.BlockNode{
 		Location:   loc,
