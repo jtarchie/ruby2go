@@ -76,7 +76,7 @@ module IOReadable
   end
 end
 
-# @go_type struct { fd int; via rbWriter; lineno int }
+# @go_type struct { fd int; via rbWriter; lineno int; enc rbIOEnc; conv func(string) string }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -152,6 +152,9 @@ class IO < Object
   #: (untyped) -> Integer
   def write(x) = %x{
     s := string(rbToS(x))
+    if self.conv != nil {
+      s = self.conv(s)
+    }
     if self.via != nil { // $stdout/$stderr read while assigned (decision 109)
       self.via.Write(String(s))
       return Integer(len(s))
@@ -291,6 +294,54 @@ class IO < Object
 
   #: () -> String
   def inspect = %x{ String([]string{"#<IO:<STDIN>>", "#<IO:<STDOUT>>", "#<IO:<STDERR>>"}[self.fd]) }
+
+  # $stdin reads with default_external, $stdout and $stderr have none until set_encoding, as in MRI.
+  #: () -> Encoding?
+  def external_encoding
+    e = __ext
+    return Encoding.find(e) unless e.empty?
+
+    fileno == 0 ? Encoding.default_external : nil
+  end
+
+  #: () -> Encoding?
+  def internal_encoding
+    e = __int
+    e.empty? ? nil : Encoding.find(e)
+  end
+
+  # Writes convert to the new external encoding; $stdin's reads do not (decision 136). The conversion is a func field so programs that never call this carry no transcoder.
+  #: (untyped, ?untyped) -> IO
+  def set_encoding(ext, intern = nil) = %x{
+    e := rbSetEncoding(ext, intern)
+    e.bin = self.enc.bin
+    self.enc = e
+    self.conv = self.enc.writeConv
+    if self.fd == 1 && self.via == nil { // a $stdout bound to a StringIO keeps its encoding to itself
+      c := self.conv
+      rbStdoutConv.Store(&c)
+    }
+    return self
+  }
+
+  #: () -> IO
+  def binmode = %x{
+    self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true}
+    self.conv = nil
+    if self.fd == 1 && self.via == nil {
+      rbStdoutConv.Store(nil)
+    }
+    return self
+  }
+
+  #: () -> bool
+  def binmode? = %x{ Boolean(self.enc.bin) }
+
+  #: () -> String
+  def __ext = %x{ String(self.enc.ext) }
+
+  #: () -> String
+  def __int = %x{ String(self.enc.intern) }
 end
 
 STDIN = IO.__new(0) #: IO
