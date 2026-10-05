@@ -4407,7 +4407,8 @@ resolve; anything not listed is still open.
     `source_location`, keyword arguments or a block to `call`.
     `x.class` on a plain Object (main, `Object.new`) held untyped now
     answers Object (it raised NoMethodError).
-    ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
+    ([example 98](../examples/98_method_objects/main.rb),
+    [testdata/test/method_test.rb](../testdata/test/method_test.rb),
     `testdata/errors/objects.txtar`.)
 
 142. `Numeric` (#39) is a prelude module that `Integer`, `Float`,
