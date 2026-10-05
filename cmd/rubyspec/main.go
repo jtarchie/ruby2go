@@ -424,7 +424,8 @@ type program struct {
 	files      []*source
 	byName     map[string]*source
 	shared     map[string]sharedSpec
-	unloadable []skipped // files rewrite could not parse, left out
+	unloadable []skipped        // files rewrite could not parse, left out
+	seed       *rb2go.Inference // parameter types from the last compile, which each cut barely changes
 }
 
 type source struct {
@@ -520,7 +521,10 @@ func (prog *program) compile(ctx context.Context, r *result) ([]byte, error) {
 		files[i] = rb2go.File{Name: f.name, Src: []byte(f.text)}
 	}
 	start := time.Now()
-	code, _, skips, err := rb2go.CompileTestsSkipping(ctx, files)
+	if prog.seed == nil {
+		prog.seed = rb2go.NewInference()
+	}
+	code, _, skips, err := rb2go.CompileTestsSkipping(ctx, files, prog.seed)
 	r.compiles, r.compileTime = r.compiles+1, r.compileTime+time.Since(start)
 	if err == nil {
 		r.compileSkips = r.compileSkips[:0] // this compile's, not the last's

@@ -801,7 +801,7 @@ describe "s" do
   end
 end
 `
-	code, _, skipped, err := CompileTestsSkipping(context.Background(), []File{{Name: "s_test.rb", Src: []byte(src)}})
+	code, _, skipped, err := CompileTestsSkipping(context.Background(), []File{{Name: "s_test.rb", Src: []byte(src)}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

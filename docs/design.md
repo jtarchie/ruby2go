@@ -4639,6 +4639,10 @@ resolve; anything not listed is still open.
       anonymous literal (named ones run it where the constant is
       assigned).
     - `Proc.new { ... }` is `proc { ... }` (decision 47).
+    - **Errors stay local.** An anonymous literal whose body does not
+      collect (a `define_method` in it) raises its error where the
+      literal is generated, so under `CompileTestsSkipping` it skips the
+      one test holding it rather than stopping the program.
     ([example 100](../examples/100_class_new/main.rb),
     `testdata/test/object_test.rb` `ClassNewTest`.)
 146. Parameter types come from use (#56). ruby/spec, like most Ruby, has
@@ -4665,9 +4669,14 @@ resolve; anything not listed is still open.
       with Float included (their join is untyped, decision 12), is left
       out, so the final compile reports it at its call: `String where
       Integer is expected; parameter x takes its type from the call at
-      main.rb:3`. Uses whose type holds `untyped` count for nothing. A
-      parameter no call types keeps the missing-annotation error, which
-      now says so.
+      main.rb:3`. Uses whose type holds `untyped` count for nothing, and
+      Object, BasicObject and modules (Go `any`) count only when nothing
+      concrete is passed: one `Object.new` among Integers would otherwise
+      join them all to Object, an untyped parameter by another name; it
+      fails at its call instead. A parameter no call types keeps the
+      missing-annotation error, which now says so. When a round fails
+      outright (a link error elsewhere), that error is reported instead
+      of the parameters it left untyped, since it is the cause.
     - **How.** A compile that meets an untyped parameter aborts before
       emitting. `compile` then runs rounds, each a fresh compile through
       return inference (about a tenth of a full build, no emit or
@@ -4680,7 +4689,18 @@ resolve; anything not listed is still open.
       round later; rounds stop when nothing changes (at most 8), and the
       final compile runs as an annotated program would. A program with
       every type written runs no round. `RB2GO_INFER_DEBUG=1` prints what
-      each round inferred and what it could not compile.
+      each round inferred and what it could not compile. Keys are
+      file:line:column:name, which survive `cmd/rubyspec`'s line-keeping
+      cuts; it passes an `Inference` seed between the compiles of one
+      program, which start from its types (and from the keys it found no
+      type for), so a compile after a cut usually runs no round.
+    - **Branches.** Inference surfaced `list.empty? ? [2, 5] : list` with
+      `list` an `Array[Integer?]`: branches whose types do not join now
+      try each branch's type as the expected type of all of them (a
+      literal types itself from what is expected), and take the first
+      that compiles. And `fits` no longer lets `Array[T?]` pass as an
+      `Array[T]` (Go's type arguments are invariant), which had compiled
+      to Go that does not build.
     - **Overrides.** An unannotated override inherits its parent's
       signature only when its parameter list has the same shape
       (positional count, rest, keyword names); otherwise it is a def of

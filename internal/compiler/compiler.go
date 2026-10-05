@@ -74,13 +74,14 @@ type Compiler struct {
 	Warnings      []string
 	// tuple arities used, so their types get emitted
 	tupleN      map[int]bool
-	procTypes   map[string]bool             // Proc Go types rendered (*func(...)), for the generated rbIsProc
-	argBoxes    map[string]bool             // T? boxes of generic type arguments, which generic code may hold
-	classIDs    map[*Class]int              // index in classList: the class's ID in the generated tables
-	specClasses int                         // describes declared, for their classes' Go names
-	anonCount   int                         // Class.new/Module.new literals declared (decision 145)
-	anonClasses map[*parser.CallNode]*Class // each literal's class
-	specUses    []specUse                   // Minitest::Spec DSL calls, checked after link
+	procTypes   map[string]bool                   // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	argBoxes    map[string]bool                   // T? boxes of generic type arguments, which generic code may hold
+	classIDs    map[*Class]int                    // index in classList: the class's ID in the generated tables
+	specClasses int                               // describes declared, for their classes' Go names
+	anonCount   int                               // Class.new/Module.new literals declared (decision 145)
+	anonClasses map[*parser.CallNode]*Class       // each literal's class
+	anonErrors  map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
+	specUses    []specUse                         // Minitest::Spec DSL calls, checked after link
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes          map[string]bool
@@ -93,10 +94,11 @@ type Compiler struct {
 	marshalOut     bool            // rbMDumpGen/rbMLoadGen emitted
 	marshalLate    bool            // rbMDumpObjGen/rbMLoadObjGen emitted
 	// parameter types from use (decision 146)
-	infer     *inference
-	round     bool                  // an inference round: pending parameters are untyped, their arguments recorded
-	inferDone bool                  // the rounds ran: a parameter still untyped is an error
-	uses      map[string][]paramUse // this round's arguments, by parameter key
+	infer       *inference
+	round       bool                  // an inference round: pending parameters are untyped, their arguments recorded
+	inferDone   bool                  // the rounds ran: a parameter still untyped is an error
+	uses        map[string][]paramUse // this round's arguments, by parameter key
+	pendingSeen map[string]bool       // this round's untyped parameter keys
 }
 
 type verbatim struct {
@@ -105,7 +107,10 @@ type verbatim struct {
 	code string
 }
 
-type compileError struct{ msg string }
+type compileError struct {
+	msg     string
+	untyped bool // a parameter inference left untyped (decision 146): a failed round's own error explains it better
+}
 
 func (e compileError) Error() string { return e.msg }
 
@@ -155,6 +160,7 @@ type options struct {
 	infer     *inference
 	round     bool
 	inferDone bool
+	seed      *Inference // types from an earlier compile of these sources, updated by this one
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -166,22 +172,38 @@ type SkippedTest struct {
 }
 
 func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) ([]byte, error) {
+	if opts.seed != nil {
+		opts.infer = opts.seed.inf
+	}
 	out, err := compileWith(ctx, preludeFS, sources, opts, false)
 	if errors.Is(err, errNeedInfer) {
-		opts.infer = &inference{}
+		if opts.infer == nil {
+			opts.infer = &inference{}
+		}
+		if opts.seed != nil {
+			defer func() { opts.seed.inf = opts.infer }()
+		}
+		var roundErr error
 		for range maxInferRounds {
 			opts.round = true
 			_, err = compileWith(ctx, preludeFS, sources, opts, false)
 			opts.round = false
-			if err != nil && !errors.Is(err, errInferRound) && os.Getenv("RB2GO_INFER_DEBUG") != "" {
-				fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
+			if err != nil && !errors.Is(err, errInferRound) {
+				roundErr = err // it stopped inference: the final compile's untyped parameters are its doing
+				if os.Getenv("RB2GO_INFER_DEBUG") != "" {
+					fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
+				}
 			}
 			if !errors.Is(err, errInferRound) || !opts.infer.changed {
-				break // a round that fails before its bodies run leaves the error to the final compile
+				break
 			}
 		}
 		opts.inferDone = true
 		out, err = compileWith(ctx, preludeFS, sources, opts, false)
+		var ce compileError
+		if roundErr != nil && errors.As(err, &ce) && ce.untyped {
+			err = roundErr
+		}
 	}
 	if errors.Is(err, errPruneIncomplete) {
 		if os.Getenv("RB2GO_TIMING") != "" {
@@ -317,11 +339,12 @@ func CompileFilesWithWarnings(ctx context.Context, preludeFS fs.FS, sources []So
 }
 
 // CompileTestsSkipping is CompileFilesWithWarnings for a test suite that should run what compiles: each test_ method rb2go cannot compile becomes a skip carrying the error, and is listed.
-func CompileTestsSkipping(ctx context.Context, preludeFS fs.FS, sources []Source) ([]byte, []string, []SkippedTest, error) {
+// seed, when not nil, carries inferred parameter types between compiles of nearly the same sources.
+func CompileTestsSkipping(ctx context.Context, preludeFS fs.FS, sources []Source, seed *Inference) ([]byte, []string, []SkippedTest, error) {
 	if len(sources) == 0 {
 		return nil, nil, nil, errors.New("no Ruby files to compile")
 	}
-	opts := options{skipTests: true}
+	opts := options{skipTests: true, seed: seed}
 	out, err := compile(ctx, preludeFS, sources, &opts)
 	return out, opts.warnings, opts.skipped, err
 }

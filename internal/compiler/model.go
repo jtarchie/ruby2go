@@ -132,34 +132,37 @@ const (
 type Method struct {
 	pendingIdx   map[int]pendingParam // sig param index → a parameter typed from use (decision 146)
 	pendingBlock []pendingParam       // the block's parameters, typed from the yields
-	Name         string
-	GoName       string
-	Owner        *Class // nil for top-level defs
-	Kind         methodKind
-	Attr         string // ivar for attr kinds
-	Private      bool
-	Protected    bool // callable with an explicit receiver only from inside the owner's family
-	Node         *parser.DefNode
-	File         *File
-	Line         int
-	Scope        []*Class // lexical scope (Module.nesting), innermost last
-	sigText      string
-	sig          *rbs.MethodType
-	TypeParams   []string
-	Params       []Param
-	Block        *BlockSig
-	Ret          Type
-	Iterator     bool   // block returns void → iter.Seq
-	seqAdapter   bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
-	shadowed     []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
-	BlockParam   string // name of an explicit &block parameter
-	forwardAll   bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
-	resolved     bool
-	inherited    *Method // signature source for unannotated overrides
-	inferRet     bool    // no return annotation: Ret comes from the body (inferRet)
-	inferring    bool
-	structDef    *Method // the generated Struct/Data method a block def overrides; super reaches it
-	valueGen     bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
+	// yields that disagree on their count, reported at the yield (yieldShape)
+	yieldDisagree   string
+	yieldDisagreeAt parser.Node
+	Name            string
+	GoName          string
+	Owner           *Class // nil for top-level defs
+	Kind            methodKind
+	Attr            string // ivar for attr kinds
+	Private         bool
+	Protected       bool // callable with an explicit receiver only from inside the owner's family
+	Node            *parser.DefNode
+	File            *File
+	Line            int
+	Scope           []*Class // lexical scope (Module.nesting), innermost last
+	sigText         string
+	sig             *rbs.MethodType
+	TypeParams      []string
+	Params          []Param
+	Block           *BlockSig
+	Ret             Type
+	Iterator        bool   // block returns void → iter.Seq
+	seqAdapter      bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
+	shadowed        []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
+	BlockParam      string // name of an explicit &block parameter
+	forwardAll      bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
+	resolved        bool
+	inherited       *Method // signature source for unannotated overrides
+	inferRet        bool    // no return annotation: Ret comes from the body (inferRet)
+	inferring       bool
+	structDef       *Method // the generated Struct/Data method a block def overrides; super reaches it
+	valueGen        bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
@@ -1304,6 +1307,7 @@ func (c *Compiler) link(ctx context.Context) {
 	}
 	c.declareIvarAnnotations()
 	c.expandDelegations(ctx)
+	c.includeFromEach() // before any override inherits from the module, which needs its type args
 	// method signatures
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
@@ -1314,7 +1318,6 @@ func (c *Compiler) link(ctx context.Context) {
 	for _, m := range c.topDefList {
 		c.resolveMethod(m)
 	}
-	c.includeFromEach()
 	c.markCalleeDefaults()
 	c.markSuperBridges()
 	for _, cls := range c.classList {

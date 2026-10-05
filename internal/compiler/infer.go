@@ -28,6 +28,15 @@ var (
 	errInferRound = errors.New("inference round done")
 )
 
+// Inference carries parameter types from use from one compile to the next
+// of nearly the same sources (cmd/rubyspec recompiles after each cut): a
+// compile starts from them, and runs no rounds while they still cover every
+// untyped parameter.
+type Inference struct{ inf *inference }
+
+// NewInference is an empty Inference.
+func NewInference() *Inference { return &Inference{} }
+
 // needInfer is the panic that aborts a compile meeting an untyped parameter before inference ran.
 type needInfer struct{}
 
@@ -37,6 +46,7 @@ const maxInferRounds = 8
 // the last round's compile (rehome moves it into the next one's classes).
 type inference struct {
 	types   map[string]Type
+	none    map[string]bool   // pending in the last round and typed by no call: a seeded compile reports them without rounds
 	from    map[string]string // the first call each type came from, file:line, for a mismatch's message
 	changed bool
 }
@@ -55,16 +65,24 @@ type paramUse struct {
 
 // pendingKey names a def's parameter stably across compiles.
 func pendingKey(m *Method, name string) string {
-	path := m.File.path
+	return m.File.posKey(m.Node.Location.StartOffset) + name
+}
+
+// posKey is a source position as file:line:column:, which a rewrite that
+// keeps lines (cmd/rubyspec's) keeps too, unlike a byte offset.
+func (f *File) posKey(off int) string {
+	path := f.path
 	if path == "" {
-		path = m.File.Name
+		path = f.Name
 	}
-	return path + ":" + strconv.Itoa(m.Node.Location.StartOffset) + ":" + name
+	ln := f.line(off)
+	return path + ":" + strconv.Itoa(ln) + ":" + strconv.Itoa(off-f.lines[ln-1]) + ":"
 }
 
 // resolvePending types a parameter that has no annotation (resolveMethod).
 func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 	prm.Pending = pp.key
+	c.notePending(pp.key)
 	if c.infer != nil {
 		if t, ok := c.infer.types[pp.key]; ok {
 			prm.Type = c.rehome(t)
@@ -74,10 +92,14 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 	switch {
 	case c.round:
 		prm.Type = TAny{} // learned from this round's calls
-	case !c.inferDone:
+	case !c.inferDone && (c.infer == nil || !c.infer.none[pp.key]):
 		panic(needInfer{})
 	default:
-		c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
+		ce := catchCompileError(func() {
+			c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
+		})
+		ce.untyped = true
+		panic(*ce)
 	}
 }
 
@@ -101,8 +123,9 @@ func (c *Compiler) yieldShape(m *Method) (n int, optional, ok bool) {
 				k = len(x.Arguments.Arguments)
 			}
 			if n >= 0 && k != n && agree {
-				agree = false
-				c.errorf(m.File, x, "method %s yields %d values here and %d before; annotate its block (`#: (...) { (T, ...) -> void } -> R`)", m.Name, k, n)
+				agree = false // reported at this yield when the body compiles, not at link, where it would stop every round
+				m.yieldDisagree = fmt.Sprintf("method %s yields %d values here and %d before; annotate its block (`#: (...) { (T, ...) -> void } -> R`)", m.Name, k, n)
+				m.yieldDisagreeAt = x
 			}
 			n = k
 		case *parser.CallNode:
@@ -131,6 +154,9 @@ func (c *Compiler) includeFromEach() {
 			each := cls.Methods["each"]
 			c.resolveMethod(each)
 			if each.Block == nil || len(each.Block.Params) != len(inc.Mod.TypeParams) {
+				if c.round {
+					continue // untyped this round; the final compile reports it
+				}
 				c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`): %s#each does not yield %d values to infer them from", inc.file.Name, inc.line, inc.Mod.RubyName, len(inc.Mod.TypeParams), inc.Mod.RubyName, cls.RubyName, len(inc.Mod.TypeParams))
 			}
 			inc.Args = slices.Clone(each.Block.Params)
@@ -164,13 +190,10 @@ func typesInclude(m *Method) bool {
 // gives it an expected type: the last round's types, untyped during a
 // round, else the error an annotation would have prevented.
 func (f *fctx) lambdaParams(n parser.Node, count int) ([]Type, string) {
-	path := f.f.path
-	if path == "" {
-		path = f.f.Name
-	}
-	src := path + ":" + strconv.Itoa(n.GetLocation().StartOffset) + ":#"
+	src := f.f.posKey(n.GetLocation().StartOffset) + "#"
 	ps := make([]Type, count)
 	for i := range ps {
+		f.c.notePending(src + strconv.Itoa(i))
 		if f.c.infer != nil {
 			if t, ok := f.c.infer.types[src+strconv.Itoa(i)]; ok {
 				ps[i] = f.c.rehome(t)
@@ -180,10 +203,14 @@ func (f *fctx) lambdaParams(n parser.Node, count int) ([]Type, string) {
 		switch {
 		case f.c.round:
 			ps[i] = TAny{}
-		case !f.c.inferDone:
+		case !f.c.inferDone && (f.c.infer == nil || !f.c.infer.none[src+strconv.Itoa(i)]):
 			panic(needInfer{})
 		default:
-			f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)")
+			ce := catchCompileError(func() {
+				f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)")
+			})
+			ce.untyped = true
+			panic(*ce)
 		}
 	}
 	return ps, src
@@ -261,6 +288,16 @@ func (c *Compiler) rehome(t Type) Type {
 	return t
 }
 
+// notePending records, during a round, a parameter key waiting on its uses.
+func (c *Compiler) notePending(key string) {
+	if c.round {
+		if c.pendingSeen == nil {
+			c.pendingSeen = map[string]bool{}
+		}
+		c.pendingSeen[key] = true
+	}
+}
+
 // noteYield records what a yield passes to a block parameter typed from the yields.
 func (f *fctx) noteYield(i int, n parser.Node, t Type) {
 	if i < len(f.blockSig.Pending) && f.blockSig.Pending[i] != "" {
@@ -305,10 +342,16 @@ func (c *Compiler) collectUses() {
 			if p.Pending == "" || p.Default == nil {
 				continue
 			}
-			_ = catchCompileError(func() { // a default passed by no call still types its parameter
+			// a default passed by no call still types its parameter: its value, as a body of the method's own
+			var ts []Type
+			c.debugInfer(catchCompileError(func() {
 				f := c.newFctx(m.File, m.Owner, m)
-				f.probe(func() { f.noteUse(p, p.Default, f.genExpr(p.Default, nil).typ) })
-			})
+				f.retVar = "ret_"
+				f.genBody(&parser.StatementsNode{Body: []parser.Node{p.Default}}, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+			}))
+			if len(ts) > 0 {
+				c.uses[p.Pending] = append(c.uses[p.Pending], paramUse{typ: ts[len(ts)-1], file: m.File, off: p.Default.GetLocation().StartOffset})
+			}
 		}
 	}
 	_, all := c.mainBodies()
@@ -369,22 +412,27 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
+		// Object, BasicObject and modules are Go any: they count only when
+		// nothing concrete is passed, or one Object.new would untype the rest
 		var t Type
-		for _, u := range uses {
-			if _, void := u.typ.(TVoid); u.typ == nil || void || holdsAny(u.typ) || mentionsVar(u.typ) {
-				continue // untyped this round (another pending parameter's), or no value
+		for _, abstract := range []bool{false, true} {
+			for _, u := range uses {
+				if _, void := u.typ.(TVoid); u.typ == nil || void || holdsAny(u.typ) || mentionsVar(u.typ) || isAbstract(stripOpt(u.typ)) != abstract {
+					continue // untyped this round (another pending parameter's), or no value
+				}
+				if t == nil {
+					t = u.typ
+					from[key] = fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
+					continue
+				}
+				if j, ok := join(t, u.typ); ok && !isAny(j) && (abstract || !isAbstract(stripOpt(j))) {
+					t = j
+				}
 			}
-			if t == nil {
-				t = u.typ
-				from[key] = fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
-				continue
+			if t != nil {
+				next[key] = t
+				break
 			}
-			if j, ok := join(t, u.typ); ok && !isAny(j) {
-				t = j
-			}
-		}
-		if t != nil {
-			next[key] = t
 		}
 	}
 	inf.changed = len(next) != len(inf.types)
@@ -394,6 +442,12 @@ func (c *Compiler) updateInference(inf *inference) {
 		}
 	}
 	inf.types, inf.from = next, from
+	inf.none = map[string]bool{}
+	for k := range c.pendingSeen {
+		if _, ok := next[k]; !ok {
+			inf.none[k] = true
+		}
+	}
 	if os.Getenv("RB2GO_INFER_DEBUG") != "" {
 		for _, k := range slices.Sorted(maps.Keys(next)) {
 			fmt.Fprintf(os.Stderr, "rb2go: inferred %s: %s\n", k, next[k])

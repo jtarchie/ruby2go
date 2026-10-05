@@ -46,7 +46,20 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 	case *parser.CallNode:
 		if call, isModule := anonClassCall(n); call != nil {
 			c.anonCount++
-			cls := c.declareAnon(ctx, f, call, isModule, fmt.Sprintf("RbAnon%d", c.anonCount), scope)
+			var cls *Class
+			// an anonymous class's body fails where the literal stands (a test's
+			// skip, decision 127), not for the whole program: the error waits there
+			err := catchCompileError(func() { cls = c.declareAnon(ctx, f, call, isModule, fmt.Sprintf("RbAnon%d", c.anonCount), scope) })
+			if err != nil {
+				if c.anonErrors == nil {
+					c.anonErrors = map[*parser.CallNode]compileError{}
+				}
+				c.anonErrors[call] = *err
+				cls = c.classes[fmt.Sprintf("RbAnon%d", c.anonCount)]
+				if cls == nil {
+					return
+				}
+			}
 			// MRI's anonymous class prints its address; one class per literal has none, so its place stands in
 			cls.Display = fmt.Sprintf("#<%s:%s:%d>", map[bool]string{true: "Module", false: "Class"}[isModule], f.Name, f.line(call.Location.StartOffset))
 			c.topConstNames = c.topConstNames[:len(c.topConstNames)-1] // not a name user code can reach

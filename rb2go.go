@@ -52,13 +52,21 @@ func CompileFiles(ctx context.Context, files []File, loadPath ...string) ([]byte
 // SkippedTest is a test method CompileTestsSkipping could not compile and turned into a skip.
 type SkippedTest = compiler.SkippedTest
 
+// Inference carries parameter types inferred from use (docs/design.md
+// decision 146) between compiles of nearly the same sources.
+type Inference = compiler.Inference
+
+// NewInference is an empty Inference for CompileTestsSkipping.
+func NewInference() *Inference { return compiler.NewInference() }
+
 // CompileTestsSkipping is CompileFiles for running what a test suite can: each test_ method (an `it` included) that fails to compile becomes a minitest skip carrying the error instead of failing the build.
-func CompileTestsSkipping(ctx context.Context, files []File) ([]byte, []string, []SkippedTest, error) {
+// seed, when not nil, carries inferred parameter types to the next call for the same sources, which then starts from them.
+func CompileTestsSkipping(ctx context.Context, files []File, seed *Inference) ([]byte, []string, []SkippedTest, error) {
 	srcs := make([]compiler.Source, len(files))
 	for i, f := range files {
 		srcs[i] = compiler.Source{Name: f.Name, Src: f.Src}
 	}
-	out, warnings, skipped, err := compiler.CompileTestsSkipping(ctx, Prelude, srcs)
+	out, warnings, skipped, err := compiler.CompileTestsSkipping(ctx, Prelude, srcs, seed)
 	if err != nil {
 		return nil, warnings, skipped, fmt.Errorf("rb2go: %w", err)
 	}

@@ -451,11 +451,32 @@ func (f *fctx) parseTypeAnn(n parser.Node, s string) Type {
 	return f.c.resolveType(t, typeScope{class: f.owner, lex: f.lex, methodTPs: tps, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
 }
 
+// branchFit is, for branches whose types do not join, the first of them
+// every branch compiles to when it is the expected type (a literal types
+// itself from what is expected); none, and the join's error stands.
+func (f *fctx) branchFit(types []Type, gen func(t tail), joinErr *compileError) Type {
+	for _, cand := range types {
+		if isVoid(cand) {
+			continue
+		}
+		var err *compileError
+		f.probe(func() { err = catchCompileError(func() { gen(tail{kind: tailAssign, target: "_", typ: cand}) }) }) // caught inside: a panic would skip probe's restore
+		if err == nil {
+			return cand
+		}
+	}
+	panic(*joinErr)
+}
+
 // lift turns a statement-shaped expression (if/case/begin) into a temp.
 func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	var types []Type
 	f.probe(func() { gen(tail{kind: tailAssign, target: "_", types: &types}) })
-	typ := f.joinAll(n, types)
+	var typ Type
+	err := catchCompileError(func() { typ = f.joinAll(n, types) })
+	if err != nil {
+		typ = f.branchFit(types, gen, err) // `c ? [2, 5] : list`: the literal takes list's Array[Integer?]
+	}
 	if typ == nil || isNil(typ) {
 		if expected != nil && !isVoid(expected) {
 			typ = expected
@@ -1299,6 +1320,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	}
 	if e, ok := f.genERBCall(n); ok {
 		return e
+	}
+	if err, ok := f.c.anonErrors[n]; ok {
+		panic(err)
 	}
 	if cls := f.c.anonClasses[n]; cls != nil { // Class.new/Module.new: the class declared for this literal (decision 145)
 		return f.genExpr(&parser.ConstantReadNode{Name: cls.RubyName, Location: n.Location}, expected)
@@ -3255,7 +3279,7 @@ func (f *fctx) genYield(n *parser.YieldNode) expr {
 	if name := f.m.optionalBlockLocal(); name != "" {
 		if f.c.round && f.blockSig != nil { // an optional block's yield is a Proc call: record its values here
 			for i, a := range args {
-				f.probe(func() { f.noteYield(i, a, f.genExpr(a, nil).typ) })
+				f.probe(func() { _ = catchCompileError(func() { f.noteYield(i, a, f.genExpr(a, nil).typ) }) })
 			}
 		}
 		if v := f.visibleLocal(name); v != nil && isOpt(v.typ) {
@@ -3332,6 +3356,9 @@ func (f *fctx) checkBlockPresent(n parser.Node, name string) {
 
 // yieldValues is `yield args` and `block.call(args)`.
 func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
+	if f.blockSig == nil && f.m != nil && f.m.yieldDisagree != "" {
+		f.errorf(f.m.yieldDisagreeAt, "%s", f.m.yieldDisagree)
+	}
 	if f.blockSig == nil {
 		f.errorf(n, "yield in a method whose signature has no block")
 	}

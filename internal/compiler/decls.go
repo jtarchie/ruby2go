@@ -903,7 +903,11 @@ func (c *Compiler) sigText(s slot) string {
 			ps[i] = "*" + ps[i]
 		}
 	}
-	return "(" + strings.Join(ps, ", ") + ") -> " + subst(s.e.M.Ret, env).String()
+	ret := "untyped" // a return inferred later (decision 36)
+	if s.e.M.Ret != nil {
+		ret = subst(s.e.M.Ret, env).String()
+	}
+	return "(" + strings.Join(ps, ", ") + ") -> " + ret
 }
 
 // arity is the argument count range m takes; max is -1 with a rest param.

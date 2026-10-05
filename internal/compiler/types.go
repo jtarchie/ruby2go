@@ -408,6 +408,9 @@ func fits(t, to Type) bool {
 			if !fits(c.Args[i], to.Args[i]) {
 				return false
 			}
+			if _, cls := to.Args[i].(TClass); cls && isOpt(c.Args[i]) { // Array[T?] is not an Array[T]: Go's type args are invariant
+				return false
+			}
 		}
 	case TOpt:
 		return fits(stripOpt(t), to.Elem)
