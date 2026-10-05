@@ -3773,9 +3773,8 @@ resolve; anything not listed is still open.
       `Proc`, as it does where a `Proc` is. `URI.parse` keeps an empty
       authority (`file:///x` has host `""` and prints `file:///x`, as
       MRI's), which the forbidden-redirect message showed.
-    (`testdata/test/net_test.rb`, `testdata/errors/open_uri.txtar`;
-    [example 24](../examples/24_net_http/main.rb) already covers
-    `Net::HTTP` end to end, so no new example.)
+    ([example 95](../examples/95_open_uri/main.rb),
+    `testdata/test/net_test.rb`, `testdata/errors/open_uri.txtar`.)
 
 135. `socket` (#42) is MRI's class tree over Go's `net`: `BasicSocket`
     (with `IPSocket` < it, `TCPSocket`/`UDPSocket` < `IPSocket`,
