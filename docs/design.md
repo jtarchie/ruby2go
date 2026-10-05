@@ -4502,7 +4502,8 @@ resolve; anything not listed is still open.
       with a Complex is always a Complex pair (MRI: a Rational pair
       when the imaginary part is an exact zero): either answer's class
       would depend on a value.
-    (`testdata/test/number_test.rb` `NumberNumericTest`,
+    ([example 99](../examples/99_numeric/main.rb),
+    `testdata/test/number_test.rb` `NumberNumericTest`,
     `testdata/errors/numbers.txtar` `numeric_*`.)
 
 143. Pattern matching (#38): `case/in` (guards, `else`), `v => pat` and
