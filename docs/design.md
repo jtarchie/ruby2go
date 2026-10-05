@@ -4094,7 +4094,8 @@ resolve; anything not listed is still open.
       class over this: a `Hash[untyped, untyped]` root marshalled to its
       file inside `transaction`, `abort`/`commit` by `catch`/`throw`, and
       `read_only` checks. It is left for its own issue.
-    (`testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
+    ([example 97](../examples/97_marshal/main.rb),
+    `testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
 138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
     and has a blockless form, `File.atime`, and `Array#pack` with the rest
     of `String#unpack`.
