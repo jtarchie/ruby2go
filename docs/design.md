@@ -3993,7 +3993,8 @@ resolve; anything not listed is still open.
     - `EncodingError` (decision 128) gains `Encoding::CompatibilityError`
       (never raised), `ConverterNotFoundError`, `UndefinedConversionError`
       and `InvalidByteSequenceError`.
-    (`testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
+    ([example 96](../examples/96_encoding/main.rb),
+    `testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
     `testdata/run/string_output.rb`.)
 137. `Marshal` (#47) round-trips the closed world's object graphs in
     rb2go's own bytes, never MRI's (`prelude/marshal.rb`,
