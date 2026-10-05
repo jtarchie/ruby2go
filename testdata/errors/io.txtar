@@ -1,0 +1,6 @@
+IO compile errors: shapes decision 138 leaves out.
+
+-- popen_mode_keyword.rb --
+# error: main.rb:3: Hash[Symbol, String] where String is expected
+# rbs_inline: enabled
+p IO.popen("echo hi", mode: "r") { |io| io.read }

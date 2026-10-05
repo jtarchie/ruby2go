@@ -1040,8 +1040,11 @@ func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 	return "[" + strings.Join(args, ", ") + "]"
 }
 
+// maxTuple is the widest RBS tuple: Socket.getaddrinfo's rows have 7 elements (decision 135).
+const maxTuple = 7
+
 func (c *Compiler) emitTuples() {
-	for n := 2; n <= 3; n++ {
+	for n := 2; n <= maxTuple; n++ {
 		if !c.tupleN[n] {
 			continue
 		}
@@ -1395,7 +1398,7 @@ func (c *Compiler) emitClassMeta() {
 	// a table, not a marker method: a `_Ref()` on every pointer class was 11k of the test programs' functions (decision 89)
 	c.w("var rbClassRefs = [...]bool{%s}\n\n", strings.Join(refs, ", "))
 	array := c.classID(c.classes["Array"])
-	for n := 2; n <= 3; n++ {
+	for n := 2; n <= maxTuple; n++ {
 		if c.tupleN[n] {
 			tps := make([]string, n)
 			for i := range n {

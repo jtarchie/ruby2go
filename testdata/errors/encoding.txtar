@@ -1,0 +1,43 @@
+Compile errors for encodings rb2go does not transcode, and String's in-place forms (docs/design.md decision 136).
+-- encode_sjis.rb --
+# error: main.rb:2: encoding Shift_JIS is not supported: rb2go transcodes UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1
+puts "a".encode("Shift_JIS")
+-- encode_from_cp1252.rb --
+# error: main.rb:2: encoding Windows-1252 is not supported
+puts "a".encode("UTF-8", "Windows-1252")
+-- force_encoding_eucjp.rb --
+# error: main.rb:2: encoding EUC-JP is not supported
+puts "a".dup.force_encoding("EUC-JP").bytesize
+-- find_latin2.rb --
+# error: main.rb:2: encoding iso-8859-2 is not supported
+puts Encoding.find("iso-8859-2")
+-- file_mode.rb --
+# error: main.rb:2: encoding Shift_JIS is not supported
+File.open("x.txt", "r:Shift_JIS") { |f| puts f.read }
+-- file_mode_internal.rb --
+# error: main.rb:2: encoding EUC-JP is not supported
+File.open("x.txt", "r:UTF-8:EUC-JP") { |f| puts f.read }
+-- chr_sjis.rb --
+# error: main.rb:2: encoding SJIS is not supported
+puts 65.chr("SJIS")
+-- default_external.rb --
+# error: main.rb:2: encoding KOI8-R is not supported
+Encoding.default_external = "KOI8-R"
+-- constant.rb --
+# error: main.rb:2: uninitialized constant
+puts Encoding::Shift_JIS
+-- scrub_bang.rb --
+# error: main.rb:3: undefined method scrub! for String: Strings are immutable in rb2go, so assign the result of scrub instead
+s = "a\xff"
+s.scrub!
+puts s
+-- encode_bang.rb --
+# error: main.rb:3: undefined method encode! for String: Strings are immutable in rb2go, so assign the result of encode instead
+s = "café"
+s.encode!("US-ASCII", undef: :replace)
+puts s
+-- unicode_normalize_bang.rb --
+# error: main.rb:3: undefined method unicode_normalize! for String: Strings are immutable in rb2go
+s = "é"
+s.unicode_normalize!
+puts s

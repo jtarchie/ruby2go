@@ -1,0 +1,34 @@
+Compile errors for socket shapes rb2go does not build (docs/design.md decision 135).
+-- raw_socket_new.rb --
+# error: main.rb:3: Socket.new is not supported (decision 135)
+require "socket"
+s = Socket.new(:INET, :STREAM)
+s.close
+-- addrinfo_from_sockaddr.rb --
+# error: main.rb:3: undefined method new for singleton(Addrinfo)
+require "socket"
+p Addrinfo.new(Addrinfo.tcp("127.0.0.1", 80).to_sockaddr)
+-- socks_socket.rb --
+# error: main.rb:3: uninitialized constant SOCKSSocket
+require "socket"
+SOCKSSocket.new("127.0.0.1", 1080)
+-- io_select.rb --
+# error: main.rb:4: undefined method select
+require "socket"
+server = TCPServer.new("127.0.0.1", 0)
+IO.select([server])
+-- setsockopt_symbols.rb --
+# error: main.rb:4: Symbol where Integer is expected
+require "socket"
+server = TCPServer.new("127.0.0.1", 0)
+server.setsockopt(:SOCKET, :REUSEADDR, true)
+-- basic_socket_new.rb --
+# error: main.rb:3: undefined method initialize for BasicSocket (decision 135)
+require "socket"
+BasicSocket.new.close
+-- socket_subclass_new.rb --
+# error: main.rb:5: Socket.new is not supported (decision 135)
+require "socket"
+class MySock < Socket
+end
+MySock.new

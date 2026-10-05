@@ -5,6 +5,9 @@ package prelude
 
 type Range_Any interface{ _ToAny() *Range[any] }
 
+// rbSuccAny is succ for a class whose override narrows succ's result type, so its Go name differs (decision 8): DateTime.
+type rbSuccAny interface{ rbSuccAny() any }
+
 // rbRangeEach is MRI's Range#each for the element types with succ.
 func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
 	rbRangeNoBegin(r)
@@ -19,10 +22,14 @@ func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
 	case String:
 		rbStrUpto(string(b), string(any(r.e).(String)), r.excl, r.endless, func(s string) bool { return yield(any(String(s)).(E)) })
 	default:
+		succ := func(x E) E { return any(x).(interface{ Succ() E }).Succ() }
 		if _, ok := any(r.b).(interface{ Succ() E }); !ok {
-			panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(r.b)))))
+			if _, ok := any(r.b).(rbSuccAny); !ok {
+				panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(r.b)))))
+			}
+			succ = func(x E) E { return any(x).(rbSuccAny).rbSuccAny().(E) }
 		}
-		for x := r.b; r.endless || rbCmp(x, r.e) < 0 || (!r.excl && rbCmp(x, r.e) == 0); x = any(x).(interface{ Succ() E }).Succ() {
+		for x := r.b; r.endless || rbCmp(x, r.e) < 0 || (!r.excl && rbCmp(x, r.e) == 0); x = succ(x) {
 			if !yield(x) {
 				return
 			}

@@ -152,8 +152,8 @@ whole program at compile time rather than looked up by reflection.
   `Thread`, `Queue`, `Mutex`, `Ractor`.
 - **Standard library:** `json`, `set`, `time`, `date`, `csv`, `stringio`,
   `strscan`, `digest`, `base64`, `zlib`, `securerandom`, `shellwords`, `uri`,
-  `net/http`, `webrick`, `fileutils`, `find`, `pathname`, `tempfile`,
-  `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
+  `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,
+  `tempfile`, `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
   and `minitest` (including `Minitest::Spec`).
 
@@ -174,6 +174,11 @@ The roadmap for the rest of the standard library is issue
 - **Strings are frozen.** `String` is a Go `string` value, so in-place
   mutation (`<<`, `upcase!`, `+"..."`) is unsupported; build new strings
   instead, or use `StringIO`.
+- **Strings carry no encoding.** Every `String` is UTF-8 bytes; `encoding`
+  reports UTF-8 for valid UTF-8 and ASCII-8BIT otherwise. `encode`, `scrub`,
+  `unicode_normalize` and `File.open(path, "r:ISO-8859-1:UTF-8")` work for
+  UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32; naming any other
+  encoding is a compile error.
 - **Integers are 64-bit.** There is no Bignum; where MRI would promote,
   rb2go raises `RangeError` rather than silently wrapping.
 - **No hash defaults.** `Hash.new(0)` is rejected; use `tally`,

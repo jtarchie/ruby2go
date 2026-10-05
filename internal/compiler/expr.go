@@ -1269,7 +1269,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
@@ -1367,6 +1367,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	f.checkEncodingNames(n, recv, name, args)
 	if recv.view != "" && block == nil {
 		if e, ok := f.viewCall(n, recv, name, args); ok {
 			return e
@@ -1412,14 +1413,22 @@ func (f *fctx) genBareName(n *parser.CallNode, expected Type) (expr, bool) {
 	return expr{}, false
 }
 
-// genSpecialClassCall is the class-method calls the compiler answers itself: Ractor.new (decision 103) and ERB.new (decision 111).
+// genSpecialClassCall is the class-method calls the compiler answers itself: Ractor.new (decision 103), ERB.new (decision 111) and URI.open (decision 134).
 func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) {
 	switch {
 	case cls.RubyName == "Ractor":
 		return f.genRactorCall(n, cls)
+	case cls.RubyName == "URI" && n.Name == "open":
+		return f.genOpenURI(n, nil, "open", callArgs(n), n.Block), true
 	case cls.RubyName == "ERB" && n.Name == "new":
 		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
 		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
+	case n.Name == "new" && cls.isSubclassOf(f.c.classes["BasicSocket"]) && cls.lookup("initialize") == nil:
+		// a socket object is only made with its handle: BasicSocket/IPSocket/Socket.new would be a nil one (decision 135)
+		if cls.isSubclassOf(f.c.classes["Socket"]) {
+			f.errorf(n, "Socket.new is not supported (decision 135): raw sockets bind and connect to packed sockaddr Strings; use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp")
+		}
+		f.errorf(n, "undefined method initialize for %s (decision 135): use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp", cls.RubyName)
 	}
 	return expr{}, false
 }
@@ -1460,6 +1469,9 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.prelude {
 		return expr{}, false // a user's override, as MRI calls it
 	}
+	if f.isOpenURIRecv(recv.typ, name) {
+		return f.genOpenURI(n, &recv, name, args, block), true
+	}
 	if name == "class" && len(args) == 0 && block == nil {
 		if e, ok := f.genClassOf(n, recv); ok {
 			return e, true
@@ -1476,7 +1488,7 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		}
 		return f.genDynRespondTo(n, recv, args), true
 	}
-	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !isRactorRecv(recv.typ) {
+	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !f.ownSend(recv.typ, name) {
 		return f.genSend(n, recv, name, args, block), true
 	}
 	if e, ok := f.genMethodObject(n, recv, name, args, block); ok {
@@ -1497,6 +1509,15 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		}
 	}
 	return expr{}, false
+}
+
+// ownSend is true when the receiver's class defines its own send (Ractor's, BasicSocket's), which shadows Kernel#send as in MRI.
+func (f *fctx) ownSend(t Type, name string) bool {
+	if name != "send" {
+		return false
+	}
+	c := classOf(t)
+	return c != nil && c.lookup(name) != nil
 }
 
 // dispatch resolves a call by the receiver's static type.
@@ -1594,6 +1615,9 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		// either way the method is found at run time
 		if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 			return f.genDynCall(n, recv, name, args)
+		}
+		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
+			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}
@@ -2035,6 +2059,21 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 		return nil
 	}
 	return m.Owner.lookup("__fetch_opt")
+}
+
+// newOverloaded is true when initialize cannot take the call's argument count
+// and the class defines decision 12's `self.__new_<count>` (TCPServer.new(port)).
+func (f *fctx) newOverloaded(cls *Class, n *parser.CallNode) bool {
+	args := callArgs(n)
+	if cls.meta == nil || cls.meta.lookup("__new_"+strconv.Itoa(len(args))) == nil {
+		return false
+	}
+	init := cls.lookup("initialize")
+	if init == nil {
+		return true
+	}
+	rest := slices.ContainsFunc(init.M.Params, func(p Param) bool { return p.Rest })
+	return len(args) < requiredArgs(init.M) || !rest && len(args) > len(init.M.Params)
 }
 
 // overload stands in for RBS overloads (decision 12): a call whose argument
@@ -3479,6 +3518,21 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 			code = f.coerce(args[0], a, TAny{})
 		}
 		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
+		if len(args) == 1 && block == nil {
+			code := recv.code
+			if !isSimpleGo(code) { // the receiver first, as Ruby evaluates it, then the format
+				code = f.newTmp()
+				f.emit("%s := %s", code, recv.code)
+			}
+			str := f.cls("String")
+			format := f.coerce(args[0], f.genExpr(args[0], str), str)
+			fields := make([]string, len(tt.Elems))
+			for i := range tt.Elems {
+				fields[i] = fmt.Sprintf("%s.F%d", code, i)
+			}
+			return expr{code: "String(rbPack([]any{" + strings.Join(fields, ", ") + "}, string(" + format + ")))", typ: str}
+		}
 	}
 	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
@@ -4974,6 +5028,9 @@ func requiredArgs(m *Method) int {
 // its return type from its body.
 func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	sig := &BlockSig{Ret: TVar{Name: "Ret_"}}
+	if o, ok := expected.(TOpt); ok { // a lambda literal where a Proc? is expected is never nil
+		expected = o.Elem
+	}
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
 		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret}
 	} else if len(f.blockParamNames(params)) > 0 {

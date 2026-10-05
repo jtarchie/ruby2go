@@ -210,11 +210,11 @@ puts a, b, c
 # error: main.rb:2: cannot destructure Integer
 a, b = 5
 puts a, b
--- tuple_four_elements.rb --
-# error: main.rb:3: only 2- and 3-tuples are supported
-#: () -> [Integer, Integer, Integer, Integer]
-def four = [1, 2, 3, 4]
-puts four.inspect
+-- tuple_eight_elements.rb --
+# error: main.rb:3: only 2- to 7-tuples are supported
+#: () -> [Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer]
+def eight = [1, 2, 3, 4, 5, 6, 7, 8]
+puts eight.inspect
 -- return_two_values.rb --
 # error: main.rb:4: return with multiple values is not supported
 #: () -> [Integer, Integer]
