@@ -1306,6 +1306,7 @@ func (c *Compiler) link(ctx context.Context) {
 		}
 	}
 	c.declareIvarAnnotations()
+	c.checkIvarModules()
 	c.expandDelegations(ctx)
 	c.includeFromEach() // before any override inherits from the module, which needs its type args
 	// method signatures
@@ -1524,6 +1525,11 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 func (c *Compiler) findIvar(cls *Class, name string) *Ivar {
 	for k := cls; k != nil; k = k.Super {
 		if iv := k.Ivars[name]; iv != nil {
+			return iv
+		}
+	}
+	for _, mod := range ivarModules(cls) { // an included module's (decision 147)
+		if iv := mod.Ivars[name]; iv != nil {
 			return iv
 		}
 	}

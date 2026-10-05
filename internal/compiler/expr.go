@@ -727,10 +727,13 @@ func (f *fctx) toS(n parser.Node, e expr) string {
 // ---- ivars
 
 func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
-	if f.owner == nil || !f.owner.isStruct() || f.owner.universal {
-		f.errorf(n, "instance variables are only supported in struct classes")
+	if f.owner == nil || f.owner.universal || !f.owner.isStruct() && !f.owner.IsModule {
+		f.errorf(n, "instance variables are only supported in struct classes and modules")
 	}
 	iv := f.c.findIvar(f.owner, name)
+	if iv == nil && f.owner.IsModule {
+		f.errorf(n, "instance variable %s of module %s needs a type: `# @rbs %s: T` in the module body (decision 147)", name, f.owner.RubyName, name)
+	}
 	if iv == nil {
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
 			return f.c.declareIvar(f.owner, name, assigned, f.f, f.f.line(n.GetLocation().StartOffset))

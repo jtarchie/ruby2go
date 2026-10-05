@@ -1954,6 +1954,11 @@ resolve; anything not listed is still open.
     specifically to guarantee `rbSendByName` is generated whenever
     `notify_observers` itself is compiled, rather than depending on
     `add_observer` being reachable too ([example 64](../examples/64_observable/main.rb)).
+    *Revised (decision 147):* the side table and its global mutex are
+    gone. Observable is plain Ruby over `@observer_peers` (a Hash of
+    observer to method name, as MRI's) and `@observer_state`, instance
+    variables a module may now hold, so the state is per object and
+    freed with it.
 75. `Kernel#at_exit { }` pushes onto a Go slice; the generated main's
     deferred `rbTopRecover` (and a thread's `exit`) pops handlers LIFO,
     so one registered inside a handler runs next. Probed on MRI 4.0: the
@@ -2961,6 +2966,10 @@ resolve; anything not listed is still open.
     maps differ only in name *(fibers came with decision 140; `Thread#[]`
     is still per thread)*. `require "monitor"` is a no-op (decision
     50). ([example 79](../examples/79_monitor/main.rb).)
+    *Revised (decision 147):* MonitorMixin's monitor is the object's
+    `@mon_data`, as in MRI, made on first use with a compare-and-swap on
+    that field (two threads racing agree on one); the identity-keyed
+    table and its global mutex are gone.
 109. `$stdout = io` and `$stderr = io` (#1's minitest follow-ups), the
     first assignable globals (decision 61 amended). The compiler turns the
     assignment into `rbSetStdout(v)`/`rbSetStderr(v)`: `v` must answer
@@ -4724,3 +4733,20 @@ resolve; anything not listed is still open.
       uses are themselves untyped.
     ([example 101](../examples/101_inferred_params/main.rb),
     `testdata/test/infer_test.rb`, `testdata/errors/infer.txtar`.)
+147. A module may hold instance variables (needed to drop the global,
+    mutex-guarded side tables of decisions 74 and 108: rb2go's runtime
+    takes no process-wide lock, which would serialize threads as MRI's
+    GVL does). Each is declared in the module body, `# @rbs @x: T` (an
+    undeclared one is a compile error: module methods are not dry-run for
+    discovery). The module gets a state struct `M_Ivars`; each struct
+    class that includes it, directly or through another module, holds an
+    `M_Ivars` field, and a subclass shares its parent's through
+    embedding; the module's constraint requires `_M() *M_Ivars`, so `@x`
+    in a module method is `self._M().x`, the same shape as a class's own
+    `self._Foo().x`, and an includer's own methods read `@x` the same
+    way. Including such a module in a `@go_type` class or at the top level
+    (Object) is a compile error, as is giving a generic module instance
+    variables. Not yet: module ivars in `inspect`'s ivar list, and
+    `extend` on a single object
+    ([example 102](../examples/102_module_ivars/main.rb),
+    `testdata/test/object_test.rb` `ModuleIvarTest`).

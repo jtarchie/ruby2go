@@ -429,7 +429,17 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		tps = ", " + strings.Join(mod.TypeParams, ", ") + " comparable"
 	}
 	c.userTypeLine(mod)
+	if len(mod.IvarList) > 0 { // its state, a field of each includer (decision 147)
+		c.w("type %s struct {\n", ivarsType(mod))
+		for _, iv := range mod.IvarList {
+			c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
+		}
+		c.w("}\n\n")
+	}
 	c.w("type %s_Self[Self any%s] interface {\n", mod.Name, tps)
+	if len(mod.IvarList) > 0 {
+		c.w("\t_%s() *%s\n", mod.Name, ivarsType(mod))
+	}
 	// Constraint = what the module's bodies call on self (docs/design.md).
 	called := c.selfCalls(mod)
 	for _, e := range c.publicEntries(mod) {
@@ -603,11 +613,17 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
 	}
+	for _, mod := range ownIvarModules(cls) {
+		c.w("\t%s %s\n", ivarsField(mod), ivarsType(mod))
+	}
 	c.w("}\n\n")
 	// interface
 	c.w("type %sI interface {\n", cls.Name)
 	for _, k := range cls.structChain() {
 		c.w("\t_%s() *%s\n", k.Name, k.Name)
+	}
+	for _, mod := range ivarModules(cls) {
+		c.w("\t_%s() *%s\n", mod.Name, ivarsType(mod))
 	}
 	for _, e := range c.publicEntries(cls) {
 		if cls.metaOf != nil && e.M.Name == "new" {
@@ -645,6 +661,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	c.w("}\n\n")
 	c.w("func (self *%s) _%s() *%s { return self }\n\n", cls.Name, cls.Name, cls.Name)
+	for _, mod := range ownIvarModules(cls) {
+		c.w("func (self *%s) _%s() *%s { return &self.%s }\n\n", cls.Name, mod.Name, ivarsType(mod), ivarsField(mod))
+	}
 	if cls.meta != nil {
 		c.w("func (self *%s) _ClassOf() %s { return %s }\n\n", cls.Name, c.goType(TClass{C: cls.root().meta}), classVar(cls))
 	}

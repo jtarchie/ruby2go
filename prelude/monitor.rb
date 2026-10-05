@@ -110,6 +110,8 @@ class Monitor < Object
 end
 
 module MonitorMixin
+  # nil until __monitor makes it, and read only there
+  # @rbs @mon_data: Monitor
   # @go_type struct { mon *Monitor; cv rbCondVar }
   class ConditionVariable < Object
     #: (Monitor) -> ConditionVariable
@@ -187,7 +189,9 @@ module MonitorMixin
   #: () -> nil
   def mon_initialize = nil
 
-  # The object's monitor, in a Go-side table by identity (a module has no ivars; decision 74's pattern).
+  # The object's monitor, an instance variable as in MRI's monitor.rb (decision 147),
+  # made on first use: two threads racing to it agree on one through a
+  # compare-and-swap on this object's own field, no lock shared with others.
   #: () -> Monitor
-  def __monitor = %x{ return rbMonitorFor(any(self)) }
+  def __monitor = %x{ return rbMonitorOnce(&self._MonitorMixin().mon_data) }
 end

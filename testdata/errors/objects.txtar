@@ -240,7 +240,7 @@ class Reader
   def count = @count
 end
 -- ivar_in_module.rb --
-# error: main.rb:4: instance variables are only supported in struct classes
+# error: main.rb:4: instance variable @count of module Counting needs a type
 module Counting
   #: () -> Integer
   def count = @count
@@ -1150,3 +1150,23 @@ Array.instance_method(:size)
 # error: main.rb:3: only &:symbol, a Proc, a Method and a method's own &block are supported as block arguments
 n = 1
 puts [1].map(&n).inspect
+-- module_ivar_untyped.rb --
+# error: main.rb:3: instance variable @n of module M needs a type: `# @rbs @n: T` in the module body (decision 147)
+module M
+  def bump = (@n = 1)
+end
+class C
+  include M
+end
+C.new.bump
+-- module_ivar_in_go_type.rb --
+# error: M has instance variables, so only a class whose objects are structs can include it, not String (decision 147)
+module M
+  # @rbs @n: Integer?
+
+  #: () -> Integer?
+  def n = @n
+end
+class String
+  include M
+end

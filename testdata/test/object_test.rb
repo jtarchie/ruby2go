@@ -4530,4 +4530,32 @@ module ObjectTests
       assert_equal 5, f.call
     end
   end
+  # decision 147: a module's instance variables live in each includer's object
+  module IvarTally
+    # @rbs @n: Integer?
+
+    #: () -> Integer
+    def bump = (@n = (@n || 0) + 1)
+  end
+
+  class IvarHolder
+    include IvarTally
+
+    #: () -> Integer?
+    def raw = @n
+  end
+
+  class IvarHolderKid < IvarHolder
+  end
+
+  class ModuleIvarTest < Minitest::Test
+    def test_per_object
+      a = IvarHolder.new
+      b = IvarHolderKid.new
+      a.bump
+      a.bump
+      b.bump
+      assert_equal [2, 1, nil], [a.raw, b.raw, IvarHolder.new.raw]
+    end
+  end
 end
