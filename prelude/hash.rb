@@ -226,6 +226,10 @@ class Hash < Object
   #: () -> Hash[K, V]
   def to_h = merge({})
 
+  # A hash pattern's view of the Hash: itself, whatever keys it asks for, as MRI's (decision 143).
+  #: (Array[Symbol]?) -> Hash[K, V]
+  def deconstruct_keys(_keys) = self
+
   #: () -> Hash[V, K]
   def invert
     out = {} #: Hash[V, K]

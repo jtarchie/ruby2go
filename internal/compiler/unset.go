@@ -118,6 +118,29 @@ func (w *unsetWalk) walk(n parser.Node) {
 			}
 		})
 		w.fork(arms...)
+	case *parser.CaseMatchNode:
+		w.walk(n.Predicate)
+		arms := make([]func(), 0, len(n.Conditions)+1)
+		for _, c := range n.Conditions {
+			arms = append(arms, func() { w.walk(c) })
+		}
+		arms = append(arms, func() {
+			if n.ElseClause != nil {
+				w.walk(n.ElseClause)
+			}
+		})
+		w.fork(arms...)
+	case *parser.InNode:
+		// the pattern binds before its guard reads
+		pat, guard, _ := splitGuard(n.Pattern)
+		w.walk(pat)
+		w.walk(guard)
+		w.stmts(n.Statements)
+	case *parser.MatchPredicateNode:
+		w.walk(n.Value)
+		w.fork(func() { w.walk(n.Pattern) }, func() {})
+	case *parser.AlternationPatternNode: // alternatives bind nothing but _-names
+		w.fork(func() { w.walk(n.Left) }, func() { w.walk(n.Right) })
 	case *parser.WhileNode:
 		_, forever := n.Predicate.(*parser.TrueNode)
 		w.loop(n.Predicate, n.Statements, forever)

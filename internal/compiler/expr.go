@@ -199,8 +199,12 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		e := f.genExpr(st.Body[0], expected)
 		e.code = "(" + e.code + ")"
 		return e
-	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.BeginNode:
+	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.CaseMatchNode, *parser.BeginNode:
 		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
+	case *parser.MatchRequiredNode:
+		return f.genMatchRequired(n)
+	case *parser.MatchPredicateNode:
+		return f.genMatchPredicate(n)
 	case *parser.OrNode:
 		return f.genOr(n)
 	case *parser.AndNode:
@@ -4791,7 +4795,7 @@ func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
-	if f.m == nil || !f.m.quietDynamic {
+	if (f.m == nil || !f.m.quietDynamic) && !f.patQuiet {
 		f.warn(n, "dynamic call: %s on %s", name, recv.typ)
 	}
 	how := "rbCall"

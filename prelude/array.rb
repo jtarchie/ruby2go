@@ -503,6 +503,10 @@ class Array < Object
   #: () -> Array[E]
   def to_a = self
 
+  # An array pattern's view of the Array: itself, as MRI's (decision 143).
+  #: () -> Array[E]
+  def deconstruct = self
+
   #: () -> Array[E]
   def dup = %x{
     out := &Array[E]{}

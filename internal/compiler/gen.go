@@ -47,6 +47,7 @@ type fctx struct {
 	blockCtr      int
 	loops         []*loopFrame
 	switches      int  // nesting depth of emitted Go switch statements
+	patQuiet      bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
 	labels        int  // not rewound by probe, so labels stay unique
 	closures      int  // nesting depth of Go closures (non-iterator blocks)
 	nextTail      tail // the innermost closure's result, for `next`
@@ -536,6 +537,8 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genIf(n, n.Predicate, n.Statements, els, true, t)
 	case *parser.CaseNode:
 		f.genCase(n, t)
+	case *parser.CaseMatchNode:
+		f.genCaseMatch(n, t)
 	case *parser.BeginNode:
 		f.genBegin(n, t)
 	case *parser.WhileNode:
@@ -731,6 +734,8 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
 			return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 		}
+	case *parser.MatchPredicateNode:
+		return f.condMatchPredicate(n)
 	case *parser.LocalVariableWriteNode:
 		// `if (x = h[k])` / `while (job = q.pop)`: assign, then test and narrow x like a read
 		f.genStmt(n, tail{})
