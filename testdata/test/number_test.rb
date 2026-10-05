@@ -223,6 +223,14 @@ def number_numeric_kind(v)
   end
 end
 
+#: (untyped) -> String
+def number_only_numeric(v)
+  case v
+  when Numeric then "number #{v.abs}"
+  else "other"
+  end
+end
+
 #: (Numeric) -> String
 def number_narrow(n)
   if n.is_a?(Integer)
@@ -232,6 +240,14 @@ def number_narrow(n)
   else
     "other #{n.integer?}"
   end
+end
+
+#: [T] (T) -> String
+def number_generic_kind(x)
+  return "other" unless x.is_a?(Numeric)
+
+  y = x
+  y.is_a?(Integer) ? "int #{y + 1}" : "number #{x.zero?}"
 end
 
 #: (untyped) -> Numeric?
@@ -2204,9 +2220,11 @@ module NumberTests
       vs = [1, 1.5, Rational(1, 2), Complex(0, 0), BigDecimal("1"), "1", nil, :x]
       assert_equal ["int 2", "float 1", "number false", "number true", "number false", "other", "other", "other"], vs.map { |v| number_numeric_kind(v) }
       assert_equal [true, true, true, true, true, false, false, false], vs.map { |v| v.is_a?(Numeric) }
+      assert_equal ["number 2", "number 1.5", "other"], [number_only_numeric(-2), number_only_numeric(1.5), number_only_numeric("x")]
       assert_equal [true, false, true, true, true], [Numeric === 2, Numeric === "2", 1.kind_of?(Numeric), Complex(1, 2).is_a?(Comparable), BigDecimal("1").is_a?(Comparable)]
       assert_equal ["even true", "nan false", "other false"], [number_narrow(2), number_narrow(1.5), number_narrow(Rational(1, 2))]
       assert_equal [2, 2.5, Rational(3, 2), nil], [number_succ(1), number_succ(1.5), number_succ(Rational(1, 2)), number_succ("x")]
+      assert_equal ["int 2", "number false", "other"], [number_generic_kind(1), number_generic_kind(2.5), number_generic_kind("a")]
     end
 
     def test_numeric_mixed_typed

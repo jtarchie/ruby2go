@@ -170,15 +170,18 @@ class BigDecimal < Object
 
   # Comparable's, over any number: its own take a BigDecimal, and clamp answers the bound itself.
   #: (untyped, untyped) -> bool
-  def between?(lo, hi) = self >= lo && self <= hi
+  def between?(lo, hi) = __order(lo) >= 0 && __order(hi) <= 0
 
   #: (untyped, untyped) -> untyped
   def clamp(lo, hi)
-    raise ArgumentError, "min argument must be less than or equal to max argument" if BigDecimal.__from(lo) > hi
-    return lo if self < lo
-    return hi if self > hi
+    raise ArgumentError, "min argument must be less than or equal to max argument" if BigDecimal.__from(lo).__order(hi) > 0
+    return lo if __order(lo) < 0
+    return hi if __order(hi) > 0
     self
   end
+
+  #: (untyped) -> Integer
+  def __order(other) = %x{ return rbBDOrder(self, other) }
 
   #: () -> Integer
   def hash = %x{ return rbBDHash(self) }
@@ -459,10 +462,26 @@ class Rational
   #: (Integer) -> BigDecimal
   def to_d(precision) = BigDecimal(self, precision)
 
-  # A mix with a BigDecimal converts at its coerce precision (decision 142).
+  # A mix with a BigDecimal no twin below takes (decision 142).
   #: () -> BigDecimal
   def __to_d = BigDecimal.__from(self)
 
+  # At other's coerce precision, as MRI's BigDecimal#coerce: a fixed one loses digits of a longer other.
+  #: (BigDecimal) -> BigDecimal
+  def __to_d_for(other) = %x{ return rbBDArg(self, rbBDCoercePrec(other)) }
+
+  #: (BigDecimal) -> BigDecimal
+  def __plus_big_decimal(other) = __to_d_for(other) + other
+
+  #: (BigDecimal) -> BigDecimal
+  def __minus_big_decimal(other) = __to_d_for(other) - other
+
+  #: (BigDecimal) -> BigDecimal
+  def __mul_big_decimal(other) = __to_d_for(other) * other
+
+  #: (BigDecimal) -> BigDecimal
+  def __div_big_decimal(other) = __to_d_for(other) / other
+
   #: (BigDecimal) -> Float
-  def __fdiv_big_decimal(other) = (__to_d / other).to_f
+  def __fdiv_big_decimal(other) = (__to_d_for(other) / other).to_f
 end

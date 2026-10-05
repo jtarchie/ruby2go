@@ -48,7 +48,8 @@ func rbNumCoerce(a, b any) (any, any, bool) {
 	case Float:
 		return Float(rbNumFloat(a)), Float(rbNumFloat(b)), true
 	case *BigDecimal:
-		return rbBDArg(a, 32), rbBDArg(b, 32), true // BigDecimal.__from's precision, as numericTower's __to_d
+		prec := rbBDCoercePrec(hi.(*BigDecimal)) // as rbBDRel: a fixed precision loses digits of a longer BigDecimal
+		return rbBDArg(a, prec), rbBDArg(b, prec), true
 	case *Complex:
 		return rbNumComplex(a), rbNumComplex(b), la != 3 && lb != 3
 	}

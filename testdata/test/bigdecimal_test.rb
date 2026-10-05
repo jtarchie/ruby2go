@@ -46,6 +46,11 @@ module BigDecimalTests
       assert_equal "-0.15e1", (-BigDecimal("1.5")).inspect
       assert_equal "0.15e1", (BigDecimal("-1.5").abs).inspect
       assert_equal "-0.0", (BigDecimal("-0") + BigDecimal("-0")).inspect
+      long = BigDecimal("0.1234567890123456789012345678901234567891")
+      assert_equal "0.456790122345679012234567901223456790122433333e0", (Rational(1, 3) + long).inspect
+      assert_equal "0.209876544320987654432098765443209876544233333e0", (Rational(1, 3) - long).inspect
+      r = Rational(1, 3) #: untyped
+      assert_equal "0.86419755308641975530864197553086419755133333e-1", (r % long).inspect
     end
 
     def test_rounding
@@ -194,6 +199,11 @@ module BigDecimalTests
       assert_equal "0.375e1", ([BigDecimal("1.5"), BigDecimal("2.25")].reduce(BigDecimal("0")) { |s, x| s + x }).inspect
       assert_equal "\"a\"", ({ BigDecimal("1.0") => "a" }[BigDecimal("1")]).inspect
       assert_equal "[0.2e1, 0.123e1]", (BigDecimal("1.23").coerce(2)).inspect
+      assert_equal "true", (BigDecimal("1.5").between?(1, 2)).inspect
+      assert_equal "0.2e1", (BigDecimal("3").clamp(1, BigDecimal("2"))).inspect
+      e = assert_raises(ArgumentError) { BigDecimal("NaN").between?(1, 2) }
+      assert_equal "comparison of BigDecimal with 1 failed", e.message
+      assert_raises(ArgumentError) { BigDecimal("NaN").clamp(1, 2) }
     end
 
     def test_errors

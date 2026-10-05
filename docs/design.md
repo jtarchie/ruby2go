@@ -3911,18 +3911,22 @@ resolve; anything not listed is still open.
       whose class only the run time knows (untyped, a module type, a
       type variable) asks the class ancestry table (`rbKindOf`, the
       table `Module#===` reads), and narrows an untyped local to
-      `Numeric` (the same Go value). `when Numeric` in a type switch
-      lists the five Go types, minus any an earlier arm took (Go rejects
-      a repeated case; Ruby's first match wins anyway). Decision 21's
-      compile error stays for other modules.
+      `Numeric` (the same Go value). In a type switch `when Numeric`
+      asks the same table in the `default` arm, and the five Go types
+      leave any later arm (Go rejects a repeated case; Ruby's first
+      match wins anyway): a case naming all five would keep BigDecimal
+      and Complex in every program using it, since the pruner drops
+      only single-type cases. Decision 21's compile error stays for
+      other modules.
     - **Mixing, typed.** Decision 12's class twins (`__plus_rational`)
       go first. A call they miss whose parameter is the receiver's own
       class (arithmetic `+ - * / % modulo remainder div divmod fdiv
       quo`, order `<=> < <= > >=`, and `step`) converts the operand
       lower in the tower `Integer < Rational < Float < BigDecimal <
       Complex` to the higher one's class (`to_r`, `to_f`, `to_d`,
-      `to_c`; a Rational to BigDecimal at `BigDecimal.__from`'s 32
-      digits) and calls that class's method, typed (`numericTower`):
+      `to_c`; a Rational to BigDecimal at the BigDecimal's coerce
+      precision, `rbBDCoercePrec`, as MRI's `BigDecimal#coerce`) and
+      calls that class's method, typed (`numericTower`):
       `Rational(1, 2) < 0.75` is `Rational(1, 2).to_f < 0.75`. Only a
       binary call raises its receiver; `step` converts its arguments
       down to the receiver (`Rational(1, 2).step(2)`), or widens an
@@ -3964,6 +3968,11 @@ resolve; anything not listed is still open.
       `infinite?`, `coerce`; BigDecimal `integer?`, `real?`,
       `magnitude`, `fdiv`, `step`, and its own `between?`/`clamp`
       (its comparisons take any number, which Comparable's
-      `(self)`-typed ones cannot).
+      `(self)`-typed ones cannot; a NaN raises, as Comparable's).
+      Known differences: `BigDecimal#step` yields BigDecimals even
+      with a Float limit or step (MRI: Floats), and `Rational#coerce`
+      with a Complex is always a Complex pair (MRI: a Rational pair
+      when the imaginary part is an exact zero): either answer's class
+      would depend on a value.
     (`testdata/test/number_test.rb` `NumberNumericTest`,
     `testdata/errors/numbers.txtar` `numeric_*`.)

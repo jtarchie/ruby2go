@@ -579,7 +579,8 @@ func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 			return
 		}
 	}
-	cond, ret := "rbNumMixed(self, args)", ""
+	cond := "rbNumMixed(self, args)"
+	var ret string
 	switch {
 	case m.Owner == c.classes["Comparable"]:
 		args := make([]string, len(m.Params))

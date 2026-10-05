@@ -1640,7 +1640,8 @@ func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, arg
 // argument itself. Arguments are generated once and passed on as exprNodes.
 // Any other call is plain callEntry.
 func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) expr {
-	if x, ok := f.numericTower(n, recv, e, args, block); ok {
+	x, args, ok := f.numericTower(n, recv, e, args, block)
+	if ok {
 		return x
 	}
 	m := e.M
@@ -2129,14 +2130,17 @@ func classTwins(name string) bool {
 	if _, op := opNames[name]; op {
 		return true
 	}
-	base := overloadBase(name)
-	for op := range opNames {
-		if overloadBase(op) == base {
-			return false
-		}
-	}
-	return true
+	return !opBases[overloadBase(name)]
 }
+
+// opBases are the operators' overload spellings (`div` for `/`).
+var opBases = func() map[string]bool {
+	out := map[string]bool{}
+	for op := range opNames {
+		out[overloadBase(op)] = true
+	}
+	return out
+}()
 
 // overloadBase is name as its `__<base>_<suffix>` overloads spell it.
 func overloadBase(name string) string {
@@ -4073,7 +4077,10 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 		return cond, nil
 	}
 	if f.c.isNumericMod(cls) && !isOpt(v.typ) && f.numericAtRunTime(base) {
-		return cond, []narrowInfo{{local: v, typ: TClass{C: cls}, code: code}} // both Go any: only the static type changes
+		if _, tv := base.(TVar); tv {
+			code = "any(" + code + ")" // a Go type parameter is not an interface: a later type assertion on it would not compile
+		}
+		return cond, []narrowInfo{{local: v, typ: TClass{C: cls}, code: code}}
 	}
 	if bt, ok := base.(TClass); cls.IsModule || ok && bt.C.isSubclassOf(cls) {
 		// the class part is static: all the check can rule out is nil
