@@ -4071,8 +4071,10 @@ resolve; anything not listed is still open.
       `break` work as in `if`. A guard is one more `if`. Bindings are
       ordinary local writes (Ruby locals of the enclosing scope, hoisted
       when the body reads them, decision 14); the unset pass sees each arm
-      as a branch and `v in pat` as maybe-taken, and `if v in pat`
-      narrows the locals it bound to non-nil values. A subject that is a
+      as a branch (a case/in without `else` raises rather than falling
+      through) and `v in pat` as maybe-taken, and `if v in pat`
+      narrows the locals it bound to non-nil values, except a `_x` an
+      alternative binds. A subject that is a
       local is narrowed in the arm's body by a leading class
       (`in Circle`, `in Circle(r:)`), as `case/when`'s type switch does.
       The subject, and each checked element, is evaluated once.
@@ -4089,13 +4091,13 @@ resolve; anything not listed is still open.
       otherwise the keys up to the first non-member; it takes
       `Array[Symbol]?` (MRI's String and Integer keys are not supported).
       On a statically typed Struct/Data the pattern reads the members
-      directly, typed, and calls the generated methods only when it needs
+      directly, typed (unless a subclass overrides the method), and calls the generated methods only when it needs
       the Array or Hash itself (a bound `*rest` or `**rest`, `**nil`, a
       find pattern). A user class's `deconstruct` must be typed to return
       an Array or tuple (or untyped), and `deconstruct_keys` a Hash with
       Symbol or untyped keys; anything else is a compile error. As MRI,
       `deconstruct_keys` gets the pattern's keys, or nil when the
-      pattern has `**rest` or `**nil`. MRI caches `deconstruct` across a
+      pattern has `**rest` or `**nil` or no keys (`{}`). MRI caches `deconstruct` across a
       `case`'s arms; rb2go calls it per arm.
     - **Untyped subjects** (and Object, module types, a generic `T`, or a
       class only some subclasses define the method on) are checked at run
@@ -4119,7 +4121,9 @@ resolve; anything not listed is still open.
       `NoMatchingPatternKeyError` whose matchee is the deconstructed
       Hash), `rest of {...} is not empty`, `{...} is not empty`, `does
       not match to find pattern`, `guard clause does not return true`;
-      an alternation reports its last alternative. The message is built
+      an alternation reports its last alternative, class included (a
+      missing key in an earlier one does not make it a
+      `NoMatchingPatternKeyError`). The message is built
       only on the failure path.
     - **Compile errors** for shapes that never match the static type: an
       array or find pattern on a class with no `deconstruct` in its

@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -18,6 +17,7 @@ type patMatch struct {
 	key     string // Go var: that key
 	matchee string // Go var: the Hash it was missing from
 	usesKey bool
+	keyFail bool // the failure being recorded is a missing key
 	dead    bool // a check failed at compile time, so this arm never matches
 	bound   []patBound
 }
@@ -43,6 +43,9 @@ func (f *fctx) patSubject(n parser.Node) expr {
 		e = f.voidAsNil(e)
 	}
 	if isNil(e.typ) {
+		if strings.Trim(e.code, "()") != "nil" {
+			f.voidAsNil(e) // `case log_nil`: the call still runs
+		}
 		return expr{code: "nil", typ: TNil{}}
 	}
 	tmp := f.newTmp()
@@ -65,15 +68,23 @@ func (f *fctx) patWrap(pm *patMatch, subj expr, code string) {
 	f.buf.WriteString(code)
 }
 
-var goWordRe = regexp.MustCompile(`[A-Za-z_0-9]+`)
-
+// usesGoName reports whether code mentions the Go identifier name as a whole word.
 func usesGoName(code, name string) bool {
-	for _, m := range goWordRe.FindAllString(code, -1) {
-		if m == name {
+	word := func(b byte) bool {
+		return b == '_' || '0' <= b && b <= '9' || 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z'
+	}
+	for i := 0; ; {
+		j := strings.Index(code[i:], name)
+		if j < 0 {
+			return false
+		}
+		j += i
+		end := j + len(name)
+		if (j == 0 || !word(code[j-1])) && (end == len(code) || !word(code[end])) {
 			return true
 		}
+		i = j + 1
 	}
-	return false
 }
 
 // genCaseMatch is `case v; in pat [if guard] then ...; else ...; end`.
@@ -182,7 +193,10 @@ func (f *fctx) patGuard(pm *patMatch, guard parser.Node, negate bool, okVar stri
 		f.emit("%s = true", okVar)
 		return
 	}
+	quiet := f.patQuiet
+	f.patQuiet = false // the guard is the user's code, not the match: its dynamic calls warn
 	cond, nw := f.genCond(guard)
+	f.patQuiet = quiet
 	if negate {
 		cond, nw = "!("+cond+")", nil
 	}
@@ -212,9 +226,12 @@ func (f *fctx) genMatchRequired(n *parser.MatchRequiredNode) expr {
 	return expr{code: "nil", typ: TNil{}, done: true}
 }
 
-// genMatchPredicate is `v in pat`: true when it matches, binding as it goes.
-func (f *fctx) genMatchPredicate(n *parser.MatchPredicateNode) expr {
-	e, _ := f.matchPredicate(n)
+// genMatch is `v => pat` (bind or raise) or `v in pat` (true when it matches, binding as it goes).
+func (f *fctx) genMatch(n parser.Node) expr {
+	if r, ok := n.(*parser.MatchRequiredNode); ok {
+		return f.genMatchRequired(r)
+	}
+	e, _ := f.matchPredicate(n.(*parser.MatchPredicateNode))
 	return e
 }
 
@@ -303,7 +320,7 @@ func (f *fctx) patIf(pm *patMatch, cond string, fail func() string, then func())
 	case "false":
 		pm.dead = true
 		if pm.single && fail != nil {
-			f.emit("%s = %s", pm.err, fail())
+			f.patFail(pm, fail)
 		}
 		return
 	}
@@ -317,11 +334,21 @@ func (f *fctx) patIf(pm *patMatch, cond string, fail func() string, then func())
 		f.emit("} else {")
 		saved := f.enterBlock()
 		f.indent++
-		f.emit("%s = %s", pm.err, fail())
+		f.patFail(pm, fail)
 		f.indent--
 		f.leaveBlock(saved)
 	}
 	f.emit("}")
+}
+
+// patFail records why a single pattern failed. Only the last failure counts, as MRI, so one that is not a missing key clears an earlier key failure (an alternative's).
+func (f *fctx) patFail(pm *patMatch, fail func() string) {
+	pm.keyFail = false
+	msg := fail()
+	if pm.usesKey && !pm.keyFail {
+		f.emit("%s = false", pm.keyHit)
+	}
+	f.emit("%s = %s", pm.err, msg)
 }
 
 // genPat emits the checks for pattern p against subj; then runs (once, in the success branch) with subj as the pattern narrowed it.
@@ -404,7 +431,10 @@ func (f *fctx) patValue(pm *patMatch, v parser.Node, subj expr, then func(expr))
 		return
 	}
 	// the pattern's value is evaluated once: === and the failure message both read it
+	quiet := f.patQuiet
+	f.patQuiet = false // `^(expr)` is the user's code
 	e := f.genExpr(v, subj.typ)
+	f.patQuiet = quiet
 	if !e.lit && !isSimpleGo(e.code) && !isNil(e.typ) {
 		tmp := f.newTmp()
 		f.emit("%s := %s", tmp, e.code)
@@ -478,6 +508,8 @@ func (f *fctx) patAlt(pm *patMatch, p *parser.AlternationPatternNode, subj expr,
 	flat(p)
 	hit := f.newTmp()
 	dead := pm.dead
+	bound := len(pm.bound)
+	defer func() { pm.bound = pm.bound[:bound] }() // a `_x` one alternative binds is unset when another matched: `if v in` must not narrow it
 	allDead := true
 	codes := make([]string, 0, len(alts))
 	for _, a := range alts {
@@ -646,7 +678,7 @@ func (f *fctx) patFind(pm *patMatch, p *parser.FindPatternNode, subj expr, then 
 			if deadInside {
 				pm.dead = true
 				if pm.single {
-					f.emit("%s = %s", pm.err, s.insp()+` + " does not match to find pattern"`)
+					f.patFail(pm, func() string { return s.insp() + ` + " does not match to find pattern"` })
 				}
 				return
 			}
@@ -673,7 +705,7 @@ func (f *fctx) patDeconstruct(pm *patMatch, p parser.Node, subj expr, needArray 
 			if t.C.RubyName == "Array" {
 				break
 			}
-			if e := f.resolve(t, "deconstruct"); e != nil && e.M.valueGen && !needArray {
+			if e := f.resolve(t, "deconstruct"); e != nil && e.M.valueGen && !needArray && !t.C.descendantDefines("deconstruct", false) {
 				members := t.C.valueRoot().valueMembers
 				elems := make([]expr, len(members))
 				for i, m := range members {
@@ -797,7 +829,7 @@ func (f *fctx) patHash(pm *patMatch, p *parser.HashPatternNode, subj expr, then 
 	case *parser.NoKeywordsParameterNode:
 		noRest = true
 	}
-	allKeys := restBind != nil || noRest
+	allKeys := restBind != nil || noRest || len(keys) == 0 // MRI passes nil for `{}` too
 	symT := f.cls("Symbol")
 	symExpr := func(name string) expr {
 		return expr{code: "Symbol(" + strconv.Quote(name) + ")", typ: symT}
@@ -814,19 +846,8 @@ func (f *fctx) patHash(pm *patMatch, p *parser.HashPatternNode, subj expr, then 
 					return `"rest of " + ` + f.patInspect(p, f.patExcept(p, h.hash, names, symExpr)) + ` + " is not empty"`
 				}, func() { then(subj) })
 			case len(keys) == 0 && p.Rest == nil: // `{}` matches only an empty Hash
-				var cond string
-				if h.members != nil {
-					cond = strconv.FormatBool(len(h.members) == 0)
-				} else {
-					cond = f.genMethodCall(p, h.hash, "size", nil, nil).code + " == 0"
-				}
-				f.patIf(pm, cond, func() string {
-					m := h.hash
-					if h.members != nil {
-						m = f.genMethodCall(p, subj, "to_h", nil, nil)
-					}
-					return f.patInspect(p, m) + ` + " is not empty"`
-				}, func() { then(subj) })
+				cond := f.genMethodCall(p, h.hash, "size", nil, nil).code + " == 0"
+				f.patIf(pm, cond, func() string { return f.patInspect(p, h.hash) + ` + " is not empty"` }, func() { then(subj) })
 			default:
 				then(subj)
 			}
@@ -867,7 +888,7 @@ func (f *fctx) patHash(pm *patMatch, p *parser.HashPatternNode, subj expr, then 
 			}
 			f.patIf(pm, cond, func() string {
 				if pm.single {
-					pm.usesKey = true
+					pm.usesKey, pm.keyFail = true, true
 					f.emit("%s = true", pm.keyHit)
 					f.emit("%s = %s", pm.key, f.coerce(k.node, symExpr(k.name), TAny{}))
 					f.emit("%s = %s", pm.matchee, h.matchee())
@@ -905,7 +926,7 @@ func (f *fctx) patDeconstructKeys(pm *patMatch, p parser.Node, subj expr, names 
 	hashAny := TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}
 	f.patShape(pm, p, subj, "deconstruct_keys", func(s expr) {
 		if t, ok := s.typ.(TClass); ok && t.C.RubyName != "Hash" {
-			if e := f.resolve(t, "deconstruct_keys"); e != nil && e.M.valueGen && !allKeys {
+			if e := f.resolve(t, "deconstruct_keys"); e != nil && e.M.valueGen && !allKeys && !t.C.descendantDefines("deconstruct_keys", false) {
 				order := t.C.valueRoot().valueMembers
 				members := map[string]expr{}
 				for _, m := range order {

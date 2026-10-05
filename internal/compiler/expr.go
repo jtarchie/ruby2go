@@ -201,20 +201,16 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		return e
 	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.CaseMatchNode, *parser.BeginNode:
 		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
-	case *parser.MatchRequiredNode:
-		return f.genMatchRequired(n)
-	case *parser.MatchPredicateNode:
-		return f.genMatchPredicate(n)
+	case *parser.MatchRequiredNode, *parser.MatchPredicateNode:
+		return f.genMatch(n)
 	case *parser.OrNode:
 		return f.genOr(n)
 	case *parser.AndNode:
 		return f.genAnd(n)
 	case *parser.YieldNode:
 		return f.genYield(n)
-	case *parser.SuperNode:
-		return f.genSuper(n, n.Arguments, false)
-	case *parser.ForwardingSuperNode:
-		return f.genSuper(n, nil, true)
+	case *parser.SuperNode, *parser.ForwardingSuperNode:
+		return f.genSuperNode(n)
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		return f.genConstRead(n)
 	case *parser.RescueModifierNode:
@@ -226,6 +222,14 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
+}
+
+// genSuperNode is `super(...)` or a bare `super`, which forwards the method's arguments.
+func (f *fctx) genSuperNode(n parser.Node) expr {
+	if s, ok := n.(*parser.SuperNode); ok {
+		return f.genSuper(n, s.Arguments, false)
+	}
+	return f.genSuper(n, nil, true)
 }
 
 func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
@@ -3166,10 +3170,7 @@ func (f *fctx) yieldMaybeMissing(n *parser.YieldNode, v *local, args []parser.No
 	}
 	const msg = "no block given (yield)"
 	f.c.strLits[msg] = true
-	exc := f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil).code
-	if f.rescues > 0 {
-		exc = "rbWithCause(" + exc + ", r_)"
-	}
+	exc := f.withCause(f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil).code)
 	f.emit("if %s == nil {", v.goName)
 	f.emit("\tpanic(%s)", exc)
 	f.emit("}")
@@ -3395,11 +3396,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 	default:
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
-	code := val.code
-	if f.rescues > 0 {
-		code = "rbWithCause(" + code + ", r_)" // raised while handling r_: MRI's cause
-	}
-	return expr{code: "panic(" + code + ")", typ: TVoid{}, stmt: true, noreturn: true}
+	return expr{code: "panic(" + f.withCause(val.code) + ")", typ: TVoid{}, stmt: true, noreturn: true}
 }
 
 // ---- calls on nilable, tuple and untyped receivers

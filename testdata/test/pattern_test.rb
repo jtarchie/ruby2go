@@ -57,6 +57,48 @@ module PatternTests
     def deconstruct = 5
   end
 
+  # records what each hash pattern asks for
+  class KeysSeen
+    attr_reader :seen #: Array[untyped]
+
+    #: () -> void
+    def initialize
+      @seen = [] #: Array[untyped]
+    end
+
+    #: (Array[Symbol]?) -> Hash[Symbol, Integer]
+    def deconstruct_keys(keys)
+      @seen << keys
+      {}
+    end
+  end
+
+  Base = Struct.new(:a, :b) #: [Integer, Integer]
+
+  # a Struct subclass whose deconstruct(_keys) a Base-typed pattern must still call
+  class Swapped < Base
+    #: () -> Array[untyped]
+    def deconstruct = [b, a]
+
+    #: (Array[Symbol]?) -> Hash[Symbol, untyped]
+    def deconstruct_keys(_keys) = { a: b, b: a }
+  end
+
+  class Bumper
+    attr_reader :n #: Integer
+
+    #: () -> void
+    def initialize
+      @n = 0
+    end
+
+    #: () -> nil
+    def bump
+      @n += 1
+      nil
+    end
+  end
+
   class PatternTest < Minitest::Test
     #: (untyped) -> String
     def show(v)
@@ -376,6 +418,53 @@ module PatternTests
       rescue ArgumentError => e
         assert_equal "no key is available", e.message
       end
+    end
+
+    def test_last_failure_kind
+      err = nil #: Exception?
+      begin
+        { b: 1 } => { a: 1 } | { b: 2 }
+      rescue NoMatchingPatternError => e
+        err = e
+      end
+      assert_equal NoMatchingPatternError, err&.class
+      assert_equal "{b: 1}: 2 === 1 does not return true", err&.message
+    end
+
+    def test_empty_hash_pattern_keys
+      k = KeysSeen.new
+      assert_equal true, (k in {})
+      assert_equal true, (k in { **nil })
+      assert_equal [nil, nil], k.seen
+    end
+
+    def test_subclass_deconstruct
+      s = Swapped.new(1, 2) #: Base
+      got = case s
+            in [x, y] then [x, y]
+            end
+      assert_equal [2, 1], got
+      assert_equal true, (s in { a: 2, b: 1 })
+    end
+
+    def test_alternative_binding_not_narrowed
+      v = [1, 2] #: Array[Integer]
+      if v in [_one] | [_, _]
+        assert_nil _one
+      end
+    end
+
+    def test_nil_subject_runs
+      c = Bumper.new
+      case c.bump
+      in nil then nil
+      end
+      assert_equal 1, c.n
+      h = { b: 1 } #: Hash[Symbol, Integer]
+      case h
+      in { b: } then nil
+      end
+      assert_equal 2, b + 1
     end
   end
 end

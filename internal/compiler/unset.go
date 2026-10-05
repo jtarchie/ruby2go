@@ -83,6 +83,32 @@ func (w *unsetWalk) fork(arms ...func()) {
 	}
 }
 
+// cases forks a case's arms. Without an else, a case/when falls through but a case/in raises NoMatchingPatternError, so no path leaves it without an arm's bindings.
+func (w *unsetWalk) cases(pred parser.Node, conds []parser.Node, els *parser.ElseNode, raises bool) {
+	w.walk(pred)
+	arms := make([]func(), 0, len(conds)+1)
+	for _, c := range conds {
+		arms = append(arms, func() { w.walk(c) })
+	}
+	arms = append(arms, func() {
+		switch {
+		case els != nil:
+			w.walk(els)
+		case raises:
+			w.raise()
+		}
+	})
+	w.fork(arms...)
+}
+
+// raise leaves for the innermost rescues, if any: this path reaches nothing after it.
+func (w *unsetWalk) raise() {
+	for _, r := range w.raises {
+		*r = append(*r, w.st.clone())
+	}
+	w.st.dead = true
+}
+
 func (w *unsetWalk) stmts(s *parser.StatementsNode) {
 	if s != nil {
 		w.walk(s)
@@ -107,29 +133,9 @@ func (w *unsetWalk) walk(n parser.Node) {
 			}
 		})
 	case *parser.CaseNode:
-		w.walk(n.Predicate)
-		arms := make([]func(), 0, len(n.Conditions)+1)
-		for _, c := range n.Conditions {
-			arms = append(arms, func() { w.walk(c) })
-		}
-		arms = append(arms, func() {
-			if n.ElseClause != nil {
-				w.walk(n.ElseClause)
-			}
-		})
-		w.fork(arms...)
+		w.cases(n.Predicate, n.Conditions, n.ElseClause, false)
 	case *parser.CaseMatchNode:
-		w.walk(n.Predicate)
-		arms := make([]func(), 0, len(n.Conditions)+1)
-		for _, c := range n.Conditions {
-			arms = append(arms, func() { w.walk(c) })
-		}
-		arms = append(arms, func() {
-			if n.ElseClause != nil {
-				w.walk(n.ElseClause)
-			}
-		})
-		w.fork(arms...)
+		w.cases(n.Predicate, n.Conditions, n.ElseClause, true)
 	case *parser.InNode:
 		// the pattern binds before its guard reads
 		pat, guard, _ := splitGuard(n.Pattern)
@@ -169,10 +175,7 @@ func (w *unsetWalk) walk(n parser.Node) {
 	case *parser.CallNode:
 		w.children(n)
 		if n.Receiver == nil && (n.Name == "raise" || n.Name == "fail" || n.Name == "throw") {
-			for _, r := range w.raises {
-				*r = append(*r, w.st.clone())
-			}
-			w.st.dead = true
+			w.raise()
 		}
 	case *parser.BlockNode:
 		// it may run any number of times: what it assigns outside stays unknown
