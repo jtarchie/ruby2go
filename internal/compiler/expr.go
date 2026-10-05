@@ -1263,21 +1263,27 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 	return expr{}, false
 }
 
-func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
+// genKernelCall compiles a receiverless call, or `Kernel.x` for one of Kernel's module functions, as a Kernel intrinsic when it is one (decision 139).
+func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 	if n.Receiver == nil {
-		if e, ok := f.genKernelIntrinsic(n, expected); ok {
-			return e
-		}
-	} else if kernelConst(n.Receiver) && kernelModuleNames[n.Name] && n.Name != "require" && n.Name != "require_relative" {
-		var t Type
-		f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
-		if kernelMeta(t) {
-			bare := *n
-			bare.Receiver = nil
-			if e, ok := f.genKernelIntrinsic(&bare, expected); ok {
-				return e
-			}
-		}
+		return f.genKernelIntrinsic(n, expected)
+	}
+	if !kernelConst(n.Receiver) || !kernelModuleNames[n.Name] || n.Name == "require" || n.Name == "require_relative" {
+		return expr{}, false
+	}
+	var t Type
+	f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
+	if !kernelMeta(t) {
+		return expr{}, false
+	}
+	bare := *n
+	bare.Receiver = nil
+	return f.genKernelIntrinsic(&bare, expected)
+}
+
+func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
+	if e, ok := f.genKernelCall(n, expected); ok {
+		return e
 	}
 	if e, ok := f.genBlockCall(n); ok {
 		return e
