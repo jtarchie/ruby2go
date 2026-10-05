@@ -566,10 +566,7 @@ func rbUnpack(s, format string) *Array[any] {
 			pos = count
 		case 'U':
 			for n := 0; n < count && pos < len(s); n++ {
-				r, size := utf8.DecodeRuneInString(s[pos:])
-				if r == utf8.RuneError && size <= 1 {
-					panic(NewArgumentError(Ref(String("malformed UTF-8 character"))))
-				}
+				r, size := rbUnpackU(s[pos:])
 				*out = append(*out, Integer(r))
 				pos += size
 			}
@@ -639,6 +636,44 @@ func rbUnpack(s, format string) *Array[any] {
 	return out
 }
 
+// rbUnpackU is MRI's utf8_to_uv, rbPackU's inverse: up to six bytes, so surrogates and values past U+10FFFF round-trip.
+func rbUnpackU(s string) (int, int) {
+	c := s[0]
+	size := 0
+	switch {
+	case c < 0x80:
+		return int(c), 1
+	case c&0x40 == 0:
+	case c&0x20 == 0:
+		size = 2
+	case c&0x10 == 0:
+		size = 3
+	case c&0x08 == 0:
+		size = 4
+	case c&0x04 == 0:
+		size = 5
+	case c&0x02 == 0:
+		size = 6
+	}
+	if size == 0 {
+		panic(NewArgumentError(Ref(String("malformed UTF-8 character"))))
+	}
+	if size > len(s) {
+		panic(NewArgumentError(Ref(String("malformed UTF-8 character (expected " + strconv.Itoa(size) + " bytes, given " + strconv.Itoa(len(s)) + " bytes)"))))
+	}
+	u := int(c) & (0x7F >> size)
+	for k := 1; k < size; k++ {
+		if s[k]&0xC0 != 0x80 {
+			panic(NewArgumentError(Ref(String("malformed UTF-8 character"))))
+		}
+		u = u<<6 | int(s[k]&0x3F)
+	}
+	if u < [...]int{0, 0, 0x80, 0x800, 0x10000, 0x200000, 0x4000000}[size] {
+		panic(NewArgumentError(Ref(String("redundant UTF-8 sequence"))))
+	}
+	return u, size
+}
+
 // rbUnpackUU is MRI's u decoder: length-prefixed lines while the length byte is in range; used is how far it read.
 func rbUnpackUU(s string) (string, int) {
 	var b []byte
@@ -650,8 +685,9 @@ func rbUnpackUU(s string) (string, int) {
 		}
 		return 0
 	}
+	limit := len(s) * 3 / 4 // MRI sizes its buffer by the input and cuts an over-long length byte to it
 	for i < len(s) && s[i] > ' ' && s[i] < 'a' {
-		n := int((s[i] - ' ') & 63)
+		n := min(int((s[i]-' ')&63), limit-len(b))
 		i++
 		for n > 0 {
 			a, bb, c, d := val(), val(), val(), val()

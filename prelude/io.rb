@@ -245,7 +245,7 @@ class IO < Object
     return Ref(Integer(self.cmd.Process.Pid))
   }
 
-  # A popen IO waits for its child and sets $?; a standard stream is only marked closed, so Kernel#puts still writes (decision 138).
+  # ponytail: a standard stream is only marked closed, so Kernel#puts still writes; close the real fd and route Kernel output through this state (decision 138).
   #: () -> nil
   def close = %x{ self.rbClose() }
 

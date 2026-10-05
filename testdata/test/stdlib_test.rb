@@ -1554,7 +1554,9 @@ module StdlibTests
       io.close_write
       assert_equal [true, 4], [io.closed?, $?&.exitstatus]
       io = IO.popen("cat", "r+")
+      fd = io.fileno
       io.close_read
+      assert_equal true, io.fileno != fd # the write side's descriptor now, as MRI's
       e = assert_raises(IOError) { io.read }
       assert_equal "not opened for reading", e.message
       assert_equal false, io.closed?

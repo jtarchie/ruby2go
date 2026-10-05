@@ -246,7 +246,7 @@ type rbAtimeStat struct {
 	rbAtimeDeeper
 }
 
-// rbAtime is fi's access time; without a Stat_t (no Unix) it falls back to the modification time.
+// rbAtime is fi's access time, or the modification time without a Stat_t; ponytail: js/wasip1's Stat_t has neither name (Atime instead), so it reads as the epoch there.
 func rbAtime(fi os.FileInfo) time.Time {
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {

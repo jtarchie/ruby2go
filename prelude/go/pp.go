@@ -394,7 +394,12 @@ func (q *rbPrettyPrint) ppObject(v any, o interface{ _Ivars() []rbIvar }) {
 func rbPPWidthFor(f *os.File) int {
 	var ws struct{ row, col, x, y uint16 }
 	if f != nil {
-		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&ws))) //nolint:gosec // TIOCGWINSZ fills ws
+		errno := syscall.EBADF
+		if rc, err := f.SyscallConn(); err == nil { // not f.Fd(), which would switch a pipe to blocking mode
+			_ = rc.Control(func(fd uintptr) {
+				_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&ws))) //nolint:gosec // TIOCGWINSZ fills ws
+			})
+		}
 		if errno == 0 && ws.col > 0 {
 			return int(ws.col) - 1
 		}

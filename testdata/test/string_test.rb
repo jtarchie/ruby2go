@@ -1295,6 +1295,8 @@ B
                    ["#:&5L\n#;&\\@\n".unpack("u"), "h=C3=A9llo =3D w=\n=C3=B6rld\tx =\n\nnext=\r\nzz=XYrest".unpack1("M").bytes]
       assert_equal [["hello"], ["hello", "hi"], ["hello"], ["hello"], ["hello"], ["a"], [""]],
                    ["aGVsbG8=\naGk=".unpack("m"), "aGVsbG8=\naGk=".unpack("mm"), "aGVsbG8=".unpack("m0"), "aGVsbG8".unpack("m"), "aGVsbG8=YQ==".unpack("m"), "YQ".unpack("m"), "Y".unpack("m")]
+      assert_equal [[0xD800, 0x110000, 0x7fffffff], [""], 3], # U round-trips; u's length byte is cut to the input
+                   [[0xD800, 0x110000, 0x7fffffff].pack("U*").unpack("U*"), "#".unpack("u"), "$AAAA".unpack1("u").bytes.size]
     end
 
     def test_pack_errors
@@ -1323,6 +1325,10 @@ B
     def test_unpack_errors
       e = assert_raises(ArgumentError) { [0xff].pack("C").unpack("U") }
       assert_equal "malformed UTF-8 character", e.message
+      e = assert_raises(ArgumentError) { [0xC3].pack("C").unpack("U") }
+      assert_equal "malformed UTF-8 character (expected 2 bytes, given 1 bytes)", e.message
+      e = assert_raises(ArgumentError) { [0xC0, 0x80].pack("C*").unpack("U") }
+      assert_equal "redundant UTF-8 sequence", e.message
       e = assert_raises(ArgumentError) { "aGVsbG8".unpack("m0") }
       assert_equal "invalid base64", e.message
       e = assert_raises(ArgumentError) { "aGk=\n".unpack("m0") }

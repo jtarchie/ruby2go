@@ -199,6 +199,7 @@ func (self *IO) rbCloseHalf(read bool) {
 	case self.own && self.rf != nil && self.wf != nil:
 		if read {
 			self.rbCloseRead()
+			self.fd = rbFileFd(self.wf) // MRI's IO takes over the write side's descriptor
 		} else {
 			self.rbCloseWrite()
 		}

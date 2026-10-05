@@ -3513,13 +3513,13 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
 	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
 		if len(args) == 1 && block == nil {
-			str := f.cls("String")
-			format := f.coerce(args[0], f.genExpr(args[0], str), str)
 			code := recv.code
-			if !isSimpleGo(code) {
+			if !isSimpleGo(code) { // the receiver first, as Ruby evaluates it, then the format
 				code = f.newTmp()
 				f.emit("%s := %s", code, recv.code)
 			}
+			str := f.cls("String")
+			format := f.coerce(args[0], f.genExpr(args[0], str), str)
 			fields := make([]string, len(tt.Elems))
 			for i := range tt.Elems {
 				fields[i] = fmt.Sprintf("%s.F%d", code, i)
