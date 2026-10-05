@@ -92,9 +92,9 @@ pairs.each { |n, s, extra| puts n }
 nums = [1, 2] #: Array[Integer]
 nums.each { |a, b| puts a }
 -- block_arg_proc.rb --
-# error: main.rb:2: a lambda with parameters needs a type annotation (`#: ^(T) -> R`)
+# error: main.rb:2: a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)
 up = proc { |s| s.upcase }
-puts ["a"].map(&up).inspect
+puts up.arity
 -- symbol_block_two_params.rb --
 # error: main.rb:3: &:+ needs a single-argument block
 nums = [1, 2] #: Array[Integer]
@@ -151,13 +151,13 @@ def each_mapped(&block)
 end
 each_mapped { |x| puts x }
 -- include_enumerable_without_type.rb --
-# error: main.rb:3: include Enumerable needs 1 type args (`include Enumerable #[...]`)
+# error: main.rb:3: include Enumerable needs 1 type args (`include Enumerable #[...]`): Box#each does not yield 1 values to infer them from
 class Box
   include Enumerable
 
-  #: () { (Integer) -> void } -> void
+  #: () { (Integer, Integer) -> void } -> void
   def each
-    yield 1
+    yield 1, 2
   end
 end
 puts Box.new.to_a.inspect

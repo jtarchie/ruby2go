@@ -74,13 +74,13 @@ type Compiler struct {
 	Warnings      []string
 	// tuple arities used, so their types get emitted
 	tupleN      map[int]bool
-	procTypes   map[string]bool // Proc Go types rendered (*func(...)), for the generated rbIsProc
-	argBoxes    map[string]bool // T? boxes of generic type arguments, which generic code may hold
-	classIDs    map[*Class]int  // index in classList: the class's ID in the generated tables
-	specClasses int             // describes declared, for their classes' Go names
+	procTypes   map[string]bool             // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	argBoxes    map[string]bool             // T? boxes of generic type arguments, which generic code may hold
+	classIDs    map[*Class]int              // index in classList: the class's ID in the generated tables
+	specClasses int                         // describes declared, for their classes' Go names
 	anonCount   int                         // Class.new/Module.new literals declared (decision 145)
 	anonClasses map[*parser.CallNode]*Class // each literal's class
-	specUses    []specUse       // Minitest::Spec DSL calls, checked after link
+	specUses    []specUse                   // Minitest::Spec DSL calls, checked after link
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes          map[string]bool
@@ -92,6 +92,11 @@ type Compiler struct {
 	marshalAt      int             // len(marshalSeen) then
 	marshalOut     bool            // rbMDumpGen/rbMLoadGen emitted
 	marshalLate    bool            // rbMDumpObjGen/rbMLoadObjGen emitted
+	// parameter types from use (decision 146)
+	infer     *inference
+	round     bool                  // an inference round: pending parameters are untyped, their arguments recorded
+	inferDone bool                  // the rounds ran: a parameter still untyped is an error
+	uses      map[string][]paramUse // this round's arguments, by parameter key
 }
 
 type verbatim struct {
@@ -147,6 +152,9 @@ type options struct {
 	skipped   []SkippedTest // what skipTests skipped
 	warnings  []string
 	loadPath  []string // -I directories, which a user `require` searches first
+	infer     *inference
+	round     bool
+	inferDone bool
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -159,6 +167,22 @@ type SkippedTest struct {
 
 func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) ([]byte, error) {
 	out, err := compileWith(ctx, preludeFS, sources, opts, false)
+	if errors.Is(err, errNeedInfer) {
+		opts.infer = &inference{}
+		for range maxInferRounds {
+			opts.round = true
+			_, err = compileWith(ctx, preludeFS, sources, opts, false)
+			opts.round = false
+			if err != nil && !errors.Is(err, errInferRound) && os.Getenv("RB2GO_INFER_DEBUG") != "" {
+				fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
+			}
+			if !errors.Is(err, errInferRound) || !opts.infer.changed {
+				break // a round that fails before its bodies run leaves the error to the final compile
+			}
+		}
+		opts.inferDone = true
+		out, err = compileWith(ctx, preludeFS, sources, opts, false)
+	}
 	if errors.Is(err, errPruneIncomplete) {
 		if os.Getenv("RB2GO_TIMING") != "" {
 			fmt.Fprintln(os.Stderr, "rb2go: fallback: recompiling with every dispatcher")
@@ -176,6 +200,10 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 				err = ce
 				return
 			}
+			if _, ok := r.(needInfer); ok {
+				err = errNeedInfer
+				return
+			}
 			panic(r)
 		}
 	}()
@@ -189,6 +217,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}}
 	c.loadPath = opts.loadPath
+	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.loadPreludeGo()
 	c.loadPrelude(ctx, "prelude.rb")
 	tick("prelude")
@@ -220,6 +249,18 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.link(ctx)
 	tick("link")
 	c.discoverIvars()
+	if c.round {
+		_ = catchCompileError(c.refineIvars)
+		for _, m := range c.inferredMethods() {
+			m.Ret = nil
+		}
+		for _, m := range c.inferredMethods() {
+			_ = catchCompileError(func() { c.inferRet(m) })
+		}
+		c.collectUses()
+		c.updateInference(opts.infer)
+		return nil, errInferRound
+	}
 	c.refineIvars()
 	if opts.skipTests {
 		opts.skipped = c.skipFailingTests()

@@ -494,6 +494,12 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 		return
 	}
 	for i, s := range stmts.Body {
+		if f.c.round && i < len(stmts.Body)-1 {
+			// an inference round reads calls past a statement it cannot compile (decision 146)
+			f.c.debugInfer(catchCompileError(func() { f.genStmt(s, tail{}) }))
+			f.applyNarrow(f.guardNarrowing(s))
+			continue
+		}
 		if i == len(stmts.Body)-1 {
 			f.genStmt(s, t)
 		} else {

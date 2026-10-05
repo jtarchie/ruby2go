@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -83,13 +84,14 @@ type constRef struct {
 
 // Include is `include Mod #[Args]`.
 type Include struct {
-	Mod   *Class
-	Args  []Type
-	ref   constRef
-	args  []rbs.Type
-	line  int
-	file  *File
-	scope []*Class
+	Mod      *Class
+	Args     []Type
+	fromEach bool // no type args written: they are the includer's each's block parameters (decision 146)
+	ref      constRef
+	args     []rbs.Type
+	line     int
+	file     *File
+	scope    []*Class
 }
 
 // Const is a non-class constant (`VERSION = "1.0"`), emitted as a Go
@@ -128,34 +130,36 @@ const (
 
 // Method is a Ruby method definition.
 type Method struct {
-	Name       string
-	GoName     string
-	Owner      *Class // nil for top-level defs
-	Kind       methodKind
-	Attr       string // ivar for attr kinds
-	Private    bool
-	Protected  bool // callable with an explicit receiver only from inside the owner's family
-	Node       *parser.DefNode
-	File       *File
-	Line       int
-	Scope      []*Class // lexical scope (Module.nesting), innermost last
-	sigText    string
-	sig        *rbs.MethodType
-	TypeParams []string
-	Params     []Param
-	Block      *BlockSig
-	Ret        Type
-	Iterator   bool   // block returns void → iter.Seq
-	seqAdapter bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
-	shadowed   []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
-	BlockParam string // name of an explicit &block parameter
-	forwardAll bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
-	resolved   bool
-	inherited  *Method // signature source for unannotated overrides
-	inferRet   bool    // no return annotation: Ret comes from the body (inferRet)
-	inferring  bool
-	structDef  *Method // the generated Struct/Data method a block def overrides; super reaches it
-	valueGen   bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
+	pendingIdx   map[int]pendingParam // sig param index → a parameter typed from use (decision 146)
+	pendingBlock []pendingParam       // the block's parameters, typed from the yields
+	Name         string
+	GoName       string
+	Owner        *Class // nil for top-level defs
+	Kind         methodKind
+	Attr         string // ivar for attr kinds
+	Private      bool
+	Protected    bool // callable with an explicit receiver only from inside the owner's family
+	Node         *parser.DefNode
+	File         *File
+	Line         int
+	Scope        []*Class // lexical scope (Module.nesting), innermost last
+	sigText      string
+	sig          *rbs.MethodType
+	TypeParams   []string
+	Params       []Param
+	Block        *BlockSig
+	Ret          Type
+	Iterator     bool   // block returns void → iter.Seq
+	seqAdapter   bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
+	shadowed     []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
+	BlockParam   string // name of an explicit &block parameter
+	forwardAll   bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
+	resolved     bool
+	inherited    *Method // signature source for unannotated overrides
+	inferRet     bool    // no return annotation: Ret comes from the body (inferRet)
+	inferring    bool
+	structDef    *Method // the generated Struct/Data method a block def overrides; super reaches it
+	valueGen     bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
@@ -187,13 +191,17 @@ type Param struct {
 	// Want is T for a `T | untyped` parameter (Type is untyped): typed
 	// arguments are checked against T, untyped ones pass as they are.
 	Want Type
+	// Pending keys a parameter typed from use (decision 146): its
+	// arguments are recorded under it during inference rounds.
+	Pending string
 }
 
 // BlockSig is the block a method takes.
 type BlockSig struct {
 	Params   []Type
 	Ret      Type
-	Optional bool // `?{ ... }`: a call may leave the block out, and the method sees a nil func
+	Optional bool     // `?{ ... }`: a call may leave the block out, and the method sees a nil func
+	Pending  []string // per param, the key of one typed from the yields (decision 146), or ""
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
@@ -1280,21 +1288,7 @@ func (c *Compiler) link(ctx context.Context) {
 			sup.Subclasses = append(sup.Subclasses, cls)
 		}
 		for i := range cls.Includes {
-			inc := &cls.Includes[i]
-			mod := c.resolveClassRef(&inc.ref)
-			if c.isNumericMod(mod) && !inc.file.prelude {
-				c.errorf(inc.file, nil, "%s:%d: Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", inc.file.Name, inc.line)
-			}
-			if !mod.IsModule {
-				c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
-			}
-			inc.Mod = mod
-			if len(inc.args) != len(mod.TypeParams) {
-				c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`)", inc.file.Name, inc.line, mod.RubyName, len(mod.TypeParams), mod.RubyName)
-			}
-			for _, a := range inc.args {
-				inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, file: inc.file, line: inc.line}))
-			}
+			c.linkInclude(cls, &cls.Includes[i])
 		}
 	}
 	c.checkNumeric()
@@ -1320,6 +1314,7 @@ func (c *Compiler) link(ctx context.Context) {
 	for _, m := range c.topDefList {
 		c.resolveMethod(m)
 	}
+	c.includeFromEach()
 	c.markCalleeDefaults()
 	c.markSuperBridges()
 	for _, cls := range c.classList {
@@ -1640,7 +1635,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 	}
 	if m.sig == nil && m.sigText == "" {
 		// unannotated override inherits the parent's signature
-		if c.inheritSignature(m) {
+		if !typesInclude(m) && c.inheritSignature(m) {
 			return
 		}
 		m.sigText, m.inferRet = c.paramSig(m)
@@ -1655,12 +1650,15 @@ func (c *Compiler) resolveMethod(m *Method) {
 	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
 	m.TypeParams = m.sig.TypeParams
 	var rest []Param // Ruby puts *rest before the keywords; it goes last, the Go variadic
-	for _, p := range m.sig.Params {
+	for i, p := range m.sig.Params {
 		prm := Param{Name: p.Name, Rest: p.Rest, Keyword: p.Keyword || p.KwRest, KwRest: p.KwRest}
 		if want := gradualParam(p.Type); want != nil {
 			prm.Type, prm.Want = TAny{}, c.resolveType(want, sc)
 		} else {
 			prm.Type = c.resolveType(p.Type, sc)
+		}
+		if pp, ok := m.pendingIdx[i]; ok && !p.KwRest {
+			c.resolvePending(m, &prm, pp)
 		}
 		if p.KwRest {
 			prm.Type = TClass{C: c.classes["Hash"], Args: []Type{TClass{C: c.classes["Symbol"]}, prm.Type}}
@@ -1674,8 +1672,15 @@ func (c *Compiler) resolveMethod(m *Method) {
 	m.Params = append(m.Params, rest...)
 	if m.sig.Block != nil {
 		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc), Optional: m.sig.Block.Optional}
-		for _, p := range m.sig.Block.Params {
-			bs.Params = append(bs.Params, c.resolveType(p.Type, sc))
+		for i, p := range m.sig.Block.Params {
+			t := c.resolveType(p.Type, sc)
+			if i < len(m.pendingBlock) {
+				prm := Param{Type: t}
+				c.resolvePending(m, &prm, m.pendingBlock[i])
+				t = prm.Type
+				bs.Pending = append(bs.Pending, prm.Pending)
+			}
+			bs.Params = append(bs.Params, t)
 		}
 		m.Block = bs
 	}
@@ -1698,6 +1703,31 @@ func (c *Compiler) resolveMethod(m *Method) {
 		m.Iterator = c.isIterator(m, m.Block)
 	}
 	c.bindParamNames(m)
+}
+
+// linkInclude resolves an include's module and its type args.
+func (c *Compiler) linkInclude(cls *Class, inc *Include) {
+	mod := c.resolveClassRef(&inc.ref)
+	if c.isNumericMod(mod) && !inc.file.prelude {
+		c.errorf(inc.file, nil, "%s:%d: Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", inc.file.Name, inc.line)
+	}
+	if !mod.IsModule {
+		c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
+	}
+	inc.Mod = mod
+	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.file.prelude && cls.Methods["each"] != nil {
+		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
+		for range mod.TypeParams {
+			inc.Args = append(inc.Args, TAny{})
+		}
+		return
+	}
+	if len(inc.args) != len(mod.TypeParams) {
+		c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`)", inc.file.Name, inc.line, mod.RubyName, len(mod.TypeParams), mod.RubyName)
+	}
+	for _, a := range inc.args {
+		inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, file: inc.file, line: inc.line}))
+	}
 }
 
 // isForwardAll reports `def f(...)` with no other parameters.
@@ -1865,27 +1895,48 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 	ann := m.File.annotations(m.Line)
 	names, defaults, rest := c.defParams(m, m.Node.Parameters)
 	var ps []string
+	// a parameter with no annotation is typed from use (decision 146): untyped here, resolvePending types it
+	pa := func(name string) string {
+		t := ann[name+":"]
+		if len(t) > 0 {
+			return t[0]
+		}
+		if m.pendingIdx == nil {
+			m.pendingIdx = map[int]pendingParam{}
+		}
+		m.pendingIdx[len(ps)] = pendingParam{key: pendingKey(m, name), name: name}
+		return "untyped"
+	}
 	for i, n := range names {
-		t := c.paramAnn(m, ann, n)
+		t := pa(n)
 		if defaults[i] != nil {
 			t = "?" + t
 		}
 		ps = append(ps, t)
 	}
 	if rest != "" {
-		ps = append(ps, "*"+c.paramAnn(m, ann, "*"+strings.TrimPrefix(rest, anonRest)))
+		ps = append(ps, "*"+pa("*"+strings.TrimPrefix(rest, anonRest)))
 	}
 	for _, k := range c.defKeywords(m, m.Node.Parameters) {
 		switch {
 		case k.rest:
 			ps = append(ps, "**"+c.paramAnn(m, ann, "**"+strings.TrimPrefix(k.name, anonKwrest))+" "+k.name)
 		case k.def != nil:
-			ps = append(ps, "?"+k.name+": "+c.paramAnn(m, ann, k.name))
+			ps = append(ps, "?"+k.name+": "+pa(k.name))
 		default:
-			ps = append(ps, k.name+": "+c.paramAnn(m, ann, k.name))
+			ps = append(ps, k.name+": "+pa(k.name))
 		}
 	}
-	sig := "(" + strings.Join(ps, ", ") + ") -> "
+	sig := "(" + strings.Join(ps, ", ") + ") "
+	if n, optional, ok := c.yieldShape(m); ok { // a def that yields takes a block typed by what it yields (decision 146)
+		bps := make([]string, n)
+		for i := range bps {
+			bps[i] = "untyped"
+			m.pendingBlock = append(m.pendingBlock, pendingParam{key: pendingKey(m, "&"+strconv.Itoa(i)), name: "yield's argument " + strconv.Itoa(i+1)})
+		}
+		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> void } "
+	}
+	sig += "-> "
 	if r := ann["return:"]; len(r) > 0 {
 		return sig + r[0], false
 	}
@@ -1953,13 +2004,16 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 		return false
 	}
 	c.resolveMethod(e.M)
+	if !c.sameParamShape(m, e.M) { // `def initialize = super(4)`: its own parameters, typed as any def's (decision 146)
+		return false
+	}
 	m.inherited = e.M
 	m.TypeParams = e.M.TypeParams
 	for _, p := range e.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, e.Env)})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, e.Env), Pending: p.Pending})
 	}
 	if e.M.Block != nil {
-		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env)}
+		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env), Optional: e.M.Block.Optional, Pending: e.M.Block.Pending}
 	}
 	m.Ret = subst(e.M.Ret, e.Env)
 	m.inferRet = e.M.inferRet // the parent's inferred type, once it has one (inferRet)
@@ -2343,7 +2397,7 @@ func (c *Compiler) resolveSynth(m *Method) {
 	env := composeEnv(init.Env, nil)
 	env["Self"] = TClass{C: cls}
 	for _, p := range init.M.Params {
-		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, env)})
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, env), Pending: p.Pending})
 	}
 }
 

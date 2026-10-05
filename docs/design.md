@@ -1066,6 +1066,10 @@ resolve; anything not listed is still open.
     of an inferred method takes the parent's inferred type. Parameter
     types are never inferred: that would make a method's type depend on
     its callers ([example 34](../examples/34_inferred_returns/main.rb)).
+    *Revised (#56):* they are now, from the calls (decision 146). The
+    cost named here is real, and accepted: editing one caller can change
+    a method's signature. A caller that disagrees with the others is a
+    compile error at that call, so the change cannot go unnoticed.
 37. `Range[E]` is a struct `{b, e E; excl, endless bool}` handled as a
     pointer; `a..b`, `a...b` and `a..` build it inline (generic classes
     have no class methods, so there is no `Range.new`). A beginless range
@@ -1254,7 +1258,9 @@ resolve; anything not listed is still open.
     as for MRI's distinct procs. `->(x) { }`, `lambda { |x| }` and
     `proc { |x| }` build one; a lambda with parameters takes its types
     from the expected type (`#:` on the local, the parameter or the
-    ivar), and one without infers its return type. `call`, `.()`, `[]`,
+    ivar), and one without infers its return type. *Revised (#56):* with
+    no expected type, from its calls instead (decision 146); its return
+    type is then inferred too. `call`, `.()`, `[]`,
     `yield`, `===`, `arity`, `>>`/`<<` (composition), `&f` (as a block,
     iterators included), `is_a?(Proc)` and `.class` work. Every Proc
     behaves as a lambda: `return` leaves only the Proc, arity is strict,
@@ -4635,3 +4641,53 @@ resolve; anything not listed is still open.
     - `Proc.new { ... }` is `proc { ... }` (decision 47).
     ([example 100](../examples/100_class_new/main.rb),
     `testdata/test/object_test.rb` `ClassNewTest`.)
+146. Parameter types come from use (#56). ruby/spec, like most Ruby, has
+    no annotations, and the closed world sees every call, so a parameter
+    with no `#:` or `# @rbs` type takes the join of what the program
+    passes it. This keeps everything typed: the Go is what the
+    annotations would have produced. Missing types never mean `untyped`.
+    - **What is inferred.** A def's positional, optional, `*rest` and
+      keyword parameters (`**opts` is not), from every call, `new` (for
+      `initialize`), `super` and an optional parameter's default. A def
+      with no signature that `yield`s takes a block whose parameters are
+      the join of what each yield passes (every yield must pass the same
+      count; `block_given?` makes it optional); the block returns `void`,
+      so a def that uses yield's value needs its block annotated. A
+      lambda, `lambda { }` or `proc { }` with parameters and no expected
+      type (decision 47) takes them from its `call`, `.()`, `[]`,
+      `yield` and `===` sites, and from the block it stands in for as
+      `&f`. `include Enumerable` with no type argument takes it from the
+      class's own `each` (what that yields is the element), and that
+      `each` keeps its own signature rather than the module's.
+    - **Joins.** In source order (files in load order, then position).
+      `nil` with `T` is `T?`; a subclass with its superclass is the
+      superclass. A use that does not join the ones before it, Integer
+      with Float included (their join is untyped, decision 12), is left
+      out, so the final compile reports it at its call: `String where
+      Integer is expected; parameter x takes its type from the call at
+      main.rb:3`. Uses whose type holds `untyped` count for nothing. A
+      parameter no call types keeps the missing-annotation error, which
+      now says so.
+    - **How.** A compile that meets an untyped parameter aborts before
+      emitting. `compile` then runs rounds, each a fresh compile through
+      return inference (about a tenth of a full build, no emit or
+      format): pending parameters are `untyped` there, every user method
+      body and file top level is dry-run, a statement that does not
+      compile is skipped rather than ending its body, and each argument's
+      type is recorded under the parameter's key (file, def offset,
+      name). The joined types feed the next round, moved into its classes
+      by name, so a parameter typed from another inferred one settles a
+      round later; rounds stop when nothing changes (at most 8), and the
+      final compile runs as an annotated program would. A program with
+      every type written runs no round. `RB2GO_INFER_DEBUG=1` prints what
+      each round inferred and what it could not compile.
+    - **Overrides.** An unannotated override inherits its parent's
+      signature only when its parameter list has the same shape
+      (positional count, rest, keyword names); otherwise it is a def of
+      its own (`def initialize = super(4)` under `def initialize(sides)`),
+      and pending parameters stay shared along a chain that does inherit.
+    - **Not inferred:** a block's return type (above), `**opts`, a rest
+      parameter no call passes anything to, and a parameter whose only
+      uses are themselves untyped.
+    ([example 101](../examples/101_inferred_params/main.rb),
+    `testdata/test/infer_test.rb`, `testdata/errors/infer.txtar`.)

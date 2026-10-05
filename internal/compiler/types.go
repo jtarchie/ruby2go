@@ -44,6 +44,7 @@ type (
 		Params []Type
 		Ret    Type
 		Proc   bool
+		Src    string // a lambda typed from its calls: the key its arguments are recorded under (decision 146)
 	}
 	// TAny is `untyped`.
 	TAny struct{}

@@ -16,6 +16,7 @@ go run ./cmd/rb2go test testdata/test/array_test.rb --seed 1 -v   # one test fil
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
 RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (~/Library/Caches/rb2go-test/mri)
 RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (debugging the pruner)
+RB2GO_INFER_DEBUG=1 go run ./cmd/rb2go run x.rb    # what each parameter-inference round typed and could not compile (decision 146)
 go test -run '^$' -fuzz FuzzCompile -fuzztime 60s .              # fuzz targets: FuzzCompile (.),
 go test -run '^$' -fuzz FuzzParseType -fuzztime 30s ./internal/rbs # FuzzParseType/FuzzParseMethodType (rbs),
 go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMethodName/FuzzTranslateRegexp (compiler)

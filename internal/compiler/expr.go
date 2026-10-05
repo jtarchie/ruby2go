@@ -1159,6 +1159,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 // coerceArg coerces a call argument to its parameter. A `T | untyped`
 // parameter holds typed arguments to T and passes untyped ones as they are.
 func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) string {
+	if p.Pending != "" {
+		return f.coercePending(p, func() string { q := p; q.Pending = ""; return f.coerceArg(n, a, q, env) })
+	}
 	if p.Want != nil && !isAny(a.typ) {
 		f.coerce(n, a, subst(p.Want, env)) // for its compile errors only
 	}
@@ -1808,9 +1811,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 				f.errorf(an, "splat into a non-rest parameter is not supported")
 			}
 			mark := f.buf.Len()
-			a = f.genExpr(an, closed(p.Type, env))
+			a = f.genExpr(an, f.pendingWant(p, closed(p.Type, env)))
 			f.pinBefore(mark, codes)
 		}
+		f.noteUse(p, an, a.typ)
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
@@ -1948,7 +1952,8 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 	}
 	if a := kw.named[p.Name]; a != nil {
 		kw.used[p.Name] = true
-		v := f.genExpr(a.Value, closed(p.Type, env))
+		v := f.genExpr(a.Value, f.pendingWant(p, closed(p.Type, env)))
+		f.noteUse(p, a.Value, v.typ)
 		unify(p.Type, v.typ, env)
 		return f.coerceArg(a.Value, v, p, env), true
 	}
@@ -2046,6 +2051,7 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 				if !ok || ac.C.Name != "Array" {
 					f.errorf(an, "splat of non-array %s", a.typ)
 				}
+				f.noteUse(p, an, ac.Args[0])
 				unify(p.Type, ac.Args[0], env)
 				if splats == nil {
 					splats = map[int]bool{}
@@ -2055,9 +2061,10 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 				continue
 			}
 			mark := f.buf.Len()
-			a = f.genExpr(an, closed(p.Type, env))
+			a = f.genExpr(an, f.pendingWant(p, closed(p.Type, env)))
 			f.pinBefore(mark, codes)
 		}
+		f.noteUse(p, an, a.typ)
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
@@ -3246,6 +3253,11 @@ func (f *fctx) genYield(n *parser.YieldNode) expr {
 		args = n.Arguments.Arguments
 	}
 	if name := f.m.optionalBlockLocal(); name != "" {
+		if f.c.round && f.blockSig != nil { // an optional block's yield is a Proc call: record its values here
+			for i, a := range args {
+				f.probe(func() { f.noteYield(i, a, f.genExpr(a, nil).typ) })
+			}
+		}
 		if v := f.visibleLocal(name); v != nil && isOpt(v.typ) {
 			return f.yieldMaybeMissing(n, v, args)
 		}
@@ -3331,7 +3343,12 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 		f.errorf(n, "yield passes %d values but the block takes %d", len(args), len(f.blockSig.Params))
 	}
 	for i, a := range args {
-		e := f.genExpr(a, f.blockSig.Params[i])
+		want := f.blockSig.Params[i]
+		if f.c.round && isAny(want) && i < len(f.blockSig.Pending) && f.blockSig.Pending[i] != "" {
+			want = nil
+		}
+		e := f.genExpr(a, want)
+		f.noteYield(i, a, e.typ)
 		codes = append(codes, f.coerce(a, e, f.blockSig.Params[i]))
 	}
 	if f.iterator {
@@ -5208,17 +5225,18 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	if o, ok := expected.(TOpt); ok { // a lambda literal where a Proc? is expected is never nil
 		expected = o.Elem
 	}
+	var src string
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
 		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret}
-	} else if len(f.blockParamNames(params)) > 0 {
-		f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`)")
+	} else if names := f.blockParamNames(params); len(names) > 0 {
+		sig.Params, src = f.lambdaParams(n, len(names)) // from its calls (decision 146)
 	}
 	env := map[string]Type{}
 	saved := f.lambdaClosure
 	f.lambdaClosure = f.closures + 1
 	code := f.genClosure(n, block, sig, env)
 	f.lambdaClosure = saved
-	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true}}
+	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src}}
 }
 
 // blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
@@ -5280,7 +5298,15 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 		}
 		codes := make([]string, len(args))
 		for i, a := range args {
-			codes[i] = f.coerce(a, f.genExpr(a, t.Params[i]), t.Params[i])
+			want := t.Params[i]
+			if t.Src != "" && f.c.round && isAny(want) {
+				want = nil
+			}
+			e := f.genExpr(a, want)
+			if t.Src != "" {
+				f.noteUse(Param{Pending: t.Src + strconv.Itoa(i)}, a, e.typ)
+			}
+			codes[i] = f.coerce(a, e, t.Params[i])
 		}
 		return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
 	case "arity":

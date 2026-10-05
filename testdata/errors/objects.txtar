@@ -115,11 +115,6 @@ end
 # error: main.rb:3: include Enumerable needs 1 type args
 class Bag
   include Enumerable
-
-  #: () { (Integer) -> void } -> void
-  def each
-    yield 1
-  end
 end
 -- extend_a_class.rb --
 # error: main.rb:6: NotAModule is not a module
