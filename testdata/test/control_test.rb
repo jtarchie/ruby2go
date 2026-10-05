@@ -4351,6 +4351,27 @@ module ControlTests
       a = assert_raises(ArgumentError) { catch(:other) { throw :nope } }
       assert_equal "uncaught throw :nope", a.message
     end
+
+    # catch tags are per thread and per fiber, with no lock shared between them
+    def test_per_thread_and_fiber
+      r = catch(:x) do
+        t = Thread.new do
+          throw :x, 9
+        rescue UncaughtThrowError => e
+          "thread: #{e.message}"
+        end
+        t.value
+      end
+      f = catch(:y) do
+        Fiber.new do
+          throw :y
+        rescue UncaughtThrowError => e
+          "fiber: #{e.message}"
+        end.resume
+      end
+      threads = 4.times.map { |i| Thread.new { catch(:k) { throw :k, i * 10 } } }
+      assert_equal ["thread: uncaught throw :x", "fiber: uncaught throw :y", [0, 10, 20, 30]], [r, f, threads.map(&:value)]
+    end
   end
 
   # Operands run left to right even when a later one hoists a temporary (`x&.y`) (decision 98).

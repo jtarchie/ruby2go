@@ -930,29 +930,31 @@ func rbWrapPanic(r any) any {
 // is not an exception: ensure runs, rescue passes it on.
 type rbThrow struct{ tag, val any }
 
-// rbCatchTags are the tags of the running catch blocks, so a throw with no
-// match raises UncaughtThrowError where it is, as in MRI.
-// ponytail: one list for all threads (MRI's is per-thread), so a thread
-// may throw to another's tag and die with the throw uncaught; a
-// goroutine-local list needs a goroutine id Go does not expose.
-var (
-	rbCatchMu   sync.Mutex
-	rbCatchTags []any
-)
+// rbCatches is the running goroutine's catch tags: its Fiber's, else its
+// Thread's, else its Ractor's, else the main thread's (decision 104 maps
+// goroutines to them). Only that goroutine touches the list, so there is no
+// lock, and a fiber or thread cannot throw to another's catch, as in MRI.
+// A throw with no match on the list raises UncaughtThrowError where it is.
+func rbCatches() *[]any {
+	id := rbGoID()
+	if f, ok := rbFiberOf.Load(id); ok { // before rbThreadOf, which maps a fiber's goroutine to its thread
+		return &f.(*Fiber).catches
+	}
+	if t, ok := rbThreadOf.Load(id); ok {
+		return &t.(*Thread).catches
+	}
+	if r, ok := rbRactorOf.Load(id); ok {
+		return &r.(*Ractor).catches
+	}
+	return &rbMainThread.catches
+}
 
 func rbCatch(tag any, blk func(any) any) (res any) {
-	rbCatchMu.Lock()
-	rbCatchTags = append(rbCatchTags, tag)
-	rbCatchMu.Unlock()
+	tags := rbCatches()
+	*tags = append(*tags, tag)
+	n := len(*tags)
 	defer func() {
-		rbCatchMu.Lock()
-		for i := len(rbCatchTags) - 1; i >= 0; i-- {
-			if rbIdentical(rbCatchTags[i], tag) {
-				rbCatchTags = slices.Delete(rbCatchTags, i, i+1)
-				break
-			}
-		}
-		rbCatchMu.Unlock()
+		*tags = (*tags)[:n-1] // catches nest: this one is last
 		if r := recover(); r != nil {
 			if t, ok := r.(rbThrow); ok && rbIdentical(t.tag, tag) {
 				res = t.val
@@ -965,10 +967,7 @@ func rbCatch(tag any, blk func(any) any) (res any) {
 }
 
 func rbThrowTag(tag, val any) {
-	rbCatchMu.Lock()
-	caught := slices.ContainsFunc(rbCatchTags, func(t any) bool { return rbIdentical(t, tag) })
-	rbCatchMu.Unlock()
-	if !caught {
+	if !slices.ContainsFunc(*rbCatches(), func(t any) bool { return rbIdentical(t, tag) }) {
 		panic(NewUncaughtThrowError("uncaught throw "+rbInspect(tag), tag, val))
 	}
 	panic(rbThrow{tag, val})

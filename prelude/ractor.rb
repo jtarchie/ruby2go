@@ -6,7 +6,7 @@
 # Ractor.current is the ractor registered for the running goroutine
 # (rbCurrentRactor, decision 104), main when none.
 
-# @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int; loc string }
+# @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int; loc string; catches []any }
 class Ractor < Object
   class Error < RuntimeError; end
   class IsolationError < Error; end

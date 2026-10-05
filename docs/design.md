@@ -2422,8 +2422,11 @@ resolve; anything not listed is still open.
     re-panics otherwise, so the innermost matching catch wins. A throw
     with no running catch for its tag raises `UncaughtThrowError`
     (`< ArgumentError`, with `tag`/`value`) where it is, as MRI does, so it
-    is rescuable and exits 1 uncaught; the running tags are one
-    mutex-guarded list for all threads (MRI's is per-thread). `catch`
+    is rescuable and exits 1 uncaught. *Revised:* the running tags belong
+    to the goroutine's Fiber, else Thread, else Ractor, else the main
+    thread (decision 104's maps), touched only by that goroutine: no lock,
+    and a thread or fiber cannot throw to another's catch, as in MRI
+    (they were one mutex-guarded list for all threads). `catch`
     returns `untyped`: the thrown value's type is known only at the throw.
     Two equal string literals share Go's backing bytes, so they match as
     tags where MRI's two objects would not (`rbNewStr`'s ponytail).

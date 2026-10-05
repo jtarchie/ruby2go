@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup] }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any }
 class Thread < Object
   # The block's value is kept for #value, untyped: Thread is not generic.
   #: () { () -> untyped } -> Thread
