@@ -36,6 +36,274 @@ func rbCivilJD(y, m, d int) (int, bool) {
 	return int(days) + rbJDEpoch, true
 }
 
+// rbDateParts is a Date's state (decision 133): local civil day, seconds and ns into it, UTC offset in seconds.
+type rbDateParts struct{ jd, df, sf, of int }
+
+func rbDateInvalid() any { return NewDate_Error(Ref(String("invalid date"))) }
+
+func rbDateGet(d *Date) rbDateParts {
+	return rbDateParts{int(d.jd), int(d.df), int(d.sf), int(d.of)}
+}
+
+func rbNewDate(p rbDateParts) *Date {
+	return &Date{jd: Integer(p.jd), df: Integer(p.df), sf: Integer(p.sf), of: Integer(p.of)}
+}
+
+func rbNewDateTime(p rbDateParts) *DateTime {
+	x := &DateTime{}
+	d := x._Date()
+	d.jd, d.df, d.sf, d.of = Integer(p.jd), Integer(p.df), Integer(p.sf), Integer(p.of)
+	return x
+}
+
+// abs is the instant as UTC seconds since jd 0's midnight, plus nanoseconds.
+func (p rbDateParts) abs() (sec, ns int) {
+	return p.jd*86400 + p.df - p.of, p.sf
+}
+
+// rbDateAt is the instant sec/ns seen at offset of.
+func rbDateAt(sec, ns, of int) rbDateParts {
+	sec += ns / 1e9
+	ns %= 1e9
+	if ns < 0 {
+		sec, ns = sec-1, ns+1e9
+	}
+	l := sec + of
+	jd := l / 86400
+	if l%86400 < 0 {
+		jd--
+	}
+	return rbDateParts{jd, l - jd*86400, ns, of}
+}
+
+func rbDateCivil(y, m, d int) rbDateParts {
+	jd, ok := rbCivilJD(y, m, d)
+	if !ok {
+		panic(rbDateInvalid())
+	}
+	return rbDateParts{jd: jd}
+}
+
+// rbDateTimeOf wraps negative h/mi/s and turns 24:00:00 into the next day, as MRI.
+func rbDateTimeOf(y, m, d, h, mi, s, ns, of int) rbDateParts {
+	jd, ok := rbCivilJD(y, m, d)
+	if h < 0 {
+		h += 24
+	}
+	if mi < 0 {
+		mi += 60
+	}
+	if s < 0 {
+		s += 60
+	}
+	if !ok || h < 0 || h > 24 || mi < 0 || mi > 59 || s < 0 || s > 59 || h == 24 && (mi > 0 || s > 0 || ns > 0) {
+		panic(rbDateInvalid())
+	}
+	return rbDateParts{jd, h*3600 + mi*60 + s, ns, of}
+}
+
+// rbDateRat is an Integer, Float or Rational as an exact fraction.
+func rbDateRat(v any, what string) *big.Rat {
+	r := new(big.Rat)
+	switch v := rbUnbox(v).(type) {
+	case Integer:
+		r.SetInt64(int64(v))
+	case Float:
+		if r.SetFloat64(float64(v)) == nil {
+			panic(NewFloatDomainError(Ref(String(strconv.FormatFloat(float64(v), 'g', -1, 64)))))
+		}
+	case *Rational:
+		r.Set(&v.v)
+	default:
+		panic(rbConvError(v, what))
+	}
+	return r
+}
+
+// rbDateSplit is r units of unit nanoseconds as whole seconds and leftover nanoseconds, floored.
+func rbDateSplit(r *big.Rat, unit int64) (sec, ns int) {
+	n := new(big.Rat).Mul(r, new(big.Rat).SetInt64(unit))
+	q := new(big.Int).Div(n.Num(), n.Denom())
+	s, rem := new(big.Int).DivMod(q, big.NewInt(1e9), new(big.Int))
+	return int(s.Int64()), int(rem.Int64())
+}
+
+// rbDateSecArg is DateTime.new's seconds argument (Integer, Float or Rational).
+func rbDateSecArg(v any) (sec, ns int) {
+	if i, ok := rbUnbox(v).(Integer); ok {
+		return int(i), 0
+	}
+	return rbDateSplit(rbDateRat(v, "Integer"), 1e9)
+}
+
+// rbDateAddDays is p moved by n days (Integer, Float or Rational).
+func rbDateAddDays(p rbDateParts, n any) rbDateParts {
+	sec, ns := p.abs()
+	if i, ok := rbUnbox(n).(Integer); ok {
+		return rbDateAt(sec+int(i)*86400, ns, p.of)
+	}
+	dsec, dns := rbDateSplit(rbDateRat(n, "Integer"), 86400e9)
+	return rbDateAt(sec+dsec, ns+dns, p.of)
+}
+
+// rbDateAddMonths is p moved n months, the day clamped to the target month's end, as MRI.
+func rbDateAddMonths(p rbDateParts, n int) rbDateParts {
+	t := rbJDTime(p.jd)
+	ms := t.Year()*12 + int(t.Month()) - 1 + n
+	y, m := ms/12, ms%12+1
+	if ms < 0 && ms%12 != 0 {
+		y, m = (ms-11)/12, ms-((ms-11)/12)*12+1
+	}
+	p.jd, _ = rbCivilJD(y, m, min(t.Day(), rbMonthDays(y, m)))
+	return p
+}
+
+func rbDateCmp(a, b *Date) int {
+	as, an := rbDateGet(a).abs()
+	bs, bn := rbDateGet(b).abs()
+	if c := cmp.Compare(as, bs); c != 0 {
+		return c
+	}
+	return cmp.Compare(an, bn)
+}
+
+// rbDateMinus is a - b in days, exactly.
+func rbDateMinus(a, b *Date) *Rational {
+	as, an := rbDateGet(a).abs()
+	bs, bn := rbDateGet(b).abs()
+	num := new(big.Int).Mul(big.NewInt(int64(as-bs)), big.NewInt(1e9))
+	num.Add(num, big.NewInt(int64(an-bn)))
+	out := &Rational{}
+	out.v.SetFrac(num, big.NewInt(86400e9))
+	return out
+}
+
+func rbDateHash(d *Date) Integer {
+	s, ns := rbDateGet(d).abs()
+	return Integer(s*1000003 ^ ns)
+}
+
+// rbDateZoneName is an offset as MRI's DateTime#zone prints it: "+09:00".
+func rbDateZoneName(of int) string {
+	sign := '+'
+	if of < 0 {
+		sign, of = '-', -of
+	}
+	return fmt.Sprintf("%c%02d:%02d", sign, of/3600, of%3600/60)
+}
+
+// rbDateGoTime is p as a Go time in a fixed zone named like its offset, so %Z prints "+09:00".
+func rbDateGoTime(p rbDateParts) time.Time {
+	sec, ns := p.abs()
+	return time.Unix(int64(sec-rbJDEpoch*86400), int64(ns)).In(time.FixedZone(rbDateZoneName(p.of), p.of))
+}
+
+func rbDateFromGoTime(t time.Time) rbDateParts {
+	_, of := t.Zone()
+	return rbDateAt(int(t.Unix())+rbJDEpoch*86400, t.Nanosecond(), of)
+}
+
+// rbDateStrftime is Date#strftime: Time's directives plus %Q (milliseconds since the epoch).
+func rbDateStrftime(p rbDateParts, format string) string {
+	t := rbDateGoTime(p)
+	if strings.Contains(format, "%Q") {
+		var b strings.Builder
+		for i := 0; i < len(format); i++ {
+			switch {
+			case format[i] == '%' && i+1 < len(format) && format[i+1] == '%':
+				b.WriteString("%%")
+				i++
+			case format[i] == '%' && i+1 < len(format) && format[i+1] == 'Q':
+				b.WriteString(strconv.FormatInt(t.UnixMilli(), 10))
+				i++
+			default:
+				b.WriteByte(format[i])
+			}
+		}
+		format = b.String()
+	}
+	return rbStrftime(t, format, false)
+}
+
+// rbDateFrac is n digits of p's second fraction after a dot, or "" for n <= 0.
+func rbDateFrac(p rbDateParts, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	s := fmt.Sprintf("%09d", p.sf)
+	for len(s) < n {
+		s += "0"
+	}
+	return "." + s[:n]
+}
+
+// rbDateInspect is MRI's Date/DateTime#inspect, which shows the UTC day, seconds and nanoseconds.
+func rbDateInspect(class string, p rbDateParts, shown string) string {
+	sec, ns := p.abs()
+	u := rbDateAt(sec, ns, 0)
+	return fmt.Sprintf("#<%s: %s ((%dj,%ds,%dn),%+ds,2299161j)>", class, shown, u.jd, u.df, u.sf, p.of)
+}
+
+// rbDateZones are the zone names DateTime reads besides numeric offsets (decision 133); MRI knows more.
+var rbDateZones = map[string]int{
+	"UTC": 0, "UT": 0, "GMT": 0, "Z": 0,
+	"EST": -5 * 3600, "EDT": -4 * 3600, "CST": -6 * 3600, "CDT": -5 * 3600,
+	"MST": -7 * 3600, "MDT": -6 * 3600, "PST": -8 * 3600, "PDT": -7 * 3600,
+	"AKST": -9 * 3600, "AKDT": -8 * 3600, "HST": -10 * 3600,
+	"BST": 3600, "CET": 3600, "CEST": 2 * 3600, "EET": 2 * 3600, "EEST": 3 * 3600,
+	"IST": 5*3600 + 1800, "JST": 9 * 3600, "KST": 9 * 3600,
+	"AEST": 10 * 3600, "AEDT": 11 * 3600, "NZST": 12 * 3600, "NZDT": 13 * 3600,
+}
+
+var rbDateZoneRe = regexp.MustCompile(`^(?:(?:GMT|UTC))?([-+])(\d{1,2})(?::?(\d{2})(?::?(\d{2}))?)?$`)
+
+// rbDateZoneOffset reads a zone: a name from rbDateZones, or ±H, ±HH, ±HHMM, ±HH:MM[:SS], optionally after GMT/UTC.
+func rbDateZoneOffset(s string) (int, bool) {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if off, ok := rbDateZones[s]; ok {
+		return off, true
+	}
+	g := rbDateZoneRe.FindStringSubmatch(s)
+	if g == nil {
+		return 0, false
+	}
+	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
+	off := atoi(g[2])*3600 + atoi(g[3])*60 + atoi(g[4])
+	if g[1] == "-" {
+		off = -off
+	}
+	return off, true
+}
+
+// rbDateOffsetArg: a zone String or a fraction of a day; an unreadable or out-of-range offset is ignored (0), as MRI.
+func rbDateOffsetArg(v any) int {
+	var off int
+	switch x := rbUnbox(v).(type) {
+	case String:
+		o, ok := rbDateZoneOffset(string(x))
+		if !ok {
+			return 0
+		}
+		off = o
+	case nil:
+		return 0
+	default:
+		r := rbDateRat(v, "Rational")
+		r.Mul(r, big.NewRat(86400, 1))
+		f, _ := r.Float64()
+		off = int(math.Round(f))
+	}
+	if off < -86400 || off > 86400 {
+		return 0
+	}
+	return off
+}
+
+// rbDateNow is the current instant at the local offset.
+func rbDateNow() rbDateParts {
+	return rbDateFromGoTime(time.Now())
+}
+
 var rbDateISO = regexp.MustCompile(`^\s*(-?\d{4,})-?(\d{2})-?(\d{2})`)
 var rbDateSlash = regexp.MustCompile(`^\s*(-?\d+)/(\d{1,2})/(\d{1,2})`)
 var rbDateWords = regexp.MustCompile(`(?i)^\s*(?:[a-z]+,?\s+)??(?:(\d{1,2})\s+([a-z]{3,})\.?|([a-z]{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?)\s+(-?\d+)`)
@@ -53,12 +321,18 @@ func rbMonthByName(s string) int {
 
 // rbDateParse covers Date.parse's common shapes: ISO (2024-03-05, 20240305), 2024/3/5, "Mar 5, 2024" and "5 March 2024".
 func rbDateParse(s string) (y, m, d int, ok bool) {
+	y, m, d, _, ok = rbDateParseRest(s)
+	return y, m, d, ok
+}
+
+// rbDateParseRest is rbDateParse plus the text after the date.
+func rbDateParseRest(s string) (y, m, d int, rest string, ok bool) {
 	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
 	if g := rbDateISO.FindStringSubmatch(s); g != nil {
-		return atoi(g[1]), atoi(g[2]), atoi(g[3]), true
+		return atoi(g[1]), atoi(g[2]), atoi(g[3]), s[len(g[0]):], true
 	}
 	if g := rbDateSlash.FindStringSubmatch(s); g != nil {
-		return atoi(g[1]), atoi(g[2]), atoi(g[3]), true
+		return atoi(g[1]), atoi(g[2]), atoi(g[3]), s[len(g[0]):], true
 	}
 	if g := rbDateWords.FindStringSubmatch(s); g != nil {
 		if g[1] != "" {
@@ -66,16 +340,157 @@ func rbDateParse(s string) (y, m, d int, ok bool) {
 		} else {
 			m, d = rbMonthByName(g[3]), atoi(g[4])
 		}
-		return atoi(g[5]), m, d, m != 0
+		return atoi(g[5]), m, d, s[len(g[0]):], m != 0
 	}
-	return 0, 0, 0, false
+	return 0, 0, 0, "", false
+}
+
+var rbDateTimeRest = regexp.MustCompile(`(?i)^(?:T|\s+(?:at\s+)?)(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(?:([ap])\.?m\.?)?\s*(z\b|[a-z]{2,4}\b|(?:gmt|utc)?[-+]\d{1,2}(?::?\d{2}(?::?\d{2})?)?)?`)
+
+// rbDateFracNs is a run of fraction digits as nanoseconds.
+func rbDateFracNs(digits string) int {
+	if digits == "" {
+		return 0
+	}
+	digits = (digits + "000000000")[:9]
+	n, _ := strconv.Atoi(digits)
+	return n
+}
+
+// rbDateTimeParse is DateTime.parse: rbDateParse's date, then an optional time of day (12- or 24-hour) and zone.
+func rbDateTimeParse(s string) rbDateParts {
+	y, m, d, rest, ok := rbDateParseRest(s)
+	if !ok {
+		panic(rbDateInvalid())
+	}
+	g := rbDateTimeRest.FindStringSubmatch(rest)
+	if g == nil {
+		return rbDateTimeOf(y, m, d, 0, 0, 0, 0, 0)
+	}
+	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
+	h := atoi(g[1])
+	switch strings.ToLower(g[5]) {
+	case "p":
+		h = h%12 + 12
+	case "a":
+		h %= 12
+	}
+	of, _ := rbDateZoneOffset(g[6])
+	return rbDateTimeOf(y, m, d, h, atoi(g[2]), atoi(g[3]), rbDateFracNs(g[4]), of)
+}
+
+// rbDateTimeMatch builds parts from a regexp's groups: year, month, day, hour, minute, second, fraction, zone.
+func rbDateTimeMatch(re *regexp.Regexp, s string) (rbDateParts, bool) {
+	g := re.FindStringSubmatch(s)
+	if g == nil {
+		return rbDateParts{}, false
+	}
+	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
+	m := atoi(g[2])
+	if m == 0 {
+		m = rbMonthByName(g[2])
+	}
+	of := 0
+	if g[8] != "" {
+		o, ok := rbDateZoneOffset(g[8])
+		if !ok {
+			return rbDateParts{}, false
+		}
+		of = o
+	}
+	return rbDateTimeOf(atoi(g[1]), m, atoi(g[3]), atoi(g[4]), atoi(g[5]), atoi(g[6]), rbDateFracNs(g[7]), of), true
+}
+
+var (
+	rbDateISOExt   = regexp.MustCompile(`^\s*([-+]?\d{4,})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(Z|[-+]\d{2}(?::?\d{2})?)?)?\s*$`)
+	rbDateISOBasic = regexp.MustCompile(`^\s*([-+]?\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(?:(\d{2})(?:[.,](\d+))?)?\s*(Z|[-+]\d{2}(?:\d{2})?)?)?\s*$`)
+	rbDateRFC3339  = regexp.MustCompile(`^\s*(-?\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[-+]\d{2}:\d{2})\s*$`)
+	rbDateHTTP     = regexp.MustCompile(`^\s*[A-Za-z]{3},\s+(\d{2})\s+([A-Za-z]{3})\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})()\s+(GMT)\s*$`)
+	rbDateRFC2822  = regexp.MustCompile(`^\s*(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,})\s+(\d{2}):(\d{2})(?::(\d{2}))?()\s+([-+]\d{4}|[A-Za-z]{1,4})\s*$`)
+	rbDateJISTime  = regexp.MustCompile(`^\s*([MTSHR])?(\d{2})\.(\d{2})\.(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(Z|[-+]\d{2}(?::?\d{2})?)?)?\s*$`)
+)
+
+// rbDateTimeISO8601 is DateTime.iso8601/xmlschema: extended or basic calendar dates, with an optional time and zone.
+func rbDateTimeISO8601(s string) rbDateParts {
+	for _, re := range []*regexp.Regexp{rbDateISOExt, rbDateISOBasic} {
+		if p, ok := rbDateTimeMatch(re, s); ok {
+			return p
+		}
+	}
+	panic(rbDateInvalid())
+}
+
+// rbDateTimeFormat parses s with one of the fixed-shape regexps (rfc3339, httpdate, rfc2822).
+func rbDateTimeFormat(s, which string) rbDateParts {
+	re := map[string]*regexp.Regexp{"rfc3339": rbDateRFC3339, "httpdate": rbDateHTTP, "rfc2822": rbDateRFC2822}[which]
+	g := re.FindStringSubmatch(s)
+	if g == nil {
+		panic(rbDateInvalid())
+	}
+	if which != "rfc3339" {
+		// day comes first in httpdate and rfc2822: reorder to y, m, d
+		g[1], g[3] = g[3], g[1]
+		if y, _ := strconv.Atoi(g[1]); len(g[1]) < 4 {
+			switch {
+			case y < 50:
+				g[1] = strconv.Itoa(y + 2000)
+			case y < 1000:
+				g[1] = strconv.Itoa(y + 1900)
+			}
+		}
+	}
+	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
+	m := rbMonthByName(g[2])
+	if m == 0 {
+		m = atoi(g[2])
+	}
+	of, ok := rbDateZoneOffset(g[8])
+	if !ok {
+		panic(rbDateInvalid())
+	}
+	return rbDateTimeOf(atoi(g[1]), m, atoi(g[3]), atoi(g[4]), atoi(g[5]), atoi(g[6]), rbDateFracNs(g[7]), of)
+}
+
+// rbDateTimeJISX0301 is DateTime.jisx0301: an era date with an optional time, or ISO 8601.
+func rbDateTimeJISX0301(s string) rbDateParts {
+	g := rbDateJISTime.FindStringSubmatch(s)
+	if g == nil {
+		return rbDateTimeISO8601(s)
+	}
+	code := byte('H') // MRI reads a date without an era letter as Heisei
+	if g[1] != "" {
+		code = g[1][0]
+	}
+	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
+	for _, e := range rbEras {
+		if e.code != code {
+			continue
+		}
+		of := 0
+		if g[9] != "" {
+			of, _ = rbDateZoneOffset(g[9])
+		}
+		return rbDateTimeOf(e.yearBase+atoi(g[2])-1, atoi(g[3]), atoi(g[4]), atoi(g[5]), atoi(g[6]), atoi(g[7]), rbDateFracNs(g[8]), of)
+	}
+	panic(rbDateInvalid())
 }
 
 // rbDateStrptime reads the date fields of MRI's strptime: %Y %m %d %e %y %j %b %B %h %F %D %%.
 func rbDateStrptime(s, format string) (y, m, d int, ok bool) {
-	format = strings.NewReplacer("%F", "%Y-%m-%d", "%D", "%m/%d/%y", "%x", "%m/%d/%y").Replace(format)
-	y, m, d = -4712, 1, 1
-	yday := 0
+	p, ok := rbDateStrptimeAll(s, format)
+	return p.y, p.m, p.d, ok
+}
+
+// rbDateFields is what strptime read.
+type rbDateFields struct{ y, m, d, h, mi, s, ns, of int }
+
+// rbDateStrptimeAll is MRI's strptime over the date directives above plus
+// %H %k %I %l %M %S %L %N %p %P %z %Z %s %Q %a %A and the composites %T %R %X %r %c %x.
+func rbDateStrptimeAll(s, format string) (rbDateFields, bool) {
+	format = strings.NewReplacer("%F", "%Y-%m-%d", "%D", "%m/%d/%y", "%x", "%m/%d/%y", "%T", "%H:%M:%S", "%X", "%H:%M:%S",
+		"%R", "%H:%M", "%r", "%I:%M:%S %p", "%c", "%a %b %e %H:%M:%S %Y", "%+", "%a %b %e %H:%M:%S %Z %Y").Replace(format)
+	f := rbDateFields{y: -4712, m: 1, d: 1}
+	yday, pm, ampm, epoch := 0, false, false, -1
 	num := func(max int) (int, bool) {
 		i := 0
 		if i < len(s) && (s[i] == '-' || s[i] == '+') && max > 2 {
@@ -88,6 +503,16 @@ func rbDateStrptime(s, format string) (y, m, d int, ok bool) {
 		s = s[i:]
 		return n, err == nil
 	}
+	word := func() string {
+		j := 0
+		for j < len(s) && (s[j] >= 'a' && s[j] <= 'z' || s[j] >= 'A' && s[j] <= 'Z') {
+			j++
+		}
+		w := s[:j]
+		s = s[j:]
+		return w
+	}
+	fail := rbDateFields{}
 	for i := 0; i < len(format); i++ {
 		c := format[i]
 		if c == ' ' {
@@ -96,38 +521,75 @@ func rbDateStrptime(s, format string) (y, m, d int, ok bool) {
 		}
 		if c != '%' || i+1 >= len(format) {
 			if s == "" || s[0] != c {
-				return 0, 0, 0, false
+				return fail, false
 			}
 			s = s[1:]
 			continue
 		}
 		i++
+		for i+1 < len(format) && format[i] == ':' {
+			i++
+		}
 		var good bool
 		switch format[i] {
 		case 'Y':
-			y, good = num(9)
+			f.y, good = num(9)
 		case 'm':
-			m, good = num(2)
+			f.m, good = num(2)
 		case 'd', 'e':
 			s = strings.TrimLeft(s, " ")
-			d, good = num(2)
+			f.d, good = num(2)
 		case 'y':
-			y, good = num(2)
-			if y < 69 {
-				y += 2000
+			f.y, good = num(2)
+			if f.y < 69 {
+				f.y += 2000
 			} else {
-				y += 1900
+				f.y += 1900
 			}
 		case 'j':
 			yday, good = num(3)
 		case 'b', 'B', 'h':
+			f.m = rbMonthByName(word())
+			good = f.m != 0
+		case 'a', 'A':
+			good = len(word()) >= 3
+		case 'H', 'k', 'I', 'l':
+			s = strings.TrimLeft(s, " ")
+			f.h, good = num(2)
+		case 'M':
+			f.mi, good = num(2)
+		case 'S':
+			f.s, good = num(2)
+		case 'L', 'N':
 			j := 0
-			for j < len(s) && (s[j] >= 'a' && s[j] <= 'z' || s[j] >= 'A' && s[j] <= 'Z') {
+			for j < len(s) && s[j] >= '0' && s[j] <= '9' {
 				j++
 			}
-			m, good = rbMonthByName(s[:j]), true
-			good = good && m != 0
+			f.ns, good, s = rbDateFracNs(s[:j]), j > 0, s[j:]
+		case 'p', 'P':
+			w := strings.ToLower(strings.ReplaceAll(s[:min(len(s), 4)], ".", ""))
+			good = strings.HasPrefix(w, "am") || strings.HasPrefix(w, "pm")
+			pm, ampm = strings.HasPrefix(w, "pm"), true
+			if good && len(s) >= 4 && s[1] == '.' {
+				s = s[4:]
+			} else if good {
+				s = s[2:]
+			}
+		case 'z', 'Z':
+			j := 0
+			for j < len(s) && strings.IndexByte("+-:0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", s[j]) >= 0 {
+				j++
+			}
+			f.of, good = rbDateZoneOffset(s[:j])
 			s = s[j:]
+		case 's', 'Q':
+			unit := 1
+			if format[i] == 'Q' {
+				unit = 1000
+			}
+			var n int
+			n, good = num(19)
+			epoch = n * (1000 / unit)
 		case '%':
 			good = s != "" && s[0] == '%'
 			if good {
@@ -135,14 +597,37 @@ func rbDateStrptime(s, format string) (y, m, d int, ok bool) {
 			}
 		}
 		if !good {
-			return 0, 0, 0, false
+			return fail, false
 		}
 	}
-	if yday > 0 {
-		t := time.Date(y, 1, yday, 0, 0, 0, 0, time.UTC)
-		return t.Year(), int(t.Month()), t.Day(), t.Year() == y
+	if ampm {
+		f.h %= 12
+		if pm {
+			f.h += 12
+		}
 	}
-	return y, m, d, true
+	if epoch >= 0 {
+		p := rbDateAt(epoch/1000+rbJDEpoch*86400, epoch%1000*1e6, f.of)
+		t := rbJDTime(p.jd)
+		return rbDateFields{t.Year(), int(t.Month()), t.Day(), p.df / 3600, p.df % 3600 / 60, p.df % 60, p.sf, f.of}, true
+	}
+	if yday > 0 {
+		t := time.Date(f.y, 1, yday, 0, 0, 0, 0, time.UTC)
+		if t.Year() != f.y {
+			return fail, false
+		}
+		f.m, f.d = int(t.Month()), t.Day()
+	}
+	return f, true
+}
+
+// rbDateTimeStrptime is DateTime.strptime.
+func rbDateTimeStrptime(s, format string) rbDateParts {
+	f, ok := rbDateStrptimeAll(s, format)
+	if !ok {
+		panic(rbDateInvalid())
+	}
+	return rbDateTimeOf(f.y, f.m, f.d, f.h, f.mi, f.s, f.ns, f.of)
 }
 
 // rbEras are the JIS X 0301 Japanese era codes, most recent first, each with its first Gregorian day and the year it calls 1.
@@ -188,3 +673,5 @@ func rbJISX0301Parse(s string) (y, m, d int, ok bool) {
 	}
 	return 0, 0, 0, false
 }
+
+func (x *DateTime) rbSuccAny() any { return x.Succ_ofDateTime() }

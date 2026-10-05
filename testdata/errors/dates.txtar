@@ -1,0 +1,13 @@
+Compile errors and warnings for Date and DateTime (docs/design.md decisions 41, 133).
+-- datetime_commercial.rb --
+# error: main.rb:3: undefined method commercial for singleton(DateTime)
+require "date"
+puts DateTime.commercial(2024, 1, 1)
+-- datetime_minus_string.rb --
+# error: main.rb:3: String where Integer is expected
+require "date"
+puts DateTime.new(2024, 1, 1) - "x"
+-- date_hour_is_dynamic.rb --
+# warning: main.rb:3: dynamic call: hour on Date
+require "date"
+puts DateTime.new(2024, 1, 1, 5).to_date.hour

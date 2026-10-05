@@ -318,11 +318,22 @@ func rbStrftime(t time.Time, format string, utc bool) string {
 			if off < 0 {
 				sign, off = '-', -off
 			}
-			sep := ""
-			if has(':') {
-				sep = ":"
+			switch bytes.Count(flags, []byte{':'}) {
+			case 0:
+				fmt.Fprintf(&b, "%c%02d%02d", sign, off/3600, off%3600/60)
+			case 1:
+				fmt.Fprintf(&b, "%c%02d:%02d", sign, off/3600, off%3600/60)
+			case 2:
+				fmt.Fprintf(&b, "%c%02d:%02d:%02d", sign, off/3600, off%3600/60, off%60)
+			default: // %:::z: only the precision needed
+				fmt.Fprintf(&b, "%c%02d", sign, off/3600)
+				if off%3600 != 0 {
+					fmt.Fprintf(&b, ":%02d", off%3600/60)
+				}
+				if off%60 != 0 {
+					fmt.Fprintf(&b, ":%02d", off%60)
+				}
 			}
-			fmt.Fprintf(&b, "%c%02d%s%02d", sign, off/3600, sep, off%3600/60)
 		case 'Z':
 			name, _ := t.Zone()
 			if utc {
