@@ -117,9 +117,8 @@ func rbSockFor(call, host string, port int) string {
 	return call + " for " + strconv.Quote(host) + " port " + strconv.Itoa(port)
 }
 
-// rbSockFile wraps a raw descriptor (from socketpair or accept) as a Go net.Conn; the descriptor itself is closed, net keeps a dup.
+// rbSockFile wraps a raw descriptor (from socketpair or accept, already close-on-exec) as a Go net.Conn; the descriptor itself is closed, net keeps a dup.
 func rbSockFile(fd int) net.Conn {
-	syscall.CloseOnExec(fd)
 	f := os.NewFile(uintptr(fd), "socket")
 	defer func() { _ = f.Close() }()
 	c, err := net.FileConn(f)
@@ -191,9 +190,7 @@ func rbSockDialUnix(path string) *BasicSocket_Handle__ {
 	if err != nil {
 		panic(rbSockErr(err, "", "connect(2) for "+path))
 	}
-	h := rbSockNew("unix", c)
-	h.path = Ref("")
-	return h
+	return rbSockNew("unix", c)
 }
 
 // rbSockPair is UNIXSocket.pair: two connected sockets of socktype (:STREAM or :DGRAM).
@@ -202,7 +199,13 @@ func rbSockPair(socktype any) (*BasicSocket_Handle__, *BasicSocket_Handle__) {
 	if st == 0 {
 		st = syscall.SOCK_STREAM
 	}
+	syscall.ForkLock.RLock() // as net's own sockets: no fork may inherit the descriptors before close-on-exec is set
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, st, 0)
+	if err == nil {
+		syscall.CloseOnExec(fds[0])
+		syscall.CloseOnExec(fds[1])
+	}
+	syscall.ForkLock.RUnlock()
 	if err != nil {
 		panic(rbSockErr(err, "", "socketpair(2)"))
 	}
@@ -211,11 +214,15 @@ func rbSockPair(socktype any) (*BasicSocket_Handle__, *BasicSocket_Handle__) {
 
 // rbSockUDP is UDPSocket.new: an unbound datagram socket of family, so bind, connect and sendto are the kernel's own.
 func rbSockUDP(fam int) *BasicSocket_Handle__ {
+	syscall.ForkLock.RLock()
 	fd, err := syscall.Socket(fam, syscall.SOCK_DGRAM, 0)
+	if err == nil {
+		syscall.CloseOnExec(fd)
+	}
+	syscall.ForkLock.RUnlock()
 	if err != nil {
 		panic(rbSockErr(err, "", "socket(2) - udp"))
 	}
-	syscall.CloseOnExec(fd)
 	f := os.NewFile(uintptr(fd), "udp")
 	defer func() { _ = f.Close() }()
 	pc, err := net.FilePacketConn(f)
@@ -227,7 +234,7 @@ func rbSockUDP(fam int) *BasicSocket_Handle__ {
 
 // rbSockSockaddr resolves host:port to a syscall sockaddr of the socket's family.
 func (self *BasicSocket_Handle__) sockaddr(host string, port int) syscall.Sockaddr {
-	ip := rbSockLookup(host, self.fam, "getaddrinfo(3)")[0]
+	ip := rbSockLookup(host, self.fam, "getaddrinfo")[0] // MRI's UDPSocket#bind/connect/send word it so, not getaddrinfo(3)
 	if ip.Is4() && self.fam != syscall.AF_INET6 {
 		return &syscall.SockaddrInet4{Port: port, Addr: ip.As4()}
 	}
@@ -395,9 +402,15 @@ func rbSockIPAddr(a *Addrinfo) Tuple4[String, Integer, String, String] {
 
 // rbSockLookup resolves host to addresses of fam (0 for any), as getaddrinfo(3) would; label words the error.
 func rbSockLookup(host string, fam int, label string) []netip.Addr {
+	switch host { // MRI's host_str: "" and "<any>" are INADDR_ANY, "<broadcast>" INADDR_BROADCAST
+	case "", "<any>":
+		host = "0.0.0.0"
+	case "<broadcast>":
+		host = "255.255.255.255"
+	}
 	var ips []netip.Addr
 	if ip, err := netip.ParseAddr(host); err == nil {
-		ips = []netip.Addr{ip}
+		ips = []netip.Addr{ip} // a numeric ::ffff:a.b.c.d stays IPv6, as getaddrinfo(3) answers it
 	} else {
 		network := map[int]string{syscall.AF_INET: "ip4", syscall.AF_INET6: "ip6"}[fam]
 		if network == "" {
@@ -407,12 +420,12 @@ func rbSockLookup(host string, fam int, label string) []netip.Addr {
 		if err != nil {
 			panic(rbSockErr(err, label, ""))
 		}
+		for i, ip := range ips {
+			ips[i] = ip.Unmap() // the resolver's 4-in-6 form of an IPv4 answer
+		}
 	}
 	out := ips[:0:0]
 	for _, ip := range ips {
-		if ip.Is4In6() {
-			ip = ip.Unmap()
-		}
 		if fam == 0 || fam == syscall.AF_INET && ip.Is4() || fam == syscall.AF_INET6 && ip.Is6() {
 			out = append(out, ip)
 		}
@@ -491,7 +504,12 @@ func (self *BasicSocket_Handle__) acceptNonblock() *BasicSocket_Handle__ {
 	nfd := -1
 	var aerr error
 	if err := self.raw().Control(func(fd uintptr) { // a listener's RawConn.Read is EINVAL; its descriptor is non-blocking
+		syscall.ForkLock.RLock()
 		nfd, _, aerr = syscall.Accept(int(fd))
+		if aerr == nil {
+			syscall.CloseOnExec(nfd)
+		}
+		syscall.ForkLock.RUnlock()
 	}); err != nil {
 		panic(rbSockErr(err, "", ""))
 	}

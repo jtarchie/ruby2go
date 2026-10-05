@@ -3613,14 +3613,17 @@ resolve; anything not listed is still open.
     - **Reads.** `gets`, `read`, `read(n)` (nil at EOF), `readpartial`
       (at most one `read(2)`, `EOFError` at EOF), `readline`, `eof?` go
       through the buffered reader. `recv` reads what the reader already
-      holds first so a stream stays in order, and answers `nil` once a
+      holds first so a stream stays in order (MRI raises `recv for
+      buffered IO` there; a `MSG_PEEK` leaves those bytes in place),
+      and answers `nil` once a
       stream's peer has closed (MRI 3.3+; the rbs gem still says
       `String`). `recvfrom` is defined on `TCPSocket` and `UDPSocket`
       rather than `IPSocket`, since an override cannot narrow a result
       type: a stream's is `[String, nil]` and `nil` at EOF, as MRI's, a
       datagram's always carries the sender's address array, so UDP code
       needs no nil checks. Writes go straight to the descriptor, so `sync` is
-      always true. `close_read`/`close_write` are `shutdown(2)`, the
+      always true; `send` answers the bytes `sendmsg(2)` took, which on
+      a full stream buffer is fewer than given, as MRI's. `close_read`/`close_write` are `shutdown(2)`, the
       socket closing once both are; reading or writing a closed half is
       MRI's `IOError` (`not opened for reading`, `closed stream`).
     - **Errors.** An errno becomes its `Errno::` class (`ECONNREFUSED`,
@@ -3642,7 +3645,10 @@ resolve; anything not listed is still open.
       are the platform's (`SystemCallError#errno`), but the classes have
       no `Errno` constant (`Errno::EAGAIN::Errno` is undefined).
     - **Lookups.** `Addrinfo.getaddrinfo`/`Socket.getaddrinfo` resolve
-      with Go's resolver (a numeric host is not looked up) and repeat
+      with Go's resolver (a numeric host is not looked up, and a
+      numeric `::ffff:a.b.c.d` stays IPv6; `""` and `"<any>"` are
+      `0.0.0.0`, `"<broadcast>"` `255.255.255.255`, as MRI's
+      `host_str`, though `""` shows no `()` in `inspect`) and repeat
       each address per socket type, stream/TCP, datagram/UDP, raw, as
       `getaddrinfo(3)` does without hints, filtered by family and
       socktype (Integers, or `:INET`/`"AF_INET6"`/`:STREAM`...); a named
@@ -3667,7 +3673,10 @@ resolve; anything not listed is still open.
       honours decision 12's `self.__new_<n>` when `initialize` cannot
       take the call's argument count (`TCPServer.new(port)`).
     - **Not built.** `Socket.new` with `bind`/`connect` on packed
-      sockaddr Strings is a compile error naming the classes to use;
+      sockaddr Strings is a compile error naming the classes to use, as
+      is `.new` on any socket class without an `initialize`
+      (`BasicSocket`, `IPSocket`, a user subclass of `Socket`), whose
+      object would have no handle;
       `SOCKSSocket` and `IO.select` do not exist (uninitialized constant,
       undefined method). `Addrinfo.new(sockaddr)`, `Socket.unix`,
       `Socket.tcp_server_loop` and friends, `recvmsg`/`sendmsg`,

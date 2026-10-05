@@ -125,6 +125,9 @@ class BasicSocket < Object
     #: (Integer) -> String?
     def readpartial(n) = %x{
       self.readable()
+      if n < 0 {
+        panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", n)))))
+      }
       if n == 0 {
         return Ref(String(""))
       }
@@ -150,9 +153,17 @@ class BasicSocket < Object
       if self.closed.Load() {
         panic(NewIOError(Ref(String("closed stream"))))
       }
+      if n < 0 {
+        panic(NewArgumentError(Ref(String("negative string size (or size too big)"))))
+      }
       if self.r != nil && self.r.Buffered() > 0 {
-        buf := make([]byte, min(int(n), self.r.Buffered()))
-        k, _ := self.r.Read(buf)
+        k := min(int(n), self.r.Buffered())
+        if int(flags)&syscall.MSG_PEEK != 0 { // a peek leaves the bytes for the next read
+          b, _ := self.r.Peek(k)
+          return Tuple2[String, **Addrinfo]{String(b), nil}
+        }
+        buf := make([]byte, k)
+        k, _ = self.r.Read(buf)
         return Tuple2[String, **Addrinfo]{String(buf[:k]), nil}
       }
       buf := make([]byte, int(n))
@@ -188,9 +199,10 @@ class BasicSocket < Object
         to = self.sockaddr(string(*host), p)
         call = rbSockFor("sendto(2)", string(*host), p)
       }
+      var n int
       var serr error
       if err := self.raw().Write(func(fd uintptr) bool {
-        serr = syscall.Sendto(int(fd), []byte(msg), int(flags), to)
+        n, serr = syscall.SendmsgN(int(fd), []byte(msg), nil, to, int(flags)) // Sendto drops the count of a short stream write
         return !errors.Is(serr, syscall.EAGAIN)
       }); err != nil {
         panic(rbSockErr(err, "", ""))
@@ -198,7 +210,7 @@ class BasicSocket < Object
       if serr != nil {
         panic(rbSockErr(serr, "", call))
       }
-      return Integer(len(msg))
+      return Integer(n)
     }
 
     #: (String, Integer, bool) -> void
@@ -257,13 +269,11 @@ class BasicSocket < Object
 
     #: () -> String
     def path = %x{
-      if self.path != nil && *self.path != "" {
-        return String(*self.path)
+      if self.path == nil { // kept once read, as MRI's pathv: inspect shows it from then on
+        p := self.info(false).path
+        self.path = &p
       }
-      if self.ln != nil {
-        return String(self.ln.Addr().String())
-      }
-      return ""
+      return String(*self.path)
     }
 
     #: (String) -> String

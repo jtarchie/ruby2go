@@ -1420,8 +1420,12 @@ func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) 
 	case cls.RubyName == "ERB" && n.Name == "new":
 		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
 		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
-	case cls.RubyName == "Socket" && n.Name == "new" && cls.File != nil && cls.File.prelude:
-		f.errorf(n, "Socket.new is not supported (decision 135): raw sockets bind and connect to packed sockaddr Strings; use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp")
+	case n.Name == "new" && cls.isSubclassOf(f.c.classes["BasicSocket"]) && cls.lookup("initialize") == nil:
+		// a socket object is only made with its handle: BasicSocket/IPSocket/Socket.new would be a nil one (decision 135)
+		if cls.isSubclassOf(f.c.classes["Socket"]) {
+			f.errorf(n, "Socket.new is not supported (decision 135): raw sockets bind and connect to packed sockaddr Strings; use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp")
+		}
+		f.errorf(n, "undefined method initialize for %s (decision 135): use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp", cls.RubyName)
 	}
 	return expr{}, false
 }

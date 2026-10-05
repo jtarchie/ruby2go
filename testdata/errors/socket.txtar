@@ -22,3 +22,13 @@ IO.select([server])
 require "socket"
 server = TCPServer.new("127.0.0.1", 0)
 server.setsockopt(:SOCKET, :REUSEADDR, true)
+-- basic_socket_new.rb --
+# error: main.rb:3: undefined method initialize for BasicSocket (decision 135)
+require "socket"
+BasicSocket.new.close
+-- socket_subclass_new.rb --
+# error: main.rb:5: Socket.new is not supported (decision 135)
+require "socket"
+class MySock < Socket
+end
+MySock.new

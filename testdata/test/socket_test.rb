@@ -254,6 +254,12 @@ module SocketTests
       assert u.closed?
       assert_equal "#<UDPSocket:(closed)>", u.inspect
       assert_equal "AF_INET6", UDPSocket.new(Socket::AF_INET6).addr[0]
+      w = UDPSocket.new
+      assert_equal 0, w.bind("", 0)
+      assert_equal "0.0.0.0", w.addr[2]
+      e = assert_raises(Socket::ResolutionError) { w.connect("nonexistent.invalid", 1) }
+      assert e.message.start_with?("getaddrinfo: ")
+      w.close
     end
 
     def test_unix
@@ -266,6 +272,8 @@ module SocketTests
         client = UNIXSocket.new(path)
         peer = server.accept
         assert_equal UNIXSocket, peer.class
+        assert /\A#<UNIXSocket:fd \d+>\z/.match?(client.inspect)
+        assert peer.path == path
         assert_equal "", client.path
         assert_equal ["AF_UNIX", ""], client.addr
         assert client.peeraddr == ["AF_UNIX", path]
@@ -312,6 +320,19 @@ module SocketTests
       f.close
     end
 
+    def test_short_send_and_negative_lengths
+      a, b = UNIXSocket.pair
+      n = a.send("x" * 4_000_000, 0)
+      a.close
+      assert n > 0
+      assert_equal n, b.read.bytesize
+      e = assert_raises(ArgumentError) { b.readpartial(-1) }
+      assert_equal "negative length -1 given", e.message
+      e = assert_raises(ArgumentError) { b.recv(-1) }
+      assert_equal "negative string size (or size too big)", e.message
+      b.close
+    end
+
     def test_addrinfo
       ai = Addrinfo.tcp("127.0.0.1", 80)
       assert_equal "#<Addrinfo: 127.0.0.1:80 TCP>", ai.inspect
@@ -331,6 +352,9 @@ module SocketTests
       ip = Addrinfo.ip("127.0.0.1")
       assert_equal ["#<Addrinfo: 127.0.0.1>", 0, 0], [ip.inspect, ip.socktype, ip.ip_port]
       assert_equal "#<Addrinfo: ::1>", Addrinfo.ip("::1").inspect
+      assert_equal "#<Addrinfo: [::ffff:127.0.0.1]:80 TCP>", Addrinfo.tcp("::ffff:127.0.0.1", 80).inspect
+      assert_equal "#<Addrinfo: 255.255.255.255:80 TCP (<broadcast>)>", Addrinfo.tcp("<broadcast>", 80).inspect
+      assert_equal "#<Addrinfo: 0.0.0.0:80 TCP (<any>)>", Addrinfo.tcp("<any>", 80).inspect
       un = Addrinfo.unix("/tmp/x")
       assert_equal ["#<Addrinfo: /tmp/x SOCK_STREAM>", "/tmp/x", true, false], [un.inspect, un.unix_path, un.unix?, un.ip?]
       assert_equal Socket::AF_UNIX, un.afamily
