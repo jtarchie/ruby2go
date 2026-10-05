@@ -2564,7 +2564,10 @@ resolve; anything not listed is still open.
     single atomic load per mutation. `dup` is a new, unfrozen object;
     `clone` keeping the flag is not done. Frozen objects stay in the set
     for the program's life (a ponytail: weak pointers if that matters).
-    Strings keep their own frozen set (literals and `String#freeze`).
+    Strings keep their own frozen set (literals and `String#freeze`). *Revised:* without a lock (decision 147's
+    rule): the literals are a read-only map built at start, and strings
+    `freeze` marks go in 256 shards of immutable maps, read with an
+    atomic load and replaced by compare-and-swap.
     ([example 72](../examples/72_freeze/main.rb)).
 97. `Kernel#system`, backticks and `$?` (#2), over `os/exec`. A command
     string with shell syntax (MRI's metacharacters, or a first word that

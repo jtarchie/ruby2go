@@ -832,30 +832,53 @@ type rbStrID struct {
 	n int
 }
 
-var (
-	rbFrozenMu   sync.Mutex
-	rbFrozenStrs map[rbStrID]bool // the literals (seeded on first use) and every String#freeze receiver
-)
+// rbFrozenLits is every literal's bytes, fixed at start: read with no lock.
+var rbFrozenLits = func() map[rbStrID]struct{} {
+	m := make(map[rbStrID]struct{}, len(rbStringLits))
+	for _, l := range rbStringLits {
+		m[rbStrID{unsafe.StringData(l), len(l)}] = struct{}{} //nolint:gosec // identity only
+	}
+	return m
+}()
+
+// rbFrozenShards hold the computed strings String#freeze marked, by
+// identity, in 256 shards of immutable maps: frozen? reads one with an
+// atomic load, and freeze swaps in a copy of its shard with a
+// compare-and-swap. No lock, so threads never wait on each other here.
+// ponytail: a freeze copies its shard (about n/256 entries), and frozen
+// strings stay reachable from it; use weak pointers if either shows up.
+var rbFrozenShards [256]atomic.Pointer[map[rbStrID]struct{}]
 
 // rbStrFrozen reports whether s is a literal or was frozen, and with
 // freeze also marks it. Strings built at run time have fresh backing
 // arrays, so they aren't in the set, like MRI's unfrozen strings.
-// ponytail: frozen computed strings stay reachable from the set; use weak pointers if that leak shows up.
 func rbStrFrozen(s string, freeze bool) bool {
 	id := rbStrID{unsafe.StringData(s), len(s)} //nolint:gosec // identity only
-	rbFrozenMu.Lock()
-	defer rbFrozenMu.Unlock()
-	if rbFrozenStrs == nil {
-		rbFrozenStrs = make(map[rbStrID]bool, len(rbStringLits))
-		for _, l := range rbStringLits {
-			rbFrozenStrs[rbStrID{unsafe.StringData(l), len(l)}] = true //nolint:gosec // identity only
+	if _, ok := rbFrozenLits[id]; ok {
+		return true
+	}
+	shard := &rbFrozenShards[(uintptr(unsafe.Pointer(id.p))>>4^uintptr(id.n))&255] //nolint:gosec // a bucket, not a pointer
+	for {
+		old := shard.Load()
+		if old != nil {
+			if _, ok := (*old)[id]; ok {
+				return true
+			}
+		}
+		if !freeze {
+			return false
+		}
+		var next map[rbStrID]struct{}
+		if old != nil {
+			next = maps.Clone(*old)
+		} else {
+			next = map[rbStrID]struct{}{}
+		}
+		next[id] = struct{}{}
+		if shard.CompareAndSwap(old, &next) {
+			return false
 		}
 	}
-	was := rbFrozenStrs[id]
-	if freeze {
-		rbFrozenStrs[id] = true
-	}
-	return was
 }
 
 func rbIsA[I any](r any) bool {
