@@ -235,3 +235,25 @@ func rbSourceDir(name string) String {
 	}
 	return String(filepath.Dir(p))
 }
+
+// Stat_t names atime Atim (Linux, OpenBSD) or Atimespec (macOS, BSDs); zero stand-ins one level deeper let Go's shallowest-field rule pick the real one at build time (decision 138).
+type rbAtimeNames struct{ Atim, Atimespec syscall.Timespec }
+
+type rbAtimeDeeper struct{ rbAtimeNames }
+
+type rbAtimeStat struct {
+	*syscall.Stat_t
+	rbAtimeDeeper
+}
+
+// rbAtime is fi's access time; without a Stat_t (no Unix) it falls back to the modification time.
+func rbAtime(fi os.FileInfo) time.Time {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fi.ModTime()
+	}
+	x := rbAtimeStat{Stat_t: st}
+	s1, n1 := x.Atim.Unix()
+	s2, n2 := x.Atimespec.Unix()
+	return time.Unix(s1+s2, n1+n2)
+}

@@ -196,11 +196,18 @@ func rbRlimit(v any) int {
 	panic(NewArgumentError(Ref(String("invalid resource name: " + string(rbToS(v))))))
 }
 
-// rbPopens are IO.popen's children by the File reading their output.
-var rbPopens sync.Map
-
-// rbPopen starts IO.popen's command with its stdout on a pipe, for the block to read.
-func rbPopen(cmd any) *File {
+// rbPopen starts IO.popen's command with a pipe on its stdout ("r"), stdin ("w") or both ("r+"/"w+"); the rest stay the program's.
+func rbPopen(cmd any, mode string) *IO {
+	m := strings.Map(func(r rune) rune {
+		if r == 'b' || r == 't' {
+			return -1
+		}
+		return r
+	}, mode)
+	read, write := m == "r" || m == "r+" || m == "w+", m == "w" || m == "r+" || m == "w+"
+	if !read && !write {
+		panic(NewArgumentError(Ref(String("invalid access mode " + mode))))
+	}
 	var c *exec.Cmd
 	switch v := rbUnbox(cmd).(type) {
 	case String:
@@ -222,34 +229,45 @@ func rbPopen(cmd any) *File {
 	default:
 		panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(cmd) + " into String"))))
 	}
-	r, w, err := os.Pipe()
-	if err != nil {
-		panic(rbSysErr(err, "rb_io_s_popen", ""))
+	var ours, theirs []*os.File // our ends, then the child's, closed in the parent once it starts
+	pipe := func() (*os.File, *os.File) {
+		r, w, err := os.Pipe()
+		if err != nil {
+			for _, f := range append(ours, theirs...) {
+				_ = f.Close()
+			}
+			panic(rbSysErr(err, "rb_io_s_popen", ""))
+		}
+		return r, w
+	}
+	var rf, wf *os.File
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if read {
+		r, w := pipe()
+		rf, c.Stdout = r, w
+		ours, theirs = append(ours, r), append(theirs, w)
+	}
+	if write {
+		r, w := pipe()
+		wf, c.Stdin = w, r
+		ours, theirs = append(ours, w), append(theirs, r)
 	}
 	rbFlush()
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, w, os.Stderr
-	if err := c.Start(); err != nil {
-		_ = r.Close()
-		_ = w.Close()
+	err := c.Start()
+	for _, f := range theirs {
+		_ = f.Close()
+	}
+	if err != nil {
+		for _, f := range ours {
+			_ = f.Close()
+		}
 		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
 	}
-	_ = w.Close()
-	f := &File{f: r, r: bufio.NewReader(r), path: "popen"}
-	rbPopens.Store(f, c)
-	return f
+	return rbIONew(rf, wf, c)
 }
 
-// rbPopenWait closes popen's reader, reaps the child and records $?.
-func rbPopenWait(f *File) {
-	v, ok := rbPopens.LoadAndDelete(f)
-	if !ok {
-		return
-	}
-	if f.f != nil {
-		_ = f.f.Close()
-		f.f = nil
-	}
-	c := v.(*exec.Cmd)
+// rbPopenReap waits for popen's child, its pipes already closed, and records $?.
+func rbPopenReap(c *exec.Cmd) {
 	err := c.Wait()
 	st := &Process_Status{code: 0, pid: c.Process.Pid}
 	var ee *exec.ExitError

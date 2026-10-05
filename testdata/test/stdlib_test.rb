@@ -1491,6 +1491,117 @@ module StdlibTests
     end
   end
 
+  # IO follow-ups (#54, decision 138): pipe and popen ends are IOs, popen writes, blockless popen.
+  class IOPipeTest < Minitest::Test
+    def test_pipe_is_io
+      r, w = IO.pipe
+      assert_equal [IO, IO, true, false, true, nil], [r.class, w.class, w.is_a?(IO), r.sync, w.sync, r.pid]
+      assert_equal true, r.inspect.match?(/\A#<IO:fd \d+>\z/) # the number is the kernel's next free descriptor
+      assert_equal [true, true, false, false], [r.fileno > 2, r.to_i == r.fileno, r.closed?, w.tty?]
+      w << "a" << "b"
+      w.print "c"
+      w.puts "d"
+      w.close
+      assert_equal [true, "#<IO:(closed)>", "abcd\n", true], [w.closed?, w.inspect, r.read, r.eof?]
+      e = assert_raises(IOError) { w.write("x") }
+      assert_equal "closed stream", e.message
+      e = assert_raises(IOError) { w.fileno }
+      assert_equal "closed stream", e.message
+      assert_equal [nil, nil, nil], [w.close, w.close_write, r.close]
+    end
+
+    def test_pipe_sides
+      r, w = IO.pipe
+      e = assert_raises(IOError) { r.close_write }
+      assert_equal "closing non-duplex IO for writing", e.message
+      e = assert_raises(IOError) { w.close_read }
+      assert_equal "closing non-duplex IO for reading", e.message
+      e = assert_raises(IOError) { r.write("x") }
+      assert_equal "not opened for writing", e.message
+      e = assert_raises(IOError) { w.read }
+      assert_equal "not opened for reading", e.message
+      r.close_read
+      e = assert_raises(Errno::EPIPE) { w.write("x") }
+      assert_equal "Broken pipe", e.message
+      w.close_write
+      assert_equal [true, true], [r.closed?, w.closed?]
+    end
+
+    def test_pipe_chars
+      r, w = IO.pipe
+      w.write("héllo\nb")
+      w.close
+      c1 = r.getc
+      c2 = r.getc
+      b = r.getbyte
+      c3 = r.readchar
+      r.ungetc("Z")
+      assert_equal ["h", "é", 108, "l", "Zo\n", 1, 98], [c1, c2, b, c3, r.gets, r.lineno, r.readbyte]
+      assert_raises(EOFError) { r.readbyte }
+      r.close
+    end
+
+    def test_popen_write
+      assert_equal "a\nb\n", IO.popen("sort", "r+") { |io| io.write("b\na\n"); io.close_write; io.read }
+      got = IO.popen(["sh", "-c", "read x; echo got $x"], "w+") do |io|
+        io.puts "hi"
+        io.close_write
+        [io.gets, io.class, io.sync]
+      end
+      assert_equal ["got hi\n", IO, true], got
+      io = IO.popen(["sh", "-c", "cat > /dev/null; exit 4"], "w")
+      io.puts "x"
+      io.close_write
+      assert_equal [true, 4], [io.closed?, $?&.exitstatus]
+      io = IO.popen("cat", "r+")
+      io.close_read
+      e = assert_raises(IOError) { io.read }
+      assert_equal "not opened for reading", e.message
+      assert_equal false, io.closed?
+      io.close_write
+      assert_equal [true, true], [io.closed?, $?&.success?]
+      io = IO.popen("cat >/dev/null", "wb")
+      e = assert_raises(IOError) { io.gets }
+      assert_equal "not opened for reading", e.message
+      io.close
+      e = assert_raises(ArgumentError) { IO.popen("echo hi", "x") }
+      assert_equal "invalid access mode x", e.message
+    end
+
+    def test_popen_blockless
+      io = IO.popen("echo hi")
+      assert_equal [IO, true, true, "hi\n", true], [io.class, io.pid.is_a?(Integer), io.sync, io.gets, io.eof?]
+      e = assert_raises(IOError) { io.write("y") }
+      assert_equal "not opened for writing", e.message
+      io.close
+      assert_equal [true, "#<IO:(closed)>", true], [io.closed?, io.inspect, $?&.success?]
+      assert_raises(IOError) { io.pid }
+      io = IO.popen(["sh", "-c", "exit 7"])
+      pid = io.pid
+      assert_nil io.close
+      assert_equal [7, true], [$?&.exitstatus, $?&.pid == pid]
+      e = assert_raises(Errno::ENOENT) { IO.popen(["no_such_cmd_rb2go"]) }
+      assert_equal "No such file or directory - no_such_cmd_rb2go", e.message
+    end
+  end
+
+  # File.atime and File::Stat#atime (#54, decision 138).
+  class FileAtimeTest < Minitest::Test
+    def test_atime
+      Dir.mktmpdir do |d|
+        path = File.join(d, "a")
+        File.write(path, "x")
+        t = Time.at(1_000_000_000.5)
+        File.utime(t, Time.at(2_000_000_000), path)
+        assert_equal [t, t, 500_000, Time.at(2_000_000_000)], [File.atime(path), File.stat(path).atime, File.stat(path).atime.usec, File.mtime(path)]
+      end
+      e = assert_raises(Errno::ENOENT) { File.atime("/no/such/rb2go") }
+      assert_equal "No such file or directory @ rb_file_s_atime - /no/such/rb2go", e.message
+      e = assert_raises(Errno::ENOENT) { File.mtime("/no/such/rb2go") }
+      assert_equal "No such file or directory @ rb_file_s_mtime - /no/such/rb2go", e.message
+    end
+  end
+
   # ruby/spec core/io gaps (#49): lineno
   class RubySpecLinenoTest < Minitest::Test
     def test_lineno

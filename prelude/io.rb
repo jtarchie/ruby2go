@@ -76,7 +76,8 @@ module IOReadable
   end
 end
 
-# @go_type struct { fd int; via rbWriter; lineno int }
+# A standard stream (fd 0-2), or a pipe or popen end when own (decision 138).
+# @go_type struct { fd int; via rbWriter; lineno int; own bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -108,33 +109,29 @@ class IO < Object
     File.foreach(path) { |line| yield line }
   end
 
-  # A connected [reader, writer]; the writer is sync, as MRI's. Both are Files here, so their class prints File, not IO.
-  #: () -> [File, File]
+  #: () -> [IO, IO]
   def self.pipe = %x{
     r, w, err := os.Pipe()
     if err != nil {
       panic(rbSysErr(err, "rb_io_s_pipe", ""))
     }
-    return Tuple2[*File, *File]{&File{f: r, r: bufio.NewReader(r), path: "pipe"}, &File{f: w, w: bufio.NewWriter(w), path: "pipe", sync: true}}
+    return Tuple2[*IO, *IO]{rbIONew(r, nil, nil), rbIONew(nil, w, nil)}
   }
 
-  # The command's standard output as a File for the block; $? is its status after. A String
-  # follows system's shell rule, an Array of Strings runs directly.
-  # @rbs [T] (untyped) { (File) -> T } -> T
-  def self.popen(cmd)
-    io = __popen_start(cmd)
+  # A String follows system's shell rule, an Array of Strings runs directly; closing the IO reaps the child into $?.
+  # @rbs [T] (untyped, ?String) { (IO) -> T } -> T
+  def self.popen(cmd, mode = "r")
+    io = __popen_enum(cmd, mode)
     begin
       yield io
     ensure
-      __popen_finish(io)
+      io.close
     end
   end
 
-  #: (untyped) -> File
-  def self.__popen_start(cmd) = %x{ return rbPopen(cmd) }
-
-  #: (File) -> void
-  def self.__popen_finish(io) = %x{ rbPopenWait(io) }
+  # Blockless IO.popen (decision 12's `__<name>_enum` stands for "no block").
+  #: (untyped, ?String) -> IO
+  def self.__popen_enum(cmd, mode = "r") = %x{ return rbPopen(cmd, string(mode)) }
 
   # Path to path, as MRI's with two filenames; the count of bytes copied.
   #: (String, String) -> Integer
@@ -156,10 +153,15 @@ class IO < Object
       self.via.Write(String(s))
       return Integer(len(s))
     }
-    switch self.fd {
-    case 1:
+    if self.closed {
+      panic(NewIOError(Ref[String]("closed stream")))
+    }
+    switch {
+    case self.own:
+      self.rbWritePipe(s)
+    case self.fd == 1:
       rbWrite(s)
-    case 2:
+    case self.fd == 2:
       rbFlushIfTTY()
       _, _ = os.Stderr.WriteString(s)
     default:
@@ -176,23 +178,48 @@ class IO < Object
 
   #: () -> IO
   def flush = %x{
-    if self.fd == 1 {
+    self.rbOpen()
+    switch {
+    case self.own && self.w != nil:
+      if err := self.w.Flush(); err != nil {
+        panic(rbIOWriteErr(err))
+      }
+    case self.fd == 1:
       rbFlush()
     }
     return self
   }
 
   #: () -> Integer
-  def fileno = %x{ Integer(self.fd) }
+  def fileno = %x{
+    self.rbOpen()
+    return Integer(self.fd)
+  }
+
+  #: () -> Integer
+  def to_i = fileno
 
   # STDERR is always sync, as in MRI; STDOUT until `sync = true` only flushes per write on a terminal.
   #: () -> bool
-  def sync = %x{ Boolean(self.fd == 2 || self.fd == 1 && stdoutSync.Load()) }
+  def sync = %x{
+    self.rbOpen()
+    if self.own {
+      return Boolean(self.sync)
+    }
+    return Boolean(self.fd == 2 || self.fd == 1 && stdoutSync.Load())
+  }
 
   #: (bool) -> bool
   def sync=(on)
     %x{
-    if self.fd == 1 {
+    self.rbOpen()
+    switch {
+    case self.own:
+      self.sync = bool(on)
+      if on && self.w != nil {
+        _ = self.w.Flush()
+      }
+    case self.fd == 1:
       stdoutSync.Store(bool(on))
       if on {
         rbFlush()
@@ -204,14 +231,36 @@ class IO < Object
 
   #: () -> bool
   def tty? = %x{
-    fi, err := []*os.File{os.Stdin, os.Stdout, os.Stderr}[self.fd].Stat()
+    self.rbOpen()
+    fi, err := self.rbOSFile().Stat()
     return Boolean(err == nil && fi.Mode()&os.ModeCharDevice != 0)
   }
 
+  #: () -> Integer?
+  def pid = %x{
+    self.rbOpen()
+    if self.cmd == nil {
+      return nil
+    }
+    return Ref(Integer(self.cmd.Process.Pid))
+  }
+
+  # A popen IO waits for its child and sets $?; a standard stream is only marked closed, so Kernel#puts still writes (decision 138).
+  #: () -> nil
+  def close = %x{ self.rbClose() }
+
+  #: () -> bool
+  def closed? = %x{ Boolean(self.closed) }
+
+  #: () -> nil
+  def close_read = %x{ self.rbCloseHalf(true) }
+
+  #: () -> nil
+  def close_write = %x{ self.rbCloseHalf(false) }
+
   #: () -> String?
   def gets = %x{
-    self.rbReadable()
-    line, err := rbStdin.ReadString('\\n')
+    line, err := (*self.rbReader()).ReadString('\\n')
     if line == "" && err != nil {
       return nil
     }
@@ -233,47 +282,30 @@ class IO < Object
 
   #: () -> String
   def read = %x{
-    self.rbReadable()
-    b, _ := io.ReadAll(rbStdin)
+    b, _ := io.ReadAll(*self.rbReader())
     return String(b)
   }
 
   #: () -> bool
   def eof? = %x{
-    self.rbReadable()
-    _, err := rbStdin.Peek(1)
+    _, err := (*self.rbReader()).Peek(1)
     return Boolean(err != nil)
   }
 
   #: () -> String?
-  def getc = %x{
-    self.rbReadable()
-    return rbGetc(rbStdin)
-  }
+  def getc = %x{ return rbGetc(*self.rbReader()) }
 
   #: () -> Integer?
-  def getbyte = %x{
-    self.rbReadable()
-    return rbGetbyte(rbStdin)
-  }
+  def getbyte = %x{ return rbGetbyte(*self.rbReader()) }
 
   #: () -> String
-  def readchar = %x{
-    self.rbReadable()
-    return *rbEOF(rbGetc(rbStdin))
-  }
+  def readchar = %x{ return *rbEOF(rbGetc(*self.rbReader())) }
 
   #: () -> Integer
-  def readbyte = %x{
-    self.rbReadable()
-    return *rbEOF(rbGetbyte(rbStdin))
-  }
+  def readbyte = %x{ return *rbEOF(rbGetbyte(*self.rbReader())) }
 
   #: (String) -> nil
-  def ungetc(s) = %x{
-    self.rbReadable()
-    rbUngetc(&rbStdin, string(s))
-  }
+  def ungetc(s) = %x{ rbUngetc(self.rbReader(), string(s)) }
 
   #: () { (String) -> void } -> void
   def each_char
@@ -290,7 +322,17 @@ class IO < Object
   end
 
   #: () -> String
-  def inspect = %x{ String([]string{"#<IO:<STDIN>>", "#<IO:<STDOUT>>", "#<IO:<STDERR>>"}[self.fd]) }
+  def inspect = %x{
+    switch {
+    case self.own && self.closed:
+      return "#<IO:(closed)>"
+    case self.own:
+      return String("#<IO:fd " + strconv.Itoa(self.fd) + ">")
+    case self.closed:
+      return String([]string{"#<IO:<STDIN> (closed)>", "#<IO:<STDOUT> (closed)>", "#<IO:<STDERR> (closed)>"}[self.fd])
+    }
+    return String([]string{"#<IO:<STDIN>>", "#<IO:<STDOUT>>", "#<IO:<STDERR>>"}[self.fd])
+  }
 end
 
 STDIN = IO.__new(0) #: IO

@@ -3511,6 +3511,21 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 			code = f.coerce(args[0], a, TAny{})
 		}
 		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
+		if len(args) == 1 && block == nil {
+			str := f.cls("String")
+			format := f.coerce(args[0], f.genExpr(args[0], str), str)
+			code := recv.code
+			if !isSimpleGo(code) {
+				code = f.newTmp()
+				f.emit("%s := %s", code, recv.code)
+			}
+			fields := make([]string, len(tt.Elems))
+			for i := range tt.Elems {
+				fields[i] = fmt.Sprintf("%s.F%d", code, i)
+			}
+			return expr{code: "String(rbPack([]any{" + strings.Join(fields, ", ") + "}, string(" + format + ")))", typ: str}
+		}
 	}
 	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
