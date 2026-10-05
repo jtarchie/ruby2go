@@ -3702,7 +3702,8 @@ resolve; anything not listed is still open.
       Date without a fraction. A dynamic (`untyped`) `-` between two
       dates, like Time's, does not reach decision 12's overloads and
       raises TypeError.
-    (`testdata/test/date_test.rb`, `testdata/errors/dates.txtar`.)
+    ([example 94](../examples/94_datetime/main.rb),
+    `testdata/test/date_test.rb`, `testdata/errors/dates.txtar`.)
 
 134. open-uri (#46) is a prelude wrapper over `Net::HTTP` (decision 27)
     plus one compile-time step. MRI's `URI.open(name, *rest)` takes one
@@ -3772,9 +3773,8 @@ resolve; anything not listed is still open.
       `Proc`, as it does where a `Proc` is. `URI.parse` keeps an empty
       authority (`file:///x` has host `""` and prints `file:///x`, as
       MRI's), which the forbidden-redirect message showed.
-    (`testdata/test/net_test.rb`, `testdata/errors/open_uri.txtar`;
-    [example 24](../examples/24_net_http/main.rb) already covers
-    `Net::HTTP` end to end, so no new example.)
+    ([example 95](../examples/95_open_uri/main.rb),
+    `testdata/test/net_test.rb`, `testdata/errors/open_uri.txtar`.)
 
 135. `socket` (#42) is MRI's class tree over Go's `net`: `BasicSocket`
     (with `IPSocket` < it, `TCPSocket`/`UDPSocket` < `IPSocket`,
@@ -3993,7 +3993,8 @@ resolve; anything not listed is still open.
     - `EncodingError` (decision 128) gains `Encoding::CompatibilityError`
       (never raised), `ConverterNotFoundError`, `UndefinedConversionError`
       and `InvalidByteSequenceError`.
-    (`testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
+    ([example 96](../examples/96_encoding/main.rb),
+    `testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
     `testdata/run/string_output.rb`.)
 137. `Marshal` (#47) round-trips the closed world's object graphs in
     rb2go's own bytes, never MRI's (`prelude/marshal.rb`,
@@ -4093,7 +4094,8 @@ resolve; anything not listed is still open.
       class over this: a `Hash[untyped, untyped]` root marshalled to its
       file inside `transaction`, `abort`/`commit` by `catch`/`throw`, and
       `read_only` checks. It is left for its own issue.
-    (`testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
+    ([example 97](../examples/97_marshal/main.rb),
+    `testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
 138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
     and has a blockless form, `File.atime`, and `Array#pack` with the rest
     of `String#unpack`.
@@ -4405,7 +4407,8 @@ resolve; anything not listed is still open.
     `source_location`, keyword arguments or a block to `call`.
     `x.class` on a plain Object (main, `Object.new`) held untyped now
     answers Object (it raised NoMethodError).
-    ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
+    ([example 98](../examples/98_method_objects/main.rb),
+    [testdata/test/method_test.rb](../testdata/test/method_test.rb),
     `testdata/errors/objects.txtar`.)
 
 142. `Numeric` (#39) is a prelude module that `Integer`, `Float`,
@@ -4499,7 +4502,8 @@ resolve; anything not listed is still open.
       with a Complex is always a Complex pair (MRI: a Rational pair
       when the imaginary part is an exact zero): either answer's class
       would depend on a value.
-    (`testdata/test/number_test.rb` `NumberNumericTest`,
+    ([example 99](../examples/99_numeric/main.rb),
+    `testdata/test/number_test.rb` `NumberNumericTest`,
     `testdata/errors/numbers.txtar` `numeric_*`.)
 
 143. Pattern matching (#38): `case/in` (guards, `else`), `v => pat` and

@@ -109,6 +109,7 @@ func rbMarshalUndumpable(v any) any {
 
 // rbMDumpCore writes the core classes whose layout is Go's; each case keeps its type only weakly.
 func rbMDumpCore(w *rbMW, v any) bool {
+	// each case returns: the pruner can drop every one, and a `return true` after the switch would then be unreachable (go vet)
 	switch x := v.(type) {
 	case nil:
 		return false
@@ -122,15 +123,18 @@ func rbMDumpCore(w *rbMW, v any) bool {
 			w.str(name)
 			w.buf = binary.AppendVarint(w.buf, int64(off))
 		}
+		return true
 	case *Rational:
 		if w.start(x == nil, x, "Rational") {
 			w.str(x.v.RatString())
 		}
+		return true
 	case *Complex:
 		if w.start(x == nil, x, "Complex") {
 			w.value(x.re)
 			w.value(x.im)
 		}
+		return true
 	case *BigDecimal:
 		if w.start(x == nil, x, "BigDecimal") {
 			mant := ""
@@ -142,11 +146,13 @@ func rbMDumpCore(w *rbMW, v any) bool {
 			w.value(Boolean(x.neg))
 			w.buf = binary.AppendVarint(w.buf, int64(x.kind))
 		}
+		return true
 	case *Regexp:
 		if w.start(x == nil, x, "Regexp") {
 			w.str(x.src)
 			w.str(x.opts)
 		}
+		return true
 	case *Random:
 		if w.start(x == nil, x, "Random") {
 			x.mt.mu.Lock()
@@ -157,29 +163,33 @@ func rbMDumpCore(w *rbMW, v any) bool {
 			}
 			x.mt.mu.Unlock()
 		}
+		return true
 	default:
 		return false
 	}
-	return true
 }
 
 // rbMDumpAnyForm: an instantiation only Go code builds (JSON.parse's) has no case, so it loads back untyped; v stays the identity.
 func rbMDumpAnyForm(w *rbMW, v any) bool {
+	// each case returns: the pruner can drop every one, and a `return true` after the switch would then be unreachable (go vet)
 	switch x := v.(type) {
 	case nil:
 		return false
 	case Array_Any:
 		rbMDumpArray(w, "Array[any]", v, x._ToAny())
+		return true
 	case Hash_Any:
 		rbMDumpHash(w, "Hash[any, any]", v, x._ToAny())
+		return true
 	case Set_Any:
 		rbMDumpSet(w, "Set[any]", v, x._ToAny())
+		return true
 	case Range_Any:
 		rbMDumpRange(w, "Range[any]", v, x._ToAny())
+		return true
 	default:
 		return false
 	}
-	return true
 }
 
 // rbMDumpObj writes a struct class's assigned ivars by name (decision 123's _Ivars).

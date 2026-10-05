@@ -2746,7 +2746,9 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 			return
 		}
 		v := f.blockParam(name, e.typ)
-		f.emit("%s := %s", v.goName, e.code)
+		if v.goName != "_" { // `_ := x` declares nothing: Go rejects it
+			f.emit("%s := %s", v.goName, e.code)
+		}
 		f.noteUnused(v)
 	}
 	arrayOf := func(parts []expr) expr {
@@ -2859,7 +2861,9 @@ func (f *fctx) bindArraySplat(names []string, elem Type) ([]string, func()) {
 		for i, nm := range names {
 			e := flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: elem}})
 			v := f.blockParam(nm, e.typ)
-			f.emit("%s := %s", v.goName, e.code)
+			if v.goName != "_" {
+				f.emit("%s := %s", v.goName, e.code)
+			}
 			f.noteUnused(v)
 		}
 	}

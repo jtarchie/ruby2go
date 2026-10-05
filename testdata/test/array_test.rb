@@ -992,6 +992,11 @@ module ArrayTests
       pairs.each { |k, s| got << k << s }
       assert_equal [1, "a"], got
       assert_equal [1], (pairs.map { |k, s| k })
+      # `_` in a param splatting an Array was emitted as `_ :=`
+      rows = [["b", "2"], ["a", "1"]] #: Array[Array[String]]
+      assert_equal ["2", "1"], (rows.map { |_, v| v })
+      assert_equal ["a", "1"], (rows.min_by { |_, v| v.to_i })
+      assert_equal ["b", "a"], (rows.map { |k, _, *| k })
     end
 
     # compact drops nils from Array[Integer?]

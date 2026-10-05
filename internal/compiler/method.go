@@ -281,7 +281,7 @@ func (f *fctx) boundInfo(n parser.Node, e *entry, r expr, name string) string {
 	if cls == nil || !cls.isStruct() || cls.universal || cls.metaOf != nil || len(cls.TypeParams) > 0 {
 		return base
 	}
-	var cases []string
+	var cases, first []string
 	var walk func(k *Class)
 	walk = func(k *Class) {
 		for _, sub := range k.Subclasses {
@@ -289,14 +289,21 @@ func (f *fctx) boundInfo(n parser.Node, e *entry, r expr, name string) string {
 				continue
 			}
 			if se := sub.lookup(name); se != nil && se.M != e.M {
-				cases = append(cases, fmt.Sprintf("\tcase *%s:\n\t\treturn %s\n", sub.Name, f.methodInfo(n, se)))
+				info := f.methodInfo(n, se)
+				cases = append(cases, fmt.Sprintf("\tcase *%s:\n\t\treturn %s\n", sub.Name, info))
+				if first == nil {
+					first = []string{sub.Name, info}
+				}
 			}
 			walk(sub)
 		}
 	}
 	walk(cls)
-	if len(cases) == 0 {
+	switch len(cases) {
+	case 0:
 		return base
+	case 1: // a one-case type switch fails gocritic's singleCaseSwitch
+		return "func() *rbMethodInfo {\n\tif _, ok := any(" + r.code + ").(*" + first[0] + "); ok {\n\t\treturn " + first[1] + "\n\t}\n\treturn " + base + "\n}()"
 	}
 	return "func() *rbMethodInfo {\n\tswitch any(" + r.code + ").(type) {\n" + strings.Join(cases, "") + "\t}\n\treturn " + base + "\n}()"
 }
