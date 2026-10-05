@@ -150,7 +150,17 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	return expr{}, false
 }
 
+// genExpr notes each value's type for Marshal: an inferred local's container type is never rendered (decision 137).
 func (f *fctx) genExpr(n parser.Node, expected Type) expr {
+	e := f.genExpr0(n, expected)
+	f.c.noteMarshal(e.typ)
+	if fn, ok := e.typ.(TFunc); ok && fn.Proc {
+		f.c.goType(fn) // a proc literal's Go type is written out inline, so rbIsProc (Marshal's "Proc" TypeError) would miss it
+	}
+	return e
+}
+
+func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 	if e, ok := f.genLiteral(n); ok {
 		return e
 	}

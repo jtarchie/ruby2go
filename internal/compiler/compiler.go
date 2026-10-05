@@ -81,7 +81,15 @@ type Compiler struct {
 	specUses    []specUse       // Minitest::Spec DSL calls, checked after link
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
-	boxes map[string]bool
+	boxes          map[string]bool
+	marshalSeen    map[string]Type // concrete container and tuple types of values, by Ruby type: Marshal's cases (decision 137)
+	marshalGo      map[string]bool // their Go types with a case emitted
+	marshalSkipped []string        // types left out of Marshal's cases as unreached: reaching one later recompiles eagerly
+	marshalCode    string          // rbMDumpGen/rbMLoadGen, rendered when the tables go out
+	marshalErr     *compileError   // a bad marshal_dump/marshal_load, raised once Marshal is reached
+	marshalAt      int             // len(marshalSeen) then
+	marshalOut     bool            // rbMDumpGen/rbMLoadGen emitted
+	marshalLate    bool            // rbMDumpObjGen/rbMLoadObjGen emitted
 }
 
 type verbatim struct {
@@ -176,7 +184,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	tick("parser")
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}}
 	c.loadPath = opts.loadPath
 	c.loadPreludeGo()
