@@ -1003,6 +1003,36 @@ class A
   # @rbs @x: Array[Integer]
   def_delegator :@x, :nope
 end
+-- single_delegate_without_extend.rb --
+# error: main.rb:4: def_single_delegator needs `extend SingleForwardable` first
+module M
+  extend Forwardable
+  def_single_delegator :$stdout, :puts
+end
+-- single_delegate_untyped_ivar.rb --
+# error: main.rb:4: def_delegators: the type of @x must be declared to delegate to it (`# @rbs self.@x: T`
+module M
+  extend SingleForwardable
+  def_delegators :@x, :size
+
+  #: () -> void
+  def self.setup
+    @x = []
+  end
+end
+-- single_delegate_global.rb --
+# error: main.rb:4: def_delegator: only $stdin, $stdout and $stderr can be delegated to
+module M
+  extend SingleForwardable
+  def_delegator :$PROGRAM_NAME, :size
+end
+-- single_delegate_lexical_const.rb --
+# error: main.rb:4: def_delegator: uninitialized constant LIMIT
+module M
+  extend SingleForwardable
+  def_delegator :LIMIT, :succ
+  LIMIT = 1
+end
 -- optparse_coercion.rb --
 # error: main.rb:4: OptionParser#on: coercion to Symbol is not supported (Integer, Float, Array or String)
 # rbs_inline: enabled

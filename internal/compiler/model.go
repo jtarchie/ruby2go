@@ -42,6 +42,8 @@ type Class struct {
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
 	extends       []Include         // `extend M`: included into the class object
 	delegations   []delegation
+	singleFwd     bool // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
+	fwdSingle     bool // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
 	meta          *Class   // the class object's class (holds `def self.` methods)
 	metaOf        *Class   // for a metaclass: the class it describes
 	constNames    []string // constants (classes included) declared directly inside, in order
@@ -900,6 +902,12 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 			cls.extends = append(cls.extends, cls.Includes[last])
 			cls.Includes = cls.Includes[:last]
 		}
+		for _, a := range args { // MRI's def_delegator is the most recently extended module's (decision 132)
+			if r, ok := a.(*parser.ConstantReadNode); ok && (r.Name == "Forwardable" || r.Name == "SingleForwardable") {
+				cls.fwdSingle = r.Name == "SingleForwardable"
+				cls.singleFwd = cls.singleFwd || cls.fwdSingle
+			}
+		}
 		c.noteHooks(f, "extended", cls, n, args, scope)
 	case "private", "public", "protected":
 		c.collectVisibilityCall(f, cls, n, args, vis, scope)
@@ -913,8 +921,15 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 			c.errorf(f, n, "alias_method takes a new and an old name")
 		}
 		c.addAlias(f, cls, n, args[0], args[1])
-	case "def_delegators", "def_delegator", "delegate", "instance_delegate":
-		c.collectDelegation(f, cls, n, args, scope)
+	case "def_delegators", "def_delegator", "delegate":
+		c.collectDelegation(f, cls, n, args, scope, cls.fwdSingle)
+	case "def_instance_delegators", "def_instance_delegator", "instance_delegate":
+		c.collectDelegation(f, cls, n, args, scope, false)
+	case "def_single_delegators", "def_single_delegator", "single_delegate":
+		if !cls.singleFwd {
+			c.errorf(f, n, "%s needs `extend SingleForwardable` first", n.Name)
+		}
+		c.collectDelegation(f, cls, n, args, scope, true)
 	default:
 		if specForms[n.Name] && !f.prelude {
 			c.collectSpecForm(ctx, f, cls, n, scope)
@@ -1261,13 +1276,7 @@ func (c *Compiler) link(ctx context.Context) {
 			c.errorf(cls.File, nil, "%s:%d: generic struct classes are not supported", cls.File.Name, cls.Line)
 		}
 	}
-	// ivar declarations
-	for _, cls := range c.classList {
-		for _, d := range cls.ivarDecls {
-			t := c.resolveType(d.rbs, typeScope{class: cls, lex: d.scope, file: cls.File, line: d.line})
-			c.declareIvar(cls, d.name, t, cls.File, d.line)
-		}
-	}
+	c.declareIvarAnnotations()
 	c.expandDelegations(ctx)
 	// method signatures
 	for _, cls := range c.classList {
@@ -1448,6 +1457,21 @@ func (c *Class) allAncestors() []*Class {
 		out = append(append(out, c.Super), c.Super.allAncestors()...)
 	}
 	return out
+}
+
+// declareIvarAnnotations declares each `# @rbs @x: T`, and each
+// `# @rbs self.@x: T` on the class object.
+func (c *Compiler) declareIvarAnnotations() {
+	for _, cls := range c.classList {
+		for _, d := range cls.ivarDecls {
+			t := c.resolveType(d.rbs, typeScope{class: cls, lex: d.scope, file: cls.File, line: d.line})
+			owner, name := cls, d.name
+			if iv, ok := strings.CutPrefix(name, "self."); ok {
+				owner, name = cls.meta, iv
+			}
+			c.declareIvar(owner, name, t, cls.File, d.line)
+		}
+	}
 }
 
 // declareIvar records an ivar on the topmost class of the chain that

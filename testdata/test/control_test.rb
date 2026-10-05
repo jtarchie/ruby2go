@@ -4823,6 +4823,32 @@ module ControlTests
       assert_equal [[nil], ["yield"]], [control_def_yield_in_block, control_def_yield_in_block {}]
     end
 
+    #: (Integer) ?{ (Integer) -> Integer } -> Integer
+    def control_unchecked(x) = yield(x + 1)
+
+    #: (Array[Integer]) ?{ (Integer, Integer) -> void } -> void
+    def control_unchecked_pairs(xs)
+      xs.each { |a| yield a, a * 2 }
+    end
+
+    #: (bool) ?{ (Integer) -> Integer } -> Integer
+    def control_unchecked_and(c) = c && yield(1) > 0 ? 2 : 3
+
+    # MRI evaluates yield's arguments, then raises LocalJumpError (decision 132)
+    def test_yield_without_block
+      assert_equal 30, control_unchecked(2) { |v| v * 10 }
+      seen = [] #: Array[Integer]
+      e = assert_raises(LocalJumpError) { control_unchecked(seen.push(1).size) }
+      assert_equal ["no block given (yield)", [1]], [e.message, seen]
+      out = [] #: Array[Array[Integer]]
+      control_unchecked_pairs([1, 2]) { |a, b| out << [a, b] }
+      assert_equal [[1, 2], [2, 4]], out
+      assert_raises(LocalJumpError) { control_unchecked_pairs([1]) }
+      control_unchecked_pairs([])
+      assert_equal [3, 2], [control_unchecked_and(false), control_unchecked_and(true) { |v| v }]
+      assert_equal StandardError, LocalJumpError.superclass
+    end
+
     def test_optional_block
       assert_equal [nil, 20], [control_safe(1), control_safe(2) { |v| v * 10 }]
       assert_equal [3, 4], [control_guarded(3), control_guarded(3) { |v| v + 1 }]

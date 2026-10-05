@@ -40,7 +40,11 @@ func (t *Thread) notSelf() {
 // rbThreadRun starts run on a goroutine and returns its Thread handle: a panic re-raises on join (or, for SystemExit, exits like MRI's main thread would). The thread belongs to the ractor that started it, so Ractor.receive inside it reads that ractor's port.
 func rbThreadRun(run func() any) *Thread {
 	t := &Thread{done: make(chan struct{}), loc: rbCallerLoc()}
-	ractor, inRactor := rbRactorOf.Load(rbGoID())
+	parent := rbGoID()
+	if p, ok := rbThreadOf.Load(parent); ok { // a new thread joins its creator's ThreadGroup, as in MRI (decision 132)
+		t.group.Store(p.(*Thread).group.Load())
+	}
+	ractor, inRactor := rbRactorOf.Load(parent)
 	rbLiveThreads.Store(t, rbThreadSeq.Add(1))
 	go func() {
 		id := rbGoID()
@@ -118,6 +122,42 @@ func rbThreadList() *Array[*Thread] {
 	out := &Array[*Thread]{rbMainThread}
 	for _, e := range live {
 		*out = append(*out, e.t)
+	}
+	return out
+}
+
+// rbThreadGroupDefault is ThreadGroup::Default; a Thread whose group is nil is in it.
+var rbThreadGroupDefault = &ThreadGroup{}
+
+// threadGroup is Thread#group: a thread keeps its group after it ends, as in MRI 4.0.
+func (t *Thread) threadGroup() *ThreadGroup {
+	if g := t.group.Load(); g != nil {
+		return g
+	}
+	return rbThreadGroupDefault
+}
+
+// rbThreadGroupAdd is ThreadGroup#add with MRI's ThreadError messages; freezing a group is not modeled.
+func rbThreadGroupAdd(g *ThreadGroup, t *Thread) {
+	if g.enclosed.Load() {
+		panic(NewThreadError(Ref(String("can't move to the enclosed thread group"))))
+	}
+	if t.threadGroup().enclosed.Load() {
+		panic(NewThreadError(Ref(String("can't move from the enclosed thread group"))))
+	}
+	if g == rbThreadGroupDefault {
+		g = nil
+	}
+	t.group.Store(g)
+}
+
+// rbThreadGroupList is ThreadGroup#list: Thread.list's live threads that are in g.
+func rbThreadGroupList(g *ThreadGroup) *Array[*Thread] {
+	out := &Array[*Thread]{}
+	for _, t := range *rbThreadList() {
+		if t.threadGroup() == g {
+			*out = append(*out, t)
+		}
 	}
 	return out
 }

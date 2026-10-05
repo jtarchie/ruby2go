@@ -524,6 +524,8 @@ module StdlibTests
       assert_raises(EOFError) { eof_io.readbyte }
       eof_io.rewind
       assert_equal [104, 195], [eof_io.readbyte, eof_io.readbyte]
+      chomp_io = StringIO.new("a\r\nb")
+      assert_equal ["a", "b"], [chomp_io.readline(chomp: true), chomp_io.readline(chomp: true)]
     end
 
     def test_seek
@@ -1288,6 +1290,8 @@ module StdlibTests
           f.ungetc("X")
           assert_equal ["X", 101], [f.readchar, f.readbyte]
           f.rewind
+          assert_equal "hé", f.readline(chomp: true)
+          f.rewind
           assert_equal [0, "hé\n"], [f.pos, f.gets]
           f.seek(4)
           chars = [] #: Array[String]
@@ -1405,6 +1409,47 @@ module StdlibTests
       t1.join
       t2.join
       assert_equal [false, false], [Thread.list.include?(t1), Thread.list.include?(t2)]
+    end
+  end
+
+  # ThreadGroup over the Thread registry (decision 132)
+  class ThreadGroupTest < Minitest::Test
+    def test_add_and_list
+      g = ThreadGroup.new
+      q = Queue.new #: Queue[Integer]
+      ts = 3.times.map { |i| Thread.new { q.pop.to_i + i } }
+      assert_equal [true, true, true], ts.map { |t| g.add(t).equal?(g) }
+      assert_equal [true, true, true], [g.list == ts, ts.fetch(0).group.equal?(g), Thread.main.group.equal?(ThreadGroup::Default)]
+      assert_equal [true, false], [ThreadGroup::Default.list.include?(Thread.main), ThreadGroup::Default.list.include?(ts.fetch(0))]
+      3.times { q << 10 }
+      assert_equal [10, 11, 12], ts.map(&:value)
+      assert_equal [[], true], [g.list, ts.fetch(0).group.equal?(g)]
+    end
+
+    def test_new_thread_joins_creators_group
+      g = ThreadGroup.new
+      q = Queue.new #: Queue[Integer]
+      t = Thread.new { q.pop; Thread.new { 1 }.group.equal?(g) }
+      g.add(t)
+      q << 1
+      assert_equal true, t.value
+      assert_equal true, Thread.new { 1 }.group.equal?(ThreadGroup::Default)
+    end
+
+    def test_enclose
+      g = ThreadGroup.new
+      q = Queue.new #: Queue[Integer]
+      inside = Thread.new { q.pop }
+      g.add(inside)
+      assert_equal [false, true, true, false], [g.enclosed?, g.enclose.equal?(g), g.enclosed?, ThreadGroup::Default.enclosed?]
+      outside = Thread.new { q.pop }
+      e = assert_raises(ThreadError) { g.add(outside) }
+      assert_equal "can't move to the enclosed thread group", e.message
+      e = assert_raises(ThreadError) { ThreadGroup::Default.add(inside) }
+      assert_equal "can't move from the enclosed thread group", e.message
+      q << 1 << 1
+      assert_equal [1, 1], [inside.value, outside.value]
+      assert_equal [[], "#<ThreadGroup:"], [ThreadGroup.new.list, ThreadGroup.new.inspect[0, 14]]
     end
   end
 

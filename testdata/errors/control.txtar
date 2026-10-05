@@ -288,11 +288,6 @@ end
 -- redo_in_closure_block.rb --
 # error: main.rb:2: redo is only supported directly in a while, until, for or iterator loop body
 p [1].map { |x| redo if x > 5; x }
--- optional_block_yield_unchecked.rb --
-# error: main.rb:3: the block is optional (?{ ... }) and may be missing here
-#: (Integer) ?{ (Integer) -> Integer } -> Integer
-def y(x) = yield(x)
-p y(1)
 -- optional_block_call_unchecked.rb --
 # error: main.rb:3: the block is optional (?{ ... }) and may be missing here
 #: (Integer) ?{ (Integer) -> Integer } -> Integer

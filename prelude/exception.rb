@@ -194,6 +194,7 @@ class SyntaxError < ScriptError
   end
 end
 
+# Raised by a yield whose optional block (?{ }) is missing (decision 132).
 class LocalJumpError < StandardError; end
 
 # Never raised: Go's stack overflow is fatal and recover cannot catch it (decision 128).

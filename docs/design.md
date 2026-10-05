@@ -2592,8 +2592,9 @@ resolve; anything not listed is still open.
     `initialize` (found by syntax), or a method with a declared return.
     The generated source is padded so its errors and `//line`s point at
     the `def_delegators` line. Method-set caches are cleared after the
-    defs are added. Not done: `def_delegator` to a constant or an
-    expression string (`"@a.b"`), `SingleForwardable`.
+    defs are added. Not done: an expression string accessor
+    (`"@a.b"`). *(Constant and global accessors and SingleForwardable:
+    decision 132.)*
     ([example 74](../examples/74_forwardable/main.rb)).
 100. `Kernel#trap` / `Signal.trap` and `Process.kill` (#2). The signal
     goroutine of decision 60 now consults a table: a trapped signal runs
@@ -3451,9 +3452,9 @@ resolve; anything not listed is still open.
     (`testdata/run/object_top_include.rb`.)
 126. An optional block (`?{ ... }`) in a def is a `Proc?` local (the
     `&blk` name, or a hidden one for `yield`), so the type system guards
-    it rather than a nil func crashing at run time: `yield` and `blk.call`
-    where the block may be missing are compile errors (MRI's
-    LocalJumpError, caught early); `block_given?`, `if blk` and
+    it rather than a nil func crashing at run time: `blk.call` where the
+    block may be missing is a compile error (`yield` there was one too,
+    until decision 132 made it MRI's run-time LocalJumpError); `block_given?`, `if blk` and
     `return x unless block_given?` narrow it to present, as any optional
     value narrows; `blk&.call` answers nil without one. `block_given?` is
     a constant true in a def with a required block and false in one
@@ -3490,8 +3491,8 @@ resolve; anything not listed is still open.
     call to report a bug), `LoadError` (an unknown `require` is a no-op,
     decision 78; a `require_relative` of a missing file is a compile
     error, decision 130), `SyntaxError` (no `eval`),
-    `SecurityError`, `EncodingError`, and `LocalJumpError` (a `yield`
-    whose block may be missing is a compile error, decision 126).
+    `SecurityError`, `EncodingError`, and `LocalJumpError` (raised since
+    decision 132 by a `yield` whose optional block is missing).
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,
@@ -3574,3 +3575,52 @@ resolve; anything not listed is still open.
     every `.rb` under the example's directory, not just `main.rb`.
     ([example 90](../examples/90_load_path/main.rb),
     `testdata/errors/require.txtar`.)
+132. The rest of #43 and #44.
+    - **`yield` with a missing optional block** raises MRI's
+      `LocalJumpError: no block given (yield)` at run time, amending
+      decision 126 (where it was a compile error) and 128 (where
+      LocalJumpError was never raised). A guard was a stricter rule than
+      Ruby's: code whose logic guarantees the block (`yield` on a path
+      only taken when one was passed) is valid Ruby. The arguments are
+      evaluated first, as MRI does, then a nil check panics, and the call
+      after it sees the block narrowed. `blk.call` on a `Proc?` stays a
+      compile error (MRI's is a NoMethodError on nil, ordinary nil
+      typing), as does `yield` in a method whose signature has no block.
+    - **`IO#readline(chomp: true)`** is written once in `IOReadable`
+      (IO, `$stdin`, File) and in StringIO; `chomp` is `String#chomp`,
+      which removes `\r\n` like MRI's.
+    - **SingleForwardable** is decision 99's synthesis with the defs
+      added to the class object (the metaclass) instead of the class. In
+      a class or module body, `extend SingleForwardable` enables
+      `def_single_delegator(s)`/`single_delegate` (a compile error
+      without it) and makes `def_delegator(s)`/`delegate` define class
+      methods; when both modules are extended, those follow whichever was
+      extended last, since MRI's are the most recently extended module's.
+      `def_instance_delegator(s)`/`instance_delegate` always define
+      instance methods. Accessors, for both modules: an ivar (for a
+      class object's, declared with `# @rbs self.@x: T`, rbs-inline's
+      class-ivar form, now read for any class, or `@x = ... #: T` in a
+      class method), a method (a class method for SingleForwardable),
+      `$stdin`/`$stdout`/`$stderr` (the only globals holding objects,
+      decision 61), or a constant. MRI evaluates the accessor inside
+      Forwardable, so a constant resolves from the top level only
+      (`:"Outer::LIMITS"`, `:Math`); a name only the class body's lexical
+      scope sees is a compile error, where MRI's NameError comes at call
+      time. Accessors and names may be Strings as MRI allows. Also new
+      for both: a target's arity overloads (decision 12's
+      `__first_0` beside `first(n)`) are delegated too, so a delegated
+      `first` takes 0 or 1 arguments. Not done: `obj.extend
+      SingleForwardable` on an object at run time (a closed world defines
+      no methods at run time; `extend` with a receiver is a compile
+      error), `class << self` forms, and expression accessors
+      (`"@a.b"`).
+    - **ThreadGroup** is a mark on each Thread (`atomic.Pointer`, nil
+      for Default) over decision 104's registry: a thread starts in its
+      creator's group, `list` filters Thread.list (live threads, main
+      first, creation order), and a thread keeps its group after it ends,
+      as MRI 4.0's does. `add` raises MRI's `can't move to/from the
+      enclosed thread group`; frozen groups are not modeled.
+    (`testdata/test/control_test.rb` `test_yield_without_block`,
+    `testdata/run/io_eof.rb`, `testdata/test/object_test.rb`
+    `SingleForwardableTest`, `testdata/errors/objects.txtar`,
+    `testdata/test/stdlib_test.rb` `ThreadGroupTest`.)

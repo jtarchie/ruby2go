@@ -3875,6 +3875,78 @@ module ObjectTests
       assert_equal "key not found: 9", assert_raises(KeyError) { d.count_of(9) }.message
     end
   end
+
+  # SingleForwardable (decision 132): the same forms define class methods.
+  module FwdLog
+    extend SingleForwardable
+    def_delegator :$stderr, :puts, :say
+  end
+
+  module FwdRegistry
+    extend SingleForwardable
+
+    # @rbs self.@items: Array[String]
+
+    def_delegators :@items, :size, :first
+    def_single_delegator :@items, :push, :add
+    single_delegate %i[last] => :@items
+    def_delegator :names, :join
+    def_single_delegators :"ObjectTests::FwdRegistry::LIMITS", :fetch, :key?
+    def_delegator "Math", :sqrt
+
+    LIMITS = { "a" => 1 } #: Hash[String, Integer]
+
+    #: () -> void
+    def self.reset
+      @items = []
+    end
+
+    #: () -> Array[String]
+    def self.names = @items.map(&:upcase)
+  end
+
+  class FwdBoth
+    extend Forwardable
+    extend SingleForwardable
+
+    def_delegator :@count, :+, :plus
+    def_instance_delegator :@inner, :size
+
+    #: () -> void
+    def self.setup
+      @count = 10 #: Integer
+    end
+
+    #: () -> void
+    def initialize
+      @inner = [1, 2] #: Array[Integer]
+    end
+  end
+
+  class FwdLater
+    extend SingleForwardable
+    extend Forwardable
+    def_delegators :@v, :size
+
+    #: () -> void
+    def initialize
+      @v = "abc" #: String
+    end
+  end
+
+  class SingleForwardableTest < Minitest::Test
+    def test_single_delegators
+      _, err = capture_io { FwdLog.say "hi" }
+      assert_equal "hi\n", err
+      FwdRegistry.reset
+      FwdRegistry.add("x")
+      FwdRegistry.add("y")
+      assert_equal [2, "x", ["x"], "y", "X-Y"], [FwdRegistry.size, FwdRegistry.first, FwdRegistry.first(1), FwdRegistry.last, FwdRegistry.join("-")]
+      assert_equal [1, 2, true, 4.0], [FwdRegistry.fetch("a"), FwdRegistry.fetch("b", 2), FwdRegistry.key?("a"), FwdRegistry.sqrt(16)]
+      FwdBoth.setup
+      assert_equal [15, 2, 3], [FwdBoth.plus(5), FwdBoth.new.size, FwdLater.new.size]
+    end
+  end
   # Gaps the sealed Type sum types turned up (decision 119): a call on a void
   # method's nil, `.class` on a tuple, `is_a?` on a generic value.
   class SumTypeGapsTest < Minitest::Test

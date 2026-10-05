@@ -146,11 +146,11 @@ class StringIO < Object
     return &b
   }
 
-  #: () -> String
-  def readline
+  #: (?chomp: bool) -> String
+  def readline(chomp: false)
     line = gets
     raise EOFError, "end of file reached" unless line
-    line
+    chomp ? line.chomp : line
   end
 
   #: () -> String
