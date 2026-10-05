@@ -1643,7 +1643,8 @@ resolve; anything not listed is still open.
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](../examples/53_files/main.rb)). *Amended:* `File.symlink?`
     added (`os.Lstat`, `ModeSymlink`), needed to verify decision 64's
-    `FileUtils.ln_s`.
+    `FileUtils.ln_s`. *Amended by 138:* `IO` also wraps pipe and popen
+    ends, so `IO.pipe`/`IO.popen` objects are `IO`s, not `File`s.
 63. `URI.parse`/`URI()` return `URI::Generic`, or `URI::HTTP`/`URI::HTTPS`
     (`HTTPS < HTTP < Generic`, matching MRI's own hierarchy so
     `is_a?(URI::HTTP)` holds for both) on Go's `net/url`. `port` defaults
@@ -3492,8 +3493,9 @@ resolve; anything not listed is still open.
     call to report a bug), `LoadError` (an unknown `require` is a no-op,
     decision 78; a `require_relative` of a missing file is a compile
     error, decision 130), `SyntaxError` (no `eval`),
-    `SecurityError`, `EncodingError`, and `LocalJumpError` (raised since
-    decision 132 by a `yield` whose optional block is missing).
+    `SecurityError`, `EncodingError` (its subclasses are raised since
+    decision 136), and `LocalJumpError` (raised since decision 132 by a
+    `yield` whose optional block is missing).
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,
@@ -3883,6 +3885,110 @@ resolve; anything not listed is still open.
       no tag is added.
     ([example 91](../examples/91_socket/main.rb),
     `testdata/test/socket_test.rb`, `testdata/errors/socket.txtar`.)
+
+136. Encoding without a tag on String (#48). Decision 105 stands:
+    Strings carry no encoding, every String is UTF-8 bytes, and what MRI
+    keeps in the tag rb2go either derives or leaves out.
+    - **Derived `encoding`.** `String#encoding` is `Encoding::UTF_8` when
+      the bytes are valid UTF-8 and `Encoding::ASCII_8BIT` otherwise. So a
+      binary String whose bytes happen to be valid UTF-8 (`"é".b`,
+      `force_encoding("BINARY")`, `File.binread` of a UTF-8 file) reports
+      UTF-8 where MRI says ASCII-8BIT and inspects as text where MRI shows
+      `"\xC3\xA9"`; a UTF-8 literal with bad bytes (`"\xff"`) reports
+      ASCII-8BIT where MRI says UTF-8; and `encode`'s result reports by the
+      same rule, not as the target encoding (`"a".encode("UTF-16LE")` is
+      UTF-8 here). `b` and `force_encoding` return the bytes unchanged
+      (`force_encoding` still checks the name). Anything that would need
+      the tag is one of these documented differences.
+    - **The bytes are UTF-8 everywhere else.** `valid_encoding?`, `scrub`
+      and `encode` without a source encoding read the bytes as UTF-8, the
+      common case of a String MRI tags UTF-8 (a literal, `File.read`,
+      `gets`). Invalid UTF-8 is cut into MRI's maximal invalid subparts
+      (`"\xe3\x81"` is one bad sequence, `"\xff\xfe"` two), not Go's byte at
+      a time, for `scrub`, its block, `encode(invalid: :replace)` and the
+      error bytes.
+    - **Ten encodings.** `Encoding` has UTF-8, ASCII-8BIT, US-ASCII,
+      ISO-8859-1, UTF-16LE/BE, UTF-32LE/BE and the dummies UTF-16 and
+      UTF-32, each with MRI's names, aliases and alias constants (`BINARY`,
+      `ASCII`, `UCS_2BE`, ...), `inspect`, `ascii_compatible?` and
+      `dummy?`; `list`/`name_list` hold only these, in MRI's order.
+      `find` is case-insensitive; `find("internal")` with no
+      default_internal raises (MRI returns nil, and an `Encoding?` result
+      would make every `find` optional). `default_external=`/
+      `default_internal=` are stored: `encode` with no target encodes to
+      default_internal, as MRI's does, and IO never converts to either.
+      `compatible?` is MRI's `rb_enc_compatible` over derived encodings.
+    - **Compile-time names.** A string literal naming an encoding MRI has
+      and rb2go lacks (`"Shift_JIS"`; the compiler holds MRI 4.0's
+      `Encoding.name_list`) in `encode`, `force_encoding`, `Integer#chr`,
+      `set_encoding`, `Encoding.find`, `default_external=`/
+      `default_internal=` or a `File.open`/`File.new`/`CSV.open` mode is a
+      compile error naming the ten; a name MRI lacks too stays MRI's run-time
+      error. A non-literal name rb2go lacks fails at run time where MRI
+      would succeed: `ArgumentError: unknown encoding name` from `find`,
+      `ConverterNotFoundError` from `encode`.
+    - **`encode(to, from, invalid:, undef:, replace:, xml:,
+      universal_newline:, crlf_newline:, cr_newline:)`** converts through
+      UTF-8 as MRI's converter path does, so its errors are MRI's: `U+00E9
+      from UTF-8 to US-ASCII` for one step, `U+20AC to ISO-8859-1 in
+      conversion from UTF-16BE to UTF-8 to ISO-8859-1` for two, `"\xFF" on
+      UTF-8`, `incomplete "\xE3\x81" on UTF-8`, `"\xE3\x81" followed by "b"
+      on UTF-8`, with the exceptions' `source_encoding(_name)`,
+      `destination_encoding(_name)`, `error_char`, `error_bytes`,
+      `readagain_bytes` and `incomplete_input?`. UTF-16/32 are decoded by
+      MRI's byte tries: the first byte that cannot continue a character
+      ends it, a fault inside the first unit takes the whole unit (or what
+      is left), a later one keeps whole units and reads the rest again. A
+      dummy UTF-16/UTF-32 source needs a BOM, unit by unit until one comes
+      (a missing one is invalid, and replaceable); a dummy target is
+      big-endian with a BOM unless empty. The replacement defaults to
+      U+FFFD for a Unicode target and `?` otherwise; `xml:` writes an
+      undefined character as `&#xE9;`. The same encoding on both sides
+      copies the bytes (applying only the decorators), except that
+      `invalid: :replace` scrubs. Not done: `fallback:`,
+      `Encoding::Converter`, and MRI's handling of `universal_newline:`
+      with a non-UTF-8 source, which ignores the source encoding.
+    - **No in-place forms.** `encode!`, `scrub!` and `unicode_normalize!`
+      stay undefined (Strings are immutable); every String bang method
+      whose plain form exists now says so in its compile error.
+    - **`unicode_normalize`/`unicode_normalized?`** (`:nfc`, `:nfd`,
+      `:nfkc`, `:nfkd`) use tables generated at development time:
+      `scripts/gen-unicode-normalize` dumps MRI's own
+      `unicode_normalize/tables.rb` (so the Unicode version is MRI's, 17.0.0
+      for Ruby 4.0) into `prelude/go/unicode_normalize_tables.go`, 88 KB of
+      string constants parsed once on first use and pruned from programs
+      that never normalize. The algorithm is UAX #15's (full decomposition,
+      canonical ordering, composition, Hangul by arithmetic); it matched MRI
+      on 216k normalizations of every code point below U+3400 and a sample
+      above, alone and with combining marks. Invalid UTF-8 raises
+      `ArgumentError: invalid byte sequence in UTF-8`; the form is a Symbol.
+    - **`Integer#chr(encoding)`** with MRI's `RangeError`s; `Array#pack`
+      gains `C`, `c` and `U` (*superseded by decision 138*: every directive
+      but `P`/`p`, through the same `rbPack`/`rbPackU`).
+    - **IO.** A mode's `b` is binmode (external ASCII-8BIT); `:ext[:int]`,
+      with `BOM|`, sets the encodings. As in MRI, reads convert only when an
+      internal encoding is given (`"r:ISO-8859-1"` hands back the file's
+      bytes; `"r:ISO-8859-1:UTF-8"` converts), writes convert to any
+      external encoding but UTF-8 and ASCII-8BIT (a dummy one writes one
+      BOM), reading an ASCII-incompatible encoding without `b` or an
+      internal one is `ArgumentError: ASCII incompatible encoding needs
+      binmode`, and an unknown name warns `Unsupported encoding X ignored`.
+      `set_encoding`, `external_encoding`, `internal_encoding`, `binmode`
+      and `binmode?` work on File, the std streams and (decision 138) pipe
+      and popen ends, whose reads convert as a File's; `$stdout.set_encoding`
+      converts what `puts`/`print`/`write` send, and `$stdin` is never
+      converted. The transcoder is linked only where needed: a File-using
+      program carried ~60 more declarations (18%) for it, so `File.new`
+      calls `rbFileEncHook`, which the compiler sets (`rbFileEncModes()`)
+      before a `File.open`/`File.new`/`CSV.open` whose mode is not a literal
+      without `:`; IO's conversions are func fields set by `set_encoding`. A
+      mode with encodings that reaches `File.new` some other way (a call on
+      a Class-typed receiver) raises NotImplementedError.
+    - `EncodingError` (decision 128) gains `Encoding::CompatibilityError`
+      (never raised), `ConverterNotFoundError`, `UndefinedConversionError`
+      and `InvalidByteSequenceError`.
+    (`testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
+    `testdata/run/string_output.rb`.)
 137. `Marshal` (#47) round-trips the closed world's object graphs in
     rb2go's own bytes, never MRI's (`prelude/marshal.rb`,
     `prelude/go/marshal.go`, `internal/compiler/marshal.go`).
@@ -3950,7 +4056,7 @@ resolve; anything not listed is still open.
       C needs to have method 'marshal_load'`). `_dump`/`self._load` are
       not supported.
     - **Errors.** MRI's messages: `no _dump_data is defined for class
-      Proc` (likewise `Thread`, `Thread::Mutex`, `StringIO`, and a Go
+      Proc` (likewise `Method`, decision 141, `Thread`, `Thread::Mutex`, `StringIO`, and a Go
       value behind a prelude ivar as `Object`), `can't
       dump IO`/`File`/`Thread::Queue`; `marshal data too short`
       (`ArgumentError`), `exceed depth limit` for `dump(obj, limit)`,
@@ -3964,7 +4070,7 @@ resolve; anything not listed is still open.
       MRI's `Thread::`; the messages add it.
     - **IO forms.** `dump(obj, io)` calls `io.write` and answers `io`;
       `dump(obj, io, limit)` too. `load(io)` reads exactly one dump from a
-      `File`, `$stdin` or anything with a prelude `read(n)` (`StringIO`,
+      `File`, an `IO` (`$stdin`, a pipe end, decision 138) or anything with a prelude `read(n)` (`StringIO`,
       sockets: an interface assertion on `__read_1`'s Go method, since
       dynamic dispatch does not reach decision 12's overloads), reading
       the body through a `LimitReader` so a corrupt length allocates
@@ -3982,3 +4088,129 @@ resolve; anything not listed is still open.
       file inside `transaction`, `abort`/`commit` by `catch`/`throw`, and
       `read_only` checks. It is left for its own issue.
     (`testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
+138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
+    and has a blockless form, `File.atime`, and `Array#pack` with the rest
+    of `String#unpack`.
+    - **Pipes are IO.** `IO` stays one `@go_type` (decision 62), now with
+      an `own` flag: off, it is a standard stream (fd 0-2) as before; on,
+      it holds a read end and/or a write end (`*os.File` plus a `bufio`
+      reader/writer) and popen's `*exec.Cmd`. `IO.pipe` answers `[IO, IO]`
+      and `IO.popen` yields or returns an `IO`, so `.class` is `IO` and
+      `inspect` is MRI's `#<IO:fd N>` / `#<IO:(closed)>`. The number is
+      the real descriptor (read through `SyscallConn`, since `Fd()` would
+      switch the file to blocking mode), so it differs from MRI's run;
+      tests match its shape. A subclass was not an option (a `@go_type`
+      class can't be subclassed, which is also why sockets in decision
+      135 sit beside `IO`); one struct with a flag keeps `STDOUT`, a pipe
+      and a popen end the same static type, so a method taking `IO` takes
+      all three. Read methods share `rbReader` (STDIN's reader or the
+      pipe's, by pointer so `ungetc` can replace it). The pipe writer and
+      every popen IO are `sync`, as MRI's; a write after the reader is
+      gone is `Errno::EPIPE` (Go ignores `SIGPIPE` off stdout).
+    - **popen.** Modes `r`, `w`, `r+`, `w+` (a `b`/`t` is ignored; anything
+      else is `ArgumentError: invalid access mode`); a pipe goes on the
+      child's stdout for reading and/or stdin for writing, and the other
+      streams stay the program's (stdout is flushed before the spawn).
+      `close` closes the pipes and then waits for the child, setting `$?`;
+      the block form is that `close` in an `ensure`, and the blockless form
+      (decision 12's `__popen_enum`) leaves it to the caller. `pid` is the
+      child's (nil on a pipe). `close_read`/`close_write` follow MRI: on
+      `r+` each closes one pipe and the second closes the whole IO (and
+      reaps); on a one-way popen either closes it whole; on a pipe end the
+      side it holds closes it and the other side raises `closing non-duplex
+      IO for reading/writing`. `mode:`/env/option-hash forms are not built
+      (a keyword the signature lacks is a type error).
+    - **Standard streams** gain `close`/`closed?`/`close_read`/
+      `close_write`/`pid`/`to_i`: closing `STDOUT` marks that object closed
+      (its own writes raise `closed stream`) without closing fd 1, so
+      Kernel#puts still writes where MRI raises. ponytail: close the real
+      descriptor and route Kernel output through the object's state.
+    - **atime.** The access time's `syscall.Stat_t` field is `Atim` on
+      Linux, OpenBSD and Solaris and `Atimespec` on macOS and the other
+      BSDs, and the prelude's Go is concatenated into one generated file,
+      so build tags cannot split it. `rbAtime` embeds `*syscall.Stat_t`
+      beside a struct holding zero `Atim` and `Atimespec` one level deeper:
+      Go's shallowest-field rule resolves each selector to the platform's
+      real field where it exists and to the zero stand-in where it does not,
+      and the two are summed. One source, chosen by the Go compiler for the
+      target, no reflection; checked to build for darwin, linux (amd64,
+      arm64, 386, mips), the BSDs and solaris. `File.atime` and
+      `File.mtime` raise with MRI's `rb_file_s_atime`/`rb_file_s_mtime`.
+    - **pack/unpack** share one parser (`rbPackParse`, with MRI's
+      `unknown pack directive 'y' in 'y'` and `'_' allowed only after types
+      sSiIlLqQjJ` errors, whitespace and `#` comments skipped) and one
+      sizing table, so every directive packs and unpacks the same way:
+      `a A Z B b H h u M m` (`m0` strict), `U` (MRI's `rb_uv_to_utf8`, so
+      surrogates and values up to 2**31-1 encode), `w`, `C c S s L l Q q J j I i
+      n N v V` with `_`/`!` (native: `L!` and `J` are 8 bytes on 64-bit)
+      and `<`/`>`, `D d F f E e G g`, and `x X @` with MRI's quirks
+      (unpack's `@` defaults to 0 and its `*` counts are the bytes left).
+      The u/M/m encoders and decoders are ports of MRI's `encodes`,
+      `qpencode` and the lenient base64 loop (which stops at a `=` in a
+      quad's third or fourth place, where the next `m` resumes). Elements
+      convert as MRI's: Float to an integer directive truncates, `nil` is
+      `""` for `a A Z B b H h` and a `TypeError` elsewhere, `M` takes any
+      object's `to_s`. An unsigned 64-bit value or BER integer past 2**63
+      raises `RangeError` (decision 35) where MRI makes a Bignum. `P`/`p`
+      (C pointers) raise `ArgumentError` naming rb2go: no Ruby string has
+      an address to hand out. A mixed literal like `[s, n].pack("a4N")` is
+      a tuple, so `tupleCall` handles `pack` by passing the fields as one
+      `[]any`. Binary results print with `\u0000` where MRI's binary
+      String shows `\x00` (no encoding tag: bytes that are valid UTF-8
+      count as UTF-8, decision 136), so tests compare
+      `.bytes`.
+    (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
+    `testdata/test/string_test.rb` `StringPackTest`.)
+141. `Method` and `UnboundMethod` (#40) are built at the call site from
+    the closed world, never looked up by name at run time.
+    `recv.method(:name)` (and `public_method`) needs a literal name, like
+    decision 32's `send`; the compiler resolves the target on the
+    receiver's static type and builds a `Method[F]`: F is a Proc type
+    (decision 47) over the target's required positional parameters and
+    its result, fn the typed closure over the receiver (held in a temp,
+    since Go closures capture variables), and the struct also carries
+    `dyn` (the same target called from an `...any` list, generated like
+    decision 32's wrappers: arity check, argument conversion, one arm per
+    optional count) and `info` (name, owner, parameters, arity, `file:line`).
+    `call`, `.()`, `[]` and `===` with F's arguments call fn, typed;
+    with more (optional or rest parameters) they go through dyn, with
+    decision 32's warning and the result converted back. `to_proc` is fn
+    itself, so `&m` is decision 47's `&proc`; `curry` nests one Proc per
+    parameter. `Klass.instance_method(:name)` is an
+    `UnboundMethod[^(Klass, ...) -> R]`; `bind` checks the object against
+    Klass at compile time and partially applies fn, `bind_call` calls it.
+    A user-defined struct method is bound statically (its free func), so
+    `Base.instance_method(:m).bind_call(sub)` runs Base's `m`, as MRI's
+    does; a bound Method dispatches through the receiver, and `owner`
+    and `inspect` come from a type switch over the subclasses that
+    override the name. `&method(:name)` is desugared to a block of the
+    yielded arity calling `recv.__send__(:name, ...)`, so a target with
+    optional parameters takes what is yielded (MRI's Hash#each, which
+    yields one pair to a method proc whose minimum arity is 1, is not
+    modelled: the pair is yielded as two values). Reflection follows MRI
+    4.0: `parameters`/`arity` from the def for user methods; prelude
+    methods stand for MRI's C methods, so they are anonymous (`(_)`, or
+    `(*)` and -1 when any parameter is optional, a rest, a keyword, or
+    decision 12 overloads the name); `inspect` is
+    `#<Method: Recv(Owner)#name(params) file:line>`, `Recv.name` for a
+    singleton method, whose owner is MRI's `#<Class:Foo>`; `==`, `eql?`
+    and `hash` compare the definition and the receiver's identity.
+    Values of different F join as `Method[untyped]`, and RBS's bare
+    `Method` (`#: Hash[Symbol, Method]`) is `Method[untyped]` too: its
+    calls go through dyn, with the warning, and a typed Method converts
+    to it (`_to_any`/`rbFrom`, as Array's instantiations do).
+    `Method#unbind` is an `UnboundMethod[untyped]`, since F does not
+    carry the receiver's type; its `bind` raises MRI's TypeError for an
+    object that is not an owner's instance. `method(:name)` on an
+    `untyped` receiver is `Method[untyped]` over the dispatcher, with the
+    warning; its `owner`, `arity` and `parameters` raise
+    NotImplementedError, being unknown at compile time. Compile errors:
+    a computed name, a target that needs a block, has required keywords
+    or is generic, `instance_method` on a generic class (an
+    UnboundMethod cannot carry its type arguments), and `to_proc`/`curry`
+    on a `Method[untyped]`. Not done: `super_method`,
+    `source_location`, keyword arguments or a block to `call`.
+    `x.class` on a plain Object (main, `Object.new`) held untyped now
+    answers Object (it raised NoMethodError).
+    ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
+    `testdata/errors/objects.txtar`.)

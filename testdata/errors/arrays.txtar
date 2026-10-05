@@ -95,11 +95,6 @@ nums.each { |a, b| puts a }
 # error: main.rb:2: a lambda with parameters needs a type annotation (`#: ^(T) -> R`)
 up = proc { |s| s.upcase }
 puts ["a"].map(&up).inspect
--- block_arg_method.rb --
-# error: main.rb:4: only &:symbol, a Proc and a method's own &block are supported as block arguments
-#: (Integer) -> Integer
-def twice(n) = n * 2
-puts [1].map(&method(:twice)).inspect
 -- symbol_block_two_params.rb --
 # error: main.rb:3: &:+ needs a single-argument block
 nums = [1, 2] #: Array[Integer]

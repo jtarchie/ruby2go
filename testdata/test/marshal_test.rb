@@ -284,6 +284,15 @@ module MarshalTests
       assert_equal "no _dump_data is defined for class Proc", e.message
       e = assert_raises(TypeError) { Marshal.dump([1, $stdout]) }
       assert_equal "can't dump IO", e.message
+      rd, wr = IO.pipe
+      e = assert_raises(TypeError) { Marshal.dump(rd) }
+      assert_equal "can't dump IO", e.message
+      Marshal.dump([1, 2], wr)
+      wr.close
+      assert_equal [1, 2], Marshal.load(rd)
+      rd.close
+      e = assert_raises(TypeError) { Marshal.dump(1.method(:+)) }
+      assert_equal "no _dump_data is defined for class Method", e.message
       e = assert_raises(TypeError) { Marshal.dump(Mutex.new) }
       assert_equal "no _dump_data is defined for class Thread::Mutex", e.message
       e = assert_raises(TypeError) { Marshal.dump(Thread.current) }

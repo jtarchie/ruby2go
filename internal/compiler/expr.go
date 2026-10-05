@@ -1377,6 +1377,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	f.checkEncodingNames(n, recv, name, args)
 	if recv.view != "" && block == nil {
 		if e, ok := f.viewCall(n, recv, name, args); ok {
 			return e
@@ -1500,6 +1501,9 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !f.ownSend(recv.typ, name) {
 		return f.genSend(n, recv, name, args, block), true
 	}
+	if e, ok := f.genMethodObject(n, recv, name, args, block); ok {
+		return e, true
+	}
 	if name == "is_a?" || name == "kind_of?" {
 		if len(args) != 1 || block != nil {
 			f.errorf(n, "%s takes one class", name)
@@ -1538,6 +1542,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			return f.procCall(n, recv, t, name, args, block)
 		}
 	case TClass:
+		if e, ok := f.methodValueCall(n, recv, t, name, args, block); ok {
+			return e
+		}
 		return f.classCall(n, t, recv, name, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
@@ -1618,6 +1625,9 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		// either way the method is found at run time
 		if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 			return f.genDynCall(n, recv, name, args)
+		}
+		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
+			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}
@@ -2467,7 +2477,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
-	free := m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
+	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
 	if !free {
 		if t := f.methodExprType(m, recv); t != "" {
 			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
@@ -2820,10 +2830,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
-			if pb := f.procBlock(b); pb != nil {
-				return f.genClosure(n, pb, sig, env)
-			}
-			f.errorf(b, "only &:symbol, a Proc and a method's own &block are supported as block arguments")
+			return f.genClosure(n, f.blockArgBlock(b, len(params)), sig, env)
 		}
 		symbolCall = sym.Unescaped.Value
 		if len(params) != 1 {
@@ -3521,6 +3528,21 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 			code = f.coerce(args[0], a, TAny{})
 		}
 		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
+		if len(args) == 1 && block == nil {
+			code := recv.code
+			if !isSimpleGo(code) { // the receiver first, as Ruby evaluates it, then the format
+				code = f.newTmp()
+				f.emit("%s := %s", code, recv.code)
+			}
+			str := f.cls("String")
+			format := f.coerce(args[0], f.genExpr(args[0], str), str)
+			fields := make([]string, len(tt.Elems))
+			for i := range tt.Elems {
+				fields[i] = fmt.Sprintf("%s.F%d", code, i)
+			}
+			return expr{code: "String(rbPack([]any{" + strings.Join(fields, ", ") + "}, string(" + format + ")))", typ: str}
+		}
 	}
 	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
@@ -5032,11 +5054,29 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true}}
 }
 
+// blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
+func (f *fctx) blockArgBlock(b *parser.BlockArgumentNode, nparams int) *parser.BlockNode {
+	if mb := f.methodRefBlock(b, nparams); mb != nil {
+		return mb
+	}
+	if pb := f.procBlock(b); pb != nil {
+		return pb
+	}
+	f.errorf(b, "only &:symbol, a Proc, a Method and a method's own &block are supported as block arguments")
+	return nil
+}
+
 // procBlock desugars `&f` for a Proc f to `{ |x_0, ...| f.call(x_0, ...) }`, or nil when f is not a Proc.
 func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
 	var pt Type
 	f.probe(func() { pt = f.genExpr(ba.Expression, nil).typ })
 	ft, ok := pt.(TFunc)
+	if kind, mf, typed := methodFn(pt); kind == "Method" {
+		if !typed {
+			f.errorf(ba, "&%s needs the method's signature, which a %s lost (decision 141)", f.f.text(ba.Expression.GetLocation()), pt)
+		}
+		ft, ok = mf, true
+	}
 	if !ok || !ft.Proc {
 		return nil
 	}

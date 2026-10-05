@@ -23,6 +23,7 @@ type fctx struct {
 	m             *Method
 	implicitCall  bool     // calling method_missing/respond_to_missing? on the program\'s behalf
 	plainCalls    bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
+	staticDef     *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
 	lex           []*Class // lexical scope for constant lookup
 	selfType      Type
 	selfCode      string
@@ -2661,6 +2662,8 @@ func (f *fctx) genCallStmt(n *parser.CallNode, t tail) {
 		c := *n
 		if sym, ok := ba.Expression.(*parser.SymbolNode); ok {
 			c.Block = symbolBlock(ba, sym.Unescaped.Value) // `workers.each(&:join)`
+		} else if mb := f.methodRefBlock(ba, f.blockArity(n)); mb != nil {
+			c.Block = mb // `xs.each(&method(:show))`
 		} else if pb := f.procBlock(ba); pb != nil {
 			c.Block = pb // `xs.each(&printer)`
 		}

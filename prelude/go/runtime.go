@@ -25,6 +25,9 @@ func rbWriteOut(s string) {
 			return
 		}
 	}
+	if c := rbStdoutConv.Load(); c != nil { // STDOUT's own encoding, not a redirect target's
+		s = (*c)(s)
+	}
 	rbWrite(s)
 }
 
@@ -78,7 +81,7 @@ func rbRedirect(fd int, v any, name string) any {
 	switch x := rbUnbox(v).(type) {
 	case *IO:
 		switch {
-		case x.fd != fd: // STDERR as $stdout: writes go to fd 2
+		case x.own || x.fd != fd: // STDERR (or a pipe) as $stdout: writes go to it
 			w = x
 		case x.via != nil: // an earlier $stdout, bound to its object
 			w = x.via
@@ -109,12 +112,6 @@ func (self *File) rbReadable() {
 		panic(NewIOError(Ref[String]("closed stream")))
 	}
 	if self.r == nil {
-		panic(NewIOError(Ref[String]("not opened for reading")))
-	}
-}
-
-func (self *IO) rbReadable() {
-	if self.fd != 0 {
 		panic(NewIOError(Ref[String]("not opened for reading")))
 	}
 }

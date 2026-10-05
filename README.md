@@ -140,9 +140,9 @@ whole program at compile time rather than looked up by reflection.
 ## What works
 
 - **Language:** classes, modules, `include`/`extend`, inheritance and `super`,
-  blocks, procs and lambdas, iterators, `case`/`when`, exceptions with
-  custom hierarchies, `catch`/`throw`, `Struct` and `Data`, optional and splat
-  arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
+  blocks, procs and lambdas, `Method` objects (`&method(:name)`), iterators,
+  `case`/`when`, exceptions with custom hierarchies, `catch`/`throw`, `Struct`
+  and `Data`, optional and splat arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
   `at_exit`, signal traps.
 - **Core classes:** `String`, `Symbol`, `Integer`, `Float`, `Rational`,
   `Complex`, `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,
@@ -174,6 +174,11 @@ The roadmap for the rest of the standard library is issue
 - **Strings are frozen.** `String` is a Go `string` value, so in-place
   mutation (`<<`, `upcase!`, `+"..."`) is unsupported; build new strings
   instead, or use `StringIO`.
+- **Strings carry no encoding.** Every `String` is UTF-8 bytes; `encoding`
+  reports UTF-8 for valid UTF-8 and ASCII-8BIT otherwise. `encode`, `scrub`,
+  `unicode_normalize` and `File.open(path, "r:ISO-8859-1:UTF-8")` work for
+  UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32; naming any other
+  encoding is a compile error.
 - **Integers are 64-bit.** There is no Bignum; where MRI would promote,
   rb2go raises `RangeError` rather than silently wrapping.
 - **No hash defaults.** `Hash.new(0)` is rejected; use `tally`,

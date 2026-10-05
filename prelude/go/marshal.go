@@ -299,13 +299,13 @@ func rbMarshalBodySize(head any) int {
 
 // rbMarshalExactIO: these read exactly n bytes, so dumps written one after another load one at a time, as MRI's do; another IO's read reads to its end.
 func rbMarshalExactIO(src any) bool {
-	switch s := src.(type) {
+	switch src.(type) {
 	case nil:
 		return false
 	case *File:
 		return true
 	case *IO:
-		return s.fd == 0
+		return true
 	case interface{ __Read1(n Integer) *String }:
 		return true
 	default:
@@ -323,8 +323,7 @@ func rbMarshalReadN(src any, n int) String {
 		b, _ := io.ReadAll(io.LimitReader(s.r, int64(n)))
 		return String(b)
 	case *IO:
-		s.rbReadable()
-		b, _ := io.ReadAll(io.LimitReader(rbStdin, int64(n)))
+		b, _ := io.ReadAll(io.LimitReader(*s.rbReader(), int64(n)))
 		return String(b)
 	case interface{ __Read1(n Integer) *String }:
 		var b strings.Builder

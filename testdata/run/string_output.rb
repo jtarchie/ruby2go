@@ -1,5 +1,7 @@
 # rbs_inline: enabled
 
+require "stringio"
+
 class Named
   #: () -> String
   def to_s = "named"
@@ -160,6 +162,24 @@ puts tup
 puts puts("a").inspect
 puts print("b\n").nil?
 printf("%d-%s\n", 1, "two")
+
+# $stdout.set_encoding converts what puts, print and write send (decision 136).
+$stdout.set_encoding("ISO-8859-1")
+puts "café"
+$stdout.write("ñ\n")
+print "é\n"
+$stdout.set_encoding(nil)
+puts "café"
+# STDOUT's encoding is not a redirect target's, and a redirect target's is not STDOUT's.
+STDOUT.set_encoding("ISO-8859-1")
+redirected_out = StringIO.new
+$stdout = redirected_out
+puts "é"
+$stdout.set_encoding("US-ASCII")
+$stdout = STDOUT
+STDOUT.set_encoding(nil)
+p redirected_out.string.bytes
+puts "é"
 
 # Output written before exit is flushed, and the status is kept.
 puts "before exit"

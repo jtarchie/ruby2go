@@ -20,23 +20,9 @@ module Base64
     return String(b.String())
   }
 
-  # Lenient, as MRI's unpack("m"): characters outside the alphabet are skipped.
   #: (String) -> String
   def self.decode64(str) = %x{
-    var b []byte
-    for i := range len(str) {
-      c := str[i]
-      if c == '=' {
-        break
-      }
-      if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/' {
-        b = append(b, c)
-      }
-    }
-    if len(b)%4 == 1 {
-      b = b[:len(b)-1]
-    }
-    out, _ := base64.RawStdEncoding.DecodeString(string(b))
+    out, _ := rbUnpackB64(string(str))
     return String(out)
   }
 
