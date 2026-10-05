@@ -186,8 +186,6 @@ The roadmap for the rest of the standard library is issue
   `h[k] = (h[k] || 0) + 1`, or `fetch`. `Hash#[]` returns `V?`.
 - **`return`/`break` inside a closure block** is a compile error unless the
   block can be inlined as a loop (e.g. `each` on an `Array`).
-- **No pattern matching (`case`/`in`) and no keyword parameters** on
-  methods you define.
 - **Overloaded RBS signatures** (`(Integer) -> T | () -> T`) are not
   supported; prelude methods pick one shape.
 - **One source file**, no gems.

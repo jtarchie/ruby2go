@@ -4064,7 +4064,6 @@ resolve; anything not listed is still open.
       `.bytes`.
     (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
     `testdata/test/string_test.rb` `StringPackTest`.)
-
 140. `Enumerator`, external iteration, `Enumerator::Lazy` and `Fiber`
     (#41), plus #55's `ArithmeticSequence`. All of it is sequences
     (`iter.Seq`), so nothing runs ahead of its consumer and only `Fiber`
@@ -4246,4 +4245,80 @@ resolve; anything not listed is still open.
     answers Object (it raised NoMethodError).
     ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
     `testdata/errors/objects.txtar`.)
+
+143. Pattern matching (#38): `case/in` (guards, `else`), `v => pat` and
+    `v in pat`, compiled to static Go like `case/when` (decision 21).
+    - **Shape of the code.** Each pattern is a chain of Go `if`s, one per
+      check, with the rest of the match nested in the success branch;
+      an arm's success sets a flag and the arms become
+      `if ok { body } else { next arm }`, so tails, `return`, `next` and
+      `break` work as in `if`. A guard is one more `if`. Bindings are
+      ordinary local writes (Ruby locals of the enclosing scope, hoisted
+      when the body reads them, decision 14); the unset pass sees each arm
+      as a branch (a case/in without `else` raises rather than falling
+      through) and `v in pat` as maybe-taken, and `if v in pat`
+      narrows the locals it bound to non-nil values, except a `_x` an
+      alternative binds. A subject that is a
+      local is narrowed in the arm's body by a leading class
+      (`in Circle`, `in Circle(r:)`), as `case/when`'s type switch does.
+      The subject, and each checked element, is evaluated once.
+    - **Types come from the pattern.** A binding takes the type of what
+      it binds: `Array[E]`'s `E`, a tuple field's type, `Hash[K, V]`'s
+      `V`, a Struct/Data member's type, the element or value type of a
+      user `deconstruct`/`deconstruct_keys` signature; `Integer => n`
+      narrows by type assertion; untyped stays untyped. A find
+      pattern's and a rest's slices keep the Array's type.
+    - **deconstruct.** `Array#deconstruct` and `Hash#deconstruct_keys`
+      return self. Struct and Data get both, generated with the rest of
+      decision 30 (MRI 4.0's Data has `deconstruct` too); `deconstruct_keys`
+      is MRI's: nil gives `to_h`, more keys than members gives `{}`,
+      otherwise the keys up to the first non-member; it takes
+      `Array[Symbol]?` (MRI's String and Integer keys are not supported).
+      On a statically typed Struct/Data the pattern reads the members
+      directly, typed (unless a subclass overrides the method), and calls the generated methods only when it needs
+      the Array or Hash itself (a bound `*rest` or `**rest`, `**nil`, a
+      find pattern). A user class's `deconstruct` must be typed to return
+      an Array or tuple (or untyped), and `deconstruct_keys` a Hash with
+      Symbol or untyped keys; anything else is a compile error. As MRI,
+      `deconstruct_keys` gets the pattern's keys, or nil when the
+      pattern has `**rest` or `**nil` or no keys (`{}`). MRI caches `deconstruct` across a
+      `case`'s arms; rb2go calls it per arm.
+    - **Untyped subjects** (and Object, module types, a generic `T`, or a
+      class only some subclasses define the method on) are checked at run
+      time: `respond_to?` and the call through decision 32's dispatch
+      tables, then the result converted to `Array[untyped]` or
+      `Hash[untyped, untyped]` (`TypeError` when it is not one, worded
+      as decision 20's, where MRI says `deconstruct must return Array`).
+      A pattern's own dynamic calls do not warn; later calls on what it
+      bound do.
+    - **Order.** A hash pattern checks that every key is present before
+      matching any value, as MRI's compiler does, so
+      `{a: 1} => {a: 2, c:}` fails on the missing `:c`.
+    - **Errors.** `NoMatchingPatternError < StandardError` and
+      `NoMatchingPatternKeyError < NoMatchingPatternError`, whose `key`
+      and `matchee` raise `ArgumentError` when unset, as MRI's. A
+      `case/in` with several arms and no `else` raises the subject's
+      inspect. `=>` and a one-arm `case/in` without `else` raise MRI's
+      detailed message, `"<inspect>: <why>"`: `P === v does not return
+      true`, `length mismatch (given n, expected m)` (`m+` with a rest),
+      `does not respond to #deconstruct`, `key not found: :k` (a
+      `NoMatchingPatternKeyError` whose matchee is the deconstructed
+      Hash), `rest of {...} is not empty`, `{...} is not empty`, `does
+      not match to find pattern`, `guard clause does not return true`;
+      an alternation reports its last alternative, class included (a
+      missing key in an earlier one does not make it a
+      `NoMatchingPatternKeyError`). The message is built
+      only on the failure path.
+    - **Compile errors** for shapes that never match the static type: an
+      array or find pattern on a class with no `deconstruct` in its
+      hierarchy (`Integer`, `String`, `Hash`), a hash pattern on one with
+      no `deconstruct_keys` (or on a tuple), on a Hash whose keys are not
+      Symbols, or a `deconstruct(_keys)` typed to return something else
+      (`testdata/errors/pattern.txtar`). A class check the static type
+      decides false (`in String` on an Integer) makes a dead arm, which
+      is dropped as `case/when` drops one; a later read of a local only
+      it would bind is then a compile error where MRI reads nil. Not
+      built: minitest's `assert_pattern` and `must_pattern_match`.
+    ([example 93](../examples/93_pattern_matching/main.rb),
+    `testdata/test/pattern_test.rb`.)
 

@@ -184,6 +184,44 @@ class StopIteration < IndexError
   end
 end
 
+# Raised when no pattern of a case/in (without else) or `=>` matches (decision 143).
+class NoMatchingPatternError < StandardError; end
+
+# A hash pattern's missing key, and the Hash it was looked up in, as MRI's.
+class NoMatchingPatternKeyError < NoMatchingPatternError
+  # @rbs @key: untyped
+  # @rbs @matchee: untyped
+  # @rbs @has_key: bool
+
+  #: () -> untyped
+  def key
+    raise ArgumentError, "no key is available" unless @has_key
+
+    @key
+  end
+
+  #: () -> untyped
+  def matchee
+    raise ArgumentError, "no matchee is available" unless @has_key
+
+    @matchee
+  end
+
+  #: (String, untyped, untyped) -> NoMatchingPatternKeyError
+  def self.__for(message, matchee, key)
+    e = new(message)
+    e.__set(matchee, key)
+    e
+  end
+
+  #: (untyped, untyped) -> void
+  def __set(matchee, key)
+    @matchee = matchee
+    @key = key
+    @has_key = true
+  end
+end
+
 # Kernel#throw raises it when no active catch has the tag (decision 91).
 class UncaughtThrowError < ArgumentError
   #: (String, untyped, untyped) -> void
