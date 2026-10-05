@@ -3702,7 +3702,8 @@ resolve; anything not listed is still open.
       Date without a fraction. A dynamic (`untyped`) `-` between two
       dates, like Time's, does not reach decision 12's overloads and
       raises TypeError.
-    (`testdata/test/date_test.rb`, `testdata/errors/dates.txtar`.)
+    ([example 94](../examples/94_datetime/main.rb),
+    `testdata/test/date_test.rb`, `testdata/errors/dates.txtar`.)
 
 134. open-uri (#46) is a prelude wrapper over `Net::HTTP` (decision 27)
     plus one compile-time step. MRI's `URI.open(name, *rest)` takes one
