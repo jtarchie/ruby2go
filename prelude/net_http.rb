@@ -7,11 +7,19 @@ module Timeout
   class Error < RuntimeError; end
 end
 
+# Only what verify_mode=/open-uri's ssl_verify_mode: take; no OpenSSL itself.
+module OpenSSL
+  module SSL
+    VERIFY_NONE = 0
+    VERIFY_PEER = 1
+  end
+end
+
 module Net
   class OpenTimeout < Timeout::Error; end
   class ReadTimeout < Timeout::Error; end
 
-  # @go_type struct { address String; port Integer; useSSL Boolean; openTimeout Float; readTimeout Float }
+  # @go_type struct { address String; port Integer; useSSL Boolean; openTimeout Float; readTimeout Float; verifyMode *Integer }
   class HTTP < Object
     #: (String, ?Integer) -> HTTP
     def self.new(address, port = 80) = %x{ return &Net_HTTP{address: address, port: port, openTimeout: 60, readTimeout: 60} }
@@ -64,6 +72,14 @@ module Net
 
     #: () -> Float
     def read_timeout = %x{ self.readTimeout }
+
+    #: () -> Integer?
+    def verify_mode = %x{ self.verifyMode }
+
+    #: (Integer?) -> void
+    def verify_mode=(v)
+      %x{ self.verifyMode = v }
+    end
 
     #: (Float) -> void
     def read_timeout=(v)
@@ -189,12 +205,13 @@ module Net
   # `ruby -rnet/http -e 'p Net::HTTPResponse::CODE_TO_OBJ'`. `case res when
   # Net::HTTPSuccess` etc. works because these are real subclasses.
   class HTTPResponse < Object
-    #: (String, String, String, Hash[String, String]) -> void
-    def initialize(code, message, body, header)
+    #: (String, String, String, Hash[String, String], Hash[String, Array[String]]) -> void
+    def initialize(code, message, body, header, fields)
       @code = code
       @message = message
       @body = body
       @header = header
+      @fields = fields
     end
 
     attr_reader :code #: String
@@ -216,6 +233,13 @@ module Net
       _, ok := self.Header().vals[String(rbHTTPCanonKey(string(name)))]
       return Boolean(ok)
     }
+
+    # Repeated headers kept apart, lowercase keys.
+    #: () -> Hash[String, Array[String]]
+    def to_hash = @fields
+
+    #: (String) -> Array[String]?
+    def get_fields(name) = @fields[name.downcase]
 
     #: () -> String
     def inspect = "#<#{__class_name} #{code} #{message} readbody=true>"

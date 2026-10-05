@@ -1412,11 +1412,13 @@ func (f *fctx) genBareName(n *parser.CallNode, expected Type) (expr, bool) {
 	return expr{}, false
 }
 
-// genSpecialClassCall is the class-method calls the compiler answers itself: Ractor.new (decision 103) and ERB.new (decision 111).
+// genSpecialClassCall is the class-method calls the compiler answers itself: Ractor.new (decision 103), ERB.new (decision 111) and URI.open (decision 134).
 func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) {
 	switch {
 	case cls.RubyName == "Ractor":
 		return f.genRactorCall(n, cls)
+	case cls.RubyName == "URI" && n.Name == "open":
+		return f.genOpenURI(n, nil, "open", callArgs(n), n.Block), true
 	case cls.RubyName == "ERB" && n.Name == "new":
 		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
 		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
@@ -1459,6 +1461,9 @@ func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Nod
 func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
 	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.prelude {
 		return expr{}, false // a user's override, as MRI calls it
+	}
+	if f.isOpenURIRecv(recv.typ, name) {
+		return f.genOpenURI(n, &recv, name, args, block), true
 	}
 	if name == "class" && len(args) == 0 && block == nil {
 		if e, ok := f.genClassOf(n, recv); ok {
@@ -4927,6 +4932,9 @@ func requiredArgs(m *Method) int {
 // its return type from its body.
 func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	sig := &BlockSig{Ret: TVar{Name: "Ret_"}}
+	if o, ok := expected.(TOpt); ok { // a lambda literal where a Proc? is expected is never nil
+		expected = o.Elem
+	}
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
 		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret}
 	} else if len(f.blockParamNames(params)) > 0 {

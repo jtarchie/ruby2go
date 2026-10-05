@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { buf []byte; pos int; lineno int; readOpen bool; writeOpen bool; canWrite bool; appendMode bool }
+# @go_type struct { buf []byte; pos int; lineno int; readOpen bool; writeOpen bool; canWrite bool; appendMode bool; oum *rbOpenURIMeta }
 class StringIO < Object
   #: (?String, ?String) -> StringIO
   def self.new(s = "", mode = "r+") = %x{

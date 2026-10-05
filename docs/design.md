@@ -3574,3 +3574,71 @@ resolve; anything not listed is still open.
     every `.rb` under the example's directory, not just `main.rb`.
     ([example 90](../examples/90_load_path/main.rb),
     `testdata/errors/require.txtar`.)
+134. open-uri (#46) is a prelude wrapper over `Net::HTTP` (decision 27)
+    plus one compile-time step. MRI's `URI.open(name, *rest)` takes one
+    trailing options Hash mixing request headers (String keys) and
+    options (Symbol keys); a closed world cannot type that Hash, so
+    `genOpenURI` (`internal/compiler/openuri.go`) splits it at the call:
+    String-keyed pairs become a `Hash[String, String]` of headers,
+    Symbol-keyed ones keywords of `OpenURI::OpenOptions.new`, and the
+    call goes to `OpenURI.__open_name[_block]` (a String name) or
+    `URI::Generic#__open[_block]`/`#__read` (a URI, including
+    `URI.open(uri)`). Supported options are `read_timeout`,
+    `open_timeout`, `redirect`, `max_redirects`,
+    `http_basic_authentication`, `progress_proc`, `content_length_proc`
+    and `ssl_verify_mode`; any other (`proxy:`, `encoding:`,
+    `ssl_ca_cert:`, ...) or a `**splat` is a compile error, as are an
+    Integer mode, extra arguments, `URI#read` with a mode, and a literal
+    mode other than `r`/`rb`(`:enc`) (writing only makes sense for a
+    local file: use `File.open`). A non-literal write mode raises MRI's
+    `ArgumentError` for a URL. A Hash *variable* is taken as headers.
+    `Kernel#open` of a URL is not added: Ruby 3 removed it.
+    - **The IO is a real `StringIO`.** MRI returns a `StringIO`
+      extended with `OpenURI::Meta`; `extend` is run-time, so instead
+      `StringIO`'s Go struct carries a nil-able `oum` (status, final
+      URI, header fields) and `StringIO` gains `status`, `base_uri`,
+      `meta`, `metas`, `content_type`, `charset` (with its optional
+      block), `content_encoding` and `last_modified`. On a StringIO
+      open-uri did not make they raise MRI's `NoMethodError`, but
+      `respond_to?(:status)` is statically true for every StringIO, and
+      `OpenURI::Meta` is not defined (naming it is a compile error rather
+      than a wrong `is_a?` answer). `f.class`, `is_a?(StringIO)` and
+      passing `f` where a `StringIO` is expected match MRI. MRI's switch
+      to a `Tempfile` above 10 KB is not modeled. `content_type`/
+      `charset` parse with `mime.ParseMediaType` (lowercase type,
+      charset downcased, `application/octet-stream` and nil on a missing
+      or malformed header, `utf-8` for `text/*` without one); header
+      order in `meta`/`metas` is sorted, as `Net::HTTPResponse`'s is
+      (Go's `http.Header` is a map). `URI#read` returns a plain `String`:
+      MRI extends it with `Meta` too, but `String` is a Go `string`, so
+      `.status` on it is a compile error.
+    - **Redirects** follow `OpenURI.open_loop`/`open_http`: 301, 302,
+      303, 307 and 308 follow (other non-2xx raise `HTTPError` with
+      `"404 Not Found"` and the body as `io`), a relative `Location` is
+      merged, `redirect: false` raises `HTTPRedirect` (`uri` is the
+      target), a scheme change is allowed only http→https/ftp or
+      ftp→http(s) (else `RuntimeError` `redirection forbidden: a -> b`),
+      `http_basic_authentication` is dropped after the first hop, a URI
+      seen twice is `HTTP redirection loop: <uri>` (the first URI is not
+      in the set, as in MRI), and more than `max_redirects` (64) hops is
+      `TooManyRedirects`. `base_uri` is the final URI and nil on an
+      error's `io`. `progress_proc` is called once with the body size
+      (the body is read whole; MRI calls it per chunk), only for a 2xx.
+      A URL with userinfo raises MRI's `ArgumentError`. Not done:
+      proxies, FTP (raises `NotImplementedError`), encodings from the
+      mode, HTTPS against a test server (no TLS WEBrick here).
+    - **Names that are not URLs** (no `scheme://`) are read whole into
+      a `StringIO` with no metadata, so `URI.open` keeps one return type;
+      MRI returns the `File` (`f.class` differs). Write modes there raise
+      `NotImplementedError`.
+    - `Net::HTTPResponse` gained `to_hash`/`get_fields` (repeated
+      headers kept apart, for `metas`), `Net::HTTP#verify_mode=`
+      (`OpenSSL::SSL::VERIFY_NONE` sets `InsecureSkipVerify`; only the
+      two constants exist, no `OpenSSL` beyond them). A lambda literal
+      where a `Proc?` is expected now takes its parameter types from the
+      `Proc`, as it does where a `Proc` is. `URI.parse` keeps an empty
+      authority (`file:///x` has host `""` and prints `file:///x`, as
+      MRI's), which the forbidden-redirect message showed.
+    (`testdata/test/net_test.rb`, `testdata/errors/open_uri.txtar`;
+    [example 24](../examples/24_net_http/main.rb) already covers
+    `Net::HTTP` end to end, so no new example.)

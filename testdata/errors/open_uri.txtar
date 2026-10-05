@@ -1,0 +1,30 @@
+Compile errors for open-uri (docs/design.md decision 134): the options Hash is split and typed at compile time.
+-- write_mode.rb --
+# error: main.rb:3: open-uri: mode "w": an open-uri resource is read only; use File.open to write a local file
+require "open-uri"
+URI.open("http://127.0.0.1:1/x", "w")
+-- unknown_option.rb --
+# error: main.rb:3: open-uri: option :proxy is not supported (supported: read_timeout, open_timeout, redirect, max_redirects, http_basic_authentication, progress_proc, content_length_proc, ssl_verify_mode)
+require "open-uri"
+URI.open("http://127.0.0.1:1/x", proxy: false)
+-- integer_mode.rb --
+# error: main.rb:3: open-uri: the mode must be a String (an Integer mode or permission is not supported)
+require "open-uri"
+URI.open("http://127.0.0.1:1/x", 0)
+-- extra_args.rb --
+# error: main.rb:3: open-uri: extra arguments
+require "open-uri"
+URI.open("http://127.0.0.1:1/x", "r", { "A" => "b" }, { "C" => "d" })
+-- splat_options.rb --
+# error: main.rb:4: open-uri: a **splat of options is not supported; pass each by name
+require "open-uri"
+opts = { read_timeout: 1.0 }
+URI.open("http://127.0.0.1:1/x", **opts)
+-- read_mode.rb --
+# error: main.rb:3: URI#read takes only an options Hash
+require "open-uri"
+URI("http://127.0.0.1:1/x").read("r")
+-- read_string_meta.rb --
+# error: main.rb:3: undefined method status for String
+require "open-uri"
+p URI("http://127.0.0.1:1/x").read.status
