@@ -451,8 +451,8 @@ end
 
 Mixin.new
 -- object_new.rb --
-# error: main.rb:2: undefined method new for singleton(Object)
-Object.new
+# error: main.rb:2: wrong number of arguments (given 1, expected 0)
+Object.new(1)
 -- new_with_block.rb --
 # error: main.rb:5: Host.new with a block is not supported
 class Host

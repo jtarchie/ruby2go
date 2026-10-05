@@ -245,6 +245,9 @@ func (c *Compiler) emitDynName(name string) {
 	} else if body := c.nilKernelBody(name); body != "" {
 		c.w("\tif recv == nil {\n\t\tself := recv\n%s\t}\n", body)
 	}
+	if body := c.nilKernelBody(name); body != "" { // a bare Object (Object.new, main) has only Kernel's and Object's methods
+		c.w("\tif _, ok := recv.(*Object); ok {\n\t\tself := recv\n%s\t}\n", body)
+	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
 	}

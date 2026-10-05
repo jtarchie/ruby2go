@@ -388,7 +388,7 @@ func (c *Compiler) emitClassType(cls *Class) {
 	switch {
 	case cls.universal:
 		if !cls.IsModule {
-			c.w("type %s struct{}\n\n", cls.Name)
+			c.w("type %s struct{ _ byte }\n\n", cls.Name) // not zero-size: Go may give every new zero-size value one address, and Object.new must be unique
 		}
 	case cls.IsModule:
 		c.emitModuleInterface(cls)
@@ -1445,6 +1445,10 @@ func (c *Compiler) emitClassMeta() {
 
 // emitClassID emits cls's _ClassID and reports whether its values are pointers, whose address is their identity (rbClassRefs: #inspect, object_id).
 func (c *Compiler) emitClassID(cls *Class) bool {
+	if cls.universal && !cls.IsModule { // Object.new, BasicObject.new and main: heap objects of their own (#56)
+		c.w("func (*%s) _ClassID() int { return %d }\n\n", cls.Name, c.classID(cls))
+		return true
+	}
 	if cls.IsModule || cls.universal || cls.GoType == "" && !cls.isStruct() {
 		return false
 	}

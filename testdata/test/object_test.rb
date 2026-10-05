@@ -4480,4 +4480,19 @@ module ObjectTests
       assert_equal true, x.frozen?
     end
   end
+  # #56: Object.new is a plain object, unique by identity
+  class ObjectNewTest < Minitest::Test
+    def test_object_new
+      o = Object.new
+      x = Object.new
+      assert_equal [true, false, false, true, false, true], [o.equal?(o), o.equal?(x), o == x, o == o, o.eql?(x), o.eql?(o)]
+      assert_equal [Object, true, false], [o.class, o.is_a?(Object), o.frozen?]
+      h = { o => 1, x => 2 }
+      assert_equal [1, 2, 2, 1], [h[o], h[x], [o, x].uniq.size, [o, o].uniq.size]
+      assert o.inspect.start_with?("#<Object:0x")
+      assert_equal o.inspect, o.to_s
+      assert o.object_id != x.object_id
+      assert BasicObject.new.equal?(BasicObject.new) == false
+    end
+  end
 end

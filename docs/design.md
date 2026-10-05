@@ -4589,3 +4589,17 @@ resolve; anything not listed is still open.
     ([example 93](../examples/93_pattern_matching/main.rb),
     `testdata/test/pattern_test.rb`.)
 
+144. `Object.new` and `BasicObject.new` (#56) build a plain object, made
+    to be unique: ruby/spec builds one to compare by identity, to use as a
+    Hash key or to pass where any value goes. It is a `*Object` (Go
+    `struct{ _ byte }`, not `struct{}`: Go may give every new zero-size
+    value one address, which would make two of them `equal?`), typed
+    `Object`, so calls on it are those on any `Object`-typed value: the
+    intrinsics (`==`, `equal?`, `hash`, `inspect`, `to_s`, `eql?`, the
+    last now static too: the value's own `eql?`, else identity) or dynamic
+    dispatch, where a bare `*Object` answers Kernel's and Object's public
+    methods as nil held untyped does. Object and BasicObject now have a
+    class ID and count as heap objects, so `inspect` shows the address and
+    `object_id` is the pointer's; `main` (the same Go type) prints `main`,
+    as MRI's singleton `to_s` does. Arguments are a compile error with
+    MRI's arity message.

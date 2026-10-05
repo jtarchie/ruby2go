@@ -542,6 +542,9 @@ func rbToS(a any) String {
 
 // rbObjToS is Kernel#to_s; only heap objects have an address to show.
 func rbObjToS(a any) String {
+	if a == any(rb_main) { // MRI's main has a singleton to_s and inspect
+		return "main"
+	}
 	s := "#<" + rbClassName(a)
 	if rbIsRef(a) {
 		addr := strings.TrimPrefix(fmt.Sprintf("%p", a), "0x") // %p is a pointer's address
@@ -592,7 +595,10 @@ func rbInspect(a any) String {
 	if a == nil {
 		return "nil"
 	}
-	return a.(I_Inspect).Inspect()
+	if s, ok := a.(I_Inspect); ok {
+		return s.Inspect()
+	}
+	return rbObjInspect(a) // a bare Object (Object.new) has only Kernel's
 }
 
 // rbInspecting holds the containers whose inspect is on the stack, so one
@@ -734,6 +740,14 @@ func rbKeyEql(a, b any) bool {
 		return bool(e.EqlQ(b))
 	}
 	return false
+}
+
+// rbEql is #eql? on an Object-typed value: its class's eql?, else identity (Kernel's).
+func rbEql(a, b any) Boolean {
+	if e, ok := a.(interface{ EqlQ(any) Boolean }); ok {
+		return e.EqlQ(b)
+	}
+	return Boolean(rbKeyEql(a, b))
 }
 
 // rbHash is #hash on an untyped value.

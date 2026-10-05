@@ -1457,6 +1457,12 @@ func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) 
 	case cls.RubyName == "ERB" && n.Name == "new":
 		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
 		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
+	case n.Name == "new" && cls.universal && !cls.IsModule:
+		// a plain object, made to be unique: specs compare it by identity (#56)
+		if args := callArgs(n); len(args) > 0 {
+			f.errorf(n, "wrong number of arguments (given %d, expected 0)", len(args))
+		}
+		return expr{code: "&" + cls.Name + "{}", typ: TClass{C: cls}, ctor: true}, true
 	case n.Name == "new" && cls.isSubclassOf(f.c.classes["BasicSocket"]) && cls.lookup("initialize") == nil:
 		// a socket object is only made with its handle: BasicSocket/IPSocket/Socket.new would be a nil one (decision 135)
 		if cls.isSubclassOf(f.c.classes["Socket"]) {
@@ -3694,6 +3700,11 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		return expr{code: "rbCmp(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 	case "hash":
 		return expr{code: "rbHash(" + recv.code + ")", typ: f.cls("Integer")}
+	case "eql?":
+		if c := classOf(recv.typ); c != nil && c.universal && !c.IsModule { // Object has no eql? to dispatch to: the value's own, else identity
+			a := one(nil)
+			return expr{code: "rbEql(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")", typ: f.cls("Boolean")}
+		}
 	}
 	if isNil(recv.typ) && len(args) == 0 {
 		if t, ok := map[string]Type{"to_a": TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}, "to_h": TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}, "to_i": f.cls("Integer"), "to_f": f.cls("Float")}[name]; ok {
