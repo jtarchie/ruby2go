@@ -3608,7 +3608,8 @@ resolve; anything not listed is still open.
       precedent, decision 39): seconds Integer, Float or Rational; the
       offset a fraction of a day (Integer, Float, Rational, rounded to
       the second) or a String: `Z`/`UTC`/`GMT`/`UT`, `[GMT|UTC]±H`,
-      `±HH`, `±HHMM`, `±HH:MM[:SS]`, or a fixed table of common
+      `±HH`, `±HHMM`, `±HH:MM[:SS]`, a military letter (Time's
+      table), or a fixed table of common
       abbreviations (`EST`, `PDT`, `JST`, `CET`, …; MRI knows more, and
       long names like `Eastern`). As MRI, an unreadable offset or one
       past a day is silently 0. Negative hour/minute/second wrap, `24:00`
@@ -3620,7 +3621,7 @@ resolve; anything not listed is still open.
       `iso8601`/`xmlschema` read extended and basic calendar forms;
       `rfc3339`, `httpdate` (RFC 1123 only, not RFC 850/asctime),
       `rfc2822`/`rfc822` and `jisx0301` (era date plus optional time;
-      no era letter is Heisei, as MRI) are fixed regexps, each raising
+      no era letter is Heisei, as MRI, for `Date.jisx0301` too) are fixed regexps, each raising
       `Date::Error "invalid date"` on a mismatch. `strptime`'s default
       is MRI's `%FT%T%z`; it adds `%H %k %I %l %M %S %L %N %p %P %z %Z
       %s %Q %a %A` and `%T %R %X %r %c %+` to Date's directives.

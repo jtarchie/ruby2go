@@ -36,6 +36,12 @@ func rbCivilJD(y, m, d int) (int, bool) {
 	return int(days) + rbJDEpoch, true
 }
 
+// rbAtoi is a regexp group's digits as an int; "" (an absent optional group) is 0.
+func rbAtoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
 // rbDateParts is a Date's state (decision 133): local civil day, seconds and ns into it, UTC offset in seconds.
 type rbDateParts struct{ jd, df, sf, of int }
 
@@ -98,6 +104,9 @@ func rbDateTimeOf(y, m, d, h, mi, s, ns, of int) rbDateParts {
 	}
 	if !ok || h < 0 || h > 24 || mi < 0 || mi > 59 || s < 0 || s > 59 || h == 24 && (mi > 0 || s > 0 || ns > 0) {
 		panic(rbDateInvalid())
+	}
+	if h == 24 {
+		jd, h = jd+1, 0
 	}
 	return rbDateParts{jd, h*3600 + mi*60 + s, ns, of}
 }
@@ -203,24 +212,27 @@ func rbDateFromGoTime(t time.Time) rbDateParts {
 	return rbDateAt(int(t.Unix())+rbJDEpoch*86400, t.Nanosecond(), of)
 }
 
+// rbDateQ is a %Q directive (with rbStrftime's numeric flags and width), or a %% to skip.
+var rbDateQ = regexp.MustCompile(`%%|%([-0_^#]*)(\d*)Q`)
+
 // rbDateStrftime is Date#strftime: Time's directives plus %Q (milliseconds since the epoch).
 func rbDateStrftime(p rbDateParts, format string) string {
 	t := rbDateGoTime(p)
-	if strings.Contains(format, "%Q") {
-		var b strings.Builder
-		for i := 0; i < len(format); i++ {
-			switch {
-			case format[i] == '%' && i+1 < len(format) && format[i+1] == '%':
-				b.WriteString("%%")
-				i++
-			case format[i] == '%' && i+1 < len(format) && format[i+1] == 'Q':
-				b.WriteString(strconv.FormatInt(t.UnixMilli(), 10))
-				i++
-			default:
-				b.WriteByte(format[i])
+	if strings.Contains(format, "Q") {
+		format = rbDateQ.ReplaceAllStringFunc(format, func(m string) string {
+			if m == "%%" {
+				return m
 			}
-		}
-		format = b.String()
+			g := rbDateQ.FindStringSubmatch(m)
+			s, width, pad := strconv.FormatInt(t.UnixMilli(), 10), rbAtoi(g[2]), "0"
+			switch {
+			case strings.Contains(g[1], "-"):
+				width = 0
+			case strings.Contains(g[1], "_"):
+				pad = " "
+			}
+			return strings.Repeat(pad, max(0, width-len(s))) + s
+		})
 	}
 	return rbStrftime(t, format, false)
 }
@@ -263,12 +275,16 @@ func rbDateZoneOffset(s string) (int, bool) {
 	if off, ok := rbDateZones[s]; ok {
 		return off, true
 	}
+	if len(s) == 1 {
+		if off, ok := rbTimeMilitaryZones[s[0]]; ok {
+			return off, true
+		}
+	}
 	g := rbDateZoneRe.FindStringSubmatch(s)
 	if g == nil {
 		return 0, false
 	}
-	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
-	off := atoi(g[2])*3600 + atoi(g[3])*60 + atoi(g[4])
+	off := rbAtoi(g[2])*3600 + rbAtoi(g[3])*60 + rbAtoi(g[4])
 	if g[1] == "-" {
 		off = -off
 	}
@@ -327,20 +343,19 @@ func rbDateParse(s string) (y, m, d int, ok bool) {
 
 // rbDateParseRest is rbDateParse plus the text after the date.
 func rbDateParseRest(s string) (y, m, d int, rest string, ok bool) {
-	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
 	if g := rbDateISO.FindStringSubmatch(s); g != nil {
-		return atoi(g[1]), atoi(g[2]), atoi(g[3]), s[len(g[0]):], true
+		return rbAtoi(g[1]), rbAtoi(g[2]), rbAtoi(g[3]), s[len(g[0]):], true
 	}
 	if g := rbDateSlash.FindStringSubmatch(s); g != nil {
-		return atoi(g[1]), atoi(g[2]), atoi(g[3]), s[len(g[0]):], true
+		return rbAtoi(g[1]), rbAtoi(g[2]), rbAtoi(g[3]), s[len(g[0]):], true
 	}
 	if g := rbDateWords.FindStringSubmatch(s); g != nil {
 		if g[1] != "" {
-			m, d = rbMonthByName(g[2]), atoi(g[1])
+			m, d = rbMonthByName(g[2]), rbAtoi(g[1])
 		} else {
-			m, d = rbMonthByName(g[3]), atoi(g[4])
+			m, d = rbMonthByName(g[3]), rbAtoi(g[4])
 		}
-		return atoi(g[5]), m, d, s[len(g[0]):], m != 0
+		return rbAtoi(g[5]), m, d, s[len(g[0]):], m != 0
 	}
 	return 0, 0, 0, "", false
 }
@@ -367,8 +382,7 @@ func rbDateTimeParse(s string) rbDateParts {
 	if g == nil {
 		return rbDateTimeOf(y, m, d, 0, 0, 0, 0, 0)
 	}
-	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
-	h := atoi(g[1])
+	h := rbAtoi(g[1])
 	switch strings.ToLower(g[5]) {
 	case "p":
 		h = h%12 + 12
@@ -376,7 +390,7 @@ func rbDateTimeParse(s string) rbDateParts {
 		h %= 12
 	}
 	of, _ := rbDateZoneOffset(g[6])
-	return rbDateTimeOf(y, m, d, h, atoi(g[2]), atoi(g[3]), rbDateFracNs(g[4]), of)
+	return rbDateTimeOf(y, m, d, h, rbAtoi(g[2]), rbAtoi(g[3]), rbDateFracNs(g[4]), of)
 }
 
 // rbDateTimeMatch builds parts from a regexp's groups: year, month, day, hour, minute, second, fraction, zone.
@@ -385,8 +399,7 @@ func rbDateTimeMatch(re *regexp.Regexp, s string) (rbDateParts, bool) {
 	if g == nil {
 		return rbDateParts{}, false
 	}
-	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
-	m := atoi(g[2])
+	m := rbAtoi(g[2])
 	if m == 0 {
 		m = rbMonthByName(g[2])
 	}
@@ -398,7 +411,7 @@ func rbDateTimeMatch(re *regexp.Regexp, s string) (rbDateParts, bool) {
 		}
 		of = o
 	}
-	return rbDateTimeOf(atoi(g[1]), m, atoi(g[3]), atoi(g[4]), atoi(g[5]), atoi(g[6]), rbDateFracNs(g[7]), of), true
+	return rbDateTimeOf(rbAtoi(g[1]), m, rbAtoi(g[3]), rbAtoi(g[4]), rbAtoi(g[5]), rbAtoi(g[6]), rbDateFracNs(g[7]), of), true
 }
 
 var (
@@ -420,14 +433,13 @@ func rbDateTimeISO8601(s string) rbDateParts {
 	panic(rbDateInvalid())
 }
 
-// rbDateTimeFormat parses s with one of the fixed-shape regexps (rfc3339, httpdate, rfc2822).
-func rbDateTimeFormat(s, which string) rbDateParts {
-	re := map[string]*regexp.Regexp{"rfc3339": rbDateRFC3339, "httpdate": rbDateHTTP, "rfc2822": rbDateRFC2822}[which]
+// rbDateTimeFormat parses s with one of the fixed-shape regexps (rbDateRFC3339, rbDateHTTP, rbDateRFC2822).
+func rbDateTimeFormat(s string, re *regexp.Regexp) rbDateParts {
 	g := re.FindStringSubmatch(s)
 	if g == nil {
 		panic(rbDateInvalid())
 	}
-	if which != "rfc3339" {
+	if re != rbDateRFC3339 {
 		// day comes first in httpdate and rfc2822: reorder to y, m, d
 		g[1], g[3] = g[3], g[1]
 		if y, _ := strconv.Atoi(g[1]); len(g[1]) < 4 {
@@ -439,16 +451,15 @@ func rbDateTimeFormat(s, which string) rbDateParts {
 			}
 		}
 	}
-	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
 	m := rbMonthByName(g[2])
 	if m == 0 {
-		m = atoi(g[2])
+		m = rbAtoi(g[2])
 	}
 	of, ok := rbDateZoneOffset(g[8])
 	if !ok {
 		panic(rbDateInvalid())
 	}
-	return rbDateTimeOf(atoi(g[1]), m, atoi(g[3]), atoi(g[4]), atoi(g[5]), atoi(g[6]), rbDateFracNs(g[7]), of)
+	return rbDateTimeOf(rbAtoi(g[1]), m, rbAtoi(g[3]), rbAtoi(g[4]), rbAtoi(g[5]), rbAtoi(g[6]), rbDateFracNs(g[7]), of)
 }
 
 // rbDateTimeJISX0301 is DateTime.jisx0301: an era date with an optional time, or ISO 8601.
@@ -457,22 +468,15 @@ func rbDateTimeJISX0301(s string) rbDateParts {
 	if g == nil {
 		return rbDateTimeISO8601(s)
 	}
-	code := byte('H') // MRI reads a date without an era letter as Heisei
-	if g[1] != "" {
-		code = g[1][0]
+	y, ok := rbJISEraYear(g[1], rbAtoi(g[2]))
+	if !ok {
+		panic(rbDateInvalid())
 	}
-	atoi := func(x string) int { n, _ := strconv.Atoi(x); return n }
-	for _, e := range rbEras {
-		if e.code != code {
-			continue
-		}
-		of := 0
-		if g[9] != "" {
-			of, _ = rbDateZoneOffset(g[9])
-		}
-		return rbDateTimeOf(e.yearBase+atoi(g[2])-1, atoi(g[3]), atoi(g[4]), atoi(g[5]), atoi(g[6]), atoi(g[7]), rbDateFracNs(g[8]), of)
+	of := 0
+	if g[9] != "" {
+		of, _ = rbDateZoneOffset(g[9])
 	}
-	panic(rbDateInvalid())
+	return rbDateTimeOf(y, rbAtoi(g[3]), rbAtoi(g[4]), rbAtoi(g[5]), rbAtoi(g[6]), rbAtoi(g[7]), rbDateFracNs(g[8]), of)
 }
 
 // rbDateStrptime reads the date fields of MRI's strptime: %Y %m %d %e %y %j %b %B %h %F %D %%.
@@ -487,10 +491,11 @@ type rbDateFields struct{ y, m, d, h, mi, s, ns, of int }
 // rbDateStrptimeAll is MRI's strptime over the date directives above plus
 // %H %k %I %l %M %S %L %N %p %P %z %Z %s %Q %a %A and the composites %T %R %X %r %c %x.
 func rbDateStrptimeAll(s, format string) (rbDateFields, bool) {
+	// "%%" maps to itself so an escaped "%%T" is not expanded as %T.
 	format = strings.NewReplacer("%F", "%Y-%m-%d", "%D", "%m/%d/%y", "%x", "%m/%d/%y", "%T", "%H:%M:%S", "%X", "%H:%M:%S",
-		"%R", "%H:%M", "%r", "%I:%M:%S %p", "%c", "%a %b %e %H:%M:%S %Y", "%+", "%a %b %e %H:%M:%S %Z %Y").Replace(format)
+		"%R", "%H:%M", "%r", "%I:%M:%S %p", "%c", "%a %b %e %H:%M:%S %Y", "%+", "%a %b %e %H:%M:%S %Z %Y", "%%", "%%").Replace(format)
 	f := rbDateFields{y: -4712, m: 1, d: 1}
-	yday, pm, ampm, epoch := 0, false, false, -1
+	yday, pm, ampm, epoch, hasEpoch := 0, false, false, 0, false
 	num := func(max int) (int, bool) {
 		i := 0
 		if i < len(s) && (s[i] == '-' || s[i] == '+') && max > 2 {
@@ -583,13 +588,11 @@ func rbDateStrptimeAll(s, format string) (rbDateFields, bool) {
 			f.of, good = rbDateZoneOffset(s[:j])
 			s = s[j:]
 		case 's', 'Q':
-			unit := 1
-			if format[i] == 'Q' {
-				unit = 1000
+			epoch, good = num(19)
+			hasEpoch = true
+			if format[i] == 's' {
+				epoch *= 1000
 			}
-			var n int
-			n, good = num(19)
-			epoch = n * (1000 / unit)
 		case '%':
 			good = s != "" && s[0] == '%'
 			if good {
@@ -606,7 +609,7 @@ func rbDateStrptimeAll(s, format string) (rbDateFields, bool) {
 			f.h += 12
 		}
 	}
-	if epoch >= 0 {
+	if hasEpoch {
 		p := rbDateAt(epoch/1000+rbJDEpoch*86400, epoch%1000*1e6, f.of)
 		t := rbJDTime(p.jd)
 		return rbDateFields{t.Year(), int(t.Month()), t.Day(), p.df / 3600, p.df % 3600 / 60, p.df % 60, p.sf, f.of}, true
@@ -654,7 +657,21 @@ func rbJISX0301(jd int) string {
 	return rbStrftime(t, "%Y-%m-%d", true)
 }
 
-var rbJISX0301Re = regexp.MustCompile(`^([MTSHR])(\d{2})\.(\d{2})\.(\d{2})$`)
+var rbJISX0301Re = regexp.MustCompile(`^([MTSHR])?(\d{2})\.(\d{2})\.(\d{2})$`)
+
+// rbJISEraYear is the Gregorian year of year n of era code; no code is Heisei, as MRI.
+func rbJISEraYear(code string, n int) (int, bool) {
+	c := byte('H')
+	if code != "" {
+		c = code[0]
+	}
+	for _, e := range rbEras {
+		if e.code == c {
+			return e.yearBase + n - 1, true
+		}
+	}
+	return 0, false
+}
 
 // rbJISX0301Parse reads a JIS X 0301 date, or falls back to rbDateParse's ISO shape.
 func rbJISX0301Parse(s string) (y, m, d int, ok bool) {
@@ -662,16 +679,8 @@ func rbJISX0301Parse(s string) (y, m, d int, ok bool) {
 	if g == nil {
 		return rbDateParse(s)
 	}
-	for _, e := range rbEras {
-		if e.code != g[1][0] {
-			continue
-		}
-		yy, _ := strconv.Atoi(g[2])
-		mm, _ := strconv.Atoi(g[3])
-		dd, _ := strconv.Atoi(g[4])
-		return e.yearBase + yy - 1, mm, dd, true
-	}
-	return 0, 0, 0, false
+	y, ok = rbJISEraYear(g[1], rbAtoi(g[2]))
+	return y, rbAtoi(g[3]), rbAtoi(g[4]), ok
 }
 
 func (x *DateTime) rbSuccAny() any { return x.Succ_ofDateTime() }

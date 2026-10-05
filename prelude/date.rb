@@ -320,7 +320,6 @@ class DateTime < Date
   #: () -> DateTime
   def self.today = raise(NoMethodError, "undefined method 'today' for class DateTime")
 
-
   #: (String) -> DateTime
   def self.parse(s) = %x{ return rbNewDateTime(rbDateTimeParse(string(s))) }
 
@@ -331,13 +330,13 @@ class DateTime < Date
   def self.xmlschema(s) = iso8601(s)
 
   #: (String) -> DateTime
-  def self.rfc3339(s) = %x{ return rbNewDateTime(rbDateTimeFormat(string(s), "rfc3339")) }
+  def self.rfc3339(s) = %x{ return rbNewDateTime(rbDateTimeFormat(string(s), rbDateRFC3339)) }
 
   #: (String) -> DateTime
-  def self.httpdate(s) = %x{ return rbNewDateTime(rbDateTimeFormat(string(s), "httpdate")) }
+  def self.httpdate(s) = %x{ return rbNewDateTime(rbDateTimeFormat(string(s), rbDateHTTP)) }
 
   #: (String) -> DateTime
-  def self.rfc2822(s) = %x{ return rbNewDateTime(rbDateTimeFormat(string(s), "rfc2822")) }
+  def self.rfc2822(s) = %x{ return rbNewDateTime(rbDateTimeFormat(string(s), rbDateRFC2822)) }
 
   #: (String) -> DateTime
   def self.rfc822(s) = rfc2822(s)

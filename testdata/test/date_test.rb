@@ -28,6 +28,9 @@ module DateTests
       assert_equal "2024-01-01T00:00:00+00:00", DateTime.civil(2024).to_s
       assert_equal "2024-01-01T23:59:59+00:00", DateTime.new(2024, 1, 1, -1, -1, -1).to_s
       assert_equal "2024-01-02T00:00:00+00:00", DateTime.new(2024, 1, 1, 24).to_s
+      midnight = DateTime.new(2024, 1, 30, 24)
+      assert_equal [31, 0, 2460341], [midnight.day, midnight.hour, midnight.jd]
+      assert_equal "2024-02-29T00:00:00+00:00", (midnight >> 1).to_s
       assert_equal "#<DateTime: 2024-01-01T10:00:01+01:00 ((2460311j,32401s,500000000n),+3600s,2299161j)>", DateTime.new(2024, 1, 1, 10, 0, Rational(3, 2), Rational(1, 24)).inspect
       assert_equal "#<DateTime: 2024-01-01T10:00:01-05:30 ((2460311j,55801s,250000000n),-19800s,2299161j)>", DateTime.new(2024, 1, 1, 10, 0, 1.25, "-05:30").inspect
       assert_equal "2024-02-29T00:00:00+00:00", DateTime.jd(2460370).to_s
@@ -42,6 +45,7 @@ module DateTests
       zones = ["-00:00", "Z", "UTC", "EST", "jst", "GMT+3", "+0930", "+9", "+25:00", "bogus"]
       got = zones.map { |z| DateTime.new(2024, 1, 1, 0, 0, 0, z).zone }
       assert_equal ["+00:00", "+00:00", "+00:00", "-05:00", "+09:00", "+03:00", "+09:30", "+09:00", "+00:00", "+00:00"], got
+      assert_equal ["+01:00", "-01:00", "-12:00", "+00:00"], %w[A N Y J].map { |z| DateTime.new(2024, 1, 1, 0, 0, 0, z).zone }
       assert_equal "+24:00", DateTime.new(2024, 1, 1, 0, 0, 0, 1).zone
       assert_equal "+12:00", DateTime.new(2024, 1, 1, 0, 0, 0, 0.5).zone
       assert_equal "#<DateTime: 2024-01-01T00:00:00+03:25 ((2460310j,74057s,0n),+12343s,2299161j)>", DateTime.new(2024, 1, 1, 0, 0, 0, Rational(1, 7)).inspect
@@ -137,7 +141,10 @@ module DateTests
       assert_equal "2024-03-01T10:00:00+01:00", DateTime.rfc3339("2024-03-01T10:00:00+01:00").to_s
       assert_equal "2024-02-29T04:45:30+00:00", DateTime.httpdate("Thu, 29 Feb 2024 04:45:30 GMT").to_s
       assert_equal "2024-02-29T13:45:30+09:00", DateTime.rfc2822("Thu, 29 Feb 2024 13:45:30 +0900").to_s
+      assert_equal "2024-02-29T13:45:30+01:00", DateTime.rfc2822("Thu, 29 Feb 2024 13:45:30 A").to_s
       assert_equal "2024-02-29T13:45:30+09:00", DateTime.jisx0301("R06.02.29T13:45:30+09:00").to_s
+      assert_equal "1994-02-28T13:45:30+00:00", DateTime.jisx0301("06.02.28T13:45:30").to_s
+      assert_equal "1994-02-28", Date.jisx0301("06.02.28").to_s
       assert_equal "2024-02-29T13:45:30+09:00", DateTime.xmlschema("2024-02-29T13:45:30+09:00").to_s
       %w[nope 2024-03-01].each do |s|
         assert_raises(Date::Error) { DateTime.rfc3339(s) }
@@ -151,6 +158,9 @@ module DateTests
       assert_equal "2024-03-01T10:11:12+09:00", DateTime.strptime("2024-03-01 10:11:12 +0900", "%Y-%m-%d %H:%M:%S %z").to_s
       assert_equal "2024-03-01T13:02:03+00:00", DateTime.strptime("03/01/24 01:02:03 PM", "%D %I:%M:%S %p").to_s
       assert_equal "2024-02-29T04:45:30+00:00", DateTime.strptime("1709181930", "%s").to_s
+      assert_equal "1969-12-31T23:59:59+00:00", DateTime.strptime("-1", "%s").to_s
+      assert_equal "1969-12-31T23:59:58+00:00", DateTime.strptime("-1500", "%Q").to_s
+      assert_equal "2024-03-01T00:00:00+00:00", DateTime.strptime("2024-03-01 %T", "%F %%T").to_s
       assert_raises(Date::Error) { DateTime.strptime("2024-03-01T10:11:12") }
     end
 
@@ -185,6 +195,7 @@ module DateTests
       assert_equal Rational(1, 4), (Date.new(2024, 1, 1) + Rational(1, 4)).day_fraction
       assert_equal " 5-MAR-2024|+00:00|+0000|+00:00|1709596800000|1709596800", Date.new(2024, 3, 5).strftime("%v|%Z|%z|%:z|%Q|%s")
       assert_equal "Tue, 5 Mar 2024 00:00:00 +0000", Date.new(2024, 3, 5).rfc2822
+      assert_equal "00000001704067200000|1704067200000|       1704067200000|%Q", Date.new(2024, 1, 1).strftime("%20Q|%-20Q|%_20Q|%%Q")
     end
   end
 end
