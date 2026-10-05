@@ -524,8 +524,8 @@ module StdlibTests
       assert_raises(EOFError) { eof_io.readbyte }
       eof_io.rewind
       assert_equal [104, 195], [eof_io.readbyte, eof_io.readbyte]
-      chomp_io = StringIO.new("a\r\nb")
-      assert_equal ["a", "b"], [chomp_io.readline(chomp: true), chomp_io.readline(chomp: true)]
+      chomp_io = StringIO.new("a\r\nb\r")
+      assert_equal ["a", "b\r"], [chomp_io.readline(chomp: true), chomp_io.readline(chomp: true)]
     end
 
     def test_seek
@@ -1434,6 +1434,10 @@ module StdlibTests
       q << 1
       assert_equal true, t.value
       assert_equal true, Thread.new { 1 }.group.equal?(ThreadGroup::Default)
+      g.add(Thread.main)
+      assert_equal true, Thread.new { 1 }.group.equal?(g)
+    ensure
+      ThreadGroup::Default.add(Thread.main)
     end
 
     def test_enclose

@@ -41,9 +41,11 @@ func (t *Thread) notSelf() {
 func rbThreadRun(run func() any) *Thread {
 	t := &Thread{done: make(chan struct{}), loc: rbCallerLoc()}
 	parent := rbGoID()
-	if p, ok := rbThreadOf.Load(parent); ok { // a new thread joins its creator's ThreadGroup, as in MRI (decision 132)
-		t.group.Store(p.(*Thread).group.Load())
+	creator := rbMainThread // the main goroutine has no rbThreadOf entry
+	if p, ok := rbThreadOf.Load(parent); ok {
+		creator = p.(*Thread)
 	}
+	t.group.Store(creator.group.Load()) // a new thread joins its creator's ThreadGroup, as in MRI (decision 132)
 	ractor, inRactor := rbRactorOf.Load(parent)
 	rbLiveThreads.Store(t, rbThreadSeq.Add(1))
 	go func() {

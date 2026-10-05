@@ -88,11 +88,11 @@ func (c *Compiler) expandDelegations(ctx context.Context) {
 	added := false
 	for _, cls := range c.classList {
 		for _, d := range cls.delegations {
+			owner := cls
 			if d.single {
-				c.expandDelegation(ctx, cls.meta, d)
-				continue
+				owner = cls.meta
 			}
-			c.expandDelegation(ctx, cls, d)
+			c.expandDelegation(ctx, owner, d)
 			added = true
 		}
 	}
@@ -202,6 +202,9 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	}
 	sig += " -> " + subst(m.Ret, env).String()
 	call := d.accessor
+	if call[0] >= 'A' && call[0] <= 'Z' { // resolved from the top level, as delegateTarget typed it
+		call = "::" + call
+	}
 	if d.method == "[]" {
 		call += "[" + strings.Join(args, ", ") + "]"
 	} else {
