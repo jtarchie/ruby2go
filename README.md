@@ -152,7 +152,7 @@ whole program at compile time rather than looked up by reflection.
   `Thread`, `Queue`, `Mutex`, `Ractor`.
 - **Standard library:** `json`, `set`, `time`, `date`, `csv`, `stringio`,
   `strscan`, `digest`, `base64`, `zlib`, `securerandom`, `shellwords`, `uri`,
-  `net/http`, `webrick`, `fileutils`, `find`, `pathname`, `tempfile`,
+  `net/http`, `webrick`, `socket`, `fileutils`, `find`, `pathname`, `tempfile`,
   `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
   and `minitest` (including `Minitest::Spec`).

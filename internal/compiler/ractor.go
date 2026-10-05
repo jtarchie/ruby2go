@@ -97,9 +97,3 @@ func (f *fctx) checkIsolated(bn *parser.BlockNode) {
 		f.errorf(bn, "can not isolate a Proc because it accesses outer variables (%s).", strings.Join(outer, ", "))
 	}
 }
-
-// isRactorRecv reports a Ractor or Ractor::Port receiver, whose `send` is a message, not Kernel#send.
-func isRactorRecv(t Type) bool {
-	c := classOf(t)
-	return c != nil && (c.RubyName == "Ractor" || c.RubyName == "Ractor::Port")
-}

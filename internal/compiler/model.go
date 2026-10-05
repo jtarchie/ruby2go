@@ -496,7 +496,10 @@ var goDecl = regexp.MustCompile(`(?m)^\s*(?:func|type|var|const)\s+([A-Z]\w*)`)
 // `ShapeI`, `Foo::Bar`'s `Foo_Bar`). Prelude names are fixed, since `%x{}`
 // spells them; a clashing user name gains `_` until it is free.
 func (c *Compiler) nameGo() {
-	taken := map[string]bool{"Tuple2": true, "Tuple3": true}
+	taken := map[string]bool{}
+	for n := 2; n <= maxTuple; n++ {
+		taken[fmt.Sprintf("Tuple%d", n)] = true
+	}
 	for _, v := range c.verbatim {
 		for _, m := range goDecl.FindAllStringSubmatch(v.code, -1) {
 			taken[m[1]] = true
@@ -1529,8 +1532,8 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		for i, e := range t.Elems {
 			elems[i] = c.resolveType(e, sc)
 		}
-		if len(elems) < 2 || len(elems) > 3 {
-			c.errorf(sc.file, nil, "%s:%d: only 2- and 3-tuples are supported", sc.file.Name, sc.line)
+		if len(elems) < 2 || len(elems) > maxTuple {
+			c.errorf(sc.file, nil, "%s:%d: only 2- to %d-tuples are supported", sc.file.Name, sc.line, maxTuple)
 		}
 		return TTuple{Elems: elems}
 	case rbs.Self:
