@@ -1269,7 +1269,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
@@ -1420,6 +1420,12 @@ func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) 
 	case cls.RubyName == "ERB" && n.Name == "new":
 		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
 		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
+	case n.Name == "new" && cls.isSubclassOf(f.c.classes["BasicSocket"]) && cls.lookup("initialize") == nil:
+		// a socket object is only made with its handle: BasicSocket/IPSocket/Socket.new would be a nil one (decision 135)
+		if cls.isSubclassOf(f.c.classes["Socket"]) {
+			f.errorf(n, "Socket.new is not supported (decision 135): raw sockets bind and connect to packed sockaddr Strings; use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp")
+		}
+		f.errorf(n, "undefined method initialize for %s (decision 135): use TCPSocket, TCPServer, UDPSocket, UNIXSocket or Socket.tcp", cls.RubyName)
 	}
 	return expr{}, false
 }
@@ -1476,7 +1482,7 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		}
 		return f.genDynRespondTo(n, recv, args), true
 	}
-	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !isRactorRecv(recv.typ) {
+	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !f.ownSend(recv.typ, name) {
 		return f.genSend(n, recv, name, args, block), true
 	}
 	if name == "is_a?" || name == "kind_of?" {
@@ -1494,6 +1500,15 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 		}
 	}
 	return expr{}, false
+}
+
+// ownSend is true when the receiver's class defines its own send (Ractor's, BasicSocket's), which shadows Kernel#send as in MRI.
+func (f *fctx) ownSend(t Type, name string) bool {
+	if name != "send" {
+		return false
+	}
+	c := classOf(t)
+	return c != nil && c.lookup(name) != nil
 }
 
 // dispatch resolves a call by the receiver's static type.
@@ -2029,6 +2044,21 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 		return nil
 	}
 	return m.Owner.lookup("__fetch_opt")
+}
+
+// newOverloaded is true when initialize cannot take the call's argument count
+// and the class defines decision 12's `self.__new_<count>` (TCPServer.new(port)).
+func (f *fctx) newOverloaded(cls *Class, n *parser.CallNode) bool {
+	args := callArgs(n)
+	if cls.meta == nil || cls.meta.lookup("__new_"+strconv.Itoa(len(args))) == nil {
+		return false
+	}
+	init := cls.lookup("initialize")
+	if init == nil {
+		return true
+	}
+	rest := slices.ContainsFunc(init.M.Params, func(p Param) bool { return p.Rest })
+	return len(args) < requiredArgs(init.M) || !rest && len(args) > len(init.M.Params)
 }
 
 // overload stands in for RBS overloads (decision 12): a call whose argument

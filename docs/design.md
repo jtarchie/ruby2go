@@ -3695,3 +3695,119 @@ resolve; anything not listed is still open.
       dates, like Time's, does not reach decision 12's overloads and
       raises TypeError.
     (`testdata/test/date_test.rb`, `testdata/errors/dates.txtar`.)
+
+135. `socket` (#42) is MRI's class tree over Go's `net`: `BasicSocket`
+    (with `IPSocket` < it, `TCPSocket`/`UDPSocket` < `IPSocket`,
+    `TCPServer` < `TCPSocket`, `UNIXSocket` < it, `UNIXServer` <
+    `UNIXSocket`, `Socket` < it), `Addrinfo`, `SocketError` and
+    `Socket::ResolutionError`.
+    - **Shape.** The socket classes are plain struct classes, so
+      subclassing and `is_a?` work, each holding one `@h`, a
+      `BasicSocket::Handle__` `@go_type` over a `net.Conn` or
+      `net.Listener` plus a `bufio.Reader`. `BasicSocket` is no `IO`
+      subclass, since `IO` is a `@go_type` (decision 62): it includes
+      `IOWritable`/`IOReadable` as `File` does, so `puts`/`print`/
+      `printf`/`each_line`/`readlines` are the shared ones. `accept`
+      and `pair` build their objects in Go (`__wrap`), not through
+      `initialize`. `Addrinfo` is a `@go_type` value (family, address,
+      port or path, socktype, protocol, and the name MRI shows in
+      parentheses when the host or service was not numeric).
+    - **Real descriptors.** TCP connects and listens through
+      `net.Dialer`/`net.Listen`. A `UDPSocket` is an unbound
+      `socket(2)` wrapped by `net.FilePacketConn`, and `UNIXSocket.pair`
+      a `socketpair(2)` wrapped by `net.FileConn`, so `bind`, `connect`,
+      `send`/`sendto` (with flags), `recv`/`recvfrom` (with flags, e.g.
+      `MSG_PEEK`), `setsockopt` and `getsockname`/`getpeername` are the
+      kernel's own calls on the descriptor (`SyscallConn`): `addr` on an
+      unbound UDP socket is `0.0.0.0:0`, sending on a connected one with
+      a host is the kernel's `EISCONN`, and `setsockopt` takes any
+      Integer level/option with `true`/`false`, an Integer or a packed
+      String (nothing is ignored). Symbol levels and options
+      (`:SOCKET, :REUSEADDR`) are not taken: a union parameter would be
+      `untyped`, so they are a type error. `accept_nonblock` is one
+      `accept(2)` inside `Control` (a listener's `RawConn.Read` is
+      `EINVAL`): `IO::EAGAINWaitReadable` (< `Errno::EAGAIN`, including
+      `IO::WaitReadable`) with MRI's message when nothing is pending; the
+      `exception: false` form (a `TCPSocket | :wait_readable` union) is
+      not built. `UNIXServer` keeps its socket file on close, as MRI
+      (Go's listener would unlink it). `listen(n)` answers 0 without a
+      second `listen(2)`: Go's listener already listens.
+    - **Reads.** `gets`, `read`, `read(n)` (nil at EOF), `readpartial`
+      (at most one `read(2)`, `EOFError` at EOF), `readline`, `eof?` go
+      through the buffered reader. `recv` reads what the reader already
+      holds first so a stream stays in order (MRI raises `recv for
+      buffered IO` there; a `MSG_PEEK` leaves those bytes in place),
+      and answers `nil` once a
+      stream's peer has closed (MRI 3.3+; the rbs gem still says
+      `String`). `recvfrom` is defined on `TCPSocket` and `UDPSocket`
+      rather than `IPSocket`, since an override cannot narrow a result
+      type: a stream's is `[String, nil]` and `nil` at EOF, as MRI's, a
+      datagram's always carries the sender's address array, so UDP code
+      needs no nil checks. Writes go straight to the descriptor, so `sync` is
+      always true; `send` answers the bytes `sendmsg(2)` took, which on
+      a full stream buffer is fewer than given, as MRI's. `close_read`/`close_write` are `shutdown(2)`, the
+      socket closing once both are; reading or writing a closed half is
+      MRI's `IOError` (`not opened for reading`, `closed stream`).
+    - **Errors.** An errno becomes its `Errno::` class (`ECONNREFUSED`,
+      `EADDRINUSE`, `EADDRNOTAVAIL`, `EPIPE`, `ECONNRESET`,
+      `ECONNABORTED`, `EAGAIN`, `ENOTCONN`, `EISCONN`, `EDESTADDRREQ`,
+      `ETIMEDOUT`, `EHOSTUNREACH`, `ENETUNREACH`, `EAFNOSUPPORT`, plus
+      the file ones; others `SystemCallError`), its message Go's strerror
+      text capitalized as libc's, then MRI's detail: `connect(2) for
+      "host" port N` (`Socket.tcp`'s `connect(2) for host:N`), `bind(2)
+      for ...`, `sendto(2) for ...`, `send(2)`, a Unix socket's
+      `connect(2) for path` (MRI says `connect(2)` for `UNIXServer.new`'s
+      bind too). A failed lookup is `Socket::ResolutionError` <
+      `SocketError`, `getaddrinfo(3): ` from socket constructors and
+      `getaddrinfo: ` from `Addrinfo`/`Socket.getaddrinfo`, then the
+      platform's `EAI_NONAME` text: `nodename nor servname provided, or
+      not known` on macOS and the BSDs, `Name or service not known` on
+      Linux. A `connect_timeout:` that expires is `IO::TimeoutError`
+      (< `IOError`) `user specified timeout for host:port`. Errno numbers
+      are the platform's (`SystemCallError#errno`), but the classes have
+      no `Errno` constant (`Errno::EAGAIN::Errno` is undefined).
+    - **Lookups.** `Addrinfo.getaddrinfo`/`Socket.getaddrinfo` resolve
+      with Go's resolver (a numeric host is not looked up, and a
+      numeric `::ffff:a.b.c.d` stays IPv6; `""` and `"<any>"` are
+      `0.0.0.0`, `"<broadcast>"` `255.255.255.255`, as MRI's
+      `host_str`, though `""` shows no `()` in `inspect`) and repeat
+      each address per socket type, stream/TCP, datagram/UDP, raw, as
+      `getaddrinfo(3)` does without hints, filtered by family and
+      socktype (Integers, or `:INET`/`"AF_INET6"`/`:STREAM`...); a named
+      service is `net.LookupPort`. A hostname's address order is the
+      resolver's, which may differ from MRI's. `Socket.ip_address_list`
+      walks `net.Interfaces`, link-local IPv6 addresses carrying their
+      zone. `Addrinfo#to_s`/`to_sockaddr` packs this platform's struct
+      sockaddr (BSD's length byte on macOS); it is a plain String, so
+      its `inspect` shows `\u0000` where MRI's binary String shows
+      `\x00` (rb2go has no encodings).
+    - **Constants** (`AF_*`, `PF_*`, `SOCK_*`, `SOL_SOCKET`, `SO_*`,
+      `IPPROTO_*`, `TCP_NODELAY`, `SHUT_*`, `MSG_PEEK`/`MSG_OOB`,
+      `SOMAXCONN`, `INADDR_ANY`) come from Go's `syscall` for the
+      platform the program is built on, as MRI's come from its headers
+      (`AF_INET6` is 30 on macOS, 10 on Linux). No `Socket::Constants`
+      module.
+    - **Compiler changes it needed.** RBS tuples go to 7 elements, not
+      3 (`addr`'s `[String, Integer, String, String]` and
+      `Socket.getaddrinfo`'s rows). A class that defines `send` shadows
+      `Kernel#send` (`UDPSocket#send(msg, flags, host, port)`), as in
+      MRI; this replaced Ractor's special case. A struct class's `new`
+      honours decision 12's `self.__new_<n>` when `initialize` cannot
+      take the call's argument count (`TCPServer.new(port)`).
+    - **Not built.** `Socket.new` with `bind`/`connect` on packed
+      sockaddr Strings is a compile error naming the classes to use, as
+      is `.new` on any socket class without an `initialize`
+      (`BasicSocket`, `IPSocket`, a user subclass of `Socket`), whose
+      object would have no handle;
+      `SOCKSSocket` and `IO.select` do not exist (uninitialized constant,
+      undefined method). `Addrinfo.new(sockaddr)`, `Socket.unix`,
+      `Socket.tcp_server_loop` and friends, `recvmsg`/`sendmsg`,
+      `send_io`/`recv_io` and `getsockopt` are undefined. Reverse lookup
+      (`addr(true)`) is not done: the host slot is the address, as with
+      MRI's default `do_not_reverse_lookup`. Windows: the issue asked for
+      a build-tag `unsupported` there, but the prelude already uses
+      Unix-only `syscall` APIs (`Stat_t`, `Getrusage`, and now
+      `Socketpair`), so generated programs are Unix-only as a whole and
+      no tag is added.
+    ([example 91](../examples/91_socket/main.rb),
+    `testdata/test/socket_test.rb`, `testdata/errors/socket.txtar`.)

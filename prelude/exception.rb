@@ -84,6 +84,20 @@ module Errno
   class ENOTDIR < SystemCallError; end
   class EACCES < SystemCallError; end
   class ENOTEMPTY < SystemCallError; end
+  class EAGAIN < SystemCallError; end
+  class ECONNREFUSED < SystemCallError; end
+  class EADDRINUSE < SystemCallError; end
+  class EADDRNOTAVAIL < SystemCallError; end
+  class EPIPE < SystemCallError; end
+  class ECONNRESET < SystemCallError; end
+  class ECONNABORTED < SystemCallError; end
+  class ENOTCONN < SystemCallError; end
+  class EISCONN < SystemCallError; end
+  class EDESTADDRREQ < SystemCallError; end
+  class ETIMEDOUT < SystemCallError; end
+  class EHOSTUNREACH < SystemCallError; end
+  class ENETUNREACH < SystemCallError; end
+  class EAFNOSUPPORT < SystemCallError; end
 end
 
 class RuntimeError < StandardError; end
