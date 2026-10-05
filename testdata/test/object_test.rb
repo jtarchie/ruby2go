@@ -4309,7 +4309,8 @@ module ObjectTests
     def test_ancestors
       extra = Object.included_modules - [Kernel] # what other files' libraries mix into Object in one MRI process (pp, json)
       assert_equal [AncB, AncGreets, AncA, AncMarks, Object, Kernel, BasicObject], AncB.ancestors - extra
-      assert_equal [[Object, Kernel, BasicObject], [Comparable], [Kernel], [BasicObject]], [Object.ancestors - extra, Comparable.ancestors, Kernel.ancestors, BasicObject.ancestors]
+      kextra = Kernel.ancestors - [Kernel] # MRI prepends <RactorRequire> once any loaded file uses Ractor
+      assert_equal [[Object, Kernel, BasicObject], [Comparable], [Kernel], [BasicObject]], [Object.ancestors - extra - kextra, Comparable.ancestors, Kernel.ancestors - kextra, BasicObject.ancestors]
       assert_equal [AncGreets, AncMarks, Kernel], AncB.included_modules - extra
       assert_equal [true, false], [Integer.ancestors.include?(Comparable), AncA.ancestors.include?(AncGreets)]
     end

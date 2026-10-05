@@ -10,6 +10,7 @@ import (
 )
 
 // Prelude holds prelude.rb, its require_relatives, and prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo).
+//
 //go:embed prelude.rb prelude/*.rb prelude/go/*.go
 var Prelude embed.FS
 
