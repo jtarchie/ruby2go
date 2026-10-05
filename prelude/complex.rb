@@ -3,6 +3,8 @@
 # Components keep their class (Integer, Rational or Float), as MRI's do, so exact parts stay exact.
 # @go_type struct { re any; im any }
 class Complex < Object
+  include Numeric
+
   #: (untyped, ?untyped) -> Complex
   def self.rectangular(re, im = 0) = Complex(re, im)
 
@@ -179,6 +181,38 @@ class Complex < Object
 
   #: (Rational) -> Complex
   def __div_rational(o) = %x{ return rbComplexScalar('/', self, o, false) }
+
+  # A Complex has no order: MRI undefines these.
+  undef_method :%, :<, :<=, :>, :>=, :between?, :clamp, :div, :divmod, :modulo, :remainder, :positive?, :negative?, :floor, :ceil, :round, :truncate, :i
+
+  # Only real values compare (an imaginary part of zero, exact or not), as MRI's nucomp_cmp.
+  #: (Complex) -> Integer?
+  def <=>(other) = %x{ return rbComplexCmp(self, other) }
+
+  #: () -> bool
+  def zero? = %x{ Boolean(rbNumZero(self.re) && rbNumZero(self.im)) }
+
+  #: () -> Complex?
+  def nonzero? = zero? ? nil : self
+
+  #: () -> bool
+  def integer? = false
+
+  #: () -> Integer?
+  def infinite? = %x{
+    if math.IsInf(rbNumFloat(self.re), 0) || math.IsInf(rbNumFloat(self.im), 0) {
+      return Ref(Integer(1))
+    }
+    return nil
+  }
+
+  #: (untyped) -> [Complex, Complex]
+  def coerce(other) = %x{
+    if c, ok := rbUnbox(other).(*Complex); ok {
+      return Tuple2[*Complex, *Complex]{c, self}
+    }
+    return Tuple2[*Complex, *Complex]{&Complex{rbNumArg(other), Integer(0)}, self}
+  }
 end
 
 class Integer

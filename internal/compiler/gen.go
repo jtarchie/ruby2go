@@ -1166,11 +1166,29 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	}
 	// a fresh name, not the local's: default and multi-class arms still see the local as declared
 	name := f.newTmp()
+	numSubj := name // what the `when Numeric` arm reads: a switch with no other case may lose its variable
+	if slices.ContainsFunc(n.Conditions, func(w parser.Node) bool { return f.numericWhen(w.(*parser.WhenNode), subj.typ) != nil }) {
+		numSubj = f.newTmp()
+		f.emit("%s := %s", numSubj, code)
+		code = numSubj
+	}
 	f.emit("switch %s := %s.(type) {", name, code)
 	f.switches++
 	hasNil := false
+	listed := map[string]bool{} // an earlier arm already takes these Go types: Go rejects a repeat, and Ruby's first match wins anyway
+	var numArm *parser.WhenNode // `when Numeric` asks the ancestry table in default: a case naming all five classes would keep BigDecimal and Complex in every program
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
+		if cls := f.numericWhen(wn, subj.typ); cls != nil {
+			if numArm == nil {
+				numArm = wn
+				goTypes, _, _ := f.whenClass(cls)
+				for _, g := range goTypes {
+					listed[g] = true
+				}
+			}
+			continue
+		}
 		var cases []string
 		var armType Type = TAny{}
 		convert := ""
@@ -1182,7 +1200,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				hasNil = true
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
 				cls := f.classRef(c)
-				if cls.IsModule && f.moduleIsA(c, subj.typ, cls) == "false" {
+				if cls.IsModule && (!f.c.isNumericMod(cls) || !f.numericAtRunTime(subj.typ)) && f.moduleIsA(c, subj.typ, cls) == "false" {
 					continue
 				}
 				var goTypes []string
@@ -1190,8 +1208,12 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				cases = append(cases, goTypes...)
 			}
 		}
+		cases = slices.DeleteFunc(cases, func(c string) bool { return listed[c] })
 		if len(cases) == 0 {
-			continue // only modules the subject statically lacks: never matches
+			continue // only modules the subject statically lacks, or classes an earlier arm takes: never matches
+		}
+		for _, c := range cases {
+			listed[c] = true
 		}
 		if len(wn.Conditions) != 1 {
 			convert = ""
@@ -1215,7 +1237,31 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	saved := f.enterBlock()
 	f.indent++
 	f.emit("_ = %s", name)
-	if o, ok := subj.typ.(TOpt); ok && hasNil && subjLocal != nil && !isAny(o.Elem) {
+	f.genCaseDefault(n, t, subj.typ, subjLocal, hasNil, numArm, numSubj)
+	f.indent--
+	f.leaveBlock(saved)
+	f.switches--
+	f.emit("}")
+}
+
+// genCaseDefault is a type switch's default arm: the `when Numeric` arm, asked of the ancestry table, then else.
+func (f *fctx) genCaseDefault(n *parser.CaseNode, t tail, subjT Type, subjLocal *local, hasNil bool, numArm *parser.WhenNode, numSubj string) {
+	var elseSaved string
+	if numArm != nil {
+		f.emit("if rbKindOf(%s, %d) {", numSubj, f.c.classID(f.c.classes["Numeric"]))
+		inner := f.enterBlock()
+		f.indent++
+		if subjLocal != nil {
+			f.applyNarrow([]narrowInfo{{local: subjLocal, typ: f.cls("Numeric"), code: numSubj}})
+		}
+		f.genStmts(numArm.Statements, t)
+		f.indent--
+		f.leaveBlock(inner)
+		f.emit("} else {")
+		elseSaved = f.enterBlock()
+		f.indent++
+	}
+	if o, ok := subjT.(TOpt); ok && hasNil && subjLocal != nil && !isAny(o.Elem) {
 		f.applyNarrow([]narrowInfo{{local: subjLocal, typ: o.Elem}})
 	}
 	if n.ElseClause != nil {
@@ -1223,10 +1269,22 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	} else {
 		f.emptyTail(n, t)
 	}
-	f.indent--
-	f.leaveBlock(saved)
-	f.switches--
-	f.emit("}")
+	if numArm != nil {
+		f.indent--
+		f.leaveBlock(elseSaved)
+		f.emit("}")
+	}
+}
+
+// numericWhen is Numeric when wn is `when Numeric` alone on a subject whose class only the run time knows.
+func (f *fctx) numericWhen(wn *parser.WhenNode, subj Type) *Class {
+	if len(wn.Conditions) != 1 {
+		return nil
+	}
+	if cls := f.classRef(wn.Conditions[0]); f.c.isNumericMod(cls) && f.numericAtRunTime(subj) {
+		return cls
+	}
+	return nil
 }
 
 // whenClass is the type-switch case for `when cls`: the Go types it lists,
@@ -1241,6 +1299,14 @@ func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
 		return []string{cls.Name + "_Any"}, TClass{C: cls, Args: args}, "._ToAny()"
 	case cls.universal: // nil is an Object too, but a nil interface misses `case any:`
 		return []string{f.c.goType(TClass{C: cls}), "nil"}, TClass{C: cls}, ""
+	case f.c.isNumericMod(cls): // its includers are the prelude's number classes, each a Go type of its own
+		var goTypes []string
+		for _, k := range f.c.classList {
+			if !k.IsModule && k.metaOf == nil && k.isSubclassOf(cls) {
+				goTypes = append(goTypes, f.c.goType(TClass{C: k}))
+			}
+		}
+		return goTypes, TClass{C: cls}, ""
 	}
 	return []string{f.c.goType(TClass{C: cls})}, TClass{C: cls}, ""
 }

@@ -212,3 +212,39 @@ def ident(v) = v
 v = ident(5)
 puts v.between?(1, 10)
 puts v.clamp(1, 3)
+-- numeric_complex_with_bigdecimal.rb --
+# error: main.rb:4: a BigDecimal does not mix with a Complex
+# rbs_inline: enabled
+require "bigdecimal"
+puts Complex(1, 2) + BigDecimal("1")
+-- numeric_bigdecimal_to_c.rb --
+# error: main.rb:4: undefined method to_c for BigDecimal
+# rbs_inline: enabled
+require "bigdecimal"
+puts BigDecimal("1").to_c
+-- numeric_complex_has_no_order.rb --
+# error: main.rb:3: undefined method positive? for Complex
+# rbs_inline: enabled
+puts Complex(1, 2).positive?
+-- numeric_subclass.rb --
+# error: main.rb:3: subclassing Numeric is not supported
+# rbs_inline: enabled
+class Money < Numeric
+end
+puts 1
+-- numeric_include.rb --
+# error: main.rb:4: Numeric is a class, not a module
+# rbs_inline: enabled
+class Money
+  include Numeric
+end
+puts 1
+-- numeric_block_on_numeric.rb --
+# error: main.rb:4: a block on a Numeric is not supported: narrow it with is_a? first
+# rbs_inline: enabled
+n = 1 #: Numeric
+n.step(3) { |x| puts x }
+-- numeric_pow_rational_exponent.rb --
+# error: main.rb:3: Rational where Integer is expected
+# rbs_inline: enabled
+puts Rational(1, 4) ** Rational(1, 2)

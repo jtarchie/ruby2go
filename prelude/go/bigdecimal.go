@@ -881,6 +881,23 @@ func rbBDRel(x *BigDecimal, other any, op string) bool {
 	return c >= 0
 }
 
+// rbBDOrder is Comparable's cmpint for between? and clamp: where <=> is nil (NaN, a non-number) MRI raises, not answers false.
+func rbBDOrder(x *BigDecimal, other any) Integer {
+	var b *BigDecimal
+	switch o := rbUnbox(other).(type) {
+	case *BigDecimal:
+		b = o
+	case Integer, Float, *Rational:
+		b = rbBDArg(o, rbBDCoercePrec(x))
+	}
+	if b != nil {
+		if c, ok := rbBDCmp(x, b); ok {
+			return Integer(c)
+		}
+	}
+	panic(NewArgumentError(Ref(String("comparison of BigDecimal with " + rbCmpName(other) + " failed"))))
+}
+
 // rbCmpName names a failed comparison's operand as rb_cmperr does.
 func rbCmpName(v any) string {
 	switch rbUnbox(v).(type) {

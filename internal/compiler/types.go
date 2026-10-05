@@ -363,7 +363,7 @@ func join(a, b Type) (Type, bool) {
 		}
 		return TOpt{Elem: j}, true
 	case isNumeric(a) && isNumeric(b):
-		return TAny{}, true // Integer and Float mix at run time (MRI's coerce); there is no Numeric type
+		return TAny{}, true // Integer and Float mix at run time (MRI's coerce); untyped, not Numeric, keeps decision 12's dynamic arithmetic
 	}
 	// Methods of different signatures mix as Method[untyped] (decision 141).
 	if ka, _, _ := methodFn(a); ka != "" && classOf(a) == classOf(b) {

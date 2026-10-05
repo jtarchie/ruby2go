@@ -5,6 +5,8 @@
 # Operands may be a BigDecimal, Integer, Float or Rational.
 # @go_type struct { mant *big.Int; exp int; neg bool; kind int }
 class BigDecimal < Object
+  include Numeric
+
   VERSION = "4.1.2" #: String
 
   ROUND_MODE = 256 #: Integer
@@ -165,6 +167,21 @@ class BigDecimal < Object
 
   #: (untyped) -> bool
   def >=(other) = %x{ return Boolean(rbBDRel(self, other, ">=")) }
+
+  # Comparable's, over any number: its own take a BigDecimal, and clamp answers the bound itself.
+  #: (untyped, untyped) -> bool
+  def between?(lo, hi) = __order(lo) >= 0 && __order(hi) <= 0
+
+  #: (untyped, untyped) -> untyped
+  def clamp(lo, hi)
+    raise ArgumentError, "min argument must be less than or equal to max argument" if BigDecimal.__from(lo).__order(hi) > 0
+    return lo if __order(lo) < 0
+    return hi if __order(hi) > 0
+    self
+  end
+
+  #: (untyped) -> Integer
+  def __order(other) = %x{ return rbBDOrder(self, other) }
 
   #: () -> Integer
   def hash = %x{ return rbBDHash(self) }
@@ -340,6 +357,45 @@ class BigDecimal < Object
 
   #: () -> bool
   def negative? = %x{ return Boolean(self.kind != rbBDNaN && self.neg && !self.isZero()) }
+
+  # rb2go's Complex parts are Integer, Rational or Float only (decision 142).
+  undef_method :to_c, :i
+
+  #: () -> bool
+  def integer? = false
+
+  #: () -> bool
+  def real? = true
+
+  #: () -> BigDecimal
+  def magnitude = abs
+
+  # Numeric#fdiv: a Float divided by the argument.
+  #: (untyped) -> Float
+  def fdiv(other) = %x{ return Float(float64(rbBDToF(self)) / rbNumFloat(rbUnbox(other))) }
+
+  #: (BigDecimal) -> BigDecimal
+  def __fdiv_big_decimal(other) = to_f / other
+
+  # Numeric#step: self, then each step added, while within limit.
+  #: (untyped, ?untyped) { (BigDecimal) -> void } -> void
+  def step(limit, by = 1)
+    lim = BigDecimal.__from(limit)
+    inc = BigDecimal.__from(by)
+    raise ArgumentError, "step can't be 0" if inc.zero?
+    i = self
+    while inc.positive? ? i <= lim : i >= lim
+      yield i
+      i += inc
+    end
+  end
+
+  #: (untyped, ?untyped) -> Array[BigDecimal]
+  def __step_enum(limit, by = 1)
+    out = [] #: Array[BigDecimal]
+    step(limit, by) { |x| out << x }
+    out
+  end
 end
 
 module Kernel
@@ -365,6 +421,12 @@ class Integer
 
   #: (BigDecimal) -> BigDecimal
   def __div_big_decimal(other) = BigDecimal(self) / other
+
+  #: (BigDecimal) -> [Float, Float]
+  def __coerce_big_decimal(other) = [other.to_f, to_f]
+
+  #: (BigDecimal) -> Float
+  def __fdiv_big_decimal(other) = (BigDecimal(self) / other).to_f
 end
 
 class Float
@@ -382,6 +444,9 @@ class Float
 
   #: (BigDecimal) -> BigDecimal
   def __div_big_decimal(other) = BigDecimal(self) / other
+
+  #: (BigDecimal) -> [Float, Float]
+  def __coerce_big_decimal(other) = [other.to_f, to_f]
 end
 
 class String
@@ -396,4 +461,27 @@ end
 class Rational
   #: (Integer) -> BigDecimal
   def to_d(precision) = BigDecimal(self, precision)
+
+  # A mix with a BigDecimal no twin below takes (decision 142).
+  #: () -> BigDecimal
+  def __to_d = BigDecimal.__from(self)
+
+  # At other's coerce precision, as MRI's BigDecimal#coerce: a fixed one loses digits of a longer other.
+  #: (BigDecimal) -> BigDecimal
+  def __to_d_for(other) = %x{ return rbBDArg(self, rbBDCoercePrec(other)) }
+
+  #: (BigDecimal) -> BigDecimal
+  def __plus_big_decimal(other) = __to_d_for(other) + other
+
+  #: (BigDecimal) -> BigDecimal
+  def __minus_big_decimal(other) = __to_d_for(other) - other
+
+  #: (BigDecimal) -> BigDecimal
+  def __mul_big_decimal(other) = __to_d_for(other) * other
+
+  #: (BigDecimal) -> BigDecimal
+  def __div_big_decimal(other) = __to_d_for(other) / other
+
+  #: (BigDecimal) -> Float
+  def __fdiv_big_decimal(other) = (__to_d_for(other) / other).to_f
 end

@@ -3,7 +3,7 @@
 # Exact fractions on math/big; numerator and denominator must fit an Integer when read.
 # @go_type struct { v big.Rat }
 class Rational < Object
-  include Comparable
+  include Numeric
 
   #: () -> Integer
   def numerator = %x{ rbBigToInt(self.v.Num()) }
@@ -185,6 +185,75 @@ class Rational < Object
 
   #: () -> String
   def inspect = "(#{to_s})"
+
+  #: () -> Rational?
+  def nonzero? = zero? ? nil : self
+
+  #: () -> bool
+  def finite? = true
+
+  #: () -> Integer?
+  def infinite? = nil
+
+  #: () -> bool
+  def real? = true
+
+  #: () -> Rational
+  def magnitude = abs
+
+  # The exact quotient as a Float; a zero divisor gives a Float infinity or NaN, as MRI's nurat_fdiv.
+  #: (Rational) -> Float
+  def fdiv(o) = o.zero? ? to_f / 0.0 : (self / o).to_f
+
+  #: (Float) -> Float
+  def __fdiv_float(o) = to_f / o
+
+  #: (Rational) -> Integer
+  def div(o) = (self / o).floor
+
+  #: (Rational) -> Rational
+  def %(o) = self - o * div(o)
+
+  #: (Rational) -> Rational
+  def modulo(o) = self % o
+
+  #: (Rational) -> [Integer, Rational]
+  def divmod(o)
+    q = div(o)
+    [q, self - o * q]
+  end
+
+  #: (Rational) -> Rational
+  def remainder(o) = self - o * (self / o).truncate
+
+  #: (Rational, ?Rational) { (Rational) -> void } -> void
+  def step(limit, by = 1r)
+    raise ArgumentError, "step can't be 0" if by.zero?
+    i = self
+    while by.positive? ? i <= limit : i >= limit
+      yield i
+      i += by
+    end
+  end
+
+  #: (Rational, ?Rational) -> Array[Rational]
+  def __step_enum(limit, by = 1r)
+    out = [] #: Array[Rational]
+    step(limit, by) { |x| out << x }
+    out
+  end
+
+  #: (Rational) -> [Rational, Rational]
+  def coerce(o) = [o, self]
+
+  #: (Integer) -> [Rational, Rational]
+  def __coerce_integer(o) = [o.to_r, self]
+
+  #: (Float) -> [Float, Float]
+  def __coerce_float(o) = [o, to_f]
+
+  #: (Complex) -> [Complex, Complex]
+  def __coerce_complex(o) = [o, to_c]
 end
 
 class Integer

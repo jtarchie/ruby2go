@@ -326,3 +326,32 @@ func (s *rbSummer) result() any {
 	}
 	return s.exact
 }
+
+// rbComplexCmp is MRI's nucomp_cmp: only two real values (an imaginary part of zero, exact or not) compare.
+func rbComplexCmp(a, b *Complex) *Integer {
+	if !rbNumZero(a.im) || !rbNumZero(b.im) {
+		return nil
+	}
+	return rbNumCmp(a.re, b.re)
+}
+
+// rbNumCmp orders two Complex parts in the tower; NaN compares to nothing.
+func rbNumCmp(a, b any) *Integer {
+	level := max(rbNumLevel(a), rbNumLevel(b))
+	a, b = rbNumTo(a, level), rbNumTo(b, level)
+	switch level {
+	case 0:
+		return Ref(a.(Integer).Op_cmp(b.(Integer)))
+	case 1:
+		return Ref(Integer(a.(*Rational).v.Cmp(&b.(*Rational).v)))
+	}
+	switch x, y := a.(Float), b.(Float); {
+	case x < y:
+		return Ref(Integer(-1))
+	case x > y:
+		return Ref(Integer(1))
+	case x == y:
+		return Ref(Integer(0))
+	}
+	return nil
+}

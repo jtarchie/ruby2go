@@ -565,6 +565,10 @@ func inlineDefaultOnly(list []ast.Stmt) []ast.Stmt {
 			guard = a.X.(*ast.TypeAssertExpr).X
 		case *ast.AssignStmt:
 			guard = a.Rhs[0].(*ast.TypeAssertExpr).X
+			if mentions(ts.Body.List[0], a.Lhs[0].(*ast.Ident).Name) { // a default clause's variable is the guard itself
+				body = append(body, &ast.AssignStmt{Lhs: a.Lhs, TokPos: ts.Pos(), Tok: token.DEFINE, Rhs: []ast.Expr{guard}})
+				guard = nil
+			}
 		}
 		if _, ident := guard.(*ast.Ident); guard != nil && !ident {
 			body = append(body, &ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{NamePos: ts.Pos(), Name: "_"}}, TokPos: ts.Pos(), Tok: token.ASSIGN, Rhs: []ast.Expr{guard}})

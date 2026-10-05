@@ -1235,6 +1235,9 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 	switch {
 	case cls.superRef != nil:
 		sup = c.resolveClassRef(cls.superRef)
+		if c.isNumericMod(sup) {
+			c.errorf(cls.File, nil, "%s:%d: subclassing Numeric is not supported: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", cls.File.Name, cls.Line)
+		}
 		if sup.IsModule {
 			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
 		}
@@ -1262,6 +1265,9 @@ func (c *Compiler) link(ctx context.Context) {
 		for i := range cls.Includes {
 			inc := &cls.Includes[i]
 			mod := c.resolveClassRef(&inc.ref)
+			if c.isNumericMod(mod) && !inc.file.prelude {
+				c.errorf(inc.file, nil, "%s:%d: Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", inc.file.Name, inc.line)
+			}
 			if !mod.IsModule {
 				c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
 			}
@@ -1274,6 +1280,7 @@ func (c *Compiler) link(ctx context.Context) {
 			}
 		}
 	}
+	c.checkNumeric()
 	c.buildMetas()
 	c.checkSpecUses() // before signatures: a bad let name would otherwise surface as an override mismatch
 	for _, cls := range c.classList {
