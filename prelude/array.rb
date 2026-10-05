@@ -230,6 +230,16 @@ class Array < Object
   #: (Array[E]) -> Array[E]
   def difference(other) = self - other
 
+  # Only C, c and U so far (decision 136); any other directive raises NotImplementedError rather than packing wrong bytes.
+  #: (String) -> String
+  def pack(format) = %x{
+    items := make([]any, len(*self))
+    for i, x := range *self {
+      items[i] = x
+    }
+    return String(rbPack(items, string(format)))
+  }
+
   #: (Array[E]) -> Array[E]
   def &(other) = %x{
     keep := rbNewKeySet(*other)

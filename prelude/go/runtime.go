@@ -19,6 +19,9 @@ var stdoutSync atomic.Bool
 
 // rbWriteOut is Kernel#puts/print/p's write: to $stdout's object when one is assigned (decision 109), else stdout.
 func rbWriteOut(s string) {
+	if rbStdoutConv != nil {
+		s = rbStdoutConv(s)
+	}
 	if rbRedirected.Load() {
 		if t := rbRedirectTarget(1); t != nil {
 			t.Write(String(s))

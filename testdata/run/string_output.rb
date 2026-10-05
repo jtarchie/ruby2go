@@ -161,6 +161,14 @@ puts puts("a").inspect
 puts print("b\n").nil?
 printf("%d-%s\n", 1, "two")
 
+# $stdout.set_encoding converts what puts, print and write send (decision 136).
+$stdout.set_encoding("ISO-8859-1")
+puts "café"
+$stdout.write("ñ\n")
+print "é\n"
+$stdout.set_encoding(nil)
+puts "café"
+
 # Output written before exit is flushed, and the status is kept.
 puts "before exit"
 print "no newline before exit"

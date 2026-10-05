@@ -197,3 +197,52 @@ func rbAssoc[E comparable](a *Array[E], key any, at int) *E {
 	}
 	return nil
 }
+
+// rbPack is Array#pack for C, c and U, each with a count or *, MRI's errors included.
+func rbPack(items []any, format string) string {
+	var out []byte
+	next := 0
+	for i := 0; i < len(format); {
+		d := format[i]
+		i++
+		if d == ' ' || d == '\t' || d == '\n' {
+			continue
+		}
+		count := 1
+		switch j := i; {
+		case i < len(format) && format[i] == '*':
+			count = len(items) - next
+			i++
+		default:
+			for j < len(format) && format[j] >= '0' && format[j] <= '9' {
+				j++
+			}
+			if j > i {
+				count, _ = strconv.Atoi(format[i:j])
+				i = j
+			}
+		}
+		if d != 'C' && d != 'c' && d != 'U' {
+			panic(NewNotImplementedError(Ref(String("pack directive '" + string(d) + "' is not supported by rb2go"))))
+		}
+		for range count {
+			if next >= len(items) {
+				panic(NewArgumentError(Ref(String("too few arguments"))))
+			}
+			n, ok := rbUnbox(items[next]).(Integer)
+			if !ok {
+				panic(rbConvError(items[next], "Integer"))
+			}
+			next++
+			switch {
+			case d != 'U':
+				out = append(out, byte(n))
+			case n < 0:
+				panic(NewRangeError(Ref(String("pack(U): value out of range"))))
+			default:
+				out = utf8.AppendRune(out, rune(n))
+			}
+		}
+	}
+	return string(out)
+}
