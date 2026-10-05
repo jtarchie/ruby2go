@@ -1550,7 +1550,8 @@ resolve; anything not listed is still open.
     when defined: an Array standing in for the Enumerator
     (`each_slice(2).to_a`, `each_with_index.map`, `3.times.map`), so
     chaining works but `puts`/`p` of it print elements, not
-    `#<Enumerator…>`. Blockless `map`/`select`/`filter`/`reject` return
+    `#<Enumerator…>`. *(Superseded by decision 140: `__<name>_enum`
+    returns a real `Enumerator`.)* Blockless `map`/`select`/`filter`/`reject` return
     `Enumerator::Map`/`Select`, whose `with_index` maps or filters as MRI's
     and whose inspect is MRI's. Block params may destructure one level
     (`|(k, v), i|`). Go forbids a method of `Array[E]` from building an
@@ -2943,7 +2944,8 @@ resolve; anything not listed is still open.
     Thread, keyed by Symbol or String (MRI takes either; `keys` answers
     Symbols, sorted, since a map has no order), a nil value deleting the
     key. MRI's `Thread#[]` is fiber-local; rb2go has no fibers, so the two
-    maps differ only in name. `require "monitor"` is a no-op (decision
+    maps differ only in name *(fibers came with decision 140; `Thread#[]`
+    is still per thread)*. `require "monitor"` is a no-op (decision
     50). ([example 79](../examples/79_monitor/main.rb).)
 109. `$stdout = io` and `$stderr = io` (#1's minitest follow-ups), the
     first assignable globals (decision 61 amended). The compiler turns the
@@ -4062,6 +4064,135 @@ resolve; anything not listed is still open.
       `.bytes`.
     (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
     `testdata/test/string_test.rb` `StringPackTest`.)
+
+140. `Enumerator`, external iteration, `Enumerator::Lazy` and `Fiber`
+    (#41), plus #55's `ArithmeticSequence`. All of it is sequences
+    (`iter.Seq`), so nothing runs ahead of its consumer and only `Fiber`
+    needs a goroutine.
+    - **Enumerator.** `Enumerator[E]` is a generic `@go_type` holding its
+      sequence, the receiver and method name `inspect` shows
+      (`#<Enumerator: [1, 2]:each>`, `each_slice(2)`), a size function and
+      the iteration's result. It includes Enumerable, so every Enumerable
+      method works on it. The `__<name>_enum` overloads (decision 12) now
+      return one instead of an Array (decision 58): Array's
+      `each`/`each_index`, Enumerable's `each_with_index`/`each_slice`/
+      `each_cons`, Integer's `times`/`upto`/`downto`, String's
+      `each_char`/`each_line`, each with MRI's `size` (`nil` for
+      `each_line`, as MRI). Enumerable's take the receiver's own size
+      (Array, Hash, Set, an Integer Range, another Enumerator), else
+      `nil`, never a count by iterating, which an endless source never
+      ends; a user class's own `size` is not consulted yet (MRI's is). Any other prelude iterator called without a
+      block (`(1..3).each`, `Hash#each` as `[k, v]` pairs, `Set#each`,
+      `each_byte`, `reverse_each`) becomes an Enumerator over its sequence
+      in the compiler (`iterEnum`, receiver and arguments evaluated once),
+      size `nil`. A user's iterator without a block stays a compile error:
+      MRI raises `LocalJumpError` there unless the method returns
+      `to_enum`, which is not built. Blockless `map`/`select`/`reject`
+      stay `Enumerator::Map`/`Select` (their `with_index` maps or
+      filters), now with `next`/`peek`/`rewind`. `Array#with_index`, the
+      old stand-in's helper, is gone. Enumerable gained `lazy`, `uniq`
+      and `entries`, and Enumerator `to_h` (decision 92's `@self` forms).
+      `Enumerable#first(n)` now stops after the nth element instead of
+      pulling one more, which a generator with side effects shows.
+    - **External iteration.** `next`/`peek`/`rewind` pull the sequence
+      with `iter.Pull` (`rbExt`), started on the first `next`: a runtime
+      coroutine, no goroutine and no channel. The end raises
+      `StopIteration` (`iteration reached an end`) whose `result` is what
+      the iteration returned: the receiver for an each-like method
+      (`[1].each` → `[1]`); `nil` for `Enumerator.new`, whose block is
+      void (below), where MRI's is the block's value.
+      Further `next`s raise again until `rewind`, which stops the pull.
+      An enumerator abandoned mid-iteration keeps its coroutine parked
+      until the program exits, the same leak as a pull never stopped.
+    - **`Kernel#loop` rescues `StopIteration`** (so `ClosedQueueError` and
+      `Ractor::ClosedError`, its subclasses, too) and answers its
+      `result`, as MRI's, but only for a loop whose block lexically may
+      raise it: an external `next`/`peek`, a `receive`, or one of those
+      constants. The compiler rewrites that loop into `begin; loop { };
+      rescue StopIteration => e; e.result; end` (`loopRescue`); every
+      other loop stays a plain Go `for` with no `recover`. A
+      `StopIteration` raised by a method the body calls, with nothing
+      lexical to see, escapes the loop where MRI's would end it.
+    - **`Enumerator.new { |y| }`.** The block runs once per iteration,
+      through decision 4's `rbSeq`: `y << v` (`Yielder#<<`, `yield`, or
+      `&y`, the Yielder as a block) hands v to the consumer, and a
+      consumer that stops (`take(3)`, `first`, `break`, `rewind`) unwinds
+      the block with `rbStop`, so `ensure` runs and `rescue` passes it
+      on. No goroutine: external iteration is the `iter.Pull` above. The
+      element type comes from an annotation on the assignment
+      (`#: Enumerator[Integer]`), else the compiler probes the block with
+      `y` typed `Yielder[untyped]` and joins the types of what it feeds
+      `y` (`inferYielder`); a block that feeds nothing is a compile error
+      asking for the annotation. `Enumerator.new(size)` takes an Integer.
+      The block is typed void so that any statement may end it, `arr.each
+      { |x| y << x }` above all (an iterator call's value cannot be used);
+      the price is that StopIteration#result is `nil`. The one iterator
+      whose value may now be wanted untyped is `loop`, as loopRescue's
+      begin: a loop that ends without StopIteration was broken out of.
+      Caveat (decision 4's):
+      a generator whose own `rescue` catches an exception raised by the
+      consumer's block aborts, since Go forbids a range function to
+      recover a loop body's panic.
+    - **`Enumerator::Lazy[E]`** is a chain of sequence wrappers from
+      `Enumerable#lazy`, inspected as MRI's chain
+      (`#<Enumerator::Lazy: #<Enumerator::Lazy: 1..3>:map>`). `map`/
+      `collect` (`lazy.map { }` keeps the block's type; an untyped block
+      result stays `untyped`, as `map`'s does), `select`/`filter`,
+      `reject`, `filter_map`, `flat_map` (an Array-returning block),
+      `take`, `take_while`, `drop`, `drop_while`, `zip(array)`,
+      `with_index` (blockless pairs, or with a block that sees each
+      element and index while the elements pass on), `each_with_index`,
+      `uniq` (eql?/hash, as Hash keys), `compact` (`@self Lazy[U?]`),
+      `eager`, `force`/`to_a`, `each`, `first`/`first(n)`. It includes
+      Enumerable, whose eager methods (`sum`, `include?`, `each_slice`)
+      end a chain, pulling only what they need.
+    - **Infinite ranges.** `1..Float::INFINITY` with an Integer begin is
+      an endless `Range[Integer]` flagged `inf` so it inspects as
+      `1..Infinity`; it used to join to `Range[Float]` and iterate
+      nothing. Its `step` yields Integers where MRI's yields Floats; `end`
+      raises RangeError (Infinity is no Integer) and `include?(2.5)` is a
+      type error, both answered by MRI.
+    - **`Enumerator::ArithmeticSequence[E]`** (#55) is what `Range#%` and
+      blockless `Range#step`, `Integer#step` and `Float#step` return:
+      `((1..10).%(3))`, `((1...10).step(3))`, `(1.step(10, 3))`
+      (`(1.step(10))` when the step is 1), with `begin`/`end`/`step`/
+      `exclude_end?`, `first`, `last`/`last(n)`, `size`, `==`, external
+      iteration and Enumerable. Integers count by addition, Floats with
+      MRI's counted `ruby_float_step`. It is not an Enumerator subclass (a
+      `@go_type` class cannot have a `@go_type` parent), so
+      `is_a?(Enumerator)` is false. A non-numeric range's step
+      (`("a".."e").step(2)`) is the same class taking every nth element
+      but inspects as MRI's plain Enumerator. A Float step on a Range is a
+      type error (`Range#step` takes an Integer), and an endless
+      sequence's `size` raises, as `Range#size` (no Infinity Integer).
+    - **`Fiber`** is a goroutine started on the first `resume` and handed
+      control over two unbuffered channels, so exactly one of a fiber and
+      its resumer runs: `resume(*args)` sends the arguments (the block's,
+      the first time; what the paused `Fiber.yield` returns, later) and
+      waits for the next `Fiber.yield(*vals)` or the block's end; none is
+      nil, one is itself, more an Array, as MRI passes them. Values are
+      `untyped`, as Ractor messages are (decision 103): a fiber's resume
+      and yield types are set by whichever call runs, not by a
+      declaration. `Fiber.current` is a goroutine-id lookup (decision
+      104), else the running thread's root fiber; a fiber's goroutine
+      belongs to the thread and ractor that first resumed it. An exception
+      ending the block re-raises in the resumer and leaves the fiber dead.
+      `FiberError` carries MRI 4.0's messages: `attempt to resume a
+      terminated fiber`, `attempt to resume the current fiber`, `attempt
+      to resume a resuming fiber`, and `attempt to yield on a not resumed
+      fiber` for a `Fiber.yield` outside any fiber. **Leak:** a fiber
+      never resumed to its end keeps its goroutine blocked on its channel
+      until the program exits, as `Timeout`'s abandoned goroutine does.
+    - **Not done:** `to_enum`/`enum_for`, `Enumerator#feed`/`next_values`,
+      `Enumerator::Chain` (`e1 + e2`), `Enumerator::Product`, `produce`,
+      Lazy's own `chunk_while`/`slice_when`/`zip` of non-Arrays,
+      `Fiber#raise`/`kill`/`transfer`, fiber storage (`Fiber[]`),
+      fiber-local `Thread#[]`, the cross-thread resume check, and fiber
+      schedulers.
+    ([example 92](../examples/92_generators/main.rb),
+    `testdata/test/enumerator_test.rb`, `testdata/test/fiber_test.rb`,
+    `testdata/errors/enumerator.txtar`.)
+
 141. `Method` and `UnboundMethod` (#40) are built at the call site from
     the closed world, never looked up by name at run time.
     `recv.method(:name)` (and `public_method`) needs a literal name, like
@@ -4115,3 +4246,4 @@ resolve; anything not listed is still open.
     answers Object (it raised NoMethodError).
     ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
     `testdata/errors/objects.txtar`.)
+

@@ -79,10 +79,6 @@ puts h.any?
 # error: main.rb:3: map requires a block
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h.map.inspect
--- each_without_block.rb --
-# error: main.rb:3: each is an iterator (its block returns void); call it as a statement with a block
-h = { "a" => 1 } #: Hash[String, Integer]
-e = h.each
 -- each_value_used.rb --
 # error: main.rb:3: each with a block is an iterator and can only be used as a statement
 h = { "a" => 1 } #: Hash[String, Integer]

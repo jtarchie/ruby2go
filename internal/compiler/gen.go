@@ -57,7 +57,8 @@ type fctx struct {
 	retryFlag     string     // set by `retry` in the rescue clauses being generated
 	retryDepth    int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet   bool
-	rescues       int // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	rescues       int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	yielderFed    *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
 }
 
 type loopKind int
@@ -571,6 +572,10 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
+		if r := f.loopRescue(n); r != nil {
+			f.genBegin(r, t)
+			return
+		}
 		f.genCallStmt(n, t)
 	default:
 		e := f.genExpr(n, t.typ)
@@ -1266,6 +1271,10 @@ func containsRescue(n parser.Node) bool {
 		}
 	case *parser.RescueModifierNode:
 		return true
+	case *parser.CallNode:
+		if isStopLoop(b) {
+			return true // loopRescue makes it a begin/rescue
+		}
 	case *parser.DefNode:
 		return false
 	}
@@ -1306,6 +1315,10 @@ func containsRescueClause(n parser.Node) bool {
 		}
 	case *parser.RescueModifierNode:
 		return true
+	case *parser.CallNode:
+		if isStopLoop(b) {
+			return true
+		}
 	case *parser.DefNode:
 		return false
 	}

@@ -171,7 +171,18 @@ class KeyError < IndexError
   end
 end
 
-class StopIteration < IndexError; end
+class StopIteration < IndexError
+  # @rbs @result: untyped
+
+  # What the finished iteration returned (`[1].each` → [1]); next raises it (decision 140).
+  #: () -> untyped
+  def result = @result
+
+  #: (untyped) -> void
+  def __set_result(r)
+    @result = r
+  end
+end
 
 # Kernel#throw raises it when no active catch has the tag (decision 91).
 class UncaughtThrowError < ArgumentError
