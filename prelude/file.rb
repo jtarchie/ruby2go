@@ -1,32 +1,49 @@
 # rbs_inline: enabled
 
-# @go_type struct { f *os.File; r *bufio.Reader; w *bufio.Writer; path string; sync bool; lineno int }
+# @go_type struct { f *os.File; r *bufio.Reader; w *bufio.Writer; path string; sync bool; lineno int; enc rbIOEnc; conv func(string) string }
 class File < Object
   include IOWritable
   include IOReadable
 
-  # Modes "r", "w", "a" and their "+" forms; failures raise MRI's Errno classes (decision 62).
+  # Modes "r", "w", "a", their "+" forms, "b", and ":ext[:int]" encodings (decision 136); failures raise MRI's Errno classes (decision 62).
   #: (String, ?String) -> File
   def self.new(path, mode = "r") = %x{
-    flags := map[String]int{
+    flags := map[string]int{
       "r": os.O_RDONLY, "r+": os.O_RDWR,
       "w": os.O_WRONLY | os.O_CREATE | os.O_TRUNC, "w+": os.O_RDWR | os.O_CREATE | os.O_TRUNC,
       "a": os.O_WRONLY | os.O_CREATE | os.O_APPEND, "a+": os.O_RDWR | os.O_CREATE | os.O_APPEND,
     }
-    flag, ok := flags[mode]
+    access, spec, _ := strings.Cut(string(mode), ":")
+    bin := strings.ContainsRune(access, 'b')
+    access = strings.NewReplacer("b", "", "t", "").Replace(access)
+    flag, ok := flags[access]
     if !ok {
       panic(NewArgumentError(Ref("invalid access mode " + mode)))
+    }
+    var withEnc func(*File)
+    if spec != "" {
+      hook := rbFileEncHook.Load()
+      if hook == nil {
+        panic(NewNotImplementedError(Ref(String("rb2go: a File mode naming encodings must be passed to File.open, File.new or CSV.open directly (decision 136)"))))
+      }
+      withEnc = (*hook)(access, spec, bin)
     }
     f, err := os.OpenFile(string(path), flag, 0o666) //nolint:gosec // MRI's mode; the umask applies
     if err != nil {
       panic(rbSysErr(err, "rb_sysopen", string(path)))
     }
     out := &File{f: f, path: string(path)}
-    if mode != "w" && mode != "a" {
+    if bin {
+      out.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true}
+    }
+    if access != "w" && access != "a" {
       out.r = bufio.NewReader(f)
     }
-    if mode != "r" {
+    if access != "r" {
       out.w = bufio.NewWriter(f)
+    }
+    if withEnc != nil {
+      withEnc(out)
     }
     return out
   }
@@ -114,6 +131,12 @@ class File < Object
     }
     return Integer(len(s))
   }
+
+  #: (String) -> String
+  def self.binread(path) = read(path)
+
+  #: (String, untyped) -> Integer
+  def self.binwrite(path, data) = write(path, data)
 
   #: (String) -> Array[String]
   def self.readlines(path) = File.open(path) { |f| f.readlines }
@@ -329,12 +352,66 @@ class File < Object
   #: () -> String
   def path = %x{ String(self.path) }
 
+  # A reading File without one is default_external's, a writing one has none, as in MRI.
+  #: () -> Encoding?
+  def external_encoding
+    e = __ext
+    return Encoding.find(e) unless e.empty?
+
+    __readable? ? Encoding.default_external : nil
+  end
+
+  #: () -> Encoding?
+  def internal_encoding
+    e = __int
+    e.empty? ? nil : Encoding.find(e)
+  end
+
+  #: (untyped, ?untyped) -> File
+  def set_encoding(ext, intern = nil) = %x{
+    e := rbSetEncoding(ext, intern)
+    e.bin, e.raw, e.unread, e.restart = self.enc.bin, self.enc.raw, self.enc.unread, self.enc.restart
+    same := e.ext == self.enc.ext && e.intern == self.enc.intern // keep the transcoder and what it has read ahead
+    self.enc = e
+    if self.r != nil && !same {
+      self.r = self.enc.readerFor(self.r)
+    }
+    self.conv = self.enc.writeConv
+    return self
+  }
+
+  # Binary from here on: no conversion either way, external encoding ASCII-8BIT.
+  #: () -> File
+  def binmode = %x{
+    self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true, raw: self.enc.raw, unread: self.enc.unread}
+    if self.r != nil {
+      self.r = self.enc.readerFor(self.r)
+    }
+    self.conv = nil
+    return self
+  }
+
+  #: () -> bool
+  def binmode? = %x{ Boolean(self.enc.bin) }
+
+  #: () -> String
+  def __ext = %x{ String(self.enc.ext) }
+
+  #: () -> String
+  def __int = %x{ String(self.enc.intern) }
+
+  #: () -> bool
+  def __readable? = %x{ Boolean(self.r != nil) }
+
   #: (untyped) -> Integer
   def write(x) = %x{
     if self.w == nil {
       panic(NewIOError(Ref[String]("not opened for writing")))
     }
     s := string(rbToS(x))
+    if self.conv != nil {
+      s = self.conv(s)
+    }
     _, _ = self.w.WriteString(s)
     if self.sync {
       _ = self.w.Flush()
@@ -488,7 +565,15 @@ class File < Object
     if _, err := self.f.Seek(int64(offset), int(whence)); err != nil {
       panic(rbSysErr(err, "rb_io_seek", self.path))
     }
-    if self.r != nil {
+    if self.enc.raw != nil { // the file's own reader under any transcoder
+      self.enc.raw.Reset(self.f)
+    }
+    switch {
+    case self.enc.restart != nil: // what the transcoder read ahead is stale
+      self.r = self.enc.restart()
+    case self.enc.raw != nil:
+      self.r = self.enc.raw
+    case self.r != nil:
       self.r.Reset(self.f)
     }
     return 0

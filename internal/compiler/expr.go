@@ -1367,6 +1367,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	f.checkEncodingNames(n, recv, name, args)
 	if recv.view != "" && block == nil {
 		if e, ok := f.viewCall(n, recv, name, args); ok {
 			return e
@@ -1608,6 +1609,9 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		// either way the method is found at run time
 		if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 			return f.genDynCall(n, recv, name, args)
+		}
+		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
+			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}

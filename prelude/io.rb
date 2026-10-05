@@ -77,7 +77,7 @@ module IOReadable
 end
 
 # A standard stream (fd 0-2), or a pipe or popen end when own (decision 138).
-# @go_type struct { fd int; via rbWriter; lineno int; own bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd }
+# @go_type struct { fd int; via rbWriter; lineno int; own bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd; enc rbIOEnc; conv func(string) string }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -149,6 +149,9 @@ class IO < Object
   #: (untyped) -> Integer
   def write(x) = %x{
     s := string(rbToS(x))
+    if self.conv != nil {
+      s = self.conv(s)
+    }
     if self.via != nil { // $stdout/$stderr read while assigned (decision 109)
       self.via.Write(String(s))
       return Integer(len(s))
@@ -333,6 +336,69 @@ class IO < Object
     }
     return String([]string{"#<IO:<STDIN>>", "#<IO:<STDOUT>>", "#<IO:<STDERR>>"}[self.fd])
   }
+
+  # A reading IO ($stdin, a pipe's reader, popen "r") reads with default_external; a writing one has none until set_encoding, as in MRI.
+  #: () -> Encoding?
+  def external_encoding
+    e = __ext
+    return Encoding.find(e) unless e.empty?
+
+    __readable? ? Encoding.default_external : nil
+  end
+
+  #: () -> Encoding?
+  def internal_encoding
+    e = __int
+    e.empty? ? nil : Encoding.find(e)
+  end
+
+  # Writes convert to the new external encoding; a pipe's reads convert as a File's, $stdin's do not (decision 136). The conversion is a func field so programs that never call this carry no transcoder.
+  #: (untyped, ?untyped) -> IO
+  def set_encoding(ext, intern = nil) = %x{
+    e := rbSetEncoding(ext, intern)
+    e.bin = self.enc.bin
+    if self.own {
+      e.raw, e.unread, e.restart = self.enc.raw, self.enc.unread, self.enc.restart
+      same := e.ext == self.enc.ext && e.intern == self.enc.intern // keep the transcoder and what it has read ahead
+      self.enc = e
+      if self.r != nil && !same {
+        self.r = self.enc.readerFor(self.r)
+      }
+    } else {
+      self.enc = e
+    }
+    self.conv = self.enc.writeConv
+    if !self.own && self.fd == 1 && self.via == nil { // a $stdout bound to a StringIO keeps its encoding to itself
+      c := self.conv
+      rbStdoutConv.Store(&c)
+    }
+    return self
+  }
+
+  #: () -> IO
+  def binmode = %x{
+    self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true, raw: self.enc.raw, unread: self.enc.unread}
+    if self.own && self.r != nil {
+      self.r = self.enc.readerFor(self.r)
+    }
+    self.conv = nil
+    if !self.own && self.fd == 1 && self.via == nil {
+      rbStdoutConv.Store(nil)
+    }
+    return self
+  }
+
+  #: () -> bool
+  def binmode? = %x{ Boolean(self.enc.bin) }
+
+  #: () -> String
+  def __ext = %x{ String(self.enc.ext) }
+
+  #: () -> String
+  def __int = %x{ String(self.enc.intern) }
+
+  #: () -> bool
+  def __readable? = %x{ Boolean(self.own && self.r != nil || !self.own && self.fd == 0) }
 end
 
 STDIN = IO.__new(0) #: IO

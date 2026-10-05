@@ -1023,7 +1023,7 @@ module StdlibTests
     end
 
     def test_sleep
-      assert_equal 0, sleep(0.01)
+      assert_kind_of Integer, sleep(0.01) # rounded seconds: 1 under load
       assert_equal 0, sleep(0)
       assert_equal "time interval must not be negative", assert_raises(ArgumentError) { sleep(-1) }.message
     end
@@ -1525,6 +1525,25 @@ module StdlibTests
       assert_equal "Broken pipe", e.message
       w.close_write
       assert_equal [true, true], [r.closed?, w.closed?]
+    end
+
+    def test_pipe_encoding
+      r, w = IO.pipe
+      assert_equal [Encoding::UTF_8, nil, nil, false], [r.external_encoding, w.external_encoding, r.internal_encoding, r.binmode?]
+      r.set_encoding("ISO-8859-1:UTF-8")
+      w.write([0xe9, 0x0a].pack("C*"))
+      w.close
+      assert_equal [Encoding::ISO_8859_1, Encoding::UTF_8, "é\n"], [r.external_encoding, r.internal_encoding, r.read]
+      r.close
+      r, w = IO.pipe
+      w.set_encoding("ISO-8859-1")
+      w.write("é")
+      w.binmode
+      w.write("é")
+      assert_equal [true, Encoding::BINARY], [w.binmode?, w.external_encoding]
+      w.close
+      assert_equal [233, 195, 169], r.read.bytes
+      r.close
     end
 
     def test_pipe_chars

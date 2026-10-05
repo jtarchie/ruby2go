@@ -25,6 +25,9 @@ func rbWriteOut(s string) {
 			return
 		}
 	}
+	if c := rbStdoutConv.Load(); c != nil { // STDOUT's own encoding, not a redirect target's
+		s = (*c)(s)
+	}
 	rbWrite(s)
 }
 

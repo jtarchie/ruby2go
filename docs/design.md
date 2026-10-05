@@ -3493,8 +3493,9 @@ resolve; anything not listed is still open.
     call to report a bug), `LoadError` (an unknown `require` is a no-op,
     decision 78; a `require_relative` of a missing file is a compile
     error, decision 130), `SyntaxError` (no `eval`),
-    `SecurityError`, `EncodingError`, and `LocalJumpError` (raised since
-    decision 132 by a `yield` whose optional block is missing).
+    `SecurityError`, `EncodingError` (its subclasses are raised since
+    decision 136), and `LocalJumpError` (raised since decision 132 by a
+    `yield` whose optional block is missing).
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,
@@ -3884,6 +3885,110 @@ resolve; anything not listed is still open.
       no tag is added.
     ([example 91](../examples/91_socket/main.rb),
     `testdata/test/socket_test.rb`, `testdata/errors/socket.txtar`.)
+
+136. Encoding without a tag on String (#48). Decision 105 stands:
+    Strings carry no encoding, every String is UTF-8 bytes, and what MRI
+    keeps in the tag rb2go either derives or leaves out.
+    - **Derived `encoding`.** `String#encoding` is `Encoding::UTF_8` when
+      the bytes are valid UTF-8 and `Encoding::ASCII_8BIT` otherwise. So a
+      binary String whose bytes happen to be valid UTF-8 (`"é".b`,
+      `force_encoding("BINARY")`, `File.binread` of a UTF-8 file) reports
+      UTF-8 where MRI says ASCII-8BIT and inspects as text where MRI shows
+      `"\xC3\xA9"`; a UTF-8 literal with bad bytes (`"\xff"`) reports
+      ASCII-8BIT where MRI says UTF-8; and `encode`'s result reports by the
+      same rule, not as the target encoding (`"a".encode("UTF-16LE")` is
+      UTF-8 here). `b` and `force_encoding` return the bytes unchanged
+      (`force_encoding` still checks the name). Anything that would need
+      the tag is one of these documented differences.
+    - **The bytes are UTF-8 everywhere else.** `valid_encoding?`, `scrub`
+      and `encode` without a source encoding read the bytes as UTF-8, the
+      common case of a String MRI tags UTF-8 (a literal, `File.read`,
+      `gets`). Invalid UTF-8 is cut into MRI's maximal invalid subparts
+      (`"\xe3\x81"` is one bad sequence, `"\xff\xfe"` two), not Go's byte at
+      a time, for `scrub`, its block, `encode(invalid: :replace)` and the
+      error bytes.
+    - **Ten encodings.** `Encoding` has UTF-8, ASCII-8BIT, US-ASCII,
+      ISO-8859-1, UTF-16LE/BE, UTF-32LE/BE and the dummies UTF-16 and
+      UTF-32, each with MRI's names, aliases and alias constants (`BINARY`,
+      `ASCII`, `UCS_2BE`, ...), `inspect`, `ascii_compatible?` and
+      `dummy?`; `list`/`name_list` hold only these, in MRI's order.
+      `find` is case-insensitive; `find("internal")` with no
+      default_internal raises (MRI returns nil, and an `Encoding?` result
+      would make every `find` optional). `default_external=`/
+      `default_internal=` are stored: `encode` with no target encodes to
+      default_internal, as MRI's does, and IO never converts to either.
+      `compatible?` is MRI's `rb_enc_compatible` over derived encodings.
+    - **Compile-time names.** A string literal naming an encoding MRI has
+      and rb2go lacks (`"Shift_JIS"`; the compiler holds MRI 4.0's
+      `Encoding.name_list`) in `encode`, `force_encoding`, `Integer#chr`,
+      `set_encoding`, `Encoding.find`, `default_external=`/
+      `default_internal=` or a `File.open`/`File.new`/`CSV.open` mode is a
+      compile error naming the ten; a name MRI lacks too stays MRI's run-time
+      error. A non-literal name rb2go lacks fails at run time where MRI
+      would succeed: `ArgumentError: unknown encoding name` from `find`,
+      `ConverterNotFoundError` from `encode`.
+    - **`encode(to, from, invalid:, undef:, replace:, xml:,
+      universal_newline:, crlf_newline:, cr_newline:)`** converts through
+      UTF-8 as MRI's converter path does, so its errors are MRI's: `U+00E9
+      from UTF-8 to US-ASCII` for one step, `U+20AC to ISO-8859-1 in
+      conversion from UTF-16BE to UTF-8 to ISO-8859-1` for two, `"\xFF" on
+      UTF-8`, `incomplete "\xE3\x81" on UTF-8`, `"\xE3\x81" followed by "b"
+      on UTF-8`, with the exceptions' `source_encoding(_name)`,
+      `destination_encoding(_name)`, `error_char`, `error_bytes`,
+      `readagain_bytes` and `incomplete_input?`. UTF-16/32 are decoded by
+      MRI's byte tries: the first byte that cannot continue a character
+      ends it, a fault inside the first unit takes the whole unit (or what
+      is left), a later one keeps whole units and reads the rest again. A
+      dummy UTF-16/UTF-32 source needs a BOM, unit by unit until one comes
+      (a missing one is invalid, and replaceable); a dummy target is
+      big-endian with a BOM unless empty. The replacement defaults to
+      U+FFFD for a Unicode target and `?` otherwise; `xml:` writes an
+      undefined character as `&#xE9;`. The same encoding on both sides
+      copies the bytes (applying only the decorators), except that
+      `invalid: :replace` scrubs. Not done: `fallback:`,
+      `Encoding::Converter`, and MRI's handling of `universal_newline:`
+      with a non-UTF-8 source, which ignores the source encoding.
+    - **No in-place forms.** `encode!`, `scrub!` and `unicode_normalize!`
+      stay undefined (Strings are immutable); every String bang method
+      whose plain form exists now says so in its compile error.
+    - **`unicode_normalize`/`unicode_normalized?`** (`:nfc`, `:nfd`,
+      `:nfkc`, `:nfkd`) use tables generated at development time:
+      `scripts/gen-unicode-normalize` dumps MRI's own
+      `unicode_normalize/tables.rb` (so the Unicode version is MRI's, 17.0.0
+      for Ruby 4.0) into `prelude/go/unicode_normalize_tables.go`, 88 KB of
+      string constants parsed once on first use and pruned from programs
+      that never normalize. The algorithm is UAX #15's (full decomposition,
+      canonical ordering, composition, Hangul by arithmetic); it matched MRI
+      on 216k normalizations of every code point below U+3400 and a sample
+      above, alone and with combining marks. Invalid UTF-8 raises
+      `ArgumentError: invalid byte sequence in UTF-8`; the form is a Symbol.
+    - **`Integer#chr(encoding)`** with MRI's `RangeError`s; `Array#pack`
+      gains `C`, `c` and `U` (*superseded by decision 138*: every directive
+      but `P`/`p`, through the same `rbPack`/`rbPackU`).
+    - **IO.** A mode's `b` is binmode (external ASCII-8BIT); `:ext[:int]`,
+      with `BOM|`, sets the encodings. As in MRI, reads convert only when an
+      internal encoding is given (`"r:ISO-8859-1"` hands back the file's
+      bytes; `"r:ISO-8859-1:UTF-8"` converts), writes convert to any
+      external encoding but UTF-8 and ASCII-8BIT (a dummy one writes one
+      BOM), reading an ASCII-incompatible encoding without `b` or an
+      internal one is `ArgumentError: ASCII incompatible encoding needs
+      binmode`, and an unknown name warns `Unsupported encoding X ignored`.
+      `set_encoding`, `external_encoding`, `internal_encoding`, `binmode`
+      and `binmode?` work on File, the std streams and (decision 138) pipe
+      and popen ends, whose reads convert as a File's; `$stdout.set_encoding`
+      converts what `puts`/`print`/`write` send, and `$stdin` is never
+      converted. The transcoder is linked only where needed: a File-using
+      program carried ~60 more declarations (18%) for it, so `File.new`
+      calls `rbFileEncHook`, which the compiler sets (`rbFileEncModes()`)
+      before a `File.open`/`File.new`/`CSV.open` whose mode is not a literal
+      without `:`; IO's conversions are func fields set by `set_encoding`. A
+      mode with encodings that reaches `File.new` some other way (a call on
+      a Class-typed receiver) raises NotImplementedError.
+    - `EncodingError` (decision 128) gains `Encoding::CompatibilityError`
+      (never raised), `ConverterNotFoundError`, `UndefinedConversionError`
+      and `InvalidByteSequenceError`.
+    (`testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
+    `testdata/run/string_output.rb`.)
 138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
     and has a blockless form, `File.atime`, and `Array#pack` with the rest
     of `String#unpack`.
@@ -3952,7 +4057,8 @@ resolve; anything not listed is still open.
       an address to hand out. A mixed literal like `[s, n].pack("a4N")` is
       a tuple, so `tupleCall` handles `pack` by passing the fields as one
       `[]any`. Binary results print with `\u0000` where MRI's binary
-      String shows `\x00` (rb2go has no encodings), so tests compare
+      String shows `\x00` (no encoding tag: bytes that are valid UTF-8
+      count as UTF-8, decision 136), so tests compare
       `.bytes`.
     (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
     `testdata/test/string_test.rb` `StringPackTest`.)
