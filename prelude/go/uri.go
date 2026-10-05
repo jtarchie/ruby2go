@@ -82,7 +82,8 @@ func rbURIParse(s string) (rbURIRaw, error) {
 		raw.Userinfo = u.User.String()
 		raw.HasUserinfo = true
 	}
-	if u.Host != "" {
+	// an empty authority ("file:///x") is host "" in MRI, not nil
+	if u.Host != "" || u.Opaque == "" && strings.HasPrefix(strings.TrimPrefix(s[len(u.Scheme):], ":"), "//") {
 		raw.HasHost = true
 		raw.Host = u.Hostname()
 		if p := u.Port(); p != "" {
