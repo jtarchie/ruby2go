@@ -1128,7 +1128,8 @@ resolve; anything not listed is still open.
     of MRI's heuristics; `strptime` reads date fields only. `d - d2` is a
     Rational, `d ± n` a Date, `>>`/`<<` clamp to the month's end, and a
     Range of Dates iterates, since Range iterates anything with `succ`.
-    `strftime`'s `%Z` prints `UTC` where MRI's Date prints `+00:00`.
+    `strftime`'s `%Z` prints `UTC` where MRI's Date prints `+00:00`
+    *(fixed by decision 133, which also made Date a struct class)*.
     `httpdate`/`rfc3339` format (and `Date.httpdate`/`rfc3339` parse
     through `Date.parse`, which already reads both shapes) at midnight
     UTC, since a Date has no time of day. `jisx0301` prints MRI's Japanese
@@ -3624,3 +3625,73 @@ resolve; anything not listed is still open.
     `testdata/run/io_eof.rb`, `testdata/test/object_test.rb`
     `SingleForwardableTest`, `testdata/errors/objects.txtar`,
     `testdata/test/stdlib_test.rb` `ThreadGroupTest`.)
+
+133. `DateTime` (issue #45) is a real subclass of `Date`, so `Date`
+    dropped `@go_type` and became a struct class (a `@go_type` class
+    cannot be subclassed; decision 27's `Net::HTTPResponse` precedent).
+    - **State.** `Date` holds MRI's four numbers as Integer ivars: `jd`
+      (the civil day in the object's own offset), `df`/`sf` (seconds and
+      nanoseconds into that day) and `of` (UTC offset in seconds). A plain
+      Date has `of = 0` and `df = sf = 0`, so all of `Date`'s readers
+      work unchanged on a DateTime. `Date + 0.5` keeps a day fraction, as
+      MRI's (its `inspect` shows `43200s`, `==` sees it), which
+      decision 41's `Date` could not. Comparison, `==`, `eql?`, `hash`
+      and `-` use the instant (UTC seconds, then ns), so
+      `Date.new(2024, 1, 1) == DateTime.new(2024, 1, 1)` and they hash
+      alike, as MRI's; `===` compares local days. `d - d2` is an exact
+      Rational of days for any mix of Date and DateTime
+      (`__minus_date`/`__minus_date_time`, decision 12); `+`/`-` take
+      Integer, Float (exact `big.Rat` of the double) or Rational days,
+      floored to the nanosecond; `>>`/`<<` move the local civil date and
+      keep the time and offset. Before 1582 decision 41's proleptic
+      Gregorian calendar still applies (`DateTime.new`'s jd is 38, not 0).
+    - **Return types.** Each of `Date`'s methods that answers a Date has
+      a `DateTime` override typed `-> DateTime` (decision 8's renamed
+      override plus adapter), so `(dt + 1).hour` type-checks and a
+      Date-typed DateTime still dispatches to it. Range iteration looks
+      for `Succ() E`, which the renamed override does not provide, so
+      `range.go` also accepts an `rbSuccAny` method, which `*DateTime`
+      implements. `strftime`'s default is `nil` filled in by the callee
+      (`__strftime_default`), since a literal default is filled in at the
+      call site and a Date-typed DateTime would get `"%F"`.
+    - **Arguments.** `DateTime.new`/`civil`/`jd` take Integer
+      year..minute. Seconds and the offset are `untyped` (Time's zone
+      precedent, decision 39): seconds Integer, Float or Rational; the
+      offset a fraction of a day (Integer, Float, Rational, rounded to
+      the second) or a String: `Z`/`UTC`/`GMT`/`UT`, `[GMT|UTC]±H`,
+      `±HH`, `±HHMM`, `±HH:MM[:SS]`, a military letter (Time's
+      table), or a fixed table of common
+      abbreviations (`EST`, `PDT`, `JST`, `CET`, …; MRI knows more, and
+      long names like `Eastern`). As MRI, an unreadable offset or one
+      past a day is silently 0. Negative hour/minute/second wrap, `24:00`
+      is the next day, anything else out of range is `Date::Error
+      "invalid date"`. `DateTime.today` raises MRI's `NoMethodError`
+      (MRI undefines it).
+    - **Parsing.** `parse` is decision 41's date shapes followed by an
+      optional `T`/space time (`H:MM[:SS[.frac]]`, `am`/`pm`) and zone;
+      `iso8601`/`xmlschema` read extended and basic calendar forms;
+      `rfc3339`, `httpdate` (RFC 1123 only, not RFC 850/asctime),
+      `rfc2822`/`rfc822` and `jisx0301` (era date plus optional time;
+      no era letter is Heisei, as MRI, for `Date.jisx0301` too) are fixed regexps, each raising
+      `Date::Error "invalid date"` on a mismatch. `strptime`'s default
+      is MRI's `%FT%T%z`; it adds `%H %k %I %l %M %S %L %N %p %P %z %Z
+      %s %Q %a %A` and `%T %R %X %r %c %+` to Date's directives.
+    - **Formatting.** `strftime` renders a Go time in a fixed zone
+      named like the offset, so `%Z` is `+09:00` (Date's too, now) and
+      `%Q` is added; `%::z`/`%:::z` were added to the shared
+      `rbStrftime` (Time gets them too). `to_s`, `inspect` (MRI's
+      `((jd j,s s,ns n),±of s,2299161j)` in UTC), `iso8601`/
+      `xmlschema`/`rfc3339(n)` and `jisx0301(n)` with `n` fraction
+      digits, `httpdate` (UTC) and `rfc2822` follow MRI.
+    - **Conversions.** `to_time` keeps the offset (a fixed-zone Time,
+      printed `+0000` for offset 0, as MRI), `to_date` drops the time,
+      `Date#to_datetime` and `Time#to_datetime` (nanoseconds and offset
+      kept) build DateTimes; `new_offset(of = 0)` is the same instant.
+    - **Not done.** `ajd`/`amjd`, `commercial`/`ordinal` constructors,
+      `_parse`/`_strptime`, `deconstruct_keys`, and the calendar-reform
+      `start` argument (compile errors as undefined methods or arity).
+      `Date#day_fraction` is `(0/1)` where MRI answers Integer `0` for a
+      Date without a fraction. A dynamic (`untyped`) `-` between two
+      dates, like Time's, does not reach decision 12's overloads and
+      raises TypeError.
+    (`testdata/test/date_test.rb`, `testdata/errors/dates.txtar`.)
