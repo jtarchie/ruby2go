@@ -352,33 +352,17 @@ class Integer < Object
     }
   }
 
-  #: (Integer, ?Integer) -> Array[Integer]
-  def __step_enum(limit, by = 1)
-    out = [] #: Array[Integer]
-    step(limit, by) { |i| out << i }
-    out
-  end
+  #: (Integer, ?Integer) -> Enumerator::ArithmeticSequence[Integer]
+  def __step_enum(limit, by = 1) = %x{ return rbArithNum(self, limit, by, by != 1) }
 
-  #: () -> Array[Integer]
-  def __times_enum
-    out = [] #: Array[Integer]
-    times { |i| out << i }
-    out
-  end
+  #: () -> Enumerator[Integer]
+  def __times_enum = %x{ return rbEnumOf(self.Times(), any(self), "times", rbSizeOf(max(self, 0)), nil) }
 
-  #: (Integer) -> Array[Integer]
-  def __upto_enum(limit)
-    out = [] #: Array[Integer]
-    upto(limit) { |i| out << i }
-    out
-  end
+  #: (Integer) -> Enumerator[Integer]
+  def __upto_enum(limit) = %x{ return rbEnumOf(self.Upto(limit), any(self), "upto("+string(rbInspect(limit))+")", rbSizeOf(max(limit-self+1, 0)), nil) }
 
-  #: (Integer) -> Array[Integer]
-  def __downto_enum(limit)
-    out = [] #: Array[Integer]
-    downto(limit) { |i| out << i }
-    out
-  end
+  #: (Integer) -> Enumerator[Integer]
+  def __downto_enum(limit) = %x{ return rbEnumOf(self.Downto(limit), any(self), "downto("+string(rbInspect(limit))+")", rbSizeOf(max(self-limit+1, 0)), nil) }
 end
 
 # Shifts past 64 bits raise RangeError where MRI would promote to a Bignum (decision 35).

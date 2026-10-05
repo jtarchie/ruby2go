@@ -145,11 +145,12 @@ whole program at compile time rather than looked up by reflection.
   arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
   `at_exit`, signal traps.
 - **Core classes:** `String`, `Symbol`, `Integer`, `Float`, `Rational`,
-  `Complex`, `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,
+  `Complex`, `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`
+  (with `next`/`peek`, `Enumerator.new` generators and `Enumerator::Lazy`),
   `Comparable`, `Regexp`/`MatchData` (Ruby syntax on Go's RE2), `Time`,
   `Random` (same sequence as MRI for a given seed), `Math`, `File`, `Dir`,
   `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,
-  `Thread`, `Queue`, `Mutex`, `Ractor`.
+  `Thread`, `Queue`, `Mutex`, `Ractor`, `Fiber`.
 - **Standard library:** `json`, `set`, `time`, `date`, `csv`, `stringio`,
   `strscan`, `digest`, `base64`, `zlib`, `securerandom`, `shellwords`, `uri`,
   `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,

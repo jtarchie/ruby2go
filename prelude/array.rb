@@ -433,29 +433,11 @@ class Array < Object
     }
   }
 
-  #: () -> Array[Integer]
-  def __each_index_enum = %x{
-    out := &Array[Integer]{}
-    for i := range len(*self) {
-      *out = append(*out, Integer(i))
-    }
-    return out
-  }
+  #: () -> Enumerator[Integer]
+  def __each_index_enum = %x{ return rbEnumOf(Array_EachIndex(self), any(self), "each_index", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
 
-  #: () -> Array[E]
-  def __each_enum = self
-
-  # `each.with_index(1) { |x, i| … }`: blockless each is the Array itself.
-  #: (?Integer) { (E, Integer) -> void } -> void
-  def with_index(offset = 0) = %x{
-    return func(yield func(E, Integer) bool) {
-      for i := 0; ; i++ { // not range len: the block may grow the array
-        if i >= len(*self) || !yield((*self)[i], Integer(i)+offset) {
-          return
-        }
-      }
-    }
-  }
+  #: () -> Enumerator[E]
+  def __each_enum = %x{ return rbEnumOf(self.Each(), any(self), "each", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
 
   #: () -> Enumerator::Map[E]
   def __map_enum = Enumerator::Map.new(self)

@@ -3,7 +3,7 @@
 # Iteration needs Integer or String (MRI's succ); other E only compare.
 
 # @rbs generic E
-# @go_type struct { b E; e E; excl bool; endless bool; beginless bool }
+# @go_type struct { b E; e E; excl bool; endless bool; beginless bool; inf bool }
 class Range < Object
   include Enumerable #[E]
 
@@ -60,16 +60,11 @@ class Range < Object
     }
   }
 
-  # An Array standing in for MRI's ArithmeticSequence: to_a, each and map read the same.
-  #: (Integer) -> Array[E]
-  def %(n)
-    out = [] #: Array[E]
-    step(n) { |x| out << x }
-    out
-  end
+  #: (Integer) -> Enumerator::ArithmeticSequence[E]
+  def %(n) = %x{ return rbArithRange(self, n, "%") }
 
-  #: (Integer) -> Array[E]
-  def __step_enum(n) = self % n
+  #: (Integer) -> Enumerator::ArithmeticSequence[E]
+  def __step_enum(n) = %x{ return rbArithRange(self, n, "step") }
 
   #: () -> E
   def begin = %x{ self.b }
@@ -210,7 +205,7 @@ class Range < Object
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(*Range[E])
-    return Boolean(ok && o.excl == self.excl && o.endless == self.endless && o.beginless == self.beginless && rbKeyEql(o.b, self.b) && rbKeyEql(o.e, self.e))
+    return Boolean(ok && o.excl == self.excl && o.endless == self.endless && o.beginless == self.beginless && o.inf == self.inf && rbKeyEql(o.b, self.b) && rbKeyEql(o.e, self.e))
   }
 
   #: (untyped) -> bool
@@ -264,7 +259,7 @@ class Range < Object
     if same, ok := any(self).(*Range[any]); ok {
       return same
     }
-    return &Range[any]{b: rbUnbox(self.b), e: rbUnbox(self.e), excl: self.excl, endless: self.endless, beginless: self.beginless}
+    return &Range[any]{b: rbUnbox(self.b), e: rbUnbox(self.e), excl: self.excl, endless: self.endless, beginless: self.beginless, inf: self.inf}
   }
 
   #: (Range[E]) -> bool

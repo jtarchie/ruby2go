@@ -171,6 +171,9 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		*parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
 		return f.genIvarExpr(n)
 	case *parser.CallNode:
+		if r := f.loopRescue(n); r != nil {
+			return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
+		}
 		return f.genCallValue(n, expected)
 	case *assignedArg:
 		return f.genAssignedArg(n, expected)
@@ -1269,7 +1272,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil && (n.Block == nil || cls.meta.lookup("new") == nil)) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
@@ -1588,6 +1591,7 @@ func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser
 
 // classCall dispatches on a class-typed receiver.
 func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	f.noteYielderFeed(recv, name, args)
 	if isAbstract(t) && recv.code != f.selfCode {
 		return f.abstractCall(n, t, recv, name, args, block)
 	}
@@ -2385,11 +2389,17 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
 	if m.Block != nil {
 		if m.Iterator {
+			if block == nil && !m.Block.Optional {
+				if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
+					return r
+				}
+			}
 			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
 		}
 		blkCode := "nil"
 		switch {
 		case block != nil:
+			f.inferYielder(n, m, env, block)
 			blkCode = f.genClosure(n, block, m.Block, env)
 		case !m.Block.Optional:
 			f.errorf(n, "%s requires a block", m.Name)
@@ -2956,7 +2966,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 			e = o
 		}
 	}
-	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) {
+	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && !isAny(t.typ) { // an untyped value is nil, as for a void call (applyTail)
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
 	}
 	var recv expr
@@ -4973,7 +4983,11 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 		}
 	})
 	elem := want
-	if elem == nil {
+	inf := len(types) == 2 && isClass(types[0], "Integer") && isFloatInfinity(n.Right) && (want == nil || isClass(want, "Integer"))
+	switch {
+	case inf: // `1..Float::INFINITY` iterates Integers forever, as MRI: an endless Range[Integer] (decision 140)
+		elem = types[0]
+	case elem == nil:
 		elem = f.joinAll(n, types)
 	}
 	t := TClass{C: f.c.classes["Range"], Args: []Type{elem}}
@@ -4983,9 +4997,12 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 	} else {
 		code += "beginless: true"
 	}
-	if n.Right != nil {
+	switch {
+	case inf:
+		code += ", endless: true, inf: true"
+	case n.Right != nil:
 		code += ", e: " + f.coerce(n.Right, f.genExpr(n.Right, elem), elem)
-	} else {
+	default:
 		code += ", endless: true"
 	}
 	if n.IsEXCLUDE_END() {
@@ -5030,6 +5047,9 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
 	var pt Type
 	f.probe(func() { pt = f.genExpr(ba.Expression, nil).typ })
+	if tc, ok := pt.(TClass); ok && tc.C.RubyName == yielderClass {
+		return yielderBlock(ba)
+	}
 	ft, ok := pt.(TFunc)
 	if !ok || !ft.Proc {
 		return nil

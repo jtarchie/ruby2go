@@ -127,6 +127,15 @@ module Enumerable
   end
 
   #: () -> Array[E]
+  def uniq = to_a.uniq
+
+  #: () -> Array[E]
+  def entries = to_a
+
+  #: () -> Enumerator::Lazy[E]
+  def lazy = %x{ return rbLazy(self.Each(), any(self), "") }
+
+  #: () -> Array[E]
   def to_a
     out = [] #: Array[E]
     each { |x| out << x }
@@ -144,9 +153,10 @@ module Enumerable
   def first(n)
     raise ArgumentError, __negative_first if n < 0
     out = [] #: Array[E]
+    return out if n == 0
     each do |x|
-      break if out.size >= n
       out << x
+      break if out.size >= n # before the next element: a generator stops where MRI's does
     end
     out
   end
@@ -435,21 +445,20 @@ module Enumerable
     yield cur unless cur.empty?
   end
 
-  #: (Integer) -> Array[Array[E]]
-  def __each_slice_enum(n)
-    raise ArgumentError, "invalid slice size" if n <= 0
-    out = [] #: Array[Array[E]]
-    cur = [] #: Array[E]
-    each do |x|
-      cur << x
-      if cur.size == n
-        out << cur
-        cur = []
-      end
-    end
-    out << cur unless cur.empty?
-    out
-  end
+  #: (Integer) -> Enumerator[Array[E]]
+  def __each_slice_enum(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid slice size"))))
+    }
+    size := rbCountSize(any(self), self.Each())
+    return rbEnumOf(rbSlices(self.Each(), int(n)), any(self), "each_slice("+string(rbInspect(n))+")", func() *Integer {
+      c := size()
+      if c == nil {
+        return nil
+      }
+      return Ref((*c + n - 1) / n)
+    }, nil)
+  }
 
   #: (Integer) { (Array[E]) -> void } -> void
   def each_cons(n)
@@ -462,29 +471,23 @@ module Enumerable
     end
   end
 
-  #: (Integer) -> Array[Array[E]]
-  def __each_cons_enum(n)
-    raise ArgumentError, "invalid size" if n <= 0
-    all = to_a
-    out = [] #: Array[Array[E]]
-    i = 0
-    while i + n <= all.size
-      out << (all[i, n] || [])
-      i += 1
-    end
-    out
-  end
+  #: (Integer) -> Enumerator[Array[E]]
+  def __each_cons_enum(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid size"))))
+    }
+    size := rbCountSize(any(self), self.Each())
+    return rbEnumOf(rbCons(self.Each(), int(n)), any(self), "each_cons("+string(rbInspect(n))+")", func() *Integer {
+      c := size()
+      if c == nil {
+        return nil
+      }
+      return Ref(max(*c-n+1, 0))
+    }, nil)
+  }
 
-  #: () -> Array[[E, Integer]]
-  def __each_with_index_enum
-    out = [] #: Array[[E, Integer]]
-    i = 0
-    each do |x|
-      out << [x, i]
-      i += 1
-    end
-    out
-  end
+  #: () -> Enumerator[[E, Integer]]
+  def __each_with_index_enum = %x{ return rbEnumOf(rbWithIndex(self.Each(), 0), any(self), "each_with_index", rbCountSize(any(self), self.Each()), nil) }
 
   #: [U] (Array[U]) -> Array[[E, U?]]
   def zip(other)
@@ -580,18 +583,6 @@ module Enumerable
     all := slices.Collect(self.Each())
     return rbPermutations(all, len(all))
   }
-
-  #: (?Integer) -> Array[[E, Integer]]
-  def __with_index_enum(offset = 0)
-    out = [] #: Array[[E, Integer]]
-    i = offset
-    each do |x|
-      out << [x, i]
-      i += 1
-    end
-    out
-  end
-
 
   # Array's values_at (Hash has its own): a Go instantiation cycle forbids
   # an Array[E] method building an Array[E?], so it lives here.

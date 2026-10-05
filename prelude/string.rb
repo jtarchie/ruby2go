@@ -199,16 +199,16 @@ class String < Object
     return out
   }
 
-  #: () -> Array[String]
-  def __each_char_enum = chars
+  #: () -> Enumerator[String]
+  def __each_char_enum = %x{ return rbEnumOf(self.EachChar(), any(self), "each_char", rbSizeOf(Integer(utf8.RuneCountInString(string(self)))), nil) }
 
   #: () { (String) -> void } -> void
   def each_line
     lines.each { |l| yield l }
   end
 
-  #: () -> Array[String]
-  def __each_line_enum = lines
+  #: () -> Enumerator[String]
+  def __each_line_enum = %x{ return rbEnumOf(self.Lines().Each(), any(self), "each_line", nil, nil) }
 
   #: () { (String) -> void } -> void
   def each_char = %x{
