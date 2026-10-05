@@ -19,22 +19,27 @@ type delegation struct {
 	accessor string
 	method   string
 	name     string
+	single   bool // SingleForwardable: a class method (decision 132)
 }
 
 // collectDelegation records `def_delegators :@x, :a, :b`,
-// `def_delegator :@x, :a, :alias` and `delegate [:a, :b] => :@x`.
-func (c *Compiler) collectDelegation(f *File, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
+// `def_delegator :@x, :a, :alias` and `delegate [:a, :b] => :@x`, and
+// their def_instance_/def_single_ spellings.
+func (c *Compiler) collectDelegation(f *File, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class, single bool) {
 	sym := func(a parser.Node) string {
-		s, ok := a.(*parser.SymbolNode)
-		if !ok {
-			c.errorf(f, n, "%s takes literal Symbols", n.Name)
+		switch s := a.(type) {
+		case *parser.SymbolNode:
+			return s.Unescaped.Value
+		case *parser.StringNode:
+			return s.Unescaped.Value
 		}
-		return s.Unescaped.Value
+		c.errorf(f, n, "%s takes literal Symbols or Strings", n.Name)
+		return ""
 	}
 	add := func(accessor, method, name string) {
-		cls.delegations = append(cls.delegations, delegation{file: f, node: n, scope: scope, accessor: accessor, method: method, name: name})
+		cls.delegations = append(cls.delegations, delegation{file: f, node: n, scope: scope, accessor: accessor, method: method, name: name, single: single})
 	}
-	switch n.Name {
+	switch strings.Replace(strings.Replace(n.Name, "_single", "", 1), "_instance", "", 1) {
 	case "def_delegators":
 		if len(args) < 2 {
 			c.errorf(f, n, "def_delegators needs an accessor and method names")
@@ -83,7 +88,11 @@ func (c *Compiler) expandDelegations(ctx context.Context) {
 	added := false
 	for _, cls := range c.classList {
 		for _, d := range cls.delegations {
-			c.expandDelegation(ctx, cls, d)
+			owner := cls
+			if d.single {
+				owner = cls.meta
+			}
+			c.expandDelegation(ctx, owner, d)
 			added = true
 		}
 	}
@@ -126,10 +135,29 @@ func (c *Compiler) expandDelegation(ctx context.Context, cls *Class, d delegatio
 	// One def per arity, as decision 12's overloads: omitted optional
 	// arguments stay omitted, so the target runs its own defaults.
 	c.delegateDef(ctx, cls, d, m, env, required, d.name, true)
+	seen := map[string]bool{}
 	for i, p := range m.Params {
 		if p.Default != nil {
-			c.delegateDef(ctx, cls, d, m, env, i+1, fmt.Sprintf("__%s_%d", d.name, i+1), m.Block != nil)
+			name := fmt.Sprintf("__%s_%d", overloadBase(d.name), i+1)
+			seen[name] = true
+			c.delegateDef(ctx, cls, d, m, env, i+1, name, m.Block != nil)
 		}
+	}
+	if strings.HasPrefix(d.method, "__") {
+		return
+	}
+	// the target's arity overloads (`Enumerable#first(n)` beside `__first_0`) are delegated too
+	prefix := "__" + overloadBase(d.method) + "_"
+	for _, x := range rc.C.methodSet() {
+		k, ok := strings.CutPrefix(x.M.Name, prefix)
+		name := "__" + overloadBase(d.name) + "_" + k
+		if !ok || k == "" || strings.Trim(k, "0123456789") != "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		o := d
+		o.method, o.name = x.M.Name, name
+		c.expandDelegation(ctx, cls, o)
 	}
 }
 
@@ -174,6 +202,9 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	}
 	sig += " -> " + subst(m.Ret, env).String()
 	call := d.accessor
+	if call[0] >= 'A' && call[0] <= 'Z' { // resolved from the top level, as delegateTarget typed it
+		call = "::" + call
+	}
 	if d.method == "[]" {
 		call += "[" + strings.Join(args, ", ") + "]"
 	} else {
@@ -197,6 +228,29 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 	f, n := d.file, d.node
 	sc := typeScope{class: cls, lex: d.scope, file: f, line: f.line(n.Location.StartOffset)}
+	switch acc := d.accessor; {
+	case acc == "$stdin" || acc == "$stdout" || acc == "$stderr": // the globals rb2go has that hold objects (decision 61)
+		return TClass{C: c.classes["IO"]}
+	case strings.HasPrefix(acc, "$"):
+		c.errorf(f, n, "%s: only $stdin, $stdout and $stderr can be delegated to", n.Name)
+	case acc != "" && acc[0] >= 'A' && acc[0] <= 'Z':
+		var path parser.Node
+		for i, part := range strings.Split(acc, "::") {
+			if i == 0 {
+				path = &parser.ConstantReadNode{Name: part, Location: n.Location}
+				continue
+			}
+			path = &parser.ConstantPathNode{Parent: path, Name: &part, Location: n.Location}
+		}
+		target, k := c.lookupConst(f, path, nil) // MRI evaluates the accessor inside Forwardable, so only top-level names resolve
+		switch {
+		case k != nil:
+			return c.constType(k)
+		case target != nil:
+			return TClass{C: c.metaFor(target)}
+		}
+		c.errorf(f, n, "%s: uninitialized constant %s", n.Name, acc)
+	}
 	if !strings.HasPrefix(d.accessor, "@") {
 		e := cls.lookup(d.accessor)
 		if e == nil {
@@ -212,17 +266,23 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 		return iv.Type
 	}
 	for k := cls; k != nil; k = k.Super {
-		init := k.Methods["initialize"]
-		if init == nil || init.Node == nil {
-			continue
+		// a class object's ivar is assigned in class methods, not initialize
+		defs := []*Method{k.Methods["initialize"]}
+		if k.metaOf != nil {
+			defs = k.MethodList
 		}
 		var ann string
-		anyNode(init.Node.Body, func(x parser.Node) bool {
-			if w, ok := x.(*parser.InstanceVariableWriteNode); ok && w.Name == d.accessor && ann == "" {
-				ann = init.File.trailingAnnotation(w)
+		for _, m := range defs {
+			if m == nil || m.Node == nil {
+				continue
 			}
-			return false
-		})
+			anyNode(m.Node.Body, func(x parser.Node) bool {
+				if w, ok := x.(*parser.InstanceVariableWriteNode); ok && w.Name == d.accessor && ann == "" {
+					ann = m.File.trailingAnnotation(w)
+				}
+				return false
+			})
+		}
 		if ann != "" {
 			t, err := rbs.ParseType(ann)
 			if err != nil {
@@ -230,6 +290,9 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 			}
 			return c.resolveType(t, sc)
 		}
+	}
+	if cls.metaOf != nil {
+		c.errorf(f, n, "%s: the type of %s must be declared to delegate to it (`# @rbs self.%s: T`, or `%s = ... #: T` in a class method)", n.Name, d.accessor, d.accessor, d.accessor)
 	}
 	c.errorf(f, n, "%s: the type of %s must be declared to delegate to it (`# @rbs %s: T`, or `%s = ... #: T` in initialize)", n.Name, d.accessor, d.accessor, d.accessor)
 	return nil

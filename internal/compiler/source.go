@@ -160,7 +160,7 @@ func (f *File) annotations(ln int) map[string][]string {
 				continue
 			}
 			key := fields[0]
-			if strings.HasPrefix(key, "@") { // @rbs @x: T
+			if strings.HasPrefix(key, "@") || strings.HasPrefix(key, "self.@") { // @rbs @x: T, @rbs self.@x: T
 				out["ivar"] = append(out["ivar"], strings.TrimSpace(t[5:]))
 				continue
 			}

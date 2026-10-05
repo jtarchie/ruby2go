@@ -409,13 +409,6 @@ class File < Object
     return *rbEOF(rbGetbyte(self.r))
   }
 
-  #: () -> String
-  def readline
-    line = gets
-    raise EOFError, "end of file reached" unless line
-    line
-  end
-
   #: (String) -> nil
   def ungetc(s) = %x{
     self.rbReadable()

@@ -2046,11 +2046,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if owner == nil || strings.HasPrefix(m.Name, "__") {
 		return nil
 	}
-	base := strings.NewReplacer("?", "_q", "!", "_bang").Replace(m.Name)
-	if op, ok := opNames[m.Name]; ok {
-		base = strings.ToLower(strings.TrimPrefix(op, "Op_"))
-	}
-	name := "__" + base + "_"
+	name := "__" + overloadBase(m.Name) + "_"
 	if r := f.literalOverload(m, owner, args); r != nil {
 		return r
 	}
@@ -2082,6 +2078,14 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// overloadBase is name as its `__<base>_<suffix>` overloads spell it.
+func overloadBase(name string) string {
+	if op, ok := opNames[name]; ok {
+		return strings.ToLower(strings.TrimPrefix(op, "Op_"))
+	}
+	return strings.NewReplacer("?", "_q", "!", "_bang").Replace(name)
 }
 
 // literalOverload picks an overload from literal arguments: String#scan
@@ -3069,7 +3073,9 @@ func (f *fctx) genYield(n *parser.YieldNode) expr {
 		args = n.Arguments.Arguments
 	}
 	if name := f.m.optionalBlockLocal(); name != "" {
-		f.checkBlockPresent(n, name)
+		if v := f.visibleLocal(name); v != nil && isOpt(v.typ) {
+			return f.yieldMaybeMissing(n, v, args)
+		}
 		call := f.c.rewrite(n, func() parser.Node {
 			return &parser.CallNode{Location: n.Location, Receiver: &parser.LocalVariableReadNode{Name: name, Location: n.Location}, Name: "call", Arguments: n.Arguments}
 		})
@@ -3096,8 +3102,46 @@ func (f *fctx) genBlockCall(n *parser.CallNode) (expr, bool) {
 	return expr{}, false
 }
 
-// checkBlockPresent rejects calling an optional block (`?{ }`) where it may be
-// missing: MRI's LocalJumpError (or a nil Proc's NoMethodError) at compile time.
+// yieldMaybeMissing is `yield args` where the optional block may be
+// missing: MRI evaluates the arguments, then raises LocalJumpError (decision
+// 132); past the check the block is narrowed to present.
+func (f *fctx) yieldMaybeMissing(n *parser.YieldNode, v *local, args []parser.Node) expr {
+	params := v.typ.(TOpt).Elem.(TFunc).Params
+	nodes := make([]parser.Node, len(args))
+	for i, a := range args {
+		nodes[i] = a
+		if _, splat := a.(*parser.SplatNode); splat || i >= len(params) {
+			continue
+		}
+		e := f.genExpr(a, params[i])
+		if !e.lit && !isSimpleGo(e.code) {
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, e.code)
+			e.code = tmp
+		}
+		nodes[i] = &exprNode{Node: a, e: e}
+	}
+	const msg = "no block given (yield)"
+	f.c.strLits[msg] = true
+	exc := f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil).code
+	if f.rescues > 0 {
+		exc = "rbWithCause(" + exc + ", r_)"
+	}
+	f.emit("if %s == nil {", v.goName)
+	f.emit("\tpanic(%s)", exc)
+	f.emit("}")
+	f.push()
+	defer f.pop()
+	f.applyNarrow([]narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}})
+	var argsNode *parser.ArgumentsNode
+	if n.Arguments != nil {
+		argsNode = &parser.ArgumentsNode{Location: n.Arguments.Location, Arguments: nodes}
+	}
+	return f.genExpr(&parser.CallNode{Location: n.Location, Receiver: &parser.LocalVariableReadNode{Name: v.name, Location: n.Location}, Name: "call", Arguments: argsNode}, nil)
+}
+
+// checkBlockPresent rejects `blk.call` on an optional block (`?{ }`) where it
+// may be missing: MRI's NoMethodError on nil, at compile time.
 func (f *fctx) checkBlockPresent(n parser.Node, name string) {
 	if v := f.visibleLocal(name); v != nil && isOpt(v.typ) {
 		f.errorf(n, "the block is optional (?{ ... }) and may be missing here: check block_given? first, or call it with &.call")

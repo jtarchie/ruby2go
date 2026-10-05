@@ -6,3 +6,8 @@
 # has nothing to do at run time.
 module Forwardable
 end
+
+# SingleForwardable: the same forms after `extend SingleForwardable` in a
+# class or module body define class methods (decision 132).
+module SingleForwardable
+end

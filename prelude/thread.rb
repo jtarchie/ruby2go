@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup] }
 class Thread < Object
   # The block's value is kept for #value, untyped: Thread is not generic.
   #: () { () -> untyped } -> Thread
@@ -194,6 +194,9 @@ class Thread < Object
     return String("run")
   }
 
+  #: () -> ThreadGroup
+  def group = %x{ return self.threadGroup() }
+
   #: () -> bool
   def alive? = %x{
     select {
@@ -203,4 +206,37 @@ class Thread < Object
       return true
     }
   }
+end
+
+# A group is a mark on each Thread; list filters Thread.list by it (decision 132).
+# @go_type struct { enclosed atomic.Bool }
+class ThreadGroup < Object
+  #: () -> ThreadGroup
+  def self.new = %x{ return &ThreadGroup{} }
+
+  #: () -> ThreadGroup
+  def self.__default = %x{ return rbThreadGroupDefault }
+
+  #: (Thread) -> self
+  def add(thread) = %x{
+    rbThreadGroupAdd(self, thread)
+    return self
+  }
+
+  #: () -> Array[Thread]
+  def list = %x{ return rbThreadGroupList(self) }
+
+  #: () -> self
+  def enclose = %x{
+    self.enclosed.Store(true)
+    return self
+  }
+
+  #: () -> bool
+  def enclosed? = %x{ return Boolean(self.enclosed.Load()) }
+
+  #: () -> String
+  def inspect = %x{ return String(fmt.Sprintf("#<ThreadGroup:%p>", self)) }
+
+  Default = __default #: ThreadGroup
 end

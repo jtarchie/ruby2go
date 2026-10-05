@@ -52,6 +52,13 @@ module IOReadable
   #: () -> String?
   def gets = raise(NotImplementedError)
 
+  #: (?chomp: bool) -> String
+  def readline(chomp: false)
+    line = gets
+    raise EOFError, "end of file reached" unless line
+    chomp && line.end_with?("\n") ? line.chomp : line # a final "x\r" keeps its \r, as MRI
+  end
+
   #: () { (String) -> void } -> void
   def each_line
     while (line = gets)
@@ -261,13 +268,6 @@ class IO < Object
     self.rbReadable()
     return *rbEOF(rbGetbyte(rbStdin))
   }
-
-  #: () -> String
-  def readline
-    line = gets
-    raise EOFError, "end of file reached" unless line
-    line
-  end
 
   #: (String) -> nil
   def ungetc(s) = %x{
