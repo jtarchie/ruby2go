@@ -277,22 +277,7 @@ func (p *pruner) visit(x ast.Node) bool {
 		}
 		return false
 	case *ast.SwitchStmt:
-		if x.Init != nil {
-			ast.Inspect(x.Init, p.visit)
-		}
-		if x.Tag != nil {
-			ast.Inspect(x.Tag, p.visit)
-		}
-		for _, st := range x.Body.List {
-			cc := st.(*ast.CaseClause)
-			if t := keyedType(cc); t != nil {
-				if names := p.caseTypeNames(t); len(names) > 0 {
-					p.pending[cc] = names
-					continue
-				}
-			}
-			ast.Inspect(cc, p.visit)
-		}
+		p.visitSwitch(x)
 		return false
 	case *ast.Ident:
 		if !p.names[x.Name] {
@@ -602,6 +587,26 @@ func mentions(n ast.Node, name string) bool {
 		return !found
 	})
 	return found
+}
+
+// visitSwitch visits an expression switch, parking its rbKeyed cases like weak type-switch cases.
+func (p *pruner) visitSwitch(x *ast.SwitchStmt) {
+	if x.Init != nil {
+		ast.Inspect(x.Init, p.visit)
+	}
+	if x.Tag != nil {
+		ast.Inspect(x.Tag, p.visit)
+	}
+	for _, st := range x.Body.List {
+		cc := st.(*ast.CaseClause)
+		if t := keyedType(cc); t != nil {
+			if names := p.caseTypeNames(t); len(names) > 0 {
+				p.pending[cc] = names
+				continue
+			}
+		}
+		ast.Inspect(cc, p.visit)
+	}
 }
 
 // keyedType is T in a `case rbKeyed[T](k):` clause, which names T as weakly as a type-switch case does (decision 137).
