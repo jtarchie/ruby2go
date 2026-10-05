@@ -5,7 +5,7 @@
 
 # @go_type float64
 class Float < Object
-  include Comparable
+  include Numeric
 
   #: (Float) -> Integer?
   def <=>(other) = %x{
@@ -247,6 +247,32 @@ class Float
   def step(limit, by = 1.0) = %x{
     return func(yield func(Float) bool) { rbFloatStep(float64(self), float64(limit), float64(by), yield) }
   }
+
+  #: (Float, ?Float) -> Array[Float]
+  def __step_enum(limit, by = 1.0)
+    out = [] #: Array[Float]
+    step(limit, by) { |x| out << x }
+    out
+  end
+
+  #: (Float) -> Integer
+  def div(other)
+    raise ZeroDivisionError, "divided by 0" if other == 0
+    (self / other).floor
+  end
+
+  # Truncated, so the result takes self's sign, as MRI's flo_remainder.
+  #: (Float) -> Float
+  def remainder(other) = %x{ Float(math.Mod(float64(self), float64(other))) }
+
+  #: (Float) -> Float
+  def quo(other) = self / other
+
+  #: (Float) -> [Float, Float]
+  def coerce(other) = [other, self]
+
+  #: (Rational) -> [Float, Float]
+  def __coerce_rational(other) = [other.to_f, self]
 end
 
 # Kernel#Float: strict conversion, overloaded like Kernel#Integer.

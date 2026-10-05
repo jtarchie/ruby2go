@@ -6,7 +6,7 @@
 
 # @go_type int
 class Integer < Object
-  include Comparable
+  include Numeric
 
   #: (Integer) -> Integer
   def <=>(other) = %x{ Integer(cmp.Compare(self, other)) }
@@ -487,6 +487,19 @@ class Integer
   # [abs, arg]: the angle is Integer 0 for a non-negative number and π for a negative one, as MRI's.
   #: () -> [Integer, untyped]
   def polar = negative? ? [abs, Math::PI] : [self, 0]
+
+  #: () -> Integer?
+  def infinite? = nil
+
+  # Only an Integer stays one: anything else makes a Float pair, as MRI's int_coerce.
+  #: (Integer) -> [Integer, Integer]
+  def coerce(other) = [other, self]
+
+  #: (Float) -> [Float, Float]
+  def __coerce_float(other) = [other, to_f]
+
+  #: (Rational) -> [Float, Float]
+  def __coerce_rational(other) = [other.to_f, to_f]
 end
 
 # Kernel#Integer: strict conversion. A String argument must be a number

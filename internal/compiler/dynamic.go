@@ -508,8 +508,10 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		maxArgs = -1
 	}
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
-	if isNumeric(recv.typ) && rest == nil && opt == 0 {
+	if numLevel(cls) >= 0 && rest == nil && opt == 0 {
+		c.dynNumericTwins(f, cls, e)
 		c.dynNumericMix(f, e, env)
+		c.dynNumericTower(f, cls, e, env)
 	}
 	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
 		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
@@ -563,29 +565,29 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	return f.buf.String()
 }
 
-// dynNumericMix emits an Integer or Float wrapper's answer to an argument
-// of the other numeric class, as numericMix compiles typed calls:
-// Comparable's methods run on rbNum, and an Integer's own operator is
-// redone by its Float, whose wrappers widen Integer arguments (rbAs).
+// dynNumericMix emits a number wrapper's answer to an argument of another
+// number class, as numericMix compiles typed calls: Comparable's methods
+// run on rbNum, and an Integer's own operator with a Float is redone by
+// its Float, whose wrappers widen Integer arguments (rbAs).
 func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 	m := e.M
 	if len(m.Params) == 0 {
 		return
 	}
 	for _, p := range m.Params {
-		if !isNumeric(subst(p.Type, env)) {
+		if numLevel(classOf(subst(p.Type, env))) < 0 {
 			return
 		}
 	}
-	var ret string
+	cond, ret := "rbNumMixed(self, args)", ""
 	switch {
 	case m.Owner == c.classes["Comparable"]:
 		args := make([]string, len(m.Params))
 		for i := range args {
 			args[i] = c.dynArg(TAny{}, i)
 		}
-		ret = f.rbNumCall(nil, m, "self", args).code
-	case isClass(env["Self"], "Integer"):
+		cond, ret = "rbNumOther(self, args)", f.rbNumCall(nil, m, "self", args).code
+	case isClass(env["Self"], "Integer") && !slices.ContainsFunc(m.Params, func(p Param) bool { return !isNumeric(subst(p.Type, env)) }):
 		if fe, private := c.dynEntry(c.classes["Float"], m.Name); fe == nil || private {
 			return
 		}
@@ -593,8 +595,55 @@ func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 	default:
 		return
 	}
-	f.emit("if rbNumMixed(self, args) {")
+	f.emit("if %s {", cond)
 	f.emit("\treturn %s", ret)
+	f.emit("}")
+}
+
+// dynNumericTwins is decision 12's choice of a `__<op>_<class>` twin by the argument's class, made at run time for a number's one-argument method.
+func (c *Compiler) dynNumericTwins(f *fctx, cls *Class, e *entry) {
+	m := e.M
+	if len(m.Params) != 1 || !classTwins(m.Name) {
+		return
+	}
+	recv := expr{code: "self", typ: TClass{C: cls}}
+	open := false
+	for _, name := range numTower {
+		k := c.classes[name]
+		if k == nil {
+			continue
+		}
+		tw := cls.lookup("__" + overloadBase(m.Name) + "_" + snake(k.RubyName))
+		if tw == nil || tw.M.generic() || tw.M.Block != nil || len(tw.M.Params) != 1 {
+			continue
+		}
+		if !open {
+			f.emit("switch x := args[0].(type) {") // one type per case: the pruner keeps a case only when its class is kept (no Rational code without a Rational)
+			open = true
+		}
+		t := TClass{C: k}
+		f.emit("case %s:", c.goType(t))
+		f.indent++
+		res := f.callEntry(&parser.NilNode{}, tw, recv, []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}, nil)
+		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		f.indent--
+	}
+	if open {
+		f.emit("default:") // gocritic rejects a one-case switch
+		f.emit("}")
+	}
+}
+
+// dynNumericTower is numericTower at run time: an argument of another number class the parameter does not take is coerced with self up the tower (rbNumCoerce), and the method sent again.
+func (c *Compiler) dynNumericTower(f *fctx, cls *Class, e *entry, env map[string]Type) {
+	m := e.M
+	if len(m.Params) != 1 || !towerOps[m.Name] || !typeEq(subst(m.Params[0].Type, env), TClass{C: cls}) {
+		return
+	}
+	f.emit("if _, ok := rbConv[%s](args[0]); !ok {", c.goType(TClass{C: cls}))
+	f.emit("\tif x, y, ok := rbNumCoerce(self, args[0]); ok {")
+	f.emit("\t\treturn rbDyn%s(rbCall, x, y)", c.dynGoName(m.Name))
+	f.emit("\t}")
 	f.emit("}")
 }
 

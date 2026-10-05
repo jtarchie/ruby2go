@@ -1,6 +1,7 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "bigdecimal"
 
 # Helpers for the checks that were testdata/run/number_boolean.rb.
 #: (bool) -> String
@@ -207,6 +208,38 @@ end
 
 #: (untyped) -> String
 def truthy(v) = v ? "truthy" : "falsy"
+
+# Numeric (#39): a parameter, a when arm and narrowing typed against it.
+#: (Numeric) -> Numeric
+def number_double(n) = n * 2
+
+#: (untyped) -> String
+def number_numeric_kind(v)
+  case v
+  when Integer then "int #{v + 1}"
+  when Float then "float #{v.floor}"
+  when Numeric then "number #{v.zero?}"
+  else "other"
+  end
+end
+
+#: (Numeric) -> String
+def number_narrow(n)
+  if n.is_a?(Integer)
+    "even #{n.even?}"
+  elsif n.is_a?(Float)
+    "nan #{n.nan?}"
+  else
+    "other #{n.integer?}"
+  end
+end
+
+#: (untyped) -> Numeric?
+def number_succ(v)
+  return nil unless v.is_a?(Numeric)
+
+  v + 1
+end
 
 module NumberTests
   # Helpers for the checks that were testdata/run/number_bug_case_when_eqq.rb.
@@ -2157,6 +2190,116 @@ module NumberTests
   class NumberRubySpecPolarTest < Minitest::Test
     def test_polar
       assert_equal [[3, 0], [3, Math::PI], [2.5, 0], [2.5, Math::PI], [0, 0]], [3.polar, -3.polar, 2.5.polar, -2.5.polar, 0.polar]
+    end
+  end
+
+  # Numeric (#39, decision 142)
+  class NumberNumericTest < Minitest::Test
+    def test_numeric_parameter
+      assert_equal [4, 5.0, Rational(2, 3), Complex(2, 4), BigDecimal("3")],
+                   [number_double(2), number_double(2.5), number_double(Rational(1, 3)), number_double(Complex(1, 2)), number_double(BigDecimal("1.5"))]
+    end
+
+    def test_numeric_case_is_a_and_narrowing
+      vs = [1, 1.5, Rational(1, 2), Complex(0, 0), BigDecimal("1"), "1", nil, :x]
+      assert_equal ["int 2", "float 1", "number false", "number true", "number false", "other", "other", "other"], vs.map { |v| number_numeric_kind(v) }
+      assert_equal [true, true, true, true, true, false, false, false], vs.map { |v| v.is_a?(Numeric) }
+      assert_equal [true, false, true, true, true], [Numeric === 2, Numeric === "2", 1.kind_of?(Numeric), Complex(1, 2).is_a?(Comparable), BigDecimal("1").is_a?(Comparable)]
+      assert_equal ["even true", "nan false", "other false"], [number_narrow(2), number_narrow(1.5), number_narrow(Rational(1, 2))]
+      assert_equal [2, 2.5, Rational(3, 2), nil], [number_succ(1), number_succ(1.5), number_succ(Rational(1, 2)), number_succ("x")]
+    end
+
+    def test_numeric_mixed_typed
+      i = 3
+      f = 0.75
+      r = Rational(1, 2)
+      b = BigDecimal("2.5")
+      c = Complex(1, 2)
+      assert_equal [true, true, false, -1, 1, true], [r < f, f > r, i < r, r <=> f, b <=> r, r < b]
+      assert_equal [Rational(7, 2), 1.25, BigDecimal("3"), Complex(Rational(3, 2), 2), BigDecimal("5.5")], [i + r, r + f, r + b, r + c, i + b]
+      assert_equal [6, 3, [6, Rational(0, 1)], 6.0, BigDecimal("1.2")], [i.div(r), f.div(Rational(1, 4)), i.divmod(r), i.fdiv(r), i / b]
+      assert_equal [0.25, Rational(1, 2), 0.5, BigDecimal("0.5")], [f % r, Rational(7, 2) % i, r.remainder(f), i.modulo(b)]
+      assert_equal [nil, 0, 1, nil], [c <=> i, Complex(3, 0) <=> 3, Complex(3.0, 0) <=> r, i <=> c]
+    end
+
+    def test_numeric_mixed_through_numeric
+      i = 3 #: Numeric
+      f = 0.75 #: Numeric
+      r = Rational(1, 2) #: Numeric
+      b = BigDecimal("2.5") #: Numeric
+      c = Complex(1, 2) #: Numeric
+      assert_equal [Rational(7, 2), 1.25, BigDecimal("3"), Complex(Rational(3, 2), 2), BigDecimal("5.5"), Complex(4, 2)], [i + r, r + f, r + b, r + c, i + b, c + i]
+      assert_equal [Rational(5, 2), 0.25, BigDecimal("-2"), Complex(Rational(-1, 2), -2), 2.25, Complex(0.75, 1.5)], [i - r, f - r, r - b, r - c, i * f, f * c]
+      assert_equal [Rational(6, 1), 1.5, BigDecimal("0.2"), Complex(Rational(1, 10), Rational(-1, 5)), BigDecimal("1.2")], [i / r, f / r, r / b, r / c, i / b]
+      assert_equal [true, true, false, -1, 1, nil, nil], [r < f, f > r, i < r, r <=> f, b <=> r, c <=> i, i <=> c]
+      assert_equal [6, [6, Rational(0, 1)], 6.0, 0.25, BigDecimal("0.5")], [i.div(r), i.divmod(r), i.fdiv(r), f % r, i.modulo(b)]
+    end
+
+    def test_numeric_comparable
+      xs = [3, 1.5, Rational(1, 2), BigDecimal("2.5")] #: Array[Numeric]
+      assert_equal [Rational(1, 2), 1.5, BigDecimal("2.5"), 3], xs.sort
+      assert_equal [Rational(1, 2), 3, [Rational(1, 2), 3]], [xs.min, xs.max, xs.minmax]
+      n = 2 #: Numeric
+      assert_equal [true, false, 2.5, Rational(5, 2), 2], [n.between?(1, 3), n.between?(Rational(5, 2), 3), n.clamp(2.5, 4), n.clamp(Rational(5, 2), 3), n.clamp(1, 3)]
+      assert_equal [2, Rational(1, 2), true, BigDecimal("2"), 3], [Rational(5, 2).clamp(1, 2), 0.25.clamp(Rational(1, 2), 1), 1.5.between?(1, Rational(3, 2)), BigDecimal("1").clamp(BigDecimal("2"), 3), BigDecimal("4").clamp(1, 3)]
+    end
+
+    def test_numeric_predicates
+      zs = [0, 0.0, Rational(0, 1), Complex(0, 0), BigDecimal("0")]
+      ns = [-2, -1.5, Rational(-1, 2), BigDecimal("-2.5")]
+      assert_equal [true, true, true, true, true], zs.map(&:zero?)
+      assert_equal [nil, nil, nil, nil, nil], zs.map(&:nonzero?)
+      assert_equal [-2, -1.5, Rational(-1, 2), BigDecimal("-2.5")], ns.map(&:nonzero?)
+      assert_equal [[false, true], [false, true], [false, true], [false, true]], ns.map { |x| [x.positive?, x.negative?] }
+      assert_equal [true, false, false, false, false], zs.map(&:integer?)
+      assert_equal [true, true, true, true, true], zs.map(&:finite?)
+      assert_equal [nil, 1, -1, nil, nil, 1, -1, nil], [3.infinite?, Float::INFINITY.infinite?, (-Float::INFINITY).infinite?, Rational(1, 2).infinite?, Complex(1, 2).infinite?, Complex(Float::INFINITY, 0).infinite?, BigDecimal("-Infinity").infinite?, BigDecimal("1").infinite?]
+      assert_equal [true, true, true, false, true], zs.map(&:real?)
+      assert_equal [2, 1.5, Rational(1, 2), BigDecimal("2.5")], ns.map(&:abs)
+    end
+
+    def test_numeric_division_family
+      assert_equal [2, 3, 3, 0, 1], [7.div(2.5), 7.5.div(2), Rational(7, 2).div(1), Rational(1, 2).div(0.75), BigDecimal("7").div(4)]
+      assert_equal [[10, Rational(1, 6)], [3, 1.5], [-4, Rational(1, 2)]], [Rational(7, 2).divmod(Rational(1, 3)), 7.5.divmod(2), Rational(-7, 2).divmod(1)]
+      assert_equal [Rational(1, 2), 0.0, Rational(1, 1), 0.5], [Rational(7, 2) % 3, Rational(7, 2).modulo(0.5), 7 % Rational(2, 1), 7.5 % Rational(1)]
+      assert_equal [-2.0, Rational(-1, 2), 1.5, -1.5], [-7.remainder(2.5), Rational(-7, 2).remainder(1), 5.5.remainder(2), -5.5.remainder(2)]
+      assert_equal [6.0, 0.75, 0.25, 0.3333333333333333, 0.5], [3.fdiv(Rational(1, 2)), 1.5.fdiv(2), Rational(1, 2).fdiv(2), BigDecimal("1").fdiv(3), Rational(1, 4).fdiv(0.5)]
+      assert_equal [Rational(3, 2), 0.5, Rational(1, 4)], [3.quo(2), 1.5.quo(3), Rational(1, 2).quo(2)]
+      assert_raises(ZeroDivisionError) { 1.5.div(0) }
+      assert_raises(ZeroDivisionError) { Rational(1, 2) % 0 }
+    end
+
+    def test_numeric_step
+      assert_equal [[1.0, 1.5, 2.0], [Rational(1, 2), Rational(3, 2)], [1.0, 1.5, 2.0], [2, 6, 10]], [1.step(2, 0.5).to_a, Rational(1, 2).step(2).to_a, 1.0.step(2.0, 0.5).to_a, 2.step(10, 4).to_a]
+      assert_equal [BigDecimal("1"), BigDecimal("1.5"), BigDecimal("2")], BigDecimal("1").step(2, BigDecimal("0.5")).to_a
+      assert_equal [Rational(1, 1), Rational(2, 3), Rational(1, 3)], Rational(1, 1).step(Rational(1, 3), Rational(-1, 3)).to_a
+      out = [] #: Array[Rational]
+      Rational(1, 3).step(1, Rational(1, 3)) { |x| out << x }
+      big = [] #: Array[String]
+      BigDecimal("0.1").step(BigDecimal("0.3"), BigDecimal("0.1")) { |x| big << x.to_s }
+      assert_equal [[Rational(1, 3), Rational(2, 3), Rational(1, 1)], %w[0.1e0 0.2e0 0.3e0]], [out, big]
+      assert_raises(ArgumentError) { Rational(1, 2).step(2, 0r) { |x| out << x } }
+    end
+
+    def test_numeric_coerce_to_c_and_i
+      assert_equal [[3, 3], [1.5, 3.0], [0.5, 3.0], [3.0, 1.5], [0.5, 1.5]], [3.coerce(3), 3.coerce(1.5), 3.coerce(Rational(1, 2)), 1.5.coerce(3), 1.5.coerce(Rational(1, 2))]
+      assert_equal [[Rational(3, 1), Rational(1, 2)], [1.5, 0.5], [Complex(3, 0), Complex(1, 2)], [BigDecimal("2"), BigDecimal("1")]],
+                   [Rational(1, 2).coerce(3), Rational(1, 2).coerce(1.5), Complex(1, 2).coerce(3), BigDecimal("1").coerce(2)]
+      assert_equal [Complex(3, 0), Complex(1.5, 0), Complex(Rational(1, 2), 0), Complex(0, 3), Complex(0, 1.5), Complex(0, Rational(1, 2))],
+                   [3.to_c, 1.5.to_c, Rational(1, 2).to_c, 3.i, 1.5.i, Rational(1, 2).i]
+    end
+
+    def test_numeric_methods_on_a_numeric
+      xs = [-3, 2.5, Rational(-1, 2), Complex(3, 4), BigDecimal("-1.5")] #: Array[Numeric]
+      assert_equal [3, 2.5, Rational(1, 2), 5.0, BigDecimal("1.5")], xs.map(&:abs)
+      assert_equal [true, false, false, false, false], xs.map(&:integer?)
+      assert_equal [false, false, false, false, false], xs.map(&:zero?)
+      assert_equal [true, true, true, false, true], xs.map(&:real?)
+      assert_equal [-3.0, 2.5, -0.5, -1.5], [xs[0].to_f, xs[1].to_f, xs[2].to_f, xs[4].to_f]
+      n = 7 #: Numeric
+      assert_equal [3.5, 3, [3, 1], 1, 1, Complex(7, 0), Complex(0, 7)], [n.fdiv(2), n.div(2), n.divmod(2), n.modulo(2), n.remainder(2), n.to_c, n.i]
+      m = -7.5 #: Numeric
+      assert_equal [-4, [-4, 0.5], 0.5, -1.5, Complex(-7.5, 0), -7.5, nil], [m.div(2), m.divmod(2), m % 2, m.remainder(2), m.to_c, m.nonzero?, m.infinite?]
     end
   end
 

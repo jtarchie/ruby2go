@@ -3313,8 +3313,8 @@ resolve; anything not listed is still open.
       `undef_method`, `remove_method`. `private_constant` is accepted but
       not enforced.
     - `Class#superclass` and `#subclasses` come from per-class tables
-      (newest subclass first, as MRI); `Integer.superclass` is Object
-      until Numeric exists (#39). `Module#ancestors` and
+      (newest subclass first, as MRI); `Integer.superclass` is Object,
+      since Numeric is a module (decision 142). `Module#ancestors` and
       `included_modules` are decision 125.
     - `when *LIST` tests each element's `===`; `rescue *ERRORS` checks
       each class object at run time (`rbIsInstanceOf`), binding
@@ -3883,3 +3883,87 @@ resolve; anything not listed is still open.
       no tag is added.
     ([example 91](../examples/91_socket/main.rb),
     `testdata/test/socket_test.rb`, `testdata/errors/socket.txtar`.)
+142. `Numeric` (#39) is a prelude module that `Integer`, `Float`,
+    `Rational`, `Complex` and `BigDecimal` include, and that includes
+    `Comparable`. A module, not a class, because a module type is
+    already Go `any` holding whichever value it is, with calls on it
+    dispatched by the generated `rbDyn` switches (decision 32) and
+    typed by the module's declared signatures; a class above five
+    `@go_type` classes would have needed a new kind of class. Ruby sees
+    the difference only in reflection: `Numeric.class` is `Module` and
+    `Integer.superclass` is `Object` (MRI: `Class`, `Numeric`);
+    `ancestors` and `is_a?` match. User code cannot subclass or
+    include it (compile errors), so its includers are a closed set.
+    - **Signatures only.** `prelude/numeric.rb` declares the methods a
+      `Numeric` value answers (`+`, `zero?`, `abs` → `self`, `divmod`
+      → `Array[Numeric]`, `to_c`, ...), which type calls on one; their
+      bodies raise and never run, since every number class defines or
+      `undef`s each one (`checkNumeric` makes a miss a compile error).
+      Inherited bodies would have needed decision 9's constraint to hold
+      for all five classes, which Complex (no order) cannot meet. A
+      `Self` result on a module value is the value's own type (`abs` on a
+      Numeric is a Numeric; `clamp` on a Comparable a Comparable). `<=>`
+      on a Numeric is `Integer?` (nil for a Complex), and calls on one
+      give no dynamic-call warning: dispatch at run time is the type's
+      point. A block on a Numeric (`n.step(3) { }`) is a compile error:
+      narrow it first.
+    - **`is_a?`, `when`, `===`.** `is_a?(Numeric)`/`kind_of?` on a value
+      whose class only the run time knows (untyped, a module type, a
+      type variable) asks the class ancestry table (`rbKindOf`, the
+      table `Module#===` reads), and narrows an untyped local to
+      `Numeric` (the same Go value). `when Numeric` in a type switch
+      lists the five Go types, minus any an earlier arm took (Go rejects
+      a repeated case; Ruby's first match wins anyway). Decision 21's
+      compile error stays for other modules.
+    - **Mixing, typed.** Decision 12's class twins (`__plus_rational`)
+      go first. A call they miss whose parameter is the receiver's own
+      class (arithmetic `+ - * / % modulo remainder div divmod fdiv
+      quo`, order `<=> < <= > >=`, and `step`) converts the operand
+      lower in the tower `Integer < Rational < Float < BigDecimal <
+      Complex` to the higher one's class (`to_r`, `to_f`, `to_d`,
+      `to_c`; a Rational to BigDecimal at `BigDecimal.__from`'s 32
+      digits) and calls that class's method, typed (`numericTower`):
+      `Rational(1, 2) < 0.75` is `Rational(1, 2).to_f < 0.75`. Only a
+      binary call raises its receiver; `step` converts its arguments
+      down to the receiver (`Rational(1, 2).step(2)`), or widens an
+      Integer receiver to Float, iterators included. Comparable's
+      methods compare through `rbNum` across classes, as clamp answers
+      the bound itself (`Rational(5, 2).clamp(1, 2)` is `2`). Integer
+      with Float keeps numericMix's widening. A method named like an
+      operator's twins (`div` against `/`'s `__div_integer`) no longer
+      takes them, which had made `7.div(Rational(1, 2))` a Rational.
+    - **Mixing, at run time.** A number's Dyn wrapper for a
+      one-argument method picks a twin by the argument's class in a
+      type switch, then, for the ops above, coerces an argument its
+      parameter does not take with `self` up the same tower
+      (`rbNumCoerce`) and sends the method again (`rbDyn<Op>`). Every
+      case of those switches names one class, so the pruner drops the
+      cases of classes the program never makes (decision 49): an
+      untyped `+` costs four small functions, not Rational and
+      BigDecimal code. Both paths were checked against MRI over all 25
+      class pairs of each op (`testdata/test/number_test.rb`'s
+      `NumberNumericTest` keeps a cross-section).
+    - **What does not mix.** A BigDecimal with a Complex: rb2go's
+      Complex parts are Integer, Rational or Float (decision 42), so a
+      typed mix is a compile error and an untyped one a TypeError, and
+      `BigDecimal#to_c`/`#i` are undefined (MRI makes a Complex with a
+      BigDecimal part). `**` is not in the tower, because MRI's answer's
+      class depends on the values (`4 ** Rational(1, 2)` is a Float,
+      `Rational(1, 4) ** 2` a Rational): only the existing twins mix it,
+      and `Rational ** Rational` is a compile error. Complex has no
+      order, as in MRI: `<`, `between?`, `clamp`, `%`, `div`,
+      `divmod`, `modulo`, `remainder`, `positive?`, `negative?`,
+      `floor`/`ceil`/`round`/`truncate` and `i` are undefined on it;
+      its `<=>` compares two real values only (nil otherwise).
+    - **Filled gaps**, each as MRI: Integer `infinite?`, `coerce`
+      (a Float pair unless both are Integers); Float `div`, `remainder`,
+      `quo`, `coerce`, `step` without a block; Rational `nonzero?`,
+      `finite?`, `infinite?`, `real?`, `magnitude`, `fdiv`, `div`, `%`,
+      `modulo`, `divmod`, `remainder`, `step` (with a block or as an
+      Array), `coerce`; Complex `<=>`, `zero?`, `nonzero?`, `integer?`,
+      `infinite?`, `coerce`; BigDecimal `integer?`, `real?`,
+      `magnitude`, `fdiv`, `step`, and its own `between?`/`clamp`
+      (its comparisons take any number, which Comparable's
+      `(self)`-typed ones cannot).
+    (`testdata/test/number_test.rb` `NumberNumericTest`,
+    `testdata/errors/numbers.txtar` `numeric_*`.)

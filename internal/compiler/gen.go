@@ -1158,6 +1158,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.emit("switch %s := %s.(type) {", name, code)
 	f.switches++
 	hasNil := false
+	listed := map[string]bool{} // an earlier arm already takes these Go types: Go rejects a repeat, and Ruby's first match wins anyway
 	for _, w := range n.Conditions {
 		wn := w.(*parser.WhenNode)
 		var cases []string
@@ -1171,7 +1172,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				hasNil = true
 			case *parser.ConstantReadNode, *parser.ConstantPathNode:
 				cls := f.classRef(c)
-				if cls.IsModule && f.moduleIsA(c, subj.typ, cls) == "false" {
+				if cls.IsModule && !(f.c.isNumericMod(cls) && f.numericAtRunTime(subj.typ)) && f.moduleIsA(c, subj.typ, cls) == "false" {
 					continue
 				}
 				var goTypes []string
@@ -1179,8 +1180,12 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 				cases = append(cases, goTypes...)
 			}
 		}
+		cases = slices.DeleteFunc(cases, func(c string) bool { return listed[c] })
 		if len(cases) == 0 {
-			continue // only modules the subject statically lacks: never matches
+			continue // only modules the subject statically lacks, or classes an earlier arm takes: never matches
+		}
+		for _, c := range cases {
+			listed[c] = true
 		}
 		if len(wn.Conditions) != 1 {
 			convert = ""
@@ -1230,6 +1235,14 @@ func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
 		return []string{cls.Name + "_Any"}, TClass{C: cls, Args: args}, "._ToAny()"
 	case cls.universal: // nil is an Object too, but a nil interface misses `case any:`
 		return []string{f.c.goType(TClass{C: cls}), "nil"}, TClass{C: cls}, ""
+	case f.c.isNumericMod(cls): // its includers are the prelude's number classes, each a Go type of its own
+		var goTypes []string
+		for _, k := range f.c.classList {
+			if !k.IsModule && k.metaOf == nil && k.isSubclassOf(cls) {
+				goTypes = append(goTypes, f.c.goType(TClass{C: k}))
+			}
+		}
+		return goTypes, TClass{C: cls}, ""
 	}
 	return []string{f.c.goType(TClass{C: cls})}, TClass{C: cls}, ""
 }

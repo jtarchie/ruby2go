@@ -144,8 +144,8 @@ whole program at compile time rather than looked up by reflection.
   custom hierarchies, `catch`/`throw`, `Struct` and `Data`, optional and splat
   arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
   `at_exit`, signal traps.
-- **Core classes:** `String`, `Symbol`, `Integer`, `Float`, `Rational`,
-  `Complex`, `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,
+- **Core classes:** `String`, `Symbol`, `Numeric` (`Integer`, `Float`, `Rational`,
+  `Complex`, mixing as MRI coerces), `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,
   `Comparable`, `Regexp`/`MatchData` (Ruby syntax on Go's RE2), `Time`,
   `Random` (same sequence as MRI for a given seed), `Math`, `File`, `Dir`,
   `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,

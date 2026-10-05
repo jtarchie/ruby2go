@@ -1620,7 +1620,13 @@ func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, arg
 	// the declared result keeps the caller typed instead of cascading dynamic calls
 	if e := t.C.lookup(name); e != nil && isAny(d.typ) {
 		f.c.inferRet(e.M)
-		if ret := subst(e.M.Ret, e.Env); !isVoid(ret) && !mentionsVar(ret) {
+		env := composeEnv(e.Env, nil)
+		env["Self"] = t // a module's `self` is the value itself, of the module's type
+		ret := subst(e.M.Ret, env)
+		if name == "<=>" && f.c.isNumericMod(t.C) {
+			ret = optOf(f.cls("Integer")) // nil for an incomparable number (a Complex), unlike Comparable's own
+		}
+		if !isVoid(ret) && !mentionsVar(ret) {
 			d = expr{code: f.coerce(n, d, ret), typ: ret}
 		}
 	}
@@ -1634,6 +1640,9 @@ func (f *fctx) abstractCall(n parser.Node, t TClass, recv expr, name string, arg
 // argument itself. Arguments are generated once and passed on as exprNodes.
 // Any other call is plain callEntry.
 func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) expr {
+	if x, ok := f.numericTower(n, recv, e, args, block); ok {
+		return x
+	}
 	m := e.M
 	if !isNumeric(recv.typ) || block != nil || len(args) == 0 || len(args) != len(m.Params) {
 		return f.callEntry(n, e, recv, args, block)
@@ -2099,7 +2108,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if r := owner.lookup(name + "same"); r != nil && len(args) >= 2 && f.sameArgs(r.M, args) {
 		return r // `assert_equal 3, h[:a]`: both sides one static type
 	}
-	if len(args) >= 1 && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
+	if len(args) >= 1 && classTwins(m.Name) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
 		if c, ok := a.typ.(TClass); ok {
@@ -2113,6 +2122,20 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// classTwins: a method named like an operator's overloads (`div` and `/`'s `__div_integer`) takes none by class, which are the operator's.
+func classTwins(name string) bool {
+	if _, op := opNames[name]; op {
+		return true
+	}
+	base := overloadBase(name)
+	for op := range opNames {
+		if overloadBase(op) == base {
+			return false
+		}
+	}
+	return true
 }
 
 // overloadBase is name as its `__<base>_<suffix>` overloads spell it.
@@ -3064,9 +3087,10 @@ func (f *fctx) genFor(n *parser.ForNode, t tail) {
 
 // genIterLoop emits the range loop of iterator entry e on recv.
 func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
+	e, recv, args := f.numericIterArgs(e, recv, callArgs(n))
 	m := e.M
 	env := iterEnv(e, recv)
-	codes, _ := f.genArgs(n, m, env, callArgs(n), nil)
+	codes, _ := f.genArgs(n, m, env, args, nil)
 	yields := substAll(m.Block.Params, env)
 	call := f.callCode(e, recv, codes, env)
 	blk, ok := n.Block.(*parser.BlockNode)
@@ -3522,6 +3546,9 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 // universalCall handles Kernel-level methods on values of unknown type.
 func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	if block != nil {
+		if f.c.isNumericMod(classOf(recv.typ)) {
+			f.errorf(n, "a block on a Numeric is not supported: narrow it with is_a? first (decision 142)")
+		}
 		f.errorf(n, "blocks on untyped receivers are not supported")
 	}
 	one := func(exp Type) expr {
@@ -3552,7 +3579,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		a := one(nil)
 		return expr{code: "Boolean(rbIdentical(" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + "))", typ: f.cls("Boolean")}
 	case "<=>":
-		if isAny(recv.typ) || isNil(recv.typ) {
+		if isAny(recv.typ) || isNil(recv.typ) || f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's <=> is nil for an incomparable argument too
 			break // DynOp_cmp: untyped, since MRI answers nil for incomparable values
 		}
 		a := one(recv.typ)
@@ -3893,6 +3920,9 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	if isNil(t) {
 		return "false"
 	}
+	if c, ok := f.numericIsA(recv, cls); ok {
+		return c
+	}
 	if cls.IsModule {
 		return f.moduleIsA(n, t, cls)
 	}
@@ -3977,6 +4007,32 @@ func (c *Compiler) isAGoType(cls *Class) string {
 	return c.goType(TClass{C: cls})
 }
 
+// numericIsA is is_a?(Numeric) on a value whose class only the run time knows (untyped, a module type,
+// a type variable): the class ancestry table answers, as for Module#=== (decision 142).
+func (f *fctx) numericIsA(recv expr, cls *Class) (string, bool) {
+	if !f.c.isNumericMod(cls) || !f.numericAtRunTime(recv.typ) {
+		return "", false
+	}
+	return fmt.Sprintf("rbKindOf(%s, %d)", recv.code, f.c.classID(cls)), true
+}
+
+// numericAtRunTime: whether a value of static type t is a Numeric is decided at run time.
+func (f *fctx) numericAtRunTime(t Type) bool {
+	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil && !f.owner.IsModule {
+		t = TClass{C: f.owner}
+	}
+	switch t := t.(type) {
+	case TAny, TVar:
+		return true
+	case TClass:
+		return isAbstract(t) && !t.C.isSubclassOf(f.c.classes["Numeric"])
+	case TFunc, TNil, TOpt, TTuple, TVoid: // statically never a Numeric (T? is unwrapped before)
+	}
+	return false
+}
+
+func (c *Compiler) isNumericMod(cls *Class) bool { return cls != nil && cls == c.classes["Numeric"] }
+
 // moduleIsA decides `x.is_a?(mod)` for a module mod and x of static type t.
 // There is no runtime record of included modules, so it is "true" or "false"
 // when t's class decides it, and a compile error when t is untyped or a
@@ -4015,6 +4071,9 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	}
 	if cond == "true" || cond == "false" || cls.universal {
 		return cond, nil
+	}
+	if f.c.isNumericMod(cls) && !isOpt(v.typ) && f.numericAtRunTime(base) {
+		return cond, []narrowInfo{{local: v, typ: TClass{C: cls}, code: code}} // both Go any: only the static type changes
 	}
 	if bt, ok := base.(TClass); cls.IsModule || ok && bt.C.isSubclassOf(cls) {
 		// the class part is static: all the check can rule out is nil
@@ -4772,7 +4831,7 @@ func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
-	if f.m == nil || !f.m.quietDynamic {
+	if (f.m == nil || !f.m.quietDynamic) && !f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's class is chosen at run time by design (decision 142)
 		f.warn(n, "dynamic call: %s on %s", name, recv.typ)
 	}
 	how := "rbCall"
