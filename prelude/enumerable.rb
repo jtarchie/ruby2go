@@ -450,7 +450,7 @@ module Enumerable
     if n <= 0 {
       panic(NewArgumentError(Ref(String("invalid slice size"))))
     }
-    size := rbCountSize(any(self), self.Each())
+    size := rbCountSize(any(self))
     return rbEnumOf(rbSlices(self.Each(), int(n)), any(self), "each_slice("+string(rbInspect(n))+")", func() *Integer {
       c := size()
       if c == nil {
@@ -476,7 +476,7 @@ module Enumerable
     if n <= 0 {
       panic(NewArgumentError(Ref(String("invalid size"))))
     }
-    size := rbCountSize(any(self), self.Each())
+    size := rbCountSize(any(self))
     return rbEnumOf(rbCons(self.Each(), int(n)), any(self), "each_cons("+string(rbInspect(n))+")", func() *Integer {
       c := size()
       if c == nil {
@@ -487,7 +487,7 @@ module Enumerable
   }
 
   #: () -> Enumerator[[E, Integer]]
-  def __each_with_index_enum = %x{ return rbEnumOf(rbWithIndex(self.Each(), 0), any(self), "each_with_index", rbCountSize(any(self), self.Each()), nil) }
+  def __each_with_index_enum = %x{ return rbEnumOf(rbWithIndex(self.Each(), 0), any(self), "each_with_index", rbCountSize(any(self)), nil) }
 
   #: [U] (Array[U]) -> Array[[E, U?]]
   def zip(other)

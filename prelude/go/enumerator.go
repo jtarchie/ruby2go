@@ -72,14 +72,11 @@ func rbEnumOf[E comparable](seq func(func(E) bool), recv any, meth string, size 
 	return e
 }
 
-// rbEnumNew is Enumerator.new: the block runs on each iteration, feeding a Yielder; a consumer that stops early unwinds it (rbSeq's rbStop), and its value is next's StopIteration#result.
-func rbEnumNew[E comparable](size *Integer, blk func(*Enumerator_Yielder[E]) any) *Enumerator[E] {
+// rbEnumNew is Enumerator.new: the block runs on each iteration, feeding a Yielder; a consumer that stops early unwinds it (rbSeq's rbStop). The block is void, so any statement may end it (decision 140), and StopIteration#result is nil.
+func rbEnumNew[E comparable](size *Integer, blk func(*Enumerator_Yielder[E])) *Enumerator[E] {
 	e := &Enumerator[E]{meth: "each"}
 	e.recv = rbEnumGenerator{}
-	e.seq = rbSeq(func(f func(E)) {
-		r := blk(&Enumerator_Yielder[E]{fn: f})
-		e.res = &r
-	})
+	e.seq = rbSeq(func(f func(E)) { blk(&Enumerator_Yielder[E]{fn: f}) })
 	if size != nil {
 		n := *size
 		e.size = func() *Integer { return &n }
@@ -126,21 +123,32 @@ func rbSizeOf(n Integer) func() *Integer {
 	return func() *Integer { return &n }
 }
 
-// rbCountSize is an enumerator's size over recv: an Enumerator's own (nil when unknown), else the elements counted.
-func rbCountSize[E comparable](recv any, seq func(func(E) bool)) func() *Integer {
-	return func() *Integer {
+// rbCountSize is MRI's enum_size: the receiver's own size, else nil, never a count by iterating (which may not end).
+func rbCountSize(recv any) func() *Integer {
+	return func() *Integer { // ponytail: a user class's own `size` is not consulted (MRI calls it); emit rbSize for classes defining size
 		if e, ok := recv.(rbSized); ok {
 			return e.rbSize()
 		}
-		n := Integer(0)
-		for range seq {
-			n++
-		}
-		return &n
+		return nil
 	}
 }
 
 type rbSized interface{ rbSize() *Integer }
+
+func (a *Array[E]) rbSize() *Integer { return Ref(Integer(len(*a))) }
+
+func (h *Hash[K, V]) rbSize() *Integer { return Ref(Integer(len(h.keys))) }
+
+func (s *Set[E]) rbSize() *Integer { return Ref(Integer(len(s.h.keys))) }
+
+// rbSize is MRI's Range#size where it is a number: nil for a non-Integer begin, and for an endless range (Infinity).
+func (r *Range[E]) rbSize() *Integer {
+	b, ok := any(r.b).(Integer)
+	if !ok || r.beginless || r.endless {
+		return nil
+	}
+	return Ref(rbRangeIntCount(b, any(r.e).(Integer), r.excl))
+}
 
 func (e *Enumerator[E]) rbSize() *Integer {
 	if e.size == nil {
@@ -331,4 +339,39 @@ func rbArithAll[E comparable](a *Enumerator_ArithmeticSequence[E]) []E {
 		panic(NewRangeError(Ref(String("cannot get the last element of endless arithmetic sequence"))))
 	}
 	return slices.Collect(iter.Seq[E](rbArithSeq(a)))
+}
+
+func (m *Enumerator_Map[E]) rbSize() *Integer { return Ref(Integer(len(*m.items))) }
+
+func (s *Enumerator_Select[E]) rbSize() *Integer { return Ref(Integer(len(*s.items))) }
+
+// rbSize counts an Integer sequence in O(1), so `(1..10**12).step(2).size` does not walk it; nil when endless (MRI's Infinity).
+func (a *Enumerator_ArithmeticSequence[E]) rbSize() *Integer {
+	if a.endless {
+		return nil
+	}
+	b, ok := any(a.b).(Integer)
+	if !a.numeric || !ok {
+		n := Integer(0)
+		for range rbArithSeq(a) {
+			n++
+		}
+		return &n
+	}
+	if a.rng != nil {
+		rbRangeNoBegin(a.rng)
+	}
+	e, by := any(a.e).(Integer), any(a.by).(Integer)
+	span := e - b
+	if by < 0 {
+		span, by = -span, -by
+	}
+	if span < 0 {
+		return Ref(Integer(0))
+	}
+	n := span/by + 1
+	if a.excl && span%by == 0 {
+		n--
+	}
+	return &n
 }

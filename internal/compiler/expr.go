@@ -171,9 +171,6 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		*parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
 		return f.genIvarExpr(n)
 	case *parser.CallNode:
-		if r := f.loopRescue(n); r != nil {
-			return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
-		}
 		return f.genCallValue(n, expected)
 	case *assignedArg:
 		return f.genAssignedArg(n, expected)
@@ -2387,13 +2384,13 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	// bind vars visible in the current generic context so they count as bound
 	f.checkVisibility(n, m, recv)
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
+	if m.Block != nil && m.Iterator && block == nil && !m.Block.Optional {
+		if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
+			return r
+		}
+	}
 	if m.Block != nil {
 		if m.Iterator {
-			if block == nil && !m.Block.Optional {
-				if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
-					return r
-				}
-			}
 			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
 		}
 		blkCode := "nil"
@@ -2966,7 +2963,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 			e = o
 		}
 	}
-	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && !isAny(t.typ) { // an untyped value is nil, as for a void call (applyTail)
+	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || n.Receiver != nil) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
 	}
 	var recv expr
@@ -4723,6 +4720,9 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 // (`recv.x = v`, `recv[k] = v`) Ruby's value is v, whatever the setter
 // returns, so v is evaluated once and named after the call.
 func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
+	if r := f.loopRescue(n); r != nil {
+		return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
+	}
 	if expected != nil {
 		saved, savedNode := f.retHint, f.retHintNode
 		f.retHint, f.retHintNode = expected, n

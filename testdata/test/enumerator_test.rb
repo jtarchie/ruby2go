@@ -127,6 +127,18 @@ module EnumeratorTests
       assert_equal "#<Enumerator: [1, 2, 3]:each_slice(2)>", [1, 2, 3].each_slice(2).inspect
       assert_equal "#<Enumerator: \"ab\":each_char>", "ab".each_char.inspect
       assert_equal "#<Enumerator: 1..3:each>", (1..3).each.inspect
+      assert_equal "#<Enumerator: #<Enumerator: [1]:each>:with_index(1)>", [1].each.with_index(1).inspect
+    end
+
+    def test_sizes
+      assert_nil ("a".."e").each_slice(2).size
+      assert_equal 3, (1..5).each_slice(2).size
+      assert_equal 1, { a: 1 }.each_with_index.size
+      assert_equal 2, ((1..10) % 3).each_slice(2).size
+      assert_equal 3, ((1...10) % 3).size
+      assert_equal 0, ((10..1) % 3).size
+      assert_equal 4, 10.step(1, -3).size
+      assert_equal 500_000_000_000, ((1..10**12) % 2).size
     end
   end
 
@@ -159,7 +171,6 @@ module EnumeratorTests
     def test_finite_generator
       squares = Enumerator.new do |y|
         [1, 2, 3].each { |x| y.yield x * x }
-        :done
       end
       assert_equal [1, 4, 9], squares.to_a
       assert_equal [2, 5, 10], squares.map { |x| x + 1 }
@@ -169,13 +180,17 @@ module EnumeratorTests
       assert_equal [[1, 1], [4, 2], [9, 3]], squares.with_index(1).to_a
       s = squares.each
       assert_equal [1, 4, 9], [s.next, s.next, s.next]
-      err = assert_raises(StopIteration) { s.next }
-      assert_equal :done, err.result
+      assert_raises(StopIteration) { s.next }
+      w = [7, 8].each.with_index
+      2.times { w.next }
+      assert_equal [7, 8], assert_raises(StopIteration) { w.next }.result
     end
 
     def test_yielder_forms
       words = Enumerator.new { |y| %w[a b].each(&y) }
       assert_equal %w[a b], words.to_a
+      procs = Enumerator.new { |y| y << 0; y.to_proc.call(5) }
+      assert_equal [0, 5], procs.to_a
       calls = Enumerator.new { |y| y << "c" << "d" }
       assert_equal %w[c d], calls.to_a
       sized = Enumerator.new(3) { |y| y << "x" }

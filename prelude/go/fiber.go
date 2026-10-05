@@ -63,7 +63,7 @@ func (f *Fiber) resume(args []any) any {
 	if f.state == rbFiberCreated {
 		go f.run(rbGoID())
 	}
-	f.state, f.resumer = rbFiberResumed, cur
+	f.state = rbFiberResumed
 	f.in <- rbFiberPack(args)
 	m := <-f.out
 	f.state = rbFiberSuspended

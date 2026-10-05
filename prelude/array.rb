@@ -437,7 +437,7 @@ class Array < Object
   def __each_index_enum = %x{ return rbEnumOf(Array_EachIndex(self), any(self), "each_index", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
 
   #: () -> Enumerator[E]
-  def __each_enum = %x{ return rbEnumOf(self.Each(), any(self), "each", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
+  def __each_enum = %x{ return rbEnumOf(Array_Each(self), any(self), "each", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
 
   #: () -> Enumerator::Map[E]
   def __map_enum = Enumerator::Map.new(self)

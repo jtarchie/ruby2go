@@ -73,7 +73,12 @@ class Range < Object
   def __first_0 = %x{ self.b }
 
   #: () -> E
-  def end = %x{ self.e }
+  def end = %x{
+    if self.inf {
+      panic(NewRangeError(Ref(String("rb2go: the end of an Integer range to Float::INFINITY is Infinity, which a Range[Integer] cannot hold (decision 140)"))))
+    }
+    return self.e
+  }
 
   #: () -> E
   def last = %x{

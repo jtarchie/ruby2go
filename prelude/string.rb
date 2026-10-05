@@ -208,7 +208,7 @@ class String < Object
   end
 
   #: () -> Enumerator[String]
-  def __each_line_enum = %x{ return rbEnumOf(self.Lines().Each(), any(self), "each_line", nil, nil) }
+  def __each_line_enum = %x{ return rbEnumOf(Array_Each(self.Lines()), any(self), "each_line", nil, nil) }
 
   #: () { (String) -> void } -> void
   def each_char = %x{

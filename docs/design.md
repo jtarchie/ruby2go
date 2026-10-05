@@ -4002,7 +4002,10 @@ resolve; anything not listed is still open.
       `each`/`each_index`, Enumerable's `each_with_index`/`each_slice`/
       `each_cons`, Integer's `times`/`upto`/`downto`, String's
       `each_char`/`each_line`, each with MRI's `size` (`nil` for
-      `each_line`, as MRI). Any other prelude iterator called without a
+      `each_line`, as MRI). Enumerable's take the receiver's own size
+      (Array, Hash, Set, an Integer Range, another Enumerator), else
+      `nil`, never a count by iterating, which an endless source never
+      ends; a user class's own `size` is not consulted yet (MRI's is). Any other prelude iterator called without a
       block (`(1..3).each`, `Hash#each` as `[k, v]` pairs, `Set#each`,
       `each_byte`, `reverse_each`) becomes an Enumerator over its sequence
       in the compiler (`iterEnum`, receiver and arguments evaluated once),
@@ -4020,7 +4023,8 @@ resolve; anything not listed is still open.
       coroutine, no goroutine and no channel. The end raises
       `StopIteration` (`iteration reached an end`) whose `result` is what
       the iteration returned: the receiver for an each-like method
-      (`[1].each` → `[1]`), the block's value for `Enumerator.new`.
+      (`[1].each` → `[1]`); `nil` for `Enumerator.new`, whose block is
+      void (below), where MRI's is the block's value.
       Further `next`s raise again until `rewind`, which stops the pull.
       An enumerator abandoned mid-iteration keeps its coroutine parked
       until the program exits, the same leak as a pull never stopped.
@@ -4044,9 +4048,12 @@ resolve; anything not listed is still open.
       `y` typed `Yielder[untyped]` and joins the types of what it feeds
       `y` (`inferYielder`); a block that feeds nothing is a compile error
       asking for the annotation. `Enumerator.new(size)` takes an Integer.
-      A `loop` (or any iterator call) as the block's last statement is
-      fine: an iterator call where an untyped value is wanted now yields
-      nil, as a void call does. Caveat (decision 4's):
+      The block is typed void so that any statement may end it, `arr.each
+      { |x| y << x }` above all (an iterator call's value cannot be used);
+      the price is that StopIteration#result is `nil`. The one iterator
+      whose value may now be wanted untyped is `loop`, as loopRescue's
+      begin: a loop that ends without StopIteration was broken out of.
+      Caveat (decision 4's):
       a generator whose own `rescue` catches an exception raised by the
       consumer's block aborts, since Go forbids a range function to
       recover a loop body's panic.
@@ -4066,7 +4073,9 @@ resolve; anything not listed is still open.
     - **Infinite ranges.** `1..Float::INFINITY` with an Integer begin is
       an endless `Range[Integer]` flagged `inf` so it inspects as
       `1..Infinity`; it used to join to `Range[Float]` and iterate
-      nothing. Its `step` yields Integers where MRI's yields Floats.
+      nothing. Its `step` yields Integers where MRI's yields Floats; `end`
+      raises RangeError (Infinity is no Integer) and `include?(2.5)` is a
+      type error, both answered by MRI.
     - **`Enumerator::ArithmeticSequence[E]`** (#55) is what `Range#%` and
       blockless `Range#step`, `Integer#step` and `Float#step` return:
       `((1..10).%(3))`, `((1...10).step(3))`, `(1.step(10, 3))`

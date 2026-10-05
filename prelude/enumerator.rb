@@ -8,10 +8,10 @@ class Enumerator < Object
   include Enumerable #[E]
 
   # The element type is what the block feeds `y` (the compiler probes it, decision 140) or the assignment's annotation.
-  #: [X] () { (Enumerator::Yielder[X]) -> untyped } -> Enumerator[X]
+  #: [X] () { (Enumerator::Yielder[X]) -> void } -> Enumerator[X]
   def self.new = %x{ return rbEnumNew[X](nil, blk) }
 
-  #: [X] (Integer?) { (Enumerator::Yielder[X]) -> untyped } -> Enumerator[X]
+  #: [X] (Integer?) { (Enumerator::Yielder[X]) -> void } -> Enumerator[X]
   def self.__new_1(size) = %x{ return rbEnumNew[X](size, blk) }
 
   #: () { (E) -> void } -> void
@@ -57,7 +57,18 @@ class Enumerator < Object
 
   #: (?Integer) -> Enumerator[[E, Integer]]
   def __with_index_enum(offset = 0) = %x{
-    return rbEnumOf(rbWithIndex(self.seq, offset), any(self), "with_index", self.size, self.recv)
+    meth := "with_index"
+    if offset != 0 { // ponytail: an explicit with_index(0) still inspects bare; MRI shows "(0)"
+      meth += "(" + string(rbInspect(offset)) + ")"
+    }
+    e := rbEnumOf(rbWithIndex(self.seq, offset), any(self), meth, self.size, nil)
+    seq := e.seq
+    e.seq = func(yield func(Tuple2[E, Integer]) bool) {
+      seq(yield)
+      r := rbEnumResult(self.res, self.recv) // read after the run: Enumerator.new sets its block's value then
+      e.res = &r
+    }
+    return e
   }
 
   # @self Enumerator[[K, V]]
@@ -90,7 +101,10 @@ class Enumerator < Object
     def yield(x) = %x{ self.fn(x) }
 
     #: () -> ^(E) -> void
-    def to_proc = %x{ return self.fn }
+    def to_proc = %x{
+      fn := self.fn
+      return &fn
+    }
 
     #: () -> Yielder[untyped]
     def _to_any = %x{ return &Enumerator_Yielder[any]{fn: func(x any) { self.fn(x.(E)) }} }
@@ -122,10 +136,10 @@ class Enumerator < Object
     }
 
     #: () -> E
-    def next = %x{ return self.ext.next(self.items.Each(), func() any { return self.items }) }
+    def next = %x{ return self.ext.next(Array_Each(self.items), func() any { return self.items }) }
 
     #: () -> E
-    def peek = %x{ return self.ext.peek(self.items.Each(), func() any { return self.items }) }
+    def peek = %x{ return self.ext.peek(Array_Each(self.items), func() any { return self.items }) }
 
     #: () -> self
     def rewind = %x{
@@ -178,10 +192,10 @@ class Enumerator < Object
     }
 
     #: () -> E
-    def next = %x{ return self.ext.next(self.items.Each(), func() any { return self.items }) }
+    def next = %x{ return self.ext.next(Array_Each(self.items), func() any { return self.items }) }
 
     #: () -> E
-    def peek = %x{ return self.ext.peek(self.items.Each(), func() any { return self.items }) }
+    def peek = %x{ return self.ext.peek(Array_Each(self.items), func() any { return self.items }) }
 
     #: () -> self
     def rewind = %x{
@@ -468,11 +482,7 @@ class Enumerator
       if self.endless {
         panic(NewRangeError(Ref(String("cannot get the size of an endless arithmetic sequence (rb2go has no Infinity Integer)"))))
       }
-      n := Integer(0)
-      for range rbArithSeq(self) {
-        n++
-      }
-      return n
+      return *self.rbSize()
     }
 
     #: () -> Integer

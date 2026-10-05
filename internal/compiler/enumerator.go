@@ -36,7 +36,7 @@ func (f *fctx) inferYielder(n parser.Node, m *Method, env map[string]Type, block
 	var fed []Type
 	saved := f.yielderFed
 	f.yielderFed = &fed
-	probeSig := &BlockSig{Params: []Type{TClass{C: yt.C, Args: []Type{TAny{}}}}, Ret: TAny{}}
+	probeSig := &BlockSig{Params: []Type{TClass{C: yt.C, Args: []Type{TAny{}}}}, Ret: TVoid{}}
 	f.probe(func() { f.genClosure(n, block, probeSig, env) })
 	f.yielderFed = saved
 	if len(fed) == 0 {
