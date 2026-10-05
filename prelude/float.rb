@@ -248,12 +248,8 @@ class Float
     return func(yield func(Float) bool) { rbFloatStep(float64(self), float64(limit), float64(by), yield) }
   }
 
-  #: (Float, ?Float) -> Array[Float]
-  def __step_enum(limit, by = 1.0)
-    out = [] #: Array[Float]
-    step(limit, by) { |x| out << x }
-    out
-  end
+  #: (Float, ?Float) -> Enumerator::ArithmeticSequence[Float]
+  def __step_enum(limit, by = 1.0) = %x{ return rbArithNum(self, limit, by, by != 1) }
 
   #: (Float) -> Integer
   def div(other)

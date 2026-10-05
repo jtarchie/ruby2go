@@ -1,0 +1,43 @@
+Compile errors for pattern matching shapes that never match a typed value (docs/design.md decision 143).
+-- array_on_integer.rb --
+# error: main.rb:4: an array pattern never matches Integer: Integer has no deconstruct
+n = 5 #: Integer
+case n
+in [a] then p a
+else p 0
+end
+-- hash_on_string.rb --
+# error: main.rb:3: a hash pattern never matches String: String has no deconstruct_keys
+s = "x" #: String
+s => {k:}
+p k
+-- hash_string_keys.rb --
+# error: main.rb:3: a hash pattern's keys are Symbols, so it never matches Hash[String, Integer]
+h = {"a" => 1} #: Hash[String, Integer]
+p((h in {a: 1}))
+-- hash_on_tuple.rb --
+# error: main.rb:3: a hash pattern never matches [Integer, String]: an Array has no deconstruct_keys
+t = [1, "a"] #: [Integer, String]
+p((t in {a: 1}))
+-- deconstruct_not_array.rb --
+# error: main.rb:9: deconstruct must return an Array, not Integer
+class Box
+  #: () -> Integer
+  def deconstruct = 1
+end
+
+b = Box.new
+case b
+in [x] then p x
+end
+-- deconstruct_keys_not_hash.rb --
+# error: main.rb:9: deconstruct_keys must return a Hash, not Integer
+class Box
+  #: (Array[Symbol]?) -> Integer
+  def deconstruct_keys(_keys) = 1
+end
+
+b = Box.new
+case b
+in {x:} then p x
+end

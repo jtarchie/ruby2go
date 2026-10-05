@@ -162,10 +162,15 @@ class Name < String
   def hi = "hi " + self
 end
 puts "x"
--- kernel_module_puts.rb --
-# error: main.rb:3: private method puts called on singleton(Kernel)
+-- kernel_module_pp.rb --
+# error: main.rb:4: private method pp called on singleton(Kernel)
 # rbs_inline: enabled
-Kernel.puts "x"
+# pp is a private Kernel method but not a module function: MRI's NoMethodError (decision 139)
+Kernel.pp "x"
+-- object_puts.rb --
+# error: main.rb:3: private method puts called on singleton(Object)
+# rbs_inline: enabled
+Object.puts "x"
 -- symbol_encoding.rb --
 # error: main.rb:3: undefined method encoding for Symbol
 # rbs_inline: enabled

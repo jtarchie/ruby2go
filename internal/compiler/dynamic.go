@@ -485,10 +485,17 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		env[p] = TVar{Name: p}
 	}
 	env["Self"] = recv.typ
+	c.emitDynCall(f, e, recv, env, true)
+	return f.buf.String()
+}
+
+// emitDynCall emits a call to e from an `args ...any` list: MRI's arity check, each argument converted (TypeError), then the typed call, one arm per count of optional arguments; mix adds the numeric coercion arms, which name the receiver `self`.
+func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type, mix bool) {
+	m := e.M
 	if m.hasKeywords() || m.postCount() > 0 {
 		// ponytail: an untyped call passes keywords as a trailing Hash; unpacking it per keyword (and running defaults) would make these callable
 		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rb2go: "+m.String()+" takes keyword or post parameters, which a call on an untyped value cannot pass (decision 23)")
-		return f.buf.String()
+		return
 	}
 	var req, opt int
 	var rest *Param
@@ -508,7 +515,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		maxArgs = -1
 	}
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
-	if numLevel(cls) >= 0 && rest == nil && opt == 0 {
+	if cls := classOf(recv.typ); mix && numLevel(cls) >= 0 && rest == nil && opt == 0 {
 		c.dynNumericTwins(f, cls, e)
 		c.dynNumericMix(f, e, env)
 		c.dynNumericTower(f, cls, e, env)
@@ -548,7 +555,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	}
 	if opt == 0 {
 		call(req, rest != nil)
-		return f.buf.String()
+		return
 	}
 	f.emit("switch len(args) {")
 	for k := req; k < req+opt; k++ {
@@ -562,7 +569,6 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	call(req+opt, rest != nil)
 	f.indent--
 	f.emit("}")
-	return f.buf.String()
 }
 
 // dynNumericMix emits a number wrapper's answer to an argument of another
@@ -791,6 +797,9 @@ func (c *Compiler) emitClassOf() {
 			// a metaclass's interface lacks the _ClassOf its struct inherits
 			c.w("\tcase %s:\n\t\treturn v._ClassOf().(ClassI)\n", c.goType(TClass{C: cls}))
 		}
+	}
+	if obj := c.classes["Object"]; obj.meta != nil { // main and Object.new: universal, so the loop skipped it
+		c.w("\tcase *Object:\n\t\treturn %s\n", classVar(obj))
 	}
 	c.w("\t}\n")
 	if proc := c.classes["Proc"]; proc.meta != nil { // a func type has no methods to switch on

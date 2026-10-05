@@ -230,6 +230,16 @@ class Array < Object
   #: (Array[E]) -> Array[E]
   def difference(other) = self - other
 
+  # Every directive but the C pointers P and p (decision 138).
+  #: (String) -> String
+  def pack(format) = %x{
+    items := make([]any, len(*self))
+    for i, x := range *self {
+      items[i] = x
+    }
+    return String(rbPack(items, string(format)))
+  }
+
   #: (Array[E]) -> Array[E]
   def &(other) = %x{
     keep := rbNewKeySet(*other)
@@ -423,29 +433,11 @@ class Array < Object
     }
   }
 
-  #: () -> Array[Integer]
-  def __each_index_enum = %x{
-    out := &Array[Integer]{}
-    for i := range len(*self) {
-      *out = append(*out, Integer(i))
-    }
-    return out
-  }
+  #: () -> Enumerator[Integer]
+  def __each_index_enum = %x{ return rbEnumOf(Array_EachIndex(self), any(self), "each_index", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
 
-  #: () -> Array[E]
-  def __each_enum = self
-
-  # `each.with_index(1) { |x, i| … }`: blockless each is the Array itself.
-  #: (?Integer) { (E, Integer) -> void } -> void
-  def with_index(offset = 0) = %x{
-    return func(yield func(E, Integer) bool) {
-      for i := 0; ; i++ { // not range len: the block may grow the array
-        if i >= len(*self) || !yield((*self)[i], Integer(i)+offset) {
-          return
-        }
-      }
-    }
-  }
+  #: () -> Enumerator[E]
+  def __each_enum = %x{ return rbEnumOf(Array_Each(self), any(self), "each", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
 
   #: () -> Enumerator::Map[E]
   def __map_enum = Enumerator::Map.new(self)
@@ -492,6 +484,10 @@ class Array < Object
 
   #: () -> Array[E]
   def to_a = self
+
+  # An array pattern's view of the Array: itself, as MRI's (decision 143).
+  #: () -> Array[E]
+  def deconstruct = self
 
   #: () -> Array[E]
   def dup = %x{

@@ -140,6 +140,8 @@ func rbRangeStr[E comparable](r *Range[E], str func(any) String) String {
 		op = "..."
 	}
 	switch {
+	case r.inf: // `1..Float::INFINITY`, an endless Integer range (decision 140)
+		return str(r.b) + String(op) + "Infinity"
 	case r.endless:
 		return str(r.b) + String(op)
 	case r.beginless:

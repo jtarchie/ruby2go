@@ -42,8 +42,8 @@ type Class struct {
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
 	extends       []Include         // `extend M`: included into the class object
 	delegations   []delegation
-	singleFwd     bool // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
-	fwdSingle     bool // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
+	singleFwd     bool     // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
+	fwdSingle     bool     // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
 	meta          *Class   // the class object's class (holds `def self.` methods)
 	metaOf        *Class   // for a metaclass: the class it describes
 	constNames    []string // constants (classes included) declared directly inside, in order
@@ -56,6 +56,7 @@ type Class struct {
 	Display       string // the name Ruby shows, when the declaration has none of its own (a describe's class)
 	specChild     bool   // a nested describe's class: MRI undefines the test methods it inherits
 	specTests     int    // its it/specify count, for MRI's test_0001_ names
+	hidden        bool   // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -154,6 +155,7 @@ type Method struct {
 	inferRet   bool    // no return annotation: Ret comes from the body (inferRet)
 	inferring  bool
 	structDef  *Method // the generated Struct/Data method a block def overrides; super reaches it
+	valueGen   bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
@@ -477,6 +479,9 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 			cls.TypeParams = append(cls.TypeParams, fld)
 			break
 		}
+	}
+	if _, ok := ann["hidden"]; ok && f.prelude {
+		cls.hidden = true
 	}
 	if g := ann["go_type"]; len(g) > 0 {
 		if isModule {
@@ -1537,6 +1542,9 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		if cls == nil {
 			c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
 		}
+		if len(t.Args) == 0 && (cls.RubyName == "Method" || cls.RubyName == "UnboundMethod") {
+			return TClass{C: cls, Args: []Type{TAny{}}} // RBS's Method has no signature: called through dyn (decision 141)
+		}
 		if len(t.Args) != len(cls.TypeParams) {
 			c.errorf(sc.file, nil, "%s:%d: %s takes %d type args, got %d", sc.file.Name, sc.line, cls.Name, len(cls.TypeParams), len(t.Args))
 		}
@@ -2465,6 +2473,9 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
 	}
 	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope)
+	for _, m := range cls.MethodList {
+		m.valueGen = true
+	}
 	if bn, ok := call.Block.(*parser.BlockNode); ok && bn.Body != nil {
 		gen := slices.Clone(cls.MethodList)
 		c.collectBody(ctx, f, cls, bn.Body, scope)
@@ -2572,6 +2583,14 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	// pp's Struct/Data layout (decision 113): the kind and the values, in members order
 	fmt.Fprintf(&b, "  #: () -> String\n  def __pp_kind = %q\n", kind)
 	fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def __pp_values = [%s]\n", strings.Join(reads, ", "))
+	// MRI's deconstruct_keys: every member for nil, {} for more keys than members, else the requested keys up to the first non-member (decision 143)
+	whens := make([]string, len(members))
+	for i, m := range members {
+		whens[i] = fmt.Sprintf("      when %s then __h[%s] = self.%s\n", syms[i], syms[i], m)
+	}
+	fmt.Fprintf(&b, "  #: (Array[Symbol]?) -> Hash[Symbol, untyped]\n  def deconstruct_keys(__keys)\n    return to_h if __keys.nil?\n"+
+		"    __h = {} #: Hash[Symbol, untyped]\n    return __h if __keys.size > %d\n    __i = 0\n    while __i < __keys.size\n      case __keys.fetch(__i)\n%s      else return __h\n      end\n      __i += 1\n    end\n    __h\n  end\n",
+		len(members), strings.Join(whens, ""))
 	if kind == "struct" {
 		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
 		b.WriteString("  #: () -> Array[untyped]\n  def values = to_a\n")
@@ -2581,6 +2600,7 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 		b.WriteString("  #: () { (untyped) -> void } -> void\n  def each\n    to_a.each { |__x| yield __x }\n  end\n")
 		b.WriteString("  #: () { (Symbol, untyped) -> void } -> void\n  def each_pair\n    to_h.each { |__k, __x| yield __k, __x }\n  end\n")
 	} else {
+		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def deconstruct = [%s]\n", strings.Join(reads, ", "))
 		// `with(k: v)` compiles to this: a copy of the receiver's class
 		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(vars, ", "), strings.Join(vars, ", "))
 	}

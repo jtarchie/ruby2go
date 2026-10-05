@@ -37,14 +37,70 @@ class Exception < Object
   #: () -> String
   def message = to_s
 
-  # MRI's message with the class name after its first line; highlighting is never applied.
+  # MRI's rb_decorate_message: the class name after the first line (a lone trailing newline dropped), bold and underlined with highlight.
   #: (?highlight: bool) -> String
   def detailed_message(highlight: false)
     m = message
-    return "unhandled exception" if m.empty?
-    first, nl, rest = m.partition("\n")
-    "#{first} (#{__class_name})#{nl}#{rest}"
+    return __bare_name(highlight) if m.empty?
+    i = m.index("\n")
+    first = i ? m[0, i] || "" : m
+    head = highlight ? "\e[1m#{first} (\e[1;4m#{__class_name}\e[m\e[1m)\e[m" : "#{first} (#{__class_name})"
+    return head unless i
+    return head if i == m.size - 1
+    rest = m[i + 1, m.size] || ""
+    rest = rest.split("\n", -1).map { |l| l.empty? ? l : "\e[1m#{l}\e[m" }.join("\n") if highlight
+    "#{head}\n#{rest}"
   end
+
+  # MRI's rb_error_write: the error line, the "from" lines and the causes', no error_highlight snippet (decision 139).
+  #: (?highlight: bool?, ?order: Symbol?) -> String
+  def full_message(highlight: nil, order: nil)
+    hl = highlight.nil? ? $stderr.tty? : highlight
+    bottom = order == :bottom
+    raise ArgumentError, "expected :top or :bottom as order: #{order.inspect}" unless order.nil? || bottom || order == :top
+    shown = [] #: Array[Exception]
+    return "#{hl ? "\e[1mTraceback\e[m" : "Traceback"} (most recent call last):\n#{__report(hl, true, shown)}" if bottom
+    __report(hl, false, shown)
+  end
+
+  # Each cause once (MRI's show_cause), so a cycle ends.
+  #: (bool, bool, Array[Exception]) -> String
+  def __report(hl, bottom, shown)
+    c = cause
+    rest = ""
+    if c && !shown.any? { |x| x.equal?(c) }
+      shown << c
+      rest = c.__report(hl, bottom, shown)
+    end
+    bottom ? "#{rest}#{__from_lines(true)}#{__errinfo(hl)}" : "#{__errinfo(hl)}#{__from_lines(false)}#{rest}"
+  end
+
+  #: (bool) -> String
+  def __errinfo(hl)
+    top = backtrace&.first
+    m = detailed_message(highlight: hl)
+    m = __bare_name(hl) if m.empty?
+    "#{top ? "#{top}: " : __error_pos}#{m}\n"
+  end
+
+  #: (bool) -> String
+  def __bare_name(hl)
+    name = instance_of?(RuntimeError) ? "unhandled exception" : __class_name
+    hl ? "\e[1;4m#{name}\e[m" : name
+  end
+
+  #: (bool) -> String
+  def __from_lines(bottom)
+    bt = backtrace || []
+    n = bt.size
+    return "" if n < 2
+    width = (n - 1).to_s.size
+    (1...n).map { |i| bottom ? "\t#{(n - i).to_s.rjust(width)}: from #{bt[n - i]}\n" : "\tfrom #{bt[i]}\n" }.join
+  end
+
+  # MRI's error_pos: where the program is now, for an exception with no backtrace.
+  #: () -> String
+  def __error_pos = %x{ return rbErrorPos("full_message") }
 
   #: () -> String
   def inspect
@@ -171,7 +227,56 @@ class KeyError < IndexError
   end
 end
 
-class StopIteration < IndexError; end
+class StopIteration < IndexError
+  # @rbs @result: untyped
+
+  # What the finished iteration returned (`[1].each` → [1]); next raises it (decision 140).
+  #: () -> untyped
+  def result = @result
+
+  #: (untyped) -> void
+  def __set_result(r)
+    @result = r
+  end
+end
+
+# Raised when no pattern of a case/in (without else) or `=>` matches (decision 143).
+class NoMatchingPatternError < StandardError; end
+
+# A hash pattern's missing key, and the Hash it was looked up in, as MRI's.
+class NoMatchingPatternKeyError < NoMatchingPatternError
+  # @rbs @key: untyped
+  # @rbs @matchee: untyped
+  # @rbs @has_key: bool
+
+  #: () -> untyped
+  def key
+    raise ArgumentError, "no key is available" unless @has_key
+
+    @key
+  end
+
+  #: () -> untyped
+  def matchee
+    raise ArgumentError, "no matchee is available" unless @has_key
+
+    @matchee
+  end
+
+  #: (String, untyped, untyped) -> NoMatchingPatternKeyError
+  def self.__for(message, matchee, key)
+    e = new(message)
+    e.__set(matchee, key)
+    e
+  end
+
+  #: (untyped, untyped) -> void
+  def __set(matchee, key)
+    @matchee = matchee
+    @key = key
+    @has_key = true
+  end
+end
 
 # Kernel#throw raises it when no active catch has the tag (decision 91).
 class UncaughtThrowError < ArgumentError

@@ -1172,9 +1172,11 @@ resolve; anything not listed is still open.
     `Hash.new` does. A generic `@go_type` class may now define class
     methods whose signatures use only their own type parameters (`[X]
     (Array[X]) -> Set[X]`); generic struct classes still may not.
-    There is no `Array#to_set`: Go rejects the instantiation cycle
-    `Array[E]` → `Set[E]` → `Hash[E, …]` → `Array[[E, …]]` (see decision
-    9); `Set.new(xs)` is the spelling.
+    `Array#to_set` and `Enumerable#to_set` exist since decision 139:
+    the instantiation cycle `Array[E]` → `Set[E]` → `Hash[E, …]` →
+    `Array[[E, …]]` (see decision 9) that kept them out went away with
+    decision 86's free funcs. *(Revised: `Set.new(xs)` was the only
+    spelling.)*
     `Set.new` also takes a `Range`, another `Set` or a `Hash` (as
     `[key, value]` pairs), not just an `Array`: decision 12's overload
     mechanism (`__new_<class>`, keyed on the first argument's static
@@ -1550,7 +1552,8 @@ resolve; anything not listed is still open.
     when defined: an Array standing in for the Enumerator
     (`each_slice(2).to_a`, `each_with_index.map`, `3.times.map`), so
     chaining works but `puts`/`p` of it print elements, not
-    `#<Enumerator…>`. Blockless `map`/`select`/`filter`/`reject` return
+    `#<Enumerator…>`. *(Superseded by decision 140: `__<name>_enum`
+    returns a real `Enumerator`.)* Blockless `map`/`select`/`filter`/`reject` return
     `Enumerator::Map`/`Select`, whose `with_index` maps or filters as MRI's
     and whose inspect is MRI's. Block params may destructure one level
     (`|(k, v), i|`). Go forbids a method of `Array[E]` from building an
@@ -1643,7 +1646,8 @@ resolve; anything not listed is still open.
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](../examples/53_files/main.rb)). *Amended:* `File.symlink?`
     added (`os.Lstat`, `ModeSymlink`), needed to verify decision 64's
-    `FileUtils.ln_s`.
+    `FileUtils.ln_s`. *Amended by 138:* `IO` also wraps pipe and popen
+    ends, so `IO.pipe`/`IO.popen` objects are `IO`s, not `File`s.
 63. `URI.parse`/`URI()` return `URI::Generic`, or `URI::HTTP`/`URI::HTTPS`
     (`HTTPS < HTTP < Generic`, matching MRI's own hierarchy so
     `is_a?(URI::HTTP)` holds for both) on Go's `net/url`. `port` defaults
@@ -2942,7 +2946,8 @@ resolve; anything not listed is still open.
     Thread, keyed by Symbol or String (MRI takes either; `keys` answers
     Symbols, sorted, since a map has no order), a nil value deleting the
     key. MRI's `Thread#[]` is fiber-local; rb2go has no fibers, so the two
-    maps differ only in name. `require "monitor"` is a no-op (decision
+    maps differ only in name *(fibers came with decision 140; `Thread#[]`
+    is still per thread)*. `require "monitor"` is a no-op (decision
     50). ([example 79](../examples/79_monitor/main.rb).)
 109. `$stdout = io` and `$stderr = io` (#1's minitest follow-ups), the
     first assignable globals (decision 61 amended). The compiler turns the
@@ -3338,7 +3343,7 @@ resolve; anything not listed is still open.
       method of its own class, a top-level def, or `super(...)`), and its
       `(...)` call passes them on; an override keeps its parent's result,
       any other's is inferred. Literal splats `[*a, 1, *b]` concatenate.
-    `Array#to_set` stays out (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
+    `Array#to_set` is decision 139's. Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method
@@ -3443,9 +3448,11 @@ resolve; anything not listed is still open.
     the class, its modules (last included first, each with its own), then
     its superclass's, through Object, Kernel and BasicObject; a module an
     ancestor already includes keeps only that place, as MRI skips
-    re-including it. `included_modules` is its modules. The table lists
-    rb2go's own prelude modules too (File's IOReadable and IOWritable),
-    which MRI's ancestors lack. (`testdata/test/object_test.rb`
+    re-including it. `included_modules` is its modules. rb2go's own
+    prelude modules (File's IOReadable and IOWritable) are left out, as
+    MRI has none (decision 139). *(Revised: the table listed them.)*
+    `Kernel.puts` and the other module functions are decision 139's.
+    (`testdata/test/object_test.rb`
     `ObjectRubySpecAncestorsTest`.) A top-level `include M` is Object's,
     as MRI's main object includes into Object: M's methods are on every
     object and in every ancestors list. *(Revised: it was a dynamic call
@@ -3492,8 +3499,9 @@ resolve; anything not listed is still open.
     call to report a bug), `LoadError` (an unknown `require` is a no-op,
     decision 78; a `require_relative` of a missing file is a compile
     error, decision 130), `SyntaxError` (no `eval`),
-    `SecurityError`, `EncodingError`, and `LocalJumpError` (raised since
-    decision 132 by a `yield` whose optional block is missing).
+    `SecurityError`, `EncodingError` (its subclasses are raised since
+    decision 136), and `LocalJumpError` (raised since decision 132 by a
+    `yield` whose optional block is missing).
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,
@@ -3883,6 +3891,523 @@ resolve; anything not listed is still open.
       no tag is added.
     ([example 91](../examples/91_socket/main.rb),
     `testdata/test/socket_test.rb`, `testdata/errors/socket.txtar`.)
+
+136. Encoding without a tag on String (#48). Decision 105 stands:
+    Strings carry no encoding, every String is UTF-8 bytes, and what MRI
+    keeps in the tag rb2go either derives or leaves out.
+    - **Derived `encoding`.** `String#encoding` is `Encoding::UTF_8` when
+      the bytes are valid UTF-8 and `Encoding::ASCII_8BIT` otherwise. So a
+      binary String whose bytes happen to be valid UTF-8 (`"é".b`,
+      `force_encoding("BINARY")`, `File.binread` of a UTF-8 file) reports
+      UTF-8 where MRI says ASCII-8BIT and inspects as text where MRI shows
+      `"\xC3\xA9"`; a UTF-8 literal with bad bytes (`"\xff"`) reports
+      ASCII-8BIT where MRI says UTF-8; and `encode`'s result reports by the
+      same rule, not as the target encoding (`"a".encode("UTF-16LE")` is
+      UTF-8 here). `b` and `force_encoding` return the bytes unchanged
+      (`force_encoding` still checks the name). Anything that would need
+      the tag is one of these documented differences.
+    - **The bytes are UTF-8 everywhere else.** `valid_encoding?`, `scrub`
+      and `encode` without a source encoding read the bytes as UTF-8, the
+      common case of a String MRI tags UTF-8 (a literal, `File.read`,
+      `gets`). Invalid UTF-8 is cut into MRI's maximal invalid subparts
+      (`"\xe3\x81"` is one bad sequence, `"\xff\xfe"` two), not Go's byte at
+      a time, for `scrub`, its block, `encode(invalid: :replace)` and the
+      error bytes.
+    - **Ten encodings.** `Encoding` has UTF-8, ASCII-8BIT, US-ASCII,
+      ISO-8859-1, UTF-16LE/BE, UTF-32LE/BE and the dummies UTF-16 and
+      UTF-32, each with MRI's names, aliases and alias constants (`BINARY`,
+      `ASCII`, `UCS_2BE`, ...), `inspect`, `ascii_compatible?` and
+      `dummy?`; `list`/`name_list` hold only these, in MRI's order.
+      `find` is case-insensitive; `find("internal")` with no
+      default_internal raises (MRI returns nil, and an `Encoding?` result
+      would make every `find` optional). `default_external=`/
+      `default_internal=` are stored: `encode` with no target encodes to
+      default_internal, as MRI's does, and IO never converts to either.
+      `compatible?` is MRI's `rb_enc_compatible` over derived encodings.
+    - **Compile-time names.** A string literal naming an encoding MRI has
+      and rb2go lacks (`"Shift_JIS"`; the compiler holds MRI 4.0's
+      `Encoding.name_list`) in `encode`, `force_encoding`, `Integer#chr`,
+      `set_encoding`, `Encoding.find`, `default_external=`/
+      `default_internal=` or a `File.open`/`File.new`/`CSV.open` mode is a
+      compile error naming the ten; a name MRI lacks too stays MRI's run-time
+      error. A non-literal name rb2go lacks fails at run time where MRI
+      would succeed: `ArgumentError: unknown encoding name` from `find`,
+      `ConverterNotFoundError` from `encode`.
+    - **`encode(to, from, invalid:, undef:, replace:, xml:,
+      universal_newline:, crlf_newline:, cr_newline:)`** converts through
+      UTF-8 as MRI's converter path does, so its errors are MRI's: `U+00E9
+      from UTF-8 to US-ASCII` for one step, `U+20AC to ISO-8859-1 in
+      conversion from UTF-16BE to UTF-8 to ISO-8859-1` for two, `"\xFF" on
+      UTF-8`, `incomplete "\xE3\x81" on UTF-8`, `"\xE3\x81" followed by "b"
+      on UTF-8`, with the exceptions' `source_encoding(_name)`,
+      `destination_encoding(_name)`, `error_char`, `error_bytes`,
+      `readagain_bytes` and `incomplete_input?`. UTF-16/32 are decoded by
+      MRI's byte tries: the first byte that cannot continue a character
+      ends it, a fault inside the first unit takes the whole unit (or what
+      is left), a later one keeps whole units and reads the rest again. A
+      dummy UTF-16/UTF-32 source needs a BOM, unit by unit until one comes
+      (a missing one is invalid, and replaceable); a dummy target is
+      big-endian with a BOM unless empty. The replacement defaults to
+      U+FFFD for a Unicode target and `?` otherwise; `xml:` writes an
+      undefined character as `&#xE9;`. The same encoding on both sides
+      copies the bytes (applying only the decorators), except that
+      `invalid: :replace` scrubs. Not done: `fallback:`,
+      `Encoding::Converter`, and MRI's handling of `universal_newline:`
+      with a non-UTF-8 source, which ignores the source encoding.
+    - **No in-place forms.** `encode!`, `scrub!` and `unicode_normalize!`
+      stay undefined (Strings are immutable); every String bang method
+      whose plain form exists now says so in its compile error.
+    - **`unicode_normalize`/`unicode_normalized?`** (`:nfc`, `:nfd`,
+      `:nfkc`, `:nfkd`) use tables generated at development time:
+      `scripts/gen-unicode-normalize` dumps MRI's own
+      `unicode_normalize/tables.rb` (so the Unicode version is MRI's, 17.0.0
+      for Ruby 4.0) into `prelude/go/unicode_normalize_tables.go`, 88 KB of
+      string constants parsed once on first use and pruned from programs
+      that never normalize. The algorithm is UAX #15's (full decomposition,
+      canonical ordering, composition, Hangul by arithmetic); it matched MRI
+      on 216k normalizations of every code point below U+3400 and a sample
+      above, alone and with combining marks. Invalid UTF-8 raises
+      `ArgumentError: invalid byte sequence in UTF-8`; the form is a Symbol.
+    - **`Integer#chr(encoding)`** with MRI's `RangeError`s; `Array#pack`
+      gains `C`, `c` and `U` (*superseded by decision 138*: every directive
+      but `P`/`p`, through the same `rbPack`/`rbPackU`).
+    - **IO.** A mode's `b` is binmode (external ASCII-8BIT); `:ext[:int]`,
+      with `BOM|`, sets the encodings. As in MRI, reads convert only when an
+      internal encoding is given (`"r:ISO-8859-1"` hands back the file's
+      bytes; `"r:ISO-8859-1:UTF-8"` converts), writes convert to any
+      external encoding but UTF-8 and ASCII-8BIT (a dummy one writes one
+      BOM), reading an ASCII-incompatible encoding without `b` or an
+      internal one is `ArgumentError: ASCII incompatible encoding needs
+      binmode`, and an unknown name warns `Unsupported encoding X ignored`.
+      `set_encoding`, `external_encoding`, `internal_encoding`, `binmode`
+      and `binmode?` work on File, the std streams and (decision 138) pipe
+      and popen ends, whose reads convert as a File's; `$stdout.set_encoding`
+      converts what `puts`/`print`/`write` send, and `$stdin` is never
+      converted. The transcoder is linked only where needed: a File-using
+      program carried ~60 more declarations (18%) for it, so `File.new`
+      calls `rbFileEncHook`, which the compiler sets (`rbFileEncModes()`)
+      before a `File.open`/`File.new`/`CSV.open` whose mode is not a literal
+      without `:`; IO's conversions are func fields set by `set_encoding`. A
+      mode with encodings that reaches `File.new` some other way (a call on
+      a Class-typed receiver) raises NotImplementedError.
+    - `EncodingError` (decision 128) gains `Encoding::CompatibilityError`
+      (never raised), `ConverterNotFoundError`, `UndefinedConversionError`
+      and `InvalidByteSequenceError`.
+    (`testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
+    `testdata/run/string_output.rb`.)
+137. `Marshal` (#47) round-trips the closed world's object graphs in
+    rb2go's own bytes, never MRI's (`prelude/marshal.rb`,
+    `prelude/go/marshal.go`, `internal/compiler/marshal.go`).
+    - **Format.** `RB2GO\x04\x08`, the payload's length (8 bytes,
+      little-endian) and one value: a kind byte and its body (`0` nil,
+      `T`/`F`, `i` a varint, `f` a float's bits, `"` String, `:` Symbol,
+      `@` a back-reference, and four records that name their type: `o` a
+      reference value, `u` an object dumped through its `marshal_dump`,
+      `v` a value without identity (a tuple), `c` a class object). Every
+      reference value (a Go pointer) is numbered as its record starts, on
+      both sides, so a shared object loads as one object and a cycle
+      (`a = []; a << a`) stays a cycle. Not `gob` behind a header, as the
+      issue suggested: gob has no back-references (a cycle never ends, a
+      shared value is duplicated), only encodes exported fields, and names
+      Go types, not the closed world's classes, so the reference table and
+      a type tag per value were needed anyway and gob would only have
+      wrapped them. The length is what lets `Marshal.load(io)` read exactly
+      one dump from a `File`, `StringIO` or socket, so dumps written one after
+      another load one at a time, as MRI's do. MRI's bytes start `\x04\x08`
+      and get a `TypeError` saying so; MRI rejects ours ("format version
+      4.8 required"). `MAJOR_VERSION`/`MINOR_VERSION` are MRI's 4 and 8.
+    - **Types.** A container or tuple is named by its Go type
+      (`Array[PointI]`, `Tuple2[Integer, String]`) and loads back as
+      exactly that instantiation, so `copy == data` holds, a typed ivar
+      takes it without conversion, and identity survives. A struct class
+      (user classes, `Struct`, `Data`, exceptions, `Date`/`DateTime`,
+      decision 133) is named by its Ruby name and holds its assigned ivars
+      by name, read through `_Ivars` and written through `_IvarSet`
+      (decision 123, which converts to each ivar's type); it is allocated
+      without `initialize`, as MRI allocates. A class object is its name.
+      `Time` (instant, nanoseconds, UTC flag, zone), `Rational`,
+      `Complex`, `BigDecimal`, `Regexp` and `Random` (the MT19937 state,
+      so the copy continues the sequence) are written by hand. Strings
+      are values in rb2go, so `[s, s]` loads as two equal Strings where
+      MRI keeps one. Frozen state is not kept, as MRI's `load` without
+      `freeze:` does not.
+    - **Which types.** The compiler collects every concrete
+      `Array`/`Hash`/`Set`/`Range` instantiation and tuple type it
+      renders and every expression's type (`genExpr`: an inferred local's
+      type is never rendered). An instantiation only Go code builds
+      (`JSON.parse`'s `Hash[String, any]`) has no case: it dumps through
+      `_ToAny` as `Array[any]`/`Hash[any, any]`/`Set[any]`/`Range[any]`,
+      keeping its identity, and loads back as that.
+    - **Pruning.** `rbMDumpGen`/`rbMLoadGen` (containers, tuples, hooks)
+      and `rbMDumpObjGen`/`rbMLoadObjGen` (struct classes, class objects)
+      are generated switches whose every case names its type weakly: the
+      dump side is a type switch (decision 49), and the load side's
+      string switch writes each case as `rbKeyed[T](tag)`, which the
+      pruner now treats like a type-switch case, dropping it unless
+      something else keeps `T`. A program without `Marshal` keeps none of
+      it. The container cases are rendered when the tables go out
+      (rendering notes boxes and tuples they list) and emitted in a later
+      round once `Marshal` is reached (minitest reaches test methods only
+      through `_Call`, a table). The class cases go out last and only for
+      the classes reached by then: thousands of pending cases slowed the
+      pruner, and a skipped class reached later, or a value type noted
+      after the cases were rendered, recompiles eagerly
+      (`errPruneIncomplete`), where every class gets a case.
+    - **Hooks.** A class defining `marshal_dump` dumps what it returns
+      and loads by passing that, converted to `marshal_load`'s parameter
+      type, to `marshal_load` on an object allocated without
+      `initialize`. `marshal_dump` taking arguments or returning void, and
+      `marshal_load` not taking exactly one argument, are compile errors;
+      a missing `marshal_load` is MRI's `TypeError` at load (`instance of
+      C needs to have method 'marshal_load'`). `_dump`/`self._load` are
+      not supported.
+    - **Errors.** MRI's messages: `no _dump_data is defined for class
+      Proc` (likewise `Method`, decision 141, `Thread`, `Thread::Mutex`, `StringIO`, and a Go
+      value behind a prelude ivar as `Object`), `can't
+      dump IO`/`File`/`Thread::Queue`; `marshal data too short`
+      (`ArgumentError`), `exceed depth limit` for `dump(obj, limit)`,
+      `undefined class/module X` for a class the loading program does not
+      keep. `singleton can't be dumped` and `can't dump anonymous class`
+      cannot arise: a singleton method on an object (`def o.x`) is a
+      compile error, so no object has a singleton class, and every class
+      is a named constant of the closed world (`Class.new` only as a
+      constant's value). A user generic class has no case and gets the
+      `no _dump_data` message. rb2go names `Mutex` and the queues without
+      MRI's `Thread::`; the messages add it.
+    - **IO forms.** `dump(obj, io)` calls `io.write` and answers `io`;
+      `dump(obj, io, limit)` too. `load(io)` reads exactly one dump from a
+      `File`, an `IO` (`$stdin`, a pipe end, decision 138) or anything with a prelude `read(n)` (`StringIO`,
+      sockets: an interface assertion on `__read_1`'s Go method, since
+      dynamic dispatch does not reach decision 12's overloads), reading
+      the body through a `LimitReader` so a corrupt length allocates
+      nothing up front; an IO at its end is MRI's `EOFError`, so `loop {
+      Marshal.load(f) }` ends with `rescue EOFError`. Any other object
+      with `read` is read to its end; one with neither `read` nor `write`
+      is MRI's `TypeError: instance of IO needed`. `Marshal.restore` is
+      `load`. `load`'s proc argument and `freeze:` are not built.
+      `File.binread`/`File.binwrite` and `File.new`'s `b`/`t` mode
+      letters came along (Strings are bytes, so they change nothing), as
+      did noting a proc literal's Go type for `rbIsProc`, which Marshal's
+      `Proc` message needs.
+    - **PStore** (#1's won't-do table) is now feasible as a prelude
+      class over this: a `Hash[untyped, untyped]` root marshalled to its
+      file inside `transaction`, `abort`/`commit` by `catch`/`throw`, and
+      `read_only` checks. It is left for its own issue.
+    (`testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
+138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
+    and has a blockless form, `File.atime`, and `Array#pack` with the rest
+    of `String#unpack`.
+    - **Pipes are IO.** `IO` stays one `@go_type` (decision 62), now with
+      an `own` flag: off, it is a standard stream (fd 0-2) as before; on,
+      it holds a read end and/or a write end (`*os.File` plus a `bufio`
+      reader/writer) and popen's `*exec.Cmd`. `IO.pipe` answers `[IO, IO]`
+      and `IO.popen` yields or returns an `IO`, so `.class` is `IO` and
+      `inspect` is MRI's `#<IO:fd N>` / `#<IO:(closed)>`. The number is
+      the real descriptor (read through `SyscallConn`, since `Fd()` would
+      switch the file to blocking mode), so it differs from MRI's run;
+      tests match its shape. A subclass was not an option (a `@go_type`
+      class can't be subclassed, which is also why sockets in decision
+      135 sit beside `IO`); one struct with a flag keeps `STDOUT`, a pipe
+      and a popen end the same static type, so a method taking `IO` takes
+      all three. Read methods share `rbReader` (STDIN's reader or the
+      pipe's, by pointer so `ungetc` can replace it). The pipe writer and
+      every popen IO are `sync`, as MRI's; a write after the reader is
+      gone is `Errno::EPIPE` (Go ignores `SIGPIPE` off stdout).
+    - **popen.** Modes `r`, `w`, `r+`, `w+` (a `b`/`t` is ignored; anything
+      else is `ArgumentError: invalid access mode`); a pipe goes on the
+      child's stdout for reading and/or stdin for writing, and the other
+      streams stay the program's (stdout is flushed before the spawn).
+      `close` closes the pipes and then waits for the child, setting `$?`;
+      the block form is that `close` in an `ensure`, and the blockless form
+      (decision 12's `__popen_enum`) leaves it to the caller. `pid` is the
+      child's (nil on a pipe). `close_read`/`close_write` follow MRI: on
+      `r+` each closes one pipe and the second closes the whole IO (and
+      reaps); on a one-way popen either closes it whole; on a pipe end the
+      side it holds closes it and the other side raises `closing non-duplex
+      IO for reading/writing`. `mode:`/env/option-hash forms are not built
+      (a keyword the signature lacks is a type error).
+    - **Standard streams** gain `close`/`closed?`/`close_read`/
+      `close_write`/`pid`/`to_i`: closing `STDOUT` marks that object closed
+      (its own writes raise `closed stream`) without closing fd 1, so
+      Kernel#puts still writes where MRI raises. ponytail: close the real
+      descriptor and route Kernel output through the object's state.
+    - **atime.** The access time's `syscall.Stat_t` field is `Atim` on
+      Linux, OpenBSD and Solaris and `Atimespec` on macOS and the other
+      BSDs, and the prelude's Go is concatenated into one generated file,
+      so build tags cannot split it. `rbAtime` embeds `*syscall.Stat_t`
+      beside a struct holding zero `Atim` and `Atimespec` one level deeper:
+      Go's shallowest-field rule resolves each selector to the platform's
+      real field where it exists and to the zero stand-in where it does not,
+      and the two are summed. One source, chosen by the Go compiler for the
+      target, no reflection; checked to build for darwin, linux (amd64,
+      arm64, 386, mips), the BSDs and solaris. `File.atime` and
+      `File.mtime` raise with MRI's `rb_file_s_atime`/`rb_file_s_mtime`.
+    - **pack/unpack** share one parser (`rbPackParse`, with MRI's
+      `unknown pack directive 'y' in 'y'` and `'_' allowed only after types
+      sSiIlLqQjJ` errors, whitespace and `#` comments skipped) and one
+      sizing table, so every directive packs and unpacks the same way:
+      `a A Z B b H h u M m` (`m0` strict), `U` (MRI's `rb_uv_to_utf8`, so
+      surrogates and values up to 2**31-1 encode), `w`, `C c S s L l Q q J j I i
+      n N v V` with `_`/`!` (native: `L!` and `J` are 8 bytes on 64-bit)
+      and `<`/`>`, `D d F f E e G g`, and `x X @` with MRI's quirks
+      (unpack's `@` defaults to 0 and its `*` counts are the bytes left).
+      The u/M/m encoders and decoders are ports of MRI's `encodes`,
+      `qpencode` and the lenient base64 loop (which stops at a `=` in a
+      quad's third or fourth place, where the next `m` resumes). Elements
+      convert as MRI's: Float to an integer directive truncates, `nil` is
+      `""` for `a A Z B b H h` and a `TypeError` elsewhere, `M` takes any
+      object's `to_s`. An unsigned 64-bit value or BER integer past 2**63
+      raises `RangeError` (decision 35) where MRI makes a Bignum. `P`/`p`
+      (C pointers) raise `ArgumentError` naming rb2go: no Ruby string has
+      an address to hand out. A mixed literal like `[s, n].pack("a4N")` is
+      a tuple, so `tupleCall` handles `pack` by passing the fields as one
+      `[]any`. Binary results print with `\u0000` where MRI's binary
+      String shows `\x00` (no encoding tag: bytes that are valid UTF-8
+      count as UTF-8, decision 136), so tests compare
+      `.bytes`.
+    (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
+    `testdata/test/string_test.rb` `StringPackTest`.)
+139. Core fidelity (#55): `to_set`, ancestors without rb2go's modules,
+    `Kernel.puts`, `full_message`. (`Range#%` and blockless `step` are
+    decision 140's.)
+    - **`Enumerable#to_set`** is `Set.new(to_a)`, with a
+      `__to_set_block` overload (decision 12) for `to_set { |x| ... }` /
+      `to_set(&:m)`; `Set#to_set` stays `self`. Decision 44's
+      instantiation cycle is gone since decision 86: a generic
+      primitive's methods are free funcs, and the forwarder on `Array[E]`
+      is only emitted when a kept interface names `To_set`, which nothing
+      does. Like `tally` and every other Enumerable method on a generic
+      primitive, `to_set` on an `untyped` Array raises NoMethodError when
+      run (the dynamic tables list the class's own methods there).
+    - **`Module#ancestors`** (and `included_modules`, which reads the same
+      table) leaves out a prelude module marked `# @hidden`: rb2go's own
+      helpers that MRI lacks, today `IOWritable` and `IOReadable`. Their
+      methods stay on the includer. The marker is read in prelude files
+      only. `File.ancestors` is still not MRI's (`File < Object` here, and
+      there is no `File::Constants`).
+    - **Kernel's module functions** are public on `Kernel` itself: a call
+      on `singleton(Kernel)` may reach a private Kernel method when its
+      name is one of MRI's `Kernel.singleton_methods` (a fixed list in
+      `kernelModuleNames`), or an overload twin of one; `pp`,
+      `initialize_copy` and the rest stay private, as MRI's NoMethodError
+      says. `Kernel.raise`/`fail`/`lambda`/`proc`/`block_given?`/
+      `__method__`/`__dir__` go to the intrinsic the receiverless call
+      does, and `Kernel.raise` ends a statement list as `raise` does;
+      `Kernel.loop` rescues StopIteration and `Kernel.block_given?`
+      narrows an optional block as the bare calls do, and
+      `Kernel.public_method` takes them.
+      `respond_to?` answers true for those names. `Kernel.require` is
+      not an intrinsic (rb2go loads files at compile time).
+    - **`Exception#full_message(highlight:, order:)`** is MRI's
+      `rb_error_write` in Ruby: the error line (`backtrace[0]: ` and
+      `detailed_message(highlight:)`), the `\tfrom` lines (or, with
+      `order: :bottom`, a `Traceback` header and numbered lines, widths
+      padded), then each cause's report (before, with `:bottom`), each
+      cause once. `highlight` defaults to `$stderr.tty?`, `order` to
+      `:top`; another order raises MRI's ArgumentError. No error_highlight
+      snippet is ever added: rb2go has no node locations at run time, and
+      MRI only adds one for NameError/TypeError/ArgumentError raised with
+      a location, so checks use other classes. An exception with no
+      backtrace starts with MRI's `error_pos`, `file:line:in
+      'full_message': `, the innermost user frame of the Go stack
+      (`rbErrorPos`, the same `runtime.Callers` walk as decision 106, only
+      when asked). A cause raised in a rescue that does not bind has no
+      backtrace in rb2go (decision 106), so its line is that `error_pos`
+      where MRI shows where it was raised. `detailed_message` now follows
+      `rb_decorate_message` too: a lone trailing newline is dropped, an
+      empty message is the class name (`unhandled exception` only for
+      RuntimeError itself), and `highlight: true` bolds it with the class
+      underlined.
+    (`testdata/test/stdlib_test.rb` `SetTest#test_to_set`,
+    `testdata/test/object_test.rb` `ObjectRubySpecAncestorsTest` and
+    `ObjectKernelModuleFunctionTest`, `testdata/test/control_test.rb`
+    `ControlRubySpecExceptionTest`, `testdata/errors/strings.txtar`
+    `kernel_module_pp`.) `ObjectRubySpecAncestorsTest` subtracts what other
+    libraries mix into Object (`PP::ObjectMixin`, `JSON::GeneratorMethods`)
+    so the suite passes in one MRI process.
+
+140. `Enumerator`, external iteration, `Enumerator::Lazy` and `Fiber`
+    (#41), plus #55's `ArithmeticSequence`. All of it is sequences
+    (`iter.Seq`), so nothing runs ahead of its consumer and only `Fiber`
+    needs a goroutine.
+    - **Enumerator.** `Enumerator[E]` is a generic `@go_type` holding its
+      sequence, the receiver and method name `inspect` shows
+      (`#<Enumerator: [1, 2]:each>`, `each_slice(2)`), a size function and
+      the iteration's result. It includes Enumerable, so every Enumerable
+      method works on it. The `__<name>_enum` overloads (decision 12) now
+      return one instead of an Array (decision 58): Array's
+      `each`/`each_index`, Enumerable's `each_with_index`/`each_slice`/
+      `each_cons`, Integer's `times`/`upto`/`downto`, String's
+      `each_char`/`each_line`, each with MRI's `size` (`nil` for
+      `each_line`, as MRI). Enumerable's take the receiver's own size
+      (Array, Hash, Set, an Integer Range, another Enumerator), else
+      `nil`, never a count by iterating, which an endless source never
+      ends; a user class's own `size` is not consulted yet (MRI's is). Any other prelude iterator called without a
+      block (`(1..3).each`, `Hash#each` as `[k, v]` pairs, `Set#each`,
+      `each_byte`, `reverse_each`) becomes an Enumerator over its sequence
+      in the compiler (`iterEnum`, receiver and arguments evaluated once),
+      size `nil`. A user's iterator without a block stays a compile error:
+      MRI raises `LocalJumpError` there unless the method returns
+      `to_enum`, which is not built. Blockless `map`/`select`/`reject`
+      stay `Enumerator::Map`/`Select` (their `with_index` maps or
+      filters), now with `next`/`peek`/`rewind`. `Array#with_index`, the
+      old stand-in's helper, is gone. Enumerable gained `lazy`, `uniq`
+      and `entries`, and Enumerator `to_h` (decision 92's `@self` forms).
+      `Enumerable#first(n)` now stops after the nth element instead of
+      pulling one more, which a generator with side effects shows.
+    - **External iteration.** `next`/`peek`/`rewind` pull the sequence
+      with `iter.Pull` (`rbExt`), started on the first `next`: a runtime
+      coroutine, no goroutine and no channel. The end raises
+      `StopIteration` (`iteration reached an end`) whose `result` is what
+      the iteration returned: the receiver for an each-like method
+      (`[1].each` → `[1]`); `nil` for `Enumerator.new`, whose block is
+      void (below), where MRI's is the block's value.
+      Further `next`s raise again until `rewind`, which stops the pull.
+      An enumerator abandoned mid-iteration keeps its coroutine parked
+      until the program exits, the same leak as a pull never stopped.
+    - **`Kernel#loop` rescues `StopIteration`** (so `ClosedQueueError` and
+      `Ractor::ClosedError`, its subclasses, too) and answers its
+      `result`, as MRI's, but only for a loop whose block lexically may
+      raise it: an external `next`/`peek`, a `receive`, or one of those
+      constants. The compiler rewrites that loop into `begin; loop { };
+      rescue StopIteration => e; e.result; end` (`loopRescue`); every
+      other loop stays a plain Go `for` with no `recover`. A
+      `StopIteration` raised by a method the body calls, with nothing
+      lexical to see, escapes the loop where MRI's would end it.
+    - **`Enumerator.new { |y| }`.** The block runs once per iteration,
+      through decision 4's `rbSeq`: `y << v` (`Yielder#<<`, `yield`, or
+      `&y`, the Yielder as a block) hands v to the consumer, and a
+      consumer that stops (`take(3)`, `first`, `break`, `rewind`) unwinds
+      the block with `rbStop`, so `ensure` runs and `rescue` passes it
+      on. No goroutine: external iteration is the `iter.Pull` above. The
+      element type comes from an annotation on the assignment
+      (`#: Enumerator[Integer]`), else the compiler probes the block with
+      `y` typed `Yielder[untyped]` and joins the types of what it feeds
+      `y` (`inferYielder`); a block that feeds nothing is a compile error
+      asking for the annotation. `Enumerator.new(size)` takes an Integer.
+      The block is typed void so that any statement may end it, `arr.each
+      { |x| y << x }` above all (an iterator call's value cannot be used);
+      the price is that StopIteration#result is `nil`. The one iterator
+      whose value may now be wanted untyped is `loop`, as loopRescue's
+      begin: a loop that ends without StopIteration was broken out of.
+      Caveat (decision 4's):
+      a generator whose own `rescue` catches an exception raised by the
+      consumer's block aborts, since Go forbids a range function to
+      recover a loop body's panic.
+    - **`Enumerator::Lazy[E]`** is a chain of sequence wrappers from
+      `Enumerable#lazy`, inspected as MRI's chain
+      (`#<Enumerator::Lazy: #<Enumerator::Lazy: 1..3>:map>`). `map`/
+      `collect` (`lazy.map { }` keeps the block's type; an untyped block
+      result stays `untyped`, as `map`'s does), `select`/`filter`,
+      `reject`, `filter_map`, `flat_map` (an Array-returning block),
+      `take`, `take_while`, `drop`, `drop_while`, `zip(array)`,
+      `with_index` (blockless pairs, or with a block that sees each
+      element and index while the elements pass on), `each_with_index`,
+      `uniq` (eql?/hash, as Hash keys), `compact` (`@self Lazy[U?]`),
+      `eager`, `force`/`to_a`, `each`, `first`/`first(n)`. It includes
+      Enumerable, whose eager methods (`sum`, `include?`, `each_slice`)
+      end a chain, pulling only what they need.
+    - **Infinite ranges.** `1..Float::INFINITY` with an Integer begin is
+      an endless `Range[Integer]` flagged `inf` so it inspects as
+      `1..Infinity`; it used to join to `Range[Float]` and iterate
+      nothing. Its `step` yields Integers where MRI's yields Floats; `end`
+      raises RangeError (Infinity is no Integer) and `include?(2.5)` is a
+      type error, both answered by MRI.
+    - **`Enumerator::ArithmeticSequence[E]`** (#55) is what `Range#%` and
+      blockless `Range#step`, `Integer#step` and `Float#step` return:
+      `((1..10).%(3))`, `((1...10).step(3))`, `(1.step(10, 3))`
+      (`(1.step(10))` when the step is 1), with `begin`/`end`/`step`/
+      `exclude_end?`, `first`, `last`/`last(n)`, `size`, `==`, external
+      iteration and Enumerable. Integers count by addition, Floats with
+      MRI's counted `ruby_float_step`. It is not an Enumerator subclass (a
+      `@go_type` class cannot have a `@go_type` parent), so
+      `is_a?(Enumerator)` is false. A non-numeric range's step
+      (`("a".."e").step(2)`) is the same class taking every nth element
+      but inspects as MRI's plain Enumerator. A Float step on a Range is a
+      type error (`Range#step` takes an Integer), and an endless
+      sequence's `size` raises, as `Range#size` (no Infinity Integer).
+    - **`Fiber`** is a goroutine started on the first `resume` and handed
+      control over two unbuffered channels, so exactly one of a fiber and
+      its resumer runs: `resume(*args)` sends the arguments (the block's,
+      the first time; what the paused `Fiber.yield` returns, later) and
+      waits for the next `Fiber.yield(*vals)` or the block's end; none is
+      nil, one is itself, more an Array, as MRI passes them. Values are
+      `untyped`, as Ractor messages are (decision 103): a fiber's resume
+      and yield types are set by whichever call runs, not by a
+      declaration. `Fiber.current` is a goroutine-id lookup (decision
+      104), else the running thread's root fiber; a fiber's goroutine
+      belongs to the thread and ractor that first resumed it. An exception
+      ending the block re-raises in the resumer and leaves the fiber dead.
+      `FiberError` carries MRI 4.0's messages: `attempt to resume a
+      terminated fiber`, `attempt to resume the current fiber`, `attempt
+      to resume a resuming fiber`, and `attempt to yield on a not resumed
+      fiber` for a `Fiber.yield` outside any fiber. **Leak:** a fiber
+      never resumed to its end keeps its goroutine blocked on its channel
+      until the program exits, as `Timeout`'s abandoned goroutine does.
+    - **Not done:** `to_enum`/`enum_for`, `Enumerator#feed`/`next_values`,
+      `Enumerator::Chain` (`e1 + e2`), `Enumerator::Product`, `produce`,
+      Lazy's own `chunk_while`/`slice_when`/`zip` of non-Arrays,
+      `Fiber#raise`/`kill`/`transfer`, fiber storage (`Fiber[]`),
+      fiber-local `Thread#[]`, the cross-thread resume check, and fiber
+      schedulers.
+    ([example 92](../examples/92_generators/main.rb),
+    `testdata/test/enumerator_test.rb`, `testdata/test/fiber_test.rb`,
+    `testdata/errors/enumerator.txtar`.)
+
+141. `Method` and `UnboundMethod` (#40) are built at the call site from
+    the closed world, never looked up by name at run time.
+    `recv.method(:name)` (and `public_method`) needs a literal name, like
+    decision 32's `send`; the compiler resolves the target on the
+    receiver's static type and builds a `Method[F]`: F is a Proc type
+    (decision 47) over the target's required positional parameters and
+    its result, fn the typed closure over the receiver (held in a temp,
+    since Go closures capture variables), and the struct also carries
+    `dyn` (the same target called from an `...any` list, generated like
+    decision 32's wrappers: arity check, argument conversion, one arm per
+    optional count) and `info` (name, owner, parameters, arity, `file:line`).
+    `call`, `.()`, `[]` and `===` with F's arguments call fn, typed;
+    with more (optional or rest parameters) they go through dyn, with
+    decision 32's warning and the result converted back. `to_proc` is fn
+    itself, so `&m` is decision 47's `&proc`; `curry` nests one Proc per
+    parameter. `Klass.instance_method(:name)` is an
+    `UnboundMethod[^(Klass, ...) -> R]`; `bind` checks the object against
+    Klass at compile time and partially applies fn, `bind_call` calls it.
+    A user-defined struct method is bound statically (its free func), so
+    `Base.instance_method(:m).bind_call(sub)` runs Base's `m`, as MRI's
+    does; a bound Method dispatches through the receiver, and `owner`
+    and `inspect` come from a type switch over the subclasses that
+    override the name. `&method(:name)` is desugared to a block of the
+    yielded arity calling `recv.__send__(:name, ...)`, so a target with
+    optional parameters takes what is yielded (MRI's Hash#each, which
+    yields one pair to a method proc whose minimum arity is 1, is not
+    modelled: the pair is yielded as two values). Reflection follows MRI
+    4.0: `parameters`/`arity` from the def for user methods; prelude
+    methods stand for MRI's C methods, so they are anonymous (`(_)`, or
+    `(*)` and -1 when any parameter is optional, a rest, a keyword, or
+    decision 12 overloads the name); `inspect` is
+    `#<Method: Recv(Owner)#name(params) file:line>`, `Recv.name` for a
+    singleton method, whose owner is MRI's `#<Class:Foo>`; `==`, `eql?`
+    and `hash` compare the definition and the receiver's identity.
+    Values of different F join as `Method[untyped]`, and RBS's bare
+    `Method` (`#: Hash[Symbol, Method]`) is `Method[untyped]` too: its
+    calls go through dyn, with the warning, and a typed Method converts
+    to it (`_to_any`/`rbFrom`, as Array's instantiations do).
+    `Method#unbind` is an `UnboundMethod[untyped]`, since F does not
+    carry the receiver's type; its `bind` raises MRI's TypeError for an
+    object that is not an owner's instance. `method(:name)` on an
+    `untyped` receiver is `Method[untyped]` over the dispatcher, with the
+    warning; its `owner`, `arity` and `parameters` raise
+    NotImplementedError, being unknown at compile time. Compile errors:
+    a computed name, a target that needs a block, has required keywords
+    or is generic, `instance_method` on a generic class (an
+    UnboundMethod cannot carry its type arguments), and `to_proc`/`curry`
+    on a `Method[untyped]`. Not done: `super_method`,
+    `source_location`, keyword arguments or a block to `call`.
+    `x.class` on a plain Object (main, `Object.new`) held untyped now
+    answers Object (it raised NoMethodError).
+    ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
+    `testdata/errors/objects.txtar`.)
+
 142. `Numeric` (#39) is a prelude module that `Integer`, `Float`,
     `Rational`, `Complex` and `BigDecimal` include, and that includes
     `Comparable`. A module, not a class, because a module type is
@@ -3976,3 +4501,80 @@ resolve; anything not listed is still open.
       would depend on a value.
     (`testdata/test/number_test.rb` `NumberNumericTest`,
     `testdata/errors/numbers.txtar` `numeric_*`.)
+
+143. Pattern matching (#38): `case/in` (guards, `else`), `v => pat` and
+    `v in pat`, compiled to static Go like `case/when` (decision 21).
+    - **Shape of the code.** Each pattern is a chain of Go `if`s, one per
+      check, with the rest of the match nested in the success branch;
+      an arm's success sets a flag and the arms become
+      `if ok { body } else { next arm }`, so tails, `return`, `next` and
+      `break` work as in `if`. A guard is one more `if`. Bindings are
+      ordinary local writes (Ruby locals of the enclosing scope, hoisted
+      when the body reads them, decision 14); the unset pass sees each arm
+      as a branch (a case/in without `else` raises rather than falling
+      through) and `v in pat` as maybe-taken, and `if v in pat`
+      narrows the locals it bound to non-nil values, except a `_x` an
+      alternative binds. A subject that is a
+      local is narrowed in the arm's body by a leading class
+      (`in Circle`, `in Circle(r:)`), as `case/when`'s type switch does.
+      The subject, and each checked element, is evaluated once.
+    - **Types come from the pattern.** A binding takes the type of what
+      it binds: `Array[E]`'s `E`, a tuple field's type, `Hash[K, V]`'s
+      `V`, a Struct/Data member's type, the element or value type of a
+      user `deconstruct`/`deconstruct_keys` signature; `Integer => n`
+      narrows by type assertion; untyped stays untyped. A find
+      pattern's and a rest's slices keep the Array's type.
+    - **deconstruct.** `Array#deconstruct` and `Hash#deconstruct_keys`
+      return self. Struct and Data get both, generated with the rest of
+      decision 30 (MRI 4.0's Data has `deconstruct` too); `deconstruct_keys`
+      is MRI's: nil gives `to_h`, more keys than members gives `{}`,
+      otherwise the keys up to the first non-member; it takes
+      `Array[Symbol]?` (MRI's String and Integer keys are not supported).
+      On a statically typed Struct/Data the pattern reads the members
+      directly, typed (unless a subclass overrides the method), and calls the generated methods only when it needs
+      the Array or Hash itself (a bound `*rest` or `**rest`, `**nil`, a
+      find pattern). A user class's `deconstruct` must be typed to return
+      an Array or tuple (or untyped), and `deconstruct_keys` a Hash with
+      Symbol or untyped keys; anything else is a compile error. As MRI,
+      `deconstruct_keys` gets the pattern's keys, or nil when the
+      pattern has `**rest` or `**nil` or no keys (`{}`). MRI caches `deconstruct` across a
+      `case`'s arms; rb2go calls it per arm.
+    - **Untyped subjects** (and Object, module types, a generic `T`, or a
+      class only some subclasses define the method on) are checked at run
+      time: `respond_to?` and the call through decision 32's dispatch
+      tables, then the result converted to `Array[untyped]` or
+      `Hash[untyped, untyped]` (`TypeError` when it is not one, worded
+      as decision 20's, where MRI says `deconstruct must return Array`).
+      A pattern's own dynamic calls do not warn; later calls on what it
+      bound do.
+    - **Order.** A hash pattern checks that every key is present before
+      matching any value, as MRI's compiler does, so
+      `{a: 1} => {a: 2, c:}` fails on the missing `:c`.
+    - **Errors.** `NoMatchingPatternError < StandardError` and
+      `NoMatchingPatternKeyError < NoMatchingPatternError`, whose `key`
+      and `matchee` raise `ArgumentError` when unset, as MRI's. A
+      `case/in` with several arms and no `else` raises the subject's
+      inspect. `=>` and a one-arm `case/in` without `else` raise MRI's
+      detailed message, `"<inspect>: <why>"`: `P === v does not return
+      true`, `length mismatch (given n, expected m)` (`m+` with a rest),
+      `does not respond to #deconstruct`, `key not found: :k` (a
+      `NoMatchingPatternKeyError` whose matchee is the deconstructed
+      Hash), `rest of {...} is not empty`, `{...} is not empty`, `does
+      not match to find pattern`, `guard clause does not return true`;
+      an alternation reports its last alternative, class included (a
+      missing key in an earlier one does not make it a
+      `NoMatchingPatternKeyError`). The message is built
+      only on the failure path.
+    - **Compile errors** for shapes that never match the static type: an
+      array or find pattern on a class with no `deconstruct` in its
+      hierarchy (`Integer`, `String`, `Hash`), a hash pattern on one with
+      no `deconstruct_keys` (or on a tuple), on a Hash whose keys are not
+      Symbols, or a `deconstruct(_keys)` typed to return something else
+      (`testdata/errors/pattern.txtar`). A class check the static type
+      decides false (`in String` on an Integer) makes a dead arm, which
+      is dropped as `case/when` drops one; a later read of a local only
+      it would bind is then a compile error where MRI reads nil. Not
+      built: minitest's `assert_pattern` and `must_pattern_match`.
+    ([example 93](../examples/93_pattern_matching/main.rb),
+    `testdata/test/pattern_test.rb`.)
+

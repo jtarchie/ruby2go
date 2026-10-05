@@ -140,16 +140,18 @@ whole program at compile time rather than looked up by reflection.
 ## What works
 
 - **Language:** classes, modules, `include`/`extend`, inheritance and `super`,
-  blocks, procs and lambdas, iterators, `case`/`when`, exceptions with
-  custom hierarchies, `catch`/`throw`, `Struct` and `Data`, optional and splat
-  arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
+  blocks, procs and lambdas, `Method` objects (`&method(:name)`), iterators,
+  `case`/`when`, exceptions with custom hierarchies, `catch`/`throw`, `Struct`
+  and `Data`, optional and splat arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
   `at_exit`, signal traps.
 - **Core classes:** `String`, `Symbol`, `Numeric` (`Integer`, `Float`, `Rational`,
-  `Complex`, mixing as MRI coerces), `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`,
+  `Complex`, mixing as MRI coerces), `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`
+  (with `next`/`peek`, `Enumerator.new` generators and `Enumerator::Lazy`),
   `Comparable`, `Regexp`/`MatchData` (Ruby syntax on Go's RE2), `Time`,
   `Random` (same sequence as MRI for a given seed), `Math`, `File`, `Dir`,
   `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,
-  `Thread`, `Queue`, `Mutex`, `Ractor`.
+  `Thread`, `Queue`, `Mutex`, `Ractor`, `Fiber`, `Marshal` (its own bytes, not
+  MRI's).
 - **Standard library:** `json`, `set`, `time`, `date`, `csv`, `stringio`,
   `strscan`, `digest`, `base64`, `zlib`, `securerandom`, `shellwords`, `uri`,
   `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,
@@ -174,14 +176,17 @@ The roadmap for the rest of the standard library is issue
 - **Strings are frozen.** `String` is a Go `string` value, so in-place
   mutation (`<<`, `upcase!`, `+"..."`) is unsupported; build new strings
   instead, or use `StringIO`.
+- **Strings carry no encoding.** Every `String` is UTF-8 bytes; `encoding`
+  reports UTF-8 for valid UTF-8 and ASCII-8BIT otherwise. `encode`, `scrub`,
+  `unicode_normalize` and `File.open(path, "r:ISO-8859-1:UTF-8")` work for
+  UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32; naming any other
+  encoding is a compile error.
 - **Integers are 64-bit.** There is no Bignum; where MRI would promote,
   rb2go raises `RangeError` rather than silently wrapping.
 - **No hash defaults.** `Hash.new(0)` is rejected; use `tally`,
   `h[k] = (h[k] || 0) + 1`, or `fetch`. `Hash#[]` returns `V?`.
 - **`return`/`break` inside a closure block** is a compile error unless the
   block can be inlined as a loop (e.g. `each` on an `Array`).
-- **No pattern matching (`case`/`in`) and no keyword parameters** on
-  methods you define.
 - **Overloaded RBS signatures** (`(Integer) -> T | () -> T`) are not
   supported; prelude methods pick one shape.
 - **One source file**, no gems.

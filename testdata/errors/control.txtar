@@ -5,12 +5,6 @@ i = 0
 r = while i < 3
   i += 1
 end
--- case_in_pattern.rb --
-# error: main.rb:3: unsupported syntax: CaseMatchNode
-x = 3 #: untyped
-case x
-in Integer then puts "int"
-end
 -- rescue_non_class.rb --
 # error: main.rb:5: rescue needs exception class names
 klass = StandardError

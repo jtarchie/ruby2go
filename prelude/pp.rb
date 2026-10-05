@@ -12,7 +12,7 @@ class PP < Object
     case nil:
       f = os.Stdout
     case *IO:
-      f = []*os.File{os.Stdin, os.Stdout, os.Stderr}[o.fd]
+      f = o.rbOSFile()
     }
     w := rbPPWidthFor(f)
     if width != nil {

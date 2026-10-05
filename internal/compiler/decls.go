@@ -30,6 +30,7 @@ func (c *Compiler) goType(t Type) string {
 			if len(t.Args) > 0 {
 				name += "[" + c.goTypes(t.Args) + "]"
 				c.noteArgBoxes(t.Args)
+				c.noteMarshal(t)
 			}
 			if cls.mutable() {
 				return "*" + name
@@ -49,7 +50,9 @@ func (c *Compiler) goType(t Type) string {
 		return s
 	case TTuple:
 		c.tupleN[len(t.Elems)] = true
-		return fmt.Sprintf("Tuple%d[%s]", len(t.Elems), c.goTypes(t.Elems))
+		name := fmt.Sprintf("Tuple%d[%s]", len(t.Elems), c.goTypes(t.Elems))
+		c.noteMarshal(t)
+		return name
 	case TVar:
 		return t.Name
 	case TFunc:
@@ -300,16 +303,31 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 		}
 	}
 	c.emitDynamic(reached, selected)
-	if c.tablesOut && c.tableInputs() != c.tablesAt {
+	marshal := reached("rbMDumpGen") || reached("rbMLoadGen")
+	// Marshal's cases were rendered with the tables: a later value type, or a class they skipped and something now reaches, needs them redone
+	stale := marshal && len(c.marshalSeen) != c.marshalAt || slices.ContainsFunc(c.marshalSkipped, reached)
+	if c.tablesOut && (c.tableInputs() != c.tablesAt || stale) {
 		return nil, errPruneIncomplete
 	}
 	if c.out.Len() == 0 {
-		if c.tablesOut {
+		switch {
+		case !c.tablesOut:
+			c.tablesOut = true
+			c.prepareMarshal() // first: its types note boxes and tuples the tables list
+			c.tablesAt = c.tableInputs()
+			c.emitTables()
+		case marshal && !c.marshalOut: // Marshal may be reached only through the tables (minitest's _Call)
+			if c.marshalErr != nil {
+				panic(*c.marshalErr)
+			}
+			c.marshalOut = true
+			c.w("%s", c.marshalCode)
+		case c.marshalOut && !c.marshalLate: // last: its cases are only the classes reached by then
+			c.marshalLate = true
+			c.emitMarshalClasses(reached)
+		default:
 			return nil, nil
 		}
-		c.tablesOut = true
-		c.tablesAt = c.tableInputs()
-		c.emitTables()
 	}
 	return []byte(c.out.String()), nil
 }
@@ -1112,6 +1130,12 @@ func (c *Compiler) emitBoxes() {
 		c.w("\tcase %s:\n\t\treturn rbCmpOpt(v, b.(%s))\n", b, b)
 	}
 	c.w("\t}\n\treturn rbCmpFailed(a, b)\n}\n\n")
+	// Marshal.load fills a T? slot of generic code (rbMAs): a box of what it holds
+	c.w("func rbMBox(dst, v any) bool {\n\tswitch d := dst.(type) {\n\tcase nil:\n\t\treturn false\n")
+	for _, b := range unbox {
+		c.w("\tcase *%s:\n\t\tx := rbMAs[%s](v)\n\t\t*d = &x\n", b, b[1:])
+	}
+	c.w("\tdefault:\n\t\treturn false\n\t}\n\treturn true\n}\n\n")
 }
 
 // wantsForwarder decides whether class cls gets a Go method forwarding to
@@ -1280,7 +1304,7 @@ func (c *Compiler) emitDescendants(meta, desc *Class) {
 	c.w("func (self *%s) _Descendants() []any { return []any{%s} }\n\n", meta.Name, strings.Join(subs, ", "))
 	var anc []string
 	for _, k := range fullAncestors(desc) {
-		if k.meta != nil {
+		if k.meta != nil && (!k.hidden || k == desc) {
 			anc = append(anc, classVar(k))
 		}
 	}

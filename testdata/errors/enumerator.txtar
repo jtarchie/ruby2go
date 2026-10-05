@@ -1,0 +1,18 @@
+-- generator_feeds_nothing.rb --
+# error: main.rb:2: cannot infer the element type of new: the block feeds its yielder nothing
+e = Enumerator.new { |y| puts y.class }
+p e.to_a
+-- range_float_step.rb --
+# error: main.rb:2: Float where Integer is expected
+p (1..2).step(0.5).to_a
+-- user_each_without_block.rb --
+# error: main.rb:9: each is an iterator (its block returns void); call it as a statement with a block
+class Bag
+  include Enumerable #[Integer]
+  #: () { (Integer) -> void } -> void
+  def each
+    yield 1
+  end
+end
+e = Bag.new.each
+p e.next

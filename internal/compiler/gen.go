@@ -23,6 +23,7 @@ type fctx struct {
 	m             *Method
 	implicitCall  bool     // calling method_missing/respond_to_missing? on the program\'s behalf
 	plainCalls    bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
+	staticDef     *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
 	lex           []*Class // lexical scope for constant lookup
 	selfType      Type
 	selfCode      string
@@ -47,6 +48,7 @@ type fctx struct {
 	blockCtr      int
 	loops         []*loopFrame
 	switches      int  // nesting depth of emitted Go switch statements
+	patQuiet      bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
 	labels        int  // not rewound by probe, so labels stay unique
 	closures      int  // nesting depth of Go closures (non-iterator blocks)
 	nextTail      tail // the innermost closure's result, for `next`
@@ -56,7 +58,8 @@ type fctx struct {
 	retryFlag     string     // set by `retry` in the rescue clauses being generated
 	retryDepth    int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet   bool
-	rescues       int // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	rescues       int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	yielderFed    *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
 }
 
 type loopKind int
@@ -536,6 +539,8 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.genIf(n, n.Predicate, n.Statements, els, true, t)
 	case *parser.CaseNode:
 		f.genCase(n, t)
+	case *parser.CaseMatchNode:
+		f.genCaseMatch(n, t)
 	case *parser.BeginNode:
 		f.genBegin(n, t)
 	case *parser.WhileNode:
@@ -570,6 +575,10 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
+		if r := f.loopRescue(n); r != nil {
+			f.genBegin(r, t)
+			return
+		}
 		f.genCallStmt(n, t)
 	default:
 		e := f.genExpr(n, t.typ)
@@ -731,6 +740,8 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
 			return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 		}
+	case *parser.MatchPredicateNode:
+		return f.condMatchPredicate(n)
 	case *parser.LocalVariableWriteNode:
 		// `if (x = h[k])` / `while (job = q.pop)`: assign, then test and narrow x like a read
 		f.genStmt(n, tail{})
@@ -754,7 +765,7 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 // genCondCall is genCond for the calls it reads directly: block_given?
 // (narrowing an optional block), !x and x.nil?.
 func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
-	if name := f.m.optionalBlockLocal(); name != "" && n.Name == "block_given?" && n.Receiver == nil && n.Arguments == nil {
+	if name := f.m.optionalBlockLocal(); name != "" && n.Name == "block_given?" && kernelRecv(n) && n.Arguments == nil {
 		c, nw := f.genCond(&parser.LocalVariableReadNode{Name: name, Location: n.Location}) // narrows the block to present
 		return c, nw, true
 	}
@@ -1331,6 +1342,10 @@ func containsRescue(n parser.Node) bool {
 		}
 	case *parser.RescueModifierNode:
 		return true
+	case *parser.CallNode:
+		if isStopLoop(b) {
+			return true // loopRescue makes it a begin/rescue
+		}
 	case *parser.DefNode:
 		return false
 	}
@@ -1371,6 +1386,10 @@ func containsRescueClause(n parser.Node) bool {
 		}
 	case *parser.RescueModifierNode:
 		return true
+	case *parser.CallNode:
+		if isStopLoop(b) {
+			return true
+		}
 	case *parser.DefNode:
 		return false
 	}
@@ -1695,7 +1714,7 @@ func terminates(st *parser.StatementsNode) bool {
 	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode, *parser.RetryNode, *parser.RedoNode:
 		return true
 	case *parser.CallNode:
-		return last.Receiver == nil && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
+		return kernelRecv(last) && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
 	}
 	return false
 }
@@ -2727,6 +2746,8 @@ func (f *fctx) genCallStmt(n *parser.CallNode, t tail) {
 		c := *n
 		if sym, ok := ba.Expression.(*parser.SymbolNode); ok {
 			c.Block = symbolBlock(ba, sym.Unescaped.Value) // `workers.each(&:join)`
+		} else if mb := f.methodRefBlock(ba, f.blockArity(n)); mb != nil {
+			c.Block = mb // `xs.each(&method(:show))`
 		} else if pb := f.procBlock(ba); pb != nil {
 			c.Block = pb // `xs.each(&printer)`
 		}

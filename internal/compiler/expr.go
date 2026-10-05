@@ -150,7 +150,17 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	return expr{}, false
 }
 
+// genExpr notes each value's type for Marshal: an inferred local's container type is never rendered (decision 137).
 func (f *fctx) genExpr(n parser.Node, expected Type) expr {
+	e := f.genExpr0(n, expected)
+	f.c.noteMarshal(e.typ)
+	if fn, ok := e.typ.(TFunc); ok && fn.Proc {
+		f.c.goType(fn) // a proc literal's Go type is written out inline, so rbIsProc (Marshal's "Proc" TypeError) would miss it
+	}
+	return e
+}
+
+func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 	if e, ok := f.genLiteral(n); ok {
 		return e
 	}
@@ -199,18 +209,18 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 		e := f.genExpr(st.Body[0], expected)
 		e.code = "(" + e.code + ")"
 		return e
-	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.BeginNode:
+	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.CaseMatchNode, *parser.BeginNode:
 		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
+	case *parser.MatchRequiredNode, *parser.MatchPredicateNode:
+		return f.genMatch(n)
 	case *parser.OrNode:
 		return f.genOr(n)
 	case *parser.AndNode:
 		return f.genAnd(n)
 	case *parser.YieldNode:
 		return f.genYield(n)
-	case *parser.SuperNode:
-		return f.genSuper(n, n.Arguments, false)
-	case *parser.ForwardingSuperNode:
-		return f.genSuper(n, nil, true)
+	case *parser.SuperNode, *parser.ForwardingSuperNode:
+		return f.genSuperNode(n)
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		return f.genConstRead(n)
 	case *parser.RescueModifierNode:
@@ -222,6 +232,14 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
+}
+
+// genSuperNode is `super(...)` or a bare `super`, which forwards the method's arguments.
+func (f *fctx) genSuperNode(n parser.Node) expr {
+	if s, ok := n.(*parser.SuperNode); ok {
+		return f.genSuper(n, s.Arguments, false)
+	}
+	return f.genSuper(n, nil, true)
 }
 
 func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
@@ -1250,6 +1268,16 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		if e, ok := f.genKernelIntrinsic(n, expected); ok {
 			return e
 		}
+	} else if kernelConst(n.Receiver) && kernelModuleNames[n.Name] && n.Name != "require" && n.Name != "require_relative" {
+		var t Type
+		f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
+		if kernelMeta(t) {
+			bare := *n
+			bare.Receiver = nil
+			if e, ok := f.genKernelIntrinsic(&bare, expected); ok {
+				return e
+			}
+		}
 	}
 	if e, ok := f.genBlockCall(n); ok {
 		return e
@@ -1269,7 +1297,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil) {
+		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil && (n.Block == nil || cls.meta.lookup("new") == nil)) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
@@ -1367,6 +1395,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	f.checkEncodingNames(n, recv, name, args)
 	if recv.view != "" && block == nil {
 		if e, ok := f.viewCall(n, recv, name, args); ok {
 			return e
@@ -1490,6 +1519,9 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !f.ownSend(recv.typ, name) {
 		return f.genSend(n, recv, name, args, block), true
 	}
+	if e, ok := f.genMethodObject(n, recv, name, args, block); ok {
+		return e, true
+	}
 	if name == "is_a?" || name == "kind_of?" {
 		if len(args) != 1 || block != nil {
 			f.errorf(n, "%s takes one class", name)
@@ -1528,6 +1560,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			return f.procCall(n, recv, t, name, args, block)
 		}
 	case TClass:
+		if e, ok := f.methodValueCall(n, recv, t, name, args, block); ok {
+			return e
+		}
 		return f.classCall(n, t, recv, name, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
@@ -1587,6 +1622,7 @@ func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser
 
 // classCall dispatches on a class-typed receiver.
 func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	f.noteYielderFeed(recv, name, args)
 	if isAbstract(t) && recv.code != f.selfCode {
 		return f.abstractCall(n, t, recv, name, args, block)
 	}
@@ -1608,6 +1644,9 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		// either way the method is found at run time
 		if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 			return f.genDynCall(n, recv, name, args)
+		}
+		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
+			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}
@@ -2382,12 +2421,56 @@ func (f *fctx) checkVisibility(n parser.Node, m *Method, recv expr) {
 	if recv.code == f.selfCode || f.implicitCall {
 		return
 	}
-	if m.Private {
+	if m.Private && !kernelModuleFunction(m, recv.typ) {
 		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
 	}
 	if m.Protected && (f.owner == nil || !f.owner.isSubclassOf(m.Owner)) {
 		f.errorf(n, "protected method %s called on %s", m.Name, recv.typ)
 	}
+}
+
+// MRI's Kernel.singleton_methods; the rest of Kernel's private methods (pp, initialize_copy) stay private on Kernel too.
+var kernelModuleNames = func() map[string]bool {
+	out := map[string]bool{}
+	for _, s := range strings.Fields("Array Complex Float Hash Integer Pathname Rational String __callee__ __dir__ __method__ ` abort at_exit autoload autoload? binding block_given? caller caller_locations catch eval exec exit exit! fail fork format gets global_variables iterator? lambda load local_variables loop open p print printf proc putc puts raise rand readline readlines require require_relative select set_trace_func sleep spawn sprintf srand syscall system test throw trace_var trap untrace_var warn") {
+		out[s] = true
+	}
+	return out
+}()
+
+func kernelMeta(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && c.C.metaOf != nil && c.C.metaOf.RubyName == "Kernel"
+}
+
+// kernelConst is a syntactic guess (`Kernel`, `::Kernel`) for passes with no scope to resolve it in; genCall checks the type.
+func kernelConst(n parser.Node) bool {
+	switch r := n.(type) {
+	case *parser.ConstantReadNode:
+		return r.Name == "Kernel"
+	case *parser.ConstantPathNode:
+		return r.Parent == nil && r.Name != nil && *r.Name == "Kernel"
+	}
+	return false
+}
+
+// kernelRecv: a receiverless call, or one on Kernel, the module function form.
+func kernelRecv(n *parser.CallNode) bool { return n.Receiver == nil || kernelConst(n.Receiver) }
+
+// `Kernel.puts`: module_function makes these public on Kernel itself (decision 139).
+func kernelModuleFunction(m *Method, recv Type) bool {
+	if !kernelMeta(recv) || m.Owner == nil || m.Owner.RubyName != "Kernel" {
+		return false
+	}
+	if kernelModuleNames[m.Name] {
+		return true
+	}
+	for pub := range kernelModuleNames { // an overload twin (`__Integer_string`, decision 12) stands in for its public method
+		if strings.HasPrefix(m.Name, "__"+overloadBase(pub)+"_") {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
@@ -2406,6 +2489,11 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	// bind vars visible in the current generic context so they count as bound
 	f.checkVisibility(n, m, recv)
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
+	if m.Block != nil && m.Iterator && block == nil && !m.Block.Optional {
+		if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
+			return r
+		}
+	}
 	if m.Block != nil {
 		if m.Iterator {
 			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
@@ -2413,6 +2501,7 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 		blkCode := "nil"
 		switch {
 		case block != nil:
+			f.inferYielder(n, m, env, block)
 			blkCode = f.genClosure(n, block, m.Block, env)
 		case !m.Block.Optional:
 			f.errorf(n, "%s requires a block", m.Name)
@@ -2484,7 +2573,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
-	free := m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
+	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
 	if !free {
 		if t := f.methodExprType(m, recv); t != "" {
 			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
@@ -2837,10 +2926,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
-			if pb := f.procBlock(b); pb != nil {
-				return f.genClosure(n, pb, sig, env)
-			}
-			f.errorf(b, "only &:symbol, a Proc and a method's own &block are supported as block arguments")
+			return f.genClosure(n, f.blockArgBlock(b, len(params)), sig, env)
 		}
 		symbolCall = sym.Unescaped.Value
 		if len(params) != 1 {
@@ -2979,7 +3065,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 			e = o
 		}
 	}
-	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) {
+	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
 	}
 	var recv expr
@@ -3186,10 +3272,7 @@ func (f *fctx) yieldMaybeMissing(n *parser.YieldNode, v *local, args []parser.No
 	}
 	const msg = "no block given (yield)"
 	f.c.strLits[msg] = true
-	exc := f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil).code
-	if f.rescues > 0 {
-		exc = "rbWithCause(" + exc + ", r_)"
-	}
+	exc := f.withCause(f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil).code)
 	f.emit("if %s == nil {", v.goName)
 	f.emit("\tpanic(%s)", exc)
 	f.emit("}")
@@ -3415,11 +3498,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 	default:
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
-	code := val.code
-	if f.rescues > 0 {
-		code = "rbWithCause(" + code + ", r_)" // raised while handling r_: MRI's cause
-	}
-	return expr{code: "panic(" + code + ")", typ: TVoid{}, stmt: true, noreturn: true}
+	return expr{code: "panic(" + f.withCause(val.code) + ")", typ: TVoid{}, stmt: true, noreturn: true}
 }
 
 // ---- calls on nilable, tuple and untyped receivers
@@ -3539,6 +3618,21 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 			code = f.coerce(args[0], a, TAny{})
 		}
 		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
+		if len(args) == 1 && block == nil {
+			code := recv.code
+			if !isSimpleGo(code) { // the receiver first, as Ruby evaluates it, then the format
+				code = f.newTmp()
+				f.emit("%s := %s", code, recv.code)
+			}
+			str := f.cls("String")
+			format := f.coerce(args[0], f.genExpr(args[0], str), str)
+			fields := make([]string, len(tt.Elems))
+			for i := range tt.Elems {
+				fields[i] = fmt.Sprintf("%s.F%d", code, i)
+			}
+			return expr{code: "String(rbPack([]any{" + strings.Join(fields, ", ") + "}, string(" + format + ")))", typ: str}
+		}
 	}
 	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
@@ -4753,7 +4847,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	if name == "" || cls == nil {
 		return expr{}, false
 	}
-	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name]) {
+	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name] || kernelModuleFunction(e.M, recv.typ)) {
 		f.discard(recv)
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}
@@ -4775,6 +4869,9 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 // (`recv.x = v`, `recv[k] = v`) Ruby's value is v, whatever the setter
 // returns, so v is evaluated once and named after the call.
 func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
+	if r := f.loopRescue(n); r != nil {
+		return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
+	}
 	if expected != nil {
 		saved, savedNode := f.retHint, f.retHintNode
 		f.retHint, f.retHintNode = expected, n
@@ -4838,7 +4935,7 @@ func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
 	f.c.noteDyn(name)
-	if (f.m == nil || !f.m.quietDynamic) && !f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's class is chosen at run time by design (decision 142)
+	if (f.m == nil || !f.m.quietDynamic) && !f.patQuiet && !f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's class is chosen at run time by design (decision 142)
 		f.warn(n, "dynamic call: %s on %s", name, recv.typ)
 	}
 	how := "rbCall"
@@ -5035,7 +5132,11 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 		}
 	})
 	elem := want
-	if elem == nil {
+	inf := len(types) == 2 && isClass(types[0], "Integer") && isFloatInfinity(n.Right) && (want == nil || isClass(want, "Integer"))
+	switch {
+	case inf: // `1..Float::INFINITY` iterates Integers forever, as MRI: an endless Range[Integer] (decision 140)
+		elem = types[0]
+	case elem == nil:
 		elem = f.joinAll(n, types)
 	}
 	t := TClass{C: f.c.classes["Range"], Args: []Type{elem}}
@@ -5045,9 +5146,12 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 	} else {
 		code += "beginless: true"
 	}
-	if n.Right != nil {
+	switch {
+	case inf:
+		code += ", endless: true, inf: true"
+	case n.Right != nil:
 		code += ", e: " + f.coerce(n.Right, f.genExpr(n.Right, elem), elem)
-	} else {
+	default:
 		code += ", endless: true"
 	}
 	if n.IsEXCLUDE_END() {
@@ -5088,11 +5192,32 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true}}
 }
 
+// blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
+func (f *fctx) blockArgBlock(b *parser.BlockArgumentNode, nparams int) *parser.BlockNode {
+	if mb := f.methodRefBlock(b, nparams); mb != nil {
+		return mb
+	}
+	if pb := f.procBlock(b); pb != nil {
+		return pb
+	}
+	f.errorf(b, "only &:symbol, a Proc, a Method and a method's own &block are supported as block arguments")
+	return nil
+}
+
 // procBlock desugars `&f` for a Proc f to `{ |x_0, ...| f.call(x_0, ...) }`, or nil when f is not a Proc.
 func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
 	var pt Type
 	f.probe(func() { pt = f.genExpr(ba.Expression, nil).typ })
+	if tc, ok := pt.(TClass); ok && tc.C.RubyName == yielderClass {
+		return yielderBlock(ba)
+	}
 	ft, ok := pt.(TFunc)
+	if kind, mf, typed := methodFn(pt); kind == "Method" {
+		if !typed {
+			f.errorf(ba, "&%s needs the method's signature, which a %s lost (decision 141)", f.f.text(ba.Expression.GetLocation()), pt)
+		}
+		ft, ok = mf, true
+	}
 	if !ok || !ft.Proc {
 		return nil
 	}

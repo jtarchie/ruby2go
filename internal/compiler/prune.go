@@ -269,12 +269,15 @@ func (p *pruner) visit(x ast.Node) bool {
 			cc := st.(*ast.CaseClause)
 			// only a single concrete type: narrowing `case A, B:` would change its variable's type,
 			// and values implementing an interface exist without anything naming the interface
-			if names := p.caseTypeNames(cc); len(cc.List) == 1 && !p.isInterface(cc.List[0]) && len(names) > 0 {
+			if names := p.caseTypeNames(cc.List...); len(cc.List) == 1 && !p.isInterface(cc.List[0]) && len(names) > 0 {
 				p.pending[cc] = names // visited once every name is kept
 				continue
 			}
 			ast.Inspect(cc, p.visit)
 		}
+		return false
+	case *ast.SwitchStmt:
+		p.visitSwitch(x)
 		return false
 	case *ast.Ident:
 		if !p.names[x.Name] {
@@ -516,23 +519,31 @@ func (p *pruner) isInterface(e ast.Expr) bool {
 // lines), and a switch left with no case drops its variable (else Go reports
 // it unused).
 func (p *pruner) dropDeadCases(ts *ast.TypeSwitchStmt) {
-	n := len(ts.Body.List)
-	ts.Body.List = slices.DeleteFunc(ts.Body.List, func(st ast.Stmt) bool {
-		_, dead := p.pending[st.(*ast.CaseClause)]
-		return dead
-	})
-	if len(ts.Body.List) == n {
+	if !p.dropDeadClauses(ts.Body) {
 		return
-	}
-	if len(ts.Body.List) == 0 {
-		ts.Body.Rbrace = ts.Body.Lbrace + 1
-	} else {
-		ts.Body.Rbrace = ts.Body.List[len(ts.Body.List)-1].End()
 	}
 	// `x :=` with no surviving case that reads x would be "declared and not used"
 	if as, ok := ts.Assign.(*ast.AssignStmt); ok && !slices.ContainsFunc(ts.Body.List, func(st ast.Stmt) bool { return mentions(st, as.Lhs[0].(*ast.Ident).Name) }) {
 		ts.Assign = &ast.ExprStmt{X: as.Rhs[0]}
 	}
+}
+
+// dropDeadClauses reports whether any clause went.
+func (p *pruner) dropDeadClauses(body *ast.BlockStmt) bool {
+	n := len(body.List)
+	body.List = slices.DeleteFunc(body.List, func(st ast.Stmt) bool {
+		_, dead := p.pending[st.(*ast.CaseClause)]
+		return dead
+	})
+	if len(body.List) == n {
+		return false
+	}
+	if len(body.List) == 0 {
+		body.Rbrace = body.Lbrace + 1
+	} else {
+		body.Rbrace = body.List[len(body.List)-1].End()
+	}
+	return true
 }
 
 // inlineDefaultOnly replaces a type switch whose typed cases were all dropped with its default body (gocritic's singleCaseSwitch); the guard's expression stays as `_ = e` in case it has effects.
@@ -582,10 +593,49 @@ func mentions(n ast.Node, name string) bool {
 	return found
 }
 
+// visitSwitch visits an expression switch, parking its rbKeyed cases like weak type-switch cases.
+func (p *pruner) visitSwitch(x *ast.SwitchStmt) {
+	if x.Init != nil {
+		ast.Inspect(x.Init, p.visit)
+	}
+	if x.Tag != nil {
+		ast.Inspect(x.Tag, p.visit)
+	}
+	for _, st := range x.Body.List {
+		cc := st.(*ast.CaseClause)
+		if t := keyedType(cc); t != nil {
+			if names := p.caseTypeNames(t); len(names) > 0 {
+				p.pending[cc] = names
+				continue
+			}
+		}
+		ast.Inspect(cc, p.visit)
+	}
+}
+
+// keyedType is T in a `case rbKeyed[T](k):` clause, which names T as weakly as a type-switch case does (decision 137).
+func keyedType(cc *ast.CaseClause) ast.Expr {
+	if len(cc.List) != 1 {
+		return nil
+	}
+	call, ok := cc.List[0].(*ast.CallExpr)
+	if !ok {
+		return nil
+	}
+	ix, ok := call.Fun.(*ast.IndexExpr)
+	if !ok {
+		return nil
+	}
+	if id, ok := ix.X.(*ast.Ident); !ok || id.Name != "rbKeyed" {
+		return nil
+	}
+	return ix.Index
+}
+
 // caseTypeNames lists the declared names a type-switch case's types use that kept code has not named yet.
-func (p *pruner) caseTypeNames(cc *ast.CaseClause) []string {
+func (p *pruner) caseTypeNames(types ...ast.Expr) []string {
 	var out []string
-	for _, e := range cc.List {
+	for _, e := range types {
 		ast.Inspect(e, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok && len(p.byName[id.Name]) > 0 && !p.names[id.Name] && !slices.Contains(out, id.Name) {
 				out = append(out, id.Name)
@@ -600,8 +650,11 @@ func (p *pruner) caseTypeNames(cc *ast.CaseClause) []string {
 func (p *pruner) sweep(f *ast.File) {
 	for _, d := range f.Decls {
 		ast.Inspect(d, func(n ast.Node) bool {
-			if ts, ok := n.(*ast.TypeSwitchStmt); ok {
-				p.dropDeadCases(ts)
+			switch n := n.(type) {
+			case *ast.TypeSwitchStmt:
+				p.dropDeadCases(n)
+			case *ast.SwitchStmt:
+				p.dropDeadClauses(n.Body)
 			}
 			return true
 		})

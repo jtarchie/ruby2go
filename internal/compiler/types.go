@@ -365,6 +365,10 @@ func join(a, b Type) (Type, bool) {
 	case isNumeric(a) && isNumeric(b):
 		return TAny{}, true // Integer and Float mix at run time (MRI's coerce); untyped, not Numeric, keeps decision 12's dynamic arithmetic
 	}
+	// Methods of different signatures mix as Method[untyped] (decision 141).
+	if ka, _, _ := methodFn(a); ka != "" && classOf(a) == classOf(b) {
+		return TClass{C: classOf(a), Args: []Type{TAny{}}}, true
+	}
 	// Subclass / superclass: pick the ancestor.
 	if ca, cb := classOf(a), classOf(b); ca != nil && cb != nil && ca != cb {
 		if ca.isSubclassOf(cb) {

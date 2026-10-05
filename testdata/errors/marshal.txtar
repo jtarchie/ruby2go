@@ -1,0 +1,27 @@
+Compile errors for Marshal's hooks (docs/design.md decision 137).
+-- marshal_dump_with_args.rb --
+# error: main.rb:4: marshal_dump takes no arguments and returns what to dump
+class Box
+  #: (Integer) -> Integer
+  def marshal_dump(x) = x
+end
+p Marshal.dump(Box.new)
+-- marshal_dump_void.rb --
+# error: main.rb:4: marshal_dump takes no arguments and returns what to dump
+class Box
+  #: () -> void
+  def marshal_dump
+  end
+end
+p Marshal.dump(Box.new)
+-- marshal_load_two_args.rb --
+# error: main.rb:7: marshal_load takes one argument, the data marshal_dump returned
+class Box
+  #: () -> Integer
+  def marshal_dump = 1
+
+  #: (Integer, Integer) -> void
+  def marshal_load(a, b)
+  end
+end
+p Marshal.dump(Box.new)
