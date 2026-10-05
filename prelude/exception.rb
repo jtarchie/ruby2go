@@ -37,14 +37,69 @@ class Exception < Object
   #: () -> String
   def message = to_s
 
-  # MRI's message with the class name after its first line; highlighting is never applied.
+  # MRI's rb_decorate_message: the class name after the first line (a lone trailing newline dropped), bold and underlined with highlight.
   #: (?highlight: bool) -> String
   def detailed_message(highlight: false)
     m = message
-    return "unhandled exception" if m.empty?
-    first, nl, rest = m.partition("\n")
-    "#{first} (#{__class_name})#{nl}#{rest}"
+    if m.empty?
+      name = instance_of?(RuntimeError) ? "unhandled exception" : __class_name
+      return highlight ? "\e[1;4m#{name}\e[m" : name
+    end
+    i = (m.end_with?("\n") ? m[0, m.size - 1] || "" : m).index("\n")
+    first = i ? m[0, i] || "" : m.chomp
+    head = highlight ? "\e[1m#{first} (\e[1;4m#{__class_name}\e[m\e[1m)\e[m" : "#{first} (#{__class_name})"
+    return head unless i
+    rest = m[i + 1, m.size] || ""
+    rest = rest.split("\n", -1).map { |l| l.empty? ? l : "\e[1m#{l}\e[m" }.join("\n") if highlight
+    "#{head}\n#{rest}"
   end
+
+  # MRI's rb_error_write: the error line, the "from" lines and the causes', no error_highlight snippet (decision 139).
+  #: (?highlight: bool?, ?order: Symbol?) -> String
+  def full_message(highlight: nil, order: nil)
+    hl = highlight.nil? ? $stderr.tty? : highlight
+    bottom = order == :bottom
+    raise ArgumentError, "expected :top or :bottom as order: #{order.inspect}" unless order.nil? || bottom || order == :top
+    shown = [] #: Array[Exception]
+    return "#{hl ? "\e[1mTraceback\e[m" : "Traceback"} (most recent call last):\n#{__report(hl, true, shown)}" if bottom
+    __report(hl, false, shown)
+  end
+
+  # Each cause once (MRI's show_cause), so a cycle ends.
+  #: (bool, bool, Array[Exception]) -> String
+  def __report(hl, bottom, shown)
+    c = cause
+    rest = ""
+    if c && !shown.any? { |x| x.equal?(c) }
+      shown << c
+      rest = c.__report(hl, bottom, shown)
+    end
+    bottom ? "#{rest}#{__from_lines(true)}#{__errinfo(hl)}" : "#{__errinfo(hl)}#{__from_lines(false)}#{rest}"
+  end
+
+  #: (bool) -> String
+  def __errinfo(hl)
+    top = backtrace&.first
+    m = detailed_message(highlight: hl)
+    if m.empty?
+      m = instance_of?(RuntimeError) ? "unhandled exception" : __class_name
+      m = "\e[1;4m#{m}\e[m" if hl
+    end
+    "#{top ? "#{top}: " : __error_pos}#{m}\n"
+  end
+
+  #: (bool) -> String
+  def __from_lines(bottom)
+    bt = backtrace || []
+    n = bt.size
+    return "" if n < 2
+    width = (n - 1).to_s.size
+    (1...n).map { |i| bottom ? "\t#{(n - i).to_s.rjust(width)}: from #{bt[n - i]}\n" : "\tfrom #{bt[i]}\n" }.join
+  end
+
+  # MRI's error_pos: where the program is now, for an exception with no backtrace.
+  #: () -> String
+  def __error_pos = %x{ return rbErrorPos("full_message") }
 
   #: () -> String
   def inspect

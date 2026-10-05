@@ -42,8 +42,8 @@ type Class struct {
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
 	extends       []Include         // `extend M`: included into the class object
 	delegations   []delegation
-	singleFwd     bool // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
-	fwdSingle     bool // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
+	singleFwd     bool     // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
+	fwdSingle     bool     // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
 	meta          *Class   // the class object's class (holds `def self.` methods)
 	metaOf        *Class   // for a metaclass: the class it describes
 	constNames    []string // constants (classes included) declared directly inside, in order
@@ -56,6 +56,7 @@ type Class struct {
 	Display       string // the name Ruby shows, when the declaration has none of its own (a describe's class)
 	specChild     bool   // a nested describe's class: MRI undefines the test methods it inherits
 	specTests     int    // its it/specify count, for MRI's test_0001_ names
+	hidden        bool   // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -477,6 +478,9 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 			cls.TypeParams = append(cls.TypeParams, fld)
 			break
 		}
+	}
+	if _, ok := ann["hidden"]; ok && f.prelude {
+		cls.hidden = true
 	}
 	if g := ann["go_type"]; len(g) > 0 {
 		if isModule {

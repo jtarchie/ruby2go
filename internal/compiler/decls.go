@@ -1280,7 +1280,7 @@ func (c *Compiler) emitDescendants(meta, desc *Class) {
 	c.w("func (self *%s) _Descendants() []any { return []any{%s} }\n\n", meta.Name, strings.Join(subs, ", "))
 	var anc []string
 	for _, k := range fullAncestors(desc) {
-		if k.meta != nil {
+		if k.meta != nil && (!k.hidden || k == desc) {
 			anc = append(anc, classVar(k))
 		}
 	}

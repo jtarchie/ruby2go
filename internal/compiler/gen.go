@@ -1643,7 +1643,7 @@ func terminates(st *parser.StatementsNode) bool {
 	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode, *parser.RetryNode, *parser.RedoNode:
 		return true
 	case *parser.CallNode:
-		return last.Receiver == nil && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
+		return kernelRecv(last) && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
 	}
 	return false
 }

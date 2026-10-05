@@ -1,6 +1,8 @@
 # rbs_inline: enabled
 
 # Shared by IO and File, as MRI's IO::generic_writable/readable; includers supply write and gets.
+# rb2go's own, so ancestors leaves it out.
+# @hidden
 module IOWritable
   #: (untyped) -> Integer
   def write(x) = raise(NotImplementedError)
@@ -48,6 +50,7 @@ module IOWritable
   end
 end
 
+# @hidden
 module IOReadable
   #: () -> String?
   def gets = raise(NotImplementedError)

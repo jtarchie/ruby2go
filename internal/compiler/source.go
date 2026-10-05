@@ -167,6 +167,8 @@ func (f *File) annotations(ln int) map[string][]string {
 			out[key] = append(out[key], strings.TrimSpace(strings.TrimPrefix(t[5:], key)))
 		case t == "@dynamic":
 			out["dynamic"] = nil
+		case t == "@hidden":
+			out["hidden"] = nil
 		case strings.HasPrefix(t, "@self "):
 			out["self"] = append(out["self"], strings.TrimSpace(t[6:]))
 		case strings.HasPrefix(t, "@go_type "):

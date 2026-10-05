@@ -1172,9 +1172,11 @@ resolve; anything not listed is still open.
     `Hash.new` does. A generic `@go_type` class may now define class
     methods whose signatures use only their own type parameters (`[X]
     (Array[X]) -> Set[X]`); generic struct classes still may not.
-    There is no `Array#to_set`: Go rejects the instantiation cycle
-    `Array[E]` → `Set[E]` → `Hash[E, …]` → `Array[[E, …]]` (see decision
-    9); `Set.new(xs)` is the spelling.
+    `Array#to_set` and `Enumerable#to_set` exist since decision 139:
+    the instantiation cycle `Array[E]` → `Set[E]` → `Hash[E, …]` →
+    `Array[[E, …]]` (see decision 9) that kept them out went away with
+    decision 86's free funcs. *(Revised: `Set.new(xs)` was the only
+    spelling.)*
     `Set.new` also takes a `Range`, another `Set` or a `Hash` (as
     `[key, value]` pairs), not just an `Array`: decision 12's overload
     mechanism (`__new_<class>`, keyed on the first argument's static
@@ -3341,7 +3343,7 @@ resolve; anything not listed is still open.
       method of its own class, a top-level def, or `super(...)`), and its
       `(...)` call passes them on; an override keeps its parent's result,
       any other's is inferred. Literal splats `[*a, 1, *b]` concatenate.
-    `Array#to_set` stays out (decision 44's instantiation cycle). Instance-variable reflection is decision 123, class variables
+    `Array#to_set` is decision 139's. Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder
     (issue #50). A wrapper or shared arm for an inherited Kernel method
@@ -3446,9 +3448,11 @@ resolve; anything not listed is still open.
     the class, its modules (last included first, each with its own), then
     its superclass's, through Object, Kernel and BasicObject; a module an
     ancestor already includes keeps only that place, as MRI skips
-    re-including it. `included_modules` is its modules. The table lists
-    rb2go's own prelude modules too (File's IOReadable and IOWritable),
-    which MRI's ancestors lack. (`testdata/test/object_test.rb`
+    re-including it. `included_modules` is its modules. rb2go's own
+    prelude modules (File's IOReadable and IOWritable) are left out, as
+    MRI has none (decision 139). *(Revised: the table listed them.)*
+    `Kernel.puts` and the other module functions are decision 139's.
+    (`testdata/test/object_test.rb`
     `ObjectRubySpecAncestorsTest`.) A top-level `include M` is Object's,
     as MRI's main object includes into Object: M's methods are on every
     object and in every ancestors list. *(Revised: it was a dynamic call
@@ -4064,6 +4068,61 @@ resolve; anything not listed is still open.
       `.bytes`.
     (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
     `testdata/test/string_test.rb` `StringPackTest`.)
+139. Core fidelity (#55): `to_set`, ancestors without rb2go's modules,
+    `Kernel.puts`, `full_message`. (`Range#%` and blockless `step` are
+    decision 140's.)
+    - **`Enumerable#to_set`** is `Set.new(to_a)`, with a
+      `__to_set_block` overload (decision 12) for `to_set { |x| ... }` /
+      `to_set(&:m)`; `Set#to_set` stays `self`. Decision 44's
+      instantiation cycle is gone since decision 86: a generic
+      primitive's methods are free funcs, and the forwarder on `Array[E]`
+      is only emitted when a kept interface names `To_set`, which nothing
+      does. Like `tally` and every other Enumerable method on a generic
+      primitive, `to_set` on an `untyped` Array raises NoMethodError when
+      run (the dynamic tables list the class's own methods there).
+    - **`Module#ancestors`** (and `included_modules`, which reads the same
+      table) leaves out a prelude module marked `# @hidden`: rb2go's own
+      helpers that MRI lacks, today `IOWritable` and `IOReadable`. Their
+      methods stay on the includer. The marker is read in prelude files
+      only. `File.ancestors` is still not MRI's (`File < Object` here, and
+      there is no `File::Constants`).
+    - **Kernel's module functions** are public on `Kernel` itself: a call
+      on `singleton(Kernel)` may reach a private Kernel method when its
+      name is one of MRI's `Kernel.singleton_methods` (a fixed list in
+      `kernelModuleNames`), or an overload twin of one; `pp`,
+      `initialize_copy` and the rest stay private, as MRI's NoMethodError
+      says. `Kernel.raise`/`fail`/`lambda`/`proc`/`block_given?`/
+      `__method__`/`__dir__` go to the intrinsic the receiverless call
+      does, and `Kernel.raise` ends a statement list as `raise` does.
+      `respond_to?` answers true for those names. `Kernel.require` is
+      not an intrinsic (rb2go loads files at compile time).
+    - **`Exception#full_message(highlight:, order:)`** is MRI's
+      `rb_error_write` in Ruby: the error line (`backtrace[0]: ` and
+      `detailed_message(highlight:)`), the `\tfrom` lines (or, with
+      `order: :bottom`, a `Traceback` header and numbered lines, widths
+      padded), then each cause's report (before, with `:bottom`), each
+      cause once. `highlight` defaults to `$stderr.tty?`, `order` to
+      `:top`; another order raises MRI's ArgumentError. No error_highlight
+      snippet is ever added: rb2go has no node locations at run time, and
+      MRI only adds one for NameError/TypeError/ArgumentError raised with
+      a location, so checks use other classes. An exception with no
+      backtrace starts with MRI's `error_pos`, `file:line:in
+      'full_message': `, the innermost user frame of the Go stack
+      (`rbErrorPos`, the same `runtime.Callers` walk as decision 106, only
+      when asked). A cause raised in a rescue that does not bind has no
+      backtrace in rb2go (decision 106), so its line is that `error_pos`
+      where MRI shows where it was raised. `detailed_message` now follows
+      `rb_decorate_message` too: a lone trailing newline is dropped, an
+      empty message is the class name (`unhandled exception` only for
+      RuntimeError itself), and `highlight: true` bolds it with the class
+      underlined.
+    (`testdata/test/stdlib_test.rb` `SetTest#test_to_set`,
+    `testdata/test/object_test.rb` `ObjectRubySpecAncestorsTest` and
+    `ObjectKernelModuleFunctionTest`, `testdata/test/control_test.rb`
+    `ControlRubySpecExceptionTest`, `testdata/errors/strings.txtar`
+    `kernel_module_pp`.) `ObjectRubySpecAncestorsTest` subtracts what other
+    libraries mix into Object (`PP::ObjectMixin`, `JSON::GeneratorMethods`)
+    so the suite passes in one MRI process.
 
 140. `Enumerator`, external iteration, `Enumerator::Lazy` and `Fiber`
     (#41), plus #55's `ArithmeticSequence`. All of it is sequences

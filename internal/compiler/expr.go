@@ -1250,6 +1250,16 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		if e, ok := f.genKernelIntrinsic(n, expected); ok {
 			return e
 		}
+	} else if kernelConst(n.Receiver) && kernelModuleNames[n.Name] && n.Name != "require" && n.Name != "require_relative" {
+		var t Type
+		f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
+		if kernelMeta(t) {
+			bare := *n
+			bare.Receiver = nil
+			if e, ok := f.genKernelIntrinsic(&bare, expected); ok {
+				return e
+			}
+		}
 	}
 	if e, ok := f.genBlockCall(n); ok {
 		return e
@@ -2366,12 +2376,56 @@ func (f *fctx) checkVisibility(n parser.Node, m *Method, recv expr) {
 	if recv.code == f.selfCode || f.implicitCall {
 		return
 	}
-	if m.Private {
+	if m.Private && !kernelModuleFunction(m, recv.typ) {
 		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
 	}
 	if m.Protected && (f.owner == nil || !f.owner.isSubclassOf(m.Owner)) {
 		f.errorf(n, "protected method %s called on %s", m.Name, recv.typ)
 	}
+}
+
+// MRI's Kernel.singleton_methods; the rest of Kernel's private methods (pp, initialize_copy) stay private on Kernel too.
+var kernelModuleNames = func() map[string]bool {
+	out := map[string]bool{}
+	for _, s := range strings.Fields("Array Complex Float Hash Integer Pathname Rational String __callee__ __dir__ __method__ ` abort at_exit autoload autoload? binding block_given? caller caller_locations catch eval exec exit exit! fail fork format gets global_variables iterator? lambda load local_variables loop open p print printf proc putc puts raise rand readline readlines require require_relative select set_trace_func sleep spawn sprintf srand syscall system test throw trace_var trap untrace_var warn") {
+		out[s] = true
+	}
+	return out
+}()
+
+func kernelMeta(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && c.C.metaOf != nil && c.C.metaOf.RubyName == "Kernel"
+}
+
+// kernelConst is a syntactic guess (`Kernel`, `::Kernel`) for passes with no scope to resolve it in; genCall checks the type.
+func kernelConst(n parser.Node) bool {
+	switch r := n.(type) {
+	case *parser.ConstantReadNode:
+		return r.Name == "Kernel"
+	case *parser.ConstantPathNode:
+		return r.Parent == nil && r.Name != nil && *r.Name == "Kernel"
+	}
+	return false
+}
+
+// kernelRecv: a receiverless call, or one on Kernel, the module function form.
+func kernelRecv(n *parser.CallNode) bool { return n.Receiver == nil || kernelConst(n.Receiver) }
+
+// `Kernel.puts`: module_function makes these public on Kernel itself (decision 139).
+func kernelModuleFunction(m *Method, recv Type) bool {
+	if !kernelMeta(recv) || m.Owner == nil || m.Owner.RubyName != "Kernel" {
+		return false
+	}
+	if kernelModuleNames[m.Name] {
+		return true
+	}
+	for pub := range kernelModuleNames { // an overload twin (`__Integer_string`, decision 12) stands in for its public method
+		if strings.HasPrefix(m.Name, "__"+overloadBase(pub)+"_") {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
@@ -4716,7 +4770,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	if name == "" || cls == nil {
 		return expr{}, false
 	}
-	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name]) {
+	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name] || kernelModuleFunction(e.M, recv.typ)) {
 		f.discard(recv)
 		return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 	}

@@ -142,6 +142,17 @@ module Enumerable
     out
   end
 
+  # A free func, never a forwarder on Array[E], so Go sees no Array → Set → Hash → Array instantiation cycle (decision 139).
+  #: () -> Set[E]
+  def to_set = Set.new(to_a)
+
+  #: [U] () { (E) -> U } -> Set[U]
+  def __to_set_block
+    out = [] #: Array[U]
+    each { |x| out << yield(x) }
+    Set.new(out)
+  end
+
   #: () -> Hash[E, Integer]
   def tally
     out = {} #: Hash[E, Integer]

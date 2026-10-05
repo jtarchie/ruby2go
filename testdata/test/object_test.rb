@@ -4307,10 +4307,44 @@ module ObjectTests
 
   class ObjectRubySpecAncestorsTest < Minitest::Test
     def test_ancestors
-      assert_equal [AncB, AncGreets, AncA, AncMarks, Object, Kernel, BasicObject], AncB.ancestors
-      assert_equal [[Object, Kernel, BasicObject], [Comparable], [Kernel], [BasicObject]], [Object.ancestors, Comparable.ancestors, Kernel.ancestors, BasicObject.ancestors]
-      assert_equal [AncGreets, AncMarks, Kernel], AncB.included_modules
+      extra = Object.included_modules - [Kernel] # what other files' libraries mix into Object in one MRI process (pp, json)
+      assert_equal [AncB, AncGreets, AncA, AncMarks, Object, Kernel, BasicObject], AncB.ancestors - extra
+      assert_equal [[Object, Kernel, BasicObject], [Comparable], [Kernel], [BasicObject]], [Object.ancestors - extra, Comparable.ancestors, Kernel.ancestors, BasicObject.ancestors]
+      assert_equal [AncGreets, AncMarks, Kernel], AncB.included_modules - extra
       assert_equal [true, false], [Integer.ancestors.include?(Comparable), AncA.ancestors.include?(AncGreets)]
+    end
+
+    # rb2go's own IOReadable and IOWritable are left out, as MRI has neither (decision 139)
+    def test_no_prelude_modules
+      assert_equal [[], []], [File.ancestors.map(&:to_s).grep(/\AIO[A-Z]/), IO.included_modules.map(&:to_s).grep(/\AIO[A-Z]/)]
+    end
+  end
+
+  # Kernel's module functions are public on Kernel itself (#55, decision 139)
+  class ObjectKernelModuleFunctionTest < Minitest::Test
+    def test_output
+      assert_output("x\nab1\n") do
+        Kernel.puts "x"
+        Kernel.print "a", "b"
+        Kernel.p 1
+      end
+    end
+
+    def test_values
+      assert_equal ["00042", "hi!", 13, 1.5, 0], [Kernel.format("%05d", 42), Kernel.sprintf("%s!", "hi"), Kernel.Integer("12") + 1, Kernel.Float("1.5"), Kernel.rand(1)]
+      assert_equal [true, true, false], [Kernel.respond_to?(:puts), Kernel.respond_to?(:format), Kernel.respond_to?(:initialize_copy)]
+      assert_equal 7, Kernel.catch(:t) { Kernel.throw :t, 7 }
+    end
+
+    def test_control
+      e = assert_raises(ArgumentError) { Kernel.raise ArgumentError, "boom" }
+      assert_equal "boom", e.message
+      n = 0
+      Kernel.loop do
+        n += 1
+        break if n > 2
+      end
+      assert_equal 3, n
     end
   end
 

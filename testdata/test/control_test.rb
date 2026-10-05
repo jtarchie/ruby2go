@@ -4704,10 +4704,66 @@ module ControlTests
   end
 
   # ruby/spec core/exception gaps (#49): detailed_message, errno, NameError#name and #receiver
+  class ControlCustomDetail < StandardError
+    #: (?highlight: bool) -> String
+    def detailed_message(highlight: false) = "custom"
+  end
+
   class ControlRubySpecExceptionTest < Minitest::Test
     def test_detailed_message
       assert_equal ["boom (RuntimeError)", "unhandled exception", "a (RuntimeError)\nb", "boom (RuntimeError)"],
                    [RuntimeError.new("boom").detailed_message, RuntimeError.new("").detailed_message, RuntimeError.new("a\nb").detailed_message, RuntimeError.new("boom").detailed_message(highlight: false)]
+      assert_equal ["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError"],
+                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", ""].map { |m| StandardError.new(m).detailed_message }
+      assert_equal ["\e[1ma (\e[1;4mStandardError\e[m\e[1m)\e[m\n\e[1mb\e[m\n\e[1mc\e[m\n", "\e[1;4mStandardError\e[m", "\e[1;4munhandled exception\e[m"],
+                   [StandardError.new("a\nb\nc\n").detailed_message(highlight: true), StandardError.new("").detailed_message(highlight: true), RuntimeError.new("").detailed_message(highlight: true)]
+    end
+
+    # Exception#full_message (#55, decision 139): MRI's report, no error_highlight snippet
+    def test_full_message_without_backtrace
+      line = __LINE__ + 1
+      got = [RuntimeError.new("made").full_message(highlight: false), StandardError.new("").full_message(highlight: false, order: :bottom), RuntimeError.new("").full_message]
+      assert_equal ["#{__FILE__}:#{line}:in 'full_message': made (RuntimeError)\n", "Traceback (most recent call last):\n#{__FILE__}:#{line}:in 'full_message': StandardError\n", "#{__FILE__}:#{line}:in 'full_message': unhandled exception\n"], got
+    end
+
+    def test_full_message_with_backtrace
+      e = StandardError.new("x")
+      e.set_backtrace(["a.rb:1:in 'f'", "a.rb:2:in 'g'"])
+      assert_equal "a.rb:1:in 'f': x (StandardError)\n\tfrom a.rb:2:in 'g'\n", e.full_message(highlight: false)
+      assert_equal "Traceback (most recent call last):\n\t1: from a.rb:2:in 'g'\na.rb:1:in 'f': x (StandardError)\n", e.full_message(highlight: false, order: :bottom)
+      assert_equal "a.rb:1:in 'f': \e[1mx (\e[1;4mStandardError\e[m\e[1m)\e[m\n\tfrom a.rb:2:in 'g'\n", e.full_message(highlight: true, order: :top)
+      assert_equal "\e[1mTraceback\e[m (most recent call last):\n\t1: from a.rb:2:in 'g'\na.rb:1:in 'f': \e[1mx (\e[1;4mStandardError\e[m\e[1m)\e[m\n", e.full_message(highlight: true, order: :bottom)
+      long = StandardError.new("y\nz")
+      long.set_backtrace((1..11).map { |i| "b.rb:#{i}" })
+      want = "Traceback (most recent call last):\n" + (2..11).reverse_each.map { |i| "\t#{(i - 1).to_s.rjust(2)}: from b.rb:#{i}\n" }.join + "b.rb:1: y (StandardError)\nz\n"
+      assert_equal want, long.full_message(highlight: false, order: :bottom)
+      assert_equal "c.rb:1: custom\n", ControlCustomDetail.new("q").tap { |c| c.set_backtrace(["c.rb:1"]) }.full_message(highlight: false)
+    end
+
+    def test_full_message_cause
+      e = assert_raises(IOError) do
+        begin
+          raise "inner"
+        rescue => inner
+          inner.set_backtrace(["i.rb:1:in 'x'"])
+          raise IOError, "outer"
+        end
+      end
+      e.set_backtrace(["o.rb:1:in 'y'", "o.rb:2:in 'z'"])
+      assert_equal "o.rb:1:in 'y': outer (IOError)\n\tfrom o.rb:2:in 'z'\ni.rb:1:in 'x': inner (RuntimeError)\n", e.full_message(highlight: false)
+      assert_equal "Traceback (most recent call last):\ni.rb:1:in 'x': inner (RuntimeError)\n\t1: from o.rb:2:in 'z'\no.rb:1:in 'y': outer (IOError)\n", e.full_message(highlight: false, order: :bottom)
+    end
+
+    #: () -> void
+    def control_fm_raise = raise(IOError, "boom")
+
+    def test_full_message_raised
+      e = assert_raises(IOError) { control_fm_raise }
+      first = e.full_message(highlight: false).lines.first || ""
+      assert_equal "#{e.backtrace&.first}: boom (IOError)\n", first
+      assert_match(/control_test\.rb:\d+:in 'ControlTests::ControlRubySpecExceptionTest#control_fm_raise': boom/, first)
+      err = assert_raises(ArgumentError) { e.full_message(order: :foo) }
+      assert_equal "expected :top or :bottom as order: :foo", err.message
     end
 
     def test_errno
