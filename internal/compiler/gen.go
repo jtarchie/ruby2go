@@ -765,7 +765,7 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 // genCondCall is genCond for the calls it reads directly: block_given?
 // (narrowing an optional block), !x and x.nil?.
 func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
-	if name := f.m.optionalBlockLocal(); name != "" && n.Name == "block_given?" && n.Receiver == nil && n.Arguments == nil {
+	if name := f.m.optionalBlockLocal(); name != "" && n.Name == "block_given?" && kernelRecv(n) && n.Arguments == nil {
 		c, nw := f.genCond(&parser.LocalVariableReadNode{Name: name, Location: n.Location}) // narrows the block to present
 		return c, nw, true
 	}
@@ -1648,7 +1648,7 @@ func terminates(st *parser.StatementsNode) bool {
 	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode, *parser.RetryNode, *parser.RedoNode:
 		return true
 	case *parser.CallNode:
-		return last.Receiver == nil && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
+		return kernelRecv(last) && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
 	}
 	return false
 }

@@ -174,7 +174,7 @@ func (w *unsetWalk) walk(n parser.Node) {
 		w.st.dead = true
 	case *parser.CallNode:
 		w.children(n)
-		if n.Receiver == nil && (n.Name == "raise" || n.Name == "fail" || n.Name == "throw") {
+		if kernelRecv(n) && (n.Name == "raise" || n.Name == "fail" || n.Name == "throw") {
 			w.raise()
 		}
 	case *parser.BlockNode:

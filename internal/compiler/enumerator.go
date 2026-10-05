@@ -84,7 +84,11 @@ func (f *fctx) loopRescue(n *parser.CallNode) *parser.BeginNode {
 	if !isStopLoop(n) || f.c.loopInner[n] {
 		return nil
 	}
-	if e := f.resolve(f.selfType, "loop"); e == nil || !e.M.File.prelude {
+	recvT := f.selfType
+	if n.Receiver != nil { // Kernel.loop
+		f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
+	}
+	if e := f.resolve(recvT, "loop"); e == nil || !e.M.File.prelude {
 		return nil
 	}
 	return f.c.rewrite(n, func() parser.Node {
@@ -112,7 +116,7 @@ func (f *fctx) loopRescue(n *parser.CallNode) *parser.BeginNode {
 // isStopLoop is a `loop { }` whose block may raise StopIteration, which loopRescue wraps.
 func isStopLoop(n *parser.CallNode) bool {
 	b, ok := n.Block.(*parser.BlockNode)
-	return ok && n.Name == "loop" && n.Receiver == nil && n.Arguments == nil && raisesStop(b.Body)
+	return ok && n.Name == "loop" && kernelRecv(n) && n.Arguments == nil && raisesStop(b.Body)
 }
 
 // raisesStop is a loop body that may end the loop with StopIteration: lexically, since what a called method raises is not known here.

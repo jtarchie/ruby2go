@@ -511,6 +511,35 @@ module StdlibTests
       divided = Set.new([1, 2, 3, 4, 5, 6]).divide { |x| x % 3 }
       assert_equal [[1, 4], [2, 5], [3, 6]], divided.map(&:sort).sort_by(&:first)
     end
+
+    # Array#to_set and Enumerable#to_set (#55, decision 139)
+    def test_to_set
+      assert_equal Set[1, 2, 3], [1, 2, 2, 3].to_set
+      assert_equal [1, 2, 3, 4], (1..4).to_set.to_a
+      assert_equal [[:a, 1]], { a: 1 }.to_set.to_a
+      assert_equal [["a", 0], ["b", 1], ["a", 2]], %w[a b a].each_with_index.to_set.to_a
+      assert_equal [[1, 2], [3, 4]], [[1, 2], [3, 4]].to_set.to_a
+      s = Set[3, 1]
+      assert_same s, s.to_set
+      assert_equal [10, 20], [1, 2].to_set { |v| v * 10 }.to_a
+      assert_equal [3], { 1 => 2 }.to_set { |k, v| k + v }.to_a
+      assert_equal %w[1 2 3], (1..3).to_set(&:to_s).to_a
+      assert_equal [2, 4, 6], (1..3).lazy.map { |x| x * 2 }.to_set.to_a
+      assert_equal 1, [[1, 2].to_set, [2, 1].to_set].to_set.size
+      assert_equal %w[x y], SetBag.new.to_set.to_a
+      assert_equal true, [1].respond_to?(:to_set)
+    end
+  end
+
+  class SetBag
+    include Enumerable #[String]
+
+    #: () { (String) -> void } -> void
+    def each
+      yield "x"
+      yield "y"
+      yield "x"
+    end
   end
 
   # Was testdata/run/stringio_mid.rb.

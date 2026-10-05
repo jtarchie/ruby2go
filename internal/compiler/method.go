@@ -183,6 +183,9 @@ func (f *fctx) genBoundMethod(n parser.Node, recv expr, name string, public bool
 	if e == nil {
 		f.errorf(n, "undefined method '%s' for %s", name, recv.typ)
 	}
+	if public && kernelModuleFunction(e.M, recv.typ) { // Kernel.public_method(:puts): public on Kernel itself (decision 139)
+		public = false
+	}
 	env := f.callEnv(n, e, recv)
 	fe := e // F's source: an overload by count (`first`, `__first_0`) answers the fewest arguments
 	if o := minOverload(e); o != nil {

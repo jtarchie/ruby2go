@@ -56,6 +56,7 @@ type Class struct {
 	Display       string // the name Ruby shows, when the declaration has none of its own (a describe's class)
 	specChild     bool   // a nested describe's class: MRI undefines the test methods it inherits
 	specTests     int    // its it/specify count, for MRI's test_0001_ names
+	hidden        bool   // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -478,6 +479,9 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 			cls.TypeParams = append(cls.TypeParams, fld)
 			break
 		}
+	}
+	if _, ok := ann["hidden"]; ok && f.prelude {
+		cls.hidden = true
 	}
 	if g := ann["go_type"]; len(g) > 0 {
 		if isModule {
