@@ -100,6 +100,12 @@ class File < Object
     return Integer(len(s))
   }
 
+  #: (String) -> String
+  def self.binread(path) = read(path)
+
+  #: (String, untyped) -> Integer
+  def self.binwrite(path, data) = write(path, data)
+
   #: (String) -> Array[String]
   def self.readlines(path) = File.open(path) { |f| f.readlines }
 

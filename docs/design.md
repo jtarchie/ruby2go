@@ -3883,3 +3883,94 @@ resolve; anything not listed is still open.
       no tag is added.
     ([example 91](../examples/91_socket/main.rb),
     `testdata/test/socket_test.rb`, `testdata/errors/socket.txtar`.)
+137. `Marshal` (#47) round-trips the closed world's object graphs in
+    rb2go's own bytes, never MRI's (`prelude/marshal.rb`,
+    `prelude/go/marshal.go`, `internal/compiler/marshal.go`).
+    - **Format.** `RB2GO\x04\x08`, the payload's length (8 bytes,
+      little-endian) and one value: a kind byte and its body (`0` nil,
+      `T`/`F`, `i` a varint, `f` a float's bits, `"` String, `:` Symbol,
+      `@` a back-reference, and four records that name their type: `o` a
+      reference value, `u` an object dumped through its `marshal_dump`,
+      `v` a value without identity (a tuple), `c` a class object). Every
+      reference value (a Go pointer) is numbered as its record starts, on
+      both sides, so a shared object loads as one object and a cycle
+      (`a = []; a << a`) stays a cycle. Not `gob` behind a header, as the
+      issue suggested: gob has no back-references (a cycle never ends, a
+      shared value is duplicated), only encodes exported fields, and names
+      Go types, not the closed world's classes, so the reference table and
+      a type tag per value were needed anyway and gob would only have
+      wrapped them. The length is what lets `Marshal.load(io)` read exactly
+      one dump from a `File` or `StringIO`, so dumps written one after
+      another load one at a time, as MRI's do. MRI's bytes start `\x04\x08`
+      and get a `TypeError` saying so; MRI rejects ours ("format version
+      4.8 required"). `MAJOR_VERSION`/`MINOR_VERSION` are MRI's 4 and 8.
+    - **Types.** A container or tuple is named by its Go type
+      (`Array[PointI]`, `Tuple2[Integer, String]`) and loads back as
+      exactly that instantiation, so `copy == data` holds, a typed ivar
+      takes it without conversion, and identity survives. A struct class
+      (user classes, `Struct`, `Data`, exceptions, `Date`/`DateTime`,
+      decision 133) is named by its Ruby name and holds its assigned ivars
+      by name, read through `_Ivars` and written through `_IvarSet`
+      (decision 123, which converts to each ivar's type); it is allocated
+      without `initialize`, as MRI allocates. A class object is its name.
+      `Time` (instant, nanoseconds, UTC flag, zone), `Rational`,
+      `Complex`, `BigDecimal`, `Regexp` and `Random` (the MT19937 state,
+      so the copy continues the sequence) are written by hand. Strings
+      are values in rb2go, so `[s, s]` loads as two equal Strings where
+      MRI keeps one. Frozen state is not kept, as MRI's `load` without
+      `freeze:` does not.
+    - **Which types.** The compiler collects every concrete
+      `Array`/`Hash`/`Set`/`Range` instantiation and tuple type it
+      renders and every expression's type (`genExpr`: an inferred local's
+      type is never rendered). An instantiation only Go code builds
+      (`JSON.parse`'s `Hash[String, any]`) has no case: it dumps through
+      `_ToAny` as `Array[any]`/`Hash[any, any]`/`Set[any]`/`Range[any]`,
+      keeping its identity, and loads back as that.
+    - **Pruning.** `rbMDumpGen`/`rbMLoadGen` (containers, tuples, hooks)
+      and `rbMDumpObjGen`/`rbMLoadObjGen` (struct classes, class objects)
+      are generated switches whose every case names its type weakly: the
+      dump side is a type switch (decision 49), and the load side's
+      string switch writes each case as `rbKeyed[T](tag)`, which the
+      pruner now treats like a type-switch case, dropping it unless
+      something else keeps `T`. A program without `Marshal` keeps none of
+      it. The container cases are rendered when the tables go out
+      (rendering notes boxes and tuples they list) and emitted in a later
+      round once `Marshal` is reached (minitest reaches test methods only
+      through `_Call`, a table). The class cases go out last and only for
+      the classes reached by then: thousands of pending cases slowed the
+      pruner, and a skipped class reached later, or a value type noted
+      after the cases were rendered, recompiles eagerly
+      (`errPruneIncomplete`), where every class gets a case.
+    - **Hooks.** A class defining `marshal_dump` dumps what it returns
+      and loads by passing that, converted to `marshal_load`'s parameter
+      type, to `marshal_load` on an object allocated without
+      `initialize`. `marshal_dump` taking arguments or returning void, and
+      `marshal_load` not taking exactly one argument, are compile errors;
+      a missing `marshal_load` is MRI's `TypeError` at load (`instance of
+      C needs to have method 'marshal_load'`). `_dump`/`self._load` are
+      not supported.
+    - **Errors.** MRI's messages: `no _dump_data is defined for class
+      Proc` (likewise `Thread`, `Thread::Mutex`, `StringIO`, and a Go
+      value behind a prelude ivar as `Object`), `can't
+      dump IO`/`File`/`Thread::Queue`; `marshal data too short`
+      (`ArgumentError`), `exceed depth limit` for `dump(obj, limit)`,
+      `undefined class/module X` for a class the loading program does not
+      keep. `singleton can't be dumped` and `can't dump anonymous class`
+      cannot arise: a singleton method on an object (`def o.x`) is a
+      compile error, so no object has a singleton class, and every class
+      is a named constant of the closed world (`Class.new` only as a
+      constant's value). A user generic class has no case and gets the
+      `no _dump_data` message. rb2go names `Mutex` and the queues without
+      MRI's `Thread::`; the messages add it.
+    - **IO forms.** `dump(obj, io)` calls `io.write` and answers `io`;
+      `dump(obj, io, limit)` too. `load(io)` reads one dump from a `File`
+      or `StringIO`, and calls `read` on anything else. `Marshal.restore`
+      is `load`. `load`'s proc argument and `freeze:` are not built.
+      `File.binread`/`File.binwrite` came along (Strings are bytes, so
+      they are `read`/`write`), as did noting a proc literal's Go type
+      for `rbIsProc`, which Marshal's `Proc` message needs.
+    - **PStore** (#1's won't-do table) is now feasible as a prelude
+      class over this: a `Hash[untyped, untyped]` root marshalled to its
+      file inside `transaction`, `abort`/`commit` by `catch`/`throw`, and
+      `read_only` checks. It is left for its own issue.
+    (`testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
