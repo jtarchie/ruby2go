@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -46,23 +47,24 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 	case *parser.CallNode:
 		if call, isModule := anonClassCall(n); call != nil {
 			c.anonCount++
-			var cls *Class
+			name := fmt.Sprintf("RbAnon%d", c.anonCount)
 			// an anonymous class's body fails where the literal stands (a test's
 			// skip, decision 127), not for the whole program: the error waits there
-			err := catchCompileError(func() { cls = c.declareAnon(ctx, f, call, isModule, fmt.Sprintf("RbAnon%d", c.anonCount), scope) })
+			err := catchCompileError(func() { c.declareAnon(ctx, f, call, isModule, name, scope) })
 			if err != nil {
 				if c.anonErrors == nil {
 					c.anonErrors = map[*parser.CallNode]compileError{}
 				}
 				c.anonErrors[call] = *err
-				cls = c.classes[fmt.Sprintf("RbAnon%d", c.anonCount)]
-				if cls == nil {
-					return
-				}
+			}
+			cls := c.anonClasses[call] // not c.classes[name]: that may be a user's class the error was about
+			if cls == nil {
+				return
 			}
 			// MRI's anonymous class prints its address; one class per literal has none, so its place stands in
 			cls.Display = fmt.Sprintf("#<%s:%s:%d>", map[bool]string{true: "Module", false: "Class"}[isModule], f.Name, f.line(call.Location.StartOffset))
-			c.topConstNames = c.topConstNames[:len(c.topConstNames)-1] // not a name user code can reach
+			// not a name user code can reach; by name, since the block's own constants follow it in the enclosing scope's table
+			c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
 			return
 		}
 	}

@@ -223,7 +223,11 @@ func (c *Compiler) sameParamShape(m, parent *Method) bool {
 	if m.Node == nil || m.Kind != kindDef {
 		return true
 	}
-	names, _, rest := c.defParams(m, m.Node.Parameters)
+	// read off the node, not defParams: that rejects a &block before m.Block is known
+	own, ownRest := 0, false
+	if ps := m.Node.Parameters; ps != nil {
+		own, ownRest = len(ps.Requireds)+len(ps.Optionals)+len(ps.Posts), ps.Rest != nil
+	}
 	npos, hasRest := 0, false
 	var kws []string
 	for _, p := range parent.Params {
@@ -237,15 +241,15 @@ func (c *Compiler) sameParamShape(m, parent *Method) bool {
 			npos++
 		}
 	}
-	var own []string
+	var ownKws []string
 	for _, k := range c.defKeywords(m, m.Node.Parameters) {
 		if !k.rest {
-			own = append(own, k.name)
+			ownKws = append(ownKws, k.name)
 		}
 	}
 	slices.Sort(kws)
-	slices.Sort(own)
-	return npos == len(names) && hasRest == (rest != "") && slices.Equal(kws, own)
+	slices.Sort(ownKws)
+	return npos == own && hasRest == ownRest && slices.Equal(kws, ownKws)
 }
 
 // rehome rebuilds a type from an earlier compile with this one's classes, by name.
@@ -327,10 +331,7 @@ func (c *Compiler) collectUses() {
 	c.loadCode = map[*File]string{}
 	for _, m := range c.userMethods() {
 		c.debugInfer(catchCompileError(func() {
-			if m.inferRet {
-				m.Ret = nil
-				c.inferRet(m)
-			}
+			c.inferRet(m) // the round's pass typed it already; this retries one that failed there
 			if m.Owner == nil {
 				c.emitTopDef(m)
 			} else {

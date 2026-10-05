@@ -240,13 +240,14 @@ func (c *Compiler) emitDynName(name string) {
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
 	c.emitDynArms(shared, false)
+	kernel := c.nilKernelBody(name) // built once: a body that cannot cross `any` warns
 	if v, ok := nilConversions[name]; ok {
 		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
-	} else if body := c.nilKernelBody(name); body != "" {
-		c.w("\tif recv == nil {\n\t\tself := recv\n%s\t}\n", body)
+	} else if kernel != "" {
+		c.w("\tif recv == nil {\n\t\tself := recv\n%s\t}\n", kernel)
 	}
-	if body := c.nilKernelBody(name); body != "" { // a bare Object (Object.new, main) has only Kernel's and Object's methods
-		c.w("\tif _, ok := recv.(*Object); ok {\n\t\tself := recv\n%s\t}\n", body)
+	if kernel != "" { // a bare Object (Object.new, main) has only Kernel's and Object's methods
+		c.w("\tif _, ok := recv.(*Object); ok {\n\t\tself := recv\n%s\t}\n", kernel)
 	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)

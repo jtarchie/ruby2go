@@ -50,11 +50,27 @@ module InferTests
     def initialize = super(4)
   end
 
+  class Walker
+    #: () { (Integer) -> void } -> void
+    def walk
+      yield 1
+    end
+  end
+
+  class BlockWalker < Walker
+    def walk(&blk) # an unannotated override with a &block takes Walker#walk's signature
+      blk.call(2)
+    end
+  end
+
   class InferTest < Minitest::Test
     def test_method_params
       assert_equal [41, "n=3", "x:4", "none", "5"], [infer_chain(20), infer_label(3), infer_label(4, "x:"), infer_maybe(nil), infer_maybe(5)]
       assert_equal [11, 3], [infer_kw(a: 1), infer_kw(a: 1, b: 2)]
       assert_equal [3, 4], [Shape.new(3).sides, Square.new.sides]
+      walked = [] #: Array[Integer]
+      BlockWalker.new.walk { |i| walked << i }
+      assert_equal [2], walked
     end
 
     def test_enumerable_from_each

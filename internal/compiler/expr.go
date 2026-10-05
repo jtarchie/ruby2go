@@ -460,7 +460,7 @@ func (f *fctx) branchFit(types []Type, gen func(t tail), joinErr *compileError) 
 			continue
 		}
 		var err *compileError
-		f.probe(func() { err = catchCompileError(func() { gen(tail{kind: tailAssign, target: "_", typ: cand}) }) }) // caught inside: a panic would skip probe's restore
+		f.probe(func() { err = f.try(func() { gen(tail{kind: tailAssign, target: "_", typ: cand}) }) }) // caught inside: a panic would skip probe's restore
 		if err == nil {
 			return cand
 		}

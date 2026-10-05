@@ -31,3 +31,9 @@ puts ident(nil)
 puts ident([1, ["", "x"]])
 puts ident(Temp.new(3))
 puts ident(:sym), ident(1.0), ident(false)
+
+puts "-- a top-level Class.new block's constants are Object's; its hidden class is not"
+Class.new do
+  ANON_BLOCK_CONST = 1
+end
+p Object.constants.include?(:ANON_BLOCK_CONST), Object.constants.none? { |k| k.to_s.start_with?("RbAnon") }

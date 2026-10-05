@@ -496,7 +496,7 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 	for i, s := range stmts.Body {
 		if f.c.round && i < len(stmts.Body)-1 {
 			// an inference round reads calls past a statement it cannot compile (decision 146)
-			f.c.debugInfer(catchCompileError(func() { f.genStmt(s, tail{}) }))
+			f.c.debugInfer(f.try(func() { f.genStmt(s, tail{}) }))
 			f.applyNarrow(f.guardNarrowing(s))
 			continue
 		}
@@ -2017,6 +2017,20 @@ func (f *fctx) newConv(before map[int]bool) bool {
 }
 
 // catchCompileError runs fn, returning the compile error it raised, if any.
+// try is catchCompileError for generation that goes on past the error:
+// an error inside a block would leave its closure depth, buffer and scope
+// behind, so f is restored (labels excepted: they stay unique).
+func (f *fctx) try(fn func()) *compileError {
+	saved := *f
+	err := catchCompileError(fn)
+	if err != nil {
+		labels := f.labels
+		*f = saved
+		f.labels = labels
+	}
+	return err
+}
+
 func catchCompileError(fn func()) (ce *compileError) {
 	defer func() {
 		if r := recover(); r != nil {
