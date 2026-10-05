@@ -1643,7 +1643,8 @@ resolve; anything not listed is still open.
     function> - <path>"`. Anything else is an `IOError`
     ([example 53](../examples/53_files/main.rb)). *Amended:* `File.symlink?`
     added (`os.Lstat`, `ModeSymlink`), needed to verify decision 64's
-    `FileUtils.ln_s`.
+    `FileUtils.ln_s`. *Amended by 138:* `IO` also wraps pipe and popen
+    ends, so `IO.pipe`/`IO.popen` objects are `IO`s, not `File`s.
 63. `URI.parse`/`URI()` return `URI::Generic`, or `URI::HTTP`/`URI::HTTPS`
     (`HTTPS < HTTP < Generic`, matching MRI's own hierarchy so
     `is_a?(URI::HTTP)` holds for both) on Go's `net/url`. `port` defaults
@@ -3962,7 +3963,8 @@ resolve; anything not listed is still open.
       above, alone and with combining marks. Invalid UTF-8 raises
       `ArgumentError: invalid byte sequence in UTF-8`; the form is a Symbol.
     - **`Integer#chr(encoding)`** with MRI's `RangeError`s; `Array#pack`
-      gains `C`, `c` and `U` (other directives raise NotImplementedError).
+      gains `C`, `c` and `U` (*superseded by decision 138*: every directive
+      but `P`/`p`, through the same `rbPack`/`rbPackU`).
     - **IO.** A mode's `b` is binmode (external ASCII-8BIT); `:ext[:int]`,
       with `BOM|`, sets the encodings. As in MRI, reads convert only when an
       internal encoding is given (`"r:ISO-8859-1"` hands back the file's
@@ -3972,7 +3974,8 @@ resolve; anything not listed is still open.
       internal one is `ArgumentError: ASCII incompatible encoding needs
       binmode`, and an unknown name warns `Unsupported encoding X ignored`.
       `set_encoding`, `external_encoding`, `internal_encoding`, `binmode`
-      and `binmode?` work on File and the std streams; `$stdout.set_encoding`
+      and `binmode?` work on File, the std streams and (decision 138) pipe
+      and popen ends, whose reads convert as a File's; `$stdout.set_encoding`
       converts what `puts`/`print`/`write` send, and `$stdin` is never
       converted. The transcoder is linked only where needed: a File-using
       program carried ~60 more declarations (18%) for it, so `File.new`
@@ -3986,4 +3989,76 @@ resolve; anything not listed is still open.
       and `InvalidByteSequenceError`.
     (`testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
     `testdata/run/string_output.rb`.)
-
+138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
+    and has a blockless form, `File.atime`, and `Array#pack` with the rest
+    of `String#unpack`.
+    - **Pipes are IO.** `IO` stays one `@go_type` (decision 62), now with
+      an `own` flag: off, it is a standard stream (fd 0-2) as before; on,
+      it holds a read end and/or a write end (`*os.File` plus a `bufio`
+      reader/writer) and popen's `*exec.Cmd`. `IO.pipe` answers `[IO, IO]`
+      and `IO.popen` yields or returns an `IO`, so `.class` is `IO` and
+      `inspect` is MRI's `#<IO:fd N>` / `#<IO:(closed)>`. The number is
+      the real descriptor (read through `SyscallConn`, since `Fd()` would
+      switch the file to blocking mode), so it differs from MRI's run;
+      tests match its shape. A subclass was not an option (a `@go_type`
+      class can't be subclassed, which is also why sockets in decision
+      135 sit beside `IO`); one struct with a flag keeps `STDOUT`, a pipe
+      and a popen end the same static type, so a method taking `IO` takes
+      all three. Read methods share `rbReader` (STDIN's reader or the
+      pipe's, by pointer so `ungetc` can replace it). The pipe writer and
+      every popen IO are `sync`, as MRI's; a write after the reader is
+      gone is `Errno::EPIPE` (Go ignores `SIGPIPE` off stdout).
+    - **popen.** Modes `r`, `w`, `r+`, `w+` (a `b`/`t` is ignored; anything
+      else is `ArgumentError: invalid access mode`); a pipe goes on the
+      child's stdout for reading and/or stdin for writing, and the other
+      streams stay the program's (stdout is flushed before the spawn).
+      `close` closes the pipes and then waits for the child, setting `$?`;
+      the block form is that `close` in an `ensure`, and the blockless form
+      (decision 12's `__popen_enum`) leaves it to the caller. `pid` is the
+      child's (nil on a pipe). `close_read`/`close_write` follow MRI: on
+      `r+` each closes one pipe and the second closes the whole IO (and
+      reaps); on a one-way popen either closes it whole; on a pipe end the
+      side it holds closes it and the other side raises `closing non-duplex
+      IO for reading/writing`. `mode:`/env/option-hash forms are not built
+      (a keyword the signature lacks is a type error).
+    - **Standard streams** gain `close`/`closed?`/`close_read`/
+      `close_write`/`pid`/`to_i`: closing `STDOUT` marks that object closed
+      (its own writes raise `closed stream`) without closing fd 1, so
+      Kernel#puts still writes where MRI raises. ponytail: close the real
+      descriptor and route Kernel output through the object's state.
+    - **atime.** The access time's `syscall.Stat_t` field is `Atim` on
+      Linux, OpenBSD and Solaris and `Atimespec` on macOS and the other
+      BSDs, and the prelude's Go is concatenated into one generated file,
+      so build tags cannot split it. `rbAtime` embeds `*syscall.Stat_t`
+      beside a struct holding zero `Atim` and `Atimespec` one level deeper:
+      Go's shallowest-field rule resolves each selector to the platform's
+      real field where it exists and to the zero stand-in where it does not,
+      and the two are summed. One source, chosen by the Go compiler for the
+      target, no reflection; checked to build for darwin, linux (amd64,
+      arm64, 386, mips), the BSDs and solaris. `File.atime` and
+      `File.mtime` raise with MRI's `rb_file_s_atime`/`rb_file_s_mtime`.
+    - **pack/unpack** share one parser (`rbPackParse`, with MRI's
+      `unknown pack directive 'y' in 'y'` and `'_' allowed only after types
+      sSiIlLqQjJ` errors, whitespace and `#` comments skipped) and one
+      sizing table, so every directive packs and unpacks the same way:
+      `a A Z B b H h u M m` (`m0` strict), `U` (MRI's `rb_uv_to_utf8`, so
+      surrogates and values up to 2**31-1 encode), `w`, `C c S s L l Q q J j I i
+      n N v V` with `_`/`!` (native: `L!` and `J` are 8 bytes on 64-bit)
+      and `<`/`>`, `D d F f E e G g`, and `x X @` with MRI's quirks
+      (unpack's `@` defaults to 0 and its `*` counts are the bytes left).
+      The u/M/m encoders and decoders are ports of MRI's `encodes`,
+      `qpencode` and the lenient base64 loop (which stops at a `=` in a
+      quad's third or fourth place, where the next `m` resumes). Elements
+      convert as MRI's: Float to an integer directive truncates, `nil` is
+      `""` for `a A Z B b H h` and a `TypeError` elsewhere, `M` takes any
+      object's `to_s`. An unsigned 64-bit value or BER integer past 2**63
+      raises `RangeError` (decision 35) where MRI makes a Bignum. `P`/`p`
+      (C pointers) raise `ArgumentError` naming rb2go: no Ruby string has
+      an address to hand out. A mixed literal like `[s, n].pack("a4N")` is
+      a tuple, so `tupleCall` handles `pack` by passing the fields as one
+      `[]any`. Binary results print with `\u0000` where MRI's binary
+      String shows `\x00` (no encoding tag: bytes that are valid UTF-8
+      count as UTF-8, decision 136), so tests compare
+      `.bytes`.
+    (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
+    `testdata/test/string_test.rb` `StringPackTest`.)

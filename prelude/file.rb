@@ -57,7 +57,22 @@ class File < Object
   def self.__open_enum(path, mode = "r") = File.new(path, mode)
 
   #: (String) -> Time
-  def self.mtime(path) = stat(path).mtime
+  def self.mtime(path) = %x{
+    fi, err := os.Stat(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_file_s_mtime", string(path)))
+    }
+    return &Time{t: fi.ModTime()}
+  }
+
+  #: (String) -> Time
+  def self.atime(path) = %x{
+    fi, err := os.Stat(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_file_s_atime", string(path)))
+    }
+    return &Time{t: rbAtime(fi)}
+  }
 
   LOCK_SH = 1 #: Integer
   LOCK_EX = 2 #: Integer
@@ -611,6 +626,9 @@ class File::Stat < Object
 
   #: () -> Time
   def mtime = %x{ &Time{t: self.fi.ModTime()} }
+
+  #: () -> Time
+  def atime = %x{ &Time{t: rbAtime(self.fi)} }
 
   #: () -> bool
   def file? = %x{ Boolean(self.fi.Mode().IsRegular()) }

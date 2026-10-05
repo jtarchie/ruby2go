@@ -1237,6 +1237,115 @@ B
     end
   end
 
+  # Array#pack and the rest of String#unpack (#54, decision 138); binary results compare as bytes since rb2go's inspect has no binary encoding.
+  class StringPackTest < Minitest::Test
+    LONG = "hello world, this is long enough to wrap beyond forty five bytes!!" #: String
+
+    def test_pack_strings
+      assert_equal ["a", "ab\x00", "ab ", "ab\x00", "ab", "ab", "", "\x00"].map(&:bytes),
+                   [["ab"].pack("a"), ["ab"].pack("a3"), ["ab"].pack("A3"), ["ab"].pack("Z*"), ["ab"].pack("Z2"), ["ab"].pack("A*"), ["ab"].pack("a0"), [nil].pack("a")].map(&:bytes)
+      assert_equal [[0xb3, 0x20], [0xcd, 0], [0xb3, 0], [0x80], [0xa1, 0xf0, 0], [0x1a, 0x0f], [0x12, 0x30], [0x60]],
+                   [["10110011001"].pack("B*"), ["10110011001"].pack("b10"), ["10110011001"].pack("B9"), ["1"].pack("B"),
+                    ["a1F"].pack("H5"), ["a1F"].pack("h*"), ["xyz"].pack("H*"), ["2a3"].pack("B*")].map(&:bytes)
+      assert_equal [[104, 195, 169, 240, 159, 152, 128], [0, 1, 127, 0x81, 0, 0xff, 0x7f, 0x81, 0x80, 0, 0xa0, 0x80, 0x80, 0x80, 0x80, 0]],
+                   [[104, 233, 0x1F600].pack("U*").bytes, [0, 1, 127, 128, 16383, 16384, 2**40].pack("w*").bytes]
+      assert_equal [237, 160, 128, 244, 144, 128, 128, 253, 191, 191, 191, 191, 191], [0xD800, 0x110000, 0x7fffffff].pack("U*").bytes # MRI's rb_uv_to_utf8
+    end
+
+    def test_pack_encodings
+      assert_equal ["M:&5L;&\\@=V]R;&0L('1H:7,@:7,@;&]N9R!E;F]U9V@@=&\\@=W)A<\"!B97EO\n5;F0@9F]R='D@9FEV92!B>71E<R$A\n", "#:&5L\n", ""],
+                   [[LONG].pack("u"), ["hello"].pack("u3")[0, 6], [""].pack("u")]
+      assert_equal ["aGVsbG8gd29ybGQsIHRoaXMgaXMgbG9uZyBlbm91Z2ggdG8gd3JhcCBiZXlv\nbmQgZm9ydHkgZml2ZSBieXRlcyEh\n", "aGk=", "aGVs\nbG8=\n"],
+                   [[LONG].pack("m"), ["hi"].pack("m0"), ["hello"].pack("m3")]
+      assert_equal ["h=C3=A9llo =3D x =\n\nnext=\n", "h=C3=\n=A9l=\nlo=\n", "12=\n"], [["héllo = x \nnext"].pack("M"), ["héllo"].pack("M3"), [12].pack("M")]
+      assert_equal [LONG, LONG, LONG, "héllo = x \nnext".bytes], [[LONG].pack("u").unpack1("u"), [LONG].pack("m").unpack1("m"), [LONG].pack("m0").unpack1("m0"), ["héllo = x \nnext"].pack("M").unpack1("M").bytes]
+    end
+
+    def test_pack_integers
+      q = [1, 0, 0, 0, 0, 0, 0, 0, 254, 255, 255, 255, 255, 255, 255, 255, 44, 1, 0, 0, 0, 0, 0, 0]
+      l = [1, 0, 0, 0, 254, 255, 255, 255, 44, 1, 0, 0]
+      want = [[1, 254, 44], [1, 254, 44], [1, 0, 254, 255, 44, 1], [0, 1, 255, 254, 1, 44], l, [0, 0, 0, 1, 255, 255, 255, 254, 0, 0, 1, 44],
+              [0, 1, 255, 254, 1, 44], [1, 0, 254, 255, 44, 1], l, [0, 0, 0, 0, 0, 0, 0, 1, 255, 255, 255, 255, 255, 255, 255, 254, 0, 0, 0, 0, 0, 0, 1, 44],
+              q, q, q, l, l, q, q, [1, 0, 254, 255, 44, 1], q]
+      assert_equal want, %w[C* c* S* s>* L* N* n* v* V* Q>* q* J* j<* I* i!* L_* l!* S!* Q!*].map { |f| [1, -2, 300].pack(f).bytes }
+      assert_equal [[1, 254, 44], [0, 1, 255, 254, 1, 44], [1, 0, 0, 0, 0, 0, 0, 0]], [[1, -2, 300].pack("C*").bytes, [1, -2, 300].pack("n*").bytes, [1].pack("Q<").bytes]
+      assert_equal [[1, -2, 300], [1, 65534, 300], [1, -2, 300], [1, -2]], [[1, -2, 300].pack("l<*").unpack("l<*"), [1, -2, 300].pack("n*").unpack("n*"), [1, -2, 300].pack("q>*").unpack("q>*"), [1.7, -2].pack("c*").unpack("c*")]
+      assert_equal [[1], [1, 0, 2], [72057594037927936]], ["\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("L_"), "\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("i*"), "\x01\x00\x00\x00\x00\x00\x00\x00".unpack("L!>")]
+    end
+
+    def test_pack_floats
+      assert_equal [[0, 0, 192, 63], [63, 192, 0, 0], [0, 0, 0, 0, 0, 0, 248, 63], [63, 248, 0, 0, 0, 0, 0, 0], [0, 0, 192, 63, 0, 0, 0, 64]],
+                   [[1.5].pack("e").bytes, [1.5].pack("g").bytes, [1.5].pack("E").bytes, [1.5].pack("G").bytes, [1.5, 2].pack("e*").bytes]
+      s = [1.5, 2].pack("e*")
+      assert_equal [[1.5, 2.0], [1.5, 2.0, nil], [2.000000474974513], [nil, nil]], [s.unpack("e*"), s.unpack("e3"), s.unpack("E"), "ab".unpack("e2")]
+      assert_equal [[0.1], [-3.25], [1.5]], [[0.1].pack("D").unpack("D"), [-3.25].pack("G").unpack("G"), [1.5].pack("f").unpack("f")]
+    end
+
+    def test_pack_positions
+      got = %w[x x3 Cx2C CXC C3X2 C@3C C3@1 x* X* @ @* C*@0].map { |f| [1, 2, 3].pack(f).bytes }
+      assert_equal [[0], [0, 0, 0], [1, 0, 0, 2], [2], [1], [1, 0, 0, 2], [1], [], [], [0], [], []], got
+      assert_equal [[], [nil], [], [97], [nil], [97, 97], [97, 97], [97, 98, 98]],
+                   ["abc".unpack("x*"), "abc".unpack("x*C"), "abc".unpack("@"), "abc".unpack("@C"), "abc".unpack("@*C"), "abc".unpack("C@0C"), "abc".unpack("CXC"), "abc".unpack("C2X*C")]
+    end
+
+    def test_unpack_rest
+      w = [0x81, 0, 0x7f, 0xa0, 0x80, 0x80, 0x80, 0x80, 0, 0x81].pack("C*")
+      assert_equal [[128, 127, 1099511627776], [128], [128, 127]], [w.unpack("w*"), w.unpack("w"), w.unpack("w2")]
+      assert_equal [["hello "], "h\xC3\xA9llo = w\xC3\xB6rld\tx \nnextzz=XYrest".bytes],
+                   ["#:&5L\n#;&\\@\n".unpack("u"), "h=C3=A9llo =3D w=\n=C3=B6rld\tx =\n\nnext=\r\nzz=XYrest".unpack1("M").bytes]
+      assert_equal [["hello"], ["hello", "hi"], ["hello"], ["hello"], ["hello"], ["a"], [""]],
+                   ["aGVsbG8=\naGk=".unpack("m"), "aGVsbG8=\naGk=".unpack("mm"), "aGVsbG8=".unpack("m0"), "aGVsbG8".unpack("m"), "aGVsbG8=YQ==".unpack("m"), "YQ".unpack("m"), "Y".unpack("m")]
+      assert_equal [[0xD800, 0x110000, 0x7fffffff], [""], 3], # U round-trips; u's length byte is cut to the input
+                   [[0xD800, 0x110000, 0x7fffffff].pack("U*").unpack("U*"), "#".unpack("u"), "$AAAA".unpack1("u").bytes.size]
+    end
+
+    def test_pack_errors
+      e = assert_raises(TypeError) { ["a"].pack("C") }
+      assert_equal "no implicit conversion of String into Integer", e.message
+      e = assert_raises(TypeError) { [1].pack("a") }
+      assert_equal "no implicit conversion of Integer into String", e.message
+      e = assert_raises(TypeError) { [nil].pack("C") }
+      assert_equal "no implicit conversion of nil into Integer", e.message
+      e = assert_raises(TypeError) { ["x"].pack("e") }
+      assert_equal "can't convert String into Float", e.message
+      e = assert_raises(ArgumentError) { [1].pack("C3") }
+      assert_equal "too few arguments", e.message
+      e = assert_raises(RangeError) { [-1].pack("U") }
+      assert_equal "pack(U): value out of range", e.message
+      e = assert_raises(ArgumentError) { [-1].pack("w") }
+      assert_equal "can't compress negative numbers", e.message
+      e = assert_raises(ArgumentError) { [1].pack("X") }
+      assert_equal "X outside of string", e.message
+      e = assert_raises(ArgumentError) { [1].pack("y") }
+      assert_equal "unknown pack directive 'y' in 'y'", e.message
+      e = assert_raises(ArgumentError) { [1].pack("C_") }
+      assert_equal "'_' allowed only after types sSiIlLqQjJ", e.message
+    end
+
+    def test_unpack_errors
+      e = assert_raises(ArgumentError) { [0xff].pack("C").unpack("U") }
+      assert_equal "malformed UTF-8 character", e.message
+      e = assert_raises(ArgumentError) { [0xC3].pack("C").unpack("U") }
+      assert_equal "malformed UTF-8 character (expected 2 bytes, given 1 bytes)", e.message
+      e = assert_raises(ArgumentError) { [0xC0, 0x80].pack("C*").unpack("U") }
+      assert_equal "redundant UTF-8 sequence", e.message
+      e = assert_raises(ArgumentError) { "aGVsbG8".unpack("m0") }
+      assert_equal "invalid base64", e.message
+      e = assert_raises(ArgumentError) { "aGk=\n".unpack("m0") }
+      assert_equal "invalid base64", e.message
+      e = assert_raises(ArgumentError) { "abc".unpack("X") }
+      assert_equal "X outside of string", e.message
+      e = assert_raises(ArgumentError) { "abc".unpack("x4") }
+      assert_equal "x outside of string", e.message
+      e = assert_raises(ArgumentError) { "abc".unpack("@4") }
+      assert_equal "@ outside of string", e.message
+      e = assert_raises(ArgumentError) { "ab".unpack("a<") }
+      assert_equal "'<' allowed only after types sSiIlLqQjJ", e.message
+      e = assert_raises(ArgumentError) { "ab".unpack("y") }
+      assert_equal "unknown unpack directive 'y' in 'y'", e.message
+    end
+  end
+
   # ruby/spec core/string gaps (#49): undump
   class StringRubySpecUndumpTest < Minitest::Test
     def test_undump

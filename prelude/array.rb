@@ -230,7 +230,7 @@ class Array < Object
   #: (Array[E]) -> Array[E]
   def difference(other) = self - other
 
-  # Only C, c and U so far (decision 136); any other directive raises NotImplementedError rather than packing wrong bytes.
+  # Every directive but the C pointers P and p (decision 138).
   #: (String) -> String
   def pack(format) = %x{
     items := make([]any, len(*self))
