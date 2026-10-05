@@ -314,4 +314,16 @@ module EnumeratorTests
       assert_equal "cannot get the last element of endless arithmetic sequence", err.message
     end
   end
+  # #56: min(n)/max(n) on an endless range end, as MRI's do
+  class EnumeratorEndlessMinMaxTest < Minitest::Test
+    def test_endless_min_max_n
+      assert_equal [[1, 2], [], [1, 2], [5, 4]], [(1..).min(2), (1..).min(0), (1..5).min(2), (1..5).max(2)]
+      e = assert_raises(RangeError) { (1..).max(2) }
+      assert_equal "cannot get the maximum of endless range", e.message
+      e = assert_raises(RangeError) { (..1).min(2) }
+      assert_equal "cannot get the minimum of beginless range", e.message
+      e = assert_raises(ArgumentError) { (1..).min(-1) }
+      assert_equal "negative array size (or size too big)", e.message
+    end
+  end
 end

@@ -185,6 +185,25 @@ class Range < Object
     return &x
   }
 
+  # Enumerable's min(n)/max(n) sort every element, which an endless range
+  # never finishes: min(n) takes the first n, max(n) raises, as MRI's.
+  #: (Integer) -> Array[E]
+  def __min_1(n)
+    raise RangeError, "cannot get the minimum of beginless range" if __beginless?
+    return super unless __endless?
+    raise ArgumentError, "negative array size (or size too big)" if n < 0
+    first(n)
+  end
+
+  #: (Integer) -> Array[E]
+  def __max_1(n)
+    raise RangeError, "cannot get the maximum of endless range" if __endless?
+    super
+  end
+
+  #: () -> bool
+  def __beginless? = %x{ Boolean(self.beginless) }
+
   #: () -> Array[E]
   def to_a = %x{
     if self.endless {

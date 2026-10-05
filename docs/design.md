@@ -1076,7 +1076,10 @@ resolve; anything not listed is still open.
     in `case/when`). `sum` and `size` are arithmetic, and `size` of an
     endless range raises (no Infinity), as does `last`; its `end` is
     `E`'s zero value, not nil
-    ([example 36](../examples/36_ranges/main.rb)).
+    ([example 36](../examples/36_ranges/main.rb)). *Revised (#56):*
+    `min(n)` of an endless range is `first(n)` and `max(n)` raises MRI's
+    RangeError, where Enumerable's sort-based ones never returned; a
+    beginless range's `min(n)` raises too.
 38. `Kernel#p` prints each argument's `inspect` and returns nil, not its
     argument (that would need the argument's type as its return type).
 39. `Time` wraps Go's `time.Time` plus MRI's UTC flag (printed `UTC`
