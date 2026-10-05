@@ -8,13 +8,8 @@ func rbHTTPCanonKey(name string) string { return strings.ToLower(name) }
 
 // rbHTTPHeaderHash turns a Go http.Header into the insertion-ordered, lowercase-keyed Hash Net::HTTPHeader/WEBrick expose; sorted so output is deterministic.
 func rbHTTPHeaderHash(h http.Header) *Hash[String, String] {
-	keys := make([]string, 0, len(h))
-	for k := range h {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	out := NewHash[String, String]()
-	for _, k := range keys {
+	for _, k := range slices.Sorted(maps.Keys(h)) {
 		Hash_Op_idxSet(out, String(rbHTTPCanonKey(k)), String(strings.Join(h[k], ", ")))
 	}
 	return out
@@ -22,13 +17,8 @@ func rbHTTPHeaderHash(h http.Header) *Hash[String, String] {
 
 // rbHTTPHeaderFields is rbHTTPHeaderHash keeping repeated headers apart, as Net::HTTPHeader#to_hash does.
 func rbHTTPHeaderFields(h http.Header) *Hash[String, *Array[String]] {
-	keys := make([]string, 0, len(h))
-	for k := range h {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	out := NewHash[String, *Array[String]]()
-	for _, k := range keys {
+	for _, k := range slices.Sorted(maps.Keys(h)) {
 		vals := make(Array[String], 0, len(h[k]))
 		for _, v := range h[k] {
 			vals = append(vals, String(v))

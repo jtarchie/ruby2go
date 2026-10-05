@@ -63,6 +63,7 @@ func (f *fctx) genOpenURI(n parser.Node, recv *expr, name string, args []parser.
 		case *parser.HashNode:
 			els = h.Elements
 		default:
+			f.checkOpenURIHeaders(rest[0])
 			headers = rest[0]
 		}
 		var hs []parser.Node
@@ -107,6 +108,17 @@ func (f *fctx) genOpenURI(n parser.Node, recv *expr, name string, args []parser.
 	cls := f.c.classes["OpenURI"]
 	r := expr{code: classVar(cls), typ: TClass{C: cls.meta}, classObj: true}
 	return f.genMethodCall(n, r, "__open_name"+suffix, append([]parser.Node{args[0]}, call...), block)
+}
+
+// checkOpenURIHeaders rejects a Symbol-keyed Hash variable, which MRI reads as options, before it fails as a bare type mismatch.
+func (f *fctx) checkOpenURIHeaders(n parser.Node) {
+	var e expr
+	f.probe(func() { e = f.genExpr(n, nil) })
+	if t, ok := e.typ.(TClass); ok && len(t.Args) > 0 {
+		if k, ok := t.Args[0].(TClass); ok && k.C == f.c.classes["Symbol"] {
+			f.errorf(n, "open-uri: a Hash variable is taken as request headers (String keys); pass options such as read_timeout: by name")
+		}
+	}
 }
 
 // checkOpenURIOption rejects an option OpenOptions does not take, naming open-uri rather than the internal class.

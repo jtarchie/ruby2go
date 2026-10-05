@@ -43,8 +43,9 @@ func rbOpenURIJoined(metas *Hash[String, *Array[String]]) *Hash[String, String] 
 
 // rbOpenURIMediaType is Meta#content_type_parse's type and charset parameter; ok is false where MRI's regexp does not match.
 func rbOpenURIMediaType(v string) (typ, charset string, hasCharset, ok bool) {
+	// ponytail: mime rejects a repeated parameter MRI's regexp accepts (first wins there); a hand parser of RE_PARAMETERS fixes it.
 	mt, params, err := mime.ParseMediaType(v)
-	if err != nil {
+	if err != nil || !strings.Contains(mt, "/") { // mime takes a bare "text" (Content-Disposition form); MRI needs type/subtype
 		return "", "", false, false
 	}
 	charset, hasCharset = params["charset"]

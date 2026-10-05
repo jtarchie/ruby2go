@@ -32,6 +32,9 @@ module NetTests
           res.body = "meta"
         when "/bin"
           res.body = "\x00\x01"
+        when "/bare"
+          res["Content-Type"] = "text"
+          res.body = "bare"
         when "/auth"
           if req["Authorization"] == "Basic YWxpY2U6c2VjcmV0"
             res.body = "welcome"
@@ -154,6 +157,10 @@ module NetTests
         assert_equal [], f.content_encoding
         assert_nil f.last_modified
         assert_equal "\x00\x01", f.read
+      end
+      URI.open("#{base}/bare") do |f|
+        assert_equal "application/octet-stream", f.content_type
+        assert_nil f.charset
       end
       server.shutdown
       thread.join

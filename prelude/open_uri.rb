@@ -60,7 +60,7 @@ class StringIO
     cs = __charset
     return cs if cs
     return yield if block_given?
-    content_type.start_with?("text/") && __content_type_parsed? ? "utf-8" : nil
+    content_type.start_with?("text/") ? "utf-8" : nil # an unparsed header is application/octet-stream
   end
 
   #: () -> String?
@@ -71,16 +71,6 @@ class StringIO
       }
     }
     return nil
-  }
-
-  #: () -> bool
-  def __content_type_parsed? = %x{
-    v, ok := rbOpenURIField(self.oum.metas, "content-type")
-    if !ok {
-      return false
-    }
-    _, _, _, ok = rbOpenURIMediaType(v)
-    return Boolean(ok)
   }
 
   #: () -> Array[String]

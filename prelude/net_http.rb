@@ -234,9 +234,8 @@ module Net
       return Boolean(ok)
     }
 
-    # Repeated headers kept apart, lowercase keys.
     #: () -> Hash[String, Array[String]]
-    def to_hash = @fields
+    def to_hash = @fields.merge({}) # a copy, as MRI's @header.dup; mutating it must not reach get_fields or open-uri's metas
 
     #: (String) -> Array[String]?
     def get_fields(name) = @fields[name.downcase]

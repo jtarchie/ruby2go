@@ -20,6 +20,11 @@ URI.open("http://127.0.0.1:1/x", "r", { "A" => "b" }, { "C" => "d" })
 require "open-uri"
 opts = { read_timeout: 1.0 }
 URI.open("http://127.0.0.1:1/x", **opts)
+-- options_variable.rb --
+# error: main.rb:4: open-uri: a Hash variable is taken as request headers (String keys); pass options such as read_timeout: by name
+require "open-uri"
+opts = { read_timeout: 1.0 }
+URI.open("http://127.0.0.1:1/x", opts)
 -- read_mode.rb --
 # error: main.rb:3: URI#read takes only an options Hash
 require "open-uri"

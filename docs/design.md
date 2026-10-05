@@ -3591,7 +3591,8 @@ resolve; anything not listed is still open.
     Integer mode, extra arguments, `URI#read` with a mode, and a literal
     mode other than `r`/`rb`(`:enc`) (writing only makes sense for a
     local file: use `File.open`). A non-literal write mode raises MRI's
-    `ArgumentError` for a URL. A Hash *variable* is taken as headers.
+    `ArgumentError` for a URL. A Hash *variable* is taken as headers (a
+    Symbol-keyed one is a compile error naming that, not a type mismatch).
     `Kernel#open` of a URL is not added: Ruby 3 removed it.
     - **The IO is a real `StringIO`.** MRI returns a `StringIO`
       extended with `OpenURI::Meta`; `extend` is run-time, so instead
@@ -3607,7 +3608,9 @@ resolve; anything not listed is still open.
       to a `Tempfile` above 10 KB is not modeled. `content_type`/
       `charset` parse with `mime.ParseMediaType` (lowercase type,
       charset downcased, `application/octet-stream` and nil on a missing
-      or malformed header, `utf-8` for `text/*` without one); header
+      or malformed header, including a bare `text` with no subtype,
+      `utf-8` for `text/*` without one; a repeated parameter, which MRI
+      takes first-wins, is treated as malformed); header
       order in `meta`/`metas` is sorted, as `Net::HTTPResponse`'s is
       (Go's `http.Header` is a map). `URI#read` returns a plain `String`:
       MRI extends it with `Meta` too, but `String` is a Go `string`, so
