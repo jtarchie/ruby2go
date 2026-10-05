@@ -1106,3 +1106,48 @@ class A
   def f = nope(1)
 end
 A.new.f
+-- method_computed_name.rb --
+# error: main.rb:5: method needs a literal name, a Symbol or String: the method is found at compile time (decision 141)
+#: (Integer) -> Integer
+def twice(n) = n * 2
+name = :twice
+m = method(name)
+-- method_undefined.rb --
+# error: main.rb:2: undefined method 'nope' for String
+"x".method(:nope)
+-- method_takes_block.rb --
+# error: main.rb:3: each takes a block, which Method#call cannot pass (decision 141)
+xs = [1] #: Array[Integer]
+m = xs.method(:each)
+-- method_required_keyword.rb --
+# error: main.rb:4: f has required keywords, which Method#call cannot pass (decision 141)
+#: (k: Integer) -> Integer
+def f(k:) = k
+m = method(:f)
+-- method_too_few_args.rb --
+# error: main.rb:4: wrong number of arguments (given 0, expected 1)
+#: (Integer) -> Integer
+def twice(n) = n * 2
+method(:twice).call
+-- method_bind_wrong_class.rb --
+# error: main.rb:2: Integer where String is expected
+String.instance_method(:upcase).bind(1)
+-- method_untyped_to_proc.rb --
+# error: main.rb:5: Method#to_proc needs the method's signature, which a Method[untyped] lost (decision 141)
+#: (Integer) -> Integer
+def twice(n) = n * 2
+m = method(:twice) #: Method
+m.to_proc
+-- method_untyped_call_warns.rb --
+# warning: main.rb:5: dynamic call: Method#call on Method[untyped]
+#: (Integer) -> Integer
+def twice(n) = n * 2
+m = method(:twice) #: Method
+puts m.call(2)
+-- method_generic_instance_method.rb --
+# error: main.rb:2: Array.instance_method: Array is generic, and an UnboundMethod cannot carry its type arguments; use obj.method(:size) (decision 141)
+Array.instance_method(:size)
+-- block_arg_unsupported.rb --
+# error: main.rb:3: only &:symbol, a Proc, a Method and a method's own &block are supported as block arguments
+n = 1
+puts [1].map(&n).inspect

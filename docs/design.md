@@ -4062,3 +4062,56 @@ resolve; anything not listed is still open.
       `.bytes`.
     (`testdata/test/stdlib_test.rb` `IOPipeTest`/`FileAtimeTest`,
     `testdata/test/string_test.rb` `StringPackTest`.)
+141. `Method` and `UnboundMethod` (#40) are built at the call site from
+    the closed world, never looked up by name at run time.
+    `recv.method(:name)` (and `public_method`) needs a literal name, like
+    decision 32's `send`; the compiler resolves the target on the
+    receiver's static type and builds a `Method[F]`: F is a Proc type
+    (decision 47) over the target's required positional parameters and
+    its result, fn the typed closure over the receiver (held in a temp,
+    since Go closures capture variables), and the struct also carries
+    `dyn` (the same target called from an `...any` list, generated like
+    decision 32's wrappers: arity check, argument conversion, one arm per
+    optional count) and `info` (name, owner, parameters, arity, `file:line`).
+    `call`, `.()`, `[]` and `===` with F's arguments call fn, typed;
+    with more (optional or rest parameters) they go through dyn, with
+    decision 32's warning and the result converted back. `to_proc` is fn
+    itself, so `&m` is decision 47's `&proc`; `curry` nests one Proc per
+    parameter. `Klass.instance_method(:name)` is an
+    `UnboundMethod[^(Klass, ...) -> R]`; `bind` checks the object against
+    Klass at compile time and partially applies fn, `bind_call` calls it.
+    A user-defined struct method is bound statically (its free func), so
+    `Base.instance_method(:m).bind_call(sub)` runs Base's `m`, as MRI's
+    does; a bound Method dispatches through the receiver, and `owner`
+    and `inspect` come from a type switch over the subclasses that
+    override the name. `&method(:name)` is desugared to a block of the
+    yielded arity calling `recv.__send__(:name, ...)`, so a target with
+    optional parameters takes what is yielded (MRI's Hash#each, which
+    yields one pair to a method proc whose minimum arity is 1, is not
+    modelled: the pair is yielded as two values). Reflection follows MRI
+    4.0: `parameters`/`arity` from the def for user methods; prelude
+    methods stand for MRI's C methods, so they are anonymous (`(_)`, or
+    `(*)` and -1 when any parameter is optional, a rest, a keyword, or
+    decision 12 overloads the name); `inspect` is
+    `#<Method: Recv(Owner)#name(params) file:line>`, `Recv.name` for a
+    singleton method, whose owner is MRI's `#<Class:Foo>`; `==`, `eql?`
+    and `hash` compare the definition and the receiver's identity.
+    Values of different F join as `Method[untyped]`, and RBS's bare
+    `Method` (`#: Hash[Symbol, Method]`) is `Method[untyped]` too: its
+    calls go through dyn, with the warning, and a typed Method converts
+    to it (`_to_any`/`rbFrom`, as Array's instantiations do).
+    `Method#unbind` is an `UnboundMethod[untyped]`, since F does not
+    carry the receiver's type; its `bind` raises MRI's TypeError for an
+    object that is not an owner's instance. `method(:name)` on an
+    `untyped` receiver is `Method[untyped]` over the dispatcher, with the
+    warning; its `owner`, `arity` and `parameters` raise
+    NotImplementedError, being unknown at compile time. Compile errors:
+    a computed name, a target that needs a block, has required keywords
+    or is generic, `instance_method` on a generic class (an
+    UnboundMethod cannot carry its type arguments), and `to_proc`/`curry`
+    on a `Method[untyped]`. Not done: `super_method`,
+    `source_location`, keyword arguments or a block to `call`.
+    `x.class` on a plain Object (main, `Object.new`) held untyped now
+    answers Object (it raised NoMethodError).
+    ([testdata/test/method_test.rb](../testdata/test/method_test.rb),
+    `testdata/errors/objects.txtar`.)

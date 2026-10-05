@@ -1491,6 +1491,9 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 	if (name == "send" || name == "__send__" || name == "public_send") && len(args) >= 1 && !f.ownSend(recv.typ, name) {
 		return f.genSend(n, recv, name, args, block), true
 	}
+	if e, ok := f.genMethodObject(n, recv, name, args, block); ok {
+		return e, true
+	}
 	if name == "is_a?" || name == "kind_of?" {
 		if len(args) != 1 || block != nil {
 			f.errorf(n, "%s takes one class", name)
@@ -1529,6 +1532,9 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 			return f.procCall(n, recv, t, name, args, block)
 		}
 	case TClass:
+		if e, ok := f.methodValueCall(n, recv, t, name, args, block); ok {
+			return e
+		}
 		return f.classCall(n, t, recv, name, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
@@ -2461,7 +2467,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
-	free := m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
+	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
 	if !free {
 		if t := f.methodExprType(m, recv); t != "" {
 			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
@@ -2814,10 +2820,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
-			if pb := f.procBlock(b); pb != nil {
-				return f.genClosure(n, pb, sig, env)
-			}
-			f.errorf(b, "only &:symbol, a Proc and a method's own &block are supported as block arguments")
+			return f.genClosure(n, f.blockArgBlock(b, len(params)), sig, env)
 		}
 		symbolCall = sym.Unescaped.Value
 		if len(params) != 1 {
@@ -5041,11 +5044,29 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true}}
 }
 
+// blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
+func (f *fctx) blockArgBlock(b *parser.BlockArgumentNode, nparams int) *parser.BlockNode {
+	if mb := f.methodRefBlock(b, nparams); mb != nil {
+		return mb
+	}
+	if pb := f.procBlock(b); pb != nil {
+		return pb
+	}
+	f.errorf(b, "only &:symbol, a Proc, a Method and a method's own &block are supported as block arguments")
+	return nil
+}
+
 // procBlock desugars `&f` for a Proc f to `{ |x_0, ...| f.call(x_0, ...) }`, or nil when f is not a Proc.
 func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
 	var pt Type
 	f.probe(func() { pt = f.genExpr(ba.Expression, nil).typ })
 	ft, ok := pt.(TFunc)
+	if kind, mf, typed := methodFn(pt); kind == "Method" {
+		if !typed {
+			f.errorf(ba, "&%s needs the method's signature, which a %s lost (decision 141)", f.f.text(ba.Expression.GetLocation()), pt)
+		}
+		ft, ok = mf, true
+	}
 	if !ok || !ft.Proc {
 		return nil
 	}
