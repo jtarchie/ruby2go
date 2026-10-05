@@ -582,14 +582,20 @@ class Array < Object
   }
 
   #: () -> String
-  def inspect = %x{
-    if !rbInspectEnter(self) {
+  def inspect = _inspect_rec(nil)
+
+  # inspect inside another container's: seen (an rbSeen) is passed down,
+  # never shared between threads.
+  #: (untyped) -> String
+  def _inspect_rec(seen) = %x{
+    s := rbSeenOf(seen)
+    if !s.enter(self, nil) {
       return "[...]"
     }
-    defer rbInspectLeave(self)
+    defer s.leave(self, nil)
     parts := make([]string, len(*self))
     for i, x := range *self {
-      parts[i] = string(rbInspect(x))
+      parts[i] = string(rbInspectIn(x, s))
     }
     return String("[" + strings.Join(parts, ", ") + "]")
   }
@@ -598,7 +604,12 @@ class Array < Object
   def to_s = inspect
 
   #: (untyped) -> bool
-  def ==(other) = %x{
+  def ==(other) = _eq_rec(other, nil)
+
+  # == with the pairs already being compared (seen, an rbSeen), made only
+  # once a nested container is reached: a flat Array allocates nothing.
+  #: (untyped, untyped) -> bool
+  def _eq_rec(other, seen) = %x{
     o, ok := other.(*Array[E])
     if !ok {
       // Another instantiation ([1] == [1.0], typed vs untyped): compare
@@ -611,12 +622,23 @@ class Array < Object
     if len(*o) != len(*self) {
       return false
     }
-    if !rbRecurseEnter('=', self, o) {
-      return true
+    s, _ := seen.(*rbSeen)
+    if s != nil {
+      if !s.enter(self, o) {
+        return true // a pair already being compared: equal, as MRI's recursive ==
+      }
+      defer s.leave(self, o)
     }
-    defer rbRecurseLeave('=', self, o)
     for i, x := range *self {
-      if !rbEq(x, (*o)[i]) {
+      if r, ok := any(x).(rbEqRec); ok {
+        if s == nil {
+          s = rbSeenOf(nil)
+          s.enter(self, o)
+        }
+        if !r._EqRec((*o)[i], s) {
+          return false
+        }
+      } else if !rbEq(x, (*o)[i]) {
         return false
       }
     }
@@ -624,7 +646,10 @@ class Array < Object
   }
 
   #: (untyped) -> bool
-  def eql?(other) = %x{
+  def eql?(other) = _eql_rec(other, nil)
+
+  #: (untyped, untyped) -> bool
+  def _eql_rec(other, seen) = %x{
     o, ok := other.(*Array[E])
     if !ok {
       if a, ok := other.(Array_Any); ok {
@@ -635,12 +660,23 @@ class Array < Object
     if len(*o) != len(*self) {
       return false
     }
-    if !rbRecurseEnter('e', self, o) {
-      return true
+    s, _ := seen.(*rbSeen)
+    if s != nil {
+      if !s.enter(self, o) {
+        return true
+      }
+      defer s.leave(self, o)
     }
-    defer rbRecurseLeave('e', self, o)
     for i, x := range *self {
-      if !rbKeyEql(x, (*o)[i]) {
+      if r, ok := any(x).(rbEqlRec); ok {
+        if s == nil {
+          s = rbSeenOf(nil)
+          s.enter(self, o)
+        }
+        if !r._EqlRec((*o)[i], s) {
+          return false
+        }
+      } else if !rbKeyEql(x, (*o)[i]) {
         return false
       }
     }
@@ -648,13 +684,27 @@ class Array < Object
   }
 
   #: () -> Integer
-  def hash = %x{
-    if !rbRecurseEnter('h', self, nil) {
-      return 0
+  def hash = _hash_rec(nil)
+
+  #: (untyped) -> Integer
+  def _hash_rec(seen) = %x{
+    s, _ := seen.(*rbSeen)
+    if s != nil {
+      if !s.enter(self, nil) {
+        return 0 // inside itself: a constant, so the hash is finite and stable
+      }
+      defer s.leave(self, nil)
     }
-    defer rbRecurseLeave('h', self, nil)
     h := uint64(len(*self))
     for _, x := range *self {
+      if r, ok := any(x).(rbHashRec); ok {
+        if s == nil {
+          s = rbSeenOf(nil)
+          s.enter(self, nil)
+        }
+        h = h*31 + uint64(r._HashRec(s)) //nolint:gosec // a hash, not arithmetic
+        continue
+      }
       h = h*31 + rbKeyHash(x)
     }
     return Integer(h)

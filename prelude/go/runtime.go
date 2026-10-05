@@ -561,8 +561,10 @@ type rbIvar struct {
 	isNil bool // a nil pointer or interface, decided from the field's type when _Ivars is generated
 }
 
-// rbObjInspect is Kernel#inspect; rbInspectEnter gives MRI's "..." for an object that holds itself.
-func rbObjInspect(a any) String {
+// rbObjInspect is Kernel#inspect; rbSeen gives MRI's "..." for an object that holds itself.
+func rbObjInspect(a any) String { return rbObjInspectIn(a, nil) }
+
+func rbObjInspectIn(a any, seen *rbSeen) String {
 	o, ok := a.(interface{ _Ivars() []rbIvar })
 	if !ok {
 		return rbObjToS(a)
@@ -570,10 +572,11 @@ func rbObjInspect(a any) String {
 	s := string(rbObjToS(a))
 	var b strings.Builder
 	b.WriteString(s[:len(s)-1])
-	if !rbInspectEnter(a) {
+	seen = rbSeenOf(seen)
+	if !seen.enter(a, nil) {
 		return String(b.String() + " ...>")
 	}
-	defer rbInspectLeave(a)
+	defer seen.leave(a, nil)
 	sep := " "
 	for _, iv := range o._Ivars() {
 		if !iv.opt && (iv.val == nil || iv.isNil) {
@@ -582,7 +585,7 @@ func rbObjInspect(a any) String {
 		b.WriteString(sep + iv.name + "=")
 		sep = ", "
 		if _, ok := iv.val.(I_Inspect); ok || iv.val == nil {
-			b.WriteString(string(rbInspect(iv.val)))
+			b.WriteString(string(rbInspectIn(iv.val, seen)))
 		} else { // a Go value behind a prelude ivar
 			b.WriteString(string(rbObjToS(iv.val)))
 		}
@@ -601,63 +604,57 @@ func rbInspect(a any) String {
 	return rbObjInspect(a) // a bare Object (Object.new) has only Kernel's
 }
 
-// rbInspecting holds the containers whose inspect is on the stack, so one
-// that holds itself prints [...] / {...} like MRI instead of overflowing.
-// ponytail: one set for all threads (MRI's is per-thread), so two threads
-// inspecting the same container at once may see [...]; a goroutine-local
-// set needs a goroutine id Go does not expose.
-var (
-	rbInspectingMu sync.Mutex
-	rbInspecting   = map[any]struct{}{}
+// rbSeen is the containers an inspect, ==, eql? or hash is inside, passed
+// down the recursion (the _..._rec methods) so one that holds itself prints
+// [...] and compares or hashes like MRI's rb_exec_recursive instead of
+// overflowing Go's stack. Each top-level call owns its own, made only when
+// it first reaches a nested container: nothing is shared between threads
+// and nothing is locked. A cycle that passes through a user-defined inspect
+// or == starts a fresh set there and is not caught (MRI's set is per
+// thread; Go has no goroutine-locals).
+type rbSeen struct{ m map[[2]any]struct{} }
+
+// rbSeenOf is the set passed as untyped (a prelude method's parameter), or a fresh one.
+func rbSeenOf(seen any) *rbSeen {
+	if s, ok := seen.(*rbSeen); ok && s != nil {
+		return s
+	}
+	return &rbSeen{m: map[[2]any]struct{}{}}
+}
+
+// enter marks (a, b) as being worked on; false means it already is.
+func (s *rbSeen) enter(a, b any) bool {
+	k := [2]any{a, b}
+	if _, ok := s.m[k]; ok {
+		return false
+	}
+	s.m[k] = struct{}{}
+	return true
+}
+
+func (s *rbSeen) leave(a, b any) { delete(s.m, [2]any{a, b}) }
+
+// The containers' recursion-aware forms, which each top-level method calls with no set.
+type (
+	rbInspectRec interface{ _InspectRec(seen any) String }
+	rbEqRec      interface{ _EqRec(other, seen any) Boolean }
+	rbEqlRec     interface{ _EqlRec(other, seen any) Boolean }
+	rbHashRec    interface{ _HashRec(seen any) Integer }
 )
 
-// rbInspectEnter marks p as being inspected; false means it already is.
-// A true result must be paired with a deferred rbInspectLeave(p).
-func rbInspectEnter(p any) bool {
-	rbInspectingMu.Lock()
-	defer rbInspectingMu.Unlock()
-	if _, ok := rbInspecting[p]; ok {
-		return false
+// rbInspectIn is rbInspect inside a container's inspect: nested containers,
+// and objects whose inspect is Kernel's, carry the set on.
+func rbInspectIn(a any, seen *rbSeen) String {
+	a = rbUnbox(a)
+	if r, ok := a.(rbInspectRec); ok {
+		return r._InspectRec(seen)
 	}
-	rbInspecting[p] = struct{}{}
-	return true
-}
-
-func rbInspectLeave(p any) {
-	rbInspectingMu.Lock()
-	defer rbInspectingMu.Unlock()
-	delete(rbInspecting, p)
-}
-
-// rbRecursing holds the (op, a, b) comparisons and hashes on the stack, so
-// a container holding itself compares and hashes like MRI's
-// rb_exec_recursive_paired: re-entering the same pair answers as if equal
-// (and hashes as a constant) instead of overflowing Go's stack.
-// ponytail: shares rbInspecting's one-set-for-all-threads tradeoff.
-type rbRecKey struct {
-	op   byte
-	a, b any
-}
-
-var rbRecursing = map[rbRecKey]struct{}{}
-
-// rbRecurseEnter marks (op, a, b) as running; false means it already is.
-// A true result must be paired with a deferred rbRecurseLeave.
-func rbRecurseEnter(op byte, a, b any) bool {
-	rbInspectingMu.Lock()
-	defer rbInspectingMu.Unlock()
-	k := rbRecKey{op, a, b}
-	if _, ok := rbRecursing[k]; ok {
-		return false
+	if _, ivars := a.(interface{ _Ivars() []rbIvar }); ivars {
+		if id, ok := a.(interface{ _ClassID() int }); ok && rbKernelInspect[id._ClassID()] {
+			return rbObjInspectIn(a, seen)
+		}
 	}
-	rbRecursing[k] = struct{}{}
-	return true
-}
-
-func rbRecurseLeave(op byte, a, b any) {
-	rbInspectingMu.Lock()
-	defer rbInspectingMu.Unlock()
-	delete(rbRecursing, rbRecKey{op, a, b})
+	return rbInspect(a)
 }
 
 func rbTruthy(a any) bool {

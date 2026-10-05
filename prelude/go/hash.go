@@ -7,14 +7,14 @@ package prelude
 // symbol is not an identifier (rbIdentRe, prelude/symbol.rb).
 var rbLabelSymbol = regexp.MustCompile(`\A` + rbIdentRe + `[?!]?\z`)
 
-func rbInspectPair(k, v any) string {
+func rbInspectPair(k, v any, seen *rbSeen) string {
 	if s, ok := rbUnbox(k).(Symbol); ok {
 		if rbLabelSymbol.MatchString(string(s)) {
-			return string(s) + ": " + string(rbInspect(v))
+			return string(s) + ": " + string(rbInspectIn(v, seen))
 		}
-		return string(rbStringInspectAs(string(s), false)) + ": " + string(rbInspect(v))
+		return string(rbStringInspectAs(string(s), false)) + ": " + string(rbInspectIn(v, seen))
 	}
-	return string(rbInspect(k)) + " => " + string(rbInspect(v))
+	return string(rbInspectIn(k, seen)) + " => " + string(rbInspectIn(v, seen))
 }
 
 // rbKeyIndex buckets the keys of a Hash (or uniq's seen set) that match

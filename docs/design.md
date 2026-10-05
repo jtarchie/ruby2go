@@ -3514,7 +3514,17 @@ resolve; anything not listed is still open.
     holding itself no longer reaches that overflow through `==`, `eql?`
     or `hash`: a paired guard (`rbRecurseEnter`, beside inspect's) answers
     a re-entered pair as equal and hashes it as a constant, as MRI's
-    `rb_exec_recursive_paired` does.
+    `rb_exec_recursive_paired` does. *Revised:* no global set or lock
+    (a process-wide lock serializes threads like MRI's GVL, which
+    compiling to Go exists to avoid). Each top-level `inspect`, `==`,
+    `eql?` or `hash` owns an `rbSeen`, passed down through the
+    containers' `_inspect_rec`/`_eq_rec`/`_eql_rec`/`_hash_rec` and made
+    only when a nested container is reached, so a flat Array allocates
+    nothing. Objects whose `inspect` is Kernel's carry it into their
+    ivars (a generated `rbKernelInspect` table by class ID), so a
+    parent/child cycle prints `...` as in MRI. Known difference: a cycle
+    through a user-defined `inspect` or `==` starts a fresh set there and
+    is not caught (MRI's set is per thread; Go has no goroutine-locals).
 129. `Warning` and `Kernel#warn(*msgs, uplevel:, category:)` (#44).
     `warn` builds one string as MRI's `rb_warn_m`: messages flatten
     (`warn []` prints nothing), each gets a newline unless it has one,

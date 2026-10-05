@@ -396,14 +396,20 @@ class Hash < Object
   }
 
   #: () -> String
-  def inspect = %x{
-    if !rbInspectEnter(self) {
+  def inspect = _inspect_rec(nil)
+
+  # inspect inside another container's: seen (an rbSeen) is passed down,
+  # never shared between threads.
+  #: (untyped) -> String
+  def _inspect_rec(seen) = %x{
+    s := rbSeenOf(seen)
+    if !s.enter(self, nil) {
       return "{...}"
     }
-    defer rbInspectLeave(self)
+    defer s.leave(self, nil)
     parts := make([]string, 0, len(self.keys))
     for _, k := range self.keys {
-      parts = append(parts, rbInspectPair(k, self.vals[k]))
+      parts = append(parts, rbInspectPair(k, self.vals[k], s))
     }
     return String("{" + strings.Join(parts, ", ") + "}")
   }
@@ -412,7 +418,12 @@ class Hash < Object
   def to_s = inspect
 
   #: (untyped) -> bool
-  def ==(other) = %x{
+  def ==(other) = _eq_rec(other, nil)
+
+  # == with the pairs already being compared (seen, an rbSeen), made only
+  # once a nested container is reached.
+  #: (untyped, untyped) -> bool
+  def _eq_rec(other, seen) = %x{
     o, ok := other.(*Hash[K, V])
     if !ok {
       // Another instantiation ({1 => 1} == {1 => 1.0}, typed vs untyped):
@@ -425,14 +436,28 @@ class Hash < Object
     if len(o.keys) != len(self.keys) {
       return false
     }
-    if !rbRecurseEnter('=', self, o) {
-      return true
+    s, _ := seen.(*rbSeen)
+    if s != nil {
+      if !s.enter(self, o) {
+        return true // a pair already being compared: equal, as MRI's recursive ==
+      }
+      defer s.leave(self, o)
     }
-    defer rbRecurseLeave('=', self, o)
     for k, v := range self.vals {
       k, _, _ = o.idx.find(k)
       ov, ok := o.vals[k]
-      if !ok || !bool(rbEq(v, ov)) {
+      if !ok {
+        return false
+      }
+      if r, rec := any(v).(rbEqRec); rec {
+        if s == nil {
+          s = rbSeenOf(nil)
+          s.enter(self, o)
+        }
+        if !r._EqRec(ov, s) {
+          return false
+        }
+      } else if !bool(rbEq(v, ov)) {
         return false
       }
     }
@@ -442,7 +467,10 @@ class Hash < Object
   # Like ==, but values compare by eql? too ({1 => 1} is not eql? to
   # {1 => 1.0}).
   #: (untyped) -> bool
-  def eql?(other) = %x{
+  def eql?(other) = _eql_rec(other, nil)
+
+  #: (untyped, untyped) -> bool
+  def _eql_rec(other, seen) = %x{
     o, ok := other.(*Hash[K, V])
     if !ok {
       if h, ok := other.(Hash_Any); ok {
@@ -453,14 +481,28 @@ class Hash < Object
     if len(o.keys) != len(self.keys) {
       return false
     }
-    if !rbRecurseEnter('e', self, o) {
-      return true
+    s, _ := seen.(*rbSeen)
+    if s != nil {
+      if !s.enter(self, o) {
+        return true
+      }
+      defer s.leave(self, o)
     }
-    defer rbRecurseLeave('e', self, o)
     for k, v := range self.vals {
       k, _, _ = o.idx.find(k)
       ov, ok := o.vals[k]
-      if !ok || !rbKeyEql(v, ov) {
+      if !ok {
+        return false
+      }
+      if r, rec := any(v).(rbEqlRec); rec {
+        if s == nil {
+          s = rbSeenOf(nil)
+          s.enter(self, o)
+        }
+        if !r._EqlRec(ov, s) {
+          return false
+        }
+      } else if !rbKeyEql(v, ov) {
         return false
       }
     }
@@ -469,14 +511,30 @@ class Hash < Object
 
   # Order-independent, as eql? is.
   #: () -> Integer
-  def hash = %x{
-    if !rbRecurseEnter('h', self, nil) {
-      return 0
+  def hash = _hash_rec(nil)
+
+  #: (untyped) -> Integer
+  def _hash_rec(seen) = %x{
+    s, _ := seen.(*rbSeen)
+    if s != nil {
+      if !s.enter(self, nil) {
+        return 0 // inside itself: a constant, so the hash is finite and stable
+      }
+      defer s.leave(self, nil)
     }
-    defer rbRecurseLeave('h', self, nil)
     h := uint64(len(self.keys))
     for k, v := range self.vals {
-      h += rbKeyHash(k)*31 ^ rbKeyHash(v)
+      var vh uint64
+      if r, ok := any(v).(rbHashRec); ok {
+        if s == nil {
+          s = rbSeenOf(nil)
+          s.enter(self, nil)
+        }
+        vh = uint64(r._HashRec(s)) //nolint:gosec // a hash, not arithmetic
+      } else {
+        vh = rbKeyHash(v)
+      }
+      h += rbKeyHash(k)*31 ^ vh
     }
     return Integer(h)
   }

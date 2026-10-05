@@ -1410,7 +1410,10 @@ func (c *Compiler) emitClassMeta() {
 	names := make([]string, 0, len(c.classList))
 	ancestry := make([]string, 0, len(c.classList))
 	refs := make([]string, 0, len(c.classList))
+	kernelInspect := make([]string, 0, len(c.classList))
 	for _, cls := range c.classList {
+		e := cls.lookup("inspect") // Kernel's: an object's inspect carries a container's rbSeen into its ivars
+		kernelInspect = append(kernelInspect, strconv.FormatBool((cls.isStruct() || cls.RubyName == "Object") && !cls.IsModule && e != nil && e.Owner == c.classes["Kernel"]))
 		names = append(names, strconv.Quote(cls.displayName()))
 		var ids []string
 		for _, k := range c.classList {
@@ -1425,6 +1428,7 @@ func (c *Compiler) emitClassMeta() {
 	c.w("var rbAncestry = [...][]int{%s}\n\n", strings.Join(ancestry, ", "))
 	// a table, not a marker method: a `_Ref()` on every pointer class was 11k of the test programs' functions (decision 89)
 	c.w("var rbClassRefs = [...]bool{%s}\n\n", strings.Join(refs, ", "))
+	c.w("var rbKernelInspect = [...]bool{%s}\n\n", strings.Join(kernelInspect, ", "))
 	array := c.classID(c.classes["Array"])
 	for n := 2; n <= maxTuple; n++ {
 		if c.tupleN[n] {

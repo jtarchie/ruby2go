@@ -1959,6 +1959,8 @@ module HashTests
       assert_equal [true, true, true, false], [a == a, a.eql?(b), a == b, a == [a, 1]]
       assert a.hash == a.hash
       assert_equal false, h == { self: 1 }
+      assert_equal ["[[...]]", "{self: {...}}", "[{self: {...}}, [[[...]]]]"], [a.inspect, h.inspect, [h, [a]].inspect]
+      assert_equal [true, false], [[1, [2, { k: [3] }]] == [1, [2, { k: [3] }]], [1, [2]] == [1, [3]]]
     end
   end
 end
