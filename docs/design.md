@@ -3900,7 +3900,7 @@ resolve; anything not listed is still open.
       Go types, not the closed world's classes, so the reference table and
       a type tag per value were needed anyway and gob would only have
       wrapped them. The length is what lets `Marshal.load(io)` read exactly
-      one dump from a `File` or `StringIO`, so dumps written one after
+      one dump from a `File`, `StringIO` or socket, so dumps written one after
       another load one at a time, as MRI's do. MRI's bytes start `\x04\x08`
       and get a `TypeError` saying so; MRI rejects ours ("format version
       4.8 required"). `MAJOR_VERSION`/`MINOR_VERSION` are MRI's 4 and 8.
@@ -3963,12 +3963,20 @@ resolve; anything not listed is still open.
       `no _dump_data` message. rb2go names `Mutex` and the queues without
       MRI's `Thread::`; the messages add it.
     - **IO forms.** `dump(obj, io)` calls `io.write` and answers `io`;
-      `dump(obj, io, limit)` too. `load(io)` reads one dump from a `File`
-      or `StringIO`, and calls `read` on anything else. `Marshal.restore`
-      is `load`. `load`'s proc argument and `freeze:` are not built.
-      `File.binread`/`File.binwrite` came along (Strings are bytes, so
-      they are `read`/`write`), as did noting a proc literal's Go type
-      for `rbIsProc`, which Marshal's `Proc` message needs.
+      `dump(obj, io, limit)` too. `load(io)` reads exactly one dump from a
+      `File`, `$stdin` or anything with a prelude `read(n)` (`StringIO`,
+      sockets: an interface assertion on `__read_1`'s Go method, since
+      dynamic dispatch does not reach decision 12's overloads), reading
+      the body through a `LimitReader` so a corrupt length allocates
+      nothing up front; an IO at its end is MRI's `EOFError`, so `loop {
+      Marshal.load(f) }` ends with `rescue EOFError`. Any other object
+      with `read` is read to its end; one with neither `read` nor `write`
+      is MRI's `TypeError: instance of IO needed`. `Marshal.restore` is
+      `load`. `load`'s proc argument and `freeze:` are not built.
+      `File.binread`/`File.binwrite` and `File.new`'s `b`/`t` mode
+      letters came along (Strings are bytes, so they change nothing), as
+      did noting a proc literal's Go type for `rbIsProc`, which Marshal's
+      `Proc` message needs.
     - **PStore** (#1's won't-do table) is now feasible as a prelude
       class over this: a `Hash[untyped, untyped]` root marshalled to its
       file inside `transaction`, `abort`/`commit` by `catch`/`throw`, and

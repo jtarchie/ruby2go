@@ -17,12 +17,12 @@ type rbMW struct {
 }
 
 func rbMarshalDump(v any, limit int) String {
-	w := &rbMW{refs: map[any]int{}, limit: limit}
+	const head = len(rbMarshalMagic) + 8
+	w := &rbMW{buf: make([]byte, head, 64), refs: map[any]int{}, limit: limit}
+	copy(w.buf, rbMarshalMagic)
 	w.value(v)
-	out := make([]byte, 0, len(rbMarshalMagic)+8+len(w.buf))
-	out = append(out, rbMarshalMagic...)
-	out = binary.LittleEndian.AppendUint64(out, uint64(len(w.buf)))
-	return String(append(out, w.buf...))
+	binary.LittleEndian.PutUint64(w.buf[len(rbMarshalMagic):], uint64(len(w.buf)-head))
+	return String(w.buf)
 }
 
 func (w *rbMW) str(s string) {
@@ -169,39 +169,13 @@ func rbMDumpAnyForm(w *rbMW, v any) bool {
 	case nil:
 		return false
 	case Array_Any:
-		if w.begin(v, 'o', "Array[any]") {
-			a := *x._ToAny()
-			w.count(len(a))
-			for _, e := range a {
-				w.value(e)
-			}
-		}
+		rbMDumpArray(w, "Array[any]", v, x._ToAny())
 	case Hash_Any:
-		if w.begin(v, 'o', "Hash[any, any]") {
-			h := x._ToAny()
-			w.count(len(h.keys))
-			for _, k := range h.keys {
-				w.value(k)
-				w.value(h.vals[k])
-			}
-		}
+		rbMDumpHash(w, "Hash[any, any]", v, x._ToAny())
 	case Set_Any:
-		if w.begin(v, 'o', "Set[any]") {
-			s := x._ToAny()
-			w.count(len(s.h.keys))
-			for _, k := range s.h.keys {
-				w.value(k)
-			}
-		}
+		rbMDumpSet(w, "Set[any]", v, x._ToAny())
 	case Range_Any:
-		if w.begin(v, 'o', "Range[any]") {
-			r := x._ToAny()
-			w.value(r.b)
-			w.value(r.e)
-			w.value(Boolean(r.excl))
-			w.value(Boolean(r.endless))
-			w.value(Boolean(r.beginless))
-		}
+		rbMDumpRange(w, "Range[any]", v, x._ToAny())
 	default:
 		return false
 	}
@@ -231,8 +205,9 @@ func rbMDumpObj(w *rbMW, tag string, v any) {
 	}
 }
 
-func rbMDumpArray[E comparable](w *rbMW, tag string, a *Array[E]) {
-	if !w.start(a == nil, a, tag) {
+// The container dumps take id apart from the value: rbMDumpAnyForm's _ToAny copy must keep the original's identity.
+func rbMDumpArray[E comparable](w *rbMW, tag string, id any, a *Array[E]) {
+	if !w.start(a == nil, id, tag) {
 		return
 	}
 	w.count(len(*a))
@@ -241,8 +216,8 @@ func rbMDumpArray[E comparable](w *rbMW, tag string, a *Array[E]) {
 	}
 }
 
-func rbMDumpHash[K, V comparable](w *rbMW, tag string, h *Hash[K, V]) {
-	if !w.start(h == nil, h, tag) {
+func rbMDumpHash[K, V comparable](w *rbMW, tag string, id any, h *Hash[K, V]) {
+	if !w.start(h == nil, id, tag) {
 		return
 	}
 	w.count(len(h.keys))
@@ -252,8 +227,8 @@ func rbMDumpHash[K, V comparable](w *rbMW, tag string, h *Hash[K, V]) {
 	}
 }
 
-func rbMDumpSet[E comparable](w *rbMW, tag string, s *Set[E]) {
-	if !w.start(s == nil, s, tag) {
+func rbMDumpSet[E comparable](w *rbMW, tag string, id any, s *Set[E]) {
+	if !w.start(s == nil, id, tag) {
 		return
 	}
 	w.count(len(s.h.keys))
@@ -262,8 +237,8 @@ func rbMDumpSet[E comparable](w *rbMW, tag string, s *Set[E]) {
 	}
 }
 
-func rbMDumpRange[E comparable](w *rbMW, tag string, r *Range[E]) {
-	if !w.start(r == nil, r, tag) {
+func rbMDumpRange[E comparable](w *rbMW, tag string, id any, r *Range[E]) {
+	if !w.start(r == nil, id, tag) {
 		return
 	}
 	w.value(any(r.b))
@@ -322,38 +297,70 @@ func rbMarshalBodySize(head any) int {
 	return int(n)
 }
 
-// rbMarshalReadN reads at most n bytes, so dumps written one after another into a File or StringIO load one at a time, as MRI's do.
-func rbMarshalReadN(src any, n int) (String, bool) {
+// rbMarshalExactIO: these read exactly n bytes, so dumps written one after another load one at a time, as MRI's do; another IO's read reads to its end.
+func rbMarshalExactIO(src any) bool {
 	switch s := src.(type) {
 	case nil:
-		return "", false
+		return false
+	case *File:
+		return true
+	case *IO:
+		return s.fd == 0
+	case interface{ __Read1(n Integer) *String }:
+		return true
+	default:
+		return false
+	}
+}
+
+// rbMarshalReadN: the length comes from the data, so a File reads through a LimitReader rather than allocating it up front.
+func rbMarshalReadN(src any, n int) String {
+	switch s := src.(type) {
+	case nil:
+		return ""
 	case *File:
 		s.rbReadable()
-		buf := make([]byte, n)
-		k, _ := io.ReadFull(s.r, buf)
-		return String(buf[:k]), true
-	case *StringIO:
+		b, _ := io.ReadAll(io.LimitReader(s.r, int64(n)))
+		return String(b)
+	case *IO:
 		s.rbReadable()
-		from := min(s.pos, len(s.buf))
-		end := min(from+n, len(s.buf))
-		s.pos = end
-		return String(s.buf[from:end]), true
+		b, _ := io.ReadAll(io.LimitReader(rbStdin, int64(n)))
+		return String(b)
+	case interface{ __Read1(n Integer) *String }:
+		var b strings.Builder
+		for b.Len() < n {
+			p := s.__Read1(Integer(n - b.Len()))
+			if p == nil || *p == "" {
+				break
+			}
+			b.WriteString(string(*p))
+		}
+		return String(b.String())
 	default:
-		return "", false
+		return ""
 	}
+}
+
+// rbMarshalLoadIO: an IO at its end is MRI's EOFError, which loops reading dumps until EOF rescue.
+func rbMarshalLoadIO(src any) any {
+	head := rbMarshalReadN(src, len(rbMarshalMagic)+8)
+	if head == "" {
+		panic(NewEOFError(Ref(String("end of file reached"))))
+	}
+	return rbMarshalLoad(head, rbMarshalReadN(src, rbMarshalBodySize(head)))
 }
 
 // rbMarshalLoad: from an IO, the body is read separately once the header gives its length.
 func rbMarshalLoad(head, body any) any {
 	n := rbMarshalBodySize(head)
-	rest := string(rbUnbox(head).(String))[len(rbMarshalMagic)+8:]
+	data := []byte(rbUnbox(head).(String)[len(rbMarshalMagic)+8:])
 	if b, ok := rbUnbox(body).(String); ok {
-		rest += string(b)
+		data = append(data, b...)
 	}
-	if len(rest) < n {
+	if len(data) < n {
 		panic(rbMarshalShort())
 	}
-	r := &rbMR{b: []byte(rest[:n])}
+	r := &rbMR{b: data[:n]}
 	return r.value()
 }
 

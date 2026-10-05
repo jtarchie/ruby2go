@@ -8,6 +8,7 @@ require "stringio"
 require "tmpdir"
 require "ostruct"
 require "json"
+require "socket"
 
 # Marshal (decision 137): the bytes are rb2go's own, so no assertion ever sees them; only the object graphs are MRI's.
 module MarshalTests
@@ -215,22 +216,43 @@ module MarshalTests
       io.rewind
       assert_equal [1, 2], Marshal.load(io)
       assert_equal({a: 1}, Marshal.load(io))
+      e = assert_raises(EOFError) { Marshal.load(io) }
+      assert_equal "end of file reached", e.message
       Dir.mktmpdir do |dir|
         path = File.join(dir, "cache.bin")
         File.binwrite(path, Marshal.dump({name: "a", pts: [Point.new(1, 2)]}))
         back = Marshal.load(File.binread(path))
         assert_equal "a", back[:name]
         assert_equal [Point.new(1, 2)], back[:pts]
-        File.open(path, "w") do |f|
+        File.open(path, "wb") do |f|
           Marshal.dump("first", f)
           Marshal.dump([:second], f)
         end
-        File.open(path) do |f|
-          assert_equal "first", Marshal.load(f)
-          assert_equal [:second], Marshal.load(f)
+        got = [] #: Array[untyped]
+        File.open(path, "rb") do |f|
+          begin
+            loop { got << Marshal.load(f) }
+          rescue EOFError
+            got << :eof
+          end
+          f.close
         end
+        assert_equal ["first", [:second], :eof], got
       end
+      a, b = UNIXSocket.pair
+      Marshal.dump({x: [1, 2]}, a)
+      Marshal.dump("second", a)
+      assert_equal [{x: [1, 2]}, "second"], [Marshal.load(b), Marshal.load(b)]
+      a.close
+      assert_raises(EOFError) { Marshal.load(b) }
+      b.close
       assert_equal [1], Marshal.restore(Marshal.dump([1]))
+      [5, nil].each do |bad|
+        e = assert_raises(TypeError) { Marshal.load(bad) }
+        assert_equal "instance of IO needed", e.message
+      end
+      e = assert_raises(TypeError) { Marshal.dump(1, "x") }
+      assert_equal "instance of IO needed", e.message
     end
 
     def test_library_values

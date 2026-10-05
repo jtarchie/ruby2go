@@ -5,9 +5,12 @@ class File < Object
   include IOWritable
   include IOReadable
 
-  # Modes "r", "w", "a" and their "+" forms; failures raise MRI's Errno classes (decision 62).
+  # Modes "r", "w", "a" and their "+" forms, "b"/"t" ignored (Strings are bytes); failures raise MRI's Errno classes (decision 62).
   #: (String, ?String) -> File
   def self.new(path, mode = "r") = %x{
+    if m := strings.NewReplacer("b", "", "t", "").Replace(string(mode)); m != "" && len(m) < len(mode) {
+      mode = String(m)
+    }
     flags := map[String]int{
       "r": os.O_RDONLY, "r+": os.O_RDWR,
       "w": os.O_WRONLY | os.O_CREATE | os.O_TRUNC, "w+": os.O_RDWR | os.O_CREATE | os.O_TRUNC,

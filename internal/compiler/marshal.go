@@ -149,7 +149,7 @@ func (c *Compiler) emitMarshalType(dump, load *strings.Builder, t Type) {
 	}
 	ct := t.(TClass)
 	kind := ct.C.Name
-	fmt.Fprintf(dump, "\tcase *%s:\n\t\trbMDump%s(w, %q, x)\n", name, kind, name)
+	fmt.Fprintf(dump, "\tcase *%s:\n\t\trbMDump%s(w, %q, x, x)\n", name, kind, name)
 	fmt.Fprintf(load, "\tcase rbKeyed[*%s](%q):\n\t\treturn rbMLoad%s[%s](r), true\n", name, "o"+name, kind, c.goTypes(ct.Args))
 }
 
