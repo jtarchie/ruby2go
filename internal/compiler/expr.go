@@ -3020,7 +3020,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 			e = o
 		}
 	}
-	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || n.Receiver != nil) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
+	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
 	}
 	var recv expr

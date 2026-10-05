@@ -4713,8 +4713,8 @@ module ControlTests
     def test_detailed_message
       assert_equal ["boom (RuntimeError)", "unhandled exception", "a (RuntimeError)\nb", "boom (RuntimeError)"],
                    [RuntimeError.new("boom").detailed_message, RuntimeError.new("").detailed_message, RuntimeError.new("a\nb").detailed_message, RuntimeError.new("boom").detailed_message(highlight: false)]
-      assert_equal ["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError"],
-                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", ""].map { |m| StandardError.new(m).detailed_message }
+      assert_equal ["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError", "abc\r (StandardError)"],
+                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", "", "abc\r\n"].map { |m| StandardError.new(m).detailed_message }
       assert_equal ["\e[1ma (\e[1;4mStandardError\e[m\e[1m)\e[m\n\e[1mb\e[m\n\e[1mc\e[m\n", "\e[1;4mStandardError\e[m", "\e[1;4munhandled exception\e[m"],
                    [StandardError.new("a\nb\nc\n").detailed_message(highlight: true), StandardError.new("").detailed_message(highlight: true), RuntimeError.new("").detailed_message(highlight: true)]
     end

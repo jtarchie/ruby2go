@@ -4345,6 +4345,20 @@ module ObjectTests
         break if n > 2
       end
       assert_equal 3, n
+      en = [1, 2].each
+      sum = 0
+      Kernel.loop { sum += en.next }
+      assert_equal 3, sum
+    end
+
+    #: () ?{ () -> String } -> String
+    def object_kernel_given(&blk)
+      Kernel.block_given? ? blk.call : "none"
+    end
+
+    def test_block_given_and_public_method
+      assert_equal ["blk", "none"], [object_kernel_given { "blk" }, object_kernel_given]
+      assert_equal "x", Kernel.public_method(:format).call("x")
     end
   end
 

@@ -4093,7 +4093,10 @@ resolve; anything not listed is still open.
       `initialize_copy` and the rest stay private, as MRI's NoMethodError
       says. `Kernel.raise`/`fail`/`lambda`/`proc`/`block_given?`/
       `__method__`/`__dir__` go to the intrinsic the receiverless call
-      does, and `Kernel.raise` ends a statement list as `raise` does.
+      does, and `Kernel.raise` ends a statement list as `raise` does;
+      `Kernel.loop` rescues StopIteration and `Kernel.block_given?`
+      narrows an optional block as the bare calls do, and
+      `Kernel.public_method` takes them.
       `respond_to?` answers true for those names. `Kernel.require` is
       not an intrinsic (rb2go loads files at compile time).
     - **`Exception#full_message(highlight:, order:)`** is MRI's

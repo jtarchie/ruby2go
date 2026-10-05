@@ -41,14 +41,12 @@ class Exception < Object
   #: (?highlight: bool) -> String
   def detailed_message(highlight: false)
     m = message
-    if m.empty?
-      name = instance_of?(RuntimeError) ? "unhandled exception" : __class_name
-      return highlight ? "\e[1;4m#{name}\e[m" : name
-    end
-    i = (m.end_with?("\n") ? m[0, m.size - 1] || "" : m).index("\n")
-    first = i ? m[0, i] || "" : m.chomp
+    return __bare_name(highlight) if m.empty?
+    i = m.index("\n")
+    first = i ? m[0, i] || "" : m
     head = highlight ? "\e[1m#{first} (\e[1;4m#{__class_name}\e[m\e[1m)\e[m" : "#{first} (#{__class_name})"
     return head unless i
+    return head if i == m.size - 1
     rest = m[i + 1, m.size] || ""
     rest = rest.split("\n", -1).map { |l| l.empty? ? l : "\e[1m#{l}\e[m" }.join("\n") if highlight
     "#{head}\n#{rest}"
@@ -81,11 +79,14 @@ class Exception < Object
   def __errinfo(hl)
     top = backtrace&.first
     m = detailed_message(highlight: hl)
-    if m.empty?
-      m = instance_of?(RuntimeError) ? "unhandled exception" : __class_name
-      m = "\e[1;4m#{m}\e[m" if hl
-    end
+    m = __bare_name(hl) if m.empty?
     "#{top ? "#{top}: " : __error_pos}#{m}\n"
+  end
+
+  #: (bool) -> String
+  def __bare_name(hl)
+    name = instance_of?(RuntimeError) ? "unhandled exception" : __class_name
+    hl ? "\e[1;4m#{name}\e[m" : name
   end
 
   #: (bool) -> String
