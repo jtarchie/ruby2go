@@ -369,11 +369,17 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 			c.collectModule(ctx, f, n, nil)
 		case *parser.DefNode:
 			c.collectTopDef(f, n)
+			c.scanAnon(ctx, f, n.Body, nil)
 		case *parser.ConstantWriteNode:
 			if call, kind := valueClass(n.Value); call != nil {
 				c.collectValueClass(ctx, f, n, call, kind, nil)
 				continue
 			}
+			if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
+				c.collectNamedAnon(ctx, f, n, call, isModule, nil)
+				continue
+			}
+			c.scanAnon(ctx, f, n.Value, nil)
 			c.addConst(f, n, n.Name, nil, nil)
 		case *parser.PreExecutionNode: // BEGIN runs before the rest of its file, in the top-level scope
 			if c.beginStmts == nil {
@@ -390,6 +396,7 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 		case *parser.CallNode:
 			c.collectTopCall(ctx, f, n)
 		default:
+			c.scanAnon(ctx, f, n, nil)
 			c.addMainStmt(f, n)
 		}
 	}
@@ -422,6 +429,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 			c.addMainStmt(f, hook)
 		}
 	default:
+		c.scanAnon(ctx, f, n, nil)
 		c.addMainStmt(f, n)
 	}
 }
@@ -640,12 +648,16 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 	for _, n := range stmts.Body {
 		switch n := n.(type) {
 		case *parser.DefNode:
+			c.scanAnon(ctx, f, n.Body, scope)
 			// a bare `private` does not reach `def self.x`
 			c.addMethod(f, cls, n, (vis.private || vis.moduleFunction) && n.Receiver == nil, scope)
 			if n.Receiver == nil {
 				c.applyVisibility(f, cls, n, vis, scope)
 			}
 		case *parser.CallNode:
+			if !isDescribe(n) { // a describe's block is a class body, collected as one
+				c.scanAnon(ctx, f, n, scope)
+			}
 			c.collectClassCall(ctx, f, cls, n, vis, scope)
 		case *parser.SingletonClassNode:
 			c.collectSingletonClass(f, cls, n, scope)
@@ -666,6 +678,11 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 				c.collectValueClass(ctx, f, n, call, kind, scope)
 				continue
 			}
+			if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
+				c.collectNamedAnon(ctx, f, n, call, isModule, scope)
+				continue
+			}
+			c.scanAnon(ctx, f, n.Value, scope)
 			c.addConst(f, n, n.Name, nil, scope)
 		default:
 			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))

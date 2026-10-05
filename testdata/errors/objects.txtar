@@ -695,12 +695,16 @@ class Base
   #: () -> Integer
   def scaled = self.class::SCALE
 end
--- anonymous_class.rb --
-# error: main.rb:5: Class.new takes no arguments
+-- anonymous_class_dynamic_super.rb --
+# error: main.rb:6: Class.new's superclass must be a constant (decision 145)
 class Base
 end
 
-Anon = Class.new(Base)
+base = Base
+Anon = Class.new(base)
+-- anonymous_class_block_params.rb --
+# error: main.rb:2: Class.new needs a block without parameters (decision 145)
+c = Class.new { |k| }
 -- superclass_mismatch_after_plain.rb --
 # error: main.rb:8: class C reopened with a different superclass
 class A

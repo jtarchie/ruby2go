@@ -4495,4 +4495,39 @@ module ObjectTests
       assert BasicObject.new.equal?(BasicObject.new) == false
     end
   end
+  # #56, decision 145: Class.new/Module.new literals are classes declared at compile time
+  AnonBase = Class.new do
+    def v = 1
+  end
+
+  AnonMod = Module.new do
+    def mv = 10
+  end
+
+  class AnonIncluder
+    include AnonMod
+  end
+
+  class ClassNewTest < Minitest::Test
+    def test_named
+      assert_equal ["ObjectTests::AnonBase", 1, 10], [AnonBase.name, AnonBase.new.v, AnonIncluder.new.mv]
+    end
+
+    def test_local
+      c = Class.new(AnonBase) do
+        def w = v + 1
+      end
+      assert_equal [2, true, true], [c.new.w, c.new.is_a?(AnonBase), c.new.is_a?(c)]
+      assert_equal 3, Class.new { def x = 3 }.new.x
+      m = Module.new do
+        def self.z = 4
+      end
+      assert_equal 4, m.z
+    end
+
+    def test_proc_new
+      f = Proc.new { 5 }
+      assert_equal 5, f.call
+    end
+  end
 end

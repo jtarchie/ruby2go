@@ -1297,8 +1297,11 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if e, ok := f.genERBCall(n); ok {
 		return e
 	}
+	if cls := f.c.anonClasses[n]; cls != nil { // Class.new/Module.new: the class declared for this literal (decision 145)
+		return f.genExpr(&parser.ConstantReadNode{Name: cls.RubyName, Location: n.Location}, expected)
+	}
 	if cls := f.classRef(n.Receiver); cls != nil {
-		if e, ok := f.genSpecialClassCall(n, cls); ok {
+		if e, ok := f.genSpecialClassCall(n, cls, expected); ok {
 			return e
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
@@ -1448,7 +1451,7 @@ func (f *fctx) genBareName(n *parser.CallNode, expected Type) (expr, bool) {
 }
 
 // genSpecialClassCall is the class-method calls the compiler answers itself: Ractor.new (decision 103), ERB.new (decision 111) and URI.open (decision 134).
-func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) {
+func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class, expected Type) (expr, bool) {
 	switch {
 	case cls.RubyName == "Ractor":
 		return f.genRactorCall(n, cls)
@@ -1457,6 +1460,11 @@ func (f *fctx) genSpecialClassCall(n *parser.CallNode, cls *Class) (expr, bool) 
 	case cls.RubyName == "ERB" && n.Name == "new":
 		f.c.erbNewTemplate(f.f, n) // checked here; the object only marks the template
 		return expr{code: "NewERB()", typ: TClass{C: cls}, ctor: true}, true
+	case n.Name == "new" && cls.RubyName == "Proc" && n.Block != nil:
+		if bn, ok := n.Block.(*parser.BlockNode); ok && n.Arguments == nil { // Proc.new { } is proc { }
+			return f.genLambda(n, bn, bn.Parameters, expected), true
+		}
+		f.errorf(n, "Proc.new needs a literal block")
 	case n.Name == "new" && cls.universal && !cls.IsModule:
 		// a plain object, made to be unique: specs compare it by identity (#56)
 		if args := callArgs(n); len(args) > 0 {

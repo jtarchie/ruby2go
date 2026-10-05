@@ -4603,3 +4603,35 @@ resolve; anything not listed is still open.
     `object_id` is the pointer's; `main` (the same Go type) prints `main`,
     as MRI's singleton `to_s` does. Arguments are a compile error with
     MRI's arity message.
+145. `Class.new` and `Module.new` (#56) are declared at compile time, one
+    class per literal, as `describe` is (decision 83). MRI makes the class
+    when the call runs; the closed world sees every literal, so:
+    - **Named.** `Name = Class.new(Super) do ... end` (top level or in a
+      class or module body) is `class Name < Super`, and
+      `Name = Module.new do ... end` is `module Name`: the constant names
+      it, as in MRI. With no block it is an empty subclass
+      (`NotFound = Class.new(StandardError)`).
+    - **Anonymous.** Any other literal (a local, an argument, a method
+      receiver as in `Class.new { ... }.new`, inside a def, block, `it`
+      or `let`) is a hidden class the expression evaluates to, typed as
+      its class object, so `c.new`, `c.new.foo` and `is_a?(c)` are
+      static calls. Its `to_s` is `#<Class:file:line>` where MRI prints
+      an address, and `name` is that same String where MRI's is nil
+      (`Module#name` is `String`, not `String?`, so every `k.name.upcase`
+      keeps compiling).
+    - **The block is the class body**: the same `def`, `attr_*`,
+      `include`, constants and `class << self` a `class` body takes. A
+      block does not open a constant scope in Ruby, so its constants
+      belong to the enclosing one; outer locals are not visible to its
+      defs, as in MRI.
+    - **One class per literal.** A `Class.new` in a loop or in a method
+      called twice is the same class each time, where MRI makes a new
+      one per run. A superclass must be a constant (a local holding a
+      class is a compile error), and a block with parameters is one too.
+    - **Not done:** `define_method` in the body, `include` of a module
+      held in a local (no static form), and the `inherited` hook for an
+      anonymous literal (named ones run it where the constant is
+      assigned).
+    - `Proc.new { ... }` is `proc { ... }` (decision 47).
+    ([example 100](../examples/100_class_new/main.rb),
+    `testdata/test/object_test.rb` `ClassNewTest`.)

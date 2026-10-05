@@ -78,6 +78,8 @@ type Compiler struct {
 	argBoxes    map[string]bool // T? boxes of generic type arguments, which generic code may hold
 	classIDs    map[*Class]int  // index in classList: the class's ID in the generated tables
 	specClasses int             // describes declared, for their classes' Go names
+	anonCount   int                         // Class.new/Module.new literals declared (decision 145)
+	anonClasses map[*parser.CallNode]*Class // each literal's class
 	specUses    []specUse       // Minitest::Spec DSL calls, checked after link
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
