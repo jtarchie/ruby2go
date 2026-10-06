@@ -164,6 +164,10 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 // genExpr notes each value's type for Marshal: an inferred local's container type is never rendered (decision 137).
 func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 	e := f.genExpr0(n, expected)
+	switch n.(type) {
+	case *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode: // the block or the parent may reassign ivars
+		f.unnarrowIvars()
+	}
 	f.c.noteMarshal(e.typ)
 	if fn, ok := e.typ.(TFunc); ok && fn.Proc {
 		f.c.goType(fn) // a proc literal's Go type is written out inline, so rbIsProc (Marshal's "Proc" TypeError) would miss it
@@ -359,6 +363,12 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 	case *parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
 		return f.genClassVarExpr(n)
 	case *parser.InstanceVariableReadNode:
+		if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed (decision 148)
+			return expr{code: v.goName, typ: v.typ}
+		}
+		if f.readsUnassigned(n.Name) {
+			return expr{code: "nil", typ: TNil{}}
+		}
 		iv := f.ivar(n, n.Name, nil)
 		return expr{code: f.ivarCode(iv), typ: iv.Type}
 	case *parser.InstanceVariableWriteNode:
@@ -374,6 +384,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 			val.typ = ann // `@x = [] #: Array[T]` declares the ivar's type
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
+		f.unnarrow("ivar:" + n.Name)
 		iv := f.ivar(n, n.Name, val.typ)
 		if f.discover && ann == nil && isEmptyLit(n.Value) {
 			iv.open = true
@@ -385,14 +396,24 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
 		// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
 		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+			f.narrowIvar(iv) // and reads after it, until a call through self (decision 148)
 			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
 		}
 		return expr{code: code, typ: iv.Type, done: true}
 	case *parser.InstanceVariableOperatorWriteNode:
 		iv := f.ivar(n, n.Name, nil)
 		code := f.ivarCode(iv)
-		val := f.genOp(n, expr{code: code, typ: iv.Type}, n.BinaryOperator, n.Value)
+		cur := expr{code: code, typ: iv.Type}
+		if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed: @x is non-nil here (decision 148)
+			cur = expr{code: v.goName, typ: v.typ}
+		}
+		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
+		f.unnarrow("ivar:" + n.Name)
 		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+			f.narrowIvar(iv)
+			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
+		}
 		return expr{code: code, typ: iv.Type, done: true}
 	}
 	f.c.unsupported(f.f, n)
@@ -558,6 +579,9 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		return expr{code: tmp, typ: l.typ}
 	}
 	untyped := isAny(lElem)
+	if iv, ok := n.Left.(*parser.InstanceVariableReadNode); ok && !isOpt(l.typ) && f.scope.lookup("ivar:"+iv.Name) != nil {
+		return l // narrowed non-nil (decision 148): MRI never runs the right side either
+	}
 	if !isOpt(l.typ) && !untyped && !boolL {
 		f.errorf(n, "`||` on a non-nilable %s is always the left side", l.typ)
 	}
@@ -747,6 +771,9 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 	}
 	if iv == nil {
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
+			if f.c.ivarReadFirst[f.owner.Name+"#"+name] {
+				assigned = optOf(assigned)
+			}
 			return f.c.declareIvar(f.owner, name, assigned, f.f, f.f.line(n.GetLocation().StartOffset))
 		}
 		f.errorf(n, "instance variable %s has no known type; assign it in initialize or add `# @rbs %s: T`", name, name)
@@ -1320,6 +1347,7 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 }
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
+	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
 	if e, ok := f.genKernelCall(n, expected); ok {
 		return e
 	}
@@ -4398,7 +4426,87 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 	if iv == nil {
 		iv = f.ivar(n, n.Name, nil)
 	}
-	return f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
+	f.unnarrow("ivar:" + n.Name)
+	e := f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
+	if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(e.typ) {
+		f.narrowIvar(iv) // non-nil from here on (decision 148)
+	}
+	return e
+}
+
+// readsUnassigned is a discovery read of an ivar no assignment has typed
+// yet (`unless @x; @x = ...`): it reads nil, and the ivar is declared T? by
+// the write that follows, since MRI's reads nil there (decision 148).
+func (f *fctx) readsUnassigned(name string) bool {
+	if !f.discover || f.owner == nil || f.owner.IsModule || f.c.findIvar(f.owner, name) != nil {
+		return false
+	}
+	if f.c.ivarReadFirst == nil {
+		f.c.ivarReadFirst = map[string]bool{}
+	}
+	f.c.ivarReadFirst[f.owner.Name+"#"+name] = true
+	return true
+}
+
+// narrowIvar reads iv as non-nil from here on in this scope (decision 148).
+func (f *fctx) narrowIvar(iv *Ivar) {
+	v := &local{name: "ivar:" + iv.Name, goName: f.ivarCode(iv), typ: iv.Type, declared: true}
+	f.applyNarrow([]narrowInfo{{local: v, typ: stripOpt(iv.Type)}})
+}
+
+// ivarLocal is @x as a local genCond can narrow, like attrLocal's readers.
+func (f *fctx) ivarLocal(n *parser.InstanceVariableReadNode) *local {
+	if v := f.scope.lookup("ivar:" + n.Name); v != nil {
+		return v
+	}
+	if f.readsUnassigned(n.Name) {
+		return nil // genIvarExpr's nil
+	}
+	iv := f.ivar(n, n.Name, nil)
+	return &local{name: "ivar:" + n.Name, goName: f.ivarCode(iv), typ: iv.Type, declared: true}
+}
+
+// afterCall forgets narrowed ivars once a call through self ran a method
+// the program defines, which may have reassigned them; prelude methods and
+// attribute readers leave self's ivars alone (decision 148).
+func (f *fctx) afterCall(n *parser.CallNode) {
+	if n.Receiver != nil && !isSelf(n.Receiver) || !f.hasNarrowedIvar() {
+		return
+	}
+	var m *Method
+	if f.owner != nil {
+		if e := f.owner.lookup(n.Name); e != nil {
+			m = e.M
+		}
+	}
+	if m == nil {
+		m = f.c.topDefs[n.Name]
+	}
+	if m != nil && (m.File != nil && m.File.prelude || m.Kind == kindAttrReader) {
+		return
+	}
+	f.unnarrowIvars()
+}
+
+func (f *fctx) hasNarrowedIvar() bool {
+	for sc := f.scope; sc != nil; sc = sc.parent {
+		for name, v := range sc.vars {
+			if v.base != nil && strings.HasPrefix(name, "ivar:") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (f *fctx) unnarrowIvars() {
+	for sc := f.scope; sc != nil; sc = sc.parent {
+		for name, v := range sc.vars {
+			if v.base != nil && strings.HasPrefix(name, "ivar:") {
+				delete(sc.vars, name)
+			}
+		}
+	}
 }
 
 func (f *fctx) genOrWrite(n parser.Node) expr {
@@ -5154,6 +5262,9 @@ func isSelf(n parser.Node) bool { _, ok := n.(*parser.SelfNode); return ok }
 // local for narrowing: readers are pure, so `if resource.is_a?(Array)`
 // may narrow `resource` for the branch, like Ruby programmers expect.
 func (f *fctx) attrLocal(n parser.Node) *local {
+	if iv, ok := n.(*parser.InstanceVariableReadNode); ok {
+		return f.ivarLocal(iv)
+	}
 	call, ok := n.(*parser.CallNode)
 	if !ok || call.Receiver != nil || call.Arguments != nil || call.Block != nil || f.owner == nil {
 		return nil

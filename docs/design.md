@@ -4769,3 +4769,31 @@ resolve; anything not listed is still open.
     `extend` on a single object
     ([example 102](../examples/102_module_ivars/main.rb),
     `testdata/test/object_test.rb` `ModuleIvarTest`).
+148. Instance variables narrow like locals (#75). After `@x ||= v`, a
+    non-nil `@x = v`, `@x += v`, `if @x`, `@x.is_a?(T)` or a guard
+    (`return unless @x`), a `T?` ivar reads as `T` in that scope, so
+    `File.join(@dir, name)` compiles without a check rb2go would
+    otherwise demand. The narrowed view is forgotten at a write to the
+    ivar, at `yield` or `super`, and after any call through self
+    (receiverless or `self.`) to a method the program defines; calls to
+    prelude methods, attribute readers, and calls on other receivers keep
+    it. That is unsound in two ways, both accepted: another object
+    holding self can reset the ivar in between, and so can another
+    thread (rb2go's runtime takes no process-wide lock, decision 147). A wrong narrowing
+    dereferences a nil pointer where MRI raises NoMethodError; both are
+    crashes. A flow analysis that knew every method's ivar writes would
+    close the first gap and is not worth it yet.
+    - **Read before any write.** A method that reads an ivar before
+      anything typed it (`unless @names; @names = [...]`) no longer stops
+      discovery: the read is nil, and the write that follows declares the
+      ivar `T?`, since MRI's first read really is nil. Not for modules'
+      ivars, which decision 147 declares by annotation.
+    - **Redundant checks still compile.** `@x || d`, `if @x` and `@x&.m`
+      on a narrowed ivar answer as MRI's (the left side, true, the call)
+      without the always-true warning or the non-nilable `||` error a
+      plain `T` gets: the program wrote the check before rb2go knew it
+      was redundant, and it must keep compiling.
+    - **Not done:** `x.nil? ? a : x.foo` narrowing (locals lack it too),
+      and `defined?(@x)` (#53).
+    ([example 103](../examples/103_ivar_narrowing/main.rb),
+    `testdata/test/object_test.rb` `ObjectIvarNarrowTest`.)

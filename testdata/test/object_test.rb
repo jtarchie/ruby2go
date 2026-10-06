@@ -4601,4 +4601,74 @@ module ObjectTests
       assert_equal [2, 1, nil], [a.raw, b.raw, IvarHolder.new.raw]
     end
   end
+
+  # decision 148: an ivar narrows like a local after ||=, a write, `if @x`
+  # and guards, until a call through self to a method the program defines
+  class NarrowBox
+    def initialize
+      @v = nil #: String?
+    end
+
+    def joined
+      @v ||= "x"
+      File.join(@v, "y")
+    end
+
+    def guarded
+      return "none" unless @v
+      @v.upcase
+    end
+
+    def reset = @v = nil
+
+    def after_reset
+      @v = "a"
+      reset
+      @v.nil?
+    end
+
+    def counted
+      @v = "ab"
+      @v += "c"
+      @v.length
+    end
+
+    def checked = @v.is_a?(String) ? @v.length : 0
+
+    # the checks a narrowed ivar makes redundant still compile, and answer as MRI's
+    def redundant
+      @v ||= "x"
+      [@v || "", @v&.upcase, @v.nil?, @v ? 1 : 2, @v && @v.size]
+    end
+
+    def nil_guard
+      return 0 if @v.nil?
+      @v.size
+    end
+  end
+
+  # read before any write: MRI's nil, so the ivar is T?
+  module NarrowMemo
+    def self.names
+      unless @names
+        @names = %w[a b]
+        @names += %w[c]
+        @names << "d"
+      end
+      @names
+    end
+  end
+
+  class ObjectIvarNarrowTest < Minitest::Test
+    def test_narrowing
+      b = NarrowBox.new
+      assert_equal ["none", "x/y", "X", 1, true, 3], [b.guarded, b.joined, b.guarded, b.checked, b.after_reset, b.counted]
+      assert_equal [0, ["x", "X", false, 1, 1], 1], [NarrowBox.new.nil_guard, NarrowBox.new.redundant, NarrowBox.new.tap(&:redundant).nil_guard]
+    end
+
+    def test_read_before_write
+      assert_equal %w[a b c d], NarrowMemo.names
+      assert_equal %w[a b c d], NarrowMemo.names
+    end
+  end
 end

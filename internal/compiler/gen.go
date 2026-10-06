@@ -692,6 +692,11 @@ func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
 				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 			}
 		}
+		if iv, ok := call.Receiver.(*parser.InstanceVariableReadNode); ok && f.owner != nil {
+			if v := f.ivarLocal(iv); v != nil && v.base == nil && isOpt(v.typ) && !isAny(stripOpt(v.typ)) {
+				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+			}
+		}
 	}
 	return ns
 }
@@ -809,6 +814,9 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		return "rbTruthy(" + e.code + ")"
 	case isOpt(e.typ) && isAny(e.typ.(TOpt).Elem):
 		return "rbTruthy(Opt(" + e.code + "))"
+	}
+	if iv, ok := n.(*parser.InstanceVariableReadNode); ok && f.scope.lookup("ivar:"+iv.Name) != nil {
+		return "true" // narrowed (decision 148): the check is the program's, not a mistake
 	}
 	f.c.Warnings = append(f.c.Warnings, fmt.Sprintf("%s:%d: condition of type %s is always true", f.f.Name, f.f.line(n.GetLocation().StartOffset), e.typ))
 	// value types (Integer, String) can't be compared to nil; keep the evaluation and the local's use

@@ -82,6 +82,7 @@ type Compiler struct {
 	anonClasses      map[*parser.CallNode]*Class       // each literal's class
 	inheritedAliases []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
 	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
+	ivarReadFirst    map[string]bool                   // owner#@x read before any assignment typed it, in discovery: declared T?
 	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
 	anonErrors       map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
 	specUses         []specUse                         // Minitest::Spec DSL calls, checked after link
