@@ -616,6 +616,9 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		f.valueOf(l)
 		return f.genExpr(n.Right, nil)
 	}
+	if u, ok := l.typ.(TUnion); ok {
+		return f.genUnionOr(n, l, u)
+	}
 	lElem := stripOpt(l.typ)
 	var r expr
 	f.probe(func() { r = f.genExpr(n.Right, lElem) })
@@ -681,6 +684,36 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 	f.emit("}")
 	return expr{code: tmp, typ: typ}
 }
+// genUnionOr is `l || r` on a union l (decision 150): l when truthy (its
+// members but nil), else r, typed as their join.
+func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
+	if !unionFalsy(u) {
+		f.errorf(n, "`||` on %s, which is never nil or false, is always the left side", u)
+	}
+	lElem := unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)
+	var r expr
+	f.probe(func() { r = f.genExpr(n.Right, lElem) })
+	typ := lElem
+	if !r.noreturn {
+		typ = joinUnion(lElem, r.typ)
+	}
+	tmp, lt := f.newTmp(), f.newTmp()
+	f.emit("var %s %s", tmp, f.c.goType(typ))
+	f.emit("if %s := %s; rbTruthy(%s) {", lt, l.code, lt)
+	f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: TAny{}}, typ)) // a member, so the check passes
+	f.emit("} else {")
+	f.indent++
+	r = f.genExpr(n.Right, lElem)
+	if r.noreturn {
+		f.emit("%s", r.code)
+	} else {
+		f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	}
+	f.indent--
+	f.emit("}")
+	return expr{code: tmp, typ: typ}
+}
+
 func (f *fctx) genAnd(n *parser.AndNode) expr {
 	l := f.genExpr(n.Left, nil)
 	narrow := f.leftNarrowing(n.Left, l)
@@ -706,7 +739,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		f.emit("}")
 		return expr{code: tmp, typ: l.typ}
 	}
-	if !boolL && !isOpt(l.typ) && !isAny(l.typ) && !isNil(l.typ) {
+	if !boolL && !isOpt(l.typ) && !isAny(l.typ) && !isNil(l.typ) && !unionFalsy(l.typ) {
 		// the left is never nil or false: the value is the right
 		f.discard(l)
 		return f.genExpr(n.Right, nil)
@@ -724,6 +757,11 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 			typ = j
 		}
 	}
+	unionL := isUnion(l.typ)
+	if unionL { // the left's falsy members (nil, false) join the right (decision 150)
+		lf := unionOf(slices.DeleteFunc(slices.Clone(l.typ.(TUnion).Members), func(m Type) bool { return !isNil(m) && !isClass(m, "Boolean") })...)
+		typ = joinUnion(lf, r.typ)
+	}
 	tmp, lt := f.newTmp(), f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
 	if isNil(l.typ) { // `nil && x`: x is dead, but still compiled (like `if nil`)
@@ -735,14 +773,20 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	f.indent++
 	f.push()
 	for _, nw := range narrow {
-		nw.code = "(*" + lt + ")"
+		if isOpt(l.typ) {
+			nw.code = "(*" + lt + ")"
+		}
 		f.applyNarrow([]narrowInfo{nw})
 	}
 	r = f.genExpr(n.Right, nil)
 	f.pop()
 	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
 	f.indent--
-	if isAny(typ) || optBool {
+	switch {
+	case unionL: // nil or false: checked into the result type, which holds both
+		f.emit("} else {")
+		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: TAny{}}, typ))
+	case isAny(typ) || optBool:
 		f.emit("} else {")
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	}
@@ -753,6 +797,12 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 // leftNarrowing is what `x && ...` proves about a nilable local x.
 func (f *fctx) leftNarrowing(n parser.Node, l expr) []narrowInfo {
 	lv, ok := n.(*parser.LocalVariableReadNode)
+	if ok && isUnion(l.typ) {
+		if nw, ok := f.narrowUnion(f.scope.lookup(lv.Name), func(m Type) bool { return !isNil(m) }); ok {
+			return []narrowInfo{nw}
+		}
+		return nil
+	}
 	if !ok || !isOpt(l.typ) || isAny(stripOpt(l.typ)) {
 		return nil
 	}
@@ -1111,7 +1161,7 @@ func joinOrAny(ts []Type) Type {
 			continue
 		}
 		j, ok := join(out, t)
-		if !ok {
+		if !ok || isUnion(j) && !isUnion(out) && !isUnion(t) { // ponytail: a mixed literal stays a tuple or untyped; Array[A | B] needs decision 13's fall-back-to-untyped when the typed program fails
 			return TAny{}
 		}
 		out = j
@@ -1288,7 +1338,7 @@ func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string
 	switch to := to.(type) {
 	case TUnion:
 		return "", false
-	case TAny, TVar:
+	case TAny, TVar, TNil: // nil is an any too: a local first typed nil takes the value as it is, as for T?
 		if slices.ContainsFunc(u.Members, func(m Type) bool { _, ok := m.(TTuple); return ok }) {
 			return f.c.unionFn(u) + "Out(" + e.code + ")", true
 		}
@@ -1307,7 +1357,7 @@ func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string
 		if fits(u, to) {
 			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())), true
 		}
-	case TFunc, TNil, TTuple, TVoid:
+	case TFunc, TTuple, TVoid:
 	}
 	f.errorf(n, "%s where %s is expected; narrow it first (`is_a?`, `case`/`when`, `if x`)", u, to)
 	return "", true
@@ -4557,6 +4607,46 @@ func (f *fctx) isACheck(n parser.Node, recv expr, classNode parser.Node) string 
 	return c
 }
 
+// unionIsA is is_a?(cls) on a union (decision 150), decided per member:
+// true when every member is a cls, false when none can be, else a test of
+// the members that are (or may be, a subclass of a member) a cls.
+func (f *fctx) unionIsA(n parser.Node, recv expr, u TUnion, cls *Class) string {
+	var tests []string
+	all := true
+	for _, m := range u.Members {
+		mc := classOf(m)
+		if _, ok := m.(TTuple); ok {
+			mc = f.c.classes["Array"]
+		}
+		switch {
+		case mc != nil && mc.isSubclassOf(cls):
+			tests = append(tests, f.c.goType(m))
+			continue
+		case mc != nil && !cls.IsModule && cls.isSubclassOf(mc):
+			tests = append(tests, f.isAGoType(cls))
+		case mc != nil && cls.IsModule && mc.includedBelow(cls):
+			f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", cls.RubyName, m)
+		}
+		all = false
+	}
+	switch {
+	case all:
+		return "true"
+	case len(tests) == 0:
+		return "false"
+	}
+	code := recv.code
+	if !isSimpleGo(code) {
+		code = f.newTmp()
+		f.emit("%s := %s", code, recv.code)
+	}
+	parts := make([]string, 0, len(tests))
+	for _, g := range slices.Compact(tests) {
+		parts = append(parts, "rbIsA["+g+"]("+code+")")
+	}
+	return "(" + strings.Join(parts, " || ") + ")"
+}
+
 func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	if cls.universal { // every value, nil included, is an Object
 		return "true"
@@ -4576,6 +4666,9 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	}
 	if isNil(t) {
 		return "false"
+	}
+	if u, ok := t.(TUnion); ok {
+		return f.unionIsA(n, recv, u, cls)
 	}
 	if c, ok := f.numericIsA(recv, cls); ok {
 		return c
@@ -4789,6 +4882,8 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 		cond, want = cur.code+" == nil", cur.typ
 	case isClass(cur.typ, "Boolean"):
 		cond, want = "!"+cur.code, cur.typ
+	case unionFalsy(cur.typ): // a union holding nil or false (decision 150)
+		cond, want = "!rbTruthy("+cur.code+")", cur.typ
 	default:
 		// never nil or false: Ruby leaves it alone and skips the value
 		return expr{code: cur.code, typ: cur.typ, done: true}
@@ -4835,6 +4930,10 @@ func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
 	}
 	if isOpt(v.typ) && !isOpt(e.typ) {
 		f.applyNarrow([]narrowInfo{{local: v, typ: e.typ}}) // non-nil from here on
+	}
+	if nw, ok := f.narrowUnion(v, func(m Type) bool { return !isNil(m) }); ok && !isNil(e.typ) {
+		f.applyNarrow([]narrowInfo{nw}) // a union's nil is gone from here on (decision 150)
+		return expr{code: nw.code, typ: nw.typ, done: true}
 	}
 	return e
 }

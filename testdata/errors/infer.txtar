@@ -1,23 +1,8 @@
 Parameter types from use (decision 146): what inference cannot type.
--- conflicting_calls.rb --
-# error: main.rb:4: String where Integer is expected; parameter x takes its type from the call at main.rb:3 (decision 146): annotate it to take both
-def ident(x) = x
-ident(1)
-ident("a")
--- integer_then_float.rb --
-# error: main.rb:4: Float where Integer is expected
-def half(x) = x / 2
-half(4)
-half(2.5)
 -- never_called.rb --
 # error: main.rb:2: method lonely has no type for parameter x (`# @rbs x: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)
 def lonely(x) = x
 puts 1
--- lambda_conflict.rb --
-# error: main.rb:4: String where Integer is expected
-id = ->(v) { v }
-id.call(1)
-id.call("s")
 -- yields_disagree.rb --
 # error: main.rb:5: method each yields 2 values here and 1 before
 class Odd

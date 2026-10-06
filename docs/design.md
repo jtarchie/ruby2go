@@ -621,8 +621,9 @@ resolve; anything not listed is still open.
     `Float(a).Op_div(2.0)`, still unboxed); an operator Float lacks (`%`) is a
     compile error. Comparable's methods take both as `rbNum`, one Go type,
     because `2.5.clamp(1, 2)` returns the bound `2` itself, so the result is
-    `untyped`. A local assigned both joins to `untyped`
-    (`total = 0; total += 1.5`), so its later arithmetic is dynamic, and
+    `untyped`. A local assigned both is `Integer | Float`
+    (`total = 0; total += 1.5`), so its later arithmetic switches on the
+    member (decision 150; it was `untyped`, and dynamic), and
     dynamic wrappers widen the same way. A Float where an Integer is
     expected is a compile error, not Go's silent constant truncation.
     *Revised:* overloads by convention. A call with an argument count the
@@ -649,7 +650,8 @@ resolve; anything not listed is still open.
     unification local to one method body; types never flow between
     methods ([example 33](../examples/33_empty_literals/main.rb)).
 14. Locals are inferred from their assignments (joined across branches:
-    `nil` + `String` → `String?`, and `x = nil` then `x ||= v` counts as
+    `nil` + `String` → `String?`, `Integer` + `String` → `Integer | String`
+    (decision 150), and `x = nil` then `x ||= v` counts as
     assigning `v`) and hoisted to a `var` at the top of
     their Ruby scope (the method, or the block's Go body) when Go's block
     scoping would otherwise hide them. Scopes are resolved as prism does:
@@ -1049,7 +1051,7 @@ resolve; anything not listed is still open.
     zero-size object the same address and `equal?` needs identity.
 33. Ruby semantics for looser code: `expr rescue fallback`; `return`,
     `break` or `next` in `ensure` discards the pending exception;
-    `&&`/`||` return values of any types (unions become `untyped`) and
+    `&&`/`||` return values of any types (their union, decision 150) and
     evaluate the right side only when Ruby would; locals first assigned
     in a branch or `begin` body are visible after it (Ruby scopes are
     methods and blocks); `rescue` and `ensure` are generated after the
@@ -1076,8 +1078,8 @@ resolve; anything not listed is still open.
     the body returns (tail values and `return`s; `nil` + `T` is `T?`),
     found by a dry run of its generation when a caller first needs it,
     and again for every method after ivar discovery, whose types it
-    depends on. Returns with no common type, recursion (direct or
-    mutual) and blocks still need an annotation. An unannotated override
+    depends on. Returns with no common type join to their union (decision
+    150); recursion (direct or mutual) and blocks still need an annotation. An unannotated override
     of an inferred method takes the parent's inferred type. Parameter
     types are never inferred: that would make a method's type depend on
     its callers ([example 34](../examples/34_inferred_returns/main.rb)).
@@ -4734,11 +4736,13 @@ resolve; anything not listed is still open.
       `each` keeps its own signature rather than the module's.
     - **Joins.** In source order (files in load order, then position).
       `nil` with `T` is `T?`; a subclass with its superclass is the
-      superclass. A use that does not join the ones before it, Integer
-      with Float included (their join is untyped, decision 12), is left
-      out, so the final compile reports it at its call: `String where
-      Integer is expected; parameter x takes its type from the call at
-      main.rb:3`. Uses whose type holds `untyped` count for nothing, and
+      superclass; classes with nothing in common but Object join to their
+      union (`ident(1); ident("a")` types x `Integer | String`, Integer
+      with Float `Integer | Float`, decision 150). A use that still does
+      not join the ones before it (a module type, or two instantiations of
+      one generic class) is left out, so the final compile reports it at
+      its call: `String where Integer is expected; parameter x takes its
+      type from the call at main.rb:3`. Uses whose type holds `untyped` count for nothing, and
       Object, BasicObject and modules (Go `any`) count only when nothing
       concrete is passed: one `Object.new` among Integers would otherwise
       join them all to Object, an untyped parameter by another name; it
@@ -4889,6 +4893,19 @@ resolve; anything not listed is still open.
       yields nil. `case` on an ivar or attribute reader narrows it, as
       `if` does (decision 148). Patterns (`case`/`in`) test a union as
       untyped for now.
+    - **Joins.** Where two types have no common class but Object (branch
+      values, `&&`/`||`, a local assigned both, inferred returns and
+      parameters, Integer with Float) the join is their union, where it
+      was a compile error or `untyped`. A module type, Object, or two
+      instantiations of one generic class still do not join. Literal
+      elements are the exception for now: `[1, "a"]` stays a tuple and
+      `{a: 1, b: "x"}` a `Hash[Symbol, untyped]`, since a union element
+      type would reject the later `h[:c] = 1.5` that MRI runs; making
+      them unions needs decision 13's fall-back-to-untyped for a typed
+      literal whose program fails. A known gap: pass 1 reads a local at
+      the type of its first assignment, so after `x = nil; x = 1 if c;
+      y = x` a `y ||= "s"` is checked against y's nil-then-String type,
+      not x's; this predates unions (with `T?` it was a Go build error).
     - **What stays `untyped`.** Open-world values (JSON, Marshal, `send`
       with a computed name) and universal parameters (`==`, `puts`) are
       the universal union and keep the dispatchers. `T | untyped`

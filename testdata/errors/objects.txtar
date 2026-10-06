@@ -309,11 +309,6 @@ def me = nil
 # @rbs n: Integer
 def fact(n) = n <= 1 ? 1 : n * fact(n - 1)
 puts fact(5)
--- inferred_return_two_types.rb --
-# error: main.rb:3: method pick returns both Integer and String
-# @rbs b: bool
-def pick(b) = b ? 1 : "x"
-puts pick(true)
 -- block_param_without_block_signature.rb --
 # error: main.rb:4: a &block parameter needs a block in the signature
 class Bag

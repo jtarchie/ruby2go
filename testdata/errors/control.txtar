@@ -132,33 +132,6 @@ puts x.inspect
 i = 0
 x = if i > 5 then end
 puts x.inspect
--- local_two_types.rb --
-# error: main.rb:3: x is assigned both Integer and String
-x = 1
-x = "s"
--- local_two_types_across_branches.rb --
-# error: main.rb:6: v is assigned both Integer and String
-flag = true
-if flag
-  v = 1
-else
-  v = "one"
-end
--- if_branches_incompatible.rb --
-# error: main.rb:3: branches have incompatible types Integer and String
-c = true
-v = if c then 1 else "s" end
--- ternary_incompatible.rb --
-# error: main.rb:3: branches have incompatible types Integer and String
-x = 3
-y = x > 1 ? 1 : "s"
--- case_value_incompatible.rb --
-# error: main.rb:3: branches have incompatible types String and Integer
-x = 3
-y = case x
-    when 1 then "one"
-    else 0
-    end
 -- or_non_nilable.rb --
 # error: main.rb:3: `||` on a non-nilable String is always the left side
 s = "a"

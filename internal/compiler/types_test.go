@@ -165,13 +165,17 @@ func TestJoin(t *testing.T) {
 		{"siblings meet at parent reversed", O, D, B, ""},
 		{"class objects meet at parent metaclass", cl(w.metaDerived), cl(w.metaOther), cl(w.metaBase), ""},
 		{"module included", D, cl(w.cmp), cl(w.cmp), ""},
-		{"only Object in common", D, cl(w.unrelated), nil, ""},
-		{"unrelated primitives", I, S, nil, ""},
-		{"Integer and Float mix untyped", I, cl(w.float), TAny{}, ""}, // decision 12, revised
-		{"Integer? and Float", opt(I), cl(w.float), TAny{}, ""},       // T? joins T, then untyped absorbs the nil
+		{"only Object in common", D, cl(w.unrelated), unionOf(D, cl(w.unrelated)), ""}, // decision 150
+		{"unrelated primitives", I, S, unionOf(I, S), ""},
+		{"Integer and Float", I, cl(w.float), unionOf(I, cl(w.float)), ""}, // decision 150 (was untyped, decision 12)
+		{"Integer? and Float", opt(I), cl(w.float), unionOf(I, cl(w.float), TNil{}), ""},
+		{"union and member", unionOf(I, S), S, unionOf(I, S), ""},
+		{"union and new member", unionOf(I, S), D, unionOf(I, S, D), ""},
+		{"union and nil", unionOf(I, S), TNil{}, unionOf(I, S, TNil{}), ""},
+		{"union and untyped", unionOf(I, S), TAny{}, TAny{}, ""},
 		{"different type args", cl(w.array, I), cl(w.array, S), nil, ""},
-		{"T? U", opt(S), I, nil, ""},
-		{"T? U?", opt(S), opt(I), nil, ""},
+		{"T? U", opt(S), I, unionOf(S, I, TNil{}), ""},
+		{"T? U?", opt(S), opt(I), unionOf(S, I, TNil{}), ""},
 		{"tvar same", tv("T"), tv("T"), tv("T"), ""},
 		{"tvar different", tv("T"), tv("U"), nil, ""},
 		{"tuple equal", tup(I, S), tup(I, S), tup(I, S), ""},
@@ -181,9 +185,9 @@ func TestJoin(t *testing.T) {
 		{"void void", TVoid{}, TVoid{}, TVoid{}, ""},
 		{"void class", TVoid{}, S, nil, ""},
 		{"func equal", fn(S, I), fn(S, I), fn(S, I), ""},
-		{"tuple different", tup(I, S), tup(S, I), nil, ""},
-		{"generic vs plain class", cl(w.array, I), D, nil, ""},
-		{"class object vs instance", cl(w.metaBase), B, nil, ""},
+		{"tuple different", tup(I, S), tup(S, I), unionOf(tup(I, S), tup(S, I)), ""},
+		{"generic vs plain class", cl(w.array, I), D, unionOf(cl(w.array, I), D), ""},
+		{"class object vs instance", cl(w.metaBase), B, unionOf(cl(w.metaBase), B), ""},
 		{"module vs unrelated class", cl(w.cmp), cl(w.unrelated), nil, ""},
 		// join(nil, join(D, B)) is B?, so every association order must agree
 		// (`x = nil; x = Derived.new if a; x = Base.new if b`).
@@ -206,6 +210,39 @@ func TestJoin(t *testing.T) {
 			}
 			if !ok || !typeEq(got, c.want) {
 				t.Errorf("join(%s, %s) = %s, %v; want %s", show(c.a), show(c.b), show(got), ok, show(c.want))
+			}
+		})
+	}
+}
+
+// unionOf normalizes (decision 150): equal inputs in any order give one union.
+func TestUnionOf(t *testing.T) {
+	w := newTypeWorld()
+	I, S, F := cl(w.integer), cl(w.str), cl(w.float)
+	B, D := cl(w.base), cl(w.derived)
+	cases := []struct {
+		name string
+		in   []Type
+		want string
+	}{
+		{"two classes", []Type{S, I}, "Integer | String"},
+		{"order does not matter", []Type{I, S}, "Integer | String"},
+		{"duplicates merge", []Type{I, S, I}, "Integer | String"},
+		{"one left is that member", []Type{I, I}, "Integer"},
+		{"one and nil is T?", []Type{I, TNil{}}, "Integer?"},
+		{"nil goes last", []Type{TNil{}, S, I}, "Integer | String | nil"},
+		{"T? flattens", []Type{opt(S), I}, "Integer | String | nil"},
+		{"unions flatten", []Type{unionOf(I, S), F}, "Float | Integer | String"},
+		{"untyped absorbs", []Type{I, TAny{}, S}, "untyped"},
+		{"subclass absorbed", []Type{D, B, I}, "Base | Integer"},
+		{"void is nil", []Type{I, S, TVoid{}}, "Integer | String | nil"},
+		{"module absorbs includer", []Type{D, cl(w.cmp), I}, "Comparable | Integer"},
+		{"tuples are members", []Type{tup(I, S), I}, "Integer | [Integer, String]"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := unionOf(c.in...).String(); got != c.want {
+				t.Errorf("unionOf(%v) = %s, want %s", c.in, got, c.want)
 			}
 		})
 	}

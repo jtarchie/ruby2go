@@ -395,15 +395,9 @@ func join(a, b Type) (Type, bool) {
 	case isNil(a) && isNil(b):
 		return TNil{}, true
 	case isNil(a):
-		if isOpt(b) || isAny(b) {
-			return b, true
-		}
-		return TOpt{Elem: b}, true
+		return optOf(b), true
 	case isNil(b):
-		if isOpt(a) || isAny(a) {
-			return a, true
-		}
-		return TOpt{Elem: a}, true
+		return optOf(a), true
 	case typeEq(a, b):
 		return a, true
 	case isAny(a) || isAny(b):
@@ -415,10 +409,18 @@ func join(a, b Type) (Type, bool) {
 		if !ok || isAny(j) {
 			return j, ok
 		}
-		return TOpt{Elem: j}, true
+		return optOf(j), true
+	case isUnion(a) || isUnion(b):
+		return unionOf(a, b), true // a member joins in; another member widens it (decision 150)
 	case isNumeric(a) && isNumeric(b):
-		return TAny{}, true // Integer and Float mix at run time (MRI's coerce); untyped, not Numeric, keeps decision 12's dynamic arithmetic
+		return unionOf(a, b), true // Integer | Float: each arithmetic call switches on the member (decision 150; was untyped, decision 12)
 	}
+	return joinClasses(a, b)
+}
+
+// joinClasses is join for two different non-nil, typed values: their
+// nearest common class, else their union.
+func joinClasses(a, b Type) (Type, bool) {
 	// Methods of different signatures mix as Method[untyped] (decision 141).
 	if ka, _, _ := methodFn(a); ka != "" && classOf(a) == classOf(b) {
 		return TClass{C: classOf(a), Args: []Type{TAny{}}}, true
@@ -440,7 +442,28 @@ func join(a, b Type) (Type, bool) {
 			}
 		}
 	}
+	// no common class but Object: the union of both (decision 150)
+	if unionable(a) && unionable(b) && (classOf(a) == nil || classOf(a) != classOf(b)) {
+		return unionOf(a, b), true
+	}
 	return nil, false
+}
+
+func isUnion(t Type) bool { _, ok := t.(TUnion); return ok }
+
+// unionable reports whether a join may put t in a union: a class other
+// than a module or Object (the universal union already), a tuple or a proc.
+func unionable(t Type) bool {
+	switch t := t.(type) {
+	case TClass:
+		return !t.C.IsModule && !t.C.universal
+	case TTuple:
+		return true
+	case TFunc:
+		return t.Proc
+	case TAny, TNil, TOpt, TUnion, TVar, TVoid:
+	}
+	return false
 }
 
 // fits reports whether a value of type t can stand where `to` is expected:

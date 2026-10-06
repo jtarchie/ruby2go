@@ -20,6 +20,12 @@ def union_bump(n) = n + 1
 #: (untyped) -> untyped
 def union_untyped(v) = v
 
+# no annotations: these join to unions (decision 150), where they were errors
+def union_ident(x) = x
+def union_half(x) = x / 2
+# @rbs b: bool
+def union_pick_inferred(b) = b ? 1 : "x"
+
 module UnionTests
   class Dog
     #: () -> String
@@ -272,6 +278,58 @@ module UnionTests
       assert_equal [[1, "a"], 3], both
       assert_equal({ a: 1 }, hash_or_str(true))
       assert_equal "none", hash_or_str(false)
+    end
+
+    def test_joins_without_annotations
+      x = 3
+      a = case x
+          when 1 then "one"
+          else 0
+          end
+      assert_equal 0, a
+      b = x > 1 ? 1 : "s"
+      assert_equal 1, b
+      c = x > 5 ? 1 : "s"
+      assert_equal "s", c.to_s
+      v = 1
+      v = "s" if x > 1
+      assert_equal "s", v
+      w = if x.odd?
+            "odd"
+          else
+            2
+          end
+      assert_equal "odd", w
+      assert_equal 1, union_pick_inferred(true)
+      assert_equal "x", union_pick_inferred(false)
+      assert_equal 1, union_ident(1)
+      assert_equal "a", union_ident("a")
+      assert_equal 2, union_half(4)
+      assert_in_delta 1.25, union_half(2.5)
+      id = ->(z) { z }
+      assert_equal 1, id.call(1)
+      assert_equal "s", id.call("s")
+      total = 0
+      total += 1.5
+      total += 2
+      assert_in_delta 3.5, total
+    end
+
+    #: (Integer) -> (Integer | String | nil)
+    def maybe(i) = i > 1 ? i : (i.zero? ? nil : "s")
+
+    def test_or_and_on_unions
+      y = maybe(0)
+      y ||= "default"
+      assert_equal "default", y
+      z = maybe(5)
+      z ||= "d"
+      assert_equal 5, z
+      assert_in_delta 1.5, maybe(0) || 1.5
+      assert_equal :yes, maybe(1) && :yes
+      assert_nil maybe(0) && :yes
+      m = maybe(7)
+      assert_equal "7", m && m.to_s
     end
 
     #: (Integer | bool) -> String
