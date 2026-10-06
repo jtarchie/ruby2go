@@ -525,12 +525,8 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		maxArgs = -1
 	}
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
-	if cls := classOf(recv.typ); mix && rest == nil && opt == 0 && numLevel(cls) < 0 && cls != nil {
-		c.dynNumericTwins(f, cls, e, recv) // `xs * ","`: Array#*'s String twin
-	} else if mix && numLevel(cls) >= 0 && rest == nil && opt == 0 {
-		c.dynNumericTwins(f, cls, e, expr{code: "self", typ: TClass{C: cls}})
-		c.dynNumericMix(f, e, env)
-		c.dynNumericTower(f, cls, e, env)
+	if mix && rest == nil && opt == 0 {
+		c.dynTwinsAndNumbers(f, e, recv, env)
 	}
 	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
 		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
@@ -584,6 +580,22 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	call(req+opt, rest != nil)
 	f.indent--
 	f.emit("}")
+}
+
+// dynTwinsAndNumbers picks a twin by the argument's class (`xs * ","` is
+// Array#*'s String twin) and, on a number, mixes the numeric classes.
+func (c *Compiler) dynTwinsAndNumbers(f *fctx, e *entry, recv expr, env map[string]Type) {
+	cls := classOf(recv.typ)
+	if cls == nil {
+		return
+	}
+	if numLevel(cls) < 0 {
+		c.dynNumericTwins(f, cls, e, recv)
+		return
+	}
+	c.dynNumericTwins(f, cls, e, expr{code: "self", typ: TClass{C: cls}})
+	c.dynNumericMix(f, e, env)
+	c.dynNumericTower(f, cls, e, env)
 }
 
 // dynNumericMix emits a number wrapper's answer to an argument of another
