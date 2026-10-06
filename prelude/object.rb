@@ -150,9 +150,15 @@ module Kernel
   #: (String, *untyped) -> String
   def sprintf(fmt, *args) = %x{ String(rbFormat(string(fmt), rest_)) }
 
-  #: (String, *untyped) -> nil
+  # printf(io, fmt, *args) writes to io, as MRI's does when the first
+  # argument is not a String.
+  #: (String | IO | StringIO, *untyped) -> nil
   def printf(fmt, *args)
-    __write(format(fmt, *args))
+    if fmt.is_a?(String)
+      __write(format(fmt, *args))
+    else
+      fmt.write(format(args.shift.to_s, *args))
+    end
     nil
   end
 

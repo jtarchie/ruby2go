@@ -206,6 +206,7 @@ type BlockSig struct {
 	Ret      Type
 	Optional bool     // `?{ ... }`: a call may leave the block out, and the method sees a nil func
 	Pending  []string // per param, the key of one typed from the yields (decision 146), or ""
+	Rest     bool     // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }

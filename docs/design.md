@@ -4986,3 +4986,20 @@ resolve; anything not listed is still open.
     Not done: a default `GOGC` (200 halves GC time on string-heavy code but
     nearly doubles peak memory on collections); a mutable String for `<<`
     (the frozen-strings rule; `s += x` stays quadratic).
+152. A lambda with a `*rest` parameter and no expected type (#78) is a
+    Go variadic func: `->(f, *args)` called as `.call("%d %s", 1, "a")` is
+    `*func(String, ...E) R`, where E joins every argument past the leading
+    ones (`Integer | String`, decision 150) and the rest's name holds them
+    as an `Array[E]`. Before, the rest was one fixed slot, so the lambda
+    took exactly as many arguments as it had names. `TFunc.Rest` (and
+    `BlockSig.Rest`) mark the last param as the element; `call`, `.()`,
+    `[]`, `yield` and `===` take any count past the leading params, and
+    `arity` is negative as in MRI. ruby/spec's shared `sprintf` specs were
+    the case: the rewrite inlines `@method` at each call, so every call
+    is its own literal and needs no flow through the ivar. Not done: an
+    RBS `^(A, *E) -> R` annotation (the parser rejects `*`), a splat
+    argument into the rest (`f.call(*xs)`), and a rest no call passes
+    anything to, which keeps decision 146's missing-type error as a
+    def's does. (A Proc called through `untyped` has no `DynCall`, rest
+    or not.) ([example 105](../examples/105_variadic_lambdas/main.rb),
+    `testdata/test/infer_test.rb` `test_variadic_lambda`.)

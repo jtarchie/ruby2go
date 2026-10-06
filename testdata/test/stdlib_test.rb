@@ -544,6 +544,14 @@ module StdlibTests
 
   # Was testdata/run/stringio_mid.rb.
   class StringIOTest < Minitest::Test
+    # Kernel#printf with an IO first writes there (#78's printf specs)
+    def test_printf_to_io
+      io = StringIO.new(+"")
+      printf(io, "%d-%s|", 1, "a")
+      printf(io, "%.1f", 2.25)
+      assert_equal "1-a|2.2", io.string
+    end
+
     def test_read_at_eof
       eof_io = StringIO.new("hé\nx")
       assert_equal ["hé\n", "x"], [eof_io.readline, eof_io.readchar]

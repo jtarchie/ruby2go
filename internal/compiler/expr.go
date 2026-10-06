@@ -3474,7 +3474,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			saved, savedRuby := f.enterRubyBlock(block, names)
 			f.closures++
 			f.pushLoop(loopClosure)
-			_, pro := f.bindBlockParams(n, names, params)
+			_, pro := f.bindClosureParams(n, names, params, sig.Rest)
 			pro()
 			f.redoLabel(body)
 			f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
@@ -3511,11 +3511,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	saved, savedRuby := f.enterRubyBlock(block, names)
 	f.closures++
 	f.pushLoop(loopClosure)
-	goParams, pro := f.bindBlockParams(n, names, params)
-	ps := make([]string, 0, len(goParams))
-	for i, gp := range goParams {
-		ps = append(ps, gp+" "+f.c.goType(params[i]))
-	}
+	ps, pro := f.bindClosureParams(n, names, params, sig.Rest)
 	retS := ""
 	if !isVoid(ret) {
 		retS = " " + f.c.goType(ret)
@@ -3546,6 +3542,41 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	code := strings.TrimSpace(b.String())
 	// re-indent: the closure is embedded in an expression on the current line
 	return code
+}
+
+// bindClosureParams binds a closure's params as bindBlockParams does,
+// returning each Go param with its type. A variadic lambda's (rest) last
+// param is a Go `...E`, which its `*name` holds as an Array (decision 152).
+func (f *fctx) bindClosureParams(n parser.Node, names []string, params []Type, rest bool) ([]string, func()) {
+	k, lead := len(params), names
+	if rest {
+		k, lead = k-1, names[:len(names)-1]
+	}
+	goParams, pro := f.bindBlockParams(n, lead, params[:k])
+	ps := make([]string, 0, len(goParams)+1)
+	for i, gp := range goParams {
+		ps = append(ps, gp+" "+f.c.goType(params[i]))
+	}
+	if !rest {
+		return ps, pro
+	}
+	rp, et := f.newTmp(), f.c.goType(params[k])
+	ps = append(ps, rp+" ..."+et)
+	return ps, func() {
+		pro()
+		name := strings.TrimPrefix(names[len(names)-1], "*")
+		if name == "" {
+			f.emit("_ = %s", rp)
+			return
+		}
+		v := f.blockParam(name, TClass{C: f.c.classes["Array"], Args: []Type{params[k]}})
+		if v.goName != "_" {
+			f.emit("%s := &Array[%s]{s: %s}", v.goName, et, rp)
+		} else {
+			f.emit("_ = %s", rp)
+		}
+		f.noteUnused(v)
+	}
 }
 
 // withNextTail runs gen(t) with t as the tail a bare `next` returns through.
@@ -6187,16 +6218,20 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	}
 	var src string
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
-		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret}
+		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret, Rest: ft.Rest}
+		if names := f.blockParamNames(params); ft.Rest && (len(names) != len(ft.Params) || !strings.HasPrefix(names[len(names)-1], "*")) {
+			f.errorf(n, "a lambda for %s needs %d params, the last a *rest", ft, len(ft.Params))
+		}
 	} else if names := f.blockParamNames(params); len(names) > 0 {
 		sig.Params, src = f.lambdaParams(n, len(names)) // from its calls (decision 146)
+		sig.Rest = strings.HasPrefix(names[len(names)-1], "*")
 	}
 	env := map[string]Type{}
 	saved := f.lambdaClosure
 	f.lambdaClosure = f.closures + 1
 	code := f.genClosure(n, block, sig, env)
 	f.lambdaClosure = saved
-	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src}}
+	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src, Rest: sig.Rest}}
 }
 
 // blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
@@ -6253,25 +6288,37 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 	}
 	switch name {
 	case "call", "()", "[]", "yield", "===":
-		if len(args) != len(t.Params) {
+		last := len(t.Params) - 1
+		switch {
+		case t.Rest && len(args) < last:
+			f.errorf(n, "wrong number of arguments (given %d, expected %d+)", len(args), last)
+		case !t.Rest && len(args) != len(t.Params):
 			f.errorf(n, "wrong number of arguments (given %d, expected %d)", len(args), len(t.Params))
 		}
 		codes := make([]string, len(args))
 		for i, a := range args {
-			want := t.Params[i]
+			pi := i
+			if t.Rest {
+				pi = min(i, last) // every argument past the leading ones is the rest's element
+			}
+			want := t.Params[pi]
 			if t.Src != "" && f.c.round && isAny(want) {
 				want = nil
 			}
 			e := f.genExpr(a, want)
 			if t.Src != "" {
-				f.noteUse(Param{Pending: t.Src + strconv.Itoa(i)}, a, e.typ)
+				f.noteUse(Param{Pending: t.Src + strconv.Itoa(pi)}, a, e.typ)
 			}
-			codes[i] = f.coerce(a, e, t.Params[i])
+			codes[i] = f.coerce(a, e, t.Params[pi])
 		}
 		return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
 	case "arity":
 		f.discard(recv)
-		return expr{code: strconv.Itoa(len(t.Params)), typ: f.cls("Integer"), lit: true}
+		arity := len(t.Params)
+		if t.Rest {
+			arity = -arity // MRI: ->(a, *b) is -2
+		}
+		return expr{code: strconv.Itoa(arity), typ: f.cls("Integer"), lit: true}
 	case "lambda?":
 		f.discard(recv)
 		return expr{code: "true", typ: f.cls("Boolean"), lit: true}

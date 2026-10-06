@@ -58,6 +58,14 @@ func (c *Compiler) goType(t Type) string {
 		return t.Name
 	case TFunc:
 		s := "func(" + c.goTypes(t.Params) + ")"
+		if t.Rest {
+			last := len(t.Params) - 1
+			s = "func(" + c.goTypes(t.Params[:last])
+			if last > 0 {
+				s += ", "
+			}
+			s += "..." + c.goType(t.Params[last]) + ")"
+		}
 		if !isVoid(t.Ret) {
 			s += " " + c.goType(t.Ret)
 		}

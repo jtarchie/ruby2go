@@ -47,6 +47,7 @@ type (
 		Ret    Type
 		Proc   bool
 		Src    string // a lambda typed from its calls: the key its arguments are recorded under (decision 146)
+		Rest   bool   // the last param is a `*rest`'s element type; the Go func is variadic (decision 152)
 	}
 	// TAny is `untyped`.
 	TAny struct{}
@@ -73,10 +74,20 @@ func (t TClass) String() string {
 func (t TOpt) String() string   { return t.Elem.String() + "?" }
 func (t TTuple) String() string { return "[" + joinTypes(t.Elems) + "]" }
 func (t TVar) String() string   { return t.Name }
-func (t TFunc) String() string  { return "^(" + joinTypes(t.Params) + ") -> " + t.Ret.String() }
-func (TAny) String() string     { return "untyped" }
-func (TNil) String() string     { return "nil" }
-func (TVoid) String() string    { return "void" }
+func (t TFunc) String() string {
+	ps := joinTypes(t.Params)
+	if t.Rest {
+		ps = joinTypes(t.Params[:len(t.Params)-1])
+		if len(t.Params) > 1 {
+			ps += ", "
+		}
+		ps += "*" + t.Params[len(t.Params)-1].String()
+	}
+	return "^(" + ps + ") -> " + t.Ret.String()
+}
+func (TAny) String() string  { return "untyped" }
+func (TNil) String() string  { return "nil" }
+func (TVoid) String() string { return "void" }
 func (t TUnion) String() string {
 	parts := make([]string, len(t.Members))
 	for i, m := range t.Members {
@@ -197,7 +208,7 @@ func typeEq(a, b Type) bool {
 		return ok && a.Name == b.Name
 	case TFunc:
 		b, ok := b.(TFunc)
-		if !ok || a.Proc != b.Proc || len(a.Params) != len(b.Params) || !typeEq(a.Ret, b.Ret) {
+		if !ok || a.Proc != b.Proc || a.Rest != b.Rest || len(a.Params) != len(b.Params) || !typeEq(a.Ret, b.Ret) {
 			return false
 		}
 		for i := range a.Params {
@@ -256,7 +267,7 @@ func subst(t Type, env map[string]Type) Type {
 		for i, p := range t.Params {
 			ps[i] = subst(p, env)
 		}
-		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc}
+		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc, Rest: t.Rest}
 	case TUnion:
 		ms := make([]Type, len(t.Members))
 		for i, m := range t.Members {
@@ -304,7 +315,7 @@ func unify(pattern, actual Type, env map[string]Type) bool {
 		return unifyAll(p.Elems, a.Elems, env)
 	case TFunc:
 		a, ok := actual.(TFunc)
-		if !ok || !unifyAll(p.Params, a.Params, env) {
+		if !ok || a.Rest != p.Rest || !unifyAll(p.Params, a.Params, env) {
 			return false
 		}
 		return unify(p.Ret, a.Ret, env)

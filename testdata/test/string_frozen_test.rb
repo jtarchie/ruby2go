@@ -118,6 +118,17 @@ module StringFrozenTests
       assert_equal "éé", ("é" * 2)
     end
 
+    # +s is s unless frozen (then an unfrozen copy); -s is s if frozen, else a frozen copy
+    def test_unary_plus_minus
+      lit = "lit"
+      built = "ab" * 2
+      plus = +lit
+      assert_equal [false, true, false], [plus.frozen?, plus == lit, plus.equal?(lit)]
+      assert_equal [true, false], [(+built).equal?(built), built.frozen?]
+      minus = -built
+      assert_equal [true, false, true], [minus.frozen?, built.frozen?, (-lit).equal?(lit)]
+    end
+
     # to_s/to_str/dup return equal strings
     def test_to_s_to_str_dup
       assert_equal "abc", "abc".to_s

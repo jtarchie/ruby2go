@@ -44,6 +44,14 @@ class String < Object
   #: () -> String
   def dup = %x{ rbStrClone(self) }
 
+  # `+s` is s when not frozen, else an unfrozen copy; `-s` is s when
+  # frozen, else a frozen copy (MRI also dedups it).
+  #: () -> String
+  def +@ = frozen? ? dup : self
+
+  #: () -> String
+  def -@ = frozen? ? self : dup.freeze
+
   #: () -> String
   def upcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 2, unicode.ToUpper))) }
 

@@ -92,5 +92,17 @@ module InferTests
       double = proc { |x| x * 2 }
       assert_equal [3, 7, 11, "HI", [2, 4]], [add.call(1, 2), add.(3, 4), add[5, 6], shout.call("hi"), [1, 2].map(&double)]
     end
+
+    # A *rest lambda is a Go variadic func: each call passes any count past
+    # the leading params, and the rest's element joins them (decision 152).
+    def test_variadic_lambda
+      fmt = -> f, *args { f % args }
+      assert_equal ["1", "1 2", "1.5 x"], [fmt.call("%d", 1), fmt.("%d %d", 1, 2), fmt["%.1f %s", 1.5, "x"]]
+      assert_equal "3-a", -> f, *args { f % args }.call("%d-%s", 3, "a")
+      total = ->(*xs) { xs.sum }
+      assert_equal [6, 0, -1, -2], [total.call(1, 2, 3), total.call, total.arity, fmt.arity]
+      first = ->(a, *) { a }
+      assert_equal 1, first.call(1, 2, 3)
+    end
   end
 end
