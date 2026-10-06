@@ -1853,7 +1853,7 @@ func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) e
 func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []parser.Node, exprs []expr) ([]string, int) {
 	var codes []string
 	restIdx := -1
-	var kw *kwArgs
+	kw := &kwArgs{named: map[string]*parser.AssocNode{}, used: map[string]bool{}}
 	if exprs == nil && m.hasKeywords() {
 		args, kw = f.splitKeywordArgs(m, args)
 	}
@@ -1876,7 +1876,6 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		f.optJoin(m, env, args)
 	}
 	ai := 0
-	kwMask, kwBit := 0, 0
 	npost := m.postCount() // post params (`def f(a, *r, z)`) take the last arguments
 	posts := 0
 	take := func(p Param, i int) {
@@ -1909,12 +1908,8 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		}
 		if p.Keyword {
 			mark := f.buf.Len()
-			code, given := f.keywordArg(n, m, p, env, kw)
+			code := f.keywordArgBit(n, m, p, env, kw)
 			f.pinBefore(mark, codes)
-			if given {
-				kwMask |= 1 << kwBit
-			}
-			kwBit++
 			codes = append(codes, code)
 			continue
 		}
@@ -1951,7 +1946,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	}
 	kw.checkUnknown(f, m)
 	if m.kwMask() {
-		codes = append([]string{strconv.Itoa(kwMask)}, codes...)
+		codes = append([]string{strings.Join(append([]string{strconv.Itoa(kw.mask)}, kw.runtime...), " | ")}, codes...)
 		if restIdx >= 0 {
 			restIdx++
 		}
@@ -1972,6 +1967,25 @@ type kwArgs struct {
 	splats []parser.Node // `**h`
 	all    []parser.Node // both, in source order: `**opts` keeps it
 	used   map[string]bool
+	// `f(**h)` into named keywords: h's temp, and the Go bool saying the
+	// keyword just rendered came from it (its rbKw bit is then run time)
+	splatTmp, given string
+	mask, bit       int      // rbKw: the optional keywords passed, by position
+	runtime         []string // rbKw bits a `**h` decides at run time
+}
+
+// keywordArgBit is keywordArg plus p's rbKw bit.
+func (f *fctx) keywordArgBit(n parser.Node, m *Method, p Param, env map[string]Type, kw *kwArgs) string {
+	code, given := f.keywordArg(n, m, p, env, kw)
+	if given {
+		kw.mask |= 1 << kw.bit
+	}
+	if kw.given != "" { // from **h: known at run time
+		kw.runtime = append(kw.runtime, fmt.Sprintf("rbKwBit(%s, %d)", kw.given, kw.bit))
+		kw.given = ""
+	}
+	kw.bit++
+	return code
 }
 
 // splitKeywordArgs takes a trailing `k: v, **h` off args when m has keyword parameters (a braced Hash stays positional, as in Ruby 3).
@@ -2012,6 +2026,7 @@ func (f *fctx) splitKeywordArgs(m *Method, args []parser.Node) ([]parser.Node, *
 // for `**opts` the call's other keywords as a Hash.
 func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type, kw *kwArgs) (string, bool) {
 	if p.KwRest {
+		hadSplat := len(kw.splats) > 0
 		var els []parser.Node
 		for _, el := range kw.all {
 			if a, ok := el.(*parser.AssocNode); !ok || !kw.used[a.Key.(*parser.SymbolNode).Unescaped.Value] {
@@ -2024,10 +2039,11 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 		}
 		h := f.genHash(n, els, closed(p.Type, env))
 		unify(p.Type, h.typ, env)
-		return f.coerceArg(n, h, p, env), true
-	}
-	if len(kw.splats) > 0 {
-		f.errorf(kw.splats[0], "**splat into %s's named keyword parameters is not supported; pass them by name", m.Name)
+		code := f.coerceArg(n, h, p, env)
+		if hadSplat { // a splatted key a named keyword took is not rest's
+			code = kwRestWithout(code, m, kw)
+		}
+		return code, true
 	}
 	if a := kw.named[p.Name]; a != nil {
 		kw.used[p.Name] = true
@@ -2035,6 +2051,9 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 		f.noteUse(p, a.Value, v.typ)
 		unify(p.Type, v.typ, env)
 		return f.coerceArg(a.Value, v, p, env), true
+	}
+	if len(kw.splats) > 0 {
+		return f.keywordFromSplat(n, m, p, env, kw), false
 	}
 	switch {
 	case p.Default != nil && m.calleeDefaults:
@@ -2051,6 +2070,87 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 	return "", false
 }
 
+// kwRestWithout drops from a `**rest` built with splats the keys m's named
+// keyword parameters took by name.
+func kwRestWithout(code string, m *Method, kw *kwArgs) string {
+	var names []string
+	for _, q := range m.Params {
+		if q.Keyword && !q.KwRest && kw.named[q.Name] != nil {
+			names = append(names, strconv.Quote(q.Name))
+		}
+	}
+	if len(names) == 0 {
+		return code
+	}
+	return "rbKwRestWithout(" + code + ", " + strings.Join(names, ", ") + ")"
+}
+
+// keywordFromSplat takes keyword p from the call's `**h` at run time: h's
+// value when it has the key, else p's default, else MRI's "missing keyword"
+// ArgumentError. h is evaluated once, and a key no keyword names raises.
+func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[string]Type, kw *kwArgs) string {
+	if len(kw.splats) > 1 || slices.ContainsFunc(m.Params, func(q Param) bool { return q.KwRest }) {
+		f.errorf(kw.splats[0], "**splat into %s's named keyword parameters works with one **hash and no **rest parameter; pass them by name", m.Name)
+	}
+	sp := kw.splats[0].(*parser.AssocSplatNode)
+	if kw.splatTmp == "" {
+		h := f.genExpr(sp.Value, nil)
+		ht, ok := stripOpt(h.typ).(TClass)
+		if !ok || ht.C.RubyName != "Hash" || isOpt(h.typ) || !isClass(ht.Args[0], "Symbol") {
+			f.errorf(sp, "**%s into %s's keywords must be a Hash[Symbol, T], not %s", f.f.text(sp.Value.GetLocation()), m.Name, h.typ)
+		}
+		names := []string{}
+		for _, q := range m.Params {
+			if q.Keyword {
+				names = append(names, strconv.Quote(q.Name))
+			}
+		}
+		kw.splatTmp = f.newTmp()
+		f.emit("%s := rbKwSplat(%s, %s)", kw.splatTmp, h.code, strings.Join(names, ", "))
+		f.c.noteMarshal(h.typ)
+	}
+	ht := f.splatType(kw)
+	want := subst(p.Type, env)
+	out, got, v := f.newTmp(), f.newTmp(), f.newTmp()
+	f.emit("var %s %s", out, f.c.goType(want))
+	f.emit("%s, %s := %s.rbGet(Symbol(%q))", v, got, kw.splatTmp, p.Name)
+	f.emit("if %s {", got)
+	val := expr{code: v, typ: ht}
+	if fitsValue(val, closed(p.Type, env)) || isAny(ht) {
+		unify(p.Type, val.typ, env)
+		f.noteUse(p, sp.Value, val.typ)
+		f.emit("\t%s = %s", out, f.coerceArg(sp, val, p, env))
+	} else { // `{ name: "a" }` holds Strings: an :age in it is a typed boundary's TypeError (decision 20)
+		f.emit("\t_ = %s", v)
+		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rb2go: **%s holds %s values; keyword %s takes %s", f.f.text(sp.Value.GetLocation()), ht, p.Name, want))
+	}
+	f.emit("} else {")
+	switch {
+	case p.Default != nil && m.calleeDefaults:
+		kw.given = got // the callee runs it when the bit is clear
+	case p.Default != nil:
+		f.indent++
+		caller := f.f
+		f.f = m.File
+		d := f.genExpr(p.Default, closed(p.Type, env))
+		f.f = caller
+		f.emit("%s = %s", out, f.coerceArg(n, d, p, env))
+		f.indent--
+	default:
+		f.emit("\trbKwMissing(%q)", p.Name)
+	}
+	f.emit("}")
+	kw.used[p.Name] = true
+	return out
+}
+
+// splatType is the value type of the call's `**h`.
+func (f *fctx) splatType(kw *kwArgs) Type {
+	var h expr
+	f.probe(func() { h = f.genExpr(kw.splats[0].(*parser.AssocSplatNode).Value, nil) })
+	return stripOpt(h.typ).(TClass).Args[1]
+}
+
 // checkUnknown rejects keywords the method has no parameter for (MRI's ArgumentError, at compile time).
 func (kw *kwArgs) checkUnknown(f *fctx, m *Method) {
 	if kw == nil {
@@ -2061,7 +2161,7 @@ func (kw *kwArgs) checkUnknown(f *fctx, m *Method) {
 			f.errorf(a, "%s: unknown keyword: :%s", m, name)
 		}
 	}
-	if len(kw.splats) > 0 {
+	if len(kw.splats) > 0 && kw.splatTmp == "" {
 		f.errorf(kw.splats[0], "%s takes no **keywords", m)
 	}
 }

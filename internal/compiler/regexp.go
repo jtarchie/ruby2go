@@ -187,4 +187,3 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	}
 	return expr{code: code, typ: f.cls("Regexp")}
 }
-

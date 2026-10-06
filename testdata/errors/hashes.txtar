@@ -199,11 +199,17 @@ puts f
 #: (a: Integer) -> Integer
 def f(a:) = a
 puts f(a: 1, b: 2)
--- keyword_splat_into_named.rb --
-# error: main.rb:5: **splat into f's named keyword parameters is not supported
+-- keyword_splat_into_named_with_rest.rb --
+# error: main.rb:5: **splat into f's named keyword parameters works with one **hash and no **rest parameter
+#: (a: Integer, **Integer rest) -> Integer
+def f(a:, **rest) = a
+h = { a: 1 }
+puts f(**h)
+-- keyword_splat_not_symbol_hash.rb --
+# error: main.rb:5: **h into f's keywords must be a Hash[Symbol, T]
 #: (a: Integer) -> Integer
 def f(a:) = a
-h = { a: 1 }
+h = { "a" => 1 }
 puts f(**h)
 -- keyword_optional_mismatch.rb --
 # error: main.rb:3: keyword b: is optional in only one of the signature and the def

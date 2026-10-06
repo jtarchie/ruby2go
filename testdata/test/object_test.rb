@@ -4512,6 +4512,35 @@ module ObjectTests
     def self.pad(s, n = 3) = s.ljust(n, ".")
   end
 
+  # #51: **h into named keyword parameters, matched at run time
+  #: (name: String, ?age: Integer) -> String
+  def self.kw_greet(name:, age: 1) = "#{name} #{age}"
+
+  #: (a: Integer, ?b: Integer, ?c: Integer) -> Array[Integer]
+  def self.kw_chain(a:, b: a * 2, c: b + 1) = [a, b, c]
+
+  #: (a: Integer, **Integer rest) -> Hash[Symbol, Integer]
+  def self.kw_rest(a:, **rest) = rest
+
+  class ObjectKwSplatTest < Minitest::Test
+    def test_splat_beside_named_into_rest
+      assert_equal({ b: 3 }, ObjectTests.kw_rest(**{ a: 1, b: 3 }, a: 2))
+    end
+
+    def test_splat_into_named_keywords
+      opts = { name: "ann" }
+      assert_equal ["ann 1", "bo 3", "ann 9"], [ObjectTests.kw_greet(**opts), ObjectTests.kw_greet(**{ name: "bo", age: 3 }), ObjectTests.kw_greet(**opts, age: 9)]
+      assert_equal [[1, 2, 3], [1, 2, 7], [1, 5, 6]], [ObjectTests.kw_chain(**{ a: 1 }), ObjectTests.kw_chain(**{ a: 1, c: 7 }), ObjectTests.kw_chain(**{ a: 1, b: 5 })]
+    end
+
+    def test_splat_missing_and_unknown
+      e = assert_raises(ArgumentError) { ObjectTests.kw_greet(**{ age: 2 }) }
+      assert_equal "missing keyword: :name", e.message
+      e = assert_raises(ArgumentError) { ObjectTests.kw_greet(**{ name: "x", zz: 1 }) }
+      assert_equal "unknown keyword: :zz", e.message
+    end
+  end
+
   class ObjectRubySpecForwardAllTest < Minitest::Test
     def test_forward_all
       assert_equal [6, 8], [FwdC.new.m(1, y: 2), FwdC.new.m(4)]

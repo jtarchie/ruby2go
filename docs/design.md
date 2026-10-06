@@ -823,8 +823,14 @@ resolve; anything not listed is still open.
     passed. `**opts` is a `Hash[Symbol, T]` of the call's other keywords
     and `**h` splats, in source order. The signature spells them as RBS
     does (`(a: Integer, ?b: String, **untyped opts)`) or per parameter
-    with `# @rbs a: T`. A `**h` into named keywords cannot be matched
-    statically and is a compile error; so is a call on an untyped value
+    with `# @rbs a: T`. A `**h` into named keywords (one `Hash[Symbol, T]`,
+    no `**rest` parameter) is matched at run time: h is evaluated once, a
+    key no keyword names raises MRI's "unknown keyword" ArgumentError,
+    each keyword takes h's value when present (its `rbKw` bit then set at
+    run time), else its default, else raises "missing keyword". A named
+    `k: v` beside it wins. A present key whose value type cannot be the
+    keyword's (`{ name: "a" }` holds Strings; `age:` takes Integer) is
+    decision 20's TypeError (#51). A call on an untyped value
     that would reach a keyword method (its dynamic wrapper raises
     ArgumentError). Keyword block parameters (`|a:|`) are not supported.
     *(Revised: keyword parameters were a compile error.)*

@@ -159,3 +159,46 @@ func rbDig(v any, keys []any) any {
 	}
 	return rbUnbox(v)
 }
+
+// rbKwSplat is `f(**h)` into named keyword parameters: a key that names
+// none of them is MRI's ArgumentError (decision 23).
+func rbKwSplat[V comparable](h *Hash[Symbol, V], names ...string) *Hash[Symbol, V] {
+	var bad []string
+	for _, k := range h.keys {
+		if !slices.Contains(names, string(k)) {
+			bad = append(bad, string(rbInspect(k)))
+		}
+	}
+	switch len(bad) {
+	case 0:
+		return h
+	case 1:
+		panic(NewArgumentError(Ref(String("unknown keyword: " + bad[0]))))
+	}
+	panic(NewArgumentError(Ref(String("unknown keywords: " + strings.Join(bad, ", ")))))
+}
+
+// rbKwMissing is a required keyword `**h` did not hold.
+func rbKwMissing(name string) {
+	panic(NewArgumentError(Ref(String("missing keyword: :" + name))))
+}
+
+// rbKwBit is a keyword's rbKw bit when `**h` gave it.
+func rbKwBit(given bool, bit int) int {
+	if given {
+		return 1 << bit
+	}
+	return 0
+}
+
+// rbKwRestWithout is a `**rest` built with `**h` splats, less the keys the
+// method's named keywords took by name, as MRI's.
+func rbKwRestWithout[V comparable](h *Hash[Symbol, V], names ...string) *Hash[Symbol, V] {
+	out := NewHash[Symbol, V]()
+	for _, k := range h.keys {
+		if v, ok := h.vals[k]; ok && !slices.Contains(names, string(k)) {
+			Hash___Set(out, k, v)
+		}
+	}
+	return out
+}
