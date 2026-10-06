@@ -56,11 +56,6 @@ puts s
 s = "abc"
 s << "d"
 puts s
--- unary_plus.rb --
-# error: main.rb:3: undefined method +@ for String
-# rbs_inline: enabled
-s = +"abc"
-puts s
 -- global_write.rb --
 # error: main.rb:3: global variable $verbose cannot be assigned; only $stdout and $stderr can
 # rbs_inline: enabled

@@ -519,7 +519,7 @@ func (p *pruner) isInterface(e ast.Expr) bool {
 // lines), and a switch left with no case drops its variable (else Go reports
 // it unused).
 func (p *pruner) dropDeadCases(ts *ast.TypeSwitchStmt) {
-	if !p.dropDeadClauses(ts.Body) {
+	if !p.dropDeadClauses(ts.Body, ts.Assign) {
 		return
 	}
 	// `x :=` with no surviving case that reads x would be "declared and not used"
@@ -528,15 +528,51 @@ func (p *pruner) dropDeadCases(ts *ast.TypeSwitchStmt) {
 	}
 }
 
-// dropDeadClauses reports whether any clause went.
-func (p *pruner) dropDeadClauses(body *ast.BlockStmt) bool {
+// dropDeadClauses reports whether any clause went. A variable declared
+// before the switch that only dropped clauses read (a union call's pinned
+// argument, decision 150) is read in a `default:` instead, else Go reports
+// it unused; own is the type switch's `x :=`, which is not such a variable.
+func (p *pruner) dropDeadClauses(body *ast.BlockStmt, own ast.Stmt) bool {
 	n := len(body.List)
+	var dead []ast.Stmt
 	body.List = slices.DeleteFunc(body.List, func(st ast.Stmt) bool {
-		_, dead := p.pending[st.(*ast.CaseClause)]
-		return dead
+		_, d := p.pending[st.(*ast.CaseClause)]
+		if d {
+			dead = append(dead, st)
+		}
+		return d
 	})
 	if len(body.List) == n {
 		return false
+	}
+	var orphans []string
+	for _, st := range dead {
+		ast.Inspect(st, func(x ast.Node) bool {
+			id, ok := x.(*ast.Ident)
+			if !ok || id.Obj == nil || id.Obj.Kind != ast.Var || id.Obj.Decl == own || slices.Contains(orphans, id.Name) {
+				return true
+			}
+			if d, ok := id.Obj.Decl.(ast.Node); ok && d.Pos() >= st.Pos() && d.End() <= st.End() {
+				return true // declared in the clause itself
+			}
+			if !slices.ContainsFunc(body.List, func(live ast.Stmt) bool { return mentions(live, id.Name) }) {
+				orphans = append(orphans, id.Name)
+			}
+			return true
+		})
+	}
+	if len(orphans) > 0 {
+		at := body.Lbrace + 1
+		def := &ast.CaseClause{Case: at, Colon: at}
+		for _, o := range orphans {
+			def.Body = append(def.Body, &ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{NamePos: at, Name: "_"}}, TokPos: at, Tok: token.ASSIGN, Rhs: []ast.Expr{&ast.Ident{NamePos: at, Name: o}}})
+		}
+		if i := slices.IndexFunc(body.List, func(st ast.Stmt) bool { return st.(*ast.CaseClause).List == nil }); i >= 0 {
+			cc := body.List[i].(*ast.CaseClause)
+			cc.Body = append(def.Body, cc.Body...)
+		} else {
+			body.List = append(body.List, def)
+		}
 	}
 	if len(body.List) == 0 {
 		body.Rbrace = body.Lbrace + 1
@@ -654,7 +690,7 @@ func (p *pruner) sweep(f *ast.File) {
 			case *ast.TypeSwitchStmt:
 				p.dropDeadCases(n)
 			case *ast.SwitchStmt:
-				p.dropDeadClauses(n.Body)
+				p.dropDeadClauses(n.Body, nil)
 			}
 			return true
 		})

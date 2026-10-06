@@ -5001,5 +5001,11 @@ resolve; anything not listed is still open.
     argument into the rest (`f.call(*xs)`), and a rest no call passes
     anything to, which keeps decision 146's missing-type error as a
     def's does. (A Proc called through `untyped` has no `DynCall`, rest
-    or not.) ([example 105](../examples/105_variadic_lambdas/main.rb),
+    or not.) The printf specs' lambdas also needed `printf(io, fmt, ...)`
+    (Kernel#printf's first parameter is `String | IO | StringIO`) and
+    `+""` / `-s` (String#+@ is self unless frozen, else a copy; #-@ a
+    frozen copy unless frozen). A union whose members the pruner all drops
+    (no IO is built) left the call's pinned arguments unread; the pruner
+    now reads such a variable in a `default:`.
+    ([example 105](../examples/105_variadic_lambdas/main.rb),
     `testdata/test/infer_test.rb` `test_variadic_lambda`.)
