@@ -1514,7 +1514,7 @@ module StdlibTests
       line = r.gets
       r.close
       File.delete(path)
-      assert_equal [true, "hello\n", 1], [same, line, IO.new(1).fileno]
+      assert_equal [true, "hello\n", 1, true], [same, line, IO.new(1).fileno, $$ == Process.pid]
       assert_raises(Errno::ENOENT) { IO.sysopen("/nonexistent/rb2go/zz") }
       e = assert_raises(Errno::EBADF) { IO.new(9999) }
       assert_equal "Bad file descriptor", e.message

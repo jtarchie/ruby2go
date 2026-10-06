@@ -1637,9 +1637,9 @@ resolve; anything not listed is still open.
     `abort` exits 1. Globals are a fixed read-only set: `$stdin`,
     `$stdout`, `$stderr` read the constants, and `$0`/`$PROGRAM_NAME` and
     `__FILE__` are the Ruby file's name as given to the compiler, which is
-    what `ruby main.rb` reports and keeps `__FILE__ == $0` true; any other
-    `$name` is a compile error (*`$?` added by decision 97; `$stdout`
-    and `$stderr` assignable, decision 109*). `Kernel#gets` reads stdin only, where MRI
+    what `ruby main.rb` reports and keeps `__FILE__ == $0` true; `$$` is
+    `Process.pid`; any other `$name` is a compile error (*`$?` added by
+    decision 97; `$stdout` and `$stderr` assignable, decision 109*). `Kernel#gets` reads stdin only, where MRI
     reads the files named in ARGV first (ARGF; *revised by decision 95*). Tests feed programs with
     `# args:`, `# env: K=V` and `# stdin: "Go-quoted"` lines, and
     `# stderr: match` adds stderr to the MRI comparison

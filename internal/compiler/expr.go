@@ -5725,8 +5725,10 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: "rb" + strings.ToUpper(n.Name[1:2]) + n.Name[2:] + "IO()", typ: f.cls("IO")}
 	case "$?": // read directly: a Kernel call on main would go dynamic inside another class's method
 		return expr{code: "rbLastStatusOpt()", typ: TOpt{Elem: TClass{C: f.c.classes["Process::Status"]}}}
+	case "$$": // Process.pid
+		return expr{code: "Integer(os.Getpid())", typ: f.cls("Integer")}
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $stdin, $stdout, $stderr and $? are (docs/design.md decision 61)", n.Name)
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
 }
 
