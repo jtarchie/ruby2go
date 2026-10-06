@@ -4334,6 +4334,18 @@ module ObjectTests
     def self.peek = @@n
   end
 
+  # self::X in a class method is the lexical class's constant
+  class SelfConstConf
+    LIMIT = 3
+    def self.limit = self::LIMIT
+  end
+
+  class ObjectSelfConstTest < Minitest::Test
+    def test_self_path
+      assert_equal 3, SelfConstConf.limit
+    end
+  end
+
   class ObjectRubySpecClassVarTest < Minitest::Test
     def test_class_variable_first_assigned_in_method
       e = assert_raises(NameError) { CvLazy.n }

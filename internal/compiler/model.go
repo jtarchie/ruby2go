@@ -1302,7 +1302,20 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 		if n.Parent == nil {
 			return c.classes[*n.Name], c.consts[*n.Name]
 		}
-		parent, k := c.lookupConst(f, n.Parent, scope)
+		var parent *Class
+		var k *Const
+		if _, ok := n.Parent.(*parser.SelfNode); ok && len(scope) > 0 {
+			// `self::X` in a class body or class method: the lexical class, unless a subclass
+			// has its own X, which MRI would pick by the receiver at run time
+			parent = scope[len(scope)-1]
+			for _, sub := range c.classList {
+				if sub != parent && sub.isSubclassOf(parent) && (c.consts[sub.RubyName+"::"+*n.Name] != nil || c.classes[sub.RubyName+"::"+*n.Name] != nil) {
+					c.errorf(f, n, "self::%s: %s has its own %s, which MRI picks by the receiver at run time; name the class", *n.Name, sub.RubyName, *n.Name)
+				}
+			}
+		} else {
+			parent, k = c.lookupConst(f, n.Parent, scope)
+		}
 		if parent == nil {
 			if k != nil {
 				c.errorf(f, n, "%s is not a class or module", k.RubyName)

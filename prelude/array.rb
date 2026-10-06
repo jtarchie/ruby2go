@@ -564,6 +564,18 @@ class Array < Object
     return &x
   }
 
+  # `xs * n` repeats; `xs * ","` is join (decision 12's twin by argument class).
+  #: (Integer) -> Array[E]
+  def *(n)
+    raise ArgumentError, "negative argument" if n < 0
+    out = [] #: Array[E]
+    n.times { out.concat(self) }
+    out
+  end
+
+  #: (String) -> String
+  def __mul_string(sep) = join(sep)
+
   #: (?String) -> String
   def join(sep = "") = %x{
     parts := make([]string, len(*self))

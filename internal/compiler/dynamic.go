@@ -525,8 +525,10 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		maxArgs = -1
 	}
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
-	if cls := classOf(recv.typ); mix && numLevel(cls) >= 0 && rest == nil && opt == 0 {
-		c.dynNumericTwins(f, cls, e)
+	if cls := classOf(recv.typ); mix && rest == nil && opt == 0 && numLevel(cls) < 0 && cls != nil {
+		c.dynNumericTwins(f, cls, e, recv) // `xs * ","`: Array#*'s String twin
+	} else if mix && numLevel(cls) >= 0 && rest == nil && opt == 0 {
+		c.dynNumericTwins(f, cls, e, expr{code: "self", typ: TClass{C: cls}})
 		c.dynNumericMix(f, e, env)
 		c.dynNumericTower(f, cls, e, env)
 	}
@@ -621,14 +623,13 @@ func (c *Compiler) dynNumericMix(f *fctx, e *entry, env map[string]Type) {
 }
 
 // dynNumericTwins is decision 12's choice of a `__<op>_<class>` twin by the argument's class, made at run time for a number's one-argument method.
-func (c *Compiler) dynNumericTwins(f *fctx, cls *Class, e *entry) {
+func (c *Compiler) dynNumericTwins(f *fctx, cls *Class, e *entry, recv expr) {
 	m := e.M
 	if len(m.Params) != 1 || !classTwins(m.Name) {
 		return
 	}
-	recv := expr{code: "self", typ: TClass{C: cls}}
 	open := false
-	for _, name := range numTower {
+	for _, name := range append(slices.Clone(numTower), "String") {
 		k := c.classes[name]
 		if k == nil {
 			continue

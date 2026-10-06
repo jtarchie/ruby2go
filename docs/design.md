@@ -3366,7 +3366,9 @@ resolve; anything not listed is still open.
       `undef_method`, `remove_method`. `private_constant` is enforced at
       compile time: a bare lexical `X` reads it, and any `M::X` path
       (a subclass's too) is a compile error where MRI raises NameError
-      (#53). `self::X` is not a supported path at all.
+      (#53). `self::X` in a class body or class method is the lexical
+      class's X; a subclass with its own X makes it a compile error, since
+      MRI picks by the receiver at run time.
     - `Class#superclass` and `#subclasses` come from per-class tables
       (newest subclass first, as MRI); `Integer.superclass` is Object,
       since Numeric is a module (decision 142). `Module#ancestors` and
