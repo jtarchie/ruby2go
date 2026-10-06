@@ -20,3 +20,11 @@ class Counter
   end
 end
 Counter.new.each
+-- union_breaks_body.rb --
+# error: main.rb:7: String where Integer is expected; parameter x takes its type from the call at main.rb:6 (decision 146): annotate it to take both
+# a union for x would break wrap's own body (decision 150): the odd call is reported instead
+#: (Integer) -> Integer
+def takes_int(n) = n + 1
+def wrap(x) = takes_int(x)
+p wrap(1)
+p wrap("a")

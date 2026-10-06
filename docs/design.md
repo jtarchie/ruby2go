@@ -4906,7 +4906,18 @@ resolve; anything not listed is still open.
       values, `&&`/`||`, a local assigned both, inferred returns and
       parameters, Integer with Float) the join is their union, where it
       was a compile error or `untyped`. A module type, Object, or two
-      instantiations of one generic class still do not join. Literal
+      instantiations of one generic class still do not join. An
+      inferred parameter (decision 146) keeps its union only while its
+      method's body compiles with it: when a round's dry run of the body
+      fails, the parameter's uses join as before unions from the next
+      round on, so the odd call is reported (and ruby/spec skips that one
+      example) instead of the shared helper failing for every caller
+      (`def io_fixture(name, mode = "r")` passing mode on to a String
+      parameter). A generic method's `E?` with `E` a union is the box
+      `*any` its Go code returns, opened into the union at the call, as
+      for `untyped` (decision 7). A union rebuilt for a later compile
+      (`rehome`) drops a member whose class that compile lacks, rather
+      than collapsing to untyped. Literal
       elements are the exception for now: `[1, "a"]` stays a tuple and
       `{a: 1, b: "x"}` a `Hash[Symbol, untyped]`, since a union element
       type would reject the later `h[:c] = 1.5` that MRI runs; making

@@ -46,6 +46,7 @@ const maxInferRounds = 8
 // the last round's compile (rehome moves it into the next one's classes).
 type inference struct {
 	types   map[string]Type
+	noUnion map[string]bool   // parameters whose union type broke their method's body: joined without unions from then on (decision 150)
 	none    map[string]bool   // pending in the last round and typed by no call: a seeded compile reports them without rounds
 	from    map[string]string // the first call each type came from, file:line, for a mismatch's message
 	changed bool
@@ -314,9 +315,11 @@ func (c *Compiler) rehome(t Type) Type {
 		t.Params, t.Ret = ps, c.rehome(t.Ret)
 		return t
 	case TUnion:
-		ms := make([]Type, len(t.Members))
-		for i, m := range t.Members {
-			ms[i] = c.rehome(m)
+		ms := make([]Type, 0, len(t.Members))
+		for _, m := range t.Members {
+			if r := c.rehome(m); !isAny(r) { // a member this compile lacks is left out, not an untyped union (its uses are reported at their calls)
+				ms = append(ms, r)
+			}
 		}
 		return unionOf(ms...)
 	case TAny, TNil, TVar, TVoid: // no classes inside
@@ -362,14 +365,18 @@ func (c *Compiler) collectUses() {
 	c.uses = map[string][]paramUse{}
 	c.loadCode = map[*File]string{}
 	for _, m := range c.userMethods() {
-		c.debugInfer(catchCompileError(func() {
+		err := catchCompileError(func() {
 			c.inferRet(m) // the round's pass typed it already; this retries one that failed there
 			if m.Owner == nil {
 				c.emitTopDef(m)
 			} else {
 				c.emitMethod(m)
 			}
-		}))
+		})
+		c.debugInfer(err)
+		if err != nil {
+			c.demoteUnions(m)
+		}
 		c.out.Reset()
 		for _, p := range m.Params {
 			if p.Pending == "" || p.Default == nil {
@@ -395,6 +402,43 @@ func (c *Compiler) collectUses() {
 			f.genBody(&parser.StatementsNode{Body: b.stmts}, nil, tail{}, nil)
 		}))
 	}
+}
+
+// demoteUnions marks m's parameters typed as unions when m's body did not
+// compile: their uses join as before unions from the next round, a use
+// that does not join being reported at its call rather than breaking the
+// method every call shares (decision 150).
+func (c *Compiler) demoteUnions(m *Method) {
+	if c.infer == nil {
+		return
+	}
+	for _, p := range m.Params {
+		if p.Pending == "" || !holdsUnion(p.Type) {
+			continue
+		}
+		if c.infer.noUnion == nil {
+			c.infer.noUnion = map[string]bool{}
+		}
+		c.infer.noUnion[p.Pending] = true
+	}
+}
+
+// holdsUnion reports whether t is or contains a union.
+func holdsUnion(t Type) bool {
+	switch t := t.(type) {
+	case TUnion:
+		return true
+	case TOpt:
+		return holdsUnion(t.Elem)
+	case TClass:
+		return slices.ContainsFunc(t.Args, holdsUnion)
+	case TTuple:
+		return slices.ContainsFunc(t.Elems, holdsUnion)
+	case TFunc:
+		return slices.ContainsFunc(t.Params, holdsUnion) || holdsUnion(t.Ret)
+	case TAny, TNil, TVar, TVoid:
+	}
+	return false
 }
 
 // debugInfer prints what a round's dry run could not compile, under RB2GO_INFER_DEBUG.
@@ -445,27 +489,8 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
-		// Object, BasicObject and modules are Go any: they count only when
-		// nothing concrete is passed, or one Object.new would untype the rest
-		var t Type
-		for _, abstract := range []bool{false, true} {
-			for _, u := range uses {
-				if _, void := u.typ.(TVoid); u.typ == nil || void || holdsAny(u.typ) || mentionsVar(u.typ) || isAbstract(stripOpt(u.typ)) != abstract {
-					continue // untyped this round (another pending parameter's), or no value
-				}
-				if t == nil {
-					t = u.typ
-					from[key] = fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
-					continue
-				}
-				if j, ok := join(t, u.typ); ok && !isAny(j) && (abstract || !isAbstract(stripOpt(j))) {
-					t = j
-				}
-			}
-			if t != nil {
-				next[key] = t
-				break
-			}
+		if t, at := joinUses(uses, inf.noUnion[key]); t != nil {
+			next[key], from[key] = t, at
 		}
 	}
 	inf.changed = len(next) != len(inf.types)
@@ -486,6 +511,37 @@ func (c *Compiler) updateInference(inf *inference) {
 			fmt.Fprintf(os.Stderr, "rb2go: inferred %s: %s\n", k, next[k])
 		}
 	}
+}
+
+// joinUses joins a parameter's uses in source order, returning the type and
+// where its first use is. Object, BasicObject and modules are Go any: they
+// count only when nothing concrete is passed, or one Object.new would
+// untype the rest. noUnion leaves out a use that would make a union.
+func joinUses(uses []paramUse, noUnion bool) (Type, string) {
+	for _, abstract := range []bool{false, true} {
+		var t Type
+		at := ""
+		for _, u := range uses {
+			if _, void := u.typ.(TVoid); u.typ == nil || void || holdsAny(u.typ) || mentionsVar(u.typ) || isAbstract(stripOpt(u.typ)) != abstract {
+				continue // untyped this round (another pending parameter's), or no value
+			}
+			if t == nil {
+				t, at = u.typ, fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
+				continue
+			}
+			j, ok := join(t, u.typ)
+			if ok && noUnion && holdsUnion(j) && !holdsUnion(t) && !holdsUnion(u.typ) {
+				ok = false // demoted: a use with no common class is left out, as before unions
+			}
+			if ok && !isAny(j) && (abstract || !isAbstract(stripOpt(j))) {
+				t = j
+			}
+		}
+		if t != nil {
+			return t, at
+		}
+	}
+	return nil, ""
 }
 
 // coercePending is coerceArg's check for a parameter typed from use: a

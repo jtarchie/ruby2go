@@ -243,11 +243,8 @@ func subst(t Type, env map[string]Type) Type {
 		}
 		return TClass{C: t.C, Args: args}
 	case TOpt:
-		e := subst(t.Elem, env)
-		if _, ok := e.(TUnion); ok {
-			return unionOf(e, TNil{}) // E? with E = A | B is A | B | nil, never a box around an any
-		}
-		return TOpt{Elem: e}
+		return TOpt{Elem: subst(t.Elem, env)} // E? with E = A | B is a box (*any) in the generic Go code; flatOpt opens it at the call
+
 	case TTuple:
 		elems := make([]Type, len(t.Elems))
 		for i, e := range t.Elems {

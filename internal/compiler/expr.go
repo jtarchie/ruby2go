@@ -684,6 +684,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 	f.emit("}")
 	return expr{code: tmp, typ: typ}
 }
+
 // genUnionOr is `l || r` on a union l (decision 150): l when truthy (its
 // members but nil), else r, typed as their join.
 func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
@@ -937,7 +938,7 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	// A literal is never nil, so an expected T? means T.
 	expected = stripOpt(expected)
 	if u, ok := expected.(TUnion); ok { // the member an Array literal can be: a tuple of its length, else an Array (decision 150)
-		expected = unionMember(u, func(m Type) bool { t, ok := m.(TTuple); return ok && len(t.Elems) == len(n.Elements) }, func(m Type) bool { return isClass(m, "Array") })
+		expected = f.literalMember(u, func(m Type) { f.genArray(n, m) }, func(m Type) bool { t, ok := m.(TTuple); return ok && len(t.Elems) == len(n.Elements) }, func(m Type) bool { return isClass(m, "Array") })
 	}
 	if tt, ok := expected.(TTuple); ok && len(tt.Elems) == len(n.Elements) {
 		codes := make([]string, len(n.Elements))
@@ -1098,8 +1099,8 @@ func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
 }
 
 func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) expr {
-	if u, ok := stripOpt(expected).(TUnion); ok { // a Hash literal is the union's Hash member (decision 150)
-		expected = unionMember(u, func(m Type) bool { return isClass(m, "Hash") })
+	if u, ok := stripOpt(expected).(TUnion); ok { // a Hash literal is the union's Hash member it compiles to (decision 150)
+		expected = f.literalMember(u, func(m Type) { f.genHash(n, elements, m) }, func(m Type) bool { return isClass(m, "Hash") })
 	}
 	var kT, vT Type
 	if ec, ok := stripOpt(expected).(TClass); ok && ec.C.RubyName == "Hash" {
@@ -2980,6 +2981,8 @@ func flatOpt(e expr) expr {
 	case !ok:
 	case isAny(o.Elem):
 		return expr{code: "Opt(" + e.code + ")", typ: o.Elem, nilable: true}
+	case isUnion(o.Elem): // E? with E = A | B: the box opens into the union, nil a member (decision 150)
+		return expr{code: "Opt(" + e.code + ")", typ: optOf(o.Elem)}
 	case isOpt(o.Elem):
 		return expr{code: "rbFlat(" + e.code + ")", typ: o.Elem}
 	}
@@ -4217,12 +4220,20 @@ func pureNode(n parser.Node) bool {
 	return false
 }
 
-// unionMember is the first member of u that a preference holds for, trying
-// each preference in turn; nil (nothing expected) when none does.
-func unionMember(u TUnion, prefs ...func(Type) bool) Type {
+// literalMember is the member of u a literal takes as its expected type:
+// of the members each preference holds for, in turn, the first gen compiles
+// with; nil (nothing expected, so the literal types itself) when none does.
+func (f *fctx) literalMember(u TUnion, gen func(Type), prefs ...func(Type) bool) Type {
 	for _, pref := range prefs {
-		if i := slices.IndexFunc(u.Members, pref); i >= 0 {
-			return u.Members[i]
+		for _, m := range u.Members {
+			if !pref(m) {
+				continue
+			}
+			var err *compileError
+			f.probe(func() { err = f.try(func() { gen(m) }) })
+			if err == nil {
+				return m
+			}
 		}
 	}
 	return nil

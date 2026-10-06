@@ -89,7 +89,6 @@ type Compiler struct {
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes          map[string]bool
-	unions         map[string]TUnion // rbUnion_<hash>: an untyped value checked into a union (decision 150), by Go name
 	marshalSeen    map[string]Type // concrete container and tuple types of values, by Ruby type: Marshal's cases (decision 137)
 	marshalGo      map[string]bool // their Go types with a case emitted
 	marshalSkipped []string        // types left out of Marshal's cases as unreached: reaching one later recompiles eagerly
@@ -98,6 +97,9 @@ type Compiler struct {
 	marshalAt      int             // len(marshalSeen) then
 	marshalOut     bool            // rbMDumpGen/rbMLoadGen emitted
 	marshalLate    bool            // rbMDumpObjGen/rbMLoadObjGen emitted
+
+	unions map[string]TUnion // rbUnion_<hash>: an untyped value checked into a union (decision 150), by Go name
+
 	// parameter types from use (decision 146)
 	infer       *inference
 	round       bool                  // an inference round: pending parameters are untyped, their arguments recorded
