@@ -1308,7 +1308,12 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 		return f.noteConv(n, f.c.unionFn(to)+"("+e.code+")")
 	case TUnion:
 		if fits(t, to) {
-			return e.code
+			if f.sameGoMembers(t, to) {
+				return e.code
+			}
+			// a member of another instantiation (Array[Integer] into Array[untyped]):
+			// the target's checker converts it, or its type switch misses it
+			return f.c.unionFn(to) + "(" + e.code + ")"
 		}
 	case TNil:
 		if fits(t, to) {
@@ -1318,7 +1323,10 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 		if fits(t, to) {
 			return "any(" + e.code + ")"
 		}
-	case TClass, TFunc, TOpt, TVar, TVoid:
+	case TVar:
+		// a generic value's class is known only at run time: checked there, as untyped is
+		return f.noteConv(n, f.c.unionFn(to)+"(any("+e.code+"))")
+	case TClass, TFunc, TOpt, TVoid:
 		if fitsValue(e, to) || e.lit && slices.ContainsFunc(to.Members, func(m Type) bool { return fitsValue(e, m) }) {
 			if e.lit && isClass(e.typ, "Integer") && !slices.ContainsFunc(to.Members, func(m Type) bool { return isClass(m, "Integer") }) {
 				e.typ = f.cls("Float") // 1 where Float | String is expected is 1.0
@@ -1326,11 +1334,29 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 			if m := f.instantiationMember(e.typ, to); m != nil {
 				return f.coerce(n, e, m)
 			}
+			if o, ok := e.typ.(TOpt); ok && f.instantiationMember(o.Elem, to) != nil {
+				return f.c.unionFn(to) + "(" + f.coerce(n, e, TAny{}) + ")" // nil, or the element converted
+			}
 			return f.coerce(n, e, TAny{})
 		}
 	}
 	f.errorf(n, "%s where %s is expected", e.typ, to)
 	return ""
+}
+
+// sameGoMembers reports whether every member of from is held in to as the
+// same Go type, so a value of from is already one of to's switch cases.
+func (f *fctx) sameGoMembers(from, to TUnion) bool {
+	goT := func(m Type) string {
+		if isNil(m) {
+			return "nil"
+		}
+		return f.c.goType(m)
+	}
+	return !slices.ContainsFunc(from.Members, func(m Type) bool {
+		g := goT(m)
+		return !slices.ContainsFunc(to.Members, func(t Type) bool { return goT(t) == g })
+	})
 }
 
 // instantiationMember is the member of u a generic value of another
@@ -1688,6 +1714,12 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		if e, ok := f.viewCall(n, recv, name, args); ok {
 			return e
 		}
+	}
+	if len(args) > 0 && !isUnion(recv.typ) && slices.ContainsFunc(args, f.readsUnionLocal) {
+		// an argument over a union local may need unionArgCall: generated once
+		// here, the failed dispatch and the retry reuse it instead of each
+		// regenerating the subtree (exponential in its nesting otherwise)
+		args = f.pinArgs(args, len(args))
 	}
 	if len(args) > 0 && !isUnion(recv.typ) && !allLiteral(args) {
 		// a union argument the method does not take as it is: once per member (decision 150)
@@ -4079,6 +4111,10 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 	if slices.ContainsFunc(u.Members, raises) {
 		f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", name, u)
 	}
+	// The arguments once, before the switch: generated in every arm they cost
+	// members^depth for nested union arithmetic, and a local they assign
+	// would be declared only in the arm's scope.
+	args = f.pinArgs(args, len(args))
 	return f.unionSwitch(n, recv.code, u, func(m Type, code string) (expr, bool) {
 		if raises(m) {
 			f.emit("panic(rbNoMethod(%q, nil, false))", name)
@@ -4086,6 +4122,31 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 		}
 		return f.genMethodCall(n, expr{code: code, typ: m}, name, args, block), true
 	}, func(m Type, msg string) string { return fmt.Sprintf("%s (a member of %s)", msg, u) })
+}
+
+// pinArgs evaluates args[:upto] that are not pure into temps, in order, so
+// a type switch's arms reuse their values. A literal (its type follows the
+// parameter), a block, a splat or keywords is left to each arm.
+func (f *fctx) pinArgs(args []parser.Node, upto int) []parser.Node {
+	out := slices.Clone(args)
+	for j := range upto {
+		switch args[j].(type) {
+		case *parser.SplatNode, *parser.KeywordHashNode, *parser.BlockArgumentNode, *parser.ForwardingArgumentsNode,
+			*parser.ArrayNode, *parser.HashNode, *parser.LambdaNode:
+			continue
+		}
+		if pureNode(args[j]) {
+			continue
+		}
+		e := f.genExpr(args[j], nil)
+		if isVoid(e.typ) {
+			continue // a void call has no value to pin; dispatch reports it
+		}
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, f.materialize(e))
+		out[j] = &exprNode{Node: args[j], e: expr{code: tmp, typ: e.typ}}
+	}
+	return out
 }
 
 // unionSwitch emits `switch v := subj.(type)` over u's members (decision
@@ -4203,15 +4264,7 @@ func (f *fctx) unionArgCall(n parser.Node, recv expr, name string, args []parser
 		f.emit("%s := %s", tmp, f.materialize(recv))
 		recv.code = tmp
 	}
-	nargs := slices.Clone(args)
-	for j := range at {
-		if !pureNode(args[j]) {
-			e := f.genExpr(args[j], nil)
-			tmp := f.newTmp()
-			f.emit("%s := %s", tmp, f.materialize(e))
-			nargs[j] = &exprNode{Node: args[j], e: expr{code: tmp, typ: e.typ}}
-		}
-	}
+	nargs := f.pinArgs(args, at)
 	a := f.genExpr(args[at], nil)
 	return f.unionSwitch(n, a.code, u, func(m Type, code string) (expr, bool) {
 		margs := slices.Clone(nargs)
@@ -6358,4 +6411,19 @@ func arrayLit(elemGo string, elems []string) string {
 		return "&Array[" + elemGo + "]{}"
 	}
 	return "&Array[" + elemGo + "]{s: []" + elemGo + "{" + strings.Join(elems, ", ") + "}}"
+}
+
+// readsUnionLocal reports whether n reads a local whose type is a union (decision 150).
+func (f *fctx) readsUnionLocal(n parser.Node) bool {
+	if n == nil {
+		return false
+	}
+	switch r := n.(type) {
+	case *parser.LocalVariableReadNode:
+		info := f.localInfo(r.Name)
+		return info != nil && isUnion(stripOpt(info.typ))
+	case *exprNode, *assignedArg, *withMember, *constInit, *loadFile:
+		return false // the compiler's own nodes: already generated, and their embedded Node may be nil
+	}
+	return slices.ContainsFunc(n.CompactChildNodes(), f.readsUnionLocal)
 }

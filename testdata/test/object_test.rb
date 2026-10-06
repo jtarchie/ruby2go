@@ -4759,4 +4759,23 @@ module ObjectTests
       assert_equal %w[a b c d], NarrowMemo.names
     end
   end
+
+  # A method returning `self?` keeps the interface-typed forwarder (decision 151).
+  class SelfOptNode
+    attr_reader :n #: Integer
+
+    #: (Integer) -> void
+    def initialize(n)
+      @n = n
+    end
+
+    #: () -> self?
+    def me = @n > 0 ? self : nil
+  end
+
+  class SelfOptReturnTest < Minitest::Test
+    def test_self_opt_return
+      assert_equal [1, nil], [SelfOptNode.new(1).me&.n, SelfOptNode.new(0).me&.n]
+    end
+  end
 end

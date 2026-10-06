@@ -1064,11 +1064,12 @@ func (c *Compiler) seqAdapterSig(m *Method, env map[string]Type) (name, params, 
 	return goMethodName(m.Name), params, ret
 }
 
-// sigMentions reports whether m's parameters or block name cls, which the free
-// func types as Self: bound to *C, they would not take the forwarder's CI.
+// sigMentions reports whether m's parameters, block or return name cls, which
+// the free func types as Self: bound to *C, they would not match the
+// forwarder's CI (a `self?` return is **C where *CI is wanted).
 // ponytail: matches by rendered name, so a same-named class elsewhere also opts out; walk the Type if that costs a hot method.
 func sigMentions(m *Method, cls *Class) bool {
-	sig := fmt.Sprint(m.Params, m.Block)
+	sig := fmt.Sprint(m.Params, m.Block, m.Ret)
 	return strings.Contains(sig, cls.RubyName) || strings.Contains(sig, "Self")
 }
 
@@ -1142,9 +1143,12 @@ func (c *Compiler) emitTuples() {
 // unionFn names the generated helpers for union u (decision 150): a hash of
 // its members, so the name does not depend on what the program compiled first.
 func (c *Compiler) unionFn(u TUnion) string {
-	h := fnv.New32a()
+	h := fnv.New64a()
 	_, _ = h.Write([]byte(u.String())) // a hash.Hash never fails
-	name := fmt.Sprintf("rbUnion_%08x", h.Sum32())
+	name := fmt.Sprintf("rbUnion_%016x", h.Sum64())
+	if old, ok := c.unions[name]; ok && old.String() != u.String() {
+		panic(compileError{msg: "rb2go: union helper name collision: " + old.String() + " and " + u.String()}) // never silently share one checker
+	}
 	c.unions[name] = u
 	return name
 }

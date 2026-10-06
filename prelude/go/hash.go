@@ -203,12 +203,13 @@ func rbKwRestWithout[V comparable](h *Hash[Symbol, V], names ...string) *Hash[Sy
 	return out
 }
 
-func (self *Hash[K, V]) rbFrozen() bool { return self.frozen }
-func (self *Hash[K, V]) rbSetFrozen()   { self.frozen = true }
+// An atomic flag: a Thread may freeze what another is reading.
+func (self *Hash[K, V]) rbFrozen() bool { return self.frozen.Load() }
+func (self *Hash[K, V]) rbSetFrozen()   { self.frozen.Store(true) }
 
 // rbCheckFrozen is every mutator's FrozenError check: one field load, inlined.
 func (self *Hash[K, V]) rbCheckFrozen() {
-	if self.frozen {
+	if self.frozen.Load() {
 		rbFrozenErr(self)
 	}
 }

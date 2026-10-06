@@ -196,12 +196,13 @@ func rbAssoc[E comparable](a *Array[E], key any, at int) *E {
 	return nil
 }
 
-func (self *Array[E]) rbFrozen() bool { return self.frozen }
-func (self *Array[E]) rbSetFrozen()   { self.frozen = true }
+// An atomic flag: a Thread may freeze what another is reading.
+func (self *Array[E]) rbFrozen() bool { return self.frozen.Load() }
+func (self *Array[E]) rbSetFrozen()   { self.frozen.Store(true) }
 
 // rbCheckFrozen is every mutator's FrozenError check: one field load, inlined.
 func (self *Array[E]) rbCheckFrozen() {
-	if self.frozen {
+	if self.frozen.Load() {
 		rbFrozenErr(self)
 	}
 }

@@ -386,7 +386,7 @@ func rbAtExitPop() func() {
 func rbTopRecover() {
 	status, main := 0, any(nil)
 	if r := recover(); r != nil {
-		status, main = rbExitStatus(rbWrapPanic(r)) // a Go runtime panic (an Integer divide by 0) reads as the exception rescue would see
+		status, main = rbExitStatus(r)
 	}
 	rbFinish(status, main)
 }
@@ -441,6 +441,7 @@ func rbObjectID(a any) Integer {
 // rbExitStatus is the exit status r ends the program with, and r itself
 // when it is an error to print rather than a SystemExit.
 func rbExitStatus(r any) (int, any) {
+	r = rbWrapPanic(r) // a Go runtime panic (an Integer divide by 0, decision 151) ends the program as the exception it stands for
 	if e, ok := r.(SystemExitI); ok {
 		return int(e.Status()), nil
 	}

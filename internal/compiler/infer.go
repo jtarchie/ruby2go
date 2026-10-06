@@ -321,8 +321,8 @@ func (c *Compiler) rehome(t Type) Type {
 				ms = append(ms, r)
 			}
 		}
-		if len(ms) == 0 {
-			return TAny{} // every member's class is gone: untyped, as one class would be (unionOf() is nil)
+		if !slices.ContainsFunc(ms, func(m Type) bool { return !isNil(m) }) {
+			return TAny{} // every member's class is gone (nil alone is no type for it): untyped, as one class would be (unionOf() is nil)
 		}
 		return unionOf(ms...)
 	case TAny, TNil, TVar, TVoid: // no classes inside

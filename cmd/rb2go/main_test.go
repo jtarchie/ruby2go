@@ -239,3 +239,35 @@ func TestGen(t *testing.T) {
 		t.Errorf("gen missing file: exit %d, want 1", code)
 	}
 }
+
+// An Integer divide by 0 is Go's own panic (decision 151); every way out of
+// the program, at_exit included, reports it as MRI's ZeroDivisionError.
+func TestUncaughtZeroDivisionMessage(t *testing.T) {
+	dir := t.TempDir()
+	f := false
+	e := ""
+	for name, prog := range map[string]string{
+		"main":    "puts 7 / 0\n",
+		"at_exit": "at_exit { puts 7 % 0 }\nputs \"main\"\n",
+	} {
+		src := filepath.Join(dir, name+".rb")
+		err := os.WriteFile(src, []byte(prog), 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bin := filepath.Join(dir, name)
+		if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+			t.Fatalf("%s: build: exit %d", name, code)
+		}
+		var errOut strings.Builder
+		cmd := exec.CommandContext(t.Context(), bin) //nolint:gosec // built above
+		cmd.Stderr = &errOut
+		err = cmd.Run()
+		if err == nil {
+			t.Errorf("%s: exit 0, want 1", name)
+		}
+		if !strings.Contains(errOut.String(), "divided by 0 (ZeroDivisionError)") {
+			t.Errorf("%s: stderr %q, want MRI's ZeroDivisionError", name, errOut.String())
+		}
+	}
+}

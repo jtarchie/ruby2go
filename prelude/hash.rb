@@ -10,7 +10,7 @@
 # one being ranged over; iterators skip keys deleted under them.
 # @rbs generic K
 # @rbs generic V
-# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K]; frozen bool }
+# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K]; frozen atomic.Bool }
 class Hash < Object
   include Enumerable #[[K, V]]
 
@@ -551,15 +551,15 @@ class Hash < Object
     return out
   }
 
-  # Frozen by identity (rbFreeze); every mutator above checks first (decision 96).
+  # The flag is on the object; every mutator above checks it first (decision 96).
   #: () -> self
   def freeze = %x{
-    rbFreeze(self)
+    self.frozen.Store(true)
     return self
   }
 
   #: () -> bool
-  def frozen? = %x{ Boolean(rbIsFrozen(self)) }
+  def frozen? = %x{ Boolean(self.frozen.Load()) }
 
   #: () -> [K, V]?
   def shift

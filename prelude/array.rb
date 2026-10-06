@@ -5,7 +5,7 @@
 
 # Array is mutable and aliased in Ruby, so it is always handled as a pointer.
 # @rbs generic E
-# @go_type struct { s []E; frozen bool }
+# @go_type struct { s []E; frozen atomic.Bool }
 class Array < Object
   include Enumerable #[E]
 
@@ -384,7 +384,7 @@ class Array < Object
     if len(u.s) == len(self.s) {
       return nil
     }
-    *self = *u
+    self.s = u.s
     return &self
   }
 
@@ -831,15 +831,15 @@ class Array < Object
     return out
   }
 
-  # Frozen by identity (rbFreeze); every mutator above checks first (decision 96).
+  # The flag is on the object; every mutator above checks it first (decision 96).
   #: () -> self
   def freeze = %x{
-    rbFreeze(self)
+    self.frozen.Store(true)
     return self
   }
 
   #: () -> bool
-  def frozen? = %x{ Boolean(rbIsFrozen(self)) }
+  def frozen? = %x{ Boolean(self.frozen.Load()) }
 
   #: (Integer) -> E?
   def at(i) = self[i]

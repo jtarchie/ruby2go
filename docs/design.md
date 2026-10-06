@@ -2581,10 +2581,11 @@ resolve; anything not listed is still open.
     `sync.Map` of frozen pointers behind an atomic "anything frozen" flag,
     so one `X = [...].freeze` anywhere made every Array mutation in the
     program a map lookup (+33% on a map/select loop) and kept frozen
-    objects alive forever. Now `Array` is `struct { s []E; frozen bool }`
+    objects alive forever. Now `Array` is `struct { s []E; frozen atomic.Bool }`
     (not a bare `[]E`: a slice has no room for a flag, and a side table
     keyed by pointer is the global again) and Hash's struct gained
-    `frozen`. The check is one field load and inlines. Prelude Go reads
+    `frozen`, an `atomic.Bool` since a Thread may freeze what another
+    reads. The check is one uncontended atomic load and inlines. Prelude Go reads
     the elements as `a.s`; the compiler builds literals through
     `arrayLit`. `rbFreeze`/`rbIsFrozen` remain for untyped callers
     (Ractor), over an `rbFreezable` interface. User objects, Struct and
@@ -4943,6 +4944,19 @@ resolve; anything not listed is still open.
       with a computed name) and universal parameters (`==`, `puts`) are
       the universal union and keep the dispatchers. `T | untyped`
       parameters keep decision 20's meaning.
+    *Revised (review):* a call on a union, or with an argument reading a
+    union local, evaluates its non-literal arguments once into temps
+    before the type switch (`pinArgs`): generated in every arm they cost
+    members^depth for nested arithmetic (`x + (x + ...)` took 38s at depth
+    6), and a local assigned in an argument (`x * (n = 2)`) was declared
+    only in an arm. Literals stay per arm, typed by each member's
+    parameter. A union passed into another whose members are other Go
+    types (`Array[Integer]` into `Array[untyped]`, or such a `T?`) goes
+    through the target's checker, which converts it; a generic `T` is
+    checked at run time, as untyped is. A proc member matches only its
+    own signature (a `^(Integer) -> Float` matched any proc member and
+    then no switch case). Helper names hash to 64 bits, and a collision is
+    a compile error, never a shared checker.
     (`examples/104_union_types`, `testdata/test/union_test.rb`,
     `testdata/errors/union.txtar`.)
 151. Hot core methods are shaped for Go's inliner (budget 80), measured
@@ -4961,8 +4975,10 @@ resolve; anything not listed is still open.
     - The frozen check inlines (one field load since decision 96's revision).
     - A struct class's own method is forwarded to its free func with
       `Self` = `*C`, not `CI`, so `self._C()` and self calls are direct.
-      Not when its parameters or block name the class or `self`: the
-      forwarder holds those as `CI`.
+      Not when its parameters, block or return name the class or `self`:
+      the forwarder holds those as `CI` (a `self?` return is `**C`).
+    - `rbExitStatus` wraps every panic it is handed, so an at_exit handler's
+      divide by 0 also ends as `ZeroDivisionError`.
     Not done: a default `GOGC` (200 halves GC time on string-heavy code but
     nearly doubles peak memory on collections); a mutable String for `<<`
     (the frozen-strings rule; `s += x` stays quadratic).

@@ -48,6 +48,27 @@ def union_guard_not(x)
   x.upcase
 end
 
+#: (Integer | String) -> String
+def union_tag(v)
+  case v
+  when Integer then "int #{v}"
+  else "str #{v}"
+  end
+end
+
+# A generic value reaches a union parameter checked at run time, as untyped does.
+#: [T] (T) -> String
+def union_generic_tag(x) = union_tag(x)
+
+#: (Array[untyped] | String | nil) -> String
+def union_kind_opt(x)
+  case x
+  when Array then "array #{x.size}"
+  when String then "string"
+  else "nil"
+  end
+end
+
 #: (Array[untyped] | String) -> String
 def union_kind(x)
   case x
@@ -435,6 +456,37 @@ module UnionTests
       a = [1, 2]
       assert_equal "array 2", union_kind(a)
       assert_equal "string s", union_kind("s")
+    end
+  end
+
+  # Review fixes to decision 150's calls and conversions.
+  class UnionReviewTest < Minitest::Test
+    # Arguments of a call on a union are evaluated once, before the type switch.
+    def test_argument_assigns_once
+      x = [1, "s"].first #: Integer | String
+      y = x * (n = 2)
+      assert_equal [2, 2], [y, n]
+    end
+
+    # Nested arithmetic on a union compiles in time linear in its depth (it was members^depth).
+    def test_deep_union_arithmetic
+      x = [1, 2.5].first #: Integer | Float
+      assert_equal 10, x + (x + (x + (x + (x + (x + (x + (x + (x + x))))))))
+      assert_equal 1535, 1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (x * 2) * 2) * 2) * 2) * 2) * 2) * 2) * 2) * 2) * 2
+    end
+
+    # A union holding Array[Integer] passed where Array[untyped] is a member is converted, not missed.
+    def test_union_into_union_converts
+      a = [[1, 2], "s"].first #: Array[Integer] | String
+      assert_equal "array 2", union_kind(a)
+      xs = [1, 2] #: Array[Integer]?
+      assert_equal "array 2", union_kind_opt(xs)
+      none = nil #: Array[Integer]?
+      assert_equal "nil", union_kind_opt(none)
+    end
+
+    def test_generic_into_union
+      assert_equal ["int 1", "str a"], [union_generic_tag(1), union_generic_tag("a")]
     end
   end
 end

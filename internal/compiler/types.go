@@ -546,8 +546,8 @@ func memberFits(t, m Type) bool {
 		_, ok := t.(TTuple)
 		return ok && fits(t, m)
 	case TFunc:
-		_, ok := t.(TFunc)
-		return ok
+		// the member's Go func type is a switch case: another signature would match none of them
+		return typeEq(t, m)
 	case TAny, TVar:
 		return true
 	case TUnion:
