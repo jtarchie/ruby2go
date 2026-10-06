@@ -10,6 +10,11 @@ class String < Object
   #: (String) -> Integer
   def <=>(other) = %x{ Integer(strings.Compare(string(self), string(other))) }
 
+  # == on two Strings (decision 12's class overload): a plain Go compare,
+  # inlined, with no boxing of the argument into untyped.
+  #: (String) -> bool
+  def __eq_string(other) = %x{ Boolean(self == other) }
+
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(String)

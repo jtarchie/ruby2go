@@ -10,6 +10,11 @@ class Symbol < Object
   #: (Symbol) -> Integer
   def <=>(other) = %x{ Integer(strings.Compare(string(self), string(other))) }
 
+  # == on two Symbols (decision 12's class overload): a plain Go compare,
+  # inlined, with no boxing of the argument into untyped.
+  #: (Symbol) -> bool
+  def __eq_symbol(other) = %x{ Boolean(self == other) }
+
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(Symbol)

@@ -294,7 +294,11 @@ func (s *rbSummer) add(x any) {
 			s.f = rbNumFloat(s.exact)
 		}
 	}
-	v := rbNumFloat(rbNumArg(x))
+	s.addFloat(rbNumFloat(rbNumArg(x)))
+}
+
+// addFloat is add for a Float, which a typed Float sum calls without boxing.
+func (s *rbSummer) addFloat(v float64) {
 	switch {
 	case math.IsNaN(s.f):
 	case math.IsNaN(v):

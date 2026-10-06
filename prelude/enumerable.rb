@@ -174,8 +174,25 @@ module Enumerable
 
   # first's message varies by class (Array overrides it), take's does not.
   # MRI's sum: Integers and Rationals exactly, Floats with Kahan-Babuska compensation.
+  # An Integer or Float element type sums unboxed (any(x).(Integer) does not
+  # allocate once instantiated); anything else goes through rbSummer's tower.
   #: () -> E
   def sum = %x{
+    var z E
+    switch any(z).(type) {
+    case Integer:
+      var t Integer
+      for x := range self.Each() {
+        t = t.Op_plus(any(x).(Integer))
+      }
+      return any(t).(E)
+    case Float:
+      s := rbSummer{floating: true}
+      for x := range self.Each() {
+        s.addFloat(float64(any(x).(Float)))
+      }
+      return any(Float(s.f + s.c)).(E)
+    }
     s := rbSummer{}
     for x := range self.Each() {
       s.add(any(x))
@@ -185,6 +202,21 @@ module Enumerable
 
   #: [N] () { (E) -> N } -> N
   def __sum_block = %x{
+    var z N
+    switch any(z).(type) {
+    case Integer:
+      var t Integer
+      for x := range self.Each() {
+        t = t.Op_plus(any(blk(x)).(Integer))
+      }
+      return any(t).(N)
+    case Float:
+      s := rbSummer{floating: true}
+      for x := range self.Each() {
+        s.addFloat(float64(any(blk(x)).(Float)))
+      }
+      return any(Float(s.f + s.c)).(N)
+    }
     s := rbSummer{}
     for x := range self.Each() {
       s.add(any(blk(x)))

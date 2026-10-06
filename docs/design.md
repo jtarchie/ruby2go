@@ -4937,3 +4937,24 @@ resolve; anything not listed is still open.
       parameters keep decision 20's meaning.
     (`examples/104_union_types`, `testdata/test/union_test.rb`,
     `testdata/errors/union.txtar`.)
+151. Hot core methods are shaped for Go's inliner (budget 80), measured
+    against MRI 4.0.7 on small loops:
+    - `Integer#/` and `#%` drop their explicit zero check: Go's own
+      divide panic becomes `ZeroDivisionError` through `rbWrapPanic`,
+      which `rbTopRecover` now also applies, so an uncaught one prints
+      MRI's `divided by 0 (ZeroDivisionError)`. The check alone cost the
+      call (a 15% slower Integer loop).
+    - `==` between two Integers, Floats, Strings or Symbols goes to a
+      typed `__eq_<class>` (decision 12's class overload): a Go compare,
+      where `==(untyped)` boxed the argument (an allocation past 255) and
+      type-switched, 8x slower in a loop.
+    - `sum` with an Integer or Float element (or block) type adds unboxed;
+      Float still with MRI's Kahan-Babuska (`rbSummer.addFloat`).
+    - `rbFrozenCheck` inlines as one atomic load while nothing is frozen.
+    - A struct class's own method is forwarded to its free func with
+      `Self` = `*C`, not `CI`, so `self._C()` and self calls are direct.
+      Not when its parameters or block name the class or `self`: the
+      forwarder holds those as `CI`.
+    Not done: a default `GOGC` (200 halves GC time on string-heavy code but
+    nearly doubles peak memory on collections); a mutable String for `<<`
+    (the frozen-strings rule; `s += x` stays quadratic).

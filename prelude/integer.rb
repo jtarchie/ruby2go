@@ -23,6 +23,11 @@ class Integer < Object
   #: (Integer) -> bool
   def >=(other) = %x{ Boolean(self >= other) }
 
+  # == on two Integers (decision 12's class overload): a plain Go compare,
+  # inlined, with no boxing of the argument into untyped.
+  #: (Integer) -> bool
+  def __eq_integer(other) = %x{ Boolean(self == other) }
+
   #: (untyped) -> bool
   def ==(other) = %x{
     switch o := other.(type) {
@@ -65,29 +70,26 @@ class Integer < Object
     return self * other
   }
 
-  # Ruby floors; Go truncates.
+  # Ruby floors; Go truncates. A zero divisor is Go's own divide panic,
+  # which rbWrapPanic raises as ZeroDivisionError: an explicit check would
+  # push the body past Go's inlining budget.
   #: (Integer) -> Integer
   def /(other) = %x{
-    if other == 0 {
-      panic(NewZeroDivisionError(Ref[String]("divided by 0")))
-    }
     if other == -1 && self == math.MinInt {
       rbIntOverflow(self, "/", other)
     }
     q := self / other
-    if self%other != 0 && (self < 0) != (other < 0) {
+    if q*other != self && (self^other) < 0 {
       q--
     }
     return q
   }
 
+  # A zero divisor panics in Go and rbWrapPanic makes it ZeroDivisionError, as for /.
   #: (Integer) -> Integer
   def %(other) = %x{
-    if other == 0 {
-      panic(NewZeroDivisionError(Ref[String]("divided by 0")))
-    }
     m := self % other
-    if m != 0 && (m < 0) != (other < 0) {
+    if m != 0 && (m^other) < 0 {
       m += other
     }
     return m

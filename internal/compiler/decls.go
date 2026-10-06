@@ -1064,11 +1064,23 @@ func (c *Compiler) seqAdapterSig(m *Method, env map[string]Type) (name, params, 
 	return goMethodName(m.Name), params, ret
 }
 
+// sigMentions reports whether m's parameters or block name cls, which the free
+// func types as Self: bound to *C, they would not take the forwarder's CI.
+// ponytail: matches by rendered name, so a same-named class elsewhere also opts out; walk the Type if that costs a hot method.
+func sigMentions(m *Method, cls *Class) bool {
+	sig := fmt.Sprint(m.Params, m.Block)
+	return strings.Contains(sig, cls.RubyName) || strings.Contains(sig, "Self")
+}
+
 // forwardTypeArgs renders explicit type args for a forwarder call.
 func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 	var args []string
 	switch {
 	case e.Owner.GoType != "":
+	case e.Owner == cls && cls.isStruct() && len(cls.TypeParams) == 0 && !sigMentions(e.M, cls):
+		// the class's own method: Self is *C, so the body's self._C() and
+		// self-calls are direct calls Go can inline, not interface calls
+		args = append(args, c.recvType(cls))
 	case cls.isStruct() && !e.Owner.universal:
 		// Self matches the forwarder's `self` (CI), else *C fails Comparable_Self[*C] and `(self)` args don't pass
 		args = append(args, c.goType(c.selfTypeFor(e, cls)))

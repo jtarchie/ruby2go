@@ -32,6 +32,11 @@ class Float < Object
   #: (Float) -> bool
   def >=(other) = %x{ Boolean(self >= other) }
 
+  # == on two Floats (decision 12's class overload): a plain Go compare,
+  # inlined, with no boxing of the argument into untyped.
+  #: (Float) -> bool
+  def __eq_float(other) = %x{ Boolean(self == other) }
+
   #: (untyped) -> bool
   def ==(other) = %x{
     switch o := other.(type) {

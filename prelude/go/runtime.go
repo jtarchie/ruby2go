@@ -386,7 +386,7 @@ func rbAtExitPop() func() {
 func rbTopRecover() {
 	status, main := 0, any(nil)
 	if r := recover(); r != nil {
-		status, main = rbExitStatus(r)
+		status, main = rbExitStatus(rbWrapPanic(r)) // a Go runtime panic (an Integer divide by 0) reads as the exception rescue would see
 	}
 	rbFinish(status, main)
 }
@@ -1364,7 +1364,15 @@ func rbIsFrozen(p any) bool {
 }
 
 // rbFrozenCheck raises MRI's FrozenError before a mutation of a frozen p.
+// Split so the check inlines into every mutator as one atomic load while
+// nothing is frozen.
 func rbFrozenCheck(p any) {
+	if rbAnyFrozen.Load() {
+		rbFrozenCheckSlow(p)
+	}
+}
+
+func rbFrozenCheckSlow(p any) {
 	if rbIsFrozen(p) {
 		panic(NewFrozenError(Ref("can't modify frozen " + String(rbClassName(p)) + ": " + rbInspect(p))))
 	}
