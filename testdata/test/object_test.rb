@@ -4322,7 +4322,28 @@ module ObjectTests
     def self.hit = @@hits += 1
   end
 
+  # #52: a class variable first assigned in a method: unset (NameError) until that runs
+  class CvLazy
+    def self.reset = @@n = 0 #: Integer
+    def self.n = @@n
+    def self.bump = @@n += 1
+    def self.tags = @@tags ||= [] #: Array[String]
+  end
+
+  class CvLazyKid < CvLazy
+    def self.peek = @@n
+  end
+
   class ObjectRubySpecClassVarTest < Minitest::Test
+    def test_class_variable_first_assigned_in_method
+      e = assert_raises(NameError) { CvLazy.n }
+      assert_equal "uninitialized class variable @@n in ObjectTests::CvLazy", e.message
+      CvLazy.reset
+      CvLazy.bump
+      CvLazy.tags << "a"
+      assert_equal [1, 1, ["a"]], [CvLazy.n, CvLazyKid.peek, CvLazy.tags]
+    end
+
     def test_class_variables
       CvCounter.reset
       CvCounter.new("a")

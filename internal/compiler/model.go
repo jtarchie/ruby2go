@@ -107,6 +107,7 @@ type Const struct {
 	Type      Type
 	resolving bool
 	guarded   bool // may be read before its assignment runs (guardConsts)
+	inMethod  bool // a class variable first assigned in a method: no init in main, reads check its set flag
 }
 
 // Ivar is an instance variable of a struct class.
@@ -895,6 +896,54 @@ func (c *Compiler) addClassVar(f *File, cls *Class, n *parser.ClassVariableWrite
 	c.constList = append(c.constList, k)
 }
 
+// methodClassVars declares the class variables a class's methods assign
+// that no body did (#52): typed by the write's `#: T` or a literal value,
+// unset until a write runs, so an earlier read is MRI's NameError.
+func (c *Compiler) methodClassVars() {
+	for _, cls := range c.classList {
+		owner := cls
+		if cls.metaOf != nil {
+			owner = cls.metaOf
+		}
+		if cls.File == nil || cls.File.prelude {
+			continue
+		}
+		for _, m := range cls.MethodList {
+			if m.Node == nil || m.File == nil || m.File.prelude {
+				continue
+			}
+			anyNode(m.Node.Body, func(n parser.Node) bool {
+				var name string
+				var value parser.Node
+				switch w := n.(type) {
+				case *parser.ClassVariableWriteNode:
+					name, value = w.Name, w.Value
+				case *parser.ClassVariableOrWriteNode:
+					name, value = w.Name, w.Value
+				default:
+					return false
+				}
+				for _, a := range owner.ancestors() {
+					if a.cvars[name] != nil {
+						return false
+					}
+				}
+				k := &Const{RubyName: owner.RubyName + "::" + name, GoName: owner.Name + "_cv_" + strings.TrimPrefix(name, "@@"), Value: value, File: m.File, Line: m.File.line(n.GetLocation().StartOffset), Scope: m.Scope, inMethod: true, guarded: true}
+				k.ann = m.File.trailingAnnotation(n)
+				if k.ann == "" && !isPlainLiteral(value) {
+					c.errorf(m.File, n, "class variable %s is first assigned in a method: annotate it (`%s = v #: T`)", name, name)
+				}
+				if owner.cvars == nil {
+					owner.cvars = map[string]*Const{}
+				}
+				owner.cvars[name] = k
+				c.constList = append(c.constList, k)
+				return false
+			})
+		}
+	}
+}
+
 // symbolArgs are a visibility call's method names (`private :a, "b"`).
 func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) []string {
 	var out []string
@@ -1361,6 +1410,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.checkIvarModules()
 	c.expandDelegations(ctx)
 	c.linkAliases()
+	c.methodClassVars()
 	c.includeFromEach() // before any override inherits from the module, which needs its type args
 	// method signatures
 	for _, cls := range c.classList {

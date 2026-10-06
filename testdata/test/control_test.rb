@@ -4492,6 +4492,17 @@ module ControlTests
       assert_equal [[1, 3, 5], 5, 3, ["x1", "x3"]], [odd, i, j, log]
     end
 
+    # #52: redo in a block compiled as a closure reruns it with the same arguments
+    def test_redo_in_closure_block
+      tries = 0
+      r = [1, 2, 3].map do |x|
+        tries += 1
+        redo if x == 2 && tries < 4
+        x * 10
+      end
+      assert_equal [[10, 20, 30], 5], [r, tries]
+    end
+
     def test_next_in_begin_end_while_nested
       out = [] #: Array[String]
       k = 0

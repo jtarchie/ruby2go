@@ -193,7 +193,7 @@ func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
 		return f.assignLocal(n, n.Name, val, nil)
 	case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOperatorWriteNode,
-		*parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
+		*parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode, *parser.ClassVariableOrWriteNode:
 		return f.genIvarExpr(n)
 	case *parser.CallNode:
 		return f.genCallValue(n, expected)
@@ -360,7 +360,7 @@ func (f *fctx) noteConv(n parser.Node, code string) string {
 // genIvarExpr handles @x reads and writes (and hands @@x to genClassVarExpr).
 func (f *fctx) genIvarExpr(n parser.Node) expr {
 	switch n := n.(type) {
-	case *parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode:
+	case *parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode, *parser.ClassVariableOrWriteNode:
 		return f.genClassVarExpr(n)
 	case *parser.InstanceVariableReadNode:
 		if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed (decision 148)
@@ -426,22 +426,71 @@ func (f *fctx) genClassVarExpr(n parser.Node) expr {
 	switch n := n.(type) {
 	case *parser.ClassVariableReadNode:
 		k := f.classVar(n, n.Name)
-		return expr{code: k.GoName, typ: f.c.constType(k)}
+		return f.classVarRead(k, n.Name)
 	case *parser.ClassVariableWriteNode:
 		k := f.classVar(n, n.Name)
 		t := f.c.constType(k)
 		val := f.genExpr(n.Value, t)
 		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		f.classVarSet(k)
 		return expr{code: k.GoName, typ: t, done: true}
 	case *parser.ClassVariableOperatorWriteNode:
 		k := f.classVar(n, n.Name)
 		t := f.c.constType(k)
-		val := f.genOp(n, expr{code: k.GoName, typ: t}, n.BinaryOperator, n.Value)
+		val := f.genOp(n, f.classVarRead(k, n.Name), n.BinaryOperator, n.Value)
 		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		return expr{code: k.GoName, typ: t, done: true}
+	case *parser.ClassVariableOrWriteNode:
+		k := f.classVar(n, n.Name)
+		t := f.c.constType(k)
+		if !k.inMethod {
+			return f.genOrAssign(n, expr{code: k.GoName, typ: t}, n.Value)
+		}
+		// unset reads as nil: assign it then, as MRI's ||= does (or when it holds nil or false)
+		cond := "!" + constSet(k)
+		if c := f.truthyQuiet(expr{code: k.GoName, typ: t}); c != "" {
+			cond += " || !(" + c + ")"
+		}
+		f.emit("if %s {", cond)
+		f.indent++
+		val := f.genExpr(n.Value, t)
+		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		f.classVarSet(k)
+		f.indent--
+		f.emit("}")
 		return expr{code: k.GoName, typ: t, done: true}
 	}
 	f.c.unsupported(f.f, n)
 	return expr{}
+}
+
+// classVarRead reads a class variable; one first assigned in a method checks its set flag.
+func (f *fctx) classVarRead(k *Const, name string) expr {
+	t := f.c.constType(k)
+	if !k.inMethod {
+		return expr{code: k.GoName, typ: t}
+	}
+	owner := strings.TrimSuffix(k.RubyName, "::"+name)
+	return expr{code: fmt.Sprintf("rbClassVarRead(%s, %s, %q, %q)", constSet(k), k.GoName, name, owner), typ: t}
+}
+
+func (f *fctx) classVarSet(k *Const) {
+	if k.inMethod {
+		f.emit("%s = true", constSet(k))
+	}
+}
+
+// truthyQuiet is a value's Ruby truthiness as Go, or "" when it is always true.
+func (f *fctx) truthyQuiet(e expr) string {
+	switch {
+	case isClass(e.typ, "Boolean"):
+		return "bool(" + e.code + ")"
+	case isOpt(e.typ):
+		return optTruthy(e.code, e.typ)
+	case isAny(e.typ):
+		return "rbTruthy(" + e.code + ")"
+	}
+	return ""
 }
 
 // classVar finds @@name from the code's class: its own, an ancestor's, or an included module's.
@@ -3194,6 +3243,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.pushLoop(loopClosure)
 			_, pro := f.bindBlockParams(n, names, params)
 			pro()
+			f.redoLabel(body)
 			f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
 			f.popLoop()
 			f.closures--
@@ -3244,6 +3294,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.indent++
 	pro()
 	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
+	f.redoLabel(body) // redo reruns the block with the same arguments: a closure is its own Go function (#52)
 	if isVoid(ret) {
 		f.withNextTail(tail{}, gen)
 	} else {

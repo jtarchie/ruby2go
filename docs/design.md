@@ -3377,8 +3377,11 @@ resolve; anything not listed is still open.
     - `DATA` in the main file is one StringIO over the text after
       `__END__` (MRI's is a File at that offset; reads see the same).
     - `redo` jumps (`goto`) to a label that opens the loop body of a
-      while, until, for or iterator loop; inside a closure block or a
-      begin/rescue wrapper (both Go func literals) it is a compile error.
+      while, until, for or iterator loop, or a closure block's body after
+      its parameters are bound, so the block reruns with the same
+      arguments (a closure is its own Go function, #52). Inside a
+      begin/rescue wrapper (a Go func literal the goto cannot leave) it
+      is a compile error.
     - `BEGIN { }` bodies move to the front of their file's statements, in
       the top-level scope, so their locals are the file's. `END { }` is
       `at_exit` with its block, behind a package flag so it registers once
@@ -3494,9 +3497,13 @@ resolve; anything not listed is still open.
     module body declares one, typed and initialized like a constant
     (`#: T` annotates it) where the body runs; methods, class methods and
     subclasses read and assign it through the class's ancestors, so a
-    subclass shares its parent's, as in MRI. The first assignment must be
-    in a body: one first made inside a method is a compile error, as is a
-    second assignment in the same body. (`testdata/test/object_test.rb`
+    subclass shares its parent's, as in MRI. A second assignment in the
+    same body is a compile error. One first assigned in a method (`@@n =
+    0 #: Integer`, `@@tags ||= [] #: Array[String]`; a literal value needs
+    no annotation) is declared on the method's class with a set flag:
+    main does not initialize it, and a read before any assignment ran is
+    MRI's NameError, "uninitialized class variable @@n in C" (#52).
+    *(Revised: that was a compile error.)* (`testdata/test/object_test.rb`
     `ObjectRubySpecClassVarTest`.)
 125. Kernel and BasicObject have class objects (#49), like every other
     class and module, so `Kernel` and `BasicObject` are values, print

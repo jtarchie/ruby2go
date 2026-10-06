@@ -279,9 +279,17 @@ begin
 rescue
   [1].map { retry }
 end
--- redo_in_closure_block.rb --
-# error: main.rb:2: redo is only supported directly in a while, until, for or iterator loop body
-p [1].map { |x| redo if x > 5; x }
+-- redo_in_begin_rescue.rb --
+# error: main.rb:5: redo is only supported directly in a loop or block body (not inside a begin/rescue)
+i = 0
+while i < 3
+  begin
+    redo if i > 5
+    i += 1
+  rescue
+    nil
+  end
+end
 -- optional_block_call_unchecked.rb --
 # error: main.rb:3: the block is optional (?{ ... }) and may be missing here
 #: (Integer) ?{ (Integer) -> Integer } -> Integer

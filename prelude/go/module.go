@@ -134,3 +134,12 @@ func rbIsInstanceOf(k, v any) bool {
 func rbDescendants(k any) []any {
 	return k.(interface{ _Descendants() []any })._Descendants()
 }
+
+// rbClassVarRead is a class variable first assigned in a method, read
+// before any assignment ran: MRI's NameError.
+func rbClassVarRead[T any](set bool, v T, name, owner string) T {
+	if !set {
+		panic(NewNameError(Ref(String("uninitialized class variable " + name + " in " + owner))))
+	}
+	return v
+}

@@ -569,7 +569,7 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 			l = f.loops[len(f.loops)-1]
 		}
 		if l == nil || l.redo == "" || l.closures != f.closures || l.begins != f.begins {
-			f.errorf(n, "redo is only supported directly in a while, until, for or iterator loop body (not in a closure block or begin/rescue)")
+			f.errorf(n, "redo is only supported directly in a loop or block body (not inside a begin/rescue)")
 		}
 		f.emit("goto %s", l.redo)
 	case *parser.RetryNode:
@@ -2580,6 +2580,9 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 	var prelude []parser.Node
 	own := map[*File][]parser.Node{}
 	for _, k := range c.constList {
+		if k.inMethod { // assigned where its method runs
+			continue
+		}
 		if k.File.prelude {
 			prelude = append(prelude, &constInit{k: k})
 		} else {
