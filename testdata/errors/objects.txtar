@@ -1048,14 +1048,19 @@ OptionParser.new { |o| o.on("--type T", %w[text binary]) { |t| p t } }
 require "optparse"
 OptionParser.new { |o| o.on("-c N", Integer) { |n| p n.upcase } }
 
--- alias_inherited.rb --
-# error: main.rb:7: undefined method 'hello' for class 'B'
+-- alias_inherited_missing.rb --
+# error: main.rb:7: undefined method 'hullo' for class 'B'
 class A
   #: () -> String
   def hello = "hi"
 end
 class B < A
-  alias hi hello
+  alias hi hullo
+end
+-- alias_inherited_primitive.rb --
+# error: main.rb:3: alias of Kernel#inspect: rb2go copies an inherited method only when it is a plain def without super
+class B
+  alias old_inspect inspect
 end
 -- protected_outside.rb --
 # error: main.rb:8: protected method x called on P
@@ -1170,3 +1175,10 @@ end
 class String
   include M
 end
+-- private_constant_path.rb --
+# error: main.rb:6: private constant Box::SECRET referenced
+class Box
+  SECRET = 1
+  private_constant :SECRET
+end
+p Box::SECRET

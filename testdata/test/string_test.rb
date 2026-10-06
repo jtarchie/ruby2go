@@ -1209,6 +1209,17 @@ B
       assert_equal [0, 0, 0, 0], ["a b" =~ /a\ b/x, "a#b" =~ /a\#b/x, "a b" =~ /a[ ]b/x, "ab" =~ /a b/xi]
     end
 
+    # #52: an interpolated /x regexp strips the values' spacing too; an embedded
+    # Regexp's (?-mix:...) keeps its own, as does a (?-x) group
+    def test_extended_interpolated
+      w = "a b"
+      r = /x y/
+      assert_equal [0, nil, "/a b/x"], ["ab1" =~ /#{w} \d # digit
+      /x, "a b1" =~ /#{w} \d/x, /#{w}/x.inspect]
+      assert_equal [nil, 0, "(?-mix:x y) z"], ["x y z" =~ /#{r} z/x, "x yz" =~ /#{r} z/x, /#{r} z/x.source]
+      assert_equal [0, 0, 0], ["a b" =~ /(?-x:a b)|#{w}/x, "a b" =~ /(?-x)a b/x, "ab c" =~ /a b(?-x) c/x]
+    end
+
     def test_named_capture_locals
       line = "user=ann id=42"
       found = /user=(?<name>\w+) id=(?<id>\d+)/ =~ line

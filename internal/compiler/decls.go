@@ -272,7 +272,6 @@ func (c *Compiler) emitProgram() {
 		c.lineDirective(v.file, v.line)
 		c.w("%s\n\n", strings.TrimSpace(v.code))
 	}
-	c.guardConsts()
 	classes := c.sortedClasses()
 	for _, cls := range classes {
 		c.emitClassType(cls)

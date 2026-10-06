@@ -62,6 +62,17 @@ func (f *fctx) genSugar(n parser.Node) expr {
 			t := TOpt{Elem: f.cls("String")}
 			return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"yield\") }; return nil }()", f.c.goType(t), c), typ: t}
 		}
+		switch v := n.Value.(type) {
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			// a constant main may read before its assignment runs (BEGIN, a method called first) is defined once it has
+			var k *Const
+			_ = catchCompileError(func() { _, k = f.c.lookupConst(f.f, v, f.lex) }) // a private path: definedKind's nil
+			if k != nil && k.guarded {
+				f.c.strLits["constant"] = true
+				t := TOpt{Elem: f.cls("String")}
+				return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"constant\") }; return nil }()", f.c.goType(t), constSet(k)), typ: t}
+			}
+		}
 		kind := f.definedKind(n.Value)
 		if kind == "" {
 			return expr{code: "nil", typ: TNil{}}
@@ -1327,8 +1338,8 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if err, ok := f.c.anonErrors[n]; ok {
 		panic(err)
 	}
-	if cls := f.c.anonClasses[n]; cls != nil { // Class.new/Module.new: the class declared for this literal (decision 145)
-		return f.genExpr(&parser.ConstantReadNode{Name: cls.RubyName, Location: n.Location}, expected)
+	if cls := f.c.anonClasses[n]; cls != nil {
+		return f.genAnonClass(n, cls, expected)
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
 		if e, ok := f.genSpecialClassCall(n, cls, expected); ok {
@@ -1462,6 +1473,19 @@ func (f *fctx) narrowRaises(name string, args []parser.Node, e expr) expr {
 	}
 	want := TClass{C: cls}
 	return expr{code: "(" + e.code + ").(" + f.c.goType(want) + ")", typ: want, assert: true}
+}
+
+// genAnonClass is a Class.new/Module.new literal: the class declared for it
+// (decision 145). An unnamed Class.new runs Super.inherited each time it is
+// evaluated, as MRI's; a named one's hook runs where its constant is
+// assigned (collectNamedAnon).
+func (f *fctx) genAnonClass(n *parser.CallNode, cls *Class, expected Type) expr {
+	if f.c.unnamedAnon[n] {
+		if h := f.c.hookCall(classHook{name: "inherited", cls: cls, node: n}); h != nil {
+			f.genStmt(h, tail{})
+		}
+	}
+	return f.genExpr(&parser.ConstantReadNode{Name: cls.RubyName, Location: n.Location}, expected)
 }
 
 // genBareName is a receiverless, argumentless call that names a narrowed
@@ -3830,7 +3854,13 @@ func (f *fctx) definedKind(v parser.Node) string {
 		}
 		return "local-variable"
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
-		if cls, k := f.c.lookupConst(f.f, v, f.lex); cls != nil || k != nil {
+		var cls *Class
+		var k *Const
+		err := catchCompileError(func() { cls, k = f.c.lookupConst(f.f, v, f.lex) })
+		if err != nil {
+			return "" // a private constant's path: MRI answers nil
+		}
+		if cls != nil || k != nil {
 			return "constant"
 		}
 		return ""

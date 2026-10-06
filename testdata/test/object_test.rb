@@ -2707,6 +2707,28 @@ module ObjectTests
     end
   end
 
+  # #75: an unnamed Class.new(Base) runs Base.inherited each time it is evaluated
+  ANON_HK_LOG = [] #: Array[String]
+
+  class AnonHkBase
+    #: (Class) -> void
+    def self.inherited(sub)
+      ANON_HK_LOG << "inherited by a #{sub.superclass}"
+    end
+  end
+
+  class ObjectAnonInheritedTest < Minitest::Test
+    #: () -> Class
+    def make = Class.new(AnonHkBase)
+
+    def test_unnamed_class_new_runs_inherited
+      ANON_HK_LOG.clear
+      make
+      make
+      assert_equal ["inherited by a ObjectTests::AnonHkBase", "inherited by a ObjectTests::AnonHkBase"], ANON_HK_LOG
+    end
+  end
+
   class ObjectBugModuleSuperTest < Minitest::Test
     def test_section_0
       assert_equal "loud a", MsB.new.hi
@@ -4070,6 +4092,21 @@ module ObjectTests
     def greet = "sub " + super
   end
 
+  # #52: alias of an inherited method keeps the ancestor's body, even after an override
+  module AliasWave
+    #: () -> String
+    def wave = "wave"
+  end
+
+  class AliasKid < AliasGreeter
+    include AliasWave
+    alias kid_hello hello
+    alias_method :kid_wave, :wave
+
+    #: () -> String
+    def hello = "kid"
+  end
+
   RubySpecPoint = Struct.new(:x, :y) #: [Integer, String]
 
   class ObjectRubySpecTest < Minitest::Test
@@ -4077,6 +4114,11 @@ module ObjectTests
       g = AliasGreeter.new("ann")
       assert_equal ["hello ann", "hi ann", "hi ann", "ann"], [g.hello, g.greet, g.salute, g.title]
       assert_equal "sub hi bo", AliasSub.new("bo").greet
+    end
+
+    def test_alias_inherited
+      k = AliasKid.new("cy")
+      assert_equal ["kid", "hello cy", "wave"], [k.hello, k.kid_hello, k.kid_wave]
     end
 
     def test_struct_enumeration
@@ -4185,6 +4227,7 @@ module ObjectTests
     def test_visibility_forms
       assert_equal ["cfg", 42, 8, "HI", true, 3], [VisConfig.default_name, VisConfig.reveal, VisUtil.double(4), VisHelpers.shout("hi"), VisAccount.new(10).richer_than?(VisAccount.new(5)), VisFactory.build.limit]
       assert_equal "base", VisKid.new.greet
+      assert_nil defined?(VisFactory::LIMIT) # #53: private: no path reaches it
     end
 
     def test_class_structure

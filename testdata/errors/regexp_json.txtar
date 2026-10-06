@@ -26,10 +26,6 @@ puts "aa".match?(/(?<x>a)\k<x>/)
 -- upper_z.rb --
 # error: main.rb:2: regexp /b\Z/ is not supported: \Z is not supported by RE2; use \z
 puts "ab".match?(/b\Z/)
--- extended_interpolated.rb --
-# error: main.rb:3: interpolated extended (/x) regexps are not supported
-x = "a"
-puts "ab".match?(/#{x} b/x)
 -- g_anchor.rb --
 # error: main.rb:2: regexp /\Ga/ is not supported: \G is not supported by RE2
 puts "ab".match?(/\Ga/)

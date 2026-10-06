@@ -51,7 +51,11 @@ func rbRegexpErr(err error, src string) string {
 // only exists at run time; translateRegexp is the compiler's own
 // (internal/compiler/rxtranslate.go, emitted into every program).
 func rbRegexpDyn(prefix, src, opts string) *Regexp {
-	pat, err := translateRegexp(src)
+	pat := src
+	if strings.Contains(opts, "x") { // the interpolated values' spacing too, as MRI's
+		pat = stripExtended(src)
+	}
+	pat, err := translateRegexp(pat)
 	if err != nil {
 		panic(NewRegexpError(Ref(String(err.Error()))))
 	}

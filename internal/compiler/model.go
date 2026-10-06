@@ -950,8 +950,13 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	case "module_function", "private_class_method", "public_class_method", "undef_method", "remove_method":
 		c.collectMethodTableCall(f, cls, n, args, vis, scope)
 	case "private_constant", "public_constant":
-		// ponytail: accepted, not enforced; M::X from outside works where MRI raises NameError. Check access in lookupConst to enforce.
-		c.symbolArgs(f, n, args)
+		// a private constant reads only lexically: any `M::X` path is MRI's NameError, a compile error here (lookupConst)
+		if c.privateConsts == nil {
+			c.privateConsts = map[string]bool{}
+		}
+		for _, name := range c.symbolArgs(f, n, args) {
+			c.privateConsts[cls.RubyName+"::"+name] = n.Name == "private_constant"
+		}
 	case "alias_method":
 		if len(args) != 2 {
 			c.errorf(f, n, "alias_method takes a new and an old name")
@@ -990,9 +995,52 @@ func (c *Compiler) addAlias(f *File, cls *Class, n parser.Node, newName, oldName
 	}
 	nn, on := name(newName), name(oldName)
 	old := cls.Methods[on]
-	if old == nil {
-		c.errorf(f, n, "undefined method '%s' for class '%s' (rb2go aliases only a method this class defined above)", on, cls.RubyName)
+	if old == nil { // an ancestor's, perhaps: supers resolve in link (linkAliases)
+		c.inheritedAliases = append(c.inheritedAliases, pendingAlias{f: f, cls: cls, n: n, newName: nn, oldName: on})
+		return
 	}
+	c.copyAlias(cls, old, nn)
+}
+
+// pendingAlias is an alias of a method cls does not define above it.
+type pendingAlias struct {
+	f                *File
+	cls              *Class
+	n                parser.Node
+	newName, oldName string
+}
+
+// linkAliases copies each inherited alias's target into its class, as MRI's
+// alias copies the method found from the superclass at that point: a later
+// override of the old name leaves the alias on the ancestor's body.
+func (c *Compiler) linkAliases() {
+	for _, a := range c.inheritedAliases {
+		var e *entry
+		if a.cls.Super != nil {
+			e = a.cls.Super.lookup(a.oldName)
+		}
+		for i := len(a.cls.Includes) - 1; e == nil && i >= 0; i-- {
+			if mod := a.cls.Includes[i].Mod; mod != nil {
+				e = mod.lookup(a.oldName)
+			}
+		}
+		if e == nil {
+			c.errorf(a.f, a.n, "undefined method '%s' for class '%s'", a.oldName, a.cls.RubyName)
+		}
+		if len(e.Owner.TypeParams) > 0 || e.M.Node == nil || e.M.Kind != kindDef || containsSuper(e.M.Node.Body) {
+			c.errorf(a.f, a.n, "alias of %s#%s: rb2go copies an inherited method only when it is a plain def without super from a non-generic class", e.Owner.RubyName, a.oldName)
+		}
+		m := c.copyAlias(a.cls, e.M, a.newName)
+		m.Owner = a.cls
+	}
+	if len(c.inheritedAliases) > 0 {
+		for _, cls := range c.classList {
+			cls.msetCache, cls.msetIndex = nil, nil
+		}
+	}
+}
+
+func (c *Compiler) copyAlias(cls *Class, old *Method, nn string) *Method {
 	m := *old
 	m.Name, m.GoName = nn, goMethodName(nn)
 	if prev := cls.Methods[nn]; prev != nil {
@@ -1000,6 +1048,7 @@ func (c *Compiler) addAlias(f *File, cls *Class, n parser.Node, newName, oldName
 	}
 	cls.MethodList = append(cls.MethodList, &m)
 	cls.Methods[nn] = &m
+	return &m
 }
 
 // addSingletonInstance gives a class that includes Singleton its
@@ -1214,6 +1263,9 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 		for _, anc := range parent.ancestors() {
 			full := anc.RubyName + "::" + *n.Name
 			if cls, k := c.classes[full], c.consts[full]; cls != nil || k != nil {
+				if c.privateConsts[full] {
+					c.errorf(f, n, "private constant %s referenced", full)
+				}
 				return cls, k
 			}
 		}
@@ -1308,6 +1360,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.declareIvarAnnotations()
 	c.checkIvarModules()
 	c.expandDelegations(ctx)
+	c.linkAliases()
 	c.includeFromEach() // before any override inherits from the module, which needs its type args
 	// method signatures
 	for _, cls := range c.classList {

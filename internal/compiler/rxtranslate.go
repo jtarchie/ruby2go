@@ -708,3 +708,62 @@ var rxFoldMulti = map[rune]string{
 	0xfb03: "ffi", 0xfb04: "ffl", 0xfb05: "st", 0xfb06: "st", 0xfb13: "\u0574\u0576",
 	0xfb14: "\u0574\u0565", 0xfb15: "\u0574\u056b", 0xfb16: "\u057e\u0576", 0xfb17: "\u0574\u056d",
 }
+
+// stripExtended drops /x's insignificant whitespace and `#` comments,
+// leaving escapes (`\ `, `\#`) and character classes as they are. An inline
+// group turns x off or on for its span, as an interpolated Regexp's
+// `(?-mix:...)` does: its spaces still count.
+func stripExtended(src string) string {
+	var b strings.Builder
+	ext := true
+	var saved []bool // ext outside each open group
+	depth := 0       // inside [...], where space and # are literal
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch {
+		case c == '\\' && i+1 < len(src):
+			b.WriteByte(c)
+			i++
+			b.WriteByte(src[i])
+			continue
+		case c == '[':
+			depth++
+		case c == ']' && depth > 0:
+			depth--
+		case depth > 0:
+		case c == '(':
+			next, k, on := ext, i+1, true
+			if strings.HasPrefix(src[i:], "(?") {
+				for k = i + 2; k < len(src) && strings.IndexByte("mixn-", src[k]) >= 0; k++ {
+					switch src[k] {
+					case '-':
+						on = false
+					case 'x':
+						next = on
+					}
+				}
+			}
+			if k < len(src) && src[k] == ')' && k > i+2 { // `(?x)`: the rest of the enclosing group
+				b.WriteString(src[i : k+1])
+				ext, i = next, k
+				continue
+			}
+			saved = append(saved, ext)
+			ext = next
+		case c == ')':
+			if n := len(saved); n > 0 {
+				ext, saved = saved[n-1], saved[:n-1]
+			}
+		case !ext:
+		case strings.IndexByte(" \t\n\r\f\v", c) >= 0:
+			continue
+		case c == '#':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}

@@ -838,7 +838,11 @@ resolve; anything not listed is still open.
     and silently matched RE2's meaning.)* Lookaround, backreferences and `\Z`
     are rejected with `file:line` at transpile time. A literal `/x` pattern
     drops its whitespace and `#` comments before translation (`source`
-    and `inspect` keep them); an interpolated `/x` is still rejected. Static patterns compile once into package
+    and `inspect` keep them); an interpolated `/x` is stripped at run time,
+    the values' spacing included, as MRI's. An inline group that turns x
+    off (`(?-x:...)`, `(?-x)`, an interpolated Regexp's `(?-mix:...)`)
+    keeps its spacing (`stripExtended`, shared with the run-time
+    translator; #52). Static patterns compile once into package
     variables; interpolated ones compile at run time and raise
     `RegexpError` (with `/o`, only until one compiles; it is kept). An
     interpolated pattern is translated whole at run time (the compiler's
@@ -3291,8 +3295,13 @@ resolve; anything not listed is still open.
       result; the body's is dropped, as in MRI.
     - `alias new old` and `alias_method :new, :old` copy the method as it
       stands at that point (a second `Method` with the same body), so a
-      later `def old` leaves `new` alone, as in MRI. Only a method this
-      class defined above can be aliased; inherited ones are an error.
+      later `def old` leaves `new` alone, as in MRI. An inherited method
+      (superclass or included module) is copied in `link`, once supers
+      resolve, from the ancestors only, so the class's own later `def old`
+      does not change it; its body is recompiled with the class as
+      owner. That copy needs a plain Ruby def: an inherited `%x{}`
+      primitive (`alias old_inspect inspect` on Kernel's), a body with
+      `super`, or a generic owner is a compile error (#52).
     - `{ a: }` reads `a`; `{ **h, k: v }` merges `h` in order
       (`rbHashSplat`), its key and value types joined with the literal's;
       `:"x#{y}"` is the interpolated String as a Symbol; `fail` is
@@ -3327,7 +3336,11 @@ resolve; anything not listed is still open.
       def; with an optional block (decision 126) it is the one run-time
       answer, a `String?` read off the block local as `block_given?` is
       (nested in another expression there, `defined?(yield.x)`, it is a
-      compile error). `defined?(@ivar)` depends on run-time state rb2go
+      compile error). `defined?(X)` for a constant main may read before
+      its assignment runs (guardConsts: BEGIN, a method called first) is a
+      second run-time answer, the constant's set flag, so it is nil until
+      the assignment as in MRI; a private constant's path is nil (#53).
+      `defined?(@ivar)` depends on run-time state rb2go
       does not track and is a compile error. (`testdata/test/control_test.rb`
       `test_defined`, `test_defined_yield`.)
     - Multiple assignment takes `*rest`, `a, = xs` and nested targets; an
@@ -3339,8 +3352,10 @@ resolve; anything not listed is still open.
       `protected` (checked at compile time: an explicit receiver is
       allowed only inside the owner's family), `private :x`,
       `private_class_method` (including `:new`) and `undef`,
-      `undef_method`, `remove_method`. `private_constant` is accepted but
-      not enforced.
+      `undef_method`, `remove_method`. `private_constant` is enforced at
+      compile time: a bare lexical `X` reads it, and any `M::X` path
+      (a subclass's too) is a compile error where MRI raises NameError
+      (#53). `self::X` is not a supported path at all.
     - `Class#superclass` and `#subclasses` come from per-class tables
       (newest subclass first, as MRI); `Integer.superclass` is Object,
       since Numeric is a module (decision 142). `Module#ancestors` and
@@ -3356,9 +3371,8 @@ resolve; anything not listed is still open.
     - `BEGIN { }` bodies move to the front of their file's statements, in
       the top-level scope, so their locals are the file's. `END { }` is
       `at_exit` with its block, behind a package flag so it registers once
-      however often the statement runs. As with any constant,
-      `defined?(X)` inside BEGIN answers "constant" for an X the file
-      assigns later, where MRI says nil.
+      however often the statement runs. `defined?(X)` inside BEGIN
+      answers nil for an X the file assigns later, as MRI does (#53).
     - Post parameters (`def f(a, b = 1, c)`, `def f(a, *r, z)`) take the
       last arguments; with callee-side defaults `rbArgc` counts only the
       arguments before them. Anonymous `*`, `**` and `&` bind reserved
@@ -4659,10 +4673,12 @@ resolve; anything not listed is still open.
       called twice is the same class each time, where MRI makes a new
       one per run. A superclass must be a constant (a local holding a
       class is a compile error), and a block with parameters is one too.
-    - **Not done:** `define_method` in the body, `include` of a module
-      held in a local (no static form), and the `inherited` hook for an
-      anonymous literal (named ones run it where the constant is
-      assigned).
+    - **`inherited`.** A named literal runs `Super.inherited` where its
+      constant is assigned; an anonymous one runs it each time the
+      literal is evaluated, as MRI's does, though the class it passes is
+      the same one each time (#75).
+    - **Not done:** `define_method` in the body, and `include` of a module
+      held in a local (no static form).
     - `Proc.new { ... }` is `proc { ... }` (decision 47).
     - **Errors stay local.** An anonymous literal whose body does not
       collect (a `define_method` in it) raises its error where the

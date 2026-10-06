@@ -15,7 +15,21 @@ class Range < Object
   #: () { (E) -> void } -> void
   def reverse_each = %x{
     return func(yield func(E) bool) {
-      rbRangeNoBegin(self)
+      if self.beginless {
+        // Ruby 3.3+: a beginless Integer range counts down forever.
+        e, ok := any(self.e).(Integer)
+        if !ok {
+          rbRangeNoBegin(self)
+        }
+        if self.excl {
+          e--
+        }
+        for i := e; ; i-- {
+          if !yield(any(i).(E)) {
+            return
+          }
+        }
+      }
       if self.endless {
         panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(self.e)))))
       }
@@ -198,7 +212,15 @@ class Range < Object
   #: (Integer) -> Array[E]
   def __max_1(n)
     raise RangeError, "cannot get the maximum of endless range" if __endless?
-    super
+    return super unless __beginless?
+    raise ArgumentError, "negative array size (or size too big)" if n < 0
+    out = [] #: Array[E]
+    return out if n == 0
+    reverse_each do |x|
+      out << x
+      break if out.size == n
+    end
+    out
   end
 
   #: () -> bool

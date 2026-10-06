@@ -63,6 +63,12 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 			}
 			// MRI's anonymous class prints its address; one class per literal has none, so its place stands in
 			cls.Display = fmt.Sprintf("#<%s:%s:%d>", map[bool]string{true: "Module", false: "Class"}[isModule], f.Name, f.line(call.Location.StartOffset))
+			if !isModule {
+				if c.unnamedAnon == nil {
+					c.unnamedAnon = map[*parser.CallNode]bool{}
+				}
+				c.unnamedAnon[call] = true
+			}
 			// not a name user code can reach; by name, since the block's own constants follow it in the enclosing scope's table
 			c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
 			return

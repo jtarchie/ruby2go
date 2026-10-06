@@ -4959,4 +4959,15 @@ module ControlTests
       assert_equal Proc, x.class
     end
   end
+
+  # #53: defined?(X) is nil until X's assignment has run
+  def self.later_defined = defined?(CONTROL_LATER_K)
+  CONTROL_EARLY_DEFINED = later_defined
+  CONTROL_LATER_K = 1
+
+  class ControlDefinedGuardTest < Minitest::Test
+    def test_defined_before_assignment
+      assert_equal [nil, "constant"], [CONTROL_EARLY_DEFINED, ControlTests.later_defined]
+    end
+  end
 end

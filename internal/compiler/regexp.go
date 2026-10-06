@@ -134,9 +134,6 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 		term = f.f.text(n.ClosingLoc)[0]
 		once = n.IsONCE()
 	}
-	if flags.extended {
-		f.errorf(n, "interpolated extended (/x) regexps are not supported")
-	}
 	// Interpolated values are inserted raw, as Ruby does, so the joined
 	// source is translated at run time (rbRegexpDyn); each value is
 	// evaluated once. The static parts are checked now, with a letter
@@ -155,13 +152,17 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 				f.errorf(p, "interpolation must contain a single expression")
 			}
 			e := f.genExpr(p.Statements.Body[0], nil)
-			probe.WriteString("i")
+			probe.WriteString("i") // under /x too: stripping a letter leaves it
 			srcParts = append(srcParts, "string("+f.toS(p.Statements.Body[0], e)+")")
 		default:
 			f.c.unsupported(f.f, p)
 		}
 	}
-	goPat, err := translateRegexp(probe.String())
+	pat := probe.String()
+	if flags.extended {
+		pat = stripExtended(pat)
+	}
+	goPat, err := translateRegexp(pat)
 	if err == nil {
 		_, err = regexp.Compile(flags.goPrefix() + goPat)
 		var se *syntax.Error
@@ -187,33 +188,3 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	return expr{code: code, typ: f.cls("Regexp")}
 }
 
-// stripExtended drops /x's insignificant whitespace and `#` comments,
-// leaving escapes (`\ `, `\#`) and character classes as they are.
-func stripExtended(src string) string {
-	var b strings.Builder
-	depth := 0 // inside [...], where space and # are literal
-	for i := 0; i < len(src); i++ {
-		c := src[i]
-		switch {
-		case c == '\\' && i+1 < len(src):
-			b.WriteByte(c)
-			i++
-			b.WriteByte(src[i])
-			continue
-		case c == '[':
-			depth++
-		case c == ']' && depth > 0:
-			depth--
-		case depth > 0:
-		case strings.IndexByte(" \t\n\r\f\v", c) >= 0:
-			continue
-		case c == '#':
-			for i < len(src) && src[i] != '\n' {
-				i++
-			}
-			continue
-		}
-		b.WriteByte(c)
-	}
-	return b.String()
-}

@@ -325,5 +325,14 @@ module EnumeratorTests
       e = assert_raises(ArgumentError) { (1..).min(-1) }
       assert_equal "negative array size (or size too big)", e.message
     end
+
+    # #75: a beginless Integer range counts down from its end
+    def test_beginless_max_n
+      assert_equal [[5, 4], [4, 3], [], [5, 4, 3]], [(..5).max(2), (...5).max(2), (..5).max(0), (..5).reverse_each.first(3)]
+      e = assert_raises(ArgumentError) { (..5).max(-1) }
+      assert_equal "negative array size (or size too big)", e.message
+      e = assert_raises(TypeError) { (.."c").max(2) }
+      assert_equal "can't iterate from NilClass", e.message
+    end
   end
 end

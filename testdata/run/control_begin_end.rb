@@ -8,4 +8,7 @@ x = 10
 END { p :end2 }
 at_exit { p :at_exit }
 BEGIN { p :begin2 }
+BEGIN { p defined?(BEGIN_LIMIT) } # #53: nil, the assignment has not run yet
+BEGIN_LIMIT = 3
+p defined?(BEGIN_LIMIT)
 p :last
