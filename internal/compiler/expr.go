@@ -4826,6 +4826,9 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 func (f *fctx) markerIsA(recv expr, cls *Class) (string, bool) {
 	name := cls.RubyName
 	t := recv.typ
+	if u, ok := t.(TUnion); ok {
+		return unionMarkerIsA(recv.code, u, name)
+	}
 	if name == "Proc" {
 		if ft, ok := t.(TFunc); ok && ft.Proc {
 			return "true", true
@@ -4857,6 +4860,29 @@ func (f *fctx) markerIsA(recv expr, cls *Class) (string, bool) {
 		return "(" + recv.code + " != nil && " + not + "bool(*" + recv.code + "))", true
 	case isAny(t) || isAbstract(t):
 		return "rbIsBool(" + f.coerce(nil, recv, TAny{}) + ", " + strconv.FormatBool(name == "TrueClass") + ")", true
+	}
+	return "false", true
+}
+
+// unionMarkerIsA is markerIsA on a union (decision 150): a test of the
+// value when a member can be one, else false.
+func unionMarkerIsA(code string, u TUnion, name string) (string, bool) {
+	has := func(p func(Type) bool) bool { return slices.ContainsFunc(u.Members, p) }
+	switch name {
+	case "NilClass":
+		if has(isNil) {
+			return "(" + code + " == nil)", true
+		}
+	case "TrueClass", "FalseClass":
+		if has(func(m Type) bool { return isClass(m, "Boolean") }) {
+			return "rbIsBool(" + code + ", " + strconv.FormatBool(name == "TrueClass") + ")", true
+		}
+	case "Proc":
+		if has(func(m Type) bool { ft, ok := m.(TFunc); return ok && ft.Proc }) {
+			return "rbIsProc(" + code + ")", true
+		}
+	default:
+		return "", false
 	}
 	return "false", true
 }

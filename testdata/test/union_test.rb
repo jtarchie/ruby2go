@@ -362,6 +362,33 @@ module UnionTests
       assert_equal "s", routed("s")
     end
 
+    #: (Integer) -> (Integer | String | Array[Integer] | nil)
+    def varied(i)
+      case i
+      when 0 then nil
+      when 1 then 5
+      when 2 then "five"
+      else [1, 2]
+      end
+    end
+
+    #: (Integer | String | Array[Integer] | nil) -> String
+    def matched(v)
+      case v
+      in Integer => n then "int #{n + 1}"
+      in String => s then "str #{s.upcase}"
+      in [a, b] then "pair #{a} #{b}"
+      in nil then "nil"
+      end
+    end
+
+    def test_patterns
+      assert_equal ["nil", "int 6", "str FIVE", "pair 1 2"], (0..3).map { |i| matched(varied(i)) }
+      assert varied(0).is_a?(NilClass)
+      refute varied(1).is_a?(NilClass)
+      assert varied(0).nil?
+    end
+
     #: (Integer | bool) -> String
     def flag(x)
       x ? "yes #{x}" : "no"
@@ -371,6 +398,9 @@ module UnionTests
       assert_equal "yes 1", flag(1)
       assert_equal "yes true", flag(true)
       assert_equal "no", flag(false)
+      b = true #: Integer | bool
+      assert b.is_a?(TrueClass)
+      refute b.is_a?(FalseClass)
     end
   end
 end
