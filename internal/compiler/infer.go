@@ -153,6 +153,15 @@ func (c *Compiler) includeFromEach() {
 			}
 			each := cls.Methods["each"]
 			c.resolveMethod(each)
+			if neverYields(each) { // nothing is ever an element: nil types them, unobservably (decision 149)
+				inc.Args = make([]Type, len(inc.Mod.TypeParams))
+				for i := range inc.Args {
+					inc.Args[i] = TNil{}
+				}
+				each.Block = &BlockSig{Params: slices.Clone(inc.Args), Ret: TVoid{}}
+				resetMsets(cls)
+				continue
+			}
 			if each.Block == nil || len(each.Block.Params) != len(inc.Mod.TypeParams) {
 				if c.round {
 					continue // untyped this round; the final compile reports it
@@ -160,16 +169,33 @@ func (c *Compiler) includeFromEach() {
 				c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`): %s#each does not yield %d values to infer them from", inc.file.Name, inc.line, inc.Mod.RubyName, len(inc.Mod.TypeParams), inc.Mod.RubyName, cls.RubyName, len(inc.Mod.TypeParams))
 			}
 			inc.Args = slices.Clone(each.Block.Params)
-			var reset func(*Class) // method sets built meanwhile hold the placeholder args
-			reset = func(k *Class) {
-				k.msetCache, k.msetIndex = nil, nil
-				for _, s := range k.Subclasses {
-					reset(s)
-				}
-			}
-			reset(cls)
+			resetMsets(cls)
 		}
 	}
+}
+
+// resetMsets drops method sets built while an include held placeholder args.
+func resetMsets(k *Class) {
+	k.msetCache, k.msetIndex = nil, nil
+	for _, s := range k.Subclasses {
+		resetMsets(s)
+	}
+}
+
+// neverYields is an unannotated each with no block that yields nothing.
+func neverYields(m *Method) bool {
+	if m.Block != nil || m.BlockParam != "" || m.Node == nil {
+		return false
+	}
+	return !anyNode(m.Node.Body, func(n parser.Node) bool {
+		switch n := n.(type) {
+		case *parser.YieldNode, *parser.BlockArgumentNode:
+			return true
+		case *parser.CallNode:
+			return n.Name == "block_given?" || n.Name == "to_enum" || n.Name == "enum_for"
+		}
+		return false
+	})
 }
 
 // typesInclude reports an `each` whose class's include takes its type args

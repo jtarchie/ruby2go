@@ -335,4 +335,20 @@ module EnumeratorTests
       assert_equal "can't iterate from NilClass", e.message
     end
   end
+
+  # decision 149: an each that never yields has nil elements, unobservably
+  class EnumEmpty
+    include Enumerable
+
+    def each
+      self
+    end
+  end
+
+  class EnumeratorNeverYieldsTest < Minitest::Test
+    def test_never_yields
+      e = EnumEmpty.new
+      assert_equal [[], [], 0, nil, false, []], [e.to_a, e.map { |x| x }, e.count, e.first, e.include?(1), e.sort]
+    end
+  end
 end

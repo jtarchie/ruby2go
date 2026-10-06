@@ -4825,3 +4825,16 @@ resolve; anything not listed is still open.
       and `defined?(@x)` (#53).
     ([example 103](../examples/103_ivar_narrowing/main.rb),
     `testdata/test/object_test.rb` `ObjectIvarNarrowTest`.)
+149. An `each` that never yields (#75) gives its `include Enumerable`
+    (or any module typed from each, decision 146) nil as the element
+    type. ruby/spec's `EnumerableSpecs::Empty` is `def each = self`:
+    there is nothing to infer from, and no element ever exists, so the
+    choice cannot be observed. nil is a real rb2go type (Go `any`
+    holding nothing), not `untyped`, which #56 ruled out. The each gets
+    the block signature `{ (nil) -> void }`, so Enumerable's iterator
+    adapter (seqAdapter) applies; a block that calls a
+    method on an element compiles as a call on nil (a dynamic-call
+    warning) and never runs. "Never yields" is read from the body: no
+    `yield`, `&blk`, `block_given?`, `to_enum` or `enum_for`. Annotate
+    `include Enumerable #[T]` for anything else.
+    (`testdata/test/enumerator_test.rb` `EnumeratorNeverYieldsTest`.)
