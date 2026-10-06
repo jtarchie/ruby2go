@@ -21,6 +21,8 @@ func rbErrnoOf(e any) *Integer {
 	switch e.(type) {
 	case *Errno_ENOENT:
 		n = syscall.ENOENT
+	case *Errno_EBADF:
+		n = syscall.EBADF
 	case *Errno_EEXIST:
 		n = syscall.EEXIST
 	case *Errno_EACCES:

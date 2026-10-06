@@ -18,6 +18,8 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_EISDIR(msg("Is a directory"))
 	case errors.Is(err, syscall.ENOTDIR):
 		return NewErrno_ENOTDIR(msg("Not a directory"))
+	case errors.Is(err, syscall.EBADF):
+		return NewErrno_EBADF(Ref(String("Bad file descriptor")))
 	}
 	return NewIOError(Ref(String(err.Error())))
 }

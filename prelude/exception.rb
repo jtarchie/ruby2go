@@ -134,6 +134,7 @@ end
 module Errno
   class EINVAL < SystemCallError; end
   class ENOENT < SystemCallError; end
+  class EBADF < SystemCallError; end
   class ECHILD < SystemCallError; end
   class EEXIST < SystemCallError; end
   class EISDIR < SystemCallError; end

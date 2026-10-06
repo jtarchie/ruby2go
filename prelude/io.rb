@@ -92,6 +92,17 @@ class IO < Object
   #: (Integer) -> IO
   def self.__new(fd) = %x{ return &IO{fd: int(fd)} }
 
+  # A raw descriptor, as MRI's (decision 62's Errno classes on failure).
+  #: (String, ?String, ?Integer) -> Integer
+  def self.sysopen(path, mode = "r", perm = 0o666) = %x{ return Integer(rbSysopen(string(path), string(mode), int(perm))) }
+
+  # An IO over descriptor fd; closing it closes fd.
+  #: (Integer, ?String) -> IO
+  def self.new(fd, mode = "r") = %x{ return rbIOForFd(int(fd), string(mode)) }
+
+  #: (Integer, ?String) -> IO
+  def self.for_fd(fd, mode = "r") = new(fd, mode)
+
   #: (String) -> String
   def self.read(path) = File.read(path)
 

@@ -211,3 +211,52 @@ func (self *IO) rbCloseHalf(read bool) {
 		panic(NewIOError(Ref[String]("closing non-duplex IO for writing")))
 	}
 }
+
+// rbOpenAccess is a mode string's open(2) flags: "r", "w", "a", their "+"
+// forms, with "b"/"t" and any ":enc" ignored.
+func rbOpenAccess(mode string) (int, string) {
+	access, _, _ := strings.Cut(mode, ":")
+	access = strings.NewReplacer("b", "", "t", "").Replace(access)
+	flags := map[string]int{
+		"r": os.O_RDONLY, "r+": os.O_RDWR,
+		"w": os.O_WRONLY | os.O_CREATE | os.O_TRUNC, "w+": os.O_RDWR | os.O_CREATE | os.O_TRUNC,
+		"a": os.O_WRONLY | os.O_CREATE | os.O_APPEND, "a+": os.O_RDWR | os.O_CREATE | os.O_APPEND,
+	}
+	flag, ok := flags[access]
+	if !ok {
+		panic(NewArgumentError(Ref(String("invalid access mode " + mode))))
+	}
+	return flag, access
+}
+
+// rbSysopen is IO.sysopen: a raw descriptor no Go *os.File owns, so no
+// finalizer closes it under the program.
+func rbSysopen(path, mode string, perm int) int {
+	flag, _ := rbOpenAccess(mode)
+	fd, err := syscall.Open(path, flag|syscall.O_CLOEXEC, uint32(perm)) //nolint:gosec // MRI's mode; the umask applies
+	if err != nil {
+		panic(rbSysErr(err, "rb_sysopen", path))
+	}
+	return fd
+}
+
+// rbIOForFd is IO.new(fd, mode): the standard streams for 0-2, else an IO
+// that owns fd (closing it closes fd, as MRI's autoclose).
+func rbIOForFd(fd int, mode string) *IO {
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		panic(rbSysErr(err, "rb_io_initialize", ""))
+	}
+	if fd <= 2 {
+		return &IO{fd: fd}
+	}
+	_, access := rbOpenAccess(mode)
+	f := os.NewFile(uintptr(fd), "fd "+strconv.Itoa(fd))
+	switch {
+	case strings.HasSuffix(access, "+"):
+		return rbIONew(f, f, nil)
+	case access == "r":
+		return rbIONew(f, nil, nil)
+	}
+	return rbIONew(nil, f, nil)
+}

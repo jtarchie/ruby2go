@@ -207,6 +207,9 @@ end
 #: (String, ?String) -> File
 def new_io(name, mode = "w:utf-8") = File.new(name, mode)
 
+#: (String, ?String) -> Integer
+def new_fd(name, mode = "w:utf-8") = IO.sysopen(name, mode)
+
 #: (?String) -> bot
 def flunk(message = "This example is a failure") = mspec_fail(message)
 
