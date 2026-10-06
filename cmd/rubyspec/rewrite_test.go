@@ -100,3 +100,42 @@ func TestVersionGuards(t *testing.T) {
 		}
 	}
 }
+
+// mspec runs every before/after of a describe; rb2go's, like minitest's, would keep only the last.
+func TestRewriteChainsHooks(t *testing.T) {
+	ctx := context.Background()
+	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := &program{p: p}
+	src := `describe "x" do
+  before :each do
+    @b = 1
+  end
+  before(:all) { @a = 1 }
+  after :all do
+    @c = 1
+  end
+  after :each do
+    @d = 1
+  end
+end
+`
+	got, err := prog.rewrite(ctx, "x_spec.rb", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"def __rbspec_before_1;",
+		"def __rbspec_before_2; @a = 1 end; before { __rbspec_before_2; __rbspec_before_1 }", // :all first
+		"end; after { __rbspec_after_4; __rbspec_after_3 }",                                  // :each first
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rewritten spec lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "\n") != strings.Count(src, "\n") {
+		t.Errorf("rewrite moved lines:\n%s", got)
+	}
+}

@@ -224,10 +224,6 @@ raise e
 c = [1].empty?
 x = if c then raise "x" else raise "y" end
 puts x
--- multi_untyped.rb --
-# error: main.rb:3: cannot destructure untyped
-u = [1, 2] #: untyped
-a, b = u
 -- multi_optional_array.rb --
 # error: main.rb:3: cannot destructure Array[Integer]?
 h = { "k" => [1, 2] } #: Hash[String, Array[Integer]]

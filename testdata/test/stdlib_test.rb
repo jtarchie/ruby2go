@@ -1084,6 +1084,23 @@ module StdlibTests
         assert_equal false, FileTest.readable?(gone)
       end
     end
+
+    # A parameter that is an Array by default and a String from its calls
+    # (ruby/spec's DirSpecs.mock_dir, #79) is a union File.join takes.
+    def joined(dirs = ["mock"]) = File.join("/base", dirs)
+
+    def test_join_flattens_arrays
+      assert_equal ["/base/mock", "/base/x"], [joined, joined("x")]
+      assert_equal "a/b/c/d", File.join("a", ["b", ["c"]], "d")
+      parts = ["x", "y"]
+      assert_equal ["x/y", ""], [File.join(*parts), File.join]
+      begin
+        File.join("a", [1])
+        flunk "no TypeError"
+      rescue TypeError => e
+        assert_equal "no implicit conversion of Integer into String", e.message
+      end
+    end
   end
 
   # OptionParser (decision 101): typed blocks, MRI's help layout, parse forms and errors.

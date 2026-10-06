@@ -60,6 +60,8 @@ type rewriter struct {
 	depth int
 	edits []edit
 	err   error
+	hooks map[*parser.CallNode]bool // before/after calls hooks already rewrote
+	hookN int
 }
 
 // rewrite makes what mspec does at run time static, as rb2go's describe needs: context, guards, shared specs, before(:each).
@@ -83,6 +85,10 @@ func (prog *program) rewrite(ctx context.Context, name, src string, depth int) (
 }
 
 func (rw *rewriter) visit(n parser.Node) {
+	if st, ok := n.(*parser.StatementsNode); ok {
+		rw.chainHooks(st.Body, "before", "all")
+		rw.chainHooks(st.Body, "after", "each")
+	}
 	call, ok := n.(*parser.CallNode)
 	if ok && call.Receiver == nil && rw.call(call) {
 		return
@@ -119,7 +125,7 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 	case call.Name == "it_behaves_like" && len(args) >= 2:
 		rw.inline(call, args)
 		return true
-	case (call.Name == "before" || call.Name == "after") && blk != nil && call.Arguments != nil:
+	case (call.Name == "before" || call.Name == "after") && blk != nil && call.Arguments != nil && !rw.hooks[call]:
 		s, e := span(call.Arguments.Location)
 		rw.edits = append(rw.edits, blank(rw.src, s, e)) // rb2go's before is minitest's setup: :each, and :all once per example
 	case guards[call.Name] && blk != nil:
@@ -127,6 +133,54 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 		return true
 	}
 	return false
+}
+
+// chainHooks runs every before (or after) of one describe, as mspec does:
+// rb2go's, like minitest's, redefines setup, so a second one would drop the
+// first (`before :all { create_mock_dirs }` then `before :each`). Each
+// becomes a def in place, and one hook on the last one's line calls them,
+// the `first` scope's (before :all, after :each) leading. Lines stay put.
+// ponytail: a hook inside a guard block is not grouped with its describe's.
+func (rw *rewriter) chainHooks(stmts []parser.Node, name, first string) {
+	var calls []*parser.CallNode
+	for _, n := range stmts {
+		if c, ok := n.(*parser.CallNode); ok && c.Receiver == nil && c.Name == name {
+			if _, ok := c.Block.(*parser.BlockNode); ok {
+				calls = append(calls, c)
+			}
+		}
+	}
+	if len(calls) < 2 {
+		return
+	}
+	if rw.hooks == nil {
+		rw.hooks = map[*parser.CallNode]bool{}
+	}
+	var lead, rest []string
+	for _, c := range calls {
+		rw.hooks[c] = true
+		blk := c.Block.(*parser.BlockNode) //nolint:forcetypeassert // checked above
+		rw.hookN++
+		def := fmt.Sprintf("__rbspec_%s_%d", name, rw.hookN)
+		os, oe := span(blk.OpeningLoc)
+		cs, ce := span(blk.ClosingLoc)
+		cs0, _ := span(c.Location)
+		rw.edits = append(rw.edits, edit{cs0, oe, "def " + def + ";" + strings.Repeat("\n", strings.Count(rw.src[cs0:os], "\n"))})
+		if rw.src[cs:ce] == "}" {
+			rw.edits = append(rw.edits, edit{cs, ce, "end"})
+		}
+		scope := ""
+		if c.Arguments != nil && len(c.Arguments.Arguments) > 0 {
+			scope = literal(c.Arguments.Arguments[0])
+		}
+		if scope == first {
+			lead = append(lead, def)
+		} else {
+			rest = append(rest, def)
+		}
+	}
+	_, end := span(calls[len(calls)-1].Location)
+	rw.edits = append(rw.edits, edit{end, end, "; " + name + " { " + strings.Join(append(lead, rest...), "; ") + " }"})
 }
 
 func (rw *rewriter) text(n parser.Node) string {

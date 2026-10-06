@@ -3368,7 +3368,11 @@ resolve; anything not listed is still open.
     - Multiple assignment takes `*rest`, `a, = xs` and nested targets; an
       Array gives each target its element or nil and `*rest` the middle
       (`rbMidSplat`, `rbTrailIdx`), a tuple splits statically. Block
-      params take a trailing `*rest` too (`|a, *r|`).
+      params take a trailing `*rest` too (`|a, *r|`). An `untyped` value
+      (a target list or a block's several params) goes through `rbToAry`,
+      MRI's implicit `to_ary`: an Array of any instantiation splits,
+      anything else is the first target (#79; a user class's `to_ary` is
+      not called).
     - `class << self` holds class methods (a bare `private` there makes
       them private); `module_function` (bare or with names),
       `protected` (checked at compile time: an explicit receiver is

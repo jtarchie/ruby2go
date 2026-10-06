@@ -3270,7 +3270,16 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 					bind(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
 				}
 			}
-		case TAny, TFunc, TNil, TOpt, TUnion, TVar, TVoid: // a lone value: no splat
+		case TAny: // MRI's to_ary: an Array splits, anything else is the first param
+			return []string{p}, func() {
+				a := f.newTmp()
+				f.emit("%s := rbToAry(%s)", a, p)
+				for i, nm := range lead {
+					bind(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: TAny{}}}))
+				}
+				bind(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", a, len(lead)), typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}})
+			}
+		case TFunc, TNil, TOpt, TUnion, TVar, TVoid: // a lone value: no splat
 		}
 	}
 	if len(lead) > len(yields) {
@@ -3335,12 +3344,24 @@ func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]stri
 	}
 }
 
-// bindArraySplat splats a yielded Array[elem] across several block params.
-func (f *fctx) bindArraySplat(names []string, elem Type) ([]string, func()) {
+// bindArraySplat splats a yielded Array[elem] across several block params;
+// an untyped one (elem TAny) goes through rbToAry first, as MRI's to_ary.
+func (f *fctx) bindArraySplat(n parser.Node, names []string, elem Type, untyped bool) ([]string, func()) {
 	p := f.newTmp()
 	return []string{p}, func() {
+		a := p
+		if untyped {
+			a = f.newTmp()
+			f.emit("%s := rbToAry(%s)", a, p)
+		}
 		for i, nm := range names {
-			e := flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: elem}})
+			e := flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: elem}})
+			if strings.HasPrefix(nm, "(") { // `|(k, v), i|`
+				gp, pro := f.bindBlockParams(n, strings.Split(strings.Trim(nm, "()"), ","), []Type{e.typ})
+				f.emit("%s := %s", gp[0], e.code)
+				pro()
+				continue
+			}
 			v := f.blockParam(nm, e.typ)
 			if v.goName != "_" {
 				f.emit("%s := %s", v.goName, e.code)
@@ -3360,7 +3381,10 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	// Ruby splats a yielded Array across several block params; each gets
 	// its element, or nil past the end.
 	if ac, ok := firstType(yields).(TClass); len(yields) == 1 && len(names) > 1 && ok && ac.C.RubyName == "Array" && len(ac.Args) == 1 {
-		return f.bindArraySplat(names, ac.Args[0])
+		return f.bindArraySplat(n, names, ac.Args[0], false)
+	}
+	if _, ok := firstType(yields).(TAny); ok && len(yields) == 1 && len(names) > 1 {
+		return f.bindArraySplat(n, names, TAny{}, true)
 	}
 	if len(names) > len(yields) {
 		f.errorf(n, "block takes %d params but only %d values are yielded", len(names), len(yields))
@@ -5455,9 +5479,16 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		for j, r := range rights {
 			f.assignTarget(r, flatOpt(expr{code: fmt.Sprintf("rbTrailIdx(%s, %d, %d, %d)", v.code, lead, trail, j), typ: TOpt{Elem: t.Args[0]}}))
 		}
-	case TAny, TFunc, TNil, TOpt, TUnion, TVar, TVoid: // only tuples and Arrays split
+	case TAny: // MRI's implicit to_ary: an Array splits, anything else is the first target
+		f.destructureInto(n, f.toAry(v), lefts, rest, rights)
+	case TFunc, TNil, TOpt, TUnion, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
+}
+
+// toAry wraps an untyped value as the Array[untyped] it destructures as.
+func (f *fctx) toAry(v expr) expr {
+	return expr{code: fmt.Sprintf("rbToAry(%s)", v.code), typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
 }
 
 // assignTarget writes v to one target of a multiple assignment.

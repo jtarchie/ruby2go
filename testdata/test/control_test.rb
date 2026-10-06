@@ -1780,6 +1780,25 @@ module ControlTests
   end
 
   class ControlAssignTest < Minitest::Test
+    # An untyped value destructures as MRI's implicit to_ary: an Array
+    # splits, anything else is the first target (#79's Dir fixture).
+    def test_destructure_untyped
+      pair = [1, "a"] #: untyped
+      a, b = pair
+      c, *d = pair
+      one = 7 #: untyped
+      e, f = one
+      assert_equal [1, "a", 1, ["a"], 7, nil], [a, b, c, d, e, f]
+      rows = [] #: Array[untyped]
+      rows << ["k", "v"] << 3 << nil
+      seen = rows.map { |k, v| [k, v] }
+      assert_equal [["k", "v"], [3, nil], [nil, nil]], seen
+      assert_equal [["k", ["v"]], [3, []]], rows.first(2).map { |k, *v| [k, v] }
+      nested = [] #: Array[untyped]
+      nested << [[1, 2], 3]
+      assert_equal [[1, 2, 3]], nested.map { |(x, y), z| [x, y, z] }
+    end
+
     def test_or_assign_multiple_assign_and_short_circuit
       calls = [] #: Array[String]
       a = nil #: Integer?

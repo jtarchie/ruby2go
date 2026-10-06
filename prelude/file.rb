@@ -316,11 +316,18 @@ class File < Object
   #: (String) -> String
   def self.extname(path) = %x{ String(rbExtname(string(path))) }
 
-  #: (*String) -> String
+  # Arrays (nested too) are flattened into the parts, as MRI does.
+  #: (*(String | Array[untyped])) -> String
   def self.join(*parts) = %x{
+    flat := &Array[any]{}
+    rbFlattenInto(flat, rest_, -1)
     out := ""
-    for i, p := range rest_ {
-      s := string(p)
+    for i, p := range flat.s {
+      str, ok := p.(String)
+      if !ok {
+        panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(p) + " into String"))))
+      }
+      s := string(str)
       switch {
       case i == 0:
       case strings.HasSuffix(out, "/"):

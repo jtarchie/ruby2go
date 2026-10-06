@@ -97,6 +97,16 @@ func rbPermutations[E comparable](all []E, k int) *Array[*Array[E]] {
 	return out
 }
 
+// rbToAry is destructuring's implicit to_ary on an untyped value: an
+// Array (any instantiation, tuples too) splits, anything else is one value.
+// ponytail: a user class's to_ary is not called; dispatch it through rbDyn if a program needs it.
+func rbToAry(x any) *Array[any] {
+	if a, ok := x.(Array_Any); ok {
+		return a._ToAny()
+	}
+	return &Array[any]{s: []any{x}}
+}
+
 // rbFlattenInto appends xs to out, splicing in Arrays (any instantiation,
 // tuples too) down to depth levels; depth < 0 is all of them.
 // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
