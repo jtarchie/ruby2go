@@ -1799,7 +1799,7 @@ func isForwardAll(d *parser.DefNode) bool {
 	}
 	ps := d.Parameters
 	_, ok := ps.KeywordRest.(*parser.ForwardingParameterNode)
-	return ok && len(ps.Requireds) == 0 && len(ps.Optionals) == 0 && ps.Rest == nil && len(ps.Posts) == 0 && len(ps.Keywords) == 0
+	return ok && len(ps.Optionals) == 0 && ps.Rest == nil && len(ps.Posts) == 0 && len(ps.Keywords) == 0
 }
 
 // resolveForwarding types `def f(...)` from the one call in its body that
@@ -1807,7 +1807,7 @@ func isForwardAll(d *parser.DefNode) bool {
 // f takes g's parameters and block, under their names, its return is
 // inferred, and the call's `...` becomes those parameters passed on.
 func (c *Compiler) resolveForwarding(m *Method) {
-	call := c.forwardingCall(m)
+	call, given := c.forwardingCall(m)
 	target := c.forwardingTarget(m, call)
 	c.resolveMethod(target)
 	if target.forwardAll {
@@ -1815,8 +1815,36 @@ func (c *Compiler) resolveForwarding(m *Method) {
 	}
 	m.forwardAll = true
 	m.TypeParams = target.TypeParams
-	for _, p := range target.Params {
-		if p.Default != nil && target.File != m.File {
+	// `def f(a, ...)`: a leads, typed by `# @rbs a: T` or from use (decision 146)
+	ann := m.File.annotations(m.Line)
+	for _, r := range m.Node.Parameters.Requireds {
+		rp, ok := r.(*parser.RequiredParameterNode)
+		if !ok {
+			c.errorf(m.File, r, "def %s(...): a destructuring leading parameter is not supported", m.Name)
+		}
+		prm := Param{Name: rp.Name}
+		if t := ann[rp.Name+":"]; len(t) > 0 {
+			rt, err := rbs.ParseType(t[0])
+			if err != nil {
+				c.errorf(m.File, m.Node, "%v", err)
+			}
+			prm.Type = c.resolveType(rt, typeScope{class: m.Owner, lex: m.Scope, file: m.File, line: m.Line})
+		} else {
+			c.resolvePending(m, &prm, pendingParam{key: pendingKey(m, rp.Name), name: rp.Name})
+		}
+		m.Params = append(m.Params, prm)
+	}
+	lead := len(m.Params)
+	// `g(x, ...)`: x fills g's first parameter; the rest are f's
+	tps := target.Params
+	if given > 0 {
+		if given > len(tps) || slices.ContainsFunc(tps[:given], func(p Param) bool { return p.Keyword || p.Rest || p.Post || p.Default != nil }) {
+			c.errorf(m.File, call, "def %s(...): the arguments before ... must fill %s's leading required parameters", m.Name, target.Name)
+		}
+		tps = tps[given:]
+	}
+	for _, p := range tps {
+		if p.Default != nil && target.File != m.File && !isPlainLiteral(p.Default) { // a literal means the same in any file
 			c.errorf(m.File, call, "def %s(...): %s's defaults are in another file; annotate %s instead", m.Name, target, m.Name)
 		}
 		m.Params = append(m.Params, p)
@@ -1830,12 +1858,14 @@ func (c *Compiler) resolveForwarding(m *Method) {
 		c.resolveMethod(e.M)
 		m.inherited, m.Ret, m.inferRet = e.M, subst(e.M.Ret, e.Env), e.M.inferRet
 	}
-	c.forwardArgs(m, call)
+	c.forwardArgs(m, call, lead, given)
 }
 
-// forwardingCall finds the one call or super in m's body whose only argument is `...`.
-func (c *Compiler) forwardingCall(m *Method) parser.Node {
+// forwardingCall finds the one call or super in m's body whose last argument
+// is `...`, and how many arguments precede it.
+func (c *Compiler) forwardingCall(m *Method) (parser.Node, int) {
 	var call parser.Node
+	given := 0
 	anyNode(m.Node.Body, func(n parser.Node) bool {
 		var args *parser.ArgumentsNode
 		switch n := n.(type) {
@@ -1846,21 +1876,21 @@ func (c *Compiler) forwardingCall(m *Method) parser.Node {
 		case *parser.DefNode, *parser.BlockNode, *parser.LambdaNode:
 			return false
 		}
-		if args == nil || len(args.Arguments) != 1 {
+		if args == nil || len(args.Arguments) == 0 {
 			return false
 		}
-		if _, ok := args.Arguments[0].(*parser.ForwardingArgumentsNode); ok {
+		if _, ok := args.Arguments[len(args.Arguments)-1].(*parser.ForwardingArgumentsNode); ok {
 			if call != nil {
 				c.errorf(m.File, n, "def %s(...) forwards more than once; annotate its signature instead", m.Name)
 			}
-			call = n
+			call, given = n, len(args.Arguments)-1
 		}
 		return false
 	})
 	if call == nil {
-		c.errorf(m.File, m.Node, "def %s(...) needs one call that forwards with (...) and no other arguments", m.Name)
+		c.errorf(m.File, m.Node, "def %s(...) needs one call that forwards with (...)", m.Name)
 	}
-	return call
+	return call, given
 }
 
 // forwardingTarget is the method call reaches: on m's class (or self), a top-level def, or m's parent for super.
@@ -1869,7 +1899,7 @@ func (c *Compiler) forwardingTarget(m *Method, call parser.Node) *Method {
 	switch n := call.(type) {
 	case *parser.CallNode:
 		if _, self := n.Receiver.(*parser.SelfNode); n.Receiver != nil && !self {
-			c.errorf(m.File, n, "def %s(...) can only forward to a method of its own class or a top-level def", m.Name)
+			return c.forwardingOther(m, n)
 		}
 		if m.Owner != nil {
 			if e := m.Owner.lookup(n.Name); e != nil {
@@ -1890,13 +1920,63 @@ func (c *Compiler) forwardingTarget(m *Method, call parser.Node) *Method {
 	return target
 }
 
+// isPlainLiteral is a default that needs no scope to evaluate.
+func isPlainLiteral(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.NilNode, *parser.TrueNode, *parser.FalseNode, *parser.IntegerNode, *parser.FloatNode, *parser.SymbolNode, *parser.StringNode:
+		return true
+	case *parser.ArrayNode:
+		return len(n.Elements) == 0
+	case *parser.HashNode:
+		return len(n.Elements) == 0
+	}
+	return false
+}
+
+// forwardingOther is the target of `recv.g(...)` on another receiver, from
+// the type signatures resolve before bodies are typed: a constant's class
+// methods, or an ivar declared with `# @rbs @x: T`.
+func (c *Compiler) forwardingOther(m *Method, n *parser.CallNode) *Method {
+	var cls *Class
+	switch r := n.Receiver.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		if k, _ := c.lookupConst(m.File, r, m.Scope); k != nil {
+			cls = k.meta
+		}
+	case *parser.InstanceVariableReadNode:
+		if m.Owner != nil {
+			if iv := c.findIvar(m.Owner, r.Name); iv != nil {
+				if t, ok := stripOpt(iv.Type).(TClass); ok {
+					cls = t.C
+				}
+			}
+		}
+	}
+	var e *entry
+	if cls != nil {
+		e = cls.lookup(n.Name)
+	}
+	if e == nil || len(e.Owner.TypeParams) > 0 {
+		c.errorf(m.File, n, "def %s(...) forwards to %s, whose type rb2go does not know before typing bodies: forward to a constant or an ivar declared with `# @rbs @x: T`", m.Name, m.File.text(n.Receiver.GetLocation()))
+	}
+	return e.M
+}
+
 // forwardArgs rewrites call's `...` into m's parameters in Ruby's order:
 // positional, *rest, posts, keywords, then the block.
-func (c *Compiler) forwardArgs(m *Method, call parser.Node) {
+func (c *Compiler) forwardArgs(m *Method, call parser.Node, lead, given int) {
 	var pos, posts, kws []parser.Node
 	var rest parser.Node
 	loc := call.GetLocation()
-	for _, p := range m.Params {
+	var args0 *parser.ArgumentsNode
+	switch n := call.(type) {
+	case *parser.CallNode:
+		args0 = n.Arguments
+	case *parser.SuperNode:
+		args0 = n.Arguments
+	}
+	pos = append(pos, args0.Arguments[:given]...) // `g(x, ...)`'s own x
+	for _, p := range m.Params[lead:] {
 		var a parser.Node = &parser.LocalVariableReadNode{Name: p.Name, Location: loc}
 		switch {
 		case p.KwRest:

@@ -4493,11 +4493,37 @@ module ObjectTests
     def via(...) = twice(...)
   end
 
+  # #51: leading parameters and arguments around ..., other receivers, prelude literal defaults
+  class FwdWrap
+    # @rbs @svc: FwdSvc
+    def initialize = @svc = FwdSvc.new
+
+    def tagged(tag, ...) = "#{tag}:#{@svc.run(...)}"
+
+    def thrice(...) = @svc.run("z", ...)
+
+    def klass(...) = FwdStatic.pad(...)
+
+    def toss(...) = throw(...)
+  end
+
+  class FwdStatic
+    #: (String, ?Integer) -> String
+    def self.pad(s, n = 3) = s.ljust(n, ".")
+  end
+
   class ObjectRubySpecForwardAllTest < Minitest::Test
     def test_forward_all
       assert_equal [6, 8], [FwdC.new.m(1, y: 2), FwdC.new.m(4)]
       svc = FwdSvc.new
       assert_equal ["abab", "x", 12], [svc.call("ab", times: 2), svc.call("x"), svc.via(3) { |v| v * 2 }]
+    end
+
+    def test_forward_leading_and_other_receivers
+      w = FwdWrap.new
+      assert_equal ["t:abab", "t:a", "zzz", "a..", "a....", nil, 4],
+                   [w.tagged("t", "ab", times: 2), w.tagged("t", "a"), w.thrice(times: 3), w.klass("a"), w.klass("a", 5),
+                    catch(:k) { w.toss(:k) }, catch(:k) { w.toss(:k, 4) }]
     end
   end
 

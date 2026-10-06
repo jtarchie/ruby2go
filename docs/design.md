@@ -3380,7 +3380,15 @@ resolve; anything not listed is still open.
       takes the parameters and block of the one method it forwards to (a
       method of its own class, a top-level def, or `super(...)`), and its
       `(...)` call passes them on; an override keeps its parent's result,
-      any other's is inferred. Literal splats `[*a, 1, *b]` concatenate.
+      any other's is inferred. Leading parameters (`def f(tag, ...)`)
+      come first, typed by `# @rbs` or from use (decision 146), and
+      leading arguments (`g(x, ...)`) fill the target's first required
+      parameters. The target may be on another receiver when its type is
+      known before bodies are typed: a constant's class method, or an
+      ivar declared `# @rbs @x: T` (an ivar typed only by discovery is
+      not, since signatures resolve first). A target's defaults in another
+      file (the prelude) forward when each is a plain literal; any other
+      needs an annotation (#51). Literal splats `[*a, 1, *b]` concatenate.
     `Array#to_set` is decision 139's. Instance-variable reflection is decision 123, class variables
     decision 124.
 121. Dynamic wrappers call Kernel's free func, not the class's forwarder

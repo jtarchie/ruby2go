@@ -1182,3 +1182,14 @@ class Box
   private_constant :SECRET
 end
 p Box::SECRET
+-- forward_all_untyped_receiver.rb --
+# error: main.rb:7: def call(...) forwards to @inner, whose type rb2go does not know before typing bodies
+class Inner
+  #: (Integer) -> Integer
+  def run(x) = x
+end
+class Outer
+  def call(...) = @inner.run(...)
+  def initialize = @inner = Inner.new
+end
+p Outer.new.call(1)
