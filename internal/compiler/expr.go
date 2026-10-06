@@ -1664,6 +1664,18 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 			return e
 		}
 	}
+	if len(args) > 0 && !isUnion(recv.typ) && !allLiteral(args) {
+		// a union argument the method does not take as it is: once per member (decision 150)
+		var e expr
+		err := f.attempt(func() { e = f.dispatch(n, recv, name, args, block) })
+		if err == nil {
+			return f.narrowRaises(name, args, e)
+		}
+		if e, ok := f.unionArgCall(n, recv, name, args, block); ok {
+			return e
+		}
+		panic(*err)
+	}
 	return f.narrowRaises(name, args, f.dispatch(n, recv, name, args, block))
 }
 
@@ -4034,39 +4046,52 @@ var nilAnswers = map[string]bool{"to_s": true, "inspect": true, "to_json": true,
 // compile error; nil, when a member, answers what nil answers and otherwise
 // raises NoMethodError, as a nil T? does (decision 20).
 func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args []parser.Node, block parser.Node) expr {
-	sw := f.newTmp()
-	arm := func(m Type) expr {
-		if isNil(m) {
-			return expr{code: "nil", typ: TNil{}}
-		}
-		return expr{code: sw, typ: m}
+	raises := func(m Type) bool { return isNil(m) && !nilAnswers[name] }
+	if slices.ContainsFunc(u.Members, raises) {
+		f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", name, u)
 	}
-	types := make([]Type, len(u.Members))
-	raises := make([]bool, len(u.Members))
-	for i, m := range u.Members {
-		if isNil(m) && !nilAnswers[name] {
-			raises[i] = true
-			f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", name, u)
-			continue
+	return f.unionSwitch(n, recv.code, u, func(m Type, code string) (expr, bool) {
+		if raises(m) {
+			f.emit("panic(rbNoMethod(%q, nil, false))", name)
+			return expr{}, false
 		}
-		var err *compileError
-		f.probe(func() {
-			err = f.try(func() { types[i] = f.genMethodCall(n, arm(m), name, args, block).typ })
-		})
-		if err != nil {
-			f.errorf(n, "%s (a member of %s)", errLoc.ReplaceAllString(err.msg, ""), u)
+		return f.genMethodCall(n, expr{code: code, typ: m}, name, args, block), true
+	}, func(m Type, msg string) string { return fmt.Sprintf("%s (a member of %s)", msg, u) })
+}
+
+// unionSwitch emits `switch v := subj.(type)` over u's members (decision
+// 150). arm generates a member's value from its Go value (nil for nil), or
+// emits a statement that never completes and reports false. The arms' types
+// join into the result: a temp, or nothing when every arm is void. A member
+// whose arm does not compile is an error, worded by fail.
+func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type, code string) (expr, bool), fail func(m Type, msg string) string) expr {
+	sw := f.newTmp()
+	code := func(m Type) string {
+		if isNil(m) {
+			return "nil"
 		}
+		return sw
 	}
 	var res Type
-	for i, t := range types {
-		if raises[i] {
-			continue
-		}
-		if res == nil {
+	for _, m := range u.Members {
+		var t Type
+		var err *compileError
+		f.probe(func() {
+			err = f.try(func() {
+				if e, ok := arm(m, code(m)); ok {
+					t = e.typ
+				}
+			})
+		})
+		switch {
+		case err != nil:
+			f.errorf(n, "%s", fail(m, errLoc.ReplaceAllString(err.msg, "")))
+		case t == nil:
+		case res == nil:
 			res = t
-			continue
+		default:
+			res = joinUnion(res, t)
 		}
-		res = joinUnion(res, t)
 	}
 	if res == nil {
 		res = TVoid{}
@@ -4076,9 +4101,9 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 		tmp = f.newTmp()
 		f.emit("var %s %s", tmp, f.c.goType(res))
 	}
-	f.emit("switch %s := %s.(type) {", sw, recv.code)
+	f.emit("switch %s := %s.(type) {", sw, subj)
 	f.switches++
-	for i, m := range u.Members {
+	for _, m := range u.Members {
 		goT := "nil"
 		if !isNil(m) {
 			goT = f.c.goType(m)
@@ -4086,16 +4111,13 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 		f.emit("case %s:", goT)
 		saved := f.enterBlock()
 		f.indent++
+		e, ok := arm(m, code(m))
 		switch {
-		case raises[i]:
-			f.emit("panic(rbNoMethod(%q, nil, false))", name)
+		case !ok:
+		case tmp != "" && !e.noreturn:
+			f.emit("%s = %s", tmp, f.coerce(n, e, res))
 		default:
-			e := f.genMethodCall(n, arm(m), name, args, block)
-			if tmp != "" && !e.noreturn {
-				f.emit("%s = %s", tmp, f.coerce(n, e, res))
-			} else {
-				f.emitExprStmt(n, e)
-			}
+			f.emitExprStmt(n, e)
 		}
 		f.indent--
 		f.leaveBlock(saved)
@@ -4106,6 +4128,93 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 		return expr{typ: TVoid{}, done: true}
 	}
 	return expr{code: tmp, typ: res}
+}
+
+// attempt runs gen as it is emitted, unless it fails to compile: then what
+// it emitted is dropped, as probe would, and the error returned. Only the
+// failing path copies the output.
+func (f *fctx) attempt(gen func()) *compileError {
+	buf, mark, warned := f.buf, f.buf.Len(), len(f.c.Warnings)
+	err := f.try(gen)
+	if err != nil {
+		kept := buf.String()[:mark]
+		buf.Reset()
+		buf.WriteString(kept)
+		f.buf = buf
+		f.c.dropWarnings(warned) // and forget them, so the retry may warn again
+	}
+	return err
+}
+
+// unionArgCall is a call whose argument is a union the method does not
+// take as it is (decision 150): a type switch on that argument, calling
+// with each member, so a typed parameter or a class twin (`__split_regexp`)
+// is picked per member. The receiver and the arguments before it are
+// evaluated first, as Ruby does; false when no argument is a union.
+func (f *fctx) unionArgCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	at := -1
+	var u TUnion
+	for i, a := range args {
+		switch a.(type) {
+		case *parser.SplatNode, *parser.KeywordHashNode, *parser.BlockArgumentNode, *parser.ForwardingArgumentsNode:
+			return expr{}, false
+		}
+		var t Type
+		f.probe(func() { t = f.genExpr(a, nil).typ })
+		if tu, ok := t.(TUnion); ok {
+			at, u = i, tu
+			break
+		}
+	}
+	if at < 0 {
+		return expr{}, false
+	}
+	if !isSimpleGo(recv.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, f.materialize(recv))
+		recv.code = tmp
+	}
+	nargs := slices.Clone(args)
+	for j := range at {
+		if !pureNode(args[j]) {
+			e := f.genExpr(args[j], nil)
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, f.materialize(e))
+			nargs[j] = &exprNode{Node: args[j], e: expr{code: tmp, typ: e.typ}}
+		}
+	}
+	a := f.genExpr(args[at], nil)
+	return f.unionSwitch(n, a.code, u, func(m Type, code string) (expr, bool) {
+		margs := slices.Clone(nargs)
+		margs[at] = &exprNode{Node: args[at], e: expr{code: code, typ: m}}
+		return f.genMethodCall(n, recv, name, margs, block), true
+	}, func(m Type, msg string) string {
+		return fmt.Sprintf("%s (argument %d is %s, and %s is a member; narrow it first)", msg, at+1, u, m)
+	}), true
+}
+
+// allLiteral reports arguments that are all literals, which are never unions.
+func allLiteral(args []parser.Node) bool {
+	return !slices.ContainsFunc(args, func(a parser.Node) bool {
+		switch a.(type) {
+		case *parser.NilNode, *parser.TrueNode, *parser.FalseNode, *parser.IntegerNode, *parser.FloatNode,
+			*parser.StringNode, *parser.SymbolNode, *parser.RegularExpressionNode:
+			return false
+		}
+		return true
+	})
+}
+
+// pureNode reports a node whose value is the same however often, and
+// whenever, it is generated: evaluating it inside each arm keeps Ruby's order.
+func pureNode(n parser.Node) bool {
+	switch n.(type) {
+	case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode, *parser.SelfNode, *parser.NilNode,
+		*parser.TrueNode, *parser.FalseNode, *parser.IntegerNode, *parser.FloatNode, *parser.StringNode,
+		*parser.SymbolNode, *parser.ConstantReadNode, *parser.ConstantPathNode, *parser.RegularExpressionNode:
+		return true
+	}
+	return false
 }
 
 // unionMember is the first member of u that a preference holds for, trying

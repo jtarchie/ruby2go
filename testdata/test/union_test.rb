@@ -20,6 +20,15 @@ def union_bump(n) = n + 1
 #: (untyped) -> untyped
 def union_untyped(v) = v
 
+#: (bool) -> (String | Regexp)
+def union_sep(b) = b ? "," : /;\s*/
+
+#: (Integer) -> String
+def union_int_only(n) = "int #{n}"
+
+#: (bool) -> (Integer | Float)
+def union_num(b) = b ? 2 : 0.5
+
 # no annotations: these join to unions (decision 150), where they were errors
 def union_ident(x) = x
 def union_half(x) = x / 2
@@ -330,6 +339,27 @@ module UnionTests
       assert_nil maybe(0) && :yes
       m = maybe(7)
       assert_equal "7", m && m.to_s
+    end
+
+    def test_union_arguments
+      assert_equal ["a", "b;c"], "a,b;c".split(union_sep(true))
+      assert_equal ["a,b", "c"], "a,b; c".split(union_sep(false))
+      assert_equal "a!b", "a,b".sub(union_sep(true), "!")
+      assert_equal 20, 10 * union_num(true)
+      assert_in_delta 5.0, 10 * union_num(false)
+      assert_in_delta 5.0, 10.0 / union_num(true)
+      order = [] #: Array[String]
+      pick = ->(s) { order << s; s }
+      assert_equal "xy", pick.call("x") + pick.call("y")
+      assert_equal %w[x y], order
+    end
+
+    #: (Integer | String) -> String
+    def routed(x) = x.is_a?(Integer) ? union_int_only(x) : x
+
+    def test_union_argument_needs_narrowing
+      assert_equal "int 1", routed(1)
+      assert_equal "s", routed("s")
     end
 
     #: (Integer | bool) -> String

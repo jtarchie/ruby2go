@@ -5,7 +5,7 @@ Union types (decision 150): what the compiler rejects or warns about.
 def f(x) = x.upcase.size
 puts f(1)
 -- union_where_member_expected.rb --
-# error: main.rb:5: Integer | String where Integer is expected; narrow it first
+# error: main.rb:5: String where Integer is expected (argument 1 is Integer | String, and String is a member; narrow it first)
 #: (Integer) -> Integer
 def g(n) = n
 #: (Integer | String) -> Integer

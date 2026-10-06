@@ -4868,6 +4868,15 @@ resolve; anything not listed is still open.
       and otherwise raises NoMethodError with a warning, as a nil `T?`
       does (decision 20). Iterator calls (`xs.each { }`) loop in the arms
       whose member's method is an iterator.
+    - **Arguments.** A call whose argument is a union the method does
+      not take as it is (a typed parameter, or a method with class twins
+      like `split`'s `__split_regexp`, decision 12) is split the same way:
+      the receiver and the arguments before it are evaluated first, as
+      Ruby does, then a type switch on the argument makes the call once
+      per member, so each arm picks its own overload (`10 * x` with
+      `x: Integer | Float` is `Integer.Op_mul` or `Float.Op_mul`). The
+      split runs only after the call failed to compile as it is (its
+      output is rolled back), so ordinary calls pay nothing for it.
     - **Boundaries.** A member's value into a union is free (boxed as for
       untyped, a tuple keeping its Go type so the switch finds it); a union
       into a type every member fits is asserted; anything else needs the
