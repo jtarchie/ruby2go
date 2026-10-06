@@ -2871,4 +2871,33 @@ module DynamicTests
       assert_equal false, err.nil?
     end
   end
+
+  # #51: keywords through a call on an untyped value, as a trailing Symbol-keyed Hash
+  class DynKwGreeter
+    #: (String, name: String, ?n: Integer) -> String
+    def greet(hi, name:, n: 1) = "#{hi} #{name}" * n
+
+    #: (?Integer, **Integer rest) -> Array[untyped]
+    def rest(a = 0, **rest) = [a, rest]
+
+    #: (Hash[Symbol, Integer], ?k: Integer) -> Array[untyped]
+    def first_hash(h, k: 1) = [h, k]
+  end
+
+  class DynamicKeywordTest < Minitest::Test
+    def test_keywords_on_untyped
+      x = DynKwGreeter.new #: untyped
+      assert_equal ["hi ann", "yo boyo bo"], [x.greet("hi", name: "ann"), x.greet("yo", name: "bo", n: 2)]
+      assert_equal [[5, { k: 1 }], [0, {}]], [x.rest(5, k: 1), x.rest]
+      assert_equal [[{ a: 1 }, 1], [{ a: 1 }, 3]], [x.first_hash({ a: 1 }), x.first_hash({ a: 1 }, k: 3)]
+    end
+
+    def test_keyword_errors_on_untyped
+      x = DynKwGreeter.new #: untyped
+      e = assert_raises(ArgumentError) { x.greet("hi") }
+      assert_equal "missing keyword: :name", e.message
+      e = assert_raises(ArgumentError) { x.greet("hi", name: "a", zz: 1) }
+      assert_equal "unknown keyword: :zz", e.message
+    end
+  end
 end

@@ -272,8 +272,11 @@ func (c *Compiler) erbParse(ctx context.Context, f *File, n *parser.CallNode, tp
 		}
 		for _, el := range elems {
 			a, ok := el.(*parser.AssocNode)
-			key, _ := a.Key.(*parser.SymbolNode)
-			if !ok || key == nil {
+			var key *parser.SymbolNode
+			if ok {
+				key, _ = a.Key.(*parser.SymbolNode)
+			}
+			if key == nil {
 				c.errorf(f, el, "ERB#result_with_hash takes a literal Hash with Symbol keys")
 			}
 			assigns = append(assigns, key.Unescaped.Value+" = ("+f.text(a.Value.GetLocation())+")")

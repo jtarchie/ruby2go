@@ -830,9 +830,14 @@ resolve; anything not listed is still open.
     run time), else its default, else raises "missing keyword". A named
     `k: v` beside it wins. A present key whose value type cannot be the
     keyword's (`{ name: "a" }` holds Strings; `age:` takes Integer) is
-    decision 20's TypeError (#51). A call on an untyped value
-    that would reach a keyword method (its dynamic wrapper raises
-    ArgumentError). Keyword block parameters (`|a:|`) are not supported.
+    decision 20's TypeError (#51). A call on an untyped value passes its
+    keywords as a trailing Hash; a keyword method's dynamic wrapper takes
+    a last argument whose keys are all Symbols as the keywords (Ruby 2's
+    reading: the call site cannot tell them from a positional Hash),
+    unless the required positional parameters need it, and passes them
+    on as `**h`, the run-time match above. Post parameters through an
+    untyped call still raise ArgumentError. Keyword block parameters
+    (`|a:|`) are not supported.
     *(Revised: keyword parameters were a compile error.)*
 24. Regexps are Ruby syntax on Go's RE2. Every pattern gets `(?m)` (Ruby's
     `^`/`$` are line anchors), Ruby `/m` and inline `(?m)` become `(?s)`,

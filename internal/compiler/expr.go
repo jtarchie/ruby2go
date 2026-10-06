@@ -2029,6 +2029,20 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 		hadSplat := len(kw.splats) > 0
 		var els []parser.Node
 		for _, el := range kw.all {
+			if sp, ok := el.(*parser.AssocSplatNode); ok && kw.splatTmp != "" {
+				// already evaluated for the named keywords: rest is what they did not take
+				var names []string
+				for _, q := range m.Params {
+					if q.Keyword && !q.KwRest {
+						names = append(names, strconv.Quote(q.Name))
+					}
+				}
+				code := kw.splatTmp
+				if len(names) > 0 {
+					code = "rbKwRestWithout(" + code + ", " + strings.Join(names, ", ") + ")"
+				}
+				el = &parser.AssocSplatNode{Value: &exprNode{e: expr{code: code, typ: f.splatHashType(kw)}}, Location: sp.Location}
+			}
 			if a, ok := el.(*parser.AssocNode); !ok || !kw.used[a.Key.(*parser.SymbolNode).Unescaped.Value] {
 				els = append(els, el)
 			}
@@ -2089,9 +2103,10 @@ func kwRestWithout(code string, m *Method, kw *kwArgs) string {
 // value when it has the key, else p's default, else MRI's "missing keyword"
 // ArgumentError. h is evaluated once, and a key no keyword names raises.
 func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[string]Type, kw *kwArgs) string {
-	if len(kw.splats) > 1 || slices.ContainsFunc(m.Params, func(q Param) bool { return q.KwRest }) {
-		f.errorf(kw.splats[0], "**splat into %s's named keyword parameters works with one **hash and no **rest parameter; pass them by name", m.Name)
+	if len(kw.splats) > 1 {
+		f.errorf(kw.splats[0], "**splat into %s's named keyword parameters works with one **hash; merge them first", m.Name)
 	}
+	hasRest := slices.ContainsFunc(m.Params, func(q Param) bool { return q.KwRest })
 	sp := kw.splats[0].(*parser.AssocSplatNode)
 	if kw.splatTmp == "" {
 		h := f.genExpr(sp.Value, nil)
@@ -2106,7 +2121,11 @@ func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[strin
 			}
 		}
 		kw.splatTmp = f.newTmp()
-		f.emit("%s := rbKwSplat(%s, %s)", kw.splatTmp, h.code, strings.Join(names, ", "))
+		if hasRest { // the other keys are **rest's (keywordArg)
+			f.emit("%s := %s", kw.splatTmp, h.code)
+		} else {
+			f.emit("%s := rbKwSplat(%s, %s)", kw.splatTmp, h.code, strings.Join(names, ", "))
+		}
 		f.c.noteMarshal(h.typ)
 	}
 	ht := f.splatType(kw)
@@ -2146,9 +2165,13 @@ func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[strin
 
 // splatType is the value type of the call's `**h`.
 func (f *fctx) splatType(kw *kwArgs) Type {
+	return f.splatHashType(kw).Args[1]
+}
+
+func (f *fctx) splatHashType(kw *kwArgs) TClass {
 	var h expr
 	f.probe(func() { h = f.genExpr(kw.splats[0].(*parser.AssocSplatNode).Value, nil) })
-	return stripOpt(h.typ).(TClass).Args[1]
+	return stripOpt(h.typ).(TClass)
 }
 
 // checkUnknown rejects keywords the method has no parameter for (MRI's ArgumentError, at compile time).
@@ -5025,8 +5048,11 @@ func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []pa
 	byName := map[string]parser.Node{}
 	for _, el := range kw.Elements {
 		a, ok := el.(*parser.AssocNode)
+		if !ok {
+			return args
+		}
 		sym, isSym := a.Key.(*parser.SymbolNode)
-		if !ok || !isSym {
+		if !isSym {
 			return args // a Hash argument, not keywords
 		}
 		byName[sym.Unescaped.Value] = a.Value
@@ -5078,8 +5104,11 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 		}
 		for _, el := range kw.Elements {
 			a, ok := el.(*parser.AssocNode)
+			if !ok {
+				f.errorf(el, "with takes keyword arguments")
+			}
 			sym, isSym := a.Key.(*parser.SymbolNode)
-			if !ok || !isSym {
+			if !isSym {
 				f.errorf(el, "with takes keyword arguments")
 			}
 			byName[sym.Unescaped.Value] = a.Value
@@ -5691,8 +5720,11 @@ func (f *fctx) csvOverload(m *Method, owner *Class, args []parser.Node) *entry {
 	headers, converters := false, false
 	for _, el := range kw.Elements {
 		a, ok := el.(*parser.AssocNode)
+		if !ok { // `**h`: a dynamic wrapper's keywords, not literal options
+			continue
+		}
 		key, _ := a.Key.(*parser.SymbolNode)
-		if !ok || key == nil {
+		if key == nil {
 			continue
 		}
 		name := key.Unescaped.Value

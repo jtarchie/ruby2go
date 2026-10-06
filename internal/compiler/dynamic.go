@@ -496,9 +496,9 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 // emitDynCall emits a call to e from an `args ...any` list: MRI's arity check, each argument converted (TypeError), then the typed call, one arm per count of optional arguments; mix adds the numeric coercion arms, which name the receiver `self`.
 func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type, mix bool) {
 	m := e.M
-	if m.hasKeywords() || m.postCount() > 0 {
-		// ponytail: an untyped call passes keywords as a trailing Hash; unpacking it per keyword (and running defaults) would make these callable
-		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rb2go: "+m.String()+" takes keyword or post parameters, which a call on an untyped value cannot pass (decision 23)")
+	if m.postCount() > 0 {
+		// ponytail: post parameters take the last arguments; binding them from args the way genArgs does would make these callable
+		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rb2go: "+m.String()+" takes post parameters, which a call on an untyped value cannot pass (decision 23)")
 		return
 	}
 	var req, opt int
@@ -506,6 +506,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	for i := range m.Params {
 		p := &m.Params[i]
 		switch {
+		case p.Keyword:
 		case p.Rest:
 			rest = p
 		case p.Default != nil:
@@ -513,6 +514,11 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		default:
 			req++
 		}
+	}
+	var kwh *exprNode // the call's keywords, passed on as **kwh (#51)
+	if m.hasKeywords() {
+		f.emit("kwh, args := rbDynKw(args, %d)", req)
+		kwh = &exprNode{e: expr{code: "kwh", typ: TClass{C: c.classes["Hash"], Args: []Type{TClass{C: c.classes["Symbol"]}, TAny{}}}}}
 	}
 	maxArgs := req + opt
 	if rest != nil {
@@ -544,6 +550,9 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 				code = fmt.Sprintf("args[%d:]...", k) // untyped takes anything, nil included
 			}
 			nodes = append(nodes, &exprNode{e: expr{code: code, typ: t}})
+		}
+		if kwh != nil {
+			nodes = append(nodes, &parser.KeywordHashNode{Elements: []parser.Node{&parser.AssocSplatNode{Value: kwh}}})
 		}
 		res := f.callEntry(&parser.NilNode{}, e, recv, nodes, nil)
 		if isVoid(res.typ) {

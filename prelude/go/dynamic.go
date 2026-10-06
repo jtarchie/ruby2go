@@ -122,3 +122,27 @@ func rbNoMethod(name string, recv any, vcall bool) any {
 func rbPrivateMethod(name string, recv any) any {
 	return NewNoMethodError(Ref(String("private method '" + name + "' called for " + rbDescribe(recv))))
 }
+
+// rbDynKw takes a call's keywords off an untyped call's arguments for a
+// keyword method: a trailing Hash whose keys are all Symbols, as Ruby 2
+// read one (the call site cannot tell keywords from a last positional Hash),
+// unless the method's required positional parameters need it.
+func rbDynKw(args []any, req int) (*Hash[Symbol, any], []any) {
+	out := NewHash[Symbol, any]()
+	if len(args) <= req {
+		return out, args
+	}
+	h, ok := rbUnbox(args[len(args)-1]).(interface{ _ToAny() *Hash[any, any] })
+	if !ok {
+		return out, args
+	}
+	all := h._ToAny()
+	for _, k := range all.keys {
+		s, ok := rbUnbox(k).(Symbol)
+		if !ok {
+			return NewHash[Symbol, any](), args
+		}
+		Hash___Set(out, s, all.vals[k])
+	}
+	return out, args[:len(args)-1]
+}
