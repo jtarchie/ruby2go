@@ -275,7 +275,7 @@ func (f *fctx) boundInfo(n parser.Node, e *entry, r expr, name string) string {
 		if t.Name == "Self" {
 			cls = f.owner
 		}
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no subclasses to switch over
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no subclasses to switch over
 	}
 	base := f.methodInfo(n, e)
 	if cls == nil || !cls.isStruct() || cls.universal || cls.metaOf != nil || len(cls.TypeParams) > 0 {

@@ -487,10 +487,17 @@ func (f *fctx) truthyQuiet(e expr) string {
 		return "bool(" + e.code + ")"
 	case isOpt(e.typ):
 		return optTruthy(e.code, e.typ)
-	case isAny(e.typ):
+	case isAny(e.typ), unionFalsy(e.typ):
 		return "rbTruthy(" + e.code + ")"
 	}
 	return ""
+}
+
+// unionFalsy reports a union that may hold nil or false, so that only the
+// run time knows its truthiness.
+func unionFalsy(t Type) bool {
+	u, ok := t.(TUnion)
+	return ok && slices.ContainsFunc(u.Members, func(m Type) bool { return isNil(m) || isClass(m, "Boolean") })
 }
 
 // classVar finds @@name from the code's class: its own, an ancestor's, or an included module's.
@@ -879,6 +886,9 @@ func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
 func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	// A literal is never nil, so an expected T? means T.
 	expected = stripOpt(expected)
+	if u, ok := expected.(TUnion); ok { // the member an Array literal can be: a tuple of its length, else an Array (decision 150)
+		expected = unionMember(u, func(m Type) bool { t, ok := m.(TTuple); return ok && len(t.Elems) == len(n.Elements) }, func(m Type) bool { return isClass(m, "Array") })
+	}
 	if tt, ok := expected.(TTuple); ok && len(tt.Elems) == len(n.Elements) {
 		codes := make([]string, len(n.Elements))
 		for i, el := range n.Elements {
@@ -1038,6 +1048,9 @@ func (f *fctx) tupleLiteral(n parser.Node, elems []expr) (expr, bool) {
 }
 
 func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) expr {
+	if u, ok := stripOpt(expected).(TUnion); ok { // a Hash literal is the union's Hash member (decision 150)
+		expected = unionMember(u, func(m Type) bool { return isClass(m, "Hash") })
+	}
 	var kT, vT Type
 	if ec, ok := stripOpt(expected).(TClass); ok && ec.C.RubyName == "Hash" {
 		kT, vT = ec.Args[0], ec.Args[1]
@@ -1191,14 +1204,21 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 			return e.code
 		}
 	}
+	if u, ok := e.typ.(TUnion); ok {
+		if code, done := f.coerceFromUnion(n, e, u, to); done {
+			return code
+		}
+	}
 	switch to := to.(type) {
+	case TUnion:
+		return f.coerceToUnion(n, e, to)
 	case TAny:
 		switch {
 		case isOpt(e.typ):
 			switch e.typ.(TOpt).Elem.(type) {
 			case TVar, TOpt: // E? with E = T?: Opt leaves the inner box
 				return "rbUnbox(Opt(" + e.code + "))"
-			case TAny, TClass, TFunc, TNil, TTuple, TVoid: // a plain T?: Opt boxes it below
+			case TAny, TClass, TFunc, TNil, TTuple, TUnion, TVoid: // a plain T?: Opt boxes it below
 			}
 			return "Opt(" + e.code + ")"
 		case e.lit:
@@ -1225,6 +1245,72 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	case TFunc, TNil, TTuple, TVoid: // converted by the general rules below
 	}
 	return e.code
+}
+
+// coerceToUnion is coerce into a union (decision 150): a member's value is
+// already one (boxed as untyped code sees it, but a tuple keeps its Go type
+// so a member switch finds it), an untyped value is checked at run time,
+// and anything else is a compile error.
+func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
+	switch t := e.typ.(type) {
+	case TAny:
+		return f.noteConv(n, f.c.unionFn(to)+"("+e.code+")")
+	case TUnion:
+		if fits(t, to) {
+			return e.code
+		}
+	case TNil:
+		if fits(t, to) {
+			return "nil"
+		}
+	case TTuple:
+		if fits(t, to) {
+			return "any(" + e.code + ")"
+		}
+	case TClass, TFunc, TOpt, TVar, TVoid:
+		if fitsValue(e, to) || e.lit && slices.ContainsFunc(to.Members, func(m Type) bool { return fitsValue(e, m) }) {
+			if e.lit && isClass(e.typ, "Integer") && !slices.ContainsFunc(to.Members, func(m Type) bool { return isClass(m, "Integer") }) {
+				e.typ = f.cls("Float") // 1 where Float | String is expected is 1.0
+			}
+			return f.coerce(n, e, TAny{})
+		}
+	}
+	f.errorf(n, "%s where %s is expected", e.typ, to)
+	return ""
+}
+
+// coerceFromUnion is coerce out of a union (decision 150). Untyped code
+// gets the value as it is; a type every member fits gets it asserted; a
+// Boolean position tests truthiness, as for untyped. Anything else needs
+// the union narrowed first, as T? does (decision 20). done is false when
+// the target is a union, which coerceToUnion handles.
+func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string, bool) {
+	switch to := to.(type) {
+	case TUnion:
+		return "", false
+	case TAny, TVar:
+		if slices.ContainsFunc(u.Members, func(m Type) bool { _, ok := m.(TTuple); return ok }) {
+			return f.c.unionFn(u) + "Out(" + e.code + ")", true
+		}
+		return e.code, true
+	case TClass:
+		if to.C.RubyName == "Boolean" {
+			return "Boolean(rbTruthy(" + e.code + "))", true
+		}
+		if fits(u, to) {
+			if f.c.goType(to) == "any" {
+				return e.code, true
+			}
+			return e.code + ".(" + f.c.goType(to) + ")", true
+		}
+	case TOpt:
+		if fits(u, to) {
+			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())), true
+		}
+	case TFunc, TNil, TTuple, TVoid:
+	}
+	f.errorf(n, "%s where %s is expected; narrow it first (`is_a?`, `case`/`when`, `if x`)", u, to)
+	return "", true
 }
 
 // coerceClass is coerce to a class type.
@@ -1319,7 +1405,7 @@ func sameButUntyped(a, b Type) bool {
 	case TOpt:
 		b, ok := b.(TOpt)
 		return ok && sameButUntyped(a.Elem, b.Elem)
-	case TAny, TFunc, TNil, TTuple, TVar, TVoid: // the same only when typeEq, checked above
+	case TAny, TFunc, TNil, TTuple, TUnion, TVar, TVoid: // the same only when typeEq, checked above
 	}
 	return false
 }
@@ -1501,7 +1587,7 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 		if t.Name == "Self" && f.owner != nil {
 			e = f.owner.lookup(name)
 		}
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no class here to look in: only a top-level def can answer
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no class here to look in: only a top-level def can answer
 	}
 	if e == nil {
 		if td := f.c.topDefs[name]; td != nil {
@@ -1704,6 +1790,8 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	switch t := recv.typ.(type) {
 	case TOpt:
 		return f.optCall(n, recv, name, args, block)
+	case TUnion:
+		return f.unionCall(n, recv, t, name, args, block)
 	case TTuple:
 		return f.tupleCall(n, recv, name, args, block)
 	case TFunc:
@@ -2887,7 +2975,7 @@ func (f *fctx) methodExprType(m *Method, recv expr) string {
 		if t.Name == "Self" && f.owner != nil && f.owner.isStruct() && !f.owner.universal && !f.owner.IsModule && len(f.owner.TypeParams) == 0 {
 			return f.owner.Name + "I"
 		}
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid:
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
 	}
 	return ""
 }
@@ -2941,7 +3029,7 @@ func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
 			return f.c.selfCalls(f.owner)[e.M.Name]
 		}
 		return e.Owner == f.owner
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no Go method set to forward to
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no Go method set to forward to
 	}
 	return false
 }
@@ -3061,7 +3149,7 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 					bind(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
 				}
 			}
-		case TAny, TFunc, TNil, TOpt, TVar, TVoid: // a lone value: no splat
+		case TAny, TFunc, TNil, TOpt, TUnion, TVar, TVoid: // a lone value: no splat
 		}
 	}
 	if len(lead) > len(yields) {
@@ -3336,6 +3424,9 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	} else {
 		f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
 	}
+	if u, ok := recvT.(TUnion); ok {
+		return f.genUnionIterCall(n, u, t)
+	}
 	opt, isOptRecv := recvT.(TOpt)
 	if isOptRecv {
 		recvT = opt.Elem
@@ -3373,6 +3464,55 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		f.indent--
 		f.emit("}")
 	}
+	if t.kind != tailNone {
+		f.emptyTail(n, t)
+	}
+	return true
+}
+
+// genUnionIterCall is genIterCall on a union (decision 150): a type switch
+// whose arms loop over the members whose method is an iterator and call
+// it on the others, as unionCall does. False when no member's is one.
+func (f *fctx) genUnionIterCall(n *parser.CallNode, u TUnion, t tail) bool {
+	entries := make([]*entry, len(u.Members))
+	found := false
+	for i, m := range u.Members {
+		if e := f.resolve(m, n.Name); e != nil && e.M.Iterator && !isNil(m) {
+			entries[i], found = e, true
+		}
+	}
+	if !found {
+		return false
+	}
+	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) {
+		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
+	}
+	recv := f.genExpr(n.Receiver, nil)
+	sw := f.newTmp()
+	f.emit("switch %s := %s.(type) {", sw, recv.code)
+	f.switches++
+	for i, m := range u.Members {
+		goT := "nil"
+		if !isNil(m) {
+			goT = f.c.goType(m)
+		}
+		f.emit("case %s:", goT)
+		saved := f.enterBlock()
+		f.indent++
+		switch {
+		case isNil(m):
+			f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", n.Name, u)
+			f.emit("panic(rbNoMethod(%q, nil, false))", n.Name)
+		case entries[i] != nil:
+			f.genIterLoop(n, entries[i], expr{code: sw, typ: m})
+		default:
+			f.emitExprStmt(n, f.genMethodCall(n, expr{code: sw, typ: m}, n.Name, callArgs(n), n.Block))
+		}
+		f.indent--
+		f.leaveBlock(saved)
+	}
+	f.switches--
+	f.emit("}")
 	if t.kind != tailNone {
 		f.emptyTail(n, t)
 	}
@@ -3833,6 +3973,117 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	return f.genMethodCall(n, f.nilGuard(n, recv, name), name, args, block)
 }
 
+// nilAnswers are the methods nil answers itself (universalCall); any other
+// call on a union's nil raises NoMethodError, as on a nil T?.
+var nilAnswers = map[string]bool{"to_s": true, "inspect": true, "to_json": true, "nil?": true, "!": true, "==": true, "equal?": true, "<=>": true, "hash": true, "eql?": true, "to_a": true, "to_h": true, "to_i": true, "to_f": true}
+
+// unionCall is a call on a union (decision 150): a Go type switch with one
+// arm per member, each the typed call on that member, so no dispatcher and
+// no boxed arguments. The arms' results join into the call's type (a union
+// again when they have no common class). A member without the method is a
+// compile error; nil, when a member, answers what nil answers and otherwise
+// raises NoMethodError, as a nil T? does (decision 20).
+func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args []parser.Node, block parser.Node) expr {
+	sw := f.newTmp()
+	arm := func(m Type) expr {
+		if isNil(m) {
+			return expr{code: "nil", typ: TNil{}}
+		}
+		return expr{code: sw, typ: m}
+	}
+	types := make([]Type, len(u.Members))
+	raises := make([]bool, len(u.Members))
+	for i, m := range u.Members {
+		if isNil(m) && !nilAnswers[name] {
+			raises[i] = true
+			f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", name, u)
+			continue
+		}
+		var err *compileError
+		f.probe(func() {
+			err = f.try(func() { types[i] = f.genMethodCall(n, arm(m), name, args, block).typ })
+		})
+		if err != nil {
+			f.errorf(n, "%s (a member of %s)", errLoc.ReplaceAllString(err.msg, ""), u)
+		}
+	}
+	var res Type
+	for i, t := range types {
+		if raises[i] {
+			continue
+		}
+		if res == nil {
+			res = t
+			continue
+		}
+		res = joinUnion(res, t)
+	}
+	if res == nil {
+		res = TVoid{}
+	}
+	tmp := ""
+	if !isVoid(res) || isNil(res) {
+		tmp = f.newTmp()
+		f.emit("var %s %s", tmp, f.c.goType(res))
+	}
+	f.emit("switch %s := %s.(type) {", sw, recv.code)
+	f.switches++
+	for i, m := range u.Members {
+		goT := "nil"
+		if !isNil(m) {
+			goT = f.c.goType(m)
+		}
+		f.emit("case %s:", goT)
+		saved := f.enterBlock()
+		f.indent++
+		switch {
+		case raises[i]:
+			f.emit("panic(rbNoMethod(%q, nil, false))", name)
+		default:
+			e := f.genMethodCall(n, arm(m), name, args, block)
+			if tmp != "" && !e.noreturn {
+				f.emit("%s = %s", tmp, f.coerce(n, e, res))
+			} else {
+				f.emitExprStmt(n, e)
+			}
+		}
+		f.indent--
+		f.leaveBlock(saved)
+	}
+	f.switches--
+	f.emit("}")
+	if tmp == "" {
+		return expr{typ: TVoid{}, done: true}
+	}
+	return expr{code: tmp, typ: res}
+}
+
+// unionMember is the first member of u that a preference holds for, trying
+// each preference in turn; nil (nothing expected) when none does.
+func unionMember(u TUnion, prefs ...func(Type) bool) Type {
+	for _, pref := range prefs {
+		if i := slices.IndexFunc(u.Members, pref); i >= 0 {
+			return u.Members[i]
+		}
+	}
+	return nil
+}
+
+// errLoc is a compile error's leading `file:line: `.
+var errLoc = regexp.MustCompile(`^[^:\s]+:\d+: `)
+
+// joinUnion is join, falling back to the union where join finds no common
+// class (or gives untyped for Integer and Float) (decision 150).
+func joinUnion(a, b Type) Type {
+	if isAny(a) || isAny(b) {
+		return TAny{}
+	}
+	if j, ok := join(a, b); ok && !isAny(j) {
+		return j
+	}
+	return unionOf(a, b)
+}
+
 // nilGuard emits Ruby's NoMethodError for a call on a nil T? receiver and
 // returns the receiver dereferenced to T.
 func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
@@ -4212,7 +4463,7 @@ func (f *fctx) metaOfType(t Type) *Class {
 		if t.Name == "Self" && f.owner != nil && f.owner.metaOf != nil {
 			return f.owner
 		}
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // not a class object
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // not a class object
 	}
 	return nil
 }
@@ -4232,7 +4483,7 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 		if cls != nil && cls.IsModule && !cls.universal { // self is some includer
 			return expr{code: recv.code + "._ClassObj()", typ: TClass{C: f.c.classes["Class"]}}, true
 		}
-	case TAny, TNil, TOpt:
+	case TAny, TNil, TOpt, TUnion:
 		return f.dynClassOf(n, recv), true
 	case TFunc:
 		p := f.c.classes["Proc"]
@@ -4354,6 +4605,11 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 		return strconv.FormatBool(cls.RubyName == "Array")
 	case TAny, TVar: // a generic T is some value known at run time, as untyped is (Self was resolved above)
 		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
+	case TUnion: // true when every member is a cls; otherwise the member is known only at run time
+		if !slices.ContainsFunc(t.Members, func(m Type) bool { c := classOf(m); return c == nil || !c.isSubclassOf(cls) }) {
+			return "true"
+		}
+		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
 	case TVoid: // a void call's value is nil
 		f.voidAsNil(recv)
 		return "false"
@@ -4428,7 +4684,7 @@ func (f *fctx) numericAtRunTime(t Type) bool {
 		t = TClass{C: f.owner}
 	}
 	switch t := t.(type) {
-	case TAny, TVar:
+	case TAny, TUnion, TVar: // a union's member is chosen at run time
 		return true
 	case TClass:
 		return isAbstract(t) && !t.C.isSubclassOf(f.c.classes["Numeric"])
@@ -4477,6 +4733,9 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	}
 	if cond == "true" || cond == "false" || cls.universal {
 		return cond, nil
+	}
+	if nw, ok := f.narrowUnion(v, func(m Type) bool { mc := classOf(m); return mc != nil && mc.isSubclassOf(cls) }); ok {
+		return cond, []narrowInfo{nw} // the members that are a cls (decision 150)
 	}
 	if f.c.isNumericMod(cls) && !isOpt(v.typ) && f.numericAtRunTime(base) {
 		if _, tv := base.(TVar); tv {
@@ -4877,7 +5136,7 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		for j, r := range rights {
 			f.assignTarget(r, flatOpt(expr{code: fmt.Sprintf("rbTrailIdx(%s, %d, %d, %d)", v.code, lead, trail, j), typ: TOpt{Elem: t.Args[0]}}))
 		}
-	case TAny, TFunc, TNil, TOpt, TVar, TVoid: // only tuples and Arrays split
+	case TAny, TFunc, TNil, TOpt, TUnion, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
 }
@@ -5138,7 +5397,7 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 		if t.Name == "Self" {
 			cls = f.owner
 		}
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no class known here: not a Data value's with
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no class known here: not a Data value's with
 	}
 	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().valueKind != "data" {
 		return expr{}, false
@@ -5236,7 +5495,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 		if t.Name == "Self" {
 			cls = f.owner
 		}
-	case TAny, TFunc, TNil, TOpt, TTuple, TVoid: // no class known here: answered at run time
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no class known here: answered at run time
 	}
 	if name == "" || cls == nil {
 		return expr{}, false

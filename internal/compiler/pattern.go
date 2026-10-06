@@ -476,6 +476,7 @@ func (f *fctx) patNarrow(e expr, cls *Class) expr {
 		if e.view != "" {
 			code = e.view
 		}
+	case TUnion: // an any already
 	case TClass:
 		if !b.C.isStruct() && !isAbstract(b) { // a @go_type value is not an interface: the check was static
 			return e
@@ -717,7 +718,7 @@ func (f *fctx) patDeconstruct(pm *patMatch, p parser.Node, subj expr, needArray 
 			s = f.genMethodCall(p, s, "deconstruct", nil, nil)
 		case TAny:
 			s = f.genMethodCall(p, s, "deconstruct", nil, nil)
-		case TFunc, TNil, TOpt, TVar, TVoid: // patShape leaves only classes, tuples and untyped
+		case TFunc, TNil, TOpt, TUnion, TVar, TVoid: // patShape leaves only classes, tuples and untyped
 		}
 		arrT := TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}
 		switch t := s.typ.(type) {
@@ -775,7 +776,7 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 				f.errorf(p, "%s pattern never matches %s: %s has no %s", map[string]string{"deconstruct": "an array", "deconstruct_keys": "a hash"}[method], t, tt.C.RubyName, method)
 			}
 		}
-	case TAny, TFunc, TVar, TVoid:
+	case TAny, TFunc, TUnion, TVar, TVoid: // a union's member is known at run time: patterns test it as untyped
 	}
 	// at run time: whatever the value's class answers
 	anyS := expr{code: f.coerce(p, subj, TAny{}), typ: TAny{}}

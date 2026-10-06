@@ -125,6 +125,7 @@ How Ruby types land in Go:
 | `Integer`, `Float`, `String`, `Symbol` | named Go types over `int`, `float64`, `string` (values, with methods) |
 | `true` / `false` | one `Boolean` type |
 | `T?` (maybe `nil`) | `*T`; `if x` narrows it |
+| `A \| B` (one of a few classes) | Go `any`; each call is a type switch with a typed call per member, and `is_a?`/`case` narrow it |
 | `Array[T]`, `Hash[K, V]` | generic Go types; `Hash` keeps insertion order like Ruby |
 | a class | a struct, plus an interface so subclasses dispatch correctly |
 | a module | generic free functions constrained by what the module calls on `self` |

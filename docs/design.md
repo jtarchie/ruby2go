@@ -753,8 +753,8 @@ resolve; anything not listed is still open.
     `if x`, `return unless x`, `x ||= …`, `&.`). `untyped?` is untyped:
     passing it on checks the type at run time, raising MRI's `TypeError`
     ("no implicit conversion of Integer into String") as a dynamic call's
-    arguments do (decision 32), except to a `T | untyped` parameter (the
-    only union besides `T | nil`): typed arguments are checked against
+    arguments do (decision 32), except to a `T | untyped` parameter (a
+    gradual parameter, not a union, decision 150): typed arguments are checked against
     `T`, untyped ones pass unasserted and the method handles them.
     *Amended:* where a Boolean is expected (a predicate block's result, a
     `bool` parameter) `T?` is its truthiness, as `untyped` already was:
@@ -4838,3 +4838,60 @@ resolve; anything not listed is still open.
     `yield`, `&blk`, `block_given?`, `to_enum` or `enum_for`. Annotate
     `include Enumerable #[T]` for anything else.
     (`testdata/test/enumerator_test.rb` `EnumeratorNeverYieldsTest`.)
+150. Union types: `A | B` is a Go `any` whose classes the compiler knows,
+    and every decision about it is made at compile time. Before this a
+    union annotation was an error and every place that would build one
+    collapsed to `untyped`, which throws away a member list the closed
+    world already has and sends each later call through a `rbDyn`
+    dispatcher with boxed arguments.
+    - **Representation.** `TUnion{Members}` in the sealed `Type` (decision
+      119), built only by `unionOf`, so always normalized: flattened,
+      deduplicated, a subclass absorbed by a superclass member, `untyped`
+      absorbing everything, Object absorbing every class, one member left
+      collapsing to that member (or `T?`), members sorted, nil last. nil
+      is a member, never a box: `T?` stays `*T` (its narrowing is free,
+      decision 7), and `A | B | nil` is the interface's own nil. The Go
+      type is `any`, so `Array[A | B]` is `*Array[any]`, the same shape as
+      `Array[untyped]`. Members are classes, tuples, procs and nil; a
+      module or type variable is a compile error for now (a type switch
+      cannot test either directly).
+    - **Calls.** A call on a union is a Go type switch with one arm per
+      member, each the typed call on that member (`case Integer:
+      t = Integer.Size(x)`), and the arms' results join into the call's
+      type. A member without the method is a compile error ("undefined
+      method upcase for Integer (a member of Integer | String)"). nil, as
+      a member, answers what nil answers (`to_s`, `inspect`, `==`, ...)
+      and otherwise raises NoMethodError with a warning, as a nil `T?`
+      does (decision 20). Iterator calls (`xs.each { }`) loop in the arms
+      whose member's method is an iterator.
+    - **Boundaries.** A member's value into a union is free (boxed as for
+      untyped, a tuple keeping its Go type so the switch finds it); a union
+      into a type every member fits is asserted; anything else needs the
+      union narrowed first, as `T?` does. An `untyped` value into a union
+      (an argument, a dynamic call's parameter) goes through a generated
+      `rbUnion_<hash>` type switch that raises MRI's TypeError when the
+      value is no member, converting other Array/Hash instantiations as
+      `rbAs` does. The name hashes the members, so it does not depend on
+      compile order (the build cache, decision 88). A union holding a tuple
+      shows untyped code the Array it is (`rbUnion_<hash>Out`). A Boolean
+      position tests truthiness. Array and Hash literals where a union is
+      expected take the member they can be (a tuple of their length, else
+      an Array; a Hash).
+    - **Narrowing** keeps the member list. `is_a?(C)` true narrows to the
+      members that are a C; false (an `else`, `unless`, `!`, `||`, and
+      early exits like `return … if x.is_a?(C)` or `next if …`) to the
+      rest; truthiness drops nil; `x.nil?` false drops nil. One class left
+      is asserted (`x.(String)`); one class and nil open into a `T?`. On a
+      union subject `when C` takes the members that are a C by their own
+      Go types (`when Numeric` takes Integer and Float), the arm is typed
+      as exactly those, the `else` as what is left, and a `case` whose
+      arms take every member and has no `else` is exhaustive: it never
+      yields nil. `case` on an ivar or attribute reader narrows it, as
+      `if` does (decision 148). Patterns (`case`/`in`) test a union as
+      untyped for now.
+    - **What stays `untyped`.** Open-world values (JSON, Marshal, `send`
+      with a computed name) and universal parameters (`==`, `puts`) are
+      the universal union and keep the dispatchers. `T | untyped`
+      parameters keep decision 20's meaning.
+    (`examples/104_union_types`, `testdata/test/union_test.rb`,
+    `testdata/errors/union.txtar`.)

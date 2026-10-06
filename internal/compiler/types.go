@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"maps"
 	"slices"
 	"strings"
 )
@@ -24,6 +25,7 @@ func (TFunc) isType()  {}
 func (TAny) isType()   {}
 func (TNil) isType()   {}
 func (TVoid) isType()  {}
+func (TUnion) isType() {}
 
 type (
 	// TClass is an instance of a class or module, possibly with type args.
@@ -52,6 +54,11 @@ type (
 	TNil struct{}
 	// TVoid is `void`: no value.
 	TVoid struct{}
+	// TUnion is `A | B` (decision 150): a Go `any` whose classes the
+	// compiler knows. Built only by unionOf, so it is normalized: two or
+	// more members, none a union, T? or untyped, nil (TNil) last if
+	// present, the rest sorted by String().
+	TUnion struct{ Members []Type }
 )
 
 func (t TClass) String() string {
@@ -70,6 +77,13 @@ func (t TFunc) String() string  { return "^(" + joinTypes(t.Params) + ") -> " + 
 func (TAny) String() string     { return "untyped" }
 func (TNil) String() string     { return "nil" }
 func (TVoid) String() string    { return "void" }
+func (t TUnion) String() string {
+	parts := make([]string, len(t.Members))
+	for i, m := range t.Members {
+		parts[i] = m.String()
+	}
+	return strings.Join(parts, " | ")
+}
 
 func joinTypes(ts []Type) string {
 	parts := make([]string, len(ts))
@@ -83,7 +97,7 @@ func isVoid(t Type) bool {
 	switch t.(type) {
 	case TVoid, TNil, nil:
 		return true
-	case TAny, TClass, TFunc, TOpt, TTuple, TVar: // values, not the absence of one
+	case TAny, TClass, TFunc, TOpt, TTuple, TUnion, TVar: // values, not the absence of one
 	}
 	return false
 }
@@ -103,6 +117,8 @@ func holdsAny(t Type) bool {
 		return slices.ContainsFunc(t.Elems, holdsAny)
 	case TFunc:
 		return slices.ContainsFunc(t.Params, holdsAny) || holdsAny(t.Ret)
+	case TUnion:
+		return slices.ContainsFunc(t.Members, holdsAny)
 	case TNil, TVar, TVoid: // leaves with nothing untyped inside
 	}
 	return false
@@ -134,6 +150,9 @@ func isClass(t Type, name string) bool {
 func optOf(t Type) Type {
 	if isOpt(t) || isAny(t) {
 		return t
+	}
+	if u, ok := t.(TUnion); ok {
+		return unionOf(u, TNil{}) // a union holds nil as a member, not in a box
 	}
 	return TOpt{Elem: t}
 }
@@ -196,6 +215,9 @@ func typeEq(a, b Type) bool {
 	case TVoid:
 		_, ok := b.(TVoid)
 		return ok
+	case TUnion:
+		b, ok := b.(TUnion)
+		return ok && slices.EqualFunc(a.Members, b.Members, typeEq)
 	}
 	return false
 }
@@ -221,7 +243,11 @@ func subst(t Type, env map[string]Type) Type {
 		}
 		return TClass{C: t.C, Args: args}
 	case TOpt:
-		return TOpt{Elem: subst(t.Elem, env)}
+		e := subst(t.Elem, env)
+		if _, ok := e.(TUnion); ok {
+			return unionOf(e, TNil{}) // E? with E = A | B is A | B | nil, never a box around an any
+		}
+		return TOpt{Elem: e}
 	case TTuple:
 		elems := make([]Type, len(t.Elems))
 		for i, e := range t.Elems {
@@ -234,6 +260,12 @@ func subst(t Type, env map[string]Type) Type {
 			ps[i] = subst(p, env)
 		}
 		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc}
+	case TUnion:
+		ms := make([]Type, len(t.Members))
+		for i, m := range t.Members {
+			ms[i] = subst(m, env)
+		}
+		return unionOf(ms...)
 	case TAny, TNil, TVoid: // no type variables inside
 	}
 	return t
@@ -279,6 +311,23 @@ func unify(pattern, actual Type, env map[string]Type) bool {
 			return false
 		}
 		return unify(p.Ret, a.Ret, env)
+	case TUnion:
+		// the first member actual unifies with binds its variables; a
+		// member-for-member match of two unions binds nothing new
+		if _, ok := actual.(TUnion); ok {
+			return true
+		}
+		for _, m := range p.Members {
+			try := maps.Clone(env)
+			if try == nil {
+				try = map[string]Type{}
+			}
+			if unify(m, actual, try) {
+				maps.Copy(env, try)
+				return true
+			}
+		}
+		return true
 	case TAny, TNil, TVoid: // match anything at this level; Go decides the rest
 	}
 	return true
@@ -332,6 +381,10 @@ func freeVars(t Type, out *[]string) {
 			freeVars(p, out)
 		}
 		freeVars(t.Ret, out)
+	case TUnion:
+		for _, m := range t.Members {
+			freeVars(m, out)
+		}
 	case TAny, TNil, TVoid: // no type variables inside
 	}
 }
@@ -395,6 +448,13 @@ func join(a, b Type) (Type, bool) {
 // class-vs-class mismatches are rejected; type variables, untyped and
 // shapes the codegen converts (tuples, blocks) are left to the caller.
 func fits(t, to Type) bool {
+	if tu, ok := t.(TUnion); ok {
+		switch to.(type) {
+		case TAny, TVar, TUnion:
+		case TClass, TFunc, TNil, TOpt, TTuple, TVoid:
+			return !slices.ContainsFunc(tu.Members, func(m Type) bool { return !memberFits(m, to) }) // every member, or a narrowing is needed
+		}
+	}
 	switch to := to.(type) {
 	case TClass:
 		c, ok := t.(TClass)
@@ -424,7 +484,132 @@ func fits(t, to Type) bool {
 				return false
 			}
 		}
+	case TUnion:
+		switch t := t.(type) {
+		case TUnion:
+			return !slices.ContainsFunc(t.Members, func(m Type) bool { return !fits(m, to) })
+		case TOpt:
+			return fits(TNil{}, to) && fits(t.Elem, to)
+		case TAny, TClass, TFunc, TNil, TTuple, TVar, TVoid:
+		}
+		return slices.ContainsFunc(to.Members, func(m Type) bool { return memberFits(t, m) })
 	case TAny, TFunc, TNil, TVar, TVoid: // not a class-vs-class check: left to the caller (doc above)
 	}
 	return true
+}
+
+// memberFits is fits for one side of a union, where the lenient answers
+// fits gives across kinds (a class where a tuple is expected) would pick
+// the wrong member: the kinds must agree.
+func memberFits(t, m Type) bool {
+	switch m := m.(type) {
+	case TNil:
+		return isNil(t)
+	case TOpt:
+		return isNil(t) || memberFits(stripOpt(t), m.Elem)
+	case TClass:
+		if m.C.universal {
+			return true
+		}
+		_, ok := t.(TClass)
+		return ok && fits(t, m)
+	case TTuple:
+		_, ok := t.(TTuple)
+		return ok && fits(t, m)
+	case TFunc:
+		_, ok := t.(TFunc)
+		return ok
+	case TAny, TVar:
+		return true
+	case TUnion:
+		return fits(t, m)
+	case TVoid:
+	}
+	return false
+}
+
+// unionOf is the union of ts, normalized (decision 150): unions and T?
+// flatten into members, untyped absorbs everything, Object every class,
+// a subclass its superclass (and an includer its module), duplicates
+// merge, and one member left is that member (or its T?). nil is a member
+// of a union with two or more others, kept last.
+func unionOf(ts ...Type) Type {
+	var ms []Type
+	hasNil, universal := false, Type(nil)
+	var add func(t Type) bool
+	add = func(t Type) bool {
+		switch t := t.(type) {
+		case TAny:
+			return false
+		case TNil, TVoid:
+			hasNil = true
+		case TOpt:
+			hasNil = true
+			return add(t.Elem)
+		case TUnion:
+			for _, m := range t.Members {
+				if !add(m) {
+					return false
+				}
+			}
+		case TClass:
+			if t.C.universal {
+				universal = t
+			}
+			ms = append(ms, t)
+		case TFunc, TTuple, TVar:
+			ms = append(ms, t)
+		}
+		return true
+	}
+	for _, t := range ts {
+		if !add(t) {
+			return TAny{}
+		}
+	}
+	if universal != nil {
+		ms = []Type{universal}
+	}
+	var out []Type
+	for i, m := range ms {
+		drop := false
+		for j, o := range ms {
+			if i == j {
+				continue
+			}
+			if typeEq(m, o) {
+				drop = j < i // keep the first of equal members
+			} else {
+				drop = absorbs(o, m)
+			}
+			if drop {
+				break
+			}
+		}
+		if !drop {
+			out = append(out, m)
+		}
+	}
+	slices.SortFunc(out, func(a, b Type) int { return strings.Compare(a.String(), b.String()) })
+	switch len(out) {
+	case 0:
+		return TNil{}
+	case 1:
+		if hasNil {
+			return optOf(out[0])
+		}
+		return out[0]
+	}
+	if hasNil {
+		out = append(out, TNil{})
+	}
+	return TUnion{Members: out}
+}
+
+// absorbs reports whether member o makes member m redundant: m's class is
+// a strict subclass (or includer) of o's, and neither takes type args.
+func absorbs(o, m Type) bool {
+	oc, ok1 := o.(TClass)
+	mc, ok2 := m.(TClass)
+	return ok1 && ok2 && len(oc.Args) == 0 && len(mc.Args) == 0 && oc.C != mc.C && mc.C.isSubclassOf(oc.C)
 }

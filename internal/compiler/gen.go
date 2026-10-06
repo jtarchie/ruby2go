@@ -593,10 +593,11 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
+	elseNarrow := f.elseNarrowing(pred)
 	cond, narrow := f.genCond(pred)
 	if negate {
 		cond = "!(" + cond + ")"
-		narrow = nil
+		narrow, elseNarrow = elseNarrow, narrow
 	}
 	f.emit("if %s {", cond)
 	saved := f.enterBlock()
@@ -620,6 +621,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		f.emit("} else {")
 		saved := f.enterBlock()
 		f.indent++
+		f.applyNarrow(elseNarrow)
 		f.genStmts(e.Statements, t)
 		f.indent--
 		f.leaveBlock(saved)
@@ -628,6 +630,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		f.emit("} else {")
 		saved := f.enterBlock()
 		f.indent++
+		f.applyNarrow(elseNarrow)
 		f.genIf(e, e.Predicate, e.Statements, e.Subsequent, false, t)
 		f.indent--
 		f.leaveBlock(saved)
@@ -685,7 +688,7 @@ func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
 		}
 		call, ok := s.Predicate.(*parser.CallNode)
 		if !ok || call.Arguments != nil || (call.Name != "nil?" && call.Name != "!") {
-			return nil
+			return f.elseNarrowing(s.Predicate) // `return x.size if x.is_a?(String)`: the rest has the other members
 		}
 		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
 			if v := f.scope.lookup(lv.Name); v != nil && isOpt(v.typ) {
@@ -699,6 +702,97 @@ func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
 		}
 	}
 	return ns
+}
+
+// narrowUnion narrows a union-typed local to the members keep holds
+// (decision 150). The narrowed view stays the local's any while it is a
+// union, asserts the Go type when one class is left, and opens a T? box
+// when one class and nil are. False when nothing is ruled out, or nothing
+// (or only nil) is left.
+func (f *fctx) narrowUnion(v *local, keep func(Type) bool) (narrowInfo, bool) {
+	if v == nil {
+		return narrowInfo{}, false
+	}
+	u, ok := v.typ.(TUnion)
+	if !ok {
+		return narrowInfo{}, false
+	}
+	var rest []Type
+	for _, m := range u.Members {
+		if keep(m) {
+			rest = append(rest, m)
+		}
+	}
+	if len(rest) == len(u.Members) || len(rest) == 0 {
+		return narrowInfo{}, false
+	}
+	to := unionOf(rest...)
+	switch to := to.(type) {
+	case TUnion:
+		return narrowInfo{local: v, typ: to, code: v.goName}, true
+	case TNil:
+		return narrowInfo{}, false
+	case TOpt:
+		return narrowInfo{local: v, typ: to, code: fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), v.goName, to.Elem.String())}, true
+	case TAny, TClass, TFunc, TTuple, TVar, TVoid:
+	}
+	return narrowInfo{local: v, typ: to, code: v.goName + ".(" + f.c.goType(to) + ")"}, true
+}
+
+// elseNarrowing is what a condition's being false proves about union-typed
+// locals (decision 150): `x.is_a?(C)` false drops the members that are a C,
+// `x.nil?` false drops nil, a falsy `x` leaves nil (and false), `!c` false
+// is c true, and `a || b` false is both false.
+func (f *fctx) elseNarrowing(n parser.Node) []narrowInfo {
+	localOf := func(r parser.Node) *local {
+		if lv, ok := r.(*parser.LocalVariableReadNode); ok {
+			return f.scope.lookup(lv.Name)
+		}
+		if r == nil {
+			return nil
+		}
+		return f.attrLocal(r)
+	}
+	one := func(v *local, keep func(Type) bool) []narrowInfo {
+		if v == nil {
+			return nil
+		}
+		if nw, ok := f.narrowUnion(v, keep); ok {
+			return []narrowInfo{nw}
+		}
+		return nil
+	}
+	switch n := n.(type) {
+	case *parser.ParenthesesNode:
+		if st, ok := n.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
+			return f.elseNarrowing(st.Body[0])
+		}
+	case *parser.OrNode:
+		left := f.elseNarrowing(n.Left)
+		f.push()
+		f.applyNarrow(left)
+		right := f.elseNarrowing(n.Right) // from the types the left side's falsity left
+		f.pop()
+		return append(left, right...)
+	case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode:
+		return one(localOf(n), func(m Type) bool { return isNil(m) || isClass(m, "Boolean") })
+	case *parser.CallNode:
+		switch {
+		case n.Name == "!" && n.Arguments == nil && n.Receiver != nil:
+			var nw []narrowInfo
+			f.probe(func() { _, nw = f.genCond(n.Receiver) })
+			return nw
+		case n.Name == "nil?" && n.Arguments == nil:
+			return one(localOf(n.Receiver), func(m Type) bool { return !isNil(m) })
+		case isIsA(n) && n.Name != "instance_of?":
+			cls := f.classRef(n.Arguments.Arguments[0])
+			if cls == nil {
+				return nil
+			}
+			return one(localOf(n.Receiver), func(m Type) bool { mc := classOf(m); return mc == nil || !mc.isSubclassOf(cls) })
+		}
+	}
+	return nil
 }
 
 // genCond renders a Ruby truthiness test as a Go bool expression.
@@ -751,6 +845,9 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
 			return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 		}
+		if nw, ok := f.narrowUnion(v, func(m Type) bool { return !isNil(m) }); ok {
+			return f.truthy(n, expr{code: v.goName, typ: v.typ}), []narrowInfo{nw}
+		}
 	case *parser.MatchPredicateNode:
 		return f.condMatchPredicate(n)
 	case *parser.LocalVariableWriteNode:
@@ -769,6 +866,11 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 	if v := f.attrLocal(n); v != nil && v.base == nil && isOpt(v.typ) && !isAny(v.typ.(TOpt).Elem) {
 		return optTruthy(v.goName, v.typ), []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 	}
+	if v := f.attrLocal(n); v != nil {
+		if nw, ok := f.narrowUnion(v, func(m Type) bool { return !isNil(m) }); ok {
+			return f.truthy(n, expr{code: v.goName, typ: v.typ}), []narrowInfo{nw}
+		}
+	}
 	e := f.genExpr(n, nil)
 	return f.truthy(n, e), nil
 }
@@ -781,8 +883,9 @@ func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
 		return c, nw, true
 	}
 	if n.Name == "!" && n.Arguments == nil && n.Receiver != nil {
+		nw := f.elseNarrowing(n.Receiver)
 		c, _ := f.genCond(n.Receiver)
-		return "!(" + c + ")", nil, true
+		return "!(" + c + ")", nw, true
 	}
 	if n.Name == "nil?" && n.Arguments == nil && n.Receiver != nil {
 		e := f.genExpr(n.Receiver, nil)
@@ -810,7 +913,7 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		return optTruthy(e.code, e.typ)
 	case isNil(e.typ):
 		return "false"
-	case isAny(e.typ):
+	case isAny(e.typ), unionFalsy(e.typ):
 		return "rbTruthy(" + e.code + ")"
 	case isOpt(e.typ) && isAny(e.typ.(TOpt).Elem):
 		return "rbTruthy(Opt(" + e.code + "))"
@@ -1172,6 +1275,8 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	var subjLocal *local
 	if lv, ok := n.Predicate.(*parser.LocalVariableReadNode); ok {
 		subjLocal = f.scope.lookup(lv.Name)
+	} else {
+		subjLocal = f.attrLocal(n.Predicate) // an ivar or attribute reader narrows like a local (decision 148)
 	}
 	code := f.coerce(n.Predicate, subj, TAny{})
 	// a Go type switch needs an interface operand: box a @go_type value (Integer, String)
@@ -1189,6 +1294,11 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.emit("switch %s := %s.(type) {", name, code)
 	f.switches++
 	hasNil := false
+	u, isUnion := subj.typ.(TUnion)
+	var remaining []Type // a union subject's members no arm has taken yet (decision 150)
+	if isUnion {
+		remaining = slices.Clone(u.Members)
+	}
 	listed := map[string]bool{} // an earlier arm already takes these Go types: Go rejects a repeat, and Ruby's first match wins anyway
 	var numArm *parser.WhenNode // `when Numeric` asks the ancestry table in default: a case naming all five classes would keep BigDecimal and Complex in every program
 	for _, w := range n.Conditions {
@@ -1203,25 +1313,9 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 			}
 			continue
 		}
-		var cases []string
-		var armType Type = TAny{}
-		convert := ""
-		for _, cond := range wn.Conditions {
-			switch c := cond.(type) {
-			case *parser.NilNode:
-				cases = append(cases, "nil")
-				armType = TNil{}
-				hasNil = true
-			case *parser.ConstantReadNode, *parser.ConstantPathNode:
-				cls := f.classRef(c)
-				if cls.IsModule && (!f.c.isNumericMod(cls) || !f.numericAtRunTime(subj.typ)) && f.moduleIsA(c, subj.typ, cls) == "false" {
-					continue
-				}
-				var goTypes []string
-				goTypes, armType, convert = f.whenClass(cls)
-				cases = append(cases, goTypes...)
-			}
-		}
+		arm := f.typeCaseArm(wn, subj.typ, isUnion, &remaining)
+		hasNil = hasNil || arm.hasNil
+		cases, armType, convert := arm.cases, arm.typ, arm.convert
 		cases = slices.DeleteFunc(cases, func(c string) bool { return listed[c] })
 		if len(cases) == 0 {
 			continue // only modules the subject statically lacks, or classes an earlier arm takes: never matches
@@ -1240,7 +1334,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		if convert != "" {
 			armName, view = name+convert, name // converted where read, like is_a? narrowing
 		}
-		if subjLocal != nil && len(wn.Conditions) == 1 {
+		if subjLocal != nil && (len(wn.Conditions) == 1 || arm.exact) {
 			f.applyNarrow([]narrowInfo{{local: subjLocal, typ: armType, code: armName, view: view}})
 		}
 		f.genStmts(wn.Statements, t)
@@ -1251,11 +1345,92 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	saved := f.enterBlock()
 	f.indent++
 	f.emit("_ = %s", name)
-	f.genCaseDefault(n, t, subj.typ, subjLocal, hasNil, numArm, numSubj)
+	if isUnion && len(remaining) == 0 && n.ElseClause == nil {
+		// exhaustive: every member has its arm, so the case never falls through to nil (decision 150)
+		f.emit("panic(\"rb2go: no union member matched\")")
+	} else {
+		if isUnion && subjLocal != nil {
+			f.applyNarrow(f.remainingNarrow(subjLocal, remaining)) // else holds the members no arm took
+		}
+		f.genCaseDefault(n, t, subj.typ, subjLocal, hasNil, numArm, numSubj)
+	}
 	f.indent--
 	f.leaveBlock(saved)
 	f.switches--
 	f.emit("}")
+}
+
+// whenArm is one `when` of a type switch: its Go cases, the subject's type
+// there and how it reads as that type.
+type whenArm struct {
+	cases   []string
+	typ     Type
+	convert string
+	exact   bool // a union subject's arm, holding exactly the members it took (decision 150)
+	hasNil  bool
+}
+
+// typeCaseArm builds a `when` arm. On a union subject a class takes the
+// members that are one, by their own Go types, so the arm is typed as
+// those members and they leave *remaining; a class narrower than a member
+// is tested as for any subject.
+func (f *fctx) typeCaseArm(wn *parser.WhenNode, subjT Type, isUnion bool, remaining *[]Type) whenArm {
+	arm := whenArm{typ: TAny{}, exact: isUnion}
+	var took []Type
+	for _, cond := range wn.Conditions {
+		switch c := cond.(type) {
+		case *parser.NilNode:
+			arm.cases = append(arm.cases, "nil")
+			arm.typ, arm.hasNil = TNil{}, true
+			if isUnion {
+				took = append(took, takeMembers(remaining, isNil)...)
+			}
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			cls := f.classRef(c)
+			if isUnion {
+				if ms := takeMembers(remaining, func(m Type) bool { mc := classOf(m); return mc != nil && mc.isSubclassOf(cls) }); len(ms) > 0 {
+					for _, m := range ms {
+						arm.cases = append(arm.cases, f.c.goType(m))
+					}
+					took = append(took, ms...)
+					continue
+				}
+				arm.exact = false
+			}
+			if cls.IsModule && (!f.c.isNumericMod(cls) || !f.numericAtRunTime(subjT)) && f.moduleIsA(c, subjT, cls) == "false" {
+				continue
+			}
+			var goTypes []string
+			goTypes, arm.typ, arm.convert = f.whenClass(cls)
+			arm.cases = append(arm.cases, goTypes...)
+		}
+	}
+	arm.exact = arm.exact && len(took) > 0
+	if arm.exact {
+		arm.typ, arm.convert = unionOf(took...), ""
+	}
+	return arm
+}
+
+// takeMembers removes from *remaining the members mine holds for and returns them.
+func takeMembers(remaining *[]Type, mine func(Type) bool) []Type {
+	var took []Type
+	for _, m := range *remaining {
+		if mine(m) {
+			took = append(took, m)
+		}
+	}
+	*remaining = slices.DeleteFunc(*remaining, mine)
+	return took
+}
+
+// remainingNarrow narrows a union case subject to the members no arm took.
+func (f *fctx) remainingNarrow(v *local, remaining []Type) []narrowInfo {
+	nw, ok := f.narrowUnion(v, func(m Type) bool { return slices.ContainsFunc(remaining, func(r Type) bool { return typeEq(r, m) }) })
+	if !ok {
+		return nil
+	}
+	return []narrowInfo{nw}
 }
 
 // genCaseDefault is a type switch's default arm: the `when Numeric` arm, asked of the ancestry table, then else.
@@ -1294,6 +1469,9 @@ func (f *fctx) genCaseDefault(n *parser.CaseNode, t tail, subjT Type, subjLocal 
 func (f *fctx) numericWhen(wn *parser.WhenNode, subj Type) *Class {
 	if len(wn.Conditions) != 1 {
 		return nil
+	}
+	if _, ok := subj.(TUnion); ok {
+		return nil // a union's Numeric members are taken by their Go types (decision 150)
 	}
 	if cls := f.classRef(wn.Conditions[0]); f.c.isNumericMod(cls) && f.numericAtRunTime(subj) {
 		return cls

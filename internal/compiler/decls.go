@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"hash/fnv"
 	"maps"
 	"regexp"
 	"slices"
@@ -68,7 +69,7 @@ func (c *Compiler) goType(t Type) string {
 			return "*" + s
 		}
 		return s
-	case TAny, TNil:
+	case TAny, TNil, TUnion: // a union is an any whose classes the compiler knows (decision 150)
 		return "any"
 	case TVoid:
 		return ""
@@ -353,6 +354,7 @@ func (c *Compiler) emitTables() {
 	c.emitClassOf()
 	c.emitTuples()
 	c.emitBoxes()
+	c.emitUnions()
 	c.emitClassMeta()
 	// last: every body, main included, has registered its literals by now
 	for _, r := range c.regexps {
@@ -716,6 +718,8 @@ func (c *Compiler) emitIvarList(cls *Class) {
 			if t.C.isStruct() || t.C.mutable() { // an interface or a pointer
 				isNilCode = field + " == nil"
 			}
+		case TUnion: // an any, like untyped
+			opt = true
 		case TAny, TNil, TTuple, TVoid: // held by value: never a nil pointer of its own
 		}
 		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
@@ -1123,6 +1127,58 @@ func (c *Compiler) emitTuples() {
 	}
 }
 
+// unionFn names the generated helpers for union u (decision 150): a hash of
+// its members, so the name does not depend on what the program compiled first.
+func (c *Compiler) unionFn(u TUnion) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(u.String())) // a hash.Hash never fails
+	name := fmt.Sprintf("rbUnion_%08x", h.Sum32())
+	c.unions[name] = u
+	return name
+}
+
+// emitUnions emits, per union the program converts into or out of:
+// rbUnion_<hash>(a) checks an untyped value is one of the members (MRI's
+// TypeError otherwise), converting an Array or Hash of another
+// instantiation as rbAs does; rbUnion_<hash>Out(a) shows a tuple member to
+// untyped code as the Array it is (decision 22).
+func (c *Compiler) emitUnions() {
+	for _, name := range slices.Sorted(maps.Keys(c.unions)) {
+		u := c.unions[name]
+		exact := make([]string, 0, len(u.Members))
+		var conv, tuples []string
+		for _, m := range u.Members {
+			g := "nil"
+			if !isNil(m) {
+				g = c.goType(m)
+			}
+			exact = append(exact, g)
+			switch m := m.(type) {
+			case TTuple:
+				conv = append(conv, g)
+				tuples = append(tuples, g)
+			case TClass:
+				if len(m.Args) > 0 {
+					conv = append(conv, g)
+				}
+			case TAny, TFunc, TNil, TOpt, TUnion, TVar, TVoid: // matched exactly or not at all
+			}
+		}
+		c.w("func %s(a any) any {\n\tswitch a.(type) {\n\tcase %s:\n\t\treturn a\n\t}\n", name, strings.Join(exact, ", "))
+		for _, g := range conv {
+			c.w("\tif v, ok := rbConv[%s](a); ok {\n\t\treturn v\n\t}\n", g)
+		}
+		c.w("\tpanic(rbConvError(a, %q))\n}\n\n", u.String())
+		if len(tuples) > 0 {
+			c.w("func %sOut(a any) any {\n\tswitch v := a.(type) {\n", name)
+			for _, g := range tuples {
+				c.w("\tcase %s:\n\t\treturn v._ToAny()\n", g)
+			}
+			c.w("\t}\n\treturn a\n}\n\n")
+		}
+	}
+}
+
 // emitBoxes emits the helpers that open a T? box (*T) seen as `any`: generic
 // code holding E = T? hands the box itself to rbInspect, rbEq, rbCmp...,
 // where a nil *T is not a nil interface and a non-nil one has the wrong
@@ -1510,7 +1566,7 @@ func (c *Compiler) noteArgBoxes(args []Type) {
 			continue
 		}
 		switch a.(type) {
-		case TFunc, TAny, TVoid:
+		case TFunc, TAny, TVoid, TUnion: // a union is any: E? of it is a member set, not a box (decision 150)
 			continue
 		case TClass, TNil, TOpt, TTuple, TVar: // a concrete argument type: boxed below (nil is skipped there)
 		}

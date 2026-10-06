@@ -1,0 +1,50 @@
+Union types (decision 150): what the compiler rejects or warns about.
+-- member_lacks_method.rb --
+# error: main.rb:3: undefined method upcase for Integer (a member of Integer | String)
+#: (Integer | String) -> Integer
+def f(x) = x.upcase.size
+puts f(1)
+-- union_where_member_expected.rb --
+# error: main.rb:5: Integer | String where Integer is expected; narrow it first
+#: (Integer) -> Integer
+def g(n) = n
+#: (Integer | String) -> Integer
+def h(x) = g(x)
+puts h(1)
+-- non_member_argument.rb --
+# error: main.rb:4: Float where Integer | String is expected
+#: (Integer | String) -> String
+def k(x) = x.to_s
+puts k(1.5)
+-- module_member.rb --
+# error: main.rb:3: a union member must be a class, not the module Comparable
+#: (Comparable | String) -> String
+def m(x) = x.to_s
+puts m("a")
+-- type_variable_member.rb --
+# error: a union member must be a class, tuple, proc or nil, not T
+#: [T] (T | String) -> String
+def tv(x) = x.to_s
+puts tv(1)
+-- case_not_exhaustive.rb --
+# error: main.rb:4: nil where Integer is expected
+#: (Integer | String) -> Integer
+def w(x)
+  case x
+  when Integer then x
+  end
+end
+puts w(1)
+-- narrowed_away.rb --
+# error: main.rb:5: undefined method upcase for Integer
+#: (Integer | String) -> String
+def nw(x)
+  return "s" if x.is_a?(String)
+  x.upcase
+end
+puts nw(1)
+-- nil_member_call.rb --
+# warning: main.rb:3: size called on Integer | String | nil, which may be nil (raises NoMethodError on nil)
+#: (Integer | String | nil) -> Integer
+def s(x) = x.size
+puts s(1)

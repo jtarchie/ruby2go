@@ -313,6 +313,12 @@ func (c *Compiler) rehome(t Type) Type {
 		}
 		t.Params, t.Ret = ps, c.rehome(t.Ret)
 		return t
+	case TUnion:
+		ms := make([]Type, len(t.Members))
+		for i, m := range t.Members {
+			ms[i] = c.rehome(m)
+		}
+		return unionOf(ms...)
 	case TAny, TNil, TVar, TVoid: // no classes inside
 	}
 	return t

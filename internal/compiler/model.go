@@ -1724,7 +1724,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	case rbs.Untyped:
 		return TAny{}
 	case rbs.Union:
-		c.errorf(sc.file, nil, "%s:%d: union types are not supported: %s", sc.file.Name, sc.line, t)
+		return c.resolveUnion(t, sc)
 	case rbs.Proc:
 		ps := make([]Type, len(t.Params))
 		for i, p := range t.Params {
@@ -1734,6 +1734,25 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	}
 	c.errorf(sc.file, nil, "%s:%d: unsupported type %s", sc.file.Name, sc.line, t)
 	return nil
+}
+
+// resolveUnion resolves `A | B` (decision 150). Members are what a Go type
+// switch can test: classes, tuples, procs and nil.
+func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
+	ms := make([]Type, len(t.Elems))
+	for i, e := range t.Elems {
+		ms[i] = c.resolveType(e, sc)
+		switch m := stripOpt(ms[i]).(type) {
+		case TVar, TVoid:
+			c.errorf(sc.file, nil, "%s:%d: a union member must be a class, tuple, proc or nil, not %s: %s", sc.file.Name, sc.line, m, t)
+		case TClass:
+			if m.C.IsModule && !m.C.universal { // ponytail: a module member needs an includer check in the type switch; use the module type or untyped until then
+				c.errorf(sc.file, nil, "%s:%d: a union member must be a class, not the module %s: %s", sc.file.Name, sc.line, m, t)
+			}
+		case TAny, TFunc, TNil, TOpt, TTuple, TUnion:
+		}
+	}
+	return unionOf(ms...)
 }
 
 // nameCmpNil gives a `<=>` returning Integer? the Go name cmpNil: Op_cmp is
