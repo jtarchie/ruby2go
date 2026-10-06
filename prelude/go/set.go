@@ -39,8 +39,8 @@ func rbEnumElems(xs any) (*Array[any], bool) {
 		return Set_ToA(v._ToAny()), true
 	case interface{ _ToAny() *Hash[any, any] }:
 		out := &Array[any]{}
-		for _, t := range *v._ToAny().ToA() { // Enumerable's forwarder
-			*out = append(*out, t)
+		for _, t := range v._ToAny().ToA().s { // Enumerable's forwarder
+			out.s = append(out.s, t)
 		}
 		return out, true
 	}

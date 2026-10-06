@@ -188,18 +188,18 @@ class String < Object
 
   #: () -> Array[Integer]
   def bytes = %x{
-    out := make(Array[Integer], len(self))
+    out := &Array[Integer]{s: make([]Integer, len(self))}
     for i := range len(self) {
-      out[i] = Integer(self[i])
+      out.s[i] = Integer(self[i])
     }
-    return &out
+    return out
   }
 
   #: () -> Array[String]
   def chars = %x{
     out := &Array[String]{}
     for _, r := range string(self) {
-      *out = append(*out, String(r))
+      out.s = append(out.s, String(r))
     }
     return out
   }
@@ -231,7 +231,7 @@ class String < Object
     out := &Array[String]{}
     for _, l := range strings.SplitAfter(string(self), "\\n") {
       if l != "" {
-        *out = append(*out, rbNewStr(self, String(l)))
+        out.s = append(out.s, rbNewStr(self, String(l)))
       }
     }
     return out
@@ -245,7 +245,7 @@ class String < Object
     if sep == nil || *sep == " " {
       isSpace := func(r rune) bool { return r == ' ' || r >= '\\t' && r <= '\\r' }
       for _, f := range strings.FieldsFunc(string(self), isSpace) {
-        *out = append(*out, rbNewStr(self, String(f)))
+        out.s = append(out.s, rbNewStr(self, String(f)))
       }
       return out
     }
@@ -254,7 +254,7 @@ class String < Object
       parts = parts[:len(parts)-1]
     }
     for _, p := range parts {
-      *out = append(*out, rbNewStr(self, String(p)))
+      out.s = append(out.s, rbNewStr(self, String(p)))
     }
     return out
   }
@@ -323,7 +323,7 @@ class String < Object
   #: (untyped) -> String
   def %(arg) = %x{
     if a, ok := rbUnbox(arg).(Array_Any); ok {
-      return String(rbFormat(string(self), *a._ToAny()))
+      return String(rbFormat(string(self), a._ToAny().s))
     }
     return String(rbFormat(string(self), []any{arg}))
   }
@@ -431,7 +431,7 @@ class String < Object
   def __split_2(sep, limit) = %x{
     out := &Array[String]{}
     for _, p := range rbSplitLimit(string(self), sep, int(limit)) {
-      *out = append(*out, String(p))
+      out.s = append(out.s, String(p))
     }
     return out
   }
@@ -585,7 +585,7 @@ class String < Object
   def codepoints = %x{
     out := &Array[Integer]{}
     for _, r := range string(self) {
-      *out = append(*out, Integer(r))
+      out.s = append(out.s, Integer(r))
     }
     return out
   }
@@ -670,7 +670,7 @@ class String < Object
 
   #: (String) -> untyped
   def unpack1(format) = %x{
-    if out := *rbUnpack(string(self), string(format)); len(out) > 0 {
+    if out := rbUnpack(string(self), string(format)).s; len(out) > 0 {
       return out[0]
     }
     return nil

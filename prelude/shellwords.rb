@@ -8,7 +8,7 @@ module Shellwords
   def self.shellsplit(line) = %x{
     out := &Array[String]{}
     for _, w := range rbShellSplit(string(line)) {
-      *out = append(*out, String(w))
+      out.s = append(out.s, String(w))
     }
     return out
   }

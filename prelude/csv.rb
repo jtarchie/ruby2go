@@ -21,8 +21,8 @@ class CSV < Object
     out := &Array[*Array[*String]]{}
     for _, r := range rows {
       row := &Array[*String]{}
-      *row = append(*row, r...)
-      *out = append(*out, row)
+      row.s = append(row.s, r...)
+      out.s = append(out.s, row)
     }
     return out
   }
@@ -277,7 +277,7 @@ class CSV < Object
 
   #: (Array[untyped], ?Hash[Symbol, untyped]) -> String
   def self.generate_line(row, opts = {}) = %x{
-    return String(rbCSVLine(*row, rbCSVStrOpt(opts, "col_sep", ","), rbCSVStrOpt(opts, "quote_char", "\\""), rbCSVStrOpt(opts, "row_sep", "\\n"), rbCSVBoolOpt(opts, "force_quotes")))
+    return String(rbCSVLine(row.s, rbCSVStrOpt(opts, "col_sep", ","), rbCSVStrOpt(opts, "quote_char", "\\""), rbCSVStrOpt(opts, "row_sep", "\\n"), rbCSVBoolOpt(opts, "force_quotes")))
   }
 
   #: (?Hash[Symbol, untyped]) { (CSV) -> void } -> String
@@ -321,7 +321,7 @@ class CSV < Object
 
   #: (Array[untyped]) -> CSV
   def <<(row) = %x{
-    line := rbCSVLine(*row, self.sep, self.quote, self.rowSep, self.force)
+    line := rbCSVLine(row.s, self.sep, self.quote, self.rowSep, self.force)
     if self.file != nil {
       if self.file.w == nil {
         panic(NewIOError(Ref[String]("not opened for writing")))

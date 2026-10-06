@@ -143,7 +143,7 @@ func rbDig(v any, keys []any) any {
 			if !ok {
 				panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(k) + " into Integer"))))
 			}
-			a := *x._ToAny()
+			a := x._ToAny().s
 			if i < 0 {
 				i += Integer(len(a))
 			}
@@ -201,4 +201,14 @@ func rbKwRestWithout[V comparable](h *Hash[Symbol, V], names ...string) *Hash[Sy
 		}
 	}
 	return out
+}
+
+func (self *Hash[K, V]) rbFrozen() bool { return self.frozen }
+func (self *Hash[K, V]) rbSetFrozen()   { self.frozen = true }
+
+// rbCheckFrozen is every mutator's FrozenError check: one field load, inlined.
+func (self *Hash[K, V]) rbCheckFrozen() {
+	if self.frozen {
+		rbFrozenErr(self)
+	}
 }

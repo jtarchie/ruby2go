@@ -55,7 +55,7 @@ module Observable
 
   #: (untyped, Symbol, Array[untyped]) -> void
   def __observable_send(observer, fn, args) = %x{
-    rbSendByName(observer, string(fn), rbFCall, (*args)...)
+    rbSendByName(observer, string(fn), rbFCall, args.s...)
     return
   }
 end

@@ -244,7 +244,7 @@ func (q *rbPrettyPrint) pp(v any) {
 func (q *rbPrettyPrint) ppCycle(v any) {
 	switch x := v.(type) {
 	case Array_Any:
-		q.text(map[bool]string{true: "[]", false: "[...]"}[len(*x._ToAny()) == 0])
+		q.text(map[bool]string{true: "[]", false: "[...]"}[len(x._ToAny().s) == 0])
 	case Hash_Any:
 		q.text(map[bool]string{true: "{}", false: "{...}"}[len(x._ToAny().keys) == 0])
 	case Set_Any:
@@ -279,7 +279,7 @@ func (q *rbPrettyPrint) prettyPrint(v any) {
 	case String:
 		q.ppString(string(x))
 	case Array_Any:
-		a := *x._ToAny()
+		a := x._ToAny().s
 		q.group(1, "[", "]", func() {
 			q.seplist(len(a), nil, func(i int) { q.pp(a[i]) })
 		})
@@ -359,7 +359,7 @@ func (q *rbPrettyPrint) ppHash(h *Hash[any, any]) {
 
 // ppValueClass is Struct#pretty_print / Data#pretty_print.
 func (q *rbPrettyPrint) ppValueClass(v any, x rbPPValueClass) {
-	members, values := *x.Members(), *x.__PpValues()
+	members, values := x.Members().s, x.__PpValues().s
 	q.group(1, "#<"+string(x.__PpKind())+" "+rbClassName(v), ">", func() {
 		q.seplist(len(members), func() { q.text(",") }, func(i int) {
 			q.breakable(" ")

@@ -604,7 +604,7 @@ func rbSockIPAddressList() *Array[*Addrinfo] {
 					ip = ip.WithZone(ifc.Name)
 				}
 			}
-			*out = append(*out, &Addrinfo{fam: fam, ip: ip})
+			out.s = append(out.s, &Addrinfo{fam: fam, ip: ip})
 		}
 	}
 	return out

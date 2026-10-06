@@ -19,11 +19,11 @@ func rbHTTPHeaderHash(h http.Header) *Hash[String, String] {
 func rbHTTPHeaderFields(h http.Header) *Hash[String, *Array[String]] {
 	out := NewHash[String, *Array[String]]()
 	for _, k := range slices.Sorted(maps.Keys(h)) {
-		vals := make(Array[String], 0, len(h[k]))
+		vals := &Array[String]{s: make([]String, 0, len(h[k]))}
 		for _, v := range h[k] {
-			vals = append(vals, String(v))
+			vals.s = append(vals.s, String(v))
 		}
-		Hash_Op_idxSet(out, String(rbHTTPCanonKey(k)), &vals)
+		Hash_Op_idxSet(out, String(rbHTTPCanonKey(k)), vals)
 	}
 	return out
 }

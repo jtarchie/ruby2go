@@ -298,7 +298,7 @@ module Minitest
       out := &Array[Minitest_Runnable_MetaI]{}
       for _, k := range rbDescendants(Minitest_Runnable_class) {
         if k != any(Minitest_Result_class) {
-          *out = append(*out, k.(Minitest_Runnable_MetaI))
+          out.s = append(out.s, k.(Minitest_Runnable_MetaI))
         }
       }
       return out
@@ -1156,7 +1156,7 @@ module Minitest
     end
 
     #: (untyped, String, Array[untyped]) -> untyped
-    def __mt_call(recv, name, args) = %x{ return rbMtCall(recv, string(name), *args...) }
+    def __mt_call(recv, name, args) = %x{ return rbMtCall(recv, string(name), args.s...) }
 
     # port: to_s, `===` and class names on untyped operands go through Go helpers (rbToS, rbIsInstanceOf, the class-name table): a dynamic call keeps a wrapper on every class in the program.
     #: (untyped) -> String

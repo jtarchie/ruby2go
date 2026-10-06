@@ -173,7 +173,7 @@ class StringScanner < Object
       return nil
     }
     out := &Array[*String]{}
-    *out = append(*out, self.groups[1:]...)
+    out.s = append(out.s, self.groups[1:]...)
     return &out
   }
 

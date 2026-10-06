@@ -614,8 +614,7 @@ end
 class Addrinfo < Object
   #: (String, untyped, untyped, untyped, String) -> Array[Addrinfo]
   def self.__lookup(host, service, family, socktype, label) = %x{
-    a := Array[*Addrinfo](rbSockGetaddrinfo(string(host), service, family, socktype, string(label)))
-    return &a
+    return &Array[*Addrinfo]{s: rbSockGetaddrinfo(string(host), service, family, socktype, string(label))}
   }
 
   #: (String, ?untyped, ?untyped, ?untyped) -> Array[Addrinfo]

@@ -58,7 +58,7 @@ class PP < Object
 
   # @rbs [E] (Array[E]) { (E) -> void } -> void
   def seplist(list) = %x{
-    items := *list
+    items := list.s
     self.q.seplist(len(items), nil, func(i int) { blk(items[i]) })
   }
 end
@@ -83,7 +83,6 @@ module Kernel
     case 1:
       return rest_[0]
     }
-    out := Array[any](rest_)
-    return &out
+    return &Array[any]{s: rest_}
   }
 end

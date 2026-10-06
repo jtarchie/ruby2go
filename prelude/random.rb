@@ -119,7 +119,7 @@ class Array
     if r := Hash_Op_idx(opts, Symbol("random")); r != nil {
       rng = *r
     }
-    rbShuffle(*self, &rng.mt)
+    rbShuffle(self.s, &rng.mt)
     return self
   }
 
@@ -133,8 +133,8 @@ class Array
       rng = *r
     }
     out := &Array[E]{}
-    for _, i := range rbSampleIdx(int(n), len(*self), &rng.mt) {
-      *out = append(*out, (*self)[i])
+    for _, i := range rbSampleIdx(int(n), len(self.s), &rng.mt) {
+      out.s = append(out.s, self.s[i])
     }
     return out
   }

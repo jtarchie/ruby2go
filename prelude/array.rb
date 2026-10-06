@@ -1,11 +1,11 @@
 # prelude/array.rb
 # rbs_inline: enabled
 #
-# Array as a named Go slice, always handled as a pointer.
+# Array as a Go struct holding its slice and its frozen flag (decision 96), always handled as a pointer.
 
 # Array is mutable and aliased in Ruby, so it is always handled as a pointer.
 # @rbs generic E
-# @go_type []E
+# @go_type struct { s []E; frozen bool }
 class Array < Object
   include Enumerable #[E]
 
@@ -15,11 +15,11 @@ class Array < Object
     if n < 0 {
       panic(NewArgumentError(Ref(String("negative array size"))))
     }
-    out := make(Array[X], n)
-    for i := range out {
-      out[i] = v
+    out := &Array[X]{s: make([]X, n)}
+    for i := range out.s {
+      out.s[i] = v
     }
-    return &out
+    return out
   }
 
   #: [X] (Integer) { (Integer) -> X } -> Array[X]
@@ -36,7 +36,7 @@ class Array < Object
       // An index loop re-reading the length, as MRI's: the block may
       // append, delete or clear. (Not `range len`: that reads it once.)
       for i := 0; ; i++ {
-        if i >= len(*self) || !yield((*self)[i]) {
+        if i >= len(self.s) || !yield(self.s[i]) {
           return
         }
       }
@@ -78,7 +78,7 @@ class Array < Object
   def each_with_index = %x{
     return func(yield func(E, Integer) bool) {
       for i := 0; ; i++ {
-        if i >= len(*self) || !yield((*self)[i], Integer(i)) {
+        if i >= len(self.s) || !yield(self.s[i], Integer(i)) {
           return
         }
       }
@@ -88,8 +88,8 @@ class Array < Object
   #: () { (E) -> void } -> void
   def reverse_each = %x{
     return func(yield func(E) bool) {
-      for i := len(*self) - 1; i >= 0; i-- {
-        if !yield((*self)[i]) {
+      for i := len(self.s) - 1; i >= 0; i-- {
+        if !yield(self.s[i]) {
           return
         }
       }
@@ -99,12 +99,12 @@ class Array < Object
   #: (Integer) -> E?
   def [](i) = %x{
     if i < 0 {
-      i += Integer(len(*self))
+      i += Integer(len(self.s))
     }
-    if i < 0 || int(i) >= len(*self) {
+    if i < 0 || int(i) >= len(self.s) {
       return nil
     }
-    return &(*self)[i]
+    return &self.s[i]
   }
 
   #: (Range[Integer]) -> Array[E]?
@@ -116,7 +116,7 @@ class Array < Object
 
   #: (Integer, Integer) -> Array[E]?
   def __idx_2(start, count) = %x{
-    n := Integer(len(*self))
+    n := Integer(len(self.s))
     if start < 0 {
       start += n
     }
@@ -124,9 +124,9 @@ class Array < Object
       return nil
     }
     end := min(start+count, n)
-    out := make(Array[E], end-start)
-    copy(out, (*self)[start:end])
-    return Ref(&out)
+    out := &Array[E]{s: make([]E, end-start)}
+    copy(out.s, self.s[start:end])
+    return Ref(out)
   }
 
   #: (Range[Integer]) -> Array[E]?
@@ -135,19 +135,19 @@ class Array < Object
   #: (Integer, E) -> E
   def []=(i, v)
     %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     if i < 0 {
-      if -i > Integer(len(*self)) {
-        panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", i, len(*self))))))
+      if -i > Integer(len(self.s)) {
+        panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", i, len(self.s))))))
       }
-      i += Integer(len(*self))
+      i += Integer(len(self.s))
     }
-    for int(i) >= len(*self) {
+    for int(i) >= len(self.s) {
       // nil when E holds it; a non-nilable E pads with its zero value (decision 7)
       var zero E
-      *self = append(*self, zero)
+      self.s = append(self.s, zero)
     }
-    (*self)[i] = v
+    self.s[i] = v
     return v}
   end
 
@@ -160,8 +160,8 @@ class Array < Object
 
   #: (E) -> self
   def <<(x) = %x{
-    rbFrozenCheck(self)
-    *self = append(*self, x)
+    self.rbCheckFrozen()
+    self.s = append(self.s, x)
     return self
   }
 
@@ -173,55 +173,55 @@ class Array < Object
 
   #: () -> E?
   def pop = %x{
-    rbFrozenCheck(self)
-    if len(*self) == 0 {
+    self.rbCheckFrozen()
+    if len(self.s) == 0 {
       return nil
     }
-    x := (*self)[len(*self)-1]
-    *self = (*self)[:len(*self)-1]
+    x := self.s[len(self.s)-1]
+    self.s = self.s[:len(self.s)-1]
     return &x
   }
 
   #: () -> E?
   def shift = %x{
-    rbFrozenCheck(self)
-    if len(*self) == 0 {
+    self.rbCheckFrozen()
+    if len(self.s) == 0 {
       return nil
     }
-    x := (*self)[0]
-    *self = (*self)[1:]
+    x := self.s[0]
+    self.s = self.s[1:]
     return &x
   }
 
   #: (E) -> self
   def unshift(x) = %x{
-    rbFrozenCheck(self)
-    *self = append([]E{x}, *self...)
+    self.rbCheckFrozen()
+    self.s = append([]E{x}, self.s...)
     return self
   }
 
   #: (Array[E]) -> self
   def concat(other) = %x{
-    rbFrozenCheck(self)
-    *self = append(*self, *other...)
+    self.rbCheckFrozen()
+    self.s = append(self.s, other.s...)
     return self
   }
 
   #: (Array[E]) -> Array[E]
   def +(other) = %x{
     out := &Array[E]{}
-    *out = append(append(*out, *self...), *other...)
+    out.s = append(append(out.s, self.s...), other.s...)
     return out
   }
 
   # Set operations match elements by eql?/hash, as MRI's.
   #: (Array[E]) -> Array[E]
   def -(other) = %x{
-    drop := rbNewKeySet(*other)
+    drop := rbNewKeySet(other.s)
     out := &Array[E]{}
-    for _, x := range *self {
+    for _, x := range self.s {
       if !drop.has(x) {
-        *out = append(*out, x)
+        out.s = append(out.s, x)
       }
     }
     return out
@@ -233,8 +233,8 @@ class Array < Object
   # Every directive but the C pointers P and p (decision 138).
   #: (String) -> String
   def pack(format) = %x{
-    items := make([]any, len(*self))
-    for i, x := range *self {
+    items := make([]any, len(self.s))
+    for i, x := range self.s {
       items[i] = x
     }
     return String(rbPack(items, string(format)))
@@ -242,13 +242,13 @@ class Array < Object
 
   #: (Array[E]) -> Array[E]
   def &(other) = %x{
-    keep := rbNewKeySet(*other)
+    keep := rbNewKeySet(other.s)
     seen := rbNewKeySet[E](nil)
     out := &Array[E]{}
-    for _, x := range *self {
+    for _, x := range self.s {
       if keep.has(x) && !seen.has(x) {
         seen.put(x)
-        *out = append(*out, x)
+        out.s = append(out.s, x)
       }
     }
     return out
@@ -284,42 +284,42 @@ class Array < Object
   # Find-minimum mode: the first element for which the block is true.
   #: () { (E) -> bool } -> E?
   def bsearch = %x{
-    i := sort.Search(len(*self), func(i int) bool { return bool(blk((*self)[i])) })
-    if i == len(*self) {
+    i := sort.Search(len(self.s), func(i int) bool { return bool(blk(self.s[i])) })
+    if i == len(self.s) {
       return nil
     }
-    return &(*self)[i]
+    return &self.s[i]
   }
 
   #: () -> self
   def sort! = %x{
-    rbFrozenCheck(self)
-    slices.SortStableFunc(*self, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    self.rbCheckFrozen()
+    slices.SortStableFunc(self.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return self
   }
 
   #: [K] () { (E) -> K } -> self
   def sort_by! = %x{
-    rbFrozenCheck(self)
-    keys := make(map[int]K, len(*self))
-    idx := make([]int, len(*self))
-    for i, x := range *self {
+    self.rbCheckFrozen()
+    keys := make(map[int]K, len(self.s))
+    idx := make([]int, len(self.s))
+    for i, x := range self.s {
       idx[i], keys[i] = i, blk(x)
     }
     slices.SortStableFunc(idx, func(a, b int) int { return -int(rbCmp(keys[b], keys[a])) })
-    out := make(Array[E], len(*self))
+    out := &Array[E]{s: make([]E, len(self.s))}
     for i, j := range idx {
-      out[i] = (*self)[j]
+      out.s[i] = self.s[j]
     }
-    *self = out
+    self.s = out.s
     return self
   }
 
   #: () { (E) -> E } -> self
   def map! = %x{
-    rbFrozenCheck(self)
-    for i, x := range *self {
-      (*self)[i] = blk(x)
+    self.rbCheckFrozen()
+    for i, x := range self.s {
+      self.s[i] = blk(x)
     }
     return self
   }
@@ -329,29 +329,29 @@ class Array < Object
 
   #: () { (E) -> bool } -> self
   def keep_if = %x{
-    rbFrozenCheck(self)
-    out := (*self)[:0]
-    for _, x := range *self {
+    self.rbCheckFrozen()
+    out := self.s[:0]
+    for _, x := range self.s {
       if bool(blk(x)) {
         out = append(out, x)
       }
     }
-    clear((*self)[len(out):])
-    *self = out
+    clear(self.s[len(out):])
+    self.s = out
     return self
   }
 
   #: () { (E) -> bool } -> self
   def delete_if = %x{
-    rbFrozenCheck(self)
-    out := (*self)[:0]
-    for _, x := range *self {
+    self.rbCheckFrozen()
+    out := self.s[:0]
+    for _, x := range self.s {
       if !bool(blk(x)) {
         out = append(out, x)
       }
     }
-    clear((*self)[len(out):])
-    *self = out
+    clear(self.s[len(out):])
+    self.s = out
     return self
   }
 
@@ -379,9 +379,9 @@ class Array < Object
 
   #: () -> Array[E]?
   def uniq! = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     u := Array_Uniq(self)
-    if len(*u) == len(*self) {
+    if len(u.s) == len(self.s) {
       return nil
     }
     *self = *u
@@ -390,34 +390,34 @@ class Array < Object
 
   #: () -> self
   def reverse! = %x{
-    rbFrozenCheck(self)
-    slices.Reverse(*self)
+    self.rbCheckFrozen()
+    slices.Reverse(self.s)
     return self
   }
 
   #: (Integer, *E) -> self
   def insert(i, *objs) = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     n := int(i)
     if n < 0 {
-      n += len(*self) + 1
+      n += len(self.s) + 1
     }
     if n < 0 {
-      panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", int(i), len(*self)+1)))))
+      panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", int(i), len(self.s)+1)))))
     }
-    for len(*self) < n {
+    for len(self.s) < n {
       var zero E
-      *self = append(*self, zero)
+      self.s = append(self.s, zero)
     }
-    *self = slices.Insert(*self, n, rest_...)
+    self.s = slices.Insert(self.s, n, rest_...)
     return self
   }
 
   #: (E) -> self
   def fill(v) = %x{
-    rbFrozenCheck(self)
-    for i := range *self {
-      (*self)[i] = v
+    self.rbCheckFrozen()
+    for i := range self.s {
+      self.s[i] = v
     }
     return self
   }
@@ -426,7 +426,7 @@ class Array < Object
   def each_index = %x{
     return func(yield func(Integer) bool) {
       for i := 0; ; i++ { // not range len: the block may grow the array
-        if i >= len(*self) || !yield(Integer(i)) {
+        if i >= len(self.s) || !yield(Integer(i)) {
           return
         }
       }
@@ -434,10 +434,10 @@ class Array < Object
   }
 
   #: () -> Enumerator[Integer]
-  def __each_index_enum = %x{ return rbEnumOf(Array_EachIndex(self), any(self), "each_index", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
+  def __each_index_enum = %x{ return rbEnumOf(Array_EachIndex(self), any(self), "each_index", func() *Integer { n := Integer(len(self.s)); return &n }, nil) }
 
   #: () -> Enumerator[E]
-  def __each_enum = %x{ return rbEnumOf(Array_Each(self), any(self), "each", func() *Integer { n := Integer(len(*self)); return &n }, nil) }
+  def __each_enum = %x{ return rbEnumOf(Array_Each(self), any(self), "each", func() *Integer { n := Integer(len(self.s)); return &n }, nil) }
 
   #: () -> Enumerator::Map[E]
   def __map_enum = Enumerator::Map.new(self)
@@ -456,13 +456,13 @@ class Array < Object
   def __negative_first = "negative array size"
 
   #: () -> Integer
-  def size = %x{ Integer(len(*self)) }
+  def size = %x{ Integer(len(self.s)) }
 
   #: () -> Integer
   def length = size
 
   #: () -> bool
-  def empty? = %x{ len(*self) == 0 }
+  def empty? = %x{ len(self.s) == 0 }
 
   #: () -> E?
   def last = self[-1]
@@ -476,8 +476,8 @@ class Array < Object
   #: () -> Array[E]
   def reverse = %x{
     out := &Array[E]{}
-    for i := len(*self) - 1; i >= 0; i-- {
-      *out = append(*out, (*self)[i])
+    for i := len(self.s) - 1; i >= 0; i-- {
+      out.s = append(out.s, self.s[i])
     }
     return out
   }
@@ -492,7 +492,7 @@ class Array < Object
   #: () -> Array[E]
   def dup = %x{
     out := &Array[E]{}
-    *out = append(*out, *self...)
+    out.s = append(out.s, self.s...)
     return out
   }
 
@@ -502,14 +502,14 @@ class Array < Object
     seen := map[E]bool{}
     idx := rbKeyIndex[E]{plain: rbPlainKey[E]()}
     out := &Array[E]{}
-    for _, x := range *self {
+    for _, x := range self.s {
       k, h, byValue := idx.find(x)
       if !seen[k] {
         seen[k] = true
         if byValue {
           idx.add(k, h)
         }
-        *out = append(*out, x)
+        out.s = append(out.s, x)
       }
     }
     return out
@@ -518,9 +518,9 @@ class Array < Object
   #: () -> Array[E]
   def compact = %x{
     out := &Array[E]{}
-    for _, x := range *self {
+    for _, x := range self.s {
       if rbUnbox(any(x)) != nil {
-        *out = append(*out, x)
+        out.s = append(out.s, x)
       }
     }
     return out
@@ -528,17 +528,17 @@ class Array < Object
 
   #: () -> self
   def clear = %x{
-    rbFrozenCheck(self)
-    *self = (*self)[:0]
+    self.rbCheckFrozen()
+    self.s = self.s[:0]
     return self
   }
 
   #: (E) -> E?
   def delete(v) = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     var found *E
-    out := (*self)[:0]
-    for _, x := range *self {
+    out := self.s[:0]
+    for _, x := range self.s {
       if rbEq(x, v) {
         x := x
         found = &x
@@ -546,21 +546,21 @@ class Array < Object
       }
       out = append(out, x)
     }
-    *self = out
+    self.s = out
     return found
   }
 
   #: (Integer) -> E?
   def delete_at(i) = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     if i < 0 {
-      i += Integer(len(*self))
+      i += Integer(len(self.s))
     }
-    if i < 0 || int(i) >= len(*self) {
+    if i < 0 || int(i) >= len(self.s) {
       return nil
     }
-    x := (*self)[i]
-    *self = append((*self)[:i], (*self)[i+1:]...)
+    x := self.s[i]
+    self.s = append(self.s[:i], self.s[i+1:]...)
     return &x
   }
 
@@ -578,8 +578,8 @@ class Array < Object
 
   #: (?String) -> String
   def join(sep = "") = %x{
-    parts := make([]string, len(*self))
-    for i, x := range *self {
+    parts := make([]string, len(self.s))
+    for i, x := range self.s {
       // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
       if a, ok := any(x).(Array_Any); ok {
         parts[i] = string(Array_Join(a._ToAny(), sep))
@@ -605,8 +605,8 @@ class Array < Object
       return "[...]"
     }
     defer s.leave(self, nil)
-    parts := make([]string, len(*self))
-    for i, x := range *self {
+    parts := make([]string, len(self.s))
+    for i, x := range self.s {
       parts[i] = string(rbInspectIn(x, s))
     }
     return String("[" + strings.Join(parts, ", ") + "]")
@@ -631,7 +631,7 @@ class Array < Object
       }
       return false
     }
-    if len(*o) != len(*self) {
+    if len(o.s) != len(self.s) {
       return false
     }
     s, _ := seen.(*rbSeen)
@@ -641,16 +641,16 @@ class Array < Object
       }
       defer s.leave(self, o)
     }
-    for i, x := range *self {
+    for i, x := range self.s {
       if r, ok := any(x).(rbEqRec); ok {
         if s == nil {
           s = rbSeenOf(nil)
           s.enter(self, o)
         }
-        if !r._EqRec((*o)[i], s) {
+        if !r._EqRec(o.s[i], s) {
           return false
         }
-      } else if !rbEq(x, (*o)[i]) {
+      } else if !rbEq(x, o.s[i]) {
         return false
       }
     }
@@ -669,7 +669,7 @@ class Array < Object
       }
       return false
     }
-    if len(*o) != len(*self) {
+    if len(o.s) != len(self.s) {
       return false
     }
     s, _ := seen.(*rbSeen)
@@ -679,16 +679,16 @@ class Array < Object
       }
       defer s.leave(self, o)
     }
-    for i, x := range *self {
+    for i, x := range self.s {
       if r, ok := any(x).(rbEqlRec); ok {
         if s == nil {
           s = rbSeenOf(nil)
           s.enter(self, o)
         }
-        if !r._EqlRec((*o)[i], s) {
+        if !r._EqlRec(o.s[i], s) {
           return false
         }
-      } else if !rbKeyEql(x, (*o)[i]) {
+      } else if !rbKeyEql(x, o.s[i]) {
         return false
       }
     }
@@ -707,8 +707,8 @@ class Array < Object
       }
       defer s.leave(self, nil)
     }
-    h := uint64(len(*self))
-    for _, x := range *self {
+    h := uint64(len(self.s))
+    for _, x := range self.s {
       if r, ok := any(x).(rbHashRec); ok {
         if s == nil {
           s = rbSeenOf(nil)
@@ -724,13 +724,13 @@ class Array < Object
 
   #: (Array[E]) -> Integer
   def <=>(other) = %x{
-    n := min(len(*self), len(*other))
+    n := min(len(self.s), len(other.s))
     for i := range n {
-      if c := rbCmp((*self)[i], (*other)[i]); c != 0 {
+      if c := rbCmp(self.s[i], other.s[i]); c != 0 {
         return c
       }
     }
-    return Integer(len(*self) - len(*other))
+    return Integer(len(self.s) - len(other.s))
   }
 
   #: () -> Array[untyped]
@@ -739,8 +739,8 @@ class Array < Object
       return same // already untyped: share it, so writes are seen
     }
     out := &Array[any]{}
-    for _, x := range *self {
-      *out = append(*out, rbUnbox(x))
+    for _, x := range self.s {
+      out.s = append(out.s, rbUnbox(x))
     }
     return out
   }
@@ -752,19 +752,18 @@ class Array < Object
   def flatten(depth = -1) = %x{
     if a, ok := any(self).(*Array[any]); ok {
       out := &Array[any]{}
-      rbFlattenInto(out, *a, int(depth))
+      rbFlattenInto(out, a.s, int(depth))
       return any(out).(*Array[E])
     }
-    out := slices.Clone(*self)
-    return &out
+    return &Array[E]{s: slices.Clone(self.s)}
   }
 
   # @self Array[Array[Array[U]]]
   # @rbs [U] () -> Array[U]
   def __flatten_nested3 = %x{
-    rows := make([]*Array[U], 0, len(*self))
-    for _, r := range *self {
-      rows = append(rows, *r...)
+    rows := make([]*Array[U], 0, len(self.s))
+    for _, r := range self.s {
+      rows = append(rows, r.s...)
     }
     return rbFlattenRows(rows, -1)
   }
@@ -775,7 +774,7 @@ class Array < Object
     if depth == 0 { // the result would be Array[Array[U]], not this signature's Array[U]
       panic(NewNotImplementedError(Ref(String("rb2go: flatten(0) of nested Arrays; use dup"))))
     }
-    return rbFlattenRows(*self, int(depth))
+    return rbFlattenRows(self.s, int(depth))
   }
 
   # @self Array[[K, V]]
@@ -813,21 +812,21 @@ class Array < Object
   # @rbs [U] () -> Array[Array[U]]
   def transpose = %x{
     out := &Array[*Array[U]]{}
-    if len(*self) == 0 {
+    if len(self.s) == 0 {
       return out
     }
-    n := len(*(*self)[0])
-    for _, r := range *self {
-      if len(*r) != n {
-        panic(NewIndexError(Ref(String(fmt.Sprintf("element size differs (%d should be %d)", len(*r), n)))))
+    n := len(self.s[0].s)
+    for _, r := range self.s {
+      if len(r.s) != n {
+        panic(NewIndexError(Ref(String(fmt.Sprintf("element size differs (%d should be %d)", len(r.s), n)))))
       }
     }
     for j := range n {
-      col := make(Array[U], len(*self))
-      for i, r := range *self {
-        col[i] = (*r)[j]
+      col := &Array[U]{s: make([]U, len(self.s))}
+      for i, r := range self.s {
+        col.s[i] = r.s[j]
       }
-      *out = append(*out, &col)
+      out.s = append(out.s, col)
     }
     return out
   }
@@ -861,8 +860,8 @@ class Array < Object
 
   #: () { (E) -> bool } -> Integer?
   def bsearch_index = %x{
-    i := sort.Search(len(*self), func(i int) bool { return bool(blk((*self)[i])) })
-    if i == len(*self) {
+    i := sort.Search(len(self.s), func(i int) bool { return bool(blk(self.s[i])) })
+    if i == len(self.s) {
       return nil
     }
     return Ref(Integer(i))
@@ -870,9 +869,9 @@ class Array < Object
 
   #: () { (E) -> bool } -> E?
   def rfind = %x{
-    for i := len(*self) - 1; i >= 0; i-- {
-      if bool(blk((*self)[i])) {
-        return &(*self)[i]
+    for i := len(self.s) - 1; i >= 0; i-- {
+      if bool(blk(self.s[i])) {
+        return &self.s[i]
       }
     }
     return nil
@@ -880,8 +879,8 @@ class Array < Object
 
   #: (Array[E]) -> self
   def replace(other) = %x{
-    rbFrozenCheck(self)
-    *self = append(Array[E]{}, *other...)
+    self.rbCheckFrozen()
+    self.s = append([]E{}, other.s...)
     return self
   }
 end

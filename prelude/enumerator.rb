@@ -120,8 +120,8 @@ class Enumerator < Object
     #: [U] (?Integer) { (E, Integer) -> U } -> Array[U]
     def with_index(offset = 0) = %x{
       out := &Array[U]{}
-      for i, x := range *self.items {
-        *out = append(*out, blk(x, Integer(i)+offset))
+      for i, x := range self.items.s {
+        out.s = append(out.s, blk(x, Integer(i)+offset))
       }
       return out
     }
@@ -129,8 +129,8 @@ class Enumerator < Object
     #: [U] () { (E, Integer) -> U } -> Array[U]
     def each_with_index = %x{
       out := &Array[U]{}
-      for i, x := range *self.items {
-        *out = append(*out, blk(x, Integer(i)))
+      for i, x := range self.items.s {
+        out.s = append(out.s, blk(x, Integer(i)))
       }
       return out
     }
@@ -148,7 +148,7 @@ class Enumerator < Object
     }
 
     #: () -> Integer
-    def size = %x{ return Integer(len(*self.items)) }
+    def size = %x{ return Integer(len(self.items.s)) }
 
     #: () -> Array[E]
     def to_a = %x{ self.items }
@@ -172,9 +172,9 @@ class Enumerator < Object
     #: (?Integer) { (E, Integer) -> bool } -> Array[E]
     def with_index(offset = 0) = %x{
       out := &Array[E]{}
-      for i, x := range *self.items {
+      for i, x := range self.items.s {
         if bool(blk(x, Integer(i)+offset)) != self.negate {
-          *out = append(*out, x)
+          out.s = append(out.s, x)
         }
       }
       return out
@@ -183,9 +183,9 @@ class Enumerator < Object
     #: () { (E, Integer) -> bool } -> Array[E]
     def each_with_index = %x{
       out := &Array[E]{}
-      for i, x := range *self.items {
+      for i, x := range self.items.s {
         if bool(blk(x, Integer(i))) != self.negate {
-          *out = append(*out, x)
+          out.s = append(out.s, x)
         }
       }
       return out
@@ -204,7 +204,7 @@ class Enumerator < Object
     }
 
     #: () -> Integer
-    def size = %x{ return Integer(len(*self.items)) }
+    def size = %x{ return Integer(len(self.items.s)) }
 
     #: () -> Array[E]
     def to_a = %x{ self.items }
@@ -271,7 +271,7 @@ class Enumerator
     def flat_map = %x{
       return rbLazy(func(yield func(U) bool) {
         for x := range self.seq {
-          for _, y := range *blk(x) {
+          for _, y := range blk(x).s {
             if !yield(y) {
               return
             }
@@ -353,8 +353,8 @@ class Enumerator
         i := 0
         for x := range self.seq {
           var y *U
-          if i < len(*other) {
-            y = &(*other)[i]
+          if i < len(other.s) {
+            y = &other.s[i]
           }
           i++
           if !yield(Tuple2[E, *U]{x, y}) {
@@ -503,8 +503,7 @@ class Enumerator
       if n < 0 {
         panic(NewArgumentError(Ref(String("negative array size"))))
       }
-      out := Array[E](slices.Clone(all[max(len(all)-int(n), 0):]))
-      return &out
+      return &Array[E]{s: slices.Clone(all[max(len(all)-int(n), 0):])}
     }
 
     #: (untyped) -> bool

@@ -135,7 +135,7 @@ func rbCountSize(recv any) func() *Integer {
 
 type rbSized interface{ rbSize() *Integer }
 
-func (a *Array[E]) rbSize() *Integer { return Ref(Integer(len(*a))) }
+func (a *Array[E]) rbSize() *Integer { return Ref(Integer(len(a.s))) }
 
 func (h *Hash[K, V]) rbSize() *Integer { return Ref(Integer(len(h.keys))) }
 
@@ -162,15 +162,15 @@ func rbSlices[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) 
 	return func(yield func(*Array[E]) bool) {
 		cur := &Array[E]{}
 		for x := range seq {
-			*cur = append(*cur, x)
-			if len(*cur) == n {
+			cur.s = append(cur.s, x)
+			if len(cur.s) == n {
 				if !yield(cur) {
 					return
 				}
 				cur = &Array[E]{}
 			}
 		}
-		if len(*cur) > 0 {
+		if len(cur.s) > 0 {
 			yield(cur)
 		}
 	}
@@ -186,8 +186,7 @@ func rbCons[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bo
 				win = win[1:]
 			}
 			if len(win) == n {
-				out := Array[E](slices.Clone(win))
-				if !yield(&out) {
+				if !yield(&Array[E]{s: slices.Clone(win)}) {
 					return
 				}
 			}
@@ -341,9 +340,9 @@ func rbArithAll[E comparable](a *Enumerator_ArithmeticSequence[E]) []E {
 	return slices.Collect(iter.Seq[E](rbArithSeq(a)))
 }
 
-func (m *Enumerator_Map[E]) rbSize() *Integer { return Ref(Integer(len(*m.items))) }
+func (m *Enumerator_Map[E]) rbSize() *Integer { return Ref(Integer(len(m.items.s))) }
 
-func (s *Enumerator_Select[E]) rbSize() *Integer { return Ref(Integer(len(*s.items))) }
+func (s *Enumerator_Select[E]) rbSize() *Integer { return Ref(Integer(len(s.items.s))) }
 
 // rbSize counts an Integer sequence in O(1), so `(1..10**12).step(2).size` does not walk it; nil when endless (MRI's Infinity).
 func (a *Enumerator_ArithmeticSequence[E]) rbSize() *Integer {

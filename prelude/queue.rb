@@ -101,7 +101,7 @@ class Queue < Object
   # @rbs [X] (Array[X]) -> Queue[X]
   def self.new(items) = %x{
     q := &Queue[X]{q: newRbQueue[X](0)}
-    for _, x := range *items {
+    for _, x := range items.s {
       q.q.push(x)
     }
     return q

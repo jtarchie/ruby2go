@@ -220,8 +220,8 @@ func rbMDumpArray[E comparable](w *rbMW, tag string, id any, a *Array[E]) {
 	if !w.start(a == nil, id, tag) {
 		return
 	}
-	w.count(len(*a))
-	for _, x := range *a {
+	w.count(len(a.s))
+	for _, x := range a.s {
 		w.value(any(x))
 	}
 }
@@ -556,9 +556,9 @@ func rbMLoadArray[E comparable](r *rbMR) *Array[E] {
 	a := &Array[E]{}
 	r.reg(a)
 	n := r.count()
-	*a = make(Array[E], 0, n)
+	a.s = make([]E, 0, n)
 	for range n {
-		*a = append(*a, rbMAs[E](r.value()))
+		a.s = append(a.s, rbMAs[E](r.value()))
 	}
 	return a
 }

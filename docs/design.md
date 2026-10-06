@@ -2570,17 +2570,25 @@ resolve; anything not listed is still open.
     which flushes and then flushes after every write, pipe or terminal, so
     stdout and stderr interleave as written.
     ([example 71](../examples/71_argf/main.rb)).
-96. `Array#freeze` and `Hash#freeze`. A frozen Array or Hash is recorded
-    by pointer (`rbFreeze`, a `sync.Map`), and every prelude method that
+96. `Array#freeze` and `Hash#freeze`. Every prelude method that
     mutates one (`<<`, `[]=`, `push`, `pop`, `shift`, `unshift`,
     `insert`, `concat`, `delete*`, `clear`, `fill`, the `!` forms, Hash's
     `[]=`/`store`/`delete`/`delete_if`/`keep_if`/`clear`/`update`) first
-    calls `rbFrozenCheck`, raising MRI's `FrozenError: can't modify
-    frozen Array: [1, 2]` (`FrozenError < RuntimeError`). An atomic flag
-    set by the first freeze keeps a program that never freezes one to a
-    single atomic load per mutation. `dup` is a new, unfrozen object;
-    `clone` keeping the flag is not done. Frozen objects stay in the set
-    for the program's life (a ponytail: weak pointers if that matters).
+    calls `rbCheckFrozen`, raising MRI's `FrozenError: can't modify
+    frozen Array: [1, 2]` (`FrozenError < RuntimeError`). `dup` is a new,
+    unfrozen object; `clone` keeping the flag is not done.
+    *Revised:* the flag is per object, on the object. It was a global
+    `sync.Map` of frozen pointers behind an atomic "anything frozen" flag,
+    so one `X = [...].freeze` anywhere made every Array mutation in the
+    program a map lookup (+33% on a map/select loop) and kept frozen
+    objects alive forever. Now `Array` is `struct { s []E; frozen bool }`
+    (not a bare `[]E`: a slice has no room for a flag, and a side table
+    keyed by pointer is the global again) and Hash's struct gained
+    `frozen`. The check is one field load and inlines. Prelude Go reads
+    the elements as `a.s`; the compiler builds literals through
+    `arrayLit`. `rbFreeze`/`rbIsFrozen` remain for untyped callers
+    (Ractor), over an `rbFreezable` interface. User objects, Struct and
+    Set still have no `freeze` (a compile error), as before.
     Strings keep their own frozen set (literals and `String#freeze`). *Revised:* without a lock (decision 147's
     rule): the literals are a read-only map built at start, and strings
     `freeze` marks go in 256 shards of immutable maps, read with an
@@ -4950,7 +4958,7 @@ resolve; anything not listed is still open.
       type-switched, 8x slower in a loop.
     - `sum` with an Integer or Float element (or block) type adds unboxed;
       Float still with MRI's Kahan-Babuska (`rbSummer.addFloat`).
-    - `rbFrozenCheck` inlines as one atomic load while nothing is frozen.
+    - The frozen check inlines (one field load since decision 96's revision).
     - A struct class's own method is forwarded to its free func with
       `Self` = `*C`, not `CI`, so `self._C()` and self calls are direct.
       Not when its parameters or block name the class or `self`: the

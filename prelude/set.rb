@@ -16,7 +16,7 @@ class Set < Object
     if !ok {
       panic(NewTypeError(Ref(String("no implicit conversion into Set"))))
     }
-    for _, e := range *elems {
+    for _, e := range elems.s {
       Set_Add(s, e.(X))
     }
     return s
@@ -25,7 +25,7 @@ class Set < Object
   #: [X] (Array[X]) -> Set[X]
   def self.__new_array(xs) = %x{
     s := NewSet[X]()
-    for _, x := range *xs {
+    for _, x := range xs.s {
       Set_Add(s, x)
     }
     return s
@@ -66,7 +66,7 @@ class Set < Object
     if !ok {
       panic(NewTypeError(Ref(String("no implicit conversion into Set"))))
     }
-    for _, e := range *elems {
+    for _, e := range elems.s {
       Set_Add(s, blk(e))
     }
     return s

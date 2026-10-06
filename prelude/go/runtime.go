@@ -1342,40 +1342,34 @@ func rbSleepForever() Integer {
 	select {}
 }
 
-// Frozen Arrays and Hashes, by pointer (decision 96). rbAnyFrozen keeps a
-// program that never freezes one to an atomic load per mutation.
-// ponytail: frozen objects stay reachable from the set; use weak pointers if that leak shows up.
-var (
-	rbAnyFrozen  atomic.Bool
-	rbFrozenObjs sync.Map
-)
+// rbFreezable is a value carrying its own frozen flag (Array, Hash: decision 96).
+// There is no global registry: freezing one object costs nothing elsewhere.
+type rbFreezable interface {
+	rbFrozen() bool
+	rbSetFrozen()
+}
 
 func rbFreeze(p any) {
-	rbFrozenObjs.Store(p, true)
-	rbAnyFrozen.Store(true)
+	if f, ok := p.(rbFreezable); ok {
+		f.rbSetFrozen()
+	}
 }
 
 func rbIsFrozen(p any) bool {
-	if !rbAnyFrozen.Load() {
-		return false
-	}
-	_, ok := rbFrozenObjs.Load(p)
-	return ok
+	f, ok := p.(rbFreezable)
+	return ok && f.rbFrozen()
 }
 
 // rbFrozenCheck raises MRI's FrozenError before a mutation of a frozen p.
-// Split so the check inlines into every mutator as one atomic load while
-// nothing is frozen.
+// Array and Hash mutators call their typed rbCheckFrozen instead, which inlines.
 func rbFrozenCheck(p any) {
-	if rbAnyFrozen.Load() {
-		rbFrozenCheckSlow(p)
+	if rbIsFrozen(p) {
+		rbFrozenErr(p)
 	}
 }
 
-func rbFrozenCheckSlow(p any) {
-	if rbIsFrozen(p) {
-		panic(NewFrozenError(Ref("can't modify frozen " + String(rbClassName(p)) + ": " + rbInspect(p))))
-	}
+func rbFrozenErr(p any) {
+	panic(NewFrozenError(Ref("can't modify frozen " + String(rbClassName(p)) + ": " + rbInspect(p))))
 }
 
 // rbIvarNames is Kernel#instance_variables: the ivars inspect would list (one not assigned yet reads as nil and is left out).
@@ -1384,7 +1378,7 @@ func rbIvarNames(a any) *Array[Symbol] {
 	if o, ok := a.(interface{ _Ivars() []rbIvar }); ok {
 		for _, iv := range o._Ivars() {
 			if iv.opt || iv.val != nil && !iv.isNil {
-				*out = append(*out, Symbol(iv.name))
+				out.s = append(out.s, Symbol(iv.name))
 			}
 		}
 	}
@@ -1422,7 +1416,7 @@ func rbIvarGet(a, name any) any {
 // rbIvarDefined is Kernel#instance_variable_defined?.
 func rbIvarDefined(a, name any) bool {
 	n := rbIvarName(name)
-	return slices.Contains(*rbIvarNames(a), Symbol(n))
+	return slices.Contains(rbIvarNames(a).s, Symbol(n))
 }
 
 // rbIvarSet is Kernel#instance_variable_set over the generated _IvarSet; an ivar the class lacks cannot be added.

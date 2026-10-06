@@ -600,18 +600,18 @@ func (f *fctx) patArray(pm *patMatch, p *parser.ArrayPatternNode, subj expr, the
 		} else {
 			d := s.arr.code
 			et := s.elemType()
-			cond := "len(*" + d + ") == " + strconv.Itoa(nreq+npost)
+			cond := "len(" + d + ".s) == " + strconv.Itoa(nreq+npost)
 			if p.Rest != nil {
-				cond = "len(*" + d + ") >= " + strconv.Itoa(nreq+npost)
+				cond = "len(" + d + ".s) >= " + strconv.Itoa(nreq+npost)
 			}
 			for i, r := range p.Requireds {
-				items = append(items, item{r, expr{code: "(*" + d + ")[" + strconv.Itoa(i) + "]", typ: et}})
+				items = append(items, item{r, expr{code: d + ".s[" + strconv.Itoa(i) + "]", typ: et}})
 			}
 			if sp, ok := p.Rest.(*parser.SplatNode); ok && sp.Expression != nil {
 				items = append(items, item{sp.Expression, expr{code: "rbMidSplat(" + d + ", " + strconv.Itoa(nreq) + ", " + strconv.Itoa(npost) + ")", typ: s.arr.typ}})
 			}
 			for j, r := range p.Posts {
-				items = append(items, item{r, expr{code: "(*" + d + ")[len(*" + d + ")-" + strconv.Itoa(npost-j) + "]", typ: et}})
+				items = append(items, item{r, expr{code: d + ".s[len(" + d + ".s)-" + strconv.Itoa(npost-j) + "]", typ: et}})
 			}
 			var steps func(k int)
 			steps = func(k int) {
@@ -621,7 +621,7 @@ func (f *fctx) patArray(pm *patMatch, p *parser.ArrayPatternNode, subj expr, the
 				}
 				f.genPat(pm, items[k].pat, items[k].e, func(expr) { steps(k + 1) })
 			}
-			f.patIf(pm, cond, lenMsg("strconv.Itoa(len(*"+d+"))"), func() { steps(0) })
+			f.patIf(pm, cond, lenMsg("strconv.Itoa(len("+d+".s))"), func() { steps(0) })
 			return
 		}
 		var steps func(k int)
@@ -642,14 +642,14 @@ func (f *fctx) patFind(pm *patMatch, p *parser.FindPatternNode, subj expr, then 
 		d := s.arr.code
 		n := len(p.Requireds)
 		et := s.elemType()
-		cond := "len(*" + d + ") >= " + strconv.Itoa(n)
+		cond := "len(" + d + ".s) >= " + strconv.Itoa(n)
 		lenMsg := func() string {
-			return s.insp() + ` + " length mismatch (given " + strconv.Itoa(len(*` + d + `)) + ", expected ` + strconv.Itoa(n) + `+)"`
+			return s.insp() + ` + " length mismatch (given " + strconv.Itoa(len(` + d + `.s)) + ", expected ` + strconv.Itoa(n) + `+)"`
 		}
 		f.patIf(pm, cond, lenMsg, func() {
 			found, i := f.newTmp(), f.newTmp()
 			f.emit("var %s bool", found)
-			f.emit("for %s := 0; %s+%d <= len(*%s); %s++ {", i, i, n, d, i)
+			f.emit("for %s := 0; %s+%d <= len(%s.s); %s++ {", i, i, n, d, i)
 			saved := f.enterBlock()
 			f.indent++
 			single, dead := pm.single, pm.dead
@@ -658,7 +658,7 @@ func (f *fctx) patFind(pm *patMatch, p *parser.FindPatternNode, subj expr, then 
 			steps = func(k int) {
 				if k == n {
 					if sp := p.Left; sp != nil && sp.Expression != nil {
-						f.genPat(pm, sp.Expression, expr{code: "rbMidSplat(" + d + ", 0, len(*" + d + ")-" + i + ")", typ: s.arr.typ}, func(expr) {})
+						f.genPat(pm, sp.Expression, expr{code: "rbMidSplat(" + d + ", 0, len(" + d + ".s)-" + i + ")", typ: s.arr.typ}, func(expr) {})
 					}
 					if sp, ok := p.Right.(*parser.SplatNode); ok && sp.Expression != nil {
 						f.genPat(pm, sp.Expression, expr{code: "rbMidSplat(" + d + ", " + i + "+" + strconv.Itoa(n) + ", 0)", typ: s.arr.typ}, func(expr) {})
@@ -667,7 +667,7 @@ func (f *fctx) patFind(pm *patMatch, p *parser.FindPatternNode, subj expr, then 
 					f.emit("break")
 					return
 				}
-				f.genPat(pm, p.Requireds[k], expr{code: "(*" + d + ")[" + i + "+" + strconv.Itoa(k) + "]", typ: et}, func(expr) { steps(k + 1) })
+				f.genPat(pm, p.Requireds[k], expr{code: d + ".s[" + i + "+" + strconv.Itoa(k) + "]", typ: et}, func(expr) { steps(k + 1) })
 			}
 			steps(0)
 			pm.single = single
@@ -922,7 +922,7 @@ func (f *fctx) patDeconstructKeys(pm *patMatch, p parser.Node, subj expr, names 
 			elems[i] = "Symbol(" + strconv.Quote(n) + ")"
 		}
 		at := TClass{C: f.c.classes["Array"], Args: []Type{symT}}
-		return expr{code: "&" + strings.TrimPrefix(f.c.goType(at), "*") + "{" + strings.Join(elems, ", ") + "}", typ: at}
+		return expr{code: arrayLit(f.c.goType(symT), elems), typ: at}
 	}
 	hashAny := TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}
 	f.patShape(pm, p, subj, "deconstruct_keys", func(s expr) {

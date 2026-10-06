@@ -232,7 +232,7 @@ class Range < Object
       panic(NewRangeError(Ref(String("cannot convert endless range to an array"))))
     }
     out := &Array[E]{}
-    rbRangeEach(self, func(x E) bool { *out = append(*out, x); return true })
+    rbRangeEach(self, func(x E) bool { out.s = append(out.s, x); return true })
     return out
   }
 

@@ -28,7 +28,7 @@ class Module < Object
     out := &Array[Symbol]{}
     for _, c := range any(self).(rbConstTable)._Consts() {
       if bool(inherit) || !c.inherited {
-        *out = append(*out, Symbol(c.name))
+        out.s = append(out.s, Symbol(c.name))
       }
     }
     return out
@@ -42,7 +42,7 @@ class Module < Object
     out := &Array[Symbol]{}
     for _, m := range any(self).(interface{ _Methods() []rbConst })._Methods() {
       if bool(inherit) || !m.inherited {
-        *out = append(*out, Symbol(m.name))
+        out.s = append(out.s, Symbol(m.name))
       }
     }
     return out
@@ -57,7 +57,7 @@ class Module < Object
     out := &Array[ModuleI]{}
     if t, ok := any(self).(interface{ _Ancestors() []any }); ok {
       for _, k := range t._Ancestors() {
-        *out = append(*out, k.(ModuleI))
+        out.s = append(out.s, k.(ModuleI))
       }
     }
     return out
@@ -69,7 +69,7 @@ class Module < Object
     if t, ok := any(self).(interface{ _Ancestors() []any }); ok {
       for _, k := range t._Ancestors() {
         if m, ok := k.(interface{ _Kind() string }); ok && m._Kind() == "module" {
-          *out = append(*out, k.(ModuleI))
+          out.s = append(out.s, k.(ModuleI))
         }
       }
     }
@@ -120,7 +120,7 @@ class Class < Module
     out := &Array[ClassI]{}
     if t, ok := any(self).(interface{ _Subclasses() []any }); ok {
       for _, k := range t._Subclasses() {
-        *out = append(*out, k.(ClassI))
+        out.s = append(out.s, k.(ClassI))
       }
     }
     return out

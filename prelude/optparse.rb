@@ -186,14 +186,13 @@ class OptionParser < Object
 
   #: (Array[String], untyped) -> Array[String]
   def __parse_copy(argv, into) = %x{
-    out := Array[String](self.rbParse(*argv, into))
-    return &out
+    return &Array[String]{s: self.rbParse(argv.s, into)}
   }
 
   # Removes the switches from argv (ARGV by default) and returns it.
   #: (?Array[String]) -> Array[String]
   def parse!(argv = ARGV) = %x{
-    *argv = Array[String](self.rbParse(*argv, nil))
+    argv.s = self.rbParse(argv.s, nil)
     return argv
   }
 
@@ -205,7 +204,7 @@ class OptionParser < Object
 
   #: (Array[String], untyped) -> Array[String]
   def __parse_into(argv, into) = %x{
-    *argv = Array[String](self.rbParse(*argv, into))
+    argv.s = self.rbParse(argv.s, into)
     return argv
   }
 end

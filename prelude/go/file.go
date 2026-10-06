@@ -26,11 +26,11 @@ func rbSysErr(err error, fn, path string) any {
 
 // rbStrs converts Go strings to an Array[String].
 func rbStrs(ss []string) *Array[String] {
-	a := make(Array[String], 0, len(ss))
+	a := &Array[String]{s: make([]String, 0, len(ss))}
 	for _, s := range ss {
-		a = append(a, String(s))
+		a.s = append(a.s, String(s))
 	}
-	return &a
+	return a
 }
 
 // rbTrimSlash drops trailing slashes but keeps a lone "/", as MRI's basename/dirname see paths.

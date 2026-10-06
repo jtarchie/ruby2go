@@ -303,11 +303,11 @@ func (sw *rbOptSwitch) rbConvert(val *string, shown string) any {
 			out = rbStrictFloat(String(*val))
 		case "array":
 			parts := strings.Split(*val, ",")
-			a := make(Array[String], 0, len(parts))
+			a := &Array[String]{s: make([]String, 0, len(parts))}
 			for _, s := range parts {
-				a = append(a, String(s))
+				a.s = append(a.s, String(s))
 			}
-			out = &a
+			out = a
 		default:
 			out = String(*val)
 		}

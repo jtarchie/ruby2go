@@ -213,13 +213,13 @@ func rbPopen(cmd any, mode string) *IO {
 	case String:
 		c = rbCommand(string(v), nil)
 	case *Array[String]:
-		if len(*v) == 0 {
+		if len(v.s) == 0 {
 			panic(NewArgumentError(Ref(String("wrong number of arguments"))))
 		}
-		c = rbCommand(string((*v)[0]), (*v)[1:])
+		c = rbCommand(string(v.s[0]), v.s[1:])
 	case *Array[any]:
-		args := make([]String, 0, len(*v))
-		for _, a := range *v {
+		args := make([]String, 0, len(v.s))
+		for _, a := range v.s {
 			args = append(args, rbToS(a))
 		}
 		if len(args) == 0 {

@@ -1861,6 +1861,16 @@ module HashTests
       assert_equal({ a: 1, z: 0 }, FROZEN.merge({ z: 0 }))
       assert_equal 1, FROZEN.fetch(:a)
     end
+
+    # The flag lives on the object: an equal Hash and a merged copy stay mutable.
+    def test_freeze_is_per_object
+      a = { x: 1 }
+      b = { x: 1 }
+      a.freeze
+      b[:y] = 2
+      assert_equal [true, false, false], [a.frozen?, b.frozen?, a.merge({}).frozen?]
+      assert_equal({ x: 1, y: 2 }, b)
+    end
   end
 
   # ruby/spec core/hash and core/set gaps (#49)

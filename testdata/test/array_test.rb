@@ -2267,6 +2267,21 @@ module ArrayTests
       assert_equal [2, 4], FROZEN.map { |x| x * 2 }
       assert_same FROZEN, FROZEN.freeze
     end
+
+    # The flag lives on the object: an equal Array, a copy or a slice stays mutable; an alias is the same object.
+    def test_freeze_is_per_object
+      a = [1, 2]
+      b = [1, 2]
+      alias_a = a
+      a.freeze
+      b << 3
+      assert_equal [true, false, true], [a.frozen?, b.frozen?, alias_a.frozen?]
+      assert_raises(FrozenError) { alias_a << 3 }
+      assert_equal [false, false, false], [a.dup.frozen?, a[0, 1].frozen?, a.map { |x| x }.frozen?]
+      h = { k: a }
+      assert_equal true, h[:k].frozen?
+      assert_equal [1, 2, 3], b
+    end
   end
 
   # ruby/spec core/array and core/enumerable gaps (#49)

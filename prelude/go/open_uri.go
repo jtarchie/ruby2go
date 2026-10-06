@@ -24,8 +24,8 @@ func rbOpenURIField(metas *Hash[String, *Array[String]], name String) (string, b
 	if !ok {
 		return "", false
 	}
-	parts := make([]string, 0, len(*vs))
-	for _, v := range *vs {
+	parts := make([]string, 0, len(vs.s))
+	for _, v := range vs.s {
 		parts = append(parts, string(v))
 	}
 	return strings.Join(parts, ", "), true
@@ -73,7 +73,7 @@ func rbOpenURICodings(v string) *Array[String] {
 			continue
 		}
 		if start >= 0 {
-			*out = append(*out, String(strings.ToLower(v[start:i])))
+			out.s = append(out.s, String(strings.ToLower(v[start:i])))
 			start = -1
 		}
 	}

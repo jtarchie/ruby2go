@@ -495,17 +495,17 @@ func rbUnpack(s, format string) *Array[any] {
 			}
 			for range n {
 				if pos+size > len(s) {
-					*out = append(*out, nil)
+					out.s = append(out.s, nil)
 					continue
 				}
 				u := rbPackGet(s[pos:], size, bigEnd)
 				switch {
 				case signed && size < 8 && u&(1<<(8*size-1)) != 0:
-					*out = append(*out, Integer(int64(u)-int64(1)<<(8*size)))
+					out.s = append(out.s, Integer(int64(u)-int64(1)<<(8*size)))
 				case signed:
-					*out = append(*out, Integer(int64(u)))
+					out.s = append(out.s, Integer(int64(u)))
 				default:
-					*out = append(*out, big(u))
+					out.s = append(out.s, big(u))
 				}
 				pos += size
 			}
@@ -518,14 +518,14 @@ func rbUnpack(s, format string) *Array[any] {
 			}
 			for range n {
 				if pos+size > len(s) {
-					*out = append(*out, nil)
+					out.s = append(out.s, nil)
 					continue
 				}
 				u := rbPackGet(s[pos:], size, bigEnd)
 				if size == 8 {
-					*out = append(*out, Float(math.Float64frombits(u)))
+					out.s = append(out.s, Float(math.Float64frombits(u)))
 				} else {
-					*out = append(*out, Float(math.Float32frombits(uint32(u))))
+					out.s = append(out.s, Float(math.Float32frombits(uint32(u))))
 				}
 				pos += size
 			}
@@ -547,7 +547,7 @@ func rbUnpack(s, format string) *Array[any] {
 			case d.d == 'A':
 				v = strings.TrimRight(v, " \x00")
 			}
-			*out = append(*out, String(v))
+			out.s = append(out.s, String(v))
 			pos += n
 		case 'x':
 			if count > len(rest) {
@@ -567,7 +567,7 @@ func rbUnpack(s, format string) *Array[any] {
 		case 'U':
 			for n := 0; n < count && pos < len(s); n++ {
 				r, size := rbUnpackU(s[pos:])
-				*out = append(*out, Integer(r))
+				out.s = append(out.s, Integer(r))
 				pos += size
 			}
 		case 'w':
@@ -578,7 +578,7 @@ func rbUnpack(s, format string) *Array[any] {
 				}
 				u = u<<7 | uint64(s[pos]&0x7f)
 				if s[pos]&0x80 == 0 {
-					*out = append(*out, big(u))
+					out.s = append(out.s, big(u))
 					u = 0
 					n++
 				}
@@ -606,14 +606,14 @@ func rbUnpack(s, format string) *Array[any] {
 					sb.WriteByte('0' + c>>(k%8)&1)
 				}
 			}
-			*out = append(*out, String(sb.String()))
+			out.s = append(out.s, String(sb.String()))
 			pos += (n + per - 1) / per
 		case 'u':
 			v, used := rbUnpackUU(rest)
-			*out = append(*out, String(v))
+			out.s = append(out.s, String(v))
 			pos += used
 		case 'M':
-			*out = append(*out, String(rbUnpackQP(rest)))
+			out.s = append(out.s, String(rbUnpackQP(rest)))
 			pos = len(s)
 		case 'm':
 			if d.counted && d.count == 0 {
@@ -624,11 +624,11 @@ func rbUnpack(s, format string) *Array[any] {
 				if err != nil {
 					panic(NewArgumentError(Ref(String("invalid base64"))))
 				}
-				*out = append(*out, String(v))
+				out.s = append(out.s, String(v))
 				pos = len(s)
 			} else {
 				v, used := rbUnpackB64(rest)
-				*out = append(*out, String(v))
+				out.s = append(out.s, String(v))
 				pos += used
 			}
 		}

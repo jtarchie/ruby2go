@@ -181,7 +181,7 @@ func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (r
 				if verr != nil {
 					return rbJSONVal{}, verr
 				}
-				*arr = append(*arr, v.v)
+				arr.s = append(arr.s, v.v)
 			}
 			if _, cerr := dec.Token(); cerr != nil { // consume ']'
 				return rbJSONVal{}, cerr

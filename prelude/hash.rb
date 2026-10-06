@@ -10,7 +10,7 @@
 # one being ranged over; iterators skip keys deleted under them.
 # @rbs generic K
 # @rbs generic V
-# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K] }
+# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K]; frozen bool }
 class Hash < Object
   include Enumerable #[[K, V]]
 
@@ -80,7 +80,7 @@ class Hash < Object
   #: (K, V) -> V
   def []=(k, v)
     %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     var h uint64
     byValue := false
     if !self.idx.plain {
@@ -132,7 +132,7 @@ class Hash < Object
 
   #: () -> self
   def clear = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     self.keys = self.keys[:0]
     clear(self.vals)
     clear(self.idx.byHash)
@@ -153,7 +153,7 @@ class Hash < Object
 
   #: (K) -> V?
   def delete(k) = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     k, h, byValue := self.idx.find(k)
     v, ok := self.vals[k]
     if !ok {
@@ -310,7 +310,7 @@ class Hash < Object
 
   #: () { (K, V) -> bool } -> self
   def delete_if = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     for _, k := range slices.Clone(self.keys) {
       if v, ok := self.vals[k]; ok && bool(blk(k, v)) {
         Hash_Delete(self, k)
@@ -321,7 +321,7 @@ class Hash < Object
 
   #: () { (K, V) -> bool } -> self
   def keep_if = %x{
-    rbFrozenCheck(self)
+    self.rbCheckFrozen()
     for _, k := range slices.Clone(self.keys) {
       if v, ok := self.vals[k]; ok && !bool(blk(k, v)) {
         Hash_Delete(self, k)
@@ -382,7 +382,7 @@ class Hash < Object
   #: () -> Array[K]
   def keys = %x{
     out := &Array[K]{}
-    *out = append(*out, self.keys...)
+    out.s = append(out.s, self.keys...)
     return out
   }
 
@@ -390,7 +390,7 @@ class Hash < Object
   def values = %x{
     out := &Array[V]{}
     for _, k := range self.keys {
-      *out = append(*out, self.vals[k])
+      out.s = append(out.s, self.vals[k])
     }
     return out
   }

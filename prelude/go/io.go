@@ -12,17 +12,17 @@ func (self *ARGFClass) next(argv *Array[String]) *bufio.Reader {
 	}
 	if !self.started {
 		self.started = true
-		if len(*argv) == 0 {
+		if len(argv.s) == 0 {
 			self.r, self.stdin, self.name = rbStdin, true, "-"
 			return self.r
 		}
 	}
-	if self.stdin || len(*argv) == 0 {
+	if self.stdin || len(argv.s) == 0 {
 		self.done = true
 		return nil
 	}
-	path := string((*argv)[0])
-	*argv = (*argv)[1:]
+	path := string(argv.s[0])
+	argv.s = argv.s[1:]
 	f, err := os.Open(path) //nolint:gosec // ARGV names the files to read, as in MRI
 	if err != nil {
 		panic(rbSysErr(err, "rb_sysopen", path))

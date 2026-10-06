@@ -66,7 +66,7 @@ func rbBacktrace(e ExceptionI) **Array[String] { // Array[String]? is **Array (d
 	}
 	out := &Array[String]{}
 	for _, l := range rbBacktraceFrames(pcs.pcs, pcs.rescued) {
-		*out = append(*out, String(l))
+		out.s = append(out.s, String(l))
 	}
 	x.__bt = Ref(out)
 	return x.__bt

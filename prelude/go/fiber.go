@@ -45,8 +45,7 @@ func rbFiberPack(vals []any) any {
 	case 1:
 		return vals[0]
 	}
-	out := Array[any](vals)
-	return &out
+	return &Array[any]{s: vals}
 }
 
 // resume hands control to f until it yields or ends; its exception re-raises here. The checks and messages are MRI's.

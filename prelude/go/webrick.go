@@ -102,7 +102,7 @@ func rbWEBrickServe(w http.ResponseWriter, r *http.Request, handle func(*WEBrick
 	for k, v := range res.header {
 		h[k] = v
 	}
-	for _, ck := range *res.cookies {
+	for _, ck := range res.cookies.s {
 		h.Add("Set-Cookie", string(rbToS(ck)))
 	}
 	if _, ok := h["Content-Type"]; !ok {

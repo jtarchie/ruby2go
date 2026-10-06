@@ -15,25 +15,25 @@ func (*Array[E]) rbFrom(v any) (*Array[E], bool) {
 	if out, ok := any(src).(*Array[E]); ok {
 		return out, true // E is untyped: _ToAny copied
 	}
-	out := make(Array[E], 0, len(*src))
-	for _, x := range *src {
+	out := make([]E, 0, len(src.s))
+	for _, x := range src.s {
 		e, ok := rbConv[E](x)
 		if !ok {
 			return nil, false
 		}
 		out = append(out, e)
 	}
-	return &out, true
+	return &Array[E]{s: out}, true
 }
 
 func NewArray[E comparable]() *Array[E] { return &Array[E]{} }
 
 // rbSplatAt is element i of a yielded Array splatted across block params, or nil past its end.
 func rbSplatAt[E comparable](a *Array[E], i int) *E {
-	if a == nil || i >= len(*a) {
+	if a == nil || i >= len(a.s) {
 		return nil
 	}
-	return &(*a)[i]
+	return &a.s[i]
 }
 
 // rbCombinations is every k-combination of all, in MRI's order.
@@ -48,11 +48,11 @@ func rbCombinations[E comparable](all []E, k int) *Array[*Array[E]] {
 		idx[i] = i
 	}
 	for {
-		c := make(Array[E], k)
+		c := make([]E, k)
 		for i, j := range idx {
 			c[i] = all[j]
 		}
-		*out = append(*out, &c)
+		out.s = append(out.s, &Array[E]{s: c})
 		i := k - 1
 		for i >= 0 && idx[i] == n-k+i {
 			i--
@@ -79,8 +79,7 @@ func rbPermutations[E comparable](all []E, k int) *Array[*Array[E]] {
 	var rec func()
 	rec = func() {
 		if len(cur) == k {
-			c := Array[E](slices.Clone(cur))
-			*out = append(*out, &c)
+			out.s = append(out.s, &Array[E]{s: slices.Clone(cur)})
 			return
 		}
 		for i := range n {
@@ -104,10 +103,10 @@ func rbPermutations[E comparable](all []E, k int) *Array[*Array[E]] {
 func rbFlattenInto(out *Array[any], xs []any, depth int) {
 	for _, x := range xs {
 		if a, ok := x.(Array_Any); ok && depth != 0 {
-			rbFlattenInto(out, *a._ToAny(), depth-1)
+			rbFlattenInto(out, a._ToAny().s, depth-1)
 			continue
 		}
-		*out = append(*out, x)
+		out.s = append(out.s, x)
 	}
 }
 
@@ -117,14 +116,14 @@ func rbFlattenInto(out *Array[any], xs []any, depth int) {
 func rbFlattenRows[U comparable](rows []*Array[U], depth int) *Array[U] {
 	out := &Array[U]{}
 	for _, r := range rows {
-		*out = append(*out, *r...)
+		out.s = append(out.s, r.s...)
 	}
 	if depth == 1 {
 		return out
 	}
 	if a, ok := any(out).(*Array[any]); ok {
 		flat := &Array[any]{}
-		rbFlattenInto(flat, *a, depth-1)
+		rbFlattenInto(flat, a.s, depth-1)
 		return any(flat).(*Array[U])
 	}
 	var z U
@@ -143,11 +142,11 @@ func rbRepeated[E comparable](all []E, k int, combo bool) *Array[*Array[E]] {
 	}
 	idx := make([]int, k)
 	for {
-		c := make(Array[E], k)
+		c := make([]E, k)
 		for i, j := range idx {
 			c[i] = all[j]
 		}
-		*out = append(*out, &c)
+		out.s = append(out.s, &Array[E]{s: c})
 		i := k - 1
 		for i >= 0 && idx[i] == n-1 {
 			i--
@@ -168,32 +167,41 @@ func rbRepeated[E comparable](all []E, k int, combo bool) *Array[*Array[E]] {
 
 // rbMidSplat is `a, *mid, z = arr`'s mid: what the lead and trail targets leave, possibly empty.
 func rbMidSplat[E comparable](a *Array[E], lead, trail int) *Array[E] {
-	end := max(len(*a)-trail, lead)
-	if lead >= len(*a) {
+	end := max(len(a.s)-trail, lead)
+	if lead >= len(a.s) {
 		return &Array[E]{}
 	}
-	out := append(Array[E]{}, (*a)[lead:end]...)
-	return &out
+	return &Array[E]{s: append([]E{}, a.s[lead:end]...)}
 }
 
 // rbTrailIdx is trailing target j's element: counted from the end, never overlapping the leading targets.
 func rbTrailIdx[E comparable](a *Array[E], lead, trail, j int) *E {
-	i := max(len(*a)-trail, lead) + j
-	if i >= len(*a) {
+	i := max(len(a.s)-trail, lead) + j
+	if i >= len(a.s) {
 		return nil
 	}
-	return &(*a)[i]
+	return &a.s[i]
 }
 
 // rbAssoc is Array#assoc (at 0) and #rassoc (at 1): elements that are not Arrays are skipped.
 func rbAssoc[E comparable](a *Array[E], key any, at int) *E {
 	key = rbUnbox(key)
-	for i := range *a {
-		if x, ok := any((*a)[i]).(interface{ _ToAny() *Array[any] }); ok {
-			if xs := *x._ToAny(); len(xs) > at && bool(rbEq[any](xs[at], key)) {
-				return &(*a)[i]
+	for i := range a.s {
+		if x, ok := any(a.s[i]).(interface{ _ToAny() *Array[any] }); ok {
+			if xs := x._ToAny().s; len(xs) > at && bool(rbEq[any](xs[at], key)) {
+				return &a.s[i]
 			}
 		}
 	}
 	return nil
+}
+
+func (self *Array[E]) rbFrozen() bool { return self.frozen }
+func (self *Array[E]) rbSetFrozen()   { self.frozen = true }
+
+// rbCheckFrozen is every mutator's FrozenError check: one field load, inlined.
+func (self *Array[E]) rbCheckFrozen() {
+	if self.frozen {
+		rbFrozenErr(self)
+	}
 }

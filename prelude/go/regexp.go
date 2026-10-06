@@ -277,8 +277,8 @@ func rbRegexpEscape(s string) string {
 func rbUniqNames(names []string) *Array[String] {
 	out := &Array[String]{}
 	for _, n := range names {
-		if n != "" && !slices.Contains(*out, String(n)) {
-			*out = append(*out, String(n))
+		if n != "" && !slices.Contains(out.s, String(n)) {
+			out.s = append(out.s, String(n))
 		}
 	}
 	return out

@@ -255,12 +255,12 @@ func (self *Array[E]) _Copy(seen map[any]any) any {
 	if self == nil {
 		return self
 	}
-	out := make(Array[E], len(*self))
-	seen[self] = &out
-	for i, x := range *self {
-		out[i] = rbCopyAs(x, seen)
+	out := &Array[E]{s: make([]E, len(self.s))}
+	seen[self] = out
+	for i, x := range self.s {
+		out.s[i] = rbCopyAs(x, seen)
 	}
-	return &out
+	return out
 }
 
 func (self *Hash[K, V]) _Copy(seen map[any]any) any {

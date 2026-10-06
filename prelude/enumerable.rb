@@ -253,7 +253,7 @@ module Enumerable
     slices.SortStableFunc(tmp, func(a, b kv) int { return -int(rbCmp(b.k, a.k)) })
     out := &Array[E]{}
     for _, p := range tmp {
-      *out = append(*out, p.v)
+      out.s = append(out.s, p.v)
     }
     return out
   }
@@ -262,9 +262,9 @@ module Enumerable
   def sort = %x{
     out := &Array[E]{}
     for x := range self.Each() {
-      *out = append(*out, x)
+      out.s = append(out.s, x)
     }
-    slices.SortStableFunc(*out, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    slices.SortStableFunc(out.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return out
   }
 
@@ -435,9 +435,9 @@ module Enumerable
   def __sort_block = %x{
     out := &Array[E]{}
     for x := range self.Each() {
-      *out = append(*out, x)
+      out.s = append(out.s, x)
     }
-    slices.SortStableFunc(*out, func(a, b E) int { return int(blk(a, b)) })
+    slices.SortStableFunc(out.s, func(a, b E) int { return int(blk(a, b)) })
     return out
   }
 
@@ -550,10 +550,10 @@ module Enumerable
     var prev E
     for x := range self.Each() {
       if cur != nil && bool(blk(prev, x)) {
-        *cur = append(*cur, x)
+        cur.s = append(cur.s, x)
       } else {
-        cur = &Array[E]{x}
-        *out = append(*out, cur)
+        cur = &Array[E]{s: []E{x}}
+        out.s = append(out.s, cur)
       }
       prev = x
     }
@@ -567,10 +567,10 @@ module Enumerable
     var prev E
     for x := range self.Each() {
       if cur != nil && !bool(blk(prev, x)) {
-        *cur = append(*cur, x)
+        cur.s = append(cur.s, x)
       } else {
-        cur = &Array[E]{x}
-        *out = append(*out, cur)
+        cur = &Array[E]{s: []E{x}}
+        out.s = append(out.s, cur)
       }
       prev = x
     }
@@ -711,9 +711,9 @@ module Enumerable
     for x := range self.Each() {
       if cur == nil || bool(blk(x)) {
         cur = &Array[E]{}
-        *out = append(*out, cur)
+        out.s = append(out.s, cur)
       }
-      *cur = append(*cur, x)
+      cur.s = append(cur.s, x)
     }
     return out
   }
@@ -725,9 +725,9 @@ module Enumerable
     for x := range self.Each() {
       if cur == nil {
         cur = &Array[E]{}
-        *out = append(*out, cur)
+        out.s = append(out.s, cur)
       }
-      *cur = append(*cur, x)
+      cur.s = append(cur.s, x)
       if bool(blk(x)) {
         cur = nil
       }
@@ -747,10 +747,10 @@ module Enumerable
       case k == nil:
         cur = nil
       case cur != nil && bool(rbEq(last, *k)):
-        *cur = append(*cur, x)
+        cur.s = append(cur.s, x)
       default:
-        cur, last = &Array[E]{x}, *k
-        *out = append(*out, Tuple2[K, *Array[E]]{*k, cur})
+        cur, last = &Array[E]{s: []E{x}}, *k
+        out.s = append(out.s, Tuple2[K, *Array[E]]{*k, cur})
       }
     }
     return out

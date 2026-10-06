@@ -923,15 +923,15 @@ func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
 	}
 	at := TClass{C: f.c.classes["Array"], Args: []Type{elemT}}
 	out := f.newTmp()
-	f.emit("%s := Array[%s]{}", out, f.c.goType(elemT))
+	f.emit("%s := &Array[%s]{}", out, f.c.goType(elemT))
 	for i, el := range n.Elements {
 		if _, ok := el.(*parser.SplatNode); ok {
-			f.emit("%s = append(%s, *%s...)", out, out, f.coerce(el, parts[i], at))
+			f.emit("%s.s = append(%s.s, (%s).s...)", out, out, f.coerce(el, parts[i], at))
 			continue
 		}
-		f.emit("%s = append(%s, %s)", out, out, f.coerce(el, parts[i], elemT))
+		f.emit("%s.s = append(%s.s, %s)", out, out, f.coerce(el, parts[i], elemT))
 	}
-	return expr{code: "(&" + out + ")", typ: at}
+	return expr{code: out, typ: at}
 }
 
 func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
@@ -982,7 +982,7 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 		codes[i] = f.coerce(n.Elements[i], e, elemT)
 	}
 	t := TClass{C: f.c.classes["Array"], Args: []Type{elemT}}
-	return expr{code: "(&Array[" + f.c.goType(elemT) + "]{" + strings.Join(codes, ", ") + "})", typ: t}
+	return expr{code: "(" + arrayLit(f.c.goType(elemT), codes) + ")", typ: t}
 }
 
 // pinBefore keeps Ruby's left-to-right evaluation when generating an
@@ -2521,10 +2521,10 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 func (f *fctx) splatSlice(n parser.Node, code string, from, to Type) string {
 	ft, tt := f.c.goType(from), f.c.goType(to)
 	if ft == tt {
-		return "*" + code
+		return "(" + code + ").s"
 	}
 	conv := f.coerce(n, expr{code: "x", typ: from}, to)
-	return "rbSplat(*" + code + ", func(x " + ft + ") " + tt + " { return " + conv + " })"
+	return "rbSplat((" + code + ").s, func(x " + ft + ") " + tt + " { return " + conv + " })"
 }
 
 // closed returns subst(t, env) if it has no unbound method type vars.
@@ -3210,7 +3210,7 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 		for i, p := range parts {
 			codes[i] = f.coerce(n, p, et)
 		}
-		return expr{code: fmt.Sprintf("&Array[%s]{%s}", f.c.goType(et), strings.Join(codes, ", ")), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
+		return expr{code: arrayLit(f.c.goType(et), codes), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
 	}
 	if len(yields) == 1 && len(lead) > 0 {
 		p := f.newTmp()
@@ -5383,7 +5383,7 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 			for i, mt := range midTs {
 				parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", v.code, lead+i), typ: mt}, et)
 			}
-			f.assignTarget(restT, expr{code: fmt.Sprintf("&Array[%s]{%s}", f.c.goType(et), strings.Join(parts, ", ")), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}})
+			f.assignTarget(restT, expr{code: arrayLit(f.c.goType(et), parts), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}})
 		}
 		for j, r := range rights {
 			f.assignTarget(r, expr{code: fmt.Sprintf("%s.F%d", v.code, m-trail+j), typ: t.Elems[m-trail+j]})
@@ -5887,7 +5887,7 @@ func (f *fctx) jsonArgs(args []parser.Node) []string {
 	if !isAny(ac.Args[0]) {
 		a.code += "._ToAny()"
 	}
-	return []string{"(*" + a.code + ")..."}
+	return []string{"(" + a.code + ").s..."}
 }
 
 // anyArgs generates call arguments for an `...any` parameter.
@@ -6350,4 +6350,12 @@ func (f *fctx) csvCheckConverters(v parser.Node) {
 			f.errorf(n, "CSV converters: takes :numeric, :integer or :float (or an Array of them)")
 		}
 	}
+}
+
+// arrayLit is a Go *Array literal of elems; Array is a struct holding its slice (decision 96).
+func arrayLit(elemGo string, elems []string) string {
+	if len(elems) == 0 {
+		return "&Array[" + elemGo + "]{}"
+	}
+	return "&Array[" + elemGo + "]{s: []" + elemGo + "{" + strings.Join(elems, ", ") + "}}"
 }

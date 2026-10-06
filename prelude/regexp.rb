@@ -105,7 +105,7 @@ class Regexp < Object
   def __group_names = %x{
     out := &Array[String]{}
     for _, n := range self.re.SubexpNames() {
-      *out = append(*out, String(n))
+      out.s = append(out.s, String(n))
     }
     return out
   }
@@ -168,7 +168,7 @@ class MatchData < Object
   #: () -> Array[String?]
   def captures = %x{
     out := &Array[*String]{}
-    *out = append(*out, self.groups[1:]...)
+    out.s = append(out.s, self.groups[1:]...)
     return out
   }
 
@@ -297,7 +297,7 @@ class String
     }
     out := &Array[String]{}
     for _, loc := range re.re.FindAllStringIndex(string(self), -1) {
-      *out = append(*out, self[loc[0]:loc[1]])
+      out.s = append(out.s, self[loc[0]:loc[1]])
     }
     return out
   }
@@ -309,12 +309,12 @@ class String
       row := &Array[*String]{}
       for i := 2; i < len(loc); i += 2 {
         if loc[i] < 0 {
-          *row = append(*row, nil)
+          row.s = append(row.s, nil)
         } else {
-          *row = append(*row, Ref(self[loc[i]:loc[i+1]]))
+          row.s = append(row.s, Ref(self[loc[i]:loc[i+1]]))
         }
       }
-      *out = append(*out, row)
+      out.s = append(out.s, row)
     }
     return out
   }
@@ -336,21 +336,21 @@ class String
         if start+w > len(s) {
           continue
         }
-        *out = append(*out, String(s[start:start+w]))
+        out.s = append(out.s, String(s[start:start+w]))
         start += w
         continue
       }
-      *out = append(*out, String(s[start:loc[0]]))
+      out.s = append(out.s, String(s[start:loc[0]]))
       for i := 2; i < len(loc); i += 2 {
         if loc[i] >= 0 {
-          *out = append(*out, String(s[loc[i]:loc[i+1]]))
+          out.s = append(out.s, String(s[loc[i]:loc[i+1]]))
         }
       }
       start = loc[1]
     }
-    *out = append(*out, String(s[start:]))
-    for len(*out) > 0 && (*out)[len(*out)-1] == "" {
-      *out = (*out)[:len(*out)-1]
+    out.s = append(out.s, String(s[start:]))
+    for len(out.s) > 0 && out.s[len(out.s)-1] == "" {
+      out.s = out.s[:len(out.s)-1]
     }
     return out
   }

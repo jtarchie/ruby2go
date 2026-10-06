@@ -37,7 +37,7 @@ end
 
 class Array
   #: (*untyped) -> String
-  def to_json(*state) = %x{ rbJSONArray(*self, rest_) }
+  def to_json(*state) = %x{ rbJSONArray(self.s, rest_) }
 end
 
 class Hash

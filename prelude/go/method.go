@@ -80,15 +80,15 @@ func rbMethodKnown(info *rbMethodInfo, what string) *rbMethodInfo {
 
 // rbMethodParams is Method#parameters.
 func rbMethodParams(info *rbMethodInfo) *Array[*Array[Symbol]] {
-	out := make(Array[*Array[Symbol]], 0, len(info.params))
+	out := &Array[*Array[Symbol]]{s: make([]*Array[Symbol], 0, len(info.params))}
 	for _, p := range info.params {
-		e := Array[Symbol]{Symbol(p.kind)}
+		e := &Array[Symbol]{s: []Symbol{Symbol(p.kind)}}
 		if p.name != "" {
-			e = append(e, Symbol(p.name))
+			e.s = append(e.s, Symbol(p.name))
 		}
-		out = append(out, &e)
+		out.s = append(out.s, e)
 	}
-	return &out
+	return out
 }
 
 // rbMethodUnbind is Method#unbind: the receiver goes, the dispatcher stays.

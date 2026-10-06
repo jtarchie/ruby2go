@@ -96,10 +96,10 @@ func rbThreadKey(key any) string {
 func rbThreadKeys(m *sync.Map) *Array[Symbol] {
 	out := &Array[Symbol]{}
 	m.Range(func(k, _ any) bool {
-		*out = append(*out, Symbol(k.(string)))
+		out.s = append(out.s, Symbol(k.(string)))
 		return true
 	})
-	slices.Sort(*out)
+	slices.Sort(out.s)
 	return out
 }
 
@@ -121,9 +121,9 @@ func rbThreadList() *Array[*Thread] {
 		return true
 	})
 	slices.SortFunc(live, func(a, b entry) int { return cmp.Compare(a.seq, b.seq) })
-	out := &Array[*Thread]{rbMainThread}
+	out := &Array[*Thread]{s: []*Thread{rbMainThread}}
 	for _, e := range live {
-		*out = append(*out, e.t)
+		out.s = append(out.s, e.t)
 	}
 	return out
 }
@@ -156,9 +156,9 @@ func rbThreadGroupAdd(g *ThreadGroup, t *Thread) {
 // rbThreadGroupList is ThreadGroup#list: Thread.list's live threads that are in g.
 func rbThreadGroupList(g *ThreadGroup) *Array[*Thread] {
 	out := &Array[*Thread]{}
-	for _, t := range *rbThreadList() {
+	for _, t := range rbThreadList().s {
 		if t.threadGroup() == g {
-			*out = append(*out, t)
+			out.s = append(out.s, t)
 		}
 	}
 	return out

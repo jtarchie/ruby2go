@@ -153,11 +153,11 @@ class IO < Object
 
   #: () -> Array[String]
   def self.__argv = %x{
-    a := make(Array[String], 0, len(os.Args)-1)
+    a := &Array[String]{s: make([]String, 0, len(os.Args)-1)}
     for _, s := range os.Args[1:] {
-      a = append(a, String(s))
+      a.s = append(a.s, String(s))
     }
-    return &a
+    return a
   }
 
   #: (untyped) -> Integer

@@ -15,11 +15,11 @@ class Encoding < Object
 
   #: () -> Array[String]
   def names = %x{
-    a := make(Array[String], len(self.names))
+    a := &Array[String]{s: make([]String, len(self.names))}
     for i, n := range self.names {
-      a[i] = String(n)
+      a.s[i] = String(n)
     }
-    return &a
+    return a
   }
 
   #: () -> String

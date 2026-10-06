@@ -1252,7 +1252,7 @@ func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
 		list := f.materialize(e)
 		x := f.newTmp()
 		eqq := f.caseEqq(&exprNode{Node: sp, e: expr{code: x, typ: at.Args[0]}}, subj)
-		return fmt.Sprintf("slices.ContainsFunc(*%s, func(%s %s) bool { return %s })", list, x, f.c.goType(at.Args[0]), eqq)
+		return fmt.Sprintf("slices.ContainsFunc(%s.s, func(%s %s) bool { return %s })", list, x, f.c.goType(at.Args[0]), eqq)
 	}
 	if cls := f.classRef(cond); cls != nil {
 		// not isACheck: its discard of a folded subject would land in the previous arm's body
@@ -1821,7 +1821,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 			if !isClass(e.typ, "Array") {
 				f.errorf(ex, "rescue *%s needs an Array of exception classes", f.f.text(sp.Expression.GetLocation()))
 			}
-			conds = append(conds, fmt.Sprintf("slices.ContainsFunc(*%s, func(k %s) bool { return rbIsInstanceOf(k, r_) })", f.materialize(e), f.c.goType(e.typ.(TClass).Args[0])))
+			conds = append(conds, fmt.Sprintf("slices.ContainsFunc(%s.s, func(k %s) bool { return rbIsInstanceOf(k, r_) })", f.materialize(e), f.c.goType(e.typ.(TClass).Args[0])))
 			classes = append(classes, f.c.classes["Exception"])
 			continue
 		}
@@ -2441,7 +2441,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	prologue := func() {
 		for _, p := range m.Params {
 			if p.Rest {
-				f.emit("%s := (*Array[%s])(&rest_)", goLocalName(p.Name), c.goType(p.Type))
+				f.emit("%s := &Array[%s]{s: rest_}", goLocalName(p.Name), c.goType(p.Type))
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
 		}
