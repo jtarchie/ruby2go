@@ -157,7 +157,7 @@ func (f *fctx) dynClosure(e *entry, recvT Type, env map[string]Type, private, st
 	case e.M.Owner == nil: // a top-level def ignores its receiver
 		r = expr{code: f.selfCode, typ: f.selfType}
 		f.emit("_ = o_")
-	case e.M.hasKeywords() || e.M.postCount() > 0: // emitDynCall only panics: r_ would be unused
+	case e.M.postCount() > 0: // emitDynCall only panics: r_ would be unused
 	case f.c.goType(recvT) != "any":
 		r.code = "r_"
 		f.emit("r_ := rbAs[%s](o_, %q)", f.c.goType(recvT), recvT.String())
