@@ -1323,11 +1323,35 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 			if e.lit && isClass(e.typ, "Integer") && !slices.ContainsFunc(to.Members, func(m Type) bool { return isClass(m, "Integer") }) {
 				e.typ = f.cls("Float") // 1 where Float | String is expected is 1.0
 			}
+			if m := f.instantiationMember(e.typ, to); m != nil {
+				return f.coerce(n, e, m)
+			}
 			return f.coerce(n, e, TAny{})
 		}
 	}
 	f.errorf(n, "%s where %s is expected", e.typ, to)
 	return ""
+}
+
+// instantiationMember is the member of u a generic value of another
+// instantiation fits (Array[Integer] for Array[untyped]): it must be
+// converted to that member's Go type, or the member switch misses it. nil
+// when a member already has t's Go type, or none is t's class.
+func (f *fctx) instantiationMember(t Type, u TUnion) Type {
+	tc, ok := t.(TClass)
+	if !ok || len(tc.Args) == 0 {
+		return nil
+	}
+	g := f.c.goType(t)
+	if slices.ContainsFunc(u.Members, func(m Type) bool { return f.c.goType(m) == g }) {
+		return nil
+	}
+	for _, m := range u.Members {
+		if mc, ok := m.(TClass); ok && mc.C == tc.C && memberFits(t, m) {
+			return m
+		}
+	}
+	return nil
 }
 
 // coerceFromUnion is coerce out of a union (decision 150). Untyped code
@@ -4038,9 +4062,11 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	return f.genMethodCall(n, f.nilGuard(n, recv, name), name, args, block)
 }
 
-// nilAnswers are the methods nil answers itself (universalCall); any other
-// call on a union's nil raises NoMethodError, as on a nil T?.
-var nilAnswers = map[string]bool{"to_s": true, "inspect": true, "to_json": true, "nil?": true, "!": true, "==": true, "equal?": true, "<=>": true, "hash": true, "eql?": true, "to_a": true, "to_h": true, "to_i": true, "to_f": true}
+// nilAnswers reports the methods nil answers itself (universalCall); any
+// other call on a union's nil raises NoMethodError, as on a nil T?.
+func nilAnswers(name string) bool {
+	return untypedIntrinsics[name] || name == "eql?" || nilConversions[name] != ""
+}
 
 // unionCall is a call on a union (decision 150): a Go type switch with one
 // arm per member, each the typed call on that member, so no dispatcher and
@@ -4049,7 +4075,7 @@ var nilAnswers = map[string]bool{"to_s": true, "inspect": true, "to_json": true,
 // compile error; nil, when a member, answers what nil answers and otherwise
 // raises NoMethodError, as a nil T? does (decision 20).
 func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args []parser.Node, block parser.Node) expr {
-	raises := func(m Type) bool { return isNil(m) && !nilAnswers[name] }
+	raises := func(m Type) bool { return isNil(m) && !nilAnswers(name) }
 	if slices.ContainsFunc(u.Members, raises) {
 		f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", name, u)
 	}
@@ -4818,15 +4844,10 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 		return strconv.FormatBool(cls.RubyName == "Array")
 	case TAny, TVar: // a generic T is some value known at run time, as untyped is (Self was resolved above)
 		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
-	case TUnion: // true when every member is a cls; otherwise the member is known only at run time
-		if !slices.ContainsFunc(t.Members, func(m Type) bool { c := classOf(m); return c == nil || !c.isSubclassOf(cls) }) {
-			return "true"
-		}
-		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
 	case TVoid: // a void call's value is nil
 		f.voidAsNil(recv)
 		return "false"
-	case TFunc, TNil, TOpt: // handled before the switch
+	case TFunc, TNil, TOpt, TUnion: // handled before the switch
 	}
 	f.errorf(n, "is_a? on %s is not supported", t)
 	return ""

@@ -321,6 +321,9 @@ func (c *Compiler) rehome(t Type) Type {
 				ms = append(ms, r)
 			}
 		}
+		if len(ms) == 0 {
+			return TAny{} // every member's class is gone: untyped, as one class would be (unionOf() is nil)
+		}
 		return unionOf(ms...)
 	case TAny, TNil, TVar, TVoid: // no classes inside
 	}

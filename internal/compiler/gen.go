@@ -700,6 +700,9 @@ func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
 				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 			}
 		}
+		if ns == nil {
+			return f.elseNarrowing(s.Predicate) // a union: `return if x.nil?` drops nil, `return if !x.is_a?(C)` keeps the C members
+		}
 	}
 	return ns
 }

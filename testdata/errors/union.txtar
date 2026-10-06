@@ -48,3 +48,16 @@ puts nw(1)
 #: (Integer | String | nil) -> Integer
 def s(x) = x.size
 puts s(1)
+-- same_go_type.rb --
+# error: main.rb:3: union members Array[Float | Symbol] and Array[Integer | String] are one Go type (*Array[any])
+#: (Array[Integer | String] | Array[Float | Symbol]) -> String
+def st(x) = x.inspect
+puts st([1, "a"])
+-- module_joins_no_union.rb --
+# error: is assigned both Integer | String and Enumerable[Integer]
+#: () -> Enumerable[Integer]
+def en = [1]
+x = 1
+x = "s" if ARGV.empty?
+x = en if ARGV.size > 1
+puts x.inspect

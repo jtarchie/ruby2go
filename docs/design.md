@@ -4858,7 +4858,12 @@ resolve; anything not listed is still open.
       type is `any`, so `Array[A | B]` is `*Array[any]`, the same shape as
       `Array[untyped]`. Members are classes, tuples, procs and nil; a
       module or type variable is a compile error for now (a type switch
-      cannot test either directly).
+      cannot test either directly), as are two members of one Go type
+      (`Array[Integer | String] | Array[Float | Symbol]`, both
+      `*Array[any]`: Go rejects the duplicate case). A value of another
+      instantiation into a union (`Array[Integer]` for an
+      `Array[untyped]` member) is converted to the member's Go type, or the
+      switch would miss it.
     - **Calls.** A call on a union is a Go type switch with one arm per
       member, each the typed call on that member (`case Integer:
       t = Integer.Size(x)`), and the arms' results join into the call's

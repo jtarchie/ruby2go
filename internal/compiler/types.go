@@ -408,6 +408,9 @@ func join(a, b Type) (Type, bool) {
 		}
 		return optOf(j), true
 	case isUnion(a) || isUnion(b):
+		if isModuleType(a) || isModuleType(b) {
+			return nil, false // a module member would be a `case any:` arm shadowing the rest; as for a class joined with a module
+		}
 		return unionOf(a, b), true // a member joins in; another member widens it (decision 150)
 	case isNumeric(a) && isNumeric(b):
 		return unionOf(a, b), true // Integer | Float: each arithmetic call switches on the member (decision 150; was untyped, decision 12)
@@ -447,6 +450,12 @@ func joinClasses(a, b Type) (Type, bool) {
 }
 
 func isUnion(t Type) bool { _, ok := t.(TUnion); return ok }
+
+// isModuleType reports a module type other than a universal one: no union member (decision 150).
+func isModuleType(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && c.C.IsModule && !c.C.universal
+}
 
 // unionable reports whether a join may put t in a union: a class other
 // than a module or Object (the universal union already), a tuple or a proc.

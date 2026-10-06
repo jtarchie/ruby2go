@@ -35,6 +35,27 @@ def union_half(x) = x / 2
 # @rbs b: bool
 def union_pick_inferred(b) = b ? 1 : "x"
 
+#: (Integer | String | nil) -> String
+def union_guard_nil(x)
+  return "none" if x.nil?
+  y = x #: Integer | String
+  y.to_s
+end
+
+#: (Integer | String) -> String
+def union_guard_not(x)
+  return "int" if !x.is_a?(String)
+  x.upcase
+end
+
+#: (Array[untyped] | String) -> String
+def union_kind(x)
+  case x
+  when Array then "array #{x.size}"
+  when String then "string #{x}"
+  end
+end
+
 module UnionTests
   class Dog
     #: () -> String
@@ -401,6 +422,19 @@ module UnionTests
       b = true #: Integer | bool
       assert b.is_a?(TrueClass)
       refute b.is_a?(FalseClass)
+    end
+
+    def test_guard_narrowing
+      assert_equal "none", union_guard_nil(nil)
+      assert_equal "7", union_guard_nil(7)
+      assert_equal "int", union_guard_not(1)
+      assert_equal "AB", union_guard_not("ab")
+    end
+
+    def test_other_instantiation_argument
+      a = [1, 2]
+      assert_equal "array 2", union_kind(a)
+      assert_equal "string s", union_kind("s")
     end
   end
 end

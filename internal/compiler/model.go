@@ -1752,7 +1752,21 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 		case TAny, TFunc, TNil, TOpt, TTuple, TUnion:
 		}
 	}
-	return unionOf(ms...)
+	u := unionOf(ms...)
+	if tu, ok := u.(TUnion); ok {
+		seen := map[string]Type{}
+		for _, m := range tu.Members {
+			if isNil(m) {
+				continue
+			}
+			g := c.goType(m)
+			if o, dup := seen[g]; dup { // a Go type switch cannot tell them apart (Go rejects the duplicate case)
+				c.errorf(sc.file, nil, "%s:%d: union members %s and %s are one Go type (%s): %s", sc.file.Name, sc.line, o, m, g, t)
+			}
+			seen[g] = m
+		}
+	}
+	return u
 }
 
 // nameCmpNil gives a `<=>` returning Integer? the Go name cmpNil: Op_cmp is
