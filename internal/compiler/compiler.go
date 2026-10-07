@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+	"github.com/tetratelabs/wazero"
 )
 
 // Compiler holds the whole program: the prelude and the user files, one closed world.
@@ -146,8 +147,30 @@ func nodeType(n parser.Node) string {
 
 // sharedParser is one Prism pool per process: instantiating the WASM module costs ~0.5s, more than the rest of a compile.
 var sharedParser = sync.OnceValues(func() (*parser.Parser, error) {
-	return parser.NewParser(context.Background(), parser.WithVersion(parser.SyntaxVersionLatest), parser.WithPoolSize(runtime.GOMAXPROCS(0)))
+	opts := []parser.ParserOption{parser.WithVersion(parser.SyntaxVersionLatest), parser.WithPoolSize(runtime.GOMAXPROCS(0))}
+	if cfg := wazeroConfig(); cfg != nil {
+		opts = append(opts, parser.WithRuntimeConfig(cfg))
+	}
+	return parser.NewParser(context.Background(), opts...)
 })
+
+// wazeroConfig carries a compilation cache under the user's cache directory, so AOT-compiling prism.wasm (~150 ms)
+// happens once per wazero version and machine, not per process (#81 item 4). nil when no cache directory is usable,
+// or RB2GO_NO_WASM_CACHE is set; wazero validates the cache against its own version and the wasm's hash.
+func wazeroConfig() wazero.RuntimeConfig {
+	if os.Getenv("RB2GO_NO_WASM_CACHE") != "" {
+		return nil
+	}
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return nil
+	}
+	cache, err := wazero.NewCompilationCacheWithDir(filepath.Join(base, "rb2go", "wazero"))
+	if err != nil {
+		return nil
+	}
+	return wazero.NewRuntimeConfig().WithCompilationCache(cache)
+}
 
 // Compile transpiles the prelude (prelude.rb in preludeFS, plus whatever it
 // require_relatives) and the main source into one Go file.

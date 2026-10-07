@@ -5128,3 +5128,15 @@ resolve; anything not listed is still open.
       every lib, the old always-loaded shape, for comparison.
     - **Not done:** `require` of a lib MRI lacks raises LoadError there
       and is a no-op here; `autoload`; `$LOADED_FEATURES`.
+
+156. prism.wasm is AOT-compiled once per machine, not per process (#81,
+    item 4). wazero's compilation cache lives under
+    `os.UserCacheDir()/rb2go/wazero` (1.5 MB, keyed by wazero's version
+    and the module's hash, so a new prism.wasm recompiles once);
+    `RB2GO_NO_WASM_CACHE=1` opts out, and a missing cache directory (the
+    playground's wasm build) falls back to compiling. Hello world's
+    parser phase 160 → 7 ms, the whole transpile 334 → 249 ms. The
+    parser option it needs, `WithRuntimeConfig`, is
+    danielgatis/go-ruby-prism#6; until that is tagged, go.mod replaces
+    the module with the fork's branch (the only replace, removed when
+    upstream ships it).

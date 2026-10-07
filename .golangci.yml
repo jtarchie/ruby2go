@@ -105,6 +105,7 @@ linters:
           allow:
             - "$gostd"
             - "github.com/danielgatis/go-ruby-prism/parser"
+            - "github.com/tetratelabs/wazero" # the parser's compilation cache (decision 156); already its dependency
             - "github.com/jtarchie/ruby2go/internal/rbs"
         # rbs is a stdlib-only leaf.
         RBS:
