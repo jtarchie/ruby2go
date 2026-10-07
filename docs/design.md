@@ -5295,3 +5295,15 @@ resolve; anything not listed is still open.
     Proof: an example running unmodified Cuba behind it, driven by
     `Net::HTTP`, equal to MRI (#82).
 
+163. Load semantics for a gem (#82). Two amendments let an unmodified gem
+    reach the type checker, both fed by the boot snapshot (decision 161).
+    `autoload :X, "path"` is a compile-time no-op in a class/module body:
+    the closed world loads the file only if boot resolved it (a resolved
+    autoload's path is added as a source; an unresolved one stays out), so
+    rack.rb's ~45 autoloads do not drag in the ~35 middleware files boot
+    never touched. A `require` whose argument is not a string literal is
+    still an error at a file's **top level**, but inside a method it is a
+    no-op: a gem's computed require (`Rack::Builder.parse_file`'s
+    `require path`) is reached only at run time, when the closed world
+    already holds whatever it names, and erroring on it would reject dead
+    code. A computed `require_relative` in a method is likewise a no-op.

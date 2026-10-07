@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"golang.org/x/tools/txtar"
+
+	"github.com/jtarchie/ruby2go/internal/compiler"
 )
 
 // gemCmd runs a Gemfile executable through bundler, so the versions pinned
@@ -254,6 +256,35 @@ func TestMulti(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBootAutoload compiles a program whose class arrives through autoload:
+// the boot snapshot records which file MRI loaded, and the compiler takes it
+// as a source (decisions 131/161). The declaration itself is compile-time.
+func TestBootAutoload(t *testing.T) {
+	requireRuby4(t)
+	dir := filepath.Join("testdata", "boot")
+	app := filepath.Join(dir, "app.rb")
+	src, err := os.ReadFile(app) //nolint:gosec // testdata path
+	if err != nil {
+		t.Fatal(err)
+	}
+	lp := loadPath(dir, src) // # load_path: lib
+	srcs := []compiler.Source{{Name: "app.rb", Src: src, Path: app}}
+	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, srcs, lp...)
+	if err != nil {
+		t.Fatalf("rb2go: %v", err)
+	}
+	for _, w := range warnings {
+		t.Logf("warning: %s", w)
+	}
+	gen := t.TempDir()
+	writeModule(t, gen)
+	werr := os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+	if werr != nil {
+		t.Fatal(werr)
+	}
+	sameAsRuby(t, dir, "app.rb", goBuild(t, gen, ""))
 }
 
 var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path): (.*)$`)

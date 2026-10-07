@@ -442,6 +442,8 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		} else if hook := c.requireHook(f, n); hook != nil {
 			c.addMainStmt(f, hook)
 		}
+	case n.Receiver == nil && n.Name == "autoload":
+		// compile-time autoload (decision 161): the file is already a source.
 	default:
 		c.scanAnon(ctx, f, n, nil)
 		c.addMainStmt(f, n)
@@ -978,6 +980,10 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	switch n.Name {
 	case "attr", "attr_reader", "attr_writer", "attr_accessor":
 		c.addAttrs(f, cls, n, args, vis.private, scope)
+	case "autoload":
+		// A closed world loads the file at compile time (the boot snapshot,
+		// decision 161, supplies what autoload resolved); the declaration
+		// itself does nothing (decision 131's compile-time require).
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)

@@ -74,10 +74,12 @@ var preludeLibs = map[string]string{
 // scanRequires parses the user sources and walks them, and every file they require_relative or require off the -I
 // path, for the literal `require "x"` names the program mentions anywhere (top level, in a method, inside
 // `begin … rescue LoadError`): each loads at compile time before any user file is collected, so a lib's classes exist
-// wherever its require stands, as decision 130 does for files. A non-literal argument is a compile error. A file with
+// wherever its require stands, as decision 130 does for files. A non-literal argument at the top level is a compile
+// error; inside a method it is a no-op, since a gem's computed require (Rack::Builder.parse_file's `require path`) is
+// reached only at run time, when the closed world already holds what it names. A file with
 // `__END__` needs StringIO for DATA. The parsed files come back keyed by real path, for the collect pass to reuse.
 func (c *Compiler) scanRequires(ctx context.Context, sources []Source) (libs []string, parsed map[string]*File, err error) {
-	sc := &requireScan{c: c, ctx: ctx, parsed: map[string]*File{}, seen: map[string]bool{}}
+	sc := &requireScan{c: c, ctx: ctx, parsed: map[string]*File{}, seen: map[string]bool{}, top: true}
 	for _, src := range sources {
 		path := src.Path
 		if path == "" {
@@ -106,12 +108,14 @@ type requireScan struct {
 	parsed map[string]*File
 	seen   map[string]bool // real paths walked, and "lib:name" for libs found
 	libs   []string
+	top    bool // at a file's top level (not inside a method): a computed require there is an error
 }
 
 func (sc *requireScan) walk(f *File) {
 	if f.data != nil {
 		sc.lib("stringio")
 	}
+	sc.top = true
 	sc.visit(f, f.Root)
 }
 
@@ -127,7 +131,16 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 		return
 	}
 	if call, ok := n.(*parser.CallNode); ok && call.Receiver == nil && (call.Name == "require" || call.Name == "require_relative") {
-		sc.require(f, call)
+		sc.require(f, call, sc.top)
+		return
+	}
+	if _, ok := n.(*parser.DefNode); ok { // a method body: a computed require there is reached only at run time
+		prev := sc.top
+		sc.top = false
+		for _, ch := range n.CompactChildNodes() {
+			sc.visit(f, ch)
+		}
+		sc.top = prev
 		return
 	}
 	for _, ch := range n.CompactChildNodes() {
@@ -136,14 +149,17 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 }
 
 // require handles one require/require_relative call: a lib name is recorded; a file is read, parsed and walked.
-func (sc *requireScan) require(f *File, call *parser.CallNode) {
+func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 	args := callArgs(call)
 	var str *parser.StringNode
 	if len(args) == 1 {
 		str, _ = args[0].(*parser.StringNode)
 	}
 	if str == nil {
-		sc.c.errorf(f, call, "%s needs a string literal: rb2go loads libraries at compile time", call.Name)
+		if top {
+			sc.c.errorf(f, call, "%s needs a string literal: rb2go loads libraries at compile time", call.Name)
+		}
+		return // a computed require in a method: a no-op at run time
 	}
 	name := str.Unescaped.Value
 	var target string

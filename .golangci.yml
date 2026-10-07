@@ -98,7 +98,7 @@ linters:
             - "github.com/jtarchie/ruby2go"
             - "github.com/danielgatis/go-ruby-prism/parser"
         # The compiler owns the parser and the formatter; it reaches the RBS
-        # parser but never the CLI or the root.
+        # parser and the boot snapshot, but never the CLI or the root.
         Compiler:
           files:
             - "**/internal/compiler/**"
@@ -107,6 +107,7 @@ linters:
             - "github.com/danielgatis/go-ruby-prism/parser"
             - "github.com/tetratelabs/wazero" # the parser's compilation cache (decision 156); already its dependency
             - "github.com/jtarchie/ruby2go/internal/rbs"
+            - "github.com/jtarchie/ruby2go/internal/boot" # the gem load phase at compile time (decision 161)
         # rbs is a stdlib-only leaf.
         RBS:
           files:
