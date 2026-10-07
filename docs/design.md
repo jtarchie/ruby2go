@@ -5167,3 +5167,29 @@ resolve; anything not listed is still open.
       program functions; the bodies stay.
     - **Not found:** the three copies of the constant-name check the
       research listed; only `rbConstPath` (module.go) has one.
+
+158. Cold Go helpers stay Go (#81, item 7, measured and dropped). The
+    plan was to move `rbStrftime`, Date's arithmetic and parsers, File's
+    path functions, `rbShellSplit`, URI glue, Array combinatorics and
+    Range predicates (~1k lines) into prelude Ruby, on the premise that
+    compiled Ruby comes out as tight Go and the cost is emitted
+    functions, not speed. The first step measured that cost: Time#strftime
+    in Ruby (170 lines for 250 of Go, one `scan` over the directives)
+    added 86 to 148 emitted functions to every program using Time or
+    Date, +15 to +30% (`37_time` 409 → 531, `39_date` 901 → 1038,
+    `58_logger` 745 → 885), and `go build` of `37_time` went 0.47 → 0.60 s:
+    the Ruby reaches `scan`, `match`, MatchData, `rjust`, `format` and
+    their dispatchers, which the Go version never named. Decisions 88 and
+    89 make that count the build-time cost, so the port was reverted and
+    the rest of the list dropped. What stayed: a test of every strftime
+    directive, flag and width against MRI (`StrftimeTest` in
+    date_test.rb), and the Go helper's fixes it found: `%C` floors a
+    negative year, `%G`/`%g` pad and wrap like `%Y`/`%y`, `%v` is
+    `%e-%^b-%4Y`, `%E`/`%O` modifiers are skipped, `%5%` pads, a `:`
+    flag off `%z` prints as is, `%+` is Date's only (Time prints it, as
+    MRI's), and a directive without its conversion (`%5`, a trailing `%`)
+    raises `invalid format` from Time and prints as is from Date.
+    Also found: Ruby's `elsif` is emitted nested (`else { if }`), which
+    gocritic's elseif flags when the chain has no final else; a flat
+    `else if` chain trips ifElseChain and a `switch` would capture an
+    unlabeled `break`, so prelude Ruby ends such chains with an else.

@@ -59,11 +59,6 @@ linters:
         # A Ruby block that only forwards (`map { |r| f(r) }`) stays a
         # closure; passing `f` itself is a style choice, not a fix.
         - unlambda
-        # Ruby's elsif is emitted nested, `else { if … }`, on purpose: a
-        # flat `else if` chain trips ifElseChain, and a `switch` would
-        # capture an unlabeled `break` meant for the enclosing loop. This
-        # check only sees the shape when the chain has no final else.
-        - elseif
     gosec:
       excludes:
         # Integer width conversions: Ruby integers are unbounded, ours are
