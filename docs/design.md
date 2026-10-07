@@ -3398,7 +3398,9 @@ resolve; anything not listed is still open.
       its parameters are bound, so the block reruns with the same
       arguments (a closure is its own Go function, #52). Inside a
       begin/rescue wrapper (a Go func literal the goto cannot leave) it
-      is a compile error.
+      is a compile error, and stays one (#77, won't fix): it is rare, and
+      carrying it out as `retry` does (a flag, an early return, a jump
+      after the wrapper) adds a path almost no program takes.
     - `BEGIN { }` bodies move to the front of their file's statements, in
       the top-level scope, so their locals are the file's. `END { }` is
       `at_exit` with its block, behind a package flag so it registers once
