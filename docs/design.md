@@ -5193,3 +5193,21 @@ resolve; anything not listed is still open.
     gocritic's elseif flags when the chain has no final else; a flat
     `else if` chain trips ifElseChain and a `switch` would capture an
     unlabeled `break`, so prelude Ruby ends such chains with an else.
+
+159. Performance is tracked by `scripts/benchmark` over
+    [`benchmarks/`](../benchmarks/), and conformance by the MRI oracle
+    plus `scripts/rubyspec-coverage`. The harness builds each workload
+    with rb2go, checks its output still equals `ruby`'s (a stale
+    benchmark is worse than none), then prints the median of N runs of
+    each side, wall-clock including process start since that is what a
+    user feels. Ratios as of 2026-10-07, MRI 4.0.7 on Apple silicon
+    (median of 7): `fib(32)` 17x, hash counting 7x, array
+    map/select/sum 6x, string build/split 5x faster; the
+    `Math.sin`/`cos` loop 20x slower (decision 43's 128-bit
+    transcendentals, the one deliberate loss). These are a ratio to
+    notice regressions, not a suite: no JIT on either side, one
+    machine, small CPU-bound loops. Conformance is counted from
+    sources, not stored: 107 examples, 29 minitest suites and 22 error
+    archives, each compared to MRI, plus ruby/spec's 1,855 `core/*`
+    method spec files, 73.6% of which name a method the prelude defines
+    (decision 127, #49).

@@ -1,0 +1,96 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Times each benchmarks/*.rb compiled by rb2go against `ruby`, using the
+# median of a few runs to blunt scheduler noise. Both must print the same
+# output; a mismatch is reported and the row is dropped.
+#
+#   scripts/benchmark              # every workload, 5 runs each
+#   scripts/benchmark fib array    # named workloads
+#   RB2GO=/path/to/rb2go scripts/benchmark
+#   RUNS=9 scripts/benchmark
+#
+# The numbers in README.md come from this, on one machine; they are a rough
+# ratio, not a benchmark suite (no JIT on either side, wall-clock only).
+
+require "fileutils"
+require "open3"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+RUNS = Integer(ENV.fetch("RUNS", "5"))
+WARMUP = 1
+
+def median(values)
+  sorted = values.sort
+  mid = sorted.length / 2
+  sorted.length.odd? ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
+end
+
+def time_once(cmd)
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  pid = Process.spawn(*cmd, out: File::NULL, err: File::NULL)
+  _, status = Process.wait2(pid)
+  [Process.clock_gettime(Process::CLOCK_MONOTONIC) - start, status.success?]
+end
+
+def output_of(cmd)
+  out, = Open3.capture2e(*cmd)
+  out
+end
+
+def rb2go
+  return ENV["RB2GO"] if ENV["RB2GO"]
+
+  bin = File.join(Dir.mktmpdir("rb2go-bench-"), "rb2go")
+  system("go", "build", "-o", bin, "./cmd/rb2go", chdir: ROOT, exception: true)
+  bin
+end
+
+wanted = ARGV.empty? ? Dir[File.join(ROOT, "benchmarks/*.rb")].sort : ARGV.map { |n| File.join(ROOT, "benchmarks/#{File.basename(n, ".rb")}.rb") }
+tool = rb2go
+
+rows = {}
+Dir.mktmpdir("rb2go-bench-out-") do |dir|
+  wanted.each do |src|
+    name = File.basename(src, ".rb")
+    bin = File.join(dir, name)
+    unless system(tool, "build", "-o", bin, src, chdir: ROOT)
+      warn "#{name}: did not build"
+      next
+    end
+    expected = output_of(["ruby", src])
+    actual = output_of([bin])
+    if expected != actual
+      warn "#{name}: output differs from ruby; skipping"
+      warn "  ruby:  #{expected.inspect}"
+      warn "  rb2go: #{actual.inspect}"
+      next
+    end
+    (WARMUP + RUNS).times do |i|
+      r = time_once(["ruby", src])[0]
+      g = time_once([bin])[0]
+      next if i < WARMUP
+
+      (rows[name] ||= { ruby: [], go: [] })[:ruby] << r
+      rows[name][:go] << g
+    end
+  end
+end
+
+if rows.empty?
+  warn "no workloads ran"
+  exit 1
+end
+
+width = rows.keys.map(&:length).max
+puts format("  %-#{width}s %10s %10s %8s", "", "ruby", "rb2go", "speedup")
+totals = { ruby: 0.0, go: 0.0 }
+rows.each do |name, t|
+  r = median(t[:ruby])
+  g = median(t[:go])
+  totals[:ruby] += r
+  totals[:go] += g
+  puts format("  %-#{width}s %9.3fs %9.3fs %7.1fx", name, r, g, r / g)
+end
+puts format("  %-#{width}s %9.3fs %9.3fs %7.1fx", "total", totals[:ruby], totals[:go], totals[:ruby] / totals[:go])

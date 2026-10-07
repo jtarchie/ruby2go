@@ -195,6 +195,33 @@ The roadmap for the rest of the standard library is issue
 Every trade-off above has a numbered entry, with its reasoning, in the
 [design record](docs/design.md).
 
+## Performance and conformance
+
+A compiled program does no interpretation, so the interpreter's
+per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
+`scripts/benchmark`, median of 7 runs over [`benchmarks/`](benchmarks/)):
+
+| workload | MRI | rb2go | vs MRI |
+|---|---:|---:|---:|
+| `fib(32)` | 0.29s | 0.02s | 17x faster |
+| `Hash` counting, 500k | 0.13s | 0.02s | 7x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.17s | 0.03s | 6x faster |
+| string build/split, 100k | 0.13s | 0.03s | 5x faster |
+| `Math.sin`/`cos`, 200k | 0.10s | 2.13s | 20x slower |
+
+The slow row is deliberate: transcendentals are evaluated in 128-bit so
+their printed digits match MRI exactly ([decision 43](docs/design.md)),
+and the common case pays for the rare hard one. Ahead-of-time
+compilation is the other trade: `rb2go build` is ~0.25s warm on
+hello-world, but the resulting binary starts in under 10ms (MRI ~70ms).
+
+Correctness is measured against MRI, not a specification: 107
+[examples](examples/), 29 minitest suites and 22 compile-error cases all
+run against `ruby` under `go test`. As a wider probe, the prelude defines
+a method named by **73.6%** of ruby/spec's 1,855 `core/*` method spec
+files (`scripts/rubyspec-coverage`, a name-level heuristic;
+[#49](https://github.com/jtarchie/ruby2go/issues/49)).
+
 ## How it works
 
 1. Parse the prelude and the program with Prism (the official Ruby parser,
