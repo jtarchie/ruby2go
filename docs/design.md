@@ -1148,7 +1148,8 @@ resolve; anything not listed is still open.
     for `n <= 0` ([example 38](../examples/38_rational/main.rb)).
 41. `Date` is a Julian Day Number on the proleptic Gregorian calendar
     (MRI switches to the Julian calendar before 1582-10-15; rb2go does
-    not). It is always defined, `require "date"` or not. `Date.parse`
+    not). It loads on `require "date"` (decision 155; it was always
+    defined before). `Date.parse`
     reads ISO dates, `y/m/d`, `Mar 5, 2024` and `5 March 2024`, not all
     of MRI's heuristics; `strptime` reads date fields only. `d - d2` is a
     Rational, `d ± n` a Date, `>>`/`<<` clamp to the month's end, and a
@@ -1294,8 +1295,8 @@ resolve; anything not listed is still open.
     `read`, `read(n)` (nil at EOF), `gets`, `getc`, `getbyte`, `each_byte`,
     `each_char`, `each_line`, `readlines`, `rewind`, `pos=`, `seek`
     (`IO::SEEK_SET`/`CUR`/`END`), `tell` (a `pos` alias), `eof?` and
-    `lineno` read, as MRI's. It is always defined, `require "stringio"`
-    or not; there is no shared IO base class, so a method taking
+    `lineno` read, as MRI's. It loads on `require "stringio"` (decision
+    155; it was always defined before); there is no shared IO base class, so a method taking
     `StringIO` does not take `$stdout`, though `close`/`closed?` and
     `rbReadable()`/`not opened for reading`/`not opened for writing`
     follow the same naming as `File`'s (decision 62) for consistency.
@@ -1394,8 +1395,8 @@ resolve; anything not listed is still open.
     by the first `_` any kept code used, so `rbHalfPi` (π/2 to 110 digits
     for `Math.sin`'s argument reduction) sat in `puts "hello"`.
 
-50. Stdlib libraries with a Go-stdlib twin are always defined, `require`
-    or not, like decision 48: `Base64` (`encode64` wraps at 60 columns,
+50. Stdlib libraries with a Go-stdlib twin (now loaded on `require`,
+    decision 155; they were always defined until then), like decision 48: `Base64` (`encode64` wraps at 60 columns,
     `decode64` skips non-alphabet bytes, `strict_decode64` raises
     `ArgumentError`), `Digest::MD5/SHA1/SHA256/SHA384/SHA512` (class
     `digest`/`hexdigest`/`base64digest`; `new` returns a `Digest::Base`
@@ -1473,7 +1474,8 @@ resolve; anything not listed is still open.
     `Unmatched quote at N: …`
     errors. `Kernel#tap` joins `then`
     ([example 47](../examples/47_strscan/main.rb)).
-52. `require "time"`'s parsers are always defined. `Time.iso8601`/
+52. `require "time"`'s parsers load on that require (`prelude/time_parse.rb`,
+    decision 155; they were always defined until then). `Time.iso8601`/
     `xmlschema`, `httpdate`, `rfc2822` and `parse` each try a fixed list
     of Go layouts, not `Date._parse`'s heuristics, so `Time.parse` reads
     ISO, RFC 2822/1123, `asctime` and a few `Mon D YYYY` shapes. A string
@@ -5077,3 +5079,52 @@ resolve; anything not listed is still open.
     Not done: stub doc comments (hover shows the signature only); a
     stale stub file after a prelude edit until the next `go test` or
     `rb2go stubs`.
+
+155. Stdlib prelude files load only on `require`, as MRI's do (#81, item
+    3; amends 48, 50, 52). `prelude.rb` is the core: what MRI 4.0 defines
+    without a require, Set, Pathname, Monitor, `Process::Status` (moved
+    from open3.rb), `GC` (moved from benchmark.rb to gc.rb) and
+    `Kernel#pp` included. `internal/compiler/libs.go` maps each require
+    name to a prelude file (`json`, `csv`, `net/http` and `net/https`,
+    `digest/md5`, `minitest/autorun`, `time` → `time_parse.rb`, `tmpdir` →
+    `tmpdir.rb` with `Dir.mktmpdir`, ...); each lib file `require_relative`s
+    what MRI's own file loads, measured with `ruby -rlib` (`csv` defines
+    Date, StringIO, StringScanner and Forwardable; `tempfile` FileUtils,
+    tmpdir, Etc and Delegator; `minitest` those plus StringIO and
+    OptionParser; `uri` IPAddr; `ipaddr` Socket; `open-uri` and `webrick`
+    `time`), so a program that relies on a transitive require works here
+    too. A name MRI has and the table lacks stays a no-op.
+    - **Loading is compile-time, before any user file is collected.**
+      `scanRequires` parses the user files first and walks them, and
+      every file they `require_relative` or `require` off the -I path,
+      for literal `require "x"` calls anywhere: top level, inside a
+      method, inside `begin … rescue LoadError`. The libs load after the
+      core, in first-mention order, then the user files collect against
+      the full closed world; `loadUserFile` reuses the parse. A
+      non-literal argument is a compile error, as decision 130's. A file
+      with `__END__` loads StringIO for `DATA`. So `defined?(JSON)`
+      before the require in the same program is already `"constant"`,
+      where MRI says nil until the line runs: a program that tests
+      `defined?` to decide whether to require is the documented
+      difference.
+    - **What it buys.** hello world's prelude phase and every program's
+      emitted code shrink to the libraries it names; `go tool nm | grep -c
+      ' T main\.'` before → after: hello 152 → 152 (the pruner already
+      had it), `05_word_count` 715 → 566, `26_constants_reflection`
+      5933 → 2201, `30_dynamic_send` 56925 → 23754 (the every-name
+      programs kept each lib's dispatchers; now only the required ones).
+      `defined?(JSON)`, `1.respond_to?(:to_json)`,
+      `Time.respond_to?(:parse)`, `"".respond_to?(:shellsplit)` answer as
+      MRI's without a require ([testdata/run/require_gating.rb](../testdata/run/require_gating.rb)).
+    - **Core helpers that name a lib's type.** `prelude/go` is always
+      loaded, and a core helper's type switch may name a lib's generated
+      type (`case *BigDecimal:` in `rbNumTowerLevel`, `*StringIO` in
+      open_uri.go). The pruner treats a single-type case naming a
+      capitalized identifier nothing declares as dead (`undeclaredType`),
+      the same path a lib type unreached by the program takes. A `#:`
+      signature in core may not name a lib class (`Kernel#printf`'s io is
+      `untyped` now); a core `%x{}` body may, only inside such a switch.
+    - **The stub generator** (decision 154) and `RB2GO_ALL_LIBS=1` load
+      every lib, the old always-loaded shape, for comparison.
+    - **Not done:** `require` of a lib MRI lacks raises LoadError there
+      and is a no-op here; `autoload`; `$LOADED_FEATURES`.

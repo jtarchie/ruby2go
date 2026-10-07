@@ -1,5 +1,7 @@
 # rbs_inline: enabled
 
+require_relative "socket"
+
 # IPAddr: IPv4/IPv6 + CIDR arithmetic over net/netip.Addr, masked to the network on construction like MRI (decision 69).
 
 # @go_type struct { addr netip.Addr; bits int }

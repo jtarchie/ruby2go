@@ -19,10 +19,13 @@ module SecureRandom
   }
 
   #: (?Integer) -> String
-  def self.base64(n = 16) = Base64.strict_encode64(random_bytes(n))
+  def self.base64(n = 16) = [random_bytes(n)].pack("m0")
 
   #: (?Integer, ?bool) -> String
-  def self.urlsafe_base64(n = 16, padding = false) = Base64.urlsafe_encode64(random_bytes(n), padding: padding)
+  def self.urlsafe_base64(n = 16, padding = false)
+    s = [random_bytes(n)].pack("m0").tr("+/", "-_")
+    padding ? s : s.delete("=")
+  end
 
   #: () -> String
   def self.uuid = %x{ String(rbUUID4()) }

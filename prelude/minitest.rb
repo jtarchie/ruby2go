@@ -1,4 +1,11 @@
 # rbs_inline: enabled
+
+require_relative "stringio"
+require_relative "fileutils"
+require_relative "tempfile"
+require_relative "etc"
+require_relative "optparse"
+require_relative "delegate"
 # A port of minitest 6.0.6 (MRI 4.0's bundled one), MIT licensed: see prelude/minitest.LICENSE. Shape changes are marked "port:".
 
 module Kernel

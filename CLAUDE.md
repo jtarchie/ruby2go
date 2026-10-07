@@ -51,7 +51,7 @@ Smaller cases go in `testdata/`:
 
 ## Architecture
 
-- `rb2go.go`: public `Compile`. It embeds `prelude.rb` + `prelude/*.rb` + `prelude/go/*.go` via `//go:embed`. New `.rb` prelude files must be `require_relative`d from `prelude.rb`; `prelude/go/*.go` files are globbed.
+- `rb2go.go`: public `Compile`. It embeds `prelude.rb` + `prelude/*.rb` + `prelude/go/*.go` via `//go:embed`. `prelude.rb` `require_relative`s the core (what MRI defines without a require); a library file is instead mapped from its require name in `internal/compiler/libs.go` and loads only when user code has a literal `require` for it (decision 155), `require_relative`-ing what MRI's own file loads. A new `.rb` prelude file goes in one of those two places; `prelude/go/*.go` files are globbed and always loaded, so a core helper may name a lib's type only inside a single-type `case` (the pruner drops it).
 - `internal/compiler`: one `Compiler` holds the closed world (prelude + one user file). Parsing uses Prism via `go-ruby-prism` (WASM/wazero). Pipeline in `compiler.go`:
   `loadPrelude` → `collect` (declare classes/methods/consts, `model.go`) → `link` (resolve supers, includes, signatures) → `discoverIvars` (dry-run bodies for ivar types) → `emitProgram` (`decls.go`) → std-import table + gofmt (`format.go`; no go command needed).
   - `gen.go`: per-function statement codegen (`fctx`). A "tail" (none/return/assign) threads the value-producing position through statements. Type inference works by running gen inside `probe` (output discarded, types recorded) and then running it again for real.

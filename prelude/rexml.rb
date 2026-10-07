@@ -1,5 +1,8 @@
 # rbs_inline: enabled
 
+require_relative "stringio"
+require_relative "strscan"
+
 # REXML (decision 114): a DOM over a Go tokenizer (prelude/go/rexml.go)
 # that keeps text and attribute values as written, an XPath subset, and
 # the Default and Pretty formatters ported from rexml 3.4.

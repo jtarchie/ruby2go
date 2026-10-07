@@ -1,5 +1,10 @@
 # prelude/csv.rb
 # rbs_inline: enabled
+
+require_relative "date"
+require_relative "stringio"
+require_relative "strscan"
+require_relative "forwardable"
 #
 # CSV's string and file parser/generator, as MRI's for the default dialect:
 # an empty unquoted field is nil, a quoted one "", and a blank line an

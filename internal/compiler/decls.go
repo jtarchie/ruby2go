@@ -1576,7 +1576,8 @@ func (c *Compiler) emitClassMeta() {
 		for _, p := range procs { // one case each, so the pruner can drop the unused (decision 49)
 			c.w("\tcase %s:\n\t\treturn true\n", p)
 		}
-		c.w("\t}\n")
+		c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t\treturn false\n\t}\n}\n\n")
+		return
 	}
 	c.w("\treturn false\n}\n\n")
 }

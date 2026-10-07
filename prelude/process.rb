@@ -1,7 +1,28 @@
 # rbs_inline: enabled
 
-# Process: clocks and pid. Process::Status lives with Open3 (open3.rb).
+# Process: clocks, pid and Status.
 module Process
+  # @go_type struct { pid int; code int }
+  class Status < Object
+    #: () -> Integer
+    def pid = %x{ Integer(self.pid) }
+
+    #: () -> Integer
+    def exitstatus = %x{ Integer(self.code) }
+
+    #: () -> bool
+    def success? = %x{ Boolean(self.code == 0) }
+
+    #: () -> Integer
+    def to_i = exitstatus
+
+    #: () -> String
+    def to_s = "pid #{pid} exit #{exitstatus}"
+
+    #: () -> String
+    def inspect = "#<Process::Status: #{to_s}>"
+  end
+
   # macOS's values, as MRI reports them there; only these three clocks exist.
   CLOCK_REALTIME = 0 #: Integer
   CLOCK_MONOTONIC = 6 #: Integer

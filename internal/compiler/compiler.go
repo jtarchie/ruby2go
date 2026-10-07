@@ -70,8 +70,9 @@ type Compiler struct {
 	files         []*File
 	preludeFS     fs.FS
 	parser        *parser.Parser
-	loaded        map[string]bool // prelude names, and user files' real paths
-	loadPath      []string        // -I directories (decision 131)
+	loaded        map[string]bool  // prelude names, and user files' real paths
+	parsed        map[string]*File // user files by real path, parsed by scanRequires before the prelude loads
+	loadPath      []string         // -I directories (decision 131)
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
@@ -172,6 +173,7 @@ type options struct {
 	round     bool
 	inferDone bool
 	seed      *Inference // types from an earlier compile of these sources, updated by this one
+	allLibs   bool       // load every prelude lib, required or not (the stub generator, decision 154)
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -252,7 +254,13 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.loadPath = opts.loadPath
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.loadPreludeGo()
+	libs, parsed, perr := c.scanRequires(ctx, sources)
+	if perr != nil {
+		return nil, perr
+	}
+	c.parsed = parsed
 	c.loadPrelude(ctx, "prelude.rb")
+	c.loadLibs(ctx, libs, opts.allLibs || os.Getenv("RB2GO_ALL_LIBS") != "")
 	tick("prelude")
 	for _, src := range sources {
 		path := src.Path
@@ -264,11 +272,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 			continue
 		}
 		c.loaded[path] = true
-		uf, perr := parseFile(ctx, p, src.Name, src.Src, false)
-		if perr != nil {
-			return nil, perr
-		}
-		uf.path = path
+		uf := parsed[path]
 		c.files = append(c.files, uf)
 		c.userFiles = append(c.userFiles, uf)
 		c.collect(ctx, uf)
@@ -545,11 +549,15 @@ func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) 
 		return nil
 	}
 	c.loaded[path] = true
-	uf, err := parseFile(ctx, c.parser, path, src, false)
-	if err != nil {
-		panic(compileError{msg: err.Error()})
+	uf := c.parsed[path] // scanRequires parsed it
+	if uf == nil {
+		var err error
+		uf, err = parseFile(ctx, c.parser, path, src, false)
+		if err != nil {
+			panic(compileError{msg: err.Error()})
+		}
+		uf.path = path
 	}
-	uf.path = path
 	c.files = append(c.files, uf)
 	c.userFiles = append(c.userFiles, uf)
 	if c.required == nil {

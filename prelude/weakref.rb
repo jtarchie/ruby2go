@@ -1,5 +1,7 @@
 # rbs_inline: enabled
 
+require_relative "delegate"
+
 # WeakRef (decision 110): a reference the garbage collector may clear. An
 # object with identity (a struct class, decision 89's rbClassRefs) is held
 # through Go's weak pointer to its first byte; a value (String, Integer)

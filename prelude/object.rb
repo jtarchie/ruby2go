@@ -155,7 +155,8 @@ module Kernel
 
   # printf(io, fmt, *args) writes to io, as MRI's does when the first
   # argument is not a String.
-  #: (String | IO | StringIO, *untyped) -> nil
+  # @dynamic
+  #: (untyped, *untyped) -> nil
   def printf(fmt, *args)
     if fmt.is_a?(String)
       __write(format(fmt, *args))

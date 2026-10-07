@@ -1,27 +1,8 @@
 # rbs_inline: enabled
 
+require_relative "process"
+
 module Process
-  # @go_type struct { pid int; code int }
-  class Status < Object
-    #: () -> Integer
-    def pid = %x{ Integer(self.pid) }
-
-    #: () -> Integer
-    def exitstatus = %x{ Integer(self.code) }
-
-    #: () -> bool
-    def success? = %x{ Boolean(self.code == 0) }
-
-    #: () -> Integer
-    def to_i = exitstatus
-
-    #: () -> String
-    def to_s = "pid #{pid} exit #{exitstatus}"
-
-    #: () -> String
-    def inspect = "#<Process::Status: #{to_s}>"
-  end
-
   # @go_type struct { cmd *exec.Cmd; status *Process_Status }
   class Waiter < Object
     #: () -> Integer

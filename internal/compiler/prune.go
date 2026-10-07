@@ -8,6 +8,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // stdMethodNames are called by the standard library through its interfaces (fmt.Stringer, error), never by a selector here.
@@ -271,6 +272,10 @@ func (p *pruner) visit(x ast.Node) bool {
 			// and values implementing an interface exist without anything naming the interface
 			if names := p.caseTypeNames(cc.List...); len(cc.List) == 1 && !p.isInterface(cc.List[0]) && len(names) > 0 {
 				p.pending[cc] = names // visited once every name is kept
+				continue
+			}
+			if len(cc.List) == 1 && p.undeclaredType(cc.List[0]) {
+				p.pending[cc] = []string{""} // a lib's type the program never loaded (decision 155): the case is dead, never kept
 				continue
 			}
 			ast.Inspect(cc, p.visit)
@@ -644,6 +649,10 @@ func (p *pruner) visitSwitch(x *ast.SwitchStmt) {
 				p.pending[cc] = names
 				continue
 			}
+			if p.undeclaredType(t) {
+				p.pending[cc] = []string{""} // a lib's type the program never loaded (decision 155)
+				continue
+			}
 		}
 		ast.Inspect(cc, p.visit)
 	}
@@ -680,6 +689,25 @@ func (p *pruner) caseTypeNames(types ...ast.Expr) []string {
 		})
 	}
 	return out
+}
+
+// undeclaredType reports a case type naming a capitalized identifier nothing declares: a class from a prelude lib the
+// program did not require (decision 155), so `*BigDecimal` in a core helper's switch would be `undefined`. Type
+// parameters and declared names have an Obj or a declaration; std packages are selectors.
+func (p *pruner) undeclaredType(e ast.Expr) bool {
+	found := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			return false
+		case *ast.Ident:
+			if x.Obj == nil && len(p.byName[x.Name]) == 0 && x.Name != "" && unicode.IsUpper(rune(x.Name[0])) {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // sweep deletes unkept declarations and the comments (//line directives included) no longer inside one; a stub's body becomes a panic.

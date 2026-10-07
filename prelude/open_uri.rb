@@ -1,5 +1,11 @@
 # rbs_inline: enabled
 
+require_relative "date"
+require_relative "time_parse"
+require_relative "stringio"
+require_relative "uri"
+require_relative "net_http"
+
 # Entry points for internal/compiler/openuri.go, which splits MRI's mixed options Hash at compile time (decision 134).
 
 class StringIO

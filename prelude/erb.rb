@@ -1,5 +1,8 @@
 # rbs_inline: enabled
 
+require_relative "cgi"
+require_relative "strscan"
+
 # ERB (decision 111). A template that is a string literal is compiled with
 # the program: the compiler turns `ERB.new(literal)` into Ruby code, as
 # ERB::Compiler does, and splices it where `result`, `result_with_hash` or

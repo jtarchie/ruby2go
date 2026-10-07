@@ -1,5 +1,11 @@
 # prelude/net_http.rb
 # rbs_inline: enabled
+
+require_relative "zlib"
+require_relative "securerandom"
+require_relative "timeout"
+require_relative "uri"
+require_relative "socket"
 #
 # Net::HTTP's client on Go's net/http: no redirects, every status returned; open_timeout dials, read_timeout bounds the rest of the round trip.
 
@@ -155,7 +161,7 @@ module Net
 
       #: (String, String) -> void
       def basic_auth(user, pass)
-        self["Authorization"] = "Basic #{Base64.strict_encode64("#{user}:#{pass}")}"
+        self["Authorization"] = "Basic #{["#{user}:#{pass}"].pack("m0")}" # MRI's net/http does not load base64
       end
 
       #: (Hash[String, String]) -> void

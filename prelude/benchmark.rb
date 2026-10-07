@@ -1,12 +1,6 @@
 # rbs_inline: enabled
 
-# Benchmark's wall-clock timer, CPU-time measurement, and bm/bmbm reports; always defined.
-
-# runtime.GC(), for Benchmark.bmbm's rehearsal/real-pass boundary.
-module GC
-  #: () -> void
-  def self.start = %x{ runtime.GC() }
-end
+# Benchmark's wall-clock timer, CPU-time measurement, and bm/bmbm reports (`require "benchmark"`).
 
 module Benchmark
   CAPTION = "      user     system      total        real\n" #: String

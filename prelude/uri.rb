@@ -1,5 +1,7 @@
 # prelude/uri.rb
 # rbs_inline: enabled
+
+require_relative "ipaddr"
 #
 # URI.parse/join and the www-form corner (URI.encode_www_form and friends).
 

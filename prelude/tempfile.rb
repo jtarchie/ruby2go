@@ -1,5 +1,10 @@
 # rbs_inline: enabled
 
+require_relative "fileutils"
+require_relative "tmpdir"
+require_relative "etc"
+require_relative "delegate"
+
 # Wraps File over os.CreateTemp; no finalizer (unlike MRI's GC-driven one), so callers must close/unlink explicitly (decision 63).
 class Tempfile < Object
   include IOWritable

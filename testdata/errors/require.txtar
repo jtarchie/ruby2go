@@ -24,3 +24,7 @@ load_lib
 if ARGV.empty?
   require "b"
 end
+-- computed_require.rb --
+# error: main.rb:3: require needs a string literal: rb2go loads libraries at compile time
+lib = "json"
+require lib

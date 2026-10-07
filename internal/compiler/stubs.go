@@ -22,7 +22,8 @@ func PreludeStubs(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
 	// ponytail: formatGo reads the env; an options field would need plumbing through emitProgram.
 	_ = os.Setenv("RB2GO_NO_PRUNE", "1")
 	defer func() { _ = os.Unsetenv("RB2GO_NO_PRUNE") }()
-	src, _, err := CompileWithWarnings(ctx, preludeFS, "main.rb", []byte("puts 1\n"))
+	opts := options{allLibs: true}
+	src, err := compile(ctx, preludeFS, []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}, &opts)
 	if err != nil {
 		return nil, err
 	}

@@ -1,5 +1,20 @@
 # prelude/webrick.rb
 # rbs_inline: enabled
+
+require_relative "date"
+require_relative "time_parse"
+require_relative "fileutils"
+require_relative "tempfile"
+require_relative "digest"
+require_relative "cgi"
+require_relative "strscan"
+require_relative "singleton"
+require_relative "etc"
+require_relative "timeout"
+require_relative "uri"
+require_relative "socket"
+require_relative "erb"
+require_relative "delegate"
 #
 # WEBrick's server on Go's net/http: one goroutine per request instead of
 # one thread. Behaviour kept from WEBrick because programs observe it: no
