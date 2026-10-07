@@ -347,6 +347,10 @@ B
       assert_equal "1-", format("%{a}-%{b}", a: 1, b: nil)
       assert_equal "    1|2   |", format("%*d|%-*d|", 5, 1, 4, 2)
       assert_equal "3", format("%d", 3.99)
+      assert_equal "26", format("%d", "0x1A") # a String argument follows Kernel#Integer's rules
+      assert_equal "1000.5", format("%.1f", "1_000.5")
+      e = assert_raises(ArgumentError) { format("%d", "1__2") }
+      assert_equal "invalid value for Integer(): \"1__2\"", e.message
       assert_equal "-3", format("%d", -3.5)
       assert_equal "1.000000", format("%f", 1)
       assert_equal "0 2 2", format("%.0f %.0f %.0f", 0.5, 1.5, 2.5)

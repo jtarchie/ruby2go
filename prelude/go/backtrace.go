@@ -81,21 +81,13 @@ func rbBacktrace(e ExceptionI) **Array[String] { // Array[String]? is **Array (d
 	return x.__bt
 }
 
-// rbErrorPos is MRI's error_pos: "file:line:in 'name': " for the innermost user frame (a forwarder, "(*T).M", only carries the last //line).
+// rbErrorPos is MRI's error_pos: "file:line:in 'name': " for the innermost user frame, "" when none.
 func rbErrorPos(name string) String {
-	pcs := make([]uintptr, 64)
-	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
-	mod := rbSourceMod()
-	for {
-		f, more := frames.Next()
-		file := strings.TrimPrefix(f.File, mod)
-		if strings.HasSuffix(file, ".rb") && !strings.HasPrefix(file, "prelude/") && !strings.Contains(f.Function, ".(") {
-			return String(file + ":" + strconv.Itoa(f.Line) + ":in '" + name + "': ")
-		}
-		if !more {
-			return ""
-		}
+	loc := rbCallerLocN(0)
+	if loc == "" {
+		return ""
 	}
+	return String(loc + ":in '" + name + "': ")
 }
 
 // rbFuncKey splits a Go function name into the table's key and how many

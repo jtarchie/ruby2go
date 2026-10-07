@@ -25,5 +25,5 @@ class Time
   def self.rfc822(s) = rfc2822(s)
 
   #: (String, String) -> Time
-  def self.strptime(s, fmt) = %x{ return rbTimeParseOr(string(s), []string{rbStrptimeLayout(string(fmt))}, "invalid date or strptime format - '"+string(s)+"' '"+string(fmt)+"'") }
+  def self.strptime(s, fmt) = %x{ return rbTimeStrptime(string(s), string(fmt)) }
 end

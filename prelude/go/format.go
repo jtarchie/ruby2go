@@ -153,11 +153,7 @@ func rbFormatInt(v any) int {
 	case Float:
 		return int(n) // truncates, as MRI
 	case String:
-		i, err := strconv.ParseInt(strings.ReplaceAll(strings.TrimSpace(string(n)), "_", ""), 0, 64)
-		if err != nil {
-			panic(NewArgumentError(Ref(String("invalid value for Integer(): " + string(rbStringInspect(string(n)))))))
-		}
-		return int(i)
+		return int(rbStrictInt(n, 0)) // Kernel#Integer's rules: "1__2" is invalid
 	case nil:
 		panic(NewTypeError(Ref(String("can't convert nil into Integer"))))
 	}
@@ -171,11 +167,7 @@ func rbFormatFloat(v any) float64 {
 	case Float:
 		return float64(n)
 	case String:
-		f, err := strconv.ParseFloat(strings.TrimSpace(string(n)), 64)
-		if err != nil {
-			panic(NewArgumentError(Ref(String("invalid value for Float(): " + string(rbStringInspect(string(n)))))))
-		}
-		return f
+		return float64(rbStrictFloat(n)) // Kernel#Float's rules
 	case nil:
 		panic(NewTypeError(Ref(String("can't convert nil into Float"))))
 	}

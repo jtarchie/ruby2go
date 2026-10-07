@@ -6,10 +6,10 @@
 module CGI
   # Space becomes +; alphanumerics and _.-~ stay; everything else is %XX.
   #: (String) -> String
-  def self.escape(s) = %x{ String(rbCGIEscape(string(s), "+")) }
+  def self.escape(s) = %x{ String(url.QueryEscape(string(s))) }
 
   #: (String) -> String
-  def self.escapeURIComponent(s) = %x{ String(rbCGIEscape(string(s), "%20")) }
+  def self.escapeURIComponent(s) = %x{ String(strings.ReplaceAll(url.QueryEscape(string(s)), "+", "%20")) }
 
   # + becomes space; malformed %-escapes are kept as written.
   #: (String) -> String

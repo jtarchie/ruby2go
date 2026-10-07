@@ -18,6 +18,7 @@ require "strscan"
 require "time"
 require "tmpdir"
 require "uri"
+require "cgi"
 require "webrick"
 require "zlib"
 
@@ -27,6 +28,26 @@ def stdlib_noop = nil
 
 module StdlibTests
   # Was testdata/run/benchmark_mid.rb. bm/bmbm print real timings, so only their Report/Job machinery is tested.
+  class EscapeTest < Minitest::Test
+    def test_cgi_and_form_escapes
+      assert_equal "a+b%2A~%2F%C3%A9", CGI.escape("a b*~/é")
+      assert_equal "a%20b%2B", CGI.escapeURIComponent("a b+")
+      assert_equal "a+b*%7E%2F", URI.encode_www_form_component("a b*~/")
+      assert_equal "x=a+b*%7E", URI.encode_www_form("x" => "a b*~")
+    end
+
+    def test_time_strptime
+      t = Time.strptime("Jan 2024-03-05 10:11", "Jan %Y-%m-%d %H:%M") # literal text that spells a Go layout token
+      assert_equal "2024-03-05 10:11", t.strftime("%F %H:%M")
+      assert_equal false, t.utc?
+      assert_equal true, Time.strptime("2024-03-05 10:11 UTC", "%Y-%m-%d %H:%M %Z").utc?
+      assert_equal 32400, Time.strptime("2024-03-05 10:11 +0900", "%Y-%m-%d %H:%M %z").utc_offset
+      assert_equal "2024-02-29 04:45:30 UTC", Time.strptime("1709181930", "%s").utc.to_s
+      e = assert_raises(ArgumentError) { Time.strptime("nope", "%Y") }
+      assert_equal "invalid date or strptime format - 'nope' '%Y'", e.message
+    end
+  end
+
   class BenchmarkTest < Minitest::Test
     def test_tms_fields_format_and_arithmetic
       t = Benchmark::Tms.new(1.5, 0.25, 0.1, 0.05, 2.0, "x")

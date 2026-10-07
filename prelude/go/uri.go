@@ -10,21 +10,9 @@ import (
 	"strings"
 )
 
-// rbFormEscape is URI.encode_www_form_component: *-._ and alphanumerics stay, space becomes +, else %XX.
+// rbFormEscape is URI.encode_www_form_component: url.QueryEscape, except that * stays and ~ is encoded.
 func rbFormEscape(s string) string {
-	var b strings.Builder
-	for i := range len(s) {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '*', c == '-', c == '.', c == '_':
-			b.WriteByte(c)
-		case c == ' ':
-			b.WriteByte('+')
-		default:
-			fmt.Fprintf(&b, "%%%02X", c)
-		}
-	}
-	return b.String()
+	return strings.NewReplacer("%2A", "*", "~", "%7E").Replace(url.QueryEscape(s))
 }
 
 // rbURIRaw: Has* tells an absent (nil in Ruby) component from an explicit empty one; Path has none since MRI's path is never nil.

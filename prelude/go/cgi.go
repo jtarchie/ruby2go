@@ -4,7 +4,6 @@
 package prelude
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,23 +14,6 @@ var (
 	rbHTMLEscaper  = strings.NewReplacer("'", "&#39;", "&", "&amp;", "\"", "&quot;", "<", "&lt;", ">", "&gt;")
 	rbHTMLEntities = regexp.MustCompile(`&(amp|quot|gt|lt|apos|#[0-9]+|#[xX][0-9A-Fa-f]+);`)
 )
-
-// rbCGIEscape percent-encodes all but alphanumerics and _.-~, writing space as sp.
-func rbCGIEscape(s, sp string) string {
-	var b strings.Builder
-	for i := range len(s) {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '.', c == '-', c == '~':
-			b.WriteByte(c)
-		case c == ' ':
-			b.WriteString(sp)
-		default:
-			fmt.Fprintf(&b, "%%%02X", c)
-		}
-	}
-	return b.String()
-}
 
 func rbCGIUnescape(s string, plus bool) string {
 	var b strings.Builder

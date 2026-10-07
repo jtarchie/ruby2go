@@ -217,30 +217,7 @@ func rbEncode1(out []byte, enc string, r rune) ([]byte, bool) {
 }
 
 // rbBinDump is String#dump of bytes tagged ASCII-8BIT, as MRI's encoding errors quote them.
-func rbBinDump(s string) string {
-	var b strings.Builder
-	b.WriteByte('"')
-	for i := range len(s) {
-		c := s[i]
-		switch {
-		case c == '"' || c == '\\':
-			b.WriteByte('\\')
-			b.WriteByte(c)
-		case c == '#' && i+1 < len(s) && strings.IndexByte("{$@", s[i+1]) >= 0:
-			b.WriteString("\\#")
-		case c >= 0x20 && c < 0x7f:
-			b.WriteByte(c)
-		default:
-			if e, ok := map[byte]string{'\n': "n", '\t': "t", '\r': "r", '\f': "f", '\v': "v", '\b': "b", '\a': "a", 0x1b: "e"}[c]; ok {
-				b.WriteString("\\" + e)
-			} else {
-				fmt.Fprintf(&b, "\\x%02X", c)
-			}
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
-}
+func rbBinDump(s string) string { return rbDump(s, true) }
 
 // rbEncOpts are encode's keyword options: invalid:/undef: :replace, replace:, xml: and the newline decorators.
 type rbEncOpts struct {

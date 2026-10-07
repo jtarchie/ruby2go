@@ -281,13 +281,20 @@ func rbSplitLimit(s string, sep *String, limit int) []string {
 }
 
 // rbStrDump is String#dump: inspect's escapes, with every non-ASCII character as \u and invalid bytes as \x.
-func rbStrDump(s string) string {
+func rbStrDump(s string) string { return rbDump(s, false) }
+
+// rbDump is String#dump; bytes reads s one byte per character (ASCII-8BIT, as MRI's encoding errors quote bytes),
+// else as UTF-8 with invalid bytes as \x.
+func rbDump(s string, bytes bool) string {
 	var b strings.Builder
 	b.WriteByte('"')
 	for i := 0; i < len(s); {
-		r, n := utf8.DecodeRuneInString(s[i:])
+		r, n := rune(s[i]), 1
+		if !bytes {
+			r, n = utf8.DecodeRuneInString(s[i:])
+		}
 		switch {
-		case r == utf8.RuneError && n == 1:
+		case bytes && r >= 0x80, r == utf8.RuneError && n == 1:
 			fmt.Fprintf(&b, "\\x%02X", s[i])
 		case r == '"' || r == '\\':
 			b.WriteByte('\\')
@@ -297,7 +304,7 @@ func rbStrDump(s string) string {
 		case r >= 0x20 && r < 0x7f:
 			b.WriteRune(r)
 		case r < 0x80:
-			if e, ok := map[rune]string{'\n': "n", '\t': "t", '\r': "r", '\f': "f", '\v': "v", '\b': "b", '\a': "a", 0x1b: "e"}[r]; ok {
+			if e, ok := rbDumpEscapes[r]; ok {
 				b.WriteString("\\" + e)
 			} else {
 				fmt.Fprintf(&b, "\\x%02X", r)
@@ -312,6 +319,8 @@ func rbStrDump(s string) string {
 	b.WriteByte('"')
 	return b.String()
 }
+
+var rbDumpEscapes = map[rune]string{'\n': "n", '\t': "t", '\r': "r", '\f': "f", '\v': "v", '\b': "b", '\a': "a", 0x1b: "e"}
 
 // rbStrUndump is String#undump, dump's inverse: a double-quoted ASCII
 // string whose escapes (\n \t \r \f \v \b \a \e \" \\ \# \xHH \uHHHH

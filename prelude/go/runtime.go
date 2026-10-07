@@ -1373,12 +1373,6 @@ type rbFreezable interface {
 	rbSetFrozen()
 }
 
-func rbFreeze(p any) {
-	if f, ok := p.(rbFreezable); ok {
-		f.rbSetFrozen()
-	}
-}
-
 func rbIsFrozen(p any) bool {
 	f, ok := p.(rbFreezable)
 	return ok && f.rbFrozen()

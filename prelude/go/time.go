@@ -451,27 +451,20 @@ func rbTimeParseOr(s string, layouts []string, msg string) *Time {
 	panic(NewArgumentError(Ref(String(msg))))
 }
 
-// rbStrptimeLayout turns a strptime format into a Go layout.
-// ponytail: literal text that spells a Go layout token (Jan, PM, 1, …) is
-// read as one; a directive with no Go twin makes the layout fail to match.
-func rbStrptimeLayout(format string) string {
-	directives := map[byte]string{
-		'Y': "2006", 'y': "06", 'm': "1", 'd': "2", 'e': "_2", 'j': "002", 'H': "15", 'I': "3", 'M': "4", 'S': "5",
-		'p': "PM", 'z': "-0700", 'Z': "MST", 'b': "Jan", 'h': "Jan", 'B': "January", 'a': "Mon", 'A': "Monday",
-		'T': "15:4:5", 'R': "15:4", 'F': "2006-1-2", 'D': "1/2/06", '%': "%",
+// rbTimeStrptime is Time.strptime over Date's strptime engine (rbDateStrptimeAll, every MRI directive): local time
+// unless the format read a zone, UTC mode for Z/UTC/GMT, a fixed offset otherwise; an epoch is local time too.
+func rbTimeStrptime(s, format string) *Time {
+	f, ok := rbDateStrptimeAll(s, format)
+	if !ok {
+		panic(NewArgumentError(Ref(String("invalid date or strptime format - '" + s + "' '" + format + "'"))))
 	}
-	var b strings.Builder
-	for i := 0; i < len(format); i++ {
-		if format[i] != '%' || i+1 >= len(format) {
-			b.WriteByte(format[i])
-			continue
-		}
-		i++
-		l, ok := directives[format[i]]
-		if !ok {
-			return "\x00unsupported"
-		}
-		b.WriteString(l)
+	switch z := strings.ToUpper(f.zone); {
+	case f.epoch:
+		return &Time{t: time.Date(f.y, time.Month(f.m), f.d, f.h, f.mi, f.s, f.ns, time.UTC).In(time.Local)}
+	case z == "":
+		return &Time{t: time.Date(f.y, time.Month(f.m), f.d, f.h, f.mi, f.s, f.ns, time.Local)}
+	case z == "Z" || z == "UTC" || z == "GMT":
+		return &Time{t: time.Date(f.y, time.Month(f.m), f.d, f.h, f.mi, f.s, f.ns, time.UTC), utc: true}
 	}
-	return b.String()
+	return &Time{t: time.Date(f.y, time.Month(f.m), f.d, f.h, f.mi, f.s, f.ns, time.FixedZone("", f.of))}
 }

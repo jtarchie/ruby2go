@@ -497,7 +497,11 @@ func rbDateStrptime(s, format string) (y, m, d int, ok bool) {
 }
 
 // rbDateFields is what strptime read.
-type rbDateFields struct{ y, m, d, h, mi, s, ns, of int }
+type rbDateFields struct {
+	y, m, d, h, mi, s, ns, of int
+	zone                      string // the %z/%Z text as given, "" when the format had none (Time.strptime: local time)
+	epoch                     bool   // from %s/%Q: the fields are UTC
+}
 
 // rbDateStrptimeAll is MRI's strptime over the date directives above plus
 // %H %k %I %l %M %S %L %N %p %P %z %Z %s %Q %a %A and the composites %T %R %X %r %c %x.
@@ -597,6 +601,7 @@ func rbDateStrptimeAll(s, format string) (rbDateFields, bool) {
 				j++
 			}
 			f.of, good = rbDateZoneOffset(s[:j])
+			f.zone = s[:j]
 			s = s[j:]
 		case 's', 'Q':
 			epoch, good = num(19)
@@ -623,7 +628,7 @@ func rbDateStrptimeAll(s, format string) (rbDateFields, bool) {
 	if hasEpoch {
 		p := rbDateAt(epoch/1000+rbJDEpoch*86400, epoch%1000*1e6, f.of)
 		t := rbJDTime(p.jd)
-		return rbDateFields{t.Year(), int(t.Month()), t.Day(), p.df / 3600, p.df % 3600 / 60, p.df % 60, p.sf, f.of}, true
+		return rbDateFields{y: t.Year(), m: int(t.Month()), d: t.Day(), h: p.df / 3600, mi: p.df % 3600 / 60, s: p.df % 60, ns: p.sf, of: f.of, zone: f.zone, epoch: true}, true
 	}
 	if yday > 0 {
 		t := time.Date(f.y, 1, yday, 0, 0, 0, 0, time.UTC)

@@ -5140,3 +5140,30 @@ resolve; anything not listed is still open.
     danielgatis/go-ruby-prism#6; until that is tagged, go.mod replaces
     the module with the fork's branch (the only replace, removed when
     upstream ships it).
+
+157. Dedupe pass over prelude/go (#81, item 5; ~200 lines gone, no
+    behaviour change except where noted). `String#dump` and the
+    ASCII-8BIT dump MRI's encoding errors quote share one escaper
+    (`rbDump`, a bytes flag); `String#inspect` stays apart since it keeps
+    printable Unicode. `Time.strptime` goes through Date's strptime engine
+    (`rbTimeStrptime` over `rbDateStrptimeAll`, which now records the zone
+    text and whether an epoch was read): local time without a zone, UTC
+    mode for Z/UTC/GMT, a fixed offset otherwise; the Go-layout rewrite
+    and its misreads are gone. `CGI.escape` is `url.QueryEscape`,
+    `escapeURIComponent` the same with `+` as `%20`, and
+    `URI.encode_www_form_component` is QueryEscape with `*` kept and `~`
+    encoded, as MRI's. `rbFreeze` (no callers) is gone and `rbErrorPos`
+    is `rbCallerLocN` plus the method name. `format`'s `%d`/`%f` read a
+    String argument with `rbStrictInt`/`rbStrictFloat`, Kernel#Integer's
+    and Kernel#Float's rules, so `"%d" % "1__2"` raises as MRI's does
+    (it parsed as 12 before).
+    - **Not merged: Array/Hash `_eq_rec`/`_eql_rec`.** One body with an
+      `eql` flag was tried: it names both `rbEq` and `rbKeyEql`, both
+      untyped-view comparisons and both recursive interfaces, so every
+      program that compares one Array reaches the other path too:
+      `05_word_count` 566 → 617 emitted functions, `26_constants_reflection`
+      2201 → 2259 (30_dynamic_send, which reaches both anyway, 23754 →
+      23574). Two bodies cost source lines, one body costs every small
+      program functions; the bodies stay.
+    - **Not found:** the three copies of the constant-name check the
+      research listed; only `rbConstPath` (module.go) has one.
