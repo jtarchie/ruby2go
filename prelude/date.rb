@@ -255,8 +255,16 @@ class Date < Object
   #: (?String?) -> String
   def strftime(fmt = nil) = __strftime(fmt || __strftime_default)
 
+  # Time's strftime over this date's instant, with %+ and %Q (milliseconds) and a bare directive printed as is, as MRI's Date.
   #: (String) -> String
-  def __strftime(fmt) = %x{ String(rbDateStrftime(rbDateGet(self._Date()), string(fmt))) }
+  def __strftime(fmt)
+    t = __go_time
+    t.__strftime(fmt, "%a %b %e %H:%M:%S %Z %Y", t.to_i * 1000 + t.nsec / 1_000_000, false)
+  end
+
+  # This instant as a Time in a fixed zone named like MRI's Date#zone ("+09:30").
+  #: () -> Time
+  def __go_time = %x{ return &Time{t: rbDateGoTime(rbDateGet(self._Date()))} }
 
   #: () -> String
   def to_s = strftime("%Y-%m-%d")
@@ -271,7 +279,7 @@ class Date < Object
   def rfc3339 = strftime("%Y-%m-%dT%H:%M:%S%:z")
 
   #: () -> String
-  def httpdate = %x{ String(rbStrftime(rbDateGoTime(rbDateGet(self._Date())).UTC(), "%a, %d %b %Y %H:%M:%S GMT", true)) }
+  def httpdate = __go_time.getutc.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
   #: () -> String
   def rfc2822 = strftime("%a, %-d %b %Y %H:%M:%S %z")
@@ -280,10 +288,20 @@ class Date < Object
   def rfc822 = rfc2822
 
   #: () -> String
-  def jisx0301 = %x{ String(rbJISX0301(int(self._Date().jd))) }
+  def jisx0301 = __jis
 
   #: () -> String
-  def inspect = %x{ String(rbDateInspect("Date", rbDateGet(self._Date()), rbStrftime(rbJDTime(int(self._Date().jd)), "%Y-%m-%d", true))) }
+  def __jis = %x{ String(rbJISX0301(int(self._Date().jd))) }
+
+  #: () -> String
+  def inspect = __inspect("Date", __go_time.getutc.strftime("%Y-%m-%d"))
+
+  #: (String, String) -> String
+  def __inspect(name, civil) = %x{ String(rbDateInspect(string(name), rbDateGet(self._Date()), string(civil))) }
+
+  # n digits of the second's fraction after a dot, "" for n <= 0.
+  #: (Integer) -> String
+  def __frac(n) = %x{ String(rbDateFrac(rbDateGet(self._Date()), int(n))) }
 
   #: () -> Time
   def to_time = Time.local(year, month, day)
@@ -436,10 +454,7 @@ class DateTime < Date
   def to_s = strftime("%Y-%m-%dT%H:%M:%S%:z")
 
   #: (?Integer) -> String
-  def iso8601(n = 0) = %x{
-    p := rbDateGet(self._Date())
-    return String(rbDateStrftime(p, "%Y-%m-%dT%H:%M:%S") + rbDateFrac(p, int(n)) + rbDateZoneName(p.of))
-  }
+  def iso8601(n = 0) = strftime("%Y-%m-%dT%H:%M:%S") + __frac(n) + strftime("%:z")
 
   #: (?Integer) -> String
   def xmlschema(n = 0) = iso8601(n)
@@ -448,16 +463,10 @@ class DateTime < Date
   def rfc3339(n = 0) = iso8601(n)
 
   #: (?Integer) -> String
-  def jisx0301(n = 0) = %x{
-    p := rbDateGet(self._Date())
-    return String(rbJISX0301(p.jd) + rbDateStrftime(p, "T%H:%M:%S") + rbDateFrac(p, int(n)) + rbDateZoneName(p.of))
-  }
+  def jisx0301(n = 0) = __jis + strftime("T%H:%M:%S") + __frac(n) + strftime("%:z")
 
   #: () -> String
-  def inspect = %x{
-    p := rbDateGet(self._Date())
-    return String(rbDateInspect("DateTime", p, rbDateStrftime(p, "%Y-%m-%dT%H:%M:%S%:z")))
-  }
+  def inspect = __inspect("DateTime", strftime("%Y-%m-%dT%H:%M:%S%:z"))
 
   #: () -> Time
   def to_time = %x{ return &Time{t: rbDateGoTime(rbDateGet(self._Date()))} }

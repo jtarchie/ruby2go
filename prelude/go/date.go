@@ -223,31 +223,6 @@ func rbDateFromGoTime(t time.Time) rbDateParts {
 	return rbDateAt(int(t.Unix())+rbJDEpoch*86400, t.Nanosecond(), of)
 }
 
-// rbDateQ is a %Q directive (with rbStrftime's numeric flags and width), or a %% to skip.
-var rbDateQ = regexp.MustCompile(`%%|%([-0_^#]*)(\d*)Q`)
-
-// rbDateStrftime is Date#strftime: Time's directives plus %Q (milliseconds since the epoch).
-func rbDateStrftime(p rbDateParts, format string) string {
-	t := rbDateGoTime(p)
-	if strings.Contains(format, "Q") {
-		format = rbDateQ.ReplaceAllStringFunc(format, func(m string) string {
-			if m == "%%" {
-				return m
-			}
-			g := rbDateQ.FindStringSubmatch(m)
-			s, width, pad := strconv.FormatInt(t.UnixMilli(), 10), rbAtoi(g[2]), "0"
-			switch {
-			case strings.Contains(g[1], "-"):
-				width = 0
-			case strings.Contains(g[1], "_"):
-				pad = " "
-			}
-			return strings.Repeat(pad, max(0, width-len(s))) + s
-		})
-	}
-	return rbStrftime(t, format, false)
-}
-
 // rbDateFrac is n digits of p's second fraction after a dot, or "" for n <= 0.
 func rbDateFrac(p rbDateParts, n int) string {
 	if n <= 0 {
@@ -670,7 +645,7 @@ func rbJISX0301(jd int) string {
 			return fmt.Sprintf("%c%02d.%02d.%02d", e.code, t.Year()-e.yearBase+1, int(t.Month()), t.Day())
 		}
 	}
-	return rbStrftime(t, "%Y-%m-%d", true)
+	return t.Format("2006-01-02")
 }
 
 var rbJISX0301Re = regexp.MustCompile(`^([MTSHR])?(\d{2})\.(\d{2})\.(\d{2})$`)

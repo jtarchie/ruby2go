@@ -239,7 +239,171 @@ class Time < Object
   def hash = %x{ Integer(self.t.UnixNano()) }
 
   #: (String) -> String
-  def strftime(fmt) = %x{ String(rbStrftime(self.t, string(fmt), self.utc)) }
+  def strftime(fmt) = __strftime(fmt, nil, nil, true)
+
+  DAYS__ = %w[Sunday Monday Tuesday Wednesday Thursday Friday Saturday] #: Array[String]
+  MONTHS__ = %w[January February March April May June July August September October November December] #: Array[String]
+
+  # MRI's strftime (decision 158): each token is a directive (%, flags - 0 _ ^ # :, a width, an E/O modifier
+  # MRI ignores, the conversion) or literal text. plus is what %+ expands to (Date's; Time prints it as is), q
+  # the milliseconds %Q prints (Date's), strict whether a directive missing its conversion is an error (Time)
+  # or printed as is (Date).
+  #: (String, String?, Integer?, bool) -> String
+  def __strftime(fmt, plus, q, strict)
+    fmt.scan(/%[-0_^#:]*\d*[EO]?.?|[^%]+/m).map do |tok|
+      next tok unless tok.start_with?("%")
+      __strftime_token(tok, plus, q, strict) || raise(ArgumentError, "invalid format: #{fmt}")
+    end.join
+  end
+
+  # One directive; nil for one strict rejects.
+  #: (String, String?, Integer?, bool) -> String?
+  def __strftime_token(tok, plus, q, strict)
+    m = tok.match(/\A%([-0_^#:]*)(\d*)[EO]?(.)?\z/m)
+    return tok if m.nil?
+    flags = m[1] || ""
+    digits = m[2] || ""
+    width = digits.empty? ? -1 : digits.to_i
+    c = m[3]
+    if c.nil?
+      return nil if strict && tok.match?(/\A%[-0_^#]*\d*\z/)
+      return tok
+    end
+    conv = c
+    return tok if flags.include?(":") && conv != "z"
+    __strftime_conv(conv, flags, width, tok, plus, q)
+  end
+
+  #: (String, String, Integer, String, String?, Integer?) -> String
+  def __strftime_conv(conv, flags, width, tok, plus, q)
+    case conv
+    when "Y" then __sf_num(year, year < 0 ? 5 : 4, "0", flags, width)
+    when "C" then __sf_num(year.div(100), 2, "0", flags, width)
+    when "y" then __sf_num(year % 100, 2, "0", flags, width)
+    when "m" then __sf_num(month, 2, "0", flags, width)
+    when "d" then __sf_num(day, 2, "0", flags, width)
+    when "e" then __sf_num(day, 2, " ", flags, width)
+    when "j" then __sf_num(yday, 3, "0", flags, width)
+    when "H" then __sf_num(hour, 2, "0", flags, width)
+    when "k" then __sf_num(hour, 2, " ", flags, width)
+    when "I" then __sf_num(__hour12, 2, "0", flags, width)
+    when "l" then __sf_num(__hour12, 2, " ", flags, width)
+    when "M" then __sf_num(min, 2, "0", flags, width)
+    when "S" then __sf_num(sec, 2, "0", flags, width)
+    when "L", "N"
+      n = conv == "N" ? 9 : 3
+      n = width if width > 0
+      s = nsec.to_s.rjust(9, "0")
+      s += "0" while s.size < n
+      s[0, n] || ""
+    when "z" then __sf_offset(flags.count(":"))
+    when "Z" then __sf_text(zone, flags, width)
+    when "A" then __sf_text(DAYS__.fetch(wday), flags, width)
+    when "a" then __sf_text(DAYS__.fetch(wday)[0, 3] || "", flags, width)
+    when "B" then __sf_text(MONTHS__.fetch(month - 1), flags, width)
+    when "b", "h" then __sf_text(MONTHS__.fetch(month - 1)[0, 3] || "", flags, width)
+    when "p"
+      ampm = hour >= 12 ? "PM" : "AM"
+      flags.include?("#") ? __sf_text(ampm.downcase, "", width) : __sf_text(ampm, flags, width)
+    when "P" then __sf_text(hour >= 12 ? "pm" : "am", flags, width)
+    when "u" then __sf_num(wday.zero? ? 7 : wday, 1, "0", flags, width)
+    when "w" then __sf_num(wday, 1, "0", flags, width)
+    when "U" then __sf_num((yday + 6 - wday) / 7, 2, "0", flags, width)
+    when "W" then __sf_num((yday + 6 - (wday + 6) % 7) / 7, 2, "0", flags, width)
+    when "G"
+      y = __iso_week.fetch(0)
+      __sf_num(y, y < 0 ? 5 : 4, "0", flags, width)
+    when "g" then __sf_num(__iso_week.fetch(0) % 100, 2, "0", flags, width)
+    when "V" then __sf_num(__iso_week.fetch(1), 2, "0", flags, width)
+    when "s" then __sf_num(to_i, 1, "0", flags, width)
+    when "n" then "\n"
+    when "t" then "\t"
+    when "%" then __sf_text("%", flags, width)
+    when "F" then __sf_text(__strftime("%Y-%m-%d", plus, q, false), flags, width)
+    when "T", "X" then __sf_text(__strftime("%H:%M:%S", plus, q, false), flags, width)
+    when "D", "x" then __sf_text(__strftime("%m/%d/%y", plus, q, false), flags, width)
+    when "R" then __sf_text(__strftime("%H:%M", plus, q, false), flags, width)
+    when "r" then __sf_text(__strftime("%I:%M:%S %p", plus, q, false), flags, width)
+    when "c" then __sf_text(__strftime("%a %b %e %H:%M:%S %Y", plus, q, false), flags, width)
+    when "v" then __sf_text(__strftime("%e-%^b-%4Y", plus, q, false), flags, width)
+    when "+"
+      return tok unless plus
+      __sf_text(__strftime(plus, nil, q, false), flags, width)
+    when "Q"
+      return tok unless q
+      __sf_num(q, 1, "0", flags, width)
+    else tok
+    end
+  end
+
+  #: () -> Integer
+  def __hour12
+    h = hour % 12
+    h.zero? ? 12 : h
+  end
+
+  # A number padded to w (the directive's width when given) with pad; - drops the padding, _ pads with
+  # spaces, 0 with zeros. A sign counts against the width, as MRI's.
+  #: (Integer, Integer, String, String, Integer) -> String
+  def __sf_num(v, w, pad, flags, width)
+    w = width if width >= 0
+    if flags.include?("-")
+      w = 0
+    elsif flags.include?("_")
+      pad = " "
+    elsif flags.include?("0")
+      pad = "0"
+    end
+    w -= 1 if v < 0
+    s = v.abs.to_s.rjust(w, pad)
+    v < 0 ? "-#{s}" : s
+  end
+
+  # Text with ^ (upcase), # (swap case) and the width (space padded, 0 for zeros, - for none).
+  #: (String, String, Integer) -> String
+  def __sf_text(s, flags, width)
+    s = s.upcase if flags.include?("^")
+    s = (s == s.upcase ? s.downcase : s.upcase) if flags.include?("#")
+    return s if width <= 0 || flags.include?("-")
+    s.rjust(width, flags.include?("0") ? "0" : " ")
+  end
+
+  # %z with 0, 1, 2 colons, or %:::z: hours, then minutes and seconds only when they are not zero.
+  #: (Integer) -> String
+  def __sf_offset(colons)
+    off = utc_offset
+    sign = off < 0 ? "-" : "+"
+    off = off.abs
+    h, m, s = off / 3600, off % 3600 / 60, off % 60
+    case colons
+    when 0 then format("%s%02d%02d", sign, h, m)
+    when 1 then format("%s%02d:%02d", sign, h, m)
+    when 2 then format("%s%02d:%02d:%02d", sign, h, m, s)
+    else
+      r = format("%s%02d", sign, h)
+      r += format(":%02d", m) if m != 0 || s != 0
+      r += format(":%02d", s) if s != 0
+      r
+    end
+  end
+
+  # [ISO 8601 week-based year, week]: the week holding this day's Thursday.
+  #: () -> Array[Integer]
+  def __iso_week
+    thursday = yday - (wday + 6) % 7 + 3
+    y = year
+    if thursday < 1
+      y -= 1
+      thursday += __days_in_year(y)
+    elsif thursday > __days_in_year(y)
+      thursday -= __days_in_year(y)
+      y += 1
+    end
+    [y, (thursday - 1) / 7 + 1]
+  end
+
+  #: (Integer) -> Integer
+  def __days_in_year(y) = (y % 4).zero? && (y % 100 != 0 || (y % 400).zero?) ? 366 : 365
 
   #: () -> String
   def to_s = %x{ String(rbTimeToS(self.t, self.utc)) }
@@ -248,16 +412,11 @@ class Time < Object
   def inspect = %x{ String(rbTimeInspect(self.t, self.utc)) }
 
   #: (?Integer) -> String
-  def iso8601(digits = 0) = %x{
-    s := rbStrftime(self.t, "%Y-%m-%dT%H:%M:%S", self.utc)
-    if digits > 0 {
-      s += "." + rbStrftime(self.t, "%"+strconv.Itoa(int(digits))+"N", self.utc)
-    }
-    if self.utc {
-      return String(s + "Z")
-    }
-    return String(s + rbStrftime(self.t, "%:z", self.utc))
-  }
+  def iso8601(digits = 0)
+    s = strftime("%Y-%m-%dT%H:%M:%S")
+    s += "." + strftime("%#{digits}N") if digits > 0
+    utc? ? s + "Z" : s + strftime("%:z")
+  end
 
   #: (?Integer) -> String
   def xmlschema(digits = 0) = iso8601(digits)
