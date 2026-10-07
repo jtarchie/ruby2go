@@ -976,7 +976,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	}
 	args := callArgs(n)
 	switch n.Name {
-	case "attr_reader", "attr_writer", "attr_accessor":
+	case "attr", "attr_reader", "attr_writer", "attr_accessor":
 		c.addAttrs(f, cls, n, args, vis.private, scope)
 	case "include":
 		for _, a := range args {
@@ -1262,6 +1262,11 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 	if !cls.isStruct() {
 		c.errorf(f, n, "%s on a non-struct class", n.Name)
 	}
+	// Ruby's `attr :x` is attr_reader.
+	kind := n.Name
+	if kind == "attr" {
+		kind = "attr_reader"
+	}
 	ty, hasTy := f.trailing[line]
 	var rt rbs.Type
 	if hasTy {
@@ -1287,13 +1292,13 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			}
 		}
 		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: at, line: line, scope: scope})
-		if n.Name != "attr_writer" {
+		if kind != "attr_writer" {
 			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Return: at}
 			cls.Methods[name] = m
 			cls.MethodList = append(cls.MethodList, m)
 		}
-		if n.Name != "attr_reader" {
+		if kind != "attr_reader" {
 			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: name}}, Return: rbs.Void{}}
 			cls.Methods[name+"="] = m
