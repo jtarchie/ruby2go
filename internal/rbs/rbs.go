@@ -4,6 +4,7 @@ package rbs
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -31,6 +32,8 @@ func (Untyped) isType()   {}
 func (Bool) isType()      {}
 func (Singleton) isType() {}
 func (Proc) isType()      {}
+func (Literal) isType()   {}
+func (Record) isType()    {}
 
 type (
 	// Name is `Foo` or `Foo[A, B]`.
@@ -62,7 +65,24 @@ type (
 		Params []Type
 		Ret    Type
 	}
+	// Literal is a literal type: `"foo"`, `:foo` or `42`. Kind is the base
+	// class the value is a member of ("String", "Symbol" or "Integer"); Value
+	// is the decoded text. Used to select a signature by a literal argument
+	// (decision 12).
+	Literal struct {
+		Kind  string
+		Value string
+	}
+	// Record is `{ "a" => T, b: U }`: a Hash-shaped type whose keys are known.
+	Record struct{ Fields []RecordField }
 )
+
+// RecordField is one field of a Record.
+type RecordField struct {
+	Key    string
+	Symbol bool // `b: U` (a symbol key) rather than `"b" => U`
+	Value  Type
+}
 
 func (t Name) String() string {
 	if len(t.Args) == 0 {
@@ -87,6 +107,29 @@ func (Untyped) String() string     { return "untyped" }
 func (Bool) String() string        { return "bool" }
 func (t Singleton) String() string { return "singleton(" + t.Name + ")" }
 
+func (t Literal) String() string {
+	switch t.Kind {
+	case "String":
+		return strconv.Quote(t.Value)
+	case "Symbol":
+		return ":" + t.Value
+	default:
+		return t.Value
+	}
+}
+
+func (t Record) String() string {
+	parts := make([]string, len(t.Fields))
+	for i, f := range t.Fields {
+		if f.Symbol {
+			parts[i] = f.Key + ": " + f.Value.String()
+		} else {
+			parts[i] = strconv.Quote(f.Key) + " => " + f.Value.String()
+		}
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
 func join(ts []Type) string {
 	parts := make([]string, len(ts))
 	for i, t := range ts {
@@ -110,6 +153,7 @@ type Block struct {
 	Params   []Param
 	Return   Type
 	Optional bool // `?{ ... }`
+	Self     Type // `[self: C]`: what `self` is inside the block, or nil
 }
 
 // MethodType is `[X] (A, B) { (C) -> D } -> R`.
@@ -157,7 +201,11 @@ func (m *MethodType) String() string {
 			}
 			b.WriteString(p.Type.String())
 		}
-		b.WriteString(") -> " + m.Block.Return.String() + " }")
+		b.WriteString(")")
+		if m.Block.Self != nil {
+			b.WriteString(" [self: " + m.Block.Self.String() + "]")
+		}
+		b.WriteString(" -> " + m.Block.Return.String() + " }")
 	}
 	b.WriteString(" -> " + m.Return.String())
 	return b.String()
@@ -179,6 +227,17 @@ func tokenize(s string) ([]string, error) {
 		case c == '-' && i+1 < len(s) && s[i+1] == '>':
 			toks = append(toks, "->")
 			i += 2
+		case c == '"':
+			tok, ni, serr := scanString(s, i)
+			if serr != nil {
+				return nil, serr
+			}
+			toks = append(toks, tok)
+			i = ni
+		case isNumberStart(s, i):
+			tok, ni := scanNumber(s, i)
+			toks = append(toks, tok)
+			i = ni
 		case c == '*' && i+1 < len(s) && s[i+1] == '*':
 			toks = append(toks, "**")
 			i += 2
@@ -186,27 +245,19 @@ func tokenize(s string) ([]string, error) {
 			// leading `::Foo`
 			toks = append(toks, "::")
 			i += 2
+		case c == '=' && i+1 < len(s) && s[i+1] == '>':
+			toks = append(toks, "=>")
+			i += 2
 		case strings.IndexByte("()[]{},|?*:&^", c) >= 0:
 			toks = append(toks, string(c))
 			i++
 		case isIdentStart(c):
-			j := i
-			for j < len(s) && (isIdentStart(s[j]) || (s[j] >= '0' && s[j] <= '9')) {
-				j++
+			tok, ni, ierr := scanIdent(s, i)
+			if ierr != nil {
+				return nil, ierr
 			}
-			// A::B::C is one name token.
-			for j+1 < len(s) && s[j] == ':' && s[j+1] == ':' {
-				k := j + 2
-				if k == len(s) || !isIdentStart(s[k]) {
-					return nil, fmt.Errorf("rbs: expected a name after \"::\" in %q", s)
-				}
-				for k < len(s) && (isIdentStart(s[k]) || (s[k] >= '0' && s[k] <= '9')) {
-					k++
-				}
-				j = k
-			}
-			toks = append(toks, s[i:j])
-			i = j
+			toks = append(toks, tok)
+			i = ni
 		default:
 			return nil, fmt.Errorf("rbs: unexpected %q in %q", string(c), s)
 		}
@@ -216,6 +267,58 @@ func tokenize(s string) ([]string, error) {
 
 func isIdentStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// isNumberStart reports whether an integer literal starts at i.
+func isNumberStart(s string, i int) bool {
+	c := s[i]
+	return c >= '0' && c <= '9' || c == '-' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9'
+}
+
+// scanIdent reads one identifier or `A::B::C` name token.
+func scanIdent(s string, i int) (string, int, error) {
+	j := i
+	for j < len(s) && (isIdentStart(s[j]) || s[j] >= '0' && s[j] <= '9') {
+		j++
+	}
+	for j+1 < len(s) && s[j] == ':' && s[j+1] == ':' {
+		k := j + 2
+		if k == len(s) || !isIdentStart(s[k]) {
+			return "", 0, fmt.Errorf("rbs: expected a name after \"::\" in %q", s)
+		}
+		for k < len(s) && (isIdentStart(s[k]) || s[k] >= '0' && s[k] <= '9') {
+			k++
+		}
+		j = k
+	}
+	return s[i:j], j, nil
+}
+
+// scanString reads a `"..."` literal (with backslash escapes) as one token.
+func scanString(s string, i int) (string, int, error) {
+	j := i + 1
+	for j < len(s) && s[j] != '"' {
+		if s[j] == '\\' {
+			j++
+		}
+		j++
+	}
+	if j >= len(s) {
+		return "", 0, fmt.Errorf("rbs: unterminated string in %q", s)
+	}
+	return s[i : j+1], j + 1, nil
+}
+
+// scanNumber reads an integer literal (with an optional sign and `_`).
+func scanNumber(s string, i int) (string, int) {
+	j := i
+	if s[j] == '-' {
+		j++
+	}
+	for j < len(s) && (s[j] >= '0' && s[j] <= '9' || s[j] == '_') {
+		j++
+	}
+	return s[i:j], j
 }
 
 func (p *parser) peek() string {
@@ -302,35 +405,10 @@ func ParseMethodType(s string) (*MethodType, error) {
 		return nil, err
 	}
 	if p.peek() == "?" || p.peek() == "{" {
-		blk := &Block{Optional: p.peek() == "?"}
-		if blk.Optional {
-			p.next()
-		}
-		err = p.expect("{")
+		m.Block, err = p.parseBlock()
 		if err != nil {
 			return nil, err
 		}
-		err = p.expect("(")
-		if err != nil {
-			return nil, err
-		}
-		blk.Params, err = p.parseParams()
-		if err != nil {
-			return nil, err
-		}
-		err = p.expect("->")
-		if err != nil {
-			return nil, err
-		}
-		blk.Return, err = p.parseType()
-		if err != nil {
-			return nil, err
-		}
-		err = p.expect("}")
-		if err != nil {
-			return nil, err
-		}
-		m.Block = blk
 	}
 	err = p.expect("->")
 	if err != nil {
@@ -449,20 +527,7 @@ func (p *parser) parsePrimary() (Type, error) {
 		}
 		return t, p.expect(")")
 	case "[":
-		var elems []Type
-		for p.peek() != "]" {
-			t, err := p.parseType()
-			if err != nil {
-				return nil, err
-			}
-			elems = append(elems, t)
-			err = p.sep("]")
-			if err != nil {
-				return nil, err
-			}
-		}
-		p.next()
-		return Tuple{Elems: elems}, nil
+		return p.parseTuple()
 	case "::":
 		return p.parsePrimary()
 	case "self":
@@ -473,6 +538,16 @@ func (p *parser) parsePrimary() (Type, error) {
 		return Bot{}, nil
 	case "nil":
 		return Nil{}, nil
+	case "true", "false":
+		return Bool{}, nil
+	case ":":
+		name := p.next()
+		if name == "" || !isIdentStart(name[0]) {
+			return nil, fmt.Errorf("rbs: bad symbol literal near %q", name)
+		}
+		return Literal{Kind: "Symbol", Value: name}, nil
+	case "{":
+		return p.parseRecord()
 	case "untyped", "top":
 		return Untyped{}, nil
 	case "bool", "boolish":
@@ -480,18 +555,17 @@ func (p *parser) parsePrimary() (Type, error) {
 	case "^":
 		return p.parseProc()
 	case "singleton":
-		if p.peek() == "(" {
-			p.next()
-			name := p.next()
-			if name == "::" {
-				name = p.next()
-			}
-			if name == "" || !isIdentStart(name[0]) {
-				return nil, fmt.Errorf("rbs: bad singleton type near %q", name)
-			}
-			return Singleton{Name: name}, p.expect(")")
+		return p.parseSingleton()
+	}
+	if strings.HasPrefix(tok, `"`) {
+		v, err := strconv.Unquote(tok)
+		if err != nil {
+			return nil, fmt.Errorf("rbs: bad string literal %q", tok)
 		}
-		return nil, fmt.Errorf("rbs: expected \"(\" after singleton, got %q", p.peek())
+		return Literal{Kind: "String", Value: v}, nil
+	}
+	if tok[0] >= '0' && tok[0] <= '9' || tok[0] == '-' {
+		return Literal{Kind: "Integer", Value: tok}, nil
 	}
 	if !isIdentStart(tok[0]) {
 		return nil, fmt.Errorf("rbs: unexpected %q", tok)
@@ -515,7 +589,148 @@ func (p *parser) parsePrimary() (Type, error) {
 	return n, nil
 }
 
+// parseTuple reads a tuple type after its `[`.
+func (p *parser) parseTuple() (Type, error) {
+	var elems []Type
+	for p.peek() != "]" {
+		t, err := p.parseType()
+		if err != nil {
+			return nil, err
+		}
+		elems = append(elems, t)
+		err = p.sep("]")
+		if err != nil {
+			return nil, err
+		}
+	}
+	p.next() // ]
+	return Tuple{Elems: elems}, nil
+}
+
+// parseSingleton reads `singleton(Foo)` after its `singleton` token.
+func (p *parser) parseSingleton() (Type, error) {
+	if p.peek() != "(" {
+		return nil, fmt.Errorf("rbs: expected \"(\" after singleton, got %q", p.peek())
+	}
+	p.next() // (
+	name := p.next()
+	if name == "::" {
+		name = p.next()
+	}
+	if name == "" || !isIdentStart(name[0]) {
+		return nil, fmt.Errorf("rbs: bad singleton type near %q", name)
+	}
+	err := p.expect(")")
+	if err != nil {
+		return nil, err
+	}
+	return Singleton{Name: name}, nil
+}
+
 func (t Proc) String() string { return "^(" + join(t.Params) + ") -> " + t.Ret.String() }
+
+// parseBlock reads a block type after the `?`/`{` that starts it.
+func (p *parser) parseBlock() (*Block, error) {
+	blk := &Block{Optional: p.peek() == "?"}
+	if blk.Optional {
+		p.next()
+	}
+	err := p.expect("{")
+	if err != nil {
+		return nil, err
+	}
+	err = p.expect("(")
+	if err != nil {
+		return nil, err
+	}
+	blk.Params, err = p.parseParams()
+	if err != nil {
+		return nil, err
+	}
+	blk.Self, _, err = p.parseSelfBracket()
+	if err != nil {
+		return nil, err
+	}
+	err = p.expect("->")
+	if err != nil {
+		return nil, err
+	}
+	blk.Return, err = p.parseType()
+	if err != nil {
+		return nil, err
+	}
+	err = p.expect("}")
+	if err != nil {
+		return nil, err
+	}
+	return blk, nil
+}
+
+// parseSelfBracket reads an optional `[self: C]` (a block's self type).
+func (p *parser) parseSelfBracket() (Type, bool, error) {
+	if p.peek() != "[" {
+		return nil, false, nil
+	}
+	p.next() // [
+	tok := p.next()
+	if tok != "self" {
+		return nil, false, fmt.Errorf("rbs: expected `self: Type`, got %q", tok)
+	}
+	err := p.expect(":")
+	if err != nil {
+		return nil, false, err
+	}
+	t, err := p.parseType()
+	if err != nil {
+		return nil, false, err
+	}
+	err = p.expect("]")
+	if err != nil {
+		return nil, false, err
+	}
+	return t, true, nil
+}
+
+// parseRecord reads a record type after its `{`: `{ "a" => T, b: U }`.
+func (p *parser) parseRecord() (Type, error) {
+	var out Record
+	for p.peek() != "}" {
+		if p.peek() == "" {
+			return nil, errors.New("rbs: unterminated record type")
+		}
+		var f RecordField
+		switch {
+		case strings.HasPrefix(p.peek(), `"`):
+			tok := p.next()
+			v, err := strconv.Unquote(tok)
+			if err != nil {
+				return nil, fmt.Errorf("rbs: bad record key %q", tok)
+			}
+			f.Key = v
+			err = p.expect("=>")
+			if err != nil {
+				return nil, err
+			}
+		case p.pos+1 < len(p.toks) && p.toks[p.pos+1] == ":":
+			f.Key, f.Symbol = p.next(), true
+			p.next() // :
+		default:
+			return nil, fmt.Errorf("rbs: bad record key %q", p.peek())
+		}
+		val, err := p.parseType()
+		if err != nil {
+			return nil, err
+		}
+		f.Value = val
+		out.Fields = append(out.Fields, f)
+		err = p.sep("}")
+		if err != nil {
+			return nil, err
+		}
+	}
+	p.next() // }
+	return out, nil
+}
 
 // parseProc reads a proc type after its `^`: `(A, B) -> R`.
 func (p *parser) parseProc() (Type, error) {

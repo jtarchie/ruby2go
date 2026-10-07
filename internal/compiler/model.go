@@ -1686,33 +1686,7 @@ type typeScope struct {
 func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	switch t := t.(type) {
 	case rbs.Name:
-		for _, p := range sc.methodTPs {
-			if p == t.Name {
-				return TVar{Name: p}
-			}
-		}
-		if sc.class != nil {
-			for _, p := range sc.class.TypeParams {
-				if p == t.Name {
-					return TVar{Name: p}
-				}
-			}
-		}
-		cls, _ := c.lookupName(sc.lex, t.Name)
-		if cls == nil {
-			c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
-		}
-		if len(t.Args) == 0 && (cls.RubyName == "Method" || cls.RubyName == "UnboundMethod") {
-			return TClass{C: cls, Args: []Type{TAny{}}} // RBS's Method has no signature: called through dyn (decision 141)
-		}
-		if len(t.Args) != len(cls.TypeParams) {
-			c.errorf(sc.file, nil, "%s:%d: %s takes %d type args, got %d", sc.file.Name, sc.line, cls.Name, len(cls.TypeParams), len(t.Args))
-		}
-		args := make([]Type, len(t.Args))
-		for i, a := range t.Args {
-			args[i] = c.resolveType(a, sc)
-		}
-		return TClass{C: cls, Args: args}
+		return c.resolveNameType(t, sc)
 	case rbs.Bool:
 		return TClass{C: c.classes["Boolean"]}
 	case rbs.Singleton:
@@ -1754,6 +1728,12 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 			ps[i] = c.resolveType(p, sc)
 		}
 		return TFunc{Params: ps, Ret: c.resolveType(t.Ret, sc), Proc: true}
+	case rbs.Literal:
+		// A literal is a member of its base class (decision 12); the value
+		// matters only to select an overload arm at the call site.
+		return TClass{C: c.classes[t.Kind]}
+	case rbs.Record:
+		return c.resolveRecord(t, sc)
 	}
 	c.errorf(sc.file, nil, "%s:%d: unsupported type %s", sc.file.Name, sc.line, t)
 	return nil
@@ -1790,6 +1770,63 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 		}
 	}
 	return u
+}
+
+// resolveNameType resolves a `Foo` / `Foo[A]` type: a type variable or a class.
+func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
+	for _, p := range sc.methodTPs {
+		if p == t.Name {
+			return TVar{Name: p}
+		}
+	}
+	if sc.class != nil {
+		for _, p := range sc.class.TypeParams {
+			if p == t.Name {
+				return TVar{Name: p}
+			}
+		}
+	}
+	cls, _ := c.lookupName(sc.lex, t.Name)
+	if cls == nil {
+		c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
+	}
+	if len(t.Args) == 0 && (cls.RubyName == "Method" || cls.RubyName == "UnboundMethod") {
+		return TClass{C: cls, Args: []Type{TAny{}}} // RBS's Method has no signature: called through dyn (decision 141)
+	}
+	if len(t.Args) != len(cls.TypeParams) {
+		c.errorf(sc.file, nil, "%s:%d: %s takes %d type args, got %d", sc.file.Name, sc.line, cls.Name, len(cls.TypeParams), len(t.Args))
+	}
+	args := make([]Type, len(t.Args))
+	for i, a := range t.Args {
+		args[i] = c.resolveType(a, sc)
+	}
+	return TClass{C: cls, Args: args}
+}
+
+// resolveRecord resolves a record type to a Hash when every key and value is
+// uniform, else Hash[untyped, untyped] (decision 160).
+func (c *Compiler) resolveRecord(t rbs.Record, sc typeScope) Type {
+	hash := c.classes["Hash"]
+	anyHash := TClass{C: hash, Args: []Type{TAny{}, TAny{}}}
+	if len(t.Fields) == 0 {
+		return anyHash
+	}
+	var kt, vt Type
+	for i, f := range t.Fields {
+		k := TClass{C: c.classes["String"]}
+		if f.Symbol {
+			k = TClass{C: c.classes["Symbol"]}
+		}
+		v := c.resolveType(f.Value, sc)
+		if i == 0 {
+			kt, vt = k, v
+			continue
+		}
+		if kt.String() != k.String() || vt.String() != v.String() {
+			return anyHash
+		}
+	}
+	return TClass{C: hash, Args: []Type{kt, vt}}
 }
 
 // nameCmpNil gives a `<=>` returning Integer? the Go name cmpNil: Op_cmp is
@@ -2944,7 +2981,7 @@ func nilableRBS(t rbs.Type) bool {
 	switch t.(type) {
 	case rbs.Optional, rbs.Nil, rbs.Untyped:
 		return true
-	case rbs.Bool, rbs.Bot, rbs.Name, rbs.Proc, rbs.Self, rbs.Singleton, rbs.Tuple, rbs.Union, rbs.Void: // never holds nil
+	case rbs.Bool, rbs.Bot, rbs.Name, rbs.Proc, rbs.Self, rbs.Singleton, rbs.Tuple, rbs.Union, rbs.Void, rbs.Literal, rbs.Record: // never holds nil
 	}
 	return false
 }

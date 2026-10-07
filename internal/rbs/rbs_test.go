@@ -26,6 +26,8 @@ func TestParseMethodType(t *testing.T) {
 		"(String, a: Integer, ?b: String?) -> void":         "(String, a: Integer, ?b: String?) -> void",
 		"(**Integer) -> void":                               "(**Integer) -> void",
 		"(Integer x, ?key: Symbol, **untyped opts) -> bool": "(Integer x, ?key: Symbol, **untyped opts) -> bool",
+		"() { () [self: Cuba] -> void } -> void":            "() { () [self: Cuba] -> void } -> void",
+		`("PATH_INFO" | "QUERY_STRING") -> String`:          `("PATH_INFO" | "QUERY_STRING") -> String`,
 	}
 	for in, want := range cases {
 		m, err := ParseMethodType(in)
@@ -143,6 +145,18 @@ func TestParseTypeShapes(t *testing.T) {
 		{"top", Untyped{}},
 		{"bool", Bool{}},
 		{"boolish", Bool{}},
+		// literal types (decision 12)
+		{`"PATH_INFO"`, Literal{Kind: "String", Value: "PATH_INFO"}},
+		{`"a\nb"`, Literal{Kind: "String", Value: "a\nb"}},
+		{":edition", Literal{Kind: "Symbol", Value: "edition"}},
+		{"42", Literal{Kind: "Integer", Value: "42"}},
+		{"-1", Literal{Kind: "Integer", Value: "-1"}},
+		{`("yes" | "no")`, Union{Elems: []Type{Literal{Kind: "String", Value: "yes"}, Literal{Kind: "String", Value: "no"}}}},
+		{"true", Bool{}},
+		// records
+		{`{ "a" => Integer }`, Record{Fields: []RecordField{{Key: "a", Value: nm("Integer")}}}},
+		{`{ id: Integer, "x" => String }`, Record{Fields: []RecordField{{Key: "id", Symbol: true, Value: nm("Integer")}, {Key: "x", Value: nm("String")}}}},
+		{`{ "a" => Integer }?`, Optional{Elem: Record{Fields: []RecordField{{Key: "a", Value: nm("Integer")}}}}},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -183,9 +197,6 @@ func TestParseTypeErrors(t *testing.T) {
 		{"?", "", "", ""},
 		{"()", "", "", ""},
 		{"String name", "trailing", "", ""},
-		{":sym", "", "", ""},
-		{`"str"`, "", "", ""},
-		{"1", "", "", ""},
 		{"String!", "", "", ""},
 		{"singleton()", "singleton", "", ""},
 		{"singleton(Foo", "", "", ""},
