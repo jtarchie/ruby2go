@@ -181,7 +181,7 @@ func rbComplexPowInt(c *Complex, k int) *Complex {
 }
 
 func rbComplexAbsF(c *Complex) float64 {
-	return rbHypot(rbNumFloat(c.re), rbNumFloat(c.im))
+	return math.Hypot(rbNumFloat(c.re), rbNumFloat(c.im))
 }
 
 func rbComplexAbs(c *Complex) any {
@@ -205,7 +205,7 @@ func rbNumAbs(a any) any {
 }
 
 func rbComplexArg(c *Complex) float64 {
-	return rbAtan2(rbNumFloat(c.im), rbNumFloat(c.re))
+	return math.Atan2(rbNumFloat(c.im), rbNumFloat(c.re))
 }
 
 // rbComplexPolar is MRI's f_complex_polar_real.
@@ -225,7 +225,7 @@ func rbComplexPolar(r, theta any) *Complex {
 		}
 	}
 	rf, tf := rbNumFloat(r), rbNumFloat(theta)
-	return &Complex{Float(rf * rbCos(tf)), Float(rf * rbSin(tf))}
+	return &Complex{Float(rf * math.Cos(tf)), Float(rf * math.Sin(tf))}
 }
 
 // rbComplexReal raises MRI's RangeError when a conversion would drop a non-exact-zero imaginary part.

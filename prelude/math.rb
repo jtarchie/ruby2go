@@ -13,110 +13,96 @@ module Math
   }
 
   #: (Float) -> Float
-  def self.cbrt(x) = %x{ Float(rbCbrt(float64(x))) }
+  def self.cbrt(x) = %x{ Float(math.Cbrt(float64(x))) }
 
   #: (Float) -> Float
-  def self.sin(x) = %x{ Float(rbSin(float64(x))) }
+  def self.sin(x) = %x{ Float(math.Sin(float64(x))) }
 
   #: (Float) -> Float
-  def self.cos(x) = %x{ Float(rbCos(float64(x))) }
+  def self.cos(x) = %x{ Float(math.Cos(float64(x))) }
 
   #: (Float) -> Float
-  def self.tan(x) = %x{ Float(rbTan(float64(x))) }
+  def self.tan(x) = %x{ Float(math.Tan(float64(x))) }
 
   #: (Float) -> Float
   def self.asin(x) = %x{
     rbMathDomain(x < -1 || x > 1, "asin")
-    return Float(rbAsin(float64(x)))
+    return Float(math.Asin(float64(x)))
   }
 
   #: (Float) -> Float
   def self.acos(x) = %x{
     rbMathDomain(x < -1 || x > 1, "acos")
-    return Float(rbAcos(float64(x)))
+    return Float(math.Acos(float64(x)))
   }
 
   #: (Float) -> Float
-  def self.atan(x) = %x{ Float(rbAtan(float64(x))) }
+  def self.atan(x) = %x{ Float(math.Atan(float64(x))) }
 
   #: (Float, Float) -> Float
-  def self.atan2(y, x) = %x{ Float(rbAtan2(float64(y), float64(x))) }
+  def self.atan2(y, x) = %x{ Float(math.Atan2(float64(y), float64(x))) }
 
   #: (Float) -> Float
-  def self.sinh(x) = %x{ Float(rbHyper(float64(x), 0)) }
+  def self.sinh(x) = %x{ Float(math.Sinh(float64(x))) }
 
   #: (Float) -> Float
-  def self.cosh(x) = %x{ Float(rbHyper(float64(x), 1)) }
+  def self.cosh(x) = %x{ Float(math.Cosh(float64(x))) }
 
   #: (Float) -> Float
-  def self.tanh(x) = %x{ Float(rbHyper(float64(x), 2)) }
+  def self.tanh(x) = %x{ Float(math.Tanh(float64(x))) }
 
   #: (Float) -> Float
-  def self.exp(x) = %x{ Float(rbExp(float64(x))) }
+  def self.exp(x) = %x{ Float(math.Exp(float64(x))) }
 
   #: (Float) -> Float
   def self.log(x) = %x{
     rbMathDomain(x < 0, "log")
-    return Float(rbLog(float64(x)))
+    return Float(math.Log(float64(x)))
   }
 
   #: (Float, Float) -> Float
   def self.__log_2(x, base) = %x{
     rbMathDomain(x < 0 || base < 0, "log")
-    return Float(rbLogBase(float64(x), rbBigLog(rbBF().SetFloat64(float64(base)))))
+    return Float(math.Log(float64(x)) / math.Log(float64(base)))
   }
 
   #: (Float) -> Float
   def self.log2(x) = %x{
     rbMathDomain(x < 0, "log2")
-    return Float(rbLogBase(float64(x), rbLn2))
+    return Float(math.Log2(float64(x)))
   }
 
   #: (Float) -> Float
   def self.log10(x) = %x{
     rbMathDomain(x < 0, "log10")
-    return Float(rbLogBase(float64(x), rbLn10))
+    return Float(math.Log10(float64(x)))
   }
 
   #: (Float, Float) -> Float
-  def self.hypot(x, y) = %x{ Float(rbHypot(float64(x), float64(y))) }
+  def self.hypot(x, y) = %x{ Float(math.Hypot(float64(x), float64(y))) }
 
   #: (Float) -> Float
   def self.log1p(x) = %x{
     rbMathDomain(x < -1, "log1p")
-    return Float(rbMathBig(float64(x), 1e-20, -1, func(b *big.Float) *big.Float { return rbBigLog(b.Add(b, rbBFInt(1))) }))
+    return Float(math.Log1p(float64(x)))
   }
 
   #: (Float) -> Float
-  def self.expm1(x) = %x{
-    if x > 710 || x < -50 {
-      return Float(math.Expm1(float64(x)))
-    }
-    return Float(rbMathBig(float64(x), 1e-20, 0, func(b *big.Float) *big.Float { return b.Sub(rbBigExp(b), rbBFInt(1)) }))
-  }
+  def self.expm1(x) = %x{ Float(math.Expm1(float64(x))) }
 
   #: (Float) -> Float
-  def self.asinh(x) = %x{ Float(rbAsinh(float64(x))) }
+  def self.asinh(x) = %x{ Float(math.Asinh(float64(x))) }
 
   #: (Float) -> Float
   def self.acosh(x) = %x{
     rbMathDomain(x < 1, "acosh")
-    return Float(rbMathBig(float64(x), 0, 1, func(b *big.Float) *big.Float {
-      r := rbBF().Sub(rbBF().Mul(b, b), rbBFInt(1))
-      return rbBigLog(r.Add(r.Sqrt(r), b))
-    }))
+    return Float(math.Acosh(float64(x)))
   }
 
   #: (Float) -> Float
   def self.atanh(x) = %x{
     rbMathDomain(x < -1 || x > 1, "atanh")
-    if x == 1 || x == -1 {
-      return Float(math.Inf(int(x)))
-    }
-    return Float(rbMathBig(float64(x), 1e-20, -1, func(b *big.Float) *big.Float {
-      q := rbBF().Quo(rbBF().Add(rbBFInt(1), b), rbBF().Sub(rbBFInt(1), b))
-      return q.Quo(rbBigLog(q), rbBFInt(2))
-    }))
+    return Float(math.Atanh(float64(x)))
   }
 
   #: (Float) -> [Float, Integer]
@@ -129,17 +115,46 @@ module Math
   def self.ldexp(x, e) = %x{ Float(math.Ldexp(float64(x), int(e))) }
 
   #: (Float) -> Float
-  def self.erf(x) = %x{ Float(rbErf(float64(x))) }
+  def self.erf(x) = %x{ Float(math.Erf(float64(x))) }
 
   #: (Float) -> Float
-  def self.erfc(x) = %x{ Float(rbErfc(float64(x))) }
+  def self.erfc(x) = %x{ Float(math.Erfc(float64(x))) }
 
   #: (Float) -> Float
-  def self.gamma(x) = %x{ Float(rbGamma(float64(x))) }
+  def self.gamma(x) = %x{
+    xf := float64(x)
+    switch {
+    case math.IsNaN(xf) || math.IsInf(xf, 1):
+      return Float(xf)
+    case xf == 0:
+      return Float(math.Copysign(math.Inf(1), xf))
+    case (xf == math.Trunc(xf) && xf < 0) || math.IsInf(xf, -1):
+      rbMathDomain(true, "gamma")
+    case xf > 171.7:
+      return Float(math.Inf(1))
+    }
+    return Float(math.Gamma(xf))
+  }
 
   #: (Float) -> [Float, Integer]
   def self.lgamma(x) = %x{
-    v, sign := rbLgamma(float64(x))
+    xf := float64(x)
+    switch {
+    case math.IsInf(xf, -1):
+      rbMathDomain(true, "lgamma")
+    case math.IsNaN(xf) || math.IsInf(xf, 1):
+      return Tuple2[Float, Integer]{Float(xf), Integer(1)}
+    case xf == 0:
+      if math.Signbit(xf) {
+        return Tuple2[Float, Integer]{Float(math.Inf(1)), Integer(-1)}
+      }
+      return Tuple2[Float, Integer]{Float(math.Inf(1)), Integer(1)}
+    case xf == math.Trunc(xf) && xf < 0:
+      return Tuple2[Float, Integer]{Float(math.Inf(1)), Integer(1)}
+    case xf == 1 || xf == 2:
+      return Tuple2[Float, Integer]{Float(0), Integer(1)}
+    }
+    v, sign := math.Lgamma(xf)
     return Tuple2[Float, Integer]{Float(v), Integer(sign)}
   }
 end

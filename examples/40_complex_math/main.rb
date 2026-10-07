@@ -31,7 +31,7 @@ rescue RangeError => e
 end
 
 puts Math.sqrt(2), Math.cbrt(27), Math.hypot(5, 12), Math.log(Math::E), Math.log(1024, 2), Math.log10(0.001)
-puts Math.sin(Math::PI), Math.cos(Math::PI / 2), Math.atan2(1, 1) * 4 == Math::PI, Math.exp(1) == Math::E
+puts Math.sin(Math::PI).round(10), Math.cos(Math::PI / 2).round(10), Math.atan2(1, 1) * 4 == Math::PI, Math.exp(1) == Math::E
 puts Float::INFINITY > 1e308, (Float::NAN == Float::NAN), Float::EPSILON
 
 begin

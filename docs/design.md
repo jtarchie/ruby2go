@@ -1174,23 +1174,32 @@ resolve; anything not listed is still open.
     and Rational goes through decision 12's overloads. `**` takes an
     Integer (exact) or a Float (polar form)
     ([example 40](../examples/40_complex_math/main.rb)).
-43. `Math` evaluates every transcendental function in 128-bit
-    `math/big` and rounds once, so results are correctly rounded. Go's
-    `math` is only within 1 ulp (and its `Sin`/`Cos` lose digits near
-    multiples of π/2), which diverged from MRI's printed output on a few
-    percent of inputs. MRI inherits the platform libm, which on macOS
-    misrounds `tan`, `sin`, `cos`, `cbrt`, `hypot` and `atan` on a few
-    percent of inputs; there rb2go is right and MRI is off by one digit.
-    `Math.sqrt` stays Go's (IEEE-exact). `erf` is its Taylor series below
-    |x| = 6 (±1 beyond), `erfc` that series' complement below 3 and its
-    continued fraction above; `gamma` and `lgamma` are Stirling's series
-    with Bernoulli numbers up to B₄₀, shifted to x ≥ 30 by the recurrence.
-    macOS's libm rounds these four wrong far more often (about 40% of a
-    grid of 416 inputs for lgamma and erfc, all checked against mpmath),
-    so printed results differ from MRI there in the last digit. A call costs microseconds rather
-    than nanoseconds. `Float::INFINITY`/`NAN`/`EPSILON`/`MAX`/`MIN`/`DIG`
-    exist. `Float#*` converts its result explicitly, since Go may fuse
-    `a * b + c` into one FMA rounding where MRI rounds twice.
+43. `Math` calls Go's `math` package directly, so its results may
+    differ from MRI's in the last printed digit. MRI wraps the platform
+    libm (`math.c` calls `sin()` on a plain double) and Go has its own
+    implementation; both are within 1 ulp (one unit in the last place,
+    the gap between neighbouring doubles) and neither is correctly
+    rounded, so there is no single precision to reproduce. `Float#to_s`
+    prints the shortest string that round-trips, making a 1-ulp gap a
+    visible last digit: of 20,000 inputs in [-137, 137], Go's `math` and
+    MRI on macOS differed for `sin` 5317 times, `cos` 5398, `atan` 5210,
+    `exp` 1970 and `log` 508 (Go `0.9554488450848333` against MRI
+    `0.9554488450848334`). MRI's own libm misrounds `tan`, `sin`, `cos`,
+    `cbrt`, `hypot` and `atan` on a few percent of inputs, and
+    `erf`/`erfc`/`gamma`/`lgamma` far more often, so neither side is
+    "right" more often. Programs that print 17 significant digits of a
+    transcendental see the difference; programs that compute with the
+    result do not. This replaced an earlier scheme that evaluated every
+    transcendental in 128-bit `math/big` and rounded once: correctly
+    rounded, but 20x slower than MRI in a `Math.sin`/`Math.exp` loop.
+    `Math.log(x, base)` is `math.Log(x)/math.Log(base)`, as MRI's
+    `math.c` computes it. `rbMathDomain` keeps MRI's `Math::DomainError`
+    for out-of-domain arguments, and the special values (`atanh(1.0)` is
+    `Infinity`, `gamma(-1.0)` raises, `lgamma(-0.0)` is `[Infinity, -1]`)
+    are checked explicitly. `Math.sqrt` is IEEE-exact either way.
+    `Float::INFINITY`/`NAN`/`EPSILON`/`MAX`/`MIN`/`DIG` exist. `Float#*`
+    converts its result explicitly, since Go may fuse `a * b + c` into
+    one FMA rounding where MRI rounds twice.
 44. `Set[E]` (core in Ruby 4) wraps a `Hash[E, Boolean]`, so it is
     insertion-ordered and matches elements by `eql?`/`hash`; it prints
     as Ruby 4's `Set[1, 2]`. `Set.new(array)` and `Set[a, b]` infer `E`;
@@ -3336,8 +3345,9 @@ resolve; anything not listed is still open.
     - Integer gained `& | ^ ~ << >> []`, `round`/`floor`/`ceil`/`truncate`
       with negative digits (half away from zero), `allbits?` and friends;
       `<<` past 64 bits raises `RangeError` (decision 35). `Math.asinh`,
-      `acosh`, `atanh`, `log1p` and `expm1` are big-float like the rest
-      (decision 43), and so are `erf`, `erfc`, `gamma` and `lgamma`.
+      `acosh`, `atanh`, `log1p`, `expm1`, `erf`, `erfc`, `gamma` and
+      `lgamma` exist; like the rest of `Math` they call Go's `math`
+      (decision 43).
     - `MatchData` keeps its subject and byte offsets, so `begin`, `end`,
       `offset`, `byteoffset`, `named_captures` and `m[:name]` work; with
       a duplicated group name, `m[:name]` is the last group that matched,
@@ -5202,10 +5212,9 @@ resolve; anything not listed is still open.
     each side, wall-clock including process start since that is what a
     user feels. Ratios as of 2026-10-07, MRI 4.0.7 on Apple silicon
     (median of 7): `fib(32)` 17x, hash counting 7x, array
-    map/select/sum 6x, string build/split 5x faster; the
-    `Math.sin`/`cos` loop 20x slower (decision 43's 128-bit
-    transcendentals, the one deliberate loss). These are a ratio to
-    notice regressions, not a suite: no JIT on either side, one
+    map/select/sum 6x, string build/split 5x, the `Math.sin`/`cos` loop
+    11x faster (after decision 43 dropped the 128-bit path). These are a
+    ratio to notice regressions, not a suite: no JIT on either side, one
     machine, small CPU-bound loops. Conformance is counted from
     sources, not stored: 107 examples, 29 minitest suites and 22 error
     archives, each compared to MRI, plus ruby/spec's 1,855 `core/*`

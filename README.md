@@ -207,13 +207,13 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 | `Hash` counting, 500k | 0.13s | 0.02s | 7x faster |
 | `Array#map`/`select`/`sum`, 1M | 0.17s | 0.03s | 6x faster |
 | string build/split, 100k | 0.13s | 0.03s | 5x faster |
-| `Math.sin`/`cos`, 200k | 0.10s | 2.13s | 20x slower |
+| `Math.sin`/`cos`, 200k | 0.11s | 0.01s | 10.8x faster |
 
-The slow row is deliberate: transcendentals are evaluated in 128-bit so
-their printed digits match MRI exactly ([decision 43](docs/design.md)),
-and the common case pays for the rare hard one. Ahead-of-time
-compilation is the other trade: `rb2go build` is ~0.25s warm on
-hello-world, but the resulting binary starts in under 10ms (MRI ~70ms).
+`Math` calls Go's `math` package directly, so a printed transcendental can
+differ from MRI in the last digit — Go and MRI's libm are both within one
+ulp and neither is uniquely correct ([decision 43](docs/design.md)).
+Ahead-of-time compilation is the other trade: `rb2go build` is ~0.25s warm
+on hello-world, but the resulting binary starts in under 10ms (MRI ~70ms).
 
 Correctness is measured against MRI, not a specification: 107
 [examples](examples/), 29 minitest suites and 22 compile-error cases all
