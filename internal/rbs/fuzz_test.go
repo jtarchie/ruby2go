@@ -28,6 +28,17 @@ func FuzzParseType(f *testing.F) {
 	})
 }
 
+// FuzzParseFile: arbitrary declaration text never panics; every declaration
+// it parses is closed (ParseFile rejects an unclosed class).
+func FuzzParseFile(f *testing.F) {
+	f.Add("class Foo\n  def bar: (Integer) -> String\nend\n")
+	f.Add("module Rack\n  class Request\n    attr_reader env: Hash[String, untyped]\n  end\nend\n")
+	f.Add("class Box[E]\n  include Enumerable[E]\n  VERSION: String\n  type Handler = ^(untyped) -> void\nend\n")
+	f.Fuzz(func(t *testing.T, s string) {
+		_, _ = within(t, s, ParseFile)
+	})
+}
+
 // FuzzParseMethodType: the same round trip for method signatures.
 func FuzzParseMethodType(f *testing.F) {
 	for _, s := range []string{

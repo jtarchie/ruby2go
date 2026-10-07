@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+	"github.com/jtarchie/ruby2go/internal/rbs"
 	"github.com/tetratelabs/wazero"
 )
 
@@ -71,9 +72,10 @@ type Compiler struct {
 	files         []*File
 	preludeFS     fs.FS
 	parser        *parser.Parser
-	loaded        map[string]bool  // prelude names, and user files' real paths
-	parsed        map[string]*File // user files by real path, parsed by scanRequires before the prelude loads
-	loadPath      []string         // -I directories (decision 131)
+	loaded        map[string]bool           // prelude names, and user files' real paths
+	parsed        map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
+	loadPath      []string                  // -I directories (decision 131)
+	sigs          map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
@@ -273,7 +275,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	tick("parser")
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
-		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}}
+		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
 	c.loadPath = opts.loadPath
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.loadPreludeGo()
@@ -284,6 +286,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.parsed = parsed
 	c.loadPrelude(ctx, "prelude.rb")
 	c.loadLibs(ctx, libs, opts.allLibs || os.Getenv("RB2GO_ALL_LIBS") != "")
+	c.loadSigs(sources)
 	tick("prelude")
 	for _, src := range sources {
 		path := src.Path

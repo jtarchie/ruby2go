@@ -1,0 +1,6 @@
+class Greeter
+  attr_accessor name: String
+
+  def initialize: (String) -> void
+  def greet: () -> String
+end

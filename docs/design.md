@@ -14,9 +14,14 @@ Requirements:
 
 Anti-goals:
 
-- we don't need to support eval or `define_method`. Class-based virtual
-  dispatch on `self` **is** required — inheritance doesn't work without it
-  (see [01_inheritance](../examples/01_inheritance/)).
+- we don't need to support eval or `define_method` **at runtime**. Class-based
+  virtual dispatch on `self` **is** required — inheritance doesn't work
+  without it (see [01_inheritance](../examples/01_inheritance/)).
+  *Amended (#82):* a gem that builds methods at boot (`define_method`, a
+  string `eval`) is evaluated by MRI **at compile time** instead (decision
+  161), and the compiled binary still never runs either. Programs with no
+  gem require never invoke Ruby at compile time, so the WASM playground is
+  unaffected.
 - *Amended:* reflective dispatch (`send`, `method_missing`, `const_get`,
   `constants`) is supported, generated from the closed world rather than
   looked up at run time: typed code never pays for it, calls on `untyped`
@@ -511,10 +516,15 @@ resolve; anything not listed is still open.
    `func(func() bool)`, which Go ranges over with no loop variables, so
    `Kernel#loop { ... break }` is a plain `for range`. *(Revised: blocks
    with no parameters were always closures, and `loop` did not exist.)*
-5. `Hash.new(default)` / `Hash#[]` typing: **decided, `Hash#[]` is
-   `(K) -> V?`** and there is no default value. `Hash#fetch(k, default)`
-   covers the common case; `tally`/`group_by` are written with `||`.
-   `Hash.new(0)` + `h[k] += 1` is not supported.
+5. `Hash.new(default)` / `Hash#[]` typing: **`Hash#[]` is `(K) -> V?`**, but
+   a default value **is** supported (#82 reversed the original "no default").
+   `Hash.new(default)` and `Hash.new { |h, k| ... }` set `default` /
+   `default_proc`, `Hash#default`/`default=`/`default_proc` expose them, and
+   a miss returns the default (the block's result, or `nil`). `Hash#[]`
+   stays `V?`: a miss on a hash *without* a default is still `nil`, so
+   returning `V` unconditionally would lie. A caller that knows a key is
+   present uses the literal-key overload from a `.rbs` sig (decision 12) or
+   `fetch(k, default)`. `tally`/`group_by` are written with `||`.
 6. Prelude coverage: **done.** Every example compiles against `prelude/`
    alone; the subsets that used to be inlined in `examples/*/main.go` are
    in `prelude/{object,integer,float,string,enumerable,array,hash,exception}.rb`.
@@ -635,6 +645,18 @@ resolve; anything not listed is still open.
     `__minus_time`), when defined. So `arr.first` (`E?`), `arr.last(2)`,
     `arr[1, 2]`, `arr[1..]` and `str[0...-1]` work; everything else still
     takes one signature.
+    *Revised (#82):* a `.rbs` signature file (decision 160) may carry real
+    overloads (`def []: (A) -> X | (B) -> Y`), which the prelude's
+    naming convention cannot express because gem sigs are not ours to
+    edit. The compiler picks the first declared signature that matches a
+    call, in this order: argument count; then argument class; then the
+    *literal value* of a constant argument, so `env[Rack::PATH_INFO]`
+    (`Rack::PATH_INFO = "PATH_INFO"`) selects the
+    `("PATH_INFO" | "SCRIPT_TIME" | "QUERY_STRING") -> String` arm and
+    types as `String`. A call no arm matches is a compile error naming
+    the arms. No block-shape selection yet: arms with blocks are tried by
+    the same count/class/literal rule.
+
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
     type is an error, and an unannotated override inherits the parent's
@@ -5220,3 +5242,56 @@ resolve; anything not listed is still open.
     archives, each compared to MRI, plus ruby/spec's 1,855 `core/*`
     method spec files, 73.6% of which name a method the prelude defines
     (decision 127, #49).
+
+160. `.rbs` signature files (#82). Types come from rbs-inline `#:`
+    annotations today (decision 146); a gem published without them, or a
+    user file without them, can instead carry a standalone `.rbs` file.
+    Two sources: `sig/gems/<gem>/*.rbs` vendored in this repository, and a
+    `sig/` directory beside the `main.rb` being compiled. A sig attaches
+    to a class/module/method/attribute by qualified name; a symbol with no
+    sig is unaffected. Precedence is inline `#:` > `.rbs` > inferred, so a
+    sig fills a gap without overriding an annotation, and inference still
+    types private helpers a sig omits (a gem's sig needs only its public
+    methods, attributes and instance variables). The declaration grammar
+    is a new `rbs.ParseFile` (the existing parser reads type expressions
+    and one method signature only); overloads are decision 12, literal
+    and record types are read into the compiler's own types. `sig/*.rbs`
+    (decision 110) stays the test harness's `rbs validate` input; this is
+    the compiler reading sigs it never did before. A sig that is missing
+    or malformed is a compile error naming the file; a sig naming a method
+    the class does not define is ignored (gems ship for a wider surface
+    than the app reaches).
+
+161. Boot snapshot (#82). A program that `require`s a gem runs the gem's
+    load phase under MRI **at compile time**, with tracing hooks on the
+    metaprogramming calls (`def`, `define_method`, string `eval`,
+    `autoload`, `const_set`, class `inherited`/`included`, `attr_*`,
+    `instance_variable_set`) writing a manifest. The manifest records:
+    classes and their ancestor order; the source of every method made by
+    `define_method` or a string `eval`; which files `autoload` actually
+    loaded; constants; and the objects reachable from class state (blocks,
+    frozen Hashes). The compiler consumes it into its closed world — the
+    extracted source is re-lowered through Prism in the same lexical scope
+    (`self`, captured locals) as `Class.new` (decision 145) and the
+    minitest spec DSL (decision 83) — and the compiled binary still runs
+    no `eval` or `define_method` (the anti-goal above). Gems only: a
+    program with no gem `require` never starts Ruby at compile time, so
+    the WASM playground keeps working; a gem require under a
+    no-Ruby host is a clear compile error. Serialization: a Mutex or Queue
+    is recreated empty at startup rather than copied, the prelude's own
+    modules are skipped, and any other value captured by a boot block must
+    be serializable or it is a compile error naming the object (verified
+    lazily, per the plan; widen the encoder only when a real gem needs
+    it). Because boot runs at build time, anything it reads (ENV, files)
+    is baked in — the same rule as GraalVM native-image.
+
+162. Rack server adapter (#82). The reverse of `prelude/webrick.rb`: it
+    turns a Go `net/http` request into a Rack `env` Hash (`REQUEST_METHOD`,
+    `PATH_INFO`, `SCRIPT_NAME`, `QUERY_STRING`, `rack.input`, …), calls the
+    Rack app, and writes its `[status, headers, body]` back. It lives in
+    the prelude over `net/http` and loads on `require` (decision 155), so a
+    program that never serves HTTP does not pay for it; the keys are the
+    string constants a `.rbs` overload (decision 12/160) types precisely.
+    Proof: an example running unmodified Cuba behind it, driven by
+    `Net::HTTP`, equal to MRI (#82).
+

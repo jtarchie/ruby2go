@@ -502,6 +502,10 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 			break
 		}
 	}
+	if len(cls.TypeParams) == 0 && !f.prelude {
+		// A `.rbs` `class Foo[E]` supplies the generics an unannotated class lacks (decision 160).
+		cls.TypeParams = c.sigTypeParams(cls)
+	}
 	if _, ok := ann["hidden"]; ok && f.prelude {
 		cls.hidden = true
 	}
@@ -1219,6 +1223,13 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		m.selfText = st[0]
 		cls.selfDefs = true
 	}
+	if m.sigText == "" && !f.prelude {
+		// A `.rbs` signature fills a method with no inline `#:` (decision 160);
+		// overloads wait for selection (decision 12).
+		if sd := c.sigMethod(cls, n.Name); sd != nil && len(sd.Overloads) == 1 {
+			m.sig = sd.Overloads[0]
+		}
+	}
 	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {
 		if _, ok := body.Body[0].(*parser.XStringNode); ok {
 			m.Kind = kindPrimitive
@@ -1251,13 +1262,14 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 	if !cls.isStruct() {
 		c.errorf(f, n, "%s on a non-struct class", n.Name)
 	}
-	ty, ok := f.trailing[line]
-	if !ok {
-		c.errorf(f, n, "%s needs a trailing `#: Type` annotation", n.Name)
-	}
-	rt, err := rbs.ParseType(ty)
-	if err != nil {
-		c.errorf(f, n, "%v", err)
+	ty, hasTy := f.trailing[line]
+	var rt rbs.Type
+	if hasTy {
+		parsed, err := rbs.ParseType(ty)
+		if err != nil {
+			c.errorf(f, n, "%v", err)
+		}
+		rt = parsed
 	}
 	for _, a := range args {
 		sym, ok := a.(*parser.SymbolNode)
@@ -1265,16 +1277,25 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			c.errorf(f, a, "%s argument must be a symbol", n.Name)
 		}
 		name := sym.Unescaped.Value
-		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: rt, line: line, scope: scope})
+		at := rt
+		if !hasTy {
+			// No inline `#:`: a `.rbs` attribute supplies the type (decision 160).
+			if ad := c.sigAttr(cls, name); ad != nil && !f.prelude {
+				at = ad.Type
+			} else {
+				c.errorf(f, n, "%s needs a trailing `#: Type` annotation", n.Name)
+			}
+		}
+		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: at, line: line, scope: scope})
 		if n.Name != "attr_writer" {
 			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
-			m.sig = &rbs.MethodType{Return: rt}
+			m.sig = &rbs.MethodType{Return: at}
 			cls.Methods[name] = m
 			cls.MethodList = append(cls.MethodList, m)
 		}
 		if n.Name != "attr_reader" {
 			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
-			m.sig = &rbs.MethodType{Params: []rbs.Param{{Type: rt, Name: name}}, Return: rbs.Void{}}
+			m.sig = &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: name}}, Return: rbs.Void{}}
 			cls.Methods[name+"="] = m
 			cls.MethodList = append(cls.MethodList, m)
 		}
