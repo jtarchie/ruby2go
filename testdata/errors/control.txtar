@@ -233,9 +233,16 @@ a, b = h["k"]
 lo = 0
 arr = [3, 4] #: Array[Integer]
 lo, hi = arr
--- defined_ivar.rb --
-# error: main.rb:2: defined?(@a) depends on whether it was ever assigned
-puts defined?(@a).inspect
+-- defined_ivar_nested.rb --
+# error: main.rb:7: defined?(@a) inside another expression is not supported
+class C
+  #: () -> void
+  def initialize = @a = 1
+
+  #: () -> String?
+  def q = defined?(@a.succ)
+end
+p C.new.q
 -- defined_yield_nested_optional.rb --
 # error: main.rb:3: defined?(yield) inside another expression is not supported with an optional block
 #: () ?{ () -> String } -> String?

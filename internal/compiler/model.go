@@ -58,6 +58,7 @@ type Class struct {
 	specChild     bool   // a nested describe's class: MRI undefines the test methods it inherits
 	specTests     int    // its it/specify count, for MRI's test_0001_ names
 	hidden        bool   // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
+	ivarBits      bool   // its objects record which ivars were assigned (decision 153)
 }
 
 // displayName is the class's name as Ruby shows it.

@@ -443,6 +443,9 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		for _, iv := range mod.IvarList {
 			c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
 		}
+		if mod.ivarBits {
+			c.w("\t%s uint64\n", ivarSetField)
+		}
 		c.w("}\n\n")
 	}
 	c.w("type %s_Self[Self any%s] interface {\n", mod.Name, tps)
@@ -622,6 +625,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
 	}
+	if cls.ivarBits {
+		c.w("\t%s uint64\n", ivarSetField)
+	}
 	for _, mod := range ownIvarModules(cls) {
 		c.w("\t%s %s\n", ivarsField(mod), ivarsType(mod))
 	}
@@ -708,12 +714,12 @@ func superField(cls *Class) string { return "super_" + cls.Name + "_" }
 
 // emitIvarList feeds Kernel#inspect; a class adding no ivars inherits its parent's through embedding.
 func (c *Compiler) emitIvarList(cls *Class) {
-	if len(cls.IvarList) == 0 {
+	if len(cls.IvarList) == 0 && len(ownIvarModules(cls)) == 0 {
 		return
 	}
 	var ivs []string
 	for _, iv := range c.ivarOrder(cls) {
-		field := "self." + goFieldName(iv.Name)
+		field := ivarPath("self", iv)
 		val, opt, isNilCode := field, isAny(iv.Type), "false"
 		switch t := iv.Type.(type) {
 		case TOpt:
@@ -730,20 +736,42 @@ func (c *Compiler) emitIvarList(cls *Class) {
 			opt = true
 		case TAny, TNil, TTuple, TVoid: // held by value: never a nil pointer of its own
 		}
+		if set := ivarIsSet("self", iv); set != "" { // the bit, not the value, says whether it was assigned
+			ivs = append(ivs, fmt.Sprintf("{%q, %s, %s, !(%s)}", iv.Name, val, set, set))
+			continue
+		}
 		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
 	}
 	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
 	// Kernel#instance_variable_set: the closed world knows every ivar's type, so a write converts to it
 	c.w("func (self *%s) _IvarSet(name string, v any) bool {\n\tswitch name {\n", cls.Name)
 	for _, iv := range c.ivarOrder(cls) {
-		field := "&self." + goFieldName(iv.Name)
+		field := "&" + ivarPath("self", iv)
 		if o, ok := iv.Type.(TOpt); ok {
 			c.w("\tcase %q:\n\t\trbIvarAssignOpt[%s](%s, v, %q)\n", iv.Name, c.goType(o.Elem), field, iv.Name)
-			continue
+		} else {
+			c.w("\tcase %q:\n\t\trbIvarAssign(%s, v, %q)\n", iv.Name, field, iv.Name)
 		}
-		c.w("\tcase %q:\n\t\trbIvarAssign(%s, v, %q)\n", iv.Name, field, iv.Name)
+		if s := ivarAssigned("self", iv); s != "" {
+			c.w("\t\t%s\n", s)
+		}
 	}
 	c.w("\tdefault:\n\t\treturn false\n\t}\n\treturn true\n}\n\n")
+	c.emitIvarDel(cls)
+}
+
+// emitIvarDel feeds Kernel#remove_instance_variable: the field back to its zero value and its bit cleared.
+func (c *Compiler) emitIvarDel(cls *Class) {
+	var cases []string
+	for _, iv := range c.ivarOrder(cls) {
+		if field, mask := ivarBit("self", iv); field != "" {
+			cases = append(cases, fmt.Sprintf("\tcase %q:\n\t\trbIvarClear(&%s)\n\t\t%s &^= %s\n", iv.Name, ivarPath("self", iv), field, mask))
+		}
+	}
+	if len(cases) == 0 {
+		return
+	}
+	c.w("func (self *%s) _IvarDel(name string) {\n\tswitch name {\n%s\t}\n}\n\n", cls.Name, strings.Join(cases, ""))
 }
 
 // emitCopy feeds Ractor's deep copy (decision 103): a fresh struct with every
@@ -752,8 +780,7 @@ func (c *Compiler) emitIvarList(cls *Class) {
 func (c *Compiler) emitCopy(cls *Class) {
 	c.w("func (self *%s) _Copy(seen map[any]any) any {\n\tif self == nil {\n\t\treturn self\n\t}\n\tdup := *self\n\tseen[self] = &dup\n", cls.Name)
 	for _, iv := range c.ivarOrder(cls) {
-		field := goFieldName(iv.Name)
-		c.w("\tdup.%s = rbCopyAs(self.%s, seen)\n", field, field)
+		c.w("\t%s = rbCopyAs(%s, seen)\n", ivarPath("dup", iv), ivarPath("self", iv))
 	}
 	c.w("\treturn &dup\n}\n\n")
 }
@@ -800,6 +827,11 @@ func (c *Compiler) ivarOrder(cls *Class) []*Ivar {
 	chain := cls.structChain()
 	for i := len(chain) - 1; i >= 0; i-- {
 		for _, iv := range chain[i].IvarList {
+			add(iv)
+		}
+	}
+	for _, mod := range ivarModules(cls) { // decision 147's, in each includer's struct
+		for _, iv := range mod.IvarList {
 			add(iv)
 		}
 	}

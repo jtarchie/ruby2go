@@ -1431,6 +1431,26 @@ func rbIvarSet(a, name, v any) any {
 	return v
 }
 
+// rbIvarRemove is Kernel#remove_instance_variable over the generated _IvarDel (decision 153).
+func rbIvarRemove(a, name any) any {
+	n := rbIvarName(name)
+	rbFrozenCheck(a)
+	o, ok := a.(interface{ _IvarDel(string) })
+	if !ok || !rbIvarDefined(a, name) {
+		e := NewNameError(Ref(String("instance variable " + n + " not defined")))
+		e.__SetCall(Symbol(n), a)
+		panic(e)
+	}
+	v := rbIvarGet(a, name)
+	o._IvarDel(n)
+	return v
+}
+
+func rbIvarClear[T any](p *T) {
+	var zero T
+	*p = zero
+}
+
 // rbIvarAssign converts an untyped value to an ivar's type, as instance_variable_set writes it.
 func rbIvarAssign[T any](dst *T, v any, name string) {
 	x, ok := rbConv[T](v)

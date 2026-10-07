@@ -2347,7 +2347,11 @@ func (c *Compiler) emitMethod(m *Method) {
 	}
 	if m.Kind == kindAttrWriter {
 		iv := c.findIvar(cls, m.Attr)
-		c.w("func (self *%s) %s(v %s) { self.%s = v }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name))
+		mark := ivarAssigned("self", iv)
+		if mark != "" {
+			mark = "; " + mark
+		}
+		c.w("func (self *%s) %s(v %s) { self.%s = v%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name), mark)
 		return
 	}
 	env := map[string]Type{}

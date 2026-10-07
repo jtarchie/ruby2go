@@ -4288,6 +4288,98 @@ module ObjectTests
     end
   end
 
+  # #53: whether an ivar was assigned is a bit on the object (decision 153)
+  class IvarMemo
+    attr_writer :note #: String?
+
+    #: () -> void
+    def initialize
+      @hits = 0
+    end
+
+    #: () -> Integer
+    def value
+      return @value || 0 if defined?(@value)
+
+      @value = 42 #: Integer?
+      @value || 0
+    end
+
+    #: () -> String?
+    def seen = defined?(@value)
+
+    #: () -> String?
+    def ghost = defined?(@nope)
+  end
+
+  class IvarMemoKid < IvarMemo
+    #: () -> void
+    def initialize
+      super
+      @extra = nil #: String?
+    end
+
+    #: () -> String?
+    def hits? = defined?(@hits)
+  end
+
+  module IvarCounted
+    # @rbs @count: Integer?
+
+    #: () -> String?
+    def counted? = defined?(@count)
+
+    #: () -> void
+    def bump
+      @count = (@count || 0) + 1
+    end
+  end
+
+  class IvarBox
+    include IvarCounted
+
+    #: () -> void
+    def initialize
+      @w = 1
+    end
+  end
+
+  class ObjectIvarAssignedTest < Minitest::Test
+    def test_defined_ivar
+      m = IvarMemo.new
+      assert_equal [nil, nil, [:@hits]], [m.seen, m.ghost, m.instance_variables]
+      assert_equal [42, "instance-variable", [:@hits, :@value], 42], [m.value, m.seen, m.instance_variables, m.value]
+      m.note = nil
+      assert_equal [true, false], [m.instance_variable_defined?(:@note), IvarMemo.new.instance_variable_defined?(:@note)]
+      assert_nil defined?(@object_top_ivar)
+    end
+
+    def test_module_ivar
+      b = IvarBox.new
+      assert_equal [nil, [:@w]], [b.counted?, b.instance_variables]
+      b.bump
+      assert_equal ["instance-variable", [:@w, :@count]], [b.counted?, b.instance_variables]
+    end
+
+    def test_remove_instance_variable
+      m = IvarMemo.new
+      m.value
+      assert_equal [42, [:@hits], nil], [m.remove_instance_variable(:@value), m.instance_variables, m.seen]
+      begin
+        m.remove_instance_variable(:@value)
+        flunk "no NameError"
+      rescue NameError => e
+        assert_equal ["instance variable @value not defined", :@value], [e.message, e.name]
+      end
+      k = IvarMemoKid.new
+      assert_equal ["instance-variable", 0], [k.hits?, k.remove_instance_variable(:@hits)]
+      assert_equal [nil, [:@extra], nil], [k.hits?, k.instance_variables, k.instance_variable_get(:@hits)]
+      k.instance_variable_set(:@hits, 7)
+      assert_equal ["instance-variable", 7], [k.hits?, k.instance_variable_get(:@hits)]
+      assert_nil k.remove_instance_variable(:@extra)
+    end
+  end
+
   # ruby/spec language gaps (#49): class variables
   class CvCounter
     @@count = 0

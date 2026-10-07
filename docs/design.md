@@ -3510,7 +3510,9 @@ resolve; anything not listed is still open.
     `instance_variable_set` goes through a generated `_IvarSet` that
     converts the value to the field's type, raising TypeError when it
     cannot. A class cannot gain an ivar at run time, so setting one it
-    lacks is a NameError. `remove_instance_variable` is not supported.
+    lacks is a NameError. *(Revised by decision 153: a class whose program
+    asks keeps an assigned bit per ivar, so its `T?` ivars are left out
+    until written, and `remove_instance_variable` works.)*
     (`testdata/test/object_test.rb` `ObjectRubySpecIvarTest`.)
 124. Class variables (#49) are package variables. `@@x = v` in a class or
     module body declares one, typed and initialized like a constant
@@ -4840,8 +4842,8 @@ resolve; anything not listed is still open.
       without the always-true warning or the non-nilable `||` error a
       plain `T` gets: the program wrote the check before rb2go knew it
       was redundant, and it must keep compiling.
-    - **Not done:** `x.nil? ? a : x.foo` narrowing (locals lack it too),
-      and `defined?(@x)` (#53).
+    - **Not done:** `x.nil? ? a : x.foo` narrowing (locals lack it too).
+      `defined?(@x)` is decision 153.
     ([example 103](../examples/103_ivar_narrowing/main.rb),
     `testdata/test/object_test.rb` `ObjectIvarNarrowTest`.)
 149. An `each` that never yields (#75) gives its `include Enumerable`
@@ -5011,3 +5013,37 @@ resolve; anything not listed is still open.
     now reads such a variable in a `default:`.
     ([example 105](../examples/105_variadic_lambdas/main.rb),
     `testdata/test/infer_test.rb` `test_variadic_lambda`.)
+153. Whether an ivar was assigned (#53) is a bit on the object, kept only
+    by classes whose program asks. MRI answers `defined?(@x)`,
+    `instance_variables` and `instance_variable_defined?` from what ran:
+    an ivar never written is absent, one written nil is present. rb2go's
+    fields always exist, so a nil `T?` field or a zero Integer cannot tell
+    the two apart. A class (or a module's ivar struct, decision 147) that
+    is marked gets a hidden `ivset_ uint64` field; every write to ivar k
+    (`=`, `op=`, `||=`, a multiple assignment, an attr writer,
+    `instance_variable_set`, Marshal.load) ORs in bit k, and `_Ivars`
+    reports the bit, so `inspect`, `instance_variables`, pp and Marshal
+    all leave out what was never written. `defined?(@x)` reads the bit
+    (`String?`); an ivar self's class never has is nil at compile time,
+    which covers top-level `defined?(@x)`. `remove_instance_variable`
+    zeroes the field and clears the bit through a generated `_IvarDel`,
+    returning the old value, or raises MRI's NameError "instance
+    variable @x not defined".
+    - **Which classes.** A `defined?(@x)` in a method marks the class
+      that owns `@x`; any call named `instance_variables`,
+      `instance_variable_defined?` or `remove_instance_variable` in user
+      code marks every user class with ivars (the receiver's type is not
+      read; narrowing to it is the upgrade). Unmarked classes keep
+      decision 123's reading and cost nothing. The alternative, a bit on
+      every object, cost 8 bytes and an OR per write program-wide for a
+      question most programs never ask.
+    - **Limits.** 64 ivars per class (more is a compile error). A prelude
+      ivar written from `%x{}` Go sets no bit. `defined?(@x.m)` (an ivar
+      inside a larger expression) is a compile error.
+    - **Not done:** `instance_variables` order is static (initialize's
+      write order, then declaration order); MRI's is each object's first
+      assignment, so an ivar removed and written again moves to the end
+      there. `instance_variables` now lists an included module's ivars
+      too, which it missed before.
+    ([example 106](../examples/106_ivar_defined/main.rb),
+    `testdata/test/object_test.rb` `ObjectIvarAssignedTest`.)

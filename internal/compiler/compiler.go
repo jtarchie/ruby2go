@@ -83,6 +83,7 @@ type Compiler struct {
 	inheritedAliases []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
 	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
 	ivarReadFirst    map[string]bool                   // owner#@x read before any assignment typed it, in discovery: declared T?
+	ivarBitsMarked   bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
 	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
 	anonErrors       map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
 	specUses         []specUse                         // Minitest::Spec DSL calls, checked after link
@@ -292,6 +293,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		return nil, errInferRound
 	}
 	c.refineIvars()
+	c.markIvarBits() // ivars are final; inference below sees defined?(@x)'s String?
 	if opts.skipTests {
 		opts.skipped = c.skipFailingTests()
 	}

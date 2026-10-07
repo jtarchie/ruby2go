@@ -39,6 +39,9 @@ module Kernel
   #: (untyped, untyped) -> untyped
   def instance_variable_set(name, value) = %x{ return rbIvarSet(self, name, value) }
 
+  #: (untyped) -> untyped
+  def remove_instance_variable(name) = %x{ return rbIvarRemove(self, name) }
+
   #: (untyped) -> bool
   def instance_variable_defined?(name) = %x{ Boolean(rbIvarDefined(self, name)) }
 

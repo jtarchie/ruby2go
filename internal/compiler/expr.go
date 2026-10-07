@@ -63,6 +63,24 @@ func (f *fctx) genSugar(n parser.Node) expr {
 			return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"yield\") }; return nil }()", f.c.goType(t), c), typ: t}
 		}
 		switch v := n.Value.(type) {
+		case *parser.InstanceVariableReadNode: // decision 153: the object's assigned bit, or nil for an ivar self's class never has
+			var iv *Ivar
+			if f.owner != nil && !f.owner.universal {
+				iv = f.c.findIvar(f.owner, v.Name)
+			}
+			if iv == nil {
+				return expr{code: "nil", typ: TNil{}}
+			}
+			set := ivarIsSet(f.selfCode, iv)
+			switch {
+			case set == "" && f.c.ivarBitsMarked:
+				f.errorf(v, "rb2go: defined?(%s) in a class it does not mark (decision 153)", v.Name)
+			case set == "": // discovery, before markIvarBits: only the type matters
+				set = "true"
+			}
+			f.c.strLits["instance-variable"] = true
+			t := TOpt{Elem: f.cls("String")}
+			return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"instance-variable\") }; return nil }()", f.c.goType(t), set), typ: t}
 		case *parser.ConstantReadNode, *parser.ConstantPathNode:
 			// a constant main may read before its assignment runs (BEGIN, a method called first) is defined once it has
 			var k *Const
@@ -380,12 +398,18 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 			exp = iv.Type
 		}
 		val := f.genExpr(n.Value, exp)
+		decl := val.typ
 		if ann != nil {
-			val.typ = ann // `@x = [] #: Array[T]` declares the ivar's type
+			decl = ann // `@x = [] #: Array[T]` declares the ivar's type
+			if o, ok := ann.(TOpt); ok && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+				val.typ = o.Elem // a T into a T? ivar: coerce wraps it
+			} else {
+				val.typ = ann
+			}
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
 		f.unnarrow("ivar:" + n.Name)
-		iv := f.ivar(n, n.Name, val.typ)
+		iv := f.ivar(n, n.Name, decl)
 		if f.discover && ann == nil && isEmptyLit(n.Value) {
 			iv.open = true
 		}
@@ -394,6 +418,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		}
 		code := f.ivarCode(iv)
 		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		f.markIvar(iv)
 		// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
 		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 			f.narrowIvar(iv) // and reads after it, until a call through self (decision 148)
@@ -410,6 +435,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
 		f.unnarrow("ivar:" + n.Name)
 		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		f.markIvar(iv)
 		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 			f.narrowIvar(iv)
 			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
@@ -888,9 +914,7 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 	return iv
 }
 
-func (f *fctx) ivarCode(iv *Ivar) string {
-	return fmt.Sprintf("%s._%s().%s", f.selfCode, iv.Owner.Name, goFieldName(iv.Name))
-}
+func (f *fctx) ivarCode(iv *Ivar) string { return ivarPath(f.selfCode, iv) }
 
 // ---- literals
 
@@ -4648,8 +4672,8 @@ func (f *fctx) definedKind(v parser.Node) string {
 			return "global-variable"
 		}
 		return ""
-	case *parser.InstanceVariableReadNode:
-		f.errorf(v, "defined?(%s) depends on whether it was ever assigned, which rb2go does not track", f.f.text(v.GetLocation()))
+	case *parser.InstanceVariableReadNode: // a bare defined?(@x) is genSugar's run-time answer
+		f.errorf(v, "defined?(%s) inside another expression is not supported; use defined?(@%s) first", f.f.text(v.GetLocation()), strings.TrimPrefix(v.Name, "@"))
 	case *parser.YieldNode: // a bare defined?(yield) with an optional block is genSugar's run-time answer
 		if f.m.optionalBlockLocal() != "" {
 			f.errorf(v, "defined?(yield) inside another expression is not supported with an optional block; use block_given?")
@@ -5235,6 +5259,7 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 	}
 	f.unnarrow("ivar:" + n.Name)
 	e := f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
+	f.markIvar(iv) // set or already truthy, so assigned either way
 	if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(e.typ) {
 		f.narrowIvar(iv) // non-nil from here on (decision 148)
 	}
@@ -5530,6 +5555,7 @@ func (f *fctx) assignTarget(target parser.Node, v expr) {
 	case *parser.InstanceVariableTargetNode:
 		iv := f.ivar(t, t.Name, v.typ)
 		f.emit("%s = %s", f.ivarCode(iv), f.coerce(t, v, iv.Type))
+		f.markIvar(iv)
 	case *parser.MultiTargetNode:
 		if isOpt(v.typ) {
 			f.errorf(t, "nested destructuring of a possibly-nil %s is not supported", v.typ)
