@@ -1,0 +1,5 @@
+{
+  "gopls": {
+    "buildFlags": ["-tags=rb2go_prelude"]
+  }
+}

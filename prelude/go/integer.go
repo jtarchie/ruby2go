@@ -1,7 +1,13 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
 
 // rbStrictInt is Kernel#Integer(str, base): String#to_i's syntax, but the
 // whole string bar surrounding whitespace must be the number. Base 0 (or

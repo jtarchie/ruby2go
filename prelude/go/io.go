@@ -1,7 +1,18 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"bufio"
+	"errors"
+	"io"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"syscall"
+)
 
 // next is ARGF's current reader: stdin when ARGV is empty at the first
 // read, else the next ARGV file, shifted out of argv as MRI does. nil once

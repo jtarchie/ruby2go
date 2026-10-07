@@ -1,12 +1,23 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 //
 // PP (decision 113): MRI's PrettyPrint (Oppen's algorithm, prettyprint.rb
 // 0.2.0) ported line for line, and pp.rb 0.6.3's layouts for each kind of
 // value, chosen by a Go type switch over the closed world instead of
 // per-class pretty_print methods.
 package prelude
+
+import (
+	"os"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"syscall"
+	"unicode/utf8"
+	"unsafe"
+)
 
 type rbPPGroup struct {
 	depth      int

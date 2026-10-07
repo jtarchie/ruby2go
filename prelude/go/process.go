@@ -1,7 +1,19 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+)
 
 // rbProcessStart anchors the monotonic clock; Go's time.Since reads the monotonic reading it carries.
 var rbProcessStart = time.Now()
@@ -176,7 +188,7 @@ func rbExec(cmd string, args []String) {
 		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
 	}
 	rbFlush()
-	if err := syscall.Exec(c.Path, c.Args, os.Environ()); err != nil {
+	if err := syscall.Exec(c.Path, c.Args, os.Environ()); err != nil { //nolint:gosec // Kernel#exec: replacing the process with the program's command is the point
 		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
 	}
 }

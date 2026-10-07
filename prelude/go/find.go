@@ -1,6 +1,12 @@
-//go:build ignore
+//go:build rb2go_prelude
 
 package prelude
+
+import (
+	"io/fs"
+	"os"
+	"path/filepath"
+)
 
 // findPruneRequested is Find.prune's signal back to the yield call that ran it; reset before each yield so nesting self-corrects (decision 63).
 var findPruneRequested bool

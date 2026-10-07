@@ -1,7 +1,15 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"fmt"
+	"math/big"
+	"net/netip"
+	"strconv"
+	"strings"
+)
 
 // rbIPAddrParse parses "addr"/"addr/N"/"addr/netmask" like MRI's IPAddr.new; the third return is nil, or a ready-to-panic error.
 func rbIPAddrParse(s string) (netip.Addr, int, any) {

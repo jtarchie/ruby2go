@@ -1,6 +1,14 @@
-//go:build ignore
+//go:build rb2go_prelude
 
 package prelude
+
+import (
+	"bufio"
+	"bytes"
+	"errors"
+	"io/fs"
+	"os/exec"
+)
 
 // rbOpen3Cmd execs argv directly (no shell), matching Open3's array form.
 func rbOpen3Cmd(name string, rest []String) *exec.Cmd {

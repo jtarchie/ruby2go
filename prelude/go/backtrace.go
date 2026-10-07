@@ -1,6 +1,6 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 //
 // Exception#backtrace (decision 106). A rescue that binds `=> e` records
 // the Go call stack's program counters on the exception (rbCaptureBacktrace);
@@ -9,6 +9,15 @@
 // from Go function name to Ruby label ('K#m', 'K.s', '<main>'), for the
 // functions the pruned program kept.
 package prelude
+
+import (
+	"fmt"
+	"runtime"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+)
 
 // rbBegin runs a begin/rescue/ensure body. The compiler wraps the func
 // literal it makes for one in this call, so a backtrace can tell the

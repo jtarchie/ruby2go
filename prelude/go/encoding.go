@@ -1,7 +1,21 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"unicode"
+	"unicode/utf16"
+	"unicode/utf8"
+)
 
 // rbStdoutConv is STDOUT's write conversion for Kernel#puts/print/p once `$stdout.set_encoding` names one; a func so other programs carry no transcoder, atomic since threads print.
 var rbStdoutConv atomic.Pointer[func(string) string]

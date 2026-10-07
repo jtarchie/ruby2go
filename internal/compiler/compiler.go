@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	goparser "go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path"
@@ -398,6 +401,8 @@ func preludeFile(ctx context.Context, p *parser.Parser, name string, src []byte)
 }
 
 // loadPreludeGo embeds prelude/go/*.go verbatim: pure Go with no self/param binding, so it skips Ruby parsing entirely.
+// Each file is real Go (decision 154): its import block names the std packages its helpers use, which join stdImports,
+// so the table only needs hand entries for `%x{}` bodies in .rb files.
 func (c *Compiler) loadPreludeGo() {
 	names, err := fs.Glob(c.preludeFS, "prelude/go/*.go")
 	if err != nil {
@@ -409,20 +414,46 @@ func (c *Compiler) loadPreludeGo() {
 		if err != nil {
 			panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
 		}
-		body, line := stripGoPackage(src)
+		body, line, imports, err := stripGoPackage(src)
+		if err != nil {
+			panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
+		}
+		preludeImports.Do(func() {
+			for _, imp := range imports {
+				stdImports[path.Base(imp)] = imp
+			}
+		})
 		c.verbatim = append(c.verbatim, verbatim{file: &File{Name: name, prelude: true}, line: line, code: body})
 	}
 }
 
-// stripGoPackage drops the file header comment and `package` clause, keeping only what follows; line is where that remainder starts, for the //line directive.
-func stripGoPackage(src []byte) (string, int) {
-	lines := strings.Split(string(src), "\n")
-	for i, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "package ") {
-			return strings.Join(lines[i+1:], "\n"), i + 2
+// preludeImports guards the one-time merge of prelude/go's imports into stdImports: every compile runs loadPreludeGo
+// before it reads the table, and Once orders those reads after the write.
+var preludeImports sync.Once
+
+// stripGoPackage drops the file header, `package` clause and import block, keeping only what follows; line is where
+// that remainder starts, for the //line directive. imports are the std packages the block named.
+func stripGoPackage(src []byte) (string, int, []string, error) {
+	fset := token.NewFileSet()
+	f, err := goparser.ParseFile(fset, "", src, goparser.ImportsOnly)
+	if err != nil {
+		return "", 0, nil, fmt.Errorf("parse: %w", err)
+	}
+	end := f.Name.End()
+	var imports []string
+	for _, d := range f.Decls {
+		end = d.End()
+		if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.IMPORT {
+			for _, s := range g.Specs {
+				imports = append(imports, strings.Trim(s.(*ast.ImportSpec).Path.Value, `"`))
+			}
 		}
 	}
-	return string(src), 1
+	off := fset.Position(end).Offset
+	rest := string(src[off:])
+	// emitProgram trims the leading blank lines, so the directive names the first non-blank line
+	line := fset.Position(end).Line + strings.Count(rest[:len(rest)-len(strings.TrimLeft(rest, " \t\n"))], "\n")
+	return rest, line, imports, nil
 }
 
 // requireRelative resolves `require_relative "x"` inside prelude file f.

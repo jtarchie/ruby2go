@@ -1,7 +1,23 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"bufio"
+	"context"
+	"encoding/binary"
+	"errors"
+	"io"
+	"net"
+	"net/netip"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+)
 
 // rbSockConsts are Socket's constants, from this platform's syscall package as MRI's come from its headers (decision 135).
 var rbSockConsts = map[string]int{

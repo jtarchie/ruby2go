@@ -1,7 +1,21 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"io"
+	"maps"
+	"net"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // rbHTTPCanonKey is MRI's Net::HTTPHeader/WEBrick key form: lowercase, unlike Go's Title-Case canonical form.
 func rbHTTPCanonKey(name string) string { return strings.ToLower(name) }

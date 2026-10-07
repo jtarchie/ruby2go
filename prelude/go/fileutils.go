@@ -1,7 +1,17 @@
-//go:build ignore
+//go:build rb2go_prelude
 
 // Package prelude is concatenated verbatim into the output (loadPreludeGo); types like File come from generated code.
 package prelude
+
+import (
+	"errors"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"syscall"
+	"time"
+)
 
 func rbCopyFile(src, dst string) error {
 	fi, err := os.Stat(src)

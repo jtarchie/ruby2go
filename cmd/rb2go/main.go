@@ -25,7 +25,7 @@ const usage = `usage: rb2go build [-o prog] [-I dir]... [-race] [-gcflags flags]
        rb2go web -static dir -assets https://host/path/`
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" && os.Args[1] != "web" {
+	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" && os.Args[1] != "web" && os.Args[1] != "stubs" {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
@@ -34,6 +34,9 @@ func main() {
 	}
 	if os.Args[1] == "web" {
 		os.Exit(webCmd(os.Args[2:]))
+	}
+	if os.Args[1] == "stubs" { // hidden: prelude/go/0_stubs.go for gopls (decision 154); TestPreludeGo regenerates it too
+		os.Exit(stubs())
 	}
 	cmd := os.Args[1]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
@@ -74,6 +77,20 @@ func main() {
 }
 
 // gen writes the generated Go to out and warnings to stderr: the main.go that build -work keeps, without needing the go command.
+func stubs() int {
+	out, err := rb2go.PreludeStubs(context.Background())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	err = os.WriteFile(rb2go.StubsPath, out, 0o600)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
 func gen(file string, loadPath []string, out io.Writer) int {
 	src, err := os.ReadFile(file) //nolint:gosec // the user's program
 	if err != nil {

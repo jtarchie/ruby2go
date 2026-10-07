@@ -66,6 +66,9 @@ linters:
         - G115
         # Every class's Ruby name is a Go string literal (decisions 17/28); gosec's entropy check occasionally flags one as a credential (verified false positive: `Zlib::GzipWriter`'s name literal alone triggers it, reported at an unrelated import line, the //line-confusion below for G103).
         - G101
+        # Import blocklist (crypto/md5, crypto/sha1): Digest::MD5 and Digest::SHA1 are what the program asked for; the call sites carry //nolint:gosec, and the import issue sits on main.go's import block, which no //line directive covers.
+        - G501
+        - G505
     staticcheck:
       checks:
         - all

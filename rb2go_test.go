@@ -344,6 +344,24 @@ end
 // Every `# error: text` must appear in the compile error (so compilation
 // must fail), and every `# warning: text` in some warning; with no expected
 // error, compilation must succeed.
+// TestPreludeGo regenerates prelude/go's type-checking stubs (decision 154) and vets the helpers against them, so a
+// broken helper fails here instead of through some example's go build.
+func TestPreludeGo(t *testing.T) {
+	out, err := PreludeStubs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(StubsPath, out, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), "go", "vet", "-tags", "rb2go_prelude", "./prelude/go")
+	got, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go vet -tags rb2go_prelude ./prelude/go: %v\n%s", err, got)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	t.Parallel()
 	archives, err := filepath.Glob("testdata/errors/*.txtar")

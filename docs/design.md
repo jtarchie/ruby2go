@@ -5047,3 +5047,32 @@ resolve; anything not listed is still open.
       too, which it missed before.
     ([example 106](../examples/106_ivar_defined/main.rb),
     `testdata/test/object_test.rb` `ObjectIvarAssignedTest`.)
+
+154. `prelude/go/*.go` is real Go (#81, item 1): each file carries an
+    `import` block and the build tag `rb2go_prelude`, which nothing sets
+    by default, so `go build ./...` and the repo lint still skip them.
+    `loadPreludeGo` parses each file in imports-only mode and drops the
+    header through the import block (the `//line` offset is the block's
+    last line); the paths it finds join `stdImports`, so a helper's std
+    package no longer needs a table entry (the table stays for `%x{}`
+    bodies in `.rb`, which have no import block). Type checking comes
+    from a generated, gitignored `prelude/go/0_stubs.go`: `rb2go stubs`
+    (and `TestPreludeGo`, every `go test`) compiles `puts 1` with
+    `RB2GO_NO_PRUNE=1`, keeps the declarations prelude/go names but does
+    not declare (transitively, methods with their receiver types,
+    `main`/`init` out), replaces bodies with `panic(0)`, and leaves out
+    generic methods whose signature instantiates their own receiver type
+    with a larger type (`Enumerator_Lazy[E]#with_index` returning
+    `Enumerator_Lazy[Tuple2[E, Integer]]`: Go rejects the stub as an
+    instantiation cycle; the pruner drops them from real programs).
+    ~40k lines, `go vet -tags rb2go_prelude ./prelude/go` in under a
+    second, and a wrong type or undefined helper is reported at its
+    line instead of through some example's `go build`. The file starts
+    with a digit because `//go:embed prelude/go/[a-z]*.go` must leave it
+    out: embedded, it would be loaded as a helper file and double every
+    declaration (and a `_` or `.` prefix would hide it from Go too).
+    Editors get it with `-tags=rb2go_prelude` (`.vscode/settings.json`
+    sets gopls' `buildFlags`; elsewhere `GOFLAGS=-tags=rb2go_prelude`).
+    Not done: stub doc comments (hover shows the signature only); a
+    stale stub file after a prelude edit until the next `go test` or
+    `rb2go stubs`.

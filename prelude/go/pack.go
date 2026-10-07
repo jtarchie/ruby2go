@@ -1,7 +1,15 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"encoding/base64"
+	"encoding/binary"
+	"math"
+	"strconv"
+	"strings"
+)
 
 // Array#pack and String#unpack share one parser and one sizing table so the two sides agree (decision 138).
 

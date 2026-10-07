@@ -1,6 +1,17 @@
-//go:build ignore
+//go:build rb2go_prelude
 
 package prelude
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"syscall"
+	"time"
+)
 
 // rbSysErr is MRI's Errno exception for a failed call: "<strerror> @ <MRI function> - <path>".
 func rbSysErr(err error, fn, path string) any {

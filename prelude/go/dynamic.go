@@ -1,7 +1,12 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"fmt"
+	"strconv"
+)
 
 // How a dynamic call was made, as MRI tells them apart: with a receiver
 // (public methods only), without one or through send (private methods

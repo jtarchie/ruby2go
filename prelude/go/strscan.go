@@ -1,7 +1,14 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"sync"
+)
 
 // rbScanAnchored caches each Regexp's \A-anchored twin, so a failed scan
 // costs one attempt at the pointer instead of a search of the rest.

@@ -1,6 +1,10 @@
-//go:build ignore
+//go:build rb2go_prelude
 
 package prelude
+
+import (
+	"strings"
+)
 
 // rbPathJoin joins two components like File.join: trim one slash at the seam, don't collapse "..".
 func rbPathJoin(a, b string) string {

@@ -10,8 +10,10 @@ import (
 )
 
 // Prelude holds prelude.rb, its require_relatives, and prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo).
+// The character class leaves out prelude/go/0_stubs.go, the generated type-checking stubs (decision 154): helper files
+// must start with a letter.
 //
-//go:embed prelude.rb prelude/*.rb prelude/go/*.go
+//go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go
 var Prelude embed.FS
 
 // GoVersion is the go directive for the module generated code builds in.

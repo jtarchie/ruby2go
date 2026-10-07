@@ -1,6 +1,6 @@
-//go:build ignore
+//go:build rb2go_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo), never built for real: types like String come from generated code.
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 //
 // REXML's tokenizer (decision 114): text and attribute values are kept as
 // written (entities intact), as REXML's tree parser keeps them raw, so
@@ -10,6 +10,12 @@
 // [:cdata, s], [:pi, target, content]. Errors are REXML::ParseException
 // with the first line of REXML's message.
 package prelude
+
+import (
+	"regexp"
+	"strconv"
+	"strings"
+)
 
 func rbRexmlFail(msg string) {
 	panic(NewREXML_ParseException(Ref(String(msg))))
