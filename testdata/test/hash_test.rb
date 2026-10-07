@@ -572,7 +572,7 @@ module HashTests
       assert_equal 2, sk.size
     end
 
-    # No default-value hash (decision 5), so buckets are created explicitly.
+    # A hash may still be built explicitly without a default (decision 5).
     def test_no_default_value_hash_decision
       lists = {} #: Hash[String, Array[Integer]]
       [3, 1, 4, 1, 5].each do |n|
@@ -768,6 +768,35 @@ module HashTests
       new_h["a"] = 1
       assert_equal "{\"a\" => 1}", (new_h).inspect
       assert_equal 1, new_h.size
+    end
+
+    # Hash.new(default) and Hash.new { |h, k| ... } (decision 5).
+    def test_hash_default_value_and_block
+      counts = Hash.new(0) #: Hash[String, Integer]
+      counts["a"] += 1
+      counts["a"] += 1
+      counts["b"] += 1
+      assert_equal "{\"a\" => 2, \"b\" => 1}", (counts).inspect
+      assert_equal 0, counts["missing"]
+      assert_equal [0], counts.values_at("missing")
+      assert_equal 0, counts.default
+      begin
+        counts.fetch("missing")
+        assert_equal "unreachable", "fetch used the default"
+      rescue KeyError
+        assert_equal 0, counts.default
+      end
+      counts.default = 7
+      assert_equal 7, counts["nope"]
+      assert_equal 7, counts.default
+
+      made = Hash.new { |h, k| h[k] = k.to_s * 2 } #: Hash[String, String]
+      assert_equal "aa", made["a"]
+      assert_equal "bb", made["b"]
+      assert_equal "{\"a\" => \"aa\", \"b\" => \"bb\"}", (made).inspect
+      assert_nil made.default
+      made.default = "z"
+      assert_equal "z", made.default
     end
 
     # symbol keys print as labels only when MRI's would

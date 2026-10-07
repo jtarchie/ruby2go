@@ -1635,7 +1635,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		}
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
-		if n.Name == "new" && (cls.meta == nil || isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) || cls == f.c.classes["Hash"] || len(cls.TypeParams) > 0 && n.Arguments == nil && (n.Block == nil || cls.meta.lookup("new") == nil)) {
+		if f.useGenNew(cls, n) {
 			if n.Block != nil {
 				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
 			}
@@ -2609,6 +2609,29 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 	return m.Owner.lookup("__fetch_opt")
 }
 
+// useGenNew is true when `Foo.new` is the direct Go constructor (genNew)
+// rather than a call to a class method: no metaclass, a synthesized new the
+// call's arity does not overload, a bare Hash.new (its args/block go to
+// Hash.self.new / __new_block, decision 5), or a bare generic `.new`.
+func (f *fctx) useGenNew(cls *Class, n *parser.CallNode) bool {
+	if n.Name != "new" {
+		return false
+	}
+	if cls.meta == nil {
+		return true
+	}
+	if isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) {
+		return true
+	}
+	if cls == f.c.classes["Hash"] && n.Arguments == nil && n.Block == nil {
+		return true
+	}
+	if len(cls.TypeParams) > 0 && n.Arguments == nil && (n.Block == nil || cls.meta.lookup("new") == nil) {
+		return true
+	}
+	return false
+}
+
 // newOverloaded is true when initialize cannot take the call's argument count
 // and the class defines decision 12's `self.__new_<count>` (TCPServer.new(port)).
 func (f *fctx) newOverloaded(cls *Class, n *parser.CallNode) bool {
@@ -3006,6 +3029,11 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	if m.Block != nil {
 		if m.Iterator {
 			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
+		}
+		// Bind type params from the expected type before the block's closure,
+		// whose parameter types may name them (`Hash.new { |h, k| }`).
+		if n == f.retHintNode && f.retHint != nil {
+			unify(m.Ret, f.retHint, env)
 		}
 		blkCode := "nil"
 		switch {

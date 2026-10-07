@@ -10,9 +10,32 @@
 # one being ranged over; iterators skip keys deleted under them.
 # @rbs generic K
 # @rbs generic V
-# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K]; frozen atomic.Bool }
+# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K]; frozen atomic.Bool; defVal V; hasDef bool; defProc func(*Hash[K, V], K) V }
 class Hash < Object
   include Enumerable #[[K, V]]
+
+  # Hash.new(default) / Hash.new { |hash, key| ... } set a default for a
+  # missing key (decision 5). A bare Hash.new is the zero value (genNew).
+  # The default is returned by #[] and values_at/dig; fetch still reports the
+  # miss.
+  #: [K, V] (?V?) -> Hash[K, V]
+  def self.new(d = nil) = %x{
+    h := NewHash[K, V]()
+    h.hasDef = true
+    if d != nil {
+      h.defVal = *d
+    }
+    return h
+  }
+
+  #: [K, V] () { (Hash[K, V], K) -> V } -> Hash[K, V]
+  def self.__new_block = %x{
+    h := NewHash[K, V]()
+    h.defProc = func(owner *Hash[K, V], k K) V {
+      return blk(owner, k)
+    }
+    return h
+  }
 
   #: () { ([K, V]) -> void } -> void
   def each = %x{
@@ -67,14 +90,52 @@ class Hash < Object
     }
   }
 
-  # RBS core says `(K) -> V`; that is only true with a default. Be honest.
+  # RBS core says `(K) -> V`; with a default that holds. Without one a miss
+  # is nil, so V? (decision 5). A default proc is called (self, key), as MRI's.
   #: (K) -> V?
   def [](k) = %x{
     v, ok := self.rbGet(k)
     if !ok {
+      if self.defProc != nil {
+        d := self.defProc(self, k)
+        return &d
+      }
+      if self.hasDef {
+        return &self.defVal
+      }
       return nil
     }
     return &v
+  }
+
+  #: () -> V?
+  def default = %x{
+    if self.hasDef {
+      return &self.defVal
+    }
+    return nil
+  }
+
+  #: (V?) -> V?
+  def default=(d)
+    %x{
+    self.defProc = nil
+    self.hasDef = true
+    if d != nil {
+      self.defVal = *d
+    } else {
+      var zero V
+      self.defVal = zero
+    }
+    return d}
+  end
+
+  #: () -> untyped
+  def default_proc = %x{
+    if self.defProc == nil {
+      return nil
+    }
+    return self.defProc
   }
 
   #: (K, V) -> V
@@ -107,7 +168,7 @@ class Hash < Object
 
   #: (K, ?V?) -> V
   def fetch(k, default = nil)
-    v = self[k]
+    v = __fetch_opt(k, nil)
     return v if v
     return default if default
     raise KeyError.__for("key not found: #{k.inspect}", self, k)

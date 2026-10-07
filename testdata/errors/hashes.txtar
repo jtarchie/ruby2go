@@ -3,28 +3,12 @@ Compile errors and warnings for Hash (docs/design.md decisions 1, 4, 5, 12, 20, 
 # error: main.rb:3: unsupported syntax: IndexAndWriteNode
 h = { "a" => 1 } #: Hash[String, Integer]
 h["a"] &&= 2
--- hash_new_default.rb --
-# error: main.rb:4:
-# error: Hash
-# error: new
-h = Hash.new(0) #: Hash[String, Integer]
-puts h.size
--- hash_new_block.rb --
-# error: main.rb:4:
-# error: Hash
-# error: new
-h = Hash.new { |hash, key| hash[key] = 0 } #: Hash[String, Integer]
-puts h.size
 -- hash_new_unannotated.rb --
 # error: main.rb:4:
 # error: Hash
 # error: new
 h = Hash.new
 puts h.size
--- default_setter.rb --
-# error: main.rb:3: undefined method default= for Hash[String, Integer]
-h = {} #: Hash[String, Integer]
-h.default = 0
 -- keyword_param.rb --
 # error: main.rb:3: def has 1 keyword parameters but its signature has 0
 #: (Integer) -> Integer
