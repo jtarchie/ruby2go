@@ -1065,7 +1065,8 @@ resolve; anything not listed is still open.
     `+`, `-`, `*`, `/`, `-@`, `abs` and `**` check for overflow (`*` only
     when an operand is past 32 bits, and all but `/` and `**` still
     inline), a Float past ±2**63 converts with MRI's `float … out of
-    range of integer`, `String#to_i` raises rather than saturating, and a
+    range of integer`, `String#to_i` raises rather than saturating (`hex`, `oct` and
+    `to_i(base)` too; they wrapped silently until #81), and a
     literal past 64 bits is a compile error. A negative exponent is a
     Rational in MRI, so `**` raises too, except for bases 0
     (`ZeroDivisionError`) and ±1 (MRI answers an Integer). Crystal makes

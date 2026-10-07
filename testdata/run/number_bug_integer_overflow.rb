@@ -7,3 +7,4 @@ puts (-m - 1).abs.inspect, (-(-m - 1)).inspect, ((-m - 1) / -1).inspect, 1e19.to
 f = 1 #: Integer
 1.upto(25) { |i| f *= i }
 puts f.inspect
+puts "ffffffffffffffffffff".hex.inspect, "7fffffffffffffff".hex.inspect, "1777777777777777777777".oct.inspect, "zzzzzzzzzzzzzz".to_i(36).inspect

@@ -5,6 +5,7 @@ package prelude
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -222,6 +223,9 @@ func rbStrToIBase(s string, base int) int {
 		}
 		if d >= base {
 			break
+		}
+		if n > (math.MaxInt-d)/base { // MRI returns a Bignum (decision 35)
+			panic(NewRangeError(Ref(String(s + " overflows Integer (64-bit; no Bignum)"))))
 		}
 		n = n*base + d
 	}

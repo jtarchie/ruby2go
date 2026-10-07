@@ -375,6 +375,9 @@ B
       assert_equal 511, "777".oct
       assert_equal 3, "0b11".oct
       assert_equal 0, "junk".hex
+      assert_equal 9223372036854775807, "7fffffffffffffff".hex
+      assert_equal -9223372036854775807, "-7fffffffffffffff".hex
+      assert_equal 9223372036854775807, "777777777777777777777".oct
       assert_equal "ba", "az".succ
       assert_equal "aaa", "zz".succ
       assert_equal "b0", "a9".succ
