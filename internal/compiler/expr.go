@@ -3246,64 +3246,9 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 // otherwise rest collects the yielded values past the leading params.
 func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]string, func()) {
 	lead, rest := names[:len(names)-1], strings.TrimPrefix(names[len(names)-1], "*")
-	bind := func(name string, e expr) {
-		if name == "" {
-			return
-		}
-		v := f.blockParam(name, e.typ)
-		if v.goName != "_" { // `_ := x` declares nothing: Go rejects it
-			f.emit("%s := %s", v.goName, e.code)
-		}
-		f.noteUnused(v)
-	}
-	arrayOf := func(parts []expr) expr {
-		ts := make([]Type, len(parts))
-		for i, p := range parts {
-			ts[i] = p.typ
-		}
-		et := joinOrAny(ts)
-		codes := make([]string, len(parts))
-		for i, p := range parts {
-			codes[i] = f.coerce(n, p, et)
-		}
-		return expr{code: arrayLit(f.c.goType(et), codes), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
-	}
 	if len(yields) == 1 && len(lead) > 0 {
-		p := f.newTmp()
-		switch t := yields[0].(type) {
-		case TTuple:
-			if len(t.Elems) < len(lead) {
-				f.errorf(n, "block takes %d params but the tuple has %d elements", len(lead), len(t.Elems))
-			}
-			return []string{p}, func() {
-				parts := make([]expr, len(t.Elems))
-				for i, et := range t.Elems {
-					parts[i] = expr{code: fmt.Sprintf("%s.F%d", p, i), typ: et}
-				}
-				for i, nm := range lead {
-					bind(nm, parts[i])
-				}
-				bind(rest, arrayOf(parts[len(lead):]))
-			}
-		case TClass:
-			if t.C.RubyName == "Array" {
-				return []string{p}, func() {
-					for i, nm := range lead {
-						bind(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
-					}
-					bind(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
-				}
-			}
-		case TAny: // MRI's to_ary: an Array splits, anything else is the first param
-			return []string{p}, func() {
-				a := f.newTmp()
-				f.emit("%s := rbToAry(%s)", a, p)
-				for i, nm := range lead {
-					bind(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: TAny{}}}))
-				}
-				bind(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", a, len(lead)), typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}})
-			}
-		case TFunc, TNil, TOpt, TUnion, TVar, TVoid: // a lone value: no splat
+		if ps, pro := f.bindSplatParams(n, yields[0], lead, rest); pro != nil {
+			return ps, pro
 		}
 	}
 	if len(lead) > len(yields) {
@@ -3319,13 +3264,83 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 			parts[i] = expr{code: tmps[i], typ: y}
 		}
 		for i, nm := range lead {
-			bind(nm, parts[i])
+			f.bindBlockParam(nm, parts[i])
 		}
-		bind(rest, arrayOf(parts[len(lead):]))
+		f.bindBlockParam(rest, f.blockArrayOf(n, parts[len(lead):]))
 		for i := len(lead); i < len(tmps) && rest == ""; i++ {
 			f.emit("_ = %s", tmps[i])
 		}
 	}
+}
+
+// bindSplatParams destructures the single yielded value of a block that also
+// has a rest param (a tuple, an Array, or to_ary); nil means the value does
+// not splat and the caller takes the plain path.
+func (f *fctx) bindSplatParams(n parser.Node, y Type, lead []string, rest string) ([]string, func()) {
+	p := f.newTmp()
+	switch t := y.(type) {
+	case TTuple:
+		if len(t.Elems) < len(lead) {
+			f.errorf(n, "block takes %d params but the tuple has %d elements", len(lead), len(t.Elems))
+		}
+		return []string{p}, func() {
+			parts := make([]expr, len(t.Elems))
+			for i, et := range t.Elems {
+				parts[i] = expr{code: fmt.Sprintf("%s.F%d", p, i), typ: et}
+			}
+			for i, nm := range lead {
+				f.bindBlockParam(nm, parts[i])
+			}
+			f.bindBlockParam(rest, f.blockArrayOf(n, parts[len(lead):]))
+		}
+	case TClass:
+		if t.C.RubyName == "Array" {
+			return []string{p}, func() {
+				for i, nm := range lead {
+					f.bindBlockParam(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
+				}
+				f.bindBlockParam(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
+			}
+		}
+	case TAny: // MRI's to_ary: an Array splits, anything else is the first param
+		return []string{p}, func() {
+			a := f.newTmp()
+			f.emit("%s := rbToAry(%s)", a, p)
+			for i, nm := range lead {
+				f.bindBlockParam(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: TAny{}}}))
+			}
+			f.bindBlockParam(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", a, len(lead)), typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}})
+		}
+	case TFunc, TNil, TOpt, TUnion, TVar, TVoid: // a lone value: no splat
+	}
+	return nil, nil
+}
+
+// bindBlockParam declares a block parameter local and emits its binding; an
+// empty name is a blank destructuring slot.
+func (f *fctx) bindBlockParam(name string, e expr) {
+	if name == "" {
+		return
+	}
+	v := f.blockParam(name, e.typ)
+	if v.goName != "_" { // `_ := x` declares nothing: Go rejects it
+		f.emit("%s := %s", v.goName, e.code)
+	}
+	f.noteUnused(v)
+}
+
+// blockArrayOf packs the tail of a splat into an Array of the parts' joined type.
+func (f *fctx) blockArrayOf(n parser.Node, parts []expr) expr {
+	ts := make([]Type, len(parts))
+	for i, p := range parts {
+		ts[i] = p.typ
+	}
+	et := joinOrAny(ts)
+	codes := make([]string, len(parts))
+	for i, p := range parts {
+		codes[i] = f.coerce(n, p, et)
+	}
+	return expr{code: arrayLit(f.c.goType(et), codes), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
 }
 
 // bindBlockParams declares block params for the yielded types, returning
@@ -6314,30 +6329,7 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 	}
 	switch name {
 	case "call", "()", "[]", "yield", "===":
-		last := len(t.Params) - 1
-		switch {
-		case t.Rest && len(args) < last:
-			f.errorf(n, "wrong number of arguments (given %d, expected %d+)", len(args), last)
-		case !t.Rest && len(args) != len(t.Params):
-			f.errorf(n, "wrong number of arguments (given %d, expected %d)", len(args), len(t.Params))
-		}
-		codes := make([]string, len(args))
-		for i, a := range args {
-			pi := i
-			if t.Rest {
-				pi = min(i, last) // every argument past the leading ones is the rest's element
-			}
-			want := t.Params[pi]
-			if t.Src != "" && f.c.round && isAny(want) {
-				want = nil
-			}
-			e := f.genExpr(a, want)
-			if t.Src != "" {
-				f.noteUse(Param{Pending: t.Src + strconv.Itoa(pi)}, a, e.typ)
-			}
-			codes[i] = f.coerce(a, e, t.Params[pi])
-		}
-		return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
+		return f.procInvoke(n, recv, t, args)
 	case "arity":
 		f.discard(recv)
 		arity := len(t.Params)
@@ -6351,39 +6343,7 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 	case "to_proc":
 		return recv
 	case ">>", "<<":
-		if len(args) != 1 {
-			f.errorf(n, "%s takes one Proc", name)
-		}
-		g := f.genExpr(args[0], nil)
-		gt, ok := g.typ.(TFunc)
-		if !ok || !gt.Proc {
-			f.errorf(n, "%s takes a Proc, got %s", name, g.typ)
-		}
-		first, firstT, second, secondT := recv.code, t, g.code, gt
-		if name == "<<" {
-			first, firstT, second, secondT = g.code, gt, recv.code, t
-		}
-		if len(secondT.Params) != 1 || !typeEq(secondT.Params[0], firstT.Ret) {
-			f.errorf(n, "cannot compose %s with %s", firstT, secondT)
-		}
-		out := TFunc{Params: firstT.Params, Ret: secondT.Ret, Proc: true}
-		var ps, as []string
-		for i, p := range firstT.Params {
-			ps = append(ps, "a"+strconv.Itoa(i)+" "+f.c.goType(p))
-			as = append(as, "a"+strconv.Itoa(i))
-		}
-		inner := "(*first)(" + strings.Join(as, ", ") + ")"
-		body := "return (*second)(" + inner + ")"
-		if isVoid(secondT.Ret) {
-			body = "(*second)(" + inner + ")"
-		}
-		ret := ""
-		if !isVoid(secondT.Ret) {
-			ret = " " + f.c.goType(secondT.Ret)
-		}
-		code := fmt.Sprintf("func(first %s, second %s) %s { return Ref(func(%s)%s { %s }) }(%s, %s)",
-			f.c.goType(firstT), f.c.goType(secondT), f.c.goType(out), strings.Join(ps, ", "), ret, body, first, second)
-		return expr{code: code, typ: out}
+		return f.procCompose(n, recv, t, name, args)
 	}
 	if e := f.c.classes["Proc"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		if e.Owner.Name == "Proc" {
@@ -6392,6 +6352,74 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 		return f.callEntry(n, e, recv, args, block)
 	}
 	return f.universalCall(n, recv, name, args, block)
+}
+
+// procInvoke is a Proc's call/()/[]/yield/===: an arity check, each argument
+// coerced to its parameter, then a Go call through the function pointer.
+func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node) expr {
+	last := len(t.Params) - 1
+	switch {
+	case t.Rest && len(args) < last:
+		f.errorf(n, "wrong number of arguments (given %d, expected %d+)", len(args), last)
+	case !t.Rest && len(args) != len(t.Params):
+		f.errorf(n, "wrong number of arguments (given %d, expected %d)", len(args), len(t.Params))
+	}
+	codes := make([]string, len(args))
+	for i, a := range args {
+		pi := i
+		if t.Rest {
+			pi = min(i, last) // every argument past the leading ones is the rest's element
+		}
+		want := t.Params[pi]
+		if t.Src != "" && f.c.round && isAny(want) {
+			want = nil
+		}
+		e := f.genExpr(a, want)
+		if t.Src != "" {
+			f.noteUse(Param{Pending: t.Src + strconv.Itoa(pi)}, a, e.typ)
+		}
+		codes[i] = f.coerce(a, e, t.Params[pi])
+	}
+	return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
+}
+
+// procCompose is a Proc's >> or <<: a ref'd closure calling one Proc then the
+// other, the receiver first for >> and the argument first for <<.
+func (f *fctx) procCompose(n parser.Node, recv expr, t TFunc, name string, args []parser.Node) expr {
+	if len(args) != 1 {
+		f.errorf(n, "%s takes one Proc", name)
+	}
+	g := f.genExpr(args[0], nil)
+	gt, ok := g.typ.(TFunc)
+	if !ok || !gt.Proc {
+		f.errorf(n, "%s takes a Proc, got %s", name, g.typ)
+	}
+	first, firstT, second, secondT := recv.code, t, g.code, gt
+	if name == "<<" {
+		first, firstT, second, secondT = g.code, gt, recv.code, t
+	}
+	if len(secondT.Params) != 1 || !typeEq(secondT.Params[0], firstT.Ret) {
+		f.errorf(n, "cannot compose %s with %s", firstT, secondT)
+	}
+	out := TFunc{Params: firstT.Params, Ret: secondT.Ret, Proc: true}
+	ps := make([]string, 0, len(firstT.Params))
+	as := make([]string, 0, len(firstT.Params))
+	for i, p := range firstT.Params {
+		ps = append(ps, "a"+strconv.Itoa(i)+" "+f.c.goType(p))
+		as = append(as, "a"+strconv.Itoa(i))
+	}
+	inner := "(*first)(" + strings.Join(as, ", ") + ")"
+	body := "return (*second)(" + inner + ")"
+	if isVoid(secondT.Ret) {
+		body = "(*second)(" + inner + ")"
+	}
+	ret := ""
+	if !isVoid(secondT.Ret) {
+		ret = " " + f.c.goType(secondT.Ret)
+	}
+	code := fmt.Sprintf("func(first %s, second %s) %s { return Ref(func(%s)%s { %s }) }(%s, %s)",
+		f.c.goType(firstT), f.c.goType(secondT), f.c.goType(out), strings.Join(ps, ", "), ret, body, first, second)
+	return expr{code: code, typ: out}
 }
 
 // genGlobalRead maps the read-only globals rb2go knows (decision 61); $0 is the Ruby file as named at compile time, as `ruby main.rb` sets it.
