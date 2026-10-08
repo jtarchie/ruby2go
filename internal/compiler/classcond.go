@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"strings"
+
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
@@ -126,7 +128,8 @@ func (c *Compiler) foldDefined(f *File, n parser.Node, scope []*Class) (value, o
 	switch n := n.(type) {
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		cls, k := c.lookupConst(f, n, scope)
-		return cls != nil || k != nil, true
+		name := constText(f, n)
+		return cls != nil || k != nil || c.autoloads[name] || c.autoloads[qualify(scope, name)], true
 	case *parser.CallNode:
 		switch n.Receiver.(type) {
 		case *parser.ConstantReadNode, *parser.ConstantPathNode:
@@ -184,4 +187,24 @@ func (c *Compiler) absentGuard(f *File, pred parser.Node, scope []*Class) bool {
 		}
 	}
 	return false
+}
+
+// noteAutoload records an `autoload :X` constant: defined? answers for it before its file loads, as in MRI.
+func (c *Compiler) noteAutoload(full string) {
+	if c.autoloads == nil {
+		c.autoloads = map[string]bool{}
+	}
+	c.autoloads[full] = true
+}
+
+// constText is a constant reference's qualified spelling, without a leading `::`.
+func constText(f *File, n parser.Node) string {
+	return strings.TrimPrefix(f.text(n.GetLocation()), "::")
+}
+
+func firstArg(args []parser.Node) parser.Node {
+	if len(args) == 0 {
+		return nil
+	}
+	return args[0]
 }

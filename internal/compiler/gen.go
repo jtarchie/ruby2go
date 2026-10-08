@@ -30,6 +30,7 @@ type fctx struct {
 	selfClassObj  bool // self is exactly a class constant (a class body)
 	ret           Type
 	iterator      bool
+	lastMatch     string // the Go variable of the frame's last match, when the body reads $~ or $1..$9 (decision 171)
 	blockSig      *BlockSig
 	buf           *strings.Builder
 	indent        int
@@ -828,14 +829,20 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if stmts == "" {
 			return l + " && " + r, append(nl, nr...)
 		}
-		// the right side needs statements: run them only if the left holds
+		// the right side needs statements: run them only if the left holds. A local it assigns
+		// lives past the Go if (the branch reads it), so it is declared at the function's top
+		for _, w := range condWrites(n) {
+			if info := f.localInfo(w); info != nil {
+				info.hoist = true
+			}
+		}
 		tmp := f.newTmp()
 		f.emit("%s := false", tmp)
 		f.emit("if %s {", l)
 		f.buf.WriteString(stmts)
 		f.emit("\t%s = %s", tmp, r)
 		f.emit("}")
-		return tmp, nl
+		return tmp, append(nl, nr...) // tmp holds only when both sides did
 	case *parser.OrNode:
 		l, _ := f.genCond(n.Left)
 		var r string
@@ -887,6 +894,25 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 	}
 	e := f.genExpr(n, nil)
 	return f.truthy(n, e), nil
+}
+
+// condWrites names the locals a condition assigns at its own level (`(w = x) && ...`), not in a block.
+func condWrites(n parser.Node) []string {
+	var out []string
+	var walk func(parser.Node)
+	walk = func(n parser.Node) {
+		switch n := n.(type) {
+		case nil, *parser.BlockNode, *parser.LambdaNode:
+			return
+		case *parser.LocalVariableWriteNode:
+			out = append(out, n.Name)
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch)
+		}
+	}
+	walk(n)
+	return out
 }
 
 // genCondCall is genCond for the calls it reads directly: block_given?
@@ -1048,10 +1074,11 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 	var e expr
 	hasVal := false
 	if n.Arguments != nil {
-		if len(n.Arguments.Arguments) != 1 {
-			f.errorf(n, "return with multiple values is not supported")
+		val := n.Arguments.Arguments[0]
+		if len(n.Arguments.Arguments) > 1 { // `return a, b` returns [a, b]
+			val = &parser.ArrayNode{Location: n.Arguments.Location, Elements: n.Arguments.Arguments}
 		}
-		e = f.genExpr(n.Arguments.Arguments[0], f.ret)
+		e = f.genExpr(val, f.ret)
 		hasVal = true
 	}
 	if f.retTypes != nil && f.closures == 0 {
@@ -2137,6 +2164,11 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		if prologue != nil {
 			prologue()
 		}
+		f.lastMatch = ""
+		if readsLastMatch(body) {
+			f.lastMatch = "rbLM_"
+			f.emit("var rbLM_ %s", f.c.goType(TOpt{Elem: f.cls("MatchData")}))
+		}
 		f.hoistLocals(methodScope)
 		f.genStmts(body, t)
 	}
@@ -2714,6 +2746,19 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 	}
+	for _, g := range c.gemNilIvars { // only ever nil in what is compiled: the writes that typed it were pruned (decision 169)
+		if c.findIvar(g.cls, g.name) == nil {
+			c.declareIvar(g.cls, g.name, TAny{}, g.file, g.line)
+		}
+	}
+}
+
+// gemNilIvar is a gem class's ivar discovery saw assigned only nil (decision 169).
+type gemNilIvar struct {
+	cls  *Class
+	name string
+	file *File
+	line int
 }
 
 func (c *Compiler) discoverMethod(cls *Class, m *Method) {
@@ -2758,16 +2803,16 @@ func (f *fctx) genClassStmt(cs *classStmt) {
 	if n := len(cs.scope); n > 0 && cs.scope[n-1].meta != nil {
 		cls := cs.scope[n-1]
 		sub.selfType, sub.selfCode, sub.selfClassObj = TClass{C: cls.meta}, classVar(cls), true
+		sub.owner = cls.meta // `@x = v` in a class body is the class object's ivar
 	}
 	sub.lex = cs.scope
 	sub.indent = f.indent
 	sub.retVar = ""
 	sub.bodyUnit = cs.unit
-	if cs.unit { // its locals are Go locals of main's block: a nested one keeps them apart from main's
-		sub.indent++
-		f.emit("{")
-		defer f.emit("}")
-	}
+	// its own Go block: each statement's temporaries (and a unit's locals) restart in a fresh fctx
+	sub.indent++
+	f.emit("{")
+	defer f.emit("}")
 	sub.genBody(cs.Node, nil, tail{}, nil)
 	f.buf.WriteString(sub.buf.String())
 }

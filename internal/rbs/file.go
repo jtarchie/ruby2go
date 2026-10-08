@@ -25,6 +25,7 @@ type ClassDecl struct {
 	Includes    []*IncludeDecl
 	Methods     []*MethodDecl
 	Attrs       []*AttrDecl
+	Ivars       []*ConstDecl // `@x: T`, and `self.@x: T` for the class object's (Name keeps the prefix)
 	Consts      []*ConstDecl
 	Aliases     []*TypeAliasDecl
 	Line        int
@@ -234,6 +235,8 @@ func parseMember(owner *ClassDecl, line string, ln int) error {
 		if owner != nil {
 			owner.Methods = append(owner.Methods, m)
 		}
+	case strings.HasPrefix(line, "@"), strings.HasPrefix(line, "self.@"):
+		return addIvar(owner, line, ln)
 	case strings.HasPrefix(line, "attr_reader "):
 		return addAttr(owner, "reader", line, ln)
 	case strings.HasPrefix(line, "attr_writer "):
@@ -296,6 +299,21 @@ func addAttr(owner *ClassDecl, kind, line string, ln int) error {
 	}
 	name, self := strings.CutPrefix(name, "self.")
 	owner.Attrs = append(owner.Attrs, &AttrDecl{Kind: kind, Name: name, Self: self, Type: t, Line: ln})
+	return nil
+}
+
+func addIvar(owner *ClassDecl, line string, ln int) error {
+	name, typeText, ok := splitMember(line)
+	if !ok {
+		return fmt.Errorf("rbs: instance variable on line %d: expected `@name: type`", ln)
+	}
+	t, err := ParseType(typeText)
+	if err != nil {
+		return fmt.Errorf("rbs: %s on line %d: %w", name, ln, err)
+	}
+	if owner != nil {
+		owner.Ivars = append(owner.Ivars, &ConstDecl{Name: name, Type: t, Line: ln})
+	}
 	return nil
 }
 

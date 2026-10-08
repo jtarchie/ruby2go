@@ -2423,4 +2423,17 @@ module ArrayTests
       assert_equal [:a, 1, :b, 2], [[:a, 1], [:b, 2]].flatten
     end
   end
+
+  class ArrayCompactOptTest < Minitest::Test
+    #: (Array[Integer]) -> Integer
+    def array_total(xs) = xs.sum
+
+    def test_compact_drops_nil_from_the_type
+      a = [1, nil, 3] #: Array[Integer?]
+      assert_equal 4, array_total(a.compact)
+      assert_equal [1, 2], [1, 2].compact
+      u = [1, nil, "x"] #: Array[untyped]
+      assert_equal [1, "x"], u.compact
+    end
+  end
 end

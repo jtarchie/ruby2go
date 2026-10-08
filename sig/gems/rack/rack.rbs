@@ -3,6 +3,11 @@
 # attributes (which cannot be inferred) and the block shapes.
 module Rack
   class Builder
+    @use: Array[untyped]
+    @map: Hash[String, ^() [self: Rack::Builder] -> void]?
+    @run: untyped
+    @warmup: untyped
+    @freeze_app: bool
     attr_reader options: Hash[Symbol, untyped]
 
     def initialize: (?untyped, **untyped) ?{ () [self: Rack::Builder] -> void } -> void
@@ -17,7 +22,6 @@ module Rack
     def freeze_app: () -> bool
     def to_app: () -> untyped
     def call: (Hash[String, untyped]) -> untyped
-    def generate_map: (untyped, Hash[String, untyped]) -> untyped
   end
 
   class Request
@@ -25,6 +29,8 @@ module Rack
     attr_accessor self.forwarded_priority: Array[Symbol]
     attr_accessor self.x_forwarded_proto_priority: Array[Symbol]
 
+    @ip: String?
+    @params: Hash[String, untyped]?
     def initialize: (Hash[String, untyped]) -> void
     def ip: () -> String?
     def params: () -> Hash[String, untyped]
@@ -59,7 +65,7 @@ module Rack
       def referer: () -> String?
       def session: () -> untyped
       def session_options: () -> untyped
-      def scheme: () -> String?
+      def scheme: () -> untyped
       def authority: () -> String?
       def server_authority: () -> String?
       def server_name: () -> String?
@@ -103,10 +109,10 @@ module Rack
       def parse_query: (String, ?String) -> Hash[String, untyped]
       def parse_multipart: () -> untyped
       def expand_param_pairs: (untyped, ?Rack::QueryParser) -> Hash[String, untyped]
-      def split_header: (String?) -> Array[String]
-      def split_authority: (String?) -> [String?, String?, Integer?]
-      def forwarded_scheme: () -> String?
-      def allowed_scheme: (String?) -> String?
+      def split_header: (untyped) -> Array[String]
+      def split_authority: (untyped) -> Array[untyped]
+      def forwarded_scheme: () -> untyped
+      def allowed_scheme: (untyped) -> untyped
       def forwarded_priority: () -> Array[Symbol]
       def x_forwarded_proto_priority: () -> Array[Symbol]
     end

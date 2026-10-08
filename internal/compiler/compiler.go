@@ -80,6 +80,8 @@ type Compiler struct {
 	sigs          map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
 	gemSigs       fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
 	pruneGems     bool                      // a gem program: unreached gem methods are dropped (decision 169)
+	gemNilIvars   []gemNilIvar              // gem ivars discovery saw only nil assigned to (decision 169)
+	autoloads     map[string]bool           // `autoload :X` constants by qualified name: defined? answers for them (decision 167)
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string

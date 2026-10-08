@@ -61,11 +61,8 @@ func rbRegexpErr(err error, src string) string {
 // only exists at run time; translateRegexp is the compiler's own
 // (internal/compiler/rxtranslate.go, emitted into every program).
 func rbRegexpDyn(prefix, src, opts string) *Regexp {
-	pat := src
-	if strings.Contains(opts, "x") { // the interpolated values' spacing too, as MRI's
-		pat = stripExtended(src)
-	}
-	pat, err := translateRegexp(pat)
+	// the interpolated values' spacing too under /x, as MRI's; an inline (?x-mi:...) from a value either way
+	pat, err := translateRegexp(stripExtended(src, strings.Contains(opts, "x")))
 	if err != nil {
 		panic(NewRegexpError(Ref(String(err.Error()))))
 	}
@@ -80,13 +77,13 @@ func rbRegexpFromValue(pattern, options any) *Regexp {
 	case *Regexp:
 		return p
 	case String:
-		ignore, multi := false, false
+		ignore, multi, noenc := false, false, false
 		switch o := rbUnbox(options).(type) {
 		case nil:
 		case Boolean:
 			ignore = bool(o)
 		case Integer:
-			ignore, multi = o&1 != 0, o&4 != 0
+			ignore, multi, noenc = o&1 != 0, o&4 != 0, o&32 != 0
 			if o&2 != 0 {
 				rbRegexpNoExtended()
 			}
@@ -116,6 +113,9 @@ func rbRegexpFromValue(pattern, options any) *Regexp {
 		}
 		if ignore {
 			opts += "i"
+		}
+		if noenc { // ponytail: only shown (/n); matching stays UTF-8 as RE2's
+			opts += "n"
 		}
 		return rbRegexpDyn(prefix+")", string(p), opts)
 	}
@@ -338,4 +338,22 @@ func rbMatchPos(m **MatchData) *Integer {
 		return nil
 	}
 	return rbMatchOffset(*m, 0, 0)
+}
+
+// rbMatchSet is `=~` in a frame that reads $~ (decision 171): it records m as the frame's last match and
+// answers the match's character index, or nil.
+func rbMatchSet(lm ***MatchData, m **MatchData) *Integer {
+	*lm = m
+	if m == nil {
+		return nil
+	}
+	return Ref(Integer(utf8.RuneCountInString((*m).subj[:(*m).loc[0]])))
+}
+
+// rbLMGroup is $n (or $& for 0): group n of the last match, nil without one.
+func rbLMGroup(m **MatchData, n int) *String {
+	if m == nil || n >= len((*m).groups) {
+		return nil
+	}
+	return (*m).groups[n]
 }

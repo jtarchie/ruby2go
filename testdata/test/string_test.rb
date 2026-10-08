@@ -1396,4 +1396,23 @@ B
       assert_equal 1, r =~ "ba"
     end
   end
+
+  class RegexpExtendedGroupTest < Minitest::Test
+    def test_union_of_extended_interpolated
+      ipv6 = Regexp.union(/(?:[0-9A-Fa-f]{1,4}:){7} [0-9A-Fa-f]{1,4}/x, /::1/x)
+      auth = /\A (?<host> \[(?<address>#{ipv6})\] | (?<address>[a-z.]*?) ) (:(?<port>\d+))? \z/x
+      m = auth.match("example.com:8080")
+      assert_equal ["example.com", "8080"], [m&.[](:host), m&.[](:port)]
+      assert_equal "[::1]", auth.match("[::1]:80")&.[](:host)
+    end
+
+    def test_inline_x_group
+      assert_equal 0, /(?x: c d )e/ =~ "cde"
+    end
+
+    def test_noencoding_flag
+      r = Regexp.new("^/a(.*)", Regexp::NOENCODING)
+      assert_equal ["/^\\/a(.*)/n", 0], [r.inspect, r =~ "/abc"]
+    end
+  end
 end

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -34,7 +35,7 @@ var reflectiveCalls = map[string]bool{
 var declarationCalls = map[string]bool{
 	"attr": true, "attr_reader": true, "attr_writer": true, "attr_accessor": true, "private": true, "public": true,
 	"protected": true, "module_function": true, "private_class_method": true, "public_class_method": true,
-	"private_constant": true, "public_constant": true, "include": true, "extend": true, "prepend": true,
+	"private_constant": true, "public_constant": true, "include": true, "extend": true, "prepend": true, "ruby2_keywords": true,
 }
 
 // goCall matches a Go method call (`.Name(`) or a free func call (`Owner_Name(` / `Owner_Name[`); a field is not a call.
@@ -281,6 +282,9 @@ func (r *reach) walk(n parser.Node, skipDefs bool) {
 	case *parser.ConstantPathNode: // Rack::Headers names Headers; Rack is only its namespace
 		r.consts[*n.Name] = true
 		return
+	case *parser.ConstantPathWriteNode: // its target declares
+		r.walk(n.Value, skipDefs)
+		return
 	case *parser.XStringNode:
 		r.scanGo(n.Unescaped.Value)
 	case *parser.CallNode:
@@ -386,6 +390,7 @@ func (r *reach) prune() {
 		}
 		cls.singletonDefs = defs
 	}
+	r.pruneConsts()
 	var tops []*Method
 	for _, m := range c.topDefList {
 		if keep(m.File, m.Name, nil) {
@@ -395,4 +400,37 @@ func (r *reach) prune() {
 		}
 	}
 	c.topDefList = tops
+}
+
+// pruneConsts drops a gem constant no reachable code names whose initializer has no effect to keep (a lambda,
+// a proc, a literal): Rack::BUILDER_TOPLEVEL_BINDING's lambda calls `binding`, and only config.ru loading reads it.
+func (r *reach) pruneConsts() {
+	c := r.c
+	var keep []*Const
+	for _, k := range c.constList {
+		name := k.RubyName[strings.LastIndex(k.RubyName, ":")+1:]
+		if !c.gemFile(k.File) || r.consts[name] || !effectFree(k.Value) {
+			keep = append(keep, k)
+			continue
+		}
+		delete(c.consts, k.RubyName)
+		if i := strings.LastIndex(k.RubyName, "::"); i >= 0 {
+			if parent := c.classes[k.RubyName[:i]]; parent != nil {
+				parent.constNames = slices.DeleteFunc(parent.constNames, func(s string) bool { return s == name })
+			}
+		}
+	}
+	c.constList = keep
+}
+
+// effectFree reports whether evaluating n can do nothing but build a value.
+func effectFree(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.LambdaNode, *parser.StringNode, *parser.SymbolNode, *parser.IntegerNode, *parser.FloatNode,
+		*parser.RegularExpressionNode, *parser.NilNode, *parser.TrueNode, *parser.FalseNode:
+		return true
+	case *parser.CallNode:
+		return n.Receiver == nil && n.Arguments == nil && n.Block != nil && (n.Name == "lambda" || n.Name == "proc")
+	}
+	return false
 }

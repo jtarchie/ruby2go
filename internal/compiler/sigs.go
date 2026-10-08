@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jtarchie/ruby2go/internal/rbs"
@@ -146,4 +147,20 @@ func (c *Compiler) sigConst(k *Const) rbs.Type {
 		}
 	}
 	return nil
+}
+
+// addSigIvars declares each user class's `.rbs` instance variables (`@x: T`, `self.@x: T`) that no inline
+// `# @rbs` annotation already declares (decision 160).
+func (c *Compiler) addSigIvars() {
+	for _, cls := range c.classList {
+		d := c.sigs[cls.RubyName]
+		if d == nil || cls.metaOf != nil || cls.File == nil || cls.File.prelude {
+			continue
+		}
+		for _, iv := range d.Ivars {
+			if !slices.ContainsFunc(cls.ivarDecls, func(x ivarDecl) bool { return x.name == iv.Name }) {
+				cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: iv.Name, rbs: iv.Type, line: cls.Line})
+			}
+		}
+	}
 }

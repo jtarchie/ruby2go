@@ -5090,4 +5090,43 @@ module ObjectTests
       assert_equal ["", "12", "a", "s"], [String(nil), String(12), String("a"), String(:s)]
     end
   end
+
+  # Class-body statements each get their own temporaries; `@x = v` there is the class object's ivar (#82).
+  class BodyIvars
+    class << self
+      attr_accessor :limit #: Integer
+      attr_accessor :order #: Array[Symbol]
+    end
+
+    self.limit = (ENV["RB2GO_NO_SUCH_LIMIT"] || 128).to_i
+    self.limit = (ENV["RB2GO_NO_SUCH_LIMIT_2"] || limit + 1).to_i
+    @order = [:a, :b]
+  end
+
+  # dup inside a struct class's own method keeps the class's type.
+  class DupSelf
+    attr_reader :n #: Integer
+
+    #: (Integer) -> void
+    def initialize(n)
+      @n = n
+    end
+
+    #: () -> Integer
+    def bumped = dup.bump!
+
+    #: () -> Integer
+    def bump! = @n += 1
+  end
+
+  class ObjectBodyIvarTest < Minitest::Test
+    def test_class_body_statements_and_ivars
+      assert_equal [129, [:a, :b]], [BodyIvars.limit, BodyIvars.order]
+    end
+
+    def test_dup_in_own_method
+      d = DupSelf.new(1)
+      assert_equal [2, 1], [d.bumped, d.n]
+    end
+  end
 end

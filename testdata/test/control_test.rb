@@ -5070,4 +5070,50 @@ module ControlTests
       assert_equal :fallback, CONTROL_PARSER
     end
   end
+
+  class ControlLastMatchTest < Minitest::Test
+    #: (String) -> Array[String?]
+    def split_url(location)
+      if location =~ %r{\Ahttps?://(.*?)(/.*)}
+        [$1, $2, $&]
+      else
+        [nil, location, $&]
+      end
+    end
+
+    def test_numbered_groups
+      assert_equal ["example.com", "/a", "http://example.com/a"], split_url("http://example.com/a")
+      assert_equal [nil, "/plain", nil], split_url("/plain")
+    end
+
+    def test_last_match_in_block
+      assert_equal ["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? $1 : nil }
+    end
+
+    def test_regexp_on_the_left
+      s = "abc"
+      assert_equal [1, "b"], [/b/ =~ s, $~&.[](0)]
+    end
+
+    #: (String?) -> Array[untyped]
+    def pair(s)
+      return nil, nil if s.nil?
+      a, b = s.split(":")
+      return a, b&.to_i
+    end
+
+    def test_return_many
+      assert_equal [["h", 80], [nil, nil]], [pair("h:80"), pair(nil)]
+    end
+
+    #: (Array[String]) -> String?
+    def control_last(xs) = xs.last
+
+    def test_assignments_in_and_narrow
+      got = if (v = control_last(["r"])) && (w = control_last([v]))
+              w.upcase
+            end
+      assert_equal "R", got
+    end
+  end
 end

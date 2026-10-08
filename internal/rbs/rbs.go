@@ -64,6 +64,7 @@ type (
 	Proc struct {
 		Params []Type
 		Ret    Type
+		Self   Type // `^() [self: C] -> R`: what `self` is inside it, or nil
 	}
 	// Literal is a literal type: `"foo"`, `:foo` or `42`. Kind is the base
 	// class the value is a member of ("String", "Symbol" or "Integer"); Value
@@ -627,7 +628,13 @@ func (p *parser) parseSingleton() (Type, error) {
 	return Singleton{Name: name}, nil
 }
 
-func (t Proc) String() string { return "^(" + join(t.Params) + ") -> " + t.Ret.String() }
+func (t Proc) String() string {
+	self := ""
+	if t.Self != nil {
+		self = " [self: " + t.Self.String() + "]"
+	}
+	return "^(" + join(t.Params) + ")" + self + " -> " + t.Ret.String()
+}
 
 // parseBlock reads a block type after the `?`/`{` that starts it.
 func (p *parser) parseBlock() (*Block, error) {
@@ -647,7 +654,7 @@ func (p *parser) parseBlock() (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	blk.Self, _, err = p.parseSelfBracket()
+	blk.Self, err = p.parseSelfBracket()
 	if err != nil {
 		return nil, err
 	}
@@ -667,28 +674,28 @@ func (p *parser) parseBlock() (*Block, error) {
 }
 
 // parseSelfBracket reads an optional `[self: C]` (a block's self type).
-func (p *parser) parseSelfBracket() (Type, bool, error) {
+func (p *parser) parseSelfBracket() (Type, error) {
 	if p.peek() != "[" {
-		return nil, false, nil
+		return nil, nil //nolint:nilnil // no bracket: the block or proc keeps its lexical self
 	}
 	p.next() // [
 	tok := p.next()
 	if tok != "self" {
-		return nil, false, fmt.Errorf("rbs: expected `self: Type`, got %q", tok)
+		return nil, fmt.Errorf("rbs: expected `self: Type`, got %q", tok)
 	}
 	err := p.expect(":")
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	t, err := p.parseType()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	err = p.expect("]")
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	return t, true, nil
+	return t, nil
 }
 
 // parseRecord reads a record type after its `{`: `{ "a" => T, b: U }`.
@@ -751,6 +758,11 @@ func (p *parser) parseProc() (Type, error) {
 		}
 	}
 	p.next()
+	self, err := p.parseSelfBracket()
+	if err != nil {
+		return nil, err
+	}
+	out.Self = self
 	err = p.expect("->")
 	if err != nil {
 		return nil, err

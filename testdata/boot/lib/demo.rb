@@ -29,3 +29,9 @@ module Demo
     def broken(&blk) = blk
   end
 end
+
+# Nothing reads it, and a lambda has no effect to keep, so it is never compiled (decision 169): `binding` would not.
+Demo::TOPLEVEL_BINDING_MAKER = ->(x) { x.instance_eval { binding } }
+
+# MRI's defined? is true for an autoload it has not loaded yet, so this never runs (decision 167).
+require_relative "demo/never" unless defined?(Demo::Lazy)

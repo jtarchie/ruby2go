@@ -115,3 +115,31 @@ func keys(m map[string]*ClassDecl) []string {
 	}
 	return out
 }
+
+func TestParseFileIvarsSelfAttrsAndSelfProcs(t *testing.T) {
+	src := `module Utils
+  @cache: Hash[String, Integer]?
+  self.@registry: Array[String]
+  attr_accessor self.limit: Integer
+  def self?.escape: (String) -> String
+  @map: Hash[String, ^() [self: Builder] -> void]
+end
+`
+	f, err := ParseFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := f.Decls[0]
+	if len(u.Ivars) != 3 || u.Ivars[0].Name != "@cache" || u.Ivars[1].Name != "self.@registry" {
+		t.Fatalf("ivars = %+v", u.Ivars)
+	}
+	if got := u.Ivars[2].Type.String(); got != "Hash[String, ^() [self: Builder] -> void]" {
+		t.Errorf("proc with self = %s", got)
+	}
+	if len(u.Attrs) != 1 || !u.Attrs[0].Self || u.Attrs[0].Name != "limit" {
+		t.Errorf("attrs = %+v", u.Attrs)
+	}
+	if m := u.Methods[0]; !m.Self || !m.Both || m.Name != "escape" {
+		t.Errorf("self? method = %+v", m)
+	}
+}

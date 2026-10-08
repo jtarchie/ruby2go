@@ -109,10 +109,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	case *parser.RegularExpressionNode:
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
 		src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
-		pat := src
-		if flags.extended {
-			pat = stripExtended(src) // source and inspect keep the spacing; only the matcher drops it
-		}
+		pat := stripExtended(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
 		goPat, err := translateRegexp(pat)
 		if err == nil {
 			_, err = regexp.Compile(flags.goPrefix() + goPat)
@@ -158,10 +155,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 			f.c.unsupported(f.f, p)
 		}
 	}
-	pat := probe.String()
-	if flags.extended {
-		pat = stripExtended(pat)
-	}
+	pat := stripExtended(probe.String(), flags.extended)
 	goPat, err := translateRegexp(pat)
 	if err == nil {
 		_, err = regexp.Compile(flags.goPrefix() + goPat)

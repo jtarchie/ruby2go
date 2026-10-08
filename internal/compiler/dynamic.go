@@ -533,6 +533,9 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	if mix && rest == nil && opt == 0 {
 		c.dynTwinsAndNumbers(f, e, recv, env)
 	}
+	if rest == nil && opt == 0 {
+		c.dynClassOverloads(f, e, recv)
+	}
 	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
 		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
 			f.emit("if _, ok := rbConv[%s](args[0]); !ok {", c.goType(t))
@@ -585,6 +588,39 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	call(req+opt, rest != nil)
 	f.indent--
 	f.emit("}")
+}
+
+// dynClassOverloads picks a decision-12 overload by its first argument's run-time class, as a typed call picks it by
+// the static one: `x.gsub(/re/, s)` on an untyped String is `__gsub_regexp`, not gsub's (String, String).
+func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
+	m, cls := e.M, classOf(recv.typ)
+	if cls == nil || len(m.Params) == 0 || strings.HasPrefix(m.Name, "__") {
+		return
+	}
+	prefix := "__" + overloadBase(m.Name) + "_"
+	for _, x := range cls.methodSet() {
+		tw := x.M
+		if !strings.HasPrefix(tw.Name, prefix) || tw.generic() || tw.Block != nil || len(tw.Params) != len(m.Params) {
+			continue
+		}
+		c.resolveMethod(tw)
+		t, ok := tw.Params[0].Type.(TClass)
+		if !ok || typeEq(t, m.Params[0].Type) {
+			continue
+		}
+		te := cls.lookup(tw.Name)
+		f.emit("if x, ok := args[0].(%s); ok {", c.goType(t))
+		f.indent++
+		nodes := []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}
+		for i := 1; i < len(tw.Params); i++ {
+			pt := tw.Params[i].Type
+			nodes = append(nodes, &exprNode{e: expr{code: c.dynArg(pt, i), typ: pt}})
+		}
+		res := f.callEntry(&parser.NilNode{}, te, recv, nodes, nil)
+		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		f.indent--
+		f.emit("}")
+	}
 }
 
 // dynTwinsAndNumbers picks a twin by the argument's class (`xs * ","` is

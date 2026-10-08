@@ -11,6 +11,8 @@ class Regexp < Object
   IGNORECASE = 1 #: Integer
   EXTENDED = 2 #: Integer
   MULTILINE = 4 #: Integer
+  FIXEDENCODING = 16 #: Integer
+  NOENCODING = 32 #: Integer
 
   # A Regexp from a String at run time, translated from Ruby's syntax as an
   # interpolated literal is (decision 115). options: an Integer of

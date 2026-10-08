@@ -78,12 +78,6 @@ def use
   guarded { |i| return i }
   0
 end
--- return_multiple_values.rb --
-# error: main.rb:4: return with multiple values is not supported
-#: () -> [Integer, Integer]
-def pair
-  return 1, 2
-end
 -- break_with_value.rb --
 # error: main.rb:3: break with a value is not supported
 while true

@@ -1503,3 +1503,11 @@ func rbArgAt[T any](xs []T, i int) T {
 	var zero T
 	return zero
 }
+
+// rbNeedProc opens a Proc? passed as a block: nil is MRI's "no block given".
+func rbNeedProc[F any](p **F) *F {
+	if p == nil || *p == nil {
+		panic(NewArgumentError(Ref(String("no block given"))))
+	}
+	return *p
+}

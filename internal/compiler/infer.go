@@ -234,6 +234,8 @@ func (f *fctx) lambdaParams(n parser.Node, count int) ([]Type, string) {
 			ps[i] = TAny{}
 		case !f.c.inferDone && (f.c.infer == nil || !f.c.infer.none[src+strconv.Itoa(i)]):
 			panic(needInfer{})
+		case f.c.pruneGems && f.c.gemFile(f.f):
+			ps[i] = TAny{} // a gem's lambda no call types (decision 169)
 		default:
 			ce := catchCompileError(func() {
 				f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)")

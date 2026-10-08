@@ -710,12 +710,21 @@ var rxFoldMulti = map[rune]string{
 }
 
 // stripExtended drops /x's insignificant whitespace and `#` comments,
-// leaving escapes (`\ `, `\#`) and character classes as they are. An inline
-// group turns x off or on for its span, as an interpolated Regexp's
-// `(?-mix:...)` does: its spaces still count.
-func stripExtended(src string) string {
+// leaving escapes (`\ `, `\#`) and character classes as they are; ext is
+// whether x is on outside any group. An inline group turns x off or on for
+// its span, as an interpolated Regexp's `(?-mix:...)` or a union's
+// `(?x-mi:...)` does, and its `x` is dropped, since RE2 has none.
+// dropX is inline group flags without x: `x-mi` is `-mi`, and a `-` with nothing after it goes.
+func dropX(flags string) string {
+	on, off, _ := strings.Cut(strings.ReplaceAll(flags, "x", ""), "-")
+	if off == "" {
+		return on
+	}
+	return on + "-" + off
+}
+
+func stripExtended(src string, ext bool) string {
 	var b strings.Builder
-	ext := true
 	var saved []bool // ext outside each open group
 	depth := 0       // inside [...], where space and # are literal
 	for i := 0; i < len(src); i++ {
@@ -744,12 +753,19 @@ func stripExtended(src string) string {
 				}
 			}
 			if k < len(src) && src[k] == ')' && k > i+2 { // `(?x)`: the rest of the enclosing group
-				b.WriteString(src[i : k+1])
+				if fl := dropX(src[i+2 : k]); fl != "" {
+					b.WriteString("(?" + fl + ")")
+				}
 				ext, i = next, k
 				continue
 			}
 			saved = append(saved, ext)
 			ext = next
+			if k > i+2 && k < len(src) && src[k] == ':' { // `(?x-mi:`: the same group without x
+				b.WriteString("(?" + dropX(src[i+2:k]) + ":")
+				i = k
+				continue
+			}
 		case c == ')':
 			if n := len(saved); n > 0 {
 				ext, saved = saved[n-1], saved[:n-1]

@@ -134,6 +134,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return f.genSugar(n), true
 	case *parser.GlobalVariableReadNode:
 		return f.genGlobalRead(n), true
+	case *parser.NumberedReferenceReadNode, *parser.BackReferenceReadNode:
+		return f.genMatchRef(n), true
 	case *parser.GlobalVariableWriteNode:
 		return f.genGlobalWrite(n), true
 	case *parser.IntegerNode:
@@ -902,6 +904,9 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		f.errorf(n, "instance variable %s of module %s needs a type: `# @rbs %s: T` in the module body (decision 147)", name, f.owner.RubyName, name)
 	}
 	if iv == nil {
+		if f.discover && assigned != nil && isNil(assigned) && f.c.pruneGems && f.c.gemFile(f.owner.File) {
+			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
+		}
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
 			if f.c.ivarReadFirst[f.owner.Name+"#"+name] {
 				assigned = optOf(assigned)
@@ -1608,6 +1613,9 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
 	if e, ok := f.genKernelCall(n, expected); ok {
+		return e
+	}
+	if e, ok := f.genMatchSet(n); ok {
 		return e
 	}
 	if e, ok := f.genBlockCall(n); ok {
@@ -2762,7 +2770,7 @@ func (f *fctx) selfOverload(m *Method, owner *Class, name string, recvT Type, ar
 		f.c.resolveMethod(x)
 		return x.SelfType != nil && (x.Block != nil) == (f.curBlock != nil) &&
 			len(args) >= requiredArgs(x) && len(args) <= len(x.Params) &&
-			unify(x.SelfType, recvT, map[string]Type{})
+			unify(x.SelfType, recvT, map[string]Type{}) && optShape(x.SelfType, recvT)
 	}
 	if m.SelfType != nil && fits(m) {
 		return nil
@@ -2773,6 +2781,28 @@ func (f *fctx) selfOverload(m *Method, owner *Class, name string, recvT Type, ar
 		}
 	}
 	return nil
+}
+
+// optShape reports whether actual is optional wherever pattern is: unify lets `U?` take a plain `Integer`, but an
+// `@self Array[U?]` form needs elements that really are optional (Go's *U).
+func optShape(pattern, actual Type) bool {
+	switch p := pattern.(type) {
+	case TOpt:
+		a, ok := actual.(TOpt)
+		return ok && optShape(p.Elem, a.Elem)
+	case TClass:
+		a, ok := actual.(TClass)
+		if !ok {
+			return true
+		}
+		for i := range min(len(p.Args), len(a.Args)) {
+			if !optShape(p.Args[i], a.Args[i]) {
+				return false
+			}
+		}
+	case TAny, TFunc, TNil, TTuple, TUnion, TVar, TVoid: // no optional slot a receiver must match
+	}
+	return true
 }
 
 // sameArgs reports whether a call's first two arguments have one static
@@ -2905,6 +2935,10 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 	}
 	for _, tp := range m.TypeParams {
 		if _, ok := env[tp]; !ok {
+			if f.c.pruneGems && f.c.gemFile(f.f) { // a gem's `Set[]` is a Set[untyped] (decision 169)
+				env[tp] = TAny{}
+				continue
+			}
 			f.errorf(n, "cannot infer type parameter %s of %s", tp, m)
 		}
 	}
@@ -3081,10 +3115,8 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 			out.code, out.assert = out.code+".("+f.c.goType(out.typ)+")", true
 		}
 	}
-	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" && e.Owner != nil {
-		if rc, ok := recv.typ.(TClass); ok && rc.C.isStruct() && e.Entry != rc.C {
-			out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
-		}
+	if f.c.selfReturnAsserts(e, recv.typ) {
+		out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
 	}
 	return flatOpt(out)
 }
@@ -3128,7 +3160,8 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
-	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct)
+	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
+		m.Owner.universal && mentionsSelf(m.Ret) // an interface declares `-> self` as `any`; the free func returns Self
 	if !free {
 		if t := f.methodExprType(m, recv); t != "" {
 			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
@@ -3538,6 +3571,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
+			if code, ok := f.selfProcArg(b, self); ok {
+				return code
+			}
 			return f.genClosure(n, f.blockArgBlock(b, len(params)), sig, env)
 		}
 		symbolCall = sym.Unescaped.Value
@@ -4711,6 +4747,9 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 // universalCall handles Kernel-level methods on values of unknown type.
 func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	if block != nil {
+		if e := f.c.universalOnly(name); e != nil { // the same method on every receiver: no dispatch needed
+			return f.callEntry(n, e, recv, args, block)
+		}
 		if f.c.isNumericMod(classOf(recv.typ)) {
 			f.errorf(n, "a block on a Numeric is not supported: narrow it with is_a? first (decision 142)")
 		}
@@ -6532,6 +6571,29 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 }
 
 // blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
+// selfProcArg passes `&p` straight on when p is a Proc whose self is rebound and the block wanted rebinds the same
+// self (decision 164): its Go func already takes self first, and wrapping it in a lexical call cannot.
+func (f *fctx) selfProcArg(b *parser.BlockArgumentNode, self Type) (string, bool) {
+	if self == nil {
+		return "", false
+	}
+	var pt Type
+	f.probe(func() { pt = f.genExpr(b.Expression, nil).typ })
+	o, isOpt := pt.(TOpt)
+	if isOpt {
+		pt = o.Elem
+	}
+	ft, ok := pt.(TFunc)
+	if !ok || !ft.Proc || ft.Self == nil || !typeEq(ft.Self, self) {
+		return "", false
+	}
+	p := f.genExpr(b.Expression, nil)
+	if isOpt {
+		return "*rbNeedProc(" + p.code + ")", true
+	}
+	return "(*" + p.code + ")", true
+}
+
 func (f *fctx) blockArgBlock(b *parser.BlockArgumentNode, nparams int) *parser.BlockNode {
 	if mb := f.methodRefBlock(b, nparams); mb != nil {
 		return mb
@@ -6762,6 +6824,8 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: "rbLastStatusOpt()", typ: TOpt{Elem: TClass{C: f.c.classes["Process::Status"]}}}
 	case "$$": // Process.pid
 		return expr{code: "Integer(os.Getpid())", typ: f.cls("Integer")}
+	case "$~": // the frame's last match (decision 171)
+		return expr{code: f.lastMatchVar(n), typ: TOpt{Elem: f.cls("MatchData")}}
 	}
 	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
@@ -6883,4 +6947,98 @@ func (f *fctx) readsUnionLocal(n parser.Node) bool {
 		return false // the compiler's own nodes: already generated, and their embedded Node may be nil
 	}
 	return slices.ContainsFunc(n.CompactChildNodes(), f.readsUnionLocal)
+}
+
+// lastMatchVar is the Go variable holding the frame's last match ($~, decision 171).
+func (f *fctx) lastMatchVar(n parser.Node) string {
+	if f.lastMatch == "" {
+		f.errorf(n, "$~ and $1..$9 are read only in the method whose =~ sets them (decision 171)")
+	}
+	return f.lastMatch
+}
+
+// genMatchSet is `str =~ re` / `re =~ str` in a frame that reads $~ or $1..$9: it records the match (decision 171).
+func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
+	args := callArgs(n)
+	if f.lastMatch == "" || n.Name != "=~" || n.Receiver == nil || len(args) != 1 {
+		return expr{}, false
+	}
+	re, subj := args[0], n.Receiver
+	var recvT Type
+	f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
+	if c, ok := recvT.(TClass); ok && c.C.RubyName == "Regexp" {
+		re, subj = n.Receiver, args[0]
+	}
+	m := f.genExpr(&parser.CallNode{Location: n.Location, Receiver: re, Name: "match", MessageLoc: n.MessageLoc,
+		Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{subj}}}, nil)
+	return expr{code: fmt.Sprintf("rbMatchSet(&%s, %s)", f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
+}
+
+// readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).
+func readsLastMatch(body parser.Node) bool {
+	return anyNode(body, func(n parser.Node) bool {
+		switch n := n.(type) {
+		case *parser.NumberedReferenceReadNode, *parser.BackReferenceReadNode:
+			return true
+		case *parser.GlobalVariableReadNode:
+			return n.Name == "$~"
+		}
+		return false
+	})
+}
+
+// universalOnly is Object's (or Kernel's) name when no class of the program defines its own, so a call on any value
+// reaches it; nil otherwise.
+func (c *Compiler) universalOnly(name string) *entry {
+	e := c.classes["Object"].lookup(name)
+	if e == nil || !e.Owner.universal {
+		return nil
+	}
+	for _, cls := range c.classList {
+		if !cls.universal && cls.Methods[name] != nil {
+			return nil
+		}
+	}
+	return e
+}
+
+// mentionsSelf reports whether t holds the Self type variable.
+func mentionsSelf(t Type) bool {
+	switch t := t.(type) {
+	case TVar:
+		return t.Name == "Self"
+	case TOpt:
+		return mentionsSelf(t.Elem)
+	case TClass:
+		return slices.ContainsFunc(t.Args, mentionsSelf)
+	case TTuple:
+		return slices.ContainsFunc(t.Elems, mentionsSelf)
+	case TAny, TFunc, TNil, TUnion, TVoid:
+	}
+	return false
+}
+
+// genMatchRef is $1..$9 or $&: a group of the frame's last match (decision 171).
+func (f *fctx) genMatchRef(n parser.Node) expr {
+	group := 0
+	switch n := n.(type) {
+	case *parser.NumberedReferenceReadNode:
+		group = int(n.Number)
+	case *parser.BackReferenceReadNode:
+		if n.Name != "$&" {
+			f.errorf(n, "%s is unsupported; $~, $& and $1..$9 are (decision 171)", n.Name)
+		}
+	}
+	return expr{code: fmt.Sprintf("rbLMGroup(%s, %d)", f.lastMatchVar(n), group), typ: TOpt{Elem: f.cls("String")}}
+}
+
+// selfReturnAsserts reports whether a `-> self` call on a struct value needs a Go type assertion: an inherited
+// forwarder returns the defining class's interface. A universal method's is its typed free func (callCode).
+func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
+	v, ok := e.M.Ret.(TVar)
+	if !ok || v.Name != "Self" || e.Owner == nil || e.M.Owner.universal {
+		return false
+	}
+	rc, ok := recvT.(TClass)
+	return ok && rc.C.isStruct() && e.Entry != rc.C
 }

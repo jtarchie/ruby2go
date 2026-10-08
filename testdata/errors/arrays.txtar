@@ -211,13 +211,6 @@ puts a, b
 #: () -> [Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer]
 def eight = [1, 2, 3, 4, 5, 6, 7, 8]
 puts eight.inspect
--- return_two_values.rb --
-# error: main.rb:4: return with multiple values is not supported
-#: () -> [Integer, Integer]
-def two
-  return 1, 2
-end
-puts two.inspect
 -- multi_assign_nil.rb --
 # error: main.rb:2: cannot infer a type from nil; annotate the target first
 a, b = 1, nil

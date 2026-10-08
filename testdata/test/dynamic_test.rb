@@ -2900,4 +2900,19 @@ module DynamicTests
       assert_equal "unknown keyword: :zz", e.message
     end
   end
+
+  class DynamicOverloadTest < Minitest::Test
+    def test_gsub_regexp_on_untyped
+      m = "users/:id" #: untyped
+      assert_equal "users/X", m.gsub(/:\w+/, "X")
+      assert_equal "users/Y", m.sub(/:\w+/, "Y")
+    end
+
+    def test_universal_block_on_untyped
+      x = [1, 2] #: untyped
+      seen = [] #: Array[untyped]
+      assert_same x, x.tap { |v| seen << v }
+      assert_equal [[1, 2]], seen
+    end
+  end
 end

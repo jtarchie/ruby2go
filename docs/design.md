@@ -664,6 +664,10 @@ resolve; anything not listed is still open.
     types as `String`. A call no arm matches is a compile error naming
     the arms. No block-shape selection yet: arms with blocks are tried by
     the same count/class/literal rule.
+    *Revised (#82):* a dynamic call takes the same `__<name>_<class>` overload
+    by its first argument's run-time class (`dynClassOverloads`): `x.gsub(/re/,
+    s)` on an `untyped` String is `__gsub_regexp`, not gsub's `(String,
+    String)`, which raised TypeError.
 
 13. Empty `[]`/`{}` literals without an annotation are `Array[untyped]` /
     `Hash[untyped, untyped]`, which is what Ruby's are; any other missing
@@ -909,6 +913,13 @@ resolve; anything not listed is still open.
     meaning.)* `$~`/`$1` are not supported; use `match`. A literal
     pattern with named groups on the left of `=~` assigns them to locals
     (nil without a match), since the names are known statically.
+    *Amended (#82):* `stripExtended` takes the mode outside any group and
+    always runs, so an `x`-on inline group in a plain pattern (`Regexp.union`
+    of `/x` regexps is `(?x-mi:...)`) is stripped too, and it drops `x` from
+    every inline group's flags (RE2 has none). `Regexp::NOENCODING` and
+    `FIXEDENCODING` exist; `/n` is shown by `inspect` but matching stays
+    UTF-8. `Regexp.union` and `Regexp#freeze` are in the prelude; the empty
+    union is a never-matching class, since RE2 cannot compile `(?!)`.
 25. JSON matches the json gem: escapes (quotes, backslash, control
     characters; `/` and non-ASCII as-is) and floats (its `fpconv` rules,
     e.g. `1e+20`, `0.0000123`) are ported.
@@ -1079,6 +1090,11 @@ resolve; anything not listed is still open.
     assigned and is left out, as MRI does, but an unassigned Integer shows
     as `0`. An ivar-less class gets a padding byte, since Go gives every
     zero-size object the same address and `equal?` needs identity.
+    *Amended (#82):* a call with a block on an `untyped` value is still a
+    compile error, except for a method only `Object`/`Kernel` define (no
+    class of the program has its own): it is the same method on every
+    receiver, so `x.tap { }` calls Kernel's free func directly
+    (`universalOnly`).
 33. Ruby semantics for looser code: `expr rescue fallback`; `return`,
     `break` or `next` in `ensure` discards the pending exception;
     `&&`/`||` return values of any types (their union, decision 150) and
@@ -1689,6 +1705,8 @@ resolve; anything not listed is still open.
     `# stderr: match` adds stderr to the MRI comparison
     ([example 51](../examples/51_argv_env/main.rb),
     [example 52](../examples/52_stdin/main.rb)).
+    *Amended (decision 171):* `$~`, `$&` and `$1`..`$9` read the method's
+    last match.
 62. Files: `File` is its own `@go_type` class over `*os.File` with
     buffered reader/writer (a `@go_type` class can't subclass `IO`), and
     shares `print`/`puts`/`printf` and `each_line`/`readlines` with `IO`
@@ -5278,6 +5296,13 @@ resolve; anything not listed is still open.
     or malformed is a compile error naming the file; a sig naming a method
     the class does not define is ignored (gems ship for a wider surface
     than the app reaches).
+    *Amended (#82):* a sig file also declares instance variables (`@x: T`,
+    `self.@x: T` for the class object's), which fill what discovery cannot
+    type (`@map ||= {}` read before any write); `attr_* self.x: T` types a
+    `class << self` attr (decision 168); `def self?.x` (a module_function)
+    applies to both the module and its instances; a proc type may bind self
+    (`^() [self: C] -> R`, decision 164), and a method block's `[self: C]` is
+    its Self outright; and `NAME: T` types a constant.
 
 161. Boot snapshot (#82). A program that `require`s a gem runs the gem's
     load phase under MRI **at compile time**, with tracing hooks on the
@@ -5435,6 +5460,10 @@ resolve; anything not listed is still open.
       `testdata/errors/objects.txtar`'s `class_body_puts` and
       `class_body_receiver_call` rejection cases are gone;
       `class_body_define_method` now reports codegen's message.
+    *Amended (#82):* each statement is its own Go block (each compiles in a
+    fresh context, so two statements' temporaries would collide), and
+    `@x = v` in a class body sets the class object's instance variable, the
+    one a `class << self` attr reads.
 167. A class-body `if`/`unless` whose condition is known at compile time
     is folded, and only the branch MRI would run is collected (#88, #89).
     Needed by unmodified rack: `Rack::Headers` guards methods with
@@ -5475,6 +5504,10 @@ resolve; anything not listed is still open.
       and the guarded branch names C, which would not compile. Rack's
       `URI_PARSER = defined?(::URI::RFC2396_PARSER) ? ... : ...` is one.
       A constant that does exist is still checked at run time.
+    - *Amended (#82):* a file's top-level `if`/`unless` folds the same way,
+      and `defined?(C)` is true for a constant an `autoload` registered, as
+      MRI answers before loading it: rack's `require_relative 'multipart'
+      unless defined?(Rack::Multipart)` never runs, as in MRI.
 168. Class-level and module accessors, and aliases of Hash methods in a Hash
     subclass (#82). Needed by unmodified rack: `Rack::Utils` and
     `Rack::Request` declare `attr_accessor` and `alias` inside
@@ -5554,6 +5587,16 @@ resolve; anything not listed is still open.
     - **Proof:** `TestBootAutoload`'s `testdata/boot/lib/demo.rb` holds a
       live class's never-called method and an unreferenced class, neither
       of which compiles; the program compiles and matches MRI.
+    - *Amended (#82):* more of a gem's leftovers are `untyped` rather than
+      errors, all for the same reason (what typed them was pruned, or only a
+      dynamic call reaches them): an ivar discovery saw only `nil` assigned
+      (declared after discovery), a type parameter a call leaves open
+      (`Set[]`), and a lambda's parameter no call types. A gem constant
+      reachable code never names is dropped too when its initializer cannot
+      have an effect (a lambda, a proc, a literal): rack's
+      `BUILDER_TOPLEVEL_BINDING` lambda calls `binding`. `A::B = v` at a
+      file's top level declares `B` in `A`. `ruby2_keywords(:m)` names a
+      method without reaching it.
 170. A class body's locals are visible to its later statements and
     constant initializers (#82), as in MRI (methods do not see them).
     Rack's `QueryParser` builds `env_int = lambda { ... }` and then
@@ -5579,3 +5622,18 @@ resolve; anything not listed is still open.
       (`x = 2; X = x + 1`), still "undefined local".
     - **Proof:** [example 114](../examples/114_class_body_locals/main.rb),
       `object_test.rb`'s `test_class_body_locals`.
+171. `$~`, `$&` and `$1`..`$9` (#82) are the method's own last match, as
+    in MRI, where they are frame-local. A method (or the main program, or a
+    class body) whose body reads one gets a Go local `rbLM_` of type
+    `MatchData?`, and `str =~ re` / `re =~ str` there is compiled as `match`
+    whose result is stored in it (`rbMatchSet`), still answering the index;
+    blocks share their method's, as Go closures. `$n` is `String?` (nil for
+    a group that did not take part or no match). Rack's `URLMap#remap`
+    reads `$1, $2` after `=~`.
+    - **Only `=~` sets it.** `match`, `case/when` with a Regexp, `scan`,
+      `gsub` and the other methods that set `$~` in MRI do not yet; a read
+      after only those is nil. A method that reads `$1` but never matches
+      reads nil, as MRI's does.
+    - **Not across methods:** a callee's match is not the caller's `$~`
+      (in MRI only C methods like `String#match` set the caller's).
+    - **Proof:** `control_test.rb`'s `ControlLastMatchTest`.

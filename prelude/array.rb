@@ -762,6 +762,19 @@ class Array < Object
     return &Array[E]{s: slices.Clone(self.s)}
   }
 
+  # compact on optional elements drops the nils from the type too.
+  # @self Array[U?]
+  # @rbs [U] () -> Array[U]
+  def __compact_opt = %x{
+    out := &Array[U]{}
+    for _, x := range self.s {
+      if x != nil {
+        out.s = append(out.s, *x)
+      }
+    }
+    return out
+  }
+
   # Pairs are Arrays to Ruby: [[:a, 1]].flatten splices them.
   # @self Array[[A, B]]
   # @rbs [A, B] (?Integer) -> Array[untyped]

@@ -78,18 +78,10 @@ class Foo
   def m = /#@x/.match?("a")
 end
 puts Foo.new.m
--- last_match_gvar.rb --
-# error: main.rb:3: global variable $~ is unsupported
-"ab" =~ /b/
-puts $~.inspect
--- numbered_reference.rb --
-# error: main.rb:3: unsupported syntax: NumberedReferenceReadNode
-"ab" =~ /(b)/
-puts $1.inspect
 -- back_reference.rb --
-# error: main.rb:3: unsupported syntax: BackReferenceReadNode
+# error: main.rb:3: $` is unsupported; $~, $& and $1..$9 are (decision 171)
 "ab" =~ /b/
-puts $&.inspect
+puts $`.inspect
 -- nil_subject.rb --
 # error: main.rb:2: nil where String is expected
 puts (/a/ =~ nil).inspect
@@ -145,10 +137,6 @@ puts JSON.generate([1]) { |x| x }
 # error: main.rb:3: regexp /(?<n>a)\g<n>/ is not supported
 # error: invalid escape sequence: `\g`
 puts "aa".match?(/(?<n>a)\g<n>/)
--- inline_extended_flag.rb --
-# error: main.rb:3: regexp /(?x) a b / is not supported
-# error: `(?x`
-puts "ab".match?(/(?x) a b /)
 -- interpolated_lookahead.rb --
 # error: main.rb:4:
 # error: not supported

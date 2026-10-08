@@ -380,8 +380,18 @@ func (c *Class) structChain() []*Class {
 // ---- declaration collection
 
 func (c *Compiler) collect(ctx context.Context, f *File) {
-	for _, n := range f.Root.Statements.Body {
+	queue := f.Root.Statements.Body
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
 		switch n := n.(type) {
+		case *parser.IfNode, *parser.UnlessNode: // a condition known at compile time keeps one branch (decision 167)
+			if branch, ok := c.takenBranch(f, n, nil); ok {
+				queue = append(slices.Clip(branch), queue...)
+				continue
+			}
+			c.scanAnon(ctx, f, n, nil)
+			c.addMainStmt(f, n)
 		case *parser.ClassNode:
 			c.collectClass(ctx, f, n, nil)
 		case *parser.ModuleNode:
@@ -400,6 +410,9 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 			}
 			c.scanAnon(ctx, f, n.Value, nil)
 			c.addConst(f, n, n.Name, nil, nil)
+		case *parser.ConstantPathWriteNode: // `Rack::X = v` at the top level
+			c.scanAnon(ctx, f, n.Value, nil)
+			c.addConstAt(f, n, c.declName(f, n.Target, nil), n.Value, nil)
 		case *parser.PreExecutionNode: // BEGIN runs before the rest of its file, in the top-level scope
 			if c.beginStmts == nil {
 				c.beginStmts = map[*File][]parser.Node{}
@@ -448,6 +461,9 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 			c.addMainStmt(f, hook)
 		}
 	case n.Receiver == nil && n.Name == "autoload":
+		if sym, ok := symbolName(firstArg(callArgs(n))); ok {
+			c.noteAutoload(sym)
+		}
 		// compile-time autoload (decision 161): the file is already a source.
 	default:
 		c.scanAnon(ctx, f, n, nil)
@@ -638,7 +654,11 @@ func (c *Compiler) addConst(f *File, n parser.Node, name string, value parser.No
 	if w, ok := n.(*parser.ConstantWriteNode); ok {
 		value = w.Value
 	}
-	full := qualify(scope, name)
+	c.addConstAt(f, n, qualify(scope, name), value, scope)
+}
+
+// addConstAt records constant full, assigned value in lexical scope (a `A::B = v` names its namespace itself).
+func (c *Compiler) addConstAt(f *File, n parser.Node, full string, value parser.Node, scope []*Class) {
 	if c.consts[full] != nil || c.classes[full] != nil {
 		c.errorf(f, n, "constant %s is already defined", full)
 	}
@@ -1087,6 +1107,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		// No-ops: autoload's file is loaded at compile time (the boot
 		// snapshot, decision 161, supplies what it resolved); ruby2_keywords
 		// is MRI's keyword-passthrough marker, which rb2go passes statically.
+		c.noteAutoloadCall(n, args, scope)
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
@@ -1676,6 +1697,7 @@ func (c *Compiler) link(ctx context.Context) {
 			c.errorf(cls.File, nil, "%s:%d: generic struct classes are not supported", cls.File.Name, cls.Line)
 		}
 	}
+	c.addSigIvars()
 	c.declareIvarAnnotations()
 	c.checkIvarModules()
 	c.expandDelegations(ctx)
@@ -1983,7 +2005,11 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		for i, p := range t.Params {
 			ps[i] = c.resolveType(p, sc)
 		}
-		return TFunc{Params: ps, Ret: c.resolveType(t.Ret, sc), Proc: true}
+		var self Type
+		if t.Self != nil { // a Proc instance_eval rebinds (decision 164)
+			self = c.resolveType(t.Self, sc)
+		}
+		return TFunc{Params: ps, Ret: c.resolveType(t.Ret, sc), Proc: true, Self: self}
 	case rbs.Literal:
 		// A literal is a member of its base class (decision 12); the value
 		// matters only to select an overload arm at the call site.
@@ -2589,7 +2615,7 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 // nothing rescues around the yield, since Go forbids a range function from
 // recovering a panic raised in the loop body.
 func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
-	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) > 2 || bs.Rest {
+	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) > 2 || bs.Rest || bs.Self != nil {
 		return false // a range func yields at most two values, none variadic; other blocks are closures
 	}
 	if _, ok := m.Ret.(TVoid); !ok && m.Ret != nil && !isNil(m.Ret) {
@@ -3287,4 +3313,11 @@ func (c *Class) descendantDefines(name string, private bool) bool {
 		}
 	}
 	return false
+}
+
+// noteAutoloadCall records `autoload :X, path`'s constant: it answers defined? before it loads, as in MRI.
+func (c *Compiler) noteAutoloadCall(n *parser.CallNode, args []parser.Node, scope []*Class) {
+	if sym, ok := symbolName(firstArg(args)); ok && n.Name == "autoload" {
+		c.noteAutoload(qualify(scope, sym))
+	}
 }
