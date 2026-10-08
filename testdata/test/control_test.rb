@@ -5116,4 +5116,21 @@ module ControlTests
       assert_equal "R", got
     end
   end
+
+  class ControlLastMatchSetTest < Minitest::Test
+    #: (String) -> String?
+    def control_quoted(s)
+      i = s.index(/(["\\])/)
+      i ? $1 : nil
+    end
+
+    def test_index_sets_last_match
+      assert_equal ["\"", nil], [control_quoted("a\"b"), control_quoted("ab")]
+    end
+
+    def test_match_sets_last_match
+      m = "k=v".match(/(\w)=(\w)/)
+      assert_equal ["k", "v", "k"], [$1, $2, m&.[](1)]
+    end
+  end
 end

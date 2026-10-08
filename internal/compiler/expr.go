@@ -1463,6 +1463,10 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}
 
+	if o, ok := e.typ.(TOpt); ok && f.lenient() && f.c.goType(e.typ) == "*"+f.c.goType(o.Elem) {
+		// a gem's T? where T is wanted: nil raises at run time, as it would where MRI first uses it (decision 172)
+		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to)
+	}
 	if isOpt(e.typ) {
 		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
 	}
@@ -1616,6 +1620,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		return e
 	}
 	if e, ok := f.genMatchSet(n); ok {
+		return e
+	}
+	if e, ok := f.genStringBang(n); ok {
 		return e
 	}
 	if e, ok := f.genBlockCall(n); ok {
@@ -4469,7 +4476,8 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 		return sw
 	}
 	var res Type
-	for _, m := range u.Members {
+	bad := map[int]string{} // a gem's member no arm compiles for: a run-time TypeError (decision 172)
+	for i, m := range u.Members {
 		var t Type
 		var err *compileError
 		f.probe(func() {
@@ -4480,6 +4488,8 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 			})
 		})
 		switch {
+		case err != nil && f.lenient():
+			bad[i] = fail(m, errLoc.ReplaceAllString(err.msg, ""))
 		case err != nil:
 			f.errorf(n, "%s", fail(m, errLoc.ReplaceAllString(err.msg, "")))
 		case t == nil:
@@ -4499,12 +4509,17 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 	}
 	f.emit("switch %s := %s.(type) {", sw, subj)
 	f.switches++
-	for _, m := range u.Members {
+	for i, m := range u.Members {
 		goT := "nil"
 		if !isNil(m) {
 			goT = f.c.goType(m)
 		}
 		f.emit("case %s:", goT)
+		if msg, ok := bad[i]; ok {
+			f.emit("\t_ = %s", sw)
+			f.emit("\tpanic(NewTypeError(Ref(String(%q))))", "rb2go: "+msg)
+			continue
+		}
 		saved := f.enterBlock()
 		f.indent++
 		e, ok := arm(m, code(m))
@@ -6960,18 +6975,95 @@ func (f *fctx) lastMatchVar(n parser.Node) string {
 // genMatchSet is `str =~ re` / `re =~ str` in a frame that reads $~ or $1..$9: it records the match (decision 171).
 func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 	args := callArgs(n)
-	if f.lastMatch == "" || n.Name != "=~" || n.Receiver == nil || len(args) != 1 {
+	if f.lastMatch == "" || f.inMatchSet || n.Receiver == nil || len(args) != 1 || n.Block != nil {
 		return expr{}, false
 	}
+	var recvT, argT Type
+	f.probe(func() { recvT, argT = f.genExpr(n.Receiver, nil).typ, f.genExpr(args[0], nil).typ })
 	re, subj := args[0], n.Receiver
-	var recvT Type
-	f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
-	if c, ok := recvT.(TClass); ok && c.C.RubyName == "Regexp" {
+	if isClass(recvT, "Regexp") {
 		re, subj = n.Receiver, args[0]
 	}
+	switch {
+	case n.Name == "=~":
+	case n.Name == "index" && isClass(recvT, "String") && isClass(argT, "Regexp"): // String#index(re) sets $~ too
+	case n.Name == "match" && (isClass(recvT, "Regexp") || isClass(argT, "Regexp")):
+	default:
+		return expr{}, false
+	}
+	f.inMatchSet = true // the match call below is the plain one
 	m := f.genExpr(&parser.CallNode{Location: n.Location, Receiver: re, Name: "match", MessageLoc: n.MessageLoc,
 		Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{subj}}}, nil)
+	f.inMatchSet = false
+	if n.Name == "match" {
+		return expr{code: fmt.Sprintf("rbMatchKeep(&%s, %s)", f.lastMatch, m.code), typ: m.typ}, true
+	}
 	return expr{code: fmt.Sprintf("rbMatchSet(&%s, %s)", f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
+}
+
+// genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
+// (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
+func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
+	lv, ok := n.Receiver.(*parser.LocalVariableReadNode)
+	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" {
+		return expr{}, false
+	}
+	var t Type
+	f.probe(func() { t = f.genExpr(lv, nil).typ })
+	str := f.cls("String")
+	u, isUnion := stripOpt(t).(TUnion)
+	if !typeEq(t, str) && !typeEq(t, TOpt{Elem: str}) && !(isUnion && slices.ContainsFunc(u.Members, func(m Type) bool { return typeEq(m, str) })) {
+		return expr{}, false
+	}
+	cur := func() string { // the local's String; anything else raises NoMethodError, as the bang call would in MRI
+		x := f.genExpr(lv, nil)
+		switch {
+		case typeEq(x.typ, str):
+			return x.code
+		case typeEq(x.typ, TOpt{Elem: str}):
+			return fmt.Sprintf("rbStrRecv(%s, %q)", x.code, n.Name)
+		}
+		return fmt.Sprintf("rbStrRecvAny(%s, %q)", x.code, n.Name)
+	}
+	args := callArgs(n)
+	switch n.Name {
+	case "<<":
+		if len(args) != 1 {
+			return expr{}, false
+		}
+		a := f.genExpr(args[0], nil)
+		code := f.coerce(args[0], a, str)
+		if typeEq(a.typ, TOpt{Elem: str}) { // `s << nil` raises in MRI too
+			code = "rbMustStr(" + a.code + ")"
+		}
+		f.assignLocal(n, lv.Name, expr{code: cur() + " + " + code, typ: str}, nil)
+		f.narrowString(lv.Name)
+		v := f.genExpr(lv, nil)
+		return expr{code: v.code, typ: v.typ, stmt: true, done: true}, true
+	case "slice!":
+		if len(args) != 2 {
+			return expr{}, false
+		}
+		i := f.coerce(args[0], f.genExpr(args[0], f.cls("Integer")), f.cls("Integer"))
+		k := f.coerce(args[1], f.genExpr(args[1], f.cls("Integer")), f.cls("Integer"))
+		got, rest := f.newTmp(), f.newTmp()
+		f.emit("%s, %s := rbStrSliceBang(%s, %s, %s)", got, rest, cur(), i, k)
+		f.assignLocal(n, lv.Name, expr{code: rest, typ: str}, nil)
+		f.narrowString(lv.Name)
+		return expr{code: got, typ: TOpt{Elem: str}}, true
+	}
+	plain := strings.TrimSuffix(n.Name, "!")
+	if f.c.classes["String"].lookup(plain) == nil {
+		return expr{}, false
+	}
+	before, after := f.newTmp(), f.newTmp()
+	f.emit("%s := %s", before, cur())
+	next := f.genExpr(&parser.CallNode{Location: n.Location, Receiver: &exprNode{Node: lv, e: expr{code: before, typ: str}},
+		Name: plain, MessageLoc: n.MessageLoc, Arguments: n.Arguments}, str)
+	f.emit("%s := %s", after, f.coerce(n, next, str))
+	f.assignLocal(n, lv.Name, expr{code: after, typ: str}, nil)
+	f.narrowString(lv.Name)
+	return expr{code: fmt.Sprintf("rbStrChanged(%s, %s)", before, after), typ: TOpt{Elem: str}}, true
 }
 
 // readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).
@@ -7042,3 +7134,25 @@ func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
 	rc, ok := recvT.(TClass)
 	return ok && rc.C.isStruct() && e.Entry != rc.C
 }
+
+// narrowString reads a String? local that was just assigned a String as String for the rest of its branch.
+func (f *fctx) narrowString(name string) {
+	v := f.visibleLocal(name)
+	if v == nil {
+		return
+	}
+	t := v.typ
+	if info := f.localInfo(name); info != nil && info.typ != nil && f.pass == 2 {
+		t = info.typ // the Go variable's type is the join (rack's param is also a Symbol)
+	}
+	str := f.cls("String")
+	switch {
+	case f.c.goType(t) == "any":
+		f.applyNarrow([]narrowInfo{{local: v, typ: str, code: v.goName + ".(" + f.c.goType(str) + ")"}})
+	case isOpt(t) && isClass(t.(TOpt).Elem, "String"):
+		f.applyNarrow([]narrowInfo{{local: v, typ: str}})
+	}
+}
+
+// lenient reports gem code (decision 172): what would be a nil or union type error compiles to a run-time check.
+func (f *fctx) lenient() bool { return f.c.pruneGems && f.c.gemFile(f.f) }

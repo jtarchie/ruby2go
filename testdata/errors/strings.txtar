@@ -60,10 +60,6 @@ puts s
 # error: main.rb:3: global variable $verbose cannot be assigned; only $stdout and $stderr can
 # rbs_inline: enabled
 $verbose = true
--- string_new.rb --
-# error: main.rb:3: undefined method new for singleton(String)
-# rbs_inline: enabled
-puts String.new("x")
 -- symbol_plus.rb --
 # error: main.rb:3: undefined method + for Symbol
 # rbs_inline: enabled
@@ -76,10 +72,6 @@ puts :upcase.to_proc
 # error: main.rb:3: String#index: wrong number of arguments (given 2, expected 1)
 # rbs_inline: enabled
 puts "abcabc".index("a", 1)
--- chomp_arg.rb --
-# error: main.rb:3: String#chomp: wrong number of arguments (given 1, expected 0)
-# rbs_inline: enabled
-puts "abc".chomp("c")
 -- sub_one_arg.rb --
 # error: main.rb:3: String#sub: wrong number of arguments (given 1, expected 2)
 # rbs_inline: enabled

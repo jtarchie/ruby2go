@@ -4156,6 +4156,8 @@ resolve; anything not listed is still open.
     ([example 96](../examples/96_encoding/main.rb),
     `testdata/test/encoding_test.rb`, `testdata/errors/encoding.txtar`,
     `testdata/run/string_output.rb`.)
+    *Amended (decision 172):* in a gem file, a bang method on a local is
+    compiled as a rebinding of the local; Strings stay values.
 137. `Marshal` (#47) round-trips the closed world's object graphs in
     rb2go's own bytes, never MRI's (`prelude/marshal.rb`,
     `prelude/go/marshal.go`, `internal/compiler/marshal.go`).
@@ -5031,6 +5033,9 @@ resolve; anything not listed is still open.
     a compile error, never a shared checker.
     (`examples/104_union_types`, `testdata/test/union_test.rb`,
     `testdata/errors/union.txtar`.)
+    *Amended (decision 172):* in a gem file, a union argument with a member
+    the method does not take compiles to a run-time TypeError for that
+    member instead of a compile error.
 151. Hot core methods are shaped for Go's inliner (budget 80), measured
     against MRI 4.0.7 on small loops:
     - `Integer#/` and `#%` drop their explicit zero check: Go's own
@@ -5630,10 +5635,40 @@ resolve; anything not listed is still open.
     blocks share their method's, as Go closures. `$n` is `String?` (nil for
     a group that did not take part or no match). Rack's `URLMap#remap`
     reads `$1, $2` after `=~`.
-    - **Only `=~` sets it.** `match`, `case/when` with a Regexp, `scan`,
-      `gsub` and the other methods that set `$~` in MRI do not yet; a read
-      after only those is nil. A method that reads `$1` but never matches
-      reads nil, as MRI's does.
+    - **What sets it:** `=~` (either side), `String#index` with a Regexp, and
+      `match` with a Regexp (its MatchData is kept as well). `case/when`
+      with a Regexp, `scan`, `gsub` and the other methods that set `$~` in
+      MRI do not yet; a read after only those is nil. A method that reads
+      `$1` but never matches reads nil, as MRI's does.
     - **Not across methods:** a callee's match is not the caller's `$~`
       (in MRI only C methods like `String#match` set the caller's).
     - **Proof:** `control_test.rb`'s `ControlLastMatchTest`.
+172. Gem code is compiled leniently where rb2go's typing would reject what
+    MRI runs (#82). Strings stay immutable values (decision 136), and the
+    nil and union checks stay compile errors in user code.
+    - **Bang methods on a local are rebindings.** In a gem file, `x.sub!(a,
+      b)` on a local `x` compiles as `x = x.sub(a, b)` and answers nil when
+      nothing changed (`rbStrChanged`); likewise every bang method whose
+      plain form String has (`strip!`, `chomp!`, `downcase!`, ...).
+      `y = x.slice!(i, n)` takes the piece and leaves `x` as the rest
+      (`rbStrSliceBang`), and `x << s` is `x = x + s`. A local that also
+      holds other classes (rack's `param` becomes a Symbol) is checked to be
+      a String first, raising NoMethodError otherwise, as MRI would. The
+      cost, accepted: two variables sharing one String see MRI's mutation in
+      both and rb2go's only in the one rebound. rack's
+      `Utils.forwarded_values`, the case, works on Strings it just made.
+      A bang method on anything but a local (an ivar, a method's result)
+      is still the decision-136 error.
+    - **A `T?` where `T` is wanted** is `rbMust`: nil raises TypeError at
+      run time instead of failing the compile.
+    - **A union argument** whose member the method does not take compiles
+      that member's arm to a run-time TypeError naming the compile error it
+      replaced.
+    - **Why gem code only:** the program's own code was written for rb2go
+      and gets the check at compile time; a gem was written for MRI, whose
+      only check is at run time, and decision 169 already compiles only
+      what its program can reach.
+    - **Proof:** `testdata/boot/lib/demo/text.rb` (a copy of
+      `forwarded_values` and a local reassigned from String to Symbol) in
+      `TestBootAutoload`, equal to MRI; and the unmodified Cuba on rack
+      program, which now compiles and prints MRI's output.

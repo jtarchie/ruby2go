@@ -281,6 +281,9 @@ class String
   #: (Regexp) -> Integer?
   def =~(re) = re =~ self
 
+  #: (Regexp) -> Integer?
+  def __index_regexp(re) = re =~ self
+
   #: (Regexp) -> bool
   def !~(re) = !(re =~ self)
 

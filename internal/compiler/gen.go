@@ -31,6 +31,7 @@ type fctx struct {
 	ret           Type
 	iterator      bool
 	lastMatch     string // the Go variable of the frame's last match, when the body reads $~ or $1..$9 (decision 171)
+	inMatchSet    bool   // generating genMatchSet's own match call
 	blockSig      *BlockSig
 	buf           *strings.Builder
 	indent        int

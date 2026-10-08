@@ -357,3 +357,9 @@ func rbLMGroup(m **MatchData, n int) *String {
 	}
 	return (*m).groups[n]
 }
+
+// rbMatchKeep is `match` in a frame that reads $~: the MatchData, also kept as the last match.
+func rbMatchKeep(lm ***MatchData, m **MatchData) **MatchData {
+	*lm = m
+	return m
+}

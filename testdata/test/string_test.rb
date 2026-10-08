@@ -1415,4 +1415,14 @@ B
       assert_equal ["/^\\/a(.*)/n", 0], [r.inspect, r =~ "/abc"]
     end
   end
+
+  class StringNewChompTest < Minitest::Test
+    def test_string_new
+      assert_equal ["", "x"], [String.new, String.new("x")]
+    end
+
+    def test_chomp_suffix
+      assert_equal ["ab", "abc", "a"], ["abc".chomp("c"), "abc".chomp("x"), "a\n\n".chomp("")]
+    end
+  end
 end

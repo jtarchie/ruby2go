@@ -95,6 +95,15 @@ class String < Object
   #: () -> String
   def chomp = %x{ rbNewStr(self, String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r"))) }
 
+  # chomp(suffix): that suffix once ("" is MRI's paragraph mode: every trailing newline).
+  #: (String) -> String
+  def __chomp_1(suffix) = %x{
+    if suffix == "" {
+      return String(strings.TrimRight(string(self), "\\r\\n"))
+    }
+    return String(strings.TrimSuffix(string(self), string(suffix)))
+  }
+
   #: () -> Integer
   def size = %x{ Integer(utf8.RuneCountInString(string(self))) }
 
@@ -151,6 +160,10 @@ class String < Object
 
   #: (String) -> bool
   def include?(s) = %x{ Boolean(strings.Contains(string(self), string(s))) }
+
+  # Strings are values in rb2go (decision 136): a new one is its argument's bytes.
+  #: (?String) -> String
+  def self.new(s = "") = s
 
   #: (String) -> Integer?
   def index(s) = %x{

@@ -395,3 +395,52 @@ func rbStrUndump(s string) String {
 	}
 	return String(out)
 }
+
+// rbStrChanged is a bang method's result once its local holds after (decision 172): after, or nil when unchanged.
+func rbStrChanged(before, after String) *String {
+	if before == after {
+		return nil
+	}
+	return &after
+}
+
+// rbMustStr is a String? where `<<` needs a String: nil raises MRI's TypeError.
+func rbMustStr(p *String) String {
+	if p == nil {
+		panic(NewTypeError(Ref(String("no implicit conversion of nil into String"))))
+	}
+	return *p
+}
+
+// rbStrSliceBang is `s.slice!(start, len)` (decision 172): the removed characters (nil out of range, as s[start, len])
+// and what is left.
+func rbStrSliceBang(s String, start, n Integer) (*String, String) {
+	rs := []rune(string(s))
+	i := int(start)
+	if i < 0 {
+		i += len(rs)
+	}
+	if i < 0 || i > len(rs) || n < 0 {
+		return nil, s
+	}
+	j := min(i+int(n), len(rs))
+	got := String(rs[i:j])
+	return &got, String(string(rs[:i]) + string(rs[j:]))
+}
+
+// rbStrRecv is a String? local a bang method rebinds (decision 172): nil raises NoMethodError, as MRI's call on nil.
+func rbStrRecv(p *String, name string) String {
+	if p == nil {
+		panic(rbNoMethod(name, nil, false))
+	}
+	return *p
+}
+
+// rbStrRecvAny is rbStrRecv for a local also holding other classes: only a String has the method.
+func rbStrRecvAny(v any, name string) String {
+	s, ok := v.(String)
+	if !ok {
+		panic(rbNoMethod(name, v, false))
+	}
+	return s
+}

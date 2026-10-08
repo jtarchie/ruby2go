@@ -1511,3 +1511,11 @@ func rbNeedProc[F any](p **F) *F {
 	}
 	return *p
 }
+
+// rbMust is a gem's T? where T is wanted (decision 172): nil raises TypeError.
+func rbMust[T any](p *T, want string) T {
+	if p == nil {
+		panic(NewTypeError(Ref(String("no implicit conversion of nil into " + want))))
+	}
+	return *p
+}
