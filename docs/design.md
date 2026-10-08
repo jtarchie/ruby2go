@@ -5341,6 +5341,9 @@ resolve; anything not listed is still open.
     string constants a `.rbs` overload (decision 12/160) types precisely.
     Proof: an example running unmodified Cuba behind it, driven by
     `Net::HTTP`, equal to MRI (#82).
+    *Built (#91, decision 174):* `require "rackup"` maps to
+    `prelude/rackup.rb`, `Rackup::Handler::WEBrick.run` over
+    prelude/webrick.rb's server; the env keys are plain strings for now.
 
 163. Load semantics for a gem (#82). Two amendments let an unmodified gem
     reach the type checker, both fed by the boot snapshot (decision 161).
@@ -5672,3 +5675,58 @@ resolve; anything not listed is still open.
       `forwarded_values` and a local reassigned from String to Symbol) in
       `TestBootAutoload`, equal to MRI; and the unmodified Cuba on rack
       program, which now compiles and prints MRI's output.
+174. `Rackup::Handler::WEBrick` (#91; builds decision 162). `require
+    "rackup"` and `"rackup/handler/webrick"` load `prelude/rackup.rb`
+    (decision 155), which requires prelude/webrick.rb as the gem requires
+    webrick. On MRI the real gem (now in the Gemfile) serves the same
+    program; `sig/rackup.rbs` covers `run`/`shutdown` for `rbs validate`,
+    since the gem ships no signatures.
+    - **`run(app, **options) { |server| }`** keeps the gem's option rules
+      (`Host` → `BindAddress`, default `localhost` in development, `Port`
+      8080 unless given; 0 picks a free one, read back through
+      `server.config[:Port]`), yields a `WEBrick::HTTPServer`, then
+      `start`s; `server.shutdown` or `Rackup::Handler::WEBrick.shutdown`
+      stops it. The server is WEBrick's own, not the gem's
+      `Rackup::Handler::WEBrick::Server` subclass (a `@go_type` class has
+      no subclasses), so only `server.class` tells them apart.
+    - **Every request reaches the app**, any path or method: the handler
+      replaces the server's `http.Handler` instead of mounting, as the gem's
+      `Server#service` bypasses the mount table.
+    - **env** (`Hash[String, untyped]`, Go-built, `rbRackEnv`): `CONTENT_LENGTH`
+      (when > 0), `CONTENT_TYPE`, `PATH_INFO` and `QUERY_STRING` (raw, from the
+      request target; `""` without a query), `REMOTE_ADDR`, `REQUEST_METHOD`,
+      `REQUEST_URI`, `SCRIPT_NAME` (`""`), `SERVER_NAME`, `SERVER_PORT` (from
+      `Host`), `SERVER_PROTOCOL`, `HTTP_HOST` and every other header as
+      `HTTP_*` (Go's header map has lost arrival order, so they are sorted),
+      `rack.url_scheme`, `REQUEST_PATH`, then `rack.input` (a `StringIO` of
+      the body, read before the app runs) and `rack.errors` (`$stderr`).
+      Left out: `GATEWAY_INTERFACE`, `REMOTE_HOST`, `SERVER_SOFTWARE`,
+      `rack.hijack?`; the gem's input is a `Stream::Reader`, not a StringIO,
+      so a program must not check its class.
+    - **The response**, as the gem writes it through WEBrick: the status
+      must be an Integer (otherwise 500 and a line on stderr), `rack.*`
+      headers are dropped, an Array value is joined with `", "` except
+      `set-cookie`, sent one line per value; a relative `Location` is made
+      absolute and no `Content-Type` is invented (WEBrick's behaviour); the
+      body is buffered and `Content-Length` always set; `body.close` runs
+      when the body responds to it, before the response is sent. An
+      exception from the app is a 500 with an empty body (WEBrick's HTML
+      error page is not copied) and `ERROR msg (Class)` on stderr.
+    - **What the app may be.** Any object with `call`, through dynamic
+      dispatch, or a lambda typed `^(Hash[String, untyped]) -> untyped`: a
+      Proc held untyped has no dynamic `call` (decision 47), so
+      `rbRackProc` unwraps that one func type; a lambda of another type is
+      a NoMethodError at the first request. A body is an Array (any
+      element type, each `to_s`'d) or an object whose `each` is typed
+      `() { (String) -> void } -> void`, the two Go shapes a Rack body's
+      each compiles to (`rbRackChunks`); anything else raises
+      NoMethodError.
+    - **Not yet:** streaming (`call`-able bodies, hijack, `to_path`
+      files), HTTPS, WEBrick's access log and startup lines on stderr.
+      rb2go's `Net::HTTP` answers `""` where MRI's body is nil (HEAD, 204),
+      a client-side gap.
+    - **Proof:** [example 115](../examples/115_rack_server/main.rb) (a
+      Rack class with an `each`/`close` body, GET with query and a custom
+      header, POST form, 404 with an Array header, set-cookie lines) and
+      `net_test.rb`'s `RackTest` (env values, a lambda app, HEAD, 204,
+      `rack.*` headers, a raising app), both equal to MRI.

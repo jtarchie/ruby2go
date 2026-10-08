@@ -1,0 +1,9 @@
+# The rackup gem ships no signatures; this is the part prelude/rackup.rb implements (decision 174).
+module Rackup
+  module Handler
+    class WEBrick
+      def self.run: (untyped app, **untyped options) ?{ (untyped server) -> void } -> void
+      def self.shutdown: () -> void
+    end
+  end
+end

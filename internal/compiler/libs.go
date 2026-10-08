@@ -46,6 +46,7 @@ var preludeLibs = map[string]string{
 	"net/http":         "prelude/net_http.rb",
 	"net/https":        "prelude/net_http.rb",
 	"webrick":          "prelude/webrick.rb",
+	"rackup":           "prelude/rackup.rb",
 	"open-uri":         "prelude/open_uri.rb",
 	"socket":           "prelude/socket.rb",
 	"open3":            "prelude/open3.rb",
@@ -69,6 +70,8 @@ var preludeLibs = map[string]string{
 	"delegate":         "prelude/delegate.rb",
 	"date":             "prelude/date.rb",
 	"time":             "prelude/time_parse.rb",
+
+	"rackup/handler/webrick": "prelude/rackup.rb", // the rackup gem's, not stdlib: Gemfile has it for MRI
 }
 
 // scanRequires parses the user sources and walks them, and every file they require_relative or require off the -I
