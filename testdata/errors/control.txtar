@@ -25,13 +25,9 @@ class Holder
     end
   end
 end
--- bare_reraise.rb --
-# error: main.rb:5: bare `raise` (re-raise) is not supported
-begin
-  raise "x"
-rescue
-  raise
-end
+-- bare_raise_outside_rescue.rb --
+# error: main.rb:2: bare `raise` outside a rescue clause is not supported
+raise
 -- raise_non_exception_class.rb --
 # error: main.rb:2: String is not an exception class
 raise String
@@ -45,9 +41,9 @@ raise 42
 # error: main.rb:3: raise Class, message: first argument must be a class
 klass = "ArgumentError"
 raise klass, "message"
--- raise_three_args.rb --
-# error: main.rb:2: raise with 3 arguments is not supported
-raise ArgumentError, "a", "b"
+-- raise_four_args.rb --
+# error: main.rb:2: raise with 4 arguments is not supported
+raise ArgumentError, "a", ["b"], 1
 -- raise_class_arity.rb --
 # error: main.rb:8: TwoArgs#initialize: wrong number of arguments (given 1, expected 2)
 class TwoArgs < StandardError

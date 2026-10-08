@@ -284,6 +284,9 @@ class String
   #: (Regexp) -> Integer?
   def __index_regexp(re) = re =~ self
 
+  #: (Regexp, ?Integer) -> String?
+  def __idx_regexp(re, n = 0) = re.match(self)&.[](n)
+
   #: (Regexp) -> bool
   def !~(re) = !(re =~ self)
 
@@ -340,15 +343,22 @@ class String
 
   # MRI's: captured groups are kept, trailing empty fields dropped, and a
   # pattern matching the empty string splits between characters.
-  #: (Regexp) -> Array[String]
-  def __split_regexp(re) = %x{
+  #: (Regexp, ?Integer) -> Array[String]
+  def __split_regexp(re, limit = 0) = %x{
     s := string(self)
     out := &Array[String]{}
-    start := 0
+    if s == "" {
+      return out
+    }
+    start, fields := 0, 0
     for _, loc := range re.re.FindAllStringSubmatchIndex(s, -1) {
+      if limit > 0 && fields == int(limit)-1 { // the last field keeps the rest
+        break
+      }
       if loc[1] == 0 || loc[0] == len(s) && loc[0] == loc[1] {
         continue
       }
+      fields++
       if loc[1] == start { // an empty match (loc[0] >= start)
         // right at the field start: split off one character
         _, w := utf8.DecodeRuneInString(s[start:])
@@ -368,7 +378,7 @@ class String
       start = loc[1]
     }
     out.s = append(out.s, String(s[start:]))
-    for len(out.s) > 0 && out.s[len(out.s)-1] == "" {
+    for limit == 0 && len(out.s) > 0 && out.s[len(out.s)-1] == "" {
       out.s = out.s[:len(out.s)-1]
     }
     return out

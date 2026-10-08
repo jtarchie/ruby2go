@@ -80,6 +80,7 @@ type Compiler struct {
 	gemDirs       []string                  // installed gems' lib dirs, searched after loadPath: their files are gem code (decision 173)
 	sigs          map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
 	gemSigs       fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
+	autoloaded    map[string]bool           // boot-resolved autoload files: loaded where their autoload registers (decision 175)
 	pruneGems     bool                      // a gem program: unreached gem methods are dropped (decision 169)
 	gemNilIvars   []gemNilIvar              // gem ivars discovery saw only nil assigned to (decision 169)
 	autoloads     map[string]bool           // `autoload :X` constants by qualified name: defined? answers for them (decision 167)
@@ -89,6 +90,7 @@ type Compiler struct {
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
 	procTypes        map[string]bool                   // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	procFuncs        map[string]TFunc                  // the type each procTypes entry renders, for rbDynProcCall
 	argBoxes         map[string]bool                   // T? boxes of generic type arguments, which generic code may hold
 	classIDs         map[*Class]int                    // index in classList: the class's ID in the generated tables
 	specClasses      int                               // describes declared, for their classes' Go names
@@ -197,18 +199,19 @@ type Source struct {
 
 // options are a compile's settings beyond its sources.
 type options struct {
-	skipTests bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
-	skipped   []SkippedTest // what skipTests skipped
-	warnings  []string
-	loadPath  []string // -I directories, which a user `require` searches first
-	gemDirs   []string // gem lib dirs, searched after loadPath (decision 173)
-	infer     *inference
-	round     bool
-	inferDone bool
-	seed      *Inference // types from an earlier compile of these sources, updated by this one
-	allLibs   bool       // load every prelude lib, required or not (the stub generator, decision 154)
-	gemSigs   fs.FS      // vendored `.rbs` signatures for gems (decision 160), or nil
-	pruneGems bool       // drop gem methods no reachable code names (decision 169)
+	skipTests  bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
+	skipped    []SkippedTest // what skipTests skipped
+	warnings   []string
+	loadPath   []string // -I directories, which a user `require` searches first
+	gemDirs    []string // gem lib dirs, searched after loadPath (decision 173)
+	infer      *inference
+	round      bool
+	inferDone  bool
+	seed       *Inference        // types from an earlier compile of these sources, updated by this one
+	allLibs    bool              // load every prelude lib, required or not (the stub generator, decision 154)
+	gemSigs    fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
+	pruneGems  bool              // drop gem methods no reachable code names (decision 169)
+	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -284,7 +287,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	tick("parser")
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, procFuncs: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
 	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs
@@ -295,6 +298,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		return nil, perr
 	}
 	c.parsed = parsed
+	c.autoloaded = c.neededAutoloads(opts.autoloaded)
 	c.loadPrelude(ctx, "prelude.rb")
 	c.loadLibs(ctx, libs, opts.allLibs || os.Getenv("RB2GO_ALL_LIBS") != "")
 	c.loadSigs(sources)

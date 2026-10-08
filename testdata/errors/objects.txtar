@@ -719,10 +719,6 @@ end
 
 class C < A
 end
--- class_lt_struct_new.rb --
-# error: main.rb:2: unknown class or module Struct.new(:a, :b)
-class Pair < Struct.new(:a, :b) #: [Integer, Integer]
-end
 -- struct_has_no_with.rb --
 # error: main.rb:5: undefined method with for Point
 Point = Struct.new(:x, :y) #: [Integer, Integer]

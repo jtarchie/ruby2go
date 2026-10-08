@@ -89,7 +89,7 @@ module Rack
       def form_data?: () -> bool
       def parseable_data?: () -> bool
       def GET: () -> Hash[String, untyped]
-      def form_pairs: () -> untyped
+      def form_pairs: () -> Array[untyped]
       def POST: () -> Hash[String, untyped]
       def params: () -> Hash[String, untyped]
       def update_param: (String, untyped) -> void
@@ -108,7 +108,7 @@ module Rack
       def query_parser: () -> Rack::QueryParser
       def parse_query: (String, ?String) -> Hash[String, untyped]
       def parse_multipart: () -> untyped
-      def expand_param_pairs: (untyped, ?Rack::QueryParser) -> Hash[String, untyped]
+      def expand_param_pairs: (Array[untyped], ?Rack::QueryParser) -> Hash[String, untyped]
       def split_header: (untyped) -> Array[String]
       def split_authority: (untyped) -> Array[untyped]
       def forwarded_scheme: () -> untyped
@@ -177,6 +177,30 @@ module Rack
     attr_reader param_depth_limit: Integer
     attr_reader bytesize_limit: Integer
     def self.make_default: (Integer, **untyped) -> QueryParser
-    def initialize: (untyped, Integer, ?bytesize_limit: Integer, ?params_limit: Integer) -> void
+    @params_class: singleton(Rack::QueryParser::Params)
+    def initialize: (singleton(Rack::QueryParser::Params), Integer, ?bytesize_limit: Integer, ?params_limit: Integer) -> void
+    def parse_query: (String?, ?String?) ?{ (String) -> String } -> Hash[String, untyped]
+    def each_query_pair: (String?, String?, ?(^(String) -> String)?) { (String, String?) -> void } -> void
+    def parse_query_pairs: (String?, ?String?) -> Array[untyped]
+    def make_params: () -> Rack::QueryParser::Params[untyped]
+    def _normalize_params: (untyped, String?, untyped, Integer) -> untyped
+  end
+
+  class MediaType
+    def self.type: (String?) -> String?
+    def self.params: (String?) -> Hash[String, String]
+    def self.strip_doublequotes: (String?) -> String
+  end
+
+  module Multipart
+    class Parser
+      TEMPFILE_FACTORY: ^(String, String?) -> Tempfile
+      BUFFERED_UPLOAD_BYTESIZE_LIMIT: Integer
+      PARSER_BYTESIZE_LIMIT: Integer?
+      CONTENT_DISPOSITION_QUOTED_ESCAPES_LIMIT: Integer
+      def normalize_filename: (String) -> String
+      def tag_multipart_encoding: (String?, String?, untyped, untyped) -> void
+      def find_encoding: (String?) -> Encoding
+    end
   end
 end

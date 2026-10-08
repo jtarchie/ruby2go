@@ -10,15 +10,16 @@ class Tempfile < Object
   include IOWritable
   include IOReadable
 
-  #: (?String) -> void
+  #: (?(String | Array[String])) -> void
   def initialize(basename = "")
-    @file = File.new(Tempfile.__mktemp(basename), "w+")
+    path = basename.is_a?(String) ? Tempfile.__mktemp(basename) : Tempfile.__mktemp(basename[0] || "", basename[1] || "")
+    @file = File.new(path, "w+")
     @unlinked = false
   end
 
-  #: (String) -> String
-  def self.__mktemp(basename) = %x{
-    f, err := os.CreateTemp("", string(basename)+"*")
+  #: (String, ?String) -> String
+  def self.__mktemp(basename, suffix = "") = %x{
+    f, err := os.CreateTemp("", string(basename)+"*"+string(suffix))
     if err != nil {
       panic(rbSysErr(err, "rb_sysopen", os.TempDir()))
     }

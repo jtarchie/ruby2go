@@ -162,7 +162,9 @@ whole program at compile time rather than looked up by reflection.
   `tempfile`, `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
   and `minitest` (including `Minitest::Spec`); from gems, `rackup`'s WEBrick
-  handler serves a Rack app.
+  handler serves a Rack app, and the unmodified `cuba` gem on `rack` serves
+  routes with captures, query parameters, POST forms and 404s
+  ([example 116](examples/116_cuba_web/main.rb)).
 
 [`examples/`](examples/) has one program per feature, from
 [inheritance](examples/01_inheritance/main.rb) to a

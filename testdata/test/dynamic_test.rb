@@ -2915,4 +2915,20 @@ module DynamicTests
       assert_equal [[1, 2]], seen
     end
   end
+
+  # rack's `env["rack.input"].read(n)` and Cuba's `matcher.call` on what it holds untyped (decision 175).
+  class DynamicOverloadAndProcTest < Minitest::Test
+    def test_arity_overload_on_untyped
+      io = StringIO.new("abcdef") #: untyped
+      assert_equal ["ab", "cdef"], [io.read(2), io.read]
+    end
+
+    def test_proc_call_on_untyped
+      add = ->(x) { x + 1 } #: ^(Integer) -> Integer
+      m = add #: untyped
+      say = -> { "hi" } #: ^() -> String
+      s = say #: untyped
+      assert_equal [3, "hi"], [m.call(2), s.call]
+    end
+  end
 end

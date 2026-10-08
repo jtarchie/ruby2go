@@ -640,13 +640,18 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		f.leaveBlock(saved)
 		f.emit("}")
 	case *parser.IfNode:
-		f.emit("} else {")
 		saved := f.enterBlock()
 		f.indent++
 		f.applyNarrow(elseNarrow)
-		f.genIf(e, e.Predicate, e.Statements, e.Subsequent, false, t)
+		body := f.capture(func() { f.genIf(e, e.Predicate, e.Statements, e.Subsequent, false, t) })
 		f.indent--
 		f.leaveBlock(saved)
+		if chain, ok := elseIfChain(body, f.indent+1); ok && e.Subsequent == nil { // gocritic's elseif; a longer chain would be its ifElseChain
+			f.emit("} else %s", chain)
+			return
+		}
+		f.emit("} else {")
+		f.buf.WriteString(body)
 		f.emit("}")
 	default:
 		f.c.unsupported(f.f, els)
@@ -853,7 +858,7 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		}
 		tmp := f.newTmp()
 		f.emit("%s := true", tmp)
-		f.emit("if !(%s) {", l)
+		f.emit("if %s {", notCond(l))
 		f.buf.WriteString(stmts)
 		f.emit("\t%s = %s", tmp, r)
 		f.emit("}")
@@ -1044,6 +1049,46 @@ func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate 
 	f.emptyTail(pred, t)
 }
 
+// elseIfChain is body, an elsif's code at indent, dedented one level when it is only an if chain; ok is false when other statements come with it.
+func elseIfChain(body string, indent int) (string, bool) {
+	tabs := strings.Repeat("\t", indent)
+	lines := strings.Split(strings.TrimSuffix(body, "\n"), "\n")
+	if !strings.HasPrefix(lines[0], tabs+"if ") {
+		return "", false
+	}
+	for i, ln := range lines {
+		if strings.HasPrefix(ln, "\t") {
+			lines[i] = ln[1:]
+		}
+		if i > 0 && strings.HasPrefix(ln, tabs) && !strings.HasPrefix(ln, tabs+"\t") && (!strings.HasPrefix(ln, tabs+"}") || strings.HasPrefix(ln, tabs+"} else")) {
+			return "", false
+		}
+	}
+	return strings.TrimLeft(strings.Join(lines, "\n"), "\t"), true
+}
+
+// notCond negates a Go condition, unwrapping one that is already `!(...)` (staticcheck SA4013).
+func notCond(c string) string {
+	if strings.HasPrefix(c, "!(") && strings.HasSuffix(c, ")") && !strings.ContainsAny(c, "\"`'") { // a literal could hold a paren
+		depth := 0
+		for i, r := range c[1:] {
+			switch r {
+			case '(':
+				depth++
+			case ')':
+				depth--
+			}
+			if depth == 0 {
+				if i == len(c)-2 {
+					return c[2 : len(c)-1]
+				}
+				break
+			}
+		}
+	}
+	return "!(" + c + ")"
+}
+
 // loopNext finds a `next` that targets the enclosing loop, not a nested loop, block or def.
 func loopNext(n parser.Node) parser.Node {
 	switch n := n.(type) {
@@ -1069,6 +1114,10 @@ func loopNext(n parser.Node) parser.Node {
 func (f *fctx) genReturn(n *parser.ReturnNode) {
 	if f.closures > 0 && f.closures == f.lambdaClosure {
 		f.closureValue(n, n.Arguments) // a lambda's return leaves only the lambda
+		return
+	}
+	if f.closures > 0 && f.lenient() { // gem code (decision 172): fails only if it runs
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", fmt.Sprintf("rb2go: non-local return from a block at %s:%d (decision 4)", f.f.Name, f.f.line(n.Location.StartOffset)))
 		return
 	}
 	if f.closures > 0 {

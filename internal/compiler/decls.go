@@ -87,6 +87,7 @@ func (c *Compiler) goType(t Type) string {
 			var vars []string
 			if freeVars(t, &vars); len(vars) == 0 {
 				c.procTypes["*"+s] = true
+				c.procFuncs["*"+s] = t
 			}
 			return "*" + s
 		}
@@ -1627,9 +1628,38 @@ func (c *Compiler) emitClassMeta() {
 			c.w("\tcase %s:\n\t\treturn true\n", p)
 		}
 		c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t\treturn false\n\t}\n}\n\n")
+		c.emitDynProcCall(procs)
 		return
 	}
 	c.w("\treturn false\n}\n\n")
+	c.emitDynProcCall(nil)
+}
+
+// emitDynProcCall emits rbDynProcCall: `call` on a Proc held untyped, switching over the program's Proc types (amends decision 47).
+func (c *Compiler) emitDynProcCall(procs []string) {
+	c.w("func rbDynProcCall(recv any, args []any) (any, bool) {\n")
+	c.w("\tswitch p := recv.(type) {\n")
+	for _, p := range procs {
+		t := c.procFuncs[p]
+		if t.Self != nil || slices.ContainsFunc(t.Params, isVoid) || t.Rest {
+			continue
+		}
+		args := make([]string, len(t.Params))
+		for i, pt := range t.Params {
+			args[i] = c.dynArg(pt, i)
+		}
+		call := "(*p)(" + strings.Join(args, ", ") + ")"
+		c.w("\tcase %s:\n\t\trbArity(len(args), %d, %d)\n", p, len(t.Params), len(t.Params))
+		switch {
+		case isVoid(t.Ret):
+			c.w("\t\t%s\n\t\treturn nil, true\n", call)
+		case isOpt(t.Ret):
+			c.w("\t\treturn Opt(%s), true\n", call)
+		default:
+			c.w("\t\treturn %s, true\n", call)
+		}
+	}
+	c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t\treturn nil, false\n\t}\n}\n\n")
 }
 
 // emitClassID emits cls's _ClassID and reports whether its values are pointers, whose address is their identity (rbClassRefs: #inspect, object_id).

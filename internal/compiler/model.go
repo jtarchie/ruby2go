@@ -464,7 +464,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		if sym, ok := symbolName(firstArg(callArgs(n))); ok {
 			c.noteAutoload(sym)
 		}
-		// compile-time autoload (decision 161): the file is already a source.
+		c.loadAutoload(ctx, f, n) // compile-time autoload (decision 161)
 	default:
 		c.scanAnon(ctx, f, n, nil)
 		c.addMainStmt(f, n)
@@ -628,6 +628,11 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 		sup := n.Superclass
 		if call, ok := sup.(*parser.CallNode); ok && call.Name == "DelegateClass" {
 			sup = c.delegateClassSuper(ctx, f, call, scope)
+		}
+		if call, kind := valueClass(sup); call != nil && !reopen { // `class X < Struct.new(:a)`: a hidden value class as the super, as MRI's anonymous one
+			anon := "Struct_" + strings.ReplaceAll(name, "::", "_")
+			c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Name: anon, Value: call, Location: call.Location, NameLoc: call.Location}, call, kind, scope)
+			sup = &parser.ConstantReadNode{Name: anon, Location: call.Location}
 		}
 		ref := &constRef{node: sup, scope: scope, file: f}
 		if reopen {
@@ -1103,11 +1108,13 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	switch n.Name {
 	case "attr", "attr_reader", "attr_writer", "attr_accessor":
 		c.addAttrs(f, cls, n, args, vis.private, scope)
-	case "autoload", "ruby2_keywords":
+	case "autoload", "ruby2_keywords", "deprecate_constant":
 		// No-ops: autoload's file is loaded at compile time (the boot
 		// snapshot, decision 161, supplies what it resolved); ruby2_keywords
-		// is MRI's keyword-passthrough marker, which rb2go passes statically.
+		// is MRI's keyword-passthrough marker, which rb2go passes statically;
+		// deprecate_constant warns only with Warning[:deprecated], off by default.
 		c.noteAutoloadCall(n, args, scope)
+		c.loadAutoload(ctx, f, n)
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
@@ -1495,6 +1502,9 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			// No inline `#:`: a `.rbs` attribute supplies the type (decision 160).
 			if ad := c.sigAttr(cls, name); ad != nil && !f.prelude {
 				at = ad.Type
+			} else if c.gemFile(f) { // lenient gem code (decision 172): the defs it stands for, inferred like any gem def
+				c.addModuleAttr(f, cls, n, kind, name, nil, private, scope)
+				continue
 			} else {
 				c.errorf(f, n, "%s needs a trailing `#: Type` annotation", n.Name)
 			}
@@ -1526,16 +1536,22 @@ func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind, 
 	def := func(dname string, params *parser.ParametersNode, locals []string, body parser.Node, sig *rbs.MethodType) {
 		c.addDef(f, cls, &parser.DefNode{Location: loc, Name: dname, NameLoc: loc, DefKeywordLoc: loc, Parameters: params, Locals: locals,
 			Body: &parser.StatementsNode{Location: loc, Body: []parser.Node{body}}}, private, scope)
-		m := cls.Methods[dname]
-		m.sigText, m.sig = "", sig
+		if sig != nil {
+			m := cls.Methods[dname]
+			m.sigText, m.sig = "", sig
+		}
+	}
+	var rsig, wsig *rbs.MethodType // nil: inferred
+	if at != nil {
+		rsig, wsig = &rbs.MethodType{Return: at}, &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: "v"}}, Return: rbs.Void{}}
 	}
 	if kind != "attr_writer" {
-		def(name, nil, nil, &parser.InstanceVariableReadNode{Location: loc, Name: iv}, &rbs.MethodType{Return: at})
+		def(name, nil, nil, &parser.InstanceVariableReadNode{Location: loc, Name: iv}, rsig)
 	}
 	if kind != "attr_reader" {
 		params := &parser.ParametersNode{Location: loc, Requireds: []parser.Node{&parser.RequiredParameterNode{Location: loc, Name: "v"}}}
 		write := &parser.InstanceVariableWriteNode{Location: loc, Name: iv, Value: &parser.LocalVariableReadNode{Location: loc, Name: "v"}}
-		def(name+"=", params, []string{"v"}, write, &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: "v"}}, Return: rbs.Void{}})
+		def(name+"=", params, []string{"v"}, write, wsig)
 	}
 }
 
@@ -3189,6 +3205,12 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 		return types
 	}
 	ann := f.trailingAnnotation(n)
+	if ann == "" && c.gemFile(f) { // lenient gem code (decision 172): rack's `MultipartInfo = Struct.new :params, :tmp_files`
+		for i := range types {
+			types[i] = rbs.Untyped{}
+		}
+		return types
+	}
 	if ann == "" {
 		c.errorf(f, n, "%s needs member types: `:a, #: T` per line, or `#: [A, B]` after the definition", n.Name)
 	}

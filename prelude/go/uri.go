@@ -18,7 +18,7 @@ func rbFormEscape(s string) string {
 // rbURIEscape is URI::RFC2396_Parser#escape: every byte outside RFC 2396's unreserved and reserved sets is %XX.
 func rbURIEscape(s string) string {
 	var b strings.Builder
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("-_.!~*'();/?:@&=+$,[]", c) >= 0 {
 			b.WriteByte(c)

@@ -5129,4 +5129,16 @@ module ObjectTests
       assert_equal [2, 1], [d.bumped, d.n]
     end
   end
+
+  # rack's multipart MimePart (decision 175).
+  class ObjectStructSuperTest < Minitest::Test
+    class Part < Struct.new(:body, :name) #: [String, String?]
+      def label = "#{name}=#{body}"
+    end
+
+    def test_struct_superclass
+      pt = Part.new("b", "n")
+      assert_equal ["n=b", "b", true], [pt.label, pt.body, pt.is_a?(Struct)]
+    end
+  end
 end

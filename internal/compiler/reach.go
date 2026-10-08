@@ -36,6 +36,7 @@ var declarationCalls = map[string]bool{
 	"attr": true, "attr_reader": true, "attr_writer": true, "attr_accessor": true, "private": true, "public": true,
 	"protected": true, "module_function": true, "private_class_method": true, "public_class_method": true,
 	"private_constant": true, "public_constant": true, "include": true, "extend": true, "prepend": true, "ruby2_keywords": true,
+	"deprecate_constant": true,
 }
 
 // goCall matches a Go method call (`.Name(`) or a free func call (`Owner_Name(` / `Owner_Name[`); a field is not a call.

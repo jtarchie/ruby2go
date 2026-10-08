@@ -174,6 +174,23 @@ class String < Object
     return Ref(Integer(utf8.RuneCountInString(string(self)[:i])))
   }
 
+  #: (String, Integer) -> Integer?
+  def __index_2(s, start) = %x{
+    r := []rune(string(self))
+    if start < 0 {
+      start += Integer(len(r))
+    }
+    if start < 0 || int(start) > len(r) {
+      return nil
+    }
+    rest := string(r[start:])
+    i := strings.Index(rest, string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(start + Integer(utf8.RuneCountInString(rest[:i])))
+  }
+
   #: (Integer) -> String?
   def [](i) = %x{
     r := []rune(string(self))
