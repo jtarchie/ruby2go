@@ -491,6 +491,9 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		env[p] = TVar{Name: p}
 	}
 	env["Self"] = recv.typ
+	if cls.hashBase {
+		env["K"] = TAny{} // the embedded Hash[any, V]
+	}
 	c.emitDynCall(f, e, recv, env, true)
 	return f.buf.String()
 }

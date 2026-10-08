@@ -161,14 +161,6 @@ puts h.select.inspect
 # error: main.rb:2:
 h = { a: 1 } #: Hash[String, Integer]
 puts h.inspect
--- subclass_hash.rb --
-# error: main.rb:2: subclassing Hash is not supported
-class MyHash < Hash
-  #: () -> Integer
-  def twice = size * 2
-end
-m = MyHash.new #: MyHash
-puts m.twice
 -- double_splat_not_hash.rb --
 # error: main.rb:3: **a must be a Hash
 a = [1]

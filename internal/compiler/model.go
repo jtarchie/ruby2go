@@ -19,6 +19,7 @@ type Class struct {
 	RubyName   string // constant path: "Resty::Actions::Show"
 	IsModule   bool
 	GoType     string // `@go_type` underlying Go type; "" for struct classes
+	hashBase   bool   // a user class extending Hash: embeds a Hash[any, V]
 	selfDefs   bool   // some method has `# @self` (selfOverload)
 	TypeParams []string
 	superRef   *constRef   // superclass expression, resolved in link
@@ -1473,7 +1474,17 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
 		}
 		// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
-		if sup.GoType != "" {
+		if sup.RubyName == "Hash" {
+			// a Hash subclass embeds a Hash[any, V]: keys are untyped, since
+			// the usual subclass downcases or otherwise rewrites them
+			cls.hashBase = true
+			if len(cls.TypeParams) == 0 {
+				cls.TypeParams = []string{"V"}
+			} else if len(cls.TypeParams) > 1 {
+				c.errorf(cls.File, nil, "%s:%d: a Hash subclass takes one type parameter, the value type (keys are untyped)", cls.File.Name, cls.Line)
+			}
+			cls.GoType = "struct { " + superField(sup) + "[" + strings.Join(cls.TypeParams, ", ") + "] }"
+		} else if sup.GoType != "" {
 			c.errorf(cls.File, nil, "%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
 		}
 	case !cls.IsModule && cls.RubyName != "BasicObject":

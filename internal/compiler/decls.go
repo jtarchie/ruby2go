@@ -295,6 +295,9 @@ func (c *Compiler) emitProgram() {
 		c.lineDirective(v.file, v.line)
 		c.w("%s\n\n", strings.TrimSpace(v.code))
 	}
+	if slices.ContainsFunc(c.classList, func(cls *Class) bool { return cls.hashBase }) {
+		c.w("type %s[V comparable] = Hash[any, V]\n\n", superField(c.classes["Hash"]))
+	}
 	classes := c.sortedClasses()
 	for _, cls := range classes {
 		c.emitClassType(cls)
@@ -421,6 +424,11 @@ func (c *Compiler) emitClassType(cls *Class) {
 			tp = "[" + strings.Join(cls.TypeParams, ", ") + " comparable]"
 		}
 		c.w("type %s%s %s\n\n", cls.Name, tp, cls.GoType)
+		if cls.hashBase {
+			tps := strings.Join(cls.TypeParams, ", ")
+			c.w("func New%s[%s comparable]() *%s[%s] { return &%s[%s]{%s: *NewHash[any, %s]()} }\n\n",
+				cls.Name, tps, cls.Name, tps, cls.Name, tps, superField(cls.Super), tps)
+		}
 	default:
 		c.emitStructClass(cls)
 	}
@@ -852,6 +860,16 @@ func (c *Compiler) ivarOrder(cls *Class) []*Ivar {
 	return out
 }
 
+// forwarderEnv is the signature environment for a forwarder of cls.
+func (c *Compiler) forwarderEnv(cls *Class, e entry) map[string]Type {
+	env := composeEnv(e.Env, nil)
+	env["Self"] = c.selfTypeFor(e, cls)
+	if cls.hashBase {
+		env["K"] = TAny{} // the embedded Hash[any, V]
+	}
+	return env
+}
+
 // emitForwarders emits, for a concrete class, a Go method per inherited or
 // included public non-generic method so the class satisfies its interface.
 func (c *Compiler) emitForwarders(cls *Class) {
@@ -864,14 +882,16 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		if e.Owner == cls && c.isDirectMethod(m) {
 			continue
 		}
+		if cls.hashBase && e.Owner != cls {
+			continue // promoted from the embedded Hash; a typed call is intercepted in callCode
+		}
 		if m.Kind == kindAttrReader || m.Kind == kindAttrWriter {
 			continue // promoted through embedding; never touches virtual self
 		}
 		if !c.wantsForwarder(cls, e) {
 			continue
 		}
-		env := composeEnv(e.Env, nil)
-		env["Self"] = c.selfTypeFor(e, cls)
+		env := c.forwarderEnv(cls, e)
 		ps, ret := c.sig(m, env)
 		targs := c.forwardTypeArgs(e, cls)
 		body := fmt.Sprintf("%s%s(self%s)", freeFuncName(m), targs, comma(c.argNames(m)))
@@ -886,8 +906,7 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		if !e.M.seqAdapter {
 			continue
 		}
-		env := composeEnv(e.Env, nil)
-		env["Self"] = c.selfTypeFor(e, cls)
+		env := c.forwarderEnv(cls, e)
 		name, ps, ret := c.seqAdapterSig(e.M, env)
 		seq := "rbSeq"
 		if len(e.M.Block.Params) == 2 {

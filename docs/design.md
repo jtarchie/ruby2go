@@ -135,7 +135,8 @@ Rules the prelude relies on:
 - **`@go_type`** — tells the transpiler `String` is a named Go `string`, not a
   struct. Classes without it become structs (and are passed as pointers).
   A `@go_type` class has no struct to embed, so subclassing one is a
-  compile error.
+  compile error — *except* `Hash`, whose subclass is a struct embedding it
+  (decision 165).
 - **Mixins are just Ruby** — `Comparable#<` and `#clamp` are written once;
   `String` only supplies `<=>`. Compiles to `Comparable_Op_lt[T Comparable_Self[T]]`.
   The constraint interface is *derived from the module body*: whatever the
@@ -450,6 +451,9 @@ resolve; anything not listed is still open.
    them cost about what they did. `uniq`
    uses the same index; `tally`/`group_by` are Hash-based. Mutating a key
    after inserting it is not detected (MRI needs `rehash` there too).
+   *Revised:* a Ruby subclass of `Hash` is now allowed (decision 165): it is
+   a struct class embedding a `Hash[any, V]`, so plain `Hash` keeps its
+   direct calls and the subclass pays for dispatch only where it overrides.
 2. `TrueClass`/`FalseClass` vs. `Boolean`: **decided, one `Boolean`** (a Go
    `bool`). `true`/`false` literals are untyped constants that convert to
    `Boolean`, and get wrapped (`Boolean(true)`) only when the target is
@@ -5345,3 +5349,42 @@ resolve; anything not listed is still open.
       a class with no block-taking `initialize` is ignored, as MRI ignores it.
     ([example 108](../examples/108_proc_instance_eval/main.rb),
     [example 109](../examples/109_class_eval/main.rb).)
+
+165. A user class may subclass `Hash` (#86); every other `@go_type` class
+    stays unsubclassable. Needed by unmodified rack, whose `Rack::Headers`
+    and `Rack::QueryParser::Params` are `Hash` subclasses. Making `Hash` a
+    plain struct class would have worked, but every `h[k]` would then go
+    through an interface method, the indirection decision 1 avoided for the
+    hot path. Instead the subclass is a *struct class* that embeds the
+    `Hash`, so plain `Hash` is untouched.
+    - **Representation.** `class X < Hash` becomes
+      `type X[V comparable] struct { super_Hash_[V] }`, where
+      `super_Hash_[V] = Hash[any, V]`. It is generic in the value type
+      only: a subclass rewrites its keys in the common case (downcasing, as
+      `Rack::Headers` does), and a Go generic method body cannot pass a
+      concrete `String` where an abstract key type `K` is expected. Keys are
+      therefore `any`; the value type `V` is kept so typed responders stay
+      typed. The field is an alias (not an embedded `Hash`) so a method named
+      `hash` would not collide with the embedded field name.
+      `X.new` is a generated `NewX[V]()` that installs the embedded
+      `Hash[any, V]`; `X.new` with no type argument defaults `V` to
+      `untyped`.
+    - **`super` and inherited calls.** A Hash method's `self` is `*Hash`, so
+      a subclass's `super(...)` and any call to a method it does not
+      override are compiled to the free func on the embedded hash:
+      `Hash_Op_idx[any, V](&self.super_Hash_, k)` (decision 86's free funcs).
+      A method the subclass *does* override is an ordinary generated free
+      func/forwarder on `*X[V]`. Plain `Hash` is not affected.
+    - **Not yet: subclass identity.** MRI preserves the subclass in the
+      copy-based methods (`dup`, `clone`, `merge`, `compact`) and in those
+      that return `self` (`merge!`, `replace`, `transform_values!`); methods
+      that build a fresh hash (`select`, `reject`, `transform_values`,
+      `invert`, `to_h`) return a plain `Hash`, as MRI does. rb2go has no
+      `Hash#dup` at all yet and its `merge`/`compact` return `Hash`, so a
+      subclass's own returns a `Hash` where MRI returns the subclass. Fixing
+      that needs a per-object class hook in the Hash body (`self.class`), the
+      next step before `Rack::Headers` compiles.
+    - **Proof:** `testdata/test/hash_test.rb` `HashSubclassTest` (a
+      `Downcaser < Hash` that downcases keys, checked against MRI), and the
+      issue's acceptance program. `testdata/errors/hashes.txtar`'s
+      `subclass_hash` rejection case is gone.

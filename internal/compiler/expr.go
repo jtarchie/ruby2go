@@ -2616,6 +2616,9 @@ func (f *fctx) useGenNew(cls *Class, n *parser.CallNode) bool {
 	if n.Name != "new" {
 		return false
 	}
+	if cls.hashBase && cls.lookup("initialize") == nil {
+		return true // the generated NewX builds the embedded Hash
+	}
 	if cls.meta == nil {
 		return true
 	}
@@ -2934,6 +2937,9 @@ func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
 				classEnv[p] = rt.Args[i]
 			}
 		}
+		if rt.C.hashBase {
+			classEnv["K"] = TAny{} // the embedded Hash[any, V]
+		}
 		env = composeEnv(e.Env, classEnv)
 	} else {
 		for k, v := range e.Env {
@@ -3103,6 +3109,14 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	recv.code = f.materialize(recv)
 	if m.Owner == nil {
 		return m.GoName + "(" + argList + ")"
+	}
+	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner.RubyName == "Hash" {
+		// an inherited Hash method runs on the embedded Hash[any, V]
+		targs := ""
+		if len(rc.Args) > 0 {
+			targs = "[any, " + f.c.goTypes(rc.Args) + "]"
+		}
+		return freeFuncName(m) + targs + "(&" + recv.code + "." + superField(m.Owner) + comma(argList) + ")"
 	}
 	if m.Owner.metaOf != nil && m.Name == "new" && !recv.classObj {
 		// `new` on a class object of unknown exact class: assert for it.
@@ -4066,7 +4080,31 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		f.errorf(n, "super: no parent method %s", f.m.Name)
 	}
 	if e.Owner.GoType != "" {
-		f.errorf(n, "super into a primitive class method is not supported")
+		if f.owner == nil || !f.owner.hashBase || e.Owner.RubyName != "Hash" {
+			f.errorf(n, "super into a primitive class method is not supported")
+		}
+		env := map[string]Type{}
+		for k, v := range e.Env {
+			env[k] = v
+		}
+		env["Self"] = f.selfType
+		env["K"] = TAny{} // the embedded Hash[any, V]
+		targs := ""
+		if st, ok := f.selfType.(TClass); ok {
+			for i, p := range st.C.TypeParams {
+				if i < len(st.Args) {
+					env[p] = st.Args[i]
+				}
+			}
+			if len(st.Args) > 0 {
+				targs = "[any, " + f.c.goTypes(st.Args) + "]"
+			}
+		}
+		codes, _ := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
+		if e.M.Block != nil {
+			f.errorf(n, "super to a block-taking method is not supported")
+		}
+		return expr{code: freeFuncName(e.M) + targs + "(&" + f.selfCode + "." + superField(e.Owner) + comma(strings.Join(codes, ", ")) + ")", typ: subst(e.M.Ret, env)}
 	}
 	env := map[string]Type{}
 	for k, v := range e.Env {
@@ -4138,12 +4176,18 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 			f.errorf(n, "%s.new with arguments is not supported", cls.Name)
 		}
 		var t TClass
-		if et, ok := expected.(TClass); ok && et.C == cls {
+		switch et, ok := expected.(TClass); {
+		case ok && et.C == cls:
 			t = et
-		} else if len(cls.TypeParams) == 0 {
+		case cls.hashBase || len(cls.TypeParams) == 0:
 			t = TClass{C: cls}
-		} else {
+		default:
 			f.errorf(n, "%s.new needs a type annotation (`#: %s[...]`)", cls.Name, cls.Name)
+		}
+		if cls.hashBase {
+			for len(t.Args) < len(cls.TypeParams) { // a Hash subclass's V defaults to untyped
+				t.Args = append(t.Args, TAny{})
+			}
 		}
 		targs := ""
 		if len(t.Args) > 0 {

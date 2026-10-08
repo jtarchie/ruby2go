@@ -275,6 +275,20 @@ module HashTests
     def to_s = "#{@host} #{@opts.inspect}"
   end
 
+  # A Hash subclass that transforms its keys, like Rack::Headers (issue #86).
+  # `super` reaches the embedded Hash.
+  # @rbs generic V
+  # @rbs inherits Hash[untyped, V]
+  class Downcaser < Hash
+    def [](key)
+      super(key.to_s.downcase)
+    end
+
+    def []=(k, v)
+      super(k.to_s.downcase, v)
+    end
+  end
+
   # Helpers for the checks that were testdata/run/hash_bugs.rb.
   # Data and Struct keys match by value
   Point = Data.define(:x, :y) #: [Integer, Integer]
@@ -1982,6 +1996,22 @@ module HashTests
       assert_equal [Set[1, 2, 3], Set[1, 2]], [Set[Set[1, 2], Set[2, 3]].flatten, Set[1, 2].flatten]
     end
   end
+  # #86: a Hash subclass rewrites keys, then reaches the embedded Hash with super
+  class HashSubclassTest < Minitest::Test
+    def test_downcased_keys
+      d = Downcaser.new
+      d["X-Foo"] = 1
+      d["Bar"] = 2
+      assert_equal 1, d["x-foo"]
+      assert_equal 2, d["BAR"]
+      assert_equal ["x-foo", "bar"], d.keys
+      assert_equal 2, d.size
+      assert_equal true, d.key?("x-foo")
+      assert_equal false, d.key?("X-Foo")
+      assert_equal 1, d.fetch("x-foo", 0)
+    end
+  end
+
   # #56: a container holding itself compares and hashes like MRI's, not a Go stack overflow
   class HashRecursiveTest < Minitest::Test
     def test_recursive_equality

@@ -2357,6 +2357,9 @@ func (c *Compiler) emitMethod(m *Method) {
 	env := map[string]Type{}
 	if cls.GoType != "" {
 		env["Self"] = cls.instance()
+		if cls.hashBase {
+			env["K"] = TAny{} // the embedded Hash[any, V]
+		}
 	} else {
 		env["Self"] = TVar{Name: "Self"}
 	}
