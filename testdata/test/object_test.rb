@@ -4912,4 +4912,43 @@ module ObjectTests
       def greet(who) = "from #{who}"
     end
   end
+
+  # A class-body if/unless whose condition folds at compile time keeps MRI's branch (#88, #89, decision 167).
+  class Guarded
+    LIMIT = 3
+
+    if defined?(LIMIT)
+      def limit = LIMIT
+    end
+
+    if RUBY_VERSION < "2.0"
+      def old = "old"
+    elsif RUBY_VERSION >= "3.0"
+      def era = "modern"
+    else
+      def era = "middle"
+    end
+
+    private
+
+    unless defined?(Nope) || defined?(Process.nope)
+      def hidden = "hidden"
+    end
+  end
+
+  class ObjectClassGuardTest < Minitest::Test
+    def test_defined_constant_from_same_body
+      assert_equal 3, Guarded.new.limit
+    end
+
+    def test_version_elsif
+      assert_equal "modern", Guarded.new.era
+      refute Guarded.new.respond_to?(:old)
+    end
+
+    def test_guarded_def_keeps_visibility
+      refute Guarded.new.respond_to?(:hidden)
+      assert_equal "hidden", Guarded.new.send(:hidden)
+    end
+  end
 end

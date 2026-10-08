@@ -668,7 +668,10 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 		c.errorf(f, body, "unsupported class body %T", body)
 	}
 	vis := &visibility{}
-	for _, n := range stmts.Body {
+	queue := stmts.Body
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
 		switch n := n.(type) {
 		case *parser.DefNode:
 			c.scanAnon(ctx, f, n.Body, scope)
@@ -713,13 +716,18 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			}
 			c.scanAnon(ctx, f, n.Value, scope)
 			c.addConst(f, n, n.Name, nil, scope)
-		case *parser.IfNode:
+		case *parser.IfNode, *parser.UnlessNode:
 			// MRI's `ruby2_keywords(:m) if respond_to?(:ruby2_keywords, true)`
 			// compatibility guard does nothing here (Ruby 4 always has it).
-			if ruby2KeywordsShim(n) {
+			if ifn, isIf := n.(*parser.IfNode); isIf && ruby2KeywordsShim(ifn) {
 				continue
 			}
-			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
+			branch, ok := c.takenBranch(f, n, scope)
+			if !ok {
+				c.errorf(f, n, "unsupported node in class body: %s (only a condition known at compile time, such as RUBY_VERSION or defined?, is folded)", nodeType(n))
+			}
+			// spliced in place, so the branch shares the body's visibility and sees the constants before it
+			queue = append(slices.Clip(branch), queue...)
 		default:
 			c.classBodyNode(ctx, f, n, scope, loadTime)
 		}

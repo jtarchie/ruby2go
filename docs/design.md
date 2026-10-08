@@ -5397,7 +5397,7 @@ resolve; anything not listed is still open.
       the collector knows (`attr_*`, `include`/`extend`, visibility, a spec
       DSL call, ...) and any other class-body expression (a bare `%w(...)`,
       an assignment) is collected instead of rejected. `prepend`/`define_method`
-      and a `def`-inside-`if` stay errors: only load-time code rb2go already
+      and a `def`-inside-`if` stay errors (unless the condition folds, decision 167): only load-time code rb2go already
       compiles in a method body is accepted here, and method/constant
       declarations must stay at the body's top level.
     - **Where it runs.** The statement is a `classStmt` in main's statement
@@ -5417,3 +5417,36 @@ resolve; anything not listed is still open.
       `testdata/errors/objects.txtar`'s `class_body_puts` and
       `class_body_receiver_call` rejection cases are gone;
       `class_body_define_method` now reports codegen's message.
+167. A class-body `if`/`unless` whose condition is known at compile time
+    is folded, and only the branch MRI would run is collected (#88, #89).
+    Needed by unmodified rack: `Rack::Headers` guards methods with
+    `if RUBY_VERSION >= '2.5'`, `Rack::Utils` with
+    `if defined?(Process::CLOCK_MONOTONIC)` and
+    `if defined?(ERB::Escape) && ERB::Escape.instance_method(...)`.
+    - **What folds.** `true`/`false`/`nil`; `!`, `&&`, `||` (short-circuit,
+      so the unfoldable right side of a false `&&` is never looked at);
+      `RUBY_VERSION <op> "x.y"` for `<`/`<=`/`>`/`>=`/`==`/`!=`;
+      `defined?(Const)`/`defined?(A::B)`; `defined?(Const.meth)` for a
+      `def self.meth` on the class or a superclass. `elsif`/`else` chains
+      fold link by link. Anything else stays the "unsupported node in class
+      body" error: real runtime logic is never silently dropped.
+    - **`RUBY_VERSION` is `"4.0.0"`** (rb2go compiles Ruby 4.0), compared as
+      a string, as MRI compares it (`"4.0.0" >= "10.0"` is true there too).
+      A guard on a patch release can differ from the MRI that runs the
+      tests; none seen in gems so far.
+    - **`defined?` sees the world collected so far**: the prelude, required
+      libs (scanned before any user file), and earlier user files and
+      statements. That is what MRI sees at the same point of the load, so a
+      constant defined later is absent, as in MRI. Methods added by `extend`
+      or inherited from `Module` read as absent (`hasClassMethod`); widen it
+      when a guard needs them.
+    - **Splice, not scope.** The taken branch's statements are spliced into
+      the body in place, so a `private` before the `if` covers its `def`s and
+      a constant earlier in the body is visible to a later `defined?`, as in
+      MRI, where `if` opens no scope.
+    - **Untaken branches still reach `scanRequires`**: a `require` there loads
+      its lib anyway. Harmless for prelude libs; revisit if a gem guards a
+      `-I` file that way.
+    - **Proof:** [example 112](../examples/112_class_body_guards/main.rb),
+      `testdata/test/object_test.rb`'s `ObjectClassGuardTest`;
+      `objects.txtar`'s `class_body_if` now uses an unfoldable `ENV` check.

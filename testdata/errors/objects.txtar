@@ -63,9 +63,9 @@ rescue StandardError
   nil
 end
 -- class_body_if.rb --
-# error: main.rb:3: unsupported node in class body: IfNode
+# error: main.rb:3: unsupported node in class body: IfNode (only a condition known at compile time
 class Flagged
-  if true
+  if ENV["FLAG"]
     #: () -> Integer
     def x = 1
   end
