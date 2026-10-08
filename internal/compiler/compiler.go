@@ -57,6 +57,7 @@ type Compiler struct {
 	verbatim      []verbatim
 	mainStmts     []parser.Node
 	classStmts    []*classStmt     // class/module body statements that run at load time (decision 166)
+	bodyGroup     *classStmt       // collecting a class body with locals: its statements, as one unit (decision 170)
 	mainFile      *File            // the first user file: $0, and the generated header
 	userFiles     []*File          // in load order
 	loadCode      map[*File]string // a required file's top level, generated, for the loadFile that splices it
@@ -78,6 +79,7 @@ type Compiler struct {
 	loadPath      []string                  // -I directories (decision 131)
 	sigs          map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
 	gemSigs       fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
+	pruneGems     bool                      // a gem program: unreached gem methods are dropped (decision 169)
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
@@ -202,6 +204,7 @@ type options struct {
 	seed      *Inference // types from an earlier compile of these sources, updated by this one
 	allLibs   bool       // load every prelude lib, required or not (the stub generator, decision 154)
 	gemSigs   fs.FS      // vendored `.rbs` signatures for gems (decision 160), or nil
+	pruneGems bool       // drop gem methods no reachable code names (decision 169)
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -311,6 +314,9 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.collectERB(ctx, uf) // templates need every constant collected (decision 111)
 	}
 	tick("user")
+	if c.pruneGems = opts.pruneGems; c.pruneGems {
+		c.pruneGemMethods()
+	}
 	c.mainFile = c.userFiles[0]
 	c.nameGo()
 	c.link(ctx)

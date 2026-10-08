@@ -1801,4 +1801,12 @@ module StdlibTests
       assert_equal "negative level (-1)", e.message
     end
   end
+
+  class UriParserTest < Minitest::Test
+    def test_rfc2396_escape_unescape
+      assert_equal "a%20b/c?d=%C3%A9&x[1]", URI::RFC2396_PARSER.escape("a b/c?d=é&x[1]")
+      assert_equal "a b+c/d%zz✓", URI::RFC2396_PARSER.unescape("a%20b+c%2Fd%zz%E2%9C%93")
+      assert_equal URI::RFC3986_Parser, URI::DEFAULT_PARSER.class
+    end
+  end
 end

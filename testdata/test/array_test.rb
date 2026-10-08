@@ -2408,4 +2408,19 @@ module ArrayTests
       assert_equal [[3, 3], "3"], [x * 2, x * "-"]
     end
   end
+
+  class ArrayPushManyTest < Minitest::Test
+    def test_push_and_append_take_many
+      a = [1]
+      a.push(2, 3)
+      a.push(*[4, 5])
+      a.append(6, *[7])
+      a.push
+      assert_equal [1, 2, 3, 4, 5, 6, 7], a
+    end
+
+    def test_flatten_pairs
+      assert_equal [:a, 1, :b, 2], [[:a, 1], [:b, 2]].flatten
+    end
+  end
 end

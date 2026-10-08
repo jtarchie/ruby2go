@@ -88,6 +88,17 @@ class Regexp < Object
   #: (String) -> String
   def self.quote(str) = escape(str)
 
+  # A Regexp matching any of pats: a String matches itself, a Regexp keeps its flags (its to_s).
+  #: (*untyped) -> Regexp
+  def self.union(*pats)
+    pats = pats[0] if pats.size == 1 && pats[0].is_a?(Array)
+    # ponytail: MRI's empty union is /(?!)/, which RE2 cannot compile; this never-matching class inspects differently
+    return Regexp.new("[^\\s\\S]") if pats.empty?
+    return pats[0] if pats.size == 1 && pats[0].is_a?(Regexp)
+    parts = pats.map { |x| x.is_a?(Regexp) ? x.to_s : Regexp.escape(x.to_s) }
+    Regexp.new(parts.join("|"))
+  end
+
   #: () -> Array[String]
   def names = %x{ return rbUniqNames(self.re.SubexpNames()) }
 
@@ -113,6 +124,9 @@ class Regexp < Object
   # Every Regexp is a literal, and literals are frozen.
   #: () -> bool
   def frozen? = true
+
+  #: () -> self
+  def freeze = self
 
   #: () -> String
   def inspect = %x{ String("/" + rbRegexpDesc(self.src) + "/" + self.opts) }

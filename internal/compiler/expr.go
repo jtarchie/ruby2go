@@ -3655,6 +3655,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 // returning each Go param with its type. A variadic lambda's (rest) last
 // param is a Go `...E`, which its `*name` holds as an Array (decision 152).
 func (f *fctx) bindClosureParams(n parser.Node, names []string, params []Type, rest bool) ([]string, func()) {
+	if rest && len(params) == 1 && (len(names) == 0 || !strings.HasPrefix(names[len(names)-1], "*")) {
+		return f.bindFromRest(names, params[0])
+	}
 	k, lead := len(params), names
 	if rest {
 		k, lead = k-1, names[:len(names)-1]
@@ -3683,6 +3686,24 @@ func (f *fctx) bindClosureParams(n parser.Node, names []string, params []Type, r
 			f.emit("_ = %s", rp)
 		}
 		f.noteUnused(v)
+	}
+}
+
+// bindFromRest binds `|a, b|` for a block the method calls as `{ (*T) -> R }`: each name is that argument, or nil
+// (T's zero value) past the ones passed.
+func (f *fctx) bindFromRest(names []string, et Type) ([]string, func()) {
+	rp := f.newTmp()
+	return []string{rp + " ..." + f.c.goType(et)}, func() {
+		for i, nm := range names {
+			v := f.blockParam(nm, et)
+			if v.goName != "_" {
+				f.emit("%s := rbArgAt(%s, %d)", v.goName, rp, i)
+			}
+			f.noteUnused(v)
+		}
+		if len(names) == 0 {
+			f.emit("_ = %s", rp)
+		}
 	}
 }
 
@@ -4020,6 +4041,9 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 	if f.closures > 0 {
 		f.errorf(n, "yield inside a non-iterator block is not supported")
 	}
+	if f.blockSig.Rest && !f.iterator {
+		return expr{code: "blk(" + f.restArgs(n, args, f.blockSig.Params) + ")", typ: f.blockSig.Ret}
+	}
 	codes := make([]string, 0, len(args))
 	if len(args) != len(f.blockSig.Params) {
 		f.errorf(n, "yield passes %d values but the block takes %d", len(args), len(f.blockSig.Params))
@@ -4048,6 +4072,40 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 		f.errorf(n, "a block stored from &%s cannot also be called here (yield/blk.call): its self is rebound by instance_eval", f.m.BlockParam)
 	}
 	return expr{code: "blk(" + strings.Join(codes, ", ") + ")", typ: f.blockSig.Ret}
+}
+
+// restArgs renders arguments for a Go variadic whose last parameter is a `*rest`'s element type: the leading ones
+// one each, the rest (splats spliced in) as one slice passed with `...`.
+func (f *fctx) restArgs(n parser.Node, args []parser.Node, params []Type) string {
+	last := len(params) - 1
+	if len(args) < last {
+		f.errorf(n, "wrong number of arguments (given %d, expected %d+)", len(args), last)
+	}
+	codes := make([]string, 0, last+1)
+	for i := range last {
+		e := f.genExpr(args[i], params[i])
+		codes = append(codes, f.coerce(args[i], e, params[i]))
+	}
+	elem := params[last]
+	acc := "[]" + f.c.goType(elem) + "{}"
+	for _, a := range args[last:] {
+		if sp, ok := a.(*parser.SplatNode); ok {
+			e := f.genExpr(sp.Expression, nil)
+			t, isArr := e.typ.(TClass)
+			switch {
+			case isArr && t.C.RubyName == "Array" && typeEq(t.Args[0], elem):
+				acc = "append(" + acc + ", " + e.code + ".s...)"
+			case isArr && t.C.RubyName == "Array" && isAny(elem):
+				acc = "append(" + acc + ", rbAnySlice(" + e.code + ")...)"
+			default:
+				f.errorf(sp, "cannot splat %s into a block's *rest of %s", e.typ, elem)
+			}
+			continue
+		}
+		e := f.genExpr(a, elem)
+		acc = "append(" + acc + ", " + f.coerce(a, e, elem) + ")"
+	}
+	return strings.Join(append(codes, acc+"..."), ", ")
 }
 
 func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bool) expr {
@@ -5696,9 +5754,26 @@ func (f *fctx) assignTarget(target parser.Node, v expr) {
 		tmp := f.newTmp()
 		f.emit("%s := %s", tmp, f.materialize(v))
 		f.destructureInto(t, expr{code: tmp, typ: v.typ}, t.Lefts, t.Rest, t.Rights)
+	case *parser.IndexTargetNode: // `h[k], o.x = ...` write through []= and x=
+		var args []parser.Node
+		if t.Arguments != nil {
+			args = slices.Clone(t.Arguments.Arguments)
+		}
+		f.assignCall(t, t.Receiver, "[]=", args, v)
+	case *parser.CallTargetNode:
+		f.assignCall(t, t.Receiver, t.Name, nil, v)
 	default:
 		f.errorf(target, "unsupported assignment target %s", nodeType(target))
 	}
+}
+
+// assignCall writes v through a setter call (recv.name(args..., v)), as a multiple assignment's call targets do.
+// ponytail: MRI evaluates the receiver and index before the right-hand sides; here they run after them.
+func (f *fctx) assignCall(t parser.Node, recv parser.Node, name string, args []parser.Node, v expr) {
+	loc := t.GetLocation()
+	val := &exprNode{Node: t, e: expr{code: f.materialize(v), typ: v.typ}}
+	f.genStmt(&parser.CallNode{Location: loc, Receiver: recv, Name: name, MessageLoc: &loc,
+		Arguments: &parser.ArgumentsNode{Location: loc, Arguments: append(args, val)}}, tail{})
 }
 
 // multiLiteral evaluates every right-hand side into a temporary before any
@@ -5869,6 +5944,9 @@ func (f *fctx) concreteSelf(t Type) Type {
 // Proc#call and yield the lexical self. It marks the block escaped.
 func (f *fctx) blockSelf(n parser.Node) Type {
 	b := f.blockSig
+	if b.Self != nil && b.SelfPending == "" { // the signature's `[self: C]`
+		return b.Self
+	}
 	if b.SelfPending == "" {
 		b.SelfPending = pendingKey(f.m, "&self")
 		f.c.notePending(b.SelfPending)
@@ -6530,6 +6608,14 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 		return expr{code: code + "(" + recv.code + ")", typ: subst(sig.Ret, env)}, true
 	case *parser.BlockArgumentNode:
 		p := f.genExpr(b.Expression, nil)
+		if o, isOpt := p.typ.(TOpt); isOpt { // instance_eval(&nil) raises, as MRI does
+			if ft, ok := o.Elem.(TFunc); ok && ft.Proc {
+				tmp := f.newTmp()
+				f.emit("%s := %s", tmp, p.code)
+				f.emit("if %s == nil {\n\tpanic(NewArgumentError(Ref(String(%q))))\n}", tmp, "wrong number of arguments (given 0, expected 1..3)")
+				p = expr{code: "(*" + tmp + ")", typ: ft}
+			}
+		}
 		pt, ok := p.typ.(TFunc)
 		if !ok || !pt.Proc {
 			f.errorf(b, "%s needs a Proc, got %s", n.Name, p.typ)

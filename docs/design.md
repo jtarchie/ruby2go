@@ -484,6 +484,10 @@ resolve; anything not listed is still open.
    `IO#pos` and `idx` camel-case to as well, so a class defining both got a
    duplicate Go method or `rbDyn` dispatcher and `go build` failed; backtick
    was missing.)*
+   *Amended (#82):* a name that starts with a capital (Kernel's
+   conversion functions `String`, `Integer`, `Float`, `Pathname`, ...) is
+   `Cap_` plus its lowercase form's name: Kernel#String is `Cap_String`,
+   so it cannot meet MatchData#string's `String` on every object.
    *Revised:* a `<=>` declared `-> Integer?` is Go's `cmpNil` (lowercase,
    so no camel-cased name reaches it), and the compiler gives its class an
    `Op_cmp(T) Integer` adapter that raises MRI's `ArgumentError: comparison
@@ -4806,6 +4810,9 @@ resolve; anything not listed is still open.
       missing-annotation error, which now says so. When a round fails
       outright (a link error elsewhere), that error is reported instead
       of the parameters it left untyped, since it is the cause.
+      *Amended (decision 169):* in a gem file of a gem program, a parameter
+      no call types is `untyped` instead: the method is kept only because
+      some reachable code spells its name, so only a dynamic call reaches it.
     - **How.** A compile that meets an untyped parameter aborts before
       emitting. `compile` then runs rounds, each a fresh compile through
       return inference (about a tenth of a full build, no emit or
@@ -5052,6 +5059,12 @@ resolve; anything not listed is still open.
     now reads such a variable in a `default:`.
     ([example 105](../examples/105_variadic_lambdas/main.rb),
     `testdata/test/infer_test.rb` `test_variadic_lambda`.)
+    *Amended (#82):* a method's block can take a rest too: an RBS block
+    `{ (*T) -> R }` is a Go variadic `func(...T) R` (never a range-func
+    iterator), `yield` passes the leading values one each and the rest,
+    `*splat`s spliced in, as one slice; a block literal `|a, b|` given for
+    it binds each name to that argument or nil past the end (`rbArgAt`),
+    and `|*all|` collects them. Cuba's `on` yields `*captures` this way.
 153. Whether an ivar was assigned (#53) is a bit on the object, kept only
     by classes whose program asks. MRI answers `defined?(@x)`,
     `instance_variables` and `instance_variable_defined?` from what ran:
@@ -5347,6 +5360,11 @@ resolve; anything not listed is still open.
     - `Foo.new { }` forwards the block to `initialize` (the direct
       constructor and the metaclass `new` both pass `blk`); a block given to
       a class with no block-taking `initialize` is ignored, as MRI ignores it.
+    - *Amended (#82):* a signature's block self (`?{ () [self: Cuba] -> R }`,
+      decision 160) is the block's Self outright, so the method's block
+      escapes with a known self and no inference round is needed; an
+      optional one stored in an ivar is a `Proc?`, and `instance_eval(&@blk)`
+      on nil raises MRI's ArgumentError.
     ([example 108](../examples/108_proc_instance_eval/main.rb),
     [example 109](../examples/109_class_eval/main.rb).)
 
@@ -5450,6 +5468,13 @@ resolve; anything not listed is still open.
     - **Proof:** [example 112](../examples/112_class_body_guards/main.rb),
       `testdata/test/object_test.rb`'s `ObjectClassGuardTest`;
       `objects.txtar`'s `class_body_if` now uses an unfoldable `ENV` check.
+    - *Amended (#82):* anywhere else (a method body, a constant's
+      initializer, a ternary), `if defined?(C)` (or an `&&` led by one) for
+      a constant no file defines compiles only the other branch: the
+      closed world is the whole program, so it is false at run time too,
+      and the guarded branch names C, which would not compile. Rack's
+      `URI_PARSER = defined?(::URI::RFC2396_PARSER) ? ... : ...` is one.
+      A constant that does exist is still checked at run time.
 168. Class-level and module accessors, and aliases of Hash methods in a Hash
     subclass (#82). Needed by unmodified rack: `Rack::Utils` and
     `Rack::Request` declare `attr_accessor` and `alias` inside
@@ -5484,3 +5509,73 @@ resolve; anything not listed is still open.
       `object_test.rb`'s `ObjectClassAttrTest`, `hash_test.rb`'s
       `test_alias_of_inherited_hash_method`; `objects.txtar`'s
       `attr_in_module` became `attr_on_go_type`.
+169. A gem program compiles only the gem methods reachable code can call
+    (#82). Under MRI, the Cuba probe loads 13 rack/cuba files defining 233
+    methods and calls 20 of them (`Rack::Headers`: 0 of 24, `Utils`: 0 of
+    36, `Request`: 1 of 87). Every method had to type-check, so most of the
+    work toward unmodified Cuba was signatures and prelude gaps for code that
+    never runs. Code that never runs need not be compiled, so this is
+    semantics-preserving.
+    - **Where.** Only for `CompileWithBoot` (a program that requires a gem),
+      between collect and link (`pruneGemMethods`, `reach.go`). A *gem
+      file* is one under a `-I` directory. User files and the prelude are
+      compiled whole as before; the WASM playground and every non-gem
+      program are untouched.
+    - **Reachability is rapid type analysis.** A method name is *reached*
+      when reachable code spells it: a call (operators, `x.y = `, `+=`,
+      `[]=` included), a symbol literal (`send(:x)`, `respond_to?(:x)`,
+      `&:x`; not `attr_*`/visibility/`include` arguments), a Go call in a
+      `%x{}` body or `prelude/go` (`.Name(`, `Owner_Name[`), or one of the
+      names Ruby calls implicitly (`initialize`, `to_s`, `each`, `<=>`,
+      `hash`, `method_missing`, ...). A gem class is *live* when reachable
+      code names its constant (not as a namespace prefix, superclass,
+      or `include` argument), and its superclasses, included and extended
+      modules are then live too. A gem method is kept when its name is
+      reached and its owner is live; its body is then walked in turn, to a
+      fixpoint. Roots: all user code, and the prelude's and gems' code
+      outside `def`s (class bodies run at load). `alias new old` reaches
+      `old` once `new` is reached.
+    - **Bail-out.** A reflective call with a computed name (`send(x)`,
+      `method(x)`, `respond_to?(x)`, `const_get(x)`, `define_method(x)`)
+      anywhere reachable turns pruning off for the program, since it could
+      name any method. Exception: `respond_to?(name)` inside
+      `respond_to_missing?` (Delegate's), which only forwards a name some
+      other call spelled. `RB2GO_PRUNE_DEBUG=1` prints why each name was
+      reached, the live gem classes, and any bail-out.
+    - **Untyped leftovers.** A kept gem method's parameter that no call
+      types is `untyped` (amends decision 146): with name-based
+      reachability it is kept for a name some unrelated class shares, so
+      only a dynamic call can reach it.
+    - **Not exact.** Names conflate across classes (`fetch` reached by
+      the prelude keeps a live gem class's `fetch`), so a vendored sig is
+      still needed for what a live gem class defines under common names.
+      A pruned method is also gone from reflection (`methods`,
+      `instance_methods`), which nothing in rack or cuba uses.
+    - **Proof:** `TestBootAutoload`'s `testdata/boot/lib/demo.rb` holds a
+      live class's never-called method and an unreferenced class, neither
+      of which compiles; the program compiles and matches MRI.
+170. A class body's locals are visible to its later statements and
+    constant initializers (#82), as in MRI (methods do not see them).
+    Rack's `QueryParser` builds `env_int = lambda { ... }` and then
+    `BYTESIZE_LIMIT = env_int.call(...)`; `Rack::Request::Helpers`
+    interpolates a local into its `AUTHORITY` Regexp.
+    - **One unit.** A body (one `class`/`module` opening) that assigns a
+      local at its own level runs its load-time statements (decision 166)
+      as one `classStmt` over all of them, so they share one Go function
+      scope and locals flow as in a method; a constant whose initializer
+      reads one of the body's locals is assigned inside that unit
+      (`Const.inBody`) instead of as its own `constInit`. The unit is a
+      Go block of its own in main, so its locals never meet main's. A body
+      without locals is unchanged.
+    - **Typed constants.** Such a constant is typed before main is generated
+      (other code reads it), when the local's type is not known yet, so it
+      needs `#: T` or a `.rbs` constant (`NAME: T`, now read from sig files
+      too, decision 160); without one it is a compile error naming the fix.
+    - **Order.** The unit runs at its first statement's position; a
+      constant that does not read a local still runs at its own. Only a
+      constant without locals placed between two unit statements that
+      depend on its side effects would observe the difference.
+    - **Not yet:** top-level locals in a top-level constant's initializer
+      (`x = 2; X = x + 1`), still "undefined local".
+    - **Proof:** [example 114](../examples/114_class_body_locals/main.rb),
+      `object_test.rb`'s `test_class_body_locals`.

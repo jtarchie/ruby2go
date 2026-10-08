@@ -26,7 +26,7 @@ func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := options{loadPath: loadPath, gemSigs: gemSigs}
+	opts := options{loadPath: loadPath, gemSigs: gemSigs, pruneGems: true}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	return out, opts.warnings, err
 }

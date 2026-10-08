@@ -37,10 +37,6 @@ show([1])
 # error: main.rb:3: size does not take a block
 nums = [1, 2] #: Array[Integer]
 puts nums.size { |n| n }
--- push_many.rb --
-# error: main.rb:3: Array#push: wrong number of arguments (given 2, expected 1)
-nums = [1] #: Array[Integer]
-nums.push(2, 3)
 -- overload_signature.rb --
 # error: main.rb:4: overloaded signatures (#|) are not supported
 #: (Integer) -> Integer
@@ -318,11 +314,6 @@ puts total
 # error: main.rb:3: tuple index must be a literal in range
 pair = [1, "a"]
 puts pair[-1].inspect
--- index_target_multi_assign.rb --
-# error: main.rb:3: unsupported assignment target IndexTargetNode
-nums = [1, 2] #: Array[Integer]
-nums[0], nums[1] = nums[1], nums[0]
-puts nums.inspect
 -- destructure_optional_tuple.rb --
 # error: main.rb:3: cannot destructure [Integer, String]?
 pairs = [[1, "a"]] #: Array[[Integer, String]]

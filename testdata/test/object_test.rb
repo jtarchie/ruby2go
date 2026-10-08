@@ -5018,4 +5018,76 @@ module ObjectTests
       assert_equal :x, t.tag
     end
   end
+
+  # Object#dup: a shallow copy, then initialize_copy (#82).
+  class DupBox
+    attr_accessor :n #: Integer
+    attr_reader :items #: Array[Integer]
+    attr_reader :copied #: bool?
+
+    #: () -> void
+    def initialize
+      @n = 1
+      @items = [1]
+      @copied = nil
+    end
+
+    #: (DupBox) -> void
+    def initialize_copy(other)
+      @copied = true
+    end
+  end
+
+  # A module initialize's super() with nothing after it in any includer is Object's: a no-op (#82).
+  module SuperEnv
+    attr_reader :env #: Hash[String, String]?
+
+    #: (Hash[String, String]) -> void
+    def initialize(env)
+      @env = env
+      super()
+    end
+  end
+
+  class SuperEnvUser
+    include SuperEnv
+  end
+
+  # A class body's locals are visible to its later statements and constants (decision 170).
+  class BodyLocals
+    factor = 3
+    scale = lambda { |x| x * factor } #: ^(Integer) -> Integer
+    SCALED = scale.call(4) #: Integer
+    NAMES = %w[a b].map { |s| s * factor } #: Array[String]
+  end
+
+  class ObjectDupTest < Minitest::Test
+    def test_dup_is_shallow_and_calls_initialize_copy
+      a = DupBox.new
+      b = a.dup
+      b.n = 5
+      b.items << 2
+      assert_equal [1, 5, true, nil], [a.n, b.n, b.copied, a.copied]
+      assert_same a.items, b.items
+    end
+
+    def test_dup_of_immediates_and_objects
+      assert_equal [3, :s], [3.dup, :s.dup]
+      o = Object.new
+      refute_same o, o.dup
+    end
+
+    def test_module_initialize_super
+      assert_equal({ "a" => "b" }, SuperEnvUser.new({ "a" => "b" }).env)
+    end
+
+    def test_class_body_locals
+      assert_equal 12, BodyLocals::SCALED
+      assert_equal %w[aaa bbb], BodyLocals::NAMES
+    end
+
+    def test_kernel_string
+      assert_equal ["", "12", "a", "s"], [String(nil), String(12), String("a"), String(:s)]
+    end
+  end
 end

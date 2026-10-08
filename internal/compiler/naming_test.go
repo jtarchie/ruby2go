@@ -43,7 +43,8 @@ func TestGoMethodName(t *testing.T) {
 		{"reset", "Reset"},
 		{"utf8?", "Utf8Q"},
 		{"a2b", "A2b"},
-		{"Integer", "Integer"},
+		{"Integer", "Cap_Integer"}, // never `integer`'s Integer
+		{"String", "Cap_String"},
 		// leading underscores are kept (decision 3)
 		{"__write", "__Write"},
 		{"_foo", "_Foo"},

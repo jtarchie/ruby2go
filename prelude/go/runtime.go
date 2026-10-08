@@ -1486,3 +1486,20 @@ func rbIvarAssignOpt[T any](dst **T, v any, name string) {
 	rbIvarAssign(&x, v, name)
 	*dst = &x
 }
+
+// rbDup is Object#dup: a struct object's generated _Dup copy; anything else (Integer, Symbol, nil, true) is itself.
+func rbDup[T any](x T) T {
+	if d, ok := any(x).(interface{ _Dup() any }); ok {
+		return d._Dup().(T)
+	}
+	return x
+}
+
+// rbArgAt is a block parameter bound from a variadic call: the i-th value, or the zero value (nil) past the end.
+func rbArgAt[T any](xs []T, i int) T {
+	if i < len(xs) {
+		return xs[i]
+	}
+	var zero T
+	return zero
+}

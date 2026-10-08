@@ -23,6 +23,9 @@ func goMethodName(name string) string {
 	if n, ok := opNames[name]; ok {
 		return n
 	}
+	if name != "" && unicode.IsUpper(rune(name[0])) { // Kernel#String must not meet MatchData#string
+		return "Cap_" + goMethodName(strings.ToLower(name[:1])+name[1:])
+	}
 	suffix := ""
 	switch {
 	case strings.HasSuffix(name, "?"):

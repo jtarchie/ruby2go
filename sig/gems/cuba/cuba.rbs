@@ -1,4 +1,6 @@
 class Cuba
+  REGEXES: Hash[untyped, Regexp]
+
   attr_reader env: Hash[String, untyped]
   attr_reader req: untyped
   attr_reader res: Cuba::Response
@@ -7,7 +9,7 @@ class Cuba
   def initialize: () ?{ () [self: Cuba] -> untyped } -> void
   def call: (Hash[String, untyped]) -> untyped
   def call!: (Hash[String, untyped]) -> untyped
-  def on: (*untyped) { (*untyped) -> void } -> untyped
+  def on: (*untyped) { (*untyped) -> void } -> void
   def settings: () -> Hash[Symbol, untyped]
   def not_found: () -> untyped
   def default: () -> bool
@@ -19,6 +21,10 @@ class Cuba
   def with: (?Hash[Symbol, untyped]) { () -> void } -> untyped
   def vars: () -> Hash[Symbol, untyped]
   def session: () -> untyped
+  def extension: (?String) -> ^() -> untyped
+  def param: (untyped, ?untyped) -> ^() -> untyped
+  def host: (untyped) -> bool
+  def accept: (String) -> ^() -> untyped
   def get: () -> untyped
   def post: () -> untyped
   def put: () -> untyped
@@ -32,7 +38,7 @@ class Cuba
 
   def self.define: () ?{ () [self: Cuba] -> untyped } -> untyped
   def self.app: () -> Rack::Builder
-  def self.use: (*untyped) ?{ (*untyped) -> untyped } -> untyped
+  def self.use: (untyped, *untyped, **untyped) ?{ (*untyped) -> untyped } -> untyped
   def self.prototype: () -> Cuba
   def self.call: (Hash[String, untyped]) -> untyped
   def self.reset!: () -> void
@@ -49,11 +55,11 @@ class Cuba
     def initialize: (?Hash[String, String]) -> void
     def []: (String) -> String?
     def []=: (String, String) -> String
-    def write: (untyped) -> Integer
-    def text: (untyped) -> Integer
-    def html: (untyped) -> Integer
-    def json: (untyped) -> Integer
-    def redirect: (String, ?Integer) -> Integer?
+    def write: (untyped) -> Array[String]
+    def text: (untyped) -> Array[String]
+    def html: (untyped) -> Array[String]
+    def json: (untyped) -> Array[String]
+    def redirect: (String, ?Integer) -> Integer
     def finish: () -> Array[untyped]
     def set_cookie: (String, untyped) -> untyped
     def delete_cookie: (String, ?untyped) -> untyped

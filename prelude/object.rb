@@ -58,6 +58,10 @@ module Kernel
     self
   end
 
+  # A shallow copy (Object, struct classes; Array, String, Hash and Set have their own); immediates are themselves.
+  #: () -> self
+  def dup = %x{ return rbDup(self) }
+
   #: () -> String
   def to_s = %x{ rbObjToS(self) }
 

@@ -2049,4 +2049,28 @@ module HashTests
       assert_equal [true, false], [[1, [2, { k: [3] }]] == [1, [2, { k: [3] }]], [1, [2]] == [1, [3]]]
     end
   end
+
+  class HashBracketTest < Minitest::Test
+    def test_bracket_forms
+      assert_equal({ 1 => true, 2 => true }, Hash[[[1, true], [2, true]]])
+      assert_equal({ a: 1, b: 2 }, Hash[:a, 1, :b, 2])
+      assert_equal({ "x" => 1 }, Hash[{ "x" => 1 }])
+      assert_equal({ ok: 200 }, Hash[*[[:ok, 200]].flatten])
+    end
+
+    def test_odd_arguments
+      Hash[1, 2, 3]
+      flunk "no error"
+    rescue ArgumentError => e
+      assert_equal "odd number of arguments for Hash", e.message
+    end
+
+    def test_dup_keeps_default_and_is_independent
+      h = Hash.new(0) #: Hash[String, Integer]
+      h["x"] = 1
+      g = h.dup
+      g["y"] = 2
+      assert_equal [{ "x" => 1 }, { "x" => 1, "y" => 2 }, 0], [h, g, g["zz"]]
+    end
+  end
 end

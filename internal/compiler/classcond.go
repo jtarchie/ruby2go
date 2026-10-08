@@ -163,3 +163,25 @@ func (c *Compiler) hasClassMethod(cls *Class, name string) bool {
 	}
 	return false
 }
+
+// absentGuard reports whether pred is `defined?(C)`, or an `&&` led by one, for a constant no file defines: false at
+// run time as well, since the closed world is the whole program, so the guarded code (which names C) is dropped.
+func (c *Compiler) absentGuard(f *File, pred parser.Node, scope []*Class) bool {
+	switch p := pred.(type) {
+	case *parser.ParenthesesNode:
+		if s, ok := p.Body.(*parser.StatementsNode); ok && len(s.Body) == 1 {
+			return c.absentGuard(f, s.Body[0], scope)
+		}
+	case *parser.AndNode:
+		return c.absentGuard(f, p.Left, scope)
+	case *parser.DefinedNode:
+		switch v := p.Value.(type) {
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			var cls *Class
+			var k *Const
+			ce := catchCompileError(func() { cls, k = c.lookupConst(f, v, scope) })
+			return ce == nil && cls == nil && k == nil
+		}
+	}
+	return false
+}

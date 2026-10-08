@@ -1,0 +1,398 @@
+package compiler
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+)
+
+// Decision 169: a gem defines far more than a program runs, and code that never runs need not type-check.
+
+// implicitNames are called by Ruby itself or by the runtime's Go helpers, never spelled at a call site.
+var implicitNames = []string{
+	"initialize", "initialize_copy", "initialize_dup", "initialize_clone", "to_s", "inspect", "to_str", "to_ary", "to_a",
+	"to_h", "to_hash", "to_proc", "to_i", "to_int", "to_f", "to_r", "to_c", "to_sym", "to_io", "to_path", "each", "call",
+	"==", "!=", "!", "eql?", "equal?", "hash", "<=>", "===", "=~", "coerce", "succ", "method_missing",
+	"respond_to_missing?", "respond_to?", "inherited", "included", "extended", "prepended", "method_added",
+	"singleton_method_added", "const_missing", "message", "full_message", "backtrace", "exception", "deconstruct",
+	"deconstruct_keys", "marshal_dump", "marshal_load", "_dump", "_load", "freeze", "dup", "clone", "new", "allocate",
+}
+
+// reflectiveCalls take a method name as their first argument; a computed one could name any method.
+var reflectiveCalls = map[string]bool{
+	"send": true, "public_send": true, "__send__": true, "method": true, "public_method": true,
+	"instance_method": true, "public_instance_method": true, "respond_to?": true, "define_method": true,
+	"const_get": true,
+}
+
+// declarationCalls name methods or modules without calling or instantiating them.
+var declarationCalls = map[string]bool{
+	"attr": true, "attr_reader": true, "attr_writer": true, "attr_accessor": true, "private": true, "public": true,
+	"protected": true, "module_function": true, "private_class_method": true, "public_class_method": true,
+	"private_constant": true, "public_constant": true, "include": true, "extend": true, "prepend": true,
+}
+
+// goCall matches a Go method call (`.Name(`) or a free func call (`Owner_Name(` / `Owner_Name[`); a field is not a call.
+var goCall = regexp.MustCompile(`(?:\.|_)([A-Z][A-Za-z0-9]*)[(\[]`)
+
+// gemFile reports whether f was loaded from a -I directory (a gem's lib), the code decision 169 prunes.
+func (c *Compiler) gemFile(f *File) bool {
+	if f == nil || f.prelude || f.path == "" {
+		return false
+	}
+	for _, dir := range c.loadPath {
+		rel, err := filepath.Rel(realPath(dir), f.path)
+		if err == nil && !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+	return false
+}
+
+// userFile is a file of the program's own: not the prelude and not a gem's.
+func (c *Compiler) userFile(f *File) bool { return !f.prelude && !c.gemFile(f) }
+
+// reachDef is one method body: walked once its name is reached and, for a gem class's, the class is live.
+type reachDef struct {
+	name   string
+	owner  *Class // nil for a top-level def
+	body   parser.Node
+	walked bool
+}
+
+type reach struct {
+	c       *Compiler
+	names   map[string]bool     // method names reachable code calls
+	consts  map[string]bool     // constant names (last segment) reachable code may instantiate or call through
+	aliases map[string][]string // alias new name -> old names: reaching the new one reaches the old
+	defs    []*reachDef
+	goNames map[string][]string // Go method name -> Ruby names, for names Go code calls
+	live    map[*Class]bool
+	dynamic string // a computed reflective call, which reaches any name; "" when there is none
+	from    string
+	why     map[string]string // RB2GO_PRUNE_DEBUG: what first reached each name
+}
+
+// pruneGemMethods drops a gem's methods reachable code cannot call (decision 169): by name, and for a gem class's
+// methods only while the class is live (reachable code names it, a subclass, or an includer).
+func (c *Compiler) pruneGemMethods() {
+	r := &reach{c: c, names: map[string]bool{}, consts: map[string]bool{}, aliases: map[string][]string{}, goNames: map[string][]string{}}
+	debug := os.Getenv("RB2GO_PRUNE_DEBUG") != ""
+	if debug {
+		r.why = map[string]string{}
+	}
+	r.index()
+	r.from = "implicit"
+	for _, n := range implicitNames {
+		r.add(n)
+	}
+	for _, v := range c.verbatim {
+		r.from = "Go in " + v.file.Name
+		r.scanGo(v.code)
+	}
+	for _, f := range c.files {
+		r.from = f.Name
+		r.walk(f.Root, !c.userFile(f)) // a user file is compiled whole; elsewhere a def runs only when called
+	}
+	for _, f := range c.erbSnippets {
+		r.from = f.Name
+		r.walk(f.Root, false)
+	}
+	for changed := true; changed && r.dynamic == ""; {
+		changed = false
+		r.computeLive()
+		for _, d := range r.defs {
+			if !d.walked && r.reached(d.name, d.owner) {
+				d.walked, changed = true, true
+				r.from = "def " + d.name
+				r.walk(d.body, false)
+			}
+		}
+	}
+	if debug {
+		r.dump()
+	}
+	if r.dynamic == "" {
+		r.prune()
+	}
+}
+
+func (r *reach) dump() {
+	lines := make([]string, 0, len(r.why))
+	for name, from := range r.why {
+		lines = append(lines, fmt.Sprintf("rb2go: reach %s <- %s", name, from))
+	}
+	for cls := range r.live {
+		if r.gemClass(cls) {
+			lines = append(lines, "rb2go: live "+cls.RubyName)
+		}
+	}
+	sort.Strings(lines)
+	fmt.Fprintln(os.Stderr, strings.Join(lines, "\n"))
+	if r.dynamic != "" {
+		fmt.Fprintf(os.Stderr, "rb2go: gem methods are not pruned: %s\n", r.dynamic)
+	}
+}
+
+func (r *reach) index() {
+	note := func(name string, owner *Class, n *parser.DefNode) {
+		var body parser.Node = n
+		if st, ok := n.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
+			if x, ok := st.Body[0].(*parser.XStringNode); ok {
+				body = x
+			}
+		}
+		r.defs = append(r.defs, &reachDef{name: name, owner: owner, body: body})
+		g := goMethodName(name)
+		r.goNames[g] = append(r.goNames[g], name)
+	}
+	for _, cls := range r.c.classList {
+		for _, m := range cls.MethodList {
+			if m.Node != nil {
+				note(m.Name, cls, m.Node)
+			}
+		}
+		for _, d := range cls.singletonDefs {
+			note(d.node.Name, cls, d.node)
+		}
+	}
+	for _, m := range r.c.topDefList {
+		if m.Node != nil {
+			note(m.Name, nil, m.Node)
+		}
+	}
+}
+
+// gemClass is a class or module a gem declares; its methods count only while it is live.
+func (r *reach) gemClass(cls *Class) bool { return cls != nil && r.c.gemFile(cls.File) }
+
+func (r *reach) reached(name string, owner *Class) bool {
+	return r.names[name] && (!r.gemClass(owner) || r.live[owner])
+}
+
+// computeLive marks each gem class reachable code names, and its ancestors (superclasses, included and extended
+// modules), live: only then can an instance or the class object receive a call.
+func (r *reach) computeLive() {
+	r.live = map[*Class]bool{}
+	var mark func(cls *Class)
+	mark = func(cls *Class) {
+		if cls == nil || r.live[cls] {
+			return
+		}
+		r.live[cls] = true
+		if cls.superRef != nil {
+			mark(r.resolve(cls.superRef))
+		}
+		for i := range cls.Includes {
+			mark(r.resolve(&cls.Includes[i].ref))
+		}
+		for i := range cls.extends {
+			mark(r.resolve(&cls.extends[i].ref))
+		}
+	}
+	for _, cls := range r.c.classList {
+		name := cls.RubyName
+		if i := strings.LastIndex(name, "::"); i >= 0 {
+			name = name[i+2:]
+		}
+		if !r.gemClass(cls) || r.consts[name] {
+			mark(cls)
+		}
+	}
+}
+
+// resolve is the class a superclass/include reference names, or nil when it names none.
+func (r *reach) resolve(ref *constRef) (cls *Class) {
+	if ref.node == nil {
+		return nil
+	}
+	_ = catchCompileError(func() { cls, _ = r.c.lookupConst(ref.file, ref.node, ref.scope) })
+	return cls
+}
+
+func (r *reach) add(name string) {
+	if r.names[name] {
+		return
+	}
+	if r.why != nil {
+		r.why[name] = r.from
+	}
+	r.names[name] = true
+	for _, old := range r.aliases[name] {
+		r.add(old)
+	}
+}
+
+// alias notes `alias nn on`: on is reached once nn is.
+func (r *reach) alias(nn, on string) {
+	r.aliases[nn] = append(r.aliases[nn], on)
+	if r.names[nn] {
+		r.add(on)
+	}
+}
+
+func symbolName(n parser.Node) (string, bool) {
+	switch n := n.(type) {
+	case *parser.SymbolNode:
+		return n.Unescaped.Value, true
+	case *parser.StringNode:
+		return n.Unescaped.Value, true
+	}
+	return "", false
+}
+
+// scanGo reaches every method a Go call names, so what the runtime calls stays.
+func (r *reach) scanGo(code string) {
+	for _, m := range goCall.FindAllStringSubmatch(code, -1) {
+		for _, n := range r.goNames[m[1]] {
+			r.add(n)
+		}
+	}
+}
+
+// walk adds the method and constant names n's code uses; skipDefs leaves out def bodies, which only a call reaches.
+func (r *reach) walk(n parser.Node, skipDefs bool) {
+	if n == nil {
+		return
+	}
+	switch n := n.(type) {
+	case *parser.DefNode:
+		if skipDefs {
+			return
+		}
+	case *parser.ClassNode: // its name and a constant superclass only declare; the body runs
+		switch n.Superclass.(type) {
+		case *parser.ConstantReadNode, *parser.ConstantPathNode, nil:
+		default:
+			r.walk(n.Superclass, skipDefs)
+		}
+		r.walk(n.Body, skipDefs)
+		return
+	case *parser.ModuleNode:
+		r.walk(n.Body, skipDefs)
+		return
+	case *parser.ConstantReadNode:
+		r.consts[n.Name] = true
+	case *parser.ConstantPathNode: // Rack::Headers names Headers; Rack is only its namespace
+		r.consts[*n.Name] = true
+		return
+	case *parser.XStringNode:
+		r.scanGo(n.Unescaped.Value)
+	case *parser.CallNode:
+		if r.call(n) {
+			return
+		}
+	case *parser.AliasMethodNode:
+		nn, ok1 := symbolName(n.NewName)
+		on, ok2 := symbolName(n.OldName)
+		if ok1 && ok2 {
+			r.alias(nn, on)
+			return
+		}
+	default:
+		r.writeNames(n)
+	}
+	for _, ch := range n.CompactChildNodes() {
+		r.walk(ch, skipDefs)
+	}
+}
+
+// writeNames reaches the methods an operator-assignment or symbol node calls.
+func (r *reach) writeNames(n parser.Node) {
+	switch n := n.(type) {
+	case *parser.CallOperatorWriteNode:
+		r.add(n.ReadName)
+		r.add(n.WriteName)
+		r.add(n.BinaryOperator)
+	case *parser.CallOrWriteNode:
+		r.add(n.ReadName)
+		r.add(n.WriteName)
+	case *parser.CallAndWriteNode:
+		r.add(n.ReadName)
+		r.add(n.WriteName)
+	case *parser.IndexOperatorWriteNode:
+		r.add("[]")
+		r.add("[]=")
+		r.add(n.BinaryOperator)
+	case *parser.IndexOrWriteNode, *parser.IndexAndWriteNode, *parser.IndexTargetNode:
+		r.add("[]")
+		r.add("[]=")
+	case *parser.LocalVariableOperatorWriteNode:
+		r.add(n.BinaryOperator)
+	case *parser.InstanceVariableOperatorWriteNode:
+		r.add(n.BinaryOperator)
+	case *parser.ClassVariableOperatorWriteNode:
+		r.add(n.BinaryOperator)
+	case *parser.GlobalVariableOperatorWriteNode:
+		r.add(n.BinaryOperator)
+	case *parser.ConstantOperatorWriteNode:
+		r.add(n.BinaryOperator)
+	case *parser.ConstantPathOperatorWriteNode:
+		r.add(n.BinaryOperator)
+	case *parser.CallTargetNode:
+		r.add(n.Name)
+	case *parser.SymbolNode:
+		r.add(n.Unescaped.Value)
+	}
+}
+
+// call reaches a call's method; true when its arguments name methods or modules without reaching them.
+func (r *reach) call(n *parser.CallNode) bool {
+	r.add(n.Name)
+	args := callArgs(n)
+	// respond_to_missing? forwarding respond_to?(name) passes on a name some other call already spelled
+	if reflectiveCalls[n.Name] && len(args) > 0 && (n.Name != "respond_to?" || r.from != "def respond_to_missing?") {
+		if _, ok := symbolName(args[0]); !ok {
+			r.dynamic = "a computed " + n.Name + " in " + r.from
+		}
+	}
+	if declarationCalls[n.Name] && n.Receiver == nil {
+		return true
+	}
+	if n.Name == "alias_method" && n.Receiver == nil && len(args) == 2 {
+		nn, ok1 := symbolName(args[0])
+		on, ok2 := symbolName(args[1])
+		if ok1 && ok2 {
+			r.alias(nn, on)
+			return true
+		}
+	}
+	return false
+}
+
+func (r *reach) prune() {
+	c := r.c
+	keep := func(f *File, name string, owner *Class) bool { return !c.gemFile(f) || r.reached(name, owner) }
+	for _, cls := range c.classList {
+		var list []*Method
+		for _, m := range cls.MethodList {
+			if keep(m.File, m.Name, cls) {
+				list = append(list, m)
+			} else if cls.Methods[m.Name] == m {
+				delete(cls.Methods, m.Name)
+			}
+		}
+		cls.MethodList = list
+		var defs []singletonDef
+		for _, d := range cls.singletonDefs {
+			if keep(d.file, d.node.Name, cls) {
+				defs = append(defs, d)
+			}
+		}
+		cls.singletonDefs = defs
+	}
+	var tops []*Method
+	for _, m := range c.topDefList {
+		if keep(m.File, m.Name, nil) {
+			tops = append(tops, m)
+		} else {
+			delete(c.topDefs, m.Name)
+		}
+	}
+	c.topDefList = tops
+}

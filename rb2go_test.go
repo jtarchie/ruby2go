@@ -815,7 +815,19 @@ func rbsLibraries(t *testing.T, path string) []string {
 		t.Fatal(err)
 	}
 	matches := requireLine.FindAllStringSubmatch(string(src), -1)
-	args := []string{"-I", vendored}
+	// only sig/*.rbs: -I loads a directory recursively, and sig/gems/ (decision 160) would clash with an example's own classes
+	stdlib := t.TempDir()
+	files, err := filepath.Glob(filepath.Join(vendored, "*.rbs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		lerr := os.Symlink(f, filepath.Join(stdlib, filepath.Base(f)))
+		if lerr != nil {
+			t.Fatal(lerr)
+		}
+	}
+	args := []string{"-I", stdlib}
 	for _, m := range matches {
 		if onLoadPath(filepath.Dir(path), src, m[1]) {
 			continue // the program's own file, not a library

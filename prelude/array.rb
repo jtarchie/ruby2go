@@ -165,11 +165,15 @@ class Array < Object
     return self
   }
 
-  #: (E) -> self
-  def push(x) = self << x
+  #: (*E) -> self
+  def push(*xs) = %x{
+    self.rbCheckFrozen()
+    self.s = append(self.s, rest_...)
+    return self
+  }
 
-  #: (E) -> self
-  def append(x) = self << x
+  #: (*E) -> self
+  def append(*xs) = push(*xs)
 
   #: () -> E?
   def pop = %x{
@@ -756,6 +760,19 @@ class Array < Object
       return any(out).(*Array[E])
     }
     return &Array[E]{s: slices.Clone(self.s)}
+  }
+
+  # Pairs are Arrays to Ruby: [[:a, 1]].flatten splices them.
+  # @self Array[[A, B]]
+  # @rbs [A, B] (?Integer) -> Array[untyped]
+  def __flatten_pairs(depth = -1) = %x{
+    xs := make([]any, len(self.s))
+    for i, t := range self.s {
+      xs[i] = t
+    }
+    out := &Array[any]{}
+    rbFlattenInto(out, xs, int(depth))
+    return out
   }
 
   # @self Array[Array[Array[U]]]

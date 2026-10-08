@@ -140,20 +140,6 @@ t = s || "b"
 # error: main.rb:3: `||` on a non-nilable Integer is always the left side
 count = 0
 puts(count || 1)
--- multi_index_target.rb --
-# error: main.rb:3: unsupported assignment target IndexTargetNode
-arr = [1, 2] #: Array[Integer]
-arr[0], arr[1] = 3, 4
--- multi_attr_target.rb --
-# error: main.rb:9: unsupported assignment target CallTargetNode
-class Pt
-  attr_accessor :x #: Integer
-
-  #: () -> void
-  def initialize = @x = 0
-end
-pt = Pt.new
-pt.x, y = 1, 2
 -- multi_nil_into_new_local.rb --
 # error: main.rb:2: cannot infer a type from nil; annotate the target first
 a, b = nil, 1

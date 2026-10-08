@@ -31,10 +31,12 @@ type ClassDecl struct {
 }
 
 // MethodDecl is `def name: T` or `def self.name: T`, with `#|`-style
-// overloads as several entries in Overloads.
+// overloads as several entries in Overloads. `def self?.name: T` (a
+// module_function) sets both Self and Both.
 type MethodDecl struct {
 	Name      string
 	Self      bool
+	Both      bool // `self?.`: the singleton method and the instance method
 	Overloads []*MethodType
 	Line      int
 }
@@ -269,7 +271,7 @@ func parseMethod(s string, ln int) (*MethodDecl, error) {
 	if strings.HasPrefix(name, "self.") {
 		m.Self, m.Name = true, strings.TrimPrefix(name, "self.")
 	} else if strings.HasPrefix(name, "self?.") {
-		m.Self, m.Name = true, strings.TrimPrefix(name, "self?.")
+		m.Self, m.Both, m.Name = true, true, strings.TrimPrefix(name, "self?.")
 	}
 	overloads, err := ParseMethodTypes(sigText)
 	if err != nil {

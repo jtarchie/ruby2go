@@ -1381,4 +1381,19 @@ B
       assert_equal "a" + bs + "q", ('"a' + bs + 'q"').undump
     end
   end
+
+  class RegexpUnionTest < Minitest::Test
+    def test_union
+      assert_equal(/a\.b|(?i-mx:c+)/, Regexp.union("a.b", /c+/i))
+      assert_equal(/x|y/, Regexp.union(["x", "y"]))
+      assert_equal(/z/, Regexp.union(/z/))
+      assert_equal 1, "x/y" =~ Regexp.union(*["/", nil].compact)
+    end
+
+    def test_freeze
+      r = /a/.freeze
+      assert r.frozen?
+      assert_equal 1, r =~ "ba"
+    end
+  end
 end

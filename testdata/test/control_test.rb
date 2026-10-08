@@ -5000,4 +5000,74 @@ module ControlTests
       assert_equal [nil, "constant"], [CONTROL_EARLY_DEFINED, ControlTests.later_defined]
     end
   end
+
+  # A multiple assignment writes through []= and attribute setters (#82).
+  class ControlSetterPoint
+    attr_accessor :x #: Integer
+    attr_accessor :y #: String
+
+    #: () -> void
+    def initialize
+      @x = 0
+      @y = ""
+    end
+  end
+
+  class ControlMultiSetterTest < Minitest::Test
+    def test_index_targets
+      arr = [1, 2, 3]
+      arr[0], arr[2] = 9, 8
+      assert_equal [9, 2, 8], arr
+      h = { "a" => 1 }
+      h["a"], h["b"] = h.fetch("a") + 1, 5
+      assert_equal({ "a" => 2, "b" => 5 }, h)
+    end
+
+    def test_attribute_targets
+      pt = ControlSetterPoint.new
+      pt.x, pt.y = 4, "four"
+      assert_equal [4, "four"], [pt.x, pt.y]
+    end
+
+    def test_mixed_with_locals
+      h = {} #: Hash[String, Integer]
+      k, h["z"] = [7, 3]
+      assert_equal [7, { "z" => 3 }], [k, h]
+    end
+  end
+
+  # A block declared `{ (*untyped) -> void }` takes what yield passes, splats spliced in (#82).
+  class ControlRestRouter
+    #: (Array[String]) -> void
+    def initialize(caps)
+      @caps = caps
+    end
+
+    #: () { (*untyped) -> void } -> void
+    def each_capture
+      yield(*@caps)
+      yield(1, *@caps, "z")
+    end
+  end
+
+  # A branch guarded by defined? of a constant no file defines is dropped (decision 167).
+  CONTROL_PARSER = defined?(::ControlTests::NoSuchParser) ? ::ControlTests::NoSuchParser : :fallback
+
+  class ControlRestBlockTest < Minitest::Test
+    def test_named_params_bind_from_rest
+      got = [] #: Array[untyped]
+      ControlRestRouter.new(["7", "x"]).each_capture { |id, rest| got << [id, rest] }
+      assert_equal [["7", "x"], [1, "7"]], got
+    end
+
+    def test_rest_param_collects
+      got = [] #: Array[untyped]
+      ControlRestRouter.new(["a"]).each_capture { |*all| got << all }
+      assert_equal [["a"], [1, "a", "z"]], got
+    end
+
+    def test_absent_constant_guard
+      assert_equal :fallback, CONTROL_PARSER
+    end
+  end
 end

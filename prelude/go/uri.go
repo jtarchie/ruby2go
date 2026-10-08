@@ -15,6 +15,36 @@ func rbFormEscape(s string) string {
 	return strings.NewReplacer("%2A", "*", "~", "%7E").Replace(url.QueryEscape(s))
 }
 
+// rbURIEscape is URI::RFC2396_Parser#escape: every byte outside RFC 2396's unreserved and reserved sets is %XX.
+func rbURIEscape(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("-_.!~*'();/?:@&=+$,[]", c) >= 0 {
+			b.WriteByte(c)
+		} else {
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
+}
+
+// rbURIUnescape is URI::RFC2396_Parser#unescape: each %XX becomes its byte; anything else, `+` included, stays.
+func rbURIUnescape(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) {
+			if v, err := strconv.ParseUint(s[i+1:i+3], 16, 8); err == nil {
+				b.WriteByte(byte(v))
+				i += 2
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 // rbURIRaw: Has* tells an absent (nil in Ruby) component from an explicit empty one; Path has none since MRI's path is never nil.
 type rbURIRaw struct {
 	Scheme      string

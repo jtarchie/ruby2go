@@ -89,6 +89,27 @@ module URI
   class HTTP < Generic; end
   class HTTPS < HTTP; end
 
+  # The escape/unescape half of MRI's URI parsers, which Rack::Utils reaches through URI::RFC2396_PARSER.
+  class RFC2396_Parser
+    #: (String) -> String
+    def escape(str) = %x{ String(rbURIEscape(string(str))) }
+
+    #: (String) -> String
+    def unescape(str) = %x{ String(rbURIUnescape(string(str))) }
+  end
+
+  class RFC3986_Parser
+    #: (String) -> String
+    def escape(str) = %x{ String(rbURIEscape(string(str))) }
+
+    #: (String) -> String
+    def unescape(str) = %x{ String(rbURIUnescape(string(str))) }
+  end
+
+  RFC2396_PARSER = RFC2396_Parser.new
+  RFC3986_PARSER = RFC3986_Parser.new
+  DEFAULT_PARSER = RFC3986_PARSER
+
   #: (String) -> Generic
   def self.parse(str) = %x{
     raw, err := rbURIParse(string(str))

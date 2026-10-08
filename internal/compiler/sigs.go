@@ -93,7 +93,7 @@ func (c *Compiler) sigMethod(cls *Class, name string) *rbs.MethodDecl {
 	}
 	wantSelf := cls.metaOf != nil
 	for _, m := range d.Methods {
-		if m.Name == name && m.Self == wantSelf {
+		if m.Name == name && (m.Self == wantSelf || m.Both) {
 			return m
 		}
 	}
@@ -125,6 +125,25 @@ func (c *Compiler) sigTypeParams(cls *Class) []string {
 	}
 	if d := c.sigs[cls.RubyName]; d != nil {
 		return d.TypeParams
+	}
+	return nil
+}
+
+// sigConst is the sig file's type for constant k (`NAME: T` in its class), or nil.
+func (c *Compiler) sigConst(k *Const) rbs.Type {
+	if k.File == nil || k.File.prelude {
+		return nil
+	}
+	owner, name := "", k.RubyName
+	if i := strings.LastIndex(name, "::"); i >= 0 {
+		owner, name = name[:i], name[i+2:]
+	}
+	if d := c.sigs[owner]; d != nil {
+		for _, cd := range d.Consts {
+			if cd.Name == name {
+				return cd.Type
+			}
+		}
 	}
 	return nil
 }

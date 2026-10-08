@@ -714,6 +714,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	c.emitIvarList(cls)
 	c.emitCopy(cls)
+	c.emitDup(cls)
 	// constructor
 	init := cls.lookup("initialize")
 	if init != nil {
@@ -803,6 +804,15 @@ func (c *Compiler) emitCopy(cls *Class) {
 	c.w("func (self *%s) _Copy(seen map[any]any) any {\n\tif self == nil {\n\t\treturn self\n\t}\n\tdup := *self\n\tseen[self] = &dup\n", cls.Name)
 	for _, iv := range c.ivarOrder(cls) {
 		c.w("\t%s = rbCopyAs(%s, seen)\n", ivarPath("dup", iv), ivarPath("self", iv))
+	}
+	c.w("\treturn &dup\n}\n\n")
+}
+
+// emitDup is Object#dup for a struct class: a shallow copy, then the class's own initialize_copy (rbDup).
+func (c *Compiler) emitDup(cls *Class) {
+	c.w("func (self *%s) _Dup() any {\n\tdup := *self\n", cls.Name)
+	if e := cls.lookup("initialize_copy"); e != nil && e.M.File != nil && !e.M.File.prelude {
+		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls)) // private: no forwarder
 	}
 	c.w("\treturn &dup\n}\n\n")
 }
@@ -1365,6 +1375,13 @@ func (c *Compiler) constType(k *Const) Type {
 		k.Type = c.resolveType(t, typeScope{lex: k.Scope, file: k.File, line: k.Line})
 		return k.Type
 	}
+	if t := c.sigConst(k); t != nil { // a `.rbs` constant (decision 160)
+		k.Type = c.resolveType(t, typeScope{lex: k.Scope, file: k.File, line: k.Line})
+		return k.Type
+	}
+	if k.inBody {
+		c.errorf(k.File, k.Value, "constant %s reads a local of its class body: give it a type (`#: T`, or `%s: T` in a .rbs file)", k.RubyName, k.RubyName[strings.LastIndex(k.RubyName, ":")+1:])
+	}
 	if k.resolving {
 		c.errorf(k.File, k.Value, "constant %s depends on itself; annotate it with `#: T`", k.RubyName)
 	}
@@ -1619,6 +1636,7 @@ func (c *Compiler) emitClassMeta() {
 func (c *Compiler) emitClassID(cls *Class) bool {
 	if cls.universal && !cls.IsModule { // Object.new, BasicObject.new and main: heap objects of their own (#56)
 		c.w("func (*%s) _ClassID() int { return %d }\n\n", cls.Name, c.classID(cls))
+		c.w("func (self *%s) _Dup() any { dup := *self; return &dup }\n\n", cls.Name)
 		return true
 	}
 	if cls.IsModule || cls.universal || cls.GoType == "" && !cls.isStruct() {

@@ -220,3 +220,12 @@ func (self *Array[E]) rbCheckFrozen() {
 		rbFrozenErr(self)
 	}
 }
+
+// rbAnySlice is an Array's elements as untyped values, for a splat into a `*rest` of untyped.
+func rbAnySlice[E comparable](a *Array[E]) []any {
+	out := make([]any, len(a.s))
+	for i, x := range a.s {
+		out[i] = rbUnbox(x)
+	}
+	return out
+}

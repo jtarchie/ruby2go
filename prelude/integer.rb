@@ -494,6 +494,10 @@ end
 module Kernel
   private
 
+  # Kernel#String: to_s (nil is ""); a String is itself.
+  #: (untyped) -> String
+  def String(x) = %x{ return rbToS(x) }
+
   #: (untyped) -> Integer
   def Integer(x) = %x{
     switch v := rbUnbox(x).(type) {

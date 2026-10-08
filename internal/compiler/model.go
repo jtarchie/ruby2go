@@ -39,7 +39,7 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
-	singletonMisc []singletonMisc // attr_*/alias inside `class << self`, applied to the metaclass once it exists
+	singletonMisc []singletonMisc   // attr_*/alias inside `class << self`, applied to the metaclass once it exists
 	privateNew    bool              // `private_class_method :new`
 	undefs        map[string]bool   // `undef x`: calls through this class find nothing, even inherited
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
@@ -111,6 +111,7 @@ type Const struct {
 	resolving bool
 	guarded   bool // may be read before its assignment runs (guardConsts)
 	inMethod  bool // a class variable first assigned in a method: no init in main, reads check its set flag
+	inBody    bool // reads a local of its class body: assigned in the body's grouped statements (decision 170)
 }
 
 // Ivar is an instance variable of a struct class.
@@ -669,6 +670,13 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 		c.errorf(f, body, "unsupported class body %T", body)
 	}
 	vis := &visibility{}
+	locals := bodyLocalNames(stmts.Body)
+	prevGroup := c.bodyGroup
+	c.bodyGroup = nil
+	if loadTime && len(locals) > 0 {
+		c.bodyGroup = &classStmt{Node: &parser.StatementsNode{}, file: f, scope: scope, unit: true}
+	}
+	defer func() { c.bodyGroup = prevGroup }()
 	queue := stmts.Body
 	for len(queue) > 0 {
 		n := queue[0]
@@ -707,33 +715,46 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 		case *parser.ModuleNode:
 			c.collectModule(ctx, f, n, scope)
 		case *parser.ConstantWriteNode:
-			if call, kind := valueClass(n.Value); call != nil {
-				c.collectValueClass(ctx, f, n, call, kind, scope)
-				continue
-			}
-			if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
-				c.collectNamedAnon(ctx, f, n, call, isModule, scope)
-				continue
-			}
-			c.scanAnon(ctx, f, n.Value, scope)
-			c.addConst(f, n, n.Name, nil, scope)
+			c.collectBodyConst(ctx, f, n, scope, locals)
 		case *parser.IfNode, *parser.UnlessNode:
-			// MRI's `ruby2_keywords(:m) if respond_to?(:ruby2_keywords, true)`
-			// compatibility guard does nothing here (Ruby 4 always has it).
-			if ifn, isIf := n.(*parser.IfNode); isIf && ruby2KeywordsShim(ifn) {
-				continue
-			}
-			branch, ok := c.takenBranch(f, n, scope)
-			if !ok {
-				c.errorf(f, n, "unsupported node in class body: %s (only a condition known at compile time, such as RUBY_VERSION or defined?, is folded)", nodeType(n))
-			}
 			// spliced in place, so the branch shares the body's visibility and sees the constants before it
-			queue = append(slices.Clip(branch), queue...)
+			queue = append(slices.Clip(c.classBodyBranch(f, n, scope)), queue...)
 		default:
 			c.classBodyNode(ctx, f, n, scope, loadTime)
 		}
 	}
 	c.collectIvarDecls(f, cls, body, scope)
+}
+
+// collectBodyConst declares a class-body constant; one that reads the body's locals runs in its unit (decision 170).
+func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.ConstantWriteNode, scope []*Class, locals map[string]bool) {
+	if call, kind := valueClass(n.Value); call != nil {
+		c.collectValueClass(ctx, f, n, call, kind, scope)
+		return
+	}
+	if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
+		c.collectNamedAnon(ctx, f, n, call, isModule, scope)
+		return
+	}
+	c.scanAnon(ctx, f, n.Value, scope)
+	c.addConst(f, n, n.Name, nil, scope)
+	if c.bodyGroup != nil && readsLocal(n.Value, locals) {
+		c.consts[qualify(scope, n.Name)].inBody = true
+		c.addClassStmt(f, n, scope)
+	}
+}
+
+// classBodyBranch is the statements a class-body if/unless runs: its folded branch (decision 167), or none for
+// MRI's `ruby2_keywords(:m) if respond_to?(:ruby2_keywords, true)` guard (Ruby 4 always has it).
+func (c *Compiler) classBodyBranch(f *File, n parser.Node, scope []*Class) []parser.Node {
+	if ifn, isIf := n.(*parser.IfNode); isIf && ruby2KeywordsShim(ifn) {
+		return nil
+	}
+	branch, ok := c.takenBranch(f, n, scope)
+	if !ok {
+		c.errorf(f, n, "unsupported node in class body: %s (only a condition known at compile time, such as RUBY_VERSION or defined?, is folded)", nodeType(n))
+	}
+	return branch
 }
 
 // classBodyCall handles a class-body call that is neither a known declaration
@@ -1250,7 +1271,48 @@ type classHook struct {
 // addClassStmt records a class/module body statement that runs at load time,
 // where the class is defined (decision 166).
 func (c *Compiler) addClassStmt(f *File, n parser.Node, scope []*Class) {
+	if g := c.bodyGroup; g != nil { // a body with locals runs as one unit (decision 170)
+		st := g.Node.(*parser.StatementsNode)
+		if len(st.Body) == 0 {
+			st.Location = n.GetLocation()
+			c.classStmts = append(c.classStmts, g)
+		}
+		st.Body = append(st.Body, n)
+		return
+	}
 	c.classStmts = append(c.classStmts, &classStmt{Node: n, file: f, scope: scope})
+}
+
+// bodyLocalNames are the locals a class body assigns at its own level.
+func bodyLocalNames(stmts []parser.Node) map[string]bool {
+	out := map[string]bool{}
+	for _, n := range stmts {
+		switch n := n.(type) {
+		case *parser.LocalVariableWriteNode:
+			out[n.Name] = true
+		case *parser.LocalVariableOperatorWriteNode:
+			out[n.Name] = true
+		case *parser.LocalVariableOrWriteNode:
+			out[n.Name] = true
+		case *parser.LocalVariableAndWriteNode:
+			out[n.Name] = true
+		case *parser.MultiWriteNode:
+			for _, t := range n.Lefts {
+				if lt, ok := t.(*parser.LocalVariableTargetNode); ok {
+					out[lt.Name] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
+// readsLocal reports whether n reads one of the named locals.
+func readsLocal(n parser.Node, names map[string]bool) bool {
+	return anyNode(n, func(x parser.Node) bool {
+		r, ok := x.(*parser.LocalVariableReadNode)
+		return ok && names[r.Name]
+	})
 }
 
 // addMainStmt records a top-level statement and the file it runs in.
@@ -1677,8 +1739,30 @@ func (c *Compiler) markSuperBridges() {
 				continue
 			}
 			m.superBridge = containsSuper(m.Node.Body) && c.inheritedSig(m) == nil
+			if m.superBridge && m.Name == "initialize" && !c.hasNextDef(m) {
+				m.superBridge = false // super reaches Object#initialize in every includer: a no-op, whatever it passes
+			}
 		}
 	}
+}
+
+// hasNextDef reports whether some class including m's module defines m's name after it in its lookup order.
+func (c *Compiler) hasNextDef(m *Method) bool {
+	for _, cls := range c.classList {
+		if cls.IsModule {
+			continue
+		}
+		defs := cls.defsOf(m.Name)
+		for i, e := range defs {
+			if e.M == m {
+				if i+1 < len(defs) {
+					return true
+				}
+				break
+			}
+		}
+	}
+	return false
 }
 
 // defsOf lists every definition of name in c's lookup order (methodSet
@@ -2062,6 +2146,9 @@ func (c *Compiler) resolveMethod(m *Method) {
 	m.Params = append(m.Params, rest...)
 	if m.sig.Block != nil {
 		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc), Optional: m.sig.Block.Optional}
+		if m.sig.Block.Self != nil { // `[self: C]`: a block the method rebinds self for, so it takes self (decision 164)
+			bs.Self = c.resolveType(m.sig.Block.Self, sc)
+		}
 		for i, p := range m.sig.Block.Params {
 			t := c.resolveType(p.Type, sc)
 			if i < len(m.pendingBlock) {
@@ -2071,6 +2158,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 				bs.Pending = append(bs.Pending, prm.Pending)
 			}
 			bs.Params = append(bs.Params, t)
+			bs.Rest = bs.Rest || p.Rest // `{ (*T) -> R }`: a Go variadic, as a lambda's rest (decision 152)
 		}
 		m.Block = bs
 	}
@@ -2501,8 +2589,8 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 // nothing rescues around the yield, since Go forbids a range function from
 // recovering a panic raised in the loop body.
 func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
-	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) > 2 {
-		return false // a range func yields at most two values; other blocks are closures
+	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) > 2 || bs.Rest {
+		return false // a range func yields at most two values, none variadic; other blocks are closures
 	}
 	if _, ok := m.Ret.(TVoid); !ok && m.Ret != nil && !isNil(m.Ret) {
 		return false

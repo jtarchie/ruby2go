@@ -95,6 +95,8 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 		prm.Type = TAny{} // learned from this round's calls
 	case !c.inferDone && (c.infer == nil || !c.infer.none[pp.key]):
 		panic(needInfer{})
+	case c.pruneGems && c.gemFile(m.File):
+		prm.Type = TAny{} // only a dynamic call can reach it (decision 169)
 	default:
 		ce := catchCompileError(func() {
 			c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)

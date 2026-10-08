@@ -17,35 +17,160 @@ module Rack
     def freeze_app: () -> bool
     def to_app: () -> untyped
     def call: (Hash[String, untyped]) -> untyped
+    def generate_map: (untyped, Hash[String, untyped]) -> untyped
   end
 
   class Request
     attr_accessor self.ip_filter: untyped
-    attr_accessor self.forwarded_priority: untyped
-    attr_accessor self.x_forwarded_proto_priority: untyped
+    attr_accessor self.forwarded_priority: Array[Symbol]
+    attr_accessor self.x_forwarded_proto_priority: Array[Symbol]
+
+    def initialize: (Hash[String, untyped]) -> void
+    def ip: () -> String?
+    def params: () -> Hash[String, untyped]
+    def update_param: (String, untyped) -> void
+    def delete_param: (String) -> untyped
 
     module Env
       attr_reader env: Hash[String, untyped]
+      def initialize: (Hash[String, untyped]) -> void
+      def has_header?: (String) -> bool
+      def get_header: (String) -> untyped
+      def fetch_header: (String) ?{ (String) -> untyped } -> untyped
+      def each_header: () { ([String, untyped]) -> void } -> untyped
+      def set_header: (String, untyped) -> untyped
+      def add_header: (String, String?) -> String?
+      def delete_header: (String) -> untyped
     end
 
     module Helpers
+      AUTHORITY: Regexp
       attr_writer query_parser: untyped
+      def body: () -> untyped
+      def script_name: () -> String
+      def script_name=: (untyped) -> void
+      def path_info: () -> String
+      def path_info=: (untyped) -> void
+      def request_method: () -> String?
+      def query_string: () -> String
+      def content_length: () -> String?
+      def logger: () -> untyped
+      def user_agent: () -> String?
+      def referer: () -> String?
+      def session: () -> untyped
+      def session_options: () -> untyped
+      def scheme: () -> String?
+      def authority: () -> String?
+      def server_authority: () -> String?
+      def server_name: () -> String?
+      def server_port: () -> String?
+      def cookies: () -> Hash[String, untyped]
+      def content_type: () -> String?
+      def xhr?: () -> bool
+      def host_authority: () -> String?
+      def host_with_port: (?String?) -> String?
+      def host: () -> String?
+      def hostname: () -> String?
+      def port: () -> untyped
+      def forwarded_for: () -> Array[String?]?
+      def forwarded_port: () -> Array[Integer]?
+      def forwarded_authority: () -> String?
+      def ssl?: () -> bool
+      def ip: () -> String?
+      def media_type: () -> String?
+      def media_type_params: () -> Hash[String, String]
+      def content_charset: () -> String?
+      def form_data?: () -> bool
+      def parseable_data?: () -> bool
+      def GET: () -> Hash[String, untyped]
+      def form_pairs: () -> untyped
+      def POST: () -> Hash[String, untyped]
+      def params: () -> Hash[String, untyped]
+      def update_param: (String, untyped) -> void
+      def delete_param: (String) -> untyped
+      def base_url: () -> String
+      def url: () -> String
+      def path: () -> String
+      def fullpath: () -> String
+      def accept_encoding: () -> Array[[String, Float]]
+      def accept_language: () -> Array[[String, Float]]
+      def trusted_proxy?: (String) -> bool
+      def default_session: () -> Hash[untyped, untyped]
+      def wrap_ipv6: (String) -> String
+      def parse_http_accept_header: (String?) -> Array[[String, Float]]
+      def get_http_forwarded: (Symbol) -> Array[String]?
+      def query_parser: () -> Rack::QueryParser
+      def parse_query: (String, ?String) -> Hash[String, untyped]
+      def parse_multipart: () -> untyped
+      def expand_param_pairs: (untyped, ?Rack::QueryParser) -> Hash[String, untyped]
+      def split_header: (String?) -> Array[String]
+      def split_authority: (String?) -> [String?, String?, Integer?]
+      def forwarded_scheme: () -> String?
+      def allowed_scheme: (String?) -> String?
+      def forwarded_priority: () -> Array[Symbol]
+      def x_forwarded_proto_priority: () -> Array[Symbol]
     end
   end
 
   module Utils
-    attr_accessor self.default_query_parser: untyped
+    attr_accessor self.default_query_parser: Rack::QueryParser
     attr_accessor self.multipart_total_part_limit: untyped
     attr_accessor self.multipart_file_limit: untyped
 
+    def self.param_depth_limit: () -> Integer
+    def self.param_depth_limit=: (Integer) -> void
+    def self?.escape: (String) -> String
+    def self?.escape_path: (String) -> String
+    def self?.unescape_path: (String) -> String
+    def self?.unescape: (String, ?Encoding) -> String
+    def self?.clock_time: () -> Float
+    def self?.parse_query: (String?, ?String?) ?{ (String) -> String } -> Hash[String, untyped]
+    def self?.parse_nested_query: (String?, ?String?) -> Hash[String, untyped]
+    def self?.build_query: (untyped) -> String
+    def self?.build_nested_query: (untyped, ?String?) -> String
+    def self?.q_values: (String?) -> Array[untyped]
+    def self?.forwarded_values: (String?) -> Hash[Symbol, untyped]?
+    def self?.best_q_match: (String?, Array[String]) -> String?
+    def self?.escape_html: (untyped) -> String
+    def self?.select_best_encoding: (Array[String], Array[untyped]) -> String?
+    def self?.parse_cookies_header: (String?) -> Hash[String, untyped]
+    def self?.parse_cookies: (Hash[String, untyped]) -> Hash[String, untyped]
+    def self?.set_cookie_header: (String, untyped) -> String
+    def self?.set_cookie_header!: (Hash[String, untyped], String, untyped) -> void
+    def self?.delete_set_cookie_header: (String, ?Hash[Symbol, untyped]) -> String
+    def self?.delete_cookie_header!: (Hash[String, untyped], String, ?Hash[Symbol, untyped]) -> void
+    def self?.delete_set_cookie_header!: (untyped, String, ?Hash[Symbol, untyped]) -> untyped
+    def self?.rfc2822: (Time) -> String
+    def self?.byte_ranges: (Hash[String, untyped], Integer, ?max_ranges: Integer) -> untyped
+    def self?.get_byte_ranges: (String?, Integer, ?max_ranges: Integer) -> untyped
+    def self?.secure_compare: (String, String) -> bool
+    def self?.status_code: (untyped) -> Integer
+    def self?.clean_path_info: (String) -> String
+    def self?.valid_path?: (String) -> bool
+
     class Context
+      def initialize: (untyped, untyped) -> void
+      def call: (Hash[String, untyped]) -> untyped
+      def recontext: (untyped) -> Rack::Utils::Context
+      def context: (Hash[String, untyped], ?untyped) -> untyped
       attr_reader for: untyped
       attr_reader app: untyped
     end
   end
 
+  class URLMap
+    def initialize: (?Hash[untyped, untyped]) -> void
+    def remap: (Hash[untyped, untyped]) -> untyped
+    def call: (Hash[String, untyped]) -> untyped
+    def casecmp?: (String, String) -> bool
+  end
+
   class QueryParser
+    BYTESIZE_LIMIT: Integer
+    PARAMS_LIMIT: Integer
     attr_reader param_depth_limit: Integer
     attr_reader bytesize_limit: Integer
+    def self.make_default: (Integer, **untyped) -> QueryParser
+    def initialize: (untyped, Integer, ?bytesize_limit: Integer, ?params_limit: Integer) -> void
   end
 end

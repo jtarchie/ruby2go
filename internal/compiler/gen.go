@@ -34,7 +34,8 @@ type fctx struct {
 	buf           *strings.Builder
 	indent        int
 	tmp           int
-	pass          int // 0 = ivar discovery, 1 = local analysis, 2 = emit
+	pass          int  // 0 = ivar discovery, 1 = local analysis, 2 = emit
+	bodyUnit      bool // a class body's grouped statements: its constant assignments are statements (decision 170)
 	discover      bool
 	locals        map[localKey]*localInfo
 	refined       map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
@@ -525,16 +526,7 @@ func (f *fctx) emptyTail(n parser.Node, t tail) {
 }
 
 func (f *fctx) genStmt(n parser.Node, t tail) {
-	if ci, ok := n.(*constInit); ok {
-		f.genConstInit(ci.k)
-		return
-	}
-	if lf, ok := n.(*loadFile); ok {
-		f.buf.WriteString("{\n" + f.c.loadCode[lf.file] + "}\n")
-		return
-	}
-	if cs, ok := n.(*classStmt); ok {
-		f.genClassStmt(cs)
+	if f.genStandIn(n) {
 		return
 	}
 	f.lineOf(n)
@@ -597,6 +589,21 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
+	if f.c.absentGuard(f.f, pred, f.lex) { // the guarded branch names what no file defines: it cannot run (decision 167)
+		taken := els
+		if negate {
+			taken = then
+		}
+		switch e := taken.(type) {
+		case *parser.ElseNode:
+			f.genStmts(e.Statements, t)
+		case *parser.IfNode:
+			f.genIf(e, e.Predicate, e.Statements, e.Subsequent, false, t)
+		default:
+			f.genStmts(taken, t)
+		}
+		return
+	}
 	elseNarrow := f.elseNarrowing(pred)
 	cond, narrow := f.genCond(pred)
 	if negate {
@@ -2335,7 +2342,7 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 const optBlockGo = "blkOpt_"
 
 func optBlockType(m *Method) Type {
-	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true}}
+	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true, Self: m.Block.Self}}
 }
 
 func (c *Compiler) emitMethod(m *Method) {
@@ -2742,6 +2749,7 @@ type classStmt struct {
 	parser.Node
 	file  *File
 	scope []*Class
+	unit  bool // a whole body's statements, sharing its locals (decision 170)
 }
 
 // genClassStmt emits a class-body statement in its class's lexical scope.
@@ -2754,6 +2762,12 @@ func (f *fctx) genClassStmt(cs *classStmt) {
 	sub.lex = cs.scope
 	sub.indent = f.indent
 	sub.retVar = ""
+	sub.bodyUnit = cs.unit
+	if cs.unit { // its locals are Go locals of main's block: a nested one keeps them apart from main's
+		sub.indent++
+		f.emit("{")
+		defer f.emit("}")
+	}
 	sub.genBody(cs.Node, nil, tail{}, nil)
 	f.buf.WriteString(sub.buf.String())
 }
@@ -2795,7 +2809,7 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 	var prelude []parser.Node
 	own := map[*File][]parser.Node{}
 	for _, k := range c.constList {
-		if k.inMethod { // assigned where its method runs
+		if k.inMethod || k.inBody { // assigned where its method or its body's unit runs
 			continue
 		}
 		if k.File.prelude {
@@ -2877,6 +2891,38 @@ func (c *Compiler) hookCall(h classHook) parser.Node {
 }
 
 // genConstInit assigns a constant's package variable.
+// genStandIn emits what main's statement list holds in place of source: a constant's assignment, a required file,
+// a class body's statement; false for an ordinary node.
+func (f *fctx) genStandIn(n parser.Node) bool {
+	switch n := n.(type) {
+	case *constInit:
+		f.genConstInit(n.k)
+	case *loadFile:
+		f.buf.WriteString("{\n" + f.c.loadCode[n.file] + "}\n")
+	case *classStmt:
+		f.genClassStmt(n)
+	case *parser.ConstantWriteNode:
+		if !f.bodyUnit {
+			return false
+		}
+		f.genBodyConst(n)
+	default:
+		return false
+	}
+	return true
+}
+
+// genBodyConst assigns a constant that reads its class body's locals, inside the body's unit (decision 170).
+func (f *fctx) genBodyConst(n *parser.ConstantWriteNode) {
+	k := f.c.consts[qualify(f.lex, n.Name)]
+	typ := f.c.constType(k)
+	f.lineOf(n)
+	f.emit("%s = %s", k.GoName, f.coerce(n.Value, f.genExpr(n.Value, typ), typ))
+	if k.guarded {
+		f.emit("%s = true", constSet(k))
+	}
+}
+
 func (f *fctx) genConstInit(k *Const) {
 	typ := f.c.constType(k)
 	sub := f.c.constFctx(k)

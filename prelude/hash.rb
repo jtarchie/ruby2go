@@ -37,6 +37,34 @@ class Hash < Object
     return h
   }
 
+  # Hash[hash], Hash[[[k, v], ...]] and Hash[k, v, ...], as one untyped form (RBS's three overloads).
+  #: (*untyped) -> Hash[untyped, untyped]
+  def self.[](*xs)
+    h = {} #: Hash[untyped, untyped]
+    if xs.size == 1
+      x = xs[0]
+      if x.is_a?(Hash)
+        x.each { |k, v| h[k] = v }
+        return h
+      end
+      if x.is_a?(Array)
+        # ponytail: MRI raises ArgumentError for a non-Array element or one of 3+ elements; this takes the first two
+        x.each do |pair|
+          k, v = pair
+          h[k] = v
+        end
+        return h
+      end
+    end
+    raise ArgumentError, "odd number of arguments for Hash" if xs.size.odd?
+    i = 0
+    while i < xs.size
+      h[xs[i]] = xs[i + 1]
+      i += 2
+    end
+    h
+  end
+
   #: () { ([K, V]) -> void } -> void
   def each = %x{
     return func(yield func(Tuple2[K, V]) bool) {
@@ -190,6 +218,18 @@ class Hash < Object
     other.each { |k, v| out[k] = v }
     out
   end
+
+  # A new, unfrozen Hash with the same entries and default.
+  #: () -> Hash[K, V]
+  def dup = %x{
+    out := NewHash[K, V]()
+    out.defVal, out.hasDef, out.defProc = self.defVal, self.hasDef, self.defProc
+    for _, k := range self.keys {
+      v, _ := self.rbGet(k)
+      Hash_Op_idxSet[K, V](out, k, v)
+    }
+    return out
+  }
 
   #: () -> self
   def clear = %x{
