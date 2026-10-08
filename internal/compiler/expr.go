@@ -4806,19 +4806,25 @@ func (f *fctx) dynEach(n parser.Node, recv expr, b *parser.BlockNode) expr {
 	return expr{code: fmt.Sprintf("rbEachAny(%s, %d, func(xs_ ...any) { (%s)(%s) })", recv.code, k, clo, strings.Join(xs, ", ")), typ: TAny{}}
 }
 
+// universalBlockCall is universalCall with a block: one method every receiver shares, or a gem's untyped each.
+func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if e := f.c.universalOnly(name); e != nil { // the same method on every receiver: no dispatch needed
+		return f.callEntry(n, e, recv, args, block)
+	}
+	if f.c.isNumericMod(classOf(recv.typ)) {
+		f.errorf(n, "a block on a Numeric is not supported: narrow it with is_a? first (decision 142)")
+	}
+	if b, ok := block.(*parser.BlockNode); ok && name == "each" && len(args) == 0 && f.lenient() && isAny(recv.typ) {
+		return f.dynEach(n, recv, b)
+	}
+	f.errorf(n, "blocks on untyped receivers are not supported")
+	return expr{}
+}
+
 // universalCall handles Kernel-level methods on values of unknown type.
 func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	if block != nil {
-		if e := f.c.universalOnly(name); e != nil { // the same method on every receiver: no dispatch needed
-			return f.callEntry(n, e, recv, args, block)
-		}
-		if f.c.isNumericMod(classOf(recv.typ)) {
-			f.errorf(n, "a block on a Numeric is not supported: narrow it with is_a? first (decision 142)")
-		}
-		if b, ok := block.(*parser.BlockNode); ok && name == "each" && len(args) == 0 && f.lenient() && isAny(recv.typ) {
-			return f.dynEach(n, recv, b)
-		}
-		f.errorf(n, "blocks on untyped receivers are not supported")
+		return f.universalBlockCall(n, recv, name, args, block)
 	}
 	one := func(exp Type) expr {
 		if len(args) != 1 {

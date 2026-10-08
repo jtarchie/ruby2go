@@ -44,20 +44,7 @@ func (c *Compiler) collectDelegation(f *File, cls *Class, n *parser.CallNode, ar
 		if len(args) < 2 {
 			c.errorf(f, n, "def_delegators needs an accessor and method names")
 		}
-		var names []parser.Node
-		for _, a := range args[1:] {
-			// `*NAMES` of a constant Array literal declared above (Rack::Lint's StreamWrapper)
-			if sp, ok := a.(*parser.SplatNode); ok {
-				if cr, ok := sp.Expression.(*parser.ConstantReadNode); ok && c.consts[qualify(scope, cr.Name)] != nil {
-					if arr, ok := c.consts[qualify(scope, cr.Name)].Value.(*parser.ArrayNode); ok {
-						names = append(names, arr.Elements...)
-						continue
-					}
-				}
-			}
-			names = append(names, a)
-		}
-		for _, a := range names {
+		for _, a := range c.splatConsts(args[1:], scope) {
 			add(sym(args[0]), sym(a), sym(a))
 		}
 	case "def_delegator":
@@ -309,4 +296,21 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 	}
 	c.errorf(f, n, "%s: the type of %s must be declared to delegate to it (`# @rbs %s: T`, or `%s = ... #: T` in initialize)", n.Name, d.accessor, d.accessor, d.accessor)
 	return nil
+}
+
+// splatConsts expands each `*NAMES` of a constant Array literal declared above (Rack::Lint's StreamWrapper).
+func (c *Compiler) splatConsts(args []parser.Node, scope []*Class) []parser.Node {
+	var out []parser.Node
+	for _, a := range args {
+		if sp, ok := a.(*parser.SplatNode); ok {
+			if cr, ok := sp.Expression.(*parser.ConstantReadNode); ok && c.consts[qualify(scope, cr.Name)] != nil {
+				if arr, ok := c.consts[qualify(scope, cr.Name)].Value.(*parser.ArrayNode); ok {
+					out = append(out, arr.Elements...)
+					continue
+				}
+			}
+		}
+		out = append(out, a)
+	}
+	return out
 }
