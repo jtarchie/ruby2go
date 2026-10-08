@@ -58,6 +58,7 @@ class Encoding < Object
   ISO_8859_1 = __new("ISO-8859-1", "ISO-8859-1,ISO8859-1", true, false) #: Encoding
   ISO8859_1 = ISO_8859_1 #: Encoding
   ISO_2022_JP = __new("ISO-2022-JP", "ISO-2022-JP,ISO2022-JP", false, true) #: Encoding
+  ISO2022_JP = ISO_2022_JP #: Encoding
 
   # MRI's list order, which puts ISO-8859-1 after encodings rb2go lacks.
   LIST__ = [ASCII_8BIT, UTF_8, US_ASCII, UTF_16BE, UTF_16LE, UTF_32BE, UTF_32LE, UTF_16, UTF_32, ISO_8859_1] #: Array[Encoding]

@@ -2916,20 +2916,19 @@ module DynamicTests
     end
   end
 
-  # Proc#call on a Proc held untyped (decision 176, amending 47): a Rack app may be a lambda.
-  class DynamicProcCallTest < Minitest::Test
-    def test_call_untyped_proc
-      double = ->(x) { x * 2 } #: ^(Integer) -> Integer
-      seen = [] #: Array[String]
-      log = ->(s) { seen << s } #: ^(String) -> void
-      procs = [double, log] #: Array[untyped]
-      procs[1].call("hi")
-      assert_equal [42, ["hi"]], [procs[0].call(21), seen]
-      begin
-        procs[0].call(1, 2)
-      rescue ArgumentError => e
-        assert_equal "wrong number of arguments (given 2, expected 1)", e.message
-      end
+  # rack's `env["rack.input"].read(n)` and Cuba's `matcher.call` on what it holds untyped (decision 175).
+  class DynamicOverloadAndProcTest < Minitest::Test
+    def test_arity_overload_on_untyped
+      io = StringIO.new("abcdef") #: untyped
+      assert_equal ["ab", "cdef"], [io.read(2), io.read]
+    end
+
+    def test_proc_call_on_untyped
+      add = ->(x) { x + 1 } #: ^(Integer) -> Integer
+      m = add #: untyped
+      say = -> { "hi" } #: ^() -> String
+      s = say #: untyped
+      assert_equal [3, "hi"], [m.call(2), s.call]
     end
   end
 end

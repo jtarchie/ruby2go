@@ -520,6 +520,8 @@ resolve; anything not listed is still open.
    the closure rescues aborts the Go program instead, since a range
    function cannot recover one. *(Revised: such a class failed `go build`,
    and an unannotated override inherited iterator-ness despite its rescue.)*
+   *Amended (#92, decision 175):* in gem code such a `return` compiles, and
+   raises NotImplementedError if it runs.
    A block that takes no values qualifies too: the method returns a
    `func(func() bool)`, which Go ranges over with no loop variables, so
    `Kernel#loop { ... break }` is a plain `for range`. *(Revised: blocks
@@ -1340,7 +1342,8 @@ resolve; anything not listed is still open.
     behaves as a lambda: `return` leaves only the Proc, arity is strict,
     and `lambda?` is true. `next v` now works in any block, giving the
     block's value. A Proc held `untyped` cannot be called dynamically
-    ([example 44](../examples/44_procs/main.rb)). Kernel and Object
+    ([example 44](../examples/44_procs/main.rb)); *amended (#92, decision
+    175):* `call` on one now works. Kernel and Object
     methods (a user's included, `frozen?`, `tap`) are called statically
     with the func type as Self, and `.class` on an untyped Proc is
     `Proc`; a method a user defines on Proc itself is a compile error,
@@ -5331,6 +5334,8 @@ resolve; anything not listed is still open.
     lazily, per the plan; widen the encoder only when a real gem needs
     it). Because boot runs at build time, anything it reads (ENV, files)
     is baked in — the same rule as GraalVM native-image.
+    *Amended (#92, decision 175):* a resolved autoload's file loads where its
+    `autoload` registers, and only when the program names its constant.
 
 162. Rack server adapter (#82). The reverse of `prelude/webrick.rb`: it
     turns a Go `net/http` request into a Rack `env` Hash (`REQUEST_METHOD`,
@@ -5677,6 +5682,7 @@ resolve; anything not listed is still open.
       `forwarded_values` and a local reassigned from String to Symbol) in
       `TestBootAutoload`, equal to MRI; and the unmodified Cuba on rack
       program, which now compiles and prints MRI's output.
+    - *Amended (#92):* decision 175 widens the list.
 173. The CLI finds installed gems (#90). `rb2go build`, `run` and `gen`
     compile through `rb2go.CompileWithGems`; `Compile`, `CompileFiles`,
     `rb2go test` and the WASM playground are unchanged.
@@ -5776,6 +5782,74 @@ resolve; anything not listed is still open.
       header, POST form, 404 with an Array header, set-cookie lines) and
       `net_test.rb`'s `RackTest` (env values, a lambda app, HEAD, 204,
       `rack.*` headers, a raising app), both equal to MRI.
+175. Unmodified Cuba served over HTTP (#92; builds 161, 169, 172-174).
+    [Example 116](../examples/116_cuba_web/main.rb) routes a static page, a
+    `users/:id` capture, a query parameter, a POST form and a 404 through
+    the cuba gem on the rack gem, behind `Rackup::Handler::WEBrick`, driven
+    by `Net::HTTP`; `TestExamples` now compiles every example through
+    `CompileWithGems`, as the CLI does (decision 173), and `sig/cuba.rbs` is
+    what `rbs validate` reads for the gem. Form parsing reaches
+    `Rack::QueryParser` and, for any POST, rack's multipart parser (it
+    returns nil for a urlencoded body, but its code is reachable), so most
+    of what follows is what those compile to.
+    - **Autoloads load where they register** (amends 161). Boot's resolved
+      autoload files were appended after the program, so their load-time
+      code ran after main: `Rack::Utils.default_query_parser` was nil when
+      a request came. Each is now collected at its `autoload` call, as a
+      `require` there would be. MRI loads it at the first reference, later;
+      code between the two that depends on the file *not* being loaded
+      would see a difference. None seen.
+    - **Only the autoloads the program names** (amends 161). Boot runs the
+      real gems a prelude lib stands in for: rackup's `server.rb` requires
+      `rack/lint` and `rack/show_exceptions`, which resolve rack's
+      autoloads, but nothing rb2go compiles names `Rack::Lint`. A resolved
+      autoload's file is kept only when a constant read in another file of
+      the program (transitively, through kept files) names it; the rest are
+      never compiled. A name in a method nothing calls still keeps it.
+    - **More lenient gem code** (amends 172), each failing only where MRI
+      would behave differently and only if it runs: `Struct.new` with no
+      member types has `untyped` members; `attr_*` with no type is the defs
+      it stands for, inferred; a `return` inside a closure block raises
+      NotImplementedError when reached (decision 4's sentinel unwinding is
+      still not built); `include?`/`member?`/`key?`/`has_key?` of a `T?` is
+      false for nil; an overload chosen by argument class (decision 12)
+      sees `T?` as `T`; and `x << a << b` on a local rebinds it twice.
+    - **Compiler, for all code:** `class X < Struct.new(:a)` (a hidden
+      value class as the superclass; program code types the members with
+      `#: [A]` on the class line); `@x &&= v`; a bare `raise` in a rescue
+      clause re-raises; `raise C, msg, backtrace`; `raise e.class, msg` is
+      `raise e.exception(msg)`, a copy of `e` (MRI calls `e.class.new`, so a
+      subclass's own initialize is not rerun); a `cause:` keyword is dropped
+      and the lexical cause (decision 103) stands; raising a constant that
+      aliases a class (`ParamsTooDeepError = QueryLimitError`); `klass.new`
+      on a `singleton(HashSubclass)` (decision 165); `deprecate_constant`
+      is a no-op, as MRI's warning is off by default. Dynamic calls route an
+      argument count to its `__<name>_<n>` overload (`rack.input.read(n)`)
+      and `call` on a Proc held untyped to a type switch over the program's
+      Proc types (`rbDynProcCall`; procs taking `self` or a rest parameter
+      are not covered).
+    - **Prelude:** `String#index(s, start)`, `String#[re]`/`[re, n]`,
+      `String#split(re, limit)`, `URI.decode_www_form_component(s, enc)`,
+      `Tempfile.new([prefix, suffix])`, `Exception#exception`,
+      `Errno::EMFILE`, `Encoding::ISO_2022_JP` (a dummy encoding, left out
+      of `Encoding.list`).
+    - **Sigs:** `Rack::QueryParser`'s parsers and `@params_class`,
+      `Rack::MediaType`, three `Multipart::Parser` constants and helpers;
+      `Cuba#req` is a `Rack::Request`, so routes call it statically.
+    - **Generated code:** `if a; elsif b; end` with no else is Go's
+      `else if` (gocritic's elseif; a longer chain stays nested, which its
+      ifElseChain would flag), and `!x || y` no longer negates twice.
+    - **Not yet:** multipart/form-data bodies compile but are untested; the
+      rackup handler is still the prelude copy (#93; done in decision 176).
+    - **Proof:** example 116 equal to MRI; `TestBootAutoload`
+      (`demo/gemish.rb`'s lenient cases, `demo/config.rb`'s load-time
+      state, `demo/unnamed.rb` never compiled); minitest
+      `StringRackTest`, `RackStdlibTest`, `ControlReraiseTest`,
+      `EncodingDummyTest`, `ObjectStructSuperTest`, `HashSubclassNewTest`,
+      `DynamicOverloadAndProcTest`; `strings.txtar`'s `index_offset` and
+      `objects.txtar`'s `class_lt_struct_new` are gone, and `control.txtar`'s
+      bare-raise and three-argument raise cases now
+      cover a raise outside a rescue and four arguments.
 176. The real rackup gem (#93; supersedes 174's prelude copy). `require
     "rackup"` compiles rackup 2.3's own unmodified files through the gem
     path (decisions 169, 172, 173): `prelude/rackup.rb` and
@@ -5810,41 +5884,42 @@ resolve; anything not listed is still open.
       them, `.freeze`, a regexp interpolating constants) is walked only
       once its name is reached and is dropped otherwise (Rack::Lint's
       `HOST_PATTERN`, which RE2 cannot express); a pruned class's
-      `def_delegators` go with it.
-    - **Gem leniency (172), wider.** A Struct without member types, and an
-      attr without a type or sig, are untyped; `include Enumerable` on a
-      class whose each was pruned takes untyped; `x.replace(y)` and
+      `def_delegators` go with it; and a call on a parameter the method's
+      signature types as a prelude class reaches only that class's method
+      (`res.cookies` in the handler's `service` is WEBrick's, so
+      `Rack::Request#cookies`, which needs `Hash#fetch` with a block,
+      stays pruned in example 116).
+    - **Gem leniency (172, 175), wider.** `include Enumerable` on a class
+      whose each was pruned takes untyped; `x.replace(y)` and
       `x.clear` on a local String rebind it; `each` with a block on an
       untyped receiver (a Rack app's headers and body) is `rbEachAny`: an
       Array's elements, a Hash's pairs, or a class's own each, matched by
       its Go shape; a regexp RE2 cannot match (`\g<name>`, lookaround) is
       built and raises RegexpError when used (`rbRegexpLenient`), as
       Rack::Lint's URI patterns are built at load and never used.
-    - **General gaps the gem hit.** `call` on a Proc held untyped (amends
-      decision 47: `rbProcCall` switches over the Proc types the program
-      renders, so a lambda app needs no unwrapping); `$VERBOSE` read and
-      write (nil silences `warn`); `Kernel#Array`; the `require_relative`s
-      in a top-level `begin` (rackup.rb's `rescue LoadError` guard) load
-      where they stand; `deprecate_constant` is a no-op; `class X <
-      Struct.new(:a)` (the anonymous Struct is named `Struct_X`);
-      `Errno::EMFILE`, `Encoding::ISO_2022_JP`; regexp `(?#...)`
-      comments; `ERB.new(<<~'T'.gsub(/re/, ""))` folds at compile time;
-      `def_delegators :@x, *NAMES` of a constant Array literal;
-      `Enumerable#include?` takes untyped (a nil argument is false, not
-      TypeError); a narrowed local reassigned a non-nil value stays
-      visible and narrowed (`buffer ||= ""; buffer = buffer + x`); a last
-      `elsif` with no `else` is Go's `else if` (gocritic).
+    - **General gaps the gem hit** (beyond 175's Proc `call`, Struct
+      superclass and lenient Structs/attrs, which rackup needs too):
+      `$VERBOSE` read and write (nil silences `warn`); `Kernel#Array`; the
+      `require_relative`s in a top-level `begin` (rackup.rb's `rescue
+      LoadError` guard) load where they stand; regexp `(?#...)` comments;
+      `ERB.new(<<-'T'.gsub(/re/, ""))` folds at compile time
+      (Rack::ShowExceptions' template); `def_delegators :@x, *NAMES` of a
+      constant Array literal; `Enumerable#include?` takes untyped (an
+      untyped nil argument is false, not TypeError); a parameter narrowed
+      by `||=` and reassigned stays visible and narrowed (`buffer ||= "";
+      buffer = buffer + x` said "undefined local"); `URI::RFC2396_Parser`
+      and `RFC3986_Parser#make_regexp` (MRI's pattern, lenient).
     - **Signatures.** `sig/gems/rackup/rackup.rbs` types what no call in
       the program reaches: `run`/`shutdown`, `service` (the Go server
       calls it), `Server#initialize`, `Input` and `Stream::Reader`'s read
-      family; `sig/gems/rack` adds `Multipart::Parser`'s env-derived
-      constants. `sig/rackup.rbs` stays for `rbs validate`.
-    - **Harness.** The tests' `compileSafe` is `CompileWithGems`, so an
-      example or test file that requires a gem compiles it as the CLI
-      does (boot runs it under MRI at compile time, decision 161); one
-      without a gem never starts Ruby, as before.
+      family. `sig/rackup.rbs` stays for `rbs validate`.
+    - **Harness.** `TestRun` and `TestMinitest` compile through
+      `CompileWithGems` too (175 did `TestExamples`), so `net_test.rb`'s
+      `require "rackup"` compiles the gem (boot runs the file under MRI at
+      compile time, decision 161); a file without a gem never starts Ruby.
     - **Differences from MRI**, beyond 174's: `rack.input` is the gem's
       Fiber-backed `Input` over a body net/http has already read;
       `SERVER_SOFTWARE` is absent.
-    - **Proof:** example 115 and `net_test.rb`'s `RackTest`, unchanged and
-      equal to MRI, now running the compiled gem.
+    - **Proof:** examples 115 and 116 and `net_test.rb`'s `RackTest`,
+      unchanged and equal to MRI, now running the compiled gem;
+      `ControlVerboseTest`, `StringRegexpCommentTest`.

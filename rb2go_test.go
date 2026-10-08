@@ -461,7 +461,7 @@ func testExample(t *testing.T, dir, gen string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeGenerated(t, gen, filepath.Join(dir, "main.rb"), src) // its real path, for require_relative
+	writeGenerated(t, gen, filepath.Join(dir, "main.rb"), src, CompileWithGems) // its real path, for require_relative; gems as the CLI finds them (decision 173)
 	fmtOut, err := run(t, gen, "gofmt", "-l", "main.go")
 	if err != nil || strings.TrimSpace(fmtOut) != "" {
 		t.Fatalf("gofmt: %v %s", err, fmtOut)
@@ -470,15 +470,19 @@ func testExample(t *testing.T, dir, gen string) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
-// compileSafe is CompileWithGems (a required gem is compiled, as rackup is) with an internal compiler panic turned into an
+// compileSafe is Compile with an internal compiler panic turned into an
 // error, so one bad case fails its test instead of the whole binary.
 func compileSafe(name string, src []byte) (code []byte, warnings []string, err error) {
+	return compileSafeWith(name, src, Compile)
+}
+
+func compileSafeWith(name string, src []byte, compile func(context.Context, string, []byte, ...string) ([]byte, []string, error)) (code []byte, warnings []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("compiler panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	return CompileWithGems(context.Background(), name, src, loadPath(filepath.Dir(name), src)...)
+	return compile(context.Background(), name, src, loadPath(filepath.Dir(name), src)...)
 }
 
 // onLoadPath reports whether `require name` finds a file on src's `# load_path:`.
@@ -507,7 +511,7 @@ func transpile(t *testing.T, name string, src []byte) string {
 	t.Helper()
 	gen := t.TempDir()
 	writeModule(t, gen)
-	writeGenerated(t, gen, name, src)
+	writeGenerated(t, gen, name, src, CompileWithGems) // a test file requiring rackup compiles the gem (decision 176)
 	stablePreludeLines(t, filepath.Join(gen, "main.go"))
 	return gen
 }
@@ -528,9 +532,9 @@ func stablePreludeLines(t *testing.T, path string) {
 }
 
 // writeGenerated compiles src into dir/main.go.
-func writeGenerated(t *testing.T, dir, name string, src []byte) {
+func writeGenerated(t *testing.T, dir, name string, src []byte, compile func(context.Context, string, []byte, ...string) ([]byte, []string, error)) {
 	t.Helper()
-	code, warnings, err := compileSafe(name, src)
+	code, warnings, err := compileSafeWith(name, src, compile)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
 	}

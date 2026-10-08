@@ -1,0 +1,5 @@
+# The cuba gem ships no signatures; this is what an example's `rbs validate` needs (the compiler reads sig/gems/cuba).
+class Cuba
+  def self.define: () { () [self: Cuba] -> void } -> void
+  def self.call: (Hash[String, untyped]) -> untyped
+end

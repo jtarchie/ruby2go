@@ -5165,4 +5165,52 @@ module ControlTests
       assert_equal [false, true], [%w[yes on].include?(v), %w[yes on].include?("on")]
     end
   end
+
+  ControlRaiseAlias = KeyError
+
+  # What rack's request and query parser raise (decision 175).
+  class ControlReraiseTest < Minitest::Test
+    def control_reraise
+      Integer("x")
+    rescue ArgumentError
+      raise
+    end
+
+    def control_reraise_as(e)
+      raise e.class, "again: #{e.message}", cause: nil
+    end
+
+    def test_bare_raise_reraises
+      e = assert_raises(ArgumentError) { control_reraise }
+      assert_equal "invalid value for Integer(): \"x\"", e.message
+    end
+
+    def test_raise_class_message_backtrace
+      e = assert_raises(KeyError) { raise KeyError, "k", ["here:1"] }
+      assert_equal ["k", ["here:1"]], [e.message, e.backtrace]
+    end
+
+    def test_raise_computed_class
+      e = assert_raises(IndexError) { control_reraise_as(IndexError.new("boom")) }
+      assert_equal "again: boom", e.message
+      x = RangeError.new("r")
+      assert_equal [true, "r", "s"], [x.exception.equal?(x), x.message, x.exception("s").message]
+    end
+
+    def test_raise_constant_alias
+      assert_raises(KeyError) { raise ControlRaiseAlias }
+    end
+
+    def test_and_assign_ivar
+      @control_n = 1 #: Integer?
+      @control_n &&= @control_n.to_i + 1
+      @control_m = nil #: Integer?
+      @control_m &&= 5
+      assert_equal [2, nil], [@control_n, @control_m]
+    end
+
+    def test_errno_emfile
+      assert_equal [true, 24], [Errno::EMFILE.new.is_a?(SystemCallError), Errno::EMFILE.new.errno]
+    end
+  end
 end

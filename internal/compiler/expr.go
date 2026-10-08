@@ -226,7 +226,8 @@ func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 		return f.genRegexp(n)
 	case *parser.MatchWriteNode:
 		return f.genMatchWrite(n)
-	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode:
+	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode,
+		*parser.InstanceVariableAndWriteNode:
 		return f.genOrWrite(n)
 	case *parser.CallOperatorWriteNode, *parser.IndexOperatorWriteNode:
 		return f.genOpWrite(n)
@@ -1747,6 +1748,13 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	if e, ok := f.lenientMember(n, recv, name, args); ok {
+		return e
+	}
+	if meta := f.metaOfType(recv.typ); name == "new" && meta != nil && meta.metaOf.hashBase && len(meta.metaOf.Subclasses) == 0 && len(args) == 0 {
+		f.emit("_ = %s", recv.code)
+		return f.genNew(n, meta.metaOf, nil, nil, nil, block) // `klass.new` on a singleton(HashSubclass), as rack's `@params_class.new`
+	}
 	f.checkEncodingNames(n, recv, name, args)
 	if recv.view != "" && block == nil {
 		if e, ok := f.viewCall(n, recv, name, args); ok {
@@ -2700,6 +2708,9 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if len(args) >= 1 && classTwins(m.Name) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
+		if o, ok := a.typ.(TOpt); ok && f.lenient() { // a gem's T? is its T, nil raising where used (decision 172)
+			a.typ = o.Elem
+		}
 		if c, ok := a.typ.(TClass); ok {
 			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && len(args) <= len(r.M.Params) {
 				return r
@@ -4333,11 +4344,21 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 
 func (f *fctx) genRaise(n *parser.CallNode) expr {
 	args := callArgs(n)
+	if k, ok := lastNode(args).(*parser.KeywordHashNode); ok && len(args) > 1 && len(k.Elements) == 1 {
+		if a, ok := k.Elements[0].(*parser.AssocNode); ok {
+			if s, ok := a.Key.(*parser.SymbolNode); ok && s.Unescaped.Value == "cause" {
+				args = args[:len(args)-1] // ponytail: `cause:` is dropped; the lexical cause (decision 103) stands
+			}
+		}
+	}
 	exc := f.c.classes["Exception"]
 	var val expr
 	switch len(args) {
 	case 0:
-		f.errorf(n, "bare `raise` (re-raise) is not supported")
+		if f.rescues > 0 { // re-raises the exception being handled
+			return expr{code: "panic(r_)", typ: TVoid{}, stmt: true, noreturn: true}
+		}
+		f.errorf(n, "bare `raise` outside a rescue clause is not supported")
 	case 1:
 		if cls := f.classRef(args[0]); cls != nil {
 			if !cls.isSubclassOf(exc) {
@@ -4356,8 +4377,16 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			break
 		}
 		f.errorf(args[0], "raise needs an exception class, a String, or an exception object (got %s)", a.typ)
-	case 2:
+	case 2, 3:
 		cls := f.classRef(args[0])
+		if c, ok := args[0].(*parser.CallNode); ok && cls == nil && c.Name == "class" && c.Receiver != nil && c.Arguments == nil {
+			// `raise e.class, msg` (rack's re-raise): a copy of e with msg, as Exception#exception(msg) makes
+			val = f.genMethodCall(n, f.genExpr(c.Receiver, nil), "exception", args[1:2], nil)
+			if cl := classOf(val.typ); !isAny(val.typ) && (cl == nil || !cl.isSubclassOf(exc)) {
+				f.errorf(args[0], "raise %s: not an exception", val.typ)
+			}
+			break
+		}
 		if cls == nil {
 			f.errorf(args[0], "raise Class, message: first argument must be a class")
 		}
@@ -4366,6 +4395,12 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		}
 		msg := f.genExpr(args[1], f.cls("String"))
 		val = f.genNew(n, cls, nil, []expr{msg}, nil, nil)
+		if len(args) == 3 { // `raise C, msg, backtrace`
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, val.code)
+			val.code = tmp
+			f.emitExprStmt(n, f.genMethodCall(n, val, "set_backtrace", args[2:], nil))
+		}
 	default:
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
@@ -4988,7 +5023,15 @@ func (f *fctx) definedCall(v *parser.CallNode) string {
 func (f *fctx) classRef(n parser.Node) *Class {
 	switch n.(type) {
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
-		cls, _ := f.c.lookupConst(f.f, n, f.lex)
+		cls, k := f.c.lookupConst(f.f, n, f.lex)
+		for i := 0; cls == nil && k != nil && i < 8; i++ { // `Alias = SomeClass` (rack's ParamsTooDeepError) names the class too
+			switch k.Value.(type) {
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+				cls, k = f.c.lookupConst(k.File, k.Value, k.Scope)
+			default:
+				return nil
+			}
+		}
 		return cls
 	}
 	return nil
@@ -5609,6 +5652,9 @@ func (f *fctx) genOrWrite(n parser.Node) expr {
 		return f.genOrAssignIvar(n)
 	case *parser.IndexOrWriteNode:
 		return f.genIndexOrWrite(n)
+	case *parser.InstanceVariableAndWriteNode: // `@x &&= v` is `@x && (@x = v)`
+		w := &parser.InstanceVariableWriteNode{Name: n.Name, NameLoc: n.NameLoc, Value: n.Value, Location: n.Location}
+		return f.genExpr(&parser.AndNode{Left: &parser.InstanceVariableReadNode{Name: n.Name, Location: n.NameLoc}, Right: w, Location: n.Location}, nil)
 	}
 	return f.genOrAssignAttr(n.(*parser.CallOrWriteNode))
 }
@@ -7032,6 +7078,22 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 // genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
 // (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
 func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
+	if inner, ok := n.Receiver.(*parser.CallNode); ok && n.Name == "<<" && inner.Name == "<<" { // `x << a << b`: x << a, then x << b
+		root := inner
+		for r, ok := root.Receiver.(*parser.CallNode); ok && r.Name == "<<"; r, ok = r.Receiver.(*parser.CallNode) {
+			root = r
+		}
+		lv, ok := root.Receiver.(*parser.LocalVariableReadNode)
+		if !ok {
+			return expr{}, false
+		}
+		if _, ok := f.genStringBang(inner); !ok {
+			return expr{}, false
+		}
+		outer := *n
+		outer.Receiver = lv
+		return f.genStringBang(&outer)
+	}
 	lv, ok := n.Receiver.(*parser.LocalVariableReadNode)
 	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "replace" && n.Name != "clear" {
 		return expr{}, false
@@ -7193,6 +7255,23 @@ func (f *fctx) narrowString(name string) {
 	case isOpt(t) && isClass(t.(TOpt).Elem, "String"):
 		f.applyNarrow([]narrowInfo{{local: v, typ: str}})
 	}
+}
+
+// lenientMember: a gem's `include?(x)` of a T? is false for nil, as in MRI, where rbMust would raise (decision 172).
+func (f *fctx) lenientMember(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
+	if !f.lenient() || len(args) != 1 || name != "include?" && name != "member?" && name != "key?" && name != "has_key?" {
+		return expr{}, false
+	}
+	var a expr
+	f.probe(func() { a = f.genExpr(args[0], nil) })
+	o, ok := a.typ.(TOpt)
+	if !ok || f.c.goType(a.typ) != "*"+f.c.goType(o.Elem) {
+		return expr{}, false
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, f.genExpr(args[0], nil).code)
+	call := f.genMethodCall(n, recv, name, []parser.Node{&exprNode{Node: args[0], e: expr{code: "*" + tmp, typ: o.Elem}}}, nil)
+	return expr{code: fmt.Sprintf("Boolean(%s != nil && bool(%s))", tmp, call.code), typ: f.cls("Boolean")}, true
 }
 
 // lenient reports gem code (decision 172): what would be a nil or union type error compiles to a run-time check.

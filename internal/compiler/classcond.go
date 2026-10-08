@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"context"
+	"os"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -189,6 +191,25 @@ func (c *Compiler) absentGuard(f *File, pred parser.Node, scope []*Class) bool {
 	return false
 }
 
+// loadAutoload loads a boot-resolved autoload's file where it registers, so its load-time code runs before main's (decision 175).
+func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode) {
+	args := callArgs(n)
+	if len(args) != 2 || len(c.autoloaded) == 0 {
+		return
+	}
+	target := c.findRequire(f, &parser.CallNode{Location: n.Location, Name: "require", Arguments: &parser.ArgumentsNode{Arguments: args[1:]}})
+	if target == "" || !c.autoloaded[realPath(target)] {
+		return
+	}
+	src, err := os.ReadFile(target) //nolint:gosec // a gem file boot loaded
+	if err != nil {
+		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
+	}
+	if uf := c.loadUserFile(ctx, target, src); uf != nil {
+		c.addMainStmt(f, &loadFile{call: n, file: uf})
+	}
+}
+
 // noteAutoload records an `autoload :X` constant: defined? answers for it before its file loads, as in MRI.
 func (c *Compiler) noteAutoload(full string) {
 	if c.autoloads == nil {
@@ -207,4 +228,11 @@ func firstArg(args []parser.Node) parser.Node {
 		return nil
 	}
 	return args[0]
+}
+
+func lastNode(args []parser.Node) parser.Node {
+	if len(args) == 0 {
+		return nil
+	}
+	return args[len(args)-1]
 }

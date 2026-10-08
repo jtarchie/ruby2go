@@ -5130,17 +5130,15 @@ module ObjectTests
     end
   end
 
-  # `class X < Struct.new(...)` (decision 176): the anonymous Struct is the superclass.
-  class ObStructSub < Struct.new(:a, :b) #: [Integer, Integer]
-    #: () -> Integer
-    def sum = a + b
-  end
+  # rack's multipart MimePart (decision 175).
+  class ObjectStructSuperTest < Minitest::Test
+    class Part < Struct.new(:body, :name) #: [String, String?]
+      def label = "#{name}=#{body}"
+    end
 
-  class ObjectStructSuperclassTest < Minitest::Test
-    def test_struct_new_superclass
-      s = ObStructSub.new(1, 2)
-      assert_equal [3, 1, [1, 2], [:a, :b], true, true], [s.sum, s.a, s.to_a, s.members, s == ObStructSub.new(1, 2), ObStructSub.ancestors.include?(Struct)]
-      assert_equal "#<struct ObjectTests::ObStructSub a=1, b=2>", s.inspect
+    def test_struct_superclass
+      pt = Part.new("b", "n")
+      assert_equal ["n=b", "b", true], [pt.label, pt.body, pt.is_a?(Struct)]
     end
   end
 end

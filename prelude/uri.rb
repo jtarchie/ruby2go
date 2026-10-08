@@ -144,8 +144,9 @@ module URI
   #: (String) -> String
   def self.encode_www_form_component(s) = %x{ String(rbFormEscape(string(s))) }
 
-  #: (String) -> String
-  def self.decode_www_form_component(s) = %x{
+  # Strings are UTF-8 (decision 136), so the encoding rack passes is the only one there is.
+  #: (String, ?Encoding) -> String
+  def self.decode_www_form_component(s, _enc = Encoding::UTF_8) = %x{
     out, err := url.QueryUnescape(string(s))
     if err != nil {
       panic(NewArgumentError(Ref(String("invalid %-encoding (" + string(s) + ")"))))

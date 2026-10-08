@@ -15,6 +15,7 @@ require "securerandom"
 require "set"
 require "stringio"
 require "strscan"
+require "tempfile"
 require "time"
 require "tmpdir"
 require "uri"
@@ -1807,6 +1808,20 @@ module StdlibTests
       assert_equal "a%20b/c?d=%C3%A9&x[1]", URI::RFC2396_PARSER.escape("a b/c?d=é&x[1]")
       assert_equal "a b+c/d%zz✓", URI::RFC2396_PARSER.unescape("a%20b+c%2Fd%zz%E2%9C%93")
       assert_equal URI::RFC3986_Parser, URI::DEFAULT_PARSER.class
+    end
+  end
+
+  class RackStdlibTest < Minitest::Test
+    def test_decode_www_form_component_encoding
+      assert_equal "a b&", URI.decode_www_form_component("a+b%26", Encoding::UTF_8)
+    end
+
+    def test_tempfile_prefix_and_suffix
+      t = Tempfile.new(["rack", ".txt"])
+      path = t.path.to_s
+      assert_equal [true, true], [File.basename(path).start_with?("rack"), path.end_with?(".txt")]
+      t.close
+      t.unlink
     end
   end
 end

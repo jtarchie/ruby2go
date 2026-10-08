@@ -2073,4 +2073,16 @@ module HashTests
       assert_equal [{ "x" => 1 }, { "x" => 1, "y" => 2 }, 0], [h, g, g["zz"]]
     end
   end
+
+  class HashSubclassNewTest < Minitest::Test
+    class Params < Hash
+    end
+
+    def test_new_through_a_class_object
+      klass = Params #: singleton(Params)
+      h = klass.new
+      h["a"] = 1
+      assert_equal [{"a" => 1}, true], [h.to_h, h.is_a?(Params)]
+    end
+  end
 end

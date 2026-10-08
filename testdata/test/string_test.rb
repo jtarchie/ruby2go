@@ -1433,4 +1433,21 @@ B
       assert_equal [true, false, true], [re.match?("abc"), re.match?("ab c"), /x(?#y)z/.match?("xz")]
     end
   end
+
+  # What rack's query parser and multipart parser call (decision 175).
+  class StringRackTest < Minitest::Test
+    def test_index_from
+      assert_equal [3, nil, 3, 1, nil], ["a[b[c".index("[", 2), "a[b".index("[", 2), "a[b[".index("[", -1), "é[x".index("[", 1), "ab".index("b", 3)]
+    end
+
+    def test_aref_regexp
+      head = "Content-Type: text/plain\r\n"
+      assert_equal ["Content-Type: text/plain\r", "text/plain", nil], [head[/.*: .*/], head[/: (.*)\r/, 1], head[/nope/, 1]]
+    end
+
+    def test_split_regexp_limit
+      assert_equal [["a", "b&c"], ["a", "b", "", ""], ["a", "b"], ["abc"], []],
+        ["a&b&c".split(/& */, 2), "a&b&&".split(/&/, -1), "a&b&&".split(/&/), "abc".split(/&/, 1), "".split(/&/, 3)]
+    end
+  end
 end

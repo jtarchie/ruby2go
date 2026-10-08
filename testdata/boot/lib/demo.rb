@@ -1,5 +1,7 @@
 module Demo
   autoload :Lazy, "demo/lazy"
+  autoload :Config, "demo/config"
+  autoload :Unnamed, "demo/unnamed"
 
   class Base
     def base = :base

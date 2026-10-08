@@ -399,4 +399,11 @@ module EncodingTests
       assert_equal false, $stdout.binmode?
     end
   end
+
+  class EncodingDummyTest < Minitest::Test
+    def test_iso_2022_jp_is_dummy
+      e = Encoding::ISO_2022_JP
+      assert_equal ["ISO-2022-JP", true, false, true], [e.name, e.dummy?, e.ascii_compatible?, Encoding::ISO2022_JP == e]
+    end
+  end
 end

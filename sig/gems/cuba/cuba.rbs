@@ -6,7 +6,7 @@ class Cuba
   self.@prototype: untyped
 
   attr_reader env: Hash[String, untyped]
-  attr_reader req: untyped
+  attr_reader req: Rack::Request
   attr_reader res: Cuba::Response
   attr_reader captures: Array[untyped]
 

@@ -37,6 +37,19 @@ class Exception < Object
   #: () -> String
   def message = to_s
 
+  #: (?String?) -> self
+  def exception(msg = nil)
+    return self if msg.nil?
+    e = dup
+    e.__set_message(msg)
+    e
+  end
+
+  #: (String) -> void
+  def __set_message(msg)
+    @message = msg
+  end
+
   # MRI's rb_decorate_message: the class name after the first line (a lone trailing newline dropped), bold and underlined with highlight.
   #: (?highlight: bool) -> String
   def detailed_message(highlight: false)

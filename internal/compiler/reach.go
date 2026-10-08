@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/rbs"
 )
 
 // Decision 169: a gem defines far more than a program runs, and code that never runs need not type-check.
@@ -66,6 +68,7 @@ type reachDef struct {
 	body   parser.Node
 	file   *File
 	scope  []*Class // the def's lexical scope, which its constants resolve in
+	params map[string]*Class
 	walked bool
 }
 
@@ -85,6 +88,8 @@ type reach struct {
 	file    *File             // what the walk is in, for resolving constants lexically
 	scope   []*Class
 	pending map[string][]pendingConst // a gem constant's effect-free initializer, walked once its name is reached
+	params  map[string]*Class         // the walked def's parameters its signature types as a prelude class
+	typed   map[string][]*Class       // names reached only on those classes (`res.cookies` with res a WEBrick::HTTPResponse)
 }
 
 type pendingConst struct {
@@ -97,7 +102,7 @@ type pendingConst struct {
 // methods only while the class is live (reachable code names it, a subclass, or an includer).
 func (c *Compiler) pruneGemMethods() {
 	r := &reach{c: c, names: map[string]bool{}, consts: map[string]bool{}, aliases: map[string][]string{}, goNames: map[string][]string{},
-		named: map[*Class]bool{}, byName: map[string]bool{}, pending: map[string][]pendingConst{}}
+		named: map[*Class]bool{}, byName: map[string]bool{}, pending: map[string][]pendingConst{}, typed: map[string][]*Class{}}
 	debug := os.Getenv("RB2GO_PRUNE_DEBUG") != ""
 	if debug {
 		r.why = map[string]string{}
@@ -125,8 +130,9 @@ func (c *Compiler) pruneGemMethods() {
 		for _, d := range r.defs {
 			if !d.walked && r.reached(d.name, d.owner) {
 				d.walked, changed = true, true
-				r.from, r.file, r.scope = "def "+d.name, d.file, d.scope
+				r.from, r.file, r.scope, r.params = "def "+d.name, d.file, d.scope, d.params
 				r.walk(d.body, false)
+				r.params = nil
 			}
 		}
 		for name, ps := range r.pending {
@@ -181,6 +187,7 @@ func (r *reach) index() {
 		for _, m := range cls.MethodList {
 			if m.Node != nil {
 				note(m.Name, cls, m.Node, m.File, m.Scope)
+				r.defs[len(r.defs)-1].params = r.typedParams(m)
 			}
 		}
 		for _, d := range cls.singletonDefs {
@@ -198,7 +205,57 @@ func (r *reach) index() {
 func (r *reach) gemClass(cls *Class) bool { return cls != nil && r.c.gemFile(cls.File) }
 
 func (r *reach) reached(name string, owner *Class) bool {
-	return r.names[name] && (!r.gemClass(owner) || r.live[owner])
+	if !r.names[name] && !slices.ContainsFunc(r.typed[name], func(c *Class) bool { return c == owner || r.inherits(c, owner) }) {
+		return false
+	}
+	return !r.gemClass(owner) || r.live[owner]
+}
+
+// inherits reports whether owner is a superclass of cls.
+func (r *reach) inherits(cls, owner *Class) bool {
+	for c := cls; c != nil && c.superRef != nil; {
+		if c = r.resolve(c.superRef); c == owner {
+			return true
+		}
+	}
+	return false
+}
+
+// typedParams maps a gem method's parameters its signature types as a prelude class, whose calls then reach only that
+// class's method: rackup's `res.cookies` is WEBrick's, not Rack::Request's (whose body needs more than the program does).
+func (r *reach) typedParams(m *Method) map[string]*Class {
+	if m.sig == nil || m.Node == nil || m.Node.Parameters == nil || !r.c.gemFile(m.File) {
+		return nil
+	}
+	reqs := m.Node.Parameters.Requireds
+	var out map[string]*Class
+	for i, p := range m.sig.Params {
+		name, ok := p.Type.(rbs.Name)
+		rp, isReq := (*parser.RequiredParameterNode)(nil), false
+		if i < len(reqs) {
+			rp, isReq = reqs[i].(*parser.RequiredParameterNode)
+		}
+		if !ok || !isReq || p.Optional || p.Rest || p.Keyword || p.KwRest {
+			continue
+		}
+		cls := r.c.classes[strings.TrimPrefix(name.Name, "::")]
+		if cls == nil || r.gemClass(cls) || writesLocal(m.Node.Body, rp.Name) {
+			continue
+		}
+		if out == nil {
+			out = map[string]*Class{}
+		}
+		out[rp.Name] = cls
+	}
+	return out
+}
+
+// writesLocal reports whether body writes local name.
+func writesLocal(body parser.Node, name string) bool {
+	return anyNode(body, func(n parser.Node) bool {
+		w, ok := n.(*parser.LocalVariableWriteNode)
+		return ok && w.Name == name
+	})
 }
 
 // computeLive marks each gem class reachable code names, and its ancestors (superclasses, included and extended
@@ -420,6 +477,10 @@ func (r *reach) constGet(n *parser.CallNode) {
 }
 
 func (r *reach) call(n *parser.CallNode) bool {
+	if lv, ok := n.Receiver.(*parser.LocalVariableReadNode); ok && r.params[lv.Name] != nil {
+		r.typed[n.Name] = append(r.typed[n.Name], r.params[lv.Name])
+		return false
+	}
 	r.add(n.Name)
 	args := callArgs(n)
 	// respond_to_missing? forwarding respond_to?(name) passes on a name some other call already spelled

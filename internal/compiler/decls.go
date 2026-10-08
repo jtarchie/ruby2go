@@ -86,7 +86,8 @@ func (c *Compiler) goType(t Type) string {
 		if t.Proc {
 			var vars []string
 			if freeVars(t, &vars); len(vars) == 0 {
-				c.procTypes["*"+s] = t
+				c.procTypes["*"+s] = true
+				c.procFuncs["*"+s] = t
 			}
 			return "*" + s
 		}
@@ -1628,48 +1629,38 @@ func (c *Compiler) emitClassMeta() {
 			c.w("\tcase %s:\n\t\treturn true\n", p)
 		}
 		c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t\treturn false\n\t}\n}\n\n")
-	} else {
-		c.w("\treturn false\n}\n\n")
+		c.emitDynProcCall(procs)
+		return
 	}
-	c.emitProcCall()
+	c.w("\treturn false\n}\n\n")
+	c.emitDynProcCall(nil)
 }
 
-// emitProcCall emits rbProcCall, `call` on a Proc held untyped (amends decision 47): a type switch over the Proc types
-// the program renders, as rbIsProc's, each argument converted as a Dyn wrapper's are.
-func (c *Compiler) emitProcCall() {
-	c.w("func rbProcCall(a any, args []any) (any, bool) {\n")
-	open := false
-	for _, s := range slices.Sorted(maps.Keys(c.procTypes)) {
-		t := c.procTypes[s]
-		if t.Self != nil || t.Rest {
+// emitDynProcCall emits rbDynProcCall: `call` on a Proc held untyped, switching over the program's Proc types (amends decision 47).
+func (c *Compiler) emitDynProcCall(procs []string) {
+	c.w("func rbDynProcCall(recv any, args []any) (any, bool) {\n")
+	c.w("\tswitch p := recv.(type) {\n")
+	for _, p := range procs {
+		t := c.procFuncs[p]
+		if t.Self != nil || slices.ContainsFunc(t.Params, isVoid) || t.Rest {
 			continue
 		}
-		if !open {
-			c.w("\tswitch p := a.(type) {\n")
-			open = true
-		}
-		conv := make([]string, len(t.Params))
+		args := make([]string, len(t.Params))
 		for i, pt := range t.Params {
-			conv[i] = c.dynArg(pt, i)
+			args[i] = c.dynArg(pt, i)
 		}
-		call := "(*p)(" + strings.Join(conv, ", ") + ")"
-		c.w("\tcase %s:\n\t\trbArity(len(args), %d, %d)\n", s, len(t.Params), len(t.Params))
-		switch t.Ret.(type) {
-		case TVoid:
+		call := "(*p)(" + strings.Join(args, ", ") + ")"
+		c.w("\tcase %s:\n\t\trbArity(len(args), %d, %d)\n", p, len(t.Params), len(t.Params))
+		switch {
+		case isVoid(t.Ret):
 			c.w("\t\t%s\n\t\treturn nil, true\n", call)
-		case TOpt:
+		case isOpt(t.Ret):
 			c.w("\t\treturn Opt(%s), true\n", call)
-		case TTuple:
-			c.w("\t\treturn %s._ToAny(), true\n", call)
-		case TAny, TClass, TFunc, TNil, TUnion, TVar:
+		default:
 			c.w("\t\treturn %s, true\n", call)
 		}
 	}
-	if open {
-		c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t\treturn nil, false\n\t}\n}\n\n")
-		return
-	}
-	c.w("\treturn nil, false\n}\n\n")
+	c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t\treturn nil, false\n\t}\n}\n\n")
 }
 
 // emitClassID emits cls's _ClassID and reports whether its values are pointers, whose address is their identity (rbClassRefs: #inspect, object_id).

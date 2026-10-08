@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -241,8 +242,8 @@ func (c *Compiler) emitDynName(name string) {
 	own, shared := c.dynWrappers(name)
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
-	if name == "call" { // a Proc held untyped (rbProcCall)
-		c.w("\tif r, ok := rbProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
+	if name == "call" {
+		c.w("\tif r, ok := rbDynProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
 	}
 	c.emitDynArms(shared, false)
 	kernel := c.nilKernelBody(name) // built once: a body that cannot cross `any` warns
@@ -532,6 +533,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	if rest != nil {
 		maxArgs = -1
 	}
+	c.dynArityOverloads(f, e, recv, env, req, maxArgs)
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
 	if mix && rest == nil && opt == 0 {
 		c.dynTwinsAndNumbers(f, e, recv, env)
@@ -591,6 +593,47 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	call(req+opt, rest != nil)
 	f.indent--
 	f.emit("}")
+}
+
+// dynArityOverloads routes an argument count the method does not take to its decision-12 `__<name>_<count>`, as a typed call does.
+func (c *Compiler) dynArityOverloads(f *fctx, e *entry, recv expr, env map[string]Type, req, maxArgs int) {
+	m, cls := e.M, classOf(recv.typ)
+	if cls == nil || strings.HasPrefix(m.Name, "__") {
+		return
+	}
+	prefix := "__" + overloadBase(m.Name) + "_"
+	for _, x := range cls.methodSet() {
+		k, ok := strings.CutPrefix(x.M.Name, prefix)
+		n, err := strconv.Atoi(k)
+		tw := x.M
+		if !ok || err != nil || n >= req && (maxArgs < 0 || n <= maxArgs) || tw.generic() || tw.Block != nil || len(tw.Params) != n || tw.hasKeywords() {
+			continue
+		}
+		c.resolveMethod(tw)
+		if slices.ContainsFunc(tw.Params, func(p Param) bool { return p.Rest || p.Default != nil }) {
+			continue
+		}
+		envT := maps.Clone(env) // the overload's owner params (Enumerable's E) in the class's terms
+		for k, v := range x.Env {
+			envT[k] = subst(v, env)
+		}
+		nodes := make([]parser.Node, n)
+		for i := range n {
+			t := subst(tw.Params[i].Type, envT)
+			nodes[i] = &exprNode{e: expr{code: c.dynArg(t, i), typ: t}}
+		}
+		f.emit("if len(args) == %d {", n)
+		f.indent++
+		res := f.callEntry(&parser.NilNode{}, cls.lookup(tw.Name), recv, nodes, nil)
+		if isVoid(res.typ) {
+			f.emit("%s", res.code)
+			f.emit("return nil")
+		} else {
+			f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		}
+		f.indent--
+		f.emit("}")
+	}
 }
 
 // dynClassOverloads picks a decision-12 overload by its first argument's run-time class, as a typed call picks it by
