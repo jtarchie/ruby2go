@@ -1,8 +1,10 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "net/http"
 require "open-uri"
 require "openssl"
+require "rackup"
 require "tmpdir"
 require "webrick"
 
@@ -275,6 +277,51 @@ module NetTests
         flunk "no error"
       rescue ArgumentError => e
         assert_equal "invalid access mode w (URI::HTTP resource is read only.)", e.message
+      end
+    end
+  end
+
+  # Rackup::Handler::WEBrick (decision 174): what a Rack app sees in env, and how its response goes out.
+  class RackTest < Minitest::Test
+    #: (untyped) { (Net::HTTP, Integer) -> void } -> void
+    def net_rack(app)
+      ready = Queue.new #: Queue[WEBrick::HTTPServer]
+      thread = Thread.new { Rackup::Handler::WEBrick.run(app, Host: "127.0.0.1", Port: 0) { |s| ready << s } }
+      server = ready.pop || raise("the server did not start")
+      port = server.config[:Port] #: Integer
+      yield Net::HTTP.new("127.0.0.1", port), port
+      Rackup::Handler::WEBrick.shutdown
+      thread.join
+    end
+
+    def test_env
+      keys = %w[REQUEST_METHOD SCRIPT_NAME PATH_INFO QUERY_STRING SERVER_NAME SERVER_PROTOCOL CONTENT_TYPE CONTENT_LENGTH HTTP_X_TOKEN rack.url_scheme]
+      app = ->(env) { [200, { "content-type" => "text/plain" }, [keys.map { |k| env[k].inspect }.join(" "), " #{env["SERVER_PORT"]} #{env["HTTP_HOST"]} #{env.fetch("rack.input").read.inspect} #{env["rack.errors"] == $stderr}"]] } #: ^(Hash[String, untyped]) -> untyped
+      net_rack(app) do |http, port|
+        body = http.get("/a%20b/c").body.to_s.gsub(port.to_s, "PORT")
+        assert_equal "\"GET\" \"\" \"/a%20b/c\" \"\" \"127.0.0.1\" \"HTTP/1.1\" nil nil nil \"http\" PORT 127.0.0.1:PORT \"\" true", body
+        res = http.post("/f?x=1&y", "k=v w", { "Content-Type" => "application/x-www-form-urlencoded", "X-Token" => "t" })
+        body = res.body.to_s.gsub(port.to_s, "PORT")
+        assert_equal "\"POST\" \"\" \"/f\" \"x=1&y\" \"127.0.0.1\" \"HTTP/1.1\" \"application/x-www-form-urlencoded\" \"5\" \"t\" \"http\" PORT 127.0.0.1:PORT \"k=v w\" true", body
+      end
+    end
+
+    def test_response
+      app = lambda do |env|
+        case env["PATH_INFO"]
+        when "/boom" then raise "boom"
+        when "/rack" then [204, { "rack.hidden" => "x", "x-multi" => ["a", "b"] }, []]
+        else [418, { "set-cookie" => ["a=1", "b=2"], "content-length" => "2" }, ["hi"]]
+        end
+      end #: ^(Hash[String, untyped]) -> untyped
+      net_rack(app) do |http, _|
+        res = http.get("/")
+        assert_equal ["418", "hi", ["a=1", "b=2"], "2", nil], [res.code, res.body, res.get_fields("set-cookie"), res["content-length"], res["content-type"]]
+        res = http.head("/")
+        assert_equal ["418", "", "2"], [res.code, res.body.to_s, res["content-length"]] # MRI's body is nil, rb2go's Net::HTTP ""
+        res = http.get("/rack")
+        assert_equal ["204", "", nil, "a, b"], [res.code, res.body.to_s, res["rack.hidden"], res["x-multi"]]
+        assert_equal "500", http.get("/boom").code
       end
     end
   end
