@@ -16,8 +16,9 @@ import (
 // gem: it runs the program's load phase under MRI first (internal/boot,
 // decision 161) and adds each autoload boot resolved as a source, so the
 // compiler sees classes the source graph's literal requires do not name. A
-// program whose entry is not on disk is compiled as usual.
-func CompileWithBoot(ctx context.Context, preludeFS fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
+// program whose entry is not on disk is compiled as usual. gemSigs holds
+// vendored `.rbs` signatures (decision 160), keyed under `sig/gems/<gem>/`.
+func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
@@ -25,7 +26,7 @@ func CompileWithBoot(ctx context.Context, preludeFS fs.FS, sources []Source, loa
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := options{loadPath: loadPath}
+	opts := options{loadPath: loadPath, gemSigs: gemSigs}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	return out, opts.warnings, err
 }

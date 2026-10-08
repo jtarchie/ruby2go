@@ -203,13 +203,13 @@ type Param struct {
 
 // BlockSig is the block a method takes.
 type BlockSig struct {
-	Params   []Type
-	Ret      Type
-	Optional bool     // `?{ ... }`: a call may leave the block out, and the method sees a nil func
-	Pending  []string // per param, the key of one typed from the yields (decision 146), or ""
-	Rest     bool     // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
-	Self     Type     // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
-	SelfPending string // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
+	Params      []Type
+	Ret         Type
+	Optional    bool     // `?{ ... }`: a call may leave the block out, and the method sees a nil func
+	Pending     []string // per param, the key of one typed from the yields (decision 146), or ""
+	Rest        bool     // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
+	Self        Type     // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
+	SelfPending string   // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
@@ -710,11 +710,34 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			}
 			c.scanAnon(ctx, f, n.Value, scope)
 			c.addConst(f, n, n.Name, nil, scope)
+		case *parser.IfNode:
+			// MRI's `ruby2_keywords(:m) if respond_to?(:ruby2_keywords, true)`
+			// compatibility guard does nothing here (Ruby 4 always has it).
+			if ruby2KeywordsShim(n) {
+				continue
+			}
+			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
 		default:
 			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
 		}
 	}
 	c.collectIvarDecls(f, cls, body, scope)
+}
+
+// ruby2KeywordsShim reports whether a class-body conditional is MRI's
+// `ruby2_keywords(:m) if respond_to?(:ruby2_keywords, true)` compatibility
+// guard, which does nothing in rb2go's closed Ruby 4 world.
+func ruby2KeywordsShim(n *parser.IfNode) bool {
+	if n.Subsequent != nil || n.Statements == nil || len(n.Statements.Body) == 0 {
+		return false
+	}
+	for _, st := range n.Statements.Body {
+		call, ok := st.(*parser.CallNode)
+		if !ok || call.Receiver != nil || call.Name != "ruby2_keywords" {
+			return false
+		}
+	}
+	return true
 }
 
 // collectClassCall handles a bare call in a class body: attr_*, include,
@@ -986,10 +1009,10 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	switch n.Name {
 	case "attr", "attr_reader", "attr_writer", "attr_accessor":
 		c.addAttrs(f, cls, n, args, vis.private, scope)
-	case "autoload":
-		// A closed world loads the file at compile time (the boot snapshot,
-		// decision 161, supplies what autoload resolved); the declaration
-		// itself does nothing (decision 131's compile-time require).
+	case "autoload", "ruby2_keywords":
+		// No-ops: autoload's file is loaded at compile time (the boot
+		// snapshot, decision 161, supplies what it resolved); ruby2_keywords
+		// is MRI's keyword-passthrough marker, which rb2go passes statically.
 	case "include":
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)

@@ -76,6 +76,7 @@ type Compiler struct {
 	parsed        map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
 	loadPath      []string                  // -I directories (decision 131)
 	sigs          map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
+	gemSigs       fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings      []string
@@ -199,6 +200,7 @@ type options struct {
 	inferDone bool
 	seed      *Inference // types from an earlier compile of these sources, updated by this one
 	allLibs   bool       // load every prelude lib, required or not (the stub generator, decision 154)
+	gemSigs   fs.FS      // vendored `.rbs` signatures for gems (decision 160), or nil
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -277,6 +279,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
 	c.loadPath = opts.loadPath
+	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)

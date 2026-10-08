@@ -12,8 +12,9 @@ import (
 )
 
 // loadSigs parses .rbs signature files beside each user source (a `sig/`
-// directory next to the file), keyed by qualified class name (decision 160).
-// Inline `#:` annotations win; a sig is consulted only where one is missing.
+// directory next to the file) and the vendored gem signatures (decision 160:
+// `sig/gems/<gem>/`), keyed by qualified class name. Inline `#:` annotations
+// win; a sig is consulted only where one is missing.
 func (c *Compiler) loadSigs(sources []Source) {
 	seen := map[string]bool{}
 	for _, src := range sources {
@@ -27,6 +28,30 @@ func (c *Compiler) loadSigs(sources []Source) {
 		}
 		seen[dir] = true
 		c.loadSigDir(dir)
+	}
+	c.loadGemSigs()
+}
+
+// loadGemSigs parses the vendored gem signatures embedded in the compiler's
+// gemSigs FS (decision 160). They are keyed by class name like a user's, so a
+// program that carries a class of the same qualified name gets its types.
+func (c *Compiler) loadGemSigs() {
+	if c.gemSigs == nil {
+		return
+	}
+	paths, _ := fs.Glob(c.gemSigs, "sig/gems/*/*.rbs") // the pattern is constant
+	for _, p := range paths {
+		data, err := fs.ReadFile(c.gemSigs, p)
+		if err != nil {
+			c.errorf(nil, nil, "%s: %v", p, err)
+		}
+		f, perr := rbs.ParseFile(string(data))
+		if perr != nil {
+			c.errorf(nil, nil, "%s: %v", p, perr)
+		}
+		for _, decl := range f.Decls {
+			c.sigs[decl.Name] = decl
+		}
 	}
 }
 

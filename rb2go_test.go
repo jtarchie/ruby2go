@@ -271,7 +271,7 @@ func TestBootAutoload(t *testing.T) {
 	}
 	lp := loadPath(dir, src) // # load_path: lib
 	srcs := []compiler.Source{{Name: "app.rb", Src: src, Path: app}}
-	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, srcs, lp...)
+	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, GemSigs, srcs, lp...)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
 	}

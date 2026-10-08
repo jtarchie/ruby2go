@@ -1,0 +1,48 @@
+# Vendored RBS for the part of rack 3.2 that Cuba reaches (docs/design.md
+# decision 160). Only the public surface an unannotated gem file needs:
+# attributes (which cannot be inferred) and the block shapes.
+module Rack
+  class Builder
+    attr_reader options: Hash[Symbol, untyped]
+
+    def initialize: (?untyped, **untyped) ?{ () [self: Rack::Builder] -> void } -> void
+    def self.app: (?untyped) ?{ () [self: Rack::Builder] -> void } -> untyped
+    def self.parse_file: (String, **untyped) -> untyped
+    def self.load_file: (String, **untyped) -> untyped
+    def self.new_from_string: (String, ?String, **untyped) -> untyped
+    def use: (untyped, *untyped) ?{ (*untyped) -> untyped } -> nil
+    def run: (?untyped) ?{ (Hash[String, untyped]) -> untyped } -> nil
+    def warmup: (?untyped) ?{ (untyped) -> untyped } -> untyped
+    def map: (String) { () [self: Rack::Builder] -> void } -> nil
+    def freeze_app: () -> bool
+    def to_app: () -> untyped
+    def call: (Hash[String, untyped]) -> untyped
+  end
+
+  class Request
+    attr_accessor ip_filter: untyped
+    attr_accessor forwarded_priority: untyped
+    attr_accessor x_forwarded_proto_priority: untyped
+
+    module Env
+      attr_reader env: Hash[String, untyped]
+      attr_writer query_parser: untyped
+    end
+  end
+
+  module Utils
+    attr_accessor default_query_parser: untyped
+    attr_accessor multipart_total_part_limit: untyped
+    attr_accessor multipart_file_limit: untyped
+
+    class Context
+      attr_reader for: untyped
+      attr_reader app: untyped
+    end
+  end
+
+  class QueryParser
+    attr_reader param_depth_limit: Integer
+    attr_reader bytesize_limit: Integer
+  end
+end

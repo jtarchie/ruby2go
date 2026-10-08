@@ -16,6 +16,14 @@ import (
 //go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go
 var Prelude embed.FS
 
+// GemSigs holds vendored `.rbs` signatures for the gems rb2go compiles
+// (decision 160), under sig/gems/<gem>/. A gem program (one that requires a
+// gem, so its load phase runs under MRI at compile time, decision 161) reads
+// them to type the gem's otherwise-unannotated classes.
+//
+//go:embed sig/gems/*/*.rbs
+var GemSigs embed.FS
+
 // GoVersion is the go directive for the module generated code builds in.
 const GoVersion = "1.24"
 
