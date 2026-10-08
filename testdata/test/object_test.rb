@@ -4951,4 +4951,71 @@ module ObjectTests
       assert_equal "hidden", Guarded.new.send(:hidden)
     end
   end
+
+  # attr_* and alias inside `class << self` are class-level accessors (#82).
+  class ClassSettings
+    class << self
+      attr_accessor :limit #: Integer?
+      attr_reader :label #: String?
+
+      alias max limit
+      alias_method :max=, :limit=
+
+      private
+
+      attr_writer :secret #: String
+    end
+
+    self.limit = 3
+  end
+
+  class SubSettings < ClassSettings
+  end
+
+  # attr_* in a module live in the module's ivar struct (decision 147) (#82).
+  module AttrTagged
+    attr_reader :name #: String
+    attr_accessor :tag #: Symbol?
+
+    #: (String) -> void
+    def initialize(name)
+      @name = name
+      @tag = nil
+    end
+
+    #: () -> String
+    def shout = name.upcase
+  end
+
+  class TaggedThing
+    include AttrTagged
+  end
+
+  class ObjectClassAttrTest < Minitest::Test
+    def test_singleton_attr_accessor
+      assert_equal 3, ClassSettings.limit
+      assert_nil SubSettings.limit
+      assert_nil ClassSettings.label
+    end
+
+    def test_singleton_alias
+      ClassSettings.max = 7
+      assert_equal 7, ClassSettings.max
+      assert_equal 7, ClassSettings.limit
+      ClassSettings.limit = 3
+    end
+
+    def test_singleton_private_attr
+      refute ClassSettings.respond_to?(:secret=)
+    end
+
+    def test_module_attrs
+      t = TaggedThing.new("ada")
+      assert_equal "ada", t.name
+      assert_equal "ADA", t.shout
+      assert_nil t.tag
+      t.tag = :x
+      assert_equal :x, t.tag
+    end
+  end
 end

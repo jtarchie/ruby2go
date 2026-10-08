@@ -2941,6 +2941,9 @@ func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
 			classEnv["K"] = TAny{} // the embedded Hash[any, V]
 		}
 		env = composeEnv(e.Env, classEnv)
+		if _, ok := env["K"]; !ok && rt.C.hashBase {
+			env["K"] = TAny{} // a Hash def aliased into the subclass (linkAliases) keeps Hash's K
+		}
 	} else {
 		for k, v := range e.Env {
 			env[k] = v
@@ -3808,6 +3811,9 @@ func iterEnv(e *entry, recv expr) map[string]Type {
 			classEnv[p] = rt.Args[i]
 		}
 		env = composeEnv(e.Env, classEnv)
+		if _, ok := env["K"]; !ok && rt.C.hashBase {
+			env["K"] = TAny{} // a Hash def aliased into the subclass (linkAliases) keeps Hash's K
+		}
 	} else {
 		for k, v := range e.Env {
 			env[k] = v

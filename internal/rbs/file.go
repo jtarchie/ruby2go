@@ -39,10 +39,11 @@ type MethodDecl struct {
 	Line      int
 }
 
-// AttrDecl is `attr_reader name: T` (Kind "reader", "writer" or "accessor").
+// AttrDecl is `attr_reader name: T` (Kind "reader", "writer" or "accessor"); Self marks `attr_reader self.name: T`.
 type AttrDecl struct {
 	Kind string
 	Name string
+	Self bool
 	Type Type
 	Line int
 }
@@ -291,7 +292,8 @@ func addAttr(owner *ClassDecl, kind, line string, ln int) error {
 	if err != nil {
 		return fmt.Errorf("rbs: attr_%s %s on line %d: %w", kind, name, ln, err)
 	}
-	owner.Attrs = append(owner.Attrs, &AttrDecl{Kind: kind, Name: name, Type: t, Line: ln})
+	name, self := strings.CutPrefix(name, "self.")
+	owner.Attrs = append(owner.Attrs, &AttrDecl{Kind: kind, Name: name, Self: self, Type: t, Line: ln})
 	return nil
 }
 

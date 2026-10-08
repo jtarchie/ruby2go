@@ -261,9 +261,9 @@ end
 # error: main.rb:3: singleton methods are only supported as `def self.x`
 #: () -> String
 def self.hi = "hi"
--- attr_in_module.rb --
+-- attr_on_go_type.rb --
 # error: main.rb:3: attr_reader on a non-struct class
-module Named
+class Integer
   attr_reader :name #: String
 end
 -- attr_without_type.rb --

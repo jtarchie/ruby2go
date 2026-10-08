@@ -39,6 +39,7 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
+	singletonMisc []singletonMisc // attr_*/alias inside `class << self`, applied to the metaclass once it exists
 	privateNew    bool              // `private_class_method :new`
 	undefs        map[string]bool   // `undef x`: calls through this class find nothing, even inherited
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
@@ -814,9 +815,13 @@ func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.Singleto
 				private = true
 			case s.Name == "public" && s.Receiver == nil && s.Arguments == nil:
 				private = false
+			case s.Receiver == nil && slices.Contains([]string{"attr", "attr_reader", "attr_writer", "attr_accessor", "alias_method"}, s.Name):
+				cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, private: private, scope: scope, file: f})
 			default:
 				c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
 			}
+		case *parser.AliasMethodNode:
+			cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, scope: scope, file: f})
 		default:
 			c.errorf(f, s, "unsupported node in `class << self`: %s", nodeType(s))
 		}
@@ -1192,11 +1197,15 @@ func (c *Compiler) linkAliases() {
 		if e == nil {
 			c.errorf(a.f, a.n, "undefined method '%s' for class '%s'", a.oldName, a.cls.RubyName)
 		}
-		if len(e.Owner.TypeParams) > 0 || e.M.Node == nil || e.M.Kind != kindDef || containsSuper(e.M.Node.Body) {
+		// a Hash subclass's alias of a Hash method stays Hash's (a free func on the embedded Hash, decision 165), under the new name
+		fromHash := a.cls.hashBase && e.Owner.RubyName == "Hash" && e.M.Node != nil && (e.M.Kind == kindDef || e.M.Kind == kindPrimitive)
+		if !fromHash && (len(e.Owner.TypeParams) > 0 || e.M.Node == nil || e.M.Kind != kindDef || containsSuper(e.M.Node.Body)) {
 			c.errorf(a.f, a.n, "alias of %s#%s: rb2go copies an inherited method only when it is a plain def without super from a non-generic class", e.Owner.RubyName, a.oldName)
 		}
 		m := c.copyAlias(a.cls, e.M, a.newName)
-		m.Owner = a.cls
+		if !fromHash {
+			m.Owner = a.cls
+		}
 	}
 	if len(c.inheritedAliases) > 0 {
 		for _, cls := range c.classList {
@@ -1375,7 +1384,7 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 
 func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []parser.Node, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
-	if !cls.isStruct() {
+	if !cls.isStruct() && !cls.IsModule {
 		c.errorf(f, n, "%s on a non-struct class", n.Name)
 	}
 	// Ruby's `attr :x` is attr_reader.
@@ -1408,6 +1417,10 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			}
 		}
 		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: at, line: line, scope: scope})
+		if cls.IsModule {
+			c.addModuleAttr(f, cls, n, kind, name, at, private, scope)
+			continue
+		}
 		if kind != "attr_writer" {
 			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Return: at}
@@ -1423,12 +1436,40 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 	}
 }
 
+// addModuleAttr declares a module's attr_* as the defs it stands for (`def x = @x`, `def x=(v) = @x = v`): a
+// module's ivars live in its M_Ivars field (decision 147), not a struct an accessor method could be promoted from.
+func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind, name string, at rbs.Type, private bool, scope []*Class) {
+	loc, iv := n.Location, "@"+name
+	def := func(dname string, params *parser.ParametersNode, locals []string, body parser.Node, sig *rbs.MethodType) {
+		c.addDef(f, cls, &parser.DefNode{Location: loc, Name: dname, NameLoc: loc, DefKeywordLoc: loc, Parameters: params, Locals: locals,
+			Body: &parser.StatementsNode{Location: loc, Body: []parser.Node{body}}}, private, scope)
+		m := cls.Methods[dname]
+		m.sigText, m.sig = "", sig
+	}
+	if kind != "attr_writer" {
+		def(name, nil, nil, &parser.InstanceVariableReadNode{Location: loc, Name: iv}, &rbs.MethodType{Return: at})
+	}
+	if kind != "attr_reader" {
+		params := &parser.ParametersNode{Location: loc, Requireds: []parser.Node{&parser.RequiredParameterNode{Location: loc, Name: "v"}}}
+		write := &parser.InstanceVariableWriteNode{Location: loc, Name: iv, Value: &parser.LocalVariableReadNode{Location: loc, Name: "v"}}
+		def(name+"=", params, []string{"v"}, write, &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: "v"}}, Return: rbs.Void{}})
+	}
+}
+
 func (c *Compiler) collectTopDef(f *File, n *parser.DefNode) {
 	c.addMethod(f, nil, n, false, nil)
 }
 
 type singletonDef struct {
 	node    *parser.DefNode
+	private bool
+	scope   []*Class
+	file    *File
+}
+
+// singletonMisc is an attr_* call or an alias inside `class << self`.
+type singletonMisc struct {
+	node    parser.Node
 	private bool
 	scope   []*Class
 	file    *File
@@ -2781,6 +2822,21 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 	c.classList = append(c.classList, m)
 	for _, d := range cls.singletonDefs {
 		c.addDef(d.file, m, d.node, d.private, d.scope)
+	}
+	for _, d := range cls.singletonMisc {
+		switch n := d.node.(type) {
+		case *parser.AliasMethodNode:
+			c.addAlias(d.file, m, n, n.NewName, n.OldName)
+		case *parser.CallNode:
+			if args := callArgs(n); n.Name == "alias_method" {
+				if len(args) != 2 {
+					c.errorf(d.file, n, "alias_method takes a new and an old name")
+				}
+				c.addAlias(d.file, m, n, args[0], args[1])
+			} else {
+				c.addAttrs(d.file, m, n, args, d.private, d.scope)
+			}
+		}
 	}
 	synth := []string{"name", "to_s", "inspect"}
 	if cls.isStruct() && !cls.universal && m.Methods["new"] == nil {

@@ -20,20 +20,23 @@ module Rack
   end
 
   class Request
-    attr_accessor ip_filter: untyped
-    attr_accessor forwarded_priority: untyped
-    attr_accessor x_forwarded_proto_priority: untyped
+    attr_accessor self.ip_filter: untyped
+    attr_accessor self.forwarded_priority: untyped
+    attr_accessor self.x_forwarded_proto_priority: untyped
 
     module Env
       attr_reader env: Hash[String, untyped]
+    end
+
+    module Helpers
       attr_writer query_parser: untyped
     end
   end
 
   module Utils
-    attr_accessor default_query_parser: untyped
-    attr_accessor multipart_total_part_limit: untyped
-    attr_accessor multipart_file_limit: untyped
+    attr_accessor self.default_query_parser: untyped
+    attr_accessor self.multipart_total_part_limit: untyped
+    attr_accessor self.multipart_file_limit: untyped
 
     class Context
       attr_reader for: untyped

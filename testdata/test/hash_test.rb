@@ -289,6 +289,12 @@ module HashTests
     end
   end
 
+  # An alias of an inherited Hash method, like Rack::QueryParser::Params' to_params_hash (#82).
+  class AliasParams < Hash
+    alias_method :to_params_hash, :to_h
+    alias plain_keys keys
+  end
+
   # Helpers for the checks that were testdata/run/hash_bugs.rb.
   # Data and Struct keys match by value
   Point = Data.define(:x, :y) #: [Integer, Integer]
@@ -2009,6 +2015,17 @@ module HashTests
       assert_equal true, d.key?("x-foo")
       assert_equal false, d.key?("X-Foo")
       assert_equal 1, d.fetch("x-foo", 0)
+    end
+
+    def test_alias_of_inherited_hash_method
+      pr = AliasParams.new
+      pr["a"] = 1
+      h = pr.to_params_hash
+      assert_equal({ "a" => 1 }, h)
+      assert_equal Hash, h.class
+      assert_equal ["a"], pr.plain_keys
+      assert pr.respond_to?(:to_params_hash)
+      refute({}.respond_to?(:to_params_hash))
     end
   end
 

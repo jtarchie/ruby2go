@@ -100,7 +100,7 @@ func (c *Compiler) sigMethod(cls *Class, name string) *rbs.MethodDecl {
 	return nil
 }
 
-// sigAttr is the sig file's attribute `name` on cls, of any kind.
+// sigAttr is the sig file's attribute `name` on cls, of any kind (an `attr_* self.` one when cls is a metaclass).
 func (c *Compiler) sigAttr(cls *Class, name string) *rbs.AttrDecl {
 	if cls == nil {
 		return nil
@@ -109,8 +109,9 @@ func (c *Compiler) sigAttr(cls *Class, name string) *rbs.AttrDecl {
 	if d == nil {
 		return nil
 	}
+	wantSelf := cls.metaOf != nil
 	for _, a := range d.Attrs {
-		if a.Name == name {
+		if a.Name == name && a.Self == wantSelf {
 			return a
 		}
 	}

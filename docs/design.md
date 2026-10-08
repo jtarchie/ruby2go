@@ -5450,3 +5450,37 @@ resolve; anything not listed is still open.
     - **Proof:** [example 112](../examples/112_class_body_guards/main.rb),
       `testdata/test/object_test.rb`'s `ObjectClassGuardTest`;
       `objects.txtar`'s `class_body_if` now uses an unfoldable `ENV` check.
+168. Class-level and module accessors, and aliases of Hash methods in a Hash
+    subclass (#82). Needed by unmodified rack: `Rack::Utils` and
+    `Rack::Request` declare `attr_accessor` and `alias` inside
+    `class << self`, `Rack::Request::Env`/`Helpers` (modules) declare
+    `attr_reader`/`attr_writer`, and `Rack::QueryParser::Params < Hash` does
+    `alias_method :to_params_hash, :to_h`.
+    - **`class << self`.** `attr_*`, `alias` and `alias_method` there are
+      queued on the class and applied to its metaclass (decision 19) once
+      `metaFor` builds it, after the `def`s, so an attr is an ordinary
+      struct accessor over a class-level ivar (one value per class object; a
+      subclass's starts unset, as in MRI). A `.rbs` file types them with
+      `attr_accessor self.name: T` (RBS's own syntax); a plain
+      `attr_accessor name: T` is the instance attr, so the vendored rack sig
+      now says `self.` for its six class-level attrs. rbs-inline emits these
+      as instance attrs, so a `class << self` alias fails `rbs validate`; the
+      behaviour is checked in minitest instead of an example.
+    - **Modules.** A module's ivars live in its `M_Ivars` field (decision
+      147), not a struct an accessor could be promoted from, so a module's
+      `attr_reader :x` is lowered to the defs it stands for, `def x = @x`
+      and `def x=(v) = @x = v`, typed from the annotation or sig. They then
+      take the module path every other module method takes (free func plus
+      forwarders).
+    - **Hash aliases.** In a Hash subclass (decision 165), an alias of an
+      inherited Hash method, a plain def or a `%x{}` primitive, is a copy
+      that stays Hash's: a free func on the embedded `Hash[any, V]` under the
+      new name, reached by the same call interception as every inherited
+      Hash method. Not yet: calling such an alias on an `untyped` receiver
+      raises NoMethodError, because dynamic wrappers skip a generic class's
+      methods whose result mentions its type params (`growsTypeParams`), and
+      Hash's own dispatcher does not know the new name.
+    - **Proof:** [example 113](../examples/113_class_and_module_attrs/main.rb),
+      `object_test.rb`'s `ObjectClassAttrTest`, `hash_test.rb`'s
+      `test_alias_of_inherited_hash_method`; `objects.txtar`'s
+      `attr_in_module` became `attr_on_go_type`.
