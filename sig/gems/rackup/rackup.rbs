@@ -1,0 +1,40 @@
+# Vendored RBS for the part of rackup 2.3 its WEBrick handler reaches (docs/design.md decisions 160, 176): what
+# no call in the gem types, since prelude WEBrick calls service and the program calls run.
+module Rackup
+  module Handler
+    self.@handlers: Hash[Symbol, untyped]
+
+    class WEBrick < ::WEBrick::HTTPServlet::AbstractServlet
+      self.@server: Rackup::Handler::WEBrick::Server?
+      @app: untyped
+
+      def self.run: (untyped, **untyped) ?{ (::WEBrick::HTTPServer) -> void } -> void
+      def self.shutdown: () -> void
+      def initialize: (::WEBrick::HTTPServer, untyped) -> void
+      def service: (::WEBrick::HTTPRequest, ::WEBrick::HTTPResponse) -> void
+
+      class Server < ::WEBrick::HTTPServer
+        @handler: Rackup::Handler::WEBrick
+        def initialize: (untyped, Hash[Symbol, untyped]) -> void
+        def service: (::WEBrick::HTTPRequest, ::WEBrick::HTTPResponse) -> void
+      end
+
+      class Input
+        @request: ::WEBrick::HTTPRequest?
+        @reader: Fiber?
+        def initialize: (::WEBrick::HTTPRequest) -> void
+      end
+    end
+  end
+
+  class Stream
+    module Reader
+      @buffer: String?
+      def read: (?Integer?, ?String?) -> String?
+      def read_partial: (?Integer?) -> String?
+      def gets: () -> String?
+      def each: () { (String) -> void } -> void
+      def read_nonblock: (Integer, ?String?) -> String?
+    end
+  end
+end

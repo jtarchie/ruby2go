@@ -640,6 +640,24 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		f.leaveBlock(saved)
 		f.emit("}")
 	case *parser.IfNode:
+		pre := e.Subsequent != nil || f.c.absentGuard(f.f, e.Predicate, f.lex) // a balanced else { if {} else {} } is gocritic's ifElseChain-free form
+		if !pre {
+			f.probe(func() {
+				saved := f.enterBlock()
+				f.applyNarrow(elseNarrow)
+				f.genCond(e.Predicate)
+				pre = f.buf.Len() > 0
+				f.leaveBlock(saved)
+			})
+		}
+		if !pre { // `} else if`: gocritic's elseif, for a last elsif whose condition needs no statements first
+			f.buf.WriteString(strings.Repeat("\t", f.indent) + "} else ")
+			saved := f.enterBlock()
+			f.applyNarrow(elseNarrow)
+			f.genIf(e, e.Predicate, e.Statements, e.Subsequent, false, t)
+			f.leaveBlock(saved)
+			return
+		}
 		f.emit("} else {")
 		saved := f.enterBlock()
 		f.indent++
@@ -678,9 +696,14 @@ func (f *fctx) applyNarrow(ns []narrowInfo) {
 // unnarrow forgets every narrowed view of a local after it is reassigned:
 // the new value may be nil or another class again.
 func (f *fctx) unnarrow(name string) {
+	info := f.localInfo(name)
+	hoisted := info != nil && !info.noHoist && info.typ != nil && info.declPass == f.pass && isAncestorBlock(info.declRuby, f.rbScope)
 	for sc := f.scope; sc != nil; sc = sc.parent {
 		if v := sc.vars[name]; v != nil && v.base != nil {
 			delete(sc.vars, name)
+			if !hoisted && (sc.parent == nil || sc.parent.lookup(name) == nil) { // the view replaced a parameter here (`param ||= x`): it stays
+				sc.vars[name] = v.base
+			}
 		}
 	}
 }
@@ -2067,6 +2090,10 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 	f.emit("%s = %s", existing.goName, f.coerce(n, val, target))
 	if narrowed {
 		f.unnarrow(name)
+		if isOpt(existing.typ) && typeEq(stripOpt(existing.typ), val.typ) { // a T? local given a T stays narrowed
+			f.applyNarrow([]narrowInfo{{local: existing, typ: stripOpt(existing.typ)}})
+			return expr{code: "(*" + existing.goName + ")", typ: stripOpt(existing.typ), stmt: true, done: true}
+		}
 	}
 	return f.narrowSet(existing, val)
 }

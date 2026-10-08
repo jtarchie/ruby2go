@@ -44,7 +44,20 @@ func (c *Compiler) collectDelegation(f *File, cls *Class, n *parser.CallNode, ar
 		if len(args) < 2 {
 			c.errorf(f, n, "def_delegators needs an accessor and method names")
 		}
+		var names []parser.Node
 		for _, a := range args[1:] {
+			// `*NAMES` of a constant Array literal declared above (Rack::Lint's StreamWrapper)
+			if sp, ok := a.(*parser.SplatNode); ok {
+				if cr, ok := sp.Expression.(*parser.ConstantReadNode); ok && c.consts[qualify(scope, cr.Name)] != nil {
+					if arr, ok := c.consts[qualify(scope, cr.Name)].Value.(*parser.ArrayNode); ok {
+						names = append(names, arr.Elements...)
+						continue
+					}
+				}
+			}
+			names = append(names, a)
+		}
+		for _, a := range names {
 			add(sym(args[0]), sym(a), sym(a))
 		}
 	case "def_delegator":

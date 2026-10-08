@@ -412,6 +412,9 @@ func rbMustStr(p *String) String {
 	return *p
 }
 
+// rbStrReplace is a gem's `s.replace(with)` on a local (decision 172): the receiver was only checked to be a String.
+func rbStrReplace(_ String, with String) String { return with }
+
 // rbStrSliceBang is `s.slice!(start, len)` (decision 172): the removed characters (nil out of range, as s[start, len])
 // and what is left.
 func rbStrSliceBang(s String, start, n Integer) (*String, String) {

@@ -69,7 +69,7 @@ type Compiler struct {
 	respondOut    map[string]bool // respond_to? checks emitted
 	fwdOut        map[*Class]bool // forwarders emitted
 	tablesOut     bool
-	tablesAt      [9]int          // tableInputs when the tables went out
+	tablesAt      [10]int         // tableInputs when the tables went out
 	callable      map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	files         []*File
 	preludeFS     fs.FS
@@ -88,7 +88,8 @@ type Compiler struct {
 	Warnings      []string
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
-	procTypes        map[string]bool                   // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	dynEach          bool                              // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
+	procTypes        map[string]TFunc                  // Proc Go types rendered (*func(...)), for the generated rbIsProc and rbProcCall
 	argBoxes         map[string]bool                   // T? boxes of generic type arguments, which generic code may hold
 	classIDs         map[*Class]int                    // index in classList: the class's ID in the generated tables
 	specClasses      int                               // describes declared, for their classes' Go names
@@ -284,7 +285,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	tick("parser")
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
+	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
 	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs

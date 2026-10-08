@@ -5133,4 +5133,36 @@ module ControlTests
       assert_equal ["k", "v", "k"], [$1, $2, m&.[](1)]
     end
   end
+
+  class ControlVerboseTest < Minitest::Test
+    def test_verbose_global
+      was = $VERBOSE
+      verbose, $VERBOSE = $VERBOSE, nil
+      silenced = $VERBOSE
+      $VERBOSE = verbose
+      assert_equal [false, nil, false], [was, silenced, $VERBOSE]
+    end
+
+    def test_kernel_array
+      h = nil #: untyped
+      assert_equal [[], [1, 2], ["a"]], [Array(h), Array([1, 2]), Array("a")]
+    end
+
+    # a parameter narrowed by `||=` and then reassigned stays readable and non-nil
+    #: (?String?) -> String
+    def control_refill(buffer = nil)
+      buffer ||= ""
+      buffer = buffer + "x"
+      buffer
+    end
+
+    def test_narrowed_parameter_reassigned
+      assert_equal ["x", "ax"], [control_refill, control_refill("a")]
+    end
+
+    def test_include_untyped_nil
+      v = nil #: untyped
+      assert_equal [false, true], [%w[yes on].include?(v), %w[yes on].include?("on")]
+    end
+  end
 end

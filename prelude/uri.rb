@@ -91,6 +91,9 @@ module URI
 
   # The escape/unescape half of MRI's URI parsers, which Rack::Utils reaches through URI::RFC2396_PARSER.
   class RFC2396_Parser
+    #: () -> Regexp
+    def make_regexp = %x{ return rbRegexpLenient("(?m)", rbURIAbsRefSrc, "x") }
+
     #: (String) -> String
     def escape(str) = %x{ String(rbURIEscape(string(str))) }
 
@@ -99,6 +102,9 @@ module URI
   end
 
   class RFC3986_Parser
+    #: () -> Regexp
+    def make_regexp = %x{ return rbRegexpLenient("(?m)", rbURIAbsRefSrc, "x") }
+
     #: (String) -> String
     def escape(str) = %x{ String(rbURIEscape(string(str))) }
 

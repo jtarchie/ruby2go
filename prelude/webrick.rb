@@ -43,8 +43,25 @@ module WEBrick
     #: () -> Hash[String, String]
     def query = %x{ self.query }
 
-    #: () -> String?
-    def body = %x{ self.body }
+    #: () ?{ (String) -> void } -> String?
+    def body = %x{
+      if blk != nil && self.body != nil { // one chunk: net/http has read it all
+        blk(*self.body)
+      }
+      return self.body
+    }
+
+    #: () -> String
+    def unparsed_uri = %x{ String(self.r.RequestURI) }
+
+    #: () -> URI::Generic
+    def request_uri = URI.parse(__uri)
+
+    #: () -> String
+    def __uri = %x{ String(rbWEBrickURI(self.r)) }
+
+    #: () -> Hash[String, untyped]
+    def meta_vars = %x{ rbWEBrickMetaVars(self.r) }
 
     #: (String) -> String?
     def [](name) = %x{
@@ -81,7 +98,7 @@ module WEBrick
     def to_s = "#{name}=#{value}"
   end
 
-  # @go_type struct { status Integer; body String; header http.Header; cookies *Array[WEBrick_CookieI] }
+  # @go_type struct { status Integer; body String; header http.Header; cookies *Array[any] }
   class HTTPResponse < Object
     #: () -> Integer
     def status = %x{ self.status }
@@ -94,9 +111,15 @@ module WEBrick
     #: () -> String
     def body = %x{ self.body }
 
-    #: (String) -> void
+    #: (untyped) -> void
     def body=(body)
-      %x{ self.body = body }
+      %x{
+        s, ok := rbUnbox(body).(String)
+        if !ok { // WEBrick's IO and streaming (callable) bodies
+          panic(NewNotImplementedError(Ref(String("rb2go's WEBrick takes a String body, not " + rbClassName(body)))))
+        }
+        self.body = s
+      }
     end
 
     #: (String) -> String?
@@ -121,8 +144,14 @@ module WEBrick
     #: () -> String?
     def content_type = self["Content-Type"]
 
-    #: () -> Array[Cookie]
+    #: () -> Array[untyped]
     def cookies = %x{ self.cookies }
+
+    #: (String) -> void
+    def upgrade!(protocol)
+      self["Connection"] = "upgrade"
+      self["Upgrade"] = protocol
+    end
 
     #: (singleton(HTTPStatus::Redirect), String) -> void
     def set_redirect(status, url) = %x{
@@ -134,56 +163,72 @@ module WEBrick
     }
   end
 
-  # @go_type struct { srv *http.Server; ln net.Listener; mux *http.ServeMux; config *Hash[Symbol, any] }
+  # A struct class over a Go handle, so it can be subclassed as rackup's Server is.
   class HTTPServer < Object
-    # Listens immediately, like WEBrick; with Port: 0 the chosen port is
-    # written back into config[:Port].
-    #: (?Hash[Symbol, untyped]) -> HTTPServer
-    def self.new(config = {}) = %x{ return rbWEBrickNew(config) }
+    # @go_type struct { srv *http.Server; ln net.Listener; mux *http.ServeMux }
+    class Handle__ < Object
+      #: (Hash[Symbol, untyped]) -> HTTPServer::Handle__
+      def self.listen(config) = %x{ return rbWEBrickListen(config) }
 
-    #: () -> Hash[Symbol, untyped]
-    def config = %x{ self.config }
+      #: (String) { (HTTPRequest, HTTPResponse) -> void } -> void
+      def mount(dir) = %x{ rbWEBrickMount(self.mux, string(dir), blk) }
 
-    #: (Symbol) -> untyped
-    def [](key) = config[key]
-
-    #: (String) { (HTTPRequest, HTTPResponse) -> void } -> void
-    def mount_proc(dir) = %x{
-      rbWEBrickMount(self.mux, string(dir), func(w http.ResponseWriter, r *http.Request) {
-        rbWEBrickServe(w, r, func(req *WEBrick_HTTPRequest, res *WEBrick_HTTPResponse) {
-          switch r.Method {
+      #: (String) ?{ (HTTPRequest, HTTPResponse) -> void } -> void
+      def mount_proc(dir) = %x{
+        rbWEBrickMount(self.mux, string(dir), func(req *WEBrick_HTTPRequest, res *WEBrick_HTTPResponse) {
+          switch req.r.Method {
           case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut:
             blk(req, res)
           default:
-            panic(NewWEBrick_HTTPStatus_MethodNotAllowed(Ref(String("unsupported method '" + r.Method + "'."))))
+            panic(NewWEBrick_HTTPStatus_MethodNotAllowed(Ref(String("unsupported method '" + req.r.Method + "'."))))
           }
         })
-      })
-    }
-
-    # A new servlet instance per request, as WEBrick does.
-    #: (String, singleton(HTTPServlet::AbstractServlet)) -> void
-    def mount(dir, servlet) = %x{
-      rbWEBrickMount(self.mux, string(dir), func(w http.ResponseWriter, r *http.Request) {
-        rbWEBrickServe(w, r, func(req *WEBrick_HTTPRequest, res *WEBrick_HTTPResponse) {
-          inst := any(servlet).(interface {
-            New(*WEBrick_HTTPServer) WEBrick_HTTPServlet_AbstractServletI
-          }).New(self)
-          inst.Service(req, res)
-        })
-      })
-    }
-
-    # Serves until shutdown.
-    #: () -> void
-    def start = %x{
-      if err := self.srv.Serve(self.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-        panic(NewIOError(Ref(String(err.Error()))))
       }
-    }
+
+      #: (HTTPRequest, HTTPResponse) -> void
+      def route(req, res) = %x{ rbWEBrickRoute(self.mux, req, res) }
+
+      #: () { (HTTPRequest, HTTPResponse) -> void } -> void
+      def serve = %x{
+        self.srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { rbWEBrickServe(w, r, blk) })
+        if err := self.srv.Serve(self.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+          panic(NewIOError(Ref(String(err.Error()))))
+        }
+      }
+
+      #: () -> void
+      def close = %x{ _ = self.srv.Close() }
+    end
+
+    attr_reader :config #: Hash[Symbol, untyped]
+
+    # Listens at once, as WEBrick does; Port: 0's chosen port is written back into config[:Port].
+    #: (?Hash[Symbol, untyped]) -> void
+    def initialize(config = {})
+      @config = config
+      @h = Handle__.listen(config)
+    end
+
+    #: (Symbol) -> untyped
+    def [](key) = @config[key]
+
+    #: (String) ?{ (HTTPRequest, HTTPResponse) -> void } -> void
+    def mount_proc(dir, &) = @h.mount_proc(dir, &)
+
+    #: (String, singleton(HTTPServlet::AbstractServlet)) -> void
+    def mount(dir, servlet)
+      @h.mount(dir) { |req, res| servlet.get_instance(self).service(req, res) }
+    end
+
+    # What every request runs; a subclass overrides it to bypass the mount table.
+    #: (HTTPRequest, HTTPResponse) -> void
+    def service(req, res) = @h.route(req, res)
 
     #: () -> void
-    def shutdown = %x{ _ = self.srv.Close() }
+    def start = @h.serve { |req, res| service(req, res) }
+
+    #: () -> void
+    def shutdown = @h.close
   end
 
   module HTTPStatus
@@ -230,6 +275,10 @@ module WEBrick
   module HTTPServlet
     class AbstractServlet
       attr_reader :server #: HTTPServer
+
+      # A new instance per request, as WEBrick's.
+      #: (HTTPServer) -> AbstractServlet
+      def self.get_instance(server) = new(server)
 
       #: (HTTPServer) -> void
       def initialize(server)

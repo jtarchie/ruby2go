@@ -69,6 +69,8 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.ENETUNREACH
 	case *Errno_EAFNOSUPPORT:
 		n = syscall.EAFNOSUPPORT
+	case *Errno_EMFILE:
+		n = syscall.EMFILE
 	default:
 		return nil
 	}

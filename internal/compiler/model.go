@@ -427,6 +427,8 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 			c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
 		case *parser.CallNode:
 			c.collectTopCall(ctx, f, n)
+		case *parser.BeginNode:
+			c.addMainStmt(f, c.beginRequires(ctx, f, n))
 		default:
 			c.scanAnon(ctx, f, n, nil)
 			c.addMainStmt(f, n)
@@ -469,6 +471,38 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		c.scanAnon(ctx, f, n, nil)
 		c.addMainStmt(f, n)
 	}
+}
+
+// beginRequires splices the files a top-level begin requires where they stand, as rackup.rb's `begin; require_relative ...; rescue LoadError`.
+func (c *Compiler) beginRequires(ctx context.Context, f *File, n *parser.BeginNode) parser.Node {
+	if f.prelude || n.Statements == nil {
+		c.scanAnon(ctx, f, n, nil)
+		return n
+	}
+	body := slices.Clone(n.Statements.Body)
+	for i, s := range body {
+		call, ok := s.(*parser.CallNode)
+		if !ok || call.Receiver != nil {
+			continue
+		}
+		var uf *File
+		switch call.Name {
+		case "require_relative":
+			uf = c.userRequireRelative(ctx, f, call)
+		case "require":
+			uf, _ = c.userRequire(ctx, f, call)
+		default:
+			continue
+		}
+		body[i] = &parser.NilNode{Location: call.Location} // already loaded: false in MRI, unused here
+		if uf != nil {
+			body[i] = &loadFile{call: call, file: uf}
+		}
+	}
+	b := *n
+	b.Statements = &parser.StatementsNode{Location: n.Statements.Location, Body: body}
+	c.scanAnon(ctx, f, &b, nil)
+	return &b
 }
 
 // requireHook is the call to Kernel#__require_<lib> that stands in for a
@@ -628,6 +662,11 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 		sup := n.Superclass
 		if call, ok := sup.(*parser.CallNode); ok && call.Name == "DelegateClass" {
 			sup = c.delegateClassSuper(ctx, f, call, scope)
+		}
+		if vc, kind := valueClass(sup); vc != nil && !reopen { // `class X < Struct.new(:a)`: the anonymous Struct, named as DelegateClass's is
+			sname := "Struct_" + name[strings.LastIndex(name, ":")+1:]
+			c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Location: vc.Location, Name: sname, Value: vc}, vc, kind, scope)
+			sup = &parser.ConstantReadNode{Location: vc.Location, Name: sname}
 		}
 		ref := &constRef{node: sup, scope: scope, file: f}
 		if reopen {
@@ -1134,6 +1173,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		c.collectVisibilityCall(f, cls, n, args, vis, scope)
 	case "module_function", "private_class_method", "public_class_method", "undef_method", "remove_method":
 		c.collectMethodTableCall(f, cls, n, args, vis, scope)
+	case "deprecate_constant": // MRI's warning is off by default (Warning[:deprecated])
 	case "private_constant", "public_constant":
 		// a private constant reads only lexically: any `M::X` path is MRI's NameError, a compile error here (lookupConst)
 		if c.privateConsts == nil {
@@ -1495,6 +1535,8 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			// No inline `#:`: a `.rbs` attribute supplies the type (decision 160).
 			if ad := c.sigAttr(cls, name); ad != nil && !f.prelude {
 				at = ad.Type
+			} else if c.gemFile(f) { // what a sig does not cover is untyped, as a pruned method's leftovers are (decision 176)
+				at = rbs.Untyped{}
 			} else {
 				c.errorf(f, n, "%s needs a trailing `#: Type` annotation", n.Name)
 			}
@@ -2221,6 +2263,12 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 	inc.Mod = mod
 	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.file.prelude && cls.Methods["each"] != nil {
 		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
+		for range mod.TypeParams {
+			inc.Args = append(inc.Args, TAny{})
+		}
+		return
+	}
+	if len(inc.args) == 0 && c.gemFile(inc.file) { // a pruned class's each (decision 169): nothing is ever an element
 		for range mod.TypeParams {
 			inc.Args = append(inc.Args, TAny{})
 		}
@@ -3189,6 +3237,12 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 		return types
 	}
 	ann := f.trailingAnnotation(n)
+	if ann == "" && c.gemFile(f) { // a gem's Struct has no annotations: its members are untyped (decision 176)
+		for i := range types {
+			types[i] = rbs.Untyped{}
+		}
+		return types
+	}
 	if ann == "" {
 		c.errorf(f, n, "%s needs member types: `:a, #: T` per line, or `#: [A, B]` after the definition", n.Name)
 	}

@@ -1425,4 +1425,12 @@ B
       assert_equal ["ab", "abc", "a"], ["abc".chomp("c"), "abc".chomp("x"), "a\n\n".chomp("")]
     end
   end
+
+  class StringRegexpCommentTest < Minitest::Test
+    def test_regexp_comment_group
+      re = /a(?# the a)b # trailing
+        c/x
+      assert_equal [true, false, true], [re.match?("abc"), re.match?("ab c"), /x(?#y)z/.match?("xz")]
+    end
+  end
 end

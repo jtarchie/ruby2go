@@ -161,8 +161,8 @@ whole program at compile time rather than looked up by reflection.
   `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,
   `tempfile`, `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
-  and `minitest` (including `Minitest::Spec`); from gems, `rackup`'s WEBrick
-  handler serves a Rack app.
+  and `minitest` (including `Minitest::Spec`); from gems, the unmodified
+  `rackup` gem's WEBrick handler serves a Rack app.
 
 [`examples/`](examples/) has one program per feature, from
 [inheritance](examples/01_inheritance/main.rb) to a

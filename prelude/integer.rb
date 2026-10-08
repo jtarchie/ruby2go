@@ -498,6 +498,14 @@ module Kernel
   #: (untyped) -> String
   def String(x) = %x{ return rbToS(x) }
 
+  #: (untyped) -> Array[untyped]
+  def Array(x) = %x{
+    if x == nil { // to_ary/to_a are not consulted: an Array is itself, anything else is wrapped
+      return NewArray[any]()
+    }
+    return rbToAry(x)
+  }
+
   #: (untyped) -> Integer
   def Integer(x) = %x{
     switch v := rbUnbox(x).(type) {

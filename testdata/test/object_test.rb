@@ -5129,4 +5129,18 @@ module ObjectTests
       assert_equal [2, 1], [d.bumped, d.n]
     end
   end
+
+  # `class X < Struct.new(...)` (decision 176): the anonymous Struct is the superclass.
+  class ObStructSub < Struct.new(:a, :b) #: [Integer, Integer]
+    #: () -> Integer
+    def sum = a + b
+  end
+
+  class ObjectStructSuperclassTest < Minitest::Test
+    def test_struct_new_superclass
+      s = ObStructSub.new(1, 2)
+      assert_equal [3, 1, [1, 2], [:a, :b], true, true], [s.sum, s.a, s.to_a, s.members, s == ObStructSub.new(1, 2), ObStructSub.ancestors.include?(Struct)]
+      assert_equal "#<struct ObjectTests::ObStructSub a=1, b=2>", s.inspect
+    end
+  end
 end

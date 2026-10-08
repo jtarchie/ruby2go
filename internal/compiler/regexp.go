@@ -114,6 +114,9 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 		if err == nil {
 			_, err = regexp.Compile(flags.goPrefix() + goPat)
 		}
+		if err != nil && f.lenient() {
+			return expr{code: fmt.Sprintf("rbRegexpLenient(%s, %s, %q)", strconv.Quote(flags.goPrefix()), strconv.Quote(src), flags.opts()), typ: f.cls("Regexp")}
+		}
 		if err != nil {
 			f.errorf(n, "regexp /%s/ is not supported: %v", src, err)
 		}
@@ -164,13 +167,17 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 			err = nil
 		}
 	}
-	if err != nil {
+	if err != nil && !f.lenient() {
 		f.errorf(n, "regexp is not supported: %v", err)
 	}
 	if len(srcParts) == 0 {
 		srcParts = []string{`""`}
 	}
-	code := fmt.Sprintf("rbRegexpDyn(%s, %s, %q)", strconv.Quote(flags.goPrefix()), strings.Join(srcParts, " + "), flags.opts())
+	ctor := "rbRegexpDyn"
+	if f.lenient() {
+		ctor = "rbRegexpLenient"
+	}
+	code := fmt.Sprintf("%s(%s, %s, %q)", ctor, strconv.Quote(flags.goPrefix()), strings.Join(srcParts, " + "), flags.opts())
 	if once {
 		// /o interpolates on first evaluation and keeps that Regexp. Not
 		// sync.Once: a raise (RegexpError) must leave it unset to retry, as

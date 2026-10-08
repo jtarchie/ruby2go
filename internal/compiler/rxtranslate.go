@@ -82,6 +82,14 @@ func (t *rxTranslator) run() error {
 			}
 			atom = start
 		case '(':
+			if strings.HasPrefix(t.src[t.i:], "(?#") { // a comment, which RE2 lacks: up to the first ')', as Onigmo's
+				end := strings.IndexByte(t.src[t.i:], ')')
+				if end < 0 {
+					return errors.New("end pattern in group")
+				}
+				t.i += end + 1
+				continue
+			}
 			if t.group() {
 				groups = append(groups, start)
 			}
@@ -396,6 +404,43 @@ type rxRegexp struct {
 	*regexp.Regexp
 	prog        *syntax.Prog
 	caret, word bool
+	unsupported string // a gem's pattern RE2 cannot match: built anyway, it raises when used (rbRegexpLenient)
+}
+
+// RxUnsupported is the panic a lenient regexp raises when used; the runtime makes it a RegexpError.
+type RxUnsupported string
+
+func (e RxUnsupported) Error() string { return string(e) }
+
+func (r *rxRegexp) check() {
+	if r.unsupported != "" {
+		panic(RxUnsupported(r.unsupported))
+	}
+}
+
+func (r *rxRegexp) SubexpNames() []string {
+	r.check()
+	return r.Regexp.SubexpNames()
+}
+
+func (r *rxRegexp) NumSubexp() int {
+	r.check()
+	return r.Regexp.NumSubexp()
+}
+
+func (r *rxRegexp) String() string {
+	r.check()
+	return r.Regexp.String()
+}
+
+func (r *rxRegexp) FindAllStringIndex(s string, n int) [][]int {
+	r.check()
+	return r.Regexp.FindAllStringIndex(s, n)
+}
+
+func (r *rxRegexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
+	r.check()
+	return r.Regexp.FindAllStringSubmatchIndex(s, n)
 }
 
 // rxNew wraps re, compiled from a translated pattern (after rxFold).
@@ -418,6 +463,7 @@ func rxNew(re *regexp.Regexp) *rxRegexp {
 }
 
 func (r *rxRegexp) MatchString(s string) bool {
+	r.check()
 	if r.prog == nil {
 		return r.Regexp.MatchString(s)
 	}
@@ -425,6 +471,7 @@ func (r *rxRegexp) MatchString(s string) bool {
 }
 
 func (r *rxRegexp) FindStringIndex(s string) []int {
+	r.check()
 	loc := r.Regexp.FindStringIndex(s)
 	if r.differs(s, loc) {
 		if loc = r.backtrack(s); loc != nil {
@@ -435,6 +482,7 @@ func (r *rxRegexp) FindStringIndex(s string) []int {
 }
 
 func (r *rxRegexp) FindStringSubmatchIndex(s string) []int {
+	r.check()
 	loc := r.Regexp.FindStringSubmatchIndex(s)
 	if r.differs(s, loc) {
 		loc = r.backtrack(s)
@@ -740,6 +788,9 @@ func stripExtended(src string, ext bool) string {
 		case c == ']' && depth > 0:
 			depth--
 		case depth > 0:
+		case strings.HasPrefix(src[i:], "(?#") && strings.IndexByte(src[i:], ')') > 0: // a comment, under x or not: before # reads as one
+			i += strings.IndexByte(src[i:], ')')
+			continue
 		case c == '(':
 			next, k, on := ext, i+1, true
 			if strings.HasPrefix(src[i:], "(?") {

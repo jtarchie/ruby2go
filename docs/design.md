@@ -5344,6 +5344,8 @@ resolve; anything not listed is still open.
     *Built (#91, decision 174):* `require "rackup"` maps to
     `prelude/rackup.rb`, `Rackup::Handler::WEBrick.run` over
     prelude/webrick.rb's server; the env keys are plain strings for now.
+    *Amended (#93, decision 176):* the handler is the real rackup gem,
+    compiled; only WEBrick stays in the prelude.
 
 163. Load semantics for a gem (#82). Two amendments let an unmodified gem
     reach the type checker, both fed by the boot snapshot (decision 161).
@@ -5716,7 +5718,10 @@ resolve; anything not listed is still open.
       a gem program says it needs Ruby. `TestBootAutoload` compiles
       `testdata/boot` again with `lib` as the program's own `-I`: the
       never-called method it prunes as a gem's is now an error.
-174. `Rackup::Handler::WEBrick` (#91; builds decision 162). `require
+174. `Rackup::Handler::WEBrick` (#91; builds decision 162). *Superseded
+    by decision 176 (#93): the prelude copy below is gone; the behaviour
+    it describes is now the compiled gem's, with the differences 176
+    lists.* `require
     "rackup"` and `"rackup/handler/webrick"` load `prelude/rackup.rb`
     (decision 155), which requires prelude/webrick.rb as the gem requires
     webrick. On MRI the real gem (now in the Gemfile) serves the same
@@ -5771,3 +5776,75 @@ resolve; anything not listed is still open.
       header, POST form, 404 with an Array header, set-cookie lines) and
       `net_test.rb`'s `RackTest` (env values, a lambda app, HEAD, 204,
       `rack.*` headers, a raising app), both equal to MRI.
+176. The real rackup gem (#93; supersedes 174's prelude copy). `require
+    "rackup"` compiles rackup 2.3's own unmodified files through the gem
+    path (decisions 169, 172, 173): `prelude/rackup.rb` and
+    `prelude/go/rackup.go` are deleted and `rackup` left `libs.go`.
+    Nothing of rackup is kept in the prelude; WEBrick still is (decision
+    27's server over `net/http`: the gem sits on sockets and threads).
+    The Ruby-visible API is 174's (`run` options, the yielded server,
+    `server.config[:Port]`, `shutdown`); the server is now the gem's own
+    `Rackup::Handler::WEBrick::Server`, a `WEBrick::HTTPServer` subclass.
+    - **WEBrick surface the handler reaches.** `HTTPServer` is a struct
+      class over a Go `Handle__` (listener, mux) instead of a `@go_type`,
+      so it can be subclassed; every request runs `service(req, res)`,
+      whose default looks the path up in the mount table (NotFound when
+      nothing is mounted), so the gem's `Server#service` bypasses it as on
+      MRI. `mount`'s servlet comes from `AbstractServlet.get_instance`.
+      `HTTPRequest#meta_vars` (WEBrick's keys, `GATEWAY_INTERFACE`,
+      `REMOTE_HOST` and an absolute `REQUEST_URI` included; `HTTP_*`
+      sorted; no `SERVER_SOFTWARE`), `#body { |chunk| }` (one chunk:
+      net/http has read it), `#unparsed_uri`, `#request_uri`.
+      `HTTPResponse#body=` takes untyped and raises NotImplementedError for
+      anything but a String (IO and streaming bodies, 174's "not yet"),
+      `#cookies` is `Array[untyped]` (Cookies or Strings, each `to_s`'d),
+      `#upgrade!` sets the headers.
+    - **Pruning (169), sharper.** A constant resolves lexically in the
+      walk's scope, so `Server` in `Handler::WEBrick.run` is that Server,
+      not `Rackup::Server`, whose CLI code would otherwise be reached; a
+      body's receiverless call to its class's own singleton method makes
+      the class live (`register :webrick, WEBrick`); a computed
+      `const_get` makes the receiver's nested classes live (every class
+      off `self`) instead of stopping pruning (`Handler.[]`); an
+      effect-free gem constant initializer (a literal, lambda, Array of
+      them, `.freeze`, a regexp interpolating constants) is walked only
+      once its name is reached and is dropped otherwise (Rack::Lint's
+      `HOST_PATTERN`, which RE2 cannot express); a pruned class's
+      `def_delegators` go with it.
+    - **Gem leniency (172), wider.** A Struct without member types, and an
+      attr without a type or sig, are untyped; `include Enumerable` on a
+      class whose each was pruned takes untyped; `x.replace(y)` and
+      `x.clear` on a local String rebind it; `each` with a block on an
+      untyped receiver (a Rack app's headers and body) is `rbEachAny`: an
+      Array's elements, a Hash's pairs, or a class's own each, matched by
+      its Go shape; a regexp RE2 cannot match (`\g<name>`, lookaround) is
+      built and raises RegexpError when used (`rbRegexpLenient`), as
+      Rack::Lint's URI patterns are built at load and never used.
+    - **General gaps the gem hit.** `call` on a Proc held untyped (amends
+      decision 47: `rbProcCall` switches over the Proc types the program
+      renders, so a lambda app needs no unwrapping); `$VERBOSE` read and
+      write (nil silences `warn`); `Kernel#Array`; the `require_relative`s
+      in a top-level `begin` (rackup.rb's `rescue LoadError` guard) load
+      where they stand; `deprecate_constant` is a no-op; `class X <
+      Struct.new(:a)` (the anonymous Struct is named `Struct_X`);
+      `Errno::EMFILE`, `Encoding::ISO_2022_JP`; regexp `(?#...)`
+      comments; `ERB.new(<<~'T'.gsub(/re/, ""))` folds at compile time;
+      `def_delegators :@x, *NAMES` of a constant Array literal;
+      `Enumerable#include?` takes untyped (a nil argument is false, not
+      TypeError); a narrowed local reassigned a non-nil value stays
+      visible and narrowed (`buffer ||= ""; buffer = buffer + x`); a last
+      `elsif` with no `else` is Go's `else if` (gocritic).
+    - **Signatures.** `sig/gems/rackup/rackup.rbs` types what no call in
+      the program reaches: `run`/`shutdown`, `service` (the Go server
+      calls it), `Server#initialize`, `Input` and `Stream::Reader`'s read
+      family; `sig/gems/rack` adds `Multipart::Parser`'s env-derived
+      constants. `sig/rackup.rbs` stays for `rbs validate`.
+    - **Harness.** The tests' `compileSafe` is `CompileWithGems`, so an
+      example or test file that requires a gem compiles it as the CLI
+      does (boot runs it under MRI at compile time, decision 161); one
+      without a gem never starts Ruby, as before.
+    - **Differences from MRI**, beyond 174's: `rack.input` is the gem's
+      Fiber-backed `Input` over a body net/http has already read;
+      `SERVER_SOFTWARE` is absent.
+    - **Proof:** example 115 and `net_test.rb`'s `RackTest`, unchanged and
+      equal to MRI, now running the compiled gem.

@@ -470,7 +470,7 @@ func testExample(t *testing.T, dir, gen string) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
-// compileSafe is Compile with an internal compiler panic turned into an
+// compileSafe is CompileWithGems (a required gem is compiled, as rackup is) with an internal compiler panic turned into an
 // error, so one bad case fails its test instead of the whole binary.
 func compileSafe(name string, src []byte) (code []byte, warnings []string, err error) {
 	defer func() {
@@ -478,7 +478,7 @@ func compileSafe(name string, src []byte) (code []byte, warnings []string, err e
 			err = fmt.Errorf("compiler panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	return Compile(context.Background(), name, src, loadPath(filepath.Dir(name), src)...)
+	return CompileWithGems(context.Background(), name, src, loadPath(filepath.Dir(name), src)...)
 }
 
 // onLoadPath reports whether `require name` finds a file on src's `# load_path:`.

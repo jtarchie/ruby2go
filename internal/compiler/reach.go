@@ -36,6 +36,7 @@ var declarationCalls = map[string]bool{
 	"attr": true, "attr_reader": true, "attr_writer": true, "attr_accessor": true, "private": true, "public": true,
 	"protected": true, "module_function": true, "private_class_method": true, "public_class_method": true,
 	"private_constant": true, "public_constant": true, "include": true, "extend": true, "prepend": true, "ruby2_keywords": true,
+	"deprecate_constant": true,
 }
 
 // goCall matches a Go method call (`.Name(`) or a free func call (`Owner_Name(` / `Owner_Name[`); a field is not a call.
@@ -63,6 +64,8 @@ type reachDef struct {
 	name   string
 	owner  *Class // nil for a top-level def
 	body   parser.Node
+	file   *File
+	scope  []*Class // the def's lexical scope, which its constants resolve in
 	walked bool
 }
 
@@ -77,12 +80,24 @@ type reach struct {
 	dynamic string // a computed reflective call, which reaches any name; "" when there is none
 	from    string
 	why     map[string]string // RB2GO_PRUNE_DEBUG: what first reached each name
+	named   map[*Class]bool   // the classes reachable code's constants resolve to
+	byName  map[string]bool   // constants that resolve to no class here: live by last segment
+	file    *File             // what the walk is in, for resolving constants lexically
+	scope   []*Class
+	pending map[string][]pendingConst // a gem constant's effect-free initializer, walked once its name is reached
+}
+
+type pendingConst struct {
+	value parser.Node
+	file  *File
+	scope []*Class
 }
 
 // pruneGemMethods drops a gem's methods reachable code cannot call (decision 169): by name, and for a gem class's
 // methods only while the class is live (reachable code names it, a subclass, or an includer).
 func (c *Compiler) pruneGemMethods() {
-	r := &reach{c: c, names: map[string]bool{}, consts: map[string]bool{}, aliases: map[string][]string{}, goNames: map[string][]string{}}
+	r := &reach{c: c, names: map[string]bool{}, consts: map[string]bool{}, aliases: map[string][]string{}, goNames: map[string][]string{},
+		named: map[*Class]bool{}, byName: map[string]bool{}, pending: map[string][]pendingConst{}}
 	debug := os.Getenv("RB2GO_PRUNE_DEBUG") != ""
 	if debug {
 		r.why = map[string]string{}
@@ -97,11 +112,11 @@ func (c *Compiler) pruneGemMethods() {
 		r.scanGo(v.code)
 	}
 	for _, f := range c.files {
-		r.from = f.Name
+		r.from, r.file, r.scope = f.Name, f, nil
 		r.walk(f.Root, !c.userFile(f)) // a user file is compiled whole; elsewhere a def runs only when called
 	}
 	for _, f := range c.erbSnippets {
-		r.from = f.Name
+		r.from, r.file, r.scope = f.Name, f, nil
 		r.walk(f.Root, false)
 	}
 	for changed := true; changed && r.dynamic == ""; {
@@ -110,8 +125,18 @@ func (c *Compiler) pruneGemMethods() {
 		for _, d := range r.defs {
 			if !d.walked && r.reached(d.name, d.owner) {
 				d.walked, changed = true, true
-				r.from = "def " + d.name
+				r.from, r.file, r.scope = "def "+d.name, d.file, d.scope
 				r.walk(d.body, false)
+			}
+		}
+		for name, ps := range r.pending {
+			if r.consts[name] {
+				delete(r.pending, name)
+				changed = true
+				for _, p := range ps {
+					r.from, r.file, r.scope = "constant "+name, p.file, p.scope
+					r.walk(p.value, false)
+				}
 			}
 		}
 	}
@@ -141,30 +166,30 @@ func (r *reach) dump() {
 }
 
 func (r *reach) index() {
-	note := func(name string, owner *Class, n *parser.DefNode) {
+	note := func(name string, owner *Class, n *parser.DefNode, file *File, scope []*Class) {
 		var body parser.Node = n
 		if st, ok := n.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
 			if x, ok := st.Body[0].(*parser.XStringNode); ok {
 				body = x
 			}
 		}
-		r.defs = append(r.defs, &reachDef{name: name, owner: owner, body: body})
+		r.defs = append(r.defs, &reachDef{name: name, owner: owner, body: body, file: file, scope: scope})
 		g := goMethodName(name)
 		r.goNames[g] = append(r.goNames[g], name)
 	}
 	for _, cls := range r.c.classList {
 		for _, m := range cls.MethodList {
 			if m.Node != nil {
-				note(m.Name, cls, m.Node)
+				note(m.Name, cls, m.Node, m.File, m.Scope)
 			}
 		}
 		for _, d := range cls.singletonDefs {
-			note(d.node.Name, cls, d.node)
+			note(d.node.Name, cls, d.node, d.file, d.scope)
 		}
 	}
 	for _, m := range r.c.topDefList {
 		if m.Node != nil {
-			note(m.Name, nil, m.Node)
+			note(m.Name, nil, m.Node, m.File, m.Scope)
 		}
 	}
 }
@@ -201,7 +226,7 @@ func (r *reach) computeLive() {
 		if i := strings.LastIndex(name, "::"); i >= 0 {
 			name = name[i+2:]
 		}
-		if !r.gemClass(cls) || r.consts[name] {
+		if !r.gemClass(cls) || r.named[cls] || r.byName[name] {
 			mark(cls)
 		}
 	}
@@ -272,22 +297,32 @@ func (r *reach) walk(n parser.Node, skipDefs bool) {
 		default:
 			r.walk(n.Superclass, skipDefs)
 		}
-		r.walk(n.Body, skipDefs)
+		r.walkBody(n.ConstantPath, n.Body, skipDefs)
 		return
 	case *parser.ModuleNode:
-		r.walk(n.Body, skipDefs)
+		r.walkBody(n.ConstantPath, n.Body, skipDefs)
 		return
 	case *parser.ConstantReadNode:
 		r.consts[n.Name] = true
+		r.nameConst(n, n.Name)
 	case *parser.ConstantPathNode: // Rack::Headers names Headers; Rack is only its namespace
 		r.consts[*n.Name] = true
+		r.nameConst(n, *n.Name)
 		return
 	case *parser.ConstantPathWriteNode: // its target declares
 		r.walk(n.Value, skipDefs)
 		return
+	case *parser.ConstantWriteNode: // Rack::Lint's HOST_PATTERN, read only by constants nothing reads
+		if r.c.gemFile(r.file) && !r.consts[n.Name] && effectFree(n.Value) {
+			r.pending[n.Name] = append(r.pending[n.Name], pendingConst{value: n.Value, file: r.file, scope: r.scope})
+			return
+		}
 	case *parser.XStringNode:
 		r.scanGo(n.Unescaped.Value)
 	case *parser.CallNode:
+		if n.Receiver == nil && len(r.scope) > 0 && slices.ContainsFunc(r.scope[len(r.scope)-1].singletonDefs, func(d singletonDef) bool { return d.node.Name == n.Name }) {
+			r.named[r.scope[len(r.scope)-1]] = true // a body's `register :webrick, WEBrick` calls its own class method
+		}
 		if r.call(n) {
 			return
 		}
@@ -303,6 +338,31 @@ func (r *reach) walk(n parser.Node, skipDefs bool) {
 	}
 	for _, ch := range n.CompactChildNodes() {
 		r.walk(ch, skipDefs)
+	}
+}
+
+// walkBody walks a class or module body with its constants resolving inside it.
+func (r *reach) walkBody(path parser.Node, body parser.Node, skipDefs bool) {
+	prev := r.scope
+	var name string
+	if r.file != nil && catchCompileError(func() { name = r.c.declName(r.file, path, r.scope) }) == nil && r.c.classes[name] != nil {
+		r.scope = append(slices.Clip(r.scope), r.c.classes[name])
+	}
+	r.walk(body, skipDefs)
+	r.scope = prev
+}
+
+// nameConst marks the class a constant resolves to in the walk's lexical scope; one that resolves to none here
+// (a constant, or one not declared yet) is live by its last segment, as rackup's two Servers would both be.
+func (r *reach) nameConst(n parser.Node, name string) {
+	var cls *Class
+	if r.file != nil {
+		cls = r.resolve(&constRef{node: n, scope: r.scope, file: r.file})
+	}
+	if cls != nil {
+		r.named[cls] = true
+	} else {
+		r.byName[name] = true
 	}
 }
 
@@ -346,12 +406,27 @@ func (r *reach) writeNames(n parser.Node) {
 }
 
 // call reaches a call's method; true when its arguments name methods or modules without reaching them.
+// constGet: a computed const_get (rackup's Handler.[]) names classes, not methods, so it makes classes live rather than stop pruning.
+func (r *reach) constGet(n *parser.CallNode) {
+	prefix := ""
+	if _, self := n.Receiver.(*parser.SelfNode); (self || n.Receiver == nil) && len(r.scope) > 0 {
+		prefix = r.scope[len(r.scope)-1].RubyName + "::"
+	}
+	for _, cls := range r.c.classList {
+		if strings.HasPrefix(cls.RubyName, prefix) {
+			r.named[cls] = true
+		}
+	}
+}
+
 func (r *reach) call(n *parser.CallNode) bool {
 	r.add(n.Name)
 	args := callArgs(n)
 	// respond_to_missing? forwarding respond_to?(name) passes on a name some other call already spelled
 	if reflectiveCalls[n.Name] && len(args) > 0 && (n.Name != "respond_to?" || r.from != "def respond_to_missing?") {
-		if _, ok := symbolName(args[0]); !ok {
+		if _, ok := symbolName(args[0]); !ok && n.Name == "const_get" {
+			r.constGet(n)
+		} else if !ok {
 			r.dynamic = "a computed " + n.Name + " in " + r.from
 		}
 	}
@@ -389,6 +464,7 @@ func (r *reach) prune() {
 			}
 		}
 		cls.singletonDefs = defs
+		cls.delegations = slices.DeleteFunc(cls.delegations, func(d delegation) bool { return !keep(d.file, d.name, cls) })
 	}
 	r.pruneConsts()
 	var tops []*Method
@@ -430,7 +506,27 @@ func effectFree(n parser.Node) bool {
 		*parser.RegularExpressionNode, *parser.NilNode, *parser.TrueNode, *parser.FalseNode:
 		return true
 	case *parser.CallNode:
+		if n.Name == "freeze" && n.Arguments == nil && n.Block == nil {
+			return effectFree(n.Receiver)
+		}
 		return n.Receiver == nil && n.Arguments == nil && n.Block != nil && (n.Name == "lambda" || n.Name == "proc")
+	case *parser.ArrayNode:
+		return !slices.ContainsFunc(n.Elements, func(e parser.Node) bool { return !effectFree(e) })
+	case *parser.InterpolatedRegularExpressionNode: // `/\A#{HOST_PATTERN}\z/`: a constant's to_s
+		return !slices.ContainsFunc(n.Parts, func(p parser.Node) bool {
+			es, ok := p.(*parser.EmbeddedStatementsNode)
+			if !ok {
+				return false
+			}
+			if es.Statements == nil || len(es.Statements.Body) != 1 {
+				return true
+			}
+			switch es.Statements.Body[0].(type) {
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+				return false
+			}
+			return true
+		})
 	}
 	return false
 }

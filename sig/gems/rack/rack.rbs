@@ -179,4 +179,12 @@ module Rack
     def self.make_default: (Integer, **untyped) -> QueryParser
     def initialize: (untyped, Integer, ?bytesize_limit: Integer, ?params_limit: Integer) -> void
   end
+
+  module Multipart
+    class Parser
+      BUFFERED_UPLOAD_BYTESIZE_LIMIT: Integer
+      PARSER_BYTESIZE_LIMIT: Integer?
+      CONTENT_DISPOSITION_QUOTED_ESCAPES_LIMIT: Integer
+    end
+  end
 end

@@ -1,4 +1,4 @@
-# The rackup gem ships no signatures; this is the part prelude/rackup.rb implements (decision 174).
+# The rackup gem ships no signatures; this is what `rbs validate` needs of the gem rb2go compiles (decision 176).
 module Rackup
   module Handler
     class WEBrick

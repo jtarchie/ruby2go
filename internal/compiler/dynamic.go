@@ -241,6 +241,9 @@ func (c *Compiler) emitDynName(name string) {
 	own, shared := c.dynWrappers(name)
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
+	if name == "call" { // a Proc held untyped (rbProcCall)
+		c.w("\tif r, ok := rbProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
+	}
 	c.emitDynArms(shared, false)
 	kernel := c.nilKernelBody(name) // built once: a body that cannot cross `any` warns
 	if v, ok := nilConversions[name]; ok {
@@ -876,4 +879,46 @@ func (c *Compiler) emitClassOf() {
 	}
 	// ponytail: generic struct classes fall to NoMethodError; give them an _Any interface to switch on
 	c.w("\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
+}
+
+// emitDynEach emits rbEachAny (dynEach): an Array's elements, a Hash's pairs, then one case per Go shape of a user or
+// gem class's own each; a block of two splits a lone Array value and a block of one gets a pair as an Array, as yield does.
+func (c *Compiler) emitDynEach() {
+	if !c.dynEach {
+		return
+	}
+	c.w("func rbEachAny(recv any, arity int, blk func(...any)) any {\n\tyield := func(xs ...any) {\n\t\tswitch {\n")
+	c.w("\t\tcase arity == 2 && len(xs) == 1:\n\t\t\ta := rbToAry(xs[0]).s\n\t\t\txs = append(a[:len(a):len(a)], nil, nil)[:2]\n")
+	c.w("\t\tcase arity == 1 && len(xs) == 2:\n\t\t\txs = []any{&Array[any]{s: xs}}\n\t\t}\n\t\tblk(xs...)\n\t}\n")
+	c.w("\tswitch r := recv.(type) {\n\tcase Array_Any:\n\t\tfor _, x := range r._ToAny().s {\n\t\t\tyield(x)\n\t\t}\n")
+	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor _, k := range h.keys {\n\t\t\tyield(k, h.vals[k])\n\t\t}\n")
+	seen := map[string]bool{}
+	for _, cls := range c.classList {
+		m := cls.Methods["each"]
+		if m == nil || m.File == nil || m.File.prelude || m.Block == nil || len(m.Params) > 0 || m.generic() || len(cls.TypeParams) > 0 ||
+			len(m.Block.Params) == 0 || len(m.Block.Params) > 2 || !isVoid(m.Block.Ret) || m.Block.Self != nil || m.Block.Rest {
+			continue
+		}
+		if slices.ContainsFunc(m.Block.Params, mentionsVar) {
+			continue
+		}
+		params, ret := c.sig(m, nil)
+		shape := "interface{ Each(" + params + ") " + ret + " }"
+		if seen[shape] {
+			continue
+		}
+		seen[shape] = true
+		vars := []string{"a", "b"}[:len(m.Block.Params)]
+		c.w("\tcase %s:\n", shape)
+		if m.Iterator {
+			c.w("\t\tfor %s := range r.Each() {\n\t\t\tyield(%s)\n\t\t}\n", strings.Join(vars, ", "), strings.Join(vars, ", "))
+			continue
+		}
+		typed := make([]string, len(vars))
+		for i, v := range vars {
+			typed[i] = v + " " + c.goType(m.Block.Params[i])
+		}
+		c.w("\t\tr.Each(func(%s) { yield(%s) })\n", strings.Join(typed, ", "), strings.Join(vars, ", "))
+	}
+	c.w("\tdefault:\n\t\tpanic(rbNoMethod(\"each\", recv, false))\n\t}\n\treturn recv\n}\n\n")
 }

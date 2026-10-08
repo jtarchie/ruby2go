@@ -23,6 +23,20 @@ func rbRegexpNew(pattern, src, opts string) *Regexp {
 	return &Regexp{re: rxNew(re), src: src, opts: opts}
 }
 
+// rbRegexpLenient is a gem's regexp (decision 176): MRI builds it, so rb2go does too, and one RE2 cannot match raises
+// RegexpError when it is used rather than when the gem loads (Rack::Lint's URI patterns).
+func rbRegexpLenient(prefix, src, opts string) *Regexp {
+	pat, err := translateRegexp(stripExtended(src, strings.Contains(opts, "x")))
+	var re *regexp.Regexp
+	if err == nil {
+		re, err = regexp.Compile(rxFold(prefix + pat))
+	}
+	if err != nil {
+		return &Regexp{re: &rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src: src, opts: opts}
+	}
+	return &Regexp{re: rxNew(re), src: src, opts: opts}
+}
+
 // rbRegexpErr words a Go regexp syntax error as Onigmo words the same
 // mistake, with the Ruby source after it (`end pattern with unmatched
 // parenthesis: /a(b/`); an error with no Onigmo twin keeps Go's wording.

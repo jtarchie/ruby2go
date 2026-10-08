@@ -2915,4 +2915,21 @@ module DynamicTests
       assert_equal [[1, 2]], seen
     end
   end
+
+  # Proc#call on a Proc held untyped (decision 176, amending 47): a Rack app may be a lambda.
+  class DynamicProcCallTest < Minitest::Test
+    def test_call_untyped_proc
+      double = ->(x) { x * 2 } #: ^(Integer) -> Integer
+      seen = [] #: Array[String]
+      log = ->(s) { seen << s } #: ^(String) -> void
+      procs = [double, log] #: Array[untyped]
+      procs[1].call("hi")
+      assert_equal [42, ["hi"]], [procs[0].call(21), seen]
+      begin
+        procs[0].call(1, 2)
+      rescue ArgumentError => e
+        assert_equal "wrong number of arguments (given 2, expected 1)", e.message
+      end
+    end
+  end
 end

@@ -6,16 +6,18 @@ package prelude
 import (
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func rbWEBrickNew(config *Hash[Symbol, any]) *WEBrick_HTTPServer {
+func rbWEBrickListen(config *Hash[Symbol, any]) *WEBrick_HTTPServer_Handle__ {
 	port := 0
 	if p, ok := config.vals[Symbol("Port")]; ok && p != nil {
 		port = int(p.(Integer))
@@ -31,7 +33,7 @@ func rbWEBrickNew(config *Hash[Symbol, any]) *WEBrick_HTTPServer {
 	Hash_Op_idxSet[Symbol, any](config, Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
 	mux := http.NewServeMux()
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	return &WEBrick_HTTPServer{srv: srv, ln: ln, mux: mux, config: config}
+	return &WEBrick_HTTPServer_Handle__{srv: srv, ln: ln, mux: mux}
 }
 
 // rbWEBrickParseCookies is WEBrick::HTTPRequest#cookies: the Cookie header split on ";", trimmed, name=value pairs kept in order.
@@ -48,15 +50,76 @@ func rbWEBrickParseCookies(raw string) *Array[WEBrick_CookieI] {
 	return out
 }
 
+// rbWEBrickServlet is a mounted handler; the mux only looks it up (rbWEBrickRoute), HTTPServer#service runs it.
+type rbWEBrickServlet func(*WEBrick_HTTPRequest, *WEBrick_HTTPResponse)
+
+func (rbWEBrickServlet) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
 // rbWEBrickMount registers h for dir and everything below it.
-func rbWEBrickMount(mux *http.ServeMux, dir string, h http.HandlerFunc) {
+func rbWEBrickMount(mux *http.ServeMux, dir string, h func(*WEBrick_HTTPRequest, *WEBrick_HTTPResponse)) {
 	dir = "/" + strings.Trim(dir, "/")
 	if dir == "/" {
-		mux.HandleFunc("/", h)
+		mux.Handle("/", rbWEBrickServlet(h))
 		return
 	}
-	mux.HandleFunc(dir, h)
-	mux.HandleFunc(dir+"/", h)
+	mux.Handle(dir, rbWEBrickServlet(h))
+	mux.Handle(dir+"/", rbWEBrickServlet(h))
+}
+
+// rbWEBrickRoute is HTTPServer#service: the servlet mounted for the path, else NotFound as WEBrick raises.
+func rbWEBrickRoute(mux *http.ServeMux, req *WEBrick_HTTPRequest, res *WEBrick_HTTPResponse) {
+	h, _ := mux.Handler(req.r)
+	s, ok := h.(rbWEBrickServlet)
+	if !ok {
+		panic(NewWEBrick_HTTPStatus_NotFound(Ref(String("`" + req.r.URL.Path + "' not found."))))
+	}
+	s(req, res)
+}
+
+// rbWEBrickURI is WEBrick's request_uri: absolute, from the Host header.
+func rbWEBrickURI(r *http.Request) string {
+	return "http://" + r.Host + r.RequestURI
+}
+
+// rbWEBrickMetaVars is HTTPRequest#meta_vars in WEBrick's key order; Go's Header map has lost arrival order, so HTTP_* keys are sorted.
+func rbWEBrickMetaVars(r *http.Request) *Hash[String, any] {
+	env := NewHash[String, any]()
+	set := func(k, v string) { Hash_Op_idxSet[String, any](env, String(k), String(v)) }
+	if r.ContentLength > 0 {
+		set("CONTENT_LENGTH", strconv.FormatInt(r.ContentLength, 10))
+	}
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		set("CONTENT_TYPE", ct)
+	}
+	set("GATEWAY_INTERFACE", "CGI/1.1")
+	path, query, _ := strings.Cut(r.RequestURI, "?")
+	if p, err := url.PathUnescape(path); err == nil {
+		path = p
+	}
+	set("PATH_INFO", path)
+	set("QUERY_STRING", query)
+	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		set("REMOTE_ADDR", ip)
+		set("REMOTE_HOST", ip) // WEBrick's DoNotReverseLookup
+	}
+	Hash_Op_idxSet[String, any](env, "REMOTE_USER", nil)
+	set("REQUEST_METHOD", r.Method)
+	set("REQUEST_URI", rbWEBrickURI(r))
+	set("SCRIPT_NAME", "")
+	host, port, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host, port = r.Host, "80"
+	}
+	set("SERVER_NAME", host)
+	set("SERVER_PORT", port)
+	set("SERVER_PROTOCOL", "HTTP/1.1") // the server's HTTPVersion, as WEBrick's
+	set("HTTP_HOST", r.Host)           // Go moves Host out of r.Header
+	for _, k := range slices.Sorted(maps.Keys(r.Header)) {
+		if k != "Content-Type" && k != "Content-Length" {
+			set("HTTP_"+strings.ToUpper(strings.ReplaceAll(k, "-", "_")), strings.Join(r.Header.Values(k), ", "))
+		}
+	}
+	return env
 }
 
 func rbParseQuery(h *Hash[String, String], q string) {
@@ -89,7 +152,7 @@ func rbWEBrickRequest(r *http.Request) *WEBrick_HTTPRequest {
 // rbWEBrickServe runs a handler and writes its response like WEBrick; a raised HTTPStatus keeps the body/header already set (set_redirect relies on this).
 func rbWEBrickServe(w http.ResponseWriter, r *http.Request, handle func(*WEBrick_HTTPRequest, *WEBrick_HTTPResponse)) {
 	req := rbWEBrickRequest(r)
-	res := &WEBrick_HTTPResponse{status: 200, header: http.Header{}, cookies: NewArray[WEBrick_CookieI]()}
+	res := &WEBrick_HTTPResponse{status: 200, header: http.Header{}, cookies: NewArray[any]()}
 	func() {
 		defer func() {
 			if p := recover(); p != nil {

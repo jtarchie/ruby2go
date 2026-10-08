@@ -87,6 +87,9 @@ func rbRedirectTarget(fd int) rbWriter {
 func rbSetStdout(v any) any { return rbRedirect(1, v, "$stdout") }
 func rbSetStderr(v any) any { return rbRedirect(2, v, "$stderr") }
 
+// rbVerbose is `$VERBOSE`: false by default, nil silences Kernel#warn.
+var rbVerbose = Ref(Boolean(false))
+
 func rbStdoutIO() *IO { return rbStreamIO(1, STDOUT) }
 func rbStderrIO() *IO { return rbStreamIO(2, STDERR) }
 
@@ -956,6 +959,8 @@ func rbWrapPanic(r any) any {
 		return r
 	case rbStop, rbThrow:
 		return r
+	case RxUnsupported:
+		return NewRegexpError(Ref(String(e)))
 	}
 	if err, ok := r.(runtime.Error); ok {
 		msg := err.Error()

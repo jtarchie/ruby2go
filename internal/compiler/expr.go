@@ -4759,6 +4759,18 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 	return expr{}
 }
 
+// dynEach is a gem's `x.each { |a, b| }` on an untyped x, as a Rack app's headers and body are (decision 176).
+func (f *fctx) dynEach(n parser.Node, recv expr, b *parser.BlockNode) expr {
+	k := len(f.blockParamNames(b.Parameters))
+	if k == 0 || k > 2 {
+		f.errorf(n, "each on an untyped receiver takes a block of one or two parameters")
+	}
+	f.c.dynEach = true
+	clo := f.genClosure(n, b, &BlockSig{Params: []Type{TAny{}, TAny{}}[:k], Ret: TVoid{}}, nil)
+	xs := []string{"xs_[0]", "xs_[1]"}[:k]
+	return expr{code: fmt.Sprintf("rbEachAny(%s, %d, func(xs_ ...any) { (%s)(%s) })", recv.code, k, clo, strings.Join(xs, ", ")), typ: TAny{}}
+}
+
 // universalCall handles Kernel-level methods on values of unknown type.
 func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	if block != nil {
@@ -4767,6 +4779,9 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 		}
 		if f.c.isNumericMod(classOf(recv.typ)) {
 			f.errorf(n, "a block on a Numeric is not supported: narrow it with is_a? first (decision 142)")
+		}
+		if b, ok := block.(*parser.BlockNode); ok && name == "each" && len(args) == 0 && f.lenient() && isAny(recv.typ) {
+			return f.dynEach(n, recv, b)
 		}
 		f.errorf(n, "blocks on untyped receivers are not supported")
 	}
@@ -4790,7 +4805,7 @@ func (f *fctx) universalCall(n parser.Node, recv expr, name string, args []parse
 	case "==":
 		a := one(recv.typ)
 		code := "rbEq(" + recv.code + ", " + f.coerce(args[0], a, recv.typ) + ")"
-		if isAny(recv.typ) || isNil(recv.typ) || isAbstract(recv.typ) {
+		if isAny(recv.typ) || isNil(recv.typ) || isAbstract(recv.typ) || isAny(a.typ) { // `x == v` with v untyped: Enumerable#include?
 			code = "rbEq[any](" + recv.code + ", " + f.coerce(args[0], a, TAny{}) + ")"
 		}
 		return expr{code: code, typ: f.cls("Boolean")}
@@ -5816,6 +5831,11 @@ func (f *fctx) assignTarget(target parser.Node, v expr) {
 		f.assignCall(t, t.Receiver, "[]=", args, v)
 	case *parser.CallTargetNode:
 		f.assignCall(t, t.Receiver, t.Name, nil, v)
+	case *parser.GlobalVariableTargetNode:
+		if t.Name != "$VERBOSE" {
+			f.errorf(target, "global variable %s cannot be assigned in a multiple assignment", t.Name)
+		}
+		f.emit("rbVerbose = %s", f.coerce(t, v, TOpt{Elem: f.cls("Boolean")}))
 	default:
 		f.errorf(target, "unsupported assignment target %s", nodeType(target))
 	}
@@ -5869,6 +5889,8 @@ func (f *fctx) targetType(n parser.Node) Type {
 		if iv := f.c.findIvar(f.owner, t.Name); iv != nil {
 			return iv.Type
 		}
+	case *parser.GlobalVariableTargetNode:
+		return TOpt{Elem: f.cls("Boolean")} // $VERBOSE, the one assignable there
 	}
 	return nil
 }
@@ -6841,8 +6863,10 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: "Integer(os.Getpid())", typ: f.cls("Integer")}
 	case "$~": // the frame's last match (decision 171)
 		return expr{code: f.lastMatchVar(n), typ: TOpt{Elem: f.cls("MatchData")}}
+	case "$VERBOSE":
+		return expr{code: "rbVerbose", typ: TOpt{Elem: f.cls("Boolean")}}
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr and $? are (docs/design.md decision 61)", n.Name)
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr, $VERBOSE and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
 }
 
@@ -6850,6 +6874,10 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 // object takes the stream's writes. Reading the global still answers the
 // IO constant (decision 61), so the assignment's value is what was given.
 func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
+	if n.Name == "$VERBOSE" {
+		v := f.genExpr(n.Value, TOpt{Elem: f.cls("Boolean")})
+		return expr{code: "rbVerbose = " + f.coerce(n.Value, v, TOpt{Elem: f.cls("Boolean")}), typ: TAny{}, stmt: true}
+	}
 	fn := map[string]string{"$stdout": "rbSetStdout", "$stderr": "rbSetStderr"}[n.Name]
 	if fn == "" {
 		f.errorf(n, "global variable %s cannot be assigned; only $stdout and $stderr can (docs/design.md decision 109)", n.Name)
@@ -7005,7 +7033,7 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 // (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
 func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	lv, ok := n.Receiver.(*parser.LocalVariableReadNode)
-	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" {
+	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "replace" && n.Name != "clear" {
 		return expr{}, false
 	}
 	var t Type
@@ -7036,10 +7064,23 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 		if typeEq(a.typ, TOpt{Elem: str}) { // `s << nil` raises in MRI too
 			code = "rbMustStr(" + a.code + ")"
 		}
-		f.assignLocal(n, lv.Name, expr{code: cur() + " + " + code, typ: str}, nil)
+		f.assignLocal(n, lv.Name, expr{code: "String.Op_plus(" + cur() + ", " + code + ")", typ: str}, nil)
 		f.narrowString(lv.Name)
 		v := f.genExpr(lv, nil)
 		return expr{code: v.code, typ: v.typ, stmt: true, done: true}, true
+	case "replace", "clear": // rackup's Stream::Reader#read refills its buffer
+		if len(args) != map[string]int{"replace": 1, "clear": 0}[n.Name] {
+			return expr{}, false
+		}
+		with := `""`
+		if n.Name == "replace" {
+			with = f.coerce(args[0], f.genExpr(args[0], str), str)
+		}
+		tmp := f.newTmp()
+		f.emit("%s := rbStrReplace(%s, %s)", tmp, cur(), with) // cur: a non-String receiver raises as MRI's would
+		f.assignLocal(n, lv.Name, expr{code: tmp, typ: str}, nil)
+		f.narrowString(lv.Name)
+		return expr{code: tmp, typ: str}, true
 	case "slice!":
 		if len(args) != 2 {
 			return expr{}, false
@@ -7138,7 +7179,7 @@ func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
 // narrowString reads a String? local that was just assigned a String as String for the rest of its branch.
 func (f *fctx) narrowString(name string) {
 	v := f.visibleLocal(name)
-	if v == nil {
+	if v == nil || v.base != nil && typeEq(v.typ, f.cls("String")) { // assignLocal kept it narrowed
 		return
 	}
 	t := v.typ

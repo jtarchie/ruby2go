@@ -120,7 +120,7 @@ module Enumerable
     }
   }
 
-  #: (E) -> bool
+  #: (untyped) -> bool
   def include?(v)
     each { |x| return true if x == v }
     false

@@ -231,6 +231,23 @@ func erbLiteral(f *File, n parser.Node) (string, int, bool) {
 			b.WriteString(part.Unescaped.Value)
 		}
 		return b.String(), line, line > 0
+	case *parser.CallNode: // rack's `<<-'HTML'.gsub(/^      /, '')` unindent, folded at compile time
+		src, line, ok := erbLiteral(f, s.Receiver)
+		args := callArgs(s)
+		if !ok || s.Name != "gsub" || len(args) != 2 || s.Block != nil {
+			return "", 0, false
+		}
+		re, ok1 := args[0].(*parser.RegularExpressionNode)
+		to, ok2 := args[1].(*parser.StringNode)
+		if !ok1 || !ok2 || !strings.HasSuffix(f.text(re.Location), "/") || strings.Contains(to.Unescaped.Value, `\`) {
+			return "", 0, false
+		}
+		pat, err := translateRegexp(re.Unescaped.Value)
+		rx, err2 := regexp.Compile("(?m)" + pat)
+		if err != nil || err2 != nil {
+			return "", 0, false
+		}
+		return rx.ReplaceAllLiteralString(src, to.Unescaped.Value), line, true
 	}
 	return "", 0, false
 }

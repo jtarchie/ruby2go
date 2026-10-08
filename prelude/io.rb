@@ -764,7 +764,7 @@ module Kernel
   #: (*untyped, ?uplevel: Integer?, ?category: Symbol?) -> nil
   def warn(*msgs, uplevel: nil, category: nil)
     msgs = msgs.flatten
-    return nil if msgs.empty? || (category && !Warning[category])
+    return nil if msgs.empty? || $VERBOSE.nil? || (category && !Warning[category])
 
     s = ""
     if uplevel

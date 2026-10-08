@@ -155,6 +155,7 @@ module Errno
   class EHOSTUNREACH < SystemCallError; end
   class ENETUNREACH < SystemCallError; end
   class EAFNOSUPPORT < SystemCallError; end
+  class EMFILE < SystemCallError; end
 end
 
 class RuntimeError < StandardError; end
