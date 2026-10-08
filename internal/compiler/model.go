@@ -622,13 +622,13 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 	if !reopen && !f.prelude {
 		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
-	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
+	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls), true)
 }
 
 func (c *Compiler) collectModule(ctx context.Context, f *File, n *parser.ModuleNode, scope []*Class) {
 	name := c.declName(f, n.ConstantPath, scope)
 	cls := c.declareClass(f, name, f.line(n.Location.StartOffset), true)
-	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls))
+	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls), true)
 }
 
 // addConst records `NAME = value` declared in scope.
@@ -659,7 +659,7 @@ func (c *Compiler) noteConstName(full string) {
 		parent.constNames = append(parent.constNames, full[i+2:])
 	}
 }
-func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body parser.Node, scope []*Class) {
+func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body parser.Node, scope []*Class, loadTime bool) {
 	if body == nil {
 		return
 	}
@@ -679,13 +679,15 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			}
 		case *parser.CallNode:
 			if isClassEvalCall(n) { // its block is collected as class-body statements, not dispatched here
-				c.collectClassEval(ctx, f, cls, n, scope)
+				c.collectClassEval(ctx, f, cls, n, scope, loadTime)
 				continue
 			}
 			if !isDescribe(n) { // a describe's block is a class body, collected as one
 				c.scanAnon(ctx, f, n, scope)
 			}
-			c.collectClassCall(ctx, f, cls, n, vis, scope)
+			if !c.collectClassCall(ctx, f, cls, n, vis, scope) {
+				c.classBodyCall(f, n, scope, loadTime)
+			}
 		case *parser.SingletonClassNode:
 			c.collectSingletonClass(f, cls, n, scope)
 		case *parser.AliasMethodNode:
@@ -719,10 +721,33 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			}
 			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
 		default:
-			c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
+			c.classBodyNode(ctx, f, n, scope, loadTime)
 		}
 	}
 	c.collectIvarDecls(f, cls, body, scope)
+}
+
+// classBodyCall handles a class-body call that is neither a known declaration
+// nor a spec DSL call: a load-time statement where the class is defined, or
+// an error when the body does not run at load time (decision 166).
+func (c *Compiler) classBodyCall(f *File, n *parser.CallNode, scope []*Class, loadTime bool) {
+	if !loadTime {
+		if n.Receiver != nil {
+			c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
+		}
+		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
+	}
+	c.addClassStmt(f, n, scope)
+}
+
+// classBodyNode handles any other class-body expression the same way: a
+// load-time statement, or an error when the body does not run at load time.
+func (c *Compiler) classBodyNode(ctx context.Context, f *File, n parser.Node, scope []*Class, loadTime bool) {
+	if !loadTime {
+		c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
+	}
+	c.scanAnon(ctx, f, n, scope)
+	c.addClassStmt(f, n, scope)
 }
 
 // ruby2KeywordsShim reports whether a class-body conditional is MRI's
@@ -1002,10 +1027,24 @@ func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) [
 	return out
 }
 
-func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, vis *visibility, scope []*Class) {
-	if n.Receiver != nil {
-		c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
+// rejectUnsupportedDecl reports a class-body declaration rb2go recognizes but
+// does not implement, with a clearer message than the load-time call fallback
+// would give.
+func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
+	if n.Name == "prepend" {
+		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
+}
+
+// collectClassCall handles a class-body call that is a declaration (attr_*,
+// include, visibility, ...). It returns false for anything else, which a
+// load-time class body takes as a statement to run when the class is defined
+// (decision 166).
+func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, vis *visibility, scope []*Class) bool {
+	if n.Receiver != nil {
+		return false
+	}
+	c.rejectUnsupportedDecl(f, n)
 	args := callArgs(n)
 	switch n.Name {
 	case "attr", "attr_reader", "attr_writer", "attr_accessor":
@@ -1065,10 +1104,11 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	default:
 		if specForms[n.Name] && !f.prelude {
 			c.collectSpecForm(ctx, f, cls, n, scope)
-			return
+			return true
 		}
-		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
+		return false
 	}
+	return true
 }
 
 // isClassEvalCall reports whether n is a class-body `class_eval`/`module_eval`
@@ -1083,7 +1123,7 @@ func isClassEvalCall(n *parser.CallNode) bool {
 // scope, so `def` inside defines a method (decision 164). A String argument
 // would be a real eval, which the boot snapshot handles at compile time
 // (decision 161); block parameters belong to the *_exec forms, not supported.
-func (c *Compiler) collectClassEval(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class) {
+func (c *Compiler) collectClassEval(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class, loadTime bool) {
 	if len(callArgs(n)) > 0 {
 		c.errorf(f, n, "%s with an argument is not supported (a String to eval is not)", n.Name)
 	}
@@ -1094,7 +1134,7 @@ func (c *Compiler) collectClassEval(ctx context.Context, f *File, cls *Class, n 
 	if blk.Parameters != nil {
 		c.errorf(f, blk, "%s needs a block without parameters", n.Name)
 	}
-	c.collectBody(ctx, f, cls, blk.Body, scope)
+	c.collectBody(ctx, f, cls, blk.Body, scope, loadTime)
 }
 
 // addAlias is `alias new old` / `alias_method :new, :old`: a copy of the
@@ -1188,6 +1228,12 @@ type classHook struct {
 	mod  *constRef // nil: the superclass
 	node parser.Node
 	file *File // where the hook site is, for its place in load order
+}
+
+// addClassStmt records a class/module body statement that runs at load time,
+// where the class is defined (decision 166).
+func (c *Compiler) addClassStmt(f *File, n parser.Node, scope []*Class) {
+	c.classStmts = append(c.classStmts, &classStmt{Node: n, file: f, scope: scope})
 }
 
 // addMainStmt records a top-level statement and the file it runs in.
@@ -2919,13 +2965,13 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	if err != nil {
 		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
 	}
-	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope)
+	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope, false)
 	for _, m := range cls.MethodList {
 		m.valueGen = true
 	}
 	if bn, ok := call.Block.(*parser.BlockNode); ok && bn.Body != nil {
 		gen := slices.Clone(cls.MethodList)
-		c.collectBody(ctx, f, cls, bn.Body, scope)
+		c.collectBody(ctx, f, cls, bn.Body, scope, false)
 		// MRI defines the accessors on the new class but the rest on
 		// Struct/Data, so a block def overrides those and super reaches
 		// them: keep each one under a hidden private name.

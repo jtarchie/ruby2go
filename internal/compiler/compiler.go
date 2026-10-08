@@ -56,6 +56,7 @@ type Compiler struct {
 	topDefList    []*Method
 	verbatim      []verbatim
 	mainStmts     []parser.Node
+	classStmts    []*classStmt     // class/module body statements that run at load time (decision 166)
 	mainFile      *File            // the first user file: $0, and the generated header
 	userFiles     []*File          // in load order
 	loadCode      map[*File]string // a required file's top level, generated, for the loadFile that splices it

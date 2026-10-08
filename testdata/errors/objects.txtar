@@ -70,18 +70,8 @@ class Flagged
     def x = 1
   end
 end
--- class_body_receiver_call.rb --
-# error: main.rb:3: unsupported statement in class body: self.to_s
-class Loud
-  self.to_s
-end
--- class_body_puts.rb --
-# error: main.rb:3: unsupported call in class body: puts
-class Chatty
-  puts "loading"
-end
 -- class_body_define_method.rb --
-# error: main.rb:3: unsupported call in class body: define_method
+# error: main.rb:3: define_method is not supported
 class Dyn
   define_method(:x) { 1 }
 end

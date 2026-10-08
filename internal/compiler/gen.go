@@ -533,6 +533,10 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		f.buf.WriteString("{\n" + f.c.loadCode[lf.file] + "}\n")
 		return
 	}
+	if cs, ok := n.(*classStmt); ok {
+		f.genClassStmt(cs)
+		return
+	}
 	f.lineOf(n)
 	switch n := n.(type) {
 	case *parser.IfNode:
@@ -2731,6 +2735,29 @@ func (c *Compiler) emitSynth(m *Method) {
 	c.w("func (self *%s) %s(%s) %s { %s }\n\n", meta.Name, m.GoName, params, ret, body)
 }
 
+// classStmt stands in main's statement list for a class/module body's
+// load-time statement (decision 166): it runs where the class is defined,
+// in source order, with the class object as `self` and its lexical scope.
+type classStmt struct {
+	parser.Node
+	file  *File
+	scope []*Class
+}
+
+// genClassStmt emits a class-body statement in its class's lexical scope.
+func (f *fctx) genClassStmt(cs *classStmt) {
+	sub := f.c.newFctx(cs.file, nil, nil)
+	if n := len(cs.scope); n > 0 && cs.scope[n-1].meta != nil {
+		cls := cs.scope[n-1]
+		sub.selfType, sub.selfCode, sub.selfClassObj = TClass{C: cls.meta}, classVar(cls), true
+	}
+	sub.lex = cs.scope
+	sub.indent = f.indent
+	sub.retVar = ""
+	sub.genBody(cs.Node, nil, tail{}, nil)
+	f.buf.WriteString(sub.buf.String())
+}
+
 // constInit stands in main's statement list for a constant assignment, so
 // constants are evaluated in source order like MRI (prelude ones first).
 type constInit struct {
@@ -2781,6 +2808,9 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 		if n := c.hookCall(h); n != nil {
 			own[h.file] = append(own[h.file], n)
 		}
+	}
+	for _, cs := range c.classStmts {
+		own[cs.file] = append(own[cs.file], cs)
 	}
 	stmts := map[*File][]parser.Node{}
 	for _, n := range c.mainStmts {

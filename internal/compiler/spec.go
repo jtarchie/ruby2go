@@ -57,7 +57,7 @@ func (c *Compiler) collectDescribe(ctx context.Context, f *File, outer *Class, n
 	}
 	cls.superRef = &constRef{node: super, file: f}
 	c.specUses = append(c.specUses, specUse{cls: cls, f: f, node: n})
-	c.collectBody(ctx, f, cls, blk.Body, []*Class{cls})
+	c.collectBody(ctx, f, cls, blk.Body, []*Class{cls}, false)
 }
 
 // specDesc is a describe/it description, which must be known at compile

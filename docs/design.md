@@ -5388,3 +5388,32 @@ resolve; anything not listed is still open.
       `Downcaser < Hash` that downcases keys, checked against MRI), and the
       issue's acceptance program. `testdata/errors/hashes.txtar`'s
       `subclass_hash` rejection case is gone.
+
+166. A class or module body runs **load-time statements**, not only
+    declarations (#87). Needed by unmodified rack's `Rack::Headers`, whose
+    body builds a lookup table with `%w(...).each do |s| KNOWN_HEADERS[s] =
+    ... end`.
+    - **What is a statement.** A class-body call that is not a declaration
+      the collector knows (`attr_*`, `include`/`extend`, visibility, a spec
+      DSL call, ...) and any other class-body expression (a bare `%w(...)`,
+      an assignment) is collected instead of rejected. `prepend`/`define_method`
+      and a `def`-inside-`if` stay errors: only load-time code rb2go already
+      compiles in a method body is accepted here, and method/constant
+      declarations must stay at the body's top level.
+    - **Where it runs.** The statement is a `classStmt` in main's statement
+      list, at its source offset, like a constant assignment or hook
+      (decision 18): it runs once, where the class is defined, at its source
+      position among the body's declarations and relative to top-level code
+      and `require`s. A constant that follows it gets a guard (`defined?` is
+      `String?`), as one after a hook or initializer that may run code is.
+    - **Scope.** It compiles in the class's lexical scope with the class
+      object as `self`, so `KNOWN_HEADERS` resolves as the class's constant
+      and a class method is callable, the same context a class-body
+      initializer runs in (`constFctx`).
+    - **Not load-time.** `describe`'s block (a spec class built at compile
+      time) and a `Class.new`/`Struct.new` block (its class is created where
+      the enclosing expression runs) keep declarations only.
+    - **Proof:** [example 111](../examples/111_class_body_statements/main.rb).
+      `testdata/errors/objects.txtar`'s `class_body_puts` and
+      `class_body_receiver_call` rejection cases are gone;
+      `class_body_define_method` now reports codegen's message.

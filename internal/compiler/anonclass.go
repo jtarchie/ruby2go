@@ -109,6 +109,6 @@ func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNo
 		c.errorf(f, call, "%s.new needs a block without parameters (decision 145)", map[bool]string{true: "Module", false: "Class"}[isModule])
 	}
 	// a block opens no constant scope in Ruby: the body's constants are the enclosing scope's
-	c.collectBody(ctx, f, cls, blk.Body, scope)
+	c.collectBody(ctx, f, cls, blk.Body, scope, false)
 	return cls
 }
