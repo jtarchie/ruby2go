@@ -203,11 +203,11 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.29s | 0.02s | 17x faster |
-| `Hash` counting, 500k | 0.13s | 0.02s | 7x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.17s | 0.03s | 6x faster |
-| string build/split, 100k | 0.13s | 0.03s | 5x faster |
-| `Math.sin`/`cos`, 200k | 0.11s | 0.01s | 10.8x faster |
+| `fib(32)` | 0.29s | 0.02s | 17.7x faster |
+| `Hash` counting, 500k | 0.13s | 0.02s | 5.4x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.21s | 0.04s | 5.7x faster |
+| string build/split, 100k | 0.15s | 0.04s | 3.7x faster |
+| `Math.sin`/`cos`, 200k | 0.15s | 0.01s | 11.9x faster |
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one
@@ -215,12 +215,15 @@ ulp and neither is uniquely correct ([decision 43](docs/design.md)).
 Ahead-of-time compilation is the other trade: `rb2go build` is ~0.25s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~70ms).
 
-Correctness is measured against MRI, not a specification: 107
-[examples](examples/), 29 minitest suites and 22 compile-error cases all
-run against `ruby` under `go test`. As a wider probe, the prelude defines
-a method named by **73.6%** of ruby/spec's 1,855 `core/*` method spec
-files (`scripts/rubyspec-coverage`, a name-level heuristic;
-[#49](https://github.com/jtarchie/ruby2go/issues/49)).
+Correctness is measured against MRI, not a specification: 110
+[examples](examples/), 29 minitest suites and 22 compile-error archives all
+run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
+ruby/spec under rb2go (decision 127): of core's 17,654 examples, **3,150
+pass**, 1,323 fail or error, and 13,181 are skipped as unsupported (features
+rb2go can't compile yet). A looser name-level metric,
+[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 74.1% of
+core's method spec files name a method the prelude or the compiler defines
+([#49](https://github.com/jtarchie/ruby2go/issues/49)).
 
 ## How it works
 
