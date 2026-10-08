@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"path/filepath"
 
 	"github.com/jtarchie/ruby2go/internal/compiler"
 )
@@ -32,6 +33,16 @@ const GoVersion = "1.24"
 // searches for the program's own files.
 func Compile(ctx context.Context, mainName string, src []byte, loadPath ...string) ([]byte, []string, error) {
 	out, warnings, err := compiler.CompileWithWarnings(ctx, Prelude, mainName, src, loadPath...)
+	if err != nil {
+		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+	}
+	return out, warnings, nil
+}
+
+// CompileWithGems is Compile for the CLI: a require only an installed gem answers is looked up under MRI and the program compiled with the gem (decision 173); a program without one never starts Ruby.
+func CompileWithGems(ctx context.Context, mainName string, src []byte, loadPath ...string) ([]byte, []string, error) {
+	srcs := []compiler.Source{{Name: filepath.Base(mainName), Src: src, Path: mainName}}
+	out, warnings, err := compiler.CompileWithGems(ctx, Prelude, GemSigs, srcs, loadPath...)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("rb2go: %w", err)
 	}

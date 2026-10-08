@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/jtarchie/ruby2go"
 )
 
 func TestBuildAndRun(t *testing.T) {
@@ -200,6 +202,45 @@ func TestTestCommand(t *testing.T) {
 	opts, rest, err := testBuildFlags([]string{"-v", "-race", "x_test.rb", "-gcflags", "-l", "--seed", "3", "-gcflags=-e", "-I", "a", "-Ib", "-I=c"})
 	if err != nil || !*opts.race || *opts.gcflags != "-e" || !slices.Equal(rest, []string{"-v", "x_test.rb", "--seed", "3"}) || !slices.Equal(opts.loadPath, []string{"a", "b", "c"}) {
 		t.Errorf("testBuildFlags: race=%v gcflags=%q -I=%q rest=%q err=%v", *opts.race, *opts.gcflags, opts.loadPath, rest, err)
+	}
+}
+
+// TestRunGem runs unmodified Cuba on rack, found as installed gems through the repo's Gemfile, against MRI (decision 173).
+func TestRunGem(t *testing.T) {
+	gemfile, err := filepath.Abs(filepath.Join("..", "..", "Gemfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BUNDLE_GEMFILE", gemfile)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "main.rb")
+	err = os.WriteFile(src, []byte(`require "cuba"
+Cuba.define { on("users/:id") { |id| res.write "user #{id}" } }
+s, _h, b = Cuba.call({ "REQUEST_METHOD" => "GET", "PATH_INFO" => "/users/7", "SCRIPT_NAME" => "", "QUERY_STRING" => "" })
+puts "#{s} #{b.join}"
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, e := false, ""
+	got, code := captureStdout(t, func() int { return run(src, nil, buildOpts{race: &f, gcflags: &e, work: &f}) })
+	want, err := exec.CommandContext(t.Context(), "ruby", "-rbundler/setup", src).Output() //nolint:gosec // written above
+	if err != nil || code != 0 || got != string(want) {
+		t.Errorf("rb2go run (exit %d): %q, ruby (%v): %q", code, got, err, want)
+	}
+
+	_, _, err = rb2go.CompileWithGems(t.Context(), src, []byte("require \"rb2go_no_such_gem\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "cannot load such file -- rb2go_no_such_gem") {
+		t.Errorf("unknown require: %v", err)
+	}
+	t.Setenv("PATH", "")
+	_, _, err = rb2go.CompileWithGems(t.Context(), src, []byte("require \"set\"\nrequire \"json\"\nrequire \"English\"\nputs 1\n"))
+	if err != nil {
+		t.Errorf("a program without gems needs no ruby: %v", err)
+	}
+	_, _, err = rb2go.CompileWithGems(t.Context(), src, []byte("require \"cuba\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "needs ruby on PATH") {
+		t.Errorf("gem without ruby: %v", err)
 	}
 }
 

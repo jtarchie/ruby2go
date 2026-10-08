@@ -271,7 +271,7 @@ func TestBootAutoload(t *testing.T) {
 	}
 	lp := loadPath(dir, src) // # load_path: lib
 	srcs := []compiler.Source{{Name: "app.rb", Src: src, Path: app}}
-	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, GemSigs, srcs, lp...)
+	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, GemSigs, srcs, lp)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
 	}
@@ -285,6 +285,12 @@ func TestBootAutoload(t *testing.T) {
 		t.Fatal(werr)
 	}
 	sameAsRuby(t, dir, "app.rb", goBuild(t, gen, ""))
+
+	// The same lib as the program's own -I code is not a gem's: compiled whole and strictly, so its never-called methods fail (decision 173).
+	_, _, err = compiler.CompileWithBoot(t.Context(), Prelude, GemSigs, srcs, nil, lp...)
+	if err == nil || !strings.Contains(err.Error(), filepath.Join("lib", "demo")) {
+		t.Errorf("user -I code compiled as a gem's: err = %v", err)
+	}
 }
 
 var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path): (.*)$`)

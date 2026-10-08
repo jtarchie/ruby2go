@@ -11,13 +11,15 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
-//go:embed boot_hook.rb
+//go:embed boot_hook.rb find_gems.rb
 var hookFS embed.FS
 
 // Manifest is what one boot recorded.
@@ -118,6 +120,39 @@ func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest,
 		return nil, fmt.Errorf("boot: %w", err)
 	}
 	return &m, nil
+}
+
+// FindGems asks MRI, once, for the lib dirs of the installed gems providing names and their runtime dependencies, through Bundler when BUNDLE_GEMFILE is set or dir holds a Gemfile.
+func FindGems(ctx context.Context, dir string, names []string) ([]string, error) {
+	script, err := hookFS.ReadFile("find_gems.rb")
+	if err != nil {
+		return nil, fmt.Errorf("find gems: %w", err)
+	}
+	args := []string{"-e", string(script), "--"}
+	env := os.Environ()
+	gemfile := os.Getenv("BUNDLE_GEMFILE")
+	if gemfile == "" {
+		_, serr := os.Stat(filepath.Join(dir, "Gemfile"))
+		if serr == nil {
+			gemfile = filepath.Join(dir, "Gemfile")
+			env = append(env, "BUNDLE_GEMFILE="+gemfile)
+		}
+	}
+	if gemfile != "" {
+		args = append([]string{"-rbundler/setup"}, args...)
+	}
+	cmd := exec.CommandContext(ctx, "ruby", append(args, names...)...) //nolint:gosec // names are the program's require literals
+	cmd.Env = env
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if errors.Is(err, exec.ErrNotFound) {
+		return nil, fmt.Errorf("require %q: finding an installed gem needs ruby on PATH", names[0])
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s (%w)", strings.TrimSpace(stderr.String()), err)
+	}
+	return strings.FieldsFunc(string(out), func(r rune) bool { return r == '\n' }), nil
 }
 
 // Class returns the named class, or nil.

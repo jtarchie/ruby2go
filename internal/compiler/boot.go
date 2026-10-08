@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jtarchie/ruby2go/internal/boot"
@@ -18,17 +19,38 @@ import (
 // compiler sees classes the source graph's literal requires do not name. A
 // program whose entry is not on disk is compiled as usual. gemSigs holds
 // vendored `.rbs` signatures (decision 160), keyed under `sig/gems/<gem>/`.
-func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
+// gemDirs are the gems' lib dirs, searched after loadPath (the program's own
+// -I): only files under them are gem code (decisions 169, 172, 173).
+func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, gemDirs []string, loadPath ...string) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	aug, err := bootSources(ctx, sources, loadPath)
+	aug, err := bootSources(ctx, sources, append(slices.Clip(loadPath), gemDirs...))
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := options{loadPath: loadPath, gemSigs: gemSigs, pruneGems: true}
+	opts := options{loadPath: loadPath, gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	return out, opts.warnings, err
+}
+
+// CompileWithGems compiles with the installed gems MRI finds for requires only a gem answers (decision 173); without such a require it never starts Ruby.
+func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
+	if len(sources) == 0 {
+		return nil, nil, errors.New("no Ruby files to compile")
+	}
+	names, err := gemRequires(ctx, sources, loadPath)
+	var gemDirs []string
+	if err == nil && len(names) > 0 {
+		gemDirs, err = boot.FindGems(ctx, filepath.Dir(sourceName(sources[0])), names)
+	}
+	if err != nil {
+		return nil, nil, err //nolint:wrapcheck // the caller adds "rb2go: "
+	}
+	if len(gemDirs) == 0 {
+		return CompileFilesWithWarnings(ctx, preludeFS, sources, loadPath...)
+	}
+	return CompileWithBoot(ctx, preludeFS, gemSigs, sources, gemDirs, loadPath...)
 }
 
 // bootSources runs boot on sources[0] and appends the files its resolved

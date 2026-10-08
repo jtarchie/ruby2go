@@ -5556,7 +5556,7 @@ resolve; anything not listed is still open.
     semantics-preserving.
     - **Where.** Only for `CompileWithBoot` (a program that requires a gem),
       between collect and link (`pruneGemMethods`, `reach.go`). A *gem
-      file* is one under a `-I` directory. User files and the prelude are
+      file* is one under a gem directory (decision 173; `-I` until then). User files and the prelude are
       compiled whole as before; the WASM playground and every non-gem
       program are untouched.
     - **Reachability is rapid type analysis.** A method name is *reached*
@@ -5672,3 +5672,44 @@ resolve; anything not listed is still open.
       `forwarded_values` and a local reassigned from String to Symbol) in
       `TestBootAutoload`, equal to MRI; and the unmodified Cuba on rack
       program, which now compiles and prints MRI's output.
+173. The CLI finds installed gems (#90). `rb2go build`, `run` and `gen`
+    compile through `rb2go.CompileWithGems`; `Compile`, `CompileFiles`,
+    `rb2go test` and the WASM playground are unchanged.
+    - **Which requires need a gem.** `gemRequires` (`libs.go`) runs only
+      `scanRequires` (the user files and the `-I` files they load) and keeps
+      the names no prelude lib (decision 155), no `-I` file and no MRI 4.0
+      standard library answers. The last is a static list of first path
+      segments (`mriLibs` in `libs.go`: rubylibdir, rubyarchdir, builtin
+      features such as `set`, `pp`, `English`, `bundler`), so a program
+      requiring only those never starts Ruby, as decision 161 requires.
+    - **Asking MRI, once.** For what remains, `boot.FindGems` runs one
+      `ruby` with `internal/boot/find_gems.rb`: each name's
+      `Gem::Specification.find_by_path` and its runtime dependencies,
+      transitively, print their `full_require_paths`. With `BUNDLE_GEMFILE`
+      set, or a `Gemfile` beside the program, it runs under
+      `-rbundler/setup`, so the bundle's versions win. A default gem, or a
+      name only `$LOAD_PATH` answers (stdlib `mriLibs` missed), stays a no-op
+      as before; a name nothing answers is the compile error `cannot load
+      such file -- x: no prelude library, -I file or installed gem has it`;
+      no `ruby` on PATH is `finding an installed gem needs ruby on PATH`.
+      When no gem dir comes back the program compiles as `Compile` would.
+    - **Gem code is what lives under those dirs**, amending decision 169:
+      `CompileWithBoot` takes the gem dirs explicitly, apart from the
+      program's own `-I`. A `require` searches `-I` first, then the gem
+      dirs, as `$LOAD_PATH` orders them, except that a prelude lib's name
+      skips the gem dirs: a dependency closure drags in gems like `base64`
+      and `forwardable`, and the prelude is rb2go's copy of them. Boot
+      (decision 161) gets both as `ruby -I`. Only gem files are pruned
+      (169) and compiled leniently (172), and their warnings are dropped:
+      the user cannot act on rack's dynamic calls (the Cuba program printed
+      64). A program's own `-I lib` is compiled whole and strictly.
+    - **Not done:** `begin; require "x"; rescue LoadError; end` of a gem
+      that is not installed is the compile error above, where MRI rescues
+      it; `rb2go test` does not look gems up; `gems.rb` is not read.
+    - **Proof:** `TestRunGem` (`cmd/rb2go`) runs the Cuba program through
+      `rb2go run` under the repo `Gemfile` (now holding rack ≥ 3.2.7 and
+      cuba 4.0) against `ruby -rbundler/setup`, checks the unknown-gem
+      error, and with an empty PATH that a stdlib-only program compiles and
+      a gem program says it needs Ruby. `TestBootAutoload` compiles
+      `testdata/boot` again with `lib` as the program's own `-I`: the
+      never-called method it prunes as a gem's is now an error.

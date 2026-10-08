@@ -97,7 +97,7 @@ func gen(file string, loadPath []string, out io.Writer) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	code, warnings, err := rb2go.Compile(context.Background(), file, src, loadPath...)
+	code, warnings, err := rb2go.CompileWithGems(context.Background(), file, src, loadPath...)
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
@@ -183,7 +183,7 @@ func compile(file, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	if err != nil {
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
-	code, warnings, err := rb2go.Compile(context.Background(), file, src, opts.loadPath...)
+	code, warnings, err := rb2go.CompileWithGems(context.Background(), file, src, opts.loadPath...)
 	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
 }
 

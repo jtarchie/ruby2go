@@ -77,6 +77,7 @@ type Compiler struct {
 	loaded        map[string]bool           // prelude names, and user files' real paths
 	parsed        map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
 	loadPath      []string                  // -I directories (decision 131)
+	gemDirs       []string                  // installed gems' lib dirs, searched after loadPath: their files are gem code (decision 173)
 	sigs          map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
 	gemSigs       fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
 	pruneGems     bool                      // a gem program: unreached gem methods are dropped (decision 169)
@@ -200,6 +201,7 @@ type options struct {
 	skipped   []SkippedTest // what skipTests skipped
 	warnings  []string
 	loadPath  []string // -I directories, which a user `require` searches first
+	gemDirs   []string // gem lib dirs, searched after loadPath (decision 173)
 	infer     *inference
 	round     bool
 	inferDone bool
@@ -284,7 +286,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
-	c.loadPath = opts.loadPath
+	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.loadPreludeGo()
@@ -554,7 +556,7 @@ func (c *Compiler) userRequire(ctx context.Context, f *File, n *parser.CallNode)
 // findRequire is the file `require "x"` names on the load path, the first
 // -I directory holding x.rb, as MRI searches $LOAD_PATH; "" when none does.
 func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
-	if f.prelude || len(c.loadPath) == 0 {
+	if f.prelude || len(c.loadPath)+len(c.gemDirs) == 0 {
 		return ""
 	}
 	args := callArgs(n)
@@ -569,7 +571,11 @@ func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
 	if filepath.Ext(name) != ".rb" {
 		name += ".rb"
 	}
-	for _, dir := range c.loadPath {
+	dirs := c.loadPath
+	if preludeLibs[strings.TrimSuffix(str.Unescaped.Value, ".rb")] == "" { // the prelude's lib wins over a gem's copy (base64, forwardable)
+		dirs = append(slices.Clip(dirs), c.gemDirs...)
+	}
+	for _, dir := range dirs {
 		target := filepath.Join(dir, name)
 		info, err := os.Stat(target) //nolint:gosec // a -I directory the user gave, and a name their program requires
 		if err == nil && !info.IsDir() {
@@ -621,6 +627,9 @@ func realPath(name string) string {
 
 // warn records a warning once, with its source position.
 func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
+	if c.gemFile(f) { // not the user's to act on: gem code is compiled leniently (decision 173)
+		return
+	}
 	msg := fmt.Sprintf("%s:%d: ", f.Name, f.line(n.GetLocation().StartOffset)) + fmt.Sprintf(format, args...)
 	if c.warned[msg] {
 		return

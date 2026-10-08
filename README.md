@@ -100,8 +100,11 @@ loads once, where it is required, as in Ruby. The path must be a string
 literal at a file's top level, since rb2go reads the files when it compiles.
 `require "x"` finds your own files in the directories given with `-I`, as
 `ruby -I lib main.rb` does (`rb2go run -I lib main.rb`), and otherwise loads a
-supported standard library. Gems and run-time `$LOAD_PATH` changes are not
-supported.
+supported standard library. Any other name is looked up as an installed gem
+(through Bundler when a `Gemfile` sits beside the program), which `build`,
+`run` and `gen` then compile in from source; that needs `ruby` on PATH at
+build time, and only unmodified rack and Cuba are tested. Run-time
+`$LOAD_PATH` changes are not supported.
 
 ## Writing Ruby for rb2go
 
@@ -190,7 +193,8 @@ The roadmap for the rest of the standard library is issue
   block can be inlined as a loop (e.g. `each` on an `Array`).
 - **Overloaded RBS signatures** (`(Integer) -> T | () -> T`) are not
   supported; prelude methods pick one shape.
-- **One source file**, no gems.
+- **Gems** compile from source with `ruby` on PATH at build time; rack and
+  Cuba are the ones tested.
 
 Every trade-off above has a numbered entry, with its reasoning, in the
 [design record](docs/design.md).

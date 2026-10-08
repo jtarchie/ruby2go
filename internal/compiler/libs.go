@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -69,6 +70,48 @@ var preludeLibs = map[string]string{
 	"delegate":         "prelude/delegate.rb",
 	"date":             "prelude/date.rb",
 	"time":             "prelude/time_parse.rb",
+}
+
+// mriLibs are MRI 4.0's standard library (first path segment): never a gem to look up, so requiring them never starts Ruby.
+var mriLibs = map[string]bool{
+	"English": true, "bundler": true, "cgi": true, "complex": true, "continuation": true, "coverage": true, "date": true,
+	"date_core": true, "delegate": true, "did_you_mean": true, "digest": true, "enc": true, "enumerator": true, "erb": true,
+	"error_highlight": true, "etc": true, "expect": true, "fcntl": true, "fiber": true, "fileutils": true, "find": true,
+	"forwardable": true, "io": true, "ipaddr": true, "json": true, "mkmf": true, "monitor": true, "net": true,
+	"objspace": true, "open-uri": true, "open3": true, "openssl": true, "optionparser": true, "optparse": true,
+	"pathname": true, "pp": true, "prettyprint": true, "prism": true, "psych": true, "pty": true, "random": true,
+	"rational": true, "rbconfig": true, "resolv": true, "ripper": true, "ruby2_keywords": true, "rubygems": true,
+	"securerandom": true, "set": true, "shellwords": true, "singleton": true, "socket": true, "stringio": true,
+	"strscan": true, "syntax_suggest": true, "tempfile": true, "thread": true, "time": true, "timeout": true,
+	"tmpdir": true, "tsort": true, "un": true, "unicode_normalize": true, "uri": true, "weakref": true, "yaml": true,
+	"zlib": true,
+}
+
+// gemRequires lists required names (through -I files too) only an installed gem can answer (decision 173); it only parses.
+func gemRequires(ctx context.Context, sources []Source, loadPath []string) (names []string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ce, ok := r.(compileError)
+			if !ok {
+				panic(r)
+			}
+			err = ce
+		}
+	}()
+	p, err := sharedParser()
+	if err != nil {
+		return nil, fmt.Errorf("prism: %w", err)
+	}
+	c := &Compiler{parser: p, loadPath: loadPath}
+	libs, _, err := c.scanRequires(ctx, sources)
+	// ponytail: a missing gem's require under `rescue LoadError` still errors; mark guarded requires in requireScan to skip them.
+	for _, lib := range libs {
+		name := strings.TrimSuffix(lib, ".rb")
+		if preludeLibs[name] == "" && !mriLibs[strings.SplitN(name, "/", 2)[0]] {
+			names = append(names, name)
+		}
+	}
+	return names, err
 }
 
 // scanRequires parses the user sources and walks them, and every file they require_relative or require off the -I

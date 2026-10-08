@@ -41,12 +41,12 @@ var declarationCalls = map[string]bool{
 // goCall matches a Go method call (`.Name(`) or a free func call (`Owner_Name(` / `Owner_Name[`); a field is not a call.
 var goCall = regexp.MustCompile(`(?:\.|_)([A-Z][A-Za-z0-9]*)[(\[]`)
 
-// gemFile reports whether f was loaded from a -I directory (a gem's lib), the code decision 169 prunes.
+// gemFile reports whether f was loaded from a gem's lib dir (decision 173), the code decision 169 prunes.
 func (c *Compiler) gemFile(f *File) bool {
 	if f == nil || f.prelude || f.path == "" {
 		return false
 	}
-	for _, dir := range c.loadPath {
+	for _, dir := range c.gemDirs {
 		rel, err := filepath.Rel(realPath(dir), f.path)
 		if err == nil && !strings.HasPrefix(rel, "..") {
 			return true
