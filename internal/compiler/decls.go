@@ -57,11 +57,25 @@ func (c *Compiler) goType(t Type) string {
 	case TVar:
 		return t.Name
 	case TFunc:
-		s := "func(" + c.goTypes(t.Params) + ")"
+		params := make([]string, 0, len(t.Params)+1)
+		if t.Self != nil {
+			params = append(params, c.goType(t.Self))
+		}
+		for _, p := range t.Params {
+			params = append(params, c.goType(p))
+		}
+		s := "func(" + strings.Join(params, ", ") + ")"
 		if t.Rest {
 			last := len(t.Params) - 1
-			s = "func(" + c.goTypes(t.Params[:last])
-			if last > 0 {
+			rest := make([]string, 0, len(t.Params))
+			if t.Self != nil {
+				rest = append(rest, c.goType(t.Self))
+			}
+			for _, p := range t.Params[:last] {
+				rest = append(rest, c.goType(p))
+			}
+			s = "func(" + strings.Join(rest, ", ")
+			if len(rest) > 0 {
 				s += ", "
 			}
 			s += "..." + c.goType(t.Params[last]) + ")"
@@ -117,7 +131,7 @@ func (c *Compiler) selfTypeFor(e entry, cls *Class) Type {
 
 // blockGoType renders a block signature as a Go func type.
 func (c *Compiler) blockGoType(b *BlockSig, env map[string]Type) string {
-	return c.goType(TFunc{Params: substAll(b.Params, env), Ret: subst(b.Ret, env)})
+	return c.goType(TFunc{Params: substAll(b.Params, env), Ret: subst(b.Ret, env), Self: subst(b.Self, env), Rest: b.Rest})
 }
 
 // iterGoType renders an iterator method's return type.

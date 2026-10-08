@@ -4870,4 +4870,46 @@ module ObjectTests
       assert_equal [1, nil], [SelfOptNode.new(1).me&.n, SelfOptNode.new(0).me&.n]
     end
   end
+
+  # A stored block runs later with self rebound by instance_eval (#85).
+  class Router
+    #: () { () -> String } -> void
+    def initialize(&blk)
+      @blk = blk
+    end
+
+    #: () -> String
+    def route
+      instance_eval(&@blk)
+    end
+
+    #: () -> String
+    def hello = "hi"
+
+    #: (Integer) -> Integer
+    def double(n) = n * 2
+  end
+
+  class ObjectInstanceEvalTest < Minitest::Test
+    def test_stored_block_instance_eval
+      assert_equal "hi", Router.new { hello }.route
+    end
+
+    def test_instance_eval_literal
+      r = Router.new { hello }
+      assert_equal "hi", r.instance_eval { hello }
+    end
+
+    def test_class_eval_defines_method
+      assert_equal "from class_eval", CevGreeter.new.greet("class_eval")
+    end
+  end
+
+  # class_eval in a class body collects its block as class-body code (#85).
+  class CevGreeter
+    class_eval do
+      #: (String) -> String
+      def greet(who) = "from #{who}"
+    end
+  end
 end

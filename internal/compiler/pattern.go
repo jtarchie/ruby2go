@@ -289,7 +289,7 @@ func (f *fctx) patRaise(n parser.Node, pm *patMatch, subj expr) {
 		f.indent--
 		f.emit("}")
 	}
-	e := f.genNew(n, f.c.classes["NoMatchingPatternError"], nil, []expr{{code: "String(" + msg + ")", typ: strT}}, nil)
+	e := f.genNew(n, f.c.classes["NoMatchingPatternError"], nil, []expr{{code: "String(" + msg + ")", typ: strT}}, nil, nil)
 	f.emit("panic(%s)", f.withCause(e.code))
 }
 

@@ -208,6 +208,8 @@ type BlockSig struct {
 	Optional bool     // `?{ ... }`: a call may leave the block out, and the method sees a nil func
 	Pending  []string // per param, the key of one typed from the yields (decision 146), or ""
 	Rest     bool     // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
+	Self     Type     // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
+	SelfPending string // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
@@ -675,6 +677,10 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 				c.applyVisibility(f, cls, n, vis, scope)
 			}
 		case *parser.CallNode:
+			if isClassEvalCall(n) { // its block is collected as class-body statements, not dispatched here
+				c.collectClassEval(ctx, f, cls, n, scope)
+				continue
+			}
 			if !isDescribe(n) { // a describe's block is a class body, collected as one
 				c.scanAnon(ctx, f, n, scope)
 			}
@@ -1039,6 +1045,32 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		}
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
+}
+
+// isClassEvalCall reports whether n is a class-body `class_eval`/`module_eval`
+// (or the *_exec forms), whose block is collected as class-body statements
+// rather than dispatched or scanned here.
+func isClassEvalCall(n *parser.CallNode) bool {
+	return n.Receiver == nil && (n.Name == "class_eval" || n.Name == "module_eval" || n.Name == "class_exec" || n.Name == "module_exec")
+}
+
+// collectClassEval is `class_eval do ... end` in a class body: the block's
+// body is collected as class-body statements in the same class and lexical
+// scope, so `def` inside defines a method (decision 164). A String argument
+// would be a real eval, which the boot snapshot handles at compile time
+// (decision 161); block parameters belong to the *_exec forms, not supported.
+func (c *Compiler) collectClassEval(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class) {
+	if len(callArgs(n)) > 0 {
+		c.errorf(f, n, "%s with an argument is not supported (a String to eval is not)", n.Name)
+	}
+	blk, ok := n.Block.(*parser.BlockNode)
+	if !ok {
+		c.errorf(f, n, "%s needs a literal block", n.Name)
+	}
+	if blk.Parameters != nil {
+		c.errorf(f, blk, "%s needs a block without parameters", n.Name)
+	}
+	c.collectBody(ctx, f, cls, blk.Body, scope)
 }
 
 // addAlias is `alias new old` / `alias_method :new, :old`: a copy of the
@@ -2708,6 +2740,7 @@ func (c *Compiler) resolveSynth(m *Method) {
 	for _, p := range init.M.Params {
 		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, env), Pending: p.Pending})
 	}
+	m.Block = init.M.Block // the block, its escaped self resolved during discoverIvars (decision 164)
 }
 
 // isSynthNew reports whether e is a metaclass's generated `new`.

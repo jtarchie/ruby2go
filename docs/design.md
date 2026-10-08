@@ -5307,3 +5307,41 @@ resolve; anything not listed is still open.
     `require path`) is reached only at run time, when the closed world
     already holds whatever it names, and erroring on it would reject dead
     code. A computed `require_relative` in a method is likewise a no-op.
+
+164. Blocks that escape are stored Procs carrying `self` as an explicit
+    leading Go param (#85). Before this, a method's `&blk` could only be
+    called (`blk.call`) or forwarded (`&blk`); reading it by name was a
+    compile error, so a web framework that stashes a route block in an ivar
+    and runs it later with `instance_eval` could not compile.
+    - **Storable blocks.** Reading `&blk` by name produces a `Proc` value
+      (`Ref(blk)`, a `*func`) and marks the block *escaped*: its `BlockSig`
+      (and the `TFunc` of the Proc) gains a `Self` type and a pending key,
+      so `@blk = blk` types the ivar `*func(Self, ...)`.
+    - **Self is inferred (decision 146).** The self type is unknown at the
+      literal site (the block is written in `main.rb`, `instance_eval`'d in
+      `cuba.rb`), so it is a pending parameter key: `instance_eval(&p)`
+      records the receiver's class (a struct method's generic `Self` is
+      recorded as its owner), and rounds settle it like any parameter. A
+      block stored but never called keeps the missing-type error.
+    - **`instance_eval`/`class_eval`/`module_eval`** (and the `*_exec`
+      forms) with a Proc call it with the receiver — `recv.instance_eval(&p)`
+      is `(*p)(recv)` — or with a literal block (no parameters yet) run
+      `genClosure` with `Self` bound to the receiver and call it at once.
+      A String to eval is a compile error, as before. In a *class body*,
+      `class_eval`/`module_eval` with a literal block is a compile-time
+      construct instead: the block's body is collected as class-body
+      statements in the same class and scope (as `describe` is, decision 83),
+      so `def` inside defines a method. The `*_exec` forms there still need
+      block parameters, which are not supported.
+    - **The block body stays static.** Since the receiver class is known,
+      `res`, `on` and route captures type statically, not through dispatch.
+    - **No lexical self yet.** A Proc whose self is rebound by
+      `instance_eval` cannot also be `Proc#call`'d or `yield`ed: those pass
+      the *definition-site* self, which is not tracked, so both are a clear
+      compile error rather than a silent wrong rebinding. That is the next
+      step, and only matters for a block stored *and* called normally.
+    - `Foo.new { }` forwards the block to `initialize` (the direct
+      constructor and the metaclass `new` both pass `blk`); a block given to
+      a class with no block-taking `initialize` is ignored, as MRI ignores it.
+    ([example 108](../examples/108_proc_instance_eval/main.rb),
+    [example 109](../examples/109_class_eval/main.rb).)

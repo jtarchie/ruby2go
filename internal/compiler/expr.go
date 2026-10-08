@@ -199,8 +199,7 @@ func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 	}
 	switch n := n.(type) {
 	case *parser.LocalVariableReadNode:
-		v := f.readLocal(n)
-		return expr{code: v.goName, typ: v.typ, view: v.view}
+		return f.genLocalRead(n)
 	case *parser.ItLocalVariableReadNode:
 		v := f.readLocal(&parser.LocalVariableReadNode{Name: "it", Location: n.Location})
 		return expr{code: v.goName, typ: v.typ, view: v.view}
@@ -1636,10 +1635,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		// Direct constructor unless Foo defines self.new; Hash is the one @go_type class with a Go constructor (NewHash).
 		// A generic @go_type class's own self.new takes arguments; bare `.new` is its annotated zero value.
 		if f.useGenNew(cls, n) {
-			if n.Block != nil {
-				f.errorf(n, "%s.new with a block is not supported", cls.RubyName)
-			}
-			return f.genNew(n, cls, callArgs(n), nil, expected)
+			return f.genNew(n, cls, callArgs(n), nil, expected, n.Block)
 		}
 		if cls.meta == nil {
 			f.errorf(n, "%s has no class methods", cls.RubyName)
@@ -1657,6 +1653,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
 	f.noteElems(n)
+	if e, ok := f.genInstanceEval(n, recv); ok {
+		return e
+	}
 	if n.Block != nil {
 		if _, ok := n.Block.(*parser.BlockNode); ok {
 			if e := f.resolve(recv.typ, n.Name); e != nil && e.M.Iterator {
@@ -3489,9 +3488,23 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	}
 }
 
+// withClosureSelf binds self to an escaped block's self param (decision 164)
+// for the duration of gen, restoring the enclosing self after.
+func (f *fctx) withClosureSelf(self Type, gen func()) {
+	if self == nil {
+		gen()
+		return
+	}
+	st, sc := f.selfType, f.selfCode
+	f.selfType, f.selfCode = self, "self"
+	gen()
+	f.selfType, f.selfCode = st, sc
+}
+
 // genClosure renders a block as a Go func literal.
 func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env map[string]Type) string {
 	params := substAll(sig.Params, env)
+	self := subst(sig.Self, env) // an escaped block's self, a leading Go param (decision 164)
 	var body parser.Node
 	var names []string
 	var symbolCall string
@@ -3541,10 +3554,12 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			saved, savedRuby := f.enterRubyBlock(block, names)
 			f.closures++
 			f.pushLoop(loopClosure)
-			_, pro := f.bindClosureParams(n, names, params, sig.Rest)
-			pro()
-			f.redoLabel(body)
-			f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
+			f.withClosureSelf(self, func() {
+				_, pro := f.bindClosureParams(n, names, params, sig.Rest)
+				pro()
+				f.redoLabel(body)
+				f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
+			})
 			f.popLoop()
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
@@ -3578,7 +3593,14 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	saved, savedRuby := f.enterRubyBlock(block, names)
 	f.closures++
 	f.pushLoop(loopClosure)
+	savedSelfType, savedSelfCode := f.selfType, f.selfCode
+	if self != nil {
+		f.selfType, f.selfCode = self, "self"
+	}
 	ps, pro := f.bindClosureParams(n, names, params, sig.Rest)
+	if self != nil {
+		ps = append([]string{"self " + f.c.goType(self)}, ps...)
+	}
 	retS := ""
 	if !isVoid(ret) {
 		retS = " " + f.c.goType(ret)
@@ -3602,6 +3624,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		f.lineOf(n)
 	}
 	f.emit("}")
+	f.selfType, f.selfCode = savedSelfType, savedSelfCode
 	f.popLoop()
 	f.closures--
 	f.leaveRubyBlock(saved, savedRuby)
@@ -3944,7 +3967,7 @@ func (f *fctx) yieldMaybeMissing(n *parser.YieldNode, v *local, args []parser.No
 	}
 	const msg = "no block given (yield)"
 	f.c.strLits[msg] = true
-	exc := f.withCause(f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil).code)
+	exc := f.withCause(f.genNew(n, f.c.classes["LocalJumpError"], nil, []expr{{code: strconv.Quote(msg), typ: f.cls("String"), lit: true}}, nil, nil).code)
 	f.emit("if %s == nil {", v.goName)
 	f.emit("\tpanic(%s)", exc)
 	f.emit("}")
@@ -3997,6 +4020,12 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 		f.indent--
 		f.emit("}")
 		return expr{code: "", typ: TVoid{}, stmt: true}
+	}
+	if f.blockSig.Self != nil { // an escaped block: its self is rebound by instance_eval, so a lexical call is a compile error (decision 164)
+		if f.blockSig.SelfPending != "" {
+			f.noteUse(Param{Pending: f.blockSig.SelfPending}, n, f.concreteSelf(f.selfType))
+		}
+		f.errorf(n, "a block stored from &%s cannot also be called here (yield/blk.call): its self is rebound by instance_eval", f.m.BlockParam)
 	}
 	return expr{code: "blk(" + strings.Join(codes, ", ") + ")", typ: f.blockSig.Ret}
 }
@@ -4091,7 +4120,7 @@ func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding b
 	return an
 }
 
-func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type) expr {
+func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type, block parser.Node) expr {
 	if c, ok := n.(*parser.CallNode); ok && c.Receiver != nil && !f.insideClass(cls) {
 		for k := cls; k != nil; k = k.Super {
 			if k.privateNew {
@@ -4134,6 +4163,17 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 		}
 		env["Self"] = TClass{C: cls}
 		codes, _ = f.genArgs(n, init.M, env, args, exprs)
+		if init.M.Block != nil {
+			blkCode := "nil"
+			switch {
+			case block != nil:
+				f.inferYielder(n, init.M, env, block)
+				blkCode = f.genClosure(n, block, init.M.Block, env)
+			case !init.M.Block.Optional:
+				f.errorf(n, "%s.new requires a block", cls.RubyName)
+			}
+			codes = append(codes, blkCode)
+		}
 	} else if len(args) > 0 || len(exprs) > 0 {
 		f.errorf(n, "%s.new takes no arguments", cls.Name)
 	}
@@ -4152,12 +4192,12 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			if !cls.isSubclassOf(exc) {
 				f.errorf(args[0], "%s is not an exception class", cls.RubyName)
 			}
-			val = f.genNew(n, cls, nil, []expr{}, nil)
+			val = f.genNew(n, cls, nil, []expr{}, nil, nil)
 			break
 		}
 		a := f.genExpr(args[0], nil)
 		if isClass(a.typ, "String") {
-			val = f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{a}, nil)
+			val = f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{a}, nil, nil)
 			break
 		}
 		if c := classOf(a.typ); c != nil && c.isSubclassOf(exc) {
@@ -4174,7 +4214,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			f.errorf(args[0], "%s is not an exception class", cls.RubyName)
 		}
 		msg := f.genExpr(args[1], f.cls("String"))
-		val = f.genNew(n, cls, nil, []expr{msg}, nil)
+		val = f.genNew(n, cls, nil, []expr{msg}, nil, nil)
 	default:
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
@@ -5744,6 +5784,66 @@ func (f *fctx) isBlockParam(n parser.Node) bool {
 	return v == nil || v.goName == optBlockGo || v.base != nil && v.base.goName == optBlockGo
 }
 
+// blockParamValue reads the method's own &block as a Proc value, marking the
+// block escaped so it takes `self` as a leading Go param (decision 164).
+func (f *fctx) blockParamValue(n parser.Node) expr {
+	b := f.blockSig
+	if b == nil {
+		f.errorf(n, "the block parameter &%s has no block signature", f.m.BlockParam)
+	}
+	return expr{code: "Ref(blk)", typ: TFunc{Params: b.Params, Ret: b.Ret, Proc: true, Rest: b.Rest, Self: f.blockSelf(n), SelfPending: b.SelfPending}}
+}
+
+// genLocalRead reads a local, or the method's own &block as a Proc value when
+// it is stored (decision 164).
+func (f *fctx) genLocalRead(n *parser.LocalVariableReadNode) expr {
+	if f.isBlockParam(n) && f.m != nil && f.m.Block != nil && !f.m.Block.Optional && !f.m.Iterator {
+		return f.blockParamValue(n)
+	}
+	v := f.readLocal(n)
+	return expr{code: v.goName, typ: v.typ, view: v.view}
+}
+
+// concreteSelf is the class an escaped block's self is bound to at t: a
+// struct method's `self` is the generic Self, but its class is what
+// instance_eval/call/yield actually bind (decision 164).
+func (f *fctx) concreteSelf(t Type) Type {
+	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
+		return TClass{C: f.owner}
+	}
+	return t
+}
+
+// blockSelf resolves the self type an escaped block carries as its leading Go
+// param, from inference (decision 164): instance_eval records the receiver,
+// Proc#call and yield the lexical self. It marks the block escaped.
+func (f *fctx) blockSelf(n parser.Node) Type {
+	b := f.blockSig
+	if b.SelfPending == "" {
+		b.SelfPending = pendingKey(f.m, "&self")
+		f.c.notePending(b.SelfPending)
+	}
+	if f.c.infer != nil {
+		if t, ok := f.c.infer.types[b.SelfPending]; ok {
+			b.Self = f.c.rehome(t)
+			return b.Self
+		}
+	}
+	switch {
+	case f.c.round:
+		b.Self = TAny{}
+		return b.Self
+	case !f.c.inferDone && (f.c.infer == nil || !f.c.infer.none[b.SelfPending]):
+		panic(needInfer{})
+	default:
+		ce := catchCompileError(func() {
+			f.errorf(n, "the block &%s is stored but never called, so its self type is unknown (no instance_eval, call or yield gives it one; decision 164)", f.m.BlockParam)
+		})
+		ce.untyped = true
+		panic(*ce)
+	}
+}
+
 // forwardIter passes the method's own block on to an iterator:
 // `list.each(&block)` re-yields every value (or calls the closure with it).
 func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
@@ -6350,6 +6450,61 @@ func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
 	}
 }
 
+// genInstanceEval compiles instance_eval/class_eval/module_eval (and the
+// *_exec forms) with a Proc or a literal block: the block runs with self
+// rebound to the receiver (decision 164). A Proc stored from an escaping
+// &block takes the receiver as its leading self param, and the receiver's
+// class is recorded as that block's self type.
+func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
+	switch n.Name {
+	case "instance_eval", "class_eval", "module_eval", "instance_exec", "class_exec", "module_exec":
+	default:
+		return expr{}, false
+	}
+	args := callArgs(n)
+	exec := strings.HasSuffix(n.Name, "_exec")
+	if n.Block == nil {
+		f.errorf(n, "%s needs a block or a Proc (a String to eval is not supported)", n.Name)
+	}
+	switch b := n.Block.(type) {
+	case *parser.BlockNode:
+		if b.Parameters != nil {
+			f.errorf(b, "%s with a literal block that takes parameters is not supported yet", n.Name)
+		}
+		if exec && len(args) > 0 {
+			f.errorf(n, "%s with a literal block and arguments is not supported yet", n.Name)
+		}
+		env := map[string]Type{}
+		sig := &BlockSig{Ret: TVar{Name: "Ret_"}, Self: recv.typ}
+		code := f.genClosure(n, b, sig, env)
+		return expr{code: code + "(" + recv.code + ")", typ: subst(sig.Ret, env)}, true
+	case *parser.BlockArgumentNode:
+		p := f.genExpr(b.Expression, nil)
+		pt, ok := p.typ.(TFunc)
+		if !ok || !pt.Proc {
+			f.errorf(b, "%s needs a Proc, got %s", n.Name, p.typ)
+		}
+		if pt.Self == nil {
+			f.errorf(b, "%s on a Proc that does not escape cannot rebind self (decision 164)", n.Name)
+		}
+		if len(args) != len(pt.Params) {
+			f.errorf(n, "%s passes %d values but the block takes %d", n.Name, len(args), len(pt.Params))
+		}
+		if pt.SelfPending != "" {
+			f.noteUse(Param{Pending: pt.SelfPending}, n, f.concreteSelf(recv.typ))
+		}
+		codes := make([]string, 0, len(args)+1)
+		codes = append(codes, recv.code)
+		for i, a := range args {
+			e := f.genExpr(a, pt.Params[i])
+			codes = append(codes, f.coerce(a, e, pt.Params[i]))
+		}
+		return expr{code: "(*" + p.code + ")(" + strings.Join(codes, ", ") + ")", typ: pt.Ret}, true
+	}
+	f.errorf(n, "%s needs a literal block or a Proc", n.Name)
+	return expr{}, false
+}
+
 // procCall is a method on a Proc value.
 func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []parser.Node, block parser.Node) expr {
 	if block != nil && slices.Contains([]string{"call", "()", "[]", "yield", "===", "arity", "lambda?", "to_proc", ">>", "<<"}, name) {
@@ -6407,6 +6562,12 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 			f.noteUse(Param{Pending: t.Src + strconv.Itoa(pi)}, a, e.typ)
 		}
 		codes[i] = f.coerce(a, e, t.Params[pi])
+	}
+	if t.Self != nil { // an escaped block: its self is rebound by instance_eval, so Proc#call is a compile error (decision 164)
+		if t.SelfPending != "" {
+			f.noteUse(Param{Pending: t.SelfPending}, n, f.concreteSelf(f.selfType))
+		}
+		f.errorf(n, "a Proc whose self is rebound by instance_eval cannot be called with call/./[]: it takes no lexical self (decision 164)")
 	}
 	return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
 }

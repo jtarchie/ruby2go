@@ -323,6 +323,36 @@ class Bag
     @saved = block
   end
 end
+-- block_stored_never_called.rb --
+# error: main.rb:5: the block &block is stored but never called, so its self type is unknown (no instance_eval, call or yield gives it one; decision 164)
+class Bag
+  #: () { () -> String } -> void
+  def store(&block)
+    @saved = block
+  end
+end
+-- block_stored_called_lexically.rb --
+# error: main.rb:9: a Proc whose self is rebound by instance_eval cannot be called with call/./[]: it takes no lexical self (decision 164)
+class Runner
+  #: () { () -> String } -> void
+  def initialize(&blk)
+    @blk = blk
+  end
+  #: () -> String
+  def run
+    @blk.call
+  end
+end
+-- class_eval_string.rb --
+# error: main.rb:3: class_eval with an argument is not supported (a String to eval is not)
+class Foo
+  class_eval "def bar; 1; end"
+end
+-- class_eval_block_params.rb --
+# error: main.rb:3: class_eval needs a block without parameters
+class Foo
+  class_eval { |n| n }
+end
 -- struct_keyword_init.rb --
 # error: main.rb:2: struct members must be symbols (keyword_init is not supported)
 Point = Struct.new(:x, :y, keyword_init: true) #: [Integer, Integer]
@@ -443,12 +473,6 @@ Mixin.new
 -- object_new.rb --
 # error: main.rb:2: wrong number of arguments (given 1, expected 0)
 Object.new(1)
--- new_with_block.rb --
-# error: main.rb:5: Host.new with a block is not supported
-class Host
-end
-
-Host.new { 1 }
 -- new_extra_args_without_initialize.rb --
 # error: main.rb:5: Host.new takes no arguments
 class Host

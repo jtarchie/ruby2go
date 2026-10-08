@@ -48,6 +48,8 @@ type (
 		Proc   bool
 		Src    string // a lambda typed from its calls: the key its arguments are recorded under (decision 146)
 		Rest   bool   // the last param is a `*rest`'s element type; the Go func is variadic (decision 152)
+		Self   Type   // non-nil: a Proc (or block) that escaped, taking `self` as a leading Go param (decision 164)
+		SelfPending string // the inference key Self's type is recorded under (decision 164)
 	}
 	// TAny is `untyped`.
 	TAny struct{}
@@ -76,8 +78,18 @@ func (t TTuple) String() string { return "[" + joinTypes(t.Elems) + "]" }
 func (t TVar) String() string   { return t.Name }
 func (t TFunc) String() string {
 	ps := joinTypes(t.Params)
+	if t.Self != nil {
+		if ps != "" {
+			ps = t.Self.String() + ", " + ps
+		} else {
+			ps = t.Self.String()
+		}
+	}
 	if t.Rest {
 		ps = joinTypes(t.Params[:len(t.Params)-1])
+		if t.Self != nil {
+			ps = t.Self.String() + ", " + ps
+		}
 		if len(t.Params) > 1 {
 			ps += ", "
 		}
@@ -127,7 +139,7 @@ func holdsAny(t Type) bool {
 	case TTuple:
 		return slices.ContainsFunc(t.Elems, holdsAny)
 	case TFunc:
-		return slices.ContainsFunc(t.Params, holdsAny) || holdsAny(t.Ret)
+		return slices.ContainsFunc(t.Params, holdsAny) || holdsAny(t.Ret) || holdsAny(t.Self)
 	case TUnion:
 		return slices.ContainsFunc(t.Members, holdsAny)
 	case TNil, TVar, TVoid: // leaves with nothing untyped inside
@@ -208,7 +220,7 @@ func typeEq(a, b Type) bool {
 		return ok && a.Name == b.Name
 	case TFunc:
 		b, ok := b.(TFunc)
-		if !ok || a.Proc != b.Proc || a.Rest != b.Rest || len(a.Params) != len(b.Params) || !typeEq(a.Ret, b.Ret) {
+		if !ok || a.Proc != b.Proc || a.Rest != b.Rest || len(a.Params) != len(b.Params) || !typeEq(a.Ret, b.Ret) || !sameSelf(a.Self, b.Self) {
 			return false
 		}
 		for i := range a.Params {
@@ -231,6 +243,11 @@ func typeEq(a, b Type) bool {
 		return ok && slices.EqualFunc(a.Members, b.Members, typeEq)
 	}
 	return false
+}
+
+// sameSelf reports whether two TFunc self types (both nil, or equal) match.
+func sameSelf(a, b Type) bool {
+	return (a == nil) == (b == nil) && (a == nil || typeEq(a, b))
 }
 
 // subst replaces type variables according to env.
@@ -267,7 +284,7 @@ func subst(t Type, env map[string]Type) Type {
 		for i, p := range t.Params {
 			ps[i] = subst(p, env)
 		}
-		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc, Rest: t.Rest}
+		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc, Rest: t.Rest, Self: subst(t.Self, env), SelfPending: t.SelfPending}
 	case TUnion:
 		ms := make([]Type, len(t.Members))
 		for i, m := range t.Members {
@@ -317,6 +334,11 @@ func unify(pattern, actual Type, env map[string]Type) bool {
 		a, ok := actual.(TFunc)
 		if !ok || a.Rest != p.Rest || !unifyAll(p.Params, a.Params, env) {
 			return false
+		}
+		if p.Self != nil && a.Self != nil {
+			if !unify(p.Self, a.Self, env) {
+				return false
+			}
 		}
 		return unify(p.Ret, a.Ret, env)
 	case TUnion:
@@ -388,6 +410,7 @@ func freeVars(t Type, out *[]string) {
 		for _, p := range t.Params {
 			freeVars(p, out)
 		}
+		freeVars(t.Self, out)
 		freeVars(t.Ret, out)
 	case TUnion:
 		for _, m := range t.Members {

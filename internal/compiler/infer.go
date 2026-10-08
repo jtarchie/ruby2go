@@ -312,7 +312,7 @@ func (c *Compiler) rehome(t Type) Type {
 		for i, p := range t.Params {
 			ps[i] = c.rehome(p)
 		}
-		t.Params, t.Ret = ps, c.rehome(t.Ret)
+		t.Params, t.Ret, t.Self = ps, c.rehome(t.Ret), c.rehome(t.Self)
 		return t
 	case TUnion:
 		ms := make([]Type, 0, len(t.Members))
