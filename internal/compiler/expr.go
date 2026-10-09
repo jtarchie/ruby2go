@@ -4124,6 +4124,16 @@ func (f *fctx) genBlockCall(n *parser.CallNode) (expr, bool) {
 	}
 	if name := f.m.optionalBlockLocal(); name != "" {
 		if lv, ok := n.Receiver.(*parser.LocalVariableReadNode); ok && lv.Name == name && !n.IsSAFE_NAVIGATION() {
+			if v := f.visibleLocal(name); v != nil && isOpt(v.typ) && f.m.Block != nil && f.m.Block.Untyped {
+				// an unannotated def's block: missing, `blk.call` is MRI's NoMethodError on nil; past the check it is present
+				f.emit("if %s == nil {", v.goName)
+				f.emit("	panic(rbNoMethod(\"call\", nil, false))")
+				f.emit("}")
+				f.push()
+				defer f.pop()
+				f.applyNarrow([]narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}})
+				return f.genExpr(n, nil), true
+			}
 			f.checkBlockPresent(n, name)
 		}
 		return expr{}, false

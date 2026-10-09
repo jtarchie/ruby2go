@@ -637,7 +637,10 @@ func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
 	if c.gemFile(f) { // not the user's to act on: gem code is compiled leniently (decision 173)
 		return
 	}
-	msg := fmt.Sprintf("%s:%d: ", f.Name, f.line(n.GetLocation().StartOffset)) + fmt.Sprintf(format, args...)
+	msg := fmt.Sprintf(format, args...)
+	if n != nil { // a nil node's message carries its own position, as errorf's
+		msg = fmt.Sprintf("%s:%d: ", f.Name, f.line(n.GetLocation().StartOffset)) + msg
+	}
 	if c.warned[msg] {
 		return
 	}

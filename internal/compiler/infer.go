@@ -99,12 +99,9 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 		prm.Type = TAny{} // only a dynamic call can reach it (decision 169)
 	case m.attrWriter:
 		prm.Type = TAny{} // an attr writer no call types: only a dynamic call can reach it (decision 179)
-	default:
-		ce := catchCompileError(func() {
-			c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
-		})
-		ce.untyped = true
-		panic(*ce)
+	default: // untyped, as a gem def's: only a dynamic call (send, a hook, an untyped receiver) can pass it anything (decision 183)
+		c.warn(m.File, m.Node, "method %s's parameter %s is untyped: no call in the program gives it a type (`# @rbs %s: T` for static calls; decision 183)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
+		prm.Type = TAny{}
 	}
 }
 

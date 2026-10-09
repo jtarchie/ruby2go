@@ -1,6 +1,6 @@
 Parameter types from use (decision 146): what inference cannot type.
 -- never_called.rb --
-# error: main.rb:2: method lonely has no type for parameter x (`# @rbs x: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)
+# warning: main.rb:2: method lonely's parameter x is untyped
 def lonely(x) = x
 puts 1
 -- yields_disagree.rb --
@@ -13,7 +13,7 @@ class Odd
 end
 Odd.new.each { |a| p a }
 -- rest_never_passed.rb --
-# error: method each has no type for parameter arg
+# warning: method each's parameter arg is untyped
 class Counter
   def each(*arg)
     arg.size
