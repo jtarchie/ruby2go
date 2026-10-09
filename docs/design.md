@@ -5951,7 +5951,8 @@ resolve; anything not listed is still open.
       "x")`, `f(die)`) is coerced as `func() T { ...; panic(...) }()`:
       Go accepts a function whose body ends in `panic` without a return,
       so this works for any `T`. It emitted an unparsable argument list
-      before.
+      before. `x = raise "e"` assigns the same way, typed as x's declared
+      type or `untyped` (it declared a Go var with no type).
     - **Harness (amends 127).** A chained `before`/`after` hook
       (`__rbspec_<hook>_N`) whose body does not compile now has that body
       replaced by `skip "rb2go: <error>"`, not cut, so each example under

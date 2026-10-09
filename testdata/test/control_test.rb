@@ -5219,7 +5219,11 @@ module ControlTests
     def test_noreturn_argument
       a = assert_raises(ArgumentError) { control_show(control_die) }
       b = assert_raises(KeyError) { control_show(raise(KeyError, "k")) }
-      assert_equal ["died", "k"], [a.message, b.message]
+      c = assert_raises(ArgumentError) do
+        out = control_die
+        control_show(out)
+      end
+      assert_equal ["died", "k", "died"], [a.message, b.message, c.message]
     end
   end
 end
