@@ -5964,3 +5964,27 @@ resolve; anything not listed is still open.
       specs call next).
     - **Proof:** `stdlib_test.rb` `test_env_tz`, `control_test.rb`
       `test_noreturn_argument`; `core/time` 157 → 185 passing.
+178. `RB2GO_BACKTRACE=1` prints an uncaught exception as MRI does (#49):
+    `file:line:in 'label': msg (Class)` and a `\tfrom` line per frame,
+    captured in `rbTopRecover`, where the panicking frames are still on
+    the stack (an uncaught exception records none otherwise; decision
+    106 captures only in a binding rescue). Unset, the report stays `msg
+    (Class)`: decision 106's default is unchanged, and switching it is
+    still its own decision. MRI 4.0's error_highlight snippet is not
+    printed. `cmd/rubyspec` sets it, so a fixture's top-level statement
+    that raises while the program loads (`::Module.prepend X` in
+    `core/kernel`'s fixtures, a dynamic call on a method no class has)
+    is located and cut like any crash, instead of failing the whole
+    directory (`loadFrame`, used when no `_spec.rb` frame is found).
+    - **Also:** `rbSourceMod`, the `-trimpath` prefix trimmed from frame
+      files, cut at `prelude/go/backtrace.go` exactly; a pruned program
+      can leave its helper under no `//line`, so frames read
+      `gen/main.rb`. It now cuts at `prelude/go/`, else main.go's
+      directory.
+    - **Also:** union helpers (`rbUnion_<hash>`, decision 150) are
+      emitted in every `emitNext` round once the tables are out, each
+      once (`unionsOut`): a dispatcher emitted after the tables could
+      name a union no table had, which failed `go build` (`core/proc`).
+    - **Proof:** `cmd/rb2go` `TestUncaughtFullReport`, `cmd/rubyspec`
+      `TestCrashFrames`; `core/kernel` runs (1,896 examples, 335 pass,
+      was FATAL) and `core/proc` runs (182 examples, 18 pass, was FATAL).

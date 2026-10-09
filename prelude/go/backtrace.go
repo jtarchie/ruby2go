@@ -144,10 +144,14 @@ func rbAllDigits(s string) bool {
 }
 
 // rbSourceMod is what -trimpath puts in front of //line file names: this
-// file's own path shows it.
+// file's own path shows it: up to prelude/go/ under this file's //line,
+// else main.go's directory (pruning can leave it under no //line).
 var rbSourceMod = sync.OnceValue(func() string {
 	_, self, _, _ := runtime.Caller(0)
-	return strings.TrimSuffix(self, "prelude/go/backtrace.go")
+	if i := strings.LastIndex(self, "prelude/go/"); i >= 0 {
+		return self[:i]
+	}
+	return self[:strings.LastIndex(self, "/")+1]
 })
 
 // rbBacktraceFrames renders captured counters as MRI's backtrace lines.

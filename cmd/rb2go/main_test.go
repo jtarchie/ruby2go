@@ -312,3 +312,31 @@ func TestUncaughtZeroDivisionMessage(t *testing.T) {
 		}
 	}
 }
+
+// RB2GO_BACKTRACE=1 prints an uncaught exception as MRI does, with its location and from lines (decision 177); unset, `msg (Class)` alone.
+func TestUncaughtFullReport(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "main.rb")
+	err := os.WriteFile(src, []byte("def inner = raise(ArgumentError, \"bad\")\ndef outer = inner\nouter\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "main")
+	f, e := false, ""
+	if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+		t.Fatalf("build: exit %d", code)
+	}
+	for env, want := range map[string]string{
+		"":                  "bad (ArgumentError)\n",
+		"RB2GO_BACKTRACE=1": "main.rb:1:in 'Object#inner': bad (ArgumentError)\n\tfrom main.rb:2:in 'Object#outer'\n\tfrom main.rb:3:in '<main>'\n",
+	} {
+		var errOut strings.Builder
+		cmd := exec.CommandContext(t.Context(), bin) //nolint:gosec // built above
+		cmd.Env = append(os.Environ(), env)
+		cmd.Stderr = &errOut
+		_ = cmd.Run()
+		if !strings.HasSuffix(errOut.String(), want) {
+			t.Errorf("%q: stderr %q, want suffix %q", env, errOut.String(), want)
+		}
+	}
+}

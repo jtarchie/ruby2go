@@ -244,6 +244,9 @@ var startedTest = regexp.MustCompile(`(?m)^(.*#test_\d{4}_.*?) = `)
 // specFrame is a stack frame in a spec file, as the //line directives name it.
 var specFrame = regexp.MustCompile(`(?m)^\s+(?:gen/)?(\S+_spec\.rb):(\d+)`)
 
+// loadFrame is the next best, any ruby/spec file in an uncaught exception's report (RB2GO_BACKTRACE): a fixture's top-level statement that raises while the program loads.
+var loadFrame = regexp.MustCompile(`(?m)^(?:\s+from )?(?:gen/)?((?:core|library|language|command_line|optional|security|shared)/\S+\.rb):(\d+):in `)
+
 // testLine is one example's line in minitest's -v report.
 var testLine = regexp.MustCompile(`#test_\d{4}_.* = [\d.]+ s = ([.FES])$`)
 
@@ -295,7 +298,7 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = root                                                                           // specs name fixtures relative to the checkout
-	cmd.Env = append(os.Environ(), "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
+	cmd.Env = append(os.Environ(), "RB2GO_BACKTRACE=1", "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                 // Go dumps every goroutine: the hung example's frame is in it
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdout, cmd.Stderr = out, out
@@ -338,7 +341,11 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 			site.test = startedTest.FindStringSubmatch(line)[1]
 		}
 	}
-	if m := specFrame.FindStringSubmatch(r.output); m != nil {
+	m := specFrame.FindStringSubmatch(r.output)
+	if m == nil {
+		m = loadFrame.FindStringSubmatch(r.output)
+	}
+	if m != nil {
 		site.file = m[1]
 		site.line, _ = strconv.Atoi(m[2])
 	}
