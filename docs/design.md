@@ -6318,3 +6318,17 @@ resolve; anything not listed is still open.
     a computed path (an object whose `to_path` answers it, which decision
     191's `to_path` conversion takes) and `should.binmode?`.
     **Proof:** `infer_test.rb` `test_enumerable_to_h_and_unannotated_kwrest`.
+195. **`autoload` is a require at compile time** (amends 161/175). MRI
+    loads an autoloaded file the first time its constant is named; rb2go
+    compiles the closed world ahead of time, so a user program's
+    `autoload :X, path` loads the file where the autoload stands, as
+    `require` would (once: a later require of the same file is a no-op).
+    The path may be a literal on the load path or a static expression of
+    `__dir__`: `File.join(__dir__, ...)`, `File.expand_path(name,
+    __dir__)` or `"#{__dir__}/x"` (`staticPath`); a path that cannot be
+    resolved is a compile error. Gem code keeps decision 175's rule (only
+    what boot saw load). Differences from MRI: the file's load-time code
+    runs at the autoload, not at first use, and `const_defined?` answers
+    true before the autoload line (constants are static). **Proof:**
+    [example 118](../examples/118_autoload/main.rb), `require.txtar`
+    `autoload_missing_file`.

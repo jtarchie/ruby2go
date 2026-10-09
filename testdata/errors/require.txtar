@@ -28,3 +28,9 @@ end
 # error: main.rb:3: require needs a string literal: rb2go loads libraries at compile time
 lib = "json"
 require lib
+-- autoload_missing_file.rb --
+# error: main.rb:3: autoload: cannot load such file
+module M
+  autoload :Gone, File.join(__dir__, "no_such_file_here")
+end
+p 1
