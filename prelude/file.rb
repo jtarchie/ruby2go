@@ -477,6 +477,46 @@ class File < Object
     return String(b)
   }
 
+  # read(length): at most length bytes, nil at the end (but "" for 0); nil length reads the rest
+  #: (Integer?) -> String?
+  def __read_1(length) = %x{
+    self.rbReadable()
+    if length == nil {
+      b, _ := io.ReadAll(self.r)
+      s := String(b)
+      return &s
+    }
+    if *length < 0 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", *length)))))
+    }
+    if *length == 0 {
+      s := String("")
+      return &s
+    }
+    buf := make([]byte, *length)
+    n, _ := io.ReadFull(self.r, buf)
+    if n == 0 {
+      return nil
+    }
+    s := String(buf[:n])
+    return &s
+  }
+
+  # gets(sep), gets(limit), gets(sep, limit) (decision 181): "" is paragraph mode, nil the rest of the file
+  #: (String | Integer | nil) -> String?
+  def __gets_1(arg) = %x{
+    switch v := arg.(type) {
+    case Integer:
+      return rbGetsFrom(self.r, Ref(String("\\n")), int(v), &self.lineno)
+    case String:
+      return rbGetsFrom(self.r, &v, -1, &self.lineno)
+    }
+    return rbGetsFrom(self.r, nil, -1, &self.lineno)
+  }
+
+  #: (String?, Integer) -> String?
+  def __gets_2(sep, limit) = %x{ return rbGetsFrom(self.r, sep, int(limit), &self.lineno) }
+
   #: () -> bool
   def eof? = %x{
     self.rbReadable()

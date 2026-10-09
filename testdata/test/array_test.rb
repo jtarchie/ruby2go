@@ -2447,6 +2447,12 @@ module ArrayTests
       assert_equal "-5..1 out of range", e.message
     end
 
+    def test_core_methods_truncate_float_arguments
+      assert_equal [[1], "abab", 2, "b"], [[1, 2, 3].first(1.9), "ab" * 2.5, [1, 2, 3][1.7], "abc"[1.2]]
+      e = assert_raises(RangeError) { [1].first(Float::NAN) }
+      assert_equal "float NaN out of range of integer", e.message
+    end
+
     def test_index_assign_span
       a = [1, 2, 3, 4]
       a[1, 2] = [7, 8, 9]

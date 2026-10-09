@@ -1469,6 +1469,8 @@ func (c *Compiler) emitConstTable(cls *Class) {
 		c.emitDescendants(cls, desc)
 	}
 	c.emitMethodTable(cls, desc)
+	c.emitPrivateMethodTable(cls, desc)
+	c.emitSingletonMethodTable(cls, desc)
 	if desc == nil {
 		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
 		return
@@ -1570,6 +1572,49 @@ func (c *Compiler) emitMethodTable(cls, desc *Class) {
 			}
 			seen[m.Name] = true
 			c.w("\t\t{%q, nil, %t},\n", m.Name, k != desc)
+		}
+	}
+	c.w("\t}\n}\n\n")
+}
+
+// emitSingletonMethodTable lists a class object's own public methods (`def self.x`), and Kernel's module functions
+// (each Kernel method is callable as `Kernel.x`), for Module#singleton_methods and public_methods(false) (decision 181).
+func (c *Compiler) emitSingletonMethodTable(cls, desc *Class) {
+	c.w("func (self *%s) _SingletonMethods() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	seen := map[string]bool{}
+	add := func(ms []*Method, priv bool) {
+		for _, m := range ms {
+			if (m.Private && !priv) || m.Node == nil || m.Name == "initialize" || strings.HasPrefix(m.Name, "__") || seen[m.Name] { // m.Node nil: generated (`new`, `name`)
+				continue
+			}
+			seen[m.Name] = true
+			c.w("\t\t{%q, nil, false},\n", m.Name)
+		}
+	}
+	add(cls.MethodList, false)
+	if desc != nil && desc.RubyName == "Kernel" {
+		add(desc.MethodList, true)
+	}
+	c.w("\t}\n}\n\n")
+}
+
+// emitPrivateMethodTable is emitMethodTable's private half, for Module#private_instance_methods only (decision 181).
+func (c *Compiler) emitPrivateMethodTable(cls, desc *Class) {
+	if desc == nil {
+		c.w("func (self *%s) _PrivateMethods() []rbConst { return nil }\n\n", cls.Name)
+		return
+	}
+	c.w("func (self *%s) _PrivateMethods() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	seen := map[string]bool{}
+	for _, k := range desc.ancestors() {
+		for _, m := range k.MethodList {
+			if seen[m.Name] {
+				continue
+			}
+			seen[m.Name] = true // a public redefinition hides an ancestor's private one
+			if m.Private && m.Name != "initialize" && !strings.HasPrefix(m.Name, "__") {
+				c.w("\t\t{%q, nil, %t},\n", m.Name, k != desc)
+			}
 		}
 	}
 	c.w("\t}\n}\n\n")

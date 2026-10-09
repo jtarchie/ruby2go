@@ -6071,3 +6071,37 @@ resolve; anything not listed is still open.
     - **Proof:** `infer_test.rb` `test_block_on_a_parameter_its_call_types`,
       `string_test.rb` `StringRegexpTwinsTest`, `arrays.txtar`
       `block_arg_proc` (now a warning).
+181. ruby/spec phase D (#49).
+    - **A core method truncates a Float where it takes an Integer**, as
+      MRI's C methods do through `NUM2LONG`: `[1, 2, 3].first(1.9)` is
+      `[1]`, `"ab" * 2.5` is `"abab"`; NaN, infinities and values past
+      Integer's range raise MRI's `RangeError` (`float NaN out of range of
+      integer`). Only prelude methods of String, Array, Symbol, Hash,
+      Enumerable, IO, File, StringIO, MatchData, Regexp and Struct:
+      numeric classes, Range, Kernel and Random take a Float as a Float in
+      MRI (`2.pow(0.5)`, `rand(1.5)`, `(1..2).step(0.5)`), and a user
+      method's `Integer` parameter still rejects a Float (decision 12), as
+      Ruby methods do no conversion.
+    - **Runner (amends 127):** an example's `class`, `module` and
+      receiverless `def` statements move to the program's top level (a
+      block opens no constant scope, so MRI defines the constant there
+      too, only when the example runs); `class << x` on a mock or
+      `Object.new` local folds its body into the mock's class, as `def
+      x.m` does (decision 179).
+    - **IO breadth.** `File#read(length)` (nil at the end, "" for 0),
+      `File#gets(sep)`, `gets(limit)`, `gets(sep, limit)` (`""` is
+      paragraph mode, nil the rest; a limit never splits a UTF-8
+      character, and counts toward `lineno` only when it did not cut the
+      line, as MRI); `IO.new`/`IO.for_fd` take `mode:` and ignore other
+      options (ponytail).
+    - **Reflection tables** (decision 77's, beside `_Methods`):
+      `_PrivateMethods` backs `Module#private_instance_methods` and
+      `private_method_defined?`; `_SingletonMethods` (a class object's own
+      `def self.x`, and every Kernel method, each callable as `Kernel.x`)
+      backs `singleton_methods` and `public_methods`, which leave out
+      Module's and Object's own and an extended module's (ponytail). Each
+      table is kept only where its method is called (decision 49).
+    - **Proof:** `array_test.rb`
+      `test_core_methods_truncate_float_arguments`, `numbers.txtar`
+      `float_where_integer_expected` (still an error for a user method),
+      `object_test.rb` `test_private_and_singleton_method_tables`.

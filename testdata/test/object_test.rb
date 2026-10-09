@@ -5152,6 +5152,15 @@ module ObjectTests
 
   ObjectUntypedPoint = Struct.new(:x, :y)
 
+  class ObjectReflectVisibility
+    def self.made = 1
+    def pub = 1
+
+    private
+
+    def priv = 2
+  end
+
   class ObjectInferredAttrs
     attr_reader :x
     attr_accessor :y
@@ -5168,6 +5177,13 @@ module ObjectTests
       assert_equal [true, "abab", "hellolo", [1, 2]],
                    ["hello".include?(ObjectImplicitConversionLo.new), "ab" * ObjectImplicitConversionTwo.new,
                     "hello" + ObjectImplicitConversionLo.new, [1, 2, 3].first(ObjectImplicitConversionTwo.new)]
+    end
+
+    def test_private_and_singleton_method_tables
+      k = ObjectReflectVisibility
+      assert_equal [[:priv], true, [:made], true, true],
+                   [k.private_instance_methods(false), k.private_method_defined?(:priv), k.singleton_methods,
+                    Kernel.private_instance_methods(false).include?(:puts), Kernel.public_methods(false).include?(:sprintf)]
     end
 
     def test_unannotated_attrs

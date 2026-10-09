@@ -3,6 +3,7 @@
 package prelude
 
 import (
+	"bufio"
 	"errors"
 	"io/fs"
 	"os"
@@ -269,4 +270,75 @@ func rbAtime(fi os.FileInfo) time.Time {
 	s1, n1 := x.Atim.Unix()
 	s2, n2 := x.Atimespec.Unix()
 	return time.Unix(s1+s2, n1+n2)
+}
+
+// rbGetsFrom is IO#gets with a separator (nil: the rest; "": a paragraph, its trailing newlines skipped) and a byte
+// limit (-1: none) that never splits a UTF-8 character; lineno counts a line the limit did not cut (decision 181).
+func rbGetsFrom(r *bufio.Reader, sep *String, limit int, lineno *int) *String {
+	if limit == 0 {
+		return Ref(String(""))
+	}
+	para := sep != nil && *sep == ""
+	if para {
+		for {
+			b, err := r.ReadByte()
+			if err != nil {
+				return nil
+			}
+			if b != '\n' {
+				_ = r.UnreadByte()
+				break
+			}
+		}
+	}
+	want := ""
+	switch {
+	case para:
+		want = "\n\n"
+	case sep != nil:
+		want = string(*sep)
+	}
+	var out []byte
+	cut := false
+	for {
+		if limit > 0 && len(out) >= limit {
+			for { // finish the character the limit fell inside
+				b, err := r.Peek(1)
+				if err != nil || b[0]&0xC0 != 0x80 {
+					break
+				}
+				c, _ := r.ReadByte()
+				out = append(out, c)
+			}
+			cut = want == "" || !strings.HasSuffix(string(out), want)
+			break
+		}
+		b, err := r.ReadByte()
+		if err != nil {
+			break
+		}
+		out = append(out, b)
+		if want != "" && strings.HasSuffix(string(out), want) {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	if para {
+		for {
+			b, err := r.ReadByte()
+			if err != nil {
+				break
+			}
+			if b != '\n' {
+				_ = r.UnreadByte()
+				break
+			}
+		}
+	}
+	if !cut {
+		*lineno++
+	}
+	return Ref(String(out))
 }

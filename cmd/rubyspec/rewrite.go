@@ -94,6 +94,13 @@ func (rw *rewriter) visit(n parser.Node) {
 	if ok && rw.inlineMock(call) {
 		return
 	}
+	if ok && call.Receiver == nil && call.Name == "it" {
+		if blk, isBlk := call.Block.(*parser.BlockNode); isBlk {
+			if st, isSt := blk.Body.(*parser.StatementsNode); isSt && st != nil {
+				rw.hoist(st.Body)
+			}
+		}
+	}
 	if ok && call.Receiver == nil && rw.call(call) {
 		return
 	}
