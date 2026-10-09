@@ -125,7 +125,7 @@ class ProcExpectation
   end
 
   # A block sees the exception raised, as mspec's raise_error { |e| ... }.
-  #: (?untyped, ?String?) ?{ (Exception) -> void } -> bool
+  #: (?untyped, ?untyped) ?{ (Exception) -> void } -> bool
   def raise(klass = StandardError, message = nil, &blk)
     got = nil #: Exception?
     begin
@@ -133,7 +133,7 @@ class ProcExpectation
     rescue Exception => e # rubocop:disable Lint/RescueException
       got = e
     end
-    ok = !got.nil? && got.is_a?(klass) && (message.nil? || got.message == message)
+    ok = !got.nil? && got.is_a?(klass) && (message.nil? || mspec_match(got.message, message)) # a String equals, a Regexp matches
     if ok && @positive && blk && got
       blk.call(got)
     end
@@ -188,6 +188,13 @@ end
 # A String must equal, a Regexp must match.
 #: (String, untyped) -> bool
 def mspec_match(got, expected) = expected.is_a?(Regexp) ? got.match?(expected) : got == expected
+
+# mspec's failure exceptions, which specs raise themselves (`raise ExpectationNotMetError, "..."` in a path that must not run).
+class SpecExpectationNotMetError < StandardError
+end
+
+class ExpectationNotMetError < SpecExpectationNotMetError
+end
 
 # The expectations' own #raise hides Kernel's inside them.
 #: (String) -> bot

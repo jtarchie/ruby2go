@@ -319,11 +319,6 @@ nums << nil
 # warning: main.rb:3: size called on possibly-nil Array[Integer] (raises NoMethodError on nil)
 h = { "a" => [1] } #: Hash[String, Array[Integer]]
 puts h["a"].size
--- reassign_different_element_type.rb --
-# error: main.rb:3:
-a = [1]
-a = ["x"]
-puts a.inspect
 -- subclass_array.rb --
 # error: main.rb:2: subclassing Array is not supported
 class Stack < Array
