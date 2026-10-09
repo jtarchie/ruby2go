@@ -9,6 +9,8 @@ require "minitest/autorun"
 def infer_twice(x) = x * 2
 def infer_bigger(e) = e.select { |x| x > 1 }
 
+def infer_kwrest_size(**opts) = opts.size
+
 #: (Integer, ?Integer, ?Integer) -> Array[Integer]
 def infer_three(a, b = 10, c = 20) = [a, b, c]
 
@@ -35,6 +37,15 @@ module InferTests
       out << yield
       out << yield
       out
+    end
+  end
+
+  class FallbackPairs
+    include Enumerable
+
+    def each
+      yield [:a, 1]
+      yield [:b, 2]
     end
   end
 
@@ -153,6 +164,10 @@ module InferTests
       sorted = [3, 1, 2].map { |i| InferTests::FallbackCmp.send(:new, i) }.sort.map(&:n)
       assert_equal ["a", "a"], InferTests::FallbackFeed.new.each { "a" }
       assert_equal [3, 10, :none, [2, 4], [1, 2, 3]], [r.run { |a, b| a + b }, r.maybe { |x| x * 2 }, r.maybe, InferTests::FallbackKid.new.map { |x| x * 2 }, sorted]
+    end
+
+    def test_enumerable_to_h_and_unannotated_kwrest
+      assert_equal [{a: 1, b: 2}, 2, 0], [InferTests::FallbackPairs.new.to_h, infer_kwrest_size(x: 1, y: 2), infer_kwrest_size]
     end
 
     def test_splat_into_positional_parameters
