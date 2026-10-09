@@ -1378,6 +1378,13 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 			}
 			return f.coerce(n, e, TAny{})
 		}
+		for _, m := range to.Members { // through the first member e converts to (decision 179)
+			if mc, ok := m.(TClass); ok {
+				if code, ok := f.implicitConv(n, e, mc); ok {
+					return f.coerce(n, expr{code: code, typ: mc}, to)
+				}
+			}
+		}
 	}
 	f.errorf(n, "%s where %s is expected", e.typ, to)
 	return ""
@@ -1489,6 +1496,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 			f.errorf(n, "Float where Integer is expected; convert it (to_i, round, floor)")
 		}
 	} else if !fitsValue(e, to) {
+		if code, ok := f.implicitConv(n, e, to); ok {
+			return code
+		}
 		f.errorf(n, "%s where %s is expected", e.typ, to)
 	}
 	if isAbstract(to) { // Go any: literals need wrapping, as for untyped
@@ -1760,6 +1770,11 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	}
 	if e, ok := f.lenientMember(n, recv, name, args); ok {
 		return e
+	}
+	if meta := f.metaOfType(recv.typ); name == "new" && meta != nil && len(meta.metaOf.Subclasses) == 0 {
+		if vr := meta.metaOf.valueRoot(); vr != nil { // `klass.new(a: 1)` on a held Struct/Data class: keywords by member, as genNew's
+			args = f.keywordMembers(n, vr, args)
+		}
 	}
 	if meta := f.metaOfType(recv.typ); name == "new" && meta != nil && meta.metaOf.hashBase && len(meta.metaOf.Subclasses) == 0 && len(args) == 0 {
 		f.emit("_ = %s", recv.code)
@@ -2705,7 +2720,16 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return r
 	}
 	if f.curBlock != nil && m.Block == nil {
-		return owner.lookup(name + "block") // `xs.sum { |x| x.price }`
+		if r := owner.lookup(name + "block"); r != nil {
+			return r // `xs.sum { |x| x.price }`
+		}
+		if r := owner.lookup(name + strconv.Itoa(len(args)) + "_block"); r != nil {
+			return r // `xs.fill(2) { |i| i }`: by count, with a block
+		}
+		if r := owner.lookup(name + strconv.Itoa(len(args))); r != nil && r.M.Block != nil {
+			return r // `xs.fill { |i| i }`: the count's overload takes the block
+		}
+		return nil
 	}
 	if f.curBlock == nil && m.Block != nil {
 		if r := owner.lookup(name + "enum"); r != nil {
@@ -6665,7 +6689,7 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 			f.errorf(n, "a lambda for %s needs %d params, the last a *rest", ft, len(ft.Params))
 		}
 	} else if names := f.blockParamNames(params); len(names) > 0 {
-		sig.Params, src = f.lambdaParams(n, len(names)) // from its calls (decision 146)
+		sig.Params, src = f.lambdaParams(n, names, block) // from its calls (decision 146)
 		sig.Rest = strings.HasPrefix(names[len(names)-1], "*")
 	}
 	env := map[string]Type{}
@@ -7299,3 +7323,22 @@ func (f *fctx) lenientMember(n parser.Node, recv expr, name string, args []parse
 
 // lenient reports gem code (decision 172): what would be a nil or union type error compiles to a run-time check.
 func (f *fctx) lenient() bool { return f.c.pruneGems && f.c.gemFile(f.f) }
+
+// implicitConvs are MRI's implicit conversion protocols: a String
+// parameter takes any object answering to_str, and so on (rb_convert_type).
+var implicitConvs = map[string]string{"String": "to_str", "Integer": "to_int", "Array": "to_ary", "Hash": "to_hash"}
+
+// implicitConv is e converted to `to` through its class's conversion
+// method, chosen at compile time from e's static class (decision 179).
+func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
+	from, ok := e.typ.(TClass)
+	conv := implicitConvs[to.C.RubyName]
+	if !ok || conv == "" || from.C.GoType != "" || f.resolve(from, conv) == nil { // a struct class: a core value type's own rules stand (Float is not an Integer)
+		return "", false
+	}
+	r := f.genMethodCall(n, e, conv, nil, nil)
+	if !r.noreturn && !fitsValue(r, to) {
+		return "", false
+	}
+	return f.coerce(n, r, to), true
+}

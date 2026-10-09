@@ -5988,3 +5988,62 @@ resolve; anything not listed is still open.
     - **Proof:** `cmd/rb2go` `TestUncaughtFullReport`, `cmd/rubyspec`
       `TestCrashFrames`; `core/kernel` runs (1,896 examples, 335 pass,
       was FATAL) and `core/proc` runs (182 examples, 18 pass, was FATAL).
+179. ruby/spec phase B (#49): compile-time answers to what MRI decides
+    at run time.
+    - **Implicit conversion.** Where a String, Integer, Array or Hash is
+      expected (a parameter, or a union member) and the argument's static
+      class is a struct class defining `to_str`, `to_int`, `to_ary` or
+      `to_hash`, the compiler calls it there (`implicitConv`), as MRI's
+      `rb_convert_type` does at run time. Only struct classes: a core
+      value type keeps its own rules (a Float is still not an Integer,
+      decision 12). Untyped arguments are unchanged (checked by `rbAs`).
+    - **Mocks.** `cmd/rubyspec` rewrites `x = mock(..)` (and `@x`) whose
+      every later `should_receive`/`stub!` in the same statement list
+      answers a literal (`and_return(lit)`, `and_raise(Const[, "msg"])`,
+      with `with`/`once`/`at_least`/... ignored) into a class of its own
+      in a generated `rbspec_mocks.rb`; `mock_int(lit)` and
+      `mock_to_path(lit)` likewise. `should_not_receive` defines nothing.
+      Call counts are not checked (ponytail in `mock.go`).
+    - **Struct/Data members untyped when unannotated** (was an error),
+      with a warning, as gem code's (decision 172). An anonymous
+      `Struct.new(:a)`/`Data.define(:a)` (anything but a constant
+      assignment) is a hidden class per literal, as decision 145's
+      `Class.new`; `klass.new(a: 1)` on one maps keywords by member.
+      Zero members are allowed. Structs gain `[]`/`[]=` (index, Symbol or
+      String, MRI's IndexError/NameError), `values_at`, `dig` (3 deep: no
+      splat into a dynamic call), `select`/`filter`; a member of the same
+      name wins.
+    - **Class-body guards.** `Const.respond_to?(:m)` folds like
+      `defined?(Const.m)` (decision 167); `Data.define`/`Struct.new` count
+      as present. The runner cuts a failing statement inside a folded
+      `if`/`unless` branch, not the whole `if`.
+    - **Lambdas.** A lambda parameter the body never reads is `untyped`
+      when no call types it (it loses nothing); one that is read still
+      needs a call or an annotation (decision 146).
+    - **Overloads by count with a block.** A call with a block to a
+      method that takes none tries `__<name>_<count>_block`, then a
+      `__<name>_<count>` that takes a block, before failing (`fill { }`,
+      `fill(1) { }`). `Array#fill` covers MRI's start/length/range forms;
+      `a[start, len] = v` and `a[range] = v` splice (an Array value's
+      elements, else the value), padding with decision 7's zero.
+    - **Unannotated `attr_*`** (was an error) stand for the defs they
+      define (`def x = @x`, `def x=(v) = @x = v`), inferred like any def,
+      as gem code's already were (decision 172): the reader takes the
+      ivar's type. A writer no call types takes `untyped` (only a dynamic
+      call can reach it), which does not widen the ivar.
+    - **Singleton defs on a mock.** `x = Object.new` or `x = mock(..)`
+      followed by `def x.m ... end` in the same statement list moves the
+      def into the mock's class: a def captures no locals, so its body
+      reads the same there.
+    - **Matchers.** The runner turns `x.should matcher(args)` into
+      `x.should.matcher(args)` (`ProcExpectation.new(...)` for a lambda):
+      `be_close(y, TOLERANCE)`, and on a lambda `complain(msg/regexp)`
+      (its `$stderr` writes, `$VERBOSE` set as mspec does) and
+      `output(out, err)`. `[[recv, *args, expected], ...].should
+      be_computed_by(:m, *extra)` with literal rows unrolls into one
+      static `recv.m(*args, *extra).should == expected` per row.
+    - **Empty-def errors** carry the def's location (the error for a
+      def whose inherited signature wants a value was unlocated).
+    - **Proof:** `object_test.rb` `ObjectImplicitConversionTest`,
+      `array_test.rb` `test_fill_spans_and_blocks`/`test_index_assign_span`,
+      `objects.txtar` `struct_member_types_missing` (now a warning).

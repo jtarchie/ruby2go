@@ -5141,4 +5141,50 @@ module ObjectTests
       assert_equal ["n=b", "b", true], [pt.label, pt.body, pt.is_a?(Struct)]
     end
   end
+
+  class ObjectImplicitConversionLo
+    def to_str = "lo"
+  end
+
+  class ObjectImplicitConversionTwo
+    def to_int = 2
+  end
+
+  ObjectUntypedPoint = Struct.new(:x, :y)
+
+  class ObjectInferredAttrs
+    attr_reader :x
+    attr_accessor :y
+
+    def initialize(x, y)
+      @x = x
+      @y = y
+    end
+  end
+  ObjectEmptyData = Data.define
+
+  class ObjectImplicitConversionTest < Minitest::Test
+    def test_to_str_and_to_int
+      assert_equal [true, "abab", "hellolo", [1, 2]],
+                   ["hello".include?(ObjectImplicitConversionLo.new), "ab" * ObjectImplicitConversionTwo.new,
+                    "hello" + ObjectImplicitConversionLo.new, [1, 2, 3].first(ObjectImplicitConversionTwo.new)]
+    end
+
+    def test_unannotated_attrs
+      a = ObjectInferredAttrs.new(1, "a")
+      assert_equal [2, "A"], [a.x + 1, a.y.upcase]
+    end
+
+    def test_untyped_and_anonymous_value_classes
+      pt = ObjectUntypedPoint.new(1, "a")
+      anon = Struct.new(:a, :b)
+      s = anon.new(1, 2)
+      s[:b] = 5
+      d = Data.define(:v).new(v: 3)
+      assert_equal [1, "a", [1, 5], [5], 3], [pt.x, pt.y, s.to_a, s.values_at(1), d.v]
+      e = assert_raises(IndexError) { s[2] }
+      assert_equal "offset 2 too large for struct(size:2)", e.message
+      assert_equal [[], {}, true], [ObjectEmptyData.members, ObjectEmptyData.new.to_h, ObjectEmptyData.new == ObjectEmptyData.new]
+    end
+  end
 end

@@ -2435,5 +2435,30 @@ module ArrayTests
       u = [1, nil, "x"] #: Array[untyped]
       assert_equal [1, "x"], u.compact
     end
+
+    def test_fill_spans_and_blocks
+      assert_equal [[1, 0, 0], [0, 0, 0], [1, 0, 3], [1, 2, 0, 0, 0, 0], [0, 0, 3], [0, 0, 3], [1, 2, 3]],
+                   [[1, 2, 3].fill(0, -2), [1, 2, 3].fill(0, -9), [1, 2, 3].fill(0, 1, 1), [1, 2, 3].fill(0, 2, 4),
+                    [1, 2, 3].fill(0, nil, 2), [1, 2, 3].fill(0, 0...2), [1, 2, 3].fill(0, 2..0)]
+      assert_equal [[0, 1, 4], [1, 10, 20], [-0, -1, 3], [1, 101, 3]],
+                   [[1, 2, 3].fill { |i| i * i }, [1, 2, 3].fill(1) { |i| i * 10 }, [1, 2, 3].fill(0, 2) { |i| -i },
+                    [1, 2, 3].fill(1..1) { |i| i + 100 }]
+      e = assert_raises(RangeError) { [1, 2, 3].fill(0, -5..1) }
+      assert_equal "-5..1 out of range", e.message
+    end
+
+    def test_index_assign_span
+      a = [1, 2, 3, 4]
+      a[1, 2] = [7, 8, 9]
+      b = [1, 2, 3]
+      b[1..] = []
+      c = [1, 2, 3]
+      c[0...1] = [5, 6]
+      d = [1, 2, 3]
+      d[-2..] = 0
+      assert_equal [[1, 7, 8, 9, 4], [1], [5, 6, 2, 3], [1, 0]], [a, b, c, d]
+      e = assert_raises(IndexError) { d[1, -1] = 1 }
+      assert_equal "negative length (-1)", e.message
+    end
   end
 end

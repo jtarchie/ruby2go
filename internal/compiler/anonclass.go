@@ -45,6 +45,23 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 	case *parser.ClassNode, *parser.ModuleNode:
 		return
 	case *parser.CallNode:
+		if call, kind := valueClass(n); call != nil && len(callArgs(call)) > 0 && c.anonClasses[call] == nil {
+			c.anonCount++
+			name := fmt.Sprintf("RbAnon%d", c.anonCount)
+			// `Struct.new(:a)` anywhere but a constant assignment: a hidden value class per literal, as Class.new's
+			err := catchCompileError(func() {
+				c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Name: name, Location: call.Location}, call, kind, scope)
+				c.anonClasses[call] = c.classes[qualify(scope, name)]
+			})
+			if err != nil {
+				if c.anonErrors == nil {
+					c.anonErrors = map[*parser.CallNode]compileError{}
+				}
+				c.anonErrors[call] = *err
+			}
+			c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
+			return
+		}
 		if call, isModule := anonClassCall(n); call != nil {
 			c.anonCount++
 			name := fmt.Sprintf("RbAnon%d", c.anonCount)
@@ -89,9 +106,6 @@ func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNo
 		c.errorf(f, call, "%s is already defined", name)
 	}
 	cls := c.declareClass(f, name, line, isModule)
-	if c.anonClasses == nil {
-		c.anonClasses = map[*parser.CallNode]*Class{}
-	}
 	c.anonClasses[call] = cls
 	if len(args) == 1 {
 		switch args[0].(type) {

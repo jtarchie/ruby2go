@@ -97,6 +97,8 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 		panic(needInfer{})
 	case c.pruneGems && c.gemFile(m.File):
 		prm.Type = TAny{} // only a dynamic call can reach it (decision 169)
+	case m.attrWriter:
+		prm.Type = TAny{} // an attr writer no call types: only a dynamic call can reach it (decision 179)
 	default:
 		ce := catchCompileError(func() {
 			c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`), and no call in the program gives it one (decision 146)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
@@ -218,9 +220,9 @@ func typesInclude(m *Method) bool {
 // lambdaParams types a lambda's parameters from its calls, when nothing
 // gives it an expected type: the last round's types, untyped during a
 // round, else the error an annotation would have prevented.
-func (f *fctx) lambdaParams(n parser.Node, count int) ([]Type, string) {
+func (f *fctx) lambdaParams(n parser.Node, names []string, body parser.Node) ([]Type, string) {
 	src := f.f.posKey(n.GetLocation().StartOffset) + "#"
-	ps := make([]Type, count)
+	ps := make([]Type, len(names))
 	for i := range ps {
 		f.c.notePending(src + strconv.Itoa(i))
 		if f.c.infer != nil {
@@ -236,6 +238,8 @@ func (f *fctx) lambdaParams(n parser.Node, count int) ([]Type, string) {
 			panic(needInfer{})
 		case f.c.pruneGems && f.c.gemFile(f.f):
 			ps[i] = TAny{} // a gem's lambda no call types (decision 169)
+		case !readsParam(body, strings.TrimLeft(names[i], "*&")):
+			ps[i] = TAny{} // a parameter the body never reads loses nothing untyped (decision 179)
 		default:
 			ce := catchCompileError(func() {
 				f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)")
@@ -245,6 +249,13 @@ func (f *fctx) lambdaParams(n parser.Node, count int) ([]Type, string) {
 		}
 	}
 	return ps, src
+}
+
+func readsParam(body parser.Node, name string) bool {
+	return anyNode(body, func(n parser.Node) bool {
+		r, ok := n.(*parser.LocalVariableReadNode)
+		return ok && r.Name == name
+	})
 }
 
 // sameParamShape reports whether def m's parameter list fits parent's

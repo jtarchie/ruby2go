@@ -485,7 +485,11 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 	stmts, ok := n.(*parser.StatementsNode)
 	// An empty body arrives as a typed-nil *StatementsNode, which is != nil.
 	if n == nil || ok && stmts == nil {
-		f.emptyTail(nil, t)
+		var at parser.Node
+		if f.m != nil && f.m.Node != nil {
+			at = f.m.Node // an empty def's nil, reported at the def
+		}
+		f.emptyTail(at, t)
 		return
 	}
 	if !ok {

@@ -135,6 +135,7 @@ const (
 
 // Method is a Ruby method definition.
 type Method struct {
+	attrWriter   bool                 // an unannotated attr_writer/attr_accessor's `def x=(v) = @x = v` (addModuleAttr)
 	pendingIdx   map[int]pendingParam // sig param index → a parameter typed from use (decision 146)
 	pendingBlock []pendingParam       // the block's parameters, typed from the yields
 	// yields that disagree on their count, reported at the yield (yieldShape)
@@ -1461,7 +1462,7 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		m.sigText = sig
 	}
 	if _, ok := f.annotations(line)["dynamic"]; ok {
-		if !f.prelude {
+		if !f.prelude && !f.valueGen {
 			c.errorf(f, n, "@dynamic is only allowed in the prelude")
 		}
 		m.quietDynamic = true
@@ -1539,11 +1540,9 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			// No inline `#:`: a `.rbs` attribute supplies the type (decision 160).
 			if ad := c.sigAttr(cls, name); ad != nil && !f.prelude {
 				at = ad.Type
-			} else if c.gemFile(f) { // lenient gem code (decision 172): the defs it stands for, inferred like any gem def
+			} else { // the defs it stands for, inferred like any def (decision 172 for gems, 179 for user code)
 				c.addModuleAttr(f, cls, n, kind, name, nil, private, scope)
 				continue
-			} else {
-				c.errorf(f, n, "%s needs a trailing `#: Type` annotation", n.Name)
 			}
 		}
 		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: at, line: line, scope: scope})
@@ -1589,6 +1588,7 @@ func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind, 
 		params := &parser.ParametersNode{Location: loc, Requireds: []parser.Node{&parser.RequiredParameterNode{Location: loc, Name: "v"}}}
 		write := &parser.InstanceVariableWriteNode{Location: loc, Name: iv, Value: &parser.LocalVariableReadNode{Location: loc, Name: "v"}}
 		def(name+"=", params, []string{"v"}, write, wsig)
+		cls.Methods[name+"="].attrWriter = wsig == nil
 	}
 }
 
@@ -3187,9 +3187,6 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 		}
 		members = append(members, sym.Unescaped.Value)
 	}
-	if len(members) == 0 {
-		c.errorf(f, call, "%s needs at least one member", kind)
-	}
 	types := c.memberTypes(f, n, call, members)
 	full := qualify(scope, n.Name)
 	line := f.line(n.Location.StartOffset)
@@ -3202,6 +3199,7 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	if err != nil {
 		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
 	}
+	sf.valueGen = true
 	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope, false)
 	for _, m := range cls.MethodList {
 		m.valueGen = true
@@ -3248,14 +3246,14 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 		return types
 	}
 	ann := f.trailingAnnotation(n)
-	if ann == "" && c.gemFile(f) { // lenient gem code (decision 172): rack's `MultipartInfo = Struct.new :params, :tmp_files`
+	if ann == "" { // untyped members, as gem code's (decision 172): rack's `MultipartInfo = Struct.new :params, :tmp_files`
+		if !c.gemFile(f) {
+			c.warn(f, n, "%s's members are untyped; give them types (`:a, #: T` per line, or `#: [A, B]` after the definition) for static calls (decision 179)", n.Name)
+		}
 		for i := range types {
 			types[i] = rbs.Untyped{}
 		}
 		return types
-	}
-	if ann == "" {
-		c.errorf(f, n, "%s needs member types: `:a, #: T` per line, or `#: [A, B]` after the definition", n.Name)
 	}
 	t, err := rbs.ParseType(ann)
 	tup, ok := t.(rbs.Tuple)
@@ -3311,10 +3309,17 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def members = [%s]\n", strings.Join(syms, ", "))
 	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def to_h = { %s }\n", strings.Join(pairs, ", "))
 	// MRI's ==/eql? want the same class, not a subclass
+	if len(eqs) == 0 {
+		eqs = []string{"true"}
+	}
 	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
 	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    to_h.eql?(__other.to_h)\n  end\n", full)
 	b.WriteString("  #: () -> Integer\n  def hash = to_h.hash\n")
-	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name} %s>\"\n", kind, strings.Join(insp, ", "))
+	fields := ""
+	if len(insp) > 0 {
+		fields = " " + strings.Join(insp, ", ")
+	}
+	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name}%s>\"\n", kind, fields)
 	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
 	// pp's Struct/Data layout (decision 113): the kind and the values, in members order
 	fmt.Fprintf(&b, "  #: () -> String\n  def __pp_kind = %q\n", kind)
@@ -3323,6 +3328,9 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 	whens := make([]string, len(members))
 	for i, m := range members {
 		whens[i] = fmt.Sprintf("      when %s then __h[%s] = self.%s\n", syms[i], syms[i], m)
+	}
+	if len(members) == 0 {
+		whens = []string{"      when nil then return __h\n"} // no member names: the first key ends it
 	}
 	fmt.Fprintf(&b, "  #: (Array[Symbol]?) -> Hash[Symbol, untyped]\n  def deconstruct_keys(__keys)\n    return to_h if __keys.nil?\n"+
 		"    __h = {} #: Hash[Symbol, untyped]\n    return __h if __keys.size > %d\n    __i = 0\n    while __i < __keys.size\n      case __keys.fetch(__i)\n%s      else return __h\n      end\n      __i += 1\n    end\n    __h\n  end\n",
@@ -3335,6 +3343,27 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type) str
 		fmt.Fprintf(&b, "  #: () -> Integer\n  def length = %d\n", len(members))
 		b.WriteString("  #: () { (untyped) -> void } -> void\n  def each\n    to_a.each { |__x| yield __x }\n  end\n")
 		b.WriteString("  #: () { (Symbol, untyped) -> void } -> void\n  def each_pair\n    to_h.each { |__k, __x| yield __k, __x }\n  end\n")
+		// [] and []= take a member's index, Symbol or String, with MRI's errors
+		gets, sets := make([]string, 0, len(members)+1), make([]string, 0, len(members)+1)
+		for _, m := range members {
+			gets = append(gets, fmt.Sprintf("    when %q then self.%s\n", m, m))
+			sets = append(sets, fmt.Sprintf("    when %q then self.%s = __v\n", m, m))
+		}
+		if len(members) == 0 {
+			gets, sets = []string{"    when nil then nil\n"}, []string{"    when nil then nil\n"} // a case needs a when
+		}
+		index := fmt.Sprintf("      __i = __k < 0 ? __k + %d : __k\n      raise IndexError, \"offset #{__k} too small for struct(size:%d)\" if __i < 0\n      raise IndexError, \"offset #{__k} too large for struct(size:%d)\" if __i >= %d\n", len(members), len(members), len(members), len(members))
+		fmt.Fprintf(&b, "  #: (Integer | Symbol | String) -> untyped\n  def [](__k)\n    if __k.is_a?(Integer)\n%s      return to_a.fetch(__i)\n    end\n    case __k.to_s\n%s    else raise NameError, \"no member '#{__k}' in struct\"\n    end\n  end\n", index, strings.Join(gets, ""))
+		fmt.Fprintf(&b, "  #: (Integer | Symbol | String, untyped) -> untyped\n  def []=(__k, __v)\n    __name = __k.to_s\n    if __k.is_a?(Integer)\n%s      __name = members.fetch(__i).to_s\n    end\n    case __name\n%s    else raise NameError, \"no member '#{__k}' in struct\"\n    end\n    __v\n  end\n", index, strings.Join(sets, ""))
+		extra := func(name, src string) { // a member's accessor wins over a helper of its name (`:select`)
+			if !slices.Contains(members, name) {
+				b.WriteString(src)
+			}
+		}
+		extra("values_at", "  #: (*Integer) -> Array[untyped]\n  def values_at(*__is) = __is.map { |__i| self[__i] }\n")
+		extra("dig", "  # @dynamic\n  #: (Integer | Symbol | String, *untyped) -> untyped\n  def dig(__k, *__rest)\n    __v = self[__k]\n    return __v if __rest.empty? || __v.nil?\n    return __v.dig(__rest.fetch(0)) if __rest.size == 1\n    __v.dig(__rest.fetch(0), __rest.fetch(1))\n  end\n") // ponytail: no splat into a dynamic call, so dig goes 3 deep; build the call per depth when deeper is needed
+		extra("select", "  #: () { (untyped) -> bool } -> Array[untyped]\n  def select(&__blk) = to_a.select(&__blk)\n")
+		extra("filter", "  #: () { (untyped) -> bool } -> Array[untyped]\n  def filter(&__blk) = to_a.select(&__blk)\n")
 	} else {
 		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def deconstruct = [%s]\n", strings.Join(reads, ", "))
 		// `with(k: v)` compiles to this: a copy of the receiver's class

@@ -426,6 +426,92 @@ class Array < Object
     return self
   }
 
+  # `a[start, len] = v`: v's elements replace the span when v is an Array, else v alone; past the end pads with nil (decision 7's zero)
+  #: (Integer, Integer, untyped) -> untyped
+  def __idxset_3(start, count, v) = %x{
+    self.rbCheckFrozen()
+    n := Integer(len(self.s))
+    if start < 0 {
+      if -start > n {
+        panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", start, n)))))
+      }
+      start += n
+    }
+    if count < 0 {
+      panic(NewIndexError(Ref(String(fmt.Sprintf("negative length (%d)", count)))))
+    }
+    var items []E
+    if a, ok := v.(Array_Any); ok {
+      for _, x := range a._ToAny().s {
+        items = append(items, rbAs[E](x, "the array's element type"))
+      }
+    } else {
+      items = []E{rbAs[E](v, "the array's element type")}
+    }
+    for Integer(len(self.s)) < start {
+      var zero E
+      self.s = append(self.s, zero)
+    }
+    end := min(start+count, Integer(len(self.s)))
+    self.s = slices.Concat(self.s[:start:start], items, self.s[end:])
+    return v
+  }
+
+  #: (Range[Integer], untyped) -> untyped
+  def __idxset_range(r, v)
+    n = size
+    b = r.__begin_opt || 0
+    b += n if b < 0
+    raise RangeError, "#{r.inspect} out of range" if b < 0
+    last = r.__end_opt
+    e = last || n
+    e += n if e < 0
+    e += 1 unless last.nil? || r.exclude_end?
+    __idxset_3(b, e < b ? 0 : e - b, v)
+  end
+
+  #: (E, Integer | Range[Integer] | nil) -> self
+  def __fill_2(v, at) = __fill_by(at, nil) { |_i| v }
+
+  #: (E, Integer?, Integer?) -> self
+  def __fill_3(v, start, len) = __fill_by(start, len) { |_i| v }
+
+  #: () { (Integer) -> E } -> self
+  def __fill_0(&blk) = __fill_by(nil, nil, &blk)
+
+  #: (Integer | Range[Integer] | nil) { (Integer) -> E } -> self
+  def __fill_1_block(at, &blk) = __fill_by(at, nil, &blk)
+
+  #: (Integer?, Integer?) { (Integer) -> E } -> self
+  def __fill_2_block(start, len, &blk) = __fill_by(start, len, &blk)
+
+  # fill's span, as MRI clamps it: a start counted from the end, nil for 0 (or to the end), a range's ends; past the end grows the array
+  #: (Integer | Range[Integer] | nil, Integer?) { (Integer) -> E } -> self
+  def __fill_by(at, len)
+    n = size
+    if at.is_a?(Range)
+      b = at.__begin_opt || 0
+      b += n if b < 0
+      raise RangeError, "#{at.inspect} out of range" if b < 0
+      last = at.__end_opt
+      e = last || n
+      e += n if e < 0
+      e += 1 unless last.nil? || at.exclude_end?
+      start, count = b, e - b
+    else
+      start = at || 0
+      start += n if start < 0
+      start = 0 if start < 0
+      count = len || n - start
+    end
+    i = start
+    while i < start + count
+      self[i] = yield(i)
+      i += 1
+    end
+    self
+  end
+
   #: () { (Integer) -> void } -> void
   def each_index = %x{
     return func(yield func(Integer) bool) {

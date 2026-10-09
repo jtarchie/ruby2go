@@ -3,6 +3,7 @@
 # The runner rewrites what must be static first: context → describe, guards, shared specs.
 require "minitest/autorun"
 require "fileutils"
+require "stringio"
 
 # `actual.should == x`, `actual.should.equal?(x)`, `-> { }.should.raise(E)`; should_not negates.
 class SpecExpectation
@@ -27,6 +28,10 @@ class SpecExpectation
 
   #: (untyped) -> bool
   def =~(other) = check(!(@actual =~ other).nil?, "=~ #{other.inspect}")
+
+  # `x.should be_close(y, TOLERANCE)`, which the runner rewrites to `x.should.be_close(y, TOLERANCE)`
+  #: (untyped, untyped) -> bool
+  def be_close(expected, tolerance) = check((@actual - expected).abs <= tolerance, "to be within +/- #{tolerance} of #{expected.inspect}")
 
   #: (untyped) -> bool
   def <(other) = check(@actual < other, "< #{other.inspect}")
@@ -104,7 +109,53 @@ class ProcExpectation
 
     mspec_fail "Expected #{@positive ? "" : "no "}#{klass.inspect}#{message.nil? ? "" : " #{message.inspect}"}, got #{got.inspect}"
   end
+
+  # mspec's complain: the block's warnings ($stderr) match a String exactly, a Regexp, or for nil are any at all
+  #: (?untyped, ?verbose: bool) -> bool
+  def complain(expected = nil, verbose: false)
+    old_err = $stderr
+    old_verbose = $VERBOSE
+    buf = StringIO.new
+    $stderr = buf
+    $VERBOSE = verbose
+    begin
+      @actual.call
+    ensure
+      $stderr = old_err
+      $VERBOSE = old_verbose
+    end
+    got = buf.string
+    ok = expected.nil? ? !got.empty? : mspec_match(got, expected)
+    return true if ok == @positive
+
+    mspec_fail "Expected warning #{@positive ? "" : "not "}#{expected.nil? ? "" : expected.inspect}, got #{got.inspect}"
+  end
+
+  # mspec's output: what the block prints to $stdout and $stderr; nil checks nothing
+  #: (?untyped, ?untyped) -> bool
+  def output(stdout = nil, stderr = nil)
+    old_out = $stdout
+    old_err = $stderr
+    out = StringIO.new
+    err = StringIO.new
+    $stdout = out
+    $stderr = err
+    begin
+      @actual.call
+    ensure
+      $stdout = old_out
+      $stderr = old_err
+    end
+    ok = (stdout.nil? || mspec_match(out.string, stdout)) && (stderr.nil? || mspec_match(err.string, stderr))
+    return true if ok == @positive
+
+    mspec_fail "Expected output #{stdout.inspect}, #{stderr.inspect}, got #{out.string.inspect}, #{err.string.inspect}"
+  end
 end
+
+# A String must equal, a Regexp must match.
+#: (String, untyped) -> bool
+def mspec_match(got, expected) = expected.is_a?(Regexp) ? got.match?(expected) : got == expected
 
 # The expectations' own #raise hides Kernel's inside them.
 #: (String) -> bot
@@ -119,6 +170,8 @@ module Kernel
 end
 
 # No bignum_value: there is no Bignum (decision 35), so a spec using it is a compile error, which the runner reports as unsupported.
+
+TOLERANCE = 0.00003 #: Float
 
 #: () -> Integer
 def fixnum_max = 0x3fff_ffff_ffff_ffff
