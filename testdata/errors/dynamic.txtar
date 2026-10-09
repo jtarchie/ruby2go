@@ -83,7 +83,7 @@ puts x.inspect
 a, b = nil, 1
 puts a.inspect, b
 -- ivar_only_nil.rb --
-# error: main.rb:6: instance variable @v has no known type
+# warning: main.rb:6: instance variable @v is only ever nil
 # rbs_inline: enabled
 class Box
   #: () -> void

@@ -70,6 +70,9 @@ class SpecExpectation
   def frozen? = check(@actual.frozen?, "to be frozen")
 
   # mspec's predicate matchers with an argument (`File.should.exist?(path)`), each the actual's own answer.
+  #: () -> bool
+  def eof? = check(@actual.eof?, "to be at eof")
+
   #: (untyped) -> bool
   def exist?(x) = check(@actual.exist?(x), "exist? #{x.inspect}")
 
@@ -286,8 +289,13 @@ def fixture(file, *args)
   File.join(File.expand_path(path), fixtures, *args)
 end
 
-#: (String, ?String) -> File
-def new_io(name, mode = "w:utf-8") = File.new(name, mode)
+# A mode String, or mspec's Hash of open options (only its mode: is read).
+#: (String, ?(String | Hash[Symbol, untyped])) -> File
+def new_io(name, mode = "w:utf-8")
+  return File.new(name, mode) if mode.is_a?(String)
+
+  File.new(name, (mode[:mode] || "r").to_s)
+end
 
 #: (String, ?String) -> Integer
 def new_fd(name, mode = "w:utf-8") = IO.sysopen(name, mode)
@@ -313,6 +321,28 @@ def ruby_exe(*, **) = raise(Minitest::Skip, "rb2go: ruby_exe runs Ruby source in
 
 #: (*untyped, **untyped) -> bot
 def ruby_cmd(*, **) = raise(Minitest::Skip, "rb2go: ruby_cmd runs Ruby source in a subprocess (no eval)")
+
+# mspec's suppress_warning: the block runs with $VERBOSE nil, so warn prints nothing.
+#: [T] () { () -> T } -> T
+def suppress_warning
+  old = $VERBOSE
+  $VERBOSE = nil
+  begin
+    yield
+  ensure
+    $VERBOSE = old
+  end
+end
+
+# platform_is/platform_is_not as values (the runner decides their block forms statically): this machine's OS.
+#: (*Symbol) -> bool
+def platform_is(*names)
+  os = RUBY_PLATFORM.split("-").last.to_s.sub(/\d+\z/, "")
+  names.any? { |n| n.to_s == os || (n == :bsd && os.end_with?("bsd")) || %i[posix unix].include?(n) && os != "windows" }
+end
+
+#: (*Symbol) -> bool
+def platform_is_not(*names) = !platform_is(*names)
 
 # A mock the runner did not make a class of (it has no expectations, or ones it cannot read): a plain object of its own.
 #: (?untyped) -> Object

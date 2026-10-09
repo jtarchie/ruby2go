@@ -54,12 +54,11 @@ puts total(*5)
 def total(*ns) = ns.size
 pair = [1, "a"]
 puts total(*pair)
--- splat_into_positional.rb --
-# error: main.rb:5: splat into a non-rest parameter is not supported
+-- splat_into_positional_needs_array.rb --
+# error: main.rb:4: splat of Hash[Symbol, Integer] into a non-rest parameter: only an Array is supported
 #: (Integer, Integer) -> Integer
 def add(a, b) = a + b
-nums = [1, 2] #: Array[Integer]
-puts add(*nums)
+puts add(*{a: 1})
 -- splat_in_dynamic_call.rb --
 # error: main.rb:4: splat arguments in a dynamic call are not supported
 u = 5 #: untyped

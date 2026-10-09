@@ -9,6 +9,9 @@ require "minitest/autorun"
 def infer_twice(x) = x * 2
 def infer_bigger(e) = e.select { |x| x > 1 }
 
+#: (Integer, ?Integer, ?Integer) -> Array[Integer]
+def infer_three(a, b = 10, c = 20) = [a, b, c]
+
 module InferTests
   class FallbackBlock
     def run(&blk) = blk.call(1, 2)
@@ -23,6 +26,15 @@ module InferTests
     def each
       yield 1
       yield 2
+    end
+  end
+
+  class FallbackFeed
+    def each
+      out = [] #: Array[untyped]
+      out << yield
+      out << yield
+      out
     end
   end
 
@@ -139,7 +151,15 @@ module InferTests
     def test_untyped_fallbacks
       r = InferTests::FallbackBlock.new
       sorted = [3, 1, 2].map { |i| InferTests::FallbackCmp.send(:new, i) }.sort.map(&:n)
+      assert_equal ["a", "a"], InferTests::FallbackFeed.new.each { "a" }
       assert_equal [3, 10, :none, [2, 4], [1, 2, 3]], [r.run { |a, b| a + b }, r.maybe { |x| x * 2 }, r.maybe, InferTests::FallbackKid.new.map { |x| x * 2 }, sorted]
+    end
+
+    def test_splat_into_positional_parameters
+      xs = [1, 2]
+      e = assert_raises(ArgumentError) { infer_three(*[]) }
+      assert_equal [[1, 2, 20], [0, 5, 20], [7, 10, 20], "wrong number of arguments (given 0, expected 1..3)"],
+                   [infer_three(*xs), infer_three(0, *[5]), infer_three(*[7]), e.message]
     end
   end
 end

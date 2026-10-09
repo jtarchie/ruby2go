@@ -913,6 +913,16 @@ module StdlibTests
       end
     end
 
+    def test_io_open_block_and_read_length
+      r, w = IO.pipe
+      v = IO.open(w.fileno, "w") do |io|
+        io.write("hey")
+        :done
+      end
+      io2 = IO.open(r.fileno)
+      assert_equal [:done, "he", "y", nil], [v, io2.read(2), io2.read(5), io2.read(1)]
+    end
+
     def test_time_new_from_string
       t = Time.utc(2020, 12, 24, 15, 56, 17)
       assert_equal [true, true, true], [Time.new("2020-12-24T15:56:17Z") == t, Time.new("2020-12-25 00:57:47 +09:01:30") == t, Time.new("2020-12-25 00:56:17 +0900") == t]
@@ -1138,7 +1148,7 @@ module StdlibTests
     end
 
     def test_sleep
-      assert_kind_of Integer, sleep(0.01) # rounded seconds: 1 under load
+      assert sleep(0.01).is_a?(Integer) # rounded seconds: 0, or 1 under load, so only the class is compared
       assert_equal 0, sleep(0)
       assert_equal "time interval must not be negative", assert_raises(ArgumentError) { sleep(-1) }.message
     end

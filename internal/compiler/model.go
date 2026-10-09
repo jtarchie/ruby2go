@@ -2611,7 +2611,11 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 			bps[i] = "untyped"
 			m.pendingBlock = append(m.pendingBlock, pendingParam{key: pendingKey(m, "&"+strconv.Itoa(i)), name: "yield's argument " + strconv.Itoa(i+1)})
 		}
-		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> void } "
+		ret := "void"
+		if yieldValueUsed(m.Node.Body) {
+			ret = "untyped"
+		}
+		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> " + ret + " } "
 	}
 	sig += "-> "
 	if r := ann["return:"]; len(r) > 0 {
