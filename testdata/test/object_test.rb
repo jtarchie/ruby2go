@@ -5175,6 +5175,12 @@ module ObjectTests
     end
   end
 
+  class ObjectCallerLabels
+    def outer = inner
+    def inner = caller(0)&.first(2)&.map { |l| l[/in '([^']*)'/, 1] }
+    def located = caller_locations(0)&.first(1)&.map { |l| [l.label, l.base_label] }
+  end
+
   class ObjectProtocolHooks
     def foo = true
 
@@ -5202,6 +5208,7 @@ module ObjectTests
     end
   end
   ObjectEmptyData = Data.define
+  ObjectKwStruct = Struct.new(:a, :b, keyword_init: true)
 
   class ObjectImplicitConversionTest < Minitest::Test
     def test_to_str_and_to_int
@@ -5233,6 +5240,16 @@ module ObjectTests
     def test_unannotated_protocol_hooks
       o = ObjectProtocolHooks.new
       assert_equal [true, true, false], [o.method(:foo).call, o.respond_to?(:handled), o.respond_to?(:other)]
+    end
+
+    def test_caller_labels
+      assert_equal ["ObjectTests::ObjectCallerLabels#inner", "ObjectTests::ObjectCallerLabels#outer"], ObjectCallerLabels.new.outer
+      assert_equal [["ObjectTests::ObjectCallerLabels#located", "located"]], ObjectCallerLabels.new.located
+    end
+
+    def test_struct_keyword_init
+      assert_equal ["#<struct ObjectTests::ObjectKwStruct a=1, b=2>", true, nil, nil],
+                   [ObjectKwStruct.new(a: 1, b: 2).inspect, ObjectKwStruct.keyword_init?, ObjectUntypedPoint.keyword_init?, ObjectKwStruct.new(a: 1).b]
     end
 
     def test_unannotated_attrs

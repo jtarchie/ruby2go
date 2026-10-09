@@ -5,6 +5,8 @@ package prelude
 
 import (
 	"math/big"
+	"regexp"
+	"strings"
 )
 
 func rbRat(n, d int64) *Rational {
@@ -31,4 +33,28 @@ func rbRatFloor(r *big.Rat) Integer {
 	q, m := new(big.Int).DivMod(r.Num(), r.Denom(), new(big.Int))
 	_ = m // Euclidean: the denominator is positive, so q is the floor
 	return rbBigToInt(q)
+}
+
+var rbStrToRRe = regexp.MustCompile(`^\s*([-+]?(?:\d[\d_]*)?(?:\.\d[\d_]*)?(?:[eE][-+]?\d+)?)(?:/(\d[\d_]*))?`)
+
+// rbStrToR is String#to_r: the leading rational ("1/3", "0.75", "-2.5e2", "1.5/2"), 0 when there is none; a zero
+// denominator is MRI's ZeroDivisionError.
+func rbStrToR(s string) *Rational {
+	m := rbStrToRRe.FindStringSubmatch(s)
+	out := &Rational{}
+	num := strings.ReplaceAll(m[1], "_", "")
+	if num == "" || num == "-" || num == "+" || strings.HasPrefix(strings.TrimLeft(num, "+-"), "e") {
+		return out
+	}
+	if _, ok := out.v.SetString(num); !ok {
+		return &Rational{}
+	}
+	if m[2] != "" {
+		den, _ := new(big.Rat).SetString(strings.ReplaceAll(m[2], "_", ""))
+		if den.Sign() == 0 {
+			panic(NewZeroDivisionError(Ref(String("divided by 0"))))
+		}
+		out.v.Quo(&out.v, den)
+	}
+	return out
 }

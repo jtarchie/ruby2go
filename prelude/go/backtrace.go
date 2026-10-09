@@ -291,3 +291,25 @@ func rbBacktraceFrames(pcs []uintptr, rescued bool) []string {
 	slices.Reverse(lines)
 	return lines
 }
+
+// rbCaller is Kernel#caller: the stack as backtrace lines, from start frames above the method that called caller,
+// at most length of them (-1: all); nil past the stack's end, as MRI (decision 189).
+func rbCaller(start, length int) *Array[String] {
+	pcs := make([]uintptr, 128)
+	n := runtime.Callers(2, pcs)
+	var lines []String
+	for _, l := range rbBacktraceFrames(pcs[:n], false) {
+		if strings.Contains(l, "'Kernel#caller'") {
+			continue
+		}
+		lines = append(lines, String(l))
+	}
+	if start > len(lines) {
+		return nil
+	}
+	lines = lines[start:]
+	if length >= 0 && length < len(lines) {
+		lines = lines[:length]
+	}
+	return &Array[String]{s: lines}
+}

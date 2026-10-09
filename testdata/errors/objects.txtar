@@ -343,11 +343,8 @@ end
 class Foo
   class_eval { |n| n }
 end
--- struct_keyword_init.rb --
-# error: main.rb:2: struct members must be symbols (keyword_init is not supported)
-Point = Struct.new(:x, :y, keyword_init: true) #: [Integer, Integer]
 -- struct_string_member.rb --
-# error: main.rb:2: struct members must be symbols (keyword_init is not supported)
+# error: main.rb:2: struct members must be symbols
 Point = Struct.new("x") #: [Integer]
 -- struct_member_bad_type.rb --
 # error: main.rb:3: rbs: unexpected end of type
@@ -1219,3 +1216,7 @@ class Weird < Base
   include Comparable
 end
 p Weird.new(1) < Weird.new(2)
+-- struct_keyword_init_positional.rb --
+# error: main.rb:3: wrong number of arguments (given 1, expected 0): S takes keywords (keyword_init: true)
+S = Struct.new(:a, keyword_init: true)
+S.new(1)

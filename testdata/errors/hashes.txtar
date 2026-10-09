@@ -4,9 +4,7 @@ Compile errors and warnings for Hash (docs/design.md decisions 1, 4, 5, 12, 20, 
 h = { "a" => 1 } #: Hash[String, Integer]
 h["a"] &&= 2
 -- hash_new_unannotated.rb --
-# error: main.rb:4:
-# error: Hash
-# error: new
+# warning: main.rb:2: Hash.new's element types are untyped
 h = Hash.new
 puts h.size
 -- keyword_param.rb --

@@ -34,6 +34,16 @@ class Regexp < Object
 
   #: () -> bool
   def casefold? = %x{ return Boolean(strings.ContainsRune(self.opts, 'i')) }
+
+  # US-ASCII for an ASCII-only source, else UTF-8 (or with //u), as MRI derives it (decision 191).
+  # ponytail: //n with a \xNN escape is BINARY in MRI and US-ASCII here.
+  #: () -> Encoding
+  def encoding = %x{
+    if strings.ContainsRune(self.opts, 'u') || strings.Contains(self.src, `\\u`) || strings.IndexFunc(self.src, func(r rune) bool { return r >= 0x80 }) >= 0 {
+      return Encoding_UTF_8
+    }
+    return Encoding_US_ASCII
+  }
   # A subject is a String for typed callers; an untyped one may also be a
   # Symbol (its name is matched) or nil (no match), as in MRI.
   #: (String | untyped) -> bool

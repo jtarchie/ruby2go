@@ -282,6 +282,12 @@ class Integer
   def __div_rational(o) = to_r / o
 end
 
+class String
+  # The leading rational, 0 when there is none, as MRI's (decision 191).
+  #: () -> Rational
+  def to_r = %x{ return rbStrToR(string(self)) }
+end
+
 class Float
   # Exact: every finite Float is a dyadic fraction.
   #: () -> Rational

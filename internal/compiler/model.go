@@ -52,6 +52,7 @@ type Class struct {
 	constNames    []string // constants (classes included) declared directly inside, in order
 	valueMembers  []string // Struct.new / Data.define members, in order
 	valueKind     string   // "struct" or "data"
+	kwInit        bool     // Struct.new(..., keyword_init: true): new takes keywords only
 	msetCache     []entry
 	msetIndex     map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
 	selfCallCache map[string]bool
@@ -2043,6 +2044,9 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 			return iv
 		}
 	}
+	if c.nilIvars[cls.Name+"#"+name] {
+		t = optOf(t) // this class assigns it nil too
+	}
 	for k := cls.Super; k != nil; k = k.Super { // an ancestor that assigned it only nil owns it, nilable (decision 182)
 		if c.nilIvars[k.Name+"#"+name] {
 			cls, t = k, optOf(t)
@@ -3301,21 +3305,45 @@ func valueClass(n parser.Node) (*parser.CallNode, string) {
 // a block does not open a constant scope in Ruby.
 func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, kind string, scope []*Class) {
 	members := make([]string, 0, len(callArgs(call)))
+	syms := make([]parser.Node, 0, len(callArgs(call)))
+	kwInit := "nil"
 	for _, a := range callArgs(call) {
+		if kw, ok := a.(*parser.KeywordHashNode); ok && kind == "struct" && len(kw.Elements) == 1 { // `keyword_init: true` (decision 189)
+			if as, ok := kw.Elements[0].(*parser.AssocNode); ok {
+				if k, ok := as.Key.(*parser.SymbolNode); ok && k.Unescaped.Value == "keyword_init" {
+					switch as.Value.(type) {
+					case *parser.TrueNode:
+						kwInit = "true"
+					case *parser.FalseNode:
+						kwInit = "false"
+					case *parser.NilNode:
+					default:
+						c.errorf(f, a, "keyword_init must be true, false or nil")
+					}
+					continue
+				}
+			}
+		}
 		sym, ok := a.(*parser.SymbolNode)
 		if !ok {
-			c.errorf(f, a, "%s members must be symbols (keyword_init is not supported)", kind)
+			c.errorf(f, a, "%s members must be symbols", kind)
 		}
 		members = append(members, sym.Unescaped.Value)
+		syms = append(syms, a)
+	}
+	if len(syms) != len(callArgs(call)) {
+		trimmed := *call
+		trimmed.Arguments = &parser.ArgumentsNode{Location: call.Arguments.Location, Arguments: syms}
+		call = &trimmed
 	}
 	types := c.memberTypes(f, n, call, members)
 	full := qualify(scope, n.Name)
 	line := f.line(n.Location.StartOffset)
 	cls := c.declareClass(f, full, line, false)
 	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: map[string]string{"struct": "Struct", "data": "Data"}[kind]}, file: f}
-	cls.valueMembers, cls.valueKind = members, kind
+	cls.valueMembers, cls.valueKind, cls.kwInit = members, kind, kwInit == "true"
 	// pad so the generated lines report the declaration's line
-	src := strings.Repeat("\n", line-1) + valueClassSource(kind, full, members, types)
+	src := strings.Repeat("\n", line-1) + valueClassSource(kind, full, members, types, kwInit)
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
 	if err != nil {
 		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
@@ -3385,9 +3413,12 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 }
 
 // valueClassSource is the Ruby for a Struct's or Data's generated members.
-func valueClassSource(kind, full string, members []string, types []rbs.Type) string {
+func valueClassSource(kind, full string, members []string, types []rbs.Type, kwInit string) string {
 	var b strings.Builder
 	b.WriteString("class GeneratedValueClass\n")
+	if kind == "struct" {
+		fmt.Fprintf(&b, "  #: () -> bool?\n  def self.keyword_init? = %s\n", kwInit)
+	}
 	accessor := map[string]string{"struct": "attr_accessor", "data": "attr_reader"}[kind]
 	for i, m := range members {
 		fmt.Fprintf(&b, "  %s :%s #: %s\n", accessor, m, types[i])

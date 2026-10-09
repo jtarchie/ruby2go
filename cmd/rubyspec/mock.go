@@ -68,8 +68,32 @@ func (rw *rewriter) mockLiteral(n parser.Node) (string, bool) {
 		return rw.text(n), true
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		return rw.text(n), true
+	case *parser.CallNode:
+		if n.Receiver != nil && n.Block == nil && freeOfScope(n) { // `Dir.pwd`, `DirSpecs.mock_dir`: no local, ivar or self to lose
+			return rw.text(n), true
+		}
 	}
 	return "", false
+}
+
+// freeOfScope reports an expression that reads nothing of where it stands (a local, an ivar, self, __dir__), so it
+// means the same in the mock class's def.
+func freeOfScope(n parser.Node) bool {
+	switch x := n.(type) {
+	case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode, *parser.SelfNode, *parser.BlockNode, *parser.LambdaNode,
+		*parser.SourceFileNode, *parser.SourceLineNode:
+		return false
+	case *parser.CallNode:
+		if x.Receiver == nil {
+			return false // a method of the example or main
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if !freeOfScope(ch) {
+			return false
+		}
+	}
+	return true
 }
 
 // inlineMock rewrites `mock_int(3)` and `mock_to_path("p")` wherever they are.

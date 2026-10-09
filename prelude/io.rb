@@ -851,6 +851,29 @@ module Kernel
   #: () -> String?
   def gets = ARGF.gets
 
+  # The calling stack as backtrace lines (decision 189): caller(0) starts at the method that calls it.
+  #: (?Integer, ?Integer?) -> Array[String]?
+  def caller(start = 1, length = nil) = %x{
+    l := -1
+    if length != nil {
+      l = int(*length)
+    }
+    out := rbCaller(int(start), l)
+    if out == nil {
+      return nil
+    }
+    return &out
+  }
+
+  # caller's frames as Thread::Backtrace::Location objects (decision 190).
+  #: (?Integer, ?Integer?) -> Array[Thread::Backtrace::Location]?
+  def caller_locations(start = 1, length = nil)
+    lines = caller(start + 1, length)
+    return nil unless lines
+
+    lines.map { |l| Thread::Backtrace::Location.__parse(l) }
+  end
+
   # Kernel#open on a path is File.open (a "|cmd" pipe is not supported: decision 97's spawn is the way).
   #: [T] (String, ?(String | Integer | nil), ?Integer?, **untyped) { (File) -> T } -> T
   def open(path, mode = nil, perm = nil, **opts, &blk) = File.open(path, mode, perm, **opts, &blk)
@@ -873,6 +896,44 @@ module Kernel
     when "z" then File.zero?(path)
     when "s" then File.size?(path)
     else raise ArgumentError, "unknown command '#{c}'"
+    end
+  end
+end
+
+class Thread
+  module Backtrace
+    # One frame of caller_locations: path, lineno and label parsed from its backtrace line.
+    class Location
+      attr_reader :path #: String
+      attr_reader :lineno #: Integer
+      attr_reader :label #: String
+
+      #: (String, Integer, String) -> void
+      def initialize(path, lineno, label)
+        @path = path
+        @lineno = lineno
+        @label = label
+      end
+
+      #: (String) -> Thread::Backtrace::Location
+      def self.__parse(line)
+        m = line.match(/\A(.*?):(\d+):in '(.*)'\z/)
+        return new(line, 0, "") unless m
+
+        new(m[1] || "", (m[2] || "0").to_i, m[3] || "")
+      end
+
+      #: () -> String
+      def absolute_path = File.expand_path(path)
+
+      #: () -> String
+      def base_label = label.sub(/\A.*[#.]/, "")
+
+      #: () -> String
+      def to_s = "#{path}:#{lineno}:in '#{label}'"
+
+      #: () -> String
+      def inspect = to_s.inspect
     end
   end
 end
