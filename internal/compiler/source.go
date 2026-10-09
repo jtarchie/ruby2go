@@ -11,13 +11,14 @@ import (
 
 // File is one parsed Ruby source file.
 type File struct {
-	Name    string // as shown in //line directives and errors
-	Src     []byte
-	Root    *parser.ProgramNode
-	lines   []int // byte offset of each line start
-	prelude bool
-	path    string  // a user file's real path on disk, which require_relative resolves against
-	data    *string // the text after `__END__`, which DATA reads
+	Name     string // as shown in //line directives and errors
+	Src      []byte
+	Root     *parser.ProgramNode
+	lines    []int // byte offset of each line start
+	prelude  bool
+	valueGen bool    // a Struct/Data's generated members (valueClassSource), which may mark @dynamic
+	path     string  // a user file's real path on disk, which require_relative resolves against
+	data     *string // the text after `__END__`, which DATA reads
 
 	// standalone annotation comments by the line they precede (first code line after)
 	leading map[int][]comment

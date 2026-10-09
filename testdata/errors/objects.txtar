@@ -267,7 +267,7 @@ class Integer
   attr_reader :name #: String
 end
 -- attr_without_type.rb --
-# error: main.rb:3: attr_reader needs a trailing `#: Type` annotation
+# error: main.rb:3: instance variable @name has no known type
 class Person
   attr_reader :name
 end
@@ -349,12 +349,6 @@ Point = Struct.new(:x, :y, keyword_init: true) #: [Integer, Integer]
 -- struct_string_member.rb --
 # error: main.rb:2: struct members must be symbols (keyword_init is not supported)
 Point = Struct.new("x") #: [Integer]
--- struct_no_members.rb --
-# error: main.rb:2: struct needs at least one member
-Empty = Struct.new #: []
--- data_no_members.rb --
-# error: main.rb:2: data needs at least one member
-Empty = Data.define
 -- struct_member_bad_type.rb --
 # error: main.rb:3: rbs: unexpected end of type
 Point = Struct.new(
@@ -362,7 +356,7 @@ Point = Struct.new(
   :y  #: Integer
 )
 -- struct_member_types_missing.rb --
-# error: main.rb:2: Point needs member types
+# warning: main.rb:2: Point's members are untyped
 Point = Struct.new(:x, :y)
 -- struct_member_tuple_wrong_size.rb --
 # error: main.rb:2: `#: [Integer, Integer, Integer]` must be a 2-element tuple of member types

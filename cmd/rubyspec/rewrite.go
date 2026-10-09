@@ -88,9 +88,30 @@ func (rw *rewriter) visit(n parser.Node) {
 	if st, ok := n.(*parser.StatementsNode); ok {
 		rw.chainHooks(st.Body, "before", "all")
 		rw.chainHooks(st.Body, "after", "each")
+		rw.mocks(st.Body)
 	}
 	call, ok := n.(*parser.CallNode)
+	if ok && rw.inlineMock(call) {
+		return
+	}
 	if ok && call.Receiver == nil && rw.call(call) {
+		return
+	}
+	if m := matcherArg(call); ok && m != nil && m.Name == "be_computed_by" && rw.computedBy(call, m) {
+		return
+	}
+	if m := matcherArg(call); ok && m != nil && call.MessageLoc != nil {
+		// `x.should matcher(args)`: the matcher is a method of the expectation (`x.should.be_close(...)`)
+		_, me := span(*call.MessageLoc)
+		ms, _ := span(m.Location)
+		rw.edits = append(rw.edits, edit{me, ms, "."})
+		if isProc(call.Receiver) {
+			ls, le := span(call.Receiver.GetLocation())
+			rw.edits = append(rw.edits, edit{ls, ls, "ProcExpectation.new("}, edit{le, me, ", " + strconv.FormatBool(call.Name == "should") + ")"})
+		}
+		for _, ch := range n.CompactChildNodes() {
+			rw.visit(ch)
+		}
 		return
 	}
 	if ok && (call.Name == "should" || call.Name == "should_not") && call.Arguments == nil && isProc(call.Receiver) {
@@ -122,7 +143,7 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 		rw.prog.shared[literal(args[0])] = sharedSpec{body: rw.text(blk.Body)}
 		rw.edits = append(rw.edits, blankLoc(rw.src, call.Location))
 		return true
-	case call.Name == "it_behaves_like" && len(args) >= 2:
+	case (call.Name == "it_behaves_like" || call.Name == "it_should_behave_like") && len(args) >= 2: // mspec aliases the second
 		rw.inline(call, args)
 		return true
 	case (call.Name == "before" || call.Name == "after") && blk != nil && call.Arguments != nil && !rw.hooks[call]:
@@ -340,6 +361,58 @@ func platformIs(args []parser.Node) bool {
 	return false
 }
 
+// computedBy unrolls `[[recv, *args, expected], ...].should be_computed_by(:m, *extra)` into one static call per row, as mspec's send would make.
+func (rw *rewriter) computedBy(call *parser.CallNode, m *parser.CallNode) bool {
+	rows, ok := call.Receiver.(*parser.ArrayNode)
+	margs := callArgs(m)
+	if !ok || len(margs) == 0 || len(rows.Elements) == 0 {
+		return false
+	}
+	meth := literal(margs[0])
+	if _, isSym := margs[0].(*parser.SymbolNode); !isSym || meth == "" {
+		return false
+	}
+	extra := make([]string, 0, len(margs)-1)
+	for _, a := range margs[1:] {
+		extra = append(extra, rw.text(a))
+	}
+	var b strings.Builder
+	for _, r := range rows.Elements {
+		row, isRow := r.(*parser.ArrayNode)
+		if !isRow || len(row.Elements) < 2 {
+			return false
+		}
+		args := make([]string, 0, len(row.Elements))
+		for _, a := range row.Elements[1 : len(row.Elements)-1] {
+			args = append(args, rw.text(a))
+		}
+		args = append(args, extra...)
+		fmt.Fprintf(&b, "(%s).%s(%s).%s == (%s); ", rw.text(row.Elements[0]), meth, strings.Join(args, ", "), call.Name, rw.text(row.Elements[len(row.Elements)-1]))
+	}
+	s, e := span(call.Location)
+	rw.edits = append(rw.edits, edit{s, e, b.String() + strings.Repeat("\n", strings.Count(rw.src[s:e], "\n"))})
+	return true
+}
+
+func callArgs(c *parser.CallNode) []parser.Node {
+	if c.Arguments == nil {
+		return nil
+	}
+	return c.Arguments.Arguments
+}
+
+// matcherArg is the matcher of `x.should be_close(y, t)`: should's one argument, a receiverless call.
+func matcherArg(call *parser.CallNode) *parser.CallNode {
+	if call == nil || call.Name != "should" && call.Name != "should_not" || call.Arguments == nil || len(call.Arguments.Arguments) != 1 {
+		return nil
+	}
+	m, ok := call.Arguments.Arguments[0].(*parser.CallNode)
+	if !ok || m.Receiver != nil {
+		return nil
+	}
+	return m
+}
+
 func isProc(n parser.Node) bool {
 	switch n := n.(type) {
 	case *parser.LambdaNode:
@@ -502,8 +575,18 @@ func innermostStatement(stmts *parser.StatementsNode, lines lineIndex, line int,
 			body = n.Body
 		case *parser.SingletonClassNode:
 			body = n.Body
+		case *parser.IfNode: // a guard the compiler folds (decision 167): cut inside the branch
+			body = n.Statements
+			if e, ok := n.Subsequent.(*parser.ElseNode); ok && e.Statements != nil && lines.holds(e.Statements, line) {
+				body = e.Statements
+			}
+		case *parser.UnlessNode:
+			body = n.Statements
+			if n.ElseClause != nil && n.ElseClause.Statements != nil && lines.holds(n.ElseClause.Statements, line) {
+				body = n.ElseClause.Statements
+			}
 		}
-		if inner, ok := body.(*parser.StatementsNode); ok {
+		if inner, ok := body.(*parser.StatementsNode); ok && inner != nil {
 			if deeper := innermostStatement(inner, lines, line, spec); deeper != nil {
 				return deeper
 			}

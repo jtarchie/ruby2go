@@ -80,6 +80,11 @@ func (c *Compiler) foldCond(f *File, n parser.Node, scope []*Class) (value, ok b
 			v, ok := c.foldCond(f, n.Receiver, scope)
 			return !v, ok
 		}
+		if args := callArgs(n); n.Name == "respond_to?" && len(args) == 1 && n.Block == nil {
+			if sym, isSym := args[0].(*parser.SymbolNode); isSym { // `Const.respond_to?(:m)`, as defined?(Const.m)
+				return c.foldDefined(f, &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: sym.Unescaped.Value}, scope)
+			}
+		}
 		return foldVersion(n)
 	case *parser.DefinedNode:
 		return c.foldDefined(f, n.Value, scope)
@@ -142,6 +147,9 @@ func (c *Compiler) foldDefined(f *File, n parser.Node, scope []*Class) (value, o
 			return false, false
 		}
 		cls, _ := c.lookupConst(f, n.Receiver, scope)
+		if cls != nil && (cls.RubyName == "Data" && n.Name == "define" || cls.RubyName == "Struct" && n.Name == "new") {
+			return true, true // compiled forms (valueClass), not methods
+		}
 		return cls != nil && c.hasClassMethod(cls, n.Name), true
 	}
 	return false, false

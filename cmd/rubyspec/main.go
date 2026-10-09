@@ -297,9 +297,9 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 		args = append(args, "-e", "/^(?:"+strings.Join(excluded, "|")+")$/")
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = root                                                                           // specs name fixtures relative to the checkout
+	cmd.Dir = root                                                                                                // specs name fixtures relative to the checkout
 	cmd.Env = append(os.Environ(), "RB2GO_BACKTRACE=1", "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                 // Go dumps every goroutine: the hung example's frame is in it
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                                      // Go dumps every goroutine: the hung example's frame is in it
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdout, cmd.Stderr = out, out
 	err := cmd.Run()
@@ -433,6 +433,8 @@ type program struct {
 	shared     map[string]sharedSpec
 	unloadable []skipped        // files rewrite could not parse, left out
 	seed       *rb2go.Inference // parameter types from the last compile, which each cut barely changes
+	mocks      []*mockClass     // mocks the rewrite made classes of, loaded as one more file
+	mockN      int
 }
 
 type source struct {
@@ -447,6 +449,13 @@ func load(ctx context.Context, p *parser.Parser, root string, specs []string) (*
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(prog.mocks) > 0 {
+		var b strings.Builder
+		for _, m := range prog.mocks {
+			b.WriteString(m.source())
+		}
+		prog.add(&source{name: "rbspec_mocks.rb", text: b.String()})
 	}
 	return prog, nil
 }

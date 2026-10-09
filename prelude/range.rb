@@ -86,6 +86,23 @@ class Range < Object
   #: () -> E
   def __first_0 = %x{ self.b }
 
+  # begin and end, nil for a beginless or endless range (begin/end raise or answer the stored zero instead)
+  #: () -> E?
+  def __begin_opt = %x{
+    if self.beginless {
+      return nil
+    }
+    return &self.b
+  }
+
+  #: () -> E?
+  def __end_opt = %x{
+    if self.endless {
+      return nil
+    }
+    return &self.e
+  }
+
   #: () -> E
   def end = %x{
     if self.inf {
