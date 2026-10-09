@@ -2811,8 +2811,9 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 	}
-	for _, g := range c.gemNilIvars { // only ever nil in what is compiled: the writes that typed it were pruned (decision 169)
+	for _, g := range c.gemNilIvars { // only ever nil in what is compiled (a gem's pruned writes, decision 169; a user's nil-only ivar, 183)
 		if c.findIvar(g.cls, g.name) == nil {
+			c.warn(g.file, nil, "%s:%d: instance variable %s is only ever nil, so it is untyped (`# @rbs %s: T` for static calls; decision 183)", g.file.Name, g.line, g.name, g.name)
 			c.declareIvar(g.cls, g.name, TAny{}, g.file, g.line)
 		}
 	}

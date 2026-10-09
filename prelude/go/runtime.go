@@ -504,6 +504,36 @@ func rbArg(args []any, i int) any { return args[i] }
 // Ref boxes a value into T? (represented as *T).
 func Ref[T any](v T) *T { return &v }
 
+// rbSplatElem is element i of a splat into positional parameters, or the zero value past its end (decision 184).
+func rbSplatElem[E comparable](a *Array[E], i int) E {
+	if i < len(a.s) {
+		return a.s[i]
+	}
+	var z E
+	return z
+}
+
+// rbSplatArity raises MRI's ArgumentError when a splat leaves n arguments outside min..max.
+func rbSplatArity(n, lo, hi int) {
+	if n >= lo && n <= hi {
+		return
+	}
+	want := strconv.Itoa(lo)
+	if hi != lo {
+		want += ".." + strconv.Itoa(hi)
+	}
+	panic(NewArgumentError(Ref(String(fmt.Sprintf("wrong number of arguments (given %d, expected %s)", n, want)))))
+}
+
+// rbRubyPlatform is RUBY_PLATFORM: MRI's names for Go's GOARCH and GOOS, without the OS version MRI appends.
+func rbRubyPlatform() string {
+	arch := map[string]string{"amd64": "x86_64", "386": "i386"}[runtime.GOARCH]
+	if arch == "" {
+		arch = runtime.GOARCH
+	}
+	return arch + "-" + runtime.GOOS
+}
+
 // rbZero fills a left-out argument; the callee sees rbArgc and runs its own default.
 func rbZero[T any]() (z T) { return z }
 

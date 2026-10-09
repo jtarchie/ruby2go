@@ -5,6 +5,10 @@
 # @rbs generic E
 # @go_type struct { b E; e E; excl bool; endless bool; beginless bool; inf bool }
 class Range < Object
+  # Range.new(b, e, exclude_end = false), as the literal b..e (b...e) is; a nil end is not taken here (ponytail: Range[E?]).
+  #: [X] (X, X, ?bool) -> Range[X]
+  def self.new(b, e, excl = false) = %x{ return &Range[X]{b: b, e: e, excl: bool(excl)} }
+
   include Enumerable #[E]
 
   #: () { (E) -> void } -> void

@@ -108,6 +108,33 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 // yieldShape is the block an unannotated def yields to: how many values
 // each yield passes (all must agree), and whether block_given? makes it
 // optional. ok is false for a def that does not yield, or names its block.
+// yieldValueUsed reports whether a yield in m's body is not a statement of its own (`out << yield`): the block's value
+// is then used, so it returns untyped rather than void (decision 183).
+func yieldValueUsed(body parser.Node) bool {
+	used := false
+	var walk func(parser.Node, bool)
+	walk = func(x parser.Node, stmt bool) {
+		switch x := x.(type) {
+		case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+			return
+		case *parser.YieldNode:
+			if !stmt {
+				used = true
+			}
+		case *parser.StatementsNode:
+			for _, ch := range x.Body {
+				walk(ch, true)
+			}
+			return
+		}
+		for _, ch := range x.CompactChildNodes() {
+			walk(ch, false)
+		}
+	}
+	walk(body, true)
+	return used
+}
+
 func (c *Compiler) yieldShape(m *Method) (n int, optional, ok bool) {
 	if m.Node == nil || m.Node.Body == nil || m.BlockParam != "" {
 		return 0, false, false

@@ -6096,7 +6096,9 @@ resolve; anything not listed is still open.
       options (ponytail). `File.new`/`File.open` take MRI's mode forms (a
       String, Integer flags, or `mode:`), a permission for a created file,
       and `flags:` or'd in; `File::RDONLY`..`NOFOLLOW` are the platform's
-      `syscall` values. `File.expand_path(path, dir)`.
+      `syscall` values. `File.expand_path(path, dir)`. `IO.open` (a block
+      gets the IO and closes it after, answering the block's value) and
+      `IO#read(length)`.
     - **Reflection tables** (decision 77's, beside `_Methods`):
       `_PrivateMethods` backs `Module#private_instance_methods` and
       `private_method_defined?`; `_SingletonMethods` (a class object's own
@@ -6167,9 +6169,40 @@ resolve; anything not listed is still open.
       given is MRI's `NoMethodError` at run time (`undefined method 'call'
       for nil`), not decision 132's compile error, since nothing declared
       it required. The Proc type of an optional block keeps its rest flag.
+    - An unannotated def whose `yield`'s value is used (`out << yield`, not
+      a statement of its own) takes a block returning `untyped`, not
+      `void` (it was emitted as an iterator and the value was lost).
+    - An ivar a class only ever assigns `nil` is `untyped`, with a warning,
+      as a gem's was (decision 169); it was "has no known type".
     - `Compiler.warn` takes a nil node for messages that carry their own
       position, as `errorf` does.
     - **Proof:** `infer_test.rb` `test_untyped_fallbacks`; `infer.txtar`
       `never_called` and `rest_never_passed`, `numbers.txtar`
       `operator_def_needs_signature`, `objects.txtar`
       `include_generic_without_args` are warnings now.
+184. **A splat into positional parameters** (`f(a, *xs)` where f has no
+    `*rest`; #49). The splat must be the last argument, of an Array (an
+    untyped one is checked by `rbAs`), into a method without post or
+    keyword parameters. Its length is known only at run time: the call
+    checks MRI's arity there (`rbSplatArity`: `wrong number of arguments
+    (given n, expected lo..hi)`), each parameter past the fixed arguments
+    takes its element (`rbSplatElem`), and an optional one the array does
+    not reach takes its default: the callee's (rbArgc is the real count)
+    or, for a caller-evaluated default, a branch on the length. It was a
+    compile error. **Proof:** `infer_test.rb`
+    `test_splat_into_positional_parameters`.
+185. ruby/spec phase G (#49): small core surface.
+    - `RUBY_VERSION` (`"4.0.0"`, what class-body guards fold against,
+      decision 167) and `RUBY_PLATFORM` (MRI's spelling of Go's
+      `GOARCH-GOOS`, without the OS version MRI appends: `arm64-darwin`)
+      are constants; neither existed.
+    - `Range.new(b, e, exclude_end = false)` (a nil end is not taken:
+      ponytail), `Dir.home(user)` (the user database; MRI's ArgumentError
+      for an unknown user), `String#byteindex(s, offset)` (MRI's
+      IndexError off a character boundary) and `byterindex(s, offset)`,
+      Ruby 3.4's `MatchData#bytebegin`/`byteend`, `File#fileno`.
+    - mspec: `suppress_warning { }` (`$VERBOSE` nil around the block),
+      `platform_is`/`platform_is_not` as values (their block forms stay
+      the runner's static guards), `should.eof?`.
+    - **Proof:** `string_test.rb`
+      `test_byteindex_offset_bytebegin_range_new`.

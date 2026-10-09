@@ -287,6 +287,13 @@ class MatchData < Object
   #: (Symbol) -> [Integer?, Integer?]
   def __byteoffset_symbol(name) = byteoffset(__group(name))
 
+  # Ruby 3.4's bytebegin/byteend: a group's byte offsets (byteoffset's halves).
+  #: (Integer) -> Integer?
+  def bytebegin(n) = byteoffset(n)[0]
+
+  #: (Integer) -> Integer?
+  def byteend(n) = byteoffset(n)[1]
+
   #: () -> String
   def pre_match = %x{ String(self.pre) }
 

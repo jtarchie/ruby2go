@@ -213,7 +213,7 @@ class Child < Base
   def id = @id
 end
 -- ivar_only_nil.rb --
-# error: main.rb:5: instance variable @value has no known type
+# warning: main.rb:5: instance variable @value is only ever nil
 class Lazy
   #: () -> void
   def initialize

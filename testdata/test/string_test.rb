@@ -1465,6 +1465,12 @@ B
       assert_equal [0, 1, [0, 1], [0, 1], nil], [m&.begin(:a), m&.end("a"), m&.offset(:a), m&.byteoffset("a"), m&.begin(:b)]
     end
 
+    def test_byteindex_offset_bytebegin_range_new
+      m = /(l+)/.match("hello")
+      assert_equal [3, 2, 2, 4, 1...3, [1, 2, 3]],
+                   ["hello".byteindex("l", 3), "hello".byterindex("l", 2), m&.bytebegin(1), m&.byteend(0), Range.new(1, 3, true), Range.new(1, 3).to_a]
+    end
+
     def test_byteslice_range
       s = "hello"
       assert_equal ["el", "ello", "llo", "", nil], [s.byteslice(1..2), s.byteslice(1..), s.byteslice(-3..-1), s.byteslice(5..), s.byteslice(6..)]

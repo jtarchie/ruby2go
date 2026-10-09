@@ -940,7 +940,7 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		if iv := f.nilIvar(name, assigned); iv != nil {
 			return iv
 		}
-		if f.discover && assigned != nil && isNil(assigned) && f.c.pruneGems && f.c.gemFile(f.owner.File) {
+		if f.discover && assigned != nil && isNil(assigned) { // only ever nil: untyped after discovery (decision 169 for gems, 183 for user code)
 			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
 		}
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
@@ -2243,6 +2243,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	if hasRest {
 		expected++
 	}
+	splatTmp, splatAt, splatElem := f.splatArgs(m, args, exprs != nil || hasRest, npos)
+	if splatTmp != "" {
+		args, nargs = args[:splatAt], splatAt
+	}
 	// Too many arguments is checked first: it is the error Ruby raises, and
 	// the surplus would otherwise be coerced to the wrong parameter's type.
 	if nargs > npos && !hasRest {
@@ -2269,9 +2273,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			f.pinBefore(mark, codes)
 		}
 		f.noteUse(p, an, a.typ)
-		if truncatesFloats(m) && isClass(a.typ, "Float") && isClass(closed(p.Type, env), "Integer") {
-			a = expr{code: "rbNum2Long(" + a.code + ")", typ: f.cls("Integer")} // MRI's NUM2LONG: a C method truncates a Float (decision 181)
-		}
+		a = f.truncFloat(m, p, env, a)
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
@@ -2306,6 +2308,11 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			ai++
 			continue
 		}
+		if splatTmp != "" {
+			codes = append(codes, f.splatParam(n, m, p, env, splatTmp, ai-splatAt, splatElem))
+			ai++
+			continue
+		}
 		if p.Default != nil && m.calleeDefaults {
 			codes = append(codes, "rbZero["+f.c.goType(subst(p.Type, env))+"]()")
 			continue
@@ -2331,12 +2338,73 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		}
 	}
 	if m.calleeDefaults { // optional params at Go index i ran their default when rbArgc <= i
-		codes = append([]string{strconv.Itoa(max(min(nargs, npos)-npost, 0))}, codes...)
+		codes = append([]string{argcCode(nargs, npos, npost, splatTmp, splatAt)}, codes...)
 		if restIdx >= 0 {
 			restIdx++
 		}
 	}
 	return codes, restIdx
+}
+
+// truncFloat is a Float argument where a core method takes an Integer: MRI's NUM2LONG truncates it (decision 181).
+func (f *fctx) truncFloat(m *Method, p Param, env map[string]Type, a expr) expr {
+	if truncatesFloats(m) && isClass(a.typ, "Float") && isClass(closed(p.Type, env), "Integer") {
+		return expr{code: "rbNum2Long(" + a.code + ")", typ: f.cls("Integer")}
+	}
+	return a
+}
+
+// argcCode is the argument count a callee-defaults method sees: a splat's is its real length (decision 184).
+func argcCode(nargs, npos, npost int, splatTmp string, splatAt int) string {
+	if splatTmp != "" {
+		return fmt.Sprintf("min(%d+len(%s.s), %d)", splatAt, splatTmp, npos)
+	}
+	return strconv.Itoa(max(min(nargs, npos)-npost, 0))
+}
+
+// splatArgs is `f(a, *xs)` into positional parameters (decision 184): xs's length is known only at run time, so the
+// arity is checked there (MRI's ArgumentError); it answers xs's temp, the splat's index and its element type, or "".
+func (f *fctx) splatArgs(m *Method, args []parser.Node, skip bool, npos int) (string, int, Type) {
+	if skip || len(args) == 0 || m.postCount() != 0 || m.hasKeywords() {
+		return "", -1, nil
+	}
+	sp, ok := args[len(args)-1].(*parser.SplatNode)
+	if !ok || sp.Expression == nil || slices.ContainsFunc(args[:len(args)-1], func(a parser.Node) bool { _, s := a.(*parser.SplatNode); return s }) {
+		return "", -1, nil
+	}
+	a := f.genExpr(sp.Expression, nil)
+	code := a.code
+	var elem Type
+	switch t := a.typ.(type) {
+	case TAny:
+		code, elem = "rbAs[*Array[any]]("+a.code+", \"Array\")", TAny{}
+	case TClass:
+		if t.C.RubyName != "Array" || len(t.Args) != 1 {
+			f.errorf(sp, "splat of %s into a non-rest parameter: only an Array is supported", a.typ)
+		}
+		elem = t.Args[0]
+	default:
+		f.errorf(sp, "splat of %s into a non-rest parameter: only an Array is supported", a.typ)
+	}
+	at, tmp := len(args)-1, f.newTmp()
+	f.emit("%s := %s", tmp, code)
+	f.emit("rbSplatArity(%d+len(%s.s), %d, %d)", at, tmp, requiredArgs(m), npos)
+	return tmp, at, elem
+}
+
+// splatParam is parameter p's argument from element j of a splat's temp: the element when the array has one, else
+// (for an optional parameter whose default the caller evaluates) the default; a callee-side default sees the argc.
+func (f *fctx) splatParam(n parser.Node, m *Method, p Param, env map[string]Type, tmp string, j int, elem Type) string {
+	got := f.coerceArg(n, expr{code: fmt.Sprintf("rbSplatElem(%s, %d)", tmp, j), typ: elem}, p, env)
+	if p.Default == nil || m.calleeDefaults {
+		return got
+	}
+	caller := f.f
+	f.f = m.File
+	d := f.genExpr(p.Default, closed(p.Type, env))
+	f.f = caller
+	def := f.coerceArg(n, d, p, env)
+	return fmt.Sprintf("func() %s {\n\tif len(%s.s) > %d {\n\t\treturn %s\n\t}\n\treturn %s\n}()", f.c.goType(closed(p.Type, env)), tmp, j, got, def)
 }
 
 // kwArgs is a call's `name: value` arguments, matched to keyword parameters by name.

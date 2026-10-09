@@ -638,6 +638,43 @@ class String < Object
     [self[0, i] || "", m[0] || "", m.post_match]
   end
 
+  # byteindex(s, offset): from byte offset (negative from the end); MRI's IndexError off a character boundary.
+  #: (String, Integer) -> Integer?
+  def __byteindex_2(s, offset) = %x{
+    n := Integer(len(self))
+    if offset < 0 {
+      offset += n
+    }
+    if offset < 0 || offset > n {
+      return nil
+    }
+    if offset < n && !utf8.RuneStart(self[offset]) {
+      panic(NewIndexError(Ref(String(fmt.Sprintf("offset %d does not land on character boundary", offset)))))
+    }
+    i := strings.Index(string(self[offset:]), string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(Integer(i) + offset)
+  }
+
+  #: (String, Integer) -> Integer?
+  def __byterindex_2(s, offset) = %x{
+    n := Integer(len(self))
+    if offset < 0 {
+      offset += n
+    }
+    if offset < 0 {
+      return nil
+    }
+    end := min(int(offset)+len(s), len(self))
+    i := strings.LastIndex(string(self[:end]), string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(Integer(i))
+  }
+
   #: (String) -> Integer?
   def byterindex(s) = %x{
     i := strings.LastIndex(string(self), string(s))

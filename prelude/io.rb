@@ -107,6 +107,20 @@ class IO < Object
   #: (Integer, String) -> IO
   def self.__for_fd(fd, mode) = %x{ return rbIOForFd(int(fd), string(mode)) }
 
+  # IO.open with a block yields the new IO and closes it after, answering the block's value; without one it is IO.new.
+  #: [T] (Integer, ?String?, ?untyped, **untyped) { (IO) -> T } -> T
+  def self.open(fd, mode = nil, perm = nil, **opts)
+    io = new(fd, mode, perm, **opts)
+    begin
+      yield io
+    ensure
+      io.close unless io.closed?
+    end
+  end
+
+  #: (Integer, ?String?, ?untyped, **untyped) -> IO
+  def self.__open_enum(fd, mode = nil, perm = nil, **opts) = new(fd, mode, perm, **opts)
+
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
   def self.for_fd(fd, mode = nil, perm = nil, **opts) = new(fd, mode, perm, **opts)
 
@@ -310,6 +324,31 @@ class IO < Object
     return String(b)
   }
 
+  # read(length): at most length bytes, nil at the end ("" for 0); nil reads the rest (as File#read's).
+  #: (Integer?) -> String?
+  def __read_1(length) = %x{
+    r := *self.rbReader()
+    if length == nil {
+      b, _ := io.ReadAll(r)
+      s := String(b)
+      return &s
+    }
+    if *length < 0 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", *length)))))
+    }
+    if *length == 0 {
+      s := String("")
+      return &s
+    }
+    buf := make([]byte, *length)
+    n, _ := io.ReadFull(r, buf)
+    if n == 0 {
+      return nil
+    }
+    s := String(buf[:n])
+    return &s
+  }
+
   #: () -> bool
   def eof? = %x{
     _, err := (*self.rbReader()).Peek(1)
@@ -432,6 +471,9 @@ ARGV = IO.__argv #: Array[String]
 class ENVClass < Object
   #: () -> ENVClass
   def self.new = %x{ return &ENVClass{} }
+
+  #: () -> String
+  def self.__platform = %x{ return String(rbRubyPlatform()) }
 
   #: (String) -> String?
   def [](name) = %x{
@@ -649,6 +691,11 @@ class ENVClass < Object
 end
 
 ENV = ENVClass.new #: ENVClass
+
+# What class-body RUBY_VERSION guards fold against (decision 167); the platform is MRI's spelling of Go's GOARCH-GOOS,
+# without the OS version MRI appends (arm64-darwin, x86_64-linux).
+RUBY_VERSION = "4.0.0" #: String
+RUBY_PLATFORM = ENVClass.__platform #: String
 
 # ARGF (decision 95): the files named in ARGV, read in turn and shifted out
 # of it as each opens, or stdin when ARGV is empty at the first read.

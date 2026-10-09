@@ -614,6 +614,14 @@ class File < Object
   #: (String?, Integer) -> String?
   def __gets_2(sep, limit) = %x{ return rbGetsFrom(self.r, sep, int(limit), &self.lineno) }
 
+  #: () -> Integer
+  def fileno = %x{
+    if self.f == nil {
+      panic(NewIOError(Ref[String]("closed stream")))
+    }
+    return Integer(self.f.Fd())
+  }
+
   #: () -> bool
   def eof? = %x{
     self.rbReadable()
@@ -901,6 +909,23 @@ class Dir < Object
 
   #: () -> String
   def inspect = "#<Dir:#{path}>"
+
+  # Dir.home(user): that user's home, from the user database; MRI's ArgumentError for one it does not know.
+  #: (String?) -> String
+  def self.__home_1(name) = %x{
+    if name == nil {
+      if h := os.Getenv("HOME"); h != "" {
+        return String(h)
+      }
+      h, _ := os.UserHomeDir()
+      return String(h)
+    }
+    u, err := user.Lookup(string(*name))
+    if err != nil {
+      panic(NewArgumentError(Ref(String("user " + string(*name) + " doesn't exist"))))
+    }
+    return String(u.HomeDir)
+  }
 
   #: () -> String
   def self.home = %x{
