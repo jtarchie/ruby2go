@@ -3098,6 +3098,21 @@ func snake(s string) string {
 	return b.String()
 }
 
+// untypedContainers are the core containers whose element types fall back to untyped when nothing types them (decision 192).
+var untypedContainers = map[string]bool{"Hash": true, "Array": true, "Set": true, "Queue": true, "SizedQueue": true, "Thread::Queue": true, "Thread::SizedQueue": true}
+
+// containerOf is the core container whose (class) method m is, or "".
+func containerOf(m *Method) string {
+	k := m.Owner
+	if k != nil && k.metaOf != nil {
+		k = k.metaOf
+	}
+	if k != nil && untypedContainers[k.RubyName] {
+		return k.RubyName
+	}
+	return ""
+}
+
 // bindTypeParams checks every type parameter of m is bound, first
 // unifying m's return type with the call's expected type, if any
 // (`SizedQueue.new(2) #: SizedQueue[Integer]`).
@@ -3108,6 +3123,12 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 	for _, tp := range m.TypeParams {
 		if _, ok := env[tp]; !ok {
 			if f.c.pruneGems && f.c.gemFile(f.f) { // a gem's `Set[]` is a Set[untyped] (decision 169)
+				env[tp] = TAny{}
+				continue
+			}
+			if owner := containerOf(m); owner != "" && m.Block == nil && f.f != nil && !f.f.prelude { // a block was typed with the parameter already
+				// an empty core container nothing types: untyped elements, its calls dynamic (decision 192)
+				f.warn(n, "%s's %s is untyped: nothing in the program gives it a type (annotate `#: %s[...]` for static calls; decision 192)", m, tp, owner)
 				env[tp] = TAny{}
 				continue
 			}
@@ -4464,20 +4485,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 		if len(args) > 0 || len(exprs) > 0 {
 			f.errorf(n, "%s.new with arguments is not supported", cls.Name)
 		}
-		var t TClass
-		switch et, ok := expected.(TClass); {
-		case ok && et.C == cls:
-			t = et
-		case cls.hashBase || len(cls.TypeParams) == 0:
-			t = TClass{C: cls}
-		default:
-			f.errorf(n, "%s.new needs a type annotation (`#: %s[...]`)", cls.Name, cls.Name)
-		}
-		if cls.hashBase {
-			for len(t.Args) < len(cls.TypeParams) { // a Hash subclass's V defaults to untyped
-				t.Args = append(t.Args, TAny{})
-			}
-		}
+		t := f.goTypeNewType(n, cls, expected)
 		targs := ""
 		if len(t.Args) > 0 {
 			targs = "[" + f.c.goTypes(t.Args) + "]"
@@ -6372,6 +6380,32 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	return "blk"
 }
 
+// goTypeNewType is the type a blockless `X.new` of a @go_type class builds: the expected one, X itself, an untyped
+// core container (decision 192), or a compile error; a Hash subclass's V defaults to untyped.
+func (f *fctx) goTypeNewType(n parser.Node, cls *Class, expected Type) TClass {
+	var t TClass
+	switch et, ok := expected.(TClass); {
+	case ok && et.C == cls:
+		t = et
+	case cls.hashBase || len(cls.TypeParams) == 0:
+		t = TClass{C: cls}
+	case untypedContainers[cls.RubyName] && !f.f.prelude:
+		f.warn(n, "%s.new's element types are untyped: nothing in the program gives them a type (annotate `#: %s[...]` for static calls; decision 192)", cls.Name, cls.Name)
+		t = TClass{C: cls}
+		for range cls.TypeParams {
+			t.Args = append(t.Args, TAny{})
+		}
+	default:
+		f.errorf(n, "%s.new needs a type annotation (`#: %s[...]`)", cls.Name, cls.Name)
+	}
+	if cls.hashBase {
+		for len(t.Args) < len(cls.TypeParams) { // a Hash subclass's V defaults to untyped
+			t.Args = append(t.Args, TAny{})
+		}
+	}
+	return t
+}
+
 // generatedInit reports a Struct/Data whose initialize is the generated one: a block's own `def initialize(amount:)`
 // takes the keywords itself.
 func generatedInit(cls *Class) bool {
@@ -6383,6 +6417,11 @@ func generatedInit(cls *Class) bool {
 // in member order. Missing members are an error for Data and nil for a
 // Struct.
 func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []parser.Node {
+	if vr.kwInit && len(args) > 0 {
+		if _, kw := args[0].(*parser.KeywordHashNode); !kw || len(args) > 1 {
+			f.errorf(n, "wrong number of arguments (given %d, expected 0): %s takes keywords (keyword_init: true)", len(args), vr.RubyName)
+		}
+	}
 	if len(args) != 1 {
 		return args
 	}
@@ -7533,7 +7572,13 @@ var implicitConvs = map[string]string{"String": "to_str", "Integer": "to_int", "
 func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
 	from, ok := e.typ.(TClass)
 	conv := implicitConvs[to.C.RubyName]
-	if !ok || conv == "" || from.C.GoType != "" || f.resolve(from, conv) == nil { // a struct class: a core value type's own rules stand (Float is not an Integer)
+	if !ok || conv == "" || from.C.GoType != "" { // a struct class: a core value type's own rules stand (Float is not an Integer)
+		return "", false
+	}
+	if conv == "to_str" && f.resolve(from, conv) == nil && f.resolve(from, "to_path") != nil {
+		conv = "to_path" // a path object where a String is taken: MRI's path parameters call to_path first (rb2go types paths as String)
+	}
+	if f.resolve(from, conv) == nil {
 		return "", false
 	}
 	r := f.genMethodCall(n, e, conv, nil, nil)

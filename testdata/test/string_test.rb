@@ -1476,6 +1476,18 @@ B
                    [format("%2$s %1$s", "a", "b"), format("%a|%A|%+a|%10a|%.2a|%a|%a", 3.0, 0.1, 1.0, 1.5, 1.0, -0.5, 0.0)]
     end
 
+    def test_format_negative_twos_complement
+      assert_equal ["..f3c", "0x..f", "..7474", "..10110", "-c4", "..ffffff", "0", "0x0000ff", "      0xff", "NaN"],
+                   [format("%x", -196), format("%#x", -1), format("%o", -196), format("%b", -10), format("%+x", -196),
+                    format("%08x", -1), format("%#x", 0), format("%#08x", 255), format("%#10x", 255), format("%A", Float::NAN)]
+    end
+
+    def test_to_r_and_regexp_encoding
+      assert_equal [Rational(1, 3), Rational(3, 4), Rational(-250, 1), Rational(3, 1), Rational(0, 1), Rational(3, 4)],
+                   ["1/3".to_r, " 0.75".to_r, "-2.5e2".to_r, "3/".to_r, "abc".to_r, "1.5/2".to_r]
+      assert_equal [Encoding::US_ASCII, Encoding::UTF_8], [/abc/.encoding, /\u00e9/.encoding]
+    end
+
     def test_byteslice_range
       s = "hello"
       assert_equal ["el", "ello", "llo", "", nil], [s.byteslice(1..2), s.byteslice(1..), s.byteslice(-3..-1), s.byteslice(5..), s.byteslice(6..)]

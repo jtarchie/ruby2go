@@ -6218,8 +6218,13 @@ resolve; anything not listed is still open.
 187. `format`/`sprintf`/`printf` take positional arguments (`%2$s`, MRI's
     1-based argument N) and `%a`/`%A` hex floats (Go's `'x'` float
     format with the exponent's leading zero dropped, `0x1.8p+1`, then
-    flags and width as C pads them) (#49). **Proof:** `string_test.rb`
-    `test_format_positional_and_hex_float`.
+    flags and width as C pads them) (#49). *Amended:* a negative `%x`/`%o`/
+    `%b` without `+` or space is MRI's two's complement with `..` for the
+    endless leading ones (`..f3c`; zero padding and precision fill with
+    that digit), `#` on zero prints no prefix, a `#0` width counts the
+    `0x` prefix as MRI's does, and NaN/Inf keep their case under `%A`.
+    **Proof:** `string_test.rb` `test_format_positional_and_hex_float`
+    and `test_format_negative_twos_complement`.
 188. Fixes the measurement turned up (#49).
     - `$/` and `$VERBOSE` assignments are statements followed by the
       global's value, so one may be a block's or method's value
@@ -6244,3 +6249,52 @@ resolve; anything not listed is still open.
       `Kernel#test` answers its file tests (`?e ?f ?d ?r ?w ?x ?l ?z ?s`).
     - **Proof:** `string_test.rb` `test_record_separator_chomp`,
       `objects.txtar` `include_comparable_over_inherited_cmp`.
+189. `Struct.new(..., keyword_init: true)` (#49; decision 30 rejected it).
+    `new` takes keywords only (a positional call is a compile error with
+    MRI's arity message, where MRI raises it at run time), keyword `new`
+    maps them to members as every Struct's does, and
+    `keyword_init?` answers `true`, `false` or `nil` as written.
+    **Proof:** `object_test.rb` `test_struct_keyword_init`,
+    `objects.txtar` `struct_keyword_init_positional`.
+190. `Kernel#caller(start = 1, length = nil)` (#49): the stack as
+    backtrace lines (decision 106's frames and labels), from the method
+    that calls it for `caller(0)`; nil past the stack's end. Known
+    differences: file names are as given to the compiler (decision 61),
+    and a statement that compiles to several Go lines can report a later
+    line. `caller_locations` answers `Thread::Backtrace::Location`s
+    (`path`, `lineno`, `label`, `base_label`, `absolute_path`, `to_s`)
+    parsed from the same lines. **Proof:**
+    `object_test.rb` `test_caller_labels`.
+191. More ruby/spec surface (#49).
+    - Ivar discovery reads past a statement it cannot compile, as an
+      inference round does (decision 146): a `before` hook's later
+      `@flags = ...` still types `@flags`, and the error is reported where
+      it is, not as "has no known type" wherever the ivar is read. An
+      ivar a class assigns `nil` before discovery types it otherwise is
+      that type's nilable form (rack's `@body_retained = nil`, later a
+      Boolean, is `Boolean?`).
+    - `String#to_r` (the leading rational, `"1.5/2"` is 3/4, 0 when there
+      is none, ZeroDivisionError for a zero denominator), over `big.Rat`.
+    - `Regexp#encoding`: US-ASCII for an ASCII-only source, UTF-8 with a
+      non-ASCII source, a `\u` escape or `//u` (ponytail: `//n` with a
+      `\xNN` escape is BINARY in MRI).
+    - Implicit conversion (decision 179) takes `to_path` where a String is
+      expected and the class has no `to_str`: MRI's path parameters call
+      it first, and rb2go types paths as String (more lenient than MRI
+      for a non-path String parameter).
+    - cmd/rubyspec's mocks also answer an expression that reads nothing
+      of where it stands (`and_return(Dir.pwd)`, a receiver's call with
+      no local, ivar, self, `__dir__` or block).
+    - **Proof:** `string_test.rb` `test_to_r_and_regexp_encoding`.
+192. An empty core container nothing types is `untyped` (#49). `Hash.new`,
+    `Hash.new(default)`, `Array.new`, `Set.new`,
+    `Queue.new`, `SizedQueue.new(n)` whose type parameters neither the
+    expected type, a default, an annotation nor decision 182's open-literal
+    evidence binds take `untyped` ones, with a warning naming the
+    annotation; it was "cannot infer type parameter" or "needs a type
+    annotation". Not a block form (`Hash.new { |h, k| ... }`), whose block
+    is typed before the fallback could apply. Only these containers, and
+    only in user code: other
+    generic methods keep the error. **Proof:** `hash_test.rb`
+    `test_untyped_empty_containers`, `hashes.txtar` `hash_new_unannotated`
+    (now a warning).

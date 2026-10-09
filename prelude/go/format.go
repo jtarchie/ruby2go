@@ -124,10 +124,31 @@ func rbFormatOne(spec string, verb byte, v any) string {
 	case 'd', 'i', 'u':
 		return fmt.Sprintf(spec+"d", rbFormatInt(v))
 	case 'x', 'X', 'o', 'b', 'B':
-		if verb == 'B' {
-			return strings.ToUpper(fmt.Sprintf(spec+"b", rbFormatInt(v)))
+		n := rbFormatInt(v)
+		if n < 0 && !strings.ContainsAny(spec, "+ ") {
+			return rbFormatTwos(spec, verb, n)
 		}
-		return fmt.Sprintf(spec+string(verb), rbFormatInt(v))
+		if n == 0 {
+			spec = strings.ReplaceAll(spec, "#", "") // MRI's %#x of 0 is "0", with no prefix
+		}
+		flags := spec[1:]
+		if k := strings.IndexFunc(flags, func(r rune) bool { return r >= '1' && r <= '9' || r == '.' }); k >= 0 {
+			flags = flags[:k]
+		}
+		if verb != 'o' && strings.Contains(flags, "#") && strings.Contains(flags, "0") && !strings.Contains(flags, "-") && !strings.Contains(spec, ".") {
+			// MRI's width counts the 0x/0b prefix, Go's does not
+			w, _ := strconv.Atoi(strings.TrimLeft(spec[1:], "#0+ "))
+			prefix := map[byte]string{'x': "0x", 'X': "0X", 'b': "0b", 'B': "0B"}[verb]
+			body := fmt.Sprintf("%0*"+string(map[byte]byte{'x': 'x', 'X': 'X', 'b': 'b', 'B': 'b'}[verb]), max(w-len(prefix), 0), n)
+			if verb == 'B' {
+				body = strings.ToUpper(body)
+			}
+			return prefix + body
+		}
+		if verb == 'B' {
+			return strings.ToUpper(fmt.Sprintf(spec+"b", n))
+		}
+		return fmt.Sprintf(spec+string(verb), n)
 	case 'a', 'A':
 		return rbFormatHexFloat(spec, verb, rbFormatFloat(v))
 	case 'f', 'e', 'E', 'g', 'G':
@@ -233,7 +254,7 @@ func rbFormatHexFloat(spec string, verb byte, f float64) string {
 			s = " " + s
 		}
 	}
-	if verb == 'A' {
+	if verb == 'A' && !math.IsNaN(f) && !math.IsInf(f, 0) {
 		s = strings.ToUpper(s)
 	}
 	w, _ := strconv.Atoi(width)
@@ -241,4 +262,52 @@ func rbFormatHexFloat(spec string, verb byte, f float64) string {
 		return fmt.Sprintf("%-*s", w, s)
 	}
 	return fmt.Sprintf("%*s", w, s)
+}
+
+// rbFormatTwos is MRI's %x/%o/%b of a negative number without + or space: its two's complement with ".." for the
+// endless leading ones (-196 is "..f3c"); zero padding and precision fill with that digit, both counting the "..".
+func rbFormatTwos(spec string, verb byte, n int) string {
+	bits := map[byte]uint{'x': 4, 'X': 4, 'o': 3, 'b': 1, 'B': 1}[verb]
+	digits := "0123456789abcdef"
+	if verb == 'X' {
+		digits = "0123456789ABCDEF"
+	}
+	var out []byte
+	for n != -1 {
+		out = append([]byte{digits[n&(1<<bits-1)]}, out...)
+		n >>= bits
+	}
+	top := digits[1<<bits-1]
+	body := append([]byte{top}, out...)
+	flags, rest := spec[1:], ""
+	if k := strings.IndexFunc(flags, func(r rune) bool { return r >= '1' && r <= '9' || r == '.' }); k >= 0 {
+		flags, rest = flags[:k], flags[k:]
+	}
+	var width int
+	prec := -1
+	if dot := strings.IndexByte(rest, '.'); dot >= 0 {
+		width, _ = strconv.Atoi(rest[:dot])
+		prec, _ = strconv.Atoi(rest[dot+1:])
+	} else {
+		width, _ = strconv.Atoi(rest)
+	}
+	prefix := ""
+	if strings.Contains(flags, "#") && verb != 'o' {
+		prefix = map[byte]string{'x': "0x", 'X': "0X", 'b': "0b", 'B': "0B"}[verb]
+	}
+	fill := 0
+	switch {
+	case prec >= 0:
+		fill = prec - 2 - len(body)
+	case strings.Contains(flags, "0") && !strings.Contains(flags, "-"):
+		fill = width - len(prefix) - 2 - len(body)
+	}
+	for ; fill > 0; fill-- {
+		body = append([]byte{top}, body...)
+	}
+	s := prefix + ".." + string(body)
+	if strings.Contains(flags, "-") {
+		return fmt.Sprintf("%-*s", width, s)
+	}
+	return fmt.Sprintf("%*s", width, s)
 }

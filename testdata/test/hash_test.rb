@@ -2085,6 +2085,13 @@ module HashTests
       assert_equal [{"a" => 1}, true], [h.to_h, h.is_a?(Params)]
     end
 
+    def test_untyped_empty_containers
+      h = Hash.new(5)
+      h.clear
+      q = Queue.new
+      assert_equal [5, true], [h.default, q.empty?]
+    end
+
     def test_empty_new_typed_from_use
       h = Hash.new
       h["a"] = 1
