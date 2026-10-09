@@ -662,10 +662,17 @@ resolve; anything not listed is still open.
     call, in this order: argument count; then argument class; then the
     *literal value* of a constant argument, so `env[Rack::PATH_INFO]`
     (`Rack::PATH_INFO = "PATH_INFO"`) selects the
-    `("PATH_INFO" | "SCRIPT_TIME" | "QUERY_STRING") -> String` arm and
+    `("PATH_INFO" | "SCRIPT_NAME" | "QUERY_STRING") -> String` arm and
     types as `String`. A call no arm matches is a compile error naming
-    the arms. No block-shape selection yet: arms with blocks are tried by
-    the same count/class/literal rule.
+    the arms. The body compiles once, under the arms merged: each
+    parameter the union of the arms' types at its position (optional
+    where an arm omits it), the return the union of theirs. A call's
+    result narrows from that merge to its arm's return, checked at run
+    time (`rbMust` for `T?` → `T`, a type assertion out of a union), so
+    the sig is trusted as RBS sigs are. Arms with keyword or rest
+    parameters, or differing blocks, cannot share one Go signature; such
+    a method falls back to inference as if it had no sig
+    ([example 117](../examples/117_rbs_overloads/main.rb)).
     *Revised (#82):* a dynamic call takes the same `__<name>_<class>` overload
     by its first argument's run-time class (`dynClassOverloads`): `x.gsub(/re/,
     s)` on an `untyped` String is `__gsub_regexp`, not gsub's `(String,

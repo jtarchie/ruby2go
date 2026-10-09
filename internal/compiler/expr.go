@@ -3080,6 +3080,10 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	env := f.callEnv(n, e, recv)
 	// bind vars visible in the current generic context so they count as bound
 	f.checkVisibility(n, m, recv)
+	var armT Type // the `.rbs` overload arm this call takes (decision 12), picked before the merged parameters check the arguments
+	if len(m.arms) > 0 {
+		armT = f.armRet(n, m, args)
+	}
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
 	if m.Block != nil && m.Iterator && block == nil && !m.Block.Optional {
 		if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
@@ -3135,6 +3139,9 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	}
 	if f.c.selfReturnAsserts(e, recv.typ) {
 		out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
+	}
+	if armT != nil {
+		return f.narrowToArm(n, flatOpt(out), subst(armT, env))
 	}
 	return flatOpt(out)
 }

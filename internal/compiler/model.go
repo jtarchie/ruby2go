@@ -153,6 +153,7 @@ type Method struct {
 	Scope           []*Class // lexical scope (Module.nesting), innermost last
 	sigText         string
 	sig             *rbs.MethodType
+	arms            []*rbs.MethodType // a `.rbs` sig's overloads; sig is their merge, the call site picks one (decision 12)
 	TypeParams      []string
 	Params          []Param
 	Block           *BlockSig
@@ -1474,9 +1475,11 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 	}
 	if m.sigText == "" && !f.prelude {
 		// A `.rbs` signature fills a method with no inline `#:` (decision 160);
-		// overloads wait for selection (decision 12).
+		// overloads compile once, merged, and each call picks its arm (decision 12).
 		if sd := c.sigMethod(cls, n.Name); sd != nil && len(sd.Overloads) == 1 {
 			m.sig = sd.Overloads[0]
+		} else if merged := mergeArms(sd); merged != nil {
+			m.sig, m.arms = merged, sd.Overloads
 		}
 	}
 	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {

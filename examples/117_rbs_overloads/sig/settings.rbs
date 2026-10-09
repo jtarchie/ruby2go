@@ -1,0 +1,22 @@
+class Settings
+  PATH: String
+  PORT: String
+
+  @vars: Hash[String, String | Integer]
+
+  def initialize: (Hash[String, String | Integer]) -> void
+
+  # A literal key, or a constant holding one, picks its arm's type.
+  def []: ("PATH_INFO" | "QUERY_STRING") -> String
+        | ("SERVER_PORT") -> Integer
+        | (String) -> (String | Integer)?
+
+  # An argument's class picks the arm.
+  def double: (Integer) -> Integer
+            | (String) -> String
+
+  # So does the argument count.
+  def greet: () -> String
+           | (String) -> String
+           | (String, String) -> String
+end

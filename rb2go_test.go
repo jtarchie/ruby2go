@@ -888,3 +888,22 @@ end
 		t.Fatal("the failing test's body is not its skip")
 	}
 }
+
+// A call no `.rbs` overload arm fits is a compile error naming the arms (decision 12).
+func TestRBSOverloadNoArm(t *testing.T) {
+	dir := t.TempDir()
+	err := os.MkdirAll(filepath.Join(dir, "sig"), 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := "class Twice\n  def double: (Integer) -> Integer\n            | (String) -> String\nend\n"
+	err = os.WriteFile(filepath.Join(dir, "sig", "twice.rbs"), []byte(sig), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := []byte("class Twice\n  def double(x)\n    x * 2\n  end\nend\n\nputs Twice.new.double(1.5)\n")
+	_, _, err = Compile(t.Context(), filepath.Join(dir, "main.rb"), src)
+	if err == nil || !strings.Contains(err.Error(), "no signature of double matches this call: (Integer) -> Integer | (String) -> String") {
+		t.Fatalf("err = %v", err)
+	}
+}
