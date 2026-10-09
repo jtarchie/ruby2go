@@ -127,6 +127,14 @@ module Kernel
   def object_tag = "<#{self.class}>"
 end
 
+class NilClass
+  def object_tests_kind = :nil
+end
+
+class Integer
+  def object_tests_kind = :int
+end
+
 module ObjectTests
   # Helpers for the checks that were testdata/run/object_attrs.rb.
   class Account
@@ -5214,6 +5222,12 @@ module ObjectTests
       s.reset
       a = s.fd
       assert_equal [nil, 4, 3], [a, s.open, s.fd]
+    end
+
+    def test_nilclass_method_on_optional_receiver
+      none = [1].find { |v| v > 5 }
+      one = [1].find { |v| v > 0 }
+      assert_equal [:nil, :int], [none.object_tests_kind, one.object_tests_kind]
     end
 
     def test_unannotated_protocol_hooks

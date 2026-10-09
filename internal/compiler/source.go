@@ -17,6 +17,7 @@ type File struct {
 	lines    []int // byte offset of each line start
 	prelude  bool
 	valueGen bool    // a Struct/Data's generated members (valueClassSource), which may mark @dynamic
+	pinLine  int     // every position reports this line: generated source, whose errors belong to its declaration
 	path     string  // a user file's real path on disk, which require_relative resolves against
 	data     *string // the text after `__END__`, which DATA reads
 
@@ -64,6 +65,14 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, p
 
 func (f *File) line(off int) int {
 	return sort.Search(len(f.lines), func(i int) bool { return f.lines[i] > off })
+}
+
+// shownLine is the line errors, warnings and //line directives name: generated source's is its declaration's.
+func (f *File) shownLine(off int) int {
+	if f.pinLine > 0 {
+		return f.pinLine
+	}
+	return f.line(off)
 }
 
 func (f *File) text(loc parser.Location) string {

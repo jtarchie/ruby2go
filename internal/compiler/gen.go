@@ -277,7 +277,7 @@ func (f *fctx) emit(format string, args ...any) {
 
 // lineOf emits a //line directive (column 1) for node n.
 func (f *fctx) lineOf(n parser.Node) {
-	fmt.Fprintf(f.buf, "//line %s:%d\n", f.f.Name, f.f.line(n.GetLocation().StartOffset))
+	fmt.Fprintf(f.buf, "//line %s:%d\n", f.f.Name, f.f.shownLine(n.GetLocation().StartOffset))
 }
 
 func (f *fctx) newTmp() string {
@@ -2842,6 +2842,9 @@ func (c *Compiler) discoverMethod(cls *Class, m *Method) {
 func (c *Compiler) emitSynth(m *Method) {
 	meta := m.Owner
 	cls := meta.metaOf
+	if cls.File != nil && !cls.File.prelude && cls.Line > 0 {
+		c.lineDirective(cls.File, cls.Line) // its Go errors name the class, not a line counted on from the last directive
+	}
 	params, ret := c.sig(m, map[string]Type{"Self": TClass{C: cls}})
 	body := fmt.Sprintf("return String(%q)", cls.displayName())
 	if m.Name == "new" {

@@ -326,6 +326,59 @@ func (c *Class) methodSet() []entry {
 	return out
 }
 
+// abstractStub reports a prelude module method whose body only raises NotImplementedError: a requirement the module
+// types its own calls by (Comparable#<=>), which the includer must meet.
+func abstractStub(m *Method) bool {
+	if m.File == nil || !m.File.prelude || m.Node == nil {
+		return false
+	}
+	body := m.Node.Body
+	if st, ok := body.(*parser.StatementsNode); ok && st != nil && len(st.Body) == 1 {
+		body = st.Body[0]
+	}
+	c, ok := body.(*parser.CallNode)
+	if !ok || c.Name != "raise" || c.Receiver != nil || len(callArgs(c)) != 1 {
+		return false
+	}
+	k, ok := callArgs(c)[0].(*parser.ConstantReadNode)
+	return ok && k.Name == "NotImplementedError"
+}
+
+// checkAbstractIncludes rejects an include whose module requires a method (Comparable's `<=>` as `(self) -> Integer`)
+// the class inherits with another signature: Go could not build the module's calls on it. A compile error at the
+// include, which a caller can act on, instead of a Go build error (decision 186).
+func (c *Compiler) checkAbstractIncludes() {
+	for _, cls := range c.classList {
+		if cls.IsModule || cls.Super == nil || cls.File == nil || cls.File.prelude {
+			continue
+		}
+		for _, inc := range cls.Includes {
+			if inc.Mod == nil {
+				continue
+			}
+			for _, stub := range inc.Mod.MethodList {
+				if !abstractStub(stub) || cls.Methods[stub.Name] != nil {
+					continue
+				}
+				e := cls.Super.lookup(stub.Name)
+				if e == nil || abstractStub(e.M) || e.M.File == nil || e.M.File.prelude {
+					continue
+				}
+				c.resolveMethod(e.M)
+				c.resolveMethod(stub)
+				ok := len(e.M.Params) == len(stub.Params) && e.M.Ret != nil && stub.Ret != nil && typeEq(e.M.Ret, stub.Ret)
+				for i := 0; ok && i < len(e.M.Params); i++ {
+					_, isClass := e.M.Params[i].Type.(TClass)
+					ok = isClass
+				}
+				if !ok {
+					c.errorf(inc.file, nil, "%s:%d: include %s needs %s#%s typed as %s's (self) -> %s; it inherits %s's, typed otherwise: annotate it", inc.file.Name, inc.line, inc.Mod.RubyName, cls.RubyName, stub.Name, inc.Mod.RubyName, stub.Ret, e.Owner.RubyName)
+				}
+			}
+		}
+	}
+}
+
 func composeEnv(inner, outer map[string]Type) map[string]Type {
 	out := map[string]Type{}
 	for k, v := range inner {
@@ -3267,7 +3320,7 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	if err != nil {
 		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
 	}
-	sf.valueGen = true
+	sf.valueGen, sf.pinLine = true, line
 	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope, false)
 	for _, m := range cls.MethodList {
 		m.valueGen = true

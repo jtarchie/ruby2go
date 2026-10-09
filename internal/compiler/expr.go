@@ -1813,7 +1813,7 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		return e
 	}
 	if meta := f.metaOfType(recv.typ); name == "new" && meta != nil && len(meta.metaOf.Subclasses) == 0 {
-		if vr := meta.metaOf.valueRoot(); vr != nil { // `klass.new(a: 1)` on a held Struct/Data class: keywords by member, as genNew's
+		if vr := meta.metaOf.valueRoot(); vr != nil && generatedInit(meta.metaOf) { // `klass.new(a: 1)` on a held Struct/Data class: keywords by member, as genNew's
 			args = f.keywordMembers(n, vr, args)
 		}
 	}
@@ -4484,7 +4484,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 		}
 		return expr{code: "New" + cls.Name + targs + "()", typ: t}
 	}
-	if vr := cls.valueRoot(); vr != nil && exprs == nil {
+	if vr := cls.valueRoot(); vr != nil && exprs == nil && generatedInit(cls) {
 		args = f.keywordMembers(n, vr, args)
 	}
 	init := cls.lookup("initialize")
@@ -4610,7 +4610,58 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 			return e
 		}
 	}
+	if e, ok := f.nilClassArm(n, recv, name, args, block); ok {
+		return e
+	}
 	return f.genMethodCall(n, f.nilGuard(n, recv, name), name, args, block)
+}
+
+// nilClassArm is a call on a T? receiver whose method NilClass defines too (a program's own `class NilClass; def m`):
+// nil takes NilClass's, a value T's, as Ruby dispatches on the object (decision 186).
+func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	nc := f.c.classes["NilClass"]
+	if nc == nil || nc.lookup(name) == nil || nc.lookup(name).M.File == nil || nc.lookup(name).M.File.prelude {
+		return expr{}, false
+	}
+	elem := recv.typ.(TOpt).Elem
+	rt := f.newTmp()
+	f.emit("%s := %s", rt, recv.code)
+	nt := f.cls("NilClass")
+	nilRecv, valRecv := expr{code: "(*" + nc.Name + ")(nil)", typ: nt}, expr{code: "(*" + rt + ")", typ: elem} // a typed nil: its methods still run
+	var nilE, valE expr
+	f.probe(func() {
+		nilE = f.genMethodCall(n, nilRecv, name, args, block)
+		valE = f.genMethodCall(n, valRecv, name, args, block)
+	})
+	void := isVoid(nilE.typ) && isVoid(valE.typ)
+	t, ok := join(nilE.typ, valE.typ)
+	if !ok {
+		t = TAny{}
+	}
+	out := ""
+	if !void {
+		out = f.newTmp()
+		f.emit("var %s %s", out, f.c.goType(t))
+	}
+	arm := func(r expr) {
+		f.indent++
+		e := f.genMethodCall(n, r, name, args, block)
+		if void {
+			f.emitExprStmt(n, e)
+		} else {
+			f.emit("%s = %s", out, f.coerce(n, e, t))
+		}
+		f.indent--
+	}
+	f.emit("if %s == nil {", rt)
+	arm(nilRecv)
+	f.emit("} else {")
+	arm(valRecv)
+	f.emit("}")
+	if void {
+		return expr{code: "", typ: TVoid{}, stmt: true}, true
+	}
+	return expr{code: out, typ: t}, true
 }
 
 // nilAnswers reports the methods nil answers itself (universalCall); any
@@ -6321,6 +6372,13 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	return "blk"
 }
 
+// generatedInit reports a Struct/Data whose initialize is the generated one: a block's own `def initialize(amount:)`
+// takes the keywords itself.
+func generatedInit(cls *Class) bool {
+	init := cls.lookup("initialize")
+	return init == nil || init.M.valueGen
+}
+
 // keywordMembers turns `Point.new(x: 1, y: 2)` into positional arguments
 // in member order. Missing members are an error for Data and nil for a
 // Struct.
@@ -7106,13 +7164,12 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 // object takes the stream's writes. Reading the global still answers the
 // IO constant (decision 61), so the assignment's value is what was given.
 func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
-	if n.Name == "$VERBOSE" {
-		v := f.genExpr(n.Value, TOpt{Elem: f.cls("Boolean")})
-		return expr{code: "rbVerbose = " + f.coerce(n.Value, v, TOpt{Elem: f.cls("Boolean")}), typ: TAny{}, stmt: true}
-	}
-	if n.Name == "$/" {
-		v := f.genExpr(n.Value, TOpt{Elem: f.cls("String")})
-		return expr{code: "rbRS = " + f.coerce(n.Value, v, TOpt{Elem: f.cls("String")}), typ: TAny{}, stmt: true}
+	if v, t := map[string]string{"$VERBOSE": "rbVerbose", "$/": "rbRS"}[n.Name], map[string]string{"$VERBOSE": "Boolean", "$/": "String"}[n.Name]; v != "" {
+		// a statement, then the global's value: the assignment may be a block's or method's value
+		want := TOpt{Elem: f.cls(t)}
+		e := f.genExpr(n.Value, want)
+		f.emit("%s = %s", v, f.coerce(n.Value, e, want))
+		return expr{code: v, typ: want}
 	}
 	fn := map[string]string{"$stdout": "rbSetStdout", "$stderr": "rbSetStderr"}[n.Name]
 	if fn == "" {
