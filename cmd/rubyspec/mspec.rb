@@ -210,6 +210,28 @@ def new_io(name, mode = "w:utf-8") = File.new(name, mode)
 #: (String, ?String) -> Integer
 def new_fd(name, mode = "w:utf-8") = IO.sysopen(name, mode)
 
+# Runs the block with ENV["TZ"] set to name (offset hours east, which POSIX TZ writes west-positive), as mspec's.
+#: [T] (String, ?Integer?, ?String) { () -> T } -> T
+def with_timezone(name, offset = nil, daylight_saving_zone = "")
+  zone = name.dup
+  zone += "#{-offset}:00:00" if offset
+  zone += daylight_saving_zone
+  old = ENV["TZ"]
+  ENV["TZ"] = zone
+  begin
+    yield
+  ensure
+    ENV["TZ"] = old
+  end
+end
+
+# ruby_exe and ruby_cmd hand Ruby source to a fresh MRI process; a compiled program has no Ruby to run it (no eval), so each such example skips for good.
+#: (*untyped, **untyped) -> bot
+def ruby_exe(*, **) = raise(Minitest::Skip, "rb2go: ruby_exe runs Ruby source in a subprocess (no eval)")
+
+#: (*untyped, **untyped) -> bot
+def ruby_cmd(*, **) = raise(Minitest::Skip, "rb2go: ruby_cmd runs Ruby source in a subprocess (no eval)")
+
 #: (?String) -> bot
 def flunk(message = "This example is a failure") = mspec_fail(message)
 

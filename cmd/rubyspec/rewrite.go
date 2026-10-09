@@ -413,6 +413,14 @@ func (prog *program) skipAt(ctx context.Context, r *result, name string, line in
 	if st == nil {
 		return fmt.Errorf("%s: %s", where, reason)
 	}
+	// a chained hook (chainHooks) skips instead, so each example under it reports this reason, not the hook's absence
+	if d, ok := st.(*parser.DefNode); ok && strings.HasPrefix(d.Name, "__rbspec_") && d.Body != nil {
+		if s, e := span(d.Body.GetLocation()); !strings.HasPrefix(src.text[s:e], "skip \"rb2go: ") {
+			msg := strings.ReplaceAll(strconv.Quote("rb2go: "+reason), "#", `\#`)
+			src.text = apply(src.text, []edit{{s, e, "skip " + msg + strings.Repeat("\n", strings.Count(src.text[s:e], "\n"))}})
+			return nil
+		}
+	}
 	src.text = apply(src.text, []edit{blankLoc(src.text, st.GetLocation())})
 	r.dropped = append(r.dropped, skipped{where, reason})
 	return nil

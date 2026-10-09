@@ -1183,7 +1183,10 @@ resolve; anything not listed is still open.
     UTC offset, via Go's `time.FixedZone`: there is no IANA tz database
     lookup (`Time.new(..., in: "Asia/Tokyo")` does not work), since that
     needs `time/tzdata`, an opt-in embed MRI-style named zones don't
-    otherwise call for. `round`/`floor`/`ceil` round the fractional second
+    otherwise call for. *Amended (177):* `ENV["TZ"] = "Asia/Tokyo"` does
+    load the named zone, from the OS zoneinfo MRI's libc also reads; a
+    binary shipped where there is none (a `scratch` image) can embed it
+    with `go build -tags timetzdata`. `round`/`floor`/`ceil` round the fractional second
     to `digits` decimal places (default 0), ties toward +infinity as
     MRI's Time does (`Float#round`'s ties go away from zero instead);
     negative `digits` raises `ArgumentError`. `dst?`/`isdst` is
@@ -5930,3 +5933,34 @@ resolve; anything not listed is still open.
     - **Proof:** examples 115 and 116 and `net_test.rb`'s `RackTest`,
       unchanged and equal to MRI, now running the compiled gem;
       `ControlVerboseTest`, `StringRegexpCommentTest`.
+177. `ENV["TZ"]=` retargets local time, as MRI's `ruby_reset_timezone`
+    (mspec's `with_timezone`, #49 phase A). Every ENV mutator goes
+    through `ENV#[]=`, which on `"TZ"` calls `rbResetLocalZone`
+    (`prelude/go/time.go`): a zoneinfo name loads as one (`CET`,
+    `America/New_York`, `EST5EDT`); otherwise a POSIX
+    `NAME[+-]h[:mm[:ss]]` becomes a fixed zone with the sign flipped
+    (`JST-9` is +09:00); nil restores the zone the process started in;
+    `""` and anything unparsable are UTC, as libc's `tzset`. Matches MRI
+    on the zones ruby/spec uses.
+    - **Known differences.** A POSIX DST rule (`XXX5YYY,M3.2.0,M11.1.0`
+      with no zoneinfo file) stays on standard time. `time.Local` is
+      written without a lock (decision 128's no-global-locks rule), so a
+      thread reading local time while another assigns TZ races, as
+      libc's `tzset` does under concurrent `localtime`.
+    - **Also:** a `bot` call or `raise` in a value position (`f(raise
+      "x")`, `f(die)`) is coerced as `func() T { ...; panic(...) }()`:
+      Go accepts a function whose body ends in `panic` without a return,
+      so this works for any `T`. It emitted an unparsable argument list
+      before. `x = raise "e"` assigns the same way, typed as x's declared
+      type or `untyped` (it declared a Go var with no type).
+    - **Harness (amends 127).** A chained `before`/`after` hook
+      (`__rbspec_<hook>_N`) whose body does not compile now has that body
+      replaced by `skip "rb2go: <error>"`, not cut, so each example under
+      it reports the real reason instead of `undefined method
+      __rbspec_before_2`. `ruby_exe`/`ruby_cmd` are `bot` helpers that
+      skip with a fixed reason: running Ruby source in a subprocess
+      needs eval, so these never compile to anything else. `argf` is left
+      undefined (ARGF lacks `seek`/`pos`/`readpartial`/... that its
+      specs call next).
+    - **Proof:** `stdlib_test.rb` `test_env_tz`, `control_test.rb`
+      `test_noreturn_argument`; `core/time` 157 → 185 passing.

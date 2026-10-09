@@ -885,6 +885,19 @@ module StdlibTests
       assert_equal "-1.0", n.round.to_f.to_s
     end
 
+    def test_env_tz
+      old = ENV["TZ"]
+      got = ["JST-9", "PST8", "CET", "America/New_York", "CST6:30", "hello-foo", ""].map do |tz|
+        ENV["TZ"] = tz
+        t = Time.at(0)
+        [t.utc_offset, t.zone, Time.local(2000, 7, 1).utc_offset]
+      end
+      assert_equal [[32400, "JST", 32400], [-28800, "PST", -28800], [3600, "CET", 7200], [-18000, "EST", -14400],
+                    [-23400, "CST", -23400], [0, "UTC", 0], [0, "UTC", 0]], got
+    ensure
+      ENV["TZ"] = old
+    end
+
     def test_accessors_and_ctime
       assert_equal 0, Time.at(0).tv_sec
       assert_equal 0, Time.at(1, in: "UTC").tv_usec

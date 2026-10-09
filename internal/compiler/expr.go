@@ -299,6 +299,13 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		return expr{code: "", typ: TNil{}, done: true} // declared later in the def: not in scope here
 	}
 	val := f.genExpr(n.Value, exp)
+	if val.noreturn { // `x = raise "e"`: x still needs a Go type for the (unreachable) code after
+		t := exp
+		if t == nil {
+			t = TAny{}
+		}
+		val = expr{code: f.coerce(n, val, t), typ: t}
+	}
 	e := f.assignLocal(n, n.Name, val, ann)
 	if info := f.localInfo(n.Name); empty && f.pass == 1 && info != nil {
 		info.open = true
@@ -1269,6 +1276,9 @@ func (f *fctx) materialize(e expr) string {
 func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) && !isNil(to) {
 		return e.code
+	}
+	if e.noreturn { // `f(raise "x")`: a func literal ending in panic is a value of any type to Go
+		return "func() " + f.c.goType(to) + " {\n" + e.code + "\n}()"
 	}
 	e = f.valueOf(e)
 	if typeEq(e.typ, to) {
