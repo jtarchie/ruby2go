@@ -285,6 +285,10 @@ def ruby_exe(*, **) = raise(Minitest::Skip, "rb2go: ruby_exe runs Ruby source in
 #: (*untyped, **untyped) -> bot
 def ruby_cmd(*, **) = raise(Minitest::Skip, "rb2go: ruby_cmd runs Ruby source in a subprocess (no eval)")
 
+# A mock the runner did not make a class of (it has no expectations, or ones it cannot read): a plain object of its own.
+#: (?untyped) -> Object
+def mock(_name = nil) = Object.new
+
 #: (?String) -> bot
 def flunk(message = "This example is a failure") = mspec_fail(message)
 

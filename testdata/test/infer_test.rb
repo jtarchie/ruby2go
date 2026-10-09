@@ -7,6 +7,7 @@ require "minitest/autorun"
 # program makes.
 
 def infer_twice(x) = x * 2
+def infer_bigger(e) = e.select { |x| x > 1 }
 def infer_chain(y) = infer_twice(y) + 1
 def infer_label(v, prefix = "n=") = "#{prefix}#{v}"
 def infer_maybe(z) = z.nil? ? "none" : z.to_s
@@ -103,6 +104,11 @@ module InferTests
       assert_equal [6, 0, -1, -2], [total.call(1, 2, 3), total.call, total.arity, fmt.arity]
       first = ->(a, *) { a }
       assert_equal 1, first.call(1, 2, 3)
+    end
+
+    def test_block_on_a_parameter_its_call_types
+      take = -> e { e.reject { |x| x > 1 } }
+      assert_equal [[2, 3], [1]], [infer_bigger([1, 2, 3]), take.call([1, 2, 3])]
     end
   end
 end

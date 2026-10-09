@@ -1450,4 +1450,33 @@ B
         ["a&b&c".split(/& */, 2), "a&b&&".split(/&/, -1), "a&b&&".split(/&/), "abc".split(/&/, 1), "".split(/&/, 3)]
     end
   end
+
+  class StringRegexpTwinsTest < Minitest::Test
+    def test_regexp_index_family
+      s = "hello world"
+      assert_equal [4, 7, 6, 7, nil, nil, 2, 3], [s.index(/o/), s.rindex(/o/), s.byteindex(/w/), s.byterindex(/o/),
+                                                  s.index(/z/), s.rindex(/z/), "h\u00e9llo".index(/l/), "h\u00e9llo".byteindex(/l/)]
+      assert_equal [["hell", "o ", "world"], ["hello w", "o", "rld"], ["hello world", "", ""], ["", "", "hello world"]],
+                   [s.partition(/o\s?/), s.rpartition(/o/), s.partition(/z/), s.rpartition(/z/)]
+    end
+
+    def test_byteslice_range
+      s = "hello"
+      assert_equal ["el", "ello", "llo", "", nil], [s.byteslice(1..2), s.byteslice(1..), s.byteslice(-3..-1), s.byteslice(5..), s.byteslice(6..)]
+    end
+
+    def test_record_separator_chomp
+      old = $/
+      begin
+        $/ = "x"
+        a = "abx".chomp
+        b = "ab\n".chomp
+        $/ = nil
+        c = "ab\n".chomp
+      ensure
+        $/ = old
+      end
+      assert_equal ["ab", "ab\n", "ab\n", "a"], [a, b, c, "a\n".chomp]
+    end
+  end
 end

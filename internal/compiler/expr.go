@@ -6695,8 +6695,15 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	env := map[string]Type{}
 	saved := f.lambdaClosure
 	f.lambdaClosure = f.closures + 1
-	code := f.genClosure(n, block, sig, env)
-	f.lambdaClosure = saved
+	defer func() { f.lambdaClosure = saved }()
+	var code string
+	if src != "" && f.c.round { // its still-untyped parameters may break the body this round: its calls must still record what they pass
+		if f.attempt(func() { code = f.genClosure(n, block, sig, env) }) != nil {
+			return expr{code: "nil", typ: TFunc{Params: sig.Params, Ret: TAny{}, Proc: true, Src: src, Rest: sig.Rest}}
+		}
+	} else {
+		code = f.genClosure(n, block, sig, env)
+	}
 	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src, Rest: sig.Rest}}
 }
 
@@ -6958,8 +6965,10 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: f.lastMatchVar(n), typ: TOpt{Elem: f.cls("MatchData")}}
 	case "$VERBOSE":
 		return expr{code: "rbVerbose", typ: TOpt{Elem: f.cls("Boolean")}}
+	case "$/": // the input record separator: chomp's default (decision 180)
+		return expr{code: "rbRS", typ: TOpt{Elem: f.cls("String")}}
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr, $VERBOSE and $? are (docs/design.md decision 61)", n.Name)
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr, $VERBOSE, $/ and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
 }
 
@@ -6970,6 +6979,10 @@ func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
 	if n.Name == "$VERBOSE" {
 		v := f.genExpr(n.Value, TOpt{Elem: f.cls("Boolean")})
 		return expr{code: "rbVerbose = " + f.coerce(n.Value, v, TOpt{Elem: f.cls("Boolean")}), typ: TAny{}, stmt: true}
+	}
+	if n.Name == "$/" {
+		v := f.genExpr(n.Value, TOpt{Elem: f.cls("String")})
+		return expr{code: "rbRS = " + f.coerce(n.Value, v, TOpt{Elem: f.cls("String")}), typ: TAny{}, stmt: true}
 	}
 	fn := map[string]string{"$stdout": "rbSetStdout", "$stderr": "rbSetStderr"}[n.Name]
 	if fn == "" {

@@ -92,8 +92,18 @@ class String < Object
   #: () -> String
   def rstrip = %x{ rbNewStr(self, String(strings.TrimRight(string(self), " \\t\\n\\v\\f\\r\\x00"))) }
 
+  # chomp's default is $/: "\n" also takes "\r\n" and "\r", nil leaves the String as it is
   #: () -> String
-  def chomp = %x{ rbNewStr(self, String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r"))) }
+  def chomp
+    rs = $/
+    return self if rs.nil?
+    return __chomp_1(rs) unless rs == "\n"
+
+    __chomp_nl
+  end
+
+  #: () -> String
+  def __chomp_nl = %x{ rbNewStr(self, String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r"))) }
 
   # chomp(suffix): that suffix once ("" is MRI's paragraph mode: every trailing newline).
   #: (String) -> String
@@ -580,6 +590,54 @@ class String < Object
     return Ref(Integer(i))
   }
 
+  # The Regexp twins of index, rindex, partition and rpartition (decision 12's `__<name>_regexp`).
+  # ponytail: rindex tries each start on the rest of the String, so a lookbehind sees no text before it; match from a position when one needs it.
+  #: (Regexp) -> Integer?
+  def __index_regexp(re) = re =~ self
+
+  #: (Regexp) -> Integer?
+  def __rindex_regexp(re)
+    i = size
+    while i >= 0
+      m = re.match(self[i..] || "")
+      return i if m && m.begin(0) == 0
+
+      i -= 1
+    end
+    nil
+  end
+
+  #: (Regexp) -> Integer?
+  def __byteindex_regexp(re)
+    m = re.match(self)
+    m ? m.pre_match.bytesize : nil
+  end
+
+  #: (Regexp) -> Integer?
+  def __byterindex_regexp(re)
+    i = __rindex_regexp(re)
+    i ? (self[0, i] || "").bytesize : nil
+  end
+
+  #: (Regexp) -> [String, String, String]
+  def __partition_regexp(re)
+    m = re.match(self)
+    return [self, "", ""] unless m
+
+    [m.pre_match, m[0] || "", m.post_match]
+  end
+
+  #: (Regexp) -> [String, String, String]
+  def __rpartition_regexp(re)
+    i = __rindex_regexp(re)
+    return ["", "", self] unless i
+
+    m = re.match(self[i..] || "")
+    return ["", "", self] unless m
+
+    [self[0, i] || "", m[0] || "", m.post_match]
+  end
+
   #: (String) -> Integer?
   def byterindex(s) = %x{
     i := strings.LastIndex(string(self), string(s))
@@ -588,6 +646,12 @@ class String < Object
     }
     return Ref(Integer(i))
   }
+
+  #: (Range[Integer]) -> String?
+  def __byteslice_range(r)
+    span = r.__slice(bytesize)
+    span ? byteslice(span[0], span[1]) : nil
+  end
 
   # One byte without a length, as MRI (byteslice(3) of "abc" is nil, byteslice(3, 1) is "").
   #: (Integer, ?Integer?) -> String?

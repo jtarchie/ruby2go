@@ -240,12 +240,11 @@ func (f *fctx) lambdaParams(n parser.Node, names []string, body parser.Node) ([]
 			ps[i] = TAny{} // a gem's lambda no call types (decision 169)
 		case !readsParam(body, strings.TrimLeft(names[i], "*&")):
 			ps[i] = TAny{} // a parameter the body never reads loses nothing untyped (decision 179)
-		default:
-			ce := catchCompileError(func() {
-				f.errorf(n, "a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)")
-			})
-			ce.untyped = true
-			panic(*ce)
+		default: // untyped, its calls dynamic, as a gem lambda's (decision 180)
+			if f.pass == 2 && i == 0 {
+				f.warn(n, "a lambda's parameters are untyped: no call in the program gives them types (annotate `#: ^(T) -> R` for static calls; decision 180)")
+			}
+			ps[i] = TAny{}
 		}
 	}
 	return ps, src
