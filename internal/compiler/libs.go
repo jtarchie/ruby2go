@@ -70,6 +70,7 @@ var preludeLibs = map[string]string{
 	"delegate":         "prelude/delegate.rb",
 	"date":             "prelude/date.rb",
 	"time":             "prelude/time_parse.rb",
+	"sorbet-runtime":   "prelude/sorbet.rb",
 }
 
 // mriLibs are MRI 4.0's standard library (first path segment): never a gem to look up, so requiring them never starts Ruby.

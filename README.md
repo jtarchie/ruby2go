@@ -121,6 +121,10 @@ attr_reader :name #: String                # attribute type
 name = nil #: String?                      # T? means "T or nil"
 ```
 
+Sorbet-typed code works too: with `require "sorbet-runtime"`, `sig { params(...).returns(...) }`,
+`T.let`, `T.cast` and `T.must` are read as the same types, and what sorbet-runtime would raise
+while running is a compile error instead (decision 196, [example 119](examples/119_sorbet_sigs/main.rb)).
+
 How Ruby types land in Go:
 
 | Ruby | Go |

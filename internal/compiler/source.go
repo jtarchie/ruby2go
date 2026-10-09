@@ -27,6 +27,8 @@ type File struct {
 	trailing map[int]string
 	// trailing `#[A, B]` type arguments (`include M #[E]`) by line
 	typeArgs map[int]string
+	// a `T.let`/`T.cast` the Sorbet pass left in an expression, and its RBS type (decision 196)
+	sorbetCasts map[*parser.CallNode]string
 }
 
 type comment struct {
@@ -51,6 +53,12 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, p
 	}
 	fillAnonForwards(f.Root)
 	f.indexComments(res.Comments)
+	if !prelude {
+		serr := f.lowerSorbet()
+		if serr != nil {
+			return nil, serr
+		}
+	}
 	if d := res.DataLoc; d != nil {
 		text := string(src[d.StartOffset : d.StartOffset+d.Length])
 		if _, after, ok := strings.Cut(text, "\n"); ok {

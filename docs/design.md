@@ -6332,3 +6332,41 @@ resolve; anything not listed is still open.
     true before the autoload line (constants are static). **Proof:**
     [example 118](../examples/118_autoload/main.rb), `require.txtar`
     `autoload_missing_file`.
+196. **Sorbet signatures are types** (#95). sorbet-runtime's `sig {}`,
+    `T.let` and `T.cast` are Ruby calls MRI evaluates at load and run
+    time; rb2go reads them at **parse time** (`internal/compiler/sorbet.go`,
+    `File.lowerSorbet`, user and gem files, never the prelude) and the
+    rest of the compiler stays Sorbet-blind. A `sig { ... }` statement is
+    removed and becomes a synthetic `#:` comment on the next statement's
+    line: `params` are matched to the def's parameters **by name** into an
+    RBS method type (required, `?opt`, `*rest`, `k:`, `?k:`, `**rest`,
+    `&blk` as an RBS block, `T.nilable(T.proc...)` as `?{}`), `returns`
+    / `void` is the return, `type_parameters(:U)` makes it generic.
+    Before `attr_reader`/`attr_accessor` the return, and before
+    `attr_writer` the one param, is the attr's trailing `#: T`.
+    Modifiers only Sorbet's checker reads (`override`, `abstract`,
+    `overridable`, `final`, `checked`, `on_failure`) are ignored. A
+    variable or constant write of `T.let(v, T)` becomes `= v #: T`
+    (unless the line already has a `#:`); a `T.let`/`T.cast` anywhere
+    else compiles as its value converted to the type, unchecked, as `#:`
+    is (`genSorbetCast`). `extend`/`include T::Sig`/`T::Helpers`,
+    `abstract!`, `interface!`, `final!`, `sealed!` and a `T.bind(self, X)`
+    statement are dropped. `require "sorbet-runtime"` loads
+    `prelude/sorbet.rb` (decision 155), not the gem: module `T` with the
+    empty `Sig`/`Helpers`, `T.must` (raising sorbet-runtime's `TypeError`
+    "Passed `nil` into T.must") and `T.unsafe` (`untyped`). Types:
+    `T.nilable(X)` → `X?`, `T.any` → union, `T::Array`/`Hash`/`Set`/
+    `Range`/`Enumerable`/`Enumerator[...]` → the class, bare → `[untyped]`,
+    `T::Boolean` → `bool`, `T.untyped`/`T.anything` → `untyped`,
+    `T.noreturn` → `bot`, `T.self_type` → `self`, `T.class_of(X)` →
+    `singleton(X)`, `T.type_parameter(:U)` → `U`, `T.proc[.bind(S)]
+    .params(..).returns(R)` → `^(..) [self: S] -> R`, `[A, B]` → tuple,
+    `{a: A}` → record, and `T.attached_class` → RBS `instance`, which this
+    decision adds: the class whose singleton method names it (the defining
+    class, not a subclass receiver's). Difference from MRI: what
+    sorbet-runtime raises while running (a wrong argument type) is a
+    compile error here, as decision 20 does for `#:`; nothing is checked
+    at run time. Not supported yet (compile errors): `T.all`, `T::Struct`,
+    `T::Enum`, `T::Generic`/`type_member`, `T.type_alias`; overloaded
+    sigs. **Proof:** [example 119](../examples/119_sorbet_sigs/main.rb),
+    `sorbet_test.rb`, `sorbet.txtar`.

@@ -25,6 +25,7 @@ func (Optional) isType()  {}
 func (Tuple) isType()     {}
 func (Union) isType()     {}
 func (Self) isType()      {}
+func (Instance) isType()  {}
 func (Void) isType()      {}
 func (Bot) isType()       {}
 func (Nil) isType()       {}
@@ -49,6 +50,8 @@ type (
 	Union struct{ Elems []Type }
 	// Self is `self`.
 	Self struct{}
+	// Instance is `instance`: an instance of the class whose singleton method names it.
+	Instance struct{}
 	// Void is `void`.
 	Void struct{}
 	Bot  struct{} // never returns: raises or throws
@@ -101,6 +104,7 @@ func (t Union) String() string {
 	return strings.Join(parts, " | ")
 }
 func (Self) String() string        { return "self" }
+func (Instance) String() string    { return "instance" }
 func (Void) String() string        { return "void" }
 func (Bot) String() string         { return "bot" }
 func (Nil) String() string         { return "nil" }
@@ -533,6 +537,8 @@ func (p *parser) parsePrimary() (Type, error) {
 		return p.parsePrimary()
 	case "self":
 		return Self{}, nil
+	case "instance":
+		return Instance{}, nil
 	case "void":
 		return Void{}, nil
 	case "bot":

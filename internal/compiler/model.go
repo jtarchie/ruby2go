@@ -2133,6 +2133,14 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 			c.errorf(sc.file, nil, "%s:%d: `self` type outside a class", sc.file.Name, sc.line)
 		}
 		return TVar{Name: "Self"}
+	case rbs.Instance: // ponytail: the defining class, not the receiver's subclass; make it a Self-like TVar when a subclass call needs it
+		if sc.class == nil {
+			c.errorf(sc.file, nil, "%s:%d: `instance` type outside a class", sc.file.Name, sc.line)
+		}
+		if sc.class.metaOf != nil {
+			return TClass{C: sc.class.metaOf}
+		}
+		return TClass{C: sc.class}
 	case rbs.Void, rbs.Bot:
 		return TVoid{}
 	case rbs.Nil:
@@ -3525,7 +3533,7 @@ func nilableRBS(t rbs.Type) bool {
 	switch t.(type) {
 	case rbs.Optional, rbs.Nil, rbs.Untyped:
 		return true
-	case rbs.Bool, rbs.Bot, rbs.Name, rbs.Proc, rbs.Self, rbs.Singleton, rbs.Tuple, rbs.Union, rbs.Void, rbs.Literal, rbs.Record: // never holds nil
+	case rbs.Bool, rbs.Bot, rbs.Name, rbs.Proc, rbs.Self, rbs.Instance, rbs.Singleton, rbs.Tuple, rbs.Union, rbs.Void, rbs.Literal, rbs.Record: // never holds nil
 	}
 	return false
 }

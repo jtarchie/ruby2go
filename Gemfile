@@ -16,3 +16,6 @@ gem "cuba", "~> 4.0"
 
 # Serves a Rack app on WEBrick under MRI; the transpiler maps it onto Go's net/http too.
 gem "rackup", "~> 2.3"
+
+# Sorbet-typed programs (#95): MRI runs them with the real runtime; rb2go reads `sig {}` as types.
+gem "sorbet-runtime", "~> 0.6"

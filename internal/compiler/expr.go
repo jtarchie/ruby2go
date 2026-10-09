@@ -1719,6 +1719,9 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
+	if t, ok := f.f.sorbetCasts[n]; ok {
+		return f.genSorbetCast(n, t)
+	}
 	if e, ok := f.genKernelCall(n, expected); ok {
 		return e
 	}

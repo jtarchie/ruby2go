@@ -1,0 +1,16 @@
+# sorbet-runtime's run-time surface, vendored for `rbs validate` (#95, decision 196): the rbs gem ships none.
+module T
+  module Sig
+  end
+
+  module Helpers
+  end
+
+  def self.must: [X] (X?) -> X
+
+  def self.unsafe: (untyped) -> untyped
+
+  def self.let: (untyped, untyped) -> untyped
+
+  def self.cast: (untyped, untyped) -> untyped
+end
