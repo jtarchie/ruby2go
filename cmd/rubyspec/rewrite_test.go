@@ -139,3 +139,17 @@ end
 		t.Errorf("rewrite moved lines:\n%s", got)
 	}
 }
+
+func TestCrashFrames(t *testing.T) {
+	spec := "goroutine 1:\n\tgen/core/k/fixtures/a.rb:3 +0x1c\n\tgen/core/k/a_spec.rb:9 +0x2c\n"
+	if m := specFrame.FindStringSubmatch(spec); m == nil || m[1] != "core/k/a_spec.rb" || m[2] != "9" {
+		t.Errorf("specFrame: %q", m)
+	}
+	load := "gen/core/k/fixtures/a.rb:8:in '<main>': undefined method 'prepend' for class Module (NoMethodError)\n\tfrom mspec.rb:2:in '<main>'\n"
+	if m := loadFrame.FindStringSubmatch(load); m == nil || m[1] != "core/k/fixtures/a.rb" || m[2] != "8" {
+		t.Errorf("loadFrame: %q", m)
+	}
+	if m := loadFrame.FindStringSubmatch("x\n\tfrom mspec.rb:2:in '<main>'\n"); m != nil {
+		t.Errorf("loadFrame matched mspec.rb: %q", m)
+	}
+}

@@ -18,6 +18,7 @@ RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached 
 RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (debugging the pruner)
 RB2GO_INFER_DEBUG=1 go run ./cmd/rb2go run x.rb    # what each parameter-inference round typed and could not compile (decision 146)
 RB2GO_PRUNE_DEBUG=1 go test -run TestBootAutoload .  # gem programs: why each method name was reached, live gem classes (decision 169)
+RB2GO_BACKTRACE=1 ./prog                       # a built program reports an uncaught exception as MRI does, file:line and from lines (decision 178)
 go test -run '^$' -fuzz FuzzCompile -fuzztime 60s .              # fuzz targets: FuzzCompile (.),
 go test -run '^$' -fuzz FuzzParseType -fuzztime 30s ./internal/rbs # FuzzParseType/FuzzParseMethodType (rbs),
 go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMethodName/FuzzTranslateRegexp (compiler)

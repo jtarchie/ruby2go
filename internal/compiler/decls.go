@@ -329,6 +329,9 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 		}
 	}
 	c.emitDynamic(reached, selected)
+	if c.tablesOut {
+		c.emitUnions() // a late body's new union helper is a function like any other, not a table input
+	}
 	marshal := reached("rbMDumpGen") || reached("rbMLoadGen")
 	// Marshal's cases were rendered with the tables: a later value type, or a class they skipped and something now reaches, needs them redone
 	stale := marshal && len(c.marshalSeen) != c.marshalAt || slices.ContainsFunc(c.marshalSkipped, reached)
@@ -1245,6 +1248,10 @@ func (c *Compiler) unionFn(u TUnion) string {
 // untyped code as the Array it is (decision 22).
 func (c *Compiler) emitUnions() {
 	for _, name := range slices.Sorted(maps.Keys(c.unions)) {
+		if c.unionsOut[name] {
+			continue
+		}
+		c.unionsOut[name] = true
 		u := c.unions[name]
 		exact := make([]string, 0, len(u.Members))
 		var conv, tuples []string

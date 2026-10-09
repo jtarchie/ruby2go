@@ -412,10 +412,17 @@ func rbAtExitPop() func() {
 func rbTopRecover() {
 	status, main := 0, any(nil)
 	if r := recover(); r != nil {
+		if rbFullReport {
+			r = rbCaptureBacktrace(r) // the panicking frames are still on the stack here
+		}
 		status, main = rbExitStatus(r)
 	}
 	rbFinish(status, main)
 }
+
+// rbFullReport: RB2GO_BACKTRACE set prints an uncaught exception as MRI does, `file:line:in 'x': msg (Class)` and its `from` lines, where the default is `msg (Class)` alone (decision 106).
+var rbFullReport = os.Getenv("RB2GO_BACKTRACE") != ""
+
 
 // rbFinish runs the at_exit handlers, prints main (an uncaught exception
 // or nil) and exits with the resulting status; it returns only for 0.
@@ -476,6 +483,13 @@ func rbExitStatus(r any) (int, any) {
 
 func rbPrintUncaught(r any) {
 	if e, ok := r.(ExceptionI); ok {
+		if bt := rbBacktrace(e); rbFullReport && bt != nil && len((*bt).s) > 0 {
+			fmt.Fprintf(os.Stderr, "%s: %s (%s)\n", (*bt).s[0], e.Message(), rbClassName(r))
+			for _, l := range (*bt).s[1:] {
+				fmt.Fprintf(os.Stderr, "\tfrom %s\n", l)
+			}
+			return
+		}
 		fmt.Fprintf(os.Stderr, "%s (%s)\n", e.Message(), rbClassName(r))
 	} else {
 		fmt.Fprintf(os.Stderr, "%v\n", r)
