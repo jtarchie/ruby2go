@@ -245,6 +245,48 @@ class MatchData < Object
     return Tuple2[*Integer, *Integer]{Ref(Integer(self.loc[2*n])), Ref(Integer(self.loc[2*n+1]))}
   }
 
+  # A named group's index (the last of a repeated name, as MRI), for the name twins of begin/end/offset/byteoffset.
+  #: (String | Symbol) -> Integer
+  def __group(name) = %x{
+    var s string
+    switch v := name.(type) {
+    case String:
+      s = string(v)
+    case Symbol:
+      s = string(v)
+    }
+    for i := len(self.names) - 1; i > 0; i-- {
+      if self.names[i] == s {
+        return Integer(i)
+      }
+    }
+    panic(NewIndexError(Ref(String("undefined group name reference: " + s))))
+  }
+
+  #: (String) -> Integer?
+  def __begin_string(name) = self.begin(__group(name))
+
+  #: (Symbol) -> Integer?
+  def __begin_symbol(name) = self.begin(__group(name))
+
+  #: (String) -> Integer?
+  def __end_string(name) = self.end(__group(name))
+
+  #: (Symbol) -> Integer?
+  def __end_symbol(name) = self.end(__group(name))
+
+  #: (String) -> [Integer?, Integer?]
+  def __offset_string(name) = offset(__group(name))
+
+  #: (Symbol) -> [Integer?, Integer?]
+  def __offset_symbol(name) = offset(__group(name))
+
+  #: (String) -> [Integer?, Integer?]
+  def __byteoffset_string(name) = byteoffset(__group(name))
+
+  #: (Symbol) -> [Integer?, Integer?]
+  def __byteoffset_symbol(name) = byteoffset(__group(name))
+
   #: () -> String
   def pre_match = %x{ String(self.pre) }
 

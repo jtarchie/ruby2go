@@ -1461,6 +1461,9 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		}
 		m.sigText = sig
 	}
+	if m.sigText == "" && cls != nil {
+		m.sigText = protocolSig(n) // `def respond_to_missing?(name, priv)`: Ruby's protocol fixes its types (decision 182)
+	}
 	if _, ok := f.annotations(line)["dynamic"]; ok {
 		if !f.prelude && !f.valueGen {
 			c.errorf(f, n, "@dynamic is only allowed in the prelude")
@@ -1986,10 +1989,37 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 			return iv
 		}
 	}
+	for k := cls.Super; k != nil; k = k.Super { // an ancestor that assigned it only nil owns it, nilable (decision 182)
+		if c.nilIvars[k.Name+"#"+name] {
+			cls, t = k, optOf(t)
+		}
+	}
 	iv := &Ivar{Name: name, Type: t, Owner: cls}
 	cls.Ivars[name] = iv
 	cls.IvarList = append(cls.IvarList, iv)
 	return iv
+}
+
+// subclassIvar moves an ivar a subclass declared up to cls, nilable, when cls assigns it only nil: one field holds it
+// for the whole hierarchy, as one object's ivar is the same name in every method MRI runs on it.
+func (c *Compiler) subclassIvar(cls *Class, name string) *Ivar {
+	for _, sub := range cls.Subclasses {
+		iv := sub.Ivars[name]
+		if iv == nil {
+			if moved := c.subclassIvar(sub, name); moved != nil {
+				iv = moved
+			} else {
+				continue
+			}
+		}
+		delete(iv.Owner.Ivars, name)
+		iv.Owner.IvarList = slices.DeleteFunc(iv.Owner.IvarList, func(x *Ivar) bool { return x == iv })
+		iv.Owner, iv.Type = cls, optOf(iv.Type)
+		cls.Ivars[name] = iv
+		cls.IvarList = append(cls.IvarList, iv)
+		return iv
+	}
+	return nil
 }
 
 func (c *Compiler) findIvar(cls *Class, name string) *Ivar {
@@ -2644,6 +2674,24 @@ func (c *Compiler) inferRet(m *Method) {
 		ret = j
 	}
 	m.Ret = ret
+}
+
+// protocolSig is the signature Ruby's hook protocol gives an unannotated respond_to_missing? or method_missing, by its
+// parameter shape; "" for any other def.
+func protocolSig(n *parser.DefNode) string {
+	ps := n.Parameters
+	if ps == nil || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil || len(ps.Posts) > 0 {
+		return ""
+	}
+	switch {
+	case n.Name == "respond_to_missing?" && len(ps.Requireds) == 2 && len(ps.Optionals) == 0 && ps.Rest == nil:
+		return "(Symbol, bool) -> bool"
+	case n.Name == "respond_to_missing?" && len(ps.Requireds) == 1 && len(ps.Optionals) == 1 && ps.Rest == nil:
+		return "(Symbol, ?bool) -> bool"
+	case n.Name == "method_missing" && len(ps.Requireds) == 1 && len(ps.Optionals) == 0 && ps.Rest != nil:
+		return "(Symbol, *untyped) -> untyped"
+	}
+	return ""
 }
 
 // inheritSignature copies the signature of the method m overrides, if any.

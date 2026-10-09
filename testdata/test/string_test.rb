@@ -1460,6 +1460,11 @@ B
                    [s.partition(/o\s?/), s.rpartition(/o/), s.partition(/z/), s.rpartition(/z/)]
     end
 
+    def test_matchdata_offsets_by_group_name
+      m = /(?<a>x)(?<b>y)?/.match("x")
+      assert_equal [0, 1, [0, 1], [0, 1], nil], [m&.begin(:a), m&.end("a"), m&.offset(:a), m&.byteoffset("a"), m&.begin(:b)]
+    end
+
     def test_byteslice_range
       s = "hello"
       assert_equal ["el", "ello", "llo", "", nil], [s.byteslice(1..2), s.byteslice(1..), s.byteslice(-3..-1), s.byteslice(5..), s.byteslice(6..)]

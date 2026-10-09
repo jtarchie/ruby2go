@@ -69,6 +69,31 @@ class SpecExpectation
   #: () -> bool
   def frozen? = check(@actual.frozen?, "to be frozen")
 
+  # mspec's predicate matchers with an argument (`File.should.exist?(path)`), each the actual's own answer.
+  #: (untyped) -> bool
+  def exist?(x) = check(@actual.exist?(x), "exist? #{x.inspect}")
+
+  #: (untyped) -> bool
+  def start_with?(x) = check(@actual.start_with?(x), "to start with #{x.inspect}")
+
+  #: (untyped) -> bool
+  def end_with?(x) = check(@actual.end_with?(x), "to end with #{x.inspect}")
+
+  #: (untyped) -> bool
+  def const_defined?(x) = check(@actual.const_defined?(x), "to define #{x.inspect}")
+
+  #: (untyped) -> bool
+  def directory?(x) = check(@actual.directory?(x), "directory? #{x.inspect}")
+
+  #: (untyped) -> bool
+  def file?(x) = check(@actual.file?(x), "file? #{x.inspect}")
+
+  #: (untyped) -> bool
+  def method_defined?(x) = check(@actual.method_defined?(x), "to define method #{x.inspect}")
+
+  #: (untyped) -> bool
+  def instance_variable_defined?(x) = check(@actual.instance_variable_defined?(x), "to define #{x.inspect}")
+
   #: () -> bool
   def empty? = check(@actual.empty?, "to be empty")
 
@@ -96,8 +121,9 @@ class ProcExpectation
     @positive = positive
   end
 
-  #: (?untyped, ?String?) -> bool
-  def raise(klass = StandardError, message = nil)
+  # A block sees the exception raised, as mspec's raise_error { |e| ... }.
+  #: (?untyped, ?String?) ?{ (Exception) -> void } -> bool
+  def raise(klass = StandardError, message = nil, &blk)
     got = nil #: Exception?
     begin
       @actual.call
@@ -105,6 +131,9 @@ class ProcExpectation
       got = e
     end
     ok = !got.nil? && got.is_a?(klass) && (message.nil? || got.message == message)
+    if ok && @positive && blk && got
+      blk.call(got)
+    end
     return true if ok == @positive
 
     mspec_fail "Expected #{@positive ? "" : "no "}#{klass.inspect}#{message.nil? ? "" : " #{message.inspect}"}, got #{got.inspect}"

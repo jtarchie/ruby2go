@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -544,4 +545,45 @@ func rbResetLocalZone(tz *String) {
 		off = -sign * off
 	}
 	time.Local = time.FixedZone(name, off)
+}
+
+var rbTimeNewRe = regexp.MustCompile(`^(\d{4,})(?:-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?)?)?\s*(Z|[+-]\d{2}(?::?\d{2}(?::?\d{2})?)?)?$`)
+
+func rbTimeParseNew(s string, precision *Integer, in any) *Time {
+	m := rbTimeNewRe.FindStringSubmatch(s)
+	if m == nil || (m[2] != "" && m[4] == "") {
+		panic(NewArgumentError(Ref(String("can't parse: " + strconv.Quote(s)))))
+	}
+	num := func(x string, def int) int {
+		if x == "" {
+			return def
+		}
+		v, _ := strconv.Atoi(x)
+		return v
+	}
+	ns := 0
+	if frac := m[7]; frac != "" {
+		if precision != nil && *precision >= 0 && int(*precision) < len(frac) {
+			frac = frac[:*precision]
+		}
+		frac = (frac + "000000000")[:9]
+		ns = num(frac, 0)
+	}
+	loc, utc := rbTimeZoneArg(in, time.Local)
+	switch z := m[8]; {
+	case z == "Z":
+		loc, utc = time.UTC, true
+	case z != "":
+		digits := strings.ReplaceAll(z[1:], ":", "")
+		off := num(digits[0:2], 0)*3600 + num(digits[2:min(4, len(digits))], 0)*60
+		if len(digits) > 4 {
+			off += num(digits[4:], 0)
+		}
+		if z[0] == '-' {
+			off = -off
+		}
+		loc, utc = time.FixedZone("", off), false
+	}
+	t := time.Date(num(m[1], 0), time.Month(num(m[2], 1)), num(m[3], 1), num(m[4], 0), num(m[5], 0), num(m[6], 0), ns, loc)
+	return &Time{t: t, utc: utc}
 }

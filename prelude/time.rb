@@ -51,6 +51,14 @@ class Time < Object
   #: () -> Time
   def self.__new_0 = now
 
+  # Time.new("2020-12-25 00:56:17.5 +09:00") (Ruby 3.3): a year alone, or a date with a full time, then an optional
+  # zone ("Z", +HH:MM, +HHMM, +HH:MM:SS); without one, in: or local. Any other shape is MRI's "can't parse" ArgumentError.
+  # precision truncates the fraction's digits (nil or negative keeps them: past 9 digits, Go's nanoseconds, are lost).
+  #: (String, ?precision: Integer?, ?in: untyped) -> Time
+  def self.__new_string(str, precision: 9, in: nil) = %x{
+    return rbTimeParseNew(string(str), precision, in)
+  }
+
   #: () -> Integer
   def year = %x{ Integer(self.t.Year()) }
 

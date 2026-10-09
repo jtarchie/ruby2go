@@ -255,6 +255,9 @@ func (rw *rewriter) hoist(stmts []parser.Node) {
 	for _, st := range stmts {
 		switch st := st.(type) {
 		case *parser.ClassNode, *parser.ModuleNode:
+			if t := rw.text(st); strings.Contains(t, "should") || strings.Contains(t, "ScratchPad") {
+				continue // its body checks or records as the example runs: at load it would run before (or outside) the example
+			}
 		case *parser.DefNode: // MRI puts it on the example's class; at the top level every example still reaches it
 			if st.Receiver != nil {
 				continue

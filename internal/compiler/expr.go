@@ -292,6 +292,15 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 	if exp == nil && empty {
 		exp = f.refined[f.localKey(n.Name)]
 	}
+	if c, ok := n.Value.(*parser.CallNode); ok && exp == nil && empty && f.pass == 1 {
+		if cls := f.c.classes[emptyNewClass(c)]; cls != nil { // pass 1: untyped, so what goes in it can type it
+			args := make([]Type, len(cls.TypeParams))
+			for i := range args {
+				args[i] = TAny{}
+			}
+			exp = TClass{C: cls, Args: args}
+		}
+	}
 	if r, ok := n.Value.(*parser.LocalVariableReadNode); ok && r.Name == n.Name && f.erbDepth > 0 { // `x = x` declares x for the template's parse: a no-op
 		if v := f.visibleLocal(n.Name); v != nil {
 			return expr{code: v.goName, typ: v.typ, view: v.view, done: true}
@@ -319,8 +328,24 @@ func isEmptyLit(n parser.Node) bool {
 		return len(n.Elements) == 0
 	case *parser.HashNode:
 		return len(n.Elements) == 0
+	case *parser.CallNode:
+		return emptyNewClass(n) != ""
 	}
 	return false
+}
+
+// emptyNewClass is the class of an empty container's `X.new` (`Hash.new`, `Queue.new`, `SizedQueue.new(n)`): an open
+// literal, typed from what is put in it as `[]` and `{}` are (decision 182).
+func emptyNewClass(n *parser.CallNode) string {
+	r, ok := n.Receiver.(*parser.ConstantReadNode)
+	if !ok || n.Name != "new" || n.Block != nil {
+		return ""
+	}
+	switch args := callArgs(n); {
+	case r.Name == "SizedQueue" && len(args) == 1, len(args) == 0 && (r.Name == "Hash" || r.Name == "Array" || r.Name == "Set" || r.Name == "Queue"):
+		return r.Name
+	}
+	return ""
 }
 
 // noteElems records what `x << v`, `x.push(v)`, `x[i] = v` and
@@ -350,7 +375,7 @@ func (f *fctx) noteElems(n *parser.CallNode) {
 	}
 	args := callArgs(n)
 	switch hash := isClass(stripOpt(t), "Hash"); {
-	case !hash && slices.Contains([]string{"<<", "push", "append", "unshift", "prepend"}, n.Name):
+	case !hash && slices.Contains([]string{"<<", "push", "append", "unshift", "prepend", "add", "enq"}, n.Name):
 		f.noteElem(open, &elems[0], args...)
 	case !hash && n.Name == "[]=" && len(args) == 2:
 		f.noteElem(open, &elems[0], args[1])
@@ -912,6 +937,9 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		f.errorf(n, "instance variable %s of module %s needs a type: `# @rbs %s: T` in the module body (decision 147)", name, f.owner.RubyName, name)
 	}
 	if iv == nil {
+		if iv := f.nilIvar(name, assigned); iv != nil {
+			return iv
+		}
 		if f.discover && assigned != nil && isNil(assigned) && f.c.pruneGems && f.c.gemFile(f.owner.File) {
 			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
 		}
@@ -924,6 +952,19 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		f.errorf(n, "instance variable %s has no known type; assign it in initialize or add `# @rbs %s: T`", name, name)
 	}
 	return iv
+}
+
+// nilIvar notes a discovery-time `@x = nil` where @x has no type yet (decision 182): a subclass that typed it first
+// gives it up to this class, nilable; otherwise a later subclass assignment declares it here.
+func (f *fctx) nilIvar(name string, assigned Type) *Ivar {
+	if !f.discover || assigned == nil || !isNil(assigned) || !f.owner.isStruct() {
+		return nil
+	}
+	if f.c.nilIvars == nil {
+		f.c.nilIvars = map[string]bool{}
+	}
+	f.c.nilIvars[f.owner.Name+"#"+name] = true
+	return f.c.subclassIvar(f.owner, name)
 }
 
 func (f *fctx) ivarCode(iv *Ivar) string { return ivarPath(f.selfCode, iv) }
