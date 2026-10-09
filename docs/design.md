@@ -6150,3 +6150,26 @@ resolve; anything not listed is still open.
       `test_superclass_nil_ivar_typed_by_subclass`, `string_test.rb`
       `test_matchdata_offsets_by_group_name`, `stdlib_test.rb`
       `test_time_new_from_string`.
+183. **Untyped where nothing in the program gives a type** (#49). Inference
+    (decision 146) types a parameter from its calls; a def parameter no
+    call types was a compile error. It is now `untyped`, with a warning
+    naming the annotation (`# @rbs x: T`), as a lambda's already was
+    (decision 180) and a gem def's (decision 169): only a dynamic call
+    (`send` with a computed name, a hook such as `<=>` from `sort`, an
+    untyped receiver) can pass it anything, and the body's calls on it
+    are dynamic. Likewise:
+    - `include Enumerable` (any generic module) in a user class with no
+      `each` of its own to infer from (a subclass defines it) is
+      `Enumerable[untyped]`, with a warning. An `each` that yields several
+      values still needs the annotation (MRI packs them into an Array).
+    - An unannotated def's `&block` is an optional, variadic `untyped`
+      block (`{ (*untyped) -> untyped }`); calling it when no block was
+      given is MRI's `NoMethodError` at run time (`undefined method 'call'
+      for nil`), not decision 132's compile error, since nothing declared
+      it required. The Proc type of an optional block keeps its rest flag.
+    - `Compiler.warn` takes a nil node for messages that carry their own
+      position, as `errorf` does.
+    - **Proof:** `infer_test.rb` `test_untyped_fallbacks`; `infer.txtar`
+      `never_called` and `rest_never_passed`, `numbers.txtar`
+      `operator_def_needs_signature`, `objects.txtar`
+      `include_generic_without_args` are warnings now.

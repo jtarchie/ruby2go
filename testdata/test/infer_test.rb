@@ -8,6 +8,31 @@ require "minitest/autorun"
 
 def infer_twice(x) = x * 2
 def infer_bigger(e) = e.select { |x| x > 1 }
+
+module InferTests
+  class FallbackBlock
+    def run(&blk) = blk.call(1, 2)
+    def maybe(&blk) = blk ? blk.call(5) : :none
+  end
+
+  class FallbackBase
+    include Enumerable
+  end
+
+  class FallbackKid < FallbackBase
+    def each
+      yield 1
+      yield 2
+    end
+  end
+
+  class FallbackCmp
+    attr_reader :n
+
+    def initialize(n) = @n = n
+    def <=>(other) = n <=> other.n
+  end
+end
 def infer_chain(y) = infer_twice(y) + 1
 def infer_label(v, prefix = "n=") = "#{prefix}#{v}"
 def infer_maybe(z) = z.nil? ? "none" : z.to_s
@@ -109,6 +134,12 @@ module InferTests
     def test_block_on_a_parameter_its_call_types
       take = -> e { e.reject { |x| x > 1 } }
       assert_equal [[2, 3], [1]], [infer_bigger([1, 2, 3]), take.call([1, 2, 3])]
+    end
+
+    def test_untyped_fallbacks
+      r = InferTests::FallbackBlock.new
+      sorted = [3, 1, 2].map { |i| InferTests::FallbackCmp.send(:new, i) }.sort.map(&:n)
+      assert_equal [3, 10, :none, [2, 4], [1, 2, 3]], [r.run { |a, b| a + b }, r.maybe { |x| x * 2 }, r.maybe, InferTests::FallbackKid.new.map { |x| x * 2 }, sorted]
     end
   end
 end

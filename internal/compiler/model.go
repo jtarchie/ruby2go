@@ -215,6 +215,7 @@ type BlockSig struct {
 	Rest        bool     // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
 	Self        Type     // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
 	SelfPending string   // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
+	Untyped     bool     // an unannotated def's &block (decision 183): calling it when missing is MRI's NoMethodError at run time
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
@@ -2309,7 +2310,10 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 		}
 		return
 	}
-	if len(inc.args) == 0 && c.gemFile(inc.file) { // a pruned class's each (decision 169): nothing is ever an element
+	if len(inc.args) == 0 && (c.gemFile(inc.file) || !inc.file.prelude) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
+		if !c.gemFile(inc.file) {
+			c.warn(inc.file, nil, "%s:%d: include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", inc.file.Name, inc.line, mod.RubyName, cls.RubyName, mod.RubyName)
+		}
 		for range mod.TypeParams {
 			inc.Args = append(inc.Args, TAny{})
 		}
@@ -3201,6 +3205,9 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 		defaults = append(defaults, nil)
 	}
 	if ps.Block != nil {
+		if m.Block == nil && m.sigText == "" && !m.File.prelude { // unannotated: an untyped block, any arguments, optional (decision 183)
+			m.Block = &BlockSig{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}, Optional: true, Untyped: true}
+		}
 		if m.Block == nil {
 			c.errorf(m.File, ps, "a &block parameter needs a block in the signature (`#: () { (T) -> U } -> R`)")
 		}

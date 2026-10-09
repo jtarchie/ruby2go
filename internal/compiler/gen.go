@@ -2439,7 +2439,7 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 const optBlockGo = "blkOpt_"
 
 func optBlockType(m *Method) Type {
-	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true, Self: m.Block.Self}}
+	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true, Self: m.Block.Self, Rest: m.Block.Rest}}
 }
 
 func (c *Compiler) emitMethod(m *Method) {

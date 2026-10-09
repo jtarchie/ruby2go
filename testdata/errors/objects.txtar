@@ -102,7 +102,7 @@ class Host
   include NotAModule
 end
 -- include_generic_without_args.rb --
-# error: main.rb:3: include Enumerable needs 1 type args
+# warning: main.rb:3: include Enumerable is untyped
 class Bag
   include Enumerable
 end
