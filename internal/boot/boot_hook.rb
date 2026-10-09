@@ -38,14 +38,67 @@ module Boot
       @class_tp.enable
     end
 
+    # TracePoints, not a prepended wrapper: MRI's define_method reads the caller's scope (`module_function` makes
+    # it a module function too), which a wrapper's `super` would hide. The caller's locals come from the last :line
+    # event when it is the define_method call's own line: what the block captures, recorded when it is a literal
+    # (decision 198).
     def install_define_method
-      hook = Module.new do
-        def define_method(name, *args, &blk)
-          ::Boot.record_define_method(self, name, blk, args)
-          super(name, *args, &blk)
+      @last_binding = nil
+      @line_tp = TracePoint.new(:line) { |tp| @last_binding = tp.binding }
+      @line_tp.enable
+      calls = []
+      @define_method_tp = TracePoint.new(:c_call, :c_return) do |tp|
+        next unless tp.method_id == :define_method || tp.method_id == :define_singleton_method
+
+        if tp.event == :c_call
+          b = @last_binding
+          b = nil unless b && b.source_location == [tp.path, tp.lineno]
+          calls << [tp.path, tp.lineno, b]
+          next
         end
+        path, line, b = calls.pop
+        name = tp.return_value
+        owner = tp.method_id == :define_singleton_method ? tp.self.singleton_class : tp.self
+        next unless owner.is_a?(Module) && name.is_a?(Symbol)
+
+        singleton = owner.singleton_class?
+        named = singleton ? owner.attached_object : owner
+        m = (owner.instance_method(name) rescue nil)
+        from = m && m.original_name != name ? m.owner : nil
+        @define_methods << {
+          "owner" => safe_name(named), "singleton" => singleton, "name" => name.to_s, "file" => path, "line" => line,
+          "source" => nil, "from" => safe_name(from), "private" => owner.private_method_defined?(name),
+          "module_function" => !singleton && named.singleton_class.method_defined?(name) &&
+            named.singleton_class.instance_method(name).source_location == m&.source_location,
+          "captures" => captures(b)
+        }
       end
-      Module.prepend(hook)
+      @define_method_tp.enable
+    end
+
+    # The caller's locals that are plain data, as Ruby literals.
+    def captures(b)
+      return {} unless b
+
+      b.local_variables.each_with_object({}) do |v, out|
+        lit = literal(b.local_variable_get(v))
+        out[v.to_s] = lit if lit
+      end
+    end
+
+    def literal(x, depth = 0)
+      return nil if depth > 6
+
+      case x
+      when nil, true, false, Integer, Float, Symbol then x.inspect
+      when String then x.size > 100_000 ? nil : x.inspect
+      when Array
+        parts = x.map { |e| literal(e, depth + 1) }
+        parts.all? ? "[#{parts.join(", ")}]" : nil
+      when Hash
+        parts = x.map { |k, e| (kl = literal(k, depth + 1)) && (el = literal(e, depth + 1)) && "#{kl} => #{el}" }
+        parts.all? ? "{#{parts.join(", ")}}" : nil
+      end
     end
 
     # A string eval reaches the compiler only through the manifest. Kernel#eval,
@@ -85,14 +138,6 @@ module Boot
         end
       end
       Module.prepend(hook)
-    end
-
-    def record_define_method(owner, name, blk, args)
-      loc = blk&.source_location || [nil, nil]
-      @define_methods << { "owner" => safe_name(owner), "name" => name.to_s,
-                           "file" => loc[0], "line" => loc[1],
-                           "source" => nil,
-                           "from" => args.empty? ? nil : safe_name(args[0]) }
     end
 
     def record_eval(src, file, line)
@@ -156,6 +201,7 @@ module Boot
 
     def dump(path)
       @class_tp&.disable
+      @line_tp&.disable
       classes = @classes.map do |name, info|
         owner = Object.const_get(name) rescue nil
         anc = owner.is_a?(Module) ? owner.ancestors.map { |a| safe_name(a) } : []

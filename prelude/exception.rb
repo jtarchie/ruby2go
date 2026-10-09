@@ -317,8 +317,12 @@ class ZeroDivisionError < StandardError; end
 
 class ScriptError < Exception; end
 
-# Never raised by rb2go: require of an unknown library is a compile error (decision 68), so `rescue LoadError` never runs.
+# Raised only for a require in a method that names a file outside the closed world (decision 197); otherwise an unknown
+# library is a compile error (decision 68).
 class LoadError < ScriptError; end
+
+#: (String) -> bot
+def __rb2go_load_error(name) = raise(LoadError, "cannot load such file -- #{name}")
 
 # Never raised by rb2go (there is no eval); MRI's default message.
 class SyntaxError < ScriptError

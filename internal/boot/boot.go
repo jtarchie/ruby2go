@@ -44,12 +44,16 @@ type ClassInfo struct {
 // MethodInfo is a method made by define_method (or from an existing
 // UnboundMethod): Source is the block's text, nil for the latter.
 type MethodInfo struct {
-	Owner  string `json:"owner"`
-	Name   string `json:"name"`
-	File   string `json:"file"`
-	Line   int    `json:"line"`
-	Source string `json:"source"`
-	From   string `json:"from"`
+	Owner          string            `json:"owner"`
+	Singleton      bool              `json:"singleton"` // defined on Owner's singleton class
+	Name           string            `json:"name"`
+	File           string            `json:"file"` // the define_method call's site
+	Line           int               `json:"line"`
+	Source         string            `json:"source"`
+	From           string            `json:"from"`
+	Private        bool              `json:"private"`
+	ModuleFunction bool              `json:"module_function"`    // also a singleton method (module_function scope)
+	Captures       map[string]string `json:"captures,omitempty"` // the caller's plain-data locals, as Ruby literals (decision 198)
 }
 
 // EvalInfo is a string eval: Source is the evaluated text.

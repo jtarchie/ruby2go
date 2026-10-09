@@ -27,11 +27,11 @@ func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	aug, autoloaded, err := bootSources(ctx, sources, append(slices.Clip(loadPath), gemDirs...))
+	aug, autoloaded, dms, err := bootSources(ctx, sources, append(slices.Clip(loadPath), gemDirs...))
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := options{loadPath: loadPath, gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded}
+	opts := options{loadPath: loadPath, gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, defineMethods: dms}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	return out, opts.warnings, err
 }
@@ -40,6 +40,9 @@ func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
+	}
+	if main, traced := tracedEntry(sources[0].Src); traced {
+		return compileTraced(ctx, preludeFS, gemSigs, sources, main, loadPath)
 	}
 	names, err := gemRequires(ctx, sources, loadPath)
 	var gemDirs []string
@@ -57,15 +60,15 @@ func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 
 // bootSources runs boot on sources[0] and appends the files its resolved
 // autoloads loaded, in first-seen order, that are not already sources, with each one's constant by real path.
-func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]Source, map[string]string, error) {
+func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]Source, map[string]string, []boot.MethodInfo, error) {
 	entry := sourceName(sources[0])
 	_, statErr := os.Stat(entry)
 	if statErr != nil {
-		return sources, nil, nil //nolint:nilerr // no file on disk (the playground): nothing to boot
+		return sources, nil, nil, nil //nolint:nilerr // no file on disk (the playground): nothing to boot
 	}
 	m, err := boot.Capture(ctx, entry, loadPath...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("boot: %w", err)
+		return nil, nil, nil, fmt.Errorf("boot: %w", err)
 	}
 	consts := map[string]string{}
 	seen := map[string]bool{}
@@ -80,12 +83,12 @@ func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]So
 		seen[realPath(a.Loaded)] = true
 		data, rerr := os.ReadFile(a.Loaded)
 		if rerr != nil {
-			return nil, nil, fmt.Errorf("boot: %w", rerr)
+			return nil, nil, nil, fmt.Errorf("boot: %w", rerr)
 		}
 		out = append(out, Source{Name: filepath.Base(a.Loaded), Src: data, Path: a.Loaded})
 		consts[realPath(a.Loaded)] = a.Const
 	}
-	return out, consts, nil
+	return out, consts, m.DefineMethods, nil
 }
 
 // neededAutoloads keeps the boot-resolved autoload files whose constant another program file names (decision 175); the rest are marked loaded, so never compiled.
@@ -133,4 +136,37 @@ func sourceName(s Source) string {
 		return s.Path
 	}
 	return s.Name
+}
+
+// tracedEntry reports whether src is a decision 197 entry (`# rb2go_method_requires: runtime`) and the
+// `# rb2go_main:` file it names, if any.
+func tracedEntry(src []byte) (main string, traced bool) {
+	for line := range strings.SplitSeq(string(src), "\n") {
+		switch {
+		case line == "# rb2go_method_requires: runtime":
+			traced = true
+		case strings.HasPrefix(line, "# rb2go_main: "):
+			main = strings.TrimSpace(strings.TrimPrefix(line, "# rb2go_main: "))
+		}
+	}
+	return main, traced
+}
+
+// compileTraced compiles a decision 197 entry: its -I dirs are gem dirs (boot, leniency and pruning, decisions
+// 161/169/172), boot runs the entry's load list, and the main file it names is compiled after it, never booted.
+func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, main string, gemDirs []string) ([]byte, []string, error) {
+	aug, autoloaded, dms, err := bootSources(ctx, sources, gemDirs)
+	if err != nil {
+		return nil, nil, err
+	}
+	if main != "" {
+		data, rerr := os.ReadFile(main) //nolint:gosec // the entry names the program's main file
+		if rerr != nil {
+			return nil, nil, fmt.Errorf("rb2go_main: %w", rerr)
+		}
+		aug = append(aug, Source{Name: main, Src: data, Path: main})
+	}
+	opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, defineMethods: dms}
+	out, err := compile(ctx, preludeFS, aug, &opts)
+	return out, opts.warnings, err
 }

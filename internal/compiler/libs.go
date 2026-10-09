@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -105,6 +104,9 @@ func gemRequires(ctx context.Context, sources []Source, loadPath []string) (name
 	}
 	c := &Compiler{parser: p, loadPath: loadPath}
 	libs, _, err := c.scanRequires(ctx, sources)
+	if c.methodRequiresRuntime {
+		return nil, err // decision 197: the traced entry names every library through -I; nothing to look up
+	}
 	// ponytail: a missing gem's require under `rescue LoadError` still errors; mark guarded requires in requireScan to skip them.
 	for _, lib := range libs {
 		name := strings.TrimSuffix(lib, ".rb")
@@ -139,6 +141,7 @@ func (c *Compiler) scanRequires(ctx context.Context, sources []Source) (libs []s
 			return nil, nil, perr
 		}
 		uf.path = path
+		c.readMagic(src.Src)
 		sc.parsed[path] = uf
 		sc.walk(uf)
 	}
@@ -175,6 +178,9 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 		return
 	}
 	if call, ok := n.(*parser.CallNode); ok && call.Receiver == nil && (call.Name == "require" || call.Name == "require_relative") {
+		if !sc.top && sc.c.methodRequiresRuntime {
+			return // decision 197: resolved at run time against what top-level requires compiled in
+		}
 		sc.require(f, call, sc.top)
 		return
 	}
@@ -200,7 +206,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 		str, _ = args[0].(*parser.StringNode)
 	}
 	if str == nil {
-		if top {
+		if top && !sc.c.methodRequiresRuntime { // decision 197: the trace compiled in what a computed require loads
 			sc.c.errorf(f, call, "%s needs a string literal: rb2go loads libraries at compile time", call.Name)
 		}
 		return // a computed require in a method: a no-op at run time
@@ -221,7 +227,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 		return
 	}
 	sc.seen[path] = true
-	src, err := os.ReadFile(target) //nolint:gosec // the user's program names it
+	src, err := sc.c.readUser(target)
 	if err != nil {
 		return // the collect pass reports it where it stands
 	}
@@ -246,6 +252,63 @@ func (c *Compiler) loadLibs(ctx context.Context, libs []string, all bool) {
 	for _, lib := range libs {
 		if file := preludeLibs[strings.TrimSuffix(lib, ".rb")]; file != "" {
 			c.loadPrelude(ctx, file)
+		}
+	}
+}
+
+// genRuntimeRequire is a require inside a method under decision 197: true when what it names was compiled in (or is a
+// library the prelude or MRI answers), else MRI's LoadError, since the file is outside the closed world.
+func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
+	args := callArgs(n)
+	str, ok := firstArg(args).(*parser.StringNode)
+	if !ok || len(args) != 1 {
+		return expr{code: "false", typ: f.cls("Boolean"), lit: true} // ponytail: computed names are assumed compiled in; check a table of loaded features to raise LoadError
+	}
+	name := str.Unescaped.Value
+	var target string
+	if n.Name == "require_relative" {
+		target = filepath.Join(filepath.Dir(f.f.path), filepath.FromSlash(name))
+		if filepath.Ext(target) != ".rb" {
+			target += ".rb"
+		}
+	} else {
+		target = f.c.findRequire(f.f, n)
+	}
+	switch {
+	case target != "" && f.c.loaded[realPath(target)]:
+	case target == "" && n.Name == "require" && (preludeLibs[strings.TrimSuffix(name, ".rb")] != "" || mriLibs[strings.SplitN(name, "/", 2)[0]]):
+	default:
+		call := &parser.CallNode{Location: n.Location, Name: "__rb2go_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
+		return f.genExpr(call, nil)
+	}
+	return expr{code: "false", typ: f.cls("Boolean"), lit: true}
+}
+
+// readMagic reads the main file's decision 197 comments: `# rb2go_method_requires: runtime`,
+// `# rb2go_replace: path => file` and `# rb2go_fold: expr => true|false`.
+func (c *Compiler) readMagic(src []byte) {
+	for line := range strings.SplitSeq(string(src), "\n") {
+		switch {
+		case line == "# rb2go_method_requires: runtime":
+			c.methodRequiresRuntime = true
+		case strings.HasPrefix(line, "# rb2go_fold: "):
+			expr, val, ok := strings.Cut(strings.TrimPrefix(line, "# rb2go_fold: "), " => ")
+			if !ok || (val != "true" && val != "false") {
+				c.errorf(nil, nil, "rb2go_fold: expected `expression => true|false`, got %q", line)
+			}
+			if c.facts == nil {
+				c.facts = map[string]bool{}
+			}
+			c.facts[strings.TrimSpace(expr)] = val == "true"
+		case strings.HasPrefix(line, "# rb2go_replace: "):
+			from, to, ok := strings.Cut(strings.TrimPrefix(line, "# rb2go_replace: "), " => ")
+			if !ok {
+				c.errorf(nil, nil, "rb2go_replace: expected `path => file`, got %q", line)
+			}
+			if c.replaced == nil {
+				c.replaced = map[string]string{}
+			}
+			c.replaced[realPath(strings.TrimSpace(from))] = strings.TrimSpace(to)
 		}
 	}
 }

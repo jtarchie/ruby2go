@@ -20,83 +20,89 @@ import (
 	"time"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+	"github.com/jtarchie/ruby2go/internal/boot"
 	"github.com/jtarchie/ruby2go/internal/rbs"
 	"github.com/tetratelabs/wazero"
 )
 
 // Compiler holds the whole program: the prelude and the user files, one closed world.
 type Compiler struct {
-	erbSnippets         map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)
-	rewrites            map[parser.Node]parser.Node // desugared nodes, built once so every pass sees one tree
-	loopInner           map[*parser.CallNode]bool   // the loop calls loopRescue wrapped, not wrapped again
-	erbCounter          int
-	labels              map[string]string // Go function (its table key) → Ruby backtrace label, for every function emitted (decision 106)
-	classes             map[string]*Class
-	classList           []*Class
-	topDefs             map[string]*Method
-	consts              map[string]*Const
-	topConstNames       []string // constants declared at top level: Object's table
-	dynNames            []string // method names called on untyped values
-	dynSeen             map[string]bool
-	universalNames      map[string]bool     // memo of universalHas
-	dispatchMemo        map[*Method]bool    // memo of dispatchable
-	goCalledNames       map[string]bool     // memo of goCalled
-	renderingConstraint bool                // constraintNamesSelf is rendering a module interface
-	sends               map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)
-	sendOut             map[string]bool     // dispatchers emitted
-	dynAll              bool                // a computed send/respond_to?: every method may be named
-	respondNames        []string            // names asked about with respond_to? at run time
-	respondSeen         map[string]bool
-	markers             map[string]bool         // rbHas<marker> helpers emitted
-	classOf             bool                    // `.class` on a value only known at run time: emit rbClassOf
-	dynGo               map[string]string       // Go name → the Ruby name its dispatchers serve
-	dynWrapped          map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
-	warned              map[string]bool
-	regexps             []string                // package-level compiled literals (and DATA's StringIO)
-	dataVar             bool                    // rbDATA is declared
-	beginStmts          map[*File][]parser.Node // BEGIN { } bodies, run first in their file
-	regexpVars          map[string]string       // literal → its variable, to share one per pattern
-	strLits             map[string]bool         // String literal texts: String#frozen? knows them by identity
-	constList           []*Const
-	hooks               []classHook // main.rb's inherited/included/extended sites
-	topDefList          []*Method
-	verbatim            []verbatim
-	mainStmts           []parser.Node
-	classStmts          []*classStmt     // class/module body statements that run at load time (decision 166)
-	bodyGroup           *classStmt       // collecting a class body with locals: its statements, as one unit (decision 170)
-	mainFile            *File            // the first user file: $0, and the generated header
-	userFiles           []*File          // in load order
-	loadCode            map[*File]string // a required file's top level, generated, for the loadFile that splices it
-	required            map[*File]bool   // user files require_relative loaded: they run where required, not as a top level of their own
-	stmtFile            map[parser.Node]*File
-	dynEvery            bool                    // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
-	dynLazy             map[string]bool         // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
-	dynOut              map[string]bool         // dispatchers emitted
-	dynGen              map[*Class][]dynGenCase // a generic class's wrappers of this emitDynamic batch, emitted as one switch (decision 209)
-	dynGenRound         int                     // batches whose generic wrappers are out: names the next _DynGen method
-	respondOut          map[string]bool         // respond_to? checks emitted
-	fwdOut              map[*Class]bool         // forwarders emitted
-	selfTyped           map[*Class]bool         // a module whose constraint names Self (decision 208)
-	tablesOut           bool
-	tablesAt            [10]int         // tableInputs when the tables went out
-	callable            map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
-	files               []*File
-	preludeFS           fs.FS
-	parser              *parser.Parser
-	loaded              map[string]bool           // prelude names, and user files' real paths
-	parsed              map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
-	loadPath            []string                  // -I directories (decision 131)
-	gemDirs             []string                  // installed gems' lib dirs, searched after loadPath: their files are gem code (decision 173)
-	sigs                map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
-	gemSigs             fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
-	autoloaded          map[string]bool           // boot-resolved autoload files: loaded where their autoload registers (decision 175)
-	pruneGems           bool                      // a gem program: unreached gem methods are dropped (decision 169)
-	gemNilIvars         []gemNilIvar              // gem ivars discovery saw only nil assigned to (decision 169)
-	nilIvars            map[string]bool           // class#@ivar assigned nil where no type was known: a subclass's assignment types it (decision 182)
-	autoloads           map[string]bool           // `autoload :X` constants by qualified name: defined? answers for them (decision 167)
-	out                 strings.Builder
-	convs               map[string]bool // conversion sites emitted during a refineIvars dry run
-	Warnings            []string
+	erbSnippets           map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)
+	rewrites              map[parser.Node]parser.Node // desugared nodes, built once so every pass sees one tree
+	loopInner             map[*parser.CallNode]bool   // the loop calls loopRescue wrapped, not wrapped again
+	erbCounter            int
+	labels                map[string]string // Go function (its table key) → Ruby backtrace label, for every function emitted (decision 106)
+	classes               map[string]*Class
+	classList             []*Class
+	topDefs               map[string]*Method
+	consts                map[string]*Const
+	topConstNames         []string // constants declared at top level: Object's table
+	dynNames              []string // method names called on untyped values
+	dynSeen               map[string]bool
+	universalNames        map[string]bool     // memo of universalHas
+	dispatchMemo          map[*Method]bool    // memo of dispatchable
+	goCalledNames         map[string]bool     // memo of goCalled
+	renderingConstraint   bool                // constraintNamesSelf is rendering a module interface
+	sends                 map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)
+	sendOut               map[string]bool     // dispatchers emitted
+	dynAll                bool                // a computed send/respond_to?: every method may be named
+	respondNames          []string            // names asked about with respond_to? at run time
+	respondSeen           map[string]bool
+	markers               map[string]bool         // rbHas<marker> helpers emitted
+	classOf               bool                    // `.class` on a value only known at run time: emit rbClassOf
+	dynGo                 map[string]string       // Go name → the Ruby name its dispatchers serve
+	dynWrapped            map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
+	warned                map[string]bool
+	regexps               []string                // package-level compiled literals (and DATA's StringIO)
+	dataVar               bool                    // rbDATA is declared
+	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
+	regexpVars            map[string]string       // literal → its variable, to share one per pattern
+	strLits               map[string]bool         // String literal texts: String#frozen? knows them by identity
+	constList             []*Const
+	hooks                 []classHook // main.rb's inherited/included/extended sites
+	topDefList            []*Method
+	verbatim              []verbatim
+	mainStmts             []parser.Node
+	classStmts            []*classStmt     // class/module body statements that run at load time (decision 166)
+	bodyGroup             *classStmt       // collecting a class body with locals: its statements, as one unit (decision 170)
+	mainFile              *File            // the first user file: $0, and the generated header
+	userFiles             []*File          // in load order
+	loadCode              map[*File]string // a required file's top level, generated, for the loadFile that splices it
+	required              map[*File]bool   // user files require_relative loaded: they run where required, not as a top level of their own
+	stmtFile              map[parser.Node]*File
+	dynEvery              bool                    // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
+	dynLazy               map[string]bool         // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
+	dynOut                map[string]bool         // dispatchers emitted
+	dynGen                map[*Class][]dynGenCase // a generic class's wrappers of this emitDynamic batch, emitted as one switch (decision 209)
+	dynGenRound           int                     // batches whose generic wrappers are out: names the next _DynGen method
+	respondOut            map[string]bool         // respond_to? checks emitted
+	fwdOut                map[*Class]bool         // forwarders emitted
+	selfTyped             map[*Class]bool         // a module whose constraint names Self (decision 208)
+	tablesOut             bool
+	tablesAt              [10]int         // tableInputs when the tables went out
+	callable              map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
+	files                 []*File
+	preludeFS             fs.FS
+	parser                *parser.Parser
+	loaded                map[string]bool           // prelude names, and user files' real paths
+	parsed                map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
+	loadPath              []string                  // -I directories (decision 131)
+	gemDirs               []string                  // installed gems' lib dirs, searched after loadPath: their files are gem code (decision 173)
+	sigs                  map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
+	gemSigs               fs.FS                     // vendored gem `.rbs` signatures (decision 160), or nil
+	autoloaded            map[string]bool           // boot-resolved autoload files: loaded where their autoload registers (decision 175)
+	pruneGems             bool                      // a gem program: unreached gem methods are dropped (decision 169)
+	gemNilIvars           []gemNilIvar              // gem ivars discovery saw only nil assigned to (decision 169)
+	nilIvars              map[string]bool           // class#@ivar assigned nil where no type was known: a subclass's assignment types it (decision 182)
+	autoloads             map[string]bool           // `autoload :X` constants by qualified name: defined? answers for them (decision 167)
+	out                   strings.Builder
+	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
+	Warnings              []string
+	methodRequiresRuntime bool                      // `# rb2go_method_requires: runtime`: a require in a method is not followed at compile time (decision 197)
+	replaced              map[string]string         // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
+	facts                 map[string]bool           // `# rb2go_fold: expr => bool`: build-time facts a class-body condition folds (decision 197)
+	dmSites               map[*parser.CallNode]bool // define_method calls boot recorded: no-ops at run time (decision 198)
+	prepends              []pendingPrepend          // prepends in load order, applied at link (decision 199)
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
 	dynEach          bool                              // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
@@ -211,19 +217,20 @@ type Source struct {
 
 // options are a compile's settings beyond its sources.
 type options struct {
-	skipTests  bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
-	skipped    []SkippedTest // what skipTests skipped
-	warnings   []string
-	loadPath   []string // -I directories, which a user `require` searches first
-	gemDirs    []string // gem lib dirs, searched after loadPath (decision 173)
-	infer      *inference
-	round      bool
-	inferDone  bool
-	seed       *Inference        // types from an earlier compile of these sources, updated by this one
-	allLibs    bool              // load every prelude lib, required or not (the stub generator, decision 154)
-	gemSigs    fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
-	pruneGems  bool              // drop gem methods no reachable code names (decision 169)
-	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
+	skipTests     bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
+	skipped       []SkippedTest // what skipTests skipped
+	warnings      []string
+	loadPath      []string // -I directories, which a user `require` searches first
+	gemDirs       []string // gem lib dirs, searched after loadPath (decision 173)
+	infer         *inference
+	round         bool
+	inferDone     bool
+	seed          *Inference        // types from an earlier compile of these sources, updated by this one
+	allLibs       bool              // load every prelude lib, required or not (the stub generator, decision 154)
+	gemSigs       fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
+	pruneGems     bool              // drop gem methods no reachable code names (decision 169)
+	autoloaded    map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
+	defineMethods []boot.MethodInfo // what boot's define_method calls made (decision 198)
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -311,6 +318,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	c.parsed = parsed
 	c.autoloaded = c.neededAutoloads(opts.autoloaded)
+	c.markDefineMethods(opts.defineMethods)
 	c.loadPrelude(ctx, "prelude.rb")
 	c.loadLibs(ctx, libs, opts.allLibs || os.Getenv("RB2GO_ALL_LIBS") != "")
 	c.loadSigs(sources)
@@ -333,6 +341,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	for _, uf := range c.userFiles {
 		c.collectERB(ctx, uf) // templates need every constant collected (decision 111)
 	}
+	c.collectDefineMethods(ctx, opts.defineMethods)
 	tick("user")
 	if c.pruneGems = opts.pruneGems; c.pruneGems {
 		c.pruneGemMethods()
@@ -548,7 +557,7 @@ func (c *Compiler) userRequireRelative(ctx context.Context, f *File, n *parser.C
 	if filepath.Ext(target) != ".rb" {
 		target += ".rb"
 	}
-	src, err := os.ReadFile(target) //nolint:gosec // the user's program names it
+	src, err := c.readUser(target)
 	if err != nil {
 		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
 	}
@@ -563,7 +572,7 @@ func (c *Compiler) userRequire(ctx context.Context, f *File, n *parser.CallNode)
 	if target == "" {
 		return nil, false
 	}
-	src, err := os.ReadFile(target) //nolint:gosec // found on the user's -I path
+	src, err := c.readUser(target)
 	if err != nil {
 		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
 	}
@@ -697,4 +706,16 @@ func phaseTimer() func(string) {
 		fmt.Fprintf(os.Stderr, "rb2go: %-8s %6dms\n", name, now.Sub(last).Milliseconds())
 		last = now
 	}
+}
+
+// readUser reads a user file to compile, or what the entry's `# rb2go_replace:` puts in its place (decision 197).
+func (c *Compiler) readUser(target string) ([]byte, error) {
+	if rep := c.replaced[realPath(target)]; rep != "" {
+		target = rep
+	}
+	data, err := os.ReadFile(target) //nolint:gosec // the user's program names it
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", target, err)
+	}
+	return data, nil
 }

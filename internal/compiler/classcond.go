@@ -77,6 +77,9 @@ func (c *Compiler) foldCond(f *File, n parser.Node, scope []*Class) (value, ok b
 		}
 		return c.foldCond(f, n.Right, scope)
 	case *parser.CallNode:
+		if v, known := c.facts[f.text(n.Location)]; known { // `# rb2go_fold: OS.mac? => false` (decision 197)
+			return v, true
+		}
 		if n.Name == "!" && n.Receiver != nil && n.Arguments == nil {
 			v, ok := c.foldCond(f, n.Receiver, scope)
 			return !v, ok

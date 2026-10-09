@@ -66,6 +66,24 @@ func (f *File) sorbetWalk(n parser.Node) {
 			return
 		}
 	}
+	if w, ok := n.(*parser.ConstantWriteNode); ok {
+		if c, ok := w.Value.(*parser.CallNode); ok && c.Receiver == nil && (c.Name == "type_member" || c.Name == "type_template") {
+			if f.sorbetAliases == nil {
+				f.sorbetAliases = map[parser.Node]string{}
+			}
+			f.sorbetAliases[w] = typeMemberFixed(c) // ponytail: only `fixed:` members; a generic class's real type params need T::Generic support
+			w.Value = &parser.NilNode{Location: c.Location}
+			return
+		}
+		if c, ok := w.Value.(*parser.CallNode); ok && isTCall(c, "type_alias") {
+			if f.sorbetAliases == nil {
+				f.sorbetAliases = map[parser.Node]string{}
+			}
+			f.sorbetAliases[w] = sorbetType(blockExpr(c))
+			w.Value = &parser.NilNode{Location: c.Location}
+			return
+		}
+	}
 	if v := writeValue(n); v != nil {
 		if c, ok := (*v).(*parser.CallNode); ok && isTCall(c, "let") && len(callArgs(c)) == 2 {
 			ln := f.line(n.GetLocation().StartOffset + n.GetLocation().Length - 1)
@@ -106,6 +124,13 @@ func (f *File) sorbetStatements(body []parser.Node) []parser.Node {
 		if ok && isTCall(c, "bind") { // `T.bind(self, X)`: a closed world already knows self's class
 			continue
 		}
+		if ok && c.Name == "sig" && c.Block != nil && strings.TrimPrefix(constName(c.Receiver), "::") == "T::Sig::WithoutRuntime" {
+			if i+1 == len(body) {
+				sorbetFail(c, "sig with no method after it")
+			}
+			f.attachSig(c, body[i+1])
+			continue
+		}
 		if !ok || c.Receiver != nil {
 			out = append(out, st)
 			continue
@@ -118,6 +143,7 @@ func (f *File) sorbetStatements(body []parser.Node) []parser.Node {
 			f.attachSig(c, body[i+1])
 		case (c.Name == "extend" || c.Name == "include") && isSorbetModuleArg(c):
 		case sorbetDirectives[c.Name] && c.Arguments == nil:
+		case c.Name == "requires_ancestor" && c.Block != nil && c.Arguments == nil:
 		default:
 			out = append(out, st)
 		}
@@ -134,7 +160,7 @@ func isSorbetModuleArg(c *parser.CallNode) bool {
 	if !ok {
 		return false
 	}
-	return strings.TrimPrefix(constName(p.Parent), "::") == "T" && p.Name != nil && (*p.Name == "Sig" || *p.Name == "Helpers")
+	return strings.TrimPrefix(constName(p.Parent), "::") == "T" && p.Name != nil && (*p.Name == "Sig" || *p.Name == "Helpers" || *p.Name == "Generic")
 }
 
 func constName(n parser.Node) string {
@@ -381,9 +407,15 @@ func sorbetType(n parser.Node) string {
 		var els []string
 		for _, e := range n.Elements {
 			as, ok := e.(*parser.AssocNode)
+			if !ok {
+				sorbetFail(e, "unsupported shape type")
+			}
+			if _, str := as.Key.(*parser.StringNode); str {
+				return "Hash[String, untyped]" // a String-keyed shape: RBS records key by symbol
+			}
 			sym, sok := as.Key.(*parser.SymbolNode)
-			if !ok || !sok {
-				sorbetFail(e, "a shape type takes symbol keys")
+			if !sok {
+				sorbetFail(e, "a shape type takes symbol or string keys")
 			}
 			els = append(els, sym.Unescaped.Value+": "+sorbetType(as.Value))
 		}
@@ -420,6 +452,13 @@ func sorbetCallType(n *parser.CallNode) string {
 			t = "(" + t + ")"
 		}
 		return t + "?"
+	case "all": // ponytail: an intersection is typed as its first class arm; model RBS intersections when one needs both
+		for _, a := range callArgs(n) {
+			if name := constName(a); name != "Object" && name != "BasicObject" && name != "::Object" {
+				return sorbetType(a)
+			}
+		}
+		return "untyped"
 	case "any":
 		var arms []string
 		for _, a := range callArgs(n) {
@@ -497,4 +536,41 @@ func (f *fctx) genSorbetCast(n *parser.CallNode, ann string) expr {
 	t := f.parseTypeAnn(n, ann)
 	v := f.genExpr(callArgs(n)[0], t)
 	return expr{code: f.coerce(n, v, t), typ: t}
+}
+
+// blockExpr is the one expression a `T.type_alias { ... }` block holds.
+func blockExpr(c *parser.CallNode) parser.Node {
+	blk, ok := c.Block.(*parser.BlockNode)
+	if !ok {
+		sorbetFail(c, "T.type_alias takes a block")
+	}
+	body, ok := blk.Body.(*parser.StatementsNode)
+	if !ok || len(body.Body) != 1 {
+		sorbetFail(c, "T.type_alias's block must be one type")
+	}
+	return body.Body[0]
+}
+
+// typeMemberFixed is a `type_member { { fixed: T } }`'s T, else untyped.
+func typeMemberFixed(c *parser.CallNode) string {
+	blk, ok := c.Block.(*parser.BlockNode)
+	if !ok {
+		return "untyped"
+	}
+	body, ok := blk.Body.(*parser.StatementsNode)
+	if !ok || len(body.Body) != 1 {
+		return "untyped"
+	}
+	h, ok := body.Body[0].(*parser.HashNode)
+	if !ok {
+		return "untyped"
+	}
+	for _, el := range h.Elements {
+		if as, ok := el.(*parser.AssocNode); ok {
+			if sym, ok := as.Key.(*parser.SymbolNode); ok && sym.Unescaped.Value == "fixed" {
+				return sorbetType(as.Value)
+			}
+		}
+	}
+	return "untyped"
 }

@@ -1654,11 +1654,17 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 	case "raise", "fail":
 		return f.genRaise(n), true
 	case "require_relative":
+		if f.c.methodRequiresRuntime && !f.f.prelude {
+			return f.genRuntimeRequire(n), true
+		}
 		if !f.f.prelude {
 			f.errorf(n, "require_relative must be a top-level statement: rb2go loads files at compile time")
 		}
 		return expr{code: "", stmt: true, typ: TVoid{}}, true
 	case "require":
+		if f.c.methodRequiresRuntime && !f.f.prelude {
+			return f.genRuntimeRequire(n), true
+		}
 		if f.c.findRequire(f.f, n) != "" {
 			f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")
 		}
@@ -1693,7 +1699,12 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 			return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 		}
 		return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
-	case "binding", "send", "method_missing", "define_method":
+	case "define_method":
+		if f.c.dmSites[n] {
+			return expr{code: "nil", typ: TNil{}}, true // boot made its methods defs (decision 198)
+		}
+		f.errorf(n, "%s is not supported", n.Name)
+	case "binding", "send", "method_missing":
 		f.errorf(n, "%s is not supported", n.Name)
 	}
 	return expr{}, false
@@ -1721,6 +1732,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
 	if t, ok := f.f.sorbetCasts[n]; ok {
 		return f.genSorbetCast(n, t)
+	}
+	if n.Receiver != nil && f.c.dmSites[n] { // `base.define_method(...)`: boot made its methods defs (decision 198)
+		return expr{code: "nil", typ: TNil{}}
 	}
 	if e, ok := f.genKernelCall(n, expected); ok {
 		return e

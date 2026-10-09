@@ -108,6 +108,7 @@ type Const struct {
 	Line      int
 	Scope     []*Class // lexical scope of the assignment
 	ann       string   // trailing `#: T`
+	typeAlias string   // `X = T.type_alias { T }`: the RBS type X names in a sig (decision 196)
 	Type      Type
 	resolving bool
 	guarded   bool // may be read before its assignment runs (guardConsts)
@@ -170,6 +171,7 @@ type Method struct {
 	inferRet        bool    // no return annotation: Ret comes from the body (inferRet)
 	inferring       bool
 	structDef       *Method // the generated Struct/Data method a block def overrides; super reaches it
+	superTarget     *Method // a prepended module's copy: the class's own method it wraps, which super calls (decision 199)
 	valueGen        bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
@@ -519,6 +521,14 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		} else if hook := c.requireHook(f, n); hook != nil {
 			c.addMainStmt(f, hook)
 		}
+	case n.Name == "prepend" && !f.prelude && prependTarget(n) != nil: // `X.prepend(M)`, `X.singleton_class.prepend(M)` (decision 199)
+		recv, single := prependTarget(n), false
+		if sc, ok := recv.(*parser.CallNode); ok {
+			recv, single = sc.Receiver, true
+		}
+		for _, a := range callArgs(n) {
+			c.prepends = append(c.prepends, pendingPrepend{targetRef: constRef{node: recv, file: f}, singleton: single, mod: constRef{node: a, file: f}})
+		}
 	case n.Receiver == nil && n.Name == "autoload":
 		if sym, ok := symbolName(firstArg(callArgs(n))); ok {
 			c.noteAutoload(sym)
@@ -595,7 +605,7 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 		c.classes[name] = cls
 		c.classList = append(c.classList, cls)
 		c.noteConstName(name)
-	} else if cls.IsModule != isModule {
+	} else if cls.IsModule != isModule && (name != "Numeric" || f.prelude) { // MRI's class Numeric is the prelude's module (decision 142): `class Numeric` reopens it
 		c.errorf(f, nil, "%s:%d: %s is already defined as a %s", f.Name, line, name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
 	}
 	if c.consts[name] != nil {
@@ -760,6 +770,7 @@ func (c *Compiler) addConstAt(f *File, n parser.Node, full string, value parser.
 	}
 	k := &Const{RubyName: full, GoName: goClassName(full), Value: value, File: f, Line: f.line(n.GetLocation().StartOffset), Scope: scope}
 	k.ann = f.trailingAnnotation(n)
+	k.typeAlias = f.sorbetAliases[n]
 	c.consts[full] = k
 	c.constList = append(c.constList, k)
 	c.noteConstName(full)
@@ -833,6 +844,10 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 		case *parser.ConstantWriteNode:
 			c.collectBodyConst(ctx, f, n, scope, locals)
 		case *parser.IfNode, *parser.UnlessNode:
+			if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && loadTime && !declares(n) && !c.folds(f, n, scope) {
+				c.classBodyNode(ctx, f, n, scope, loadTime) // `raise "x" if OS.mac?`: a run-time condition around load-time code
+				continue
+			}
 			// spliced in place, so the branch shares the body's visibility and sees the constants before it
 			queue = append(slices.Clip(c.classBodyBranch(f, n, scope)), queue...)
 		default:
@@ -947,18 +962,11 @@ func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.Singleto
 			}
 			cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: s, private: private, scope: scope, file: f})
 		case *parser.CallNode:
-			switch {
-			case s.Name == "private" && s.Receiver == nil && s.Arguments == nil:
-				private = true
-			case s.Name == "public" && s.Receiver == nil && s.Arguments == nil:
-				private = false
-			case s.Receiver == nil && slices.Contains([]string{"attr", "attr_reader", "attr_writer", "attr_accessor", "alias_method"}, s.Name):
-				cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, private: private, scope: scope, file: f})
-			default:
-				c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
-			}
+			private = c.collectSingletonCall(f, cls, s, private, scope)
 		case *parser.AliasMethodNode:
 			cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, scope: scope, file: f})
+		case *parser.ConstantWriteNode: // ponytail: the owner's constant, not the singleton class's; lexical lookup from its defs is the same
+			c.addConst(f, s, s.Name, nil, scope)
 		default:
 			c.errorf(f, s, "unsupported node in `class << self`: %s", nodeType(s))
 		}
@@ -991,6 +999,10 @@ func (c *Compiler) collectVisibilityCall(f *File, cls *Class, n *parser.CallNode
 	}
 	named := func(name string) *Method {
 		m := cls.Methods[name]
+		if m == nil && !f.prelude {
+			// ponytail: `private :m` of an inherited or included method is ignored (it only restricts callers); copy it with the new visibility via linkAliases if a program depends on the NoMethodError
+			return &Method{}
+		}
 		if m == nil {
 			c.errorf(f, n, "undefined method '%s' for class '%s'", name, cls.RubyName)
 		}
@@ -1080,7 +1092,7 @@ func (c *Compiler) collectMethodTableCall(f *File, cls *Class, n *parser.CallNod
 					cls.singletonDefs[i].private, found = n.Name == "private_class_method", true
 				}
 			}
-			if !found {
+			if !found && f.prelude { // an inherited or extended method's visibility: ignored, as collectVisibilityCall does
 				c.errorf(f, n, "undefined method '%s' for class '%s'", name, cls.RubyName)
 			}
 		}
@@ -1181,7 +1193,7 @@ func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) [
 // does not implement, with a clearer message than the load-time call fallback
 // would give.
 func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
-	if n.Name == "prepend" {
+	if n.Name == "prepend" && f.prelude {
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
 }
@@ -1206,28 +1218,8 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		// deprecate_constant warns only with Warning[:deprecated], off by default.
 		c.noteAutoloadCall(n, args, scope)
 		c.loadAutoload(ctx, f, n)
-	case "include":
-		for _, a := range args {
-			c.addInclude(f, n, cls, a, scope)
-			if r, ok := a.(*parser.ConstantReadNode); ok && r.Name == "Singleton" && !cls.IsModule {
-				c.addSingletonInstance(ctx, f, n, cls, scope)
-			}
-		}
-		c.noteHooks(f, "included", cls, n, args, scope)
-	case "extend":
-		for _, a := range args {
-			c.addInclude(f, n, cls, a, scope)
-			last := len(cls.Includes) - 1
-			cls.extends = append(cls.extends, cls.Includes[last])
-			cls.Includes = cls.Includes[:last]
-		}
-		for _, a := range args { // MRI's def_delegator is the most recently extended module's (decision 132)
-			if r, ok := a.(*parser.ConstantReadNode); ok && (r.Name == "Forwardable" || r.Name == "SingleForwardable") {
-				cls.fwdSingle = r.Name == "SingleForwardable"
-				cls.singleFwd = cls.singleFwd || cls.fwdSingle
-			}
-		}
-		c.noteHooks(f, "extended", cls, n, args, scope)
+	case "include", "extend", "prepend":
+		c.collectMixinCall(ctx, f, cls, n, args, scope)
 	case "private", "public", "protected":
 		c.collectVisibilityCall(f, cls, n, args, vis, scope)
 	case "module_function", "private_class_method", "public_class_method", "undef_method", "remove_method":
@@ -1812,6 +1804,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.declareIvarAnnotations()
 	c.checkIvarModules()
 	c.expandDelegations(ctx)
+	c.applyPrepends()
 	c.linkAliases()
 	c.methodClassVars()
 	c.includeFromEach() // before any override inherits from the module, which needs its type args
@@ -2217,7 +2210,14 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 			}
 		}
 	}
-	cls, _ := c.lookupName(sc.lex, t.Name)
+	cls, k := c.lookupName(sc.lex, t.Name)
+	if cls == nil && k != nil && k.typeAlias != "" && len(t.Args) == 0 {
+		at, err := rbs.ParseType(k.typeAlias)
+		if err != nil {
+			c.errorf(k.File, nil, "%s:%d: %v", k.File.Name, k.Line, err)
+		}
+		return c.resolveType(at, typeScope{lex: k.Scope, file: k.File, line: k.Line})
+	}
 	if cls == nil {
 		c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
 	}
@@ -2892,6 +2892,9 @@ func (c *Compiler) inheritedSig(m *Method) *entry {
 			}
 			return &entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: cls}
 		}
+	}
+	if g := m.superTarget; g != nil { // a prepended copy: super is the method it replaced (decision 199)
+		return &entry{M: g, Owner: cls, Env: map[string]Type{}, Entry: cls}
 	}
 	if g := m.structDef; g != nil {
 		return &entry{M: g, Owner: cls, Env: map[string]Type{}, Entry: cls}
@@ -3570,4 +3573,184 @@ func (c *Compiler) noteAutoloadCall(n *parser.CallNode, args []parser.Node, scop
 	if sym, ok := symbolName(firstArg(args)); ok && n.Name == "autoload" {
 		c.noteAutoload(qualify(scope, sym))
 	}
+}
+
+// classBodyDecls are class-body calls that declare rather than run.
+var classBodyDecls = map[string]bool{
+	"attr": true, "attr_reader": true, "attr_writer": true, "attr_accessor": true, "include": true, "extend": true,
+	"prepend": true, "private": true, "public": true, "protected": true, "module_function": true, "alias_method": true,
+	"private_class_method": true, "public_class_method": true, "private_constant": true, "define_method": true,
+	"undef_method": true, "remove_method": true,
+}
+
+// declares reports whether n holds a declaration, which a run-time condition cannot guard in a closed world.
+func declares(n parser.Node) bool {
+	switch n := n.(type) {
+	case nil:
+		return false
+	case *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode, *parser.ConstantWriteNode,
+		*parser.ConstantPathWriteNode, *parser.AliasMethodNode, *parser.UndefNode:
+		return true
+	case *parser.CallNode:
+		if n.Receiver == nil && classBodyDecls[n.Name] {
+			return true
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if declares(ch) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Compiler) folds(f *File, n parser.Node, scope []*Class) bool {
+	_, ok := c.takenBranch(f, n, scope)
+	return ok
+}
+
+// pendingPrepend is `X.prepend(M)`, `X.singleton_class.prepend(M)` or a class body's `prepend M` (decision 199).
+type pendingPrepend struct {
+	target    *Class   // nil: resolve targetRef
+	targetRef constRef // the receiver constant of a top-level prepend
+	singleton bool     // X.singleton_class.prepend
+	mod       constRef
+}
+
+// applyPrepends copies each prepended module's methods into its class, in load order: a method the class defines
+// itself moves to a hidden private name that the copy's super calls, as MRI's ancestor order puts M before X.
+func (c *Compiler) applyPrepends() {
+	for i, p := range c.prepends {
+		target := p.target
+		if target == nil {
+			target = c.resolveClassRef(&p.targetRef)
+		}
+		if p.singleton {
+			target = c.metaFor(target)
+		}
+		mod := c.resolveClassRef(&p.mod)
+		if !mod.IsModule {
+			c.errorf(p.mod.file, p.mod.node, "prepend %s: not a module", mod.RubyName)
+		}
+		for _, mm := range slices.Clone(mod.MethodList) {
+			if mm.Kind != kindDef || mm.Node == nil {
+				continue
+			}
+			cp := *mm
+			cp.Owner = target
+			if orig := target.Methods[mm.Name]; orig != nil {
+				hidden := fmt.Sprintf("__prepended%d_%s", i, goMethodName(mm.Name))
+				target.MethodList = deleteMethod(target.MethodList, orig)
+				orig.Name, orig.GoName, orig.Private = hidden, hidden, true
+				target.Methods[hidden] = orig
+				target.MethodList = append(target.MethodList, orig)
+				cp.superTarget = orig
+			}
+			target.Methods[cp.Name] = &cp
+			target.MethodList = append(target.MethodList, &cp)
+		}
+		target.msetCache, target.msetIndex = nil, nil
+	}
+	for _, p := range c.prepends { // a module only prepended has no includer to compile its own copies (and their super) for
+		mod := c.resolveClassRef(&p.mod)
+		if !c.mixedIn(mod) {
+			mod.Methods, mod.MethodList = map[string]*Method{}, nil
+		}
+	}
+}
+
+func (c *Compiler) mixedIn(mod *Class) bool {
+	for _, cls := range c.classList {
+		for _, inc := range append(slices.Clip(cls.Includes), cls.extends...) {
+			if inc.Mod == mod {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// prependTarget is the receiver of `X.prepend(M)` or `X.singleton_class.prepend(M)`, or nil for any other prepend
+// (String#prepend).
+func prependTarget(n *parser.CallNode) parser.Node {
+	if len(callArgs(n)) == 0 {
+		return nil
+	}
+	switch r := n.Receiver.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		return r
+	case *parser.CallNode:
+		if r.Name == "singleton_class" && r.Arguments == nil {
+			switch r.Receiver.(type) {
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// collectMixinCall is a class body's include, extend or prepend (decision 199: prepend applies at link).
+func (c *Compiler) collectMixinCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
+	switch n.Name {
+	case "prepend":
+		for _, a := range args {
+			c.prepends = append(c.prepends, pendingPrepend{target: cls, mod: constRef{node: a, scope: scope, file: f}})
+		}
+	case "include":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			if r, ok := a.(*parser.ConstantReadNode); ok && r.Name == "Singleton" && !cls.IsModule {
+				c.addSingletonInstance(ctx, f, n, cls, scope)
+			}
+		}
+		c.noteHooks(f, "included", cls, n, args, scope)
+	case "extend":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			last := len(cls.Includes) - 1
+			cls.extends = append(cls.extends, cls.Includes[last])
+			cls.Includes = cls.Includes[:last]
+		}
+		for _, a := range args { // MRI's def_delegator is the most recently extended module's (decision 132)
+			if r, ok := a.(*parser.ConstantReadNode); ok && (r.Name == "Forwardable" || r.Name == "SingleForwardable") {
+				cls.fwdSingle = r.Name == "SingleForwardable"
+				cls.singleFwd = cls.singleFwd || cls.fwdSingle
+			}
+		}
+		c.noteHooks(f, "extended", cls, n, args, scope)
+	}
+}
+
+// collectSingletonCall is one call in a `class << self` body; it returns the private/public default after it.
+func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode, private bool, scope []*Class) bool {
+	switch {
+	case s.Name == "private" && s.Receiver == nil && s.Arguments == nil:
+		private = true
+	case s.Name == "public" && s.Receiver == nil && s.Arguments == nil:
+		private = false
+	case (s.Name == "public" || s.Name == "private") && s.Receiver == nil: // `public :a, :b`: of an extended module's method, ignored as collectVisibilityCall does
+		for _, name := range c.symbolArgs(f, s, callArgs(s)) {
+			for i := range cls.singletonDefs {
+				if cls.singletonDefs[i].node.Name == name {
+					cls.singletonDefs[i].private = s.Name == "private"
+				}
+			}
+		}
+	case s.Receiver == nil && slices.Contains([]string{"attr", "attr_reader", "attr_writer", "attr_accessor", "alias_method"}, s.Name):
+		cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, private: private, scope: scope, file: f})
+	case (s.Name == "require" || s.Name == "require_relative") && s.Receiver == nil && c.methodRequiresRuntime: // the traced entry loaded it (decision 197)
+	case s.Name == "private_constant" && s.Receiver == nil:
+	case s.Name == "include" && s.Receiver == nil: // the singleton class's include is the class's extend
+		for _, a := range callArgs(s) {
+			c.addInclude(f, s, cls, a, scope)
+			last := len(cls.Includes) - 1
+			cls.extends = append(cls.extends, cls.Includes[last])
+			cls.Includes = cls.Includes[:last]
+		}
+	case c.onlyDefinesMethods(s): // `CODES.each { |n, c| define_method(n) { ... } }`: boot made the defs (decision 198)
+	default:
+		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
+	}
+	return private
 }

@@ -29,6 +29,8 @@ type File struct {
 	typeArgs map[int]string
 	// a `T.let`/`T.cast` the Sorbet pass left in an expression, and its RBS type (decision 196)
 	sorbetCasts map[*parser.CallNode]string
+	// `X = T.type_alias { T }` constant writes and the RBS type they name (decision 196)
+	sorbetAliases map[parser.Node]string
 }
 
 type comment struct {
