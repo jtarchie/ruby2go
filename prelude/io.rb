@@ -97,11 +97,18 @@ class IO < Object
   def self.sysopen(path, mode = "r", perm = 0o666) = %x{ return Integer(rbSysopen(string(path), string(mode), int(perm))) }
 
   # An IO over descriptor fd; closing it closes fd.
-  #: (Integer, ?String) -> IO
-  def self.new(fd, mode = "r") = %x{ return rbIOForFd(int(fd), string(mode)) }
+  # mode: a String, or the `mode:` keyword when it is nil; other options (binmode:, autoclose:, encodings) are accepted and ignored (ponytail: honor them when a program needs one).
+  #: (Integer, ?String?, ?untyped, **untyped) -> IO
+  def self.new(fd, mode = nil, _perm = nil, **opts)
+    m = mode || opts[:mode]&.to_s || "r"
+    __for_fd(fd, m)
+  end
 
-  #: (Integer, ?String) -> IO
-  def self.for_fd(fd, mode = "r") = new(fd, mode)
+  #: (Integer, String) -> IO
+  def self.__for_fd(fd, mode) = %x{ return rbIOForFd(int(fd), string(mode)) }
+
+  #: (Integer, ?String?, ?untyped, **untyped) -> IO
+  def self.for_fd(fd, mode = nil, perm = nil, **opts) = new(fd, mode, perm, **opts)
 
   #: (String) -> String
   def self.read(path) = File.read(path)

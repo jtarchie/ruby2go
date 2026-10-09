@@ -108,6 +108,13 @@ func (rw *rewriter) mocks(stmts []parser.Node) {
 			if !mentions(later, name) {
 				continue
 			}
+			if sc, isSC := later.(*parser.SingletonClassNode); isSC && isReceiver(sc.Expression, name) {
+				if sc.Body != nil { // `class << x ... end`: its body is the mock class's
+					m.defs = append(m.defs, rw.text(sc.Body))
+				}
+				drop = append(drop, later)
+				continue
+			}
 			if d, isDef := later.(*parser.DefNode); isDef && isReceiver(d.Receiver, name) {
 				ns, _ := span(d.NameLoc)
 				_, de := span(d.Location)
@@ -239,5 +246,23 @@ func (rw *rewriter) expectation(c *parser.CallNode, name string, m *mockClass) b
 			return false
 		}
 		c = next
+	}
+}
+
+// hoist moves an example's class and module statements to the program's top level: a block opens no constant
+// scope, so MRI defines them there too, only when the example runs rather than at load.
+func (rw *rewriter) hoist(stmts []parser.Node) {
+	for _, st := range stmts {
+		switch st := st.(type) {
+		case *parser.ClassNode, *parser.ModuleNode:
+		case *parser.DefNode: // MRI puts it on the example's class; at the top level every example still reaches it
+			if st.Receiver != nil {
+				continue
+			}
+		default:
+			continue
+		}
+		rw.prog.hoisted = append(rw.prog.hoisted, rw.text(st))
+		rw.edits = append(rw.edits, blankLoc(rw.src, st.GetLocation()))
 	}
 }

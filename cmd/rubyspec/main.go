@@ -435,6 +435,7 @@ type program struct {
 	seed       *rb2go.Inference // parameter types from the last compile, which each cut barely changes
 	mocks      []*mockClass     // mocks the rewrite made classes of, loaded as one more file
 	mockN      int
+	hoisted    []string // classes and modules examples define, moved to the top level
 }
 
 type source struct {
@@ -450,8 +451,11 @@ func load(ctx context.Context, p *parser.Parser, root string, specs []string) (*
 			return nil, err
 		}
 	}
-	if len(prog.mocks) > 0 {
+	if len(prog.mocks) > 0 || len(prog.hoisted) > 0 {
 		var b strings.Builder
+		for _, h := range prog.hoisted {
+			b.WriteString(h + "\n")
+		}
 		for _, m := range prog.mocks {
 			b.WriteString(m.source())
 		}

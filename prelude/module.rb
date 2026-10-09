@@ -51,6 +51,36 @@ class Module < Object
   #: (?bool) -> Array[Symbol]
   def instance_methods(inherit = true) = public_instance_methods(inherit)
 
+  # Private instance methods from a generated table (decision 181).
+  #: (?bool) -> Array[Symbol]
+  def private_instance_methods(inherit = true) = %x{
+    out := &Array[Symbol]{}
+    for _, m := range any(self).(interface{ _PrivateMethods() []rbConst })._PrivateMethods() {
+      if bool(inherit) || !m.inherited {
+        out.s = append(out.s, Symbol(m.name))
+      }
+    }
+    return out
+  }
+
+  # Its own singleton methods (Kernel's module functions too), from a generated table (decision 181).
+  # ponytail: an extended module's methods and a superclass's singletons are left out.
+  #: (?bool) -> Array[Symbol]
+  def singleton_methods(all = true) = %x{
+    out := &Array[Symbol]{}
+    for _, m := range any(self).(interface{ _SingletonMethods() []rbConst })._SingletonMethods() {
+      out.s = append(out.s, Symbol(m.name))
+    }
+    return out
+  }
+
+  # public_methods(false) is the singleton methods; with true MRI adds Module's and Object's, which this leaves out (ponytail).
+  #: (?bool) -> Array[Symbol]
+  def public_methods(all = true) = singleton_methods(all)
+
+  #: (untyped, ?bool) -> bool
+  def private_method_defined?(name, inherit = true) = private_instance_methods(inherit).include?(name.to_s.to_sym)
+
   # Itself, its modules and its superclasses' (with Object, Kernel and BasicObject), from a generated table.
   #: () -> Array[Module]
   def ancestors = %x{

@@ -1093,6 +1093,19 @@ func NewHash[K, V comparable]() *Hash[K, V] {
 type Array_Any interface{ _ToAny() *Array[any] }
 type Hash_Any interface{ _ToAny() *Hash[any, any] }
 
+// rbNum2Long is MRI's NUM2LONG for a Float argument: truncated, a RangeError past Integer's range (decision 181).
+func rbNum2Long(f Float) Integer {
+	v := float64(f)
+	if math.IsNaN(v) || v >= 9.223372036854775807e18 || v < -9.223372036854775808e18 {
+		s := strconv.FormatFloat(v, 'g', -1, 64)
+		if math.IsInf(v, 0) {
+			s = map[bool]string{true: "Inf", false: "-Inf"}[v > 0]
+		}
+		panic(NewRangeError(Ref(String("float " + s + " out of range of integer"))))
+	}
+	return Integer(v)
+}
+
 // rbFloatToI converts like MRI: a non-finite Float raises FloatDomainError.
 func rbFloatToI(f float64) Integer {
 	if math.IsNaN(f) || math.IsInf(f, 0) {

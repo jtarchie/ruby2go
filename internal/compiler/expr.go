@@ -2174,6 +2174,14 @@ func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) e
 	return expr{code: code, typ: m.Ret}
 }
 
+// floatTruncators are core classes whose C methods take an Integer by NUM2LONG; numeric classes, Range, Kernel and
+// Random take a Float as a Float instead (`2.pow(0.5)`, `rand(1.5)`).
+var floatTruncators = map[string]bool{"String": true, "Array": true, "Symbol": true, "Hash": true, "Enumerable": true, "IO": true, "File": true, "StringIO": true, "MatchData": true, "Regexp": true, "Struct": true}
+
+func truncatesFloats(m *Method) bool {
+	return m.File != nil && m.File.prelude && m.Owner != nil && floatTruncators[m.Owner.RubyName]
+}
+
 // genArgs generates and coerces call arguments against m's parameters,
 // binding type variables in env. exprs, if non-nil, are pre-generated.
 // genArgs also returns where *rest's codes start (-1 if none), so a block arg can splice in before them, not after.
@@ -2220,6 +2228,9 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			f.pinBefore(mark, codes)
 		}
 		f.noteUse(p, an, a.typ)
+		if truncatesFloats(m) && isClass(a.typ, "Float") && isClass(closed(p.Type, env), "Integer") {
+			a = expr{code: "rbNum2Long(" + a.code + ")", typ: f.cls("Integer")} // MRI's NUM2LONG: a C method truncates a Float (decision 181)
+		}
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}

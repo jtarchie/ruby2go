@@ -885,6 +885,18 @@ module StdlibTests
       assert_equal "-1.0", n.round.to_f.to_s
     end
 
+    def test_file_read_length_and_gets_forms
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "g.txt")
+        File.write(path, "ab\ncd\n\n\n\nef\ngh\n")
+        got = File.open(path) do |f|
+          [f.read(3), f.read(0), f.gets("d"), f.gets(""), f.gets(nil), f.gets, f.read(1)]
+        end
+        lim = File.open(path) { |f| [f.gets(1), f.gets(4), f.gets("x", 2)] }
+        assert_equal [["ab\n", "", "cd", "ef\ngh\n", nil, nil, nil], ["a", "b\n", "cd"]], [got, lim]
+      end
+    end
+
     def test_env_tz
       old = ENV["TZ"]
       got = ["JST-9", "PST8", "CET", "America/New_York", "CST6:30", "hello-foo", ""].map do |tz|
