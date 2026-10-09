@@ -444,6 +444,9 @@ class ENVClass < Object
     } else {
       _ = os.Setenv(string(name), string(*value))
     }
+    if name == "TZ" {
+      rbResetLocalZone(value)
+    }
     return value
     }
   end

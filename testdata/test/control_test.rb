@@ -17,6 +17,9 @@ end
 #: (Integer) -> String
 def control_show(n) = "n=#{n}"
 
+#: () -> bot
+def control_die = raise(ArgumentError, "died")
+
 # Helpers for the checks that were control_assign.rb.
 #: (Array[String], String, Integer?) -> Integer?
 def control_trace(log, name, v)
@@ -5211,6 +5214,12 @@ module ControlTests
 
     def test_errno_emfile
       assert_equal [true, 24], [Errno::EMFILE.new.is_a?(SystemCallError), Errno::EMFILE.new.errno]
+    end
+
+    def test_noreturn_argument
+      a = assert_raises(ArgumentError) { control_show(control_die) }
+      b = assert_raises(KeyError) { control_show(raise(KeyError, "k")) }
+      assert_equal ["died", "k"], [a.message, b.message]
     end
   end
 end

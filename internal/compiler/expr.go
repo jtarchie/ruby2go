@@ -1270,6 +1270,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) && !isNil(to) {
 		return e.code
 	}
+	if e.noreturn { // `f(raise "x")`: a func literal ending in panic is a value of any type to Go
+		return "func() " + f.c.goType(to) + " {\n" + e.code + "\n}()"
+	}
 	e = f.valueOf(e)
 	if typeEq(e.typ, to) {
 		return e.code

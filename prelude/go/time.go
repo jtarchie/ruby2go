@@ -489,3 +489,59 @@ func rbTimeStrptime(s, format string) *Time {
 	}
 	return &Time{t: time.Date(f.y, time.Month(f.m), f.d, f.h, f.mi, f.s, f.ns, time.FixedZone("", f.of))}
 }
+
+// rbSystemLocal is Go's own Local, which loads lazily from $TZ: restored after ENV.delete("TZ") unset it, it reads the system zone, as MRI.
+var rbSystemLocal = time.Local
+
+// rbResetLocalZone rereads TZ on ENV["TZ"]=, as MRI's ruby_reset_timezone: a zoneinfo name, else a POSIX "NAME[+-]h[:mm[:ss]]" whose offset is west-positive; nil is the system zone, "" or anything unparsable UTC (named by its leading letters, as libc's tzset).
+// ponytail: POSIX DST rules ("EST5EDT,M3.2.0,M11.1.0") are dropped, so such a zone stays on standard time; parse the rule when a program needs it.
+// ponytail: time.Local is written unsynchronized; a thread reading local time while another assigns TZ races, as libc's tzset does.
+func rbResetLocalZone(tz *String) {
+	if tz == nil {
+		time.Local = rbSystemLocal
+		return
+	}
+	s := strings.TrimPrefix(string(*tz), ":")
+	if s != "" && s != "Local" {
+		if loc, err := time.LoadLocation(s); err == nil {
+			time.Local = loc
+			return
+		}
+	}
+	i := 0
+	for i < len(s) && (s[i] >= 'A' && s[i] <= 'Z' || s[i] >= 'a' && s[i] <= 'z') {
+		i++
+	}
+	name, off := s[:i], 0
+	if i < 3 {
+		name, i = "UTC", len(s)
+	}
+	if rest := s[i:]; rest != "" {
+		sign := 1
+		switch rest[0] {
+		case '-':
+			sign, rest = -1, rest[1:]
+		case '+':
+			rest = rest[1:]
+		}
+		if f := strings.IndexAny(rest, ",ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz<"); f >= 0 {
+			rest = rest[:f]
+		}
+		for k, unit := range []int{3600, 60, 1} {
+			p, more, _ := strings.Cut(rest, ":")
+			n, err := strconv.Atoi(p)
+			if err != nil {
+				if k == 0 {
+					name = "UTC"
+				}
+				break
+			}
+			off += n * unit
+			if rest = more; rest == "" {
+				break
+			}
+		}
+		off = -sign * off
+	}
+	time.Local = time.FixedZone(name, off)
+}
