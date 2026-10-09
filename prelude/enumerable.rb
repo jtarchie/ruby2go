@@ -8,6 +8,27 @@ module Enumerable
   #: () { (E) -> void } -> void
   def each = raise(NotImplementedError)
 
+  # Each element read as a [key, value] pair (decision 194); untyped, as the pairs' types are each element's.
+  #: () -> Hash[untyped, untyped]
+  def to_h
+    out = {} #: Hash[untyped, untyped]
+    each do |pair|
+      kv = __pair(pair)
+      out[kv.fetch(0)] = kv.fetch(1)
+    end
+    out
+  end
+
+  # An element as a two-element Array (a tuple, an Array, or MRI's TypeError).
+  #: (untyped) -> Array[untyped]
+  def __pair(x) = %x{
+    a := rbAs[*Array[any]](x, "Array")
+    if len(a.s) != 2 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("element has wrong array length (expected 2, was %d)", len(a.s))))))
+    }
+    return a
+  }
+
   #: [U] () { (E) -> U } -> Array[U]
   def map
     out = [] #: Array[U]

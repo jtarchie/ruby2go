@@ -73,6 +73,9 @@ class SpecExpectation
   #: () -> bool
   def eof? = check(@actual.eof?, "to be at eof")
 
+  #: () -> bool
+  def binmode? = check(@actual.binmode?, "to be in binmode")
+
   #: (untyped) -> bool
   def exist?(x) = check(@actual.exist?(x), "exist? #{x.inspect}")
 
@@ -359,6 +362,20 @@ end
 
 #: (*Symbol) -> bool
 def platform_is_not(*names) = !platform_is(*names)
+
+# mspec's mock_to_path for a computed path (the runner makes a class of a literal one): an object whose to_path answers it.
+class MSpecMockToPath
+  #: (String) -> void
+  def initialize(path)
+    @path = path
+  end
+
+  #: () -> String
+  def to_path = @path
+end
+
+#: (String) -> MSpecMockToPath
+def mock_to_path(path) = MSpecMockToPath.new(path)
 
 # A mock the runner did not make a class of (it has no expectations, or ones it cannot read): a plain object of its own.
 #: (?untyped) -> Object

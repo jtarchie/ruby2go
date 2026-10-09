@@ -2654,7 +2654,11 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 	for _, k := range c.defKeywords(m, m.Node.Parameters) {
 		switch {
 		case k.rest:
-			ps = append(ps, "**"+c.paramAnn(m, ann, "**"+strings.TrimPrefix(k.name, anonKwrest))+" "+k.name)
+			kt := "untyped" // an unannotated **opts: its values untyped, as an unannotated parameter's (decision 183)
+			if t := ann["**"+strings.TrimPrefix(k.name, anonKwrest)+":"]; len(t) > 0 {
+				kt = t[0]
+			}
+			ps = append(ps, "**"+kt+" "+k.name)
 		case k.def != nil:
 			ps = append(ps, "?"+k.name+": "+pa(k.name))
 		default:
@@ -2679,14 +2683,6 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		return sig + r[0], false
 	}
 	return sig + "untyped", true
-}
-
-func (c *Compiler) paramAnn(m *Method, ann map[string][]string, name string) string {
-	t := ann[name+":"]
-	if len(t) == 0 {
-		c.errorf(m.File, m.Node, "method %s has no type for parameter %s (`# @rbs %s: T` or `#: (...) -> T`)", m.Name, strings.TrimPrefix(name, "*"), name)
-	}
-	return t[0]
 }
 
 // inferRet types an unannotated return from the body: a dry run of its
