@@ -301,6 +301,7 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 			exp = TClass{C: cls, Args: args}
 		}
 	}
+	seed := f.widenSeed(n, ann, &exp)
 	if r, ok := n.Value.(*parser.LocalVariableReadNode); ok && r.Name == n.Name && f.erbDepth > 0 { // `x = x` declares x for the template's parse: a no-op
 		if v := f.visibleLocal(n.Name); v != nil {
 			return expr{code: v.goName, typ: v.typ, view: v.view, done: true}
@@ -316,10 +317,45 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		val = expr{code: f.coerce(n, val, t), typ: t}
 	}
 	e := f.assignLocal(n, n.Name, val, ann)
+	if info := f.localInfo(n.Name); seed != nil && info != nil { // what later writes put in it may widen it (decision 193)
+		info.open, info.seeded = true, true
+		info.elems[0] = append(info.elems[0], seed)
+	}
 	if info := f.localInfo(n.Name); empty && f.pass == 1 && info != nil {
 		info.open = true
 	}
 	return e
+}
+
+// widenSeed is an unannotated `x = [1, 2]`'s element type, for later writes to widen (decision 193): in pass 1 the
+// local is Array[untyped] so any write is evidence; in pass 2 it is what the evidence joined to. nil otherwise.
+func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) Type {
+	an, ok := n.Value.(*parser.ArrayNode)
+	if !ok || ann != nil || *exp != nil || len(an.Elements) == 0 || slices.ContainsFunc(an.Elements, func(e parser.Node) bool { _, s := e.(*parser.SplatNode); return s }) {
+		return nil
+	}
+	if r := f.refined[f.localKey(n.Name)]; r != nil {
+		*exp = r
+		return nil
+	}
+	if f.pass != 1 {
+		return nil
+	}
+	var nat expr
+	if f.attempt(func() { f.probe(func() { nat = f.genExpr(n.Value, nil) }) }) != nil {
+		return nil
+	}
+	tc, ok := nat.typ.(TClass)
+	if !ok || tc.C.RubyName != "Array" || len(tc.Args) != 1 || holdsAny(tc.Args[0]) {
+		return nil
+	}
+	*exp = TClass{C: tc.C, Args: []Type{TAny{}}}
+	return tc.Args[0]
+}
+
+func isRangeNode(n parser.Node) bool {
+	_, ok := n.(*parser.RangeNode)
+	return ok
 }
 
 func isEmptyLit(n parser.Node) bool {
@@ -358,10 +394,11 @@ func (f *fctx) noteElems(n *parser.CallNode) {
 	var t Type
 	var open *bool
 	var elems *[2][]Type
+	seeded := false
 	switch r := n.Receiver.(type) {
 	case *parser.LocalVariableReadNode:
 		if info := f.localInfo(r.Name); f.pass == 1 && info != nil && info.open {
-			t, open, elems = info.typ, &info.open, &info.elems
+			t, open, elems, seeded = info.typ, &info.open, &info.elems, info.seeded
 		}
 	case *parser.InstanceVariableReadNode:
 		if f.discover && f.owner != nil {
@@ -377,9 +414,13 @@ func (f *fctx) noteElems(n *parser.CallNode) {
 	switch hash := isClass(stripOpt(t), "Hash"); {
 	case !hash && slices.Contains([]string{"<<", "push", "append", "unshift", "prepend", "add", "enq"}, n.Name):
 		f.noteElem(open, &elems[0], args...)
-	case !hash && n.Name == "[]=" && len(args) == 2:
+	case !hash && n.Name == "fill" && len(args) >= 1:
+		f.noteElem(open, &elems[0], args[0])
+	case !hash && n.Name == "[]=" && len(args) == 2 && !isRangeNode(args[0]): // a[i] = v; a[range] = xs splices xs
 		f.noteElem(open, &elems[0], args[1])
-		elems[0] = append(elems[0], TNil{}) // a gap before the index reads nil
+		if !seeded {
+			elems[0] = append(elems[0], TNil{}) // a gap before the index reads nil (a literal's own elements say otherwise)
+		}
 	case hash && (n.Name == "[]=" || n.Name == "store") && len(args) == 2:
 		f.noteElem(open, &elems[0], args[0])
 		f.noteElem(open, &elems[1], args[1])

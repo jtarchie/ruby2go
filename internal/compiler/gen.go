@@ -221,6 +221,7 @@ type localInfo struct {
 	annotated bool
 	noHoist   bool      // params and block params: declared by Go syntax
 	open      bool      // an unannotated `[]`/`{}` that later writes may type (analyze)
+	seeded    bool      // a non-empty `[...]` open to widening: elems start with its own element type (decision 193)
 	elems     [2][]Type // what those writes put in it: elements, or keys and values
 }
 
@@ -2348,11 +2349,34 @@ func catchCompileError(fn func()) (ce *compileError) {
 func (f *fctx) emptyRefinements() map[localKey]Type {
 	out := map[localKey]Type{}
 	for k, li := range f.locals {
+		if li.seeded {
+			if t := widenContainer(li.typ, li.elems); t != nil {
+				out[k] = t
+			}
+			continue
+		}
 		if t := refineContainer(li.typ, li.open, li.elems); t != nil {
 			out[k] = t
 		}
 	}
 	return out
+}
+
+// widenContainer is a non-empty literal's Array type joined with what was written to it, a union where they differ
+// (decision 193); nil when untyped evidence leaves it undecided.
+func widenContainer(t Type, elems [2][]Type) Type {
+	c, ok := stripOpt(t).(TClass)
+	if !ok || len(c.Args) != 1 || len(elems[0]) == 0 || slices.ContainsFunc(elems[0], holdsAny) {
+		return nil
+	}
+	j := elems[0][0]
+	for _, e := range elems[0][1:] {
+		j = joinUnion(j, e)
+	}
+	if holdsAny(j) {
+		return nil
+	}
+	return TClass{C: c.C, Args: []Type{j}}
 }
 
 // refineContainer is the type an open `[]`/`{}` of type t gets from what

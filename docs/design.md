@@ -6298,3 +6298,14 @@ resolve; anything not listed is still open.
     generic methods keep the error. **Proof:** `hash_test.rb`
     `test_untyped_empty_containers`, `hashes.txtar` `hash_new_unannotated`
     (now a warning).
+193. **A non-empty Array literal widens to what is written to it** (#49).
+    An unannotated `x = [1, 2]` is open as an empty `[]` is (decision
+    182), its evidence seeded with the literal's own element type: a later
+    `x << "s"`, `push`, `x[i] = v` or `x.fill(v)` of another type makes it
+    `Array[Integer | String]` (decision 150's union), where it was a
+    compile error. Writes of the literal's own type change nothing (still
+    `Array[Integer]`, static). A splicing write (`x[range] = xs`,
+    `x[i, n] = xs`) is not element evidence, and a seeded literal takes no
+    nil "gap" from `[]=`. A local reassigned to another literal type is
+    no longer an error either (`a = [1]; a = ["x"]`). **Proof:**
+    `array_test.rb` `test_literal_widened_by_later_writes`.

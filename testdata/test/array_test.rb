@@ -2453,6 +2453,16 @@ module ArrayTests
       assert_equal "float NaN out of range of integer", e.message
     end
 
+    def test_literal_widened_by_later_writes
+      ary = [1, 2, 3, 4, 5, 6]
+      ary.fill("x", 2, 3)
+      a = [1, 2]
+      a << "s"
+      b = [1, 2]
+      b << 3
+      assert_equal [[1, 2, "x", "x", "x", 6], [1, 2, "s"], 6], [ary, a, b.sum]
+    end
+
     def test_index_assign_span
       a = [1, 2, 3, 4]
       a[1, 2] = [7, 8, 9]
