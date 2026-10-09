@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -202,12 +203,27 @@ func (c *Compiler) absentGuard(f *File, pred parser.Node, scope []*Class) bool {
 // loadAutoload loads a boot-resolved autoload's file where it registers, so its load-time code runs before main's (decision 175).
 func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode) {
 	args := callArgs(n)
-	if len(args) != 2 || len(c.autoloaded) == 0 {
+	if len(args) != 2 || f.prelude {
 		return
 	}
 	target := c.findRequire(f, &parser.CallNode{Location: n.Location, Name: "require", Arguments: &parser.ArgumentsNode{Arguments: args[1:]}})
-	if target == "" || !c.autoloaded[realPath(target)] {
+	if p, ok := staticPath(f, args[1]); target == "" && ok && filepath.IsAbs(p) {
+		if filepath.Ext(p) != ".rb" {
+			p += ".rb"
+		}
+		info, err := os.Stat(p) //nolint:gosec // a path the program names
+		if err == nil && !info.IsDir() {
+			target = p
+		}
+	}
+	if target == "" {
+		if !c.gemFile(f) {
+			c.errorf(f, n, "autoload: cannot load such file -- %s (an autoload is a require at compile time, decision 195)", f.text(args[1].GetLocation()))
+		}
 		return
+	}
+	if c.gemFile(f) && !c.autoloaded[realPath(target)] {
+		return // a gem autoload boot never loaded: nothing the program runs reaches it (decision 175)
 	}
 	src, err := os.ReadFile(target) //nolint:gosec // a gem file boot loaded
 	if err != nil {
@@ -216,6 +232,72 @@ func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode
 	if uf := c.loadUserFile(ctx, target, src); uf != nil {
 		c.addMainStmt(f, &loadFile{call: n, file: uf})
 	}
+}
+
+// staticPath folds a path expression known at compile time: a String, `__dir__`, `File.join(...)`,
+// `File.expand_path(name, dir)` and `"#{__dir__}/x"` over those (decision 195).
+func staticPath(f *File, n parser.Node) (string, bool) {
+	dir := filepath.Dir(f.path)
+	if f.path == "" {
+		return "", false
+	}
+	switch x := n.(type) {
+	case *parser.StringNode:
+		return x.Unescaped.Value, true
+	case *parser.InterpolatedStringNode:
+		var b strings.Builder
+		for _, part := range x.Parts {
+			switch p := part.(type) {
+			case *parser.StringNode:
+				b.WriteString(p.Unescaped.Value)
+			case *parser.EmbeddedStatementsNode:
+				if p.Statements == nil || len(p.Statements.Body) != 1 {
+					return "", false
+				}
+				v, ok := staticPath(f, p.Statements.Body[0])
+				if !ok {
+					return "", false
+				}
+				b.WriteString(v)
+			default:
+				return "", false
+			}
+		}
+		return b.String(), true
+	case *parser.CallNode:
+		args := callArgs(x)
+		switch {
+		case x.Receiver == nil && x.Name == "__dir__" && len(args) == 0:
+			return dir, true
+		case isConstNamed(x.Receiver, "File") && (x.Name == "join" || x.Name == "expand_path"):
+			parts := make([]string, 0, len(args))
+			for _, a := range args {
+				v, ok := staticPath(f, a)
+				if !ok {
+					return "", false
+				}
+				parts = append(parts, v)
+			}
+			if x.Name == "expand_path" && len(parts) == 2 && !filepath.IsAbs(parts[0]) {
+				return filepath.Clean(filepath.Join(parts[1], parts[0])), true
+			}
+			if x.Name == "expand_path" && len(parts) == 1 && !filepath.IsAbs(parts[0]) {
+				return filepath.Clean(filepath.Join(dir, parts[0])), true // MRI's is the working directory: the program's own directory stands in
+			}
+			return filepath.Join(parts...), true
+		}
+	}
+	return "", false
+}
+
+func isConstNamed(n parser.Node, name string) bool {
+	switch c := n.(type) {
+	case *parser.ConstantReadNode:
+		return c.Name == name
+	case *parser.ConstantPathNode:
+		return c.Parent == nil && c.Name != nil && *c.Name == name
+	}
+	return false
 }
 
 // noteAutoload records an `autoload :X` constant: defined? answers for it before its file loads, as in MRI.
