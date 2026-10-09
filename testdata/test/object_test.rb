@@ -5152,6 +5152,29 @@ module ObjectTests
 
   ObjectUntypedPoint = Struct.new(:x, :y)
 
+  class ObjectNilIvarBase
+    def reset
+      @fd = nil
+    end
+
+    def fd = @fd
+  end
+
+  class ObjectNilIvarSub < ObjectNilIvarBase
+    def open
+      @fd = 3
+      @fd + 1
+    end
+  end
+
+  class ObjectProtocolHooks
+    def foo = true
+
+    def respond_to_missing?(method, priv)
+      [:handled].include?(method) || priv
+    end
+  end
+
   class ObjectReflectVisibility
     def self.made = 1
     def pub = 1
@@ -5184,6 +5207,18 @@ module ObjectTests
       assert_equal [[:priv], true, [:made], true, true],
                    [k.private_instance_methods(false), k.private_method_defined?(:priv), k.singleton_methods,
                     Kernel.private_instance_methods(false).include?(:puts), Kernel.public_methods(false).include?(:sprintf)]
+    end
+
+    def test_superclass_nil_ivar_typed_by_subclass
+      s = ObjectNilIvarSub.new
+      s.reset
+      a = s.fd
+      assert_equal [nil, 4, 3], [a, s.open, s.fd]
+    end
+
+    def test_unannotated_protocol_hooks
+      o = ObjectProtocolHooks.new
+      assert_equal [true, true, false], [o.method(:foo).call, o.respond_to?(:handled), o.respond_to?(:other)]
     end
 
     def test_unannotated_attrs

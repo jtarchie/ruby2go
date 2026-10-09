@@ -83,6 +83,7 @@ type Compiler struct {
 	autoloaded    map[string]bool           // boot-resolved autoload files: loaded where their autoload registers (decision 175)
 	pruneGems     bool                      // a gem program: unreached gem methods are dropped (decision 169)
 	gemNilIvars   []gemNilIvar              // gem ivars discovery saw only nil assigned to (decision 169)
+	nilIvars      map[string]bool           // class#@ivar assigned nil where no type was known: a subclass's assignment types it (decision 182)
 	autoloads     map[string]bool           // `autoload :X` constants by qualified name: defined? answers for them (decision 167)
 	out           strings.Builder
 	convs         map[string]bool // conversion sites emitted during a refineIvars dry run

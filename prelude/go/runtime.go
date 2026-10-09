@@ -426,7 +426,6 @@ func rbTopRecover() {
 // rbFullReport: RB2GO_BACKTRACE set prints an uncaught exception as MRI does, `file:line:in 'x': msg (Class)` and its `from` lines, where the default is `msg (Class)` alone (decision 106).
 var rbFullReport = os.Getenv("RB2GO_BACKTRACE") != ""
 
-
 // rbFinish runs the at_exit handlers, prints main (an uncaught exception
 // or nil) and exits with the resulting status; it returns only for 0.
 func rbFinish(status int, main any) {

@@ -110,8 +110,8 @@ class IO < Object
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
   def self.for_fd(fd, mode = nil, perm = nil, **opts) = new(fd, mode, perm, **opts)
 
-  #: (String) -> String
-  def self.read(path) = File.read(path)
+  #: (String, ?Integer?, ?Integer?, **untyped) -> String
+  def self.read(path, length = nil, offset = nil, **opts) = File.read(path, length, offset, **opts)
 
   #: (String) -> String
   def self.binread(path) = File.read(path)

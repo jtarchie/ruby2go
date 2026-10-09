@@ -6093,7 +6093,10 @@ resolve; anything not listed is still open.
       paragraph mode, nil the rest; a limit never splits a UTF-8
       character, and counts toward `lineno` only when it did not cut the
       line, as MRI); `IO.new`/`IO.for_fd` take `mode:` and ignore other
-      options (ponytail).
+      options (ponytail). `File.new`/`File.open` take MRI's mode forms (a
+      String, Integer flags, or `mode:`), a permission for a created file,
+      and `flags:` or'd in; `File::RDONLY`..`NOFOLLOW` are the platform's
+      `syscall` values. `File.expand_path(path, dir)`.
     - **Reflection tables** (decision 77's, beside `_Methods`):
       `_PrivateMethods` backs `Module#private_instance_methods` and
       `private_method_defined?`; `_SingletonMethods` (a class object's own
@@ -6105,3 +6108,45 @@ resolve; anything not listed is still open.
       `test_core_methods_truncate_float_arguments`, `numbers.txtar`
       `float_where_integer_expected` (still an error for a user method),
       `object_test.rb` `test_private_and_singleton_method_tables`.
+182. ruby/spec phase E (#49).
+    - **An empty `X.new` is an open literal.** `Hash.new`, `Array.new`,
+      `Set.new`, `Queue.new` (no arguments, no block) and
+      `SizedQueue.new(n)` assigned to a local are typed from what is put
+      in them (`[]=`, `<<`, `push`, `add`, `enq`), as an empty `[]`/`{}`
+      already is: pass 1 builds them with `untyped` type arguments and
+      records the evidence, pass 2 builds the joined type. No evidence
+      keeps the "cannot infer" / "needs a type annotation" error.
+    - **Runner:** a class or module statement in an example whose text
+      runs expectations (`should`) or records (`ScratchPad`) is not hoisted
+      (it would run at load, outside its example); a crash in the
+      generated `rbspec_mocks.rb` is located and cut like any.
+    - **Protocol hooks type themselves.** An unannotated
+      `respond_to_missing?(name, priv)` is `(Symbol, bool) -> bool` (with
+      an optional second parameter, `?bool`) and `method_missing(name,
+      *args)` is `(Symbol, *untyped) -> untyped`: Ruby's protocol fixes
+      them, and no call in the program passes them anything to infer from.
+    - **More:** `File.read(path, length, offset, **opts)` (options
+      ignored; past the end is "" where MRI says nil, ponytail), `IO.read`
+      likewise; MatchData `begin`/`end`/`offset`/`byteoffset` take a group
+      name (String or Symbol, the last group of that name, MRI's
+      IndexError otherwise). mspec: `raise(E) { |e| ... }` yields the
+      exception; `exist?`, `start_with?`, `end_with?`, `const_defined?`,
+      `directory?`, `file?`, `method_defined?` and
+      `instance_variable_defined?` are expectations.
+    - **A superclass's nil ivar takes a subclass's type.** `@fd = nil`
+      in a class where `@fd` has no type yet, and `@fd = 3` in a subclass,
+      make one `Integer?` field on the superclass (moved up if the
+      subclass declared it first): one object's ivar is one name across
+      every class whose methods run on it. (ruby/spec's `before` hooks
+      reset ivars that nested describes, subclasses here, assign.)
+    - **`Time.new(String)`** (Ruby 3.3): a year alone, or a date with a
+      full time and optional fraction, then an optional zone (`Z`,
+      `+HH:MM`, `+HHMM`, `+HH:MM:SS`), else `in:` or local; `precision:`
+      truncates the fraction (Go keeps nanoseconds, so digits past 9 are
+      lost). Any other shape is `ArgumentError: can't parse: ...`, which
+      MRI's own error regexps accept beside its specific messages.
+    - **Proof:** `hash_test.rb` `test_empty_new_typed_from_use`,
+      `object_test.rb` `test_unannotated_protocol_hooks` and
+      `test_superclass_nil_ivar_typed_by_subclass`, `string_test.rb`
+      `test_matchdata_offsets_by_group_name`, `stdlib_test.rb`
+      `test_time_new_from_string`.

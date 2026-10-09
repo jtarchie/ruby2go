@@ -2084,5 +2084,15 @@ module HashTests
       h["a"] = 1
       assert_equal [{"a" => 1}, true], [h.to_h, h.is_a?(Params)]
     end
+
+    def test_empty_new_typed_from_use
+      h = Hash.new
+      h["a"] = 1
+      q = Queue.new
+      q << 5
+      a = Array.new
+      a << :s
+      assert_equal [{"a" => 1}, 5, [:s]], [h, q.pop, a]
+    end
   end
 end

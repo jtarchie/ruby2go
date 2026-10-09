@@ -885,6 +885,22 @@ module StdlibTests
       assert_equal "-1.0", n.round.to_f.to_s
     end
 
+    def test_file_open_flags_perm_and_expand_path_dir
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "o.txt")
+        File.open(path, "w", 0o600) { |f| f.write("hi") }
+        File.open(path, File::WRONLY | File::APPEND) { |f| f.write("!") }
+        got = begin
+          File.open(path, "w", flags: File::EXCL)
+          nil
+        rescue SystemCallError => e
+          e.class
+        end
+        assert_equal [0o600, "hi!", Errno::EEXIST, "hi!"], [File.stat(path).mode & 0o777, File.read(path), got, File.new(path, mode: "r").read]
+      end
+      assert_equal ["/x/a", "/x/b", "/abs"], [File.expand_path("a", "/x"), File.expand_path("../b", "/x/y"), File.expand_path("/abs", "/x")]
+    end
+
     def test_file_read_length_and_gets_forms
       Dir.mktmpdir do |dir|
         path = File.join(dir, "g.txt")
@@ -895,6 +911,21 @@ module StdlibTests
         lim = File.open(path) { |f| [f.gets(1), f.gets(4), f.gets("x", 2)] }
         assert_equal [["ab\n", "", "cd", "ef\ngh\n", nil, nil, nil], ["a", "b\n", "cd"]], [got, lim]
       end
+    end
+
+    def test_time_new_from_string
+      t = Time.utc(2020, 12, 24, 15, 56, 17)
+      assert_equal [true, true, true], [Time.new("2020-12-24T15:56:17Z") == t, Time.new("2020-12-25 00:57:47 +09:01:30") == t, Time.new("2020-12-25 00:56:17 +0900") == t]
+      assert_equal ["2021-12-25 00:00:00 +0500", "2021-12-25 00:00:00 -0100", "2021-01-01 00:00:00 +1700"],
+                   [Time.new("2021-12-25 00:00:00 +05:00").to_s, Time.new("2021-12-25 00:00:00", in: "-01:00").to_s, Time.new("2021", in: "+17:00").to_s]
+      assert_equal [123456789, 123000], [Time.new("2020-12-25T00:56:17.123456789876 +09:00").nsec, Time.new("2020-12-25T00:56:17.123 +09:00").usec]
+      ok = begin
+        Time.new("2020-12-25")
+        false
+      rescue ArgumentError
+        true
+      end
+      assert ok
     end
 
     def test_env_tz

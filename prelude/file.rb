@@ -6,8 +6,60 @@ class File < Object
   include IOReadable
 
   # Modes "r", "w", "a", their "+" forms, "b", and ":ext[:int]" encodings (decision 136); failures raise MRI's Errno classes (decision 62).
-  #: (String, ?String) -> File
-  def self.new(path, mode = "r") = %x{
+  # MRI's forms: mode a String, Integer flags or the `mode:` keyword; perm for a created file; `flags:` or'd in.
+  # ponytail: other options (encoding:, binmode:, newline:) are accepted and ignored; honor them when a program needs one.
+  #: (String, ?(String | Integer | nil), ?Integer?, **untyped) -> File
+  def self.new(path, mode = nil, perm = nil, **opts)
+    m = mode.nil? ? opts.fetch(:mode, "r") : mode
+    extra = __int(opts.fetch(:flags, 0))
+    return __new_flags(path, m | extra, perm || 0o666) if m.is_a?(Integer)
+
+    __new_mode(path, m.to_s, extra, perm || 0o666)
+  end
+
+  #: (untyped) -> Integer
+  def self.__int(x) = %x{ return rbAs[Integer](x, "Integer") }
+
+  #: (Integer) -> Integer
+  def self.__o(bit) = %x{
+    v := []int{syscall.O_RDONLY, syscall.O_WRONLY, syscall.O_RDWR, syscall.O_CREAT, syscall.O_EXCL, syscall.O_TRUNC, syscall.O_APPEND, syscall.O_NONBLOCK, syscall.O_NOCTTY, syscall.O_SYNC, syscall.O_NOFOLLOW}
+    return Integer(v[bit])
+  }
+
+  RDONLY = __o(0) #: Integer
+  WRONLY = __o(1) #: Integer
+  RDWR = __o(2) #: Integer
+  CREAT = __o(3) #: Integer
+  EXCL = __o(4) #: Integer
+  TRUNC = __o(5) #: Integer
+  APPEND = __o(6) #: Integer
+  NONBLOCK = __o(7) #: Integer
+  NOCTTY = __o(8) #: Integer
+  SYNC = __o(9) #: Integer
+  NOFOLLOW = __o(10) #: Integer
+  BINARY = 0 #: Integer
+  SHARE_DELETE = 0 #: Integer
+
+  # Integer open flags, as MRI's rb_sysopen; reading and writing follow the access bits.
+  #: (String, Integer, Integer) -> File
+  def self.__new_flags(path, flag, perm) = %x{
+    f, err := os.OpenFile(string(path), int(flag), os.FileMode(perm)) //nolint:gosec // the program's own flags and perm
+    if err != nil {
+      panic(rbSysErr(err, "rb_sysopen", string(path)))
+    }
+    out := &File{f: f, path: string(path)}
+    acc := int(flag) & (syscall.O_RDONLY | syscall.O_WRONLY | syscall.O_RDWR)
+    if acc != syscall.O_WRONLY {
+      out.r = bufio.NewReader(f)
+    }
+    if acc != syscall.O_RDONLY {
+      out.w = bufio.NewWriter(f)
+    }
+    return out
+  }
+
+  #: (String, String, Integer, Integer) -> File
+  def self.__new_mode(path, mode, extra, perm) = %x{
     flags := map[string]int{
       "r": os.O_RDONLY, "r+": os.O_RDWR,
       "w": os.O_WRONLY | os.O_CREATE | os.O_TRUNC, "w+": os.O_RDWR | os.O_CREATE | os.O_TRUNC,
@@ -28,7 +80,7 @@ class File < Object
       }
       withEnc = (*hook)(access, spec, bin)
     }
-    f, err := os.OpenFile(string(path), flag, 0o666) //nolint:gosec // MRI's mode; the umask applies
+    f, err := os.OpenFile(string(path), flag|int(extra), os.FileMode(perm)) //nolint:gosec // MRI's mode; the umask applies
     if err != nil {
       panic(rbSysErr(err, "rb_sysopen", string(path)))
     }
@@ -53,8 +105,8 @@ class File < Object
   PATH_SEPARATOR = ":" #: String
 
   # Blockless File.open is File.new (decision 12's `__<name>_enum` stands for "no block").
-  #: (String, ?String) -> File
-  def self.__open_enum(path, mode = "r") = File.new(path, mode)
+  #: (String, ?(String | Integer | nil), ?Integer?, **untyped) -> File
+  def self.__open_enum(path, mode = nil, perm = nil, **opts) = File.new(path, mode, perm, **opts)
 
   #: (String) -> Time
   def self.mtime(path) = %x{
@@ -99,9 +151,9 @@ class File < Object
     return &File_Stat{fi: fi}
   }
 
-  #: [T] (String, ?String) { (File) -> T } -> T
-  def self.open(path, mode = "r")
-    f = File.new(path, mode)
+  #: [T] (String, ?(String | Integer | nil), ?Integer?, **untyped) { (File) -> T } -> T
+  def self.open(path, mode = nil, perm = nil, **opts)
+    f = File.new(path, mode, perm, **opts)
     begin
       yield f
     ensure
@@ -109,8 +161,44 @@ class File < Object
     end
   end
 
+  # read(path, length, offset): at most length bytes from offset ("" past the end, where MRI answers nil: ponytail, a String? result would make every File.read optional);
+  # options (encoding:, mode:) are accepted and ignored: Strings are UTF-8 bytes (decision 136).
+  #: (String, ?Integer?, ?Integer?, **untyped) -> String
+  def self.read(path, length = nil, offset = nil, **_opts)
+    return __read_all(path) if length.nil? && offset.nil?
+
+    __read_at(path, length || -1, offset || 0)
+  end
+
+  #: (String, Integer, Integer) -> String
+  def self.__read_at(path, length, offset) = %x{
+    if length < -1 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", length)))))
+    }
+    f, err := os.Open(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_sysopen", string(path)))
+    }
+    defer f.Close()
+    if offset < 0 {
+      panic(rbSysErr(syscall.EINVAL, "rb_io_seek", string(path)))
+    }
+    if _, err = f.Seek(int64(offset), io.SeekStart); err != nil {
+      panic(rbSysErr(err, "rb_io_seek", string(path)))
+    }
+    var b []byte
+    if length < 0 {
+      b, _ = io.ReadAll(f)
+    } else {
+      b = make([]byte, length)
+      n, _ := io.ReadFull(f, b)
+      b = b[:n]
+    }
+    return String(b)
+  }
+
   #: (String) -> String
-  def self.read(path) = %x{
+  def self.__read_all(path) = %x{
     b, err := os.ReadFile(string(path))
     if err != nil {
       fn := "rb_sysopen"
@@ -352,6 +440,15 @@ class File < Object
     }
     return String(abs)
   }
+
+  # A relative path against dir (itself expanded, so it may start with ~); nil dir is the working directory.
+  #: (String, String?) -> String
+  def self.__expand_path_2(path, dir)
+    return expand_path(path) unless dir
+    return expand_path(path) if path.start_with?("/", "~")
+
+    expand_path(File.join(expand_path(dir), path))
+  end
 
   #: (String) -> bool
   def self.absolute_path?(path) = %x{ Boolean(strings.HasPrefix(string(path), "/")) }

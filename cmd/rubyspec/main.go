@@ -245,7 +245,7 @@ var startedTest = regexp.MustCompile(`(?m)^(.*#test_\d{4}_.*?) = `)
 var specFrame = regexp.MustCompile(`(?m)^\s+(?:gen/)?(\S+_spec\.rb):(\d+)`)
 
 // loadFrame is the next best, any ruby/spec file in an uncaught exception's report (RB2GO_BACKTRACE): a fixture's top-level statement that raises while the program loads.
-var loadFrame = regexp.MustCompile(`(?m)^(?:\s+from )?(?:gen/)?((?:core|library|language|command_line|optional|security|shared)/\S+\.rb):(\d+):in `)
+var loadFrame = regexp.MustCompile(`(?m)^(?:\s+from )?(?:gen/)?((?:core|library|language|command_line|optional|security|shared)/\S+\.rb|rbspec_mocks\.rb):(\d+):in `)
 
 // testLine is one example's line in minitest's -v report.
 var testLine = regexp.MustCompile(`#test_\d{4}_.* = [\d.]+ s = ([.FES])$`)
