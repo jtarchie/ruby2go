@@ -87,6 +87,9 @@ func rbRedirectTarget(fd int) rbWriter {
 func rbSetStdout(v any) any { return rbRedirect(1, v, "$stdout") }
 func rbSetStderr(v any) any { return rbRedirect(2, v, "$stderr") }
 
+// rbRS is `$/`, the input record separator chomp defaults to (decision 180).
+var rbRS = Ref(String("\n"))
+
 // rbVerbose is `$VERBOSE`: false by default, nil silences Kernel#warn.
 var rbVerbose = Ref(Boolean(false))
 

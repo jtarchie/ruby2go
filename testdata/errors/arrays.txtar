@@ -88,7 +88,7 @@ pairs.each { |n, s, extra| puts n }
 nums = [1, 2] #: Array[Integer]
 nums.each { |a, b| puts a }
 -- block_arg_proc.rb --
-# error: main.rb:2: a lambda with parameters needs a type annotation (`#: ^(T) -> R`), and no call in the program gives it one (decision 146)
+# warning: main.rb:2: a lambda's parameters are untyped
 up = proc { |s| s.upcase }
 puts up.arity
 -- symbol_block_two_params.rb --

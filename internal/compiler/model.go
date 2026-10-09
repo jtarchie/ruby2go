@@ -2617,7 +2617,16 @@ func (c *Compiler) inferRet(m *Method) {
 	f.retVar = "ret_"
 	var ts []Type
 	f.retTypes = &ts
-	f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+	if c.round { // a body its still-untyped parameters break returns untyped this round, so its callers still record what they pass
+		err := catchCompileError(func() { f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil) })
+		if err != nil {
+			c.dropWarnings(nw)
+			m.Ret = TAny{}
+			return
+		}
+	} else {
+		f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+	}
 	c.dropWarnings(nw) // emitMethod warns for real
 	var ret Type = TNil{}
 	for i, t := range ts {
