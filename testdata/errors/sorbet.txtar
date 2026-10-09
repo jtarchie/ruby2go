@@ -1,0 +1,51 @@
+Sorbet signatures read as types (#95, decision 196): what sorbet-runtime checks while running is a compile error here.
+-- wrong_argument.rb --
+# error: main.rb:9: String where Integer is expected
+require "sorbet-runtime"
+
+class A
+  extend T::Sig
+  sig { params(n: Integer).returns(Integer) }
+  def self.twice(n) = n * 2
+end
+puts A.twice("x")
+-- param_not_in_def.rb --
+# error: main.rb:5: sig names parameter m, which f does not have
+require "sorbet-runtime"
+
+extend T::Sig
+sig { params(n: Integer, m: Integer).returns(Integer) }
+def f(n) = n
+puts f(1)
+-- param_without_type.rb --
+# error: main.rb:6: sig has no type for parameter m of f
+require "sorbet-runtime"
+
+extend T::Sig
+sig { params(n: Integer).returns(Integer) }
+def f(n, m) = n + m
+puts f(1, 2)
+-- intersection.rb --
+# error: main.rb:5: unsupported Sorbet type T.all
+require "sorbet-runtime"
+
+extend T::Sig
+sig { params(x: T.all(Comparable, Integer)).returns(Integer) }
+def f(x) = x
+puts f(1)
+-- no_return.rb --
+# error: main.rb:5: sig needs returns(...) or void
+require "sorbet-runtime"
+
+extend T::Sig
+sig { params(x: Integer) }
+def f(x) = x
+puts f(1)
+-- sig_before_nothing.rb --
+# error: main.rb:5: sig must precede a def or attr_*
+require "sorbet-runtime"
+
+extend T::Sig
+sig { returns(Integer) }
+X = 1
+puts X
