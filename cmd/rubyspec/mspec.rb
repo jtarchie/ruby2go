@@ -193,6 +193,15 @@ def mspec_match(got, expected) = expected.is_a?(Regexp) ? got.match?(expected) :
 #: (String) -> bot
 def mspec_fail(message) = raise(Minitest::Assertion, message)
 
+# nil is an Object in Ruby: `x.should == nil` on an optional x must reach these when x is nil.
+class NilClass
+  #: () -> SpecExpectation
+  def should = SpecExpectation.new(nil, true)
+
+  #: () -> SpecExpectation
+  def should_not = SpecExpectation.new(nil, false)
+end
+
 module Kernel
   #: () -> SpecExpectation
   def should = SpecExpectation.new(self, true)

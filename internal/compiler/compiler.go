@@ -146,7 +146,7 @@ func (e compileError) Error() string { return e.msg }
 func (c *Compiler) errorf(f *File, n parser.Node, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if n != nil && f != nil {
-		msg = fmt.Sprintf("%s:%d: %s", f.Name, f.line(n.GetLocation().StartOffset), msg)
+		msg = fmt.Sprintf("%s:%d: %s", f.Name, f.shownLine(n.GetLocation().StartOffset), msg)
 	}
 	panic(compileError{msg: msg})
 }
@@ -331,6 +331,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.mainFile = c.userFiles[0]
 	c.nameGo()
 	c.link(ctx)
+	c.checkAbstractIncludes()
 	c.guardConsts() // before any body is typed: defined?(X) on a guarded constant is String?
 	tick("link")
 	c.discoverIvars()
@@ -639,7 +640,7 @@ func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
 	}
 	msg := fmt.Sprintf(format, args...)
 	if n != nil { // a nil node's message carries its own position, as errorf's
-		msg = fmt.Sprintf("%s:%d: ", f.Name, f.line(n.GetLocation().StartOffset)) + msg
+		msg = fmt.Sprintf("%s:%d: ", f.Name, f.shownLine(n.GetLocation().StartOffset)) + msg
 	}
 	if c.warned[msg] {
 		return

@@ -1207,3 +1207,15 @@ class Kid < Base
   LIMIT = 2
 end
 p Kid.limit
+-- include_comparable_over_inherited_cmp.rb --
+# error: main.rb:9: include Comparable needs Weird#<=> typed as Comparable's (self) -> Integer
+class Base
+  def initialize(v) = @v = v
+  def v = @v
+  def <=>(other) = other.nil? ? nil : v <=> other.v
+end
+
+class Weird < Base
+  include Comparable
+end
+p Weird.new(1) < Weird.new(2)

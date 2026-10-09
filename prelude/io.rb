@@ -850,4 +850,29 @@ module Kernel
 
   #: () -> String?
   def gets = ARGF.gets
+
+  # Kernel#open on a path is File.open (a "|cmd" pipe is not supported: decision 97's spawn is the way).
+  #: [T] (String, ?(String | Integer | nil), ?Integer?, **untyped) { (File) -> T } -> T
+  def open(path, mode = nil, perm = nil, **opts, &blk) = File.open(path, mode, perm, **opts, &blk)
+
+  #: (String, ?(String | Integer | nil), ?Integer?, **untyped) -> File
+  def __open_enum(path, mode = nil, perm = nil, **opts) = File.new(path, mode, perm, **opts)
+
+  # Kernel#test's file tests: ?e ?f ?d ?r ?w ?x ?s ?z ?l (a String's first character also names one).
+  #: (String | Integer, String) -> untyped
+  def test(cmd, path)
+    c = cmd.is_a?(Integer) ? cmd.chr : cmd[0].to_s
+    case c
+    when "e" then File.exist?(path)
+    when "f" then File.file?(path)
+    when "d" then File.directory?(path)
+    when "r" then File.readable?(path)
+    when "w" then File.writable?(path)
+    when "x" then File.executable?(path)
+    when "l" then File.symlink?(path)
+    when "z" then File.zero?(path)
+    when "s" then File.size?(path)
+    else raise ArgumentError, "unknown command '#{c}'"
+    end
+  end
 end

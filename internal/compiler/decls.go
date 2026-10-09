@@ -721,6 +721,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	c.emitCopy(cls)
 	c.emitDup(cls)
 	// constructor
+	if cls.File != nil && !cls.File.prelude && cls.Line > 0 {
+		c.lineDirective(cls.File, cls.Line) // a Go error here names the class, not a line counted on from the last directive
+	}
 	init := cls.lookup("initialize")
 	if init != nil {
 		env := composeEnv(init.Env, nil)

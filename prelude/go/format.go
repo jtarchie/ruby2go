@@ -81,6 +81,15 @@ func rbFormat(format string, args []any) string {
 				}
 				spec = strconv.AppendInt(spec, int64(w), 10)
 				continue
+			case d >= '1' && d <= '9' && len(spec) == 1 && rbFormatDollar(format[i:]) > 0: // `%2$s`: argument 2 (1-based)
+				j := strings.IndexByte(format[i:], '$')
+				n, _ := strconv.Atoi(format[i : i+j])
+				if n > len(args) {
+					panic(NewArgumentError(Ref(String("too few arguments"))))
+				}
+				v, have = args[n-1], true
+				i += j
+				continue
 			case d >= '0' && d <= '9' || d == '.':
 				spec = append(spec, d)
 				continue
@@ -119,6 +128,8 @@ func rbFormatOne(spec string, verb byte, v any) string {
 			return strings.ToUpper(fmt.Sprintf(spec+"b", rbFormatInt(v)))
 		}
 		return fmt.Sprintf(spec+string(verb), rbFormatInt(v))
+	case 'a', 'A':
+		return rbFormatHexFloat(spec, verb, rbFormatFloat(v))
 	case 'f', 'e', 'E', 'g', 'G':
 		f := rbFormatFloat(v)
 		if (verb == 'g' || verb == 'G') && !strings.Contains(spec, ".") {
@@ -172,4 +183,62 @@ func rbFormatFloat(v any) float64 {
 		panic(NewTypeError(Ref(String("can't convert nil into Float"))))
 	}
 	panic(NewTypeError(Ref(String("can't convert " + rbClassName(v) + " into Float"))))
+}
+
+// rbFormatDollar is the length of a leading `digits$` (a positional argument), or 0.
+func rbFormatDollar(s string) int {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i > 0 && i < len(s) && s[i] == '$' {
+		return i
+	}
+	return 0
+}
+
+// rbFormatHexFloat is %a/%A as C prints it: Go's hex float without the exponent's leading zero, then flags and width.
+func rbFormatHexFloat(spec string, verb byte, f float64) string {
+	prec := -1
+	flags, rest := spec[1:], ""
+	if k := strings.IndexFunc(flags, func(r rune) bool { return r >= '1' && r <= '9' || r == '.' }); k >= 0 {
+		flags, rest = flags[:k], flags[k:]
+	}
+	width := rest
+	if dot := strings.IndexByte(rest, '.'); dot >= 0 {
+		width = rest[:dot]
+		prec, _ = strconv.Atoi(rest[dot+1:])
+	}
+	var s string
+	switch {
+	case math.IsNaN(f):
+		s = "NaN"
+	case math.IsInf(f, 0):
+		s = map[bool]string{true: "Inf", false: "-Inf"}[f > 0]
+	default:
+		s = strconv.FormatFloat(f, 'x', prec, 64)
+		if p := strings.LastIndexAny(s, "+-"); p > 0 && s[p-1] == 'p' {
+			exp := strings.TrimLeft(s[p+1:], "0")
+			if exp == "" {
+				exp = "0"
+			}
+			s = s[:p+1] + exp
+		}
+	}
+	if !strings.HasPrefix(s, "-") {
+		switch {
+		case strings.Contains(flags, "+"):
+			s = "+" + s
+		case strings.Contains(flags, " "):
+			s = " " + s
+		}
+	}
+	if verb == 'A' {
+		s = strings.ToUpper(s)
+	}
+	w, _ := strconv.Atoi(width)
+	if strings.Contains(flags, "-") {
+		return fmt.Sprintf("%-*s", w, s)
+	}
+	return fmt.Sprintf("%*s", w, s)
 }

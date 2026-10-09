@@ -1471,6 +1471,11 @@ B
                    ["hello".byteindex("l", 3), "hello".byterindex("l", 2), m&.bytebegin(1), m&.byteend(0), Range.new(1, 3, true), Range.new(1, 3).to_a]
     end
 
+    def test_format_positional_and_hex_float
+      assert_equal ["b a", "0x1.8p+1|0X1.999999999999AP-4|+0x1p+0|  0x1.8p+0|0x1.00p+0|-0x1p-1|0x0p+0"],
+                   [format("%2$s %1$s", "a", "b"), format("%a|%A|%+a|%10a|%.2a|%a|%a", 3.0, 0.1, 1.0, 1.5, 1.0, -0.5, 0.0)]
+    end
+
     def test_byteslice_range
       s = "hello"
       assert_equal ["el", "ello", "llo", "", nil], [s.byteslice(1..2), s.byteslice(1..), s.byteslice(-3..-1), s.byteslice(5..), s.byteslice(6..)]
@@ -1484,9 +1489,11 @@ B
         b = "ab\n".chomp
         $/ = nil
         c = "ab\n".chomp
+        d = -> { $/ = "z" }.call
       ensure
         $/ = old
       end
+      assert_equal "z", d
       assert_equal ["ab", "ab\n", "ab\n", "a"], [a, b, c, "a\n".chomp]
     end
   end

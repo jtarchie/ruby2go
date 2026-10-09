@@ -6206,3 +6206,41 @@ resolve; anything not listed is still open.
       the runner's static guards), `should.eof?`.
     - **Proof:** `string_test.rb`
       `test_byteindex_offset_bytebegin_range_new`.
+186. **A program's own NilClass method answers a nil `T?` receiver** (#49).
+    A call on `T?` raises NoMethodError on nil (decision 4's nil guard)
+    unless nil answers the method: decision 12's `to_s`/`inspect`/`to_i`/...
+    already did. Now a method the program defines on `NilClass` (mspec's
+    `nil.should`, a user's `class NilClass; def blank? = true; end`)
+    makes the call branch: nil takes NilClass's method, a value T's, and
+    the result is their join. Prelude NilClass methods keep the existing
+    paths. **Proof:** `object_test.rb`
+    `test_nilclass_method_on_optional_receiver`.
+187. `format`/`sprintf`/`printf` take positional arguments (`%2$s`, MRI's
+    1-based argument N) and `%a`/`%A` hex floats (Go's `'x'` float
+    format with the exponent's leading zero dropped, `0x1.8p+1`, then
+    flags and width as C pads them) (#49). **Proof:** `string_test.rb`
+    `test_format_positional_and_hex_float`.
+188. Fixes the measurement turned up (#49).
+    - `$/` and `$VERBOSE` assignments are statements followed by the
+      global's value, so one may be a block's or method's value
+      (`suppress_warning { $/ = old }`); they were emitted as Go
+      assignments in expression position.
+    - A Struct/Data's generated source reports its declaration's line in
+      errors, warnings and `//line` (`File.shownLine`; positions and
+      annotation lookups keep the real line), so cmd/rubyspec can cut a
+      failure in it instead of failing the directory.
+    - Keyword `new` maps keywords to members only for a generated
+      `initialize`; a block's own `def initialize(amount:)` takes them.
+      (A Data whose own initialize takes keywords still does not compile:
+      known gap.)
+    - A user class's generated constructor and class-object `new` carry
+      the class's `//line`: their Go errors named a line counted on from
+      the previous directive, past the end of the file.
+    - `include M` where M's abstract requirement (a prelude stub that
+      raises NotImplementedError, as Comparable's `<=>` typed `(self) ->
+      Integer`) meets a method the class inherits typed otherwise is a
+      compile error at the include, not invalid Go.
+    - `Kernel#open(path, ...)` is `File.open` (no `"|cmd"` pipes), and
+      `Kernel#test` answers its file tests (`?e ?f ?d ?r ?w ?x ?l ?z ?s`).
+    - **Proof:** `string_test.rb` `test_record_separator_chomp`,
+      `objects.txtar` `include_comparable_over_inherited_cmp`.
