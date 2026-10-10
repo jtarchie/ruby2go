@@ -31,18 +31,25 @@ func (c *Compiler) collectDefineMethods(ctx context.Context, entries []boot.Meth
 		c.indexDefineMethods(uf, uf.Root, nil, sites)
 	}
 	for _, e := range entries {
+		c.keepGoing(func() { c.collectDefineMethod(ctx, sites, e) })
+	}
+}
+
+func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[string]*dmSite, e boot.MethodInfo) {
+	{
 		site := sites[fmt.Sprintf("%s:%d", realPath(e.File), e.Line)]
 		owner := c.classes[e.Owner]
 		if site == nil || owner == nil {
-			continue // a site outside the closed world (sorbet-runtime's own), or an anonymous owner
+			return // a site outside the closed world (sorbet-runtime's own), or an anonymous owner
 		}
 		src := c.defineMethodSource(site, e)
 		sf, err := parseFile(ctx, c.parser, site.file.Name, []byte(src), false)
 		if err != nil {
-			c.errorf(site.file, site.call, "define_method %s: %v", e.Name, err)
+			c.errorf(site.file, site.call, "define_method %s: %v\n%s", e.Name, err, src)
 		}
 		sf.path, sf.pinLine = site.file.path, site.file.line(site.call.Location.StartOffset)
 		def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
+		def.Name = e.Name
 		switch {
 		case e.Singleton:
 			owner.singletonDefs = append(owner.singletonDefs, singletonDef{node: def, scope: site.scope, file: sf})
@@ -90,7 +97,7 @@ func (c *Compiler) defineMethodSource(site *dmSite, e boot.MethodInfo) string {
 	if e.Singleton {
 		b.WriteString("self.")
 	}
-	b.WriteString(e.Name)
+	b.WriteString("__rb2go_dm") // the real name may not be an identifier (`gcc-11`); collectDefineMethod sets it on the node
 	if bp, ok := blk.Parameters.(*parser.BlockParametersNode); ok && bp.Parameters != nil {
 		b.WriteString("(" + f.text(bp.Parameters.Location) + ")")
 	}
@@ -98,12 +105,15 @@ func (c *Compiler) defineMethodSource(site *dmSite, e boot.MethodInfo) string {
 	for _, name := range c.dmCaptures(site) {
 		lit, ok := e.Captures[name]
 		if !ok {
-			c.errorf(f, site.call, "define_method %s captures %s, which boot could not record as plain data (decision 198)", e.Name, name)
+			c.errorf(f, site.call, "define_method %s captures %s, which boot could not record as plain data or a constant's element (decision 198)", e.Name, name)
+		}
+		if loc, ok := strings.CutPrefix(lit, "proc@"); ok {
+			lit = c.procLiteral(f, site.call, loc)
 		}
 		b.WriteString(name + " = " + lit + "\n")
 	}
 	if blk.Body != nil {
-		b.WriteString(blockAsMethodBody(f, blk.Body))
+		b.WriteString(blockAsMethodBody(f, blk))
 	}
 	b.WriteString("\nend\n")
 	return b.String()
@@ -144,8 +154,19 @@ func (c *Compiler) dmCaptures(site *dmSite) []string {
 }
 
 // blockAsMethodBody is body's text with each `next` that leaves the block itself (not a nested one) as `return`.
-func blockAsMethodBody(f *File, body parser.Node) string {
+func blockAsMethodBody(f *File, blk *parser.BlockNode) string {
+	body := blk.Body
 	loc := body.GetLocation()
+	if bn, ok := body.(*parser.BeginNode); ok { // a block with rescue: its implicit begin starts at the block's `do`
+		from := bn.Location.StartOffset
+		switch {
+		case bn.Statements != nil:
+			from = bn.Statements.Location.StartOffset
+		case bn.RescueClause != nil:
+			from = bn.RescueClause.Location.StartOffset
+		}
+		loc = parser.Location{StartOffset: from, Length: blk.ClosingLoc.StartOffset - from}
+	}
 	start := loc.StartOffset
 	text := []byte(f.text(loc))
 	var nexts []int
@@ -207,4 +228,26 @@ func (c *Compiler) onlyDefinesMethods(n parser.Node) bool {
 		return false
 	})
 	return found
+}
+
+// procLiteral is `proc <block>` for the literal block boot saw a captured Proc made from, at "path:line".
+func (c *Compiler) procLiteral(f *File, at parser.Node, loc string) string {
+	path, line, _ := strings.Cut(loc, ":")
+	src := c.parsed[realPath(path)]
+	var ln int
+	_, _ = fmt.Sscanf(line, "%d", &ln)
+	var found *parser.BlockNode
+	if src != nil {
+		anyNode(src.Root, func(n parser.Node) bool {
+			if b, ok := n.(*parser.BlockNode); ok && src.line(b.Location.StartOffset) == ln {
+				found = b
+				return true
+			}
+			return false
+		})
+	}
+	if found == nil {
+		c.errorf(f, at, "define_method captures a Proc from %s, which is not compiled (decision 198)", loc)
+	}
+	return "proc " + src.text(found.Location)
 }

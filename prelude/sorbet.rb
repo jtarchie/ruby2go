@@ -9,6 +9,13 @@ module T
   module Helpers
   end
 
+  # A T::Struct's typed attrs and keyword initialize are generated at compile time (decision 196).
+  class Struct
+  end
+
+  class ImmutableStruct < Struct
+  end
+
   # Raises as sorbet-runtime does on nil.
   #: [X] (X?) -> X
   def self.must(arg)

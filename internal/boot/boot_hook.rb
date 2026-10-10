@@ -19,15 +19,51 @@ module Boot
     attr_reader :classes, :define_methods, :evals, :autoloads
 
     def install
+      require "coverage"
+      Coverage.start(branches: true) # which arm of each load-time if boot took (decision 201)
       @features = $LOADED_FEATURES.dup
       install_class_trace
       install_define_method
       install_evals
       install_autoload
+      install_private_constant
+      @delegators = {}
     end
+
+    attr_reader :delegators
+
+    # Forwardable's delegated names by call site, for a list built at load time (`*(DSL_METHODS - [:x])`, decision 204).
+    def install_forwardable
+      return if @forwardable_hooked || !defined?(::Forwardable) || !::Forwardable.method_defined?(:def_delegators) # not while forwardable.rb itself loads
+
+      @forwardable_hooked = true
+      ::Forwardable.prepend(Module.new do
+        (%i[def_delegators def_instance_delegators] & ::Forwardable.instance_methods(false)).each do |m|
+          define_method(m) do |accessor, *methods|
+            loc = caller_locations(1, 1).first
+            ::Boot.delegators["#{loc.path}:#{loc.lineno}"] ||= methods.map(&:to_s) if loc
+            super(accessor, *methods)
+          end
+        end
+      end)
+    end
+
+    # Module#constants omits private ones; const_classes needs them too.
+    def install_private_constant
+      @private_constants = Hash.new { |h, k| h[k] = [] }
+      Module.prepend(Module.new do
+        def private_constant(*names)
+          ::Boot.private_constants[self].concat(names)
+          super
+        end
+      end)
+    end
+
+    def private_constants = @private_constants
 
     def install_class_trace
       @class_tp = TracePoint.new(:class) do |tp|
+        install_forwardable
         klass = tp.self
         next unless klass.is_a?(Class) || klass.is_a?(Module)
         name = safe_name(klass)
@@ -43,16 +79,15 @@ module Boot
     # event when it is the define_method call's own line: what the block captures, recorded when it is a literal
     # (decision 198).
     def install_define_method
-      @last_binding = nil
-      @line_tp = TracePoint.new(:line) { |tp| @last_binding = tp.binding }
+      @line_bindings = {} # the latest binding of each executed line: a define_method call's own, though its args ran other lines
+      @line_tp = TracePoint.new(:line) { |tp| @line_bindings["#{tp.path}:#{tp.lineno}"] = tp.binding }
       @line_tp.enable
       calls = []
       @define_method_tp = TracePoint.new(:c_call, :c_return) do |tp|
         next unless tp.method_id == :define_method || tp.method_id == :define_singleton_method
 
         if tp.event == :c_call
-          b = @last_binding
-          b = nil unless b && b.source_location == [tp.path, tp.lineno]
+          b = @line_bindings["#{tp.path}:#{tp.lineno}"]
           calls << [tp.path, tp.lineno, b]
           next
         end
@@ -76,14 +111,36 @@ module Boot
       @define_method_tp.enable
     end
 
-    # The caller's locals that are plain data, as Ruby literals.
+    # The caller's locals as Ruby expressions: a literal for plain data, else the constant that holds the same object.
     def captures(b)
       return {} unless b
 
+      nesting = (b.eval("Module.nesting") rescue [])
       b.local_variables.each_with_object({}) do |v, out|
-        lit = literal(b.local_variable_get(v))
+        value = b.local_variable_get(v)
+        lit = literal(value) || held_by_constant(value, nesting)
         out[v.to_s] = lit if lit
       end
+    end
+
+    # `M::C`, `M::C.fetch(key)` or `M::C[i]` when a constant of the lexical scope holds value itself.
+    def held_by_constant(value, nesting)
+      nesting.each do |mod|
+        next unless (name = safe_name(mod))
+
+        mod.constants(false).each do |c|
+          obj = (mod.const_get(c, false) rescue next)
+          return "#{name}::#{c}" if obj.equal?(value)
+
+          case obj
+          when Hash
+            obj.each { |k, e| return "#{name}::#{c}.fetch(#{literal(k)})" if e.equal?(value) && literal(k) }
+          when Array
+            obj.each_with_index { |e, i| return "#{name}::#{c}[#{i}]" if e.equal?(value) }
+          end
+        end
+      end
+      nil
     end
 
     def literal(x, depth = 0)
@@ -91,6 +148,8 @@ module Boot
 
       case x
       when nil, true, false, Integer, Float, Symbol then x.inspect
+      when Module then x.name && (Object.const_get(x.name) rescue nil).equal?(x) ? "::#{x.name}" : nil
+      when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
       when Array
         parts = x.map { |e| literal(e, depth + 1) }
@@ -107,24 +166,26 @@ module Boot
     def install_evals
       Kernel.prepend(Module.new do
         def eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[2], args[3]) if args[0].is_a?(String)
+          ::Boot.record_eval(args[0], args[2], args[3], "eval", nil) if args[0].is_a?(String)
           super(*args, **kw, &blk)
         end
       end)
       Module.prepend(Module.new do
         def class_eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[1], args[2]) if args[0].is_a?(String)
+          ::Boot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
+          ::Boot.record_block_eval(blk, self) if blk && args.empty?
           super(*args, **kw, &blk)
         end
 
         def module_eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[1], args[2]) if args[0].is_a?(String)
+          ::Boot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
+          ::Boot.record_block_eval(blk, self) if blk && args.empty?
           super(*args, **kw, &blk)
         end
       end)
       BasicObject.prepend(Module.new do
         def instance_eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[1], args[2]) if args[0].is_a?(String)
+          ::Boot.record_eval(args[0], args[1], args[2], "instance_eval", self) if args[0].is_a?(String)
           super(*args, **kw, &blk)
         end
       end)
@@ -140,10 +201,23 @@ module Boot
       Module.prepend(hook)
     end
 
-    def record_eval(src, file, line)
+    # Where it was called, what it evaluated, and on what: a named module's class_eval or instance_eval (decision 204).
+    def record_eval(src, file, line, kind, recv)
       loc = caller_locations(2, 1).first
-      @evals << { "file" => file, "line" => line, "source" => src,
+      named = recv.is_a?(Module) ? safe_name(recv) : nil
+      @evals << { "file" => file, "line" => line, "source" => src, "kind" => kind, "self" => named,
                   "caller" => loc ? "#{loc.path}:#{loc.lineno}" : nil }
+    end
+
+    # `klass.class_eval do def x ... end end` on a module the caller computed: the block's location, compiled into
+    # that module as its body (decision 204).
+    def record_block_eval(blk, recv)
+      loc = blk.source_location
+      named = safe_name(recv)
+      return unless loc && named
+
+      @evals << { "file" => loc[0], "line" => loc[1], "source" => nil, "kind" => "class_eval_block", "self" => named,
+                  "caller" => "#{loc[0]}:#{loc[1]}" }
     end
 
     def record_autoload(owner, name, path)
@@ -199,6 +273,39 @@ module Boot
         "recreate" => recreate, "frozen" => value.frozen? }
     end
 
+    # Every if/unless boot reached: its arms' counts, by file and the keyword's line and column.
+    def branches
+      out = []
+      Coverage.result.each do |file, cov|
+        (cov[:branches] || {}).each do |(kind, _, line, col), arms|
+          next unless %i[if unless case].include?(kind)
+
+          counts = arms.to_h { |(arm, *), n| [arm.to_s, n] }
+          out << { "file" => file, "line" => line, "col" => col, "kind" => kind.to_s,
+                   "then" => counts["then"].to_i, "else" => counts["else"].to_i,
+                   "arms" => arms.map { |(arm, _, l, c), n| { "kind" => arm.to_s, "line" => l, "col" => c, "count" => n } } }
+        end
+      end
+      out
+    end
+
+    # Constants whose value is a class named otherwise: `Impl = case ... end` picked at load time.
+    def const_classes
+      out = {}
+      @classes.each_key do |name|
+        owner = (Object.const_get(name) rescue next)
+        next unless owner.is_a?(Module)
+
+        (owner.constants(false) | @private_constants[owner]).each do |c|
+          next if owner.autoload?(c)
+
+          v = (owner.const_get(c, false) rescue next)
+          out["#{name}::#{c}"] = v.name if v.is_a?(Module) && v.name && v.name != "#{name}::#{c}"
+        end
+      end
+      out
+    end
+
     def dump(path)
       @class_tp&.disable
       @line_tp&.disable
@@ -211,9 +318,12 @@ module Boot
         "loaded_features" => ($LOADED_FEATURES - @features),
         "classes" => classes,
         "define_methods" => @define_methods,
-        "evals" => @evals.uniq { |e| [e["source"], e["file"], e["line"]] },
+        "evals" => @evals.uniq { |e| [e["source"], e["kind"], e["self"], e["caller"]] },
         "autoloads" => resolve_autoloads,
         "class_state" => class_state,
+        "branches" => branches,
+        "const_classes" => const_classes,
+        "delegators" => @delegators,
       }
       File.write(path, JSON.pretty_generate(manifest))
     end

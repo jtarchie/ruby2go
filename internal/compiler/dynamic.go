@@ -211,6 +211,9 @@ func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 	if len(cls.TypeParams) > 0 && growsTypeParams(cls, e) {
 		return nil, false
 	}
+	if cls.hashBase && e.Owner != cls && e.Owner.IsModule && slices.Contains(cls.Super.ancestors(), e.Owner) {
+		return nil, false // the embedded base's own module method (Pathname's Comparable): its Self is the base, not cls
+	}
 	return e, e.M.Private && !rubyPrivate[name] && name != "method_missing"
 }
 
@@ -610,9 +613,7 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 		env[p] = TVar{Name: p}
 	}
 	env["Self"] = recv.typ
-	if cls.hashBase {
-		env["K"] = TAny{} // the embedded Hash[any, V]
-	}
+	cls.containerEnv(env)
 	c.emitDynCall(f, e, recv, env, true)
 	return f.buf.String()
 }
@@ -1074,7 +1075,7 @@ func (c *Compiler) emitDynEach() {
 		vars := []string{"a", "b"}[:len(m.Block.Params)]
 		c.w("\tcase %s:\n", shape)
 		if m.Iterator {
-			c.w("\t\tfor %s := range r.Each() {\n\t\t\tyield(%s)\n\t\t}\n", strings.Join(vars, ", "), strings.Join(vars, ", "))
+			c.w("\t\t%s\n\t\t\tyield(%s)\n\t\t}\n", rangeHead(strings.Join(vars, ", "), "r.Each()"), strings.Join(vars, ", "))
 			continue
 		}
 		typed := make([]string, len(vars))

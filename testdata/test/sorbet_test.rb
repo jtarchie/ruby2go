@@ -103,7 +103,97 @@ module SorbetTests
     def self.call_hidden(n) = hidden(n)
   end
 
+  # `<=>` typed for any other object, nil when it cannot compare: Comparable still answers through it
+  class Tok
+    extend T::Sig
+    include Comparable
+
+    sig { returns(Integer) }
+    attr_reader :v
+
+    sig { params(v: Integer).void }
+    def initialize(v)
+      @v = v
+    end
+
+    sig { params(other: BasicObject).returns(T.nilable(Integer)) }
+    def <=>(other)
+      case other
+      when Tok then v <=> other.v
+      end
+    end
+  end
+
+  class RevTok < Tok
+    extend T::Sig
+
+    sig { params(other: BasicObject).returns(T.nilable(Integer)) }
+    def <=>(other)
+      case other
+      when RevTok then other.v <=> v
+      else super
+      end
+    end
+  end
+
+  # Sorbet's way of typing Enumerable: a fixed `Elem` type member
+  class Bag
+    extend T::Sig
+    extend T::Generic
+    include Enumerable
+
+    Elem = type_member(:out) { { fixed: String } }
+
+    sig { params(xs: T::Array[String]).void }
+    def initialize(xs)
+      @xs = xs
+    end
+
+    sig { override.params(block: T.proc.params(x: String).void).returns(T.self_type) }
+    def each(&block)
+      @xs.each(&block)
+      self
+    end
+  end
+
+  class Registry
+    class << self
+      extend T::Generic
+      include Enumerable
+
+      Elem = type_member(:out) { { fixed: Integer } }
+    end
+
+    #: () { (Integer) -> void } -> void
+    def self.each(&) = [3, 1, 2].each(&)
+  end
+
   class SorbetTest < Minitest::Test
+    extend T::Sig
+
+    sig { params(x: T.all(Comparable, Integer)).returns(Integer) }
+    def sorbet_twice(x) = x * 2
+
+    def test_nilable_spaceship
+      a, b = Tok.new(1), Tok.new(2)
+      assert_operator a, :<, b
+      assert_equal 2, [b, a].max.v
+      assert a.between?(a, b)
+      x, y = RevTok.new(1), RevTok.new(2)
+      assert_operator y, :<, x
+    end
+
+    def test_elem_type_member
+      assert_equal %w[a b], Bag.new(%w[b a]).sort
+      assert_equal [1, 2], Bag.new(%w[x yy]).map(&:size)
+      assert_equal [1, 2, 3], Registry.sort
+      assert Registry.include?(2)
+    end
+
+    def test_intersection
+      assert_equal 4, sorbet_twice(2)
+    end
+
     def test_abstract_and_final_classes
       shapes = T.let([Circle.new(1.0), Rect.new(2.0, 3.0), Rect.square(2.0)], T::Array[Shape])
       assert_equal ["Circle(3.1)", "Rect(6.0)", "Rect(4.0)"], shapes.map(&:label)

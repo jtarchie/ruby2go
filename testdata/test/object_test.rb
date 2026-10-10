@@ -5269,4 +5269,112 @@ module ObjectTests
       assert_equal [[], {}, true], [ObjectEmptyData.members, ObjectEmptyData.new.to_h, ObjectEmptyData.new == ObjectEmptyData.new]
     end
   end
+
+  # prepend: the module's method runs first, and its super reaches the class's own (decision 199)
+  module ObjLoud
+    #: () -> String
+    def greet = super.upcase + "!"
+  end
+
+  class ObjGreeter
+    prepend ObjLoud
+
+    #: () -> String
+    def greet = "hi"
+  end
+
+  module ObjUtil
+    extend self
+
+    #: () -> Integer
+    def one = 1
+  end
+
+  class ObjHost
+    #: () -> String
+    def ObjHost.hi = "hi"
+  end
+
+  class ObjStack < Array
+    #: () -> Integer
+    def doubled_size = size * 2
+  end
+
+  class ObjName < String
+    #: () -> String
+    def hi = "hi " + self
+  end
+
+  module ObjNums
+    extend Enumerable
+
+    #: () { (Integer) -> void } -> void
+    def self.each
+      yield 3
+      yield 1
+    end
+  end
+
+  class ObjRestBase
+    #: (*untyped) -> String
+    def show(*args) = "base#{args.size}"
+
+    #: (String) -> nil
+    def cause(_) = nil
+
+    #: (Integer) -> Integer
+    def twice(_) = _ * 2
+  end
+
+  # an override of a `*args` method by positional ones answers by argument count
+  class ObjRestKid < ObjRestBase
+    #: (?Integer?) -> String
+    def show(n = nil) = "kid#{n.inspect}"
+  end
+
+  class ObjMixinFeaturesTest < Minitest::Test
+    def test_rest_override_and_ignored_param
+      xs = [ObjRestBase.new, ObjRestKid.new] #: Array[ObjRestBase]
+      assert_equal %w[base0 kidnil], xs.map(&:show)
+      assert_equal %w[base1 kid3], xs.map { |x| x.show(3) }
+      k = ObjRestKid.new #: ObjRestBase
+      begin
+        k.show(1, 2)
+        flunk "no ArgumentError"
+      rescue ArgumentError => e
+        assert_equal "wrong number of arguments (given 2, expected 0..1)", e.message
+      end
+      assert_nil ObjRestKid.new.cause("x")
+      assert_equal 8, ObjRestKid.new.twice(4)
+    end
+
+    def test_prepend
+      assert_equal "HI!", ObjGreeter.new.greet
+      assert_equal [ObjLoud, ObjGreeter], ObjGreeter.ancestors.take(2)
+    end
+
+    def test_extend_self_and_constant_singleton
+      assert_equal 1, ObjUtil.one
+      assert_equal "hi", ObjHost.hi
+    end
+
+    def test_core_subclasses
+      s = ObjStack.new
+      s << 1
+      s.push(2)
+      assert_equal 4, s.doubled_size
+      assert_equal "hi bob", ObjName.new("bob").hi
+    end
+
+    def test_extend_enumerable_from_each
+      assert_equal [1, 3], ObjNums.sort
+    end
+
+    def test_optional_block_param
+      out = []
+      [1, 2].each { |x = 0| out << x }
+      assert_equal [1, 2], out
+    end
+  end
+
 end

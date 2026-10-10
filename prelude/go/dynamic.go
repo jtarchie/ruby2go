@@ -151,3 +151,11 @@ func rbDynKw(args []any, req int) (*Hash[Symbol, any], []any) {
 	}
 	return out, args[:len(args)-1]
 }
+
+// rbAt is xs[i], or nil past the end: a loose proc call's missing argument (decision 172).
+func rbAt(xs []any, i int) any {
+	if i < len(xs) {
+		return xs[i]
+	}
+	return nil
+}

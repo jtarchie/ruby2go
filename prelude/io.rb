@@ -710,6 +710,8 @@ ENV = ENVClass.new #: ENVClass
 # without the OS version MRI appends (arm64-darwin, x86_64-linux).
 RUBY_VERSION = "4.0.0" #: String
 RUBY_PLATFORM = ENVClass.__platform #: String
+RUBY_ENGINE = "ruby" #: String
+RUBY_ENGINE_VERSION = RUBY_VERSION #: String
 
 # ARGF (decision 95): the files named in ARGV, read in turn and shifted out
 # of it as each opens, or stdin when ARGV is empty at the first read.

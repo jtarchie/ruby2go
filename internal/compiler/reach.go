@@ -546,7 +546,7 @@ func (r *reach) pruneConsts() {
 	var keep []*Const
 	for _, k := range c.constList {
 		name := k.RubyName[strings.LastIndex(k.RubyName, ":")+1:]
-		if !c.gemFile(k.File) || r.consts[name] || !effectFree(k.Value) {
+		if !c.gemFile(k.File) || r.consts[name] || !effectFree(k.Value) || k.typeAlias != "" { // a Sorbet type alias types sigs and includes, unread by name
 			keep = append(keep, k)
 			continue
 		}

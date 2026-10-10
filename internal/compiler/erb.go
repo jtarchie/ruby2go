@@ -62,24 +62,8 @@ func (c *Compiler) collectERB(ctx context.Context, f *File) {
 				frames[len(frames)-1].erbVars[x.Name] = call
 			}
 		case *parser.CallNode:
-			if x.Receiver != nil && (x.Name == "result" || x.Name == "result_with_hash" || x.Name == "run") {
-				var call *parser.CallNode
-				tplFile := f
-				switch r := x.Receiver.(type) {
-				case *parser.CallNode:
-					call = erbNewCall(r)
-				case *parser.LocalVariableReadNode:
-					call = frames[len(frames)-1].erbVars[r.Name]
-				case *parser.ConstantReadNode, *parser.ConstantPathNode:
-					if _, k := c.lookupConst(f, r, scope); k != nil {
-						call, tplFile = erbNewCall(k.Value), k.File
-					}
-				}
-				if call != nil {
-					tpl := c.erbNewTemplate(tplFile, call)
-					c.erbSnippets[x] = c.erbParse(ctx, f, x, tpl, frames[len(frames)-1].locals)
-				}
-			}
+			top := frames[len(frames)-1]
+			c.collectERBCall(ctx, f, x, scope, top.locals, top.erbVars)
 		}
 		for _, ch := range n.ChildNodes() {
 			walk(ch)
@@ -585,4 +569,41 @@ func erbDump(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// collectERBCall compiles the template of one `result`/`result_with_hash`/`run` call (collectERB).
+func (c *Compiler) collectERBCall(ctx context.Context, f *File, x *parser.CallNode, scope []*Class, locals map[string]bool, erbVars map[string]*parser.CallNode) {
+	if x.Receiver == nil || x.Name != "result" && x.Name != "result_with_hash" && x.Name != "run" {
+		return
+	}
+	var call *parser.CallNode
+	tplFile := f
+	switch r := x.Receiver.(type) {
+	case *parser.CallNode:
+		call = erbNewCall(r)
+	case *parser.LocalVariableReadNode:
+		call = erbVars[r.Name]
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		if _, k := c.lookupConst(f, r, scope); k != nil {
+			call, tplFile = erbNewCall(k.Value), k.File
+		}
+	}
+	if call == nil {
+		return
+	}
+	compileTpl := func() {
+		tpl := c.erbNewTemplate(tplFile, call)
+		c.erbSnippets[x] = c.erbParse(ctx, f, x, tpl, locals)
+	}
+	if !c.gemFile(f) {
+		compileTpl()
+		return
+	}
+	err := catchCompileError(compileTpl)
+	if err != nil { // gem code: an error only where reachable code renders it
+		if c.anonErrors == nil {
+			c.anonErrors = map[*parser.CallNode]compileError{}
+		}
+		c.anonErrors[x] = *err
+	}
 }

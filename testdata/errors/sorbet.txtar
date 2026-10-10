@@ -25,14 +25,6 @@ extend T::Sig
 sig { params(n: Integer).returns(Integer) }
 def f(n, m) = n + m
 puts f(1, 2)
--- intersection.rb --
-# error: main.rb:5: unsupported Sorbet type T.all
-require "sorbet-runtime"
-
-extend T::Sig
-sig { params(x: T.all(Comparable, Integer)).returns(Integer) }
-def f(x) = x
-puts f(1)
 -- no_return.rb --
 # error: main.rb:5: sig needs returns(...) or void
 require "sorbet-runtime"

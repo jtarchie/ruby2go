@@ -59,11 +59,6 @@ puts total(*pair)
 #: (Integer, Integer) -> Integer
 def add(a, b) = a + b
 puts add(*{a: 1})
--- splat_in_dynamic_call.rb --
-# error: main.rb:4: splat arguments in a dynamic call are not supported
-u = 5 #: untyped
-nums = [1] #: Array[Integer]
-puts u.foo(*nums)
 -- rest_in_sig_not_def.rb --
 # error: main.rb:3: signature has a rest param but def does not
 #: (*Integer) -> Integer
@@ -74,10 +69,6 @@ puts total(1)
 #: (Integer) -> Integer
 def total(*ns) = ns.size
 puts total(1)
--- block_param_optional.rb --
-# error: main.rb:3: unsupported block parameter form
-nums = [1, 2] #: Array[Integer]
-nums.each { |x = 0| puts x }
 -- block_tuple_arity.rb --
 # error: main.rb:3: block takes 3 params but the tuple has 2 elements
 pairs = [[1, "a"]] #: Array[[Integer, String]]
@@ -156,17 +147,6 @@ class Box
   end
 end
 puts Box.new.to_a.inspect
--- extend_enumerable_without_type.rb --
-# error: main.rb:3: extend Enumerable needs 1 type args (`extend Enumerable #[...]`)
-module Nums
-  extend Enumerable
-
-  #: () { (Integer) -> void } -> void
-  def self.each
-    yield 1
-  end
-end
-puts Nums.to_a.inspect
 -- cannot_infer_type_param.rb --
 # error: main.rb:6: cannot infer type parameter T of Util.none
 class Util
@@ -319,10 +299,3 @@ nums << nil
 # warning: main.rb:3: size called on possibly-nil Array[Integer] (raises NoMethodError on nil)
 h = { "a" => [1] } #: Hash[String, Array[Integer]]
 puts h["a"].size
--- subclass_array.rb --
-# error: main.rb:2: subclassing Array is not supported
-class Stack < Array
-  #: () -> Integer
-  def top2 = 2
-end
-puts Stack.new.top2

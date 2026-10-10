@@ -116,6 +116,11 @@ func (c *Compiler) checkNumeric() {
 			continue
 		}
 		for _, m := range num.MethodList {
+			if e := cls.lookup(m.Name); e != nil && e.Owner == num && !m.File.prelude && m.Kind == kindDef {
+				cp := c.copyAlias(cls, m, m.Name) // `class Numeric; def blank? = false; end`: every number has it, as MRI's inheritance gives
+				cp.Owner = cls
+				continue
+			}
 			if e := cls.lookup(m.Name); e != nil && e.Owner == num {
 				c.errorf(cls.File, nil, "%s:%d: %s must define or undef Numeric#%s", cls.File.Name, cls.Line, cls.RubyName, m.Name)
 			}

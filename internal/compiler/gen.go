@@ -12,6 +12,8 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
+	probeDepth    int         // inside probe: output is discarded
+	unionArm      int         // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
 	erbDepth      int         // inside a spliced template, where a bare name may be the caller's local
 	curBlock      parser.Node // the block of the call overload is resolving
 	lambdaClosure int         // f.closures inside the innermost lambda body, whose `return` is its own
@@ -382,8 +384,22 @@ func isAncestorBlock(decl, use string) bool {
 func (f *fctx) probe(fn func()) {
 	savedBuf, savedTmp, savedCtr, savedIndent := f.buf, f.tmp, f.blockCtr, f.indent
 	f.buf = &strings.Builder{}
+	f.probeDepth++
+	defer func() { f.probeDepth-- }()
+	sc := f.scope
+	var had map[string]*local
+	if sc != nil {
+		had = maps.Clone(sc.vars)
+	}
 	fn()
 	f.buf, f.tmp, f.blockCtr, f.indent = savedBuf, savedTmp, savedCtr, savedIndent
+	if sc != nil { // locals the discarded output declared (`x = begin v = 1 end`, `xs << (w = 5)`) are not declared yet
+		for name := range sc.vars {
+			if _, ok := had[name]; !ok {
+				delete(sc.vars, name)
+			}
+		}
+	}
 }
 
 // ---- tails
@@ -502,6 +518,14 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 		return
 	}
 	for i, s := range stmts.Body {
+		if f.m == nil && f.owner == nil && f.block == "" && f.lenient() && !f.c.round && !f.discover {
+			// decision 205: a gem file's top-level statement that does not compile is skipped, warned
+			err := f.tryClean(func() { f.genStmt(s, tail{}) })
+			if err != nil {
+				f.c.warn(f.f, s, "a top-level statement does not compile, so it is skipped: %s (decision 205)", err.msg)
+			}
+			continue
+		}
 		if (f.c.round || f.discover) && i < len(stmts.Body)-1 {
 			// an inference round reads calls, and ivar discovery assignments, past a statement it cannot compile (decisions 146, 191)
 			f.c.debugInfer(f.try(func() { f.genStmt(s, tail{}) }))
@@ -596,7 +620,7 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
-	if f.c.absentGuard(f.f, pred, f.lex) { // the guarded branch names what no file defines: it cannot run (decision 167)
+	if f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) { // the guarded branch names what no file defines: it cannot run (decision 167)
 		taken := els
 		if negate {
 			taken = then
@@ -1279,15 +1303,20 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	subj := f.genExpr(n.Predicate, nil)
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, f.materialize(subj))
-	f.emit("switch {")
-	f.switches++
-	for _, w := range n.Conditions {
-		wn := w.(*parser.WhenNode)
+	// each arm's test before the switch: one may need statements (a union subject's type switch), which cannot sit between cases
+	arms := make([]string, len(n.Conditions))
+	for i, w := range n.Conditions {
 		var conds []string
-		for _, cond := range wn.Conditions {
+		for _, cond := range w.(*parser.WhenNode).Conditions {
 			conds = append(conds, f.caseEqq(cond, expr{code: tmp, typ: subj.typ}))
 		}
-		f.emit("case %s:", strings.Join(conds, " || "))
+		arms[i] = strings.Join(conds, " || ")
+	}
+	f.emit("switch {")
+	f.switches++
+	for i, w := range n.Conditions {
+		wn := w.(*parser.WhenNode)
+		f.emit("case %s:", arms[i])
 		saved := f.enterBlock()
 		f.indent++
 		f.genStmts(wn.Statements, t)
@@ -2097,6 +2126,9 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 	if narrowed {
 		existing = existing.base
 	}
+	if isNil(typ) && f.pass == 2 && f.lenient() {
+		typ = TAny{} // gem code: a local only ever nil is untyped (decision 183)
+	}
 	if isNil(typ) && f.pass == 2 {
 		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)
 	}
@@ -2104,20 +2136,7 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		return f.declareAssign(n, name, typ, val, annotated)
 	}
 	if info != nil {
-		info.writes++
-		if !isAncestorBlock(info.declBlock, f.block) {
-			info.hoist = true
-		}
-		if f.pass < 2 && !info.annotated {
-			if j, ok := join(info.typ, val.typ); ok {
-				info.typ = j
-			} else if !isVoid(val.typ) {
-				f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)
-			}
-		}
-		if f.pass == 2 || isNil(val.typ) {
-			existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14)
-		}
+		f.noteReassign(n, name, info, existing, val)
 	}
 	target := existing.typ
 	if f.pass < 2 && info != nil && !info.annotated && !isOpt(val.typ) && !isOpt(info.typ) {
@@ -2132,6 +2151,24 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		}
 	}
 	return f.narrowSet(existing, val)
+}
+
+// noteReassign records another assignment of a local: where it happens and the join of what it holds.
+func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existing *local, val expr) {
+	info.writes++
+	if !isAncestorBlock(info.declBlock, f.block) {
+		info.hoist = true
+	}
+	if f.pass < 2 && !info.annotated {
+		if j, ok := join(info.typ, val.typ); ok {
+			info.typ = j
+		} else if !isVoid(val.typ) {
+			f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)
+		}
+	}
+	if f.pass == 2 || isNil(val.typ) {
+		existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14)
+	}
 }
 
 // narrowSet: a maybe-unset local is T? only for the paths that skip its assignments, so after one it is non-nil.
@@ -2171,6 +2208,9 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 		code = f.c.goType(v.typ) + "(" + code + ")"
 	}
 	v.declared = true
+	if v.typ == nil {
+		f.errorf(n, "internal: local %s has no type (its value: %s)", name, code)
+	}
 	switch {
 	case hoisted:
 		f.emit("%s = %s", v.goName, code)
@@ -2236,16 +2276,48 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 			f.emit("var rbLM_ %s", f.c.goType(TOpt{Elem: f.cls("MatchData")}))
 		}
 		f.hoistLocals(methodScope)
+		if f.owner != nil && f.m != nil && f.m.Node != nil && body == f.m.Node.Body {
+			for _, name := range slices.Sorted(maps.Keys(f.owner.scratchIvars)) {
+				f.emit("var %s any", scratchIvar(name))
+				f.emit("_ = %s", scratchIvar(name))
+			}
+		}
 		f.genStmts(body, t)
 	}
 	fresh()
-	if f.discover {
+	whole := f.m != nil && f.m.Node != nil && body == f.m.Node.Body && f.lenient() // a gem method's own body: poisonable (decision 205)
+	switch {
+	case f.discover:
 		run(0)
-	} else {
+	case whole && f.m.poison != "":
+		f.poisonedBody(t, prologue)
+	case whole:
+		err := catchCompileError(func() { f.analyze(fresh, run) })
+		if err != nil {
+			f.m.poison = err.msg
+			f.c.warn(f.f, f.m.Node, "%s does not compile, so calling it raises NotImplementedError: %s (decision 205)", f.m, err.msg)
+			fresh()
+			f.poisonedBody(t, prologue)
+		}
+	default:
 		f.analyze(fresh, run)
 	}
 	final.WriteString(f.buf.String())
 	f.buf = final
+}
+
+// poisonedBody is a gem method body rb2go cannot compile: it raises NotImplementedError naming why, where MRI would
+// have run it, and the rest of the program still builds (decision 205).
+func (f *fctx) poisonedBody(t tail, prologue func()) {
+	f.buf = &strings.Builder{}
+	f.scope = &scope{vars: map[string]*local{}}
+	if prologue != nil && catchCompileError(prologue) != nil { // an iterator's wrapper opens here; a default that fails is skipped too
+		f.buf = &strings.Builder{}
+	}
+	f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: "+f.m.String()+" does not compile: "+f.m.poison)
+	if t.kind != tailNone && t.typ == nil && t.types != nil {
+		t.record(TAny{})
+	}
 }
 
 // analyze runs the local-analysis pass and the emitting pass (decision 13).
@@ -2318,6 +2390,18 @@ func (f *fctx) newConv(before map[int]bool) bool {
 // try is catchCompileError for generation that goes on past the error:
 // an error inside a block would leave its closure depth, buffer and scope
 // behind, so f is restored (labels excepted: they stay unique).
+// tryClean is try that also drops what fn emitted when it fails: a skipped statement leaves no half-open block.
+func (f *fctx) tryClean(fn func()) *compileError {
+	out := f.buf
+	f.buf = &strings.Builder{}
+	err := f.try(fn)
+	if err == nil {
+		out.WriteString(f.buf.String())
+	}
+	f.buf = out
+	return err
+}
+
 func (f *fctx) try(fn func()) *compileError {
 	saved := *f
 	err := catchCompileError(fn)
@@ -2446,12 +2530,16 @@ func (c *Compiler) newFctx(f *File, owner *Class, m *Method) *fctx {
 
 func (c *Compiler) paramLocals(m *Method) []*local {
 	ps := make([]*local, 0, len(m.Params))
-	for _, p := range m.Params {
+	for i, p := range m.Params {
 		t := p.Type
 		if p.Rest {
 			t = TClass{C: c.classes["Array"], Args: []Type{p.Type}}
 		}
-		ps = append(ps, &local{name: p.Name, goName: goLocalName(p.Name), typ: t, declared: true})
+		goName := goParamName(p.Name, i)
+		if p.Rest {
+			goName = goLocalName(p.Name) // bound from rest_ in the prologue
+		}
+		ps = append(ps, &local{name: p.Name, goName: goName, typ: t, declared: true})
 	}
 	if name := m.optionalBlockLocal(); name != "" {
 		ps = append(ps, &local{name: name, goName: optBlockGo, typ: optBlockType(m), declared: true})
@@ -2467,6 +2555,10 @@ func optBlockType(m *Method) Type {
 }
 
 func (c *Compiler) emitMethod(m *Method) {
+	c.keepGoing(func() { c.emitMethod0(m) }) // RB2GO_KEEP_GOING: every body's error in one run
+}
+
+func (c *Compiler) emitMethod0(m *Method) {
 	cls := m.Owner
 	if m.Kind == kindSynth {
 		c.emitSynth(m)
@@ -2474,6 +2566,12 @@ func (c *Compiler) emitMethod(m *Method) {
 	}
 	if m.Kind == kindAttrReader {
 		iv := c.findIvar(cls, m.Attr)
+		if m.Ret != nil && c.goType(m.Ret) != c.goType(iv.Type) { // a gem reader typed apart from its inherited ivar (`Exception` over @cause's `Exception?`)
+			f := c.newFctx(m.File, cls, m)
+			code := f.coerce(nil, expr{code: "self." + goFieldName(iv.Name), typ: iv.Type}, m.Ret)
+			c.w("func (self *%s) %s() %s { return %s }\n\n", cls.Name, m.GoName, c.goType(m.Ret), code)
+			return
+		}
 		c.w("func (self *%s) %s() %s { return self.%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name))
 		return
 	}
@@ -2489,9 +2587,7 @@ func (c *Compiler) emitMethod(m *Method) {
 	env := map[string]Type{}
 	if cls.GoType != "" {
 		env["Self"] = cls.instance()
-		if cls.hashBase {
-			env["K"] = TAny{} // the embedded Hash[any, V]
-		}
+		cls.containerEnv(env)
 	} else {
 		env["Self"] = TVar{Name: "Self"}
 	}
@@ -2594,7 +2690,7 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	params := c.paramLocals(m)
 	prologue := func() {
 		for _, p := range m.Params {
-			if p.Rest {
+			if p.Rest && p.Name != "_" { // `*_` binds nothing
 				f.emit("%s := &Array[%s]{s: rest_}", goLocalName(p.Name), c.goType(p.Type))
 				f.emit("_ = %s", goLocalName(p.Name)) // `*_args` may go unused
 			}
@@ -2646,6 +2742,10 @@ func (f *fctx) fillDefault(missing string, p Param) {
 	name := goLocalName(p.Name)
 	if info := f.localInfo(p.Name); f.pass == 2 && info != nil && info.reads == 1 {
 		name = "_" // never read: evaluated for its effects only
+		switch p.Default.(type) {
+		case *parser.NilNode, *parser.TrueNode, *parser.FalseNode, *parser.IntegerNode, *parser.SymbolNode, *parser.StringNode:
+			return // a literal has none, and Go rejects `_ = nil`
+		}
 	}
 	f.emit("if %s {", missing)
 	f.indent++
@@ -2803,7 +2903,10 @@ func (c *Compiler) inferReturns() {
 		m.Ret = nil
 	}
 	for _, m := range c.inferredMethods() {
-		c.inferRet(m)
+		c.keepGoing(func() { c.inferRet(m) })
+		if m.Ret == nil { // RB2GO_KEEP_GOING after a body failed: untyped, so the rest still types
+			m.Ret = TAny{}
+		}
 	}
 }
 
@@ -2827,6 +2930,7 @@ func (c *Compiler) inferredMethods() []*Method {
 // discoverIvars dry-runs struct class method bodies to learn ivar types
 // from assignments.
 func (c *Compiler) discoverIvars() {
+	c.declareGemModuleIvars()
 	for range 2 {
 		for _, cls := range c.classList {
 			for _, iv := range cls.Ivars {
@@ -2834,7 +2938,7 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 		for _, cls := range c.classList {
-			if !cls.isStruct() || cls.universal {
+			if !cls.isStruct() && !cls.hashBase || cls.universal {
 				continue
 			}
 			ms := append([]*Method(nil), cls.MethodList...)
@@ -2864,6 +2968,61 @@ type gemNilIvar struct {
 	name string
 	file *File
 	line int
+}
+
+// declareGemModuleIvars declares, untyped, each instance variable a gem module's methods use: its state struct and
+// the includers' fields are laid out before any body is generated (decision 147; lenient, decision 172).
+func (c *Compiler) declareGemModuleIvars() {
+	if !c.pruneGems {
+		return
+	}
+	for _, mod := range c.classList {
+		if !mod.IsModule || mod.universal || len(mod.TypeParams) > 0 || mod.File == nil || !c.gemFile(mod.File) {
+			continue
+		}
+		valueIncluded := slices.ContainsFunc(c.classList, func(k *Class) bool {
+			return !k.IsModule && (!k.isStruct() || k.universal) && slices.Contains(k.allAncestors(), mod)
+		})
+		for _, m := range mod.MethodList {
+			if m.Node == nil || !c.gemFile(m.File) {
+				continue
+			}
+			var walk func(n parser.Node)
+			walk = func(n parser.Node) {
+				var name string
+				switch n := n.(type) {
+				case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+					return
+				case *parser.InstanceVariableReadNode:
+					name = n.Name
+				case *parser.InstanceVariableWriteNode:
+					name = n.Name
+				case *parser.InstanceVariableOrWriteNode:
+					name = n.Name
+				case *parser.InstanceVariableOperatorWriteNode:
+					name = n.Name
+				case *parser.InstanceVariableAndWriteNode:
+					name = n.Name
+				}
+				switch {
+				case name == "" || c.findIvar(mod, name) != nil:
+				case valueIncluded: // Pathname has no struct to hold it: memoizing recomputes per call (decision 172)
+					if mod.scratchIvars == nil {
+						mod.scratchIvars = map[string]*Ivar{}
+					}
+					if mod.scratchIvars[name] == nil {
+						mod.scratchIvars[name] = &Ivar{Name: name, Type: TAny{}, Owner: mod, scratch: true}
+					}
+				default:
+					c.declareIvar(mod, name, TAny{}, m.File, m.File.line(n.GetLocation().StartOffset))
+				}
+				for _, ch := range n.CompactChildNodes() {
+					walk(ch)
+				}
+			}
+			walk(m.Node.Body)
+		}
+	}
 }
 
 func (c *Compiler) discoverMethod(cls *Class, m *Method) {
@@ -2907,6 +3066,17 @@ type classStmt struct {
 
 // genClassStmt emits a class-body statement in its class's lexical scope.
 func (f *fctx) genClassStmt(cs *classStmt) {
+	if f.c.gemFile(cs.file) { // decision 205: a gem load-time statement that does not compile is skipped, warned
+		err := f.tryClean(func() { f.genClassStmt0(cs) })
+		if err != nil {
+			f.c.warn(cs.file, cs.Node, "a load-time statement does not compile, so it is skipped: %s (decision 205)", err.msg)
+		}
+		return
+	}
+	f.c.keepGoing(func() { f.genClassStmt0(cs) }) // RB2GO_KEEP_GOING: main's load-time statements too
+}
+
+func (f *fctx) genClassStmt0(cs *classStmt) {
 	sub := f.c.newFctx(cs.file, nil, nil)
 	if n := len(cs.scope); n > 0 && cs.scope[n-1].meta != nil {
 		cls := cs.scope[n-1]
@@ -3077,6 +3247,25 @@ func (f *fctx) genBodyConst(n *parser.ConstantWriteNode) {
 }
 
 func (f *fctx) genConstInit(k *Const) {
+	f.c.keepGoing(func() { f.genConstInit0(k) }) // RB2GO_KEEP_GOING: main's load-time statements too
+}
+
+func (f *fctx) genConstInit0(k *Const) {
+	if f.c.constType(k); k.poison != "" {
+		return // decision 205: left nil
+	}
+	if f.c.gemFile(k.File) {
+		err := f.tryClean(func() { f.genConstInit1(k) })
+		if err != nil {
+			k.poison = err.msg
+			f.c.warn(k.File, k.Value, "constant %s does not compile, so it is nil: %s (decision 205)", k.RubyName, err.msg)
+		}
+		return
+	}
+	f.genConstInit1(k)
+}
+
+func (f *fctx) genConstInit1(k *Const) {
 	typ := f.c.constType(k)
 	sub := f.c.constFctx(k)
 	sub.indent = f.indent + 1
@@ -3085,6 +3274,10 @@ func (f *fctx) genConstInit(k *Const) {
 	if e.lit && typeEq(e.typ, typ) { // coerce boxed or converted any other literal
 		code = f.c.goType(typ) + "(" + code + ")"
 	}
+	body := sub.buf
+	sub.buf = &strings.Builder{}
+	sub.hoistLocals(methodScope) // `X = if (path = a).exist? || (path = b).exist?`: assigned inside conditions
+	sub.buf.WriteString(body.String())
 	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)
 	if sub.buf.Len() == 0 {
 		f.emit("%s = %s", k.GoName, code)
@@ -3218,4 +3411,26 @@ func (f *fctx) genCallStmt(n *parser.CallNode, t tail) {
 		e = f.genExpr(n, t.typ)
 	}
 	f.applyTail(n, e, t)
+}
+
+// cannotRespond reports `x.respond_to?(:m)` that is false for x's static class: a @go_type or a class no subclass
+// extends, without m or method_missing (decision 167: the branch it guards cannot run).
+func (f *fctx) cannotRespond(pred parser.Node) bool {
+	call, ok := pred.(*parser.CallNode)
+	if !ok || call.Name != "respond_to?" || call.Receiver == nil || len(callArgs(call)) != 1 {
+		return false
+	}
+	sym, ok := callArgs(call)[0].(*parser.SymbolNode)
+	if !ok {
+		return false
+	}
+	var recv expr
+	if catchCompileError(func() { f.probe(func() { recv = f.genExpr(call.Receiver, nil) }) }) != nil {
+		return false
+	}
+	rc, ok := recv.typ.(TClass)
+	if !ok || rc.C.universal || rc.C.IsModule || rc.C.metaOf != nil || len(rc.C.Subclasses) > 0 && rc.C.GoType == "" {
+		return false
+	}
+	return rc.C.lookup(sym.Unescaped.Value) == nil && rc.C.lookup("method_missing") == nil && rc.C.lookup("respond_to_missing?") == nil
 }

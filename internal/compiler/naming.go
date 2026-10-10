@@ -105,10 +105,23 @@ func goLocalName(name string) string {
 
 // goFieldName maps an ivar (`@x`) to a struct field name.
 func goFieldName(ivar string) string {
-	return goLocalName(strings.TrimPrefix(ivar, "@"))
+	name := strings.TrimPrefix(ivar, "@")
+	if name != "" && name[0] >= 'A' && name[0] <= 'Z' { // `@Value` (concurrent-ruby's style) as a field would collide with a Value method
+		return "iv_" + name
+	}
+	return goLocalName(name)
 }
 
 // goFuncName maps a top-level Ruby def to a Go function name.
 func goFuncName(name string) string {
 	return "rb_" + goMethodName(name)
+}
+
+// goParamName is a method parameter's Go name: `def cause(_)`'s ignored `_` gets a real one, since a forwarder passes
+// its own parameter on and Go cannot read `_`.
+func goParamName(name string, i int) string {
+	if name == "_" {
+		return fmt.Sprintf("rbU%d_", i)
+	}
+	return goLocalName(name)
 }

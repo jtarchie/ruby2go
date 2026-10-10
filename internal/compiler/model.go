@@ -3,10 +3,12 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
@@ -19,7 +21,7 @@ type Class struct {
 	RubyName   string // constant path: "Resty::Actions::Show"
 	IsModule   bool
 	GoType     string // `@go_type` underlying Go type; "" for struct classes
-	hashBase   bool   // a user class extending Hash: embeds a Hash[any, V]
+	hashBase   bool   // a user class extending Hash or Array: embeds a Hash[any, V] or an Array[E] (decisions 165, 202)
 	selfDefs   bool   // some method has `# @self` (selfOverload)
 	TypeParams []string
 	superRef   *constRef   // superclass expression, resolved in link
@@ -56,12 +58,15 @@ type Class struct {
 	msetCache     []entry
 	msetIndex     map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
 	selfCallCache map[string]bool
-	slotsLinked   bool   // linkOverrides ran
-	Display       string // the name Ruby shows, when the declaration has none of its own (a describe's class)
-	specChild     bool   // a nested describe's class: MRI undefines the test methods it inherits
-	specTests     int    // its it/specify count, for MRI's test_0001_ names
-	hidden        bool   // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
-	ivarBits      bool   // its objects record which ivars were assigned (decision 153)
+	gemSelfCalls  map[string]bool  // what gem methods added to a core module call on self: dynamic, not in the constraint (selfCalls)
+	scratchIvars  map[string]*Ivar // a gem module a value class (Pathname) includes: its ivars are per-call locals
+	prepended     []*Class         // modules prepended to it, in prepend order: ancestors lists them before it, last first
+	slotsLinked   bool             // linkOverrides ran
+	Display       string           // the name Ruby shows, when the declaration has none of its own (a describe's class)
+	specChild     bool             // a nested describe's class: MRI undefines the test methods it inherits
+	specTests     int              // its it/specify count, for MRI's test_0001_ names
+	hidden        bool             // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
+	ivarBits      bool             // its objects record which ivars were assigned (decision 153)
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -109,6 +114,7 @@ type Const struct {
 	Scope     []*Class // lexical scope of the assignment
 	ann       string   // trailing `#: T`
 	typeAlias string   // `X = T.type_alias { T }`: the RBS type X names in a sig (decision 196)
+	poison    string   // a gem constant whose value does not compile: why; it stays nil (decision 205)
 	Type      Type
 	resolving bool
 	guarded   bool // may be read before its assignment runs (guardConsts)
@@ -118,11 +124,12 @@ type Const struct {
 
 // Ivar is an instance variable of a struct class.
 type Ivar struct {
-	Name  string // with @
-	Type  Type
-	Owner *Class
-	open  bool      // first assigned an unannotated `[]`/`{}` (refineIvars)
-	elems [2][]Type // what the class's methods put in it
+	Name    string // with @
+	Type    Type
+	Owner   *Class
+	open    bool      // first assigned an unannotated `[]`/`{}` (refineIvars)
+	elems   [2][]Type // what the class's methods put in it
+	scratch bool      // a value-included gem module's: a local of each method (declareGemModuleIvars)
 }
 
 type methodKind int
@@ -172,6 +179,9 @@ type Method struct {
 	inferring       bool
 	structDef       *Method // the generated Struct/Data method a block def overrides; super reaches it
 	superTarget     *Method // a prepended module's copy: the class's own method it wraps, which super calls (decision 199)
+	fwdTarget       *Class  // a delegation's `(...)` forwarder: the class it forwards to
+	poison          string  // a gem method whose body does not compile: why; its body raises NotImplementedError (decision 205)
+	freeName        string  // its free func's name when Owner_Name is taken by a class (separateFreeFuncs)
 	valueGen        bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
@@ -443,55 +453,57 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 	for len(queue) > 0 {
 		n := queue[0]
 		queue = queue[1:]
-		switch n := n.(type) {
-		case *parser.IfNode, *parser.UnlessNode: // a condition known at compile time keeps one branch (decision 167)
-			if branch, ok := c.takenBranch(f, n, nil); ok {
-				queue = append(slices.Clip(branch), queue...)
-				continue
+		c.keepGoing(func() {
+			switch n := n.(type) {
+			case *parser.IfNode, *parser.UnlessNode: // a condition known at compile time keeps one branch (decision 167)
+				if branch, ok := c.takenBranch(f, n, nil); ok {
+					queue = append(slices.Clip(branch), queue...)
+					return
+				}
+				c.scanAnon(ctx, f, n, nil)
+				c.addMainStmt(f, n)
+			case *parser.ClassNode:
+				c.collectClass(ctx, f, n, nil)
+			case *parser.ModuleNode:
+				c.collectModule(ctx, f, n, nil)
+			case *parser.DefNode:
+				c.collectTopDef(f, n)
+				c.scanAnon(ctx, f, n.Body, nil)
+			case *parser.ConstantWriteNode:
+				if call, kind := valueClass(n.Value); call != nil {
+					c.collectValueClass(ctx, f, n, call, kind, nil)
+					return
+				}
+				if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
+					c.collectNamedAnon(ctx, f, n, call, isModule, nil)
+					return
+				}
+				c.scanAnon(ctx, f, n.Value, nil)
+				c.addConst(f, n, n.Name, nil, nil)
+			case *parser.ConstantPathWriteNode: // `Rack::X = v` at the top level
+				c.scanAnon(ctx, f, n.Value, nil)
+				c.addConstAt(f, n, c.declName(f, n.Target, nil), n.Value, nil)
+			case *parser.PreExecutionNode: // BEGIN runs before the rest of its file, in the top-level scope
+				if c.beginStmts == nil {
+					c.beginStmts = map[*File][]parser.Node{}
+				}
+				if n.Statements != nil {
+					c.beginStmts[f] = append(c.beginStmts[f], n.Statements.Body...)
+				}
+			case *parser.XStringNode:
+				if !f.prelude {
+					c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")
+				}
+				c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
+			case *parser.CallNode:
+				c.collectTopCall(ctx, f, n)
+			case *parser.BeginNode:
+				c.addMainStmt(f, c.beginRequires(ctx, f, n))
+			default:
+				c.scanAnon(ctx, f, n, nil)
+				c.addMainStmt(f, n)
 			}
-			c.scanAnon(ctx, f, n, nil)
-			c.addMainStmt(f, n)
-		case *parser.ClassNode:
-			c.collectClass(ctx, f, n, nil)
-		case *parser.ModuleNode:
-			c.collectModule(ctx, f, n, nil)
-		case *parser.DefNode:
-			c.collectTopDef(f, n)
-			c.scanAnon(ctx, f, n.Body, nil)
-		case *parser.ConstantWriteNode:
-			if call, kind := valueClass(n.Value); call != nil {
-				c.collectValueClass(ctx, f, n, call, kind, nil)
-				continue
-			}
-			if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
-				c.collectNamedAnon(ctx, f, n, call, isModule, nil)
-				continue
-			}
-			c.scanAnon(ctx, f, n.Value, nil)
-			c.addConst(f, n, n.Name, nil, nil)
-		case *parser.ConstantPathWriteNode: // `Rack::X = v` at the top level
-			c.scanAnon(ctx, f, n.Value, nil)
-			c.addConstAt(f, n, c.declName(f, n.Target, nil), n.Value, nil)
-		case *parser.PreExecutionNode: // BEGIN runs before the rest of its file, in the top-level scope
-			if c.beginStmts == nil {
-				c.beginStmts = map[*File][]parser.Node{}
-			}
-			if n.Statements != nil {
-				c.beginStmts[f] = append(c.beginStmts[f], n.Statements.Body...)
-			}
-		case *parser.XStringNode:
-			if !f.prelude {
-				c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")
-			}
-			c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
-		case *parser.CallNode:
-			c.collectTopCall(ctx, f, n)
-		case *parser.BeginNode:
-			c.addMainStmt(f, c.beginRequires(ctx, f, n))
-		default:
-			c.scanAnon(ctx, f, n, nil)
-			c.addMainStmt(f, n)
-		}
+		})
 	}
 }
 
@@ -747,6 +759,31 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls), true)
+	if props, ok := f.sorbetStructs[n]; ok && cls.Methods["initialize"] == nil {
+		c.addStructInit(ctx, f, n, cls, props, append(append([]*Class(nil), scope...), cls))
+	}
+}
+
+// addStructInit is the keyword initialize a T::Struct's props generate (decision 196).
+func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNode, cls *Class, props []structProp, scope []*Class) {
+	sig, params, body := make([]string, 0, len(props)), make([]string, 0, len(props)), make([]string, 0, len(props))
+	for _, p := range props {
+		opt := ""
+		param := p.name + ":"
+		if p.optional {
+			opt, param = "?", p.name+": "+p.def
+		}
+		sig = append(sig, opt+p.name+": "+p.rbs)
+		params = append(params, param)
+		body = append(body, "@"+p.name+" = "+p.name)
+	}
+	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n"
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
+	if err != nil {
+		c.errorf(f, n, "T::Struct initialize: %v", err)
+	}
+	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
+	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, scope) //nolint:forcetypeassert // built just above
 }
 
 func (c *Compiler) collectModule(ctx context.Context, f *File, n *parser.ModuleNode, scope []*Class) {
@@ -808,57 +845,64 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 	for len(queue) > 0 {
 		n := queue[0]
 		queue = queue[1:]
-		switch n := n.(type) {
-		case *parser.DefNode:
-			c.scanAnon(ctx, f, n.Body, scope)
-			// a bare `private` does not reach `def self.x`
-			c.addMethod(f, cls, n, (vis.private || vis.moduleFunction) && n.Receiver == nil, scope)
-			if n.Receiver == nil {
-				c.applyVisibility(f, cls, n, vis, scope)
+		c.keepGoing(func() {
+			switch n := n.(type) {
+			case *parser.DefNode:
+				c.scanAnon(ctx, f, n.Body, scope)
+				// a bare `private` does not reach `def self.x`
+				c.addMethod(f, cls, n, (vis.private || vis.moduleFunction) && n.Receiver == nil, scope)
+				if n.Receiver == nil {
+					c.applyVisibility(f, cls, n, vis, scope)
+				}
+			case *parser.CallNode:
+				if isClassEvalCall(n) { // its block is collected as class-body statements, not dispatched here
+					c.collectClassEval(ctx, f, cls, n, scope, loadTime)
+					return
+				}
+				if !isDescribe(n) { // a describe's block is a class body, collected as one
+					c.scanAnon(ctx, f, n, scope)
+				}
+				if !c.collectClassCall(ctx, f, cls, n, vis, scope) {
+					c.classBodyCall(f, n, scope, loadTime)
+				}
+			case *parser.SingletonClassNode:
+				c.collectSingletonClass(f, cls, n, scope)
+			case *parser.AliasMethodNode:
+				c.addAlias(f, cls, n, n.NewName, n.OldName)
+			case *parser.ClassVariableWriteNode:
+				c.addClassVar(f, cls, n, scope)
+			case *parser.UndefNode:
+				for _, name := range c.symbolArgs(f, nil, n.Names) {
+					c.removeMethod(cls, name, true)
+				}
+			case *parser.ClassNode:
+				c.collectClass(ctx, f, n, scope)
+			case *parser.ModuleNode:
+				c.collectModule(ctx, f, n, scope)
+			case *parser.ConstantWriteNode:
+				c.collectBodyConst(ctx, f, n, scope, locals)
+			case *parser.IfNode, *parser.UnlessNode:
+				if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && loadTime && !declares(n) && !c.folds(f, n, scope) {
+					c.classBodyNode(ctx, f, n, scope, loadTime) // `raise "x" if OS.mac?`: a run-time condition around load-time code
+					return
+				}
+				// spliced in place, so the branch shares the body's visibility and sees the constants before it
+				queue = append(slices.Clip(c.classBodyBranch(f, n, scope)), queue...)
+			default:
+				c.classBodyNode(ctx, f, n, scope, loadTime)
 			}
-		case *parser.CallNode:
-			if isClassEvalCall(n) { // its block is collected as class-body statements, not dispatched here
-				c.collectClassEval(ctx, f, cls, n, scope, loadTime)
-				continue
-			}
-			if !isDescribe(n) { // a describe's block is a class body, collected as one
-				c.scanAnon(ctx, f, n, scope)
-			}
-			if !c.collectClassCall(ctx, f, cls, n, vis, scope) {
-				c.classBodyCall(f, n, scope, loadTime)
-			}
-		case *parser.SingletonClassNode:
-			c.collectSingletonClass(f, cls, n, scope)
-		case *parser.AliasMethodNode:
-			c.addAlias(f, cls, n, n.NewName, n.OldName)
-		case *parser.ClassVariableWriteNode:
-			c.addClassVar(f, cls, n, scope)
-		case *parser.UndefNode:
-			for _, name := range c.symbolArgs(f, nil, n.Names) {
-				c.removeMethod(cls, name, true)
-			}
-		case *parser.ClassNode:
-			c.collectClass(ctx, f, n, scope)
-		case *parser.ModuleNode:
-			c.collectModule(ctx, f, n, scope)
-		case *parser.ConstantWriteNode:
-			c.collectBodyConst(ctx, f, n, scope, locals)
-		case *parser.IfNode, *parser.UnlessNode:
-			if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && loadTime && !declares(n) && !c.folds(f, n, scope) {
-				c.classBodyNode(ctx, f, n, scope, loadTime) // `raise "x" if OS.mac?`: a run-time condition around load-time code
-				continue
-			}
-			// spliced in place, so the branch shares the body's visibility and sees the constants before it
-			queue = append(slices.Clip(c.classBodyBranch(f, n, scope)), queue...)
-		default:
-			c.classBodyNode(ctx, f, n, scope, loadTime)
-		}
+		})
 	}
 	c.collectIvarDecls(f, cls, body, scope)
 }
 
 // collectBodyConst declares a class-body constant; one that reads the body's locals runs in its unit (decision 170).
 func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.ConstantWriteNode, scope []*Class, locals map[string]bool) {
+	if arm, ok := c.loadTimeArm(f, n.Value, scope); ok && len(arm) > 0 && declares(n.Value) && len(scope) > 0 {
+		// `Impl = case when on_cruby? then class CImpl < Base; end; CImpl ... end`: the arm boot ran declares, and its last value is the constant's
+		c.collectBody(ctx, f, scope[len(scope)-1], &parser.StatementsNode{Location: n.Location, Body: arm[:len(arm)-1]}, scope, true)
+		n.Value = arm[len(arm)-1]
+	}
 	if call, kind := valueClass(n.Value); call != nil {
 		c.collectValueClass(ctx, f, n, call, kind, scope)
 		return
@@ -947,7 +991,11 @@ func (c *Compiler) applyVisibility(f *File, cls *Class, n *parser.DefNode, vis *
 // collectSingletonClass is `class << self`: its defs are class methods, as `def self.x` (a bare private there makes them private).
 func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.SingletonClassNode, scope []*Class) {
 	if _, ok := n.Expression.(*parser.SelfNode); !ok || cls == nil {
-		c.errorf(f, n, "only `class << self` in a class or module body is supported")
+		target, _ := c.lookupConst(f, n.Expression, scope) // `class << Section`: that class's singleton, from wherever it is opened
+		if target == nil || cls == nil {
+			c.errorf(f, n, "only `class << self` or `class << Const` in a class or module body is supported")
+		}
+		cls = target
 	}
 	st, _ := n.Body.(*parser.StatementsNode)
 	if st == nil {
@@ -1315,7 +1363,7 @@ type pendingAlias struct {
 // linkAliases copies each inherited alias's target into its class, as MRI's
 // alias copies the method found from the superclass at that point: a later
 // override of the old name leaves the alias on the ancestor's body.
-func (c *Compiler) linkAliases() {
+func (c *Compiler) linkAliases(ctx context.Context) {
 	for _, a := range c.inheritedAliases {
 		var e *entry
 		if a.cls.Super != nil {
@@ -1330,8 +1378,26 @@ func (c *Compiler) linkAliases() {
 			c.errorf(a.f, a.n, "undefined method '%s' for class '%s'", a.oldName, a.cls.RubyName)
 		}
 		// a Hash subclass's alias of a Hash method stays Hash's (a free func on the embedded Hash, decision 165), under the new name
-		fromHash := a.cls.hashBase && e.Owner.RubyName == "Hash" && e.M.Node != nil && (e.M.Kind == kindDef || e.M.Kind == kindPrimitive)
+		fromHash := a.cls.hashBase && e.Owner == a.cls.Super && e.M.Node != nil && (e.M.Kind == kindDef || e.M.Kind == kindPrimitive)
 		if !fromHash && (len(e.Owner.TypeParams) > 0 || e.M.Node == nil || e.M.Kind != kindDef || containsSuper(e.M.Node.Body)) {
+			if c.gemFile(a.f) { // a forwarder instead of a copy: differs from MRI only if the old name is redefined later
+				fwd, params := "*args", "*args"
+				if e.M.Block != nil {
+					fwd, params = "*args, &blk", "*args, &blk"
+				}
+				call := a.oldName + "(" + fwd + ")"
+				if !isIdentMethod(a.oldName) {
+					call = "self.send(:" + strconv.Quote(a.oldName) + ", " + fwd + ")"
+				}
+				src := strings.Repeat("\n", max(a.f.line(a.n.GetLocation().StartOffset)-1, 0)) + "def " + a.newName + "(" + params + ") = " + call + "\n"
+				sf, err := parseFile(ctx, c.parser, a.f.Name, []byte(src), false)
+				if err != nil {
+					c.errorf(a.f, a.n, "alias %s: %v", a.newName, err)
+				}
+				sf.path = a.f.path
+				c.addDef(sf, a.cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, nil) //nolint:forcetypeassert // built just above
+				continue
+			}
 			c.errorf(a.f, a.n, "alias of %s#%s: rb2go copies an inherited method only when it is a plain def without super from a non-generic class", e.Owner.RubyName, a.oldName)
 		}
 		m := c.copyAlias(a.cls, e.M, a.newName)
@@ -1489,6 +1555,18 @@ func callArgs(n *parser.CallNode) []parser.Node {
 }
 
 func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
+	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && cls != nil && !f.prelude && c.consts[qualify(scope, r.Name)] != nil {
+		c.addConstSingletonDef(f, n, r, scope)
+		return
+	}
+	if n.Receiver != nil && !f.prelude {
+		if _, self := n.Receiver.(*parser.SelfNode); !self {
+			if target, _ := c.lookupConst(f, n.Receiver, scope); target != nil { // `def BasePrimitive.bit_aligned`: that class's method
+				target.singletonDefs = append(target.singletonDefs, singletonDef{node: n, private: private, scope: scope, file: f})
+				return
+			}
+		}
+	}
 	if n.Receiver != nil {
 		if _, ok := n.Receiver.(*parser.SelfNode); !ok || cls == nil {
 			c.errorf(f, n, "singleton methods are only supported as `def self.x` in a class or module body")
@@ -1699,6 +1777,11 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 				if c.privateConsts[full] {
 					c.errorf(f, n, "private constant %s referenced", full)
 				}
+				if cls == nil {
+					if t := c.constClass(k); t != nil { // `Collection::MapImplementation` names a class (decision 203)
+						return t, nil
+					}
+				}
 				return cls, k
 			}
 		}
@@ -1713,7 +1796,13 @@ func (c *Compiler) lookupName(scope []*Class, name string) (*Class, *Const) {
 		if qualified {
 			full += "::" + rest
 		}
-		return c.classes[full], c.consts[full]
+		cls, k := c.classes[full], c.consts[full]
+		if cls == nil && k != nil {
+			if t := c.constClass(k); t != nil { // `B = A`: B names A's class (decision 203)
+				return t, nil
+			}
+		}
+		return cls, k
 	}
 	for i := len(scope) - 1; i >= 0; i-- {
 		if cls, k := find(scope[i].RubyName + "::" + head); cls != nil || k != nil {
@@ -1755,18 +1844,34 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
 		}
 		// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
-		if sup.RubyName == "Hash" {
+		switch {
+		case sup.RubyName == "Hash" || sup.RubyName == "Array":
 			// a Hash subclass embeds a Hash[any, V]: keys are untyped, since
-			// the usual subclass downcases or otherwise rewrites them
+			// the usual subclass downcases or otherwise rewrites them; an Array subclass embeds an Array[E]
 			cls.hashBase = true
-			if len(cls.TypeParams) == 0 {
+			switch {
+			case sup.RubyName == "Array": // ponytail: elements untyped (`Array[any]`); a typed `class X < Array #[E]` needs generic method bodies over E
+				cls.TypeParams = nil
+				cls.GoType = "struct { " + superField(sup) + "[any] }"
+			case len(cls.TypeParams) == 0:
 				cls.TypeParams = []string{"V"}
-			} else if len(cls.TypeParams) > 1 {
+			case len(cls.TypeParams) > 1:
 				c.errorf(cls.File, nil, "%s:%d: a Hash subclass takes one type parameter, the value type (keys are untyped)", cls.File.Name, cls.Line)
 			}
-			cls.GoType = "struct { " + superField(sup) + "[" + strings.Join(cls.TypeParams, ", ") + "] }"
-		} else if sup.GoType != "" {
-			c.errorf(cls.File, nil, "%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+			if sup.RubyName == "Hash" {
+				cls.GoType = "struct { " + superField(sup) + "[" + strings.Join(cls.TypeParams, ", ") + "] }"
+			}
+		case sup.GoType != "" && !c.isNumericMod(sup) && (len(sup.TypeParams) == 0 || sup.mutable()):
+			cls.hashBase = true // any other @go_type (Pathname; Set, Queue with untyped elements): embedded the same way (decision 202)
+			cls.TypeParams = nil
+			cls.GoType = "struct { " + superField(sup) + anyArgs(len(sup.TypeParams)) + " }"
+		case sup.GoType != "":
+			msg := fmt.Sprintf("%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+			if !c.gemFile(cls.File) {
+				c.errorf(cls.File, nil, "%s", msg)
+			}
+			c.deferClassError(cls, msg) // gem code: an error only where reachable code uses the class (decision 169)
+			sup = c.classes["Object"]
 		}
 	case !cls.IsModule && cls.RubyName != "BasicObject":
 		sup = c.classes["Object"]
@@ -1801,11 +1906,13 @@ func (c *Compiler) link(ctx context.Context) {
 		}
 	}
 	c.addSigIvars()
+	c.inheritRedeclaredReaders()
 	c.declareIvarAnnotations()
 	c.checkIvarModules()
 	c.expandDelegations(ctx)
 	c.applyPrepends()
-	c.linkAliases()
+	c.linkAliases(ctx)
+	c.separateFreeFuncs()
 	c.methodClassVars()
 	c.includeFromEach() // before any override inherits from the module, which needs its type args
 	// method signatures
@@ -1822,7 +1929,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.markSuperBridges()
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
-			if c.overridesIterator(m) {
+			if c.overridesIterator(m) || c.blockEachOfEnumerable(cls, m) {
 				m.seqAdapter = true
 				m.GoName += "_blk"
 			}
@@ -1944,7 +2051,8 @@ func (c *Compiler) markCalleeDefaults() {
 			for _, anc := range cls.allAncestors() {
 				for name := range names {
 					m, a := cls.Methods[name], anc.Methods[name]
-					if cls.universal || anc.universal || m == nil || a == nil || m.Kind != kindDef || a.Kind != kindDef || m.calleeDefaults == a.calleeDefaults {
+					if cls.universal || anc.universal || m == nil || a == nil || m.Kind != kindDef || a.Kind != kindDef || m.calleeDefaults == a.calleeDefaults ||
+						a.File != nil && a.File.prelude || m.File != nil && m.File.prelude { // the prelude's Go helpers call its own (NewTypeError(msg)): its signatures are fixed
 						continue
 					}
 					m.calleeDefaults, a.calleeDefaults, changed = true, true, true
@@ -2031,7 +2139,8 @@ func (c *Compiler) declareIvarAnnotations() {
 func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line int) *Ivar {
 	for k := cls; k != nil; k = k.Super {
 		if iv := k.Ivars[name]; iv != nil {
-			if !typeEq(iv.Type, t) {
+			narrows := isAny(iv.Type) || isNil(t) && holdsNil(iv.Type) || unionHas(iv.Type, t) // a gem subclass's reader narrowing the parent's (`returns(String)` over Integer | String | nil)
+			if !typeEq(iv.Type, t) && (!narrows || !c.gemFile(f)) {
 				c.errorf(f, nil, "%s:%d: ivar %s declared as %s but %s has it as %s", f.Name, line, name, t, k.Name, iv.Type)
 			}
 			return iv
@@ -2117,6 +2226,9 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		for i, e := range t.Elems {
 			elems[i] = c.resolveType(e, sc)
 		}
+		if (len(elems) < 2 || len(elems) > maxTuple) && c.gemFile(sc.file) {
+			return TClass{C: c.classes["Array"], Args: []Type{TAny{}}} // gem code: an Array of untyped
+		}
 		if len(elems) < 2 || len(elems) > maxTuple {
 			c.errorf(sc.file, nil, "%s:%d: only 2- to %d-tuples are supported", sc.file.Name, sc.line, maxTuple)
 		}
@@ -2171,9 +2283,15 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 		ms[i] = c.resolveType(e, sc)
 		switch m := stripOpt(ms[i]).(type) {
 		case TVar, TVoid:
+			if c.gemFile(sc.file) {
+				return TAny{} // gem code: the union is untyped (decision 172)
+			}
 			c.errorf(sc.file, nil, "%s:%d: a union member must be a class, tuple, proc or nil, not %s: %s", sc.file.Name, sc.line, m, t)
 		case TClass:
 			if m.C.IsModule && !m.C.universal { // ponytail: a module member needs an includer check in the type switch; use the module type or untyped until then
+				if c.gemFile(sc.file) {
+					return TAny{} // gem code: the union is untyped (decision 172)
+				}
 				c.errorf(sc.file, nil, "%s:%d: a union member must be a class, not the module %s: %s", sc.file.Name, sc.line, m, t)
 			}
 		case TAny, TFunc, TNil, TOpt, TTuple, TUnion:
@@ -2188,6 +2306,9 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 			}
 			g := c.goType(m)
 			if o, dup := seen[g]; dup { // a Go type switch cannot tell them apart (Go rejects the duplicate case)
+				if c.gemFile(sc.file) {
+					return TAny{}
+				}
 				c.errorf(sc.file, nil, "%s:%d: union members %s and %s are one Go type (%s): %s", sc.file.Name, sc.line, o, m, g, t)
 			}
 			seen[g] = m
@@ -2218,11 +2339,20 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 		}
 		return c.resolveType(at, typeScope{lex: k.Scope, file: k.File, line: k.Line})
 	}
+	if cls == nil && c.gemFile(sc.file) {
+		return TAny{} // a lazily-checked sig naming a class outside the closed world: nothing compiled can hold one
+	}
 	if cls == nil {
 		c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
 	}
 	if len(t.Args) == 0 && (cls.RubyName == "Method" || cls.RubyName == "UnboundMethod") {
 		return TClass{C: cls, Args: []Type{TAny{}}} // RBS's Method has no signature: called through dyn (decision 141)
+	}
+	if len(t.Args) > 0 && len(cls.TypeParams) == 0 && c.gemFile(sc.file) {
+		t.Args = nil // a Sorbet generic (type_member), erased to untyped (decision 196): its args go too
+	}
+	if len(t.Args) == 0 && len(cls.TypeParams) > 0 && c.gemFile(sc.file) {
+		return TClass{C: cls, Args: slices.Repeat([]Type{TAny{}}, len(cls.TypeParams))} // `Hash` with no args: untyped elements
 	}
 	if len(t.Args) != len(cls.TypeParams) {
 		c.errorf(sc.file, nil, "%s:%d: %s takes %d type args, got %d", sc.file.Name, sc.line, cls.Name, len(cls.TypeParams), len(t.Args))
@@ -2368,6 +2498,11 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 		c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
 	}
 	inc.Mod = mod
+	if len(inc.args) == 0 && len(mod.TypeParams) == 1 {
+		if at := c.sorbetElem(cls); at != nil { // Sorbet's `Elem = type_member { { fixed: T } }` is Enumerable's T (decision 196)
+			inc.args = []rbs.Type{at}
+		}
+	}
 	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.file.prelude && cls.Methods["each"] != nil {
 		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
 		for range mod.TypeParams {
@@ -2537,16 +2672,25 @@ func isPlainLiteral(n parser.Node) bool {
 // the type signatures resolve before bodies are typed: a constant's class
 // methods, or an ivar declared with `# @rbs @x: T`.
 func (c *Compiler) forwardingOther(m *Method, n *parser.CallNode) *Method {
-	var cls *Class
+	cls := m.fwdTarget
 	switch r := n.Receiver.(type) {
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		if k, _ := c.lookupConst(m.File, r, m.Scope); k != nil {
 			cls = k.meta
 		}
 	case *parser.InstanceVariableReadNode:
-		if m.Owner != nil {
+		if m.Owner != nil && cls == nil {
 			if iv := c.findIvar(m.Owner, r.Name); iv != nil {
 				if t, ok := stripOpt(iv.Type).(TClass); ok {
+					cls = t.C
+				}
+			}
+		}
+	case *parser.CallNode: // `resource` with a declared return type (an annotated reader)
+		if r.Receiver == nil && r.Arguments == nil && m.Owner != nil {
+			if re := m.Owner.lookup(r.Name); re != nil {
+				c.resolveMethod(re.M)
+				if t, ok := stripOpt(re.M.Ret).(TClass); ok {
 					cls = t.C
 				}
 			}
@@ -2737,6 +2881,9 @@ func (c *Compiler) inferRet(m *Method) {
 			continue
 		}
 		j, ok := join(ret, t)
+		if !ok && c.pruneGems && c.gemFile(m.File) { // a gem's method returning an Enumerator or self: untyped (decision 172)
+			j, ok = TAny{}, true
+		}
 		if !ok {
 			c.errorf(m.File, m.Node, "method %s returns both %s and %s; annotate its return type (`# @rbs return: T`)", m.Name, ret, t)
 		}
@@ -2850,9 +2997,15 @@ func (c *Compiler) linkOverrides(cls *Class) {
 		// `_` + lowercase never comes out of camel-casing (decision 3)
 		m.GoName = goMethodName(m.Name) + "_of" + cls.Name
 		m.shadowed = append([]slot{{*pe, sup}}, pe.M.shadowed...)
+		kept := m.shadowed[:0]
 		for _, s := range m.shadowed {
+			if c.gemFile(m.File) && catchCompileError(func() { c.checkAdaptable(slot{own, cls}, s) }) != nil {
+				continue // ponytail: gem code's unadaptable override leaves the parent's slot to the parent's method; adapt rest params to fix
+			}
 			c.checkAdaptable(slot{own, cls}, s)
+			kept = append(kept, s)
 		}
+		m.shadowed = kept
 	}
 }
 
@@ -3082,21 +3235,7 @@ func (c *Compiler) buildMetas() {
 	}
 	// `extend M` is `include M` on the class object; resolved once every
 	// class object exists, since its type args may name them.
-	for _, cls := range c.classList {
-		for _, ext := range cls.extends {
-			ext.Mod = c.resolveClassRef(&ext.ref)
-			if !ext.Mod.IsModule {
-				c.errorf(ext.file, nil, "%s:%d: %s is not a module", ext.file.Name, ext.line, ext.Mod.RubyName)
-			}
-			if len(ext.args) != len(ext.Mod.TypeParams) {
-				c.errorf(ext.file, nil, "%s:%d: extend %s needs %d type args (`extend %s #[...]`)", ext.file.Name, ext.line, ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
-			}
-			for _, a := range ext.args {
-				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, file: ext.file, line: ext.line}))
-			}
-			cls.meta.Includes = append(cls.meta.Includes, ext)
-		}
-	}
+	c.linkExtends()
 }
 
 func (c *Compiler) metaFor(cls *Class) *Class {
@@ -3632,6 +3771,7 @@ func (c *Compiler) applyPrepends() {
 		if !mod.IsModule {
 			c.errorf(p.mod.file, p.mod.node, "prepend %s: not a module", mod.RubyName)
 		}
+		target.prepended = append(target.prepended, mod)
 		for _, mm := range slices.Clone(mod.MethodList) {
 			if mm.Kind != kindDef || mm.Node == nil {
 				continue
@@ -3706,6 +3846,12 @@ func (c *Compiler) collectMixinCall(ctx context.Context, f *File, cls *Class, n 
 		}
 		c.noteHooks(f, "included", cls, n, args, scope)
 	case "extend":
+		args = slices.Clone(args)
+		for i, a := range args {
+			if self, ok := a.(*parser.SelfNode); ok && cls.IsModule { // `extend self`: the module's methods are its module methods too
+				args[i] = &parser.ConstantReadNode{Name: cls.RubyName, Location: self.Location}
+			}
+		}
 		for _, a := range args {
 			c.addInclude(f, n, cls, a, scope)
 			last := len(cls.Includes) - 1
@@ -3753,4 +3899,365 @@ func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode,
 		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
 	}
 	return private
+}
+
+// keepGoing runs fn; under RB2GO_KEEP_GOING=1 a compile error is recorded and collection goes on, listing at once
+// every construct a large program needs (a debugging aid, like RB2GO_NO_PRUNE).
+func (c *Compiler) keepGoing(fn func()) {
+	if os.Getenv("RB2GO_KEEP_GOING") == "" || c.anonDepth > 0 { // an anonymous class's error already waits for its literal
+		fn()
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			ce, ok := r.(compileError)
+			if !ok {
+				panic(r)
+			}
+			c.kept = append(c.kept, ce.msg)
+		}
+	}()
+	fn()
+}
+
+// addConstSingletonDef is `X = K.new(...)` then `def X.m`: X's singleton class becomes a hidden subclass of K holding
+// m, and X is built from it (ponytail: X.class names the subclass; give it K's name if a program prints it).
+func (c *Compiler) addConstSingletonDef(f *File, n *parser.DefNode, r *parser.ConstantReadNode, scope []*Class) {
+	k := c.consts[qualify(scope, r.Name)]
+	call, ok := k.Value.(*parser.CallNode)
+	if !ok || call.Receiver == nil {
+		c.errorf(f, n, "def %s.%s: rb2go gives a singleton method only to a constant built by `Klass.new(...)` or `Klass[...]`", r.Name, n.Name)
+	}
+	subName := r.Name + "__Singleton"
+	sub := c.classes[qualify(scope, subName)]
+	if sub == nil {
+		sub = c.declareClass(f, qualify(scope, subName), f.line(n.Location.StartOffset), false)
+		sub.superRef = &constRef{node: call.Receiver, scope: k.Scope, file: k.File}
+		built := *call
+		built.Receiver = &parser.ConstantReadNode{Name: subName, Location: call.Receiver.GetLocation()}
+		k.Value = &built
+	}
+	d := *n
+	d.Receiver = nil
+	c.addDef(f, sub, &d, false, scope)
+}
+
+// containerEnv adds the embedded container's fixed type args to env: a Hash subclass's keys are untyped (decision 165).
+func (cls *Class) containerEnv(env map[string]Type) {
+	if !cls.hashBase || cls.Super == nil {
+		return
+	}
+	base := cls.Super
+	for base.hashBase && base.Super != nil { // Concurrent::Set < CRubySet < ::Set: the container itself
+		base = base.Super
+	}
+	if base.RubyName == "Hash" {
+		env["K"] = TAny{}
+		return
+	}
+	for _, p := range base.TypeParams { // an Array (Set, Queue) subclass's elements are untyped
+		env[p] = TAny{}
+	}
+}
+
+// containerTargs are the Go type args of the embedded container's free funcs for a subclass instantiated with args.
+func (c *Compiler) containerTargs(cls *Class, args []Type) string {
+	switch {
+	case cls.Super.RubyName != "Hash":
+		return anyArgs(len(cls.Super.TypeParams))
+	case len(args) == 0:
+		return ""
+	}
+	return "[any, " + c.goTypes(args) + "]"
+}
+
+// anyArgs is `[any, ...]` for n type params, or "".
+func anyArgs(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return "[" + strings.Repeat("any, ", n-1) + "any]"
+}
+
+// embeddedSuper is how code reaches a @go_type subclass's embedded base: its address for a mutable base (Hash,
+// Array), the value itself for a value type (Pathname).
+func embeddedSuper(cls *Class, recv string) string {
+	if cls.Super.mutable() {
+		return "(&" + recv + "." + superField(cls.Super) + ")"
+	}
+	return recv + "." + superField(cls.Super)
+}
+
+// constClass is the class a constant names when its value is one: `B = A`, or what boot saw a load-time expression
+// pick (`Impl = case ... when on_cruby? then MutexImpl ... end`, decision 203).
+func (c *Compiler) constClass(k *Const) *Class {
+	if k.resolving {
+		return nil
+	}
+	k.resolving = true
+	defer func() { k.resolving = false }()
+	switch k.Value.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		cls, _ := c.lookupConst(k.File, k.Value, k.Scope)
+		return cls
+	}
+	if name, ok := c.bootConstClasses[k.RubyName]; ok {
+		cls := c.classes[name]
+		if t := c.classes[strings.TrimPrefix(name, "Thread::")]; t != nil && strings.HasPrefix(name, "Thread::") {
+			cls = t // MRI names ::Queue, ::Mutex... Thread::Queue; the prelude keeps them top-level
+		}
+		if cls != nil { // the load-time expression is what boot saw it evaluate to: the class, named
+			k.Value = constPathNode(cls.RubyName, k.Value.GetLocation())
+		}
+		return cls
+	}
+	return nil
+}
+
+// constPathNode is `::A::B::C` as Prism would parse it.
+func constPathNode(name string, loc parser.Location) parser.Node {
+	var n parser.Node
+	for _, part := range strings.Split(name, "::") {
+		p := part
+		n = &parser.ConstantPathNode{Location: loc, Parent: n, Name: &p}
+	}
+	return n
+}
+
+// deferClassError records why cls cannot compile; codegen raises it only where reachable code names the class.
+func (c *Compiler) deferClassError(cls *Class, msg string) {
+	if c.badClasses == nil {
+		c.badClasses = map[*Class]compileError{}
+	}
+	c.badClasses[cls] = compileError{msg: msg}
+}
+
+// holdsNil reports whether t admits nil: T?, untyped, or a union with nil.
+func holdsNil(t Type) bool {
+	if isOpt(t) || isAny(t) || isNil(t) {
+		return true
+	}
+	if u, ok := t.(TUnion); ok {
+		return slices.ContainsFunc(u.Members, holdsNil)
+	}
+	return false
+}
+
+// unionHas reports whether t is one of u's members (or u's T? element).
+func unionHas(u, t Type) bool {
+	if o, ok := u.(TOpt); ok {
+		return typeEq(o.Elem, t) || unionHas(o.Elem, t)
+	}
+	if uu, ok := u.(TUnion); ok {
+		return slices.ContainsFunc(uu.Members, func(m Type) bool { return typeEq(m, t) })
+	}
+	return false
+}
+
+// isIdentMethod reports a method name callable as written (`to_a`, `empty?`), not an operator (`==`, `[]`).
+func isIdentMethod(name string) bool {
+	for i, r := range name {
+		ok := r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) && i > 0 || (r == '?' || r == '!') && i == len(name)-1
+		if !ok {
+			return false
+		}
+	}
+	return name != ""
+}
+
+// inheritRedeclaredReaders drops a gem subclass's attr_reader that its superclass already has (Sorbet sigs narrow its
+// type, `returns(NilClass)` over T?): one field and one reader serve the hierarchy, as one ivar does in MRI.
+func (c *Compiler) inheritRedeclaredReaders() {
+	for _, cls := range c.classList {
+		if cls.Super == nil || cls.Super.universal || !c.gemFile(cls.File) {
+			continue
+		}
+		for _, m := range slices.Clone(cls.MethodList) {
+			if m.Kind != kindAttrReader || !c.gemFile(m.File) {
+				continue
+			}
+			if e := cls.Super.lookup(m.Name); e != nil && e.M.Kind == kindAttrReader && e.M.Attr == m.Attr {
+				delete(cls.Methods, m.Name)
+				cls.MethodList = deleteMethod(cls.MethodList, m)
+				cls.ivarDecls = slices.DeleteFunc(cls.ivarDecls, func(d ivarDecl) bool { return d.name == m.Attr })
+			}
+		}
+		cls.msetCache, cls.msetIndex = nil, nil
+	}
+}
+
+// blockEachOfEnumerable is an Enumerable includer's `each` written with a block and returning self (Ruby's idiom)
+// rather than as an iterator: Enumerable's methods reach it through the seqAdapter iterator.
+func (c *Compiler) blockEachOfEnumerable(cls *Class, m *Method) bool {
+	if m.Name != "each" || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || cls.IsModule || m.File == nil || m.File.prelude {
+		return false
+	}
+	enum := c.classes["Enumerable"]
+	return enum != nil && slices.Contains(cls.ancestors(), enum)
+}
+
+// relinkOverrides links, in gem code, the overrides only return inference tells apart from their parent's slot
+// (linkOverrides runs before decision 36), and overrides of an included module's method, which the module's Self
+// constraint calls through its own signature: each gets an adapter for the slot it no longer answers.
+func (c *Compiler) relinkOverrides() {
+	c.typeAbstracts()
+	done := map[*Class]bool{}
+	var link func(cls *Class)
+	link = func(cls *Class) {
+		if done[cls] {
+			return
+		}
+		done[cls] = true
+		if cls.Super != nil {
+			link(cls.Super)
+		}
+		if !cls.isStruct() || cls.universal {
+			return
+		}
+		for _, m := range cls.MethodList {
+			if m.Kind != kindDef || !inInterface(m) || m.seqAdapter || !c.gemFile(m.File) {
+				continue
+			}
+			own := slot{entry{M: m, Owner: cls, Env: map[string]Type{}, Entry: cls}, cls}
+			for _, s := range c.parentSlots(cls, m) {
+				if !inInterface(s.e.M) || s.e.M.seqAdapter || slices.ContainsFunc(m.shadowed, func(x slot) bool { return x.e.M == s.e.M }) {
+					continue
+				}
+				same := s.e.M.GoName == m.GoName
+				if same && c.slotKey(own) == c.slotKey(s) || catchCompileError(func() { c.checkAdaptable(own, s) }) != nil {
+					continue
+				}
+				if same {
+					m.GoName = goMethodName(m.Name) + "_of" + cls.Name
+				}
+				m.shadowed = append(m.shadowed, s)
+			}
+		}
+	}
+	for _, cls := range c.classList {
+		link(cls)
+	}
+}
+
+// parentSlots are the interface slots m's name has above cls: the superclass's method and what it answers, then each
+// module cls itself includes.
+func (c *Compiler) parentSlots(cls *Class, m *Method) []slot {
+	var out []slot
+	if sup := cls.Super; sup != nil && !sup.universal {
+		if pe := sup.lookup(m.Name); pe != nil {
+			out = append(append(out, slot{*pe, sup}), pe.M.shadowed...)
+		}
+	}
+	for _, inc := range cls.Includes {
+		mod := inc.Mod
+		if mod == nil || len(inc.Args) != len(mod.TypeParams) || mod.Methods[m.Name] == nil || mod.Methods[m.Name].Kind != kindDef {
+			continue
+		}
+		env := map[string]Type{}
+		for i, tp := range mod.TypeParams {
+			env[tp] = inc.Args[i]
+		}
+		out = append(out, slot{entry{M: mod.Methods[m.Name], Owner: mod, Env: env, Entry: cls}, cls})
+	}
+	return out
+}
+
+// sorbetElem is the type of the includer's fixed Sorbet `Elem` type_member, written in its body or (for a
+// `class << self`) its attached class's; nil when there is none.
+func (c *Compiler) sorbetElem(cls *Class) rbs.Type {
+	names := []string{cls.RubyName + "::Elem"}
+	if cls.metaOf != nil {
+		names = append(names, cls.metaOf.RubyName+"::Elem")
+	}
+	for _, n := range names {
+		if k := c.consts[n]; k != nil && k.typeAlias != "" && k.typeAlias != "untyped" {
+			at, err := rbs.ParseType(k.typeAlias)
+			if err == nil {
+				return at
+			}
+		}
+	}
+	return nil
+}
+
+// typeAbstracts gives a gem's inferred method whose body only raises (`def x = raise NotImplementedError`, the
+// abstract-method idiom) its overriders' joined return type: it never returns, so the slot is theirs.
+func (c *Compiler) typeAbstracts() {
+	for _, k := range c.classList {
+		for _, m := range k.MethodList {
+			if !m.inferRet || m.Kind != kindDef || !c.gemFile(m.File) || !onlyRaises(m.Node) {
+				continue
+			}
+			var ret Type
+			for _, cls := range c.classList {
+				if cls == k || !cls.isSubclassOf(k) && !slices.Contains(cls.ancestors(), k) {
+					continue
+				}
+				e := cls.lookup(m.Name)
+				if e == nil || e.M == m || e.M.Ret == nil {
+					continue
+				}
+				if ret == nil {
+					ret = e.M.Ret
+				} else if j, ok := join(ret, e.M.Ret); ok {
+					ret = j
+				} else {
+					ret = TAny{}
+				}
+			}
+			if ret != nil {
+				m.Ret = ret
+			}
+		}
+	}
+}
+
+// onlyRaises reports a def whose body is one raise.
+func onlyRaises(d *parser.DefNode) bool {
+	if d == nil || d.Body == nil {
+		return false
+	}
+	st, ok := d.Body.(*parser.StatementsNode)
+	if !ok || len(st.Body) != 1 {
+		return false
+	}
+	call, ok := st.Body[0].(*parser.CallNode)
+	return ok && call.Receiver == nil && (call.Name == "raise" || call.Name == "fail")
+}
+
+// linkExtends resolves each `extend M` as an include of M on the class object.
+func (c *Compiler) linkExtends() {
+	for _, cls := range c.classList {
+		for _, ext := range cls.extends {
+			ext.Mod = c.resolveClassRef(&ext.ref)
+			if !ext.Mod.IsModule {
+				c.errorf(ext.file, nil, "%s:%d: %s is not a module", ext.file.Name, ext.line, ext.Mod.RubyName)
+			}
+			if len(ext.args) == 0 && len(ext.Mod.TypeParams) == 1 {
+				if at := c.sorbetElem(cls.meta); at != nil { // `class << self; Elem = type_member { { fixed: T } }` (decision 196)
+					ext.args = []rbs.Type{at}
+				}
+			}
+			switch {
+			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.file.prelude && cls.meta.Methods["each"] != nil:
+				ext.fromEach = true // typed from the class's own `def self.each` (includeFromEach), as an include is
+				for range ext.Mod.TypeParams {
+					ext.Args = append(ext.Args, TAny{})
+				}
+			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0: // `extend Enumerable`: untyped elements, as an unannotated include (decision 183)
+				if !c.gemFile(ext.file) {
+					c.warn(ext.file, nil, "%s:%d: extend %s is untyped (`extend %s #[...]` for static calls; decision 183)", ext.file.Name, ext.line, ext.Mod.RubyName, ext.Mod.RubyName)
+				}
+				for range ext.Mod.TypeParams {
+					ext.Args = append(ext.Args, TAny{})
+				}
+			case len(ext.args) != len(ext.Mod.TypeParams):
+				c.errorf(ext.file, nil, "%s:%d: extend %s needs %d type args (`extend %s #[...]`)", ext.file.Name, ext.line, ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
+			}
+			for _, a := range ext.args {
+				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, file: ext.file, line: ext.line}))
+			}
+			cls.meta.Includes = append(cls.meta.Includes, ext)
+		}
+	}
 }

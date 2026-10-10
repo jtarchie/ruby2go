@@ -9,6 +9,14 @@
 class Array < Object
   include Enumerable #[E]
 
+  # Reached only by an Array subclass's `super(items)` (decision 202): the subclass starts with items' elements.
+  #: (?Array[E]?) -> void
+  def initialize(items = nil) = %x{
+    if items != nil {
+      self.s = append(self.s[:0:0], (*items).s...)
+    }
+  }
+
   # Every slot holds the same v, as MRI's (mutating a shared Array element shows in all).
   #: [X] (Integer, X) -> Array[X]
   def self.new(n, v) = %x{

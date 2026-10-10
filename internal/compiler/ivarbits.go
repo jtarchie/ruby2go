@@ -53,12 +53,15 @@ func (c *Compiler) markIvarBits() {
 
 // ivarPath reaches iv's field through its owner's accessor: a parent's embedded struct or a module's ivar struct alike.
 func ivarPath(recv string, iv *Ivar) string {
+	if iv.scratch {
+		return scratchIvar(iv.Name)
+	}
 	return fmt.Sprintf("%s._%s().%s", recv, iv.Owner.Name, goFieldName(iv.Name))
 }
 
 // ivarBit is "" when iv's owner keeps no bits.
 func ivarBit(recv string, iv *Ivar) (field, mask string) {
-	if !iv.Owner.ivarBits {
+	if iv.scratch || !iv.Owner.ivarBits {
 		return "", ""
 	}
 	return fmt.Sprintf("%s._%s().%s", recv, iv.Owner.Name, ivarSetField), fmt.Sprintf("1<<%d", slices.Index(iv.Owner.IvarList, iv))
@@ -83,3 +86,6 @@ func (f *fctx) markIvar(iv *Ivar) {
 		f.emit("%s", s)
 	}
 }
+
+// scratchIvar is the Go local holding a scratch ivar for one call.
+func scratchIvar(name string) string { return "rbIvS_" + goFieldName(name) }

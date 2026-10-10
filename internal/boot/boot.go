@@ -24,12 +24,34 @@ var hookFS embed.FS
 
 // Manifest is what one boot recorded.
 type Manifest struct {
-	LoadedFeatures []string         `json:"loaded_features"` // files loaded during boot
-	Classes        []ClassInfo      `json:"classes"`
-	DefineMethods  []MethodInfo     `json:"define_methods"`
-	Evals          []EvalInfo       `json:"evals"`
-	Autoloads      []AutoloadInfo   `json:"autoloads"`
-	ClassState     []ClassStateInfo `json:"class_state"`
+	LoadedFeatures []string            `json:"loaded_features"` // files loaded during boot
+	Classes        []ClassInfo         `json:"classes"`
+	DefineMethods  []MethodInfo        `json:"define_methods"`
+	Evals          []EvalInfo          `json:"evals"`
+	Autoloads      []AutoloadInfo      `json:"autoloads"`
+	ClassState     []ClassStateInfo    `json:"class_state"`
+	Branches       []BranchInfo        `json:"branches"`
+	ConstClasses   map[string]string   `json:"const_classes"` // a constant naming a class under another name (decision 203)
+	Delegators     map[string][]string `json:"delegators"`    // def_delegators' method names by "path:line" (decision 204)
+}
+
+// BranchInfo is one if/unless boot reached and how often each arm ran (decision 201).
+type BranchInfo struct {
+	File string    `json:"file"`
+	Line int       `json:"line"`
+	Col  int       `json:"col"`
+	Kind string    `json:"kind"`
+	Then int       `json:"then"`
+	Else int       `json:"else"`
+	Arms []ArmInfo `json:"arms"` // a case's when/else arms, by where each arm's body starts
+}
+
+// ArmInfo is one arm of a branch: where its body starts and how often it ran.
+type ArmInfo struct {
+	Kind  string `json:"kind"`
+	Line  int    `json:"line"`
+	Col   int    `json:"col"`
+	Count int    `json:"count"`
 }
 
 // ClassInfo is a class or module defined during boot.
@@ -62,6 +84,8 @@ type EvalInfo struct {
 	Line   int    `json:"line"`
 	Source string `json:"source"`
 	Caller string `json:"caller"`
+	Kind   string `json:"kind"` // eval, class_eval (module_eval) or instance_eval
+	Self   string `json:"self"` // the named module it ran on, "" for eval or an object
 }
 
 // AutoloadInfo is an autoload registration and whether boot resolved it.

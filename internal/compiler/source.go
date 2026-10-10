@@ -31,6 +31,8 @@ type File struct {
 	sorbetCasts map[*parser.CallNode]string
 	// `X = T.type_alias { T }` constant writes and the RBS type they name (decision 196)
 	sorbetAliases map[parser.Node]string
+	// each T::Struct class's props, for its synthesized keyword initialize (decision 196)
+	sorbetStructs map[*parser.ClassNode][]structProp
 }
 
 type comment struct {

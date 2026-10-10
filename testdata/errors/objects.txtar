@@ -114,16 +114,6 @@ end
 class Host
   extend NotAModule
 end
--- extend_generic_without_args.rb --
-# error: main.rb:3: extend Enumerable needs 1 type args
-module Things
-  extend Enumerable
-
-  #: () { (Integer) -> void } -> void
-  def self.each
-    yield 1
-  end
-end
 -- extend_unknown.rb --
 # error: main.rb:3: unknown class or module Missing
 class Host
@@ -251,12 +241,6 @@ end
 
 obj = Host.new
 def obj.hi = "hi"
--- singleton_def_on_constant.rb --
-# error: main.rb:4: singleton methods are only supported as `def self.x`
-class Host
-  #: () -> String
-  def Host.hi = "hi"
-end
 -- top_level_def_self.rb --
 # error: main.rb:3: singleton methods are only supported as `def self.x`
 #: () -> String
@@ -721,22 +705,6 @@ pt.with(x: 3)
 Point = Struct.new(:x, :y) #: [Integer, Integer]
 
 puts Point.new(x: 1)
--- prepend.rb --
-# error: main.rb:6: unsupported call in class body: prepend
-module M
-end
-
-class Host
-  prepend M
-end
--- extend_self.rb --
-# error: main.rb:3: unsupported include argument
-module Util
-  extend self
-
-  #: () -> Integer
-  def one = 1
-end
 -- private_attr_form.rb --
 # error: main.rb:3: unsupported private form
 class Vault

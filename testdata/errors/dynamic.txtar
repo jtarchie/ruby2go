@@ -260,13 +260,6 @@ puts f(Car.new), f(Vehicle.new)
 #: (untyped) -> untyped
 def ident(v) = v
 ident([1]).each { |x| puts x }
--- splat_in_dynamic_call.rb --
-# error: main.rb:6: splat arguments in a dynamic call are not supported
-# rbs_inline: enabled
-#: (untyped) -> untyped
-def ident(v) = v
-args = [1, 2] #: Array[Integer]
-puts ident("s").center(*args)
 -- splat_in_computed_send.rb --
 # error: main.rb:12:
 # rbs_inline: enabled
@@ -296,17 +289,6 @@ class Ghost
   def method_missing(name, *args) = nil
 end
 Ghost.new.haunt { puts "boo" }
--- bare_send.rb --
-# error: main.rb:8: send is not supported
-# rbs_inline: enabled
-class Foo
-  #: () -> String
-  def hi = "hi"
-
-  #: () -> String
-  def call_hi = send(:hi)
-end
-puts Foo.new.call_hi
 -- bare_method_missing.rb --
 # error: main.rb:8: method_missing is not supported
 # rbs_inline: enabled

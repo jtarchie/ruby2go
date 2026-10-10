@@ -44,6 +44,12 @@ func (c *Compiler) collectDelegation(f *File, cls *Class, n *parser.CallNode, ar
 		if len(args) < 2 {
 			c.errorf(f, n, "def_delegators needs an accessor and method names")
 		}
+		if names, ok := c.bootDelegators[fmt.Sprintf("%s:%d", f.path, f.line(n.Location.StartOffset))]; ok && !allLiteralNames(args[1:]) {
+			for _, name := range names { // a list built at load time: the names boot saw (decision 204)
+				add(sym(args[0]), name, name)
+			}
+			return
+		}
 		for _, a := range c.splatConsts(args[1:], scope) {
 			add(sym(args[0]), sym(a), sym(a))
 		}
@@ -106,17 +112,29 @@ func (c *Compiler) expandDelegations(ctx context.Context) {
 func (c *Compiler) expandDelegation(ctx context.Context, cls *Class, d delegation) {
 	f, n := d.file, d.node
 	recvT := c.delegateTarget(cls, d)
+	if isAny(recvT) { // an untyped target (gem code): forward everything, dispatched at run time
+		c.untypedDelegateDef(ctx, cls, d)
+		return
+	}
 	rc, ok := recvT.(TClass)
 	if !ok {
 		c.errorf(f, n, "%s: cannot delegate to %s of type %s", n.Name, d.accessor, recvT)
 	}
 	e := rc.C.lookup(d.method)
+	if e == nil && c.gemFile(f) {
+		c.untypedDelegateDef(ctx, cls, d) // MRI's forwarder raises NoMethodError when called; so does this one
+		return
+	}
 	if e == nil {
 		c.errorf(f, n, "%s: undefined method %s for %s", n.Name, d.method, recvT)
 	}
 	c.resolveMethod(e.M)
 	m := e.M
 	if m.inferRet && m.Ret == nil {
+		if c.gemFile(f) {
+			c.untypedDelegateDef(ctx, cls, d) // its return type is inferred later: forward without a signature
+			return
+		}
 		c.errorf(f, n, "%s: %s#%s needs a return type annotation to be delegated to", n.Name, recvT, d.method)
 	}
 	env := composeEnv(e.Env, nil)
@@ -167,6 +185,21 @@ func (c *Compiler) expandDelegation(ctx context.Context, cls *Class, d delegatio
 // annotations, and its return is inferred from the forwarded call.
 func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m *Method, env map[string]Type, count int, name string, full bool) {
 	f, n := d.file, d.node
+	if m.hasKeywords() && d.method != "[]" { // keywords: Ruby's own `...` forwarding passes them as written
+		acc := d.accessor
+		if acc[0] >= 'A' && acc[0] <= 'Z' {
+			acc = "::" + acc
+		}
+		src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-1, 0)) + "def " + name + "(...) = " + acc + "." + d.method + "(...)\n"
+		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+		if err != nil {
+			c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
+		}
+		sf.path = f.path
+		c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // built just above
+		cls.Methods[name].fwdTarget = m.Owner                                           // the delegation knows the target's class; `...` needs it before bodies type
+		return
+	}
 	var ps, params, args []string
 	var anns []string
 	i := 0
@@ -221,6 +254,7 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	if err != nil {
 		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
 	}
+	sf.path = f.path // the delegating file's: gem code stays gem code (decision 172)
 	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope)
 }
 
@@ -229,27 +263,16 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 	f, n := d.file, d.node
 	sc := typeScope{class: cls, lex: d.scope, file: f, line: f.line(n.Location.StartOffset)}
 	switch acc := d.accessor; {
+	case strings.Contains(acc, ".") && acc != "self.class" && c.gemFile(f): // `:"active_spec.resources"`: an expression, forwarded untyped
+		return TAny{}
+	case acc == "self.class" && cls.meta != nil: // `delegate [:desc] => :"self.class"`: the receiver's class methods
+		return TClass{C: cls.meta}
 	case acc == "$stdin" || acc == "$stdout" || acc == "$stderr": // the globals rb2go has that hold objects (decision 61)
 		return TClass{C: c.classes["IO"]}
 	case strings.HasPrefix(acc, "$"):
 		c.errorf(f, n, "%s: only $stdin, $stdout and $stderr can be delegated to", n.Name)
 	case acc != "" && acc[0] >= 'A' && acc[0] <= 'Z':
-		var path parser.Node
-		for i, part := range strings.Split(acc, "::") {
-			if i == 0 {
-				path = &parser.ConstantReadNode{Name: part, Location: n.Location}
-				continue
-			}
-			path = &parser.ConstantPathNode{Parent: path, Name: &part, Location: n.Location}
-		}
-		target, k := c.lookupConst(f, path, nil) // MRI evaluates the accessor inside Forwardable, so only top-level names resolve
-		switch {
-		case k != nil:
-			return c.constType(k)
-		case target != nil:
-			return TClass{C: c.metaFor(target)}
-		}
-		c.errorf(f, n, "%s: uninitialized constant %s", n.Name, acc)
+		return c.delegateConst(f, n, acc)
 	}
 	if !strings.HasPrefix(d.accessor, "@") {
 		e := cls.lookup(d.accessor)
@@ -291,6 +314,9 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 			return c.resolveType(t, sc)
 		}
 	}
+	if c.gemFile(f) {
+		return TAny{} // gem code: delegated calls dispatch dynamically (decision 172)
+	}
 	if cls.metaOf != nil {
 		c.errorf(f, n, "%s: the type of %s must be declared to delegate to it (`# @rbs self.%s: T`, or `%s = ... #: T` in a class method)", n.Name, d.accessor, d.accessor, d.accessor)
 	}
@@ -313,4 +339,53 @@ func (c *Compiler) splatConsts(args []parser.Node, scope []*Class) []parser.Node
 		out = append(out, a)
 	}
 	return out
+}
+
+func allLiteralNames(args []parser.Node) bool {
+	for _, a := range args {
+		switch a.(type) {
+		case *parser.SymbolNode, *parser.StringNode:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// untypedDelegateDef forwards name to the accessor with no signature, so inference types it like any gem def.
+func (c *Compiler) untypedDelegateDef(ctx context.Context, cls *Class, d delegation) {
+	f, n := d.file, d.node
+	call := "target." + d.method + "(*args)" // ponytail: no block through an untyped target until dynamic calls take blocks
+	if d.method == "[]" {
+		call = "target[*args]"
+	}
+	src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-3, 0)) + "def " + d.name + "(*args)\n  target = " + d.accessor + " #: untyped\n  " + call + "\nend\n"
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	if err != nil {
+		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
+	}
+	sf.path = f.path
+	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // built just above
+}
+
+// delegateConst types a delegation to a constant (`def_delegators :Foo, ...`): MRI evaluates the accessor inside
+// Forwardable, so only top-level names resolve.
+func (c *Compiler) delegateConst(f *File, n *parser.CallNode, acc string) Type {
+	var path parser.Node
+	for i, part := range strings.Split(acc, "::") {
+		if i == 0 {
+			path = &parser.ConstantReadNode{Name: part, Location: n.Location}
+			continue
+		}
+		path = &parser.ConstantPathNode{Parent: path, Name: &part, Location: n.Location}
+	}
+	target, k := c.lookupConst(f, path, nil)
+	switch {
+	case k != nil:
+		return c.constType(k)
+	case target != nil:
+		return TClass{C: c.metaFor(target)}
+	}
+	c.errorf(f, n, "%s: uninitialized constant %s", n.Name, acc)
+	return nil
 }

@@ -2,11 +2,14 @@ package compiler
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/boot"
 )
 
 // rubyVersion is what class-body RUBY_VERSION guards fold against: rb2go compiles Ruby 4.0 (decision 167).
@@ -17,6 +20,9 @@ func (c *Compiler) takenBranch(f *File, n parser.Node, scope []*Class) (stmts []
 	switch n := n.(type) {
 	case *parser.IfNode:
 		v, ok := c.foldCond(f, n.Predicate, scope)
+		if !ok {
+			v, ok = c.bootTook(f, n.Location, false)
+		}
 		if !ok {
 			return nil, false
 		}
@@ -32,6 +38,9 @@ func (c *Compiler) takenBranch(f *File, n parser.Node, scope []*Class) (stmts []
 		return nil, true
 	case *parser.UnlessNode:
 		v, ok := c.foldCond(f, n.Predicate, scope)
+		if !ok {
+			v, ok = c.bootTook(f, n.Location, true)
+		}
 		if !ok {
 			return nil, false
 		}
@@ -328,4 +337,65 @@ func lastNode(args []parser.Node) parser.Node {
 		return nil
 	}
 	return args[len(args)-1]
+}
+
+func (c *Compiler) indexBootBranches(bs []boot.BranchInfo) {
+	c.bootBranches = map[string]boot.BranchInfo{}
+	for _, b := range bs {
+		c.bootBranches[fmt.Sprintf("%s:%d:%d", realPath(b.File), b.Line, b.Col)] = b
+	}
+}
+
+// bootTook is the condition value MRI's load phase saw for the if (or unless) at loc, when boot ran it (decision 201).
+func (c *Compiler) bootTook(f *File, loc parser.Location, unless bool) (value, ok bool) {
+	ln := f.line(loc.StartOffset)
+	b, seen := c.bootBranches[fmt.Sprintf("%s:%d:%d", f.path, ln, loc.StartOffset-f.lines[ln-1])]
+	switch {
+	case !seen || b.Then > 0 && b.Else > 0 || b.Then == 0 && b.Else == 0:
+		return false, false // not reached, or both arms ran (in a method body run twice): no single answer
+	case unless:
+		return b.Then == 0, true
+	}
+	return b.Then > 0, true
+}
+
+// loadTimeArm is the statements of the arm MRI's load phase ran of an if/unless/case (a constant's value): folded,
+// or as boot saw it (decision 201).
+func (c *Compiler) loadTimeArm(f *File, n parser.Node, scope []*Class) ([]parser.Node, bool) {
+	switch n := n.(type) {
+	case *parser.IfNode, *parser.UnlessNode:
+		return c.takenBranch(f, n, scope)
+	case *parser.CaseNode:
+		ln := f.line(n.Location.StartOffset)
+		b, seen := c.bootBranches[fmt.Sprintf("%s:%d:%d", f.path, ln, n.Location.StartOffset-f.lines[ln-1])]
+		if !seen {
+			return nil, false
+		}
+		var ran []string
+		for _, a := range b.Arms {
+			if a.Count > 0 {
+				ran = append(ran, fmt.Sprintf("%d:%d", a.Line, a.Col))
+			}
+		}
+		if len(ran) != 1 {
+			return nil, false
+		}
+		at := func(st *parser.StatementsNode) bool {
+			if st == nil {
+				return false
+			}
+			off := st.Location.StartOffset
+			l := f.line(off)
+			return fmt.Sprintf("%d:%d", l, off-f.lines[l-1]) == ran[0]
+		}
+		for _, w := range n.Conditions {
+			if wn, ok := w.(*parser.WhenNode); ok && at(wn.Statements) {
+				return wn.Statements.Body, true
+			}
+		}
+		if n.ElseClause != nil && at(n.ElseClause.Statements) {
+			return n.ElseClause.Statements.Body, true
+		}
+	}
+	return nil, false
 }

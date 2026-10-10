@@ -6379,10 +6379,93 @@ resolve; anything not listed is still open.
     class, not a subclass receiver's). Difference from MRI: what
     sorbet-runtime raises while running (a wrong argument type) is a
     compile error here, as decision 20 does for `#:`; nothing is checked
-    at run time. Not supported yet (compile errors): `T.all`, `T::Struct`,
-    `T::Enum`, `T::Generic`/`type_member`, `T.type_alias`; overloaded
-    sigs. **Proof:** [example 119](../examples/119_sorbet_sigs/main.rb),
+    at run time. Not supported yet (compile errors): `T::Enum`; overloaded
+    sigs. Added since (for Homebrew): `T.all` is its first arm that is no
+    core mixin (Comparable, Enumerable, Kernel); `T::Struct` props are
+    typed attrs with a keyword `initialize`; `T.type_alias { T }` and a
+    fixed `type_member`/`type_template` name their type, and a fixed
+    `Elem` is the type argument of an `include`/`extend Enumerable` that
+    writes none; a bare `Proc` value type is `untyped` (a Proc is a Go
+    func). **Proof:** [example 119](../examples/119_sorbet_sigs/main.rb),
     `sorbet_test.rb`, `sorbet.txtar`.
+197. **A traced closed world** (#82, Homebrew). A program too dynamic
+    to read its requires from source is compiled from an *entry* file
+    that lists what MRI loaded, in require start order
+    (`$LOADED_FEATURES` via TracePoint `:script_compiled`), with magic
+    comments: `# rb2go_method_requires: runtime` (a require inside a
+    method body is resolved at run time against what was compiled, not
+    loaded at compile time), `# rb2go_replace: path => file` (compile
+    another file in its place), `# rb2go_fold: expr => bool` (a fact the
+    host does not have, `OS.mac?`) and `# rb2go_main: file` (compiled
+    after the boot, never booted itself). In this mode the `-I` dirs are
+    gem dirs: boot capture (161), leniency (172) and pruning (169) apply
+    to all of them. No eval at run time: what boot evaluated is compiled.
+198. **define_method from boot** (amends 161). Each `define_method`
+    MRI ran at boot (a TracePoint on its `c_call`/`c_return`, with the
+    caller's binding) becomes a synthesized `def` of that name on its
+    owner, singleton or `module_function` as MRI made it. The block's
+    captured locals are written into the def as assignments of the value
+    boot saw: a literal, the constant holding that object (`M::C`,
+    `M::C.fetch(k)`, `M::C[i]`), or a Proc rebuilt from its literal block
+    (`proc@file:line`). A capture boot cannot express, or one the block
+    assigns, is a compile error. The `define_method` call itself is a
+    no-op. Difference from MRI: a call made after boot defines nothing.
+199. **prepend at link time.** `prepend M` copies M's methods into the
+    class; a method the class defines itself moves to a hidden private
+    name the copy's `super` calls (`superTarget`), and `ancestors` lists
+    M before the class. A module only ever prepended keeps no methods of
+    its own. **Proof:** `object_test.rb` (`ObjMixinFeaturesTest`).
+200. *(Withdrawn: a prelude port of concurrent-ruby. The real gem is
+    compiled instead; see 169 and 206.)*
+201. **Load-time branches fold to what boot ran** (amends 161). Boot runs
+    with `Coverage.start(branches: true)`; a load-time `if`/`unless`/
+    `case` in gem code (a class body, a constant initializer) whose arms
+    boot saw only one of compiles as that arm. Method bodies are never
+    folded.
+202. **Subclasses of core value and container classes.** A class whose
+    superclass is a `@go_type` class embeds it: Hash and Array, Set and
+    Queue (generic bases, with untyped elements), String and Pathname
+    (value bases). Inherited methods run on the embedded value (a
+    `-> self` method answers the subclass object, not the base); a
+    subclass of such a subclass (`Concurrent::Set < CRubySet < ::Set`)
+    embeds its parent and calls the parent's own methods on it. `new`
+    with arguments on a value base without its own `initialize` builds
+    the base through the base's `new`. **Proof:** `object_test.rb`
+    (`ObjMixinFeaturesTest#test_core_subclasses`).
+203. **Class aliases.** `B = A` names the same class object; so does a
+    constant whose value boot saw be a class named otherwise (`Impl =
+    case ... end`, private constants included). `Thread::Mutex` and the
+    other `Thread::` names are the top-level prelude classes.
+204. **String and block evals from boot** (amends 161). `eval`,
+    `class_eval`/`module_eval` and `instance_eval` of a String, and
+    `class_eval`/`module_eval` with a block, that boot ran on a named
+    module are compiled into that module as its body (a block run on
+    several modules is each one's body); the call site is a no-op. An
+    eval on anything else is a compile error. Boot also records
+    Forwardable's `def_delegators` lists by call site, for a list built
+    at load time.
+205. **Poisoning in gem code** (amends 172). A gem method whose body
+    does not compile becomes `raise NotImplementedError` naming why, a
+    constant that does not compile stays `nil`, and a gem file's
+    load-time statement that does not compile is skipped, each with a
+    warning; the rest of the program still builds.
+    `RB2GO_KEEP_GOING=1` reports every such error in one run.
+206. **Gem overrides answer their parent's slot** (amends 8, 172). Go
+    needs one signature per method name, so an override typed apart from
+    the slot it fills gets an adapter under the slot's name. Beyond
+    decision 8's superclass case, gem code links: overrides whose
+    *inferred* return differs (linked after return inference); overrides
+    of an *included module's* method (the module's constraint calls
+    through its signature); a positional override of a `*args` method
+    (by argument count, else ArgumentError); an `each(head = nil)`
+    answering Enumerable's `each()`; and a `<=>` typed `T.nilable(Integer)`
+    for any object, answering Comparable through `Op_cmp` on the topmost
+    class that has it. A method whose body is only `raise` (the abstract
+    idiom) takes its overriders' joined return type. A gem method added
+    to a core module (`Enumerable#exclude?`) calls `self` dynamically, so
+    it does not widen the module's constraint. A gem module mixed into a
+    value class (Pathname) keeps its ivars as per-call locals: memoizing
+    recomputes.
 207. **A generic class has no Go method whose signature grows the class**
     (#96 phase 1, amends 86; 197–206 are reserved for `rb2go/brew`).
     Decision 86 already made a generic primitive's bodies free funcs;

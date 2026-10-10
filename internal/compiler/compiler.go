@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -98,11 +99,21 @@ type Compiler struct {
 	out                   strings.Builder
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings              []string
-	methodRequiresRuntime bool                      // `# rb2go_method_requires: runtime`: a require in a method is not followed at compile time (decision 197)
-	replaced              map[string]string         // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
-	facts                 map[string]bool           // `# rb2go_fold: expr => bool`: build-time facts a class-body condition folds (decision 197)
-	dmSites               map[*parser.CallNode]bool // define_method calls boot recorded: no-ops at run time (decision 198)
-	prepends              []pendingPrepend          // prepends in load order, applied at link (decision 199)
+	methodRequiresRuntime bool                       // `# rb2go_method_requires: runtime`: a require in a method is not followed at compile time (decision 197)
+	replaced              map[string]string          // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
+	facts                 map[string]bool            // `# rb2go_fold: expr => bool`: build-time facts a class-body condition folds (decision 197)
+	dmSites               map[*parser.CallNode]bool  // define_method calls boot recorded: no-ops at run time (decision 198)
+	prepends              []pendingPrepend           // prepends in load order, applied at link (decision 199)
+	bootBranches          map[string]boot.BranchInfo // "path:line:col" of each if/unless boot ran (decision 201)
+	bootConstClasses      map[string]string          // constant -> the class boot saw it name (decision 203)
+	badClasses            map[*Class]compileError    // gem classes that cannot compile, an error where reachable code names them
+	evalSites             map[string]bool            // "path:line" of each string eval boot compiled: a no-op (decision 204)
+	blockEvalSites        map[*parser.CallNode]bool  // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
+	bootDelegators        map[string][]string        // def_delegators' names boot saw, by "path:line" (decision 204)
+	kept                  []string                   // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
+	anonDepth             int                        // collecting an anonymous class body, whose errors scanAnon defers
+	constChain            []string                   // constants whose types are being inferred, for a cycle's message
+
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
 	dynEach          bool                              // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
@@ -217,20 +228,21 @@ type Source struct {
 
 // options are a compile's settings beyond its sources.
 type options struct {
-	skipTests     bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
-	skipped       []SkippedTest // what skipTests skipped
-	warnings      []string
-	loadPath      []string // -I directories, which a user `require` searches first
-	gemDirs       []string // gem lib dirs, searched after loadPath (decision 173)
-	infer         *inference
-	round         bool
-	inferDone     bool
-	seed          *Inference        // types from an earlier compile of these sources, updated by this one
-	allLibs       bool              // load every prelude lib, required or not (the stub generator, decision 154)
-	gemSigs       fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
-	pruneGems     bool              // drop gem methods no reachable code names (decision 169)
-	autoloaded    map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
-	defineMethods []boot.MethodInfo // what boot's define_method calls made (decision 198)
+	skipTests  bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
+	skipped    []SkippedTest // what skipTests skipped
+	warnings   []string
+	loadPath   []string // -I directories, which a user `require` searches first
+	gemDirs    []string // gem lib dirs, searched after loadPath (decision 173)
+	infer      *inference
+	round      bool
+	inferDone  bool
+	seed       *Inference        // types from an earlier compile of these sources, updated by this one
+	allLibs    bool              // load every prelude lib, required or not (the stub generator, decision 154)
+	gemSigs    fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
+	pruneGems  bool              // drop gem methods no reachable code names (decision 169)
+	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
+	mainLast   bool              // the last source is the program's main file (rb2go_main, decision 197)
+	boot       *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -289,6 +301,9 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
+				if os.Getenv("RB2GO_ERR_STACK") != "" { // debugging: which pass raised it
+					fmt.Fprintf(os.Stderr, "%s\n%s\n", ce.msg, debug.Stack())
+				}
 				err = ce
 				return
 			}
@@ -318,12 +333,23 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	c.parsed = parsed
 	c.autoloaded = c.neededAutoloads(opts.autoloaded)
-	c.markDefineMethods(opts.defineMethods)
+	var dms []boot.MethodInfo
+	if opts.boot != nil {
+		dms = opts.boot.DefineMethods
+		c.indexBootBranches(opts.boot.Branches)
+		c.bootConstClasses = opts.boot.ConstClasses
+		c.bootDelegators = opts.boot.Delegators
+	}
+	c.markDefineMethods(dms)
 	c.loadPrelude(ctx, "prelude.rb")
 	c.loadLibs(ctx, libs, opts.allLibs || os.Getenv("RB2GO_ALL_LIBS") != "")
 	c.loadSigs(sources)
 	tick("prelude")
-	for _, src := range sources {
+	c.evalSites = map[string]bool{}
+	for i, src := range sources {
+		if i == len(sources)-1 && opts.mainLast && opts.boot != nil { // load-time evals run before the program's main file (decision 204)
+			c.collectBootEvals(ctx, opts.boot.Evals)
+		}
 		path := src.Path
 		if path == "" {
 			path = src.Name
@@ -339,9 +365,12 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.collect(ctx, uf)
 	}
 	for _, uf := range c.userFiles {
-		c.collectERB(ctx, uf) // templates need every constant collected (decision 111)
+		c.keepGoing(func() { c.collectERB(ctx, uf) }) // templates need every constant collected (decision 111)
 	}
-	c.collectDefineMethods(ctx, opts.defineMethods)
+	c.collectDefineMethods(ctx, dms)
+	if len(c.kept) > 0 {
+		c.errorf(nil, nil, "%d collect errors:\n%s", len(c.kept), strings.Join(c.kept, "\n"))
+	}
 	tick("user")
 	if c.pruneGems = opts.pruneGems; c.pruneGems {
 		c.pruneGemMethods()
@@ -371,8 +400,12 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		opts.skipped = c.skipFailingTests()
 	}
 	c.inferReturns()
+	c.relinkOverrides()
 	tick("infer")
 	c.emitProgram()
+	if len(c.kept) > 0 {
+		c.errorf(nil, nil, "%d errors:\n%s", len(c.kept), strings.Join(c.kept, "\n"))
+	}
 	tick("emit")
 	src := []byte(c.out.String())
 	lazy := map[string]bool{}
@@ -603,7 +636,7 @@ func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
 	}
 	for _, dir := range dirs {
 		target := filepath.Join(dir, name)
-		info, err := os.Stat(target) //nolint:gosec // a -I directory the user gave, and a name their program requires
+		info, err := os.Stat(target)
 		if err == nil && !info.IsDir() {
 			return target
 		}

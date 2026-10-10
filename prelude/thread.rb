@@ -245,3 +245,11 @@ class ThreadGroup < Object
 
   Default = __default #: ThreadGroup
 end
+
+# MRI's names for the thread primitives, which rb2go keeps top-level (decision 203's class aliases).
+class Thread
+  Mutex = ::Mutex
+  Queue = ::Queue
+  SizedQueue = ::SizedQueue
+  ConditionVariable = ::ConditionVariable
+end

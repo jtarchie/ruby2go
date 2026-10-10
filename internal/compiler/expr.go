@@ -3,6 +3,7 @@ package compiler
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -743,6 +744,9 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		return l // narrowed non-nil (decision 148): MRI never runs the right side either
 	}
 	if !isOpt(l.typ) && !untyped && !boolL {
+		if f.lenient() { // a gem's defensive `x or raise(...)`: MRI never runs the right side either (decision 172)
+			return l
+		}
 		f.errorf(n, "`||` on a non-nilable %s is always the left side", l.typ)
 	}
 	// Ruby: the left when it is truthy, else the right; types that share
@@ -790,6 +794,9 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 // members but nil), else r, typed as their join.
 func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 	if !unionFalsy(u) {
+		if f.lenient() {
+			return l
+		}
 		f.errorf(n, "`||` on %s, which is never nil or false, is always the left side", u)
 	}
 	lElem := unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)
@@ -970,10 +977,16 @@ func (f *fctx) toS(n parser.Node, e expr) string {
 // ---- ivars
 
 func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
-	if f.owner == nil || f.owner.universal || !f.owner.isStruct() && !f.owner.IsModule {
+	if f.owner == nil || f.owner.universal || !f.owner.isStruct() && !f.owner.IsModule && !f.owner.hashBase {
 		f.errorf(n, "instance variables are only supported in struct classes and modules")
 	}
+	if iv := f.owner.scratchIvars[name]; iv != nil {
+		return iv
+	}
 	iv := f.c.findIvar(f.owner, name)
+	if iv == nil && f.owner.IsModule && f.lenient() { // gem code: an undeclared module ivar is untyped (decision 172)
+		iv = f.c.declareIvar(f.owner, name, TAny{}, f.f, f.f.line(n.GetLocation().StartOffset))
+	}
 	if iv == nil && f.owner.IsModule {
 		f.errorf(n, "instance variable %s of module %s needs a type: `# @rbs %s: T` in the module body (decision 147)", name, f.owner.RubyName, name)
 	}
@@ -1385,21 +1398,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	case TUnion:
 		return f.coerceToUnion(n, e, to)
 	case TAny:
-		switch {
-		case isOpt(e.typ):
-			switch e.typ.(TOpt).Elem.(type) {
-			case TVar, TOpt: // E? with E = T?: Opt leaves the inner box
-				return "rbUnbox(Opt(" + e.code + "))"
-			case TAny, TClass, TFunc, TNil, TTuple, TUnion, TVoid: // a plain T?: Opt boxes it below
-			}
-			return "Opt(" + e.code + ")"
-		case e.lit:
-			return f.c.goType(e.typ) + "(" + e.code + ")"
-		}
-		if _, ok := e.typ.(TTuple); ok {
-			return e.code + "._ToAny()" // untyped code sees an Array (decision 22)
-		}
-		return e.code
+		return f.coerceToAny(e)
 	case TOpt:
 		switch {
 		case isNil(e.typ):
@@ -1413,8 +1412,40 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	case TClass:
 		return f.coerceClass(n, e, to)
 	case TVar:
-		return e.code
+		return f.coerceToVar(n, e, to)
 	case TFunc, TNil, TTuple, TVoid: // converted by the general rules below
+	}
+	return e.code
+}
+
+// coerceToAny boxes e as untyped code sees it.
+func (f *fctx) coerceToAny(e expr) string {
+	switch {
+	case isOpt(e.typ) && e.code == "nil": // `T.let(nil, T.nilable(X))`: Opt(nil) could not infer its T
+		return "nil"
+	case isOpt(e.typ):
+		switch e.typ.(TOpt).Elem.(type) {
+		case TVar, TOpt: // E? with E = T?: Opt leaves the inner box
+			return "rbUnbox(Opt(" + e.code + "))"
+		case TAny, TClass, TFunc, TNil, TTuple, TUnion, TVoid: // a plain T?: Opt boxes it below
+		}
+		return "Opt(" + e.code + ")"
+	case e.lit:
+		return f.c.goType(e.typ) + "(" + e.code + ")"
+	}
+	if _, ok := e.typ.(TTuple); ok {
+		return e.code + "._ToAny()" // untyped code sees an Array (decision 22)
+	}
+	return e.code
+}
+
+// coerceToVar is e as a type variable's value: as it is, or asserted in gem code.
+func (f *fctx) coerceToVar(n parser.Node, e expr, to TVar) string {
+	if ec, ok := e.typ.(TClass); ok && to.Name == "Self" && f.lenient() && ec.C.isStruct() { // a gem's `self.class.new(...)` as self's type
+		return "any(" + e.code + ").(Self)"
+	}
+	if isAny(e.typ) && to.Name != "Self" && f.lenient() && f.c.goType(to) == to.Name { // a gem's untyped value for a type parameter (Hash's V)
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", to.Name, e.code, to.Name))
 	}
 	return e.code
 }
@@ -1562,10 +1593,8 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if converts(to) && sameButUntyped(e.typ, to) && f.c.goType(e.typ) != f.c.goType(to) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}
-
-	if o, ok := e.typ.(TOpt); ok && f.lenient() && f.c.goType(e.typ) == "*"+f.c.goType(o.Elem) {
-		// a gem's T? where T is wanted: nil raises at run time, as it would where MRI first uses it (decision 172)
-		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to)
+	if code, ok := f.lenientClass(n, e, to); ok {
+		return code
 	}
 	if isOpt(e.typ) {
 		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
@@ -1585,6 +1614,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	}
 	if isAbstract(to) { // Go any: literals need wrapping, as for untyped
 		return f.coerce(n, e, TAny{})
+	}
+	if ec, ok := e.typ.(TClass); ok && ec.C.hashBase && ec.C.Super == to.C { // a @go_type subclass where its base is wanted: the embedded base
+		return embeddedSuper(ec.C, e.code)
 	}
 	return e.code
 }
@@ -1653,22 +1685,8 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 	switch n.Name {
 	case "raise", "fail":
 		return f.genRaise(n), true
-	case "require_relative":
-		if f.c.methodRequiresRuntime && !f.f.prelude {
-			return f.genRuntimeRequire(n), true
-		}
-		if !f.f.prelude {
-			f.errorf(n, "require_relative must be a top-level statement: rb2go loads files at compile time")
-		}
-		return expr{code: "", stmt: true, typ: TVoid{}}, true
-	case "require":
-		if f.c.methodRequiresRuntime && !f.f.prelude {
-			return f.genRuntimeRequire(n), true
-		}
-		if f.c.findRequire(f.f, n) != "" {
-			f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")
-		}
-		return expr{code: "", stmt: true, typ: TVoid{}}, true
+	case "require_relative", "require":
+		return f.genInMethodRequire(n), true
 	case "__method__":
 		if n.Arguments != nil || n.Block != nil {
 			return expr{}, false
@@ -1701,10 +1719,15 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 		return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
 	case "define_method":
 		if f.c.dmSites[n] {
-			return expr{code: "nil", typ: TNil{}}, true // boot made its methods defs (decision 198)
+			return expr{code: "nil", typ: TNil{}, lit: true}, true // boot made its methods defs (decision 198)
 		}
 		f.errorf(n, "%s is not supported", n.Name)
-	case "binding", "send", "method_missing":
+	case "send", "__send__", "public_send":
+		if len(callArgs(n)) == 0 {
+			f.errorf(n, "%s needs a method name", n.Name)
+		}
+		return f.genSend(n, expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}, n.Name, callArgs(n), n.Block), true // `send(:x)` is self's
+	case "binding", "method_missing":
 		f.errorf(n, "%s is not supported", n.Name)
 	}
 	return expr{}, false
@@ -1730,25 +1753,7 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
-	if t, ok := f.f.sorbetCasts[n]; ok {
-		return f.genSorbetCast(n, t)
-	}
-	if n.Receiver != nil && f.c.dmSites[n] { // `base.define_method(...)`: boot made its methods defs (decision 198)
-		return expr{code: "nil", typ: TNil{}}
-	}
-	if e, ok := f.genKernelCall(n, expected); ok {
-		return e
-	}
-	if e, ok := f.genMatchSet(n); ok {
-		return e
-	}
-	if e, ok := f.genStringBang(n); ok {
-		return e
-	}
-	if e, ok := f.genBlockCall(n); ok {
-		return e
-	}
-	if e, ok := f.genBareName(n, expected); ok {
+	if e, ok := f.genCallForm(n, expected); ok {
 		return e
 	}
 	if strings.HasSuffix(n.Name, "=") && (n.Receiver == nil || isSelf(n.Receiver)) {
@@ -1764,6 +1769,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		return f.genAnonClass(n, cls, expected)
 	}
 	if cls := f.classRef(n.Receiver); cls != nil {
+		if err, bad := f.c.badClasses[cls]; bad {
+			panic(err)
+		}
 		if e, ok := f.genSpecialClassCall(n, cls, expected); ok {
 			return e
 		}
@@ -1782,9 +1790,12 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		return f.genSafeNav(n)
 	}
 	var recv expr
-	if n.Receiver == nil {
+	switch {
+	case (n.Receiver == nil || isSelf(n.Receiver)) && f.dynSelfCall(n.Name):
+		recv = expr{code: "any(" + f.selfCode + ")", typ: TAny{}}
+	case n.Receiver == nil:
 		recv = expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}
-	} else {
+	default:
 		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
 	f.noteElems(n)
@@ -1900,6 +1911,9 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 		}
 		if e, ok := f.unionArgCall(n, recv, name, args, block); ok {
 			return e
+		}
+		if f.lenient() && block == nil && f.unionArm == 0 { // gem code: matched per call at run time, as MRI does
+			return f.genDynCall(n, recv, name, args)
 		}
 		panic(*err)
 	}
@@ -2305,6 +2319,9 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	if splatTmp != "" {
 		args, nargs = args[:splatAt], splatAt
 	}
+	if exprs == nil && !hasRest && nargs-1 == npos && f.emptySplat(args) {
+		args, nargs = args[:len(args)-1], nargs-1
+	}
 	// Too many arguments is checked first: it is the error Ruby raises, and
 	// the surplus would otherwise be coerced to the wrong parameter's type.
 	if nargs > npos && !hasRest {
@@ -2317,22 +2334,11 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	npost := m.postCount() // post params (`def f(a, *r, z)`) take the last arguments
 	posts := 0
 	take := func(p Param, i int) {
-		var a expr
-		an := n
-		if exprs != nil {
-			a = exprs[i]
-		} else {
-			an = args[i]
-			if _, ok := an.(*parser.SplatNode); ok {
-				f.errorf(an, "splat into a non-rest parameter is not supported")
-			}
-			mark := f.buf.Len()
-			a = f.genExpr(an, f.pendingWant(p, closed(p.Type, env)))
-			f.pinBefore(mark, codes)
-		}
+		an, a := f.argAt(n, p, env, args, exprs, i, codes)
 		f.noteUse(p, an, a.typ)
 		a = f.truncFloat(m, p, env, a)
 		unify(p.Type, a.typ, env)
+		f.bindGemUnbound(m, env, p.Type)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
 	for _, p := range m.Params {
@@ -2376,14 +2382,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 			continue
 		}
 		if p.Default != nil {
-			// The default is a node of the def's file (often the prelude):
-			// literal text and error positions must come from there.
-			caller := f.f
-			f.f = m.File
-			d := f.genExpr(p.Default, closed(p.Type, env))
-			f.f = caller
-			unify(p.Type, d.typ, env)
-			codes = append(codes, f.coerceArg(n, d, p, env))
+			codes = append(codes, f.defaultArg(n, m, p, env))
 			continue
 		}
 		f.errorf(n, "%s: wrong number of arguments (given %d, expected %d)", m, nargs, expected)
@@ -2423,7 +2422,7 @@ func argcCode(nargs, npos, npost int, splatTmp string, splatAt int) string {
 // splatArgs is `f(a, *xs)` into positional parameters (decision 184): xs's length is known only at run time, so the
 // arity is checked there (MRI's ArgumentError); it answers xs's temp, the splat's index and its element type, or "".
 func (f *fctx) splatArgs(m *Method, args []parser.Node, skip bool, npos int) (string, int, Type) {
-	if skip || len(args) == 0 || m.postCount() != 0 || m.hasKeywords() {
+	if skip || len(args) == 0 || m.postCount() != 0 || m.hasKeywords() && !f.lenient() { // gem code: keywords were split off already
 		return "", -1, nil
 	}
 	sp, ok := args[len(args)-1].(*parser.SplatNode)
@@ -2458,7 +2457,7 @@ func (f *fctx) splatParam(n parser.Node, m *Method, p Param, env map[string]Type
 		return got
 	}
 	caller := f.f
-	f.f = m.File
+	f.f = defaultsFile(m)
 	d := f.genExpr(p.Default, closed(p.Type, env))
 	f.f = caller
 	def := f.coerceArg(n, d, p, env)
@@ -2579,7 +2578,7 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 		return "rbZero[" + f.c.goType(subst(p.Type, env)) + "]()", false
 	case p.Default != nil:
 		caller := f.f
-		f.f = m.File
+		f.f = defaultsFile(m)
 		d := f.genExpr(p.Default, closed(p.Type, env))
 		f.f = caller
 		unify(p.Type, d.typ, env)
@@ -2655,7 +2654,7 @@ func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[strin
 	case p.Default != nil:
 		f.indent++
 		caller := f.f
-		f.f = m.File
+		f.f = defaultsFile(m)
 		d := f.genExpr(p.Default, closed(p.Type, env))
 		f.f = caller
 		f.emit("%s = %s", out, f.coerceArg(n, d, p, env))
@@ -2842,8 +2841,8 @@ func (f *fctx) useGenNew(cls *Class, n *parser.CallNode) bool {
 	if n.Name != "new" {
 		return false
 	}
-	if cls.hashBase && cls.lookup("initialize") == nil {
-		return true // the generated NewX builds the embedded Hash
+	if cls.hashBase {
+		return true // the generated NewX builds the embedded Hash or Array; genNew runs the subclass's own initialize on it
 	}
 	if cls.meta == nil {
 		return true
@@ -3198,6 +3197,30 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 // callEntry calls e; a call to a `bot` method is noreturn, and Go must
 // see its panic to know the statement list ends there.
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	if f.lenient() && block == nil && len(args) > 0 && f.unionArm == 0 && !slices.ContainsFunc(args, f.readsUnionLocal) { // a union argument: unionArgCall first
+		// gem code: arguments the static signature cannot take (a splat, a computed keyword) are matched per call at run time, as MRI does
+		if f.probing() { // output is discarded: no dry run needed
+			var r expr
+			err := f.try(func() { r = f.callEntry0(n, e, recv, args, block) })
+			if err != nil {
+				return f.genDynCall(n, recv, e.M.Name, args)
+			}
+			return r
+		}
+		err := f.try(func() { f.probe(func() { f.callEntry0(n, e, recv, args, block) }) })
+		if err != nil {
+			return f.genDynCall(n, recv, e.M.Name, args)
+		}
+	}
+	return f.callEntry0(n, e, recv, args, block)
+}
+
+func isSplatArg(a parser.Node) bool {
+	_, ok := a.(*parser.SplatNode)
+	return ok
+}
+
+func (f *fctx) callEntry0(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	if block == nil {
 		if r, ok := f.mtLiteral(n, e, recv, args); ok {
 			return r
@@ -3222,13 +3245,8 @@ func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
 				classEnv[p] = rt.Args[i]
 			}
 		}
-		if rt.C.hashBase {
-			classEnv["K"] = TAny{} // the embedded Hash[any, V]
-		}
 		env = composeEnv(e.Env, classEnv)
-		if _, ok := env["K"]; !ok && rt.C.hashBase {
-			env["K"] = TAny{} // a Hash def aliased into the subclass (linkAliases) keeps Hash's K
-		}
+		rt.C.containerEnv(env) // also a Hash def aliased into the subclass (linkAliases), which keeps Hash's K
 	} else {
 		for k, v := range e.Env {
 			env[k] = v
@@ -3332,20 +3350,13 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 		if n == f.retHintNode && f.retHint != nil {
 			unify(m.Ret, f.retHint, env)
 		}
-		blkCode := "nil"
-		switch {
-		case block != nil:
-			f.inferYielder(n, m, env, block)
-			blkCode = f.genClosure(n, block, m.Block, env)
-		case !m.Block.Optional:
-			f.errorf(n, "%s requires a block", m.Name)
-		}
+		blkCode := f.blockArg(n, m, env, block)
 		if restIdx >= 0 {
 			codes = slices.Insert(codes, restIdx, blkCode)
 		} else {
 			codes = append(codes, blkCode)
 		}
-	} else if block != nil {
+	} else if block != nil && !f.lenient() { // gem code: MRI ignores a block the method never yields to
 		f.errorf(n, "%s does not take a block", m.Name)
 	}
 	f.bindTypeParams(n, m, env)
@@ -3403,13 +3414,8 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	if m.Owner == nil {
 		return m.GoName + "(" + argList + ")"
 	}
-	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner.RubyName == "Hash" {
-		// an inherited Hash method runs on the embedded Hash[any, V]
-		targs := ""
-		if len(rc.Args) > 0 {
-			targs = "[any, " + f.c.goTypes(rc.Args) + "]"
-		}
-		return freeFuncName(m) + targs + "(&" + recv.code + "." + superField(m.Owner) + comma(argList) + ")"
+	if code, ok := f.containerCallCode(e, recv, args, env); ok {
+		return code
 	}
 	if m.Owner.metaOf != nil && m.Name == "new" && !recv.classObj {
 		// `new` on a class object of unknown exact class: assert for it.
@@ -4088,7 +4094,9 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 			e = o
 		}
 	}
-	if t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
+	// a gem's `xs.each(&blk)` as a value is xs, as MRI's each returns its receiver (decision 172)
+	selfValue := t.kind != tailNone && f.lenient() && eachReturnsSelf[n.Name] && !isOptRecv
+	if !selfValue && t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
 	}
 	var recv expr
@@ -4096,6 +4104,14 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		recv = expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}
 	} else {
 		recv = f.genExpr(n.Receiver, nil)
+	}
+	if selfValue {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, recv.code)
+		recv.code = tmp
+		f.genIterLoop(n, e, recv)
+		f.applyTail(n, recv, t)
+		return true
 	}
 	safe := isOptRecv && n.IsSAFE_NAVIGATION()
 	switch {
@@ -4176,9 +4192,7 @@ func iterEnv(e *entry, recv expr) map[string]Type {
 			classEnv[p] = rt.Args[i]
 		}
 		env = composeEnv(e.Env, classEnv)
-		if _, ok := env["K"]; !ok && rt.C.hashBase {
-			env["K"] = TAny{} // a Hash def aliased into the subclass (linkAliases) keeps Hash's K
-		}
+		rt.C.containerEnv(env) // a Hash def aliased into the subclass (linkAliases) keeps Hash's K
 	} else {
 		for k, v := range e.Env {
 			env[k] = v
@@ -4210,7 +4224,7 @@ func (f *fctx) genFor(n *parser.ForNode, t tail) {
 	if len(tmps) == 0 {
 		f.emit("for range %s {", call)
 	} else {
-		f.emit("for %s := range %s {", strings.Join(tmps, ", "), call)
+		f.emit("%s", rangeHead(strings.Join(tmps, ", "), call))
 	}
 	f.indent++
 	vals := make([]expr, len(yields))
@@ -4276,7 +4290,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	if allBlank {
 		f.emit("for range %s {", call)
 	} else {
-		f.emit("for %s := range %s {", strings.Join(goParams, ", "), call)
+		f.emit("%s", rangeHead(strings.Join(goParams, ", "), call))
 	}
 	f.indent++
 	pro()
@@ -4479,6 +4493,11 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e == nil {
 		switch f.m.Name {
 		case "initialize":
+			if o := f.owner; o.hashBase && !o.Super.mutable() && o.Super.meta != nil { // `super(path)` in a Pathname subclass: the embedded base is Base.new(path)
+				base := expr{code: classVar(o.Super), typ: TClass{C: o.Super.meta}, classObj: true}
+				built := f.genMethodCall(n, base, "new", f.superArgs(n, args, forwarding), nil)
+				return expr{code: f.selfCode + "." + superField(o.Super) + " = " + f.coerce(n, built, TClass{C: o.Super}), typ: TVoid{}, stmt: true}
+			}
 			return expr{code: "", typ: TVoid{}, stmt: true}
 		case "respond_to_missing?": // Object's answers false
 			return expr{code: "Boolean(false)", typ: f.cls("Boolean")}
@@ -4498,31 +4517,7 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		f.errorf(n, "super: no parent method %s", f.m.Name)
 	}
 	if e.Owner.GoType != "" {
-		if f.owner == nil || !f.owner.hashBase || e.Owner.RubyName != "Hash" {
-			f.errorf(n, "super into a primitive class method is not supported")
-		}
-		env := map[string]Type{}
-		for k, v := range e.Env {
-			env[k] = v
-		}
-		env["Self"] = f.selfType
-		env["K"] = TAny{} // the embedded Hash[any, V]
-		targs := ""
-		if st, ok := f.selfType.(TClass); ok {
-			for i, p := range st.C.TypeParams {
-				if i < len(st.Args) {
-					env[p] = st.Args[i]
-				}
-			}
-			if len(st.Args) > 0 {
-				targs = "[any, " + f.c.goTypes(st.Args) + "]"
-			}
-		}
-		codes, _ := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
-		if e.M.Block != nil {
-			f.errorf(n, "super to a block-taking method is not supported")
-		}
-		return expr{code: freeFuncName(e.M) + targs + "(&" + f.selfCode + "." + superField(e.Owner) + comma(strings.Join(codes, ", ")) + ")", typ: subst(e.M.Ret, env)}
+		return f.genContainerSuper(n, e, args, forwarding)
 	}
 	env := map[string]Type{}
 	for k, v := range e.Env {
@@ -4577,6 +4572,9 @@ func (f *fctx) superArgs(n parser.Node, args *parser.ArgumentsNode, forwarding b
 }
 
 func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type, block parser.Node) expr {
+	if err, bad := f.c.badClasses[cls]; bad {
+		panic(err)
+	}
 	if c, ok := n.(*parser.CallNode); ok && c.Receiver != nil && !f.insideClass(cls) {
 		for k := cls; k != nil; k = k.Super {
 			if k.privateNew {
@@ -4590,15 +4588,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 	case cls.universal:
 		f.errorf(n, "%s.new is not supported", cls.Name)
 	case cls.GoType != "":
-		if len(args) > 0 || len(exprs) > 0 {
-			f.errorf(n, "%s.new with arguments is not supported", cls.Name)
-		}
-		t := f.goTypeNewType(n, cls, expected)
-		targs := ""
-		if len(t.Args) > 0 {
-			targs = "[" + f.c.goTypes(t.Args) + "]"
-		}
-		return expr{code: "New" + cls.Name + targs + "()", typ: t}
+		return f.genGoTypeNew(n, cls, args, exprs, expected, block)
 	}
 	if vr := cls.valueRoot(); vr != nil && exprs == nil && generatedInit(cls) {
 		args = f.keywordMembers(n, vr, args)
@@ -4800,6 +4790,12 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 	// The arguments once, before the switch: generated in every arm they cost
 	// members^depth for nested union arithmetic, and a local they assign
 	// would be declared only in the arm's scope.
+	if f.lenient() && slices.ContainsFunc(u.Members, func(m Type) bool { // gem code: a member without the method dispatches at run time
+		mc, ok := m.(TClass)
+		return ok && f.resolve(mc, name) == nil
+	}) {
+		return f.genMethodCall(n, expr{code: recv.code, typ: TAny{}}, name, args, block)
+	}
 	args = f.pinArgs(args, len(args))
 	return f.unionSwitch(n, recv.code, u, func(m Type, code string) (expr, bool) {
 		if raises(m) {
@@ -4872,6 +4868,9 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 			res = joinUnion(res, t)
 		}
 	}
+	if res == nil && len(bad) > 0 { // every arm raises: still a value for whatever reads it
+		res = TAny{}
+	}
 	if res == nil {
 		res = TVoid{}
 	}
@@ -4898,6 +4897,8 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 		e, ok := arm(m, code(m))
 		switch {
 		case !ok:
+		case tmp != "" && !e.noreturn && (e.code == "" || isVoid(e.typ) && !isNil(e.typ)): // a void arm where another is untyped: run, and nil
+			f.emitExprStmt(n, e)
 		case tmp != "" && !e.noreturn:
 			f.emit("%s = %s", tmp, f.coerce(n, e, res))
 		default:
@@ -4953,6 +4954,21 @@ func (f *fctx) unionArgCall(n parser.Node, recv expr, name string, args []parser
 	if at < 0 {
 		return expr{}, false
 	}
+	if f.lenient() && !slices.ContainsFunc(u.Members, func(m Type) bool { // no member takes it: the caller's dynamic call
+		var err *compileError
+		f.probe(func() {
+			err = f.try(func() {
+				margs := slices.Clone(args)
+				margs[at] = &exprNode{Node: args[at], e: expr{code: "x", typ: m}}
+				f.unionArm++
+				defer func() { f.unionArm-- }()
+				f.genMethodCall(n, recv, name, margs, block)
+			})
+		})
+		return err == nil
+	}) {
+		return expr{}, false
+	}
 	if !isSimpleGo(recv.code) {
 		tmp := f.newTmp()
 		f.emit("%s := %s", tmp, f.materialize(recv))
@@ -4963,6 +4979,8 @@ func (f *fctx) unionArgCall(n parser.Node, recv expr, name string, args []parser
 	return f.unionSwitch(n, a.code, u, func(m Type, code string) (expr, bool) {
 		margs := slices.Clone(nargs)
 		margs[at] = &exprNode{Node: args[at], e: expr{code: code, typ: m}}
+		f.unionArm++
+		defer func() { f.unionArm-- }()
 		return f.genMethodCall(n, recv, name, margs, block), true
 	}, func(m Type, msg string) string {
 		return fmt.Sprintf("%s (argument %d is %s, and %s is a member; narrow it first)", msg, at+1, u, m)
@@ -5384,6 +5402,9 @@ func (f *fctx) classRef(n parser.Node) *Class {
 // genConstRead reads a constant: a Go package variable.
 func (f *fctx) genConstRead(n parser.Node) expr {
 	cls, k := f.c.lookupConst(f.f, n, f.lex)
+	if err, bad := f.c.badClasses[cls]; bad && cls != nil {
+		panic(err)
+	}
 	switch {
 	case k != nil && k.guarded:
 		code := fmt.Sprintf("rbConstRead(%s, %s, %q)", constSet(k), k.GoName, f.constMissing(n))
@@ -5480,6 +5501,7 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 		if cls.metaOf.IsModule {
 			k = f.c.classes["Module"]
 		}
+		f.discard(recv)
 		return expr{code: classVar(k), typ: TClass{C: k.meta}, classObj: true}, true
 	}
 	if cls == nil || cls.meta == nil {
@@ -5489,6 +5511,7 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 		return expr{code: "rbBoolClass(" + recv.code + ")", typ: f.cls("Class")}, true
 	}
 	if !cls.isStruct() {
+		f.discard(recv) // `d.pkg.class` still calls pkg
 		return expr{code: classVar(cls), typ: TClass{C: cls.meta}}, true
 	}
 	out := expr{code: recv.code + "._ClassOf()", typ: TClass{C: cls.meta}}
@@ -6429,6 +6452,9 @@ func (f *fctx) blockSelf(n parser.Node) Type {
 		return b.Self
 	case !f.c.inferDone && (f.c.infer == nil || !f.c.infer.none[b.SelfPending]):
 		panic(needInfer{})
+	case f.lenient(): // a gem's stored block nothing in the program calls: any self (decision 172)
+		b.Self = TAny{}
+		return b.Self
 	default:
 		ce := catchCompileError(func() {
 			f.errorf(n, "the block &%s is stored but never called, so its self type is unknown (no instance_eval, call or yield gives it one; decision 164)", f.m.BlockParam)
@@ -6461,7 +6487,7 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 	} else if len(yields) != len(f.blockSig.Params) {
 		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
 	}
-	f.emit("for %s := range %s {", list, call)
+	f.emit("%s", rangeHead(list, call))
 	if f.iterator {
 		f.emit("\tif !yield(%s) {", args)
 		f.emit("\t\treturn")
@@ -6479,6 +6505,9 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 		f.errorf(n, "this method's block is an iterator (it yields); it can only be passed on to another iterator")
 	}
 	if len(sig.Params) != len(f.blockSig.Params) {
+		if f.lenient() {
+			return f.procArityAdapter(sig, env)
+		}
 		f.errorf(n, "the forwarded block takes %d values but %d are passed", len(f.blockSig.Params), len(sig.Params))
 	}
 	for i, p := range sig.Params {
@@ -6486,6 +6515,40 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	}
 	unify(sig.Ret, f.blockSig.Ret, env)
 	return "blk"
+}
+
+// procArityAdapter passes the method's block where the callee yields another count of values, as a Ruby proc
+// tolerates: extra values dropped, missing ones nil (gem code, decision 172).
+func (f *fctx) procArityAdapter(sig *BlockSig, env map[string]Type) string {
+	var params, args []string
+	switch { // `T.proc.bind(DSL)`: the self it is called with leads
+	case sig.Self != nil && f.blockSig.Self != nil:
+		params = append(params, "s_ "+f.c.goType(subst(sig.Self, env)))
+		args = append(args, f.coerce(nil, expr{code: "s_", typ: subst(sig.Self, env)}, f.blockSig.Self))
+	case sig.Self != nil: // a closure keeps its own self
+		params = append(params, "_ "+f.c.goType(subst(sig.Self, env)))
+	case f.blockSig.Self != nil:
+		args = append(args, "*new("+f.c.goType(f.blockSig.Self)+")")
+	}
+	for i, p := range sig.Params {
+		params = append(params, fmt.Sprintf("p%d %s", i, f.c.goType(subst(p, env))))
+	}
+	for i, want := range f.blockSig.Params {
+		if i < len(sig.Params) {
+			args = append(args, f.coerce(nil, expr{code: fmt.Sprintf("p%d", i), typ: subst(sig.Params[i], env)}, want))
+		} else {
+			args = append(args, "*new("+f.c.goType(want)+")")
+		}
+	}
+	call := "blk(" + strings.Join(args, ", ") + ")"
+	ret := subst(sig.Ret, env)
+	if isVoid(ret) {
+		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
+	}
+	if isVoid(f.blockSig.Ret) {
+		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return *new(" + f.c.goType(ret) + ") }"
+	}
+	return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
 }
 
 // goTypeNewType is the type a blockless `X.new` of a @go_type class builds: the expected one, X itself, an untyped
@@ -6781,7 +6844,36 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 	case f.implicitCall || call != nil && (call.Receiver == nil || isSelf(call.Receiver)):
 		how = "rbFCall"
 	}
-	codes := append([]string{how, f.coerce(n, recv, TAny{})}, f.anyArgs(args)...)
+	if i := slices.IndexFunc(args, func(a parser.Node) bool { _, ok := a.(*parser.SplatNode); return ok }); i >= 0 && i >= len(args)-2 {
+		// `x.m(a, *rest, **kw)` untyped: the rest spread into the wrapper's ...any, keywords last as a Hash (rbDynKw)
+		sp := args[i].(*parser.SplatNode) //nolint:forcetypeassert // found just above
+		fixed := f.anyArgs(args[:i])
+		trailing := f.anyArgs(args[i+1:])
+		a := f.genExpr(sp.Expression, nil)
+		rest := "rbAs[*Array[any]](" + f.coerce(sp, a, TAny{}) + ", \"Array\").s"
+		if ac, ok := a.typ.(TClass); ok && ac.C.RubyName == "Array" && len(ac.Args) == 1 {
+			rest = "(" + a.code + ").s"
+			if !isAny(ac.Args[0]) {
+				rest = "(" + a.code + ")._ToAny().s"
+			}
+		}
+		recvCode := f.coerce(n, recv, TAny{})
+		spread := "append([]any{" + strings.Join(fixed, ", ") + "}, " + rest + "...)"
+		if len(trailing) > 0 {
+			spread = "append(" + spread + ", " + strings.Join(trailing, ", ") + ")"
+		}
+		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + recvCode + ", " + spread + "...)", typ: TAny{}}
+	}
+	argCodes := f.anyArgs(args)
+	if i := slices.IndexFunc(argCodes, func(c string) bool { return strings.HasSuffix(c, "...") }); i >= 0 {
+		// an argument already spread (a forwarded *rest) with more after it: one slice, spread once at the end
+		spread := "append([]any{" + strings.Join(argCodes[:i], ", ") + "}, " + argCodes[i] + ")"
+		if len(argCodes) > i+1 {
+			spread = "append(" + spread + ", " + strings.Join(argCodes[i+1:], ", ") + ")"
+		}
+		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
+	}
+	codes := append([]string{how, f.coerce(n, recv, TAny{})}, argCodes...)
 	return expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 }
 
@@ -6812,6 +6904,9 @@ func (f *fctx) anyArgs(args []parser.Node) []string {
 	for _, a := range args {
 		if _, ok := a.(*parser.SplatNode); ok {
 			f.errorf(a, "splat arguments in a dynamic call are not supported")
+		}
+		if kh, ok := a.(*parser.KeywordHashNode); ok { // keywords travel as a Hash; the wrapper's rbDynKw takes them back
+			a = &parser.HashNode{Location: kh.Location, Elements: kh.Elements}
 		}
 		e := f.genExpr(a, nil)
 		codes = append(codes, f.coerce(a, e, TAny{}))
@@ -7136,11 +7231,18 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 		if exec && len(args) > 0 {
 			f.errorf(n, "%s with a literal block and arguments is not supported yet", n.Name)
 		}
+		if e, ok := f.genIvarsEval(b, recv); ok {
+			return e, true
+		}
 		env := map[string]Type{}
 		sig := &BlockSig{Ret: TVar{Name: "Ret_"}, Self: recv.typ}
 		code := f.genClosure(n, b, sig, env)
 		return expr{code: code + "(" + recv.code + ")", typ: subst(sig.Ret, env)}, true
 	case *parser.BlockArgumentNode:
+		if lr, ok := b.Expression.(*parser.LocalVariableReadNode); ok && (n.Receiver == nil || isSelf(n.Receiver)) && f.localProcLiteral(lr.Name) {
+			// `instance_exec(*a, &blk)` on self with a proc this method made: its self is already ours, so it is blk.call(*a)
+			return f.genMethodCall(n, f.genExpr(lr, nil), "call", args, nil), true
+		}
 		p := f.genExpr(b.Expression, nil)
 		if o, isOpt := p.typ.(TOpt); isOpt { // instance_eval(&nil) raises, as MRI does
 			if ft, ok := o.Elem.(TFunc); ok && ft.Proc {
@@ -7210,6 +7312,9 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 // procInvoke is a Proc's call/()/[]/yield/===: an arity check, each argument
 // coerced to its parameter, then a Go call through the function pointer.
 func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node) expr {
+	if f.lenient() && !t.Rest && t.Self == nil && (len(args) != len(t.Params) || slices.ContainsFunc(args, isSplatArg)) {
+		return f.procInvokeLoose(recv, t, args)
+	}
 	last := len(t.Params) - 1
 	switch {
 	case t.Rest && len(args) < last:
@@ -7694,4 +7799,412 @@ func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
 		return "", false
 	}
 	return f.coerce(n, r, to), true
+}
+
+// lastSplat is args' last argument when it is a `*x` splat.
+func lastSplat(args []parser.Node) (*parser.SplatNode, bool) {
+	if len(args) == 0 {
+		return nil, false
+	}
+	sp, ok := args[len(args)-1].(*parser.SplatNode)
+	return sp, ok && sp.Expression != nil
+}
+
+// probing reports a dry-run generation (probe), whose output is discarded.
+func (f *fctx) probing() bool { return f.probeDepth > 0 }
+
+// localProcLiteral reports a local of the current method assigned a `proc { }` literal, whose self is the method's.
+func (f *fctx) localProcLiteral(name string) bool {
+	if f.m == nil || f.m.Node == nil {
+		return false
+	}
+	return anyNode(f.m.Node.Body, func(n parser.Node) bool {
+		w, ok := n.(*parser.LocalVariableWriteNode)
+		if !ok || w.Name != name {
+			return false
+		}
+		c, ok := w.Value.(*parser.CallNode)
+		return ok && c.Receiver == nil && (c.Name == "proc" || c.Name == "lambda") && c.Block != nil
+	})
+}
+
+// procInvokeLoose calls a proc as Ruby's proc semantics do (gem code): a splat spread by position, extra arguments
+// dropped, missing ones nil.
+func (f *fctx) procInvokeLoose(recv expr, t TFunc, args []parser.Node) expr {
+	var vals []string // each argument as untyped, a splat's elements spread
+	spread := ""
+	for _, a := range args {
+		if sp, ok := a.(*parser.SplatNode); ok {
+			e := f.genExpr(sp.Expression, nil)
+			tmp := f.newTmp()
+			f.emit("%s := rbAs[*Array[any]](%s, \"Array\").s", tmp, f.coerce(sp, e, TAny{}))
+			spread = tmp
+			continue
+		}
+		vals = append(vals, f.coerce(a, f.genExpr(a, nil), TAny{}))
+	}
+	all := f.newTmp()
+	f.emit("%s := []any{%s}", all, strings.Join(vals, ", "))
+	if spread != "" {
+		f.emit("%s = append(%s, %s...)", all, all, spread)
+	}
+	codes := make([]string, len(t.Params))
+	for i, p := range t.Params {
+		codes[i] = fmt.Sprintf("rbAs[%s](rbAt(%s, %d), %q)", f.c.goType(p), all, i, p.String())
+	}
+	return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
+}
+
+// rangeHead opens a range over an iterator; one yielding no values binds none (`for range seq`).
+func rangeHead(vars, call string) string {
+	if strings.TrimSpace(vars) == "" {
+		return "for range " + call + " {"
+	}
+	return "for " + vars + " := range " + call + " {"
+}
+
+// defaultsFile is where m's parameter defaults are written: a synthesized `new`'s are its initialize's.
+func defaultsFile(m *Method) *File {
+	if m.Kind == kindSynth && m.Name == "new" && m.Owner != nil && m.Owner.metaOf != nil {
+		if init := m.Owner.metaOf.lookup("initialize"); init != nil && init.M.File != nil {
+			return init.M.File
+		}
+	}
+	return m.File
+}
+
+// dynSelfCall reports a self call in a gem method added to a core module, which dispatches dynamically (selfCalls).
+func (f *fctx) dynSelfCall(name string) bool {
+	if f.owner == nil || !f.owner.IsModule || f.m == nil || !f.c.gemFile(f.m.File) {
+		return false
+	}
+	f.c.selfCalls(f.owner)
+	return f.owner.gemSelfCalls[name]
+}
+
+// genToEnum is `to_enum`/`enum_for` (bare, or naming the enclosing method) in a method taking a one-value closure
+// block: an Enumerator that calls the method again with a block feeding it (rbSeq stops it early).
+func (f *fctx) genToEnum(n *parser.CallNode) (expr, bool) {
+	m := f.m
+	if n.Name != "to_enum" && n.Name != "enum_for" || n.Receiver != nil && !isSelf(n.Receiver) || n.Block != nil ||
+		m == nil || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || !inInterface(m) || m.kwMask() || m.calleeDefaults {
+		return expr{}, false
+	}
+	args := callArgs(n)
+	if len(args) > 0 {
+		sym, ok := args[0].(*parser.SymbolNode)
+		if !ok || sym.Unescaped.Value != m.Name || len(args)-1 > len(m.Params) {
+			return expr{}, false
+		}
+		args = args[1:]
+	}
+	var as []string
+	for i, p := range m.Params {
+		switch {
+		case p.Rest:
+			return expr{}, false
+		case i < len(args):
+			as = append(as, f.coerce(n, f.genExpr(args[i], p.Type), p.Type))
+		case len(args) > 0 && p.Default != nil: // `to_enum(:each)` leaves the rest at their defaults
+			as = append(as, f.coerce(n, f.genExpr(p.Default, p.Type), p.Type))
+		default:
+			as = append(as, goLocalName(p.Name))
+		}
+	}
+	elem := f.c.goType(m.Block.Params[0])
+	blk := fmt.Sprintf("func(x %s) { y(x) }", elem)
+	if !isVoid(m.Block.Ret) {
+		r := f.c.goType(m.Block.Ret)
+		blk = fmt.Sprintf("func(x %s) %s { y(x); return *new(%s) }", elem, r, r)
+	}
+	as = append(as, blk)
+	code := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(%s)) { %s.%s(%s) }), any(%s), %q, nil, nil)",
+		elem, f.selfCode, m.GoName, strings.Join(as, ", "), f.selfCode, m.Name)
+	return expr{code: code, typ: TClass{C: f.c.classes["Enumerator"], Args: []Type{m.Block.Params[0]}}}, true
+}
+
+// eachReturnsSelf are the iterators whose value in MRI is their receiver.
+var eachReturnsSelf = map[string]bool{"each": true, "each_with_index": true, "each_pair": true, "each_key": true, "each_value": true, "reverse_each": true}
+
+// genIvarsEval is a gem's `child.instance_eval do @x = v; ... end` on an untyped receiver (an inherited hook seeding a
+// subclass's class-level ivars): each write is rbIvarSet on the receiver, as instance_variable_set (decision 172).
+func (f *fctx) genIvarsEval(b *parser.BlockNode, recv expr) (expr, bool) {
+	st, ok := b.Body.(*parser.StatementsNode)
+	if !f.lenient() || !isAny(recv.typ) || !ok || len(st.Body) == 0 {
+		return expr{}, false
+	}
+	for _, x := range st.Body {
+		if _, ok := x.(*parser.InstanceVariableWriteNode); !ok {
+			return expr{}, false
+		}
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, recv.code)
+	last := expr{code: "nil", typ: TNil{}, lit: true}
+	for _, x := range st.Body {
+		w := x.(*parser.InstanceVariableWriteNode) //nolint:forcetypeassert // checked above
+		v := f.genExpr(w.Value, nil)
+		val := f.newTmp()
+		f.emit("var %s any = %s", val, f.coerce(w.Value, v, TAny{}))
+		f.emit("rbIvarSet(%s, Symbol(%q), %s)", tmp, w.Name, val)
+		last = expr{code: val, typ: TAny{}}
+	}
+	return last, true
+}
+
+// lenientClass converts what gem code passes where class to is wanted and user code would be a compile error
+// (decision 172): an Array[Sub] for Array[Base] (a converted copy, Go's instantiations being invariant), self where an
+// unrelated class is wanted (concurrent-ruby's Event as a Future, checked at run time), a T? for T (nil raises).
+func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
+	if !f.lenient() {
+		return "", false
+	}
+	if ec, ok := e.typ.(TClass); ok && converts(to) && ec.C == to.C && f.c.goType(e.typ) != f.c.goType(to) {
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())), true
+	}
+	if tv, ok := e.typ.(TVar); ok && tv.Name == "Self" && to.C.isStruct() && !to.C.universal && f.owner != nil &&
+		!f.owner.isSubclassOf(to.C) && !slices.Contains(f.owner.ancestors(), to.C) {
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), e.code, to.String())), true
+	}
+	if o, ok := e.typ.(TOpt); ok && f.c.goType(e.typ) == "*"+f.c.goType(o.Elem) {
+		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
+	}
+	return "", false
+}
+
+// genCallForm is a call some form of genCall's handles before ordinary dispatch: a Sorbet cast, a boot-compiled
+// define_method or eval (a no-op), to_enum, a Kernel intrinsic, a String bang, a block call, a bare name.
+func (f *fctx) genCallForm(n *parser.CallNode, expected Type) (expr, bool) {
+	if t, ok := f.f.sorbetCasts[n]; ok {
+		return f.genSorbetCast(n, t), true
+	}
+	if n.Receiver != nil && f.c.dmSites[n] || f.isEvalSite(n) || f.c.blockEvalSites[n] { // boot made their methods defs (decisions 198, 204)
+		return expr{code: "nil", typ: TNil{}, lit: true}, true
+	}
+	for _, form := range []func() (expr, bool){
+		func() (expr, bool) { return f.genToEnum(n) },
+		func() (expr, bool) { return f.genKernelCall(n, expected) },
+		func() (expr, bool) { return f.genMatchSet(n) },
+		func() (expr, bool) { return f.genStringBang(n) },
+		func() (expr, bool) { return f.genBlockCall(n) },
+		func() (expr, bool) { return f.genBareName(n, expected) },
+	} {
+		if e, ok := form(); ok {
+			return e, true
+		}
+	}
+	return expr{}, false
+}
+
+// containerCallCode is callCode on a subclass of a core class (decision 202): an inherited method runs on the
+// embedded base, a middle subclass's own method on its embedded struct.
+func (f *fctx) containerCallCode(e *entry, recv expr, args []string, env map[string]Type) (string, bool) {
+	m := e.M
+	argList := strings.Join(args, ", ")
+	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner == rc.C.Super && !rc.C.Super.mutable() {
+		// a value base's method (Pathname's) on the embedded value, called as the base calls it
+		innerEnv := composeEnv(env, nil)
+		innerEnv["Self"] = TClass{C: rc.C.Super}
+		return f.callCode(e, expr{code: embeddedSuper(rc.C, recv.code), typ: TClass{C: rc.C.Super}}, args, innerEnv), true
+	}
+	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner == rc.C.Super && rc.C.Super.hashBase {
+		// Concurrent::Set < CRubySet < ::Set: the middle class's own method is a Go method on the embedded struct
+		return embeddedSuper(rc.C, recv.code) + "." + m.GoName + "(" + argList + ")", true
+	}
+	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner == rc.C.Super {
+		// an inherited Hash (or Array) method runs on the embedded Hash[any, V] (Array[E])
+		targs := f.c.containerTargs(rc.C, rc.Args)
+		if tv, ok := m.Ret.(TVar); ok && tv.Name == "Self" { // `-> self` (Set#add): the subclass object, not its embedded base
+			t := f.c.goType(recv.typ)
+			return fmt.Sprintf("func(r %s) %s { %s%s(%s%s); return r }(%s)", t, t, freeFuncName(m), targs, embeddedSuper(rc.C, "r"), comma(argList), recv.code), true
+		}
+		return freeFuncName(m) + targs + "(" + embeddedSuper(rc.C, recv.code) + comma(argList) + ")", true
+	}
+	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner != rc.C && !m.Owner.universal && slices.Contains(rc.C.Super.ancestors(), m.Owner) {
+		// one the container has from a module (Array's Enumerable): called on the embedded container too
+		inner := TClass{C: rc.C.Super}
+		if rc.C.Super.RubyName == "Hash" {
+			inner.Args = append([]Type{TAny{}}, rc.Args...)
+		} else {
+			for range rc.C.Super.TypeParams {
+				inner.Args = append(inner.Args, TAny{})
+			}
+		}
+		innerEnv := composeEnv(env, nil)
+		innerEnv["Self"] = inner
+		binds := map[string]Type{}
+		rc.C.containerEnv(binds)
+		if rc.C.Super.RubyName == "Hash" && len(rc.Args) > 0 {
+			binds["V"] = rc.Args[0]
+		}
+		for k, v := range innerEnv { // Enumerable's E is Hash's [K, V]: bind those inside it
+			innerEnv[k] = subst(v, binds)
+		}
+		maps.Copy(innerEnv, binds)
+		return f.callCode(e, expr{code: embeddedSuper(rc.C, recv.code), typ: inner}, args, innerEnv), true
+	}
+	return "", false
+}
+
+// genGoTypeNew is `new` on a @go_type class: its Go constructor, or for a subclass of one (decision 202) the embedded
+// base built and its own initialize run.
+func (f *fctx) genGoTypeNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type, block parser.Node) expr {
+	init := cls.lookup("initialize")
+	if cls.hashBase && init != nil && init.Owner == cls { // a container subclass's own initialize runs on the generated empty one
+		t := f.goTypeNewType(n, cls, expected)
+		tmp := f.newTmp()
+		targs := ""
+		if len(t.Args) > 0 {
+			targs = "[" + f.c.goTypes(t.Args) + "]"
+		}
+		f.emit("%s := New%s%s()", tmp, cls.Name, targs)
+		obj := expr{code: tmp, typ: t}
+		prev := f.implicitCall
+		f.implicitCall = true // new calls the private initialize
+		init := f.callEntry(n, init, obj, args, block)
+		f.implicitCall = prev
+		if init.code != "" {
+			f.emit("%s", init.code)
+		}
+		return obj
+	}
+	if sup := cls.Super; cls.hashBase && len(exprs) == 0 && len(args) > 0 && !sup.mutable() && sup.meta != nil && (init == nil || init.Owner == sup) {
+		// `Name.new("bob")` on a String (Pathname) subclass: the base's own new builds the embedded value
+		tmp := f.newTmp()
+		f.emit("%s := New%s()", tmp, cls.Name)
+		built := f.genMethodCall(n, expr{code: classVar(sup), typ: TClass{C: sup.meta}, classObj: true}, "new", args, block)
+		f.emit("%s.%s = %s", tmp, superField(sup), f.coerce(n, built, TClass{C: sup}))
+		return expr{code: tmp, typ: TClass{C: cls}}
+	}
+	if len(args) > 0 || len(exprs) > 0 {
+		f.errorf(n, "%s.new with arguments is not supported", cls.Name)
+	}
+	t := f.goTypeNewType(n, cls, expected)
+	targs := ""
+	if len(t.Args) > 0 {
+		targs = "[" + f.c.goTypes(t.Args) + "]"
+	}
+	return expr{code: "New" + cls.Name + targs + "()", typ: t}
+}
+
+// genInMethodRequire is a require in a method body: resolved at run time against what was compiled (decision 197),
+// else a no-op for a library the prelude has, and a compile error for a file rb2go would have to load.
+func (f *fctx) genInMethodRequire(n *parser.CallNode) expr {
+	if f.c.methodRequiresRuntime && !f.f.prelude {
+		return f.genRuntimeRequire(n)
+	}
+	switch {
+	case n.Name == "require_relative" && !f.f.prelude:
+		f.errorf(n, "require_relative must be a top-level statement: rb2go loads files at compile time")
+	case n.Name == "require" && f.c.findRequire(f.f, n) != "":
+		f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")
+	}
+	return expr{code: "", stmt: true, typ: TVoid{}}
+}
+
+// blockArg is the Go value a call passes for m's block: the closure of the literal block, or nil.
+func (f *fctx) blockArg(n parser.Node, m *Method, env map[string]Type, block parser.Node) string {
+	switch {
+	case block != nil:
+		f.inferYielder(n, m, env, block)
+		if f.lenient() { // a gem's `@h ||= Hash.new { |h, k| ... }` into an untyped ivar: nothing binds K, V
+			bindUntyped(m, env, m.Block.Params...) // only what the block is passed: its result (map's U) is inferred from the body
+		}
+		return f.genClosure(n, block, m.Block, env)
+	case !m.Block.Optional:
+		f.errorf(n, "%s requires a block", m.Name)
+	}
+	return "nil"
+}
+
+// bindUntyped binds each of m's type parameters ts name that nothing bound yet to untyped.
+func bindUntyped(m *Method, env map[string]Type, ts ...Type) {
+	var vs []string
+	for _, t := range ts {
+		freeVars(t, &vs)
+	}
+	for _, v := range vs {
+		if _, bound := env[v]; !bound && slices.Contains(m.TypeParams, v) {
+			env[v] = TAny{}
+		}
+	}
+}
+
+// genContainerSuper is `super` into a core class's method from its subclass (decision 202): the method on the
+// embedded base.
+func (f *fctx) genContainerSuper(n parser.Node, e *entry, args *parser.ArgumentsNode, forwarding bool) expr {
+	if f.owner == nil || !f.owner.hashBase || e.Owner != f.owner.Super {
+		f.errorf(n, "super into a primitive class method is not supported")
+	}
+	env := map[string]Type{}
+	for k, v := range e.Env {
+		env[k] = v
+	}
+	env["Self"] = f.selfType
+	f.owner.containerEnv(env)
+	targs := ""
+	if st, ok := f.selfType.(TClass); ok {
+		for i, p := range st.C.TypeParams {
+			if i < len(st.Args) {
+				env[p] = st.Args[i]
+			}
+		}
+		targs = f.c.containerTargs(f.owner, st.Args)
+	}
+	codes, _ := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
+	if e.M.Block != nil {
+		f.errorf(n, "super to a block-taking method is not supported")
+	}
+	call := freeFuncName(e.M) + targs + "(" + embeddedSuper(f.owner, f.selfCode) + comma(strings.Join(codes, ", ")) + ")"
+	if tv, ok := e.M.Ret.(TVar); ok && tv.Name == "Self" { // `super` into Set#<<: the subclass object, not its embedded base
+		t := f.c.goType(f.selfType)
+		return expr{code: fmt.Sprintf("func() %s { %s; return %s }()", t, call, f.selfCode), typ: f.selfType}
+	}
+	return expr{code: call, typ: subst(e.M.Ret, env)}
+}
+
+// emptySplat checks at run time that a gem forwarder's `*args` after every positional parameter is filled is empty,
+// as MRI does; false when args does not end in a splat or the file is no gem's.
+func (f *fctx) emptySplat(args []parser.Node) bool {
+	sp, ok := lastSplat(args)
+	if !ok || !f.lenient() {
+		return false
+	}
+	a := f.genExpr(sp.Expression, nil)
+	f.emit("rbSplatArity(len(rbAs[*Array[any]](%s, \"Array\").s), 0, 0)", f.coerce(sp, a, TAny{}))
+	return true
+}
+
+// defaultArg is a caller-evaluated default. The default is a node of the def's file (often the prelude): literal
+// text and error positions must come from there.
+func (f *fctx) defaultArg(n parser.Node, m *Method, p Param, env map[string]Type) string {
+	caller := f.f
+	f.f = defaultsFile(m)
+	d := f.genExpr(p.Default, closed(p.Type, env))
+	f.f = caller
+	unify(p.Type, d.typ, env)
+	return f.coerceArg(n, d, p, env)
+}
+
+// bindGemUnbound: what a gem's argument left unbound (untyped, or T? for T[E]) is untyped, as for
+// `T::Array[T.type_parameter(:Elem)]` (decision 172).
+func (f *fctx) bindGemUnbound(m *Method, env map[string]Type, t Type) {
+	if f.lenient() {
+		bindUntyped(m, env, t)
+	}
+}
+
+// argAt is positional argument i for parameter p, generated (or given in exprs) with its node.
+func (f *fctx) argAt(n parser.Node, p Param, env map[string]Type, args []parser.Node, exprs []expr, i int, codes []string) (parser.Node, expr) {
+	if exprs != nil {
+		return n, exprs[i]
+	}
+	an := args[i]
+	if _, ok := an.(*parser.SplatNode); ok {
+		f.errorf(an, "splat into a non-rest parameter is not supported")
+	}
+	mark := f.buf.Len()
+	a := f.genExpr(an, f.pendingWant(p, closed(p.Type, env)))
+	f.pinBefore(mark, codes)
+	return an, a
 }

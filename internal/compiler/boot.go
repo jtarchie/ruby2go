@@ -27,11 +27,11 @@ func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	aug, autoloaded, dms, err := bootSources(ctx, sources, append(slices.Clip(loadPath), gemDirs...))
+	aug, autoloaded, m, err := bootSources(ctx, sources, append(slices.Clip(loadPath), gemDirs...))
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := options{loadPath: loadPath, gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, defineMethods: dms}
+	opts := options{loadPath: loadPath, gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	return out, opts.warnings, err
 }
@@ -60,7 +60,7 @@ func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 
 // bootSources runs boot on sources[0] and appends the files its resolved
 // autoloads loaded, in first-seen order, that are not already sources, with each one's constant by real path.
-func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]Source, map[string]string, []boot.MethodInfo, error) {
+func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]Source, map[string]string, *boot.Manifest, error) {
 	entry := sourceName(sources[0])
 	_, statErr := os.Stat(entry)
 	if statErr != nil {
@@ -88,7 +88,7 @@ func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]So
 		out = append(out, Source{Name: filepath.Base(a.Loaded), Src: data, Path: a.Loaded})
 		consts[realPath(a.Loaded)] = a.Const
 	}
-	return out, consts, m.DefineMethods, nil
+	return out, consts, m, nil
 }
 
 // neededAutoloads keeps the boot-resolved autoload files whose constant another program file names (decision 175); the rest are marked loaded, so never compiled.
@@ -155,7 +155,7 @@ func tracedEntry(src []byte) (main string, traced bool) {
 // compileTraced compiles a decision 197 entry: its -I dirs are gem dirs (boot, leniency and pruning, decisions
 // 161/169/172), boot runs the entry's load list, and the main file it names is compiled after it, never booted.
 func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, main string, gemDirs []string) ([]byte, []string, error) {
-	aug, autoloaded, dms, err := bootSources(ctx, sources, gemDirs)
+	aug, autoloaded, m, err := bootSources(ctx, sources, gemDirs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -166,7 +166,7 @@ func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		}
 		aug = append(aug, Source{Name: main, Src: data, Path: main})
 	}
-	opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, defineMethods: dms}
+	opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: main != ""}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	return out, opts.warnings, err
 }

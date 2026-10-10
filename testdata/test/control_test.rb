@@ -5226,4 +5226,69 @@ module ControlTests
       assert_equal ["died", "k", "died"], [a.message, b.message, c.message]
     end
   end
+
+  # a local assigned in a condition of a constant's initializer (`X = if (p = a).empty? || (p = b).empty?`)
+  CONTROL_PICKED = if (control_pick = "").empty? && (control_pick = "/tmp").empty?
+    control_pick.upcase
+  else
+    control_pick
+  end.freeze
+
+  class ControlBeginValue
+    #: () -> void
+    def initialize
+      @memo = nil #: Integer?
+      @calls = 0
+    end
+
+    #: () -> Integer
+    def memo
+      @memo ||= begin
+        v = 20
+        v + 1
+      end
+    end
+
+    #: () -> Integer
+    def counted
+      @calls += 1
+      self
+      @calls
+    end
+
+    #: () -> ControlBeginValue
+    def bump
+      @calls += 1
+      self
+    end
+
+    #: (*Integer) -> Integer
+    def ignore_rest(*_) = 7
+  end
+
+  class ControlBeginValueTest < Minitest::Test
+    def test_begin_locals_as_value
+      x = begin
+        v = 1
+        v + 1
+      end
+      assert_equal 2, x
+      assert_equal 21, ControlBeginValue.new.memo
+    end
+
+    def test_const_init_condition_local
+      assert_equal "/tmp", CONTROL_PICKED
+    end
+
+    def test_class_keeps_receiver_effects
+      b = ControlBeginValue.new
+      assert_equal ControlBeginValue, b.bump.class
+      assert_equal 2, b.counted
+    end
+
+    def test_anonymous_rest
+      assert_equal 7, ControlBeginValue.new.ignore_rest(1, 2)
+    end
+  end
+
 end

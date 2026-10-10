@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
@@ -26,9 +25,6 @@ type sorbetErr struct {
 
 // lowerSorbet rewrites f's Sorbet forms in place; it reports the first unsupported one as file:line.
 func (f *File) lowerSorbet() (err error) {
-	if !bytes.Contains(f.Src, []byte("sig")) && !bytes.Contains(f.Src, []byte("T.")) {
-		return nil
-	}
 	defer func() {
 		if r := recover(); r != nil {
 			se, ok := r.(sorbetErr)
@@ -52,6 +48,13 @@ func (f *File) sorbetWalk(n parser.Node) {
 		return
 	case *parser.StatementsNode:
 		n.Body = f.sorbetStatements(n.Body)
+	case *parser.BlockNode:
+		optionalBlockParams(n)
+	case *parser.ClassNode:
+		switch strings.TrimPrefix(constName(n.Superclass), "::") {
+		case "T::Struct", "T::ImmutableStruct", "T::InexactStruct":
+			f.sorbetStruct(n, constName(n.Superclass) != "T::Struct")
+		}
 	case *parser.CallNode:
 		if isTCall(n, "let") || isTCall(n, "cast") {
 			args := callArgs(n)
@@ -390,6 +393,12 @@ func sorbetType(n parser.Node) string {
 			return "bool"
 		case "NilClass":
 			return "nil"
+		case "TrueClass", "FalseClass", "::TrueClass", "::FalseClass":
+			return "bool"
+		case "T::Class", "T::Module":
+			return "untyped" // a class object of any class
+		case "Proc", "::Proc":
+			return "untyped" // a Proc value is a Go func of any shape, not an object of class Proc
 		}
 		if g, ok := sorbetGenerics[name]; ok {
 			return g + "[untyped]"
@@ -428,6 +437,12 @@ func sorbetType(n parser.Node) string {
 }
 
 func sorbetCallType(n *parser.CallNode) string {
+	if n.Name == "[]" && (strings.TrimPrefix(constName(n.Receiver), "::") == "T::Class" || strings.TrimPrefix(constName(n.Receiver), "::") == "T::Module") {
+		if c, ok := oneArg(n).(*parser.CallNode); ok && (isTCall(c, "anything") || isTCall(c, "untyped")) {
+			return "untyped" // any class object
+		}
+		return "singleton(" + sorbetType(oneArg(n)) + ")"
+	}
 	if n.Name == "[]" {
 		base := strings.TrimPrefix(constName(n.Receiver), "::")
 		if g, ok := sorbetGenerics[base]; ok {
@@ -452,11 +467,13 @@ func sorbetCallType(n *parser.CallNode) string {
 			t = "(" + t + ")"
 		}
 		return t + "?"
-	case "all": // ponytail: an intersection is typed as its first class arm; model RBS intersections when one needs both
+	case "all": // ponytail: an intersection is typed as its first arm that is no core mixin; model RBS intersections when one needs both
 		for _, a := range callArgs(n) {
-			if name := constName(a); name != "Object" && name != "BasicObject" && name != "::Object" {
-				return sorbetType(a)
+			switch strings.TrimPrefix(constName(a), "::") {
+			case "Object", "BasicObject", "Comparable", "Enumerable", "Kernel":
+				continue
 			}
+			return sorbetType(a)
 		}
 		return "untyped"
 	case "any":
@@ -573,4 +590,103 @@ func typeMemberFixed(c *parser.CallNode) string {
 		}
 	}
 	return "untyped"
+}
+
+// structProp is one `const`/`prop` of a T::Struct: the synthesized initialize's keyword (decision 196).
+type structProp struct {
+	name, rbs string
+	def       string // the default's source ("" when required)
+	optional  bool
+}
+
+// sorbetStruct turns `const :a, T` / `prop :a, T, default: x` into typed attr_reader/attr_accessor and records the
+// keyword initialize T::Struct generates, which collectClass adds.
+func (f *File) sorbetStruct(n *parser.ClassNode, immutable bool) {
+	body, ok := n.Body.(*parser.StatementsNode)
+	if !ok {
+		return
+	}
+	var props []structProp
+	for _, st := range body.Body {
+		c, ok := st.(*parser.CallNode)
+		if !ok || c.Receiver != nil || (c.Name != "const" && c.Name != "prop") {
+			continue
+		}
+		args := callArgs(c)
+		if len(args) < 2 {
+			sorbetFail(c, "%s takes a name and a type", c.Name)
+		}
+		sym, ok := args[0].(*parser.SymbolNode)
+		if !ok {
+			sorbetFail(c, "%s takes a symbol name", c.Name)
+		}
+		p := structProp{name: sym.Unescaped.Value, rbs: sorbetType(args[1])}
+		p.optional = strings.HasSuffix(p.rbs, "?") || p.rbs == "untyped"
+		if p.optional {
+			p.def = "nil"
+		}
+		if len(args) > 2 {
+			if kh, ok := args[2].(*parser.KeywordHashNode); ok {
+				for _, el := range kh.Elements {
+					as, ok := el.(*parser.AssocNode)
+					key, kok := as.Key.(*parser.SymbolNode)
+					if !ok || !kok {
+						continue
+					}
+					switch key.Unescaped.Value {
+					case "default":
+						p.def, p.optional = f.text(as.Value.GetLocation()), true
+					case "factory":
+						p.def, p.optional = "("+f.text(as.Value.GetLocation())+").call", true
+					}
+				}
+			}
+		}
+		props = append(props, p)
+		if c.Name == "const" || immutable {
+			c.Name = "attr_reader"
+		} else {
+			c.Name = "attr_accessor"
+		}
+		c.Arguments = &parser.ArgumentsNode{Location: sym.Location, Arguments: []parser.Node{sym}}
+		f.trailing[f.line(c.Location.StartOffset)] = p.rbs
+	}
+	if f.sorbetStructs == nil {
+		f.sorbetStructs = map[*parser.ClassNode][]structProp{}
+	}
+	f.sorbetStructs[n] = props
+}
+
+// optionalBlockParams turns `|a, b = d|` into `|a, b|` with `b = d if b.nil?` first in the body: a proc's missing
+// argument is nil, so this is Ruby's default except when nil is passed explicitly (decision 172).
+func optionalBlockParams(b *parser.BlockNode) {
+	bp, ok := b.Parameters.(*parser.BlockParametersNode)
+	if !ok || bp.Parameters == nil || len(bp.Parameters.Optionals) == 0 || len(bp.Parameters.Posts) > 0 {
+		return
+	}
+	var defaults []parser.Node
+	for _, o := range bp.Parameters.Optionals {
+		op, ok := o.(*parser.OptionalParameterNode)
+		if !ok {
+			return
+		}
+		bp.Parameters.Requireds = append(bp.Parameters.Requireds, &parser.RequiredParameterNode{Location: op.NameLoc, Name: op.Name})
+		read := &parser.LocalVariableReadNode{Location: op.NameLoc, Name: op.Name}
+		write := &parser.LocalVariableWriteNode{Location: op.Location, Name: op.Name, NameLoc: op.NameLoc, Value: op.Value, OperatorLoc: op.OperatorLoc}
+		defaults = append(defaults, &parser.IfNode{Location: op.Location,
+			Predicate:  &parser.CallNode{Location: op.NameLoc, Receiver: read, Name: "nil?"},
+			Statements: &parser.StatementsNode{Location: op.Location, Body: []parser.Node{write}}})
+	}
+	bp.Parameters.Optionals = nil
+	switch body := b.Body.(type) {
+	case nil:
+		b.Body = &parser.StatementsNode{Location: b.Location, Body: defaults}
+	case *parser.StatementsNode:
+		body.Body = append(defaults, body.Body...)
+	case *parser.BeginNode:
+		if body.Statements == nil {
+			body.Statements = &parser.StatementsNode{Location: body.Location}
+		}
+		body.Statements.Body = append(defaults, body.Statements.Body...)
+	}
 }

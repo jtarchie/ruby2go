@@ -49,10 +49,12 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 			c.anonCount++
 			name := fmt.Sprintf("RbAnon%d", c.anonCount)
 			// `Struct.new(:a)` anywhere but a constant assignment: a hidden value class per literal, as Class.new's
+			c.anonDepth++
 			err := catchCompileError(func() {
 				c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Name: name, Location: call.Location}, call, kind, scope)
 				c.anonClasses[call] = c.classes[qualify(scope, name)]
 			})
+			c.anonDepth--
 			if err != nil {
 				if c.anonErrors == nil {
 					c.anonErrors = map[*parser.CallNode]compileError{}
@@ -67,7 +69,9 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 			name := fmt.Sprintf("RbAnon%d", c.anonCount)
 			// an anonymous class's body fails where the literal stands (a test's
 			// skip, decision 127), not for the whole program: the error waits there
+			c.anonDepth++
 			err := catchCompileError(func() { c.declareAnon(ctx, f, call, isModule, name, scope) })
+			c.anonDepth--
 			if err != nil {
 				if c.anonErrors == nil {
 					c.anonErrors = map[*parser.CallNode]compileError{}

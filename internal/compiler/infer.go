@@ -87,6 +87,9 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 	if c.infer != nil {
 		if t, ok := c.infer.types[pp.key]; ok {
 			prm.Type = c.rehome(t)
+			if isNil(prm.Type) && c.pruneGems && c.gemFile(m.File) { // a gem's adapters and dynamic calls pass it what no typed call did
+				prm.Type = TAny{}
+			}
 			return
 		}
 	}

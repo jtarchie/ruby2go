@@ -137,14 +137,6 @@ puts h["a"].inspect
 
 puts (:a <=> "a").inspect
 puts [:a, :b].include?("a").inspect
--- subclass_string.rb --
-# error: main.rb:3: subclassing String is not supported
-# rbs_inline: enabled
-class Name < String
-  #: () -> String
-  def hi = "hi " + self
-end
-puts "x"
 -- kernel_module_pp.rb --
 # error: main.rb:4: private method pp called on singleton(Kernel)
 # rbs_inline: enabled
