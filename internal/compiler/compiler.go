@@ -68,6 +68,7 @@ type Compiler struct {
 	dynOut        map[string]bool // dispatchers emitted
 	respondOut    map[string]bool // respond_to? checks emitted
 	fwdOut        map[*Class]bool // forwarders emitted
+	selfTyped     map[*Class]bool // a module whose constraint names Self (decision 208)
 	tablesOut     bool
 	tablesAt      [10]int         // tableInputs when the tables went out
 	callable      map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
@@ -291,7 +292,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	tick("parser")
 
 	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, procFuncs: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, unionsOut: map[string]bool{}, anonClasses: map[*parser.CallNode]*Class{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
-		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
+		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, selfTyped: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
 	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone

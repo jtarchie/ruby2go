@@ -1173,6 +1173,15 @@ func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 		// the class's own method: Self is *C, so the body's self._C() and
 		// self-calls are direct calls Go can inline, not interface calls
 		args = append(args, c.recvType(cls))
+	case cls.isStruct() && e.Owner.universal && len(cls.TypeParams) == 0 && !sigMentions(e.M, cls):
+		args = append(args, "any") // Self is any: one instantiation for every class, where *C was a dictionary wrapper per class (decision 208)
+	case cls.isStruct() && e.Owner.IsModule && !e.Owner.universal && len(cls.TypeParams) == 0 && !sigMentions(e.M, cls) && !c.constraintNamesSelf(e.Owner):
+		// the constraint itself, one instantiation for every includer; an includer's own CI is a GC shape per class (decision 208)
+		tps := make([]string, 0, len(e.Owner.TypeParams))
+		for _, p := range e.Owner.TypeParams {
+			tps = append(tps, c.goType(e.Env[p]))
+		}
+		args = append(args, e.Owner.Name+"_Self[any"+comma(strings.Join(tps, ", "))+"]")
 	case cls.isStruct() && !e.Owner.universal:
 		// Self matches the forwarder's `self` (CI), else *C fails Comparable_Self[*C] and `(self)` args don't pass
 		args = append(args, c.goType(c.selfTypeFor(e, cls)))
@@ -1187,6 +1196,26 @@ func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 	}
 	return "[" + strings.Join(args, ", ") + "]"
 }
+
+// constraintNamesSelf reports a module whose Self constraint has a method typed by Self (Comparable_Self's
+// Op_cmp(other Self)): only the includer's own interface satisfies it.
+func (c *Compiler) constraintNamesSelf(owner *Class) bool {
+	if v, ok := c.selfTyped[owner]; ok {
+		return v
+	}
+	saved := c.out
+	c.out = strings.Builder{} // ponytail: renders the constraint to read it; saved restores into the same address, so Builder's copy check holds
+	c.emitModuleInterface(owner)
+	decl := c.out.String()
+	c.out = saved
+	_, body, _ := strings.Cut(decl, "_Self[Self any")
+	_, body, _ = strings.Cut(body, "{")
+	v := selfWord.MatchString(body)
+	c.selfTyped[owner] = v
+	return v
+}
+
+var selfWord = regexp.MustCompile(`\bSelf\b`)
 
 // maxTuple is the widest RBS tuple: Socket.getaddrinfo's rows have 7 elements (decision 135).
 const maxTuple = 7
