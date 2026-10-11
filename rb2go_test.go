@@ -8,6 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/importer"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -384,7 +389,11 @@ end
 // TestPreludeGo regenerates prelude/go's type-checking stubs (decision 154) and vets the helpers against them, so a
 // broken helper fails here instead of through some example's go build.
 func TestPreludeGo(t *testing.T) {
-	out, err := PreludeStubs(t.Context())
+	src, err := preludeWhole()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := compiler.StubsFrom(src, Prelude)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,6 +405,31 @@ func TestPreludeGo(t *testing.T) {
 	got, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go vet -tags rb2go_prelude ./prelude/go: %v\n%s", err, got)
+	}
+}
+
+// preludeWhole is the unpruned every-library program, compiled once for TestPreludeGo and TestPreludeWhole.
+var preludeWhole = sync.OnceValues(func() ([]byte, error) {
+	return compiler.PreludeWhole(context.Background(), Prelude)
+})
+
+// TestPreludeWhole type-checks the unpruned prelude (decision 207): pruning must not be what keeps a generic
+// instantiation cycle or an ill-typed method out of programs. A type check, as building it takes 6.8 GB.
+func TestPreludeWhole(t *testing.T) {
+	src, err := preludeWhole()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "main.go", src, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errs []string
+	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", nil), Error: func(err error) { errs = append(errs, err.Error()) }}
+	_, _ = conf.Check("main", fset, []*ast.File{f}, nil)
+	if len(errs) > 0 {
+		t.Errorf("%d type errors in the unpruned prelude, first ones:\n%s", len(errs), strings.Join(errs[:min(20, len(errs))], "\n"))
 	}
 }
 

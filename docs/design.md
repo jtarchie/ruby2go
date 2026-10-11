@@ -6383,3 +6383,30 @@ resolve; anything not listed is still open.
     `T::Enum`, `T::Generic`/`type_member`, `T.type_alias`; overloaded
     sigs. **Proof:** [example 119](../examples/119_sorbet_sigs/main.rb),
     `sorbet_test.rb`, `sorbet.txtar`.
+207. **A generic class has no Go method whose signature grows the class**
+    (#96 phase 1, amends 86; 197–206 are reserved for `rb2go/brew`).
+    Decision 86 already made a generic primitive's bodies free funcs;
+    what remains as Go methods on `Array[E]` is a forwarder for each name
+    a kept interface declares (`Each` for `Enumerable_Self`, `Op_eq` for
+    `rbEq`, `Inspect`) and the `Dyn*` wrappers. Go instantiates every
+    method of a generic type, so a forwarder for a method whose signature
+    names its own class at a type built from its params
+    (`Enumerator::Lazy#with_index` returning `Lazy[[E, Integer]]`,
+    `Enumerator#__with_index_enum`) is an instantiation cycle whenever it
+    exists: only pruning kept it out of programs, and `rb2go stubs`
+    filtered it by hand. `wantsForwarder` now never emits one
+    (`growsOwnClass`); typed calls already reach the free func, and the
+    `Dyn*` wrappers already skipped such methods (`growsTypeParams`).
+    - **Proof:** `TestPreludeWhole` type-checks the unpruned
+      every-library program with go/types (5s; building it takes 6.8 GB),
+      so pruning can no longer hide a cycle or an ill-typed method.
+    - **Measured, not done:** in `64_observable` each of `Array`'s 32
+      instantiations still compiles 154 methods, ~120 of them `Dyn*`
+      wrappers: phases 3–4 of #96. And every type parameter rb2go emits is
+      `comparable`, which is not a basic (method-set) interface, so Go
+      gives each pointer type argument its own GC shape; under `any`, all
+      pointers share `*uint8` (measured on Go 1.27: `Cmp[*A]`, `Cmp[*B]`
+      two bodies, `Any[*A]`, `Any[*B]` one). Collapsing pointer shapes
+      would drop ~3.1k of `64_observable`'s 17.3k shaped bodies. It needs
+      an inference of which params must stay `comparable` (Hash keys, Set
+      elements, `==` in `%x{}` bodies, transitively through calls).

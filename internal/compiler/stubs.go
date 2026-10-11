@@ -19,14 +19,24 @@ import (
 // that prelude/go names but does not declare, with `panic(0)` for bodies, so `go vet -tags rb2go_prelude ./prelude/go`
 // and gopls can type-check the helpers.
 func PreludeStubs(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
+	src, err := PreludeWhole(ctx, preludeFS)
+	if err != nil {
+		return nil, err
+	}
+	return StubsFrom(src, preludeFS)
+}
+
+// PreludeWhole is the unpruned program holding every library (decision 207): what TestPreludeWhole type-checks.
+func PreludeWhole(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
 	// ponytail: formatGo reads the env; an options field would need plumbing through emitProgram.
 	_ = os.Setenv("RB2GO_NO_PRUNE", "1")
 	defer func() { _ = os.Unsetenv("RB2GO_NO_PRUNE") }()
 	opts := options{allLibs: true}
-	src, err := compile(ctx, preludeFS, []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}, &opts)
-	if err != nil {
-		return nil, err
-	}
+	return compile(ctx, preludeFS, []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}, &opts)
+}
+
+// StubsFrom is PreludeStubs over an already compiled PreludeWhole.
+func StubsFrom(src []byte, preludeFS fs.FS) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := goparser.ParseFile(fset, "main.go", src, 0)
 	if err != nil {
@@ -66,7 +76,7 @@ func PreludeStubs(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
 			keep(d)
 		}
 		for _, m := range methods[name] {
-			if !declared[name+"."+m.Name.Name] && !growsReceiver(m) {
+			if !declared[name+"."+m.Name.Name] {
 				keep(m)
 			}
 		}
@@ -205,55 +215,3 @@ func preludeGoNames(preludeFS fs.FS) (declared, refs map[string]bool, err error)
 	return declared, refs, nil
 }
 
-// growsReceiver reports a generic method whose signature names its own receiver type instantiated with something
-// other than the receiver's bare type parameters (`Enumerator_Lazy[E].WithIndex() *Enumerator_Lazy[Tuple2[E, Integer]]`):
-// `go build` rejects the stub as an instantiation cycle. Programs never reach them; the pruner drops them.
-func growsReceiver(m *ast.FuncDecl) bool {
-	if m.Recv == nil {
-		return false
-	}
-	recv := m.Recv.List[0].Type
-	if s, ok := recv.(*ast.StarExpr); ok {
-		recv = s.X
-	}
-	var base string
-	params := map[string]bool{}
-	switch r := recv.(type) {
-	case *ast.IndexExpr:
-		base = recvName(r)
-		if id, ok := r.Index.(*ast.Ident); ok {
-			params[id.Name] = true
-		}
-	case *ast.IndexListExpr:
-		base = recvName(r)
-		for _, i := range r.Indices {
-			if id, ok := i.(*ast.Ident); ok {
-				params[id.Name] = true
-			}
-		}
-	default:
-		return false
-	}
-	grows := false
-	ast.Inspect(m.Type, func(n ast.Node) bool {
-		var x ast.Expr
-		var args []ast.Expr
-		switch e := n.(type) {
-		case *ast.IndexExpr:
-			x, args = e.X, []ast.Expr{e.Index}
-		case *ast.IndexListExpr:
-			x, args = e.X, e.Indices
-		default:
-			return true
-		}
-		if id, ok := x.(*ast.Ident); ok && id.Name == base {
-			for _, a := range args {
-				if id, ok := a.(*ast.Ident); !ok || !params[id.Name] {
-					grows = true
-				}
-			}
-		}
-		return true
-	})
-	return grows
-}

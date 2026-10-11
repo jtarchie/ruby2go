@@ -1334,6 +1334,9 @@ func (c *Compiler) emitBoxes() {
 // instantiate ever-growing types (Hash[K,V].Tally → Hash[[K,V],Integer]...),
 // which Go rejects as an instantiation cycle.
 func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
+	if growsOwnClass(cls, e) {
+		return false // a Go method on Lazy[E] returning Lazy[[E, Integer]] is an instantiation cycle; calls reach the free func (decision 207)
+	}
 	if e.Owner == cls {
 		return true
 	}
@@ -1344,6 +1347,46 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 		return c.includerCalls(cls, e.M.Name)
 	}
 	return e.Owner.IsModule && c.selfCalls(e.Owner)[e.M.Name]
+}
+
+// growsOwnClass reports a generic class's method whose signature names the class at a type built from its params (Lazy[[E, Integer]] on Lazy[E]).
+func growsOwnClass(cls *Class, e entry) bool {
+	if len(cls.TypeParams) == 0 {
+		return false
+	}
+	var grows func(t Type) bool
+	grows = func(t Type) bool {
+		switch t := t.(type) {
+		case TClass:
+			if t.C == cls && mentionsVar(t) {
+				for i, a := range t.Args {
+					if v, ok := a.(TVar); !ok || i >= len(cls.TypeParams) || v.Name != cls.TypeParams[i] {
+						return true
+					}
+				}
+			}
+			return slices.ContainsFunc(t.Args, grows)
+		case TOpt:
+			return grows(t.Elem)
+		case TTuple:
+			return slices.ContainsFunc(t.Elems, grows)
+		case TFunc:
+			return slices.ContainsFunc(t.Params, grows) || t.Ret != nil && grows(t.Ret)
+		case TUnion:
+			return slices.ContainsFunc(t.Members, grows)
+		case TAny, TNil, TVar, TVoid:
+		}
+		return false
+	}
+	ts := []Type{e.M.Ret}
+	for _, p := range e.M.Params {
+		ts = append(ts, p.Type)
+	}
+	if b := e.M.Block; b != nil {
+		ts = append(ts, b.Params...)
+		ts = append(ts, b.Ret)
+	}
+	return slices.ContainsFunc(ts, func(t Type) bool { return t != nil && grows(subst(t, e.Env)) })
 }
 
 // includerCalls: a module method calling name on self needs cls to answer it.
