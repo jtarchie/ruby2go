@@ -259,10 +259,32 @@ func comma(s string) string {
 	return ", " + s
 }
 
+// plainSelf reports a free func that takes self as its owner's interface (any for Kernel), not a type parameter
+// Self: a class body, or a universal one, whose signature names no Self. It compiles once rather than once per GC
+// shape plus a dictionary wrapper per class, and, not generic, it can be a function value (decision 210).
+func (c *Compiler) plainSelf(m *Method) bool {
+	o := m.Owner
+	if o == nil || o.GoType != "" || len(o.TypeParams) > 0 || m.generic() || m.SelfType != nil || o.IsModule && !o.universal {
+		return false
+	}
+	if m.Block != nil && (mentionsVar(m.Block.Ret) || mentionsVar(m.Block.Self) || slices.ContainsFunc(m.Block.Params, mentionsVar)) {
+		return false
+	}
+	return !mentionsVar(m.Ret) && !slices.ContainsFunc(m.Params, func(p Param) bool { return mentionsVar(p.Type) })
+}
+
+// plainSelfType is the Go type of a plainSelf func's self.
+func (c *Compiler) plainSelfType(owner *Class) string {
+	if owner.universal {
+		return "any"
+	}
+	return owner.Name + "I"
+}
+
 // typeParamDecl renders the type parameter list of a free func.
 func (c *Compiler) typeParamDecl(m *Method) string {
 	var tps []string
-	if m.Owner.GoType == "" {
+	if m.Owner.GoType == "" && !c.plainSelf(m) {
 		tps = append(tps, "Self "+c.constraint(m.Owner))
 	}
 	rest := make([]string, 0, len(m.Owner.TypeParams)+len(m.TypeParams))
@@ -1168,7 +1190,7 @@ func sigMentions(m *Method, cls *Class) bool {
 func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 	var args []string
 	switch {
-	case e.Owner.GoType != "":
+	case e.Owner.GoType != "", c.plainSelf(e.M):
 	case e.Owner == cls && cls.isStruct() && len(cls.TypeParams) == 0 && !sigMentions(e.M, cls):
 		// the class's own method: Self is *C, so the body's self._C() and
 		// self-calls are direct calls Go can inline, not interface calls

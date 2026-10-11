@@ -3412,7 +3412,10 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		if !m.Owner.universal {
 			targ = f.c.ownerIface(f.owner, e)
 		}
-		if targ != "" {
+		switch {
+		case targ != "" && f.c.plainSelf(m):
+			return freeFuncName(m) + "(self" + comma(argList) + ")"
+		case targ != "":
 			return freeFuncName(m) + "[" + targ + "](self" + comma(argList) + ")"
 		}
 	}
@@ -3459,7 +3462,7 @@ func (f *fctx) methodExprType(m *Method, recv expr) string {
 // typeArgs are explicit because Go would infer from argument Go types (untyped const, *Foo, *Foo_Meta), not the Ruby binding.
 func (f *fctx) typeArgs(m *Method, recvT Type, env map[string]Type) string {
 	ts := []Type{}
-	if m.Owner.GoType == "" {
+	if m.Owner.GoType == "" && !f.c.plainSelf(m) {
 		ts = append(ts, recvT)
 	}
 	for _, p := range m.Owner.TypeParams {

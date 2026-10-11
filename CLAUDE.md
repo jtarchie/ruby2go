@@ -75,7 +75,7 @@ Smaller cases go in `testdata/`:
 ### Key representation rules (details in docs/design.md decisions)
 
 - `T?` → `*T` uniformly. `Opt()`/`Ref()` at `untyped`/optional boundaries.
-- Methods on struct classes/modules → free funcs `Owner_Name[Self]` + forwarding methods on each concrete class (Go embedding would bind `self` wrongly). Module constraints are derived from what the module body calls on `self`.
+- Methods on struct classes/modules → free funcs `Owner_Name[Self]` + forwarding methods on each concrete class (Go embedding would bind `self` wrongly); a class body whose signature names no `Self` takes `self OwnerI` instead (decision 210). Module constraints are derived from what the module body calls on `self`.
 - Generic methods (RBS `[X]`) are always free funcs.
 - Blocks: a method is a Go iterator (`iter.Seq`) only when block and method both return void and the method only yields. Otherwise the block is a closure, and `return`/`break` inside it is a compile error.
 - `raise` → `panic`, `rescue` → `defer`/`recover`. Uncaught exceptions print `msg (Class)` and exit 1, like MRI.

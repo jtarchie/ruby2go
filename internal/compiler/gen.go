@@ -2513,10 +2513,25 @@ func (c *Compiler) emitMethod(m *Method) {
 			self = "self " + c.goType(m.SelfType)
 		case cls.GoType != "":
 			self = "self " + c.recvType(cls)
+		case c.plainSelf(m):
+			self = "self " + c.plainSelfType(cls)
 		}
 		c.w("func %s%s(%s%s) %s {\n", freeFuncName(m), c.typeParamDecl(m), self, comma(params), retDecl)
 	}
-	c.emitBody(m, namedRet)
+	if !c.isDirectMethod(m) && c.plainSelf(m) {
+		// the body is generated with self typed Self: name it the interface (decision 210)
+		saved := c.out
+		c.out = strings.Builder{} // ponytail: same address trick as constraintNamesSelf
+		c.emitBody(m, namedRet)
+		body := c.out.String()
+		c.out = saved
+		if selfWord.MatchString(body) {
+			c.w("\ttype Self = %s\n", c.plainSelfType(cls))
+		}
+		c.out.WriteString(body)
+	} else {
+		c.emitBody(m, namedRet)
+	}
 	c.w("}\n\n")
 }
 

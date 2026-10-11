@@ -458,7 +458,12 @@ func (c *Compiler) freeCall(cls *Class, e *entry, body string) string {
 			return body
 		}
 	}
-	body = strings.ReplaceAll(body, call, freeFuncName(e.M)+"["+targ+"](self, ")
+	if c.plainSelf(e.M) {
+		targ = ""
+	} else {
+		targ = "[" + targ + "]"
+	}
+	body = strings.ReplaceAll(body, call, freeFuncName(e.M)+targ+"(self, ")
 	return strings.ReplaceAll(body, "(self, )", "(self)")
 }
 
@@ -498,8 +503,13 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		}
 	}
 	rest := strings.ReplaceAll(body, "[any](self", "")
-	if oi := c.ownerIface(cls, e); oi != "" && strings.Contains(rest, "["+oi+"](self") {
-		iface, rest = oi, strings.ReplaceAll(rest, "["+oi+"](self", "") // self is recv asserted to the owner's interface
+	// a plain free func of the owner (its overloads too: Kernel___Sleep0) takes self as any or the owner's interface (decision 210)
+	plain := regexp.MustCompile(`\b` + e.Owner.Name + `_\w+\(self\b`) // ponytail: compiled per wrapper; cache by owner if it shows in profiles
+	if e.Owner.universal {
+		rest = plain.ReplaceAllString(rest, "")
+	}
+	if oi := c.ownerIface(cls, e); oi != "" && (strings.Contains(rest, "["+oi+"](self") || plain.MatchString(rest)) {
+		iface, rest = oi, plain.ReplaceAllString(strings.ReplaceAll(rest, "["+oi+"](self", ""), "") // self is recv asserted to the owner's interface
 	}
 	call := "self." + e.M.GoName + "("
 	if !w.private && iface == "" && strings.Contains(rest, call) {

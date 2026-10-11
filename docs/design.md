@@ -6497,3 +6497,42 @@ resolve; anything not listed is still open.
       (prototyped) cut `64_observable` by only 1.7k and 3% RSS, and
       `116_cuba_web` then needs explicit `_ClassOf` and inherited attr
       readers; not pursued.
+210. **A class body whose signature names no `Self` is a plain function**
+    (#96, option A of the split; amends 8, 151, 208). `plainSelf`: a
+    struct class's own method, or a universal owner's (`Kernel`,
+    `Object`), with no type parameters of its own or its owner's, no
+    `SelfType`, and no type variable in its params, block or return,
+    is emitted as `func Exception_Message(self ExceptionI) String`
+    (`any` for a universal owner) instead of
+    `Exception_Message[Self ExceptionI](self Self)`. The body is still
+    generated with `self` typed `Self`; when its text names `Self`, the
+    function opens with `type Self = ExceptionI`. Forwarders, typed
+    calls (`typeArgs`), wrapper bodies (`freeCall`, `plainCalls`) drop
+    the type argument, and `dynShareable` reads any
+    `Owner_X(self` call as one on the owner's interface. Generic stays
+    generic: modules (their constraint is per includer), generic
+    classes, `-> self` and other `Self`-typed signatures
+    (`Kernel_Dup`, `Exception_Exception`).
+    - **Why:** a generic function compiles once per GC shape plus a
+      dictionary wrapper per type argument, cannot be a function value
+      (so a package split cannot reach it through a slot), and is
+      recompiled by every package that instantiates it. In
+      `116_cuba_web` 515 of 768 generic free funcs were generic only
+      over `Self`; 304 remain generic.
+    - **Speed:** decision 151's `[*C]` own-class instantiation made
+      `self._C()` a direct call. A plain body is small enough for Go to
+      inline into the forwarder, where the receiver is `*C` again and
+      the call is devirtualized: a 50M-iteration loop of `Circle#area`
+      and an inherited `Shape#sides` went from 1.84 s to 1.55 s user.
+    - **Measured** (compiled functions; peak compile RSS of `main`,
+      `-dwarf=false`): `64_observable` 36,131 → 32,825 and 1,701 →
+      1,672 MB; `116_cuba_web` 34,781 → 33,244 and 1,397 → 1,367 MB;
+      archives 78 → 72 and 77 → 73 MB; compile CPU −8%.
+    - **Split estimate, unchanged:** stubbing every non-generic body of
+      `116_cuba_web` still leaves 81% of its compile memory (1,138 of
+      1,410 MB; 79% before). What stays is generic: the containers'
+      instantiations (`Array[E]`, `Hash[K, V]`, each compiling every
+      method) and declarations: with every body stubbed it was 612 of
+      1,386 MB before this change. A split
+      that moves only class bodies out of the bottom package saves at
+      most ~20% peak memory.
