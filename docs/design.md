@@ -2444,6 +2444,19 @@ resolve; anything not listed is still open.
       `go build -race` each and most of the lint CPU (staticcheck alone is
       27s on `64_observable`), which is decision 81's classes × names
       problem, not the harness's.
+    - **`-race` only where goroutines are** (#96, 2026-10-11). `-race`
+      turns off the compiler's concurrent backend
+      (`concurrentBackendAllowed` in `cmd/compile/internal/base/flag.go`):
+      `64_observable` compiled in 12.0s without it and 23.6s with it.
+      `goBuild` now passes it only when the generated Go has more than one
+      `go` statement; the one every program has is the signal loop
+      (`rbTrapSignals`), which runs user code only on a trapped signal. A
+      thread, Ractor, Fiber, Timeout or WEBrick program keeps it: 32 of
+      the 195 examples and testdata programs. A new always-on goroutine
+      fails safe, back to `-race` everywhere. `TestCompileCost`
+      (`RB2GO_COST=1`) reports compiled functions and compile memory for
+      #96's three yardstick programs; `scripts/census` counts what a
+      generated `main.go` spends its functions on.
 89. Named interfaces declare only what kept code selects. A class's
     interface (`FooI`, `Foo_MetaI`) declared every method the class has,
     inherited Kernel ones included, so the pruner (decision 49) kept a

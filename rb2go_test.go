@@ -585,14 +585,22 @@ func goBuild(t *testing.T, gen string, gcflags string) string {
 	bin := filepath.Join(gen, "prog")
 	// -dwarf=false: debug info is a quarter of each cache entry and no test reads it (decision 88); a repeated -gcflags replaces the earlier one, so it is composed here
 	gcflags = strings.TrimSpace(gcflags + " -dwarf=false")
-	// -race: generated threads and queues must be race-free; -trimpath: the build cache hits across temp dirs.
-	args := []string{"build", "-race", "-trimpath", "-gcflags=" + gcflags, "-o", bin, "."}
+	// -trimpath: the build cache hits across temp dirs.
+	args := []string{"build", "-trimpath", "-gcflags=" + gcflags, "-o", bin, "."}
+	code, err := os.ReadFile(filepath.Join(gen, "main.go")) //nolint:gosec // under t.TempDir()
+	if err != nil || len(goStmt.FindAllIndex(code, 2)) > 1 {
+		// -race only where a program starts goroutines beyond the always-on signal loop: it turns off the compiler's parallel backend, doubling compile time (decision 88)
+		args = slices.Insert(args, 1, "-race")
+	}
 	out, err := run(t, gen, "go", args...)
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 	return bin
 }
+
+// goStmt matches a gofmt-ed go statement.
+var goStmt = regexp.MustCompile(`(?m)^\t+go \S`)
 
 // mtTiming matches minitest's run timings: the `Finished in` line and -v's per-test seconds.
 var mtTiming = regexp.MustCompile(`(?m)^Finished in .*$| = \d+\.\d\d s = `)

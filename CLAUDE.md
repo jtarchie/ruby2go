@@ -19,6 +19,8 @@ RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (d
 RB2GO_INFER_DEBUG=1 go run ./cmd/rb2go run x.rb    # what each parameter-inference round typed and could not compile (decision 146)
 RB2GO_PRUNE_DEBUG=1 go test -run TestBootAutoload .  # gem programs: why each method name was reached, live gem classes (decision 169)
 RB2GO_BACKTRACE=1 ./prog                       # a built program reports an uncaught exception as MRI does, file:line and from lines (decision 178)
+RB2GO_COST=1 go test -run TestCompileCost -v .    # compiled functions + compile time/memory of 05_word_count, 64_observable, 116_cuba_web (#96); or a comma list of examples
+go -C scripts/census run . /path/main.go           # what a generated main.go spends its functions on (forwarders, Dyn wrappers, stubs); ./inst walks generic instantiations
 go test -run '^$' -fuzz FuzzCompile -fuzztime 60s .              # fuzz targets: FuzzCompile (.),
 go test -run '^$' -fuzz FuzzParseType -fuzztime 30s ./internal/rbs # FuzzParseType/FuzzParseMethodType (rbs),
 go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMethodName/FuzzTranslateRegexp (compiler)
@@ -40,7 +42,7 @@ For each `examples/*/main.rb`, `TestExamples` (rb2go_test.go):
 2. runs `Compile`, then `gofmt`, `go vet`, `golangci-lint` with `.golangci.generated.yml` (the generated Go must lint clean), and `go build`.
 3. requires stdout **and** exit code to equal `ruby main.rb`.
 
-Generated programs are built with `-race -trimpath` (`-trimpath` lets the build cache hit across temp dirs; the first run after a Go upgrade rebuilds the race std once). Examples are vetted and linted in one pass over a shared module after all of them pass. MRI output is cached by source, Ruby version, TZ and checkout directory (so worktrees do not share entries holding `__dir__`).
+Generated programs are built with `-trimpath`, plus `-race` when they start goroutines (decision 88) (`-trimpath` lets the build cache hit across temp dirs; the first run after a Go upgrade rebuilds the race std once). Examples are vetted and linted in one pass over a shared module after all of them pass. MRI output is cached by source, Ruby version, TZ and checkout directory (so worktrees do not share entries holding `__dir__`).
 
 Add one new example per new feature, numbered next in sequence: a plain program that shows the feature and prints what it computes (examples are scripts, as in a Ruby project's `examples/`; behaviour checks go in `testdata/test`). User code must run on MRI unchanged. There are no golden Go files; MRI's output is the only expectation.
 
