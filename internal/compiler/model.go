@@ -1935,6 +1935,7 @@ func (c *Compiler) link(ctx context.Context) {
 			}
 		}
 	}
+	c.publicGemOverrides()
 	for _, cls := range c.classList {
 		c.linkOverrides(cls)
 	}
@@ -2498,7 +2499,7 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 		c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
 	}
 	inc.Mod = mod
-	if len(inc.args) == 0 && len(mod.TypeParams) == 1 {
+	if len(inc.args) == 0 && mod.RubyName == "Enumerable" {
 		if at := c.sorbetElem(cls); at != nil { // Sorbet's `Elem = type_member { { fixed: T } }` is Enumerable's T (decision 196)
 			inc.args = []rbs.Type{at}
 		}
@@ -4111,7 +4112,7 @@ func (c *Compiler) relinkOverrides() {
 		if cls.Super != nil {
 			link(cls.Super)
 		}
-		if !cls.isStruct() || cls.universal {
+		if !cls.isStruct() && !cls.hashBase || cls.universal {
 			return
 		}
 		for _, m := range cls.MethodList {
@@ -4145,7 +4146,11 @@ func (c *Compiler) parentSlots(cls *Class, m *Method) []slot {
 	var out []slot
 	if sup := cls.Super; sup != nil && !sup.universal {
 		if pe := sup.lookup(m.Name); pe != nil {
-			out = append(append(out, slot{*pe, sup}), pe.M.shadowed...)
+			in := sup
+			if cls.hashBase && sup.GoType != "" && !sup.hashBase {
+				in = cls // a core container's own slot, typed as the subclass embeds it (containerEnv)
+			}
+			out = append(append(out, slot{*pe, in}), pe.M.shadowed...)
 		}
 	}
 	for _, inc := range cls.Includes {
@@ -4233,7 +4238,7 @@ func (c *Compiler) linkExtends() {
 			if !ext.Mod.IsModule {
 				c.errorf(ext.file, nil, "%s:%d: %s is not a module", ext.file.Name, ext.line, ext.Mod.RubyName)
 			}
-			if len(ext.args) == 0 && len(ext.Mod.TypeParams) == 1 {
+			if len(ext.args) == 0 && ext.Mod.RubyName == "Enumerable" {
 				if at := c.sorbetElem(cls.meta); at != nil { // `class << self; Elem = type_member { { fixed: T } }` (decision 196)
 					ext.args = []rbs.Type{at}
 				}
@@ -4258,6 +4263,25 @@ func (c *Compiler) linkExtends() {
 				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, file: ext.file, line: ext.line}))
 			}
 			cls.meta.Includes = append(cls.meta.Includes, ext)
+		}
+	}
+}
+
+// publicGemOverrides keeps a gem's private override of an ancestor's public method in the Go interface
+// (SystemCommand's private `debug?` over Context's, which Context's methods call on self). MRI differs only for a
+// caller outside the class, where the private method raises NoMethodError (decision 172).
+func (c *Compiler) publicGemOverrides() {
+	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if !m.Private || m.Kind != kindDef || !c.gemFile(m.File) || rubyPrivate[m.Name] || m.Name == "initialize" {
+				continue
+			}
+			for _, a := range cls.allAncestors() {
+				if pm := a.Methods[m.Name]; pm != nil && !pm.Private {
+					m.Private = false
+					break
+				}
+			}
 		}
 	}
 }

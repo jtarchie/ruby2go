@@ -109,6 +109,7 @@ type Compiler struct {
 	badClasses            map[*Class]compileError    // gem classes that cannot compile, an error where reachable code names them
 	evalSites             map[string]bool            // "path:line" of each string eval boot compiled: a no-op (decision 204)
 	blockEvalSites        map[*parser.CallNode]bool  // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
+	goFuncs               map[string]string          // each gem method's Go func name -> methodKey (goPoison)
 	bootDelegators        map[string][]string        // def_delegators' names boot saw, by "path:line" (decision 204)
 	kept                  []string                   // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
 	anonDepth             int                        // collecting an anonymous class body, whose errors scanAnon defers
@@ -243,6 +244,8 @@ type options struct {
 	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
 	mainLast   bool              // the last source is the program's main file (rb2go_main, decision 197)
 	boot       *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
+	goPoison   map[string]string // gem methods whose Go did not type-check, by methodKey: poisoned (decision 205)
+	goFuncs    map[string]string // out: each gem method's Go func name -> its methodKey
 }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
@@ -402,7 +405,10 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.inferReturns()
 	c.relinkOverrides()
 	tick("infer")
+	c.applyGoPoison(opts.goPoison)
+	c.goFuncs = map[string]string{}
 	c.emitProgram()
+	opts.goFuncs = c.goFuncs
 	if len(c.kept) > 0 {
 		c.errorf(nil, nil, "%d errors:\n%s", len(c.kept), strings.Join(c.kept, "\n"))
 	}

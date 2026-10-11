@@ -1039,6 +1039,9 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		}
 		env := c.forwarderEnv(cls, e)
 		name, ps, ret := c.seqAdapterSig(e.M, env)
+		if c.slotSeqAdapter(cls, e, env, recv) {
+			continue
+		}
 		seq := "rbSeq"
 		if len(e.M.Block.Params) == 2 {
 			seq = "rbSeq2"
@@ -1051,12 +1054,12 @@ func (c *Compiler) emitForwarders(cls *Class) {
 			if !strings.Contains(c.argNames(e.M), "blk") {
 				args = strings.TrimPrefix(args+", "+wrapped, ", ")
 			}
-			c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk func(%s)) { self.%s(%s) })\n}\n",
-				recv, name, ps, ret, seq, elem, e.M.GoName, args)
+			c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk func(%s)) { %s })\n}\n",
+				recv, name, ps, ret, seq, elem, c.blkCall(cls, e, args))
 			continue
 		}
-		c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk %s) { self.%s(%s) })\n}\n",
-			recv, name, ps, ret, seq, c.blockGoType(e.M.Block, env), e.M.GoName, c.seqArgs(e.M))
+		c.w("func (self %s) %s(%s) %s {\n\treturn %s(func(blk %s) { %s })\n}\n",
+			recv, name, ps, ret, seq, c.blockGoType(e.M.Block, env), c.blkCall(cls, e, c.seqArgs(e.M)))
 	}
 	for _, e := range c.publicEntries(cls) {
 		for _, s := range e.M.shadowed {
@@ -1132,6 +1135,7 @@ func (c *Compiler) emitEqAdapter(cls *Class, recv string) {
 func (c *Compiler) slotEnv(s slot) map[string]Type {
 	env := composeEnv(s.e.Env, nil)
 	env["Self"] = c.selfTypeFor(s.e, s.in)
+	s.in.containerEnv(env) // a Set subclass's slot of Set's own: E is untyped
 	return env
 }
 
@@ -1299,7 +1303,26 @@ func (c *Compiler) sameIterator(own, s slot) bool {
 	if !m.Iterator || !sm.Iterator || len(m.Block.Params) != len(sm.Block.Params) {
 		return false
 	}
-	return c.iterGoType(m.Block, c.slotEnv(own)) == c.iterGoType(sm.Block, c.slotEnv(s))
+	if c.iterGoType(m.Block, c.slotEnv(own)) == c.iterGoType(sm.Block, c.slotEnv(s)) {
+		return true
+	}
+	return len(sm.Block.Params) == 1 && c.goType(subst(sm.Block.Params[0], c.slotEnv(s))) == "any" // elements boxed (iterAdapterBody)
+}
+
+// iterAdapterBody answers an iterator slot whose elements are untyped with an override yielding typed ones.
+func (c *Compiler) iterAdapterBody(cls *Class, e entry, s slot) string {
+	env, oenv := c.slotEnv(s), c.forwarderEnv(cls, e)
+	args := make([]string, 0, len(e.M.Params))
+	for i, p := range e.M.Params {
+		from, to := c.goType(subst(s.e.M.Params[i].Type, env)), c.goType(subst(p.Type, oenv))
+		a := goParamName(s.e.M.Params[i].Name, i)
+		if from != to && to != "any" {
+			a = fmt.Sprintf("rbAs[%s](any(%s), %q)", to, a, to)
+		}
+		args = append(args, a)
+	}
+	return fmt.Sprintf("\treturn func(y func(any) bool) {\n\t\tfor x := range %s {\n\t\t\tif !y(x) {\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n\t}\n",
+		c.blkCall(cls, e, strings.Join(args, ", ")))
 }
 
 // adapterBody answers slot s of an ancestor's interface with cls's method e
@@ -1318,6 +1341,9 @@ func (c *Compiler) adapterBody(cls *Class, e entry, s slot) string {
 	f.indent = 1
 	if restSlot(e.M, s.e.M) {
 		return c.restAdapterBody(f, cls, e, s)
+	}
+	if e.M.Iterator && s.e.M.Iterator {
+		return c.iterAdapterBody(cls, e, s)
 	}
 	n := len(s.e.M.Params)
 	if req, maxArgs := arity(e.M); n < req || maxArgs >= 0 && n > maxArgs {
@@ -2167,4 +2193,55 @@ func (c *Compiler) noteArgBoxes(args []Type) {
 		}
 		c.argBoxes["*"+c.goType(a)] = isOpt(a)
 	}
+}
+
+// blkCall calls the closure form of a seq-adapted method: a Go method, or on a @go_type subclass (whose own methods
+// are free funcs, decision 202) its free func.
+func (c *Compiler) blkCall(cls *Class, e entry, args string) string {
+	if cls.GoType != "" && e.Owner == cls && !c.isDirectMethod(e.M) {
+		return freeFuncName(e.M) + c.forwardTypeArgs(e, cls) + "(self" + comma(args) + ")"
+	}
+	return "self." + e.M.GoName + "(" + args + ")"
+}
+
+// slotSeqAdapter emits the iterator adapter of a gem's closure override typed apart from the inherited iterator it
+// answers (`tsort_each_child(node)` yielding Strings, where TSort's Node is untyped): the slot's signature, converting
+// across (decision 206). False when there is no such slot.
+func (c *Compiler) slotSeqAdapter(cls *Class, e entry, env map[string]Type, recv string) bool {
+	m := e.M
+	if !c.gemFile(m.File) || len(m.Block.Params) != 1 || slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest || p.Keyword }) {
+		return false
+	}
+	for _, s := range c.parentSlots(cls, m) {
+		sm := s.e.M
+		if !sm.Iterator || sm.Block == nil || len(sm.Block.Params) != 1 || len(sm.Params) != len(m.Params) {
+			continue
+		}
+		senv := c.slotEnv(s)
+		sps, sret := c.sig(sm, senv)
+		_, ps, ret := c.seqAdapterSig(m, env)
+		if sps == ps && sret == ret {
+			return false
+		}
+		conv := func(code, from, to string) string {
+			if from == to || to == "any" {
+				return code
+			}
+			return fmt.Sprintf("rbAs[%s](any(%s), %q)", to, code, to)
+		}
+		var args []string
+		for i, p := range m.Params {
+			args = append(args, conv(goParamName(sm.Params[i].Name, i), c.goType(subst(sm.Params[i].Type, senv)), c.goType(subst(p.Type, env))))
+		}
+		own, slotElem := c.goType(subst(m.Block.Params[0], env)), c.goType(subst(sm.Block.Params[0], senv))
+		blk := fmt.Sprintf("func(x %s) { y(%s) }", own, conv("x", own, slotElem))
+		if r := subst(m.Block.Ret, env); !isVoid(r) {
+			blk = fmt.Sprintf("func(x %s) %s { y(%s); return *new(%s) }", own, c.goType(r), conv("x", own, slotElem), c.goType(r))
+		}
+		args = append(args, blk)
+		c.w("func (self %s) %s(%s) %s {\n\treturn rbSeq(func(y func(%s)) { %s })\n}\n",
+			recv, sm.GoName, sps, sret, slotElem, c.blkCall(cls, e, strings.Join(args, ", ")))
+		return true
+	}
+	return false
 }

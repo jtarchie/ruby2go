@@ -166,7 +166,28 @@ func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		}
 		aug = append(aug, Source{Name: main, Src: data, Path: main})
 	}
-	opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: main != ""}
-	out, err := compile(ctx, preludeFS, aug, &opts)
-	return out, opts.warnings, err
+	poison := map[string]string{}
+	var warnings []string
+	for round := 0; ; round++ {
+		opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: main != "", goPoison: poison}
+		out, err := compile(ctx, preludeFS, aug, &opts)
+		if err != nil || round == goPoisonRounds {
+			return out, append(warnings, opts.warnings...), err
+		}
+		bad := goTypeErrors(out) // nil when it does not parse: go build reports that, with the generated file kept
+		added := 0
+		for fn, msg := range bad {
+			if key, ok := opts.goFuncs[fn]; ok && poison[key] == "" {
+				poison[key] = "Go rejects it: " + msg
+				warnings = append(warnings, fmt.Sprintf("%s does not type-check in Go, so calling it raises NotImplementedError: %s (decision 205)", key, msg))
+				added++
+			}
+		}
+		if added == 0 {
+			return out, append(warnings, opts.warnings...), err
+		}
+	}
 }
+
+// goPoisonRounds bounds the traced build's compiles: each poisons what Go rejected in the last (decision 205).
+const goPoisonRounds = 4

@@ -476,7 +476,8 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		val := f.genExpr(n.Value, exp)
 		decl := val.typ
 		if ann != nil {
-			decl = ann // `@x = [] #: Array[T]` declares the ivar's type
+			decl = ann                             // `@x = [] #: Array[T]` declares the ivar's type
+			val = f.unionToAnn(n, val, ann)
 			if o, ok := ann.(TOpt); ok && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 				val.typ = o.Elem // a T into a T? ivar: coerce wraps it
 			} else {
@@ -1369,6 +1370,52 @@ func (f *fctx) materialize(e expr) string {
 
 // coerce converts e to the representation of type `to`.
 func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
+	code := f.coerce0(n, e, to)
+	if f.lenient() && code == e.code && f.pass == 2 {
+		return f.goTypeGuard(n, e, to)
+	}
+	return code
+}
+
+// goTypeGuard converts what gem code passes unconverted although its Go type is not the wanted one, where rb2go's
+// lenient typing let it through (decision 172): checked at run time, as MRI would fail there.
+func (f *fctx) goTypeGuard(n parser.Node, e expr, to Type) string {
+	if to == nil || isVoid(to) || isVoid(e.typ) || e.noreturn || e.code == "nil" || e.lit {
+		return e.code
+	}
+	from, want := f.c.goType(e.typ), f.c.goType(to)
+	if from == want || want == "any" || from == "" || want == "" {
+		return e.code
+	}
+	switch t := to.(type) {
+	case TVar:
+		if st, ok := f.selfType.(TVar); t.Name == "Self" && ok && st.Name == "Self" { // only inside a generic method body
+			return "any(" + e.code + ").(Self)"
+		}
+		if from == "any" && t.Name != "Self" {
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, t.Name))
+		}
+	case TOpt:
+		src := e.code
+		if isOpt(e.typ) {
+			src = "Opt(" + e.code + ")"
+		} else if from != "any" {
+			return e.code
+		}
+		return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(t.Elem), src, t.Elem.String()))
+	case TClass:
+		if from == "any" {
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, t.String()))
+		}
+	case TAny, TFunc, TNil, TTuple, TUnion, TVoid:
+		if from == "any" && !isUnion(to) {
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, to.String()))
+		}
+	}
+	return e.code
+}
+
+func (f *fctx) coerce0(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) && !isNil(to) {
 		return e.code
 	}
@@ -1444,7 +1491,7 @@ func (f *fctx) coerceToVar(n parser.Node, e expr, to TVar) string {
 	if ec, ok := e.typ.(TClass); ok && to.Name == "Self" && f.lenient() && ec.C.isStruct() { // a gem's `self.class.new(...)` as self's type
 		return "any(" + e.code + ").(Self)"
 	}
-	if isAny(e.typ) && to.Name != "Self" && f.lenient() && f.c.goType(to) == to.Name { // a gem's untyped value for a type parameter (Hash's V)
+	if f.c.goType(e.typ) == "any" && to.Name != "Self" && f.lenient() && f.c.goType(to) == to.Name { // a gem's untyped (or Object) value for a type parameter (Hash's V)
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", to.Name, e.code, to.Name))
 	}
 	return e.code
@@ -1568,6 +1615,14 @@ func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string
 			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())), true
 		}
 	case TFunc, TTuple, TVoid:
+	}
+	if f.lenient() { // a gem's union where one member is wanted: checked at run time (decision 172)
+		if c, ok := to.(TClass); ok {
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(c), e.code, c.String())), true
+		}
+		if o, ok := to.(TOpt); ok {
+			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(o.Elem), e.code, o.Elem.String())), true
+		}
 	}
 	f.errorf(n, "%s where %s is expected; narrow it first (`is_a?`, `case`/`when`, `if x`)", u, to)
 	return "", true
@@ -4493,10 +4548,8 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e == nil {
 		switch f.m.Name {
 		case "initialize":
-			if o := f.owner; o.hashBase && !o.Super.mutable() && o.Super.meta != nil { // `super(path)` in a Pathname subclass: the embedded base is Base.new(path)
-				base := expr{code: classVar(o.Super), typ: TClass{C: o.Super.meta}, classObj: true}
-				built := f.genMethodCall(n, base, "new", f.superArgs(n, args, forwarding), nil)
-				return expr{code: f.selfCode + "." + superField(o.Super) + " = " + f.coerce(n, built, TClass{C: o.Super}), typ: TVoid{}, stmt: true}
+			if e, ok := f.superValueInit(n, args, forwarding); ok {
+				return e
 			}
 			return expr{code: "", typ: TVoid{}, stmt: true}
 		case "respond_to_missing?": // Object's answers false
@@ -4517,6 +4570,9 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		f.errorf(n, "super: no parent method %s", f.m.Name)
 	}
 	if e.Owner.GoType != "" {
+		if r, ok := f.superValueInit(n, args, forwarding); ok && f.m.Name == "initialize" {
+			return r
+		}
 		return f.genContainerSuper(n, e, args, forwarding)
 	}
 	env := map[string]Type{}
@@ -5172,6 +5228,10 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 	}
 	if b, ok := block.(*parser.BlockNode); ok && name == "each" && len(args) == 0 && f.lenient() && isAny(recv.typ) {
 		return f.dynEach(n, recv, b)
+	}
+	if ba, ok := block.(*parser.BlockArgumentNode); ok && name == "each" && len(args) == 0 && f.lenient() && f.c.goType(recv.typ) != "" && (isAny(recv.typ) || isTypeVar(recv.typ)) &&
+		f.isBlockParam(ba.Expression) && !f.iterator && f.blockSig != nil && len(f.blockSig.Params) >= 1 && len(f.blockSig.Params) <= 2 {
+		return f.dynEachForward(n, recv)
 	}
 	f.errorf(n, "blocks on untyped receivers are not supported")
 	return expr{}
@@ -6478,14 +6538,21 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 		tt, _ = yields[0].(TTuple)
 	}
 	// A proc auto-splats a lone yielded tuple, like bindBlockParams for a literal block.
-	if len(f.blockSig.Params) > 1 && len(tt.Elems) == len(f.blockSig.Params) {
+	switch {
+	case len(f.blockSig.Params) > 1 && len(tt.Elems) == len(f.blockSig.Params):
 		fields := make([]string, len(tt.Elems))
 		for i := range fields {
 			fields[i] = fmt.Sprintf("%s.F%d", list, i)
 		}
 		args = strings.Join(fields, ", ")
-	} else if len(yields) != len(f.blockSig.Params) {
+	case len(yields) != len(f.blockSig.Params):
 		f.errorf(n, "the forwarded block takes %d values but %d are yielded", len(f.blockSig.Params), len(yields))
+	default:
+		conv := make([]string, len(vars)) // a Hash subclass's untyped keys into a block typed String
+		for i, v := range vars {
+			conv[i] = f.coerce(n, expr{code: v, typ: yields[i]}, f.blockSig.Params[i])
+		}
+		args = strings.Join(conv, ", ")
 	}
 	f.emit("%s", rangeHead(list, call))
 	if f.iterator {
@@ -7967,6 +8034,9 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), e.code, to.String())), true
 	}
 	if o, ok := e.typ.(TOpt); ok && f.c.goType(e.typ) == "*"+f.c.goType(o.Elem) {
+		if e.code == "nil" { // `@x = T.let(nil, T.nilable(X))` into a non-nil slot: its zero value, read before set
+			return "rbZero[" + f.c.goType(to) + "]()", true
+		}
 		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
 	}
 	return "", false
@@ -8207,4 +8277,44 @@ func (f *fctx) argAt(n parser.Node, p Param, env map[string]Type, args []parser.
 	a := f.genExpr(an, f.pendingWant(p, closed(p.Type, env)))
 	f.pinBefore(mark, codes)
 	return an, a
+}
+
+// superValueInit is `super(path)` in initialize of a Pathname (String) subclass: the embedded base is Base.new(path).
+func (f *fctx) superValueInit(n parser.Node, args *parser.ArgumentsNode, forwarding bool) (expr, bool) {
+	o := f.owner
+	if f.m.Name != "initialize" || o == nil || !o.hashBase || o.Super.mutable() || o.Super.meta == nil {
+		return expr{}, false
+	}
+	base := expr{code: classVar(o.Super), typ: TClass{C: o.Super.meta}, classObj: true}
+	built := f.genMethodCall(n, base, "new", f.superArgs(n, args, forwarding), nil)
+	return expr{code: f.selfCode + "." + superField(o.Super) + " = " + f.coerce(n, built, TClass{C: o.Super}), typ: TVoid{}, stmt: true}, true
+}
+
+// dynEachForward is a gem's `x.each(&block)` on an untyped x passing the method's own closure block on.
+func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
+	k := len(f.blockSig.Params)
+	f.c.dynEach = true
+	xs := make([]string, k)
+	for i := range k {
+		xs[i] = f.coerce(n, expr{code: fmt.Sprintf("xs_[%d]", i), typ: TAny{}}, f.blockSig.Params[i])
+	}
+	call := "blk(" + strings.Join(xs, ", ") + ")"
+	if !isVoid(f.blockSig.Ret) {
+		call = "_ = " + call
+	}
+	return expr{code: fmt.Sprintf("rbEachAny(any(%s), %d, func(xs_ ...any) { %s })", recv.code, k, call), typ: TAny{}}
+}
+
+// isTypeVar is a type parameter other than Self (a Hash subclass's untyped V).
+func isTypeVar(t Type) bool {
+	v, ok := t.(TVar)
+	return ok && v.Name != "Self"
+}
+
+// unionToAnn converts, rather than relabels, a union value written to an annotated ivar: a union is Go any.
+func (f *fctx) unionToAnn(n parser.Node, val expr, ann Type) expr {
+	if isUnion(val.typ) && !isUnion(ann) {
+		return expr{code: f.coerce(n, val, ann), typ: ann}
+	}
+	return val
 }

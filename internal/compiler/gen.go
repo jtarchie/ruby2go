@@ -2600,9 +2600,15 @@ func (c *Compiler) emitMethod0(m *Method) {
 	c.lineDirective(m.File, m.Line)
 	if c.isDirectMethod(m) {
 		c.labels[cls.Name+"."+m.GoName] = c.frameLabel(m)
+		if c.goFuncs != nil && c.gemFile(m.File) {
+			c.goFuncs[cls.Name+"."+m.GoName] = methodKey(m)
+		}
 		c.w("func (self %s) %s(%s) %s {\n", c.recvType(cls), m.GoName, params, retDecl)
 	} else {
 		c.labels[freeFuncName(m)] = c.frameLabel(m)
+		if c.goFuncs != nil && c.gemFile(m.File) {
+			c.goFuncs[freeFuncName(m)] = methodKey(m)
+		}
 		self := "self Self"
 		switch {
 		case m.SelfType != nil:

@@ -766,8 +766,10 @@ func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
 			continue
 		}
 		c.resolveMethod(tw)
-		t, ok := tw.Params[0].Type.(TClass)
-		if !ok || typeEq(t, m.Params[0].Type) {
+		env := composeEnv(x.Env, nil)
+		cls.containerEnv(env) // a Set subclass's E is untyped
+		t, ok := subst(tw.Params[0].Type, env).(TClass)
+		if !ok || typeEq(t, subst(m.Params[0].Type, env)) {
 			continue
 		}
 		te := cls.lookup(tw.Name)
