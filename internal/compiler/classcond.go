@@ -211,7 +211,7 @@ func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode
 		if filepath.Ext(p) != ".rb" {
 			p += ".rb"
 		}
-		info, err := os.Stat(p) //nolint:gosec // a path the program names
+		info, err := os.Stat(p)
 		if err == nil && !info.IsDir() {
 			target = p
 		}
