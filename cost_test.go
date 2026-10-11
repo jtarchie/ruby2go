@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 	os.Exit(0)
 }
 
-// TestCompileCost is #96's yardstick, opt-in and sequential since it measures memory: RB2GO_COST=1 (or a comma list of examples) go test -run TestCompileCost -v .
+// TestCompileCost is #96's yardstick, opt-in and sequential since it measures memory; no DWARF, as test builds (decision 88, #97): RB2GO_COST=1 (or a comma list of examples) go test -run TestCompileCost -v .
 func TestCompileCost(t *testing.T) {
 	want := os.Getenv("RB2GO_COST")
 	if want == "" {
@@ -97,7 +97,7 @@ func TestCompileCost(t *testing.T) {
 		}
 		log := filepath.Join(t.TempDir(), "cost.log")
 		pio := progIO{env: []string{costLog + "=" + log}}
-		_, stderr, status, berr := runIO(t, gen, pio, "go", "build", "-trimpath", "-work", "-toolexec", exe, "-o", filepath.Join(gen, "prog"), ".")
+		_, stderr, status, berr := runIO(t, gen, pio, "go", "build", "-trimpath", "-gcflags=-dwarf=false", "-work", "-toolexec", exe, "-o", filepath.Join(gen, "prog"), ".")
 		if berr != nil || status != 0 {
 			t.Fatalf("%s: go build: %v\n%s", name, berr, stderr)
 		}
