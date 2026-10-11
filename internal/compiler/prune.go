@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -587,10 +588,20 @@ func (p *pruner) dropDeadClauses(body *ast.BlockStmt, own ast.Stmt) bool {
 	return true
 }
 
-// inlineDefaultOnly replaces a type switch whose typed cases were all dropped with its default body (gocritic's singleCaseSwitch); the guard's expression stays as `_ = e` in case it has effects.
+// inlineDefaultOnly replaces a switch whose cases were all dropped with its default body (gocritic's singleCaseSwitch); the guard's expression stays as `_ = e` in case it has effects.
 func inlineDefaultOnly(list []ast.Stmt) []ast.Stmt {
 	out := make([]ast.Stmt, 0, len(list))
 	for _, st := range list {
+		if es, ok := st.(*ast.SwitchStmt); ok && len(es.Body.List) == 1 && es.Body.List[0].(*ast.CaseClause).List == nil && es.Init == nil {
+			// an expression switch whose cases were all dropped (a _DynGen switch, decision 209)
+			if _, ident := es.Tag.(*ast.Ident); es.Tag != nil && !ident {
+				out = append(out, &ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{NamePos: es.Pos(), Name: "_"}}, TokPos: es.Pos(), Tok: token.ASSIGN, Rhs: []ast.Expr{es.Tag}})
+			}
+			if body := es.Body.List[0].(*ast.CaseClause).Body; len(body) > 0 {
+				out = append(out, &ast.BlockStmt{Lbrace: es.Pos(), List: body, Rbrace: es.End() - 1})
+			}
+			continue
+		}
 		ts, ok := st.(*ast.TypeSwitchStmt)
 		if !ok || len(ts.Body.List) != 1 || ts.Body.List[0].(*ast.CaseClause).List != nil {
 			out = append(out, st)
@@ -642,8 +653,18 @@ func (p *pruner) visitSwitch(x *ast.SwitchStmt) {
 	if x.Tag != nil {
 		ast.Inspect(x.Tag, p.visit)
 	}
+	dynGen := false
+	if id, ok := x.Tag.(*ast.Ident); ok && id.Name == "rbDynName" {
+		dynGen = true // a generic class's _DynGen switch (decision 209): a case lives while its name's dispatcher does
+	}
 	for _, st := range x.Body.List {
 		cc := st.(*ast.CaseClause)
+		if lit, ok := singleString(cc); ok && dynGen {
+			if d := "rbDyn" + goMethodName(strings.TrimPrefix(lit, "_")); !p.names[d] {
+				p.pending[cc] = []string{d}
+				continue
+			}
+		}
 		if t := keyedType(cc); t != nil {
 			if names := p.caseTypeNames(t); len(names) > 0 {
 				p.pending[cc] = names
@@ -656,6 +677,19 @@ func (p *pruner) visitSwitch(x *ast.SwitchStmt) {
 		}
 		ast.Inspect(cc, p.visit)
 	}
+}
+
+// singleString is the Ruby name in a `case "name":` clause.
+func singleString(cc *ast.CaseClause) (string, bool) {
+	if len(cc.List) != 1 {
+		return "", false
+	}
+	bl, ok := cc.List[0].(*ast.BasicLit)
+	if !ok || bl.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(bl.Value)
+	return v, err == nil
 }
 
 // keyedType is T in a `case rbKeyed[T](k):` clause, which names T as weakly as a type-switch case does (decision 137).

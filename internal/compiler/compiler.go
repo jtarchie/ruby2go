@@ -66,6 +66,8 @@ type Compiler struct {
 	dynEvery      bool            // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
 	dynLazy       map[string]bool // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
 	dynOut        map[string]bool // dispatchers emitted
+	dynGen        map[*Class][]dynGenCase // a generic class's wrappers of this emitDynamic batch, emitted as one switch (decision 209)
+	dynGenRound   int                     // batches whose generic wrappers are out: names the next _DynGen method
 	respondOut    map[string]bool // respond_to? checks emitted
 	fwdOut        map[*Class]bool // forwarders emitted
 	selfTyped     map[*Class]bool // a module whose constraint names Self (decision 208)

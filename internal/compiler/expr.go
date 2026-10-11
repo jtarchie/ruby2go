@@ -3406,6 +3406,16 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	direct := f.c.isDirectMethod(m)
 	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
 		m.Owner.universal && mentionsSelf(m.Ret) // an interface declares `-> self` as `any`; the free func returns Self
+	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
+		// a wrapper body: the owner's free func over its interface (any for Kernel), so no forwarder is selected (decision 209)
+		targ := "any"
+		if !m.Owner.universal {
+			targ = f.c.ownerIface(f.owner, e)
+		}
+		if targ != "" {
+			return freeFuncName(m) + "[" + targ + "](self" + comma(argList) + ")"
+		}
+	}
 	if !free {
 		if t := f.methodExprType(m, recv); t != "" {
 			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"

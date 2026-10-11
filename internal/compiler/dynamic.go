@@ -2,6 +2,10 @@ package compiler
 
 import (
 	"fmt"
+	"go/ast"
+	goparser "go/parser"
+	"go/printer"
+	"go/token"
 	"maps"
 	"regexp"
 	"slices"
@@ -63,7 +67,62 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 	for _, name := range emitted {
 		c.emitMarkers("_Private"+goMethodName(name), c.privateIn(name))
 	}
+	c.emitDynGen()
 	return len(emitted) > 0
+}
+
+// dynGenCase is one wrapper body of a generic class, keyed by its Ruby name ("_" + name when private).
+type dynGenCase struct{ key, body string }
+
+// emitDynGen emits this batch's wrappers of each generic class as one method switching on the name. Go compiles
+// every method of a generic type for each instantiation, so 120 DynX methods on Array[E] were 120 bodies per
+// element type (64_observable: 10.1k of 51k compiled functions); the batch number keeps names unique across
+// emitNext rounds, and the dispatchers this batch emitted name it. The pruner keeps a case only while its name's
+// dispatcher is kept (visitSwitch), as a wrapper method was kept only while selected (decision 209).
+func (c *Compiler) emitDynGen() {
+	if len(c.dynGen) == 0 {
+		return
+	}
+	gen := fmt.Sprintf("_DynGen%d", c.dynGenRound)
+	c.dynGenRound++
+	for _, cls := range c.classList {
+		cases := c.dynGen[cls]
+		if len(cases) == 0 {
+			continue
+		}
+		c.w("func (self %s) %s(rbDynName string, args []any) (any, bool) {\n\tswitch rbDynName {\n", c.recvType(cls), gen)
+		for _, k := range cases {
+			c.w("\tcase %q:\n%s", k.key, okReturns(k.body))
+		}
+		c.w("\tdefault:\n\t}\n\treturn nil, false\n}\n\n") // default: gocritic rejects a one-case switch
+	}
+	c.dynGen = nil
+}
+
+// okReturns rewrites a wrapper body's `return v` (outside closures) to `return v, true`.
+func okReturns(body string) string {
+	fset := token.NewFileSet()
+	f, err := goparser.ParseFile(fset, "", "package p\nfunc _() any {\n"+body+"}\n", 0)
+	if err != nil {
+		panic(fmt.Sprintf("rb2go: wrapper body does not parse: %v\n%s", err, body))
+	}
+	fd, _ := f.Decls[0].(*ast.FuncDecl)
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.ReturnStmt:
+			n.Results = append(n.Results, ast.NewIdent("true"))
+		}
+		return true
+	})
+	var b strings.Builder
+	for _, st := range fd.Body.List {
+		b.WriteString("\t\t")
+		_ = printer.Fprint(&b, fset, st)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // dynNeeded: name was noted by an emitted body, or kept code calls its dispatcher, asks respond_to? of it, or asserts its wrapper (rbCmp's DynOp_cmp, the json generator's DynToJson).
@@ -240,8 +299,29 @@ func (c *Compiler) emitDynName(name string) {
 	gn := c.dynGoName(name)
 	hidden := len(c.privateIn(name)) > 0
 	own, shared := c.dynWrappers(name)
+	var genPublic, genPrivate bool
+	own = slices.DeleteFunc(own, func(w dynWrapper) bool {
+		if len(w.cls.TypeParams) == 0 || dynPinned[name] || name == "to_json" || strings.Contains(w.body, "//line") {
+			return false
+		}
+		if c.dynGen == nil {
+			c.dynGen = map[*Class][]dynGenCase{}
+		}
+		key := name
+		if w.private {
+			key, genPrivate = "_"+name, true
+		} else {
+			genPublic = true
+		}
+		c.dynGen[w.cls] = append(c.dynGen[w.cls], dynGenCase{key: key, body: w.body})
+		return true
+	})
+	gen := fmt.Sprintf("_DynGen%d", c.dynGenRound)
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
+	if genPublic {
+		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, name)
+	}
 	if name == "call" {
 		c.w("\tif r, ok := rbDynProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
 	}
@@ -257,6 +337,9 @@ func (c *Compiler) emitDynName(name string) {
 	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
+	}
+	if genPrivate {
+		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok && how != rbCall {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, "_"+name)
 	}
 	c.emitDynArms(shared, true)
 	// every object has Kernel#===, so method_missing is never reached for it
@@ -331,7 +414,7 @@ func (c *Compiler) dynWrappers(name string) ([]dynWrapper, []*dynArm) {
 		if w.body == "" {
 			continue
 		}
-		w.body = c.freeCall(e, w.body)
+		w.body = c.freeCall(cls, e, w.body)
 		iface, body, ok := c.dynShareable(w, name)
 		if !ok {
 			own = append(own, w)
@@ -363,13 +446,32 @@ func (c *Compiler) dynWrappers(name string) ([]dynWrapper, []*dynArm) {
 // literal naming the method, which would keep the forwarder on every reached class (decision 121). Only a
 // universal owner: a named constraint's free func (`Module_Name[ModuleI]`) is not the method a metaclass's
 // synth `Name()` overrides in Go, and a module constraint (`Comparable_Self[Self]`) needs the concrete class.
-func (c *Compiler) freeCall(e *entry, body string) string {
+func (c *Compiler) freeCall(cls *Class, e *entry, body string) string {
 	call := "self." + e.M.GoName + "("
-	if !strings.Contains(body, call) || c.isDirectMethod(e.M) || !e.Owner.universal {
+	if !strings.Contains(body, call) || c.isDirectMethod(e.M) {
 		return body
 	}
-	body = strings.ReplaceAll(body, call, freeFuncName(e.M)+"[any](self, ")
+	targ := "any"
+	if !e.Owner.universal {
+		targ = c.ownerIface(cls, e)
+		if targ == "" {
+			return body
+		}
+	}
+	body = strings.ReplaceAll(body, call, freeFuncName(e.M)+"["+targ+"](self, ")
 	return strings.ReplaceAll(body, "(self, )", "(self)")
+}
+
+// ownerIface is the interface a struct class's wrapper instantiates an inherited class body with, as its forwarder
+// does (decision 209): the owner's, which every class below it implements, so no forwarder is selected. "" for a
+// module (its constraint may name Self), a generic owner, a wrapper on a primitive, or a class object: a metaclass
+// answers Module's and Class's methods through Go-level overrides (synth Name, decision 121) that a promoted wrapper
+// of its parent's would bypass.
+func (c *Compiler) ownerIface(cls *Class, e *entry) string {
+	if !cls.isStruct() || len(cls.TypeParams) > 0 || cls.metaOf != nil || e.Owner.IsModule || !e.Owner.isStruct() || len(e.Owner.TypeParams) > 0 || e.Owner.isSubclassOf(c.classes["Module"]) {
+		return ""
+	}
+	return e.Owner.Name + "I"
 }
 
 // dynGenerated: e comes from the prelude, or is a metaclass's generated
@@ -396,8 +498,11 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		}
 	}
 	rest := strings.ReplaceAll(body, "[any](self", "")
+	if oi := c.ownerIface(cls, e); oi != "" && strings.Contains(rest, "["+oi+"](self") {
+		iface, rest = oi, strings.ReplaceAll(rest, "["+oi+"](self", "") // self is recv asserted to the owner's interface
+	}
 	call := "self." + e.M.GoName + "("
-	if !w.private && strings.Contains(rest, call) {
+	if !w.private && iface == "" && strings.Contains(rest, call) {
 		env := composeEnv(e.Env, nil)
 		env["Self"] = c.selfTypeFor(*e, cls)
 		ps, ret := c.sig(e.M, env)
@@ -794,25 +899,30 @@ func (c *Compiler) dynArg(t Type, i int) string {
 	return fmt.Sprintf("rbAs[%s](%s, %q)", c.goType(t), arg, t.String())
 }
 
-// emitMarkers emits rbHas<marker>(recv), true for the classes given: a
-// marker method on each non-generic primitive class, and one switch on the
-// class ID for struct classes, which may be many, and generic classes, where
-// Go would compile a marker per instantiation (decision 87).
+// emitMarkers emits rbHas<marker>(recv), true for the classes given: one
+// switch on the class ID, where a marker method was a function per class
+// (and per instantiation of a generic one), kept as a stub whenever the
+// assertion was (decisions 87, 209). Boolean keeps a method: no value
+// answers its ID.
 func (c *Compiler) emitMarkers(marker string, classes []*Class) {
 	if c.markers[marker] {
 		return
 	}
 	c.markers[marker] = true
 	var ids []string
+	methods := false
 	for _, cls := range classes {
-		if cls.isStruct() || len(cls.TypeParams) > 0 {
-			ids = append(ids, strconv.Itoa(c.classID(cls)))
-		} else {
+		if cls == c.classes["Boolean"] { // true and false answer TrueClass's and FalseClass's IDs, never Boolean's
 			c.w("func (self %s) %s() {}\n\n", c.recvType(cls), marker)
+			methods = true
+		} else {
+			ids = append(ids, strconv.Itoa(c.classID(cls)))
 		}
 	}
 	c.w("func rbHas%s(recv any) bool {\n", marker)
-	c.w("\tif _, ok := recv.(interface{ %s() }); ok {\n\t\treturn true\n\t}\n", marker)
+	if methods {
+		c.w("\tif _, ok := recv.(interface{ %s() }); ok {\n\t\treturn true\n\t}\n", marker)
+	}
 	if len(ids) > 0 {
 		c.w("\tif id, ok := recv.(interface{ _ClassID() int }); ok {\n")
 		c.w("\t\tswitch id._ClassID() {\n\t\tcase %s:\n\t\t\treturn true\n\t\tdefault:\n\t\t}\n\t}\n", strings.Join(ids, ", "))
