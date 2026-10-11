@@ -63,15 +63,20 @@ class Thread < Object
   #: (Float) -> Thread?
   def __join_1(timeout) = %x{
     self.notSelf()
+    timer := time.After(time.Duration(math.Round(float64(timeout) * 1e9)))
     select {
     case <-self.done:
-      if self.err != nil {
-        panic(self.err)
+    default: // a finished thread wins even if the timer has fired by now: select picks among ready cases at random
+      select {
+      case <-self.done:
+      case <-timer:
+        return nil
       }
-      return &self
-    case <-time.After(time.Duration(math.Round(float64(timeout) * 1e9))):
-      return nil
     }
+    if self.err != nil {
+      panic(self.err)
+    }
+    return &self
   }
 
   # Blocks and re-raises like join, then answers the block's value.
