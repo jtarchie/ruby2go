@@ -6530,9 +6530,8 @@ resolve; anything not listed is still open.
       archives 78 → 72 and 77 → 73 MB; compile CPU −8%.
     - **Split estimate, unchanged:** stubbing every non-generic body of
       `116_cuba_web` still leaves 81% of its compile memory (1,138 of
-      1,410 MB; 79% before). What stays is generic: the containers'
-      instantiations (`Array[E]`, `Hash[K, V]`, each compiling every
-      method) and declarations: with every body stubbed it was 612 of
-      1,386 MB before this change. A split
-      that moves only class bodies out of the bottom package saves at
-      most ~20% peak memory.
+      1,410 MB; 79% before). Stubbing only the generic bodies leaves
+      79% too (1,118 MB) but cuts compile CPU by 41%; the rest is
+      declarations, itabs and Go's embedding wrappers (decision 209's
+      note). A split that moves only class bodies out of the bottom
+      package saves at most ~20% peak memory.
