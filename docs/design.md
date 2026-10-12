@@ -6535,3 +6535,20 @@ resolve; anything not listed is still open.
       declarations, itabs and Go's embedding wrappers (decision 209's
       note). A split that moves only class bodies out of the bottom
       package saves at most ~20% peak memory.
+    - **Phase 5 measured, not done (2026-10-11, #96 comment):** the
+      unpruned core prelude as a cached `rt` package (63.5k compiled
+      functions, 1.9 GB, 36 s once) with the program as `main`
+      dot-importing it and the ten whole-program tables (`rbUnbox`,
+      `rbCmpBox`, class-ID arrays, ...) as hook variables made
+      `05_word_count`'s own package 1,370 → 20,844 functions and
+      `116_cuba_web`'s 33,244 → 82,797 (1.35 → 3.1 GB). Go recompiles
+      a generic instantiation in every package that reaches it, and an
+      instantiated type brings its whole method set, transitively
+      through the bodies (`Array[E]` has 120 methods unpruned; a
+      40-line module confirmed it, with `-l` too); embedding
+      `super_Foo_` promotes every parent method. 402 Dyn wrappers and
+      markers on prelude types exist only per program and cannot be
+      declared from another package. So the split waits on
+      forwarders being replaced by type-switch dispatchers in `main`
+      and generic classes keeping a fixed ~12-method set (#96 phase
+      3b); until then one pruned package is the cheaper build.
