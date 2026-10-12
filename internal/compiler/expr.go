@@ -4584,18 +4584,24 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
-	targs, ret := "", subst(e.M.Ret, env)
-	if o := f.owner; e.Owner.IsModule && !e.Owner.universal && len(e.Owner.TypeParams) == 0 && !o.IsModule && o.isStruct() && len(o.TypeParams) == 0 &&
-		f.c.constraintNamesSelf(e.Owner) && (!mentionsVar(e.M.Ret) || isSelfVar(e.M.Ret)) {
-		// the module's constraint names Self (`def wait = self`): this class's own override returns its interface, so a
-		// generic Self param cannot satisfy it (have Wait() DelayI, want Wait() Self); the class interface does
-		targs = "[" + o.Name + "I]"
-	}
-	code := staticCallCode(e.M, targs, f.selfCode, strings.Join(codes, ", "))
-	if targs != "" && isSelfVar(e.M.Ret) {
-		code = "rbAs[Self](" + code + ", \"self\")" // it returns self as the class interface; a call, so it stands as a statement too
-	}
+	code, ret := f.superModuleCall(e, codes), subst(e.M.Ret, env)
 	return expr{code: code, typ: ret}
+}
+
+// superModuleCall is the static call `super` makes to e. When e is a module body whose constraint names Self (`def
+// wait = self`), this class's own override returns its interface, so a generic Self param cannot satisfy it (have
+// Wait() DelayI, want Wait() Self): the call names the class interface, and a Self result converts back (decision 217).
+func (f *fctx) superModuleCall(e *entry, codes []string) string {
+	o := f.owner
+	if !e.Owner.IsModule || e.Owner.universal || len(e.Owner.TypeParams) > 0 || o.IsModule || !o.isStruct() || len(o.TypeParams) > 0 ||
+		mentionsVar(e.M.Ret) && !isSelfVar(e.M.Ret) || !f.c.constraintNamesSelf(e.Owner) {
+		return staticCallCode(e.M, "", f.selfCode, strings.Join(codes, ", "))
+	}
+	code := staticCallCode(e.M, "["+o.Name+"I]", f.selfCode, strings.Join(codes, ", "))
+	if isSelfVar(e.M.Ret) {
+		code = "rbAs[Self](" + code + ", \"self\")" // a call, so it stands as a statement too
+	}
+	return code
 }
 
 func isSelfVar(t Type) bool { v, ok := t.(TVar); return ok && v.Name == "Self" }
