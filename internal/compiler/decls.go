@@ -517,7 +517,7 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 	// self is some includer, whose to_s/inspect/... may override Object's
 	if mod.lookup("method_missing") == nil {
 		for _, e := range c.publicEntries(c.classes["Object"]) {
-			if called[e.M.Name] && mod.lookup(e.M.Name) == nil && c.topDefs[e.M.Name] == nil {
+			if called[e.M.Name] && mod.lookup(e.M.Name) == nil && c.topDefs[e.M.Name] == nil && !c.dispatchable(e.Owner, e.M) {
 				ps, ret := c.sig(e.M, map[string]Type{"Self": TVar{Name: "Self"}})
 				c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
 			}
@@ -1480,6 +1480,9 @@ func growsOwnClass(cls *Class, e entry) bool {
 
 // includerCalls: a module method calling name on self needs cls to answer it.
 func (c *Compiler) includerCalls(cls *Class, name string) bool {
+	if c.universalDispatch(name) {
+		return false // the module body dispatches it (dispatch.go), so its constraint does not declare it
+	}
 	for k := cls; k != nil && !k.universal; k = k.Super {
 		for _, inc := range k.Includes {
 			if c.selfCalls(inc.Mod)[name] {

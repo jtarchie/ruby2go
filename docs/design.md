@@ -6629,3 +6629,39 @@ resolve; anything not listed is still open.
       `bind_call` found the `staticDef` rule, `object_test`'s module
       constraints the ancestor walk, minitest's reporters the ordering
       against decision 86's free-func shortcut.
+213. **Metaclasses and universal owners dispatch too; module constraints
+    stop declaring Kernel names** (#96 phase 3b step 2, amends 208, 209,
+    212). Decision 212's `dispatchable` now also admits a metaclass or
+    `Module` subclass as owner and a class object as receiver (their
+    synth `name`/`new`/`to_s` stay Go methods, so an override by synth is
+    "not plain" and keeps the interface path), a `%x{}`-bodied prelude
+    method (`kindPrimitive`: the same free function as a `def`), and a
+    universal owner (`Kernel`, `Object`, `BasicObject`): the dispatcher
+    takes `self any` and switches over every struct class whose own
+    resolution is not the universal body. `self` in a module body is some
+    includer, so a universal name there dispatches over all classes, and
+    the module's constraint no longer declares it (`emitModuleInterface`
+    skips it; `includerCalls` answers false through `universalDispatch`),
+    which is what put `Loop`, `Sleep`, `Display`, `ObjectId` ... on every
+    class in an unpruned program. The pruner rewrites a dispatcher whose
+    arms were dropped to one or none into an `if` or nothing
+    (`inlineDefaultOnly`), as gocritic asked. `RB2GO_DISPATCH_DEBUG=1`
+    prints why a universal name stays a Go method.
+    - **Measured** (compiled functions; peak RSS, `-dwarf=false`; the
+      unpruned core prelude is what a cached `rt` would cost once):
+      unpruned core 33,072 → 18,651 and 909 → 656 MB, 8.5 → 3.1 s
+      (session start, before decision 211: 63,506, 1,872 MB, 36 s);
+      forwarders 9,122 → 2,086. Pruned programs are flat (`116_cuba_web`
+      31,075 → 31,025, `64_observable` 31,098 → 30,779). The hand-built
+      `rt` split re-run: `116_cuba_web`'s own package 36,370 → 25,986
+      functions and 1,463 → 1,209 MB, now below today's single pruned
+      package (31,025 / 1,320 MB); `05_word_count`'s 3,372 → 3,040 and
+      194 → 165 MB (1,370 / 124 MB). What remains in cuba's package: the
+      per-class markers and protocol (`_ClassID`, `Inspect`, `ToS`,
+      `Op_eq`, `_Dup`, `_Copy`, `_ClassOf`, ~7 × 430 types), `Itself`/
+      `Exit`/`Sleep` on 286 metaclasses (`-> self` and Go-called), and
+      9,170 generic instantiations.
+    - **Speed:** README benchmarks unchanged (7.6x total both sides);
+      the `Shape` loop 0.23 → 0.17 s user.
+    - **Proof:** suite unchanged; `95_open_uri`'s lint found the one-arm
+      switch.

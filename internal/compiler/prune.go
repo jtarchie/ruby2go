@@ -588,6 +588,30 @@ func (p *pruner) dropDeadClauses(body *ast.BlockStmt, own ast.Stmt) bool {
 	return true
 }
 
+// inlineDispatcher rewrites a dispatcher's type switch (dispatch.go) left with one arm into an `if`, or with none into
+// nothing, for the classes the program makes; done is false for any other switch.
+func inlineDispatcher(ts *ast.TypeSwitchStmt) (ast.Stmt, bool) {
+	a, isAssign := ts.Assign.(*ast.AssignStmt)
+	if !isAssign || ts.Init != nil || len(ts.Body.List) > 1 {
+		return nil, false
+	}
+	if len(ts.Body.List) == 0 {
+		return nil, true // the guard is an identifier (self): nothing to keep
+	}
+	cc := ts.Body.List[0].(*ast.CaseClause)
+	if len(cc.List) != 1 {
+		return nil, false
+	}
+	v := a.Lhs[0].(*ast.Ident).Name
+	if !mentions(cc, v) {
+		v = "_" // an if's variable must be used; a switch's need not
+	}
+	ok := &ast.Ident{NamePos: ts.Pos(), Name: "ok"}
+	init := &ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{NamePos: ts.Pos(), Name: v}, ok}, TokPos: ts.Pos(), Tok: token.DEFINE,
+		Rhs: []ast.Expr{&ast.TypeAssertExpr{X: a.Rhs[0].(*ast.TypeAssertExpr).X, Type: cc.List[0]}}}
+	return &ast.IfStmt{If: ts.Pos(), Init: init, Cond: ok, Body: &ast.BlockStmt{Lbrace: ts.Pos(), List: cc.Body, Rbrace: ts.End() - 1}}, true
+}
+
 // inlineDefaultOnly replaces a switch whose cases were all dropped with its default body (gocritic's singleCaseSwitch); the guard's expression stays as `_ = e` in case it has effects.
 func inlineDefaultOnly(list []ast.Stmt) []ast.Stmt {
 	out := make([]ast.Stmt, 0, len(list))
@@ -603,6 +627,14 @@ func inlineDefaultOnly(list []ast.Stmt) []ast.Stmt {
 			continue
 		}
 		ts, ok := st.(*ast.TypeSwitchStmt)
+		if ok {
+			if rewritten, done := inlineDispatcher(ts); done {
+				if rewritten != nil {
+					out = append(out, rewritten)
+				}
+				continue
+			}
+		}
 		if !ok || len(ts.Body.List) != 1 || ts.Body.List[0].(*ast.CaseClause).List != nil {
 			out = append(out, st)
 			continue

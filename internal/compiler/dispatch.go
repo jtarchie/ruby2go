@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"os"
 	"regexp"
 	"slices"
 )
@@ -36,35 +37,37 @@ func (c *Compiler) dispatchable(owner *Class, m *Method) bool {
 }
 
 func (c *Compiler) dispatchableUncached(owner *Class, m *Method) bool {
-	if owner == nil || m.Owner != owner || !owner.isStruct() || owner.universal || owner.metaOf != nil || owner.hashBase || len(owner.TypeParams) > 0 || owner.isSubclassOf(c.classes["Module"]) {
-		return false
+	ok, why := c.dispatchableWhy(owner, m)
+	if os.Getenv("RB2GO_DISPATCH_DEBUG") != "" && owner != nil && owner.universal && !ok {
+		fmt.Fprintf(os.Stderr, "dispatch-debug %s#%s: %s\n", owner.Name, m.Name, why)
 	}
-	if !c.plainMethod(m) || !c.plainSelf(m) {
-		return false
-	}
-	if stdMethodNames[m.GoName] || genericProtocol[m.Name] || c.universalHas(m.Name) || c.goCalled()[m.GoName] {
-		return false
+	return ok
+}
+
+func (c *Compiler) dispatchableWhy(owner *Class, m *Method) (bool, string) {
+	if why := c.dispatchableOwner(owner, m); why != "" {
+		return false, why
 	}
 	ps, ret := c.sig(m, map[string]Type{})
 	for _, k := range c.classList {
-		if !k.isStruct() || k.metaOf != nil || !k.isSubclassOf(owner) {
+		if !k.isStruct() || !k.isSubclassOf(owner) {
 			continue
 		}
-		if c.includerCalls(k, m.Name) {
-			return false // a module body reaches it through its constraint interface
+		if !owner.universal && c.includerCalls(k, m.Name) {
+			return false, "includerCalls" // a module body reaches it through its constraint interface (a universal name leaves the constraint instead)
 		}
 		impl := k.lookup(m.Name)
 		if impl == nil || impl.M == m {
 			continue
 		}
-		if !impl.Owner.isStruct() || impl.Owner.metaOf != nil || !c.plainMethod(impl.M) || !c.plainSelf(impl.M) {
-			return false
+		if !impl.Owner.isStruct() || !c.plainMethod(impl.M) || !c.plainSelf(impl.M) {
+			return false, "override in " + impl.Owner.Name + " not plain"
 		}
 		if p2, r2 := c.sig(impl.M, map[string]Type{}); p2 != ps || r2 != ret {
-			return false // an override with another Go signature answers through an adapter (shadowed)
+			return false, "override in " + impl.Owner.Name + " has another signature" // an adapter answers it (shadowed)
 		}
 	}
-	return true
+	return true, ""
 }
 
 // dispatchableAll reports whether every ancestor of cls (cls included) that defines name dispatches it, so no interface
@@ -83,16 +86,40 @@ func (c *Compiler) dispatchableAll(cls *Class, name string) bool {
 	return found
 }
 
+// dispatchableOwner checks the owner and the method itself; "" when they qualify, else why not.
+func (c *Compiler) dispatchableOwner(owner *Class, m *Method) string {
+	switch {
+	case owner == nil || m.Owner != owner || owner.hashBase || len(owner.TypeParams) > 0:
+		return "owner"
+	case !owner.isStruct() && !owner.universal:
+		return "owner is not a struct class"
+	case !c.plainMethod(m):
+		return "not plain method"
+	case !c.plainSelf(m):
+		return "not plainSelf"
+	case stdMethodNames[m.GoName] || genericProtocol[m.Name] || c.goCalled()[m.GoName] || !owner.universal && c.universalHas(m.Name):
+		return "protocol/goCalled"
+	}
+	return ""
+}
+
+// universalDispatch reports whether name resolves on every object to a universal owner's dispatchable method, so no
+// module constraint declares it and no class carries a forwarder for it.
+func (c *Compiler) universalDispatch(name string) bool {
+	e := c.classes["Object"].lookup(name)
+	return e != nil && e.Owner.universal && c.dispatchable(e.Owner, e.M)
+}
+
 // plainMethod: a public def with one Go signature and no adapters.
 func (c *Compiler) plainMethod(m *Method) bool {
-	return m.Kind == kindDef && !m.Private && !m.generic() && m.Name != "initialize" && !m.seqAdapter && len(m.shadowed) == 0 && m.SelfType == nil
+	return (m.Kind == kindDef || m.Kind == kindPrimitive) && !m.Private && !m.generic() && m.Name != "initialize" && !m.seqAdapter && len(m.shadowed) == 0 && m.SelfType == nil
 }
 
 // sendArms lists the classes below owner whose own resolution of m is not owner's body: the dispatcher's cases.
 func (c *Compiler) sendArms(owner *Class, m *Method) []*Class {
 	var out []*Class
 	for _, k := range c.sortedClasses() {
-		if k == owner || !k.isStruct() || k.metaOf != nil || !k.isSubclassOf(owner) {
+		if k == owner || !k.isStruct() || !k.isSubclassOf(owner) {
 			continue
 		}
 		if impl := k.lookup(m.Name); impl != nil && impl.M != m {
@@ -138,7 +165,7 @@ func (c *Compiler) emitSends(reached func(string) bool) {
 		}
 		arms := c.sendArms(s.owner, s.m)
 		c.labels[name] = s.owner.RubyName + "#" + s.m.Name
-		c.w("func %s(self %sI%s) %s {\n", name, s.owner.Name, comma(ps), ret)
+		c.w("func %s(self %s%s) %s {\n", name, c.plainSelfType(s.owner), comma(ps), ret)
 		if len(arms) == 1 { // gocritic rejects a one-case switch
 			k := arms[0]
 			c.w("\tif v, ok := self.(*%s); ok {\n\t\t%s\n\t}\n", k.Name, call("v", k.lookup(s.m.Name).M))

@@ -3438,8 +3438,9 @@ func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) 
 	if f.staticDef == e.M || f.plainCalls && recv.code == "self" {
 		return "", false
 	}
-	if owner := f.staticStruct(recv); owner == nil || !f.c.dispatchable(e.Owner, e.M) {
-		return "", false
+	owner := f.staticStruct(recv)
+	if owner == nil || !f.c.dispatchable(e.Owner, e.M) || owner.IsModule && !owner.universal && !e.Owner.universal {
+		return "", false // a module's own method on its Self is the constraint's, not a struct's
 	}
 	return f.c.sendCall(e, recv.code, argList), true
 }
@@ -3449,12 +3450,12 @@ func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) 
 func (f *fctx) staticStruct(recv expr) *Class {
 	switch t := recv.typ.(type) {
 	case TClass:
-		if t.C.isStruct() && t.C.metaOf == nil && len(t.C.TypeParams) == 0 && !t.C.hashBase && !t.C.universal {
+		if t.C.isStruct() && len(t.C.TypeParams) == 0 && !t.C.hashBase && !t.C.universal {
 			return t.C
 		}
 	case TVar:
-		if t.Name == "Self" && f.owner != nil && f.owner.isStruct() && f.owner.metaOf == nil && !f.owner.universal && len(f.owner.TypeParams) == 0 {
-			return f.owner
+		if t.Name == "Self" && f.owner != nil && len(f.owner.TypeParams) == 0 && (f.owner.isStruct() || f.owner.IsModule) {
+			return f.owner // a struct class's body, or a module's: self is some includer, a universal name dispatches over all
 		}
 	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
 	}
