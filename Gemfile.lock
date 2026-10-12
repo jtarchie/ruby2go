@@ -22,11 +22,15 @@ GEM
       rbs (~> 4.0)
     sorbet-runtime (0.6.13544)
     tsort (0.2.0)
+    tyda (0.0.20261012123826-arm64-darwin)
+    tyda (0.0.20261012123826-x86_64-darwin)
+    tyda (0.0.20261012123826-x86_64-linux)
     webrick (1.9.2)
 
 PLATFORMS
   arm64-darwin-25
-  ruby
+  x86_64-darwin
+  x86_64-linux
 
 DEPENDENCIES
   cuba (~> 4.0)
@@ -35,6 +39,7 @@ DEPENDENCIES
   rbs (~> 4.0)
   rbs-inline (~> 0.14)
   sorbet-runtime (~> 0.6)
+  tyda
   webrick (~> 1.9)
 
 CHECKSUMS
@@ -49,6 +54,9 @@ CHECKSUMS
   rbs-inline (0.14.0) sha256=eaf47b46690d63acddab1f6804c9cc205a4bc78e637cfc421a0b1239874ef51c
   sorbet-runtime (0.6.13544) sha256=30c6d716f5771da7fe81d5c51b90fc027756de32fa8c9c75cd2c4a8103792f30
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
+  tyda (0.0.20261012123826-arm64-darwin) sha256=cf59fe85eee4a886ffb941a92041a86f9bcf5bbad596b8a112f03e1f8084a4ed
+  tyda (0.0.20261012123826-x86_64-darwin) sha256=394db007871d00ac7b5463a45393374dedc90fb8e5052510f7ff1282f2f31037
+  tyda (0.0.20261012123826-x86_64-linux) sha256=e631f5e5ff2ff238d99a7fc9ca75d61367511cc4797503059f8a8df4dedb3015
   webrick (1.9.2) sha256=beb4a15fc474defed24a3bda4ffd88a490d517c9e4e6118c3edce59e45864131
 
 BUNDLED WITH

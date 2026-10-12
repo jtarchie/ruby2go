@@ -32,9 +32,18 @@ go run ./cmd/rb2go run examples/NN_x/main.rb        # transpile, build, run; war
 go run ./cmd/rb2go build -work -gcflags=-e examples/NN_x/main.rb  # keep main.go (WORK= path on stderr), show every Go error
 scripts/rubyspec-coverage --missing   # ruby/spec core method files the prelude names, per class (#49; clones ruby/spec to the cache)
 go run ./cmd/rubyspec -reasons 20 core/integer   # run ruby/spec directories under rb2go (decision 127); `core` runs each core/* dir, -v lists every skip
+bundle exec tyda path/to/file.rb        # inferred RBS for unannotated Ruby (dev aid, see below); --diagnostics for JSON Lines
 ```
 
 `go test` fails fast unless `ruby` ≥ 4.0, `bundle install` has been run, and `golangci-lint` is on PATH. Gem executables are not on PATH on this machine, so use `bundle exec rbs-inline ...` for manual runs. Stderr lines like rdoc "already initialized constant" warnings are noise.
+
+## When to use tyda
+
+`tyda` (Gemfile, development group) infers RBS from unannotated Ruby and prints it. It is not part of the build or tests: rb2go's own inference (decisions 36, 146, 183) is the authority, and the two disagree by design (tyda emits `untyped` where unsure and keeps literal types like `1 | "one"`). Reach for it when:
+- annotating a legacy file or a vendored gem (decision 110/160): run it, keep the concrete signatures, widen literals, fill the `untyped` ones by hand.
+- a program fails inference and you want a second opinion on a parameter or return type before adding a `#:`.
+- an rb2go inference result looks wrong: if tyda agrees with MRI's behaviour and rb2go does not, that is a bug to file.
+Never feed its output into the compiler automatically, and never loosen rb2go's typing to match it.
 
 ## What a passing example means
 
