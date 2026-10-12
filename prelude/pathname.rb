@@ -114,6 +114,10 @@ class Pathname < Object
   #: (untyped) -> Integer
   def write(data) = File.write(to_s, data)
 
+  # File.open on this path, as MRI's Pathname#open.
+  #: [T] (?(String | Integer | nil), ?Integer?, **untyped) { (File) -> T } -> T
+  def open(mode = nil, perm = nil, **opts) = File.open(to_s, mode, perm, **opts) { |f| yield f }
+
   #: () { (String) -> void } -> void
   def each_filename
     to_s.split("/").each { |c| yield c if c != "" }

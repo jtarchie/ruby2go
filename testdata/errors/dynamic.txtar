@@ -185,31 +185,6 @@ end
 #: (untyped) -> untyped
 def ident(v) = v
 puts ident(Foo.new).f("abc")
--- is_a_module_on_untyped.rb --
-# error: main.rb:4: is_a?(Comparable) on untyped cannot be checked: rb2go has no runtime record of included modules
-# rbs_inline: enabled
-#: (untyped) -> bool
-def cmp?(v) = v.is_a?(Comparable)
-puts cmp?(1)
--- kind_of_module_on_untyped.rb --
-# error: main.rb:4: is_a?(Enumerable) on untyped cannot be checked
-# rbs_inline: enabled
-#: (untyped) -> bool
-def enum?(v) = v.kind_of?(Enumerable)
-puts enum?([1])
--- is_a_module_on_struct_class.rb --
-# error: main.rb:11: is_a?(Named) on Vehicle cannot be checked
-# rbs_inline: enabled
-module Named
-end
-class Vehicle
-end
-class Car < Vehicle
-  include Named
-end
-#: (Vehicle) -> bool
-def named?(v) = v.is_a?(Named)
-puts named?(Car.new)
 -- is_a_takes_one_class.rb --
 # error: main.rb:4: is_a? takes one class
 # rbs_inline: enabled
@@ -260,22 +235,6 @@ puts f(Car.new), f(Vehicle.new)
 #: (untyped) -> untyped
 def ident(v) = v
 ident([1]).each { |x| puts x }
--- splat_in_computed_send.rb --
-# error: main.rb:12:
-# rbs_inline: enabled
-class Proxy
-  #: (untyped) -> void
-  def initialize(target)
-    @target = target #: untyped
-  end
-
-  #: (Symbol, *untyped) -> untyped
-  def method_missing(name, *args)
-    # a computed send with a splat, the usual proxy idiom
-    @target.send(name, *args)
-  end
-end
-puts Proxy.new("abc").center(9)
 -- block_with_computed_send.rb --
 # error: main.rb:4: a block with a computed send is not supported
 # rbs_inline: enabled

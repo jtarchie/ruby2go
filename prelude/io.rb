@@ -7,6 +7,16 @@ module IOWritable
   #: (untyped) -> Integer
   def write(x) = raise(NotImplementedError)
 
+  # write(a, b, ...): each in turn, the byte count summed (MRI 2.5+).
+  #: (untyped, untyped) -> Integer
+  def __write_2(a, b) = write(a) + write(b)
+
+  #: (untyped, untyped, untyped) -> Integer
+  def __write_3(a, b, c) = write(a) + write(b) + write(c)
+
+  #: (untyped, untyped, untyped, untyped) -> Integer
+  def __write_4(a, b, c, d) = write(a) + write(b) + write(c) + write(d)
+
   #: (*untyped) -> nil
   def print(*args)
     args.each { |a| write(a) }

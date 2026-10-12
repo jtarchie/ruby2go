@@ -40,6 +40,13 @@ class StringIO < Object
     return s}
   end
 
+  # write(a, b, ...): each in turn, the byte count summed (MRI 2.5+), as IOWritable's.
+  #: (untyped, untyped) -> Integer
+  def __write_2(a, b) = write(a) + write(b)
+
+  #: (untyped, untyped, untyped) -> Integer
+  def __write_3(a, b, c) = write(a) + write(b) + write(c)
+
   #: (untyped) -> Integer
   def write(x) = %x{
     self.rbWritable()

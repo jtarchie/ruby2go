@@ -1897,4 +1897,24 @@ module StdlibTests
       t.unlink
     end
   end
+
+  # Pathname#open, Dir.mktmpdir without a block or with a prefix, IO#write of several values.
+  class StdlibPathOpenTest < Minitest::Test
+    def test_pathname_open_and_mktmpdir
+      d = Pathname(Dir.mktmpdir("stdlibt"))
+      assert File.basename(d.to_s).start_with?("stdlibt")
+      n = (d + "a.txt").open("w") { |f| f.write("hi\n", "there") }
+      got = [n, (d + "a.txt").open("r") { |f| f.gets }, (d + "a.txt").open { |f| f.read.size }]
+      assert_equal [8, "hi\n", 8], got
+      inner = Dir.mktmpdir(%w[a .z], d.to_s) { |x| [File.dirname(x) == d.to_s, x.end_with?(".z")] }
+      assert_equal [true, true], inner
+      FileUtils.rm_rf(d.to_s)
+      refute File.exist?(d.to_s)
+    end
+
+    def test_stringio_write_several
+      s = StringIO.new
+      assert_equal [3, "a1b"], [s.write("a", 1, :b), s.string]
+    end
+  end
 end

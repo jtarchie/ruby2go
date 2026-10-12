@@ -441,6 +441,7 @@ func (c *Compiler) emitTables() {
 		c.emitCallTables()
 	}
 	c.emitClassOf()
+	c.emitModIsA()
 	c.emitFrozenFlag()
 	c.emitDynEach()
 	c.emitTuples()
@@ -2296,4 +2297,21 @@ func (c *Compiler) emitFrozenFlag() {
 		c.w("\tswitch v := a.(type) {\n%s\t}\n", strings.Join(cases, ""))
 	}
 	c.w("\treturn nil\n}\n\n")
+}
+
+// emitModIsA emits rbHasIsA_Mod for each module runtimeModuleIsA tested an untyped value against: a class-ID switch
+// over the classes that include it (decision 228).
+func (c *Compiler) emitModIsA() {
+	for _, mod := range c.classList {
+		if !c.modIsA[mod] {
+			continue
+		}
+		var classes []*Class
+		for _, k := range c.classList {
+			if !k.IsModule && !k.universal && slices.Contains(k.allAncestors(), mod) {
+				classes = append(classes, k)
+			}
+		}
+		c.emitMarkers("IsA_"+mod.Name, classes)
+	}
 }

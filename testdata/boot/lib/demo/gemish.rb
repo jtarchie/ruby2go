@@ -54,6 +54,9 @@ module Demo
       @lock.owned? ? yield : @lock.synchronize { yield }
     end
 
+    # A tuple's Array methods: `[t - 1, 0.0].max` (decision 227).
+    def remaining(t) = [t - 1, 0.0].max
+
     # Read before anything assigns it: untyped, nil (decision 220).
     def never_set_or(d) = @never_set || d
 
@@ -75,5 +78,14 @@ module Demo
 
   class GemTab < GemAbstractTab
     def kind = "tab"
+  end
+
+  # `$stdout.extend(M)`: IO answers M's methods (decision 229).
+  module Out
+    module Mixin
+      def ohai(msg) = puts("==> #{msg}")
+    end
+
+    $stdout.extend Mixin
   end
 end

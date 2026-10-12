@@ -41,3 +41,5 @@ p g.json_find('{"sigs":[{"h":{"kid":"a"}},{"h":{"kid":"b"},"v":1}]}'), g.json_fi
 p g.json_big('{"a":1,"b":2}')
 p g.tab_for("x").kind, g.tab_for("")
 p g.synced
+p g.remaining(3), g.remaining(0.5)
+$stdout.ohai("extended")

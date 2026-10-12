@@ -2955,4 +2955,20 @@ module DynamicTests
       assert_predicate SharedLeaf.new, :sub?
     end
   end
+
+  class SplatTarget
+    #: (Integer, Integer, ?Integer) -> Integer
+    def joined(a, b, c = 0) = a + b + c
+  end
+
+  # Splats into a dynamic call or a computed send: one argument list (decision 227).
+  class DynamicSplatTest < Minitest::Test
+    def test_two_splats_and_send
+      x = SplatTarget.new #: untyped
+      a = [1] #: Array[Integer]
+      b = [2, 3] #: Array[Integer]
+      m = :joined #: Symbol
+      assert_equal [6, 3, 6], [x.joined(*a, *b), x.joined(*a, 2), SplatTarget.new.send(m, 1, *b)]
+    end
+  end
 end

@@ -229,3 +229,31 @@ func rbAnySlice[E comparable](a *Array[E]) []any {
 	}
 	return out
 }
+
+// rbSplatAny is `*x` of an untyped x into a call (decision 227): an Array's elements, nil none, a Hash its pairs, anything
+// else itself, as MRI's splat (to_a) does. ponytail: a user class's to_a is not called.
+func rbSplatAny(x any) []any {
+	switch v := x.(type) {
+	case nil:
+		return nil
+	case Array_Any:
+		return v._ToAny().s
+	case Hash_Any:
+		h := v._ToAny()
+		out := make([]any, 0, len(h.keys))
+		for _, k := range h.keys {
+			out = append(out, &Array[any]{s: []any{k, h.vals[k]}})
+		}
+		return out
+	}
+	return []any{x}
+}
+
+// rbArgsCat joins a call's argument pieces, splats spread, into one slice.
+func rbArgsCat(parts ...[]any) []any {
+	var out []any
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	return out
+}

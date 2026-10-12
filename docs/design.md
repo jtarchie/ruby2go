@@ -6959,3 +6959,41 @@ resolve; anything not listed is still open.
       {}.freeze, T.proc.void)` built a `func() any` for a `func()` slot.
     - **Proof:** `testdata/boot` (`Gemish#synced`), `control_test.rb`
       `ControlNestedYieldTest`.
+227. **Gaps on Homebrew's `brew info` path** (#81-style stdlib items,
+    amends 13, 172):
+    - **A tuple's Array methods, in gem code.** `[t - 1, 0.0].max`,
+      `pair.second`, `[a, b].hash` were "undefined method for tuple". A
+      gem call on a tuple of a name `Array` has goes to `Array[E]` of the
+      fields, `E` their join (untyped when mixed), which answers as
+      MRI's Array does.
+    - **Splats into a dynamic call or computed send.** `callback.call(*a,
+      *b)`, `send(m, state, *args)`, `curl(*args, "--x", **opts)`: the
+      arguments become one `[]any` (`anySpread`: `rbArgsCat` of the
+      pieces, an untyped splat through `rbSplatAny`, MRI's to_a for nil,
+      Array and Hash).
+    - `Pathname#open` with a block; `Dir.mktmpdir` without a block (the
+      path, left in place) and with `prefix_suffix`/`tmpdir`; `IO#write`
+      and `StringIO#write` of several values (`__write_2`...), the byte
+      counts summed.
+    - **Proof:** `dynamic_test.rb` `DynamicSplatTest`, `stdlib_test.rb`
+      `StdlibPathOpenTest`, `testdata/boot` (`Gemish#remaining`).
+228. **`is_a?(Module)` at run time** (amends 21). Decision 21 made
+    `x.is_a?(Mod)` a compile error when x's static type could not decide
+    it (untyped, or a class a subclass of which includes Mod): rb2go had
+    no runtime record of included modules. The closed world is that
+    record: `rbHasIsA_Mod(x)` switches on x's class ID over every class
+    whose ancestors include Mod (decision 85's marker switch, emitted with
+    the program's tail since a body is being written when the test is
+    met). A type variable (`[T] (T)`) and `case`/`when Mod` on such a
+    value stay errors.
+    - **Proof:** `object_test.rb` `ObjectModuleIsATest`.
+229. **`$stdout.extend(M)` is `IO` including `M`.** Homebrew's
+    `Utils::Output` ends with `$stdout.extend Mixin` and `$stderr.extend
+    Mixin`, so `$stderr.opoo(...)` works; rb2go raised NoMethodError
+    (`extend` on an IO) at load. The closed world has no per-object
+    singleton classes, so an `extend` of a module onto `$stdout`,
+    `$stderr` or `$stdin`, in user or gem code, is collected as an
+    `include` into `IO` and the statement itself is gone: every IO answers
+    M's methods, which only `respond_to?` on another IO could tell apart
+    from MRI.
+    - **Proof:** `testdata/boot` (`Demo::Out`).

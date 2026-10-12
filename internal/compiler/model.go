@@ -533,6 +533,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		} else if hook := c.requireHook(f, n); hook != nil {
 			c.addMainStmt(f, hook)
 		}
+	case c.collectIOExtend(f, n, nil):
 	case n.Name == "prepend" && !f.prelude && prependTarget(n) != nil: // `X.prepend(M)`, `X.singleton_class.prepend(M)` (decision 199)
 		recv, single := prependTarget(n), false
 		if sc, ok := recv.(*parser.CallNode); ok {
@@ -1237,6 +1238,20 @@ func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) [
 	return out
 }
 
+// collectIOExtend takes `$stdout.extend(M)` (Homebrew's Utils::Output::Mixin on $stdout and $stderr) as IO including
+// M (decision 229): the closed world has no per-object singleton classes, so every IO answers M's methods, which only
+// respond_to? on another IO could tell. Only the standard streams, whose class is known.
+func (c *Compiler) collectIOExtend(f *File, n *parser.CallNode, scope []*Class) bool {
+	g, ok := n.Receiver.(*parser.GlobalVariableReadNode)
+	if !ok || n.Name != "extend" || f.prelude || g.Name != "$stdout" && g.Name != "$stderr" && g.Name != "$stdin" {
+		return false
+	}
+	for _, a := range callArgs(n) {
+		c.addInclude(f, n, c.classes["IO"], a, scope)
+	}
+	return true
+}
+
 // rejectUnsupportedDecl reports a class-body declaration rb2go recognizes but
 // does not implement, with a clearer message than the load-time call fallback
 // would give.
@@ -1251,6 +1266,9 @@ func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
 // load-time class body takes as a statement to run when the class is defined
 // (decision 166).
 func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, vis *visibility, scope []*Class) bool {
+	if c.collectIOExtend(f, n, scope) {
+		return true
+	}
 	if n.Receiver != nil {
 		return false
 	}

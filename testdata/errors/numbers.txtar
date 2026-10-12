@@ -110,11 +110,6 @@ puts "zero is truthy" if x
 # rbs_inline: enabled
 y = 0.0 #: Float
 puts(y ? "t" : "f")
--- is_a_comparable_untyped.rb --
-# error: main.rb:4: is_a?(Comparable) on untyped cannot be checked: rb2go has no runtime record of included modules
-# rbs_inline: enabled
-v = 1 #: untyped
-puts v.is_a?(Comparable)
 -- untyped_arithmetic.rb --
 # warning: main.rb:6: dynamic call: + on untyped
 # warning: main.rb:7: dynamic call: -@ on untyped

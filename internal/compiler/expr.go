@@ -1811,7 +1811,7 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
-	if _, ok := n.Receiver.(*parser.LambdaNode); ok && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
+	if procLiteral(n.Receiver) && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
 		if _, fn := expected.(TFunc); fn { // `T.let(-> {}.freeze, T.proc.void)`: the lambda at the expected type; freezing a Proc changes nothing it does
 			return f.genExpr(n.Receiver, expected)
 		}
@@ -5285,6 +5285,16 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
 	}
+	if arr := f.c.classes["Array"]; arr.lookup(name) != nil && f.lenient() {
+		// a gem's `[timeout, 0.0].max`, `pair.second`: the Array of the tuple's fields, joined (untyped when mixed), whose
+		// method answers as MRI's Array does (decision 227)
+		et := joinOrAny(tt.Elems)
+		parts := make([]string, len(tt.Elems))
+		for i, t := range tt.Elems {
+			parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", recv.code, i), typ: t}, et)
+		}
+		return f.genMethodCall(n, expr{code: arrayLit(f.c.goType(et), parts), typ: TClass{C: arr, Args: []Type{et}}}, name, args, block)
+	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}
 }
@@ -5813,6 +5823,9 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 		return c
 	}
 	if cls.IsModule {
+		if c, ok := f.runtimeModuleIsA(recv, cls); ok {
+			return c
+		}
 		return f.moduleIsA(n, t, cls)
 	}
 	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
@@ -5947,6 +5960,27 @@ func (f *fctx) numericAtRunTime(t Type) bool {
 }
 
 func (c *Compiler) isNumericMod(cls *Class) bool { return cls != nil && cls == c.classes["Numeric"] }
+
+// runtimeModuleIsA is `x.is_a?(mod)` where x's static type cannot decide it (untyped, or a class some subclass of
+// which includes mod): a switch on x's class ID over the closed world's classes that include mod (decision 228).
+func (f *fctx) runtimeModuleIsA(recv expr, mod *Class) (string, bool) {
+	t := stripOpt(recv.typ)
+	if v, ok := t.(TVar); ok && v.Name == "Self" && f.owner != nil {
+		t = TClass{C: f.owner}
+	}
+	c, ok := t.(TClass)
+	if mod.universal || isNil(t) || ok && (c.C.isSubclassOf(mod) || !c.C.includedBelow(mod)) {
+		return "", false // decided by the static type (moduleIsA)
+	}
+	if !ok && !isAny(t) {
+		return "", false
+	}
+	if f.c.modIsA == nil {
+		f.c.modIsA = map[*Class]bool{}
+	}
+	f.c.modIsA[mod] = true // emitted with the program's tail (emitModIsA): a body is being written now
+	return "rbHasIsA_" + mod.Name + "(" + f.coerce(nil, recv, TAny{}) + ")", true
+}
 
 // moduleIsA decides `x.is_a?(mod)` for a module mod and x of static type t.
 // There is no runtime record of included modules, so it is "true" or "false"
@@ -7061,25 +7095,8 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 	case f.implicitCall || call != nil && (call.Receiver == nil || isSelf(call.Receiver)):
 		how = "rbFCall"
 	}
-	if i := slices.IndexFunc(args, func(a parser.Node) bool { _, ok := a.(*parser.SplatNode); return ok }); i >= 0 && i >= len(args)-2 {
-		// `x.m(a, *rest, **kw)` untyped: the rest spread into the wrapper's ...any, keywords last as a Hash (rbDynKw)
-		sp := args[i].(*parser.SplatNode) //nolint:forcetypeassert // found just above
-		fixed := f.anyArgs(args[:i])
-		trailing := f.anyArgs(args[i+1:])
-		a := f.genExpr(sp.Expression, nil)
-		rest := "rbAs[*Array[any]](" + f.coerce(sp, a, TAny{}) + ", \"Array\").s"
-		if ac, ok := a.typ.(TClass); ok && ac.C.RubyName == "Array" && len(ac.Args) == 1 {
-			rest = "(" + a.code + ").s"
-			if !isAny(ac.Args[0]) {
-				rest = "(" + a.code + ")._ToAny().s"
-			}
-		}
-		recvCode := f.coerce(n, recv, TAny{})
-		spread := "append([]any{" + strings.Join(fixed, ", ") + "}, " + rest + "...)"
-		if len(trailing) > 0 {
-			spread = "append(" + spread + ", " + strings.Join(trailing, ", ") + ")"
-		}
-		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + recvCode + ", " + spread + "...)", typ: TAny{}}
+	if spread, ok := f.anySpread(args); ok { // `x.m(a, *rest, *more, **kw)` untyped: one slice into the wrapper's ...any (decision 227)
+		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
 	}
 	argCodes := f.anyArgs(args)
 	if i := slices.IndexFunc(argCodes, func(c string) bool { return strings.HasSuffix(c, "...") }); i >= 0 {
@@ -7113,6 +7130,44 @@ func (f *fctx) jsonArgs(args []parser.Node) []string {
 		a.code += "._ToAny()"
 	}
 	return []string{"(" + a.code + ").s..."}
+}
+
+// anySpread is args as one []any when any of them is a splat: each splat's elements (an Array's own, else rbSplatAny's
+// MRI to_a), the rest in place, keywords last as a Hash (rbDynKw takes them back). ok is false without a splat.
+func (f *fctx) anySpread(args []parser.Node) (string, bool) {
+	if !slices.ContainsFunc(args, func(a parser.Node) bool { _, ok := a.(*parser.SplatNode); return ok }) {
+		return "", false
+	}
+	var parts, plain []string
+	flush := func() {
+		if len(plain) > 0 {
+			parts = append(parts, "[]any{"+strings.Join(plain, ", ")+"}")
+			plain = nil
+		}
+	}
+	for _, a := range args {
+		sp, ok := a.(*parser.SplatNode)
+		if !ok {
+			plain = append(plain, f.anyArgs([]parser.Node{a})...)
+			continue
+		}
+		flush()
+		e := f.genExpr(sp.Expression, nil)
+		if ac, ok := e.typ.(TClass); ok && ac.C.RubyName == "Array" && len(ac.Args) == 1 {
+			if isAny(ac.Args[0]) {
+				parts = append(parts, "("+e.code+").s")
+			} else {
+				parts = append(parts, "("+e.code+")._ToAny().s")
+			}
+			continue
+		}
+		parts = append(parts, "rbSplatAny("+f.coerce(sp, e, TAny{})+")")
+	}
+	flush()
+	if len(parts) == 1 {
+		return parts[0], true
+	}
+	return "rbArgsCat(" + strings.Join(parts, ", ") + ")", true
 }
 
 // anyArgs generates call arguments for an `...any` parameter.
@@ -7156,6 +7211,9 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		how = "rbCall"
 	}
 	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")", how}
+	if spread, ok := f.anySpread(args[1:]); ok { // `send(m, state, *args)`
+		return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ", " + spread + "...)", typ: TAny{}}
+	}
 	for _, a := range args[1:] {
 		e := f.genExpr(a, nil)
 		codes = append(codes, f.coerce(a, e, TAny{}))
@@ -8210,6 +8268,18 @@ func structValued(t Type) bool {
 	case TUnion:
 		return !slices.ContainsFunc(t.Members, func(m Type) bool { return !structValued(m) })
 	case TAny, TFunc, TOpt, TTuple, TVar, TVoid:
+	}
+	return false
+}
+
+// procLiteral: `-> { }`, `proc { }`, `lambda { }`.
+func procLiteral(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.LambdaNode:
+		return true
+	case *parser.CallNode:
+		_, blk := n.Block.(*parser.BlockNode)
+		return blk && n.Receiver == nil && n.Arguments == nil && (n.Name == "proc" || n.Name == "lambda")
 	}
 	return false
 }

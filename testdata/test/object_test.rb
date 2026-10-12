@@ -5504,4 +5504,23 @@ module ObjectTests
       assert_equal ["b.rb", "none", "lit", "passed", "none", "imp"], got
     end
   end
+
+  module IsAShim; end
+
+  class IsABase; end
+
+  class IsAWithShim < IsABase
+    include IsAShim
+  end
+
+  # is_a?(Module) on an untyped value, or a class whose subclass includes it: a class-ID switch (decision 228).
+  class ObjectModuleIsATest < Minitest::Test
+    def test_module_is_a_at_run_time
+      xs = [IsABase.new, IsAWithShim.new, 1, "s", nil] #: Array[untyped]
+      assert_equal [false, true, false, false, false], xs.map { |x| x.is_a?(IsAShim) }
+      assert_equal [false, false, true, true, false], xs.map { |x| x.is_a?(Comparable) }
+      b = IsAWithShim.new #: IsABase
+      assert_equal [true, false], [b.is_a?(IsAShim), IsABase.new.is_a?(IsAShim)]
+    end
+  end
 end

@@ -43,6 +43,7 @@ type Compiler struct {
 	universalNames        map[string]bool     // memo of universalHas
 	dispatchMemo          map[*Method]bool    // memo of dispatchable
 	ivarsDiscovered       bool                // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
+	modIsA                map[*Class]bool     // modules an untyped value's is_a? tests at run time (decision 228)
 	objFreezeMemo         int                 // objFreeze: 0 unasked, 1 no, 2 yes
 	pendingSigs           int                 // signatures rendered while their return was still being inferred: memos taken across one are provisional
 	goCalledNames         map[string]bool     // memo of goCalled

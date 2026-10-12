@@ -515,27 +515,6 @@ end
 class Dog
 end
 Dog.new.is_a?(1)
--- is_a_module_on_struct.rb --
-# error: main.rb:13: is_a?(Walker) on Animal cannot be checked
-module Walker
-end
-
-class Animal
-end
-
-class Dog < Animal
-  include Walker
-end
-
-a = Dog.new #: Animal
-puts a.is_a?(Walker)
--- is_a_module_on_untyped.rb --
-# error: main.rb:6: is_a?(Walker) on untyped cannot be checked
-module Walker
-end
-
-x = 1 #: untyped
-puts x.is_a?(Walker)
 -- is_a_two_args.rb --
 # error: main.rb:5: is_a? takes one class
 class Dog
