@@ -367,11 +367,11 @@ func (c *Compiler) emitSends(reached func(string) bool) {
 		c.w("func %s%s(self %s%s) %s {\n", name, tpDecl, selfType, comma(ps), ret)
 		if len(arms) == 1 { // gocritic rejects a one-case switch
 			k := arms[0]
-			c.w("\tif v, ok := self.(%s); ok {\n\t\t%s\n\t}\n", armType(k), call("v", k.lookup(s.m.Name).M))
+			c.w("\tif v_, ok := self.(%s); ok {\n\t\t%s\n\t}\n", armType(k), call("v_", k.lookup(s.m.Name).M)) // v_: a Ruby local `v_` is v__ (goLocalName), so no parameter shadows it
 		} else {
-			c.w("\tswitch v := self.(type) {\n")
+			c.w("\tswitch v_ := self.(type) {\n")
 			for _, k := range arms {
-				c.w("\tcase %s:\n\t\t%s\n", armType(k), call("v", k.lookup(s.m.Name).M))
+				c.w("\tcase %s:\n\t\t%s\n", armType(k), call("v_", k.lookup(s.m.Name).M))
 			}
 			c.w("\t}\n")
 		}

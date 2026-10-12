@@ -606,7 +606,7 @@ func inlineDispatcher(ts *ast.TypeSwitchStmt) (ast.Stmt, bool) {
 	if !mentions(cc, v) {
 		v = "_" // an if's variable must be used; a switch's need not
 	}
-	ok := &ast.Ident{NamePos: ts.Pos(), Name: "ok"}
+	ok := &ast.Ident{NamePos: ts.Pos(), Name: "ok_"} // not a Ruby parameter's name (goLocalName doubles a trailing _)
 	init := &ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{NamePos: ts.Pos(), Name: v}, ok}, TokPos: ts.Pos(), Tok: token.DEFINE,
 		Rhs: []ast.Expr{&ast.TypeAssertExpr{X: a.Rhs[0].(*ast.TypeAssertExpr).X, Type: cc.List[0]}}}
 	return &ast.IfStmt{If: ts.Pos(), Init: init, Cond: ok, Body: &ast.BlockStmt{Lbrace: ts.Pos(), List: cc.Body, Rbrace: ts.End() - 1}}, true
