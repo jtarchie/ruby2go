@@ -80,7 +80,7 @@ module IOReadable
 end
 
 # A standard stream (fd 0-2), or a pipe or popen end when own (decision 138).
-# @go_type struct { fd int; via rbWriter; lineno int; own bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd; enc rbIOEnc; conv func(string) string }
+# @go_type struct { fd int; via rbWriter; lineno int; own bool; noclose bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd; enc rbIOEnc; conv func(string) string }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -96,16 +96,30 @@ class IO < Object
   #: (String, ?String, ?Integer) -> Integer
   def self.sysopen(path, mode = "r", perm = 0o666) = %x{ return Integer(rbSysopen(string(path), string(mode), int(perm))) }
 
-  # An IO over descriptor fd; closing it closes fd.
-  # mode: a String, or the `mode:` keyword when it is nil; other options (binmode:, autoclose:, encodings) are accepted and ignored (ponytail: honor them when a program needs one).
+  # An IO over descriptor fd; closing it closes fd unless `autoclose: false` (then fd stays the caller's).
+  # mode: a String, or the `mode:` keyword when it is nil; other options (binmode:, encodings) are accepted and ignored (ponytail: honor them when a program needs one).
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
   def self.new(fd, mode = nil, _perm = nil, **opts)
     m = mode || opts[:mode]&.to_s || "r"
-    __for_fd(fd, m)
+    io = __for_fd(fd, m)
+    io.autoclose = false if opts[:autoclose] == false
+    io
   end
 
   #: (Integer, String) -> IO
   def self.__for_fd(fd, mode) = %x{ return rbIOForFd(int(fd), string(mode)) }
+
+  # Whether close closes the descriptor (MRI's IO#autoclose=): false for a borrowed fd another IO still owns.
+  #: (bool) -> bool
+  def autoclose=(v)
+    %x{
+      self.noclose = !bool(v)
+      return v
+    }
+  end
+
+  #: () -> bool
+  def autoclose? = %x{ Boolean(!self.noclose) }
 
   # IO.open with a block yields the new IO and closes it after, answering the block's value; without one it is IO.new.
   #: [T] (Integer, ?String?, ?untyped, **untyped) { (IO) -> T } -> T

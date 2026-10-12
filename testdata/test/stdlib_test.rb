@@ -914,13 +914,20 @@ module StdlibTests
     end
 
     def test_io_open_block_and_read_length
+      # autoclose: false: the pipe ends stay r's and w's. Without it the block's close and io2's finalizer would close
+      # fd numbers that r and w (and whatever reuses them, like a later test's listening socket) still hold.
       r, w = IO.pipe
-      v = IO.open(w.fileno, "w") do |io|
+      v = IO.open(w.fileno, "w", autoclose: false) do |io|
         io.write("hey")
         :done
       end
-      io2 = IO.open(r.fileno)
-      assert_equal [:done, "he", "y", nil], [v, io2.read(2), io2.read(5), io2.read(1)]
+      w_auto = w.autoclose?
+      w.close
+      io2 = IO.open(r.fileno, autoclose: false)
+      got = [v, io2.read(2), io2.read(5), io2.read(1), io2.autoclose?, w_auto]
+      io2.close
+      r.close
+      assert_equal [:done, "he", "y", nil, false, true], got
     end
 
     def test_time_new_from_string

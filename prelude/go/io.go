@@ -170,6 +170,13 @@ func (self *IO) rbClose() {
 		}
 		return
 	}
+	if self.noclose { // autoclose = false: the descriptor is the caller's; drop the buffers, keep the fd
+		if self.w != nil {
+			_ = self.w.Flush()
+		}
+		self.rf, self.r, self.wf, self.w = nil, nil, nil, nil
+		return
+	}
 	self.rbCloseRead()
 	self.rbCloseWrite()
 	if self.cmd != nil {
