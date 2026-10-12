@@ -6860,3 +6860,60 @@ resolve; anything not listed is still open.
     ("uninitialized constant Bootsnap") only if reached. User code keeps
     the compile error.
     - **Proof:** `testdata/boot` (`Gemish#setup_optional`).
+219. **`any?`, `all?`, `none?`, `one?` without a block** test the elements
+    themselves; with an argument, `pattern === element`. A blockless call
+    to a method whose block is required now tries `__<name>_<count>`
+    (`__any_q_0`, `__any_q_1`) before the "requires a block" error, the
+    mirror of decision 179's `__fill_0` block overloads. The truthiness versions are
+    `%x{}` over `rbTruthy`, since a generic `E` may hold nil
+    (`Array[Integer?]`) and rb2go's static truthiness calls `E` always
+    true. Brew's `kegs.any?`, `external.any?`.
+    - **Proof:** `array_test.rb` `ArrayBlocklessPredicateTest`.
+220. **A gem's ivar with no known type is untyped** (amends 172). Decision
+    172 already typed an undeclared module ivar `untyped` in gem code; a
+    class's ivar (Homebrew's `Tty.@escape_sequence`, read before the
+    `define_method` bodies that assign it) was still a compile error,
+    which poisoned the method (205). After discovery, gem code declares it
+    `untyped`; user code keeps the error.
+    - **Proof:** `testdata/boot` (`Gemish#never_set_or`, `Gemish.cached`).
+221. **`Kernel#freeze` and `frozen?` on user objects** (amends 96). Decision
+    96 left a user object's `freeze` a compile error; Homebrew freezes its
+    own objects everywhere (`Options#freeze` calling `super`). When a user
+    or gem file names `freeze` at all, each root struct class carries a
+    `frozen_ bool` (a program that never freezes pays nothing), and a
+    generated `rbObjFrozenFlag(a any) *bool` switches on the concrete class
+    (`case *Foo: return &v.frozen_`, a type-hash search, not a map).
+    `Kernel#freeze` sets it (Array and Hash keep their own flags) and
+    returns self; `frozen?` reads it.
+    - **Not done:** an ivar write does not check the flag, so a frozen
+      object's setters still run where MRI raises `FrozenError`. Generic
+      struct classes (Set) have no flag: `freeze` leaves them as they are.
+    - **Proof:** `object_test.rb` `ObjectFreezeTest`.
+222. **`a, b = pair_or_nil`** destructures a `[A, B]?` into `A?, B?`: nil
+    gives each target nil, as Ruby's nil (no `to_ary`) does
+    (`tag, digest = hash.find { }`). Only a plain list of targets; a
+    splat or nested target on an optional tuple stays an error.
+    - **Proof:** `control_test.rb` `ControlOptionalTupleTest`.
+223. **`super` into a method that takes a block** passes the super call's
+    literal block, else the current method's own block (Ruby passes it on
+    implicitly, with or without `&block`), else nil when the parent's
+    block is optional (`Resource::Local#initialize` →
+    `Resource#initialize(name = nil, &block)`). An iterator's `super` (its
+    block is a Go `yield`) is still an error, now saying so.
+    - **Proof:** `object_test.rb` `ObjectSuperBlockTest`.
+224. **Blocks on untyped receivers in gem code, for Enumerable's
+    non-mutating names** (amends 176). `JSON.parse(s)["kids"].select { }`,
+    `__getobj__.reject { }`, `Pathname.glob(..).max_by { }`: the receiver
+    is switched on at run time; a `Hash` takes `Hash[untyped,
+    untyped]`'s method, anything else `Array[untyped]`'s over its
+    elements (`rbElemsAny`: an Array's own, else what its `each` yields
+    through decision 176's `rbEachAny`). Each branch compiles on its own,
+    and one that cannot (a Hash-only name reaching the Array side) raises
+    `NoMethodError` if taken. The receiver is a copy, so only names that
+    leave it unchanged are in the list (`dynEnumNames`). Other names with
+    a block on an untyped receiver stay an error.
+    - `Hash#fetch` and `Array#fetch` with a block (`__fetch_block`):
+      in gem code the block was dropped (172), so a miss raised
+      `KeyError` instead of calling it.
+    - **Proof:** `testdata/boot` (`Gemish#json_*`), `hash_test.rb`
+      `HashFetchBlockTest`.

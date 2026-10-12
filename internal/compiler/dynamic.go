@@ -1104,4 +1104,7 @@ func (c *Compiler) emitDynEach() {
 		c.w("\t\tr.Each(func(%s) { yield(%s) })\n", strings.Join(typed, ", "), strings.Join(vars, ", "))
 	}
 	c.w("\tdefault:\n\t\tpanic(rbNoMethod(\"each\", recv, false))\n\t}\n\treturn recv\n}\n\n")
+	// rbElemsAny is an untyped receiver's elements as an Array[untyped] (decision 224): an Array's own, else what its each yields
+	c.w("func rbElemsAny(recv any) *Array[any] {\n\tif a, ok := recv.(Array_Any); ok {\n\t\treturn a._ToAny()\n\t}\n")
+	c.w("\tout := &Array[any]{}\n\trbEachAny(recv, 1, func(xs ...any) { out.s = append(out.s, xs[0]) })\n\treturn out\n}\n\n")
 }

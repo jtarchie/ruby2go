@@ -1004,6 +1004,9 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 			}
 			return f.c.declareIvar(f.owner, name, assigned, f.f, f.f.line(n.GetLocation().StartOffset))
 		}
+		if !f.discover && f.lenient() { // gem code: what no assignment typed is untyped, as a module's is (decisions 172, 220)
+			return f.c.declareIvar(f.owner, name, TAny{}, f.f, f.f.line(n.GetLocation().StartOffset))
+		}
 		f.errorf(n, "instance variable %s has no known type; assign it in initialize or add `# @rbs %s: T`", name, name)
 	}
 	return iv
@@ -2952,20 +2955,11 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return r
 	}
 	if f.curBlock != nil && m.Block == nil {
-		if r := owner.lookup(name + "block"); r != nil {
-			return r // `xs.sum { |x| x.price }`
-		}
-		if r := owner.lookup(name + strconv.Itoa(len(args)) + "_block"); r != nil {
-			return r // `xs.fill(2) { |i| i }`: by count, with a block
-		}
-		if r := owner.lookup(name + strconv.Itoa(len(args))); r != nil && r.M.Block != nil {
-			return r // `xs.fill { |i| i }`: the count's overload takes the block
-		}
-		return nil
+		return blockOverload(owner, name, len(args))
 	}
 	if f.curBlock == nil && m.Block != nil {
-		if r := owner.lookup(name + "enum"); r != nil {
-			return r // `xs.each_slice(2)` without a block: an Array standing in for the Enumerator
+		if r := blocklessOverload(m, owner, name, len(args)); r != nil {
+			return r
 		}
 	}
 	if r := owner.lookup(name + "same"); r != nil && len(args) >= 2 && f.sameArgs(r.M, args) {
@@ -3006,6 +3000,33 @@ var opBases = func() map[string]bool {
 	}
 	return out
 }()
+
+// blockOverload is a call with a block to a method that takes none: `__name_block`, `__name_<count>_block`, or a
+// `__name_<count>` that takes the block.
+func blockOverload(owner *Class, name string, nargs int) *entry {
+	if r := owner.lookup(name + "block"); r != nil {
+		return r // `xs.sum { |x| x.price }`
+	}
+	if r := owner.lookup(name + strconv.Itoa(nargs) + "_block"); r != nil {
+		return r // `xs.fill(2) { |i| i }`: by count, with a block
+	}
+	if r := owner.lookup(name + strconv.Itoa(nargs)); r != nil && r.M.Block != nil {
+		return r // `xs.fill { |i| i }`: the count's overload takes the block
+	}
+	return nil
+}
+
+// blocklessOverload is a call without a block to a method that takes one: a blockless `__name_<count>` (decision 219),
+// or `__name_enum`.
+func blocklessOverload(m *Method, owner *Class, name string, nargs int) *entry {
+	if r := owner.lookup(name + strconv.Itoa(nargs)); r != nil && r.M.Block == nil && !m.Block.Optional {
+		return r // `xs.any?`, `xs.any?(Integer)`: the blockless forms
+	}
+	if r := owner.lookup(name + "enum"); r != nil {
+		return r // `xs.each_slice(2)` without a block: an Array standing in for the Enumerator
+	}
+	return nil
+}
 
 // overloadBase is name as its `__<base>_<suffix>` overloads spell it.
 func overloadBase(name string) string {
@@ -4580,12 +4601,47 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 		env[k] = v
 	}
 	env["Self"] = f.selfType
-	codes, _ := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
+	codes, restIdx := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
 	if e.M.Block != nil {
-		f.errorf(n, "super to a block-taking method is not supported")
+		blk := f.superBlock(n, e.M, env)
+		if restIdx >= 0 {
+			codes = slices.Insert(codes, restIdx, blk)
+		} else {
+			codes = append(codes, blk)
+		}
 	}
 	code, ret := f.superModuleCall(e, codes), subst(e.M.Ret, env)
 	return expr{code: code, typ: ret}
+}
+
+// superBlock is the block `super` passes to m (decision 223): its own literal, else the current method's block, which
+// Ruby's super passes on implicitly, else nil when m's block is optional.
+func (f *fctx) superBlock(n parser.Node, m *Method, env map[string]Type) string {
+	var lit parser.Node
+	switch s := n.(type) {
+	case *parser.SuperNode:
+		lit = s.Block
+	case *parser.ForwardingSuperNode:
+		if s.Block != nil {
+			lit = s.Block
+		}
+	}
+	if b, ok := lit.(*parser.BlockNode); ok {
+		return f.blockArg(n, m, env, b)
+	}
+	if ba, ok := lit.(*parser.BlockArgumentNode); ok && !f.isBlockParam(ba.Expression) {
+		f.errorf(n, "super with a block argument other than the method's own &block is not supported")
+	}
+	if f.iterator {
+		f.errorf(n, "super from an iterator (its block returns void) is not supported: Go cannot pass a yield on")
+	}
+	if f.blockSig != nil {
+		return f.forwardClosure(n, m.Block, env)
+	}
+	if !m.Block.Optional {
+		f.errorf(n, "super to %s needs a block, and this method has none to pass on", m.Name)
+	}
+	return "nil"
 }
 
 // superModuleCall is the static call `super` makes to e. When e is a module body whose constraint names Self (`def
@@ -5251,8 +5307,53 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 		f.isBlockParam(ba.Expression) && !f.iterator && f.blockSig != nil && len(f.blockSig.Params) >= 1 && len(f.blockSig.Params) <= 2 {
 		return f.dynEachForward(n, recv)
 	}
+	if f.lenient() && isAny(recv.typ) && dynEnumNames[name] {
+		return f.dynEnumBlock(n, recv, name, args, block)
+	}
 	f.errorf(n, "blocks on untyped receivers are not supported")
 	return expr{}
+}
+
+// dynEnumNames are the Enumerable, Array and Hash methods that take a block and leave their receiver as it is: what
+// dynEnumBlock answers on an untyped receiver from a Hash or Array copy of it.
+var dynEnumNames = map[string]bool{
+	"select": true, "filter": true, "reject": true, "map": true, "collect": true, "flat_map": true, "collect_concat": true,
+	"filter_map": true, "find": true, "detect": true, "find_index": true, "find_all": true, "any?": true, "all?": true,
+	"none?": true, "one?": true, "count": true, "sum": true, "min_by": true, "max_by": true, "sort_by": true, "group_by": true,
+	"partition": true, "each_with_index": true, "each_with_object": true, "inject": true, "reduce": true, "to_h": true,
+	"fetch": true, "uniq": true, "sort": true, "min": true, "max": true, "each_slice": true, "each_cons": true,
+	"sum_by": true, "tally_by": true, "chunk_while": true, "slice_when": true, "zip": true, "each_key": true,
+	"each_value": true, "each_pair": true, "transform_values": true, "transform_keys": true, "index_by": true,
+}
+
+// dynEnumBlock is a gem's `x.select { }` on an untyped x (decision 224): a Hash takes Hash[untyped, untyped]'s method,
+// anything else Array[untyped]'s over its elements (an Array's own, else what its each yields, rbEnumAny). Each branch
+// compiles on its own; one that cannot (a Hash-only name on the Array side) raises NoMethodError if taken.
+func (f *fctx) dynEnumBlock(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	f.c.dynEach = true
+	hashT := TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}
+	arrT := TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}
+	tmp, r := f.newTmp(), f.newTmp()
+	f.emit("var %s any", tmp)
+	f.emit("switch %s := rbUnbox(%s).(type) {", r, recv.code)
+	branch := func(head string, on expr) {
+		f.emit("%s", head)
+		var err *compileError
+		f.probe(func() { err = catchCompileError(func() { f.genMethodCall(n, on, name, args, block) }) })
+		f.indent++
+		if err != nil {
+			f.emit("panic(rbNoMethod(%q, %s, false))", name, r)
+		} else if e := f.genMethodCall(n, on, name, args, block); isVoid(e.typ) || e.stmt {
+			f.emitExprStmt(n, e)
+		} else {
+			f.emit("%s = %s", tmp, f.coerce(n, e, TAny{}))
+		}
+		f.indent--
+	}
+	branch("case Hash_Any:", expr{code: r + "._ToAny()", typ: hashT})
+	branch("default:", expr{code: "rbElemsAny(" + r + ")", typ: arrT})
+	f.emit("}")
+	return expr{code: tmp, typ: TAny{}}
 }
 
 // universalCall handles Kernel-level methods on values of unknown type.
@@ -6275,6 +6376,25 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		for j, r := range rights {
 			f.assignTarget(r, expr{code: fmt.Sprintf("%s.F%d", v.code, m-trail+j), typ: t.Elems[m-trail+j]})
 		}
+	case TOpt:
+		tt, ok := t.Elem.(TTuple)
+		if !ok || rest != nil || trail > 0 || lead != len(tt.Elems) {
+			f.errorf(n, "cannot destructure %s", v.typ)
+		}
+		// `tag, digest = h.find { }`: nil destructures into nils, as Ruby's to_ary-less nil does (decision 222)
+		vars := make([]string, lead)
+		for i, et := range tt.Elems {
+			vars[i] = f.newTmp()
+			f.emit("var %s %s", vars[i], f.c.goType(optOf(et)))
+		}
+		f.emit("if %s != nil {", v.code)
+		for i, et := range tt.Elems {
+			f.emit("\t%s = %s", vars[i], f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", v.code, i), typ: et}, optOf(et)))
+		}
+		f.emit("}")
+		for i, l := range lefts {
+			f.assignTarget(l, flatOpt(expr{code: vars[i], typ: optOf(tt.Elems[i])}))
+		}
 	case TClass:
 		if t.C.RubyName != "Array" {
 			f.errorf(n, "cannot destructure %s", v.typ)
@@ -6291,7 +6411,7 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		}
 	case TAny: // MRI's implicit to_ary: an Array splits, anything else is the first target
 		f.destructureInto(n, f.toAry(v), lefts, rest, rights)
-	case TFunc, TNil, TOpt, TUnion, TVar, TVoid: // only tuples and Arrays split
+	case TFunc, TNil, TUnion, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
 }

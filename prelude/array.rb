@@ -166,6 +166,10 @@ class Array < Object
     raise IndexError, "index #{i} outside of array bounds: #{-size}...#{size}"
   end
 
+  # fetch with a block: the block's value for an index outside the array.
+  #: (Integer) { (Integer) -> E } -> E
+  def __fetch_block(i) = i < size && i >= -size ? fetch(i) : yield(i)
+
   #: (E) -> self
   def <<(x) = %x{
     self.rbCheckFrozen()

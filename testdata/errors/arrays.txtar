@@ -237,7 +237,7 @@ u.each { |x| puts x }
 u = [[1]] #: Array[untyped]
 u[0].each { |x| puts x }
 -- super_to_block_method.rb --
-# error: main.rb:11: super to a block-taking method is not supported
+# error: main.rb:11: super from an iterator (its block returns void) is not supported
 class A
   #: () { (Integer) -> void } -> void
   def each
@@ -286,11 +286,6 @@ puts total
 # error: main.rb:3: tuple index must be a literal in range
 pair = [1, "a"]
 puts pair[-1].inspect
--- destructure_optional_tuple.rb --
-# error: main.rb:3: cannot destructure [Integer, String]?
-pairs = [[1, "a"]] #: Array[[Integer, String]]
-a, b = pairs[0]
-puts a, b
 -- push_nil.rb --
 # error: main.rb:3: nil where Integer is expected
 nums = [1, 2] #: Array[Integer]

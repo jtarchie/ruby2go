@@ -49,14 +49,6 @@ puts h.fetch("a", 1, 2)
 # error: main.rb:3: Hash#[]: wrong number of arguments (given 2, expected 1)
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h["a", "b"]
--- fetch_with_block.rb --
-# error: main.rb:3: fetch does not take a block
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.fetch("b") { |k| k.size }
--- any_without_block.rb --
-# error: main.rb:3: any? requires a block
-h = { "a" => 1 } #: Hash[String, Integer]
-puts h.any?
 -- map_without_block.rb --
 # error: main.rb:3: map requires a block
 h = { "a" => 1 } #: Hash[String, Integer]

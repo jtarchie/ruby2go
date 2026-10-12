@@ -2477,4 +2477,23 @@ module ArrayTests
       assert_equal "negative length (-1)", e.message
     end
   end
+
+  # any?/all?/none?/one? without a block test the elements themselves, or `pattern === element` (decision 219).
+  class ArrayBlocklessPredicateTest < Minitest::Test
+    def test_truthiness
+      xs = [1, nil]
+      assert_equal [true, false, false, false, false, true, true], [xs.any?, [nil].any?, [].any?, xs.all?, xs.none?, xs.one?, [nil, false].none?]
+    end
+
+    def test_pattern
+      xs = [1, nil]
+      assert_equal [true, false, true, true, false], [xs.any?(Integer), xs.all?(Integer), xs.none?(String), xs.one?(Integer), [1, 2].one?(1..5)]
+    end
+
+    def test_hash
+      h = {a: 1}
+      e = {} #: Hash[Symbol, Integer]
+      assert_equal [true, false, true, false], [h.any?, e.any?, h.all?, h.none?]
+    end
+  end
 end

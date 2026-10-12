@@ -42,6 +42,7 @@ type Compiler struct {
 	dynSeen               map[string]bool
 	universalNames        map[string]bool     // memo of universalHas
 	dispatchMemo          map[*Method]bool    // memo of dispatchable
+	objFreezeMemo         int                 // objFreeze: 0 unasked, 1 no, 2 yes
 	pendingSigs           int                 // signatures rendered while their return was still being inferred: memos taken across one are provisional
 	goCalledNames         map[string]bool     // memo of goCalled
 	renderingConstraint   bool                // constraintNamesSelf is rendering a module interface

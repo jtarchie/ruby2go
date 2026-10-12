@@ -202,6 +202,10 @@ class Hash < Object
     raise KeyError.__for("key not found: #{k.inspect}", self, k)
   end
 
+  # fetch with a block: the block's value for a missing key.
+  #: (K) { (K) -> V } -> V
+  def __fetch_block(k) = key?(k) ? fetch(k) : yield(k)
+
   #: (K, V?) -> V?
   def __fetch_opt(k, fallback) = %x{
     if v, ok := self.rbGet(k); ok {

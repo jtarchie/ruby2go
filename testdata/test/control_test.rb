@@ -5291,4 +5291,18 @@ module ControlTests
     end
   end
 
+  # `a, b = pair_or_nil`: nil destructures into nils (decision 222).
+  class ControlOptionalTupleTest < Minitest::Test
+    #: (bool) -> [String, Integer?]?
+    def control_pair(ok) = ok ? ["x", nil] : nil
+
+    def test_optional_tuple
+      h = { a: 1, b: 2 }
+      k, v = h.find { |_, x| x > 1 }
+      k2, v2 = h.find { |_, x| x > 5 }
+      a, b = control_pair(true)
+      c, d = control_pair(false)
+      assert_equal [:b, 2, nil, nil, "x", nil, nil, nil], [k, v, k2, v2, a, b, c, d]
+    end
+  end
 end

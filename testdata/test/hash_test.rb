@@ -2102,4 +2102,12 @@ module HashTests
       assert_equal [{"a" => 1}, 5, [:s]], [h, q.pop, a]
     end
   end
+
+  # fetch with a block: its value for a missing key or index.
+  class HashFetchBlockTest < Minitest::Test
+    def test_fetch_block
+      h = { a: 1 }
+      assert_equal [1, 1, 10, 2], [h.fetch(:b) { |k| k.to_s.size }, h.fetch(:a) { 0 }, [1, 2].fetch(5) { |i| i * 2 }, [1, 2].fetch(-1) { 0 }]
+    end
+  end
 end

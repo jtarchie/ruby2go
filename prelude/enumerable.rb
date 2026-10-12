@@ -97,6 +97,70 @@ module Enumerable
     true
   end
 
+  # Without a block the element itself is the test; with an argument, `pattern === element` (decision 219).
+  #: () -> bool
+  def __any_q_0 = %x{
+    for x := range self.Each() {
+      if rbTruthy(rbUnbox(any(x))) {
+        return true
+      }
+    }
+    return false
+  }
+
+  # @dynamic
+  #: (untyped) -> bool
+  def __any_q_1(pattern)
+    each { |x| return true if pattern === x }
+    false
+  end
+
+  #: () -> bool
+  def __all_q_0 = %x{
+    for x := range self.Each() {
+      if !rbTruthy(rbUnbox(any(x))) {
+        return false
+      }
+    }
+    return true
+  }
+
+  # @dynamic
+  #: (untyped) -> bool
+  def __all_q_1(pattern)
+    each { |x| return false unless pattern === x }
+    true
+  end
+
+  #: () -> bool
+  def __none_q_0 = !__any_q_0
+
+  # @dynamic
+  #: (untyped) -> bool
+  def __none_q_1(pattern)
+    each { |x| return false if pattern === x }
+    true
+  end
+
+  #: () -> bool
+  def __one_q_0 = %x{
+    n := 0
+    for x := range self.Each() {
+      if rbTruthy(rbUnbox(any(x))) {
+        n++
+      }
+    }
+    return n == 1
+  }
+
+  # @dynamic
+  #: (untyped) -> bool
+  def __one_q_1(pattern)
+    n = 0
+    each { |x| n += 1 if pattern === x }
+    n == 1
+  end
+
   #: () { (E) -> bool } -> Integer
   def count_if
     n = 0

@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"bytes"
 	"fmt"
 	"hash/fnv"
 	"maps"
@@ -440,6 +441,7 @@ func (c *Compiler) emitTables() {
 		c.emitCallTables()
 	}
 	c.emitClassOf()
+	c.emitFrozenFlag()
 	c.emitDynEach()
 	c.emitTuples()
 	c.emitBoxes()
@@ -755,9 +757,12 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	c.userTypeLine(cls)
 	c.w("type %s struct {\n", cls.Name)
-	if cls.Super != nil && !cls.Super.universal {
+	switch {
+	case cls.Super != nil && !cls.Super.universal:
 		c.w("\t%s\n", superField(cls.Super))
-	} else if len(cls.IvarList) == 0 {
+	case c.objFreeze() && len(cls.TypeParams) == 0:
+		c.w("\t%s bool\n", frozenField) // Kernel#freeze's flag, on the root: every subclass embeds it (decision 221)
+	case len(cls.IvarList) == 0:
 		// zero-size allocations may share an address, merging distinct instances' identity
 		c.w("\t_ byte\n")
 	}
@@ -2255,4 +2260,40 @@ func (c *Compiler) slotSeqAdapter(cls *Class, e entry, env map[string]Type, recv
 		return true
 	}
 	return false
+}
+
+// frozenField is the root struct's Kernel#freeze flag: lowercase with a trailing `_`, never an ivar's Go name.
+const frozenField = "frozen_"
+
+// objFreeze reports whether user or gem code names freeze at all: only then does a struct class carry the flag, so a
+// program that never freezes its objects pays no byte per object for it (decision 221).
+func (c *Compiler) objFreeze() bool {
+	if c.objFreezeMemo == 0 {
+		c.objFreezeMemo = 1
+		for _, uf := range c.userFiles {
+			if bytes.Contains(uf.Src, []byte("freeze")) { // ponytail: a textual scan; a call-site index would also skip comments
+				c.objFreezeMemo = 2
+				break
+			}
+		}
+	}
+	return c.objFreezeMemo == 2
+}
+
+// emitFrozenFlag emits rbObjFrozenFlag: the frozen flag of a struct object, by its concrete class (a switch Go compiles
+// to a search on the type hash), or nil for anything else, which Kernel#freeze leaves as it is.
+func (c *Compiler) emitFrozenFlag() {
+	c.w("func rbObjFrozenFlag(a any) *bool {\n")
+	var cases []string
+	if c.objFreeze() {
+		for _, cls := range c.classList {
+			if cls.isStruct() && !cls.universal && !cls.IsModule && len(cls.TypeParams) == 0 && len(cls.root().TypeParams) == 0 && !cls.hashBase {
+				cases = append(cases, fmt.Sprintf("\tcase *%s:\n\t\treturn &v.%s\n", cls.Name, frozenField))
+			}
+		}
+	}
+	if len(cases) > 0 {
+		c.w("\tswitch v := a.(type) {\n%s\t}\n", strings.Join(cases, ""))
+	}
+	c.w("\treturn nil\n}\n\n")
 }

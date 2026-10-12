@@ -502,16 +502,6 @@ class Child < Base
   #: () -> String
   def name = super
 end
--- super_to_block_method.rb --
-# error: main.rb:8: super to a block-taking method is not supported
-class Base
-  #: () { (Integer) -> Integer } -> Integer
-  def run = yield(1)
-end
-
-class Child < Base
-  def run = super
-end
 -- define_method_in_method.rb --
 # error: main.rb:5: define_method is not supported
 class Dyn

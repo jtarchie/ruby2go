@@ -5434,4 +5434,74 @@ module ObjectTests
       assert_predicate OblScheduled.new(3).wait, :complete?
     end
   end
+
+  # Kernel#freeze on a user object: the flag is the object's, and an override's super reaches it (decision 221).
+  class FreezeOpts
+    def initialize = @xs = [1]
+
+    def freeze
+      @xs.freeze
+      super
+    end
+
+    attr_reader :xs
+  end
+
+  class FreezeSub < FreezeOpts; end
+
+  class ObjectFreezeTest < Minitest::Test
+    def test_freeze_user_object
+      o = FreezeSub.new
+      assert_equal [false, false], [o.frozen?, o.xs.frozen?]
+      assert o.freeze.equal?(o)
+      assert_equal [true, true, false], [o.frozen?, o.xs.frozen?, FreezeOpts.new.frozen?]
+    end
+  end
+
+  # super into a block-taking method: its literal, the method's own block (implicitly or as &block), or nil (decision 223).
+  class SuperBlkRes
+    attr_reader :name, :extra
+
+    #: (?String?) ?{ () -> String } -> void
+    def initialize(name = nil, &block)
+      @name = name
+      @extra = block ? block.call : "none"
+    end
+  end
+
+  class SuperBlkLocal < SuperBlkRes
+    #: (String) -> void
+    def initialize(path)
+      super(File.basename(path))
+    end
+  end
+
+  class SuperBlkLit < SuperBlkRes
+    #: (String) -> void
+    def initialize(path)
+      super(path) { "lit" }
+    end
+  end
+
+  class SuperBlkPass < SuperBlkRes
+    #: (String) ?{ () -> String } -> void
+    def initialize(path, &block)
+      super(path, &block)
+    end
+  end
+
+  class SuperBlkImplicit < SuperBlkRes
+    #: (String) ?{ () -> String } -> void
+    def initialize(path, &block)
+      super(path)
+    end
+  end
+
+  class ObjectSuperBlockTest < Minitest::Test
+    def test_super_block
+      got = [SuperBlkLocal.new("/a/b.rb").name, SuperBlkLocal.new("x").extra, SuperBlkLit.new("y").extra,
+             SuperBlkPass.new("z") { "passed" }.extra, SuperBlkPass.new("w").extra, SuperBlkImplicit.new("v") { "imp" }.extra]
+      assert_equal ["b.rb", "none", "lit", "passed", "none", "imp"], got
+    end
+  end
 end

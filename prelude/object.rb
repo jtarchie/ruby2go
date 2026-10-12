@@ -84,8 +84,29 @@ module Kernel
   }
 
   # Objects, Array, Hash and Struct values are mutable; frozen classes override. nil reaches here held untyped (NilClass has no Go type).
+  # A struct object's flag is on its root struct (decision 221).
   #: () -> bool
-  def frozen? = %x{ return Boolean(any(self) == nil) }
+  def frozen? = %x{
+    if any(self) == nil {
+      return true
+    }
+    if p := rbObjFrozenFlag(any(self)); p != nil {
+      return Boolean(*p)
+    }
+    return Boolean(rbIsFrozen(any(self)))
+  }
+
+  # ponytail: an ivar write does not check the flag, so a frozen object's setters still run (MRI raises FrozenError);
+  # check it in the struct's ivar assignment once a program needs the error.
+  #: () -> self
+  def freeze = %x{
+    if p := rbObjFrozenFlag(any(self)); p != nil {
+      *p = true
+    } else if f, ok := any(self).(rbFreezable); ok {
+      f.rbSetFrozen()
+    }
+    return self
+  }
 
   #: (?Integer) -> void
   def exit(status = 0) = raise(SystemExit.new(status))
