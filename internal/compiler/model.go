@@ -867,6 +867,7 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 					c.classBodyCall(f, n, scope, loadTime)
 				}
 			case *parser.SingletonClassNode:
+				c.scanAnon(ctx, f, n.Body, scope) // its defs' Class.new literals, as a class body's (decision 145)
 				c.collectSingletonClass(f, cls, n, scope)
 			case *parser.AliasMethodNode:
 				c.addAlias(f, cls, n, n.NewName, n.OldName)
@@ -1242,12 +1243,28 @@ func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) [
 // M (decision 229): the closed world has no per-object singleton classes, so every IO answers M's methods, which only
 // respond_to? on another IO could tell. Only the standard streams, whose class is known.
 func (c *Compiler) collectIOExtend(f *File, n *parser.CallNode, scope []*Class) bool {
-	g, ok := n.Receiver.(*parser.GlobalVariableReadNode)
-	if !ok || n.Name != "extend" || f.prelude || g.Name != "$stdout" && g.Name != "$stderr" && g.Name != "$stdin" {
+	if n.Name != "extend" || f.prelude {
+		return false
+	}
+	var target *Class
+	switch r := n.Receiver.(type) {
+	case *parser.GlobalVariableReadNode:
+		if r.Name == "$stdout" || r.Name == "$stderr" || r.Name == "$stdin" {
+			target = c.classes["IO"]
+		}
+	case *parser.ConstantReadNode: // the one-object classes: ENV (brew's EnvActivation), the standard streams
+		switch r.Name {
+		case "ENV":
+			target = c.classes["ENVClass"]
+		case "STDOUT", "STDERR", "STDIN":
+			target = c.classes["IO"]
+		}
+	}
+	if target == nil {
 		return false
 	}
 	for _, a := range callArgs(n) {
-		c.addInclude(f, n, c.classes["IO"], a, scope)
+		c.addInclude(f, n, target, a, scope)
 	}
 	return true
 }

@@ -8,6 +8,10 @@
 
 # @go_type struct { re *rxRegexp; src string; opts string }
 class Regexp < Object
+  # Regexp.last_match(n): the compiler passes the caller's $~ (decision 232).
+  #: (MatchData?, untyped) -> String?
+  def self.__last_match_at(m, n) = m ? m[n] : nil
+
   IGNORECASE = 1 #: Integer
   EXTENDED = 2 #: Integer
   MULTILINE = 4 #: Integer
@@ -189,6 +193,14 @@ class MatchData < Object
       return nil
     }
     return self.groups[i]
+  }
+
+  # The whole match, then the groups.
+  #: () -> Array[String?]
+  def to_a = %x{
+    out := &Array[*String]{}
+    out.s = append(out.s, self.groups...)
+    return out
   }
 
   #: () -> Array[String?]

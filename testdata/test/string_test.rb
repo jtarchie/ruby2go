@@ -1,6 +1,7 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "English"
 
 # Helpers for the checks that were testdata/run/string_split.rb.
 #: (String) -> Integer
@@ -1507,6 +1508,22 @@ B
       end
       assert_equal "z", d
       assert_equal ["ab", "ab\n", "ab\n", "a"], [a, b, c, "a\n".chomp]
+    end
+  end
+
+  # Regexp.last_match reads the frame's $~; English's $CHILD_STATUS is $? (decision 232).
+  class StringLastMatchTest < Minitest::Test
+    #: (String) -> String?
+    def string_remote_path(u)
+      return unless u =~ %r{github\.com/([^/]+)/(\w+)}
+
+      "#{Regexp.last_match(1)}:#{Regexp.last_match(2)}:#{Regexp.last_match[0]}"
+    end
+
+    def test_last_match
+      assert_equal ["home:brew:github.com/home/brew", nil], [string_remote_path("https://github.com/home/brew"), string_remote_path("x")]
+      system("true")
+      assert_equal [true, true], [$CHILD_STATUS.success?, $PROCESS_ID == $$]
     end
   end
 end

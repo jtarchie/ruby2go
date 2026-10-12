@@ -12,59 +12,60 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
-	probeDepth    int         // inside probe: output is discarded
-	unionArm      int         // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
-	erbDepth      int         // inside a spliced template, where a bare name may be the caller's local
-	curBlock      parser.Node // the block of the call overload is resolving
-	lambdaClosure int         // f.closures inside the innermost lambda body, whose `return` is its own
-	retHint       Type        // the expected type of retHintNode's result, for type params its arguments leave open
-	retHintNode   parser.Node
-	c             *Compiler
-	f             *File
-	owner         *Class
-	m             *Method
-	implicitCall  bool     // calling method_missing/respond_to_missing? on the program\'s behalf
-	plainCalls    bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
-	staticDef     *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
-	lex           []*Class // lexical scope for constant lookup
-	selfType      Type
-	selfCode      string
-	selfClassObj  bool // self is exactly a class constant (a class body)
-	ret           Type
-	iterator      bool
-	lastMatch     string // the Go variable of the frame's last match, when the body reads $~ or $1..$9 (decision 171)
-	inMatchSet    bool   // generating genMatchSet's own match call
-	blockSig      *BlockSig
-	buf           *strings.Builder
-	indent        int
-	tmp           int
-	pass          int  // 0 = ivar discovery, 1 = local analysis, 2 = emit
-	bodyUnit      bool // a class body's grouped statements: its constant assignments are statements (decision 170)
-	discover      bool
-	locals        map[localKey]*localInfo
-	refined       map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
-	convs         map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
-	retTypes      *[]Type           // `return` values, while inferring the method's return type
-	unset         map[localKey]bool // locals read where they may be unassigned (maybeUnset)
-	scope         *scope
-	block         string
-	rbScope       string    // the block path where the current Ruby scope (method or block) starts
-	rbFrames      []rbFrame // the Ruby blocks enclosing the current position, outermost first
-	blockCtr      int
-	loops         []*loopFrame
-	switches      int  // nesting depth of emitted Go switch statements
-	patQuiet      bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
-	labels        int  // not rewound by probe, so labels stay unique
-	closures      int  // nesting depth of Go closures (non-iterator blocks)
-	nextTail      tail // the innermost closure's result, for `next`
-	begins        int  // nesting depth of rescue wrappers
-	retVar        string
-	wrap          *wrapFrame // the innermost begin wrapper
-	retryFlag     string     // set by `retry` in the rescue clauses being generated
-	retryDepth    int        // f.closures where retryFlag was set: a block's retry can't reach it
-	hasNamedRet   bool
-	rescues       int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
-	yielderFed    *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
+	probeDepth     int         // inside probe: output is discarded
+	unionArm       int         // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
+	erbDepth       int         // inside a spliced template, where a bare name may be the caller's local
+	curBlock       parser.Node // the block of the call overload is resolving
+	lambdaClosure  int         // f.closures inside the innermost lambda body, whose `return` is its own
+	inDynContainer bool        // dynContainerCall is generating its default arm: the plain dispatcher
+	retHint        Type        // the expected type of retHintNode's result, for type params its arguments leave open
+	retHintNode    parser.Node
+	c              *Compiler
+	f              *File
+	owner          *Class
+	m              *Method
+	implicitCall   bool     // calling method_missing/respond_to_missing? on the program\'s behalf
+	plainCalls     bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
+	staticDef      *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
+	lex            []*Class // lexical scope for constant lookup
+	selfType       Type
+	selfCode       string
+	selfClassObj   bool // self is exactly a class constant (a class body)
+	ret            Type
+	iterator       bool
+	lastMatch      string // the Go variable of the frame's last match, when the body reads $~ or $1..$9 (decision 171)
+	inMatchSet     bool   // generating genMatchSet's own match call
+	blockSig       *BlockSig
+	buf            *strings.Builder
+	indent         int
+	tmp            int
+	pass           int  // 0 = ivar discovery, 1 = local analysis, 2 = emit
+	bodyUnit       bool // a class body's grouped statements: its constant assignments are statements (decision 170)
+	discover       bool
+	locals         map[localKey]*localInfo
+	refined        map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
+	convs          map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
+	retTypes       *[]Type           // `return` values, while inferring the method's return type
+	unset          map[localKey]bool // locals read where they may be unassigned (maybeUnset)
+	scope          *scope
+	block          string
+	rbScope        string    // the block path where the current Ruby scope (method or block) starts
+	rbFrames       []rbFrame // the Ruby blocks enclosing the current position, outermost first
+	blockCtr       int
+	loops          []*loopFrame
+	switches       int  // nesting depth of emitted Go switch statements
+	patQuiet       bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
+	labels         int  // not rewound by probe, so labels stay unique
+	closures       int  // nesting depth of Go closures (non-iterator blocks)
+	nextTail       tail // the innermost closure's result, for `next`
+	begins         int  // nesting depth of rescue wrappers
+	retVar         string
+	wrap           *wrapFrame // the innermost begin wrapper
+	retryFlag      string     // set by `retry` in the rescue clauses being generated
+	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
+	hasNamedRet    bool
+	rescues        int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	yielderFed     *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
 }
 
 type loopKind int
@@ -3248,6 +3249,9 @@ func (c *Compiler) hookCall(h classHook) parser.Node {
 	}
 	if recv == nil || recv.meta == nil || recv.meta.lookup(h.name) == nil {
 		return nil
+	}
+	if e := recv.meta.lookup(h.name); e.M.File != nil && e.M.File.prelude {
+		return nil // Class#inherited's no-op, there only for an override's super (decision 232)
 	}
 	obj := func(k *Class) parser.Node {
 		return &exprNode{e: expr{code: classVar(k), typ: TClass{C: k.meta}, classObj: true}}

@@ -88,4 +88,44 @@ module Demo
 
     $stdout.extend Mixin
   end
+
+  # A per-flag `define_singleton_method(name)` template: CliArgs answers any name through it (decision 230).
+  class CliArgs
+    def initialize
+      @table = {} #: Hash[Symbol, untyped]
+    end
+
+    def set_arg(name, value)
+      @table[name] = value
+    end
+  end
+
+  class CliParser
+    def initialize
+      @args = CliArgs.new #: CliArgs
+    end
+
+    def parse(flags)
+      flags.each { |f| set_args_method(:"#{f}?", true) }
+      set_args_method(:sizes?, false)
+      @args
+    end
+
+    def set_args_method(name, value)
+      @args.set_arg(name, value)
+      return if @args.respond_to?(name)
+
+      @args.define_singleton_method(name) do
+        instance_variable_get(:@table).fetch(name)
+      end
+    end
+  end
+
+  # `ENV.extend(M)`: ENV answers M's methods; M's select on self is a Hash's (decisions 229, 224).
+  module EnvSensitive
+    def sensitive?(key) = key.match?(/TOKEN|PASSWORD/)
+
+    def sensitive_environment = select { |key, _| sensitive?(key) }
+  end
+  ENV.extend(EnvSensitive)
 end

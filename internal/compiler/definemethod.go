@@ -251,3 +251,143 @@ func (c *Compiler) procLiteral(f *File, at parser.Node, loc string) string {
 	}
 	return "proc " + src.text(found.Location)
 }
+
+// collectSingletonTemplates takes a gem method's `@x.define_singleton_method(name) do ... end`, whose block reads only
+// the name it is given (Homebrew's CLI::Parser#set_args_method: `instance_variable_get(:@table).fetch(name)` per parsed
+// flag), as a template over that name: @x's class (its `#:`/T.let type) gets `method_missing(name, *)` with the block's
+// body, so `args.sizes?` is that body at :sizes?, and the run-time call is a no-op (decision 230). No method is made
+// at run time; what MRI would make for any name is compiled once.
+func (c *Compiler) collectSingletonTemplates(ctx context.Context) {
+	for _, cls := range slices.Clone(c.classList) {
+		for _, m := range slices.Clone(cls.MethodList) {
+			if m.Node == nil || m.File == nil || !c.gemFile(m.File) {
+				continue
+			}
+			c.keepGoing(func() { c.singletonTemplatesIn(ctx, cls, m, m.Node.Body) })
+		}
+	}
+}
+
+func (c *Compiler) singletonTemplatesIn(ctx context.Context, cls *Class, m *Method, n parser.Node) {
+	switch n := n.(type) {
+	case nil, *parser.DefNode:
+		return
+	case *parser.CallNode:
+		if c.singletonTemplate(ctx, cls, m, n) {
+			return
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		c.singletonTemplatesIn(ctx, cls, m, ch)
+	}
+}
+
+func (c *Compiler) singletonTemplate(ctx context.Context, cls *Class, m *Method, n *parser.CallNode) bool {
+	blk, ok := n.Block.(*parser.BlockNode)
+	iv, isIvar := n.Receiver.(*parser.InstanceVariableReadNode)
+	args := callArgs(n)
+	if !ok || !isIvar || n.Name != "define_singleton_method" || len(args) != 1 || blk.Parameters != nil || blk.Body == nil {
+		return false
+	}
+	nameVar, ok := args[0].(*parser.LocalVariableReadNode)
+	if !ok || !defParamNamed(m.Node, nameVar.Name) {
+		return false
+	}
+	site := &dmSite{file: m.File, call: n, block: blk, scope: m.Scope}
+	if caps := c.dmCaptures(site); len(caps) != 1 || caps[0] != nameVar.Name {
+		return false
+	}
+	target := c.ivarAnnotatedClass(cls, iv.Name)
+	if target == nil || target.lookup("method_missing") != nil && target.lookup("method_missing").Owner == target {
+		return false
+	}
+	src := "def method_missing(" + nameVar.Name + ", *_rb2go_rest)\n" + blockAsMethodBody(m.File, blk) + "\nend\n"
+	sf, err := parseFile(ctx, c.parser, m.File.Name, []byte(src), false)
+	if err != nil {
+		c.errorf(m.File, n, "define_singleton_method template: %v\n%s", err, src)
+	}
+	sf.path, sf.pinLine = m.File.path, m.File.line(n.Location.StartOffset)
+	def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
+	c.addDef(sf, target, def, false, c.nestingOf(target))
+	resetMsets(target)
+	if c.dmSites == nil {
+		c.dmSites = map[*parser.CallNode]bool{}
+	}
+	c.dmSites[n] = true // the run-time call: a no-op, as a boot define_method's is (decision 198)
+	if !slices.Contains(c.keepNames, "method_missing") {
+		c.keepNames = append(c.keepNames, "method_missing") // reached by any unknown call, never by its name
+	}
+	return true
+}
+
+// ivarAnnotatedClass is the class an ivar of cls is declared as by a `#:` (or T.let) annotation on one of its
+// assignments in cls's methods, resolved in the method's lexical scope.
+func (c *Compiler) ivarAnnotatedClass(cls *Class, name string) *Class {
+	for _, m := range cls.MethodList {
+		if m.Node == nil || m.File == nil {
+			continue
+		}
+		var found *Class
+		var walk func(parser.Node)
+		walk = func(n parser.Node) {
+			if found != nil || n == nil {
+				return
+			}
+			if w, ok := n.(*parser.InstanceVariableWriteNode); ok && w.Name == name {
+				if ann := strings.TrimSpace(m.File.trailingAnnotation(w)); ann != "" {
+					found = c.scopedClass(ann, append(slices.Clip(m.Scope), cls))
+				}
+			}
+			for _, ch := range n.CompactChildNodes() {
+				walk(ch)
+			}
+		}
+		walk(m.Node.Body)
+		if found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// scopedClass resolves a constant path as Ruby would from inside scope (innermost first), then at top level.
+func (c *Compiler) scopedClass(name string, scope []*Class) *Class {
+	name = strings.TrimPrefix(name, "::")
+	for i := len(scope) - 1; i >= 0; i-- {
+		if k := c.classes[scope[i].RubyName+"::"+name]; k != nil {
+			return k
+		}
+	}
+	return c.classes[name]
+}
+
+// nestingOf is the lexical scope a def written in cls's body has: each enclosing constant of its path, then cls.
+func (c *Compiler) nestingOf(cls *Class) []*Class {
+	var out []*Class
+	parts := strings.Split(cls.RubyName, "::")
+	for i := range parts {
+		if k := c.classes[strings.Join(parts[:i+1], "::")]; k != nil {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// defParamNamed: d has a required or optional parameter called name (Method.Params are filled only at link).
+func defParamNamed(d *parser.DefNode, name string) bool {
+	ps := d.Parameters
+	if ps == nil {
+		return false
+	}
+	for _, p := range ps.Requireds {
+		if r, ok := p.(*parser.RequiredParameterNode); ok && r.Name == name {
+			return true
+		}
+	}
+	for _, p := range ps.Optionals {
+		if o, ok := p.(*parser.OptionalParameterNode); ok && o.Name == name {
+			return true
+		}
+	}
+	return false
+}

@@ -128,9 +128,18 @@ class Module < Object
     _, missing := rbConstResolve(self, name, bool(inherit))
     return Boolean(missing == "")
   }
+
+  # The value, as MRI's const_set returns (decision 231). ponytail: the constant table is fixed at compile time, so
+  # const_get/constants do not see a name set here; boot (decision 161) could declare what load-time const_sets make.
+  #: [T] (untyped, T) -> T
+  def const_set(_name, value) = value
 end
 
 class Class < Module
+  # The hook a subclass's definition calls, for an override's super to reach (decision 232).
+  #: (untyped) -> nil
+  def inherited(_subclass) = nil
+
   # The parent's class object; nil above Object, whose BasicObject has none in rb2go.
   #: () -> Class?
   def superclass = %x{

@@ -43,6 +43,7 @@ type Compiler struct {
 	universalNames        map[string]bool     // memo of universalHas
 	dispatchMemo          map[*Method]bool    // memo of dispatchable
 	ivarsDiscovered       bool                // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
+	keepNames             []string            // method names the gem pruner keeps though no call names them (decision 230)
 	modIsA                map[*Class]bool     // modules an untyped value's is_a? tests at run time (decision 228)
 	objFreezeMemo         int                 // objFreeze: 0 unasked, 1 no, 2 yes
 	pendingSigs           int                 // signatures rendered while their return was still being inferred: memos taken across one are provisional
@@ -375,6 +376,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.keepGoing(func() { c.collectERB(ctx, uf) }) // templates need every constant collected (decision 111)
 	}
 	c.collectDefineMethods(ctx, dms)
+	c.collectSingletonTemplates(ctx)
 	if len(c.kept) > 0 {
 		c.errorf(nil, nil, "%d collect errors:\n%s", len(c.kept), strings.Join(c.kept, "\n"))
 	}

@@ -6997,3 +6997,69 @@ resolve; anything not listed is still open.
     M's methods, which only `respond_to?` on another IO could tell apart
     from MRI.
     - **Proof:** `testdata/boot` (`Demo::Out`).
+230. **A `define_singleton_method(name)` template becomes the receiver
+    class's `method_missing`** (amends 31, 198). Homebrew's
+    `CLI::Parser#set_args_method(name, value)` runs `@args.
+    define_singleton_method(name) { instance_variable_get(:@table).
+    fetch(name) }` for every parsed flag, and `Cmd::Info#run` calls
+    `args.sizes?`: a compile error, which poisoned `run` itself. The
+    block reads nothing but the name it is given, so whatever MRI defines
+    at run time is that body at some name. In gem code, such a call on an
+    ivar whose class an assignment's `#:`/T.let annotation names gives
+    that class `method_missing(name, *_)` with the block's body (built as
+    decision 198 builds a def from a block), kept by the gem pruner
+    (`keepNames`), and the run-time call becomes a no-op. Decision 31
+    then compiles `args.sizes?` to `method_missing(:sizes?)`.
+    - **Differs from MRI:** `respond_to?(:sizes?)` is false (no singleton
+      method exists), and a name never defined reaches the body (here
+      `fetch`'s KeyError) rather than NoMethodError.
+    - **Proof:** `testdata/boot` (`Demo::CliParser`).
+231. **Homebrew's command DSL** (amends 145, 164, 196, 225). Every `brew`
+    command class runs `cmd_args do switch "--json" ... end` at load; the
+    block is `T.proc.bind(CLI::Parser)`, stored in an ivar, handed on as
+    `Parser.new(self, &@parser_block)` and `instance_eval`'d there, and
+    `cmd_args` also makes `const_set(:Args, Class.new(CLI::Args))`.
+    - **An annotation keeps a value's bound self.** Sorbet's `T.let(block,
+      T.nilable(T.proc.void))` drops the bind its types cannot carry;
+      rb2go's Proc type has self as a parameter, so an annotation naming
+      the same Proc shape without one adopts the value's (`adoptBind`).
+    - **An untyped value under `#:`/T.let is converted** (`rbAs`) where it
+      was only relabeled, which Go rejected (`@args = T.let(parser.parse,
+      Args)` with an untyped parse).
+    - **In gem code an untyped value may land in a typed ivar**
+      (`@value = T.let(value, T.untyped)` into `Integer | String | nil`),
+      converted there, as decision 225's assignments are.
+    - **`class << self` defs get decision 145's hidden classes**: their
+      `Class.new` literals were never scanned.
+    - **`Module#const_set` returns its value.** The constant table is
+      fixed at compile time, so a run-time const_set is not seen by
+      `const_get`/`constants`, and the anonymous class keeps its
+      `#<Class:file:line>` name where MRI names it on assignment.
+    - **Proof:** `testdata/boot` (`demo/cli.rb`).
+232. **More of Homebrew's `brew info` path** (amends 21, 171, 207, 229):
+    - **`keys`/`values`/`to_a` on an untyped Hash or Array.** Decision 207
+      gives a generic class no Dyn wrapper for a method whose result grows
+      its type (`Hash#keys` is `Array[K]`), so on JSON data they raised
+      NoMethodError. A dynamic call of such a name first switches on
+      `Hash_Any`/`Array_Any` and calls it on the `[untyped]`
+      instantiation, which grows nothing (`dynContainerCall`); anything
+      else goes on to the dispatcher. `@self`-typed methods
+      (`transpose`) are not covered.
+    - **`ENV.extend(M)`** and `STDOUT`/`STDERR`/`STDIN.extend(M)` are
+      decision 229's include, into `ENVClass` and `IO`. A gem module's
+      Enumerable call on `self` with a block takes decision 224's path,
+      where ENV, Hash-like, takes the Hash branch through `to_h`.
+    - **`Regexp.last_match`/`last_match(n)`** read the caller's `$~`
+      (decision 171 counts them as reads of it; `__last_match_at` indexes
+      it), and English's `$CHILD_STATUS`, `$PROCESS_ID`/`$PID`,
+      `$LAST_MATCH_INFO`, `$RS` are the globals they alias.
+    - **Hook overrides calling `super`**: Kernel's private
+      `initialize_dup`/`initialize_clone` and `Class#inherited` exist (no
+      ops, `void`), and a struct's `_Dup` calls a class's own
+      `initialize_dup` (ponytail: its super does not go on to the class's
+      `initialize_copy`, as MRI's Object#initialize_dup would).
+    - `Array#flatten!` (nil when nothing was an Array), `MatchData#to_a`.
+    - **Proof:** `dynamic_test.rb` `DynamicContainerTest`, `object_test.rb`
+      `ObjectHookSuperTest`, `array_test.rb` `ArrayFlattenBangTest`,
+      `string_test.rb` `StringLastMatchTest`, `testdata/boot`
+      (`EnvSensitive`).

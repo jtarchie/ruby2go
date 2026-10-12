@@ -2496,4 +2496,13 @@ module ArrayTests
       assert_equal [true, false, true, false], [h.any?, e.any?, h.all?, h.none?]
     end
   end
+
+  # flatten! and MatchData#to_a (decision 232).
+  class ArrayFlattenBangTest < Minitest::Test
+    def test_flatten_bang
+      xs = [1, [2, [3]]] #: Array[untyped]
+      assert_equal [[1, 2, 3], [1, 2, 3], nil], [xs.flatten!, xs, [1, 2].flatten!]
+      assert_equal ["12", "1", "2"], "ab12".match(/(\d)(\d)/).to_a
+    end
+  end
 end

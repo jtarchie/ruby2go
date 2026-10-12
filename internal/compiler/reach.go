@@ -112,6 +112,9 @@ func (c *Compiler) pruneGemMethods() {
 	for _, n := range implicitNames {
 		r.add(n)
 	}
+	for _, n := range c.keepNames { // compiled stand-ins a call reaches without naming them (decision 230's method_missing)
+		r.add(n)
+	}
 	for _, v := range c.verbatim {
 		r.from = "Go in " + v.file.Name
 		r.scanGo(v.code)

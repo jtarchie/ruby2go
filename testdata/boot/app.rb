@@ -2,6 +2,7 @@
 require "demo"
 require "demo/text"
 require "demo/gemish"
+require "demo/cli"
 
 # A computed require in a method is a compile-time no-op (decision 163); under MRI it loads demo/unnamed.
 def load_extra(name) = require(name)
@@ -43,3 +44,9 @@ p g.tab_for("x").kind, g.tab_for("")
 p g.synced
 p g.remaining(3), g.remaining(0.5)
 $stdout.ohai("extended")
+cli = Demo::CliParser.new.parse(["json"])
+p cli.json?, cli.sizes?
+
+p DemoCli::InfoCmd.new.run
+ENV["DEMO_X_TOKEN"] = "s"
+p ENV.sensitive?("A_TOKEN"), ENV.sensitive_environment.keys.include?("DEMO_X_TOKEN")

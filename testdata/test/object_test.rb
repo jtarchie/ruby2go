@@ -5523,4 +5523,36 @@ module ObjectTests
       assert_equal [true, false], [b.is_a?(IsAShim), IsABase.new.is_a?(IsAShim)]
     end
   end
+
+  class HookOpts
+    attr_reader :list
+
+    def initialize = @list = [1]
+
+    def initialize_dup(other)
+      super
+      @list = other.list.dup
+    end
+  end
+
+  class HookBase
+    def self.inherited(sub)
+      super
+      (@subs ||= []) << sub.name
+    end
+
+    def self.subs = @subs
+  end
+
+  class HookKid < HookBase; end
+
+  # initialize_dup and inherited overrides calling super (decision 232).
+  class ObjectHookSuperTest < Minitest::Test
+    def test_hooks
+      o = HookOpts.new
+      d = o.dup
+      d.list << 2
+      assert_equal [[1], [1, 2], ["ObjectTests::HookKid"]], [o.list, d.list, HookBase.subs]
+    end
+  end
 end

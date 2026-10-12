@@ -2971,4 +2971,12 @@ module DynamicTests
       assert_equal [6, 3, 6], [x.joined(*a, *b), x.joined(*a, 2), SplatTarget.new.send(m, 1, *b)]
     end
   end
+
+  # keys/values/to_a on an untyped Hash or Array: the [untyped] instantiation's method (decision 232).
+  class DynamicContainerTest < Minitest::Test
+    def test_untyped_container_methods
+      h = { "a" => 1, "b" => 2 } #: untyped
+      assert_equal [["a", "b"], [1, 2], [["a", 1], ["b", 2]]], [h.keys, h.values, h.to_a]
+    end
+  end
 end

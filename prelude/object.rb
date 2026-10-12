@@ -137,6 +137,13 @@ module Kernel
 
   private
 
+  # dup's and clone's hooks, for an override's super to reach (decision 232): a struct's _Dup calls the class's own.
+  #: (untyped) -> void
+  def initialize_dup(_other) = nil
+
+  #: (untyped) -> void
+  def initialize_clone(_other) = nil
+
   # Kernel#exit! skips at_exit handlers and doesn't flush stdout.
   #: (?Integer) -> void
   def __exit_bang(status = 0) = %x{ os.Exit(int(status)) }

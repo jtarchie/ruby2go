@@ -476,13 +476,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		val := f.genExpr(n.Value, exp)
 		decl := val.typ
 		if ann != nil {
-			decl = ann // `@x = [] #: Array[T]` declares the ivar's type
-			val = f.unionToAnn(n, val, ann)
-			if o, ok := ann.(TOpt); ok && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
-				val.typ = o.Elem // a T into a T? ivar: coerce wraps it
-			} else {
-				val.typ = ann
-			}
+			val, decl = f.annotatedIvarValue(n, val, ann)
 		}
 		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
 		f.unnarrow("ivar:" + n.Name)
@@ -490,7 +484,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		if f.discover && ann == nil && isEmptyLit(n.Value) {
 			iv.open = true
 		}
-		if !fitsValue(val, iv.Type) {
+		if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
 			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 		}
 		code := f.ivarCode(iv)
@@ -1811,10 +1805,8 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
-	if procLiteral(n.Receiver) && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
-		if _, fn := expected.(TFunc); fn { // `T.let(-> {}.freeze, T.proc.void)`: the lambda at the expected type; freezing a Proc changes nothing it does
-			return f.genExpr(n.Receiver, expected)
-		}
+	if e, ok := f.genCallRewrite(n, expected); ok {
+		return e
 	}
 	if e, ok := f.genCallForm(n, expected); ok {
 		return e
@@ -5326,8 +5318,8 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 		f.isBlockParam(ba.Expression) && !f.iterator && f.blockSig != nil && len(f.blockSig.Params) >= 1 && len(f.blockSig.Params) <= 2 {
 		return f.dynEachForward(n, recv)
 	}
-	if f.lenient() && isAny(recv.typ) && dynEnumNames[name] {
-		return f.dynEnumBlock(n, recv, name, args, block)
+	if _, tv := recv.typ.(TVar); f.lenient() && (isAny(recv.typ) || tv) && dynEnumNames[name] { // untyped, or a gem module's self
+		return f.dynEnumBlock(n, expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}, name, args, block)
 	}
 	f.errorf(n, "blocks on untyped receivers are not supported")
 	return expr{}
@@ -5370,6 +5362,9 @@ func (f *fctx) dynEnumBlock(n parser.Node, recv expr, name string, args []parser
 		f.indent--
 	}
 	branch("case Hash_Any:", expr{code: r + "._ToAny()", typ: hashT})
+	if env := f.c.classes["ENVClass"]; env != nil && env.lookup("to_h") != nil { // ENV is Hash-like: its pairs, as a Hash (decision 229)
+		branch("case *ENVClass:", expr{code: r + ".ToH()._ToAny()", typ: hashT})
+	}
 	branch("default:", expr{code: "rbElemsAny(" + r + ")", typ: arrT})
 	f.emit("}")
 	return expr{code: tmp, typ: TAny{}}
@@ -7083,6 +7078,9 @@ func (x *exprNode) ChildNodes() []parser.Node        { return nil }
 // Like MRI, only a call with an explicit receiver (other than self) cannot
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
+	if e, ok := f.dynContainerCall(n, recv, name, args); ok {
+		return e
+	}
 	f.c.noteDyn(name)
 	if (f.m == nil || !f.m.quietDynamic) && !f.patQuiet && !f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's class is chosen at run time by design (decision 142)
 		f.warn(n, "dynamic call: %s on %s", name, recv.typ)
@@ -7130,6 +7128,55 @@ func (f *fctx) jsonArgs(args []parser.Node) []string {
 		a.code += "._ToAny()"
 	}
 	return []string{"(" + a.code + ").s..."}
+}
+
+// dynContainerCall is an untyped `x.keys`, `x.values`, `x.to_a`: a Hash or Array method decision 207 gives no Dyn
+// wrapper, since its result grows the class's type (Array[K]). On the [untyped] instantiation it grows nothing, so the
+// receiver is switched on (Hash_Any, Array_Any) and the method called there; anything else goes to the dispatcher
+// (decision 232).
+func (f *fctx) dynContainerCall(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
+	if f.inDynContainer {
+		return expr{}, false
+	}
+	hash, arr := f.c.classes["Hash"], f.c.classes["Array"]
+	grows := func(cls *Class) bool {
+		e := cls.lookup(name)
+		return e != nil && !e.M.generic() && e.M.Block == nil && growsTypeParams(cls, e)
+	}
+	onHash, onArr := grows(hash), grows(arr)
+	if !onHash && !onArr || slices.ContainsFunc(args, func(a parser.Node) bool { _, sp := a.(*parser.SplatNode); return sp }) {
+		return expr{}, false
+	}
+	tmp, r := f.newTmp(), f.newTmp()
+	f.emit("var %s any", tmp)
+	f.emit("switch %s := rbUnbox(%s).(type) {", r, f.coerce(n, recv, TAny{}))
+	branch := func(head string, on expr) {
+		f.emit("%s", head)
+		var err *compileError
+		f.probe(func() { err = catchCompileError(func() { f.genMethodCall(n, on, name, args, nil) }) })
+		f.indent++
+		if err != nil {
+			f.emit("panic(rbNoMethod(%q, %s, false))", name, r)
+		} else {
+			f.emit("%s = %s", tmp, f.coerce(n, f.genMethodCall(n, on, name, args, nil), TAny{}))
+		}
+		f.indent--
+	}
+	if onHash {
+		branch("case Hash_Any:", expr{code: r + "._ToAny()", typ: TClass{C: hash, Args: []Type{TAny{}, TAny{}}}})
+	}
+	if onArr {
+		branch("case Array_Any:", expr{code: r + "._ToAny()", typ: TClass{C: arr, Args: []Type{TAny{}}}})
+	}
+	f.emit("default:")
+	f.indent++
+	f.inDynContainer = true
+	other := f.genDynCall(n, expr{code: r, typ: TAny{}}, name, args)
+	f.inDynContainer = false
+	f.emit("%s = %s", tmp, other.code)
+	f.indent--
+	f.emit("}")
+	return expr{code: tmp, typ: TAny{}}, true
 }
 
 // anySpread is args as one []any when any of them is a splat: each splat's elements (an Array's own, else rbSplatAny's
@@ -7661,8 +7708,19 @@ func (f *fctx) procCompose(n parser.Node, recv expr, t TFunc, name string, args 
 	return expr{code: code, typ: out}
 }
 
+// englishGlobals are English.rb's aliases of the globals genGlobalRead knows (Homebrew's `$CHILD_STATUS`).
+var englishGlobals = map[string]string{
+	"$CHILD_STATUS": "$?", "$PROCESS_ID": "$$", "$PID": "$$", "$LAST_MATCH_INFO": "$~",
+	"$INPUT_RECORD_SEPARATOR": "$/", "$RS": "$/",
+}
+
 // genGlobalRead maps the read-only globals rb2go knows (decision 61); $0 is the Ruby file as named at compile time, as `ruby main.rb` sets it.
 func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
+	if short, ok := englishGlobals[n.Name]; ok { // `require "English"`'s names for the punctuation globals
+		alias := *n
+		alias.Name = short
+		return f.genGlobalRead(&alias)
+	}
 	switch n.Name {
 	case "$0", "$PROGRAM_NAME":
 		name := f.c.mainFile.Name
@@ -7950,7 +8008,10 @@ func readsLastMatch(body parser.Node) bool {
 		case *parser.NumberedReferenceReadNode, *parser.BackReferenceReadNode:
 			return true
 		case *parser.GlobalVariableReadNode:
-			return n.Name == "$~"
+			return n.Name == "$~" || n.Name == "$LAST_MATCH_INFO"
+		case *parser.CallNode: // Regexp.last_match reads the frame's $~ too
+			r, ok := n.Receiver.(*parser.ConstantReadNode)
+			return ok && r.Name == "Regexp" && n.Name == "last_match"
 		}
 		return false
 	})
@@ -8272,6 +8333,27 @@ func structValued(t Type) bool {
 	return false
 }
 
+// genCallRewrite is a call compiled as another expression: Regexp.last_match on the caller's $~ (decision 232), a
+// frozen proc literal at its expected type (decision 226).
+func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
+	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && r.Name == "Regexp" && n.Name == "last_match" && n.Block == nil && len(callArgs(n)) <= 1 {
+		// the caller's $~ (decision 171: it is the frame's), handed to the helper that indexes it
+		gv := &parser.GlobalVariableReadNode{Location: n.Location, Name: "$~"}
+		if len(callArgs(n)) == 0 {
+			return f.genExpr(gv, expected), true
+		}
+		at := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: "__last_match_at",
+			Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{gv, callArgs(n)[0]}}}
+		return f.genCall(at, expected), true
+	}
+	if procLiteral(n.Receiver) && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
+		if _, fn := expected.(TFunc); fn { // `T.let(-> {}.freeze, T.proc.void)`: the lambda at the expected type; freezing a Proc changes nothing it does
+			return f.genExpr(n.Receiver, expected), true
+		}
+	}
+	return expr{}, false
+}
+
 // procLiteral: `-> { }`, `proc { }`, `lambda { }`.
 func procLiteral(n parser.Node) bool {
 	switch n := n.(type) {
@@ -8554,6 +8636,42 @@ func isTypeVar(t Type) bool {
 }
 
 // unionToAnn converts, rather than relabels, a union value written to an annotated ivar: a union is Go any.
+// annotatedIvarValue is `@x = v #: T` (or T.let): v as T, and T as the ivar's declared type.
+func (f *fctx) annotatedIvarValue(n parser.Node, val expr, ann Type) (expr, Type) {
+	ann = adoptBind(ann, val.typ)
+	val = f.unionToAnn(n, val, ann)
+	if isAny(val.typ) && !isAny(ann) { // `@args = T.let(untyped, Args)`: converted, not just relabeled
+		val = expr{code: f.coerce(n, val, ann), typ: ann}
+	}
+	if o, ok := ann.(TOpt); ok && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+		val.typ = o.Elem // a T into a T? ivar: coerce wraps it
+	} else {
+		val.typ = ann
+	}
+	return val, ann // `@x = [] #: Array[T]` declares the ivar's type
+}
+
+// adoptBind is ann with the bound self of a Proc value of the same shape (decision 231): Sorbet's
+// `T.let(block, T.nilable(T.proc.void))` of a `T.proc.bind(Parser)` block drops the bind its type cannot carry, where
+// rb2go's Proc type takes self as a parameter.
+func adoptBind(ann, val Type) Type {
+	vf, ok := stripOpt(val).(TFunc)
+	if !ok || vf.Self == nil {
+		return ann
+	}
+	o, opt := ann.(TOpt)
+	af, ok := stripOpt(ann).(TFunc)
+	if !ok || af.Self != nil || len(af.Params) != len(vf.Params) || af.Rest != vf.Rest {
+		return ann
+	}
+	af.Self = vf.Self
+	if opt {
+		o.Elem = af
+		return o
+	}
+	return af
+}
+
 func (f *fctx) unionToAnn(n parser.Node, val expr, ann Type) expr {
 	if isUnion(val.typ) && !isUnion(ann) {
 		return expr{code: f.coerce(n, val, ann), typ: ann}

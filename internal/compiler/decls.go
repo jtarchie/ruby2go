@@ -948,7 +948,10 @@ func (c *Compiler) emitCopy(cls *Class) {
 // emitDup is Object#dup for a struct class: a shallow copy, then the class's own initialize_copy (rbDup).
 func (c *Compiler) emitDup(cls *Class) {
 	c.w("func (self *%s) _Dup() any {\n\tdup := *self\n", cls.Name)
-	if e := cls.lookup("initialize_copy"); e != nil && e.M.File != nil && !e.M.File.prelude {
+	if e := cls.lookup("initialize_dup"); e != nil && e.M.File != nil && !e.M.File.prelude {
+		// ponytail: its super reaches Kernel's no-op, not the class's initialize_copy as MRI's Object#initialize_dup would
+		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls))
+	} else if e := cls.lookup("initialize_copy"); e != nil && e.M.File != nil && !e.M.File.prelude {
 		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls)) // private: no forwarder
 	}
 	c.w("\treturn &dup\n}\n\n")

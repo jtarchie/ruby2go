@@ -860,6 +860,21 @@ class Array < Object
     return &Array[E]{s: slices.Clone(self.s)}
   }
 
+  # flatten in place: self when anything was spliced, else nil (typed elements are never Arrays here).
+  #: (?Integer) -> Array[E]?
+  def flatten!(depth = -1) = %x{
+    self.rbCheckFrozen()
+    a, ok := any(self).(*Array[any])
+    if !ok || !slices.ContainsFunc(a.s, func(x any) bool { _, isArr := x.(Array_Any); return isArr }) {
+      return nil
+    }
+    out := &Array[any]{}
+    rbFlattenInto(out, a.s, int(depth))
+    a.s = out.s
+    p := self
+    return &p
+  }
+
   # compact on optional elements drops the nils from the type too.
   # @self Array[U?]
   # @rbs [U] () -> Array[U]
