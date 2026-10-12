@@ -505,8 +505,8 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 	// Constraint = what the module's bodies call on self (docs/design.md).
 	called := c.selfCalls(mod)
 	for _, e := range c.publicEntries(mod) {
-		if !called[e.M.Name] {
-			continue
+		if !called[e.M.Name] || !c.renderingConstraint && c.dispatchable(e.Owner, e.M) {
+			continue // a dispatched name is called through rbSend_, not the constraint (dispatch.go)
 		}
 		env := composeEnv(e.Env, nil)
 		env["Self"] = TVar{Name: "Self"}
@@ -1231,7 +1231,9 @@ func (c *Compiler) constraintNamesSelf(owner *Class) bool {
 	}
 	saved := c.out
 	c.out = strings.Builder{} // ponytail: renders the constraint to read it; saved restores into the same address, so Builder's copy check holds
+	c.renderingConstraint = true // every self-called name, dispatched or not: dispatchable asks this, so it must not ask back
 	c.emitModuleInterface(owner)
+	c.renderingConstraint = false
 	decl := c.out.String()
 	c.out = saved
 	_, body, _ := strings.Cut(decl, "_Self[Self any")
@@ -1411,7 +1413,7 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 	if e.Owner.universal {
 		return c.includerCalls(cls, e.M.Name)
 	}
-	return e.Owner.IsModule && c.selfCalls(e.Owner)[e.M.Name]
+	return e.Owner.IsModule && c.selfCalls(e.Owner)[e.M.Name] && !c.dispatchable(e.Owner, e.M)
 }
 
 // genericProtocol are the names Go code asserts or calls as methods on a generic primitive of unknown instantiation.
@@ -1485,9 +1487,13 @@ func (c *Compiler) includerCalls(cls *Class, name string) bool {
 	}
 	for k := cls; k != nil && !k.universal; k = k.Super {
 		for _, inc := range k.Includes {
-			if c.selfCalls(inc.Mod)[name] {
-				return true
+			if !c.selfCalls(inc.Mod)[name] {
+				continue
 			}
+			if e := inc.Mod.lookup(name); e != nil && e.Owner.IsModule && c.dispatchable(e.Owner, e.M) {
+				continue // the module body dispatches it by type switch (dispatch.go); its constraint does not declare it
+			}
+			return true
 		}
 	}
 	return false

@@ -3439,8 +3439,11 @@ func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) 
 		return "", false
 	}
 	owner := f.staticStruct(recv)
-	if owner == nil || !f.c.dispatchable(e.Owner, e.M) || owner.IsModule && !owner.universal && !e.Owner.universal {
-		return "", false // a module's own method on its Self is the constraint's, not a struct's
+	if owner == nil || !f.c.dispatchable(e.Owner, e.M) {
+		return "", false
+	}
+	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner {
+		return "", false // self in a module body reaching another module's method: that is the constraint's
 	}
 	return f.c.sendCall(e, recv.code, argList), true
 }
@@ -3454,7 +3457,7 @@ func (f *fctx) staticStruct(recv expr) *Class {
 			return t.C
 		}
 	case TVar:
-		if t.Name == "Self" && f.owner != nil && len(f.owner.TypeParams) == 0 && (f.owner.isStruct() || f.owner.IsModule) {
+		if t.Name == "Self" && f.owner != nil && (f.owner.isStruct() && len(f.owner.TypeParams) == 0 || f.owner.IsModule) {
 			return f.owner // a struct class's body, or a module's: self is some includer, a universal name dispatches over all
 		}
 	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
