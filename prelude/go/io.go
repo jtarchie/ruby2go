@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+	"unsafe"
 )
 
 // next is ARGF's current reader: stdin when ARGV is empty at the first
@@ -277,4 +279,79 @@ func rbIOForFd(fd int, mode string) *IO {
 		return rbIONew(f, nil, nil)
 	}
 	return rbIONew(nil, f, nil)
+}
+
+// rbReadNonblock reads up to n bytes that are there now: what self's buffer holds, else one read of its descriptor.
+// With nonblock, an empty pipe raises IO::EAGAINWaitReadable (a read deadline); without, it waits for some.
+// EOFError at the end, as MRI's read_nonblock and readpartial.
+func rbReadNonblock(self *IO, n int, nonblock bool) String {
+	r := *self.rbReader()
+	if n <= 0 {
+		return ""
+	}
+	if r.Buffered() > 0 {
+		buf := make([]byte, min(n, r.Buffered()))
+		k, _ := r.Read(buf)
+		return String(buf[:k])
+	}
+	f := self.rbOSFile()
+	if nonblock { // a deadline already past is reported before the read is tried, hiding an EOF: a millisecond's grace
+		_ = f.SetReadDeadline(time.Now().Add(time.Millisecond))
+		defer func() { _ = f.SetReadDeadline(time.Time{}) }()
+	}
+	buf := make([]byte, n)
+	k, err := r.Read(buf)
+	if k > 0 {
+		return String(buf[:k])
+	}
+	switch {
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		panic(NewIO_EAGAINWaitReadable(Ref(String("Resource temporarily unavailable - read would block"))))
+	case errors.Is(err, io.EOF) || err == nil:
+		panic(NewEOFError(Ref(String("end of file reached"))))
+	}
+	panic(rbSysErr(err, "rb_io_read_nonblock", ""))
+}
+
+// rbIOSelect is IO.select over readers: those with buffered bytes, data or an end to report, once any has; nil when
+// limit passes first. Each is probed by a Peek under a short read deadline, which consumes nothing.
+func rbIOSelect(ios []*IO, limit *time.Duration) []*IO {
+	var stop time.Time
+	if limit != nil {
+		stop = time.Now().Add(*limit)
+	}
+	for {
+		var ready []*IO
+		for _, x := range ios {
+			r := *x.rbReader()
+			if r.Buffered() > 0 {
+				ready = append(ready, x)
+				continue
+			}
+			f := x.rbOSFile()
+			_ = f.SetReadDeadline(time.Now().Add(time.Millisecond))
+			_, err := r.Peek(1)
+			_ = f.SetReadDeadline(time.Time{})
+			if !errors.Is(err, os.ErrDeadlineExceeded) {
+				ready = append(ready, x) // data, or the end (EOF), or an error a read reports
+			}
+		}
+		if len(ready) > 0 {
+			return ready
+		}
+		if limit != nil && !time.Now().Before(stop) {
+			return nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// rbWinsize is TIOCGWINSZ on f: its rows and columns.
+func rbWinsize(f *os.File) ([4]uint16, error) {
+	var ws [4]uint16
+	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&ws))) //nolint:gosec // the ioctl's out-parameter
+	if e != 0 {
+		return ws, e
+	}
+	return ws, nil
 }

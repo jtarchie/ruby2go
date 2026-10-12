@@ -6,6 +6,10 @@ class Thread < Object
   #: () { () -> untyped } -> Thread
   def self.new = %x{ return rbThreadRun(func() any { return blk() }) }
 
+  # Runs the block: rb2go raises no asynchronous interrupt for the mask to defer (decision 233).
+  # @rbs [T] (untyped) { () -> T } -> T
+  def self.handle_interrupt(_mask) = yield
+
   # @rbs [A] (A) { (A) -> untyped } -> Thread
   def self.__new_1(a) = %x{ return rbThreadRun(func() any { return blk(a) }) }
 

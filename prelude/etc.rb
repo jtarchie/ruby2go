@@ -16,6 +16,18 @@ module Etc
   #: () -> Integer
   def self.nprocessors = %x{ Integer(runtime.NumCPU()) }
 
+  # uname(2)'s fields, read from uname(1) (decision 233): Go's syscall.Uname is Linux-only.
+  #: () -> Hash[Symbol, String]
+  def self.uname
+    { sysname: __uname("-s"), nodename: __uname("-n"), release: __uname("-r"), version: __uname("-v"), machine: __uname("-m") }
+  end
+
+  #: (String) -> String
+  def self.__uname(flag) = %x{
+    b, _ := exec.Command("uname", string(flag)).Output()
+    return String(strings.TrimSpace(string(b)))
+  }
+
   #: () -> String
   def self.systmpdir = %x{ String(os.TempDir()) }
 

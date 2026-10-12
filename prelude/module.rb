@@ -136,10 +136,6 @@ class Module < Object
 end
 
 class Class < Module
-  # The hook a subclass's definition calls, for an override's super to reach (decision 232).
-  #: (untyped) -> nil
-  def inherited(_subclass) = nil
-
   # The parent's class object; nil above Object, whose BasicObject has none in rb2go.
   #: () -> Class?
   def superclass = %x{

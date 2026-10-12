@@ -71,9 +71,32 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.EAFNOSUPPORT
 	case *Errno_EMFILE:
 		n = syscall.EMFILE
+	case *Errno_ENOTTY:
+		n = syscall.ENOTTY
+	case *Errno_ENODEV:
+		n = syscall.ENODEV
 	default:
 		return nil
 	}
 	v := Integer(n)
 	return &v
+}
+
+// rbRaiseValue is what a gem's `raise x` or `raise klass, msg` raises when x or klass is held untyped (decision 233):
+// an exception as it is, a String as a RuntimeError, a class through its new (with msg when given).
+func rbRaiseValue(x any, msg any) ExceptionI {
+	switch v := rbUnbox(x).(type) {
+	case ExceptionI:
+		return v
+	case String:
+		return NewRuntimeError(Ref(v))
+	}
+	var args []any
+	if msg != nil {
+		args = append(args, msg)
+	}
+	if e, ok := rbDynNew(rbCall, x, args...).(ExceptionI); ok {
+		return e
+	}
+	return NewTypeError(Ref(String("exception class/object expected")))
 }

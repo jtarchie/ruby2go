@@ -2809,6 +2809,25 @@ func gradualParam(t rbs.Type) rbs.Type {
 	return u.Elems[0]
 }
 
+// overrideYieldShape is the block a gem's non-yielding def takes because an override below it yields (decision 233):
+// concurrent-ruby's AbstractLockableObject#synchronize only raises, and MutexLockableObject's yields, which an
+// override's inherited signature must then allow.
+func (c *Compiler) overrideYieldShape(m *Method) (int, bool, *Method, bool) {
+	if m.Owner == nil || m.File == nil || !c.gemFile(m.File) {
+		return 0, false, nil, false
+	}
+	for _, cls := range c.classList {
+		o := cls.Methods[m.Name]
+		if cls == m.Owner || o == nil || o == m || o.Node == nil || !cls.isSubclassOf(m.Owner) {
+			continue
+		}
+		if n, optional, ok := c.yieldShape(o); ok {
+			return n, optional, o, true
+		}
+	}
+	return 0, false, nil, false
+}
+
 // paramSig builds a def's signature from rbs-inline's per-parameter form
 // (`# @rbs x: T`, `# @rbs *xs: T`, `# @rbs return: T`). Without a return
 // annotation the return type is inferred from the body (inferRet). A def
@@ -2854,7 +2873,14 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		}
 	}
 	sig := "(" + strings.Join(ps, ", ") + ") "
-	if n, optional, ok := c.yieldShape(m); ok { // a def that yields takes a block typed by what it yields (decision 146)
+	n, optional, ok := c.yieldShape(m)
+	from := m // the def whose yields decide the block's value
+	if !ok {
+		var o *Method
+		n, optional, o, ok = c.overrideYieldShape(m)
+		from = o
+	}
+	if ok { // a def that yields takes a block typed by what it yields (decision 146)
 		bps := make([]string, n)
 		for i := range bps {
 			bps[i] = "untyped"
@@ -2864,8 +2890,8 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		// a gem wrapper's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226).
 		// ponytail: only wrappers that also yield inside a block; any tail yield needs non-local return from closure blocks
 		// first (decision 4), since a block-valued method is a closure and Cuba's `on` returns from inside `try`'s block.
-		wrapper := c.pruneGems && m.File != nil && c.gemFile(m.File) && containsNestedYield(m.Node.Body, false)
-		if yieldValueUsed(m.Node.Body, wrapper) {
+		wrapper := c.pruneGems && from.File != nil && c.gemFile(from.File) && containsNestedYield(from.Node.Body, false)
+		if yieldValueUsed(from.Node.Body, wrapper) {
 			ret = "untyped"
 		}
 		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> " + ret + " } "
@@ -2873,6 +2899,9 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 	sig += "-> "
 	if r := ann["return:"]; len(r) > 0 {
 		return sig + r[0], false
+	}
+	if m.Name == "initialize" { // new answers the object; initialize's value is never seen (`def initialize = @x = y`)
+		return sig + "void", false
 	}
 	return sig + "untyped", true
 }
@@ -2912,6 +2941,11 @@ func (c *Compiler) inferRet(m *Method) {
 	}
 	c.dropWarnings(nw) // emitMethod warns for real
 	var ret Type = TNil{}
+	if len(ts) == 0 && c.pruneGems && c.gemFile(m.File) && endsInRaise(m.Node.Body) {
+		// a gem's abstract `def synchronize; raise NotImplementedError; end`: what overrides return, whose
+		// inherited signature this is (decision 233)
+		ret = TAny{}
+	}
 	for i, t := range ts {
 		if isVoid(t) {
 			t = TNil{}
@@ -4343,4 +4377,14 @@ func (c *Compiler) publicGemOverrides() {
 			}
 		}
 	}
+}
+
+// endsInRaise: body's last statement is a raise (an abstract method's whole body).
+func endsInRaise(body parser.Node) bool {
+	st, ok := body.(*parser.StatementsNode)
+	if !ok || len(st.Body) == 0 {
+		return false
+	}
+	c, ok := st.Body[len(st.Body)-1].(*parser.CallNode)
+	return ok && c.Receiver == nil && (c.Name == "raise" || c.Name == "fail")
 }

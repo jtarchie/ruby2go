@@ -784,7 +784,7 @@ func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []s
 	for _, d := range dirs { // ruby runs in dir, so as written
 		flags = append(flags, "-I", d)
 	}
-	if file == "main.rb" { // an example: key the cache on the files it requires too
+	if file == "main.rb" || len(dirs) > 0 { // an example, or a file with a load path: key the cache on the files it requires too
 		src = exampleSources(t, dir)
 	}
 	return mriRun(t, dir, src, pio, slices.Concat(flags, []string{file}, args))

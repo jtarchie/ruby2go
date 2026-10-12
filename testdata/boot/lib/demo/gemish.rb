@@ -128,4 +128,72 @@ module Demo
     def sensitive_environment = select { |key, _| sensitive?(key) }
   end
   ENV.extend(EnvSensitive)
+
+  # Decision 233's gem leniencies: an abstract parent taking its overrides' block, tuple arity, raise forms, a
+  # local of two Array types, nil into a predicate, ivar String mutation and out-buffers.
+  class AbstractLockable
+    def synchronize
+      raise NotImplementedError
+    end
+  end
+
+  class MutexLockable < AbstractLockable
+    def initialize = @lock = Thread::Mutex.new
+
+    def synchronize
+      if @lock.owned?
+        yield
+      else
+        @lock.synchronize { yield }
+      end
+    end
+  end
+
+  class Counter < MutexLockable
+    def initialize
+      super
+      @n = 0
+    end
+
+    def inc = synchronize { @n += 1 }
+
+    def value = synchronize { @n }
+  end
+
+  class Lenient
+    def self.quad(n) = [n, n.to_s, n * 2, :x]
+
+    def self.three(n)
+      a, b, c = quad(n)
+      [a, b, c]
+    end
+
+    def self.pairs(n) = [quad(n)].map { |a, b| "#{a}#{b}" }
+
+    def self.mixed(flag)
+      xs = [1]
+      xs = ["a"] if flag
+      xs.size
+    end
+
+    def self.raised(k, msg)
+      raise(k, msg)
+    rescue StandardError => e
+      [e.class.name, e.message]
+    end
+
+    def self.lines(text)
+      r, w = IO.pipe
+      w.write(text)
+      w.close
+      buf = +""
+      out = []
+      loop do
+        r.read_nonblock(4, buf)
+        out << buf.dup
+      end
+    rescue EOFError
+      out.join
+    end
+  end
 end

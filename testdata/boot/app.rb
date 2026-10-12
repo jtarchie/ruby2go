@@ -50,3 +50,8 @@ p cli.json?, cli.sizes?
 p DemoCli::InfoCmd.new.run
 ENV["DEMO_X_TOKEN"] = "s"
 p ENV.sensitive?("A_TOKEN"), ENV.sensitive_environment.keys.include?("DEMO_X_TOKEN")
+ctr = Demo::Counter.new
+3.times { ctr.inc }
+p ctr.value
+p Demo::Lenient.three(3), Demo::Lenient.pairs(4), Demo::Lenient.mixed(true)
+p Demo::Lenient.raised(ArgumentError, "boom"), Demo::Lenient.lines("one\ntwo")

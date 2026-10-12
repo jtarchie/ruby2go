@@ -5,6 +5,17 @@
 
 # @go_type string
 class String < Object
+  # What slice!(range) leaves (decision 233): self without the part self[range] is.
+  #: (Range[Integer]) -> String
+  def __slice_rest(r)
+    got = self[r]
+    return self if got.nil?
+
+    start = r.begin
+    start += size if start < 0
+    self[0, start].to_s + self[(start + got.size)..].to_s
+  end
+
   include Comparable
 
   #: (String) -> Integer

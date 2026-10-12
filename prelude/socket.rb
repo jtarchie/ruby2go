@@ -4,18 +4,6 @@
 
 class SocketError < StandardError; end
 
-class IO
-  module WaitReadable; end
-  module WaitWritable; end
-
-  class TimeoutError < IOError; end
-
-  # accept_nonblock's "would block", rescued as IO::WaitReadable or Errno::EAGAIN.
-  class EAGAINWaitReadable < Errno::EAGAIN
-    include IO::WaitReadable
-  end
-end
-
 class BasicSocket < Object
   include IOWritable
   include IOReadable

@@ -70,6 +70,24 @@ module Process
   #: (String, *String) -> Integer
   def self.spawn(cmd, *args) = %x{ return rbSpawn(string(cmd), rest_) }
 
+  # spawn's general form: an env Hash first, [program, argv0], options (decision 233). Calls whose first argument
+  # is not a String reach it (decision 12's `__<name>_<class>`): Homebrew's SystemCommand#exec3.
+  #: (Hash[untyped, untyped], *untyped, **untyped) -> Integer
+  def self.__spawn_hash(env, *args, **opts) = %x{ return rbSpawnFull(append([]any{env}, rest_...), opts) }
+
+  #: (Array[untyped], *untyped, **untyped) -> Integer
+  def self.__spawn_array(cmd, *args, **opts) = %x{ return rbSpawnFull(append([]any{cmd}, rest_...), opts) }
+
+  # A thread that reaps pid; its value is the child's Process::Status.
+  #: (Integer) -> Thread
+  def self.detach(pid) = Thread.new { __reap(pid) }
+
+  #: (Integer) -> Process::Status
+  def self.__reap(pid)
+    wait(pid)
+    __status
+  end
+
   # pid -1 (the default) reaps whichever child finishes first; Errno::ECHILD with none left.
   #: (?Integer) -> Integer
   def self.wait(pid = -1) = %x{ return rbWait(int(pid)) }

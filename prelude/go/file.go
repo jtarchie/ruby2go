@@ -32,6 +32,10 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_ENOTDIR(msg("Not a directory"))
 	case errors.Is(err, syscall.EBADF):
 		return NewErrno_EBADF(Ref(String("Bad file descriptor")))
+	case errors.Is(err, syscall.ENOTTY):
+		return NewErrno_ENOTTY(Ref(String("Inappropriate ioctl for device")))
+	case errors.Is(err, syscall.ENODEV):
+		return NewErrno_ENODEV(Ref(String("Operation not supported by device")))
 	}
 	return NewIOError(Ref(String(err.Error())))
 }

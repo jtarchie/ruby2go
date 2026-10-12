@@ -13,7 +13,7 @@ p Addrinfo.new(Addrinfo.tcp("127.0.0.1", 80).to_sockaddr)
 require "socket"
 SOCKSSocket.new("127.0.0.1", 1080)
 -- io_select.rb --
-# error: main.rb:4: undefined method select
+# error: main.rb:4: TCPServer where IO is expected
 require "socket"
 server = TCPServer.new("127.0.0.1", 0)
 IO.select([server])

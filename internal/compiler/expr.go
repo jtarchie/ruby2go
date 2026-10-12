@@ -1539,7 +1539,7 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 				}
 			}
 		}
-		if f.lenient() && structValued(e.typ) && structValued(to) { // a gem's other union of classes: checked on arrival (decision 225)
+		if f.lenient() { // a gem's other union, or a T? where nil is not a member: checked on arrival (decisions 225, 233)
 			return f.c.unionFn(to) + "(" + f.coerce(n, e, TAny{}) + ")"
 		}
 	}
@@ -2969,7 +2969,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 			a.typ = o.Elem
 		}
 		if c, ok := a.typ.(TClass); ok {
-			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && len(args) <= len(r.M.Params) {
+			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && (len(args) <= len(r.M.Params) || slices.ContainsFunc(r.M.Params, func(p Param) bool { return p.Rest })) {
 				return r
 			}
 		}
@@ -3811,6 +3811,9 @@ func (f *fctx) blockArrayOf(n parser.Node, parts []expr) expr {
 // the Go loop/closure parameter names and a destructuring prologue.
 // bindTupleParams destructures one yielded tuple across several block params.
 func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]string, func()) {
+	if len(names) != len(tt.Elems) && f.lenient() { // a gem's proc: extra fields dropped, missing params nil (decision 233)
+		return f.bindLenientTuple(n, names, tt)
+	}
 	if len(names) != len(tt.Elems) {
 		f.errorf(n, "block takes %d params but the tuple has %d elements", len(names), len(tt.Elems))
 	}
@@ -3844,6 +3847,29 @@ func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]stri
 		for _, v := range vars {
 			f.noteUnused(v)
 		}
+	}
+}
+
+// bindLenientTuple binds a tuple to a different count of plain block params, as a Ruby proc's arity does: the first
+// fields, then nil.
+func (f *fctx) bindLenientTuple(n parser.Node, names []string, tt TTuple) ([]string, func()) {
+	if slices.ContainsFunc(names, func(nm string) bool { return strings.HasPrefix(nm, "(") }) {
+		f.errorf(n, "block takes %d params but the tuple has %d elements", len(names), len(tt.Elems))
+	}
+	p := f.newTmp()
+	return []string{p}, func() {
+		for i, nm := range names {
+			e := expr{code: "nil", typ: TNil{}}
+			if i < len(tt.Elems) {
+				e = expr{code: fmt.Sprintf("%s.F%d", p, i), typ: tt.Elems[i]}
+			}
+			v := f.blockParam(nm, e.typ)
+			if v.goName != "_" {
+				f.emit("%s := %s", v.goName, e.code)
+			}
+			f.noteUnused(v)
+		}
+		f.emit("_ = %s", p)
 	}
 }
 
@@ -4169,8 +4195,8 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	// a gem's `xs.each(&blk)` as a value is xs, as MRI's each returns its receiver (decision 172)
 	selfValue := t.kind != tailNone && f.lenient() && eachReturnsSelf[n.Name] && !isOptRecv
-	if !selfValue && t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
-		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name)
+	if !selfValue && t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) && !f.lenient() { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
+		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name) // gem code: nil, a broken-out loop's (decision 233)
 	}
 	var recv expr
 	if n.Receiver == nil {
@@ -4576,6 +4602,9 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 			return expr{code: "", typ: TVoid{}, stmt: true}
 		case "respond_to_missing?": // Object's answers false
 			return expr{code: "Boolean(false)", typ: f.cls("Boolean")}
+		case "inherited", "initialize_dup", "initialize_clone", "included", "extended", "prepended", "method_added":
+			// Class's and Object's hooks do nothing (decision 232): an override's super reaches no method, so no slot
+			return expr{code: "", typ: TVoid{}, stmt: true}
 		case "method_missing": // Object's raises NoMethodError for the name
 			var name parser.Node
 			if forwarding && len(f.m.Params) > 0 {
@@ -4766,25 +4795,13 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		if f.rescues > 0 { // re-raises the exception being handled
 			return expr{code: "panic(r_)", typ: TVoid{}, stmt: true, noreturn: true}
 		}
+		if f.lenient() { // MRI re-raises $!, which is nil here: an empty RuntimeError (decision 233)
+			val = f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{{code: `""`, typ: f.cls("String"), lit: true}}, nil, nil)
+			break
+		}
 		f.errorf(n, "bare `raise` outside a rescue clause is not supported")
 	case 1:
-		if cls := f.classRef(args[0]); cls != nil {
-			if !cls.isSubclassOf(exc) {
-				f.errorf(args[0], "%s is not an exception class", cls.RubyName)
-			}
-			val = f.genNew(n, cls, nil, []expr{}, nil, nil)
-			break
-		}
-		a := f.genExpr(args[0], nil)
-		if isClass(a.typ, "String") {
-			val = f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{a}, nil, nil)
-			break
-		}
-		if c := classOf(a.typ); c != nil && c.isSubclassOf(exc) {
-			val = a
-			break
-		}
-		f.errorf(args[0], "raise needs an exception class, a String, or an exception object (got %s)", a.typ)
+		val = f.raiseOne(n, args[0], exc)
 	case 2, 3:
 		cls := f.classRef(args[0])
 		if c, ok := args[0].(*parser.CallNode); ok && cls == nil && c.Name == "class" && c.Receiver != nil && c.Arguments == nil {
@@ -4793,6 +4810,13 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			if cl := classOf(val.typ); !isAny(val.typ) && (cl == nil || !cl.isSubclassOf(exc)) {
 				f.errorf(args[0], "raise %s: not an exception", val.typ)
 			}
+			break
+		}
+		if cls == nil && f.lenient() && len(args) == 2 { // `raise klass, msg` with klass held untyped (decision 233)
+			f.c.noteDyn("new")
+			k := f.genExpr(args[0], nil)
+			msg := f.genExpr(args[1], f.cls("String"))
+			val = expr{code: "rbRaiseValue(" + f.coerce(args[0], k, TAny{}) + ", " + f.coerce(args[1], msg, TAny{}) + ")", typ: TClass{C: exc}}
 			break
 		}
 		if cls == nil {
@@ -4813,6 +4837,29 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
 	return expr{code: "panic(" + f.withCause(val.code) + ")", typ: TVoid{}, stmt: true, noreturn: true}
+}
+
+// raiseOne is the exception `raise x` raises: a class's new, a String's RuntimeError, an exception itself.
+func (f *fctx) raiseOne(n, arg parser.Node, exc *Class) expr {
+	if cls := f.classRef(arg); cls != nil {
+		if !cls.isSubclassOf(exc) {
+			f.errorf(arg, "%s is not an exception class", cls.RubyName)
+		}
+		return f.genNew(n, cls, nil, []expr{}, nil, nil)
+	}
+	a := f.genExpr(arg, nil)
+	if isClass(a.typ, "String") {
+		return f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{a}, nil, nil)
+	}
+	if c := classOf(a.typ); c != nil && c.isSubclassOf(exc) {
+		return a
+	}
+	if (isAny(a.typ) || isUnion(a.typ)) && f.lenient() { // an untyped (or mixed) class, message or exception, decided at run time (decision 233)
+		f.c.noteDyn("new")
+		return expr{code: "rbRaiseValue(" + f.coerce(arg, a, TAny{}) + ", nil)", typ: TClass{C: exc}}
+	}
+	f.errorf(arg, "raise needs an exception class, a String, or an exception object (got %s)", a.typ)
+	return expr{}
 }
 
 // ---- calls on nilable, tuple and untyped receivers
@@ -6375,6 +6422,40 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 	return expr{code: "", typ: TVoid{}, stmt: true, done: true}
 }
 
+// destructureOpt is `a, b = pair_or_nil` (decision 222).
+func (f *fctx) destructureOpt(n parser.Node, v expr, t TOpt, lefts []parser.Node, rest parser.Node, trail int) {
+	lead := len(lefts)
+	tt, ok := t.Elem.(TTuple)
+	if !ok || rest != nil || trail > 0 || lead != len(tt.Elems) {
+		f.errorf(n, "cannot destructure %s", v.typ)
+	}
+	// `tag, digest = h.find { }`: nil destructures into nils, as Ruby's to_ary-less nil does (decision 222)
+	vars := make([]string, lead)
+	for i, et := range tt.Elems {
+		vars[i] = f.newTmp()
+		f.emit("var %s %s", vars[i], f.c.goType(optOf(et)))
+	}
+	f.emit("if %s != nil {", v.code)
+	for i, et := range tt.Elems {
+		f.emit("\t%s = %s", vars[i], f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", v.code, i), typ: et}, optOf(et)))
+	}
+	f.emit("}")
+	for i, l := range lefts {
+		f.assignTarget(l, flatOpt(expr{code: vars[i], typ: optOf(tt.Elems[i])}))
+	}
+}
+
+// destructureLenient assigns a tuple's first fields to the targets, nil past its end, as Ruby's multiple assignment.
+func (f *fctx) destructureLenient(v expr, t TTuple, lefts []parser.Node) {
+	for i, l := range lefts {
+		if i < len(t.Elems) {
+			f.assignTarget(l, expr{code: fmt.Sprintf("%s.F%d", v.code, i), typ: t.Elems[i]})
+		} else {
+			f.assignTarget(l, expr{code: "nil", typ: TNil{}})
+		}
+	}
+}
+
 func isSplat(n parser.Node) bool {
 	_, ok := n.(*parser.SplatNode)
 	return ok
@@ -6396,6 +6477,10 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 	switch t := v.typ.(type) {
 	case TTuple:
 		m := len(t.Elems)
+		if rest == nil && trail == 0 && m != lead && f.lenient() { // `a, b, c = four`: the first fields, then nil (decision 233)
+			f.destructureLenient(v, t, lefts)
+			return
+		}
 		if rest == nil && m != lead || rest != nil && m < lead+trail {
 			f.errorf(n, "%d targets for a %d-tuple", lead+trail, m)
 		}
@@ -6415,24 +6500,7 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 			f.assignTarget(r, expr{code: fmt.Sprintf("%s.F%d", v.code, m-trail+j), typ: t.Elems[m-trail+j]})
 		}
 	case TOpt:
-		tt, ok := t.Elem.(TTuple)
-		if !ok || rest != nil || trail > 0 || lead != len(tt.Elems) {
-			f.errorf(n, "cannot destructure %s", v.typ)
-		}
-		// `tag, digest = h.find { }`: nil destructures into nils, as Ruby's to_ary-less nil does (decision 222)
-		vars := make([]string, lead)
-		for i, et := range tt.Elems {
-			vars[i] = f.newTmp()
-			f.emit("var %s %s", vars[i], f.c.goType(optOf(et)))
-		}
-		f.emit("if %s != nil {", v.code)
-		for i, et := range tt.Elems {
-			f.emit("\t%s = %s", vars[i], f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", v.code, i), typ: et}, optOf(et)))
-		}
-		f.emit("}")
-		for i, l := range lefts {
-			f.assignTarget(l, flatOpt(expr{code: vars[i], typ: optOf(tt.Elems[i])}))
-		}
+		f.destructureOpt(n, v, t, lefts, rest, trail)
 	case TClass:
 		if t.C.RubyName != "Array" {
 			f.errorf(n, "cannot destructure %s", v.typ)
@@ -7147,6 +7215,8 @@ func (f *fctx) dynContainerCall(n parser.Node, recv expr, name string, args []pa
 	if !onHash && !onArr || slices.ContainsFunc(args, func(a parser.Node) bool { _, sp := a.(*parser.SplatNode); return sp }) {
 		return expr{}, false
 	}
+	f.inDynContainer = true // the [untyped] method may itself call name dynamically (an arithmetic mix): plain dispatch there
+	defer func() { f.inDynContainer = false }()
 	tmp, r := f.newTmp(), f.newTmp()
 	f.emit("var %s any", tmp)
 	f.emit("switch %s := rbUnbox(%s).(type) {", r, f.coerce(n, recv, TAny{}))
@@ -7170,9 +7240,7 @@ func (f *fctx) dynContainerCall(n parser.Node, recv expr, name string, args []pa
 	}
 	f.emit("default:")
 	f.indent++
-	f.inDynContainer = true
 	other := f.genDynCall(n, expr{code: r, typ: TAny{}}, name, args)
-	f.inDynContainer = false
 	f.emit("%s = %s", tmp, other.code)
 	f.indent--
 	f.emit("}")
@@ -7910,6 +7978,9 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 // genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
 // (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
 func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
+	if e, ok := f.genOutBuffer(n); ok {
+		return e, true
+	}
 	if inner, ok := n.Receiver.(*parser.CallNode); ok && n.Name == "<<" && inner.Name == "<<" { // `x << a << b`: x << a, then x << b
 		root := inner
 		for r, ok := root.Receiver.(*parser.CallNode); ok && r.Name == "<<"; r, ok = r.Receiver.(*parser.CallNode) {
@@ -7926,8 +7997,8 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 		outer.Receiver = lv
 		return f.genStringBang(&outer)
 	}
-	lv, ok := n.Receiver.(*parser.LocalVariableReadNode)
-	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "replace" && n.Name != "clear" {
+	lv, write, ok := f.stringBangTarget(n, n.Receiver)
+	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "concat" && n.Name != "replace" && n.Name != "clear" {
 		return expr{}, false
 	}
 	var t Type
@@ -7949,19 +8020,8 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	}
 	args := callArgs(n)
 	switch n.Name {
-	case "<<":
-		if len(args) != 1 {
-			return expr{}, false
-		}
-		a := f.genExpr(args[0], nil)
-		code := f.coerce(args[0], a, str)
-		if typeEq(a.typ, TOpt{Elem: str}) { // `s << nil` raises in MRI too
-			code = "rbMustStr(" + a.code + ")"
-		}
-		f.assignLocal(n, lv.Name, expr{code: "String.Op_plus(" + cur() + ", " + code + ")", typ: str}, nil)
-		f.narrowString(lv.Name)
-		v := f.genExpr(lv, nil)
-		return expr{code: v.code, typ: v.typ, stmt: true, done: true}, true
+	case "<<", "concat":
+		return f.stringAppendBang(n, lv, args, cur, write)
 	case "replace", "clear": // rackup's Stream::Reader#read refills its buffer
 		if len(args) != map[string]int{"replace": 1, "clear": 0}[n.Name] {
 			return expr{}, false
@@ -7972,20 +8032,10 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 		}
 		tmp := f.newTmp()
 		f.emit("%s := rbStrReplace(%s, %s)", tmp, cur(), with) // cur: a non-String receiver raises as MRI's would
-		f.assignLocal(n, lv.Name, expr{code: tmp, typ: str}, nil)
-		f.narrowString(lv.Name)
+		write(expr{code: tmp, typ: str})
 		return expr{code: tmp, typ: str}, true
 	case "slice!":
-		if len(args) != 2 {
-			return expr{}, false
-		}
-		i := f.coerce(args[0], f.genExpr(args[0], f.cls("Integer")), f.cls("Integer"))
-		k := f.coerce(args[1], f.genExpr(args[1], f.cls("Integer")), f.cls("Integer"))
-		got, rest := f.newTmp(), f.newTmp()
-		f.emit("%s, %s := rbStrSliceBang(%s, %s, %s)", got, rest, cur(), i, k)
-		f.assignLocal(n, lv.Name, expr{code: rest, typ: str}, nil)
-		f.narrowString(lv.Name)
-		return expr{code: got, typ: TOpt{Elem: str}}, true
+		return f.stringSliceBang(n, args, cur, write)
 	}
 	plain := strings.TrimSuffix(n.Name, "!")
 	if f.c.classes["String"].lookup(plain) == nil {
@@ -7996,9 +8046,107 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	next := f.genExpr(&parser.CallNode{Location: n.Location, Receiver: &exprNode{Node: lv, e: expr{code: before, typ: str}},
 		Name: plain, MessageLoc: n.MessageLoc, Arguments: n.Arguments}, str)
 	f.emit("%s := %s", after, f.coerce(n, next, str))
-	f.assignLocal(n, lv.Name, expr{code: after, typ: str}, nil)
-	f.narrowString(lv.Name)
+	write(expr{code: after, typ: str})
 	return expr{code: fmt.Sprintf("rbStrChanged(%s, %s)", before, after), typ: TOpt{Elem: str}}, true
+}
+
+// stringAppendBang is a gem's `s << x` or `s.concat(a, b)` (decision 172, 233): s rebound to the joined String.
+func (f *fctx) stringAppendBang(n *parser.CallNode, lv parser.Node, args []parser.Node, cur func() string, write func(expr)) (expr, bool) {
+	str := f.cls("String")
+	if len(args) == 0 || n.Name == "<<" && len(args) != 1 {
+		return expr{}, false
+	}
+	acc := cur()
+	for _, arg := range args {
+		a := f.genExpr(arg, nil)
+		code := f.coerce(arg, a, str)
+		if typeEq(a.typ, TOpt{Elem: str}) { // `s << nil` raises in MRI too
+			code = "rbMustStr(" + a.code + ")"
+		}
+		acc = "String.Op_plus(" + acc + ", " + code + ")"
+	}
+	write(expr{code: acc, typ: str})
+	v := f.genExpr(lv, nil)
+	return expr{code: v.code, typ: v.typ, stmt: true, done: true}, true
+}
+
+// stringSliceBang is a gem's `s.slice!(i, n)` or `s.slice!(range)` (decision 172, 233): the part taken, s rebound
+// to the rest.
+func (f *fctx) stringSliceBang(n *parser.CallNode, args []parser.Node, cur func() string, write func(expr)) (expr, bool) {
+	str := f.cls("String")
+	if len(args) == 1 { // `buf.slice!(0..i)`: a Range's part, as String#[] takes it
+		var at expr
+		f.probe(func() { at = f.genExpr(args[0], nil) })
+		if !isClass(at.typ, "Range") {
+			return expr{}, false
+		}
+		s0, got := f.newTmp(), f.newTmp()
+		f.emit("%s := %s", s0, cur())
+		g := f.genMethodCall(n, expr{code: s0, typ: str}, "[]", args, nil)
+		f.emit("%s := %s", got, g.code)
+		rest := f.genMethodCall(n, expr{code: s0, typ: str}, "__slice_rest", args, nil)
+		write(rest)
+		return expr{code: got, typ: g.typ}, true
+	}
+	if len(args) != 2 {
+		return expr{}, false
+	}
+	i := f.coerce(args[0], f.genExpr(args[0], f.cls("Integer")), f.cls("Integer"))
+	k := f.coerce(args[1], f.genExpr(args[1], f.cls("Integer")), f.cls("Integer"))
+	got, rest := f.newTmp(), f.newTmp()
+	f.emit("%s, %s := rbStrSliceBang(%s, %s, %s)", got, rest, cur(), i, k)
+	write(expr{code: rest, typ: str})
+	return expr{code: got, typ: TOpt{Elem: str}}, true
+}
+
+// genOutBuffer is a gem's `io.read_nonblock(n, buf)` (readpartial, read, sysread): MRI fills buf in place; rb2go's
+// Strings do not change, so buf is rebound to what was read, which is also the call's value (decisions 172, 233).
+func (f *fctx) genOutBuffer(n *parser.CallNode) (expr, bool) {
+	args := callArgs(n)
+	if !f.lenient() || len(args) != 2 || n.Receiver == nil || n.Block != nil {
+		return expr{}, false
+	}
+	switch n.Name {
+	case "read_nonblock", "readpartial", "read", "sysread":
+	default:
+		return expr{}, false
+	}
+	buf, write, ok := f.stringBangTarget(n, args[1])
+	if !ok {
+		return expr{}, false
+	}
+	if _, local := buf.(*parser.LocalVariableReadNode); local { // a parameter rebound before any read (staticcheck SA4009)
+		f.emit("_ = %s", f.genExpr(buf, nil).code)
+	}
+	call := *n
+	call.Arguments = &parser.ArgumentsNode{Location: n.Arguments.Location, Arguments: args[:1]}
+	got := f.genExpr(&call, nil)
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, got.code)
+	write(expr{code: tmp, typ: got.typ})
+	if _, local := buf.(*parser.LocalVariableReadNode); local { // read after, so the rebinding counts as used (SA4006)
+		f.emit("_ = %s", f.genExpr(buf, nil).code)
+	}
+	return expr{code: tmp, typ: got.typ}, true
+}
+
+// stringBangTarget is what a gem's String mutation rebinds (decision 172): a local, or (decision 233) an ivar
+// (`@buffer.clear` in Homebrew's ReadlineNonblock), with the write that stores the new String.
+func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, func(expr), bool) {
+	switch t := recv.(type) {
+	case *parser.LocalVariableReadNode:
+		return t, func(e expr) {
+			f.assignLocal(n, t.Name, e, nil)
+			f.narrowString(t.Name)
+		}, true
+	case *parser.InstanceVariableReadNode:
+		return t, func(e expr) {
+			iv := f.ivar(t, t.Name, e.typ)
+			f.emit("%s = %s", f.ivarCode(iv), f.coerce(n, e, iv.Type))
+			f.markIvar(iv)
+		}, true
+	}
+	return nil, nil, false
 }
 
 // readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).
@@ -8260,7 +8408,8 @@ func (f *fctx) genToEnum(n *parser.CallNode) (expr, bool) {
 }
 
 // eachReturnsSelf are the iterators whose value in MRI is their receiver.
-var eachReturnsSelf = map[string]bool{"each": true, "each_with_index": true, "each_pair": true, "each_key": true, "each_value": true, "reverse_each": true}
+var eachReturnsSelf = map[string]bool{"each": true, "each_with_index": true, "each_pair": true, "each_key": true, "each_value": true, "reverse_each": true,
+	"each_line": true, "each_char": true, "each_byte": true, "times": true}
 
 // genIvarsEval is a gem's `child.instance_eval do @x = v; ... end` on an untyped receiver (an inherited hook seeding a
 // subclass's class-level ivars): each write is rbIvarSet on the receiver, as instance_variable_set (decision 172).
@@ -8307,6 +8456,9 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 			return "rbZero[" + f.c.goType(to) + "]()", true
 		}
 		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
+	}
+	if isNil(e.typ) && to.C.RubyName == "Boolean" { // a gem's predicate falling off with nil: false where a bool is kept (decision 233)
+		return "Boolean(false)", true
 	}
 	if to.C.isStruct() && !to.C.universal && len(to.C.TypeParams) == 0 && structValued(e.typ) {
 		// Ruby checks no types: a gem's `AbstractTab` where its sig says `Tab`, or nil where a class is expected, is the

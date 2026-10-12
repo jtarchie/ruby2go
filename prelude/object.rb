@@ -135,14 +135,12 @@ module Kernel
   #: (untyped, ?untyped) -> bot
   def throw(tag, value = nil) = %x{ rbThrowTag(tag, value) }
 
+  # A Go program cannot fork (decision 233): reaching fork raises, where MRI forks. Homebrew's SystemCommand forks
+  # only when Process.spawn failed. Thread.fork's signature, which overrides it on Thread's class object.
+  #: () { () -> untyped } -> Thread
+  def fork = raise(NotImplementedError, "fork() function is unimplemented on this machine")
+
   private
-
-  # dup's and clone's hooks, for an override's super to reach (decision 232): a struct's _Dup calls the class's own.
-  #: (untyped) -> void
-  def initialize_dup(_other) = nil
-
-  #: (untyped) -> void
-  def initialize_clone(_other) = nil
 
   # Kernel#exit! skips at_exit handlers and doesn't flush stdout.
   #: (?Integer) -> void

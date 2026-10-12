@@ -2163,6 +2163,8 @@ func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existin
 	if f.pass < 2 && !info.annotated {
 		if j, ok := join(info.typ, val.typ); ok {
 			info.typ = j
+		} else if !isVoid(val.typ) && f.lenient() { // a gem's local holding Array[Formula] and Array[Formula | Keg]: untyped (decision 233)
+			info.typ = TAny{}
 		} else if !isVoid(val.typ) {
 			f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)
 		}
@@ -3249,9 +3251,6 @@ func (c *Compiler) hookCall(h classHook) parser.Node {
 	}
 	if recv == nil || recv.meta == nil || recv.meta.lookup(h.name) == nil {
 		return nil
-	}
-	if e := recv.meta.lookup(h.name); e.M.File != nil && e.M.File.prelude {
-		return nil // Class#inherited's no-op, there only for an override's super (decision 232)
 	}
 	obj := func(k *Class) parser.Node {
 		return &exprNode{e: expr{code: classVar(k), typ: TClass{C: k.meta}, classObj: true}}

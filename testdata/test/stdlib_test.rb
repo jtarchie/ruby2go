@@ -1,6 +1,7 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "etc"
 require "ostruct"
 require "delegate"
 require "benchmark"
@@ -1915,6 +1916,42 @@ module StdlibTests
     def test_stringio_write_several
       s = StringIO.new
       assert_equal [3, "a1b"], [s.write("a", 1, :b), s.string]
+    end
+  end
+
+  # Non-blocking pipe reads, IO.select, and Process.spawn's general form with detach (decision 233).
+  class StdlibSpawnTest < Minitest::Test
+    def test_pipe_nonblock
+      r, w = IO.pipe
+      got = []
+      begin
+        r.read_nonblock(10)
+      rescue IO::WaitReadable => e
+        got << e.class.name
+      end
+      got << IO.select([r], nil, nil, 0.05).inspect
+      w.write("ab\ncd")
+      got << IO.select([r])[0].size
+      got << r.read_nonblock(3) << r.readpartial(10)
+      w.close
+      begin
+        r.read_nonblock(5)
+      rescue EOFError => e2
+        got << e2.class.name
+      end
+      assert_equal ["IO::EAGAINWaitReadable", "nil", 1, "ab\n", "cd", "EOFError"], got
+    end
+
+    def test_spawn_env_argv0_and_redirects
+      out_r, out_w = IO.pipe
+      pid = Process.spawn({ "SPAWN_T" => "v" }, ["/bin/sh", "sh"], "-c", "echo $SPAWN_T; exit 3", out: out_w)
+      out_w.close
+      status = Process.detach(pid).value
+      assert_equal ["v\n", 3], [out_r.read, status.exitstatus]
+    end
+
+    def test_time_to_r_and_uname
+      assert_equal [Rational(1_700_000_000, 1), true], [Time.at(1_700_000_000).to_r, Etc.uname[:sysname].size.positive?]
     end
   end
 end

@@ -296,3 +296,135 @@ func rbLastStatusOpt() **Process_Status {
 	}
 	return nil
 }
+
+// rbSpawnFull is Process.spawn's general form (decision 233): an optional env Hash (nil unsets), the command as one
+// String (decision 97's shell rule), as a program and its arguments, or as [program, argv0] and its arguments; then
+// the options it honours: in:/out:/err: (an IO, a path String, or :close), chdir:, pgroup:, unsetenv_others:.
+// ponytail: other options (umask:, close_others:, an Integer fd key) are accepted and ignored.
+func rbSpawnFull(args []any, opts *Hash[Symbol, any]) Integer {
+	var env map[string]any
+	if len(args) > 0 {
+		if h, ok := args[0].(Hash_Any); ok {
+			env = map[string]any{}
+			hh := h._ToAny()
+			for _, k := range hh.keys {
+				env[fmt.Sprint(rbUnbox(k))] = rbUnbox(hh.vals[k])
+			}
+			args = args[1:]
+		}
+	}
+	if len(args) == 0 {
+		panic(NewArgumentError(Ref(String("wrong number of arguments (given 0, expected 1+)"))))
+	}
+	var c *exec.Cmd
+	argv0 := ""
+	rest := make([]String, 0, len(args)-1)
+	for _, a := range args[1:] {
+		rest = append(rest, String(fmt.Sprint(rbUnbox(a))))
+	}
+	switch first := rbUnbox(args[0]).(type) {
+	case Array_Any:
+		pair := first._ToAny().s
+		if len(pair) != 2 {
+			panic(NewArgumentError(Ref(String("wrong first argument"))))
+		}
+		argv0 = fmt.Sprint(rbUnbox(pair[1]))
+		c = rbCommand(fmt.Sprint(rbUnbox(pair[0])), rest)
+		if len(rest) == 0 {
+			c = exec.Command(fmt.Sprint(rbUnbox(pair[0]))) //nolint:gosec // running the program's command is the point
+		}
+	default:
+		c = rbCommand(fmt.Sprint(first), rest)
+	}
+	if argv0 != "" {
+		c.Args[0] = argv0
+	}
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	clean := false
+	if opts != nil {
+		for _, k := range opts.keys {
+			v := rbUnbox(opts.vals[k])
+			switch string(k) {
+			case "in":
+				c.Stdin = rbSpawnFile(v, os.O_RDONLY, true)
+			case "out":
+				c.Stdout = rbSpawnFile(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
+			case "err":
+				c.Stderr = rbSpawnFile(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
+			case "chdir":
+				c.Dir = fmt.Sprint(v)
+			case "pgroup":
+				if v != nil && v != Boolean(false) {
+					c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+				}
+			case "unsetenv_others":
+				clean = rbTruthy(v)
+			}
+		}
+	}
+	if env != nil || clean {
+		base := os.Environ()
+		if clean {
+			base = nil
+		}
+		vars := map[string]string{}
+		var order []string
+		for _, kv := range base {
+			k, v, _ := strings.Cut(kv, "=")
+			if _, seen := vars[k]; !seen {
+				order = append(order, k)
+			}
+			vars[k] = v
+		}
+		for k, v := range env {
+			if v == nil {
+				delete(vars, k)
+				continue
+			}
+			if _, seen := vars[k]; !seen {
+				order = append(order, k)
+			}
+			vars[k] = fmt.Sprint(v)
+		}
+		c.Env = nil
+		for _, k := range order {
+			if v, ok := vars[k]; ok {
+				c.Env = append(c.Env, k+"="+v)
+			}
+		}
+	}
+	rbFlush()
+	if err := c.Start(); err != nil {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
+	}
+	ch := &rbChild{cmd: c, done: make(chan struct{})}
+	rbChildrenMu.Lock()
+	rbChildren[c.Process.Pid] = ch
+	rbChildrenMu.Unlock()
+	go func() {
+		ch.err = c.Wait()
+		close(ch.done)
+	}()
+	return Integer(c.Process.Pid)
+}
+
+// rbSpawnFile is a spawn redirection's file: an IO's own descriptor, a path opened with flag, or none for :close.
+func rbSpawnFile(v any, flag int, reading bool) *os.File {
+	switch x := v.(type) {
+	case *IO:
+		if reading && x.rf != nil {
+			return x.rf
+		}
+		if !reading && x.wf != nil {
+			return x.wf
+		}
+		return x.rbOSFile()
+	case String:
+		f, err := os.OpenFile(string(x), flag, 0o644) //nolint:gosec // the program's own redirection
+		if err != nil {
+			panic(rbSysErr(err, "rb_sysopen", string(x)))
+		}
+		return f
+	}
+	return nil // :close, nil
+}

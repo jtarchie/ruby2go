@@ -195,6 +195,10 @@ class Time < Object
   #: () -> Float
   def to_f = %x{ Float(float64(self.t.UnixNano()) / 1e9) }
 
+  # Seconds since the epoch, exactly: nanoseconds over a billion.
+  #: () -> Rational
+  def to_r = Rational(to_i * 1_000_000_000 + nsec, 1_000_000_000)
+
   #: () -> bool
   def dst? = %x{ Boolean(self.t.IsDST()) }
 

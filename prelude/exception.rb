@@ -169,6 +169,8 @@ module Errno
   class ENETUNREACH < SystemCallError; end
   class EAFNOSUPPORT < SystemCallError; end
   class EMFILE < SystemCallError; end
+  class ENOTTY < SystemCallError; end
+  class ENODEV < SystemCallError; end
 end
 
 class RuntimeError < StandardError; end

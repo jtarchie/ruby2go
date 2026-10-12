@@ -168,6 +168,44 @@ class IO < Object
     File.foreach(path) { |line| yield line }
   end
 
+  # [rows, columns] of the terminal self is (TIOCGWINSZ); Errno::ENOTTY when it is none.
+  #: () -> [Integer, Integer]
+  def winsize = %x{
+    ws, err := rbWinsize(self.rbOSFile())
+    if err != nil {
+      panic(rbSysErr(err, "rb_io_winsize", ""))
+    }
+    return Tuple2[Integer, Integer]{Integer(ws[0]), Integer(ws[1])}
+  }
+
+  # What is there to read now, up to maxlen bytes; IO::EAGAINWaitReadable when nothing is, EOFError at the end.
+  #: (Integer) -> String
+  def read_nonblock(maxlen) = %x{ return rbReadNonblock(self, int(maxlen), true) }
+
+  # Up to maxlen bytes, blocking only until some are there; EOFError at the end.
+  #: (Integer) -> String
+  def readpartial(maxlen) = %x{ return rbReadNonblock(self, int(maxlen), false) }
+
+  # The readers with something to read (or at their end) once one has, as MRI's [readers, writers, errors];
+  # nil when timeout seconds pass first. Writers count as always writable.
+  #: (Array[IO], ?Array[IO]?, ?Array[IO]?, ?untyped) -> [Array[IO], Array[IO], Array[IO]]?
+  def self.select(reads, writes = nil, errs = nil, timeout = nil) = %x{
+    var limit *time.Duration
+    if t := rbUnbox(timeout); t != nil {
+      d := time.Duration(rbNumFloat(t) * float64(time.Second))
+      limit = &d
+    }
+    ready := rbIOSelect(reads.s, limit)
+    if ready == nil && (writes == nil || len((*writes).s) == 0) {
+      return nil
+    }
+    out := Tuple3[*Array[*IO], *Array[*IO], *Array[*IO]]{F0: &Array[*IO]{s: ready}, F1: &Array[*IO]{}, F2: &Array[*IO]{}}
+    if writes != nil {
+      out.F1.s = append(out.F1.s, (*writes).s...)
+    }
+    return &out
+  }
+
   #: () -> [IO, IO]
   def self.pipe = %x{
     r, w, err := os.Pipe()
@@ -490,6 +528,18 @@ STDOUT = IO.__new(1) #: IO
 STDERR = IO.__new(2) #: IO
 
 ARGV = IO.__argv #: Array[String]
+
+class IO
+  # A read that would block: rescued as IO::WaitReadable or Errno::EAGAIN (read_nonblock, accept_nonblock).
+  module WaitReadable; end
+  module WaitWritable; end
+
+  class TimeoutError < IOError; end
+
+  class EAGAINWaitReadable < Errno::EAGAIN
+    include IO::WaitReadable
+  end
+end
 
 # @go_type struct{}
 class ENVClass < Object
