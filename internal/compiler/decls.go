@@ -776,32 +776,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	for _, mod := range ivarModules(cls) {
 		c.w("\t_%s() *%s\n", mod.Name, ivarsType(mod))
 	}
-	for _, e := range c.publicEntries(cls) {
-		if cls.metaOf != nil && e.M.Name == "new" {
-			// Subclasses may take different initialize arguments, so `new`
-			// is not part of the shared class-object interface; calls
-			// through `singleton(C)` assert for it instead.
-			continue
-		}
-		if c.dispatchableAll(cls, e.M.Name) {
-			continue // dispatched by type switch, not through this interface (dispatch.go)
-		}
-		env := composeEnv(e.Env, nil)
-		env["Self"] = c.selfTypeFor(e, cls)
-		ps, ret := c.sig(e.M, env)
-		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
-		if e.M.seqAdapter {
-			name, ps, ret := c.seqAdapterSig(e.M, env)
-			c.w("\t%s(%s) %s\n", name, ps, ret)
-		}
-		for _, s := range e.M.shadowed {
-			ps, ret := c.sig(s.e.M, c.slotEnv(s))
-			c.w("\t%s(%s) %s\n", s.e.M.GoName, ps, ret)
-		}
-		if e.M.GoName == "cmpNil" && len(e.M.Params) == 1 { // emitCmpAdapter's Comparable slot
-			c.w("\tOp_cmp(%s) Integer\n", c.goType(c.cmpIncluder(cls)))
-		}
-	}
+	c.emitEntrySigs(cls)
 	c.emitBridgeSigs(cls, nil)
 	if c.includerCalls(cls, "class") {
 		// forwardTypeArgs binds Self to this interface, so it needs the module's `self.class` hook
@@ -849,6 +824,36 @@ func (c *Compiler) emitStructClass(cls *Class) {
 			cls.Name, ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
 	} else {
 		c.w("func New%s() *%s { return &%s{} }\n\n", cls.Name, cls.Name, cls.Name)
+	}
+}
+
+// emitEntrySigs writes cls's interface lines for its public methods, but those dispatched by type switch.
+func (c *Compiler) emitEntrySigs(cls *Class) {
+	for _, e := range c.publicEntries(cls) {
+		if cls.metaOf != nil && e.M.Name == "new" {
+			// Subclasses may take different initialize arguments, so `new`
+			// is not part of the shared class-object interface; calls
+			// through `singleton(C)` assert for it instead.
+			continue
+		}
+		if c.dispatchableAll(cls, e.M.Name) {
+			continue // dispatched by type switch, not through this interface (dispatch.go)
+		}
+		env := composeEnv(e.Env, nil)
+		env["Self"] = c.selfTypeFor(e, cls)
+		ps, ret := c.sig(e.M, env)
+		c.w("\t%s(%s) %s\n", e.M.GoName, ps, ret)
+		if e.M.seqAdapter {
+			name, ps, ret := c.seqAdapterSig(e.M, env)
+			c.w("\t%s(%s) %s\n", name, ps, ret)
+		}
+		for _, s := range e.M.shadowed {
+			ps, ret := c.sig(s.e.M, c.slotEnv(s))
+			c.w("\t%s(%s) %s\n", s.e.M.GoName, ps, ret)
+		}
+		if e.M.GoName == "cmpNil" && len(e.M.Params) == 1 { // emitCmpAdapter's Comparable slot
+			c.w("\tOp_cmp(%s) Integer\n", c.goType(c.cmpIncluder(cls)))
+		}
 	}
 }
 
@@ -1471,7 +1476,7 @@ func (c *Compiler) constraintNamesSelf(owner *Class) bool {
 		return v
 	}
 	saved := c.out
-	c.out = strings.Builder{} // ponytail: renders the constraint to read it; saved restores into the same address, so Builder's copy check holds
+	c.out = strings.Builder{}    // ponytail: renders the constraint to read it; saved restores into the same address, so Builder's copy check holds
 	c.renderingConstraint = true // every self-called name, dispatched or not: dispatchable asks this, so it must not ask back
 	c.emitModuleInterface(owner)
 	c.renderingConstraint = false

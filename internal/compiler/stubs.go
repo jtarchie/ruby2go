@@ -214,4 +214,3 @@ func preludeGoNames(preludeFS fs.FS) (declared, refs map[string]bool, err error)
 	}
 	return declared, refs, nil
 }
-

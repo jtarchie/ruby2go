@@ -476,7 +476,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		val := f.genExpr(n.Value, exp)
 		decl := val.typ
 		if ann != nil {
-			decl = ann                             // `@x = [] #: Array[T]` declares the ivar's type
+			decl = ann // `@x = [] #: Array[T]` declares the ivar's type
 			val = f.unionToAnn(n, val, ann)
 			if o, ok := ann.(TOpt); ok && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 				val.typ = o.Elem // a T into a T? ivar: coerce wraps it
