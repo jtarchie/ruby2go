@@ -38,9 +38,13 @@ type Compiler struct {
 	topConstNames  []string // constants declared at top level: Object's table
 	dynNames       []string // method names called on untyped values
 	dynSeen        map[string]bool
-	universalNames map[string]bool // memo of universalHas
-	dynAll         bool            // a computed send/respond_to?: every method may be named
-	respondNames   []string        // names asked about with respond_to? at run time
+	universalNames map[string]bool     // memo of universalHas
+	dispatchMemo   map[*Method]bool    // memo of dispatchable
+	goCalledNames  map[string]bool     // memo of goCalled
+	sends          map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)
+	sendOut        map[string]bool     // dispatchers emitted
+	dynAll         bool                // a computed send/respond_to?: every method may be named
+	respondNames   []string            // names asked about with respond_to? at run time
 	respondSeen    map[string]bool
 	markers        map[string]bool         // rbHas<marker> helpers emitted
 	classOf        bool                    // `.class` on a value only known at run time: emit rbClassOf

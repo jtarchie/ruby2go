@@ -3402,6 +3402,9 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		ps, ret := f.c.sig(m, env)
 		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
 	}
+	if code, ok := f.dispatchCall(e, recv, argList); ok {
+		return code
+	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
 	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
@@ -3426,6 +3429,36 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
 	return staticCallCode(m, f.typeArgs(m, recv.typ, env), recv.code, argList)
+}
+
+// dispatchCall renders a call that bypasses Go method dispatch (dispatch.go): a direct call or an rbSend_ type switch,
+// for a dispatchable method on a struct-typed receiver. Not for the method a Method object binds (staticDef: MRI runs
+// that definition, not an override) nor for a Dyn wrapper body's self call (its owner's free func, decision 209).
+func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) {
+	if f.staticDef == e.M || f.plainCalls && recv.code == "self" {
+		return "", false
+	}
+	if owner := f.staticStruct(recv); owner == nil || !f.c.dispatchable(e.Owner, e.M) {
+		return "", false
+	}
+	return f.c.sendCall(e, recv.code, argList), true
+}
+
+// staticStruct is the non-generic struct class a receiver is statically known to be an instance of (a subclass at run
+// time), or nil: a class-typed value, or self in a struct class body.
+func (f *fctx) staticStruct(recv expr) *Class {
+	switch t := recv.typ.(type) {
+	case TClass:
+		if t.C.isStruct() && t.C.metaOf == nil && len(t.C.TypeParams) == 0 && !t.C.hashBase && !t.C.universal {
+			return t.C
+		}
+	case TVar:
+		if t.Name == "Self" && f.owner != nil && f.owner.isStruct() && f.owner.metaOf == nil && !f.owner.universal && len(f.owner.TypeParams) == 0 {
+			return f.owner
+		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
+	}
+	return nil
 }
 
 // methodExprType is the Go type a call on a receiver of static type t is written as a method expression of

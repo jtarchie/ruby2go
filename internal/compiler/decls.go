@@ -351,6 +351,7 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 		}
 	}
 	c.emitDynamic(reached, selected)
+	c.emitSends(reached)
 	if c.tablesOut {
 		c.emitUnions() // a late body's new union helper is a function like any other, not a table input
 	}
@@ -695,6 +696,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 			// is not part of the shared class-object interface; calls
 			// through `singleton(C)` assert for it instead.
 			continue
+		}
+		if c.dispatchableAll(cls, e.M.Name) {
+			continue // dispatched by type switch, not through this interface (dispatch.go)
 		}
 		env := composeEnv(e.Env, nil)
 		env["Self"] = c.selfTypeFor(e, cls)
@@ -1387,6 +1391,9 @@ func (c *Compiler) emitBoxes() {
 func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 	if growsOwnClass(cls, e) {
 		return false // a Go method on Lazy[E] returning Lazy[[E, Integer]] is an instantiation cycle; calls reach the free func (decision 207)
+	}
+	if c.dispatchableAll(cls, e.M.Name) {
+		return false // calls go to the free func or an rbSend_ type switch; no interface declares the name (dispatch.go)
 	}
 	if e.Owner == cls {
 		if len(cls.TypeParams) == 0 || cls.GoType == "" {
