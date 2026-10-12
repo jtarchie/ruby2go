@@ -1389,7 +1389,14 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 		return false // a Go method on Lazy[E] returning Lazy[[E, Integer]] is an instantiation cycle; calls reach the free func (decision 207)
 	}
 	if e.Owner == cls {
-		return true
+		if len(cls.TypeParams) == 0 || cls.GoType == "" {
+			return true
+		}
+		// a generic primitive's own method is a Go method only where something reaches it through a Go method set:
+		// the std library, an included module's self calls, or a universal name (inspect, ==, hash) an ObjectI or
+		// rbEq assertion selects; typed calls already reach the free func (decision 86), so Array[E] keeps a fixed,
+		// small method set per instantiation instead of one per name (#96 phase 3b)
+		return stdMethodNames[e.M.GoName] || genericProtocol[e.M.Name] || c.includerCalls(cls, e.M.Name) || c.universalHas(e.M.Name)
 	}
 	if cls.isStruct() {
 		return true
@@ -1398,6 +1405,30 @@ func (c *Compiler) wantsForwarder(cls *Class, e entry) bool {
 		return c.includerCalls(cls, e.M.Name)
 	}
 	return e.Owner.IsModule && c.selfCalls(e.Owner)[e.M.Name]
+}
+
+// genericProtocol are the names Go code asserts or calls as methods on a generic primitive of unknown instantiation.
+var genericProtocol = map[string]bool{
+	"_to_any": true, "_from_any": true, "_eq_rec": true, "_eql_rec": true, "_hash_rec": true, "_inspect_rec": true,
+	"==": true, "eql?": true, "hash": true, "<=>": true, "each": true, "succ": true, "to_s": true, "inspect": true,
+	"to_json": true, "pretty_print": true,
+}
+
+// universalHas reports whether a universal owner (Kernel, Object, BasicObject) defines name, so a class's own method of
+// that name overrides a protocol every object answers.
+func (c *Compiler) universalHas(name string) bool {
+	if c.universalNames == nil {
+		c.universalNames = map[string]bool{}
+		for _, k := range c.classes {
+			if !k.universal {
+				continue
+			}
+			for _, e := range k.methodSet() {
+				c.universalNames[e.M.Name] = true
+			}
+		}
+	}
+	return c.universalNames[name]
 }
 
 // growsOwnClass reports a generic class's method whose signature names the class at a type built from its params (Lazy[[E, Integer]] on Lazy[E]).
