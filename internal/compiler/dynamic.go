@@ -135,6 +135,7 @@ func (c *Compiler) dynNeeded(name string, reached, selected func(string) bool) b
 }
 
 // dynWrapped is one Dyn wrapper emitted on a class; own when a user file defines the method.
+// goName is "" for a class a shared arm of the dispatcher serves.
 type dynWrapped struct {
 	name, goName string
 	own          bool
@@ -181,14 +182,20 @@ func (c *Compiler) emitCallTables() {
 			}
 		}
 		c.w("func (self %s) _Call(name string, args ...any) (any, bool) {\n", c.recvType(cls))
+		call := func(w dynWrapped) string {
+			if w.goName == "" {
+				return fmt.Sprintf("rbDyn%s(rbFCall, self, args...)", goMethodName(w.name))
+			}
+			return "self." + w.goName + "(args...)"
+		}
 		switch len(cases) {
 		case 0:
 		case 1: // gocritic rejects a one-case switch
-			c.w("\tif name == %q {\n\t\treturn self.%s(args...), true\n\t}\n", cases[0].name, cases[0].goName)
+			c.w("\tif name == %q {\n\t\treturn %s, true\n\t}\n", cases[0].name, call(cases[0]))
 		default: // Go compiles a string switch to a search, not a chain of compares
 			c.w("\tswitch name {\n")
 			for _, w := range cases {
-				c.w("\tcase %q:\n\t\treturn self.%s(args...), true\n", w.name, w.goName)
+				c.w("\tcase %q:\n\t\treturn %s, true\n", w.name, call(w))
 			}
 			c.w("\t}\n")
 		}
@@ -321,6 +328,10 @@ func (c *Compiler) emitDynName(name string) {
 	})
 	gen := fmt.Sprintf("_DynGen%d", c.dynGenRound)
 	c.w("func rbDyn%s(how int, recv any, args ...any) any {\n", gn)
+	// the arms go first: their class IDs are exact, and a class they serve
+	// may still embed its parent's DynX, promoted by Go with the parent as self
+	c.emitDynArms(shared, false)
+	c.emitDynArms(shared, true)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
 	if genPublic {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, name)
@@ -328,7 +339,6 @@ func (c *Compiler) emitDynName(name string) {
 	if name == "call" {
 		c.w("\tif r, ok := rbDynProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
 	}
-	c.emitDynArms(shared, false)
 	kernel := c.nilKernelBody(name) // built once: a body that cannot cross `any` warns
 	if v, ok := nilConversions[name]; ok {
 		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
@@ -344,7 +354,6 @@ func (c *Compiler) emitDynName(name string) {
 	if genPrivate {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok && how != rbCall {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, "_"+name)
 	}
-	c.emitDynArms(shared, true)
 	// every object has Kernel#===, so method_missing is never reached for it
 	if name != "method_missing" && name != "===" {
 		delete(c.dynLazy, "method_missing") // the fallback below needs its wrappers
@@ -364,6 +373,11 @@ func (c *Compiler) emitDynName(name string) {
 	}
 	for _, w := range own {
 		c.emitDynWrapper(w.cls, w.e, name, w.private, w.body)
+	}
+	for _, a := range shared { // _Call reaches a shared arm through the dispatcher
+		for _, w := range a.members {
+			c.dynWrapped[w.cls] = append(c.dynWrapped[w.cls], dynWrapped{name: name, own: !c.dynGenerated(w.e)})
+		}
 	}
 }
 
@@ -483,7 +497,7 @@ func (c *Compiler) ownerIface(cls *Class, e *entry) string {
 }
 
 // dynGenerated: e comes from the prelude, or is a metaclass's generated
-// new/name/to_s/inspect; a user's own method keeps its wrapper for _Call.
+// new/name/to_s/inspect, not a method a user file defines.
 func (c *Compiler) dynGenerated(e *entry) bool {
 	return e.M.Kind == kindSynth || e.M.File != nil && e.M.File.prelude
 }
@@ -496,7 +510,7 @@ var selfIdent = regexp.MustCompile(`\bself\b`)
 // to a universal owner's free func, whose Self is any.
 func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, ok bool) {
 	cls, e := w.cls, w.e
-	if !cls.isStruct() || len(cls.TypeParams) > 0 || dynPinned[name] || !c.dynGenerated(e) {
+	if !cls.isStruct() || len(cls.TypeParams) > 0 || dynPinned[name] {
 		return "", "", false
 	}
 	body = w.body
@@ -513,6 +527,9 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 	}
 	if oi := c.ownerIface(cls, e); oi != "" && (strings.Contains(rest, "["+oi+"](self") || plain.MatchString(rest)) {
 		iface, rest = oi, plain.ReplaceAllString(strings.ReplaceAll(rest, "["+oi+"](self", ""), "") // self is recv asserted to the owner's interface
+	} else if oi == "" && !e.Owner.universal && !e.Owner.IsModule && e.Owner.isStruct() && len(e.Owner.TypeParams) == 0 && c.plainSelf(e.M) && plain.MatchString(rest) {
+		// a class object's body already calls the owner's plain func (Module_ConstGet(self, ...)): the same text serves every metaclass
+		iface, rest = e.Owner.Name+"I", plain.ReplaceAllString(rest, "")
 	}
 	call := "self." + e.M.GoName + "("
 	if !w.private && iface == "" && strings.Contains(rest, call) {

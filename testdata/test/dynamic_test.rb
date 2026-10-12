@@ -2931,4 +2931,28 @@ module DynamicTests
       assert_equal [3, "hi"], [m.call(2), s.call]
     end
   end
+
+  # An inherited method a subclass answers through the dispatcher's shared arm: self stays the subclass,
+  # though Go promotes the parent's own wrapper into it (decision 216).
+  class SharedBase
+    def hi = "base:#{who}"
+    def who = "base"
+    def sub? = who == "sub"
+  end
+
+  class SharedSub < SharedBase
+    def who = "sub"
+  end
+
+  class SharedLeaf < SharedSub
+  end
+
+  class DynamicSharedArmTest < Minitest::Test
+    def test_inherited_method_keeps_self
+      xs = [SharedBase.new, SharedSub.new, SharedLeaf.new] #: Array[untyped]
+      assert_equal ["base:base", "base:sub", "base:sub"], xs.map(&:hi)
+      assert_equal [false, true, true], xs.map(&:sub?)
+      assert_predicate SharedLeaf.new, :sub?
+    end
+  end
 end
