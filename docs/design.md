@@ -6665,3 +6665,6 @@ resolve; anything not listed is still open.
       the `Shape` loop 0.23 → 0.17 s user.
     - **Proof:** suite unchanged; `95_open_uri`'s lint found the one-arm
       switch.
+    - **Amended:** `goCalled` skips a selector on a std package name
+      (`os.Exit(`, `time.Sleep(`), which had kept `exit` and `sleep` as
+      Go methods on every class: unpruned core 18,651 → 17,640.
