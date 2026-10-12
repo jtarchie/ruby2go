@@ -1583,3 +1583,16 @@ func rbMust[T any](p *T, want string) T {
 	}
 	return *p
 }
+
+// rbIterBreak unwinds an iterator method from a yield inside a block it passed on, when the consumer broke out
+// (decision 226): Go's yield returned false, and a return there would leave only the block.
+type rbIterBreak struct{}
+
+// rbIterBreakRecover ends such an iteration quietly, and lets any other panic through.
+func rbIterBreakRecover() {
+	if r := recover(); r != nil {
+		if _, ok := r.(rbIterBreak); !ok {
+			panic(r)
+		}
+	}
+}

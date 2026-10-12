@@ -2826,7 +2826,11 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 			m.pendingBlock = append(m.pendingBlock, pendingParam{key: pendingKey(m, "&"+strconv.Itoa(i)), name: "yield's argument " + strconv.Itoa(i+1)})
 		}
 		ret := "void"
-		if yieldValueUsed(m.Node.Body) {
+		// a gem wrapper's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226).
+		// ponytail: only wrappers that also yield inside a block; any tail yield needs non-local return from closure blocks
+		// first (decision 4), since a block-valued method is a closure and Cuba's `on` returns from inside `try`'s block.
+		wrapper := c.pruneGems && m.File != nil && c.gemFile(m.File) && containsNestedYield(m.Node.Body, false)
+		if yieldValueUsed(m.Node.Body, wrapper) {
 			ret = "untyped"
 		}
 		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> " + ret + " } "
@@ -2959,6 +2963,26 @@ func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
 		return strings.Contains(x.Unescaped.Value, "func(yield ")
 	}
 	return m.Kind != kindDef || !containsRescueClause(m.Node.Body)
+}
+
+// containsNestedYield reports a yield inside a block or lambda in n (not in a nested def).
+func containsNestedYield(n parser.Node, inBlock bool) bool {
+	switch n.(type) {
+	case nil:
+		return false
+	case *parser.YieldNode:
+		return inBlock
+	case *parser.DefNode:
+		return false
+	case *parser.BlockNode, *parser.LambdaNode:
+		inBlock = true
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if containsNestedYield(ch, inBlock) {
+			return true
+		}
+	}
+	return false
 }
 
 // overridesIterator reports whether m takes its block as a closure yet

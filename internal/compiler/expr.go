@@ -1004,9 +1004,6 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 			}
 			return f.c.declareIvar(f.owner, name, assigned, f.f, f.f.line(n.GetLocation().StartOffset))
 		}
-		if !f.discover && f.lenient() { // gem code: what no assignment typed is untyped, as a module's is (decisions 172, 220)
-			return f.c.declareIvar(f.owner, name, TAny{}, f.f, f.f.line(n.GetLocation().StartOffset))
-		}
 		f.errorf(n, "instance variable %s has no known type; assign it in initialize or add `# @rbs %s: T`", name, name)
 	}
 	return iv
@@ -1548,6 +1545,9 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 				}
 			}
 		}
+		if f.lenient() && structValued(e.typ) && structValued(to) { // a gem's other union of classes: checked on arrival (decision 225)
+			return f.c.unionFn(to) + "(" + f.coerce(n, e, TAny{}) + ")"
+		}
 	}
 	f.errorf(n, "%s where %s is expected", e.typ, to)
 	return ""
@@ -1811,6 +1811,11 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
+	if _, ok := n.Receiver.(*parser.LambdaNode); ok && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
+		if _, fn := expected.(TFunc); fn { // `T.let(-> {}.freeze, T.proc.void)`: the lambda at the expected type; freezing a Proc changes nothing it does
+			return f.genExpr(n.Receiver, expected)
+		}
+	}
 	if e, ok := f.genCallForm(n, expected); ok {
 		return e
 	}
@@ -4482,9 +4487,6 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 	if f.blockSig == nil {
 		f.errorf(n, "yield in a method whose signature has no block")
 	}
-	if f.closures > 0 {
-		f.errorf(n, "yield inside a non-iterator block is not supported")
-	}
 	if f.blockSig.Rest && !f.iterator {
 		return expr{code: "blk(" + f.restArgs(n, args, f.blockSig.Params) + ")", typ: f.blockSig.Ret}
 	}
@@ -4500,6 +4502,13 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 		e := f.genExpr(a, want)
 		f.noteYield(i, a, e.typ)
 		codes = append(codes, f.coerce(a, e, f.blockSig.Params[i]))
+	}
+	if f.iterator && f.closures > 0 { // inside a block the method passes on (`@lock.synchronize { yield x }`): it runs during the
+		// iteration, so Go's yield may be called, but a consumer's break cannot return through it (decision 226)
+		f.emit("if !yield(%s) {", strings.Join(codes, ", "))
+		f.emit("\tpanic(rbIterBreak{})")
+		f.emit("}")
+		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
 	if f.iterator {
 		f.emit("if !yield(%s) {", strings.Join(codes, ", "))
@@ -8180,7 +8189,29 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 		}
 		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
 	}
+	if to.C.isStruct() && !to.C.universal && len(to.C.TypeParams) == 0 && structValued(e.typ) {
+		// Ruby checks no types: a gem's `AbstractTab` where its sig says `Tab`, or nil where a class is expected, is the
+		// value it is; Go asserts it to the class's interface when it arrives (decision 225)
+		if isNil(e.typ) {
+			return "nil", true
+		}
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), e.code, to.String())), true
+	}
 	return "", false
+}
+
+// structValued: t's Go values are interfaces of struct classes (a class, a union of classes, a class object) or nil.
+func structValued(t Type) bool {
+	switch t := t.(type) {
+	case TNil:
+		return true
+	case TClass:
+		return t.C.isStruct() && !t.C.universal && len(t.C.TypeParams) == 0
+	case TUnion:
+		return !slices.ContainsFunc(t.Members, func(m Type) bool { return !structValued(m) })
+	case TAny, TFunc, TOpt, TTuple, TVar, TVoid:
+	}
+	return false
 }
 
 // genCallForm is a call some form of genCall's handles before ordinary dispatch: a Sorbet cast, a boot-compiled

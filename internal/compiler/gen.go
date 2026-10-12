@@ -2295,9 +2295,13 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		err := catchCompileError(func() { f.analyze(fresh, run) })
 		if err != nil {
 			f.m.poison = err.msg
-			f.c.warn(f.f, f.m.Node, "%s does not compile, so calling it raises NotImplementedError: %s (decision 205)", f.m, err.msg)
 			fresh()
 			f.poisonedBody(t, prologue)
+			if f.c.ivarsDiscovered {
+				f.c.warn(f.f, f.m.Node, "%s does not compile, so calling it raises NotImplementedError: %s (decision 205)", f.m, err.msg)
+			} else {
+				f.m.poison = "" // an ivar discovery has yet to type can fail it now: poison this run's output only (decision 220)
+			}
 		}
 	default:
 		f.analyze(fresh, run)
@@ -2728,6 +2732,9 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 			}
 			f.emit("return func(yield func(%s) bool) {", strings.Join(ps, ", "))
 			f.indent++
+			if m.Node != nil && containsNestedYield(m.Node.Body, false) {
+				f.emit("defer rbIterBreakRecover() // a yield inside a block stops the iteration by panicking (decision 226)")
+			}
 		}
 	}
 	t := tail{kind: tailReturn, typ: m.Ret}
@@ -2966,6 +2973,55 @@ func (c *Compiler) discoverIvars() {
 			c.declareIvar(g.cls, g.name, TAny{}, g.file, g.line)
 		}
 	}
+	c.declareGemClassIvars()
+}
+
+// declareGemClassIvars declares, untyped, each instance variable a gem class's own methods name that discovery left
+// without a type (decision 220): before any struct is laid out, as declareGemModuleIvars does for a gem module's.
+func (c *Compiler) declareGemClassIvars() {
+	if !c.pruneGems {
+		return
+	}
+	for _, cls := range c.classList {
+		if cls.IsModule || cls.universal || !cls.isStruct() {
+			continue
+		}
+		for _, m := range cls.MethodList {
+			if m.Node == nil || m.File == nil || !c.gemFile(m.File) {
+				continue
+			}
+			eachIvarName(m.Node.Body, func(name string, n parser.Node) {
+				if c.findIvar(cls, name) == nil {
+					c.declareIvar(cls, name, TAny{}, m.File, m.File.line(n.GetLocation().StartOffset))
+				}
+			})
+		}
+	}
+}
+
+// eachIvarName calls fn for each instance variable n reads or writes, outside nested defs and class bodies.
+func eachIvarName(n parser.Node, fn func(string, parser.Node)) {
+	var name string
+	switch x := n.(type) {
+	case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+		return
+	case *parser.InstanceVariableReadNode:
+		name = x.Name
+	case *parser.InstanceVariableWriteNode:
+		name = x.Name
+	case *parser.InstanceVariableOrWriteNode:
+		name = x.Name
+	case *parser.InstanceVariableOperatorWriteNode:
+		name = x.Name
+	case *parser.InstanceVariableAndWriteNode:
+		name = x.Name
+	}
+	if name != "" {
+		fn(name, n)
+	}
+	for _, ch := range n.CompactChildNodes() {
+		eachIvarName(ch, fn)
+	}
 }
 
 // gemNilIvar is a gem class's ivar discovery saw assigned only nil (decision 169).
@@ -2993,25 +3049,9 @@ func (c *Compiler) declareGemModuleIvars() {
 			if m.Node == nil || !c.gemFile(m.File) {
 				continue
 			}
-			var walk func(n parser.Node)
-			walk = func(n parser.Node) {
-				var name string
-				switch n := n.(type) {
-				case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
-					return
-				case *parser.InstanceVariableReadNode:
-					name = n.Name
-				case *parser.InstanceVariableWriteNode:
-					name = n.Name
-				case *parser.InstanceVariableOrWriteNode:
-					name = n.Name
-				case *parser.InstanceVariableOperatorWriteNode:
-					name = n.Name
-				case *parser.InstanceVariableAndWriteNode:
-					name = n.Name
-				}
+			eachIvarName(m.Node.Body, func(name string, n parser.Node) {
 				switch {
-				case name == "" || c.findIvar(mod, name) != nil:
+				case c.findIvar(mod, name) != nil:
 				case valueIncluded: // Pathname has no struct to hold it: memoizing recomputes per call (decision 172)
 					if mod.scratchIvars == nil {
 						mod.scratchIvars = map[string]*Ivar{}
@@ -3022,11 +3062,7 @@ func (c *Compiler) declareGemModuleIvars() {
 				default:
 					c.declareIvar(mod, name, TAny{}, m.File, m.File.line(n.GetLocation().StartOffset))
 				}
-				for _, ch := range n.CompactChildNodes() {
-					walk(ch)
-				}
-			}
-			walk(m.Node.Body)
+			})
 		}
 	}
 }

@@ -96,11 +96,6 @@ def each_one
   yield 1
 end
 each_one { |x| puts x }
--- yield_in_closure.rb --
-# error: main.rb:3: yield inside a non-iterator block is not supported
-#: (Array[Integer]) { (Integer) -> Integer } -> Array[Integer]
-def via(nums) = nums.map { |n| yield(n) }
-puts via([1]) { |n| n + 1 }.inspect
 -- yield_arity.rb --
 # error: main.rb:4: yield passes 2 values but the block takes 1
 #: () { (Integer) -> void } -> void

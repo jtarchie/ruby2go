@@ -112,29 +112,32 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 // each yield passes (all must agree), and whether block_given? makes it
 // optional. ok is false for a def that does not yield, or names its block.
 // yieldValueUsed reports whether a yield in m's body is not a statement of its own (`out << yield`): the block's value
-// is then used, so it returns untyped rather than void (decision 183).
-func yieldValueUsed(body parser.Node) bool {
+// is then used, so it returns untyped rather than void (decision 183). With tailUsed (gem code), so is a yield whose
+// value the method returns (`@lock.synchronize { yield }` last, decision 226).
+func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	used := false
-	var walk func(parser.Node, bool)
-	walk = func(x parser.Node, stmt bool) {
+	var walk func(parser.Node, bool, bool)
+	walk = func(x parser.Node, stmt, tail bool) {
 		switch x := x.(type) {
 		case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
 			return
 		case *parser.YieldNode:
-			if !stmt {
+			if !stmt || tail {
 				used = true
 			}
 		case *parser.StatementsNode:
-			for _, ch := range x.Body {
-				walk(ch, true)
+			for i, ch := range x.Body {
+				walk(ch, true, tail && i == len(x.Body)-1)
 			}
 			return
+		case *parser.BlockNode, *parser.LambdaNode:
+			tail = false // a block's value goes to its callee (each drops it), not to the method's caller
 		}
 		for _, ch := range x.CompactChildNodes() {
-			walk(ch, false)
+			walk(ch, false, tail)
 		}
 	}
-	walk(body, true)
+	walk(body, true, tailUsed)
 	return used
 }
 

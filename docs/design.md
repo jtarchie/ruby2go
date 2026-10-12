@@ -6873,8 +6873,17 @@ resolve; anything not listed is still open.
     172 already typed an undeclared module ivar `untyped` in gem code; a
     class's ivar (Homebrew's `Tty.@escape_sequence`, read before the
     `define_method` bodies that assign it) was still a compile error,
-    which poisoned the method (205). After discovery, gem code declares it
-    `untyped`; user code keeps the error.
+    which poisoned the method (205). Once discovery ends, every ivar a gem
+    class's own method bodies name (`eachIvarName`, as
+    `declareGemModuleIvars` already did for gem modules) that discovery
+    left untyped is declared `untyped`, before any struct is laid out. A
+    declaration while bodies are emitted would name a field the struct
+    never got, and the discovery dry run of a boot-born body (Tty's
+    `define_method` colours, concurrent-ruby's `attr_atomic` evals) can
+    fail before it reaches the ivar. User code keeps the error.
+    - A gem body that fails to compile before discovery ends (a return
+      inference reaching it early) is poisoned in that run's discarded
+      output only, not for good: discovery may yet type what it lacked.
     - **Proof:** `testdata/boot` (`Gemish#never_set_or`, `Gemish.cached`).
 221. **`Kernel#freeze` and `frozen?` on user objects** (amends 96). Decision
     96 left a user object's `freeze` a compile error; Homebrew freezes its
@@ -6917,3 +6926,36 @@ resolve; anything not listed is still open.
       `KeyError` instead of calling it.
     - **Proof:** `testdata/boot` (`Gemish#json_*`), `hash_test.rb`
       `HashFetchBlockTest`.
+225. **A gem's class value where its signature names another class is
+    asserted, not rejected** (amends 172). Ruby checks no types:
+    Homebrew's `Tab.empty` gets `super`'s `AbstractTab`-typed value (a
+    `Tab` at run time, `T.attached_class`), a loader returns `nil` under
+    a non-nil sig, a union of loaders meets another union. In gem code a
+    struct-class target (an interface in Go) takes nil as is and any
+    other struct value or union of them through `rbAs[ToI]`, and a union
+    target takes a struct-valued source through its union conversion;
+    both raise `TypeError` only if the value really is something else
+    (MRI would fail later, at the call that needs the method).
+    - **Proof:** `testdata/boot` (`Gemish#tab_for`).
+226. **A yield inside a block the method passes on** (amends 6, 183;
+    concurrent-ruby's `def synchronize; if owned? then yield else
+    @lock.synchronize { yield } end; end`). It was a compile error.
+    - In a closure-block method it is a call of `blk`, like any yield.
+    - In an iterator it calls Go's `yield`: the inner block runs during
+      the iteration, which Go allows. A consumer's `break` (yield returned
+      false) cannot `return` through the closure, so it panics
+      `rbIterBreak{}`, and an iterator with a nested yield
+      (`containsNestedYield`) defers `rbIterBreakRecover`.
+    - A gem wrapper's tail yield is its value: in a gem method that also
+      yields inside a block, a yield in tail position (the method's last
+      statement, through `if` branches, not into blocks) counts as using
+      the block's value (`yieldValueUsed`'s `tailUsed`), so the block
+      returns `untyped`, not void, and `synchronize { @value }` is the
+      value rather than nil. Not every tail yield: that makes the method a
+      closure-block one, and Cuba's `on` returns from inside `try`'s block,
+      which a closure cannot do until non-local return exists (decision 4).
+    - `-> {}.freeze` (and `.itself`) with an expected Proc type generates
+      the lambda at that type: Homebrew's `EMPTY_BLOCK = T.let(->
+      {}.freeze, T.proc.void)` built a `func() any` for a `func()` slot.
+    - **Proof:** `testdata/boot` (`Gemish#synced`), `control_test.rb`
+      `ControlNestedYieldTest`.

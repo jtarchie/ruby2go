@@ -5305,4 +5305,29 @@ module ControlTests
       assert_equal [:b, 2, nil, nil, "x", nil, nil, nil], [k, v, k2, v2, a, b, c, d]
     end
   end
+
+  # A yield inside a block the method passes on: a call of the closure block, or (in an iterator) Go's yield, a
+  # consumer's break unwinding through it (decision 226).
+  class ControlNestedYieldTest < Minitest::Test
+    #: () { (Integer) -> void } -> void
+    def control_each_locked
+      m = Thread::Mutex.new
+      [1, 2, 3].each { |x| m.synchronize { yield x } }
+    end
+
+    #: (Array[Integer]) { (Integer) -> Integer } -> Array[Integer]
+    def control_via(nums) = nums.map { |n| yield(n) }
+
+    def test_nested_yield
+      out = [] #: Array[Integer]
+      control_each_locked { |x| out << x }
+      control_each_locked do |x|
+        break if x == 2
+
+        out << (x * 10)
+      end
+      assert_equal [1, 2, 3, 10], out
+      assert_equal [2, 3], control_via([1, 2]) { |n| n + 1 }
+    end
+  end
 end

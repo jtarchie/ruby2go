@@ -624,6 +624,11 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	recv := expr{code: "self", typ: cls.instance()}
 	if cls.metaOf != nil || cls.isStruct() {
 		recv.typ = TClass{C: cls}
+		if e.Owner.IsModule && !e.Owner.universal && e.Entry != nil && e.Entry != cls && e.Entry.isStruct() && c.constraintNamesSelf(e.Owner) {
+			// the module body is instantiated at its includer, as cls's forwarder is (selfTypeFor): the includer's
+			// methods return its interface, which a subclass's Self would not satisfy (decision 217)
+			recv.typ = TClass{C: e.Entry}
+		}
 	}
 	env := composeEnv(e.Env, nil)
 	for _, p := range cls.TypeParams {

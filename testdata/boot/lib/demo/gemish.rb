@@ -42,6 +42,18 @@ module Demo
 
     def json_big(json) = JSON.parse(json).select { |_, v| v > 1 }
 
+    # A sig narrower than the value (a parent class, nil, another union): Ruby checks none of it (decision 225).
+    #: (String) -> Demo::GemTab
+    def tab_for(n) = n.empty? ? nil : (n == "x" ? GemTab.empty : GemAbstractTab.empty)
+
+    # A yield inside a block, its value the method's (decision 226).
+    def synced = synchronize { @state }
+
+    def synchronize
+      @lock ||= Thread::Mutex.new
+      @lock.owned? ? yield : @lock.synchronize { yield }
+    end
+
     # Read before anything assigns it: untyped, nil (decision 220).
     def never_set_or(d) = @never_set || d
 
@@ -53,5 +65,15 @@ module Demo
 
       ::NotLoadedOptionalDep.setup(x: 1)
     end
+  end
+
+  class GemAbstractTab
+    def self.empty = new
+
+    def kind = "abstract"
+  end
+
+  class GemTab < GemAbstractTab
+    def kind = "tab"
   end
 end

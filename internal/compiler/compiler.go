@@ -42,6 +42,7 @@ type Compiler struct {
 	dynSeen               map[string]bool
 	universalNames        map[string]bool     // memo of universalHas
 	dispatchMemo          map[*Method]bool    // memo of dispatchable
+	ivarsDiscovered       bool                // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
 	objFreezeMemo         int                 // objFreeze: 0 unasked, 1 no, 2 yes
 	pendingSigs           int                 // signatures rendered while their return was still being inferred: memos taken across one are provisional
 	goCalledNames         map[string]bool     // memo of goCalled
@@ -387,6 +388,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.guardConsts() // before any body is typed: defined?(X) on a guarded constant is String?
 	tick("link")
 	c.discoverIvars()
+	c.ivarsDiscovered = true
 	if c.round {
 		_ = catchCompileError(c.refineIvars)
 		for _, m := range c.inferredMethods() {
