@@ -6826,3 +6826,37 @@ resolve; anything not listed is still open.
     - **Measured** (generated functions, `rb2go gen`): `64_observable`
       12,199 → 9,876; `116_cuba_web` 11,653 → 11,259.
     - **Proof:** `dynamic_test.rb` `DynamicSharedArmTest`.
+217. **A memo read from a signature still being inferred is not kept;
+    `super` into a `Self`-naming module passes the class interface**
+    (amends 208, 214; concurrent-ruby's `Concern::Obligation`).
+    - `constraintNamesSelf` renders the module's constraint, and
+      `dispatchable` reads signatures. Both were memoized the first time
+      they were asked, which can be from inside an unannotated method's
+      return inference: `wait`'s body calls `complete?`, which asks
+      whether the module's constraint names `Self`, while `wait`'s own
+      `-> self` was still pending and rendered as no return at all. The
+      memo said no, so forwarders passed `Obligation_Self[any]` to a
+      constraint that requires `Wait() Self`, and the program did not
+      type-check (outside any gem method, so decision 205's poisoning
+      could not catch it). `sig` now counts signatures rendered with a
+      pending return (`pendingSigs`), and a memo taken across one is
+      returned but not stored.
+    - An includer's override that calls `super` into such a module
+      (`Delay#wait`) instantiated the module body at its own generic
+      `Self`, whose `Wait` returns the class interface, not `Self`.
+      The call now names the class interface, `Obligation_Wait[DelayI]`,
+      and converts a `Self` result back with `rbAs[Self]` (it is self).
+    - **Proof:** `object_test.rb` `ObligationSelfTest` (did not build
+      before).
+218. **An unresolved constant in gem code raises `NameError` where it is
+    read** (amends 172, 205). Homebrew's `Bootsnap.load!` returns early
+    unless bootsnap is enabled, and only then names `::Bootsnap`, a gem
+    the compiled program never loads. The unresolved read was a compile
+    error, so decision 205 poisoned the whole method and the early return
+    went with it: every `brew` run raised `NotImplementedError` at load.
+    MRI resolves a constant when the read runs, so in gem code
+    (`f.lenient()`) the read now compiles to `rbConstRead[any](false,
+    nil, "Bootsnap")`, untyped, which raises MRI's `NameError`
+    ("uninitialized constant Bootsnap") only if reached. User code keeps
+    the compile error.
+    - **Proof:** `testdata/boot` (`Gemish#setup_optional`).

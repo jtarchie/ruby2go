@@ -33,8 +33,12 @@ func (c *Compiler) dispatchable(owner *Class, m *Method) bool {
 		c.dispatchMemo = map[*Method]bool{}
 	}
 	c.dispatchMemo[m] = false // a cycle (constraintNamesSelf renders the constraint, which asks again) answers no
+	pending := c.pendingSigs
 	ok := c.dispatchableUncached(owner, m)
 	c.dispatchMemo[m] = ok
+	if c.pendingSigs != pending { // read a signature still being inferred: ask again once it is
+		delete(c.dispatchMemo, m)
+	}
 	return ok
 }
 

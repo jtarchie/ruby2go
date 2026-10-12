@@ -29,3 +29,9 @@ begin
 rescue ArgumentError => e
   p e.message
 end
+p g.setup_optional(false)
+begin
+  g.setup_optional(true)
+rescue NameError => e
+  p e.class, e.message
+end

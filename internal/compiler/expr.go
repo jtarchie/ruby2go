@@ -4584,9 +4584,21 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	if e.M.Block != nil {
 		f.errorf(n, "super to a block-taking method is not supported")
 	}
-	code := staticCallCode(e.M, "", f.selfCode, strings.Join(codes, ", "))
-	return expr{code: code, typ: subst(e.M.Ret, env)}
+	targs, ret := "", subst(e.M.Ret, env)
+	if o := f.owner; e.Owner.IsModule && !e.Owner.universal && len(e.Owner.TypeParams) == 0 && !o.IsModule && o.isStruct() && len(o.TypeParams) == 0 &&
+		f.c.constraintNamesSelf(e.Owner) && (!mentionsVar(e.M.Ret) || isSelfVar(e.M.Ret)) {
+		// the module's constraint names Self (`def wait = self`): this class's own override returns its interface, so a
+		// generic Self param cannot satisfy it (have Wait() DelayI, want Wait() Self); the class interface does
+		targs = "[" + o.Name + "I]"
+	}
+	code := staticCallCode(e.M, targs, f.selfCode, strings.Join(codes, ", "))
+	if targs != "" && isSelfVar(e.M.Ret) {
+		code = "rbAs[Self](" + code + ", \"self\")" // it returns self as the class interface; a call, so it stands as a statement too
+	}
+	return expr{code: code, typ: ret}
 }
+
+func isSelfVar(t Type) bool { v, ok := t.(TVar); return ok && v.Name == "Self" }
 
 // superArgs is what `super` passes: its arguments, or for a zsuper the
 // current params re-read as locals, so genArgs coerces them to the
@@ -5478,6 +5490,9 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	}
 	if r, ok := n.(*parser.ConstantReadNode); ok && r.Name == "DATA" && f.f.data != nil {
 		return f.genData()
+	}
+	if f.lenient() { // gem code: MRI raises NameError where the read runs, not when the method loads (decision 218)
+		return expr{code: fmt.Sprintf("rbConstRead[any](false, nil, %q)", f.constMissing(n)), typ: TAny{}}
 	}
 	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
 	return expr{}

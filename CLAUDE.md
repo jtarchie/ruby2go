@@ -21,6 +21,7 @@ RB2GO_PRUNE_DEBUG=1 go test -run TestBootAutoload .  # gem programs: why each me
 RB2GO_DISPATCH_DEBUG=1 go run ./cmd/rb2go build x.rb   # why a Kernel/Object name keeps a Go method instead of a type-switch dispatcher (decisions 212-213)
 RB2GO_BACKTRACE=1 ./prog                       # a built program reports an uncaught exception as MRI does, file:line and from lines (decision 178)
 RB2GO_COST=1 go test -run TestCompileCost -v .    # compiled functions + compile time/memory of 05_word_count, 64_observable, 116_cuba_web (#96); or a comma list of examples
+RB2GO_CPUPROFILE=gen.prof go run ./cmd/rb2go gen x.rb > /dev/null  # CPU profile of the compile itself (go tool pprof -top gen.prof)
 go -C scripts/census run . /path/main.go           # what a generated main.go spends its functions on (forwarders, Dyn wrappers, stubs); ./inst walks generic instantiations
 go test -run '^$' -fuzz FuzzCompile -fuzztime 60s .              # fuzz targets: FuzzCompile (.),
 go test -run '^$' -fuzz FuzzParseType -fuzztime 30s ./internal/rbs # FuzzParseType/FuzzParseMethodType (rbs),

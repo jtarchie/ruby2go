@@ -177,6 +177,9 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 	if m.Iterator {
 		return strings.Join(ps, ", "), c.iterGoType(m.Block, env)
 	}
+	if m.inferRet && m.Ret == nil {
+		c.pendingSigs++ // still being inferred (its body is generating): what was read from it is provisional
+	}
 	r := subst(m.Ret, env)
 	if isVoid(r) {
 		return strings.Join(ps, ", "), ""
@@ -1475,6 +1478,7 @@ func (c *Compiler) constraintNamesSelf(owner *Class) bool {
 	if v, ok := c.selfTyped[owner]; ok {
 		return v
 	}
+	pending := c.pendingSigs
 	saved := c.out
 	c.out = strings.Builder{}    // ponytail: renders the constraint to read it; saved restores into the same address, so Builder's copy check holds
 	c.renderingConstraint = true // every self-called name, dispatched or not: dispatchable asks this, so it must not ask back
@@ -1485,7 +1489,9 @@ func (c *Compiler) constraintNamesSelf(owner *Class) bool {
 	_, body, _ := strings.Cut(decl, "_Self[Self any")
 	_, body, _ = strings.Cut(body, "{")
 	v := selfWord.MatchString(body)
-	c.selfTyped[owner] = v
+	if c.pendingSigs == pending { // a return still being inferred (`wait`'s `self`, asked about from inside wait) may name Self yet
+		c.selfTyped[owner] = v
+	}
 	return v
 }
 

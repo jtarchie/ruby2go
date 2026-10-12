@@ -5377,4 +5377,61 @@ module ObjectTests
     end
   end
 
+  # concurrent-ruby's Obligation: a module whose `wait` returns self, called from its other methods, and overridden
+  # with super in an includer (decision 217).
+  module Obligation
+    # @rbs @state: Symbol
+    # @rbs @value: Integer?
+
+    def complete?
+      %i[fulfilled rejected].include?(@state)
+    end
+
+    def value
+      wait
+      @value
+    end
+
+    def wait
+      @state = :fulfilled unless complete?
+      self
+    end
+  end
+
+  class OblIVar
+    include Obligation
+
+    def initialize(v)
+      @value = v
+      @state = :pending
+    end
+  end
+
+  class OblScheduled < OblIVar
+  end
+
+  class OblDelay
+    include Obligation
+
+    # @rbs &blk: () -> Integer
+    def initialize(&blk)
+      @blk = blk
+      @state = :pending
+      @value = nil
+    end
+
+    def wait
+      @value = @blk.call
+      super
+    end
+  end
+
+  class ObligationSelfTest < Minitest::Test
+    def test_self_returning_module_method
+      d = OblDelay.new { 6 }
+      assert_equal [1, 2, 6], [OblIVar.new(1).value, OblScheduled.new(2).value, d.value]
+      assert d.wait.equal?(d)
+      assert_predicate OblScheduled.new(3).wait, :complete?
+    end
+  end
 end

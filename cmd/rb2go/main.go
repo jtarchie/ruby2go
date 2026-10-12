@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"syscall"
 
@@ -96,6 +97,13 @@ func gen(file string, loadPath []string, out io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
+	}
+	if path := os.Getenv("RB2GO_CPUPROFILE"); path != "" { // where a slow compile spends its time (go tool pprof)
+		f, perr := os.Create(path) //nolint:gosec // a path the developer named
+		if perr == nil {
+			_ = pprof.StartCPUProfile(f)
+			defer func() { pprof.StopCPUProfile(); _ = f.Close() }()
+		}
 	}
 	code, warnings, err := rb2go.CompileWithGems(context.Background(), file, src, loadPath...)
 	for _, w := range warnings {

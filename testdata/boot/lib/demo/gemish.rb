@@ -33,5 +33,12 @@ module Demo
     rescue ArgumentError => e
       raise e.class, e.message, cause: nil
     end
+
+    # An optional dependency that is not loaded: MRI raises NameError only if the read runs (decision 218).
+    def setup_optional(on)
+      return :skipped unless on
+
+      ::NotLoadedOptionalDep.setup(x: 1)
+    end
   end
 end
