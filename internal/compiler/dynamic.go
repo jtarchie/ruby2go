@@ -531,6 +531,16 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		// a class object's body already calls the owner's plain func (Module_ConstGet(self, ...)): the same text serves every metaclass
 		iface, rest = e.Owner.Name+"I", plain.ReplaceAllString(rest, "")
 	}
+	if mod := e.Owner; iface == "" && mod.IsModule && !mod.universal && len(mod.TypeParams) == 0 && c.dispatchable(mod, e.M) {
+		// a dispatched module method's body over the constraint itself (decision 208), the same for every includer
+		// (decision 234): self asserted to the constraint
+		inst := regexp.MustCompile(`\b` + regexp.QuoteMeta(freeFuncName(e.M)) + `\[[^\]]*\]\(self\b`) // ponytail: compiled per wrapper
+		if inst.MatchString(body) {
+			cons := mod.Name + "_Self[any]"
+			body = inst.ReplaceAllString(body, freeFuncName(e.M)+"["+cons+"](self")
+			iface, rest = cons, inst.ReplaceAllString(rest, "")
+		}
+	}
 	call := "self." + e.M.GoName + "("
 	if !w.private && iface == "" && strings.Contains(rest, call) {
 		env := composeEnv(e.Env, nil)
@@ -539,7 +549,8 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		iface = fmt.Sprintf("interface{ %s(%s) %s }", e.M.GoName, ps, ret)
 		rest = strings.ReplaceAll(rest, call, "")
 	}
-	if selfIdent.MatchString(rest) || strings.Contains(body+iface, cls.Name) {
+	names := regexp.MustCompile(`\b` + regexp.QuoteMeta(cls.Name) + `(I|_Meta|_class)?\b`) // the class's own Go names, not a substring (rbArity holds an A)
+	if selfIdent.MatchString(rest) || names.MatchString(body+iface) {
 		return "", "", false
 	}
 	return iface, body, true

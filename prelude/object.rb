@@ -108,9 +108,6 @@ module Kernel
     return self
   }
 
-  #: (?Integer) -> void
-  def exit(status = 0) = raise(SystemExit.new(status))
-
   # Seconds slept, rounded, as MRI returns them. The argument's class picks the overload (decision 12).
   #: (Float) -> Integer
   def sleep(secs) = %x{ return rbSleep(float64(secs)) }
@@ -141,6 +138,9 @@ module Kernel
   def fork = raise(NotImplementedError, "fork() function is unimplemented on this machine")
 
   private
+
+  #: (?Integer) -> void
+  def exit(status = 0) = raise(SystemExit.new(status))
 
   # Kernel#exit! skips at_exit handlers and doesn't flush stdout.
   #: (?Integer) -> void

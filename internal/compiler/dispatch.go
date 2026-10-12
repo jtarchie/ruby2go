@@ -44,7 +44,7 @@ func (c *Compiler) dispatchable(owner *Class, m *Method) bool {
 
 func (c *Compiler) dispatchableUncached(owner *Class, m *Method) bool {
 	ok, why := c.dispatchableWhy(owner, m)
-	if os.Getenv("RB2GO_DISPATCH_DEBUG") != "" && owner != nil && owner.universal && !ok {
+	if os.Getenv("RB2GO_DISPATCH_DEBUG") != "" && owner != nil && (owner.universal || owner.IsModule) && !ok {
 		fmt.Fprintf(os.Stderr, "dispatch-debug %s#%s: %s\n", owner.Name, m.Name, why)
 	}
 	return ok
@@ -96,12 +96,7 @@ func (c *Compiler) moduleDispatchableOwner(owner *Class, m *Method) string {
 	case sigMentions(m, owner) || c.constraintNamesSelf(owner):
 		return "Self in signature or constraint"
 	}
-	for _, k := range c.classList {
-		if k != owner && k.IsModule && !k.universal && k.isSubclassOf(owner) && c.selfCalls(k)[m.Name] {
-			return "self-called by including module " + k.Name
-		}
-	}
-	return ""
+	return "" // a module that includes owner and calls m on self reaches the dispatcher too (decision 234)
 }
 
 // moduleOverrides checks every includer's own resolution of a module method against the module's signature, with the

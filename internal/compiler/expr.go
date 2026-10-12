@@ -3535,8 +3535,14 @@ func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) 
 	if owner == nil || !f.c.dispatchable(e.Owner, e.M) {
 		return "", false
 	}
+	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner && e.Owner.IsModule {
+		// self in a module body reaching a module it includes: everything that includes this module includes that
+		// one, so self is one of its includers, asserted to its constraint (decision 234)
+		mod := e.Owner.Name + "_Self[any" + comma(strings.Join(f.c.moduleCallArgs(e), ", ")) + "]"
+		return f.c.sendCall(e, "any("+recv.code+").("+mod+")", argList), true
+	}
 	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner {
-		return "", false // self in a module body reaching another module's method: that is the constraint's
+		return "", false // self in a module body reaching another class's method: that is the constraint's
 	}
 	return f.c.sendCall(e, recv.code, argList), true
 }
