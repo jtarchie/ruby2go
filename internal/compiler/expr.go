@@ -7342,10 +7342,11 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 }
 
-// noteDynAll: a computed name may be any method; from a gem file only names gem and user code define (decision 235).
+// noteDynAll: a computed name may be any method; from a gem file, or a prelude forwarder (SimpleDelegator's
+// respond_to_missing?, which only passes a name on), only names gem and user code answer (decision 235).
 func (f *fctx) noteDynAll() {
 	f.c.dynAll = true
-	if !f.lenient() {
+	if !f.lenient() && (!f.f.prelude || !f.c.pruneGems) {
 		f.c.dynAllStrict = true
 	}
 }

@@ -7164,12 +7164,18 @@ resolve; anything not listed is still open.
       it. From a gem file (decision 172's lenient mode) the name set is
       now every name a non-prelude class answers, own or inherited
       (`MyError#message`, `Kernel#frozen?`, a `Hash` subclass's names),
-      plus names literally called dynamically; a name only a prelude
-      class answers (`Array#sort` with no literal `x.sort` on an
-      untyped value anywhere) is left out, and `x.send(:sort)` there
-      raises `NoMethodError` where MRI would answer: the decision 205
-      family. A computed send in user code keeps the every-name set
-      (`dynAllStrict`).
+      plus names literally called dynamically, plus every symbol
+      written in a gem or user file (`:sort`, `&:name`, `%i[a b]`,
+      `symbolLiterals`: what a computed call can name without building
+      a string; `assert_respond_to(Regexp, :=~)` and a delegator's
+      `respond_to?(:upcase)` found this). A name only a prelude class
+      answers that no file spells as a symbol is left out, so
+      `x.send(:"so#{rt}")` on an untyped `x` raises `NoMethodError`
+      where MRI would answer: the decision 205 family. A computed send
+      in user code keeps the every-name set (`dynAllStrict`); so does a
+      prelude forwarder's (`SimpleDelegator`'s `respond_to_missing?`,
+      minitest's `assert_respond_to`) outside a gem program
+      (`pruneGems`), since it passes on whatever a user file gave it.
     - **Not done, measured:** giving dynamic methods only to the
       instantiations that can be held untyped (SSA `MakeInterface`
       roots over the generated program) would save nothing: 97 of

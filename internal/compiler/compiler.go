@@ -53,6 +53,7 @@ type Compiler struct {
 	sendOut               map[string]bool     // dispatchers emitted
 	dynAll                bool                // a computed send/respond_to?: every method may be named
 	dynAllStrict          bool                // ... from user code: prelude-only names too (gem code narrows, decision 235)
+	symLits               map[string]bool     // symbol literals in gem and user files (symbolLiterals)
 	respondNames          []string            // names asked about with respond_to? at run time
 	respondSeen           map[string]bool
 	markers               map[string]bool         // rbHas<marker> helpers emitted

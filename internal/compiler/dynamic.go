@@ -1025,12 +1025,14 @@ func (c *Compiler) emitRespond(name string) {
 // allMethodNames lists every method name a computed send may name.
 func (c *Compiler) allMethodNames(gemOnly bool) []string {
 	seen := map[string]bool{}
+	lits := c.symbolLiterals()
 	for _, cls := range c.classList {
-		if cls.IsModule || cls.universal || gemOnly && cls.File != nil && cls.File.prelude {
-			continue // gemOnly: a name only a prelude class answers is named by a literal, or not at all (decision 235)
+		if cls.IsModule || cls.universal {
+			continue
 		}
+		preludeOnly := gemOnly && cls.File != nil && cls.File.prelude // its names count only as symbol literals in gem or user code (decision 235)
 		for _, e := range cls.methodSet() {
-			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") {
+			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") && (!preludeOnly || lits[e.M.Name]) {
 				seen[e.M.Name] = true
 			}
 		}
@@ -1041,6 +1043,29 @@ func (c *Compiler) allMethodNames(gemOnly bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+var symbolLiteral = regexp.MustCompile(`(?:[:&]:|%i\[)([^\]\n]*?)(?:\]|\b)`)
+
+// symbolLiterals is every symbol written in a gem or user file (`:name`, `&:name`, `%i[a b]`): what a computed send
+// there can name without building a string. Over-approximate by regex; a wrong extra name only widens the set.
+func (c *Compiler) symbolLiterals() map[string]bool {
+	if c.symLits != nil {
+		return c.symLits
+	}
+	c.symLits = map[string]bool{}
+	word := regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*[?!=]?|[<>=!~+\-*/%^&|\[\]]+@?`)
+	for _, f := range c.files {
+		if f.prelude {
+			continue
+		}
+		for _, m := range symbolLiteral.FindAllSubmatch(f.Src, -1) {
+			for _, w := range word.FindAll(m[1], -1) {
+				c.symLits[string(w)] = true
+			}
+		}
+	}
+	return c.symLits
 }
 
 // emitNameSwitches backs send and respond_to? with computed names.
