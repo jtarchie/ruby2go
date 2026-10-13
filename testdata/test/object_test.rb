@@ -5685,7 +5685,101 @@ module ObjectTests
     end
   end
 
+  # A mixed-in `inherited` calling super reaches Class#inherited, which does nothing (decision 241).
+  OBJECT_INHERITED_SEEN = [] #: Array[String]
+
+  module ObjectInhDsl
+    def inherited(child)
+      super
+      OBJECT_INHERITED_SEEN << "dsl #{child.name}"
+    end
+  end
+
+  class ObjectInhReq
+    class << self
+      include ObjectInhDsl
+
+      def inherited(child)
+        super
+        OBJECT_INHERITED_SEEN << "req #{child.name}"
+      end
+    end
+  end
+
+  class ObjectInhArch < ObjectInhReq; end
+
+  module ObjectEnvDsl
+    # @rbs @env: String?
+
+    def inherited(child)
+      super
+      child.instance_variable_set(:@env, "e-#{child.name}")
+    end
+
+    #: () -> String?
+    def env = @env
+  end
+
+  class ObjectEnvReq
+    @env = nil #: String?
+    extend ObjectEnvDsl
+  end
+
+  class ObjectEnvArch < ObjectEnvReq; end
+
+  # `def self.included(base) = base.extend(ClassMethods)`: includers and their subclasses get ClassMethods (decision 241).
+  module ObjectVolatile
+    def self.included(base)
+      base.extend(ClassMethods)
+    end
+
+    module ClassMethods
+      #: () -> String
+      def kind = "volatile"
+    end
+  end
+
+  class ObjectVolObj
+    include ObjectVolatile
+  end
+
+  class ObjectVolSub < ObjectVolObj; end
+
+  # A class-body `safe_initialization!` whose body is `extend M unless ...`: the class extends M at load (decision 241).
+  module ObjectSafeInit
+    #: () -> String
+    def safe = "safe"
+  end
+
+  class ObjectSObj
+    def self.object_safe_init!
+      extend ObjectSafeInit unless object_safe_init?
+    end
+
+    def self.object_safe_init? = singleton_class < ObjectSafeInit
+  end
+
+  class ObjectSStack < ObjectSObj
+    object_safe_init!
+  end
+
   class ObjectLexicalTest < Minitest::Test
+    def test_self_extend_call
+      assert_equal ["safe", true, nil], [ObjectSStack.safe, ObjectSStack.object_safe_init?, ObjectSObj.object_safe_init?]
+    end
+
+    def test_included_extend
+      assert_equal %w[volatile volatile], [ObjectVolObj.kind, ObjectVolSub.kind]
+    end
+
+    def test_class_ivar_set_by_name
+      assert_equal ["e-ObjectTests::ObjectEnvArch", nil], [ObjectEnvArch.env, ObjectEnvReq.env]
+    end
+
+    def test_mixed_in_inherited_super
+      assert_equal ["dsl ObjectTests::ObjectInhArch", "req ObjectTests::ObjectInhArch"], OBJECT_INHERITED_SEEN
+    end
+
     #: (singleton(ObjectKwPkg)) -> bool
     def object_kw_install(k) = k.install!("x", with: ["a"])
 

@@ -2178,7 +2178,7 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 	if f.isOpenURIRecv(recv.typ, name) {
 		return f.genOpenURI(n, &recv, name, args, block), true
 	}
-	if e, ok := f.mixedArrayOp(n, recv, name, args, block); ok {
+	if e, ok := f.rubyShapedCall(n, recv, name, args, block); ok {
 		return e, true
 	}
 	if name == "class" && len(args) == 0 && block == nil {
@@ -3134,6 +3134,10 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 		if k := f.optKind(args); k != "" {
 			return owner.lookup("__" + m.Name + "_" + k)
 		}
+	case m.Name == "fetch" && owner.RubyName == "ENVClass" && len(args) == 2:
+		if _, ok := args[1].(*parser.NilNode); ok {
+			return owner.lookup("__fetch_nil")
+		}
 	case owner.RubyName == "CSV" && owner.metaOf != nil:
 		return f.csvOverload(m, owner, args)
 	case owner.RubyName == "BigDecimal" && m.Name == "round" && len(args) == 1:
@@ -4054,6 +4058,58 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 			}
 		}
 	}
+}
+
+// lenientBlockParams rewrites a gem file's block and lambda params rb2go cannot bind as Ruby binds them: `&blk` (dropBlockArgParam)
+// and a lambda's defaults (decision 241).
+func lenientBlockParams(root parser.Node) {
+	anyNode(root, func(n parser.Node) bool {
+		switch b := n.(type) {
+		case *parser.BlockNode:
+			body := b.Body
+			dropBlockArgParam(b.Parameters, &body)
+			b.Body = body
+		case *parser.LambdaNode:
+			body := b.Body
+			dropBlockArgParam(b.Parameters, &body)
+			b.Body = body
+			optionalLambdaParams(b)
+		}
+		return false
+	})
+}
+
+// dropBlockArgParam turns a gem block's or lambda's `&blk` param into a local that is nil: rb2go passes no block to a
+// block (decision 241). ponytail: a caller's block is dropped (concurrent-ruby's logger then logs nil for a lazy message).
+func dropBlockArgParam(params parser.Node, body *parser.Node) {
+	bp, ok := params.(*parser.BlockParametersNode)
+	if !ok || bp.Parameters == nil || bp.Parameters.Block == nil {
+		return
+	}
+	blk := bp.Parameters.Block
+	bp.Parameters.Block = nil
+	if blk.Name == nil {
+		return
+	}
+	w := &parser.LocalVariableWriteNode{Location: blk.Location, Name: *blk.Name, NameLoc: blk.Location, Value: &parser.NilNode{Location: blk.Location}}
+	switch b := (*body).(type) {
+	case nil:
+		*body = &parser.StatementsNode{Location: blk.Location, Body: []parser.Node{w}}
+	case *parser.StatementsNode:
+		b.Body = append([]parser.Node{w}, b.Body...)
+	case *parser.BeginNode:
+		if b.Statements == nil {
+			b.Statements = &parser.StatementsNode{Location: b.Location}
+		}
+		b.Statements.Body = append([]parser.Node{w}, b.Statements.Body...)
+	}
+}
+
+// optionalLambdaParams gives a gem lambda's optional params their defaults as a block's get them (optionalBlockParams).
+func optionalLambdaParams(l *parser.LambdaNode) {
+	b := &parser.BlockNode{Location: l.Location, Parameters: l.Parameters, Body: l.Body, Locals: l.Locals}
+	optionalBlockParams(b)
+	l.Parameters, l.Body = b.Parameters, b.Body
 }
 
 // symbolBlockNames are a `&:name` block's params: x_ the receiver, the rest its arguments (`reduce(&:merge)`, decision 241).
@@ -5160,22 +5216,75 @@ func (f *fctx) lenientBlockRet(want, got Type, env map[string]Type) bool {
 	return true
 }
 
-// mixedArrayOp is `xs + ys` / `xs | ys` of Arrays whose element types differ, neither holding the other: MRI's result
-// mixes them, so both sides become Arrays of the join (a union) first (decision 241).
+// rubyShapedCall: calls whose MRI result needs another shape than the prelude method's typing gives (decision 241).
+func (f *fctx) rubyShapedCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if e, ok := f.mixedArrayOp(n, recv, name, args, block); ok {
+		return e, true
+	}
+	return f.subBlockLastMatch(n, recv, name, args, block)
+}
+
+// subBlockLastMatch is `s.sub(re) { $1 }` / gsub in a frame that reads $~ or $1: MRI sets them to each match while the
+// block runs, so the block runner writes the frame's last match first (decision 241).
+func (f *fctx) subBlockLastMatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	b, ok := block.(*parser.BlockNode)
+	if f.lastMatch == "" || !ok || name != "sub" && name != "gsub" || len(args) != 1 || !isClass(recv.typ, "String") {
+		return expr{}, false
+	}
+	e := f.c.classes["String"].lookup("__" + name + "_block")
+	if e == nil || e.M.Block == nil {
+		return expr{}, false
+	}
+	r := f.newTmp()
+	f.emit("%s := %s", r, recv.code)
+	pat := f.newTmp()
+	f.emit("%s := rbPattern(%s)", pat, f.coerce(args[0], f.genExpr(args[0], nil), TAny{}))
+	blk := f.genClosure(n, b, e.M.Block, map[string]Type{})
+	count := "-1"
+	if name == "sub" {
+		count = "1"
+	}
+	code := fmt.Sprintf("String(rbReSub(%s, string(%s), %s, rbReBlockLM(&%s, %s, %s)))", pat, r, count, f.lastMatch, pat, blk)
+	return expr{code: code, typ: f.cls("String")}, true
+}
+
+// mixedArrayOp is `xs + ys` / `xs | ys` of Arrays, or `h.merge(g)` of Hashes, whose element (value) types differ,
+// neither holding the other: MRI's result mixes them, so both sides become containers of the join first (decision 241).
 func (f *fctx) mixedArrayOp(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
-	if name != "+" && name != "|" || len(args) != 1 || block != nil || !isClass(recv.typ, "Array") {
+	cls := "Array"
+	if name == "merge" {
+		cls = "Hash"
+	} else if name != "+" && name != "|" {
+		return expr{}, false
+	}
+	if len(args) != 1 || block != nil || !isClass(recv.typ, cls) {
 		return expr{}, false
 	}
 	var at Type
 	f.probe(func() { at = f.genExpr(args[0], nil).typ })
-	if !isClass(at, "Array") {
+	if !isClass(at, cls) {
 		return expr{}, false
 	}
-	a, b := recv.typ.(TClass).Args[0], at.(TClass).Args[0]
-	if isAny(a) || isAny(b) || typeEq(a, b) || fitsValue(expr{typ: b}, a) || fitsValue(expr{typ: a}, b) {
+	ra, aa := recv.typ.(TClass).Args, at.(TClass).Args
+	if cls == "Hash" && !typeEq(ra[0], aa[0]) {
+		return expr{}, false // `{a: 1}.merge(h)`: mixed keys stay merge's own conversion
+	}
+	a, b := ra[len(ra)-1], aa[len(aa)-1]
+	switch {
+	case isAny(a) && isAny(b), typeEq(a, b):
+		return expr{}, false
+	case isAny(a) || isAny(b):
+		if !f.lenient() {
+			return expr{}, false // user code: the untyped side is converted to the typed one, as before
+		}
+	case fitsValue(expr{typ: b}, a) || fitsValue(expr{typ: a}, b):
 		return expr{}, false
 	}
-	j := TClass{C: f.c.classes["Array"], Args: []Type{joinUnion(a, b)}}
+	jt := joinUnion(a, b)
+	if isAny(a) || isAny(b) { // a gem's `{build_env: true}.merge(options)` with options untyped: MRI's result holds both
+		jt = TAny{}
+	}
+	j := TClass{C: f.c.classes[cls], Args: append(slices.Clone(ra[:len(ra)-1]), jt)}
 	r := f.coerce(n, recv, TAny{})
 	if !isSimpleGo(r) {
 		tmp := f.newTmp()
@@ -8860,6 +8969,9 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
+	if e, ok := f.runtimeExtend(n); ok {
+		return e, true
+	}
 	f.noteRuntimeRegexp(n)
 	if to := renamedCall(n); to != "" {
 		c := *n
@@ -8872,6 +8984,28 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 		}
 	}
 	return expr{}, false
+}
+
+// runtimeExtend is `extend M` run by a class method (`safe_initialization!`): the closed world extends classes when
+// they load (selfExtendCall), so at run time it is a no-op for a class that has M, and NotImplementedError for one that
+// does not (decision 241).
+func (f *fctx) runtimeExtend(n *parser.CallNode) (expr, bool) {
+	if n.Name != "extend" || n.Receiver != nil || n.Block != nil || f.m == nil || f.owner == nil || f.owner.metaOf == nil || len(callArgs(n)) == 0 {
+		return expr{}, false
+	}
+	self := expr{code: f.selfCode, typ: f.selfType}
+	var checks []string
+	for _, a := range callArgs(n) {
+		if f.classRef(a) == nil {
+			return expr{}, false
+		}
+		checks = append(checks, f.isACheck(n, self, a))
+	}
+	msg := fmt.Sprintf("rb2go: extend at run time is not supported (%s:%d)", f.f.Name, f.f.line(n.Location.StartOffset))
+	f.emit("if !(%s) {", strings.Join(checks, " && "))
+	f.emit("\tpanic(NewNotImplementedError(Ref(String(%q))))", msg)
+	f.emit("}")
+	return expr{code: f.selfCode, typ: f.selfType}, true
 }
 
 // noteRuntimeRegexp: Regexp.new/compile/union of anything but string literals RE2 compiles builds a pattern only run

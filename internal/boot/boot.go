@@ -24,15 +24,24 @@ var hookFS embed.FS
 
 // Manifest is what one boot recorded.
 type Manifest struct {
-	LoadedFeatures []string            `json:"loaded_features"` // files loaded during boot
-	Classes        []ClassInfo         `json:"classes"`
-	DefineMethods  []MethodInfo        `json:"define_methods"`
-	Evals          []EvalInfo          `json:"evals"`
-	Autoloads      []AutoloadInfo      `json:"autoloads"`
-	ClassState     []ClassStateInfo    `json:"class_state"`
-	Branches       []BranchInfo        `json:"branches"`
-	ConstClasses   map[string]string   `json:"const_classes"` // a constant naming a class under another name (decision 203)
-	Delegators     map[string][]string `json:"delegators"`    // def_delegators' method names by "path:line" (decision 204)
+	LoadedFeatures []string                `json:"loaded_features"` // files loaded during boot
+	Classes        []ClassInfo             `json:"classes"`
+	DefineMethods  []MethodInfo            `json:"define_methods"`
+	Evals          []EvalInfo              `json:"evals"`
+	Autoloads      []AutoloadInfo          `json:"autoloads"`
+	ClassState     []ClassStateInfo        `json:"class_state"`
+	Branches       []BranchInfo            `json:"branches"`
+	ConstClasses   map[string]string       `json:"const_classes"` // a constant naming a class under another name (decision 203)
+	Delegators     map[string][]string     `json:"delegators"`    // def_delegators' method names by "path:line" (decision 204)
+	Structs        map[string][]StructProp `json:"structs"`       // each T::Struct's props after load (decision 241)
+}
+
+// StructProp is one T::Struct prop as MRI holds it: its Sorbet type's text, and its default's literal source if it has a
+// literal one.
+type StructProp struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Default string `json:"default"`
 }
 
 // BranchInfo is one if/unless boot reached and how often each arm ran (decision 201).

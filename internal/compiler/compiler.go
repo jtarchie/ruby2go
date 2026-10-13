@@ -116,21 +116,22 @@ type Compiler struct {
 	out                   strings.Builder
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings              []string
-	methodRequiresRuntime bool                       // `# rb2go_method_requires: runtime`: a require in a method is not followed at compile time (decision 197)
-	replaced              map[string]string          // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
-	facts                 map[string]bool            // `# rb2go_fold: expr => bool`: build-time facts a class-body condition folds (decision 197)
-	dmSites               map[*parser.CallNode]bool  // define_method calls boot recorded: no-ops at run time (decision 198)
-	prepends              []pendingPrepend           // prepends in load order, applied at link (decision 199)
-	bootBranches          map[string]boot.BranchInfo // "path:line:col" of each if/unless boot ran (decision 201)
-	bootConstClasses      map[string]string          // constant -> the class boot saw it name (decision 203)
-	badClasses            map[*Class]compileError    // gem classes that cannot compile, an error where reachable code names them
-	evalSites             map[string]bool            // "path:line" of each string eval boot compiled: a no-op (decision 204)
-	blockEvalSites        map[*parser.CallNode]bool  // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
-	goFuncs               map[string]string          // each gem method's Go func name -> methodKey (goPoison)
-	bootDelegators        map[string][]string        // def_delegators' names boot saw, by "path:line" (decision 204)
-	kept                  []string                   // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
-	anonDepth             int                        // collecting an anonymous class body, whose errors scanAnon defers
-	constChain            []string                   // constants whose types are being inferred, for a cycle's message
+	methodRequiresRuntime bool                         // `# rb2go_method_requires: runtime`: a require in a method is not followed at compile time (decision 197)
+	replaced              map[string]string            // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
+	facts                 map[string]bool              // `# rb2go_fold: expr => bool`: build-time facts a class-body condition folds (decision 197)
+	dmSites               map[*parser.CallNode]bool    // define_method calls boot recorded: no-ops at run time (decision 198)
+	prepends              []pendingPrepend             // prepends in load order, applied at link (decision 199)
+	bootBranches          map[string]boot.BranchInfo   // "path:line:col" of each if/unless boot ran (decision 201)
+	bootConstClasses      map[string]string            // constant -> the class boot saw it name (decision 203)
+	badClasses            map[*Class]compileError      // gem classes that cannot compile, an error where reachable code names them
+	evalSites             map[string]bool              // "path:line" of each string eval boot compiled: a no-op (decision 204)
+	blockEvalSites        map[*parser.CallNode]bool    // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
+	goFuncs               map[string]string            // each gem method's Go func name -> methodKey (goPoison)
+	bootDelegators        map[string][]string          // def_delegators' names boot saw, by "path:line" (decision 204)
+	bootStructs           map[string][]boot.StructProp // each T::Struct's props boot saw (decision 241)
+	kept                  []string                     // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
+	anonDepth             int                          // collecting an anonymous class body, whose errors scanAnon defers
+	constChain            []string                     // constants whose types are being inferred, for a cycle's message
 
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
@@ -358,6 +359,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.indexBootBranches(opts.boot.Branches)
 		c.bootConstClasses = opts.boot.ConstClasses
 		c.bootDelegators = opts.boot.Delegators
+		c.bootStructs = opts.boot.Structs
 	}
 	c.markDefineMethods(dms)
 	c.loadPrelude(ctx, "prelude.rb")

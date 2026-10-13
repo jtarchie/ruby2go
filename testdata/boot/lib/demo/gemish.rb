@@ -202,6 +202,19 @@ module Demo
       out.join
     end
 
+    # concurrent-ruby's logger: a lambda with a default and a `&block` param, its block nil (decision 241).
+    def self.logger(level = 2)
+      lambda do |severity, progname, message = nil, &block|
+        return false if severity < level
+
+        message = block ? block.call : message
+        "#{progname}: #{message.inspect}"
+      end
+    end
+
+    # `{build_env: true}.merge(options)` with options untyped: the result holds both (decision 241).
+    def self.merged(options) = { build_env: true }.merge(options)
+
     # A local retyped String -> URI::Generic, and @x ||= on a union ivar (decision 241).
     def self.uri_path(ref)
       uri = ref.to_s

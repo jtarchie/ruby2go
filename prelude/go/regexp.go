@@ -168,6 +168,11 @@ func rbMatch(r *Regexp, s string) *MatchData {
 	if loc == nil {
 		return nil
 	}
+	return rbMatchAt(r, s, loc)
+}
+
+// rbMatchAt is the MatchData of r's match of s at loc.
+func rbMatchAt(r *Regexp, s string, loc []int) *MatchData {
 	groups := make([]*String, len(loc)/2)
 	for i := range groups {
 		if loc[2*i] >= 0 {
@@ -256,6 +261,16 @@ func rbReRepl(rep string) func(s string, loc []int, names []string) string {
 // rbReBlock replaces each match with the block's value, as a String.
 func rbReBlock(blk func(String) any) func(s string, loc []int, names []string) string {
 	return func(s string, loc []int, _ []string) string {
+		return string(rbToS(blk(String(s[loc[0]:loc[1]]))))
+	}
+}
+
+// rbReBlockLM is rbReBlock in a frame that reads $~ or $1: each match is the frame's last match while its block runs
+// (decision 241).
+func rbReBlockLM(lm ***MatchData, re *Regexp, blk func(String) any) func(s string, loc []int, names []string) string {
+	return func(s string, loc []int, _ []string) string {
+		m := rbMatchAt(re, s, loc)
+		*lm = &m
 		return string(rbToS(blk(String(s[loc[0]:loc[1]]))))
 	}
 }

@@ -58,3 +58,8 @@ p ctr.value
 p Demo::Lenient.three(3), Demo::Lenient.pairs(4), Demo::Lenient.mixed(true)
 p Demo::Lenient.raised(ArgumentError, "boom"), Demo::Lenient.lines("one\ntwo")
 p Demo::Lenient.uri_path("http://h/a/b"), Demo::Lenient.uri_path("x")
+p Demo::Lenient.merged({ x: 1 })
+fs = DemoFormulaStruct.new(desc: "d", bottle_present: true)
+p fs.desc, fs.bottle?, fs.head?
+lg = Demo::Lenient.logger
+p lg.call(1, "x", nil), lg.call(3, "p", "m")

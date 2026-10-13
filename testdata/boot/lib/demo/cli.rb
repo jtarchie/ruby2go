@@ -75,3 +75,21 @@ module DemoCli
     def run = [args.kind, args.instance_variable_get(:@table)]
   end
 end
+
+# A T::Struct whose props a load-time loop declares under computed names: boot's props (decision 241).
+class DemoFormulaStruct < T::Struct
+  PREDICATES = [:bottle, :head].freeze
+
+  PREDICATES.each do |predicate_name|
+    present_method_name = :"#{predicate_name}_present"
+    predicate_method_name = :"#{predicate_name}?"
+
+    const present_method_name, T::Boolean, default: false
+
+    define_method(predicate_method_name) do
+      send(present_method_name)
+    end
+  end
+
+  const :desc, String
+end

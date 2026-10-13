@@ -451,6 +451,9 @@ func (c *Class) structChain() []*Class {
 // ---- declaration collection
 
 func (c *Compiler) collect(ctx context.Context, f *File) {
+	if c.gemFile(f) {
+		lenientBlockParams(f.Root)
+	}
 	queue := f.Root.Statements.Body
 	for len(queue) > 0 {
 		n := queue[0]
@@ -768,8 +771,56 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 	}
 }
 
+// bootStructProps are the props boot saw cls's T::Struct end up with that its source does not name literally: a load-time
+// loop's `const name, T` (decision 241). Their readers come with them.
+func (c *Compiler) bootStructProps(ctx context.Context, f *File, cls *Class, props []structProp) ([]structProp, string) {
+	if c.bootStructs == nil {
+		return nil, ""
+	}
+	var extra []structProp
+	var readers strings.Builder
+	for _, bp := range c.bootStructs[cls.RubyName] {
+		if slices.ContainsFunc(props, func(p structProp) bool { return p.name == bp.Name }) {
+			continue
+		}
+		tf, err := parseFile(ctx, c.parser, f.Name, []byte(bp.Type), false)
+		if err != nil || len(tf.Root.Statements.Body) != 1 {
+			continue
+		}
+		p := structProp{name: bp.Name, rbs: sorbetType(tf.Root.Statements.Body[0])}
+		p.optional = strings.HasSuffix(p.rbs, "?") || p.rbs == "untyped"
+		if p.optional {
+			p.def = "nil"
+		}
+		if bp.Default != "" {
+			p.def, p.optional = bp.Default, true
+		}
+		extra = append(extra, p)
+		readers.WriteString("#: () -> " + p.rbs + "\ndef " + p.name + " = @" + p.name + "\n")
+	}
+	return extra, readers.String()
+}
+
+// computedStructProp reports a `const name, T` / `prop name, T` whose name is not a literal Symbol: boot's props cover it.
+func computedStructProp(n parser.Node) bool {
+	found := false
+	anyNode(n, func(x parser.Node) bool {
+		if c, ok := x.(*parser.CallNode); ok && c.Receiver == nil && (c.Name == "const" || c.Name == "prop") {
+			if args := callArgs(c); len(args) >= 2 {
+				if _, sym := args[0].(*parser.SymbolNode); !sym {
+					found = true
+				}
+			}
+		}
+		return found
+	})
+	return found
+}
+
 // addStructInit is the keyword initialize a T::Struct's props generate (decision 196).
 func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNode, cls *Class, props []structProp, scope []*Class) {
+	extra, readers := c.bootStructProps(ctx, f, cls, props)
+	props = append(slices.Clone(props), extra...)
 	sig, params, body := make([]string, 0, len(props)), make([]string, 0, len(props)), make([]string, 0, len(props))
 	for _, p := range props {
 		opt := ""
@@ -781,19 +832,62 @@ func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNo
 		params = append(params, param)
 		body = append(body, "@"+p.name+" = "+p.name)
 	}
-	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n"
+	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n" + readers
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
 	if err != nil {
 		c.errorf(f, n, "T::Struct initialize: %v", err)
 	}
 	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
-	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, scope) //nolint:forcetypeassert // built just above
+	for _, st := range sf.Root.Statements.Body {
+		c.addDef(sf, cls, st.(*parser.DefNode), false, scope) //nolint:forcetypeassert // built just above
+	}
 }
 
 func (c *Compiler) collectModule(ctx context.Context, f *File, n *parser.ModuleNode, scope []*Class) {
 	name := c.declName(f, n.ConstantPath, scope)
 	cls := c.declareClass(f, name, f.line(n.Location.StartOffset), true)
-	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls), true)
+	inner := append(append([]*Class(nil), scope...), cls)
+	c.includedExtends(f, cls, n.Body, inner)
+	c.collectBody(ctx, f, cls, n.Body, inner, true)
+}
+
+// includedExtends takes a module's `def self.included(base); base.extend(ClassMethods); end` as
+// mixes_in_class_methods(ClassMethods): each includer extends it at link, and the run-time extend, which a closed world
+// cannot do, is dropped from the hook (decision 241).
+func (c *Compiler) includedExtends(f *File, mod *Class, body parser.Node, scope []*Class) {
+	st, ok := body.(*parser.StatementsNode)
+	if !ok {
+		return
+	}
+	for _, x := range st.Body {
+		d, ok := x.(*parser.DefNode)
+		if !ok || d.Name != "included" || !isSelf(d.Receiver) || d.Parameters == nil || len(d.Parameters.Requireds) != 1 {
+			continue
+		}
+		base, ok := d.Parameters.Requireds[0].(*parser.RequiredParameterNode)
+		hook, ok2 := d.Body.(*parser.StatementsNode)
+		if !ok || !ok2 {
+			continue
+		}
+		for i, y := range hook.Body {
+			call, ok := y.(*parser.CallNode)
+			if !ok || call.Name != "extend" || len(callArgs(call)) == 0 {
+				continue
+			}
+			r, ok := call.Receiver.(*parser.LocalVariableReadNode)
+			if !ok || r.Name != base.Name || slices.ContainsFunc(callArgs(call), func(a parser.Node) bool {
+				_, cr := a.(*parser.ConstantReadNode)
+				_, cp := a.(*parser.ConstantPathNode)
+				return !cr && !cp
+			}) {
+				continue
+			}
+			for _, a := range callArgs(call) {
+				mod.mixesIn = append(mod.mixesIn, Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(call.Location.StartOffset), file: f, scope: scope})
+			}
+			hook.Body[i] = &parser.NilNode{Location: call.Location}
+		}
+	}
 }
 
 // addConst records `NAME = value` declared in scope.
@@ -961,6 +1055,24 @@ func (c *Compiler) classBodyNode(ctx context.Context, f *File, n parser.Node, sc
 	}
 	c.scanAnon(ctx, f, n, scope)
 	c.addClassStmt(f, n, scope)
+}
+
+// undefLoop is `list.each { |m| undef_method m }` (or remove_method) over a computed list.
+func undefLoop(n parser.Node) bool {
+	call, ok := n.(*parser.CallNode)
+	if !ok || call.Name != "each" {
+		return false
+	}
+	b, ok := call.Block.(*parser.BlockNode)
+	if !ok {
+		return false
+	}
+	st, ok := b.Body.(*parser.StatementsNode)
+	if !ok || len(st.Body) != 1 {
+		return false
+	}
+	inner, ok := st.Body[0].(*parser.CallNode)
+	return ok && inner.Receiver == nil && (inner.Name == "undef_method" || inner.Name == "remove_method")
 }
 
 // ruby2KeywordsShim reports whether a class-body conditional is MRI's
@@ -1340,9 +1452,74 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 			c.collectSpecForm(ctx, f, cls, n, scope)
 			return true
 		}
-		return false
+		return c.selfExtendCall(f, cls, n)
 	}
 	return true
+}
+
+// selfExtendCall is a class-body call of a class method whose whole body is `extend M` (or `extend M unless ...`):
+// concurrent-ruby's `safe_initialization!`. The class extends M here, as the call would at load (decision 241).
+// ponytail: a guard is taken as true; and the method is found by a name no other class method has.
+func (c *Compiler) selfExtendCall(f *File, cls *Class, n *parser.CallNode) bool {
+	if len(callArgs(n)) > 0 || n.Block != nil || f.prelude {
+		return false
+	}
+	var found *singletonDef // supers are not linked yet: the one class method of that name, wherever it is
+	for _, k := range c.classList {
+		for i := range k.singletonDefs {
+			if d := &k.singletonDefs[i]; d.node.Name == n.Name {
+				if found != nil {
+					return false
+				}
+				found = d
+			}
+		}
+	}
+	if found == nil {
+		return false
+	}
+	ext := extendOnly(found.node.Body)
+	if ext == nil {
+		return false
+	}
+	for _, a := range callArgs(ext) {
+		cls.extends = append(cls.extends, Include{ref: constRef{node: a, scope: found.scope, file: found.file}, line: f.line(n.Location.StartOffset), file: found.file, scope: found.scope})
+	}
+	return true
+}
+
+// extendOnly is the `extend M, ...` call a method body consists of, alone or under one if/unless, or nil.
+func extendOnly(body parser.Node) *parser.CallNode {
+	st, ok := body.(*parser.StatementsNode)
+	if !ok || len(st.Body) != 1 {
+		return nil
+	}
+	n := st.Body[0]
+	switch x := n.(type) {
+	case *parser.IfNode:
+		if x.Subsequent != nil || x.Statements == nil {
+			return nil
+		}
+		return extendOnly(x.Statements)
+	case *parser.UnlessNode:
+		if x.ElseClause != nil || x.Statements == nil {
+			return nil
+		}
+		return extendOnly(x.Statements)
+	case *parser.CallNode:
+		if x.Receiver != nil || x.Name != "extend" || len(callArgs(x)) == 0 {
+			return nil
+		}
+		for _, a := range callArgs(x) {
+			switch a.(type) {
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			default:
+				return nil
+			}
+		}
+		return x
+	}
+	return nil
 }
 
 // isClassEvalCall reports whether n is a class-body `class_eval`/`module_eval`
@@ -1489,6 +1666,14 @@ type classHook struct {
 // addClassStmt records a class/module body statement that runs at load time,
 // where the class is defined (decision 166).
 func (c *Compiler) addClassStmt(f *File, n parser.Node, scope []*Class) {
+	if c.gemFile(f) && computedStructProp(n) && len(scope) > 0 && c.bootStructs[scope[len(scope)-1].RubyName] != nil {
+		return // a load-time loop declaring T::Struct props: boot's props and define_methods are what it made (decision 241)
+	}
+	if c.gemFile(f) && undefLoop(n) {
+		// ponytail: a gem's blank slate (`(instance_methods - ...).each { |m| undef_method m }`, Homebrew's InstallSteps
+		// sandbox) keeps its methods, so only a misused DSL behaves differently; the boot snapshot's method list would undo it
+		return
+	}
 	if g := c.bodyGroup; g != nil { // a body with locals runs as one unit (decision 170)
 		st := g.Node.(*parser.StatementsNode)
 		if len(st.Body) == 0 {

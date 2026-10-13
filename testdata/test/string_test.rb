@@ -1548,6 +1548,14 @@ B
       assert_equal [true, ["s a", "b"]], ["x/y".match?(Regexp.new("x" + src)), "s a and b".split(/ and (?![^(]*\))/)]
     end
 
+    # $1 and $~ inside a sub/gsub block are that match (decision 241).
+    def string_camel(name) = name.to_s.gsub(/(?:^|_)(.)/) { $1.upcase }
+
+    def test_gsub_block_last_match
+      assert_equal ["FooBar", "a2b4", "x<y>"],
+                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($~[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{$1}>" }]
+    end
+
     def test_scan_interpolated_groups
       suf = "p/"
       got = "/p/a1?t=x /p/a2?t=y".scan(%r{/#{suf}(a\d\?t=([^ ]+))}).to_h { |v, t| [t.to_s, v] }

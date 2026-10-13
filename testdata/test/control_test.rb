@@ -5420,7 +5420,8 @@ module ControlTests
 
     def test_mixed_array_plus
       m = { "a" => :a }.freeze #: Hash[String, Symbol]
-      assert_equal [[:a, "gcc-8"], [1, "x"]], [m.values + %w[8].map { |n| "gcc-#{n}" }, [1] | ["x"]]
+      h = { a: 1 } #: Hash[Symbol, Integer]
+      assert_equal [[:a, "gcc-8"], [1, "x"], { a: 1, b: "x" }], [m.values + %w[8].map { |n| "gcc-#{n}" }, [1] | ["x"], h.merge({ b: "x" })]
     end
 
     def test_tuple_queries

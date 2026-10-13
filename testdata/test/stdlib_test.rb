@@ -1961,6 +1961,11 @@ module StdlibTests
       assert_equal "/\n", IO.popen(["pwd", { chdir: "/" }]) { |io| io.read }
     end
 
+    def test_env_fetch_nil_default
+      assert_equal [nil, "d"], [ENV.fetch("RB2GO_NO_SUCH_VAR", nil), ENV.fetch("RB2GO_NO_SUCH_VAR", "d")]
+      assert_raises(KeyError) { ENV.fetch("RB2GO_NO_SUCH_VAR") }
+    end
+
     def test_time_to_r_and_uname
       assert_equal [Rational(1_700_000_000, 1), true], [Time.at(1_700_000_000).to_r, Etc.uname[:sysname].size.positive?]
     end

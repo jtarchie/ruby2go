@@ -306,6 +306,29 @@ module Boot
       out
     end
 
+    # Each T::Struct's props as MRI ended up with them, for those a load-time loop declared under computed names
+    # (Homebrew's FormulaStruct predicates, decision 241): name, Sorbet type text, and a literal default.
+    def sorbet_structs
+      return {} unless defined?(::T::Struct)
+
+      literal = [NilClass, TrueClass, FalseClass, Integer, Float, String, Symbol]
+      out = {}
+      ObjectSpace.each_object(Class) do |k|
+        next unless k < ::T::Struct && k.name
+
+        props = (k.props rescue next)
+        out[k.name] = props.map do |name, rules|
+          h = { "name" => name.to_s, "type" => rules[:type_object].to_s }
+          if rules.key?(:default)
+            d = rules[:default]
+            h["default"] = d.inspect if literal.any? { |c| d.is_a?(c) } || ((d.is_a?(Array) || d.is_a?(Hash)) && d.empty?)
+          end
+          h
+        end
+      end
+      out
+    end
+
     def dump(path)
       @class_tp&.disable
       @line_tp&.disable
@@ -324,6 +347,7 @@ module Boot
         "branches" => branches,
         "const_classes" => const_classes,
         "delegators" => @delegators,
+        "structs" => sorbet_structs,
       }
       File.write(path, JSON.pretty_generate(manifest))
     end

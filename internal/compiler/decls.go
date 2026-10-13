@@ -673,12 +673,19 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 				body = "return " + body
 			}
 		case m.Name == "initialize": // BasicObject's does nothing
+		case hookNames[m.Name]: // Class's and Module's hooks do nothing (decision 232): a mixed-in `inherited` calling super (decision 241)
+			if ret != "" {
+				body = "return *new(" + ret + ")"
+			}
 		default:
 			body = fmt.Sprintf("panic(NewNoMethodError(Ref(String(\"super: no superclass method '%s' for \" + rbDescribe(self)))))", m.Name)
 		}
 		c.w("func (self %s) %s(%s) %s { %s }\n", recv, bridgeName(m), ps, ret, body)
 	}
 }
+
+// hookNames are Class's and Module's callbacks, whose own definitions do nothing (decision 232).
+var hookNames = map[string]bool{"inherited": true, "included": true, "extended": true, "prepended": true, "method_added": true}
 
 var goSelfCall = regexp.MustCompile(`\bself\.([A-Za-z_]\w*)\(`)
 
@@ -820,6 +827,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	if cls.metaOf != nil {
 		// a metaclass has exactly one instance: the class object
 		c.w("var %s = &%s{}\n\n", classVar(cls.metaOf), cls.Name)
+		if len(ownIvarModules(cls)) > 0 { // a mixed-in module's class-level ivars, by name: its `inherited`'s `child.instance_eval { @env = ... }` (decision 241)
+			c.emitIvarList(cls)
+		}
 		return
 	}
 	c.emitIvarList(cls)

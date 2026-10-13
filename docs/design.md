@@ -7517,3 +7517,24 @@ resolve; anything not listed is still open.
       final newline; regexp2's multiline `^` would match there) and its
       Unicode `\b`, and `rxFold`'s multi-character case folds (regexp2
       does not fold `ß`/`SS` either).
+    - **More of brew's load path** (2026-10-13, after 242):
+      `ENV.fetch(k, nil)` returns nil for a missing name (a literal-nil
+      overload); a mixed-in `inherited` calling `super` reaches Class's
+      no-op (hook bridges return a zero value); a metaclass carrying a
+      mixed-in module's ivars answers `instance_variable_set`/`get`, so an
+      `inherited` hook's `child.instance_eval { @env = ... }` works;
+      `h.merge(g)` of different value types joins them, as `Array#+` does
+      (in gem code an untyped side makes the result untyped); a gem's
+      blank-slate `(instance_methods - ...).each { |m| undef_method m }` is
+      skipped (ponytail: the methods stay; Homebrew's InstallSteps DSL uses
+      it only as a sandbox); a T::Struct's props declared by a load-time
+      loop under computed names (Homebrew's FormulaStruct predicates) come
+      from the boot snapshot, which now records each T::Struct's props
+      (name, Sorbet type text, literal default), and the loop is skipped;
+      `def self.included(base) = base.extend(M)` is
+      mixes_in_class_methods(M); a class-body call of a class method whose
+      body is `extend M` (`safe_initialization!`) extends that class at
+      load, and a run-time `extend M` is a check that the class has M;
+      `$1`/`$~` inside a `sub`/`gsub` block are that match; a gem block's
+      or lambda's `&blk` param is a nil local (ponytail: the caller's block
+      is dropped) and a gem lambda's defaults bind as a block's do.

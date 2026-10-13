@@ -598,6 +598,10 @@ class ENVClass < Object
     raise KeyError.__for("key not found: #{name.inspect}", self, name)
   end
 
+  # `ENV.fetch(name, nil)`: nil for a missing name, not KeyError (literalOverload, decision 241).
+  #: (String, nil) -> String?
+  def __fetch_nil(name, _default) = self[name]
+
   #: (String) -> bool
   def key?(name) = !self[name].nil?
 
