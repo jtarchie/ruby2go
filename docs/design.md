@@ -7108,6 +7108,12 @@ resolve; anything not listed is still open.
       and nil for others (`loop`).
     - **Proof:** `stdlib_test.rb` `StdlibSpawnTest`, `testdata/boot`
       (`Demo::Counter`, `Demo::Lenient`).
+    - **Amended (2026-10-13, ruby/spec `core/enumerable`):** the
+      inherited block applies only to an override of the parent's
+      parameter shape (`sameParamShape`), and `iterAdapterBody` passes
+      nothing for a rest parameter the slot lacks (`EachCounter#each(*arg)`
+      answering `Numerous#each`) instead of indexing it; any other extra
+      parameter is a compile error, not a crash.
 234. **Fewer per-class functions for Homebrew's build memory** (#96,
     amends 209, 214, 216). The capped brew build was killed at 7.39 GB.
     - **`Kernel#exit` is private**, as MRI's is (`exit` and
@@ -7155,7 +7161,9 @@ resolve; anything not listed is still open.
       `case rbKeyed[T]("k"):` for its type hint, then `unkeyCases`
       rewrites it to `case "k":`: a string switch of constants compiles
       to a binary search, and no `rbKeyed` instantiation is left per
-      class (brew: 12k lines of them).
+      class (brew: 12k lines of them). Two classes with one tag (a class
+      alias, decision 203: ruby/spec's `core/dir`) were two legal call
+      cases and are one constant case: the first stays, as it won before.
     - **A computed `send`/`respond_to?` in gem code names what gem and
       user code can answer.** `dynAll` made every method name of every
       class dynamically reachable; brew has 155 computed sends, 145 on

@@ -745,11 +745,21 @@ func keyedType(cc *ast.CaseClause) ast.Expr {
 
 // unkeyCases drops the rbKeyed hint once read: constant cases compile to a binary search with no per-class instantiation (#96).
 func unkeyCases(sw *ast.SwitchStmt) {
-	for _, st := range sw.Body.List {
-		if cc, ok := st.(*ast.CaseClause); ok && keyedType(cc) != nil {
-			cc.List[0] = cc.List[0].(*ast.CallExpr).Args[0]
+	seen := map[string]bool{}
+	sw.Body.List = slices.DeleteFunc(sw.Body.List, func(st ast.Stmt) bool {
+		cc, ok := st.(*ast.CaseClause)
+		if !ok || keyedType(cc) == nil {
+			return false
 		}
-	}
+		lit := cc.List[0].(*ast.CallExpr).Args[0] //nolint:forcetypeassert // keyedType checked the shape
+		key, _ := strconv.Unquote(lit.(*ast.BasicLit).Value)
+		if seen[key] {
+			return true // two classes with one tag (an alias): the first case won as a call, and Go forbids it as a constant
+		}
+		seen[key] = true
+		cc.List[0] = lit
+		return false
+	})
 }
 
 // caseTypeNames lists the declared names a type-switch case's types use that kept code has not named yet.

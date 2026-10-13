@@ -2819,8 +2819,8 @@ func (c *Compiler) overrideYieldShape(m *Method) (int, bool, *Method, bool) {
 	}
 	for _, cls := range c.classList {
 		o := cls.Methods[m.Name]
-		if cls == m.Owner || o == nil || o == m || o.Node == nil || !cls.isSubclassOf(m.Owner) {
-			continue
+		if cls == m.Owner || o == nil || o == m || o.Node == nil || !cls.isSubclassOf(m.Owner) || !sameParamShape(o, m) {
+			continue // an override of another arity is not the slot's shape: the iterator adapter would index params it lacks
 		}
 		if n, optional, ok := c.yieldShape(o); ok {
 			return n, optional, o, true
@@ -4378,6 +4378,20 @@ func (c *Compiler) publicGemOverrides() {
 			}
 		}
 	}
+}
+
+// sameParamShape: a and b take the same parameters by count and kind (positional, optional, rest, keyword).
+func sameParamShape(a, b *Method) bool {
+	if len(a.Params) != len(b.Params) {
+		return false
+	}
+	for i := range a.Params {
+		p, q := a.Params[i], b.Params[i]
+		if p.Rest != q.Rest || (p.Default == nil) != (q.Default == nil) || p.Keyword != q.Keyword || p.KwRest != q.KwRest {
+			return false
+		}
+	}
+	return true
 }
 
 // endsInRaise: body's last statement is a raise (an abstract method's whole body).

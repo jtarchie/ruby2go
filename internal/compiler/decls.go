@@ -1331,6 +1331,12 @@ func (c *Compiler) iterAdapterBody(cls *Class, e entry, s slot) string {
 	env, oenv := c.slotEnv(s), c.forwarderEnv(cls, e)
 	args := make([]string, 0, len(e.M.Params))
 	for i, p := range e.M.Params {
+		if i >= len(s.e.M.Params) { // `each(*arg)` answering `each`: the slot passes nothing for the rest (ruby/spec's EachCounter)
+			if p.Rest {
+				continue
+			}
+			panic(compileError{msg: fmt.Sprintf("%s#%s takes %d parameters where %s#%s's iterator takes %d", cls.RubyName, e.M.Name, len(e.M.Params), s.e.Owner.RubyName, s.e.M.Name, len(s.e.M.Params))})
+		}
 		from, to := c.goType(subst(s.e.M.Params[i].Type, env)), c.goType(subst(p.Type, oenv))
 		a := goParamName(s.e.M.Params[i].Name, i)
 		if from != to && to != "any" {
