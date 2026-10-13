@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"slices"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -46,8 +47,7 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 		return
 	case *parser.CallNode:
 		if call, kind := valueClass(n); call != nil && len(callArgs(call)) > 0 && c.anonClasses[call] == nil {
-			c.anonCount++
-			name := fmt.Sprintf("RbAnon%d", c.anonCount)
+			name := c.anonName(f, call)
 			// `Struct.new(:a)` anywhere but a constant assignment: a hidden value class per literal, as Class.new's
 			c.anonDepth++
 			err := catchCompileError(func() {
@@ -65,39 +65,60 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 			return
 		}
 		if call, isModule := anonClassCall(n); call != nil {
-			c.anonCount++
-			name := fmt.Sprintf("RbAnon%d", c.anonCount)
-			// an anonymous class's body fails where the literal stands (a test's
-			// skip, decision 127), not for the whole program: the error waits there
-			c.anonDepth++
-			err := catchCompileError(func() { c.declareAnon(ctx, f, call, isModule, name, scope) })
-			c.anonDepth--
-			if err != nil {
-				if c.anonErrors == nil {
-					c.anonErrors = map[*parser.CallNode]compileError{}
-				}
-				c.anonErrors[call] = *err
-			}
-			cls := c.anonClasses[call] // not c.classes[name]: that may be a user's class the error was about
-			if cls == nil {
-				return
-			}
-			// MRI's anonymous class prints its address; one class per literal has none, so its place stands in
-			cls.Display = fmt.Sprintf("#<%s:%s:%d>", map[bool]string{true: "Module", false: "Class"}[isModule], f.Name, f.line(call.Location.StartOffset))
-			if !isModule {
-				if c.unnamedAnon == nil {
-					c.unnamedAnon = map[*parser.CallNode]bool{}
-				}
-				c.unnamedAnon[call] = true
-			}
-			// not a name user code can reach; by name, since the block's own constants follow it in the enclosing scope's table
-			c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
+			c.scanAnonClass(ctx, f, call, isModule, scope)
 			return
 		}
 	}
 	for _, ch := range n.CompactChildNodes() {
 		c.scanAnon(ctx, f, ch, scope)
 	}
+}
+
+// scanAnonClass declares the hidden class of one Class.new/Module.new literal, once.
+func (c *Compiler) scanAnonClass(ctx context.Context, f *File, call *parser.CallNode, isModule bool, scope []*Class) {
+	if _, failed := c.anonErrors[call]; c.anonClasses[call] != nil || failed {
+		return // visited before: a second class for one literal would carry another name
+	}
+	name := c.anonName(f, call)
+	// an anonymous class's body fails where the literal stands (a test's
+	// skip, decision 127), not for the whole program: the error waits there
+	c.anonDepth++
+	err := catchCompileError(func() { c.declareAnon(ctx, f, call, isModule, name, scope) })
+	c.anonDepth--
+	if err != nil {
+		if c.anonErrors == nil {
+			c.anonErrors = map[*parser.CallNode]compileError{}
+		}
+		c.anonErrors[call] = *err
+	}
+	cls := c.anonClasses[call] // not c.classes[name]: that may be a user's class the error was about
+	if cls == nil {
+		return
+	}
+	// MRI's anonymous class prints its address; one class per literal has none, so its place stands in
+	cls.Display = fmt.Sprintf("#<%s:%s:%d>", map[bool]string{true: "Module", false: "Class"}[isModule], f.Name, f.line(call.Location.StartOffset))
+	if !isModule {
+		if c.unnamedAnon == nil {
+			c.unnamedAnon = map[*parser.CallNode]bool{}
+		}
+		c.unnamedAnon[call] = true
+	}
+	// not a name user code can reach; by name, since the block's own constants follow it in the enclosing scope's table
+	c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
+}
+
+// anonName names a literal's hidden class by its file and offset, not by a counter: decision 146's rounds carry a
+// parameter's type from one compile to the next by class name, and a counter renumbers every later literal when an
+// earlier one is added or dropped (ruby/spec core/kernel: `extended(o)` typed singleton(RbAnon18) met RbAnon17).
+func (c *Compiler) anonName(f *File, call *parser.CallNode) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(f.Name))
+	base := fmt.Sprintf("RbAnon%08x_%d", h.Sum32(), call.Location.StartOffset)
+	name := base
+	for i := 2; c.classes[name] != nil; i++ { // one literal seen in two parses of its file
+		name = fmt.Sprintf("%s_%d", base, i)
+	}
+	return name
 }
 
 func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNode, isModule bool, name string, scope []*Class) *Class {

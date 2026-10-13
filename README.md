@@ -230,12 +230,10 @@ on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 Correctness is measured against MRI, not a specification: 120
 [examples](examples/), 30 minitest suites and 23 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127): of core's 15,671 examples, **4,552
-pass**, 1,669 fail or error, and 9,450 are skipped as unsupported (features
+ruby/spec under rb2go (decision 127): of core's 17,567 examples, **5,153
+pass**, 1,969 fail or error, and 10,445 are skipped as unsupported (features
 rb2go can't compile; the largest are Bignum, String mutation, String
-encoding tags and `eval`/code loading, which rb2go leaves out by design).
-`core/kernel` (1,896 examples, 604 passing before) does not build at the
-moment, a known regression (decision 233's notes). A
+encoding tags and `eval`/code loading, which rb2go leaves out by design). A
 looser name-level metric,
 [`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 79.2% of
 core's method spec files name a method the prelude or the compiler defines

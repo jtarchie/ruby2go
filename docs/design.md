@@ -7124,11 +7124,7 @@ resolve; anything not listed is still open.
       (`containerCallCode`, `isDirectMethod`; ruby/spec `core/thread` and
       `core/marshal`, broken since eaf6397). Not fixed: a `Thread`
       subclass's `join` waits forever (its embedded `Thread` is a copy of
-      the started one); and ruby/spec `core/kernel` still fails to build:
-      `extended(o)` is typed from one generated hook call
-      (`singleton(RbAnon18)`) while the hook for a `Class.new do extend M
-      end` class is not seen by decision 146's rounds and passes another
-      singleton. Both since 62a6035.
+      the started one), since 62a6035.
 234. **Fewer per-class functions for Homebrew's build memory** (#96,
     amends 209, 214, 216). The capped brew build was killed at 7.39 GB.
     - **`Kernel#exit` is private**, as MRI's is (`exit` and
@@ -7305,3 +7301,22 @@ resolve; anything not listed is still open.
       100k lines), `emitDynamic` 19%.
     - **Measured:** see each bullet; brew end to end 686 + 641 s →
       242 + 87 s with decision 236's view.
+238. **An anonymous class is named by where its literal stands** (amends
+    145, 146). `Class.new`, `Module.new` and an unassigned `Struct.new`
+    literal declared `RbAnon1`, `RbAnon2` ... by a counter. Decision 146's
+    rounds carry a parameter's inferred type from one compile to the next
+    by class name (`rehome`), and a counter renumbers every later literal
+    when an earlier one appears or drops out between compiles, so
+    ruby/spec `core/kernel`'s `KernelSpecs::M.extended(o)`, typed
+    `singleton(RbAnon18)` in a round, met the same literal as `RbAnon17`
+    in the final compile and failed to build (since 62a6035, which made
+    the hook calls reach it). The name is now `RbAnon<fnv32 of the
+    file>_<offset>` (`anonName`), stable across compiles of the same
+    source; a second parse of one file in one compile gets `_2`. A
+    literal is declared once even when the scan reaches its node twice
+    (`scanAnonClass`, as the `Struct.new` path already did). The `RbAnon`
+    prefix, which `Object.constants` leaves out, is unchanged.
+    - **Measured:** ruby/spec `core/kernel` builds again: 601 of 1,896
+      pass (604 before the regression).
+    - **Proof:** `go run ./cmd/rubyspec core/kernel`; `dynamic_output.rb`
+      (no `RbAnon` constant visible).

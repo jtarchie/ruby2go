@@ -131,7 +131,6 @@ type Compiler struct {
 	argBoxes         map[string]bool                   // T? boxes of generic type arguments, which generic code may hold
 	classIDs         map[*Class]int                    // index in classList: the class's ID in the generated tables
 	specClasses      int                               // describes declared, for their classes' Go names
-	anonCount        int                               // Class.new/Module.new literals declared (decision 145)
 	anonClasses      map[*parser.CallNode]*Class       // each literal's class
 	inheritedAliases []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
 	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
