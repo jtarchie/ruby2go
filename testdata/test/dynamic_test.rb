@@ -2978,5 +2978,16 @@ module DynamicTests
       h = { "a" => 1, "b" => 2 } #: untyped
       assert_equal [["a", "b"], [1, 2], [["a", 1], ["b", 2]]], [h.keys, h.values, h.to_a]
     end
+
+    # Kernel's methods on typed containers held untyped: one class-ID arm for every element type (#96).
+    def test_kernel_methods_on_typed_containers
+      xs = [[1, 2], { "a" => 1 }, Set[:a], (1..3)] #: Array[untyped]
+      assert_equal [false, false, false, true], xs.map(&:frozen?)
+      assert_equal [true, true, true, true], xs.map { |x| x.itself.equal?(x) }
+      assert_equal [true, true, true, true], xs.map { |x| x.object_id == x.object_id }
+      assert_equal [nil, nil, nil, nil], xs.map { |x| x.instance_variable_get(:@nope) }
+      assert_equal ["[1, 2]", "{\"a\" => 1}"], [xs[0].send(:format, "%s", xs[0]), xs[1].send(:format, "%s", xs[1])]
+      assert_equal [true, true], [xs[0].nil? == false, xs[2].instance_of?(Set)]
+    end
   end
 end

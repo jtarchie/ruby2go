@@ -284,6 +284,13 @@ func growsTypeParams(cls *Class, e *entry) bool {
 	return false
 }
 
+// mentionsIdent reports whether Go code names any of idents as a whole word.
+func mentionsIdent(code string, idents []string) bool {
+	return slices.ContainsFunc(idents, func(id string) bool {
+		return regexp.MustCompile(`\b` + regexp.QuoteMeta(id) + `\b`).MatchString(code)
+	})
+}
+
 func mentionsVar(t Type) bool {
 	var vars []string
 	freeVars(t, &vars)
@@ -510,10 +517,14 @@ var selfIdent = regexp.MustCompile(`\bself\b`)
 // to a universal owner's free func, whose Self is any.
 func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, ok bool) {
 	cls, e := w.cls, w.e
-	if !cls.isStruct() || len(cls.TypeParams) > 0 || dynPinned[name] {
+	generic := len(cls.TypeParams) > 0
+	if !cls.isStruct() && !generic || dynPinned[name] {
 		return "", "", false
 	}
 	body = w.body
+	if generic && (!e.Owner.universal || mentionsIdent(body, cls.TypeParams)) {
+		return "", "", false // only a body identical for every instantiation leaves the per-element-type _DynGenN (#96)
+	}
 	if e.Owner.universal {
 		for _, t := range []string{c.goType(TClass{C: cls}), c.recvType(cls)} {
 			body = strings.ReplaceAll(body, "["+t+"](self", "[any](self")

@@ -743,6 +743,15 @@ func keyedType(cc *ast.CaseClause) ast.Expr {
 	return ix.Index
 }
 
+// unkeyCases drops the rbKeyed hint once read: constant cases compile to a binary search with no per-class instantiation (#96).
+func unkeyCases(sw *ast.SwitchStmt) {
+	for _, st := range sw.Body.List {
+		if cc, ok := st.(*ast.CaseClause); ok && keyedType(cc) != nil {
+			cc.List[0] = cc.List[0].(*ast.CallExpr).Args[0]
+		}
+	}
+}
+
 // caseTypeNames lists the declared names a type-switch case's types use that kept code has not named yet.
 func (p *pruner) caseTypeNames(types ...ast.Expr) []string {
 	var out []string
@@ -785,6 +794,7 @@ func (p *pruner) sweep(f *ast.File) {
 				p.dropDeadCases(n)
 			case *ast.SwitchStmt:
 				p.dropDeadClauses(n.Body, nil)
+				unkeyCases(n)
 			}
 			return true
 		})

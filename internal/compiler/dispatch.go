@@ -44,7 +44,7 @@ func (c *Compiler) dispatchable(owner *Class, m *Method) bool {
 
 func (c *Compiler) dispatchableUncached(owner *Class, m *Method) bool {
 	ok, why := c.dispatchableWhy(owner, m)
-	if os.Getenv("RB2GO_DISPATCH_DEBUG") != "" && owner != nil && (owner.universal || owner.IsModule) && !ok {
+	if dbg := os.Getenv("RB2GO_DISPATCH_DEBUG"); dbg != "" && owner != nil && (dbg == "all" || owner.universal || owner.IsModule) && !ok {
 		fmt.Fprintf(os.Stderr, "dispatch-debug %s#%s: %s\n", owner.Name, m.Name, why)
 	}
 	return ok
