@@ -36,9 +36,6 @@ class Thread < Object
   # @rbs [A] (A) { (A) -> untyped } -> Thread
   def self.__start_1(a) = %x{ return rbThreadRun(func() any { return blk(a) }) }
 
-  #: () { () -> untyped } -> Thread
-  def self.fork = %x{ return rbThreadRun(func() any { return blk() }) }
-
   # Process.detach's thread answers pid (MRI's is a Process::Waiter); any other thread has no such method (decision 241).
   #: () -> Integer
   def pid = %x{

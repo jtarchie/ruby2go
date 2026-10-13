@@ -734,7 +734,7 @@ func realPath(name string) string {
 
 // warn records a warning once, with its source position.
 func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
-	if c.gemFile(f) { // not the user's to act on: gem code is compiled leniently (decision 173)
+	if c.gemFile(f) && os.Getenv("RB2GO_GEM_WARNINGS") == "" { // not the user's to act on: gem code is compiled leniently (decision 173)
 		return
 	}
 	msg := fmt.Sprintf(format, args...)

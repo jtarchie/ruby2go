@@ -81,10 +81,6 @@ nums.each { |a, b| puts a }
 # warning: main.rb:2: a lambda's parameters are untyped
 up = proc { |s| s.upcase }
 puts up.arity
--- symbol_block_two_params.rb --
-# error: main.rb:3: &:+ needs a single-argument block
-nums = [1, 2] #: Array[Integer]
-puts nums.reduce(0, &:+)
 -- block_returns_non_array.rb --
 # error: main.rb:3: block returns Integer, expected Array[U]
 nums = [1, 2] #: Array[Integer]

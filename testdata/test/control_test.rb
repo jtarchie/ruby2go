@@ -5413,6 +5413,16 @@ module ControlTests
       raise e
     end
 
+    def test_symbol_block_of_two
+      hs = [{ a: 1 }, { b: 2 }, { a: 3 }] #: Array[Hash[Symbol, Integer]]
+      assert_equal [{ a: 3, b: 2 }, 6, [1, 2, 3]], [hs.reduce(&:merge), [1, 2, 3].reduce(&:+), [[1, 2], [3]].inject(&:concat)]
+    end
+
+    def test_mixed_array_plus
+      m = { "a" => :a }.freeze #: Hash[String, Symbol]
+      assert_equal [[:a, "gcc-8"], [1, "x"]], [m.values + %w[8].map { |n| "gcc-#{n}" }, [1] | ["x"]]
+    end
+
     def test_tuple_queries
       pair = [1, "a"]
       assert_equal [2, "1,a", true], [pair.size, pair.join(","), pair.include?("a")]

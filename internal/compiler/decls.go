@@ -1265,6 +1265,10 @@ func (c *Compiler) checkAdaptable(own, s slot) {
 			fail("an override of a rest-parameter method must keep the signature")
 		}
 	}
+	if kwSlot(m, sm) {
+		c.checkKwAdaptable(own, s, fail)
+		return
+	}
 	req, maxArgs := arity(m)
 	if n := len(sm.Params); n < req || maxArgs >= 0 && n > maxArgs {
 		return // the adapter raises ArgumentError, as MRI would
@@ -1285,6 +1289,87 @@ func (c *Compiler) checkAdaptable(own, s slot) {
 	if !c.adapts(from, to, false) && !gemConv(from, to) {
 		fail(fmt.Sprintf("its %s result cannot stand in for %s", from, to))
 	}
+}
+
+// kwSlot reports an override and a slot that both take keywords: the adapter passes them by name (decision 241).
+func kwSlot(m, sm *Method) bool {
+	kw := func(p Param) bool { return p.Keyword || p.KwRest }
+	return slices.ContainsFunc(m.Params, kw) && slices.ContainsFunc(sm.Params, kw) && m.Block == nil && sm.Block == nil
+}
+
+// positionals is m's leading positional parameters (no rest, keywords or post).
+func positionals(m *Method) []Param {
+	var out []Param
+	for _, p := range m.Params {
+		if p.Rest || p.Keyword || p.KwRest || p.Post {
+			break
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// checkKwAdaptable checks a keyword slot: the positionals pair up by place, the slot's keywords the override takes by
+// name; one the override lacks goes to its **rest, or the slot cannot be answered; an override keyword the slot lacks
+// comes from the slot's **rest, or is defaulted (decision 241).
+func (c *Compiler) checkKwAdaptable(own, s slot, fail func(string)) {
+	m, sm := own.e.M, s.e.M
+	env, oenv := c.slotEnv(s), c.slotEnv(own)
+	pos, spos := positionals(m), positionals(sm)
+	if len(spos) > len(pos) || slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest || p.Post }) {
+		fail("its positional parameters do not line up")
+	}
+	for i, p := range spos {
+		if from, to := subst(p.Type, env), subst(pos[i].Type, oenv); !c.adapts(from, to, true) {
+			fail(fmt.Sprintf("argument %d cannot pass a %s as a %s", i+1, from, to))
+		}
+	}
+	for i := len(spos); i < len(pos); i++ {
+		if pos[i].Default == nil {
+			fail(fmt.Sprintf("its argument %d is required", i+1))
+		}
+	}
+	ownRest := slices.ContainsFunc(m.Params, func(p Param) bool { return p.KwRest })
+	for _, p := range sm.Params {
+		if !p.Keyword || p.KwRest {
+			continue
+		}
+		i := slices.IndexFunc(m.Params, func(q Param) bool { return q.Keyword && !q.KwRest && q.Name == p.Name })
+		switch {
+		case i >= 0:
+			if from, to := subst(p.Type, env), subst(m.Params[i].Type, oenv); !c.adapts(from, to, true) && !c.gemFile(m.File) {
+				fail(fmt.Sprintf("keyword %s cannot pass a %s as a %s", p.Name, from, to))
+			}
+		case !ownRest:
+			fail("it takes no keyword " + p.Name)
+		}
+	}
+	from, to := subst(m.Ret, oenv), subst(sm.Ret, env)
+	if !c.adapts(from, to, false) && !c.gemFile(m.File) {
+		fail(fmt.Sprintf("its %s result cannot stand in for %s", from, to))
+	}
+}
+
+// kwAdapterArgs is a keyword slot's call of the override: the slot's positionals, its keywords by name, and its
+// **rest splatted, from which the override's own keywords are taken (decision 241).
+func kwAdapterArgs(sm *Method, env map[string]Type) []parser.Node {
+	var args []parser.Node
+	kh := &parser.KeywordHashNode{}
+	for i, p := range sm.Params {
+		a := &exprNode{e: expr{code: goParamName(p.Name, i), typ: subst(p.Type, env)}}
+		switch {
+		case p.KwRest:
+			kh.Elements = append(kh.Elements, &parser.AssocSplatNode{Value: a})
+		case p.Keyword:
+			kh.Elements = append(kh.Elements, &parser.AssocNode{Key: &parser.SymbolNode{Unescaped: parser.RubyString{Value: p.Name}}, Value: a})
+		default:
+			args = append(args, a)
+		}
+	}
+	if len(kh.Elements) > 0 {
+		args = append(args, kh)
+	}
+	return args
 }
 
 // seqDropped counts the trailing nil-defaulted params an `each` seq adapter leaves out, so it answers Enumerable's
@@ -1374,6 +1459,19 @@ func (c *Compiler) adapterBody(cls *Class, e entry, s slot) string {
 	}
 	if e.M.Iterator && s.e.M.Iterator {
 		return c.iterAdapterBody(cls, e, s)
+	}
+	if kwSlot(e.M, s.e.M) {
+		env := c.slotEnv(s)
+		recv := expr{code: "self", typ: TClass{C: cls}}
+		res := f.callEntry(&parser.NilNode{}, &e, recv, kwAdapterArgs(s.e.M, env), nil)
+		ret := subst(s.e.M.Ret, env)
+		switch {
+		case !isVoid(ret):
+			f.emit("return %s", f.coerce(&parser.NilNode{}, res, ret))
+		case res.code != "":
+			f.emit("%s", res.code)
+		}
+		return f.buf.String()
 	}
 	n := len(s.e.M.Params)
 	if req, maxArgs := arity(e.M); n < req || maxArgs >= 0 && n > maxArgs {

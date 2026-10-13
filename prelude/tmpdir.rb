@@ -6,8 +6,8 @@ require_relative "etc"
 # `require "tmpdir"`: Dir.mktmpdir. MRI's tmpdir.rb loads fileutils and etc.
 class Dir
   # The directory and its contents go when the block returns. prefix_suffix is a prefix String or a [prefix, suffix]
-  # pair; tmpdir is where it goes (Dir.tmpdir by default).
-  #: [T] (?untyped, ?String?) { (String) -> T } -> T
+  # pair; tmpdir is where it goes (Dir.tmpdir by default): a String or a Pathname.
+  #: [T] (?untyped, ?untyped) { (String) -> T } -> T
   def self.mktmpdir(prefix_suffix = nil, tmpdir = nil)
     dir = __mktmp(prefix_suffix, tmpdir)
     begin
@@ -24,10 +24,10 @@ class Dir
   #: (untyped) -> String
   def self.__mktmpdir_1(prefix_suffix) = __mktmp(prefix_suffix, nil)
 
-  #: (untyped, String?) -> String
+  #: (untyped, untyped) -> String
   def self.__mktmpdir_2(prefix_suffix, tmpdir) = __mktmp(prefix_suffix, tmpdir)
 
-  #: (untyped, String?) -> String
+  #: (untyped, untyped) -> String
   def self.__mktmp(prefix_suffix, tmpdir) = %x{
     prefix, suffix := "d", ""
     switch v := rbUnbox(prefix_suffix).(type) {
@@ -42,8 +42,8 @@ class Dir
       }
     }
     dir := ""
-    if tmpdir != nil {
-      dir = string(*tmpdir)
+    if t := rbUnbox(tmpdir); t != nil {
+      dir = string(rbToS(t))
     }
     d, err := os.MkdirTemp(dir, prefix+"*"+suffix)
     if err != nil {

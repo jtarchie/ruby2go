@@ -17,6 +17,7 @@ import (
 // StringIO as it does there. A name MRI has and this table lacks stays a no-op, as before.
 var preludeLibs = map[string]string{
 	"json":             "prelude/json.rb",
+	"__errno_process":  "prelude/errno_process.rb", // no require of its own: named by Errno::ESRCH/EPERM (requireScan.visit)
 	"stringio":         "prelude/stringio.rb",
 	"fileutils":        "prelude/fileutils.rb",
 	"tempfile":         "prelude/tempfile.rb",
@@ -183,6 +184,9 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 		}
 		sc.require(f, call, sc.top)
 		return
+	}
+	if cp, ok := n.(*parser.ConstantPathNode); ok && cp.Name != nil && (*cp.Name == "ESRCH" || *cp.Name == "EPERM") && constName(cp.Parent) == "Errno" {
+		sc.lib("__errno_process") // decision 241
 	}
 	if _, ok := n.(*parser.DefNode); ok { // a method body: a computed require there is reached only at run time
 		prev := sc.top

@@ -133,8 +133,8 @@ module Kernel
   def throw(tag, value = nil) = %x{ rbThrowTag(tag, value) }
 
   # A Go program cannot fork (decision 233): reaching fork raises, where MRI forks. Homebrew's SystemCommand forks
-  # only when Process.spawn failed. Thread.fork's signature, which overrides it on Thread's class object.
-  #: () { () -> untyped } -> Thread
+  # only when Process.spawn failed. MRI's parent gets the child's pid.
+  #: () { () -> untyped } -> Integer?
   def fork = raise(NotImplementedError, "fork() function is unimplemented on this machine")
 
   private

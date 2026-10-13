@@ -36,9 +36,16 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_ENOTTY(Ref(String("Inappropriate ioctl for device")))
 	case errors.Is(err, syscall.ENODEV):
 		return NewErrno_ENODEV(Ref(String("Operation not supported by device")))
+	case errors.Is(err, syscall.ESRCH), errors.Is(err, syscall.EPERM):
+		if rbKillErrnoHook != nil {
+			return rbKillErrnoHook(err)
+		}
 	}
 	return NewIOError(Ref(String(err.Error())))
 }
+
+// rbKillErrnoHook builds Errno::ESRCH or Errno::EPERM; prelude/errno_process.rb sets it when a program names either.
+var rbKillErrnoHook func(error) any
 
 // rbStrs converts Go strings to an Array[String].
 func rbStrs(ss []string) *Array[String] {

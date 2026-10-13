@@ -66,6 +66,7 @@ type fctx struct {
 	hasNamedRet    bool
 	rescues        int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
+	paramWiden     map[string]Type // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
 	breakCatch     *breakCatch // the statement call whose closure block `break`s out of it (decision 241)
 }
 
@@ -232,6 +233,7 @@ type localInfo struct {
 	typ       Type
 	annotated bool
 	noHoist   bool      // params and block params: declared by Go syntax
+	param     bool      // a method parameter
 	open      bool      // an unannotated `[]`/`{}` that later writes may type (analyze)
 	seeded    bool      // a non-empty `[...]` open to widening: elems start with its own element type (decision 193)
 	elems     [2][]Type // what those writes put in it: elements, or keys and values
@@ -310,6 +312,9 @@ func (f *fctx) enterBlock() string {
 // enterRubyBlock starts a Go block that is also a Ruby block (a closure or
 // an iterator's loop body): locals first assigned inside stay inside.
 func (f *fctx) enterRubyBlock(block parser.Node, params []string) (string, string) {
+	if b, ok := block.(*parser.BlockNode); ok && f.lenient() {
+		renameReassignedParams(b, params)
+	}
 	saved := f.enterBlock()
 	savedRuby := f.rbScope
 	f.rbScope = f.block
@@ -2225,6 +2230,7 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 	if existing == nil {
 		return f.declareAssign(n, name, typ, val, annotated)
 	}
+	f.widenParam(name, info, existing, val)
 	if info != nil {
 		f.noteReassign(n, name, info, existing, val)
 	}
@@ -2241,6 +2247,23 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		}
 	}
 	return f.narrowSet(existing, val)
+}
+
+// widenParam notes a gem method's param given what its type does not hold (`rebuild = ".#{rebuild}"` for an Integer):
+// from the next pass on the body works on a copy of the join, or untyped (decision 241).
+func (f *fctx) widenParam(name string, info *localInfo, existing *local, val expr) {
+	if info == nil || !info.param || !f.lenient() || isVoid(val.typ) || isNil(val.typ) || fitsValue(val, existing.typ) || isAny(existing.typ) {
+		return
+	}
+	w, ok := join(existing.typ, val.typ)
+	if !ok {
+		w = TAny{}
+	}
+	if f.paramWiden == nil {
+		f.paramWiden = map[string]Type{}
+	}
+	f.paramWiden[name] = w
+	info.typ, existing.typ = w, w
 }
 
 // noteReassign records another assignment of a local: where it happens and the join of what it holds.
@@ -2348,7 +2371,7 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 	fresh := func() {
 		f.locals = map[localKey]*localInfo{}
 		for _, p := range params {
-			f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true}
+			f.locals[localKey{methodScope, p.name}] = &localInfo{declBlock: "", typ: p.typ, annotated: true, reads: 1, noHoist: true, param: true}
 		}
 	}
 	run := func(pass int) {
@@ -2357,7 +2380,17 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		f.tmp, f.blockCtr, f.block = 0, 0, ""
 		f.scope = &scope{vars: map[string]*local{}}
 		for _, p := range params {
-			f.scope.vars[p.name] = &local{name: p.name, goName: p.goName, typ: p.typ, declared: true, info: f.locals[localKey{methodScope, p.name}]}
+			v := &local{name: p.name, goName: p.goName, typ: p.typ, declared: true, info: f.locals[localKey{methodScope, p.name}]}
+			if w := f.paramWiden[p.name]; w != nil { // its widened copy, which the body reads and writes (decision 241)
+				goName := p.goName + "W_"
+				f.emit("var %s %s = %s", goName, f.c.goType(w), f.coerce(body, expr{code: p.goName, typ: p.typ}, w))
+				f.emit("_ = %s", goName)
+				v.goName, v.typ = goName, w
+				if v.info != nil {
+					v.info.typ = w
+				}
+			}
+			f.scope.vars[p.name] = v
 		}
 		if prologue != nil {
 			prologue()
@@ -3601,4 +3634,96 @@ func (f *fctx) cannotRespond(pred parser.Node) bool {
 		return false
 	}
 	return rc.C.lookup(sym.Unescaped.Value) == nil && rc.C.lookup("method_missing") == nil && rc.C.lookup("respond_to_missing?") == nil
+}
+
+// renameReassignedParams: a gem block's top-level `p = v` of its own param p starts a new local for the rest of the
+// block (`env = env.to_s` turns a Symbol param into a String), as a block param's Go type is fixed by the block's
+// signature. Ruby reads the same values, unless a closure made before the write captured p: then nothing is renamed
+// (decision 241).
+func renameReassignedParams(b *parser.BlockNode, params []string) {
+	st, ok := b.Body.(*parser.StatementsNode)
+	if !ok {
+		return
+	}
+	for i, n := range st.Body {
+		w, ok := n.(*parser.LocalVariableWriteNode)
+		if !ok || w.Depth != 0 || !slices.Contains(params, w.Name) || slices.ContainsFunc(st.Body[:i], func(x parser.Node) bool { return capturesLocal(x, w.Name) }) {
+			continue
+		}
+		old, fresh := w.Name, fmt.Sprintf("%s__r%d", w.Name, i)
+		w.Name = fresh
+		for _, later := range st.Body[i+1:] {
+			renameLocal(later, old, fresh)
+		}
+		b.Locals = append(b.Locals, fresh)
+	}
+}
+
+// capturesLocal reports a block or lambda inside n that reads or writes the local name.
+func capturesLocal(n parser.Node, name string) bool {
+	found := false
+	var walk func(parser.Node, bool)
+	walk = func(n parser.Node, inBlock bool) {
+		if found || n == nil {
+			return
+		}
+		switch x := n.(type) {
+		case *parser.BlockNode, *parser.LambdaNode:
+			inBlock = true
+		case *parser.LocalVariableReadNode:
+			found = inBlock && x.Name == name
+		case *parser.LocalVariableWriteNode:
+			found = inBlock && x.Name == name
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch, inBlock)
+		}
+	}
+	walk(n, false)
+	return found
+}
+
+// renameLocal renames the local old to fresh in n, leaving scopes that declare their own old (a block param, a def).
+func renameLocal(n parser.Node, old, fresh string) {
+	switch x := n.(type) {
+	case nil:
+		return
+	case *parser.DefNode:
+		return
+	case *parser.BlockNode:
+		if slices.Contains(x.Locals, old) {
+			return
+		}
+	case *parser.LambdaNode:
+		if slices.Contains(x.Locals, old) {
+			return
+		}
+	case *parser.LocalVariableReadNode:
+		if x.Name == old {
+			x.Name = fresh
+		}
+	case *parser.LocalVariableWriteNode:
+		if x.Name == old {
+			x.Name = fresh
+		}
+	case *parser.LocalVariableTargetNode:
+		if x.Name == old {
+			x.Name = fresh
+		}
+	case *parser.LocalVariableOperatorWriteNode:
+		if x.Name == old {
+			x.Name = fresh
+		}
+	case *parser.LocalVariableOrWriteNode:
+		if x.Name == old {
+			x.Name = fresh
+		}
+	case *parser.LocalVariableAndWriteNode:
+		if x.Name == old {
+			x.Name = fresh
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		renameLocal(ch, old, fresh)
+	}
 }

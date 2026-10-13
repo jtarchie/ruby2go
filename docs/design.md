@@ -892,7 +892,7 @@ resolve; anything not listed is still open.
     `(?:X{n})?`; `\u`/`\e` become `\x{...}`; `\Q` is a literal `Q`; plain
     groups don't capture once one is named. *(Revised: these passed through
     and silently matched RE2's meaning.)* Lookaround, backreferences and `\Z`
-    are rejected with `file:line` at transpile time. A literal `/x` pattern
+    are rejected with `file:line` at transpile time (`\Z` translated since 241). A literal `/x` pattern
     drops its whitespace and `#` comments before translation (`source`
     and `inspect` keep them); an interpolated `/x` is stripped at run time,
     the values' spacing included, as MRI's. An inline group that turns x
@@ -7437,3 +7437,48 @@ resolve; anything not listed is still open.
     - **A gem's local retyped** (`uri = ref.to_s; uri = URI(uri)`) reads as
       its widened join (a union, or untyped) after the write in the first
       local-analysis pass too, not only in the second.
+    - **`\Z` is translated** (amends 24): `(?:\n?\z)`, the end or before a
+      final newline. RE2 has no lookahead, so the newline is part of the
+      match: `$&`, `post_match` and a capture-less `str[re]` hold it where
+      MRI's do not; whether a string matches, and every group, is the same.
+      Homebrew writes `\Z` 46 times, some in patterns built at run time.
+    - **Smaller gem leniencies**: nil where a gem's sig says a non-nil union
+      passes as nil (MRI without Sorbet's run-time checks); a wider union
+      into a narrower one is checked on arrival; `Array[untyped]` where the
+      sig says `Array[A | B]` is the same Go type and passes as it is; a
+      block's untyped value where the method wants `Array[U]` (`flat_map`)
+      binds U untyped. **Core additions**: `Errno::ESRCH`/`EPERM` (kill's
+      errors) in `prelude/errno_process.rb`, a lib with no require of its
+      own that loads when a program names either constant (as core classes
+      they cost every dynamic program ~27 functions each; a program that
+      rescues only SystemCallError still gets IOError from kill, as before),
+      `Process.setpgid`, `Dir.mktmpdir(prefix, Pathname)`;
+      `Kernel#fork` is typed `Integer?` and `Thread.fork` is rewritten to
+      `Thread.start` (MRI's alias), so the two no longer collide.
+    - **Homebrew's load-time blockers** (found with `RB2GO_GEM_WARNINGS=1`,
+      which prints the warnings gem files otherwise keep quiet: nil
+      constants, skipped statements):
+      `reduce(&:merge)` (a `&:sym` block taking several values calls the
+      first with the rest as arguments); a gem method's param reassigned
+      what its type does not hold (`rebuild = ".#{rebuild}"`) works on a
+      widened copy from the second pass on; a gem block's top-level
+      `p = v` of its own param starts a new local for the rest of the block
+      (its Go type is the block signature's), unless an earlier closure
+      captured p; `::X = v` / `Other::X = v` in a body declares that
+      constant; a top-level `Klass.private_constant :X` is as inside Klass;
+      a gem block's params past what is yielded are nil (a defaulted
+      `|access = "Accessibility"|` yielded nothing); a Proc reaches
+      Object's methods through untyped dispatch.
+    - **An override adding a keyword** (`install!(name, with: nil, ...,
+      **_options)` over `install!(name, ..., **options)`, amends 8): when
+      both take keywords, the adapter calls the override with the slot's
+      positionals, its keywords by name and its `**rest` splatted, so the
+      override's own keyword comes from the caller's options, as MRI binds
+      it. ponytail: a slot keyword with a callee-side default is passed as
+      given.
+    - **`xs + ys` / `xs | ys` of different element types** (`Array[Symbol] +
+      Array[String]`) converts both to an Array of the join first; Array#+
+      is typed `Array[T]` on both sides.
+    - **Sorbet's `mixes_in_class_methods(M)`** in a module: each class
+      including the module extends M at link, as Sorbet's included hook does
+      at run time (`UnpackStrategy::ClassMethods`).

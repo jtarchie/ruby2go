@@ -41,6 +41,10 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.EINVAL
 	case *Errno_ECHILD:
 		n = syscall.ECHILD
+	case *Errno_ESRCH:
+		n = syscall.ESRCH
+	case *Errno_EPERM:
+		n = syscall.EPERM
 	case interface{ _Errno_EAGAIN() *Errno_EAGAIN }: // IO::EAGAINWaitReadable too
 		n = syscall.EAGAIN
 	case *Errno_ECONNREFUSED:

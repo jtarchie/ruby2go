@@ -23,9 +23,6 @@ puts "aa".match?(/(a)\1/)
 # error: main.rb:3: regexp /(?<x>a)\k<x>/ is not supported
 # error: invalid escape sequence: `\k`
 puts "aa".match?(/(?<x>a)\k<x>/)
--- upper_z.rb --
-# error: main.rb:2: regexp /b\Z/ is not supported: \Z is not supported by RE2; use \z
-puts "ab".match?(/b\Z/)
 -- g_anchor.rb --
 # error: main.rb:2: regexp /\Ga/ is not supported: \G is not supported by RE2
 puts "ab".match?(/\Ga/)
@@ -54,9 +51,9 @@ puts "aa".match?(/(?>a)/)
 # error: `(?~`
 puts "aa".match?(/(?~a)/)
 -- interpolated_static_part.rb --
-# error: main.rb:3: regexp is not supported: \Z is not supported by RE2; use \z
+# error: main.rb:3: regexp is not supported: \K is not supported by RE2
 x = "a"
-puts "aa".match?(/#{x}\Z/)
+puts "aa".match?(/#{x}\K/)
 -- interpolation_two_statements.rb --
 # error: main.rb:3: interpolation must contain a single expression
 x = "a"

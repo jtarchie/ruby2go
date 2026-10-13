@@ -1083,6 +1083,45 @@ func (f *fctx) splatToArray(el parser.Node, sp *parser.SplatNode, e expr) expr {
 		}
 		return a
 	}
+	if u, ok := e.typ.(TUnion); ok { // a type switch: each member spreads as itself would, nil as nothing
+		member := func(m Type, code string) expr {
+			if isClass(m, "Array") {
+				return expr{code: code, typ: m}
+			}
+			return spread(expr{code: code, typ: m})
+		}
+		var et Type
+		for _, m := range u.Members {
+			if isNil(m) {
+				continue
+			}
+			var a expr
+			f.probe(func() { a = member(m, "x") })
+			if et == nil {
+				et = a.typ.(TClass).Args[0]
+			} else {
+				et = joinUnion(et, a.typ.(TClass).Args[0])
+			}
+		}
+		at := TClass{C: f.c.classes["Array"], Args: []Type{et}}
+		out, sw := f.newTmp(), f.newTmp()
+		f.emit("%s := &Array[%s]{}", out, f.c.goType(et))
+		f.emit("switch %s := %s.(type) {", sw, e.code)
+		seen := map[string]bool{}
+		for _, m := range u.Members {
+			if isNil(m) || seen[f.c.goType(m)] {
+				continue
+			}
+			seen[f.c.goType(m)] = true
+			f.emit("case %s:", f.c.goType(m))
+			f.indent++
+			a := member(m, sw)
+			f.emit("%s.s = append(%s.s, (%s).s...)", out, out, f.coerce(el, a, at))
+			f.indent--
+		}
+		f.emit("}")
+		return expr{code: out, typ: at}
+	}
 	o, ok := e.typ.(TOpt)
 	if !ok {
 		return spread(e)
@@ -1549,8 +1588,11 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 			// the target's checker converts it, or its type switch misses it
 			return f.c.unionFn(to) + "(" + e.code + ")"
 		}
+		if f.lenient() { // a gem's wider union: checked on arrival, as its other unions are (decisions 233, 241)
+			return f.noteConv(n, f.c.unionFn(to)+"("+e.code+")")
+		}
 	case TNil:
-		if fits(t, to) {
+		if fits(t, to) || f.lenient() { // a gem's nil where its sig says non-nil: passed on, as MRI without Sorbet's run-time checks (decision 241)
 			return "nil"
 		}
 	case TTuple:
@@ -2135,6 +2177,9 @@ func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser
 	}
 	if f.isOpenURIRecv(recv.typ, name) {
 		return f.genOpenURI(n, &recv, name, args, block), true
+	}
+	if e, ok := f.mixedArrayOp(n, recv, name, args, block); ok {
+		return e, true
 	}
 	if name == "class" && len(args) == 0 && block == nil {
 		if e, ok := f.genClassOf(n, recv); ok {
@@ -3964,10 +4009,21 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	if _, ok := firstType(yields).(TAny); ok && len(yields) == 1 && len(names) > 1 {
 		return f.bindArraySplat(n, names, TAny{}, true)
 	}
+	var extra []string // a gem block's params past what is yielded: nil, as a proc's are (decision 241)
 	if len(names) > len(yields) {
-		f.errorf(n, "block takes %d params but only %d values are yielded", len(names), len(yields))
+		if !f.lenient() || slices.ContainsFunc(names[len(yields):], func(nm string) bool { return strings.HasPrefix(nm, "(") }) {
+			f.errorf(n, "block takes %d params but only %d values are yielded", len(names), len(yields))
+		}
+		extra = names[len(yields):]
 	}
 	var destructure []func()
+	for _, nm := range extra {
+		destructure = append(destructure, func() {
+			v := f.blockParam(nm, TAny{})
+			f.emit("var %s any", v.goName)
+			f.noteUnused(v)
+		})
+	}
 	for i := range yields {
 		switch {
 		case i < len(names) && strings.HasPrefix(names[i], "("):
@@ -3998,6 +4054,28 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 			}
 		}
 	}
+}
+
+// symbolBlockNames are a `&:name` block's params: x_ the receiver, the rest its arguments (`reduce(&:merge)`, decision 241).
+func (f *fctx) symbolBlockNames(b parser.Node, name string, n int) []string {
+	if n == 0 {
+		f.errorf(b, "&:%s needs a block that takes a value", name)
+	}
+	names := []string{"x_"}
+	for i := 1; i < n; i++ {
+		names = append(names, fmt.Sprintf("a%d_", i))
+	}
+	return names
+}
+
+// symbolBlockCall is a `&:name` block's body: name called on its first value, the others its arguments.
+func (f *fctx) symbolBlockCall(n, block parser.Node, name string, names []string) expr {
+	v := f.scope.lookup("x_")
+	args := make([]parser.Node, 0, len(names)-1)
+	for _, nm := range names[1:] {
+		args = append(args, &parser.LocalVariableReadNode{Name: nm, Location: block.GetLocation()})
+	}
+	return f.genMethodCall(n, expr{code: v.goName, typ: v.typ}, name, args, nil)
 }
 
 // withClosureSelf binds self to an escaped block's self param (decision 164)
@@ -4039,17 +4117,13 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			return f.genClosure(n, f.blockArgBlock(b, len(params)), sig, env)
 		}
 		symbolCall = sym.Unescaped.Value
-		if len(params) != 1 {
-			f.errorf(b, "&:%s needs a single-argument block", symbolCall)
-		}
-		names = []string{"x_"}
+		names = f.symbolBlockNames(b, symbolCall, len(params))
 	default:
 		f.c.unsupported(f.f, block)
 	}
 	gen := func(t tail) {
 		if symbolCall != "" {
-			v := f.scope.lookup("x_")
-			e := f.genMethodCall(n, expr{code: v.goName, typ: v.typ}, symbolCall, nil, nil)
+			e := f.symbolBlockCall(n, block, symbolCall, names)
 			f.applyTail(n, e, t)
 			return
 		}
@@ -4097,7 +4171,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 				got = TTuple{Elems: elems}
 			}
 		}
-		if !unify(sig.Ret, got, env) {
+		if !unify(sig.Ret, got, env) && !f.lenientBlockRet(sig.Ret, got, env) {
 			f.errorf(n, "block returns %s, expected %s", got, subst(sig.Ret, env))
 		}
 		ret = subst(sig.Ret, env)
@@ -5068,6 +5142,50 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 		}
 		return f.genMethodCall(n, expr{code: code, typ: m}, name, args, block), true
 	}, func(m Type, msg string) string { return fmt.Sprintf("%s (a member of %s)", msg, u) })
+}
+
+// lenientBlockRet types a gem block's untyped value where the method wants Array[U] (flat_map): its unbound type
+// variables are untyped, and the value is converted on return (decision 241).
+func (f *fctx) lenientBlockRet(want, got Type, env map[string]Type) bool {
+	if !f.lenient() || !isAny(got) {
+		return false
+	}
+	var vs []string
+	freeVars(want, &vs)
+	for _, v := range vs {
+		if _, bound := env[v]; !bound {
+			env[v] = TAny{}
+		}
+	}
+	return true
+}
+
+// mixedArrayOp is `xs + ys` / `xs | ys` of Arrays whose element types differ, neither holding the other: MRI's result
+// mixes them, so both sides become Arrays of the join (a union) first (decision 241).
+func (f *fctx) mixedArrayOp(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if name != "+" && name != "|" || len(args) != 1 || block != nil || !isClass(recv.typ, "Array") {
+		return expr{}, false
+	}
+	var at Type
+	f.probe(func() { at = f.genExpr(args[0], nil).typ })
+	if !isClass(at, "Array") {
+		return expr{}, false
+	}
+	a, b := recv.typ.(TClass).Args[0], at.(TClass).Args[0]
+	if isAny(a) || isAny(b) || typeEq(a, b) || fitsValue(expr{typ: b}, a) || fitsValue(expr{typ: a}, b) {
+		return expr{}, false
+	}
+	j := TClass{C: f.c.classes["Array"], Args: []Type{joinUnion(a, b)}}
+	r := f.coerce(n, recv, TAny{})
+	if !isSimpleGo(r) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, r)
+		r = tmp
+	}
+	r = f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(j), r, j.String()))
+	arg := f.genExpr(args[0], nil)
+	ac := f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(j), f.coerce(args[0], arg, TAny{}), j.String()))
+	return f.genMethodCall(n, expr{code: r, typ: j}, name, []parser.Node{&exprNode{e: expr{code: ac, typ: j}}}, nil), true
 }
 
 // pinArgs evaluates args[:upto] that are not pure into temps, in order, so
@@ -6704,11 +6822,16 @@ func (f *fctx) destructureUnion(n parser.Node, v expr, u TUnion, lefts []parser.
 	}
 	sw := f.newTmp()
 	f.emit("switch %s := %s.(type) {", sw, v.code)
+	seen := map[string]bool{} // members of one Go type (two tuples of untyped fields) are one case
 	for _, m := range u.Members {
 		goT := "nil"
 		if !isNil(m) {
 			goT = f.c.goType(m)
 		}
+		if seen[goT] {
+			continue
+		}
+		seen[goT] = true
 		f.emit("case %s:", goT)
 		f.emit("	_ = %s", sw)
 		for i := range lefts {
@@ -8668,6 +8791,9 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 	if ec, ok := e.typ.(TClass); ok && converts(to) && ec.C == to.C && f.c.goType(e.typ) != f.c.goType(to) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())), true
 	}
+	if ec, ok := e.typ.(TClass); ok && ec.C == to.C && f.c.goType(e.typ) == f.c.goType(to) {
+		return e.code, true // Array[untyped] where its sig says Array[A | B]: the same Go type, unions being untyped (decision 241)
+	}
 	if tv, ok := e.typ.(TVar); ok && tv.Name == "Self" && to.C.isStruct() && !to.C.universal && f.owner != nil &&
 		!f.owner.isSubclassOf(to.C) && !slices.Contains(f.owner.ancestors(), to.C) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), e.code, to.String())), true
@@ -8734,9 +8860,9 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
-	if n.Name == "exit!" && n.Receiver == nil && n.Block == nil { // Kernel#exit!, under a name no dispatcher lists (decision 241)
+	if to := renamedCall(n); to != "" {
 		c := *n
-		c.Name = "__exit_bang"
+		c.Name = to
 		return f.genCall(&c, expected), true
 	}
 	if procLiteral(n.Receiver) && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
@@ -8745,6 +8871,18 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 		}
 	}
 	return expr{}, false
+}
+
+// renamedCall is the prelude name a call goes to (decision 241): Thread.fork is MRI's alias of Thread.start (defined as
+// itself it would override Kernel#fork), and Kernel#exit! is __exit_bang, a name no dispatcher lists.
+func renamedCall(n *parser.CallNode) string {
+	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && r.Name == "Thread" && n.Name == "fork" {
+		return "start"
+	}
+	if n.Name == "exit!" && n.Receiver == nil && n.Block == nil {
+		return "__exit_bang"
+	}
+	return ""
 }
 
 // procLiteral: `-> { }`, `proc { }`, `lambda { }`.

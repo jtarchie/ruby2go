@@ -223,7 +223,12 @@ func (t *rxTranslator) escape(inClass bool) (string, error) {
 			t.i += end + 1
 		}
 	case 'Z':
-		return "", errors.New(`\Z is not supported by RE2; use \z`)
+		// end, or before a final newline (decision 241, amends 24): RE2 has no lookahead, so the newline is matched
+		// ponytail: $& and post_match then hold that newline, where MRI's leave it after the match
+		if inClass {
+			return "", errors.New(`\Z inside a character class`)
+		}
+		return `(?:\n?\z)`, nil
 	case 'G', 'K', 'R', 'X':
 		return "", fmt.Errorf(`%s is not supported by RE2`, esc)
 	}

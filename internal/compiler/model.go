@@ -46,6 +46,7 @@ type Class struct {
 	undefs        map[string]bool   // `undef x`: calls through this class find nothing, even inherited
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
 	extends       []Include         // `extend M`: included into the class object
+	mixesIn       []Include         // Sorbet's `mixes_in_class_methods(M)` in a module: its includers extend M (decision 241)
 	delegations   []delegation
 	singleFwd     bool     // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
 	fwdSingle     bool     // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
@@ -519,6 +520,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		}
 	case !f.prelude && isDescribe(n):
 		c.collectDescribe(ctx, f, nil, n)
+	case c.topConstVisibility(f, n):
 	case n.Receiver == nil && n.Name == "include" && !f.prelude:
 		for _, a := range callArgs(n) { // main's include is Object's, as in MRI
 			c.addInclude(f, n, c.classes["Object"], a, nil)
@@ -884,6 +886,9 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 				c.collectModule(ctx, f, n, scope)
 			case *parser.ConstantWriteNode:
 				c.collectBodyConst(ctx, f, n, scope, locals)
+			case *parser.ConstantPathWriteNode: // `::OS_VERSION = v` or `Other::X = v` in a body: that namespace's constant, valued in this scope (decision 241)
+				c.scanAnon(ctx, f, n.Value, scope)
+				c.addConstAt(f, n, c.declName(f, n.Target, scope), n.Value, scope)
 			case *parser.IfNode, *parser.UnlessNode:
 				if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && loadTime && !declares(n) && !c.folds(f, n, scope) {
 					c.classBodyNode(ctx, f, n, scope, loadTime) // `raise "x" if OS.mac?`: a run-time condition around load-time code
@@ -1302,7 +1307,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		// deprecate_constant warns only with Warning[:deprecated], off by default.
 		c.noteAutoloadCall(n, args, scope)
 		c.loadAutoload(ctx, f, n)
-	case "include", "extend", "prepend":
+	case "include", "extend", "prepend", "mixes_in_class_methods":
 		c.collectMixinCall(ctx, f, cls, n, args, scope)
 	case "private", "public", "protected":
 		c.collectVisibilityCall(f, cls, n, args, vis, scope)
@@ -3928,6 +3933,13 @@ func prependTarget(n *parser.CallNode) parser.Node {
 // collectMixinCall is a class body's include, extend or prepend (decision 199: prepend applies at link).
 func (c *Compiler) collectMixinCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
 	switch n.Name {
+	case "mixes_in_class_methods":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			last := len(cls.Includes) - 1
+			cls.mixesIn = append(cls.mixesIn, cls.Includes[last])
+			cls.Includes = cls.Includes[:last]
+		}
 	case "prepend":
 		for _, a := range args {
 			c.prepends = append(c.prepends, pendingPrepend{target: cls, mod: constRef{node: a, scope: scope, file: f}})
@@ -4326,6 +4338,13 @@ func onlyRaises(d *parser.DefNode) bool {
 
 // linkExtends resolves each `extend M` as an include of M on the class object.
 func (c *Compiler) linkExtends() {
+	for _, cls := range c.classList { // a module's mixes_in_class_methods(M): each includer extends M, as Sorbet's included hook does
+		for _, inc := range cls.Includes {
+			if mod := c.resolveClassRef(&inc.ref); mod != nil {
+				cls.extends = append(cls.extends, mod.mixesIn...)
+			}
+		}
+	}
 	for _, cls := range c.classList {
 		for _, ext := range cls.extends {
 			ext.Mod = c.resolveClassRef(&ext.ref)
@@ -4402,4 +4421,32 @@ func endsInRaise(body parser.Node) bool {
 	}
 	c, ok := st.Body[len(st.Body)-1].(*parser.CallNode)
 	return ok && c.Receiver == nil && (c.Name == "raise" || c.Name == "fail")
+}
+
+// topConstVisibility collects `Klass.private_constant :X` at the top level as inside Klass's body (decision 241).
+func (c *Compiler) topConstVisibility(f *File, n *parser.CallNode) bool {
+	if n.Name != "private_constant" && n.Name != "public_constant" || n.Receiver == nil {
+		return false
+	}
+	cls := c.lookupClassRef(f, n.Receiver)
+	if cls == nil {
+		return false
+	}
+	if c.privateConsts == nil {
+		c.privateConsts = map[string]bool{}
+	}
+	for _, name := range c.symbolArgs(f, n, callArgs(n)) {
+		c.privateConsts[cls.RubyName+"::"+name] = n.Name == "private_constant"
+	}
+	return true
+}
+
+// lookupClassRef is the class a top-level constant expression names, or nil.
+func (c *Compiler) lookupClassRef(f *File, n parser.Node) *Class {
+	switch n.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		cls, _ := c.lookupConst(f, n, nil)
+		return cls
+	}
+	return nil
 }

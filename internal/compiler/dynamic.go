@@ -368,8 +368,8 @@ func (c *Compiler) emitDynName(name string) {
 	} else if kernel != "" {
 		c.w("\tif recv == nil {\n\t\tself := recv\n%s\t}\n", kernel)
 	}
-	if kernel != "" { // a bare Object (Object.new, main) has only Kernel's and Object's methods
-		c.w("\tif _, ok := recv.(*Object); ok {\n\t\tself := recv\n%s\t}\n", kernel)
+	if kernel != "" { // a bare Object (Object.new, main) has only Kernel's and Object's methods; so has a Proc, a Go func (decision 241)
+		c.w("\tif _, ok := recv.(*Object); ok || rbIsProc(recv) {\n\t\tself := recv\n%s\t}\n", kernel)
 	}
 	if hidden {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)

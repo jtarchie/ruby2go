@@ -5671,7 +5671,28 @@ module ObjectTests
     end
   end
 
+  # An override adding a keyword answers its parent's slot by keyword name; `with:` comes from the caller's **options
+  # (decision 241).
+  class ObjectKwPkg
+    #: (String, ?preinstall: bool, ?verbose: bool, **untyped) -> bool
+    def self.install!(name, preinstall: true, verbose: false, **options) = false
+  end
+
+  class ObjectKwExt < ObjectKwPkg
+    #: (String, ?with: Array[String]?, ?preinstall: bool, ?verbose: bool, **untyped) -> bool
+    def self.install!(name, with: nil, preinstall: true, verbose: false, **_options)
+      !with.nil? && preinstall
+    end
+  end
+
   class ObjectLexicalTest < Minitest::Test
+    #: (singleton(ObjectKwPkg)) -> bool
+    def object_kw_install(k) = k.install!("x", with: ["a"])
+
+    def test_keyword_override_adapter
+      assert_equal [true, false, false], [object_kw_install(ObjectKwExt), object_kw_install(ObjectKwPkg), ObjectKwExt.install!("y", preinstall: false, with: [])]
+    end
+
     def test_or_assign_union_ivar
       m = ObjectUnionMemo.new
       assert_equal [1, "memo", "memo"], [m.v(true), m.v(false), m.v(false)]

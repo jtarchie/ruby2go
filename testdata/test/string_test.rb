@@ -1529,6 +1529,13 @@ B
 
   # String#scan with an interpolated pattern whose literal text has groups yields each match's groups (decision 241).
   class StringScanInterpolatedTest < Minitest::Test
+    # \Z: the end, or before a final newline (decision 241); the match is the same, its text may hold that newline
+    def test_upper_z_anchor
+      tail = "b"
+      assert_equal [true, true, false, true, "x"], ["ab\n".match?(/b\Z/), "ab".match?(/\Ab\Z|ab\Z/), "ab\n\n".match?(/b\Z/),
+                                           Regexp.new("a#{tail}" + %r{(?:/.*)?\Z}.source).match?("ab/c"), "x\n"[/\A(\w)\Z/, 1]]
+    end
+
     def test_scan_interpolated_groups
       suf = "p/"
       got = "/p/a1?t=x /p/a2?t=y".scan(%r{/#{suf}(a\d\?t=([^ ]+))}).to_h { |v, t| [t.to_s, v] }

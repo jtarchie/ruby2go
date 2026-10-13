@@ -40,6 +40,15 @@ module Process
   #: () -> Integer
   def self.ppid = %x{ Integer(os.Getppid()) }
 
+  # 0 for either argument is the calling process (decision 241).
+  #: (Integer, Integer) -> Integer
+  def self.setpgid(pid, pgid) = %x{
+    if err := syscall.Setpgid(int(pid), int(pgid)); err != nil {
+      panic(rbSysErr(err, "rb_proc_setpgid", ""))
+    }
+    return 0
+  }
+
   #: () -> Integer
   def self.uid = %x{ Integer(os.Getuid()) }
 
