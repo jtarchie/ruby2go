@@ -218,8 +218,8 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 | `fib(32)` | 0.28s | 0.02s | 17.6x faster |
 | `Hash` counting, 500k | 0.13s | 0.02s | 5.4x faster |
 | `Array#map`/`select`/`sum`, 1M | 0.16s | 0.03s | 6.6x faster |
-| string build/split, 100k | 0.13s | 0.03s | 4.2x faster |
-| `Math.sin`/`cos`, 200k | 0.10s | 0.01s | 13.0x faster |
+| string build/split, 100k | 0.13s | 0.03s | 4.1x faster |
+| `Math.sin`/`cos`, 200k | 0.10s | 0.01s | 13.2x faster |
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one
@@ -227,15 +227,17 @@ ulp and neither is uniquely correct ([decision 43](docs/design.md)).
 Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 
-Correctness is measured against MRI, not a specification: 121
+Correctness is measured against MRI, not a specification: 120
 [examples](examples/), 30 minitest suites and 23 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127): of core's 17,568 examples, **5,006
-pass**, 1,877 fail or error, and 10,685 are skipped as unsupported (features
+ruby/spec under rb2go (decision 127): of core's 15,671 examples, **4,552
+pass**, 1,669 fail or error, and 9,450 are skipped as unsupported (features
 rb2go can't compile; the largest are Bignum, String mutation, String
-encoding tags and `eval`/code loading, which rb2go leaves out by design). A
+encoding tags and `eval`/code loading, which rb2go leaves out by design).
+`core/kernel` (1,896 examples, 604 passing before) does not build at the
+moment, a known regression (decision 233's notes). A
 looser name-level metric,
-[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 77.5% of
+[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 79.2% of
 core's method spec files name a method the prelude or the compiler defines
 ([#49](https://github.com/jtarchie/ruby2go/issues/49)).
 

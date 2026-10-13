@@ -5556,3 +5556,40 @@ module ObjectTests
     end
   end
 end
+
+module ObjectTests
+  class RegNumer
+    include Enumerable
+
+    def initialize(*list)
+      @list = list
+    end
+
+    def each
+      @list.each { |i| yield i }
+    end
+  end
+
+  # ruby/spec's EachCounter: an each taking *args answers the parent's each (decisions 206, 233).
+  class RegRestCounter < RegNumer
+    def each(*_args)
+      @list.each { |i| yield i }
+    end
+  end
+
+  class RegSubTime < Time
+  end
+
+  class GoTypeSubclassTest < Minitest::Test
+    def test_rest_each_answers_parent_each
+      c = RegRestCounter.new(3, 1, 2)
+      assert_equal [[3, 1, 2], [1, 2, 3], 6, 1], [c.to_a, c.sort, c.sum, c.min]
+    end
+
+    # An inherited method of a non-generic @go_type base (Time#-) is its Go method on the embedded value (decision 202).
+    def test_inherited_method_on_time_subclass
+      y = RegSubTime.at(100) #: untyped
+      assert_in_delta 98.5, (y - 1.5).to_f
+    end
+  end
+end

@@ -8575,11 +8575,15 @@ func (f *fctx) containerCallCode(e *entry, recv expr, args []string, env map[str
 	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner == rc.C.Super {
 		// an inherited Hash (or Array) method runs on the embedded Hash[any, V] (Array[E])
 		targs := f.c.containerTargs(rc.C, rc.Args)
+		call := func(base string) string { return freeFuncName(m) + targs + "(" + base + comma(argList) + ")" }
+		if f.c.isDirectMethod(m) { // a non-generic base's own Go method (Thread#name, Time#-): no free func exists
+			call = func(base string) string { return base + "." + m.GoName + "(" + argList + ")" }
+		}
 		if tv, ok := m.Ret.(TVar); ok && tv.Name == "Self" { // `-> self` (Set#add): the subclass object, not its embedded base
 			t := f.c.goType(recv.typ)
-			return fmt.Sprintf("func(r %s) %s { %s%s(%s%s); return r }(%s)", t, t, freeFuncName(m), targs, embeddedSuper(rc.C, "r"), comma(argList), recv.code), true
+			return fmt.Sprintf("func(r %s) %s { %s; return r }(%s)", t, t, call(embeddedSuper(rc.C, "r")), recv.code), true
 		}
-		return freeFuncName(m) + targs + "(" + embeddedSuper(rc.C, recv.code) + comma(argList) + ")", true
+		return call(embeddedSuper(rc.C, recv.code)), true
 	}
 	if rc, ok := recv.typ.(TClass); ok && rc.C.hashBase && m.Owner != rc.C && !m.Owner.universal && slices.Contains(rc.C.Super.ancestors(), m.Owner) {
 		// one the container has from a module (Array's Enumerable): called on the embedded container too

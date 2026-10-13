@@ -7113,7 +7113,22 @@ resolve; anything not listed is still open.
       parameter shape (`sameParamShape`), and `iterAdapterBody` passes
       nothing for a rest parameter the slot lacks (`EachCounter#each(*arg)`
       answering `Numerous#each`) instead of indexing it; any other extra
-      parameter is a compile error, not a crash.
+      parameter is a compile error, not a crash. The adapter yields the
+      slot's element type (`iter.Seq[Integer]` for a parent whose `each`
+      yields Integers, converting the override's elements with `rbAs`),
+      not always `any` (ruby/spec `core/range`).
+    - **Also found (2026-10-13):** decision 202's inherited call on a
+      subclass of a non-generic `@go_type` class (`Thread`, `Time`)
+      emitted the free function (`Thread_Name(&self.super_Thread_)`), which
+      only generic bases have; it is the base's Go method now
+      (`containerCallCode`, `isDirectMethod`; ruby/spec `core/thread` and
+      `core/marshal`, broken since eaf6397). Not fixed: a `Thread`
+      subclass's `join` waits forever (its embedded `Thread` is a copy of
+      the started one); and ruby/spec `core/kernel` still fails to build:
+      `extended(o)` is typed from one generated hook call
+      (`singleton(RbAnon18)`) while the hook for a `Class.new do extend M
+      end` class is not seen by decision 146's rounds and passes another
+      singleton. Both since 62a6035.
 234. **Fewer per-class functions for Homebrew's build memory** (#96,
     amends 209, 214, 216). The capped brew build was killed at 7.39 GB.
     - **`Kernel#exit` is private**, as MRI's is (`exit` and

@@ -1344,8 +1344,15 @@ func (c *Compiler) iterAdapterBody(cls *Class, e entry, s slot) string {
 		}
 		args = append(args, a)
 	}
-	return fmt.Sprintf("\treturn func(y func(any) bool) {\n\t\tfor x := range %s {\n\t\t\tif !y(x) {\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n\t}\n",
-		c.blkCall(cls, e, strings.Join(args, ", ")))
+	elem, x := "any", "x"
+	if len(s.e.M.Block.Params) == 1 && len(e.M.Block.Params) == 1 { // the slot's element type: typed when the parent's yields are
+		elem = c.goType(subst(s.e.M.Block.Params[0], env))
+		if own := c.goType(subst(e.M.Block.Params[0], oenv)); own != elem && elem != "any" {
+			x = fmt.Sprintf("rbAs[%s](any(x), %q)", elem, elem)
+		}
+	}
+	return fmt.Sprintf("\treturn func(y func(%s) bool) {\n\t\tfor x := range %s {\n\t\t\tif !y(%s) {\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n\t}\n",
+		elem, c.blkCall(cls, e, strings.Join(args, ", ")), x)
 }
 
 // adapterBody answers slot s of an ancestor's interface with cls's method e
