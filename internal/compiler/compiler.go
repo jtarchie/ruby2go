@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"slices"
@@ -42,20 +43,27 @@ type Compiler struct {
 	dynSeen               map[string]bool
 	universalNames        map[string]bool     // memo of universalHas
 	dispatchMemo          map[*Method]bool    // memo of dispatchable
-	ivarsDiscovered       bool                // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
-	keepNames             []string            // method names the gem pruner keeps though no call names them (decision 230)
-	modIsA                map[*Class]bool     // modules an untyped value's is_a? tests at run time (decision 228)
-	objFreezeMemo         int                 // objFreeze: 0 unasked, 1 no, 2 yes
-	pendingSigs           int                 // signatures rendered while their return was still being inferred: memos taken across one are provisional
-	goCalledNames         map[string]bool     // memo of goCalled
-	renderingConstraint   bool                // constraintNamesSelf is rendering a module interface
-	sends                 map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)
-	sendOut               map[string]bool     // dispatchers emitted
-	dynAll                bool                // a computed send/respond_to?: every method may be named
-	dynAllStrict          bool                // ... from user code: prelude-only names too (gem code narrows, decision 235)
-	symLits               map[string]bool     // symbol literals in gem and user files (symbolLiterals)
-	gemDirsReal           []string            // gemDirs with symlinks resolved, once (gemFile)
-	respondNames          []string            // names asked about with respond_to? at run time
+	sendArmsMemo          map[[2]any][]*Class // memo of sendArms, valid while classList has sendArmsN classes
+	sendArmsN             int
+	privateInMemo         map[string][]*Class // memo of privateIn, valid while classList has privateInN classes
+	privateInN            int
+	ivarsDiscovered       bool                      // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
+	keepNames             []string                  // method names the gem pruner keeps though no call names them (decision 230)
+	modIsA                map[*Class]bool           // modules an untyped value's is_a? tests at run time (decision 228)
+	objFreezeMemo         int                       // objFreeze: 0 unasked, 1 no, 2 yes
+	pendingSigs           int                       // signatures rendered while their return was still being inferred: memos taken across one are provisional
+	goCalledNames         map[string]bool           // memo of goCalled
+	renderingConstraint   bool                      // constraintNamesSelf is rendering a module interface
+	sends                 map[string]sendSpec       // rbSend_ dispatchers calls named (dispatch.go)
+	sendOut               map[string]bool           // dispatchers emitted
+	dynAll                bool                      // a computed send/respond_to?: every method may be named
+	dynAllStrict          bool                      // ... from user code: prelude-only names too (gem code narrows, decision 235)
+	symLits               map[string]bool           // symbol literals in gem and user files (symbolLiterals)
+	gemDirsReal           []string                  // gemDirs with symlinks resolved, once (gemFile)
+	realPaths             map[string]string         // realPath per path, for this compile (c.real)
+	requireTargets        map[string]string         // findRequire per required name, for this compile
+	reCache               map[string]*regexp.Regexp // c.re's compiled patterns
+	respondNames          []string                  // names asked about with respond_to? at run time
 	respondSeen           map[string]bool
 	markers               map[string]bool         // rbHas<marker> helpers emitted
 	classOf               bool                    // `.class` on a value only known at run time: emit rbClassOf
@@ -641,12 +649,24 @@ func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
 	if !ok {
 		return ""
 	}
-	name := filepath.FromSlash(str.Unescaped.Value)
+	if t, ok := c.requireTargets[str.Unescaped.Value]; ok { // one stat per load-path dir per require was most of brew's gen syscalls
+		return t
+	}
+	if c.requireTargets == nil {
+		c.requireTargets = map[string]string{}
+	}
+	t := c.findRequireUncached(str.Unescaped.Value)
+	c.requireTargets[str.Unescaped.Value] = t
+	return t
+}
+
+func (c *Compiler) findRequireUncached(required string) string {
+	name := filepath.FromSlash(required)
 	if filepath.Ext(name) != ".rb" {
 		name += ".rb"
 	}
 	dirs := c.loadPath
-	if preludeLibs[strings.TrimSuffix(str.Unescaped.Value, ".rb")] == "" { // the prelude's lib wins over a gem's copy (base64, forwardable)
+	if preludeLibs[strings.TrimSuffix(required, ".rb")] == "" { // the prelude's lib wins over a gem's copy (base64, forwardable)
 		dirs = append(slices.Clip(dirs), c.gemDirs...)
 	}
 	for _, dir := range dirs {
@@ -662,7 +682,7 @@ func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
 // loadUserFile parses and collects a required file, keyed by real path as
 // MRI's loaded features are; nil when it is already loaded.
 func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) *File {
-	path := realPath(target)
+	path := c.real(target)
 	if c.loaded[path] {
 		return nil
 	}
@@ -687,6 +707,19 @@ func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) 
 }
 
 // realPath is name absolute with symlinks resolved, as MRI keys loaded features; name itself when that fails.
+// real is realPath, remembered for this compile: the require scan and loader resolve the same files many times.
+func (c *Compiler) real(name string) string {
+	if r, ok := c.realPaths[name]; ok {
+		return r
+	}
+	if c.realPaths == nil {
+		c.realPaths = map[string]string{}
+	}
+	r := realPath(name)
+	c.realPaths[name] = r
+	return r
+}
+
 func realPath(name string) string {
 	p, err := filepath.Abs(name)
 	if err != nil {
@@ -758,7 +791,7 @@ func phaseTimer() func(string) {
 
 // readUser reads a user file to compile, or what the entry's `# rb2go_replace:` puts in its place (decision 197).
 func (c *Compiler) readUser(target string) ([]byte, error) {
-	if rep := c.replaced[realPath(target)]; rep != "" {
+	if rep := c.replaced[c.real(target)]; rep != "" {
 		target = rep
 	}
 	data, err := os.ReadFile(target) //nolint:gosec // the user's program names it

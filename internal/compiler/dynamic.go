@@ -226,7 +226,14 @@ func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 
 // privateIn lists the concrete classes on which name is a private method.
 func (c *Compiler) privateIn(name string) []*Class {
+	if len(c.classList) != c.privateInN { // asked per dynamic name, twice: 5 CPU-s of brew's gen unmemoized
+		c.privateInMemo, c.privateInN = map[string][]*Class{}, len(c.classList)
+	}
+	if out, ok := c.privateInMemo[name]; ok {
+		return out
+	}
 	var out []*Class
+	defer func() { c.privateInMemo[name] = out }()
 	for _, cls := range c.classList {
 		if cls.IsModule || cls.universal {
 			continue
@@ -536,6 +543,19 @@ func (c *Compiler) dynGenerated(e *entry) bool {
 
 var selfIdent = regexp.MustCompile(`\bself\b`)
 
+// re compiles pattern once per compile: dynShareable's per-owner and per-class patterns repeat for every wrapper.
+func (c *Compiler) re(pattern string) *regexp.Regexp {
+	if r, ok := c.reCache[pattern]; ok {
+		return r
+	}
+	if c.reCache == nil {
+		c.reCache = map[string]*regexp.Regexp{}
+	}
+	r := regexp.MustCompile(pattern)
+	c.reCache[pattern] = r
+	return r
+}
+
 // dynShareable is w's body with nothing particular to its class, and the
 // interface its self must satisfy: a struct class (it has a _ClassID) reaching
 // a prelude or generated method whose body only calls that method on self, or passes self
@@ -553,7 +573,7 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 	}
 	rest := strings.ReplaceAll(body, "[any](self", "")
 	// a plain free func of the owner (its overloads too: Kernel___Sleep0) takes self as any or the owner's interface (decision 210)
-	plain := regexp.MustCompile(`\b` + e.Owner.Name + `_\w+\(self\b`) // ponytail: compiled per wrapper; cache by owner if it shows in profiles
+	plain := c.re(`\b` + e.Owner.Name + `_\w+\(self\b`)
 	if e.Owner.universal {
 		rest = plain.ReplaceAllString(rest, "")
 	}
@@ -566,7 +586,7 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 	if mod := e.Owner; iface == "" && mod.IsModule && !mod.universal && len(mod.TypeParams) == 0 && c.dispatchable(mod, e.M) {
 		// a dispatched module method's body over the constraint itself (decision 208), the same for every includer
 		// (decision 234): self asserted to the constraint
-		inst := regexp.MustCompile(`\b` + regexp.QuoteMeta(freeFuncName(e.M)) + `\[[^\]]*\]\(self\b`) // ponytail: compiled per wrapper
+		inst := c.re(`\b` + regexp.QuoteMeta(freeFuncName(e.M)) + `\[[^\]]*\]\(self\b`)
 		if inst.MatchString(body) {
 			cons := mod.Name + "_Self[any]"
 			body = inst.ReplaceAllString(body, freeFuncName(e.M)+"["+cons+"](self")
@@ -581,7 +601,7 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		iface = fmt.Sprintf("interface{ %s(%s) %s }", e.M.GoName, ps, ret)
 		rest = strings.ReplaceAll(rest, call, "")
 	}
-	names := regexp.MustCompile(`\b` + regexp.QuoteMeta(cls.Name) + `(I|_Meta|_class)?\b`) // the class's own Go names, not a substring (rbArity holds an A)
+	names := c.re(`\b` + regexp.QuoteMeta(cls.Name) + `(I|_Meta|_class)?\b`) // the class's own Go names, not a substring (rbArity holds an A)
 	if selfIdent.MatchString(rest) || names.MatchString(body+iface) {
 		return "", "", false
 	}

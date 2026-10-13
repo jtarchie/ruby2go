@@ -21,7 +21,7 @@ func (c *Compiler) collectBootEvals(ctx context.Context, evals []boot.EvalInfo) 
 
 func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	path, line, ok := strings.Cut(e.Caller, ":")
-	f := c.parsed[realPath(path)]
+	f := c.parsed[c.real(path)]
 	if !ok || f == nil {
 		return // evaluated by code outside the closed world (a replaced gem's own)
 	}

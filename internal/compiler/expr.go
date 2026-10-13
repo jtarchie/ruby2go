@@ -3025,12 +3025,14 @@ func blocklessOverload(m *Method, owner *Class, name string, nargs int) *entry {
 	return nil
 }
 
+var overloadSuffixes = strings.NewReplacer("?", "_q", "!", "_bang") // built once: per call it was 7.5 CPU-s of brew's gen
+
 // overloadBase is name as its `__<base>_<suffix>` overloads spell it.
 func overloadBase(name string) string {
 	if op, ok := opNames[name]; ok {
 		return strings.ToLower(strings.TrimPrefix(op, "Op_"))
 	}
-	return strings.NewReplacer("?", "_q", "!", "_bang").Replace(name)
+	return overloadSuffixes.Replace(name)
 }
 
 // literalOverload picks an overload from literal arguments: String#scan
@@ -8617,7 +8619,8 @@ func (f *fctx) genGoTypeNew(n parser.Node, cls *Class, args []parser.Node, exprs
 	init := cls.lookup("initialize")
 	ownInit := init != nil && init.Owner == cls
 	baseStarts := init != nil && init.Owner == cls.Super && init.M.Block != nil // Thread's: starts on the embedded base (decision 239)
-	if cls.hashBase && (ownInit || baseStarts) { // a container subclass's initialize runs on the generated empty one
+	// a container subclass's initialize runs on the generated empty one
+	if cls.hashBase && (ownInit || baseStarts) {
 		t := f.goTypeNewType(n, cls, expected)
 		tmp := f.newTmp()
 		targs := ""

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"syscall"
@@ -26,6 +27,7 @@ const usage = `usage: rb2go build [-o prog] [-I dir]... [-race] [-gcflags flags]
        rb2go web -static dir -assets https://host/path/`
 
 func main() {
+	tuneGC()
 	if len(os.Args) < 2 || os.Args[1] != "build" && os.Args[1] != "run" && os.Args[1] != "test" && os.Args[1] != "gen" && os.Args[1] != "web" && os.Args[1] != "stubs" {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
@@ -262,4 +264,16 @@ func cleanup(dir string, opts buildOpts) {
 		return
 	}
 	_ = os.RemoveAll(dir) //nolint:gosec // dir is our MkdirTemp
+}
+
+// tuneGC trades memory for compile speed: the collector was 38% of brew's generation CPU at GOGC=100, and cuba's CPU
+// halves at 400 for twice the peak (225 → 490 MB); a 4 GiB soft limit tightens it again on the largest programs
+// (decision 240). GOGC and GOMEMLIMIT in the environment win.
+func tuneGC() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(400)
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(4 << 30)
+	}
 }

@@ -245,7 +245,15 @@ func (c *Compiler) plainMethod(m *Method) bool {
 
 // sendArms lists the classes below owner whose own resolution of m is not owner's body: the dispatcher's cases.
 func (c *Compiler) sendArms(owner *Class, m *Method) []*Class {
+	if len(c.classList) != c.sendArmsN { // memoized per call site's (owner, m): brew asked 62 CPU-s of it (decision 240)
+		c.sendArmsMemo, c.sendArmsN = map[[2]any][]*Class{}, len(c.classList)
+	}
+	key := [2]any{owner, m}
+	if out, ok := c.sendArmsMemo[key]; ok {
+		return out
+	}
 	var out []*Class
+	defer func() { c.sendArmsMemo[key] = out }()
 	for _, k := range c.sortedClasses() {
 		if k == owner || k.IsModule || k.universal || !k.isSubclassOf(owner) {
 			continue

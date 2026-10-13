@@ -234,7 +234,7 @@ func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode
 		}
 		return
 	}
-	if c.gemFile(f) && !c.autoloaded[realPath(target)] {
+	if c.gemFile(f) && !c.autoloaded[c.real(target)] {
 		return // a gem autoload boot never loaded: nothing the program runs reaches it (decision 175)
 	}
 	src, err := os.ReadFile(target) //nolint:gosec // a gem file boot loaded

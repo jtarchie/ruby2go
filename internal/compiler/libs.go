@@ -222,7 +222,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 		sc.lib(name)
 		return
 	}
-	path := realPath(target)
+	path := sc.c.real(target)
 	if sc.seen[path] {
 		return
 	}
@@ -275,7 +275,7 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 		target = f.c.findRequire(f.f, n)
 	}
 	switch {
-	case target != "" && f.c.loaded[realPath(target)]:
+	case target != "" && f.c.loaded[f.c.real(target)]:
 	case target == "" && n.Name == "require" && (preludeLibs[strings.TrimSuffix(name, ".rb")] != "" || mriLibs[strings.SplitN(name, "/", 2)[0]]):
 	default:
 		call := &parser.CallNode{Location: n.Location, Name: "__rb2go_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
