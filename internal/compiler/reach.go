@@ -49,13 +49,24 @@ func (c *Compiler) gemFile(f *File) bool {
 	if f == nil || f.prelude || f.path == "" {
 		return false
 	}
-	for _, dir := range c.gemDirs {
-		rel, err := filepath.Rel(realPath(dir), f.path)
-		if err == nil && !strings.HasPrefix(rel, "..") {
-			return true
+	if f.gem == nil { // asked per expression (lenient): resolving the gem dirs' symlinks each time was 44% of brew's gen CPU
+		if c.gemDirsReal == nil {
+			c.gemDirsReal = make([]string, len(c.gemDirs))
+			for i, dir := range c.gemDirs {
+				c.gemDirsReal[i] = realPath(dir)
+			}
 		}
+		gem := false
+		for _, dir := range c.gemDirsReal {
+			rel, err := filepath.Rel(dir, f.path)
+			if err == nil && !strings.HasPrefix(rel, "..") {
+				gem = true
+				break
+			}
+		}
+		f.gem = &gem
 	}
-	return false
+	return *f.gem
 }
 
 // userFile is a file of the program's own: not the prelude and not a gem's.

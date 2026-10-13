@@ -19,6 +19,7 @@ type File struct {
 	valueGen bool    // a Struct/Data's generated members (valueClassSource), which may mark @dynamic
 	pinLine  int     // every position reports this line: generated source, whose errors belong to its declaration
 	path     string  // a user file's real path on disk, which require_relative resolves against
+	gem      *bool   // gemFile's answer, once asked
 	data     *string // the text after `__END__`, which DATA reads
 
 	// standalone annotation comments by the line they precede (first code line after)
