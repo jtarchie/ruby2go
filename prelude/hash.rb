@@ -644,6 +644,34 @@ class Hash < Object
     return Integer(h)
   }
 
+  # The untyped view (rbHashView, prelude/go/view.go): per-instantiation accessors behind one compiled body (decision 236).
+  #: () -> Integer
+  def _len = %x{ return Integer(len(self.keys)) }
+
+  #: (Integer) -> untyped
+  def _key_at(i) = %x{ return self.keys[i] }
+
+  #: (untyped) -> bool
+  def _has(k) = %x{
+    _, ok := self.rbGet(rbAs[K](k, "key"))
+    return Boolean(ok)
+  }
+
+  #: (untyped) -> untyped
+  def _get(k) = %x{
+    v, _ := self.rbGet(rbAs[K](k, "key"))
+    return v
+  }
+
+  #: (untyped, untyped) -> void
+  def _store(k, v) = %x{ Hash_Op_idxSet(self, rbAs[K](k, "key"), rbAs[V](v, "value")) }
+
+  #: (untyped) -> void
+  def _delete(k) = %x{ Hash_Delete(self, rbAs[K](k, "key")) }
+
+  #: () -> untyped
+  def _make = %x{ return NewHash[K, V]() }
+
   #: () -> Hash[untyped, untyped]
   def _to_any = %x{
     if same, ok := any(self).(*Hash[any, any]); ok {

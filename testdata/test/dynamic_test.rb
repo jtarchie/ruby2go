@@ -2989,5 +2989,92 @@ module DynamicTests
       assert_equal ["[1, 2]", "{\"a\" => 1}"], [xs[0].send(:format, "%s", xs[0]), xs[1].send(:format, "%s", xs[1])]
       assert_equal [true, true], [xs[0].nil? == false, xs[2].instance_of?(Set)]
     end
+
+    # Whole-array methods on a typed Array held untyped run through the view (decision 236): results keep the
+    # element type, sort! is in place, frozen is checked, join flattens nested arrays.
+    def test_view_methods_on_typed_arrays
+      a = [3, 1, 2] #: Array[Integer]
+      x = a #: untyped
+      assert_equal [[1, 2, 3], [2, 1, 3], 3, 1, 2, true, false, "3-1-2"],
+                   [x.sort, x.reverse, x.max, x.min, x.index(2), x.include?(1), x.include?(9), x.join("-")]
+      assert_equal [3, 1, 2], a
+      assert_same x, x.sort!
+      assert_equal [1, 2, 3], a
+      w = ["b", nil, "a"] #: Array[String?]
+      y = w #: untyped
+      assert_equal [["b", "a"], "ba"], [y.compact, y.compact.join]
+      n = [[1, [2]], 3] #: Array[untyped]
+      assert_equal "1,2,3", n.join(",")
+      e = [] #: Array[Integer]
+      z = e #: untyped
+      assert_equal [nil, nil, nil, [], ""], [z.max, z.min, z.index(1), z.sort, z.join]
+      f = [2, 1].freeze #: Array[Integer]
+      g = f #: untyped
+      assert_raises(FrozenError) { g.sort! }
+      assert_equal [1, 2], g.sort
+    end
+
+    def test_view_set_and_edit_methods
+      a = [3, 1, 2, 1] #: Array[Integer]
+      x = a #: untyped
+      b = [1, 9] #: Array[Integer]
+      y = b #: untyped
+      assert_equal [[3, 1, 2, 1, 1, 9], [3, 2], [1], [3, 1, 2, 9], [3, 1, 2], true, false, [3, 1, 2, 1, 3, 1, 2, 1]],
+                   [x + y, x - y, x & y, x | y, x.uniq, x.intersect?(y), x.intersect?([7]), x * 2]
+      assert_equal ["3,1,2,1", 2, 3, [1, 2, 1, 3], [2, 1], [3, 1]], [x * ",", x.count(1), x.rindex(1), x.rotate, x.drop(2), x.take(2)]
+      assert_same x, x.reverse!
+      assert_equal [1, 2, 1, 3], a
+      assert_equal [[1, 2, 3], nil], [x.uniq!, x.uniq!]
+      assert_equal 2, x.delete(2)
+      assert_equal [nil, 1, [3], [3, 7, 8], [3, 7, 8, 1, 2], [0, 0, 0, 0, 0]],
+                   [x.delete(9), x.delete_at(0), a.dup, x.insert(1, 7, 8).dup, x.concat([1, 2]).dup, x.fill(0)]
+      assert_same x, x.replace([5, 6])
+      assert_equal [5, 6], a
+      pairs = [[1, "a"], [2, "b"]] #: Array[[Integer, String]]
+      q = pairs #: untyped
+      assert_equal [[2, "b"], [1, "a"], nil], [q.assoc(2), q.rassoc("a"), q.assoc(3)]
+      n = [[1, [2]], 3] #: Array[untyped]
+      assert_equal [[1, 2, 3], [1, 2, 3], nil], [n.flatten, n.flatten!, n.flatten!]
+      t = [[1], [2]] #: Array[Array[Integer]]
+      u = t #: untyped
+      assert_equal [1, 2], u.flatten
+      e = [] #: Array[Integer]
+      z = e #: untyped
+      assert_equal [[], [], nil, [], 0], [z.rotate, z.uniq, z.uniq!, z - [1], z.count]
+      assert_raises(ArgumentError) { z.take(-1) }
+    end
+
+    def test_view_hash_methods
+      h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
+      x = h #: untyped
+      o = { "c" => 3 } #: Hash[String, Integer]
+      y = o #: untyped
+      assert_equal [{ "a" => 1, "b" => 2, "c" => 3 }, { "b" => 2 }, { "a" => 1 }, ["a", 1, "b", 2], true, false, "b", nil],
+                   [x.merge(y), x.except("a"), x.slice("a", "z"), x.flatten, x.value?(2), x.has_value?(7), x.key(2), x.key(7)]
+      assert_equal({ "a" => 1, "b" => 2 }, h)
+      c = x.to_h # self, as MRI's
+      c.store("d", 4)
+      assert_equal [3, 3], [h.size, c.size]
+      h.delete("d")
+      assert_same x, x.merge!(y)
+      assert_equal({ "a" => 1, "b" => 2, "c" => 3 }, h)
+      u = { "a" => 5 } #: Hash[String, Integer]
+      assert_same x, x.update(u)
+      z = { "z" => 0 } #: Hash[String, Integer]
+      assert_same x, x.replace(z)
+      assert_equal({ "z" => 0 }, h)
+      n = { "a" => 1, "b" => nil } #: Hash[String, Integer?]
+      w = n #: untyped
+      assert_equal [{ "a" => 1 }, true, "b", { "a" => 1, "b" => nil }], [w.compact, w.value?(nil), w.key(nil), w.merge(w)]
+      assert_same w, w.compact!
+      assert_equal [{ "a" => 1 }, nil], [n, w.compact!]
+      k = { 1 => [[2, 3]] } #: Hash[Integer, Array[Array[Integer]]]
+      assert_equal [[1, [[2, 3]]], [1, [2, 3]]], [k.flatten, k.flatten(2)]
+      fz = { "q" => 1 }.freeze #: Hash[String, Integer]
+      g = fz #: untyped
+      r2 = { "r" => 2 } #: Hash[String, Integer]
+      assert_raises(FrozenError) { g.merge!(r2) }
+      assert_equal({ "q" => 1, "r" => 2 }, g.merge(r2))
+    end
   end
 end

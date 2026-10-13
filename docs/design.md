@@ -7206,3 +7206,49 @@ resolve; anything not listed is still open.
       or fewer element shapes; neither is free.
     - **Proof:** `dynamic_test`'s Kernel-names-on-containers case,
       `marshal_test`, `testdata/boot`'s `dyn_send`/`dyn_responds`.
+236. **Whole-container methods on an untyped receiver run through a
+    view, one body for every element type** (#96, amends 209, 211). A
+    dynamic call of `sort`, `join`, `uniq`, `-`, `merge`, `except` ... on
+    an `Array[E]` or `Hash[K, V]` held untyped used to run that class's
+    `_DynGenN` case, a method, so Go compiled every body the case names
+    once per element shape: 336 `Array` shapes in brew, 213 of them tuple
+    element types. Now `Array[E]` carries six one-line accessors
+    (`_len`, `_at`, `_set`, `_append`, `_trunc`, `_make`) and `Hash[K, V]`
+    seven (`_len`, `_key_at`, `_has`, `_get`, `_store`, `_delete`,
+    `_make`), protocol names so they stay Go methods, and
+    `rbViewCall`/`rbHashViewCall` (`prelude/go/view.go`) answer 37 Array
+    names and 13 Hash names against those interfaces: compiled once, no
+    copy of the container, mutation in place (`sort!` is the same object,
+    `uniq!` truncates and appends), results made by the receiver's
+    `_make` so they keep its type. `_at` hands over the raw `E` (a
+    `*String` for `String?`), which `_set`/`_append` take back as is;
+    `rbUnbox` gives the Ruby value where semantics apply (`nil`, `==`,
+    `<=>`, `to_s`). Arguments that are views are read raw too, so a `T?`
+    value round-trips between same-typed containers; an untyped value
+    written into a `T?` slot still hits `rbAs[*T]`'s gap, as `[]=` from
+    untyped did before (follow-up). The dispatcher asks the view after
+    `DynX` (a user subclass's own method wins) and before `_DynGenN`.
+    Names that stay per element type: the O(1) ones (`[]`, `[]=`,
+    `fetch`, `push`, `first`, `size` ...), the protocol, and names gem
+    code defines by reopening (`blank?`, `deep_dup`, `exclude?`).
+    `Hash#to_h` answers self, as MRI's. Prelude helpers starting with
+    `_` are not dynamic names (a brew `Array` subclass had put `_at` in
+    the every-name set). Not interfaces instead of generics for typed
+    code: that boxes every element everywhere (see the 2026-10-13
+    research in #96); the view confines boxing to the untyped path.
+    - **Measured** (compiled functions; peak compile RSS): `64_observable`
+      29,624 → 26,720 and 1,487 → 1,248 MB (`Array`'s switch 75 → 38
+      cases, `Hash`'s 50 → 29); brew (`-c=4`, no memory limit: 10 cores,
+      32 GB) build 104 → 87 s and 10.6 → 10.0 GB, `Array` 80 → 49 cases,
+      `Hash` 50 → 37.
+    - **Found on the way, amending 215:** `IO.new(fd, autoclose: false)`
+      wrapped the borrowed descriptor in an `os.File`, whose finalizer
+      closes the fd when the IO is collected, so a later `IO.pipe` that
+      got the same number broke (`write |1: bad file descriptor`,
+      `stdlib_test`, only when GC timing shifted). It now wraps a
+      `dup(2)`: close and the finalizer close the dup, the owner's fd is
+      untouched, `autoclose?` still answers false (`borrowed`). A late
+      `autoclose = false` pins the `os.File` (`rbPinFiles`).
+    - **Proof:** `dynamic_test`'s `test_view_*` cases (MRI-compared,
+      identity, frozen, nested join/flatten, empty), `hash_test`,
+      `array_test`, `stdlib_test`.

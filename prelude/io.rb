@@ -90,7 +90,7 @@ module IOReadable
 end
 
 # A standard stream (fd 0-2), or a pipe or popen end when own (decision 138).
-# @go_type struct { fd int; via rbWriter; lineno int; own bool; noclose bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd; enc rbIOEnc; conv func(string) string }
+# @go_type struct { fd int; via rbWriter; lineno int; own bool; noclose bool; borrowed bool; closed bool; sync bool; rf *os.File; wf *os.File; r *bufio.Reader; w *bufio.Writer; cmd *exec.Cmd; enc rbIOEnc; conv func(string) string }
 class IO < Object
   include IOWritable
   include IOReadable
@@ -111,25 +111,39 @@ class IO < Object
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
   def self.new(fd, mode = nil, _perm = nil, **opts)
     m = mode || opts[:mode]&.to_s || "r"
-    io = __for_fd(fd, m)
-    io.autoclose = false if opts[:autoclose] == false
+    return __for_fd(fd, m) unless opts[:autoclose] == false
+
+    # a dup: closing it, by close or by Go's finalizer on the os.File, leaves the caller's descriptor alone
+    io = __for_fd(__dup_fd(fd), m)
+    io.__borrowed = true
     io
   end
 
   #: (Integer, String) -> IO
   def self.__for_fd(fd, mode) = %x{ return rbIOForFd(int(fd), string(mode)) }
 
+  #: (Integer) -> Integer
+  def self.__dup_fd(fd) = %x{ return Integer(rbDupFd(int(fd))) }
+
+  #: (bool) -> void
+  def __borrowed=(v)
+    %x{ self.borrowed = bool(v) }
+  end
+
   # Whether close closes the descriptor (MRI's IO#autoclose=): false for a borrowed fd another IO still owns.
   #: (bool) -> bool
   def autoclose=(v)
     %x{
       self.noclose = !bool(v)
+      if self.noclose {
+        rbPinFiles(self.rf, self.wf) // Go's os.File finalizer would close the borrowed fd when this IO is collected
+      }
       return v
     }
   end
 
   #: () -> bool
-  def autoclose? = %x{ Boolean(!self.noclose) }
+  def autoclose? = %x{ Boolean(!self.noclose && !self.borrowed) }
 
   # IO.open with a block yields the new IO and closes it after, answering the block's value; without one it is IO.new.
   #: [T] (Integer, ?String?, ?untyped, **untyped) { (IO) -> T } -> T

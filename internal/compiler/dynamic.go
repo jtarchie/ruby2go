@@ -318,6 +318,9 @@ func (c *Compiler) emitDynName(name string) {
 	own, shared := c.dynWrappers(name)
 	var genPublic, genPrivate bool
 	own = slices.DeleteFunc(own, func(w dynWrapper) bool {
+		if seqNames[name] && w.cls.Name == "Array" || hashViewNames[name] && w.cls.Name == "Hash" {
+			return true // the view answers it (rbViewCall / rbHashViewCall), once for every element type
+		}
 		if len(w.cls.TypeParams) == 0 || dynPinned[name] || name == "to_json" || strings.Contains(w.body, "//line") {
 			return false
 		}
@@ -340,6 +343,12 @@ func (c *Compiler) emitDynName(name string) {
 	c.emitDynArms(shared, false)
 	c.emitDynArms(shared, true)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
+	if seqNames[name] {
+		c.w("\tif s, ok := recv.(rbView); ok {\n\t\tif v, ok := rbViewCall(%q, s, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", name)
+	}
+	if hashViewNames[name] {
+		c.w("\tif s, ok := recv.(rbHashView); ok {\n\t\tif v, ok := rbHashViewCall(%q, s, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", name)
+	}
 	if genPublic {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, name)
 	}
@@ -414,6 +423,22 @@ type dynArm struct {
 	body    string
 	private bool
 	members []dynWrapper
+}
+
+// seqNames are the whole-array methods a dynamic call answers through the untyped view, rbViewCall (decision 236).
+var seqNames = setOf("sort", "sort!", "reverse", "reverse!", "compact", "include?", "index", "find_index", "rindex",
+	"count", "max", "min", "join", "uniq", "uniq!", "+", "-", "difference", "&", "intersection", "intersect?", "|", "union", "*",
+	"delete", "delete_at", "concat", "replace", "fill", "insert", "rotate", "take", "drop", "assoc", "rassoc", "flatten", "flatten!")
+
+// hashViewNames are the whole-hash methods a dynamic call answers through rbHashViewCall (decision 236).
+var hashViewNames = setOf("merge", "merge!", "update", "except", "slice", "to_h", "compact", "compact!", "flatten", "value?", "has_value?", "key", "replace")
+
+func setOf(names ...string) map[string]bool {
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[n] = true
+	}
+	return out
 }
 
 // dynPinned names wrappers Go code asserts for by method (rbCmp's DynOp_cmp,
@@ -1032,7 +1057,8 @@ func (c *Compiler) allMethodNames(gemOnly bool) []string {
 		}
 		preludeOnly := gemOnly && cls.File != nil && cls.File.prelude // its names count only as symbol literals in gem or user code (decision 235)
 		for _, e := range cls.methodSet() {
-			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") && (!preludeOnly || lits[e.M.Name]) {
+			helper := strings.HasPrefix(e.M.Name, "_") && e.M.File != nil && e.M.File.prelude // the views' accessors, _to_any ...
+			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") && !helper && (!preludeOnly || lits[e.M.Name]) {
 				seen[e.M.Name] = true
 			}
 		}

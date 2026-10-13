@@ -260,6 +260,27 @@ func rbSysopen(path, mode string, perm int) int {
 	return fd
 }
 
+// rbDupFd is dup(2): a descriptor of the same open file, for an IO over a borrowed fd (autoclose: false).
+func rbDupFd(fd int) int {
+	nfd, err := syscall.Dup(fd)
+	if err != nil {
+		panic(rbSysErr(err, "dup", ""))
+	}
+	syscall.CloseOnExec(nfd)
+	return nfd
+}
+
+var rbPinnedFiles []*os.File
+
+// rbPinFiles keeps borrowed descriptors' os.Files reachable: their finalizer would close a fd another IO still owns.
+func rbPinFiles(fs ...*os.File) {
+	for _, f := range fs {
+		if f != nil {
+			rbPinnedFiles = append(rbPinnedFiles, f)
+		}
+	}
+}
+
 // rbIOForFd is IO.new(fd, mode): the standard streams for 0-2, else an IO
 // that owns fd (closing it closes fd, as MRI's autoclose).
 func rbIOForFd(fd int, mode string) *IO {

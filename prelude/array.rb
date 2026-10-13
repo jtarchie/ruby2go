@@ -835,6 +835,26 @@ class Array < Object
     return Integer(len(self.s) - len(other.s))
   }
 
+  # The untyped view (rbView, prelude/go/view.go): five one-line accessors per element type, so a dynamic call of a
+  # whole-array method runs one body compiled once instead of one per element type (decision 236).
+  #: () -> Integer
+  def _len = %x{ return Integer(len(self.s)) }
+
+  #: (Integer) -> untyped
+  def _at(i) = %x{ return self.s[i] }
+
+  #: (Integer, untyped) -> void
+  def _set(i, v) = %x{ self.s[i] = rbAs[E](v, "element") }
+
+  #: () -> untyped
+  def _make = %x{ return &Array[E]{} }
+
+  #: (untyped) -> void
+  def _append(v) = %x{ self.s = append(self.s, rbAs[E](v, "element")) }
+
+  #: (Integer) -> void
+  def _trunc(n) = %x{ self.s = self.s[:n] }
+
   #: () -> Array[untyped]
   def _to_any = %x{
     if same, ok := any(self).(*Array[any]); ok {
