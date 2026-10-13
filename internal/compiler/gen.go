@@ -2964,7 +2964,7 @@ func (c *Compiler) discoverIvars() {
 				}
 			}
 			for _, m := range ms {
-				if m.Kind == kindDef {
+				if m.Kind == kindDef && mentionsIvar(m) {
 					_ = catchCompileError(func() { c.discoverMethod(cls, m) }) // a dry run: emitMethod reports errors
 				}
 			}
@@ -3068,6 +3068,40 @@ func (c *Compiler) declareGemModuleIvars() {
 			})
 		}
 	}
+}
+
+// mentionsIvar reports whether m's body names an instance variable or sets one by name: only those bodies tell the
+// discovery dry run anything, and brew's two rounds over every body were 29% of its generation CPU.
+func mentionsIvar(m *Method) bool {
+	if m.ivarUse != nil {
+		return *m.ivarUse
+	}
+	found := false
+	var walk func(parser.Node)
+	walk = func(n parser.Node) {
+		if found || n == nil {
+			return
+		}
+		switch n := n.(type) {
+		case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOrWriteNode,
+			*parser.InstanceVariableAndWriteNode, *parser.InstanceVariableOperatorWriteNode, *parser.InstanceVariableTargetNode:
+			found = true
+			return
+		case *parser.CallNode:
+			if n.Name == "instance_variable_set" || n.Name == "instance_variable_get" {
+				found = true
+				return
+			}
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch)
+		}
+	}
+	if m.Node != nil {
+		walk(m.Node.Body)
+	}
+	m.ivarUse = &found
+	return found
 }
 
 func (c *Compiler) discoverMethod(cls *Class, m *Method) {

@@ -7252,3 +7252,33 @@ resolve; anything not listed is still open.
     - **Proof:** `dynamic_test`'s `test_view_*` cases (MRI-compared,
       identity, frozen, nested join/flatten, empty), `hash_test`,
       `array_test`, `stdlib_test`.
+237. **Generation and compilation profiled; the slow parts were not the
+    code's shape** (2026-10-13, after #96). Brew's `brew info wget` entry
+    generated in 686 s and built in 641 s. Profiles:
+    - **Compile: the harness.** The capped build used `-c=1` and
+      `GOMEMLIMIT=4GiB` on a 6.4 GB live heap, so the collector ran
+      nonstop (3,488 CPU-s for 654 wall-s, five cores busy on a
+      one-thread backend). The same `main.go` with `-c=4` and no limit:
+      **95 s** (51 s of function bodies at 5,150 funcs/s, 16 s parse and
+      typecheck of 640k lines, 19 s writing the object), 10.9 GB. GOGC
+      tuning changes nothing; `madvise` in the profile is page reuse. The
+      harness (`hb/hbuild.sh`) is `-c=4`, no limit, a 14 GB guard.
+    - **Generation: `gemFile`.** 44% of brew's 930 CPU-s (54% of cuba's
+      17 s) was `realPath` → `filepath.EvalSymlinks` → `Lstat`: `lenient()`
+      is asked per expression from 41 sites, and each ask re-resolved
+      every gem directory's symlinks. The gem dirs are resolved once and
+      each `File` remembers its answer. cuba gen 17.3 → 5.9 s (sys 7.9 →
+      0.5 s); brew 686 → 242 s.
+    - **Generation: `discoverIvars`.** Its two dry-run rounds generated
+      every method body; only a body that names an instance variable
+      (read, write, `||=`, `instance_variable_get/set`) can tell it
+      anything, so `mentionsIvar` (a Prism walk, memoized on the
+      `Method`) skips the rest. Output is the same text with dispatchers
+      in another order (discovery no longer notes dynamic names first)
+      and regexp literals renumbered. Measured small: cuba 5.9 → 5.6 s,
+      brew within noise (the 29% in the first profile was mostly the
+      `Lstat` above, charged to the bodies discovery generated).
+    - **What is left in cuba's 4.5 s:** GC 35%, `formatGo` 25% (gofmt of
+      100k lines), `emitDynamic` 19%.
+    - **Measured:** see each bullet; brew end to end 686 + 641 s →
+      242 + 87 s with decision 236's view.

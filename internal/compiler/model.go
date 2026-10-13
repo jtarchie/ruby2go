@@ -144,6 +144,7 @@ const (
 
 // Method is a Ruby method definition.
 type Method struct {
+	ivarUse      *bool                // mentionsIvar's answer, once asked
 	attrWriter   bool                 // an unannotated attr_writer/attr_accessor's `def x=(v) = @x = v` (addModuleAttr)
 	pendingIdx   map[int]pendingParam // sig param index → a parameter typed from use (decision 146)
 	pendingBlock []pendingParam       // the block's parameters, typed from the yields
