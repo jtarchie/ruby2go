@@ -108,6 +108,7 @@ linters:
             - "github.com/tetratelabs/wazero" # the parser's compilation cache (decision 156); already its dependency
             - "github.com/jtarchie/ruby2go/internal/rbs"
             - "github.com/jtarchie/ruby2go/internal/boot" # the gem load phase at compile time (decision 161)
+            - "github.com/dlclark/regexp2" # patterns RE2 cannot match (decision 242): validated here, emitted into programs that need it
         # rbs is a stdlib-only leaf.
         RBS:
           files:

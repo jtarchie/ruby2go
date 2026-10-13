@@ -422,14 +422,14 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 }
 
 // tableInputs fingerprints what emitTables reads; the maps only grow, so sizes tell.
-func (c *Compiler) tableInputs() [10]int {
+func (c *Compiler) tableInputs() [11]int {
 	b2i := func(b bool) int {
 		if b {
 			return 1
 		}
 		return 0
 	}
-	return [10]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach)}
+	return [11]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt)}
 }
 
 // emitTables: what every emitted body has contributed to.
@@ -449,7 +449,13 @@ func (c *Compiler) emitTables() {
 	c.emitUnions()
 	c.emitClassMeta()
 	// last: every body, main included, has registered its literals by now
+	if c.needRxAlt { // a pattern RE2 rejects, or one built at run time from what may hold one (decision 242)
+		c.w("%s\n\nvar _ = rxAltReady\n\n", strings.TrimSpace(rxAltGo()))
+	}
 	for _, r := range c.regexps {
+		if c.needRxAlt { // a pattern variable initializes after the engine registers, not before (Go's dependency order)
+			r = strings.Replace(r, " = rbRegexpNew(", " = rbRegexpNewAfter(rxAltReady, ", 1)
+		}
 		c.w("%s\n\n", r)
 	}
 	// The linker shares one copy of each literal's bytes, so this table's

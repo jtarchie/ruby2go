@@ -16,11 +16,11 @@ func compileRuby(src string, f rubyRegexFlags) (*rxRegexp, error) {
 	if err != nil {
 		return nil, err
 	}
-	re, err := regexp.Compile(rxFold(f.goPrefix() + pat))
+	re, err := rxCompile(rxFold(f.goPrefix() + pat))
 	if err != nil {
 		return nil, fmt.Errorf("RE2: %w", err)
 	}
-	return rxNew(re), nil
+	return re, nil
 }
 
 func TestRegexpFlags(t *testing.T) {
@@ -194,27 +194,28 @@ func TestBacktrackMatchesRE2(t *testing.T) {
 	}
 }
 
-// Decision 24: RE2-incompatible constructs are rejected at transpile time.
+// Decision 242: what RE2 rejects and regexp2 matches as Onigmo does compiles, on the rxAlt engine.
+func TestRegexpAlt(t *testing.T) {
+	for _, src := range []string{`a(?=b)`, `a(?!b)`, `(?<=a)b`, `(?<!a)b`, `(a)\1`, `(?<x>a)\k<x>`, `(?<x>a)\k'x'`, `(?>a)`, `(?x) a b`, `b\Z`} {
+		re, err := compileRuby(src, rubyRegexFlags{})
+		if err != nil || re.alt == nil {
+			t.Errorf("/%s/: err %v, alt %v; want regexp2", src, err, re != nil && re.alt != nil)
+		}
+	}
+}
+
+// Decision 24: constructs neither engine matches as Onigmo does are rejected at transpile time.
 func TestRegexpRejected(t *testing.T) {
 	cases := []struct{ name, src, errSub string }{
-		{"lookahead", `a(?=b)`, ""},
-		{"negative lookahead", `a(?!b)`, ""},
-		{"lookbehind", `(?<=a)b`, ""},
-		{"negative lookbehind", `(?<!a)b`, ""},
-		{"backreference", `(a)\1`, ""},
-		{"named backreference", `(?<x>a)\k<x>`, ""},
 		{"Z_in_class", `[\Z]`, `\Z inside a character class`},
 		{"H_in_class", `[\H]`, `\H inside a character class`},
 		{"H_in_negated_class", `[^\H]`, `\H inside a character class`},
-		{"subexpression call", `(a)\g<1>`, ""},
-		{"quoted named backreference", `(?<x>a)\k'x'`, ""},
+		{"subexpression call", `(a)\g<1>`, `\g (a subexpression call)`},
 		{"G_anchor", `\Ga`, `\G is not supported by RE2`},
 		{"K_keep", `a\Kb`, `\K is not supported by RE2`},
 		{"R_linebreak", `a\R`, `\R is not supported by RE2`},
 		{"X_cluster", `\X`, `\X is not supported by RE2`},
 		{"possessive", `a++`, ""},
-		{"atomic group", `(?>a)`, ""},
-		{"inline extended", `(?x) a b`, ""},
 		{"absent operator", `(?~abc)`, ""},
 	}
 	for _, c := range cases {

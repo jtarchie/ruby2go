@@ -223,12 +223,13 @@ func (t *rxTranslator) escape(inClass bool) (string, error) {
 			t.i += end + 1
 		}
 	case 'Z':
-		// end, or before a final newline (decision 241, amends 24): RE2 has no lookahead, so the newline is matched
-		// ponytail: $& and post_match then hold that newline, where MRI's leave it after the match
+		// end, or before a final newline (amends 24): a lookahead, which the rxAlt engine matches (decision 242)
 		if inClass {
 			return "", errors.New(`\Z inside a character class`)
 		}
-		return `(?:\n?\z)`, nil
+		return `(?=\n?\z)`, nil
+	case 'g': // a subexpression call, which regexp2 would read as a literal g (decision 242)
+		return "", errors.New(`\g (a subexpression call) is not supported`)
 	case 'G', 'K', 'R', 'X':
 		return "", fmt.Errorf(`%s is not supported by RE2`, esc)
 	}
@@ -410,6 +411,44 @@ type rxRegexp struct {
 	prog        *syntax.Prog
 	caret, word bool
 	unsupported string // a gem's pattern RE2 cannot match: built anyway, it raises when used (rbRegexpLenient)
+	alt         rxAlt  // a pattern RE2 cannot match (lookaround, backreferences, \Z): regexp2's (decision 242)
+	pattern     string // alt's pattern, for String
+}
+
+// rxAlt is a backtracking engine for what RE2 cannot express. Only programs that may need it load one
+// (rxalt.go, emitted when needed, sets rxAltCompile), so the rest do not link it (decision 242).
+type rxAlt interface {
+	// findAll is up to n (all when n < 0) leftmost matches in s from byte from on, each as byte offsets: the match,
+	// then each group (-1, -1 when it did not take part), as Go's FindAllStringSubmatchIndex.
+	findAll(s string, from, n int) [][]int
+	names() []string // as Go's SubexpNames: index 0 and unnamed groups ""
+}
+
+// rxAltCompile compiles a translated pattern RE2 rejected, when the program loaded an rxAlt engine; nil otherwise.
+var rxAltCompile func(pattern string) (rxAlt, error)
+
+// rxCompile compiles a translated pattern: RE2 when it can, else the rxAlt engine (decision 242). The error is RE2's
+// when no engine takes the pattern.
+func rxCompile(pattern string) (*rxRegexp, error) {
+	re, err := regexp.Compile(pattern)
+	if err == nil {
+		return rxNew(re), nil
+	}
+	if rxAltCompile != nil {
+		alt, aerr := rxAltCompile(pattern)
+		if aerr == nil {
+			return &rxRegexp{alt: alt, pattern: pattern}, nil
+		}
+	}
+	return nil, err //nolint:wrapcheck // RE2's own error: rbRegexpErr words it by its code
+}
+
+// altFirst is alt's first match in s, or nil.
+func (r *rxRegexp) altFirst(s string) []int {
+	if m := r.alt.findAll(s, 0, 1); len(m) > 0 {
+		return m[0]
+	}
+	return nil
 }
 
 // RxUnsupported is the panic a lenient regexp raises when used; the runtime makes it a RegexpError.
@@ -425,26 +464,45 @@ func (r *rxRegexp) check() {
 
 func (r *rxRegexp) SubexpNames() []string {
 	r.check()
+	if r.alt != nil {
+		return r.alt.names()
+	}
 	return r.Regexp.SubexpNames()
 }
 
 func (r *rxRegexp) NumSubexp() int {
 	r.check()
+	if r.alt != nil {
+		return len(r.alt.names()) - 1
+	}
 	return r.Regexp.NumSubexp()
 }
 
 func (r *rxRegexp) String() string {
 	r.check()
+	if r.alt != nil {
+		return r.pattern
+	}
 	return r.Regexp.String()
 }
 
 func (r *rxRegexp) FindAllStringIndex(s string, n int) [][]int {
 	r.check()
+	if r.alt != nil {
+		out := r.alt.findAll(s, 0, n)
+		for i := range out {
+			out[i] = out[i][:2]
+		}
+		return out
+	}
 	return r.Regexp.FindAllStringIndex(s, n)
 }
 
 func (r *rxRegexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
 	r.check()
+	if r.alt != nil {
+		return r.alt.findAll(s, 0, n)
+	}
 	return r.Regexp.FindAllStringSubmatchIndex(s, n)
 }
 
@@ -469,6 +527,9 @@ func rxNew(re *regexp.Regexp) *rxRegexp {
 
 func (r *rxRegexp) MatchString(s string) bool {
 	r.check()
+	if r.alt != nil {
+		return r.altFirst(s) != nil
+	}
 	if r.prog == nil {
 		return r.Regexp.MatchString(s)
 	}
@@ -477,6 +538,12 @@ func (r *rxRegexp) MatchString(s string) bool {
 
 func (r *rxRegexp) FindStringIndex(s string) []int {
 	r.check()
+	if r.alt != nil {
+		if m := r.altFirst(s); m != nil {
+			return m[:2]
+		}
+		return nil
+	}
 	loc := r.Regexp.FindStringIndex(s)
 	if r.differs(s, loc) {
 		if loc = r.backtrack(s); loc != nil {
@@ -488,6 +555,9 @@ func (r *rxRegexp) FindStringIndex(s string) []int {
 
 func (r *rxRegexp) FindStringSubmatchIndex(s string) []int {
 	r.check()
+	if r.alt != nil {
+		return r.altFirst(s)
+	}
 	loc := r.Regexp.FindStringSubmatchIndex(s)
 	if r.differs(s, loc) {
 		loc = r.backtrack(s)

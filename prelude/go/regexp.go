@@ -16,25 +16,30 @@ import (
 // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
 // may fail at run time, like Ruby's.
 func rbRegexpNew(pattern, src, opts string) *Regexp {
-	re, err := regexp.Compile(rxFold(pattern))
+	re, err := rxCompile(rxFold(pattern))
 	if err != nil {
 		panic(NewRegexpError(Ref(String(rbRegexpErr(err, src)))))
 	}
-	return &Regexp{re: rxNew(re), src: src, opts: opts}
+	return &Regexp{re: re, src: src, opts: opts}
+}
+
+// rbRegexpNewAfter is rbRegexpNew for a pattern variable that must initialize after the regexp2 engine registers (decision 242).
+func rbRegexpNewAfter(_ bool, pattern, src, opts string) *Regexp {
+	return rbRegexpNew(pattern, src, opts)
 }
 
 // rbRegexpLenient is a gem's regexp (decision 176): MRI builds it, so rb2go does too, and one RE2 cannot match raises
 // RegexpError when it is used rather than when the gem loads (Rack::Lint's URI patterns).
 func rbRegexpLenient(prefix, src, opts string) *Regexp {
 	pat, err := translateRegexp(stripExtended(src, strings.Contains(opts, "x")))
-	var re *regexp.Regexp
+	var re *rxRegexp
 	if err == nil {
-		re, err = regexp.Compile(rxFold(prefix + pat))
+		re, err = rxCompile(rxFold(prefix + pat))
 	}
 	if err != nil {
 		return &Regexp{re: &rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src: src, opts: opts}
 	}
-	return &Regexp{re: rxNew(re), src: src, opts: opts}
+	return &Regexp{re: re, src: src, opts: opts}
 }
 
 // rbRegexpErr words a Go regexp syntax error as Onigmo words the same

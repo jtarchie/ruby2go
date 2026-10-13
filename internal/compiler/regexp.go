@@ -46,6 +46,17 @@ func (r rubyRegexFlags) opts() string {
 //go:embed rxtranslate.go
 var rxTranslateSrc string
 
+//go:embed rxalt.go
+var rxAltSrc string
+
+// The compiler validates patterns with the rxAlt engine too: rxAltReady's initializer registers it.
+var _ = rxAltReady
+
+// rxAltGo is rxalt.go minus its package clause and imports, for programs that need the rxAlt engine (decision 242).
+func rxAltGo() string {
+	return rxAltSrc[strings.Index(rxAltSrc, "\n)\n")+3:]
+}
+
 // rxTranslateGo is rxtranslate.go minus its package clause and imports
 // (goimports restores them), for emitProgram. The generated lint config
 // excludes G115, so the file's nolint for it would be flagged as unused.
@@ -105,11 +116,38 @@ func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-	re, err := regexp.Compile(goPat)
+	re, err := rxCompile(goPat)
 	if err != nil {
 		return 0, false
 	}
 	return re.NumSubexp(), true
+}
+
+// genStaticRegexp is a literal without interpolation: validated now, compiled once into a package variable.
+func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
+	flags := rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
+	src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
+	pat := stripExtended(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
+	goPat, err := translateRegexp(pat)
+	if err == nil {
+		var rx *rxRegexp
+		rx, err = rxCompile(flags.goPrefix() + goPat)
+		f.c.needRxAlt = f.c.needRxAlt || rx != nil && rx.alt != nil
+	}
+	if err != nil && f.lenient() {
+		return expr{code: fmt.Sprintf("rbRegexpLenient(%s, %s, %q)", strconv.Quote(flags.goPrefix()), strconv.Quote(src), flags.opts()), typ: f.cls("Regexp")}
+	}
+	if err != nil {
+		f.errorf(n, "regexp /%s/ is not supported: %v", src, err)
+	}
+	args := fmt.Sprintf("%s, %s, %q", strconv.Quote(flags.goPrefix()+goPat), strconv.Quote(src), flags.opts())
+	name, ok := f.c.regexpVars[args]
+	if !ok {
+		name = fmt.Sprintf("rbRe%d", len(f.c.regexps))
+		f.c.regexpVars[args] = name
+		f.c.regexps = append(f.c.regexps, "var "+name+" = rbRegexpNew("+args+")")
+	}
+	return expr{code: name, typ: f.cls("Regexp")}
 }
 
 // genRegexp renders a regexp literal. Static ones are validated now and
@@ -121,27 +159,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	var once bool
 	switch n := n.(type) {
 	case *parser.RegularExpressionNode:
-		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
-		src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
-		pat := stripExtended(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
-		goPat, err := translateRegexp(pat)
-		if err == nil {
-			_, err = regexp.Compile(flags.goPrefix() + goPat)
-		}
-		if err != nil && f.lenient() {
-			return expr{code: fmt.Sprintf("rbRegexpLenient(%s, %s, %q)", strconv.Quote(flags.goPrefix()), strconv.Quote(src), flags.opts()), typ: f.cls("Regexp")}
-		}
-		if err != nil {
-			f.errorf(n, "regexp /%s/ is not supported: %v", src, err)
-		}
-		args := fmt.Sprintf("%s, %s, %q", strconv.Quote(flags.goPrefix()+goPat), strconv.Quote(src), flags.opts())
-		name, ok := f.c.regexpVars[args]
-		if !ok {
-			name = fmt.Sprintf("rbRe%d", len(f.c.regexps))
-			f.c.regexpVars[args] = name
-			f.c.regexps = append(f.c.regexps, "var "+name+" = rbRegexpNew("+args+")")
-		}
-		return expr{code: name, typ: f.cls("Regexp")}
+		return f.genStaticRegexp(n)
 	case *parser.InterpolatedRegularExpressionNode:
 		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
 		parts = n.Parts
@@ -166,6 +184,9 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 				f.errorf(p, "interpolation must contain a single expression")
 			}
 			e := f.genExpr(p.Statements.Body[0], nil)
+			if c, ok := p.Statements.Body[0].(*parser.CallNode); !f.f.prelude && (ok && c.Name == "source" || isAny(e.typ) || isClass(e.typ, "Regexp")) {
+				f.c.needRxAlt = true // another pattern's text may hold what RE2 rejects (decision 242)
+			}
 			probe.WriteString("i") // under /x too: stripping a letter leaves it
 			srcParts = append(srcParts, "string("+f.toS(p.Statements.Body[0], e)+")")
 		default:
@@ -175,7 +196,9 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	pat := stripExtended(probe.String(), flags.extended)
 	goPat, err := translateRegexp(pat)
 	if err == nil {
-		_, err = regexp.Compile(flags.goPrefix() + goPat)
+		var rx *rxRegexp
+		rx, err = rxCompile(flags.goPrefix() + goPat)
+		f.c.needRxAlt = f.c.needRxAlt || rx != nil && rx.alt != nil || f.lenient() && !f.f.prelude
 		var se *syntax.Error
 		if errors.As(err, &se) && !slices.Contains(rxUnsupported, se.Code) {
 			err = nil

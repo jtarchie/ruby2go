@@ -223,7 +223,7 @@ func buildModule(ctx context.Context, code []byte, warnings []string, err error,
 	if err != nil {
 		return "", fmt.Errorf("temp module: %w", err)
 	}
-	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module gen\n\ngo "+rb2go.GoVersion+"\n"), 0o600)
+	err = rb2go.WriteModule(dir)
 	if err == nil {
 		err = os.WriteFile(filepath.Join(dir, "main.go"), code, 0o600) //nolint:gosec // dir is our MkdirTemp
 	}

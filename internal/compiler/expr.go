@@ -8860,6 +8860,7 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
+	f.noteRuntimeRegexp(n)
 	if to := renamedCall(n); to != "" {
 		c := *n
 		c.Name = to
@@ -8871,6 +8872,30 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 		}
 	}
 	return expr{}, false
+}
+
+// noteRuntimeRegexp: Regexp.new/compile/union of anything but string literals RE2 compiles builds a pattern only run
+// time knows, so the program gets the regexp2 engine (decision 242).
+func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
+	r, ok := n.Receiver.(*parser.ConstantReadNode)
+	if !ok || r.Name != "Regexp" || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.prelude {
+		return
+	}
+	for _, a := range callArgs(n) {
+		s, ok := a.(*parser.StringNode)
+		if !ok {
+			f.c.needRxAlt = true
+			return
+		}
+		p, err := translateRegexp(s.Unescaped.Value)
+		if err == nil && n.Name != "union" {
+			_, err = regexp.Compile(p)
+		}
+		if err != nil {
+			f.c.needRxAlt = true
+			return
+		}
+	}
 }
 
 // renamedCall is the prelude name a call goes to (decision 241): Thread.fork is MRI's alias of Thread.start (defined as

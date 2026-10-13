@@ -28,7 +28,7 @@ var stdImports = map[string]string{
 	"sha256": "crypto/sha256", "sha512": "crypto/sha512", "crc32": "hash/crc32", "syntax": "regexp/syntax",
 	"gzip": "compress/gzip", "zlib": "compress/zlib",
 	"time": "time", "unicode": "unicode", "unsafe": "unsafe", "weak": "weak", "url": "net/url", "user": "os/user",
-	"utf16": "unicode/utf16", "utf8": "unicode/utf8",
+	"utf16": "unicode/utf16", "utf8": "unicode/utf8", "regexp2": "github.com/dlclark/regexp2",
 }
 
 // errPruneIncomplete: a dispatcher became reachable after the tables went out (a type-switch case unlocked late); the caller recompiles emitting every one first.

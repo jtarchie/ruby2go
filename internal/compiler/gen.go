@@ -64,10 +64,10 @@ type fctx struct {
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
-	rescues        int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
-	yielderFed     *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
+	rescues        int             // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
 	paramWiden     map[string]Type // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
-	breakCatch     *breakCatch // the statement call whose closure block `break`s out of it (decision 241)
+	breakCatch     *breakCatch     // the statement call whose closure block `break`s out of it (decision 241)
 }
 
 // breakCatch is a call statement whose closure block has a `break`: the block panics rbBreak with id, and the

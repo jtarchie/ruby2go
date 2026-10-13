@@ -1536,6 +1536,18 @@ B
                                            Regexp.new("a#{tail}" + %r{(?:/.*)?\Z}.source).match?("ab/c"), "x\n"[/\A(\w)\Z/, 1]]
     end
 
+    # Lookaround, backreferences, atomic groups and \Z match on regexp2 (decision 242).
+    def test_regexp2_constructs
+      assert_equal ["/home/x", "~x", "wget", "1,234,567"],
+                   ["~/x".sub(%r{^~(?=(?:/|$))}, "/home"), "~x".sub(%r{^~(?=(?:/|$))}, "/home"),
+                    "wget@1.2".sub(/@[\d.]+(?=-full$|$)/, ""), "1234567".reverse.gsub(/(\d{3})(?=\d)/, '\1,').reverse]
+      assert_equal [[["a"], ["b"]], "foo_bar", "xX"], ["aa bb".scan(/(\w)\1/), "foo_bar".gsub(/(?<!_)bar/, "X"), "xbar".gsub(/(?<!_)bar/, "X")]
+      m = "ab\n".match(/b\Z/)
+      assert_equal [1, "b", "\n", 3, 0, nil], ["ab\n" =~ /b\Z/, m[0], m.post_match, "café".match(/(?<=caf)é/).begin(0), "aab" =~ /(?>a+)b/, "aa" =~ /(?>a+)a/]
+      src = %r{(?:/.*)?\Z}.source
+      assert_equal [true, ["s a", "b"]], ["x/y".match?(Regexp.new("x" + src)), "s a and b".split(/ and (?![^(]*\))/)]
+    end
+
     def test_scan_interpolated_groups
       suf = "p/"
       got = "/p/a1?t=x /p/a2?t=y".scan(%r{/#{suf}(a\d\?t=([^ ]+))}).to_h { |v, t| [t.to_s, v] }

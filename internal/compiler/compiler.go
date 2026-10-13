@@ -74,6 +74,7 @@ type Compiler struct {
 	dataVar               bool                    // rbDATA is declared
 	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string       // literal → its variable, to share one per pattern
+	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
 	strLits               map[string]bool         // String literal texts: String#frozen? knows them by identity
 	constList             []*Const
 	hooks                 []classHook // main.rb's inherited/included/extended sites
@@ -96,7 +97,7 @@ type Compiler struct {
 	fwdOut                map[*Class]bool         // forwarders emitted
 	selfTyped             map[*Class]bool         // a module whose constraint names Self (decision 208)
 	tablesOut             bool
-	tablesAt              [10]int         // tableInputs when the tables went out
+	tablesAt              [11]int         // tableInputs when the tables went out
 	callable              map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	files                 []*File
 	preludeFS             fs.FS

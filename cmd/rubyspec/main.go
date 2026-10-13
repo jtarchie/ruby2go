@@ -501,7 +501,7 @@ func (prog *program) build(ctx context.Context, r *result, keep bool) (string, f
 		}
 		_ = os.RemoveAll(dir)
 	}
-	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module gen\n\ngo "+rb2go.GoVersion+"\n"), 0o600)
+	err = rb2go.WriteModule(dir)
 	if err != nil {
 		return "", cleanup, fmt.Errorf("temp module: %w", err)
 	}

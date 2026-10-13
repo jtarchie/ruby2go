@@ -5,7 +5,9 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jtarchie/ruby2go/internal/compiler"
 )
@@ -27,6 +29,36 @@ var GemSigs embed.FS
 
 // GoVersion is the go directive for the module generated code builds in.
 const GoVersion = "1.24"
+
+//go:embed go.sum
+var goSum string
+
+// GoMod is the go.mod generated code builds in: regexp2 is required for the programs whose patterns RE2 cannot match
+// (decision 242); Go loads it only when main.go imports it.
+const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire github.com/dlclark/regexp2 v1.12.0\n"
+
+// GoSum is go.sum for GoMod: regexp2's lines from rb2go's own.
+func GoSum() string {
+	var b strings.Builder
+	for line := range strings.Lines(goSum) {
+		if strings.HasPrefix(line, "github.com/dlclark/regexp2 v1.12.0") {
+			b.WriteString(line)
+		}
+	}
+	return b.String()
+}
+
+// WriteModule writes GoMod and GoSum into dir.
+func WriteModule(dir string) error {
+	err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(GoMod), 0o600)
+	if err == nil {
+		err = os.WriteFile(filepath.Join(dir, "go.sum"), []byte(GoSum()), 0o600)
+	}
+	if err != nil {
+		return fmt.Errorf("generated module: %w", err)
+	}
+	return nil
+}
 
 // Compile transpiles the Ruby source of mainName (with the embedded prelude)
 // into a single Go file. loadPath is `ruby -I`'s: directories a `require`

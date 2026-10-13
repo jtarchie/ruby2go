@@ -8,12 +8,13 @@ module Errno
 end
 
 %x{
-func init() {
+var _ = func() bool {
 	rbKillErrnoHook = func(err error) any {
 		if errors.Is(err, syscall.ESRCH) {
 			return NewErrno_ESRCH(Ref(String("No such process")))
 		}
 		return NewErrno_EPERM(Ref(String("Operation not permitted")))
 	}
-}
+	return true
+}()
 }

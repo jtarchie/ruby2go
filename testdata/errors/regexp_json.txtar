@@ -1,28 +1,4 @@
 Compile errors and warnings for Regexp, MatchData and JSON (docs/design.md decisions 24, 25).
--- lookahead.rb --
-# error: main.rb:3: regexp /a(?=b)/ is not supported
-# error: invalid or unsupported Perl syntax: `(?=`
-puts "ab".match?(/a(?=b)/)
--- negative_lookahead.rb --
-# error: main.rb:3: regexp /a(?!b)/ is not supported
-# error: `(?!`
-puts "ab".match?(/a(?!b)/)
--- lookbehind.rb --
-# error: main.rb:3: regexp /(?<=a)b/ is not supported
-# error: `(?<=a)b`
-puts "ab".match?(/(?<=a)b/)
--- negative_lookbehind.rb --
-# error: main.rb:3: regexp /(?<!a)b/ is not supported
-# error: `(?<!a)b`
-puts "ab".match?(/(?<!a)b/)
--- backreference.rb --
-# error: main.rb:3: regexp /(a)\1/ is not supported
-# error: invalid escape sequence: `\1`
-puts "aa".match?(/(a)\1/)
--- named_backreference.rb --
-# error: main.rb:3: regexp /(?<x>a)\k<x>/ is not supported
-# error: invalid escape sequence: `\k`
-puts "aa".match?(/(?<x>a)\k<x>/)
 -- g_anchor.rb --
 # error: main.rb:2: regexp /\Ga/ is not supported: \G is not supported by RE2
 puts "ab".match?(/\Ga/)
@@ -42,10 +18,6 @@ puts "ab".match?(/[\H]/)
 # error: main.rb:3: regexp /a++/ is not supported
 # error: invalid nested repetition operator
 puts "aa".match?(/a++/)
--- atomic_group.rb --
-# error: main.rb:3: regexp /(?>a)/ is not supported
-# error: `(?>`
-puts "aa".match?(/(?>a)/)
 -- absent_operator.rb --
 # error: main.rb:3: regexp /(?~a)/ is not supported
 # error: `(?~`
@@ -132,18 +104,8 @@ require "json"
 puts JSON.generate([1]) { |x| x }
 -- subexp_call.rb --
 # error: main.rb:3: regexp /(?<n>a)\g<n>/ is not supported
-# error: invalid escape sequence: `\g`
+# error: \g (a subexpression call) is not supported
 puts "aa".match?(/(?<n>a)\g<n>/)
--- interpolated_lookahead.rb --
-# error: main.rb:4:
-# error: not supported
-x = "a"
-puts "ab".match?(/#{x}(?=b)/)
--- interpolated_backreference.rb --
-# error: main.rb:4:
-# error: not supported
-x = "a"
-puts "aa".match?(/(#{x})\1/)
 -- json_generate_arity_ruby_name.rb --
 # error: main.rb:3: JSON.generate: wrong number of arguments (given 0, expected 2)
 require "json"

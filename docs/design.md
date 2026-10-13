@@ -7482,3 +7482,38 @@ resolve; anything not listed is still open.
     - **Sorbet's `mixes_in_class_methods(M)`** in a module: each class
       including the module extends M at link, as Sorbet's included hook does
       at run time (`UnpackStrategy::ClassMethods`).
+
+242. **Regexps RE2 cannot match run on regexp2** (amends 24; 2026-10-13).
+    Homebrew writes lookaround 38 times and `\Z` 46 times; decision 24
+    rejected both, and a hand-made lookaround on the in-house backtracker
+    would have been one more special case. The user approved one dependency
+    for this: `github.com/dlclark/regexp2` (a .NET-style backtracking
+    engine).
+    - **RE2 first.** `rxCompile` compiles the translated pattern with RE2
+      (linear time) and falls back to regexp2 only when RE2 rejects it:
+      lookahead and lookbehind, backreferences (`\1`, `\k<n>`, `\k'n'`),
+      atomic groups `(?>...)`, inline `(?x)`. regexp2 runs in its RE2 mode,
+      so `\w`, `\d` and `\s` stay ASCII as Ruby's; the translator's output
+      (`\x{...}`, `\p{...}`, `(?m)`/`(?s)`) reads the same in both.
+      Offsets are converted from regexp2's runes to bytes (`rxAlt2`).
+    - **`\Z` is exact** now: `(?=\n?\z)` (241 matched the newline).
+    - **Still rejected**: `\g<n>` (regexp2 would read a literal `g`),
+      possessive quantifiers, the absent operator, `\G`/`\K`/`\R`/`\X`.
+    - **Only programs that may need it get it.** `rxalt.go` (the adapter,
+      which registers `rxAltCompile`) is emitted into a program, and
+      regexp2 imported, only when a pattern literal needs it, an
+      interpolated pattern embeds another pattern's text (`.source`, a
+      Regexp or untyped value), `Regexp.new`/`compile`/`union` gets
+      anything but literals RE2 compiles, or gem code builds patterns at
+      run time. Prelude code does not count. Package-level pattern
+      variables initialize through `rbRegexpNewAfter(rxAltReady, ...)`, since
+      Go runs `init` after them. Every generated module's `go.mod` requires
+      regexp2 (`rb2go.WriteModule`, with its `go.sum` lines); Go loads it
+      only when `main.go` imports it, from the module cache.
+    - **Build cost**: `05_word_count` unchanged; `64_observable` +2 (the
+      routing in `rxRegexp`); `116_cuba_web` gets the engine (rack builds
+      patterns at run time).
+    - **Kept**: the in-house backtracker for Onigmo's `^` (never after a
+      final newline; regexp2's multiline `^` would match there) and its
+      Unicode `\b`, and `rxFold`'s multi-character case folds (regexp2
+      does not fold `ß`/`SS` either).

@@ -5,7 +5,6 @@ package prelude
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -23,7 +22,11 @@ func (s *StringScanner) do(re *Regexp, anchored, advance, str bool) *String {
 	if anchored {
 		v, ok := rbScanAnchored.Load(re)
 		if !ok {
-			v, _ = rbScanAnchored.LoadOrStore(re, rxNew(regexp.MustCompile(`\A(?:`+re.re.String()+`)`)))
+			anchored, err := rxCompile(`\A(?:` + re.re.String() + `)`)
+			if err != nil {
+				panic(NewRegexpError(Ref(String(err.Error()))))
+			}
+			v, _ = rbScanAnchored.LoadOrStore(re, anchored)
 		}
 		rx = v.(*rxRegexp)
 	}
