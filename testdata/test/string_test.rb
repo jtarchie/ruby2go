@@ -1526,4 +1526,13 @@ B
       assert_equal [true, true], [$CHILD_STATUS.success?, $PROCESS_ID == $$]
     end
   end
+
+  # String#scan with an interpolated pattern whose literal text has groups yields each match's groups (decision 241).
+  class StringScanInterpolatedTest < Minitest::Test
+    def test_scan_interpolated_groups
+      suf = "p/"
+      got = "/p/a1?t=x /p/a2?t=y".scan(%r{/#{suf}(a\d\?t=([^ ]+))}).to_h { |v, t| [t.to_s, v] }
+      assert_equal({ "x" => "a1?t=x", "y" => "a2?t=y" }, got)
+    end
+  end
 end

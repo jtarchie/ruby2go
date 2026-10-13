@@ -1003,7 +1003,7 @@ func rbWrapPanic(r any) any {
 	case ExceptionI:
 		e._Exception().__seen = true // a later capture knows this is a re-raise (decision 106)
 		return r
-	case rbStop, rbThrow:
+	case rbStop, rbThrow, rbBreak, rbIterBreak:
 		return r
 	case RxUnsupported:
 		return NewRegexpError(Ref(String(e)))
@@ -1582,6 +1582,19 @@ func rbMust[T any](p *T, want string) T {
 		panic(NewTypeError(Ref(String("no implicit conversion of nil into " + want))))
 	}
 	return *p
+}
+
+// rbBreak unwinds a closure block's `break` to the call statement that passed the block (decision 241); rescue passes
+// it on, ensure runs.
+type rbBreak struct{ id string }
+
+// rbBreakRecover ends the call whose block broke with id, and lets any other panic through.
+func rbBreakRecover(id string) {
+	if r := recover(); r != nil {
+		if b, ok := r.(rbBreak); !ok || b.id != id {
+			panic(r)
+		}
+	}
 }
 
 // rbIterBreak unwinds an iterator method from a yield inside a block it passed on, when the consumer broke out

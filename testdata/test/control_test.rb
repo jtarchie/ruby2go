@@ -5330,4 +5330,161 @@ module ControlTests
       assert_equal [2, 3], control_via([1, 2]) { |n| n + 1 }
     end
   end
+
+  # `[*x]` of a non-Array: x.to_a when it answers to_a, nothing for nil, else x itself; `x &&= v` on a local
+  # (decision 241).
+  class ControlSplatValueTest < Minitest::Test
+    #: (String, Symbol?, [Integer, Integer]) -> [Array[String], Array[Symbol], Array[Integer]]
+    def control_splats(s, sym, pair) = [[*s, "z"], [:x, *sym], [0, *pair]]
+
+    def test_splat_non_array
+      assert_equal [["u", "z"], [:x], [0, 1, 2]], control_splats("u", nil, [1, 2])
+      assert_equal [:x, :y], control_splats("u", :y, [1, 2])[1]
+      m = "ab".match(/(a)(c)?/)
+      assert_equal [["a", "a", nil], [], [["k", 1]], [1, 2]], [[*m], [*"zz".match(/q/)], [*{ "k" => 1 }], [*1..2]]
+    end
+
+    def test_local_and_write
+      ok = true
+      [1, -2, 3].each { |x| ok &&= x > 0 }
+      s = "a" #: String?
+      s &&= s + "b"
+      t = nil #: String?
+      t &&= t + "b"
+      assert_equal [false, "ab", nil], [ok, s, t]
+    end
+  end
+
+  # `break` in a closure block leaves the call statement that passed it; ensure runs (decision 241).
+  class ControlClosureBreak
+    def initialize
+      @m = Thread::Mutex.new
+      @running = true
+      @log = [] #: Array[String]
+    end
+
+    attr_reader :log
+
+    #: [T] () { () -> T } -> T
+    def synchronize = @m.synchronize { yield }
+
+    #: () -> bool
+    def shutdown
+      synchronize do
+        break unless @running
+
+        @running = false
+        @log << "stopped"
+      end
+      @log << "after"
+      true
+    end
+  end
+
+  class ControlClosureBreakTest < Minitest::Test
+    def test_closure_break
+      s = ControlClosureBreak.new
+      s.shutdown
+      s.shutdown
+      got = [] #: Array[String]
+      begin
+        [1].map do |x|
+          break if x == 1
+
+          x
+        end
+        got << "after map"
+      ensure
+        got << "ensure"
+      end
+      assert_equal [["stopped", "after", "after"], ["after map", "ensure"]], [s.log, got]
+      control_guarded do |i|
+        break if i > 1
+
+        got << i.to_s
+      end
+      assert_equal ["after map", "ensure", "1"], got
+    end
+
+    #: () { (Integer) -> void } -> void
+    def control_guarded
+      [1, 2].each { |i| yield i }
+    rescue => e
+      raise e
+    end
+
+    def test_tuple_queries
+      pair = [1, "a"]
+      assert_equal [2, "1,a", true], [pair.size, pair.join(","), pair.include?("a")]
+    end
+  end
+
+  # Decision 241: `raise err, msg, bt` raises err.exception(msg); `e = nil` widened by a later write raises;
+  # destructuring a union or an optional tuple.
+  class ControlTapErr < StandardError
+    #: (String) -> void
+    def initialize(name)
+      @name = name
+      super("tap #{name}")
+    end
+
+    attr_reader :name
+  end
+
+  class ControlRaiseDestructureTest < Minitest::Test
+    #: () -> void
+    def control_reraise
+      raise ArgumentError, "inner"
+    rescue ArgumentError => e
+      raise ControlTapErr.new("x"), "re", e.backtrace
+    end
+
+    #: (Integer) -> String
+    def control_pending(n)
+      err = nil
+      begin
+        raise ControlTapErr, "p" if n == 1
+      rescue ControlTapErr => e
+        err ||= e
+      end
+      raise err if err
+
+      "ok"
+    end
+
+    #: (Integer) -> (String | [String, String?] | nil)
+    def control_pick(n)
+      case n
+      when 0 then "s"
+      when 1 then ["a", "b"]
+      when 2 then ["c", nil]
+      end
+    end
+
+    #: (Integer) -> [String, Integer, Symbol?]?
+    def control_trip(n) = n.zero? ? nil : ["t", n, :k]
+
+    def test_raise_object_with_message
+      got = [] #: Array[untyped]
+      begin
+        control_reraise
+      rescue ControlTapErr => e
+        got = [e.message, e.class]
+      end
+      assert_equal ["re", ControlTapErr], got
+      assert_equal "ok", control_pending(0)
+      assert_raises(ControlTapErr) { control_pending(1) }
+    end
+
+    def test_destructure_union_and_optional_tuple
+      got = [0, 1, 2, 3].map do |i|
+        path, base = control_pick(i)
+        [path, base]
+      end
+      assert_equal [["s", nil], ["a", "b"], ["c", nil], [nil, nil]], got
+      tok, num, = control_trip(1)
+      first, = control_trip(0)
+      assert_equal ["t", 1, nil], [tok, num, first]
+    end
+  end
 end

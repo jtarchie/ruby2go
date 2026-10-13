@@ -1950,6 +1950,17 @@ module StdlibTests
       assert_equal ["v\n", 3], [out_r.read, status.exitstatus]
     end
 
+    # Process.detach's thread answers pid; IO.popen takes an env Hash leading the Array and spawn's options (decision 241).
+    def test_detach_pid_and_popen_options
+      pid = Process.spawn("sh", "-c", "exit 2")
+      t = Process.detach(pid)
+      assert_equal [true, true, 2], [t.pid == pid, t.is_a?(Thread), t.value.exitstatus]
+      opts = { err: File::NULL, chdir: "/" } #: Hash[Symbol, untyped]
+      got = IO.popen([{ "POPEN_T" => "v" }, "sh", "-c", "echo $POPEN_T; pwd; echo e >&2"], "r", opts) { |io| io.read }
+      assert_equal "v\n/\n", got
+      assert_equal "/\n", IO.popen(["pwd", { chdir: "/" }]) { |io| io.read }
+    end
+
     def test_time_to_r_and_uname
       assert_equal [Rational(1_700_000_000, 1), true], [Time.at(1_700_000_000).to_r, Etc.uname[:sysname].size.positive?]
     end

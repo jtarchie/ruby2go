@@ -776,6 +776,13 @@ func (p *pruner) caseTypeNames(types ...ast.Expr) []string {
 	return out
 }
 
+// isTupleName is a tuple type's Go name, Tuple2 and up.
+func isTupleName(s string) bool {
+	n, ok := strings.CutPrefix(s, "Tuple")
+	_, err := strconv.Atoi(n)
+	return ok && n != "" && err == nil
+}
+
 // undeclaredType reports a case type naming a capitalized identifier nothing declares: a class from a prelude lib the
 // program did not require (decision 155), so `*BigDecimal` in a core helper's switch would be `undefined`. Type
 // parameters and declared names have an Obj or a declaration; std packages are selectors.
@@ -786,7 +793,8 @@ func (p *pruner) undeclaredType(e ast.Expr) bool {
 		case *ast.SelectorExpr:
 			return false
 		case *ast.Ident:
-			if x.Obj == nil && len(p.byName[x.Name]) == 0 && x.Name != "" && unicode.IsUpper(rune(x.Name[0])) {
+			// TupleN is declared in a later batch than the code naming it, and always where a value of it exists (decision 241)
+			if x.Obj == nil && len(p.byName[x.Name]) == 0 && x.Name != "" && unicode.IsUpper(rune(x.Name[0])) && !isTupleName(x.Name) {
 				found = true
 			}
 		}

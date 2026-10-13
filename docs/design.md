@@ -7369,3 +7369,71 @@ resolve; anything not listed is still open.
       10 s, method lookups 6 s; one core. Generation is single-threaded,
       and the rounds regenerate whole bodies: the next levers are
       structural.
+
+241. **More of Homebrew's `brew info` stub list (#100), as general
+    features** (amends 4, 141, 227, 233; 2026-10-13). Each was a stub on
+    brew's traced path; each now works in any program, checked against MRI
+    in `testdata/test` (control, object, string, stdlib).
+    - **`[*x]` of a non-Array** (`Tap.fetch`, `uses_from_macos`,
+      `root_url_if_match`): `x.to_a` spread when x's class answers `to_a`
+      (MatchData, Hash, Range), the fields of a tuple, nothing for nil
+      (`T?` checks at run time), else x itself (`[*"a"]` is `["a"]`).
+    - **Read-only Array methods on a tuple** (`["to_str", :to_str].include?`,
+      `pair.size`, `join`) answer on an Array of its joined fields in user
+      code too, not only gem code (227). Mutators (`<<`, `push`, `[]=`, a
+      `!` name...) and iterators (`each`) stay errors: they would act on a
+      copy, or need statement form. `tuple.to_a` is that Array.
+    - **`String#scan` with an interpolated pattern**: the groups are counted
+      from its literal text (an interpolation counts as plain text), so
+      `%r{/#{x}(\d+)}` yields each match's groups as a literal would.
+    - **`x &&= v` on a local** is `x && (x = v)`, as `@x &&= v` already was.
+    - **`@@x` resolves lexically too**: a module's method copied into a
+      class that prepends or includes it reads the module's class variable
+      (Ruby's cref), when the class's own ancestry has none.
+    - **`super` in a `respond_to?` override** is Object's answer, by name at
+      run time (`rbRespondsByName`); `respond_to?(:initialize, true)`
+      through it answers false (ponytail: the by-name table has no private
+      `initialize`).
+    - **`x.singleton_class < M`** (and `<=`, `include?`) for a module M is
+      `x.is_a?(M)`, nil instead of false for `<`/`<=` as MRI's unrelated
+      comparison; no singleton class object exists.
+    - **`break` in a closure block** (amends 4): a valueless `break` that
+      leaves a block passed by a call *statement* panics `rbBreak{id}` (the
+      block's file and offset), and that statement, wrapped in
+      `func() { defer rbBreakRecover(id); ... }()`, recovers it. `ensure`
+      runs; `rescue` passes `rbBreak` (and `rbIterBreak`, which a catch-all
+      rescue used to swallow) on. When the call compiles to a loop the
+      break is a Go break and nothing is wrapped. A `break` whose call's
+      value is used, or `break v`, stays a compile error.
+    - **Subprocesses** (233): a receiverless `exit!` calls the prelude's
+      `__exit_bang` (a public `exit!` joined every Kernel dispatcher: +35
+      functions in `64_observable`); `Process.detach`'s thread answers
+      `pid` (a field on Thread; any other thread raises NoMethodError, so
+      only `respond_to?(:pid)` differs from MRI's `Process::Waiter`
+      subclass, which cost +93 functions as a class); `IO.popen(cmd, mode,
+      opts)` takes spawn's options and an env Hash leading an Array
+      command, or options as the Array's last element, sharing
+      `rbSpawnCmd` with `Process.spawn`. Its `opts` defaults to `{}`: a
+      `Hash?` parameter added `**Hash` arms to every program's unbox
+      switches (+83 compiled functions in `05_word_count`).
+    - **Build cost** (`TestCompileCost`): `05_word_count` and `116_cuba_web`
+      unchanged; `64_observable` +3 (Thread#pid, kept by its dynamic sends).
+    - **`raise err, msg[, backtrace]`** with err an exception object raises
+      `err.exception(msg)` (a copy with msg), as MRI; `set_backtrace`
+      takes nil. **`e = nil` widened by a later `e = err`** no longer fails
+      `raise e` in the first local-analysis pass, which reads e before the
+      write widens it.
+    - **Destructuring a union** (`a, b = str_or_pair_or_nil`): a type switch
+      gives each target what each member gives it (a tuple's field, an
+      Array's element, a non-Array the first target alone, nil the rest),
+      typed as their join. An optional tuple takes fewer targets with a bare
+      rest (`tap, = pair_or_nil`).
+    - **The pruner kept no type-switch arm naming a tuple**: `TupleN` is
+      declared in a later batch than the code that names it, so the arm
+      read as a never-loaded lib type (155) and was dropped, silently, from
+      every union switch with a tuple member. Tuple names are exempt.
+    - **`@x ||= v` on a union holding nil** reads as the union without nil
+      (one member left: asserted to it), as `T?` already read as T.
+    - **A gem's local retyped** (`uri = ref.to_s; uri = URI(uri)`) reads as
+      its widened join (a union, or untyped) after the write in the first
+      local-analysis pass too, not only in the second.

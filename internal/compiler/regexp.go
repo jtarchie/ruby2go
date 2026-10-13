@@ -83,11 +83,25 @@ func regexpSource(raw string, term byte) string {
 // literalGroups is the number of capture groups in a static regexp
 // literal; ok is false for anything else.
 func (f *fctx) literalGroups(n parser.Node) (int, bool) {
-	r, ok := n.(*parser.RegularExpressionNode)
-	if !ok {
+	var src string
+	var closing byte
+	switch r := n.(type) {
+	case *parser.RegularExpressionNode:
+		src, closing = f.f.text(r.ContentLoc), f.f.text(r.ClosingLoc)[0]
+	case *parser.InterpolatedRegularExpressionNode: // the literal parts' groups; an interpolation counts as plain text
+		var b strings.Builder
+		for _, p := range r.Parts {
+			if s, ok := p.(*parser.StringNode); ok {
+				b.WriteString(f.f.text(s.ContentLoc))
+			} else {
+				b.WriteString("x")
+			}
+		}
+		src, closing = b.String(), f.f.text(r.ClosingLoc)[0]
+	default:
 		return 0, false
 	}
-	goPat, err := translateRegexp(regexpSource(f.f.text(r.ContentLoc), f.f.text(r.ClosingLoc)[0]))
+	goPat, err := translateRegexp(regexpSource(src, closing))
 	if err != nil {
 		return 0, false
 	}

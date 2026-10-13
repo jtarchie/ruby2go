@@ -158,18 +158,10 @@ puts pair[i].inspect
 # error: main.rb:3: tuple index must be a literal in range
 pair = [1, "a"]
 puts pair[2].inspect
--- tuple_size.rb --
-# error: main.rb:3: undefined method size for tuple [Integer, String]
-pair = [1, "a"]
-puts pair.size
 -- tuple_each.rb --
 # error: main.rb:3: undefined method each for tuple [Integer, String]
 pair = [1, "a"]
 pair.each { |x| puts x }
--- tuple_join.rb --
-# error: main.rb:3: undefined method join for tuple [Integer, Array[Integer], String]
-x = [1, [2, 3], "a"]
-puts x.join(",")
 -- tuple_too_many_targets.rb --
 # error: main.rb:4: 3 targets for a 2-tuple
 #: () -> [Integer, String]
@@ -244,23 +236,6 @@ class B < A
   def each
     super
   end
-end
--- break_in_rescuing_yield.rb --
-# error: main.rb:14: break inside a non-iterator block is not supported
-#: (Array[Integer]) { (Integer) -> void } -> void
-def safe_each(nums)
-  nums.each do |n|
-    begin
-      yield n
-    rescue ZeroDivisionError
-      puts "r"
-    end
-  end
-end
-
-safe_each([1, 2]) do |n|
-  break if n > 1
-  puts n
 end
 -- forwarded_block_passed_arity.rb --
 # error: main.rb:3: the forwarded block takes 2 values but 1 are passed

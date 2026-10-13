@@ -228,7 +228,7 @@ func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 	case *parser.MatchWriteNode:
 		return f.genMatchWrite(n)
 	case *parser.LocalVariableOrWriteNode, *parser.InstanceVariableOrWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode,
-		*parser.InstanceVariableAndWriteNode:
+		*parser.InstanceVariableAndWriteNode, *parser.LocalVariableAndWriteNode:
 		return f.genOrWrite(n)
 	case *parser.CallOperatorWriteNode, *parser.IndexOperatorWriteNode:
 		return f.genOpWrite(n)
@@ -617,6 +617,15 @@ func (f *fctx) lookupClassVar(name string) *Const {
 	for _, a := range cls.ancestors() {
 		if k := a.cvars[name]; k != nil {
 			return k
+		}
+	}
+	// Ruby looks @@x up from the lexical class: a module's method copied into its includer or prepender reads the
+	// module's (decision 241)
+	if len(f.lex) > 0 {
+		for _, a := range f.lex[len(f.lex)-1].ancestors() {
+			if k := a.cvars[name]; k != nil {
+				return k
+			}
 		}
 	}
 	return nil
@@ -1035,7 +1044,8 @@ func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
 			parts[i] = f.genExpr(sp.Expression, want)
 			ac, ok := parts[i].typ.(TClass)
 			if !ok || ac.C.RubyName != "Array" {
-				f.errorf(el, "*%s inside an array literal must be an Array, not %s", f.f.text(sp.Expression.GetLocation()), parts[i].typ)
+				parts[i] = f.splatToArray(el, sp, parts[i])
+				ac = parts[i].typ.(TClass)
 			}
 			ts = append(ts, ac.Args[0])
 		} else {
@@ -1058,6 +1068,37 @@ func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
 		f.emit("%s.s = append(%s.s, %s)", out, out, f.coerce(el, parts[i], elemT))
 	}
 	return expr{code: out, typ: at}
+}
+
+// splatToArray is `*x` of a non-Array inside an Array literal (decision 241): Ruby spreads x.to_a when x answers
+// to_a (a tuple, MatchData, Hash, Range), nothing for nil, and x itself otherwise (`[*"a"]` is `["a"]`).
+func (f *fctx) splatToArray(el parser.Node, sp *parser.SplatNode, e expr) expr {
+	spread := func(v expr) expr {
+		if c, ok := v.typ.(TClass); ok && c.C.lookup("to_a") == nil {
+			return expr{code: "(&Array[" + f.c.goType(v.typ) + "]{s: []" + f.c.goType(v.typ) + "{" + v.code + "}})", typ: TClass{C: f.c.classes["Array"], Args: []Type{v.typ}}}
+		}
+		a := f.genMethodCall(el, v, "to_a", nil, nil)
+		if !isClass(a.typ, "Array") {
+			f.errorf(el, "*%s inside an array literal: %s#to_a is %s, not an Array", f.f.text(sp.Expression.GetLocation()), v.typ, a.typ)
+		}
+		return a
+	}
+	o, ok := e.typ.(TOpt)
+	if !ok {
+		return spread(e)
+	}
+	rt := f.newTmp()
+	inner := expr{code: "(*" + rt + ")", typ: o.Elem}
+	var probe expr
+	f.probe(func() { probe = spread(inner) })
+	out := f.newTmp()
+	f.emit("%s := &Array[%s]{}", out, f.c.goType(probe.typ.(TClass).Args[0]))
+	f.emit("if %s := %s; %s != nil {", rt, e.code, rt)
+	f.indent++
+	f.emit("%s = %s", out, spread(inner).code)
+	f.indent--
+	f.emit("}")
+	return expr{code: out, typ: probe.typ}
 }
 
 func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
@@ -4587,6 +4628,22 @@ func (f *fctx) restArgs(n parser.Node, args []parser.Node, params []Type) string
 	return strings.Join(append(codes, acc+"..."), ", ")
 }
 
+// superRespondTo is super in a respond_to? override: Object's, the class's own methods by name at run time (decision 241).
+func (f *fctx) superRespondTo(n parser.Node, args *parser.ArgumentsNode, forwarding bool) expr {
+	var sargs []parser.Node
+	if forwarding || args == nil {
+		for _, p := range f.m.Params {
+			sargs = append(sargs, &parser.LocalVariableReadNode{Name: p.Name, Location: n.GetLocation()})
+		}
+	} else {
+		sargs = args.Arguments
+	}
+	if len(sargs) == 0 || len(sargs) > 2 {
+		f.errorf(n, "super in respond_to? needs the method name")
+	}
+	return f.genDynRespondTo(n, expr{code: f.selfCode, typ: f.selfType}, sargs)
+}
+
 func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bool) expr {
 	if f.m == nil || f.owner == nil {
 		f.errorf(n, "super outside a method")
@@ -4610,6 +4667,8 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 			return expr{code: "", typ: TVoid{}, stmt: true}
 		case "respond_to_missing?": // Object's answers false
 			return expr{code: "Boolean(false)", typ: f.cls("Boolean")}
+		case "respond_to?":
+			return f.superRespondTo(n, args, forwarding)
 		case "inherited", "initialize_dup", "initialize_clone", "included", "extended", "prepended", "method_added":
 			// Class's and Object's hooks do nothing (decision 232): an override's super reaches no method, so no slot
 			return expr{code: "", typ: TVoid{}, stmt: true}
@@ -4820,21 +4879,26 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			}
 			break
 		}
-		if cls == nil && f.lenient() && len(args) == 2 { // `raise klass, msg` with klass held untyped (decision 233)
+		switch {
+		case cls == nil && f.lenient() && len(args) == 2 && f.raiseObject(args[0]) == nil: // `raise klass, msg` with klass held untyped (decision 233)
 			f.c.noteDyn("new")
 			k := f.genExpr(args[0], nil)
 			msg := f.genExpr(args[1], f.cls("String"))
 			val = expr{code: "rbRaiseValue(" + f.coerce(args[0], k, TAny{}) + ", " + f.coerce(args[1], msg, TAny{}) + ")", typ: TClass{C: exc}}
-			break
+		case cls == nil:
+			// `raise err, msg[, backtrace]`: Exception#exception(msg), a copy of err with msg (decision 241)
+			e := f.raiseObject(args[0])
+			if e == nil {
+				f.errorf(args[0], "raise Class, message: first argument must be a class or an exception object")
+			}
+			val = f.genMethodCall(n, *e, "exception", args[1:2], nil)
+		default:
+			if !cls.isSubclassOf(exc) {
+				f.errorf(args[0], "%s is not an exception class", cls.RubyName)
+			}
+			msg := f.genExpr(args[1], f.cls("String"))
+			val = f.genNew(n, cls, nil, []expr{msg}, nil, nil)
 		}
-		if cls == nil {
-			f.errorf(args[0], "raise Class, message: first argument must be a class")
-		}
-		if !cls.isSubclassOf(exc) {
-			f.errorf(args[0], "%s is not an exception class", cls.RubyName)
-		}
-		msg := f.genExpr(args[1], f.cls("String"))
-		val = f.genNew(n, cls, nil, []expr{msg}, nil, nil)
 		if len(args) == 3 { // `raise C, msg, backtrace`
 			tmp := f.newTmp()
 			f.emit("%s := %s", tmp, val.code)
@@ -4845,6 +4909,17 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		f.errorf(n, "raise with %d arguments is not supported", len(args))
 	}
 	return expr{code: "panic(" + f.withCause(val.code) + ")", typ: TVoid{}, stmt: true, noreturn: true}
+}
+
+// raiseObject is `raise x, msg`'s x when it is an exception object, else nil; it generates x only when it is one.
+func (f *fctx) raiseObject(arg parser.Node) *expr {
+	var t Type
+	f.probe(func() { t = f.genExpr(arg, nil).typ })
+	if c := classOf(t); c == nil || !c.isSubclassOf(f.c.classes["Exception"]) {
+		return nil
+	}
+	e := f.genExpr(arg, nil)
+	return &e
 }
 
 // raiseOne is the exception `raise x` raises: a class's new, a String's RuntimeError, an exception itself.
@@ -4861,6 +4936,9 @@ func (f *fctx) raiseOne(n, arg parser.Node, exc *Class) expr {
 	}
 	if c := classOf(a.typ); c != nil && c.isSubclassOf(exc) {
 		return a
+	}
+	if isNil(a.typ) && f.pass < 2 { // `e = nil; ...; e = err`: pass 1 reads the local before its later writes widen it (decision 241)
+		return expr{code: "nil", typ: TClass{C: exc}}
 	}
 	if (isAny(a.typ) || isUnion(a.typ)) && f.lenient() { // an untyped (or mixed) class, message or exception, decided at run time (decision 233)
 		f.c.noteDyn("new")
@@ -5285,6 +5363,34 @@ func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser
 	return expr{code: tmp, typ: t}, true
 }
 
+// tupleAsArray reports an Array method a tuple answers on the Array of its fields: any in gem code, else one that
+// neither changes the receiver nor iterates (decision 241).
+func (f *fctx) tupleAsArray(name string) bool {
+	e := f.c.classes["Array"].lookup(name)
+	return e != nil && (f.lenient() || !tupleMutators[name] && !strings.HasSuffix(name, "!") && !e.M.Iterator)
+}
+
+// tupleArray is a tuple's fields as an Array of their join (untyped when mixed).
+func (f *fctx) tupleArray(n parser.Node, recv expr, tt TTuple) expr {
+	code := recv.code
+	if !isSimpleGo(code) {
+		code = f.newTmp()
+		f.emit("%s := %s", code, recv.code)
+	}
+	et := joinOrAny(tt.Elems)
+	parts := make([]string, len(tt.Elems))
+	for i, t := range tt.Elems {
+		parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", code, i), typ: t}, et)
+	}
+	return expr{code: arrayLit(f.c.goType(et), parts), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
+}
+
+// tupleMutators are Array methods that change the receiver: on a tuple they would change a copy of its fields, so only
+// gem code (decision 227) gets them; the rest answer on that copy anywhere (decision 241).
+var tupleMutators = map[string]bool{"<<": true, "[]=": true, "push": true, "append": true, "pop": true, "shift": true,
+	"unshift": true, "prepend": true, "insert": true, "delete": true, "delete_at": true, "delete_if": true, "keep_if": true,
+	"clear": true, "concat": true, "replace": true, "fill": true}
+
 func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	tt := recv.typ.(TTuple)
 	switch name {
@@ -5301,6 +5407,10 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		return expr{code: fmt.Sprintf("%s.F%d", recv.code, len(tt.Elems)-1), typ: tt.Elems[len(tt.Elems)-1]}
 	case "to_s", "inspect":
 		return expr{code: recv.code + "." + goMethodName(name) + "()", typ: f.cls("String")}
+	case "to_a": // the fields as an Array, joined (decision 241)
+		if len(args) == 0 && block == nil {
+			return f.tupleArray(n, recv, tt)
+		}
 	case "to_json":
 		return expr{code: recv.code + ".ToJson(" + strings.Join(f.jsonArgs(args), ", ") + ")", typ: f.cls("String")}
 	case "<=>":
@@ -5332,15 +5442,10 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 	if e := f.c.classes["Object"].lookup(name); e != nil && !untypedIntrinsics[name] {
 		return f.callEntry(n, e, recv, args, block) // Kernel's, with the tuple as Self
 	}
-	if arr := f.c.classes["Array"]; arr.lookup(name) != nil && f.lenient() {
+	if f.tupleAsArray(name) {
 		// a gem's `[timeout, 0.0].max`, `pair.second`: the Array of the tuple's fields, joined (untyped when mixed), whose
 		// method answers as MRI's Array does (decision 227)
-		et := joinOrAny(tt.Elems)
-		parts := make([]string, len(tt.Elems))
-		for i, t := range tt.Elems {
-			parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", recv.code, i), typ: t}, et)
-		}
-		return f.genMethodCall(n, expr{code: arrayLit(f.c.goType(et), parts), typ: TClass{C: arr, Args: []Type{et}}}, name, args, block)
+		return f.genMethodCall(n, f.tupleArray(n, recv, tt), name, args, block)
 	}
 	f.errorf(n, "undefined method %s for tuple %s", name, tt)
 	return expr{}
@@ -6150,6 +6255,16 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 	if isOpt(cur.typ) && !isAny(elem) && !isOpt(v.typ) && !isNil(v.typ) {
 		return expr{code: "(*" + cur.code + ")", typ: elem, done: true}
 	}
+	if u, ok := cur.typ.(TUnion); ok && !v.noreturn && !isOpt(v.typ) && !isNil(v.typ) && !unionFalsy(v.typ) && slices.ContainsFunc(u.Members, isNil) {
+		// set or already truthy: its nil member is gone (decision 241)
+		rest := unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)
+		if isUnion(rest) {
+			return expr{code: cur.code, typ: rest, done: true}
+		}
+		if _, ok := rest.(TClass); ok && !slices.ContainsFunc(u.Members, func(m Type) bool { return isClass(m, "Boolean") }) {
+			return expr{code: cur.code + ".(" + f.c.goType(rest) + ")", typ: rest, done: true}
+		}
+	}
 	return expr{code: cur.code, typ: cur.typ, done: true}
 }
 
@@ -6297,6 +6412,9 @@ func (f *fctx) genOrWrite(n parser.Node) expr {
 	case *parser.InstanceVariableAndWriteNode: // `@x &&= v` is `@x && (@x = v)`
 		w := &parser.InstanceVariableWriteNode{Name: n.Name, NameLoc: n.NameLoc, Value: n.Value, Location: n.Location}
 		return f.genExpr(&parser.AndNode{Left: &parser.InstanceVariableReadNode{Name: n.Name, Location: n.NameLoc}, Right: w, Location: n.Location}, nil)
+	case *parser.LocalVariableAndWriteNode: // `x &&= v` is `x && (x = v)`
+		w := &parser.LocalVariableWriteNode{Name: n.Name, Depth: n.Depth, NameLoc: n.NameLoc, Value: n.Value, Location: n.Location}
+		return f.genExpr(&parser.AndNode{Left: &parser.LocalVariableReadNode{Name: n.Name, Depth: n.Depth, Location: n.NameLoc}, Right: w, Location: n.Location}, nil)
 	}
 	return f.genOrAssignAttr(n.(*parser.CallOrWriteNode))
 }
@@ -6434,21 +6552,29 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 func (f *fctx) destructureOpt(n parser.Node, v expr, t TOpt, lefts []parser.Node, rest parser.Node, trail int) {
 	lead := len(lefts)
 	tt, ok := t.Elem.(TTuple)
-	if !ok || rest != nil || trail > 0 || lead != len(tt.Elems) {
+	if !ok || rest != nil && !isBareRest(rest) || trail > 0 || lead > len(tt.Elems) && !f.lenient() || rest == nil && lead < len(tt.Elems) {
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
-	// `tag, digest = h.find { }`: nil destructures into nils, as Ruby's to_ary-less nil does (decision 222)
+	// `tag, digest = h.find { }`: nil destructures into nils, as Ruby's to_ary-less nil does (decision 222); `a, = pair_or_nil`
+	// keeps the leading fields (decision 241)
 	vars := make([]string, lead)
-	for i, et := range tt.Elems {
+	for i := range lead {
 		vars[i] = f.newTmp()
-		f.emit("var %s %s", vars[i], f.c.goType(optOf(et)))
+		if i < len(tt.Elems) {
+			f.emit("var %s %s", vars[i], f.c.goType(optOf(tt.Elems[i])))
+		}
 	}
 	f.emit("if %s != nil {", v.code)
-	for i, et := range tt.Elems {
+	for i := range min(lead, len(tt.Elems)) {
+		et := tt.Elems[i]
 		f.emit("\t%s = %s", vars[i], f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", v.code, i), typ: et}, optOf(et)))
 	}
 	f.emit("}")
 	for i, l := range lefts {
+		if i >= len(tt.Elems) {
+			f.assignTarget(l, expr{code: "nil", typ: TNil{}})
+			continue
+		}
 		f.assignTarget(l, flatOpt(expr{code: vars[i], typ: optOf(tt.Elems[i])}))
 	}
 }
@@ -6525,9 +6651,87 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		}
 	case TAny: // MRI's implicit to_ary: an Array splits, anything else is the first target
 		f.destructureInto(n, f.toAry(v), lefts, rest, rights)
-	case TFunc, TNil, TUnion, TVar, TVoid: // only tuples and Arrays split
+	case TUnion:
+		f.destructureUnion(n, v, t, lefts, rest, trail)
+	case TFunc, TNil, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
+}
+
+// destructureUnion is `a, b = x` of a union (decision 241): a type switch gives each target what x's member gives it
+// (a tuple's field, an Array's element, a non-Array the first target alone, nil the rest), typed as their join.
+func (f *fctx) destructureUnion(n parser.Node, v expr, u TUnion, lefts []parser.Node, rest parser.Node, trail int) {
+	if trail > 0 || rest != nil && !isBareRest(rest) {
+		f.errorf(n, "cannot destructure %s with a rest target", v.typ)
+	}
+	field := func(m Type, i int, code string) expr {
+		switch mt := m.(type) {
+		case TNil:
+		case TTuple:
+			if i < len(mt.Elems) {
+				return expr{code: fmt.Sprintf("%s.F%d", code, i), typ: mt.Elems[i]}
+			}
+		case TClass:
+			if mt.C.RubyName == "Array" {
+				return flatOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", f.c.goType(mt.Args[0]), code, i), typ: TOpt{Elem: mt.Args[0]}})
+			}
+			if i == 0 {
+				return expr{code: code, typ: m}
+			}
+		default:
+			f.errorf(n, "cannot destructure %s (member %s)", u, m)
+		}
+		return expr{code: "nil", typ: TNil{}}
+	}
+	ts := make([]Type, len(lefts))
+	for i := range lefts {
+		for _, m := range u.Members {
+			t := field(m, i, "x").typ
+			if ts[i] == nil {
+				ts[i] = t
+			} else {
+				ts[i] = joinUnion(ts[i], t)
+			}
+		}
+		if isNil(ts[i]) {
+			ts[i] = TAny{}
+		}
+	}
+	vars := make([]string, len(lefts))
+	for i := range lefts {
+		vars[i] = f.newTmp()
+		f.emit("var %s %s", vars[i], f.c.goType(ts[i]))
+	}
+	sw := f.newTmp()
+	f.emit("switch %s := %s.(type) {", sw, v.code)
+	for _, m := range u.Members {
+		goT := "nil"
+		if !isNil(m) {
+			goT = f.c.goType(m)
+		}
+		f.emit("case %s:", goT)
+		f.emit("	_ = %s", sw)
+		for i := range lefts {
+			if e := field(m, i, sw); !isNil(e.typ) {
+				f.emit("	%s = %s", vars[i], f.coerce(n, e, ts[i]))
+			}
+		}
+	}
+	f.emit("}")
+	for i, l := range lefts {
+		f.assignTarget(l, flatOpt(expr{code: vars[i], typ: ts[i]}))
+	}
+}
+
+// isBareRest is a multiple assignment's `a, = x` or `a, * = x`: a rest that keeps nothing.
+func isBareRest(rest parser.Node) bool {
+	switch r := rest.(type) {
+	case *parser.ImplicitRestNode:
+		return true
+	case *parser.SplatNode:
+		return r.Expression == nil
+	}
+	return false
 }
 
 // toAry wraps an untyped value as the Array[untyped] it destructures as.
@@ -8514,6 +8718,26 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 		at := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: "__last_match_at",
 			Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{gv, callArgs(n)[0]}}}
 		return f.genCall(at, expected), true
+	}
+	if r, ok := n.Receiver.(*parser.CallNode); ok && r.Name == "singleton_class" && r.Arguments == nil && n.Block == nil &&
+		(n.Name == "<" || n.Name == "<=" || n.Name == "include?") && len(callArgs(n)) == 1 {
+		// `x.singleton_class < M`: M is among x's singleton ancestors, which is x.is_a?(M) for a module M (decision 241)
+		if cls := f.classRef(callArgs(n)[0]); cls != nil && cls.IsModule {
+			self := r.Receiver
+			if self == nil {
+				self = &parser.SelfNode{Location: r.Location}
+			}
+			isA := &parser.CallNode{Location: n.Location, Receiver: self, Name: "is_a?", Arguments: n.Arguments}
+			if n.Name == "include?" {
+				return f.genCall(isA, expected), true
+			}
+			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
+		}
+	}
+	if n.Name == "exit!" && n.Receiver == nil && n.Block == nil { // Kernel#exit!, under a name no dispatcher lists (decision 241)
+		c := *n
+		c.Name = "__exit_bang"
+		return f.genCall(&c, expected), true
 	}
 	if procLiteral(n.Receiver) && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
 		if _, fn := expected.(TFunc); fn { // `T.let(-> {}.freeze, T.proc.void)`: the lambda at the expected type; freezing a Proc changes nothing it does

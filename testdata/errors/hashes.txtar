@@ -79,10 +79,6 @@ a, b = h
 def n(*a) = a.size
 h = { "a" => 1 } #: Hash[String, Integer]
 puts n(*h)
--- splat_hash_in_array.rb --
-# error: main.rb:3: *h inside an array literal must be an Array, not Hash[String, Integer]
-h = { "a" => 1 } #: Hash[String, Integer]
-puts [*h].inspect
 -- return_in_map_block.rb --
 # error: main.rb:4: non-local return from a block is not supported (docs/design.md decision 4)
 #: (Hash[String, Integer]) -> String?

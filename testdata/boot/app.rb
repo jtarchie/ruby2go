@@ -57,3 +57,4 @@ ctr = Demo::Counter.new
 p ctr.value
 p Demo::Lenient.three(3), Demo::Lenient.pairs(4), Demo::Lenient.mixed(true)
 p Demo::Lenient.raised(ArgumentError, "boom"), Demo::Lenient.lines("one\ntwo")
+p Demo::Lenient.uri_path("http://h/a/b"), Demo::Lenient.uri_path("x")

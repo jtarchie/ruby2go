@@ -189,11 +189,6 @@ puts (1.5 < nil).inspect
 x = 1.5 #: Float
 x = nil
 puts x.inspect
--- bool_and_assign.rb --
-# error: main.rb:4: unsupported syntax: LocalVariableAndWriteNode
-# rbs_inline: enabled
-b = true #: bool
-b &&= false
 -- boolean_plus.rb --
 # error: main.rb:3: undefined method + for Boolean
 # rbs_inline: enabled

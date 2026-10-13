@@ -91,22 +91,6 @@ end
 [1, 2].each do |x|
   next x if x > 1
 end
--- break_in_closure.rb --
-# error: main.rb:3: break inside a non-iterator block is not supported
-xs = [1] #: Array[Integer]
-xs.map { |x| break }
--- break_in_closure_of_rescuing_iterator.rb --
-# error: main.rb:10: break inside a non-iterator block is not supported
-#: () { (Integer) -> void } -> void
-def guarded
-  [1, 2].each { |i| yield i }
-rescue => e
-  puts e.message
-end
-
-guarded do |i|
-  break if i > 1
-end
 -- break_outside_loop.rb --
 # error: main.rb:4: syntax error: Invalid break
 #: () -> void
@@ -148,10 +132,6 @@ k, v = h
 -- paren_statement_list.rb --
 # error: main.rb:2: parenthesised statement lists are not supported
 x = (a = 1; a + 1)
--- and_assign.rb --
-# error: main.rb:3: unsupported syntax: LocalVariableAndWriteNode
-x = 1
-x &&= 2
 -- always_true_condition.rb --
 # warning: main.rb:3: condition of type Array[Integer] is always true
 arr = [] #: Array[Integer]

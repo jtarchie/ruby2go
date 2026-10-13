@@ -230,9 +230,10 @@ class IO < Object
   }
 
   # A String follows system's shell rule, an Array of Strings runs directly; closing the IO reaps the child into $?.
-  # @rbs [T] (untyped, ?String) { (IO) -> T } -> T
-  def self.popen(cmd, mode = "r")
-    io = __popen_enum(cmd, mode)
+  # An env Hash may lead an Array command; opts are spawn's (decision 241).
+  # @rbs [T] (untyped, ?String, ?Hash[Symbol, untyped]) { (IO) -> T } -> T
+  def self.popen(cmd, mode = "r", opts = {})
+    io = __popen_enum(cmd, mode, opts)
     begin
       yield io
     ensure
@@ -241,8 +242,8 @@ class IO < Object
   end
 
   # Blockless IO.popen (decision 12's `__<name>_enum` stands for "no block").
-  #: (untyped, ?String) -> IO
-  def self.__popen_enum(cmd, mode = "r") = %x{ return rbPopen(cmd, string(mode)) }
+  #: (untyped, ?String, ?Hash[Symbol, untyped]) -> IO
+  def self.__popen_enum(cmd, mode = "r", opts = {}) = %x{ return rbPopen(cmd, string(mode), opts) }
 
   # Path to path, as MRI's with two filenames; the count of bytes copied.
   #: (String, String) -> Integer

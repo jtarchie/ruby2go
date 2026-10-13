@@ -209,7 +209,7 @@ func rbRlimit(v any) int {
 }
 
 // rbPopen starts IO.popen's command with a pipe on its stdout ("r"), stdin ("w") or both ("r+"/"w+"); the rest stay the program's.
-func rbPopen(cmd any, mode string) *IO {
+func rbPopen(cmd any, mode string, opts *Hash[Symbol, any]) *IO {
 	m := strings.Map(func(r rune) rune {
 		if r == 'b' || r == 't' {
 			return -1
@@ -220,27 +220,30 @@ func rbPopen(cmd any, mode string) *IO {
 	if !read && !write {
 		panic(NewArgumentError(Ref(String("invalid access mode " + mode))))
 	}
-	var c *exec.Cmd
+	var args []any // spawn's arguments: [env,] program, its arguments (an Array command spreads; a String is one)
 	switch v := rbUnbox(cmd).(type) {
 	case String:
-		c = rbCommand(string(v), nil)
-	case *Array[String]:
-		if len(v.s) == 0 {
+		args = []any{v}
+	case Array_Any:
+		args = v._ToAny().s
+		if len(args) > 0 && len(opts.keys) == 0 { // `IO.popen([cmd, ..., opts])`: trailing options inside the Array
+			if h, ok := rbUnbox(args[len(args)-1]).(Hash_Any); ok {
+				hh, o := h._ToAny(), NewHash[Symbol, any]()
+				for _, k := range hh.keys {
+					if s, ok := rbUnbox(k).(Symbol); ok {
+						Hash___Set(o, s, hh.vals[k])
+					}
+				}
+				args, opts = args[:len(args)-1], o
+			}
+		}
+		if _, env := rbUnbox(args[0]).(Hash_Any); len(args) == 0 || env && len(args) == 1 {
 			panic(NewArgumentError(Ref(String("wrong number of arguments"))))
 		}
-		c = rbCommand(string(v.s[0]), v.s[1:])
-	case *Array[any]:
-		args := make([]String, 0, len(v.s))
-		for _, a := range v.s {
-			args = append(args, rbToS(a))
-		}
-		if len(args) == 0 {
-			panic(NewArgumentError(Ref(String("wrong number of arguments"))))
-		}
-		c = rbCommand(string(args[0]), args[1:])
 	default:
 		panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(cmd) + " into String"))))
 	}
+	c := rbSpawnCmd(args, opts)
 	var ours, theirs []*os.File // our ends, then the child's, closed in the parent once it starts
 	pipe := func() (*os.File, *os.File) {
 		r, w, err := os.Pipe()
@@ -253,7 +256,6 @@ func rbPopen(cmd any, mode string) *IO {
 		return r, w
 	}
 	var rf, wf *os.File
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if read {
 		r, w := pipe()
 		rf, c.Stdout = r, w
@@ -302,6 +304,24 @@ func rbLastStatusOpt() **Process_Status {
 // the options it honours: in:/out:/err: (an IO, a path String, or :close), chdir:, pgroup:, unsetenv_others:.
 // ponytail: other options (umask:, close_others:, an Integer fd key) are accepted and ignored.
 func rbSpawnFull(args []any, opts *Hash[Symbol, any]) Integer {
+	c := rbSpawnCmd(args, opts)
+	rbFlush()
+	if err := c.Start(); err != nil {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
+	}
+	ch := &rbChild{cmd: c, done: make(chan struct{})}
+	rbChildrenMu.Lock()
+	rbChildren[c.Process.Pid] = ch
+	rbChildrenMu.Unlock()
+	go func() {
+		ch.err = c.Wait()
+		close(ch.done)
+	}()
+	return Integer(c.Process.Pid)
+}
+
+// rbSpawnCmd is the command rbSpawnFull and rbPopen start: its env, argv and redirections, not yet started.
+func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) *exec.Cmd {
 	var env map[string]any
 	if len(args) > 0 {
 		if h, ok := args[0].(Hash_Any); ok {
@@ -393,19 +413,7 @@ func rbSpawnFull(args []any, opts *Hash[Symbol, any]) Integer {
 			}
 		}
 	}
-	rbFlush()
-	if err := c.Start(); err != nil {
-		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
-	}
-	ch := &rbChild{cmd: c, done: make(chan struct{})}
-	rbChildrenMu.Lock()
-	rbChildren[c.Process.Pid] = ch
-	rbChildrenMu.Unlock()
-	go func() {
-		ch.err = c.Wait()
-		close(ch.done)
-	}()
-	return Integer(c.Process.Pid)
+	return c
 }
 
 // rbSpawnFile is a spawn redirection's file: an IO's own descriptor, a path opened with flag, or none for :close.

@@ -682,7 +682,7 @@ func sameAsRubyWith(t *testing.T, dir, file, bin string, extra []string) {
 		t.Errorf("stdout differs\n--- ruby ---\n%s\n--- go ---\n%s", want.Stdout, got.Stdout)
 	}
 	if want.Code != got.Code {
-		t.Errorf("exit code: ruby %d, go %d", want.Code, got.Code)
+		t.Errorf("exit code: ruby %d, go %d; go stderr:\n%s", want.Code, got.Code, got.Stderr)
 	}
 	if slices.Contains(directives(src, "stderr"), "match") && want.Stderr != got.Stderr {
 		t.Errorf("stderr differs\n--- ruby ---\n%s\n--- go ---\n%s", want.Stderr, got.Stderr)

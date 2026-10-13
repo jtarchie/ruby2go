@@ -1,4 +1,5 @@
 require "json"
+require "uri"
 # Gem code rb2go's typing would reject, compiled leniently as rack's multipart parser and request are (decision 175).
 module Demo
   class Gemish
@@ -199,6 +200,15 @@ module Demo
       end
     rescue EOFError
       out.join
+    end
+
+    # A local retyped String -> URI::Generic, and @x ||= on a union ivar (decision 241).
+    def self.uri_path(ref)
+      uri = ref.to_s
+      return unless uri.start_with?("http")
+
+      uri = URI(uri)
+      uri.path
     end
   end
 end

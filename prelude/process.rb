@@ -78,9 +78,13 @@ module Process
   #: (Array[untyped], *untyped, **untyped) -> Integer
   def self.__spawn_array(cmd, *args, **opts) = %x{ return rbSpawnFull(append([]any{cmd}, rest_...), opts) }
 
-  # A thread that reaps pid; its value is the child's Process::Status.
+  # A thread that reaps pid; its value is the child's Process::Status, its pid the child's.
   #: (Integer) -> Thread
-  def self.detach(pid) = Thread.new { __reap(pid) }
+  def self.detach(pid)
+    t = Thread.new { __reap(pid) }
+    t.__set_pid(pid)
+    t
+  end
 
   #: (Integer) -> Process::Status
   def self.__reap(pid)

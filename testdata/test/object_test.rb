@@ -5614,4 +5614,84 @@ module ObjectTests
       assert_in_delta 98.5, (y - 1.5).to_f
     end
   end
+
+  # Decision 241: @@x from a prepended module's method is the module's; super in respond_to? is Object's;
+  # `singleton_class < M` is whether M extends the class.
+  module ObjectCvarExt
+    #: () -> Hash[String, Integer]
+    def tree = @@tree
+
+    #: () -> void
+    def bump! = @@tree["n"] = (@@tree["n"] || 0) + 1
+
+    @@tree = {} #: Hash[String, Integer]
+  end
+
+  class ObjectCvarColl
+    prepend ObjectCvarExt
+  end
+
+  class ObjectRespondVer
+    #: (bool) -> void
+    def initialize(null) = @null = null
+
+    #: () -> String
+    def to_str = "v"
+
+    def size = 1
+
+    #: (Symbol | String, ?bool) -> bool
+    def respond_to?(method, include_all = false)
+      return !@null if ["to_str", :to_str].include?(method)
+
+      super
+    end
+  end
+
+  module ObjectSafe; end
+
+  class ObjectSafeBase
+    def self.safe? = singleton_class < ObjectSafe
+  end
+
+  class ObjectSafeA < ObjectSafeBase
+    extend ObjectSafe
+  end
+
+  class ObjectSafeB < ObjectSafeA; end
+  class ObjectSafeC < ObjectSafeBase; end
+
+  class ObjectUnionMemo
+    # @rbs @v: (String | Integer)?
+    #: (bool) -> (String | Integer)
+    def v(alt)
+      return 1 if alt
+
+      @v ||= "memo"
+    end
+  end
+
+  class ObjectLexicalTest < Minitest::Test
+    def test_or_assign_union_ivar
+      m = ObjectUnionMemo.new
+      assert_equal [1, "memo", "memo"], [m.v(true), m.v(false), m.v(false)]
+    end
+
+    def test_prepended_cvar
+      c = ObjectCvarColl.new
+      c.bump!
+      c.bump!
+      assert_equal({ "n" => 2 }, c.tree)
+    end
+
+    def test_respond_to_super
+      a = ObjectRespondVer.new(false)
+      b = ObjectRespondVer.new(true)
+      assert_equal [true, false, true, false], [a.respond_to?(:to_str), b.respond_to?(:to_str), b.respond_to?(:size), b.respond_to?("nope")]
+    end
+
+    def test_singleton_class_lt
+      assert_equal [true, true, nil, true], [ObjectSafeA.safe?, ObjectSafeB.safe?, ObjectSafeC.safe?, ObjectSafeA.singleton_class.include?(ObjectSafe)]
+    end
+  end
 end

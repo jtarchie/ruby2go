@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any; pid int }
 class Thread < Object
   # The block's value is kept for #value, untyped: Thread is not generic.
   #: () { () -> untyped } -> Thread
@@ -38,6 +38,18 @@ class Thread < Object
 
   #: () { () -> untyped } -> Thread
   def self.fork = %x{ return rbThreadRun(func() any { return blk() }) }
+
+  # Process.detach's thread answers pid (MRI's is a Process::Waiter); any other thread has no such method (decision 241).
+  #: () -> Integer
+  def pid = %x{
+    if self.pid == 0 {
+      panic(rbNoMethod("pid", self, false))
+    }
+    return Integer(self.pid)
+  }
+
+  #: (Integer) -> void
+  def __set_pid(pid) = %x{ self.pid = int(pid) }
 
   # The Thread this goroutine runs (decision 104); main for the main goroutine and a ractor's own, as MRI's per-ractor main thread.
   #: () -> Thread

@@ -127,7 +127,7 @@ class Exception < Object
   #: () -> Array[String]?
   def backtrace = %x{ return rbBacktrace(self) }
 
-  #: (Array[String]) -> Array[String]
+  #: (Array[String]?) -> Array[String]?
   def set_backtrace(bt)
     @__bt = bt
     bt

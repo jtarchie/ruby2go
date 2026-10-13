@@ -66,6 +66,15 @@ type fctx struct {
 	hasNamedRet    bool
 	rescues        int     // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type // what a probed Enumerator.new block feeds its yielder (inferYielder)
+	breakCatch     *breakCatch // the statement call whose closure block `break`s out of it (decision 241)
+}
+
+// breakCatch is a call statement whose closure block has a `break`: the block panics rbBreak with id, and the
+// statement, wrapped in a function, recovers it (decision 241).
+type breakCatch struct {
+	block *parser.BlockNode
+	id    string
+	used  bool
 }
 
 type loopKind int
@@ -562,6 +571,9 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		return
 	}
 	f.lineOf(n)
+	if f.breakCatchStmt(n, t) {
+		return
+	}
 	switch n := n.(type) {
 	case *parser.IfNode:
 		f.genIf(n, n.Predicate, n.Statements, n.Subsequent, false, t)
@@ -1198,9 +1210,86 @@ func (f *fctx) genBreak(n *parser.BreakNode) {
 	}
 	l := f.loops[len(f.loops)-1]
 	if l.kind == loopClosure {
-		f.errorf(n, "break inside a non-iterator block is not supported")
+		if bc := f.breakCatch; bc != nil && len(f.rbFrames) > 0 && f.rbFrames[len(f.rbFrames)-1].key == bc.block.Location.StartOffset {
+			bc.used = true
+			f.emit("panic(rbBreak{%q})", bc.id)
+			return
+		}
+		f.errorf(n, "break inside a non-iterator block is not supported (only one whose call is a statement, decision 241)")
 	}
 	f.emitBreak(l)
+}
+
+// breakCatchStmt generates n through genBreakCatch when it is a call statement whose block breaks out of it.
+func (f *fctx) breakCatchStmt(n parser.Node, t tail) bool {
+	c, ok := n.(*parser.CallNode)
+	if !ok || t.kind != tailNone || f.breakCatch != nil && f.breakCatch.block == c.Block {
+		return false
+	}
+	b, ok := c.Block.(*parser.BlockNode)
+	if !ok || b.Body == nil || !blockBreaks(b.Body) {
+		return false
+	}
+	f.genBreakCatch(c, b, t)
+	return true
+}
+
+// genBreakCatch is a call statement whose block has a `break`: when the block is a closure (decision 4), the
+// statement runs inside a function that recovers the block's rbBreak, so the break leaves the call as on MRI;
+// when the call compiles to a loop, the break is a plain Go break and nothing is wrapped (decision 241).
+func (f *fctx) genBreakCatch(c *parser.CallNode, b *parser.BlockNode, t tail) {
+	saved, out := f.breakCatch, f.buf
+	bc := &breakCatch{block: b, id: fmt.Sprintf("%s:%d", f.f.Name, b.Location.StartOffset)}
+	f.breakCatch, f.buf = bc, &strings.Builder{}
+	defer func() { f.breakCatch, f.buf = saved, out }()
+	f.indent++
+	f.genStmt(c, t)
+	f.indent--
+	body := f.buf.String()
+	f.buf = out
+	if !bc.used {
+		f.indent++ // the body was generated one level in
+		out.WriteString(dedent(body))
+		f.indent--
+		return
+	}
+	f.emit("func() {")
+	f.emit("\tdefer rbBreakRecover(%q)", bc.id)
+	out.WriteString(body)
+	f.emit("}()")
+}
+
+// dedent drops one leading tab from each line.
+func dedent(s string) string {
+	lines := strings.SplitAfter(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimPrefix(l, "\t")
+	}
+	return strings.Join(lines, "")
+}
+
+// blockBreaks reports a valueless `break` that leaves this block: not one inside a nested loop, block or definition.
+func blockBreaks(n parser.Node) bool {
+	found := false
+	var walk func(parser.Node)
+	walk = func(n parser.Node) {
+		if found || n == nil {
+			return
+		}
+		switch x := n.(type) {
+		case *parser.BreakNode:
+			found = x.Arguments == nil
+			return
+		case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode,
+			*parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+			return
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch)
+		}
+	}
+	walk(n)
+	return found
 }
 
 func (f *fctx) emitBreak(l *loopFrame) {
@@ -2169,8 +2258,8 @@ func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existin
 			f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)
 		}
 	}
-	if f.pass == 2 || isNil(val.typ) {
-		existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14)
+	if f.pass == 2 || isNil(val.typ) || f.lenient() && !typeEq(existing.typ, info.typ) && !isVoid(val.typ) {
+		existing.typ = info.typ // `s = "a"; s = nil` widens s to String? (decision 14); a gem's retyped local reads untyped (241)
 	}
 }
 
