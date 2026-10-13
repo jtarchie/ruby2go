@@ -7133,3 +7133,65 @@ resolve; anything not listed is still open.
     - **Measured** on brew's generated Go: 77,381 → 75,788 functions from
       `exit`; the dispatch change cut forwarders 17.6k → 12.8k. The net
       count with the shared arms, and a capped build, are not measured yet.
+235. **Fewer generic bodies per element type for build memory** (#96,
+    amends 209, 137, and the computed-send rule of decision 32). Brew's
+    generated Go compiles 68k source functions into 274k: 42% are generic
+    instantiations, and the largest share is `Array[E]`'s `_DynGenN`
+    switch (decision 209) compiled once per element shape, 336 times
+    (213 tuple shapes, 31 class-interface shapes), each pulling every
+    body it names. Measured by stubbing (compile only, `-p 2 -c=1`,
+    `-dwarf=false`): every `_DynGenN` body gone is 6,761 → 4,597 MB and
+    677 → 128 s; every function body gone still leaves 2,852 MB of
+    declarations, so a package split cannot go below that. Three
+    compile-time changes, no runtime cost:
+    - **Kernel names on generic containers share one class-ID arm.**
+      `dynShareable` admits a generic class when the wrapper body is a
+      universal owner's and names none of the class's type parameters:
+      the same text for every instantiation, so `frozen?`, `object_id`,
+      `instance_variable_get` ... on an untyped `Array[E]` are one arm
+      in `rbDynX`, not a case in every instantiation's switch. A name
+      with `E` in it stays in `_DynGenN`.
+    - **Marshal's key switches are constant cases.** The pruner reads
+      `case rbKeyed[T]("k"):` for its type hint, then `unkeyCases`
+      rewrites it to `case "k":`: a string switch of constants compiles
+      to a binary search, and no `rbKeyed` instantiation is left per
+      class (brew: 12k lines of them).
+    - **A computed `send`/`respond_to?` in gem code names what gem and
+      user code can answer.** `dynAll` made every method name of every
+      class dynamically reachable; brew has 155 computed sends, 145 on
+      receivers of known class and ~10 on untyped ones
+      (`config.send(method)`, both parameters), so no exact rule covers
+      it. From a gem file (decision 172's lenient mode) the name set is
+      now every name a non-prelude class answers, own or inherited
+      (`MyError#message`, `Kernel#frozen?`, a `Hash` subclass's names),
+      plus names literally called dynamically; a name only a prelude
+      class answers (`Array#sort` with no literal `x.sort` on an
+      untyped value anywhere) is left out, and `x.send(:sort)` there
+      raises `NoMethodError` where MRI would answer: the decision 205
+      family. A computed send in user code keeps the every-name set
+      (`dynAllStrict`).
+    - **Not done, measured:** giving dynamic methods only to the
+      instantiations that can be held untyped (SSA `MakeInterface`
+      roots over the generated program) would save nothing: 97 of
+      brew's 97 `Array` shapes can (73 without the Marshal tables).
+      Scoping a computed send by its receiver's class alone does not
+      help either, as one untyped site flips the global flag. Sharing
+      the expensive bodies through `Array[any]` with a copy at the
+      untyped boundary (−32% memory, −81% compile time upper bound)
+      costs a copy on `x.sort` where `x` is an untyped view of a typed
+      Array; not taken.
+    - **Phases 5 and 6 of #96, closed with data.** A precompiled prelude
+      package (hand-built, decisions 210/213): `116_cuba_web` −15% wall
+      and −16% functions, `05_word_count` +0.3 s (it links the whole
+      prelude's type tables), memory flat; the prelude is 9% of brew's
+      Go lines. Sharding the program into packages: brew's declarations
+      alone are 2.85 GB, and cross-package calls through slots undo the
+      inlining decisions 212–214 bought. Neither pays.
+    - **Measured** (compiled functions; peak compile RSS, `-dwarf=false`):
+      `64_observable` 29,936 → 29,624 and 1,649 → 1,487 MB;
+      `116_cuba_web` 29,345 → 28,585 (its computed sends are pruned);
+      brew's capped cross-build 68,155 → 68,143 source functions,
+      6,911 → 6,535 MB with the first two changes; with the third:
+      BREW_B.
+    - **Proof:** `dynamic_test`'s Kernel-names-on-containers case,
+      `marshal_test`, `testdata/boot`'s `dyn_send`/`dyn_responds`.

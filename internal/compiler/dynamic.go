@@ -32,7 +32,7 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 	if c.dynLazy == nil {
 		c.noteDyn("<=>") // rbCmp falls back to DynOp_cmp, and which instantiations see untyped values is unknown here
 		if c.dynAll {
-			for _, name := range c.allMethodNames() {
+			for _, name := range c.allMethodNames(!c.dynAllStrict) {
 				c.noteDyn(name)
 				c.noteRespond(name)
 			}
@@ -517,14 +517,10 @@ var selfIdent = regexp.MustCompile(`\bself\b`)
 // to a universal owner's free func, whose Self is any.
 func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, ok bool) {
 	cls, e := w.cls, w.e
-	generic := len(cls.TypeParams) > 0
-	if !cls.isStruct() && !generic || dynPinned[name] {
+	if !c.shareableClass(w, name) {
 		return "", "", false
 	}
 	body = w.body
-	if generic && (!e.Owner.universal || mentionsIdent(body, cls.TypeParams)) {
-		return "", "", false // only a body identical for every instantiation leaves the per-element-type _DynGenN (#96)
-	}
 	if e.Owner.universal {
 		for _, t := range []string{c.goType(TClass{C: cls}), c.recvType(cls)} {
 			body = strings.ReplaceAll(body, "["+t+"](self", "[any](self")
@@ -565,6 +561,19 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		return "", "", false
 	}
 	return iface, body, true
+}
+
+// shareableClass: a struct class, or a generic class whose wrapper body is a universal owner's naming none of its type
+// parameters (the same text for every instantiation, so one arm instead of a case per element type in _DynGenN, #96).
+func (c *Compiler) shareableClass(w dynWrapper, name string) bool {
+	cls := w.cls
+	if dynPinned[name] {
+		return false
+	}
+	if len(cls.TypeParams) > 0 {
+		return w.e.Owner.universal && !mentionsIdent(w.body, cls.TypeParams)
+	}
+	return cls.isStruct()
 }
 
 // emitDynArms emits the shared public (or private) arms: a switch on the
@@ -1014,11 +1023,11 @@ func (c *Compiler) emitRespond(name string) {
 }
 
 // allMethodNames lists every method name a computed send may name.
-func (c *Compiler) allMethodNames() []string {
+func (c *Compiler) allMethodNames(gemOnly bool) []string {
 	seen := map[string]bool{}
 	for _, cls := range c.classList {
-		if cls.IsModule || cls.universal {
-			continue
+		if cls.IsModule || cls.universal || gemOnly && cls.File != nil && cls.File.prelude {
+			continue // gemOnly: a name only a prelude class answers is named by a literal, or not at all (decision 235)
 		}
 		for _, e := range cls.methodSet() {
 			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") {

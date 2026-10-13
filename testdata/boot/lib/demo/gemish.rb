@@ -62,6 +62,11 @@ module Demo
 
     def self.cached = @cache
 
+    # A computed send in gem code reaches what gem and user code define, inherited and Kernel names (decision 235).
+    def dyn_send(obj, name, *args) = obj.send(name, *args)
+
+    def dyn_responds(obj, name) = obj.respond_to?(name)
+
     # An optional dependency that is not loaded: MRI raises NameError only if the read runs (decision 218).
     def setup_optional(on)
       return :skipped unless on

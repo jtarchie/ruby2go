@@ -37,6 +37,8 @@ rescue NameError => e
   p e.class, e.message
 end
 p g.never_set_or(7), Demo::Gemish.cached
+p g.dyn_send(g, :state), g.dyn_send(Demo::GemTab.empty, :kind), g.dyn_send(Demo::Lenient, :mixed, false), g.dyn_send(g, :frozen?)
+p g.dyn_responds(g, :joined), g.dyn_responds(g, :nope), g.dyn_responds(Demo::GemTab.empty, :kind)
 p g.json_kids('{"kids":[{"name":"x","age":5},{"name":"y","age":2}]}')
 p g.json_find('{"sigs":[{"h":{"kid":"a"}},{"h":{"kid":"b"},"v":1}]}'), g.json_find("{}")
 p g.json_big('{"a":1,"b":2}')

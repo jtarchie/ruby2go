@@ -7322,7 +7322,7 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	if block != nil {
 		f.errorf(n, "a block with a computed send is not supported")
 	}
-	f.c.dynAll = true
+	f.noteDynAll()
 	if f.m == nil || !f.m.quietDynamic {
 		f.warn(n, "dynamic call: %s with a computed name", name)
 	}
@@ -7340,6 +7340,14 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		codes = append(codes, f.coerce(a, e, TAny{}))
 	}
 	return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+}
+
+// noteDynAll: a computed name may be any method; from a gem file only names gem and user code define (decision 235).
+func (f *fctx) noteDynAll() {
+	f.c.dynAll = true
+	if !f.lenient() {
+		f.c.dynAllStrict = true
+	}
 }
 
 // universalNames answer respond_to? for every object.
@@ -7363,7 +7371,7 @@ func (f *fctx) genDynRespondTo(n parser.Node, recv expr, args []parser.Node) exp
 		f.c.noteRespond(lit)
 		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ", " + includeAll() + ")", typ: f.cls("Boolean")}
 	}
-	f.c.dynAll = true
+	f.noteDynAll()
 	nameExpr := f.genExpr(args[0], nil)
 	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "), " + includeAll() + ")", typ: f.cls("Boolean")}
 }
