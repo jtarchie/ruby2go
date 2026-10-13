@@ -7196,8 +7196,13 @@ resolve; anything not listed is still open.
     - **Measured** (compiled functions; peak compile RSS, `-dwarf=false`):
       `64_observable` 29,936 → 29,624 and 1,649 → 1,487 MB;
       `116_cuba_web` 29,345 → 28,585 (its computed sends are pruned);
-      brew's capped cross-build 68,155 → 68,143 source functions,
-      6,911 → 6,535 MB with the first two changes; with the third:
-      BREW_B.
+      brew's capped cross-build (`-p 2 -c=1`, `GOMEMLIMIT=4GiB`)
+      68,155 → 68,143 source functions and 6,911 → 6,535 MB with the
+      first two changes; 65,600 and 6,439 MB (−7%), 708 → 696 s, with
+      the third: `rbSendByName` 4,540 → 4,118 names, but `Array`'s
+      switch keeps 86 of its cases because brew spells `:sort`,
+      `:first`, `:map` ... as symbols, so the per-element-type cost
+      stays. What would remove it is the `Array[any]` copy path above,
+      or fewer element shapes; neither is free.
     - **Proof:** `dynamic_test`'s Kernel-names-on-containers case,
       `marshal_test`, `testdata/boot`'s `dyn_send`/`dyn_responds`.
