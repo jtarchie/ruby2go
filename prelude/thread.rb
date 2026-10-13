@@ -6,6 +6,17 @@ class Thread < Object
   #: () { () -> untyped } -> Thread
   def self.new = %x{ return rbThreadRun(func() any { return blk() }) }
 
+  # A subclass's new, or its initialize's `super { ... }`, starts the thread on the subclass's own embedded Thread
+  # (decision 239); Thread.new itself does not come here.
+  # ponytail: a zsuper's arguments are accepted, not passed to the block; a block taking them is a compile error
+  #: (*untyped) ?{ () -> untyped } -> void
+  def initialize(*_args) = %x{
+    if blk == nil {
+      panic(NewThreadError(Ref(String("must be called with a block"))))
+    }
+    rbThreadStart(self, func() any { return blk() })
+  }
+
   # Runs the block: rb2go raises no asynchronous interrupt for the mask to defer (decision 233).
   # @rbs [T] (untyped) { () -> T } -> T
   def self.handle_interrupt(_mask) = yield

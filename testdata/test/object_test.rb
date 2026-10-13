@@ -5580,10 +5580,32 @@ module ObjectTests
   class RegSubTime < Time
   end
 
+  class RegSubThread < Thread
+  end
+
+  # ruby/spec's ThreadSpecs::SubThread: initialize's zsuper passes its block to Thread's.
+  class RegInitThread < Thread
+    def initialize(*args)
+      super { args.first << 1 }
+    end
+  end
+
   class GoTypeSubclassTest < Minitest::Test
     def test_rest_each_answers_parent_each
       c = RegRestCounter.new(3, 1, 2)
       assert_equal [[3, 1, 2], [1, 2, 3], 6, 1], [c.to_a, c.sort, c.sum, c.min]
+    end
+
+    # A Thread subclass starts on its own embedded Thread, so join and value see the goroutine's writes (decision 239).
+    def test_thread_subclass_runs_its_block
+      t = RegSubThread.new { 1 + 1 }
+      assert_equal [true, 2, false, true], [t.join.equal?(t), t.value, t.alive?, t.is_a?(Thread)]
+      a = [] #: Array[Integer]
+      u = RegInitThread.new(a)
+      u.join
+      assert_equal [[1], true], [a, u.value.equal?(a)]
+      e = assert_raises(ThreadError) { RegSubThread.new }
+      assert_equal "must be called with a block", e.message
     end
 
     # An inherited method of a non-generic @go_type base (Time#-) is its Go method on the embedded value (decision 202).

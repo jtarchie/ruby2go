@@ -230,8 +230,8 @@ on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 Correctness is measured against MRI, not a specification: 120
 [examples](examples/), 30 minitest suites and 23 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127): of core's 17,567 examples, **5,153
-pass**, 1,969 fail or error, and 10,445 are skipped as unsupported (features
+ruby/spec under rb2go (decision 127): of core's 17,566 examples, **5,154
+pass**, 1,970 fail or error, and 10,442 are skipped as unsupported (features
 rb2go can't compile; the largest are Bignum, String mutation, String
 encoding tags and `eval`/code loading, which rb2go leaves out by design). A
 looser name-level metric,

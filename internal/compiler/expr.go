@@ -8615,7 +8615,9 @@ func (f *fctx) containerCallCode(e *entry, recv expr, args []string, env map[str
 // base built and its own initialize run.
 func (f *fctx) genGoTypeNew(n parser.Node, cls *Class, args []parser.Node, exprs []expr, expected Type, block parser.Node) expr {
 	init := cls.lookup("initialize")
-	if cls.hashBase && init != nil && init.Owner == cls { // a container subclass's own initialize runs on the generated empty one
+	ownInit := init != nil && init.Owner == cls
+	baseStarts := init != nil && init.Owner == cls.Super && init.M.Block != nil // Thread's: starts on the embedded base (decision 239)
+	if cls.hashBase && (ownInit || baseStarts) { // a container subclass's initialize runs on the generated empty one
 		t := f.goTypeNewType(n, cls, expected)
 		tmp := f.newTmp()
 		targs := ""
@@ -8716,11 +8718,19 @@ func (f *fctx) genContainerSuper(n parser.Node, e *entry, args *parser.Arguments
 		}
 		targs = f.c.containerTargs(f.owner, st.Args)
 	}
-	codes, _ := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
-	if e.M.Block != nil {
-		f.errorf(n, "super to a block-taking method is not supported")
+	codes, restIdx := f.genArgs(n, e.M, env, f.superArgs(n, args, forwarding), nil)
+	if e.M.Block != nil { // Thread#initialize's block (decisions 223, 239)
+		blk := f.superBlock(n, e.M, env)
+		if restIdx >= 0 {
+			codes = slices.Insert(codes, restIdx, blk)
+		} else {
+			codes = append(codes, blk)
+		}
 	}
 	call := freeFuncName(e.M) + targs + "(" + embeddedSuper(f.owner, f.selfCode) + comma(strings.Join(codes, ", ")) + ")"
+	if f.c.isDirectMethod(e.M) { // a non-generic base's own Go method: no free func exists
+		call = embeddedSuper(f.owner, f.selfCode) + "." + e.M.GoName + "(" + strings.Join(codes, ", ") + ")"
+	}
 	if tv, ok := e.M.Ret.(TVar); ok && tv.Name == "Self" { // `super` into Set#<<: the subclass object, not its embedded base
 		t := f.c.goType(f.selfType)
 		return expr{code: fmt.Sprintf("func() %s { %s; return %s }()", t, call, f.selfCode), typ: f.selfType}
