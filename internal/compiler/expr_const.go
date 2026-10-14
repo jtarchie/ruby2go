@@ -109,8 +109,7 @@ func (f *fctx) definedCall(v *parser.CallNode) string {
 		}
 		return ""
 	}
-	var rt Type
-	f.probe(func() { rt = f.genExpr(v.Receiver, nil).typ })
+	rt := f.probeType(v.Receiver, nil)
 	if isAny(rt) {
 		f.errorf(v, "defined?(...%s) on an untyped receiver is not supported; use respond_to?", v.Name)
 	}
@@ -173,7 +172,7 @@ func (f *fctx) genData() expr {
 		f.c.dataVar = true
 		text := &exprNode{e: expr{code: strconv.Quote(*f.f.data), typ: f.cls("String"), lit: true}}
 		io := f.genMethodCall(&parser.NilNode{}, f.genConstRead(&parser.ConstantReadNode{Name: "StringIO"}), "new", []parser.Node{text}, nil)
-		f.c.regexps = append(f.c.regexps, "var rbDATA = "+io.code)
+		f.c.pkgVars = append(f.c.pkgVars, "var rbDATA = "+io.code)
 	}
 	return expr{code: "rbDATA", typ: t}
 }

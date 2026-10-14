@@ -243,11 +243,7 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 	} else if len(args) > 1 {
 		f.errorf(n, "with takes keyword arguments")
 	}
-	if !isSimpleGo(recv.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, recv.code)
-		recv.code = tmp
-	}
+	recv.code = f.pinSimple(recv.code)
 	nodes := make([]parser.Node, len(vr.valueMembers))
 	for i, m := range vr.valueMembers {
 		v, ok := byName[m]

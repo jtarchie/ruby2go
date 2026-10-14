@@ -24,10 +24,10 @@ import (
 // receiver-less calls reach it). Wrappers check arity, convert arguments to
 // the declared types and box the result, reusing the typed call path.
 
-// emitDynamic emits wrappers and dispatchers for every name asked for;
-// generating a wrapper may ask for more (a default argument calling
-// something dynamically), so this runs to a fixed point.
-// emitDynamic emits the dispatchers that became needed (dynNeeded) and reports whether there were any: with the computed-send switches in play (dynAll) nearly every method is noted, and a program reaches few of them. A wrapper body notes what it calls, and a name noted that late is needed by what noted it.
+// emitDynamic emits the dispatchers that became needed (dynNeeded) and reports whether there were any: with the
+// computed-send switches in play (dynAll) nearly every method is noted, and a program reaches few of them. A wrapper
+// body notes what it calls (a default argument calling something dynamically), and a name noted that late is needed
+// by what noted it, so this runs to a fixed point.
 func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 	if c.dynLazy == nil {
 		c.noteDyn("<=>") // rbCmp falls back to DynOp_cmp, and which instantiations see untyped values is unknown here

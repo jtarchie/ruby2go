@@ -159,8 +159,7 @@ func (f *fctx) lenientCall(n *parser.CallNode) (expr, bool) {
 		return e, true
 	}
 	if n.Name == "nil?" && n.Arguments == nil && n.Block == nil && n.Receiver != nil && f.lenient() {
-		var t Type
-		f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
+		t := f.probeType(n.Receiver, nil)
 		if f.lenientObject(t) {
 			r := f.genExpr(n.Receiver, nil)
 			return expr{code: "Boolean(any(" + r.code + ") == nil)", typ: f.cls("Boolean")}, true

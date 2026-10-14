@@ -45,11 +45,7 @@ func (f *fctx) tupleAsArray(name string) bool {
 
 // tupleArray is a tuple's fields as an Array of their join (untyped when mixed).
 func (f *fctx) tupleArray(n parser.Node, recv expr, tt TTuple) expr {
-	code := recv.code
-	if !isSimpleGo(code) {
-		code = f.newTmp()
-		f.emit("%s := %s", code, recv.code)
-	}
+	code := f.pinSimple(recv.code)
 	et := joinOrAny(tt.Elems)
 	parts := make([]string, len(tt.Elems))
 	for i, t := range tt.Elems {
@@ -107,11 +103,7 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 		}
 	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
 		if oneArg {
-			code := recv.code
-			if !isSimpleGo(code) { // the receiver first, as Ruby evaluates it, then the format
-				code = f.newTmp()
-				f.emit("%s := %s", code, recv.code)
-			}
+			code := f.pinSimple(recv.code) // the receiver first, as Ruby evaluates it, then the format
 			str := f.cls("String")
 			format := f.coerce(args[0], f.genExpr(args[0], str), str)
 			fields := make([]string, len(tt.Elems))

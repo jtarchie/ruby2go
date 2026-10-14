@@ -117,9 +117,6 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 	}
 }
 
-// yieldShape is the block an unannotated def yields to: how many values
-// each yield passes (all must agree), and whether block_given? makes it
-// optional. ok is false for a def that does not yield, or names its block.
 // yieldValueUsed reports whether a yield in m's body is not a statement of its own (`out << yield`): the block's value
 // is then used, so it returns untyped rather than void (decision 183). With tailUsed (gem code), so is a yield whose
 // value the method returns (`@lock.synchronize { yield }` last, decision 226).
@@ -150,6 +147,9 @@ func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	return used
 }
 
+// yieldShape is the block an unannotated def yields to: how many values
+// each yield passes (all must agree), and whether block_given? makes it
+// optional. ok is false for a def that does not yield, or names its block.
 func (c *Compiler) yieldShape(m *Method) (n int, optional, ok bool) {
 	if m.Node == nil || m.Node.Body == nil || m.BlockParam != "" {
 		return 0, false, false
@@ -499,7 +499,7 @@ func holdsUnion(t Type) bool {
 
 // debugInfer prints what a round's dry run could not compile, under RB2GO_INFER_DEBUG.
 func (c *Compiler) debugInfer(err *compileError) {
-	if err != nil && os.Getenv("RB2GO_INFER_DEBUG") != "" {
+	if err != nil && c.env.InferDebug {
 		fmt.Fprintln(os.Stderr, "rb2go: infer round:", err.msg)
 	}
 }
@@ -574,17 +574,13 @@ func (c *Compiler) updateInference(inf *inference) {
 			inf.none[k] = true
 		}
 	}
-	if os.Getenv("RB2GO_INFER_DEBUG") != "" {
+	if c.env.InferDebug {
 		for _, k := range slices.Sorted(maps.Keys(next)) {
 			fmt.Fprintf(os.Stderr, "rb2go: inferred %s: %s\n", k, next[k])
 		}
 	}
 }
 
-// joinUses joins a parameter's uses in source order, returning the type and
-// where its first use is. Object, BasicObject and modules are Go any: they
-// count only when nothing concrete is passed, or one Object.new would
-// untype the rest. noUnion leaves out a use that would make a union.
 // untypedGemUse is a gem file's use passing an Array or Hash of untyped (optparse's `define(*opts)` passing opts on
 // to `make_switch(opts)`): the parameter takes it, not a narrower type another call gave, so the method's branches
 // for the other element kinds compile.
@@ -611,6 +607,10 @@ func (c *Compiler) gemUsesDisagree(uses []paramUse, t Type) bool {
 	return false
 }
 
+// joinUses joins a parameter's uses in source order, returning the type and
+// where its first use is. Object, BasicObject and modules are Go any: they
+// count only when nothing concrete is passed, or one Object.new would
+// untype the rest. noUnion leaves out a use that would make a union.
 func joinUses(uses []paramUse, noUnion bool) (Type, string) {
 	for _, abstract := range []bool{false, true} {
 		var t Type

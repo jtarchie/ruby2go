@@ -71,8 +71,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 
 // raiseObject is `raise x, msg`'s x when it is an exception object, else nil; it generates x only when it is one.
 func (f *fctx) raiseObject(arg parser.Node) *expr {
-	var t Type
-	f.probe(func() { t = f.genExpr(arg, nil).typ })
+	t := f.probeType(arg, nil)
 	if c := classOf(t); c == nil || !c.isSubclassOf(f.c.classes["Exception"]) {
 		return nil
 	}

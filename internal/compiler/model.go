@@ -379,7 +379,7 @@ func (c *Class) ancestors() []*Class {
 	return out
 }
 
-// ancestors of a struct class up to (excluding) Object, nearest first.
+// structChain is c and its superclasses up to (excluding) Object, nearest first; mixins are not included.
 func (c *Class) structChain() []*Class {
 	var out []*Class
 	for k := c; k != nil && !k.universal; k = k.Super {
@@ -388,8 +388,7 @@ func (c *Class) structChain() []*Class {
 	return out
 }
 
-// ---- declaration collection
-
+// collect declares the classes, modules, methods and constants of f's top-level statements (the first pass over a file).
 func (c *Compiler) collect(ctx context.Context, f *File) {
 	if c.gemFile(f) {
 		lenientBlockParams(f.Root)

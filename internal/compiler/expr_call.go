@@ -74,8 +74,7 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 	if !kernelConst(n.Receiver) || !kernelModuleNames[n.Name] && !runtimeRequire || n.Name == "require" && !runtimeRequire || n.Name == "require_relative" {
 		return expr{}, false
 	}
-	var t Type
-	f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
+	t := f.probeType(n.Receiver, nil)
 	if !kernelMeta(t) {
 		return expr{}, false
 	}
@@ -822,8 +821,7 @@ func (f *fctx) mixedArrayOp(n parser.Node, recv expr, name string, args []parser
 	if len(args) != 1 || block != nil || !isClass(recv.typ, cls) {
 		return expr{}, false
 	}
-	var at Type
-	f.probe(func() { at = f.genExpr(args[0], nil).typ })
+	at := f.probeType(args[0], nil)
 	if !isClass(at, cls) {
 		return expr{}, false
 	}
@@ -858,11 +856,7 @@ func (f *fctx) mixedArrayOp(n parser.Node, recv expr, name string, args []parser
 	}
 	j := TClass{C: f.c.classes[cls], Args: append(slices.Clone(ra[:len(ra)-1]), jt)}
 	r := f.coerce(n, recv, TAny{})
-	if !isSimpleGo(r) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, r)
-		r = tmp
-	}
+	r = f.pinSimple(r)
 	r = f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(j), r, j.String()))
 	arg := f.genExpr(args[0], nil)
 	ac := f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(j), f.coerce(args[0], arg, TAny{}), j.String()))

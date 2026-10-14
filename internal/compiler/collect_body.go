@@ -163,8 +163,6 @@ func ruby2KeywordsShim(n *parser.IfNode) bool {
 	return true
 }
 
-// collectClassCall handles a bare call in a class body: attr_*, include,
-// private/public.
 // visibility is the mode a bare private/protected/module_function sets for the defs after it.
 type visibility struct {
 	private, protected, moduleFunction bool

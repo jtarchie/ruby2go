@@ -87,8 +87,6 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 	return expr{code: fmt.Sprintf("rbMatchSet(&%s, %s)", f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
 }
 
-// genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
-// (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
 // parenBang is a gem's `(o = q.downcase).tr!('_', '-')`: the assignment, then the bang on o (decision 244).
 func (f *fctx) parenBang(n *parser.CallNode) (expr, bool) {
 	w := parenWrite(n.Receiver)
@@ -115,6 +113,8 @@ func parenWrite(n parser.Node) *parser.LocalVariableWriteNode {
 	return w
 }
 
+// genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
+// (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
 func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if e, ok := f.genOutBuffer(n); ok {
 		return e, true
@@ -142,8 +142,7 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "concat" && n.Name != "replace" && n.Name != "clear" {
 		return expr{}, false
 	}
-	var t Type
-	f.probe(func() { t = f.genExpr(lv, nil).typ })
+	t := f.probeType(lv, nil)
 	str := f.cls("String")
 	u, isUnion := stripOpt(t).(TUnion)
 	if !typeEq(t, str) && !typeEq(t, TOpt{Elem: str}) && !(isUnion && slices.ContainsFunc(u.Members, func(m Type) bool { return typeEq(m, str) })) {

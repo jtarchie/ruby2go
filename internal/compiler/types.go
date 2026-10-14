@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// Type is a resolved Ruby type.
-// Type is a sealed sum type (decision 119): only the members below
+// Type is a resolved Ruby type. It is a sealed sum type (decision 119): only the members below
 // implement isType, and gochecksumtype makes every type switch on it list
 // all of them, so adding a member means visiting every switch it names.
 //

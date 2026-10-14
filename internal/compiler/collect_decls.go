@@ -3,7 +3,6 @@ package compiler
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -477,7 +476,7 @@ func (c *Compiler) noteAutoloadCall(n *parser.CallNode, args []parser.Node, scop
 // keepGoing runs fn; under RB2GO_KEEP_GOING=1 a compile error is recorded and collection goes on, listing at once
 // every construct a large program needs (a debugging aid, like RB2GO_NO_PRUNE).
 func (c *Compiler) keepGoing(fn func()) {
-	if os.Getenv("RB2GO_KEEP_GOING") == "" || c.anonDepth > 0 { // an anonymous class's error already waits for its literal
+	if !c.env.KeepGoing || c.anonDepth > 0 { // an anonymous class's error already waits for its literal
 		fn()
 		return
 	}

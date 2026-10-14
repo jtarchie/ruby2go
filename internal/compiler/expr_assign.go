@@ -146,11 +146,7 @@ func (f *fctx) genOpWrite(n parser.Node) expr {
 func (f *fctx) genOpAssignAttr(n *parser.CallOperatorWriteNode) expr {
 	recv := f.attrRecv(n, n.Receiver, n.IsSAFE_NAVIGATION(), n.ReadName)
 	val := f.genOp(n, f.genMethodCall(n, recv, n.ReadName, nil, nil), n.BinaryOperator, n.Value)
-	if !isSimpleGo(val.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, val.code)
-		val.code = tmp
-	}
+	val.code = f.pinSimple(val.code)
 	f.callWriter(n, recv, n.WriteName, val)
 	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
 }
@@ -210,11 +206,7 @@ func (f *fctx) genIndexOrWrite(n *parser.IndexOrWriteNode) expr {
 func (f *fctx) genIndexOpWrite(n *parser.IndexOperatorWriteNode) expr {
 	recv, as := f.indexOperands(n, n.Receiver, n.Arguments, n.Block, n.IsSAFE_NAVIGATION())
 	val := f.genOp(n, f.genMethodCall(n, recv, "[]", as, nil), n.BinaryOperator, n.Value)
-	if !isSimpleGo(val.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, val.code)
-		val.code = tmp
-	}
+	val.code = f.pinSimple(val.code)
 	f.emitExprStmt(n, f.genMethodCall(n, recv, "[]=", append(slices.Clone(as), &exprNode{Node: n.Value, e: val}), nil))
 	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
 }
@@ -228,11 +220,7 @@ func (f *fctx) attrRecv(n, rn parser.Node, safe bool, name string) expr {
 		f.unnarrow("attr:" + name)
 	}
 	recv := f.valueOf(f.genExpr(rn, nil))
-	if !isSimpleGo(recv.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, recv.code)
-		recv.code = tmp
-	}
+	recv.code = f.pinSimple(recv.code)
 	return recv
 }
 

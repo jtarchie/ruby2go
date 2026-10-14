@@ -142,8 +142,6 @@ func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.
 	cls.Includes = append(cls.Includes, inc)
 }
 
-// ---- resolution
-
 // superclassOf resolves cls's superclass (nil for modules and BasicObject)
 // and checks that every reopening that names one names the same class.
 func (c *Compiler) superclassOf(cls *Class) *Class {

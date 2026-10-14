@@ -72,7 +72,7 @@ type Compiler struct {
 	dynGo                 map[string]string       // Go name → the Ruby name its dispatchers serve
 	dynWrapped            map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
 	warned                map[string]bool
-	regexps               []string                // package-level compiled literals (and DATA's StringIO)
+	pkgVars               []string                // package-level var declarations: compiled regexp literals, rbDATA, once-guards
 	dataVar               bool                    // rbDATA is declared
 	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string       // literal → its variable, to share one per pattern
@@ -177,6 +177,7 @@ type Compiler struct {
 	round       bool                  // an inference round: pending parameters are untyped, their arguments recorded
 	inferDone   bool                  // the rounds ran: a parameter still untyped is an error
 	noPrune     bool                  // formatGo keeps every declaration
+	env         envConfig             // the RB2GO_* environment, read when this compile started
 	uses        map[string][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[string]bool       // this round's untyped parameter keys
 }
@@ -225,7 +226,7 @@ var sharedParser = sync.OnceValues(func() (*parser.Parser, error) {
 // happens once per wazero version and machine, not per process (#81 item 4). nil when no cache directory is usable,
 // or RB2GO_NO_WASM_CACHE is set; wazero validates the cache against its own version and the wasm's hash.
 func wazeroConfig() wazero.RuntimeConfig {
-	if os.Getenv("RB2GO_NO_WASM_CACHE") != "" {
+	if loadEnv().NoWasmCache {
 		return nil
 	}
 	base, err := os.UserCacheDir()
@@ -273,6 +274,7 @@ type options struct {
 	goPoison   map[string]string // gem methods whose Go did not type-check, by methodKey: poisoned (decision 205)
 	goFuncs    map[string]string // out: each gem method's Go func name -> its methodKey
 	noPrune    bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
+	env        envConfig         // the RB2GO_* environment, read once by compile
 	testHook   func()            // tests only: runs at the start of compileWith, to inject a panic
 	genCount   *int              // test hook: genExpr calls, summed over every pass
 	genLimit   *int              // test hook: the count after which genExpr fails the compile
@@ -306,6 +308,7 @@ type SkippedTest struct {
 }
 
 func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) ([]byte, error) {
+	opts.env = loadEnv()
 	if opts.seed != nil {
 		opts.infer = opts.seed.inf
 	}
@@ -324,7 +327,7 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 			opts.round = false
 			if err != nil && !errors.Is(err, errInferRound) {
 				roundErr = err // it stopped inference: the final compile's untyped parameters are its doing
-				if os.Getenv("RB2GO_INFER_DEBUG") != "" {
+				if opts.env.InferDebug {
 					fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
 				}
 			}
@@ -340,7 +343,7 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 		}
 	}
 	if errors.Is(err, errPruneIncomplete) {
-		if os.Getenv("RB2GO_TIMING") != "" {
+		if opts.env.Timing {
 			fmt.Fprintln(os.Stderr, "rb2go: fallback: recompiling with every dispatcher")
 		}
 		opts.skipped = nil
@@ -350,7 +353,7 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 }
 
 // panicToError is compileWith's recover: compileError and needInfer are the compiler's own control flow; any other panic is a compiler bug, returned as an internalError so a CLI or server reports it instead of dying with a Go trace.
-func panicToError(r any, sources []Source, mainLast bool) error {
+func panicToError(r any, sources []Source, mainLast, errStack bool) error {
 	var err error
 	switch r := r.(type) {
 	case compileError:
@@ -367,7 +370,7 @@ func panicToError(r any, sources []Source, mainLast bool) error {
 		}
 		err = ie
 	}
-	if os.Getenv("RB2GO_ERR_STACK") != "" { // debugging: which pass raised it
+	if errStack { // debugging: which pass raised it
 		fmt.Fprintf(os.Stderr, "%s\n%s\n", err, debug.Stack())
 	}
 	return err
@@ -376,13 +379,13 @@ func panicToError(r any, sources []Source, mainLast bool) error {
 func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options, dynEvery bool) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = panicToError(r, sources, opts.mainLast)
+			err = panicToError(r, sources, opts.mainLast, opts.env.ErrStack)
 		}
 	}()
 	if opts.testHook != nil {
 		opts.testHook()
 	}
-	tick := phaseTimer()
+	tick := phaseTimer(opts.env.Timing)
 	p, err := sharedParser()
 	if err != nil {
 		return nil, fmt.Errorf("prism: %w", err)
@@ -395,6 +398,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.noPrune = opts.noPrune
+	c.env = opts.env
 	c.genCount, c.genLimit = opts.genCount, opts.genLimit
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
@@ -413,7 +417,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	c.markDefineMethods(dms)
 	c.loadPrelude(ctx, "prelude.rb")
-	c.loadLibs(ctx, libs, opts.allLibs || os.Getenv("RB2GO_ALL_LIBS") != "")
+	c.loadLibs(ctx, libs, opts.allLibs || c.env.AllLibs)
 	c.loadSigs(sources)
 	tick("prelude")
 	c.evalSites = map[string]bool{}
@@ -421,11 +425,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		if i == len(sources)-1 && opts.mainLast && opts.boot != nil { // load-time evals run before the program's main file (decision 204)
 			c.collectBootEvals(ctx, opts.boot.Evals)
 		}
-		path := src.Path
-		if path == "" {
-			path = src.Name
-		}
-		path = realPath(path)
+		path := realPath(sourceName(src))
 		if c.loaded[path] { // a file an earlier one require_relative'd: Ruby loads it once
 			continue
 		}
@@ -494,7 +494,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 			lazy[k.GoName] = true
 		}
 	}
-	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune)
+	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune, c.env)
 	tick("format")
 	opts.warnings = c.Warnings // the tail's bodies warn too
 	if errors.Is(ferr, errPruneIncomplete) {
@@ -675,15 +675,21 @@ func (c *Compiler) userRequireRelative(ctx context.Context, f *File, n *parser.C
 	if !ok {
 		c.errorf(f, n, "require_relative needs a string literal: rb2go loads files at compile time")
 	}
-	target := filepath.Join(filepath.Dir(f.path), filepath.FromSlash(str.Unescaped.Value))
-	if filepath.Ext(target) != ".rb" {
-		target += ".rb"
-	}
+	target := relativeTarget(f, str.Unescaped.Value)
 	src, err := c.readUser(target)
 	if err != nil {
 		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))
 	}
 	return c.loadUserFile(ctx, target, src)
+}
+
+// relativeTarget is the path `require_relative "name"` in user file f names: beside f, with `.rb` added.
+func relativeTarget(f *File, name string) string {
+	target := filepath.Join(filepath.Dir(f.path), filepath.FromSlash(name))
+	if filepath.Ext(target) != ".rb" {
+		target += ".rb"
+	}
+	return target
 }
 
 // userRequire loads the file a user file's top-level `require "x"` finds
@@ -850,7 +856,7 @@ func realPath(name string) string {
 
 // warn records a warning once, with its source position.
 func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
-	if c.gemFile(f) && os.Getenv("RB2GO_GEM_WARNINGS") == "" { // not the user's to act on: gem code is compiled leniently (decision 173)
+	if c.gemFile(f) && !c.env.GemWarnings { // not the user's to act on: gem code is compiled leniently (decision 173)
 		return
 	}
 	msg := fmt.Sprintf(format, args...)
@@ -893,8 +899,8 @@ func (c *Compiler) noteRespond(name string) {
 }
 
 // phaseTimer reports each phase's duration to stderr when RB2GO_TIMING is set: where a compile spends its time, natively or as wasm.
-func phaseTimer() func(string) {
-	if os.Getenv("RB2GO_TIMING") == "" {
+func phaseTimer(timing bool) func(string) {
+	if !timing {
 		return func(string) {}
 	}
 	last := time.Now()

@@ -733,11 +733,7 @@ func (f *fctx) patDeconstruct(pm *patMatch, p parser.Node, subj expr, needArray 
 		default:
 			f.errorf(p, "deconstruct must return an Array, not %s", s.typ)
 		}
-		if !isSimpleGo(s.code) {
-			tmp := f.newTmp()
-			f.emit("%s := %s", tmp, s.code)
-			s.code = tmp
-		}
+		s.code = f.pinSimple(s.code)
 		then(seq{arr: s, insp: func() string { return f.patInspect(p, s) }})
 	})
 }
@@ -780,11 +776,7 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 	}
 	// at run time: whatever the value's class answers
 	anyS := expr{code: f.coerce(p, subj, TAny{}), typ: TAny{}}
-	if !isSimpleGo(anyS.code) {
-		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, anyS.code)
-		anyS.code = tmp
-	}
+	anyS.code = f.pinSimple(anyS.code)
 	sym := &parser.SymbolNode{Location: p.GetLocation(), Unescaped: parser.RubyString{Value: method}}
 	resp := f.genDynRespondTo(p, anyS, []parser.Node{sym})
 	f.patIf(pm, "bool("+resp.code+")", noResp, func() { then(anyS) })
@@ -955,11 +947,7 @@ func (f *fctx) patDeconstructKeys(pm *patMatch, p parser.Node, subj expr, names 
 		default:
 			f.errorf(p, "deconstruct_keys must return a Hash, not %s", s.typ)
 		}
-		if !isSimpleGo(s.code) {
-			tmp := f.newTmp()
-			f.emit("%s := %s", tmp, s.code)
-			s.code = tmp
-		}
+		s.code = f.pinSimple(s.code)
 		then(kv{hash: s, matchee: func() string { return f.coerce(p, s, TAny{}) }})
 	})
 }

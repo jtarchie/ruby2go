@@ -178,8 +178,8 @@ func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		if err != nil || round == goPoisonRounds {
 			return out, append(warnings, opts.warnings...), err
 		}
-		if dump := os.Getenv("RB2GO_GOPOISON_DUMP"); dump != "" { // debugging: the Go before its rejected gem methods become stubs
-			_ = os.WriteFile(fmt.Sprintf("%s.%d", dump, round), out, 0o600) //nolint:gosec // a developer-chosen path, one per round
+		if dump := opts.env.GopoisonDump; dump != "" { // debugging: the Go before its rejected gem methods become stubs
+			_ = os.WriteFile(fmt.Sprintf("%s.%d", dump, round), out, 0o600)
 		}
 		bad := goTypeErrors(out) // nil when it does not parse: go build reports that, with the generated file kept
 		added := 0

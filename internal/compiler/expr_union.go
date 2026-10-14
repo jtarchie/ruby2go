@@ -284,8 +284,7 @@ func (f *fctx) unionArgCall(n parser.Node, recv expr, name string, args []parser
 		case *parser.SplatNode, *parser.KeywordHashNode, *parser.BlockArgumentNode, *parser.ForwardingArgumentsNode:
 			return expr{}, false
 		}
-		var t Type
-		f.probe(func() { t = f.genExpr(a, nil).typ })
+		t := f.probeType(a, nil)
 		if tu, ok := t.(TUnion); ok {
 			at, u = i, tu
 			break
@@ -390,11 +389,7 @@ func joinUnion(a, b Type) Type {
 func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	elem := recv.typ.(TOpt).Elem
 	f.warn(n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
-	code := recv.code
-	if !isSimpleGo(code) {
-		code = f.newTmp()
-		f.emit("%s := %s", code, recv.code)
-	}
+	code := f.pinSimple(recv.code)
 	f.emit("if %s == nil {", code)
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")

@@ -482,7 +482,6 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.leaveRubyBlock(saved, savedRuby)
 	f.buf = savedBuf
 	code := strings.TrimSpace(b.String())
-	// re-indent: the closure is embedded in an expression on the current line
 	return code
 }
 
@@ -692,8 +691,7 @@ func iterEnv(e *entry, recv expr) map[string]Type {
 // genFor is `for x in coll`: coll.each as a range loop whose variables and
 // body locals stay in the enclosing scope, since Ruby's for opens no block.
 func (f *fctx) genFor(n *parser.ForNode, t tail) {
-	var recvT Type
-	f.probe(func() { recvT = f.genExpr(n.Collection, nil).typ })
+	recvT := f.probeType(n.Collection, nil)
 	e := f.resolve(recvT, "each")
 	if e == nil || !e.M.Iterator {
 		f.errorf(n.Collection, "for needs a collection whose each is an iterator (Array, Range, Hash, Set, ...), not %s", recvT)
@@ -790,8 +788,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	f.popLoop()
 }
 
-// ---- yield / super / new / raise
-
+// genYield compiles `yield`: a direct call of the block, or a Proc call when the method's block is optional.
 func (f *fctx) genYield(n *parser.YieldNode) expr {
 	args := []parser.Node{}
 	if n.Arguments != nil {

@@ -112,7 +112,7 @@ type pendingConst struct {
 func (c *Compiler) pruneGemMethods() {
 	r := &reach{c: c, names: map[string]bool{}, consts: map[string]bool{}, aliases: map[string][]string{}, goNames: map[string][]string{},
 		named: map[*Class]bool{}, byName: map[string]bool{}, pending: map[string][]pendingConst{}, typed: map[string][]*Class{}}
-	debug := os.Getenv("RB2GO_PRUNE_DEBUG") != ""
+	debug := c.env.PruneDebug
 	if debug {
 		r.why = map[string]string{}
 	}

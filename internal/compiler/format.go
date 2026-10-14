@@ -80,7 +80,7 @@ func merge(f, t *ast.File) {
 }
 
 // formatGo prunes src to what main reaches (noPrune or RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
-func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string, noPrune bool) ([]byte, error) {
+func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string, noPrune bool, env envConfig) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
@@ -89,7 +89,7 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	all := func(string) bool { return true }
 	var p *pruner
 	reached, selected := all, all
-	if !noPrune && os.Getenv("RB2GO_NO_PRUNE") == "" {
+	if !noPrune && !env.NoPrune {
 		p = newPruner(lazy)
 		p.add(f.Decls)
 		p.run()
@@ -115,7 +115,7 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	}
 	if p != nil {
 		p.sweep(f)
-		if os.Getenv("RB2GO_PRUNE_WHY") != "" {
+		if env.PruneWhy {
 			p.explain(f, os.Stderr)
 		}
 	}
@@ -123,15 +123,7 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	if err != nil {
 		return nil, err
 	}
-	used := map[string]bool{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		if sel, ok := n.(*ast.SelectorExpr); ok {
-			if id, ok := sel.X.(*ast.Ident); ok && id.Obj == nil && stdImports[id.Name] != "" {
-				used[stdImports[id.Name]] = true
-			}
-		}
-		return true
-	})
+	used := usedStdImports([]ast.Node{f})
 	var buf bytes.Buffer
 	err = format.Node(&buf, fset, f)
 	if err != nil {
@@ -151,6 +143,23 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	pkg := bytes.Index(out, []byte("package "+f.Name.Name+"\n"))
 	at := pkg + len("package "+f.Name.Name+"\n")
 	return slices.Concat(out[:at], []byte(imp.String()), out[at:]), nil
+}
+
+// usedStdImports is the import path of every std package a selector in nodes names (`strings.Join`: an Ident with no
+// local Obj that stdImports knows).
+func usedStdImports[N ast.Node](nodes []N) map[string]bool {
+	used := map[string]bool{}
+	for _, d := range nodes {
+		ast.Inspect(d, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				if id, ok := sel.X.(*ast.Ident); ok && id.Obj == nil && stdImports[id.Name] != "" {
+					used[stdImports[id.Name]] = true
+				}
+			}
+			return true
+		})
+	}
+	return used
 }
 
 // tidyBraces drops the blank line pruning leaves after `{` (a dropped first type-switch case) or before `}` (a switch shortened inside its block); the scanner keeps braces inside literals out of it.

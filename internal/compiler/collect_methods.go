@@ -274,8 +274,6 @@ func (c *Compiler) collectTopDef(f *File, n *parser.DefNode) {
 	c.addMethod(f, nil, n, false, nil)
 }
 
-// defParams reads a def's parameter list: positional names, their literal
-// defaults, the rest parameter, and the &block parameter's name.
 // defKeyword is a def's keyword parameter (`a:`, `b: 1`) or its `**opts` (rest).
 type defKeyword struct {
 	name string
@@ -313,6 +311,8 @@ func (c *Compiler) defKeywords(m *Method, ps *parser.ParametersNode) []defKeywor
 	return out
 }
 
+// defParams reads a def's parameter list: positional names, their literal
+// defaults, the rest parameter, and the &block parameter's name.
 func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []string, defaults []parser.Node, rest string) {
 	if ps == nil {
 		return nil, nil, ""
@@ -420,9 +420,6 @@ func singletonAlias(n *parser.CallNode) *parser.CallNode {
 	return &parser.CallNode{Location: n.Location, Name: "alias_method", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: args}}
 }
 
-// aliasNew is a class's `alias_method :[], :new` on its synthesized new: a class method forwarding initialize's
-// required parameters to new (`Node[value, next]`); an initialize taking any other kind of parameter keeps the plain
-// alias (decision 253).
 // aliasNewReq is a class's `alias_method :x, :new` waiting for its synthesized new.
 type aliasNewReq struct {
 	d singletonMisc
@@ -438,6 +435,9 @@ func (c *Compiler) applyAliasNews(ctx context.Context) {
 	}
 }
 
+// aliasNew is a class's `alias_method :[], :new` on its synthesized new: a class method forwarding initialize's
+// required parameters to new (`Node[value, next]`); an initialize taking any other kind of parameter keeps the plain
+// alias (decision 253).
 func (c *Compiler) aliasNew(ctx context.Context, d singletonMisc, m *Class, n *parser.CallNode) {
 	args := callArgs(n)
 	newName, ok := args[0].(*parser.SymbolNode)

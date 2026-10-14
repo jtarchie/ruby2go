@@ -388,7 +388,6 @@ func (f *fctx) genIvarsEval(b *parser.BlockNode, recv expr) (expr, bool) {
 	return last, true
 }
 
-// unionToAnn converts, rather than relabels, a union value written to an annotated ivar: a union is Go any.
 // annotatedIvarValue is `@x = v #: T` (or T.let): v as T, and T as the ivar's declared type.
 func (f *fctx) annotatedIvarValue(n parser.Node, val expr, ann Type) (expr, Type) {
 	ann = adoptBind(ann, val.typ)
@@ -415,6 +414,7 @@ func (f *fctx) annotatedIvarValue(n parser.Node, val expr, ann Type) (expr, Type
 	return val, ann // `@x = [] #: Array[T]` declares the ivar's type
 }
 
+// unionToAnn converts, rather than relabels, a union value written to an annotated ivar: a union is Go any.
 func (f *fctx) unionToAnn(n parser.Node, val expr, ann Type) expr {
 	if isUnion(val.typ) && !isUnion(ann) {
 		return expr{code: f.coerce(n, val, ann), typ: ann}

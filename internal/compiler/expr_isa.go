@@ -54,7 +54,7 @@ func (f *fctx) unionIsA(n parser.Node, recv expr, u TUnion, cls *Class) string {
 			tests = append(tests, f.c.goType(m))
 			continue
 		case mc != nil && !cls.IsModule && cls.isSubclassOf(mc):
-			tests = append(tests, f.isAGoType(cls))
+			tests = append(tests, f.c.isAGoType(cls))
 		case mc != nil && cls.IsModule && mc.includedBelow(cls):
 			f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", cls.RubyName, m)
 		}
@@ -66,11 +66,7 @@ func (f *fctx) unionIsA(n parser.Node, recv expr, u TUnion, cls *Class) string {
 	case len(tests) == 0:
 		return "false"
 	}
-	code := recv.code
-	if !isSimpleGo(code) {
-		code = f.newTmp()
-		f.emit("%s := %s", code, recv.code)
-	}
+	code := f.pinSimple(recv.code)
 	parts := make([]string, 0, len(tests))
 	for _, g := range slices.Compact(tests) {
 		parts = append(parts, "rbIsA["+g+"]("+code+")")
@@ -87,11 +83,7 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	}
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
-		if !isSimpleGo(recv.code) {
-			tmp := f.newTmp()
-			f.emit("%s := %s", tmp, recv.code)
-			recv.code = tmp
-		}
+		recv.code = f.pinSimple(recv.code)
 		inner := f.isA(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, cls)
 		return "(" + recv.code + " != nil && " + inner + ")"
 	}
@@ -131,7 +123,7 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	case TTuple:
 		return strconv.FormatBool(cls.RubyName == "Array")
 	case TAny, TVar: // a generic T is some value known at run time, as untyped is (Self was resolved above)
-		return "rbIsA[" + f.isAGoType(cls) + "](" + recv.code + ")"
+		return "rbIsA[" + f.c.isAGoType(cls) + "](" + recv.code + ")"
 	case TVoid: // a void call's value is nil
 		f.voidAsNil(recv)
 		return "false"
@@ -208,8 +200,6 @@ func unionMarkerIsA(code string, u TUnion, name string) (string, bool) {
 }
 
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
-func (f *fctx) isAGoType(cls *Class) string { return f.c.isAGoType(cls) }
-
 func (c *Compiler) isAGoType(cls *Class) string {
 	if len(cls.TypeParams) > 0 {
 		return cls.Name + "_Any"

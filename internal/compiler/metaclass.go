@@ -4,8 +4,6 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// ---- metaclasses
-
 // buildMetas gives every struct class, and every class or module with
 // `def self.` methods, a metaclass: a struct class whose methods are the
 // class methods, whose superclass is the parent's metaclass (so class

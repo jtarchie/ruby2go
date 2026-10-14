@@ -53,15 +53,13 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src, Rest: sig.Rest}}
 }
 
-// blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
 // selfProcArg passes `&p` straight on when p is a Proc whose self is rebound and the block wanted rebinds the same
 // self (decision 164): its Go func already takes self first, and wrapping it in a lexical call cannot.
 func (f *fctx) selfProcArg(b *parser.BlockArgumentNode, self Type) (string, bool) {
 	if self == nil {
 		return "", false
 	}
-	var pt Type
-	f.probe(func() { pt = f.genExpr(b.Expression, nil).typ })
+	pt := f.probeType(b.Expression, nil)
 	o, isOpt := pt.(TOpt)
 	if isOpt {
 		pt = o.Elem
@@ -77,6 +75,7 @@ func (f *fctx) selfProcArg(b *parser.BlockArgumentNode, self Type) (string, bool
 	return "(*" + p.code + ")", true
 }
 
+// blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.
 func (f *fctx) blockArgBlock(b *parser.BlockArgumentNode, nparams int) *parser.BlockNode {
 	if mb := f.methodRefBlock(b, nparams); mb != nil {
 		return mb
@@ -90,8 +89,7 @@ func (f *fctx) blockArgBlock(b *parser.BlockArgumentNode, nparams int) *parser.B
 
 // procBlock desugars `&f` for a Proc f to `{ |x_0, ...| f.call(x_0, ...) }`, or nil when f is not a Proc.
 func (f *fctx) procBlock(ba *parser.BlockArgumentNode) *parser.BlockNode {
-	var pt Type
-	f.probe(func() { pt = f.genExpr(ba.Expression, nil).typ })
+	pt := f.probeType(ba.Expression, nil)
 	if tc, ok := pt.(TClass); ok && tc.C.RubyName == yielderClass {
 		return yielderBlock(ba)
 	}

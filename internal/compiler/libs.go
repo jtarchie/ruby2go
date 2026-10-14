@@ -104,7 +104,7 @@ func gemRequires(ctx context.Context, sources []Source, loadPath []string) (name
 	if err != nil {
 		return nil, fmt.Errorf("prism: %w", err)
 	}
-	c := &Compiler{parser: p, loadPath: loadPath}
+	c := &Compiler{parser: p, loadPath: loadPath, env: loadEnv()}
 	libs, _, err := c.scanRequires(ctx, sources)
 	if c.methodRequiresRuntime {
 		return nil, err // decision 197: the traced entry names every library through -I; nothing to look up
@@ -129,11 +129,7 @@ func gemRequires(ctx context.Context, sources []Source, loadPath []string) (name
 func (c *Compiler) scanRequires(ctx context.Context, sources []Source) (libs []string, parsed map[string]*File, err error) {
 	sc := &requireScan{c: c, ctx: ctx, parsed: map[string]*File{}, seen: map[string]bool{}, top: true}
 	for _, src := range sources {
-		path := src.Path
-		if path == "" {
-			path = src.Name
-		}
-		path = realPath(path)
+		path := realPath(sourceName(src))
 		if sc.seen[path] {
 			continue
 		}
@@ -219,10 +215,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 	name := str.Unescaped.Value
 	var target string
 	if call.Name == "require_relative" {
-		target = filepath.Join(filepath.Dir(f.path), filepath.FromSlash(name))
-		if filepath.Ext(target) != ".rb" {
-			target += ".rb"
-		}
+		target = relativeTarget(f, name)
 	} else if target = sc.c.findRequire(f, call); target == "" {
 		sc.lib(name)
 		return
@@ -280,10 +273,7 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 	name := str.Unescaped.Value
 	var target string
 	if n.Name == "require_relative" {
-		target = filepath.Join(filepath.Dir(f.f.path), filepath.FromSlash(name))
-		if filepath.Ext(target) != ".rb" {
-			target += ".rb"
-		}
+		target = relativeTarget(f.f, name)
 	} else {
 		target = f.c.findRequire(f.f, n)
 	}

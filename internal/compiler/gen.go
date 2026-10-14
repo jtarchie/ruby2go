@@ -115,8 +115,8 @@ func (f *fctx) pushLoop(kind loopKind) {
 // first time the statement runs only, as MRI's.
 func (f *fctx) genEnd(n *parser.PostExecutionNode) {
 	guard := fmt.Sprintf("rbEnd%d", n.Location.StartOffset)
-	if !slices.Contains(f.c.regexps, "var "+guard+" bool") {
-		f.c.regexps = append(f.c.regexps, "var "+guard+" bool")
+	if !slices.Contains(f.c.pkgVars, "var "+guard+" bool") {
+		f.c.pkgVars = append(f.c.pkgVars, "var "+guard+" bool")
 	}
 	call := f.c.rewrite(n, func() parser.Node {
 		blk := &parser.BlockNode{Location: n.Location, Body: n.Statements}
@@ -426,6 +426,13 @@ func (f *fctx) probe(fn func()) {
 		}
 	}()
 	fn()
+}
+
+// probeType is the type n compiles to, without emitting it.
+func (f *fctx) probeType(n parser.Node, expected Type) Type {
+	var t Type
+	f.probe(func() { t = f.genExpr(n, expected).typ })
+	return t
 }
 
 // ---- tails
@@ -1608,8 +1615,7 @@ func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
 		// not isACheck: its discard of a folded subject would land in the previous arm's body
 		return f.isA(cond, subj, cls)
 	}
-	var condT Type
-	f.probe(func() { condT = f.genExpr(cond, subj.typ).typ })
+	condT := f.probeType(cond, subj.typ)
 	c := classOf(stripOpt(condT))
 	if !isAny(condT) && (c == nil || c.lookup("===") == nil) {
 		return "bool(" + f.genMethodCall(cond, subj, "==", []parser.Node{cond}, nil).code + ")"

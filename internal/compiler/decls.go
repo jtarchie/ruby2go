@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"maps"
-	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -429,7 +428,7 @@ func (c *Compiler) tableInputs() [12]int {
 		}
 		return 0
 	}
-	return [12]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt), b2i(c.needRequireTable)}
+	return [12]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.pkgVars), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt), b2i(c.needRequireTable)}
 }
 
 // emitTables: what every emitted body has contributed to.
@@ -455,7 +454,7 @@ func (c *Compiler) emitTables() {
 	if c.needRxAlt { // a pattern RE2 rejects, or one built at run time from what may hold one (decision 242)
 		c.w("%s\n\nvar _ = rxAltReady\n\n", strings.TrimSpace(rxAltGo()))
 	}
-	for _, r := range c.regexps {
+	for _, r := range c.pkgVars {
 		if c.needRxAlt { // a pattern variable initializes after the engine registers, not before (Go's dependency order)
 			r = strings.Replace(r, " = rbRegexpNew(", " = rbRegexpNewAfter(rxAltReady, ", 1)
 		}
@@ -1923,7 +1922,7 @@ func (c *Compiler) constFctx(k *Const) *fctx {
 // constType is the type of constant k: its `#: T` annotation, or else the
 // type of its initializer.
 func (c *Compiler) constType(k *Const) (typ Type) {
-	if os.Getenv("RB2GO_KEEP_GOING") != "" && c.anonDepth == 0 {
+	if c.env.KeepGoing && c.anonDepth == 0 {
 		defer func() {
 			if r := recover(); r != nil {
 				ce, ok := r.(compileError)

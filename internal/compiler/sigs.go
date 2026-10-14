@@ -20,11 +20,7 @@ import (
 func (c *Compiler) loadSigs(sources []Source) {
 	seen := map[string]bool{}
 	for _, src := range sources {
-		p := src.Path
-		if p == "" {
-			p = src.Name
-		}
-		dir := filepath.Join(filepath.Dir(p), "sig")
+		dir := filepath.Join(filepath.Dir(sourceName(src)), "sig")
 		if seen[dir] {
 			continue
 		}

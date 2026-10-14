@@ -420,8 +420,7 @@ func (f *fctx) noteElem(open *bool, elems *[]Type, args ...parser.Node) {
 			*open = false
 			return
 		}
-		var t Type
-		f.probe(func() { t = f.genExpr(a, nil).typ })
+		t := f.probeType(a, nil)
 		*elems = append(*elems, t)
 	}
 }
@@ -454,8 +453,7 @@ func (f *fctx) parseTypeAnn(n parser.Node, s string) Type {
 	return f.c.resolveType(t, typeScope{class: f.owner, lex: f.lex, methodTPs: tps, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
 }
 
-// ---- strings
-
+// genInterp compiles an interpolated string (`"a#{b}"`) to a Go string concatenation of its parts.
 func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
 	parts := f.interpParts(n.Parts, nil)
 	if len(parts) == 0 {
@@ -518,8 +516,6 @@ func pinnable(code string) bool {
 	}
 	return true
 }
-
-// ---- coercion
 
 // valueOf runs a nil-typed call as a statement: `-> nil` methods have no Go result (isVoid).
 func (f *fctx) valueOf(e expr) expr {
@@ -588,6 +584,16 @@ var simpleGo = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|\(\*[A-Za-z_][A-Za
 
 // isSimpleGo reports whether code can be evaluated twice without effects.
 func isSimpleGo(code string) bool { return simpleGo.MatchString(code) }
+
+// pinSimple returns code itself when it can be evaluated twice, else the temp it was just stored in.
+func (f *fctx) pinSimple(code string) string {
+	if !isSimpleGo(code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, code)
+		code = tmp
+	}
+	return code
+}
 
 // discard evaluates e for its effects where a fold drops its value. It
 // discards simple code too: readLocal already counted a local's read, so

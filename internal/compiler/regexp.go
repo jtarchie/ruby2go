@@ -142,9 +142,9 @@ func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
 	args := fmt.Sprintf("%s, %s, %q", strconv.Quote(flags.goPrefix()+goPat), strconv.Quote(src), flags.opts())
 	name, ok := f.c.regexpVars[args]
 	if !ok {
-		name = fmt.Sprintf("rbRe%d", len(f.c.regexps))
+		name = fmt.Sprintf("rbRe%d", len(f.c.pkgVars))
 		f.c.regexpVars[args] = name
-		f.c.regexps = append(f.c.regexps, "var "+name+" = rbRegexpNew("+args+")")
+		f.c.pkgVars = append(f.c.pkgVars, "var "+name+" = rbRegexpNew("+args+")")
 	}
 	return expr{code: name, typ: f.cls("Regexp")}
 }
@@ -217,8 +217,8 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 		// /o interpolates on first evaluation and keeps that Regexp. Not
 		// sync.Once: a raise (RegexpError) must leave it unset to retry, as
 		// MRI does; the lock is because threads are goroutines.
-		name := fmt.Sprintf("rbRe%d", len(f.c.regexps))
-		f.c.regexps = append(f.c.regexps, "var "+name+" struct {\n\tsync.Mutex\n\tre *Regexp\n}")
+		name := fmt.Sprintf("rbRe%d", len(f.c.pkgVars))
+		f.c.pkgVars = append(f.c.pkgVars, "var "+name+" struct {\n\tsync.Mutex\n\tre *Regexp\n}")
 		code = fmt.Sprintf("func() *Regexp {\n%[1]s.Lock()\ndefer %[1]s.Unlock()\nif %[1]s.re == nil {\n%[1]s.re = %[2]s\n}\nreturn %[1]s.re\n}()", name, code)
 	}
 	return expr{code: code, typ: f.cls("Regexp")}
