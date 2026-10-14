@@ -844,7 +844,7 @@ class Array < Object
         return c
       }
     }
-    return Integer(len(self.s) - len(other.s))
+    return Integer(cmp.Compare(len(self.s), len(other.s)))
   }
 
   # The untyped view (rbView, prelude/go/view.go): five one-line accessors per element type, so a dynamic call of a

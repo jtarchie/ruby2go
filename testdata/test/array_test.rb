@@ -2518,4 +2518,17 @@ module ArrayTests
       assert_equal ["--t", "c", "a", "b", "x"], a
     end
   end
+
+  # Array#<=> is -1/0/1, never the length difference.
+  class ArrayCmpSignTest < Minitest::Test
+    def test_cmp_is_a_sign
+      a = [] #: Array[Integer]
+      b = [1] #: Array[Integer]
+      c = [1, 2] #: Array[Integer]
+      d = [1, 2, 3] #: Array[Integer]
+      e = [2] #: Array[Integer]
+      got = [a <=> a, a <=> b, b <=> a, d <=> b, b <=> d, d <=> a, a <=> d, c <=> d, d <=> c, c <=> e, e <=> d, d <=> d]
+      assert_equal [0, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, 0], got
+    end
+  end
 end

@@ -142,10 +142,10 @@ class Range < Object
   def cover?(v) = %x{ Boolean(rbRangeCover(self, v)) }
 
   #: (E) -> bool
-  def include?(v) = %x{ Boolean(rbRangeCover(self, v)) }
+  def include?(v) = %x{ Boolean(rbRangeInclude(self, v)) }
 
   #: (E) -> bool
-  def member?(v) = %x{ Boolean(rbRangeCover(self, v)) }
+  def member?(v) = %x{ Boolean(rbRangeInclude(self, v)) }
 
   # case/when: an incomparable value (another class, nil) is simply not covered.
   #: (untyped) -> bool
@@ -281,11 +281,21 @@ class Range < Object
   #: (untyped) -> bool
   def ==(other) = %x{
     o, ok := other.(*Range[E])
-    return Boolean(ok && o.excl == self.excl && o.endless == self.endless && o.beginless == self.beginless && o.inf == self.inf && rbKeyEql(o.b, self.b) && rbKeyEql(o.e, self.e))
+    if !ok {
+      // Another instantiation ((1..2) == (1.0..2.0)): compare the untyped views.
+      if a, ok := other.(Range_Any); ok {
+        return self._ToAny().Op_eq(a._ToAny())
+      }
+      return false
+    }
+    return Boolean(o.excl == self.excl && o.endless == self.endless && o.beginless == self.beginless && o.inf == self.inf && bool(rbEq(o.b, self.b)) && bool(rbEq(o.e, self.e)))
   }
 
   #: (untyped) -> bool
-  def eql?(other) = self == other
+  def eql?(other) = %x{
+    o, ok := other.(*Range[E])
+    return Boolean(ok && o.excl == self.excl && o.endless == self.endless && o.beginless == self.beginless && o.inf == self.inf && rbKeyEql(o.b, self.b) && rbKeyEql(o.e, self.e))
+  }
 
   #: () -> Integer
   def hash = %x{

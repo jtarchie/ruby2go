@@ -214,11 +214,10 @@ class Hash < Object
     return fallback
   }
 
-  # A new hash with other's pairs laid over this one's.
+  # Starts from dup so default/default_proc survive, as MRI's.
   #: (Hash[K, V]) -> Hash[K, V]
   def merge(other)
-    out = {} #: Hash[K, V]
-    each { |k, v| out[k] = v }
+    out = dup
     other.each { |k, v| out[k] = v }
     out
   end
@@ -328,8 +327,9 @@ class Hash < Object
     out
   end
 
+  # Self as MRI's; a subclass answers its embedded Hash (decision 165).
   #: () -> Hash[K, V]
-  def to_h = merge({})
+  def to_h = self
 
   # A hash pattern's view of the Hash: itself, whatever keys it asks for, as MRI's (decision 143).
   #: (Array[Symbol]?) -> Hash[K, V]
@@ -399,10 +399,7 @@ class Hash < Object
   # The block resolves a key both hashes hold: (key, old, new) -> value.
   #: (Hash[K, V]) { (K, V, V) -> V } -> Hash[K, V]
   def __merge_block(other) = %x{
-    out := NewHash[K, V]()
-    for _, k := range self.keys {
-      Hash_Op_idxSet(out, k, self.vals[k])
-    }
+    out := Hash_Dup[K, V](self)
     for _, k := range other.keys {
       if old, ok := out.vals[k]; ok {
         Hash_Op_idxSet(out, k, blk(k, old, other.vals[k]))
@@ -671,6 +668,10 @@ class Hash < Object
 
   #: () -> untyped
   def _make = %x{ return NewHash[K, V]() }
+
+  # dup with the default and default_proc, for a dynamic merge.
+  #: () -> untyped
+  def _dup = dup
 
   #: () -> Hash[untyped, untyped]
   def _to_any = %x{

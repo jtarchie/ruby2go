@@ -2122,4 +2122,70 @@ module HashTests
       assert_equal [1, 1, 10, 2], [h.fetch(:b) { |k| k.to_s.size }, h.fetch(:a) { 0 }, [1, 2].fetch(5) { |i| i * 2 }, [1, 2].fetch(-1) { 0 }]
     end
   end
+
+  # merge starts from a dup, so default/default_proc survive; to_h is self.
+  class HashMergeDefaultTest < Minitest::Test
+    def test_merge_keeps_default_value
+      h = Hash.new(5) #: Hash[Symbol, Integer]
+      h[:a] = 1
+      m = h.merge({ b: 2 })
+      assert_equal [5, 2, 1, 2], [m[:zz], m[:b], m[:a], m.size]
+      assert_equal 5, m.default
+    end
+
+    def test_merge_keeps_default_proc
+      h = Hash.new { |_, k| k.to_s.size } #: Hash[Symbol, Integer]
+      m = h.merge({ a: 1 })
+      assert_equal [3, 1], [m[:zzz], m[:a]]
+    end
+
+    def test_merge_with_block_keeps_default
+      h = Hash.new(5) #: Hash[Symbol, Integer]
+      h[:a] = 1
+      m = h.merge({ a: 10 }) { |_, x, y| x + y }
+      assert_equal [11, 5], [m[:a], m[:zz]]
+    end
+
+    def test_merge_untyped_keeps_default
+      h = Hash.new(5) #: untyped
+      h[:a] = 1
+      assert_equal 5, h.merge({ b: 2 })[:zz]
+    end
+
+    def test_merge_result_is_unfrozen_and_distinct
+      h = Hash.new(5) #: Hash[Symbol, Integer]
+      h[:a] = 1
+      h.freeze
+      m = h.merge({})
+      assert_equal [false, false, 5], [m.frozen?, m.equal?(h), m[:q]]
+    end
+
+    def test_update_keeps_default
+      h = Hash.new(5) #: Hash[Symbol, Integer]
+      h.update({ a: 1 })
+      h.merge!({ b: 2 })
+      assert_equal [5, 2], [h[:zz], h.size]
+    end
+
+    def test_to_h_is_self
+      h = Hash.new(5) #: Hash[Symbol, Integer]
+      h[:a] = 1
+      assert_same h, h.to_h
+      h.freeze
+      assert_same h, h.to_h
+      u = h #: untyped
+      assert_same h, u.to_h
+    end
+
+    def test_subclass_to_h_is_a_plain_hash_copy
+      s = HashToHSub.new
+      s.default = 7
+      s[:a] = 1
+      t = s.to_h
+      assert_equal [Hash, false, { a: 1 }], [t.class, t.equal?(s), t]
+    end
+  end
+
+  class HashToHSub < Hash
+  end
 end

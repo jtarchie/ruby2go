@@ -28,6 +28,7 @@ type rbHashView interface {
 	_Store(k, v any)
 	_Delete(k any)
 	_Make() any
+	_Dup() any
 	rbCheckFrozen()
 }
 
@@ -417,11 +418,7 @@ func rbHashViewKeys(s rbHashView) []any {
 }
 
 func rbHashViewCopy(s rbHashView) rbHashView {
-	out := s._Make().(rbHashView)
-	for _, k := range rbHashViewKeys(s) {
-		out._Store(k, s._Get(k))
-	}
-	return out
+	return s._Dup().(rbHashView)
 }
 
 // rbHashViewCall answers a dynamic call of name on a Hash's view, or false when name is not one of its names.

@@ -152,6 +152,28 @@ func rbRangeIntSum(b, e Integer) Integer {
 	return Integer(s.Int64())
 }
 
+// rbRangeInclude is Range#include?: cover? for numbers, but String ranges iterate (MRI's rb_str_include_range_p), so ("a".."z") holds "b" and not "bb".
+func rbRangeInclude[E comparable](r *Range[E], v E) bool {
+	b, bok := any(r.b).(String)
+	e, eok := any(r.e).(String)
+	if !bok && !eok {
+		return rbRangeCover(r, v)
+	}
+	if r.beginless || r.endless {
+		panic(NewTypeError(Ref(String("cannot determine inclusion in beginless/endless ranges"))))
+	}
+	vs, ok := rbUnbox(any(v)).(String)
+	if !ok || len(vs) > len(e) || len(vs) < len(b) {
+		return false
+	}
+	found := false
+	rbStrUpto(string(b), string(e), r.excl, false, func(s string) bool {
+		found = s == string(vs)
+		return !found
+	})
+	return found
+}
+
 // rbRangeIntCount is the number of integers in b..e; one past MaxInt is MRI's Bignum, so a RangeError (decision 35).
 func rbRangeIntCount(b, e Integer, excl bool) Integer {
 	if excl {
