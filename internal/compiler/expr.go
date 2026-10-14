@@ -4250,6 +4250,10 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	defer func() { f.begins, f.retVar, f.wrap = savedBegins, savedRetVar, savedWrap }()
 	// probe the body's type if the block return has unbound vars
 	ret := closed(sig.Ret, env)
+	nilAcc := "" // `reduce(nil) { |acc, x| ... }`: A bound by a nil argument alone is what the block returns, or nil
+	if tv, ok := sig.Ret.(TVar); ok && ret != nil && isNil(ret) {
+		nilAcc, ret = tv.Name, nil
+	}
 	if ret == nil {
 		var types []Type
 		f.probe(func() {
@@ -4266,26 +4270,8 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
 		})
-		got := f.joinAll(n, types)
-		if got == nil || isNil(got) {
-			got = TNil{}
-			if _, ok := sig.Ret.(TVar); ok {
-				got = TAny{} // Go has no nil type
-			}
-		}
-		// the probe typed `[k, v]` without the tuple it is wanted as: a
-		// same-typed pair reads as Array[X], which the real pass builds as [X, X]
-		if tt, ok := sig.Ret.(TTuple); ok {
-			if ga, ok := got.(TClass); ok && ga.C.RubyName == "Array" && len(ga.Args) == 1 {
-				elems := make([]Type, len(tt.Elems))
-				for i := range elems {
-					elems[i] = ga.Args[0]
-				}
-				got = TTuple{Elems: elems}
-			}
-		}
-		if !unify(sig.Ret, got, env) && !f.lenientBlockRet(sig.Ret, got, env) {
-			f.errorf(n, "block returns %s, expected %s", got, subst(sig.Ret, env))
+		if f.bindBlockRet(n, sig, env, f.joinAll(n, types), nilAcc) {
+			params = substAll(sig.Params, env) // the accumulator param is that type too
 		}
 		ret = subst(sig.Ret, env)
 	}
@@ -5076,7 +5062,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			break
 		}
 		switch {
-		case cls == nil && f.lenient() && len(args) == 2 && f.raiseObject(args[0]) == nil: // `raise klass, msg` with klass held untyped (decision 233)
+		case cls == nil && f.dynRaise() && len(args) == 2 && f.raiseObject(args[0]) == nil: // `raise klass, msg` with klass held untyped (decision 233; the prelude's Thread#raise)
 			f.c.noteDyn("new")
 			k := f.genExpr(args[0], nil)
 			msg := f.genExpr(args[1], f.cls("String"))
@@ -5136,7 +5122,7 @@ func (f *fctx) raiseOne(n, arg parser.Node, exc *Class) expr {
 	if isNil(a.typ) && f.pass < 2 { // `e = nil; ...; e = err`: pass 1 reads the local before its later writes widen it (decision 241)
 		return expr{code: "nil", typ: TClass{C: exc}}
 	}
-	if (isAny(a.typ) || isUnion(a.typ)) && f.lenient() { // an untyped (or mixed) class, message or exception, decided at run time (decision 233)
+	if (isAny(a.typ) || isUnion(a.typ)) && f.dynRaise() { // an untyped (or mixed) class, message or exception, decided at run time (decision 233)
 		f.c.noteDyn("new")
 		return expr{code: "rbRaiseValue(" + f.coerce(arg, a, TAny{}) + ", nil)", typ: TClass{C: exc}}
 	}
@@ -8004,7 +7990,7 @@ func (f *fctx) anySpread(args []parser.Node) (string, bool) {
 		flush()
 		e := f.genExpr(sp.Expression, nil)
 		if ac, ok := e.typ.(TClass); ok && ac.C.RubyName == "Array" && len(ac.Args) == 1 {
-			if isAny(ac.Args[0]) {
+			if isAny(ac.Args[0]) || f.c.goType(ac.Args[0]) == "any" { // a union element is already Array[any] in Go
 				parts = append(parts, "("+e.code+").s")
 			} else {
 				parts = append(parts, "("+e.code+")._ToAny().s")
@@ -9299,6 +9285,11 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 		if e.code == "nil" { // `@x = T.let(nil, T.nilable(X))` into a non-nil slot: its zero value, read before set
 			return "rbZero[" + f.c.goType(to) + "]()", true
 		}
+		if oc, ok := o.Elem.(TClass); ok && oc.C == to.C && oc.C.isStruct() {
+			// an object's interface holds nil as MRI's variable does, and gem truthiness tests it (decision 257): concurrent-ruby's
+			// `reduce(nil) { |d, f| add_delayed d, ... }` passes its nil accumulator on
+			return "rbDerefOrNil(" + e.code + ")", true
+		}
 		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
 	}
 	if isNil(e.typ) && to.C.RubyName == "Boolean" { // a gem's predicate falling off with nil: false where a bool is kept (decision 233)
@@ -9858,4 +9849,39 @@ func (f *fctx) lenientSplat(a expr) expr {
 		return a
 	}
 	return expr{code: "(&Array[any]{s: rbSplatAny(" + a.code + ")})", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
+}
+
+// dynRaise: an untyped class or message is raised as decided at run time, in gem code (decision 233) and the
+// prelude's Thread#raise (decision 257).
+func (f *fctx) dynRaise() bool { return f.lenient() || f.f.prelude }
+
+// bindBlockRet binds sig's return variables from got, the probed block's type; true when a nil-bound accumulator
+// (nilAcc, `reduce(nil)`) took it, so the block's params change too (decision 257).
+func (f *fctx) bindBlockRet(n parser.Node, sig *BlockSig, env map[string]Type, got Type, nilAcc string) bool {
+	if got == nil || isNil(got) {
+		got = TNil{}
+		if _, ok := sig.Ret.(TVar); ok {
+			got = TAny{} // Go has no nil type
+		}
+	}
+	// the probe typed `[k, v]` without the tuple it is wanted as: a
+	// same-typed pair reads as Array[X], which the real pass builds as [X, X]
+	if tt, ok := sig.Ret.(TTuple); ok {
+		if ga, ok := got.(TClass); ok && ga.C.RubyName == "Array" && len(ga.Args) == 1 {
+			elems := make([]Type, len(tt.Elems))
+			for i := range elems {
+				elems[i] = ga.Args[0]
+			}
+			got = TTuple{Elems: elems}
+		}
+	}
+	if nilAcc != "" {
+		if j, ok := join(TNil{}, got); ok && !isNil(j) {
+			env[nilAcc] = j
+			return true
+		}
+	} else if !unify(sig.Ret, got, env) && !f.lenientBlockRet(sig.Ret, got, env) {
+		f.errorf(n, "block returns %s, expected %s", got, subst(sig.Ret, env))
+	}
+	return false
 }

@@ -247,3 +247,22 @@ module DemoCurl
     system_command("curl", "-s", **command_options)
   end
 end
+
+# Homebrew's SystemCommand: an IO attr_writer's ivar left nil is tested at run time (`if (inheritance =
+# @sandbox_inheritance)`), and a local Hash merged with an Integer key widens (decision 257).
+class DemoSandboxCmd
+  extend T::Sig
+
+  sig { params(sandbox_inheritance: IO).returns(IO) }
+  attr_writer :sandbox_inheritance
+
+  def initialize = @sandbox_inheritance = T.let(nil, T.nilable(IO))
+
+  def options
+    opts = { in: 0 }
+    if (inheritance = @sandbox_inheritance)
+      opts = opts.merge(198 => inheritance)
+    end
+    opts.keys
+  end
+end

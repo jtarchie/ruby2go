@@ -64,7 +64,7 @@ type fctx struct {
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
-	branchLenient  bool   // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
+	branchLenient  bool            // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
 	retTok         string          // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
 	rescues        int             // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
@@ -1052,6 +1052,13 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 	}
 	if iv, ok := n.(*parser.InstanceVariableReadNode); ok && f.scope.lookup("ivar:"+iv.Name) != nil {
 		return "true" // narrowed (decision 148): the check is the program's, not a mistake
+	}
+	if f.lenient() {
+		// a gem's object may hold nil its type does not say (Homebrew's `if (inheritance = @sandbox_inheritance)`, an IO
+		// attr_writer's ivar never set): tested at run time, where Go can compare it to nil (decision 257)
+		if c, ok := e.typ.(TClass); ok && (c.C.isStruct() && c.C.metaOf == nil && !c.C.universal || strings.HasPrefix(f.c.goType(e.typ), "*")) {
+			return "(" + e.code + ") != nil"
+		}
 	}
 	if !f.c.gemFile(f.f) {
 		f.c.Warnings = append(f.c.Warnings, fmt.Sprintf("%s:%d: condition of type %s is always true", f.f.Name, f.f.line(n.GetLocation().StartOffset), e.typ))
@@ -2407,12 +2414,7 @@ func (f *fctx) widenParam(name string, info *localInfo, existing *local, val exp
 	// (`level = :FATAL; level = const_get(level)`): an unsigned param takes it untyped
 	// a Hash[untyped, V] into a Hash[Symbol, V] param fits by a converted copy, which fails on another key (exec3's
 	// `options = options.merge(FD => fd)`): the param widens to the Hash of untyped keys (decision 256)
-	keysWider := false
-	if vc, ok := val.typ.(TClass); ok && isClass(vc, "Hash") && isAny(vc.Args[0]) {
-		if ec, ok := existing.typ.(TClass); ok && isClass(ec, "Hash") && !isAny(ec.Args[0]) {
-			keysWider = true
-		}
-	}
+	keysWider := hashKeysWider(existing.typ, val.typ)
 	if fitsValue(val, existing.typ) && (!isAny(val.typ) || f.m == nil || f.m.declared) && !keysWider {
 		return
 	}
@@ -2437,7 +2439,9 @@ func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existin
 		info.hoist = true
 	}
 	if f.pass < 2 && !info.annotated {
-		if j, ok := join(info.typ, val.typ); ok {
+		if hashKeysWider(info.typ, val.typ) && f.lenient() { // `opts = opts.merge(198 => io)`: the Hash of untyped keys (decision 257)
+			info.typ = val.typ
+		} else if j, ok := join(info.typ, val.typ); ok {
 			info.typ = j
 		} else if !isVoid(val.typ) && f.lenient() { // a gem's local holding Array[Formula] and Array[Formula | Keg]: untyped (decision 233)
 			info.typ = TAny{}
@@ -3999,4 +4003,15 @@ func (f *fctx) returnUnwind(m *Method, namedRet bool) {
 		f.emit("\t}")
 		f.emit("})")
 	}
+}
+
+// hashKeysWider: v is a Hash of untyped keys where t is a Hash of typed ones (a gem's merge of another kind of key):
+// a converted copy back to t fits by type but fails on such a key (decisions 256, 257).
+func hashKeysWider(t, v Type) bool {
+	vc, ok := v.(TClass)
+	if !ok || !isClass(vc, "Hash") || !isAny(vc.Args[0]) {
+		return false
+	}
+	tc, ok := stripOpt(t).(TClass)
+	return ok && isClass(tc, "Hash") && !isAny(tc.Args[0])
 }

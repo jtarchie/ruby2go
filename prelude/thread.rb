@@ -226,6 +226,19 @@ class Thread < Object
   #: () -> ThreadGroup
   def group = %x{ return self.threadGroup() }
 
+  # Raises exc in this thread: at once in the current one, as MRI. ponytail: another thread is not interrupted (a
+  # goroutine cannot be), so it runs on, as Homebrew's line thread does until its pipe closes (decision 257); deliver
+  # at its next blocking call to fix.
+  #: (untyped, ?String?) -> nil
+  def raise(exc, msg = nil)
+    return unless __current?
+
+    msg ? Kernel.raise(exc, msg) : Kernel.raise(exc)
+  end
+
+  #: () -> bool
+  def __current? = %x{ return Boolean(any(self) == any(rbCurrentThread())) }
+
   #: () -> bool
   def alive? = %x{
     select {

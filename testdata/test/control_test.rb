@@ -5593,5 +5593,15 @@ module ControlTests
       assert_equal [2, -1], [control_size([1, 2]), control_size("ab")]
       assert_equal ["a", nil, [1], nil, [2, 4]], [String.try_convert("a"), String.try_convert(1), Array.try_convert([1]), Array.try_convert("x"), [1, 2].collect { |x| x * 2 }]
     end
+
+    def test_thread_raise_on_current_thread
+      e = begin
+        Thread.current.raise(ArgumentError, "bad")
+        nil
+      rescue ArgumentError => ex
+        ex.message
+      end
+      assert_equal "bad", e
+    end
   end
 end

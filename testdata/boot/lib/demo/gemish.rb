@@ -718,3 +718,33 @@ class DemoThenTask < DemoTaskBase
     super(args, &task)
   end
 end
+
+# concurrent-ruby's ExecutorService#post(*args, &task): RubyExecutorService's override keeps `&task` as a value, so
+# it is (*untyped) -> untyped whatever ImmediateExecutor's `yield(*args)` shape is; a two-parameter block gets both
+# values (decision 257).
+module DemoExecutorService
+  def post(*args, &task)
+    raise NotImplementedError
+  end
+end
+
+class DemoImmediateExec
+  include DemoExecutorService
+
+  def post(*args)
+    yield(*args)
+    true
+  end
+end
+
+class DemoRubyExec
+  include DemoExecutorService
+
+  def post(*args, &task)
+    task.call(*args)
+  end
+end
+
+module DemoPoster
+  def self.go(ex) = ex.post([1, 2], :task) { |args, task| [args, task] }
+end

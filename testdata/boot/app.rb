@@ -93,6 +93,11 @@ p DemoExec3.exec3(7, chdir: "/"), DemoExec3.exec3(nil)
 ta = [:x, 1, true] #: Array[untyped]
 tb = [] #: Array[untyped]
 p DemoThenTask.new(ta) { |v, sym, n, flag| [v, sym, n, flag] }.run(6), DemoTaskBase.new(tb) { |v| v }.run(1)
+p DemoPoster.go(DemoRubyExec.new), DemoPoster.go(DemoImmediateExec.new)
+dsc = DemoSandboxCmd.new
+dsa = dsc.options
+dsc.sandbox_inheritance = $stdout
+p dsa, dsc.options
 dn = DemoNode[1, DemoNode[2, nil]]
 p dn.value, dn.nxt.value
 dcp2 = DemoPromises.chain(:io)

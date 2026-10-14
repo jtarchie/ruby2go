@@ -1596,6 +1596,14 @@ func rbMust[T any](p *T, want string) T {
 	return *p
 }
 
+// rbDerefOrNil is a gem's T? where object type T is wanted: nil stays a nil interface (decision 257).
+func rbDerefOrNil[T any](p *T) (z T) {
+	if p == nil {
+		return z
+	}
+	return *p
+}
+
 // rbBlockArg is a block passed to a method through a dynamic call, last among its arguments (decision 243).
 type rbBlockArg struct{ fn func(...any) any }
 

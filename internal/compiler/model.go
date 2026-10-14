@@ -853,7 +853,7 @@ func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNo
 	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
 	for _, st := range sf.Root.Statements.Body {
 		d := st.(*parser.DefNode) //nolint:forcetypeassert // built just above
-		if d.Receiver != nil { // `def self.decorator`: a class method, as a class body's
+		if d.Receiver != nil {    // `def self.decorator`: a class method, as a class body's
 			c.addMethod(sf, cls, d, false, scope)
 			continue
 		}
@@ -3036,6 +3036,12 @@ func gradualParam(t rbs.Type) rbs.Type {
 // override's inherited signature must then allow.
 func (c *Compiler) overrideYieldShape(m *Method) (int, bool, *Method, bool) {
 	if m.Owner == nil || m.File == nil || !c.gemFile(m.File) {
+		return 0, false, nil, false
+	}
+	if ps := m.Node.Parameters; ps != nil && ps.Block != nil && ps.Block.Name != nil {
+		// `def post(*args, &task)` keeps its block as a value (concurrent-ruby's ExecutorService#post): any arity reaches
+		// it, so it stays (*untyped) -> untyped, not an override's yield shape, which RubyExecutorService#post inherited and
+		// so passed the posted block one of its two values (decision 257)
 		return 0, false, nil, false
 	}
 	for _, cls := range c.classList {

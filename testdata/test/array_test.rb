@@ -164,6 +164,7 @@ end
 # Helpers for the checks that were testdata/run/array_splat.rb.
 #: (*Integer) -> Integer
 def array_total(*ns) = ns.reduce(0) { |acc, n| acc + n }
+def array_first_set(xs) = xs.reduce(nil) { |acc, x| acc || x }
 
 #: (String, *Integer) -> String
 def array_label(name, *ns) = "#{name}:#{ns.inspect}:#{ns.size}:#{ns.empty?}"
@@ -2503,6 +2504,11 @@ module ArrayTests
       xs = [1, [2, [3]]] #: Array[untyped]
       assert_equal [[1, 2, 3], [1, 2, 3], nil], [xs.flatten!, xs, [1, 2].flatten!]
       assert_equal ["12", "1", "2"], "ab12".match(/(\d)(\d)/).to_a
+    end
+
+    def test_reduce_nil_accumulator_in_a_method
+      none = [] #: Array[Integer]
+      assert_equal [1, nil], [array_first_set([1, 2]), array_first_set(none)]
     end
   end
 end
