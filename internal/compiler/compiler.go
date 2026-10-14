@@ -175,6 +175,7 @@ type Compiler struct {
 	infer       *inference
 	round       bool                  // an inference round: pending parameters are untyped, their arguments recorded
 	inferDone   bool                  // the rounds ran: a parameter still untyped is an error
+	noPrune     bool                  // formatGo keeps every declaration
 	uses        map[string][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[string]bool       // this round's untyped parameter keys
 }
@@ -270,7 +271,28 @@ type options struct {
 	boot       *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
 	goPoison   map[string]string // gem methods whose Go did not type-check, by methodKey: poisoned (decision 205)
 	goFuncs    map[string]string // out: each gem method's Go func name -> its methodKey
+	noPrune    bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
+	testHook   func()            // tests only: runs at the start of compileWith, to inject a panic
 }
+
+// ErrInternal marks an error that is a compiler bug (a panic that was neither a compile error nor an inference request), not a fault in the user's program.
+var ErrInternal = errors.New("internal error")
+
+// internalError is a recovered non-compile panic (decision 263).
+type internalError struct {
+	val  any
+	file string
+}
+
+func (e internalError) Error() string {
+	msg := fmt.Sprintf("internal error: %v", e.val)
+	if e.file != "" {
+		msg += " while compiling " + e.file
+	}
+	return msg
+}
+
+func (e internalError) Is(target error) bool { return target == ErrInternal }
 
 // SkippedTest is a test method skipTests turned into a minitest skip.
 type SkippedTest struct {
@@ -324,23 +346,39 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 	return out, err
 }
 
+// panicToError is compileWith's recover: compileError and needInfer are the compiler's own control flow; any other panic is a compiler bug, returned as an internalError so a CLI or server reports it instead of dying with a Go trace.
+func panicToError(r any, sources []Source, mainLast bool) error {
+	var err error
+	switch r := r.(type) {
+	case compileError:
+		err = r
+	case needInfer:
+		return errNeedInfer
+	default:
+		ie := internalError{val: r}
+		if len(sources) > 0 {
+			ie.file = sources[0].Name
+			if mainLast {
+				ie.file = sources[len(sources)-1].Name
+			}
+		}
+		err = ie
+	}
+	if os.Getenv("RB2GO_ERR_STACK") != "" { // debugging: which pass raised it
+		fmt.Fprintf(os.Stderr, "%s\n%s\n", err, debug.Stack())
+	}
+	return err
+}
+
 func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options, dynEvery bool) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if ce, ok := r.(compileError); ok {
-				if os.Getenv("RB2GO_ERR_STACK") != "" { // debugging: which pass raised it
-					fmt.Fprintf(os.Stderr, "%s\n%s\n", ce.msg, debug.Stack())
-				}
-				err = ce
-				return
-			}
-			if _, ok := r.(needInfer); ok {
-				err = errNeedInfer
-				return
-			}
-			panic(r)
+			err = panicToError(r, sources, opts.mainLast)
 		}
 	}()
+	if opts.testHook != nil {
+		opts.testHook()
+	}
 	tick := phaseTimer()
 	p, err := sharedParser()
 	if err != nil {
@@ -353,6 +391,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
+	c.noPrune = opts.noPrune
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
 	if perr != nil {
@@ -451,7 +490,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 			lazy[k.GoName] = true
 		}
 	}
-	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels)
+	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune)
 	tick("format")
 	opts.warnings = c.Warnings // the tail's bodies warn too
 	if errors.Is(ferr, errPruneIncomplete) {
@@ -547,22 +586,33 @@ func (c *Compiler) loadPreludeGo() {
 		panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
 	}
 	sort.Strings(names)
+	var imports []string
 	for _, name := range names {
 		src, err := fs.ReadFile(c.preludeFS, name)
 		if err != nil {
 			panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
 		}
-		body, line, imports, err := stripGoPackage(src)
+		body, line, fileImports, err := stripGoPackage(src)
 		if err != nil {
 			panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
 		}
-		preludeImports.Do(func() {
-			for _, imp := range imports {
-				stdImports[path.Base(imp)] = imp
-			}
-		})
+		imports = append(imports, fileImports...)
 		c.verbatim = append(c.verbatim, verbatim{file: &File{Name: name, prelude: true}, line: line, code: body})
 	}
+	preludeImports.Do(func() { mergeStdImports(stdImports, imports) })
+}
+
+// mergeStdImports adds each import to table under its last path element. A name the table already holds keeps its entry (the hand table wins); one held for a different path is returned, for TestPreludeImportsResolve to fail on.
+func mergeStdImports(table map[string]string, imports []string) (collisions []string) {
+	for _, imp := range imports {
+		base := path.Base(imp)
+		if cur, ok := table[base]; !ok {
+			table[base] = imp
+		} else if cur != imp {
+			collisions = append(collisions, fmt.Sprintf("%s: table has %s, prelude/go imports %s", base, cur, imp))
+		}
+	}
+	return collisions
 }
 
 // preludeImports guards the one-time merge of prelude/go's imports into stdImports: every compile runs loadPreludeGo

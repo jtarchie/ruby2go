@@ -10,7 +10,6 @@ import (
 	"go/token"
 	"io/fs"
 	"maps"
-	"os"
 	"slices"
 	"strconv"
 )
@@ -28,10 +27,7 @@ func PreludeStubs(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
 
 // PreludeWhole is the unpruned program holding every library (decision 207): what TestPreludeWhole type-checks.
 func PreludeWhole(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
-	// ponytail: formatGo reads the env; an options field would need plumbing through emitProgram.
-	_ = os.Setenv("RB2GO_NO_PRUNE", "1")
-	defer func() { _ = os.Unsetenv("RB2GO_NO_PRUNE") }()
-	opts := options{allLibs: true}
+	opts := options{allLibs: true, noPrune: true}
 	return compile(ctx, preludeFS, []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}, &opts)
 }
 

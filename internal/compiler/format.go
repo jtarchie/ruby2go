@@ -79,8 +79,8 @@ func merge(f, t *ast.File) {
 	f.Comments = append(f.Comments, t.Comments...)
 }
 
-// formatGo prunes src to what main reaches (RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
-func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string) ([]byte, error) {
+// formatGo prunes src to what main reaches (noPrune or RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
+func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string, noPrune bool) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
@@ -89,7 +89,7 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	all := func(string) bool { return true }
 	var p *pruner
 	reached, selected := all, all
-	if os.Getenv("RB2GO_NO_PRUNE") == "" {
+	if !noPrune && os.Getenv("RB2GO_NO_PRUNE") == "" {
 		p = newPruner(lazy)
 		p.add(f.Decls)
 		p.run()

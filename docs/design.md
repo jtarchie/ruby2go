@@ -8127,3 +8127,25 @@ resolve; anything not listed is still open.
       process-group kill needs build-tagged files, as this package also
       builds into wasm); the program's `$LOAD_PATH` still shows the
       hook's temp dir.
+263. **Non-compile panics are internal errors** (#101; amends 154; 2026-10-14).
+    - `compileWith` recovers three kinds of panic: `compileError` (a
+      user-facing compile error), `needInfer` (another inference round)
+      and anything else (a failed assertion, an index out of range),
+      which is a compiler bug. A bug used to re-panic: the CLI died with
+      a raw Go trace and the playground dropped the HTTP connection. It
+      is now returned as `internal error: <value> while compiling
+      <file>`, and `errors.Is(err, compiler.ErrInternal)` recognises it.
+      `RB2GO_ERR_STACK=1` prints the stack to stderr, as it already did
+      for compile errors. `runtime.Goexit`, `needInfer` and
+      `compileError` are untouched.
+    - Fuzz rule: `FuzzCompile` fails on `ErrInternal` (and on its own
+      "compiler panic" catch), because a returned internal error would
+      otherwise hide the bugs fuzzing exists to find. "Generated Go does
+      not parse" is still tolerated, as before.
+    - `loadPreludeGo` merges every prelude/go file's imports into
+      `stdImports` once (before, only the first file's reached the
+      table). A hand entry wins a base-name clash (`rand` is
+      crypto/rand), and `TestPreludeImportsResolve` fails if an import is
+      missing or collides.
+    - `PreludeWhole` no longer sets the process environment; it passes
+      `options.noPrune`. `RB2GO_NO_PRUNE` still works from the environment.
