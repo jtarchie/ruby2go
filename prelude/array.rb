@@ -33,6 +33,9 @@ class Array < Object
     if n < 0 {
       panic(NewArgumentError(Ref(String("negative array size"))))
     }
+    if rbAllocTooBig(int(n), 8) {
+      panic(NewArgumentError(Ref(String("array size too big"))))
+    }
     out := &Array[X]{s: make([]X, n)}
     for i := range out.s {
       out.s[i] = v
@@ -40,9 +43,18 @@ class Array < Object
     return out
   }
 
+  # `Array.new(n) { }` grows one element at a time, so the size is checked up front as `Array.new(n, v)` does.
+  #: (Integer) -> void
+  def self.__check_size(n) = %x{
+    if rbAllocTooBig(int(n), 8) {
+      panic(NewArgumentError(Ref(String("array size too big"))))
+    }
+  }
+
   #: [X] (Integer) { (Integer) -> X } -> Array[X]
   def self.__new_1(n)
     raise ArgumentError, "negative array size" if n < 0
+    __check_size(n)
     out = [] #: Array[X]
     n.times { |i| out << yield(i) }
     out
@@ -680,12 +692,19 @@ class Array < Object
 
   # `xs * n` repeats; `xs * ","` is join (decision 12's twin by argument class).
   #: (Integer) -> Array[E]
-  def *(n)
-    raise ArgumentError, "negative argument" if n < 0
-    out = [] #: Array[E]
-    n.times { out.concat(self) }
-    out
-  end
+  def *(n) = %x{
+    if n < 0 {
+      panic(NewArgumentError(Ref(String("negative argument"))))
+    }
+    if len(self.s) > 0 && rbAllocTooBig(int(n), len(self.s)*8) {
+      panic(NewArgumentError(Ref(String("argument too big"))))
+    }
+    out := &Array[E]{s: make([]E, 0, len(self.s)*int(n))}
+    for i := 0; i < int(n) && len(self.s) > 0; i++ {
+      out.s = append(out.s, self.s...)
+    }
+    return out
+  }
 
   #: (String) -> String
   def __mul_string(sep) = join(sep)

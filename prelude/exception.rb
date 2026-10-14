@@ -171,6 +171,7 @@ module Errno
   class EMFILE < SystemCallError; end
   class ENOTTY < SystemCallError; end
   class ENODEV < SystemCallError; end
+  class ERANGE < SystemCallError; end
 end
 
 class RuntimeError < StandardError; end

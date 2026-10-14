@@ -49,6 +49,9 @@ class String < Object
     if n < 0 {
       panic(NewArgumentError(Ref[String]("negative argument")))
     }
+    if len(self) > 0 {
+      rbCheckAlloc(int(n), len(self))
+    }
     return rbNewStr(self, String(strings.Repeat(string(self), int(n))))
   }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -198,6 +199,9 @@ func rbTimeInspect(t time.Time, utc bool) string {
 	return s + " " + rbStrftime(t, "%z", utc, false)
 }
 
+// rbStrftimeMax is the longest result MRI's strftime builds before raising Errno::ERANGE (measured: "%3932160N" passes, one byte more fails).
+const rbStrftimeMax = 3932160
+
 // rbStrftime is MRI's strftime: flags - 0 _ ^ #, a width, and : for %z. strict is Time's: a directive missing
 // its conversion (`%5`, a trailing `%`) is an ArgumentError; Date prints it as is. %+ is Date's only (rbDateStrftime
 // expands it); Time prints it as is, as MRI's does.
@@ -224,7 +228,9 @@ func rbStrftime(t time.Time, format string, utc, strict bool) string {
 			if width < 0 {
 				width = 0
 			}
-			width = width*10 + int(format[i]-'0')
+			if width <= math.MaxInt32 {
+				width = width*10 + int(format[i]-'0')
+			}
 			i++
 		}
 		if i+1 < len(format) && (format[i] == 'E' || format[i] == 'O') {
@@ -236,6 +242,17 @@ func rbStrftime(t time.Time, format string, utc, strict bool) string {
 			}
 			b.WriteString(format[start:])
 			break
+		}
+		if width > math.MaxInt32 { // MRI's width is an int: a wider one is not a directive, so it prints as is
+			b.WriteString(format[start : i+1])
+			continue
+		}
+		if b.Len()+max(width, 0) > rbStrftimeMax {
+			msg := "Numerical result out of range"
+			if runtime.GOOS == "darwin" {
+				msg = "Result too large"
+			}
+			panic(NewErrno_ERANGE(Ref(String(msg + " - " + format))))
 		}
 		has := func(f byte) bool { return bytes.IndexByte(flags, f) >= 0 }
 		num := func(v, w int, pad byte) string {
@@ -256,8 +273,8 @@ func rbStrftime(t time.Time, format string, utc, strict bool) string {
 				s = s[1:]
 				w--
 			}
-			for len(s) < w {
-				s = string(pad) + s
+			if len(s) < w {
+				s = strings.Repeat(string(pad), w-len(s)) + s
 			}
 			if neg {
 				s = "-" + s
@@ -279,8 +296,8 @@ func rbStrftime(t time.Time, format string, utc, strict bool) string {
 			if has('0') {
 				pad = "0"
 			}
-			for width > 0 && !has('-') && len(s) < width {
-				s = pad + s
+			if width > len(s) && !has('-') {
+				s = strings.Repeat(pad, width-len(s)) + s
 			}
 			return s
 		}
@@ -338,8 +355,8 @@ func rbStrftime(t time.Time, format string, utc, strict bool) string {
 				digits = width
 			}
 			s := fmt.Sprintf("%09d", t.Nanosecond())
-			for len(s) < digits {
-				s += "0"
+			if len(s) < digits {
+				s += strings.Repeat("0", digits-len(s))
 			}
 			b.WriteString(s[:digits])
 		case 'z':

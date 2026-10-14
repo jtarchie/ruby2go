@@ -325,6 +325,7 @@ func rbPack(items []any, format string) string {
 					n++
 				}
 			}
+			rbCheckAlloc(n, 1)
 			pad := byte(0)
 			if d.d == 'A' {
 				pad = ' '
@@ -350,6 +351,7 @@ func rbPack(items []any, format string) string {
 			if d.star {
 				width = len(s)
 			}
+			rbCheckAlloc(width/per, 1)
 			out := make([]byte, (width+per-1)/per)
 			for k := range n {
 				c := s[k]
@@ -428,6 +430,7 @@ func rbPack(items []any, format string) string {
 			}
 		case 'x':
 			if !d.star {
+				rbCheckAlloc(d.count, 1)
 				b = append(b, make([]byte, d.count)...)
 			}
 		case 'X':
@@ -445,6 +448,7 @@ func rbPack(items []any, format string) string {
 				n = 0
 			}
 			if n > len(b) {
+				rbCheckAlloc(n, 1)
 				b = append(b, make([]byte, n-len(b))...)
 			}
 			b = b[:n]
@@ -477,6 +481,16 @@ func rbPackU(out []byte, n int) []byte {
 	return append(out, b...)
 }
 
+// rbUnpackPad refuses an integer or float directive whose count would pad the result with nils past what an Array can hold: MRI's IndexError past its own array limit, else rbCheckAlloc's.
+func rbUnpackPad(n, have int) {
+	if n > have {
+		if n >= 1<<60 {
+			panic(NewIndexError(Ref(String("index " + strconv.Itoa(n-1) + " too big"))))
+		}
+		rbCheckAlloc(n-have, 16)
+	}
+}
+
 // rbUnpack is String#unpack; an unsigned value past 2**63 raises RangeError where MRI makes a Bignum (decision 35).
 func rbUnpack(s, format string) *Array[any] {
 	out := &Array[any]{}
@@ -501,6 +515,7 @@ func rbUnpack(s, format string) *Array[any] {
 			if d.star {
 				n = len(rest) / size
 			}
+			rbUnpackPad(n, len(rest)/size)
 			for range n {
 				if pos+size > len(s) {
 					out.s = append(out.s, nil)
@@ -524,6 +539,7 @@ func rbUnpack(s, format string) *Array[any] {
 			if d.star {
 				n = len(rest) / size
 			}
+			rbUnpackPad(n, len(rest)/size)
 			for range n {
 				if pos+size > len(s) {
 					out.s = append(out.s, nil)

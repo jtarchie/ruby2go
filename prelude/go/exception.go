@@ -79,6 +79,8 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.ENOTTY
 	case *Errno_ENODEV:
 		n = syscall.ENODEV
+	case *Errno_ERANGE:
+		n = syscall.ERANGE
 	default:
 		return nil
 	}

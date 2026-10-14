@@ -4,8 +4,10 @@
 package prelude
 
 import (
+	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -79,6 +81,10 @@ func rbFormat(format string, args []any) string {
 				if !ok {
 					panic(NewTypeError(Ref(String("width must be an Integer"))))
 				}
+				if w > math.MaxInt32 || w < math.MinInt32 {
+					big := map[bool]string{true: "big", false: "small"}[w > 0]
+					panic(NewRangeError(Ref(String("integer " + strconv.Itoa(int(w)) + " too " + big + " to convert to 'int'"))))
+				}
 				spec = strconv.AppendInt(spec, int64(w), 10)
 				continue
 			case d >= '1' && d <= '9' && len(spec) == 1 && rbFormatDollar(format[i:]) > 0: // `%2$s`: argument 2 (1-based)
@@ -102,10 +108,35 @@ func rbFormat(format string, args []any) string {
 		if !have {
 			v = arg()
 		}
+		rbFormatCheckSpec(spec)
 		b.WriteString(rbFormatOne(string(spec), format[i], v))
 	done:
 	}
 	return b.String()
+}
+
+// rbFormatCheckSpec raises MRI's ArgumentError for a width or precision past an int, which fmt would otherwise take for a size to fill.
+func rbFormatCheckSpec(spec []byte) {
+	i := 1
+	for i < len(spec) && strings.IndexByte("-+ 0#", spec[i]) >= 0 {
+		i++
+	}
+	for _, what := range []string{"width", "precision"} {
+		if what == "precision" {
+			for i < len(spec) && spec[i] != '.' {
+				i++
+			}
+			i++
+		}
+		j := min(i, len(spec))
+		for j < len(spec) && spec[j] >= '0' && spec[j] <= '9' {
+			j++
+		}
+		if n, err := strconv.Atoi(string(spec[min(i, j):j])); n > math.MaxInt32 || err != nil && j > i {
+			panic(NewArgumentError(Ref(String(what + " too big"))))
+		}
+		i = j
+	}
 }
 
 // rbFormatOne formats v for one directive; spec is its flags, width and precision.
@@ -272,13 +303,14 @@ func rbFormatTwos(spec string, verb byte, n int) string {
 	if verb == 'X' {
 		digits = "0123456789ABCDEF"
 	}
-	var out []byte
+	var rev []byte
 	for n != -1 {
-		out = append([]byte{digits[n&(1<<bits-1)]}, out...)
+		rev = append(rev, digits[n&(1<<bits-1)])
 		n >>= bits
 	}
+	slices.Reverse(rev)
 	top := digits[1<<bits-1]
-	body := append([]byte{top}, out...)
+	body := append([]byte{top}, rev...)
 	flags, rest := spec[1:], ""
 	if k := strings.IndexFunc(flags, func(r rune) bool { return r >= '1' && r <= '9' || r == '.' }); k >= 0 {
 		flags, rest = flags[:k], flags[k:]
@@ -302,8 +334,9 @@ func rbFormatTwos(spec string, verb byte, n int) string {
 	case strings.Contains(flags, "0") && !strings.Contains(flags, "-"):
 		fill = width - len(prefix) - 2 - len(body)
 	}
-	for ; fill > 0; fill-- {
-		body = append([]byte{top}, body...)
+	if fill > 0 {
+		rbCheckAlloc(fill, 1)
+		body = append(bytes.Repeat([]byte{top}, fill), body...)
 	}
 	s := prefix + ".." + string(body)
 	if strings.Contains(flags, "-") {

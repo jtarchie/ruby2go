@@ -131,12 +131,9 @@ func rbPad(pad string, n int) string {
 	if pad == "" {
 		panic(NewArgumentError(Ref(String("zero width padding"))))
 	}
+	rbCheckAlloc(n, utf8.UTFMax)
 	r := []rune(pad)
-	out := make([]rune, n)
-	for i := range out {
-		out[i] = r[i%len(r)]
-	}
-	return string(out)
+	return strings.Repeat(pad, n/len(r)) + string(r[:n%len(r)])
 }
 
 // rbCharSet is a tr/count/squeeze character set: ranges (a-z), \-escapes,

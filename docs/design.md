@@ -8350,3 +8350,26 @@ resolve; anything not listed is still open.
     - The generated module pins regexp2 once (`regexp2Version`);
       `TestGoModMatchesRepo` ties it to go.mod and checks GoSum is
       non-empty.
+273. **Allocation sizes a program controls are checked** (#101; amends 20, 35; 2026-10-14).
+    - A Go out-of-memory is fatal and `rescue` cannot catch it, so sizes
+      are checked before `make`/`strings.Repeat`. `rbCheckAlloc(n,
+      elemSize)` (prelude/go/alloc.go) raises `NoMemoryError` ("failed to
+      allocate memory") above 4 GiB (n*elemSize, overflow-safe; negative n
+      counts as too big); `rbAllocTooBig` is the same test for sites whose
+      MRI error is an `ArgumentError`.
+    - Per site, as MRI at 2**62: `String#*`, `ljust/rjust/center` and pack
+      `a/A/Z/B/H/x/@` raise `NoMemoryError`; `Array.new` (both forms)
+      raises `ArgumentError` "array size too big"; `Array#*` raises
+      `ArgumentError` "argument too big" (and no longer hangs on `[] * 2**62`);
+      unpack int/float counts >= 2**60 raise `IndexError`; format widths
+      or precisions past INT_MAX raise `ArgumentError` "width too big" /
+      "precision too big" (a `*` width past int is `RangeError`); a
+      strftime width past INT_MAX prints the directive as is; a strftime
+      result over 3,932,160 bytes (MRI's measured limit) raises
+      `Errno::ERANGE` (added to the prelude).
+    - Accepted divergence: between 4 GiB and MRI's own limit rb2go raises
+      where MRI might succeed (the cap guards against absurd sizes, not
+      a precise limit); a real OOM below the cap stays fatal.
+    - The quadratic fills (strftime zero padding, `rbFormatTwos`) use
+      `strings.Repeat`/`bytes.Repeat`.
+    - Hello-world output grew 61 bytes (the `Errno::ERANGE` type).
