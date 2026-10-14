@@ -63,6 +63,8 @@ fs = DemoFormulaStruct.new(desc: "d", bottle_present: true)
 p fs.desc, fs.bottle?, fs.head?
 fh = DemoFormulaStruct.from_hash({ "desc" => "h", "head_present" => true, "junk" => 1 })
 p fh.desc, fh.head?, fh.bottle?
+p DemoSystemCommand.new("a").input, DemoSystemCommand.new(%w[b c]).input
+p DemoVersion.new(1) < DemoVersion.new(2), [DemoVersion.new(3), DemoVersion.new(1)].max.v, DemoVersion.new(1) <=> "x"
 bes = [DemoBundle::Entry.new("a"), DemoBundle::Entry.new("b")]
 p DemoBundle::Ext.run(bes), DemoBundle::Vscode.run(bes), DemoBundle::Vscode.cleanup_items(bes)
 p DemoBottle.new("wget").name, DemoBottle.new(nil, name: "curl").name
@@ -87,6 +89,13 @@ dev = DemoEvent.new
 dev.set
 dev.set
 p dev.count
+dfe = DemoFallbackExec.new
+dfe.go
+p dfe.log
+div = DemoIVar.new
+div.add_observer { |x| x * 2 }
+div.with_observer { |x| x + 1 }
+p div.demo_notify(10)
 lines = [] #: Array[untyped]
 DemoLineSource.new.each_line_from(["a", "b"]) { |t, l| lines << [t, l] }
 p lines

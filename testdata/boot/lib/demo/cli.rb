@@ -177,3 +177,34 @@ class DemoFormulaStruct
     new(**formula_hash)
   end
 end
+
+# Homebrew's Version: Comparable with a `<=>` typed T.nilable(Integer) over Object's. Its Op_cmp slot is
+# emitCmpAdapter's alone, not also a dynamic override slot (decision 249).
+class DemoVersion
+  extend T::Sig
+  include Comparable
+
+  sig { params(v: Integer).void }
+  def initialize(v) = @v = v
+
+  sig { returns(Integer) }
+  attr_reader :v
+
+  sig { params(other: T.anything).returns(T.nilable(Integer)) }
+  def <=>(other)
+    return unless other.is_a?(DemoVersion)
+
+    v <=> other.v
+  end
+end
+
+# Homebrew's SystemCommand: `@input = T.let(Array(input), T::Array[String])`, an Array[untyped] converted (decision 250).
+class DemoSystemCommand
+  extend T::Sig
+
+  sig { params(input: T.any(String, T::Array[String])).void }
+  def initialize(input) = @input = T.let(Array(input), T::Array[String])
+
+  sig { returns(T::Array[String]) }
+  attr_reader :input
+end

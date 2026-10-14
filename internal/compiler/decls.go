@@ -2276,6 +2276,10 @@ func (c *Compiler) emitDynProcCall(procs []string) {
 	c.w("\tswitch p := recv.(type) {\n")
 	for _, p := range procs {
 		t := c.procFuncs[p]
+		if t.Self == nil && t.Rest && len(t.Params) == 1 && isAny(t.Params[0]) && isAny(t.Ret) { // a gem's `(*untyped)` block (decision 250)
+			c.w("\tcase %s:\n\t\treturn (*p)(args...), true\n", p)
+			continue
+		}
 		if t.Self != nil || slices.ContainsFunc(t.Params, isVoid) || t.Rest {
 			continue
 		}

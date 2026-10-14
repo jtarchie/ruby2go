@@ -4788,6 +4788,11 @@ func (c *Compiler) dynAdaptable(m *Method, s slot) bool {
 	if m.Iterator || sm.Iterator || sm.calleeDefaults || sm.kwMask() || m.Private || sm.generic() {
 		return false
 	}
+	// a module's slot is its Self constraint's, which names the module's own signature; `<=>`'s Op_cmp slot has
+	// emitCmpAdapter
+	if s.e.Owner != nil && s.e.Owner.IsModule || sm.GoName == "Op_cmp" || m.GoName == "cmpNil" {
+		return false
+	}
 	if slices.ContainsFunc(sm.Params, func(p Param) bool { return p.Keyword || p.KwRest }) {
 		return false
 	}
@@ -4806,6 +4811,14 @@ func (c *Compiler) dynAdaptable(m *Method, s slot) bool {
 // shadowSlot has m (own) answer slot s it overrides with another Go signature: m takes its own Go name (`_of` + of)
 // and s an adapter, a dynamic one when no typed adapter fits (decision 249); nothing when neither does.
 func (c *Compiler) shadowSlot(m *Method, own, s slot, of string) {
+	if sb := s.e.M.Block; sb != nil && m.Block != nil && anyRestBlock(sb) && !anyRestBlock(m.Block) && !m.Iterator && !s.e.M.Iterator &&
+		m.Block.Self == nil && c.gemFile(m.File) {
+		// concurrent-ruby's IVar#add_observer(&block) over Observable's: the override takes the slot's untyped block,
+		// wider than the one its callers typed, so it keeps the slot (decision 250)
+		b := *sb
+		b.Optional = m.Block.Optional
+		m.Block = &b
+	}
 	same := s.e.M.GoName == m.GoName
 	if same && c.slotKey(own) == c.slotKey(s) {
 		return

@@ -474,3 +474,54 @@ end
 class DemoEvent < DemoMutexLockable
   def set = wait_until { true }
 end
+
+# concurrent-ruby's RubyThreadPoolExecutor#ns_execute: a value block forwarded with `&task` to fallback_action, whose
+# block is void and which runs it with `yield(*args)` (decision 250).
+class DemoFallbackExec
+  def initialize = @log = []
+  attr_reader :log
+
+  def fallback_action(*args)
+    yield(*args)
+    @log << :fallback
+    nil
+  end
+
+  def ns_execute(*args, &task)
+    fallback_action(*args, &task)
+  end
+
+  def go = ns_execute(5) { |x| @log << x; x * 2 }
+end
+
+# concurrent-ruby's IVar#add_observer(&block) over Concern::Observable's: the override takes the module slot's untyped
+# block, and the stored block answers `public_send(:call, v)` (decision 250).
+module DemoObservable
+  def add_observer(observer = nil, func = :update, &block)
+    demo_observers << [observer || block, func]
+    observer || block
+  end
+
+  def demo_observers = @demo_observers ||= []
+
+  def with_observer(observer = nil, func = :update, &block)
+    add_observer(observer, func, &block)
+    self
+  end
+
+  def demo_notify(v) = demo_observers.map { |o, f| o.public_send(f, v) }
+end
+
+class DemoIVar
+  include DemoObservable
+
+  def add_observer(observer = nil, func = :update, &block)
+    raise ArgumentError, "both" if observer && block
+
+    if block
+      observer = block
+      func = :call
+    end
+    super(observer, func)
+  end
+end

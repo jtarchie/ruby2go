@@ -7760,9 +7760,11 @@ resolve; anything not listed is still open.
       The slot is kept as dynamic: its adapter boxes the positional
       arguments and an untyped block, calls the override through
       `rbDyn<Name>`, and converts the result. So a parent method calling
-      `post` on a TimerSet runs TimerSet#post, as in MRI. Only for
-      overrides without keywords, callee defaults, iterators or typed
-      blocks (`dynAdaptable`).
+      `post` on a TimerSet runs TimerSet#post, as in MRI. Only for a
+      superclass's slot (a module's is its Self constraint's, which names
+      the module's own signature), not `<=>`'s Op_cmp (emitCmpAdapter's),
+      and for overrides without keywords, callee defaults, iterators or
+      typed blocks (`dynAdaptable`).
     - An included gem module's method that overrides a superclass method
       of an includer with another Go signature
       (`ConditionSignalling#ns_broadcast` returning self over
@@ -7788,3 +7790,24 @@ resolve; anything not listed is still open.
       props, boot's included (Homebrew's `FormulaStruct.from_hash` slices
       by it). ponytail: the class itself answers all_props, which MRI's
       does not.
+
+250. **Brew batch: typed-container `T.let`, value blocks into void ones, `yield(*args)`, untyped blocks in module slots** (#100; 2026-10-13).
+    - `@x = T.let(v, T)` of a same-class container with untyped elements
+      (`T.let(Array(input), T::Array[String])`, Homebrew's SystemCommand)
+      converts a copy in gem code (`lenientClass`, decision 172), where it
+      had relabeled the value.
+    - Gem code:
+      - A method's own value-returning block forwarded where the callee's
+        block is void (concurrent-ruby's `ns_execute` passing `&task` to
+        `fallback_action`) is adapted, its value dropped.
+      - `yield(*args)` to a block of fixed parameters spreads the values
+        into one untyped slice, each parameter its position, nil past the
+        end.
+      - An override whose block its callers typed (`func(any) any`) where
+        the slot's is the untyped `(*untyped) -> untyped`
+        (concurrent-ruby's `IVar#add_observer` over
+        `Concern::Observable#add_observer`) takes the slot's block type,
+        which is wider, so it keeps the slot. The module's Self constraint
+        had failed at every instantiation.
+      - `rbDynProcCall` calls such a Proc held untyped
+        (`observer.public_send(:call, v)`), arguments as they are.

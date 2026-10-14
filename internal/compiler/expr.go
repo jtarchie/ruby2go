@@ -4712,7 +4712,14 @@ func (f *fctx) yieldValues(n parser.Node, args []parser.Node) expr {
 		return expr{code: "blk(" + f.restArgs(n, args, f.blockSig.Params) + ")", typ: f.blockSig.Ret}
 	}
 	codes := make([]string, 0, len(args))
-	if len(args) != len(f.blockSig.Params) {
+	if spread, ok := f.anySpread(args); ok && f.lenient() { // a gem's `yield(*args)`: each block parameter its position, nil past the end
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, spread)
+		for i, want := range f.blockSig.Params {
+			codes = append(codes, f.coerce(n, expr{code: fmt.Sprintf("rbArgAt(%s, %d)", tmp, i), typ: TAny{}}, want))
+		}
+		args = nil
+	} else if len(args) != len(f.blockSig.Params) {
 		f.errorf(n, "yield passes %d values but the block takes %d", len(args), len(f.blockSig.Params))
 	}
 	for i, a := range args {
@@ -7437,6 +7444,17 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	for i, p := range sig.Params {
 		unify(p, f.blockSig.Params[i], env)
 	}
+	if isVoid(sig.Ret) && !isNil(sig.Ret) && !isVoid(f.blockSig.Ret) && f.lenient() && sig.Self == nil && f.blockSig.Self == nil {
+		// a value block where the callee's is void (concurrent-ruby's ns_execute passing &task to fallback_action): its
+		// value dropped
+		params := make([]string, len(sig.Params))
+		args := make([]string, len(sig.Params))
+		for i, p := range sig.Params {
+			params[i] = fmt.Sprintf("p%d %s", i, f.c.goType(subst(p, env)))
+			args[i] = f.coerce(nil, expr{code: fmt.Sprintf("p%d", i), typ: subst(p, env)}, f.blockSig.Params[i])
+		}
+		return "func(" + strings.Join(params, ", ") + ") { blk(" + strings.Join(args, ", ") + ") }"
+	}
 	if tv, ok := sig.Ret.(TVar); ok && env[tv.Name] == nil && isVoid(f.blockSig.Ret) && !isNil(f.blockSig.Ret) {
 		// a void block where the callee's returns X (`return super if block_given?` in Homebrew's Cask#tap over
 		// Kernel#tap): X is untyped, the block's value nil
@@ -9676,6 +9694,11 @@ func (f *fctx) annotatedIvarValue(n parser.Node, val expr, ann Type) (expr, Type
 	val = f.unionToAnn(n, val, ann)
 	if isAny(val.typ) && !isAny(ann) { // `@args = T.let(untyped, Args)`: converted, not just relabeled
 		val = expr{code: f.coerce(n, val, ann), typ: ann}
+	}
+	if tc, ok := ann.(TClass); ok && !typeEq(val.typ, ann) { // `@input = T.let(Array(input), T::Array[String])`: a converted copy
+		if code, ok := f.lenientClass(n, val, tc); ok {
+			val = expr{code: code, typ: ann}
+		}
 	}
 	if o, ok := val.typ.(TOpt); ok && !isOpt(ann) && typeEq(o.Elem, ann) { // `@name = T.let(name, String)` of a String?
 		if !f.lenient() {
