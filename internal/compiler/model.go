@@ -239,8 +239,9 @@ func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
 
 // slot is method entry e as its Go signature appears in class in's interface.
 type slot struct {
-	e  entry
-	in *Class
+	e   entry
+	in  *Class
+	dyn bool // a gem override no typed adapter fits: the slot boxes its arguments into a dynamic call (decision 249)
 }
 
 // entry is a method as seen from a concrete class's method set.
@@ -525,6 +526,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		}
 	case !f.prelude && isDescribe(n):
 		c.collectDescribe(ctx, f, nil, n)
+	case c.collectIOExtend(f, n, nil): // before objectConstExtend, which would drop `ENV.extend(EnvSensitive)` (decision 248)
 	case c.topConstVisibility(f, n), c.objectConstExtend(f, n):
 	case n.Receiver == nil && n.Name == "include" && !f.prelude:
 		for _, a := range callArgs(n) { // main's include is Object's, as in MRI
@@ -541,7 +543,6 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		} else if hook := c.requireHook(f, n); hook != nil {
 			c.addMainStmt(f, hook)
 		}
-	case c.collectIOExtend(f, n, nil):
 	case n.Name == "prepend" && !f.prelude && prependTarget(n) != nil: // `X.prepend(M)`, `X.singleton_class.prepend(M)` (decision 199)
 		recv, single := prependTarget(n), false
 		if sc, ok := recv.(*parser.CallNode); ok {
@@ -837,14 +838,26 @@ func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNo
 		params = append(params, param)
 		body = append(body, "@"+p.name+" = "+p.name)
 	}
-	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n" + readers
+	syms := make([]string, len(props))
+	for i, p := range props {
+		syms[i] = ":" + p.name
+	}
+	// sorbet-runtime's `decorator.all_props` (Homebrew's FormulaStruct.from_hash slices by it), the props known here
+	// (decision 249). ponytail: the class itself answers all_props, which MRI's does not; a Decorator class to fix.
+	decorator := "#: () -> singleton(" + cls.RubyName + ")\ndef self.decorator = self\n#: () -> Array[Symbol]\ndef self.all_props = [" + strings.Join(syms, ", ") + "]\n"
+	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n" + readers + decorator
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
 	if err != nil {
 		c.errorf(f, n, "T::Struct initialize: %v", err)
 	}
 	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
 	for _, st := range sf.Root.Statements.Body {
-		c.addDef(sf, cls, st.(*parser.DefNode), false, scope) //nolint:forcetypeassert // built just above
+		d := st.(*parser.DefNode) //nolint:forcetypeassert // built just above
+		if d.Receiver != nil { // `def self.decorator`: a class method, as a class body's
+			c.addMethod(sf, cls, d, false, scope)
+			continue
+		}
+		c.addDef(sf, cls, d, false, scope)
 	}
 }
 
@@ -3131,6 +3144,9 @@ func (c *Compiler) inferRet(m *Method) {
 	nw := len(c.Warnings)
 	f := c.newFctx(m.File, m.Owner, m)
 	f.retVar = "ret_"
+	if c.unwindsReturn(m) {
+		f.retTok = "rbRetTok_" // a block's return is a returned value too (decision 247)
+	}
 	var ts []Type
 	f.retTypes = &ts
 	if c.round { // a body its still-untyped parameters break returns untyped this round, so its callers still record what they pass
@@ -3287,20 +3303,24 @@ func (c *Compiler) linkOverrides(cls *Class) {
 			continue
 		}
 		own := entry{M: m, Owner: cls, Env: map[string]Type{}, Entry: cls}
-		if c.slotKey(slot{own, cls}) == c.slotKey(slot{*pe, sup}) {
+		if c.slotKey(slot{e: own, in: cls}) == c.slotKey(slot{e: *pe, in: sup}) {
 			m.GoName = pe.M.GoName
 			m.shadowed = pe.M.shadowed
 			continue
 		}
 		// `_` + lowercase never comes out of camel-casing (decision 3)
 		m.GoName = goMethodName(m.Name) + "_of" + cls.Name
-		m.shadowed = append([]slot{{*pe, sup}}, pe.M.shadowed...)
+		m.shadowed = append([]slot{{e: *pe, in: sup}}, pe.M.shadowed...)
 		kept := m.shadowed[:0]
 		for _, s := range m.shadowed {
-			if c.gemFile(m.File) && catchCompileError(func() { c.checkAdaptable(slot{own, cls}, s) }) != nil {
-				continue // ponytail: gem code's unadaptable override leaves the parent's slot to the parent's method; adapt rest params to fix
+			if c.gemFile(m.File) && catchCompileError(func() { c.checkAdaptable(slot{e: own, in: cls}, s) }) != nil {
+				if c.dynAdaptable(m, s) {
+					s.dyn = true
+					kept = append(kept, s)
+				}
+				continue
 			}
-			c.checkAdaptable(slot{own, cls}, s)
+			c.checkAdaptable(slot{e: own, in: cls}, s)
 			kept = append(kept, s)
 		}
 		m.shadowed = kept
@@ -4423,24 +4443,49 @@ func (c *Compiler) relinkOverrides() {
 			if m.Kind != kindDef || !inInterface(m) || m.seqAdapter || !c.gemFile(m.File) {
 				continue
 			}
-			own := slot{entry{M: m, Owner: cls, Env: map[string]Type{}, Entry: cls}, cls}
+			own := slot{e: entry{M: m, Owner: cls, Env: map[string]Type{}, Entry: cls}, in: cls}
 			for _, s := range c.parentSlots(cls, m) {
 				if !inInterface(s.e.M) || s.e.M.seqAdapter || slices.ContainsFunc(m.shadowed, func(x slot) bool { return x.e.M == s.e.M }) {
 					continue
 				}
-				same := s.e.M.GoName == m.GoName
-				if same && c.slotKey(own) == c.slotKey(s) || catchCompileError(func() { c.checkAdaptable(own, s) }) != nil {
-					continue
-				}
-				if same {
-					m.GoName = goMethodName(m.Name) + "_of" + cls.Name
-				}
-				m.shadowed = append(m.shadowed, s)
+				c.shadowSlot(m, own, s, cls.Name)
 			}
 		}
+		c.relinkModuleOverrides(cls)
 	}
 	for _, cls := range c.classList {
 		link(cls)
+	}
+}
+
+// relinkModuleOverrides: a gem module's method that overrides a superclass method of an includer with another Go
+// signature (concurrent-ruby's ConditionSignalling#ns_broadcast returning self over AbstractLockableObject's) gets its
+// own Go name, and the includer answers the superclass's slot through an adapter, as a class's own override does
+// (decision 249). The name is the module's, shared by its includers.
+func (c *Compiler) relinkModuleOverrides(cls *Class) {
+	if cls.Super == nil {
+		return
+	}
+	for _, inc := range cls.Includes {
+		mod := inc.Mod
+		if mod == nil || !c.gemFile(mod.File) {
+			continue
+		}
+		for _, m := range mod.MethodList {
+			if m.Kind != kindDef || !inInterface(m) || m.seqAdapter || !c.gemFile(m.File) {
+				continue
+			}
+			pe := cls.Super.lookup(m.Name)
+			oe := cls.lookup(m.Name)
+			if pe == nil || oe == nil || oe.M != m || pe.M == m || pe.Owner.IsModule || !inInterface(pe.M) || pe.M.seqAdapter {
+				continue
+			}
+			ps := slot{e: *pe, in: cls.Super}
+			if slices.ContainsFunc(m.shadowed, func(x slot) bool { return x.e.M == pe.M }) {
+				continue
+			}
+			c.shadowSlot(m, slot{e: *oe, in: cls}, ps, mod.Name)
+		}
 	}
 }
 
@@ -4454,7 +4499,7 @@ func (c *Compiler) parentSlots(cls *Class, m *Method) []slot {
 			if cls.hashBase && sup.GoType != "" && !sup.hashBase {
 				in = cls // a core container's own slot, typed as the subclass embeds it (containerEnv)
 			}
-			out = append(append(out, slot{*pe, in}), pe.M.shadowed...)
+			out = append(append(out, slot{e: *pe, in: in}), pe.M.shadowed...)
 		}
 	}
 	for _, inc := range cls.Includes {
@@ -4466,7 +4511,7 @@ func (c *Compiler) parentSlots(cls *Class, m *Method) []slot {
 		for i, tp := range mod.TypeParams {
 			env[tp] = inc.Args[i]
 		}
-		out = append(out, slot{entry{M: mod.Methods[m.Name], Owner: mod, Env: env, Entry: cls}, cls})
+		out = append(out, slot{e: entry{M: mod.Methods[m.Name], Owner: mod, Env: env, Entry: cls}, in: cls})
 	}
 	return out
 }
@@ -4733,4 +4778,46 @@ func liftConstWrites(n parser.Node, out *[]*parser.ConstantWriteNode) parser.Nod
 		}
 	}
 	return n
+}
+
+// dynAdaptable reports a gem override m no typed adapter fits to slot s (TimerSet#post(delay, *args, &task) over
+// RubyExecutorService#post(*args, &task)) that a dynamic one can serve: the slot boxes its positional arguments and an
+// untyped block, and calls m through its Dyn wrapper, as MRI calls the override (decision 249).
+func (c *Compiler) dynAdaptable(m *Method, s slot) bool {
+	sm := s.e.M
+	if m.Iterator || sm.Iterator || sm.calleeDefaults || sm.kwMask() || m.Private || sm.generic() {
+		return false
+	}
+	if slices.ContainsFunc(sm.Params, func(p Param) bool { return p.Keyword || p.KwRest }) {
+		return false
+	}
+	if sm.Block != nil && !anyRestBlock(sm.Block) || m.Block != nil && !anyRestBlock(m.Block) {
+		return false
+	}
+	if m.Block != nil {
+		if c.dynBlockNames == nil {
+			c.dynBlockNames = map[string]bool{}
+		}
+		c.dynBlockNames[m.Name] = true
+	}
+	return true
+}
+
+// shadowSlot has m (own) answer slot s it overrides with another Go signature: m takes its own Go name (`_of` + of)
+// and s an adapter, a dynamic one when no typed adapter fits (decision 249); nothing when neither does.
+func (c *Compiler) shadowSlot(m *Method, own, s slot, of string) {
+	same := s.e.M.GoName == m.GoName
+	if same && c.slotKey(own) == c.slotKey(s) {
+		return
+	}
+	if catchCompileError(func() { c.checkAdaptable(own, s) }) != nil {
+		if !c.dynAdaptable(m, s) {
+			return
+		}
+		s.dyn = true
+	}
+	if same {
+		m.GoName = goMethodName(m.Name) + "_of" + of
+	}
+	m.shadowed = append(m.shadowed, s)
 }

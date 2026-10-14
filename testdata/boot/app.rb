@@ -61,9 +61,39 @@ p Demo::Lenient.uri_path("http://h/a/b"), Demo::Lenient.uri_path("x")
 p Demo::Lenient.merged({ x: 1 })
 fs = DemoFormulaStruct.new(desc: "d", bottle_present: true)
 p fs.desc, fs.bottle?, fs.head?
+fh = DemoFormulaStruct.from_hash({ "desc" => "h", "head_present" => true, "junk" => 1 })
+p fh.desc, fh.head?, fh.bottle?
+bes = [DemoBundle::Entry.new("a"), DemoBundle::Entry.new("b")]
+p DemoBundle::Ext.run(bes), DemoBundle::Vscode.run(bes), DemoBundle::Vscode.cleanup_items(bes)
+p DemoBottle.new("wget").name, DemoBottle.new(nil, name: "curl").name
+begin
+  DemoBottle.strict(nil)
+rescue TypeError => e
+  p e.class
+end
 lg = Demo::Lenient.logger
 p lg.call(1, "x", nil), lg.call(3, "p", "m")
 p Demo::Lenient.level_of, Demo::Lenient.level_of(:SEV_DEBUG)
+p Demo::Lenient.sent("aBc")
+p Demo::Lenient.missing(true), Demo::Lenient.missing(false)
+tagb = [{ "a" => :x }, { "b" => %i[y z] }, { "c" => nil }] #: Array[Hash[String, untyped]]
+p tagb.map { |h| Demo::Lenient.tags_of(h) }
+p DemoPool.new(name: "q", size: 4) { |x| x * 2 }.report, DemoPool.new.report
+p DemoThen.new([3]) { |x| x * 10 }.run, DemoExec.new.post(1, 2) { |a, b| a + b }
+ENV["DEMO_TOKEN"] = "s"
+p ENV.demo_clear_sensitive! { ENV["DEMO_TOKEN"] }, ENV["DEMO_TOKEN"], ENV.demo_sensitive?("a_password")
+p [DemoPostExec.new, DemoTimerSet.new].map { |x| x.run_all([1, 2]) }
+dev = DemoEvent.new
+dev.set
+dev.set
+p dev.count
+lines = [] #: Array[untyped]
+DemoLineSource.new.each_line_from(["a", "b"]) { |t, l| lines << [t, l] }
+p lines
+nlog = [] #: Array[String]
+p Demo::Lenient.first_over([1, 5, 20, 30], 10, nlog), Demo::Lenient.first_over([1], 10, nlog), nlog
+dlog = [] #: Array[String]
+p Demo::Lenient.depth_find(3, dlog), dlog, Demo::Lenient.void_early(dlog), dlog
 dd = DemoDelayish.new
 p dd.dupv, dd.value_with(:v)
 dv = DemoVisitor.new

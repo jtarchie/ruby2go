@@ -64,6 +64,7 @@ type fctx struct {
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
+	retTok         string          // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
 	rescues        int             // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
 	paramWiden     map[string]Type // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
@@ -645,9 +646,10 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
-	if f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) { // the guarded branch names what no file defines: it cannot run (decision 167)
+	fact, folded := f.c.factCond(f.f, pred)                                   // an entry's `# rb2go_fold:` in a method body too (decision 246)
+	if folded || f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) { // the guarded branch names what no file defines: it cannot run (decision 167)
 		taken := els
-		if negate {
+		if negate != (folded && fact) {
 			taken = then
 		}
 		switch e := taken.(type) {
@@ -769,6 +771,11 @@ func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
 		}
 		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
 			if v := f.scope.lookup(lv.Name); v != nil && isOpt(v.typ) {
+				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+			}
+		}
+		if w := parenWrite(call.Receiver); w != nil && call.Name == "nil?" { // `return if (data = build).nil?` (decision 249)
+			if v := f.scope.lookup(w.Name); v != nil && isOpt(v.typ) {
 				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 			}
 		}
@@ -1189,6 +1196,24 @@ func loopNext(n parser.Node) parser.Node {
 func (f *fctx) genReturn(n *parser.ReturnNode) {
 	if f.closures > 0 && f.closures == f.lambdaClosure {
 		f.closureValue(n, n.Arguments) // a lambda's return leaves only the lambda
+		return
+	}
+	if f.closures > 0 && f.retTok != "" && (n.Arguments == nil || len(n.Arguments.Arguments) == 1) { // unwinds to the method (decision 247)
+		e := expr{code: "nil", typ: TNil{}}
+		if n.Arguments != nil {
+			e = f.genExpr(n.Arguments.Arguments[0], f.ret)
+		}
+		if f.retTypes != nil {
+			*f.retTypes = append(*f.retTypes, e.typ)
+		}
+		v := "nil"
+		switch {
+		case f.ret != nil && !isVoid(f.ret):
+			v = f.coerce(n, e, f.ret)
+		case n.Arguments != nil:
+			f.emitExprStmt(n.Arguments.Arguments[0], e)
+		}
+		f.emit("panic(&rbReturn{tok: %s, v: %s})", f.retTok, v)
 		return
 	}
 	if f.closures > 0 && f.lenient() { // gem code (decision 172): fails only if it runs
@@ -2579,6 +2604,17 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 	saved := *f
 	f.convs = map[int]bool{}
 	orig := catchCompileError(func() { run(1) }) // `[].max` fails until the literal is typed
+	for range 4 {                                // a reassigned gem param fails the rest of the run that widened it: again on its widened copy (decision 241)
+		if orig == nil || len(f.paramWiden) == len(saved.paramWiden) {
+			break
+		}
+		w := f.paramWiden
+		*f = saved
+		f.paramWiden, saved.paramWiden = w, w
+		f.convs = map[int]bool{}
+		fresh()
+		orig = catchCompileError(func() { run(1) })
+	}
 	before := f.convs
 	refined := map[localKey]Type{}
 	var order []localKey
@@ -2851,7 +2887,7 @@ func (c *Compiler) emitMethod0(m *Method) {
 		env["Self"] = TVar{Name: "Self"}
 	}
 	params, ret := c.sig(m, env)
-	namedRet := containsRescue(m.Node.Body) && ret != ""
+	namedRet := (containsRescue(m.Node.Body) || c.unwindsReturn(m)) && ret != ""
 	retDecl := ret
 	if namedRet {
 		retDecl = "(ret_ " + ret + ")"
@@ -2898,7 +2934,7 @@ func (c *Compiler) emitMethod0(m *Method) {
 
 func (c *Compiler) emitTopDef(m *Method) {
 	params, ret := c.sig(m, nil)
-	namedRet := containsRescue(m.Node.Body) && ret != ""
+	namedRet := (containsRescue(m.Node.Body) || c.unwindsReturn(m)) && ret != ""
 	retDecl := ret
 	if namedRet {
 		retDecl = "(ret_ " + ret + ")"
@@ -2952,6 +2988,9 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	f := c.newFctx(m.File, m.Owner, m)
 	f.hasNamedRet = namedRet
 	f.retVar = "ret_"
+	if c.unwindsReturn(m) {
+		f.returnUnwind(m, namedRet)
+	}
 	params := c.paramLocals(m)
 	prologue := func() {
 		for _, p := range m.Params {
@@ -3861,5 +3900,63 @@ func renameLocal(n parser.Node, old, fresh string) {
 	}
 	for _, ch := range n.CompactChildNodes() {
 		renameLocal(ch, old, fresh)
+	}
+}
+
+// unwindsReturn: a gem method (decision 172) with a `return` inside a block that is a Go closure: the return panics
+// rbReturn with this call's token, and the method recovers it as its result (decision 247). An iterator's blocks
+// are loops, where return is plain Go.
+func (c *Compiler) unwindsReturn(m *Method) bool {
+	return c.pruneGems && m.Node != nil && !m.Iterator && c.gemFile(m.File) && blockReturns(m.Node.Body, false)
+}
+
+// blockReturns reports a `return` inside a block of n (inBlock: n is one), not in a lambda's or a nested def.
+func blockReturns(n parser.Node, inBlock bool) bool {
+	switch x := n.(type) {
+	case nil:
+		return false
+	case *parser.ReturnNode:
+		if inBlock {
+			return true
+		}
+	case *parser.DefNode, *parser.LambdaNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+		return false
+	case *parser.CallNode:
+		var args parser.Node
+		if x.Arguments != nil { // a nil *ArgumentsNode is a non-nil Node
+			args = x.Arguments
+		}
+		if x.Receiver == nil && x.Name == "lambda" { // `lambda do return end` returns from the lambda
+			return blockReturns(args, inBlock)
+		}
+		if b, ok := x.Block.(*parser.BlockNode); ok {
+			return blockReturns(x.Receiver, inBlock) || blockReturns(args, inBlock) || b.Body != nil && blockReturns(b.Body, true)
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if blockReturns(ch, inBlock) {
+			return true
+		}
+	}
+	return false
+}
+
+// returnUnwind opens a method whose blocks return from it (decision 247): its call's token, and the recover that
+// takes a block's rbReturn as the method's result.
+func (f *fctx) returnUnwind(m *Method, namedRet bool) {
+	f.retTok = "rbRetTok_"
+	f.indent = 1
+	f.emit("rbRetTok_ := new(byte)")
+	switch gt := f.c.goType(m.Ret); {
+	case !namedRet:
+		f.emit("defer rbReturnRecover(rbRetTok_, nil)")
+	case gt == "any":
+		f.emit("defer rbReturnRecover(rbRetTok_, func(v any) { ret_ = v })")
+	default:
+		f.emit("defer rbReturnRecover(rbRetTok_, func(v any) {")
+		f.emit("\tif v != nil {") // a nil-valued result stays ret_'s zero value
+		f.emit("\t\tret_ = v.(%s)", gt)
+		f.emit("\t}")
+		f.emit("})")
 	}
 }

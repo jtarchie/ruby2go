@@ -1800,6 +1800,52 @@ module ControlTests
       nested = [] #: Array[untyped]
       nested << [[1, 2], 3]
       assert_equal [[1, 2, 3]], nested.map { |(x, y), z| [x, y, z] }
+      assert_equal ["k", 3, nil], rows.map { |k,| k }
+    end
+
+    # `x ||= v` after `x = ...` on some paths only: x is nil on the others, so ||= tests it (decision 248)
+    def test_or_assign_after_branch_assignment
+      assert_equal [["a"], ["z"], [["l"], 1], [[], 0]], [control_maybe_set(true), control_maybe_set(false), control_maybe_pair(true), control_maybe_pair(false)]
+    end
+
+    #: (bool) -> Array[String]
+    def control_maybe_set(c)
+      x = ["a"] if c
+      x ||= ["z"]
+      x
+    end
+
+    #: (bool) -> [Array[String], Integer]
+    def control_maybe_pair(c)
+      libs, n = [["l"], 1] if c
+      libs ||= []
+      n ||= 0
+      [libs, n]
+    end
+
+    # `return if (data = build).nil?` narrows data after it, as `return if data.nil?` does (decision 249)
+    def test_guard_on_parenthesized_assignment
+      assert_equal [{ "v" => 2, "a" => 1 }, nil], [control_guard_write(true), control_guard_write(false)]
+    end
+
+    #: (bool) -> Hash[String, Integer]?
+    def control_guard_build(ok) = ok ? { "a" => 1 } : nil
+
+    #: (bool) -> Hash[String, Integer]?
+    def control_guard_write(ok)
+      return if (data = control_guard_build(ok)).nil?
+
+      { "v" => 2, **data }
+    end
+
+    # `|a,|` splats a yielded Array (its first element), unlike `|a|`.
+    def test_trailing_comma_block_param
+      pairs = [["a", true], ["b", false]] #: Array[[String, bool]]
+      pairs.reject! { |name,| name == "a" }
+      assert_equal [["b", false]], pairs
+      assert_equal [1, 3], [[1, 2], [3, 4]].map { |x,| x }
+      assert_equal ["k", "j"], { "k" => 1, "j" => 2 }.map { |k,| k }
+      assert_equal [10, 20], [1, 2].map { |x,| x * 10 }
     end
 
     def test_or_assign_multiple_assign_and_short_circuit

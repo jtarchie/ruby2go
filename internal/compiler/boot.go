@@ -164,6 +164,10 @@ func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		if rerr != nil {
 			return nil, nil, fmt.Errorf("rb2go_main: %w", rerr)
 		}
+		abs, aerr := filepath.Abs(main)
+		if aerr == nil {
+			main = abs // __dir__ is absolute, as MRI's
+		}
 		aug = append(aug, Source{Name: main, Src: data, Path: main})
 	}
 	poison := map[string]string{}

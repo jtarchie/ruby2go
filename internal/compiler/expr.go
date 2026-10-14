@@ -442,6 +442,9 @@ func (f *fctx) noteElem(open *bool, elems *[]Type, args ...parser.Node) {
 
 // noteConv records a conversion site for analyze.
 func (f *fctx) noteConv(n parser.Node, code string) string {
+	if n == nil { // an adapter's own conversion (procArityAdapter): no source site to record
+		return code
+	}
 	if f.pass == 1 && f.convs != nil {
 		f.convs[n.GetLocation().StartOffset] = true
 	}
@@ -1073,6 +1076,9 @@ func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
 // splatToArray is `*x` of a non-Array inside an Array literal (decision 241): Ruby spreads x.to_a when x answers
 // to_a (a tuple, MatchData, Hash, Range), nothing for nil, and x itself otherwise (`[*"a"]` is `["a"]`).
 func (f *fctx) splatToArray(el parser.Node, sp *parser.SplatNode, e expr) expr {
+	if isAny(e.typ) && f.lenient() { // `tags = [*tags]` of an untyped tags: spread as MRI would at run time
+		return expr{code: "(&Array[any]{s: rbSplatAny(" + e.code + ")})", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
+	}
 	spread := func(v expr) expr {
 		if c, ok := v.typ.(TClass); ok && c.C.lookup("to_a") == nil {
 			return expr{code: "(&Array[" + f.c.goType(v.typ) + "]{s: []" + f.c.goType(v.typ) + "{" + v.code + "}})", typ: TClass{C: f.c.classes["Array"], Args: []Type{v.typ}}}
@@ -1325,6 +1331,10 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 				want = TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}
 			}
 			h := f.genExpr(sp.Value, want)
+			if f.lenient() && isAny(h.typ) { // a gem's `new(**formula_hash)` of an untyped Hash: converted where it lands (decision 249)
+				anyHash := TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}
+				h = expr{code: f.coerce(sp, h, anyHash), typ: anyHash}
+			}
 			ht, ok := h.typ.(TClass)
 			if !ok || ht.C.RubyName != "Hash" {
 				f.errorf(sp, "**%s must be a Hash, not %s", f.f.text(sp.Value.GetLocation()), h.typ)
@@ -1878,7 +1888,8 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 	if n.Receiver == nil {
 		return f.genKernelIntrinsic(n, expected)
 	}
-	if !kernelConst(n.Receiver) || !kernelModuleNames[n.Name] || n.Name == "require" || n.Name == "require_relative" {
+	runtimeRequire := n.Name == "require" && f.c.methodRequiresRuntime && !f.f.prelude // `Kernel.require path` (decision 246)
+	if !kernelConst(n.Receiver) || !kernelModuleNames[n.Name] && !runtimeRequire || n.Name == "require" && !runtimeRequire || n.Name == "require_relative" {
 		return expr{}, false
 	}
 	var t Type
@@ -3785,7 +3796,9 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 			}
 		}
 		switch r := ps.Rest.(type) {
-		case nil, *parser.ImplicitRestNode: // `|a, |` takes the first element, as `|a|` would of a splat
+		case nil:
+		case *parser.ImplicitRestNode: // `|a, |` splats a yielded Array as `|a, *|` does; `|a|` takes it whole
+			names = append(names, "*")
 		case *parser.RestParameterNode:
 			name := ""
 			if r.Name != nil {
@@ -4171,6 +4184,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		if f.isBlockParam(b.Expression) {
 			return f.forwardClosure(b, sig, env)
 		}
+		if code, ok := restBlockFunc(b, sig); ok {
+			return code
+		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
 			if code, ok := f.selfProcArg(b, self); ok {
@@ -4453,6 +4469,8 @@ func (f *fctx) genUnionIterCall(n *parser.CallNode, u TUnion, t tail) bool {
 			f.emit("panic(rbNoMethod(%q, nil, false))", n.Name)
 		case entries[i] != nil:
 			f.genIterLoop(n, entries[i], expr{code: sw, typ: m})
+		case f.lenient() && f.resolve(m, n.Name) == nil: // a gem's member without the method: NoMethodError if taken, as MRI's
+			f.emit("panic(rbNoMethod(%q, %s, false))", n.Name, sw)
 		default:
 			f.emitExprStmt(n, f.genMethodCall(n, expr{code: sw, typ: m}, n.Name, callArgs(n), n.Block))
 		}
@@ -5794,6 +5812,15 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 	if b, ok := block.(*parser.BlockNode); ok && f.lenient() {
 		return f.genDynBlockCall(n, recv, name, args, b)
 	}
+	if _, ok := block.(*parser.BlockArgumentNode); ok && f.lenient() { // a method's own `&block` passed on (concurrent-ruby's `ns_initialize(opts, &block)`)
+		if v, ok := f.dynBlockValue(n, block); ok {
+			if f.c.dynBlockNames == nil {
+				f.c.dynBlockNames = map[string]bool{}
+			}
+			f.c.dynBlockNames[name] = true
+			return f.genDynCall(n, recv, name, append(slices.Clone(args), &exprNode{e: expr{code: v, typ: TAny{}}}))
+		}
+	}
 	f.errorf(n, "blocks on untyped receivers are not supported")
 	return expr{}
 }
@@ -5844,6 +5871,23 @@ func (f *fctx) dynEnumBlock(n parser.Node, recv expr, name string, args []parser
 	f.emit("switch %s := rbUnbox(%s).(type) {", r, recv.code)
 	branch := func(head string, on expr) {
 		f.emit("%s", head)
+		if call, ok := n.(*parser.CallNode); ok {
+			if e := classOf(on.typ).lookup(name); e != nil && e.M.Iterator && e.M.Block != nil {
+				if _, isBlock := call.Block.(*parser.BlockNode); isBlock && len(args) == 0 { // `each_key do ... end`: a range loop, valued its receiver as MRI's
+					var err *compileError
+					f.probe(func() { err = catchCompileError(func() { f.genIterLoop(call, e, on) }) })
+					f.indent++
+					if err != nil {
+						f.emit("panic(rbNoMethod(%q, %s, false))", name, r)
+					} else {
+						f.genIterLoop(call, e, on)
+						f.emit("%s = %s", tmp, r)
+					}
+					f.indent--
+					return
+				}
+			}
+		}
 		var err *compileError
 		f.probe(func() { err = catchCompileError(func() { f.genMethodCall(n, on, name, args, block) }) })
 		f.indent++
@@ -6604,7 +6648,7 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 }
 
 func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
-	if f.visibleLocal(n.Name) == nil {
+	if f.visibleLocal(n.Name) == nil && f.sameScopeLocal(n.Name) == nil { // one assigned in a branch before is not new (`a, b = x if c`, decision 248)
 		// a new local starts out nil, so this is a plain assignment
 		return f.assignLocal(n, n.Name, f.genExpr(n.Value, nil), nil)
 	}
@@ -7381,6 +7425,9 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	if f.iterator {
 		f.errorf(n, "this method's block is an iterator (it yields); it can only be passed on to another iterator")
 	}
+	if sig.Rest != f.blockSig.Rest && f.lenient() { // `&task` typed func(any) where the callee takes (*untyped) -> untyped, or back
+		return f.restBlockAdapter(sig, env)
+	}
 	if len(sig.Params) != len(f.blockSig.Params) {
 		if f.lenient() {
 			return f.procArityAdapter(sig, env)
@@ -7390,8 +7437,63 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 	for i, p := range sig.Params {
 		unify(p, f.blockSig.Params[i], env)
 	}
+	if tv, ok := sig.Ret.(TVar); ok && env[tv.Name] == nil && isVoid(f.blockSig.Ret) && !isNil(f.blockSig.Ret) {
+		// a void block where the callee's returns X (`return super if block_given?` in Homebrew's Cask#tap over
+		// Kernel#tap): X is untyped, the block's value nil
+		env[tv.Name] = TAny{}
+		params := make([]string, len(sig.Params))
+		args := make([]string, len(sig.Params))
+		for i, p := range sig.Params {
+			params[i] = fmt.Sprintf("p%d %s", i, f.c.goType(subst(p, env)))
+			args[i] = fmt.Sprintf("p%d", i)
+		}
+		return "func(" + strings.Join(params, ", ") + ") any { blk(" + strings.Join(args, ", ") + "); return nil }"
+	}
 	unify(sig.Ret, f.blockSig.Ret, env)
 	return "blk"
+}
+
+// restBlockFunc is a Dyn wrapper's block (dynBlockArg) for a `(*untyped) -> untyped` block: already that func, nil
+// for none.
+func restBlockFunc(b *parser.BlockArgumentNode, sig *BlockSig) (string, bool) {
+	en, ok := b.Expression.(*exprNode)
+	if !ok || !anyRestBlock(sig) {
+		return "", false
+	}
+	ft, ok := en.e.typ.(TFunc)
+	return en.e.code, ok && !ft.Proc && ft.Rest
+}
+
+// restBlockAdapter passes the method's block where the callee's block differs in being variadic (gem code, decision
+// 248): a variadic callee's values fill the block's parameters (missing ones nil), a variadic block takes the callee's.
+func (f *fctx) restBlockAdapter(sig *BlockSig, env map[string]Type) string {
+	if sig.Self != nil || f.blockSig.Self != nil {
+		f.errorf(nil, "a forwarded block with a bound self and a rest parameter on one side only is not supported")
+	}
+	var params, args []string
+	if sig.Rest { // func(xs ...E) R calling blk(p0, p1)
+		elem := subst(sig.Params[len(sig.Params)-1], env)
+		params = append(params, "xs ..."+f.c.goType(elem))
+		for i, want := range f.blockSig.Params {
+			args = append(args, f.coerce(nil, expr{code: fmt.Sprintf("rbArgAt(xs, %d)", i), typ: elem}, want))
+		}
+	} else { // func(p0, p1) R calling blk(p0, p1) with blk variadic
+		elem := f.blockSig.Params[len(f.blockSig.Params)-1]
+		for i, p := range sig.Params {
+			params = append(params, fmt.Sprintf("p%d %s", i, f.c.goType(subst(p, env))))
+			args = append(args, f.coerce(nil, expr{code: fmt.Sprintf("p%d", i), typ: subst(p, env)}, elem))
+		}
+	}
+	call := "blk(" + strings.Join(args, ", ") + ")"
+	ret := subst(sig.Ret, env)
+	head := "func(" + strings.Join(params, ", ") + ")"
+	switch {
+	case isVoid(ret):
+		return head + " { " + call + " }"
+	case isVoid(f.blockSig.Ret):
+		return head + " " + f.c.goType(ret) + " { " + call + "; return *new(" + f.c.goType(ret) + ") }"
+	}
+	return head + " " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
 }
 
 // procArityAdapter passes the method's block where the callee yields another count of values, as a Ruby proc
@@ -8327,6 +8429,18 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 		return f.procInvokeLoose(recv, t, args)
 	}
 	last := len(t.Params) - 1
+	if t.Rest && isAny(t.Params[last]) && t.Self == nil && len(args) > last && slices.ContainsFunc(args[last:], isSplatArg) {
+		// `task.call(*args)` of a (*untyped) Proc: the leading values, then every rest value spread into one slice
+		codes := make([]string, last, last+1)
+		for i, a := range args[:last] {
+			codes[i] = f.coerce(a, f.genExpr(a, t.Params[i]), t.Params[i])
+		}
+		spread, ok := f.anySpread(args[last:])
+		if !ok {
+			spread = "[]any{" + strings.Join(f.anyArgs(args[last:]), ", ") + "}"
+		}
+		return expr{code: "(*" + recv.code + ")(" + strings.Join(append(codes, spread+"..."), ", ") + ")", typ: t.Ret}
+	}
 	switch {
 	case t.Rest && len(args) < last:
 		f.errorf(n, "wrong number of arguments (given %d, expected %d+)", len(args), last)
@@ -9562,6 +9676,12 @@ func (f *fctx) annotatedIvarValue(n parser.Node, val expr, ann Type) (expr, Type
 	val = f.unionToAnn(n, val, ann)
 	if isAny(val.typ) && !isAny(ann) { // `@args = T.let(untyped, Args)`: converted, not just relabeled
 		val = expr{code: f.coerce(n, val, ann), typ: ann}
+	}
+	if o, ok := val.typ.(TOpt); ok && !isOpt(ann) && typeEq(o.Elem, ann) { // `@name = T.let(name, String)` of a String?
+		if !f.lenient() {
+			f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", val.typ, ann)
+		}
+		val = expr{code: fmt.Sprintf("rbMust(%s, %q)", val.code, ann.String()), typ: ann} // nil raises, as sorbet-runtime's T.let does (decision 172)
 	}
 	if o, ok := ann.(TOpt); ok && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 		val.typ = o.Elem // a T into a T? ivar: coerce wraps it

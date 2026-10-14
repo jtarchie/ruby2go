@@ -4495,6 +4495,30 @@ module ObjectTests
     include AncGreets
   end
 
+  # A class's own `tap` (Homebrew's Cask#tap: the Tap without a block, Kernel#tap's self with one) passes its void
+  # block to super; tap's block value is discarded, so it is typed void (decision 248)
+  class TapCask
+    def initialize = @tap = "core"
+
+    #: () ?{ (TapCask) -> void } -> untyped
+    def tap(&blk)
+      return super if block_given?
+
+      @tap
+    end
+  end
+
+  class ObjectTapOverrideTest < Minitest::Test
+    def test_tap_override_and_class_through_untyped
+      seen = [] #: Array[String]
+      c = TapCask.new
+      assert_equal "core", c.tap
+      back = c.tap { |k| seen << k.class.name.to_s }
+      assert_equal [TapCask, ["ObjectTests::TapCask"]], [back.class, seen]
+      assert_equal [1, 2], [1, 2].tap { |a| seen << a.size.to_s }
+    end
+  end
+
   class ObjectRubySpecAncestorsTest < Minitest::Test
     def test_ancestors
       extra = Object.included_modules - [Kernel] # what other files' libraries mix into Object in one MRI process (pp, json)
@@ -4503,6 +4527,19 @@ module ObjectTests
       assert_equal [[Object, Kernel, BasicObject], [Comparable], [Kernel], [BasicObject]], [Object.ancestors - extra - kextra, Comparable.ancestors, Kernel.ancestors - kextra, BasicObject.ancestors]
       assert_equal [AncGreets, AncMarks, Kernel], AncB.included_modules - extra
       assert_equal [true, false], [Integer.ancestors.include?(Comparable), AncA.ancestors.include?(AncGreets)]
+    end
+
+    # Module#include?: a module among the ancestors, never the class itself or a class
+    def test_module_include
+      assert_equal [true, true, false, true], [AncB.include?(AncMarks), AncB.include?(AncGreets), AncA.include?(AncGreets), Integer.include?(Comparable)]
+      err = begin
+        AncB.include?(AncA)
+      rescue TypeError => e
+        e.class
+      end
+      assert_equal TypeError, err
+      k = AncB #: untyped
+      assert_equal [true, false], [k&.include?(AncGreets), Comparable.include?(Kernel)]
     end
 
     # rb2go's own IOReadable and IOWritable are left out, as MRI has neither (decision 139)

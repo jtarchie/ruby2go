@@ -727,12 +727,25 @@ func (c *Compiler) dynBlockable(name string, m *Method) bool {
 	if m.Owner != nil && m.Owner.universal {
 		return false
 	}
-	return (c.dynBlockNames[name] || c.dynBlockAll) && (!m.Iterator || !m.hasKeywords()) && m.Block.Self == nil && !m.Block.Rest
+	return (c.dynBlockNames[name] || c.dynBlockAll) && (!m.Iterator || !m.hasKeywords()) && m.Block.Self == nil && (!m.Block.Rest || anyRestBlock(m.Block))
+}
+
+// anyRestBlock is a gem's unannotated `&block`, `(*untyped) -> untyped`: the dynamic call's rbBlockArg as it is.
+func anyRestBlock(b *BlockSig) bool {
+	return b.Rest && len(b.Params) == 1 && isAny(b.Params[0]) && isAny(b.Ret)
 }
 
 // dynBlockArg is the block a dynamic call passes as its last argument (rbBlockArg), as the method's typed block: each
 // value boxed in, its result asserted out; nil when the call passed none and the block is optional (decision 243).
 func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.Node {
+	if anyRestBlock(m.Block) { // the call's block as it is, a nil Proc when it gave none
+		f.emit("var blkFn_ func(...any) any")
+		f.emit("if blk_ != nil {")
+		f.emit("\tblkFn_ = blk_.fn")
+		f.emit("}")
+		ft := TFunc{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}}
+		return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "blkFn_", typ: ft}}}
+	}
 	params := make([]string, len(m.Block.Params))
 	vals := make([]string, len(m.Block.Params))
 	ps := make([]Type, len(m.Block.Params))
@@ -1167,7 +1180,7 @@ func (c *Compiler) allMethodNames(gemOnly bool) []string {
 	return out
 }
 
-var symbolLiteral = regexp.MustCompile(`(?:[:&]:|%i\[)([^\]\n]*?)(?:\]|\b)`)
+var symbolLiteral = regexp.MustCompile(`(?:^|[^:\w]):([A-Za-z_]\w*[?!=]?|[<>=!~+\-*/%^&|\[\]]+@?)|%i\[([^\]\n]*)\]`)
 
 // symbolLiterals is every symbol written in a gem or user file (`:name`, `&:name`, `%i[a b]`): what a computed send
 // there can name without building a string. Over-approximate by regex; a wrong extra name only widens the set.
@@ -1182,7 +1195,7 @@ func (c *Compiler) symbolLiterals() map[string]bool {
 			continue
 		}
 		for _, m := range symbolLiteral.FindAllSubmatch(f.Src, -1) {
-			for _, w := range word.FindAll(m[1], -1) {
+			for _, w := range word.FindAll(append(m[1], m[2]...), -1) { // `:name`, `&:name` or `%i[a b]` (one group is empty)
 				c.symLits[string(w)] = true
 			}
 		}

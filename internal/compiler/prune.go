@@ -481,6 +481,24 @@ func (p *pruner) identity(name string) bool {
 
 // slimInterfaces drops from named interfaces the methods kept code never selects: the classes then need no stub for them (decision 89).
 func (p *pruner) slimInterfaces(f *ast.File) {
+	tested := map[string]bool{} // interfaces a type switch or assertion tests values against
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.TypeAssertExpr:
+			if id, ok := x.Type.(*ast.Ident); ok {
+				tested[id.Name] = true
+			}
+		case *ast.TypeSwitchStmt:
+			for _, st := range x.Body.List {
+				for _, e := range st.(*ast.CaseClause).List { //nolint:forcetypeassert // a type switch body holds case clauses
+					if id, ok := e.(*ast.Ident); ok {
+						tested[id.Name] = true
+					}
+				}
+			}
+		}
+		return true
+	})
 	for _, d := range f.Decls {
 		gd, ok := d.(*ast.GenDecl)
 		if !ok || gd.Tok != token.TYPE {
@@ -492,9 +510,15 @@ func (p *pruner) slimInterfaces(f *ast.File) {
 				continue
 			}
 			iface := s.(*ast.TypeSpec).Name.Name
-			it.Methods.List = slices.DeleteFunc(it.Methods.List, func(m *ast.Field) bool {
+			slim := slices.DeleteFunc(slices.Clone(it.Methods.List), func(m *ast.Field) bool {
 				return len(m.Names) > 0 && !p.methodNames[m.Names[0].Name] && !p.mustDeclare(m.Names[0].Name) && !p.ifaceSelected(iface, m.Names[0].Name)
 			})
+			if len(slim) == 0 && len(it.Methods.List) > 0 && tested[iface] {
+				// emptied, it would match every value in a type switch (rbClassOf's `case Method_Any:`); a method no type
+				// has matches none, as the kept types implemented none of the dropped ones
+				slim = []*ast.Field{{Names: []*ast.Ident{ast.NewIdent("_rbNever")}, Type: &ast.FuncType{Params: &ast.FieldList{}}}}
+			}
+			it.Methods.List = slim
 		}
 	}
 }

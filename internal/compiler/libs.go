@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -265,8 +266,16 @@ func (c *Compiler) loadLibs(ctx context.Context, libs []string, all bool) {
 func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 	args := callArgs(n)
 	str, ok := firstArg(args).(*parser.StringNode)
+	if !ok && len(args) == 1 && n.Name == "require" { // a computed name: checked against the compiled files at run time
+		a := f.genExpr(args[0], f.cls("String"))
+		if !typeEq(a.typ, f.cls("String")) {
+			a.code = "rbMust(" + a.code + ", \"String\").(String)"
+		}
+		f.c.needRequireTable = true
+		return expr{code: "rbRequireComputed(" + a.code + ")", typ: f.cls("Boolean")}
+	}
 	if !ok || len(args) != 1 {
-		return expr{code: "false", typ: f.cls("Boolean"), lit: true} // ponytail: computed names are assumed compiled in; check a table of loaded features to raise LoadError
+		return expr{code: "false", typ: f.cls("Boolean"), lit: true} // ponytail: a computed require_relative is assumed compiled in
 	}
 	name := str.Unescaped.Value
 	var target string
@@ -286,6 +295,49 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 		return f.genExpr(call, nil)
 	}
 	return expr{code: "false", typ: f.cls("Boolean"), lit: true}
+}
+
+// emitRequireTable is rbRequireComputed: `require name` for a name built at run time is false (loaded at start) when
+// name, absolute or under a -I or gem lib directory, with or without `.rb`, is a compiled file or a library the
+// prelude or MRI answers; else MRI's LoadError.
+func (c *Compiler) emitRequireTable() {
+	names := map[string]bool{}
+	for _, f := range c.files {
+		if f.prelude || f.path == "" {
+			continue
+		}
+		for _, p := range []string{f.path, c.real(f.path)} {
+			p, _ = filepath.Abs(strings.TrimSuffix(p, ".rb"))
+			names[p] = true
+			for _, dir := range slices.Concat(c.loadPath, c.gemDirs) {
+				dir, _ = filepath.Abs(dir)
+				rel, err := filepath.Rel(dir, p)
+				if err == nil && !strings.HasPrefix(rel, "..") {
+					names[filepath.ToSlash(rel)] = true
+				}
+			}
+		}
+	}
+	for lib := range preludeLibs {
+		names[lib] = true
+	}
+	c.w("func rbRequireComputed(name String) Boolean {\n\tswitch strings.TrimSuffix(string(name), \".rb\") {\n\tcase ")
+	for i, n := range slices.Sorted(maps.Keys(names)) {
+		if i > 0 {
+			c.w(",\n\t\t")
+		}
+		c.w("%s", strconv.Quote(n))
+	}
+	c.w(":\n\t\treturn false\n\t}\n")
+	c.w("\tswitch first, _, _ := strings.Cut(string(name), \"/\"); first {\n\tcase ")
+	for i, n := range slices.Sorted(maps.Keys(mriLibs)) {
+		if i > 0 {
+			c.w(", ")
+		}
+		c.w("%q", n)
+	}
+	c.w(":\n\t\treturn false\n\t}\n")
+	c.w("\tpanic(NewLoadError(Ref(String(\"cannot load such file -- \" + string(name)))))\n}\n\n")
 }
 
 // readMagic reads the main file's decision 197 comments: `# rb2go_method_requires: runtime`,

@@ -7637,3 +7637,154 @@ resolve; anything not listed is still open.
       subclasses, and `on` returning the parser for chaining with a switch
       object.
     - Build cost: `05_word_count` unchanged (OptionParser loads only on `require "optparse"`).
+
+246. **Brew's CLI parser setup: Sorbet `Object`, `|a,|` blocks, symbol literals for computed sends** (#100; 2026-10-13).
+    - A Sorbet sig's `Object`/`BasicObject` is `untyped`. Go already spelt
+      them `any`, but the class type kept an override's
+      `T::Array[Object]` from adapting a parent's `T::Array[Entry]`
+      (Homebrew::Bundle::VscodeExtension.cleanup_items: the subclass lost the
+      parent's interface slot and the program did not build).
+    - `|a,|` (an implicit rest) splats a yielded Array as `|a, *|` does.
+      It had bound the whole element, as `|a|` does: a silent miscompile
+      in user code too (`pairs.reject! { |name,| ... }`).
+    - The symbol-literal scan behind decision 235 (prelude methods count
+      for a gem's computed send only when a gem or user file writes their
+      name as a symbol) never captured a name: `:x` did not match and
+      `&:x` captured "". So `public_send(method, ...)` with `method:
+      :on_tail` found no `on_tail`. Build cost: `05_word_count` and
+      `64_observable` unchanged, `116_cuba_web` +42 functions (names it
+      was missing).
+    - A require of a name built at run time, under decision 197's
+      `rb2go_method_requires: runtime` (receiverless, or `Kernel.require`):
+      `rbRequireComputed` switches over the compiled files' absolute paths
+      and their names relative to each -I or gem dir (with or without
+      `.rb`), then the prelude's and MRI's library names, and returns false
+      (loaded at start); any other name raises MRI's LoadError. It had
+      returned false for every name, so Homebrew's
+      `Commands.valid_internal_cmd?` (`Utils::Ruby.require?(path)`) could
+      not tell a missing command from a compiled one. The switch is
+      emitted only when such a require is compiled.
+    - A traced entry's `rb2go_main` path is made absolute, so `__dir__` is
+      absolute, as MRI's. `TestTracedEntry` (testdata/traced) is the first
+      test of a decision 197 entry.
+    - `Module#include?(mod)`: whether mod is among self's ancestors'
+      modules; a non-module argument raises MRI's TypeError (brew.rb's
+      `cmd_class&.include?(Homebrew::ShellCommand)`). Written in Go: as Ruby,
+      its `raise` with `mod.class` cost `64_observable` +1,216 functions
+      through the dynamic `include?` dispatcher; in Go it costs +155.
+    - An entry's `# rb2go_fold: expr => bool` facts (decision 197) fold
+      `if`/`unless` conditions in method bodies too, not only class bodies:
+      a fact, or `&&`, `||`, `!` and parentheses over facts, decided only
+      when the facts decide it (an unknown side is never dropped). Only the
+      taken branch is compiled. Homebrew's `Utils.popen` forks with
+      `IO.popen("-")`, which a Go program cannot do; the brew entry folds
+      `ENV["HOMEBREW_SPAWN_SYSTEM"] == "1" => true`, Homebrew's own spawn
+      path, so the fork branch is never compiled. `OS.mac?`/`OS.linux?`
+      now drop macOS-only method branches as well.
+    - Brew harness: `utils/backtrace`, required only on brew.rb's error
+      path, is added to the traced entry.
+
+247. **Non-local `return` from a closure block in gem code** (#100; 2026-10-13). Amends decision 4.
+    - A gem method (decision 172) whose block, compiled as a Go closure,
+      `return`s now returns from the method, as MRI does, instead of
+      raising NotImplementedError when it runs. The method allocates a
+      per-call token (`rbRetTok_ := new(byte)`) and defers
+      `rbReturnRecover`. The block's `return v` panics `&rbReturn{tok, v}`
+      with v coerced to the method's return type, and the recover sets the
+      named result `ret_`. The token, unlike decision 241's `rbBreak` id,
+      keeps a recursive call of the same method from taking another call's
+      return.
+    - `rescue` passes rbReturn on, as it does rbBreak (rbWrapPanic), so
+      Homebrew's `IO.popen(...) do |pipe| return pipe.read ...; rescue
+      Exception; ...; raise; end` returns, and `ensure` runs.
+    - Return-type inference counts these returns (a bare `return` is nil).
+    - `lambda do return end` and nested defs are not matched. An iterator
+      method's blocks are loops, where return is plain Go already.
+    - Not covered: `return a, b` from a block (still the decision 4 stub),
+      and a block that returns after its method has returned (MRI's
+      LocalJumpError; here the panic is uncaught). User code keeps decision
+      4's compile error.
+    - Build cost: none for programs without such a method. rbReturn is
+      non-comparable (`_ [0]func()`), so rbWrapPanic's case for it adds no
+      generated equality function (`05_word_count` stays 1178).
+
+248. **Brew batch: nilable `T.let`, `||=` after a branch assignment, forwarded rest blocks, `tap`, top-level `ENV.extend`** (#100; 2026-10-13).
+    - `@x = T.let(v, T)` (an annotated ivar write) of a `T?` value no
+      longer relabels it as T (the Go code kept the pointer). In gem code
+      it unwraps with `rbMust`, which raises TypeError on nil as
+      sorbet-runtime's T.let does. In user code it is decision 20's
+      possibly-nil error.
+    - `x ||= v` reads x first (definite-assignment walk, decision 14). A
+      local assigned on some paths only (`libs, deps = f.linkage if
+      installed; libs ||= []`) is T? there, so `||=` tests it. `||=` also
+      finds a local assigned in an earlier branch (`sameScopeLocal`), as
+      reads and plain assignments do. It had overwritten the branch's
+      value unconditionally: a silent miscompile in user code too.
+    - Gem code, concurrent-ruby's executors and promises:
+      - A method's own `&block` passed to a method on an untyped receiver
+        or self (`ns_initialize(opts, &block)`) goes through the dynamic
+        call as an rbBlockArg. A callee's unannotated `&block`, typed
+        `(*untyped) -> untyped`, gets a Dyn wrapper that passes that func
+        through, nil when the call gave none.
+      - A block forwarded across a variadic difference (`&task` typed
+        `func(any)` from its callers, into a `(*untyped) -> untyped`
+        block, or back) is adapted (`restBlockAdapter`).
+      - `task.call(*args)` on a `(*untyped)` Proc spreads the splat into
+        the Go variadic call instead of a dynamic call.
+    - A method's own void block forwarded where the callee's block returns
+      an unbound type variable (`return super if block_given?` in
+      Homebrew's Cask#tap and CLI::Args#tap, over Kernel#tap's `[X] {
+      (self) -> X }`) binds X to untyped, the block adapted to return nil.
+      Go could not infer X from a func returning nothing. (Typing tap's
+      block void instead gave every class a tap forwarder.)
+    - Pruner: an interface that type switches or assertions test is never
+      slimmed to empty, which would match every value. It keeps one method
+      no type has (`_rbNever()`). `rbClassOf`'s `case Method_Any:` had
+      answered Method for every object in programs without Method values.
+    - A top-level `ENV.extend(M)` / `$stdout.extend(M)` includes M into
+      the one object's class (decision 229's handling), as in a class body.
+      It was dropped as an object-constant extend (decision 244), so
+      Homebrew's EnvActivation and EnvSensitive methods were missing.
+    - A gem's `each_key do ... end` (an iterator method) on an untyped or
+      module self (`dynEnumBlock`) runs as a range loop in each branch,
+      valued its receiver, instead of raising NoMethodError.
+    - `noteConv` ignores a nil node (an adapter's own conversion).
+    - Build cost: `05_word_count` 1178, `64_observable` and
+      `116_cuba_web` unchanged.
+
+249. **Brew batch: dynamic override slots, module overrides, retried param widening, guard on `(x = v).nil?`, untyped splats, `decorator.all_props`** (#100; 2026-10-13).
+    - A gem override that no typed adapter fits (concurrent-ruby's
+      `TimerSet#post(delay, *args, &task)` over
+      `RubyExecutorService#post(*args, &task)`) no longer drops the
+      parent's slot, which left the class failing the parent's interface.
+      The slot is kept as dynamic: its adapter boxes the positional
+      arguments and an untyped block, calls the override through
+      `rbDyn<Name>`, and converts the result. So a parent method calling
+      `post` on a TimerSet runs TimerSet#post, as in MRI. Only for
+      overrides without keywords, callee defaults, iterators or typed
+      blocks (`dynAdaptable`).
+    - An included gem module's method that overrides a superclass method
+      of an includer with another Go signature
+      (`ConditionSignalling#ns_broadcast` returning self over
+      `AbstractLockableObject#ns_broadcast`) gets its own Go name
+      (`NsBroadcast_ofConditionSignalling`, shared by every includer), and
+      the includer answers the superclass's slot through an adapter, as a
+      class's own override does (decision 8).
+    - A gem parameter reassigned what its type does not hold (decision
+      241) is widened from the next run, but that same run then failed at
+      the next use and took the whole method down. `analyze` now reruns a
+      failed pass 1 with the widenings it found. Homebrew's
+      `SystemCommand#each_line_from` rebinds `sources: T::Array[IO]` to a
+      Hash. An iterator call on such a union (`sources.each_key`) raises
+      NoMethodError in the arms that lack the method instead of failing to
+      compile.
+    - `return if (data = build).nil?` narrows data after it, as `return if
+      data.nil?` does (user code too).
+    - Gem code: `[*x]` of an untyped x spreads at run time (`rbSplatAny`:
+      nil nothing, an Array its elements, a Hash its pairs, else x), and
+      `**h` of an untyped h converts to `Hash[untyped, untyped]`.
+    - A T::Struct answers sorbet-runtime's `decorator.all_props`: the
+      synthesized `self.decorator` is the class and `self.all_props` the
+      props, boot's included (Homebrew's `FormulaStruct.from_hash` slices
+      by it). ponytail: the class itself answers all_props, which MRI's
+      does not.

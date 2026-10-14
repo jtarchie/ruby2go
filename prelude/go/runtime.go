@@ -1003,7 +1003,7 @@ func rbWrapPanic(r any) any {
 	case ExceptionI:
 		e._Exception().__seen = true // a later capture knows this is a re-raise (decision 106)
 		return r
-	case rbStop, rbThrow, rbBreak, rbIterBreak:
+	case rbStop, rbThrow, rbBreak, rbIterBreak, *rbReturn:
 		return r
 	case RxUnsupported:
 		return NewRegexpError(Ref(String(e)))
@@ -1618,6 +1618,28 @@ func rbBreakRecover(id string) {
 	if r := recover(); r != nil {
 		if b, ok := r.(rbBreak); !ok || b.id != id {
 			panic(r)
+		}
+	}
+}
+
+// rbReturn unwinds a gem block's `return` to the method call it returns from (decision 247): tok is that call's own,
+// so a recursive call of the same method does not take it. Rescue passes it on, ensure runs.
+type rbReturn struct {
+	_   [0]func() // not comparable: Go generates no equality function for it in every program
+	tok *byte
+	v   any
+}
+
+// rbReturnRecover ends the call whose token tok is, with the returned value (set through set, nil for a void
+// method), and lets any other panic through.
+func rbReturnRecover(tok *byte, set func(any)) {
+	if r := recover(); r != nil {
+		x, ok := r.(*rbReturn)
+		if !ok || x.tok != tok {
+			panic(r)
+		}
+		if set != nil {
+			set(x.v)
 		}
 	}
 }

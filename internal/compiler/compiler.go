@@ -75,6 +75,7 @@ type Compiler struct {
 	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string       // literal → its variable, to share one per pattern
 	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
+	needRequireTable      bool                    // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
 	programFile           *File                   // the file $0 names: the main file, or a traced entry's rb2go_main (decision 241)
 	dynBlockNames         map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
 	dynBlockAll           bool                    // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
@@ -100,7 +101,7 @@ type Compiler struct {
 	fwdOut                map[*Class]bool         // forwarders emitted
 	selfTyped             map[*Class]bool         // a module whose constraint names Self (decision 208)
 	tablesOut             bool
-	tablesAt              [11]int         // tableInputs when the tables went out
+	tablesAt              [12]int         // tableInputs when the tables went out
 	callable              map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	files                 []*File
 	preludeFS             fs.FS

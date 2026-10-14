@@ -399,6 +399,8 @@ func sorbetType(n parser.Node) string {
 			return "untyped" // a class object of any class
 		case "Proc", "::Proc":
 			return "untyped" // a Proc value is a Go func of any shape, not an object of class Proc
+		case "Object", "::Object", "BasicObject", "::BasicObject":
+			return "untyped" // any value: Go's any, and an override's T::Array[Object] then adapts a parent's T::Array[Entry] (decision 246)
 		}
 		if g, ok := sorbetGenerics[name]; ok {
 			return g + "[untyped]"

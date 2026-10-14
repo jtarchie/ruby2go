@@ -422,14 +422,14 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 }
 
 // tableInputs fingerprints what emitTables reads; the maps only grow, so sizes tell.
-func (c *Compiler) tableInputs() [11]int {
+func (c *Compiler) tableInputs() [12]int {
 	b2i := func(b bool) int {
 		if b {
 			return 1
 		}
 		return 0
 	}
-	return [11]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt)}
+	return [12]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.regexps), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt), b2i(c.needRequireTable)}
 }
 
 // emitTables: what every emitted body has contributed to.
@@ -449,6 +449,9 @@ func (c *Compiler) emitTables() {
 	c.emitUnions()
 	c.emitClassMeta()
 	// last: every body, main included, has registered its literals by now
+	if c.needRequireTable {
+		c.emitRequireTable()
+	}
 	if c.needRxAlt { // a pattern RE2 rejects, or one built at run time from what may hold one (decision 242)
 		c.w("%s\n\nvar _ = rxAltReady\n\n", strings.TrimSpace(rxAltGo()))
 	}
@@ -1460,6 +1463,9 @@ func (c *Compiler) iterAdapterBody(cls *Class, e entry, s slot) string {
 // (checked by checkAdaptable): an argument count e cannot take raises MRI's
 // ArgumentError, anything else converts across the two signatures.
 func (c *Compiler) adapterBody(cls *Class, e entry, s slot) string {
+	if s.dyn {
+		return c.dynAdapterBody(cls, e, s)
+	}
 	file := cls.File
 	if e.M.File != nil {
 		file = e.M.File
@@ -2446,4 +2452,52 @@ func (c *Compiler) emitModIsA() {
 		}
 		c.emitMarkers("IsA_"+mod.Name, classes)
 	}
+}
+
+// dynAdapterBody is a dynamic slot's body (decision 249): its arguments boxed, its block an rbBlockArg, the override
+// called through the dispatcher, the result converted to the slot's return type (TypeError when it is not one).
+func (c *Compiler) dynAdapterBody(cls *Class, e entry, s slot) string {
+	f := c.newFctx(cls.File, cls, nil)
+	f.pass = 2
+	f.indent = 1
+	env := c.slotEnv(s)
+	sm := s.e.M
+	var vals []string
+	rest := ""
+	for i, p := range sm.Params {
+		t := subst(p.Type, env)
+		if p.Rest {
+			rest = t.String()
+			f.emit("args_ := make([]any, 0, %d+len(rest_))", len(sm.Params))
+			continue
+		}
+		vals = append(vals, f.coerce(nil, expr{code: goParamName(p.Name, i), typ: t}, TAny{}))
+	}
+	if rest == "" {
+		f.emit("args_ := make([]any, 0, %d)", len(sm.Params)+1)
+	}
+	if len(vals) > 0 {
+		f.emit("args_ = append(args_, %s)", strings.Join(vals, ", "))
+	}
+	for _, p := range sm.Params {
+		if p.Rest {
+			f.emit("for _, x := range rest_ {")
+			f.emit("\targs_ = append(args_, %s)", f.coerce(nil, expr{code: "x", typ: subst(p.Type, env)}, TAny{}))
+			f.emit("}")
+		}
+	}
+	if sm.Block != nil {
+		f.emit("if blk != nil {")
+		f.emit("\targs_ = append(args_, rbBlockArg{fn: blk})")
+		f.emit("}")
+	}
+	c.noteDyn(e.M.Name)
+	call := "rbDyn" + goMethodName(e.M.Name) + "(rbCall, self, args_...)"
+	ret := subst(sm.Ret, env)
+	if isVoid(ret) {
+		f.emit("%s", call)
+	} else {
+		f.emit("return %s", f.coerce(nil, expr{code: call, typ: TAny{}}, ret))
+	}
+	return f.buf.String()
 }

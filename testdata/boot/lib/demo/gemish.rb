@@ -1,3 +1,4 @@
+require "monitor"
 require "json"
 require "uri"
 # Gem code rb2go's typing would reject, compiled leniently as rack's multipart parser and request are (decision 175).
@@ -210,6 +211,60 @@ module Demo
       level + 1
     end
 
+    # Non-local return from closure blocks (Homebrew's Utils.popen: `IO.popen(...) do |pipe| return pipe.read ...`):
+    # rescue Exception in the block passes it on, ensure runs, and a recursive call keeps its own (decision 247).
+    def self.first_over(xs, limit, log)
+      xs.map do |x|
+        return x if x > limit
+      rescue Exception # rubocop:disable Lint/RescueException
+        log << "rescued"
+        raise
+      ensure
+        log << "ensure #{x}"
+      end
+      nil
+    end
+
+    #: (Integer, Array[String]) -> String
+    def self.depth_find(n, log)
+      [n].map do |k|
+        inner = n.positive? ? depth_find(n - 1, log) : :bottom
+        log << "#{k}:#{inner}"
+        return "at #{k}" if k.even?
+      end
+      "none #{n}"
+    end
+
+    def self.void_early(log)
+      [1, 2, 3].each_with_object([]) do |x, acc|
+        acc << x
+        return if x == 2
+      end
+      log << "not reached"
+    end
+
+    # Homebrew's `missing_libraries, deps = formula.missing_library_linkage if installed; missing_libraries ||= []`
+    # (decision 248).
+    #: () -> [Array[String], Array[String]]
+    def self.linkage = [["/a/libx.so"], ["dep"]]
+
+    def self.missing(installed)
+      libs, deps = linkage if installed
+      libs ||= []
+      deps ||= []
+      libs.map { |lib| File.basename(lib) } + deps
+    end
+
+    # Homebrew's SoftwareSpec#uses_from_macos: `dep, tags = bounds.shift; tags = [*tags]` of an untyped value
+    # (decision 249).
+    def self.tags_of(bounds)
+      _dep, tags = bounds.shift
+      [*tags]
+    end
+
+    # A computed send of a prelude method no code calls by name, named as a symbol (decision 246).
+    def self.sent(text, how: :swapcase) = text.public_send(how)
+
     # concurrent-ruby's logger: a lambda with a default and a `&block` param, its block nil (decision 241).
     def self.logger(level = 2)
       lambda do |severity, progname, message = nil, &block|
@@ -293,4 +348,129 @@ class DemoVisitor
     q, a = nil
     [q, a]
   end
+end
+
+# concurrent-ruby's AbstractExecutorService: `ns_initialize(opts, &block)` inside synchronize, ns_initialize defined
+# only by subclasses, which keep the block as a value (decision 248).
+class DemoAbstractExec
+  attr_reader :name
+
+  def initialize(opts = {}, &block)
+    @mon = Monitor.new
+    @mon.synchronize do
+      @name = opts.fetch(:name) if opts.key?(:name)
+      ns_initialize(opts, &block)
+    end
+  end
+end
+
+class DemoPool < DemoAbstractExec
+  def ns_initialize(opts, &block)
+    @size = opts.fetch(:size, 2)
+    @hook = block
+  end
+
+  def report = [@name, @size, @hook ? @hook.call(3) : nil]
+end
+
+# concurrent-ruby's promises and executors: a block typed from its callers (`{ |x| }`) forwarded with `&task` where
+# the callee's is (*untyped) -> untyped, and `task.call(*args)` spreading into it (decision 248).
+class DemoBlocked
+  def initialize(args, &task)
+    raise ArgumentError, "no block given" unless block_given?
+    @task = task
+    @args = args
+  end
+
+  def run = @task.call(*@args)
+end
+
+class DemoThen < DemoBlocked
+  def initialize(args, &task)
+    super(args, &task)
+  end
+end
+
+class DemoExec
+  def post(*args, &task)
+    raise ArgumentError, "no block given" unless block_given?
+    ns_execute(*args, &task)
+  end
+
+  def ns_execute(*args, &task) = task.call(*args)
+end
+
+# Homebrew's EnvSensitive: a top-level `ENV.extend(M)` (ENV's class includes M), whose methods iterate self with
+# `each_key do ... next ... end` and run a block with the environment changed (decision 248).
+module DemoEnvSensitive
+  def demo_sensitive?(key) = key.match?(/(token|password)/i)
+
+  #: () ?{ () -> untyped } -> untyped
+  def demo_clear_sensitive!(&block)
+    unless block
+      each_key do |key|
+        next unless demo_sensitive?(key)
+
+        self[key] = "{{DEFERRED:#{key}}}"
+      end
+      return
+    end
+
+    old_env = to_hash.dup
+    begin
+      demo_clear_sensitive!
+      yield
+    ensure
+      replace(old_env)
+    end
+  end
+end
+
+ENV.extend(DemoEnvSensitive)
+
+# concurrent-ruby's TimerSet#post(delay, *args, &task) over RubyExecutorService#post(*args, &task): no typed adapter
+# fits, so the parent's slot boxes its arguments into a dynamic call of the override, as MRI calls it (decision 249).
+class DemoPostExec
+  def post(*args, &task)
+    raise ArgumentError, "no block given" unless block_given?
+    task.call(*args)
+  end
+
+  def run_all(xs) = xs.map { |x| post(x, 10) { |v| v + 1 } }
+end
+
+class DemoTimerSet < DemoPostExec
+  def post(delay, *args, &task)
+    raise ArgumentError, "no block given" unless block_given?
+    [delay, task.call(*args)]
+  end
+end
+
+# concurrent-ruby's ConditionSignalling#ns_broadcast (self) over AbstractLockableObject's abstract one: a module's
+# override with its own Go name, the includer adapting the superclass's slot (decision 249).
+class DemoAbstractLockable
+  def ns_broadcast
+    raise NotImplementedError
+  end
+
+  def wait_until
+    yield
+    ns_broadcast
+  end
+end
+
+module DemoConditionSignalling
+  def ns_broadcast
+    @count = (@count || 0) + 1
+    self
+  end
+end
+
+class DemoMutexLockable < DemoAbstractLockable
+  include DemoConditionSignalling
+  attr_reader :count
+end
+
+class DemoEvent < DemoMutexLockable
+  def set = wait_until { true }
 end

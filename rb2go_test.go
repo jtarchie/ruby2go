@@ -301,6 +301,37 @@ func TestBootAutoload(t *testing.T) {
 	}
 }
 
+// TestTracedEntry compiles a decision 197 entry (an MRI load list naming its main file), as Homebrew's harness does:
+// its -I dirs are gem dirs, and a require inside a method resolves at run time (decision 246).
+func TestTracedEntry(t *testing.T) {
+	requireRuby4(t)
+	dir := filepath.Join("testdata", "traced")
+	entry := filepath.Join(dir, "entry.rb")
+	src, err := os.ReadFile(entry) //nolint:gosec // testdata path
+	if err != nil {
+		t.Fatal(err)
+	}
+	main, rerr := os.ReadFile(filepath.Join(dir, "main.rb")) //nolint:gosec // testdata path
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	srcs := []compiler.Source{{Name: "entry.rb", Src: src, Path: entry}}
+	code, _, err := compiler.CompileWithGems(t.Context(), Prelude, GemSigs, srcs, loadPath(dir, main)...)
+	if err != nil {
+		t.Fatalf("rb2go: %v", err)
+	}
+	if bytes.Contains(code, []byte("fork-only branch")) {
+		t.Error("a branch the entry's rb2go_fold rules out was compiled")
+	}
+	gen := t.TempDir()
+	writeModule(t, gen)
+	werr := os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+	if werr != nil {
+		t.Fatal(werr)
+	}
+	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
+}
+
 var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.

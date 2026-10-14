@@ -213,8 +213,10 @@ func (w *unsetWalk) local(n parser.Node) bool {
 		w.fork(func() { w.walk(n.Value) }, func() {})
 		w.write(k)
 	case *parser.LocalVariableOrWriteNode:
+		k := w.key(n.Name, n.Depth)
+		w.read(k) // `x ||= v` tests x first: one assigned only on some paths is T? there (decision 248)
 		w.fork(func() { w.walk(n.Value) }, func() {})
-		w.write(w.key(n.Name, n.Depth))
+		w.write(k)
 	case *parser.RequiredParameterNode:
 		w.st.set[w.key(n.Name, 0)] = true
 	case *parser.NumberedParametersNode:

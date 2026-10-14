@@ -106,6 +106,22 @@ class Module < Object
     return out
   }
 
+  # Whether mod is among the modules self includes, its ancestors' too (Homebrew's `cmd_class&.include?(ShellCommand)`).
+  #: (untyped) -> bool
+  def include?(mod) = %x{
+    if k, ok := mod.(interface{ _Kind() string }); !ok || k._Kind() != "module" {
+      panic(NewTypeError(Ref(String("wrong argument type " + rbClassName(mod) + " (expected Module)"))))
+    }
+    if t, ok := any(self).(interface{ _Ancestors() []any }); ok {
+      for _, k := range t._Ancestors() {
+        if m, ok := k.(interface{ _Kind() string }); ok && m._Kind() == "module" && k == mod {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
   #: (untyped, ?bool) -> bool
   def public_method_defined?(name, inherit = true) = public_instance_methods(inherit).include?(name.to_s.to_sym)
 
