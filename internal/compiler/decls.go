@@ -2491,8 +2491,21 @@ func (c *Compiler) dynAdapterBody(cls *Class, e entry, s slot) string {
 		}
 	}
 	if sm.Block != nil {
+		fn := "blk"
+		if !anyRestBlock(sm.Block) { // the slot's typed block as an untyped one: each value asserted in, its result boxed out
+			bargs := make([]string, len(sm.Block.Params))
+			for i, p := range sm.Block.Params {
+				bargs[i] = f.coerce(nil, expr{code: fmt.Sprintf("rbArgAt(xs, %d)", i), typ: TAny{}}, subst(p, env))
+			}
+			call := "blk(" + strings.Join(bargs, ", ") + ")"
+			if bret := subst(sm.Block.Ret, env); isVoid(bret) {
+				fn = "func(xs ...any) any { " + call + "; return nil }"
+			} else {
+				fn = "func(xs ...any) any { return " + f.coerce(nil, expr{code: call, typ: bret}, TAny{}) + " }"
+			}
+		}
 		f.emit("if blk != nil {")
-		f.emit("\targs_ = append(args_, rbBlockArg{fn: blk})")
+		f.emit("\targs_ = append(args_, rbBlockArg{fn: %s})", fn)
 		f.emit("}")
 	}
 	c.noteDyn(e.M.Name)

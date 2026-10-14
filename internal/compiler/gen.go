@@ -64,6 +64,7 @@ type fctx struct {
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
+	branchLenient  bool   // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
 	retTok         string          // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
 	rescues        int             // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
@@ -672,7 +673,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	saved := f.enterBlock()
 	f.indent++
 	f.applyNarrow(narrow)
-	f.genStmts(then, t)
+	f.genBranch(then, t)
 	f.indent--
 	f.leaveBlock(saved)
 	switch e := els.(type) {
@@ -691,7 +692,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		saved := f.enterBlock()
 		f.indent++
 		f.applyNarrow(elseNarrow)
-		f.genStmts(e.Statements, t)
+		f.genBranch(e.Statements, t)
 		f.indent--
 		f.leaveBlock(saved)
 		f.emit("}")
@@ -1702,6 +1703,20 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.emit("}")
 }
 
+// genBranch is an if/else branch's statements. In gem code a branch that does not compile (concurrent-ruby's
+// `if Concurrent.on_jruby?` body calling `java.util...`) raises NotImplementedError if reached, as a when arm does,
+// rather than costing its whole method (decision 251).
+func (f *fctx) genBranch(n parser.Node, t tail) {
+	if !f.branchLenient || n == nil { // the last resort of a gem method that otherwise does not compile
+		f.genStmts(n, t)
+		return
+	}
+	err := f.tryClean(func() { f.genStmts(n, t) })
+	if err != nil {
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a branch does not compile: "+err.msg)
+	}
+}
+
 // genWhenArm is a type switch arm's statements. In gem code an arm that does not compile (one the subject's inferred type
 // says cannot match, as optparse's `when Array` on a String-typed option) raises NotImplementedError if reached,
 // rather than costing its whole method (decision 244).
@@ -2554,6 +2569,16 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		f.poisonedBody(t, prologue)
 	case whole:
 		err := catchCompileError(func() { f.analyze(fresh, run) })
+		if err != nil && f.c.ivarsDiscovered { // again with each branch that does not compile raising if reached (decision 251)
+			nw := len(f.c.Warnings)
+			f.branchLenient = true
+			fresh()
+			err = catchCompileError(func() { f.analyze(fresh, run) })
+			f.branchLenient = false
+			if err != nil {
+				f.c.dropWarnings(nw)
+			}
+		}
 		if err != nil {
 			f.m.poison = err.msg
 			fresh()

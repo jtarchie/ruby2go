@@ -777,6 +777,19 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 	return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "(&blkFn_)", typ: ft}}} // a Proc value is boxed: .call derefs it
 }
 
+// dynCallBlock takes a dynamic call's block off its arguments (decision 243): the method's block, or dropped when it
+// takes none, as MRI ignores it (decision 251).
+func (c *Compiler) dynCallBlock(f *fctx, m *Method, env map[string]Type) parser.Node {
+	if m.Block != nil {
+		f.emit("blk_, args := rbPopBlock(args)")
+		return c.dynBlockArg(f, m, env)
+	}
+	if c.dynBlockNames[m.Name] {
+		f.emit("_, args = rbPopBlock(args)")
+	}
+	return nil
+}
+
 // dynIterCall is a dynamic call with a block of an iterator method: a range over it, each yield into the call's block.
 // MRI's value is the method's, often the block's (`synchronize { ... }`): the last block value stands in (decision 243).
 func (c *Compiler) dynIterCall(f *fctx, e *entry, recv expr, env map[string]Type, nodes []parser.Node) {
@@ -818,11 +831,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 			req++
 		}
 	}
-	var blk parser.Node
-	if m.Block != nil { // a dynamic call's block comes last (decision 243)
-		f.emit("blk_, args := rbPopBlock(args)")
-		blk = c.dynBlockArg(f, m, env)
-	}
+	blk := c.dynCallBlock(f, m, env)
 	var kwh *exprNode // the call's keywords, passed on as **kwh (#51)
 	if m.hasKeywords() {
 		f.emit("kwh, args := rbDynKw(args, %d)", req)

@@ -525,3 +525,51 @@ class DemoIVar
     super(observer, func)
   end
 end
+
+# concurrent-ruby's RubyThreadPoolExecutor#ns_initialize(opts): no block, though AbstractExecutorService#initialize
+# passes one dynamically (`ns_initialize(opts, &block)`); MRI ignores it (decision 251).
+class DemoPlainPool < DemoAbstractExec
+  def ns_initialize(opts)
+    @size = opts.fetch(:size, 1)
+  end
+
+  def size = @size
+end
+
+# concurrent-ruby's ExecutorService#post, included by AbstractExecutorService: a subclass's post(delay, *args, &task)
+# answers the superclass's slot dynamically, though a module owns it (decision 251).
+module DemoExecutorService
+  def post(*_args, &_task)
+    raise NotImplementedError
+  end
+end
+
+class DemoAbstractService
+  include DemoExecutorService
+
+  def schedule(x) = post(x, 10) { |v| v + 1 }
+end
+
+class DemoTimerService < DemoAbstractService
+  def post(delay, *args, &task)
+    [delay, task.call(*args)]
+  end
+end
+
+# concurrent-ruby's CachedThreadPool#ns_initialize: an `if Concurrent.on_jruby?` branch calling java.util..., which
+# does not compile, raises if reached instead of costing the method; the override typed by its parent ends in nil
+# there (decision 251).
+class DemoPoolBase
+  def ns_initialize(opts) = @size = opts.fetch(:size, 1)
+end
+
+class DemoCachedPool < DemoPoolBase
+  def ns_initialize(opts)
+    super(opts)
+    if opts[:jruby]
+      @executor = java.util.concurrent.Executors.newCachedThreadPool
+    end
+  end
+
+  def size = @size
+end

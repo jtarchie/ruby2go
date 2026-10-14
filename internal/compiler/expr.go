@@ -1749,6 +1749,12 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if isOpt(e.typ) {
 		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
 	}
+	if isNil(e.typ) && f.lenient() && f.m != nil && f.m.inherited != nil && f.closures == 0 {
+		// ponytail: a gem override typed by its parent (concurrent-ruby's CachedThreadPool#ns_initialize ends in an
+		// `if` that is nil on MRI) gives T's zero value where it gives nil; make the slot T? with an adapter to fix
+		// (decision 251)
+		return "*new(" + f.c.goType(to) + ")"
+	}
 	if isNil(e.typ) {
 		f.errorf(n, "nil where %s is expected", to)
 	}

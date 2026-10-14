@@ -3313,8 +3313,9 @@ func (c *Compiler) linkOverrides(cls *Class) {
 		m.shadowed = append([]slot{{e: *pe, in: sup}}, pe.M.shadowed...)
 		kept := m.shadowed[:0]
 		for _, s := range m.shadowed {
+			c.adoptSlotBlock(m, s)
 			if c.gemFile(m.File) && catchCompileError(func() { c.checkAdaptable(slot{e: own, in: cls}, s) }) != nil {
-				if c.dynAdaptable(m, s) {
+				if c.dynAdaptable(m, s, cls) {
 					s.dyn = true
 					kept = append(kept, s)
 				}
@@ -4783,20 +4784,21 @@ func liftConstWrites(n parser.Node, out *[]*parser.ConstantWriteNode) parser.Nod
 // dynAdaptable reports a gem override m no typed adapter fits to slot s (TimerSet#post(delay, *args, &task) over
 // RubyExecutorService#post(*args, &task)) that a dynamic one can serve: the slot boxes its positional arguments and an
 // untyped block, and calls m through its Dyn wrapper, as MRI calls the override (decision 249).
-func (c *Compiler) dynAdaptable(m *Method, s slot) bool {
+func (c *Compiler) dynAdaptable(m *Method, s slot, cls *Class) bool {
 	sm := s.e.M
 	if m.Iterator || sm.Iterator || sm.calleeDefaults || sm.kwMask() || m.Private || sm.generic() {
 		return false
 	}
-	// a module's slot is its Self constraint's, which names the module's own signature; `<=>`'s Op_cmp slot has
-	// emitCmpAdapter
-	if s.e.Owner != nil && s.e.Owner.IsModule || sm.GoName == "Op_cmp" || m.GoName == "cmpNil" {
+	// a module cls includes itself: its slot is its Self constraint's, which names the module's own signature (one a
+	// superclass includes is that class's interface slot); `<=>`'s Op_cmp slot has emitCmpAdapter
+	if s.e.Owner != nil && s.e.Owner.IsModule && s.in == cls || sm.GoName == "Op_cmp" || m.GoName == "cmpNil" {
 		return false
 	}
 	if slices.ContainsFunc(sm.Params, func(p Param) bool { return p.Keyword || p.KwRest }) {
 		return false
 	}
-	if sm.Block != nil && !anyRestBlock(sm.Block) || m.Block != nil && !anyRestBlock(m.Block) {
+	typedBlock := func(b *BlockSig) bool { return b != nil && (b.Self != nil || b.Rest && !anyRestBlock(b)) }
+	if typedBlock(sm.Block) || typedBlock(m.Block) {
 		return false
 	}
 	if m.Block != nil {
@@ -4811,20 +4813,13 @@ func (c *Compiler) dynAdaptable(m *Method, s slot) bool {
 // shadowSlot has m (own) answer slot s it overrides with another Go signature: m takes its own Go name (`_of` + of)
 // and s an adapter, a dynamic one when no typed adapter fits (decision 249); nothing when neither does.
 func (c *Compiler) shadowSlot(m *Method, own, s slot, of string) {
-	if sb := s.e.M.Block; sb != nil && m.Block != nil && anyRestBlock(sb) && !anyRestBlock(m.Block) && !m.Iterator && !s.e.M.Iterator &&
-		m.Block.Self == nil && c.gemFile(m.File) {
-		// concurrent-ruby's IVar#add_observer(&block) over Observable's: the override takes the slot's untyped block,
-		// wider than the one its callers typed, so it keeps the slot (decision 250)
-		b := *sb
-		b.Optional = m.Block.Optional
-		m.Block = &b
-	}
+	c.adoptSlotBlock(m, s)
 	same := s.e.M.GoName == m.GoName
 	if same && c.slotKey(own) == c.slotKey(s) {
 		return
 	}
 	if catchCompileError(func() { c.checkAdaptable(own, s) }) != nil {
-		if !c.dynAdaptable(m, s) {
+		if !c.dynAdaptable(m, s, own.in) {
 			return
 		}
 		s.dyn = true
@@ -4833,4 +4828,17 @@ func (c *Compiler) shadowSlot(m *Method, own, s slot, of string) {
 		m.GoName = goMethodName(m.Name) + "_of" + of
 	}
 	m.shadowed = append(m.shadowed, s)
+}
+
+// adoptSlotBlock: a gem override whose block its callers typed, where the slot's is the untyped (*untyped) -> untyped
+// (concurrent-ruby's IVar#add_observer over Observable's, TimerSet#post over RubyExecutorService's), takes the slot's,
+// which is wider, so it keeps or adapts the slot (decision 250).
+func (c *Compiler) adoptSlotBlock(m *Method, s slot) {
+	sb := s.e.M.Block
+	if sb == nil || m.Block == nil || !anyRestBlock(sb) || anyRestBlock(m.Block) || m.Iterator || s.e.M.Iterator || m.Block.Self != nil || !c.gemFile(m.File) {
+		return
+	}
+	b := *sb
+	b.Optional = m.Block.Optional
+	m.Block = &b
 }
