@@ -8759,3 +8759,18 @@ resolve; anything not listed is still open.
       a `file:line:` prefix.
     - Left: `ivarDecl` has only a line (its file is its class's);
       `sorbet.go`/`source.go` parse errors are plain `fmt.Errorf`.
+278. **Block parameters are a struct, not an encoded string** (#101; amends 152, 241; 2026-10-14).
+    - `blockParamList` (expr_block.go) is the one place a block's or
+      lambda's Prism parameters become `blockParams`: `blockParam{Name,
+      Rest, Sub}`. `Sub` is non-nil for a `(k, v)` destructuring and holds
+      plain names; `Rest` marks `*rest` (`Name` "" for an anonymous one or
+      a bare `|a, |`); numbered `_1` and `it` are plain names. Before,
+      they were the strings "(k,v)", "*rest" and "*", which a dozen
+      consumers re-parsed with HasPrefix, Split and Trim.
+    - Consumers ask `hasRest()`, `special()`, `hasTuple()` or read the
+      fields. `bindBlockParam` is the one bind-and-skip-`_` sequence for
+      single params. `rbFrame.locals` takes `locals()`, the plain names
+      only, exactly what the old strings could match.
+    - Emitted Go and error texts are unchanged (byte-identical `gen` over
+      730 inputs). Not fixed: a block's rest-param name is not in
+      `rbFrame.locals`, so `localKey` resolves it to method scope.

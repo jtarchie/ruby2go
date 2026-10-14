@@ -11,7 +11,41 @@ import (
 
 // ---- blocks
 
-func (f *fctx) blockParamNames(b parser.Node) []string {
+// blockParam is one parameter of a block or lambda as written: a plain name (numbered `_1` and `it` too), a `*rest`
+// (Name "" when anonymous) or a `(k, v)` destructuring of one yielded value (Sub).
+type blockParam struct {
+	Name string
+	Rest bool
+	Sub  []blockParam // non-nil: a destructuring tuple of plain names
+}
+
+type blockParams []blockParam
+
+// hasRest reports a trailing `*rest` (a bare `|a, |` counts, as an anonymous one).
+func (ps blockParams) hasRest() bool { return len(ps) > 0 && ps[len(ps)-1].Rest }
+
+// special reports a rest or destructuring parameter, which the untyped-receiver forms do not take.
+func (ps blockParams) special() bool {
+	return slices.ContainsFunc(ps, func(p blockParam) bool { return p.Rest || p.Sub != nil })
+}
+
+// hasTuple reports a destructuring parameter.
+func (ps blockParams) hasTuple() bool {
+	return slices.ContainsFunc(ps, func(p blockParam) bool { return p.Sub != nil })
+}
+
+// locals are the names prism puts in the block's own Ruby scope: the plain ones, not a rest's or a tuple's.
+func (ps blockParams) locals() []string {
+	var names []string
+	for _, p := range ps {
+		if !p.Rest && p.Sub == nil {
+			names = append(names, p.Name)
+		}
+	}
+	return names
+}
+
+func (f *fctx) blockParamList(b parser.Node) blockParams {
 	switch p := b.(type) {
 	case nil:
 		return nil
@@ -23,25 +57,25 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 		if len(ps.Optionals) > 0 || len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil {
 			f.errorf(b, "unsupported block parameter form")
 		}
-		var names []string
+		var names blockParams
 		for _, r := range ps.Requireds {
 			switch rp := r.(type) {
 			case *parser.RequiredParameterNode:
-				names = append(names, rp.Name)
+				names = append(names, blockParam{Name: rp.Name})
 			case *parser.MultiTargetNode:
-				// `|(k, v), acc|`: spelt "(k,v)", which no Ruby name can be
+				// `|(k, v), acc|`
 				if rp.Rest != nil || len(rp.Rights) > 0 {
 					f.errorf(r, "unsupported block parameter form")
 				}
-				var sub []string
+				sub := []blockParam{}
 				for _, l := range rp.Lefts {
 					lp, ok := l.(*parser.RequiredParameterNode)
 					if !ok {
 						f.errorf(l, "unsupported block parameter form")
 					}
-					sub = append(sub, lp.Name)
+					sub = append(sub, blockParam{Name: lp.Name})
 				}
-				names = append(names, "("+strings.Join(sub, ",")+")")
+				names = append(names, blockParam{Sub: sub})
 			default:
 				f.errorf(r, "unsupported block parameter form")
 			}
@@ -49,25 +83,25 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 		switch r := ps.Rest.(type) {
 		case nil:
 		case *parser.ImplicitRestNode: // `|a, |` splats a yielded Array as `|a, *|` does; `|a|` takes it whole
-			names = append(names, "*")
+			names = append(names, blockParam{Rest: true})
 		case *parser.RestParameterNode:
 			name := ""
 			if r.Name != nil {
 				name = *r.Name
 			}
-			names = append(names, "*"+name) // "*" alone: an anonymous rest
+			names = append(names, blockParam{Name: name, Rest: true}) // no name: an anonymous rest
 		default:
 			f.errorf(r, "unsupported block parameter form")
 		}
 		return names
 	case *parser.NumberedParametersNode:
-		var names []string
+		var names blockParams
 		for i := 1; i <= int(p.Maximum); i++ {
-			names = append(names, fmt.Sprintf("_%d", i))
+			names = append(names, blockParam{Name: fmt.Sprintf("_%d", i)})
 		}
 		return names
 	case *parser.ItParametersNode:
-		return []string{"it"}
+		return blockParams{{Name: "it"}}
 	}
 	f.c.unsupported(f.f, b)
 	return nil
@@ -76,8 +110,8 @@ func (f *fctx) blockParamNames(b parser.Node) []string {
 // bindRestParams binds `|a, *rest|`: one yielded tuple or Array is split
 // across the params when there are leading ones (Ruby's auto-splat);
 // otherwise rest collects the yielded values past the leading params.
-func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]string, func()) {
-	lead, rest := names[:len(names)-1], strings.TrimPrefix(names[len(names)-1], "*")
+func (f *fctx) bindRestParams(n parser.Node, names blockParams, yields []Type) ([]string, func()) {
+	lead, rest := names[:len(names)-1], names[len(names)-1].Name
 	if len(yields) == 1 && len(lead) > 0 {
 		if ps, pro := f.bindSplatParams(n, yields[0], lead, rest); pro != nil {
 			return ps, pro
@@ -96,7 +130,7 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 			parts[i] = expr{code: tmps[i], typ: y}
 		}
 		for i, nm := range lead {
-			f.bindBlockParam(nm, parts[i])
+			f.bindBlockParam(nm.Name, parts[i])
 		}
 		f.bindBlockParam(rest, f.blockArrayOf(n, parts[len(lead):]))
 		for i := len(lead); i < len(tmps) && rest == ""; i++ {
@@ -108,7 +142,7 @@ func (f *fctx) bindRestParams(n parser.Node, names []string, yields []Type) ([]s
 // bindSplatParams destructures the single yielded value of a block that also
 // has a rest param (a tuple, an Array, or to_ary); nil means the value does
 // not splat and the caller takes the plain path.
-func (f *fctx) bindSplatParams(n parser.Node, y Type, lead []string, rest string) ([]string, func()) {
+func (f *fctx) bindSplatParams(n parser.Node, y Type, lead blockParams, rest string) ([]string, func()) {
 	p := f.newTmp()
 	switch t := y.(type) {
 	case TTuple:
@@ -121,7 +155,7 @@ func (f *fctx) bindSplatParams(n parser.Node, y Type, lead []string, rest string
 				parts[i] = expr{code: fmt.Sprintf("%s.F%d", p, i), typ: et}
 			}
 			for i, nm := range lead {
-				f.bindBlockParam(nm, parts[i])
+				f.bindBlockParam(nm.Name, parts[i])
 			}
 			f.bindBlockParam(rest, f.blockArrayOf(n, parts[len(lead):]))
 		}
@@ -129,7 +163,7 @@ func (f *fctx) bindSplatParams(n parser.Node, y Type, lead []string, rest string
 		if t.C.RubyName == "Array" {
 			return []string{p}, func() {
 				for i, nm := range lead {
-					f.bindBlockParam(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
+					f.bindBlockParam(nm.Name, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
 				}
 				f.bindBlockParam(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
 			}
@@ -139,7 +173,7 @@ func (f *fctx) bindSplatParams(n parser.Node, y Type, lead []string, rest string
 			a := f.newTmp()
 			f.emit("%s := rbToAry(%s)", a, p)
 			for i, nm := range lead {
-				f.bindBlockParam(nm, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: TAny{}}}))
+				f.bindBlockParam(nm.Name, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: TAny{}}}))
 			}
 			f.bindBlockParam(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", a, len(lead)), typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}})
 		}
@@ -178,7 +212,7 @@ func (f *fctx) blockArrayOf(n parser.Node, parts []expr) expr {
 // bindBlockParams declares block params for the yielded types, returning
 // the Go loop/closure parameter names and a destructuring prologue.
 // bindTupleParams destructures one yielded tuple across several block params.
-func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]string, func()) {
+func (f *fctx) bindTupleParams(n parser.Node, names blockParams, tt TTuple) ([]string, func()) {
 	if len(names) != len(tt.Elems) && f.lenient() { // a gem's proc: extra fields dropped, missing params nil (decision 233)
 		return f.bindLenientTuple(n, names, tt)
 	}
@@ -192,8 +226,8 @@ func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]stri
 		vars := make([]*local, 0, len(names))
 		var nested []func()
 		for i, nm := range names {
-			if strings.HasPrefix(nm, "(") { // `|(k, v), i|`
-				sub, t, src := strings.Split(strings.Trim(nm, "()"), ","), tt.Elems[i], fmt.Sprintf("%s.F%d", p, i)
+			if nm.Sub != nil { // `|(k, v), i|`
+				sub, t, src := nm.Sub, tt.Elems[i], fmt.Sprintf("%s.F%d", p, i)
 				nested = append(nested, func() {
 					gp, pro := f.bindBlockParams(n, sub, []Type{t})
 					f.emit("%s := %s", gp[0], src)
@@ -201,7 +235,7 @@ func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]stri
 				})
 				continue
 			}
-			v := f.blockParam(nm, tt.Elems[i])
+			v := f.blockParam(nm.Name, tt.Elems[i])
 			lhs = append(lhs, v.goName)
 			rhs = append(rhs, fmt.Sprintf("%s.F%d", p, i))
 			vars = append(vars, v)
@@ -220,8 +254,8 @@ func (f *fctx) bindTupleParams(n parser.Node, names []string, tt TTuple) ([]stri
 
 // bindLenientTuple binds a tuple to a different count of plain block params, as a Ruby proc's arity does: the first
 // fields, then nil.
-func (f *fctx) bindLenientTuple(n parser.Node, names []string, tt TTuple) ([]string, func()) {
-	if slices.ContainsFunc(names, func(nm string) bool { return strings.HasPrefix(nm, "(") }) {
+func (f *fctx) bindLenientTuple(n parser.Node, names blockParams, tt TTuple) ([]string, func()) {
+	if names.hasTuple() {
 		f.errorf(n, "block takes %d params but the tuple has %d elements", len(names), len(tt.Elems))
 	}
 	p := f.newTmp()
@@ -231,11 +265,7 @@ func (f *fctx) bindLenientTuple(n parser.Node, names []string, tt TTuple) ([]str
 			if i < len(tt.Elems) {
 				e = expr{code: fmt.Sprintf("%s.F%d", p, i), typ: tt.Elems[i]}
 			}
-			v := f.blockParam(nm, e.typ)
-			if v.goName != "_" {
-				f.emit("%s := %s", v.goName, e.code)
-			}
-			f.noteUnused(v)
+			f.bindBlockParam(nm.Name, e)
 		}
 		f.emit("_ = %s", p)
 	}
@@ -243,7 +273,7 @@ func (f *fctx) bindLenientTuple(n parser.Node, names []string, tt TTuple) ([]str
 
 // bindArraySplat splats a yielded Array[elem] across several block params;
 // an untyped one (elem TAny) goes through rbToAry first, as MRI's to_ary.
-func (f *fctx) bindArraySplat(n parser.Node, names []string, elem Type, untyped bool) ([]string, func()) {
+func (f *fctx) bindArraySplat(n parser.Node, names blockParams, elem Type, untyped bool) ([]string, func()) {
 	p := f.newTmp()
 	return []string{p}, func() {
 		a := p
@@ -253,23 +283,19 @@ func (f *fctx) bindArraySplat(n parser.Node, names []string, elem Type, untyped 
 		}
 		for i, nm := range names {
 			e := flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: elem}})
-			if strings.HasPrefix(nm, "(") { // `|(k, v), i|`
-				gp, pro := f.bindBlockParams(n, strings.Split(strings.Trim(nm, "()"), ","), []Type{e.typ})
+			if nm.Sub != nil { // `|(k, v), i|`
+				gp, pro := f.bindBlockParams(n, nm.Sub, []Type{e.typ})
 				f.emit("%s := %s", gp[0], e.code)
 				pro()
 				continue
 			}
-			v := f.blockParam(nm, e.typ)
-			if v.goName != "_" {
-				f.emit("%s := %s", v.goName, e.code)
-			}
-			f.noteUnused(v)
+			f.bindBlockParam(nm.Name, e)
 		}
 	}
 }
 
-func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (goParams []string, prologue func()) {
-	if len(names) > 0 && strings.HasPrefix(names[len(names)-1], "*") {
+func (f *fctx) bindBlockParams(n parser.Node, names blockParams, yields []Type) (goParams []string, prologue func()) {
+	if names.hasRest() {
 		return f.bindRestParams(n, names, yields)
 	}
 	if tt, ok := firstType(yields).(TTuple); ok && len(yields) == 1 && len(names) > 1 {
@@ -283,9 +309,9 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	if _, ok := firstType(yields).(TAny); ok && len(yields) == 1 && len(names) > 1 {
 		return f.bindArraySplat(n, names, TAny{}, true)
 	}
-	var extra []string // a gem block's params past what is yielded: nil, as a proc's are (decision 241)
+	var extra blockParams // a gem block's params past what is yielded: nil, as a proc's are (decision 241)
 	if len(names) > len(yields) {
-		if !f.lenient() || slices.ContainsFunc(names[len(yields):], func(nm string) bool { return strings.HasPrefix(nm, "(") }) {
+		if !f.lenient() || names[len(yields):].hasTuple() {
 			f.errorf(n, "block takes %d params but only %d values are yielded", len(names), len(yields))
 		}
 		extra = names[len(yields):]
@@ -293,24 +319,24 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 	var destructure []func()
 	for _, nm := range extra {
 		destructure = append(destructure, func() {
-			v := f.blockParam(nm, TAny{})
+			v := f.blockParam(nm.Name, TAny{})
 			f.emit("var %s any", v.goName)
 			f.noteUnused(v)
 		})
 	}
 	for i := range yields {
 		switch {
-		case i < len(names) && strings.HasPrefix(names[i], "("):
+		case i < len(names) && names[i].Sub != nil:
 			p := f.newTmp()
 			goParams = append(goParams, p)
-			sub, t := strings.Split(strings.Trim(names[i], "()"), ","), yields[i]
+			sub, t := names[i].Sub, yields[i]
 			destructure = append(destructure, func() {
 				gp, pro := f.bindBlockParams(n, sub, []Type{t})
 				f.emit("%s := %s", gp[0], p)
 				pro()
 			})
 		case i < len(names):
-			v := f.blockParam(names[i], yields[i])
+			v := f.blockParam(names[i].Name, yields[i])
 			goParams = append(goParams, v.goName)
 		default:
 			goParams = append(goParams, "_")
@@ -321,8 +347,8 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 			d()
 		}
 		for i := range yields {
-			if i < len(names) {
-				if v := f.scope.lookup(names[i]); v != nil {
+			if i < len(names) && names[i].Sub == nil {
+				if v := f.scope.lookup(names[i].Name); v != nil {
 					f.noteUnused(v)
 				}
 			}
@@ -331,23 +357,23 @@ func (f *fctx) bindBlockParams(n parser.Node, names []string, yields []Type) (go
 }
 
 // symbolBlockNames are a `&:name` block's params: x_ the receiver, the rest its arguments (`reduce(&:merge)`, decision 241).
-func (f *fctx) symbolBlockNames(b parser.Node, name string, n int) []string {
+func (f *fctx) symbolBlockNames(b parser.Node, name string, n int) blockParams {
 	if n == 0 {
 		f.errorf(b, "&:%s needs a block that takes a value", name)
 	}
-	names := []string{"x_"}
+	names := blockParams{{Name: "x_"}}
 	for i := 1; i < n; i++ {
-		names = append(names, fmt.Sprintf("a%d_", i))
+		names = append(names, blockParam{Name: fmt.Sprintf("a%d_", i)})
 	}
 	return names
 }
 
 // symbolBlockCall is a `&:name` block's body: name called on its first value, the others its arguments.
-func (f *fctx) symbolBlockCall(n, block parser.Node, name string, names []string) expr {
+func (f *fctx) symbolBlockCall(n, block parser.Node, name string, names blockParams) expr {
 	v := f.scope.lookup("x_")
 	args := make([]parser.Node, 0, len(names)-1)
 	for _, nm := range names[1:] {
-		args = append(args, &parser.LocalVariableReadNode{Name: nm, Location: block.GetLocation()})
+		args = append(args, &parser.LocalVariableReadNode{Name: nm.Name, Location: block.GetLocation()})
 	}
 	return f.genMethodCall(n, expr{code: v.goName, typ: v.typ}, name, args, nil)
 }
@@ -370,14 +396,14 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	params := substAll(sig.Params, env)
 	self := subst(sig.Self, env) // an escaped block's self, a leading Go param (decision 164)
 	var body parser.Node
-	var names []string
+	var names blockParams
 	var symbolCall string
 	switch b := block.(type) {
 	case *parser.BlockNode:
-		names = f.blockParamNames(b.Parameters)
+		names = f.blockParamList(b.Parameters)
 		body = b.Body
 	case *parser.LambdaNode:
-		names = f.blockParamNames(b.Parameters)
+		names = f.blockParamList(b.Parameters)
 		body = b.Body
 	case *parser.BlockArgumentNode:
 		if f.isBlockParam(b.Expression) {
@@ -421,7 +447,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	if ret == nil {
 		var types []Type
 		f.probe(func() {
-			saved, savedRuby := f.enterRubyBlock(block, names)
+			saved, savedRuby := f.enterRubyBlock(block, names.locals())
 			f.closures++
 			f.pushLoop(loopClosure)
 			f.withClosureSelf(self, func() {
@@ -442,7 +468,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	var b strings.Builder
 	savedBuf := f.buf
 	f.buf = &b
-	saved, savedRuby := f.enterRubyBlock(block, names)
+	saved, savedRuby := f.enterRubyBlock(block, names.locals())
 	f.closures++
 	f.pushLoop(loopClosure)
 	savedSelfType, savedSelfCode := f.selfType, f.selfCode
@@ -488,8 +514,8 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 // bindClosureParams binds a closure's params as bindBlockParams does,
 // returning each Go param with its type. A variadic lambda's (rest) last
 // param is a Go `...E`, which its `*name` holds as an Array (decision 152).
-func (f *fctx) bindClosureParams(n parser.Node, names []string, params []Type, rest bool) ([]string, func()) {
-	if rest && len(params) == 1 && (len(names) == 0 || !strings.HasPrefix(names[len(names)-1], "*")) {
+func (f *fctx) bindClosureParams(n parser.Node, names blockParams, params []Type, rest bool) ([]string, func()) {
+	if rest && len(params) == 1 && !names.hasRest() {
 		return f.bindFromRest(names, params[0])
 	}
 	k, lead := len(params), names
@@ -508,7 +534,7 @@ func (f *fctx) bindClosureParams(n parser.Node, names []string, params []Type, r
 	ps = append(ps, rp+" ..."+et)
 	return ps, func() {
 		pro()
-		name := strings.TrimPrefix(names[len(names)-1], "*")
+		name := names[len(names)-1].Name
 		if name == "" {
 			f.emit("_ = %s", rp)
 			return
@@ -525,15 +551,11 @@ func (f *fctx) bindClosureParams(n parser.Node, names []string, params []Type, r
 
 // bindFromRest binds `|a, b|` for a block the method calls as `{ (*T) -> R }`: each name is that argument, or nil
 // (T's zero value) past the ones passed.
-func (f *fctx) bindFromRest(names []string, et Type) ([]string, func()) {
+func (f *fctx) bindFromRest(names blockParams, et Type) ([]string, func()) {
 	rp := f.newTmp()
 	return []string{rp + " ..." + f.c.goType(et)}, func() {
 		for i, nm := range names {
-			v := f.blockParam(nm, et)
-			if v.goName != "_" {
-				f.emit("%s := rbArgAt(%s, %d)", v.goName, rp, i)
-			}
-			f.noteUnused(v)
+			f.bindBlockParam(nm.Name, expr{code: fmt.Sprintf("rbArgAt(%s, %d)", rp, i), typ: et})
 		}
 		if len(names) == 0 {
 			f.emit("_ = %s", rp)
@@ -762,8 +784,8 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 		f.forwardIter(n, call, yields)
 		return
 	}
-	names := f.blockParamNames(blk.Parameters)
-	saved, savedRuby := f.enterRubyBlock(blk, names)
+	names := f.blockParamList(blk.Parameters)
+	saved, savedRuby := f.enterRubyBlock(blk, names.locals())
 	goParams, pro := f.bindBlockParams(n, names, yields)
 	allBlank := true
 	for _, gp := range goParams {

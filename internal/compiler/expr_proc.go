@@ -31,12 +31,12 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	var src string
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
 		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret, Rest: ft.Rest}
-		if names := f.blockParamNames(params); ft.Rest && (len(names) != len(ft.Params) || !strings.HasPrefix(names[len(names)-1], "*")) {
+		if names := f.blockParamList(params); ft.Rest && (len(names) != len(ft.Params) || !names.hasRest()) {
 			f.errorf(n, "a lambda for %s needs %d params, the last a *rest", ft, len(ft.Params))
 		}
-	} else if names := f.blockParamNames(params); len(names) > 0 {
+	} else if names := f.blockParamList(params); len(names) > 0 {
 		sig.Params, src = f.lambdaParams(n, names, block) // from its calls (decision 146)
-		sig.Rest = strings.HasPrefix(names[len(names)-1], "*")
+		sig.Rest = names.hasRest()
 	}
 	env := map[string]Type{}
 	saved := f.lambdaClosure

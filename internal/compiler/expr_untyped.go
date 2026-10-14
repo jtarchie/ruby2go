@@ -10,7 +10,7 @@ import (
 
 // dynEach is a gem's `x.each { |a, b| }` on an untyped x, as a Rack app's headers and body are (decision 176).
 func (f *fctx) dynEach(n parser.Node, recv expr, b *parser.BlockNode) expr {
-	k := len(f.blockParamNames(b.Parameters))
+	k := len(f.blockParamList(b.Parameters))
 	if k == 0 || k > 2 {
 		f.errorf(n, "each on an untyped receiver takes a block of one or two parameters")
 	}
@@ -57,8 +57,8 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 // genDynBlockCall is a gem's call with a block on an untyped receiver (concurrent-ruby's `synchronize { }` on a mixin's
 // self): the block goes last, as an rbBlockArg each wrapper of a block-taking method of that name adapts (decision 243).
 func (f *fctx) genDynBlockCall(n parser.Node, recv expr, name string, args []parser.Node, b *parser.BlockNode) expr {
-	names := f.blockParamNames(b.Parameters)
-	if slices.ContainsFunc(names, func(s string) bool { return strings.HasPrefix(s, "*") || strings.HasPrefix(s, "(") }) {
+	names := f.blockParamList(b.Parameters)
+	if names.special() {
 		f.errorf(n, "a block with a rest or destructuring parameter on an untyped receiver is not supported")
 	}
 	if f.c.dynBlockNames == nil {
@@ -494,8 +494,8 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 	switch b := block.(type) {
 	case *parser.BlockNode:
-		names := f.blockParamNames(b.Parameters)
-		if slices.ContainsFunc(names, func(s string) bool { return strings.HasPrefix(s, "*") || strings.HasPrefix(s, "(") }) {
+		names := f.blockParamList(b.Parameters)
+		if names.special() {
 			return "", false
 		}
 		ps := make([]Type, len(names))

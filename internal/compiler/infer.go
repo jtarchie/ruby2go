@@ -262,7 +262,7 @@ func typesInclude(m *Method) bool {
 // lambdaParams types a lambda's parameters from its calls, when nothing
 // gives it an expected type: the last round's types, untyped during a
 // round, else the error an annotation would have prevented.
-func (f *fctx) lambdaParams(n parser.Node, names []string, body parser.Node) ([]Type, string) {
+func (f *fctx) lambdaParams(n parser.Node, names blockParams, body parser.Node) ([]Type, string) {
 	src := f.f.posKey(n.GetLocation().StartOffset) + "#"
 	ps := make([]Type, len(names))
 	for i := range ps {
@@ -280,7 +280,7 @@ func (f *fctx) lambdaParams(n parser.Node, names []string, body parser.Node) ([]
 			panic(needInfer{})
 		case f.c.pruneGems && f.c.gemFile(f.f):
 			ps[i] = TAny{} // a gem's lambda no call types (decision 169)
-		case !readsParam(body, strings.TrimLeft(names[i], "*&")):
+		case !readsParam(body, names[i].Name):
 			ps[i] = TAny{} // a parameter the body never reads loses nothing untyped (decision 179)
 		default: // untyped, its calls dynamic, as a gem lambda's (decision 180)
 			if f.pass == 2 && i == 0 {
