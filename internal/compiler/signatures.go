@@ -235,7 +235,7 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		if m.pendingIdx == nil {
 			m.pendingIdx = map[int]pendingParam{}
 		}
-		m.pendingIdx[len(ps)] = pendingParam{key: pendingKey(m, name), name: name}
+		m.pendingIdx[len(ps)] = pendingParam{key: paramKey(m, name), name: name}
 		return "untyped"
 	}
 	for i, n := range names {
@@ -274,7 +274,7 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		bps := make([]string, n)
 		for i := range bps {
 			bps[i] = "untyped"
-			m.pendingBlock = append(m.pendingBlock, pendingParam{key: pendingKey(m, "&"+strconv.Itoa(i)), name: "yield's argument " + strconv.Itoa(i+1)})
+			m.pendingBlock = append(m.pendingBlock, pendingParam{key: yieldKey(m, i), name: "yield's argument " + strconv.Itoa(i+1)})
 		}
 		ret := "void"
 		// a gem wrapper's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226).

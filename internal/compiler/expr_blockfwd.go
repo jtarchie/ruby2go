@@ -26,31 +26,23 @@ func (f *fctx) blockSelf(n parser.Node) Type {
 		return b.Self
 	}
 	if b.SelfPending == "" {
-		b.SelfPending = pendingKey(f.m, "&self")
+		b.SelfPending = selfKey(f.m)
 		f.c.notePending(b.SelfPending)
 	}
-	if f.c.infer != nil {
-		if t, ok := f.c.infer.types[b.SelfPending]; ok {
-			b.Self = f.c.rehome(t)
-			return b.Self
-		}
-	}
-	switch {
-	case f.c.round:
+	t, how := f.c.pendingType(b.SelfPending, f.f)
+	switch how {
+	case pendTyped:
+		b.Self = t
+	case pendRound, pendGem: // a gem's stored block nothing in the program calls: any self (decision 172)
 		b.Self = TAny{}
-		return b.Self
-	case !f.c.inferDone && (f.c.infer == nil || !f.c.infer.none[b.SelfPending]):
-		panic(needInfer{})
-	case f.lenient(): // a gem's stored block nothing in the program calls: any self (decision 172)
-		b.Self = TAny{}
-		return b.Self
-	default:
+	case pendNone:
 		ce := catchCompileError(func() {
 			f.errorf(n, "the block &%s is stored but never called, so its self type is unknown (no instance_eval, call or yield gives it one; decision 164)", f.m.BlockParam)
 		})
 		ce.untyped = true
 		panic(*ce)
 	}
+	return b.Self
 }
 
 // forwardIter passes the method's own block on to an iterator:

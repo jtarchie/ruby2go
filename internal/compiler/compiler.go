@@ -174,12 +174,12 @@ type Compiler struct {
 
 	// parameter types from use (decision 146)
 	infer       *inference
-	round       bool                  // an inference round: pending parameters are untyped, their arguments recorded
-	inferDone   bool                  // the rounds ran: a parameter still untyped is an error
-	noPrune     bool                  // formatGo keeps every declaration
-	env         envConfig             // the RB2GO_* environment, read when this compile started
-	uses        map[string][]paramUse // this round's arguments, by parameter key
-	pendingSeen map[string]bool       // this round's untyped parameter keys
+	round       bool                      // an inference round: pending parameters are untyped, their arguments recorded
+	inferDone   bool                      // the rounds ran: a parameter still untyped is an error
+	noPrune     bool                      // formatGo keeps every declaration
+	env         envConfig                 // the RB2GO_* environment, read when this compile started
+	uses        map[pendingKey][]paramUse // this round's arguments, by parameter key
+	pendingSeen map[pendingKey]bool       // this round's untyped parameter keys
 }
 
 type verbatim struct {

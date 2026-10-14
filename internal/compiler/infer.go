@@ -45,16 +45,17 @@ const maxInferRounds = 8
 // inference is what the rounds learned: each parameter key's type, from
 // the last round's compile (rehome moves it into the next one's classes).
 type inference struct {
-	types   map[string]Type
-	noUnion map[string]bool   // parameters whose union type broke their method's body: joined without unions from then on (decision 150)
-	none    map[string]bool   // pending in the last round and typed by no call: a seeded compile reports them without rounds
-	from    map[string]string // the first call each type came from, file:line, for a mismatch's message
+	types   map[pendingKey]Type
+	noUnion map[pendingKey]bool   // parameters whose union type broke their method's body: joined without unions from then on (decision 150)
+	none    map[pendingKey]bool   // pending in the last round and typed by no call: a seeded compile reports them without rounds
+	from    map[pendingKey]string // the first call each type came from, file:line, for a mismatch's message
 	changed bool
 }
 
 // pendingParam is a parameter whose type comes from use: its key across compiles, and its name for messages.
 type pendingParam struct {
-	key, name string
+	key  pendingKey
+	name string
 }
 
 // paramUse is one argument passed to a pending parameter.
@@ -68,14 +69,34 @@ type paramUse struct {
 // at is the call the argument came from.
 func (u paramUse) at() srcPos { return srcPos{u.file, u.file.line(u.off)} }
 
-// pendingKey names a def's parameter stably across compiles.
-func pendingKey(m *Method, name string) string {
+// pendingKey names, stably across compiles, a parameter typed from use (decisions 146, 277): the key of its
+// recorded arguments and of its inferred type. Its text is printed by RB2GO_INFER_DEBUG and quoted in warnings, so
+// it is built only by the constructors below.
+type pendingKey string
+
+// paramKey is def m's parameter name.
+func paramKey(m *Method, name string) pendingKey {
 	owner := ""
 	if m.Owner != nil { // one template's defs in several classes (concurrent-ruby's attr_atomic class_eval) share a position (decision 253)
 		owner = m.Owner.Name + "#"
 	}
-	return m.File.posKey(m.Node.Location.StartOffset) + owner + name
+	return pendingKey(m.File.posKey(m.Node.Location.StartOffset) + owner + name)
 }
+
+// yieldKey is the i-th value def m yields to its block.
+func yieldKey(m *Method, i int) pendingKey { return paramKey(m, "&"+strconv.Itoa(i)) }
+
+// selfKey is the self of def m's block once it escapes (decision 164).
+func selfKey(m *Method) pendingKey { return paramKey(m, "&self") }
+
+// lambdaSrc names a lambda literal typed from its calls: the prefix of its parameters' keys.
+type lambdaSrc string
+
+// lambdaSrcAt is the lambda literal at offset off of f.
+func lambdaSrcAt(f *File, off int) lambdaSrc { return lambdaSrc(f.posKey(off) + "#") }
+
+// arg is the lambda's i-th parameter.
+func (s lambdaSrc) arg(i int) pendingKey { return pendingKey(string(s) + strconv.Itoa(i)) }
 
 // posKey is a source position as file:line:column:, which a rewrite that
 // keeps lines (cmd/rubyspec's) keeps too, unlike a byte offset.
@@ -88,6 +109,36 @@ func (f *File) posKey(off int) string {
 	return path + ":" + strconv.Itoa(ln) + ":" + strconv.Itoa(off-f.lines[ln-1]) + ":"
 }
 
+// pendingOutcome is how a pending key stands in this compile (pendingType).
+type pendingOutcome int
+
+const (
+	pendTyped pendingOutcome = iota // the last round's type
+	pendRound                       // untyped: this round's calls will teach it
+	pendGem                         // a gem's, no typed call reached it (decision 169): only a dynamic call can
+	pendNone                        // the rounds ran and no call typed it: the caller reports or defaults it
+)
+
+// pendingType is the one state machine every inferred-from-use key goes through (parameter, yield, lambda
+// argument, escaped self): the last round's type if any; else untyped during a round; else the abort that runs
+// the rounds; else, once they ran, a gem's untyped or the caller's own say. The type is set only for pendTyped.
+func (c *Compiler) pendingType(key pendingKey, file *File) (Type, pendingOutcome) {
+	if c.infer != nil {
+		if t, ok := c.infer.types[key]; ok {
+			return c.rehome(t), pendTyped
+		}
+	}
+	switch {
+	case c.round:
+		return nil, pendRound
+	case !c.inferDone && (c.infer == nil || !c.infer.none[key]):
+		panic(needInfer{})
+	case c.pruneGems && c.gemFile(file):
+		return nil, pendGem
+	}
+	return nil, pendNone
+}
+
 // resolvePending types a parameter that has no annotation (resolveMethod).
 func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 	if hookNames[m.Name] && c.gemFile(m.File) { // a gem hook's base is whichever class or module includes, extends or inherits (decision 241)
@@ -96,22 +147,15 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 	}
 	prm.Pending = pp.key
 	c.notePending(pp.key)
-	if c.infer != nil {
-		if t, ok := c.infer.types[pp.key]; ok {
-			prm.Type = c.rehome(t)
-			if isNil(prm.Type) && c.pruneGems && c.gemFile(m.File) { // a gem's adapters and dynamic calls pass it what no typed call did
-				prm.Type = TAny{}
-			}
-			return
-		}
-	}
+	t, how := c.pendingType(pp.key, m.File)
 	switch {
-	case c.round:
-		prm.Type = TAny{} // learned from this round's calls
-	case !c.inferDone && (c.infer == nil || !c.infer.none[pp.key]):
-		panic(needInfer{})
-	case c.pruneGems && c.gemFile(m.File):
-		prm.Type = TAny{} // only a dynamic call can reach it (decision 169)
+	case how == pendTyped:
+		prm.Type = t
+		if isNil(prm.Type) && c.pruneGems && c.gemFile(m.File) { // a gem's adapters and dynamic calls pass it what no typed call did
+			prm.Type = TAny{}
+		}
+	case how != pendNone: // learned from this round's calls, or only a dynamic call can reach it (decision 169)
+		prm.Type = TAny{}
 	case m.attrWriter:
 		prm.Type = TAny{} // an attr writer no call types: only a dynamic call can reach it (decision 179)
 	default: // untyped, as a gem def's: only a dynamic call (send, a hook, an untyped receiver) can pass it anything (decision 183)
@@ -262,24 +306,17 @@ func typesInclude(m *Method) bool {
 // lambdaParams types a lambda's parameters from its calls, when nothing
 // gives it an expected type: the last round's types, untyped during a
 // round, else the error an annotation would have prevented.
-func (f *fctx) lambdaParams(n parser.Node, names blockParams, body parser.Node) ([]Type, string) {
-	src := f.f.posKey(n.GetLocation().StartOffset) + "#"
+func (f *fctx) lambdaParams(n parser.Node, names blockParams, body parser.Node) ([]Type, lambdaSrc) {
+	src := lambdaSrcAt(f.f, n.GetLocation().StartOffset)
 	ps := make([]Type, len(names))
 	for i := range ps {
-		f.c.notePending(src + strconv.Itoa(i))
-		if f.c.infer != nil {
-			if t, ok := f.c.infer.types[src+strconv.Itoa(i)]; ok {
-				ps[i] = f.c.rehome(t)
-				continue
-			}
-		}
+		f.c.notePending(src.arg(i))
+		t, how := f.c.pendingType(src.arg(i), f.f)
 		switch {
-		case f.c.round:
+		case how == pendTyped:
+			ps[i] = t
+		case how != pendNone: // untyped this round, or a gem's lambda no call types (decision 169)
 			ps[i] = TAny{}
-		case !f.c.inferDone && (f.c.infer == nil || !f.c.infer.none[src+strconv.Itoa(i)]):
-			panic(needInfer{})
-		case f.c.pruneGems && f.c.gemFile(f.f):
-			ps[i] = TAny{} // a gem's lambda no call types (decision 169)
 		case !readsParam(body, names[i].Name):
 			ps[i] = TAny{} // a parameter the body never reads loses nothing untyped (decision 179)
 		default: // untyped, its calls dynamic, as a gem lambda's (decision 180)
@@ -387,10 +424,10 @@ func (c *Compiler) rehome(t Type) Type {
 }
 
 // notePending records, during a round, a parameter key waiting on its uses.
-func (c *Compiler) notePending(key string) {
+func (c *Compiler) notePending(key pendingKey) {
 	if c.round {
 		if c.pendingSeen == nil {
-			c.pendingSeen = map[string]bool{}
+			c.pendingSeen = map[pendingKey]bool{}
 		}
 		c.pendingSeen[key] = true
 	}
@@ -421,7 +458,7 @@ func (f *fctx) pendingWant(p Param, t Type) Type {
 
 // collectUses dry-runs every user body for the arguments it passes.
 func (c *Compiler) collectUses() {
-	c.uses = map[string][]paramUse{}
+	c.uses = map[pendingKey][]paramUse{}
 	c.loadCode = map[*File]string{}
 	for _, m := range c.userMethods() {
 		err := catchCompileError(func() {
@@ -476,7 +513,7 @@ func (c *Compiler) demoteUnions(m *Method) {
 			continue
 		}
 		if c.infer.noUnion == nil {
-			c.infer.noUnion = map[string]bool{}
+			c.infer.noUnion = map[pendingKey]bool{}
 		}
 		c.infer.noUnion[p.Pending] = true
 	}
@@ -532,7 +569,7 @@ func (c *Compiler) updateInference(inf *inference) {
 	for i, f := range c.files {
 		order[f] = i
 	}
-	next, from := map[string]Type{}, map[string]string{}
+	next, from := map[pendingKey]Type{}, map[pendingKey]string{}
 	for _, key := range slices.Sorted(maps.Keys(c.uses)) {
 		seen := map[[2]int]int{}
 		var uses []paramUse
@@ -571,7 +608,7 @@ func (c *Compiler) updateInference(inf *inference) {
 		}
 	}
 	inf.types, inf.from = next, from
-	inf.none = map[string]bool{}
+	inf.none = map[pendingKey]bool{}
 	for k := range c.pendingSeen {
 		if _, ok := next[k]; !ok {
 			inf.none[k] = true

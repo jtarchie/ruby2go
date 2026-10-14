@@ -46,7 +46,7 @@ func (c *Compiler) resolveForwarding(m *Method) {
 			}
 			prm.Type = c.resolveType(rt, typeScope{class: m.Owner, lex: m.Scope, srcPos: srcPos{m.File, m.Line}})
 		} else {
-			c.resolvePending(m, &prm, pendingParam{key: pendingKey(m, rp.Name), name: rp.Name})
+			c.resolvePending(m, &prm, pendingParam{key: paramKey(m, rp.Name), name: rp.Name})
 		}
 		m.Params = append(m.Params, prm)
 	}

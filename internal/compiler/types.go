@@ -45,10 +45,10 @@ type (
 		Params      []Type
 		Ret         Type
 		Proc        bool
-		Src         string // a lambda typed from its calls: the key its arguments are recorded under (decision 146)
-		Rest        bool   // the last param is a `*rest`'s element type; the Go func is variadic (decision 152)
-		Self        Type   // non-nil: a Proc (or block) that escaped, taking `self` as a leading Go param (decision 164)
-		SelfPending string // the inference key Self's type is recorded under (decision 164)
+		Src         lambdaSrc  // a lambda typed from its calls: the key its arguments are recorded under (decision 146)
+		Rest        bool       // the last param is a `*rest`'s element type; the Go func is variadic (decision 152)
+		Self        Type       // non-nil: a Proc (or block) that escaped, taking `self` as a leading Go param (decision 164)
+		SelfPending pendingKey // the inference key Self's type is recorded under (decision 164)
 	}
 	// TAny is `untyped`.
 	TAny struct{}

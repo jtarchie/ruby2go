@@ -28,7 +28,7 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	if o, ok := expected.(TOpt); ok { // a lambda literal where a Proc? is expected is never nil
 		expected = o.Elem
 	}
-	var src string
+	var src lambdaSrc
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
 		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret, Rest: ft.Rest}
 		if names := f.blockParamList(params); ft.Rest && (len(names) != len(ft.Params) || !names.hasRest()) {
@@ -260,7 +260,7 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 		}
 		e := f.genExpr(a, want)
 		if t.Src != "" {
-			f.noteUse(Param{Pending: t.Src + strconv.Itoa(pi)}, a, e.typ)
+			f.noteUse(Param{Pending: t.Src.arg(pi)}, a, e.typ)
 		}
 		codes[i] = f.coerce(a, e, t.Params[pi])
 	}

@@ -214,19 +214,19 @@ type Param struct {
 	Want Type
 	// Pending keys a parameter typed from use (decision 146): its
 	// arguments are recorded under it during inference rounds.
-	Pending string
+	Pending pendingKey
 }
 
 // BlockSig is the block a method takes.
 type BlockSig struct {
 	Params      []Type
 	Ret         Type
-	Optional    bool     // `?{ ... }`: a call may leave the block out, and the method sees a nil func
-	Pending     []string // per param, the key of one typed from the yields (decision 146), or ""
-	Rest        bool     // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
-	Self        Type     // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
-	SelfPending string   // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
-	Untyped     bool     // an unannotated def's &block (decision 183): calling it when missing is MRI's NoMethodError at run time
+	Optional    bool         // `?{ ... }`: a call may leave the block out, and the method sees a nil func
+	Pending     []pendingKey // per param, the key of one typed from the yields (decision 146), or ""
+	Rest        bool         // a lambda's: the last param is a `*rest`'s element type, a Go variadic (decision 152)
+	Self        Type         // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
+	SelfPending pendingKey   // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
+	Untyped     bool         // an unannotated def's &block (decision 183): calling it when missing is MRI's NoMethodError at run time
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
