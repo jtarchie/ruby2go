@@ -690,3 +690,31 @@ class DemoChain2 < DemoBlocked2
     @executor = executor
   end
 end
+
+# Homebrew's SystemCommand#exec3: `options = options.merge(Sandbox::INHERITANCE_FD => fd)` of a **options param, an
+# Integer key into Symbol keys: both sides untyped-keyed, the param widened (decision 256).
+module DemoExec3
+  FD = 3
+  def self.exec3(inheritance, **options)
+    options[:in] = 0
+    options = options.merge(FD => inheritance) if inheritance
+    options
+  end
+end
+
+# concurrent-ruby's ThenPromise#initialize(…, &task) inherits BlockedTaskPromise's signature, its (*untyped) block
+# whole: a block of four parameters gets all four values (decision 256).
+class DemoTaskBase
+  def initialize(args, &task)
+    @args = args
+    @task = task
+  end
+
+  def run(v) = @task.call(v, *@args)
+end
+
+class DemoThenTask < DemoTaskBase
+  def initialize(args, &task)
+    super(args, &task)
+  end
+end

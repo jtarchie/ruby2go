@@ -3228,7 +3228,14 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, e.Env), Pending: p.Pending})
 	}
 	if e.M.Block != nil {
-		m.Block = &BlockSig{Params: substAll(e.M.Block.Params, e.Env), Ret: subst(e.M.Block.Ret, e.Env), Optional: e.M.Block.Optional, Pending: e.M.Block.Pending}
+		// all of the parent's block: a dropped Rest made concurrent-ruby's ThenPromise#initialize take one value of the
+		// (*untyped) block its parent takes, losing then_on's other arguments (decision 256)
+		b := *e.M.Block
+		b.Params, b.Ret = substAll(e.M.Block.Params, e.Env), subst(e.M.Block.Ret, e.Env)
+		if b.Self != nil {
+			b.Self = subst(b.Self, e.Env)
+		}
+		m.Block = &b
 	}
 	m.Ret = subst(e.M.Ret, e.Env)
 	m.inferRet = e.M.inferRet // the parent's inferred type, once it has one (inferRet)

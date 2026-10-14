@@ -2405,12 +2405,23 @@ func (f *fctx) widenParam(name string, info *localInfo, existing *local, val exp
 	}
 	// an untyped value fits any type by assertion, which fails when the guess from a default was wrong
 	// (`level = :FATAL; level = const_get(level)`): an unsigned param takes it untyped
-	if fitsValue(val, existing.typ) && (!isAny(val.typ) || f.m == nil || f.m.declared) {
+	// a Hash[untyped, V] into a Hash[Symbol, V] param fits by a converted copy, which fails on another key (exec3's
+	// `options = options.merge(FD => fd)`): the param widens to the Hash of untyped keys (decision 256)
+	keysWider := false
+	if vc, ok := val.typ.(TClass); ok && isClass(vc, "Hash") && isAny(vc.Args[0]) {
+		if ec, ok := existing.typ.(TClass); ok && isClass(ec, "Hash") && !isAny(ec.Args[0]) {
+			keysWider = true
+		}
+	}
+	if fitsValue(val, existing.typ) && (!isAny(val.typ) || f.m == nil || f.m.declared) && !keysWider {
 		return
 	}
 	w, ok := join(existing.typ, val.typ)
 	if !ok {
 		w = TAny{}
+	}
+	if keysWider {
+		w = val.typ
 	}
 	if f.paramWiden == nil {
 		f.paramWiden = map[string]Type{}

@@ -89,6 +89,10 @@ dev2 = DemoEvaluate.new #: untyped
 p DemoEvaluateRun.go(dev2)
 p DemoChain2.blocked_by(nil, :io, [3, 4]) { |a, b| a + b }.run, DemoBlocked2.blocked_by(nil, 5).run
 p DemoCurl.curl(print_stdout: :err), DemoCurl.curl(secrets: ["x"], debug: true)
+p DemoExec3.exec3(7, chdir: "/"), DemoExec3.exec3(nil)
+ta = [:x, 1, true] #: Array[untyped]
+tb = [] #: Array[untyped]
+p DemoThenTask.new(ta) { |v, sym, n, flag| [v, sym, n, flag] }.run(6), DemoTaskBase.new(tb) { |v| v }.run(1)
 dn = DemoNode[1, DemoNode[2, nil]]
 p dn.value, dn.nxt.value
 dcp2 = DemoPromises.chain(:io)

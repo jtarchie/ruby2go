@@ -5413,10 +5413,20 @@ func (f *fctx) mixedArrayOp(n parser.Node, recv expr, name string, args []parser
 	}
 	ra, aa := recv.typ.(TClass).Args, at.(TClass).Args
 	if cls == "Hash" && !typeEq(ra[0], aa[0]) {
-		return expr{}, false // `{a: 1}.merge(h)`: mixed keys stay merge's own conversion
+		if !f.lenient() || isAny(ra[0]) && isAny(ra[1]) {
+			return expr{}, false // `{a: 1}.merge(h)`: mixed keys stay merge's own conversion
+		}
+		// a gem's `options.merge(Sandbox::INHERITANCE_FD => fd)`, an Integer key into Symbol keys: MRI's result holds both,
+		// so both sides are Hash[untyped, untyped] (decision 256)
+		ra, aa = []Type{TAny{}, ra[1]}, []Type{TAny{}, aa[1]}
+		if !typeEq(ra[1], aa[1]) {
+			ra[1], aa[1] = TAny{}, TAny{}
+		}
 	}
 	a, b := ra[len(ra)-1], aa[len(aa)-1]
+	keysJoined := cls == "Hash" && isAny(ra[0]) && !isAny(recv.typ.(TClass).Args[0])
 	switch {
+	case keysJoined:
 	case isAny(a) && isAny(b), typeEq(a, b):
 		return expr{}, false
 	case isAny(a) || isAny(b):
