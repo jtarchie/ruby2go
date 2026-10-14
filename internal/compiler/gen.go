@@ -555,7 +555,7 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 			// decision 205: a gem file's top-level statement that does not compile is skipped, warned
 			err := f.tryClean(func() { f.genStmt(s, tail{}) })
 			if err != nil {
-				f.c.warn(f.f, s, "a top-level statement does not compile, so it is skipped: %s (decision 205)", err.msg)
+				f.c.warn(f.f, s, "a top-level statement does not compile, so it is skipped: %s (decision 205)", err.Error())
 			}
 			continue
 		}
@@ -1729,7 +1729,7 @@ func (f *fctx) genBranch(n parser.Node, t tail) {
 	}
 	err := f.tryClean(func() { f.genStmts(n, t) })
 	if err != nil {
-		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a branch does not compile: "+err.msg)
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a branch does not compile: "+err.Error())
 	}
 }
 
@@ -1743,7 +1743,7 @@ func (f *fctx) genWhenArm(wn *parser.WhenNode, t tail) {
 	}
 	err := f.tryClean(func() { f.genStmts(wn.Statements, t) })
 	if err != nil {
-		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a when arm does not compile: "+err.msg)
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a when arm does not compile: "+err.Error())
 	}
 }
 
@@ -2605,11 +2605,11 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 			}
 		}
 		if err != nil {
-			f.m.poison = err.msg
+			f.m.poison = err.Error()
 			fresh()
 			f.poisonedBody(t, prologue)
 			if f.c.ivarsDiscovered {
-				f.c.warn(f.f, f.m.Node, "%s does not compile, so calling it raises NotImplementedError: %s (decision 205)", f.m, err.msg)
+				f.c.warn(f.f, f.m.Node, "%s does not compile, so calling it raises NotImplementedError: %s (decision 205)", f.m, err.Error())
 			} else {
 				f.m.poison = "" // an ivar discovery has yet to type can fail it now: poison this run's output only (decision 220)
 			}
@@ -3323,8 +3323,8 @@ func (c *Compiler) discoverIvars() {
 	}
 	for _, g := range c.gemNilIvars { // only ever nil in what is compiled (a gem's pruned writes, decision 169; a user's nil-only ivar, 183)
 		if c.findIvar(g.cls, g.name) == nil {
-			c.warn(g.file, nil, "%s:%d: instance variable %s is only ever nil, so it is untyped (`# @rbs %s: T` for static calls; decision 183)", g.file.Name, g.line, g.name, g.name)
-			c.declareIvar(g.cls, g.name, TAny{}, g.file, g.line)
+			c.warnAt(g.srcPos, "instance variable %s is only ever nil, so it is untyped (`# @rbs %s: T` for static calls; decision 183)", g.name, g.name)
+			c.declareIvar(g.cls, g.name, TAny{}, g.File, g.Line)
 		}
 	}
 	c.declareGemClassIvars()
@@ -3382,8 +3382,7 @@ func eachIvarName(n parser.Node, fn func(string, parser.Node)) {
 type gemNilIvar struct {
 	cls  *Class
 	name string
-	file *File
-	line int
+	srcPos
 }
 
 // declareGemModuleIvars declares, untyped, each instance variable a gem module's methods use: its state struct and
@@ -3502,7 +3501,7 @@ func (f *fctx) genClassStmt(cs *classStmt) {
 	if f.c.gemFile(cs.file) { // decision 205: a gem load-time statement that does not compile is skipped, warned
 		err := f.tryClean(func() { f.genClassStmt0(cs) })
 		if err != nil {
-			f.c.warn(cs.file, cs.Node, "a load-time statement does not compile, so it is skipped: %s (decision 205)", err.msg)
+			f.c.warn(cs.file, cs.Node, "a load-time statement does not compile, so it is skipped: %s (decision 205)", err.Error())
 		}
 		return
 	}
@@ -3696,8 +3695,8 @@ func (f *fctx) genConstInit0(k *Const) {
 	if f.c.gemFile(k.File) {
 		err := f.tryClean(func() { f.genConstInit1(k) })
 		if err != nil {
-			k.poison = err.msg
-			f.c.warn(k.File, k.Value, "constant %s does not compile, so it is nil: %s (decision 205)", k.RubyName, err.msg)
+			k.poison = err.Error()
+			f.c.warn(k.File, k.Value, "constant %s does not compile, so it is nil: %s (decision 205)", k.RubyName, err.Error())
 		}
 		return
 	}

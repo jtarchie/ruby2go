@@ -42,7 +42,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		sup = c.classes["Class"]
 	}
 	m := &Class{Name: cls.Name + "_Meta", RubyName: cls.RubyName, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{},
-		File: cls.File, Line: cls.Line, Super: sup, metaOf: cls}
+		srcPos: srcPos{cls.File, cls.Line}, Super: sup, metaOf: cls}
 	cls.meta = m
 	sup.Subclasses = append(sup.Subclasses, m)
 	c.classList = append(c.classList, m)
@@ -80,7 +80,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		if m.Methods[name] != nil || inheritsUserDef(sup, name) {
 			continue
 		}
-		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, File: cls.File, Line: cls.Line, Private: name == "new" && cls.privateNew}
+		sm := &Method{Name: name, GoName: goMethodName(name), Owner: m, Kind: kindSynth, srcPos: srcPos{cls.File, cls.Line}, Private: name == "new" && cls.privateNew}
 		m.Methods[name] = sm
 		m.MethodList = append(m.MethodList, sm)
 	}

@@ -450,7 +450,7 @@ func (f *fctx) parseTypeAnn(n parser.Node, s string) Type {
 	if f.m != nil {
 		tps = f.m.TypeParams
 	}
-	return f.c.resolveType(t, typeScope{class: f.owner, lex: f.lex, methodTPs: tps, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
+	return f.c.resolveType(t, typeScope{class: f.owner, lex: f.lex, methodTPs: tps, srcPos: srcPos{f.f, f.f.line(n.GetLocation().StartOffset)}})
 }
 
 // genInterp compiles an interpolated string (`"a#{b}"`) to a Go string concatenation of its parts.

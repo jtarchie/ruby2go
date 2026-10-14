@@ -461,7 +461,7 @@ func (c *Compiler) selfExtendCall(f *File, cls *Class, n *parser.CallNode) bool 
 		return false
 	}
 	for _, a := range callArgs(ext) {
-		cls.extends = append(cls.extends, Include{ref: constRef{node: a, scope: found.scope, file: found.file}, line: f.line(n.Location.StartOffset), file: found.file, scope: found.scope})
+		cls.extends = append(cls.extends, Include{ref: constRef{node: a, scope: found.scope, file: found.file}, srcPos: srcPos{found.file, f.line(n.Location.StartOffset)}, scope: found.scope})
 	}
 	return true
 }
@@ -539,11 +539,11 @@ func (c *Compiler) collectIvarDecls(f *File, cls *Class, body parser.Node, scope
 		for _, iv := range f.annotations(ln)["ivar"] {
 			name, ty, ok := strings.Cut(iv, ":")
 			if !ok {
-				c.errorf(f, nil, "%s:%d: bad ivar annotation %q", f.Name, ln, iv)
+				c.errorAt(srcPos{f, ln}, "bad ivar annotation %q", iv)
 			}
 			t, err := rbs.ParseType(strings.TrimSpace(ty))
 			if err != nil {
-				c.errorf(f, nil, "%s:%d: %v", f.Name, ln, err)
+				c.errorAt(srcPos{f, ln}, "%v", err)
 			}
 			cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: strings.TrimSpace(name), rbs: t, line: ln, scope: scope})
 		}

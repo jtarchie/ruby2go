@@ -122,7 +122,7 @@ func (c *Compiler) checkNumeric() {
 				continue
 			}
 			if e := cls.lookup(m.Name); e != nil && e.Owner == num {
-				c.errorf(cls.File, nil, "%s:%d: %s must define or undef Numeric#%s", cls.File.Name, cls.Line, cls.RubyName, m.Name)
+				c.errorAt(cls.srcPos, "%s must define or undef Numeric#%s", cls.RubyName, m.Name)
 			}
 		}
 	}

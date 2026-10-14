@@ -117,16 +117,16 @@ func (c *Compiler) requireHook(f *File, n *parser.CallNode) *parser.CallNode {
 func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *Class {
 	cls := c.classes[name]
 	if cls == nil {
-		cls = &Class{Name: goClassName(name), RubyName: name, IsModule: isModule, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{}, File: f, Line: line}
+		cls = &Class{Name: goClassName(name), RubyName: name, IsModule: isModule, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{}, srcPos: srcPos{f, line}}
 		cls.universal = name == "BasicObject" || name == "Object" || name == "Kernel"
 		c.classes[name] = cls
 		c.classList = append(c.classList, cls)
 		c.noteConstName(name)
 	} else if cls.IsModule != isModule && (name != "Numeric" || f.prelude) { // MRI's class Numeric is the prelude's module (decision 142): `class Numeric` reopens it
-		c.errorf(f, nil, "%s:%d: %s is already defined as a %s", f.Name, line, name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
+		c.errorAt(srcPos{f, line}, "%s is already defined as a %s", name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
 	}
 	if c.consts[name] != nil {
-		c.errorf(f, nil, "%s:%d: %s is already a constant", f.Name, line, name)
+		c.errorAt(srcPos{f, line}, "%s is already a constant", name)
 	}
 	ann := f.annotations(line)
 	for _, g := range ann["generic"] {
@@ -152,7 +152,7 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 	}
 	if g := ann["go_type"]; len(g) > 0 {
 		if isModule {
-			c.errorf(f, nil, "%s:%d: @go_type on a module", f.Name, line)
+			c.errorAt(srcPos{f, line}, "@go_type on a module")
 		}
 		cls.GoType = g[0]
 	}
@@ -486,7 +486,7 @@ func (c *Compiler) keepGoing(fn func()) {
 			if !ok {
 				panic(r)
 			}
-			c.kept = append(c.kept, ce.msg)
+			c.kept = append(c.kept, ce.Error())
 		}
 	}()
 	fn()
@@ -497,7 +497,7 @@ func (c *Compiler) deferClassError(cls *Class, msg string) {
 	if c.badClasses == nil {
 		c.badClasses = map[*Class]compileError{}
 	}
-	c.badClasses[cls] = compileError{msg: msg}
+	c.badClasses[cls] = compileError{pos: cls.srcPos, msg: msg}
 }
 
 // runsStatements reports a class body whose run-time statements are kept: a load-time body, or a per-run Class.new

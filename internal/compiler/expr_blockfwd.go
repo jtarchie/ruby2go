@@ -101,7 +101,7 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 		f.errorf(n, "this method's block is an iterator (it yields); it can only be passed on to another iterator")
 	}
 	if sig.Rest != f.blockSig.Rest && f.lenient() { // `&task` typed func(any) where the callee takes (*untyped) -> untyped, or back
-		return f.restBlockAdapter(sig, env)
+		return f.restBlockAdapter(n, sig, env)
 	}
 	if len(sig.Params) != len(f.blockSig.Params) {
 		if f.lenient() {
@@ -152,9 +152,9 @@ func restBlockFunc(b *parser.BlockArgumentNode, sig *BlockSig) (string, bool) {
 
 // restBlockAdapter passes the method's block where the callee's block differs in being variadic (gem code, decision
 // 248): a variadic callee's values fill the block's parameters (missing ones nil), a variadic block takes the callee's.
-func (f *fctx) restBlockAdapter(sig *BlockSig, env map[string]Type) string {
+func (f *fctx) restBlockAdapter(n parser.Node, sig *BlockSig, env map[string]Type) string {
 	if sig.Self != nil || f.blockSig.Self != nil {
-		f.errorf(nil, "a forwarded block with a bound self and a rest parameter on one side only is not supported")
+		f.errorf(n, "a forwarded block with a bound self and a rest parameter on one side only is not supported")
 	}
 	var params, args []string
 	if sig.Rest { // func(xs ...E) R calling blk(p0, p1)

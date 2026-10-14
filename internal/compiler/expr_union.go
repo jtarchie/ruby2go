@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -194,9 +193,9 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 		})
 		switch {
 		case err != nil && f.lenient():
-			bad[i] = fail(m, errLoc.ReplaceAllString(err.msg, ""))
+			bad[i] = fail(m, err.msg)
 		case err != nil:
-			f.errorf(n, "%s", fail(m, errLoc.ReplaceAllString(err.msg, "")))
+			f.errorf(n, "%s", fail(m, err.msg))
 		case t == nil:
 		case res == nil:
 			res = t
@@ -368,9 +367,6 @@ func (f *fctx) literalMember(u TUnion, gen func(Type), prefs ...func(Type) bool)
 	}
 	return nil
 }
-
-// errLoc is a compile error's leading `file:line: `.
-var errLoc = regexp.MustCompile(`^[^:\s]+:\d+: `)
 
 // joinUnion is join, falling back to the union where join finds no common
 // class (or gives untyped for Integer and Float) (decision 150).

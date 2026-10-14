@@ -340,7 +340,7 @@ func (c *Compiler) emitProgram() {
 	// translator goes first, so no Ruby file's directive covers it.
 	c.w("%s\n\n", strings.TrimSpace(rxTranslateGo()))
 	for _, v := range c.verbatim {
-		c.lineDirective(v.file, v.line)
+		c.lineDirective(v.File, v.Line)
 		c.w("%s\n\n", strings.TrimSpace(v.code))
 	}
 	if slices.ContainsFunc(c.classList, func(cls *Class) bool { return cls.hashBase && cls.Super.RubyName == "Hash" }) {
@@ -1269,8 +1269,8 @@ func (c *Compiler) adapts(from, to Type, arg bool) bool {
 func (c *Compiler) checkAdaptable(own, s slot) {
 	m, sm := own.e.M, s.e.M
 	fail := func(why string) {
-		c.errorf(nil, nil, "%s:%d: %s: %s overrides %s: %s, but %s; give it the parent's signature or another name",
-			m.File.Name, m.Line, m, c.sigText(own), sm, c.sigText(s), why)
+		c.errorAt(m.srcPos, "%s: %s overrides %s: %s, but %s; give it the parent's signature or another name",
+			m, c.sigText(own), sm, c.sigText(s), why)
 	}
 	if (m.Block != nil || sm.Block != nil) && !c.sameIterator(own, s) {
 		fail("a block-taking override must keep the signature")
@@ -1929,7 +1929,7 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 				if !ok {
 					panic(r)
 				}
-				c.kept = append(c.kept, ce.msg)
+				c.kept = append(c.kept, ce.Error())
 				k.Type, k.resolving, typ = TAny{}, false, TAny{}
 			}
 		}()
@@ -1945,11 +1945,11 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 		if err != nil {
 			c.errorf(k.File, k.Value, "%v", err)
 		}
-		k.Type = c.resolveType(t, typeScope{lex: k.Scope, file: k.File, line: k.Line})
+		k.Type = c.resolveType(t, typeScope{lex: k.Scope, srcPos: srcPos{k.File, k.Line}})
 		return k.Type
 	}
 	if t := c.sigConst(k); t != nil { // a `.rbs` constant (decision 160)
-		k.Type = c.resolveType(t, typeScope{lex: k.Scope, file: k.File, line: k.Line})
+		k.Type = c.resolveType(t, typeScope{lex: k.Scope, srcPos: srcPos{k.File, k.Line}})
 		return k.Type
 	}
 	if k.inBody && c.gemFile(k.File) {
@@ -1973,8 +1973,8 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 		err := catchCompileError(func() { f.probe(func() { e = f.genExpr(k.Value, nil) }) })
 		if err != nil {
 			c.constChain = c.constChain[:len(c.constChain)-1]
-			k.resolving, k.poison, k.Type = false, err.msg, TAny{}
-			c.warn(k.File, k.Value, "constant %s does not compile, so it is nil: %s (decision 205)", k.RubyName, err.msg)
+			k.resolving, k.poison, k.Type = false, err.Error(), TAny{}
+			c.warn(k.File, k.Value, "constant %s does not compile, so it is nil: %s (decision 205)", k.RubyName, err.Error())
 			return k.Type
 		}
 	} else {

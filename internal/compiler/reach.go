@@ -125,7 +125,7 @@ func (c *Compiler) pruneGemMethods() {
 		r.add(n)
 	}
 	for _, v := range c.verbatim {
-		r.from = "Go in " + v.file.Name
+		r.from = "Go in " + v.File.Name
 		r.scanGo(v.code)
 	}
 	for _, f := range c.files {

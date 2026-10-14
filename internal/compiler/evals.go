@@ -54,7 +54,7 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	c.evalSites[fmt.Sprintf("%s:%d", f.path, ln)] = true
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(e.Source), false)
 	if err != nil {
-		c.errorf(f, nil, "%s:%d: eval: %v", f.Name, ln, err)
+		c.errorAt(srcPos{f, ln}, "eval: %v", err)
 	}
 	sf.path, sf.pinLine = f.path, ln
 	target := c.classes[e.Self]
@@ -77,7 +77,7 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	case e.Kind == "eval" && e.Self == "":
 		c.collect(ctx, sf)
 	default:
-		c.errorf(f, nil, "%s:%d: a %s on %q: rb2go compiles a string eval only on a named module, from boot (decision 204)", f.Name, ln, e.Kind, e.Self)
+		c.errorAt(srcPos{f, ln}, "a %s on %q: rb2go compiles a string eval only on a named module, from boot (decision 204)", e.Kind, e.Self)
 	}
 }
 

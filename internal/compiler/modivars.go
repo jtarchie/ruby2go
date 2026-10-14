@@ -52,12 +52,12 @@ func (c *Compiler) checkIvarModules() {
 			continue
 		}
 		for _, m := range ivarModules(cls) {
-			c.errorf(cls.File, nil, "%s:%d: %s has instance variables, so only a class whose objects are structs can include it, not %s (decision 147)", cls.File.Name, cls.Line, m.RubyName, cls.RubyName)
+			c.errorAt(cls.srcPos, "%s has instance variables, so only a class whose objects are structs can include it, not %s (decision 147)", m.RubyName, cls.RubyName)
 		}
 	}
 	for _, cls := range c.classList {
 		if cls.IsModule && len(cls.IvarList) > 0 && len(cls.TypeParams) > 0 {
-			c.errorf(cls.File, nil, "%s:%d: generic module %s cannot have instance variables (decision 147)", cls.File.Name, cls.Line, cls.RubyName)
+			c.errorAt(cls.srcPos, "generic module %s cannot have instance variables (decision 147)", cls.RubyName)
 		}
 	}
 }

@@ -57,7 +57,7 @@ func (c *Compiler) checkAbstractIncludes() {
 					ok = isClass
 				}
 				if !ok {
-					c.errorf(inc.file, nil, "%s:%d: include %s needs %s#%s typed as %s's (self) -> %s; it inherits %s's, typed otherwise: annotate it", inc.file.Name, inc.line, inc.Mod.RubyName, cls.RubyName, stub.Name, inc.Mod.RubyName, stub.Ret, e.Owner.RubyName)
+					c.errorAt(inc.srcPos, "include %s needs %s#%s typed as %s's (self) -> %s; it inherits %s's, typed otherwise: annotate it", inc.Mod.RubyName, cls.RubyName, stub.Name, inc.Mod.RubyName, stub.Ret, e.Owner.RubyName)
 				}
 			}
 		}
@@ -96,7 +96,7 @@ func (c *Compiler) includedExtends(f *File, mod *Class, body parser.Node, scope 
 				continue
 			}
 			for _, a := range callArgs(call) {
-				mod.mixesIn = append(mod.mixesIn, Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(call.Location.StartOffset), file: f, scope: scope})
+				mod.mixesIn = append(mod.mixesIn, Include{ref: constRef{node: a, scope: scope, file: f}, srcPos: srcPos{f, f.line(call.Location.StartOffset)}, scope: scope})
 			}
 			hook.Body[i] = &parser.NilNode{Location: call.Location}
 		}
@@ -131,8 +131,8 @@ func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.
 	default:
 		c.errorf(f, a, "unsupported include argument")
 	}
-	inc := Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(n.Location.StartOffset), file: f, scope: scope}
-	if t, ok := f.typeArgs[inc.line]; ok {
+	inc := Include{ref: constRef{node: a, scope: scope, file: f}, srcPos: srcPos{f, f.line(n.Location.StartOffset)}, scope: scope}
+	if t, ok := f.typeArgs[inc.Line]; ok {
 		tup, err := rbs.ParseType(t)
 		if err != nil {
 			c.errorf(f, n, "bad include type args %q: %v", t, err)
@@ -150,10 +150,10 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 	case cls.superRef != nil:
 		sup = c.resolveClassRef(cls.superRef)
 		if c.isNumericMod(sup) {
-			c.errorf(cls.File, nil, "%s:%d: subclassing Numeric is not supported: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", cls.File.Name, cls.Line)
+			c.errorAt(cls.srcPos, "subclassing Numeric is not supported: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)")
 		}
 		if sup.IsModule {
-			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
+			c.errorAt(cls.srcPos, "superclass %s is a module", sup.RubyName)
 		}
 		// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
 		switch {
@@ -168,7 +168,7 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 			case len(cls.TypeParams) == 0:
 				cls.TypeParams = []string{"V"}
 			case len(cls.TypeParams) > 1:
-				c.errorf(cls.File, nil, "%s:%d: a Hash subclass takes one type parameter, the value type (keys are untyped)", cls.File.Name, cls.Line)
+				c.errorAt(cls.srcPos, "a Hash subclass takes one type parameter, the value type (keys are untyped)")
 			}
 			if sup.RubyName == "Hash" {
 				cls.GoType = "struct { " + superField(sup) + "[" + strings.Join(cls.TypeParams, ", ") + "] }"
@@ -178,9 +178,9 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 			cls.TypeParams = nil
 			cls.GoType = "struct { " + superField(sup) + anyArgs(len(sup.TypeParams)) + " }"
 		case sup.GoType != "":
-			msg := fmt.Sprintf("%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+			msg := fmt.Sprintf("subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", sup.RubyName)
 			if !c.gemFile(cls.File) {
-				c.errorf(cls.File, nil, "%s", msg)
+				c.errorAt(cls.srcPos, "%s", msg)
 			}
 			c.deferClassError(cls, msg) // gem code: an error only where reachable code uses the class (decision 169)
 			sup = c.classes["Object"]
@@ -205,7 +205,7 @@ func (c *Compiler) checkCycles() {
 		for k, n := cls.Super, 0; k != nil && n <= len(c.classList); k, n = k.Super, n+1 { // n: a cycle not through cls is reported at its own members
 			chain = append(chain, k.RubyName)
 			if k == cls {
-				c.errorf(cls.File, nil, "%s:%d: class %s inherits from itself (%s)", cls.File.Name, cls.Line, cls.RubyName, strings.Join(chain, " < "))
+				c.errorAt(cls.srcPos, "class %s inherits from itself (%s)", cls.RubyName, strings.Join(chain, " < "))
 			}
 		}
 	}
@@ -221,7 +221,7 @@ func (c *Compiler) checkCycles() {
 			for _, k := range append(path[i:], cls) {
 				names = append(names, k.RubyName)
 			}
-			c.errorf(cls.File, nil, "%s:%d: module %s includes itself (%s)", cls.File.Name, cls.Line, cls.RubyName, strings.Join(names, " includes "))
+			c.errorAt(cls.srcPos, "module %s includes itself (%s)", cls.RubyName, strings.Join(names, " includes "))
 		}
 		state[cls] = 1
 		for _, inc := range cls.Includes {
@@ -239,11 +239,11 @@ func (c *Compiler) checkCycles() {
 // linkInclude resolves an include's module and its type args.
 func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 	mod := c.resolveClassRef(&inc.ref)
-	if c.isNumericMod(mod) && !inc.file.prelude {
-		c.errorf(inc.file, nil, "%s:%d: Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", inc.file.Name, inc.line)
+	if c.isNumericMod(mod) && !inc.File.prelude {
+		c.errorAt(inc.srcPos, "Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)")
 	}
 	if !mod.IsModule {
-		c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
+		c.errorAt(inc.srcPos, "%s is not a module", mod.RubyName)
 	}
 	inc.Mod = mod
 	if len(inc.args) == 0 && mod.RubyName == "Enumerable" {
@@ -251,16 +251,16 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 			inc.args = []rbs.Type{at}
 		}
 	}
-	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.file.prelude && cls.Methods["each"] != nil {
+	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.File.prelude && cls.Methods["each"] != nil {
 		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
 		for range mod.TypeParams {
 			inc.Args = append(inc.Args, TAny{})
 		}
 		return
 	}
-	if len(inc.args) == 0 && (c.gemFile(inc.file) || !inc.file.prelude) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
-		if !c.gemFile(inc.file) {
-			c.warn(inc.file, nil, "%s:%d: include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", inc.file.Name, inc.line, mod.RubyName, cls.RubyName, mod.RubyName)
+	if len(inc.args) == 0 && (c.gemFile(inc.File) || !inc.File.prelude) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
+		if !c.gemFile(inc.File) {
+			c.warnAt(inc.srcPos, "include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", mod.RubyName, cls.RubyName, mod.RubyName)
 		}
 		for range mod.TypeParams {
 			inc.Args = append(inc.Args, TAny{})
@@ -268,10 +268,10 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 		return
 	}
 	if len(inc.args) != len(mod.TypeParams) {
-		c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`)", inc.file.Name, inc.line, mod.RubyName, len(mod.TypeParams), mod.RubyName)
+		c.errorAt(inc.srcPos, "include %s needs %d type args (`include %s #[...]`)", mod.RubyName, len(mod.TypeParams), mod.RubyName)
 	}
 	for _, a := range inc.args {
-		inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, file: inc.file, line: inc.line}))
+		inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, srcPos: srcPos{inc.File, inc.Line}}))
 	}
 }
 
@@ -433,7 +433,7 @@ func (c *Compiler) linkExtends() {
 		for _, ext := range cls.extends {
 			ext.Mod = c.resolveClassRef(&ext.ref)
 			if !ext.Mod.IsModule {
-				c.errorf(ext.file, nil, "%s:%d: %s is not a module", ext.file.Name, ext.line, ext.Mod.RubyName)
+				c.errorAt(ext.srcPos, "%s is not a module", ext.Mod.RubyName)
 			}
 			if len(ext.args) == 0 && ext.Mod.RubyName == "Enumerable" {
 				if at := c.sorbetElem(cls.meta); at != nil { // `class << self; Elem = type_member { { fixed: T } }` (decision 196)
@@ -441,23 +441,23 @@ func (c *Compiler) linkExtends() {
 				}
 			}
 			switch {
-			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.file.prelude && cls.meta.Methods["each"] != nil:
+			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.File.prelude && cls.meta.Methods["each"] != nil:
 				ext.fromEach = true // typed from the class's own `def self.each` (includeFromEach), as an include is
 				for range ext.Mod.TypeParams {
 					ext.Args = append(ext.Args, TAny{})
 				}
 			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0: // `extend Enumerable`: untyped elements, as an unannotated include (decision 183)
-				if !c.gemFile(ext.file) {
-					c.warn(ext.file, nil, "%s:%d: extend %s is untyped (`extend %s #[...]` for static calls; decision 183)", ext.file.Name, ext.line, ext.Mod.RubyName, ext.Mod.RubyName)
+				if !c.gemFile(ext.File) {
+					c.warnAt(ext.srcPos, "extend %s is untyped (`extend %s #[...]` for static calls; decision 183)", ext.Mod.RubyName, ext.Mod.RubyName)
 				}
 				for range ext.Mod.TypeParams {
 					ext.Args = append(ext.Args, TAny{})
 				}
 			case len(ext.args) != len(ext.Mod.TypeParams):
-				c.errorf(ext.file, nil, "%s:%d: extend %s needs %d type args (`extend %s #[...]`)", ext.file.Name, ext.line, ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
+				c.errorAt(ext.srcPos, "extend %s needs %d type args (`extend %s #[...]`)", ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
 			}
 			for _, a := range ext.args {
-				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, file: ext.file, line: ext.line}))
+				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, srcPos: srcPos{ext.File, ext.Line}}))
 			}
 			cls.meta.Includes = append(cls.meta.Includes, ext)
 		}

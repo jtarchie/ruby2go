@@ -119,7 +119,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 		}
 		m.sig = sig
 	}
-	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
+	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, srcPos: srcPos{f, m.Line}}
 	m.TypeParams = m.sig.TypeParams
 	var rest []Param // Ruby puts *rest before the keywords; it goes last, the Go variadic
 	for i, p := range m.sig.Params {

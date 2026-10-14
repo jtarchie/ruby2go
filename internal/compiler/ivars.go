@@ -10,7 +10,7 @@ import (
 func (c *Compiler) declareIvarAnnotations() {
 	for _, cls := range c.classList {
 		for _, d := range cls.ivarDecls {
-			t := c.resolveType(d.rbs, typeScope{class: cls, lex: d.scope, file: cls.File, line: d.line})
+			t := c.resolveType(d.rbs, typeScope{class: cls, lex: d.scope, srcPos: srcPos{cls.File, d.line}})
 			owner, name := cls, d.name
 			if iv, ok := strings.CutPrefix(name, "self."); ok {
 				owner, name = cls.meta, iv
@@ -27,7 +27,7 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 		if iv := k.Ivars[name]; iv != nil {
 			narrows := isAny(iv.Type) || isNil(t) && holdsNil(iv.Type) || unionHas(iv.Type, t) // a gem subclass's reader narrowing the parent's (`returns(String)` over Integer | String | nil)
 			if !typeEq(iv.Type, t) && (!narrows || !c.gemFile(f)) {
-				c.errorf(f, nil, "%s:%d: ivar %s declared as %s but %s has it as %s", f.Name, line, name, t, k.Name, iv.Type)
+				c.errorAt(srcPos{f, line}, "ivar %s declared as %s but %s has it as %s", name, t, k.Name, iv.Type)
 			}
 			return iv
 		}

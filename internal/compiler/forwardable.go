@@ -261,7 +261,7 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 // delegateTarget is the declared type of a delegation's accessor.
 func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 	f, n := d.file, d.node
-	sc := typeScope{class: cls, lex: d.scope, file: f, line: f.line(n.Location.StartOffset)}
+	sc := typeScope{class: cls, lex: d.scope, srcPos: srcPos{f, f.line(n.Location.StartOffset)}}
 	switch acc := d.accessor; {
 	case strings.Contains(acc, ".") && acc != "self.class" && c.gemFile(f): // `:"active_spec.resources"`: an expression, forwarded untyped
 		return TAny{}

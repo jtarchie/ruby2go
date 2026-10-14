@@ -129,7 +129,7 @@ func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private boo
 
 func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
-	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, File: f, Line: line, Private: private || cls != nil && cls.metaOf == nil && rubyPrivate[n.Name], Scope: scope}
+	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, srcPos: srcPos{f, line}, Private: private || cls != nil && cls.metaOf == nil && rubyPrivate[n.Name], Scope: scope}
 	if sig, found := f.sigComment(line); found {
 		if sig == "" {
 			c.errorf(f, n, "overloaded signatures (#|) are not supported")
@@ -229,13 +229,13 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			continue
 		}
 		if kind != "attr_writer" {
-			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
+			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, srcPos: srcPos{f, line}, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Return: at}
 			cls.Methods[name] = m
 			cls.MethodList = append(cls.MethodList, m)
 		}
 		if kind != "attr_reader" {
-			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, File: f, Line: line, Private: private, Scope: scope}
+			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, srcPos: srcPos{f, line}, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: name}}, Return: rbs.Void{}}
 			cls.Methods[name+"="] = m
 			cls.MethodList = append(cls.MethodList, m)

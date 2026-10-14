@@ -271,7 +271,7 @@ func unionAdd(a, b rbs.Type) rbs.Type {
 // then the literal value of a literal or constant argument against a
 // literal type.
 func (f *fctx) armRet(n parser.Node, m *Method, args []parser.Node) Type {
-	sc := typeScope{class: m.Owner, lex: m.Scope, file: m.File, line: m.Line}
+	sc := typeScope{class: m.Owner, lex: m.Scope, srcPos: srcPos{m.File, m.Line}}
 arms:
 	for _, arm := range m.arms {
 		req := 0

@@ -46,7 +46,7 @@ func (c *Compiler) markIvarBits() {
 			cls.ivarBits = true
 		}
 		if cls.ivarBits && len(cls.IvarList) > 64 {
-			c.errorf(cls.File, nil, "%s:%d: %s has %d instance variables; rb2go records which were assigned in 64 bits (decision 153)", cls.File.Name, cls.Line, cls.RubyName, len(cls.IvarList))
+			c.errorAt(cls.srcPos, "%s has %d instance variables; rb2go records which were assigned in 64 bits (decision 153)", cls.RubyName, len(cls.IvarList))
 		}
 	}
 }

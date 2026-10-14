@@ -183,26 +183,30 @@ type Compiler struct {
 }
 
 type verbatim struct {
-	file *File
-	line int
+	srcPos
 	code string
 }
 
 type compileError struct {
-	msg     string
-	untyped bool // a parameter inference left untyped (decision 146): a failed round's own error explains it better
+	pos     srcPos // where; zero for an error with no location, or one whose text names it
+	msg     string // without the location
+	untyped bool   // a parameter inference left untyped (decision 146): a failed round's own error explains it better
 }
 
-func (e compileError) Error() string { return e.msg }
-
-// errorf aborts compilation. If n is non-nil the message is prefixed with
-// file:line.
-func (c *Compiler) errorf(f *File, n parser.Node, format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	if n != nil && f != nil {
-		msg = fmt.Sprintf("%s:%d: %s", f.Name, f.shownLine(n.GetLocation().StartOffset), msg)
+// Error is `file:line: msg`, or msg alone when there is no position.
+func (e compileError) Error() string {
+	if e.pos.File == nil {
+		return e.msg
 	}
-	panic(compileError{msg: msg})
+	return e.pos.String() + ": " + e.msg
+}
+
+// errorf aborts compilation. If n is non-nil the error is located at n's line in f.
+func (c *Compiler) errorf(f *File, n parser.Node, format string, args ...any) {
+	if n != nil && f != nil {
+		c.errorAt(srcPos{f, f.shownLine(n.GetLocation().StartOffset)}, format, args...)
+	}
+	panic(compileError{msg: fmt.Sprintf(format, args...)})
 }
 
 func (c *Compiler) unsupported(f *File, n parser.Node) {
@@ -601,7 +605,7 @@ func (c *Compiler) loadPreludeGo() {
 			panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
 		}
 		imports = append(imports, fileImports...)
-		c.verbatim = append(c.verbatim, verbatim{file: &File{Name: name, prelude: true}, line: line, code: body})
+		c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{&File{Name: name, prelude: true}, line}, code: body})
 	}
 	preludeImports.Do(func() { mergeStdImports(stdImports, imports) })
 }
@@ -856,12 +860,17 @@ func realPath(name string) string {
 
 // warn records a warning once, with its source position.
 func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {
-	if c.gemFile(f) && !c.env.GemWarnings { // not the user's to act on: gem code is compiled leniently (decision 173)
-		return
-	}
 	msg := fmt.Sprintf(format, args...)
 	if n != nil { // a nil node's message carries its own position, as errorf's
-		msg = fmt.Sprintf("%s:%d: ", f.Name, f.shownLine(n.GetLocation().StartOffset)) + msg
+		msg = srcPos{f, f.shownLine(n.GetLocation().StartOffset)}.String() + ": " + msg
+	}
+	c.addWarning(f, msg)
+}
+
+// addWarning records msg once, unless it is gem code's.
+func (c *Compiler) addWarning(f *File, msg string) {
+	if c.gemFile(f) && !c.env.GemWarnings { // not the user's to act on: gem code is compiled leniently (decision 173)
+		return
 	}
 	if c.warned[msg] {
 		return

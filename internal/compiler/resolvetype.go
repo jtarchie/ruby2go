@@ -10,8 +10,7 @@ type typeScope struct {
 	class     *Class
 	lex       []*Class // lexical scope for constant names
 	methodTPs []string
-	file      *File
-	line      int
+	srcPos
 }
 
 func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
@@ -23,10 +22,10 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	case rbs.Singleton:
 		cls, _ := c.lookupName(sc.lex, t.Name)
 		if cls == nil {
-			c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
+			c.errorAt(sc.srcPos, "unknown type %s", t.Name)
 		}
 		if cls.meta == nil {
-			c.errorf(sc.file, nil, "%s:%d: %s has no class object type", sc.file.Name, sc.line, t)
+			c.errorAt(sc.srcPos, "%s has no class object type", t)
 		}
 		return TClass{C: cls.meta}
 	case rbs.Optional:
@@ -36,21 +35,21 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		for i, e := range t.Elems {
 			elems[i] = c.resolveType(e, sc)
 		}
-		if (len(elems) < 2 || len(elems) > maxTuple) && c.gemFile(sc.file) {
+		if (len(elems) < 2 || len(elems) > maxTuple) && c.gemFile(sc.File) {
 			return TClass{C: c.classes["Array"], Args: []Type{TAny{}}} // gem code: an Array of untyped
 		}
 		if len(elems) < 2 || len(elems) > maxTuple {
-			c.errorf(sc.file, nil, "%s:%d: only 2- to %d-tuples are supported", sc.file.Name, sc.line, maxTuple)
+			c.errorAt(sc.srcPos, "only 2- to %d-tuples are supported", maxTuple)
 		}
 		return TTuple{Elems: elems}
 	case rbs.Self:
 		if sc.class == nil {
-			c.errorf(sc.file, nil, "%s:%d: `self` type outside a class", sc.file.Name, sc.line)
+			c.errorAt(sc.srcPos, "`self` type outside a class")
 		}
 		return TVar{Name: "Self"}
 	case rbs.Instance: // ponytail: the defining class, not the receiver's subclass; make it a Self-like TVar when a subclass call needs it
 		if sc.class == nil {
-			c.errorf(sc.file, nil, "%s:%d: `instance` type outside a class", sc.file.Name, sc.line)
+			c.errorAt(sc.srcPos, "`instance` type outside a class")
 		}
 		if sc.class.metaOf != nil {
 			return TClass{C: sc.class.metaOf}
@@ -81,7 +80,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	case rbs.Record:
 		return c.resolveRecord(t, sc)
 	}
-	c.errorf(sc.file, nil, "%s:%d: unsupported type %s", sc.file.Name, sc.line, t)
+	c.errorAt(sc.srcPos, "unsupported type %s", t)
 	return nil
 }
 
@@ -93,16 +92,16 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 		ms[i] = c.resolveType(e, sc)
 		switch m := stripOpt(ms[i]).(type) {
 		case TVar, TVoid:
-			if c.gemFile(sc.file) {
+			if c.gemFile(sc.File) {
 				return TAny{} // gem code: the union is untyped (decision 172)
 			}
-			c.errorf(sc.file, nil, "%s:%d: a union member must be a class, tuple, proc or nil, not %s: %s", sc.file.Name, sc.line, m, t)
+			c.errorAt(sc.srcPos, "a union member must be a class, tuple, proc or nil, not %s: %s", m, t)
 		case TClass:
 			if m.C.IsModule && !m.C.universal { // ponytail: a module member needs an includer check in the type switch; use the module type or untyped until then
-				if c.gemFile(sc.file) {
+				if c.gemFile(sc.File) {
 					return TAny{} // gem code: the union is untyped (decision 172)
 				}
-				c.errorf(sc.file, nil, "%s:%d: a union member must be a class, not the module %s: %s", sc.file.Name, sc.line, m, t)
+				c.errorAt(sc.srcPos, "a union member must be a class, not the module %s: %s", m, t)
 			}
 		case TAny, TFunc, TNil, TOpt, TTuple, TUnion:
 		}
@@ -116,10 +115,10 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 			}
 			g := c.goType(m)
 			if o, dup := seen[g]; dup { // a Go type switch cannot tell them apart (Go rejects the duplicate case)
-				if c.gemFile(sc.file) {
+				if c.gemFile(sc.File) {
 					return TAny{}
 				}
-				c.errorf(sc.file, nil, "%s:%d: union members %s and %s are one Go type (%s): %s", sc.file.Name, sc.line, o, m, g, t)
+				c.errorAt(sc.srcPos, "union members %s and %s are one Go type (%s): %s", o, m, g, t)
 			}
 			seen[g] = m
 		}
@@ -145,27 +144,27 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 	if cls == nil && k != nil && k.typeAlias != "" && len(t.Args) == 0 {
 		at, err := rbs.ParseType(k.typeAlias)
 		if err != nil {
-			c.errorf(k.File, nil, "%s:%d: %v", k.File.Name, k.Line, err)
+			c.errorAt(k.srcPos, "%v", err)
 		}
-		return c.resolveType(at, typeScope{lex: k.Scope, file: k.File, line: k.Line})
+		return c.resolveType(at, typeScope{lex: k.Scope, srcPos: srcPos{k.File, k.Line}})
 	}
-	if cls == nil && c.gemFile(sc.file) {
+	if cls == nil && c.gemFile(sc.File) {
 		return TAny{} // a lazily-checked sig naming a class outside the closed world: nothing compiled can hold one
 	}
 	if cls == nil {
-		c.errorf(sc.file, nil, "%s:%d: unknown type %s", sc.file.Name, sc.line, t.Name)
+		c.errorAt(sc.srcPos, "unknown type %s", t.Name)
 	}
 	if len(t.Args) == 0 && (cls.RubyName == "Method" || cls.RubyName == "UnboundMethod") {
 		return TClass{C: cls, Args: []Type{TAny{}}} // RBS's Method has no signature: called through dyn (decision 141)
 	}
-	if len(t.Args) > 0 && len(cls.TypeParams) == 0 && c.gemFile(sc.file) {
+	if len(t.Args) > 0 && len(cls.TypeParams) == 0 && c.gemFile(sc.File) {
 		t.Args = nil // a Sorbet generic (type_member), erased to untyped (decision 196): its args go too
 	}
-	if len(t.Args) == 0 && len(cls.TypeParams) > 0 && c.gemFile(sc.file) {
+	if len(t.Args) == 0 && len(cls.TypeParams) > 0 && c.gemFile(sc.File) {
 		return TClass{C: cls, Args: slices.Repeat([]Type{TAny{}}, len(cls.TypeParams))} // `Hash` with no args: untyped elements
 	}
 	if len(t.Args) != len(cls.TypeParams) {
-		c.errorf(sc.file, nil, "%s:%d: %s takes %d type args, got %d", sc.file.Name, sc.line, cls.Name, len(cls.TypeParams), len(t.Args))
+		c.errorAt(sc.srcPos, "%s takes %d type args, got %d", cls.Name, len(cls.TypeParams), len(t.Args))
 	}
 	args := make([]Type, len(t.Args))
 	for i, a := range t.Args {

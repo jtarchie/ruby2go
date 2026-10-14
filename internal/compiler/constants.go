@@ -21,7 +21,7 @@ func (c *Compiler) addConstAt(f *File, n parser.Node, full string, value parser.
 	if c.consts[full] != nil || c.classes[full] != nil {
 		c.errorf(f, n, "constant %s is already defined", full)
 	}
-	k := &Const{RubyName: full, GoName: goClassName(full), Value: value, File: f, Line: f.line(n.GetLocation().StartOffset), Scope: scope}
+	k := &Const{RubyName: full, GoName: goClassName(full), Value: value, srcPos: srcPos{f, f.line(n.GetLocation().StartOffset)}, Scope: scope}
 	k.ann = f.trailingAnnotation(n)
 	k.typeAlias = f.sorbetAliases[n]
 	c.consts[full] = k
@@ -80,7 +80,7 @@ func (c *Compiler) addClassVar(f *File, cls *Class, n *parser.ClassVariableWrite
 	if cls.cvars[n.Name] != nil {
 		c.errorf(f, n, "class variable %s is assigned twice in %s's body; assign it again in a method", n.Name, cls.RubyName)
 	}
-	k := &Const{RubyName: cls.RubyName + "::" + n.Name, GoName: cls.Name + "_cv_" + strings.TrimPrefix(n.Name, "@@"), Value: n.Value, File: f, Line: f.line(n.Location.StartOffset), Scope: scope}
+	k := &Const{RubyName: cls.RubyName + "::" + n.Name, GoName: cls.Name + "_cv_" + strings.TrimPrefix(n.Name, "@@"), Value: n.Value, srcPos: srcPos{f, f.line(n.Location.StartOffset)}, Scope: scope}
 	k.ann = f.trailingAnnotation(n)
 	if cls.cvars == nil {
 		cls.cvars = map[string]*Const{}
@@ -121,7 +121,7 @@ func (c *Compiler) methodClassVars() {
 						return false
 					}
 				}
-				k := &Const{RubyName: owner.RubyName + "::" + name, GoName: owner.Name + "_cv_" + strings.TrimPrefix(name, "@@"), Value: value, File: m.File, Line: m.File.line(n.GetLocation().StartOffset), Scope: m.Scope, inMethod: true, guarded: true}
+				k := &Const{RubyName: owner.RubyName + "::" + name, GoName: owner.Name + "_cv_" + strings.TrimPrefix(name, "@@"), Value: value, srcPos: srcPos{m.File, m.File.line(n.GetLocation().StartOffset)}, Scope: m.Scope, inMethod: true, guarded: true}
 				k.ann = m.File.trailingAnnotation(n)
 				if k.ann == "" && !isPlainLiteral(value) {
 					c.errorf(m.File, n, "class variable %s is first assigned in a method: annotate it (`%s = v #: T`)", name, name)

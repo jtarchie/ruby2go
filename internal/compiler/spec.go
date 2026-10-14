@@ -248,9 +248,9 @@ func (c *Compiler) skipFailingTests() []SkippedTest {
 			if err == nil {
 				continue
 			}
-			reason := err.msg
-			if _, after, ok := strings.Cut(reason, ": "); ok && strings.HasPrefix(reason, m.File.Name+":") {
-				reason = after
+			reason := err.Error()
+			if err.pos.File != nil && err.pos.File.Name == m.File.Name {
+				reason = err.msg
 			}
 			out = append(out, SkippedTest{File: m.File.Name, Line: m.Line, Name: m.Name, Reason: reason})
 			loc := m.Node.Location

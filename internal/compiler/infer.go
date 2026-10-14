@@ -65,6 +65,9 @@ type paramUse struct {
 	anyRest bool // a gem's untyped value into a rest parameter: its elements are anything (decision 253)
 }
 
+// at is the call the argument came from.
+func (u paramUse) at() srcPos { return srcPos{u.file, u.file.line(u.off)} }
+
 // pendingKey names a def's parameter stably across compiles.
 func pendingKey(m *Method, name string) string {
 	owner := ""
@@ -210,7 +213,7 @@ func (c *Compiler) includeFromEach() {
 				if c.round {
 					continue // untyped this round; the final compile reports it
 				}
-				c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`): %s#each does not yield %d values to infer them from", inc.file.Name, inc.line, inc.Mod.RubyName, len(inc.Mod.TypeParams), inc.Mod.RubyName, cls.RubyName, len(inc.Mod.TypeParams))
+				c.errorAt(inc.srcPos, "include %s needs %d type args (`include %s #[...]`): %s#each does not yield %d values to infer them from", inc.Mod.RubyName, len(inc.Mod.TypeParams), inc.Mod.RubyName, cls.RubyName, len(inc.Mod.TypeParams))
 			}
 			inc.Args = slices.Clone(each.Block.Params)
 			resetMsets(cls)
@@ -500,7 +503,7 @@ func holdsUnion(t Type) bool {
 // debugInfer prints what a round's dry run could not compile, under RB2GO_INFER_DEBUG.
 func (c *Compiler) debugInfer(err *compileError) {
 	if err != nil && c.env.InferDebug {
-		fmt.Fprintln(os.Stderr, "rb2go: infer round:", err.msg)
+		fmt.Fprintln(os.Stderr, "rb2go: infer round:", err.Error())
 	}
 }
 
@@ -547,11 +550,11 @@ func (c *Compiler) updateInference(inf *inference) {
 		})
 		if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.anyRest }); i >= 0 {
 			// concurrent-ruby's new_blocked_by1(self, executor, executor, args): a rest parameter collecting any values
-			next[key], from[key] = TAny{}, fmt.Sprintf("%s:%d", uses[i].file.Name, uses[i].file.line(uses[i].off))
+			next[key], from[key] = TAny{}, uses[i].at().String()
 			continue
 		}
 		if u, ok := c.untypedGemUse(uses); ok { // a gem passing an untyped container: its elements are anything (decision 244)
-			next[key], from[key] = u.typ, fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
+			next[key], from[key] = u.typ, u.at().String()
 			continue
 		}
 		if t, at := joinUses(uses, inf.noUnion[key]); t != nil {
@@ -620,7 +623,7 @@ func joinUses(uses []paramUse, noUnion bool) (Type, string) {
 				continue // untyped this round (another pending parameter's), or no value
 			}
 			if t == nil {
-				t, at = u.typ, fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
+				t, at = u.typ, u.at().String()
 				continue
 			}
 			j, ok := join(t, u.typ)

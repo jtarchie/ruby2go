@@ -669,7 +669,7 @@ func (c *Compiler) dynWrapperBodyOrWarn(cls *Class, e *entry, name string) (body
 			if !ok {
 				panic(r)
 			}
-			c.warn(nil, nil, "%s#%s cannot be called dynamically: %s", cls.RubyName, name, ce.msg)
+			c.warn(nil, nil, "%s#%s cannot be called dynamically: %s", cls.RubyName, name, ce.Error())
 			body = ""
 		}
 	}()

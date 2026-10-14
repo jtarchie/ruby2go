@@ -28,8 +28,7 @@ type Class struct {
 	MethodList []*Method
 	Ivars      map[string]*Ivar
 	IvarList   []*Ivar
-	File       *File
-	Line       int
+	srcPos
 	Subclasses []*Class
 	// universal classes (BasicObject, Object, Kernel) are ancestors of the
 	// primitive types too, so their free funcs take `Self any`.
@@ -97,19 +96,17 @@ type Include struct {
 	fromEach bool // no type args written: they are the includer's each's block parameters (decision 146)
 	ref      constRef
 	args     []rbs.Type
-	line     int
-	file     *File
-	scope    []*Class
+	srcPos
+	scope []*Class
 }
 
 // Const is a non-class constant (`VERSION = "1.0"`), emitted as a Go
 // package-level variable.
 type Const struct {
-	RubyName  string
-	GoName    string
-	Value     parser.Node
-	File      *File
-	Line      int
+	RubyName string
+	GoName   string
+	Value    parser.Node
+	srcPos
 	Scope     []*Class // lexical scope of the assignment
 	ann       string   // trailing `#: T`
 	typeAlias string   // `X = T.type_alias { T }`: the RBS type X names in a sig (decision 196)
@@ -159,32 +156,31 @@ type Method struct {
 	Private         bool
 	Protected       bool // callable with an explicit receiver only from inside the owner's family
 	Node            *parser.DefNode
-	File            *File
-	Line            int
-	Scope           []*Class // lexical scope (Module.nesting), innermost last
-	sigText         string
-	declared        bool // a `#:` or Sorbet sig typed it: its param types are the author's, not guessed (decision 241)
-	sig             *rbs.MethodType
-	arms            []*rbs.MethodType // a `.rbs` sig's overloads; sig is their merge, the call site picks one (decision 12)
-	TypeParams      []string
-	Params          []Param
-	Block           *BlockSig
-	Ret             Type
-	Iterator        bool   // block returns void → iter.Seq
-	seqAdapter      bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
-	shadowed        []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
-	BlockParam      string // name of an explicit &block parameter
-	forwardAll      bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
-	resolved        bool
-	inherited       *Method // signature source for unannotated overrides
-	inferRet        bool    // no return annotation: Ret comes from the body (inferRet)
-	inferring       bool
-	structDef       *Method // the generated Struct/Data method a block def overrides; super reaches it
-	superTarget     *Method // a prepended module's copy: the class's own method it wraps, which super calls (decision 199)
-	fwdTarget       *Class  // a delegation's `(...)` forwarder: the class it forwards to
-	poison          string  // a gem method whose body does not compile: why; its body raises NotImplementedError (decision 205)
-	freeName        string  // its free func's name when Owner_Name is taken by a class (separateFreeFuncs)
-	valueGen        bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
+	srcPos
+	Scope       []*Class // lexical scope (Module.nesting), innermost last
+	sigText     string
+	declared    bool // a `#:` or Sorbet sig typed it: its param types are the author's, not guessed (decision 241)
+	sig         *rbs.MethodType
+	arms        []*rbs.MethodType // a `.rbs` sig's overloads; sig is their merge, the call site picks one (decision 12)
+	TypeParams  []string
+	Params      []Param
+	Block       *BlockSig
+	Ret         Type
+	Iterator    bool   // block returns void → iter.Seq
+	seqAdapter  bool   // a closure overriding an iterator: GoName gains _blk, an iter.Seq adapter keeps the name
+	shadowed    []slot // ancestors' interface slots this override's signature differs from, nearest first; adapters answer them
+	BlockParam  string // name of an explicit &block parameter
+	forwardAll  bool   // `def f(...)`: its signature is its forwarding target's (resolveForwarding)
+	resolved    bool
+	inherited   *Method // signature source for unannotated overrides
+	inferRet    bool    // no return annotation: Ret comes from the body (inferRet)
+	inferring   bool
+	structDef   *Method // the generated Struct/Data method a block def overrides; super reaches it
+	superTarget *Method // a prepended module's copy: the class's own method it wraps, which super calls (decision 199)
+	fwdTarget   *Class  // a delegation's `(...)` forwarder: the class it forwards to
+	poison      string  // a gem method whose body does not compile: why; its body raises NotImplementedError (decision 205)
+	freeName    string  // its free func's name when Owner_Name is taken by a class (separateFreeFuncs)
+	valueGen    bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
@@ -438,7 +434,7 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 				if !f.prelude {
 					c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")
 				}
-				c.verbatim = append(c.verbatim, verbatim{file: f, line: f.line(n.Location.StartOffset), code: n.Unescaped.Value})
+				c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{f, f.line(n.Location.StartOffset)}, code: n.Unescaped.Value})
 			case *parser.CallNode:
 				c.collectTopCall(ctx, f, n)
 			case *parser.BeginNode:
@@ -490,10 +486,10 @@ func (c *Compiler) link(ctx context.Context) {
 	c.checkSpecUses() // before signatures: a bad let name would otherwise surface as an override mismatch
 	for _, cls := range c.classList {
 		if cls.GoType != "" && cls.Super != nil && cls.Super.isStruct() && !cls.Super.universal {
-			c.errorf(cls.File, nil, "%s:%d: @go_type class %s cannot inherit from struct class %s", cls.File.Name, cls.Line, cls.Name, cls.Super.Name)
+			c.errorAt(cls.srcPos, "@go_type class %s cannot inherit from struct class %s", cls.Name, cls.Super.Name)
 		}
 		if cls.isStruct() && !cls.universal && len(cls.TypeParams) > 0 {
-			c.errorf(cls.File, nil, "%s:%d: generic struct classes are not supported", cls.File.Name, cls.Line)
+			c.errorAt(cls.srcPos, "generic struct classes are not supported")
 		}
 	}
 	c.addSigIvars()
@@ -545,7 +541,7 @@ func (c *Compiler) checkGoNames(where string, ms []*Method) {
 	seen := map[string]*Method{}
 	for _, m := range ms {
 		if p := seen[m.GoName]; p != nil && p.Name != m.Name {
-			c.errorf(nil, nil, "%s:%d: `%s` and `%s` (%s:%d) both become Go %s in %s; rename one", m.File.Name, m.Line, m.Name, p.Name, p.File.Name, p.Line, m.GoName, where)
+			c.errorAt(m.srcPos, "`%s` and `%s` (%s) both become Go %s in %s; rename one", m.Name, p.Name, p.srcPos, m.GoName, where)
 		}
 		seen[m.GoName] = m
 	}

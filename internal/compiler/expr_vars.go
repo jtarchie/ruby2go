@@ -188,7 +188,7 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 			return iv
 		}
 		if f.discover && assigned != nil && isNil(assigned) { // only ever nil: untyped after discovery (decision 169 for gems, 183 for user code)
-			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, file: f.f, line: f.f.line(n.GetLocation().StartOffset)})
+			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, srcPos: srcPos{f.f, f.f.line(n.GetLocation().StartOffset)}})
 		}
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
 			if f.c.ivarReadFirst[f.owner.Name+"#"+name] {

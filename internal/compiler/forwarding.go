@@ -44,7 +44,7 @@ func (c *Compiler) resolveForwarding(m *Method) {
 			if err != nil {
 				c.errorf(m.File, m.Node, "%v", err)
 			}
-			prm.Type = c.resolveType(rt, typeScope{class: m.Owner, lex: m.Scope, file: m.File, line: m.Line})
+			prm.Type = c.resolveType(rt, typeScope{class: m.Owner, lex: m.Scope, srcPos: srcPos{m.File, m.Line}})
 		} else {
 			c.resolvePending(m, &prm, pendingParam{key: pendingKey(m, rp.Name), name: rp.Name})
 		}
