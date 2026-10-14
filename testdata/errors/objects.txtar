@@ -1157,3 +1157,18 @@ p Weird.new(1) < Weird.new(2)
 # error: main.rb:3: wrong number of arguments (given 1, expected 0): S takes keywords (keyword_init: true)
 S = Struct.new(:a, keyword_init: true)
 S.new(1)
+-- inherits_cycle.rb --
+# error: main.rb:2: class A inherits from itself (A < B < A)
+class A < B; end
+class B < A; end
+puts A.new.class
+-- inherits_self.rb --
+# error: main.rb:2: class A inherits from itself (A < A)
+class A < A; end
+puts A.new.class
+-- include_cycle.rb --
+# error: main.rb:2: module M includes itself (M includes N includes M)
+module M; include N; end
+module N; include M; end
+class C; include M; end
+puts C.new.class

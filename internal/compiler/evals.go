@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -19,14 +20,33 @@ func (c *Compiler) collectBootEvals(ctx context.Context, evals []boot.EvalInfo) 
 	}
 }
 
+// splitLoc splits Ruby's "path:line" at the last colon: the path may hold one.
+func splitLoc(loc string) (string, int) {
+	i := strings.LastIndexByte(loc, ':')
+	if i < 0 {
+		return loc, 0
+	}
+	n, err := strconv.Atoi(loc[i+1:])
+	if err != nil {
+		return loc, 0
+	}
+	return loc[:i], n
+}
+
+// callerFile is the compiled file and line of a boot "path:line", or nil.
+func (c *Compiler) callerFile(loc string) (*File, int) {
+	path, ln := splitLoc(loc)
+	if ln == 0 {
+		return nil, 0
+	}
+	return c.parsed[c.real(path)], ln
+}
+
 func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
-	path, line, ok := strings.Cut(e.Caller, ":")
-	f := c.parsed[c.real(path)]
-	if !ok || f == nil {
+	f, ln := c.callerFile(e.Caller)
+	if f == nil {
 		return // evaluated by code outside the closed world (a replaced gem's own)
 	}
-	var ln int
-	_, _ = fmt.Sscanf(line, "%d", &ln)
 	if e.Kind == "class_eval_block" {
 		c.collectBlockEval(ctx, f, ln, e)
 		return

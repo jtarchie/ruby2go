@@ -147,7 +147,8 @@ module Boot
       return nil if depth > 6
 
       case x
-      when nil, true, false, Integer, Float, Symbol then x.inspect
+      when Float then x.nan? ? "Float::NAN" : x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect # NaN/Infinity inspect as bare words
+      when nil, true, false, Integer, Symbol then x.inspect
       when Module then x.name && (Object.const_get(x.name) rescue nil).equal?(x) ? "::#{x.name}" : nil
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect

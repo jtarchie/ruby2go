@@ -8149,3 +8149,25 @@ resolve; anything not listed is still open.
       missing or collides.
     - `PreludeWhole` no longer sets the process environment; it passes
       `options.noPrune`. `RB2GO_NO_PRUNE` still works from the environment.
+264. **Hostile and malformed input gives an error, not a crash** (#101; 2026-10-14).
+    - A class cycle (`class A < B; class B < A`, `A < A`) and mutually
+      including modules are a compile error (`inherits from itself
+      (A < B < A)` / `module M includes itself (...)`), checked in `link`
+      before any Super/Includes walk. Those walks (`metaFor`,
+      `isSubclassOf`, `hasClassMethod`) would otherwise overflow the Go
+      stack, which is fatal and uncatchable.
+    - The RBS parser bounds type nesting at 200 (`maxDepth`) and nested
+      declarations at 200, and returns a parse error instead of recursing.
+    - `String()` of an RBS type reparses to the same structure: a Union or
+      Proc nested in an Optional or Union is parenthesised, and the
+      structural round trip is fuzz-checked. `IncludeDecl` has a kind
+      (include/prepend/extend); the compiler does not read it yet.
+    - `.rbs` signatures merge per class name: a reopened class keeps all
+      its members, and on a conflicting method, attr, const or alias the
+      first declaration wins. User sig dirs load before vendored gem sigs,
+      so the user wins.
+    - Boot `path:line` locations split at the last colon, so a gem path
+      containing `:` is found; boot captures non-finite Floats as
+      `Float::NAN`/`Float::INFINITY`/`-Float::INFINITY`.
+    - Sorbet `params(**h)` and `prop :x, T, **o` are compile errors with
+      `file:line`, not a nil dereference.

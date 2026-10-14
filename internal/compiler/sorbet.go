@@ -224,8 +224,11 @@ func readSig(sig *parser.CallNode) sigChain {
 				}
 				for _, el := range kh.Elements {
 					as, ok := el.(*parser.AssocNode)
-					sym, sok := as.Key.(*parser.SymbolNode)
-					if !ok || !sok {
+					if !ok {
+						sorbetFail(el, "params takes name: Type pairs")
+					}
+					sym, ok := as.Key.(*parser.SymbolNode)
+					if !ok {
 						sorbetFail(el, "params takes name: Type pairs")
 					}
 					name := sym.Unescaped.Value
@@ -601,6 +604,34 @@ type structProp struct {
 	optional  bool
 }
 
+// argAt is args[i], or nil past the end.
+func argAt(args []parser.Node, i int) parser.Node {
+	if i < len(args) {
+		return args[i]
+	}
+	return nil
+}
+
+// sorbetPropOptions reads `default:` and `factory:` off a prop's literal options.
+func (f *File) sorbetPropOptions(c *parser.CallNode, kh *parser.KeywordHashNode, p *structProp) {
+	for _, el := range kh.Elements {
+		as, ok := el.(*parser.AssocNode)
+		if !ok {
+			sorbetFail(el, "%s takes literal options", c.Name)
+		}
+		key, ok := as.Key.(*parser.SymbolNode)
+		if !ok {
+			continue
+		}
+		switch key.Unescaped.Value {
+		case "default":
+			p.def, p.optional = f.text(as.Value.GetLocation()), true
+		case "factory":
+			p.def, p.optional = "("+f.text(as.Value.GetLocation())+").call", true
+		}
+	}
+}
+
 // sorbetStruct turns `const :a, T` / `prop :a, T, default: x` into typed attr_reader/attr_accessor and records the
 // keyword initialize T::Struct generates, which collectClass adds.
 func (f *File) sorbetStruct(n *parser.ClassNode, immutable bool) {
@@ -627,22 +658,8 @@ func (f *File) sorbetStruct(n *parser.ClassNode, immutable bool) {
 		if p.optional {
 			p.def = "nil"
 		}
-		if len(args) > 2 {
-			if kh, ok := args[2].(*parser.KeywordHashNode); ok {
-				for _, el := range kh.Elements {
-					as, ok := el.(*parser.AssocNode)
-					key, kok := as.Key.(*parser.SymbolNode)
-					if !ok || !kok {
-						continue
-					}
-					switch key.Unescaped.Value {
-					case "default":
-						p.def, p.optional = f.text(as.Value.GetLocation()), true
-					case "factory":
-						p.def, p.optional = "("+f.text(as.Value.GetLocation())+").call", true
-					}
-				}
-			}
+		if kh, ok := argAt(args, 2).(*parser.KeywordHashNode); ok {
+			f.sorbetPropOptions(c, kh, &p)
 		}
 		props = append(props, p)
 		if c.Name == "const" || immutable {

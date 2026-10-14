@@ -52,9 +52,51 @@ func (c *Compiler) loadGemSigs() {
 			c.errorf(nil, nil, "%s: %v", p, perr)
 		}
 		for _, decl := range f.Decls {
-			c.sigs[decl.Name] = decl
+			c.addSig(decl)
 		}
 	}
+}
+
+// addSig merges decl into the sigs of its class. A reopened class (several
+// files, or the same name twice) keeps every member; on a conflicting member
+// the declaration seen first wins, and a user's sig dir loads before the
+// vendored gem sigs.
+func (c *Compiler) addSig(decl *rbs.ClassDecl) {
+	d := c.sigs[decl.Name]
+	if d == nil {
+		c.sigs[decl.Name] = decl
+		return
+	}
+	merged := *d
+	if len(merged.TypeParams) == 0 {
+		merged.TypeParams = decl.TypeParams
+	}
+	if merged.Super == nil {
+		merged.Super = decl.Super
+	}
+	merged.Includes = appendNew(d.Includes, decl.Includes, func(i *rbs.IncludeDecl) string { return i.Kind + " " + i.Module })
+	merged.Methods = appendNew(d.Methods, decl.Methods, func(m *rbs.MethodDecl) string { return fmt.Sprint(m.Self, m.Name) })
+	merged.Attrs = appendNew(d.Attrs, decl.Attrs, func(a *rbs.AttrDecl) string { return fmt.Sprint(a.Self, a.Name) })
+	merged.Ivars = appendNew(d.Ivars, decl.Ivars, func(k *rbs.ConstDecl) string { return k.Name })
+	merged.Consts = appendNew(d.Consts, decl.Consts, func(k *rbs.ConstDecl) string { return k.Name })
+	merged.Aliases = appendNew(d.Aliases, decl.Aliases, func(a *rbs.TypeAliasDecl) string { return a.Name })
+	c.sigs[decl.Name] = &merged
+}
+
+// appendNew is old plus the members of add whose key old lacks.
+func appendNew[T any](old, add []T, key func(T) string) []T {
+	have := map[string]bool{}
+	for _, o := range old {
+		have[key(o)] = true
+	}
+	out := slices.Clone(old)
+	for _, a := range add {
+		if k := key(a); !have[k] {
+			have[k] = true
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func (c *Compiler) loadSigDir(dir string) {
@@ -74,7 +116,7 @@ func (c *Compiler) loadSigDir(dir string) {
 			c.errorf(nil, nil, "%s: %v", path, perr)
 		}
 		for _, decl := range f.Decls {
-			c.sigs[decl.Name] = decl
+			c.addSig(decl)
 		}
 		return nil
 	})

@@ -65,8 +65,9 @@ type TypeAliasDecl struct {
 	Line int
 }
 
-// IncludeDecl is `include M`, `extend M` or `prepend M`; Self marks extend.
+// IncludeDecl is `include M`, `extend M` or `prepend M`; Self marks extend, Kind is the keyword.
 type IncludeDecl struct {
+	Kind   string // "include", "extend" or "prepend"
 	Module string
 	Args   []Type
 	Self   bool
@@ -90,36 +91,28 @@ func ParseFile(src string) (*File, error) {
 			}
 			stack = stack[:len(stack)-1]
 		case strings.HasPrefix(line, "class "):
-			d, err := parseClass(line, i+1)
+			err := openDecl(f, &stack, parseClass, line, i+1)
 			if err != nil {
 				return nil, err
 			}
-			openDecl(f, &stack, d)
 		case strings.HasPrefix(line, "module "):
-			d, err := parseModule(line, i+1)
+			err := openDecl(f, &stack, parseModule, line, i+1)
 			if err != nil {
 				return nil, err
 			}
-			openDecl(f, &stack, d)
 		case strings.HasPrefix(line, "interface "):
-			d, err := parseInterface(line, i+1)
+			err := openDecl(f, &stack, parseInterface, line, i+1)
 			if err != nil {
 				return nil, err
 			}
-			openDecl(f, &stack, d)
 		default:
 			var owner *ClassDecl
 			if len(stack) > 0 {
 				owner = stack[len(stack)-1]
 			}
 			start := i + 1
-			for strings.HasPrefix(line, "def ") && i+1 < len(lines) {
-				nxt := strings.TrimSpace(stripComment(lines[i+1]))
-				if !strings.HasPrefix(nxt, "|") {
-					break
-				}
-				line += " " + nxt
-				i++
+			if strings.HasPrefix(line, "def ") {
+				line = joinOverloads(lines, &i, line)
 			}
 			err := parseMember(owner, line, start)
 			if err != nil {
@@ -133,12 +126,35 @@ func ParseFile(src string) (*File, error) {
 	return f, nil
 }
 
-func openDecl(f *File, stack *[]*ClassDecl, d *ClassDecl) {
+// joinOverloads appends the `| (T) -> U` continuation lines after lines[*i] to line, advancing *i past them.
+func joinOverloads(lines []string, i *int, line string) string {
+	var sb strings.Builder
+	sb.WriteString(line)
+	for *i+1 < len(lines) {
+		nxt := strings.TrimSpace(stripComment(lines[*i+1]))
+		if !strings.HasPrefix(nxt, "|") {
+			break
+		}
+		sb.WriteString(" " + nxt)
+		*i++
+	}
+	return sb.String()
+}
+
+func openDecl(f *File, stack *[]*ClassDecl, parse func(string, int) (*ClassDecl, error), line string, ln int) error {
+	if len(*stack) >= maxDepth {
+		return errTooDeep
+	}
+	d, err := parse(line, ln)
+	if err != nil {
+		return err
+	}
 	if n := len(*stack); n > 0 {
 		d.Name = (*stack)[n-1].Name + "::" + d.Name
 	}
 	f.Decls = append(f.Decls, d)
 	*stack = append(*stack, d)
+	return nil
 }
 
 func parseClass(line string, ln int) (*ClassDecl, error) {
@@ -347,7 +363,7 @@ func addAlias(owner *ClassDecl, line string, ln int) error {
 func parseInclude(line string, ln int) (*IncludeDecl, error) {
 	self := strings.HasPrefix(line, "extend ")
 	rest := strings.TrimSpace(line[strings.IndexByte(line, ' ')+1:])
-	inc := &IncludeDecl{Self: self, Line: ln}
+	inc := &IncludeDecl{Kind: line[:strings.IndexByte(line, ' ')], Self: self, Line: ln}
 	name, _, _, err := parseHead(rest)
 	if err != nil {
 		return nil, fmt.Errorf("rbs: include on line %d: %w", ln, err)

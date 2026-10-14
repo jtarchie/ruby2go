@@ -94,12 +94,27 @@ func (t Name) String() string {
 	}
 	return t.Name + "[" + join(t.Args) + "]"
 }
-func (t Optional) String() string { return t.Elem.String() + "?" }
-func (t Tuple) String() string    { return "[" + join(t.Elems) + "]" }
+func (t Optional) String() string {
+	if needsParens(t.Elem) { // unparenthesised, the `?` would bind to the last member
+		return "(" + t.Elem.String() + ")?"
+	}
+	return t.Elem.String() + "?"
+}
+
+// needsParens: a union or proc nested in a union or optional reparses differently without them.
+func needsParens(t Type) bool {
+	_, union := t.(Union)
+	_, proc := t.(Proc)
+	return union || proc
+}
+func (t Tuple) String() string { return "[" + join(t.Elems) + "]" }
 func (t Union) String() string {
 	parts := make([]string, len(t.Elems))
 	for i, e := range t.Elems {
 		parts[i] = e.String()
+		if needsParens(e) {
+			parts[i] = "(" + parts[i] + ")"
+		}
 	}
 	return strings.Join(parts, " | ")
 }
@@ -169,13 +184,9 @@ type MethodType struct {
 	Return     Type
 }
 
-func (m *MethodType) String() string {
-	var b strings.Builder
-	if len(m.TypeParams) > 0 {
-		b.WriteString("[" + strings.Join(m.TypeParams, ", ") + "] ")
-	}
+func writeParams(b *strings.Builder, params []Param) {
 	b.WriteString("(")
-	for i, p := range m.Params {
+	for i, p := range params {
 		if i > 0 {
 			b.WriteString(", ")
 		}
@@ -198,15 +209,21 @@ func (m *MethodType) String() string {
 		}
 	}
 	b.WriteString(")")
+}
+
+func (m *MethodType) String() string {
+	var b strings.Builder
+	if len(m.TypeParams) > 0 {
+		b.WriteString("[" + strings.Join(m.TypeParams, ", ") + "] ")
+	}
+	writeParams(&b, m.Params)
 	if m.Block != nil {
-		b.WriteString(" { (")
-		for i, p := range m.Block.Params {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.WriteString(p.Type.String())
+		b.WriteString(" ")
+		if m.Block.Optional {
+			b.WriteString("?")
 		}
-		b.WriteString(")")
+		b.WriteString("{ ")
+		writeParams(&b, m.Block.Params)
 		if m.Block.Self != nil {
 			b.WriteString(" [self: " + m.Block.Self.String() + "]")
 		}
@@ -217,9 +234,15 @@ func (m *MethodType) String() string {
 }
 
 type parser struct {
-	toks []string
-	pos  int
+	toks  []string
+	pos   int
+	depth int
 }
+
+// maxDepth bounds type nesting: the parser and every consumer recurse on it, and a Go stack overflow is fatal.
+const maxDepth = 200
+
+var errTooDeep = fmt.Errorf("rbs: type nested too deeply (limit %d)", maxDepth)
 
 func tokenize(s string) ([]string, error) {
 	var toks []string
@@ -513,7 +536,10 @@ func (p *parser) parseSuffixed() (Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	for p.peek() == "?" {
+	for n := 0; p.peek() == "?"; n++ {
+		if n >= maxDepth {
+			return nil, errTooDeep
+		}
 		p.next()
 		t = Optional{Elem: t}
 	}
@@ -521,6 +547,15 @@ func (p *parser) parseSuffixed() (Type, error) {
 }
 
 func (p *parser) parsePrimary() (Type, error) {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > maxDepth {
+		return nil, errTooDeep
+	}
+	return p.parseAtom()
+}
+
+func (p *parser) parseAtom() (Type, error) {
 	tok := p.next()
 	switch tok {
 	case "":

@@ -1,11 +1,18 @@
 package rbs
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 var typeSeeds = []string{
 	"String", "Array[String]?", "[Integer, String]", "Hash[String, Array[Integer]]", "singleton(A::B)",
 	"Integer | String", "^(Integer) -> String", "^() -> void", "Array[^(Integer, String) -> Integer?]",
 	"self", "untyped", "bool", "nil", "::Foo::Bar", "[A, B, C]?",
+	"(A | B)?", "(^() -> A)?", "(^() -> A) | B", "A | (B | C)", "(A?)?", "{ a: Integer, \"b\" => String }?",
+	strings.Repeat("(", 300) + "A" + strings.Repeat(")", 300), strings.Repeat("[", 300) + "A" + strings.Repeat("]", 300),
+	strings.Repeat("^(", 300) + "A" + strings.Repeat(") -> A", 300), strings.Repeat("::", 300) + "A", "A" + strings.Repeat("?", 300),
 }
 
 // FuzzParseType: whatever parses prints back to text that parses to the same type.
@@ -22,8 +29,8 @@ func FuzzParseType(f *testing.F) {
 		if err != nil {
 			t.Fatalf("%q parsed as %q, which does not reparse: %v", s, ty, err)
 		}
-		if again.String() != ty.String() {
-			t.Fatalf("%q parsed as %q, which reparses as %q", s, ty, again)
+		if again.String() != ty.String() || !reflect.DeepEqual(again, ty) {
+			t.Fatalf("%q parsed as %q, which reparses as %q (or a different structure)", s, ty, again)
 		}
 	})
 }
@@ -44,6 +51,7 @@ func FuzzParseMethodType(f *testing.F) {
 	for _, s := range []string{
 		"(Integer) -> String", "[X] (Array[X]) { (X) -> void } -> X", "(?Integer, *String) -> void",
 		"() ?{ () -> void } -> self", "(^(Integer) -> Integer, Integer) -> Integer", "(Integer x, ?String y) -> bool",
+		"() ?{ (*Integer, ?String s) [self: A] -> void } -> void",
 	} {
 		f.Add(s)
 	}
@@ -59,8 +67,8 @@ func FuzzParseMethodType(f *testing.F) {
 		if err != nil {
 			t.Fatalf("%q parsed as %q, which does not reparse: %v", s, m, err)
 		}
-		if again.String() != m.String() {
-			t.Fatalf("%q parsed as %q, which reparses as %q", s, m, again)
+		if again.String() != m.String() || !reflect.DeepEqual(again, m) {
+			t.Fatalf("%q parsed as %q, which reparses as %q (or a different structure)", s, m, again)
 		}
 	})
 }

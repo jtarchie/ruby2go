@@ -232,10 +232,7 @@ func (c *Compiler) onlyDefinesMethods(n parser.Node) bool {
 
 // procLiteral is `proc <block>` for the literal block boot saw a captured Proc made from, at "path:line".
 func (c *Compiler) procLiteral(f *File, at parser.Node, loc string) string {
-	path, line, _ := strings.Cut(loc, ":")
-	src := c.parsed[c.real(path)]
-	var ln int
-	_, _ = fmt.Sscanf(line, "%d", &ln)
+	src, ln := c.callerFile(loc)
 	var found *parser.BlockNode
 	if src != nil {
 		anyNode(src.Root, func(n parser.Node) bool {

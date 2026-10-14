@@ -2151,6 +2151,46 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 	return sup
 }
 
+// checkCycles rejects `class A < B; end; class B < A; end` and mutually
+// including modules: every later walk of Super/Includes (metaFor,
+// isSubclassOf, hasClassMethod) would recurse until a fatal stack overflow.
+func (c *Compiler) checkCycles() {
+	for _, cls := range c.classList {
+		chain := []string{cls.RubyName}
+		for k, n := cls.Super, 0; k != nil && n <= len(c.classList); k, n = k.Super, n+1 { // n: a cycle not through cls is reported at its own members
+			chain = append(chain, k.RubyName)
+			if k == cls {
+				c.errorf(cls.File, nil, "%s:%d: class %s inherits from itself (%s)", cls.File.Name, cls.Line, cls.RubyName, strings.Join(chain, " < "))
+			}
+		}
+	}
+	state := map[*Class]int{} // 1 on the current path, 2 done
+	var visit func(cls *Class, path []*Class)
+	visit = func(cls *Class, path []*Class) {
+		switch state[cls] {
+		case 2:
+			return
+		case 1:
+			i := slices.Index(path, cls)
+			names := []string{}
+			for _, k := range append(path[i:], cls) {
+				names = append(names, k.RubyName)
+			}
+			c.errorf(cls.File, nil, "%s:%d: module %s includes itself (%s)", cls.File.Name, cls.Line, cls.RubyName, strings.Join(names, " includes "))
+		}
+		state[cls] = 1
+		for _, inc := range cls.Includes {
+			if inc.Mod != nil {
+				visit(inc.Mod, append(path, cls))
+			}
+		}
+		state[cls] = 2
+	}
+	for _, cls := range c.classList {
+		visit(cls, nil)
+	}
+}
+
 func (c *Compiler) link(ctx context.Context) {
 	for _, cls := range c.classList {
 		if sup := c.superclassOf(cls); sup != nil {
@@ -2161,6 +2201,7 @@ func (c *Compiler) link(ctx context.Context) {
 			c.linkInclude(cls, &cls.Includes[i])
 		}
 	}
+	c.checkCycles()
 	c.checkNumeric()
 	c.buildMetas()
 	c.applyAliasNews(ctx)
