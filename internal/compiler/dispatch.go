@@ -277,7 +277,7 @@ func (c *Compiler) sendCall(e *entry, recv, args string) string {
 	}
 	targs := c.moduleCallArgs(e)
 	if len(c.sendArms(owner, e.M)) == 0 {
-		return freeFuncName(e.M) + moduleSelfArgs(owner.Name, targs) + "(" + recv + comma(args) + ")" // the module body with the constraint as Self (decision 208)
+		return freeFuncName(e.M) + moduleSelfArgs(owner, targs) + "(" + recv + comma(args) + ")" // the module body with the constraint as Self (decision 208)
 	}
 	return c.registerSend(e) + bracket(targs) + "(" + recv + comma(args) + ")"
 }
@@ -293,8 +293,8 @@ func (c *Compiler) registerSend(e *entry) string {
 }
 
 // moduleSelfArgs renders a module free func's type arguments with the constraint as Self: `[Mod_Self[any, E], E]`.
-func moduleSelfArgs(mod string, targs []string) string {
-	return "[" + mod + "_Self[any" + comma(strings.Join(targs, ", ")) + "]" + comma(strings.Join(targs, ", ")) + "]"
+func moduleSelfArgs(mod *Class, targs []string) string {
+	return "[" + mod.selfName() + "[any" + comma(strings.Join(targs, ", ")) + "]" + comma(strings.Join(targs, ", ")) + "]"
 }
 
 func bracket(targs []string) string {
@@ -361,8 +361,8 @@ func (c *Compiler) emitSends(reached func(string) bool) {
 				tpDecl = "[" + strings.Join(tps, ", ") + " comparable]"
 			}
 			ps, ret = c.sig(s.m, tvarEnv(tps))
-			selfType = s.owner.Name + "_Self[any" + comma(strings.Join(tps, ", ")) + "]"
-			dflt = freeFuncName(s.m) + moduleSelfArgs(s.owner.Name, tps) + "(self" + comma(args) + ")"
+			selfType = s.owner.selfName() + "[any" + comma(strings.Join(tps, ", ")) + "]"
+			dflt = freeFuncName(s.m) + moduleSelfArgs(s.owner, tps) + "(self" + comma(args) + ")"
 			call = func(recv string, m *Method) string {
 				code := freeFuncName(m) + c.armTypeArgs(m.Owner, s.owner) + "(" + recv + comma(args) + ")"
 				if ret == "" {

@@ -707,7 +707,7 @@ func (f *fctx) patDeconstruct(pm *patMatch, p parser.Node, subj expr, needArray 
 				break
 			}
 			if e := f.resolve(t, "deconstruct"); e != nil && e.M.valueGen && !needArray && !t.C.descendantDefines("deconstruct", false) {
-				members := t.C.valueRoot().valueMembers
+				members := t.C.valueRoot().value.members
 				elems := make([]expr, len(members))
 				for i, m := range members {
 					elems[i] = f.genMethodCall(p, s, m, nil, nil)
@@ -920,7 +920,7 @@ func (f *fctx) patDeconstructKeys(pm *patMatch, p parser.Node, subj expr, names 
 	f.patShape(pm, p, subj, "deconstruct_keys", func(s expr) {
 		if t, ok := s.typ.(TClass); ok && t.C.RubyName != "Hash" {
 			if e := f.resolve(t, "deconstruct_keys"); e != nil && e.M.valueGen && !allKeys && !t.C.descendantDefines("deconstruct_keys", false) {
-				order := t.C.valueRoot().valueMembers
+				order := t.C.valueRoot().value.members
 				members := map[string]expr{}
 				for _, m := range order {
 					members[m] = f.genMethodCall(p, s, m, nil, nil)

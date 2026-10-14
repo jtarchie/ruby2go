@@ -328,7 +328,7 @@ func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) 
 	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner && e.Owner.IsModule {
 		// self in a module body reaching a module it includes: everything that includes this module includes that
 		// one, so self is one of its includers, asserted to its constraint (decision 234)
-		mod := e.Owner.Name + "_Self[any" + comma(strings.Join(f.c.moduleCallArgs(e), ", ")) + "]"
+		mod := e.Owner.selfName() + "[any" + comma(strings.Join(f.c.moduleCallArgs(e), ", ")) + "]"
 		return f.c.sendCall(e, "any("+recv.code+").("+mod+")", argList), true
 	}
 	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner {
@@ -378,7 +378,7 @@ func (f *fctx) methodExprType(m *Method, recv expr) string {
 		}
 	case TVar:
 		if t.Name == "Self" && f.owner != nil && f.owner.isStruct() && !f.owner.universal && !f.owner.IsModule && len(f.owner.TypeParams) == 0 {
-			return f.owner.Name + "I"
+			return f.owner.ifaceName()
 		}
 	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
 	}

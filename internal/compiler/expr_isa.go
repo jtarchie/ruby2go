@@ -202,7 +202,7 @@ func unionMarkerIsA(code string, u TUnion, name string) (string, bool) {
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
 func (c *Compiler) isAGoType(cls *Class) string {
 	if len(cls.TypeParams) > 0 {
-		return cls.Name + "_Any"
+		return cls.anyName()
 	}
 	return c.goType(TClass{C: cls})
 }
@@ -314,7 +314,7 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 		for range cls.TypeParams {
 			typ.Args = append(typ.Args, TAny{})
 		}
-		return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + cls.Name + "_Any)._ToAny()", view: code}}
+		return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + cls.anyName() + ")._ToAny()", view: code}}
 	}
 	return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + f.c.goType(typ) + ")"}}
 }

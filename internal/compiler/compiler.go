@@ -118,7 +118,7 @@ type Compiler struct {
 	autoloaded            map[string]bool           // boot-resolved autoload files: loaded where their autoload registers (decision 175)
 	pruneGems             bool                      // a gem program: unreached gem methods are dropped (decision 169)
 	gemNilIvars           []gemNilIvar              // gem ivars discovery saw only nil assigned to (decision 169)
-	nilIvars              map[string]bool           // class#@ivar assigned nil where no type was known: a subclass's assignment types it (decision 182)
+	nilIvars              map[ivarKey]bool          // class#@ivar assigned nil where no type was known: a subclass's assignment types it (decision 182)
 	autoloads             map[string]bool           // `autoload :X` constants by qualified name: defined? answers for them (decision 167)
 	out                   strings.Builder
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
@@ -152,7 +152,7 @@ type Compiler struct {
 	inheritedAliases []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
 	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
 	anonRun          *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
-	ivarReadFirst    map[string]bool                   // owner#@x read before any assignment typed it, in discovery: declared T?
+	ivarReadFirst    map[ivarKey]bool                  // owner#@x read before any assignment typed it, in discovery: declared T?
 	ivarBitsMarked   bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
 	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
 	anonErrors       map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated

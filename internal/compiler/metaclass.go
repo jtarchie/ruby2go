@@ -41,7 +41,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 	default:
 		sup = c.classes["Class"]
 	}
-	m := &Class{Name: cls.Name + "_Meta", RubyName: cls.RubyName, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{},
+	m := &Class{Name: cls.metaName(), RubyName: cls.RubyName, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{},
 		srcPos: srcPos{cls.File, cls.Line}, Super: sup, metaOf: cls}
 	cls.meta = m
 	sup.Subclasses = append(sup.Subclasses, m)

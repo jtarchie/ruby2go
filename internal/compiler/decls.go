@@ -39,7 +39,7 @@ func (c *Compiler) goType(t Type) string {
 			}
 			return name
 		default:
-			return cls.Name + "I"
+			return cls.ifaceName()
 		}
 	case TOpt:
 		s := "*" + c.goType(t.Elem)
@@ -219,7 +219,7 @@ func freeFuncName(m *Method) string {
 	if m.freeName != "" {
 		return m.freeName
 	}
-	return m.Owner.Name + "_" + m.GoName
+	return m.Owner.freeFunc(m)
 }
 
 // separateFreeFuncs renames a method's free func whose name is a class's Go type (`Sandbox#landlock` and
@@ -231,7 +231,7 @@ func (c *Compiler) separateFreeFuncs() {
 	}
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
-			if name := cls.Name + "_" + m.GoName; types[name] {
+			if name := cls.freeFunc(m); types[name] {
 				m.freeName = name + "_fn"
 			}
 		}
@@ -270,9 +270,9 @@ func (c *Compiler) constraint(owner *Class) string {
 	case owner.universal:
 		return "any"
 	case owner.IsModule:
-		return owner.Name + "_Self[Self" + comma(strings.Join(owner.TypeParams, ", ")) + "]"
+		return owner.selfName() + "[Self" + comma(strings.Join(owner.TypeParams, ", ")) + "]"
 	default:
-		return owner.Name + "I"
+		return owner.ifaceName()
 	}
 }
 
@@ -303,7 +303,7 @@ func (c *Compiler) plainSelfType(owner *Class) string {
 	if owner.universal {
 		return "any"
 	}
-	return owner.Name + "I"
+	return owner.ifaceName()
 }
 
 // typeParamDecl renders the type parameter list of a free func.
@@ -520,16 +520,16 @@ func (c *Compiler) emitClassType(cls *Class) {
 		if cls.hashBase {
 			switch cls.Super.RubyName {
 			case "Hash":
-				c.w("func New%s%s() *%s { return &%s{%s: *NewHash[any, %s]()} }\n\n", cls.Name, decl, inst, inst, superField(cls.Super), strings.Join(cls.TypeParams, ", "))
+				c.w("func %s%s() *%s { return &%s{%s: *NewHash[any, %s]()} }\n\n", cls.ctorName(), decl, inst, inst, superField(cls.Super), strings.Join(cls.TypeParams, ", "))
 			case "Array", "Set", "Queue":
-				c.w("func New%s%s() *%s { return &%s{%s: *New%s%s()} }\n\n", cls.Name, decl, inst, inst, superField(cls.Super), cls.Super.Name, anyArgs(len(cls.Super.TypeParams)))
+				c.w("func %s%s() *%s { return &%s{%s: *%s%s()} }\n\n", cls.ctorName(), decl, inst, inst, superField(cls.Super), cls.Super.ctorName(), anyArgs(len(cls.Super.TypeParams)))
 			default:
 				if sup := cls.Super; sup.hashBase && sup.mutable() && len(sup.TypeParams) == 0 && decl == "" { // Concurrent::Set < CRubySet < ::Set
-					c.w("func New%s() *%s { return &%s{%s: *New%s()} }\n\n", cls.Name, inst, inst, superField(sup), sup.Name)
+					c.w("func %s() *%s { return &%s{%s: *%s()} }\n\n", cls.ctorName(), inst, inst, superField(sup), sup.ctorName())
 					break
 				}
 				// a value base starts zero; super in initialize sets it
-				c.w("func New%s() *%s { return &%s{} }\n\n", cls.Name, inst, inst)
+				c.w("func %s() *%s { return &%s{} }\n\n", cls.ctorName(), inst, inst)
 			}
 		}
 	default:
@@ -573,7 +573,7 @@ func (c *Compiler) emitModuleInterface(mod *Class) {
 		}
 		c.w("}\n\n")
 	}
-	c.w("type %s_Self[Self any%s] interface {\n", mod.Name, tps)
+	c.w("type %s[Self any%s] interface {\n", mod.selfName(), tps)
 	if len(mod.IvarList) > 0 {
 		c.w("\t_%s() *%s\n", mod.Name, ivarsType(mod))
 	}
@@ -796,7 +796,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	c.w("}\n\n")
 	// interface
-	c.w("type %sI interface {\n", cls.Name)
+	c.w("type %s interface {\n", cls.ifaceName())
 	for _, k := range cls.structChain() {
 		c.w("\t_%s() *%s\n", k.Name, k.Name)
 	}
@@ -852,15 +852,15 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		env := composeEnv(init.Env, nil)
 		env["Self"] = TClass{C: cls}
 		ps, _ := c.sig(init.M, env)
-		c.labels["New"+cls.Name] = "Class#new"
-		c.w("func New%s(%s) *%s {\n\tself := &%s{}\n\t%s(self, %s)\n\treturn self\n}\n\n",
-			cls.Name, ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
+		c.labels[cls.ctorName()] = "Class#new"
+		c.w("func %s(%s) *%s {\n\tself := &%s{}\n\t%s(self, %s)\n\treturn self\n}\n\n",
+			cls.ctorName(), ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
 		if cls.isPerRun { // its class object's new: initialize already sees self.class (decision 259)
 			c.w("func New%sIn(k *%s, %s) *%s {\n\tself := &%s{rbCls_: k}\n\t%s(self, %s)\n\treturn self\n}\n\n",
 				cls.Name, cls.meta.Name, ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
 		}
 	} else {
-		c.w("func New%s() *%s { return &%s{} }\n\n", cls.Name, cls.Name, cls.Name)
+		c.w("func %s() *%s { return &%s{} }\n\n", cls.ctorName(), cls.Name, cls.Name)
 	}
 }
 
@@ -1607,7 +1607,7 @@ func (c *Compiler) forwardTypeArgs(e entry, cls *Class) string {
 		for _, p := range e.Owner.TypeParams {
 			tps = append(tps, c.goType(e.Env[p]))
 		}
-		args = append(args, e.Owner.Name+"_Self[any"+comma(strings.Join(tps, ", "))+"]")
+		args = append(args, e.Owner.selfName()+"[any"+comma(strings.Join(tps, ", "))+"]")
 	case cls.isStruct() && !e.Owner.universal:
 		// Self matches the forwarder's `self` (CI), else *C fails Comparable_Self[*C] and `(self)` args don't pass
 		args = append(args, c.goType(c.selfTypeFor(e, cls)))

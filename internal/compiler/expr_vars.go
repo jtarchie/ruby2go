@@ -191,7 +191,7 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, srcPos: srcPos{f.f, f.f.line(n.GetLocation().StartOffset)}})
 		}
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
-			if f.c.ivarReadFirst[f.owner.Name+"#"+name] {
+			if f.c.ivarReadFirst[ivarKey{f.owner, name}] {
 				assigned = optOf(assigned)
 			}
 			return f.c.declareIvar(f.owner, name, assigned, f.f, f.f.line(n.GetLocation().StartOffset))
@@ -208,9 +208,9 @@ func (f *fctx) nilIvar(name string, assigned Type) *Ivar {
 		return nil
 	}
 	if f.c.nilIvars == nil {
-		f.c.nilIvars = map[string]bool{}
+		f.c.nilIvars = map[ivarKey]bool{}
 	}
-	f.c.nilIvars[f.owner.Name+"#"+name] = true
+	f.c.nilIvars[ivarKey{f.owner, name}] = true
 	return f.c.subclassIvar(f.owner, name)
 }
 
@@ -224,9 +224,9 @@ func (f *fctx) readsUnassigned(name string) bool {
 		return false
 	}
 	if f.c.ivarReadFirst == nil {
-		f.c.ivarReadFirst = map[string]bool{}
+		f.c.ivarReadFirst = map[ivarKey]bool{}
 	}
-	f.c.ivarReadFirst[f.owner.Name+"#"+name] = true
+	f.c.ivarReadFirst[ivarKey{f.owner, name}] = true
 	return true
 }
 

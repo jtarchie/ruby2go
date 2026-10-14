@@ -179,11 +179,11 @@ func (c *Compiler) nameGo() {
 			taken[m[1]] = true
 		}
 	}
-	claim := func(f *File, name *string, gen func(string) []string) {
-		for !f.isPrelude() && slices.ContainsFunc(gen(*name), func(n string) bool { return taken[n] }) {
+	claim := func(f *File, name *string, gen func() []string) { // gen reads *name
+		for !f.isPrelude() && slices.ContainsFunc(gen(), func(n string) bool { return taken[n] }) {
 			*name += "_"
 		}
-		for _, n := range gen(*name) {
+		for _, n := range gen() {
 			taken[n] = true
 		}
 	}
@@ -191,20 +191,30 @@ func (c *Compiler) nameGo() {
 		claim(cls.File, &cls.Name, cls.goNames)
 	}
 	for _, k := range c.constList {
-		claim(k.File, &k.GoName, func(n string) []string { return []string{n} })
+		claim(k.File, &k.GoName, func() []string { return []string{k.GoName} })
 	}
 }
 
-// goNames lists the package-level Go names generated for cls if its Go
-// name is n: type, interface, constructor, metaclass and free functions.
-func (cls *Class) goNames(n string) []string {
+// Emitters call these and goNames lists them, so a derived Go name added to one cannot be missed by nameGo's clash check.
+
+func (cls *Class) ifaceName() string { return cls.Name + "I" }     // the interface of its objects
+func (cls *Class) ctorName() string  { return "New" + cls.Name }   // the constructor
+func (cls *Class) selfName() string  { return cls.Name + "_Self" } // a module's Self constraint
+func (cls *Class) anyName() string   { return cls.Name + "_Any" }  // the type-switch case for the class and its subclasses
+func (cls *Class) metaName() string  { return cls.Name + "_Meta" } // its metaclass's Go name
+
+// freeFunc is the Go name of m, a method of cls, as a free function (before separateFreeFuncs).
+func (cls *Class) freeFunc(m *Method) string { return cls.Name + "_" + m.GoName }
+
+// goNames lists every package-level Go name generated for cls.
+func (cls *Class) goNames() []string {
 	out := make([]string, 0, 8+len(cls.MethodList)+len(cls.singletonDefs))
-	out = append(out, n, n+"I", "New"+n, n+"_Self", n+"_Any", n+"_class", n+"_Meta", n+"_MetaI")
+	out = append(out, cls.Name, cls.ifaceName(), cls.ctorName(), cls.selfName(), cls.anyName(), classVar(cls), cls.metaName(), cls.metaName()+"I")
 	for _, m := range cls.MethodList {
-		out = append(out, n+"_"+m.GoName)
+		out = append(out, cls.freeFunc(m))
 	}
 	for _, d := range cls.singletonDefs {
-		out = append(out, n+"_Meta_"+goMethodName(d.node.Name))
+		out = append(out, cls.metaName()+"_"+goMethodName(d.node.Name))
 	}
 	return out
 }

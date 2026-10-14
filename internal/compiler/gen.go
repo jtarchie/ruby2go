@@ -1875,7 +1875,7 @@ func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
 		for i := range args {
 			args[i] = TAny{}
 		}
-		return []string{cls.Name + "_Any"}, TClass{C: cls, Args: args}, "._ToAny()"
+		return []string{cls.anyName()}, TClass{C: cls, Args: args}, "._ToAny()"
 	case cls.universal: // nil is an Object too, but a nil interface misses `case any:`
 		return []string{f.c.goType(TClass{C: cls}), "nil"}, TClass{C: cls}, ""
 	case f.c.isNumericMod(cls): // its includers are the prelude's number classes, each a Go type of its own
@@ -3475,7 +3475,7 @@ func (c *Compiler) emitSynth(m *Method) {
 	params, ret := c.sig(m, map[string]Type{"Self": TClass{C: cls}})
 	body := fmt.Sprintf("return String(%q)", cls.displayName())
 	if m.Name == "new" {
-		body = "return New" + cls.Name + "(" + c.argNames(m) + ")"
+		body = "return " + cls.ctorName() + "(" + c.argNames(m) + ")"
 		if cls.isPerRun && cls.lookup("initialize") != nil {
 			body = "return New" + cls.Name + "In(" + strings.TrimSuffix("self, "+c.argNames(m), ", ") + ")" // the object remembers this class object (decision 259)
 		}

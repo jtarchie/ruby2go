@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// ivarKey names one class's ivar in the discovery-time sets (nilIvars, ivarReadFirst).
+type ivarKey struct {
+	cls  *Class
+	name string
+}
+
 // declareIvarAnnotations declares each `# @rbs @x: T`, and each
 // `# @rbs self.@x: T` on the class object.
 func (c *Compiler) declareIvarAnnotations() {
@@ -32,11 +38,11 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 			return iv
 		}
 	}
-	if c.nilIvars[cls.Name+"#"+name] {
+	if c.nilIvars[ivarKey{cls, name}] {
 		t = optOf(t) // this class assigns it nil too
 	}
 	for k := cls.Super; k != nil; k = k.Super { // an ancestor that assigned it only nil owns it, nilable (decision 182)
-		if c.nilIvars[k.Name+"#"+name] {
+		if c.nilIvars[ivarKey{k, name}] {
 			cls, t = k, optOf(t)
 		}
 	}

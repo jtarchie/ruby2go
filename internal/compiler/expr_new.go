@@ -112,7 +112,7 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 	} else if len(args) > 0 || len(exprs) > 0 {
 		f.errorf(n, "%s.new takes no arguments", cls.Name)
 	}
-	return expr{code: "New" + cls.Name + "(" + strings.Join(codes, ", ") + ")", typ: TClass{C: cls}, ctor: true}
+	return expr{code: cls.ctorName() + "(" + strings.Join(codes, ", ") + ")", typ: TClass{C: cls}, ctor: true}
 }
 
 // goTypeNewType is the type a blockless `X.new` of a @go_type class builds: the expected one, X itself, an untyped
@@ -152,7 +152,7 @@ func generatedInit(cls *Class) bool {
 // in member order. Missing members are an error for Data and nil for a
 // Struct.
 func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []parser.Node {
-	if vr.kwInit && len(args) > 0 {
+	if vr.value.kwInit && len(args) > 0 {
 		if _, kw := args[0].(*parser.KeywordHashNode); !kw || len(args) > 1 {
 			f.errorf(n, "wrong number of arguments (given %d, expected 0): %s takes keywords (keyword_init: true)", len(args), vr.RubyName)
 		}
@@ -168,13 +168,13 @@ func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []pa
 	if bad != nil {
 		return args // a splat or a Hash argument, not keywords
 	}
-	out := make([]parser.Node, len(vr.valueMembers))
-	for i, m := range vr.valueMembers {
+	out := make([]parser.Node, len(vr.value.members))
+	for i, m := range vr.value.members {
 		v, ok := byName[m]
 		switch {
 		case ok:
 			delete(byName, m)
-		case vr.valueKind == "data":
+		case vr.value.kind == valueData:
 			f.errorf(n, "missing keyword: :%s", m)
 		default:
 			v = &parser.NilNode{Location: n.GetLocation()}
@@ -222,7 +222,7 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 		}
 	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no class known here: not a Data value's with
 	}
-	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().valueKind != "data" {
+	if cls == nil || cls.valueRoot() == nil || cls.valueRoot().value.kind != valueData {
 		return expr{}, false
 	}
 	if len(args) == 0 {
@@ -244,8 +244,8 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 		f.errorf(n, "with takes keyword arguments")
 	}
 	recv.code = f.pinSimple(recv.code)
-	nodes := make([]parser.Node, len(vr.valueMembers))
-	for i, m := range vr.valueMembers {
+	nodes := make([]parser.Node, len(vr.value.members))
+	for i, m := range vr.value.members {
 		v, ok := byName[m]
 		if !ok {
 			v = &withMember{recv: recv, name: m}
@@ -338,7 +338,7 @@ func (f *fctx) genGoTypeNew(n parser.Node, cls *Class, args []parser.Node, exprs
 		if len(t.Args) > 0 {
 			targs = "[" + f.c.goTypes(t.Args) + "]"
 		}
-		f.emit("%s := New%s%s()", tmp, cls.Name, targs)
+		f.emit("%s := %s%s()", tmp, cls.ctorName(), targs)
 		obj := expr{code: tmp, typ: t}
 		prev := f.implicitCall
 		f.implicitCall = true // new calls the private initialize
@@ -352,7 +352,7 @@ func (f *fctx) genGoTypeNew(n parser.Node, cls *Class, args []parser.Node, exprs
 	if sup := cls.Super; cls.hashBase && len(exprs) == 0 && len(args) > 0 && !sup.mutable() && sup.meta != nil && (init == nil || init.Owner == sup) {
 		// `Name.new("bob")` on a String (Pathname) subclass: the base's own new builds the embedded value
 		tmp := f.newTmp()
-		f.emit("%s := New%s()", tmp, cls.Name)
+		f.emit("%s := %s()", tmp, cls.ctorName())
 		built := f.genMethodCall(n, expr{code: classVar(sup), typ: TClass{C: sup.meta}, classObj: true}, "new", args, block)
 		f.emit("%s.%s = %s", tmp, superField(sup), f.coerce(n, built, TClass{C: sup}))
 		return expr{code: tmp, typ: TClass{C: cls}}
@@ -365,7 +365,7 @@ func (f *fctx) genGoTypeNew(n parser.Node, cls *Class, args []parser.Node, exprs
 	if len(t.Args) > 0 {
 		targs = "[" + f.c.goTypes(t.Args) + "]"
 	}
-	return expr{code: "New" + cls.Name + targs + "()", typ: t}
+	return expr{code: cls.ctorName() + targs + "()", typ: t}
 }
 
 // inheritedSelfNew is a gem class method's `new(...)` on self where a subclass defines its own initialize

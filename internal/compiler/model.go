@@ -45,14 +45,12 @@ type Class struct {
 	extends       []Include         // `extend M`: included into the class object
 	mixesIn       []Include         // Sorbet's `mixes_in_class_methods(M)` in a module: its includers extend M (decision 241)
 	delegations   []delegation
-	singleFwd     bool     // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
-	fwdSingle     bool     // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
-	meta          *Class   // the class object's class (holds `def self.` methods)
-	metaOf        *Class   // for a metaclass: the class it describes
-	constNames    []string // constants (classes included) declared directly inside, in order
-	valueMembers  []string // Struct.new / Data.define members, in order
-	valueKind     string   // "struct" or "data"
-	kwInit        bool     // Struct.new(..., keyword_init: true): new takes keywords only
+	singleFwd     bool       // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
+	fwdSingle     bool       // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
+	meta          *Class     // the class object's class (holds `def self.` methods)
+	metaOf        *Class     // for a metaclass: the class it describes
+	constNames    []string   // constants (classes included) declared directly inside, in order
+	value         *valueSpec // set on a Struct.new / Data.define class
 	msetCache     []entry
 	msetIndex     map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
 	selfCallCache map[string]bool

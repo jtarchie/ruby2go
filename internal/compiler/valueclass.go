@@ -11,21 +11,52 @@ import (
 	"github.com/jtarchie/ruby2go/internal/rbs"
 )
 
+// valueKind is which of Struct.new / Data.define declared a value class.
+type valueKind uint8
+
+const (
+	valueStruct valueKind = iota
+	valueData
+)
+
+// String is the Ruby-facing name: it prints into errors and the generated inspect/pp text.
+func (k valueKind) String() string {
+	if k == valueData {
+		return "data"
+	}
+	return "struct"
+}
+
+// superName is the core class a value class inherits from.
+func (k valueKind) superName() string {
+	if k == valueData {
+		return "Data"
+	}
+	return "Struct"
+}
+
+// valueSpec is what a Struct.new / Data.define class declared.
+type valueSpec struct {
+	members []string // in order
+	kind    valueKind
+	kwInit  bool // Struct.new(..., keyword_init: true): new takes keywords only
+}
+
 // valueClass recognizes `Struct.new(...)` and `Data.define(...)`.
-func valueClass(n parser.Node) (*parser.CallNode, string) {
+func valueClass(n parser.Node) (*parser.CallNode, valueKind) {
 	call, ok := n.(*parser.CallNode)
 	if !ok {
-		return nil, ""
+		return nil, valueStruct
 	}
 	r, ok := call.Receiver.(*parser.ConstantReadNode)
 	switch {
 	case !ok:
 	case r.Name == "Struct" && call.Name == "new":
-		return call, "struct"
+		return call, valueStruct
 	case r.Name == "Data" && call.Name == "define":
-		return call, "data"
+		return call, valueData
 	}
-	return nil, ""
+	return nil, valueStruct
 }
 
 // collectValueClass declares `Name = Struct.new(:a, :b) do ... end` or
@@ -34,12 +65,12 @@ func valueClass(n parser.Node) (*parser.CallNode, string) {
 // `#: [A, B]` on the assignment. The generated members are written as Ruby
 // and parsed; they and the block body live in the outer lexical scope, as
 // a block does not open a constant scope in Ruby.
-func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, kind string, scope []*Class) {
+func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, kind valueKind, scope []*Class) {
 	members := make([]string, 0, len(callArgs(call)))
 	syms := make([]parser.Node, 0, len(callArgs(call)))
 	kwInit := "nil"
 	for _, a := range callArgs(call) {
-		if kw, ok := a.(*parser.KeywordHashNode); ok && kind == "struct" && len(kw.Elements) == 1 { // `keyword_init: true` (decision 189)
+		if kw, ok := a.(*parser.KeywordHashNode); ok && kind == valueStruct && len(kw.Elements) == 1 { // `keyword_init: true` (decision 189)
 			if as, ok := kw.Elements[0].(*parser.AssocNode); ok {
 				if k, ok := as.Key.(*parser.SymbolNode); ok && k.Unescaped.Value == "keyword_init" {
 					switch as.Value.(type) {
@@ -74,8 +105,8 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	full := qualify(scope, n.Name)
 	line := f.line(n.Location.StartOffset)
 	cls := c.declareClass(f, full, line, false)
-	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: map[string]string{"struct": "Struct", "data": "Data"}[kind]}, file: f}
-	cls.valueMembers, cls.valueKind, cls.kwInit = members, kind, kwInit == "true"
+	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: kind.superName()}, file: f}
+	cls.value = &valueSpec{members: members, kind: kind, kwInit: kwInit == "true"}
 	// pad so the generated lines report the declaration's line
 	src := strings.Repeat("\n", line-1) + valueClassSource(kind, full, members, types, kwInit)
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
@@ -147,20 +178,23 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 }
 
 // valueClassSource is the Ruby for a Struct's or Data's generated members.
-func valueClassSource(kind, full string, members []string, types []rbs.Type, kwInit string) string {
+func valueClassSource(kind valueKind, full string, members []string, types []rbs.Type, kwInit string) string {
 	var b strings.Builder
 	b.WriteString("class GeneratedValueClass\n")
-	if kind == "struct" {
+	if kind == valueStruct {
 		fmt.Fprintf(&b, "  #: () -> bool?\n  def self.keyword_init? = %s\n", kwInit)
 	}
-	accessor := map[string]string{"struct": "attr_accessor", "data": "attr_reader"}[kind]
+	accessor := "attr_reader"
+	if kind == valueStruct {
+		accessor = "attr_accessor"
+	}
 	for i, m := range members {
 		fmt.Fprintf(&b, "  %s :%s #: %s\n", accessor, m, types[i])
 	}
 	// A struct's trailing nilable members may be omitted (Ruby fills in
 	// nil); every Data member is required.
 	firstOpt := len(members)
-	for kind == "struct" && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
+	for kind == valueStruct && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
 		firstOpt--
 	}
 	// Parameters are __v0, __v1, ... and members are read as self.m, so
@@ -221,7 +255,7 @@ func valueClassSource(kind, full string, members []string, types []rbs.Type, kwI
 	fmt.Fprintf(&b, "  #: (Array[Symbol]?) -> Hash[Symbol, untyped]\n  def deconstruct_keys(__keys)\n    return to_h if __keys.nil?\n"+
 		"    __h = {} #: Hash[Symbol, untyped]\n    return __h if __keys.size > %d\n    __i = 0\n    while __i < __keys.size\n      case __keys.fetch(__i)\n%s      else return __h\n      end\n      __i += 1\n    end\n    __h\n  end\n",
 		len(members), strings.Join(whens, ""))
-	if kind == "struct" {
+	if kind == valueStruct {
 		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
 		b.WriteString("  #: () -> Array[untyped]\n  def values = to_a\n")
 		b.WriteString("  #: () -> Array[untyped]\n  def deconstruct = to_a\n")
@@ -271,7 +305,7 @@ func nilableRBS(t rbs.Type) bool {
 // valueRoot finds the Struct/Data class that declared cls's members.
 func (c *Class) valueRoot() *Class {
 	for k := c; k != nil; k = k.Super {
-		if k.valueMembers != nil {
+		if k.value != nil {
 			return k
 		}
 	}

@@ -188,16 +188,35 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 	cls.Methods[n.Name] = m
 }
 
+// attrKind is which of attr_reader / attr_writer / attr_accessor declared an accessor.
+type attrKind uint8
+
+const (
+	attrReader attrKind = iota
+	attrWriter
+	attrAccessor
+)
+
+// attrKindOf maps a call name; Ruby's `attr :x` is attr_reader.
+func attrKindOf(name string) attrKind {
+	switch name {
+	case "attr", "attr_reader":
+		return attrReader
+	case "attr_writer":
+		return attrWriter
+	}
+	return attrAccessor
+}
+
+func (k attrKind) reads() bool  { return k != attrWriter }
+func (k attrKind) writes() bool { return k != attrReader }
+
 func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []parser.Node, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	if !cls.isStruct() && !cls.IsModule {
 		c.errorf(f, n, "%s on a non-struct class", n.Name)
 	}
-	// Ruby's `attr :x` is attr_reader.
-	kind := n.Name
-	if kind == "attr" {
-		kind = "attr_reader"
-	}
+	kind := attrKindOf(n.Name)
 	ty, hasTy := f.trailing[line]
 	var rt rbs.Type
 	if hasTy {
@@ -228,13 +247,13 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 			c.addModuleAttr(f, cls, n, kind, name, at, private, scope)
 			continue
 		}
-		if kind != "attr_writer" {
+		if kind.reads() {
 			m := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Kind: kindAttrReader, Attr: "@" + name, srcPos: srcPos{f, line}, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Return: at}
 			cls.Methods[name] = m
 			cls.MethodList = append(cls.MethodList, m)
 		}
-		if kind != "attr_reader" {
+		if kind.writes() {
 			m := &Method{Name: name + "=", GoName: goMethodName(name + "="), Owner: cls, Kind: kindAttrWriter, Attr: "@" + name, srcPos: srcPos{f, line}, Private: private, Scope: scope}
 			m.sig = &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: name}}, Return: rbs.Void{}}
 			cls.Methods[name+"="] = m
@@ -245,7 +264,7 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 
 // addModuleAttr declares a module's attr_* as the defs it stands for (`def x = @x`, `def x=(v) = @x = v`): a
 // module's ivars live in its M_Ivars field (decision 147), not a struct an accessor method could be promoted from.
-func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind, name string, at rbs.Type, private bool, scope []*Class) {
+func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind attrKind, name string, at rbs.Type, private bool, scope []*Class) {
 	loc, iv := n.Location, "@"+name
 	def := func(dname string, params *parser.ParametersNode, locals []string, body parser.Node, sig *rbs.MethodType) {
 		c.addDef(f, cls, &parser.DefNode{Location: loc, Name: dname, NameLoc: loc, DefKeywordLoc: loc, Parameters: params, Locals: locals,
@@ -259,10 +278,10 @@ func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind, 
 	if at != nil {
 		rsig, wsig = &rbs.MethodType{Return: at}, &rbs.MethodType{Params: []rbs.Param{{Type: at, Name: "v"}}, Return: rbs.Void{}}
 	}
-	if kind != "attr_writer" {
+	if kind.reads() {
 		def(name, nil, nil, &parser.InstanceVariableReadNode{Location: loc, Name: iv}, rsig)
 	}
-	if kind != "attr_reader" {
+	if kind.writes() {
 		params := &parser.ParametersNode{Location: loc, Requireds: []parser.Node{&parser.RequiredParameterNode{Location: loc, Name: "v"}}}
 		write := &parser.InstanceVariableWriteNode{Location: loc, Name: iv, Value: &parser.LocalVariableReadNode{Location: loc, Name: "v"}}
 		def(name+"=", params, []string{"v"}, write, wsig)

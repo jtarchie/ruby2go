@@ -138,7 +138,7 @@ func (f *fctx) superModuleCall(e *entry, codes []string) string {
 		mentionsVar(e.M.Ret) && !isSelfVar(e.M.Ret) || !f.c.constraintNamesSelf(e.Owner) {
 		return staticCallCode(e.M, "", f.selfCode, strings.Join(codes, ", "))
 	}
-	code := staticCallCode(e.M, "["+o.Name+"I]", f.selfCode, strings.Join(codes, ", "))
+	code := staticCallCode(e.M, "["+o.ifaceName()+"]", f.selfCode, strings.Join(codes, ", "))
 	if isSelfVar(e.M.Ret) {
 		code = "rbAs[Self](" + code + ", \"self\")" // a call, so it stands as a statement too
 	}
