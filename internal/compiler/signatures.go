@@ -1,0 +1,659 @@
+package compiler
+
+import (
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/rbs"
+)
+
+// markCalleeDefaults: only a literal default means the same at the call site; defs along an ancestor chain share one Go signature, so the mark spreads (universal free funcs take `any` and need not match).
+func (c *Compiler) markCalleeDefaults() {
+	names := map[string]bool{}
+	for _, m := range c.topDefList {
+		m.calleeDefaults = m.Kind == kindDef && scopedDefault(m)
+	}
+	for _, cls := range c.classList {
+		for _, m := range cls.MethodList {
+			if !cls.universal && m.Kind == kindDef && scopedDefault(m) {
+				m.calleeDefaults = true
+				names[m.Name] = true
+			}
+		}
+	}
+	for changed := len(names) > 0; changed; {
+		changed = false
+		for _, cls := range c.classList {
+			for _, anc := range cls.allAncestors() {
+				for name := range names {
+					m, a := cls.Methods[name], anc.Methods[name]
+					if cls.universal || anc.universal || m == nil || a == nil || m.Kind != kindDef || a.Kind != kindDef || m.calleeDefaults == a.calleeDefaults ||
+						a.File != nil && a.File.prelude || m.File != nil && m.File.prelude { // the prelude's Go helpers call its own (NewTypeError(msg)): its signatures are fixed
+						continue
+					}
+					m.calleeDefaults, a.calleeDefaults, changed = true, true, true
+				}
+			}
+		}
+	}
+	for _, cls := range c.classList {
+		if cls.metaOf == nil {
+			continue
+		}
+		if m, init := cls.Methods["new"], cls.metaOf.lookup("initialize"); m != nil && m.Kind == kindSynth && init != nil {
+			m.calleeDefaults = init.M.calleeDefaults
+		}
+	}
+}
+
+// scopedDefault reports whether some default of m is not a plain literal.
+func scopedDefault(m *Method) bool {
+	for _, p := range m.Params {
+		if p.Default != nil && !literalDefault(p.Default) {
+			return true
+		}
+	}
+	return false
+}
+
+// literalDefault reports whether a default means the same in any scope.
+func literalDefault(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.IntegerNode, *parser.FloatNode, *parser.StringNode, *parser.SymbolNode,
+		*parser.NilNode, *parser.TrueNode, *parser.FalseNode, *parser.RegularExpressionNode:
+		return true
+	case *parser.ArrayNode:
+		for _, e := range n.Elements {
+			if !literalDefault(e) {
+				return false
+			}
+		}
+		return true
+	case *parser.HashNode:
+		for _, e := range n.Elements {
+			if a, ok := e.(*parser.AssocNode); !ok || !literalDefault(a.Key) || !literalDefault(a.Value) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// nameCmpNil gives a `<=>` returning Integer? the Go name cmpNil: Op_cmp is
+// the Integer one Comparable and rbCmp call (emitCmpAdapter).
+func nameCmpNil(m *Method) {
+	if r, ok := m.Ret.(TOpt); ok && m.Name == "<=>" && isClass(r.Elem, "Integer") {
+		m.GoName = "cmpNil"
+	}
+}
+
+func (c *Compiler) resolveMethod(m *Method) {
+	if m.resolved {
+		return
+	}
+	m.resolved = true
+	if m.Kind == kindSynth {
+		c.resolveSynth(m)
+		return
+	}
+	f := m.File
+	if m.sig == nil && m.sigText == "" && isForwardAll(m.Node) {
+		c.resolveForwarding(m)
+		return
+	}
+	if m.sig == nil && m.sigText == "" {
+		// unannotated override inherits the parent's signature
+		if !typesInclude(m) && c.inheritSignature(m) {
+			return
+		}
+		m.sigText, m.inferRet = c.paramSig(m)
+	}
+	if m.sig == nil {
+		sig, err := rbs.ParseMethodType(m.sigText)
+		if err != nil {
+			c.errorf(f, m.Node, "%v", err)
+		}
+		m.sig = sig
+	}
+	sc := typeScope{class: m.Owner, lex: m.Scope, methodTPs: m.sig.TypeParams, file: f, line: m.Line}
+	m.TypeParams = m.sig.TypeParams
+	var rest []Param // Ruby puts *rest before the keywords; it goes last, the Go variadic
+	for i, p := range m.sig.Params {
+		prm := Param{Name: p.Name, Rest: p.Rest, Keyword: p.Keyword || p.KwRest, KwRest: p.KwRest}
+		if want := gradualParam(p.Type); want != nil {
+			prm.Type, prm.Want = TAny{}, c.resolveType(want, sc)
+		} else {
+			prm.Type = c.resolveType(p.Type, sc)
+		}
+		if pp, ok := m.pendingIdx[i]; ok && !p.KwRest {
+			c.resolvePending(m, &prm, pp)
+		}
+		if p.KwRest {
+			prm.Type = TClass{C: c.classes["Hash"], Args: []Type{TClass{C: c.classes["Symbol"]}, prm.Type}}
+		}
+		if p.Rest {
+			rest = append(rest, prm)
+			continue
+		}
+		m.Params = append(m.Params, prm)
+	}
+	m.Params = append(m.Params, rest...)
+	if m.sig.Block != nil {
+		bs := &BlockSig{Ret: c.resolveType(m.sig.Block.Return, sc), Optional: m.sig.Block.Optional}
+		if m.sig.Block.Self != nil { // `[self: C]`: a block the method rebinds self for, so it takes self (decision 164)
+			bs.Self = c.resolveType(m.sig.Block.Self, sc)
+		}
+		for i, p := range m.sig.Block.Params {
+			t := c.resolveType(p.Type, sc)
+			if i < len(m.pendingBlock) {
+				prm := Param{Type: t}
+				c.resolvePending(m, &prm, m.pendingBlock[i])
+				t = prm.Type
+				bs.Pending = append(bs.Pending, prm.Pending)
+			}
+			bs.Params = append(bs.Params, t)
+			bs.Rest = bs.Rest || p.Rest // `{ (*T) -> R }`: a Go variadic, as a lambda's rest (decision 152)
+		}
+		m.Block = bs
+	}
+	m.Ret = c.resolveType(m.sig.Return, sc)
+	_, m.noReturn = m.sig.Return.(rbs.Bot)
+	if m.selfText != "" {
+		st, err := rbs.ParseType(m.selfText)
+		if err != nil {
+			c.errorf(f, m.Node, "@self: %v", err)
+		}
+		if len(m.TypeParams) == 0 {
+			c.errorf(f, m.Node, "@self needs type parameters for the receiver to bind")
+		}
+		m.SelfType = c.resolveType(st, sc)
+	}
+	if m.inferRet {
+		m.Ret = nil
+	}
+	if m.Block != nil {
+		m.Iterator = c.isIterator(m, m.Block)
+	}
+	c.bindParamNames(m)
+}
+
+// gradualParam returns T for a `T | untyped` parameter type, else nil.
+func gradualParam(t rbs.Type) rbs.Type {
+	u, ok := t.(rbs.Union)
+	if !ok || len(u.Elems) != 2 {
+		return nil
+	}
+	if _, ok := u.Elems[1].(rbs.Untyped); !ok {
+		return nil
+	}
+	return u.Elems[0]
+}
+
+// overrideYieldShape is the block a gem's non-yielding def takes because an override below it yields (decision 233):
+// concurrent-ruby's AbstractLockableObject#synchronize only raises, and MutexLockableObject's yields, which an
+// override's inherited signature must then allow.
+func (c *Compiler) overrideYieldShape(m *Method) (int, bool, *Method, bool) {
+	if m.Owner == nil || m.File == nil || !c.gemFile(m.File) {
+		return 0, false, nil, false
+	}
+	if ps := m.Node.Parameters; ps != nil && ps.Block != nil && ps.Block.Name != nil {
+		// `def post(*args, &task)` keeps its block as a value (concurrent-ruby's ExecutorService#post): any arity reaches
+		// it, so it stays (*untyped) -> untyped, not an override's yield shape, which RubyExecutorService#post inherited and
+		// so passed the posted block one of its two values (decision 257)
+		return 0, false, nil, false
+	}
+	for _, cls := range c.classList {
+		o := cls.Methods[m.Name]
+		if cls == m.Owner || o == nil || o == m || o.Node == nil || !cls.isSubclassOf(m.Owner) || !sameParamShape(o, m) {
+			continue // an override of another arity is not the slot's shape: the iterator adapter would index params it lacks
+		}
+		if n, optional, ok := c.yieldShape(o); ok {
+			return n, optional, o, true
+		}
+	}
+	return 0, false, nil, false
+}
+
+// paramSig builds a def's signature from rbs-inline's per-parameter form
+// (`# @rbs x: T`, `# @rbs *xs: T`, `# @rbs return: T`). Without a return
+// annotation the return type is inferred from the body (inferRet). A def
+// with no parameters needs no annotation at all.
+func (c *Compiler) paramSig(m *Method) (string, bool) {
+	ann := m.File.annotations(m.Line)
+	names, defaults, rest := c.defParams(m, m.Node.Parameters)
+	var ps []string
+	// a parameter with no annotation is typed from use (decision 146): untyped here, resolvePending types it
+	pa := func(name string) string {
+		t := ann[name+":"]
+		if len(t) > 0 {
+			return t[0]
+		}
+		if m.pendingIdx == nil {
+			m.pendingIdx = map[int]pendingParam{}
+		}
+		m.pendingIdx[len(ps)] = pendingParam{key: pendingKey(m, name), name: name}
+		return "untyped"
+	}
+	for i, n := range names {
+		t := pa(n)
+		if defaults[i] != nil {
+			t = "?" + t
+		}
+		ps = append(ps, t)
+	}
+	if rest != "" {
+		ps = append(ps, "*"+pa("*"+strings.TrimPrefix(rest, anonRest)))
+	}
+	for _, k := range c.defKeywords(m, m.Node.Parameters) {
+		switch {
+		case k.rest:
+			kt := "untyped" // an unannotated **opts: its values untyped, as an unannotated parameter's (decision 183)
+			if t := ann["**"+strings.TrimPrefix(k.name, anonKwrest)+":"]; len(t) > 0 {
+				kt = t[0]
+			}
+			ps = append(ps, "**"+kt+" "+k.name)
+		case k.def != nil:
+			ps = append(ps, "?"+k.name+": "+pa(k.name))
+		default:
+			ps = append(ps, k.name+": "+pa(k.name))
+		}
+	}
+	sig := "(" + strings.Join(ps, ", ") + ") "
+	n, optional, ok := c.yieldShape(m)
+	from := m // the def whose yields decide the block's value
+	if !ok {
+		var o *Method
+		n, optional, o, ok = c.overrideYieldShape(m)
+		from = o
+	}
+	if ok { // a def that yields takes a block typed by what it yields (decision 146)
+		bps := make([]string, n)
+		for i := range bps {
+			bps[i] = "untyped"
+			m.pendingBlock = append(m.pendingBlock, pendingParam{key: pendingKey(m, "&"+strconv.Itoa(i)), name: "yield's argument " + strconv.Itoa(i+1)})
+		}
+		ret := "void"
+		// a gem wrapper's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226).
+		// ponytail: only wrappers that also yield inside a block; any tail yield needs non-local return from closure blocks
+		// first (decision 4), since a block-valued method is a closure and Cuba's `on` returns from inside `try`'s block.
+		wrapper := c.pruneGems && from.File != nil && c.gemFile(from.File) && containsNestedYield(from.Node.Body, false)
+		if yieldValueUsed(from.Node.Body, wrapper) {
+			ret = "untyped"
+		}
+		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> " + ret + " } "
+	}
+	sig += "-> "
+	if r := ann["return:"]; len(r) > 0 {
+		return sig + r[0], false
+	}
+	if m.Name == "initialize" { // new answers the object; initialize's value is never seen (`def initialize = @x = y`)
+		return sig + "void", false
+	}
+	return sig + "untyped", true
+}
+
+// inferRet types an unannotated return from the body: a dry run of its
+// generation whose returned values are joined. Recursion needs an
+// annotation. Before ivar discovery finishes the result is provisional
+// (discoverIvars clears it).
+func (c *Compiler) inferRet(m *Method) {
+	if !m.inferRet || m.Ret != nil {
+		return
+	}
+	if m.inferring {
+		c.errorf(m.File, m.Node, "method %s is recursive; annotate its return type (`# @rbs return: T`)", m.Name)
+	}
+	m.inferring = true
+	defer func() { m.inferring = false }()
+	if m.inherited != nil {
+		c.inferRet(m.inherited)
+		m.Ret = m.inherited.Ret
+		return
+	}
+	nw := len(c.Warnings)
+	f := c.newFctx(m.File, m.Owner, m)
+	f.retVar = "ret_"
+	if c.unwindsReturn(m) {
+		f.retTok = "rbRetTok_" // a block's return is a returned value too (decision 247)
+	}
+	var ts []Type
+	f.retTypes = &ts
+	if c.round { // a body its still-untyped parameters break returns untyped this round, so its callers still record what they pass
+		err := catchCompileError(func() { f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil) })
+		if err != nil {
+			c.dropWarnings(nw)
+			m.Ret = TAny{}
+			return
+		}
+	} else {
+		f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+	}
+	c.dropWarnings(nw) // emitMethod warns for real
+	var ret Type = TNil{}
+	if len(ts) == 0 && c.pruneGems && c.gemFile(m.File) && endsInRaise(m.Node.Body) {
+		// a gem's abstract `def synchronize; raise NotImplementedError; end`: what overrides return, whose
+		// inherited signature this is (decision 233)
+		ret = TAny{}
+	}
+	for i, t := range ts {
+		if isVoid(t) {
+			t = TNil{}
+		}
+		if i == 0 {
+			ret = t
+			continue
+		}
+		j, ok := join(ret, t)
+		if !ok && c.pruneGems && c.gemFile(m.File) { // a gem's method returning an Enumerator or self: untyped (decision 172)
+			j, ok = TAny{}, true
+		}
+		if !ok {
+			c.errorf(m.File, m.Node, "method %s returns both %s and %s; annotate its return type (`# @rbs return: T`)", m.Name, ret, t)
+		}
+		ret = j
+	}
+	m.Ret = ret
+}
+
+// protocolSig is the signature Ruby's hook protocol gives an unannotated respond_to_missing? or method_missing, by its
+// parameter shape; "" for any other def.
+func protocolSig(n *parser.DefNode) string {
+	ps := n.Parameters
+	if ps == nil || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil || len(ps.Posts) > 0 {
+		return ""
+	}
+	switch {
+	case n.Name == "respond_to_missing?" && len(ps.Requireds) == 2 && len(ps.Optionals) == 0 && ps.Rest == nil:
+		return "(Symbol, bool) -> bool"
+	case n.Name == "respond_to_missing?" && len(ps.Requireds) == 1 && len(ps.Optionals) == 1 && ps.Rest == nil:
+		return "(Symbol, ?bool) -> bool"
+	case n.Name == "method_missing" && len(ps.Requireds) == 1 && len(ps.Optionals) == 0 && ps.Rest != nil:
+		return "(Symbol, *untyped) -> untyped"
+	}
+	return ""
+}
+
+// inheritSignature copies the signature of the method m overrides, if any.
+func (c *Compiler) inheritSignature(m *Method) bool {
+	if m.Owner == nil {
+		return false
+	}
+	e := c.inheritedSig(m)
+	if e == nil {
+		return false
+	}
+	c.resolveMethod(e.M)
+	if !c.sameParamShape(m, e.M) { // `def initialize = super(4)`: its own parameters, typed as any def's (decision 146)
+		return false
+	}
+	m.inherited = e.M
+	m.TypeParams = e.M.TypeParams
+	for _, p := range e.M.Params {
+		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, e.Env), Pending: p.Pending})
+	}
+	if e.M.Block != nil {
+		// all of the parent's block: a dropped Rest made concurrent-ruby's ThenPromise#initialize take one value of the
+		// (*untyped) block its parent takes, losing then_on's other arguments (decision 256)
+		b := *e.M.Block
+		b.Params, b.Ret = substAll(e.M.Block.Params, e.Env), subst(e.M.Block.Ret, e.Env)
+		if b.Self != nil {
+			b.Self = subst(b.Self, e.Env)
+		}
+		m.Block = &b
+	}
+	m.Ret = subst(e.M.Ret, e.Env)
+	m.inferRet = e.M.inferRet // the parent's inferred type, once it has one (inferRet)
+	// decision 4 holds for the override's own body: a rescue around yield makes it a closure
+	m.Iterator = e.M.Iterator && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
+	c.bindParamNames(m)
+	return true
+}
+
+// isIterator decides whether a block-taking method compiles to a Go
+// iterator (its block call sites become `for range` loops) or takes the
+// block as a closure. Iterators: the block and the method both return
+// nothing, the block is only ever yielded to (a %x{} leaf must build an
+// iterator itself; one that stores or calls `blk` takes a closure), and
+// nothing rescues around the yield, since Go forbids a range function from
+// recovering a panic raised in the loop body.
+func (c *Compiler) isIterator(m *Method, bs *BlockSig) bool {
+	if !isVoid(bs.Ret) || m.sig.Block.Optional || len(bs.Params) > 2 || bs.Rest || bs.Self != nil {
+		return false // a range func yields at most two values, none variadic; other blocks are closures
+	}
+	if _, ok := m.Ret.(TVoid); !ok && m.Ret != nil && !isNil(m.Ret) {
+		return false
+	}
+	if m.Kind == kindPrimitive {
+		x := m.Node.Body.(*parser.StatementsNode).Body[0].(*parser.XStringNode)
+		return strings.Contains(x.Unescaped.Value, "func(yield ")
+	}
+	return m.Kind != kindDef || !containsRescueClause(m.Node.Body)
+}
+
+// containsNestedYield reports a yield inside a block or lambda in n (not in a nested def).
+func containsNestedYield(n parser.Node, inBlock bool) bool {
+	switch n.(type) {
+	case nil:
+		return false
+	case *parser.YieldNode:
+		return inBlock
+	case *parser.DefNode:
+		return false
+	case *parser.BlockNode, *parser.LambdaNode:
+		inBlock = true
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if containsNestedYield(ch, inBlock) {
+			return true
+		}
+	}
+	return false
+}
+
+// overridesIterator reports whether m takes its block as a closure yet
+// overrides an iterator, e.g. an `each` that rescues around yield under
+// Enumerable's. Callers of the iterator (Enumerable's bodies, through its
+// constraint) keep its Go name, now an iter.Seq adapter over the closure.
+func (c *Compiler) overridesIterator(m *Method) bool {
+	if m.Owner == nil || m.Block == nil || m.Iterator || !isVoid(m.Block.Ret) {
+		return false
+	}
+	e := c.inheritedSig(m)
+	return e != nil && e.M.Block != nil && (e.M.Iterator || c.overridesIterator(e.M))
+}
+
+// forwardParent is inheritedSig for a method that may be a top-level def.
+func (c *Compiler) forwardParent(m *Method) *entry {
+	if m.Owner == nil {
+		return nil
+	}
+	return c.inheritedSig(m)
+}
+
+// inheritedSig finds the method an unannotated def overrides.
+func (c *Compiler) inheritedSig(m *Method) *entry {
+	cls := m.Owner
+	for i := len(cls.Includes) - 1; i >= 0; i-- {
+		inc := cls.Includes[i]
+		if inc.Mod == nil {
+			continue
+		}
+		if e := inc.Mod.lookup(m.Name); e != nil {
+			env := map[string]Type{}
+			for j, p := range inc.Mod.TypeParams {
+				env[p] = inc.Args[j]
+			}
+			return &entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: cls}
+		}
+	}
+	if g := m.superTarget; g != nil { // a prepended copy: super is the method it replaced (decision 199)
+		return &entry{M: g, Owner: cls, Env: map[string]Type{}, Entry: cls}
+	}
+	if g := m.structDef; g != nil {
+		return &entry{M: g, Owner: cls, Env: map[string]Type{}, Entry: cls}
+	}
+	if cls.Super != nil {
+		return cls.Super.lookup(m.Name)
+	}
+	return nil
+}
+
+// bindParamNames matches RBS positional params to the def's parameter
+// names and records literal defaults.
+func (c *Compiler) bindParamNames(m *Method) {
+	if m.Node == nil {
+		return
+	}
+	names, defaults, rest := c.defParams(m, m.Node.Parameters)
+	c.bindKeywords(m)
+	nPos := 0
+	for i := range m.Params {
+		if m.Params[i].Keyword {
+			continue
+		}
+		if m.Params[i].Rest {
+			if rest == "" {
+				c.errorf(m.File, m.Node, "signature has a rest param but def does not")
+			}
+			m.Params[i].Name = rest
+			continue
+		}
+		if nPos >= len(names) {
+			c.errorf(m.File, m.Node, "signature has %d positional params but def has %d", len(m.Params), len(names))
+		}
+		m.Params[i].Name = names[nPos]
+		m.Params[i].Default = defaults[nPos]
+		m.Params[i].Post = m.Node.Parameters != nil && nPos >= len(m.Node.Parameters.Requireds)+len(m.Node.Parameters.Optionals)
+		nPos++
+	}
+	if nPos != len(names) {
+		c.errorf(m.File, m.Node, "signature has %d positional params but def has %d", nPos, len(names))
+	}
+	if len(m.Params) > 0 {
+		c.checkKeywordSig(m)
+	}
+	if rest != "" {
+		found := false
+		for _, p := range m.Params {
+			found = found || p.Rest
+		}
+		if !found {
+			c.errorf(m.File, m.Node, "def has a rest param but signature does not")
+		}
+	}
+}
+
+// bindKeywords matches the signature's keywords to the def's by name and takes their defaults.
+func (c *Compiler) bindKeywords(m *Method) {
+	ks := c.defKeywords(m, m.Node.Parameters)
+	byName := map[string]defKeyword{}
+	for _, k := range ks {
+		byName[k.name] = k
+	}
+	seen := 0
+	for i := range m.Params {
+		p := &m.Params[i]
+		if !p.Keyword {
+			continue
+		}
+		if p.KwRest {
+			var r *defKeyword
+			for j := range ks {
+				if ks[j].rest {
+					r = &ks[j]
+				}
+			}
+			if r == nil {
+				c.errorf(m.File, m.Node, "signature has **%s but def has no ** parameter", p.Type)
+			}
+			p.Name = r.name
+			seen++
+			continue
+		}
+		k, ok := byName[p.Name]
+		if !ok || k.rest {
+			c.errorf(m.File, m.Node, "signature has keyword %s: but def does not", p.Name)
+		}
+		p.Default = k.def
+		seen++
+	}
+	if seen != len(ks) {
+		c.errorf(m.File, m.Node, "def has %d keyword parameters but its signature has %d: write them as `name: T` (`?name: T` with a default, `**T` for **opts)", len(ks), seen)
+	}
+}
+
+// checkKeywordSig: an optional keyword in the signature (`?b:`) must have a default in the def, and a required one none.
+func (c *Compiler) checkKeywordSig(m *Method) {
+	if m.sig == nil {
+		return
+	}
+	for _, sp := range m.sig.Params {
+		if !sp.Keyword {
+			continue
+		}
+		for _, p := range m.Params {
+			if p.Keyword && !p.KwRest && p.Name == sp.Name && sp.Optional != (p.Default != nil) {
+				c.errorf(m.File, m.Node, "keyword %s: is optional in only one of the signature and the def", p.Name)
+			}
+		}
+	}
+}
+
+// typeAbstracts gives a gem's inferred method whose body only raises (`def x = raise NotImplementedError`, the
+// abstract-method idiom) its overriders' joined return type: it never returns, so the slot is theirs.
+func (c *Compiler) typeAbstracts() {
+	for _, k := range c.classList {
+		for _, m := range k.MethodList {
+			if !m.inferRet || m.Kind != kindDef || !c.gemFile(m.File) || !onlyRaises(m.Node) {
+				continue
+			}
+			var ret Type
+			for _, cls := range c.classList {
+				if cls == k || !cls.isSubclassOf(k) && !slices.Contains(cls.ancestors(), k) {
+					continue
+				}
+				e := cls.lookup(m.Name)
+				if e == nil || e.M == m || e.M.Ret == nil {
+					continue
+				}
+				if ret == nil {
+					ret = e.M.Ret
+				} else if j, ok := join(ret, e.M.Ret); ok {
+					ret = j
+				} else {
+					ret = TAny{}
+				}
+			}
+			if ret != nil {
+				m.Ret = ret
+			}
+		}
+	}
+}
+
+// onlyRaises reports a def whose body is one raise.
+func onlyRaises(d *parser.DefNode) bool {
+	if d == nil || d.Body == nil {
+		return false
+	}
+	st, ok := d.Body.(*parser.StatementsNode)
+	if !ok || len(st.Body) != 1 {
+		return false
+	}
+	call, ok := st.Body[0].(*parser.CallNode)
+	return ok && call.Receiver == nil && (call.Name == "raise" || call.Name == "fail")
+}
+
+// endsInRaise: body's last statement is a raise (an abstract method's whole body).
+func endsInRaise(body parser.Node) bool {
+	st, ok := body.(*parser.StatementsNode)
+	if !ok || len(st.Body) == 0 {
+		return false
+	}
+	c, ok := st.Body[len(st.Body)-1].(*parser.CallNode)
+	return ok && c.Receiver == nil && (c.Name == "raise" || c.Name == "fail")
+}

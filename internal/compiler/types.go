@@ -676,3 +676,41 @@ func absorbs(o, m Type) bool {
 	mc, ok2 := m.(TClass)
 	return ok1 && ok2 && len(oc.Args) == 0 && len(mc.Args) == 0 && oc.C != mc.C && mc.C.isSubclassOf(oc.C)
 }
+
+func composeEnv(inner, outer map[string]Type) map[string]Type {
+	out := map[string]Type{}
+	for k, v := range inner {
+		out[k] = subst(v, outer)
+	}
+	return out
+}
+
+func substAll(ts []Type, env map[string]Type) []Type {
+	out := make([]Type, len(ts))
+	for i, t := range ts {
+		out[i] = subst(t, env)
+	}
+	return out
+}
+
+// holdsNil reports whether t admits nil: T?, untyped, or a union with nil.
+func holdsNil(t Type) bool {
+	if isOpt(t) || isAny(t) || isNil(t) {
+		return true
+	}
+	if u, ok := t.(TUnion); ok {
+		return slices.ContainsFunc(u.Members, holdsNil)
+	}
+	return false
+}
+
+// unionHas reports whether t is one of u's members (or u's T? element).
+func unionHas(u, t Type) bool {
+	if o, ok := u.(TOpt); ok {
+		return typeEq(o.Elem, t) || unionHas(o.Elem, t)
+	}
+	if uu, ok := u.(TUnion); ok {
+		return slices.ContainsFunc(uu.Members, func(m Type) bool { return typeEq(m, t) })
+	}
+	return false
+}

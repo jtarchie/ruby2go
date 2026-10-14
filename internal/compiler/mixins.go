@@ -1,0 +1,467 @@
+package compiler
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/rbs"
+)
+
+// abstractStub reports a prelude module method whose body only raises NotImplementedError: a requirement the module
+// types its own calls by (Comparable#<=>), which the includer must meet.
+func abstractStub(m *Method) bool {
+	if m.File == nil || !m.File.prelude || m.Node == nil {
+		return false
+	}
+	body := m.Node.Body
+	if st, ok := body.(*parser.StatementsNode); ok && st != nil && len(st.Body) == 1 {
+		body = st.Body[0]
+	}
+	c, ok := body.(*parser.CallNode)
+	if !ok || c.Name != "raise" || c.Receiver != nil || len(callArgs(c)) != 1 {
+		return false
+	}
+	k, ok := callArgs(c)[0].(*parser.ConstantReadNode)
+	return ok && k.Name == "NotImplementedError"
+}
+
+// checkAbstractIncludes rejects an include whose module requires a method (Comparable's `<=>` as `(self) -> Integer`)
+// the class inherits with another signature: Go could not build the module's calls on it. A compile error at the
+// include, which a caller can act on, instead of a Go build error (decision 186).
+func (c *Compiler) checkAbstractIncludes() {
+	for _, cls := range c.classList {
+		if cls.IsModule || cls.Super == nil || cls.File == nil || cls.File.prelude {
+			continue
+		}
+		for _, inc := range cls.Includes {
+			if inc.Mod == nil {
+				continue
+			}
+			for _, stub := range inc.Mod.MethodList {
+				if !abstractStub(stub) || cls.Methods[stub.Name] != nil {
+					continue
+				}
+				e := cls.Super.lookup(stub.Name)
+				if e == nil || abstractStub(e.M) || e.M.File == nil || e.M.File.prelude {
+					continue
+				}
+				c.resolveMethod(e.M)
+				c.resolveMethod(stub)
+				ok := len(e.M.Params) == len(stub.Params) && e.M.Ret != nil && stub.Ret != nil && typeEq(e.M.Ret, stub.Ret)
+				for i := 0; ok && i < len(e.M.Params); i++ {
+					_, isClass := e.M.Params[i].Type.(TClass)
+					ok = isClass
+				}
+				if !ok {
+					c.errorf(inc.file, nil, "%s:%d: include %s needs %s#%s typed as %s's (self) -> %s; it inherits %s's, typed otherwise: annotate it", inc.file.Name, inc.line, inc.Mod.RubyName, cls.RubyName, stub.Name, inc.Mod.RubyName, stub.Ret, e.Owner.RubyName)
+				}
+			}
+		}
+	}
+}
+
+// includedExtends takes a module's `def self.included(base); base.extend(ClassMethods); end` as
+// mixes_in_class_methods(ClassMethods): each includer extends it at link, and the run-time extend, which a closed world
+// cannot do, is dropped from the hook (decision 241).
+func (c *Compiler) includedExtends(f *File, mod *Class, body parser.Node, scope []*Class) {
+	st, ok := body.(*parser.StatementsNode)
+	if !ok {
+		return
+	}
+	for _, x := range st.Body {
+		d, ok := x.(*parser.DefNode)
+		if !ok || d.Name != "included" || !isSelf(d.Receiver) || d.Parameters == nil || len(d.Parameters.Requireds) != 1 {
+			continue
+		}
+		base, ok := d.Parameters.Requireds[0].(*parser.RequiredParameterNode)
+		hook, ok2 := d.Body.(*parser.StatementsNode)
+		if !ok || !ok2 {
+			continue
+		}
+		for i, y := range hook.Body {
+			call, ok := y.(*parser.CallNode)
+			if !ok || call.Name != "extend" || len(callArgs(call)) == 0 {
+				continue
+			}
+			r, ok := call.Receiver.(*parser.LocalVariableReadNode)
+			if !ok || r.Name != base.Name || slices.ContainsFunc(callArgs(call), func(a parser.Node) bool {
+				_, cr := a.(*parser.ConstantReadNode)
+				_, cp := a.(*parser.ConstantPathNode)
+				return !cr && !cp
+			}) {
+				continue
+			}
+			for _, a := range callArgs(call) {
+				mod.mixesIn = append(mod.mixesIn, Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(call.Location.StartOffset), file: f, scope: scope})
+			}
+			hook.Body[i] = &parser.NilNode{Location: call.Location}
+		}
+	}
+}
+
+// classHook is a hook MRI calls while it evaluates a class body in main.rb:
+// Super.inherited(cls) where the class is first opened, Mod.included(cls)
+// and Mod.extended(cls) at the include/extend.
+type classHook struct {
+	name string
+	cls  *Class
+	mod  *constRef // nil: the superclass
+	node parser.Node
+	file *File // where the hook site is, for its place in load order
+}
+
+// noteHooks records `include`/`extend`'s hooks: the last module first, as
+// MRI includes them.
+func (c *Compiler) noteHooks(f *File, name string, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
+	if f.prelude {
+		return
+	}
+	for _, a := range slices.Backward(args) {
+		c.hooks = append(c.hooks, classHook{name: name, cls: cls, mod: &constRef{node: a, scope: scope, file: f}, node: n, file: f})
+	}
+}
+
+func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.Node, scope []*Class) {
+	switch a.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+	default:
+		c.errorf(f, a, "unsupported include argument")
+	}
+	inc := Include{ref: constRef{node: a, scope: scope, file: f}, line: f.line(n.Location.StartOffset), file: f, scope: scope}
+	if t, ok := f.typeArgs[inc.line]; ok {
+		tup, err := rbs.ParseType(t)
+		if err != nil {
+			c.errorf(f, n, "bad include type args %q: %v", t, err)
+		}
+		inc.args = tup.(rbs.Tuple).Elems
+	}
+	cls.Includes = append(cls.Includes, inc)
+}
+
+// ---- resolution
+
+// superclassOf resolves cls's superclass (nil for modules and BasicObject)
+// and checks that every reopening that names one names the same class.
+func (c *Compiler) superclassOf(cls *Class) *Class {
+	var sup *Class
+	switch {
+	case cls.superRef != nil:
+		sup = c.resolveClassRef(cls.superRef)
+		if c.isNumericMod(sup) {
+			c.errorf(cls.File, nil, "%s:%d: subclassing Numeric is not supported: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", cls.File.Name, cls.Line)
+		}
+		if sup.IsModule {
+			c.errorf(cls.File, nil, "%s:%d: superclass %s is a module", cls.File.Name, cls.Line, sup.RubyName)
+		}
+		// a @go_type is a Go value type (string, []E), not a struct a subclass can embed
+		switch {
+		case sup.RubyName == "Hash" || sup.RubyName == "Array":
+			// a Hash subclass embeds a Hash[any, V]: keys are untyped, since
+			// the usual subclass downcases or otherwise rewrites them; an Array subclass embeds an Array[E]
+			cls.hashBase = true
+			switch {
+			case sup.RubyName == "Array": // ponytail: elements untyped (`Array[any]`); a typed `class X < Array #[E]` needs generic method bodies over E
+				cls.TypeParams = nil
+				cls.GoType = "struct { " + superField(sup) + "[any] }"
+			case len(cls.TypeParams) == 0:
+				cls.TypeParams = []string{"V"}
+			case len(cls.TypeParams) > 1:
+				c.errorf(cls.File, nil, "%s:%d: a Hash subclass takes one type parameter, the value type (keys are untyped)", cls.File.Name, cls.Line)
+			}
+			if sup.RubyName == "Hash" {
+				cls.GoType = "struct { " + superField(sup) + "[" + strings.Join(cls.TypeParams, ", ") + "] }"
+			}
+		case sup.GoType != "" && !c.isNumericMod(sup) && (len(sup.TypeParams) == 0 || sup.mutable()):
+			cls.hashBase = true // any other @go_type (Pathname; Set, Queue with untyped elements): embedded the same way (decision 202)
+			cls.TypeParams = nil
+			cls.GoType = "struct { " + superField(sup) + anyArgs(len(sup.TypeParams)) + " }"
+		case sup.GoType != "":
+			msg := fmt.Sprintf("%s:%d: subclassing %s is not supported (it is a @go_type class; hold one in an ivar instead)", cls.File.Name, cls.Line, sup.RubyName)
+			if !c.gemFile(cls.File) {
+				c.errorf(cls.File, nil, "%s", msg)
+			}
+			c.deferClassError(cls, msg) // gem code: an error only where reachable code uses the class (decision 169)
+			sup = c.classes["Object"]
+		}
+	case !cls.IsModule && cls.RubyName != "BasicObject":
+		sup = c.classes["Object"]
+	}
+	for _, r := range cls.reSupers {
+		if c.resolveClassRef(r) != sup {
+			c.errorf(r.file, r.node, "class %s reopened with a different superclass", cls.RubyName)
+		}
+	}
+	return sup
+}
+
+// checkCycles rejects `class A < B; end; class B < A; end` and mutually
+// including modules: every later walk of Super/Includes (metaFor,
+// isSubclassOf, hasClassMethod) would recurse until a fatal stack overflow.
+func (c *Compiler) checkCycles() {
+	for _, cls := range c.classList {
+		chain := []string{cls.RubyName}
+		for k, n := cls.Super, 0; k != nil && n <= len(c.classList); k, n = k.Super, n+1 { // n: a cycle not through cls is reported at its own members
+			chain = append(chain, k.RubyName)
+			if k == cls {
+				c.errorf(cls.File, nil, "%s:%d: class %s inherits from itself (%s)", cls.File.Name, cls.Line, cls.RubyName, strings.Join(chain, " < "))
+			}
+		}
+	}
+	state := map[*Class]int{} // 1 on the current path, 2 done
+	var visit func(cls *Class, path []*Class)
+	visit = func(cls *Class, path []*Class) {
+		switch state[cls] {
+		case 2:
+			return
+		case 1:
+			i := slices.Index(path, cls)
+			names := []string{}
+			for _, k := range append(path[i:], cls) {
+				names = append(names, k.RubyName)
+			}
+			c.errorf(cls.File, nil, "%s:%d: module %s includes itself (%s)", cls.File.Name, cls.Line, cls.RubyName, strings.Join(names, " includes "))
+		}
+		state[cls] = 1
+		for _, inc := range cls.Includes {
+			if inc.Mod != nil {
+				visit(inc.Mod, append(path, cls))
+			}
+		}
+		state[cls] = 2
+	}
+	for _, cls := range c.classList {
+		visit(cls, nil)
+	}
+}
+
+// linkInclude resolves an include's module and its type args.
+func (c *Compiler) linkInclude(cls *Class, inc *Include) {
+	mod := c.resolveClassRef(&inc.ref)
+	if c.isNumericMod(mod) && !inc.file.prelude {
+		c.errorf(inc.file, nil, "%s:%d: Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)", inc.file.Name, inc.line)
+	}
+	if !mod.IsModule {
+		c.errorf(inc.file, nil, "%s:%d: %s is not a module", inc.file.Name, inc.line, mod.RubyName)
+	}
+	inc.Mod = mod
+	if len(inc.args) == 0 && mod.RubyName == "Enumerable" {
+		if at := c.sorbetElem(cls); at != nil { // Sorbet's `Elem = type_member { { fixed: T } }` is Enumerable's T (decision 196)
+			inc.args = []rbs.Type{at}
+		}
+	}
+	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.file.prelude && cls.Methods["each"] != nil {
+		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
+		for range mod.TypeParams {
+			inc.Args = append(inc.Args, TAny{})
+		}
+		return
+	}
+	if len(inc.args) == 0 && (c.gemFile(inc.file) || !inc.file.prelude) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
+		if !c.gemFile(inc.file) {
+			c.warn(inc.file, nil, "%s:%d: include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", inc.file.Name, inc.line, mod.RubyName, cls.RubyName, mod.RubyName)
+		}
+		for range mod.TypeParams {
+			inc.Args = append(inc.Args, TAny{})
+		}
+		return
+	}
+	if len(inc.args) != len(mod.TypeParams) {
+		c.errorf(inc.file, nil, "%s:%d: include %s needs %d type args (`include %s #[...]`)", inc.file.Name, inc.line, mod.RubyName, len(mod.TypeParams), mod.RubyName)
+	}
+	for _, a := range inc.args {
+		inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, file: inc.file, line: inc.line}))
+	}
+}
+
+// pendingPrepend is `X.prepend(M)`, `X.singleton_class.prepend(M)` or a class body's `prepend M` (decision 199).
+type pendingPrepend struct {
+	target    *Class   // nil: resolve targetRef
+	targetRef constRef // the receiver constant of a top-level prepend
+	singleton bool     // X.singleton_class.prepend
+	mod       constRef
+}
+
+// applyPrepends copies each prepended module's methods into its class, in load order: a method the class defines
+// itself moves to a hidden private name that the copy's super calls, as MRI's ancestor order puts M before X.
+func (c *Compiler) applyPrepends() {
+	for i, p := range c.prepends {
+		target := p.target
+		if target == nil {
+			target = c.resolveClassRef(&p.targetRef)
+		}
+		if p.singleton {
+			target = c.metaFor(target)
+		}
+		mod := c.resolveClassRef(&p.mod)
+		if !mod.IsModule {
+			c.errorf(p.mod.file, p.mod.node, "prepend %s: not a module", mod.RubyName)
+		}
+		target.prepended = append(target.prepended, mod)
+		for _, mm := range slices.Clone(mod.MethodList) {
+			if mm.Kind != kindDef || mm.Node == nil {
+				continue
+			}
+			cp := *mm
+			cp.Owner = target
+			if orig := target.Methods[mm.Name]; orig != nil {
+				hidden := fmt.Sprintf("__prepended%d_%s", i, goMethodName(mm.Name))
+				target.MethodList = deleteMethod(target.MethodList, orig)
+				orig.Name, orig.GoName, orig.Private = hidden, hidden, true
+				target.Methods[hidden] = orig
+				target.MethodList = append(target.MethodList, orig)
+				cp.superTarget = orig
+			}
+			target.Methods[cp.Name] = &cp
+			target.MethodList = append(target.MethodList, &cp)
+		}
+		target.msetCache, target.msetIndex = nil, nil
+	}
+	for _, p := range c.prepends { // a module only prepended has no includer to compile its own copies (and their super) for
+		mod := c.resolveClassRef(&p.mod)
+		if !c.mixedIn(mod) {
+			mod.Methods, mod.MethodList = map[string]*Method{}, nil
+		}
+	}
+}
+
+func (c *Compiler) mixedIn(mod *Class) bool {
+	for _, cls := range c.classList {
+		for _, inc := range append(slices.Clip(cls.Includes), cls.extends...) {
+			if inc.Mod == mod {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// prependTarget is the receiver of `X.prepend(M)` or `X.singleton_class.prepend(M)`, or nil for any other prepend
+// (String#prepend).
+func prependTarget(n *parser.CallNode) parser.Node {
+	if len(callArgs(n)) == 0 {
+		return nil
+	}
+	switch r := n.Receiver.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		return r
+	case *parser.CallNode:
+		if r.Name == "singleton_class" && r.Arguments == nil {
+			switch r.Receiver.(type) {
+			case *parser.ConstantReadNode, *parser.ConstantPathNode:
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// collectMixinCall is a class body's include, extend or prepend (decision 199: prepend applies at link).
+func (c *Compiler) collectMixinCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
+	switch n.Name {
+	case "mixes_in_class_methods":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			last := len(cls.Includes) - 1
+			cls.mixesIn = append(cls.mixesIn, cls.Includes[last])
+			cls.Includes = cls.Includes[:last]
+		}
+	case "prepend":
+		for _, a := range args {
+			c.prepends = append(c.prepends, pendingPrepend{target: cls, mod: constRef{node: a, scope: scope, file: f}})
+		}
+	case "include":
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			if r, ok := a.(*parser.ConstantReadNode); ok && r.Name == "Singleton" && !cls.IsModule {
+				c.addSingletonInstance(ctx, f, n, cls, scope)
+			}
+		}
+		c.noteHooks(f, "included", cls, n, args, scope)
+	case "extend":
+		args = slices.Clone(args)
+		for i, a := range args {
+			if self, ok := a.(*parser.SelfNode); ok && cls.IsModule { // `extend self`: the module's methods are its module methods too
+				args[i] = &parser.ConstantReadNode{Name: cls.RubyName, Location: self.Location}
+			}
+		}
+		for _, a := range args {
+			c.addInclude(f, n, cls, a, scope)
+			last := len(cls.Includes) - 1
+			cls.extends = append(cls.extends, cls.Includes[last])
+			cls.Includes = cls.Includes[:last]
+		}
+		for _, a := range args { // MRI's def_delegator is the most recently extended module's (decision 132)
+			if r, ok := a.(*parser.ConstantReadNode); ok && (r.Name == "Forwardable" || r.Name == "SingleForwardable") {
+				cls.fwdSingle = r.Name == "SingleForwardable"
+				cls.singleFwd = cls.singleFwd || cls.fwdSingle
+			}
+		}
+		c.noteHooks(f, "extended", cls, n, args, scope)
+	}
+}
+
+// sorbetElem is the type of the includer's fixed Sorbet `Elem` type_member, written in its body or (for a
+// `class << self`) its attached class's; nil when there is none.
+func (c *Compiler) sorbetElem(cls *Class) rbs.Type {
+	names := []string{cls.RubyName + "::Elem"}
+	if cls.metaOf != nil {
+		names = append(names, cls.metaOf.RubyName+"::Elem")
+	}
+	for _, n := range names {
+		if k := c.consts[n]; k != nil && k.typeAlias != "" && k.typeAlias != "untyped" {
+			at, err := rbs.ParseType(k.typeAlias)
+			if err == nil {
+				return at
+			}
+		}
+	}
+	return nil
+}
+
+// linkExtends resolves each `extend M` as an include of M on the class object.
+func (c *Compiler) linkExtends() {
+	for _, cls := range c.classList { // a module's mixes_in_class_methods(M): each includer extends M, as Sorbet's included hook does
+		for _, inc := range cls.Includes {
+			if mod := c.resolveClassRef(&inc.ref); mod != nil {
+				cls.extends = append(cls.extends, mod.mixesIn...)
+			}
+		}
+	}
+	for _, cls := range c.classList {
+		for _, ext := range cls.extends {
+			ext.Mod = c.resolveClassRef(&ext.ref)
+			if !ext.Mod.IsModule {
+				c.errorf(ext.file, nil, "%s:%d: %s is not a module", ext.file.Name, ext.line, ext.Mod.RubyName)
+			}
+			if len(ext.args) == 0 && ext.Mod.RubyName == "Enumerable" {
+				if at := c.sorbetElem(cls.meta); at != nil { // `class << self; Elem = type_member { { fixed: T } }` (decision 196)
+					ext.args = []rbs.Type{at}
+				}
+			}
+			switch {
+			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.file.prelude && cls.meta.Methods["each"] != nil:
+				ext.fromEach = true // typed from the class's own `def self.each` (includeFromEach), as an include is
+				for range ext.Mod.TypeParams {
+					ext.Args = append(ext.Args, TAny{})
+				}
+			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0: // `extend Enumerable`: untyped elements, as an unannotated include (decision 183)
+				if !c.gemFile(ext.file) {
+					c.warn(ext.file, nil, "%s:%d: extend %s is untyped (`extend %s #[...]` for static calls; decision 183)", ext.file.Name, ext.line, ext.Mod.RubyName, ext.Mod.RubyName)
+				}
+				for range ext.Mod.TypeParams {
+					ext.Args = append(ext.Args, TAny{})
+				}
+			case len(ext.args) != len(ext.Mod.TypeParams):
+				c.errorf(ext.file, nil, "%s:%d: extend %s needs %d type args (`extend %s #[...]`)", ext.file.Name, ext.line, ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
+			}
+			for _, a := range ext.args {
+				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, file: ext.file, line: ext.line}))
+			}
+			cls.meta.Includes = append(cls.meta.Includes, ext)
+		}
+	}
+}
