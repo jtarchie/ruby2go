@@ -5,6 +5,15 @@
 
 # @go_type string
 class String < Object
+  # A String as it is, else nil (rb2go has no implicit to_str conversion to try).
+  #: (untyped) -> String?
+  def self.try_convert(obj) = %x{
+    if v, ok := rbUnbox(obj).(String); ok {
+      return &v
+    }
+    return nil
+  }
+
   # What slice!(range) leaves (decision 233): self without the part self[range] is.
   #: (Range[Integer]) -> String
   def __slice_rest(r)

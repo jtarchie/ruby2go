@@ -540,7 +540,14 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
+		if u, ok := c.untypedGemUse(uses); ok { // a gem passing an untyped container: its elements are anything (decision 244)
+			next[key], from[key] = u.typ, fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
+			continue
+		}
 		if t, at := joinUses(uses, inf.noUnion[key]); t != nil {
+			if c.gemUsesDisagree(uses, t) { // a gem's calls passing kinds no type joins: untyped, not the first kind (decision 244)
+				t = TAny{}
+			}
 			next[key], from[key] = t, at
 		}
 	}
@@ -568,6 +575,32 @@ func (c *Compiler) updateInference(inf *inference) {
 // where its first use is. Object, BasicObject and modules are Go any: they
 // count only when nothing concrete is passed, or one Object.new would
 // untype the rest. noUnion leaves out a use that would make a union.
+// untypedGemUse is a gem file's use passing an Array or Hash of untyped (optparse's `define(*opts)` passing opts on
+// to `make_switch(opts)`): the parameter takes it, not a narrower type another call gave, so the method's branches
+// for the other element kinds compile.
+func (c *Compiler) untypedGemUse(uses []paramUse) (paramUse, bool) {
+	for _, u := range uses {
+		if cl, ok := u.typ.(TClass); ok && len(cl.Args) > 0 && c.gemFile(u.file) && (cl.C.RubyName == "Array" || cl.C.RubyName == "Hash") &&
+			isAny(cl.Args[len(cl.Args)-1]) && !mentionsVar(u.typ) {
+			return u, true
+		}
+	}
+	return paramUse{}, false
+}
+
+// gemUsesDisagree reports gem-file uses that joinUses left out of t because they do not join it.
+func (c *Compiler) gemUsesDisagree(uses []paramUse, t Type) bool {
+	for _, u := range uses {
+		if u.typ == nil || isVoid(u.typ) || holdsAny(u.typ) || mentionsVar(u.typ) || !c.gemFile(u.file) {
+			continue
+		}
+		if j, ok := join(t, u.typ); !ok || !typeEq(j, t) {
+			return true
+		}
+	}
+	return false
+}
+
 func joinUses(uses []paramUse, noUnion bool) (Type, string) {
 	for _, abstract := range []bool{false, true} {
 		var t Type

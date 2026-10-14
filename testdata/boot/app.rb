@@ -66,3 +66,5 @@ p lg.call(1, "x", nil), lg.call(3, "p", "m")
 p Demo::Lenient.level_of, Demo::Lenient.level_of(:SEV_DEBUG)
 dd = DemoDelayish.new
 p dd.dupv, dd.value_with(:v)
+dv = DemoVisitor.new
+p dv.collect_yields, dv.as_proc("ab").call, dv.pair

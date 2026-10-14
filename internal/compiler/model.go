@@ -121,6 +121,7 @@ type Const struct {
 	guarded   bool // may be read before its assignment runs (guardConsts)
 	inMethod  bool // a class variable first assigned in a method: no init in main, reads check its set flag
 	inBody    bool // reads a local of its class body: assigned in the body's grouped statements (decision 170)
+	initAt    *int // a constant lifted out of another's value: the offset it initializes at (decision 244)
 }
 
 // Ivar is an instance variable of a struct class.
@@ -524,7 +525,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		}
 	case !f.prelude && isDescribe(n):
 		c.collectDescribe(ctx, f, nil, n)
-	case c.topConstVisibility(f, n):
+	case c.topConstVisibility(f, n), c.objectConstExtend(f, n):
 	case n.Receiver == nil && n.Name == "include" && !f.prelude:
 		for _, a := range callArgs(n) { // main's include is Object's, as in MRI
 			c.addInclude(f, n, c.classes["Object"], a, nil)
@@ -754,6 +755,9 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 			anon := "Struct_" + strings.ReplaceAll(name, "::", "_")
 			c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Name: anon, Value: call, Location: call.Location, NameLoc: call.Location}, call, kind, scope)
 			sup = &parser.ConstantReadNode{Name: anon, Location: call.Location}
+		}
+		if _, self := sup.(*parser.SelfNode); self && len(scope) > 0 { // `class NoArgument < self` in Switch's body: the enclosing class (decision 244)
+			sup = absConstPath(scope[len(scope)-1].RubyName, sup.GetLocation())
 		}
 		ref := &constRef{node: sup, scope: scope, file: f}
 		if reopen {
@@ -1000,6 +1004,15 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 
 // collectBodyConst declares a class-body constant; one that reads the body's locals runs in its unit (decision 170).
 func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.ConstantWriteNode, scope []*Class, locals map[string]bool) {
+	var inner []*parser.ConstantWriteNode
+	n.Value = liftConstWrites(n.Value, &inner)
+	for _, w := range inner { // `NoArgument = [NO_ARGUMENT = :NONE, nil]`: NO_ARGUMENT first, then a read of it (decision 244)
+		c.collectBodyConst(ctx, f, w, scope, locals)
+		if k := c.consts[qualify(scope, w.Name)]; k != nil {
+			at := n.Value.GetLocation().StartOffset // at the outer one's offset, and added first: a stable sort keeps it first
+			k.initAt = &at
+		}
+	}
 	if arm, ok := c.loadTimeArm(f, n.Value, scope); ok && len(arm) > 0 && declares(n.Value) && len(scope) > 0 {
 		// `Impl = case when on_cruby? then class CImpl < Base; end; CImpl ... end`: the arm boot ran declares, and its last value is the constant's
 		c.collectBody(ctx, f, scope[len(scope)-1], &parser.StatementsNode{Location: n.Location, Body: arm[:len(arm)-1]}, scope, true)
@@ -4669,4 +4682,55 @@ func constMultiWrite(n *parser.MultiWriteNode) []*parser.ConstantWriteNode {
 		out[i] = &parser.ConstantWriteNode{Location: t.Location, Name: t.Name, NameLoc: t.Location, Value: arr.Elements[i]}
 	}
 	return out
+}
+
+// absConstPath is `::A::B` for the constant name "A::B".
+func absConstPath(name string, loc parser.Location) parser.Node {
+	var n *parser.ConstantPathNode
+	for _, part := range strings.Split(name, "::") {
+		var parent parser.Node
+		if n != nil {
+			parent = n
+		}
+		n = &parser.ConstantPathNode{Location: loc, Parent: parent, Name: &part}
+	}
+	return n
+}
+
+// objectConstExtend reports a gem's top-level `ARGV.extend(OptionParser::Arguable)`, on an object constant, which is
+// dropped (ponytail: a closed world gives objects no singleton modules; decision 244).
+func (c *Compiler) objectConstExtend(f *File, n *parser.CallNode) bool {
+	return n.Name == "extend" && c.gemFile(f) && isConstNode(n.Receiver) && c.lookupClassRef(f, n.Receiver) == nil
+}
+
+// isConstNode reports a constant read or path.
+func isConstNode(n parser.Node) bool {
+	switch n.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		return true
+	}
+	return false
+}
+
+// liftConstWrites takes the constant writes nested in a constant's value (an Array literal's element, a call's
+// receiver or argument) out into out, leaving a read of each in its place.
+func liftConstWrites(n parser.Node, out *[]*parser.ConstantWriteNode) parser.Node {
+	switch x := n.(type) {
+	case *parser.ConstantWriteNode:
+		x.Value = liftConstWrites(x.Value, out)
+		*out = append(*out, x)
+		return &parser.ConstantReadNode{Location: x.NameLoc, Name: x.Name}
+	case *parser.ArrayNode:
+		for i, el := range x.Elements {
+			x.Elements[i] = liftConstWrites(el, out)
+		}
+	case *parser.CallNode:
+		if x.Receiver != nil {
+			x.Receiver = liftConstWrites(x.Receiver, out)
+		}
+		for i, a := range callArgs(x) {
+			x.Arguments.Arguments[i] = liftConstWrites(a, out)
+		}
+	}
+	return n
 }

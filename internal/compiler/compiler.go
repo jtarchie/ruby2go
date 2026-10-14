@@ -77,6 +77,7 @@ type Compiler struct {
 	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
 	programFile           *File                   // the file $0 names: the main file, or a traced entry's rb2go_main (decision 241)
 	dynBlockNames         map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
+	dynBlockAll           bool                    // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
 	strLits               map[string]bool         // String literal texts: String#frozen? knows them by identity
 	constList             []*Const
 	hooks                 []classHook // main.rb's inherited/included/extended sites

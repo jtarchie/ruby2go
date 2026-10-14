@@ -5498,4 +5498,54 @@ module ControlTests
       assert_equal ["t", 1, nil], [tok, num, first]
     end
   end
+
+  # Decision 244: `class X < self`, constants assigned inside a constant's value, $! in a rescue, $1 after a `when /re/`,
+  # `Array === x` narrowing, try_convert and collect.
+  class ControlSwitch
+    class NoArg < self
+      #: () -> String
+      def kind = "none"
+    end
+
+    #: () -> String
+    def kind = "any"
+  end
+
+  module ControlOpt
+    NoArgument = [NO_ARGUMENT = :NONE, nil].freeze
+  end
+
+  class ControlOptParseTest < Minitest::Test
+    #: (String | Integer) -> String
+    def control_opt(o)
+      case o
+      when /\A--\[no-\]([^=]*)/ then "neg #{$1}"
+      when /\A--([^=]*)(=)?/ then "long #{$1} #{$2.inspect}"
+      when Integer then "int"
+      else "other"
+      end
+    end
+
+    #: (untyped) -> Integer
+    def control_size(o)
+      return o.size if Array === o
+
+      -1
+    end
+
+    def test_optparse_shapes
+      assert_equal ["none", "any", ControlSwitch], [ControlSwitch::NoArg.new.kind, ControlSwitch.new.kind, ControlSwitch::NoArg.superclass]
+      assert_equal [[:NONE, nil], :NONE], [ControlOpt::NoArgument, ControlOpt::NO_ARGUMENT]
+      msg = begin
+        raise ArgumentError, "boom"
+      rescue
+        $!.message
+      end
+      assert_equal "boom", msg
+      assert_equal ["neg color", "long days \"=\"", "long json nil", "int", "other"],
+                   [control_opt("--[no-]color"), control_opt("--days="), control_opt("--json"), control_opt(3), control_opt("x")]
+      assert_equal [2, -1], [control_size([1, 2]), control_size("ab")]
+      assert_equal ["a", nil, [1], nil, [2, 4]], [String.try_convert("a"), String.try_convert(1), Array.try_convert([1]), Array.try_convert("x"), [1, 2].collect { |x| x * 2 }]
+    end
+  end
 end

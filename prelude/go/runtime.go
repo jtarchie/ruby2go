@@ -1587,10 +1587,22 @@ func rbMust[T any](p *T, want string) T {
 // rbBlockArg is a block passed to a method through a dynamic call, last among its arguments (decision 243).
 type rbBlockArg struct{ fn func(...any) any }
 
+// rbBlockArgOf is a method's own optional `&block` passed on to a dynamic call: an rbBlockArg, or one with no fn when
+// the caller gave none.
+func rbBlockArgOf(p **func(...any) any) rbBlockArg {
+	if p == nil {
+		return rbBlockArg{}
+	}
+	return rbBlockArg{fn: *(*p)}
+}
+
 // rbPopBlock pops a dynamic call's block off its arguments: nil when it passed none.
 func rbPopBlock(args []any) (*rbBlockArg, []any) {
 	if n := len(args); n > 0 {
 		if b, ok := args[n-1].(rbBlockArg); ok {
+			if b.fn == nil { // a forwarded &block the caller did not give
+				return nil, args[:n-1]
+			}
 			return &b, args[:n-1]
 		}
 	}

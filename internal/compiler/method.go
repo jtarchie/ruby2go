@@ -172,12 +172,13 @@ func (f *fctx) dynClosure(e *entry, recvT Type, env map[string]Type, private, st
 // genBoundMethod is recv.method(:name): a Method[F] holding a closure over recv.
 func (f *fctx) genBoundMethod(n parser.Node, recv expr, name string, public bool) expr {
 	mc := f.c.classes["Method"]
-	if isOpt(recv.typ) {
+	if isOpt(recv.typ) && !f.lenient() {
 		f.errorf(n, "possibly-nil %s has no method %s; check it first", recv.typ, name)
 	}
 	self := recv.code == f.selfCode
-	if !self && (isAny(recv.typ) || isNil(recv.typ) || isAbstract(recv.typ)) {
-		return f.genDynMethod(n, recv, name, public)
+	if !self && (isAny(recv.typ) || isNil(recv.typ) || isAbstract(recv.typ) || (isUnion(recv.typ) || isOpt(recv.typ)) && f.lenient()) {
+		// a gem's union (`pattern.method(:convert)` after `respond_to?(:convert)`) is untyped here too (decision 244)
+		return f.genDynMethod(n, expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}, name, public)
 	}
 	e := f.resolve(recv.typ, name)
 	if e == nil {
@@ -465,6 +466,11 @@ func (f *fctx) methodValueCall(n parser.Node, recv expr, t TClass, name string, 
 		f.errorf(n, "%s does not take a block", op)
 	}
 	if !typed {
+		if name == "to_proc" && f.lenient() && len(args) == 0 { // a gem's untyped Method as a Proc taking anything, called dynamically (decision 244)
+			f.c.noteDyn("call")
+			code := "func(xs_ ...any) any { return rbDynCall(rbCall, " + f.coerce(n, recv, TAny{}) + ", xs_...) }"
+			return expr{code: code, typ: TFunc{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}, Proc: true}}, true
+		}
 		if name == "to_proc" || name == "curry" {
 			f.errorf(n, "%s needs the method's signature, which a %s lost (decision 141)", op, t)
 		}

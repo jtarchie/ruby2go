@@ -727,7 +727,7 @@ func (c *Compiler) dynBlockable(name string, m *Method) bool {
 	if m.Owner != nil && m.Owner.universal {
 		return false
 	}
-	return c.dynBlockNames[name] && (!m.Iterator || !m.hasKeywords()) && m.Block.Self == nil && !m.Block.Rest
+	return (c.dynBlockNames[name] || c.dynBlockAll) && (!m.Iterator || !m.hasKeywords()) && m.Block.Self == nil && !m.Block.Rest
 }
 
 // dynBlockArg is the block a dynamic call passes as its last argument (rbBlockArg), as the method's typed block: each
@@ -754,14 +754,6 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 		body = fmt.Sprintf("return rbAs[%s](%s, %q)", c.goType(ret), body, ret.String())
 	}
 	ft := TFunc{Params: ps, Ret: ret, Proc: true}
-	if m.Block.Optional { // block_given? sees whether the call passed one
-		f.emit("var blkOpt_ %s", c.goType(TOpt{Elem: ft}))
-		f.emit("if blk_ != nil {")
-		f.emit("\tfn_ := %s { %s }", sig, body)
-		f.emit("\tblkOpt_ = &fn_")
-		f.emit("}")
-		return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "blkOpt_", typ: TOpt{Elem: ft}}}}
-	}
 	f.emit("blkFn_ := %s {", sig)
 	f.emit("\tif blk_ == nil {")
 	f.emit("\t\tpanic(NewLocalJumpError(Ref(String(\"no block given (yield)\"))))")
@@ -775,10 +767,7 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 // dynIterCall is a dynamic call with a block of an iterator method: a range over it, each yield into the call's block.
 // MRI's value is the method's, often the block's (`synchronize { ... }`): the last block value stands in (decision 243).
 func (c *Compiler) dynIterCall(f *fctx, e *entry, recv expr, env map[string]Type, nodes []parser.Node) {
-	codes := make([]string, len(nodes))
-	for i, nd := range nodes {
-		codes[i] = nd.(*exprNode).e.code //nolint:forcetypeassert // emitDynCall's, keywords excluded (dynBlockable)
-	}
+	codes, _ := f.genArgs(&parser.NilNode{}, e.M, env, nodes, nil) // fills defaults and rbArgc as a typed call does
 	vars := make([]string, len(e.M.Block.Params))
 	for i := range vars {
 		vars[i] = fmt.Sprintf("y%d_", i)

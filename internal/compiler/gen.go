@@ -381,8 +381,14 @@ func (f *fctx) hoistLocals(scope int) {
 		return
 	}
 	for _, li := range sortedLocals(f.locals) {
-		if li.scope == scope && li.hoist && !li.noHoist && li.typ != nil && !isNil(li.typ) {
+		if li.scope != scope || !li.hoist || li.noHoist || li.typ == nil {
+			continue
+		}
+		switch {
+		case !isNil(li.typ):
 			f.emit("var %s %s", goLocalName(li.name), f.c.goType(li.typ))
+		case f.lenient(): // a gem's local only ever nil is untyped (decision 183), and its assignments expect a declaration (decision 244)
+			f.emit("var %s any", goLocalName(li.name))
 		}
 	}
 }
@@ -818,6 +824,7 @@ func (f *fctx) narrowUnion(v *local, keep func(Type) bool) (narrowInfo, bool) {
 // `x.nil?` false drops nil, a falsy `x` leaves nil (and false), `!c` false
 // is c true, and `a || b` false is both false.
 func (f *fctx) elseNarrowing(n parser.Node) []narrowInfo {
+	n = f.classEqqAsIsA(n)
 	localOf := func(r parser.Node) *local {
 		if lv, ok := r.(*parser.LocalVariableReadNode); ok {
 			return f.scope.lookup(lv.Name)
@@ -869,8 +876,23 @@ func (f *fctx) elseNarrowing(n parser.Node) []narrowInfo {
 	return nil
 }
 
+// classEqqAsIsA reads `Array === o` on a local as `o.is_a?(Array)`, the same test for a class, which narrows o for
+// the branch (decision 244).
+func (f *fctx) classEqqAsIsA(n parser.Node) parser.Node {
+	call, ok := n.(*parser.CallNode)
+	if !ok || call.Name != "===" || call.Receiver == nil || len(callArgs(call)) != 1 || f.classRef(call.Receiver) == nil {
+		return n
+	}
+	if _, lv := callArgs(call)[0].(*parser.LocalVariableReadNode); !lv {
+		return n
+	}
+	return &parser.CallNode{Location: call.Location, Receiver: callArgs(call)[0], Name: "is_a?",
+		Arguments: &parser.ArgumentsNode{Location: call.Location, Arguments: []parser.Node{call.Receiver}}}
+}
+
 // genCond renders a Ruby truthiness test as a Go bool expression.
 func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
+	n = f.classEqqAsIsA(n)
 	switch n := n.(type) {
 	case *parser.ParenthesesNode:
 		if st, ok := n.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
@@ -1399,6 +1421,20 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	subj := f.genExpr(n.Predicate, nil)
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, f.materialize(subj))
+	st := stripOpt(subj.typ)
+	u, isUnion := st.(TUnion)
+	_, localSubj := n.Predicate.(*parser.LocalVariableReadNode)
+	strUnion := isUnion && (f.lenient() || localSubj) && slices.ContainsFunc(u.Members, func(m Type) bool { return isClass(m, "String") })
+	if f.lastMatch != "" && caseHasRegexp(n) && (isClass(st, "String") || isAny(st) || strUnion) { // `when /re/` sets $~ for the arm: tests in order, as an if chain (decision 244)
+		var subjNode parser.Node = &exprNode{Node: n.Predicate, e: expr{code: tmp, typ: subj.typ}}
+		if lv, ok := n.Predicate.(*parser.LocalVariableReadNode); ok {
+			subjNode = lv // a local's own reads: each test narrows it for its arm (`when Array` then o.partition)
+			f.emit("_ = %s", tmp)
+		}
+		isCls := func(c parser.Node) bool { return f.classRef(c) != nil }
+		f.genStmt(caseAsMatchIf(n, subjNode, !isClass(st, "String"), isCls), t)
+		return
+	}
 	// each arm's test before the switch: one may need statements (a union subject's type switch), which cannot sit between cases
 	arms := make([]string, len(n.Conditions))
 	for i, w := range n.Conditions {
@@ -1415,7 +1451,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		f.emit("case %s:", arms[i])
 		saved := f.enterBlock()
 		f.indent++
-		f.genStmts(wn.Statements, t)
+		f.genWhenArm(wn, t)
 		f.indent--
 		f.leaveBlock(saved)
 	}
@@ -1467,6 +1503,59 @@ func (c *Compiler) rewrite(n parser.Node, build func() parser.Node) parser.Node 
 // caseEqq renders a `when`'s `cond === subj` as a Go bool: is_a? for a
 // class, the condition's own === when its class defines one (at run time
 // when it is untyped or T?), else ==, Object#==='s default.
+// caseHasRegexp reports a when with a Regexp literal.
+func caseHasRegexp(n *parser.CaseNode) bool {
+	found := false
+	for _, w := range n.Conditions {
+		for _, cond := range w.(*parser.WhenNode).Conditions {
+			switch cond.(type) {
+			case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
+				found = true
+			}
+		}
+	}
+	return found
+}
+
+// caseAsMatchIf is `case s when /re/ ... when X ... else ... end` as `if re =~ s ... elsif X === s ... else ... end`,
+// the regexp tests through =~ so the matching arm reads its own $~.
+func caseAsMatchIf(n *parser.CaseNode, subj parser.Node, untyped bool, isCls func(parser.Node) bool) parser.Node {
+	var tail parser.Node
+	if n.ElseClause != nil {
+		tail = n.ElseClause
+	}
+	for i := len(n.Conditions) - 1; i >= 0; i-- {
+		w := n.Conditions[i].(*parser.WhenNode) //nolint:forcetypeassert // a case's conditions are whens
+		var pred parser.Node
+		for _, cond := range w.Conditions {
+			loc := cond.GetLocation()
+			call := func(recv parser.Node, name string) parser.Node {
+				return &parser.CallNode{Location: loc, Receiver: recv, Name: name, Arguments: &parser.ArgumentsNode{Location: loc, Arguments: []parser.Node{subj}}}
+			}
+			test := call(cond, "===")
+			if isCls(cond) { // `when Array`: is_a?, which narrows the subject for its arm
+				test = &parser.CallNode{Location: loc, Receiver: subj, Name: "is_a?", Arguments: &parser.ArgumentsNode{Location: loc, Arguments: []parser.Node{cond}}}
+			}
+			switch c := cond.(type) {
+			case *parser.SplatNode: // ponytail: `when *list` as list.include?(s), == per element where MRI's is ===
+				test = call(c.Expression, "include?")
+			case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
+				test = call(cond, "=~")
+				if untyped { // Regexp#=== is false for a non-String, where =~ raises
+					test = &parser.AndNode{Location: loc, Left: call(&parser.ConstantReadNode{Location: loc, Name: "String"}, "==="), Right: test}
+				}
+			}
+			if pred == nil {
+				pred = test
+			} else {
+				pred = &parser.OrNode{Location: cond.GetLocation(), Left: pred, Right: test}
+			}
+		}
+		tail = &parser.IfNode{Location: w.Location, Predicate: pred, Statements: w.Statements, Subsequent: tail}
+	}
+	return tail
+}
+
 func (f *fctx) caseEqq(cond parser.Node, subj expr) string {
 	if sp, ok := cond.(*parser.SplatNode); ok { // `when *LIST`: any element's === matches
 		e := f.genExpr(sp.Expression, nil)
@@ -1565,7 +1654,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 		if subjLocal != nil && (len(wn.Conditions) == 1 || arm.exact) {
 			f.applyNarrow([]narrowInfo{{local: subjLocal, typ: armType, code: armName, view: view}})
 		}
-		f.genStmts(wn.Statements, t)
+		f.genWhenArm(wn, t)
 		f.indent--
 		f.leaveBlock(saved)
 	}
@@ -1586,6 +1675,20 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.leaveBlock(saved)
 	f.switches--
 	f.emit("}")
+}
+
+// genWhenArm is a type switch arm's statements. In gem code an arm that does not compile (one the subject's inferred type
+// says cannot match, as optparse's `when Array` on a String-typed option) raises NotImplementedError if reached,
+// rather than costing its whole method (decision 244).
+func (f *fctx) genWhenArm(wn *parser.WhenNode, t tail) {
+	if !f.lenient() {
+		f.genStmts(wn.Statements, t)
+		return
+	}
+	err := f.tryClean(func() { f.genStmts(wn.Statements, t) })
+	if err != nil {
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a when arm does not compile: "+err.msg)
+	}
 }
 
 // whenArm is one `when` of a type switch: its Go cases, the subject's type
@@ -2386,8 +2489,14 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		f.tmp, f.blockCtr, f.block = 0, 0, ""
 		f.scope = &scope{vars: map[string]*local{}}
 		for _, p := range params {
-			v := &local{name: p.name, goName: p.goName, typ: p.typ, declared: true, info: f.locals[localKey{methodScope, p.name}]}
+			f.scope.vars[p.name] = &local{name: p.name, goName: p.goName, typ: p.typ, declared: true, info: f.locals[localKey{methodScope, p.name}]}
+		}
+		if prologue != nil {
+			prologue()
+		}
+		for _, p := range params { // after the prologue, which binds a rest param from rest_
 			if w := f.paramWiden[p.name]; w != nil { // its widened copy, which the body reads and writes (decision 241)
+				v := f.scope.vars[p.name]
 				goName := p.goName + "W_"
 				f.emit("var %s %s = %s", goName, f.c.goType(w), f.coerce(body, expr{code: p.goName, typ: p.typ}, w))
 				f.emit("_ = %s", goName)
@@ -2396,10 +2505,6 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 					v.info.typ = w
 				}
 			}
-			f.scope.vars[p.name] = v
-		}
-		if prologue != nil {
-			prologue()
 		}
 		f.lastMatch = ""
 		if readsLastMatch(body) {
@@ -2448,6 +2553,13 @@ func (f *fctx) poisonedBody(t tail, prologue func()) {
 	f.scope = &scope{vars: map[string]*local{}}
 	if prologue != nil && catchCompileError(prologue) != nil { // an iterator's wrapper opens here; a default that fails is skipped too
 		f.buf = &strings.Builder{}
+		if f.m.Iterator { // the wrapper's close still follows (genFunc): open it again
+			ps := make([]string, len(f.m.Block.Params))
+			for i, p := range f.m.Block.Params {
+				ps[i] = f.c.goType(p)
+			}
+			f.emit("return func(yield func(%s) bool) {", strings.Join(ps, ", "))
+		}
 	}
 	f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: "+f.m.String()+" does not compile: "+f.m.poison)
 	if t.kind != tailNone && t.typ == nil && t.types != nil {
@@ -2539,11 +2651,23 @@ func (f *fctx) tryClean(fn func()) *compileError {
 
 func (f *fctx) try(fn func()) *compileError {
 	saved := *f
+	sc := f.scope
+	var had map[string]*local
+	if sc != nil {
+		had = maps.Clone(sc.vars)
+	}
 	err := catchCompileError(fn)
 	if err != nil {
 		labels := f.labels
 		*f = saved
 		f.labels = labels
+		if sc != nil { // a local the failed attempt declared is not declared (`push(*(sw = mk(o)))`, decision 244)
+			for name := range sc.vars {
+				if _, ok := had[name]; !ok {
+					delete(sc.vars, name)
+				}
+			}
+		}
 	}
 	return err
 }
@@ -3309,7 +3433,13 @@ type constInit struct {
 	k *Const
 }
 
-func (ci *constInit) GetLocation() parser.Location     { return ci.k.Value.GetLocation() }
+func (ci *constInit) GetLocation() parser.Location {
+	loc := ci.k.Value.GetLocation()
+	if ci.k.initAt != nil { // a constant lifted out of another's value runs where that one does, just before it
+		loc.StartOffset = *ci.k.initAt
+	}
+	return loc
+}
 func (ci *constInit) CompactChildNodes() []parser.Node { return nil }
 func (ci *constInit) ChildNodes() []parser.Node        { return nil }
 

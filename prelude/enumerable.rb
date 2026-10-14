@@ -36,6 +36,13 @@ module Enumerable
     out
   end
 
+  #: [U] () { (E) -> U } -> Array[U]
+  def collect
+    out = [] #: Array[U]
+    each { |x| out << yield(x) }
+    out
+  end
+
   # The elements where pattern === x: a Regexp, a class, a Range, a value.
   # @dynamic
   #: (untyped) -> Array[E]

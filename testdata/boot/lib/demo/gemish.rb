@@ -270,3 +270,27 @@ class DemoDelayish < DemoLockable
 
   attr_reader :dupv
 end
+
+# optparse's shapes in gem code (decision 244): a computed send passing a block on, an untyped Method as a Proc, and
+# `q, a = nil`.
+class DemoVisitor
+  def initialize = @stack = [DemoLockable.new]
+
+  def visit(id, *args, &block)
+    @stack.reverse_each { |el| el.__send__(id, *args, &block) }
+    nil
+  end
+
+  def collect_yields
+    got = []
+    visit(:synchronize) { |a, b| got << [a, b] }
+    got
+  end
+
+  def as_proc(x) = x.method(:upcase).to_proc
+
+  def pair
+    q, a = nil
+    [q, a]
+  end
+end

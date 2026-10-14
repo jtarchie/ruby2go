@@ -9,6 +9,16 @@
 class Array < Object
   include Enumerable #[E]
 
+  # An Array's elements as an untyped Array, else nil. Untyped, not Array[untyped]?: an optional Array type would add
+  # arms to every program's unbox switches.
+  #: (untyped) -> untyped
+  def self.try_convert(obj) = %x{
+    if a, ok := rbUnbox(obj).(Array_Any); ok {
+      return a._ToAny()
+    }
+    return nil
+  }
+
   # Reached only by an Array subclass's `super(items)` (decision 202): the subclass starts with items' elements.
   #: (?Array[E]?) -> void
   def initialize(items = nil) = %x{

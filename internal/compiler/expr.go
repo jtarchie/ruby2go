@@ -1444,6 +1444,11 @@ func (f *fctx) materialize(e expr) string {
 
 // coerce converts e to the representation of type `to`.
 func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
+	if f.lenient() && isVoid(e.typ) && !isNil(e.typ) && to != nil && !isVoid(to) && e.code != "" && !e.noreturn && !e.stmt {
+		// a gem's value of a void call (`yield self` where the block was typed void): the call runs, its value is nil (decision 244)
+		f.emitExprStmt(n, e)
+		e = expr{code: "nil", typ: TNil{}}
+	}
 	code := f.coerce0(n, e, to)
 	if f.lenient() && code == e.code && f.pass == 2 {
 		return f.goTypeGuard(n, e, to)
@@ -6867,6 +6872,10 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 		return expr{code: "", typ: TVoid{}, stmt: true, done: true}
 	}
 	v := f.genExpr(n.Value, nil)
+	if isNil(v.typ) { // `q, a = nil`: no value to hold (Go has no `x := nil`)
+		f.destructureInto(n, v, n.Lefts, n.Rest, n.Rights)
+		return expr{code: "", typ: TVoid{}, stmt: true, done: true}
+	}
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, v.code)
 	f.destructureInto(n, expr{code: tmp, typ: v.typ}, n.Lefts, n.Rest, n.Rights)
@@ -6978,7 +6987,14 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		f.destructureInto(n, f.toAry(v), lefts, rest, rights)
 	case TUnion:
 		f.destructureUnion(n, v, t, lefts, rest, trail)
-	case TFunc, TNil, TVar, TVoid: // only tuples and Arrays split
+	case TNil: // `q, a = nil`: every target nil, a rest an empty Array (decision 244)
+		for _, l := range append(slices.Clone(lefts), rights...) {
+			f.assignTarget(l, expr{code: "nil", typ: TNil{}})
+		}
+		if restT != nil {
+			f.assignTarget(restT, expr{code: "(&Array[any]{})", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}})
+		}
+	case TFunc, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
 }
@@ -7855,8 +7871,14 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		f.implicitCall = false
 		return e
 	}
+	var blockArg string
 	if block != nil {
-		f.errorf(n, "a block with a computed send is not supported")
+		code, ok := f.dynBlockValue(n, block)
+		if !ok || !f.lenient() {
+			f.errorf(n, "a block with a computed send is not supported")
+		}
+		blockArg = code
+		f.c.dynBlockAll = true // any block-taking method a computed name reaches (decision 243)
 	}
 	f.noteDynAll()
 	if f.m == nil || !f.m.quietDynamic {
@@ -7869,13 +7891,56 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	}
 	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")", how}
 	if spread, ok := f.anySpread(args[1:]); ok { // `send(m, state, *args)`
+		if blockArg != "" {
+			spread = "append(" + spread + ", " + blockArg + ")"
+		}
 		return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ", " + spread + "...)", typ: TAny{}}
 	}
 	for _, a := range args[1:] {
 		e := f.genExpr(a, nil)
 		codes = append(codes, f.coerce(a, e, TAny{}))
 	}
+	if blockArg != "" {
+		codes = append(codes, blockArg)
+	}
 	return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+}
+
+// dynBlockValue is a dynamic call's block as an rbBlockArg (decision 243): a literal block's closure over untyped
+// values, or a method's own `&block` passed on (nil when the caller gave none).
+func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
+	switch b := block.(type) {
+	case *parser.BlockNode:
+		names := f.blockParamNames(b.Parameters)
+		if slices.ContainsFunc(names, func(s string) bool { return strings.HasPrefix(s, "*") || strings.HasPrefix(s, "(") }) {
+			return "", false
+		}
+		ps := make([]Type, len(names))
+		vals := make([]string, len(names))
+		for i := range ps {
+			ps[i] = TAny{}
+			vals[i] = fmt.Sprintf("rbArgAt(xs_, %d)", i)
+		}
+		clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
+		return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { return (%s)(%s) }}", clo, strings.Join(vals, ", ")), true
+	case *parser.BlockArgumentNode:
+		if b.Expression == nil || !f.isBlockParam(b.Expression) {
+			return "", false
+		}
+		e := f.genExpr(b.Expression, nil)
+		fn, opt := e.typ.(TFunc)
+		if o, ok := e.typ.(TOpt); ok {
+			fn, opt = o.Elem.(TFunc)
+			if opt && fn.Rest && len(fn.Params) == 1 && isAny(fn.Params[0]) && isAny(fn.Ret) {
+				return "rbBlockArgOf(" + e.code + ")", true
+			}
+			return "", false
+		}
+		if opt && fn.Rest && len(fn.Params) == 1 && isAny(fn.Params[0]) && isAny(fn.Ret) {
+			return "rbBlockArg{fn: " + e.code + "}", true
+		}
+	}
+	return "", false
 }
 
 // noteDynAll: a computed name may be any method; from a gem file, or a prelude forwarder (SimpleDelegator's
@@ -8341,6 +8406,11 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return f.genGlobalRead(&alias)
 	}
 	switch n.Name {
+	case "$!": // the exception a rescue clause handles (decision 244); ponytail: elsewhere nil, where MRI's is the frame's last
+		if f.rescues > 0 {
+			return expr{code: "Ref[ExceptionI](rbAs[ExceptionI](r_, \"Exception\"))", typ: TOpt{Elem: f.cls("Exception")}}
+		}
+		return expr{code: "nil", typ: TOpt{Elem: f.cls("Exception")}}
 	case "$0", "$PROGRAM_NAME":
 		name := f.c.programFile.Name
 		f.c.strLits[name] = true
@@ -8360,7 +8430,7 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	case "$/": // the input record separator: chomp's default (decision 180)
 		return expr{code: "rbRS", typ: TOpt{Elem: f.cls("String")}}
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $stdin, $stdout, $stderr, $VERBOSE, $/ and $? are (docs/design.md decision 61)", n.Name)
+	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $!, $stdin, $stdout, $stderr, $VERBOSE, $/ and $? are (docs/design.md decision 61)", n.Name)
 	return expr{}
 }
 
@@ -8528,8 +8598,37 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 
 // genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
 // (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
+// parenBang is a gem's `(o = q.downcase).tr!('_', '-')`: the assignment, then the bang on o (decision 244).
+func (f *fctx) parenBang(n *parser.CallNode) (expr, bool) {
+	w := parenWrite(n.Receiver)
+	if w == nil || !f.lenient() || !strings.HasSuffix(n.Name, "!") {
+		return expr{}, false
+	}
+	f.emitExprStmt(w, f.genExpr(w, nil))
+	bang := *n
+	bang.Receiver = &parser.LocalVariableReadNode{Location: w.NameLoc, Name: w.Name, Depth: w.Depth}
+	return f.genStringBang(&bang)
+}
+
+// parenWrite is `(x = v)`'s write, or nil.
+func parenWrite(n parser.Node) *parser.LocalVariableWriteNode {
+	pn, ok := n.(*parser.ParenthesesNode)
+	if !ok {
+		return nil
+	}
+	st, ok := pn.Body.(*parser.StatementsNode)
+	if !ok || len(st.Body) != 1 {
+		return nil
+	}
+	w, _ := st.Body[0].(*parser.LocalVariableWriteNode)
+	return w
+}
+
 func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if e, ok := f.genOutBuffer(n); ok {
+		return e, true
+	}
+	if e, ok := f.parenBang(n); ok {
 		return e, true
 	}
 	if inner, ok := n.Receiver.(*parser.CallNode); ok && n.Name == "<<" && inner.Name == "<<" { // `x << a << b`: x << a, then x << b
