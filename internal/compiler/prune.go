@@ -716,7 +716,7 @@ func (p *pruner) visitSwitch(x *ast.SwitchStmt) {
 	for _, st := range x.Body.List {
 		cc := st.(*ast.CaseClause)
 		if lit, ok := singleString(cc); ok && dynGen {
-			if d := "rbDyn" + goMethodName(strings.TrimPrefix(lit, "_")); !p.names[d] {
+			if d := "rbDyn" + goMethodName(strings.TrimPrefix(lit, dynPrivKey)); !p.names[d] {
 				p.pending[cc] = []string{d}
 				continue
 			}

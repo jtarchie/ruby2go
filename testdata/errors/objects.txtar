@@ -360,6 +360,15 @@ Coord.new(lat: 1.0, lng: 2.0, alt: 3.0)
 Point = Struct.new(:x, :y) #: [Integer, Integer]
 
 Point.new(x: 1, z: 2)
+-- struct_member_not_identifier.rb --
+# error: main.rb:2: struct member :"a b" is not a valid member name
+Point = Struct.new(:x, :"a b") #: [Integer, Integer]
+-- struct_member_predicate_name.rb --
+# error: main.rb:2: struct member :"ok?" is not a valid member name
+Point = Struct.new(:"ok?") #: [bool]
+-- data_member_not_identifier.rb --
+# error: main.rb:2: data member :"x-y" is not a valid member name
+Coord = Data.define(:"x-y") #: [Float]
 -- data_positional_too_few.rb --
 # error: main.rb:4: Coord#initialize: wrong number of arguments (given 1, expected 2)
 Coord = Data.define(:lat, :lng) #: [Float, Float]

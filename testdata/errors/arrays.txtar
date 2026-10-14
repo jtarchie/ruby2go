@@ -260,3 +260,7 @@ nums << nil
 # warning: main.rb:3: size called on possibly-nil Array[Integer] (raises NoMethodError on nil)
 h = { "a" => [1] } #: Hash[String, Array[Integer]]
 puts h["a"].size
+-- tuple_eq_no_args.rb --
+# error: main.rb:3: Array#==: wrong number of arguments (given 0, expected 1)
+t = [1, "a", :b]
+p t.==()

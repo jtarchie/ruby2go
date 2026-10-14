@@ -13,6 +13,11 @@ module RegexpTests
       assert_equal ["a", "a"], "a b a".scan(/a # (note)/x) # no groups: strings, not rows
     end
 
+    def test_rooted_regexp_new_lookbehind
+      assert ::Regexp.new("(?<=a)b").match?("ab")
+      refute ::Regexp.new("(?<=a)b").match?("cb")
+    end
+
     def test_interpolated_x_scan
       note = "(a) # (note)"
       assert_equal ["a"], "a a".match(/#{note}/x).captures

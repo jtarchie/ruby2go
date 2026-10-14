@@ -71,7 +71,10 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 	return len(emitted) > 0
 }
 
-// dynGenCase is one wrapper body of a generic class, keyed by its Ruby name ("_" + name when private).
+// dynPrivKey prefixes a private method's _DynGen key: NUL cannot start a Ruby name, where "_" also starts a public `_foo`.
+const dynPrivKey = "\x00"
+
+// dynGenCase is one wrapper body of a generic class, keyed by its Ruby name (dynPrivKey + name when private).
 type dynGenCase struct{ key, body string }
 
 // emitDynGen emits this batch's wrappers of each generic class as one method switching on the name. Go compiles
@@ -336,7 +339,7 @@ func (c *Compiler) emitDynName(name string) {
 		}
 		key := name
 		if w.private {
-			key, genPrivate = "_"+name, true
+			key, genPrivate = dynPrivKey+name, true
 		} else {
 			genPublic = true
 		}
@@ -375,7 +378,7 @@ func (c *Compiler) emitDynName(name string) {
 		c.w("\tif r, ok := recv.(interface{ _Dyn%s(...any) any }); ok && how != rbCall {\n\t\treturn r._Dyn%s(args...)\n\t}\n", gn, gn)
 	}
 	if genPrivate {
-		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok && how != rbCall {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, "_"+name)
+		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok && how != rbCall {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, dynPrivKey+name)
 	}
 	// every object has Kernel#===, so method_missing is never reached for it
 	if name != "method_missing" && name != "===" {
@@ -666,7 +669,7 @@ func (c *Compiler) dynWrapperBodyOrWarn(cls *Class, e *entry, name string) (body
 			if !ok {
 				panic(r)
 			}
-			c.Warnings = append(c.Warnings, fmt.Sprintf("%s#%s cannot be called dynamically: %s", cls.RubyName, name, ce.msg))
+			c.warn(nil, nil, "%s#%s cannot be called dynamically: %s", cls.RubyName, name, ce.msg)
 			body = ""
 		}
 	}()

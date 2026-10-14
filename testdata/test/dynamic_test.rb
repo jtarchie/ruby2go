@@ -3077,4 +3077,32 @@ module DynamicTests
       assert_equal({ "q" => 1, "r" => 2 }, g.merge(r2))
     end
   end
+
+  # _DynGen keyed a private method "_name": a public `_name` shared the key (duplicate case, or its case pruned) (#101)
+  class DynGenPrivateKeyTest < Minitest::Test
+    def test_public_underscore_and_private_plain_name_on_generic_receiver
+      x = [1] #: untyped
+      assert_equal ["pub", "both"], [x._dyngen_pub, x._dyngen_both]
+      assert_equal "priv", x.send(:dyngen_both)
+      assert_equal "priv2", x.send(:dyngen_priv)
+      ok = [x.dyngen_both, x.dyngen_priv].map { "no" } rescue :nomethod
+      assert_equal :nomethod, ok
+    end
+  end
+end
+
+class Array
+  #: () -> String
+  def _dyngen_pub = "pub"
+
+  #: () -> String
+  def _dyngen_both = "both"
+
+  private
+
+  #: () -> String
+  def dyngen_both = "priv"
+
+  #: () -> String
+  def dyngen_priv = "priv2"
 end

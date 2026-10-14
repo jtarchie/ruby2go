@@ -500,9 +500,11 @@ func (r *reach) call(n *parser.CallNode) bool {
 	args := callArgs(n)
 	// respond_to_missing? forwarding respond_to?(name) passes on a name some other call already spelled
 	if reflectiveCalls[n.Name] && len(args) > 0 && (n.Name != "respond_to?" || r.from != "def respond_to_missing?") {
-		if _, ok := symbolName(args[0]); !ok && n.Name == "const_get" {
+		if name, ok := symbolName(args[0]); !ok && n.Name == "const_get" {
 			r.constGet(n)
-		} else if !ok {
+		} else if ok {
+			r.add(name) // a string literal names the method as a symbol literal does (walk adds the symbol's)
+		} else {
 			r.dynamic = "a computed " + n.Name + " in " + r.from
 		}
 	}

@@ -5818,6 +5818,7 @@ var tupleMutators = map[string]bool{"<<": true, "[]=": true, "push": true, "appe
 
 func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	tt := recv.typ.(TTuple)
+	noArgs, oneArg := len(args) == 0 && block == nil, len(args) == 1 && block == nil
 	switch name {
 	case "[]":
 		if len(args) == 1 {
@@ -5826,30 +5827,38 @@ func (f *fctx) tupleCall(n parser.Node, recv expr, name string, args []parser.No
 			}
 		}
 		f.errorf(n, "tuple index must be a literal in range")
-	case "first":
-		return expr{code: recv.code + ".F0", typ: tt.Elems[0]}
+	case "first": // first(n) answers an Array: it falls to the Array of the fields below
+		if noArgs {
+			return expr{code: recv.code + ".F0", typ: tt.Elems[0]}
+		}
 	case "last":
-		return expr{code: fmt.Sprintf("%s.F%d", recv.code, len(tt.Elems)-1), typ: tt.Elems[len(tt.Elems)-1]}
+		if noArgs {
+			return expr{code: fmt.Sprintf("%s.F%d", recv.code, len(tt.Elems)-1), typ: tt.Elems[len(tt.Elems)-1]}
+		}
 	case "to_s", "inspect":
 		return expr{code: recv.code + "." + goMethodName(name) + "()", typ: f.cls("String")}
 	case "to_a": // the fields as an Array, joined (decision 241)
-		if len(args) == 0 && block == nil {
+		if noArgs {
 			return f.tupleArray(n, recv, tt)
 		}
 	case "to_json":
 		return expr{code: recv.code + ".ToJson(" + strings.Join(f.jsonArgs(args), ", ") + ")", typ: f.cls("String")}
 	case "<=>":
-		a := f.genExpr(args[0], recv.typ)
-		return expr{code: recv.code + ".Op_cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
-	case "==":
-		a := f.genExpr(args[0], nil)
-		code := a.code // the same tuple type compares field-wise, without converting
-		if !typeEq(a.typ, recv.typ) {
-			code = f.coerce(args[0], a, TAny{})
+		if oneArg {
+			a := f.genExpr(args[0], recv.typ)
+			return expr{code: recv.code + ".Op_cmp(" + f.coerce(args[0], a, recv.typ) + ")", typ: f.cls("Integer")}
 		}
-		return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+	case "==":
+		if oneArg {
+			a := f.genExpr(args[0], nil)
+			code := a.code // the same tuple type compares field-wise, without converting
+			if !typeEq(a.typ, recv.typ) {
+				code = f.coerce(args[0], a, TAny{})
+			}
+			return expr{code: recv.code + ".Op_eq(" + code + ")", typ: f.cls("Boolean")}
+		}
 	case "pack": // a mixed literal like [str, n].pack("a4N") is a tuple; rbPack takes its fields as one []any (decision 138)
-		if len(args) == 1 && block == nil {
+		if oneArg {
 			code := recv.code
 			if !isSimpleGo(code) { // the receiver first, as Ruby evaluates it, then the format
 				code = f.newTmp()
@@ -7687,17 +7696,9 @@ func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []pa
 	if !ok {
 		return args
 	}
-	byName := map[string]parser.Node{}
-	for _, el := range kw.Elements {
-		a, ok := el.(*parser.AssocNode)
-		if !ok {
-			return args
-		}
-		sym, isSym := a.Key.(*parser.SymbolNode)
-		if !isSym {
-			return args // a Hash argument, not keywords
-		}
-		byName[sym.Unescaped.Value] = a.Value
+	byName, order, bad := kwMap(kw)
+	if bad != nil {
+		return args // a splat or a Hash argument, not keywords
 	}
 	out := make([]parser.Node, len(vr.valueMembers))
 	for i, m := range vr.valueMembers {
@@ -7712,10 +7713,32 @@ func (f *fctx) keywordMembers(n parser.Node, vr *Class, args []parser.Node) []pa
 		}
 		out[i] = v
 	}
-	for k := range byName {
-		f.errorf(n, "unknown keyword: :%s", k)
+	for _, k := range order {
+		if _, left := byName[k]; left {
+			f.errorf(n, "unknown keyword: :%s", k)
+		}
 	}
 	return out
+}
+
+// kwMap: a keyword hash by name plus source order (a map ranges randomly); bad is the first non-symbol pair, else nil.
+func kwMap(kw *parser.KeywordHashNode) (byName map[string]parser.Node, order []string, bad parser.Node) {
+	byName = map[string]parser.Node{}
+	for _, el := range kw.Elements {
+		a, ok := el.(*parser.AssocNode)
+		if !ok {
+			return nil, nil, el
+		}
+		sym, isSym := a.Key.(*parser.SymbolNode)
+		if !isSym {
+			return nil, nil, el
+		}
+		if _, dup := byName[sym.Unescaped.Value]; !dup {
+			order = append(order, sym.Unescaped.Value)
+		}
+		byName[sym.Unescaped.Value] = a.Value
+	}
+	return byName, order, nil
 }
 
 // genDataWith compiles `value.with(k: v)`: a copy with some members
@@ -7739,21 +7762,15 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 	}
 	vr := cls.valueRoot()
 	byName := map[string]parser.Node{}
+	var order []string
 	if len(args) == 1 {
 		kw, ok := args[0].(*parser.KeywordHashNode)
 		if !ok {
 			f.errorf(n, "with takes keyword arguments")
 		}
-		for _, el := range kw.Elements {
-			a, ok := el.(*parser.AssocNode)
-			if !ok {
-				f.errorf(el, "with takes keyword arguments")
-			}
-			sym, isSym := a.Key.(*parser.SymbolNode)
-			if !isSym {
-				f.errorf(el, "with takes keyword arguments")
-			}
-			byName[sym.Unescaped.Value] = a.Value
+		var bad parser.Node
+		if byName, order, bad = kwMap(kw); bad != nil {
+			f.errorf(bad, "with takes keyword arguments")
 		}
 	} else if len(args) > 1 {
 		f.errorf(n, "with takes keyword arguments")
@@ -7772,8 +7789,10 @@ func (f *fctx) genDataWith(n parser.Node, recv expr, args []parser.Node) (expr, 
 		delete(byName, m)
 		nodes[i] = v
 	}
-	for k := range byName {
-		f.errorf(n, "unknown keyword: :%s", k)
+	for _, k := range order {
+		if _, left := byName[k]; left {
+			f.errorf(n, "unknown keyword: :%s", k)
+		}
 	}
 	return f.genMethodCall(n, recv, "__with", nodes, nil), true
 }
@@ -9440,8 +9459,14 @@ func (f *fctx) runtimeExtend(n *parser.CallNode) (expr, bool) {
 // noteRuntimeRegexp: Regexp.new/compile/union of anything but string literals RE2 compiles builds a pattern only run
 // time knows, so the program gets the regexp2 engine (decision 242).
 func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
-	r, ok := n.Receiver.(*parser.ConstantReadNode)
-	if !ok || r.Name != "Regexp" || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.prelude {
+	isRegexp := false
+	switch r := n.Receiver.(type) {
+	case *parser.ConstantReadNode:
+		isRegexp = r.Name == "Regexp"
+	case *parser.ConstantPathNode: // ::Regexp
+		isRegexp = r.Parent == nil && r.Name != nil && *r.Name == "Regexp"
+	}
+	if !isRegexp || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.prelude {
 		return
 	}
 	for _, a := range callArgs(n) {
@@ -9450,7 +9475,7 @@ func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
 			f.c.needRxAlt = true
 			return
 		}
-		p, err := translateRegexp(s.Unescaped.Value)
+		p, err := rxPrepare(s.Unescaped.Value, false) // only decides whether the alternate engine is needed
 		if err == nil && n.Name != "union" {
 			_, err = regexp.Compile(p)
 		}

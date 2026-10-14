@@ -2399,6 +2399,44 @@ module ArrayTests
     end
   end
 
+  # an unannotated def whose [] literal is typed on a refinement round joined the untyped first run's return (#101)
+  class ArrayRetEvidenceTest < Minitest::Test
+    def ret_one
+      r = []
+      r << 1
+      r
+    end
+
+    def ret_early(n)
+      r = []
+      r << "a"
+      return r if n > 5
+      r.push("b")
+      r
+    end
+
+    def ret_hash(n)
+      h = {}
+      h[:a] = n
+      return h if n > 1
+      h
+    end
+
+    def test_refined_literal_return
+      assert_equal [1], ret_one
+      assert_equal [["a"], ["a", "b"], { a: 2 }], [ret_early(9), ret_early(1), ret_hash(2)]
+    end
+  end
+
+  # tupleCall ignored the count and returned the scalar field (#101)
+  class ArrayTupleFirstLastNTest < Minitest::Test
+    def test_first_last_with_count
+      t = [1, "a", :b]
+      assert_equal [[1, "a"], ["a", :b], 1, :b, [], [1, "a", :b]], [t.first(2), t.last(2), t.first, t.last, t.first(0), t.last(5)]
+      assert_equal [0, true], [t <=> [1, "a", :b], t == [1, "a", :b]]
+    end
+  end
+
   # Array#*: repeat by an Integer, join by a String (also through an untyped value)
   class ArrayMulTest < Minitest::Test
     def test_mul

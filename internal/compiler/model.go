@@ -3896,6 +3896,9 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 		if !ok {
 			c.errorf(f, a, "%s members must be symbols", kind)
 		}
+		if m := sym.Unescaped.Value; !isIdentMethod(m) || strings.HasSuffix(m, "?") || strings.HasSuffix(m, "!") { // it is spliced into generated Ruby (`@m`, `self.m`)
+			c.errorf(f, a, "%s member :%q is not a valid member name (letters, digits and _ only)", kind, m)
+		}
 		members = append(members, sym.Unescaped.Value)
 		syms = append(syms, a)
 	}

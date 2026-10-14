@@ -1062,9 +1062,7 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 			return "(" + e.code + ") != nil"
 		}
 	}
-	if !f.c.gemFile(f.f) {
-		f.c.Warnings = append(f.c.Warnings, fmt.Sprintf("%s:%d: condition of type %s is always true", f.f.Name, f.f.line(n.GetLocation().StartOffset), e.typ))
-	}
+	f.warn(n, "condition of type %s is always true", e.typ)
 	// value types (Integer, String) can't be compared to nil; keep the evaluation and the local's use
 	f.emit("_ = %s", e.code)
 	return "true"
@@ -2648,6 +2646,16 @@ func (f *fctx) poisonedBody(t tail, prologue func()) {
 func (f *fctx) analyze(fresh func(), run func(int)) {
 	nw := len(f.c.Warnings)
 	saved := *f
+	nRet := 0
+	if f.retTypes != nil {
+		nRet = len(*f.retTypes)
+	}
+	restore := func() { // the return evidence of a run that is redone (untyped, refined) must not join the next's
+		*f = saved
+		if f.retTypes != nil {
+			*f.retTypes = (*f.retTypes)[:nRet]
+		}
+	}
 	f.convs = map[int]bool{}
 	orig := catchCompileError(func() { run(1) }) // `[].max` fails until the literal is typed
 	for range 4 {                                // a reassigned gem param fails the rest of the run that widened it: again on its widened copy (decision 241)
@@ -2655,7 +2663,7 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 			break
 		}
 		w := f.paramWiden
-		*f = saved
+		restore()
 		f.paramWiden, saved.paramWiden = w, w
 		f.convs = map[int]bool{}
 		fresh()
@@ -2673,14 +2681,14 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 			order = append(order, k)
 			refined[k] = add[k]
 		}
-		*f = saved
+		restore()
 		f.refined, f.convs = refined, map[int]bool{}
 		fresh()
 		_ = catchCompileError(func() { run(1) }) // discovery only: try() decides
 	}
 	try := func(set map[localKey]Type) bool {
 		f.c.dropWarnings(nw) // the untyped run's, e.g. dynamic calls on elements
-		*f = saved
+		restore()
 		f.refined, f.convs = set, map[int]bool{}
 		fresh()
 		return catchCompileError(func() { run(1) }) == nil && !f.newConv(before) &&
@@ -2697,7 +2705,7 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 			return
 		}
 		f.c.dropWarnings(nw)
-		*f = saved
+		restore()
 		fresh()
 		run(1)
 	} else if orig != nil {
