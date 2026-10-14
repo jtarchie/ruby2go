@@ -83,11 +83,16 @@ class Thread < Object
     return self
   }
 
-  # nil on timeout, self once the thread finishes within it.
-  #: (Float) -> Thread?
+  # nil on timeout, self once the thread finishes within it; a nil timeout waits as join does (Homebrew's
+  # `wait_thr.join(Utils::Timer.remaining(end_time))`).
+  #: (Float?) -> Thread?
   def __join_1(timeout) = %x{
+    if timeout == nil {
+      r := self.Join()
+      return &r
+    }
     self.notSelf()
-    timer := time.After(time.Duration(math.Round(float64(timeout) * 1e9)))
+    timer := time.After(time.Duration(math.Round(float64(*timeout) * 1e9)))
     select {
     case <-self.done:
     default: // a finished thread wins even if the timer has fired by now: select picks among ready cases at random

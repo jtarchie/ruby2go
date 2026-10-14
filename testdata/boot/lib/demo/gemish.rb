@@ -748,3 +748,31 @@ end
 module DemoPoster
   def self.go(ex) = ex.post([1, 2], :task) { |args, task| [args, task] }
 end
+
+# Homebrew's CaskDependent#deps: `depends_on.formula.map { |f| Dependency.new f }` on an untyped receiver; its Hash
+# arm's pair where a String is wanted is checked at run time, not a Go type error (decision 258).
+class DemoCaskDep
+  #: (String) -> void
+  def initialize(name) = @name = name
+  def to_s = "dep:#{@name}"
+end
+
+class DemoCaskDeps
+  def formula = @formula ||= ["wget"]
+end
+
+module DemoCaskDepsUser
+  def self.deps(on) = on.formula.map { |f| DemoCaskDep.new f }.map(&:to_s)
+end
+
+# Homebrew's `class Pathname; alias to_str to_s; end`: a Pathname where a String is taken converts through that to_str
+# (Mktemp#run's `Dir.chdir(@tmpdir) { ... }`, decision 258).
+class Pathname
+  alias to_str to_s
+end
+
+class DemoChdir
+  #: (Pathname) -> void
+  def initialize(dir) = @dir = dir
+  def run = Dir.chdir(@dir) { Dir.pwd }
+end

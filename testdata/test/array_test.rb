@@ -2510,5 +2510,12 @@ module ArrayTests
       none = [] #: Array[Integer]
       assert_equal [1, nil], [array_first_set([1, 2]), array_first_set(none)]
     end
+
+    def test_unshift_and_prepend_take_many
+      a = ["x"]
+      a.unshift("a", "b")
+      a.prepend("--t", "c")
+      assert_equal ["--t", "c", "a", "b", "x"], a
+    end
   end
 end

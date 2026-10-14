@@ -5603,5 +5603,11 @@ module ControlTests
       end
       assert_equal "bad", e
     end
+
+    def test_thread_join_nil_timeout_waits
+      lim = nil #: Float?
+      t = Thread.new { 2 }
+      assert_equal 2, t.join(lim)&.value
+    end
   end
 end

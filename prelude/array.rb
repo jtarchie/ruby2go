@@ -219,12 +219,14 @@ class Array < Object
     return &x
   }
 
-  #: (E) -> self
-  def unshift(x) = %x{
+  #: (*E) -> self
+  def unshift(*xs) = %x{
     self.rbCheckFrozen()
-    self.s = append([]E{x}, self.s...)
+    self.s = append(slices.Clone(rest_), self.s...)
     return self
   }
+
+  alias prepend unshift
 
   #: (Array[E]) -> self
   def concat(other) = %x{

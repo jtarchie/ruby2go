@@ -1504,6 +1504,11 @@ func (f *fctx) goTypeGuard(n parser.Node, e expr, to Type) string {
 		if from == "any" {
 			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, t.String()))
 		}
+		if _, ok := e.typ.(TTuple); ok && t.C.RubyName != "Array" {
+			// a Hash arm's `|pair|` where a String is wanted (Homebrew's `depends_on.formula.map { |f| Dependency.new f }` on
+			// an untyped receiver): an Array there, raising if that arm runs (decision 258)
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, f.coerceToAny(e), t.String()))
+		}
 	case TAny, TFunc, TNil, TTuple, TUnion, TVoid:
 		if from == "any" && !isUnion(to) {
 			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, to.String()))
@@ -9099,7 +9104,7 @@ func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
 	}
 	if conv == "to_str" && f.resolve(from, conv) == nil && f.resolve(from, "to_path") != nil {
 		conv = "to_path" // a path object where a String is taken: MRI's path parameters call to_path first (rb2go types paths as String)
-	} else if from.C.GoType != "" { // a struct class: a core value type's own rules stand (Float is not an Integer); a Pathname's to_path is a path's (decision 253)
+	} else if from.C.GoType != "" && conv != "to_str" { // a struct class: a core value type's own rules stand (Float is not an Integer); a Pathname's to_path is a path's (decision 253), and a to_str it is given (Homebrew's `alias to_str to_s`) converts (decision 258)
 		return "", false
 	}
 	if f.resolve(from, conv) == nil {

@@ -94,6 +94,8 @@ ta = [:x, 1, true] #: Array[untyped]
 tb = [] #: Array[untyped]
 p DemoThenTask.new(ta) { |v, sym, n, flag| [v, sym, n, flag] }.run(6), DemoTaskBase.new(tb) { |v| v }.run(1)
 p DemoPoster.go(DemoRubyExec.new), DemoPoster.go(DemoImmediateExec.new)
+p DemoCaskDepsUser.deps([DemoCaskDeps.new, Object.new].first)
+p DemoChdir.new(Pathname.new("/")).run
 dsc = DemoSandboxCmd.new
 dsa = dsc.options
 dsc.sandbox_inheritance = $stdout
