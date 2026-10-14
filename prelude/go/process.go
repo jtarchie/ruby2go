@@ -98,22 +98,37 @@ func rbCommand(cmd string, args []String) *exec.Cmd {
 func rbRunCommand(c *exec.Cmd) (started bool) {
 	rbFlush()
 	err := c.Run()
-	st := &Process_Status{code: 0}
+	var ee *exec.ExitError
+	if err != nil && !errors.As(err, &ee) {
+		rbLastStatus.Store(&Process_Status{code: 127})
+		return false
+	}
+	rbLastStatus.Store(rbStatusOf(c))
+	return true
+}
+
+// rbStatusOf reads a waited command's exit code, or the signal that ended it (ExitCode is -1 then), into a Process::Status.
+func rbStatusOf(c *exec.Cmd) *Process_Status {
+	st := &Process_Status{}
 	if c.Process != nil {
 		st.pid = c.Process.Pid
 	}
-	var ee *exec.ExitError
-	switch {
-	case err == nil:
-	case errors.As(err, &ee):
-		st.code = ee.ExitCode()
-	default:
-		st.code = 127
-		rbLastStatus.Store(st)
-		return false
+	if ps := c.ProcessState; ps != nil {
+		if ws, ok := ps.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			st.sig, st.core = int(ws.Signal()), ws.CoreDump()
+		} else {
+			st.code = ps.ExitCode()
+		}
 	}
-	rbLastStatus.Store(st)
-	return true
+	return st
+}
+
+// rbStatusString is Process::Status#to_s: "pid 7 exit 3", or "pid 7 SIGKILL (signal 9)".
+func rbStatusString(st *Process_Status) String {
+	if st.sig != 0 {
+		return String(fmt.Sprintf("pid %d SIG%s (signal %d)", st.pid, rbSignalName(syscall.Signal(st.sig)), st.sig))
+	}
+	return String(fmt.Sprintf("pid %d exit %d", st.pid, st.code))
 }
 
 func rbSystem(cmd string, args []String) *Boolean {
@@ -122,7 +137,8 @@ func rbSystem(cmd string, args []String) *Boolean {
 	if !rbRunCommand(c) {
 		return nil
 	}
-	return Ref(Boolean(rbLastStatus.Load().code == 0))
+	st := rbLastStatus.Load()
+	return Ref(Boolean(st.sig == 0 && st.code == 0))
 }
 
 func rbBacktick(cmd string) String {
@@ -153,9 +169,18 @@ type rbChild struct {
 func rbSpawn(cmd string, args []String) Integer {
 	c := rbCommand(cmd, args)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return rbStartChild(c, nil)
+}
+
+// rbStartChild flushes stdout, starts c, closes the parent's copies of its redirection files and registers it for Process.wait (decision 107).
+func rbStartChild(c *exec.Cmd, closers []*os.File) Integer {
 	rbFlush()
-	if err := c.Start(); err != nil {
-		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + cmd))))
+	err := c.Start()
+	for _, f := range closers {
+		_ = f.Close()
+	}
+	if err != nil {
+		panic(rbExecErr(err, c.Path))
 	}
 	ch := &rbChild{cmd: c, done: make(chan struct{})}
 	rbChildrenMu.Lock()
@@ -194,12 +219,7 @@ func rbWait(pid int) Integer {
 		panic(NewErrno_ECHILD(Ref(String("No child processes"))))
 	}
 	<-ch.done
-	st := &Process_Status{pid: pid}
-	var ee *exec.ExitError
-	if errors.As(ch.err, &ee) {
-		st.code = ee.ExitCode()
-	}
-	rbLastStatus.Store(st)
+	rbLastStatus.Store(rbStatusOf(ch.cmd))
 	return Integer(pid)
 }
 
@@ -259,14 +279,11 @@ func rbPopen(cmd any, mode string, opts *Hash[Symbol, any]) *IO {
 				args, opts = args[:len(args)-1], o
 			}
 		}
-		if _, env := rbUnbox(args[0]).(Hash_Any); len(args) == 0 || env && len(args) == 1 {
-			panic(NewArgumentError(Ref(String("wrong number of arguments"))))
-		}
 	default:
 		panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(cmd) + " into String"))))
 	}
-	c := rbSpawnCmd(args, opts)
-	var ours, theirs []*os.File // our ends, then the child's, closed in the parent once it starts
+	c, theirs := rbSpawnCmd(args, opts)
+	var ours []*os.File // our pipe ends; theirs are the child's, closed in the parent once it starts
 	pipe := func() (*os.File, *os.File) {
 		r, w, err := os.Pipe()
 		if err != nil {
@@ -297,20 +314,15 @@ func rbPopen(cmd any, mode string, opts *Hash[Symbol, any]) *IO {
 		for _, f := range ours {
 			_ = f.Close()
 		}
-		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
+		panic(rbExecErr(err, c.Path))
 	}
 	return rbIONew(rf, wf, c)
 }
 
 // rbPopenReap waits for popen's child, its pipes already closed, and records $?.
 func rbPopenReap(c *exec.Cmd) {
-	err := c.Wait()
-	st := &Process_Status{code: 0, pid: c.Process.Pid}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		st.code = ee.ExitCode()
-	}
-	rbLastStatus.Store(st)
+	_ = c.Wait()
+	rbLastStatus.Store(rbStatusOf(c))
 }
 
 // rbLastStatusOpt is $?: the last child's status, nil before any.
@@ -326,24 +338,27 @@ func rbLastStatusOpt() **Process_Status {
 // the options it honours: in:/out:/err: (an IO, a path String, or :close), chdir:, pgroup:, unsetenv_others:.
 // ponytail: other options (umask:, close_others:, an Integer fd key) are accepted and ignored.
 func rbSpawnFull(args []any, opts *Hash[Symbol, any]) Integer {
-	c := rbSpawnCmd(args, opts)
-	rbFlush()
-	if err := c.Start(); err != nil {
-		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + c.Path))))
-	}
-	ch := &rbChild{cmd: c, done: make(chan struct{})}
-	rbChildrenMu.Lock()
-	rbChildren[c.Process.Pid] = ch
-	rbChildrenMu.Unlock()
-	go func() {
-		ch.err = c.Wait()
-		close(ch.done)
-	}()
-	return Integer(c.Process.Pid)
+	c, closers := rbSpawnCmd(args, opts)
+	return rbStartChild(c, closers)
 }
 
-// rbSpawnCmd is the command rbSpawnFull and rbPopen start: its env, argv and redirections, not yet started.
-func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) *exec.Cmd {
+// rbSpawnCmd is the command rbSpawnFull and rbPopen start, not yet started; closers are the path redirections it opened, for the caller to close once the child holds its copies.
+func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os.File) {
+	defer func() {
+		if r := recover(); r != nil { // a later option failed: release what earlier ones opened
+			for _, f := range closers {
+				_ = f.Close()
+			}
+			panic(r)
+		}
+	}()
+	redirect := func(v any, flag int, reading bool) *os.File {
+		f, owned := rbSpawnFile(v, flag, reading)
+		if owned {
+			closers = append(closers, f)
+		}
+		return f
+	}
 	var env map[string]any
 	if len(args) > 0 {
 		if h, ok := args[0].(Hash_Any); ok {
@@ -358,7 +373,6 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) *exec.Cmd {
 	if len(args) == 0 {
 		panic(NewArgumentError(Ref(String("wrong number of arguments (given 0, expected 1+)"))))
 	}
-	var c *exec.Cmd
 	argv0 := ""
 	rest := make([]String, 0, len(args)-1)
 	for _, a := range args[1:] {
@@ -388,11 +402,11 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) *exec.Cmd {
 			v := rbUnbox(opts.vals[k])
 			switch string(k) {
 			case "in":
-				c.Stdin = rbSpawnFile(v, os.O_RDONLY, true)
+				c.Stdin = redirect(v, os.O_RDONLY, true)
 			case "out":
-				c.Stdout = rbSpawnFile(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
+				c.Stdout = redirect(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
 			case "err":
-				c.Stderr = rbSpawnFile(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
+				c.Stderr = redirect(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
 			case "chdir":
 				c.Dir = fmt.Sprint(v)
 			case "pgroup":
@@ -435,26 +449,26 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) *exec.Cmd {
 			}
 		}
 	}
-	return c
+	return c, closers
 }
 
-// rbSpawnFile is a spawn redirection's file: an IO's own descriptor, a path opened with flag, or none for :close.
-func rbSpawnFile(v any, flag int, reading bool) *os.File {
+// rbSpawnFile is a spawn redirection's file: an IO's own descriptor, a path opened with flag (owned: the caller closes it), or none for :close.
+func rbSpawnFile(v any, flag int, reading bool) (f *os.File, owned bool) {
 	switch x := v.(type) {
 	case *IO:
 		if reading && x.rf != nil {
-			return x.rf
+			return x.rf, false
 		}
 		if !reading && x.wf != nil {
-			return x.wf
+			return x.wf, false
 		}
-		return x.rbOSFile()
+		return x.rbOSFile(), false
 	case String:
 		f, err := os.OpenFile(string(x), flag, 0o644) //nolint:gosec // the program's own redirection
 		if err != nil {
 			panic(rbSysErr(err, "rb_sysopen", string(x)))
 		}
-		return f
+		return f, true
 	}
-	return nil // :close, nil
+	return nil, false // :close, nil
 }

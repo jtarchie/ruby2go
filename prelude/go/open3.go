@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"io/fs"
+	"os"
 	"os/exec"
 )
 
@@ -32,8 +33,7 @@ func rbExecErr(err error, name string) any {
 
 // rbOpen3Status reads a finished command's exit info into a Process::Status.
 func rbOpen3Status(c *exec.Cmd) *Process_Status {
-	ps := c.ProcessState
-	return &Process_Status{pid: ps.Pid(), code: ps.ExitCode()}
+	return rbStatusOf(c)
 }
 
 // rbOpen3Run raises Errno only on a start failure; a nonzero exit is a normal Process::Status.
@@ -49,7 +49,8 @@ func rbOpen3Run(c *exec.Cmd, name string) *Process_Status {
 func rbOpen3Capture2(name string, rest []String) (String, *Process_Status) {
 	c := rbOpen3Cmd(name, rest)
 	var out bytes.Buffer
-	c.Stdout = &out
+	c.Stdout, c.Stderr = &out, os.Stderr // the child's stderr is the program's, as MRI
+	rbFlush()
 	st := rbOpen3Run(c, name)
 	return String(out.String()), st
 }

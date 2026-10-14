@@ -68,6 +68,7 @@ func rbThreadStart(t *Thread, run func() any) *Thread {
 		id := rbGoID()
 		rbThreadOf.Store(id, t)
 		defer rbThreadOf.Delete(id)
+		defer rbRootFibers.Delete(t) // Fiber.current's root fiber for this thread
 		if inRactor {
 			rbRactorOf.Store(id, ractor)
 			defer rbRactorOf.Delete(id)

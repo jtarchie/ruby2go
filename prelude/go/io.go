@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -270,13 +271,19 @@ func rbDupFd(fd int) int {
 	return nfd
 }
 
-var rbPinnedFiles []*os.File
+// rbPinnedFiles never shrinks: an os.File's finalizer closes its fd and cannot be cleared, so unpinning a closed IO's file would close the borrowed fd later.
+var (
+	rbPinMu       sync.Mutex // a leaf: held only around the map, never across a callback
+	rbPinnedFiles = map[*os.File]struct{}{}
+)
 
 // rbPinFiles keeps borrowed descriptors' os.Files reachable: their finalizer would close a fd another IO still owns.
 func rbPinFiles(fs ...*os.File) {
+	rbPinMu.Lock()
+	defer rbPinMu.Unlock()
 	for _, f := range fs {
 		if f != nil {
-			rbPinnedFiles = append(rbPinnedFiles, f)
+			rbPinnedFiles[f] = struct{}{}
 		}
 	}
 }

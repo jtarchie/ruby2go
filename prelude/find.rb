@@ -10,6 +10,6 @@ module Find
 
   #: () -> nil
   def self.prune = %x{
-    findPruneRequested = true
+    rbFindPrune()
   }
 end

@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -207,28 +206,25 @@ func rbGlobWalk(dir, prefix string, segs []string, out *[]string) {
 	if err != nil {
 		return
 	}
-	names := make([]string, 0, len(es))
-	for _, e := range es {
-		names = append(names, e.Name())
-	}
-	slices.Sort(names)
-	for _, name := range names {
+	for _, e := range es { // ReadDir sorts by name
+		name := e.Name()
 		p := filepath.Join(dir, name)
 		fi, err := os.Stat(p)
 		if err != nil {
 			continue
 		}
+		plainDir := fi.IsDir() && e.Type()&fs.ModeSymlink == 0 // `**` neither lists nor enters a symlink to a directory, as MRI
 		if seg == "**" {
 			if rbGlobMatch(rest[0], name) || rest[0] == "" && !strings.HasPrefix(name, ".") {
 				if rest[0] == "" {
-					if fi.IsDir() {
+					if plainDir {
 						*out = append(*out, prefix+name+"/")
 					}
 				} else {
 					rbGlobStep(p, prefix+name, fi.IsDir(), rest[1:], out)
 				}
 			}
-			if fi.IsDir() && !strings.HasPrefix(name, ".") {
+			if plainDir && !strings.HasPrefix(name, ".") {
 				rbGlobWalk(p, prefix+name+"/", segs, out)
 			}
 			continue

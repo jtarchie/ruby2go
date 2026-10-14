@@ -2,22 +2,65 @@
 
 # Process: clocks, pid and Status.
 module Process
-  # @go_type struct { pid int; code int }
+  # @go_type struct { pid int; code int; sig int; core bool }
   class Status < Object
     #: () -> Integer
     def pid = %x{ Integer(self.pid) }
 
-    #: () -> Integer
-    def exitstatus = %x{ Integer(self.code) }
+    # nil for a child a signal ended, as MRI.
+    #: () -> Integer?
+    def exitstatus = %x{
+      if self.sig != 0 {
+        return nil
+      }
+      c := Integer(self.code)
+      return &c
+    }
+
+    #: () -> bool?
+    def success? = %x{
+      if self.sig != 0 {
+        return nil
+      }
+      b := Boolean(self.code == 0)
+      return &b
+    }
 
     #: () -> bool
-    def success? = %x{ Boolean(self.code == 0) }
+    def exited? = %x{ Boolean(self.sig == 0) }
 
+    #: () -> bool
+    def signaled? = %x{ Boolean(self.sig != 0) }
+
+    #: () -> Integer?
+    def termsig = %x{
+      if self.sig == 0 {
+        return nil
+      }
+      s := Integer(self.sig)
+      return &s
+    }
+
+    #: () -> bool
+    def stopped? = false
+
+    #: () -> Integer?
+    def stopsig = nil
+
+    #: () -> bool
+    def coredump? = %x{ Boolean(self.core) }
+
+    # The raw wait status: the signal number, or the exit code in the second byte.
     #: () -> Integer
-    def to_i = exitstatus
+    def to_i = %x{
+      if self.sig != 0 {
+        return Integer(self.sig)
+      }
+      return Integer(self.code << 8)
+    }
 
     #: () -> String
-    def to_s = "pid #{pid} exit #{exitstatus}"
+    def to_s = %x{ return rbStatusString(self) }
 
     #: () -> String
     def inspect = "#<Process::Status: #{to_s}>"

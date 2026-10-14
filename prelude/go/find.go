@@ -6,10 +6,20 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
-// findPruneRequested is Find.prune's signal back to the yield call that ran it; reset before each yield so nesting self-corrects (decision 63).
-var findPruneRequested bool
+// rbFindActive maps a goroutine id to the prune flag of the innermost Find.find that goroutine runs (decision 66): only that goroutine touches the flag, so threads cannot prune each other.
+var rbFindActive sync.Map
+
+// rbFindPrune is Find.prune: it marks the running Find.find's current entry; outside one MRI's throw :prune has no catch, so it raises the same UncaughtThrowError.
+func rbFindPrune() {
+	p, ok := rbFindActive.Load(rbGoID())
+	if !ok {
+		panic(NewUncaughtThrowError("uncaught throw :prune", Symbol("prune"), nil))
+	}
+	*p.(*bool) = true
+}
 
 // rbFind is MRI's Find.find: pre-order, sorted siblings, all roots checked to exist upfront, deeper errors swallowed (ignore_error: true).
 func rbFind(roots []String, yield func(String) bool) {
@@ -21,6 +31,16 @@ func rbFind(roots []String, yield func(String) bool) {
 		}
 		paths[i] = p
 	}
+	id, pruned := rbGoID(), new(bool)
+	outer, nested := rbFindActive.Load(id)
+	rbFindActive.Store(id, pruned)
+	defer func() { // a Find.find in the block resumes the outer one's flag
+		if nested {
+			rbFindActive.Store(id, outer)
+		} else {
+			rbFindActive.Delete(id)
+		}
+	}()
 	stop := false
 	for _, root := range paths {
 		if stop {
@@ -28,12 +48,12 @@ func rbFind(roots []String, yield func(String) bool) {
 		}
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err == nil {
-				findPruneRequested = false
+				*pruned = false
 				if !yield(String(path)) {
 					stop = true
 					return filepath.SkipAll
 				}
-				if findPruneRequested && d.IsDir() {
+				if *pruned && d.IsDir() {
 					return filepath.SkipDir
 				}
 			}

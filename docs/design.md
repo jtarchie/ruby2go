@@ -8274,3 +8274,28 @@ resolve; anything not listed is still open.
     - Left: a linear fix needs a splice or a type memo (`coerce(l)`
       precedes the right side's temps in the output). The `gen.go` "always
       true" warning is still not deduped.
+270. **Runtime system helpers hardened** (#101; amends 63, 66, 97, 107, 138; 2026-10-14).
+    - `Open3.capture2` leaves the child's stderr on the program's, flushing
+      stdout first (it went to /dev/null).
+    - `IO.popen` with an empty or env-only command raises MRI's
+      `ArgumentError` ("wrong number of arguments (given 0, expected 1+)")
+      instead of indexing an empty slice.
+    - Spawn and popen path redirections (`in:`/`out:`/`err:`) are closed in
+      the parent after the child starts (`rbSpawnCmd` returns them,
+      `rbStartChild` closes them), also when a later option fails.
+      `rbSpawn` and `rbSpawnFull` share `rbStartChild`, which maps start
+      errors through `rbExecErr`: a non-executable file is `Errno::EACCES`.
+    - `Process::Status` carries the terminating signal: `exitstatus` and
+      `success?` are nil (types `Integer?`/`bool?`), `signaled?`/`termsig`
+      report it, `to_s` is "pid N SIGKILL (signal 9)", `to_i` is the raw
+      wait status; `system` is false for a signalled child.
+    - `Find.prune` sets a per-goroutine flag (`rbFindActive`), not a package
+      global, so threads cannot prune each other; outside `Find.find` it
+      raises `UncaughtThrowError`. MRI's `throw :prune` cannot wrap the
+      yield because the block is a Go iterator.
+    - `Dir.glob`'s `**` neither lists nor descends into symlinks to
+      directories, so a symlink loop terminates and matches MRI.
+    - `rbRootFibers` drops a thread's entry when its goroutine ends.
+      `rbPinnedFiles` is a map behind a leaf mutex held only around the
+      map; it never shrinks (an `os.File` finalizer cannot be cleared).
+    - Proof: `testdata/test/process_test.rb`, `testdata/run/process_stderr.rb`.
