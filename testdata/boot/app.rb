@@ -64,6 +64,7 @@ p fs.desc, fs.bottle?, fs.head?
 fh = DemoFormulaStruct.from_hash({ "desc" => "h", "head_present" => true, "junk" => 1 })
 p fh.desc, fh.head?, fh.bottle?
 p DemoSystemCommand.new("a").input, DemoSystemCommand.new(%w[b c]).input
+p DemoPackagesIndex.write!
 p DemoVersion.new(1) < DemoVersion.new(2), [DemoVersion.new(3), DemoVersion.new(1)].max.v, DemoVersion.new(1) <=> "x"
 bes = [DemoBundle::Entry.new("a"), DemoBundle::Entry.new("b")]
 p DemoBundle::Ext.run(bes), DemoBundle::Vscode.run(bes), DemoBundle::Vscode.cleanup_items(bes)
@@ -83,6 +84,8 @@ p tagb.map { |h| Demo::Lenient.tags_of(h) }
 p DemoPool.new(name: "q", size: 4) { |x| x * 2 }.report, DemoPool.new.report
 p DemoPlainPool.new(size: 3).size
 p DemoTimerService.new.schedule(4)
+rc = DemoEnvConfig.curlrc
+p rc&.start_with?("/"), (rc ? 1 : 2)
 dcp = DemoCachedPool.new
 dcp.ns_initialize({ size: 5 })
 p dcp.size

@@ -309,7 +309,15 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		}
 		return expr{code: "", typ: TNil{}, done: true} // declared later in the def: not in scope here
 	}
-	val := f.genExpr(n.Value, exp)
+	var val expr
+	if f.lenient() && ann == nil && exp != nil { // a gem's local rebound to what its type does not hold (`data = { **data, ... }`)
+		err := f.tryClean(func() { val = f.genExpr(n.Value, exp) })
+		if err != nil {
+			val = f.genExpr(n.Value, nil) // as itself; the local widens (decision 233)
+		}
+	} else {
+		val = f.genExpr(n.Value, exp)
+	}
 	if val.noreturn { // `x = raise "e"`: x still needs a Go type for the (unreachable) code after
 		t := exp
 		if t == nil {
@@ -5170,6 +5178,9 @@ func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.
 		nilE = f.genMethodCall(n, nilRecv, name, args, block)
 		valE = f.genMethodCall(n, valRecv, name, args, block)
 	})
+	if isClass(stripOpt(nilE.typ), "NilClass") { // `nil.presence` returning self: nil, not the NilClass receiver (decision 252)
+		nilE.typ = TNil{}
+	}
 	void := isVoid(nilE.typ) && isVoid(valE.typ)
 	t, ok := join(nilE.typ, valE.typ)
 	if !ok {
@@ -5183,9 +5194,13 @@ func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.
 	arm := func(r expr) {
 		f.indent++
 		e := f.genMethodCall(n, r, name, args, block)
-		if void {
+		switch {
+		case void:
 			f.emitExprStmt(n, e)
-		} else {
+		case isClass(stripOpt(e.typ), "NilClass"):
+			f.emitExprStmt(n, e)
+			f.emit("%s = %s", out, f.coerce(n, expr{code: "nil", typ: TNil{}}, t))
+		default:
 			f.emit("%s = %s", out, f.coerce(n, e, t))
 		}
 		f.indent--

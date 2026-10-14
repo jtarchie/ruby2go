@@ -573,3 +573,23 @@ class DemoCachedPool < DemoPoolBase
 
   def size = @size
 end
+
+# Homebrew's extend/blank.rb presence on a String?: nil's arm calls Object#presence on a typed nil NilClass, whose self
+# result is nil, not a NilClass object Go would see as non-nil (`curlrc&.start_with?`, decision 252).
+class Object
+  def demo_blank? = respond_to?(:empty?) ? !!empty? : false
+  def demo_presence = (self unless demo_blank?)
+end
+
+class NilClass
+  def demo_blank? = true
+end
+
+module DemoEnvConfig
+  module_function
+
+  #: (String) -> String?
+  def env_value(env) = ENV.fetch(env, nil)
+
+  def curlrc = env_value("DEMO_CURLRC_UNSET").demo_presence
+end

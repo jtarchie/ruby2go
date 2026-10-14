@@ -2316,7 +2316,8 @@ func (f *fctx) declareLocal(name string, typ Type) *local {
 
 func (f *fctx) noteUnused(v *local) {
 	info := v.owner()
-	if f.pass == 2 && info != nil && info.reads == 0 && v.goName != "_" { // `|_, v|`: Go's blank needs no use
+	// `|_, v|`: Go's blank needs no use. A gem's read may sit in a branch that raises instead (decision 252): used too.
+	if f.pass == 2 && info != nil && (info.reads == 0 || f.lenient()) && v.goName != "_" {
 		f.emit("_ = %s", v.goName)
 	}
 }

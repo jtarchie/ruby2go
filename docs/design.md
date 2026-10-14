@@ -7840,3 +7840,19 @@ resolve; anything not listed is still open.
     - Brew harness: the entry folds `Concurrent.on_jruby?` and
       `on_truffleruby?` to false and `on_cruby?` to true (decision 246's
       method-body folds).
+
+252. **Brew batch: nil's arm of a `Self` result, gem locals rebound to another type, gem locals always used** (#100; 2026-10-13).
+    - A call on a `T?` whose method is a program's Object method (Homebrew's
+      blank.rb `presence`, `self if present?`) runs it on a typed-nil
+      NilClass in the nil arm (decision 186). A `NilClass`/`NilClass?`
+      result there is nil, not that receiver, which Go saw as a non-nil
+      value. `curlrc&.start_with?("/")` had raised on a nil curlrc.
+    - Gem code: a local rebound to a value its type does not hold (`data =
+      { "version" => 2, **fingerprint, **data }` over a typed Hash in
+      PackagesIndex.write!, `rebuild = ".#{rebuild}"`) is generated as
+      itself when generating it as the local's type fails, and the local
+      widens (decision 233).
+    - Gem code: every declared local is marked used (`_ = x`). A read can
+      sit in an arm or branch that raises instead of compiling (decisions
+      244, 251), which left Go's "declared and not used"
+      (CurlDownloadStrategy's `parse_content_disposition` lambda).

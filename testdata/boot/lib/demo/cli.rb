@@ -208,3 +208,26 @@ class DemoSystemCommand
   sig { returns(T::Array[String]) }
   attr_reader :input
 end
+
+# Homebrew's PackagesIndex.write!: `data` (a typed Hash) rebound to `{ "version" => 2, **fingerprint, **data }`, which
+# its type does not hold; the value is generated as itself and the local widens (decision 252).
+module DemoPackagesIndex
+  extend T::Sig
+
+  sig { returns(T::Hash[String, Integer]) }
+  def self.fingerprint = { "size" => 3, "mtime" => 9 }
+
+  sig { returns(T.nilable(T::Hash[String, T::Hash[String, [Integer, Integer]]])) }
+  def self.build = { "top" => { "a" => [1, 2] } }
+
+  def self.write!
+    return if (data = build).nil?
+
+    data = {
+      "version" => 2,
+      **fingerprint,
+      **data,
+    }
+    data.keys
+  end
+end
