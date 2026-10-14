@@ -156,11 +156,11 @@ func callByName(name string) bool {
 func (c *Compiler) callableNames() map[string]bool {
 	out := map[string]bool{}
 	for _, cls := range c.classList {
-		if cls.File == nil || cls.File.prelude || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
+		if cls.File == nil || cls.File.isPrelude() || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
 			continue
 		}
 		for _, e := range cls.methodSet() {
-			if !e.M.File.prelude && callByName(e.M.Name) {
+			if !e.M.File.isPrelude() && callByName(e.M.Name) {
 				out[e.M.Name] = true
 			}
 		}
@@ -175,7 +175,7 @@ func (c *Compiler) callableNames() map[string]bool {
 // (decision 79). Only rbMtCall asks for _Call, so other programs prune it.
 func (c *Compiler) emitCallTables() {
 	for _, cls := range c.classList {
-		if cls.File == nil || cls.File.prelude || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
+		if cls.File == nil || cls.File.isPrelude() || !cls.isStruct() || cls.metaOf != nil || len(cls.TypeParams) > 0 {
 			continue
 		}
 		var cases []dynWrapped
@@ -541,7 +541,7 @@ func (c *Compiler) ownerIface(cls *Class, e *entry) string {
 // dynGenerated: e comes from the prelude, or is a metaclass's generated
 // new/name/to_s/inspect, not a method a user file defines.
 func (c *Compiler) dynGenerated(e *entry) bool {
-	return e.M.Kind == kindSynth || e.M.File != nil && e.M.File.prelude
+	return e.M.Kind == kindSynth || e.M.File != nil && e.M.File.isPrelude()
 }
 
 var selfIdent = regexp.MustCompile(`\bself\b`)
@@ -683,7 +683,7 @@ func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string, private boo
 		prefix = "_Dyn"
 	}
 	c.w("func (self %s) %s%s(args ...any) any {\n%s}\n\n", c.recvType(cls), prefix, goMethodName(name), body)
-	c.dynWrapped[cls] = append(c.dynWrapped[cls], dynWrapped{name: name, goName: prefix + goMethodName(name), own: !e.M.File.prelude})
+	c.dynWrapped[cls] = append(c.dynWrapped[cls], dynWrapped{name: name, goName: prefix + goMethodName(name), own: !e.M.File.isPrelude()})
 }
 
 func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
@@ -1187,9 +1187,9 @@ func (c *Compiler) allMethodNames(gemOnly bool) []string {
 		if cls.IsModule || cls.universal {
 			continue
 		}
-		preludeOnly := gemOnly && cls.File != nil && cls.File.prelude // its names count only as symbol literals in gem or user code (decision 235)
+		preludeOnly := gemOnly && cls.File != nil && cls.File.isPrelude() // its names count only as symbol literals in gem or user code (decision 235)
 		for _, e := range cls.methodSet() {
-			helper := strings.HasPrefix(e.M.Name, "_") && e.M.File != nil && e.M.File.prelude // the views' accessors, _to_any ...
+			helper := strings.HasPrefix(e.M.Name, "_") && e.M.File != nil && e.M.File.isPrelude() // the views' accessors, _to_any ...
 			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") && !helper && (!preludeOnly || lits[e.M.Name]) {
 				seen[e.M.Name] = true
 			}
@@ -1214,7 +1214,7 @@ func (c *Compiler) symbolLiterals() map[string]bool {
 	c.symLits = map[string]bool{}
 	word := regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*[?!=]?|[<>=!~+\-*/%^&|\[\]]+@?`)
 	for _, f := range c.files {
-		if f.prelude {
+		if f.isPrelude() {
 			continue
 		}
 		for _, m := range symbolLiteral.FindAllSubmatch(f.Src, -1) {
@@ -1297,7 +1297,7 @@ func (c *Compiler) emitDynEach() {
 	seen := map[string]bool{}
 	for _, cls := range c.classList {
 		m := cls.Methods["each"]
-		if m == nil || m.File == nil || m.File.prelude || m.Block == nil || len(m.Params) > 0 || m.generic() || len(cls.TypeParams) > 0 ||
+		if m == nil || m.File == nil || m.File.isPrelude() || m.Block == nil || len(m.Params) > 0 || m.generic() || len(cls.TypeParams) > 0 ||
 			len(m.Block.Params) == 0 || len(m.Block.Params) > 2 || !isVoid(m.Block.Ret) || m.Block.Self != nil || m.Block.Rest {
 			continue
 		}

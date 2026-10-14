@@ -70,7 +70,7 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 	if n.Receiver == nil {
 		return f.genKernelIntrinsic(n, expected)
 	}
-	runtimeRequire := n.Name == "require" && f.c.methodRequiresRuntime && !f.f.prelude // `Kernel.require path` (decision 246)
+	runtimeRequire := n.Name == "require" && f.c.methodRequiresRuntime && !f.f.isPrelude() // `Kernel.require path` (decision 246)
 	if !kernelConst(n.Receiver) || !kernelModuleNames[n.Name] && !runtimeRequire || n.Name == "require" && !runtimeRequire || n.Name == "require_relative" {
 		return expr{}, false
 	}
@@ -523,7 +523,7 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}
-	if f.lenient() && e.Owner != nil && e.Owner.universal && e.M.File != nil && e.M.File.prelude && t.C.isStruct() && !t.C.universal && t.C.descendantDefines(name, false) {
+	if f.lenient() && e.Owner != nil && e.Owner.universal && e.M.File != nil && e.M.File.isPrelude() && t.C.isStruct() && !t.C.universal && t.C.descendantDefines(name, false) {
 		// Kernel's `then` on an AbstractEventFuture whose Event and Future define their own (concurrent-ruby's
 		// `.future.then(*args, &task)`): the object's method, found at run time as MRI does (decision 253)
 		anyRecv := expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}
@@ -738,7 +738,7 @@ func (f *fctx) intrinsicGate(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.markerCall(n, recv, name, args, block); ok {
 		return e, true, true
 	}
-	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.prelude {
+	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.isPrelude() {
 		return expr{}, false, true
 	}
 	return expr{}, false, false
@@ -752,7 +752,7 @@ func (f *fctx) reopenedMarker(cls, name string) *entry {
 		return nil
 	}
 	e, ok := c.Methods[name]
-	if !ok || e.File == nil || e.File.prelude {
+	if !ok || e.File == nil || e.File.isPrelude() {
 		return nil
 	}
 	return &entry{M: e, Owner: c, Entry: c}

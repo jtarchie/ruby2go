@@ -328,7 +328,7 @@ func (f *fctx) moduleCmp(t TClass, recv expr, name string, args []parser.Node, b
 	if t.C.metaOf == nil && t.C.RubyName != "Class" && t.C.RubyName != "Module" {
 		return expr{}, false
 	}
-	if t.C.metaOf != nil && t.C.lookup(name) != nil && !t.C.lookup(name).M.File.prelude { // a class's own `self.<`
+	if t.C.metaOf != nil && t.C.lookup(name) != nil && !t.C.lookup(name).M.File.isPrelude() { // a class's own `self.<`
 		return expr{}, false
 	}
 	a := f.genExpr(args[0], nil)

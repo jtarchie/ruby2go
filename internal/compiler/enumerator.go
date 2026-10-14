@@ -88,7 +88,7 @@ func (f *fctx) loopRescue(n *parser.CallNode) *parser.BeginNode {
 	if n.Receiver != nil { // Kernel.loop
 		f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
 	}
-	if e := f.resolve(recvT, "loop"); e == nil || !e.M.File.prelude {
+	if e := f.resolve(recvT, "loop"); e == nil || !e.M.File.isPrelude() {
 		return nil
 	}
 	return f.c.rewrite(n, func() parser.Node {
@@ -151,7 +151,7 @@ func raisesStop(n parser.Node) bool {
 func (f *fctx) iterEnum(n parser.Node, e *entry, recv expr, codes []string, env map[string]Type) (expr, bool) {
 	m := e.M
 	rt, ok := recv.typ.(TClass)
-	if !ok || rt.C.IsModule || !m.File.prelude || len(m.Block.Params) == 0 || len(codes) != len(m.Params) || slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest || p.Keyword }) {
+	if !ok || rt.C.IsModule || !m.File.isPrelude() || len(m.Block.Params) == 0 || len(codes) != len(m.Params) || slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest || p.Keyword }) {
 		return expr{}, false
 	}
 	enum := f.c.classes["Enumerator"]

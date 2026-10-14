@@ -309,7 +309,7 @@ func (c *Compiler) erbParse(ctx context.Context, f *File, n *parser.CallNode, tp
 	}
 	b.WriteByte('\n')
 	b.WriteString(script)
-	snippet, err := parseFile(ctx, c.parser, f.Name, []byte(b.String()), false)
+	snippet, err := parseFile(ctx, c.parser, f.Name, []byte(b.String()), originSource)
 	if err != nil {
 		c.errorf(f, n, "ERB template: %v", err)
 	}

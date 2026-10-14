@@ -107,4 +107,4 @@ func (f *fctx) raiseOne(n, arg parser.Node, exc *Class) expr {
 
 // dynRaise: an untyped class or message is raised as decided at run time, in gem code (decision 233) and the
 // prelude's Thread#raise (decision 257).
-func (f *fctx) dynRaise() bool { return f.lenient() || f.f.prelude }
+func (f *fctx) dynRaise() bool { return f.lenient() || f.f.isPrelude() }

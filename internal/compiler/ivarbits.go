@@ -19,7 +19,7 @@ func (c *Compiler) markIvarBits() {
 	c.ivarBitsMarked = true
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
-			if m.Node == nil || m.File == nil || m.File.prelude {
+			if m.Node == nil || m.File == nil || m.File.isPrelude() {
 				continue
 			}
 			anyNode(m.Node, func(n parser.Node) bool {
@@ -42,7 +42,7 @@ func (c *Compiler) markIvarBits() {
 		})
 	}
 	for _, cls := range c.classList {
-		if asks && cls.File != nil && !cls.File.prelude && len(cls.IvarList) > 0 {
+		if asks && cls.File != nil && !cls.File.isPrelude() && len(cls.IvarList) > 0 {
 			cls.ivarBits = true
 		}
 		if cls.ivarBits && len(cls.IvarList) > 64 {

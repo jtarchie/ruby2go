@@ -14,7 +14,7 @@ import (
 // abstractStub reports a prelude module method whose body only raises NotImplementedError: a requirement the module
 // types its own calls by (Comparable#<=>), which the includer must meet.
 func abstractStub(m *Method) bool {
-	if m.File == nil || !m.File.prelude || m.Node == nil {
+	if m.File == nil || !m.File.isPrelude() || m.Node == nil {
 		return false
 	}
 	body := m.Node.Body
@@ -34,7 +34,7 @@ func abstractStub(m *Method) bool {
 // include, which a caller can act on, instead of a Go build error (decision 186).
 func (c *Compiler) checkAbstractIncludes() {
 	for _, cls := range c.classList {
-		if cls.IsModule || cls.Super == nil || cls.File == nil || cls.File.prelude {
+		if cls.IsModule || cls.Super == nil || cls.File == nil || cls.File.isPrelude() {
 			continue
 		}
 		for _, inc := range cls.Includes {
@@ -46,7 +46,7 @@ func (c *Compiler) checkAbstractIncludes() {
 					continue
 				}
 				e := cls.Super.lookup(stub.Name)
-				if e == nil || abstractStub(e.M) || e.M.File == nil || e.M.File.prelude {
+				if e == nil || abstractStub(e.M) || e.M.File == nil || e.M.File.isPrelude() {
 					continue
 				}
 				c.resolveMethod(e.M)
@@ -117,7 +117,7 @@ type classHook struct {
 // noteHooks records `include`/`extend`'s hooks: the last module first, as
 // MRI includes them.
 func (c *Compiler) noteHooks(f *File, name string, cls *Class, n *parser.CallNode, args []parser.Node, scope []*Class) {
-	if f.prelude {
+	if f.isPrelude() {
 		return
 	}
 	for _, a := range slices.Backward(args) {
@@ -239,7 +239,7 @@ func (c *Compiler) checkCycles() {
 // linkInclude resolves an include's module and its type args.
 func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 	mod := c.resolveClassRef(&inc.ref)
-	if c.isNumericMod(mod) && !inc.File.prelude {
+	if c.isNumericMod(mod) && !inc.File.isPrelude() {
 		c.errorAt(inc.srcPos, "Numeric is a class, not a module: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)")
 	}
 	if !mod.IsModule {
@@ -251,14 +251,14 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 			inc.args = []rbs.Type{at}
 		}
 	}
-	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.File.prelude && cls.Methods["each"] != nil {
+	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.File.isPrelude() && cls.Methods["each"] != nil {
 		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
 		for range mod.TypeParams {
 			inc.Args = append(inc.Args, TAny{})
 		}
 		return
 	}
-	if len(inc.args) == 0 && (c.gemFile(inc.File) || !inc.File.prelude) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
+	if len(inc.args) == 0 && (c.gemFile(inc.File) || !inc.File.isPrelude()) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
 		if !c.gemFile(inc.File) {
 			c.warnAt(inc.srcPos, "include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", mod.RubyName, cls.RubyName, mod.RubyName)
 		}
@@ -441,7 +441,7 @@ func (c *Compiler) linkExtends() {
 				}
 			}
 			switch {
-			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.File.prelude && cls.meta.Methods["each"] != nil:
+			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.File.isPrelude() && cls.meta.Methods["each"] != nil:
 				ext.fromEach = true // typed from the class's own `def self.each` (includeFromEach), as an include is
 				for range ext.Mod.TypeParams {
 					ext.Args = append(ext.Args, TAny{})

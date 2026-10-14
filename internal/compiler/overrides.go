@@ -134,7 +134,7 @@ func (c *Compiler) inheritRedeclaredReaders() {
 // blockEachOfEnumerable is an Enumerable includer's `each` written with a block and returning self (Ruby's idiom)
 // rather than as an iterator: Enumerable's methods reach it through the seqAdapter iterator.
 func (c *Compiler) blockEachOfEnumerable(cls *Class, m *Method) bool {
-	if m.Name != "each" || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || cls.IsModule || m.File == nil || m.File.prelude {
+	if m.Name != "each" || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || cls.IsModule || m.File == nil || m.File.isPrelude() {
 		return false
 	}
 	enum := c.classes["Enumerable"]

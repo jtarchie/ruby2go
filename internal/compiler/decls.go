@@ -475,7 +475,7 @@ func (c *Compiler) emitTables() {
 func (c *Compiler) noteUserToJson() {
 	for _, cls := range c.classList {
 		m := cls.Methods["to_json"]
-		if m == nil || m.File.prelude {
+		if m == nil || m.File.isPrelude() {
 			continue
 		}
 		if len(m.Params) != 1 || !m.Params[0].Rest || !isAny(m.Params[0].Type) || !isClass(m.Ret, "String") {
@@ -552,7 +552,7 @@ func (c *Compiler) publicEntries(cls *Class) []entry {
 
 // userTypeLine maps a user class's struct or module's constraint to its `class`/`module` line, so a Go error in it points at Ruby and `rb2go web` can tell the type, and what it names, from the prelude's.
 func (c *Compiler) userTypeLine(cls *Class) {
-	if cls.File != nil && !cls.File.prelude && cls.metaOf == nil {
+	if cls.File != nil && !cls.File.isPrelude() && cls.metaOf == nil {
 		c.lineDirective(cls.File, cls.Line)
 	}
 }
@@ -730,7 +730,7 @@ func (c *Compiler) selfCalls(mod *Class) map[string]bool {
 			walk(ch)
 		}
 	}
-	core := mod.File != nil && mod.File.prelude
+	core := mod.File != nil && mod.File.isPrelude()
 	var gem []*Method
 	for _, m := range mod.MethodList {
 		if m.Node == nil {
@@ -844,7 +844,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	c.emitCopy(cls)
 	c.emitDup(cls)
 	// constructor
-	if cls.File != nil && !cls.File.prelude && cls.Line > 0 {
+	if cls.File != nil && !cls.File.isPrelude() && cls.Line > 0 {
 		c.lineDirective(cls.File, cls.Line) // a Go error here names the class, not a line counted on from the last directive
 	}
 	init := cls.lookup("initialize")
@@ -976,10 +976,10 @@ func (c *Compiler) emitCopy(cls *Class) {
 // emitDup is Object#dup for a struct class: a shallow copy, then the class's own initialize_copy (rbDup).
 func (c *Compiler) emitDup(cls *Class) {
 	c.w("func (self *%s) _Dup() any {\n\tdup := *self\n", cls.Name)
-	if e := cls.lookup("initialize_dup"); e != nil && e.M.File != nil && !e.M.File.prelude {
+	if e := cls.lookup("initialize_dup"); e != nil && e.M.File != nil && !e.M.File.isPrelude() {
 		// ponytail: its super reaches Kernel's no-op, not the class's initialize_copy as MRI's Object#initialize_dup would
 		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls))
-	} else if e := cls.lookup("initialize_copy"); e != nil && e.M.File != nil && !e.M.File.prelude {
+	} else if e := cls.lookup("initialize_copy"); e != nil && e.M.File != nil && !e.M.File.isPrelude() {
 		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls)) // private: no forwarder
 	}
 	c.w("\treturn &dup\n}\n\n")

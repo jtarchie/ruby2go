@@ -191,7 +191,7 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 			acc = "::" + acc
 		}
 		src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-1, 0)) + "def " + name + "(...) = " + acc + "." + d.method + "(...)\n"
-		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 		if err != nil {
 			c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
 		}
@@ -250,7 +250,7 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	// padded so the def's line (errors, //line) is the def_delegators call's
 	line := f.line(n.Location.StartOffset)
 	src := strings.Repeat("\n", max(line-1-strings.Count(head, "\n")-1, 0)) + head + "\ndef " + name + "(" + strings.Join(params, ", ") + ")\n  " + call + block + "\nend\n"
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 	if err != nil {
 		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
 	}
@@ -360,7 +360,7 @@ func (c *Compiler) untypedDelegateDef(ctx context.Context, cls *Class, d delegat
 		call = "target[*args]"
 	}
 	src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-3, 0)) + "def " + d.name + "(*args)\n  target = " + d.accessor + " #: untyped\n  " + call + "\nend\n"
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 	if err != nil {
 		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
 	}

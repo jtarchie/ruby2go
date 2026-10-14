@@ -99,7 +99,7 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.InterpolatedStringNode:
 		return f.genInterp(n), true
 	case *parser.XStringNode:
-		if f.f.prelude {
+		if f.f.isPrelude() {
 			f.errorf(n, "%%x{} is only allowed as the whole body of a prelude method")
 		}
 		f.c.strLits[n.Unescaped.Value] = true

@@ -46,7 +46,7 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 				env[tp] = TAny{}
 				continue
 			}
-			if owner := containerOf(m); owner != "" && m.Block == nil && f.f != nil && !f.f.prelude { // a block was typed with the parameter already
+			if owner := containerOf(m); owner != "" && m.Block == nil && f.f != nil && !f.f.isPrelude() { // a block was typed with the parameter already
 				// an empty core container nothing types: untyped elements, its calls dynamic (decision 192)
 				f.warn(n, "%s's %s is untyped: nothing in the program gives it a type (annotate `#: %s[...]` for static calls; decision 192)", m, tp, owner)
 				env[tp] = TAny{}
@@ -453,11 +453,11 @@ func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
 // genInMethodRequire is a require in a method body: resolved at run time against what was compiled (decision 197),
 // else a no-op for a library the prelude has, and a compile error for a file rb2go would have to load.
 func (f *fctx) genInMethodRequire(n *parser.CallNode) expr {
-	if f.c.methodRequiresRuntime && !f.f.prelude {
+	if f.c.methodRequiresRuntime && !f.f.isPrelude() {
 		return f.genRuntimeRequire(n)
 	}
 	switch {
-	case n.Name == "require_relative" && !f.f.prelude:
+	case n.Name == "require_relative" && !f.f.isPrelude():
 		f.errorf(n, "require_relative must be a top-level statement: rb2go loads files at compile time")
 	case n.Name == "require" && f.c.findRequire(f.f, n) != "":
 		f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")

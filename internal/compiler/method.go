@@ -247,7 +247,7 @@ func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bo
 	env := f.callEnv(n, e, expr{typ: self})
 	ft := f.methodFnType(n, e, env, self)
 	m := e.M
-	static := !m.File.prelude && m.Kind == kindDef && m.Owner != nil && m.Owner.isStruct()
+	static := !m.File.isPrelude() && m.Kind == kindDef && m.Owner != nil && m.Owner.isStruct()
 	fn := f.funcClosure(n, ft.Params, ft.Ret, func(args []parser.Node) expr {
 		r := args[0].(*exprNode).e
 		if static {
@@ -356,7 +356,7 @@ func (f *fctx) methodInfo(n parser.Node, e *entry) string {
 		ps[i] = fmt.Sprintf("{%q, %q}", p[0], p[1])
 	}
 	loc := ""
-	if m.File != nil && !m.File.prelude && m.Kind != kindSynth {
+	if m.File != nil && !m.File.isPrelude() && m.Kind != kindSynth {
 		loc = " " + m.File.Name + ":" + strconv.Itoa(m.Line)
 	}
 	return fmt.Sprintf("&rbMethodInfo{name: %q, key: %q, owner: %s, params: []rbParamInfo{%s}, arity: %d, loc: %q, single: %t, known: true}",
@@ -372,7 +372,7 @@ func methodParams(m *Method, overloaded bool) (ps [][2]string, arity int) {
 		return [][2]string{{"req", ""}}, 1
 	case m.Kind == kindSynth && m.Name == "new":
 		return [][2]string{{"rest", ""}}, -1
-	case m.Node == nil || m.File == nil || m.File.prelude:
+	case m.Node == nil || m.File == nil || m.File.isPrelude():
 		for _, p := range m.Params {
 			if overloaded || p.Rest || p.Keyword || p.Default != nil {
 				return [][2]string{{"rest", ""}}, -1

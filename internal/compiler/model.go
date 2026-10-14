@@ -414,7 +414,7 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 					c.collectValueClass(ctx, f, n, call, kind, nil)
 					return
 				}
-				if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
+				if call, isModule := anonClassCall(n.Value); call != nil && !f.isPrelude() {
 					c.collectNamedAnon(ctx, f, n, call, isModule, nil)
 					return
 				}
@@ -431,7 +431,7 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 					c.beginStmts[f] = append(c.beginStmts[f], n.Statements.Body...)
 				}
 			case *parser.XStringNode:
-				if !f.prelude {
+				if !f.isPrelude() {
 					c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")
 				}
 				c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{f, f.line(n.Location.StartOffset)}, code: n.Unescaped.Value})

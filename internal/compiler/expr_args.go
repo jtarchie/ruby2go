@@ -14,7 +14,7 @@ import (
 var floatTruncators = map[string]bool{"String": true, "Array": true, "Symbol": true, "Hash": true, "Enumerable": true, "IO": true, "File": true, "StringIO": true, "MatchData": true, "Regexp": true, "Struct": true}
 
 func truncatesFloats(m *Method) bool {
-	return m.File != nil && m.File.prelude && m.Owner != nil && floatTruncators[m.Owner.RubyName]
+	return m.File != nil && m.File.isPrelude() && m.Owner != nil && floatTruncators[m.Owner.RubyName]
 }
 
 // genArgs generates and coerces call arguments against m's parameters,

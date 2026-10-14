@@ -232,7 +232,7 @@ func (c *Compiler) skipFailingTests() []SkippedTest {
 	var out []SkippedTest
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
-			if m.Kind != kindDef || m.File.prelude || !strings.HasPrefix(m.Name, "test_") && !m.specForm {
+			if m.Kind != kindDef || m.File.isPrelude() || !strings.HasPrefix(m.Name, "test_") && !m.specForm {
 				continue
 			}
 			nw := len(c.Warnings)

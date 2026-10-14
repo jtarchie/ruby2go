@@ -116,7 +116,7 @@ func (c *Compiler) checkNumeric() {
 			continue
 		}
 		for _, m := range num.MethodList {
-			if e := cls.lookup(m.Name); e != nil && e.Owner == num && !m.File.prelude && m.Kind == kindDef {
+			if e := cls.lookup(m.Name); e != nil && e.Owner == num && !m.File.isPrelude() && m.Kind == kindDef {
 				cp := c.copyAlias(cls, m, m.Name) // `class Numeric; def blank? = false; end`: every number has it, as MRI's inheritance gives
 				cp.Owner = cls
 				continue

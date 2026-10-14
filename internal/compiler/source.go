@@ -14,12 +14,11 @@ type File struct {
 	Name     string // as shown in //line directives and errors
 	Src      []byte
 	Root     *parser.ProgramNode
-	lines    []int // byte offset of each line start
-	prelude  bool
+	lines    []int   // byte offset of each line start
+	origin   Origin  // set at construction for the prelude; a source file's gem-or-user answer is gemFile's, once asked
 	valueGen bool    // a Struct/Data's generated members (valueClassSource), which may mark @dynamic
 	pinLine  int     // every position reports this line: generated source, whose errors belong to its declaration
 	path     string  // a user file's real path on disk, which require_relative resolves against
-	gem      *bool   // gemFile's answer, once asked
 	data     *string // the text after `__END__`, which DATA reads
 
 	// standalone annotation comments by the line they precede (first code line after)
@@ -36,18 +35,39 @@ type File struct {
 	sorbetStructs map[*parser.ClassNode][]structProp
 }
 
+// Origin says where a File came from, which gates the %x{} Go escape hatch and gem leniency (decision 277).
+type Origin uint8
+
+const (
+	originSource  Origin = iota // a user or gem file, not yet classified: gemFile decides on its first ask (needs the gem dirs resolved)
+	originUser                  // gemFile found it outside every gem dir
+	originGem                   // gemFile found it inside a gem dir (decision 173)
+	originPrelude               // the core library: set at construction, never reclassified
+)
+
+func (f *File) isPrelude() bool { return f.origin == originPrelude }
+
+// synthOrigin is the origin for source re-parsed from f's declaration: a prelude's stays prelude, anything else starts unclassified and
+// is classified through the path the caller copies from f, so a gem's synthesized code stays gem code (decision 172).
+func (f *File) synthOrigin() Origin {
+	if f.isPrelude() {
+		return originPrelude
+	}
+	return originSource
+}
+
 type comment struct {
 	line int
 	text string // without leading `#`
 }
 
-func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, prelude bool) (*File, error) {
+func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, origin Origin) (*File, error) {
 	name = safeName(name)
 	res, err := p.Parse(ctx, src)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
-	f := &File{Name: name, Src: src, Root: res.Value, prelude: prelude}
+	f := &File{Name: name, Src: src, Root: res.Value, origin: origin}
 	f.lines = []int{0}
 	for i, b := range src {
 		if b == '\n' {
@@ -59,7 +79,7 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, p
 	}
 	fillAnonForwards(f.Root)
 	f.indexComments(res.Comments)
-	if !prelude {
+	if origin != originPrelude {
 		serr := f.lowerSorbet()
 		if serr != nil {
 			return nil, serr

@@ -3011,7 +3011,7 @@ func (c *Compiler) emitTopDef(m *Method) {
 // 12) is labelled as the public method it stands in for.
 func (c *Compiler) frameLabel(m *Method) string {
 	owner, name := m.Owner, m.Name
-	if m.File.prelude && strings.HasPrefix(name, "__") {
+	if m.File.isPrelude() && strings.HasPrefix(name, "__") {
 		// the longest public prefix: `__each_with_index_enum` is each_with_index's helper, not each's. Map order
 		// used to pick, so the label table (and the Go build cache key of every program that reads it) varied per run.
 		for pub := range owner.Methods {
@@ -3469,7 +3469,7 @@ func (c *Compiler) discoverMethod(cls *Class, m *Method) {
 func (c *Compiler) emitSynth(m *Method) {
 	meta := m.Owner
 	cls := meta.metaOf
-	if cls.File != nil && !cls.File.prelude && cls.Line > 0 {
+	if cls.File != nil && !cls.File.isPrelude() && cls.Line > 0 {
 		c.lineDirective(cls.File, cls.Line) // its Go errors name the class, not a line counted on from the last directive
 	}
 	params, ret := c.sig(m, map[string]Type{"Self": TClass{C: cls}})
@@ -3573,7 +3573,7 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 		if k.inMethod || k.inBody { // assigned where its method or its body's unit runs
 			continue
 		}
-		if k.File.prelude {
+		if k.File.isPrelude() {
 			prelude = append(prelude, &constInit{k: k})
 		} else {
 			own[k.File] = append(own[k.File], &constInit{k: k})
@@ -3754,7 +3754,7 @@ func (c *Compiler) guardConsts() {
 			continue
 		}
 		k := ci.k
-		if !k.File.prelude && (ran || c.initRuns(k, defs, done)) {
+		if !k.File.isPrelude() && (ran || c.initRuns(k, defs, done)) {
 			k.guarded, ran = true, true
 		}
 		done[k] = true

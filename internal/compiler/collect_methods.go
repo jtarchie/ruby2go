@@ -71,7 +71,7 @@ func (c *Compiler) linkAliases(ctx context.Context) {
 					call = "self.send(:" + strconv.Quote(a.oldName) + ", " + fwd + ")"
 				}
 				src := strings.Repeat("\n", max(a.f.line(a.n.GetLocation().StartOffset)-1, 0)) + "def " + a.newName + "(" + params + ") = " + call + "\n"
-				sf, err := parseFile(ctx, c.parser, a.f.Name, []byte(src), false)
+				sf, err := parseFile(ctx, c.parser, a.f.Name, []byte(src), originSource)
 				if err != nil {
 					c.errorf(a.f, a.n, "alias %s: %v", a.newName, err)
 				}
@@ -105,11 +105,11 @@ func (c *Compiler) copyAlias(cls *Class, old *Method, nn string) *Method {
 }
 
 func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
-	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && cls != nil && !f.prelude && c.consts[qualify(scope, r.Name)] != nil {
+	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && cls != nil && !f.isPrelude() && c.consts[qualify(scope, r.Name)] != nil {
 		c.addConstSingletonDef(f, n, r, scope)
 		return
 	}
-	if n.Receiver != nil && !f.prelude {
+	if n.Receiver != nil && !f.isPrelude() {
 		if _, self := n.Receiver.(*parser.SelfNode); !self {
 			if target, _ := c.lookupConst(f, n.Receiver, scope); target != nil { // `def BasePrimitive.bit_aligned`: that class's method
 				target.singletonDefs = append(target.singletonDefs, singletonDef{node: n, private: private, scope: scope, file: f})
@@ -140,19 +140,19 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		m.sigText = protocolSig(n) // `def respond_to_missing?(name, priv)`: Ruby's protocol fixes its types (decision 182)
 	}
 	if _, ok := f.annotations(line)["dynamic"]; ok {
-		if !f.prelude && !f.valueGen {
+		if !f.isPrelude() && !f.valueGen {
 			c.errorf(f, n, "@dynamic is only allowed in the prelude")
 		}
 		m.quietDynamic = true
 	}
 	if st := f.annotations(line)["self"]; len(st) > 0 {
-		if !f.prelude || cls == nil || cls.GoType == "" {
+		if !f.isPrelude() || cls == nil || cls.GoType == "" {
 			c.errorf(f, n, "@self is only allowed on a prelude @go_type class's methods")
 		}
 		m.selfText = st[0]
 		cls.selfDefs = true
 	}
-	if m.sigText == "" && !f.prelude {
+	if m.sigText == "" && !f.isPrelude() {
 		// A `.rbs` signature fills a method with no inline `#:` (decision 160);
 		// overloads compile once, merged, and each call picks its arm (decision 12).
 		if sd := c.sigMethod(cls, n.Name); sd != nil && len(sd.Overloads) == 1 {
@@ -161,7 +161,7 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 			m.sig, m.arms = merged, sd.Overloads
 		}
 	}
-	if body, ok := n.Body.(*parser.StatementsNode); ok && f.prelude && len(body.Body) == 1 {
+	if body, ok := n.Body.(*parser.StatementsNode); ok && f.isPrelude() && len(body.Body) == 1 {
 		if _, ok := body.Body[0].(*parser.XStringNode); ok {
 			m.Kind = kindPrimitive
 		}
@@ -216,7 +216,7 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 		at := rt
 		if !hasTy {
 			// No inline `#:`: a `.rbs` attribute supplies the type (decision 160).
-			if ad := c.sigAttr(cls, name); ad != nil && !f.prelude {
+			if ad := c.sigAttr(cls, name); ad != nil && !f.isPrelude() {
 				at = ad.Type
 			} else { // the defs it stands for, inferred like any def (decision 172 for gems, 179 for user code)
 				c.addModuleAttr(f, cls, n, kind, name, nil, private, scope)
@@ -352,7 +352,7 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 		defaults = append(defaults, nil)
 	}
 	if ps.Block != nil {
-		if m.Block == nil && m.sigText == "" && !m.File.prelude { // unannotated: an untyped block, any arguments, optional (decision 183)
+		if m.Block == nil && m.sigText == "" && !m.File.isPrelude() { // unannotated: an untyped block, any arguments, optional (decision 183)
 			m.Block = &BlockSig{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}, Optional: true, Untyped: true}
 		}
 		if m.Block == nil {
@@ -467,7 +467,7 @@ func (c *Compiler) aliasNew(ctx context.Context, d singletonMisc, m *Class, n *p
 	untyped := strings.TrimSuffix(strings.Repeat("untyped, ", len(names)), ", ")
 	// untyped: what callers pass goes to initialize as it is, typing its parameters from the calls
 	src := "#: (" + untyped + ") -> untyped\ndef " + newName.Unescaped.Value + "(" + list + ") = new(" + list + ")\n"
-	sf, err := parseFile(ctx, c.parser, d.file.Name, []byte(src), false)
+	sf, err := parseFile(ctx, c.parser, d.file.Name, []byte(src), originSource)
 	if err != nil || len(sf.Root.Statements.Body) != 1 {
 		c.addAlias(d.file, m, n, args[0], args[1])
 		return

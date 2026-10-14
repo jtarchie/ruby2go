@@ -13,17 +13,17 @@ import (
 // collectTopCall takes the top-level calls that act at compile time: require_relative, describe, include, require.
 func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNode) {
 	switch {
-	case n.Receiver == nil && n.Name == "require_relative" && f.prelude:
+	case n.Receiver == nil && n.Name == "require_relative" && f.isPrelude():
 		c.requireRelative(ctx, f, n)
 	case n.Receiver == nil && n.Name == "require_relative":
 		if uf := c.userRequireRelative(ctx, f, n); uf != nil {
 			c.addMainStmt(f, &loadFile{call: n, file: uf})
 		}
-	case !f.prelude && isDescribe(n):
+	case !f.isPrelude() && isDescribe(n):
 		c.collectDescribe(ctx, f, nil, n)
 	case c.collectIOExtend(f, n, nil): // before objectConstExtend, which would drop `ENV.extend(EnvSensitive)` (decision 248)
 	case c.topConstVisibility(f, n), c.objectConstExtend(f, n):
-	case n.Receiver == nil && n.Name == "include" && !f.prelude:
+	case n.Receiver == nil && n.Name == "include" && !f.isPrelude():
 		for _, a := range callArgs(n) { // main's include is Object's, as in MRI
 			c.addInclude(f, n, c.classes["Object"], a, nil)
 		}
@@ -38,7 +38,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		} else if hook := c.requireHook(f, n); hook != nil {
 			c.addMainStmt(f, hook)
 		}
-	case n.Name == "prepend" && !f.prelude && prependTarget(n) != nil: // `X.prepend(M)`, `X.singleton_class.prepend(M)` (decision 199)
+	case n.Name == "prepend" && !f.isPrelude() && prependTarget(n) != nil: // `X.prepend(M)`, `X.singleton_class.prepend(M)` (decision 199)
 		recv, single := prependTarget(n), false
 		if sc, ok := recv.(*parser.CallNode); ok {
 			recv, single = sc.Receiver, true
@@ -59,7 +59,7 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 
 // beginRequires splices the files a top-level begin requires where they stand, as rackup.rb's `begin; require_relative ...; rescue LoadError`.
 func (c *Compiler) beginRequires(ctx context.Context, f *File, n *parser.BeginNode) parser.Node {
-	if f.prelude || n.Statements == nil {
+	if f.isPrelude() || n.Statements == nil {
 		c.scanAnon(ctx, f, n, nil)
 		return n
 	}
@@ -92,7 +92,7 @@ func (c *Compiler) beginRequires(ctx context.Context, f *File, n *parser.BeginNo
 // requireHook is the call to Kernel#__require_<lib> that stands in for a
 // user file's top-level `require "lib"`, or nil when the prelude has none.
 func (c *Compiler) requireHook(f *File, n *parser.CallNode) *parser.CallNode {
-	if f.prelude || n.Arguments == nil || len(n.Arguments.Arguments) != 1 {
+	if f.isPrelude() || n.Arguments == nil || len(n.Arguments.Arguments) != 1 {
 		return nil
 	}
 	lib, ok := n.Arguments.Arguments[0].(*parser.StringNode)
@@ -122,7 +122,7 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 		c.classes[name] = cls
 		c.classList = append(c.classList, cls)
 		c.noteConstName(name)
-	} else if cls.IsModule != isModule && (name != "Numeric" || f.prelude) { // MRI's class Numeric is the prelude's module (decision 142): `class Numeric` reopens it
+	} else if cls.IsModule != isModule && (name != "Numeric" || f.isPrelude()) { // MRI's class Numeric is the prelude's module (decision 142): `class Numeric` reopens it
 		c.errorAt(srcPos{f, line}, "%s is already defined as a %s", name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
 	}
 	if c.consts[name] != nil {
@@ -143,11 +143,11 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 			break
 		}
 	}
-	if len(cls.TypeParams) == 0 && !f.prelude {
+	if len(cls.TypeParams) == 0 && !f.isPrelude() {
 		// A `.rbs` `class Foo[E]` supplies the generics an unannotated class lacks (decision 160).
 		cls.TypeParams = c.sigTypeParams(cls)
 	}
-	if _, ok := ann["hidden"]; ok && f.prelude {
+	if _, ok := ann["hidden"]; ok && f.isPrelude() {
 		cls.hidden = true
 	}
 	if g := ann["go_type"]; len(g) > 0 {
@@ -180,7 +180,7 @@ func (c *Compiler) nameGo() {
 		}
 	}
 	claim := func(f *File, name *string, gen func(string) []string) {
-		for !f.prelude && slices.ContainsFunc(gen(*name), func(n string) bool { return taken[n] }) {
+		for !f.isPrelude() && slices.ContainsFunc(gen(*name), func(n string) bool { return taken[n] }) {
 			*name += "_"
 		}
 		for _, n := range gen(*name) {
@@ -263,7 +263,7 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 			cls.superRef = ref
 		}
 	}
-	if !reopen && !f.prelude {
+	if !reopen && !f.isPrelude() {
 		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls), true)
@@ -284,7 +284,7 @@ func (c *Compiler) bootStructProps(ctx context.Context, f *File, cls *Class, pro
 		if slices.ContainsFunc(props, func(p structProp) bool { return p.name == bp.Name }) {
 			continue
 		}
-		tf, err := parseFile(ctx, c.parser, f.Name, []byte(bp.Type), false)
+		tf, err := parseFile(ctx, c.parser, f.Name, []byte(bp.Type), originSource)
 		if err != nil || len(tf.Root.Statements.Body) != 1 {
 			continue
 		}
@@ -341,7 +341,7 @@ func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNo
 	// (decision 249). ponytail: the class itself answers all_props, which MRI's does not; a Decorator class to fix.
 	decorator := "#: () -> singleton(" + cls.RubyName + ")\ndef self.decorator = self\n#: () -> Array[Symbol]\ndef self.all_props = [" + strings.Join(syms, ", ") + "]\n"
 	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n" + readers + decorator
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
 	if err != nil {
 		c.errorf(f, n, "T::Struct initialize: %v", err)
 	}
@@ -427,7 +427,7 @@ func (c *Compiler) collectClassEval(ctx context.Context, f *File, cls *Class, n 
 // `instance`, memoized in a class-level ivar (decision 54).
 func (c *Compiler) addSingletonInstance(ctx context.Context, f *File, n *parser.CallNode, cls *Class, scope []*Class) {
 	src := fmt.Sprintf("#: () -> %s\ndef self.instance = @__singleton_instance ||= new\n", cls.RubyName)
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 	if err != nil {
 		c.errorf(f, n, "%v", err)
 	}

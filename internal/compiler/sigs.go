@@ -171,7 +171,7 @@ func (c *Compiler) sigTypeParams(cls *Class) []string {
 
 // sigConst is the sig file's type for constant k (`NAME: T` in its class), or nil.
 func (c *Compiler) sigConst(k *Const) rbs.Type {
-	if k.File == nil || k.File.prelude {
+	if k.File == nil || k.File.isPrelude() {
 		return nil
 	}
 	owner, name := "", k.RubyName
@@ -193,7 +193,7 @@ func (c *Compiler) sigConst(k *Const) rbs.Type {
 func (c *Compiler) addSigIvars() {
 	for _, cls := range c.classList {
 		d := c.sigs[cls.RubyName]
-		if d == nil || cls.metaOf != nil || cls.File == nil || cls.File.prelude {
+		if d == nil || cls.metaOf != nil || cls.File == nil || cls.File.isPrelude() {
 			continue
 		}
 		for _, iv := range d.Ivars {

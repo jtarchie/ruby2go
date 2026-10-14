@@ -43,7 +43,7 @@ func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[string]*dm
 			return // a site outside the closed world (sorbet-runtime's own), or an anonymous owner
 		}
 		src := c.defineMethodSource(site, e)
-		sf, err := parseFile(ctx, c.parser, site.file.Name, []byte(src), false)
+		sf, err := parseFile(ctx, c.parser, site.file.Name, []byte(src), originSource)
 		if err != nil {
 			c.errorf(site.file, site.call, "define_method %s: %v\n%s", e.Name, err, src)
 		}
@@ -299,7 +299,7 @@ func (c *Compiler) singletonTemplate(ctx context.Context, cls *Class, m *Method,
 		return false
 	}
 	src := "def method_missing(" + nameVar.Name + ", *_rb2go_rest)\n" + blockAsMethodBody(m.File, blk) + "\nend\n"
-	sf, err := parseFile(ctx, c.parser, m.File.Name, []byte(src), false)
+	sf, err := parseFile(ctx, c.parser, m.File.Name, []byte(src), originSource)
 	if err != nil {
 		c.errorf(m.File, n, "define_singleton_method template: %v\n%s", err, src)
 	}

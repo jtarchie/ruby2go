@@ -31,7 +31,7 @@ func anonClassCall(n parser.Node) (*parser.CallNode, bool) {
 // `class Name < Super`: the constant names the class, as in MRI.
 func (c *Compiler) collectNamedAnon(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, isModule bool, scope []*Class) {
 	cls := c.declareAnon(ctx, f, call, isModule, qualify(scope, n.Name), scope)
-	if !isModule && !f.prelude {
+	if !isModule && !f.isPrelude() {
 		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
 }
@@ -41,7 +41,7 @@ func (c *Compiler) collectNamedAnon(ctx context.Context, f *File, n *parser.Cons
 // statements are collected where they stand; an anonymous class's block is
 // its body, collected by declareAnon.
 func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope []*Class) {
-	if n == nil || f.prelude {
+	if n == nil || f.isPrelude() {
 		return
 	}
 	switch n := n.(type) {
@@ -236,7 +236,7 @@ func (c *Compiler) anonDefineMethod(ctx context.Context, f *File, cls *Class, n 
 		c.errorf(f, n, "define_method %s in a Class.new block reads the enclosing local %s; store it on the class (`@x = %s`) and read that (decision 259)", name, caps[0], caps[0])
 	}
 	src := c.defineMethodSource(site, boot.MethodInfo{Name: name})
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
 	if err != nil {
 		c.errorf(f, n, "define_method %s: %v\n%s", name, err, src)
 	}

@@ -50,7 +50,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 // nil takes NilClass's, a value T's, as Ruby dispatches on the object (decision 186).
 func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
 	nc := f.c.classes["NilClass"]
-	if nc == nil || nc.lookup(name) == nil || nc.lookup(name).M.File == nil || nc.lookup(name).M.File.prelude {
+	if nc == nil || nc.lookup(name) == nil || nc.lookup(name).M.File == nil || nc.lookup(name).M.File.isPrelude() {
 		return expr{}, false
 	}
 	elem := recv.typ.(TOpt).Elem

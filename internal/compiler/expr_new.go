@@ -124,7 +124,7 @@ func (f *fctx) goTypeNewType(n parser.Node, cls *Class, expected Type) TClass {
 		t = et
 	case cls.hashBase || len(cls.TypeParams) == 0:
 		t = TClass{C: cls}
-	case untypedContainers[cls.RubyName] && !f.f.prelude:
+	case untypedContainers[cls.RubyName] && !f.f.isPrelude():
 		f.warn(n, "%s.new's element types are untyped: nothing in the program gives them a type (annotate `#: %s[...]` for static calls; decision 192)", cls.Name, cls.Name)
 		t = TClass{C: cls}
 		for range cls.TypeParams {

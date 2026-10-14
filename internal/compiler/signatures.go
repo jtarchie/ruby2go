@@ -31,7 +31,7 @@ func (c *Compiler) markCalleeDefaults() {
 				for name := range names {
 					m, a := cls.Methods[name], anc.Methods[name]
 					if cls.universal || anc.universal || m == nil || a == nil || m.Kind != kindDef || a.Kind != kindDef || m.calleeDefaults == a.calleeDefaults ||
-						a.File != nil && a.File.prelude || m.File != nil && m.File.prelude { // the prelude's Go helpers call its own (NewTypeError(msg)): its signatures are fixed
+						a.File != nil && a.File.isPrelude() || m.File != nil && m.File.isPrelude() { // the prelude's Go helpers call its own (NewTypeError(msg)): its signatures are fixed
 						continue
 					}
 					m.calleeDefaults, a.calleeDefaults, changed = true, true, true

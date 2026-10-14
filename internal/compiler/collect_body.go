@@ -204,7 +204,7 @@ func (c *Compiler) collectVisibilityCall(f *File, cls *Class, n *parser.CallNode
 	}
 	named := func(name string) *Method {
 		m := cls.Methods[name]
-		if m == nil && !f.prelude {
+		if m == nil && !f.isPrelude() {
 			// ponytail: `private :m` of an inherited or included method is ignored (it only restricts callers); copy it with the new visibility via linkAliases if a program depends on the NoMethodError
 			return &Method{}
 		}
@@ -297,7 +297,7 @@ func (c *Compiler) collectMethodTableCall(f *File, cls *Class, n *parser.CallNod
 					cls.singletonDefs[i].private, found = n.Name == "private_class_method", true
 				}
 			}
-			if !found && f.prelude { // an inherited or extended method's visibility: ignored, as collectVisibilityCall does
+			if !found && f.isPrelude() { // an inherited or extended method's visibility: ignored, as collectVisibilityCall does
 				c.errorf(f, n, "undefined method '%s' for class '%s'", name, cls.RubyName)
 			}
 		}
@@ -335,7 +335,7 @@ func (c *Compiler) symbolArgs(f *File, n *parser.CallNode, args []parser.Node) [
 // M (decision 229): the closed world has no per-object singleton classes, so every IO answers M's methods, which only
 // respond_to? on another IO could tell. Only the standard streams, whose class is known.
 func (c *Compiler) collectIOExtend(f *File, n *parser.CallNode, scope []*Class) bool {
-	if n.Name != "extend" || f.prelude {
+	if n.Name != "extend" || f.isPrelude() {
 		return false
 	}
 	var target *Class
@@ -365,7 +365,7 @@ func (c *Compiler) collectIOExtend(f *File, n *parser.CallNode, scope []*Class) 
 // does not implement, with a clearer message than the load-time call fallback
 // would give.
 func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
-	if n.Name == "prepend" && f.prelude {
+	if n.Name == "prepend" && f.isPrelude() {
 		c.errorf(f, n, "unsupported call in class body: %s", n.Name)
 	}
 }
@@ -426,7 +426,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		}
 		c.collectDelegation(f, cls, n, args, scope, true)
 	default:
-		if specForms[n.Name] && !f.prelude {
+		if specForms[n.Name] && !f.isPrelude() {
 			c.collectSpecForm(ctx, f, cls, n, scope)
 			return true
 		}
@@ -439,7 +439,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 // concurrent-ruby's `safe_initialization!`. The class extends M here, as the call would at load (decision 241).
 // ponytail: a guard is taken as true; and the method is found by a name no other class method has.
 func (c *Compiler) selfExtendCall(f *File, cls *Class, n *parser.CallNode) bool {
-	if len(callArgs(n)) > 0 || n.Block != nil || f.prelude {
+	if len(callArgs(n)) > 0 || n.Block != nil || f.isPrelude() {
 		return false
 	}
 	var found *singletonDef // supers are not linked yet: the one class method of that name, wherever it is

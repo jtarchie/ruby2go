@@ -134,7 +134,7 @@ func (c *Compiler) scanRequires(ctx context.Context, sources []Source) (libs []s
 			continue
 		}
 		sc.seen[path] = true
-		uf, perr := parseFile(ctx, c.parser, src.Name, src.Src, false)
+		uf, perr := parseFile(ctx, c.parser, src.Name, src.Src, originSource)
 		if perr != nil {
 			return nil, nil, perr
 		}
@@ -229,7 +229,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 	if err != nil {
 		return // the collect pass reports it where it stands
 	}
-	uf, err := parseFile(sc.ctx, sc.c.parser, path, src, false)
+	uf, err := parseFile(sc.ctx, sc.c.parser, path, src, originSource)
 	if err != nil {
 		panic(compileError{msg: err.Error()})
 	}
@@ -293,7 +293,7 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 func (c *Compiler) emitRequireTable() {
 	names := map[string]bool{}
 	for _, f := range c.files {
-		if f.prelude || f.path == "" {
+		if f.isPrelude() || f.path == "" {
 			continue
 		}
 		for _, p := range []string{f.path, c.real(f.path)} {

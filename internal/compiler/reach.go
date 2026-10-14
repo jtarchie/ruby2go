@@ -45,30 +45,29 @@ var goCall = regexp.MustCompile(`(?:\.|_)([A-Z][A-Za-z0-9]*)[(\[]`)
 
 // gemFile reports whether f was loaded from a gem's lib dir (decision 173), the code decision 169 prunes.
 func (c *Compiler) gemFile(f *File) bool {
-	if f == nil || f.prelude || f.path == "" {
+	if f == nil || f.isPrelude() || f.path == "" {
 		return false
 	}
-	if f.gem == nil { // asked per expression (lenient): resolving the gem dirs' symlinks each time was 44% of brew's gen CPU
+	if f.origin == originSource { // asked per expression (lenient): resolving the gem dirs' symlinks each time was 44% of brew's gen CPU
 		if c.gemDirsReal == nil {
 			c.gemDirsReal = make([]string, len(c.gemDirs))
 			for i, dir := range c.gemDirs {
 				c.gemDirsReal[i] = realPath(dir)
 			}
 		}
-		gem := false
+		f.origin = originUser
 		for _, dir := range c.gemDirsReal {
 			if within(dir, f.path) {
-				gem = true
+				f.origin = originGem
 				break
 			}
 		}
-		f.gem = &gem
 	}
-	return *f.gem
+	return f.origin == originGem
 }
 
 // userFile is a file of the program's own: not the prelude and not a gem's.
-func (c *Compiler) userFile(f *File) bool { return !f.prelude && !c.gemFile(f) }
+func (c *Compiler) userFile(f *File) bool { return !f.isPrelude() && !c.gemFile(f) }
 
 // reachDef is one method body: walked once its name is reached and, for a gem class's, the class is live.
 type reachDef struct {

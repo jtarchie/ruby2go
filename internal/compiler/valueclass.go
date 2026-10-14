@@ -78,7 +78,7 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	cls.valueMembers, cls.valueKind, cls.kwInit = members, kind, kwInit == "true"
 	// pad so the generated lines report the declaration's line
 	src := strings.Repeat("\n", line-1) + valueClassSource(kind, full, members, types, kwInit)
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.prelude)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 	if err != nil {
 		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
 	}

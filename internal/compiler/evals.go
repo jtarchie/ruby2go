@@ -52,7 +52,7 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 		return
 	}
 	c.evalSites[fmt.Sprintf("%s:%d", f.path, ln)] = true
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(e.Source), false)
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(e.Source), originSource)
 	if err != nil {
 		c.errorAt(srcPos{f, ln}, "eval: %v", err)
 	}

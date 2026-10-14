@@ -494,7 +494,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	src := []byte(c.out.String())
 	lazy := map[string]bool{}
 	for _, k := range c.constList {
-		if k.File.prelude {
+		if k.File.isPrelude() {
 			lazy[k.GoName] = true
 		}
 	}
@@ -516,7 +516,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 func (c *Compiler) sortedClasses() []*Class {
 	out := append([]*Class(nil), c.classList...)
 	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].File.prelude && !out[j].File.prelude
+		return out[i].File.isPrelude() && !out[j].File.isPrelude()
 	})
 	return out
 }
@@ -577,7 +577,7 @@ func preludeFile(ctx context.Context, p *parser.Parser, name string, src []byte)
 	if f, ok := preludeFiles.Load(name); ok {
 		return f.(*File), nil
 	}
-	f, err := parseFile(ctx, p, name, src, true)
+	f, err := parseFile(ctx, p, name, src, originPrelude)
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +605,7 @@ func (c *Compiler) loadPreludeGo() {
 			panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
 		}
 		imports = append(imports, fileImports...)
-		c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{&File{Name: name, prelude: true}, line}, code: body})
+		c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{&File{Name: name, origin: originPrelude}, line}, code: body})
 	}
 	preludeImports.Do(func() { mergeStdImports(stdImports, imports) })
 }
@@ -714,7 +714,7 @@ func (c *Compiler) userRequire(ctx context.Context, f *File, n *parser.CallNode)
 // findRequire is the file `require "x"` names on the load path, the first
 // -I directory holding x.rb, as MRI searches $LOAD_PATH; "" when none does.
 func (c *Compiler) findRequire(f *File, n *parser.CallNode) string {
-	if f.prelude || len(c.loadPath)+len(c.gemDirs) == 0 {
+	if f.isPrelude() || len(c.loadPath)+len(c.gemDirs) == 0 {
 		return ""
 	}
 	args := callArgs(n)
@@ -777,7 +777,7 @@ func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) 
 	uf := c.parsed[path] // scanRequires parsed it
 	if uf == nil {
 		var err error
-		uf, err = parseFile(ctx, c.parser, path, src, false)
+		uf, err = parseFile(ctx, c.parser, path, src, originSource)
 		if err != nil {
 			panic(compileError{msg: err.Error()})
 		}

@@ -530,7 +530,7 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 // respond_to_missing?, which only passes a name on), only names gem and user code answer (decision 235).
 func (f *fctx) noteDynAll() {
 	f.c.dynAll = true
-	if !f.lenient() && (!f.f.prelude || !f.c.pruneGems) {
+	if !f.lenient() && (!f.f.isPrelude() || !f.c.pruneGems) {
 		f.c.dynAllStrict = true
 	}
 }

@@ -264,7 +264,7 @@ func (f *fctx) afterCall(n *parser.CallNode) {
 	if m == nil {
 		m = f.c.topDefs[n.Name]
 	}
-	if m != nil && (m.File != nil && m.File.prelude || m.Kind == kindAttrReader) {
+	if m != nil && (m.File != nil && m.File.isPrelude() || m.Kind == kindAttrReader) {
 		return
 	}
 	f.unnarrowIvars()

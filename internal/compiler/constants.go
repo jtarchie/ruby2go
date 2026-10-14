@@ -62,7 +62,7 @@ func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.Cons
 		c.collectValueClass(ctx, f, n, call, kind, scope)
 		return
 	}
-	if call, isModule := anonClassCall(n.Value); call != nil && !f.prelude {
+	if call, isModule := anonClassCall(n.Value); call != nil && !f.isPrelude() {
 		c.collectNamedAnon(ctx, f, n, call, isModule, scope)
 		return
 	}
@@ -98,11 +98,11 @@ func (c *Compiler) methodClassVars() {
 		if cls.metaOf != nil {
 			owner = cls.metaOf
 		}
-		if cls.File == nil || cls.File.prelude {
+		if cls.File == nil || cls.File.isPrelude() {
 			continue
 		}
 		for _, m := range cls.MethodList {
-			if m.Node == nil || m.File == nil || m.File.prelude {
+			if m.Node == nil || m.File == nil || m.File.isPrelude() {
 				continue
 			}
 			anyNode(m.Node.Body, func(n parser.Node) bool {

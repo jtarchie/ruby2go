@@ -50,7 +50,7 @@ func (c *Compiler) delegateClassSuper(ctx context.Context, f *File, call *parser
   def ==(other) = other.equal?(self) || __getobj__ == other
 end
 `, name, target)
-		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
+		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
 		if err != nil {
 			c.errorf(f, call, "internal error: generated DelegateClass does not parse: %v", err)
 		}

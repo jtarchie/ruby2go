@@ -83,7 +83,7 @@ func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
 	case *parser.ConstantPathNode: // ::Regexp
 		isRegexp = r.Parent == nil && r.Name != nil && *r.Name == "Regexp"
 	}
-	if !isRegexp || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.prelude {
+	if !isRegexp || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.isPrelude() {
 		return
 	}
 	for _, a := range callArgs(n) {

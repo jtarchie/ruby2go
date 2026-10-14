@@ -510,13 +510,13 @@ func (c *Compiler) debugInfer(err *compileError) {
 func (c *Compiler) userMethods() []*Method {
 	var out []*Method
 	for _, m := range c.topDefList {
-		if !m.File.prelude && m.Kind == kindDef {
+		if !m.File.isPrelude() && m.Kind == kindDef {
 			out = append(out, m)
 		}
 	}
 	for _, cls := range c.classList {
 		for _, m := range cls.MethodList {
-			if !m.File.prelude && m.Kind == kindDef {
+			if !m.File.isPrelude() && m.Kind == kindDef {
 				out = append(out, m)
 			}
 		}

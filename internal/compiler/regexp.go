@@ -183,7 +183,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 				f.errorf(p, "interpolation must contain a single expression")
 			}
 			e := f.genExpr(p.Statements.Body[0], nil)
-			if c, ok := p.Statements.Body[0].(*parser.CallNode); !f.f.prelude && (ok && c.Name == "source" || isAny(e.typ) || isClass(e.typ, "Regexp")) {
+			if c, ok := p.Statements.Body[0].(*parser.CallNode); !f.f.isPrelude() && (ok && c.Name == "source" || isAny(e.typ) || isClass(e.typ, "Regexp")) {
 				f.c.needRxAlt = true // another pattern's text may hold what RE2 rejects (decision 242)
 			}
 			probe.WriteString("i") // under /x too: stripping a letter leaves it
@@ -196,7 +196,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	if err == nil {
 		var rx *rxRegexp
 		rx, err = rxCompile(flags.goPrefix() + goPat)
-		f.c.needRxAlt = f.c.needRxAlt || rx != nil && rx.alt != nil || f.lenient() && !f.f.prelude
+		f.c.needRxAlt = f.c.needRxAlt || rx != nil && rx.alt != nil || f.lenient() && !f.f.isPrelude()
 		var se *syntax.Error
 		if errors.As(err, &se) && !slices.Contains(rxUnsupported, se.Code) {
 			err = nil

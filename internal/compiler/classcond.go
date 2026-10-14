@@ -215,7 +215,7 @@ func (c *Compiler) absentGuard(f *File, pred parser.Node, scope []*Class) bool {
 // loadAutoload loads a boot-resolved autoload's file where it registers, so its load-time code runs before main's (decision 175).
 func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode) {
 	args := callArgs(n)
-	if len(args) != 2 || f.prelude {
+	if len(args) != 2 || f.isPrelude() {
 		return
 	}
 	target := c.findRequire(f, &parser.CallNode{Location: n.Location, Name: "require", Arguments: &parser.ArgumentsNode{Arguments: args[1:]}})
@@ -403,7 +403,7 @@ func (c *Compiler) loadTimeArm(f *File, n parser.Node, scope []*Class) ([]parser
 // factCond folds a method body's condition by the entry's `# rb2go_fold:` facts alone (decision 246): a fact, or
 // `&&`, `||`, `!` and parentheses over them, decided where a fact decides it.
 func (c *Compiler) factCond(f *File, n parser.Node) (val, ok bool) {
-	if len(c.facts) == 0 || f.prelude {
+	if len(c.facts) == 0 || f.isPrelude() {
 		return false, false
 	}
 	switch n := n.(type) {

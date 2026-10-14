@@ -50,7 +50,7 @@ var encodingArgs = map[string]map[string]int{
 
 // checkEncodingNames rejects at compile time a string literal naming an encoding MRI has and rb2go does not (decision 136).
 func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []parser.Node) {
-	if f.f.prelude {
+	if f.f.isPrelude() {
 		return
 	}
 	t, ok := recv.typ.(TClass)
