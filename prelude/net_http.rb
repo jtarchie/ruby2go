@@ -9,10 +9,6 @@ require_relative "socket"
 #
 # Net::HTTP's client on Go's net/http: no redirects, every status returned; open_timeout dials, read_timeout bounds the rest of the round trip.
 
-module Timeout
-  class Error < RuntimeError; end
-end
-
 # Only what verify_mode=/open-uri's ssl_verify_mode: take; no OpenSSL itself.
 module OpenSSL
   module SSL

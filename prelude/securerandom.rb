@@ -6,6 +6,9 @@
 module SecureRandom
   #: (?Integer) -> String
   def self.random_bytes(n = 16) = %x{
+    if n < 0 {
+      panic(NewArgumentError(Ref(String("negative string size (or size too big)"))))
+    }
     b := make([]byte, n)
     _, _ = rand.Read(b) // crypto/rand.Read never fails (Go 1.24+)
     return String(b)
@@ -13,6 +16,9 @@ module SecureRandom
 
   #: (?Integer) -> String
   def self.hex(n = 16) = %x{
+    if n < 0 {
+      panic(NewArgumentError(Ref(String("negative string size (or size too big)"))))
+    }
     b := make([]byte, n)
     _, _ = rand.Read(b)
     return String(hex.EncodeToString(b))
@@ -46,7 +52,7 @@ module SecureRandom
   #: (Integer) -> String
   def self.__alphanumeric_default(n) = %x{
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    b := make([]byte, n)
+    b := make([]byte, max(n, 0))
     for i := range b {
       v, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
       b[i] = chars[v.Int64()]

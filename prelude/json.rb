@@ -60,8 +60,22 @@ module JSON
     return rbToJson(obj, st)
   }
 
-  #: (untyped, *untyped) -> String
-  def self.dump(obj, *state) = %x{ rbToJson(obj, rbJSONStateOfMax(rest_, 0)) }
+  #: (untyped) -> String
+  def self.dump(obj) = %x{ rbToJson(obj, rbJSONStateOfMax(nil, 0, true)) }
+
+  # dump(obj, io) writes to io and returns it; nil or options give the String; an Integer limit raises NotImplementedError.
+  #: (untyped, untyped) -> untyped
+  # @dynamic
+  def self.__dump_2(obj, arg)
+    return __dump_state(obj, arg) if arg.nil? || arg.is_a?(Hash)
+    raise NotImplementedError, "JSON.dump limit is not supported" if arg.is_a?(Integer)
+    raise TypeError, "no implicit conversion of #{arg.class} into Integer" unless arg.respond_to?(:write)
+    arg.write(dump(obj))
+    arg
+  end
+
+  #: (untyped, untyped) -> String
+  def self.__dump_state(obj, arg) = %x{ rbToJson(obj, rbJSONStateOfMax([]any{arg}, 0, true)) }
 
   #: (String, ?Hash[Symbol, untyped]) -> untyped
   def self.parse(str, opts = {}) = %x{ rbJSONParse(string(str), opts) }

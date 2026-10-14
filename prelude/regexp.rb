@@ -6,7 +6,7 @@
 # match; see internal/compiler/regexp.go. rxRegexp (rxtranslate.go) matches
 # Onigmo's `^`, `\b` and multi-character `/i` folds where RE2's differ.
 
-# @go_type struct { re *rxRegexp; src string; opts string }
+# @go_type struct { re *rxRegexp; src string; opts string; anch *atomic.Pointer[rxRegexp] }
 class Regexp < Object
   # Regexp.last_match(n): the compiler passes the caller's $~ (decision 232).
   #: (MatchData?, untyped) -> String?

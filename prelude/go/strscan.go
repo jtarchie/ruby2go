@@ -6,12 +6,7 @@ package prelude
 import (
 	"fmt"
 	"strings"
-	"sync"
 )
-
-// rbScanAnchored caches each Regexp's \A-anchored twin, so a failed scan
-// costs one attempt at the pointer instead of a search of the rest.
-var rbScanAnchored sync.Map // *Regexp -> *rxRegexp
 
 // do matches re at the pointer (anchored) or anywhere after it. On a match
 // it records the groups, moves the pointer when advance is set, and returns
@@ -20,15 +15,21 @@ var rbScanAnchored sync.Map // *Regexp -> *rxRegexp
 func (s *StringScanner) do(re *Regexp, anchored, advance, str bool) *String {
 	rx := re.re
 	if anchored {
-		v, ok := rbScanAnchored.Load(re)
-		if !ok {
-			anchored, err := rxCompile(`\A(?:` + re.re.String() + `)`)
+		// each Regexp's \A-anchored twin, so a failed scan costs one attempt at the pointer instead of a search of the rest
+		rx = nil
+		if re.anch != nil {
+			rx = re.anch.Load()
+		}
+		if rx == nil {
+			twin, err := rxCompile(`\A(?:` + re.re.String() + `)`)
 			if err != nil {
 				panic(NewRegexpError(Ref(String(err.Error()))))
 			}
-			v, _ = rbScanAnchored.LoadOrStore(re, anchored)
+			if re.anch != nil {
+				re.anch.CompareAndSwap(nil, twin)
+			}
+			rx = twin
 		}
-		rx = v.(*rxRegexp)
 	}
 	rest := s.str[s.pos:]
 	loc := rx.FindStringSubmatchIndex(rest)

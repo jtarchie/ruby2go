@@ -32,7 +32,7 @@ module Base64
   #: (String) -> String
   def self.strict_decode64(str) = %x{
     out, err := base64.StdEncoding.Strict().DecodeString(string(str))
-    if err != nil {
+    if err != nil || strings.ContainsAny(string(str), "\\r\\n") { // Go's decoder skips line breaks, MRI's m0 does not
       panic(NewArgumentError(Ref(String("invalid base64"))))
     }
     return String(out)

@@ -10,8 +10,14 @@ import (
 	"regexp/syntax"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 )
+
+// rbRegexpOf wraps a compiled pattern; anch is the slot StringScanner fills with the \A-anchored twin, so the twin lives and dies with the Regexp.
+func rbRegexpOf(re *rxRegexp, src, opts string) *Regexp {
+	return &Regexp{re: re, src: src, opts: opts, anch: new(atomic.Pointer[rxRegexp])}
+}
 
 // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
 // may fail at run time, like Ruby's.
@@ -20,7 +26,7 @@ func rbRegexpNew(pattern, src, opts string) *Regexp {
 	if err != nil {
 		panic(NewRegexpError(Ref(String(rbRegexpErr(err, src)))))
 	}
-	return &Regexp{re: re, src: src, opts: opts}
+	return rbRegexpOf(re, src, opts)
 }
 
 // rbRegexpNewAfter is rbRegexpNew for a pattern variable that must initialize after the regexp2 engine registers (decision 242).
@@ -37,9 +43,9 @@ func rbRegexpLenient(prefix, src, opts string) *Regexp {
 		re, err = rxCompile(rxFold(prefix + pat))
 	}
 	if err != nil {
-		return &Regexp{re: &rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src: src, opts: opts}
+		return rbRegexpOf(&rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src, opts)
 	}
-	return &Regexp{re: re, src: src, opts: opts}
+	return rbRegexpOf(re, src, opts)
 }
 
 // rbRegexpErr words a Go regexp syntax error as Onigmo words the same

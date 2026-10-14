@@ -6,6 +6,7 @@ package prelude
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func rbCSVStrOpt(opts *Hash[Symbol, any], key, def string) string {
@@ -28,6 +29,12 @@ func rbCSVBoolOpt(opts *Hash[Symbol, any], key string) bool {
 
 // rbCSVParse splits s into rows; rowSep "" auto-detects LF/CRLF, skipBlanks drops empty lines, err is MRI's MalformedCSVError message.
 func rbCSVParse(s, sep, quote, rowSep string, skipBlanks bool) (rows [][]*String, err string) {
+	if sep == "" { // an empty separator never advances the field loop
+		panic(NewArgumentError(Ref(String(`:col_sep must be 1 or more characters: ""`))))
+	}
+	if utf8.RuneCountInString(quote) != 1 {
+		panic(NewArgumentError(Ref(String(":quote_char has to be nil or a single character String"))))
+	}
 	line := 1
 	i := 0
 	auto := rowSep == ""
@@ -114,7 +121,7 @@ func rbCSVParse(s, sep, quote, rowSep string, skipBlanks bool) (rows [][]*String
 	return rows, ""
 }
 
-// rbCSVLine is one generated row: nil is empty (or "" if force), fields holding the separator, quote, a line break, or force are quoted with the quote doubled.
+// rbCSVLine is one generated row (an empty sep or quote never matches, as MRI's writer): nil is empty (or "" if force), fields holding the separator, quote, a line break, or force are quoted with the quote doubled.
 func rbCSVLine(row []any, sep, quote, rowSep string, force bool) string {
 	var b strings.Builder
 	for i, v := range row {
@@ -129,7 +136,7 @@ func rbCSVLine(row []any, sep, quote, rowSep string, force bool) string {
 		}
 		f := string(rbToS(v))
 		_, isStr := v.(String)
-		if force || isStr && f == "" || strings.Contains(f, sep) || strings.Contains(f, quote) || strings.ContainsAny(f, "\r\n") {
+		if force || isStr && f == "" || sep != "" && strings.Contains(f, sep) || quote != "" && strings.Contains(f, quote) || strings.ContainsAny(f, "\r\n") {
 			f = quote + strings.ReplaceAll(f, quote, quote+quote) + quote
 		}
 		b.WriteString(f)

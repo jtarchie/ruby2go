@@ -8299,3 +8299,28 @@ resolve; anything not listed is still open.
       `rbPinnedFiles` is a map behind a leaf mutex held only around the
       map; it never shrinks (an `os.File` finalizer cannot be cleared).
     - Proof: `testdata/test/process_test.rb`, `testdata/run/process_stderr.rb`.
+271. **Stdlib hardening** (#101; amends 25, 63; 2026-10-14).
+    - CSV parse raises `ArgumentError` for an empty `col_sep` or a
+      `quote_char` that is not one character (MRI's messages); the
+      generator never raises (an empty sep/quote matches nothing, as in
+      MRI). `quote_char: nil` is still treated as the default `"` (MRI
+      disables quoting).
+    - `SecureRandom` size arguments below 0 raise `ArgumentError`.
+      `random_number(0)` stays Integer-typed (MRI answers a Float: the
+      static signature cannot express it).
+    - `Base64.strict_decode64` (and urlsafe) reject line breaks.
+    - `Tempfile` and `Tempfile.create` keep the `os.CreateTemp` handle
+      instead of reopening by path; `Dir.mktmpdir` errors name the
+      requested directory.
+    - StringScanner's anchored twin of a Regexp lives in the Regexp
+      (`anch`), not a global map, so it is collected with it.
+    - `JSON.dump(obj, io)` writes to io and returns it (overload
+      `__dump_2`, as `Marshal.dump`); `dump` allows NaN/Infinity by
+      default; an Integer limit raises `NotImplementedError`.
+      `JSON.parse`/`load` implement `freeze: true` and raise
+      `NotImplementedError` for truthy `allow_nan`, `object_class`,
+      `array_class`, `decimal_class`, `create_additions`, `match_string`;
+      other keys are ignored, as the generator does.
+    - OptionParser converters turn only `ArgumentError`/`TypeError` into
+      `InvalidArgument`; any other panic propagates (an integer past 64
+      bits is now a `RangeError`).

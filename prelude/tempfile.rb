@@ -12,26 +12,24 @@ class Tempfile < Object
 
   #: (?(String | Array[String])) -> void
   def initialize(basename = "")
-    path = basename.is_a?(String) ? Tempfile.__mktemp(basename) : Tempfile.__mktemp(basename[0] || "", basename[1] || "")
-    @file = File.new(path, "w+")
+    @file = basename.is_a?(String) ? Tempfile.__mktemp(basename) : Tempfile.__mktemp(basename[0] || "", basename[1] || "")
     @unlinked = false
   end
 
-  #: (String, ?String) -> String
+  # The os.CreateTemp handle itself (O_EXCL, 0600), never reopened by path, so a symlink swapped in between cannot redirect it.
+  #: (String, ?String) -> File
   def self.__mktemp(basename, suffix = "") = %x{
     f, err := os.CreateTemp("", string(basename)+"*"+string(suffix))
     if err != nil {
       panic(rbSysErr(err, "rb_sysopen", os.TempDir()))
     }
-    name := f.Name()
-    _ = f.Close()
-    return String(name)
+    return &File{f: f, path: f.Name(), r: bufio.NewReader(f), w: bufio.NewWriter(f)}
   }
 
   #: [T] (?String) { (File) -> T } -> T
   def self.create(basename = "")
-    path = __mktemp(basename)
-    f = File.new(path, "w+")
+    f = __mktemp(basename)
+    path = f.path
     begin
       yield f
     ensure

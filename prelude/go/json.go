@@ -74,12 +74,21 @@ func rbJSONNesting(depth int, tail string) any {
 
 // rbJSONParse walks the token stream itself, not json.Unmarshal into a map, so object keys keep insertion order (rb2go's Hash). opts is JSON.parse/.load's: symbolize_names, and max_nesting (100 unless given).
 func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
-	symbolizeNames, limit := false, 100
+	symbolizeNames, freeze, limit := false, false, 100
 	if opts != nil {
 		v, ok := opts.vals[Symbol("symbolize_names")]
 		symbolizeNames = ok && rbTruthy(v)
+		freeze = rbTruthy(opts.vals[Symbol("freeze")])
 		if m, ok := opts.vals[Symbol("max_nesting")]; ok {
 			limit = rbJSONMaxNesting(m)
+		}
+		for _, k := range opts.keys { // the generator's rule (decision 25): what is not implemented raises, other keys are ignored
+			switch k {
+			case Symbol("allow_nan"), Symbol("object_class"), Symbol("array_class"), Symbol("decimal_class"), Symbol("create_additions"), Symbol("match_string"):
+				if rbTruthy(opts.vals[k]) {
+					panic(NewNotImplementedError(Ref(String("JSON parser option " + string(k) + " is not supported"))))
+				}
+			}
 		}
 	}
 	limit = rbJSONLimit(limit)
@@ -101,7 +110,31 @@ func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
 	if rest := rbJSONSkipSpace(s, int(dec.InputOffset())); rest < len(s) {
 		panic(NewJSON_ParserError(Ref(String("unexpected token at end of stream '" + rbJSONSnippet(s, rest) + "'" + rbJSONAt(s, rest)))))
 	}
+	if freeze {
+		rbJSONFreeze(rv.v)
+	}
 	return rv.v
+}
+
+// rbJSONFreeze freezes every Array and Hash of a parsed document (freeze: true); Strings are values, always frozen.
+func rbJSONFreeze(v any) {
+	switch x := v.(type) {
+	case *Array[any]:
+		x.frozen.Store(true)
+		for _, e := range x.s {
+			rbJSONFreeze(e)
+		}
+	case *Hash[String, any]:
+		x.frozen.Store(true)
+		for _, e := range x.vals {
+			rbJSONFreeze(e)
+		}
+	case *Hash[Symbol, any]:
+		x.frozen.Store(true)
+		for _, e := range x.vals {
+			rbJSONFreeze(e)
+		}
+	}
 }
 
 // rbJSONSkipSpace is the index of the first non-whitespace byte of s at or after i.
@@ -336,11 +369,11 @@ func (st *rbJSONState) enter() {
 
 // rbJSONStateOf is State.from_state on a to_json's arguments: the state
 // passed down, a new one configured by an options Hash, or a default.
-func rbJSONStateOf(args []any) *rbJSONState { return rbJSONStateOfMax(args, 100) }
+func rbJSONStateOf(args []any) *rbJSONState { return rbJSONStateOfMax(args, 100, false) }
 
-// rbJSONStateOfMax is rbJSONStateOf with another default max_nesting (JSON.dump's is 0).
-func rbJSONStateOfMax(args []any, maxNesting int) *rbJSONState {
-	st := &rbJSONState{maxNesting: maxNesting}
+// rbJSONStateOfMax is rbJSONStateOf with other defaults (JSON.dump's: max_nesting 0, allow_nan true).
+func rbJSONStateOfMax(args []any, maxNesting int, allowNaN bool) *rbJSONState {
+	st := &rbJSONState{maxNesting: maxNesting, allowNaN: allowNaN}
 	if len(args) == 0 {
 		return st
 	}

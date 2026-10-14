@@ -335,7 +335,11 @@ func (sw *rbOptSwitch) rbConvert(val *string, shown string) any {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				rbOptFail("invalid argument", shown)
+				switch r.(type) {
+				case *ArgumentError, *TypeError: // what the converters raise; any other panic is a bug, not a bad argument
+					rbOptFail("invalid argument", shown)
+				}
+				panic(r)
 			}
 		}()
 		switch kind {

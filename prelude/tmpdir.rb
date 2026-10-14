@@ -47,7 +47,11 @@ class Dir
     }
     d, err := os.MkdirTemp(dir, prefix+"*"+suffix)
     if err != nil {
-      panic(rbSysErr(err, "rb_dir_s_mkdir", os.TempDir()))
+      if dir == "" {
+        dir = os.TempDir()
+      }
+      // MRI names the directory it tried (tmpdir/prefix + a random tail), not the system temp dir
+      panic(rbSysErr(err, "dir_s_mkdir", filepath.Join(dir, prefix+suffix)))
     }
     return String(d)
   }
