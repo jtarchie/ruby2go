@@ -937,7 +937,7 @@ resolve; anything not listed is still open.
     `depth`, `script_safe` (`escape_slash`), `ascii_only` and
     `allow_nan`; `sort_keys`, `strict` and `as_json` raise
     `NotImplementedError`, other keys are ignored as the gem ignores
-    unknown ones, and `max_nesting` is not checked. `JSON.pretty_generate`
+    unknown ones, and `max_nesting` is checked (see the amendment below). `JSON.pretty_generate`
     is `generate` with the gem's `PRETTY_STATE_PROTOTYPE` (two-space
     indent, one value per line) and `JSON.dump` is `generate`. Like the
     gem, the generator calls every value's `to_json` with one (opaque)
@@ -963,6 +963,23 @@ resolve; anything not listed is still open.
     not ported from the gem's parser. `JSON.load` is `.parse`: the
     gem's docs call `.load` unsafe for arbitrary Ruby objects, but
     rb2go's closed, untyped-only world has no such objects to inject.
+    *Amended (#101, security):* `max_nesting` is checked, as the gem does.
+    Parse (`JSON.parse`, `.load`) and generate (`to_json`, `generate`,
+    `pretty_generate`) default to 100, and `JSON.dump` to unlimited; the
+    `max_nesting:` option takes an Integer (Float truncates),
+    `false`/`nil`/`0` turn the limit off, and any other value raises
+    `TypeError`. A container deeper than the limit raises
+    `JSON::NestingError` (< `JSON::ParserError`; MRI raises it on the
+    generator side too). The parser reports the depth reached ("nesting
+    of 101 is too deep") and does not count empty containers. The
+    generator counts every container, empty ones too, reports "nesting
+    of 100 is too deep. Did you try to serialize objects with circular
+    references?", and shares one state across nested `to_json`, so a
+    cycle ends in `NestingError`. A hard cap of 10000 applies even when
+    the option is off, because a Go stack overflow is fatal and `rescue`
+    cannot catch it (MRI raises a catchable `SystemStackError`, or parses
+    without recursion). Go's own `json.Decoder` stops at 10000 as well, so
+    the parse-side cap only keeps the error class consistent.
 26. Threads are goroutines. An exception ends only its thread (reported on
     stderr) and `join` re-raises it. There is no GVL: stdout writes are
     locked, other shared state is the program's problem. The set of
@@ -4284,6 +4301,14 @@ resolve; anything not listed is still open.
       `read_only` checks. It is left for its own issue.
     ([example 97](../examples/97_marshal/main.rb),
     `testdata/test/marshal_test.rb`, `testdata/errors/marshal.txtar`.)
+    *Amended (#101, security):* `Marshal.load` counts nesting and raises
+    `ArgumentError` ("exceed depth limit") past 10000 levels, again
+    because a Go stack overflow cannot be rescued (MRI loads about 20000
+    deep and raises `SystemStackError` past its VM stack). State that no
+    dump of this program can hold raises `ArgumentError` ("dump format
+    error (...)") instead of a Go panic: a `Random` index outside
+    0..624, a `BigDecimal` mantissa that is not a non-negative integer,
+    or a `kind` outside Finite/Infinity/NaN.
 138. IO follow-ups (#54): pipe and popen ends are `IO`s, `IO.popen` writes
     and has a blockless form, `File.atime`, and `Array#pack` with the rest
     of `String#unpack`.

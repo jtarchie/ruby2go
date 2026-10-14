@@ -48,6 +48,7 @@ end
 module JSON
   class GeneratorError < StandardError; end
   class ParserError < StandardError; end
+  class NestingError < ParserError; end
 
   #: (untyped, *untyped) -> String
   def self.generate(obj, *state) = %x{ rbToJson(obj, rbJSONStateOf(rest_)) }
@@ -55,17 +56,17 @@ module JSON
   # PRETTY_STATE_PROTOTYPE: two-space indent, one value per line.
   #: (untyped) -> String
   def self.pretty_generate(obj) = %x{
-    st := &rbJSONState{indent: "  ", space: " ", objectNl: "\\n", arrayNl: "\\n"}
+    st := &rbJSONState{indent: "  ", space: " ", objectNl: "\\n", arrayNl: "\\n", maxNesting: 100}
     return rbToJson(obj, st)
   }
 
   #: (untyped, *untyped) -> String
-  def self.dump(obj, *state) = %x{ rbToJson(obj, rbJSONStateOf(rest_)) }
+  def self.dump(obj, *state) = %x{ rbToJson(obj, rbJSONStateOfMax(rest_, 0)) }
 
   #: (String, ?Hash[Symbol, untyped]) -> untyped
-  def self.parse(str, opts = {}) = %x{ rbJSONParse(string(str), rbJSONSymbolizeNames(opts)) }
+  def self.parse(str, opts = {}) = %x{ rbJSONParse(string(str), opts) }
 
-  # MRI's .load is .parse with unsafe defaults meant for Marshal-like data; rb2go's closed, untyped-only world has nothing unsafe to opt out of.
+  # MRI's .load is .parse with unsafe defaults meant for Marshal-like data (max_nesting stays 100); rb2go's closed, untyped-only world has nothing unsafe to opt out of.
   #: (String, ?Hash[Symbol, untyped]) -> untyped
   def self.load(str, opts = {}) = parse(str, opts)
 end

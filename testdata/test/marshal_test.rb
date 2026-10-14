@@ -324,4 +324,36 @@ module MarshalTests
       assert_equal TypeError, bad
     end
   end
+
+  # rb2go's own stream (decision 137), built by hand: MRI rejects its header (TypeError), rb2go must reject the body (ArgumentError or TypeError), never panic or overflow the Go stack, which no rescue catches.
+  class HostileInputTest < Minitest::Test
+    #: (String) -> String
+    def self.stream(body)
+      size = body.bytesize
+      "RB2GO\x04\x08" + (0...8).map { |i| (size >> (8 * i)) & 255 }.pack("C*") + body
+    end
+
+    #: (String) -> Class?
+    def self.load_error(body)
+      Marshal.load(stream(body))
+      nil
+    rescue Exception => e # rubocop:disable Lint/RescueException
+      e.class
+    end
+
+    def test_deep_nesting_is_rejected_not_a_stack_overflow
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error(("o\x0aArray[any]\x01" * 1_000_000) + "0"))
+    end
+
+    def test_random_state_index_is_checked
+      state = "\x00" * 624
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\x01" + state))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\xe2\x0a" + state))
+    end
+
+    def test_bigdecimal_state_is_checked
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x02zz\x00F\x00"))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x0215\x01F\x12"))
+    end
+  end
 end

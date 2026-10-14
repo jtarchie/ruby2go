@@ -39,17 +39,50 @@ func rbToJson(a any, args ...any) String {
 	return rbToS(a).ToJson(args...)
 }
 
-// rbJSONSymbolizeNames reads JSON.parse/.load's symbolize_names: option.
-func rbJSONSymbolizeNames(opts *Hash[Symbol, any]) bool {
-	if opts == nil {
-		return false
+// rbJSONHardNesting bounds the recursion where max_nesting is off (false, 0) or higher: a Go stack overflow is fatal and no rescue catches it (decision 25).
+const rbJSONHardNesting = 10000
+
+// rbJSONMaxNesting reads a max_nesting: option as the gem does: nil and false are 0 (off), a Float truncates, any other non-Integer is a TypeError.
+func rbJSONMaxNesting(v any) int {
+	switch n := rbUnbox(v).(type) {
+	case nil:
+		return 0
+	case Boolean:
+		if !bool(n) {
+			return 0
+		}
+		panic(NewTypeError(Ref(String("no implicit conversion of true into Integer"))))
+	case Integer:
+		return int(n)
+	case Float:
+		return int(n)
 	}
-	v, ok := opts.vals[Symbol("symbolize_names")]
-	return ok && rbTruthy(v)
+	panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into Integer"))))
 }
 
-// rbJSONParse walks the token stream itself, not json.Unmarshal into a map, so object keys keep insertion order (rb2go's Hash).
-func rbJSONParse(s string, symbolizeNames bool) any {
+// rbJSONLimit is the depth no container may pass: max, or the hard cap when max is off or above it.
+func rbJSONLimit(max int) int {
+	if max == 0 || max > rbJSONHardNesting {
+		return rbJSONHardNesting
+	}
+	return max
+}
+
+func rbJSONNesting(depth int, tail string) any {
+	return NewJSON_NestingError(Ref(String("nesting of " + strconv.Itoa(depth) + " is too deep" + tail)))
+}
+
+// rbJSONParse walks the token stream itself, not json.Unmarshal into a map, so object keys keep insertion order (rb2go's Hash). opts is JSON.parse/.load's: symbolize_names, and max_nesting (100 unless given).
+func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
+	symbolizeNames, limit := false, 100
+	if opts != nil {
+		v, ok := opts.vals[Symbol("symbolize_names")]
+		symbolizeNames = ok && rbTruthy(v)
+		if m, ok := opts.vals[Symbol("max_nesting")]; ok {
+			limit = rbJSONMaxNesting(m)
+		}
+	}
+	limit = rbJSONLimit(limit)
 	dec := json.NewDecoder(strings.NewReader(s))
 	dec.UseNumber()
 
@@ -58,9 +91,9 @@ func rbJSONParse(s string, symbolizeNames bool) any {
 		err error
 	)
 	if symbolizeNames {
-		rv, err = rbJSONDecodeValue(dec, func(k string) Symbol { return Symbol(k) })
+		rv, err = rbJSONDecodeValue(dec, 0, limit, func(k string) Symbol { return Symbol(k) })
 	} else {
-		rv, err = rbJSONDecodeValue(dec, func(k string) String { return String(k) })
+		rv, err = rbJSONDecodeValue(dec, 0, limit, func(k string) String { return String(k) })
 	}
 	if err != nil {
 		panic(NewJSON_ParserError(Ref(String(rbJSONDecodeErr(err, s)))))
@@ -157,8 +190,8 @@ func rbJSONEOFErr(s string) string {
 // rbJSONVal wraps a decoded value: a JSON null is a real `any(nil)` v, not a decode failure, so rbJSONDecodeValue returns this struct rather than (any, error), which would read as nilnil's ambiguous "nil value, nil error".
 type rbJSONVal struct{ v any }
 
-// rbJSONDecodeValue decodes one JSON value; keyOf (String or Symbol per symbolize_names) fixes every nested Hash to the same key type.
-func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (rbJSONVal, error) {
+// rbJSONDecodeValue decodes one JSON value inside depth containers; keyOf (String or Symbol per symbolize_names) fixes every nested Hash to the same key type. A container deeper than limit raises NestingError unless it is empty, as in the gem.
+func rbJSONDecodeValue[K comparable](dec *json.Decoder, depth, limit int, keyOf func(string) K) (rbJSONVal, error) {
 	tok, err := dec.Token()
 	if err != nil {
 		return rbJSONVal{}, err
@@ -167,6 +200,9 @@ func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (r
 	case json.Delim:
 		switch t {
 		case '{':
+			if depth >= limit && dec.More() {
+				panic(rbJSONNesting(depth+1, ""))
+			}
 			h := NewHash[K, any]()
 			for dec.More() {
 				kt, kerr := dec.Token()
@@ -177,7 +213,7 @@ func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (r
 				if !ok {
 					return rbJSONVal{}, fmt.Errorf("expected object key, got %v", kt)
 				}
-				v, verr := rbJSONDecodeValue(dec, keyOf)
+				v, verr := rbJSONDecodeValue(dec, depth+1, limit, keyOf)
 				if verr != nil {
 					return rbJSONVal{}, verr
 				}
@@ -188,9 +224,12 @@ func rbJSONDecodeValue[K comparable](dec *json.Decoder, keyOf func(string) K) (r
 			}
 			return rbJSONVal{h}, nil
 		case '[':
+			if depth >= limit && dec.More() {
+				panic(rbJSONNesting(depth+1, ""))
+			}
 			arr := &Array[any]{}
 			for dec.More() {
-				v, verr := rbJSONDecodeValue(dec, keyOf)
+				v, verr := rbJSONDecodeValue(dec, depth+1, limit, keyOf)
 				if verr != nil {
 					return rbJSONVal{}, verr
 				}
@@ -284,13 +323,24 @@ func rbJSONDecodeErr(err error, s string) string {
 type rbJSONState struct {
 	indent, space, spaceBefore, objectNl, arrayNl string
 	scriptSafe, asciiOnly, allowNaN               bool
-	depth                                         int
+	depth, maxNesting                             int
+}
+
+// enter is the gem's depth check: a container one level deeper than max_nesting (or the hard cap) raises NestingError, which also ends a cycle.
+func (st *rbJSONState) enter() {
+	st.depth++
+	if st.depth > rbJSONLimit(st.maxNesting) {
+		panic(rbJSONNesting(st.depth-1, ". Did you try to serialize objects with circular references?"))
+	}
 }
 
 // rbJSONStateOf is State.from_state on a to_json's arguments: the state
 // passed down, a new one configured by an options Hash, or a default.
-func rbJSONStateOf(args []any) *rbJSONState {
-	st := &rbJSONState{}
+func rbJSONStateOf(args []any) *rbJSONState { return rbJSONStateOfMax(args, 100) }
+
+// rbJSONStateOfMax is rbJSONStateOf with another default max_nesting (JSON.dump's is 0).
+func rbJSONStateOfMax(args []any, maxNesting int) *rbJSONState {
+	st := &rbJSONState{maxNesting: maxNesting}
 	if len(args) == 0 {
 		return st
 	}
@@ -318,6 +368,8 @@ func rbJSONStateOf(args []any) *rbJSONState {
 				st.asciiOnly = rbTruthy(v)
 			case Symbol("allow_nan"):
 				st.allowNaN = rbTruthy(v)
+			case Symbol("max_nesting"):
+				st.maxNesting = rbJSONMaxNesting(v)
 			case Symbol("depth"):
 				if d, ok := v.(Integer); ok {
 					st.depth = int(d)
@@ -349,11 +401,12 @@ func rbJSONOpt(v any) string {
 // (then indented) only when set.
 func rbJSONArray[E any](xs []E, args []any) String {
 	st := rbJSONStateOf(args)
+	st.enter()
+	depth := st.depth
 	if len(xs) == 0 {
+		st.depth--
 		return "[]"
 	}
-	st.depth++
-	depth := st.depth
 	var b strings.Builder
 	b.WriteByte('[')
 	b.WriteString(st.arrayNl)
@@ -377,11 +430,12 @@ func rbJSONArray[E any](xs []E, args []any) String {
 
 func rbJSONHash[K, V comparable](h *Hash[K, V], args []any) String {
 	st := rbJSONStateOf(args)
+	st.enter()
+	depth := st.depth
 	if len(h.keys) == 0 {
+		st.depth--
 		return "{}"
 	}
-	st.depth++
-	depth := st.depth
 	var b strings.Builder
 	b.WriteByte('{')
 	for i, k := range h.keys {

@@ -1,0 +1,129 @@
+# rbs_inline: enabled
+
+require "minitest/autorun"
+require "json"
+
+# max_nesting (decision 25): the json gem's depth limit, 100 by default, on both sides. The gem's messages are checked in testdata/test/stdlib_test.rb.
+module JsonTests
+  #: (Integer) -> String
+  def self.parse_text(n) = ("[" * n) + "1" + ("]" * n)
+
+  #: (Integer) -> untyped
+  def self.nested(n)
+    a = 1 #: untyped
+    n.times { a = [a] }
+    a
+  end
+
+  #: () { () -> untyped } -> Class?
+  def self.raised
+    yield
+    nil
+  rescue Exception => e # rubocop:disable Lint/RescueException
+    e.class
+  end
+
+  class NestingTest < Minitest::Test
+    def test_parse_depth_limit_is_100
+      assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(100)) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.parse(JsonTests.parse_text(101)) }
+    end
+
+    def test_nesting_error_is_a_parser_error
+      assert_equal true, JSON::NestingError.new.is_a?(JSON::ParserError)
+      caught = begin
+        JSON.parse(JsonTests.parse_text(101))
+        false
+      rescue JSON::ParserError
+        true
+      end
+      assert_equal true, caught
+    end
+
+    def test_parse_objects_count
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.parse(('{"a":' * 101) + "1" + ("}" * 101)) }
+      assert_nil JsonTests.raised { JSON.parse(('{"a":' * 100) + "1" + ("}" * 100)) }
+    end
+
+    def test_parse_empty_containers_do_not_count
+      assert_nil JsonTests.raised { JSON.parse(("[" * 101) + ("]" * 101)) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.parse(("[" * 102) + ("]" * 102)) }
+    end
+
+    def test_parse_max_nesting_option
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.parse(JsonTests.parse_text(3), max_nesting: 2) }
+      assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(2), max_nesting: 2) }
+      assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(101), max_nesting: 200) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.parse(JsonTests.parse_text(2), max_nesting: -1) }
+    end
+
+    def test_parse_max_nesting_disabled
+      assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(101), max_nesting: false) }
+      assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(101), max_nesting: 0) }
+      assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(101), max_nesting: nil) }
+    end
+
+    def test_load_is_limited_like_parse
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.load(JsonTests.parse_text(101)) }
+      assert_nil JsonTests.raised { JSON.load(JsonTests.parse_text(101), max_nesting: false) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.load(JsonTests.parse_text(101), max_nesting: 5) }
+    end
+
+    # the gem hits end of input (ParserError), rb2go its internal cap (NestingError); Go's own decoder also stops at 10000, so this guards the class, not a crash
+    def test_parse_unlimited_still_cannot_overflow_the_stack
+      klass = JsonTests.raised { JSON.parse("[" * 8_000_000, max_nesting: false) }
+      assert_equal true, [JSON::ParserError, JSON::NestingError].include?(klass)
+    end
+
+    def test_generate_depth_limit_is_100
+      assert_nil JsonTests.raised { JsonTests.nested(100).to_json }
+      assert_equal JSON::NestingError, JsonTests.raised { JsonTests.nested(101).to_json }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate(JsonTests.nested(101)) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.pretty_generate(JsonTests.nested(101)) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate({ "a" => JsonTests.nested(100) }) }
+    end
+
+    def test_generate_cycles_raise
+      a = [] #: Array[untyped]
+      a << a
+      assert_equal JSON::NestingError, JsonTests.raised { a.to_json }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate(a) }
+      h = {} #: Hash[String, untyped]
+      h["self"] = h
+      assert_equal JSON::NestingError, JsonTests.raised { h.to_json }
+    end
+
+    def test_generate_max_nesting_option
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate(JsonTests.nested(3), max_nesting: 2) }
+      assert_equal JSON::NestingError, JsonTests.raised { JsonTests.nested(3).to_json(max_nesting: 2) }
+      assert_nil JsonTests.raised { JSON.generate(JsonTests.nested(2), max_nesting: 2) }
+      assert_nil JsonTests.raised { JSON.generate(JsonTests.nested(101), max_nesting: 101) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate(JsonTests.nested(1), max_nesting: -1) }
+    end
+
+    def test_generate_max_nesting_disabled
+      assert_nil JsonTests.raised { JSON.generate(JsonTests.nested(101), max_nesting: false) }
+      assert_nil JsonTests.raised { JSON.generate(JsonTests.nested(101), max_nesting: 0) }
+    end
+
+    def test_generate_counts_empty_containers_and_the_depth_option
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate([[]], max_nesting: 1) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate({ "a" => {} }, max_nesting: 1) }
+      assert_nil JsonTests.raised { JSON.generate([[]], max_nesting: 2) }
+      assert_equal JSON::NestingError, JsonTests.raised { JSON.generate(JsonTests.nested(2), depth: 99) }
+      assert_nil JsonTests.raised { JSON.generate(JsonTests.nested(1), depth: 99) }
+    end
+
+    def test_dump_has_no_limit
+      assert_nil JsonTests.raised { JSON.dump(JsonTests.nested(101)) }
+    end
+
+    # the gem's unlimited cycle ends in SystemStackError, rb2go's in its internal cap
+    def test_generate_unlimited_cycle_cannot_overflow_the_stack
+      a = [] #: Array[untyped]
+      a << a
+      klass = JsonTests.raised { JSON.generate(a, max_nesting: false) }
+      assert_equal true, [JSON::NestingError, SystemStackError].include?(klass)
+    end
+  end
+end

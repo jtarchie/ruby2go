@@ -284,9 +284,19 @@ func rbMDumpHook(w *rbMW, tag string, v any, data func() any) {
 	}
 }
 
+// rbMR is one load: the unread bytes, the reference values read so far, and how deep value is nested.
 type rbMR struct {
-	b    []byte
-	refs []any
+	b     []byte
+	refs  []any
+	depth int
+}
+
+// rbMarshalMaxDepth bounds load's recursion: a Go stack overflow is fatal and no rescue catches it (MRI's SystemStackError is catchable), so hostile nesting is an ArgumentError instead.
+const rbMarshalMaxDepth = 10000
+
+// rbMarshalBad is the error for decoded state no dump of this program holds.
+func rbMarshalBad(what string) any {
+	return NewArgumentError(Ref(String("dump format error (" + what + ")")))
 }
 
 func rbMarshalShort() any { return NewArgumentError(Ref(String("marshal data too short"))) }
@@ -423,6 +433,11 @@ func (r *rbMR) reg(v any) { r.refs = append(r.refs, v) }
 func (r *rbMR) bool() bool { return rbTruthy(r.value()) }
 
 func (r *rbMR) value() any {
+	r.depth++
+	defer func() { r.depth-- }()
+	if r.depth > rbMarshalMaxDepth {
+		panic(NewArgumentError(Ref(String("exceed depth limit"))))
+	}
 	switch c := r.byte(); c {
 	case '0':
 		return nil
@@ -504,12 +519,18 @@ func rbMLoadCore(r *rbMR, key string) (any, bool) {
 	case rbKeyed[*BigDecimal]("oBigDecimal"):
 		x := &BigDecimal{}
 		r.reg(x)
+		x.mant = new(big.Int) // every BigDecimal method reads mant, so it is never nil
 		if m := r.str(); m != "" {
-			x.mant, _ = new(big.Int).SetString(m, 10)
+			if _, ok := x.mant.SetString(m, 10); !ok || x.mant.Sign() < 0 {
+				panic(rbMarshalBad("BigDecimal digits"))
+			}
 		}
 		x.exp = int(r.varint())
 		x.neg = r.bool()
 		x.kind = int(r.varint())
+		if x.kind < rbBDFinite || x.kind > rbBDNaN {
+			panic(rbMarshalBad("BigDecimal kind"))
+		}
 		return x, true
 	case rbKeyed[*Regexp]("oRegexp"):
 		i := len(r.refs)
@@ -523,6 +544,9 @@ func rbMLoadCore(r *rbMR, key string) (any, bool) {
 		r.reg(x)
 		x.seed = Integer(r.varint())
 		x.mt.i = int(r.varint())
+		if x.mt.i < 0 || x.mt.i > len(x.mt.s) { // next() indexes s[i], and regenerates from i == len(s)
+			panic(rbMarshalBad("Random state"))
+		}
 		for k := range x.mt.s {
 			x.mt.s[k] = uint32(r.varint())
 		}
