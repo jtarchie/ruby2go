@@ -18,6 +18,28 @@ import (
 // rbProcessStart anchors the monotonic clock; Go's time.Since reads the monotonic reading it carries.
 var rbProcessStart = time.Now()
 
+// rbClockGettimeUnit is clock_gettime(id, unit): MRI's units, a Float for :float_* and an Integer otherwise.
+func rbClockGettimeUnit(id int, unit string) any {
+	s := float64(rbClockGettime(id))
+	switch unit {
+	case "float_second":
+		return Float(s)
+	case "float_millisecond":
+		return Float(s * 1e3)
+	case "float_microsecond":
+		return Float(s * 1e6)
+	case "second":
+		return Integer(s)
+	case "millisecond":
+		return Integer(s * 1e3)
+	case "microsecond":
+		return Integer(s * 1e6)
+	case "nanosecond":
+		return Integer(s * 1e9)
+	}
+	panic(NewArgumentError(Ref(String("unexpected unit: " + unit))))
+}
+
 func rbClockGettime(id int) Float {
 	switch id {
 	case 0:

@@ -1021,6 +1021,9 @@ func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
 		if isOpt(e.typ) || isAny(e.typ) {
 			return e.code + " == nil", nil, true
 		}
+		if f.lenientObject(e.typ) {
+			return "any(" + e.code + ") == nil", nil, true
+		}
 	}
 	return "", nil, false
 }

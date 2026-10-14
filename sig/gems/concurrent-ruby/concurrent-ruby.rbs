@@ -1,0 +1,27 @@
+# Vendored RBS for the part of concurrent-ruby 1.3 Homebrew reaches (docs/design.md decisions 160, 253). An atomic
+# reference holds any value: every `attr_atomic` field of every class shares this one class, so inferring its value
+# from the first caller (a Promises state) broke the others (LockFreeStack's head).
+module Concurrent
+  # Process.clock_gettime with a unit is untyped (a Float or an Integer by unit); concurrent-ruby uses :float_second.
+  def self.monotonic_time: (?Symbol) -> Float
+
+  class MutexAtomicReference
+    @value: untyped
+
+    def initialize: (?untyped) -> void
+    def get: () -> untyped
+    def set: (untyped) -> untyped
+    def get_and_set: (untyped) -> untyped
+    def _compare_and_set: (untyped, untyped) -> bool
+  end
+
+  module AtomicNumericCompareAndSetWrapper
+    def compare_and_set: (untyped, untyped) -> bool
+  end
+
+  module AtomicDirectUpdate
+    def update: () { (untyped) -> untyped } -> untyped
+    def try_update: () { (untyped) -> untyped } -> untyped
+    def try_update!: () { (untyped) -> untyped } -> untyped
+  end
+end

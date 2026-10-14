@@ -1,3 +1,4 @@
+require "pathname"
 require "monitor"
 require "json"
 require "uri"
@@ -592,4 +593,68 @@ module DemoEnvConfig
   def env_value(env) = ENV.fetch(env, nil)
 
   def curlrc = env_value("DEMO_CURLRC_UNSET").demo_presence
+end
+
+# Homebrew's extend/pathname.rb: `File.basename(self)` in a reopened Pathname, a value type answering to_path, where a
+# path String is taken (decision 253).
+class Pathname
+  def demo_extname
+    base = File.basename(self)
+    return "" if base.match?(/\b\d+\.\d+[^.]*\Z/)
+
+    File.extname(base)
+  end
+
+  def demo_stem = File.basename(self, demo_extname)
+end
+
+# concurrent-ruby pieces (decision 253): LockFreeStack::Node's `singleton_class.send :alias_method, :[], :new`;
+# BlockedPromise.new_blocked_by1's `new(...)` on a subclass with its own initialize; a rest parameter given an
+# untyped value and an Array; Event's `then` over Kernel#then; nil reaching an object-typed parameter and `nil?`.
+class DemoNode
+  attr_reader :value, :nxt
+
+  def initialize(value, nxt)
+    @value = value
+    @nxt = nxt
+  end
+
+  singleton_class.send :alias_method, :[], :new
+end
+
+class DemoBlockedBase
+  attr_reader :delayed
+
+  def initialize(delayed, count)
+    @delayed = delayed
+    @count = count
+  end
+
+  def self.blocked_by(delayed, *args, &block) = new(delayed, 1, *args, &block)
+
+  def chained? = @delayed.nil?
+end
+
+class DemoChainPromise < DemoBlockedBase
+  def initialize(delayed, count, executor, args, &task)
+    super(delayed, count)
+    @executor = executor
+    @args = args
+    @task = task
+  end
+
+  def run = @task.call(*@args, @executor)
+end
+
+class DemoEventFuture
+  def chain(*args) = [:chain, *args]
+end
+
+class DemoPromEvent < DemoEventFuture
+  alias then chain
+end
+
+module DemoPromises
+  def self.make(event) = event.then(1, 2)
+  def self.chain(executor) = DemoChainPromise.blocked_by(nil, executor, [5]) { |a, e| [a, e] }
 end

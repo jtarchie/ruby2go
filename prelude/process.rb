@@ -34,6 +34,10 @@ module Process
   #: (Integer) -> Float
   def self.clock_gettime(id) = %x{ return rbClockGettime(int(id)) }
 
+  # With a unit (concurrent-ruby's monotonic_time): a Float for the :float_* units, an Integer for the others.
+  #: (Integer, Symbol) -> untyped
+  def self.__clock_gettime_2(id, unit) = %x{ return rbClockGettimeUnit(int(id), string(unit)) }
+
   #: () -> Integer
   def self.pid = %x{ Integer(os.Getpid()) }
 

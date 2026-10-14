@@ -580,6 +580,10 @@ func rbAsSlow[T any](a any, want string) T {
 	if v, ok := rbConv[T](a); ok {
 		return v
 	}
+	var zero T
+	if a == nil && any(zero) == nil { // an object type (an interface) holds nil, as MRI passes nil anywhere: a call on it raises (decision 253)
+		return zero
+	}
 	panic(rbConvError(a, want))
 }
 

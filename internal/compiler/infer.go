@@ -59,14 +59,19 @@ type pendingParam struct {
 
 // paramUse is one argument passed to a pending parameter.
 type paramUse struct {
-	typ  Type
-	file *File
-	off  int
+	typ     Type
+	file    *File
+	off     int
+	anyRest bool // a gem's untyped value into a rest parameter: its elements are anything (decision 253)
 }
 
 // pendingKey names a def's parameter stably across compiles.
 func pendingKey(m *Method, name string) string {
-	return m.File.posKey(m.Node.Location.StartOffset) + name
+	owner := ""
+	if m.Owner != nil { // one template's defs in several classes (concurrent-ruby's attr_atomic class_eval) share a position (decision 253)
+		owner = m.Owner.Name + "#"
+	}
+	return m.File.posKey(m.Node.Location.StartOffset) + owner + name
 }
 
 // posKey is a source position as file:line:column:, which a rewrite that
@@ -540,6 +545,11 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
+		if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.anyRest }); i >= 0 {
+			// concurrent-ruby's new_blocked_by1(self, executor, executor, args): a rest parameter collecting any values
+			next[key], from[key] = TAny{}, fmt.Sprintf("%s:%d", uses[i].file.Name, uses[i].file.line(uses[i].off))
+			continue
+		}
 		if u, ok := c.untypedGemUse(uses); ok { // a gem passing an untyped container: its elements are anything (decision 244)
 			next[key], from[key] = u.typ, fmt.Sprintf("%s:%d", u.file.Name, u.file.line(u.off))
 			continue

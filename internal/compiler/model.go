@@ -1430,6 +1430,10 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	if c.collectIOExtend(f, n, scope) {
 		return true
 	}
+	if a := singletonAlias(n); a != nil { // `singleton_class.send :alias_method, :[], :new` (concurrent-ruby's LockFreeStack::Node, decision 253)
+		cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: a, scope: scope, file: f})
+		return true
+	}
 	if n.Receiver != nil {
 		return false
 	}
@@ -2148,6 +2152,7 @@ func (c *Compiler) link(ctx context.Context) {
 	}
 	c.checkNumeric()
 	c.buildMetas()
+	c.applyAliasNews(ctx)
 	c.checkSpecUses() // before signatures: a bad let name would otherwise surface as an override mismatch
 	for _, cls := range c.classList {
 		if cls.GoType != "" && cls.Super != nil && cls.Super.isStruct() && !cls.Super.universal {
@@ -3330,7 +3335,25 @@ func (c *Compiler) linkOverrides(cls *Class) {
 
 // inInterface reports whether m is a slot of its owner's Go interface.
 func inInterface(m *Method) bool {
-	return !m.Private && !m.generic() && m.Name != "initialize" && (m.Owner.metaOf == nil || m.Name != "new")
+	return !staticPrivate(m) && !m.generic() && m.Name != "initialize" && (m.Owner.metaOf == nil || m.Name != "new")
+}
+
+// staticPrivate: a private method no subclass overrides, called directly. One a subclass overrides still dispatches
+// on self, as MRI's (concurrent-ruby's private __initialize_atomic_fields__, which attr_atomic redefines per class;
+// decision 253).
+func staticPrivate(m *Method) bool {
+	if !m.Private || m.Owner == nil {
+		return m.Private
+	}
+	if m.Owner.descendantDefines(m.Name, true) {
+		return false
+	}
+	if sup := m.Owner.Super; sup != nil { // an override of a dispatched private method: its slot
+		if pe := sup.lookup(m.Name); pe != nil && pe.M.Private && !staticPrivate(pe.M) {
+			return false
+		}
+	}
+	return true
 }
 
 func substAll(ts []Type, env map[string]Type) []Type {
@@ -3583,6 +3606,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 	for _, d := range cls.singletonDefs {
 		c.addDef(d.file, m, d.node, d.private, d.scope)
 	}
+	var ofSynth []singletonMisc // `alias_method :[], :new`: after the synthesized new it names (decision 253)
 	for _, d := range cls.singletonMisc {
 		switch n := d.node.(type) {
 		case *parser.AliasMethodNode:
@@ -3592,11 +3616,18 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 				if len(args) != 2 {
 					c.errorf(d.file, n, "alias_method takes a new and an old name")
 				}
+				if sym, ok := args[1].(*parser.SymbolNode); ok && sym.Unescaped.Value == "new" && m.Methods["new"] == nil {
+					ofSynth = append(ofSynth, d)
+					continue
+				}
 				c.addAlias(d.file, m, n, args[0], args[1])
 			} else {
 				c.addAttrs(d.file, m, n, args, d.private, d.scope)
 			}
 		}
+	}
+	for _, d := range ofSynth { // applied by link once the synthesized new exists (applyAliasNews)
+		c.aliasNews = append(c.aliasNews, aliasNewReq{d: d, m: m})
 	}
 	synth := []string{"name", "to_s", "inspect"}
 	if cls.isStruct() && !cls.universal && m.Methods["new"] == nil {
@@ -4786,7 +4817,7 @@ func liftConstWrites(n parser.Node, out *[]*parser.ConstantWriteNode) parser.Nod
 // untyped block, and calls m through its Dyn wrapper, as MRI calls the override (decision 249).
 func (c *Compiler) dynAdaptable(m *Method, s slot, cls *Class) bool {
 	sm := s.e.M
-	if m.Iterator || sm.Iterator || sm.calleeDefaults || sm.kwMask() || m.Private || sm.generic() {
+	if m.Iterator || sm.Iterator || sm.calleeDefaults || sm.kwMask() || staticPrivate(m) || sm.generic() {
 		return false
 	}
 	// a module cls includes itself: its slot is its Self constraint's, which names the module's own signature (one a
@@ -4841,4 +4872,81 @@ func (c *Compiler) adoptSlotBlock(m *Method, s slot) {
 	b := *sb
 	b.Optional = m.Block.Optional
 	m.Block = &b
+}
+
+// singletonAlias is `singleton_class.alias_method(:a, :b)` or `singleton_class.send(:alias_method, :a, :b)` in a class
+// body, as the `alias_method :a, :b` of a `class << self` body; nil for anything else.
+func singletonAlias(n *parser.CallNode) *parser.CallNode {
+	r, ok := n.Receiver.(*parser.CallNode)
+	if !ok || r.Name != "singleton_class" || r.Receiver != nil && !isSelf(r.Receiver) || r.Arguments != nil {
+		return nil
+	}
+	args := callArgs(n)
+	switch {
+	case n.Name == "alias_method" && len(args) == 2:
+	case (n.Name == "send" || n.Name == "__send__") && len(args) == 3:
+		if sym, ok := args[0].(*parser.SymbolNode); !ok || sym.Unescaped.Value != "alias_method" {
+			return nil
+		}
+		args = args[1:]
+	default:
+		return nil
+	}
+	return &parser.CallNode{Location: n.Location, Name: "alias_method", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: args}}
+}
+
+// aliasNew is a class's `alias_method :[], :new` on its synthesized new: a class method forwarding initialize's
+// required parameters to new (`Node[value, next]`); an initialize taking any other kind of parameter keeps the plain
+// alias (decision 253).
+// aliasNewReq is a class's `alias_method :x, :new` waiting for its synthesized new.
+type aliasNewReq struct {
+	d singletonMisc
+	m *Class
+}
+
+// applyAliasNews makes each queued alias of a synthesized new (decision 253).
+func (c *Compiler) applyAliasNews(ctx context.Context) {
+	for len(c.aliasNews) > 0 {
+		r := c.aliasNews[0]
+		c.aliasNews = c.aliasNews[1:]
+		c.aliasNew(ctx, r.d, r.m, r.d.node.(*parser.CallNode)) //nolint:forcetypeassert // queued from a CallNode
+	}
+}
+
+func (c *Compiler) aliasNew(ctx context.Context, d singletonMisc, m *Class, n *parser.CallNode) {
+	args := callArgs(n)
+	newName, ok := args[0].(*parser.SymbolNode)
+	init := m.metaOf.lookup("initialize")
+	var names []string
+	if ok && init != nil && init.M.Node != nil {
+		names = []string{}
+		if ps := init.M.Node.Parameters; ps != nil {
+			if len(ps.Optionals) > 0 || ps.Rest != nil || len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil {
+				names = nil
+			}
+			for _, r := range ps.Requireds {
+				rp, isReq := r.(*parser.RequiredParameterNode)
+				if !isReq {
+					names = nil
+					break
+				}
+				names = append(names, rp.Name)
+			}
+		}
+	}
+	if names == nil {
+		c.addAlias(d.file, m, n, args[0], args[1])
+		return
+	}
+	list := strings.Join(names, ", ")
+	untyped := strings.TrimSuffix(strings.Repeat("untyped, ", len(names)), ", ")
+	// untyped: what callers pass goes to initialize as it is, typing its parameters from the calls
+	src := "#: (" + untyped + ") -> untyped\ndef " + newName.Unescaped.Value + "(" + list + ") = new(" + list + ")\n"
+	sf, err := parseFile(ctx, c.parser, d.file.Name, []byte(src), false)
+	if err != nil || len(sf.Root.Statements.Body) != 1 {
+		c.addAlias(d.file, m, n, args[0], args[1])
+		return
+	}
+	sf.path, sf.pinLine = d.file.path, d.file.line(n.Location.StartOffset)
+	c.addDef(sf, m, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // parsed just above
 }

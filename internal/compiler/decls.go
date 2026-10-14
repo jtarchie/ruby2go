@@ -543,7 +543,7 @@ func (c *Compiler) emitClassType(cls *Class) {
 func (c *Compiler) publicEntries(cls *Class) []entry {
 	var out []entry
 	for _, e := range cls.methodSet() {
-		if e.M.Private || e.M.generic() || e.M.Name == "initialize" {
+		if staticPrivate(e.M) || e.M.generic() || e.M.Name == "initialize" {
 			continue
 		}
 		out = append(out, e)
@@ -2509,7 +2509,7 @@ func (c *Compiler) dynAdapterBody(cls *Class, e entry, s slot) string {
 		f.emit("}")
 	}
 	c.noteDyn(e.M.Name)
-	call := "rbDyn" + goMethodName(e.M.Name) + "(rbCall, self, args_...)"
+	call := "rbDyn" + goMethodName(e.M.Name) + "(rbFCall, self, args_...)" // a slot is self's own call: private methods answer
 	ret := subst(sm.Ret, env)
 	if isVoid(ret) {
 		f.emit("%s", call)

@@ -4508,6 +4508,32 @@ module ObjectTests
     end
   end
 
+  # A private method a subclass overrides, public or private, dispatches on self as MRI's (decision 253)
+  class PvBase
+    def initialize = @log = hook
+    attr_reader :log
+
+    private
+
+    def hook = "base"
+  end
+
+  class PvKid < PvBase
+    def hook = "kid"
+  end
+
+  class PvKid2 < PvBase
+    private
+
+    def hook = "kid2"
+  end
+
+  class ObjectPrivateOverrideTest < Minitest::Test
+    def test_private_override_dispatches
+      assert_equal %w[base kid kid2], [PvBase.new.log, PvKid.new.log, PvKid2.new.log]
+    end
+  end
+
   class ObjectTapOverrideTest < Minitest::Test
     def test_tap_override_and_class_through_untyped
       seen = [] #: Array[String]

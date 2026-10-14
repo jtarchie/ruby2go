@@ -1921,6 +1921,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if e, ok := f.genCallRewrite(n, expected); ok {
 		return e
 	}
+	if e, ok := f.lenientCall(n); ok {
+		return e
+	}
 	if e, ok := f.genCallForm(n, expected); ok {
 		return e
 	}
@@ -2362,6 +2365,15 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
+	}
+	if f.lenient() && e.Owner != nil && e.Owner.universal && e.M.File != nil && e.M.File.prelude && t.C.isStruct() && t.C.descendantDefines(name, false) {
+		// Kernel's `then` on an AbstractEventFuture whose Event and Future define their own (concurrent-ruby's
+		// `.future.then(*args, &task)`): the object's method, found at run time as MRI does (decision 253)
+		anyRecv := expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}
+		if block != nil {
+			return f.universalBlockCall(n, anyRecv, name, args, block)
+		}
+		return f.genDynCall(n, anyRecv, name, args)
 	}
 	return f.numericMix(n, recv, e, args, block)
 }
@@ -2942,6 +2954,9 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 			f.pinBefore(mark, codes)
 		}
 		f.noteUse(p, an, a.typ)
+		if isAny(a.typ) && f.lenient() && p.Pending != "" && f.c.uses != nil {
+			f.c.uses[p.Pending] = append(f.c.uses[p.Pending], paramUse{typ: TAny{}, file: f.f, off: an.GetLocation().StartOffset, anyRest: true})
+		}
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
@@ -3623,7 +3638,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
-	free := f.staticDef == m || m.generic() || (m.Private && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
+	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
 		m.Owner.universal && mentionsSelf(m.Ret) // an interface declares `-> self` as `any`; the free func returns Self
 	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
 		// a wrapper body: the owner's free func over its interface (any for Kernel), so no forwarder is selected (decision 209)
@@ -3747,7 +3762,7 @@ func (f *fctx) typeArgs(m *Method, recvT Type, env map[string]Type) string {
 
 // hasForwarder reports whether the receiver's Go type carries a method for e.
 func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
-	if e.Owner == nil || e.M.Private || e.M.generic() {
+	if e.Owner == nil || staticPrivate(e.M) || e.M.generic() {
 		return false
 	}
 	switch t := recvT.(type) {
@@ -9077,11 +9092,13 @@ var implicitConvs = map[string]string{"String": "to_str", "Integer": "to_int", "
 func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
 	from, ok := e.typ.(TClass)
 	conv := implicitConvs[to.C.RubyName]
-	if !ok || conv == "" || from.C.GoType != "" { // a struct class: a core value type's own rules stand (Float is not an Integer)
+	if !ok || conv == "" {
 		return "", false
 	}
 	if conv == "to_str" && f.resolve(from, conv) == nil && f.resolve(from, "to_path") != nil {
 		conv = "to_path" // a path object where a String is taken: MRI's path parameters call to_path first (rb2go types paths as String)
+	} else if from.C.GoType != "" { // a struct class: a core value type's own rules stand (Float is not an Integer); a Pathname's to_path is a path's (decision 253)
+		return "", false
 	}
 	if f.resolve(from, conv) == nil {
 		return "", false
@@ -9761,4 +9778,43 @@ func (f *fctx) unionToAnn(n parser.Node, val expr, ann Type) expr {
 		return expr{code: f.coerce(n, val, ann), typ: ann}
 	}
 	return val
+}
+
+// inheritedSelfNew is a gem class method's `new(...)` on self where a subclass defines its own initialize
+// (concurrent-ruby's BlockedPromise.new_blocked_by1 called on ChainPromise): the class self is at run time builds the
+// object, with that class's initialize, as MRI does (decision 253).
+func (f *fctx) inheritedSelfNew(n *parser.CallNode) (expr, bool) {
+	if n.Name != "new" || !f.lenient() || n.Receiver != nil && !isSelf(n.Receiver) || f.owner == nil || f.owner.metaOf == nil ||
+		!f.owner.metaOf.isStruct() || !f.owner.metaOf.descendantDefines("initialize", true) {
+		return expr{}, false
+	}
+	self := expr{code: f.coerce(n, expr{code: f.selfCode, typ: f.selfType}, TAny{}), typ: TAny{}}
+	if n.Block != nil {
+		return f.universalBlockCall(n, self, "new", callArgs(n), n.Block), true
+	}
+	return f.genDynCall(n, self, "new", callArgs(n)), true
+}
+
+// lenientObject: in gem code a value of a struct class's type may hold nil (an untyped nil converted in, rbAsSlow), so
+// `x.nil?` checks it at run time, where Object#nil? is false (decision 253).
+func (f *fctx) lenientObject(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && f.lenient() && c.C.isStruct() && !c.C.universal && c.C.metaOf == nil
+}
+
+// lenientCall is a gem's call compiled as MRI dispatches it where the static types would pick another method
+// (decision 253): an inherited class method's `new` on self, and `nil?` on an object that may hold nil.
+func (f *fctx) lenientCall(n *parser.CallNode) (expr, bool) {
+	if e, ok := f.inheritedSelfNew(n); ok {
+		return e, true
+	}
+	if n.Name == "nil?" && n.Arguments == nil && n.Block == nil && n.Receiver != nil && f.lenient() {
+		var t Type
+		f.probe(func() { t = f.genExpr(n.Receiver, nil).typ })
+		if f.lenientObject(t) {
+			r := f.genExpr(n.Receiver, nil)
+			return expr{code: "Boolean(any(" + r.code + ") == nil)", typ: f.cls("Boolean")}, true
+		}
+	}
+	return expr{}, false
 }

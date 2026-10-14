@@ -72,10 +72,23 @@ class ConditionVariable < Object
     return self
   }
 
-  # 0 once signalled, nil on timeout, as MRI's.
-  #: (Mutex, Float) -> Integer?
+  # 0 once signalled, nil on timeout, as MRI's. A nil timeout waits for the signal (concurrent-ruby's
+  # `@Condition.wait(@Lock, timeout)`), seconds an Integer or a Float.
+  #: (Mutex, untyped) -> Integer?
   def __wait_2(m, timeout) = %x{
-    if self.cv.waitTimeout(m, time.Duration(math.Round(float64(timeout)*1e9))) {
+    var secs float64
+    switch t := timeout.(type) {
+    case nil:
+      self.cv.wait(m)
+      return Ref(Integer(0))
+    case Integer:
+      secs = float64(t)
+    case Float:
+      secs = float64(t)
+    default:
+      panic(NewTypeError(Ref(String("can't convert " + rbClassName(timeout) + " into time interval"))))
+    }
+    if self.cv.waitTimeout(m, time.Duration(math.Round(secs*1e9))) {
       return Ref(Integer(0))
     }
     return nil

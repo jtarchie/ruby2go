@@ -75,6 +75,7 @@ type Compiler struct {
 	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string       // literal → its variable, to share one per pattern
 	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
+	aliasNews             []aliasNewReq            // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
 	needRequireTable      bool                    // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
 	programFile           *File                   // the file $0 names: the main file, or a traced entry's rb2go_main (decision 241)
 	dynBlockNames         map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
