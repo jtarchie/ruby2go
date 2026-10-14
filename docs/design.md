@@ -8252,3 +8252,25 @@ resolve; anything not listed is still open.
       through the untyped view, so `(1..2) == (1.0..2.0)` is true. `eql?`
       still uses `eql?` on the ends.
     - Not done: multi-argument `Hash#merge`/`update`.
+269. **Operand generation under nesting is polynomial, not exponential** (#101; amends 240 "what is left"; 2026-10-14).
+    - `genOr`, `genUnionOr`, `genAnd`, `genSafeNav`, `nilClassCall` and
+      `lift` each generated their operand twice (a dry run for its type,
+      then for real), so d nested levels cost 2^d: `(a || (a || ... b))`
+      at depth 22 took 26 s, `&.` with a block at depth 18 took 368 s.
+    - Inside a probe the output is discarded, so `genOperandOnce`
+      generates the operand once there (statements captured) and
+      `operandAgain` replays it; `lift` does one branch-typing pass in a
+      probe and skips the coerce pass. Outside a probe the dry run stays,
+      so output, temp numbering and warnings are unchanged (generated Go
+      byte-identical over `examples`, `testdata/run` and `testdata/test`;
+      one warning is emitted fewer times, same set). Cost is quadratic in
+      depth: the top-level real pass still dry-runs each level once
+      (depth 22 `||`: 0.7 s).
+    - `probe` and `capture` restore their state in a `defer`, so a compile
+      error unwinding through a probe no longer leaks it.
+    - Check: `TestNestedOperandsGenerateOnce` compiles 15 depth-14
+      nestings and fails if `genExpr` calls pass the depth-1 count plus
+      150*d^2 (`genCount`/`genLimit` on `options`; no wall clock).
+    - Left: a linear fix needs a splice or a type memo (`coerce(l)`
+      precedes the right side's temps in the output). The `gen.go` "always
+      true" warning is still not deduped.

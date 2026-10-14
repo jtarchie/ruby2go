@@ -404,26 +404,28 @@ func isAncestorBlock(decl, use string) bool {
 	return use == decl || strings.HasPrefix(use, decl+".")
 }
 
-// probe runs gen without emitting, restoring the output/temp state after.
+// probe runs gen without emitting, restoring the output/temp state after, even when gen panics with a compile error.
 func (f *fctx) probe(fn func()) {
 	savedBuf, savedTmp, savedCtr, savedIndent := f.buf, f.tmp, f.blockCtr, f.indent
 	f.buf = &strings.Builder{}
 	f.probeDepth++
-	defer func() { f.probeDepth-- }()
 	sc := f.scope
 	var had map[string]*local
 	if sc != nil {
 		had = maps.Clone(sc.vars)
 	}
-	fn()
-	f.buf, f.tmp, f.blockCtr, f.indent = savedBuf, savedTmp, savedCtr, savedIndent
-	if sc != nil { // locals the discarded output declared (`x = begin v = 1 end`, `xs << (w = 5)`) are not declared yet
-		for name := range sc.vars {
-			if _, ok := had[name]; !ok {
-				delete(sc.vars, name)
+	defer func() {
+		f.probeDepth--
+		f.buf, f.tmp, f.blockCtr, f.indent = savedBuf, savedTmp, savedCtr, savedIndent
+		if sc != nil { // locals the discarded output declared (`x = begin v = 1 end`, `xs << (w = 5)`) are not declared yet
+			for name := range sc.vars {
+				if _, ok := had[name]; !ok {
+					delete(sc.vars, name)
+				}
 			}
 		}
-	}
+	}()
+	fn()
 }
 
 // ---- tails
@@ -3784,10 +3786,9 @@ func anyNode(n parser.Node, pred func(parser.Node) bool) bool {
 func (f *fctx) capture(gen func()) string {
 	saved := f.buf
 	f.buf = &strings.Builder{}
+	defer func() { f.buf = saved }()
 	gen()
-	out := f.buf.String()
-	f.buf = saved
-	return out
+	return f.buf.String()
 }
 
 // symbolBlock desugars `&:name` to `{ |x_| x_.name }`.

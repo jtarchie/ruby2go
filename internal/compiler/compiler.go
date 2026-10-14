@@ -30,6 +30,7 @@ import (
 
 // Compiler holds the whole program: the prelude and the user files, one closed world.
 type Compiler struct {
+	genCount, genLimit    *int                        // test hook (decision 240): genExpr calls, and the count after which they fail the compile
 	erbSnippets           map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)
 	rewrites              map[parser.Node]parser.Node // desugared nodes, built once so every pass sees one tree
 	loopInner             map[*parser.CallNode]bool   // the loop calls loopRescue wrapped, not wrapped again
@@ -273,6 +274,8 @@ type options struct {
 	goFuncs    map[string]string // out: each gem method's Go func name -> its methodKey
 	noPrune    bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
 	testHook   func()            // tests only: runs at the start of compileWith, to inject a panic
+	genCount   *int              // test hook: genExpr calls, summed over every pass
+	genLimit   *int              // test hook: the count after which genExpr fails the compile
 }
 
 // ErrInternal marks an error that is a compiler bug (a panic that was neither a compile error nor an inference request), not a fault in the user's program.
@@ -392,6 +395,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.noPrune = opts.noPrune
+	c.genCount, c.genLimit = opts.genCount, opts.genLimit
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
 	if perr != nil {

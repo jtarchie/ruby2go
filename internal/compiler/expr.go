@@ -184,6 +184,12 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 
 // genExpr notes each value's type for Marshal: an inferred local's container type is never rendered (decision 137).
 func (f *fctx) genExpr(n parser.Node, expected Type) expr {
+	if f.c.genCount != nil {
+		*f.c.genCount++
+		if f.c.genLimit != nil && *f.c.genCount > *f.c.genLimit {
+			f.errorf(n, "generation budget exceeded")
+		}
+	}
 	e := f.genExpr0(n, expected)
 	switch n.(type) {
 	case *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode: // the block or the parent may reassign ivars
@@ -665,7 +671,7 @@ func (f *fctx) branchFit(types []Type, gen func(t tail), joinErr *compileError) 
 			continue
 		}
 		var err *compileError
-		f.probe(func() { err = f.try(func() { gen(tail{kind: tailAssign, target: "_", typ: cand}) }) }) // caught inside: a panic would skip probe's restore
+		f.probe(func() { err = f.try(func() { gen(tail{kind: tailAssign, target: "_", typ: cand}) }) })
 		if err == nil {
 			return cand
 		}
@@ -676,7 +682,12 @@ func (f *fctx) branchFit(types []Type, gen func(t tail), joinErr *compileError) 
 // lift turns a statement-shaped expression (if/case/begin) into a temp.
 func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	var types []Type
-	f.probe(func() { gen(tail{kind: tailAssign, target: "_", types: &types}) })
+	once := f.probing() // output is discarded here, so one pass both types the branches and declares their locals (decision 240)
+	if once {
+		gen(tail{kind: tailAssign, target: "_", types: &types})
+	} else {
+		f.probe(func() { gen(tail{kind: tailAssign, target: "_", types: &types}) })
+	}
 	var typ Type
 	err := catchCompileError(func() { typ = f.joinAll(n, types) })
 	if err != nil {
@@ -690,7 +701,9 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 		}
 	}
 	if isVoid(typ) {
-		gen(tail{})
+		if !once {
+			gen(tail{})
+		}
 		if isNil(typ) { // every branch is nil (`if c then end`): the value is nil, not void
 			return expr{code: "nil", typ: TNil{}, lit: true}
 		}
@@ -698,7 +711,9 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	}
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
-	gen(tail{kind: tailAssign, target: tmp, typ: typ})
+	if !once {
+		gen(tail{kind: tailAssign, target: tmp, typ: typ})
+	}
 	return expr{code: tmp, typ: typ}
 }
 
@@ -737,12 +752,13 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		return f.genUnionOr(n, l, u)
 	}
 	lElem := stripOpt(l.typ)
-	var r expr
-	f.probe(func() { r = f.genExpr(n.Right, lElem) })
+	r, once := f.genOperandOnce(func() expr { return f.genExpr(n.Right, lElem) })
 	boolL := isClass(l.typ, "Boolean")
-	if boolL && isClass(r.typ, "Boolean") {
-		var rc expr
-		stmts := f.capture(func() { rc = f.genExpr(n.Right, l.typ) })
+	if boolL && isClass(r.e.typ, "Boolean") {
+		rc, stmts := r.e, r.stmts
+		if !once {
+			stmts = f.capture(func() { rc = f.genExpr(n.Right, l.typ) })
+		}
 		if stmts == "" {
 			return expr{code: "(" + l.code + " || " + rc.code + ")", typ: l.typ}
 		}
@@ -768,12 +784,12 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 	// nothing make an untyped result.
 	var typ Type
 	switch {
-	case r.noreturn: // `x || raise(...)`
+	case r.e.noreturn: // `x || raise(...)`
 		typ = lElem
 	case untyped:
 		typ = TAny{}
 	default:
-		j, ok := join(lElem, r.typ)
+		j, ok := join(lElem, r.e.typ)
 		if !ok {
 			j = TAny{}
 		}
@@ -794,11 +810,11 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 	}
 	f.emit("} else {")
 	f.indent++
-	r = f.genExpr(n.Right, lElem)
-	if r.noreturn {
-		f.emit("%s", r.code)
+	re := f.operandAgain(r, once, func() expr { return f.genExpr(n.Right, lElem) })
+	if re.noreturn {
+		f.emit("%s", re.code)
 	} else {
-		f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+		f.emit("%s = %s", tmp, f.coerce(n, re, typ))
 	}
 	f.indent--
 	f.emit("}")
@@ -815,11 +831,10 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 		f.errorf(n, "`||` on %s, which is never nil or false, is always the left side", u)
 	}
 	lElem := unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)
-	var r expr
-	f.probe(func() { r = f.genExpr(n.Right, lElem) })
+	r, once := f.genOperandOnce(func() expr { return f.genExpr(n.Right, lElem) })
 	typ := lElem
-	if !r.noreturn {
-		typ = joinUnion(lElem, r.typ)
+	if !r.e.noreturn {
+		typ = joinUnion(lElem, r.e.typ)
 	}
 	tmp, lt := f.newTmp(), f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
@@ -827,11 +842,11 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 	f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: TAny{}}, typ)) // a member, so the check passes
 	f.emit("} else {")
 	f.indent++
-	r = f.genExpr(n.Right, lElem)
-	if r.noreturn {
-		f.emit("%s", r.code)
+	re := f.operandAgain(r, once, func() expr { return f.genExpr(n.Right, lElem) })
+	if re.noreturn {
+		f.emit("%s", re.code)
 	} else {
-		f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+		f.emit("%s = %s", tmp, f.coerce(n, re, typ))
 	}
 	f.indent--
 	f.emit("}")
@@ -841,17 +856,19 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 func (f *fctx) genAnd(n *parser.AndNode) expr {
 	l := f.genExpr(n.Left, nil)
 	narrow := f.leftNarrowing(n.Left, l)
-	var r expr
-	f.probe(func() {
+	r, once := f.genOperandOnce(func() expr {
 		f.push()
 		f.applyNarrow(narrow)
-		r = f.genExpr(n.Right, nil)
+		e := f.genExpr(n.Right, nil)
 		f.pop()
+		return e
 	})
 	boolL := isClass(l.typ, "Boolean")
-	if boolL && isClass(r.typ, "Boolean") {
-		var rc expr
-		stmts := f.capture(func() { rc = f.genExpr(n.Right, nil) })
+	if boolL && isClass(r.e.typ, "Boolean") {
+		rc, stmts := r.e, r.stmts
+		if !once || len(narrow) > 0 { // the unnarrowed generation is the one emitted
+			stmts = f.capture(func() { rc = f.genExpr(n.Right, nil) })
+		}
 		if stmts == "" {
 			return expr{code: "(" + l.code + " && " + rc.code + ")", typ: l.typ}
 		}
@@ -866,7 +883,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	if !boolL && !isOpt(l.typ) && !isAny(l.typ) && !isNil(l.typ) && !unionFalsy(l.typ) {
 		// the left is never nil or false: the value is the right
 		f.discard(l)
-		return f.genExpr(n.Right, nil)
+		return f.operandAgain(r, once && len(narrow) == 0, func() expr { return f.genExpr(n.Right, nil) })
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
 	// A Boolean? left may be false, not just nil: it is a possible value.
@@ -877,14 +894,14 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		if optBool {
 			lf = l.typ
 		}
-		if j, ok := join(lf, r.typ); ok {
+		if j, ok := join(lf, r.e.typ); ok {
 			typ = j
 		}
 	}
 	unionL := isUnion(l.typ)
 	if unionL { // the left's falsy members (nil, false) join the right (decision 150)
 		lf := unionOf(slices.DeleteFunc(slices.Clone(l.typ.(TUnion).Members), func(m Type) bool { return !isNil(m) && !isClass(m, "Boolean") })...)
-		typ = joinUnion(lf, r.typ)
+		typ = joinUnion(lf, r.e.typ)
 	}
 	tmp, lt := f.newTmp(), f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(typ))
@@ -902,9 +919,9 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		}
 		f.applyNarrow([]narrowInfo{nw})
 	}
-	r = f.genExpr(n.Right, nil)
+	re := f.operandAgain(r, once, func() expr { return f.genExpr(n.Right, nil) })
 	f.pop()
-	f.emit("%s = %s", tmp, f.coerce(n, r, typ))
+	f.emit("%s = %s", tmp, f.coerce(n, re, typ))
 	f.indent--
 	switch {
 	case unionL: // nil or false: checked into the result type, which holds both
@@ -916,6 +933,34 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	}
 	f.emit("}")
 	return expr{code: tmp, typ: typ}
+}
+
+// operand is an expression generated ahead of its emission: its value and the statements it emitted.
+type operand struct {
+	e     expr
+	stmts string
+}
+
+// genOperandOnce generates an operand of `||`, `&&`, `&.` or a nil receiver's call to learn its type. Outside a probe that is a dry run, and
+// operandAgain generates it for real. Inside one the output is discarded anyway, so it is generated once, here,
+// and operandAgain replays it: a dry run per level doubles the work of every nested level (decision 240).
+func (f *fctx) genOperandOnce(gen func() expr) (operand, bool) {
+	var o operand
+	if f.probing() {
+		o.stmts = f.capture(func() { o.e = gen() })
+		return o, true
+	}
+	f.probe(func() { o.e = gen() })
+	return o, false
+}
+
+// operandAgain is the operand for real: generated now, or the one genOperandOnce kept, its statements emitted here.
+func (f *fctx) operandAgain(o operand, once bool, gen func() expr) expr {
+	if !once {
+		return gen()
+	}
+	f.buf.WriteString(o.stmts)
+	return o.e
 }
 
 // leftNarrowing is what `x && ...` proves about a nilable local x.
@@ -1997,23 +2042,23 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	if o, ok := recv.typ.(TOpt); ok {
 		inner = expr{code: "(*" + rt + ")", typ: o.Elem}
 	}
-	var probe expr
-	f.probe(func() { probe = f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) })
-	if isVoid(probe.typ) {
+	call := func() expr { return f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) }
+	probe, once := f.genOperandOnce(call)
+	if isVoid(probe.e.typ) {
 		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 		f.indent++
-		e := f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block)
+		e := f.operandAgain(probe, once, call)
 		f.emitExprStmt(n, e)
 		f.indent--
 		f.emit("}")
 		return expr{code: "", typ: TVoid{}, stmt: true}
 	}
-	resT := optOf(probe.typ)
+	resT := optOf(probe.e.typ)
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(resT))
 	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 	f.indent++
-	e := f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block)
+	e := f.operandAgain(probe, once, call)
 	f.emit("%s = %s", tmp, f.coerce(n, e, resT))
 	f.indent--
 	f.emit("}")
@@ -5712,9 +5757,9 @@ func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser
 	}
 	rt := f.newTmp()
 	inner := expr{code: "(*" + rt + ")", typ: recv.typ.(TOpt).Elem}
-	var probe expr
-	f.probe(func() { probe = f.genMethodCall(n, inner, name, args, nil) })
-	t := probe.typ
+	call := func() expr { return f.genMethodCall(n, inner, name, args, nil) }
+	probe, once := f.genOperandOnce(call)
+	t := probe.e.typ
 	var zero string // "" is Go's zero value
 	switch {
 	case name == "to_i" && isClass(t, "Integer"), name == "to_f" && isClass(t, "Float"),
@@ -5732,7 +5777,7 @@ func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser
 	f.emit("var %s %s", tmp, f.c.goType(t))
 	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 	f.indent++
-	e := f.genMethodCall(n, inner, name, args, nil)
+	e := f.operandAgain(probe, once, call)
 	f.emit("%s = %s", tmp, f.coerce(n, e, t))
 	f.indent--
 	if zero != "" {
