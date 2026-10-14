@@ -36,6 +36,15 @@ func (f *fctx) optKind(args []parser.Node) string {
 			default:
 				style = max(style, 1)
 			}
+		case *parser.ConstantPathNode: // OptionParser::REQUIRED_ARGUMENT / OPTIONAL_ARGUMENT / NO_ARGUMENT (decision 245)
+			if a.Name != nil {
+				switch *a.Name {
+				case "REQUIRED_ARGUMENT":
+					style = max(style, 1)
+				case "OPTIONAL_ARGUMENT":
+					style = max(style, 2)
+				}
+			}
 		case *parser.ConstantReadNode:
 			switch a.Name {
 			case "Integer", "Float", "Array", "String":

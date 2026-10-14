@@ -3053,7 +3053,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if r := owner.lookup(name + "same"); r != nil && len(args) >= 2 && f.sameArgs(r.M, args) {
 		return r // `assert_equal 3, h[:a]`: both sides one static type
 	}
-	if len(args) >= 1 && classTwins(m.Name) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
+	if len(args) >= 1 && classTwins(m.Name) && !optOn(owner, m) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
 		if o, ok := a.typ.(TOpt); ok && f.lenient() { // a gem's T? is its T, nil raising where used (decision 172)
@@ -3070,6 +3070,11 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// optOn: OptionParser's on-methods overload by switch kind, never by class: a runtime-decided switch keeps `on`, not `__on_string` (decision 245).
+func optOn(owner *Class, m *Method) bool {
+	return owner.RubyName == "OptionParser" && (m.Name == "on" || m.Name == "on_tail" || m.Name == "on_head")
 }
 
 // classTwins: a method named like an operator's overloads (`div` and `/`'s `__div_integer`) takes none by class, which are the operator's.

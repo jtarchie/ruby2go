@@ -5,8 +5,12 @@
 # literal switch strings and coercion class: the compiler sends each call to
 # one of the `__on_<kind>` variants below.
 
-# @go_type struct { banner *string; head, items, tail []rbOptItem; width int; indent, prog, version string }
+# @go_type struct { banner *string; head, items, tail []rbOptItem; width int; indent, prog, version string; off map[string]bool }
 class OptionParser < Object
+  NO_ARGUMENT = :NONE
+  REQUIRED_ARGUMENT = :REQUIRED
+  OPTIONAL_ARGUMENT = :OPTIONAL
+
   #: (?String?) -> OptionParser
   def self.new(banner = nil) = __make(File.basename($0), banner)
 
@@ -168,6 +172,34 @@ class OptionParser < Object
   #: () -> String
   def summary_indent = %x{ String(self.indent) }
 
+  #: (String) -> String
+  def summary_indent=(text)
+    %x{
+    self.indent = string(text)
+    return text
+    }
+  end
+
+  # The default list: only its long table, whose delete turns off --help or --version (decision 245).
+  #: () -> OptionParser::List
+  def base = OptionParser::List.new(self)
+
+  #: (String) -> nil
+  def __no_officious(name) = %x{
+    if self.off == nil {
+      self.off = map[string]bool{}
+    }
+    self.off[string(name)] = true
+  }
+
+  # A switch from on's arguments, not added to the parser: [switch] (MRI's array has more after it).
+  #: (Array[untyped], ?untyped) -> Array[OptionParser::Switch]
+  def make_switch(opts, _block = nil)
+    sw = OptionParser::Switch.new
+    sw.__fill(opts)
+    [sw]
+  end
+
   #: () -> String
   def help = %x{ String(self.rbHelp()) }
 
@@ -215,3 +247,84 @@ class OptionParser::MissingArgument < OptionParser::ParseError; end
 class OptionParser::InvalidArgument < OptionParser::ParseError; end
 class OptionParser::NeedlessArgument < OptionParser::ParseError; end
 class OptionParser::AmbiguousOption < OptionParser::ParseError; end
+
+# OptionParser#base's long table: delete("help") / delete("version") turns off that built-in switch.
+class OptionParser::List
+  #: (OptionParser) -> void
+  def initialize(parser) = @parser = parser
+
+  #: () -> OptionParser::LongTable
+  def long = OptionParser::LongTable.new(@parser)
+end
+
+class OptionParser::LongTable
+  #: (OptionParser) -> void
+  def initialize(parser) = @parser = parser
+
+  #: (String) -> nil
+  def delete(name) = @parser.__no_officious(name)
+end
+
+# What make_switch returns: a switch's strings as MRI's Switch holds them, and its help lines.
+class OptionParser::Switch
+  #: () -> void
+  def initialize
+    @short = [] #: Array[String]
+    @long = [] #: Array[String]
+    @desc = [] #: Array[String]
+    @arg = nil #: String?
+  end
+
+  attr_reader :short, :long, :desc, :arg
+
+  #: (Array[untyped]) -> void
+  def __fill(opts) = %x{
+    sw := rbOptBuild("flag", opts._ToAny().s)
+    for _, x := range sw.short {
+      self._OptionParser_Switch().short.s = append(self._OptionParser_Switch().short.s, String(x))
+    }
+    for _, x := range sw.long {
+      self._OptionParser_Switch().long.s = append(self._OptionParser_Switch().long.s, String(x))
+    }
+    for _, x := range sw.desc {
+      self._OptionParser_Switch().desc.s = append(self._OptionParser_Switch().desc.s, String(x))
+    }
+    if sw.arg != "" {
+      self._OptionParser_Switch().arg = Ref(String(sw.arg))
+    }
+  }
+
+  # MRI's Switch#summarize: names already in sdone/ldone are left out (and marked done), each line indented.
+  #: (Hash[untyped, untyped], Hash[untyped, untyped], Integer, Integer, String) { (String) -> void } -> void
+  def summarize(sdone, ldone, width, _max, indent)
+    sopts = @short.reject { |s| sdone.key?(s) }
+    lopts = @long.reject { |l| ldone.key?(l) }
+    @short.each { |s| sdone[s] = true }
+    @long.each { |l| ldone[l] = true }
+    return if sopts.empty? && lopts.empty?
+
+    __lines(sopts, lopts, width).each { |line| yield indent + line }
+  end
+
+  #: (Array[String], Array[String], Integer) -> Array[String]
+  def __lines(sopts, lopts, width) = %x{
+    sw := &rbOptSwitch{}
+    for _, x := range sopts.s {
+      sw.short = append(sw.short, string(x))
+    }
+    for _, x := range lopts.s {
+      sw.long = append(sw.long, string(x))
+    }
+    for _, x := range self._OptionParser_Switch().desc.s {
+      sw.desc = append(sw.desc, string(x))
+    }
+    if a := self._OptionParser_Switch().arg; a != nil {
+      sw.arg = string(*a)
+    }
+    out := &Array[String]{}
+    for _, l := range sw.summarize(int(width)) {
+      out.s = append(out.s, String(l))
+    }
+    return out
+  }
+end

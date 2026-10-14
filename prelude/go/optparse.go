@@ -54,8 +54,42 @@ func rbOptSpecStyle(rest string) (int, string) {
 // switches, other strings describe it, class arguments were read at
 // compile time.
 func (self *OptionParser) rbOn(where int, kind string, specs []any, call func(any)) *OptionParser {
-	sw := &rbOptSwitch{kind: kind, call: call}
+	sw := rbOptBuild(kind, specs)
+	sw.call = call
+	item := rbOptItem{sw: sw}
+	switch where {
+	case 1:
+		self.tail = append(self.tail, item)
+	case -1:
+		self.head = append([]rbOptItem{item}, self.head...)
+	default:
+		self.items = append(self.items, item)
+	}
+	return self
+}
+
+// rbOptBuild reads a switch from on's (or make_switch's) arguments. Beyond the switch strings, a run-time switch takes
+// REQUIRED_ARGUMENT / OPTIONAL_ARGUMENT / NO_ARGUMENT (:REQUIRED, :OPTIONAL, :NONE) and Array as its coercion
+// (Homebrew's CLI::Parser, decision 245).
+func rbOptBuild(kind string, specs []any) *rbOptSwitch {
+	sw := &rbOptSwitch{kind: kind}
+	array := false
 	for _, a := range specs {
+		switch v := rbUnbox(a).(type) {
+		case Symbol:
+			switch v {
+			case "REQUIRED":
+				sw.style = 1
+			case "OPTIONAL":
+				sw.style = 2
+			case "NONE":
+				sw.style = 0
+			}
+			continue
+		case interface{ Name() String }: // a class object: Array is the coercion brew passes
+			array = array || v.Name() == "Array"
+			continue
+		}
 		s, ok := rbUnbox(a).(String)
 		if !ok {
 			continue
@@ -88,19 +122,20 @@ func (self *OptionParser) rbOn(where int, kind string, specs []any, call func(an
 			sw.desc = append(sw.desc, str)
 		}
 	}
+	if array && (kind == "string" || kind == "string_opt") { // a switch string read at run time with an Array coercion
+		sw.kind = "array"
+	}
 	if kind == "flag" && sw.style != 0 {
-		sw.kind = "string"
+		switch {
+		case array:
+			sw.kind = "array"
+		case sw.style == 2:
+			sw.kind = "string_opt"
+		default:
+			sw.kind = "string"
+		}
 	}
-	item := rbOptItem{sw: sw}
-	switch where {
-	case 1:
-		self.tail = append(self.tail, item)
-	case -1:
-		self.head = append([]rbOptItem{item}, self.head...)
-	default:
-		self.items = append(self.items, item)
-	}
-	return self
+	return sw
 }
 
 func (self *OptionParser) rbSwitches() []*rbOptSwitch {
@@ -478,6 +513,8 @@ func (self *OptionParser) rbParse(argv []String, into any) []String {
 // help and exits, --version the version (MRI's "officious" options).
 func (self *OptionParser) rbOfficious(name, arg string) {
 	switch {
+	case self.off != nil && (self.off["help"] && rbAbbrevOf(name, "help") || self.off["version"] && rbAbbrevOf(name, "version")):
+		return // `base.long.delete("help")`: the parser's own handling is off (decision 245)
 	case rbAbbrevOf(name, "help"):
 		rbWrite(self.rbHelp())
 		panic(NewSystemExit(0))

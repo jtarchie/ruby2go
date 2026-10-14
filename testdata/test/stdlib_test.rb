@@ -1283,6 +1283,28 @@ module StdlibTests
       assert_equal [], o.parse(%w[-v -c 2 --no-color -l rest], into: h)
       assert_equal({ verbose: true, count: 2, color: false, l: "rest" }, h)
     end
+
+    # Switches decided at run time, the argument-style constants, Array coercion and Switch#summarize (decision 245).
+    def test_runtime_switches
+      opts = {} #: Hash[Symbol, untyped]
+      parser = OptionParser.new
+      parser.summary_indent = "  "
+      parser.base.long.delete("version")
+      names = ["--json"]
+      parser.on(*names, "Print JSON") { |v| opts[:json] = v }
+      days = "--days"
+      parser.on(days, OptionParser::REQUIRED_ARGUMENT, "How many days") { |v| opts[:days] = v }
+      list = "--list"
+      parser.on(list, OptionParser::REQUIRED_ARGUMENT, Array, "Some list") { |v| opts[:list] = v }
+      assert_equal ["wget"], parser.parse(["--json", "--days", "3", "--list=a,b", "wget"])
+      assert_equal({ json: true, days: "3", list: ["a", "b"] }, opts)
+      option, = parser.make_switch(["--verbose", "Be loud"])
+      lines = [] #: Array[String]
+      option&.summarize({}, {}, parser.summary_width, parser.summary_width - 1, parser.summary_indent) { |l| lines << l }
+      assert_equal ["--verbose", "Be loud", nil], [option&.long&.first, option&.desc&.first, option&.short&.first]
+      assert_equal ["      --verbose                    Be loud"], lines
+      assert_raises(OptionParser::InvalidOption) { parser.parse(["--version"]) }
+    end
   end
 
   # OpenStruct, SimpleDelegator and DelegateClass (decision 118, #35).
