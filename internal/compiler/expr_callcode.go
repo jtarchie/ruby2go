@@ -1,0 +1,479 @@
+package compiler
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+)
+
+// closed returns subst(t, env) if it has no unbound method type vars.
+func closed(t Type, env map[string]Type) Type {
+	s := subst(t, env)
+	var vars []string
+	freeVars(s, &vars)
+	for _, v := range vars {
+		if _, ok := env[v]; !ok {
+			return nil
+		}
+	}
+	return s
+}
+
+// nilableFetch reroutes Hash#fetch whose default may be nil: MRI returns that nil, so the result is V? (decision 12).
+func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *entry {
+	if m.Name != "fetch" || m.Owner == nil || m.Owner.RubyName != "Hash" || len(args) != 2 || block != nil {
+		return nil
+	}
+	var d expr
+	f.probe(func() { d = f.genExpr(args[1], nil) })
+	if !isNil(d.typ) && !isOpt(d.typ) && !isAny(d.typ) {
+		return nil
+	}
+	return m.Owner.lookup("__fetch_opt")
+}
+
+// bindTypeParams checks every type parameter of m is bound, first
+// unifying m's return type with the call's expected type, if any
+// (`SizedQueue.new(2) #: SizedQueue[Integer]`).
+func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
+	if n == f.retHintNode && f.retHint != nil {
+		unify(m.Ret, f.retHint, env)
+	}
+	for _, tp := range m.TypeParams {
+		if _, ok := env[tp]; !ok {
+			if f.c.pruneGems && f.c.gemFile(f.f) { // a gem's `Set[]` is a Set[untyped] (decision 169)
+				env[tp] = TAny{}
+				continue
+			}
+			if owner := containerOf(m); owner != "" && m.Block == nil && f.f != nil && !f.f.prelude { // a block was typed with the parameter already
+				// an empty core container nothing types: untyped elements, its calls dynamic (decision 192)
+				f.warn(n, "%s's %s is untyped: nothing in the program gives it a type (annotate `#: %s[...]` for static calls; decision 192)", m, tp, owner)
+				env[tp] = TAny{}
+				continue
+			}
+			f.errorf(n, "cannot infer type parameter %s of %s", tp, m)
+		}
+	}
+}
+
+// callEntry calls e; a call to a `bot` method is noreturn, and Go must
+// see its panic to know the statement list ends there.
+func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	if f.lenient() && block == nil && len(args) > 0 && f.unionArm == 0 && !slices.ContainsFunc(args, f.readsUnionLocal) { // a union argument: unionArgCall first
+		// gem code: arguments the static signature cannot take (a splat, a computed keyword) are matched per call at run time, as MRI does
+		if f.probing() { // output is discarded: no dry run needed
+			var r expr
+			err := f.try(func() { r = f.callEntry0(n, e, recv, args, block) })
+			if err != nil {
+				return f.genDynCall(n, recv, e.M.Name, args)
+			}
+			return r
+		}
+		err := f.try(func() { f.probe(func() { f.callEntry0(n, e, recv, args, block) }) })
+		if err != nil {
+			return f.genDynCall(n, recv, e.M.Name, args)
+		}
+	}
+	return f.callEntry0(n, e, recv, args, block)
+}
+
+func isSplatArg(a parser.Node) bool {
+	_, ok := a.(*parser.SplatNode)
+	return ok
+}
+
+func (f *fctx) callEntry0(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	if block == nil {
+		if r, ok := f.mtLiteral(n, e, recv, args); ok {
+			return r
+		}
+	}
+	r := f.callMethod(n, e, recv, args, block)
+	if e.M.noReturn && !r.noreturn {
+		r = expr{code: r.code + "\npanic(\"rb2go: unreachable\")", typ: TVoid{}, stmt: true, noreturn: true}
+	}
+	return r
+}
+
+// callEnv binds the type variables a call to e on recv starts from: the
+// receiver's class arguments, Self, and what its `@self` binds (decision 92).
+func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
+	m := e.M
+	env := map[string]Type{}
+	if rt, ok := recv.typ.(TClass); ok {
+		classEnv := map[string]Type{}
+		for i, p := range rt.C.TypeParams {
+			if i < len(rt.Args) {
+				classEnv[p] = rt.Args[i]
+			}
+		}
+		env = composeEnv(e.Env, classEnv)
+		rt.C.containerEnv(env) // also a Hash def aliased into the subclass (linkAliases), which keeps Hash's K
+	} else {
+		for k, v := range e.Env {
+			env[k] = v
+		}
+	}
+	env["Self"] = recv.typ
+	if m.SelfType != nil && !unify(m.SelfType, recv.typ, env) {
+		f.errorf(n, "%s needs a receiver of type %s, not %s", m.Name, m.SelfType, recv.typ)
+	}
+	return env
+}
+
+// checkVisibility rejects at compile time what MRI's NoMethodError would: a private method with a receiver, a protected one from outside its owner's family.
+func (f *fctx) checkVisibility(n parser.Node, m *Method, recv expr) {
+	if recv.code == f.selfCode || f.implicitCall {
+		return
+	}
+	if m.Private && !kernelModuleFunction(m, recv.typ) {
+		f.errorf(n, "private method %s called on %s", m.Name, recv.typ)
+	}
+	if m.Protected && (f.owner == nil || !f.owner.isSubclassOf(m.Owner)) {
+		f.errorf(n, "protected method %s called on %s", m.Name, recv.typ)
+	}
+}
+
+// MRI's Kernel.singleton_methods; the rest of Kernel's private methods (pp, initialize_copy) stay private on Kernel too.
+var kernelModuleNames = func() map[string]bool {
+	out := map[string]bool{}
+	for _, s := range strings.Fields("Array Complex Float Hash Integer Pathname Rational String __callee__ __dir__ __method__ ` abort at_exit autoload autoload? binding block_given? caller caller_locations catch eval exec exit exit! fail fork format gets global_variables iterator? lambda load local_variables loop open p print printf proc putc puts raise rand readline readlines require require_relative select set_trace_func sleep spawn sprintf srand syscall system test throw trace_var trap untrace_var warn") {
+		out[s] = true
+	}
+	return out
+}()
+
+func kernelMeta(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && c.C.metaOf != nil && c.C.metaOf.RubyName == "Kernel"
+}
+
+// kernelConst is a syntactic guess (`Kernel`, `::Kernel`) for passes with no scope to resolve it in; genCall checks the type.
+func kernelConst(n parser.Node) bool {
+	switch r := n.(type) {
+	case *parser.ConstantReadNode:
+		return r.Name == "Kernel"
+	case *parser.ConstantPathNode:
+		return r.Parent == nil && r.Name != nil && *r.Name == "Kernel"
+	}
+	return false
+}
+
+// kernelRecv: a receiverless call, or one on Kernel, the module function form.
+func kernelRecv(n *parser.CallNode) bool { return n.Receiver == nil || kernelConst(n.Receiver) }
+
+// `Kernel.puts`: module_function makes these public on Kernel itself (decision 139).
+func kernelModuleFunction(m *Method, recv Type) bool {
+	if !kernelMeta(recv) || m.Owner == nil || m.Owner.RubyName != "Kernel" {
+		return false
+	}
+	if kernelModuleNames[m.Name] {
+		return true
+	}
+	for pub := range kernelModuleNames { // an overload twin (`__Integer_string`, decision 12) stands in for its public method
+		if strings.HasPrefix(m.Name, "__"+overloadBase(pub)+"_") {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	m := e.M
+	f.c.inferRet(m)
+	if o := f.nilableFetch(m, args, block); o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
+	f.curBlock = block
+	o := f.overload(e, recv.typ, args)
+	f.curBlock = nil
+	if o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
+	env := f.callEnv(n, e, recv)
+	// bind vars visible in the current generic context so they count as bound
+	f.checkVisibility(n, m, recv)
+	var armT Type // the `.rbs` overload arm this call takes (decision 12), picked before the merged parameters check the arguments
+	if len(m.arms) > 0 {
+		armT = f.armRet(n, m, args)
+	}
+	codes, restIdx := f.genArgs(n, m, env, args, nil)
+	if m.Block != nil && m.Iterator && block == nil && !m.Block.Optional {
+		if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
+			return r
+		}
+	}
+	if m.Block != nil {
+		if m.Iterator {
+			f.errorf(n, "%s is an iterator (its block returns void); call it as a statement with a block", m.Name)
+		}
+		// Bind type params from the expected type before the block's closure,
+		// whose parameter types may name them (`Hash.new { |h, k| }`).
+		if n == f.retHintNode && f.retHint != nil {
+			unify(m.Ret, f.retHint, env)
+		}
+		blkCode := f.blockArg(n, m, env, block)
+		if restIdx >= 0 {
+			codes = slices.Insert(codes, restIdx, blkCode)
+		} else {
+			codes = append(codes, blkCode)
+		}
+	} else if block != nil && !f.lenient() { // gem code: MRI ignores a block the method never yields to
+		f.errorf(n, "%s does not take a block", m.Name)
+	}
+	f.bindTypeParams(n, m, env)
+	ret := subst(m.Ret, env)
+	out := expr{code: f.callCode(e, recv, codes, env), typ: ret}
+	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
+		if t := f.constGetType(recv, args); t != nil {
+			if isOpt(t) {
+				// the constant table holds T? as T or nil (see Opt)
+				out.code = f.coerce(n, expr{code: out.code, typ: TAny{}}, t)
+			} else {
+				out.code, out.assert = out.code+".("+f.c.goType(t)+")", true
+			}
+			out.typ = t
+		}
+	}
+	// `klass.new` returns the hierarchy's root type; narrow to the class the
+	// receiver is statically known to be.
+	if m.Kind == kindSynth && m.Name == "new" {
+		if meta := f.metaOfType(recv.typ); meta != nil && meta.metaOf != meta.metaOf.root() {
+			out.typ = TClass{C: meta.metaOf}
+			out.code, out.assert = out.code+".("+f.c.goType(out.typ)+")", true
+		}
+	}
+	if f.c.selfReturnAsserts(e, recv.typ) {
+		out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
+	}
+	if armT != nil {
+		return f.narrowToArm(n, flatOpt(out), subst(armT, env))
+	}
+	return flatOpt(out)
+}
+
+// flatOpt collapses a nested optional result: a generic E? instantiated
+// with E = T? is a Go **T, and with E = untyped a *any, but Ruby has one nil.
+func flatOpt(e expr) expr {
+	o, ok := e.typ.(TOpt)
+	switch {
+	case !ok:
+	case isAny(o.Elem):
+		return expr{code: "Opt(" + e.code + ")", typ: o.Elem, nilable: true}
+	case isUnion(o.Elem): // E? with E = A | B: the box opens into the union, nil a member (decision 150)
+		return expr{code: "Opt(" + e.code + ")", typ: optOf(o.Elem)}
+	case isOpt(o.Elem):
+		return expr{code: "rbFlat(" + e.code + ")", typ: o.Elem}
+	}
+	return e
+}
+
+// callCode renders the call for entry e.
+func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type) string {
+	m := e.M
+	argList := strings.Join(args, ", ")
+	recv.code = f.materialize(recv)
+	if m.Owner == nil {
+		return m.GoName + "(" + argList + ")"
+	}
+	if code, ok := f.containerCallCode(e, recv, args, env); ok {
+		return code
+	}
+	if m.Owner.metaOf != nil && m.Name == "new" && !recv.classObj {
+		// `new` on a class object of unknown exact class: assert for it.
+		ps, ret := f.c.sig(m, env)
+		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
+	}
+	if code, ok := f.dispatchCall(e, recv, argList); ok {
+		return code
+	}
+	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
+	direct := f.c.isDirectMethod(m)
+	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
+		m.Owner.universal && mentionsSelf(m.Ret) // an interface declares `-> self` as `any`; the free func returns Self
+	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
+		// a wrapper body: the owner's free func over its interface (any for Kernel), so no forwarder is selected (decision 209)
+		targ := "any"
+		if !m.Owner.universal {
+			targ = f.c.ownerIface(f.owner, e)
+		}
+		switch {
+		case targ != "" && f.c.plainSelf(m):
+			return freeFuncName(m) + "(self" + comma(argList) + ")"
+		case targ != "":
+			return freeFuncName(m) + "[" + targ + "](self" + comma(argList) + ")"
+		}
+	}
+	if !free {
+		if t := f.methodExprType(m, recv); t != "" {
+			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
+		}
+		return recv.code + "." + m.GoName + "(" + argList + ")"
+	}
+	return staticCallCode(m, f.typeArgs(m, recv.typ, env), recv.code, argList)
+}
+
+// dispatchCall renders a call that bypasses Go method dispatch (dispatch.go): a direct call or an rbSend_ type switch,
+// for a dispatchable method on a struct-typed receiver. Not for the method a Method object binds (staticDef: MRI runs
+// that definition, not an override) nor for a Dyn wrapper body's self call (its owner's free func, decision 209).
+func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) {
+	if f.staticDef == e.M || f.plainCalls && recv.code == "self" {
+		return "", false
+	}
+	owner := f.staticStruct(recv)
+	if owner == nil || !f.c.dispatchable(e.Owner, e.M) {
+		return "", false
+	}
+	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner && e.Owner.IsModule {
+		// self in a module body reaching a module it includes: everything that includes this module includes that
+		// one, so self is one of its includers, asserted to its constraint (decision 234)
+		mod := e.Owner.Name + "_Self[any" + comma(strings.Join(f.c.moduleCallArgs(e), ", ")) + "]"
+		return f.c.sendCall(e, "any("+recv.code+").("+mod+")", argList), true
+	}
+	if owner.IsModule && !owner.universal && !e.Owner.universal && e.Owner != owner {
+		return "", false // self in a module body reaching another class's method: that is the constraint's
+	}
+	return f.c.sendCall(e, recv.code, argList), true
+}
+
+// staticStruct is the non-generic struct class a receiver is statically known to be an instance of (a subclass at run
+// time), or nil: a class-typed value, or self in a struct class body.
+func (f *fctx) staticStruct(recv expr) *Class {
+	switch t := recv.typ.(type) {
+	case TClass:
+		if t.C.isStruct() && len(t.C.TypeParams) == 0 && !t.C.hashBase && !t.C.universal {
+			return t.C
+		}
+	case TVar:
+		if t.Name == "Self" && f.owner != nil && (f.owner.isStruct() && len(f.owner.TypeParams) == 0 || f.owner.IsModule) {
+			return f.owner // a struct class's body, or a module's: self is some includer, a universal name dispatches over all
+		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
+	}
+	return nil
+}
+
+// methodExprType is the Go type a call on a receiver of static type t is written as a method expression of
+// (`String.Upcase(s)`, `FooI.Bar(x)`), so the pruner keeps the method on that type and its implementers alone
+// instead of on every class with the name (decision 122); "" keeps the plain `x.M()` form: a generic class, a
+// module constraint (no method expressions on type parameters), or a struct's Dyn wrapper body, which shared
+// arms compare textually.
+func (f *fctx) methodExprType(m *Method, recv expr) string {
+	if f.plainCalls {
+		return ""
+	}
+	switch t := recv.typ.(type) {
+	case TClass:
+		if t.C.universal || t.C.IsModule || len(t.C.TypeParams) > 0 {
+			return ""
+		}
+		if t.C.metaOf != nil && m.Name == "new" { // `new` is not in a metaclass's interface (its signature is the class's own); a class object is the concrete *Foo_Meta
+			return "(*" + t.C.Name + ")"
+		}
+		if gt := f.c.goType(t); strings.HasPrefix(gt, "*") {
+			return "(" + gt + ")"
+		} else {
+			return gt
+		}
+	case TVar:
+		if t.Name == "Self" && f.owner != nil && f.owner.isStruct() && !f.owner.universal && !f.owner.IsModule && len(f.owner.TypeParams) == 0 {
+			return f.owner.Name + "I"
+		}
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid:
+	}
+	return ""
+}
+
+// typeArgs are explicit because Go would infer from argument Go types (untyped const, *Foo, *Foo_Meta), not the Ruby binding.
+func (f *fctx) typeArgs(m *Method, recvT Type, env map[string]Type) string {
+	ts := []Type{}
+	if m.Owner.GoType == "" && !f.c.plainSelf(m) {
+		ts = append(ts, recvT)
+	}
+	for _, p := range m.Owner.TypeParams {
+		ts = append(ts, env[p])
+	}
+	for _, p := range m.TypeParams {
+		ts = append(ts, env[p])
+	}
+	if len(ts) == 0 {
+		return ""
+	}
+	gs := make([]string, len(ts))
+	for i, t := range ts {
+		if t == nil {
+			return "" // unbound: leave it to Go's inference
+		}
+		if gs[i] = f.c.goType(t); gs[i] == "" {
+			return ""
+		}
+	}
+	return "[" + strings.Join(gs, ", ") + "]"
+}
+
+// hasForwarder reports whether the receiver's Go type carries a method for e.
+func (f *fctx) hasForwarder(recvT Type, e *entry) bool {
+	if e.Owner == nil || staticPrivate(e.M) || e.M.generic() {
+		return false
+	}
+	switch t := recvT.(type) {
+	case TClass:
+		if t.C.universal || t.C.IsModule {
+			return false
+		}
+		return f.c.wantsForwarder(t.C, *e)
+	case TVar:
+		if t.Name != "Self" || f.owner == nil || f.owner.universal {
+			return false
+		}
+		if f.owner.isStruct() {
+			return true
+		}
+		if f.owner.IsModule {
+			return f.c.selfCalls(f.owner)[e.M.Name]
+		}
+		return e.Owner == f.owner
+	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no Go method set to forward to
+	}
+	return false
+}
+
+// selfReturnAsserts reports whether a `-> self` call on a struct value needs a Go type assertion: an inherited
+// forwarder returns the defining class's interface. A universal method's is its typed free func (callCode).
+func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
+	v, ok := e.M.Ret.(TVar)
+	if !ok || v.Name != "Self" || e.Owner == nil || e.M.Owner.universal {
+		return false
+	}
+	rc, ok := recvT.(TClass)
+	return ok && rc.C.isStruct() && e.Entry != rc.C
+}
+
+// genInMethodRequire is a require in a method body: resolved at run time against what was compiled (decision 197),
+// else a no-op for a library the prelude has, and a compile error for a file rb2go would have to load.
+func (f *fctx) genInMethodRequire(n *parser.CallNode) expr {
+	if f.c.methodRequiresRuntime && !f.f.prelude {
+		return f.genRuntimeRequire(n)
+	}
+	switch {
+	case n.Name == "require_relative" && !f.f.prelude:
+		f.errorf(n, "require_relative must be a top-level statement: rb2go loads files at compile time")
+	case n.Name == "require" && f.c.findRequire(f.f, n) != "":
+		f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")
+	}
+	return expr{code: "", stmt: true, typ: TVoid{}}
+}
+
+// bindUntyped binds each of m's type parameters ts name that nothing bound yet to untyped.
+func bindUntyped(m *Method, env map[string]Type, ts ...Type) {
+	var vs []string
+	for _, t := range ts {
+		freeVars(t, &vs)
+	}
+	for _, v := range vs {
+		if _, bound := env[v]; !bound && slices.Contains(m.TypeParams, v) {
+			env[v] = TAny{}
+		}
+	}
+}
