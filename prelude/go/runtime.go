@@ -1019,6 +1019,8 @@ func rbWrapPanic(r any) any {
 		return r
 	case RxUnsupported:
 		return NewRegexpError(Ref(String(e)))
+	case RxTimeout:
+		return NewRegexp_TimeoutError(Ref(String(e)))
 	}
 	if err, ok := r.(runtime.Error); ok {
 		msg := err.Error()

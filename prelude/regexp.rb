@@ -18,6 +18,9 @@ class Regexp < Object
   FIXEDENCODING = 16 #: Integer
   NOENCODING = 32 #: Integer
 
+  # A regexp2 match (lookaround, backreference) that ran past 10 seconds; RE2 matches are linear and never raise it (decision 242).
+  class TimeoutError < RegexpError; end
+
   # A Regexp from a String at run time, translated from Ruby's syntax as an
   # interpolated literal is (decision 115). options: an Integer of
   # IGNORECASE | MULTILINE, a String of "m"/"i" flags, true for /i, or nil.
@@ -428,8 +431,8 @@ class String
     return out
   }
 
-  # MRI's: captured groups are kept, trailing empty fields dropped, and a
-  # pattern matching the empty string splits between characters.
+  # MRI's rb_str_split_m: captured groups are kept, an empty match at the field start does not split, and a pattern
+  # matching the empty string splits between characters. Its searches are the matches of scan, so they come from FindAll.
   #: (Regexp, ?Integer) -> Array[String]
   def __split_regexp(re, limit = 0) = %x{
     s := string(self)
@@ -437,35 +440,53 @@ class String
     if s == "" {
       return out
     }
-    start, fields := 0, 0
-    for _, loc := range re.re.FindAllStringSubmatchIndex(s, -1) {
-      if limit > 0 && fields == int(limit)-1 { // the last field keeps the rest
-        break
-      }
-      if loc[1] == 0 || loc[0] == len(s) && loc[0] == loc[1] {
-        continue
-      }
-      fields++
-      if loc[1] == start { // an empty match (loc[0] >= start)
-        // right at the field start: split off one character
-        _, w := utf8.DecodeRuneInString(s[start:])
-        if start+w > len(s) {
-          continue
-        }
-        out.s = append(out.s, String(s[start:start+w]))
-        start += w
-        continue
-      }
-      out.s = append(out.s, String(s[start:loc[0]]))
+    lim := int(limit)
+    if lim == 1 {
+      out.s = append(out.s, String(s))
+      return out
+    }
+    beg, start, fields, lastNull := 0, 0, 1, false
+    field := func(end int, loc []int) bool { // pushes s[beg:end] and the groups; reports the limit reached
+      out.s = append(out.s, String(s[beg:end]))
       for i := 2; i < len(loc); i += 2 {
         if loc[i] >= 0 {
           out.s = append(out.s, String(s[loc[i]:loc[i+1]]))
         }
       }
-      start = loc[1]
+      fields++
+      return lim > 0 && lim <= fields
     }
-    out.s = append(out.s, String(s[start:]))
-    for limit == 0 && len(out.s) > 0 && out.s[len(out.s)-1] == "" {
+    for _, loc := range re.re.FindAllStringSubmatchIndex(s, -1) {
+      _, w := utf8.DecodeRuneInString(s[loc[1]:])
+      if loc[0] == start && loc[1] == start { // empty at the search start: skip a character, then split before the next match
+        if !lastNull {
+          start += max(w, 1)
+          lastNull = true
+          continue
+        }
+        done := field(start, loc)
+        beg = start
+        if done {
+          break
+        }
+      } else {
+        done := field(loc[0], loc)
+        beg, start = loc[1], loc[1]
+        if done {
+          break
+        }
+        if loc[0] != loc[1] {
+          lastNull = false
+          continue
+        }
+      }
+      start += max(w, 1)
+      lastNull = true
+    }
+    if lim != 0 || len(s) > beg {
+      out.s = append(out.s, String(s[beg:]))
+    }
+    for lim == 0 && len(out.s) > 0 && out.s[len(out.s)-1] == "" {
       out.s = out.s[:len(out.s)-1]
     }
     return out

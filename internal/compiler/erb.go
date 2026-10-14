@@ -226,12 +226,23 @@ func erbLiteral(f *File, n parser.Node) (string, int, bool) {
 		if !ok1 || !ok2 || !strings.HasSuffix(f.text(re.Location), "/") || strings.Contains(to.Unescaped.Value, `\`) {
 			return "", 0, false
 		}
-		pat, err := translateRegexp(re.Unescaped.Value)
-		rx, err2 := regexp.Compile("(?m)" + pat)
-		if err != nil || err2 != nil {
+		flags := rubyRegexFlags{re.IsIGNORE_CASE(), re.IsMULTI_LINE(), re.IsEXTENDED()}
+		pat, err := rxPrepare(re.Unescaped.Value, flags.extended)
+		if err != nil {
 			return "", 0, false
 		}
-		return rx.ReplaceAllLiteralString(src, to.Unescaped.Value), line, true
+		rx, err := rxCompile(rxFold(flags.goPrefix() + pat)) // rxRegexp's matches are MRI's (^ at a final newline, an empty match after a match)
+		if err != nil {
+			return "", 0, false
+		}
+		var b strings.Builder
+		last := 0
+		for _, m := range rx.FindAllStringIndex(src, -1) {
+			b.WriteString(src[last:m[0]] + to.Unescaped.Value)
+			last = m[1]
+		}
+		b.WriteString(src[last:])
+		return b.String(), line, true
 	}
 	return "", 0, false
 }

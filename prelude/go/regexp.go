@@ -31,7 +31,7 @@ func rbRegexpNewAfter(_ bool, pattern, src, opts string) *Regexp {
 // rbRegexpLenient is a gem's regexp (decision 176): MRI builds it, so rb2go does too, and one RE2 cannot match raises
 // RegexpError when it is used rather than when the gem loads (Rack::Lint's URI patterns).
 func rbRegexpLenient(prefix, src, opts string) *Regexp {
-	pat, err := translateRegexp(stripExtended(src, strings.Contains(opts, "x")))
+	pat, err := rxPrepare(src, strings.Contains(opts, "x"))
 	var re *rxRegexp
 	if err == nil {
 		re, err = rxCompile(rxFold(prefix + pat))
@@ -81,7 +81,7 @@ func rbRegexpErr(err error, src string) string {
 // (internal/compiler/rxtranslate.go, emitted into every program).
 func rbRegexpDyn(prefix, src, opts string) *Regexp {
 	// the interpolated values' spacing too under /x, as MRI's; an inline (?x-mi:...) from a value either way
-	pat, err := translateRegexp(stripExtended(src, strings.Contains(opts, "x")))
+	pat, err := rxPrepare(src, strings.Contains(opts, "x"))
 	if err != nil {
 		panic(NewRegexpError(Ref(String(err.Error()))))
 	}
@@ -96,16 +96,13 @@ func rbRegexpFromValue(pattern, options any) *Regexp {
 	case *Regexp:
 		return p
 	case String:
-		ignore, multi, noenc := false, false, false
+		ignore, multi, ext, noenc := false, false, false, false
 		switch o := rbUnbox(options).(type) {
 		case nil:
 		case Boolean:
 			ignore = bool(o)
 		case Integer:
-			ignore, multi, noenc = o&1 != 0, o&4 != 0, o&32 != 0
-			if o&2 != 0 {
-				rbRegexpNoExtended()
-			}
+			ignore, multi, ext, noenc = o&1 != 0, o&4 != 0, o&2 != 0, o&32 != 0
 		case String:
 			for _, f := range string(o) {
 				switch f {
@@ -114,7 +111,7 @@ func rbRegexpFromValue(pattern, options any) *Regexp {
 				case 'm':
 					multi = true
 				case 'x':
-					rbRegexpNoExtended()
+					ext = true
 				default:
 					panic(NewArgumentError(Ref(String("unknown regexp option: " + string(o)))))
 				}
@@ -133,16 +130,15 @@ func rbRegexpFromValue(pattern, options any) *Regexp {
 		if ignore {
 			opts += "i"
 		}
+		if ext {
+			opts += "x"
+		}
 		if noenc { // ponytail: only shown (/n); matching stays UTF-8 as RE2's
 			opts += "n"
 		}
 		return rbRegexpDyn(prefix+")", string(p), opts)
 	}
 	panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(pattern) + " into String"))))
-}
-
-func rbRegexpNoExtended() {
-	panic(NewNotImplementedError(Ref(String("rb2go: extended (x) regexps are not supported (docs/design.md decision 24)"))))
 }
 
 // rbRegexpDesc is the source as inspect and to_s show it: a bare / is
@@ -275,9 +271,7 @@ func rbReBlockLM(lm ***MatchData, re *Regexp, blk func(String) any) func(s strin
 	}
 }
 
-// rbReSub replaces the first n matches of re in s (all when n < 0).
-// ponytail: matches come from RE2's FindAll, so the Onigmo corrections of
-// rxRegexp (Unicode \b, ^ before a final newline) do not apply here.
+// rbReSub replaces the first n matches of re in s (all when n < 0); rxRegexp's FindAll applies the Onigmo corrections.
 func rbReSub(re *Regexp, s string, n int, repl func(s string, loc []int, names []string) string) string {
 	var b strings.Builder
 	last := 0

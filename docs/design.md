@@ -8171,3 +8171,28 @@ resolve; anything not listed is still open.
       `Float::NAN`/`Float::INFINITY`/`-Float::INFINITY`.
     - Sorbet `params(**h)` and `prop :x, T, **o` are compile errors with
       `file:line`, not a nil dereference.
+265. **gsub/sub/scan/split follow Onigmo; regexp2 times out; one pattern entry point** (#101; amends 24, 115, 242; 2026-10-14).
+    - `String#gsub/sub/scan/split` take their matches from
+      `rxRegexp.FindAllStringSubmatchIndex`, which applies the same Onigmo
+      corrections as `Match`: a pattern that can match the empty string,
+      or uses `^` or `\b`, runs on the in-house backtracker (RE2 only when
+      no correction can apply), with Ruby's scan rule (an empty match is
+      kept right after a match; after an empty match the next search
+      starts one character on). `split` ports `rb_str_split_m` over those
+      matches. `"a\n".gsub(/^/, "> ")` is `"> a\n"`, as MRI.
+    - The regexp2 engine gets its `^` as `(?:\A|(?<=\n)(?!\z))` (Onigmo's
+      `^` never matches after a final newline).
+    - regexp2 matches stop after `rxMatchTimeout` (10 s) with
+      `Regexp::TimeoutError` < `RegexpError` ("regexp match timeout"); any
+      other regexp2 error is a `RegexpError`, never a short result.
+      `Regexp.timeout=` and `timeout:` are not supported (ponytail:
+      regexp2's MatchTimeout is per compiled regexp; a global would
+      race).
+    - `rxPrepare(src, extended)` = `stripExtended` + `translateRegexp` is
+      the one entry point from Ruby source to a pattern (regexp.go,
+      erb.go). `EXTENDED` and `"x"` in `Regexp.new` work; they no longer
+      raise `NotImplementedError`. Known: `noteRuntimeRegexp` (expr.go)
+      still calls `translateRegexp` raw.
+    - Measured (20000-line string, 5 reps): `gsub(/\s*/)` 0.53 → 0.59 s,
+      `scan(/\w*/)` 0.46 → 0.22 s, `gsub(/o+/)` 0.19 → 0.21 s,
+      `gsub(/^/)` 0.13 → 0.24 s (MRI 1.22, 0.83, 0.10, 0.11).

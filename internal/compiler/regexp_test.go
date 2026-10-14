@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // compileRuby mirrors genRegexp's static path and rbRegexpNew: translate,
@@ -201,6 +202,36 @@ func TestRegexpAlt(t *testing.T) {
 		if err != nil || re.alt == nil {
 			t.Errorf("/%s/: err %v, alt %v; want regexp2", src, err, re != nil && re.alt != nil)
 		}
+	}
+}
+
+// A timeout is the RxTimeout panic (a Regexp::TimeoutError), not a short result; MRI memoizes and never times out, so no MRI comparison.
+func TestRegexpAltTimeout(t *testing.T) {
+	saved := rxMatchTimeout
+	t.Cleanup(func() { rxMatchTimeout = saved })
+	rxMatchTimeout = 20 * time.Millisecond
+	re, err := compileRuby(`^(?!x)(a+)+$`, rubyRegexFlags{}) // the lookahead routes it to regexp2; (a+)+ backtracks exponentially on a miss
+	if err != nil || re.alt == nil {
+		t.Fatalf("err %v, alt %v; want regexp2", err, re != nil && re.alt != nil)
+	}
+	slow := strings.Repeat("a", 40) + "b"
+	panics := func(f func()) (v any) {
+		defer func() { v = recover() }()
+		f()
+		return nil
+	}
+	for name, f := range map[string]func(){
+		"MatchString":   func() { re.MatchString(slow) },
+		"FindAll":       func() { re.FindAllStringSubmatchIndex(slow, -1) },
+		"FindAllIndex":  func() { re.FindAllStringIndex(slow, -1) },
+		"SubmatchIndex": func() { re.FindStringSubmatchIndex(slow) },
+	} {
+		if _, ok := panics(f).(RxTimeout); !ok {
+			t.Errorf("%s: want an RxTimeout panic", name)
+		}
+	}
+	if !re.MatchString("aaa") || re.MatchString("aab") {
+		t.Error("a match inside the limit must still answer")
 	}
 }
 

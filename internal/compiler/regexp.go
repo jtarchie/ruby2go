@@ -65,10 +65,9 @@ func rxTranslateGo() string {
 	return regexp.MustCompile(` //nolint:gosec //.*`).ReplaceAllString(code, "")
 }
 
-// rxUnsupported are the RE2 parse errors an interpolated regexp's static
-// parts can cause on their own: syntax RE2 lacks (lookaround,
-// backreferences, possessive quantifiers). Others (unbalanced groups or
-// classes) an interpolated value may cause or cure, so they wait for run time.
+// rxUnsupported are the RE2 parse errors an interpolated regexp's static parts can cause on their own: syntax that
+// neither engine takes (possessive quantifiers, \g). Others (unbalanced groups or classes) an interpolated value may
+// cause or cure, so they wait for run time.
 var rxUnsupported = []syntax.ErrorCode{syntax.ErrInvalidPerlOp, syntax.ErrInvalidNamedCapture, syntax.ErrInvalidEscape, syntax.ErrInvalidRepeatOp}
 
 // regexpSource is a literal's Regexp#source: as in MRI's lexer, an escaped
@@ -96,9 +95,10 @@ func regexpSource(raw string, term byte) string {
 func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 	var src string
 	var closing byte
+	var ext bool
 	switch r := n.(type) {
 	case *parser.RegularExpressionNode:
-		src, closing = f.f.text(r.ContentLoc), f.f.text(r.ClosingLoc)[0]
+		src, closing, ext = f.f.text(r.ContentLoc), f.f.text(r.ClosingLoc)[0], r.IsEXTENDED()
 	case *parser.InterpolatedRegularExpressionNode: // the literal parts' groups; an interpolation counts as plain text
 		var b strings.Builder
 		for _, p := range r.Parts {
@@ -108,11 +108,11 @@ func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 				b.WriteString("x")
 			}
 		}
-		src, closing = b.String(), f.f.text(r.ClosingLoc)[0]
+		src, closing, ext = b.String(), f.f.text(r.ClosingLoc)[0], r.IsEXTENDED()
 	default:
 		return 0, false
 	}
-	goPat, err := translateRegexp(regexpSource(src, closing))
+	goPat, err := rxPrepare(regexpSource(src, closing), ext)
 	if err != nil {
 		return 0, false
 	}
@@ -127,8 +127,7 @@ func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
 	flags := rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
 	src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
-	pat := stripExtended(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
-	goPat, err := translateRegexp(pat)
+	goPat, err := rxPrepare(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
 	if err == nil {
 		var rx *rxRegexp
 		rx, err = rxCompile(flags.goPrefix() + goPat)
@@ -193,8 +192,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 			f.c.unsupported(f.f, p)
 		}
 	}
-	pat := stripExtended(probe.String(), flags.extended)
-	goPat, err := translateRegexp(pat)
+	goPat, err := rxPrepare(probe.String(), flags.extended)
 	if err == nil {
 		var rx *rxRegexp
 		rx, err = rxCompile(flags.goPrefix() + goPat)

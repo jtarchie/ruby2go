@@ -17,9 +17,16 @@ import (
 	"unicode/utf8"
 )
 
+// rxPrepare is the one way from a Ruby regexp's source to the pattern rxCompile takes (under goPrefix): /x's spacing and
+// comments are dropped (extended is x outside any group), then the syntax RE2 reads differently is rewritten.
+func rxPrepare(src string, extended bool) (string, error) {
+	return translateRegexp(stripExtended(src, extended))
+}
+
 // translateRegexp rewrites Ruby (Onigmo) regexp syntax RE2 spells or reads
-// differently. Constructs RE2 lacks (lookaround, backreferences, \Z,
-// possessive quantifiers) are left in place for regexp.Compile to reject.
+// differently; callers want rxPrepare, which strips /x first. Constructs RE2 lacks (lookaround, backreferences, \Z,
+// atomic groups) are left in place for rxCompile to hand to the rxAlt engine (decision 242); \g, \G, \K, \R, \X and
+// possessive quantifiers are rejected.
 func translateRegexp(src string) (string, error) {
 	t := rxTranslator{src: src}
 	err := t.run()
@@ -405,11 +412,12 @@ func rxRune(r rune) string {
 // final newline, and its \b's word characters are Unicode's (Ruby's
 // WORD_BOUND_ALL_RANGE; \w stays ASCII). Subjects where they could change
 // the match run on prog, the pattern's program under those readings; prog
-// is nil when the pattern has neither.
+// is nil when the pattern has neither and cannot match the empty string.
 type rxRegexp struct {
 	*regexp.Regexp
 	prog        *syntax.Prog
 	caret, word bool
+	empty       bool   // can match the empty string: Ruby's scan keeps an empty match right after a match, RE2's FindAll drops it
 	unsupported string // a gem's pattern RE2 cannot match: built anyway, it raises when used (rbRegexpLenient)
 	alt         rxAlt  // a pattern RE2 cannot match (lookaround, backreferences, \Z): regexp2's (decision 242)
 	pattern     string // alt's pattern, for String
@@ -419,9 +427,30 @@ type rxRegexp struct {
 // (rxalt.go, emitted when needed, sets rxAltCompile), so the rest do not link it (decision 242).
 type rxAlt interface {
 	// findAll is up to n (all when n < 0) leftmost matches in s from byte from on, each as byte offsets: the match,
-	// then each group (-1, -1 when it did not take part), as Go's FindAllStringSubmatchIndex.
-	findAll(s string, from, n int) [][]int
+	// then each group (-1, -1 when it did not take part), as Go's FindAllStringSubmatchIndex. An engine failure is
+	// an error, never a short result; errRxTimeout is the match time limit.
+	findAll(s string, from, n int) ([][]int, error)
 	names() []string // as Go's SubexpNames: index 0 and unnamed groups ""
+}
+
+// errRxTimeout is an rxAlt match that ran past its time limit (rxalt.go's rxMatchTimeout).
+var errRxTimeout = errors.New("regexp match timeout")
+
+// RxTimeout is the panic a match raises on errRxTimeout; the runtime makes it a Regexp::TimeoutError.
+type RxTimeout string
+
+func (e RxTimeout) Error() string { return string(e) }
+
+// altAll is alt's matches, or the panic its failure is: a timeout is RxTimeout, anything else a RegexpError.
+func (r *rxRegexp) altAll(s string, n int) [][]int {
+	out, err := r.alt.findAll(s, 0, n)
+	switch {
+	case errors.Is(err, errRxTimeout):
+		panic(RxTimeout(err.Error()))
+	case err != nil:
+		panic(RxUnsupported(err.Error()))
+	}
+	return out
 }
 
 // rxAltCompile compiles a translated pattern RE2 rejected, when the program loaded an rxAlt engine; nil otherwise.
@@ -445,7 +474,7 @@ func rxCompile(pattern string) (*rxRegexp, error) {
 
 // altFirst is alt's first match in s, or nil.
 func (r *rxRegexp) altFirst(s string) []int {
-	if m := r.alt.findAll(s, 0, 1); len(m) > 0 {
+	if m := r.altAll(s, 1); len(m) > 0 {
 		return m[0]
 	}
 	return nil
@@ -488,22 +517,31 @@ func (r *rxRegexp) String() string {
 
 func (r *rxRegexp) FindAllStringIndex(s string, n int) [][]int {
 	r.check()
-	if r.alt != nil {
-		out := r.alt.findAll(s, 0, n)
-		for i := range out {
-			out[i] = out[i][:2]
-		}
-		return out
+	if r.alt == nil && r.prog == nil {
+		return r.Regexp.FindAllStringIndex(s, n)
 	}
-	return r.Regexp.FindAllStringIndex(s, n)
+	out := r.FindAllStringSubmatchIndex(s, n)
+	for i := range out {
+		out[i] = out[i][:2]
+	}
+	return out
 }
 
+// FindAllStringSubmatchIndex is Ruby's scan/gsub matches: RE2's (then Onigmo's ^ and \b are applied where they could differ), except an empty match is kept right after a match.
 func (r *rxRegexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
 	r.check()
 	if r.alt != nil {
-		return r.alt.findAll(s, 0, n)
+		return r.altAll(s, n)
 	}
-	return r.Regexp.FindAllStringSubmatchIndex(s, n)
+	if r.prog == nil {
+		return r.Regexp.FindAllStringSubmatchIndex(s, n)
+	}
+	if !r.empty {
+		if out := r.Regexp.FindAllStringSubmatchIndex(s, n); !r.differsAll(s, out) {
+			return out
+		}
+	}
+	return r.backtrackAll(s, n)
 }
 
 // rxNew wraps re, compiled from a translated pattern (after rxFold).
@@ -519,10 +557,29 @@ func rxNew(re *regexp.Regexp) *rxRegexp {
 		}
 	}
 	walk(tree)
-	if r.caret || r.word {
+	r.empty = rxCanEmpty(tree)
+	if r.caret || r.word || r.empty {
 		r.prog, _ = syntax.Compile(tree.Simplify())
 	}
 	return r
+}
+
+// rxCanEmpty reports whether t can match the empty string; an assertion counts, since it matches nothing but can still match somewhere.
+func rxCanEmpty(t *syntax.Regexp) bool {
+	//exhaustive:ignore // an empty match, a star or quest, and the assertions fall through to true
+	switch t.Op {
+	case syntax.OpNoMatch, syntax.OpLiteral, syntax.OpCharClass, syntax.OpAnyCharNotNL, syntax.OpAnyChar:
+		return t.Op == syntax.OpLiteral && len(t.Rune) == 0
+	case syntax.OpConcat:
+		return !slices.ContainsFunc(t.Sub, func(s *syntax.Regexp) bool { return !rxCanEmpty(s) })
+	case syntax.OpAlternate:
+		return slices.ContainsFunc(t.Sub, rxCanEmpty)
+	case syntax.OpCapture, syntax.OpPlus:
+		return rxCanEmpty(t.Sub[0])
+	case syntax.OpRepeat:
+		return t.Min == 0 || rxCanEmpty(t.Sub[0])
+	}
+	return true // an empty match, a star or quest, or an assertion
 }
 
 func (r *rxRegexp) MatchString(s string) bool {
@@ -530,7 +587,7 @@ func (r *rxRegexp) MatchString(s string) bool {
 	if r.alt != nil {
 		return r.altFirst(s) != nil
 	}
-	if r.prog == nil {
+	if !r.caret && !r.word {
 		return r.Regexp.MatchString(s)
 	}
 	return r.FindStringIndex(s) != nil
@@ -576,6 +633,11 @@ func (r *rxRegexp) differs(s string, loc []int) bool {
 	return r.caret && loc != nil && loc[1] == len(s) && strings.HasSuffix(s, "\n")
 }
 
+// differsAll is differs for a match list: RE2's matches are Onigmo's unless s has a non-ASCII word character, or one ends at a final newline.
+func (r *rxRegexp) differsAll(s string, locs [][]int) bool {
+	return r.differs(s, nil) || r.caret && len(locs) > 0 && r.differs(s, locs[len(locs)-1])
+}
+
 // rxWord is Onigmo's Unicode word character: Alphabetic, Mark,
 // Decimal_Number or Connector_Punctuation.
 func rxWord(c rune) bool {
@@ -608,28 +670,59 @@ func rxEmpty(op syntax.EmptyOp, s string, pos int) bool {
 // leftmost-first, as RE2 is, with rxEmpty's assertions.
 // ponytail: visited is len(prog)×len(s) bits; a Pike VM would bound it for huge subjects.
 func (r *rxRegexp) backtrack(s string) []int {
-	b := rxBacktrack{
-		prog:    r.prog,
-		s:       s,
-		visited: make([]uint64, (len(r.prog.Inst)*(len(s)+1)+63)/64),
-		caps:    make([]int, 2*r.NumSubexp()+2),
-	}
-	for start := 0; !b.try(start); {
-		if start == len(s) {
-			return nil
+	return r.newBacktrack(s).search(0)
+}
+
+// backtrackAll is Ruby's scan loop on the backtracker: after a match the next search starts at its end, or one character on when it was empty.
+func (r *rxRegexp) backtrackAll(s string, n int) [][]int {
+	b := r.newBacktrack(s)
+	var out [][]int
+	for from := 0; from <= len(s) && (n < 0 || len(out) < n); {
+		loc := b.search(from)
+		if loc == nil {
+			break
 		}
-		_, w := utf8.DecodeRuneInString(s[start:])
-		start += w
+		out = append(out, slices.Clone(loc))
+		from = loc[1]
+		if loc[0] == loc[1] {
+			_, w := utf8.DecodeRuneInString(s[from:])
+			from += max(w, 1)
+		}
 	}
-	return b.caps
+	return out
+}
+
+func (r *rxRegexp) newBacktrack(s string) *rxBacktrack {
+	np := len(r.prog.Inst)
+	return &rxBacktrack{prog: r.prog, s: s, np: np, visited: make([]uint64, (np*(len(s)+1)+63)/64), caps: make([]int, 2*r.NumSubexp()+2)}
 }
 
 type rxBacktrack struct {
 	prog    *syntax.Prog
 	s       string
-	visited []uint64 // (pc, pos) pairs already tried: they cannot match
+	np      int      // len(prog.Inst)
+	visited []uint64 // (pos, pc) pairs already tried: they cannot match
+	hi      int      // the furthest pos visited since the last search began
 	caps    []int
 	jobs    []rxJob
+}
+
+// search is the leftmost match starting at from or later (the whole of s is its context), in caps, or nil. Searches on one rxBacktrack must not go backwards.
+func (b *rxBacktrack) search(from int) []int {
+	if lo, hi := from*b.np/64, min(((b.hi+1)*b.np+63)/64, len(b.visited)); lo < hi {
+		clear(b.visited[lo:hi]) // what the last search tried at from on may now match
+	}
+	b.hi = from
+	for start := from; ; {
+		if b.try(start) {
+			return b.caps
+		}
+		if start == len(b.s) {
+			return nil
+		}
+		_, w := utf8.DecodeRuneInString(b.s[start:])
+		start += w
+	}
 }
 
 // rxJob is a lower-priority thread to try, or (slot >= 0) a capture to
@@ -659,7 +752,8 @@ func (b *rxBacktrack) try(start int) bool {
 // alternatives it passes.
 func (b *rxBacktrack) thread(pc, pos int) bool {
 	for {
-		k := pc*(len(b.s)+1) + pos
+		k := pos*b.np + pc
+		b.hi = max(b.hi, pos)
 		if b.visited[k/64]&(1<<(k%64)) != 0 {
 			return false
 		}
