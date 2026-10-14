@@ -669,3 +669,24 @@ end
 module DemoEvaluateRun
   def self.go(p) = [p.evaluate_to(1, 2, ->(x, y) { x + y }), p.lead_post(1, 2, 3, 4), p.lead_post(1, 9)]
 end
+
+# concurrent-ruby's BlockedPromise.new_blocked_by1 → ChainPromise#initialize(…, &task): the dynamic new of a subclass
+# passes initialize the block, and `super(…, *args, &task)` spreads an untyped args (decision 255).
+class DemoBlocked2
+  def initialize(delayed, count, *args, &task)
+    @delayed = delayed
+    @args = args
+    @task = task
+  end
+
+  def self.blocked_by(delayed, *args, &block) = new(delayed, 1, *args, &block)
+
+  def run = @task ? @task.call(*@args) : :no_task
+end
+
+class DemoChain2 < DemoBlocked2
+  def initialize(delayed, count, executor, args, &task)
+    super(delayed, count, *args, &task)
+    @executor = executor
+  end
+end

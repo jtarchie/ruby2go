@@ -355,8 +355,24 @@ class String
   #: (Regexp) -> Integer?
   def __index_regexp(re) = re =~ self
 
-  #: (Regexp, ?Integer) -> String?
-  def __idx_regexp(re, n = 0) = re.match(self)&.[](n)
+  # The match or a group of it, by index or by name (Homebrew's `ref[REGEX, :name]`, decision 255).
+  #: (Regexp, ?untyped) -> String?
+  def __idx_regexp(re, n = 0)
+    m = re.match(self)
+    return nil unless m
+
+    case n
+    when Integer then m[n]
+    when Symbol then m[n]
+    when String then m[n]
+    else raise TypeError, __idx_conv_message(n)
+    end
+  end
+
+  # MRI's message for a bad group argument, from Go (an interpolated `n.class` cost every program with a dynamic `[]`
+  # a thousand functions).
+  #: (untyped) -> String
+  def __idx_conv_message(n) = %x{ return String("no implicit conversion of " + rbClassName(n) + " into Integer") }
 
   #: (Regexp) -> bool
   def !~(re) = !(re =~ self)

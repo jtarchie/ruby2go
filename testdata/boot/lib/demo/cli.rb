@@ -231,3 +231,19 @@ module DemoPackagesIndex
     data.keys
   end
 end
+
+# Homebrew's Utils::Curl: `system_command(..., **command_options)` of a Hash holding mixed values, into typed keywords
+# (decision 255).
+module DemoCurl
+  extend T::Sig
+
+  sig { params(args: String, print_stdout: T.any(T::Boolean, Symbol), secrets: T::Array[String], debug: T.nilable(T::Boolean)).returns(String) }
+  def self.system_command(*args, print_stdout: false, secrets: [], debug: nil)
+    "#{args.join(" ")} #{print_stdout} #{secrets.size} #{debug.inspect}"
+  end
+
+  def self.curl(secrets: [], print_stdout: false, debug: nil)
+    command_options = { secrets:, print_stdout:, debug: }.compact
+    system_command("curl", "-s", **command_options)
+  end
+end

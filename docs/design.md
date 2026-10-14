@@ -7945,3 +7945,17 @@ resolve; anything not listed is still open.
     - The Dyn wrapper's wide class twins (decision 254) emit one `if` per
       argument count (gocritic rejects a one-case switch in generated
       code).
+    - `String#[](re, capture)` takes a group name (Symbol or String) as
+      well as an index (Homebrew's `ref[HOMEBREW_DEFAULT_TAP_FORMULA_REGEX,
+      :name]`); the duplicate `__idx_regexp` decision 254 added to
+      string.rb is gone (regexp.rb's is the one).
+    - Gem code, from Homebrew's API download:
+      - A Dyn wrapper of a synthesized `new` takes initialize's block
+        (`dynCallBlock`). Decision 251's dropped block had left
+        ChainPromise's @Task nil, so every future's task raised
+        NoMethodError on nil.
+      - `f(x, *args)` of an untyped args spreads at run time
+        (`rbSplatAny`), as an Array literal's splat does.
+      - `**opts` into typed keywords converts a value whose static type
+        does not fit at run time (Utils::Curl's `**command_options`
+        holding Strings, Booleans and Arrays), where it raised TypeError.

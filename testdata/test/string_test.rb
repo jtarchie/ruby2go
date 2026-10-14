@@ -1570,6 +1570,10 @@ B
       assert_equal [".tar.gz", "1", nil, "wg", nil], [s[/(\.tar\.(?:gz|bz2))\Z/, 1], s[/\d/], s[/zz/], s["wg"], s["zz"]]
       u = s #: untyped
       assert_equal [".tar.gz", "1", "w", "wge", "wg"], [u[/(\.tar\.(?:gz|bz2))\Z/, 1], u[/\d/], u[0], u[0, 3], u["wg"]]
+      re = %r{\A(?<user>[\w-]+)/(?<repo>[\w-]+)/(?<name>[\w+.@-]+)\z}
+      ref = "homebrew/core/wget"
+      uref = ref #: untyped
+      assert_equal ["wget", "core", "homebrew", "wget"], [ref[re, :name], ref[re, "repo"], ref[re, 1], uref[re, :name]]
     end
   end
 end

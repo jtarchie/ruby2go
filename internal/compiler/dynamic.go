@@ -780,6 +780,14 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 // dynCallBlock takes a dynamic call's block off its arguments (decision 243): the method's block, or dropped when it
 // takes none, as MRI ignores it (decision 251).
 func (c *Compiler) dynCallBlock(f *fctx, m *Method, env map[string]Type) parser.Node {
+	if m.Block == nil && m.Kind == kindSynth && m.Name == "new" && m.Owner.metaOf != nil {
+		// a synthesized new takes initialize's block (concurrent-ruby's `new(delayed, 1, *args, &block)` built at run
+		// time, decision 255): a block dropped here left BlockedTaskPromise's @Task nil
+		if init := m.Owner.metaOf.lookup("initialize"); init != nil && init.M.Block != nil {
+			f.emit("blk_, args := rbPopBlock(args)")
+			return c.dynBlockArg(f, init.M, env)
+		}
+	}
 	if m.Block != nil {
 		f.emit("blk_, args := rbPopBlock(args)")
 		return c.dynBlockArg(f, m, env)

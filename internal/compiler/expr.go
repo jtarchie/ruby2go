@@ -2825,11 +2825,14 @@ func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[strin
 	f.emit("%s, %s := %s.rbGet(Symbol(%q))", v, got, kw.splatTmp, p.Name)
 	f.emit("if %s {", got)
 	val := expr{code: v, typ: ht}
-	if fitsValue(val, closed(p.Type, env)) || isAny(ht) {
+	switch {
+	case fitsValue(val, closed(p.Type, env)) || isAny(ht):
 		unify(p.Type, val.typ, env)
 		f.noteUse(p, sp.Value, val.typ)
 		f.emit("\t%s = %s", out, f.coerceArg(sp, val, p, env))
-	} else { // `{ name: "a" }` holds Strings: an :age in it is a typed boundary's TypeError (decision 20)
+	case f.lenient(): // a gem's `**command_options` of mixed values: each converted where it lands (decision 255)
+		f.emit("\t%s = %s", out, f.coerce(sp, expr{code: "any(" + v + ")", typ: TAny{}}, want))
+	default: // `{ name: "a" }` holds Strings: an :age in it is a typed boundary's TypeError (decision 20)
 		f.emit("\t_ = %s", v)
 		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rb2go: **%s holds %s values; keyword %s takes %s", f.f.text(sp.Value.GetLocation()), ht, p.Name, want))
 	}
@@ -2938,7 +2941,7 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 		} else {
 			an = args[ai]
 			if sp, ok := an.(*parser.SplatNode); ok {
-				a = f.genExpr(sp.Expression, nil)
+				a = f.lenientSplat(f.genExpr(sp.Expression, nil))
 				ac, ok := a.typ.(TClass)
 				if !ok || ac.C.Name != "Array" {
 					f.errorf(an, "splat of non-array %s", a.typ)
@@ -9837,4 +9840,12 @@ func (f *fctx) moduleCmp(t TClass, recv expr, name string, args []parser.Node, b
 	a := f.genExpr(args[0], nil)
 	code := fmt.Sprintf("rbModuleCmp(%s, %s, %t, %t)", f.coerce(nil, recv, TAny{}), f.coerce(args[0], a, TAny{}), name[0] == '>', len(name) == 2)
 	return expr{code: code, typ: TOpt{Elem: f.cls("Boolean")}}, true
+}
+
+// lenientSplat is a gem's `f(x, *args)` of an untyped args: spread at run time (rbSplatAny, decision 255).
+func (f *fctx) lenientSplat(a expr) expr {
+	if !isAny(a.typ) || !f.lenient() {
+		return a
+	}
+	return expr{code: "(&Array[any]{s: rbSplatAny(" + a.code + ")})", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
 }

@@ -87,6 +87,8 @@ p DemoTimerService.new.schedule(4)
 p Pathname("/x/api.json").demo_stem, Pathname("/x/lib-1.2").demo_extname
 dev2 = DemoEvaluate.new #: untyped
 p DemoEvaluateRun.go(dev2)
+p DemoChain2.blocked_by(nil, :io, [3, 4]) { |a, b| a + b }.run, DemoBlocked2.blocked_by(nil, 5).run
+p DemoCurl.curl(print_stdout: :err), DemoCurl.curl(secrets: ["x"], debug: true)
 dn = DemoNode[1, DemoNode[2, nil]]
 p dn.value, dn.nxt.value
 dcp2 = DemoPromises.chain(:io)

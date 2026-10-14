@@ -233,13 +233,6 @@ class String < Object
     return Ref(String(r[i]))
   }
 
-  # The match, or its capture group (an index), else nil (Homebrew's `basename[/(\.tar\.gz)\Z/, 1]`, decision 254).
-  #: (Regexp, ?Integer) -> String?
-  def __idx_regexp(re, capture = 0)
-    m = re.match(self)
-    m ? m[capture] : nil
-  end
-
   # The String itself when self contains it, else nil.
   #: (String) -> String?
   def __idx_string(str) = include?(str) ? str : nil
