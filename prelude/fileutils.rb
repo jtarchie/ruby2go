@@ -66,7 +66,7 @@ module FileUtils
   #: (String, String) -> nil
   def self.__cp_file(src, dest) = %x{
     if err := rbCopyFile(string(src), string(dest)); err != nil {
-      panic(rbSysErr(err, "rb_sysopen", string(src)))
+      panic(rbFileErr(err, "rb_sysopen", string(src)))
     }
   }
 
@@ -94,7 +94,7 @@ module FileUtils
   #: (String, String) -> nil
   def self.__cp_tree(src, dest) = %x{
     if err := rbCopyTree(string(src), string(dest)); err != nil {
-      panic(rbSysErr(err, "rb_sysopen", string(src)))
+      panic(rbFileErr(err, "rb_sysopen", string(src)))
     }
   }
 
@@ -113,7 +113,7 @@ module FileUtils
   #: (String, String) -> nil
   def self.__mv_entry(src, dest) = %x{
     if err := rbMove(string(src), string(dest)); err != nil {
-      panic(rbSysErr(err, "rb_file_s_rename", "("+string(src)+", "+string(dest)+")"))
+      panic(rbFileErr(err, "rb_file_s_rename", "("+string(src)+", "+string(dest)+")"))
     }
   }
 

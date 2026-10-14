@@ -9,9 +9,52 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
+
+// rbArgError is a refusal MRI reports as ArgumentError (same file, directory into itself), not an errno.
+type rbArgError struct{ msg string }
+
+func (e *rbArgError) Error() string { return e.msg }
+
+// rbFileErr is the exception for an error from the helpers below: ArgumentError for a refusal, else the errno class.
+func rbFileErr(err error, fn, path string) any {
+	var ae *rbArgError
+	if errors.As(err, &ae) {
+		return NewArgumentError(Ref(String(ae.msg)))
+	}
+	return rbSysErr(err, fn, path)
+}
+
+// rbSameFile refuses src == dst through links: opening dst with O_TRUNC would empty src before it is read.
+func rbSameFile(src, dst string) error {
+	si, serr := os.Stat(src)
+	di, derr := os.Stat(dst)
+	if serr == nil && derr == nil && os.SameFile(si, di) {
+		return &rbArgError{"same file: " + src + " and " + dst}
+	}
+	return nil
+}
+
+// rbResolve is EvalSymlinks of path's deepest existing ancestor plus the rest, so a not-yet-created dst compares by real location.
+func rbResolve(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	rest := ""
+	for p := abs; ; p = filepath.Dir(p) {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest)
+		}
+		if filepath.Dir(p) == p {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+	}
+}
 
 func rbCopyFile(src, dst string) error {
 	fi, err := os.Stat(src)
@@ -20,6 +63,9 @@ func rbCopyFile(src, dst string) error {
 	}
 	if fi.IsDir() {
 		return syscall.EISDIR
+	}
+	if err := rbSameFile(src, dst); err != nil {
+		return err
 	}
 	in, err := os.Open(src) //nolint:gosec // path is Ruby-controlled, same trust boundary as File.read elsewhere
 	if err != nil {
@@ -39,6 +85,10 @@ func rbCopyFile(src, dst string) error {
 
 // rbCopyTree recreates src's tree under dst; symlinks are relinked, not followed.
 func rbCopyTree(src, dst string) error {
+	if rs, rd := rbResolve(src), rbResolve(dst); rd == rs || strings.HasPrefix(rd, rs+string(filepath.Separator)) {
+		abs, _ := filepath.Abs(src)
+		return &rbArgError{"cannot copy directory " + abs + " to itself " + dst}
+	}
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -69,6 +119,9 @@ func rbCopyTree(src, dst string) error {
 
 // rbMove is os.Rename with a copy+remove fallback across devices, like MRI's FileUtils.mv.
 func rbMove(src, dst string) error {
+	if err := rbSameFile(src, dst); err != nil {
+		return err
+	}
 	err := os.Rename(src, dst)
 	if err == nil || !errors.Is(err, syscall.EXDEV) {
 		return err
