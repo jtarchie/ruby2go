@@ -112,6 +112,11 @@ func (w *web) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "forbidden", http.StatusForbidden)
 		return
 	}
+	defer func() { // compileWith turns compiler panics into errors; this covers the rest, as a result the page shows
+		if p := recover(); p != nil {
+			writeJSON(rw, runResult{Exit: -1, Error: fmt.Sprintf("rb2go web: internal error: %v", p)})
+		}
+	}()
 	w.mux.ServeHTTP(rw, r)
 }
 
@@ -233,6 +238,7 @@ func (w *web) run(rw http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, filepath.Join(dir, "prog")) //nolint:gosec // the binary we just built
 	cmd.Dir = dir
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "TMPDIR=" + dir} // submitted code must not read the developer's tokens (decision 102)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	cmd.WaitDelay = time.Second // a grandchild holding the pipes can't hang the request
 	// ponytail: the timeout kills prog only; a grandchild (system("sleep 99")) outlives it. Setpgid + kill(-pid) in cmd.Cancel, unix-only.

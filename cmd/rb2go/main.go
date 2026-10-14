@@ -15,6 +15,7 @@ import (
 	"runtime/pprof"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/jtarchie/ruby2go"
 )
@@ -33,7 +34,10 @@ func main() {
 		os.Exit(2)
 	}
 	if os.Args[1] == "test" {
-		os.Exit(testCmd(os.Args[2:]))
+		ctx, stop := notifyContext()
+		code := testCmd(ctx, os.Args[2:])
+		stop()
+		os.Exit(code)
 	}
 	if os.Args[1] == "web" {
 		os.Exit(webCmd(os.Args[2:]))
@@ -69,14 +73,50 @@ func main() {
 	if cmd == "gen" {
 		os.Exit(gen(file, opts.loadPath, os.Stdout))
 	}
+	ctx, stop := notifyContext() // os.Exit skips defers
+	var code int
 	if cmd == "build" {
 		bin := *out
 		if bin == "" {
 			bin = strings.TrimSuffix(filepath.Base(file), ".rb")
 		}
-		os.Exit(build(file, bin, opts))
+		code = build(ctx, file, bin, opts)
+	} else {
+		code = run(ctx, file, fs.Args()[1:], opts)
 	}
-	os.Exit(run(file, fs.Args()[1:], opts))
+	stop()
+	os.Exit(code)
+}
+
+// notifyContext is cancelled by the first SIGINT/SIGTERM, with the signal as its cause. Installed before the compile and the go build, so the deferred cleanup of the temp module always runs; the handler stays for the process's life.
+func notifyContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-sigs:
+			cancel(signalError{sig})
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, func() { signal.Stop(sigs); cancel(nil) }
+}
+
+// signalError is the cancel cause of notifyContext.
+type signalError struct{ sig os.Signal }
+
+func (e signalError) Error() string { return "interrupted by " + e.sig.String() }
+
+// interrupted is the shell's 128+signal status when ctx was cancelled by a signal, else 0.
+func interrupted(ctx context.Context) int {
+	var se signalError
+	if errors.As(context.Cause(ctx), &se) {
+		if sig, ok := se.sig.(syscall.Signal); ok {
+			return 128 + int(sig)
+		}
+	}
+	return 0
 }
 
 // gen writes the generated Go to out and warnings to stderr: the main.go that build -work keeps, without needing the go command.
@@ -128,40 +168,53 @@ type buildOpts struct {
 	loadPath []string // -I
 }
 
-func build(file, bin string, opts buildOpts) int {
+func build(ctx context.Context, file, bin string, opts buildOpts) int {
 	abs, err := filepath.Abs(bin)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	dir, err := compile(file, abs, opts, os.Stderr)
+	dir, err := compile(ctx, file, abs, opts, os.Stderr)
 	defer cleanup(dir, opts)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		return failed(ctx, err)
 	}
 	return 0
 }
 
-func run(file string, args []string, opts buildOpts) int {
-	dir, err := compile(file, "", opts, os.Stderr)
+// failed reports err and picks the exit status: the signal's when one cancelled ctx, else 1.
+func failed(ctx context.Context, err error) int {
+	if code := interrupted(ctx); code != 0 {
+		return code
+	}
+	fmt.Fprintln(os.Stderr, err)
+	return 1
+}
+
+func run(ctx context.Context, file string, args []string, opts buildOpts) int {
+	dir, err := compile(ctx, file, "", opts, os.Stderr)
 	defer cleanup(dir, opts)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		return failed(ctx, err)
 	}
-	// Caller's cwd, as `ruby main.rb`; Ctrl-C reaches it via the shared process group.
-	cmd := exec.CommandContext(context.Background(), filepath.Join(dir, "prog"), args...) //nolint:gosec // the binary we just built
+	return runProg(ctx, filepath.Join(dir, "prog"), args)
+}
+
+// runProg runs a built program in the caller's cwd, as `ruby main.rb`, and returns its exit status. It outlives the child so the caller's temp dir is removed, and forwards what didn't come via the process group (kill -TERM <rb2go>).
+func runProg(ctx context.Context, bin string, args []string) int {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM) // before the check below, so no signal falls between it and the forwarder
+	defer signal.Stop(sigs)
+	if code := interrupted(ctx); code != 0 {
+		return code
+	}
+	cmd := exec.CommandContext(context.WithoutCancel(ctx), bin, args...) //nolint:gosec // the binary we just built; a signal is forwarded, not a kill
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	err = cmd.Start()
+	err := cmd.Start()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	// Outlive the child so the temp dir is removed; forward what didn't come via the process group (kill -TERM <rb2go>).
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigs)
 	go func() {
 		for sig := range sigs {
 			_ = cmd.Process.Signal(sig)
@@ -188,17 +241,40 @@ func exitStatus(exit *exec.ExitError) int {
 }
 
 // compile builds into a fresh temp module each time: stdlib-only, so no network, and Go's content-keyed cache keeps rebuilds fast. Warnings and go build's output go to diag.
-func compile(file, bin string, opts buildOpts, diag io.Writer) (string, error) {
+func compile(ctx context.Context, file, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	src, err := os.ReadFile(file) //nolint:gosec // the user's program
 	if err != nil {
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
-	code, warnings, err := rb2go.CompileWithGems(context.Background(), file, src, opts.loadPath...)
-	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
+	code, warnings, err := abandonable(ctx, func() ([]byte, []string, error) {
+		return rb2go.CompileWithGems(ctx, file, src, opts.loadPath...)
+	})
+	return buildModule(ctx, code, warnings, err, bin, opts, diag)
+}
+
+// abandonable returns when ctx is cancelled even while the compile runs on: it is CPU-bound Go that never checks ctx, and nothing it holds needs cleanup (the temp module comes after).
+func abandonable(ctx context.Context, f func() ([]byte, []string, error)) ([]byte, []string, error) {
+	type result struct {
+		code     []byte
+		warnings []string
+		err      error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var r result
+		r.code, r.warnings, r.err = f()
+		done <- r
+	}()
+	select {
+	case r := <-done:
+		return r.code, r.warnings, r.err
+	case <-ctx.Done():
+		return nil, nil, fmt.Errorf("rb2go: %w", context.Cause(ctx))
+	}
 }
 
 // compileFiles builds several files as one program, as Ruby loads them into one process (decision 84).
-func compileFiles(files []string, bin string, opts buildOpts, diag io.Writer) (string, error) {
+func compileFiles(ctx context.Context, files []string, bin string, opts buildOpts, diag io.Writer) (string, error) {
 	srcs := make([]rb2go.File, 0, len(files))
 	for _, f := range files {
 		src, err := os.ReadFile(f) //nolint:gosec // the user's program
@@ -207,8 +283,10 @@ func compileFiles(files []string, bin string, opts buildOpts, diag io.Writer) (s
 		}
 		srcs = append(srcs, rb2go.File{Name: f, Src: src})
 	}
-	code, warnings, err := rb2go.CompileFiles(context.Background(), srcs, opts.loadPath...)
-	return buildModule(context.Background(), code, warnings, err, bin, opts, diag)
+	code, warnings, err := abandonable(ctx, func() ([]byte, []string, error) {
+		return rb2go.CompileFiles(ctx, srcs, opts.loadPath...)
+	})
+	return buildModule(ctx, code, warnings, err, bin, opts, diag)
 }
 
 // buildModule writes the compiled Go into a fresh module and builds it.
@@ -225,7 +303,7 @@ func buildModule(ctx context.Context, code []byte, warnings []string, err error,
 	}
 	err = rb2go.WriteModule(dir)
 	if err == nil {
-		err = os.WriteFile(filepath.Join(dir, "main.go"), code, 0o600) //nolint:gosec // dir is our MkdirTemp
+		err = os.WriteFile(filepath.Join(dir, "main.go"), code, 0o600)
 	}
 	if err != nil {
 		return dir, fmt.Errorf("temp module: %w", err)
@@ -242,6 +320,8 @@ func buildModule(ctx context.Context, code []byte, warnings []string, err error,
 	}
 	cmd := exec.CommandContext(ctx, "go", append(args, "-o", bin, ".")...) //nolint:gosec // flags are the user's own
 	cmd.Dir = dir
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) } // go build stops its compilers on SIGINT; a kill would orphan them
+	cmd.WaitDelay = 10 * time.Second
 	// The user's go.work and GOFLAGS belong to their projects, not this module.
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
 	cmd.Stdout, cmd.Stderr = diag, diag

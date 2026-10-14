@@ -97,13 +97,23 @@ func runIO(t *testing.T, dir string, pio progIO, name string, args ...string) (s
 	return out.String(), errOut.String(), 0, nil
 }
 
+// mustGlob is filepath.Glob that fails the test on an error or no match: a moved directory must not turn a suite into zero subtests that pass.
+func mustGlob(t *testing.T, pattern string) []string {
+	t.Helper()
+	paths, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) == 0 {
+		t.Fatalf("no files match %s", pattern)
+	}
+	return paths
+}
+
 func TestExamples(t *testing.T) {
 	requireRuby4(t)
 	t.Parallel()
-	dirs, err := filepath.Glob("examples/*/main.rb")
-	if err != nil || len(dirs) == 0 {
-		t.Fatalf("no examples found: %v", err)
-	}
+	dirs := mustGlob(t, "examples/*/main.rb")
 	// Every example's Go lands in one module, so vet and golangci-lint load
 	// the standard library once for all of them instead of once per example.
 	mod := filepath.Join(t.TempDir(), "gen")
@@ -168,10 +178,7 @@ func writeModule(t *testing.T, dir string) {
 func TestRun(t *testing.T) {
 	requireRuby4(t)
 	t.Parallel()
-	files, err := filepath.Glob("testdata/run/*.rb")
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := mustGlob(t, "testdata/run/*.rb")
 	for _, rb := range files {
 		t.Run(strings.TrimSuffix(filepath.Base(rb), ".rb"), func(t *testing.T) {
 			t.Parallel()
@@ -196,10 +203,7 @@ func TestRun(t *testing.T) {
 func TestMinitest(t *testing.T) {
 	requireRuby4(t)
 	t.Parallel()
-	files, err := filepath.Glob("testdata/test/*_test.rb")
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := mustGlob(t, "testdata/test/*_test.rb")
 	for _, rb := range files {
 		t.Run(strings.TrimSuffix(filepath.Base(rb), "_test.rb"), func(t *testing.T) {
 			t.Parallel()
@@ -220,17 +224,11 @@ func TestMinitest(t *testing.T) {
 func TestMulti(t *testing.T) {
 	requireRuby4(t)
 	t.Parallel()
-	dirs, err := filepath.Glob("testdata/multi/*")
-	if err != nil {
-		t.Fatal(err)
-	}
+	dirs := mustGlob(t, "testdata/multi/*")
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			t.Parallel()
-			paths, err := filepath.Glob(filepath.Join(dir, "*.rb"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			paths := mustGlob(t, filepath.Join(dir, "*.rb"))
 			files := make([]File, 0, len(paths))
 			for _, p := range paths {
 				src, rerr := os.ReadFile(p) //nolint:gosec // testdata path
@@ -254,7 +252,10 @@ func TestMulti(t *testing.T) {
 			}
 			bin := goBuild(t, gen, "-l")
 			loader := append([]string{"-e", "ARGV.each { |f| require File.expand_path(f) }"}, paths...)
-			wantOut, _, wantCode, _ := runIO(t, ".", progIO{}, "ruby", loader...)
+			wantOut, wantErr, wantCode, rerr := runIO(t, ".", progIO{}, "ruby", loader...)
+			if rerr != nil || wantCode != 0 { // MRI must pass, or two identical crashes would agree
+				t.Fatalf("ruby failed (exit %d, err %v): the case is wrong\n%s\n%s", wantCode, rerr, wantOut, wantErr)
+			}
 			gotOut, _, gotCode, _ := runIO(t, ".", progIO{}, bin)
 			if wantOut != gotOut || wantCode != gotCode {
 				t.Errorf("ruby (exit %d):\n%s\n--- go (exit %d):\n%s", wantCode, wantOut, gotCode, gotOut)
@@ -469,10 +470,7 @@ func TestPreludeWhole(t *testing.T) {
 
 func TestErrors(t *testing.T) {
 	t.Parallel()
-	archives, err := filepath.Glob("testdata/errors/*.txtar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	archives := mustGlob(t, "testdata/errors/*.txtar")
 	for _, path := range archives {
 		ar, err := txtar.ParseFile(path)
 		if err != nil {
@@ -797,6 +795,43 @@ type mriCached struct {
 	Code   int    `json:"code"`
 }
 
+// gemfileLock keys the cache on the gem versions (minitest, rack) MRI loads: a bundle update must not replay old output.
+var gemfileLock = sync.OnceValue(func() string {
+	data, _ := os.ReadFile("Gemfile.lock") // absent just keys as empty
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+})
+
+// mriCacheable is whether a run's output is MRI's own: not a signalled run (-1), nor one that could not load a library, which is the machine's state (decision 88's cache replays what it stores forever).
+func mriCacheable(r mriResult) bool {
+	return r.Code >= 0 && !strings.Contains(r.Stderr, "LoadError") && !strings.Contains(r.Stderr, "cannot load such file")
+}
+
+// writeCacheFile stores data at path atomically: a concurrent reader (parallel subtests, another `go test`) sees the old file or the whole new one, never a torn write.
+func writeCacheFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	err := os.MkdirAll(dir, 0o755) //nolint:gosec // cache dir
+	if err != nil {
+		return fmt.Errorf("cache dir: %w", err)
+	}
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("cache temp: %w", err)
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), path) //nolint:gosec // our CreateTemp file, our cache path
+	}
+	if err != nil {
+		_ = os.Remove(f.Name()) //nolint:gosec // our CreateTemp file
+		return fmt.Errorf("cache write: %w", err)
+	}
+	return nil
+}
+
 // mtTracePreload is the MRI half of the trace oracle, read once: its source keys the cache too.
 var mtTracePreload = sync.OnceValues(func() (string, []byte) {
 	path, err := filepath.Abs("testdata/mt_trace.rb")
@@ -810,7 +845,7 @@ var mtTracePreload = sync.OnceValues(func() (string, []byte) {
 	return path, src
 })
 
-// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby, TZ and checkout (RB2GO_NO_MRI_CACHE=1 skips the cache).
+// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby, TZ, Gemfile.lock and checkout (RB2GO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
 	dirs := directives(src, "load_path")
@@ -846,7 +881,7 @@ func exampleSources(t *testing.T, dir string) []byte {
 func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string) mriResult {
 	t.Helper()
 	wd, _ := os.Getwd() // the checkout: output holding __dir__ or a testdata path differs per worktree
-	key := "v4\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00" + wd + "\x00"
+	key := "v5\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00" + wd + "\x00" + gemfileLock() + "\x00"
 	if args := rubyArgs[1:]; len(args) > 0 { // `# args:` are in src; TestMinitest adds more
 		key += strings.Join(args, "\x00") + "\x00args\x00"
 	}
@@ -873,13 +908,12 @@ func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string)
 	if pio.trace {
 		r.Trace = readTrace(t, tracePath)
 	}
-	if err == nil && r.Code >= 0 {
+	if err == nil && mriCacheable(r) {
 		data, err := json.Marshal(mriCached{Stdout: []byte(r.Stdout), Stderr: []byte(r.Stderr), Trace: []byte(r.Trace), Code: r.Code})
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = os.MkdirAll(filepath.Dir(cached), 0o755) //nolint:gosec // cache dir
-		_ = os.WriteFile(cached, data, 0o600)        //nolint:gosec // cache path
+		_ = writeCacheFile(cached, data) // a cache that cannot be written only costs the next run a rerun
 	}
 	return r
 }
@@ -962,6 +996,63 @@ end
 	}
 	if !bytes.Contains(code, []byte(`rb2go: undefined method nope_it for s`)) {
 		t.Fatal("the failing test's body is not its skip")
+	}
+}
+
+func TestGoModMatchesRepo(t *testing.T) {
+	data, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*(?:require\s+)?github\.com/dlclark/regexp2 (\S+)`).FindSubmatch(data)
+	if m == nil {
+		t.Fatal("go.mod does not require regexp2")
+	}
+	if want := "github.com/dlclark/regexp2 " + string(m[1]) + "\n"; !strings.Contains(GoMod, want) {
+		t.Errorf("GoMod %q does not require the repo's regexp2 %s", GoMod, m[1])
+	}
+	if sum := GoSum(); strings.Count(sum, "\n") != 2 || !strings.Contains(sum, "regexp2 "+string(m[1])+" h1:") || !strings.Contains(sum, string(m[1])+"/go.mod h1:") {
+		t.Errorf("GoSum lacks regexp2 %s's two lines:\n%s", m[1], sum)
+	}
+}
+
+func TestMRICacheable(t *testing.T) {
+	for _, tc := range []struct {
+		r    mriResult
+		want bool
+	}{
+		{mriResult{Code: 0}, true},
+		{mriResult{Code: 1, Stderr: "boom (RuntimeError)"}, true}, // MRI's own failure is part of the oracle
+		{mriResult{Code: -1}, false},
+		{mriResult{Code: 1, Stderr: "x.rb:1:in 'require': cannot load such file -- rack (LoadError)"}, false},
+		{mriResult{Code: 1, Stderr: "LoadError"}, false},
+	} {
+		if got := mriCacheable(tc.r); got != tc.want {
+			t.Errorf("mriCacheable(%+v) = %v, want %v", tc.r, got, tc.want)
+		}
+	}
+}
+
+func TestWriteCacheFile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "sub") // writeCacheFile makes it
+	path := filepath.Join(dir, "k")
+	for _, body := range []string{"one", "two longer"} {
+		err := writeCacheFile(path, []byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(path) //nolint:gosec // t.TempDir
+		if err != nil || string(got) != body {
+			t.Fatalf("read %q, %v; want %q", got, err, body)
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("temp files left behind: %v, %v", entries, err)
+	}
+	empty := sha256.Sum256(nil)
+	if gemfileLock() == hex.EncodeToString(empty[:]) {
+		t.Fatal("Gemfile.lock not read: the cache key ignores gem versions")
 	}
 }
 

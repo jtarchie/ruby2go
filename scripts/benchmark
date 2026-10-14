@@ -31,7 +31,10 @@ def time_once(cmd)
   start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   pid = Process.spawn(*cmd, out: File::NULL, err: File::NULL)
   _, status = Process.wait2(pid)
-  [Process.clock_gettime(Process::CLOCK_MONOTONIC) - start, status.success?]
+  elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+  abort "#{cmd.join(" ")}: #{status.inspect}; a crash is not a fast run" unless status.success?
+
+  elapsed
 end
 
 def output_of(cmd)
@@ -42,7 +45,9 @@ end
 def rb2go
   return ENV["RB2GO"] if ENV["RB2GO"]
 
-  bin = File.join(Dir.mktmpdir("rb2go-bench-"), "rb2go")
+  tmp = Dir.mktmpdir("rb2go-bench-")
+  at_exit { FileUtils.remove_entry(tmp) }
+  bin = File.join(tmp, "rb2go")
   system("go", "build", "-o", bin, "./cmd/rb2go", chdir: ROOT, exception: true)
   bin
 end
@@ -68,8 +73,8 @@ Dir.mktmpdir("rb2go-bench-out-") do |dir|
       next
     end
     (WARMUP + RUNS).times do |i|
-      r = time_once(["ruby", src])[0]
-      g = time_once([bin])[0]
+      r = time_once(["ruby", src])
+      g = time_once([bin])
       next if i < WARMUP
 
       (rows[name] ||= { ruby: [], go: [] })[:ruby] << r

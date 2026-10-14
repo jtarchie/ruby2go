@@ -26,7 +26,7 @@ func TestBuildAndRun(t *testing.T) {
 	opts := buildOpts{race: &f, gcflags: &e, work: &f}
 
 	bin := filepath.Join(dir, "prog")
-	if code := build(src, bin, opts); code != 0 {
+	if code := build(t.Context(), src, bin, opts); code != 0 {
 		t.Fatalf("build: exit %d", code)
 	}
 	out, err := exec.CommandContext(t.Context(), bin).Output() //nolint:gosec // built above
@@ -38,10 +38,10 @@ func TestBuildAndRun(t *testing.T) {
 		t.Errorf("want exit 3, got %v", err)
 	}
 
-	if code := run(src, nil, opts); code != 3 {
+	if code := run(t.Context(), src, nil, opts); code != 3 {
 		t.Errorf("run: exit %d, want 3", code)
 	}
-	if code := run(filepath.Join(dir, "missing.rb"), nil, opts); code != 1 {
+	if code := run(t.Context(), filepath.Join(dir, "missing.rb"), nil, opts); code != 1 {
 		t.Errorf("run missing file: exit %d, want 1", code)
 	}
 }
@@ -73,7 +73,7 @@ func TestInterrupt(t *testing.T) {
 			f := false
 			e := ""
 			bin := filepath.Join(dir, "main")
-			if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+			if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
 				t.Fatalf("build: exit %d", code)
 			}
 			var out, errOut strings.Builder
@@ -122,7 +122,7 @@ func TestSignalFlushes(t *testing.T) {
 	f := false
 	e := ""
 	bin := filepath.Join(dir, "spin")
-	if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+	if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
 		t.Fatalf("build: exit %d", code)
 	}
 	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
@@ -174,7 +174,7 @@ func TestTestCommand(t *testing.T) {
 	}
 
 	// one program, one run, one report, as `minitest dir` gives
-	out, code := captureStdout(t, func() int { return testCmd([]string{dir, "--seed", "7"}) })
+	out, code := captureStdout(t, func() int { return testCmd(t.Context(), []string{dir, "--seed", "7"}) })
 	if code != 1 {
 		t.Errorf("exit %d, want 1 (a test fails)", code)
 	}
@@ -193,7 +193,7 @@ func TestTestCommand(t *testing.T) {
 
 	// minitest's own flags pass through; rb2go's are taken out by name
 	out, code = captureStdout(t, func() int {
-		return testCmd([]string{"-n", "/good/", filepath.Join(dir, "sub", "fail_test.rb"), "-v", "--seed", "7"})
+		return testCmd(t.Context(), []string{"-n", "/good/", filepath.Join(dir, "sub", "fail_test.rb"), "-v", "--seed", "7"})
 	})
 	if code != 0 || !strings.Contains(out, "Run options: -n /good/ -v --seed 7\n") || !strings.Contains(out, "FailTest#test_good = ") {
 		t.Errorf("-n /good/ -v: exit %d\n%s", code, out)
@@ -223,7 +223,7 @@ puts "#{s} #{b.join}"
 		t.Fatal(err)
 	}
 	f, e := false, ""
-	got, code := captureStdout(t, func() int { return run(src, nil, buildOpts{race: &f, gcflags: &e, work: &f}) })
+	got, code := captureStdout(t, func() int { return run(t.Context(), src, nil, buildOpts{race: &f, gcflags: &e, work: &f}) })
 	want, err := exec.CommandContext(t.Context(), "ruby", "-rbundler/setup", src).Output() //nolint:gosec // written above
 	if err != nil || code != 0 || got != string(want) {
 		t.Errorf("rb2go run (exit %d): %q, ruby (%v): %q", code, got, err, want)
@@ -297,7 +297,7 @@ func TestUncaughtZeroDivisionMessage(t *testing.T) {
 			t.Fatal(err)
 		}
 		bin := filepath.Join(dir, name)
-		if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+		if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
 			t.Fatalf("%s: build: exit %d", name, code)
 		}
 		var errOut strings.Builder
@@ -323,7 +323,7 @@ func TestUncaughtFullReport(t *testing.T) {
 	}
 	bin := filepath.Join(dir, "main")
 	f, e := false, ""
-	if code := build(src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+	if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
 		t.Fatalf("build: exit %d", code)
 	}
 	for env, want := range map[string]string{

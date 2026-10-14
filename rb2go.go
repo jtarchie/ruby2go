@@ -35,13 +35,16 @@ var goSum string
 
 // GoMod is the go.mod generated code builds in: regexp2 is required for the programs whose patterns RE2 cannot match
 // (decision 242); Go loads it only when main.go imports it.
-const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire github.com/dlclark/regexp2 v1.12.0\n"
+const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire github.com/dlclark/regexp2 " + regexp2Version + "\n"
+
+// regexp2Version is the single pin GoMod and GoSum derive from; TestGoModMatchesRepo holds it to the repo's go.mod.
+const regexp2Version = "v1.12.0"
 
 // GoSum is go.sum for GoMod: regexp2's lines from rb2go's own.
 func GoSum() string {
 	var b strings.Builder
 	for line := range strings.Lines(goSum) {
-		if strings.HasPrefix(line, "github.com/dlclark/regexp2 v1.12.0") {
+		if strings.HasPrefix(line, "github.com/dlclark/regexp2 "+regexp2Version+" ") || strings.HasPrefix(line, "github.com/dlclark/regexp2 "+regexp2Version+"/go.mod ") {
 			b.WriteString(line)
 		}
 	}

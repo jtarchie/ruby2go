@@ -2,18 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 )
 
 // testCmd is Ruby's `minitest` command: one program, one run, one report, because Ruby loads every test file into one process (decision 80).
-func testCmd(argv []string) int {
+func testCmd(ctx context.Context, argv []string) int {
 	opts, rest, err := testBuildFlags(argv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -28,13 +26,12 @@ func testCmd(argv []string) int {
 		fmt.Fprintln(os.Stderr, "rb2go test: no test files (test_*.rb, *_test.rb, spec_*.rb, *_spec.rb)")
 		return 1
 	}
-	dir, err := compileFiles(files, "", opts, os.Stderr)
+	dir, err := compileFiles(ctx, files, "", opts, os.Stderr)
 	defer cleanup(dir, opts)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		return failed(ctx, err)
 	}
-	return runProg(filepath.Join(dir, "prog"), flags)
+	return runProg(ctx, filepath.Join(dir, "prog"), flags)
 }
 
 // testBuildFlags finds rb2go's flags anywhere: minitest's own (-v, -s N, -n /re/) never share their names.
@@ -146,20 +143,4 @@ func expandTestPath(p string) ([]string, error) {
 func exists(p string) bool {
 	_, err := os.Stat(p) //nolint:gosec // the user's own paths
 	return err == nil
-}
-
-// runProg runs a built test program in the caller's directory, as `ruby` would, and returns its exit status.
-func runProg(bin string, args []string) int {
-	cmd := exec.CommandContext(context.Background(), bin, args...) //nolint:gosec // the binary we just built
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	err := cmd.Run()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return exit.ExitCode()
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	return 0
 }

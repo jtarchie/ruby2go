@@ -93,6 +93,55 @@ func TestWeb(t *testing.T) {
 	}
 }
 
+// TestWebRunEnv: submitted code sees PATH and its own temp dir as HOME/TMPDIR, not the developer's environment (tokens).
+func TestWebRunEnv(t *testing.T) {
+	const sentinel = "hunter2-rb2go-test-sentinel"
+	t.Setenv("RB2GO_TEST_SECRET", sentinel)
+	w := newWeb("127.0.0.1", 30*time.Second)
+	src, err := json.Marshal(map[string]string{"src": "puts ENV[\"HOME\"]\nputs ENV[\"TMPDIR\"]\nputs ENV.keys.sort.inspect\nputs ENV.fetch(\"RB2GO_TEST_SECRET\", \"unset\")\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequestWithContext(t.Context(), "POST", "http://127.0.0.1:8080/run", strings.NewReader(string(src)))
+	r.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	w.ServeHTTP(rec, r)
+	var res runResult
+	err = json.Unmarshal(rec.Body.Bytes(), &res)
+	if err != nil || res.Error != "" || res.Exit != 0 {
+		t.Fatalf("run: %v %+v", err, res)
+	}
+	lines := strings.Split(strings.TrimSuffix(res.Stdout, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("stdout %q", res.Stdout)
+	}
+	home, tmp, keys, leaked := lines[0], lines[1], lines[2], lines[3]
+	if home == "" || home != tmp || !strings.HasPrefix(filepath.Base(home), "rb2go-") {
+		t.Errorf("HOME %q, TMPDIR %q: want the program's own temp dir", home, tmp)
+	}
+	if keys != `["HOME", "PATH", "TMPDIR"]` {
+		t.Errorf("ENV keys %s, want only HOME, PATH, TMPDIR", keys)
+	}
+	if leaked != "unset" || strings.Contains(res.Stdout+res.Stderr, sentinel) {
+		t.Errorf("the server's environment leaked: %q", res.Stdout)
+	}
+}
+
+// A panic in a handler is a JSON error the page shows, not a dropped connection.
+func TestWebPanicIsJSON(t *testing.T) {
+	w := newWeb("127.0.0.1", time.Second)
+	w.mux.HandleFunc("POST /boom", func(http.ResponseWriter, *http.Request) { panic("kaboom") })
+	r := httptest.NewRequestWithContext(t.Context(), "POST", "http://127.0.0.1:8080/boom", strings.NewReader("{}"))
+	r.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	w.ServeHTTP(rec, r)
+	var res runResult
+	err := json.Unmarshal(rec.Body.Bytes(), &res)
+	if err != nil || !strings.Contains(res.Error, "kaboom") || res.Exit != -1 {
+		t.Errorf("status %d, body %q, err %v", rec.Code, rec.Body, err)
+	}
+}
+
 func TestWebStatic(t *testing.T) {
 	dir := t.TempDir()
 	err := writeStatic(dir, "https://assets.example/abc/")

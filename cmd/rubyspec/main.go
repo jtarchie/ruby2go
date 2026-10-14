@@ -66,22 +66,45 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	results := runTargets(targets, *jobs, func(t target) *result { return runTarget(ctx, p, root, t, opts) }, opts.verbose)
+	report(results, *reasons)
+	os.Exit(exitCode(results))
+}
+
+// runTargets runs each target with at most jobs at once. A panic in one is that program's FATAL result, not the end of every other result.
+func runTargets(targets []target, jobs int, run func(target) *result, verbose bool) []*result {
 	results := make([]*result, len(targets))
-	sem := make(chan struct{}, *jobs)
+	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 	for i, t := range targets {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = runTarget(ctx, p, root, t, opts)
-			results[i].print(opts.verbose)
+			defer func() {
+				if p := recover(); p != nil {
+					results[i] = &result{name: t.name, fatal: fmt.Sprintf("panic: %v", p)}
+				}
+				results[i].print(verbose)
+			}()
+			results[i] = run(t)
 		})
 	}
 	wg.Wait()
-	report(results, *reasons)
+	return results
 }
 
-// specRoot is the given checkout, or a shallow clone in the user cache.
+// exitCode is 1 when any program produced no results, so a CI run over a broken toolchain is not a pass.
+func exitCode(results []*result) int {
+	if slices.ContainsFunc(results, func(r *result) bool { return r.fatal != "" }) {
+		return 1
+	}
+	return 0
+}
+
+// specCommit pins the ruby/spec checkout: pass counts are only comparable between runs on the same specs.
+const specCommit = "0816047460cc5c4ca23d09794b48e8638a7047cc"
+
+// specRoot is the given checkout, or specCommit shallow-fetched into the user cache.
 func specRoot(given string) (string, error) {
 	if given != "" {
 		return filepath.Abs(given) //nolint:wrapcheck // names the path
@@ -93,15 +116,49 @@ func specRoot(given string) (string, error) {
 	dir := filepath.Join(cache, "rb2go-rubyspec")
 	_, err = os.Stat(dir)
 	if err == nil {
-		return dir, nil
+		have, herr := gitOutput(dir, "rev-parse", "HEAD")
+		if herr == nil {
+			if have != specCommit {
+				fmt.Fprintf(os.Stderr, "rubyspec: %s is at %s, not the pinned %s; delete it to fetch the pin\n", dir, have, specCommit)
+			}
+			return dir, nil
+		}
+		fmt.Fprintf(os.Stderr, "rubyspec: %s is not a checkout (%v); fetching again\n", dir, herr)
+		err = os.RemoveAll(dir)
+		if err != nil {
+			return "", fmt.Errorf("removing %s: %w", dir, err)
+		}
 	}
-	cmd := exec.CommandContext(context.Background(), "git", "clone", "-q", "--depth", "1", "https://github.com/ruby/spec", dir) //nolint:gosec // dir is the user cache's
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	err = cmd.Run()
+	// into a sibling and renamed, so an interrupted fetch never leaves a directory that looks complete
+	tmp := dir + ".tmp"
+	err = os.RemoveAll(tmp)
+	if err == nil {
+		err = os.MkdirAll(tmp, 0o750)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"fetch", "-q", "--depth", "1", "https://github.com/ruby/spec", specCommit}, {"checkout", "-q", "FETCH_HEAD"}} {
+		if err != nil {
+			break
+		}
+		cmd := exec.CommandContext(context.Background(), "git", args...) //nolint:gosec // constant arguments
+		cmd.Dir = tmp
+		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+		err = cmd.Run()
+	}
+	if err == nil {
+		err = os.Rename(tmp, dir)
+	}
 	if err != nil {
-		return "", fmt.Errorf("cloning ruby/spec: %w", err)
+		_ = os.RemoveAll(tmp)
+		return "", fmt.Errorf("fetching ruby/spec %s: %w", specCommit, err)
 	}
 	return dir, nil
+}
+
+func gitOutput(dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(context.Background(), "git", args...) //nolint:gosec // callers pass constants
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
 }
 
 // target is one program: a spec file, or a directory's *_spec.rb files.
