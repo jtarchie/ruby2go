@@ -5,6 +5,7 @@ require "net/http"
 require "open-uri"
 require "openssl"
 require "rackup"
+require "socket"
 require "tmpdir"
 require "webrick"
 
@@ -322,6 +323,107 @@ module NetTests
         res = http.get("/rack")
         assert_equal ["204", "", nil, "a, b"], [res.code, res.body.to_s, res["rack.hidden"], res["x-multi"]]
         assert_equal "500", http.get("/boom").code
+      end
+    end
+  end
+
+  # Net::HTTP against a raw TCPServer: the bytes on the wire, which WEBrick hides.
+  class RawTest < Minitest::Test
+    #: (^(TCPSocket) -> void) { (Integer) -> void } -> void
+    def net_raw(handler)
+      server = TCPServer.new("127.0.0.1", 0)
+      Thread.new do
+        loop do
+          conn = server.accept
+          Thread.new { handler.call(conn) }
+        end
+      rescue IOError, SystemCallError
+        nil
+      end
+      begin
+        yield server.addr[1]
+      ensure
+        server.close
+      end
+    end
+
+    #: (TCPSocket) -> String?
+    def net_request_line(conn)
+      line = conn.gets
+      return nil unless line
+
+      h = conn.gets
+      h = conn.gets while h && h != "\r\n"
+      line.chomp
+    end
+
+    # decision 27: the request path is MRI's request-target verbatim; it never reaches the host.
+    def test_path_cannot_change_host
+      lines = Queue.new #: Queue[String]
+      handler = lambda do |conn|
+        line = net_request_line(conn)
+        lines << line if line
+        conn.write "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+        conn.close
+      end #: ^(TCPSocket) -> void
+      net_raw(handler) do |port|
+        http = Net::HTTP.new("127.0.0.1", port)
+        ["@evil.invalid/x", "x", "//evil.invalid/x", "/ok?q=1"].each do |path|
+          assert_equal "200", http.get(path).code
+          assert_equal "GET #{path} HTTP/1.1", lines.pop
+        end
+        begin
+          http.get("")
+          flunk "no error"
+        rescue ArgumentError => e
+          assert_equal "HTTP request path is empty", e.message
+        end
+      end
+    end
+
+    # A request must not leave its keep-alive connection idle (an fd and two goroutines each): the server sees every one close.
+    def test_connection_closed_after_request
+      closed = Queue.new #: Queue[Integer]
+      handler = lambda do |conn|
+        conn.write "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok" while net_request_line(conn)
+        closed << 1
+        conn.close
+      end #: ^(TCPSocket) -> void
+      net_raw(handler) do |port|
+        http = Net::HTTP.new("127.0.0.1", port)
+        3.times { assert_equal "200", http.get("/").code }
+        waiter = Thread.new do
+          3.times { closed.pop }
+          nil
+        end
+        assert waiter.join(10), "connections left open"
+      end
+    end
+
+    # The read timeout also covers the body: a stall mid-body is Net::ReadTimeout, not IOError.
+    def test_body_stall_is_read_timeout
+      release = Queue.new #: Queue[Integer]
+      handler = lambda do |conn|
+        net_request_line(conn)
+        conn.write "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nab"
+        release.pop
+        conn.close
+      end #: ^(TCPSocket) -> void
+      net_raw(handler) do |port|
+        http = Net::HTTP.new("127.0.0.1", port)
+        http.open_timeout = 0.2
+        http.read_timeout = 0.2
+        got = begin
+          http.get("/")
+          "none"
+        rescue Net::ReadTimeout
+          "Net::ReadTimeout"
+        rescue => e
+          e.class.name.to_s
+        ensure
+          release << 1
+        end
+        assert_equal "Net::ReadTimeout", got
       end
     end
   end

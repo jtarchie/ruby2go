@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -71,7 +72,23 @@ func rbHTTPClientFor(h *Net_HTTP) *http.Client {
 	}
 }
 
+// rbHTTPFailure is the Ruby exception for a failed round trip; Client.Timeout covers dialing, headers and the body read, so one classification serves both.
+func rbHTTPFailure(err error) any {
+	var openErr *rbHTTPOpenErr
+	switch {
+	case errors.As(err, &openErr):
+		return NewNet_OpenTimeout(Ref(String("execution expired")))
+	case errors.Is(err, context.DeadlineExceeded):
+		return NewNet_ReadTimeout(Ref(String("execution expired")))
+	default:
+		return NewIOError(Ref(String(err.Error())))
+	}
+}
+
 func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash[String, String]) Net_HTTPResponseI {
+	if path == "" {
+		panic(NewArgumentError(Ref(String("HTTP request path is empty"))))
+	}
 	var rd io.Reader
 	if body != nil {
 		rd = strings.NewReader(string(*body))
@@ -80,31 +97,40 @@ func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash
 	if h.useSSL {
 		scheme = "https"
 	}
-	target := scheme + "://" + net.JoinHostPort(string(h.address), strconv.Itoa(int(h.port))) + path
-	req, err := http.NewRequestWithContext(context.Background(), method, target, rd)
+	// MRI sends the path as the request-target verbatim, so it can never name the host: a path without a leading "/" ("@evil.com/x" would turn host:port into userinfo) is parsed behind one and the slash dropped again.
+	base := scheme + "://" + net.JoinHostPort(string(h.address), strconv.Itoa(int(h.port)))
+	noSlash := path[0] != '/'
+	if noSlash {
+		path = "/" + path
+	}
+	target, err := url.Parse(base + path)
 	if err != nil {
 		panic(NewArgumentError(Ref(String(err.Error()))))
+	}
+	req, err := http.NewRequestWithContext(context.Background(), method, base, rd)
+	if err != nil {
+		panic(NewArgumentError(Ref(String(err.Error()))))
+	}
+	req.URL.Path, req.URL.RawPath, req.URL.RawQuery = target.Path, target.RawPath, target.RawQuery
+	if noSlash {
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/")
+		req.URL.RawPath = strings.TrimPrefix(req.URL.RawPath, "/")
 	}
 	req.Header.Set("User-Agent", "Ruby")
 	for _, k := range headers.keys {
 		req.Header.Set(string(k), string(headers.vals[k]))
 	}
-	resp, err := rbHTTPClientFor(h).Do(req)
+	client := rbHTTPClientFor(h)
+	// The transport is per request: closing its idle connections (also ones still on their way to idle) is what frees the fd and goroutines, without a Connection: close header.
+	defer client.CloseIdleConnections()
+	resp, err := client.Do(req)
 	if err != nil {
-		var openErr *rbHTTPOpenErr
-		switch {
-		case errors.As(err, &openErr):
-			panic(NewNet_OpenTimeout(Ref(String("execution expired"))))
-		case errors.Is(err, context.DeadlineExceeded):
-			panic(NewNet_ReadTimeout(Ref(String("execution expired"))))
-		default:
-			panic(NewIOError(Ref(String(err.Error()))))
-		}
+		panic(rbHTTPFailure(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		panic(NewIOError(Ref(String(err.Error()))))
+		panic(rbHTTPFailure(err))
 	}
 	return rbHTTPResponseFor(strconv.Itoa(resp.StatusCode), http.StatusText(resp.StatusCode), string(data), rbHTTPHeaderHash(resp.Header), rbHTTPHeaderFields(resp.Header))
 }
