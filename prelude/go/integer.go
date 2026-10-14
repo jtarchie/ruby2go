@@ -5,6 +5,7 @@ package prelude
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -59,15 +60,26 @@ func rbStrictInt(s String, base int) Integer {
 // rbIntShl is Integer#<< (a negative count shifts right, filling with the sign).
 func rbIntShl(x, n Integer) Integer {
 	if n <= 0 {
-		return x >> min(-n, 63)
+		return x >> -max(n, -63) // -MinInt would wrap
 	}
 	if x == 0 {
 		return 0
 	}
-	if n >= 63 || x<<n>>n != x {
+	if n >= 64 || x<<n>>n != x { // n == 63 fits only for -1
 		rbIntOverflow(x, "<<", n)
 	}
 	return x << n
+}
+
+// rbIntShr is Integer#>>; a left shift by 2**63 (-MinInt) is a Bignum past anything but 0.
+func rbIntShr(x, n Integer) Integer {
+	if n == math.MinInt {
+		if x != 0 {
+			rbIntOverflow(x, ">>", n)
+		}
+		return 0
+	}
+	return rbIntShl(x, -n)
 }
 
 // rbIntRoundTo is Integer#floor/ceil/truncate/round(digits) (mode 0..3); digits >= 0 leave x as is.

@@ -3,6 +3,23 @@
 require "minitest/autorun"
 require "bigdecimal"
 
+#: () { () -> Integer } -> String
+def number_big
+  yield.to_s
+rescue RangeError
+  "RangeError"
+end
+
+#: () { () -> void } -> String
+def number_class_of
+  yield
+  "ok"
+rescue FloatDomainError
+  "FloatDomainError"
+rescue RangeError
+  "RangeError"
+end
+
 # Helpers for the checks that were testdata/run/number_boolean.rb.
 #: (bool) -> String
 def number_yes_no(b) = b ? "yes" : "no"
@@ -2319,6 +2336,126 @@ module NumberTests
       assert_equal [3.5, 3, [3, 1], 1, 1, Complex(7, 0), Complex(0, 7)], [n.fdiv(2), n.div(2), n.divmod(2), n.modulo(2), n.remainder(2), n.to_c, n.i]
       m = -7.5 #: Numeric
       assert_equal [-4, [-4, 0.5], 0.5, -1.5, Complex(-7.5, 0), -7.5, nil], [m.div(2), m.divmod(2), m % 2, m.remainder(2), m.to_c, m.nonzero?, m.infinite?]
+    end
+  end
+
+  # Integer ops at the 64-bit edge (decision 35): MRI's exact answer where it fits, RangeError where MRI makes a Bignum.
+  class NumberEdgeOverflowTest < Minitest::Test
+    MX = 9_223_372_036_854_775_807
+    MN = -MX - 1
+
+    def big_or_range(want, got)
+      assert_equal true, [want, "RangeError"].include?(got)
+    end
+
+    def test_range_each_stops_at_max
+      n = 0
+      (MX - 1..MX).each { |_i| n += 1; break if n > 5 }
+      a = [] #: Array[Integer]
+      (MX - 1...MX).each { |i| a << i }
+      b = [] #: Array[Integer]
+      (MN..MN + 1).each { |i| b << i }
+      c = [] #: Array[Integer]
+      (MX - 2..MX).each { |i| c << i }
+      assert_equal [2, [MX - 1], [MN, MN + 1], [MX - 2, MX - 1, MX]], [n, a, b, c]
+    end
+
+    def test_endless_range_past_max
+      a = [] #: Array[Integer]
+      r = number_class_of { (MX - 1..).each { |i| a << i; break if a.size >= 3 } }
+      assert_equal [MX - 1, MX], a.first(2)
+      assert_equal true, %w[ok RangeError].include?(r)
+      assert_equal true, a.size == 2 || a[2] > 0
+    end
+
+    def test_range_size_and_count
+      assert_equal [MX, MX - 1, 0, 1], [(1..MX).size, (1...MX).size, (MX..MN).size, (MX..MX).count]
+      big_or_range "18446744073709551616", number_big { (MN..MX).size }
+      big_or_range "9223372036854775808", number_big { (0..MX).size }
+      big_or_range "9223372036854775809", number_big { (-1..MX).count }
+      big_or_range "9223372036854775808", number_big { (MN..-1).size }
+      big_or_range "9223372036854775808", number_big { (MN...0).size }
+      big_or_range "9223372036854775809", number_big { (MN..0).size }
+      big_or_range "18446744073709551615", number_big { (-MX..MX).size }
+    end
+
+    def test_upto_downto_step_stop_at_the_bound
+      n = 0
+      (MX - 1).upto(MX) { |_i| n += 1; break if n > 5 }
+      m = 0
+      (MN + 1).downto(MN) { |_i| m += 1; break if m > 5 }
+      k = 0
+      (MX - 1).step(MX, 1) { |_i| k += 1; break if k > 5 }
+      assert_equal [2, 2, 2], [n, m, k]
+      a = [] #: Array[Integer]
+      (MX - 2).upto(MX) { |i| a << i }
+      b = [] #: Array[Integer]
+      (MN + 2).downto(MN) { |i| b << i }
+      c = [] #: Array[Integer]
+      (MX - 3).step(MX, 2) { |i| c << i }
+      d = [] #: Array[Integer]
+      1.step(MX, MX) { |i| d << i }
+      e = [] #: Array[Integer]
+      (MN + 3).step(MN, -2) { |i| e << i }
+      f = [] #: Array[Integer]
+      0.step(MN, MN) { |i| f << i }
+      g = [] #: Array[Integer]
+      (-1).step(MN, MN) { |i| g << i }
+      assert_equal [[MX - 2, MX - 1, MX], [MN + 2, MN + 1, MN], [MX - 3, MX - 1],
+                   [1], [MN + 3, MN + 1], [0, MN], [-1]], [a, b, c, d, e, f, g]
+    end
+
+    def test_upto_downto_size_and_step_enumerators
+      assert_equal [1, 1], [MX.upto(MX).size || 0, MN.downto(MN).size || 0]
+      big_or_range "18446744073709551616", number_big { MN.upto(MX).size || 0 }
+      big_or_range "9223372036854775808", number_big { 0.upto(MX).size || 0 }
+      big_or_range "18446744073709551616", number_big { MX.downto(MN).size || 0 }
+      big_or_range "18446744073709551616", number_big { MN.step(MX).size }
+      assert_equal [MX - 3, MX - 1], (MX - 3).step(MX, 2).to_a
+      assert_equal [1], 1.step(MX, MX).to_a
+    end
+
+    def test_gcd_lcm_at_min
+      assert_equal [2, 2, 1, 4], [MN.gcd(6), 6.gcd(MN), MN.gcd(MX), MN.gcd(-4)]
+      big_or_range "9223372036854775808", number_big { MN.gcd(0) }
+      big_or_range "9223372036854775808", number_big { 0.gcd(MN) }
+      big_or_range "9223372036854775808", number_big { MN.gcd(MN) }
+      big_or_range "9223372036854775808", number_big { MN.lcm(1) }
+      big_or_range "9223372036854775808", number_big { MN.lcm(MN) }
+      big_or_range "27670116110564327424", number_big { MN.lcm(3) }
+    end
+
+    def test_shift_by_huge_counts
+      assert_equal [0, 0, 0, -1, -1, 0, 0, -1, -1, -1, 0, 0, 0, 0],
+                   [0 >> MN, 1 << MN, 0 << MN, -1 << MN, -5 << MN, 0 << MX, 1 >> MX, -5 >> MX, -5 >> 100, -5 << -MX, 5 << -100, 0 >> -MX, 0 << MX, 5 << MN]
+    end
+
+    def test_range_sum_reverse_each_bsearch_at_the_edge
+      assert_equal [MX - 1, 0, 0], [(MX - 1...MX).sum, (MX...MX).sum, (-MX..MX).sum]
+      big_or_range "18446744073709551613", number_big { (MX - 1..MX).sum }
+      big_or_range "42535295865117307928310139910543638528", number_big { (0..MX).sum }
+      a = [] #: Array[Integer]
+      (MN..MN + 2).reverse_each { |i| a << i }
+      b = [] #: Array[Integer]
+      (MN...MN).reverse_each { |i| b << i }
+      assert_equal [[MN + 2, MN + 1, MN], []], [a, b]
+      assert_equal [5, nil, MX, MN], [(MN..MX).bsearch { |x| x >= 5 }, (MN...MN).bsearch { |_x| true }, (0..MX).bsearch { |x| x >= MX }, (MN..MX).bsearch { |_x| true }]
+    end
+
+    def test_shift_that_still_fits
+      assert_equal [MN, MN, MX, -4_611_686_018_427_387_904], [-1 << 63, -2 >> -62, MX >> 0, -1 << 62]
+      big_or_range "9223372036854775808", number_big { 1 << 63 }
+      big_or_range "-18446744073709551616", number_big { -2 << 63 }
+    end
+
+    def test_format_d_of_a_float_past_int64
+      z = 0.0 #: Float
+      assert_equal ["FloatDomainError", "FloatDomainError", "FloatDomainError"],
+                   [number_class_of { format("%d", z / z) }, number_class_of { format("%d", 1.0 / z) }, number_class_of { format("%x", -1.0 / z) }]
+      assert_equal true, ["100000000000000000000", "RangeError"].include?(begin; format("%d", 1e20); rescue RangeError; "RangeError"; end)
+      assert_equal true, ["56bc75e2d63100000", "RangeError"].include?(begin; format("%x", 1e20); rescue RangeError; "RangeError"; end)
+      assert_equal "-9223372036854775808", format("%d", -9_223_372_036_854_775_808.0)
+      assert_equal true, ["9300000000000000000", "RangeError"].include?(begin; format("%d", 9.3e18); rescue RangeError; "RangeError"; end)
     end
   end
 

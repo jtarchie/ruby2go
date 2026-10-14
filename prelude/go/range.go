@@ -5,6 +5,7 @@ package prelude
 
 import (
 	"math"
+	"math/big"
 	"strings"
 )
 
@@ -21,6 +22,12 @@ func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
 		e, _ := any(r.e).(Integer)
 		for i := b; r.endless || i < e || (!r.excl && i == e); i++ {
 			if !yield(any(i).(E)) {
+				return
+			}
+			if i == math.MaxInt { // i++ would wrap; MRI goes on into a Bignum only for an endless range
+				if r.endless {
+					rbIntOverflow(i, "+", 1)
+				}
 				return
 			}
 		}
@@ -132,11 +139,34 @@ func rbRangeCover[E comparable](r *Range[E], v E) bool {
 	return c < 0 || (c == 0 && !r.excl)
 }
 
+// rbRangeIntSum is the sum of b..e (b <= e), a RangeError where MRI's is a Bignum (decision 35).
+func rbRangeIntSum(b, e Integer) Integer {
+	if b > -1<<30 && b < 1<<30 && e > -1<<30 && e < 1<<30 { // (e-b+1)*(b+e) fits
+		return (e - b + 1) * (b + e) / 2
+	}
+	n := new(big.Int).Sub(big.NewInt(int64(e)), big.NewInt(int64(b)))
+	s := n.Add(n, big.NewInt(1)).Mul(n, big.NewInt(0).Add(big.NewInt(int64(b)), big.NewInt(int64(e))))
+	if s.Rsh(s, 1); !s.IsInt64() {
+		rbIntOverflow(b, "..sum..", e)
+	}
+	return Integer(s.Int64())
+}
+
+// rbRangeIntCount is the number of integers in b..e; one past MaxInt is MRI's Bignum, so a RangeError (decision 35).
 func rbRangeIntCount(b, e Integer, excl bool) Integer {
 	if excl {
+		if e == math.MinInt {
+			return 0
+		}
 		e--
 	}
-	return max(e-b+1, 0)
+	if e < b {
+		return 0
+	}
+	if uint64(e)-uint64(b) >= math.MaxInt {
+		rbIntOverflow(b, "..", e)
+	}
+	return e - b + 1
 }
 
 func rbRangeStr[E comparable](r *Range[E], str func(any) String) String {
@@ -187,25 +217,39 @@ func rbRangeBsearch[E comparable](r *Range[E], ok func(E) bool) *E {
 	}
 	var hi Integer
 	if r.endless {
-		hi = lo + 1
-		for !ok(any(hi).(E)) {
-			if hi > math.MaxInt/2 {
-				return nil
+		for step := Integer(1); ; step *= 2 { // MRI probes lo+1, lo+2, lo+4, ... into Bignums
+			if lo > math.MaxInt-step {
+				rbIntOverflow(lo, "+", step)
 			}
-			hi = lo + (hi-lo)*2
+			if hi = lo + step; ok(any(hi).(E)) {
+				break
+			}
+			if step > math.MaxInt/2 {
+				rbIntOverflow(lo, "+", step)
+			}
 		}
 	} else {
 		hi = any(r.e).(Integer)
 		if r.excl {
+			if hi == math.MinInt {
+				return nil
+			}
 			hi--
 		}
 	}
 	var found *E
 	for lo <= hi {
-		mid := lo + (hi-lo)/2
+		mid := lo + Integer(uint64(hi-lo)/2) // hi-lo wraps past MaxInt; as unsigned it is exact
 		if v := any(mid).(E); ok(v) {
-			found, hi = &v, mid-1
+			found = &v
+			if mid == lo { // mid-1 would wrap
+				break
+			}
+			hi = mid - 1
 		} else {
+			if mid == hi { // mid+1 would wrap
+				break
+			}
 			lo = mid + 1
 		}
 	}

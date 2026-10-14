@@ -183,7 +183,7 @@ func rbFormatInt(v any) int {
 	case Integer:
 		return int(n)
 	case Float:
-		return int(n) // truncates, as MRI
+		return int(rbFloatToI(float64(n))) // truncates, as MRI; NaN and Inf are FloatDomainError, past 64 bits a RangeError (decision 35)
 	case String:
 		return int(rbStrictInt(n, 0)) // Kernel#Integer's rules: "1__2" is invalid
 	case nil:

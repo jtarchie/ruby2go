@@ -211,7 +211,7 @@ class Integer < Object
   def upto(limit) = %x{
     return func(yield func(Integer) bool) {
       for i := self; i <= limit; i++ {
-        if !yield(i) {
+        if !yield(i) || i == math.MaxInt { // i++ would wrap
           return
         }
       }
@@ -222,7 +222,7 @@ class Integer < Object
   def downto(limit) = %x{
     return func(yield func(Integer) bool) {
       for i := self; i >= limit; i-- {
-        if !yield(i) {
+        if !yield(i) || i == math.MinInt {
           return
         }
       }
@@ -230,17 +230,20 @@ class Integer < Object
   }
   #: (Integer) -> Integer
   def gcd(other) = %x{
-    a, b := self, other
-    if a < 0 {
-      a = -a
+    a, b := uint64(self), uint64(other)
+    if self < 0 {
+      a = -a // unsigned, so MinInt becomes 2**63
     }
-    if b < 0 {
+    if other < 0 {
       b = -b
     }
     for b != 0 {
       a, b = b, a%b
     }
-    return a
+    if a > math.MaxInt {
+      rbIntOverflow(self, "gcd", other)
+    }
+    return Integer(a)
   }
 
   #: (Integer) -> Integer
@@ -347,7 +350,7 @@ class Integer < Object
     }
     return func(yield func(Integer) bool) {
       for i := self; by > 0 && i <= limit || by < 0 && i >= limit; i += by {
-        if !yield(i) {
+        if !yield(i) || by > 0 && i > math.MaxInt-by || by < 0 && i < math.MinInt-by { // i += by would wrap, and the true next is past limit
           return
         }
       }
@@ -361,10 +364,10 @@ class Integer < Object
   def __times_enum = %x{ return rbEnumOf(self.Times(), any(self), "times", rbSizeOf(max(self, 0)), nil) }
 
   #: (Integer) -> Enumerator[Integer]
-  def __upto_enum(limit) = %x{ return rbEnumOf(self.Upto(limit), any(self), "upto("+string(rbInspect(limit))+")", rbSizeOf(max(limit-self+1, 0)), nil) }
+  def __upto_enum(limit) = %x{ return rbEnumOf(self.Upto(limit), any(self), "upto("+string(rbInspect(limit))+")", func() *Integer { n := rbRangeIntCount(self, limit, false); return &n }, nil) }
 
   #: (Integer) -> Enumerator[Integer]
-  def __downto_enum(limit) = %x{ return rbEnumOf(self.Downto(limit), any(self), "downto("+string(rbInspect(limit))+")", rbSizeOf(max(self-limit+1, 0)), nil) }
+  def __downto_enum(limit) = %x{ return rbEnumOf(self.Downto(limit), any(self), "downto("+string(rbInspect(limit))+")", func() *Integer { n := rbRangeIntCount(limit, self, false); return &n }, nil) }
 end
 
 # Shifts past 64 bits raise RangeError where MRI would promote to a Bignum (decision 35).
@@ -385,7 +388,7 @@ class Integer
   def <<(other) = %x{ rbIntShl(self, other) }
 
   #: (Integer) -> Integer
-  def >>(other) = %x{ rbIntShl(self, -other) }
+  def >>(other) = %x{ rbIntShr(self, other) }
 
   #: (Integer) -> Integer
   def [](i) = %x{

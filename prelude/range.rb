@@ -26,11 +26,17 @@ class Range < Object
           rbRangeNoBegin(self)
         }
         if self.excl {
+          if e == math.MinInt {
+            rbIntOverflow(e, "-", 1)
+          }
           e--
         }
         for i := e; ; i-- {
           if !yield(any(i).(E)) {
             return
+          }
+          if i == math.MinInt { // i-- would wrap into a Bignum
+            rbIntOverflow(i, "-", 1)
           }
         }
       }
@@ -50,10 +56,13 @@ class Range < Object
         return
       }
       if self.excl {
+        if e == math.MinInt {
+          return
+        }
         e--
       }
       for i := e; i >= b; i-- {
-        if !yield(any(i).(E)) {
+        if !yield(any(i).(E)) || i == math.MinInt { // i-- would wrap
           return
         }
       }
@@ -184,7 +193,7 @@ class Range < Object
     if e < b {
       return 0
     }
-    return (e - b + 1) * (b + e) / 2
+    return rbRangeIntSum(b, e)
   }
 
   #: () -> E?

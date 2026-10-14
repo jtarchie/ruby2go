@@ -6,6 +6,7 @@ package prelude
 import (
 	"fmt"
 	"iter"
+	"math"
 	"slices"
 	"strconv"
 )
@@ -321,6 +322,12 @@ func rbArithSeq[E comparable](a *Enumerator_ArithmeticSequence[E]) func(func(E) 
 				if !yield(any(i).(E)) {
 					return
 				}
+				if by > 0 && i > math.MaxInt-by || by < 0 && i < math.MinInt-by { // i += by would wrap: past e, or a Bignum for an endless sequence (decision 35)
+					if a.endless {
+						rbIntOverflow(i, "+", by)
+					}
+					return
+				}
 			}
 		case Float:
 			by := float64(any(a.by).(Float))
@@ -368,16 +375,23 @@ func (a *Enumerator_ArithmeticSequence[E]) rbSize() *Integer {
 		rbRangeNoBegin(a.rng)
 	}
 	e, by := any(a.e).(Integer), any(a.by).(Integer)
-	span := e - b
+	span, step := uint64(e)-uint64(b), uint64(by) // unsigned: e-b may pass MaxInt
 	if by < 0 {
-		span, by = -span, -by
-	}
-	if span < 0 {
+		span, step = uint64(b)-uint64(e), -step
+		if e > b {
+			return Ref(Integer(0))
+		}
+	} else if e < b {
 		return Ref(Integer(0))
 	}
-	n := span/by + 1
-	if a.excl && span%by == 0 {
-		n--
+	n := span / step
+	wrapped := false
+	if !a.excl || span%step != 0 {
+		n++
+		wrapped = n == 0 // 2**64 elements
 	}
-	return &n
+	if wrapped || n > math.MaxInt { // MRI's Bignum
+		rbIntOverflow(b, "step", e)
+	}
+	return Ref(Integer(n))
 }
