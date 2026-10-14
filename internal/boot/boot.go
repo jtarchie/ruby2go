@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 //go:embed boot_hook.rb find_gems.rb
@@ -116,8 +118,75 @@ type ClassStateInfo struct {
 	Frozen   bool   `json:"frozen"`
 }
 
-// Capture runs entry under MRuby with the tracing hook installed, with
-// loadPaths as `-I` directories, and returns the boot manifest.
+// Limits on one ruby run. Variables so tests can shrink them; compile-time boot executes the program (decision 262).
+var (
+	bootTimeout       = 10 * time.Minute // a boot that blocks (a server started at load, sleep) must not hang the compile
+	waitDelay         = 5 * time.Second  // after the kill, a pipe held by a grandchild cannot block Wait
+	maxBytes    int64 = 256 << 20        // the manifest and FindGems' output
+	maxStderr         = 64 << 10         // the first bytes of stderr kept for an error
+)
+
+// headWriter keeps the first maxStderr bytes written and counts the rest, so a chatty boot cannot grow memory.
+type headWriter struct {
+	buf     bytes.Buffer
+	dropped int
+}
+
+func (w *headWriter) Write(p []byte) (int, error) {
+	room := min(maxStderr-w.buf.Len(), len(p))
+	if room > 0 {
+		w.buf.Write(p[:room])
+	}
+	w.dropped += len(p) - max(room, 0)
+	return len(p), nil
+}
+
+func (w *headWriter) String() string {
+	if w.dropped == 0 {
+		return w.buf.String()
+	}
+	return fmt.Sprintf("%s\n... stderr truncated, %d more bytes", w.buf.String(), w.dropped)
+}
+
+// limitWriter fails, and cancels the run so ruby is not left blocked on a full pipe, once more than maxBytes are written.
+type limitWriter struct {
+	buf    bytes.Buffer
+	over   bool
+	cancel context.CancelFunc
+}
+
+func (w *limitWriter) Write(p []byte) (int, error) {
+	if int64(w.buf.Len()+len(p)) > maxBytes {
+		w.over = true
+		w.cancel()
+		return 0, fmt.Errorf("output exceeds the %d byte limit", maxBytes)
+	}
+	return w.buf.Write(p) //nolint:wrapcheck // bytes.Buffer never fails
+}
+
+// runRuby runs ruby with args under bootTimeout (the earlier of it and ctx's deadline wins) and returns its capped stderr.
+func runRuby(ctx context.Context, args, env []string, stdout func(context.CancelFunc) io.Writer) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, bootTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ruby", args...) //nolint:gosec // ruby runs the program's own boot
+	cmd.Env = env
+	cmd.WaitDelay = waitDelay
+	// ponytail: the kill reaches ruby only; a grandchild (system("sleep 99")) outlives it, WaitDelay just stops Wait blocking on it. Setpgid + kill(-pid) needs build-tagged files (this package also builds into the wasm playground).
+	var stderr headWriter
+	cmd.Stderr = &stderr
+	if stdout != nil {
+		cmd.Stdout = stdout(cancel)
+	}
+	err := cmd.Run()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return stderr.String(), fmt.Errorf("timed out (boot timeout %s, or the caller's deadline): %w", bootTimeout, context.DeadlineExceeded)
+	}
+	return stderr.String(), err
+}
+
+// Capture runs entry under MRI with the tracing hook installed, with
+// loadPaths as `-I` directories, and returns the boot manifest. This executes
+// the program's load phase (decision 262).
 func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest, error) {
 	dir, err := os.MkdirTemp("", "rb2go-boot-")
 	if err != nil {
@@ -138,14 +207,20 @@ func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest,
 	for _, lp := range loadPaths {
 		args = append(args, "-I", lp)
 	}
-	args = append(args, entry)
-	cmd := exec.CommandContext(ctx, "ruby", args...) //nolint:gosec // ruby runs the program's own boot
-	cmd.Env = append(os.Environ(), "RB2GO_BOOT_OUT="+out)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err = cmd.Run()
+	args = append(args, "--", entry) // "--": an entry named -x.rb is a file, not an option
+	stderr, err := runRuby(ctx, args, append(os.Environ(), "RB2GO_BOOT_OUT="+out), nil)
+	if errors.Is(err, exec.ErrNotFound) {
+		return nil, fmt.Errorf("boot %s: running the program's load phase needs ruby on PATH", entry)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("boot %s: %w\n%s", entry, err, stderr.String())
+		return nil, fmt.Errorf("boot %s: %w\n%s", entry, err, stderr)
+	}
+	info, err := os.Stat(out)
+	if err != nil {
+		return nil, fmt.Errorf("boot: %w", err)
+	}
+	if info.Size() > maxBytes {
+		return nil, fmt.Errorf("boot %s: manifest is %d bytes, over the %d byte limit", entry, info.Size(), maxBytes)
 	}
 	data, err := os.ReadFile(out) //nolint:gosec // under os.MkdirTemp
 	if err != nil {
@@ -159,7 +234,7 @@ func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest,
 	return &m, nil
 }
 
-// FindGems asks MRI, once, for the lib dirs of the installed gems providing names and their runtime dependencies, through Bundler when BUNDLE_GEMFILE is set or dir holds a Gemfile.
+// FindGems asks MRI, once, for the lib dirs of the installed gems providing names and their runtime dependencies, through Bundler when BUNDLE_GEMFILE is set or dir holds a Gemfile. Bundler's setup runs the Gemfile (decision 262).
 func FindGems(ctx context.Context, dir string, names []string) ([]string, error) {
 	script, err := hookFS.ReadFile("find_gems.rb")
 	if err != nil {
@@ -178,18 +253,21 @@ func FindGems(ctx context.Context, dir string, names []string) ([]string, error)
 	if gemfile != "" {
 		args = append([]string{"-rbundler/setup"}, args...)
 	}
-	cmd := exec.CommandContext(ctx, "ruby", append(args, names...)...) //nolint:gosec // names are the program's require literals
-	cmd.Env = env
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	var out *limitWriter
+	stderr, err := runRuby(ctx, append(args, names...), env, func(cancel context.CancelFunc) io.Writer {
+		out = &limitWriter{cancel: cancel}
+		return out
+	})
+	if out != nil && out.over { // the kill after the cap is what Run reports
+		return nil, fmt.Errorf("find gems: ruby output exceeds the %d byte limit", maxBytes)
+	}
 	if errors.Is(err, exec.ErrNotFound) {
 		return nil, fmt.Errorf("require %q: finding an installed gem needs ruby on PATH", names[0])
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%s (%w)", strings.TrimSpace(stderr.String()), err)
+		return nil, fmt.Errorf("%s (%w)", strings.TrimSpace(stderr), err)
 	}
-	return strings.FieldsFunc(string(out), func(r rune) bool { return r == '\n' }), nil
+	return strings.FieldsFunc(out.buf.String(), func(r rune) bool { return r == '\n' }), nil
 }
 
 // Class returns the named class, or nil.

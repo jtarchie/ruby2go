@@ -8080,3 +8080,25 @@ resolve; anything not listed is still open.
     - A timeout while reading the body is `Net::ReadTimeout`, as one
       classification (`rbHTTPFailure`) serves both the round trip and the
       body read.
+262. **Compile-time boot runs the program: trust model and limits** (#101; amends 161, 173; 2026-10-14).
+    - Compiling a gem-requiring program under `rb2go build|run|gen`
+      EXECUTES its load phase under MRI at compile time: the entry file,
+      and the Gemfile beside it (or `BUNDLE_GEMFILE`) via `bundler/setup`
+      in `FindGems`. It runs with the user's full environment and cwd,
+      as `ruby main.rb` does. Do not point rb2go at untrusted source.
+    - There is no sandbox and no environment allowlist: an allowlist
+      would break decision 161's baked-in ENV (the boot's ENV values are
+      what the compiled program sees). The wasm playground never starts
+      Ruby (`internal/boot` is stdlib-only and compiles into it, but with
+      no file on disk `bootSources` skips `Capture`).
+    - Limits, package variables so tests can shrink them: 10 minute
+      timeout on each of `Capture` and `FindGems` (`context.WithTimeout`
+      on the caller's ctx, the earlier deadline wins); `cmd.WaitDelay` of
+      5 s so a pipe held by a grandchild cannot block `Wait` after the
+      kill; stderr kept to its first 64 KiB with a truncation note; the
+      manifest and `FindGems` output capped at 256 MiB.
+    - The entry follows `--`, so a file named like an option is a file.
+    - Known gaps: the kill reaches ruby only, not its grandchildren (a
+      process-group kill needs build-tagged files, as this package also
+      builds into wasm); the program's `$LOAD_PATH` still shows the
+      hook's temp dir.

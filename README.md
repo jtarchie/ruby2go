@@ -106,6 +106,12 @@ supported standard library. Any other name is looked up as an installed gem
 build time, and only unmodified rack and Cuba are tested. Run-time
 `$LOAD_PATH` changes are not supported.
 
+Compiling a program that loads a gem *runs* it: `build`, `run` and `gen` execute
+the program's load phase under `ruby` (and the `Gemfile` beside it, through
+Bundler) with your full environment, as `ruby main.rb` would. There is no
+sandbox, so don't point rb2go at source you would not run. The run is bounded
+(10 minutes, capped output). Programs without gems never start `ruby`.
+
 ## Writing Ruby for rb2go
 
 Put `# rbs_inline: enabled` at the top and annotate method signatures with

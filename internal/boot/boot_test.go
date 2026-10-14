@@ -2,11 +2,147 @@ package boot
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func needRuby(t *testing.T) {
+	t.Helper()
+	_, err := exec.LookPath("ruby")
+	if err != nil {
+		t.Skip("ruby not on PATH")
+	}
+}
+
+// writeEntry writes src as name in a fresh temp dir and returns the dir.
+func writeEntry(t *testing.T, name, src string) string {
+	t.Helper()
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// shrink sets a package limit for one test.
+func shrink[T any](t *testing.T, p *T, v T) {
+	t.Helper()
+	old := *p
+	*p = v
+	t.Cleanup(func() { *p = old })
+}
+
+// bounded fails the test if f does not return in a generous watchdog time (a guard against a hang, not a timing assertion).
+func bounded(t *testing.T, f func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { defer close(done); f() }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("call did not return: the timeout or WaitDelay did not bound it")
+	}
+}
+
+func TestCaptureTimeout(t *testing.T) {
+	needRuby(t)
+	shrink(t, &bootTimeout, 300*time.Millisecond)
+	shrink(t, &waitDelay, 300*time.Millisecond)
+	dir := writeEntry(t, "entry.rb", "sleep 60\n")
+	bounded(t, func() {
+		_, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+		if err == nil || !strings.Contains(err.Error(), "timed out") {
+			t.Errorf("err = %v, want a timed out error", err)
+		}
+	})
+}
+
+// A grandchild keeps the stderr pipe open after ruby is killed: WaitDelay must release Wait.
+func TestCaptureTimeoutGrandchild(t *testing.T) {
+	needRuby(t)
+	shrink(t, &bootTimeout, 300*time.Millisecond)
+	shrink(t, &waitDelay, 300*time.Millisecond)
+	dir := writeEntry(t, "entry.rb", "spawn('sleep 25')\nsleep 60\n")
+	bounded(t, func() {
+		_, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+		if err == nil || !strings.Contains(err.Error(), "timed out") {
+			t.Errorf("err = %v, want a timed out error", err)
+		}
+	})
+}
+
+func TestFindGemsTimeout(t *testing.T) {
+	needRuby(t)
+	shrink(t, &bootTimeout, time.Nanosecond)
+	bounded(t, func() {
+		_, err := FindGems(context.Background(), t.TempDir(), []string{"rake"})
+		if err == nil || !strings.Contains(err.Error(), "timed out") {
+			t.Errorf("err = %v, want a timed out error", err)
+		}
+	})
+}
+
+func TestCaptureDashEntry(t *testing.T) {
+	needRuby(t)
+	dir := writeEntry(t, "-x.rb", "module DashEntry; end\n")
+	t.Chdir(dir)
+	m, err := Capture(context.Background(), "-x.rb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Class("DashEntry") == nil {
+		t.Errorf("entry -x.rb was not run as a script; classes %v", classNames(m))
+	}
+}
+
+func TestCaptureStderrCapped(t *testing.T) {
+	needRuby(t)
+	dir := writeEntry(t, "entry.rb", "$stderr.write('x' * (1 << 20))\nexit 1\n")
+	_, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err == nil {
+		t.Fatal("want the failed boot's error")
+	}
+	if len(err.Error()) > 80<<10 || !strings.Contains(err.Error(), "truncated") {
+		t.Errorf("error is %d bytes, want <= 80 KiB and a truncation note", len(err.Error()))
+	}
+}
+
+func TestCaptureManifestTooBig(t *testing.T) {
+	needRuby(t)
+	shrink(t, &maxBytes, 10)
+	dir := writeEntry(t, "entry.rb", "class Big; end\n")
+	_, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("err = %v, want a size limit error", err)
+	}
+}
+
+func TestFindGemsOutputTooBig(t *testing.T) {
+	needRuby(t)
+	shrink(t, &maxBytes, 4)
+	_, err := FindGems(context.Background(), t.TempDir(), []string{"rake"})
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("err = %v, want a size limit error", err)
+	}
+}
+
+func TestRubyMissing(t *testing.T) {
+	t.Setenv("PATH", "/nonexistent")
+	dir := writeEntry(t, "entry.rb", "\n")
+	_, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err == nil || !strings.Contains(err.Error(), "needs ruby on PATH") {
+		t.Errorf("Capture err = %v, want the ruby-on-PATH message", err)
+	}
+	_, err = FindGems(context.Background(), dir, []string{"rake"})
+	if err == nil || !strings.Contains(err.Error(), "needs ruby on PATH") {
+		t.Errorf("FindGems err = %v, want the ruby-on-PATH message", err)
+	}
+}
 
 func TestCapture(t *testing.T) {
 	if _, err := exec.LookPath("ruby"); err != nil { //nolint:noinlineerr // a skip guard, not error handling
