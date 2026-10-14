@@ -2339,6 +2339,9 @@ func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser
 // classCall dispatches on a class-typed receiver.
 func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	f.noteYielderFeed(recv, name, args)
+	if e, ok := f.moduleCmp(t, recv, name, args, block); ok {
+		return e
+	}
 	if isAbstract(t) && recv.code != f.selfCode {
 		return f.abstractCall(n, t, recv, name, args, block)
 	}
@@ -2366,7 +2369,7 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}
-	if f.lenient() && e.Owner != nil && e.Owner.universal && e.M.File != nil && e.M.File.prelude && t.C.isStruct() && t.C.descendantDefines(name, false) {
+	if f.lenient() && e.Owner != nil && e.Owner.universal && e.M.File != nil && e.M.File.prelude && t.C.isStruct() && !t.C.universal && t.C.descendantDefines(name, false) {
 		// Kernel's `then` on an AbstractEventFuture whose Event and Future define their own (concurrent-ruby's
 		// `.future.then(*args, &task)`): the object's method, found at run time as MRI does (decision 253)
 		anyRecv := expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}
@@ -9817,4 +9820,21 @@ func (f *fctx) lenientCall(n *parser.CallNode) (expr, bool) {
 		}
 	}
 	return expr{}, false
+}
+
+// moduleCmp is `C < D` (<=, >, >=) on a class or module object: an ancestry test (rbModuleCmp), compiled where the
+// receiver is one rather than a Module method every class object would answer through dynamic `<` (decision 255).
+func (f *fctx) moduleCmp(t TClass, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if len(args) != 1 || block != nil || name != "<" && name != "<=" && name != ">" && name != ">=" {
+		return expr{}, false
+	}
+	if t.C.metaOf == nil && t.C.RubyName != "Class" && t.C.RubyName != "Module" {
+		return expr{}, false
+	}
+	if t.C.metaOf != nil && t.C.lookup(name) != nil && !t.C.lookup(name).M.File.prelude { // a class's own `self.<`
+		return expr{}, false
+	}
+	a := f.genExpr(args[0], nil)
+	code := fmt.Sprintf("rbModuleCmp(%s, %s, %t, %t)", f.coerce(nil, recv, TAny{}), f.coerce(args[0], a, TAny{}), name[0] == '>', len(name) == 2)
+	return expr{code: code, typ: TOpt{Elem: f.cls("Boolean")}}, true
 }

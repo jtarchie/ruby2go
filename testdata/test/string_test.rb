@@ -1562,4 +1562,14 @@ B
       assert_equal({ "x" => "a1?t=x", "y" => "a2?t=y" }, got)
     end
   end
+
+  # String#[] of a Regexp (its match, or a capture group) or a String, typed and untyped (decision 254)
+  class StringIndexPatternTest < Minitest::Test
+    def test_index_regexp_and_string
+      s = "wget-1.2.tar.gz"
+      assert_equal [".tar.gz", "1", nil, "wg", nil], [s[/(\.tar\.(?:gz|bz2))\Z/, 1], s[/\d/], s[/zz/], s["wg"], s["zz"]]
+      u = s #: untyped
+      assert_equal [".tar.gz", "1", "w", "wge", "wg"], [u[/(\.tar\.(?:gz|bz2))\Z/, 1], u[/\d/], u[0], u[0, 3], u["wg"]]
+    end
+  end
 end

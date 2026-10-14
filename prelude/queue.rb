@@ -137,24 +137,34 @@ class Queue < Object
   def pop(non_block = false) = %x{ return self.q.pop(bool(non_block)) }
 
   # `timeout:` from a Hash (decision 23), since keyword params are not supported.
-  #: (Hash[Symbol, Float]) -> E?
+  #: (Hash[Symbol, untyped]) -> E?
   def __pop_hash(opts) = %x{
-    if t := Hash_Op_idx(opts, Symbol("timeout")); t != nil {
-      return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(float64(*t) * 1e9))))
+    var secs float64
+    var timeout any
+    if p := Hash_Op_idx(opts, Symbol("timeout")); p != nil {
+      timeout = *p
     }
-    return self.q.pop(false)
+    switch t := timeout.(type) { // nil waits, as no timeout (concurrent-ruby's idle workers)
+    case Integer:
+      secs = float64(t)
+    case Float:
+      secs = float64(t)
+    default:
+      return self.q.pop(false)
+    }
+    return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(secs * 1e9))))
   }
 
   #: (?bool) -> E?
   def shift(non_block = false) = pop(non_block)
 
-  #: (Hash[Symbol, Float]) -> E?
+  #: (Hash[Symbol, untyped]) -> E?
   def __shift_hash(opts) = __pop_hash(opts)
 
   #: (?bool) -> E?
   def deq(non_block = false) = pop(non_block)
 
-  #: (Hash[Symbol, Float]) -> E?
+  #: (Hash[Symbol, untyped]) -> E?
   def __deq_hash(opts) = __pop_hash(opts)
 
   #: () -> Integer
@@ -234,24 +244,34 @@ class SizedQueue < Object
   def pop(non_block = false) = %x{ return self.q.pop(bool(non_block)) }
 
   # `timeout:` from a Hash (decision 23), since keyword params are not supported.
-  #: (Hash[Symbol, Float]) -> E?
+  #: (Hash[Symbol, untyped]) -> E?
   def __pop_hash(opts) = %x{
-    if t := Hash_Op_idx(opts, Symbol("timeout")); t != nil {
-      return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(float64(*t) * 1e9))))
+    var secs float64
+    var timeout any
+    if p := Hash_Op_idx(opts, Symbol("timeout")); p != nil {
+      timeout = *p
     }
-    return self.q.pop(false)
+    switch t := timeout.(type) { // nil waits, as no timeout (concurrent-ruby's idle workers)
+    case Integer:
+      secs = float64(t)
+    case Float:
+      secs = float64(t)
+    default:
+      return self.q.pop(false)
+    }
+    return self.q.popDeadline(time.Now().Add(time.Duration(math.Round(secs * 1e9))))
   }
 
   #: (?bool) -> E?
   def shift(non_block = false) = pop(non_block)
 
-  #: (Hash[Symbol, Float]) -> E?
+  #: (Hash[Symbol, untyped]) -> E?
   def __shift_hash(opts) = __pop_hash(opts)
 
   #: (?bool) -> E?
   def deq(non_block = false) = pop(non_block)
 
-  #: (Hash[Symbol, Float]) -> E?
+  #: (Hash[Symbol, untyped]) -> E?
   def __deq_hash(opts) = __pop_hash(opts)
 
   #: () -> Integer

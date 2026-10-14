@@ -7904,3 +7904,44 @@ resolve; anything not listed is still open.
     - Not yet: the Promises chain past a worker's run_task (a nil into a
       Float in Logging#log), so `brew info`'s download queue does not
       finish yet.
+
+254. **Brew batch: Pathname into a dynamic String parameter, Kernel calls on main** (#100; 2026-10-14).
+    - A dynamic call's String parameter (`rbAsSlow`) takes a Pathname as
+      its path (`File.basename(self)` in Homebrew's Pathname#extname when
+      the call is dynamic). A single-type `case Pathname`, so programs
+      without Pathname drop it. ponytail: any String parameter takes it,
+      where MRI's non-path parameters raise TypeError.
+    - Decision 253's run-time dispatch of a Kernel method shadowed by a
+      subclass skips Object and the other universal classes: main's `exit
+      1` (Thread defines exit) had gone to a dispatcher with no arm for
+      main.
+    - A Dyn wrapper calls a method with post parameters (`evaluate_to(*args,
+      block)`): the leading parameters from the front of the arguments,
+      the posts from the back, the rest between (`emitDynPostCall`;
+      required, rest and post parameters only). It had raised
+      ArgumentError (the decision 23 ponytail), killing concurrent-ruby's
+      worker threads.
+    - Prelude: `Queue#pop(timeout:)` (and shift/deq) take a nil, Integer
+      or Float timeout; nil waits, as concurrent-ruby's idle workers pass.
+    - With these, Homebrew's vendored concurrent-ruby runs a
+      FixedThreadPool, `future_on`, `then_on`, `on_resolution!`, `value!`
+      and `wait_for_termination` as MRI does.
+    - `String#[]` takes a Regexp (the match, or capture group `n`) and a
+      String (itself when contained): class twins `__idx_regexp(re,
+      capture = 0)` and `__idx_string`. A Dyn wrapper picks a twin taking
+      another count of arguments than its method by the first argument's
+      class, before the method's arity check (`dynWideClassOverloads`):
+      Homebrew's `basename[/(\.tar\.gz)\Z/, 1]` on an untyped basename.
+
+255. **Class and module comparison** (#100; 2026-10-14).
+    - `C < D`, `<=`, `>`, `>=` on a value typed as a class or module
+      object (a metaclass, Class or Module, as `using.is_a?(Class) &&
+      using < AbstractDownloadStrategy` narrows it) compile to
+      `rbModuleCmp`, an ancestry test: true or false when related, nil
+      when unrelated, TypeError for a non-module, as MRI's. Not Module
+      methods: through dynamic `<` every class object would answer them
+      (+1,180 functions in `116_cuba_web`). ponytail: an untyped
+      receiver's `<` on a class object is not answered.
+    - The Dyn wrapper's wide class twins (decision 254) emit one `if` per
+      argument count (gocritic rejects a one-case switch in generated
+      code).

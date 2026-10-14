@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -148,4 +149,31 @@ func rbClassVarRead[T any](set bool, v T, name, owner string) T {
 		panic(NewNameError(Ref(String("uninitialized class variable " + name + " in " + owner))))
 	}
 	return v
+}
+
+// rbModuleCmp is a class or module's <, <=, > or >= (decision 255): self below other when other is among self's
+// ancestors, above when self is among other's; true or false when related, nil when not, TypeError for a non-module.
+// orEqual is <= and >=; above is > and >=.
+func rbModuleCmp(self, other any, above, orEqual bool) *Boolean {
+	if _, ok := other.(interface{ _Kind() string }); !ok {
+		panic(NewTypeError(Ref(String("compared with non class/module"))))
+	}
+	if above {
+		self, other = other, self
+	}
+	anc := func(m any) []any {
+		if t, ok := m.(interface{ _Ancestors() []any }); ok {
+			return t._Ancestors()
+		}
+		return nil
+	}
+	switch {
+	case self == other:
+		return Ref(Boolean(orEqual))
+	case slices.Contains(anc(self), other):
+		return Ref(Boolean(true))
+	case slices.Contains(anc(other), self):
+		return Ref(Boolean(false))
+	}
+	return nil
 }

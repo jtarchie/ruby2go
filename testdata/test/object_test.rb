@@ -4534,6 +4534,26 @@ module ObjectTests
     end
   end
 
+  # Module#<, <=, >, >=: ancestry, nil when unrelated (decision 255)
+  class McA; end
+  class McB < McA; end
+  module McM; end
+  class McC; include McM; end
+
+  class ObjectModuleCompareTest < Minitest::Test
+    def test_module_compare
+      assert_equal [true, false, false, true, false, true, true, nil, true], [McB < McA, McA < McB, McA < McA, McA <= McA, McB > McA, McA > McB, McC < McM, McB < McC, McA >= McB]
+      using = McB #: Class
+      assert_equal true, using.is_a?(Class) && using < McA
+      err = begin
+        McA < 3
+      rescue TypeError => e
+        e.class
+      end
+      assert_equal TypeError, err
+    end
+  end
+
   class ObjectTapOverrideTest < Minitest::Test
     def test_tap_override_and_class_through_untyped
       seen = [] #: Array[String]

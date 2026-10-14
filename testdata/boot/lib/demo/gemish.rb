@@ -658,3 +658,14 @@ module DemoPromises
   def self.make(event) = event.then(1, 2)
   def self.chain(executor) = DemoChainPromise.blocked_by(nil, executor, [5]) { |a, e| [a, e] }
 end
+
+# concurrent-ruby's AbstractPromise#evaluate_to(*args, block), called on an untyped receiver: post parameters bound
+# from the end of a dynamic call's arguments (decision 254).
+class DemoEvaluate
+  def evaluate_to(*args, block) = block.call(*args)
+  def lead_post(a, *mid, z) = [a, mid, z]
+end
+
+module DemoEvaluateRun
+  def self.go(p) = [p.evaluate_to(1, 2, ->(x, y) { x + y }), p.lead_post(1, 2, 3, 4), p.lead_post(1, 9)]
+end

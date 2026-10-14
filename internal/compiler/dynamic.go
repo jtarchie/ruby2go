@@ -813,7 +813,9 @@ func (c *Compiler) dynIterCall(f *fctx, e *entry, recv expr, env map[string]Type
 func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type, mix bool) {
 	m := e.M
 	if m.postCount() > 0 {
-		// ponytail: post parameters take the last arguments; binding them from args the way genArgs does would make these callable
+		if c.emitDynPostCall(f, e, recv, env) {
+			return
+		}
 		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rb2go: "+m.String()+" takes post parameters, which a call on an untyped value cannot pass (decision 23)")
 		return
 	}
@@ -841,6 +843,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	if rest != nil {
 		maxArgs = -1
 	}
+	c.dynWideClassOverloads(f, e, recv, req, maxArgs)
 	c.dynArityOverloads(f, e, recv, env, req, maxArgs)
 	f.emit("rbArity(len(args), %d, %d)", req, maxArgs)
 	if mix && rest == nil && opt == 0 {
@@ -1312,4 +1315,118 @@ func (c *Compiler) emitDynEach() {
 	// rbElemsAny is an untyped receiver's elements as an Array[untyped] (decision 224): an Array's own, else what its each yields
 	c.w("func rbElemsAny(recv any) *Array[any] {\n\tif a, ok := recv.(Array_Any); ok {\n\t\treturn a._ToAny()\n\t}\n")
 	c.w("\tout := &Array[any]{}\n\trbEachAny(recv, 1, func(xs ...any) { out.s = append(out.s, xs[0]) })\n\treturn out\n}\n\n")
+}
+
+// emitDynPostCall is a Dyn wrapper's call of a method with post parameters (concurrent-ruby's `evaluate_to(*args,
+// block)`, decision 254): the leading parameters from the front of args, the posts from the back, the rest between.
+// Only required, rest and post parameters, no keywords or block; false for any other shape.
+func (c *Compiler) emitDynPostCall(f *fctx, e *entry, recv expr, env map[string]Type) bool {
+	m := e.M
+	if m.Block != nil || m.hasKeywords() || m.calleeDefaults {
+		return false
+	}
+	var lead, post []Param
+	var rest *Param
+	for i := range m.Params {
+		p := &m.Params[i]
+		switch {
+		case p.Keyword || p.KwRest || p.Default != nil:
+			return false
+		case p.Rest:
+			rest = p
+		case p.Post:
+			post = append(post, *p)
+		default:
+			lead = append(lead, *p)
+		}
+	}
+	maxArgs := len(lead) + len(post)
+	if rest != nil {
+		maxArgs = -1
+	}
+	f.emit("rbArity(len(args), %d, %d)", len(lead)+len(post), maxArgs)
+	arg := func(t Type, idx string) parser.Node {
+		code := "args[" + idx + "]"
+		if !isAny(t) {
+			code = fmt.Sprintf("rbAs[%s](%s, %q)", c.goType(t), code, t.String())
+		}
+		return &exprNode{e: expr{code: code, typ: t}}
+	}
+	nodes := make([]parser.Node, 0, len(m.Params))
+	for i, p := range lead {
+		nodes = append(nodes, arg(subst(p.Type, env), strconv.Itoa(i)))
+	}
+	if rest != nil {
+		t := subst(rest.Type, env)
+		code := fmt.Sprintf("rbRest[%s](args[:len(args)-%d], %d, %q)", c.goType(t), len(post), len(lead), t.String())
+		if isAny(t) {
+			code = fmt.Sprintf("args[%d:len(args)-%d]", len(lead), len(post))
+		}
+		code = fmt.Sprintf("(&Array[%s]{s: %s})", c.goType(t), code)
+		nodes = append(nodes, &parser.SplatNode{Expression: &exprNode{e: expr{code: code, typ: TClass{C: c.classes["Array"], Args: []Type{t}}}}})
+	}
+	for j, p := range post {
+		nodes = append(nodes, arg(subst(p.Type, env), fmt.Sprintf("len(args)-%d", len(post)-j)))
+	}
+	res := f.callEntry(&parser.NilNode{}, e, recv, nodes, nil)
+	if isVoid(res.typ) {
+		if res.code != "" {
+			f.emit("%s", res.code)
+		}
+		if !res.noreturn {
+			f.emit("return nil")
+		}
+		return true
+	}
+	f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+	return true
+}
+
+// dynWideClassOverloads is dynClassOverloads for a twin taking another count of arguments than its method
+// (String#[]'s `__idx_regexp(re, capture = 0)` beside `[](i)`, decision 254): chosen by the first argument's class
+// and the count, before the method's own arity check would reject the call.
+func (c *Compiler) dynWideClassOverloads(f *fctx, e *entry, recv expr, req, maxArgs int) {
+	m, cls := e.M, classOf(recv.typ)
+	if cls == nil || len(m.Params) == 0 || strings.HasPrefix(m.Name, "__") || maxArgs != req { // a method of fixed arity
+		return
+	}
+	if slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword }) {
+		return
+	}
+	prefix := "__" + overloadBase(m.Name) + "_"
+	for _, x := range cls.methodSet() {
+		tw := x.M
+		if !strings.HasPrefix(tw.Name, prefix) || tw.generic() || tw.Block != nil || len(tw.Params) == len(m.Params) || tw.hasKeywords() {
+			continue
+		}
+		c.resolveMethod(tw)
+		treq, tmax := arity(tw)
+		if tmax < 0 || treq < 1 || treq == req && tmax == req {
+			continue
+		}
+		env := composeEnv(x.Env, nil)
+		cls.containerEnv(env)
+		t, ok := subst(tw.Params[0].Type, env).(TClass)
+		if !ok || typeEq(t, subst(m.Params[0].Type, env)) {
+			continue
+		}
+		te := cls.lookup(tw.Name)
+		f.emit("if len(args) >= %d && len(args) <= %d {", treq, tmax)
+		f.emit("\tif x, ok := args[0].(%s); ok {", c.goType(t))
+		f.indent += 2
+		for k := treq; k <= tmax; k++ { // one `if` per count: gocritic rejects a one-case switch
+			nodes := []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}
+			for i := 1; i < k; i++ {
+				pt := subst(tw.Params[i].Type, env)
+				nodes = append(nodes, &exprNode{e: expr{code: c.dynArg(pt, i), typ: pt}})
+			}
+			f.emit("if len(args) == %d {", k)
+			res := f.callEntry(&parser.NilNode{}, te, recv, nodes, nil)
+			f.emit("\treturn %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+			f.emit("}")
+		}
+		f.indent -= 2
+		f.emit("\t}")
+		f.emit("}")
+	}
 }

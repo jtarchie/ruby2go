@@ -85,6 +85,8 @@ p DemoPool.new(name: "q", size: 4) { |x| x * 2 }.report, DemoPool.new.report
 p DemoPlainPool.new(size: 3).size
 p DemoTimerService.new.schedule(4)
 p Pathname("/x/api.json").demo_stem, Pathname("/x/lib-1.2").demo_extname
+dev2 = DemoEvaluate.new #: untyped
+p DemoEvaluateRun.go(dev2)
 dn = DemoNode[1, DemoNode[2, nil]]
 p dn.value, dn.nxt.value
 dcp2 = DemoPromises.chain(:io)

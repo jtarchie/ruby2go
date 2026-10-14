@@ -2101,6 +2101,18 @@ module HashTests
       a << :s
       assert_equal [{"a" => 1}, 5, [:s]], [h, q.pop, a]
     end
+
+    # pop(timeout:) with nil waits (concurrent-ruby's idle worker), an Integer or Float bounds it; clock_gettime's
+    # units (decision 254)
+    def test_queue_pop_timeout_and_clock_units
+      q = Queue.new #: Queue[Integer]
+      q << 7
+      t = nil #: Float?
+      got = [q.pop(timeout: t), q.pop(timeout: 0), q.pop(timeout: 0.01)]
+      ns = Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond)
+      fs = Process.clock_gettime(Process::CLOCK_MONOTONIC, :float_second)
+      assert_equal [[7, nil, nil], Integer, Float], [got, ns.class, fs.class]
+    end
   end
 
   # fetch with a block: its value for a missing key or index.
