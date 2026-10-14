@@ -96,6 +96,8 @@ p DemoThenTask.new(ta) { |v, sym, n, flag| [v, sym, n, flag] }.run(6), DemoTaskB
 p DemoPoster.go(DemoRubyExec.new), DemoPoster.go(DemoImmediateExec.new)
 p DemoCaskDepsUser.deps([DemoCaskDeps.new, Object.new].first)
 p DemoChdir.new(Pathname.new("/")).run
+p DemoAPIRun.run_api
+p DemoDeep.go
 dsc = DemoSandboxCmd.new
 dsa = dsc.options
 dsc.sandbox_inheritance = $stdout

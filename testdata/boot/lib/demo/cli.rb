@@ -266,3 +266,30 @@ class DemoSandboxCmd
     opts.keys
   end
 end
+
+# Homebrew's APIHashable#deep_remove_placeholders: `T.type_parameter(:U)` in, U out, through a case whose else arm is
+# the value itself; U is a member of the case's union, boxed, not checked by a package-level helper (decision 258).
+module DemoDeep
+  extend T::Sig
+
+  sig { type_parameters(:U).params(value: T.type_parameter(:U)).returns(T.type_parameter(:U)) }
+  def self.deep(value)
+    value = case value
+    when Hash
+      value.transform_values { |v| deep(v) }
+    when Array
+      value.map { |v| deep(v) }
+    when String
+      value.upcase
+    else
+      value
+    end
+    value
+  end
+
+  def self.go
+    h = T.let({ "a" => "x" }, T::Hash[String, T.untyped])
+    h["l"] = ["y", 1, { "b" => "z" }]
+    [deep(h), deep(3), deep("q")]
+  end
+end

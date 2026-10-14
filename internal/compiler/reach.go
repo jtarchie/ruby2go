@@ -391,6 +391,9 @@ func (r *reach) walk(n parser.Node, skipDefs bool) {
 	case *parser.XStringNode:
 		r.scanGo(n.Unescaped.Value)
 	case *parser.CallNode:
+		if cls := r.c.anonClasses[n]; cls != nil && cls.isPerRun {
+			r.named[cls] = true // evaluated here: its class object's methods run (decision 259)
+		}
 		if n.Receiver == nil && len(r.scope) > 0 && slices.ContainsFunc(r.scope[len(r.scope)-1].singletonDefs, func(d singletonDef) bool { return d.node.Name == n.Name }) {
 			r.named[r.scope[len(r.scope)-1]] = true // a body's `register :webrick, WEBrick` calls its own class method
 		}

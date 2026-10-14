@@ -1628,8 +1628,7 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 			return "any(" + e.code + ")"
 		}
 	case TVar:
-		// a generic value's class is known only at run time: checked there, as untyped is
-		return f.noteConv(n, f.c.unionFn(to)+"(any("+e.code+"))")
+		return f.varToUnion(n, e, t, to)
 	case TClass, TFunc, TOpt, TVoid:
 		if fitsValue(e, to) || e.lit && slices.ContainsFunc(to.Members, func(m Type) bool { return fitsValue(e, m) }) {
 			if e.lit && isClass(e.typ, "Integer") && !slices.ContainsFunc(to.Members, func(m Type) bool { return isClass(m, "Integer") }) {
@@ -2122,6 +2121,9 @@ func (f *fctx) narrowRaises(name string, args []parser.Node, e expr) expr {
 // evaluated, as MRI's; a named one's hook runs where its constant is
 // assigned (collectNamedAnon).
 func (f *fctx) genAnonClass(n *parser.CallNode, cls *Class, expected Type) expr {
+	if cls.isPerRun {
+		return f.genPerRunClass(n, cls)
+	}
 	if f.c.unnamedAnon[n] {
 		if h := f.c.hookCall(classHook{name: "inherited", cls: cls, node: n}); h != nil {
 			f.genStmt(h, tail{})
@@ -9889,4 +9891,37 @@ func (f *fctx) bindBlockRet(n parser.Node, sig *BlockSig, env map[string]Type, g
 		f.errorf(n, "block returns %s, expected %s", got, subst(sig.Ret, env))
 	}
 	return false
+}
+
+// genPerRunClass evaluates a Class.new literal whose block runs statements: a fresh class object, Super.inherited
+// told of it, then its block's statements (`rb2go_class_body`) run with it as self and the enclosing locals they read
+// (decision 259).
+func (f *fctx) genPerRunClass(n *parser.CallNode, cls *Class) expr {
+	k := f.newTmp()
+	f.emit("%s := &%s{}", k, cls.meta.Name)
+	obj := &exprNode{Node: n, e: expr{code: k, typ: TClass{C: cls.meta}}}
+	if h, ok := f.c.hookCall(classHook{name: "inherited", cls: cls, node: n}).(*parser.CallNode); ok {
+		h.Arguments = &parser.ArgumentsNode{Arguments: []parser.Node{obj}}
+		f.genStmt(h, tail{})
+	}
+	args := make([]parser.Node, 0, len(cls.perRun))
+	for _, name := range cls.perRun {
+		args = append(args, &parser.LocalVariableReadNode{Name: name, Location: n.Location})
+	}
+	f.genStmt(&parser.CallNode{Location: n.Location, Receiver: obj, Name: anonBodyName, Arguments: &parser.ArgumentsNode{Arguments: args}}, tail{})
+	return expr{code: k, typ: TClass{C: cls.meta}}
+}
+
+// unionHasVar reports whether type variable name is a member of u.
+func unionHasVar(u TUnion, name string) bool {
+	return slices.ContainsFunc(u.Members, func(m Type) bool { mv, ok := m.(TVar); return ok && mv.Name == name })
+}
+
+// varToUnion is a generic value into a union: boxed when its variable is a member (U into `Array | String | U`,
+// Homebrew's deep_remove_placeholders: a package-level checker cannot name U), else checked at run time, as untyped is.
+func (f *fctx) varToUnion(n parser.Node, e expr, t TVar, to TUnion) string {
+	if unionHasVar(to, t.Name) {
+		return "any(" + e.code + ")"
+	}
+	return f.noteConv(n, f.c.unionFn(to)+"(any("+e.code+"))")
 }

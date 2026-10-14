@@ -7,6 +7,8 @@ import (
 	"slices"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/boot"
 )
 
 // MRI's Class.new/Module.new make a class at run time; a closed world
@@ -148,6 +150,103 @@ func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNo
 		c.errorf(f, call, "%s.new needs a block without parameters (decision 145)", map[bool]string{true: "Module", false: "Class"}[isModule])
 	}
 	// a block opens no constant scope in Ruby: the body's constants are the enclosing scope's
+	var run []parser.Node
+	saved := c.anonRun
+	if !isModule {
+		c.anonRun = &run
+	}
+	defer func() { c.anonRun = saved }()
 	c.collectBody(ctx, f, cls, blk.Body, scope, false)
+	if len(run) > 0 {
+		c.declareAnonRun(f, call, cls, run, scope)
+	}
 	return cls
+}
+
+// declareAnonRun makes a Class.new block's statements (`@x = v`, `desc st.desc`, ...) the class's singleton
+// `__rb2go_body`, its parameters the enclosing method's locals they read: each evaluation of the literal makes a
+// fresh class object and calls it there, so each class object holds its own class-level state (decision 259).
+func (c *Compiler) declareAnonRun(f *File, call *parser.CallNode, cls *Class, run []parser.Node, scope []*Class) {
+	caps := []string{}
+	var walk func(n parser.Node, nest uint32)
+	walk = func(n parser.Node, nest uint32) {
+		switch n := n.(type) {
+		case nil, *parser.DefNode:
+			return
+		case *parser.LocalVariableReadNode:
+			if n.Depth > nest && !slices.Contains(caps, n.Name) {
+				caps = append(caps, n.Name)
+			}
+		case *parser.LocalVariableWriteNode:
+			if n.Depth > nest {
+				c.errorf(f, n, "a Class.new block assigns the enclosing local %s (decision 259)", n.Name)
+			}
+		case *parser.LocalVariableOperatorWriteNode, *parser.LocalVariableOrWriteNode, *parser.LocalVariableAndWriteNode:
+			c.errorf(f, n, "a Class.new block assigns an enclosing local (decision 259)")
+		case *parser.BlockNode, *parser.LambdaNode:
+			for _, ch := range n.CompactChildNodes() {
+				walk(ch, nest+1)
+			}
+			return
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch, nest)
+		}
+	}
+	for _, n := range run {
+		walk(n, 0)
+	}
+	ps := &parser.ParametersNode{Location: call.Location}
+	for _, name := range caps {
+		ps.Requireds = append(ps.Requireds, &parser.RequiredParameterNode{Name: name, Location: call.Location})
+	}
+	if len(caps) == 0 {
+		ps = nil
+	}
+	def := &parser.DefNode{Name: anonBodyName, Receiver: &parser.SelfNode{Location: call.Location}, Parameters: ps,
+		Body: &parser.StatementsNode{Body: run, Location: call.Location}, Location: call.Location, NameLoc: call.Location}
+	cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: def, scope: scope, file: f})
+	cls.perRun, cls.isPerRun = caps, true
+	if !slices.Contains(c.keepNames, anonBodyName) { // the literal calls it; its statements are walked where they stand (decision 169)
+		c.keepNames = append(c.keepNames, anonBodyName)
+	}
+}
+
+// anonBodyName is a per-run Class.new block's statements as a singleton method (decision 259); not a Ruby identifier
+// a program can call by accident.
+const anonBodyName = "rb2go_class_body"
+
+// anonDefineMethod is `define_method(:name) do ... end` in a per-run Class.new block: a def of the hidden class at
+// compile time when its block reads no enclosing local, the call itself a no-op (decisions 198, 259).
+func (c *Compiler) anonDefineMethod(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class) bool {
+	if c.anonRun == nil || n.Name != "define_method" || n.Receiver != nil {
+		return false
+	}
+	blk, ok := n.Block.(*parser.BlockNode)
+	args := callArgs(n)
+	if !ok || len(args) != 1 {
+		return false
+	}
+	name, ok := symbolName(args[0])
+	if !ok {
+		return false
+	}
+	site := &dmSite{file: f, call: n, block: blk, scope: scope}
+	if caps := c.dmCaptures(site); len(caps) > 0 {
+		c.errorf(f, n, "define_method %s in a Class.new block reads the enclosing local %s; store it on the class (`@x = %s`) and read that (decision 259)", name, caps[0], caps[0])
+	}
+	src := c.defineMethodSource(site, boot.MethodInfo{Name: name})
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), false)
+	if err != nil {
+		c.errorf(f, n, "define_method %s: %v\n%s", name, err, src)
+	}
+	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
+	def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
+	def.Name = name
+	c.addDef(sf, cls, def, false, scope)
+	if c.dmSites == nil {
+		c.dmSites = map[*parser.CallNode]bool{}
+	}
+	c.dmSites[n] = true
+	return true
 }

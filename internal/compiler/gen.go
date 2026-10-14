@@ -3461,6 +3461,9 @@ func (c *Compiler) emitSynth(m *Method) {
 	body := fmt.Sprintf("return String(%q)", cls.displayName())
 	if m.Name == "new" {
 		body = "return New" + cls.Name + "(" + c.argNames(m) + ")"
+		if cls.isPerRun && cls.lookup("initialize") != nil {
+			body = "return New" + cls.Name + "In(" + strings.TrimSuffix("self, "+c.argNames(m), ", ") + ")" // the object remembers this class object (decision 259)
+		}
 	}
 	if m.Name == "new" {
 		c.labels[meta.Name+"."+m.GoName] = "Class#new"

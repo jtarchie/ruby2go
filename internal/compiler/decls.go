@@ -786,6 +786,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
 	}
+	if cls.isPerRun {
+		c.w("\trbCls_ *%s\n", cls.meta.Name) // the class object whose new made it (decision 259)
+	}
 	if cls.ivarBits {
 		c.w("\t%s uint64\n", ivarSetField)
 	}
@@ -821,7 +824,10 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	for _, mod := range ownIvarModules(cls) {
 		c.w("func (self *%s) _%s() *%s { return &self.%s }\n\n", cls.Name, mod.Name, ivarsType(mod), ivarsField(mod))
 	}
-	if cls.meta != nil {
+	switch {
+	case cls.isPerRun:
+		c.w("func (self *%s) _ClassOf() %s {\n\tif self.rbCls_ != nil {\n\t\treturn self.rbCls_\n\t}\n\treturn %s\n}\n\n", cls.Name, c.goType(TClass{C: cls.root().meta}), classVar(cls))
+	case cls.meta != nil:
 		c.w("func (self *%s) _ClassOf() %s { return %s }\n\n", cls.Name, c.goType(TClass{C: cls.root().meta}), classVar(cls))
 	}
 	if isModule {
@@ -830,7 +836,7 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	if cls.metaOf != nil {
 		// a metaclass has exactly one instance: the class object
 		c.w("var %s = &%s{}\n\n", classVar(cls.metaOf), cls.Name)
-		if len(ownIvarModules(cls)) > 0 { // a mixed-in module's class-level ivars, by name: its `inherited`'s `child.instance_eval { @env = ... }` (decision 241)
+		if len(ownIvarModules(cls)) > 0 || len(cls.IvarList) > 0 { // class-level ivars by name: an `inherited`'s `child.instance_eval { @env = ... }` on an untyped child (decisions 241, 259)
 			c.emitIvarList(cls)
 		}
 		return
@@ -850,6 +856,10 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.labels["New"+cls.Name] = "Class#new"
 		c.w("func New%s(%s) *%s {\n\tself := &%s{}\n\t%s(self, %s)\n\treturn self\n}\n\n",
 			cls.Name, ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
+		if cls.isPerRun { // its class object's new: initialize already sees self.class (decision 259)
+			c.w("func New%sIn(k *%s, %s) *%s {\n\tself := &%s{rbCls_: k}\n\t%s(self, %s)\n\treturn self\n}\n\n",
+				cls.Name, cls.meta.Name, ps, cls.Name, cls.Name, freeFuncName(init.M), c.argNames(init.M))
+		}
 	} else {
 		c.w("func New%s() *%s { return &%s{} }\n\n", cls.Name, cls.Name, cls.Name)
 	}

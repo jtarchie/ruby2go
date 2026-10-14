@@ -8023,3 +8023,32 @@ resolve; anything not listed is still open.
       is wanted (Homebrew's `class Pathname; alias to_str to_s; end`, so
       Mktemp#run's `Dir.chdir(@tmpdir)`); only to_int/to_ary/to_hash
       keep decision 179's core-value rule.
+    - A generic value into a union that has its type variable as a
+      member (`U` into `Array | Hash | String | U`) is boxed, not checked
+      by a package-level helper that cannot name `U`.
+259. **A fresh class object per `Class.new` evaluation** (#98, #100;
+    amends 145; 2026-10-14). Homebrew's `load_formula_from_struct!` runs
+    `Class.new(::Formula) do @x = ...; desc st.desc; define_method(:m)
+    { ... } end` once per formula, the block reading the method's locals.
+    - A non-module `Class.new` block whose statements are not all
+      declarations is *per-run*: its declarations make the hidden class
+      as before (one Go type per literal), and its other statements
+      become the singleton method `rb2go_class_body`, whose parameters are
+      the enclosing locals they read (an assignment to one is a compile
+      error). Each evaluation makes a new metaclass object (`&X_Meta{}`),
+      calls `Super.inherited` with it, runs the body on it, and is that
+      object: class-level state lives on each object, as MRI's.
+    - Instances made through that object's `new` keep it (`rbCls_`, set
+      before `initialize` runs by `NewXIn`), so `self.class` is their own
+      class object. A `new` reaching the type statically keeps the shared
+      global one.
+    - `define_method(:name) do ... end` in the block is a def of the
+      hidden class at compile time when its block reads no enclosing
+      local (decision 198's rebuild); otherwise a compile error.
+    - In gem code an ivar a subclass assigns belongs to the topmost
+      ancestor with a reader of it (Formula's `class << self;
+      attr_reader :loaded_from_api`), not a shadowing field; metaclasses
+      with ivars get `_Ivars`/`_IvarSet` so `child.instance_eval { @x =
+      v }` on an untyped child sets them.
+    - Still one Go type per literal: nothing but data is made at run
+      time. `Module.new` stays decision 145's one module per literal.

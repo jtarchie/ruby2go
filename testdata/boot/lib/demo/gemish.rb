@@ -776,3 +776,82 @@ class DemoChdir
   def initialize(dir) = @dir = dir
   def run = Dir.chdir(@dir) { Dir.pwd }
 end
+
+# Homebrew's Formulary.load_formula_from_struct!: `Class.new(::Formula) do ... end` in a method, its block running
+# class-level DSL calls and ivar writes on the enclosing method's locals; each evaluation is a fresh class object with
+# its own state, define_method a compile-time def, and inherited told of each (decision 259).
+class DemoAPIFormula
+  class << self
+    attr_reader :loaded_from_api
+
+    def inherited(child)
+      super
+      child.instance_eval do
+        @loaded_from_api = false
+        @desc = nil
+      end
+    end
+
+    def desc(val = nil)
+      return @desc if val.nil?
+
+      @desc = val
+    end
+
+    def homepage(val = nil)
+      return @homepage if val.nil?
+
+      @homepage = val
+    end
+  end
+
+  attr_reader :name
+
+  def initialize(name)
+    @name = name
+  end
+
+  def desc = self.class.desc
+  #: () -> String?
+  def caveats = nil
+  def show = [name, desc, self.class.homepage, caveats, self.class.loaded_from_api]
+end
+
+class DemoFStruct
+  attr_reader :desc, :homepage, :caveats
+
+  def initialize(desc, homepage, caveats)
+    @desc = desc
+    @homepage = homepage
+    @caveats = caveats
+  end
+end
+
+module DemoFormulary
+  def self.load(name, st)
+    namespace = :"FormulaNamespaceAPI#{name.length}"
+    mod = Module.new
+    remove_const(namespace) if const_defined?(namespace)
+    const_set(namespace, mod)
+    mod.const_set(:BUILD_FLAGS, [])
+    klass = Class.new(DemoAPIFormula) do
+      @loaded_from_api = true
+      desc st.desc
+      homepage st.homepage
+      @caveats_string = st.caveats
+      define_method(:caveats) do
+        self.class.instance_variable_get(:@caveats_string)
+      end
+    end
+    mod.const_set(name.capitalize, klass)
+    klass
+  end
+end
+
+module DemoAPIRun
+  def self.run_api
+    a = DemoFormulary.load("wget", DemoFStruct.new("get files", "https://wget", "none"))
+    b = DemoFormulary.load("curl", DemoFStruct.new("transfer", "https://curl", nil))
+    [a.new("wget").show, b.new("curl").show, a.desc, b.desc]
+  end
+end

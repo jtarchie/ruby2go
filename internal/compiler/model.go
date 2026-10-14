@@ -41,6 +41,8 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
+	perRun        []string // a Class.new literal whose block runs statements: a fresh class object per evaluation, its body `self.rb2go_class_body` taking these captured locals (decision 259)
+	isPerRun      bool
 	singletonMisc []singletonMisc   // attr_*/alias inside `class << self`, applied to the metaclass once it exists
 	privateNew    bool              // `private_class_method :new`
 	undefs        map[string]bool   // `undef x`: calls through this class find nothing, even inherited
@@ -1001,7 +1003,7 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			case *parser.MultiWriteNode, *parser.ConstantPathWriteNode:
 				c.collectBodyWrite(ctx, f, n, scope, locals, loadTime)
 			case *parser.IfNode, *parser.UnlessNode:
-				if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && loadTime && !declares(n) && !c.folds(f, n, scope) {
+				if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && c.runsStatements(loadTime) && !declares(n) && !c.folds(f, n, scope) {
 					c.classBodyNode(ctx, f, n, scope, loadTime) // `raise "x" if OS.mac?`: a run-time condition around load-time code
 					return
 				}
@@ -1064,6 +1066,10 @@ func (c *Compiler) classBodyBranch(f *File, n parser.Node, scope []*Class) []par
 // nor a spec DSL call: a load-time statement where the class is defined, or
 // an error when the body does not run at load time (decision 166).
 func (c *Compiler) classBodyCall(f *File, n *parser.CallNode, scope []*Class, loadTime bool) {
+	if !loadTime && c.anonRun != nil {
+		*c.anonRun = append(*c.anonRun, n)
+		return
+	}
 	if !loadTime {
 		if n.Receiver != nil {
 			c.errorf(f, n, "unsupported statement in class body: %s", f.text(n.Location))
@@ -1076,6 +1082,11 @@ func (c *Compiler) classBodyCall(f *File, n *parser.CallNode, scope []*Class, lo
 // classBodyNode handles any other class-body expression the same way: a
 // load-time statement, or an error when the body does not run at load time.
 func (c *Compiler) classBodyNode(ctx context.Context, f *File, n parser.Node, scope []*Class, loadTime bool) {
+	if !loadTime && c.anonRun != nil {
+		c.scanAnon(ctx, f, n, scope)
+		*c.anonRun = append(*c.anonRun, n)
+		return
+	}
 	if !loadTime {
 		c.errorf(f, n, "unsupported node in class body: %s", nodeType(n))
 	}
@@ -1427,7 +1438,7 @@ func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
 // load-time class body takes as a statement to run when the class is defined
 // (decision 166).
 func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, vis *visibility, scope []*Class) bool {
-	if c.collectIOExtend(f, n, scope) {
+	if c.anonDefineMethod(ctx, f, cls, n, scope) || c.collectIOExtend(f, n, scope) {
 		return true
 	}
 	if a := singletonAlias(n); a != nil { // `singleton_class.send :alias_method, :[], :new` (concurrent-ruby's LockFreeStack::Node, decision 253)
@@ -2410,6 +2421,13 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 	for k := cls.Super; k != nil; k = k.Super { // an ancestor that assigned it only nil owns it, nilable (decision 182)
 		if c.nilIvars[k.Name+"#"+name] {
 			cls, t = k, optOf(t)
+		}
+	}
+	if f != nil && c.gemFile(f) {
+		for k := cls.Super; k != nil; k = k.Super { // a gem ancestor's attr_reader of it owns it: Formula's `class << self; attr_reader :loaded_from_api` (decision 259)
+			if m := k.Methods[strings.TrimPrefix(name, "@")]; m != nil && (m.Kind == kindAttrReader && m.Attr == name || readsOnlyIvar(m, name)) {
+				cls, t = k, optOf(t)
+			}
 		}
 	}
 	iv := &Ivar{Name: name, Type: t, Owner: cls}
@@ -4963,3 +4981,20 @@ func (c *Compiler) aliasNew(ctx context.Context, d singletonMisc, m *Class, n *p
 	sf.path, sf.pinLine = d.file.path, d.file.line(n.Location.StartOffset)
 	c.addDef(sf, m, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // parsed just above
 }
+
+// readsOnlyIvar reports a def whose body is the read of ivar name: an attr_reader as gem code compiles it.
+func readsOnlyIvar(m *Method, name string) bool {
+	if m.Node == nil || m.Node.Body == nil {
+		return false
+	}
+	body := m.Node.Body
+	if st, ok := body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
+		body = st.Body[0]
+	}
+	r, ok := body.(*parser.InstanceVariableReadNode)
+	return ok && r.Name == name
+}
+
+// runsStatements reports a class body whose run-time statements are kept: a load-time body, or a per-run Class.new
+// block's (decision 259).
+func (c *Compiler) runsStatements(loadTime bool) bool { return loadTime || c.anonRun != nil }

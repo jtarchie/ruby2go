@@ -149,6 +149,7 @@ type Compiler struct {
 	anonClasses      map[*parser.CallNode]*Class       // each literal's class
 	inheritedAliases []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
 	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
+	anonRun          *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
 	ivarReadFirst    map[string]bool                   // owner#@x read before any assignment typed it, in discovery: declared T?
 	ivarBitsMarked   bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
 	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
