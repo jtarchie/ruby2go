@@ -107,7 +107,7 @@ class Integer < Object
       case -1:
         return 1 - 2*(other&1)
       }
-      panic(NewRangeError(Ref(String(fmt.Sprintf("%d ** %d is a Rational (rb2go has no Rational)", self, other)))))
+      panic(NewRangeError(Ref(String(fmt.Sprintf("%d ** %d is a Rational (Integer#** cannot return one)", self, other)))))
     }
     // Square-and-multiply; the base is squared only while bits remain, so
     // an overflowing square means the result overflows too.
@@ -368,10 +368,7 @@ class Integer < Object
 
   #: (Integer) -> Enumerator[Integer]
   def __downto_enum(limit) = %x{ return rbEnumOf(self.Downto(limit), any(self), "downto("+string(rbInspect(limit))+")", func() *Integer { n := rbRangeIntCount(limit, self, false); return &n }, nil) }
-end
 
-# Shifts past 64 bits raise RangeError where MRI would promote to a Bignum (decision 35).
-class Integer
   #: (Integer) -> Integer
   def &(other) = %x{ self & other }
 
@@ -384,6 +381,7 @@ class Integer
   #: () -> Integer
   def ~ = %x{ ^self }
 
+  # Shifts past 64 bits raise RangeError where MRI would promote to a Bignum (decision 35).
   #: (Integer) -> Integer
   def <<(other) = %x{ rbIntShl(self, other) }
 

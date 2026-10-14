@@ -55,6 +55,9 @@ class Enumerator < Object
     }
   }
 
+  #: [A] (A) { (E, A) -> void } -> A
+  def with_object(memo, &block) = each_with_object(memo, &block)
+
   #: (?Integer) -> Enumerator[[E, Integer]]
   def __with_index_enum(offset = 0) = %x{
     meth := "with_index"

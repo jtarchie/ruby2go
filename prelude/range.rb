@@ -99,23 +99,6 @@ class Range < Object
   #: () -> E
   def __first_0 = %x{ self.b }
 
-  # begin and end, nil for a beginless or endless range (begin/end raise or answer the stored zero instead)
-  #: () -> E?
-  def __begin_opt = %x{
-    if self.beginless {
-      return nil
-    }
-    return &self.b
-  }
-
-  #: () -> E?
-  def __end_opt = %x{
-    if self.endless {
-      return nil
-    }
-    return &self.e
-  }
-
   #: () -> E
   def end = %x{
     if self.inf {
@@ -337,6 +320,35 @@ class Range < Object
       return nil
     }
     e = min(e, n)
+    return &Tuple2[Integer, Integer]{b, max(e-b, 0)}
+  }
+
+  # [start, count] for writing the range into an array of size n (`[]=`, `fill`): a negative start counts from the end, nil when still negative (the caller raises RangeError, so its frame is the one MRI shows). Unlike __slice, a start or end past n stands: the array grows.
+  #: (Integer) -> [Integer, Integer]?
+  def __span(n) = %x{
+    b, ok := any(self.b).(Integer)
+    if self.beginless {
+      b, ok = 0, true
+    }
+    if !ok {
+      panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(self.b) + " into Integer"))))
+    }
+    if b < 0 {
+      b += n
+    }
+    if b < 0 {
+      return nil
+    }
+    e := n
+    if !self.endless {
+      e = any(self.e).(Integer)
+      if e < 0 {
+        e += n
+      }
+      if !self.excl {
+        e++
+      }
+    }
     return &Tuple2[Integer, Integer]{b, max(e-b, 0)}
   }
 

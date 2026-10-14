@@ -347,9 +347,9 @@ class EncodingError < StandardError; end
 
 class NoMemoryError < Exception; end
 
-# Never raised by rb2go (signals end the program, decision 60); rescue clauses may name them.
 # A signal received: `signo`, and "SIGTERM" as the message. An untrapped
-# Ctrl-C raises Interrupt in the main thread's blocking calls (decision 60).
+# SIGINT/SIGTERM is raised (Interrupt/SignalException) only where the main
+# thread blocks (sleep, join, Queue#pop); a computing program dies by the signal (decision 60).
 class SignalException < Exception
   # @rbs @signo: Integer
 

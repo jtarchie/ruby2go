@@ -88,11 +88,7 @@ class Array < Object
   #: (E) -> Integer?
   def find_index(v) = index(v)
 
-  #: () { (E) -> bool } -> Integer?
-  def __find_index_block
-    each_with_index { |x, i| return i if yield(x) }
-    nil
-  end
+  alias __find_index_block __index_block
 
   #: (E) -> Integer?
   def rindex(v)
@@ -403,12 +399,7 @@ class Array < Object
     size == n ? nil : self
   end
 
-  #: () { (E) -> bool } -> Array[E]?
-  def filter!(&block)
-    n = size
-    keep_if(&block)
-    size == n ? nil : self
-  end
+  alias filter! select!
 
   #: () { (E) -> bool } -> Array[E]?
   def reject!(&block)
@@ -495,15 +486,9 @@ class Array < Object
 
   #: (Range[Integer], untyped) -> untyped
   def __idxset_range(r, v)
-    n = size
-    b = r.__begin_opt || 0
-    b += n if b < 0
-    raise RangeError, "#{r.inspect} out of range" if b < 0
-    last = r.__end_opt
-    e = last || n
-    e += n if e < 0
-    e += 1 unless last.nil? || r.exclude_end?
-    __idxset_3(b, e < b ? 0 : e - b, v)
+    span = r.__span(size)
+    raise RangeError, "#{r.inspect} out of range" unless span
+    __idxset_3(span[0], span[1], v)
   end
 
   #: (E, Integer | Range[Integer] | nil) -> self
@@ -526,14 +511,9 @@ class Array < Object
   def __fill_by(at, len)
     n = size
     if at.is_a?(Range)
-      b = at.__begin_opt || 0
-      b += n if b < 0
-      raise RangeError, "#{at.inspect} out of range" if b < 0
-      last = at.__end_opt
-      e = last || n
-      e += n if e < 0
-      e += 1 unless last.nil? || at.exclude_end?
-      start, count = b, e - b
+      span = at.__span(n)
+      raise RangeError, "#{at.inspect} out of range" unless span
+      start, count = span
     else
       start = at || 0
       start += n if start < 0

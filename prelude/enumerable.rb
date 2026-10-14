@@ -36,12 +36,7 @@ module Enumerable
     out
   end
 
-  #: [U] () { (E) -> U } -> Array[U]
-  def collect
-    out = [] #: Array[U]
-    each { |x| out << yield(x) }
-    out
-  end
+  alias collect map
 
   # The elements where pattern === x: a Regexp, a class, a Range, a value.
   # @dynamic
@@ -97,11 +92,7 @@ module Enumerable
     nil
   end
 
-  #: () { (E) -> bool } -> E?
-  def detect
-    each { |x| return x if yield(x) }
-    nil
-  end
+  alias detect find
 
   #: () { (E) -> bool } -> bool
   def any?
@@ -185,13 +176,6 @@ module Enumerable
     n == 1
   end
 
-  #: () { (E) -> bool } -> Integer
-  def count_if
-    n = 0
-    each { |x| n += 1 if yield(x) }
-    n
-  end
-
   #: () -> Integer
   def count
     n = 0
@@ -206,12 +190,7 @@ module Enumerable
     acc
   end
 
-  #: [A] (A) { (A, E) -> A } -> A
-  def inject(init)
-    acc = init
-    each { |x| acc = yield(acc, x) }
-    acc
-  end
+  alias inject reduce
 
   #: () { (E) -> void } -> void
   def each_entry = each { |x| yield x }
@@ -281,7 +260,6 @@ module Enumerable
     out
   end
 
-  # first's message varies by class (Array overrides it), take's does not.
   # MRI's sum: Integers and Rationals exactly, Floats with Kahan-Babuska compensation.
   # An Integer or Float element type sums unboxed (any(x).(Integer) does not
   # allocate once instantiated); anything else goes through rbSummer's tower.
@@ -345,6 +323,7 @@ module Enumerable
     first(n)
   end
 
+  # first's message varies by class (Array overrides it), take's does not.
   #: () -> String
   def __negative_first = "attempt to take negative size"
 
@@ -451,16 +430,6 @@ module Enumerable
     out
   end
 
-  #: () -> Array[[E, Integer]]
-  def with_index_pairs
-    out = [] #: Array[[E, Integer]]
-    i = 0
-    each do |x|
-      out << [x, i]
-      i += 1
-    end
-    out
-  end
   #: () { (E) -> bool } -> Integer
   def __count_block
     n = 0
@@ -491,20 +460,7 @@ module Enumerable
     return acc
   }
 
-  #: () { (E, E) -> E } -> E?
-  def __reduce_0 = %x{
-    var acc *E
-    for x := range self.Each() {
-      if acc == nil {
-        x := x
-        acc = &x
-        continue
-      }
-      v := blk(*acc, x)
-      acc = &v
-    }
-    return acc
-  }
+  alias __reduce_0 __inject_0
 
   #: [A] (A) { (E, A) -> void } -> A
   def each_with_object(memo)
@@ -719,41 +675,9 @@ module Enumerable
     return out
   }
 
-  #: [K] () { (E) -> K } -> Array[E]
-  def uniq_by
-    seen = {} #: Hash[K, bool]
-    out = [] #: Array[E]
-    each do |x|
-      k = yield(x)
-      next if seen.key?(k)
-      seen[k] = true
-      out << x
-    end
-    out
-  end
+  alias find_all select
 
-  #: () { (E) -> bool } -> Array[E]
-  def find_all
-    out = [] #: Array[E]
-    each { |x| out << x if yield(x) }
-    out
-  end
-
-  #: () { (E) -> bool } -> Array[E]
-  def filter
-    out = [] #: Array[E]
-    each { |x| out << x if yield(x) }
-    out
-  end
-
-  #: (Integer) { (E, Integer) -> void } -> void
-  def each_with_index_from(offset)
-    i = offset
-    each do |x|
-      yield(x, i)
-      i += 1
-    end
-  end
+  alias filter select
 
   # Eager: an Array of every combination, not an Enumerator.
   #: (Integer) -> Array[Array[E]]
@@ -826,12 +750,6 @@ module Enumerable
 
   #: [U] () { (E) -> Array[U] } -> Array[U]
   def collect_concat(&block) = flat_map(&block)
-
-  #: [A] (A) { (E, A) -> void } -> A
-  def with_object(memo)
-    each { |x| yield(x, memo) }
-    memo
-  end
 
   #: (?Integer?) { (E) -> void } -> void
   def cycle(n = nil)

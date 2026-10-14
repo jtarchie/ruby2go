@@ -79,18 +79,7 @@ class Hash < Object
   }
 
   # MRI's each_pair is each: an arity-1 block gets the [k, v] pair.
-  #: () { ([K, V]) -> void } -> void
-  def each_pair = %x{
-    return func(yield func(Tuple2[K, V]) bool) {
-      self.iter++
-      defer func() { self.iter-- }()
-      for _, k := range self.keys {
-        if v, ok := self.vals[k]; ok && !yield(Tuple2[K, V]{k, v}) {
-          return
-        }
-      }
-    }
-  }
+  alias each_pair each
 
   #: () { (K) -> void } -> void
   def each_key = %x{
@@ -289,12 +278,7 @@ class Hash < Object
     out
   end
 
-  #: () { (K, V) -> bool } -> Hash[K, V]
-  def filter
-    out = {} #: Hash[K, V]
-    each { |k, v| out[k] = v if yield(k, v) }
-    out
-  end
+  alias filter select
 
   #: () { (K, V) -> bool } -> Hash[K, V]
   def reject
@@ -467,7 +451,7 @@ class Hash < Object
   end
 
   #: () -> [K, V]?
-  def first_pair
+  def __first_pair
     each { |k, v| return [k, v] }
     nil
   end
@@ -697,7 +681,7 @@ class Hash < Object
 
   #: () -> [K, V]?
   def shift
-    pair = first_pair
+    pair = __first_pair
     delete(pair[0]) if pair
     pair
   end
