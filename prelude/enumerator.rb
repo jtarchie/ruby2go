@@ -245,7 +245,7 @@ class Enumerator
     }
 
     #: [U] () { (E) -> U } -> Lazy[U]
-    def collect = %x{ return Enumerator_Lazy_Map[E, U](self, blk) }
+    def collect = %x{ return rbLazy(Enumerator_Lazy_Map[E, U](self, blk).seq, any(self), "collect") }
 
     #: () { (E) -> bool } -> Lazy[E]
     def select = %x{ return rbLazyFilter(self, func(x E) bool { return bool(blk(x)) }, "select") }
@@ -254,7 +254,31 @@ class Enumerator
     def filter = %x{ return rbLazyFilter(self, func(x E) bool { return bool(blk(x)) }, "filter") }
 
     #: () { (E) -> bool } -> Lazy[E]
-    def reject = %x{ return rbLazyFilter(self, func(x E) bool { return !bool(blk(x)) }, "reject") }
+    def find_all = %x{ return rbLazyFilter(self, func(x E) bool { return bool(blk(x)) }, "find_all") }
+
+    # grep/grep_v keep `select`'s source and name the step as MRI does (`grep(2..5)`).
+    # @dynamic
+    #: (untyped) -> Lazy[E]
+    def grep(pattern) = select { |x| pattern === x }.__relabel(self, "grep(#{pattern.inspect})")
+
+    # @dynamic
+    #: (untyped) -> Lazy[E]
+    def grep_v(pattern) = reject { |x| pattern === x }.__relabel(self, "grep_v(#{pattern.inspect})")
+
+    # @dynamic
+    #: [U] (untyped) { (E) -> U } -> Lazy[U]
+    def __grep_block(pattern) = select { |x| pattern === x }.map { |x| yield(x) }.__relabel(self, "grep(#{pattern.inspect})")
+
+    # @dynamic
+    #: [U] (untyped) { (E) -> U } -> Lazy[U]
+    def __grep_v_block(pattern) = reject { |x| pattern === x }.map { |x| yield(x) }.__relabel(self, "grep_v(#{pattern.inspect})")
+
+    # The same sequence as a step of `src` called `meth`.
+    #: (untyped, String) -> self
+    def __relabel(src, meth) = %x{ return rbLazy(self.seq, src, string(meth)) }
+
+    #: () { (E) -> bool } -> Lazy[E]
+    def reject =%x{ return rbLazyFilter(self, func(x E) bool { return !bool(blk(x)) }, "reject") }
 
     #: [U] () { (E) -> U? } -> Lazy[U]
     def filter_map = %x{
@@ -278,6 +302,54 @@ class Enumerator
           }
         }
       }, any(self), "flat_map")
+    }
+
+    #: [U] () { (E) -> Array[U] } -> Lazy[U]
+    def collect_concat = %x{ return rbLazy(Enumerator_Lazy_FlatMap[E, U](self, blk).seq, any(self), "collect_concat") }
+
+    # Lazy, so a chunk goes out as the next one starts and an infinite source works.
+    #: () { (E, E) -> bool } -> Lazy[Array[E]]
+    def chunk_while = %x{
+      return rbLazy(func(yield func(*Array[E]) bool) {
+        var cur *Array[E]
+        var prev E
+        for x := range self.seq {
+          if cur != nil && bool(blk(prev, x)) {
+            cur.s = append(cur.s, x)
+          } else {
+            if cur != nil && !yield(cur) {
+              return
+            }
+            cur = &Array[E]{s: []E{x}}
+          }
+          prev = x
+        }
+        if cur != nil {
+          yield(cur)
+        }
+      }, any(self), "chunk_while")
+    }
+
+    #: () { (E, E) -> bool } -> Lazy[Array[E]]
+    def slice_when = %x{
+      return rbLazy(func(yield func(*Array[E]) bool) {
+        var cur *Array[E]
+        var prev E
+        for x := range self.seq {
+          if cur != nil && !bool(blk(prev, x)) {
+            cur.s = append(cur.s, x)
+          } else {
+            if cur != nil && !yield(cur) {
+              return
+            }
+            cur = &Array[E]{s: []E{x}}
+          }
+          prev = x
+        }
+        if cur != nil {
+          yield(cur)
+        }
+      }, any(self), "slice_when")
     }
 
     #: (Integer) -> Lazy[E]

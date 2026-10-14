@@ -269,6 +269,216 @@ module EnumeratorTests
     end
   end
 
+  class Ticker
+    include Enumerable #[Integer]
+
+    attr_reader :runs #: Integer
+
+    #: (Array[Integer]) -> void
+    def initialize(xs)
+      @xs = xs
+      @runs = 0
+    end
+
+    #: () { (Integer) -> void } -> void
+    def each
+      @runs += 1
+      @xs.each { |x| yield x }
+    end
+  end
+
+  # Equal under <=>, distinct objects: shows which one min/max/minmax keep.
+  class Tagged
+    include Comparable
+
+    attr_reader :k #: Integer
+    attr_reader :tag #: String
+
+    #: (Integer, String) -> void
+    def initialize(k, tag)
+      @k = k
+      @tag = tag
+    end
+
+    #: (Tagged) -> Integer
+    def <=>(other) = k <=> other.k
+  end
+
+  class StreamingTest < Minitest::Test
+    def test_each_cons_block_streams
+      n = 0
+      (1..).each_cons(2) do |_|
+        n += 1
+        break
+      end
+      assert_equal 1, n
+      seen = []
+      (1..).each_cons(3) do |w|
+        seen << w
+        break if seen.size == 2
+      end
+      assert_equal [[1, 2, 3], [2, 3, 4]], seen
+      gen = Enumerator.new do |y|
+        i = 0
+        loop { y << (i += 1) }
+      end
+      hit = nil #: Array[Integer]?
+      gen.each_cons(2) do |w|
+        hit = w
+        break if w[0] == 2
+      end
+      assert_equal [2, 3], hit
+      assert_equal [[1, 2], [2, 3]], gen.each_cons(2).first(2)
+    end
+
+    def test_each_slice_block_streams
+      got = nil #: Array[Integer]?
+      (1..).each_slice(2) do |w|
+        got = w
+        break
+      end
+      assert_equal [1, 2], got
+    end
+
+    def test_each_cons_blockless_and_edges
+      t = Ticker.new([1, 2, 3])
+      got = []
+      t.each_cons(2) { |w| got << w }
+      assert_equal [[1, 2], [2, 3]], got
+      got = []
+      t.each_cons(5) { |w| got << w }
+      assert_equal [], got
+      assert_nil t.each_cons(2).size
+      assert_equal 2, [1, 2, 3].each_cons(2).size
+    end
+
+    def test_each_cons_windows_are_independent
+      keep = []
+      Ticker.new([1, 2, 3, 4]).each_cons(2) { |w| keep << w }
+      assert_equal [[1, 2], [2, 3], [3, 4]], keep
+    end
+
+    def test_minmax_one_pass
+      t = Ticker.new([3, 1, 4, 1, 5])
+      assert_equal [1, 5], t.minmax
+      assert_equal 1, t.runs
+      assert_equal [nil, nil], Ticker.new([]).minmax
+      assert_equal [7, 7], Ticker.new([7]).minmax
+      assert_equal [1, 2], Ticker.new([2, 1]).minmax
+      assert_equal [1, 3], Ticker.new([1, 2, 3]).minmax
+    end
+
+    def test_eager_grep_with_block
+      t = Ticker.new([1, 2, 3, 4])
+      assert_equal [20, 30], t.grep(2..3) { |x| x * 10 }
+      assert_equal [10, 40], t.grep_v(2..3) { |x| x * 10 }
+      assert_equal [20, 30], [1, 2, 3, 4].grep(2..3) { |x| x * 10 }
+      assert_equal %w[AB], %w[ab cd].grep(/a/) { |s| s.upcase }
+    end
+
+    def test_minmax_ties
+      a = Tagged.new(1, "a")
+      b = Tagged.new(1, "b")
+      c = Tagged.new(2, "c")
+      d = Tagged.new(2, "d")
+      e = Tagged.new(0, "e")
+      f = Tagged.new(0, "f")
+      mm = ->(xs) { TaggedList.new(xs).minmax.map(&:tag) }
+      assert_equal %w[a a], mm.call([a, b])
+      assert_equal %w[a c], mm.call([a, b, c, d])
+      assert_equal %w[e c], mm.call([a, c, d, e, f])
+      assert_equal %w[a c], mm.call([c, a, d, b])
+      assert_equal %w[a a], mm.call([a, b, a])
+    end
+
+    def test_minmax_incomparable
+      r = begin
+        Mixed.new.minmax
+        nil
+      rescue ArgumentError
+        :argument_error
+      end
+      assert_equal :argument_error, r
+    end
+  end
+
+  class TaggedList
+    include Enumerable #[Tagged]
+
+    #: (Array[Tagged]) -> void
+    def initialize(xs)
+      @xs = xs
+    end
+
+    #: () { (Tagged) -> void } -> void
+    def each
+      @xs.each { |x| yield x }
+    end
+  end
+
+  class Mixed
+    include Enumerable #[untyped]
+
+    #: () { (untyped) -> void } -> void
+    def each
+      yield 1
+      yield "a"
+    end
+  end
+
+  class LazyMoreTest < Minitest::Test
+    def test_grep
+      inf = (1..Float::INFINITY).lazy
+      assert_equal [2, 3, 4], inf.grep(2..5).first(3)
+      assert_equal [1, 6, 7], inf.grep_v(2..5).first(3)
+      assert_equal [4, 6, 8], inf.grep(2..5) { |x| x * 2 }.first(3)
+      assert_equal [1, 6], inf.grep_v(2..5) { |x| x }.first(2)
+      assert_equal %w[ab ac], %w[ab xx ac].lazy.grep(/a/).to_a
+      assert_equal [1, 3], [1, "a", 3, :b].lazy.grep(Integer).to_a
+      assert_equal ["a", :b], [1, "a", 3, :b].lazy.grep_v(Integer).to_a
+    end
+
+    def test_grep_is_lazy_and_returns_lazy
+      assert_kind_of Enumerator::Lazy, (1..3).lazy.grep(1)
+      assert_kind_of Enumerator::Lazy, (1..3).lazy.grep_v(1)
+      assert_kind_of Enumerator::Lazy, (1..3).lazy.find_all { |x| x > 1 }
+      assert_kind_of Enumerator::Lazy, (1..3).lazy.collect_concat { |x| [x] }
+      assert_kind_of Enumerator::Lazy, (1..3).lazy.collect { |x| x }
+      pulled = []
+      first = (1..).lazy.map { |x| pulled << x; x }.grep(Integer).first(2)
+      assert_equal [1, 2], first
+      assert_equal [1, 2], pulled
+    end
+
+    def test_find_all_and_collect_concat
+      inf = (1..Float::INFINITY).lazy
+      assert_equal [2, 4], inf.find_all(&:even?).first(2)
+      assert_equal [1, -1, 2], inf.collect_concat { |x| [x, -x] }.first(3)
+      assert_equal [1, -1, 2], inf.flat_map { |x| [x, -x] }.first(3)
+    end
+
+    def test_inspect_labels
+      inf = (1..Float::INFINITY).lazy
+      src = "#<Enumerator::Lazy: 1..Infinity>"
+      assert_equal "#<Enumerator::Lazy: #{src}:grep(2..5)>", inf.grep(2..5).inspect
+      assert_equal "#<Enumerator::Lazy: #{src}:grep_v(2..5)>", inf.grep_v(2..5).inspect
+      assert_equal "#<Enumerator::Lazy: #{src}:find_all>", inf.find_all { |x| x > 1 }.inspect
+      assert_equal "#<Enumerator::Lazy: #{src}:collect>", inf.collect { |x| x }.inspect
+      assert_equal "#<Enumerator::Lazy: #{src}:collect_concat>", inf.collect_concat { |x| [x] }.inspect
+      assert_equal "#<Enumerator::Lazy: #{src}:flat_map>", inf.flat_map { |x| [x] }.inspect
+      assert_equal "#<Enumerator::Lazy: #{src}:map>", inf.map { |x| x }.inspect
+    end
+
+    def test_chunk_while_and_slice_when
+      inf = (1..Float::INFINITY).lazy
+      assert_equal [[1, 2], [3, 4, 5]], inf.slice_when { |a, b| b % 3 == 0 }.first(2)
+      assert_equal [[1, 2, 3], [4, 5, 6]], inf.chunk_while { |a, b| b % 3 != 1 }.first(2)
+      assert inf.chunk_while { |a, b| b == a + 1 }.is_a?(Enumerator::Lazy)
+      assert_equal [[1, 2, 3], [5]], [1, 2, 3, 5].lazy.chunk_while { |a, b| b == a + 1 }.to_a
+      assert_equal [[1, 2, 3], [5]], [1, 2, 3, 5].lazy.slice_when { |a, b| b != a + 1 }.to_a
+    end
+  end
+
   class ArithmeticSequenceTest < Minitest::Test
     def test_inspect_and_class
       assert_equal "((1..10).%(3))", ((1..10) % 3).inspect

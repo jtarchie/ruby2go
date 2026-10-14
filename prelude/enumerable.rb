@@ -60,6 +60,23 @@ module Enumerable
     out
   end
 
+  # grep with a block maps each match (decision 12's block-overload).
+  # @dynamic
+  #: [U] (untyped) { (E) -> U } -> Array[U]
+  def __grep_block(pattern)
+    out = [] #: Array[U]
+    each { |x| out << yield(x) if pattern === x }
+    out
+  end
+
+  # @dynamic
+  #: [U] (untyped) { (E) -> U } -> Array[U]
+  def __grep_v_block(pattern)
+    out = [] #: Array[U]
+    each { |x| out << yield(x) unless pattern === x }
+    out
+  end
+
   #: () { (E) -> bool } -> Array[E]
   def select
     out = [] #: Array[E]
@@ -514,8 +531,41 @@ module Enumerable
     [yes, no]
   end
 
+  # One pass over each, with MRI's pairing (enum.c minmax_i): a pair is ordered first, so ties keep the earlier element and the block of a side-effecting each runs once.
   #: () -> [E?, E?]
-  def minmax = [min, max]
+  def minmax = %x{
+    var lo, hi, last *E
+    update := func(i, j E) {
+      if lo == nil {
+        lo, hi = &i, &j
+        return
+      }
+      if rbCmp(i, *lo) < 0 {
+        lo = &i
+      }
+      if rbCmp(j, *hi) > 0 {
+        hi = &j
+      }
+    }
+    for x := range self.Each() {
+      if last == nil {
+        last = &x
+        continue
+      }
+      j, i := *last, x
+      last = nil
+      if n := rbCmp(j, i); n == 0 {
+        i = j
+      } else if n < 0 {
+        i, j = j, i
+      }
+      update(i, j)
+    }
+    if last != nil {
+      update(*last, *last)
+    }
+    return Tuple2[*E, *E]{lo, hi}
+  }
 
   #: (Integer) -> Array[E]
   def __min_1(n) = sort.first(n)
@@ -598,11 +648,11 @@ module Enumerable
   #: (Integer) { (Array[E]) -> void } -> void
   def each_cons(n)
     raise ArgumentError, "invalid size" if n <= 0
-    all = to_a
-    i = 0
-    while i + n <= all.size
-      yield(all[i, n] || [])
-      i += 1
+    win = [] #: Array[E]
+    each do |x|
+      win << x
+      win.shift if win.size > n
+      yield win.dup if win.size == n
     end
   end
 
