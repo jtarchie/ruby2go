@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Etc: getlogin/nprocessors/getpwuid/getpwnam/systmpdir, backed by os/user and runtime; always defined (decision 50).
+# Etc: getlogin/nprocessors/getpwuid/getpwnam/systmpdir, backed by os/user and runtime; loads only on a literal `require "etc"` (decisions 50, 155).
 module Etc
   Passwd = Struct.new(:name, :passwd, :uid, :gid, :gecos, :dir, :shell, :change, :uclass, :expire) #: [String, String?, Integer, Integer, String, String, String?, Integer?, String?, Integer?]
 

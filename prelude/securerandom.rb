@@ -1,7 +1,7 @@
 # prelude/securerandom.rb
 # rbs_inline: enabled
 #
-# SecureRandom on crypto/rand. Always defined, `require "securerandom"` or not.
+# SecureRandom on crypto/rand. Loads only on a literal `require "securerandom"` (decision 155).
 
 module SecureRandom
   #: (?Integer) -> String

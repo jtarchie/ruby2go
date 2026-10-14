@@ -1,4 +1,4 @@
-# prelude/abbrev.rb - rbs_inline: enabled - Abbrev: unambiguous word abbreviations, as MRI's lib/abbrev.rb. Always defined.
+# prelude/abbrev.rb - rbs_inline: enabled - Abbrev: unambiguous word abbreviations, as MRI's lib/abbrev.rb. Loads only on a literal `require "abbrev"` (decision 155).
 
 module Abbrev
   # A prefix seen twice is ambiguous and dropped; MRI stops shortening further once that happens (`case`'s `else`/`break`).

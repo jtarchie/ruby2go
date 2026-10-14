@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made.
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 274); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
 
 ## Commands
 
@@ -14,7 +14,7 @@ go test -run 'TestMinitest/^string$' .        # one minitest file (testdata/test
 go run ./cmd/rb2go test testdata/test --seed 1  # the whole suite as one program, as `minitest testdata/test` (slow to build: decision 81)
 go run ./cmd/rb2go test testdata/test/array_test.rb --seed 1 -v   # one test file (any minitest flags); a dir runs them all as one program
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
-RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (~/Library/Caches/rb2go-test/mri)
+RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (`os.UserCacheDir()/rb2go-test/mri`; key: Ruby description, TZ, checkout dir, sha256 of Gemfile.lock, extra args, sources; decision 272)
 RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (debugging the pruner)
 RB2GO_INFER_DEBUG=1 go run ./cmd/rb2go run x.rb    # what each parameter-inference round typed and could not compile (decision 146)
 RB2GO_PRUNE_DEBUG=1 go test -run TestBootAutoload .  # gem programs: why each method name was reached, live gem classes (decision 169)
@@ -33,7 +33,7 @@ golangci-lint run ./...             # repo lint (.golangci.yml)
 go run ./cmd/rb2go run examples/NN_x/main.rb        # transpile, build, run; warnings go to stderr
 go run ./cmd/rb2go build -work -gcflags=-e examples/NN_x/main.rb  # keep main.go (WORK= path on stderr), show every Go error
 scripts/rubyspec-coverage --missing   # ruby/spec core method files the prelude names, per class (#49; clones ruby/spec to the cache)
-go run ./cmd/rubyspec -reasons 20 core/integer   # run ruby/spec directories under rb2go (decision 127); `core` runs each core/* dir, -v lists every skip
+go run ./cmd/rubyspec -reasons 20 core/integer   # run ruby/spec directories under rb2go (decision 127); `core` runs each core/* dir, -v lists every skip; the pinned checkout lives in `os.UserCacheDir()/rb2go-rubyspec`
 bundle exec tyda path/to/file.rb        # inferred RBS for unannotated Ruby (dev aid, see below); --diagnostics for JSON Lines
 ```
 
@@ -68,7 +68,7 @@ Smaller cases go in `testdata/`:
 ## Architecture
 
 - `rb2go.go`: public `Compile`. It embeds `prelude.rb` + `prelude/*.rb` + `prelude/go/*.go` via `//go:embed`. `prelude.rb` `require_relative`s the core (what MRI defines without a require); a library file is instead mapped from its require name in `internal/compiler/libs.go` and loads only when user code has a literal `require` for it (decision 155), `require_relative`-ing what MRI's own file loads. A new `.rb` prelude file goes in one of those two places; `prelude/go/*.go` files are globbed and always loaded, so a core helper may name a lib's type only inside a single-type `case` (the pruner drops it).
-- `internal/compiler`: one `Compiler` holds the closed world (prelude + one user file). Parsing uses Prism via `go-ruby-prism` (WASM/wazero). Pipeline in `compiler.go`:
+- `internal/compiler`: one `Compiler` holds the closed world (prelude + one user file). Parsing uses Prism via `go-ruby-prism` (WASM/wazero; its compilation cache is `os.UserCacheDir()/rb2go/wazero`, off with `RB2GO_NO_WASM_CACHE=1`). Pipeline in `compiler.go`:
   `loadPrelude` → `collect` (declare classes/methods/consts, `model.go`) → `link` (resolve supers, includes, signatures) → `discoverIvars` (dry-run bodies for ivar types) → `emitProgram` (`decls.go`) → std-import table + gofmt (`format.go`; no go command needed).
   - `gen.go`: per-function statement codegen (`fctx`). A "tail" (none/return/assign) threads the value-producing position through statements. Type inference works by running gen inside `probe` (output discarded, types recorded) and then running it again for real.
   - `dynamic.go`: generated `rbDynName` dispatchers + `DynName(...any) any` wrappers for calls on `untyped` values. There is no `reflect`: everything comes from the closed world.
@@ -79,7 +79,7 @@ Smaller cases go in `testdata/`:
 ### The prelude
 
 `prelude/*.rb` is the core library, written in Ruby and compiled by the same transpiler. It reopens core classes, so it never runs on MRI.
-- `%x{ ... }` is the Go escape hatch. `self` and parameter names bind to the Go receiver and args. The body is a Ruby xstring, so write `\\n` for a Go `\n` and `\#{` for a literal `#{`, and keep braces balanced (decision 16). A one-line body of a non-void method gets an implicit `return`. Imports are added by goimports.
+- `%x{ ... }` is the Go escape hatch. `self` and parameter names bind to the Go receiver and args. The body is a Ruby xstring, so write `\\n` for a Go `\n` and `\#{` for a literal `#{`, and keep braces balanced (decision 16). A one-line body of a non-void method gets an implicit `return`. Imports come from the `stdImports` table in `format.go` (selector name → std package; no goimports, no go command): a package missing there fails `go build` with "undefined: name", so add the entry (decisions 154, 263).
 - Methods with a `%x{}` body must carry a `#:` signature (the body is opaque). Pure-Ruby methods can infer.
 - `# @go_type T` makes a class a named Go type (value semantics if frozen, e.g. `String`). Classes without it become structs, with an interface (`FooI`) and pointers.
 - Package-level Go helpers (no `self`/param binding) live in `prelude/go/<name>.go`, next to the `prelude/<name>.rb` whose methods use them: real, gofmt-clean Go with its own `import` block, no xstring escaping (decision 154). The build tag `//go:build rb2go_prelude` keeps them out of `go build ./...` and the repo lint (they reference generated types); `loadPreludeGo` in `compiler.go` globs them, drops the header through the import block, merges their imports into `stdImports` (`format.go`; the table's hand entries are only for `%x{}` bodies in `.rb`) and appends each body to `c.verbatim`, skipping Prism. Type checking: `go run ./cmd/rb2go stubs` writes the gitignored `prelude/go/0_stubs.go` (what generated code declares, bodies `panic(0)`), then `go vet -tags rb2go_prelude ./prelude/go` or gopls with `-tags=rb2go_prelude` (`.vscode/settings.json`) checks the helpers; `TestPreludeGo` does both on every `go test`. Helper files must start with a letter (the embed pattern is `prelude/go/[a-z]*.go`). A top-level `%x{}` in a `.rb` still works, but new helpers go in `prelude/go/`. `runtime.rb` and `dynamic.rb` are now doc-only. `.golangci.generated.yml` has path-scoped exclusions for `prelude/go/*.go`: staticcheck's ST1003/ST1021 (names mirror Ruby, like decision 3) and nolintlint (gosec ignores `//line` remapping, so it can't correlate `//nolint:gosec` comments there even though the suppression itself works).
@@ -89,9 +89,9 @@ Smaller cases go in `testdata/`:
 - `T?` → `*T` uniformly. `Opt()`/`Ref()` at `untyped`/optional boundaries.
 - Methods on struct classes/modules → free funcs `Owner_Name[Self]` + forwarding methods on each concrete class (Go embedding would bind `self` wrongly); a class body whose signature names no `Self` takes `self OwnerI` instead (decision 210). Module constraints are derived from what the module body calls on `self`.
 - Generic methods (RBS `[X]`) are always free funcs.
-- Blocks: a method is a Go iterator (`iter.Seq`) only when block and method both return void and the method only yields. Otherwise the block is a closure, and `return`/`break` inside it is a compile error.
+- Blocks: a method is a Go iterator (`iter.Seq`) only when block and method both return void and the method only yields. Otherwise the block is a closure; a valueless `break` out of a call statement unwinds with a sentinel panic (`rbBreak`, so `ensure` runs; decision 241), and a gem method's block `return` does the same through a per-call `rbReturn` token (decision 247). In user code a non-local `return` from a closure block is still a compile error (decision 4), as is `break v` or a `break` whose call value is used.
 - `raise` → `panic`, `rescue` → `defer`/`recover`. Uncaught exceptions print `msg (Class)` and exit 1, like MRI.
-- `Hash` is insertion-ordered. `Hash#[]` returns `V?`. There is no default-value hash.
+- `Hash` is insertion-ordered. `Hash#[]` returns `V?`. `Hash.new(default)` and `Hash.new { |h, k| ... }` are supported (decision 5), but `[]` stays `V?` so a typed caller still nil-checks or uses `fetch`.
 
 ## Repo conventions
 

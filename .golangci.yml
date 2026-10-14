@@ -82,6 +82,8 @@ linters:
             - "github.com/jtarchie/ruby2go/internal/compiler"
             - "golang.org/x/tools/txtar" # rb2go_test.go: testdata/errors archives
         # cmd/rb2go is the process boundary: flags in, exit code out.
+        # depguard matches `allow` entries by prefix, so allowing the root
+        # path alone also admits .../ruby2go/internal/...; deny it explicitly.
         CLI:
           files:
             - "**/cmd/**"
@@ -89,6 +91,9 @@ linters:
           allow:
             - "$gostd"
             - "github.com/jtarchie/ruby2go"
+          deny:
+            - pkg: "github.com/jtarchie/ruby2go/internal"
+              desc: cmd/ reaches the compiler only through the root package
         # cmd/rubyspec finds the example an error lands in, so it parses Ruby too.
         RubySpec:
           files:
@@ -97,6 +102,9 @@ linters:
             - "$gostd"
             - "github.com/jtarchie/ruby2go"
             - "github.com/danielgatis/go-ruby-prism/parser"
+          deny:
+            - pkg: "github.com/jtarchie/ruby2go/internal"
+              desc: cmd/ reaches the compiler only through the root package
         # The compiler owns the parser and the formatter; it reaches the RBS
         # parser and the boot snapshot, but never the CLI or the root.
         Compiler:
@@ -109,6 +117,13 @@ linters:
             - "github.com/jtarchie/ruby2go/internal/rbs"
             - "github.com/jtarchie/ruby2go/internal/boot" # the gem load phase at compile time (decision 161)
             - "github.com/dlclark/regexp2" # patterns RE2 cannot match (decision 242): validated here, emitted into programs that need it
+        # boot is a stdlib-only leaf: it runs MRI and reports what it saw,
+        # and must not reach the compiler, the RBS parser or the root.
+        Boot:
+          files:
+            - "**/internal/boot/**"
+          allow:
+            - "$gostd"
         # rbs is a stdlib-only leaf.
         RBS:
           files:

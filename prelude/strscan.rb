@@ -3,7 +3,7 @@
 #
 # StringScanner over a byte position, as MRI's. A pattern is matched
 # against the rest of the string, so ^ and \A match at the scan pointer
-# (MRI's default, fixed_anchor: false). Always defined.
+# (MRI's default, fixed_anchor: false). Loads only on a literal `require "strscan"` (decision 155).
 
 # last is the previous pointer (for unscan); mbeg/mend bound the last match
 # (absolute byte offsets); groups is nil after a failed match.

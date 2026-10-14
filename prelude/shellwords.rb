@@ -1,7 +1,7 @@
 # prelude/shellwords.rb
 # rbs_inline: enabled
 #
-# Shellwords: Bourne-shell word splitting and escaping, as MRI's. Always defined.
+# Shellwords: Bourne-shell word splitting and escaping, as MRI's. Loads only on a literal `require "shellwords"` (decision 155).
 
 module Shellwords
   #: (String) -> Array[String]

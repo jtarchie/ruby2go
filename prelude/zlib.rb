@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Zlib: checksums, Deflate/Inflate, gzip, and GzipWriter/GzipReader. Always defined.
+# Zlib: checksums, Deflate/Inflate, gzip, and GzipWriter/GzipReader. Loads only on a literal `require "zlib"` (decision 155).
 module Zlib
   DEFAULT_COMPRESSION = -1 #: Integer
   NO_COMPRESSION = 0 #: Integer

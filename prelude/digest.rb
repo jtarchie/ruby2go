@@ -1,7 +1,7 @@
 # prelude/digest.rb
 # rbs_inline: enabled
 #
-# Digest::MD5/SHA1/SHA256/SHA384/SHA512 on crypto/*. Always defined.
+# Digest::MD5/SHA1/SHA256/SHA384/SHA512 on crypto/*. Loads only on a literal `require "digest"` (or digest/md5, sha1, sha2; decision 155).
 # `new` returns a Digest::Base holding the bytes fed to it; the sum is
 # taken when asked for.
 

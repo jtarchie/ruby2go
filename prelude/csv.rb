@@ -11,7 +11,7 @@ require_relative "forwardable"
 # empty row. Options come as a Hash (decision 23): col_sep, quote_char,
 # row_sep, skip_blanks, force_quotes. `headers: true` and `converters:`
 # (decision 117) are chosen by the compiler from the literal options:
-# a CSV::Table of CSV::Rows, and untyped fields. Always defined.
+# a CSV::Table of CSV::Rows, and untyped fields. Loads only on a literal `require "csv"` (decision 155).
 
 # @go_type struct { buf strings.Builder; sep string; quote string; rowSep string; force bool; file *File }
 class CSV < Object

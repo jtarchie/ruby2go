@@ -1,7 +1,7 @@
 # prelude/base64.rb
 # rbs_inline: enabled
 #
-# Base64 on encoding/base64. Always defined, `require "base64"` or not.
+# Base64 on encoding/base64. Loads only when user code has a literal `require "base64"` (decision 155).
 # Keyword options arrive as a Hash (decision 23).
 
 module Base64
