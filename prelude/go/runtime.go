@@ -1584,6 +1584,19 @@ func rbMust[T any](p *T, want string) T {
 	return *p
 }
 
+// rbBlockArg is a block passed to a method through a dynamic call, last among its arguments (decision 243).
+type rbBlockArg struct{ fn func(...any) any }
+
+// rbPopBlock pops a dynamic call's block off its arguments: nil when it passed none.
+func rbPopBlock(args []any) (*rbBlockArg, []any) {
+	if n := len(args); n > 0 {
+		if b, ok := args[n-1].(rbBlockArg); ok {
+			return &b, args[:n-1]
+		}
+	}
+	return nil, args
+}
+
 // rbBreak unwinds a closure block's `break` to the call statement that passed the block (decision 241); rescue passes
 // it on, ensure runs.
 type rbBreak struct{ id string }

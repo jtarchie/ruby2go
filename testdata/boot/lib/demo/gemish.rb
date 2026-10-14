@@ -202,6 +202,14 @@ module Demo
       out.join
     end
 
+    SEV_DEBUG, SEV_INFO = 0, 1
+
+    # A param typed from its default (:SEV_INFO), reassigned const_get's untyped value (decision 241).
+    def self.level_of(level = :SEV_INFO)
+      level = const_get(level) unless level.is_a?(Integer)
+      level + 1
+    end
+
     # concurrent-ruby's logger: a lambda with a default and a `&block` param, its block nil (decision 241).
     def self.logger(level = 2)
       lambda do |severity, progname, message = nil, &block|
@@ -224,4 +232,41 @@ module Demo
       uri.path
     end
   end
+end
+
+# concurrent-ruby's Dereferenceable: a mixin calling `synchronize { }` on self, which its includer defines (decision 243).
+module DemoDeref
+  def set_opts(opts = {})
+    synchronize { ns_set(opts) }
+  end
+
+  def ns_set(opts)
+    @dupv = opts[:dup]
+    nil
+  end
+
+  def value_with(x)
+    synchronize { |a, b| "#{x}-#{a.inspect}-#{b.inspect}" }
+  end
+end
+
+class DemoLockable
+  def initialize
+    @m = Mutex.new
+  end
+
+  def synchronize
+    @m.synchronize { yield 1, 2 }
+  end
+end
+
+class DemoDelayish < DemoLockable
+  include DemoDeref
+
+  def initialize
+    super
+    set_opts(dup: true)
+  end
+
+  attr_reader :dupv
 end

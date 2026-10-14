@@ -1962,7 +1962,7 @@ module StdlibTests
     end
 
     def test_env_fetch_nil_default
-      assert_equal [nil, "d"], [ENV.fetch("RB2GO_NO_SUCH_VAR", nil), ENV.fetch("RB2GO_NO_SUCH_VAR", "d")]
+      assert_equal [nil, "d", false], [ENV.fetch("RB2GO_NO_SUCH_VAR", nil), ENV.fetch("RB2GO_NO_SUCH_VAR", "d"), ENV.fetch("RB2GO_NO_SUCH_VAR", false)]
       assert_raises(KeyError) { ENV.fetch("RB2GO_NO_SUCH_VAR") }
     end
 

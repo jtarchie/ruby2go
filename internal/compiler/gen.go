@@ -68,6 +68,7 @@ type fctx struct {
 	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
 	paramWiden     map[string]Type // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
 	breakCatch     *breakCatch     // the statement call whose closure block `break`s out of it (decision 241)
+	inMarker       bool            // markerCall's own Boolean arm: past its check (decision 241)
 }
 
 // breakCatch is a call statement whose closure block has a `break`: the block panics rbBreak with id, and the
@@ -2252,7 +2253,12 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 // widenParam notes a gem method's param given what its type does not hold (`rebuild = ".#{rebuild}"` for an Integer):
 // from the next pass on the body works on a copy of the join, or untyped (decision 241).
 func (f *fctx) widenParam(name string, info *localInfo, existing *local, val expr) {
-	if info == nil || !info.param || !f.lenient() || isVoid(val.typ) || isNil(val.typ) || fitsValue(val, existing.typ) || isAny(existing.typ) {
+	if info == nil || !info.param || !f.lenient() || isVoid(val.typ) || isNil(val.typ) || isAny(existing.typ) {
+		return
+	}
+	// an untyped value fits any type by assertion, which fails when the guess from a default was wrong
+	// (`level = :FATAL; level = const_get(level)`): an unsigned param takes it untyped
+	if fitsValue(val, existing.typ) && (!isAny(val.typ) || f.m == nil || f.m.declared) {
 		return
 	}
 	w, ok := join(existing.typ, val.typ)

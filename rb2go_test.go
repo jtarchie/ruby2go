@@ -289,6 +289,9 @@ func TestBootAutoload(t *testing.T) {
 	if werr != nil {
 		t.Fatal(werr)
 	}
+	if keep := os.Getenv("RB2GO_BOOT_KEEP"); keep != "" { // the generated main.go, for a failing build
+		_ = os.WriteFile(keep, code, 0o600) //nolint:gosec // a developer-chosen path
+	}
 	sameAsRuby(t, dir, "app.rb", goBuild(t, gen, ""))
 
 	// The same lib as the program's own -I code is not a gem's: compiled whole and strictly, so its never-called methods fail (decision 173).

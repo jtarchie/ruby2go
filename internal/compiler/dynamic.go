@@ -212,7 +212,7 @@ func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 		return nil, false
 	}
 	e := cls.lookup(name)
-	if e == nil || e.M.generic() || e.M.Block != nil {
+	if e == nil || e.M.generic() && (e.M.Block == nil || !c.dynBlockable(name, e.M)) || e.M.Block != nil && !c.dynBlockable(name, e.M) {
 		return nil, false
 	}
 	if len(cls.TypeParams) > 0 && growsTypeParams(cls, e) {
@@ -710,10 +710,88 @@ func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
 	for _, p := range cls.TypeParams {
 		env[p] = TVar{Name: p}
 	}
+	for _, p := range m.TypeParams { // a block-taking generic (`Mutex#synchronize`'s T) called dynamically: untyped (decision 243)
+		env[p] = TAny{}
+	}
 	env["Self"] = recv.typ
 	cls.containerEnv(env)
 	c.emitDynCall(f, e, recv, env, true)
 	return f.buf.String()
+}
+
+// dynBlockable reports a block-taking method a dynamic call with a block reaches (decision 243): only names some gem
+// call site sends with a block get such wrappers, and not iterators (a range loop) or blocks bound to another self.
+func (c *Compiler) dynBlockable(name string, m *Method) bool {
+	// ponytail: Kernel's (`tap`, `then`, `open`) would get a wrapper on every class (+5,000 functions in brew); a class's
+	// own override still gets one
+	if m.Owner != nil && m.Owner.universal {
+		return false
+	}
+	return c.dynBlockNames[name] && (!m.Iterator || !m.hasKeywords()) && m.Block.Self == nil && !m.Block.Rest
+}
+
+// dynBlockArg is the block a dynamic call passes as its last argument (rbBlockArg), as the method's typed block: each
+// value boxed in, its result asserted out; nil when the call passed none and the block is optional (decision 243).
+func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.Node {
+	params := make([]string, len(m.Block.Params))
+	vals := make([]string, len(m.Block.Params))
+	ps := make([]Type, len(m.Block.Params))
+	for i, p := range m.Block.Params {
+		ps[i] = subst(p, env)
+		params[i] = fmt.Sprintf("a%d_ %s", i, c.goType(ps[i]))
+		vals[i] = fmt.Sprintf("a%d_", i)
+	}
+	ret := subst(m.Block.Ret, env)
+	body := "blk_.fn(" + strings.Join(vals, ", ") + ")"
+	sig := "func(" + strings.Join(params, ", ") + ")"
+	switch {
+	case isVoid(ret):
+	case isAny(ret):
+		sig += " any"
+		body = "return " + body
+	default:
+		sig += " " + c.goType(ret)
+		body = fmt.Sprintf("return rbAs[%s](%s, %q)", c.goType(ret), body, ret.String())
+	}
+	ft := TFunc{Params: ps, Ret: ret, Proc: true}
+	if m.Block.Optional { // block_given? sees whether the call passed one
+		f.emit("var blkOpt_ %s", c.goType(TOpt{Elem: ft}))
+		f.emit("if blk_ != nil {")
+		f.emit("\tfn_ := %s { %s }", sig, body)
+		f.emit("\tblkOpt_ = &fn_")
+		f.emit("}")
+		return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "blkOpt_", typ: TOpt{Elem: ft}}}}
+	}
+	f.emit("blkFn_ := %s {", sig)
+	f.emit("\tif blk_ == nil {")
+	f.emit("\t\tpanic(NewLocalJumpError(Ref(String(\"no block given (yield)\"))))")
+	f.emit("\t}")
+	f.emit("\t%s", body)
+	f.emit("}")
+	f.emit("_ = blkFn_")
+	return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "(&blkFn_)", typ: ft}}} // a Proc value is boxed: .call derefs it
+}
+
+// dynIterCall is a dynamic call with a block of an iterator method: a range over it, each yield into the call's block.
+// MRI's value is the method's, often the block's (`synchronize { ... }`): the last block value stands in (decision 243).
+func (c *Compiler) dynIterCall(f *fctx, e *entry, recv expr, env map[string]Type, nodes []parser.Node) {
+	codes := make([]string, len(nodes))
+	for i, nd := range nodes {
+		codes[i] = nd.(*exprNode).e.code //nolint:forcetypeassert // emitDynCall's, keywords excluded (dynBlockable)
+	}
+	vars := make([]string, len(e.M.Block.Params))
+	for i := range vars {
+		vars[i] = fmt.Sprintf("y%d_", i)
+	}
+	call := f.callCode(e, recv, codes, env)
+	f.emit("var last_ any")
+	f.emit("if blk_ == nil {")
+	f.emit("\tpanic(NewLocalJumpError(Ref(String(\"no block given (yield)\"))))")
+	f.emit("}")
+	f.emit("%s", rangeHead(strings.Join(vars, ", "), call))
+	f.emit("\tlast_ = blk_.fn(%s)", strings.Join(vars, ", "))
+	f.emit("}")
+	f.emit("return last_")
 }
 
 // emitDynCall emits a call to e from an `args ...any` list: MRI's arity check, each argument converted (TypeError), then the typed call, one arm per count of optional arguments; mix adds the numeric coercion arms, which name the receiver `self`.
@@ -737,6 +815,11 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		default:
 			req++
 		}
+	}
+	var blk parser.Node
+	if m.Block != nil { // a dynamic call's block comes last (decision 243)
+		f.emit("blk_, args := rbPopBlock(args)")
+		blk = c.dynBlockArg(f, m, env)
 	}
 	var kwh *exprNode // the call's keywords, passed on as **kwh (#51)
 	if m.hasKeywords() {
@@ -779,7 +862,11 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		if kwh != nil {
 			nodes = append(nodes, &parser.KeywordHashNode{Elements: []parser.Node{&parser.AssocSplatNode{Value: kwh}}})
 		}
-		res := f.callEntry(&parser.NilNode{}, e, recv, nodes, nil)
+		if m.Iterator && blk != nil {
+			c.dynIterCall(f, e, recv, env, nodes)
+			return
+		}
+		res := f.callEntry(&parser.NilNode{}, e, recv, nodes, blk)
 		if isVoid(res.typ) {
 			if res.code != "" {
 				f.emit("%s", res.code)

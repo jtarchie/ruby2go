@@ -135,6 +135,20 @@ class Integer
   def object_tests_kind = :int
 end
 
+# Reopened TrueClass/FalseClass/NilClass answer for true, false and nil, ahead of Object's (decision 241).
+class Object
+  def object_test_present? = !object_test_blank?
+  def object_test_blank? = respond_to?(:empty?) ? !!empty? : false
+end
+
+class NilClass
+  def object_test_present? = false
+end
+
+class FalseClass
+  def object_test_present? = false
+end
+
 module ObjectTests
   # Helpers for the checks that were testdata/run/object_attrs.rb.
   class Account
@@ -5763,7 +5777,26 @@ module ObjectTests
     object_safe_init!
   end
 
+  module ObjectLogg
+    DEBUG, INFO, WARN = 0, 1, 2
+
+    def self.lvl(s) = const_get(s)
+  end
+
   class ObjectLexicalTest < Minitest::Test
+    #: (String?) -> bool
+    def object_titled(t) = t.object_test_present?
+
+    def test_reopened_markers
+      v = ENV["RB2GO_NO_SUCH_VAR"] || false
+      assert_equal [false, true, false, false, true, false], [false.object_test_present?, true.object_test_present?, v.object_test_present?,
+                                                             object_titled(nil), object_titled("x"), nil.object_test_present?]
+    end
+
+    def test_constant_multi_write
+      assert_equal [2, 0, 1], [ObjectLogg::WARN, ObjectLogg::DEBUG, ObjectLogg.lvl(:INFO)]
+    end
+
     def test_self_extend_call
       assert_equal ["safe", true, nil], [ObjectSStack.safe, ObjectSStack.object_safe_init?, ObjectSObj.object_safe_init?]
     end

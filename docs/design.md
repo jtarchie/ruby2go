@@ -7518,8 +7518,8 @@ resolve; anything not listed is still open.
       Unicode `\b`, and `rxFold`'s multi-character case folds (regexp2
       does not fold `ß`/`SS` either).
     - **More of brew's load path** (2026-10-13, after 242):
-      `ENV.fetch(k, nil)` returns nil for a missing name (a literal-nil
-      overload); a mixed-in `inherited` calling `super` reaches Class's
+      `ENV.fetch(k, d)` is `ENV[k] || d` (an ENV value is a String, so this
+      is fetch's answer for any d: nil, false, a String); a mixed-in `inherited` calling `super` reaches Class's
       no-op (hook bridges return a zero value); a metaclass carrying a
       mixed-in module's ivars answers `instance_variable_set`/`get`, so an
       `inherited` hook's `child.instance_eval { @env = ... }` works;
@@ -7538,3 +7538,36 @@ resolve; anything not listed is still open.
       `$1`/`$~` inside a `sub`/`gsub` block are that match; a gem block's
       or lambda's `&blk` param is a nil local (ponytail: the caller's block
       is dropped) and a gem lambda's defaults bind as a block's do.
+    - **`A, B = 1, 2` in a body** declares each constant. **A gem method's
+      param guessed from its default** (`level = :FATAL`) that is
+      reassigned an untyped value (`const_get(level)`) is widened to
+      untyped, as one reassigned another type already was; a signed
+      param keeps its type.
+
+243. **Calls with a block on an untyped receiver, in gem code** (#100's
+    "blocks on untyped receivers, beyond Enumerable"; extends 176, 224).
+    concurrent-ruby's mixins call `synchronize { ... }` on self, which their
+    includers define. The call passes its block as a last argument,
+    `rbBlockArg{fn: func(...any) any}` (the block's params untyped, missing
+    ones nil). Dyn wrappers are emitted for block-taking methods, but only
+    for names some gem call site sends with a block (`dynBlockNames`), so
+    other programs gain nothing. The wrapper pops the block
+    (`rbPopBlock`) and adapts it to the method's typed block, each value
+    boxed in and the result asserted out; a block-optional method gets nil
+    when the call passed none. An iterator method is ranged over, each
+    yield into the block, and the wrapper answers the last block value, as
+    `synchronize`'s yield-once does in MRI. Not covered: blocks with a rest
+    or destructuring parameter, keyword-taking iterators, blocks bound to
+    another self.
+    Block-taking generics (`Mutex#synchronize`'s T) take their type
+    params untyped there; Kernel's own (`tap`, `then`, `open`) get no
+    wrapper, since one would land on every class (+5,000 functions in brew;
+    a class's own override still gets one).
+    Also on brew's path (decision 241's list): a reopened TrueClass,
+    FalseClass or NilClass method answers for true/false/nil values ahead
+    of Object's (`false.present?` with brew's `FalseClass#present?`), by
+    the value's truth for a Boolean; a gem hook's (`included`, `extended`,
+    `inherited`) base parameter is untyped; a traced entry's `$0` is its
+    `rb2go_main` file, so brew.rb's `$PROGRAM_NAME == __FILE__` guard
+    holds; a union switch whose arms answer nil or void declares its
+    result `any`.

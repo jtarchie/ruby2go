@@ -2172,8 +2172,8 @@ func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Nod
 // genIntrinsic compiles the methods the transpiler answers itself:
 // class, with (Data), respond_to?, is_a?/kind_of?.
 func (f *fctx) genIntrinsic(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
-	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.prelude {
-		return expr{}, false // a user's override, as MRI calls it
+	if e, ok, stop := f.intrinsicGate(n, recv, name, args, block); stop {
+		return e, ok
 	}
 	if f.isOpenURIRecv(recv.typ, name) {
 		return f.genOpenURI(n, &recv, name, args, block), true
@@ -3133,10 +3133,6 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 	case owner.RubyName == "OptionParser" && (m.Name == "on" || m.Name == "on_tail" || m.Name == "on_head"):
 		if k := f.optKind(args); k != "" {
 			return owner.lookup("__" + m.Name + "_" + k)
-		}
-	case m.Name == "fetch" && owner.RubyName == "ENVClass" && len(args) == 2:
-		if _, ok := args[1].(*parser.NilNode); ok {
-			return owner.lookup("__fetch_nil")
 		}
 	case owner.RubyName == "CSV" && owner.metaOf != nil:
 		return f.csvOverload(m, owner, args)
@@ -5177,7 +5173,8 @@ func nilAnswers(name string) bool {
 // compile error; nil, when a member, answers what nil answers and otherwise
 // raises NoMethodError, as a nil T? does (decision 20).
 func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args []parser.Node, block parser.Node) expr {
-	raises := func(m Type) bool { return isNil(m) && !nilAnswers(name) }
+	nilOwn := f.reopenedMarker("NilClass", name) != nil
+	raises := func(m Type) bool { return isNil(m) && !nilAnswers(name) && !nilOwn }
 	if slices.ContainsFunc(u.Members, raises) {
 		f.warn(n, "%s called on %s, which may be nil (raises NoMethodError on nil)", name, u)
 	}
@@ -5195,6 +5192,9 @@ func (f *fctx) unionCall(n parser.Node, recv expr, u TUnion, name string, args [
 		if raises(m) {
 			f.emit("panic(rbNoMethod(%q, nil, false))", name)
 			return expr{}, false
+		}
+		if isNil(m) && nilOwn { // the program's own NilClass method (decision 186)
+			return f.genMethodCall(n, expr{code: "(*NilClass)(nil)", typ: f.cls("NilClass")}, name, args, block), true
 		}
 		return f.genMethodCall(n, expr{code: code, typ: m}, name, args, block), true
 	}, func(m Type, msg string) string { return fmt.Sprintf("%s (a member of %s)", msg, u) })
@@ -5214,6 +5214,75 @@ func (f *fctx) lenientBlockRet(want, got Type, env map[string]Type) bool {
 		}
 	}
 	return true
+}
+
+// intrinsicGate decides a call before the intrinsics: true/false/nil's reopened marker classes answer (before a
+// program's Object#name, which Boolean would take), and a program's own override is called as MRI calls it.
+func (f *fctx) intrinsicGate(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool, bool) {
+	if e, ok := f.markerCall(n, recv, name, args, block); ok {
+		return e, true, true
+	}
+	if e := f.resolve(recv.typ, name); e != nil && !e.M.File.prelude {
+		return expr{}, false, true
+	}
+	return expr{}, false, false
+}
+
+// reopenedMarker is the program's own definition of name on TrueClass, FalseClass or NilClass (`class FalseClass; def
+// present? = false`), whose values are Boolean and nil: nil when only the prelude's markers or Object answer.
+func (f *fctx) reopenedMarker(cls, name string) *entry {
+	c := f.c.classes[cls]
+	if c == nil {
+		return nil
+	}
+	e, ok := c.Methods[name]
+	if !ok || e.File == nil || e.File.prelude {
+		return nil
+	}
+	return &entry{M: e, Owner: c, Entry: c}
+}
+
+// markerCall is a call on true/false or nil that the program's reopened TrueClass/FalseClass/NilClass answers: MRI
+// picks the method by the value's class, where Boolean would take Object's (decision 241).
+func (f *fctx) markerCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if isNil(recv.typ) {
+		if f.reopenedMarker("NilClass", name) == nil {
+			return expr{}, false
+		}
+		return f.genMethodCall(n, expr{code: "(*NilClass)(nil)", typ: f.cls("NilClass")}, name, args, block), true
+	}
+	if f.inMarker || !isClass(recv.typ, "Boolean") || f.reopenedMarker("TrueClass", name) == nil && f.reopenedMarker("FalseClass", name) == nil {
+		return expr{}, false
+	}
+	arm := func(cls string) expr {
+		if f.reopenedMarker(cls, name) == nil { // Boolean's own answer, past this check
+			f.inMarker = true
+			defer func() { f.inMarker = false }()
+			return f.genMethodCall(n, expr{code: recv.code, typ: recv.typ}, name, args, block)
+		}
+		return f.genMethodCall(n, expr{code: "(*" + cls + ")(nil)", typ: f.cls(cls)}, name, args, block)
+	}
+	rv := f.newTmp()
+	f.emit("%s := %s", rv, recv.code)
+	recv = expr{code: rv, typ: recv.typ}
+	var te, fe expr
+	f.probe(func() { te, fe = arm("TrueClass"), arm("FalseClass") })
+	t, ok := join(te.typ, fe.typ)
+	if !ok {
+		t = TAny{}
+	}
+	out := f.newTmp()
+	f.emit("var %s %s", out, f.c.goType(t))
+	f.emit("if bool(%s) {", rv)
+	f.indent++
+	f.emit("%s = %s", out, f.coerce(n, arm("TrueClass"), t))
+	f.indent--
+	f.emit("} else {")
+	f.indent++
+	f.emit("%s = %s", out, f.coerce(n, arm("FalseClass"), t))
+	f.indent--
+	f.emit("}")
+	return expr{code: out, typ: t}, true
 }
 
 // rubyShapedCall: calls whose MRI result needs another shape than the prelude method's typing gives (decision 241).
@@ -5368,7 +5437,11 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 	tmp := ""
 	if !isVoid(res) || isNil(res) {
 		tmp = f.newTmp()
-		f.emit("var %s %s", tmp, f.c.goType(res))
+		goT := f.c.goType(res)
+		if strings.TrimLeft(goT, "*") == "" { // arms answering nil or void (`pipe&.puts` on an IO or a channel): no Go type of their own
+			goT = "any"
+		}
+		f.emit("var %s %s", tmp, goT)
 	}
 	f.emit("switch %s := %s.(type) {", sw, subj)
 	f.switches++
@@ -5708,8 +5781,33 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 	if _, tv := recv.typ.(TVar); f.lenient() && (isAny(recv.typ) || tv) && dynEnumNames[name] { // untyped, or a gem module's self
 		return f.dynEnumBlock(n, expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}, name, args, block)
 	}
+	if b, ok := block.(*parser.BlockNode); ok && f.lenient() {
+		return f.genDynBlockCall(n, recv, name, args, b)
+	}
 	f.errorf(n, "blocks on untyped receivers are not supported")
 	return expr{}
+}
+
+// genDynBlockCall is a gem's call with a block on an untyped receiver (concurrent-ruby's `synchronize { }` on a mixin's
+// self): the block goes last, as an rbBlockArg each wrapper of a block-taking method of that name adapts (decision 243).
+func (f *fctx) genDynBlockCall(n parser.Node, recv expr, name string, args []parser.Node, b *parser.BlockNode) expr {
+	names := f.blockParamNames(b.Parameters)
+	if slices.ContainsFunc(names, func(s string) bool { return strings.HasPrefix(s, "*") || strings.HasPrefix(s, "(") }) {
+		f.errorf(n, "a block with a rest or destructuring parameter on an untyped receiver is not supported")
+	}
+	if f.c.dynBlockNames == nil {
+		f.c.dynBlockNames = map[string]bool{}
+	}
+	f.c.dynBlockNames[name] = true
+	ps := make([]Type, len(names))
+	vals := make([]string, len(names))
+	for i := range ps {
+		ps[i] = TAny{}
+		vals[i] = fmt.Sprintf("rbArgAt(xs_, %d)", i)
+	}
+	clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
+	arg := fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { return (%s)(%s) }}", clo, strings.Join(vals, ", "))
+	return f.genDynCall(n, recv, name, append(slices.Clone(args), &exprNode{e: expr{code: arg, typ: TAny{}}}))
 }
 
 // dynEnumNames are the Enumerable, Array and Hash methods that take a block and leave their receiver as it is: what
@@ -8244,7 +8342,7 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	}
 	switch n.Name {
 	case "$0", "$PROGRAM_NAME":
-		name := f.c.mainFile.Name
+		name := f.c.programFile.Name
 		f.c.strLits[name] = true
 		return expr{code: strconv.Quote(name), typ: f.cls("String"), lit: true}
 	case "$stdin":
@@ -8973,10 +9071,8 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 		return e, true
 	}
 	f.noteRuntimeRegexp(n)
-	if to := renamedCall(n); to != "" {
-		c := *n
-		c.Name = to
-		return f.genCall(&c, expected), true
+	if e, ok := f.callSugar(n, expected); ok {
+		return e, true
 	}
 	if procLiteral(n.Receiver) && (n.Name == "freeze" || n.Name == "itself") && n.Arguments == nil && n.Block == nil {
 		if _, fn := expected.(TFunc); fn { // `T.let(-> {}.freeze, T.proc.void)`: the lambda at the expected type; freezing a Proc changes nothing it does
@@ -9030,6 +9126,21 @@ func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
 			return
 		}
 	}
+}
+
+// callSugar rewrites a call into the form rb2go compiles (decision 241): `ENV.fetch(k, d)` is `ENV[k] || d` (an ENV
+// value is a String, so this is fetch's answer whatever d is), and renamedCall's.
+func (f *fctx) callSugar(n *parser.CallNode, expected Type) (expr, bool) {
+	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && r.Name == "ENV" && n.Name == "fetch" && len(callArgs(n)) == 2 && n.Block == nil {
+		idx := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: "[]", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: callArgs(n)[:1]}}
+		return f.genExpr(&parser.OrNode{Location: n.Location, Left: idx, Right: callArgs(n)[1]}, expected), true
+	}
+	if to := renamedCall(n); to != "" {
+		c := *n
+		c.Name = to
+		return f.genCall(&c, expected), true
+	}
+	return expr{}, false
 }
 
 // renamedCall is the prelude name a call goes to (decision 241): Thread.fork is MRI's alias of Thread.start (defined as

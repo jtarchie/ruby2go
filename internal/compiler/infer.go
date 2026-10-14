@@ -82,6 +82,10 @@ func (f *File) posKey(off int) string {
 
 // resolvePending types a parameter that has no annotation (resolveMethod).
 func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
+	if hookNames[m.Name] && c.gemFile(m.File) { // a gem hook's base is whichever class or module includes, extends or inherits (decision 241)
+		prm.Type = TAny{}
+		return
+	}
 	prm.Pending = pp.key
 	c.notePending(pp.key)
 	if c.infer != nil {

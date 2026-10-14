@@ -164,6 +164,7 @@ type Method struct {
 	Line            int
 	Scope           []*Class // lexical scope (Module.nesting), innermost last
 	sigText         string
+	declared        bool // a `#:` or Sorbet sig typed it: its param types are the author's, not guessed (decision 241)
 	sig             *rbs.MethodType
 	arms            []*rbs.MethodType // a `.rbs` sig's overloads; sig is their merge, the call site picks one (decision 12)
 	TypeParams      []string
@@ -980,9 +981,8 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 				c.collectModule(ctx, f, n, scope)
 			case *parser.ConstantWriteNode:
 				c.collectBodyConst(ctx, f, n, scope, locals)
-			case *parser.ConstantPathWriteNode: // `::OS_VERSION = v` or `Other::X = v` in a body: that namespace's constant, valued in this scope (decision 241)
-				c.scanAnon(ctx, f, n.Value, scope)
-				c.addConstAt(f, n, c.declName(f, n.Target, scope), n.Value, scope)
+			case *parser.MultiWriteNode, *parser.ConstantPathWriteNode:
+				c.collectBodyWrite(ctx, f, n, scope, locals, loadTime)
 			case *parser.IfNode, *parser.UnlessNode:
 				if ifn, isIf := n.(*parser.IfNode); (!isIf || !ruby2KeywordsShim(ifn)) && loadTime && !declares(n) && !c.folds(f, n, scope) {
 					c.classBodyNode(ctx, f, n, scope, loadTime) // `raise "x" if OS.mac?`: a run-time condition around load-time code
@@ -1810,7 +1810,7 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		if sig == "" {
 			c.errorf(f, n, "overloaded signatures (#|) are not supported")
 		}
-		m.sigText = sig
+		m.sigText, m.declared = sig, true
 	}
 	if m.sigText == "" && cls != nil {
 		m.sigText = protocolSig(n) // `def respond_to_missing?(name, priv)`: Ruby's protocol fixes its types (decision 182)
@@ -4634,4 +4634,39 @@ func (c *Compiler) lookupClassRef(f *File, n parser.Node) *Class {
 		return cls
 	}
 	return nil
+}
+
+// collectBodyWrite is a body's `::X = v` / `Other::X = v` (that namespace's constant, valued in this scope) or
+// `A, B = x, y` (each its own constant when all targets are, else a load-time statement), decision 241.
+func (c *Compiler) collectBodyWrite(ctx context.Context, f *File, n parser.Node, scope []*Class, locals map[string]bool, loadTime bool) {
+	if pw, ok := n.(*parser.ConstantPathWriteNode); ok {
+		c.scanAnon(ctx, f, pw.Value, scope)
+		c.addConstAt(f, pw, c.declName(f, pw.Target, scope), pw.Value, scope)
+		return
+	}
+	mw := n.(*parser.MultiWriteNode) //nolint:forcetypeassert // collectBody's case
+	if ws := constMultiWrite(mw); ws != nil {
+		for _, w := range ws {
+			c.collectBodyConst(ctx, f, w, scope, locals)
+		}
+		return
+	}
+	c.classBodyNode(ctx, f, mw, scope, loadTime)
+}
+
+// constMultiWrite is `A, B = x, y` with constant targets and as many plain values: one constant write each, or nil.
+func constMultiWrite(n *parser.MultiWriteNode) []*parser.ConstantWriteNode {
+	arr, ok := n.Value.(*parser.ArrayNode)
+	if !ok || n.Rest != nil || len(n.Rights) > 0 || len(arr.Elements) != len(n.Lefts) || slices.ContainsFunc(arr.Elements, isSplat) {
+		return nil
+	}
+	out := make([]*parser.ConstantWriteNode, len(n.Lefts))
+	for i, l := range n.Lefts {
+		t, ok := l.(*parser.ConstantTargetNode)
+		if !ok {
+			return nil
+		}
+		out[i] = &parser.ConstantWriteNode{Location: t.Location, Name: t.Name, NameLoc: t.Location, Value: arr.Elements[i]}
+	}
+	return out
 }

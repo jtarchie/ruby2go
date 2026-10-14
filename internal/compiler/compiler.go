@@ -75,6 +75,8 @@ type Compiler struct {
 	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string       // literal → its variable, to share one per pattern
 	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
+	programFile           *File                   // the file $0 names: the main file, or a traced entry's rb2go_main (decision 241)
+	dynBlockNames         map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
 	strLits               map[string]bool         // String literal texts: String#frozen? knows them by identity
 	constList             []*Const
 	hooks                 []classHook // main.rb's inherited/included/extended sites
@@ -398,6 +400,10 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.pruneGemMethods()
 	}
 	c.mainFile = c.userFiles[0]
+	c.programFile = c.mainFile
+	if opts.mainLast { // a traced entry's `rb2go_main:` is the program `ruby` ran: its $0 (decision 197)
+		c.programFile = c.userFiles[len(c.userFiles)-1]
+	}
 	c.nameGo()
 	c.link(ctx)
 	c.checkAbstractIncludes()
