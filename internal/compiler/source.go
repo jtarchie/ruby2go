@@ -42,6 +42,7 @@ type comment struct {
 }
 
 func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, prelude bool) (*File, error) {
+	name = safeName(name)
 	res, err := p.Parse(ctx, src)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)

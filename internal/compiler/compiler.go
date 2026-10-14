@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 	"github.com/jtarchie/ruby2go/internal/boot"
@@ -458,9 +459,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	if ferr != nil {
 		// Keep the raw output around for debugging.
-		tmp := filepath.Join(os.TempDir(), "rb2go-bad-output.go")
-		_ = os.WriteFile(tmp, slices.Concat(src, []byte("\n// ---- tail ----\n"), []byte(c.out.String())), 0o600)
-		return nil, fmt.Errorf("internal error: generated Go does not parse (%w); raw output written to %s", ferr, tmp)
+		return nil, fmt.Errorf("internal error: generated Go does not parse (%w); %s", ferr, dumpBadOutput(slices.Concat(src, []byte("\n// ---- tail ----\n"), []byte(c.out.String()))))
 	}
 	return formatted, nil
 }
@@ -682,8 +681,19 @@ func (c *Compiler) findRequireUncached(required string) string {
 	if preludeLibs[strings.TrimSuffix(required, ".rb")] == "" { // the prelude's lib wins over a gem's copy (base64, forwardable)
 		dirs = append(slices.Clip(dirs), c.gemDirs...)
 	}
+	return resolveOnPath(dirs, name)
+}
+
+// resolveOnPath is the file name (already `.rb`-suffixed, OS separators) names in dirs: an absolute name as itself, as MRI loads it, else its first match that stays inside its dir.
+func resolveOnPath(dirs []string, name string) string {
+	if filepath.IsAbs(name) {
+		dirs = []string{""}
+	}
 	for _, dir := range dirs {
 		target := filepath.Join(dir, name)
+		if dir != "" && !within(dir, target) { // `../x` climbs out of -I and the gem dirs
+			continue
+		}
 		info, err := os.Stat(target)
 		if err == nil && !info.IsDir() {
 			return target
@@ -717,6 +727,45 @@ func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) 
 	c.required[uf] = true
 	c.collect(ctx, uf)
 	return uf
+}
+
+// dumpBadOutput saves unparsable output for debugging in a fresh temp file (a fixed name follows a planted symlink and is shared by concurrent compiles) and says where, or why it could not.
+func dumpBadOutput(raw []byte) string {
+	f, err := os.CreateTemp("", "rb2go-bad-output-*.go")
+	if err != nil {
+		return fmt.Sprintf("raw output not saved: %v", err)
+	}
+	_, werr := f.Write(raw)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return fmt.Sprintf("raw output not saved to %s: %v", f.Name(), werr)
+	}
+	return "raw output written to " + f.Name()
+}
+
+// within reports whether p is dir or under it; a first element merely named `..foo` is inside, only `..` climbs out (ponytail: lexical, symlinks are followed as MRI's $LOAD_PATH does).
+func within(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// safeName is name fit for a `//line` directive and a `//` comment (a newline would land the rest as Go source); File.path keeps the real path for I/O.
+func safeName(name string) string {
+	if !strings.ContainsFunc(name, unsafeNameRune) && utf8.ValidString(name) {
+		return name
+	}
+	return strings.Map(func(r rune) rune {
+		if unsafeNameRune(r) || r == utf8.RuneError {
+			return '_'
+		}
+		return r
+	}, name)
+}
+
+func unsafeNameRune(r rune) bool {
+	return r < 0x20 || (r >= 0x7f && r < 0xa0) || r == 0x2028 || r == 0x2029 || r == 0xfeff
 }
 
 // realPath is name absolute with symlinks resolved, as MRI keys loaded features; name itself when that fails.

@@ -8052,3 +8052,19 @@ resolve; anything not listed is still open.
       v }` on an untyped child sets them.
     - Still one Go type per literal: nothing but data is made at run
       time. `Module.new` stays decision 145's one module per literal.
+260. **Source names are sanitised, the bad-output dump is unique, require stays on the load path** (#101; 2026-10-14).
+    - `parseFile` maps control characters, DEL, C1, U+2028/9, U+FEFF and
+      invalid UTF-8 in a name to `_`. `File.Name` is what `//line`, the
+      `// Code generated ... from` header, errors and `__FILE__` show, so
+      a newline in a file name cannot end a comment and land as Go source.
+      `File.path` keeps the real path for I/O.
+    - Unparsable generated Go is dumped to `os.CreateTemp("",
+      "rb2go-bad-output-*.go")`: a fixed name followed a planted symlink
+      and was shared by concurrent compiles. A failed write is reported
+      in the error, not claimed as written.
+    - `require "x"` on the load path (decisions 131, 173) skips a join
+      that escapes its -I or gem dir (`within(dir, p)`: rel is `..` or
+      begins `../`); an absolute name loads as itself, as MRI does.
+      `gemFile` uses the same test, so a first element named `..foo` is
+      inside. The check is lexical; symlinks are followed.
+    - Proof: `security_test.go` and `paths_test.go` in internal/compiler.

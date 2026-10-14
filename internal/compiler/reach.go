@@ -3,7 +3,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -58,8 +57,7 @@ func (c *Compiler) gemFile(f *File) bool {
 		}
 		gem := false
 		for _, dir := range c.gemDirsReal {
-			rel, err := filepath.Rel(dir, f.path)
-			if err == nil && !strings.HasPrefix(rel, "..") {
+			if within(dir, f.path) {
 				gem = true
 				break
 			}
