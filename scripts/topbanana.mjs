@@ -2,9 +2,10 @@
 // Deploys a dir of text files to a Top Banana site over MCP, its only upload API; the first run signs in through the browser (OAuth PKCE), then reuses the refresh token in ~/.config/rb2go/topbanana.json.
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 
 const BASE = process.env.TOPBANANA_URL || 'https://apps.topbanana.dev';
@@ -13,7 +14,17 @@ const CONFIG = join(homedir(), '.config', 'rb2go', 'topbanana.json');
 
 const b64url = buf => buf.toString('base64url');
 const load = () => { try { return JSON.parse(readFileSync(CONFIG, 'utf8')); } catch { return {}; } };
-const save = cfg => { mkdirSync(join(homedir(), '.config', 'rb2go'), { recursive: true }); writeFileSync(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 }); };
+// The config holds a refresh token. `mode` only applies when a file/dir is created, so chmod explicitly (a pre-existing one may be looser), and rename a 0600 temp file into place so the token is never half-written or under the old mode.
+export function save(cfg, file = CONFIG) {
+  const dir = dirname(file);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+  chmodSync(tmp, 0o600);
+  renameSync(tmp, file);
+}
+const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function form(path, fields) {
   const r = await fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields) });
@@ -33,12 +44,16 @@ async function login(cfg) {
   const challenge = b64url(createHash('sha256').update(verifier).digest());
   const url = `${BASE}/oauth/authorize?` + new URLSearchParams({ response_type: 'code', client_id: cfg.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: 'S256', scope: 'mcp', state });
   const code = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { srv.close(); reject(new Error(`authorize: no sign-in within ${LOGIN_TIMEOUT_MS / 60000} minutes`)); }, LOGIN_TIMEOUT_MS);
     const srv = createServer((req, res) => {
       const q = new URL(req.url, REDIRECT).searchParams;
       if (!req.url.startsWith('/callback')) { res.writeHead(404).end(); return; }
-      res.end(q.get('state') === state && q.get('code') ? 'Signed in; you can close this tab.' : 'Sign-in failed.');
+      // a stray local request with the wrong state must not abort the login: refuse it and keep waiting
+      if (q.get('state') !== state) { res.writeHead(400).end('Bad state.'); return; }
+      res.end(q.get('code') ? 'Signed in; you can close this tab.' : 'Sign-in failed.');
+      clearTimeout(timer);
       srv.close();
-      if (q.get('state') !== state || !q.get('code')) reject(new Error('authorize: bad state or no code')); else resolve(q.get('code'));
+      if (!q.get('code')) reject(new Error(`authorize: ${q.get('error') ?? 'no code'}`)); else resolve(q.get('code'));
     }).listen(8976, '127.0.0.1');
     console.error(`Opening ${url}`);
     execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], () => {});
@@ -98,9 +113,11 @@ async function deploy(slug, dir) {
   console.log(`live: ${site?.url}`);
 }
 
-const [cmd, slug, dir] = process.argv.slice(2);
-if (cmd !== 'deploy' || !slug || !dir) {
-  console.error('usage: node scripts/topbanana.mjs deploy <slug> <dir>');
-  process.exit(2);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { // not when imported by the check
+  const [cmd, slug, dir] = process.argv.slice(2);
+  if (cmd !== 'deploy' || !slug || !dir) {
+    console.error('usage: node scripts/topbanana.mjs deploy <slug> <dir>');
+    process.exit(2);
+  }
+  deploy(slug, dir).catch(e => { console.error(e.message); process.exit(1); });
 }
-deploy(slug, dir).catch(e => { console.error(e.message); process.exit(1); });
