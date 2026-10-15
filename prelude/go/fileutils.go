@@ -140,15 +140,18 @@ func rbMove(src, dst string) error {
 	return os.RemoveAll(src)
 }
 
-// rbTouch creates path if missing, else bumps its mtime/atime to now, like MRI's FileUtils.touch.
-func rbTouch(path string) error {
-	now := time.Now()
-	if err := os.Chtimes(path, now, now); err == nil {
-		return nil
+// rbTouch is FileUtils.touch: sets both times to t, creating path unless nocreate (then a missing path is an error).
+func rbTouch(path string, t time.Time, nocreate bool) error {
+	err := os.Chtimes(path, t, t)
+	if err == nil || nocreate {
+		return err
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o666) //nolint:gosec // MRI's mode; the umask applies
 	if err != nil {
 		return err
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Chtimes(path, t, t)
 }

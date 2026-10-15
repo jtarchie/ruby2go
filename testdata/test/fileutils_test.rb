@@ -101,5 +101,24 @@ module FileUtilsTests
         assert_equal "hello", File.read(File.join(d, "out", "a"))
       end
     end
+
+    def test_touch_mtime_and_nocreate
+      Dir.mktmpdir do |d|
+        f = File.join(d, "a")
+        FileUtils.touch(f, mtime: Time.at(0))
+        assert_equal 0, File.mtime(f).to_i
+        FileUtils.touch([f], mtime: Time.at(86_400))
+        assert_equal 86_400, File.mtime(f).to_i
+        missing = File.join(d, "b")
+        err = begin
+          FileUtils.touch(missing, nocreate: true)
+          nil
+        rescue SystemCallError => e
+          e
+        end
+        assert_equal Errno::ENOENT, err&.class
+        refute File.exist?(missing)
+      end
+    end
   end
 end

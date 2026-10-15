@@ -1606,8 +1606,12 @@ func rbDerefOrNil[T any](p *T) (z T) {
 	return *p
 }
 
-// rbBlockArg is a block passed to a method through a dynamic call, last among its arguments (decision 243).
-type rbBlockArg struct{ fn func(...any) any }
+// rbBlockArg is a block passed to a method through a dynamic call, last among its arguments (decision 243); a bound
+// one (a forwarded `T.proc.bind` &block) takes the self it runs on as its first value (decision 281).
+type rbBlockArg struct {
+	fn    func(...any) any
+	bound bool
+}
 
 // rbBlockArgOf is a method's own optional `&block` passed on to a dynamic call: an rbBlockArg, or one with no fn when
 // the caller gave none.
@@ -1616,6 +1620,14 @@ func rbBlockArgOf(p **func(...any) any) rbBlockArg {
 		return rbBlockArg{}
 	}
 	return rbBlockArg{fn: *(*p)}
+}
+
+// rbBoundArgs is what a bound block's adapter passes on: self first only to a bound rbBlockArg (decision 281).
+func rbBoundArgs(b *rbBlockArg, self any, xs ...any) []any {
+	if b.bound {
+		return append([]any{self}, xs...)
+	}
+	return xs
 }
 
 // rbPopBlock pops a dynamic call's block off its arguments: nil when it passed none.

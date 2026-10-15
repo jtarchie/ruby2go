@@ -184,7 +184,7 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	before, after := f.newTmp(), f.newTmp()
 	f.emit("%s := %s", before, cur())
 	next := f.genExpr(&parser.CallNode{Location: n.Location, Receiver: &exprNode{Node: lv, e: expr{code: before, typ: str}},
-		Name: plain, MessageLoc: n.MessageLoc, Arguments: n.Arguments}, str)
+		Name: plain, MessageLoc: n.MessageLoc, Arguments: n.Arguments, Block: n.Block}, str) // `gsub!(re) { }` keeps its block
 	f.emit("%s := %s", after, f.coerce(n, next, str))
 	write(expr{code: after, typ: str})
 	return expr{code: fmt.Sprintf("rbStrChanged(%s, %s)", before, after), typ: TOpt{Elem: str}}, true

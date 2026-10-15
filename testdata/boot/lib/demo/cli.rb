@@ -1,3 +1,4 @@
+require "json"
 require "sorbet-runtime"
 
 # Homebrew's command DSL: a `T.proc.bind(Parser)` block stored in an ivar, passed on with `&@ivar` and
@@ -291,5 +292,111 @@ module DemoDeep
     h = T.let({ "a" => "x" }, T::Hash[String, T.untyped])
     h["l"] = ["y", 1, { "b" => "z" }]
     [deep(h), deep(3), deep("q")]
+  end
+end
+
+# Homebrew's `def bottle(&block) = stable.bottle(&block)`: a T.proc.bind block forwarded through an untyped receiver (decision 281)
+class DemoBoundBottle
+  extend T::Sig
+
+  attr_reader :root
+
+  sig { params(v: String).void }
+  def root_url(v)
+    @root = v
+  end
+end
+
+class DemoBoundSpec
+  extend T::Sig
+
+  sig { returns(DemoBoundBottle) }
+  def bs = @bs ||= DemoBoundBottle.new
+
+  sig { params(block: T.proc.bind(DemoBoundBottle).void).void }
+  def bottle(&block)
+    bs.instance_eval(&block)
+  end
+end
+
+class DemoBoundFormula
+  class << self
+    extend T::Sig
+
+    sig { params(block: T.nilable(T.proc.bind(DemoBoundSpec).void)).returns(T.untyped) }
+    def stable(&block)
+      @stable ||= DemoBoundSpec.new
+      return @stable unless block
+
+      @stable.instance_eval(&block)
+    end
+
+    sig { params(block: T.proc.bind(DemoBoundBottle).void).void }
+    def bottle(&block) = stable.bottle(&block)
+
+    sig { params(block: T.nilable(T.proc.bind(DemoBoundSpec).void)).returns(T.untyped) }
+    def via(&block) = T.unsafe(self).stable(&block)
+  end
+end
+
+# Homebrew's Formula#initialize: `self.class.instance_method(:brew).owner` on a method whose block is required (decision 281)
+class DemoNeedsBlockBase
+  extend T::Sig
+
+  sig { params(fetch: T::Boolean, _blk: T.proc.params(arg0: DemoNeedsBlockBase, arg1: String).void).void }
+  def brew(fetch: true, &_blk)
+    yield self, "x"
+  end
+
+  def ok? = self.class.instance_method(:brew).owner == DemoNeedsBlockBase
+end
+
+class DemoNeedsBlockSub < DemoNeedsBlockBase; end
+
+# Homebrew's FormulaStruct: a tuple-typed T::Struct prop from parsed JSON, its Hash element converted (decision 281)
+class DemoUrlStruct < T::Struct
+  extend T::Sig
+
+  const :url_args, [String, T::Hash[Symbol, T.anything]], default: ["", {}]
+  const :desc, String
+
+  sig { params(json: String).returns(DemoUrlStruct) }
+  def self.deserialize(json)
+    h = JSON.parse(json)
+    if (args = h["url_args"])
+      h["url_args"] = [args[0], args[1].transform_keys(&:to_sym)]
+    end
+    new(**h.transform_keys(&:to_sym).slice(*decorator.all_props).compact)
+  end
+end
+
+# Homebrew's GitHubPackages.version_rebuild: an Integer param rebound to a String? (decision 281)
+module DemoRebind
+  extend T::Sig
+
+  sig { params(version: String, rebuild: Integer, bottle_tag: T.nilable(String)).returns(String) }
+  def self.version_rebuild(version, rebuild, bottle_tag = nil)
+    bottle_tag = (".#{bottle_tag}" if bottle_tag)
+
+    rebuild = if rebuild.positive?
+      if bottle_tag
+        ".#{rebuild}"
+      else
+        "-#{rebuild}"
+      end
+    end
+
+    "#{version}#{bottle_tag}#{rebuild}"
+  end
+end
+
+# Homebrew's Formulary.class_s: a String bang method with a block (decision 281)
+module DemoClassS
+  def self.class_s(name)
+    class_name = name.capitalize
+    class_name.gsub!(/[-_.\s][a-zA-Z0-9]/) { |matched| matched.chars.fetch(-1).upcase }
+    class_name.tr!("+", "x")
+    class_name.sub!(/(.)@(\d)/, "\\1AT\\2")
+    class_name
   end
 end

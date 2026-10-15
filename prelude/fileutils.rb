@@ -117,16 +117,24 @@ module FileUtils
     }
   }
 
-  #: (String) -> nil
-  def self.touch(path) = %x{
-    if err := rbTouch(string(path)); err != nil {
-      panic(rbSysErr(err, "rb_sysopen", string(path)))
+  #: (String, ?mtime: Time?, ?nocreate: bool) -> nil
+  def self.touch(path, mtime: nil, nocreate: false) = %x{
+    t := time.Now()
+    if mtime != nil {
+      t = (*mtime).t
+    }
+    if err := rbTouch(string(path), t, bool(nocreate)); err != nil {
+      op := "rb_sysopen"
+      if nocreate {
+        op = "apply2files" // MRI's File.utime
+      }
+      panic(rbSysErr(err, op, string(path)))
     }
   }
 
-  #: (Array[String]) -> nil
-  def self.__touch_array(paths)
-    paths.each { |p| touch(p) }
+  #: (Array[String], ?mtime: Time?, ?nocreate: bool) -> nil
+  def self.__touch_array(paths, mtime: nil, nocreate: false)
+    paths.each { |p| touch(p, mtime: mtime, nocreate: nocreate) }
     nil
   end
 

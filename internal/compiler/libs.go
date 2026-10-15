@@ -45,6 +45,7 @@ var preludeLibs = map[string]string{
 	"timeout":          "prelude/timeout.rb",
 	"uri":              "prelude/uri.rb",
 	"ipaddr":           "prelude/ipaddr.rb",
+	"openssl":          "prelude/openssl.rb",
 	"net/http":         "prelude/net_http.rb",
 	"net/https":        "prelude/net_http.rb",
 	"webrick":          "prelude/webrick.rb",
@@ -80,7 +81,7 @@ var mriLibs = map[string]bool{
 	"date_core": true, "delegate": true, "did_you_mean": true, "digest": true, "enc": true, "enumerator": true, "erb": true,
 	"error_highlight": true, "etc": true, "expect": true, "fcntl": true, "fiber": true, "fileutils": true, "find": true,
 	"forwardable": true, "io": true, "ipaddr": true, "json": true, "mkmf": true, "monitor": true, "net": true,
-	"objspace": true, "open-uri": true, "open3": true, "openssl": true, "optionparser": true, "optparse": true,
+	"objspace": true, "open-uri": true, "open3": true, "optionparser": true, "optparse": true,
 	"pathname": true, "pp": true, "prettyprint": true, "prism": true, "psych": true, "pty": true, "random": true,
 	"rational": true, "rbconfig": true, "resolv": true, "ripper": true, "ruby2_keywords": true, "rubygems": true,
 	"securerandom": true, "set": true, "shellwords": true, "singleton": true, "socket": true, "stringio": true,
@@ -177,7 +178,14 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 	}
 	if call, ok := n.(*parser.CallNode); ok && call.Receiver == nil && (call.Name == "require" || call.Name == "require_relative") {
 		if !sc.top && sc.c.methodRequiresRuntime {
-			return // decision 197: resolved at run time against what top-level requires compiled in
+			// decision 197: resolved at run time against what top-level requires compiled in; a prelude library is
+			// compiled in here too, as MRI's trace never loads one a method requires late (Homebrew's openssl, decision 281)
+			if args := callArgs(call); call.Name == "require" && len(args) == 1 {
+				if str, ok := args[0].(*parser.StringNode); ok && preludeLibs[str.Unescaped.Value] != "" {
+					sc.lib(str.Unescaped.Value)
+				}
+			}
+			return
 		}
 		sc.require(f, call, sc.top)
 		return

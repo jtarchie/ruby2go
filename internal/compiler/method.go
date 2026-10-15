@@ -47,11 +47,26 @@ func (f *fctx) methodTarget(n parser.Node, e *entry, name string, public bool) {
 		f.errorf(n, "undefined public method '%s': it is private", name)
 	case m.generic():
 		f.errorf(n, "%s is generic: a Method needs one signature (decision 141)", name)
-	case m.Block != nil && !m.Block.Optional:
+	case needsBlock(m) && !f.lenient():
 		f.errorf(n, "%s takes a block, which Method#call cannot pass (decision 141)", name)
 	case slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword && !p.KwRest && p.Default == nil }):
 		f.errorf(n, "%s has required keywords, which Method#call cannot pass (decision 141)", name)
 	}
+}
+
+// needsBlock reports a method whose block is required: a Method of it (gem code only, Homebrew's
+// `instance_method(:brew).owner`) is built for its reflection, and calling it raises LocalJumpError without running
+// it, as the method would at its first yield (decision 281). ponytail: statements before that yield do not run.
+func needsBlock(m *Method) bool { return m.Block != nil && !m.Block.Optional }
+
+const noBlockDyn = `func(any, ...any) any { panic(NewLocalJumpError(Ref(String("no block given (yield)")))) }`
+
+// noBlockCall is a needsBlock Method's call: its arguments unused.
+func (f *fctx) noBlockCall(args []parser.Node) expr {
+	for _, a := range args {
+		f.emit("_ = %s", a.(*exprNode).e.code)
+	}
+	return expr{code: `panic(NewLocalJumpError(Ref(String("no block given (yield)"))))`, noreturn: true}
 }
 
 // methodFnType is F: the target's required positional parameters and its result, bound by env.
@@ -196,12 +211,18 @@ func (f *fctx) genBoundMethod(n parser.Node, recv expr, name string, public bool
 	ft := f.methodFnType(n, fe, f.callEnv(n, fe, recv), nil)
 	r := f.methodRecv(recv)
 	fn := f.funcClosure(n, ft.Params, ft.Ret, func(args []parser.Node) expr {
+		if needsBlock(fe.M) {
+			return f.noBlockCall(args)
+		}
 		saved := f.implicitCall
 		f.implicitCall = !public
 		defer func() { f.implicitCall = saved }()
 		return f.genMethodCall(n, r, name, args, nil)
 	})
-	dyn := f.dynClosure(e, recv.typ, env, !public, false)
+	dyn := noBlockDyn
+	if !needsBlock(e.M) {
+		dyn = f.dynClosure(e, recv.typ, env, !public, false)
+	}
 	t := TClass{C: mc, Args: []Type{ft}}
 	code := fmt.Sprintf("&%s{fn: Ref(%s), dyn: %s, recv: %s, info: %s}",
 		strings.TrimPrefix(f.c.goType(t), "*"), fn, dyn, f.coerce(n, r, TAny{}), f.boundInfo(n, e, r, name))
@@ -228,9 +249,12 @@ func (f *fctx) genDynMethod(n parser.Node, recv expr, name string, public bool) 
 // genUnboundMethod is Klass.instance_method(:name): UnboundMethod[^(Klass, ...) -> R], a closure taking the receiver first.
 func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bool) expr {
 	meta := f.metaOfType(recv.typ)
-	if meta == nil || !recv.classObj && recv.code != f.selfCode {
-		f.errorf(n, "instance_method needs a class or module constant (decision 141)")
+	if meta == nil {
+		f.errorf(n, "instance_method needs a class or module (decision 141)")
 	}
+	// `self.class.instance_method(:m)` (Homebrew's Formula#initialize): the class is known only at run time, so the
+	// method dispatches through the receiver it is bound to and owner comes from the class object (decision 281)
+	runTime := !recv.classObj && recv.code != f.selfCode
 	cls := meta.metaOf
 	if len(cls.TypeParams) > 0 {
 		f.errorf(n, "%s.instance_method: %s is generic, and an UnboundMethod cannot carry its type arguments; use obj.method(:%s) (decision 141)", cls.RubyName, cls.RubyName, name)
@@ -241,15 +265,23 @@ func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bo
 		f.errorf(n, "undefined method '%s' for class '%s'", name, cls.RubyName)
 	}
 	f.methodTarget(n, e, name, public)
-	if !recv.classObj {
+	var recvTmp string
+	if runTime {
+		recvTmp = f.newTmp()
+		f.emit("%s := %s", recvTmp, recv.code)
+		f.emit("_ = %s", recvTmp) // no subclass may override name
+	} else if !recv.classObj {
 		f.discard(recv)
 	}
 	env := f.callEnv(n, e, expr{typ: self})
 	ft := f.methodFnType(n, e, env, self)
 	m := e.M
-	static := !m.File.isPrelude() && m.Kind == kindDef && m.Owner != nil && m.Owner.isStruct()
+	static := !runTime && !m.File.isPrelude() && m.Kind == kindDef && m.Owner != nil && m.Owner.isStruct()
 	fn := f.funcClosure(n, ft.Params, ft.Ret, func(args []parser.Node) expr {
 		r := args[0].(*exprNode).e
+		if needsBlock(m) {
+			return f.noBlockCall(args)
+		}
 		if static {
 			// MRI binds this definition, not a subclass's override
 			codes, _ := f.genArgs(n, m, env, args[1:], nil)
@@ -260,9 +292,21 @@ func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bo
 		defer func() { f.implicitCall = saved }()
 		return f.genMethodCall(n, r, name, args[1:], nil)
 	})
-	dyn := f.dynClosure(e, self, env, !public, static)
+	dyn := noBlockDyn
+	if !needsBlock(m) {
+		dyn = f.dynClosure(e, self, env, !public, static)
+	}
 	t := TClass{C: f.c.classes["UnboundMethod"], Args: []Type{ft}}
-	code := fmt.Sprintf("&%s{fn: Ref(%s), dyn: %s, info: %s}", strings.TrimPrefix(f.c.goType(t), "*"), fn, dyn, f.methodInfo(n, e))
+	info := f.methodInfo(n, e)
+	if runTime {
+		info = f.switchInfo(n, e, recvTmp, cls, name, func(sub *Class) string {
+			if sub.meta == nil {
+				return ""
+			}
+			return sub.meta.Name
+		})
+	}
+	code := fmt.Sprintf("&%s{fn: Ref(%s), dyn: %s, info: %s}", strings.TrimPrefix(f.c.goType(t), "*"), fn, dyn, info)
 	return expr{code: code, typ: t}
 }
 
@@ -278,6 +322,12 @@ func (f *fctx) boundInfo(n parser.Node, e *entry, r expr, name string) string {
 		}
 	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no subclasses to switch over
 	}
+	return f.switchInfo(n, e, r.code, cls, name, func(sub *Class) string { return sub.Name })
+}
+
+// switchInfo is methodInfo for the definition the run-time class answers: a type switch on code over cls's
+// subclasses that override name, each case typed by goName (the instance's type, or its class object's).
+func (f *fctx) switchInfo(n parser.Node, e *entry, code string, cls *Class, name string, goName func(*Class) string) string {
 	base := f.methodInfo(n, e)
 	if cls == nil || !cls.isStruct() || cls.universal || cls.metaOf != nil || len(cls.TypeParams) > 0 {
 		return base
@@ -289,11 +339,11 @@ func (f *fctx) boundInfo(n parser.Node, e *entry, r expr, name string) string {
 			if sub.metaOf != nil || len(sub.TypeParams) > 0 {
 				continue
 			}
-			if se := sub.lookup(name); se != nil && se.M != e.M {
+			if se := sub.lookup(name); se != nil && se.M != e.M && goName(sub) != "" {
 				info := f.methodInfo(n, se)
-				cases = append(cases, fmt.Sprintf("\tcase *%s:\n\t\treturn %s\n", sub.Name, info))
+				cases = append(cases, fmt.Sprintf("\tcase *%s:\n\t\treturn %s\n", goName(sub), info))
 				if first == nil {
-					first = []string{sub.Name, info}
+					first = []string{goName(sub), info}
 				}
 			}
 			walk(sub)
@@ -304,9 +354,9 @@ func (f *fctx) boundInfo(n parser.Node, e *entry, r expr, name string) string {
 	case 0:
 		return base
 	case 1: // a one-case type switch fails gocritic's singleCaseSwitch
-		return "func() *rbMethodInfo {\n\tif _, ok := any(" + r.code + ").(*" + first[0] + "); ok {\n\t\treturn " + first[1] + "\n\t}\n\treturn " + base + "\n}()"
+		return "func() *rbMethodInfo {\n\tif _, ok := any(" + code + ").(*" + first[0] + "); ok {\n\t\treturn " + first[1] + "\n\t}\n\treturn " + base + "\n}()"
 	}
-	return "func() *rbMethodInfo {\n\tswitch any(" + r.code + ").(type) {\n" + strings.Join(cases, "") + "\t}\n\treturn " + base + "\n}()"
+	return "func() *rbMethodInfo {\n\tswitch any(" + code + ").(type) {\n" + strings.Join(cases, "") + "\t}\n\treturn " + base + "\n}()"
 }
 
 // overloads are a prelude method's twins by argument count (decision 12): `__first_0` for `first`.

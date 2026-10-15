@@ -366,6 +366,10 @@ func (c *Compiler) emitDynName(name string) {
 		c.w("\tif r, ok := rbDynProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
 	}
 	kernel := c.nilKernelBody(name) // built once: a body that cannot cross `any` warns
+	if m := c.classes["NilClass"].Methods[name]; m != nil && m.File != nil && !m.File.isPrelude() {
+		// a reopened NilClass answers nil before Object/Kernel, as markerCall does for a typed nil (decision 281)
+		c.w("\tif recv == nil {\n\t\treturn (*NilClass)(nil).Dyn%s(args...)\n\t}\n", gn)
+	}
 	if v, ok := nilConversions[name]; ok {
 		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
 	} else if kernel != "" {
@@ -730,7 +734,7 @@ func (c *Compiler) dynBlockable(name string, m *Method) bool {
 	if m.Owner != nil && m.Owner.universal {
 		return false
 	}
-	return (c.dynBlockNames[name] || c.dynBlockAll) && (!m.Iterator || !m.hasKeywords()) && m.Block.Self == nil && (!m.Block.Rest || anyRestBlock(m.Block))
+	return (c.dynBlockNames[name] || c.dynBlockAll) && (!m.Iterator || !m.hasKeywords()) && (!m.Block.Rest || anyRestBlock(m.Block))
 }
 
 // anyRestBlock is a gem's unannotated `&block`, `(*untyped) -> untyped`: the dynamic call's rbBlockArg as it is.
@@ -758,7 +762,14 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 		vals[i] = fmt.Sprintf("a%d_", i)
 	}
 	ret := subst(m.Block.Ret, env)
-	body := "blk_.fn(" + strings.Join(vals, ", ") + ")"
+	args := strings.Join(vals, ", ")
+	var self Type
+	if m.Block.Self != nil { // a bound block takes self first; only a bound rbBlockArg runs on it (decision 281)
+		self = subst(m.Block.Self, env)
+		params = append([]string{"self_ " + c.goType(self)}, params...)
+		args = "rbBoundArgs(blk_, " + strings.Join(append([]string{"self_"}, vals...), ", ") + ")..."
+	}
+	body := "blk_.fn(" + args + ")"
 	sig := "func(" + strings.Join(params, ", ") + ")"
 	switch {
 	case isVoid(ret):
@@ -769,13 +780,16 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 		sig += " " + c.goType(ret)
 		body = fmt.Sprintf("return rbAs[%s](%s, %q)", c.goType(ret), body, ret.String())
 	}
-	ft := TFunc{Params: ps, Ret: ret, Proc: true}
+	ft := TFunc{Params: ps, Ret: ret, Proc: true, Self: self}
 	f.emit("blkFn_ := %s {", sig)
 	f.emit("\tif blk_ == nil {")
 	f.emit("\t\tpanic(NewLocalJumpError(Ref(String(\"no block given (yield)\"))))")
 	f.emit("\t}")
 	f.emit("\t%s", body)
 	f.emit("}")
+	if m.Block.Optional { // the method sees no block, as `block_given?` does
+		f.emit("if blk_ == nil {\n\tblkFn_ = nil\n}")
+	}
 	f.emit("_ = blkFn_")
 	return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "(&blkFn_)", typ: ft}}} // a Proc value is boxed: .call derefs it
 }

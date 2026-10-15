@@ -2421,7 +2421,8 @@ func (f *fctx) widenParam(name string, info *localInfo, existing *local, val exp
 	// a Hash[untyped, V] into a Hash[Symbol, V] param fits by a converted copy, which fails on another key (exec3's
 	// `options = options.merge(FD => fd)`): the param widens to the Hash of untyped keys (decision 256)
 	keysWider := hashKeysWider(existing.typ, val.typ)
-	if fitsValue(val, existing.typ) && (!isAny(val.typ) || f.m == nil || f.m.declared) && !keysWider {
+	// fits lets any non-class type through, so a T? is judged by its T (`rebuild = (".#{rebuild}" if x)`, decision 281)
+	if fitsValue(expr{typ: stripOpt(val.typ), lit: val.lit}, existing.typ) && (!isAny(val.typ) || f.m == nil || f.m.declared) && !keysWider {
 		return
 	}
 	w, ok := join(existing.typ, val.typ)
@@ -3476,7 +3477,7 @@ func (c *Compiler) emitSynth(m *Method) {
 	body := fmt.Sprintf("return String(%q)", cls.displayName())
 	if m.Name == "new" {
 		body = "return " + cls.ctorName() + "(" + c.argNames(m) + ")"
-		if cls.isPerRun && cls.lookup("initialize") != nil {
+		if cls.isPerRun {
 			body = "return New" + cls.Name + "In(" + strings.TrimSuffix("self, "+c.argNames(m), ", ") + ")" // the object remembers this class object (decision 259)
 		}
 	}

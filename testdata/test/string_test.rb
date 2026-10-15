@@ -1185,6 +1185,8 @@ B
       assert_equal %w[first o w x], m.names
       assert_equal({ "first" => "ll", "o" => "o", "w" => "w", "x" => nil }, m.named_captures)
       assert_equal ["ll", "o", nil, nil], m.values_at(1, 2, 4, 7)
+      n = "homebrew/core/wget".match(%r{\A(?<user>[^/]+)/(?<repo>[^/]+)/(?<name>\w+)\z})
+      assert_equal ["homebrew", "core", "wget", "homebrew/core/wget"], n&.values_at(:user, "repo", :name, 0)
       assert_equal ["ll", "w", "ll", 2, nil], [m[:first], m["w"], m.match(1), m.match_length(1), m.match_length(4)]
       assert_equal [2, 7, nil], [m.begin(0), m.end(0), m.begin(4)]
       assert_equal [2, 4], m.offset(1)

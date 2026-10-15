@@ -238,8 +238,16 @@ class MatchData < Object
     out
   end
 
-  #: (*Integer) -> Array[String?]
-  def values_at(*idx) = idx.map { |i| self[i] }
+  #: (*(Integer | String | Symbol)) -> Array[String?]
+  def values_at(*idx)
+    idx.map do |i|
+      case i
+      when Integer then self[i]
+      when Symbol then __idx_symbol(i)
+      else __idx_string(i)
+      end
+    end
+  end
 
   #: (Integer) -> String?
   def match(n)

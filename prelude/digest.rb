@@ -129,5 +129,14 @@ module Digest
       }
       panic(NewArgumentError(Ref(String(fmt.Sprintf("unsupported bit length: %d", bitlen)))))
     }
+
+    #: (String) -> String
+    def self.digest(s) = Base.__for("SHA256").update(s).digest
+    #: (String) -> String
+    def self.hexdigest(s) = Base.__for("SHA256").update(s).hexdigest
+    #: (String) -> String
+    def self.base64digest(s) = Base.__for("SHA256").update(s).base64digest
+    #: (String) -> Base
+    def self.file(path) = Base.__for("SHA256").update(File.read(path))
   end
 end

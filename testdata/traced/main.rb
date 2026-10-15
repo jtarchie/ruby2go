@@ -11,3 +11,4 @@ rescue LoadError => e
   p e.message
 end
 p TracedReq.popen_mode
+p TracedReq.late_lib

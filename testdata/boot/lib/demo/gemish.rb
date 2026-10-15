@@ -848,10 +848,27 @@ module DemoFormulary
   end
 end
 
+# no initialize of its own: Class.new's object still makes instances that know it
+class DemoBareFormula
+  class << self
+    attr_accessor :tag
+  end
+
+  def tag = self.class.tag
+end
+
+module DemoBareLoader
+  def self.load(tag)
+    Class.new(DemoBareFormula) do
+      self.tag = tag
+    end
+  end
+end
+
 module DemoAPIRun
   def self.run_api
     a = DemoFormulary.load("wget", DemoFStruct.new("get files", "https://wget", "none"))
     b = DemoFormulary.load("curl", DemoFStruct.new("transfer", "https://curl", nil))
-    [a.new("wget").show, b.new("curl").show, a.desc, b.desc]
+    [a.new("wget").show, b.new("curl").show, a.desc, b.desc, DemoBareLoader.load("x").new.tag, DemoBareLoader.load("y").new.tag]
   end
 end

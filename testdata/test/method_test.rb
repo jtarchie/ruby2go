@@ -322,5 +322,25 @@ module MethodTests
       assert_equal UnboundMethod, String.instance_method(:upcase).class
       assert_kind_of Method, method(:method_twice)
     end
+
+    def test_instance_method_on_run_time_class
+      assert_equal [ImBase, ImB, ImB], [ImA.new.brew_owner, ImB.new.brew_owner, ImC.new.brew_owner]
+      assert_equal [1, 2, 2], [ImA.new.brew_bound, ImB.new.brew_bound, ImC.new.brew_bound]
+    end
   end
+
+  # instance_method on self.class: the class is the receiver's at run time
+  class ImBase
+    def brew = 1
+    def brew_owner = self.class.instance_method(:brew).owner
+    def brew_bound = self.class.instance_method(:brew).bind_call(self)
+  end
+
+  class ImA < ImBase; end
+
+  class ImB < ImBase
+    def brew = 2
+  end
+
+  class ImC < ImB; end
 end

@@ -843,7 +843,11 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	c.emitIvarList(cls)
 	c.emitCopy(cls)
 	c.emitDup(cls)
-	// constructor
+	c.emitCtor(cls)
+}
+
+// emitCtor writes cls's NewX, and NewXIn for a per-run Class.new class (decision 259).
+func (c *Compiler) emitCtor(cls *Class) {
 	if cls.File != nil && !cls.File.isPrelude() && cls.Line > 0 {
 		c.lineDirective(cls.File, cls.Line) // a Go error here names the class, not a line counted on from the last directive
 	}
@@ -861,6 +865,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		}
 	} else {
 		c.w("func %s() *%s { return &%s{} }\n\n", cls.ctorName(), cls.Name, cls.Name)
+		if cls.isPerRun {
+			c.w("func New%sIn(k *%s) *%s { return &%s{rbCls_: k} }\n\n", cls.Name, cls.meta.Name, cls.Name, cls.Name)
+		}
 	}
 }
 
@@ -1673,7 +1680,7 @@ func (c *Compiler) emitTuples() {
 			vals = append(vals, fmt.Sprintf("t.F%d", i))
 			insp = append(insp, fmt.Sprintf("rbInspect(t.F%d)", i))
 			eq = append(eq, fmt.Sprintf("rbEq(t.F%d, o2.F%d)", i, i))
-			from = append(from, fmt.Sprintf("\tif t.F%d, ok = s[%d].(T%d); !ok {\n\t\treturn t, false\n\t}", i, i, i))
+			from = append(from, fmt.Sprintf("\tif t.F%d, ok = rbConv[T%d](s[%d]); !ok {\n\t\treturn t, false\n\t}", i, i, i)) // elements convert as an Array's do
 		}
 		name := fmt.Sprintf("Tuple%d", n)
 		c.w("type %s[%s comparable] struct {\n\t%s\n}\n\n", name, strings.Join(tps, ", "), strings.Join(fields, "\n\t"))

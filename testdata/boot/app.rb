@@ -138,3 +138,12 @@ dd = DemoDelayish.new
 p dd.dupv, dd.value_with(:v)
 dv = DemoVisitor.new
 p dv.collect_yields, dv.as_proc("ab").call, dv.pair
+DemoBoundFormula.bottle { root_url "x" }
+dbr1 = DemoBoundFormula.stable.bs.root
+DemoBoundFormula.via { bottle { root_url "y" } }
+p dbr1, DemoBoundFormula.via.bs.root
+p DemoNeedsBlockSub.new.ok?
+dus = DemoUrlStruct.deserialize('{"desc":"d","url_args":["https://x",{"tag":"v1"}]}')
+p dus.url_args, DemoUrlStruct.deserialize('{"desc":"e"}').url_args
+p DemoRebind.version_rebuild("1.0", 2, "arm"), DemoRebind.version_rebuild("1.0", 0), DemoRebind.version_rebuild("1.0", 3)
+p DemoClassS.class_s("wget"), DemoClassS.class_s("foo-bar@2"), DemoClassS.class_s("a+b")

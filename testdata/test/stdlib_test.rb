@@ -257,6 +257,7 @@ module StdlibTests
       assert_equal true, Digest::SHA2.new(384).hexdigest == Digest::SHA384.hexdigest("")
       assert_equal true, Digest::SHA2.new(512).hexdigest == Digest::SHA512.hexdigest("")
       assert_equal true, Digest::SHA2.new.hexdigest == Digest::SHA256.hexdigest("")
+      assert_equal [Digest::SHA256.hexdigest("x"), 32], [Digest::SHA2.hexdigest("x"), Digest::SHA2.digest("x").bytesize]
       e = assert_raises(ArgumentError) { Digest::SHA2.new(123) }
       assert_equal "unsupported bit length: 123", e.message
       assert_equal "616263", Digest.hexencode("abc")

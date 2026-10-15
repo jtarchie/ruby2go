@@ -517,13 +517,44 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 			if opt && fn.Rest && len(fn.Params) == 1 && isAny(fn.Params[0]) && isAny(fn.Ret) {
 				return "rbBlockArgOf(" + e.code + ")", true
 			}
+			if opt && !fn.Rest {
+				gt := f.c.goType(e.typ)
+				deref := strings.Repeat("*", len(gt)-len(strings.TrimLeft(gt, "*"))) + e.code // a Proc value is boxed again
+				return fmt.Sprintf("func() rbBlockArg {\n\tif %s == nil {\n\t\treturn rbBlockArg{}\n\t}\n\treturn %s\n}()", e.code, f.typedBlockArg(n, deref, fn)), true
+			}
 			return "", false
 		}
 		if opt && fn.Rest && len(fn.Params) == 1 && isAny(fn.Params[0]) && isAny(fn.Ret) {
 			return "rbBlockArg{fn: " + e.code + "}", true
 		}
+		if opt && !fn.Rest {
+			code := e.code
+			if strings.HasPrefix(f.c.goType(e.typ), "*") { // a Proc value is boxed
+				code = "*" + code
+			}
+			return f.typedBlockArg(n, code, fn), true
+		}
 	}
 	return "", false
+}
+
+// typedBlockArg is a method's own typed `&block` passed on to a dynamic call: its values asserted in, a bound block's
+// self first (Homebrew's `def bottle(&block) = stable.bottle(&block)`, a `T.proc.bind`; decision 281).
+func (f *fctx) typedBlockArg(n parser.Node, fnCode string, fn TFunc) string {
+	ps := fn.Params
+	if fn.Self != nil {
+		ps = append([]Type{fn.Self}, ps...)
+	}
+	vals := make([]string, len(ps))
+	for i, p := range ps {
+		vals[i] = f.coerce(n, expr{code: fmt.Sprintf("rbArgAt(xs_, %d)", i), typ: TAny{}}, p)
+	}
+	call := fmt.Sprintf("(%s)(%s)", fnCode, strings.Join(vals, ", "))
+	body := call + "; return nil"
+	if !isVoid(fn.Ret) {
+		body = "return " + f.coerce(n, expr{code: call, typ: fn.Ret}, TAny{})
+	}
+	return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { %s }, bound: %t}", body, fn.Self != nil)
 }
 
 // noteDynAll: a computed name may be any method; from a gem file, or a prelude forwarder (SimpleDelegator's

@@ -6,16 +6,9 @@ require_relative "securerandom"
 require_relative "timeout"
 require_relative "uri"
 require_relative "socket"
+require_relative "openssl_ssl"
 #
 # Net::HTTP's client on Go's net/http: no redirects, every status returned; open_timeout dials, read_timeout bounds the rest of the round trip.
-
-# Only what verify_mode=/open-uri's ssl_verify_mode: take; no OpenSSL itself.
-module OpenSSL
-  module SSL
-    VERIFY_NONE = 0
-    VERIFY_PEER = 1
-  end
-end
 
 module Net
   class OpenTimeout < Timeout::Error; end

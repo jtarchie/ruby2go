@@ -17,4 +17,10 @@ module TracedReq
       "fork-only branch"
     end
   end
+
+  # Homebrew's API.verify_jws_signature: a library required inside a method, after MRI's traced load (decision 281).
+  def self.late_lib
+    require "openssl"
+    OpenSSL::PKey::RSA.name
+  end
 end
