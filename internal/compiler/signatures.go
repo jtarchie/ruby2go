@@ -326,7 +326,7 @@ func (c *Compiler) inferRet(m *Method) {
 		err := catchCompileError(func() { f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil) })
 		if err != nil {
 			c.dropWarnings(nw)
-			m.Ret = TAny{}
+			m.Ret, m.retWhy = TAny{}, "body fails with its parameters untyped (inference round)"
 			return
 		}
 	} else {
@@ -337,7 +337,7 @@ func (c *Compiler) inferRet(m *Method) {
 	if len(ts) == 0 && c.pruneGems && c.gemFile(m.File) && endsInRaise(m.Node.Body) {
 		// a gem's abstract `def synchronize; raise NotImplementedError; end`: what overrides return, whose
 		// inherited signature this is (decision 233)
-		ret = TAny{}
+		ret, m.retWhy = TAny{}, "abstract (raises)"
 	}
 	for i, t := range ts {
 		if isVoid(t) {
@@ -350,11 +350,20 @@ func (c *Compiler) inferRet(m *Method) {
 		j, ok := join(ret, t)
 		if !ok && c.pruneGems && c.gemFile(m.File) { // a gem's method returning an Enumerator or self: untyped (decision 172)
 			j, ok = TAny{}, true
+			m.retWhy = "returns both " + typeString(ret) + " and " + typeString(t)
 		}
 		if !ok {
 			c.errorf(m.File, m.Node, "method %s returns both %s and %s; annotate its return type (`# @rbs return: T`)", m.Name, ret, t)
 		}
 		ret = j
+	}
+	if isAny(ret) && m.retWhy == "" {
+		m.retWhy = "body's value is untyped"
+		if b, ok := m.Node.Body.(*parser.StatementsNode); ok && c.env.UntypedWhy && len(b.Body) > 0 {
+			why := "?"
+			_ = catchCompileError(func() { why = f.untypedWhy(b.Body[len(b.Body)-1], 1) })
+			m.retWhy += ": " + why
+		}
 	}
 	m.Ret = ret
 }

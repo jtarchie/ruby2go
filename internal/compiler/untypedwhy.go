@@ -113,6 +113,9 @@ func (f *fctx) callWhy(n *parser.CallNode, depth int) string {
 	case e.M.declared:
 		return "return: sig untyped"
 	}
+	if e.M.retWhy != "" {
+		return "return: unannotated: " + e.M.retWhy
+	}
 	return "return: unannotated"
 }
 

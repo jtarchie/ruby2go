@@ -158,6 +158,7 @@ type Method struct {
 	Scope       []*Class // lexical scope (Module.nesting), innermost last
 	sigText     string
 	declared    bool // a `#:` or Sorbet sig typed it: its param types are the author's, not guessed (decision 241)
+	retWhy      string // RB2GO_UNTYPED_WHY: why inferRet left the return untyped
 	sig         *rbs.MethodType
 	arms        []*rbs.MethodType // a `.rbs` sig's overloads; sig is their merge, the call site picks one (decision 12)
 	TypeParams  []string
