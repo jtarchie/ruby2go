@@ -1314,6 +1314,17 @@ module StdlibTests
     def shout = "#{__getobj__.upcase}!"
   end
 
+  # wraps the Array its typed initialize hands to super: forwarded calls are typed (decision 284)
+  class DelegNums < SimpleDelegator
+    #: (*Integer) -> void
+    def initialize(*xs)
+      super(xs)
+    end
+
+    #: () -> Array[Integer]
+    def evens = __getobj__.select(&:even?)
+  end
+
   class DelegPt
     attr_reader :x #: Integer
 
@@ -1374,6 +1385,11 @@ module StdlibTests
       assert_equal true, s.respond_to?(:length)
       s.__setobj__("bye")
       assert_equal 3, s.length
+    end
+
+    def test_simple_delegator_typed_by_initialize
+      d = DelegNums.new(1, 2, 3, 4)
+      assert_equal [[2, 4], [1, 3], 4, 10], [d.evens, d.reject(&:even?), d.size, d.sum]
     end
 
     def test_delegate_class
@@ -1924,6 +1940,16 @@ module StdlibTests
 
   # Pathname#open, Dir.mktmpdir without a block or with a prefix, IO#write of several values.
   class StdlibPathOpenTest < Minitest::Test
+    def test_pathname_class_glob
+      Dir.mktmpdir do |d|
+        File.write(File.join(d, "a.txt"), "")
+        File.write(File.join(d, "b.txt"), "")
+        assert_equal %w[a.txt b.txt], Pathname.glob("#{d}/*.txt").map { |x| x.basename.to_s }.sort
+        assert_equal ["a.txt"], Pathname.glob(Pathname(d) / "a*").map { |x| x.basename.to_s }
+        assert_equal [2, 0], [Pathname.glob(["#{d}/a*", "#{d}/b*"]).size, Pathname.glob("#{d}/zz*").size]
+      end
+    end
+
     def test_pathname_open_and_mktmpdir
       d = Pathname(Dir.mktmpdir("stdlibt"))
       assert File.basename(d.to_s).start_with?("stdlibt")

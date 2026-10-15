@@ -210,6 +210,26 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 
 // genMethodCall dispatches a call on an already-generated receiver.
 func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if name == "__getobj__" && len(args) == 0 && block == nil {
+		return f.getobjCall(n, recv)
+	}
+	return f.genMethodCall1(n, recv, name, args, block)
+}
+
+// getobjCall is `__getobj__`, typed by what the delegator wraps when delegateType knows it (decision 284).
+func (f *fctx) getobjCall(n parser.Node, recv expr) expr {
+	x := f.genMethodCall1(n, recv, "__getobj__", nil, nil)
+	cls := classOf(recv.typ)
+	if isSelfVar(recv.typ) {
+		cls = f.owner
+	}
+	if dt := f.c.delegateType(cls); dt != nil && isAny(x.typ) {
+		return expr{code: f.coerce(n, x, dt), typ: dt}
+	}
+	return x
+}
+
+func (f *fctx) genMethodCall1(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	if _, ok := recv.typ.(TVoid); ok { // a void call's value is nil, as in Ruby: run it, then call on nil (decision 119)
 		recv = f.voidAsNil(recv)
 	}
@@ -486,8 +506,74 @@ func (c *Compiler) isDelegator(cls *Class) bool {
 // call on its __getobj__ (decision 118): untyped, so dispatched at run time,
 // for SimpleDelegator; typed for DelegateClass(Foo).
 func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
-	obj := f.genMethodCall(n, recv, "__getobj__", nil, nil)
+	obj := f.genMethodCall(n, recv, "__getobj__", nil, nil) // typed when delegateType knows the wrapped object
 	return f.genMethodCall(n, obj, name, args, block)
+}
+
+// resetsDelegate: cls or a subclass may wrap something else (a subclass's own initialize, a `__setobj__` call).
+func resetsDelegate(cls *Class) bool {
+	family := []*Class{cls}
+	for i := 0; i < len(family); i++ {
+		family = append(family, family[i].Subclasses...)
+	}
+	for _, k := range family {
+		if k != cls && k.Methods["initialize"] != nil {
+			return true
+		}
+		for _, m := range k.MethodList {
+			if m.Node != nil && anyNode(m.Node.Body, func(x parser.Node) bool {
+				call, ok := x.(*parser.CallNode)
+				return ok && call.Name == "__setobj__"
+			}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// delegateType is what a SimpleDelegator subclass wraps, when its own initialize sets it only by `super(p)` from a
+// typed parameter p (a rest parameter wraps Array[T]; Homebrew's `Dependencies#initialize(*args)`) and neither it nor
+// a subclass calls `__setobj__` or defines initialize: nil otherwise, and forwarded calls stay dynamic (decision 118).
+func (c *Compiler) delegateType(cls *Class) Type {
+	if cls == nil || !c.isDelegator(cls) || cls.RubyName == "SimpleDelegator" {
+		return nil
+	}
+	init := cls.Methods["initialize"]
+	if init == nil || init.Node == nil || init.File == nil || init.File.isPrelude() || !init.declared {
+		return nil
+	}
+	setobj := resetsDelegate(cls)
+	var supers []*parser.SuperNode
+	anyNode(init.Node.Body, func(x parser.Node) bool {
+		if sn, ok := x.(*parser.SuperNode); ok {
+			supers = append(supers, sn)
+		}
+		_, fwd := x.(*parser.ForwardingSuperNode)
+		setobj = setobj || fwd
+		return false
+	})
+	if setobj || len(supers) != 1 {
+		return nil
+	}
+	if supers[0].Arguments == nil || len(supers[0].Arguments.Arguments) != 1 {
+		return nil
+	}
+	lv, ok := supers[0].Arguments.Arguments[0].(*parser.LocalVariableReadNode)
+	if !ok {
+		return nil
+	}
+	c.resolveMethod(init)
+	for _, p := range init.Params {
+		switch {
+		case p.Name != lv.Name || isAny(p.Type) || p.Type == nil || p.Keyword:
+		case p.Rest:
+			return TClass{C: c.classes["Array"], Args: []Type{p.Type}}
+		default:
+			return p.Type
+		}
+	}
+	return nil
 }
 
 // classCall dispatches on a class-typed receiver.

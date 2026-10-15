@@ -17,6 +17,14 @@ class Pathname < Object
   #: () -> Pathname
   def self.getwd = pwd
 
+  #: (String | Pathname | Array[String]) -> Array[Pathname]
+  def self.glob(pattern)
+    pats = pattern.is_a?(Array) ? pattern : [pattern.to_s]
+    out = [] #: Array[Pathname]
+    pats.each { |pat| Dir.glob(pat).each { |p| out << Pathname.new(p) } }
+    out
+  end
+
   #: (Pathname) -> Integer
   def <=>(other) = %x{ Integer(strings.Compare(string(self), string(other))) }
 

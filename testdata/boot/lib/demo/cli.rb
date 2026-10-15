@@ -1,3 +1,4 @@
+require "delegate"
 require "json"
 require "sorbet-runtime"
 
@@ -423,3 +424,41 @@ module DemoCvLinux
 end
 
 DemoCvCollector.prepend(DemoCvLinux)
+
+# Homebrew's Dependencies: a SimpleDelegator typed by its initialize's super(args) (decision 284)
+class DemoDlgDep
+  extend T::Sig
+
+  sig { returns(String) }
+  attr_reader :name
+
+  sig { params(name: String, build: T::Boolean).void }
+  def initialize(name, build)
+    @name = name
+    @build = build
+  end
+
+  sig { returns(T::Boolean) }
+  def build? = @build
+end
+
+class DemoDlgDeps < SimpleDelegator
+  extend T::Sig
+
+  sig { params(args: DemoDlgDep).void }
+  def initialize(*args)
+    super(args)
+  end
+
+  sig { returns(T::Array[DemoDlgDep]) }
+  def build
+    __getobj__.select(&:build?)
+  end
+end
+
+module DemoDlg
+  def self.go
+    d = DemoDlgDeps.new(DemoDlgDep.new("a", true), DemoDlgDep.new("b", false))
+    [d.select(&:build?).map(&:name), d.reject(&:build?).map(&:name), d.filter_map { |x| x.name if x.build? }, d.build.size, d.size]
+  end
+end
