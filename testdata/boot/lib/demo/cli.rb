@@ -400,3 +400,26 @@ module DemoClassS
     class_name
   end
 end
+
+# Homebrew's DependencyCollector: @@x set in a prepended module's body, in gem code (decision 281)
+class DemoCvCollector
+  def initialize
+    init!
+  end
+
+  def init!; end
+end
+
+module DemoCvLinux
+  @@building = false
+
+  def building! = @@building = true
+
+  def building? = @@building
+
+  def init!
+    building?
+  end
+end
+
+DemoCvCollector.prepend(DemoCvLinux)

@@ -377,6 +377,8 @@ func (r *reach) walk(n parser.Node, skipDefs bool) {
 		r.consts[*n.Name] = true
 		r.nameConst(n, *n.Name)
 		return
+	case *parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOrWriteNode, *parser.ClassVariableOperatorWriteNode:
+		r.consts[classVarName(n)] = true // a reached method's @@x keeps the body's assignment (decision 281)
 	case *parser.ConstantPathWriteNode: // its target declares
 		r.walk(n.Value, skipDefs)
 		return
@@ -606,4 +608,19 @@ func effectFree(n parser.Node) bool {
 		})
 	}
 	return false
+}
+
+// classVarName is the @@x a class-variable read or write names.
+func classVarName(n parser.Node) string {
+	switch n := n.(type) {
+	case *parser.ClassVariableReadNode:
+		return n.Name
+	case *parser.ClassVariableWriteNode:
+		return n.Name
+	case *parser.ClassVariableOrWriteNode:
+		return n.Name
+	case *parser.ClassVariableOperatorWriteNode:
+		return n.Name
+	}
+	return ""
 }

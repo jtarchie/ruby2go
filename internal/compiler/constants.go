@@ -105,6 +105,9 @@ func (c *Compiler) methodClassVars() {
 			if m.Node == nil || m.File == nil || m.File.isPrelude() {
 				continue
 			}
+			if len(m.Scope) > 0 && m.Scope[len(m.Scope)-1] != owner && m.Scope[len(m.Scope)-1].IsModule {
+				continue // a prepended module's copy: @@x is the module's (Ruby's lexical lookup, decision 281)
+			}
 			anyNode(m.Node.Body, func(n parser.Node) bool {
 				var name string
 				var value parser.Node

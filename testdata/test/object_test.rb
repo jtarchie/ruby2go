@@ -5878,6 +5878,13 @@ module ObjectTests
       assert_equal [false, true], u.values.map(&:object_test_present?)
     end
 
+    def test_prepended_module_class_var
+      c = ObjectCvColl.new
+      first = c.building?
+      c.building!
+      assert_equal [false, true, true], [first, c.building?, ObjectCvColl.new.building?]
+    end
+
     def test_constant_multi_write
       assert_equal [2, 0, 1], [ObjectLogg::WARN, ObjectLogg::DEBUG, ObjectLogg.lvl(:INFO)]
     end
@@ -5928,3 +5935,26 @@ module ObjectTests
     end
   end
 end
+
+# Homebrew's OS::Linux::DependencyCollector: @@x set in a module body, read by its methods once prepended (decision 281)
+class ObjectCvColl
+  def initialize
+    init!
+  end
+
+  def init!; end
+end
+
+module ObjectCvLinux
+  @@object_cv_building = false
+
+  def building! = @@object_cv_building = true
+
+  def building? = @@object_cv_building
+
+  def init!
+    building?
+  end
+end
+
+ObjectCvColl.prepend(ObjectCvLinux)
