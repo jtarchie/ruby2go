@@ -16,6 +16,7 @@ type envConfig struct {
 	KeepGoing     bool   // RB2GO_KEEP_GOING: record a collect error and go on
 	DispatchDebug string // RB2GO_DISPATCH_DEBUG: "all", or any other non-empty value for Kernel/Object/module owners
 	GopoisonDump  string // RB2GO_GOPOISON_DUMP: path prefix for the Go before rejected gem methods become stubs
+	UntypedWhy    bool   // RB2GO_UNTYPED_WHY: each dynamic-call warning names where its untyped receiver came from
 }
 
 func loadEnv() envConfig {
@@ -33,5 +34,6 @@ func loadEnv() envConfig {
 		KeepGoing:     set("RB2GO_KEEP_GOING"),
 		DispatchDebug: os.Getenv("RB2GO_DISPATCH_DEBUG"),
 		GopoisonDump:  os.Getenv("RB2GO_GOPOISON_DUMP"),
+		UntypedWhy:    set("RB2GO_UNTYPED_WHY"),
 	}
 }

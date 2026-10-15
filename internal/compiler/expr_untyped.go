@@ -292,7 +292,11 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 	}
 	f.c.noteDyn(name)
 	if (f.m == nil || !f.m.quietDynamic) && !f.patQuiet && !f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's class is chosen at run time by design (decision 142)
-		f.warn(n, "dynamic call: %s on %s", name, recv.typ)
+		if call, ok := n.(*parser.CallNode); ok && f.c.env.UntypedWhy && isAny(recv.typ) {
+			f.warn(n, "dynamic call: %s on %s [why: %s]", name, recv.typ, f.untypedWhy(call.Receiver, 0))
+		} else {
+			f.warn(n, "dynamic call: %s on %s", name, recv.typ)
+		}
 	}
 	how := "rbCall"
 	call, _ := n.(*parser.CallNode)

@@ -20,6 +20,7 @@ RB2GO_INFER_DEBUG=1 go run ./cmd/rb2go run x.rb    # what each parameter-inferen
 RB2GO_PRUNE_DEBUG=1 go test -run TestBootAutoload .  # gem programs: why each method name was reached, live gem classes (decision 169)
 RB2GO_DISPATCH_DEBUG=1 go run ./cmd/rb2go build x.rb   # why a Kernel/Object name keeps a Go method instead of a type-switch dispatcher (decisions 212-213); =all for every owner
 RB2GO_GEM_WARNINGS=1 go run ./cmd/rb2go gen ...       # also print gem files' warnings (skipped statements, nil constants: decision 205)
+RB2GO_GEM_WARNINGS=1 RB2GO_UNTYPED_WHY=1 go run ./cmd/rb2go gen ...  # each dynamic-call warning names the root of its untyped receiver (sig untyped, widened local, unannotated return, ...)
 RB2GO_BACKTRACE=1 ./prog                       # a built program reports an uncaught exception as MRI does, file:line and from lines (decision 178)
 RB2GO_COST=1 go test -run TestCompileCost -v .    # compiled functions + compile time/memory of 05_word_count, 64_observable, 116_cuba_web (#96); or a comma list of examples
 RB2GO_CPUPROFILE=gen.prof go run ./cmd/rb2go gen x.rb > /dev/null  # CPU profile of the compile itself (go tool pprof -top gen.prof)

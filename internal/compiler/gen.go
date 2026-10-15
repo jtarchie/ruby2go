@@ -69,6 +69,7 @@ type fctx struct {
 	rescues        int             // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
 	paramWiden     map[string]Type // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
+	anyOrigin      map[localKey]string // RB2GO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
 	breakCatch     *breakCatch     // the statement call whose closure block `break`s out of it (decision 241)
 	inMarker       bool            // markerCall's own Boolean arm: past its check (decision 241)
 }
@@ -2389,8 +2390,10 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)
 	}
 	if existing == nil {
+		f.noteAnyOrigin(n, name, val)
 		return f.declareAssign(n, name, typ, val, annotated)
 	}
+	f.noteAnyOrigin(n, name, val)
 	f.widenParam(name, info, existing, val)
 	if info != nil {
 		f.noteReassign(n, name, info, existing, val)
