@@ -488,5 +488,30 @@ module UnionTests
     def test_generic_into_union
       assert_equal ["int 1", "str a"], [union_generic_tag(1), union_generic_tag("a")]
     end
+
+    # an assignment narrows a union local to the value's class until its next write (decision 283)
+    #: (String | Pathname) -> String
+    def union_rebase(src)
+      src = Pathname(src)
+      src = src.dirname / src.basename if src.dirname.to_s != "."
+      src.basename.to_s
+    end
+
+    #: (Integer | String) -> Integer
+    def union_resize(x)
+      x = x.to_s
+      x.size
+    end
+
+    #: (Integer | String, bool) -> String
+    def union_branch(x, flip)
+      x = "s#{x}" if flip
+      x.to_s
+    end
+
+    def test_assignment_narrows
+      assert_equal ["b", "d", 2, 1], [union_rebase("a/b"), union_rebase(Pathname("d")), union_resize(12), union_resize("x")]
+      assert_equal ["s1", "1"], [union_branch(1, true), union_branch(1, false)]
+    end
   end
 end

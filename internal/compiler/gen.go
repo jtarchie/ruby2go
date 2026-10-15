@@ -256,6 +256,7 @@ type local struct {
 	view     string // see expr.view
 	declared bool
 	info     *localInfo // the Ruby local this binds; nil when not tracked
+	assigned bool       // a view narrowAssign made: a Go var a later write of its class updates in place (decision 283)
 }
 
 // owner is the Ruby local v binds, looking through narrowed views.
@@ -726,10 +727,11 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 }
 
 type narrowInfo struct {
-	local *local
-	typ   Type
-	code  string // Go expression for the narrowed view; "" means deref
-	view  string // see expr.view
+	local    *local
+	typ      Type
+	code     string // Go expression for the narrowed view; "" means deref
+	view     string // see expr.view
+	assigned bool   // see local.assigned
 }
 
 // applyNarrow shadows narrowed locals in the current scope.
@@ -743,7 +745,7 @@ func (f *fctx) applyNarrow(ns []narrowInfo) {
 		if code == "" {
 			code = "(*" + nw.local.goName + ")"
 		}
-		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: code, typ: nw.typ, base: base, view: nw.view, declared: true}
+		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: code, typ: nw.typ, base: base, view: nw.view, declared: true, assigned: nw.assigned}
 	}
 }
 
@@ -2380,6 +2382,9 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		}
 	}
 	narrowed := existing != nil && existing.base != nil
+	if e, ok := f.reassignView(n, name, info, existing, val, annotated); ok {
+		return e
+	}
 	if narrowed {
 		existing = existing.base
 	}
@@ -2410,7 +2415,79 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 			return expr{code: "(*" + existing.goName + ")", typ: stripOpt(existing.typ), stmt: true, done: true}
 		}
 	}
+	if e, ok := f.narrowAssign(existing, val); ok {
+		return e
+	}
 	return f.narrowSet(existing, val)
+}
+
+// reassignView writes a narrowAssign view's class again: the view stays, its var takes the value too (decision 283).
+func (f *fctx) reassignView(n parser.Node, name string, info *localInfo, view *local, val expr, annotated Type) (expr, bool) {
+	if view == nil || view.base == nil || !view.assigned || !typeEq(view.typ, val.typ) || annotated != nil {
+		return expr{}, false
+	}
+	if info != nil {
+		f.noteReassign(n, name, info, view.base, val)
+	}
+	f.emit("%s = %s", view.goName, f.coerce(n, val, view.typ))
+	f.emit("%s = %s", view.base.goName, f.coerce(n, expr{code: view.goName, typ: view.typ}, view.base.typ))
+	f.emit("_ = %s", view.base.goName) // later reads may all go through the view
+	return expr{code: view.goName, typ: view.typ, stmt: true, done: true}, true
+}
+
+// narrowAssign: `x = v` into a union local, v of one class that fits it, leaves x that class until its next write
+// or the end of the scope (`src = Pathname(src)` with src: String | Pathname, then `src.dirname`), one Go assertion
+// here instead of a type switch or a dynamic call at each use (decision 283). Not when a block or lambda writes x,
+// which would leave the view stale.
+func (f *fctx) narrowAssign(v *local, val expr) (expr, bool) {
+	u, ok := v.typ.(TUnion)
+	if !ok || isAny(val.typ) || isNil(val.typ) || isUnion(val.typ) || isOpt(val.typ) || !fitsValue(val, u) {
+		return expr{}, false
+	}
+	if _, cls := val.typ.(TClass); !cls || f.m == nil || f.m.Node == nil || writtenInBlock(f.m.Node.Body, v.name, false) {
+		return expr{}, false
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s.(%s)", tmp, v.goName, f.c.goType(val.typ))
+	f.emit("_ = %s", tmp)
+	f.applyNarrow([]narrowInfo{{local: v, typ: val.typ, code: tmp, assigned: true}})
+	return expr{code: tmp, typ: val.typ, stmt: true, done: true}, true
+}
+
+// writtenInBlock reports an assignment to local name inside a block or lambda of n.
+func writtenInBlock(n parser.Node, name string, inBlock bool) bool {
+	switch x := n.(type) {
+	case nil, *parser.DefNode:
+		return false
+	case *parser.BlockNode, *parser.LambdaNode:
+		inBlock = true
+	case *parser.LocalVariableWriteNode:
+		if inBlock && x.Name == name {
+			return true
+		}
+	case *parser.LocalVariableOperatorWriteNode:
+		if inBlock && x.Name == name {
+			return true
+		}
+	case *parser.LocalVariableOrWriteNode:
+		if inBlock && x.Name == name {
+			return true
+		}
+	case *parser.LocalVariableAndWriteNode:
+		if inBlock && x.Name == name {
+			return true
+		}
+	case *parser.LocalVariableTargetNode:
+		if inBlock && x.Name == name {
+			return true
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if writtenInBlock(ch, name, inBlock) {
+			return true
+		}
+	}
+	return false
 }
 
 // widenParam notes a gem method's param given what its type does not hold (`rebuild = ".#{rebuild}"` for an Integer):
@@ -2452,8 +2529,12 @@ func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existin
 		if hashKeysWider(info.typ, val.typ) && f.lenient() { // `opts = opts.merge(198 => io)`: the Hash of untyped keys (decision 257)
 			info.typ = val.typ
 		} else if j, ok := join(info.typ, val.typ); ok {
+			if isAny(j) && !isAny(info.typ) {
+				f.noteAnyJoin(n, name)
+			}
 			info.typ = j
 		} else if !isVoid(val.typ) && f.lenient() { // a gem's local holding Array[Formula] and Array[Formula | Keg]: untyped (decision 233)
+			f.setAnyOrigin(name, "mixed: "+typeString(info.typ)+" / "+typeString(val.typ))
 			info.typ = TAny{}
 		} else if !isVoid(val.typ) {
 			f.errorf(n, "%s is assigned both %s and %s", name, info.typ, val.typ)

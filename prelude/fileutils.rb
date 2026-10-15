@@ -117,8 +117,16 @@ module FileUtils
     }
   }
 
-  #: (String, ?mtime: Time?, ?nocreate: bool) -> nil
-  def self.touch(path, mtime: nil, nocreate: false) = %x{
+  # One method, not class twins: a dynamic call's wrapper cannot pass a twin its keywords.
+  #: (String | Pathname | Array[String], ?mtime: Time?, ?nocreate: bool) -> nil
+  def self.touch(list, mtime: nil, nocreate: false)
+    paths = list.is_a?(Array) ? list : [list.to_s]
+    paths.each { |p| __touch1(p, mtime, nocreate) }
+    nil
+  end
+
+  #: (String, Time?, bool) -> nil
+  def self.__touch1(path, mtime, nocreate) = %x{
     t := time.Now()
     if mtime != nil {
       t = (*mtime).t
@@ -131,12 +139,6 @@ module FileUtils
       panic(rbSysErr(err, op, string(path)))
     }
   }
-
-  #: (Array[String], ?mtime: Time?, ?nocreate: bool) -> nil
-  def self.__touch_array(paths, mtime: nil, nocreate: false)
-    paths.each { |p| touch(p, mtime: mtime, nocreate: nocreate) }
-    nil
-  end
 
   #: (String, String) -> nil
   def self.ln_s(src, dest)

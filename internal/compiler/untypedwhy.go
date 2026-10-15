@@ -19,7 +19,7 @@ func (f *fctx) noteAnyOrigin(n parser.Node, name string, val expr) {
 		return
 	}
 	k := f.localKey(name)
-	if _, seen := f.anyOrigin[k]; seen {
+	if why, seen := f.anyOrigin[k]; seen && why != "" {
 		return
 	}
 	var why string
@@ -121,4 +121,22 @@ func typeString(t Type) string {
 		return "?"
 	}
 	return t.String()
+}
+
+// setAnyOrigin records why for local name, when RB2GO_UNTYPED_WHY is on.
+func (f *fctx) setAnyOrigin(name, why string) {
+	if !f.c.env.UntypedWhy {
+		return
+	}
+	if f.anyOrigin == nil {
+		f.anyOrigin = map[localKey]string{}
+	}
+	f.anyOrigin[f.localKey(name)] = why
+}
+
+// noteAnyJoin records a pass-1 write that turned local name untyped.
+func (f *fctx) noteAnyJoin(n parser.Node, name string) {
+	if w, ok := n.(*parser.LocalVariableWriteNode); ok && f.c.env.UntypedWhy {
+		f.setAnyOrigin(name, "pass-1 untyped write: "+f.untypedWhy(w.Value, 1))
+	}
 }
