@@ -386,6 +386,29 @@ func protocolSig(n *parser.DefNode) string {
 	return ""
 }
 
+// superPassesLocals: every super in body is a zsuper or passes only locals (each maybe splatted), so the parameters
+// mean what the parent's do.
+func superPassesLocals(body parser.Node) bool {
+	return !anyNode(body, func(x parser.Node) bool {
+		sup, ok := x.(*parser.SuperNode)
+		if !ok || sup.Arguments == nil {
+			return false
+		}
+		for _, a := range sup.Arguments.Arguments {
+			if sp, ok := a.(*parser.SplatNode); ok {
+				if sp.Expression == nil { // super(*)
+					continue
+				}
+				a = sp.Expression
+			}
+			if _, ok := a.(*parser.LocalVariableReadNode); !ok {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 // inheritSignature copies the signature of the method m overrides, if any.
 func (c *Compiler) inheritSignature(m *Method) bool {
 	if m.Owner == nil {
@@ -398,6 +421,9 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	c.resolveMethod(e.M)
 	if !c.sameParamShape(m, e.M) { // `def initialize = super(4)`: its own parameters, typed as any def's (decision 146)
 		return false
+	}
+	if m.Name == "initialize" && m.Node != nil && !superPassesLocals(m.Node.Body) {
+		return false // `def initialize(executor) = super(Event.new(executor))`: same shape, other meaning (decision 286)
 	}
 	m.inherited = e.M
 	m.TypeParams = e.M.TypeParams

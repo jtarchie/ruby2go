@@ -177,4 +177,42 @@ module InferTests
                    [infer_three(*xs), infer_three(0, *[5]), infer_three(*[7]), e.message]
     end
   end
+
+  # An unannotated initialize inherits its parent's signature only when its super passes its own parameters through
+  # (decision 286): Imm's `name` is a String, not the parent's Ev.
+  class InitEv
+    #: (String) -> void
+    def initialize(name)
+      @name = name
+    end
+
+    def label = "ev #{@name}"
+  end
+
+  class InitBase
+    #: (InitEv) -> void
+    def initialize(ev)
+      @ev = ev
+    end
+
+    def label = @ev.label
+  end
+
+  class InitImm < InitBase
+    def initialize(name)
+      super(InitEv.new(name))
+    end
+  end
+
+  class InitPass < InitBase
+    def initialize(ev)
+      super(ev)
+    end
+  end
+
+  class InitInheritTest < Minitest::Test
+    def test_initialize_inherits_only_through_a_passing_super
+      assert_equal ["ev x", "ev y"], [InitImm.new("x").label, InitPass.new(InitEv.new("y")).label]
+    end
+  end
 end

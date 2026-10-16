@@ -47,19 +47,19 @@ module Concurrent
       end
 
       class Fulfilled < ResolvedWithResult
-        def apply: (Array[untyped], Proc) -> untyped
+        def apply: (Array[untyped], untyped) -> untyped
       end
 
       class FulfilledArray < Fulfilled
-        def apply: (Array[untyped], Proc) -> untyped
+        def apply: (Array[untyped], untyped) -> untyped
       end
 
       class Rejected < ResolvedWithResult
-        def apply: (Array[untyped], Proc) -> untyped
+        def apply: (Array[untyped], untyped) -> untyped
       end
 
       class PartiallyRejected < ResolvedWithResult
-        def apply: (Array[untyped], Proc) -> untyped
+        def apply: (Array[untyped], untyped) -> untyped
       end
     end
 
@@ -73,23 +73,24 @@ module Concurrent
       def pending?: () -> bool
       def state: () -> Symbol
       def touch: () -> self
-      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], untyped) -> untyped
     end
 
     class Event
-      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], untyped) -> untyped
     end
 
     class Future
-      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
-      def callback_on_fulfillment: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
-      def callback_on_rejection: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], untyped) -> untyped
+      def callback_on_fulfillment: (InternalStates::ResolvedWithResult, Array[untyped], untyped) -> untyped
+      def callback_on_rejection: (InternalStates::ResolvedWithResult, Array[untyped], untyped) -> untyped
       def rejected_resolution: (bool, InternalStates::ResolvedWithResult) -> false
     end
 
     class AbstractPromise
       @Future: AbstractEventFuture
 
+      def initialize: (AbstractEventFuture) -> void
       def future: () -> AbstractEventFuture
       def event: () -> AbstractEventFuture
       def state: () -> Symbol
