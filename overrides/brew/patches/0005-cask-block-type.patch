@@ -1,0 +1,15 @@
+Subject: Cask: type @block as the block initialize takes
+
+It was T.untyped; initialize's sig already says T.nilable(T.proc.bind(DSL).void).
+---
+--- a/Library/Homebrew/cask/cask.rb
++++ b/Library/Homebrew/cask/cask.rb
+@@ -113,7 +113,7 @@
+       @loader = loader
+       # Sorbet has trouble with bound procs assigned to instance variables:
+       # https://github.com/sorbet/sorbet/issues/6843
+-      @block = T.let(block, T.untyped)
++      @block = T.let(block, T.nilable(T.proc.bind(DSL).void))
+ 
+       @default_config = T.let(config || Config.new, Config)
+ 

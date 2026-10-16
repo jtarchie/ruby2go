@@ -1,0 +1,27 @@
+Subject: ELFPathname.wrap: a Pathname subclass instead of Object#extend
+
+Per-object extend needs a singleton class per path; a subclass does the same with an ordinary class.
+---
+--- a/Library/Homebrew/extend/os/linux/extend/pathname.rb
++++ b/Library/Homebrew/extend/os/linux/extend/pathname.rb
+@@ -4,14 +4,17 @@
+ require "os/linux/elf"
+ 
+ module ELFPathname
++  # A `Pathname` that can read ELF metadata, instead of extending each instance with `ELFShim`.
++  class Path < ::Pathname
++    include ELFShim
++  end
++
+   module ClassMethods
+     sig { params(path: T.any(Pathname, String, ELFShim)).returns(ELFShim) }
+     def wrap(path)
+       return path if path.is_a?(ELFShim)
+ 
+-      path = ::Pathname.new(path)
+-      path.extend(ELFShim)
+-      T.cast(path, ELFShim)
++      Path.new(path)
+     end
+   end
+ 

@@ -1,0 +1,20 @@
+#!/bin/bash
+# host: cross-build work/<name>.go into work/<name>-bin. Killed past 14 GB RSS.
+# -c=4, no GOMEMLIMIT: a 4 GiB limit under a ~6 GB live heap keeps the GC running nonstop (654 s vs 95 s).
+set -u
+cd "$(dirname "$0")/work"
+name=$1 d=$PWD/build-$1; rm -rf "$d"; mkdir -p "$d"
+cp "$name.go" "$d/main.go"
+printf 'module gen\n\ngo 1.24\n\nrequire github.com/dlclark/regexp2 v1.12.0\n' > "$d/go.mod"
+grep '^github.com/dlclark/regexp2 v1.12.0' ../../../go.sum > "$d/go.sum"
+start=$(date +%s)
+( cd "$d" && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 GOFLAGS= go build -p 2 -trimpath -gcflags="all=-dwarf=false -c=4" -ldflags='-s -w' -o "../$name-bin" . ) > "$name-build.log" 2>&1 &
+pid=$!; peak=0
+while kill -0 $pid 2>/dev/null; do
+  rss=$(ps -A -o rss=,command= | grep -E '/compile |/link |go build' | grep -v grep | awk '{s+=$1} END{print s+0}')
+  [ "$rss" -gt "$peak" ] && peak=$rss
+  if [ "$rss" -gt 14680064 ]; then pkill -f 'go-build.*/compile|/link '; kill $pid; echo "KILLED at ${rss}kB"; rm -f "$name-bin"; fi
+  sleep 2
+done
+wait $pid; code=$?
+echo "build exit $code elapsed $(( $(date +%s)-start ))s peakRSS ${peak}kB"; tail -20 "$name-build.log"

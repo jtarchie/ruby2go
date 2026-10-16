@@ -1,0 +1,8 @@
+#!/bin/bash
+# host: cross-build rb2go, then generate work/<name>.go from entries/<name>.rb in the container.
+# usage: ./gen info
+set -e
+cd "$(dirname "$0")"; mkdir -p work
+(cd ../.. && GOOS=linux GOARCH=arm64 go build -o overrides/brew/work/rb2go ./cmd/rb2go)
+docker run --rm -m 10g -e RB2GO_GEM_WARNINGS -e RB2GO_UNTYPED_WHY -v "$PWD:/w" -v rb2go-gocache:/home/linuxbrew/.cache \
+  rb2go-brew-dev bash -c "sudo chown -R linuxbrew /home/linuxbrew/.cache 2>/dev/null; timeout 1800 /w/tools/gen-in-container.sh $1"

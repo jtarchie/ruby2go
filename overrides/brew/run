@@ -1,0 +1,8 @@
+#!/bin/bash
+# host: run work/<name>-bin in the container as brew's launcher runs brew.rb. usage: ./run info info wget
+cd "$(dirname "$0")"
+bin=$1; shift
+docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
+while IFS= read -r line; do export "$line"; done < /w/env.txt
+cd /home/linuxbrew
+exec env RB2GO_BACKTRACE=1 timeout 300 /w/work/'"$bin"'-bin "$@" 2>&1' _ "$@"

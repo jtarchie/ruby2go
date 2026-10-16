@@ -1,0 +1,15 @@
+Subject: Ld.ld_so_diagnostics: key the cache by ::Pathname
+
+Inside OS::Linux, a bare Pathname is OS::Linux::Pathname (the ClassMethods module), so the T.let named the wrong type.
+---
+--- a/Library/Homebrew/os/linux/ld.rb
++++ b/Library/Homebrew/os/linux/ld.rb
+@@ -53,7 +53,7 @@
+ 
+       sig { params(brewed: T::Boolean).returns(String) }
+       def self.ld_so_diagnostics(brewed: true)
+-        @ld_so_diagnostics ||= T.let({}, T.nilable(T::Hash[Pathname, T.nilable(String)]))
++        @ld_so_diagnostics ||= T.let({}, T.nilable(T::Hash[::Pathname, T.nilable(String)]))
+ 
+         ld_so_target = if brewed
+           ld_so = HOMEBREW_PREFIX/"lib/ld.so"

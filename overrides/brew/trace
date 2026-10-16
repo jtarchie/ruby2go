@@ -1,0 +1,14 @@
+#!/bin/bash
+# host: record what MRI loads for `brew <args>` (patched, spawn mode) and write entries/<name>.rb from it (decision 197).
+# usage: ./trace info info wget
+cd "$(dirname "$0")"; mkdir -p work
+name=$1; shift
+docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
+while IFS= read -r line; do export "$line"; done < /w/env.txt
+for p in /w/patches/*.patch; do git -C /home/linuxbrew/.linuxbrew/Homebrew apply "$p" || exit 1; done
+R=$HOMEBREW_RUBY_PATH
+mv "$R" "$R.real"; printf "#!/bin/bash\nexec %s -r/w/tools/trace.rb \"\$@\"\n" "$R.real" > "$R"; chmod +x "$R"
+rm -f /w/work/loaded.*.txt
+cd /home/linuxbrew && /home/linuxbrew/.linuxbrew/bin/brew "$@" > /dev/null 2>&1
+f=$(grep -l -m1 "^$HOMEBREW_LIBRARY/Homebrew/brew.rb\$" /w/work/loaded.*.txt | head -1)
+"$R.real" /w/tools/gen_entry.rb "$f" "$HOMEBREW_LIBRARY/Homebrew/brew.rb" "$*" > /w/entries/'"$name"'.rb && echo "wrote entries/'"$name"'.rb from $f"' _ "$@"

@@ -1,0 +1,15 @@
+Subject: Ld.ld_so_diagnostics: pass ld.so as a String
+
+exec takes no Pathname (TypeError), so in the fork path the child died and the diagnostics were always empty; in HOMEBREW_SPAWN_SYSTEM mode it raised.
+---
+--- a/Library/Homebrew/os/linux/ld.rb
++++ b/Library/Homebrew/os/linux/ld.rb
+@@ -68,7 +68,7 @@
+         end
+ 
+         @ld_so_diagnostics[ld_so_target] ||= begin
+-          ld_so_output = Utils.popen_read(ld_so, "--list-diagnostics")
++          ld_so_output = Utils.popen_read(ld_so.to_s, "--list-diagnostics")
+           ld_so_output if $CHILD_STATUS.success?
+         end
+ 

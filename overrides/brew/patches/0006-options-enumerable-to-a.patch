@@ -1,0 +1,33 @@
+Subject: Options: set operators take any Enumerable through to_a
+
+The sigs take T::Enumerable[Option] (an Options, an Array, a Set); Set's own operators are typed for an Array or Set.
+---
+--- a/Library/Homebrew/options/options.rb
++++ b/Library/Homebrew/options/options.rb
+@@ -45,22 +45,22 @@
+ 
+   sig { params(other: T::Enumerable[Option]).returns(T.self_type) }
+   def +(other)
+-    self.class.new(@options + other)
++    self.class.new(@options + other.to_a)
+   end
+ 
+   sig { params(other: T::Enumerable[Option]).returns(T.self_type) }
+   def -(other)
+-    self.class.new(@options - other)
++    self.class.new(@options - other.to_a)
+   end
+ 
+   sig { params(other: T::Enumerable[Option]).returns(T.self_type) }
+   def &(other)
+-    self.class.new(@options & other)
++    self.class.new(@options & other.to_a)
+   end
+ 
+   sig { params(other: T::Enumerable[Option]).returns(T.self_type) }
+   def |(other)
+-    self.class.new(@options | other)
++    self.class.new(@options | other.to_a)
+   end
+ 
+   sig { params(other: String).returns(String) }

@@ -1,0 +1,35 @@
+Subject: Utils.popen: a missing command is empty output in HOMEBREW_SPAWN_SYSTEM mode too
+
+The fork path turns exec's ENOENT into exit 127 in the child, so popen_read returns ""; the spawn path raised it. `brew info wget` failed in spawn mode on Glibc.version's opt/glibc/bin/ldd.
+---
+--- a/Library/Homebrew/utils/popen.rb
++++ b/Library/Homebrew/utils/popen.rb
+@@ -105,14 +105,21 @@
+     if ENV["HOMEBREW_SPAWN_SYSTEM"] == "1"
+       options[:err] = [:child, :out] if options[:err] == :out
+       options[:err] ||= File::NULL unless ENV["HOMEBREW_STDERR"]
+-      IO.popen(args, mode, options.merge(pgroup: true)) do |pipe|
+-        return pipe.read unless block_given?
++      begin
++        IO.popen(args, mode, options.merge(pgroup: true)) do |pipe|
++          return pipe.read unless block_given?
+ 
+-        return yield pipe
+-      # Include Timeout's internal exception so IO.popen cannot block its delivery.
+-      rescue Exception # rubocop:disable Lint/RescueException
+-        terminate_popen_child(pipe)
+-        raise
++          return yield pipe
++        # Include Timeout's internal exception so IO.popen cannot block its delivery.
++        rescue Exception # rubocop:disable Lint/RescueException
++          terminate_popen_child(pipe)
++          raise
++        end
++      rescue Errno::ENOENT, Errno::EACCES
++        # As the fork path below: a command that cannot run is empty output, not an exception.
++        raise if block_given?
++
++        return ""
+       end
+     end
+ 
