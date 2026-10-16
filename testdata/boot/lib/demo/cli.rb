@@ -643,6 +643,48 @@ module DemoSharedIvar
   end
 end
 
+# Homebrew's cask loader: a computed public_send of each stanza, its block a Proc or nil held untyped (decision 295)
+class DemoStanzas
+  def initialize
+    @log = []
+  end
+
+  def app(name, target: nil)
+    @log << "app #{name} #{target.inspect}"
+  end
+
+  def caveats(&block)
+    @log << "caveats #{block ? block.call : "none"}"
+  end
+
+  extend T::Sig
+
+  Row = T.type_alias { [Symbol, T::Array[T.anything], T::Hash[Symbol, T.anything], T.nilable(T.proc.returns(T.untyped))] }
+
+  sig { params(rows: T::Array[Row]).returns(T::Array[String]) }
+  def run(rows)
+    rows.each do |key, args, kwargs, block|
+      public_send(key, *args, **kwargs, &block)
+    end
+    @log
+  end
+end
+
+# Homebrew's os/linux.rb `keys = locale_variables.select { |var| ENV.fetch(var) }`: a predicate block's value is its
+# truthiness (decision 295)
+module DemoTruthySelect
+  def self.go
+    env = { "LANG" => "C", "LC_ALL" => "" }
+    %w[LANG LC_ALL].select { |var| env.fetch(var) }
+  end
+end
+
+module DemoComputedSendBlock
+  def self.go
+    DemoStanzas.new.run([[:app, ["Firefox.app"], { target: "x" }, nil], [:caveats, [], {}, proc { "hi" }], [:caveats, [], {}, nil]])
+  end
+end
+
 # Homebrew's Dependencies: a SimpleDelegator over an Array, reached through untyped code with a block (decision 293)
 class DemoDeps < SimpleDelegator
   extend T::Sig
@@ -705,6 +747,110 @@ end
 
 class TrueClass
   def demo_present? = true
+end
+
+# Homebrew's CaskStruct.from_hash: `compact_blank` keeps a Symbol value (`sha256: :no_check`); Symbol answers its own
+# blank? through an untyped value (decision 295)
+class Symbol
+  def demo_blank2? = empty?
+end
+
+class String
+  def demo_blank2? = strip.empty?
+end
+
+class Object
+  def demo_blank2? = respond_to?(:empty?) ? !!empty? : false
+end
+
+# Homebrew's LazyObject: a Delegator whose own __getobj__ evaluates a block once; splatted and called through untyped
+# code it stands for that value (Cask::Config#languages, decision 295)
+class DemoLazy < Delegator
+  def initialize(&callable)
+    @callable = callable
+    @set = false
+    @obj = nil
+    super(callable)
+  end
+
+  def __getobj__(&_blk)
+    return @obj if @set
+
+    @obj = @callable.call
+    @set = true
+    @obj
+  end
+
+  def __setobj__(callable)
+    @callable = callable
+  end
+end
+
+# Homebrew's Cask::DSL#set_unique_stanza: a generic method returns an ivar read by a computed name as its U, which a
+# caller binds to a class's T? (decision 295)
+class DemoStanzaVersion
+  extend T::Sig
+
+  sig { params(v: String).void }
+  def initialize(v) = @v = v
+
+  sig { returns(String) }
+  def to_s = @v
+end
+
+class DemoStanzaDSL
+  extend T::Sig
+
+  sig { void }
+  def initialize
+    @version = T.let(nil, T.nilable(DemoStanzaVersion))
+  end
+
+  T::Sig::WithoutRuntime.sig {
+    type_parameters(:U).params(stanza: Symbol, should_return: T::Boolean, _block: T.proc.returns(T.type_parameter(:U)))
+      .returns(T.type_parameter(:U))
+  }
+  def set_unique_stanza(stanza, should_return, &_block)
+    return instance_variable_get(:"@#{stanza}") if should_return
+
+    instance_variable_set(:"@#{stanza}", yield)
+  end
+
+  sig { params(arg: T.nilable(String)).returns(T.nilable(DemoStanzaVersion)) }
+  def version(arg = nil)
+    set_unique_stanza(:version, arg.nil?) { DemoStanzaVersion.new(T.must(arg)) }
+  end
+end
+
+module DemoStanza
+  def self.go
+    d = DemoStanzaDSL.new
+    before = d.version
+    d.version("1.2")
+    [before.nil?, d.version.to_s]
+  end
+end
+
+module DemoLazySplat
+  def self.go
+    defaults = T.let({ languages: DemoLazy.new { %w[en fr] } }, T::Hash[Symbol, T.any(DemoLazy, String, T::Array[String])])
+    langs = [*defaults.fetch(:languages, []), "de"]
+    lazy = defaults.fetch(:languages)
+    [langs, lazy.size, lazy.map(&:upcase)]
+  end
+end
+
+module DemoSymbolBlank
+  def self.go
+    h = { "sha256" => "no_check", "v" => "", "n" => 1 }
+    h["sha256"] = h["sha256"].to_s
+    h["sha256"] = :no_check if h["sha256"] == "no_check"
+    h.reject do |_k, v|
+      case v
+      when Object then v.demo_blank2?
+      end
+    end
+  end
 end
 
 module DemoBoolDyn

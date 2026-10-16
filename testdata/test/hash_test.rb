@@ -446,6 +446,17 @@ module HashTests
     end
 
     # Braceless hashes into untyped, rest, nilable, mixed-key and block-taking methods.
+    #: (Hash[Symbol, String?] h) -> Array[String?]
+    def hash_opt_values(h) = h.values
+
+    # An untyped Hash of Strings and nil into a Hash[Symbol, String?] parameter: each value is boxed (Homebrew's
+    # CaskStruct ruby_source_checksum from JSON data)
+    def test_untyped_into_optional_values
+      data = { "sha" => "abc" } #: Hash[String, untyped]
+      h = { sha256: data["sha"], md5: data["none"] } #: untyped
+      assert_equal ["abc", nil], hash_opt_values(h)
+    end
+
     def test_braceless_hashes_into_untyped_rest
       assert_equal "{a: 1}", (any_arg(a: 1))
       assert_equal "{\"x\" => [1]}", (any_arg("x" => [1]))

@@ -326,6 +326,22 @@ func (c *Compiler) dynGoName(name string) string {
 	return gn
 }
 
+// emitDynFallback is a dispatcher's tail before NoMethodError: what a Delegator does not define its object answers, as
+// its method_missing does (decisions 294, 295; Homebrew's `dependables.values.map(&:to_a)` of Requirements; a static
+// call is decision 118's __getobj__ rewrite instead), then the receiver's own method_missing. Every object has
+// Kernel#===, so method_missing is never reached for it.
+func (c *Compiler) emitDynFallback(name, gn string) {
+	if name == "method_missing" || name == "===" {
+		return
+	}
+	if name != "__getobj__" {
+		c.w("\tif o, ok := rbDelegateObj(recv); ok {\n\t\treturn rbDyn%s(how, o, args...)\n\t}\n", gn)
+	}
+	delete(c.dynLazy, "method_missing") // the fallback below needs its wrappers
+	c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
+	c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
+}
+
 // emitDynName emits rbDynName(how, recv, args...): the public wrapper, the
 // private one unless the call had a receiver (how is rbCall), then
 // method_missing, then NoMethodError. Wrappers whose bodies are the same
@@ -393,17 +409,7 @@ func (c *Compiler) emitDynName(name string) {
 	if genPrivate {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok && how != rbCall {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, dynPrivKey+name)
 	}
-	// every object has Kernel#===, so method_missing is never reached for it
-	if name != "method_missing" && name != "===" && c.liveDelegator() {
-		// what a SimpleDelegator does not define its object answers, as its method_missing does (decision 294; Homebrew's
-		// `dependables.values.map(&:to_a)` of Requirements); a static call is decision 118's __getobj__ rewrite instead
-		c.w("\tif d, ok := recv.(SimpleDelegatorI); ok {\n\t\treturn rbDyn%s(how, SimpleDelegator___Getobj__(d), args...)\n\t}\n", gn)
-	}
-	if name != "method_missing" && name != "===" {
-		delete(c.dynLazy, "method_missing") // the fallback below needs its wrappers
-		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
-		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)
-	}
+	c.emitDynFallback(name, gn)
 	if hidden {
 		c.w("\tif rbHas_Private%s(recv) {\n\t\tpanic(rbPrivateMethod(%q, recv))\n\t}\n", gn, name)
 	}
@@ -845,7 +851,7 @@ func (c *Compiler) dynCallBlock(f *fctx, m *Method, env map[string]Type) parser.
 		f.emit("blk_, args := rbPopBlock(args)")
 		return c.dynBlockArg(f, m, env)
 	}
-	if c.dynBlockNames[m.Name] {
+	if c.dynBlockNames[m.Name] || c.dynBlockAll { // a computed send with a block may reach any name (Homebrew's cask stanzas)
 		f.emit("_, args = rbPopBlock(args)")
 	}
 	return nil
@@ -1333,10 +1339,25 @@ func (c *Compiler) emitClassOf() {
 	c.w("\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
 }
 
-// liveDelegator: the program loads delegate, so SimpleDelegator is a Go type untyped iteration can look through.
-func (c *Compiler) liveDelegator() bool {
-	d := c.classes["SimpleDelegator"]
-	return d != nil && d.Methods["__getobj__"] != nil
+// emitDelegateObj emits rbDelegateObj(x): the object a Delegator (SimpleDelegator, a LazyObject's evaluated block, ...)
+// stands for, through its own __getobj__, so untyped code calls, iterates and splats what MRI's method_missing would
+// reach (decision 295). Each delegator class gets a _DelegateObj method; with none, rbDelegateObj answers false.
+func (c *Compiler) emitDelegateObj() {
+	for _, cls := range c.classList {
+		if cls.IsModule || cls.metaOf != nil || !c.isDelegator(cls) {
+			continue
+		}
+		e := cls.lookup("__getobj__")
+		if e == nil {
+			continue
+		}
+		body := c.dynWrapperBodyOrWarn(cls, e, "__getobj__")
+		if body == "" {
+			continue
+		}
+		c.w("func (self %s) _DelegateObj() any {\n\tvar args []any\n%s}\n\n", c.recvType(cls), body)
+	}
+	c.w("func rbDelegateObj(x any) (any, bool) {\n\tif d, ok := x.(interface{ _DelegateObj() any }); ok {\n\t\treturn d._DelegateObj(), true\n\t}\n\treturn nil, false\n}\n\n")
 }
 
 // emitDynEach emits rbEachAny (dynEach): an Array's elements, a Hash's pairs, then one case per Go shape of a user or
@@ -1345,14 +1366,14 @@ func (c *Compiler) emitDynEach() {
 	if !c.dynEach {
 		return
 	}
-	c.w("func rbEachAny(recv any, arity int, blk func(...any)) any {\n\tyield := func(xs ...any) {\n\t\tswitch {\n")
+	c.w("func rbEachAny(recv any, arity int, blk func(...any)) any {\n")
+	c.w("\tif o, ok := rbDelegateObj(recv); ok { // a Delegator's each is its object's (Homebrew's Dependencies)\n\t\trbEachAny(o, arity, blk)\n\t\treturn recv\n\t}\n")
+	c.w("\tyield := func(xs ...any) {\n\t\tswitch {\n")
 	c.w("\t\tcase arity == 2 && len(xs) == 1:\n\t\t\ta := rbToAry(xs[0]).s\n\t\t\txs = append(a[:len(a):len(a)], nil, nil)[:2]\n")
 	c.w("\t\tcase arity == 1 && len(xs) == 2:\n\t\t\txs = []any{&Array[any]{s: xs}}\n\t\t}\n\t\tblk(xs...)\n\t}\n")
 	c.w("\tswitch r := recv.(type) {\n\tcase Array_Any:\n\t\tfor _, x := range r._ToAny().s {\n\t\t\tyield(x)\n\t\t}\n")
 	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor _, k := range h.keys {\n\t\t\tyield(k, h.vals[k])\n\t\t}\n")
-	if c.liveDelegator() { // a SimpleDelegator's each is its object's, through method_missing (Homebrew's Dependencies)
-		c.w("\tcase SimpleDelegatorI:\n\t\trbEachAny(SimpleDelegator___Getobj__(r), arity, blk)\n")
-	}
+
 	seen := map[string]bool{}
 	for _, cls := range c.classList {
 		m := cls.Methods["each"]
@@ -1384,9 +1405,7 @@ func (c *Compiler) emitDynEach() {
 	c.w("\tdefault:\n\t\tpanic(rbNoMethod(\"each\", recv, false))\n\t}\n\treturn recv\n}\n\n")
 	// rbElemsAny is an untyped receiver's elements as an Array[untyped] (decision 224): an Array's own, else what its each yields
 	c.w("func rbElemsAny(recv any) *Array[any] {\n")
-	if c.liveDelegator() {
-		c.w("\tif d, ok := recv.(SimpleDelegatorI); ok {\n\t\trecv = SimpleDelegator___Getobj__(d)\n\t}\n")
-	}
+	c.w("\tif o, ok := rbDelegateObj(recv); ok {\n\t\trecv = o\n\t}\n")
 	c.w("\tif a, ok := recv.(Array_Any); ok {\n\t\treturn a._ToAny()\n\t}\n")
 	c.w("\tout := &Array[any]{}\n\trbEachAny(recv, 1, func(xs ...any) { out.s = append(out.s, xs[0]) })\n\treturn out\n}\n\n")
 }

@@ -233,6 +233,9 @@ func rbAnySlice[E comparable](a *Array[E]) []any {
 // rbSplatAny is `*x` of an untyped x into a call (decision 227): an Array's elements, nil none, a Hash its pairs, anything
 // else itself, as MRI's splat (to_a) does. ponytail: a user class's to_a is not called.
 func rbSplatAny(x any) []any {
+	if o, ok := rbDelegateObj(x); ok { // `*lazy_languages`: a Delegator spreads its object (Homebrew's LazyObject)
+		x = o
+	}
 	switch v := x.(type) {
 	case nil:
 		return nil

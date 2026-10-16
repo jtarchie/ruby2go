@@ -726,6 +726,12 @@ module StdlibTests
       assert_equal "abcdefghi", s3.rest
     end
 
+    # A String pattern matches itself literally (Homebrew's Locale.try_parse `scanner.scan("-")`)
+    def test_scanner_string_patterns
+      s = StringScanner.new("en-US.x")
+      assert_equal ["en", "-", "-", 2, 1, nil], [s.scan(/[a-z]+/), s.check("-"), s.scan("-"), s.skip("US"), s.match?("."), s.scan("x")]
+    end
+
     def test_scan_full_and_search_full
       s4 = StringScanner.new("foo5bar")
       assert_equal "foo5bar", s4.scan_full(/\w+/, true, true)

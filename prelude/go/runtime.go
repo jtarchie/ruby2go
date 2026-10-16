@@ -1644,6 +1644,32 @@ func rbBlockArgOf(p **func(...any) any) rbBlockArg {
 	return rbBlockArg{fn: *(*p)}
 }
 
+// rbKwArgs is a dynamic call's keywords as arguments: none for an empty Hash (`send(m, *args, **{})`).
+func rbKwArgs(h any) []any {
+	if x, ok := h.(Hash_Any); ok && len(x._ToAny().keys) == 0 {
+		return nil
+	}
+	return []any{h}
+}
+
+// rbBlockArgAny is an untyped value passed as `&blk` to a dynamic call: no block for nil, else the Proc it holds.
+// ponytail: a Proc that binds self (instance_eval'd) is not callable this way; it raises as a non-Proc would.
+func rbBlockArgAny(p any) rbBlockArg {
+	if p == nil {
+		return rbBlockArg{}
+	}
+	if !rbIsProc(p) {
+		panic(NewTypeError(Ref(String("wrong argument type " + rbClassName(p) + " (expected Proc)"))))
+	}
+	return rbBlockArg{fn: func(xs ...any) any {
+		v, ok := rbDynProcCall(p, xs)
+		if !ok {
+			panic(NewTypeError(Ref(String("rb2go: this Proc cannot be passed on as a block dynamically"))))
+		}
+		return v
+	}}
+}
+
 // rbBoundArgs is what a bound block's adapter passes on: self first only to a bound rbBlockArg (decision 281).
 func rbBoundArgs(b *rbBlockArg, self any, xs ...any) []any {
 	if b.bound {

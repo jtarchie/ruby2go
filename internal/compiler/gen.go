@@ -992,6 +992,11 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		if stmts == "" {
 			return l + " || " + r, nil
 		}
+		for _, w := range condWrites(n) { // as for &&: `next if k.nil? || (blk = h[k]).nil?` then reads blk
+			if info := f.localInfo(w); info != nil {
+				info.hoist = true
+			}
+		}
 		tmp := f.newTmp()
 		f.emit("%s := true", tmp)
 		f.emit("if %s {", notCond(l))

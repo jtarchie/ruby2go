@@ -406,6 +406,11 @@ func (f *fctx) anySpread(args []parser.Node) (string, bool) {
 		}
 	}
 	for _, a := range args {
+		if kh, ok := a.(*parser.KeywordHashNode); ok { // `**kwargs` of an empty Hash passes nothing, as in Ruby
+			flush()
+			parts = append(parts, "rbKwArgs("+f.anyArgs([]parser.Node{kh})[0]+")")
+			continue
+		}
 		sp, ok := a.(*parser.SplatNode)
 		if !ok {
 			plain = append(plain, f.anyArgs([]parser.Node{a})...)
@@ -511,11 +516,14 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 		clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
 		return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { return (%s)(%s) }}", clo, strings.Join(vals, ", ")), true
 	case *parser.BlockArgumentNode:
-		if b.Expression == nil || !f.isBlockParam(b.Expression) {
+		if b.Expression == nil {
 			return "", false
 		}
 		e := f.genExpr(b.Expression, nil)
-		fn, opt := e.typ.(TFunc)
+		if isAny(e.typ) { // `public_send(key, *args, &block)` of a Proc or nil held untyped (Homebrew's cask artifact stanzas)
+			return "rbBlockArgAny(" + e.code + ")", true
+		}
+		fn, opt := e.typ.(TFunc) // the method's own &block, or a Proc value (a tuple's `T.nilable(T.proc.void)`)
 		if o, ok := e.typ.(TOpt); ok {
 			fn, opt = o.Elem.(TFunc)
 			if opt && fn.Rest && len(fn.Params) == 1 && isAny(fn.Params[0]) && isAny(fn.Ret) {

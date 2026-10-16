@@ -460,6 +460,12 @@ func (f *fctx) typeArgs(m *Method, recvT Type, env map[string]Type) string {
 	}
 	for _, p := range m.TypeParams {
 		ts = append(ts, env[p])
+		if o, ok := env[p].(TOpt); ok && isClassValue(o.Elem) { // the generic body's rbAs[U] boxes into it at run time
+			if f.c.optConv == nil {
+				f.c.optConv = map[string]bool{}
+			}
+			f.c.optConv[f.c.goType(o.Elem)] = true
+		}
 	}
 	if len(ts) == 0 {
 		return ""
@@ -540,4 +546,10 @@ func bindUntyped(m *Method, env map[string]Type, ts ...Type) {
 			env[v] = TAny{}
 		}
 	}
+}
+
+// isClassValue: a concrete class type (no type variables, not Object's any), whose T? is a pointer to its Go type.
+func isClassValue(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && !c.C.universal && !mentionsVar(t)
 }

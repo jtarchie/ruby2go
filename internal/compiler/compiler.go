@@ -104,7 +104,7 @@ type Compiler struct {
 	fwdOut                map[*Class]bool         // forwarders emitted
 	selfTyped             map[*Class]bool         // a module whose constraint names Self (decision 208)
 	tablesOut             bool
-	tablesAt              [12]int         // tableInputs when the tables went out
+	tablesAt              [13]int         // tableInputs when the tables went out
 	callable              map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	files                 []*File
 	preludeFS             fs.FS
@@ -142,6 +142,7 @@ type Compiler struct {
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
 	dynEach          bool                              // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
+	optConv          map[string]bool                   // class T?s bound to a method type parameter: rbOptClassFrom's cases (decision 295)
 	procTypes        map[string]bool                   // Proc Go types rendered (*func(...)), for the generated rbIsProc
 	procFuncs        map[string]TFunc                  // the type each procTypes entry renders, for rbDynProcCall
 	argBoxes         map[string]bool                   // T? boxes of generic type arguments, which generic code may hold

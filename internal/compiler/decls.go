@@ -421,14 +421,25 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 }
 
 // tableInputs fingerprints what emitTables reads; the maps only grow, so sizes tell.
-func (c *Compiler) tableInputs() [12]int {
+func (c *Compiler) tableInputs() [13]int {
 	b2i := func(b bool) int {
 		if b {
 			return 1
 		}
 		return 0
 	}
-	return [12]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.pkgVars), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt), b2i(c.needRequireTable)}
+	return [13]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.pkgVars), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt), b2i(c.needRequireTable), len(c.optConv)}
+}
+
+// emitOptClassFrom emits rbOptClassFrom(zero, v): rbConv's box of an untyped value into a class's T? where a generic
+// body has only the type parameter (Homebrew's `set_unique_stanza[U]` returning an ivar as Version?): nil, or the
+// object behind a new pointer. One case per class T? some call binds a type parameter to.
+func (c *Compiler) emitOptClassFrom() {
+	c.w("func rbOptClassFrom(zero any, v any) (any, bool) {\n\tswitch zero.(type) {\n")
+	for _, g := range slices.Sorted(maps.Keys(c.optConv)) {
+		c.w("\tcase *%s:\n\t\tif v == nil {\n\t\t\treturn (*%s)(nil), true\n\t\t}\n\t\tif x, ok := v.(%s); ok {\n\t\t\treturn &x, true\n\t\t}\n", g, g, g)
+	}
+	c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t}\n\treturn nil, false\n}\n\n")
 }
 
 // emitTables: what every emitted body has contributed to.
@@ -443,6 +454,8 @@ func (c *Compiler) emitTables() {
 	c.emitModIsA()
 	c.emitFrozenFlag()
 	c.emitDynEach()
+	c.emitDelegateObj()
+	c.emitOptClassFrom()
 	c.emitTuples()
 	c.emitBoxes()
 	c.emitUnions()

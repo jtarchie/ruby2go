@@ -25,4 +25,4 @@ pin the upstream, keep a small series of upstream-shaped patches, and compare ag
 ./hits info info --json=v2 wget  # work list: stubs (gem methods/arms that did not compile) MRI reaches running it
 ```
 
-All five targets.txt commands (`brew info` for wget, jq, git, python@3.13 and `--json=v2 wget`) equal MRI's output (decision 294).
+Every targets.txt command except two `--cask` ones equals MRI's output (decision 295).

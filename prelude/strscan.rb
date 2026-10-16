@@ -59,17 +59,27 @@ class StringScanner < Object
   #: () -> bool
   def bol? = beginning_of_line?
 
-  #: (Regexp) -> String?
-  def scan(re) = %x{ return self.do(re, true, true, true) }
+  # A String pattern matches itself literally (Homebrew's Locale `scanner.scan("-")`).
+  #: (Regexp | String) -> Regexp
+  def __strscan_re(pat) = pat.is_a?(String) ? Regexp.new(Regexp.escape(pat)) : pat
 
-  #: (Regexp) -> Integer?
-  def skip(re) = %x{ return rbScanLen(self.do(re, true, true, false), self) }
+  #: (Regexp | String) -> String?
+  def scan(pat) = __strscan_do(__strscan_re(pat), true, true)
 
-  #: (Regexp) -> Integer?
-  def match?(re) = %x{ return rbScanLen(self.do(re, true, false, false), self) }
+  #: (Regexp | String) -> Integer?
+  def skip(pat) = __strscan_len(__strscan_re(pat), true)
 
-  #: (Regexp) -> String?
-  def check(re) = %x{ return self.do(re, true, false, true) }
+  #: (Regexp | String) -> Integer?
+  def match?(pat) = __strscan_len(__strscan_re(pat), false)
+
+  #: (Regexp | String) -> String?
+  def check(pat) = __strscan_do(__strscan_re(pat), true, false)
+
+  #: (Regexp, bool, bool) -> String?
+  def __strscan_do(re, anchored, advance) = %x{ return self.do(re, bool(anchored), bool(advance), true) }
+
+  #: (Regexp, bool) -> Integer?
+  def __strscan_len(re, advance) = %x{ return rbScanLen(self.do(re, true, bool(advance), false), self) }
 
   #: (Regexp) -> String?
   def scan_until(re) = %x{ return self.do(re, false, true, true) }

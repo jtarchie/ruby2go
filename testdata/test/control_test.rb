@@ -4768,6 +4768,21 @@ module ControlTests
     def test_defined_guard_return
       assert_nil control_absent_guard
     end
+
+    #: (Hash[String, Integer] blocks, Array[String] keys) -> Integer?
+    def control_or_assign(blocks, keys)
+      keys.each do |key|
+        next if key.empty? || (blk = blocks[key]).nil?
+
+        return blk * 10
+      end
+      nil
+    end
+
+    # A local assigned on the right of `||` in a condition, read after it (Homebrew's Cask::DSL#language_eval)
+    def test_condition_or_assigns
+      assert_equal [20, nil], [control_or_assign({ "b" => 2 }, ["", "z", "b"]), control_or_assign({}, ["a"])]
+    end
   end
 
   # ruby/spec language gaps (#49): when *LIST and rescue *ERRORS

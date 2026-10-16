@@ -1,0 +1,23 @@
+Subject: info: type print_info's resolved pairs
+
+The pairs are what unique_by_display_name takes; without the annotation the two branches (a [Formula, Tap?] and an
+Array literal) have no common type.
+---
+--- a/Library/Homebrew/cmd/info.rb
++++ b/Library/Homebrew/cmd/info.rb
+@@ -321,13 +321,13 @@
+         objects = args.named.to_formulae_and_casks_and_unavailable(uniq: false)
+         user_qualified = args.named.downcased_unique_named.map { |name| name.include?("/") }
+ 
+-        resolved = user_qualified.zip(objects).map do |qualified, obj|
++        resolved = T.let(user_qualified.zip(objects).map do |qualified, obj|
+           if obj.is_a?(Formula)
+             display_resolution(obj, user_qualified: qualified)
+           else
+             [obj, nil]
+           end
+-        end
++        end, T::Array[[T.untyped, T.nilable(Tap)]])
+ 
+         unique_by_display_name(resolved).each_with_index do |(obj, shadowed_by), i|
+           puts unless i.zero?

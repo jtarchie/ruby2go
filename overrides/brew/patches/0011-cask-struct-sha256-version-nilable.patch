@@ -1,0 +1,21 @@
+Subject: CaskStruct sha256 and version are nilable
+
+A cask whose API data has neither (visual-studio-code) builds its struct with nil today: the missing required props
+are only accepted because sorbet-runtime errors are silenced. DSL#sha256 and DSL#version already take nil.
+---
+--- a/Library/Homebrew/api/cask_struct.rb
++++ b/Library/Homebrew/api/cask_struct.rb
+@@ -88,11 +88,11 @@
+       const :renames, T::Array[[String, String]], default: []
+       const :ruby_source_checksum, T::Hash[Symbol, T.nilable(String)], default: { sha256: nil }
+       const :ruby_source_path, T.nilable(String)
+-      const :sha256, T.any(String, Symbol)
++      const :sha256, T.nilable(T.any(String, Symbol))
+       const :tap_string, T.nilable(String)
+       const :url_args, T::Array[String], default: []
+       const :url_kwargs, T::Hash[Symbol, T.anything], default: {}
+-      const :version, T.any(String, Symbol)
++      const :version, T.nilable(T.any(String, Symbol))
+ 
+       sig { params(other: T.anything).returns(T::Boolean) }
+       def ==(other)

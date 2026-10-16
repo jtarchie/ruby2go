@@ -301,16 +301,29 @@ func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string
 	return "", true
 }
 
+// truthiness is a value where a Boolean is expected that is not one: Ruby tests truthiness.
+func (f *fctx) truthiness(e expr) (string, bool) {
+	switch {
+	case isAny(e.typ):
+		return "Boolean(rbTruthy(" + e.code + "))", true // Ruby conditions test truthiness
+	case isOpt(e.typ):
+		return "Boolean(" + optTruthy(e.code, e.typ) + ")", true // a predicate block's `seen.add?(x)`
+	case f.lenient() && !isClass(e.typ, "Boolean") && !isVoid(e.typ):
+		// gem code: a predicate block's value is its truthiness (Homebrew's `select { |var| ENV.fetch(var) }`)
+		return "Boolean(rbTruthy(" + f.coerceToAny(e) + "))", true
+	}
+	return "", false
+}
+
 // coerceClass is coerce to a class type.
 func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if to.C.universal && e.lit {
 		return f.coerce(n, e, TAny{}) // Object is Go any: "a" must box as String, not string
 	}
-	if isAny(e.typ) && to.C.RubyName == "Boolean" {
-		return "Boolean(rbTruthy(" + e.code + "))" // Ruby conditions test truthiness
-	}
-	if isOpt(e.typ) && to.C.RubyName == "Boolean" {
-		return "Boolean(" + optTruthy(e.code, e.typ) + ")" // a predicate block's `seen.add?(x)`
+	if to.C.RubyName == "Boolean" {
+		if code, ok := f.truthiness(e); ok {
+			return code
+		}
 	}
 	// rbAs also converts an Array/Hash of another instantiation (rbConv).
 	if isAny(e.typ) {

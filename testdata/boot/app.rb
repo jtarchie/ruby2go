@@ -155,6 +155,11 @@ p DemoBoundBlk.go
 p DemoTokNew.go
 p DemoDupSuper.go
 p DemoSharedIvar.go
+p DemoComputedSendBlock.go
+p DemoTruthySelect.go
+p DemoSymbolBlank.go
+p DemoLazySplat.go
+p DemoStanza.go
 p DemoDelegBlock.go
 p [DemoHoistUnderscore.go(true), DemoHoistUnderscore.go(false)]
 p DemoSetDlg.go

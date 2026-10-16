@@ -76,6 +76,9 @@ func rbConv[T any](v any) (T, bool) {
 		}
 	}
 	var zero T
+	if t, ok := rbOptFrom[T](zero, v); ok { // a scalar's T?: nil, or the value boxed
+		return t, true
+	}
 	if v == nil {
 		_, untyped := any(&zero).(*any)
 		return zero, untyped
@@ -83,10 +86,51 @@ func rbConv[T any](v any) (T, bool) {
 	if c, ok := any(zero).(interface{ rbFrom(v any) (T, bool) }); ok {
 		return c.rbFrom(v)
 	}
+
 	if tup, ok := any(zero).(interface{ _FromAny(any) (T, bool) }); ok {
 		return tup._FromAny(v)
 	}
 	return zero, false
+}
+
+// rbOptFrom converts an untyped value to a scalar's T? where generic code has only the pointer type: a converted
+// collection's String? values (Homebrew's `ruby_source_checksum: Hash[Symbol, String?]` from JSON data).
+func rbOptFrom[T any](zero T, v any) (T, bool) {
+	var out any
+	var ok bool
+	switch any(zero).(type) {
+	case *String:
+		out, ok = rbOptScalar[String](v)
+	case *Integer:
+		out, ok = rbOptScalar[Integer](v)
+	case *Float:
+		out, ok = rbOptScalar[Float](v)
+	case *Symbol:
+		out, ok = rbOptScalar[Symbol](v)
+	case *Boolean:
+		out, ok = rbOptScalar[Boolean](v)
+	default:
+		out, ok = rbOptClassFrom(any(zero), v)
+	}
+	if !ok {
+		return zero, false
+	}
+	t, _ := out.(T)
+	return t, true
+}
+
+func rbOptScalar[T any](v any) (*T, bool) {
+	if p, ok := v.(*T); ok {
+		return p, true
+	}
+	if v == nil {
+		return nil, true
+	}
+	x, ok := rbConv[T](v)
+	if !ok {
+		return nil, false
+	}
+	return &x, true
 }
 
 func rbRest[T any](args []any, from int, want string) []T {

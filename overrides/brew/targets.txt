@@ -3,3 +3,6 @@ info jq
 info git
 info python@3.13
 info --json=v2 wget
+info --cask firefox
+info --cask visual-studio-code
+info --cask font-fira-code

@@ -65,6 +65,9 @@ func (f *fctx) splatToArray(el parser.Node, sp *parser.SplatNode, e expr) expr {
 		return expr{code: "(&Array[any]{s: rbSplatAny(" + e.code + ")})", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
 	}
 	spread := func(v expr) expr {
+		if c, ok := v.typ.(TClass); ok && f.c.isDelegator(c.C) { // its object's to_a, at run time (Homebrew's LazyObject)
+			return expr{code: "(&Array[any]{s: rbSplatAny(" + f.coerce(sp, v, TAny{}) + ")})", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
+		}
 		if c, ok := v.typ.(TClass); ok && c.C.lookup("to_a") == nil {
 			return expr{code: "(&Array[" + f.c.goType(v.typ) + "]{s: []" + f.c.goType(v.typ) + "{" + v.code + "}})", typ: TClass{C: f.c.classes["Array"], Args: []Type{v.typ}}}
 		}
