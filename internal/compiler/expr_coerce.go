@@ -317,6 +317,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if isNil(e.typ) {
 		f.errorf(n, "nil where %s is expected", to)
 	}
+	if code, ok := f.selfConv(n, e, to); ok {
+		return code
+	}
 	if isClass(to, "Integer") && isClass(e.typ, "Float") {
 		if f.pass == 2 { // earlier passes may still widen the target
 			f.errorf(n, "Float where Integer is expected; convert it (to_i, round, floor)")
@@ -397,10 +400,22 @@ func sameButUntyped(a, b Type) bool {
 // parameter takes any object answering to_str, and so on (rb_convert_type).
 var implicitConvs = map[string]string{"String": "to_str", "Integer": "to_int", "Array": "to_ary", "Hash": "to_hash"}
 
+// selfConv is self converted where its class does not fit, as implicitConv does for a class: `File.basename(self)`
+// in a Pathname takes its to_path (decision 289). Self is generic, so fits alone would pass it unconverted.
+func (f *fctx) selfConv(n parser.Node, e expr, to TClass) (string, bool) {
+	if !isSelfVar(e.typ) || f.owner == nil || fits(TClass{C: f.owner}, to) {
+		return "", false
+	}
+	return f.implicitConv(n, e, to)
+}
+
 // implicitConv is e converted to `to` through its class's conversion
 // method, chosen at compile time from e's static class (decision 179).
 func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
 	from, ok := e.typ.(TClass)
+	if isSelfVar(e.typ) && f.owner != nil { // self in a struct class's method: its class's protocols (a Pathname's to_path)
+		from, ok = TClass{C: f.owner}, true
+	}
 	conv := implicitConvs[to.C.RubyName]
 	if !ok || conv == "" {
 		return "", false

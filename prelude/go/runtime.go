@@ -587,8 +587,8 @@ func rbAsSlow[T any](a any, want string) T {
 	// a Pathname where a String is taken (a dynamic File.basename(self)): MRI's path parameters call to_path. ponytail:
 	// any String parameter takes it here, where MRI's non-path ones raise TypeError (decision 254)
 	switch p := a.(type) { // a single-type case: dropped from programs without Pathname
-	case Pathname:
-		if t, ok := any(String(p)).(T); ok {
+	case *Pathname:
+		if t, ok := any(p.ToS()).(T); ok {
 			return t
 		}
 	}

@@ -1,15 +1,23 @@
 # prelude/pathname.rb
 # rbs_inline: enabled
 #
-# Pathname: a frozen-string wrapper with a fluent API over File/Dir
-# (decision 62). See docs/design.md decision 65 for scope and limitations.
+# Pathname: an object holding its path, with a fluent API over File/Dir
+# (decision 65).
+# An ordinary object as MRI's, so a program can subclass it or give it
+# instance variables (decision 289).
 
-# @go_type string
 class Pathname < Object
   include Comparable
 
-  #: (untyped) -> Pathname
-  def self.new(path) = %x{ Pathname(string(rbToS(path))) }
+  # @rbs @path: String
+
+  #: (untyped) -> void
+  def initialize(path)
+    @path = __path_of(path)
+  end
+
+  #: (untyped) -> String
+  def __path_of(path) = %x{ return rbToS(path) }
 
   #: () -> Pathname
   def self.pwd = Pathname.new(Dir.pwd)
@@ -26,13 +34,10 @@ class Pathname < Object
   end
 
   #: (Pathname) -> Integer
-  def <=>(other) = %x{ Integer(strings.Compare(string(self), string(other))) }
+  def <=>(other) = @path <=> other.to_s
 
   #: (untyped) -> bool
-  def ==(other) = %x{
-    o, ok := other.(Pathname)
-    return Boolean(ok && self == o)
-  }
+  def ==(other) = other.is_a?(Pathname) && @path == other.to_s
 
   #: (untyped) -> bool
   def eql?(other) = self == other
@@ -41,29 +46,29 @@ class Pathname < Object
   def hash = to_s.hash
 
   #: () -> String
-  def to_s = %x{ rbStrClone(String(self)) }
+  def to_s = @path.dup
 
   #: () -> String
   def to_path = to_s
 
   #: () -> String
-  def inspect = %x{ String("#<Pathname:" + string(self) + ">") }
+  def inspect = "#<Pathname:#{@path}>"
 
   #: (untyped) -> Pathname
-  def +(other) = %x{
-    o := string(rbToS(other))
-    if strings.HasPrefix(o, "/") {
-      return Pathname(o)
-    }
-    return Pathname(rbPathJoin(string(self), o))
-  }
+  def +(other)
+    o = __path_of(other)
+    Pathname.new(o.start_with?("/") ? o : __join(@path, o))
+  end
+
+  #: (String, String) -> String
+  def __join(a, b) = %x{ String(rbPathJoin(string(a), string(b))) }
 
   #: (untyped) -> Pathname
   def /(other) = self + other
 
   #: (*untyped) -> Pathname
   def join(*parts)
-    result = self
+    result = self #: Pathname
     parts.each { |p| result = result + p }
     result
   end
@@ -116,8 +121,8 @@ class Pathname < Object
   #: () -> bool
   def directory? = File.directory?(to_s)
 
-  #: () -> String
-  def read = File.read(to_s)
+  #: (?Integer?, ?Integer?) -> String
+  def read(length = nil, offset = nil) = File.read(to_s, length, offset)
 
   #: (untyped) -> Integer
   def write(data) = File.write(to_s, data)
@@ -132,13 +137,15 @@ class Pathname < Object
   end
 
   #: (untyped) -> Pathname
-  def relative_path_from(base) = %x{
-    b := string(rbToS(base))
-    rel, err := filepath.Rel(b, string(self))
+  def relative_path_from(base) = Pathname.new(__rel(__path_of(base), @path))
+
+  #: (String, String) -> String
+  def __rel(b, p) = %x{
+    rel, err := filepath.Rel(string(b), string(p))
     if err != nil {
-      panic(NewArgumentError(Ref(String("different prefix: " + string(self) + " and " + b))))
+      panic(NewArgumentError(Ref(String("different prefix: " + string(p) + " and " + string(b)))))
     }
-    return Pathname(rel)
+    return String(rel)
   }
 end
 
@@ -308,7 +315,7 @@ class Pathname
   # This path and each parent up to the root.
   #: () { (Pathname) -> void } -> nil
   def ascend(&blk)
-    path = self
+    path = self #: Pathname
     loop do
       blk.call(path)
       up = path.dirname

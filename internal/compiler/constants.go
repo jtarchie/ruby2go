@@ -45,7 +45,11 @@ func (c *Compiler) noteConstName(full string) {
 // collectBodyConst declares a class-body constant; one that reads the body's locals runs in its unit (decision 170).
 func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.ConstantWriteNode, scope []*Class, locals map[string]bool) {
 	var inner []*parser.ConstantWriteNode
-	n.Value = liftConstWrites(n.Value, &inner)
+	if v := liftConstWrites(n.Value, &inner); v != n.Value {
+		cp := *n // the parsed prelude is shared by concurrent compiles: rewrite a copy, never the cached node
+		cp.Value = v
+		n = &cp
+	}
 	for _, w := range inner { // `NoArgument = [NO_ARGUMENT = :NONE, nil]`: NO_ARGUMENT first, then a read of it (decision 244)
 		c.collectBodyConst(ctx, f, w, scope, locals)
 		if k := c.consts[qualify(scope, w.Name)]; k != nil {
@@ -56,7 +60,9 @@ func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.Cons
 	if arm, ok := c.loadTimeArm(f, n.Value, scope); ok && len(arm) > 0 && declares(n.Value) && len(scope) > 0 {
 		// `Impl = case when on_cruby? then class CImpl < Base; end; CImpl ... end`: the arm boot ran declares, and its last value is the constant's
 		c.collectBody(ctx, f, scope[len(scope)-1], &parser.StatementsNode{Location: n.Location, Body: arm[:len(arm)-1]}, scope, true)
-		n.Value = arm[len(arm)-1]
+		cp := *n
+		cp.Value = arm[len(arm)-1]
+		n = &cp
 	}
 	if call, kind := valueClass(n.Value); call != nil {
 		c.collectValueClass(ctx, f, n, call, kind, scope)
@@ -357,24 +363,51 @@ func isConstNode(n parser.Node) bool {
 }
 
 // liftConstWrites takes the constant writes nested in a constant's value (an Array literal's element, a call's
-// receiver or argument) out into out, leaving a read of each in its place.
+// receiver or argument) out into out, leaving a read of each in its place. Copy-on-write: the parsed prelude is shared
+// by concurrent compiles, so a changed node is a copy and the cached tree is never written.
 func liftConstWrites(n parser.Node, out *[]*parser.ConstantWriteNode) parser.Node {
 	switch x := n.(type) {
 	case *parser.ConstantWriteNode:
-		x.Value = liftConstWrites(x.Value, out)
-		*out = append(*out, x)
+		cp := *x
+		cp.Value = liftConstWrites(x.Value, out)
+		*out = append(*out, &cp)
 		return &parser.ConstantReadNode{Location: x.NameLoc, Name: x.Name}
 	case *parser.ArrayNode:
-		for i, el := range x.Elements {
-			x.Elements[i] = liftConstWrites(el, out)
+		if els, changed := liftEach(x.Elements, out); changed {
+			cp := *x
+			cp.Elements = els
+			return &cp
 		}
 	case *parser.CallNode:
-		if x.Receiver != nil {
-			x.Receiver = liftConstWrites(x.Receiver, out)
+		recv := x.Receiver
+		if recv != nil {
+			recv = liftConstWrites(recv, out)
 		}
-		for i, a := range callArgs(x) {
-			x.Arguments.Arguments[i] = liftConstWrites(a, out)
+		args, changed := liftEach(callArgs(x), out)
+		if recv != x.Receiver || changed {
+			cp := *x
+			cp.Receiver = recv
+			if changed {
+				an := *x.Arguments
+				an.Arguments = args
+				cp.Arguments = &an
+			}
+			return &cp
 		}
 	}
 	return n
+}
+
+// liftEach is liftConstWrites over nodes: a copy of the slice when any changed.
+func liftEach(nodes []parser.Node, out *[]*parser.ConstantWriteNode) ([]parser.Node, bool) {
+	var outNodes []parser.Node
+	for i, el := range nodes {
+		if v := liftConstWrites(el, out); v != el {
+			if outNodes == nil {
+				outNodes = slices.Clone(nodes)
+			}
+			outNodes[i] = v
+		}
+	}
+	return outNodes, outNodes != nil
 }

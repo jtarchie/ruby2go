@@ -1949,8 +1949,37 @@ module StdlibTests
     end
   end
 
+  # A Pathname is an ordinary object (decision 289): a subclass, and a module with state included into it.
+  module StdlibMagicShim
+    # @rbs @magic: String?
+
+    #: (untyped) -> void
+    def initialize(path)
+      @magic = nil
+      super
+    end
+
+    #: () -> String
+    def magic = @magic ||= read(2).to_s
+  end
+
+  class StdlibMagicPath < Pathname
+    include StdlibMagicShim
+
+    #: () -> String
+    def stem = File.basename(self, ".txt")
+  end
+
   # Pathname#open, Dir.mktmpdir without a block or with a prefix, IO#write of several values.
   class StdlibPathOpenTest < Minitest::Test
+    def test_pathname_subclass_with_state
+      Dir.mktmpdir do |d|
+        File.write(File.join(d, "m.txt"), "MZ rest")
+        x = StdlibMagicPath.new(File.join(d, "m.txt"))
+        assert_equal ["MZ", "MZ", "m", true, "m.txt"], [x.magic, x.magic, x.stem, x.is_a?(Pathname), x.basename.to_s]
+      end
+    end
+
     def test_pathname_class_glob
       Dir.mktmpdir do |d|
         File.write(File.join(d, "a.txt"), "")
