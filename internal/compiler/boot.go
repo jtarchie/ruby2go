@@ -41,9 +41,6 @@ func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	if main, traced := tracedEntry(sources[0].Src); traced {
-		return compileTraced(ctx, preludeFS, gemSigs, sources, main, loadPath)
-	}
 	names, err := gemRequires(ctx, sources, loadPath)
 	var gemDirs []string
 	if err == nil && len(names) > 0 {
@@ -138,42 +135,30 @@ func sourceName(s Source) string {
 	return s.Name
 }
 
-// tracedEntry reports whether src is a decision 197 entry (`# rb2go_method_requires: runtime`) and the
-// `# rb2go_main:` file it names, if any.
-func tracedEntry(src []byte) (main string, traced bool) {
-	for line := range strings.SplitSeq(string(src), "\n") {
-		switch {
-		case line == "# rb2go_method_requires: runtime":
-			traced = true
-		case strings.HasPrefix(line, "# rb2go_main: "):
-			main = strings.TrimSpace(strings.TrimPrefix(line, "# rb2go_main: "))
-		}
+// CompileTraced compiles a decision 197 entry, a plain Ruby file of the requires MRI loaded, then main (the CLI's
+// -main, decision 288): the -I dirs are gem dirs (boot, leniency and pruning, decisions 161/169/172), boot runs the
+// entry's load list, and main is compiled after it, never booted.
+func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, main string, gemDirs ...string) ([]byte, []string, error) {
+	if len(sources) == 0 || main == "" {
+		return nil, nil, errors.New("a traced compile needs an entry file and a main file")
 	}
-	return main, traced
-}
-
-// compileTraced compiles a decision 197 entry: its -I dirs are gem dirs (boot, leniency and pruning, decisions
-// 161/169/172), boot runs the entry's load list, and the main file it names is compiled after it, never booted.
-func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, main string, gemDirs []string) ([]byte, []string, error) {
 	aug, autoloaded, m, err := bootSources(ctx, sources, gemDirs)
 	if err != nil {
 		return nil, nil, err
 	}
-	if main != "" {
-		data, rerr := os.ReadFile(main) //nolint:gosec // the entry names the program's main file
-		if rerr != nil {
-			return nil, nil, fmt.Errorf("rb2go_main: %w", rerr)
-		}
-		abs, aerr := filepath.Abs(main)
-		if aerr == nil {
-			main = abs // __dir__ is absolute, as MRI's
-		}
-		aug = append(aug, Source{Name: main, Src: data, Path: main})
+	data, rerr := os.ReadFile(main) //nolint:gosec // the program's main file, named by the caller
+	if rerr != nil {
+		return nil, nil, fmt.Errorf("main: %w", rerr)
 	}
+	abs, aerr := filepath.Abs(main)
+	if aerr == nil {
+		main = abs // __dir__ is absolute, as MRI's
+	}
+	aug = append(aug, Source{Name: main, Src: data, Path: main})
 	poison := map[string]string{}
 	var warnings []string
 	for round := 0; ; round++ {
-		opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: main != "", goPoison: poison}
+		opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: true, goPoison: poison}
 		out, err := compile(ctx, preludeFS, aug, &opts)
 		if err != nil || round == goPoisonRounds {
 			return out, append(warnings, opts.warnings...), err

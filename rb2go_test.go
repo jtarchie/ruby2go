@@ -302,7 +302,7 @@ func TestBootAutoload(t *testing.T) {
 	}
 }
 
-// TestTracedEntry compiles a decision 197 entry (an MRI load list naming its main file), as Homebrew's harness does:
+// TestTracedEntry compiles a decision 197 entry (an MRI load list) with main.rb as -main (decision 288), as Homebrew's harness does:
 // its -I dirs are gem dirs, and a require inside a method resolves at run time (decision 246).
 func TestTracedEntry(t *testing.T) {
 	requireRuby4(t)
@@ -317,12 +317,9 @@ func TestTracedEntry(t *testing.T) {
 		t.Fatal(rerr)
 	}
 	srcs := []compiler.Source{{Name: "entry.rb", Src: src, Path: entry}}
-	code, _, err := compiler.CompileWithGems(t.Context(), Prelude, GemSigs, srcs, loadPath(dir, main)...)
+	code, _, err := compiler.CompileTraced(t.Context(), Prelude, GemSigs, srcs, filepath.Join(dir, "main.rb"), loadPath(dir, main)...)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
-	}
-	if bytes.Contains(code, []byte("fork-only branch")) {
-		t.Error("a branch the entry's rb2go_fold rules out was compiled")
 	}
 	gen := t.TempDir()
 	writeModule(t, gen)

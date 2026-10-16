@@ -9,7 +9,8 @@ module TracedReq
 
   def self.rel(name) = require(name)
 
-  # Utils.popen: the entry's `# rb2go_fold:` takes the spawn branch, so the fork branch is never compiled (decision 246).
+  # Utils.popen: the spawn branch runs because the environment asks for it (main.rb's `# env:`); both branches compile
+  # (decision 288).
   def self.popen_mode
     if ENV["TRACED_SPAWN"] == "1"
       "spawn"

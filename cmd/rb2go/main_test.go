@@ -270,13 +270,13 @@ func TestGen(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	if code := gen(src, nil, &out); code != 0 {
+	if code := gen(src, buildOpts{}, &out); code != 0 {
 		t.Fatalf("gen: exit %d", code)
 	}
 	if !strings.Contains(out.String(), "\npackage main\n") {
 		t.Errorf("not Go source: %.200q", out.String())
 	}
-	if code := gen(filepath.Join(dir, "missing.rb"), nil, io.Discard); code != 1 {
+	if code := gen(filepath.Join(dir, "missing.rb"), buildOpts{}, io.Discard); code != 1 {
 		t.Errorf("gen missing file: exit %d, want 1", code)
 	}
 }

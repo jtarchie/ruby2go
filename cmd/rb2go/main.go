@@ -20,9 +20,9 @@ import (
 	"github.com/jtarchie/ruby2go"
 )
 
-const usage = `usage: rb2go build [-o prog] [-I dir]... [-race] [-gcflags flags] [-work] main.rb
-       rb2go run [-I dir]... [-race] [-gcflags flags] [-work] main.rb [args...]
-       rb2go gen [-I dir]... main.rb > main.go
+const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file] [-race] [-gcflags flags] [-work] main.rb
+       rb2go run [-I dir]... [-main file] [-race] [-gcflags flags] [-work] main.rb [args...]
+       rb2go gen [-I dir]... [-main file] main.rb > main.go
        rb2go test [-I dir]... [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
        rb2go web [-addr 127.0.0.1:8080]
        rb2go web -static dir -assets https://host/path/`
@@ -59,6 +59,7 @@ func main() {
 		race:    fs.Bool("race", false, "build with the race detector"),
 		gcflags: fs.String("gcflags", "", "passed to go build (e.g. -e for every error)"),
 		work:    fs.Bool("work", false, "keep the temp module (main.go, go.mod) and print its path"),
+		main:    fs.String("main", "", "the file is a traced entry (the requires MRI loaded) and this is the program it runs (decisions 197, 288)"),
 	}
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)
@@ -71,7 +72,7 @@ func main() {
 	}
 	file := fs.Arg(0)
 	if cmd == "gen" {
-		os.Exit(gen(file, opts.loadPath, os.Stdout))
+		os.Exit(gen(file, opts, os.Stdout))
 	}
 	ctx, stop := notifyContext() // os.Exit skips defers
 	var code int
@@ -134,7 +135,7 @@ func stubs() int {
 	return 0
 }
 
-func gen(file string, loadPath []string, out io.Writer) int {
+func gen(file string, opts buildOpts, out io.Writer) int {
 	src, err := os.ReadFile(file) //nolint:gosec // the user's program
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -147,7 +148,7 @@ func gen(file string, loadPath []string, out io.Writer) int {
 			defer func() { pprof.StopCPUProfile(); _ = f.Close() }()
 		}
 	}
-	code, warnings, err := rb2go.CompileWithGems(context.Background(), file, src, loadPath...)
+	code, warnings, err := compileFile(context.Background(), file, src, opts)
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", w)
 	}
@@ -165,7 +166,16 @@ type buildOpts struct {
 	race     *bool
 	gcflags  *string
 	work     *bool
+	main     *string  // -main: the file is a traced entry and this its program (decision 288)
 	loadPath []string // -I
+}
+
+// compileFile is the CLI's compile: a traced entry with -main (decision 288), else a program.
+func compileFile(ctx context.Context, file string, src []byte, opts buildOpts) ([]byte, []string, error) {
+	if opts.main != nil && *opts.main != "" {
+		return rb2go.CompileTraced(ctx, file, src, *opts.main, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+	}
+	return rb2go.CompileWithGems(ctx, file, src, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
 }
 
 func build(ctx context.Context, file, bin string, opts buildOpts) int {
@@ -247,7 +257,7 @@ func compile(ctx context.Context, file, bin string, opts buildOpts, diag io.Writ
 		return "", err //nolint:wrapcheck // the *PathError already names the file
 	}
 	code, warnings, err := abandonable(ctx, func() ([]byte, []string, error) {
-		return rb2go.CompileWithGems(ctx, file, src, opts.loadPath...)
+		return compileFile(ctx, file, src, opts)
 	})
 	return buildModule(ctx, code, warnings, err, bin, opts, diag)
 }

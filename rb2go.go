@@ -74,6 +74,17 @@ func Compile(ctx context.Context, mainName string, src []byte, loadPath ...strin
 	return out, warnings, nil
 }
 
+// CompileTraced compiles an entry file listing the requires MRI loaded (decision 197), then the program's main file
+// (the CLI's -main, decision 288). The -I dirs are gem dirs.
+func CompileTraced(ctx context.Context, entryName string, src []byte, main string, loadPath ...string) ([]byte, []string, error) {
+	srcs := []compiler.Source{{Name: filepath.Base(entryName), Src: src, Path: entryName}}
+	out, warnings, err := compiler.CompileTraced(ctx, Prelude, GemSigs, srcs, main, loadPath...)
+	if err != nil {
+		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+	}
+	return out, warnings, nil
+}
+
 // CompileWithGems is Compile for the CLI: a require only an installed gem answers is looked up under MRI and the program compiled with the gem (decision 173); a program without one never starts Ruby.
 func CompileWithGems(ctx context.Context, mainName string, src []byte, loadPath ...string) ([]byte, []string, error) {
 	srcs := []compiler.Source{{Name: filepath.Base(mainName), Src: src, Path: mainName}}

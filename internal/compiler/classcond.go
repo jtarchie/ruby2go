@@ -86,9 +86,6 @@ func (c *Compiler) foldCond(f *File, n parser.Node, scope []*Class) (value, ok b
 		}
 		return c.foldCond(f, n.Right, scope)
 	case *parser.CallNode:
-		if v, known := c.facts[f.text(n.Location)]; known { // `# rb2go_fold: OS.mac? => false` (decision 197)
-			return v, true
-		}
 		if n.Name == "!" && n.Receiver != nil && n.Arguments == nil {
 			v, ok := c.foldCond(f, n.Receiver, scope)
 			return !v, ok
@@ -398,45 +395,4 @@ func (c *Compiler) loadTimeArm(f *File, n parser.Node, scope []*Class) ([]parser
 		}
 	}
 	return nil, false
-}
-
-// factCond folds a method body's condition by the entry's `# rb2go_fold:` facts alone (decision 246): a fact, or
-// `&&`, `||`, `!` and parentheses over them, decided where a fact decides it.
-func (c *Compiler) factCond(f *File, n parser.Node) (val, ok bool) {
-	if len(c.facts) == 0 || f.isPrelude() {
-		return false, false
-	}
-	switch n := n.(type) {
-	case *parser.ParenthesesNode:
-		if s, isStmts := n.Body.(*parser.StatementsNode); isStmts && len(s.Body) == 1 {
-			return c.factCond(f, s.Body[0])
-		}
-	case *parser.AndNode:
-		l, lok := c.factCond(f, n.Left)
-		r, rok := c.factCond(f, n.Right)
-		switch {
-		case lok && !l, rok && !r && lok:
-			return false, true
-		case lok && rok:
-			return true, true
-		}
-	case *parser.OrNode:
-		l, lok := c.factCond(f, n.Left)
-		r, rok := c.factCond(f, n.Right)
-		switch {
-		case lok && l, rok && r && lok:
-			return true, true
-		case lok && rok:
-			return false, true
-		}
-	case *parser.CallNode:
-		if v, known := c.facts[f.text(n.Location)]; known {
-			return v, true
-		}
-		if n.Name == "!" && n.Receiver != nil && n.Arguments == nil {
-			v, vok := c.factCond(f, n.Receiver)
-			return !v, vok
-		}
-	}
-	return false, false
 }

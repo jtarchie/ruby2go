@@ -64,14 +64,14 @@ type fctx struct {
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
-	branchLenient  bool            // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
-	retTok         string          // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
-	rescues        int             // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
-	yielderFed     *[]Type         // what a probed Enumerator.new block feeds its yielder (inferYielder)
-	paramWiden     map[string]Type // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
+	branchLenient  bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
+	retTok         string              // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
+	rescues        int                 // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	yielderFed     *[]Type             // what a probed Enumerator.new block feeds its yielder (inferYielder)
+	paramWiden     map[string]Type     // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
 	anyOrigin      map[localKey]string // RB2GO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
-	breakCatch     *breakCatch     // the statement call whose closure block `break`s out of it (decision 241)
-	inMarker       bool            // markerCall's own Boolean arm: past its check (decision 241)
+	breakCatch     *breakCatch         // the statement call whose closure block `break`s out of it (decision 241)
+	inMarker       bool                // markerCall's own Boolean arm: past its check (decision 241)
 }
 
 // breakCatch is a call statement whose closure block has a `break`: the block panics rbBreak with id, and the
@@ -658,10 +658,9 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
-	fact, folded := f.c.factCond(f.f, pred)                                   // an entry's `# rb2go_fold:` in a method body too (decision 246)
-	if folded || f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) { // the guarded branch names what no file defines: it cannot run (decision 167)
+	if f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) { // the guarded branch names what no file defines: it cannot run (decision 167)
 		taken := els
-		if negate != (folded && fact) {
+		if negate {
 			taken = then
 		}
 		switch e := taken.(type) {

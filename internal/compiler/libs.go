@@ -338,31 +338,20 @@ func (c *Compiler) emitRequireTable() {
 	c.w("\tpanic(NewLoadError(Ref(String(\"cannot load such file -- \" + string(name)))))\n}\n\n")
 }
 
-// readMagic reads the main file's decision 197 comments: `# rb2go_method_requires: runtime`,
-// `# rb2go_replace: path => file` and `# rb2go_fold: expr => true|false`.
+// readMagic reads the entry's `# rb2go_replace: path => file` comments (decision 197).
 func (c *Compiler) readMagic(src []byte) {
 	for line := range strings.SplitSeq(string(src), "\n") {
-		switch {
-		case line == "# rb2go_method_requires: runtime":
-			c.methodRequiresRuntime = true
-		case strings.HasPrefix(line, "# rb2go_fold: "):
-			expr, val, ok := strings.Cut(strings.TrimPrefix(line, "# rb2go_fold: "), " => ")
-			if !ok || (val != "true" && val != "false") {
-				c.errorf(nil, nil, "rb2go_fold: expected `expression => true|false`, got %q", line)
-			}
-			if c.facts == nil {
-				c.facts = map[string]bool{}
-			}
-			c.facts[strings.TrimSpace(expr)] = val == "true"
-		case strings.HasPrefix(line, "# rb2go_replace: "):
-			from, to, ok := strings.Cut(strings.TrimPrefix(line, "# rb2go_replace: "), " => ")
-			if !ok {
-				c.errorf(nil, nil, "rb2go_replace: expected `path => file`, got %q", line)
-			}
-			if c.replaced == nil {
-				c.replaced = map[string]string{}
-			}
-			c.replaced[realPath(strings.TrimSpace(from))] = strings.TrimSpace(to)
+		rest, found := strings.CutPrefix(line, "# rb2go_replace: ")
+		if !found {
+			continue
 		}
+		from, to, ok := strings.Cut(rest, " => ")
+		if !ok {
+			c.errorf(nil, nil, "rb2go_replace: expected `path => file`, got %q", line)
+		}
+		if c.replaced == nil {
+			c.replaced = map[string]string{}
+		}
+		c.replaced[realPath(strings.TrimSpace(from))] = strings.TrimSpace(to)
 	}
 }

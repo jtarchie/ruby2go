@@ -79,7 +79,7 @@ type Compiler struct {
 	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
 	aliasNews             []aliasNewReq           // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
 	needRequireTable      bool                    // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
-	programFile           *File                   // the file $0 names: the main file, or a traced entry's rb2go_main (decision 241)
+	programFile           *File                   // the file $0 names: the main file, or a traced compile's -main (decisions 241, 288)
 	dynBlockNames         map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
 	dynBlockAll           bool                    // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
 	strLits               map[string]bool         // String literal texts: String#frozen? knows them by identity
@@ -123,9 +123,8 @@ type Compiler struct {
 	out                   strings.Builder
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings              []string
-	methodRequiresRuntime bool                         // `# rb2go_method_requires: runtime`: a require in a method is not followed at compile time (decision 197)
+	methodRequiresRuntime bool                         // traced mode (-main): a require in a method resolves at run time, not at compile time (decisions 197, 288)
 	replaced              map[string]string            // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
-	facts                 map[string]bool              // `# rb2go_fold: expr => bool`: build-time facts a class-body condition folds (decision 197)
 	dmSites               map[*parser.CallNode]bool    // define_method calls boot recorded: no-ops at run time (decision 198)
 	prepends              []pendingPrepend             // prepends in load order, applied at link (decision 199)
 	bootBranches          map[string]boot.BranchInfo   // "path:line:col" of each if/unless boot ran (decision 201)
@@ -273,7 +272,7 @@ type options struct {
 	gemSigs    fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
 	pruneGems  bool              // drop gem methods no reachable code names (decision 169)
 	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
-	mainLast   bool              // the last source is the program's main file (rb2go_main, decision 197)
+	mainLast   bool              // traced mode: the last source is the program's main file, and a require in a method resolves at run time (decisions 197, 288)
 	boot       *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
 	goPoison   map[string]string // gem methods whose Go did not type-check, by methodKey: poisoned (decision 205)
 	goFuncs    map[string]string // out: each gem method's Go func name -> its methodKey
@@ -402,6 +401,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.noPrune = opts.noPrune
+	c.methodRequiresRuntime = opts.mainLast
 	c.env = opts.env
 	c.genCount, c.genLimit = opts.genCount, opts.genLimit
 	c.loadPreludeGo()
@@ -453,7 +453,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	c.mainFile = c.userFiles[0]
 	c.programFile = c.mainFile
-	if opts.mainLast { // a traced entry's `rb2go_main:` is the program `ruby` ran: its $0 (decision 197)
+	if opts.mainLast { // a traced compile's -main is the program `ruby` ran: its $0 (decision 197)
 		c.programFile = c.userFiles[len(c.userFiles)-1]
 	}
 	c.nameGo()
