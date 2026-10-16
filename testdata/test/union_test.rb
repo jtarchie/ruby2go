@@ -513,5 +513,36 @@ module UnionTests
       assert_equal ["b", "d", 2, 1], [union_rebase("a/b"), union_rebase(Pathname("d")), union_resize(12), union_resize("x")]
       assert_equal ["s1", "1"], [union_branch(1, true), union_branch(1, false)]
     end
+
+    #: (String | Symbol | nil v) -> String?
+    def union_safe_to_s(v) = v&.to_s
+
+    class UnionPipeA
+      #: (Array[String] log) -> void
+      def initialize(log) = @log = log
+      #: () -> nil
+      def close
+        @log << "a"
+        nil
+      end
+    end
+
+    class UnionPipeB
+      #: (Array[String] log) -> void
+      def initialize(log) = @log = log
+      #: () -> void
+      def close = @log << "b"
+    end
+
+    # `&.` on a union holding nil is nil for nil, not nil.to_s (Homebrew's Resource#url: `@url&.to_s`)
+    def test_safe_navigation_on_nil_union
+      assert_equal [nil, "a", "b"], [union_safe_to_s(nil), union_safe_to_s(:a), union_safe_to_s("b")]
+      log = [] #: Array[String]
+      [UnionPipeA.new(log), nil, UnionPipeB.new(log)].each do |v|
+        w = v #: UnionPipeA | UnionPipeB | nil
+        w&.close
+      end
+      assert_equal %w[a b], log
+    end
   end
 end

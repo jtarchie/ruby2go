@@ -1317,6 +1317,26 @@ module StdlibTests
       assert_equal ["      --verbose                    Be loud"], lines
       assert_raises(OptionParser::InvalidOption) { parser.parse(["--version"]) }
     end
+
+    #: (Array[String] names) -> Array[untyped]
+    def optional_run(names)
+      got = [] #: Array[untyped]
+      required = OptionParser::OPTIONAL_ARGUMENT
+      parser = OptionParser.new
+      parser.on(*names, required) { |v| got << v }
+      got << parser.parse(["--json", "wget"])
+      parser.parse(["--json=x"])
+      got
+    end
+
+    # A run-time OPTIONAL_ARGUMENT switch (Homebrew's `flag "--json"`): true when left out, a String (not a boxed
+    # String?) to an untyped block, and only a placed " [V]" argument takes the next word.
+    def test_runtime_optional_argument
+      assert_equal [true, ["wget"], "x"], optional_run(["--json"])
+      assert_equal [nil, ["wget"], "x"], optional_run(["--json=[V]"])
+      assert_equal [nil, ["wget"], "x"], optional_run(["--json [V]"])
+      assert_equal "x", optional_run(["--json"]).last.dup
+    end
   end
 
   # OpenStruct, SimpleDelegator and DelegateClass (decision 118, #35).
@@ -1996,6 +2016,7 @@ module StdlibTests
       n = (d + "a.txt").open("w") { |f| f.write("hi\n", "there") }
       got = [n, (d + "a.txt").open("r") { |f| f.gets }, (d + "a.txt").open { |f| f.read.size }]
       assert_equal [8, "hi\n", 8], got
+      assert_equal "hi\nthere", (d + "a.txt").read(encoding: Encoding::UTF_8)
       inner = Dir.mktmpdir(%w[a .z], d.to_s) { |x| [File.dirname(x) == d.to_s, x.end_with?(".z")] }
       assert_equal [true, true], inner
       FileUtils.rm_rf(d.to_s)

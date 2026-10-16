@@ -4756,6 +4756,18 @@ module ControlTests
       assert_equal true, r.frozen?
       assert_equal ["global-variable", "global-variable", "global-variable", "global-variable", nil], [defined?($stdout), defined?($0), defined?($;), defined?($VERBOSE), defined?($control_never_set)]
     end
+
+    # A guard on a constant no file defines always returns, so what follows (naming it) is never compiled
+    #: () -> String?
+    def control_absent_guard
+      return unless defined?(ControlNoSuchGem)
+
+      ControlNoSuchGem.paths.home
+    end
+
+    def test_defined_guard_return
+      assert_nil control_absent_guard
+    end
   end
 
   # ruby/spec language gaps (#49): when *LIST and rescue *ERRORS

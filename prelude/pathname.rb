@@ -121,8 +121,8 @@ class Pathname < Object
   #: () -> bool
   def directory? = File.directory?(to_s)
 
-  #: (?Integer?, ?Integer?) -> String
-  def read(length = nil, offset = nil) = File.read(to_s, length, offset)
+  #: (?Integer?, ?Integer?, **untyped) -> String
+  def read(length = nil, offset = nil, **opts) = File.read(to_s, length, offset, **opts)
 
   #: (untyped) -> Integer
   def write(data) = File.write(to_s, data)

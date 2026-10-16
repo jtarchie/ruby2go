@@ -27,13 +27,13 @@ class OptionParser < Object
   # A switch whose strings aren't all literals: its kind is read at run
   # time from the strings alone (a flag or a String argument).
   #: (*untyped) ?{ (untyped) -> void } -> OptionParser
-  def on(*specs) = %x{ return self.rbOn(0, "flag", rest_, func(v any) { if blk != nil { blk(v) } }) }
+  def on(*specs) = %x{ return self.rbOn(0, "flag", rest_, func(v any) { if blk != nil { blk(rbOptStored(v)) } }) }
 
   #: (*untyped) ?{ (untyped) -> void } -> OptionParser
-  def on_tail(*specs) = %x{ return self.rbOn(1, "flag", rest_, func(v any) { if blk != nil { blk(v) } }) }
+  def on_tail(*specs) = %x{ return self.rbOn(1, "flag", rest_, func(v any) { if blk != nil { blk(rbOptStored(v)) } }) }
 
   #: (*untyped) ?{ (untyped) -> void } -> OptionParser
-  def on_head(*specs) = %x{ return self.rbOn(-1, "flag", rest_, func(v any) { if blk != nil { blk(v) } }) }
+  def on_head(*specs) = %x{ return self.rbOn(-1, "flag", rest_, func(v any) { if blk != nil { blk(rbOptStored(v)) } }) }
 
   #: (*untyped) ?{ (bool) -> void } -> OptionParser
   def __on_flag(*specs) = %x{ return self.rbOn(0, "flag", rest_, func(v any) { if blk != nil { blk(v.(Boolean)) } }) }

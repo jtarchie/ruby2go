@@ -1,6 +1,7 @@
 #!/bin/bash
 # host: `brew <args>` under MRI: unpatched in brew's default (fork) mode, then patched in HOMEBREW_SPAWN_SYSTEM=1 mode,
-# the only mode a compiled (fork-less) brew runs. Prints "MRI output identical" when the patches change nothing.
+# the only mode a compiled (fork-less) brew runs. Prints "MRI output identical" when the patches change nothing;
+# the unpatched output is left in work/mri.txt.
 cd "$(dirname "$0")"
 docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
 while IFS= read -r line; do export "$line"; done < /w/env.txt
@@ -11,4 +12,4 @@ $B "$@" > /dev/null 2>&1 # warm the API cache: the download banner prints once
 $B "$@" > /tmp/before.txt 2>&1; echo "unpatched fork-mode exit $?"
 for p in /w/patches/*.patch; do git -C /home/linuxbrew/.linuxbrew/Homebrew apply "$p" || { echo "patch failed: $p"; exit 1; }; done
 HOMEBREW_SPAWN_SYSTEM=1 $B "$@" > /tmp/after.txt 2>&1; echo "patched spawn-mode exit $?"
-diff /tmp/before.txt /tmp/after.txt && echo "MRI output identical"' _ "$@"
+cp /tmp/before.txt /w/work/mri.txt; diff /tmp/before.txt /tmp/after.txt && echo "MRI output identical"' _ "$@"

@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -109,7 +110,25 @@ func (f *fctx) coerce0(n parser.Node, e expr, to Type) string {
 		return f.coerceClass(n, e, to)
 	case TVar:
 		return f.coerceToVar(n, e, to)
-	case TFunc, TNil, TTuple, TVoid: // converted by the general rules below
+	case TTuple:
+		if isAny(e.typ) || isClass(e.typ, "Array") { // `T.cast(pair, [A, B])`: an Array (or untyped holding one) as a tuple (rbAs, decision 22)
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), f.coerceToAny(e), to.String()))
+		}
+		if from, ok := e.typ.(TTuple); ok && len(from.Elems) == len(to.Elems) && f.c.goType(from) != f.c.goType(to) {
+			// `T.cast(pair, [T::Array[Formula], ...])` of a `[Array[Formula | Keg], ...]`: each element converts
+			t := f.newTmp()
+			f.emit("%s := %s", t, e.code)
+			codes := make([]string, len(to.Elems))
+			for i := range to.Elems {
+				el := expr{code: fmt.Sprintf("%s.F%d", t, i), typ: from.Elems[i]}
+				if f.c.goType(from.Elems[i]) != f.c.goType(to.Elems[i]) { // a cast may narrow: checked at run time, as from untyped
+					el = expr{code: f.coerceToAny(el), typ: TAny{}}
+				}
+				codes[i] = f.coerce(n, el, to.Elems[i])
+			}
+			return f.c.goType(to) + "{" + strings.Join(codes, ", ") + "}"
+		}
+	case TFunc, TNil, TVoid: // converted by the general rules below
 	}
 	return e.code
 }

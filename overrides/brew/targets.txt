@@ -1,0 +1,5 @@
+info wget
+info jq
+info git
+info python@3.13
+info --json=v2 wget

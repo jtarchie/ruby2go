@@ -177,10 +177,11 @@ class Array < Object
     return v}
   end
 
-  #: (Integer) -> E
-  def fetch(i)
+  #: (Integer, ?E?) -> E
+  def fetch(i, default = nil)
     v = self[i]
     return v if v
+    return default if default
     raise IndexError, "index #{i} outside of array bounds: #{-size}...#{size}"
   end
 
@@ -601,6 +602,21 @@ class Array < Object
     out.s = append(out.s, self.s...)
     return out
   }
+
+  # uniq with a block: the first element for each block value, by eql?/hash.
+  #: [K] () { (E) -> K } -> Array[E]
+  def __uniq_block
+    seen = {} #: Hash[K, bool]
+    out = [] #: Array[E]
+    each do |x|
+      k = yield(x)
+      next if seen.key?(k)
+
+      seen[k] = true
+      out << x
+    end
+    out
+  end
 
   # By eql?/hash, as Hash keys.
   #: () -> Array[E]

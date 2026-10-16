@@ -1,0 +1,33 @@
+Subject: info --json=v2: build the formulae/casks pair directly
+
+The branches assigned the multiple assignment's own targets as scratch locals; a conditional per element says the
+same without them.
+---
+--- a/Library/Homebrew/cmd/info.rb
++++ b/Library/Homebrew/cmd/info.rb
+@@ -757,17 +757,15 @@
+         when :v2
+           formulae, casks = T.let(
+             if all_packages
+-              formulae = [] if args.cask?
+-              formulae ||= Formula.all.sort
+-              casks = [] if args.formula?
+-              casks ||= Cask::Cask.all.sort_by(&:full_name)
+-              [formulae, casks]
++              [
++                args.cask? ? [] : Formula.all.sort,
++                args.formula? ? [] : Cask::Cask.all.sort_by(&:full_name),
++              ]
+             elsif args.installed?
+-              formulae = [] if args.cask?
+-              formulae ||= Formula.installed.sort
+-              casks = [] if args.formula?
+-              casks ||= Cask::Caskroom.casks.sort_by(&:full_name)
+-              [formulae, casks]
++              [
++                args.cask? ? [] : Formula.installed.sort,
++                args.formula? ? [] : Cask::Caskroom.casks.sort_by(&:full_name),
++              ]
+             else
+               named_formulae, named_casks = T.cast(
+                 args.named.to_formulae_to_casks, [T::Array[Formula], T::Array[Cask::Cask]]

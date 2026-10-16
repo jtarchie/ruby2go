@@ -220,7 +220,9 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 		} else {
 			codes = append(codes, blkCode)
 		}
-	} else if block != nil && !f.lenient() { // gem code: MRI ignores a block the method never yields to
+	} else if block != nil && (!f.lenient() || m.File != nil && m.File.isPrelude()) {
+		// gem code: MRI ignores a block the method never yields to; a core method's block form the prelude lacks
+		// (`xs.uniq(&:name)`) is an error there too, not a silently different answer
 		f.errorf(n, "%s does not take a block", m.Name)
 	}
 	f.bindTypeParams(n, m, env)

@@ -18,3 +18,4 @@ while kill -0 $pid 2>/dev/null; do
 done
 wait $pid; code=$?
 echo "build exit $code elapsed $(( $(date +%s)-start ))s peakRSS ${peak}kB"; tail -20 "$name-build.log"
+exit $code

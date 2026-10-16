@@ -1,0 +1,29 @@
+Subject: Utils::Backtrace: no sorbet-runtime path without RubyGems
+
+With RubyGems not loaded there is no gem home and so no sorbet-runtime lines to clean.
+---
+--- a/Library/Homebrew/utils/backtrace.rb
++++ b/Library/Homebrew/utils/backtrace.rb
+@@ -19,15 +19,19 @@
+ 
+       return backtrace if Context.current.verbose?
+       return backtrace if backtrace.blank?
+-      return backtrace if backtrace.fetch(0).start_with?(sorbet_runtime_path)
++      sorbet_path = sorbet_runtime_path
++      return backtrace if sorbet_path.nil?
++      return backtrace if backtrace.fetch(0).start_with?(sorbet_path)
+ 
+       old_backtrace_length = backtrace.length
+-      backtrace.reject { |line| line.start_with?(sorbet_runtime_path) }
++      backtrace.reject { |line| line.start_with?(sorbet_path) }
+                .tap { |new_backtrace| print_backtrace_message if old_backtrace_length > new_backtrace.length }
+     end
+ 
+-    sig { returns(String) }
++    sig { returns(T.nilable(String)) }
+     def self.sorbet_runtime_path
++      return unless defined?(Gem)
++
+       @sorbet_runtime_path ||= T.let("#{Gem.paths.home}/gems/sorbet-runtime", T.nilable(String))
+     end
+ 

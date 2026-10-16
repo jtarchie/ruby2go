@@ -152,7 +152,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 
 func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	recv := f.genExpr(n.Receiver, nil)
-	if !isOpt(recv.typ) && !isAny(recv.typ) {
+	u, nilUnion := recv.typ.(TUnion)
+	nilUnion = nilUnion && slices.ContainsFunc(u.Members, isNil)
+	if !isOpt(recv.typ) && !isAny(recv.typ) && !nilUnion {
 		return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 	}
 	rt := f.newTmp()
@@ -160,9 +162,12 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	if o, ok := recv.typ.(TOpt); ok {
 		inner = expr{code: "(*" + rt + ")", typ: o.Elem}
 	}
+	if nilUnion { // `@url&.to_s` of a String | URL | nil: a union holds nil as Go's nil, and the call sees the rest
+		inner = expr{code: rt, typ: unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)}
+	}
 	call := func() expr { return f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) }
 	probe, once := f.genOperandOnce(call)
-	if isVoid(probe.e.typ) {
+	if vt := stripOpt(probe.e.typ); isVoid(vt) || isNil(vt) { // also a union whose members' calls are void or nil (`error_pipe&.close`)
 		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 		f.indent++
 		e := f.operandAgain(probe, once, call)

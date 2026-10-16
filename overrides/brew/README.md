@@ -20,7 +20,8 @@ pin the upstream, keep a small series of upstream-shaped patches, and compare ag
 ./mricheck info wget        # the patches change nothing: unpatched fork mode == patched spawn mode under MRI
 ./gen info                  # rb2go gen -> work/info.go (~2 min, ~3 GB)
 ./build info                # go build -> work/info-bin (~3 min, ~10 GB; killed past 14 GB)
-./run info info wget        # run it in the container; compare with expected/info-wget.txt (MRI, warm API cache)
+./run info info wget        # run it in the container
+./check info                # each targets.txt line: compiled output == MRI's (same container, same API data)
 ```
 
 `brew info wget` output equals MRI's (decision 291).

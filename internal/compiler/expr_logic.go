@@ -47,10 +47,11 @@ func (f *fctx) branchFit(types []Type, gen func(t tail), joinErr *compileError) 
 func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	var types []Type
 	once := f.probing() // output is discarded here, so one pass both types the branches and declares their locals (decision 240)
+	probe := tail{kind: tailAssign, target: "_", types: &types, hint: expected}
 	if once {
-		gen(tail{kind: tailAssign, target: "_", types: &types})
+		gen(probe)
 	} else {
-		f.probe(func() { gen(tail{kind: tailAssign, target: "_", types: &types}) })
+		f.probe(func() { gen(probe) })
 	}
 	var typ Type
 	err := catchCompileError(func() { typ = f.joinAll(n, types) })

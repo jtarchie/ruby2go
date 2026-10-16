@@ -573,6 +573,7 @@ module ArrayTests
       assert_equal 11, nums.fetch(0)
       assert_equal 40, nums.fetch(-1)
       assert_equal 11, nums.fetch(-4)
+      assert_equal [99, 11], [nums.fetch(9, 99), nums.fetch(0, 99)]
       e = assert_raises(IndexError) { nums.fetch(4) }
       assert_equal "index 4 outside of array bounds: -4...4", e.message
       assert_equal IndexError, e.class
@@ -627,6 +628,11 @@ module ArrayTests
       assert_equal [3, 1, 2], ([3, 1, 3, 2, 1, 2].uniq)
       assert_equal ["b", "a"], (["b", "a", "b"].uniq)
       assert_equal [0], empty.uniq
+      assert_equal ["apple", "bob"], %w[apple avocado bob banana].uniq { |w| w[0] }
+      assert_equal ["apple", "bob"], %w[apple bob].uniq(&:size)
+      extra = [2, 3] #: Array[Integer]
+      maybe = (empty.size > 5 ? 9 : nil) #: Integer?
+      assert_equal [1, 2, 3], [1, maybe, *extra].compact
       assert_equal [4, 5], ([4, 5].compact)
       assert_equal 21, nums.delete(21)
       assert_nil nums.delete(1000)

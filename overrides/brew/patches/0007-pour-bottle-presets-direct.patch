@@ -1,0 +1,63 @@
+Subject: pour_bottle? presets: call PourBottleCheck directly instead of instance_exec on a lambda
+
+The presets are fixed code, so they need no self-rebinding: reason and satisfy on the check object, and
+the on_macos guard is its condition (the ivars on_macos sets on a PourBottleCheck are never read).
+---
+--- a/Library/Homebrew/formula.rb
++++ b/Library/Homebrew/formula.rb
+@@ -5144,35 +5144,33 @@
+         raise ArgumentError, "Do not pass both a preset condition and a block to `pour_bottle?`"
+       end
+ 
+-      bottle_check_block = block || case only_if
++      if block
++        pour_bottle_check.instance_exec(pour_bottle_check, &block)
++        return
++      end
++
++      case only_if
+       when :clt_installed
+-        lambda do |_|
+-          on_macos do
+-            T.bind(self, PourBottleCheck)
+-            reason(+<<~EOS)
+-              The bottle needs the Xcode Command Line Tools to be installed at /Library/Developer/CommandLineTools.
+-              Development tools provided by Xcode.app are not sufficient.
++        if Homebrew::SimulateSystem.simulating_or_running_on_macos?
++          pour_bottle_check.reason(+<<~EOS)
++            The bottle needs the Xcode Command Line Tools to be installed at /Library/Developer/CommandLineTools.
++            Development tools provided by Xcode.app are not sufficient.
+ 
+-              You can install the Xcode Command Line Tools, if desired, with:
+-                  xcode-select --install
+-            EOS
+-            satisfy { MacOS::CLT.installed? }
+-          end
+-        end
+-      when :default_prefix
+-        lambda do |_|
+-          T.bind(self, PourBottleCheck)
+-          reason(<<~EOS)
+-            The bottle (and many others) needs to be installed into #{Homebrew::DEFAULT_PREFIX}.
++            You can install the Xcode Command Line Tools, if desired, with:
++                xcode-select --install
+           EOS
+-          satisfy { HOMEBREW_PREFIX.to_s == Homebrew::DEFAULT_PREFIX }
++          pour_bottle_check.satisfy { MacOS::CLT.installed? }
+         end
++      when :default_prefix
++        pour_bottle_check.reason(<<~EOS)
++          The bottle (and many others) needs to be installed into #{Homebrew::DEFAULT_PREFIX}.
++        EOS
++        pour_bottle_check.satisfy { HOMEBREW_PREFIX.to_s == Homebrew::DEFAULT_PREFIX }
+       else
+         raise ArgumentError, "Invalid preset `pour_bottle?` condition" if only_if.present?
+-      end
+-      raise ArgumentError, "`pour_bottle?` requires a preset condition or a block" if bottle_check_block.nil?
+ 
+-      pour_bottle_check.instance_exec(pour_bottle_check, &bottle_check_block)
++        raise ArgumentError, "`pour_bottle?` requires a preset condition or a block"
++      end
+     end
+ 
+     # Deprecates a {Formula} (on the given date) so a warning is

@@ -247,5 +247,19 @@ module SorbetTests
         assert_equal "Passed `nil` into T.must", e.message
       end
     end
+
+    # T.cast to a tuple, from untyped and from a wider tuple; a multiple assignment of one (Homebrew's
+    # `named_formulae, named_casks = T.cast(args.named.to_formulae_to_casks, [...])`).
+    def test_cast_tuple
+      wide = [[1, 2], [:d]] #: [Array[Integer | String], Array[Symbol]]
+      a, b = T.cast(wide, [T::Array[Integer], T::Array[Symbol]])
+      assert_equal [3, [:d]], [a.sum, b]
+      mixed = [1, :x, 2] #: Array[Integer | Symbol]
+      ints, syms2 = T.cast(mixed.partition { |x| x.is_a?(Integer) }, [T::Array[Integer], T::Array[Symbol]])
+      assert_equal [3, [:x]], [ints.sum, syms2]
+      pair = T.unsafe([[4], [:e]])
+      c, d = T.cast(pair, [T::Array[Integer], T::Array[Symbol]])
+      assert_equal [4, [:e]], [c.sum, d]
+    end
   end
 end

@@ -393,6 +393,11 @@ func (f *fctx) hoistLocals(scope int) {
 			f.emit("var %s %s", goLocalName(li.name), f.c.goType(li.typ))
 		case f.lenient(): // a gem's local only ever nil is untyped (decision 183), and its assignments expect a declaration (decision 244)
 			f.emit("var %s any", goLocalName(li.name))
+		default:
+			continue
+		}
+		if f.lenient() && goLocalName(li.name) != "_" { // a gem arm that does not compile (decision 244) may have been its only reader
+			f.emit("_ = %s", goLocalName(li.name))
 		}
 	}
 }
@@ -452,6 +457,15 @@ type tail struct {
 	target string
 	typ    Type    // nil: infer (probe)
 	types  *[]Type // collector while inferring
+	hint   Type    // while inferring: what the value is expected to be, for literals (`T.let(if c then [[], x] ... end, [A, B])`)
+}
+
+// want is the expected type of the value in tail position: its type, or while inferring the hint.
+func (t tail) want() Type {
+	if t.typ != nil {
+		return t.typ
+	}
+	return t.hint
 }
 
 func (t tail) record(ty Type) {
@@ -567,9 +581,13 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 			f.applyNarrow(f.guardNarrowing(s))
 			continue
 		}
-		if i == len(stmts.Body)-1 {
+		switch {
+		case i == len(stmts.Body)-1:
 			f.genStmt(s, t)
-		} else {
+		case f.absentReturn(s):
+			f.genStmt(s, tail{}) // `return unless defined?(Gem)`: it always returns, so what follows (which names Gem) is dead
+			return
+		default:
 			f.genStmt(s, tail{})
 			f.applyNarrow(f.guardNarrowing(s))
 		}
@@ -652,9 +670,33 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		}
 		f.genCallStmt(n, t)
 	default:
-		e := f.genExpr(n, t.typ)
+		e := f.genExpr(n, t.want())
 		f.applyTail(n, e, t)
 	}
+}
+
+// absentReturn reports whether s is an if/unless on an absent constant (absentGuard) whose taken branch ends in return.
+func (f *fctx) absentReturn(s parser.Node) bool {
+	var taken *parser.StatementsNode
+	switch n := s.(type) {
+	case *parser.UnlessNode:
+		if !f.c.absentGuard(f.f, n.Predicate, f.lex) {
+			return false
+		}
+		taken = n.Statements
+	case *parser.IfNode:
+		if !f.c.absentGuard(f.f, n.Predicate, f.lex) {
+			return false
+		}
+		if e, ok := n.Subsequent.(*parser.ElseNode); ok {
+			taken = e.Statements
+		}
+	}
+	if taken == nil || len(taken.Body) == 0 {
+		return false
+	}
+	_, ok := taken.Body[len(taken.Body)-1].(*parser.ReturnNode)
+	return ok
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
@@ -3929,7 +3971,7 @@ func (f *fctx) genCallStmt(n *parser.CallNode, t tail) {
 	if t.kind == tailNone || t.kind == tailReturn && t.typ != nil && isVoid(t.typ) {
 		e = f.genCall(n, t.typ) // value unused: a setter needs no temp for it
 	} else {
-		e = f.genExpr(n, t.typ)
+		e = f.genExpr(n, t.want())
 	}
 	f.applyTail(n, e, t)
 }

@@ -155,5 +155,6 @@ p DemoBoundBlk.go
 p DemoTokNew.go
 p DemoDupSuper.go
 p DemoSharedIvar.go
+p [DemoHoistUnderscore.go(true), DemoHoistUnderscore.go(false)]
 p DemoSetDlg.go
 p DemoBoolDyn.go

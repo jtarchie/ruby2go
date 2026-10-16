@@ -42,6 +42,14 @@ func (f *fctx) genSplatArray(n *parser.ArrayNode, elemT, hint Type) expr {
 	f.emit("%s := &Array[%s]{}", out, f.c.goType(elemT))
 	for i, el := range n.Elements {
 		if _, ok := el.(*parser.SplatNode); ok {
+			if pt := parts[i].typ.(TClass).Args[0]; f.c.goType(pt) != f.c.goType(elemT) && !isAny(pt) {
+				// `[f, parent, *siblings]`: Formula elements into an Array[Formula?] convert one by one, as a lone element would
+				x := f.newTmp()
+				f.emit("for _, %s := range (%s).s {", x, parts[i].code)
+				f.emit("\t%s.s = append(%s.s, %s)", out, out, f.coerce(el, expr{code: x, typ: pt}, elemT))
+				f.emit("}")
+				continue
+			}
 			f.emit("%s.s = append(%s.s, (%s).s...)", out, out, f.coerce(el, parts[i], at))
 			continue
 		}

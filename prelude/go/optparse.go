@@ -20,6 +20,8 @@ type rbOptSwitch struct {
 	style       int      // 0 flag, 1 required argument, 2 optional argument
 	desc        []string
 	kind        string // flag, string, integer, float, array; optional forms end in _opt
+	dyn         bool   // its kind was read at run time (an untyped block): an omitted OPTIONAL_ARGUMENT is true
+	placed      bool   // a " [V]" placeholder (MRI's PlacedArgument): an omitted argument takes the next word
 	call        func(any)
 }
 
@@ -81,7 +83,7 @@ func rbOptBuild(kind string, specs []any) *rbOptSwitch {
 			case "REQUIRED":
 				sw.style = 1
 			case "OPTIONAL":
-				sw.style = 2
+				sw.style, sw.placed = 2, false
 			case "NONE":
 				sw.style = 0
 			}
@@ -106,13 +108,13 @@ func rbOptBuild(kind string, specs []any) *rbOptSwitch {
 				i = len(body)
 			}
 			if st, arg := rbOptSpecStyle(body[i:]); st > 0 {
-				sw.style, sw.arg = st, arg
+				sw.style, sw.arg, sw.placed = st, arg, st == 2 && strings.HasPrefix(arg, " ")
 			}
 			sw.names = append(sw.names, body[:i])
 			sw.long = append(sw.long, str[:len(str)-len(body)+i])
 		case strings.HasPrefix(str, "-") && len(str) > 1:
 			if st, arg := rbOptSpecStyle(str[2:]); st > 0 {
-				sw.style, sw.arg = st, arg
+				sw.style, sw.arg, sw.placed = st, arg, st == 2 && !strings.HasPrefix(arg, "=")
 				if !strings.HasPrefix(arg, " ") && !strings.HasPrefix(arg, "=") {
 					sw.arg = " " + arg
 				}
@@ -126,6 +128,7 @@ func rbOptBuild(kind string, specs []any) *rbOptSwitch {
 		sw.kind = "array"
 	}
 	if kind == "flag" && sw.style != 0 {
+		sw.dyn = true
 		switch {
 		case array:
 			sw.kind = "array"
@@ -320,6 +323,9 @@ func (self *OptionParser) rbFindShort(c string) *rbOptSwitch {
 func (sw *rbOptSwitch) rbConvert(val *string, shown string) any {
 	kind, opt := strings.CutSuffix(sw.kind, "_opt")
 	if val == nil {
+		if sw.dyn && sw.arg == "" { // OPTIONAL_ARGUMENT with no placeholder: MRI yields true when the argument is left out
+			return Boolean(true)
+		}
 		if opt {
 			switch kind {
 			case "integer":
@@ -463,7 +469,7 @@ func (self *OptionParser) rbParse(argv []String, into any) []String {
 				var v *string
 				if hasVal {
 					v, shown = &val, a
-				} else if n, ok := next(); ok && !strings.HasPrefix(*n, "-") {
+				} else if n, ok := next(); ok && sw.placed && !strings.HasPrefix(*n, "-") { // only a placed argument ("--x [V]") takes the next word
 					i++
 					v, shown = n, shown+" "+*n
 				}
