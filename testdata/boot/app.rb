@@ -150,3 +150,7 @@ p DemoClassS.class_s("wget"), DemoClassS.class_s("foo-bar@2"), DemoClassS.class_
 dcv = DemoCvCollector.new; dcv1 = dcv.building?; dcv.building!; p dcv1, dcv.building?, DemoCvCollector.new.building?
 p DemoDlg.go
 p DemoCmp.go
+p DemoFreshBang.go
+p DemoBoundBlk.go
+p DemoTokNew.go
+p DemoDupSuper.go

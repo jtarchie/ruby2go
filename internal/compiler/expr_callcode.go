@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -269,6 +270,64 @@ func flatOpt(e expr) expr {
 	return e
 }
 
+// newBySubclass is `klass.new(v)` where klass is a class or one of its subclasses and some subclass's new takes other Go
+// parameter types (Homebrew's Version::Token.create: StringToken.new(String), NumericToken.new(String | Integer)): one
+// interface assertion cannot name both, so a type switch picks the class and converts each argument to its new's
+// parameter (decision 290). Positional parameters only; anything else keeps the single assertion.
+func (f *fctx) newBySubclass(m *Method, recv expr, args []string, env map[string]Type, ret string) (string, bool) {
+	if m.calleeDefaults || m.kwMask() || m.Block != nil || len(args) != len(m.Params) || slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest || p.Keyword || p.KwRest }) {
+		return "", false
+	}
+	type arm struct {
+		meta *Class
+		m    *Method
+	}
+	var arms []arm
+	queue := []*Class{m.Owner.metaOf}
+	for len(queue) > 0 {
+		k := queue[0]
+		queue = queue[1:]
+		queue = append(queue, k.Subclasses...)
+		if k.meta == nil {
+			continue
+		}
+		e := k.meta.lookup("new")
+		if e == nil || e.M == m || len(e.M.Params) != len(m.Params) || e.M.calleeDefaults || e.M.kwMask() || e.M.Block != nil ||
+			slices.ContainsFunc(e.M.Params, func(p Param) bool { return p.Rest || p.Keyword || p.KwRest }) {
+			continue
+		}
+		arms = append(arms, arm{k.meta, e.M})
+	}
+	if len(arms) == 0 {
+		return "", false
+	}
+	pinned := make([]string, len(args))
+	var b strings.Builder
+	b.WriteString("func() " + ret + " {\n")
+	for i, a := range args {
+		pinned[i] = fmt.Sprintf("a%d", i)
+		fmt.Fprintf(&b, "var %s %s = %s\n", pinned[i], f.c.goType(subst(m.Params[i].Type, env)), a)
+	}
+	b.WriteString("r := any(" + recv.code + ")\nswitch c := r.(type) {\n")
+	for _, a := range arms {
+		conv := make([]string, len(pinned))
+		for i, p := range a.m.Params {
+			base := subst(m.Params[i].Type, env)
+			if typeEq(base, p.Type) {
+				conv[i] = pinned[i]
+				continue
+			}
+			// the subclass may take less than the base (String where String? is): checked when this class is the one
+			boxed := f.coerce(nil, expr{code: pinned[i], typ: base}, TAny{})
+			conv[i] = f.coerce(nil, expr{code: boxed, typ: TAny{}}, p.Type)
+		}
+		fmt.Fprintf(&b, "case *%s:\nreturn c.New(%s)\n", a.meta.Name, strings.Join(conv, ", "))
+	}
+	ps, _ := f.c.sig(m, env)
+	fmt.Fprintf(&b, "}\nreturn r.(interface{ New(%s) %s }).New(%s)\n}()", ps, ret, strings.Join(pinned, ", "))
+	return b.String(), true
+}
+
 // callCode renders the call for entry e.
 func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type) string {
 	m := e.M
@@ -283,6 +342,9 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	if m.Owner.metaOf != nil && m.Name == "new" && !recv.classObj {
 		// `new` on a class object of unknown exact class: assert for it.
 		ps, ret := f.c.sig(m, env)
+		if code, ok := f.newBySubclass(m, recv, args, env, ret); ok {
+			return code
+		}
 		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
 	}
 	if code, ok := f.dispatchCall(e, recv, argList); ok {

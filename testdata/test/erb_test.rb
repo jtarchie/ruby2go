@@ -34,6 +34,7 @@ module ErbTests
       assert_equal 3, total
       assert_equal "&lt;b&gt; &amp; &quot;q&quot;", ERB::Util.html_escape("<b> & \"q\"")
       assert_equal "x&#39;y", ERB::Util.h("x'y")
+      assert_equal ["a%20b%2Fc%3Fd%3D%C3%A9%26~x_y-z.1", "12"], [ERB::Util.url_encode("a b/c?d=é&~x_y-z.1"), ERB::Util.u(12)]
     end
 
     def test_multiline_and_nested

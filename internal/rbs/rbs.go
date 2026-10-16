@@ -39,8 +39,9 @@ func (Record) isType()    {}
 type (
 	// Name is `Foo` or `Foo[A, B]`.
 	Name struct {
-		Name string
-		Args []Type
+		Name     string
+		Args     []Type
+		Absolute bool // written `::Foo`: resolved from the top level, not lexically
 	}
 	// Optional is `T?`.
 	Optional struct{ Elem Type }
@@ -89,10 +90,14 @@ type RecordField struct {
 }
 
 func (t Name) String() string {
-	if len(t.Args) == 0 {
-		return t.Name
+	name := t.Name
+	if t.Absolute {
+		name = "::" + name
 	}
-	return t.Name + "[" + join(t.Args) + "]"
+	if len(t.Args) == 0 {
+		return name
+	}
+	return name + "[" + join(t.Args) + "]"
 }
 func (t Optional) String() string {
 	if needsParens(t.Elem) { // unparenthesised, the `?` would bind to the last member
@@ -569,7 +574,7 @@ func (p *parser) parseAtom() (Type, error) {
 	case "[":
 		return p.parseTuple()
 	case "::":
-		return p.parsePrimary()
+		return p.parseAbsolute()
 	case "self":
 		return Self{}, nil
 	case "instance":
@@ -647,6 +652,16 @@ func (p *parser) parseTuple() (Type, error) {
 	}
 	p.next() // ]
 	return Tuple{Elems: elems}, nil
+}
+
+// parseAbsolute reads the type after a leading `::`: a name in it resolves from the top level.
+func (p *parser) parseAbsolute() (Type, error) {
+	t, err := p.parsePrimary()
+	if n, ok := t.(Name); ok {
+		n.Absolute = true
+		return n, err
+	}
+	return t, err
 }
 
 // parseSingleton reads `singleton(Foo)` after its `singleton` token.

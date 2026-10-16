@@ -496,3 +496,120 @@ module DemoCmp
     [a < "2.39", a >= "2.39", a > DemoCmpVersion.new("2.1"), err]
   end
 end
+
+# Homebrew's Libstdcxx.system_version: a bang method on a fresh String (`x.to_s` of a non-String) only answers its
+# value, nil when nothing changed (decision 290)
+module DemoFreshBang
+  def self.go
+    a = "6#{Pathname.new("/x/libstdc++.so.6.0.33").basename.to_s.delete_prefix!("libstdc++.so.6")}"
+    b = "6#{Pathname.new("/x/other.so").basename.to_s.delete_prefix!("libstdc++.so.6")}"
+    c = 42.to_s.sub!("4", "x")
+    [a, b, c]
+  end
+end
+
+# Homebrew's Resource::Patch#initialize: `super "patch", &block` where the subclass's block binds the subclass and the
+# parent's binds the parent (decision 290)
+class DemoRes
+  extend T::Sig
+
+  sig { returns(String) }
+  attr_reader :name
+
+  sig { params(name: String, block: T.nilable(T.proc.bind(DemoRes).void)).void }
+  def initialize(name, &block)
+    @name = name
+    instance_eval(&block) if block
+  end
+end
+
+class DemoResPatch < DemoRes
+  sig { returns(T::Array[String]) }
+  attr_reader :files
+
+  sig { params(block: T.nilable(T.proc.bind(DemoResPatch).void)).void }
+  def initialize(&block)
+    @files = T.let([], T::Array[String])
+    super("patch", &block)
+  end
+
+  sig { params(file: String).void }
+  def apply(file)
+    @files << file
+  end
+end
+
+module DemoBoundBlk
+  def self.go
+    r = DemoResPatch.new { apply "a.diff" }
+    [r.name, r.files]
+  end
+end
+
+# Homebrew's Version::Token.create: `klass.new(val)` where klass is one of several subclasses whose new takes other
+# types (decision 290)
+class DemoTok
+  extend T::Sig
+
+  sig { returns(T.untyped) }
+  attr_reader :value
+
+  sig { params(value: T.nilable(T.any(String, Integer))).void }
+  def initialize(value)
+    @value = T.let(value, T.untyped)
+  end
+
+  sig { params(val: String).returns(DemoTok) }
+  def self.create(val)
+    case val
+    when /\A\d+\z/ then DemoNumTok
+    else DemoStrTok
+    end.new(val)
+  end
+end
+
+class DemoStrTok < DemoTok
+  sig { params(value: String).void }
+  def initialize(value)
+    super(value.to_s)
+  end
+end
+
+class DemoNumTok < DemoTok
+  sig { params(value: T.any(String, Integer)).void }
+  def initialize(value)
+    super(value.to_i)
+  end
+end
+
+module DemoTokNew
+  def self.go = [DemoTok.create("12").value, DemoTok.create("rc").value, DemoTok.create("7").class.name]
+end
+
+# Homebrew's Downloadable#initialize_dup: a module's initialize_dup calling super with no class one above it reaches
+# Object's (decision 290)
+module DemoDupMix
+  def initialize_dup(other)
+    super
+    @tags = @tags.dup
+  end
+end
+
+class DemoDupped
+  include DemoDupMix
+
+  attr_reader :tags
+
+  def initialize
+    @tags = ["a"]
+  end
+end
+
+module DemoDupSuper
+  def self.go
+    a = DemoDupped.new
+    b = a.dup
+    b.tags << "b"
+    [a.tags, b.tags]
+  end
+end

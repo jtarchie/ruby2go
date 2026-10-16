@@ -5958,3 +5958,47 @@ module ObjectCvLinux
 end
 
 ObjectCvColl.prepend(ObjectCvLinux)
+
+module ObjectTests
+  # `#: ::Pathname` names the top-level class even inside a module with its own Pathname (Homebrew's
+  # OS::Linux::Pathname; decision 290).
+  module AbsOs
+    module Pathname
+      #: () -> Integer
+      def self.helper = 1
+    end
+
+    module Lib
+      #: (String) -> ::Pathname
+      def self.find(path) = Pathname(path) / "libx.so"
+    end
+  end
+
+  # nil answers freeze, frozen? and dup itself (decision 290): `@name.freeze` on a nil @name is nil, not NoMethodError.
+  class NilFreezeTest < Minitest::Test
+    #: (String?) -> [String?, bool]
+    def nil_freeze(x) = [x.freeze, x.frozen?]
+
+    def test_freeze_on_possibly_nil
+      assert_equal [[nil, true], ["a", true]], [nil_freeze(nil), nil_freeze("a")]
+    end
+
+    #: (Array[Integer]?) -> Array[Integer]?
+    def nil_dup(x)
+      y = x.dup
+      y << 9 if y
+      y
+    end
+
+    def test_dup_on_possibly_nil
+      a = [1]
+      assert_equal [nil, [1, 9], [1]], [nil_dup(nil), nil_dup(a), a]
+    end
+  end
+
+  class AbsoluteRbsNameTest < Minitest::Test
+    def test_absolute_type_name
+      assert_equal ["/usr/lib/libx.so", 1], [AbsOs::Lib.find("/usr/lib").to_s, AbsOs::Pathname.helper]
+    end
+  end
+end

@@ -39,6 +39,10 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		if e, ok := f.nilClassCall(n, recv, name, args); ok {
 			return e
 		}
+	case "freeze", "frozen?", "dup", "clone": // nil's own: frozen already, its dup/clone itself (Homebrew's Resource#freeze, Downloadable#initialize_dup)
+		if len(args) == 0 && block == nil {
+			return f.nilFreeze(n, recv, name)
+		}
 	}
 	if e, ok := f.nilClassArm(n, recv, name, args, block); ok {
 		return e
@@ -390,6 +394,37 @@ func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
 	return expr{code: "(*" + code + ")", typ: elem}
+}
+
+// nilFreeze is freeze/frozen?/dup/clone on a T?: nil's own answers (itself, true, itself), T's otherwise.
+func (f *fctx) nilFreeze(n parser.Node, recv expr, name string) expr {
+	rt := f.pinSimple(recv.code)
+	inner := expr{code: "(*" + rt + ")", typ: recv.typ.(TOpt).Elem}
+	if name == "frozen?" {
+		var e expr
+		body := f.capture(func() { e = f.genMethodCall(n, inner, name, nil, nil) })
+		if body != "" { // the call needs statements: it cannot sit in one expression
+			return f.nilGuard(n, recv, name)
+		}
+		return expr{code: "Boolean(" + rt + " == nil || bool(" + e.code + "))", typ: f.cls("Boolean")}
+	}
+	if name == "dup" || name == "clone" { // a copy of T, or nil
+		out := f.newTmp()
+		f.emit("var %s %s", out, f.c.goType(recv.typ))
+		f.emit("if %s != nil {", rt)
+		f.indent++
+		e := f.genMethodCall(n, inner, name, nil, nil)
+		f.emit("%s = %s", out, f.coerce(n, e, recv.typ))
+		f.indent--
+		f.emit("}")
+		return expr{code: out, typ: recv.typ}
+	}
+	f.emit("if %s != nil {", rt)
+	f.indent++
+	f.discard(f.genMethodCall(n, inner, name, nil, nil))
+	f.indent--
+	f.emit("}")
+	return expr{code: rt, typ: recv.typ}
 }
 
 // nilClassCall: nil answers to_i/=~/... itself (0, nil), not NoMethodError, when T's method's type can hold that answer.

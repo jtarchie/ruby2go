@@ -140,7 +140,11 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 			}
 		}
 	}
-	cls, k := c.lookupName(sc.lex, t.Name)
+	lex := sc.lex
+	if t.Absolute { // `::Pathname` inside a module that has its own Pathname
+		lex = nil
+	}
+	cls, k := c.lookupName(lex, t.Name)
 	if cls == nil && k != nil && k.typeAlias != "" && len(t.Args) == 0 {
 		at, err := rbs.ParseType(k.typeAlias)
 		if err != nil {

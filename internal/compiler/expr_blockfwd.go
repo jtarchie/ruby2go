@@ -127,8 +127,36 @@ func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type)
 		}
 		return "func(" + strings.Join(params, ", ") + ") any { blk(" + strings.Join(args, ", ") + "); return nil }"
 	}
+	if sig.Self != nil && f.blockSig.Self != nil && !sig.Rest && !f.blockSig.Rest && !typeEq(subst(sig.Self, env), f.blockSig.Self) {
+		return f.selfBlockAdapter(sig, env)
+	}
 	unify(sig.Ret, f.blockSig.Ret, env)
 	return "blk"
+}
+
+// selfBlockAdapter passes this method's bound block (`T.proc.bind(Resource::Patch)`) on to a callee whose block binds
+// a superclass (`T.proc.bind(Resource)`): Go func types are invariant, and the self the callee binds is this object,
+// so the adapter asserts it back down (Homebrew's Resource::Patch#initialize; decision 290).
+func (f *fctx) selfBlockAdapter(sig *BlockSig, env map[string]Type) string {
+	self := subst(sig.Self, env)
+	params := make([]string, 0, 1+len(sig.Params))
+	params = append(params, "s "+f.c.goType(self))
+	args := make([]string, 0, 1+len(sig.Params))
+	args = append(args, fmt.Sprintf("rbAs[%s](s, %q)", f.c.goType(f.blockSig.Self), f.blockSig.Self.String()))
+	for i, p := range sig.Params {
+		pt := subst(p, env)
+		params = append(params, fmt.Sprintf("p%d %s", i, f.c.goType(pt)))
+		args = append(args, f.coerce(nil, expr{code: fmt.Sprintf("p%d", i), typ: pt}, f.blockSig.Params[i]))
+	}
+	call := "blk(" + strings.Join(args, ", ") + ")"
+	ret := subst(sig.Ret, env)
+	if isVoid(ret) {
+		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
+	}
+	if isVoid(f.blockSig.Ret) {
+		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return *new(" + f.c.goType(ret) + ") }"
+	}
+	return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
 }
 
 // restBlockFunc is a Dyn wrapper's block (dynBlockArg) for a `(*untyped) -> untyped` block: already that func, nil

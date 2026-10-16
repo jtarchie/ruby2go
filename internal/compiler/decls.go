@@ -675,7 +675,9 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 				body = "return " + body
 			}
 		case m.Name == "initialize": // BasicObject's does nothing
-		case hookNames[m.Name]: // Class's and Module's hooks do nothing (decision 232): a mixed-in `inherited` calling super (decision 241)
+		case hookNames[m.Name], m.Name == "initialize_dup", m.Name == "initialize_clone":
+			// Class's, Module's and Object's hooks do nothing (decision 232): a mixed-in `inherited` (decision 241) or
+			// `initialize_dup` (Homebrew's Downloadable, decision 290) calling super
 			if ret != "" {
 				body = "return *new(" + ret + ")"
 			}

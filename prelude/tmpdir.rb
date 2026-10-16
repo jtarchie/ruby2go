@@ -35,9 +35,9 @@ class Dir
       prefix = string(v)
     case Array_Any:
       if a := v._ToAny().s; len(a) > 0 {
-        prefix = fmt.Sprint(rbUnbox(a[0]))
+        prefix = string(rbToS(a[0]))
         if len(a) > 1 {
-          suffix = fmt.Sprint(rbUnbox(a[1]))
+          suffix = string(rbToS(a[1]))
         }
       }
     }

@@ -24,5 +24,30 @@ class ERB < Object
 
     #: (untyped) -> String
     def h(s) = CGI.escapeHTML(s.to_s)
+
+    # Every byte but A-Z a-z 0-9 _ - . ~ as %XX (uppercase), as MRI's.
+    #: (untyped) -> String
+    def self.url_encode(s) = %x{
+      in := string(rbToS(s))
+      var b strings.Builder
+      for i := 0; i < len(in); i++ {
+        c := in[i]
+        if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == '~' {
+          b.WriteByte(c)
+        } else {
+          fmt.Fprintf(&b, "%%%02X", c)
+        }
+      }
+      return String(b.String())
+    }
+
+    #: (untyped) -> String
+    def self.u(s) = url_encode(s)
+
+    #: (untyped) -> String
+    def url_encode(s) = ERB::Util.url_encode(s)
+
+    #: (untyped) -> String
+    def u(s) = ERB::Util.url_encode(s)
   end
 end

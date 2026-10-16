@@ -365,7 +365,7 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			env = map[string]any{}
 			hh := h._ToAny()
 			for _, k := range hh.keys {
-				env[fmt.Sprint(rbUnbox(k))] = rbUnbox(hh.vals[k])
+				env[string(rbToS(k))] = rbUnbox(hh.vals[k])
 			}
 			args = args[1:]
 		}
@@ -376,7 +376,7 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 	argv0 := ""
 	rest := make([]String, 0, len(args)-1)
 	for _, a := range args[1:] {
-		rest = append(rest, String(fmt.Sprint(rbUnbox(a))))
+		rest = append(rest, rbToS(a))
 	}
 	switch first := rbUnbox(args[0]).(type) {
 	case Array_Any:
@@ -384,13 +384,13 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 		if len(pair) != 2 {
 			panic(NewArgumentError(Ref(String("wrong first argument"))))
 		}
-		argv0 = fmt.Sprint(rbUnbox(pair[1]))
-		c = rbCommand(fmt.Sprint(rbUnbox(pair[0])), rest)
+		argv0 = string(rbToS(pair[1]))
+		c = rbCommand(string(rbToS(pair[0])), rest)
 		if len(rest) == 0 {
-			c = exec.Command(fmt.Sprint(rbUnbox(pair[0]))) //nolint:gosec // running the program's command is the point
+			c = exec.Command(string(rbToS(pair[0]))) //nolint:gosec // running the program's command is the point
 		}
 	default:
-		c = rbCommand(fmt.Sprint(first), rest)
+		c = rbCommand(string(rbToS(first)), rest)
 	}
 	if argv0 != "" {
 		c.Args[0] = argv0
@@ -408,7 +408,7 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			case "err":
 				c.Stderr = redirect(v, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, false)
 			case "chdir":
-				c.Dir = fmt.Sprint(v)
+				c.Dir = string(rbToS(v))
 			case "pgroup":
 				if v != nil && v != Boolean(false) {
 					c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -440,7 +440,7 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			if _, seen := vars[k]; !seen {
 				order = append(order, k)
 			}
-			vars[k] = fmt.Sprint(v)
+			vars[k] = string(rbToS(v))
 		}
 		c.Env = nil
 		for _, k := range order {

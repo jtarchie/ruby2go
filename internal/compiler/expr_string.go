@@ -285,8 +285,28 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 			f.emit("%s = %s", f.ivarCode(iv), f.coerce(n, e, iv.Type))
 			f.markIvar(iv)
 		}, true
+	case *parser.CallNode:
+		if f.freshString(t) { // `path.basename.to_s.delete_prefix!(x)`: nothing else sees the string, so only the value matters
+			return t, func(expr) {}, true
+		}
 	}
 	return nil, nil, false
+}
+
+// freshString: call returns a String no other reference holds, as MRI's do: `x.to_s` on a non-String, `s.dup`, `+s`.
+func (f *fctx) freshString(call *parser.CallNode) bool {
+	if call.Receiver == nil || call.Block != nil || len(callArgs(call)) > 0 {
+		return false
+	}
+	switch call.Name {
+	case "dup", "+@":
+		return true
+	case "to_s":
+		rt := f.probeType(call.Receiver, nil)
+		_, cls := rt.(TClass)
+		return cls && !isClass(rt, "String")
+	}
+	return false
 }
 
 // readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).
