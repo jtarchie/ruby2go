@@ -149,3 +149,4 @@ p DemoRebind.version_rebuild("1.0", 2, "arm"), DemoRebind.version_rebuild("1.0",
 p DemoClassS.class_s("wget"), DemoClassS.class_s("foo-bar@2"), DemoClassS.class_s("a+b")
 dcv = DemoCvCollector.new; dcv1 = dcv.building?; dcv.building!; p dcv1, dcv.building?, DemoCvCollector.new.building?
 p DemoDlg.go
+p DemoCmp.go

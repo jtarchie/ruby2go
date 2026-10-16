@@ -241,7 +241,7 @@ class Set < Object
   #: [U] () { (E) -> U } -> Set[Set[E]]
   def divide(&block) = Set.new(classify(&block).values)
 
-  #: (Set[E]) -> self
+  #: (Set[E] | Array[E]) -> self
   def merge(xs)
     xs.each { |x| add(x) }
     self
@@ -253,25 +253,25 @@ class Set < Object
     self
   end
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def |(o) = dup.merge(o)
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def union(o) = self | o
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def +(o) = self | o
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def &(o) = Set.new(to_a.select { |x| o.include?(x) })
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def intersection(o) = self & o
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def -(o) = Set.new(to_a.reject { |x| o.include?(x) })
 
-  #: (Set[E]) -> Set[E]
+  #: (Set[E] | Array[E]) -> Set[E]
   def difference(o) = self - o
 
   #: (Set[E]) -> Set[E]

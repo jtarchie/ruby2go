@@ -400,6 +400,7 @@ B
       assert_equal true, "abc".casecmp?("ABC")
       assert_equal false, "abc".casecmp?("abd")
       assert_equal true, "hello".start_with?("x", "he")
+      assert_equal [true, false, true], ["  include x".start_with?(/\s*include\s+/), "xinclude a".start_with?(/include/), "abc".start_with?(/b|a/)]
       assert_equal true, "hello".end_with?("x", "lo")
       assert_equal "llo", "hello".delete_prefix("he")
       assert_equal "hel", "hello".delete_suffix("lo")

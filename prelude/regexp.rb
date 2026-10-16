@@ -394,6 +394,14 @@ class String
   #: (Regexp) -> bool
   def match?(re) = re.match?(self)
 
+  # A match that starts at 0 (Go's leftmost match starts at 0 whenever one can). ponytail: $~ is not set; set it
+  # when a caller reads it after start_with?.
+  #: (Regexp) -> bool
+  def __start_with_q_regexp(re) = %x{
+    loc := re.re.FindStringIndex(string(self))
+    return Boolean(loc != nil && loc[0] == 0)
+  }
+
   # Replacement strings expand \0 \& \1-\9 \k<name> \` \' and \\.
   #: (Regexp, String) -> String
   def __sub_regexp(re, to) = %x{ String(rbReSub(re, string(self), 1, rbReRepl(string(to)))) }

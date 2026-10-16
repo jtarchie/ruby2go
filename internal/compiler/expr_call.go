@@ -618,7 +618,35 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		}
 		return f.genDynCall(n, anyRecv, name, args)
 	}
+	if x, ok := f.untypedCmpOp(n, t, recv, e, args, block); ok {
+		return x
+	}
 	return f.numericMix(n, recv, e, args, block)
+}
+
+// untypedCmpOp is Comparable's `<`, `<=`, `>` or `>=` on a class whose own `<=>` takes untyped (Homebrew's
+// `Version < "2.39"`): the argument goes to that `<=>` as it is, as MRI's Comparable passes it, and a nil result is
+// MRI's ArgumentError; Comparable's own `(self)` signature would convert it first (decision 287).
+func (f *fctx) untypedCmpOp(n parser.Node, t TClass, recv expr, e *entry, args []parser.Node, block parser.Node) (expr, bool) {
+	switch e.M.Name {
+	case "<", "<=", ">", ">=":
+	default:
+		return expr{}, false
+	}
+	if e.M.Owner != f.c.classes["Comparable"] || len(args) != 1 || block != nil || isNumeric(recv.typ) {
+		return expr{}, false
+	}
+	ce := t.C.lookup("<=>")
+	if ce == nil || ce.M.Owner == e.M.Owner || len(ce.M.Params) != 1 || !isAny(ce.M.Params[0].Type) {
+		return expr{}, false
+	}
+	r := expr{code: f.pinSimple(recv.code), typ: recv.typ}
+	a := f.genExpr(args[0], nil)
+	a.code = f.pinSimple(f.coerce(args[0], a, TAny{}))
+	a.typ = TAny{}
+	c := f.genMethodCall(n, r, "<=>", []parser.Node{&exprNode{Node: args[0], e: a}}, nil)
+	code := fmt.Sprintf("rbCmpOp(%s, %q, %s, %s)", f.coerce(n, c, TAny{}), e.M.Name, f.coerce(n, r, TAny{}), a.code)
+	return expr{code: code, typ: f.cls("Boolean")}, true
 }
 
 // abstractCall: an Object or module value is Go any, so it dispatches as untyped.

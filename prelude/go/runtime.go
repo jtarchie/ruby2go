@@ -851,6 +851,28 @@ func rbCmp[T comparable](a, b T) Integer {
 	return rbCmpBox(any(a), any(b))
 }
 
+// rbCmpOp is Comparable's op on a `<=>` result c of a against b: MRI's ArgumentError when c is nil (decision 287).
+func rbCmpOp(c any, op string, a, b any) Boolean {
+	n, ok := rbUnbox(c).(Integer)
+	if !ok {
+		with := rbClassName(b)
+		switch b.(type) {
+		case nil, Boolean, Integer, Float, Symbol: // MRI's special constants show themselves
+			with = string(rbInspect(b))
+		}
+		panic(NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + with + " failed"))))
+	}
+	switch op {
+	case "<":
+		return n < 0
+	case "<=":
+		return n <= 0
+	case ">":
+		return n > 0
+	}
+	return n >= 0
+}
+
 // rbCmpOpt compares the values in two T? boxes (see rbCmpBox).
 func rbCmpOpt[T comparable](a, b *T) Integer {
 	if a == nil || b == nil {

@@ -462,3 +462,37 @@ module DemoDlg
     [d.select(&:build?).map(&:name), d.reject(&:build?).map(&:name), d.filter_map { |x| x.name if x.build? }, d.build.size, d.size]
   end
 end
+
+# Homebrew's Version < "2.39": Comparable's op with a <=> that takes untyped (decision 287)
+class DemoCmpVersion
+  extend T::Sig
+  include Comparable
+
+  sig { returns(String) }
+  attr_reader :v
+
+  sig { params(v: String).void }
+  def initialize(v)
+    @v = v
+  end
+
+  sig { params(other: T.untyped).returns(T.nilable(Integer)) }
+  def <=>(other)
+    other = DemoCmpVersion.new(other) if other.is_a?(String)
+    return unless other.is_a?(DemoCmpVersion)
+
+    v.split(".").map(&:to_i) <=> other.v.split(".").map(&:to_i)
+  end
+end
+
+module DemoCmp
+  def self.go
+    a = DemoCmpVersion.new("2.35")
+    err = begin
+      a < 3
+    rescue ArgumentError => e
+      e.message
+    end
+    [a < "2.39", a >= "2.39", a > DemoCmpVersion.new("2.1"), err]
+  end
+end

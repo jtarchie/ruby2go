@@ -498,6 +498,17 @@ module StdlibTests
 
   # Was testdata/run/set_mid.rb.
   class SetTest < Minitest::Test
+    # MRI's union family takes any enumerable; an Array is what real code passes (Homebrew's `paths += array`).
+    def test_set_ops_take_an_array
+      s = Set[1, 2]
+      paths = Set.new
+      paths += ["a", "b"]
+      paths << "c"
+      s.merge([8])
+      assert_equal [[1, 2, 8, 3], [1, 2, 8, 4], [2], [2, 8], %w[a b c]],
+                   [(s | [3]).to_a, (s + [4]).to_a, (s & [2, 9]).to_a, (s - [1]).to_a, paths.to_a]
+    end
+
     def test_constructors
       plain = Set.new([3, 1, 2])
       assert_equal [1, 2, 3], plain.sort
