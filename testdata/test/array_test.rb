@@ -1718,6 +1718,7 @@ module ArrayTests
       assert_equal [1, 3, nil], (ar_a.values_at(0, 2, 9))
       assert_equal true, ar_a.intersect?(ar_b)
       assert_equal [1, 2, 3, 4, 9], ar_a.union([9])
+      assert_equal [[1, 2], [1, 2, 3]], [[1, 1, 2].union, [1].union([2, 1], [3])]
       assert_equal [2, 3, 4, 2], ar_a.difference([1])
       assert_equal [[1, 2], [1, 3], [2, 3]], ([1, 2, 3].combination(2).to_a)
       assert_equal 6, ([1, 2, 3].permutation(2).to_a.size)

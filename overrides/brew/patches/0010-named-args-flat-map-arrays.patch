@@ -1,0 +1,16 @@
+Subject: NamedArgs#to_formulae_and_casks: flat_map over Arrays only
+
+load_formula_or_cask returns one package or an Array of kegs; Array() makes every block value an Array, as flat_map
+already treats it (none of Formula, Keg or Cask::Cask defines to_a or to_ary).
+---
+--- a/Library/Homebrew/cli/named_args.rb
++++ b/Library/Homebrew/cli/named_args.rb
+@@ -83,7 +83,7 @@
+           {}, T.nilable(T::Hash[T.nilable(Symbol), T::Array[T.any(Formula, Keg, Cask::Cask)]])
+         )
+         @to_formulae_and_casks[only] ||= downcased_unique_named.flat_map do |name|
+-          load_formula_or_cask(name, only:, method:, warn:)
++          Array(load_formula_or_cask(name, only:, method:, warn:))
+         rescue FormulaUnreadableError, FormulaClassUnavailableError,
+                TapFormulaUnreadableError, TapFormulaClassUnavailableError,
+                Cask::CaskUnreadableError

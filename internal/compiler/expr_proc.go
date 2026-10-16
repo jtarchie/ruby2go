@@ -180,7 +180,15 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 			f.noteUse(Param{Pending: pt.SelfPending}, n, f.concreteSelf(recv.typ))
 		}
 		codes := make([]string, 0, len(args)+1)
-		codes = append(codes, recv.code)
+		self := recv.code
+		if o, ok := recv.typ.(TOpt); ok && !isOpt(pt.Self) { // `@livecheck.instance_eval(&block)` of a Livecheck?: the object itself
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, recv.code)
+			// ponytail: MRI runs the block with self nil, failing at its first call; this raises before it runs
+			f.emit("if %s == nil {\n\tpanic(rbNoMethod(%q, nil, false))\n}", tmp, n.Name)
+			self = f.coerce(n, expr{code: "(*" + tmp + ")", typ: o.Elem}, pt.Self)
+		}
+		codes = append(codes, self)
 		for i, a := range args {
 			e := f.genExpr(a, pt.Params[i])
 			codes = append(codes, f.coerce(a, e, pt.Params[i]))

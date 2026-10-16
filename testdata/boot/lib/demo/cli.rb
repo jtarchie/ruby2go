@@ -643,6 +643,26 @@ module DemoSharedIvar
   end
 end
 
+# Homebrew's Dependencies: a SimpleDelegator over an Array, reached through untyped code with a block (decision 293)
+class DemoDeps < SimpleDelegator
+  extend T::Sig
+
+  sig { params(args: Integer).void }
+  def initialize(*args)
+    super(args)
+  end
+end
+
+module DemoDelegBlock
+  def self.go
+    by_spec = T.let({ stable: DemoDeps.new(1, 2, 3, 4), head: nil }, T::Hash[Symbol, T.untyped])
+    by_spec.transform_values! { |deps| deps&.reject(&:even?) }
+    out = []
+    by_spec.each { |k, v| out << [k, v&.map { |x| x * 10 }] }
+    out
+  end
+end
+
 # A local named `_` written in a branch and again after it is hoisted, and never read (decision 293)
 module DemoHoistUnderscore
   def self.go(flag)

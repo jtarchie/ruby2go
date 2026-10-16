@@ -22,6 +22,7 @@ pin the upstream, keep a small series of upstream-shaped patches, and compare ag
 ./build info                # go build -> work/info-bin (~3 min, ~10 GB; killed past 14 GB)
 ./run info info wget        # run it in the container
 ./check info                # each targets.txt line: compiled output == MRI's (same container, same API data)
+./hits info info --json=v2 wget  # work list: stubs (gem methods/arms that did not compile) MRI reaches running it
 ```
 
-`brew info wget` output equals MRI's (decision 291).
+All five targets.txt commands (`brew info` for wget, jq, git, python@3.13 and `--json=v2 wget`) equal MRI's output (decision 294).

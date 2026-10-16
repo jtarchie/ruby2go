@@ -230,8 +230,17 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 			bs[i] = fmt.Sprintf("b%d", i)
 			ts[i] = subst(t, env).String()
 		}
-		sig += fmt.Sprintf(" { (%s) -> %s }", strings.Join(ts, ", "), subst(m.Block.Ret, env))
-		block = fmt.Sprintf(" { |%s| yield %s }", strings.Join(bs, ", "), strings.Join(bs, ", "))
+		self := ""
+		if m.Block.Self != nil { // `T.proc.bind(Livecheck)`: the forwarder's block binds the same self
+			self = " [self: " + subst(m.Block.Self, env).String() + "]"
+		}
+		if m.Block.Optional { // `livecheck` reads without a block and configures with one: pass on whichever the caller gave
+			sig += fmt.Sprintf(" ?{ (%s)%s -> %s }", strings.Join(ts, ", "), self, subst(m.Block.Ret, env))
+			params, args = append(params, "&blk"), append(args, "&blk")
+		} else {
+			sig += fmt.Sprintf(" { (%s)%s -> %s }", strings.Join(ts, ", "), self, subst(m.Block.Ret, env))
+			block = fmt.Sprintf(" { |%s| yield %s }", strings.Join(bs, ", "), strings.Join(bs, ", "))
+		}
 	}
 	sig += " -> " + subst(m.Ret, env).String()
 	call := d.accessor

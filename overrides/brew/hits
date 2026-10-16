@@ -1,0 +1,15 @@
+#!/bin/bash
+# host: the work list for `brew <args>`: stubs in work/<name>.go that MRI reaches running it (patched, spawn mode).
+# usage: ./hits info info --json=v2 wget   (run ./gen <name> first)
+cd "$(dirname "$0")"
+name=$1; shift
+docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
+while IFS= read -r line; do export "$line"; done < /w/env.txt
+for p in /w/patches/*.patch; do git -C /home/linuxbrew/.linuxbrew/Homebrew apply "$p" || exit 1; done
+cd /home/linuxbrew
+B=/home/linuxbrew/.linuxbrew/bin/brew
+$B "$@" > /dev/null 2>&1 # download the API outside the trace
+R=$HOMEBREW_RUBY_PATH
+mv "$R" "$R.real"; printf "#!/bin/bash\nexec %s -r/w/tools/calltrace.rb \"\$@\"\n" "$R.real" > "$R"; chmod +x "$R"
+$B "$@" > /dev/null 2>&1' _ "$@"
+python3 tools/hits.py "work/$name.go" work | tee "work/hits-$name.txt"

@@ -3904,7 +3904,64 @@ module ObjectTests
     def tally = @cards.tally
   end
 
+  # A target whose block is optional (Homebrew's `delegate livecheck: :"self.class"`): the forwarder passes on the
+  # block, or none
+  class FwdSettings
+    attr_accessor :level #: Integer
+
+    #: () -> void
+    def initialize = @level = 0
+
+    #: () ?{ (FwdSettings) -> void } -> FwdSettings
+    def configure
+      yield self if block_given?
+      self
+    end
+
+    #: () ?{ () [self: FwdSettings] -> void } -> FwdSettings
+    def tune(&block)
+      instance_eval(&block) if block
+      self
+    end
+  end
+
+  # A class-level `Settings?` configured by instance_eval of a self-bound block (Homebrew's Formula.livecheck)
+  class FwdConfigured
+    # @rbs self.@settings: FwdSettings?
+    @settings = FwdSettings.new
+
+    #: () ?{ () [self: FwdSettings] -> void } -> FwdSettings?
+    def self.settings(&block)
+      return @settings unless block
+
+      @settings.instance_eval(&block)
+      @settings
+    end
+  end
+
+  class FwdApp
+    extend Forwardable
+
+    # @rbs @settings: FwdSettings
+
+    def_delegators :@settings, :configure, :tune
+
+    #: () -> void
+    def initialize = @settings = FwdSettings.new
+  end
+
   class ForwardableTest < Minitest::Test
+    def test_optional_block_delegator
+      app = FwdApp.new
+      assert_equal 0, app.configure.level
+      app.configure { |s| s.level = 3 }
+      assert_equal 3, app.configure.level
+      app.tune { self.level = 7 }
+      assert_equal 7, app.tune.level
+      FwdConfigured.settings { self.level = 9 }
+      assert_equal 9, FwdConfigured.settings&.level
+    end
+
     def test_delegators
       d = Deck.new
       d << 5

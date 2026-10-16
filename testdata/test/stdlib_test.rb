@@ -1373,7 +1373,23 @@ module StdlibTests
     def triple = x * 3
   end
 
+  # A SimpleDelegator over a Set reached through untyped code: the call is forwarded at run time (Homebrew's
+  # `dependables.values.map(&:to_a)` of Requirements)
+  class DelegSet < SimpleDelegator
+    #: (*String names) -> void
+    def initialize(*names)
+      super(Set.new(names))
+    end
+  end
+
   class DelegationTest < Minitest::Test
+    def test_untyped_simple_delegator
+      by_spec = { stable: DelegSet.new("a", "b"), head: DelegSet.new("b", "c") } #: Hash[Symbol, untyped]
+      assert_equal %w[a b c], [].union(*by_spec.values.map(&:to_a))
+      one = by_spec.fetch(:stable) #: untyped
+      assert_equal [2, true], [one.size, one.include?("a")]
+    end
+
     def test_open_struct
       o = OpenStruct.new(name: "Ada", age: 36)
       o.email = "a@x"

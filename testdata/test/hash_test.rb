@@ -1569,6 +1569,8 @@ module HashTests
       assert_equal "{\"on\" => true}", (flags).to_s
       hs_h = {a: 1, b: 2, c: 3}
       assert_equal "{a: 10, b: 20, c: 30}", ((hs_h.transform_values { |v| v * 10 })).to_s
+      tv = { a: 1, b: 2 }
+      assert_equal [{ a: 10, b: 20 }, true], [tv.transform_values! { |v| v * 10 }, tv.transform_values!(&:itself).equal?(tv)]
       assert_equal "{\"a\" => 1, \"b\" => 2, \"c\" => 3}", (hs_h.transform_keys(&:to_s)).to_s
       assert_equal "{1 => :a, 2 => :b, 3 => :c}", ((hs_h.to_h { |k, v| [v, k] })).to_s
       assert_equal "{a: 1, b: 2, c: 3}", (hs_h.to_h).to_s

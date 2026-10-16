@@ -249,8 +249,8 @@ func (c *Compiler) privateIn(name string) []*Class {
 }
 
 // growsTypeParams reports whether a generic class's method mentions its
-// type parameters other than bare (E, E?) or as the class itself
-// (Array[E] on Array). Wrapping such a method instantiates some other
+// type parameters other than bare (E, E?), as the class itself
+// (Array[E] on Array) or as an Array of one (Array[E] on Set). Wrapping such a method instantiates some other
 // generic at a type built from E (Hash[E, Integer], Array[[E, Integer]]),
 // whose own methods and wrappers can instantiate a bigger one still: a Go
 // instantiation cycle.
@@ -266,6 +266,15 @@ func growsTypeParams(cls *Class, e *entry) bool {
 		}
 		return true
 	}
+	// Set#to_a's Array[E]: an Array of a bare parameter, whose own wrappers already leave out what grows (another
+	// class there, Hash[K, V]'s, closes a Go instantiation cycle through its pairs)
+	bareArgs := func(t TClass) bool {
+		if t.C.Name != "Array" || len(t.Args) != 1 {
+			return false
+		}
+		v, ok := t.Args[0].(TVar)
+		return ok && slices.Contains(cls.TypeParams, v.Name)
+	}
 	var grows func(t Type) bool
 	grows = func(t Type) bool {
 		switch t := t.(type) {
@@ -274,9 +283,9 @@ func growsTypeParams(cls *Class, e *entry) bool {
 		case TTuple:
 			return mentionsVar(t)
 		case TClass:
-			return !own(t) && mentionsVar(t)
-		case TUnion:
-			return slices.ContainsFunc(t.Members, grows)
+			return !own(t) && !bareArgs(t) && mentionsVar(t)
+		case TUnion: // its package-level rbUnion helper cannot name the class's parameters (Set#merge's Array[E] | Set[E])
+			return slices.ContainsFunc(t.Members, grows) || mentionsVar(t)
 		case TAny, TFunc, TNil, TVar, TVoid: // no class of its own whose wrappers could grow
 		}
 		return false
@@ -385,6 +394,11 @@ func (c *Compiler) emitDynName(name string) {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok && how != rbCall {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, dynPrivKey+name)
 	}
 	// every object has Kernel#===, so method_missing is never reached for it
+	if name != "method_missing" && name != "===" && c.liveDelegator() {
+		// what a SimpleDelegator does not define its object answers, as its method_missing does (decision 294; Homebrew's
+		// `dependables.values.map(&:to_a)` of Requirements); a static call is decision 118's __getobj__ rewrite instead
+		c.w("\tif d, ok := recv.(SimpleDelegatorI); ok {\n\t\treturn rbDyn%s(how, SimpleDelegator___Getobj__(d), args...)\n\t}\n", gn)
+	}
 	if name != "method_missing" && name != "===" {
 		delete(c.dynLazy, "method_missing") // the fallback below needs its wrappers
 		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
@@ -1319,6 +1333,12 @@ func (c *Compiler) emitClassOf() {
 	c.w("\tpanic(rbNoMethod(\"class\", a, false))\n}\n\n")
 }
 
+// liveDelegator: the program loads delegate, so SimpleDelegator is a Go type untyped iteration can look through.
+func (c *Compiler) liveDelegator() bool {
+	d := c.classes["SimpleDelegator"]
+	return d != nil && d.Methods["__getobj__"] != nil
+}
+
 // emitDynEach emits rbEachAny (dynEach): an Array's elements, a Hash's pairs, then one case per Go shape of a user or
 // gem class's own each; a block of two splits a lone Array value and a block of one gets a pair as an Array, as yield does.
 func (c *Compiler) emitDynEach() {
@@ -1330,6 +1350,9 @@ func (c *Compiler) emitDynEach() {
 	c.w("\t\tcase arity == 1 && len(xs) == 2:\n\t\t\txs = []any{&Array[any]{s: xs}}\n\t\t}\n\t\tblk(xs...)\n\t}\n")
 	c.w("\tswitch r := recv.(type) {\n\tcase Array_Any:\n\t\tfor _, x := range r._ToAny().s {\n\t\t\tyield(x)\n\t\t}\n")
 	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor _, k := range h.keys {\n\t\t\tyield(k, h.vals[k])\n\t\t}\n")
+	if c.liveDelegator() { // a SimpleDelegator's each is its object's, through method_missing (Homebrew's Dependencies)
+		c.w("\tcase SimpleDelegatorI:\n\t\trbEachAny(SimpleDelegator___Getobj__(r), arity, blk)\n")
+	}
 	seen := map[string]bool{}
 	for _, cls := range c.classList {
 		m := cls.Methods["each"]
@@ -1360,7 +1383,11 @@ func (c *Compiler) emitDynEach() {
 	}
 	c.w("\tdefault:\n\t\tpanic(rbNoMethod(\"each\", recv, false))\n\t}\n\treturn recv\n}\n\n")
 	// rbElemsAny is an untyped receiver's elements as an Array[untyped] (decision 224): an Array's own, else what its each yields
-	c.w("func rbElemsAny(recv any) *Array[any] {\n\tif a, ok := recv.(Array_Any); ok {\n\t\treturn a._ToAny()\n\t}\n")
+	c.w("func rbElemsAny(recv any) *Array[any] {\n")
+	if c.liveDelegator() {
+		c.w("\tif d, ok := recv.(SimpleDelegatorI); ok {\n\t\trecv = SimpleDelegator___Getobj__(d)\n\t}\n")
+	}
+	c.w("\tif a, ok := recv.(Array_Any); ok {\n\t\treturn a._ToAny()\n\t}\n")
 	c.w("\tout := &Array[any]{}\n\trbEachAny(recv, 1, func(xs ...any) { out.s = append(out.s, xs[0]) })\n\treturn out\n}\n\n")
 }
 

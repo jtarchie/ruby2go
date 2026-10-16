@@ -93,22 +93,33 @@ func regexpSource(raw string, term byte) string {
 // literalGroups is the number of capture groups in a static regexp
 // literal; ok is false for anything else.
 func (f *fctx) literalGroups(n parser.Node) (int, bool) {
+	file := f.f
+	if _, isConst := n.(*parser.ConstantReadNode); isConst || isConstPath(n) { // `s.scan(CVE_PATTERN)`: the constant's literal
+		var k *Const
+		if catchCompileError(func() { _, k = f.c.lookupConst(f.f, n, f.lex) }) != nil || k == nil || k.File == nil {
+			return 0, false
+		}
+		file, n = k.File, k.Value
+		if c, ok := n.(*parser.CallNode); ok && c.Name == "freeze" && len(callArgs(c)) == 0 && c.Receiver != nil {
+			n = c.Receiver
+		}
+	}
 	var src string
 	var closing byte
 	var ext bool
 	switch r := n.(type) {
 	case *parser.RegularExpressionNode:
-		src, closing, ext = f.f.text(r.ContentLoc), f.f.text(r.ClosingLoc)[0], r.IsEXTENDED()
+		src, closing, ext = file.text(r.ContentLoc), file.text(r.ClosingLoc)[0], r.IsEXTENDED()
 	case *parser.InterpolatedRegularExpressionNode: // the literal parts' groups; an interpolation counts as plain text
 		var b strings.Builder
 		for _, p := range r.Parts {
 			if s, ok := p.(*parser.StringNode); ok {
-				b.WriteString(f.f.text(s.ContentLoc))
+				b.WriteString(file.text(s.ContentLoc))
 			} else {
 				b.WriteString("x")
 			}
 		}
-		src, closing, ext = b.String(), f.f.text(r.ClosingLoc)[0], r.IsEXTENDED()
+		src, closing, ext = b.String(), file.text(r.ClosingLoc)[0], r.IsEXTENDED()
 	default:
 		return 0, false
 	}
@@ -223,3 +234,5 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	}
 	return expr{code: code, typ: f.cls("Regexp")}
 }
+
+func isConstPath(n parser.Node) bool { _, ok := n.(*parser.ConstantPathNode); return ok }

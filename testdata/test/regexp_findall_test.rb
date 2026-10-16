@@ -4,7 +4,18 @@ require "minitest/autorun"
 
 module RegexpTests
   # gsub/sub/scan/split apply Onigmo's ^ and \b readings (decision 24), not only match/=~.
+  CVE_PATTERN = /CVE-?(\d{4})-(\d{4,})/i
+  PAIR_PATTERN = /(\w)=(\w)/.freeze
+
   class RegexpFindAllTest < Minitest::Test
+    # scan through a constant holding a literal with groups yields the groups, as the literal would (Homebrew's
+    # Patch.extract_cves)
+    def test_scan_groups_through_constant
+      got = "fix CVE-2024-1234 and cve-2023-99999".scan(CVE_PATTERN).map { |y, id| "#{y}/#{id}" }
+      assert_equal ["2024/1234", "2023/99999"], got
+      assert_equal [["a", "b"], ["c", "d"]], "a=b c=d".scan(PAIR_PATTERN)
+    end
+
     def test_c1
       s = "a\n"
       assert_equal "> a\n", s.gsub(/^/, "> ") # ^

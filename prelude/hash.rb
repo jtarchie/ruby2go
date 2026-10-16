@@ -294,6 +294,13 @@ class Hash < Object
     out
   end
 
+  # In place: the block keeps the value type, as a Hash's V is fixed.
+  #: () { (V) -> V } -> self
+  def transform_values!
+    keys.each { |k| self[k] = yield(fetch(k)) }
+    self
+  end
+
   #: [U] () { (K) -> U } -> Hash[U, V]
   def transform_keys
     out = {} #: Hash[U, V]

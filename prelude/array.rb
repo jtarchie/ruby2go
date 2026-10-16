@@ -300,8 +300,8 @@ class Array < Object
   #: (Array[E]) -> Array[E]
   def |(other) = (self + other).uniq
 
-  #: (Array[E]) -> Array[E]
-  def union(other) = self | other
+  #: (*Array[E]) -> Array[E]
+  def union(*others) = others.reduce(uniq) { |acc, o| acc | o }
 
   #: (?Integer) -> Array[E]
   def rotate(n = 1)
