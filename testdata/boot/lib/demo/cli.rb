@@ -613,3 +613,70 @@ module DemoDupSuper
     [a.tags, b.tags]
   end
 end
+
+# Homebrew's Downloadable `attr_reader :checksum` and Resource `attr_writer :checksum`: one @checksum (decision 291)
+module DemoDl
+  extend T::Sig
+
+  sig { returns(T.nilable(String)) }
+  attr_reader :checksum
+
+  sig { void }
+  def initialize
+    @checksum = T.let(nil, T.nilable(String))
+  end
+end
+
+class DemoDlRes
+  extend T::Sig
+  include DemoDl
+
+  sig { params(checksum: T.nilable(String)).returns(T.nilable(String)) }
+  attr_writer :checksum
+end
+
+module DemoSharedIvar
+  def self.go
+    r = DemoDlRes.new
+    r.checksum = "abc"
+    r.checksum
+  end
+end
+
+# Homebrew's Requirements: a SimpleDelegator whose initialize wraps `Set.new(args)` (decision 291)
+class DemoReqs < SimpleDelegator
+  extend T::Sig
+
+  sig { params(args: String).void }
+  def initialize(*args)
+    super(Set.new(args))
+  end
+end
+
+module DemoSetDlg
+  def self.go
+    r = DemoReqs.new("a", "b", "a")
+    [r.to_a, r.select { |x| x == "b" }.to_a, r.to_a.empty?, r.size]
+  end
+end
+
+# Homebrew's extend/blank: TrueClass and FalseClass each answer present?; through an untyped value false must take
+# FalseClass's, not Object's (decision 291)
+class Object
+  def demo_present? = true
+end
+
+class FalseClass
+  def demo_present? = false
+end
+
+class TrueClass
+  def demo_present? = true
+end
+
+module DemoBoolDyn
+  def self.go
+    vals = [false, true, "x"] #: Array[untyped]
+    vals.map { |v| v.demo_present? }
+  end
+end

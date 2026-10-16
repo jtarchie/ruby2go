@@ -3007,11 +3007,11 @@ func (c *Compiler) emitMethod0(m *Method) {
 		iv := c.findIvar(cls, m.Attr)
 		if m.Ret != nil && c.goType(m.Ret) != c.goType(iv.Type) { // a gem reader typed apart from its inherited ivar (`Exception` over @cause's `Exception?`)
 			f := c.newFctx(m.File, cls, m)
-			code := f.coerce(nil, expr{code: "self." + goFieldName(iv.Name), typ: iv.Type}, m.Ret)
+			code := f.coerce(nil, expr{code: ivarPath("self", iv), typ: iv.Type}, m.Ret)
 			c.w("func (self *%s) %s() %s { return %s }\n\n", cls.Name, m.GoName, c.goType(m.Ret), code)
 			return
 		}
-		c.w("func (self *%s) %s() %s { return self.%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name))
+		c.w("func (self *%s) %s() %s { return %s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), ivarPath("self", iv)) // a module's ivar too (decision 291)
 		return
 	}
 	if m.Kind == kindAttrWriter {
@@ -3020,7 +3020,7 @@ func (c *Compiler) emitMethod0(m *Method) {
 		if mark != "" {
 			mark = "; " + mark
 		}
-		c.w("func (self *%s) %s(v %s) { self.%s = v%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), goFieldName(iv.Name), mark)
+		c.w("func (self *%s) %s(v %s) { %s = v%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), ivarPath("self", iv), mark)
 		return
 	}
 	env := map[string]Type{}

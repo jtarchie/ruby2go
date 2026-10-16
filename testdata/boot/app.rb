@@ -154,3 +154,6 @@ p DemoFreshBang.go
 p DemoBoundBlk.go
 p DemoTokNew.go
 p DemoDupSuper.go
+p DemoSharedIvar.go
+p DemoSetDlg.go
+p DemoBoolDyn.go

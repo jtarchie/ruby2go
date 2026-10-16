@@ -38,6 +38,14 @@ func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line in
 			return iv
 		}
 	}
+	for _, mod := range ivarModules(cls) { // an included module's (decision 147): Homebrew's Downloadable `attr_reader :checksum`
+		if iv := mod.Ivars[name]; iv != nil { // and Resource's `attr_writer :checksum` are one @checksum, as one object's are in MRI
+			if !typeEq(iv.Type, t) && !isAny(iv.Type) && !c.gemFile(f) {
+				c.errorAt(srcPos{f, line}, "ivar %s declared as %s but %s has it as %s", name, t, mod.Name, iv.Type)
+			}
+			return iv
+		}
+	}
 	if c.nilIvars[ivarKey{cls, name}] {
 		t = optOf(t) // this class assigns it nil too
 	}

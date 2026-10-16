@@ -535,6 +535,7 @@ func resetsDelegate(cls *Class) bool {
 // delegateType is what a SimpleDelegator subclass wraps, when its own initialize sets it only by `super(p)` from a
 // typed parameter p (a rest parameter wraps Array[T]; Homebrew's `Dependencies#initialize(*args)`) and neither it nor
 // a subclass calls `__setobj__` or defines initialize: nil otherwise, and forwarded calls stay dynamic (decision 118).
+// `super(Set.new(p))` wraps Set[T] (decision 291).
 func (c *Compiler) delegateType(cls *Class) Type {
 	if cls == nil || !c.isDelegator(cls) || cls.RubyName == "SimpleDelegator" {
 		return nil
@@ -559,19 +560,42 @@ func (c *Compiler) delegateType(cls *Class) Type {
 	if supers[0].Arguments == nil || len(supers[0].Arguments.Arguments) != 1 {
 		return nil
 	}
-	lv, ok := supers[0].Arguments.Arguments[0].(*parser.LocalVariableReadNode)
+	arg := supers[0].Arguments.Arguments[0]
+	inSet := false
+	if call, ok := arg.(*parser.CallNode); ok && call.Name == "new" && constName(call.Receiver) == "Set" && len(callArgs(call)) == 1 && call.Block == nil {
+		arg, inSet = callArgs(call)[0], true // `super(Set.new(args))`: Homebrew's Requirements wraps Set[Requirement]
+	}
+	lv, ok := arg.(*parser.LocalVariableReadNode)
 	if !ok {
 		return nil
 	}
 	c.resolveMethod(init)
+	return c.delegateParamType(init, lv.Name, inSet)
+}
+
+// delegateParamType is what a delegator's `super(name)` (or `super(Set.new(name))` when inSet) wraps, from the typed
+// parameter name: nil when it is untyped.
+func (c *Compiler) delegateParamType(init *Method, name string, inSet bool) Type {
 	for _, p := range init.Params {
+		var elem Type
 		switch {
-		case p.Name != lv.Name || isAny(p.Type) || p.Type == nil || p.Keyword:
+		case p.Name != name || isAny(p.Type) || p.Type == nil || p.Keyword:
+			continue
 		case p.Rest:
-			return TClass{C: c.classes["Array"], Args: []Type{p.Type}}
-		default:
+			elem = p.Type
+		case !inSet:
 			return p.Type
+		default:
+			pc, isCls := p.Type.(TClass)
+			if !isCls || len(pc.Args) != 1 || !isClass(pc, "Array") && !isClass(pc, "Set") || isAny(pc.Args[0]) {
+				return nil
+			}
+			elem = pc.Args[0]
 		}
+		if inSet {
+			return TClass{C: c.classes["Set"], Args: []Type{elem}}
+		}
+		return TClass{C: c.classes["Array"], Args: []Type{elem}}
 	}
 	return nil
 }

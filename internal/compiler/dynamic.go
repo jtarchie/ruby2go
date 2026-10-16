@@ -686,8 +686,30 @@ func (c *Compiler) emitDynWrapper(cls *Class, e *entry, name string, private boo
 	if private {
 		prefix = "_Dyn"
 	}
+	if cls.RubyName == "Boolean" {
+		body = c.boolMarkerBody(name, prefix, body)
+	}
 	c.w("func (self %s) %s%s(args ...any) any {\n%s}\n\n", c.recvType(cls), prefix, goMethodName(name), body)
 	c.dynWrapped[cls] = append(c.dynWrapped[cls], dynWrapped{name: name, goName: prefix + goMethodName(name), own: !e.M.File.isPrelude()})
+}
+
+// boolMarkerBody is Boolean's wrapper body for name when the program reopens TrueClass or FalseClass with it: true and
+// false answer their own class's method, as a static call does (markerCall, decision 241), not Object's (Homebrew's
+// `false.present?` through an untyped value was true; decision 291).
+func (c *Compiler) boolMarkerBody(name, prefix, body string) string {
+	var b strings.Builder
+	for _, side := range []struct {
+		cls, cond string
+	}{{"TrueClass", "self"}, {"FalseClass", "!self"}} {
+		k := c.classes[side.cls]
+		if k == nil {
+			continue
+		}
+		if m := k.Methods[name]; m != nil && m.File != nil && !m.File.isPrelude() {
+			fmt.Fprintf(&b, "\tif %s {\n\t\treturn (*%s)(nil).%s%s(args...)\n\t}\n", side.cond, k.Name, prefix, goMethodName(name))
+		}
+	}
+	return b.String() + body
 }
 
 func (c *Compiler) dynWrapperBody(cls *Class, e *entry) string {
