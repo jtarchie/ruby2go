@@ -1,0 +1,44 @@
+Subject: Requirement satisfy blocks bind self to the requirement
+
+satisfied? instance_evals the stored block on the requirement, so its self is a Requirement: say so in the block types,
+and bind ArchRequirement's block to its class as MacOSRequirement's and XcodeRequirement's already are.
+---
+--- a/Library/Homebrew/requirement.rb
++++ b/Library/Homebrew/requirement.rb
+@@ -251,7 +251,7 @@
+ 
+     sig {
+       params(options: T.nilable(T.any(T::Boolean, T::Hash[Symbol, T.anything], Satisfier)),
+-             block:   T.nilable(T.proc.returns(T.anything))).returns(T.nilable(Satisfier))
++             block:   T.nilable(T.proc.bind(Requirement).returns(T.anything))).returns(T.nilable(Satisfier))
+     }
+     def satisfy(options = nil, &block)
+       return @satisfied if options.nil? && !block
+@@ -275,7 +275,7 @@
+ 
+   # Helper class for evaluating whether a requirement is satisfied.
+   class Satisfier
+-    sig { params(options: T.nilable(T.any(T::Boolean, T::Hash[Symbol, T.anything], Satisfier)), block: T.nilable(T.proc.returns(T.anything))).void }
++    sig { params(options: T.nilable(T.any(T::Boolean, T::Hash[Symbol, T.anything], Satisfier)), block: T.nilable(T.proc.bind(Requirement).returns(T.anything))).void }
+     def initialize(options, &block)
+       case options
+       when Hash
+@@ -292,7 +292,7 @@
+         cc:           T.nilable(String),
+         build_bottle: T::Boolean,
+         bottle_arch:  T.nilable(String),
+-        block:        T.proc.params(arg0: T.nilable(T.proc.returns(T.anything))).returns(T.anything),
++        block:        T.proc.params(arg0: T.nilable(T.proc.bind(Requirement).returns(T.anything))).returns(T.anything),
+       ).returns(T.untyped)
+     }
+     def yielder(env: nil, cc: nil, build_bottle: false, bottle_arch: nil, &block)
+--- a/Library/Homebrew/requirements/arch_requirement.rb
++++ b/Library/Homebrew/requirements/arch_requirement.rb
+@@ -21,6 +21,7 @@
+   end
+ 
+   satisfy(build_env: false) do
++    T.bind(self, ArchRequirement)
+     case @arch
+     when :x86_64 then Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
+     when :arm64 then Hardware::CPU.arm64?

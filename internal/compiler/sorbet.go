@@ -124,7 +124,7 @@ func (f *File) sorbetStatements(body []parser.Node) []parser.Node {
 	out := body[:0:0]
 	for i, st := range body {
 		c, ok := st.(*parser.CallNode)
-		if ok && isTCall(c, "bind") { // `T.bind(self, X)`: a closed world already knows self's class
+		if ok && isTCall(c, "bind") && !bindsSelf(c) { // `T.bind(x, X)` of another value: unchecked, as a `#:` is
 			continue
 		}
 		if ok && c.Name == "sig" && c.Block != nil && strings.TrimPrefix(constName(c.Receiver), "::") == "T::Sig::WithoutRuntime" {
@@ -708,4 +708,14 @@ func optionalBlockParams(b *parser.BlockNode) {
 		}
 		body.Statements.Body = append(defaults, body.Statements.Body...)
 	}
+}
+
+// bindsSelf: `T.bind(self, X)`, kept for genSelfBind, which narrows self to X when X is a subclass of what self is.
+func bindsSelf(c *parser.CallNode) bool {
+	args := callArgs(c)
+	if len(args) != 2 {
+		return false
+	}
+	_, ok := args[0].(*parser.SelfNode)
+	return ok
 }

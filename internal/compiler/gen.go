@@ -664,6 +664,11 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
+		if isTCall(n, "bind") && bindsSelf(n) {
+			f.genSelfBind(n)
+			f.emptyTail(n, t)
+			return
+		}
 		if r := f.loopRescue(n); r != nil {
 			f.genBegin(r, t)
 			return
@@ -673,6 +678,21 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 		e := f.genExpr(n, t.want())
 		f.applyTail(n, e, t)
 	}
+}
+
+// genSelfBind is Sorbet's `T.bind(self, X)`: from here to the end of the block or method, self is X where X is a
+// subclass of self's static type (Homebrew's `satisfy(build_env: false) do T.bind(self, MacOSRequirement); ... end`
+// on a block bound to Requirement), asserted once; otherwise the closed world already knows self's class.
+func (f *fctx) genSelfBind(n *parser.CallNode) {
+	t := f.parseTypeAnn(n, sorbetType(callArgs(n)[1]))
+	to, ok := t.(TClass)
+	from := classOf(f.selfType)
+	if !ok || from == nil || to.C == from || !to.C.isSubclassOf(from) || to.C.metaOf != nil {
+		return
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, f.coerce(n, expr{code: "any(" + f.selfCode + ")", typ: TAny{}}, t))
+	f.selfType, f.selfCode = t, tmp
 }
 
 // absentReturn reports whether s is an if/unless on an absent constant (absentGuard) whose taken branch ends in return.

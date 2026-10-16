@@ -5,6 +5,44 @@ require "sorbet-runtime"
 
 # Sorbet `sig {}`, `T.let`, `T.cast` and `T.must` read as types (#95, decision 196).
 module SorbetTests
+  class BindReq
+    extend T::Sig
+
+    # @rbs self.@check: (^() [self: BindReq] -> untyped)?
+    @check = nil
+
+    sig { params(block: T.proc.bind(BindReq).returns(T.untyped)).void }
+    def self.satisfy(&block)
+      @check = block
+    end
+
+    sig { returns(T.nilable(T.proc.bind(BindReq).returns(T.untyped))) }
+    def self.check = @check
+
+    sig { returns(T.untyped) }
+    def satisfied?
+      c = BindReq.check
+      return true unless c
+
+      instance_eval(&c)
+    end
+  end
+
+  class BindMac < BindReq
+    extend T::Sig
+
+    sig { params(v: Integer).void }
+    def initialize(v) = @v = v
+
+    sig { returns(T::Boolean) }
+    def new_enough? = @v > 10
+  end
+
+  BindReq.satisfy do
+    T.bind(self, BindMac)
+    new_enough?
+  end
+
   class Shape
     extend T::Sig
     extend T::Helpers
@@ -246,6 +284,11 @@ module SorbetTests
       rescue TypeError => e
         assert_equal "Passed `nil` into T.must", e.message
       end
+    end
+
+    # `T.bind(self, Sub)` in a block bound to Base narrows self (Homebrew's MacOSRequirement satisfy block)
+    def test_bind_narrows_self
+      assert_equal [true, false], [BindMac.new(11).satisfied?, BindMac.new(3).satisfied?]
     end
 
     # T.cast to a tuple, from untyped and from a wider tuple; a multiple assignment of one (Homebrew's
