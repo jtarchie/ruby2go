@@ -271,14 +271,8 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 	if exp == nil && empty {
 		exp = f.refined[f.localKey(n.Name)]
 	}
-	if c, ok := n.Value.(*parser.CallNode); ok && exp == nil && empty && f.pass == 1 {
-		if cls := f.c.classes[emptyNewClass(c)]; cls != nil { // pass 1: untyped, so what goes in it can type it
-			args := make([]Type, len(cls.TypeParams))
-			for i := range args {
-				args[i] = TAny{}
-			}
-			exp = TClass{C: cls, Args: args}
-		}
+	if exp == nil && empty && f.pass == 1 { // pass 1: untyped, so what goes in it can type it
+		exp = f.c.openNewType(n.Value)
 	}
 	seed := f.widenSeed(n, ann, &exp)
 	if r, ok := n.Value.(*parser.LocalVariableReadNode); ok && r.Name == n.Name && f.erbDepth > 0 { // `x = x` declares x for the template's parse: a no-op
@@ -345,6 +339,29 @@ func isRangeNode(n parser.Node) bool {
 	return ok
 }
 
+// openNewType is an empty `X.new`'s type with untyped elements, so what is put in it can type it (decision 182); nil
+// for anything else.
+func (c *Compiler) openNewType(n parser.Node) Type {
+	call, ok := n.(*parser.CallNode)
+	if !ok {
+		return nil
+	}
+	cls := c.classes[emptyNewClass(call)]
+	if cls == nil {
+		return nil
+	}
+	args := make([]Type, len(cls.TypeParams))
+	for i := range args {
+		args[i] = TAny{}
+	}
+	return TClass{C: cls, Args: args}
+}
+
+func isNilLit(n parser.Node) bool {
+	_, ok := n.(*parser.NilNode)
+	return ok
+}
+
 func isEmptyLit(n parser.Node) bool {
 	switch n := n.(type) {
 	case *parser.ArrayNode:
@@ -360,13 +377,23 @@ func isEmptyLit(n parser.Node) bool {
 // emptyNewClass is the class of an empty container's `X.new` (`Hash.new`, `Queue.new`, `SizedQueue.new(n)`): an open
 // literal, typed from what is put in it as `[]` and `{}` are (decision 182).
 func emptyNewClass(n *parser.CallNode) string {
-	r, ok := n.Receiver.(*parser.ConstantReadNode)
-	if !ok || n.Name != "new" || n.Block != nil {
+	var name string
+	switch r := n.Receiver.(type) {
+	case *parser.ConstantReadNode:
+		name = r.Name
+	case *parser.ConstantPathNode: // ::Array
+		if r.Parent == nil && r.Name != nil {
+			name = *r.Name
+		}
+	}
+	if name == "" || n.Name != "new" || n.Block != nil {
 		return ""
 	}
 	switch args := callArgs(n); {
-	case r.Name == "SizedQueue" && len(args) == 1, len(args) == 0 && (r.Name == "Hash" || r.Name == "Array" || r.Name == "Set" || r.Name == "Queue"):
-		return r.Name
+	case name == "SizedQueue" && len(args) == 1, len(args) == 0 && (name == "Hash" || name == "Array" || name == "Set" || name == "Queue"):
+		return name
+	case name == "Array" && len(args) == 2 && isNilLit(args[1]):
+		return name // Array.new(n, nil): n nils, typed by what is stored over them
 	}
 	return ""
 }

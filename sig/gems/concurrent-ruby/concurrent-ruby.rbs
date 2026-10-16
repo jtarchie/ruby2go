@@ -25,3 +25,96 @@ module Concurrent
     def try_update!: () { (untyped) -> untyped } -> untyped
   end
 end
+
+# Promises internals (decision 285): the promise/future/state graph behind every public Promises call, which has no
+# annotations (ruby/gem_rbs_collection types only the public API, generically). A future's value stays untyped: it
+# holds whatever the task returned.
+module Concurrent
+  def self.executor: (untyped) -> ExecutorService
+
+  module Promises
+    module InternalStates
+      class State
+        def resolved?: () -> bool
+        def to_sym: () -> Symbol
+      end
+
+      class ResolvedWithResult < State
+        def result: () -> [bool, untyped, untyped]
+        def fulfilled?: () -> bool
+        def value: () -> untyped
+        def reason: () -> untyped
+      end
+
+      class Fulfilled < ResolvedWithResult
+        def apply: (Array[untyped], Proc) -> untyped
+      end
+
+      class FulfilledArray < Fulfilled
+        def apply: (Array[untyped], Proc) -> untyped
+      end
+
+      class Rejected < ResolvedWithResult
+        def apply: (Array[untyped], Proc) -> untyped
+      end
+
+      class PartiallyRejected < ResolvedWithResult
+        def apply: (Array[untyped], Proc) -> untyped
+      end
+    end
+
+    class AbstractEventFuture
+      @Promise: AbstractPromise
+
+      def internal_state: () -> InternalStates::State
+      def promise: () -> AbstractPromise
+      def touched?: () -> bool
+      def resolved?: () -> bool
+      def pending?: () -> bool
+      def state: () -> Symbol
+      def touch: () -> self
+      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+    end
+
+    class Event
+      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+    end
+
+    class Future
+      def callback_on_resolution: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+      def callback_on_fulfillment: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+      def callback_on_rejection: (InternalStates::ResolvedWithResult, Array[untyped], Proc) -> untyped
+      def rejected_resolution: (bool, InternalStates::ResolvedWithResult) -> false
+    end
+
+    class AbstractPromise
+      @Future: AbstractEventFuture
+
+      def future: () -> AbstractEventFuture
+      def event: () -> AbstractEventFuture
+      def state: () -> Symbol
+      def delayed_because: () -> untyped
+    end
+
+    class BlockedPromise
+      def self.new_blocked_by1: (AbstractEventFuture, *untyped) ?{ (*untyped) -> untyped } -> instance
+      def self.new_blocked_by2: (AbstractEventFuture, AbstractEventFuture, *untyped) ?{ (*untyped) -> untyped } -> instance
+      def self.new_blocked_by: (Array[AbstractEventFuture], *untyped) ?{ (*untyped) -> untyped } -> instance
+
+      @Countdown: AtomicFixnum
+
+      def on_blocker_resolution: (AbstractEventFuture, Integer?) -> untyped
+      def resolvable?: (Integer, AbstractEventFuture, Integer?) -> bool
+      def process_on_blocker_resolution: (AbstractEventFuture, Integer?) -> Integer
+      def on_resolvable: (AbstractEventFuture, Integer?) -> untyped
+    end
+
+    class BlockedTaskPromise
+      @Args: Array[untyped]
+    end
+
+    class AbstractFlatPromise
+      @Touched: AtomicBoolean
+    end
+  end
+end

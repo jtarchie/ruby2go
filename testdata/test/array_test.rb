@@ -2569,4 +2569,27 @@ module ArrayTests
       assert_equal [0, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, 0], got
     end
   end
+
+  # `Array.new(n, nil)` is typed by what is stored over its nils, as `[]` is (decision 182), for a local and an ivar.
+  class ArrayNewNilSlots
+    def initialize(n)
+      @slots = ::Array.new(n, nil)
+    end
+
+    def put(i, s)
+      @slots[i] = s
+    end
+
+    def lengths = @slots.map { |s| s&.length }
+  end
+
+  class ArrayNewNilTest < Minitest::Test
+    def test_local_and_ivar_take_the_stored_type
+      xs = Array.new(3, nil)
+      xs[1] = "ab"
+      slots = ArrayNewNilSlots.new(2)
+      slots.put(1, "xyz")
+      assert_equal [[nil, "ab", nil], [nil, 3]], [xs, slots.lengths]
+    end
+  end
 end

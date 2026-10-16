@@ -198,7 +198,7 @@ func (c *Compiler) addSigIvars() {
 		}
 		for _, iv := range d.Ivars {
 			if !slices.ContainsFunc(cls.ivarDecls, func(x ivarDecl) bool { return x.name == iv.Name }) {
-				cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: iv.Name, rbs: iv.Type, line: cls.Line})
+				cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: iv.Name, rbs: iv.Type, line: cls.Line, scope: c.nestingOf(cls)})
 			}
 		}
 	}

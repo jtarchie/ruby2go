@@ -1074,3 +1074,21 @@ func TestRBSOverloadNoArm(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A `.rbs` instance variable's type resolves in its class's nesting, as the class's own defs do (decision 160).
+func TestRBSIvarNestedType(t *testing.T) {
+	dir := t.TempDir()
+	err := os.MkdirAll(filepath.Join(dir, "sig"), 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(dir, "sig", "m.rbs"), []byte("module M\n  class F\n    @p: P\n  end\nend\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := []byte("module M\n  class P\n    def touch = 1\n  end\n\n  class F\n    def initialize(pr)\n      @p = pr\n    end\n\n    def go = @p.touch\n  end\nend\n\np M::F.new(M::P.new).go\n")
+	_, warns, err := Compile(t.Context(), filepath.Join(dir, "main.rb"), src)
+	if err != nil || slices.ContainsFunc(warns, func(w string) bool { return strings.Contains(w, "untyped") }) {
+		t.Fatalf("err = %v, warnings %v", err, warns)
+	}
+}
