@@ -15,128 +15,235 @@ import (
 
 // rbFormat is Kernel#format: each directive is MRI's, handed to fmt with
 // the argument converted as MRI converts it. %<name>… and %{name} read
-// a Hash argument. ponytail: a negative %x/%o/%b prints "-ff", not MRI's
-// two's-complement "..f01"; %a is not supported.
+// a Hash argument. The directive parser follows MRI's sprintf.c (posarg:
+// 0 none yet, >0 the unnumbered count, -1 numbered, -2 named), so its
+// ArgumentErrors are MRI's.
 func rbFormat(format string, args []any) string {
 	var b strings.Builder
-	next := 0
-	arg := func() any {
-		if next >= len(args) {
-			panic(NewArgumentError(Ref(String("too few arguments"))))
+	posarg, nextarg := 0, 0
+	raise := func(msg string) { panic(NewArgumentError(Ref(String(msg)))) }
+	nextArg := func() any {
+		switch posarg {
+		case -1:
+			raise("unnumbered(" + strconv.Itoa(nextarg+1) + ") mixed with numbered")
+		case -2:
+			raise("unnumbered(" + strconv.Itoa(nextarg+1) + ") mixed with named")
 		}
-		next++
-		return rbUnbox(args[next-1])
+		nextarg++
+		posarg = nextarg
+		if nextarg > len(args) {
+			raise("too few arguments")
+		}
+		return rbUnbox(args[nextarg-1])
+	}
+	posArg := func(n int) any {
+		switch {
+		case posarg > 0:
+			raise("numbered(" + strconv.Itoa(n) + ") after unnumbered(" + strconv.Itoa(posarg) + ")")
+		case posarg == -2:
+			raise("numbered(" + strconv.Itoa(n) + ") after named")
+		case n < 1:
+			raise("invalid index - " + strconv.Itoa(n) + "$")
+		}
+		posarg = -1
+		if n > len(args) {
+			raise("too few arguments")
+		}
+		return rbUnbox(args[n-1])
 	}
 	named := func(name string) any {
+		switch {
+		case posarg > 0:
+			raise("named" + name + " after unnumbered(" + strconv.Itoa(posarg) + ")")
+		case posarg == -1:
+			raise("named" + name + " after numbered")
+		}
+		posarg = -2
 		if len(args) != 1 {
-			panic(NewArgumentError(Ref(String("one hash required"))))
+			raise("one hash required")
 		}
 		h, ok := rbUnbox(args[0]).(Hash_Any)
 		if !ok {
-			panic(NewArgumentError(Ref(String("one hash required"))))
+			raise("one hash required")
 		}
-		v, ok := h._ToAny().vals[Symbol(name)]
+		key := Symbol(name[1 : len(name)-1])
+		v, ok := h._ToAny().vals[key]
 		if !ok {
-			panic(NewKeyError(Ref(String("key<" + name + "> not found"))))
+			e := NewKeyError(Ref(String("key" + name + " not found")))
+			e.receiver, e.key, e.has_key = args[0], key, true
+			panic(e)
 		}
 		return rbUnbox(v)
 	}
+	// num is MRI's GETNUM: the digits at format[i:] and the index after them; running off the end is malformed.
+	num := func(i int, what string) (int, int) {
+		n := 0
+		for ; i < len(format) && format[i] >= '0' && format[i] <= '9'; i++ {
+			n = n*10 + int(format[i]-'0')
+			if n > math.MaxInt32 {
+				raise(what + " too big")
+			}
+		}
+		if i >= len(format) {
+			raise("malformed format string - %*[0-9]")
+		}
+		return n, i
+	}
+	toInt := func(v any) int {
+		var w Integer
+		switch x := v.(type) {
+		case Integer:
+			w = x
+		case Float:
+			w = rbFloatToI(float64(x))
+		default:
+			panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into Integer"))))
+		}
+		if w > math.MaxInt32 || w < math.MinInt32 {
+			big := map[bool]string{true: "big", false: "small"}[w > 0]
+			panic(NewRangeError(Ref(String("integer " + strconv.Itoa(int(w)) + " too " + big + " to convert to 'int'"))))
+		}
+		return int(w)
+	}
 	for i := 0; i < len(format); i++ {
-		c := format[i]
-		if c != '%' {
-			b.WriteByte(c)
+		if format[i] != '%' {
+			b.WriteByte(format[i])
 			continue
 		}
-		start := i
 		i++
 		if i >= len(format) {
-			panic(NewArgumentError(Ref(String("incomplete format specifier; use %% (double %) instead"))))
-		}
-		if format[i] == '%' {
-			b.WriteByte('%')
-			continue
+			raise("incomplete format specifier; use %% (double %) instead")
 		}
 		var v any
-		have := false
-		spec := []byte{'%'}
-		for ; i < len(format); i++ {
-			switch d := format[i]; {
+		have, name := false, ""
+		flags := ""
+		width, prec := 0, 0
+		hasWidth, hasPrec := false, false
+		checkWidth := func() {
+			if hasWidth {
+				raise("width given twice")
+			}
+			if hasPrec {
+				raise("width after precision")
+			}
+		}
+		// aster is MRI's GETASTER at the `*` format[i]: the next argument, or argument N for `*N$`.
+		aster := func(what string) int {
+			n, j := num(i+1, what)
+			if format[j] == '$' {
+				i = j
+				return toInt(posArg(n))
+			}
+			return toInt(nextArg())
+		}
+	directive:
+		for ; ; i++ {
+			if i >= len(format) {
+				raise("malformed format string")
+			}
+			d := format[i]
+			switch {
 			case strings.IndexByte("-+ 0#", d) >= 0:
-				spec = append(spec, d)
-				continue
+				if hasWidth {
+					raise("flag after width")
+				}
+				if hasPrec {
+					raise("flag after precision")
+				}
+				flags += string(d)
+			case d >= '1' && d <= '9':
+				n, j := num(i, "width")
+				if format[j] == '$' {
+					if have {
+						raise("value given twice - " + strconv.Itoa(n) + "$")
+					}
+					v, have = posArg(n), true
+					i = j
+					continue
+				}
+				checkWidth()
+				width, hasWidth = n, true
+				i = j - 1
 			case d == '<' || d == '{':
 				end := strings.IndexByte(format[i:], map[byte]byte{'<': '>', '{': '}'}[d])
 				if end < 0 {
-					panic(NewArgumentError(Ref(String("malformed name - unmatched parenthesis"))))
+					raise("malformed name - unmatched parenthesis")
 				}
-				v, have = named(format[i+1:i+end]), true
+				if name != "" {
+					raise("named" + format[i:i+end+1] + " after " + name)
+				}
+				if have {
+					raise("named" + format[i:i+end+1] + " after numbered")
+				}
+				name = format[i : i+end+1]
+				v, have = named(name), true
 				i += end
 				if d == '{' {
-					fmt.Fprintf(&b, string(spec)+"s", string(rbToS(v)))
-					goto done
+					b.WriteString(rbFormatOne(rbFormatSpec(flags, width, hasWidth, prec, hasPrec), 's', v))
+					break directive
 				}
-				continue
 			case d == '*':
-				w, ok := arg().(Integer)
-				if !ok {
-					panic(NewTypeError(Ref(String("width must be an Integer"))))
+				checkWidth()
+				hasWidth = true
+				width = aster("width")
+				if width < 0 {
+					flags += "-"
+					width = -width
 				}
-				if w > math.MaxInt32 || w < math.MinInt32 {
-					big := map[bool]string{true: "big", false: "small"}[w > 0]
-					panic(NewRangeError(Ref(String("integer " + strconv.Itoa(int(w)) + " too " + big + " to convert to 'int'"))))
+			case d == '.':
+				if hasPrec {
+					raise("precision given twice")
 				}
-				spec = strconv.AppendInt(spec, int64(w), 10)
-				continue
-			case d >= '1' && d <= '9' && len(spec) == 1 && rbFormatDollar(format[i:]) > 0: // `%2$s`: argument 2 (1-based)
-				j := strings.IndexByte(format[i:], '$')
-				n, _ := strconv.Atoi(format[i : i+j])
-				if n > len(args) {
-					panic(NewArgumentError(Ref(String("too few arguments"))))
+				hasPrec = true
+				if i+1 < len(format) && format[i+1] == '*' {
+					i++
+					if prec = aster("precision"); prec < 0 {
+						hasPrec = false // a negative precision is ignored
+					}
+					continue
 				}
-				v, have = args[n-1], true
-				i += j
-				continue
-			case d >= '0' && d <= '9' || d == '.':
-				spec = append(spec, d)
-				continue
+				n, j := num(i+1, "precision")
+				prec, i = n, j-1
+			case d == '%':
+				if flags != "" || hasWidth || hasPrec || have {
+					raise("invalid format character - %")
+				}
+				b.WriteByte('%')
+				break directive
+			case strings.IndexByte("spcdiuxXobBaAfeEgG", d) >= 0:
+				if !have {
+					v = nextArg()
+				}
+				b.WriteString(rbFormatOne(rbFormatSpec(flags, width, hasWidth, prec, hasPrec), d, v))
+				break directive
+			case d > ' ' && d < 0x7f:
+				raise("malformed format string - %" + string(d))
+			default:
+				raise("malformed format string")
 			}
-			break
 		}
-		if i >= len(format) {
-			panic(NewArgumentError(Ref(String("malformed format string - " + format[start:]))))
-		}
-		if !have {
-			v = arg()
-		}
-		rbFormatCheckSpec(spec)
-		b.WriteString(rbFormatOne(string(spec), format[i], v))
-	done:
+	}
+	if posarg >= 0 && nextarg < len(args) && (len(args) != 1 || !rbFormatIsHash(args[0])) && rbVerbose != nil && bool(*rbVerbose) {
+		rbWarnLoc("too many arguments for format string")
 	}
 	return b.String()
 }
 
-// rbFormatCheckSpec raises MRI's ArgumentError for a width or precision past an int, which fmt would otherwise take for a size to fill.
-func rbFormatCheckSpec(spec []byte) {
-	i := 1
-	for i < len(spec) && strings.IndexByte("-+ 0#", spec[i]) >= 0 {
-		i++
+func rbFormatIsHash(a any) bool {
+	_, ok := rbUnbox(a).(Hash_Any)
+	return ok
+}
+
+// rbFormatSpec is the fmt directive prefix for parsed flags, width and precision.
+func rbFormatSpec(flags string, width int, hasWidth bool, prec int, hasPrec bool) string {
+	spec := "%" + flags
+	if hasWidth {
+		spec += strconv.Itoa(width)
 	}
-	for _, what := range []string{"width", "precision"} {
-		if what == "precision" {
-			for i < len(spec) && spec[i] != '.' {
-				i++
-			}
-			i++
-		}
-		j := min(i, len(spec))
-		for j < len(spec) && spec[j] >= '0' && spec[j] <= '9' {
-			j++
-		}
-		if n, err := strconv.Atoi(string(spec[min(i, j):j])); n > math.MaxInt32 || err != nil && j > i {
-			panic(NewArgumentError(Ref(String(what + " too big"))))
-		}
-		i = j
+	if hasPrec {
+		spec += "." + strconv.Itoa(prec)
 	}
+	return spec
 }
 
 // rbFormatOne formats v for one directive; spec is its flags, width and precision.
@@ -147,10 +254,29 @@ func rbFormatOne(spec string, verb byte, v any) string {
 	case 'p':
 		return fmt.Sprintf(spec+"s", string(rbInspect(v)))
 	case 'c':
-		if n, ok := v.(Integer); ok {
-			return fmt.Sprintf(spec+"c", rune(n))
+		if k := strings.IndexByte(spec, '.'); k >= 0 {
+			spec = spec[:k] // MRI ignores a precision on %c
 		}
-		r, _ := utf8.DecodeRuneInString(string(rbToS(v)))
+		var r rune
+		if f, ok := v.(Float); ok {
+			v = rbFloatToI(float64(f))
+		}
+		switch x := v.(type) {
+		case Integer:
+			if x < 0 || x > utf8.MaxRune || !utf8.ValidRune(rune(x)) {
+				panic(NewArgumentError(Ref(String("invalid character"))))
+			}
+			r = rune(x)
+		case String:
+			if x == "" {
+				return fmt.Sprintf(spec+"s", "")
+			}
+			r, _ = utf8.DecodeRuneInString(string(x))
+		case nil:
+			panic(NewTypeError(Ref(String("no implicit conversion from nil to integer"))))
+		default:
+			panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into Integer"))))
+		}
 		return fmt.Sprintf(spec+"c", r)
 	case 'd', 'i', 'u':
 		return fmt.Sprintf(spec+"d", rbFormatInt(v))
@@ -160,6 +286,11 @@ func rbFormatOne(spec string, verb byte, v any) string {
 			return rbFormatTwos(spec, verb, n)
 		}
 		if n == 0 {
+			if verb == 'o' && strings.Contains(spec, "#") {
+				if k := strings.IndexByte(spec, '.'); k >= 0 {
+					spec = spec[:k] // %#o always shows the leading 0, even at precision 0
+				}
+			}
 			spec = strings.ReplaceAll(spec, "#", "") // MRI's %#x of 0 is "0", with no prefix
 		}
 		flags := spec[1:]
@@ -237,18 +368,6 @@ func rbFormatFloat(v any) float64 {
 	panic(NewTypeError(Ref(String("can't convert " + rbClassName(v) + " into Float"))))
 }
 
-// rbFormatDollar is the length of a leading `digits$` (a positional argument), or 0.
-func rbFormatDollar(s string) int {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i > 0 && i < len(s) && s[i] == '$' {
-		return i
-	}
-	return 0
-}
-
 // rbFormatHexFloat is %a/%A as C prints it: Go's hex float without the exponent's leading zero, then flags and width.
 func rbFormatHexFloat(spec string, verb byte, f float64) string {
 	prec := -1
@@ -276,6 +395,9 @@ func rbFormatHexFloat(spec string, verb byte, f float64) string {
 			}
 			s = s[:p+1] + exp
 		}
+		if p := strings.IndexByte(s, 'p'); strings.Contains(flags, "#") && !strings.Contains(s, ".") {
+			s = s[:p] + "." + s[p:] // # forces the point, as C's
+		}
 	}
 	if !strings.HasPrefix(s, "-") {
 		switch {
@@ -291,6 +413,9 @@ func rbFormatHexFloat(spec string, verb byte, f float64) string {
 	w, _ := strconv.Atoi(width)
 	if strings.Contains(flags, "-") {
 		return fmt.Sprintf("%-*s", w, s)
+	}
+	if x := strings.IndexAny(s, "xX"); x >= 0 && strings.Contains(flags, "0") && len(s) < w {
+		s = s[:x+1] + strings.Repeat("0", w-len(s)) + s[x+1:] // zeros go after the 0x, as C's
 	}
 	return fmt.Sprintf("%*s", w, s)
 }

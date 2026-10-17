@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require "English"
+require "stringio"
 
 # Helpers for the checks that were testdata/run/string_split.rb.
 #: (String) -> Integer
@@ -1577,6 +1578,61 @@ B
       ref = "homebrew/core/wget"
       uref = ref #: untyped
       assert_equal ["wget", "core", "homebrew", "wget"], [ref[re, :name], ref[re, "repo"], ref[re, 1], uref[re, :name]]
+    end
+  end
+
+  # #102: format's directive parser raises MRI's ArgumentErrors; %a, %c and %#o edge cases
+  class StringFormatParseTest < Minitest::Test
+    def string_format_error(fmt, *args)
+      format(fmt, *args)
+      nil
+    rescue ArgumentError => e
+      e.message
+    end
+
+    def test_format_argument_errors
+      assert_equal ["value given twice - 1$", "width given twice", "width given twice", "precision given twice"],
+        [string_format_error("%1$1$s", 1), string_format_error("%**s", 1, 2, 3), string_format_error("%5*s", 1, 2), string_format_error("%.5.5s", 1)]
+      assert_equal ["unnumbered(1) mixed with numbered", "numbered(1) after unnumbered(1)", "unnumbered(1) mixed with named", "named<a> after numbered"],
+        [string_format_error("%1$d %d", 1, 2), string_format_error("%d %1$d", 1, 2), string_format_error("%<a>s %d", { a: 1 }), string_format_error("%1$<a>s", { a: 1 })]
+      assert_equal ["malformed format string - %$", "malformed format string - %*[0-9]", "malformed format string", "malformed format string - %q", "invalid format character - %", "malformed format string"],
+        [string_format_error("%0$s", 1), string_format_error("%5"), string_format_error("%-"), string_format_error("%q"), string_format_error("%-%"), string_format_error(" % ")]
+      assert_equal ["invalid character", "too few arguments"], [string_format_error("%c", -1), string_format_error("%4$d", 1, 2, 3)]
+    end
+
+    def test_format_positional_star
+      assert_equal ["       112", "112       ", "2", "x x", "ab", "    3.14"],
+        [format("%1$*2$d", 112, 10), format("%1$*2$d", 112, -10), format("%-2$d", 1, 2, 3), format("%1$s %1$s", "x", "y"), format("%.*s", 2, "abcd"), format("%*.*f", 8, 2, 3.14159)]
+    end
+
+    def test_format_hex_float_and_char
+      assert_equal ["0x1.p+4", "0x000000000001.88p+7", "+0x00000000001.88p+7", "0x1.88p+7           ", "-0x01.8p+0"],
+        [format("%#a", 16.0), format("%020a", 196), format("%+020a", 196), format("%-020a", 196), format("%010a", -1.5)]
+      assert_equal ["", "a", "    あ", "0", "    0"], [format("%c", ""), format("%.3c", "abc"), format("%5c", "あ"), format("%#.0o", 0), format("%#5.0o", 0)]
+    end
+
+    def test_format_missing_key
+      e = nil #: KeyError?
+      begin
+        format("%<foo>s", { foooo: 1 })
+      rescue KeyError => x
+        e = x
+      end
+      assert_equal [:foo, { foooo: 1 }], [e&.key, e&.receiver]
+    end
+
+    def test_format_too_many_arguments_warns_when_verbose
+      verbose = $VERBOSE
+      err = $stderr
+      buf = StringIO.new
+      $stderr = buf
+      $VERBOSE = true
+      format("test", 1)
+      format("%{a}", { a: 1, b: 2 })
+      out = buf.string
+      $stderr = err
+      $VERBOSE = verbose
+      assert_equal 1, out.scan(/too many arguments for format string/).size
     end
   end
 end
