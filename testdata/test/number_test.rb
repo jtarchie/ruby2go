@@ -2489,4 +2489,27 @@ module NumberTests
       assert_equal TypeError, (begin; Complex.rectangular(1.0+1i, 2); rescue TypeError => e; e.class; end)
     end
   end
+
+  # #102: Float rounding to digits <= 0, zero modulus, digits past a C int
+  class NumberFloatDigitsTest < Minitest::Test
+    def test_float_round_nonpositive_digits
+      assert_equal [12300, 12300, 12400, 3, -3, 1, 0], [12345.67.round(-2), 12345.67.floor(-2), 12345.67.ceil(-2), 2.5.round(0), -2.5.round(0), 1.5.floor(0), 4.2.round(-1)]
+    end
+
+    def test_zero_modulus
+      zd = [-> { 1.0 % 0 }, -> { 1.0 % 0.0 }, -> { 10 % 0.0 }, -> { 1.0.divmod(0.0) }, -> { 10.divmod(0.0) }, -> { 1.0.modulo(0.0) }].map do |f|
+        begin
+          f.call
+          nil
+        rescue ZeroDivisionError => e
+          e.class
+        end
+      end
+      assert_equal [ZeroDivisionError] * 6, zd
+    end
+
+    def test_digits_out_of_int
+      assert_equal RangeError, (begin; 42.round(1 << 31); rescue RangeError => e; e.class; end)
+    end
+  end
 end

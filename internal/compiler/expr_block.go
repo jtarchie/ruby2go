@@ -571,6 +571,21 @@ func (f *fctx) withNextTail(t tail, gen func(tail)) {
 	f.nextTail = saved
 }
 
+// iterClassTwin is an iterator call's twin for its one argument's class, as other calls take: (1.0..2.0).step(0.5) is __step_float (decision 301).
+func (f *fctx) iterClassTwin(n *parser.CallNode, e *entry, recvT Type) *entry {
+	args := callArgs(n)
+	if len(args) != 1 {
+		return nil
+	}
+	f.curBlock = n.Block
+	o := f.overload(e, recvT, args)
+	f.curBlock = nil
+	if o != nil && o.M.Iterator && o.M.Name != "__"+overloadBase(e.M.Name)+"_1" {
+		return o
+	}
+	return nil
+}
+
 // genIterCall emits `for ... range recv.Each(...) { body }` for iterator
 // methods called with a block. Returns false if the call is not one.
 // A T? receiver is guarded first: `&.` skips the loop on nil, `.` raises.
@@ -597,6 +612,8 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	if rc, ok := recvT.(TClass); ok { // literal options pick a twin here too (CSV.foreach(path, headers: true), decision 117)
 		if o := f.literalOverload(e.M, rc.C, callArgs(n)); o != nil && o.M.Iterator {
+			e = o
+		} else if o := f.iterClassTwin(n, e, recvT); o != nil {
 			e = o
 		}
 	}

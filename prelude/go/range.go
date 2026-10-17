@@ -157,7 +157,30 @@ func rbRangeInclude[E comparable](r *Range[E], v E) bool {
 	b, bok := any(r.b).(String)
 	e, eok := any(r.e).(String)
 	if !bok && !eok {
-		return rbRangeCover(r, v)
+		end := r.b
+		if r.beginless {
+			end = r.e
+		}
+		_, succ := any(end).(interface{ Succ() E })
+		if _, ok := any(end).(rbSuccAny); ok {
+			succ = true
+		}
+		switch any(end).(type) {
+		case Integer, Float, *Rational:
+			succ = false
+		}
+		if !succ {
+			return rbRangeCover(r, v)
+		}
+		if r.beginless || r.endless { // MRI 3.3: a succ-able non-numeric range iterates, so an open one cannot answer
+			panic(NewTypeError(Ref(String("cannot determine inclusion in beginless/endless ranges"))))
+		}
+		found := false
+		rbRangeEach(r, func(x E) bool {
+			found = bool(rbEq(x, v)) || rbCmp(x, v) == 0 // Comparable's == is <=>, which a typed Op_eq may not reach
+			return !found
+		})
+		return found
 	}
 	if r.beginless || r.endless {
 		panic(NewTypeError(Ref(String("cannot determine inclusion in beginless/endless ranges"))))
@@ -231,34 +254,67 @@ func rbRangeOverlap[E comparable](a, b *Range[E]) bool {
 	return before(a, b) && before(b, a)
 }
 
-// rbRangeBsearch is Range#bsearch over Integer bounds; other element types raise TypeError, as MRI does for non-numeric ones.
+// rbRangeBsearch is MRI's range_bsearch in find-minimum mode: Integers directly (probing outward from an open end), Floats over their bits as ordered int64s.
 func rbRangeBsearch[E comparable](r *Range[E], ok func(E) bool) *E {
+	_, bf := any(r.b).(Float)
+	_, ef := any(r.e).(Float)
+	if bf && !r.beginless || ef && !r.endless {
+		lo, hi := math.Inf(-1), math.Inf(1)
+		if !r.beginless {
+			lo = rbNumFloat(any(r.b))
+		}
+		if !r.endless {
+			hi = rbNumFloat(any(r.e))
+		}
+		return rbBsearchBits(rbFloatBits(lo), rbFloatBits(hi), r.excl, func(i int64) E { return any(Float(rbBitsFloat(i))).(E) }, ok)
+	}
 	lo, isInt := any(r.b).(Integer)
-	if !isInt || r.beginless {
+	if !isInt {
 		panic(NewTypeError(Ref(String("can't do binary search for " + rbClassName(r.b)))))
 	}
-	var hi Integer
+	if r.beginless {
+		hi, isInt := any(r.e).(Integer)
+		if !isInt || r.endless {
+			panic(NewTypeError(Ref(String("can't do binary search for NilClass"))))
+		}
+		if r.excl {
+			hi--
+		}
+		for step := Integer(1); ; step *= 2 {
+			if hi < math.MinInt+step || step > math.MaxInt/2 {
+				rbIntOverflow(hi, "-", step)
+			}
+			if lo = hi - step; !ok(any(lo).(E)) {
+				break
+			}
+		}
+		return rbBsearchInt(lo, hi, ok)
+	}
 	if r.endless {
+		var hi Integer
 		for step := Integer(1); ; step *= 2 { // MRI probes lo+1, lo+2, lo+4, ... into Bignums
 			if lo > math.MaxInt-step {
 				rbIntOverflow(lo, "+", step)
 			}
 			if hi = lo + step; ok(any(hi).(E)) {
-				break
+				return rbBsearchInt(lo, hi, ok)
 			}
 			if step > math.MaxInt/2 {
 				rbIntOverflow(lo, "+", step)
 			}
 		}
-	} else {
-		hi = any(r.e).(Integer)
-		if r.excl {
-			if hi == math.MinInt {
-				return nil
-			}
-			hi--
-		}
 	}
+	hi := any(r.e).(Integer)
+	if r.excl {
+		if hi == math.MinInt {
+			return nil
+		}
+		hi--
+	}
+	return rbBsearchInt(lo, hi, ok)
+}
+
+func rbBsearchInt[E comparable](lo, hi Integer, ok func(E) bool) *E {
 	var found *E
 	for lo <= hi {
 		mid := lo + Integer(uint64(hi-lo)/2) // hi-lo wraps past MaxInt; as unsigned it is exact
@@ -274,6 +330,55 @@ func rbRangeBsearch[E comparable](r *Range[E], ok func(E) bool) *E {
 			}
 			lo = mid + 1
 		}
+	}
+	return found
+}
+
+// rbFloatBits orders Floats as int64s (MRI's double_as_int64): the magnitude's bits, negated for a negative.
+func rbFloatBits(d float64) int64 {
+	i := int64(math.Float64bits(math.Abs(d)))
+	if d < 0 {
+		return -i
+	}
+	return i
+}
+
+func rbBitsFloat(i int64) float64 {
+	if i < 0 {
+		return -math.Float64frombits(uint64(-i))
+	}
+	return math.Float64frombits(uint64(i))
+}
+
+// rbBsearchBits is MRI's BSEARCH macro over int64 keys.
+func rbBsearchBits[E comparable](low, high int64, excl bool, conv func(int64) E, ok func(E) bool) *E {
+	if excl {
+		high--
+	}
+	orgHigh := high
+	var found *E
+	for low < high {
+		var mid int64
+		switch {
+		case (high < 0) == (low < 0):
+			mid = low + (high-low)/2
+		case low < -high:
+			mid = -((-1-low-high)/2 + 1)
+		default:
+			mid = (low + high) / 2
+		}
+		if v := conv(mid); ok(v) {
+			found, high = &v, mid
+		} else {
+			low = mid + 1
+		}
+	}
+	if low == orgHigh {
+		v := conv(low)
+		if !ok(v) {
+			return nil
+		}
+		found = &v
 	}
 	return found
 }

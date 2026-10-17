@@ -42,4 +42,58 @@ module RangeTests
       assert_equal [true, false, true, false], [one == flt, one.eql?(flt), one.eql?(1..2), one == (1...2)]
     end
   end
+
+  # #102: Float steps, Float bsearch, beginless first, include? over succ
+  class RangeFloatStepTest < Minitest::Test
+    def test_step_floats
+      a = [] #: Array[Float]
+      (-5.0..5.0).step(2) { |x| a << x }
+      (-1.0...1.0).step(0.5) { |x| a << x }
+      (-2..2).step(1.5) { |x| a << x }
+      (1.0...55.6).step(18.2) { |x| a << x }
+      (-2.0..2.0).step { |x| a << x }
+      assert_equal [-5.0, -3.0, -1.0, 1.0, 3.0, 5.0, -1.0, -0.5, 0.0, 0.5, -2.0, -0.5, 1.0, 1.0, 19.2, 37.4, 55.599999999999994, -2.0, -1.0, 0.0, 1.0, 2.0], a
+      assert_equal [4, [1.0, 1.5, 2.0], [1.0, 1.5, 2.0]], [(1.0...55.6).step(18.2).size, (1.0..2.0).step(0.5).to_a, (1..2).step(0.5).to_a]
+    end
+
+    def test_step_negative_integer
+      a = [] #: Array[Integer]
+      (1..-1).step(-1) { |x| a << x }
+      (-1..1).step(-1) { |x| a << x }
+      assert_equal [1, 0, -1], a
+    end
+
+    def test_bsearch_floats
+      assert_equal [3.5, nil, -1000.5, 3], [(0.0..10.0).bsearch { |x| x >= 3.5 }, (0.0..10.0).bsearch { |x| x >= 11 }, (-Float::INFINITY..0.0).bsearch { |x| x >= -1000.5 }, (..10).bsearch { |x| x >= 3 }]
+    end
+
+    def test_first_beginless
+      assert_equal RangeError, (begin; (..1).first; rescue RangeError => e; e.class; end)
+    end
+  end
+
+  class RangeSuccItem
+    include Comparable
+
+    attr_reader :n #: Integer
+
+    #: (Integer) -> void
+    def initialize(n)
+      @n = n
+    end
+
+    #: (RangeSuccItem) -> Integer
+    def <=>(other) = n <=> other.n
+
+    #: () -> RangeSuccItem
+    def succ = RangeSuccItem.new(n * 10)
+  end
+
+  class RangeIncludeSuccTest < Minitest::Test
+    def test_include_iterates_succ
+      r = RangeSuccItem.new(1)..RangeSuccItem.new(99)
+      assert_equal [true, true, false, false], [r.include?(RangeSuccItem.new(1)), r.include?(RangeSuccItem.new(10)), r.include?(RangeSuccItem.new(2)), r.include?(RangeSuccItem.new(99))]
+      assert_equal TypeError, (begin; (RangeSuccItem.new(0)..).include?(RangeSuccItem.new(5)); rescue TypeError => e; e.class; end)
+    end
+  end
 end

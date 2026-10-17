@@ -284,6 +284,20 @@ func rbArithRange[E comparable](r *Range[E], n Integer, meth string) *Enumerator
 	return a
 }
 
+// rbArithRangeFloat is Range#step(Float) without a block: Float elements whatever E is, as MRI's.
+func rbArithRangeFloat[E comparable](r *Range[E], by Float) *Enumerator_ArithmeticSequence[Float] {
+	if by == 0 {
+		panic(NewArgumentError(Ref(String("step can't be 0"))))
+	}
+	rbRangeNoBegin(r)
+	a := &Enumerator_ArithmeticSequence[Float]{b: Float(rbNumFloat(any(r.b))), by: by, nth: 1, excl: r.excl, endless: r.endless, numeric: true,
+		insp: "((" + string(rbRangeStr(r, rbInspect)) + ").step(" + string(rbInspect(by)) + "))"}
+	if !r.endless {
+		a.e = Float(rbNumFloat(any(r.e)))
+	}
+	return a
+}
+
 // rbArithNum is Integer#step / Float#step without a block; by shows in inspect only when given.
 func rbArithNum[E comparable](b, e, by E, shown bool) *Enumerator_ArithmeticSequence[E] {
 	if by == *new(E) {
@@ -311,6 +325,12 @@ func rbArithSeq[E comparable](a *Enumerator_ArithmeticSequence[E]) func(func(E) 
 		if a.rng != nil {
 			rbRangeNoBegin(a.rng)
 		}
+		if b, ok := any(a.b).(Integer); ok && !a.endless {
+			if e, ok := any(a.e).(Float); ok { // (-5..5.0), an untyped E: MRI steps in Floats
+				rbFloatStepX(float64(b), float64(e), rbNumFloat(any(a.by)), a.excl, func(x Float) bool { return yield(any(x).(E)) })
+				return
+			}
+		}
 		switch b := any(a.b).(type) {
 		case Integer:
 			by := any(a.by).(Integer)
@@ -330,7 +350,7 @@ func rbArithSeq[E comparable](a *Enumerator_ArithmeticSequence[E]) func(func(E) 
 				}
 			}
 		case Float:
-			by := float64(any(a.by).(Float))
+			by := rbNumFloat(any(a.by))
 			if a.endless {
 				for i := 0.0; ; i++ {
 					if !yield(any(Float(float64(b) + i*by)).(E)) {
@@ -338,10 +358,8 @@ func rbArithSeq[E comparable](a *Enumerator_ArithmeticSequence[E]) func(func(E) 
 					}
 				}
 			}
-			e := any(a.e).(Float)
-			rbFloatStep(float64(b), float64(e), by, func(x Float) bool {
-				return !(a.excl && x == e) && yield(any(x).(E))
-			})
+			e := rbNumFloat(any(a.e))
+			rbFloatStepX(float64(b), float64(e), by, a.excl, func(x Float) bool { return yield(any(x).(E)) })
 		}
 	}
 }
@@ -374,7 +392,15 @@ func (a *Enumerator_ArithmeticSequence[E]) rbSize() *Integer {
 	if a.rng != nil {
 		rbRangeNoBegin(a.rng)
 	}
-	e, by := any(a.e).(Integer), any(a.by).(Integer)
+	e, ok := any(a.e).(Integer)
+	if !ok { // (1..5.0), an untyped E: Floats, counted
+		n := Integer(0)
+		for range rbArithSeq(a) {
+			n++
+		}
+		return &n
+	}
+	by := any(a.by).(Integer)
 	span, step := uint64(e)-uint64(b), uint64(by) // unsigned: e-b may pass MaxInt
 	if by < 0 {
 		span, step = uint64(b)-uint64(e), -step

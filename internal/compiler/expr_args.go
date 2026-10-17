@@ -574,6 +574,9 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return blockOverload(owner, name, len(args))
 	}
 	if f.curBlock == nil && m.Block != nil {
+		if r := f.enumClassOverload(owner, name, args); r != nil {
+			return r
+		}
 		if r := blocklessOverload(m, owner, name, len(args)); r != nil {
 			return r
 		}
@@ -598,6 +601,19 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// enumClassOverload is a blockless call's `__name_enum_<class>` for its one argument's class: `(1..2).step(0.5)` is a Float sequence (decision 301).
+func (f *fctx) enumClassOverload(owner *Class, name string, args []parser.Node) *entry {
+	if len(args) != 1 || !slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name+"enum_") }) {
+		return nil
+	}
+	var a expr
+	f.probe(func() { a = f.genExpr(args[0], nil) })
+	if c, ok := a.typ.(TClass); ok {
+		return owner.lookup(name + "enum_" + snake(c.C.RubyName))
+	}
+	return nil
 }
 
 // optOn: OptionParser's on-methods overload by switch kind, never by class: a runtime-decided switch keeps `on`, not `__on_string` (decision 245).
@@ -674,6 +690,14 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 		}
 	case owner.RubyName == "CSV" && owner.metaOf != nil:
 		return f.csvOverload(m, owner, args)
+	case owner.RubyName == "Float" && (m.Name == "round" || m.Name == "floor" || m.Name == "ceil") && len(args) == 1:
+		// x.round(n) is an Integer for n <= 0, as BigDecimal's: a literal n decides the type (decision 301)
+		if lit, ok := args[0].(*parser.IntegerNode); ok {
+			n, err := strconv.Atoi(f.f.text(lit.Location))
+			if err == nil && n <= 0 {
+				return owner.lookup("__" + m.Name + "_int")
+			}
+		}
 	case owner.RubyName == "BigDecimal" && m.Name == "round" && len(args) == 1:
 		// round(n) is a BigDecimal for n >= 1 and an Integer otherwise (decision 112): a literal n decides the type
 		if lit, ok := args[0].(*parser.IntegerNode); ok {

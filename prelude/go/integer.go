@@ -83,7 +83,18 @@ func rbIntShr(x, n Integer) Integer {
 }
 
 // rbIntRoundTo is Integer#floor/ceil/truncate/round(digits) (mode 0..3); digits >= 0 leave x as is.
+// rbIntDigitsArg is MRI's NUM2INT on a round/floor/ceil digits argument: it must fit a C int.
+func rbIntDigitsArg(digits Integer) {
+	switch {
+	case digits > math.MaxInt32:
+		panic(NewRangeError(Ref(String("integer " + strconv.FormatInt(int64(digits), 10) + " too big to convert to 'int'"))))
+	case digits < math.MinInt32:
+		panic(NewRangeError(Ref(String("integer " + strconv.FormatInt(int64(digits), 10) + " too small to convert to 'int'"))))
+	}
+}
+
 func rbIntRoundTo(x, digits Integer, mode int) Integer {
+	rbIntDigitsArg(digits)
 	if digits >= 0 {
 		return x
 	}

@@ -2137,4 +2137,35 @@ module StdlibTests
       assert_equal [Rational(1_700_000_000, 1), true], [Time.at(1_700_000_000).to_r, Etc.uname[:sysname].size.positive?]
     end
   end
+
+  # #102: Time.at's subsec and in:, Time.new(in:), nil zone for a fixed offset, exact Float seconds
+  class StdlibTimeSubsecTest < Minitest::Test
+    def test_at_subsec
+      t = Time.at(100, 500500)
+      assert_equal [500500, 500500000, Rational(1001, 2000)], [t.usec, t.nsec, t.subsec]
+      assert_equal [3750, 9900, 5_000_000], [Time.at(100, 3.75).nsec, Time.at(100, Rational(99, 10)).nsec, Time.at(0, 5, :millisecond).nsec]
+      assert_equal [1, 1, false, 100.0001], [Time.at(100, 1) <=> Time.at(100, 0), Time.at(100, 0.5) <=> Time.at(100, 0), Time.at(100, 5).eql?(Time.at(100, 6)), Time.at(100, 100).to_f]
+      assert_equal TypeError, (begin; Time.at(0, nil); rescue TypeError => e; e.class; end)
+    end
+
+    def test_in_keyword_and_zone
+      assert_equal [18000, 3600, -10800, nil, nil, "UTC"], [Time.at(0, in: 18000).utc_offset, Time.at(0, in: "A").utc_offset, Time.new(2000, 1, 1, in: "-03:00").utc_offset, Time.at(0, in: "+09:00").zone, Time.new(2000, 1, 1, 0, 0, 0, "+05:30").zone, Time.at(0, in: "UTC").zone]
+    end
+
+    def test_float_seconds_exact
+      assert_equal [699999, 98, 899999999], [(Time.at(100) + -1.3).usec, (Time.at(100) - 1.3).to_i, Time.at(-1.1).nsec]
+    end
+
+    def test_out_of_range_messages
+      msgs = [[2008, 1, 0, 0, 0, 0], [2008, 1, 1, -1, 0, 0], [2008, 1, 1, 25, 0, 0], [2008, 1, 1, 0, 60, 0], [2008, 1, 1, 0, 0, -1], [2008, 1, 1, 0, 0, 61], [2008, 1, 1, 0, 0, 64]].map do |a|
+        begin
+          Time.utc(a.fetch(0), a.fetch(1), a.fetch(2), a.fetch(3), a.fetch(4), a.fetch(5))
+          ""
+        rescue ArgumentError => e
+          e.message
+        end
+      end
+      assert_equal ["mday out of range", "argument out of range", "hour out of range", "min out of range", "argument out of range", "sec out of range", "argument out of range"], msgs
+    end
+  end
 end

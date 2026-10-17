@@ -41,7 +41,7 @@ class Range < Object
         }
       }
       if self.endless {
-        panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(self.e)))))
+        panic(NewTypeError(Ref(String("can't iterate from NilClass"))))
       }
       b, bok := any(self.b).(Integer)
       e, eok := any(self.e).(Integer)
@@ -69,14 +69,27 @@ class Range < Object
     }
   }
 
-  #: (Integer) { (E) -> void } -> void
-  def step(n) = %x{
+  # A numeric range steps as its ArithmeticSequence would (MRI's float counting, backward for a negative step).
+  #: (?Integer) { (E) -> void } -> void
+  def step(n = 1) = %x{
     return func(yield func(E) bool) {
-      if n < 0 {
-        panic(NewArgumentError(Ref(String("step can't be negative"))))
+      _, num := any(self.e).(Integer)
+      switch any(self.b).(type) {
+      case Integer, Float:
+        num = true
+      }
+      if self.beginless && !num {
+        panic(NewArgumentError(Ref(String("#step iteration for beginless ranges is meaningless"))))
       }
       if n == 0 {
+        if !num {
+          return // MRI 3.4: a zero step over a bounded non-numeric range yields nothing
+        }
         panic(NewArgumentError(Ref(String("step can't be 0"))))
+      }
+      if a := rbArithRange(self, n, "step"); a.numeric {
+        rbArithSeq(a)(yield)
+        return
       }
       i := 0
       rbRangeEach(self, func(x E) bool {
@@ -87,17 +100,44 @@ class Range < Object
     }
   }
 
+  # A Float step yields Floats whatever the bounds' class, as MRI's.
+  #: (Float) { (Float) -> void } -> void
+  def __step_float(by) = %x{
+    return func(yield func(Float) bool) {
+      if by == 0 {
+        panic(NewArgumentError(Ref(String("step can't be 0"))))
+      }
+      rbRangeNoBegin(self)
+      b := rbNumFloat(any(self.b))
+      if self.endless {
+        for i := 0.0; yield(Float(b + i*float64(by))); i++ {
+        }
+        return
+      }
+      rbFloatStepX(b, rbNumFloat(any(self.e)), float64(by), self.excl, yield)
+    }
+  }
+
   #: (Integer) -> Enumerator::ArithmeticSequence[E]
   def %(n) = %x{ return rbArithRange(self, n, "%") }
 
-  #: (Integer) -> Enumerator::ArithmeticSequence[E]
-  def __step_enum(n) = %x{ return rbArithRange(self, n, "step") }
+  #: (?Integer) -> Enumerator::ArithmeticSequence[E]
+  def __step_enum(n = 1) = %x{ return rbArithRange(self, n, "step") }
+
+  # A Float step's sequence is Floats whatever the bounds' class, as MRI's.
+  #: (Float) -> Enumerator::ArithmeticSequence[Float]
+  def __step_enum_float(by) = %x{ return rbArithRangeFloat(self, by) }
 
   #: () -> E
   def begin = %x{ self.b }
 
   #: () -> E
-  def __first_0 = %x{ self.b }
+  def __first_0 = %x{
+    if self.beginless {
+      panic(NewRangeError(Ref(String("cannot get the first element of beginless range"))))
+    }
+    return self.b
+  }
 
   #: () -> E
   def end = %x{

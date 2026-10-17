@@ -86,9 +86,27 @@ class Float < Object
   #: () -> Integer
   def round = %x{ rbFloatToI(math.Round(float64(self))) }
 
-  # MRI's round_half_up; digits <= 0 would be an Integer in MRI, so they raise.
+  # A literal digits <= 0 (`x.round(-2)`) comes here, as MRI's Integer answer (decision 301): the Float to an
+  # Integer, then Integer#round to the digits.
+  #: (Integer) -> Integer
+  def __round_int(digits) = %x{
+    x := float64(self)
+    if digits == 0 {
+      return rbFloatToI(math.Round(x))
+    }
+    return rbIntRoundTo(rbFloatToI(x), digits, 3)
+  }
+
+  #: (Integer) -> Integer
+  def __floor_int(digits) = %x{ return rbIntRoundTo(rbFloatToI(math.Floor(float64(self))), digits, 0) }
+
+  #: (Integer) -> Integer
+  def __ceil_int(digits) = %x{ return rbIntRoundTo(rbFloatToI(math.Ceil(float64(self))), digits, 1) }
+
+  # MRI's round_half_up; digits <= 0 would be an Integer in MRI, so a non-literal one raises.
   #: (Integer) -> Float
   def __round_1(digits) = %x{
+    rbIntDigitsArg(digits)
     if digits <= 0 {
       panic(NewArgumentError(Ref(String("rb2go: Float#round(digits) needs digits > 0"))))
     }
@@ -111,6 +129,7 @@ class Float < Object
   #: (Integer) -> Float
   def __floor_1(digits) = %x{
     x := float64(self)
+    rbIntDigitsArg(digits)
     if digits <= 0 {
       panic(NewArgumentError(Ref(String("rb2go: Float#floor(digits) needs digits > 0"))))
     }
@@ -128,6 +147,7 @@ class Float < Object
   #: (Integer) -> Float
   def __ceil_1(digits) = %x{
     x := float64(self)
+    rbIntDigitsArg(digits)
     if digits <= 0 {
       panic(NewArgumentError(Ref(String("rb2go: Float#ceil(digits) needs digits > 0"))))
     }
@@ -148,6 +168,9 @@ class Float < Object
   # The result takes the divisor's sign, as MRI's flo_mod.
   #: (Float) -> Float
   def %(other) = %x{
+    if other == 0 {
+      panic(NewZeroDivisionError(Ref(String("divided by 0"))))
+    }
     m := math.Mod(float64(self), float64(other))
     if m != 0 && (m < 0) != (other < 0) {
       m += float64(other)
@@ -159,7 +182,10 @@ class Float < Object
   def modulo(other) = self % other
 
   #: (Float) -> [Integer, Float]
-  def divmod(other) = [(self / other).floor, self % other]
+  def divmod(other)
+    m = self % other
+    [(self / other).floor, m]
+  end
 
   #: (Float) -> Float
   def fdiv(other) = self / other

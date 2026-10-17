@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"runtime"
 	"slices"
@@ -20,13 +21,15 @@ func rbTimeArgs(y, mo, d, h, mi, s Integer) {
 	switch {
 	case mo < 1 || mo > 12:
 		msg = "mon out of range"
-	case d < 1 || d > 31:
+	case d == 0:
+		msg = "mday out of range"
+	case d < 0 || d > 31 || h < 0 || mi < 0 || s < 0 || s >= 64: // MRI's messages differ by which check caught the value
 		msg = "argument out of range"
-	case h < 0 || h > 24:
+	case h > 24:
 		msg = "hour out of range"
-	case mi < 0 || mi > 59:
+	case mi > 59 || h == 24 && mi > 0:
 		msg = "min out of range"
-	case s < 0 || s > 60:
+	case s > 60:
 		msg = "sec out of range"
 	default:
 		return
@@ -35,8 +38,22 @@ func rbTimeArgs(y, mo, d, h, mi, s Integer) {
 }
 
 func rbTimeFromFloat(f float64) time.Time {
-	sec := math.Floor(f)
-	return time.Unix(int64(sec), int64(math.Round((f-sec)*1e9)))
+	return time.Unix(0, 0).Add(rbTimeFloatDur(f))
+}
+
+// rbTimeFloatDur is f seconds exactly, floored to a nanosecond, as MRI's Time keeps the Float's exact value (-1.3 is 98.6999999999 past 100).
+func rbTimeFloatDur(f float64) time.Duration {
+	switch {
+	case math.IsNaN(f):
+		panic(NewFloatDomainError(Ref(String("NaN"))))
+	case math.IsInf(f, 1):
+		panic(NewFloatDomainError(Ref(String("Infinity"))))
+	case math.IsInf(f, -1):
+		panic(NewFloatDomainError(Ref(String("-Infinity"))))
+	}
+	r := new(big.Rat).SetFloat64(f)
+	r.Mul(r, big.NewRat(1e9, 1))
+	return time.Duration(new(big.Int).Div(r.Num(), r.Denom()).Int64())
 }
 
 // rbTimeZoneArg resolves nil/Integer-offset/zone-String/`in:`-Hash (decision 23 has no real keyword params) to a Location and MRI's UTC flag (decision 39).
@@ -51,8 +68,45 @@ func rbTimeZoneArg(zone any, def *time.Location) (*time.Location, bool) {
 		if z, ok := v.vals[Symbol("in")]; ok {
 			return rbTimeZoneLocation(rbTimeZoneOffset(string(z)))
 		}
+	case *Hash[Symbol, Integer]:
+		if z, ok := v.vals[Symbol("in")]; ok {
+			return rbTimeZoneLocation(rbTimeZoneOffsetInt(int(z)))
+		}
+	case *Hash[Symbol, any]:
+		if z, ok := v.vals[Symbol("in")]; ok {
+			return rbTimeZoneArg(rbUnbox(z), def)
+		}
 	}
 	return def, false
+}
+
+// rbTimeSubsec is Time.at's subsec argument in unit, as a Duration (Go keeps nanoseconds; finer fractions truncate).
+func rbTimeSubsec(sub any, unit Symbol) time.Duration {
+	var scale int64
+	switch unit {
+	case "millisecond":
+		scale = 1e6
+	case "microsecond", "usec":
+		scale = 1e3
+	case "nanosecond", "nsec":
+		scale = 1
+	default:
+		panic(NewArgumentError(Ref(String("unexpected unit: " + string(unit)))))
+	}
+	r := new(big.Rat)
+	switch v := rbUnbox(sub).(type) {
+	case Integer:
+		return time.Duration(int64(v) * scale)
+	case Float:
+		r.SetFloat64(float64(v))
+	case *Rational:
+		r.Set(&v.v)
+	default:
+		panic(NewTypeError(Ref(String("can't convert " + rbClassName(sub) + " into an exact number"))))
+	}
+	r.Mul(r, new(big.Rat).SetInt64(scale))
+	q := new(big.Int).Div(r.Num(), r.Denom()) // Euclidean: floors, as the denominator is positive
+	return time.Duration(q.Int64())
 }
 
 func rbTimeZoneLocation(off int, isUTC bool) (*time.Location, bool) {

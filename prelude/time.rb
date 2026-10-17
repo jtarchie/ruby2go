@@ -5,22 +5,23 @@
 class Time < Object
   include Comparable
 
-  #: (?untyped) -> Time
-  def self.now(zone = nil) = %x{
-    loc, utc := rbTimeZoneArg(zone, time.Local)
+  #: (?in: untyped) -> Time
+  def self.now(in: nil) = %x{
+    loc, utc := rbTimeZoneArg(in, time.Local)
     return &Time{t: time.Now().In(loc), utc: utc}
   }
 
-  #: (Integer, ?untyped) -> Time
-  def self.at(sec, zone = nil) = %x{
-    loc, utc := rbTimeZoneArg(zone, time.Local)
-    return &Time{t: time.Unix(int64(sec), 0).In(loc), utc: utc}
+  # The subsec argument counts unit (MRI's default :microsecond); the zone is the in: keyword, as MRI's.
+  #: (Integer, ?untyped, ?Symbol, ?in: untyped) -> Time
+  def self.at(sec, sub = 0, unit = :microsecond, in: nil) = %x{
+    loc, utc := rbTimeZoneArg(in, time.Local)
+    return &Time{t: time.Unix(int64(sec), 0).Add(rbTimeSubsec(sub, unit)).In(loc), utc: utc}
   }
 
-  #: (Float, ?untyped) -> Time
-  def self.__at_float(sec, zone = nil) = %x{
-    loc, utc := rbTimeZoneArg(zone, time.Local)
-    return &Time{t: rbTimeFromFloat(float64(sec)).In(loc), utc: utc}
+  #: (Float, ?untyped, ?Symbol, ?in: untyped) -> Time
+  def self.__at_float(sec, sub = 0, unit = :microsecond, in: nil) = %x{
+    loc, utc := rbTimeZoneArg(in, time.Local)
+    return &Time{t: rbTimeFromFloat(float64(sec)).Add(rbTimeSubsec(sub, unit)).In(loc), utc: utc}
   }
 
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
@@ -41,9 +42,12 @@ class Time < Object
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
   def self.mktime(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = local(y, mo, d, h, mi, s)
 
-  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
-  def self.new(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, zone = nil) = %x{
+  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped, ?in: untyped) -> Time
+  def self.new(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, zone = nil, in: nil) = %x{
     rbTimeArgs(y, mo, d, h, mi, s)
+    if zone == nil {
+      zone = in
+    }
     loc, utc := rbTimeZoneArg(zone, time.Local)
     return &Time{t: time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(s), 0, loc), utc: utc}
   }
@@ -133,13 +137,17 @@ class Time < Object
   #: () -> Integer
   def gmt_offset = utc_offset
 
-  #: () -> String
+  # nil for a fixed offset (in: "+09:00"), as MRI's.
+  #: () -> String?
   def zone = %x{
     if self.utc {
-      return "UTC"
+      return Ref(String("UTC"))
     }
     name, _ := self.t.Zone()
-    return String(name)
+    if name == "" {
+      return nil
+    }
+    return Ref(String(name))
   }
 
   #: () -> bool
@@ -224,13 +232,13 @@ class Time < Object
   def +(secs) = %x{ return &Time{t: self.t.Add(time.Duration(secs) * time.Second), utc: self.utc} }
 
   #: (Float) -> Time
-  def __plus_float(secs) = %x{ return &Time{t: self.t.Add(time.Duration(math.Round(float64(secs) * 1e9))), utc: self.utc} }
+  def __plus_float(secs) = %x{ return &Time{t: self.t.Add(rbTimeFloatDur(float64(secs))), utc: self.utc} }
 
   #: (Integer) -> Time
   def -(secs) = %x{ return &Time{t: self.t.Add(-time.Duration(secs) * time.Second), utc: self.utc} }
 
   #: (Float) -> Time
-  def __minus_float(secs) = %x{ return &Time{t: self.t.Add(-time.Duration(math.Round(float64(secs) * 1e9))), utc: self.utc} }
+  def __minus_float(secs) = %x{ return &Time{t: self.t.Add(rbTimeFloatDur(-float64(secs))), utc: self.utc} }
 
   #: (Time) -> Float
   def __minus_time(other) = %x{ Float(self.t.Sub(other.t).Seconds()) }
