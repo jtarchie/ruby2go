@@ -19,6 +19,13 @@ module SorbetTests
     sig { returns(T.nilable(T.proc.bind(BindReq).returns(T.untyped))) }
     def self.check = @check
 
+    sig { returns(T.nilable(T.proc.bind(BindReq).returns(T.untyped))) }
+    def self.none = nil
+
+    # `&p` of a nil Proc passes no block (Homebrew's `Homebrew::Service.new(self, &self.class.service)`)
+    sig { params(block: T.nilable(T.proc.bind(BindReq).returns(T.untyped))).returns(T::Boolean) }
+    def self.given?(&block) = !block.nil?
+
     sig { returns(T.untyped) }
     def satisfied?
       c = BindReq.check
@@ -40,7 +47,7 @@ module SorbetTests
 
   BindReq.satisfy do
     T.bind(self, BindMac)
-    new_enough?
+    new_enough? && @v.positive? # its ivars are BindMac's (Homebrew's ArchRequirement `@arch`)
   end
 
   class Shape
@@ -289,6 +296,7 @@ module SorbetTests
     # `T.bind(self, Sub)` in a block bound to Base narrows self (Homebrew's MacOSRequirement satisfy block)
     def test_bind_narrows_self
       assert_equal [true, false], [BindMac.new(11).satisfied?, BindMac.new(3).satisfied?]
+      assert_equal [true, false], [BindReq.given?(&BindReq.check), BindReq.given?(&BindReq.none)]
     end
 
     # T.cast to a tuple, from untyped and from a wider tuple; a multiple assignment of one (Homebrew's

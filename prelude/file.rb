@@ -253,6 +253,24 @@ class File < Object
     return Boolean(err == nil && fi.Mode().IsRegular())
   }
 
+  # The same file (device and inode, symlinks followed), as MRI's; false when either is missing.
+  #: (String | Pathname | File, String | Pathname | File) -> bool
+  def self.identical?(a, b)
+    sa = __identical_stat(a)
+    sb = __identical_stat(b)
+    return false unless sa && sb
+
+    sa.dev == sb.dev && sa.ino == sb.ino
+  end
+
+  #: (String | Pathname | File) -> File::Stat?
+  def self.__identical_stat(x)
+    return x.stat if x.is_a?(File)
+
+    path = x.to_s
+    File.exist?(path) ? File.stat(path) : nil
+  end
+
   #: (String) -> bool
   def self.symlink?(path) = %x{
     fi, err := os.Lstat(string(path))
@@ -622,6 +640,18 @@ class File < Object
     return Integer(self.f.Fd())
   }
 
+  #: () -> File::Stat
+  def stat = %x{
+    if self.f == nil {
+      panic(NewIOError(Ref[String]("closed stream")))
+    }
+    fi, err := self.f.Stat()
+    if err != nil {
+      panic(rbSysErr(err, "rb_io_stat", self.path))
+    }
+    return &File_Stat{fi: fi}
+  }
+
   #: () -> bool
   def eof? = %x{
     self.rbReadable()
@@ -690,6 +720,19 @@ class File < Object
 
   #: () -> Integer
   def tell = pos
+
+  # fcntl(2) with an integer argument (Fcntl::F_SETFD, Fcntl::FD_CLOEXEC); its result, as MRI's.
+  #: (Integer, ?Integer) -> Integer
+  def fcntl(cmd, arg = 0) = %x{
+    if self.f == nil {
+      panic(NewIOError(Ref[String]("closed stream")))
+    }
+    r, _, errno := syscall.Syscall(syscall.SYS_FCNTL, self.f.Fd(), uintptr(cmd), uintptr(arg))
+    if errno != 0 {
+      panic(rbSysErr(errno, "rb_io_fcntl", self.path))
+    }
+    return Integer(r)
+  }
 
   # LOCK_SH, LOCK_EX or LOCK_UN, with LOCK_NB not to wait: 0, or false when LOCK_NB finds it held.
   #: (Integer) -> untyped
@@ -814,6 +857,23 @@ class File::Stat < Object
       return "socket"
     }
     return "unknown"
+  }
+
+  # Homebrew's LockFile compares these to see that the file it locked is still the one on disk.
+  #: () -> Integer
+  def ino = %x{
+    if st, ok := self.fi.Sys().(*syscall.Stat_t); ok {
+      return Integer(st.Ino)
+    }
+    return 0
+  }
+
+  #: () -> Integer
+  def dev = %x{
+    if st, ok := self.fi.Sys().(*syscall.Stat_t); ok {
+      return Integer(st.Dev)
+    }
+    return 0
   }
 
   # st_mode, file type bits included (0100644 for a plain file), as MRI's.

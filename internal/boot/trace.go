@@ -1,0 +1,65 @@
+package boot
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// Loaded is what one traced run of a program loaded (decision 296).
+type Loaded struct {
+	Features []string // loaded files, in require start order
+	LoadPath []string // $LOAD_PATH at exit
+	StdDirs  []string // MRI's rubylibdir and archdir
+}
+
+// Trace runs the whole program under MRI, as `ruby program args` would, for its load list only (decision 296).
+func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loaded, error) {
+	dir, err := os.MkdirTemp("", "rb2go-trace-")
+	if err != nil {
+		return nil, fmt.Errorf("trace: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	hook, err := hookFS.ReadFile("trace_hook.rb")
+	if err != nil {
+		return nil, fmt.Errorf("trace: %w", err)
+	}
+	err = os.WriteFile(filepath.Join(dir, "trace_hook.rb"), hook, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("trace: %w", err)
+	}
+	out := filepath.Join(dir, "loaded.txt")
+	rargs := append(append([]string{}, rubyOpts...), "-I", dir, "-r", "trace_hook", "--", program)
+	stderr, err := runRuby(ctx, append(rargs, args...), append(os.Environ(), "RB2GO_TRACE_OUT="+out), func(context.CancelFunc) io.Writer { return io.Discard })
+	if errors.Is(err, exec.ErrNotFound) {
+		return nil, fmt.Errorf("trace %s: needs ruby on PATH (or RB2GO_RUBY)", program)
+	}
+	data, rerr := os.ReadFile(out) //nolint:gosec // under os.MkdirTemp
+	if rerr != nil {
+		return nil, fmt.Errorf("trace %s: the run wrote no load list: %w\n%s", program, errors.Join(rerr, err), stderr)
+	}
+	l := &Loaded{}
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(nil, 1<<20)
+	for sc.Scan() {
+		kind, val, _ := strings.Cut(sc.Text(), "\t")
+		switch kind {
+		case "F":
+			if filepath.Base(val) != "trace_hook.rb" || !strings.Contains(val, "rb2go-trace-") { // the temp dir, symlinks resolved
+				l.Features = append(l.Features, val)
+			}
+		case "L":
+			l.LoadPath = append(l.LoadPath, val)
+		case "S":
+			l.StdDirs = append(l.StdDirs, val)
+		}
+	}
+	return l, nil
+}

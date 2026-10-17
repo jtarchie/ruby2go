@@ -610,6 +610,10 @@ func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode,
 			cls.extends = append(cls.extends, cls.Includes[last])
 			cls.Includes = cls.Includes[:last]
 		}
+	case s.Name == "prepend" && s.Receiver == nil && !f.isPrelude(): // X.singleton_class.prepend(M) (decision 199)
+		for _, a := range callArgs(s) {
+			c.prepends = append(c.prepends, pendingPrepend{target: cls, singleton: true, mod: constRef{node: a, scope: scope, file: f}})
+		}
 	case c.onlyDefinesMethods(s): // `CODES.each { |n, c| define_method(n) { ... } }`: boot made the defs (decision 198)
 	default:
 		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)

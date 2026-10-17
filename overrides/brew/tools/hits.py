@@ -9,7 +9,6 @@ for l in open(f"{work}/calls.txt"):
     calls[m].add(p)
 lines = set(l.strip() for l in open(f"{work}/lines.txt"))
 src = open(go).read()
-lib = "/home/linuxbrew/.linuxbrew/Homebrew/Library/Homebrew/"
 hits = set()
 for who, why in re.findall(r'rb2go: ((?:[^"\\]|\\.)*?) does not compile: ((?:[^"\\]|\\.)*)', src):
     why = why.encode().decode("unicode_escape")
@@ -25,5 +24,5 @@ for who, why in re.findall(r'rb2go: ((?:[^"\\]|\\.)*?) does not compile: ((?:[^"
     if loc and loc.group(1).rsplit(":", 1)[0] in calls.get(meth, ()) or why.startswith("Go rejects it") and meth in calls:
         hits.add((who, why))
 for who, why in sorted(hits):
-    print(f"{who}\t{why.replace(lib, '')[:240]}")
+    print(f"{who}\t{re.sub(r'\S*/Library/Homebrew/', '', why)[:240]}")
 print(f"{len(hits)} hits", file=sys.stderr)

@@ -20,9 +20,9 @@ import (
 	"github.com/jtarchie/ruby2go"
 )
 
-const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file] [-race] [-gcflags flags] [-work] main.rb
-       rb2go run [-I dir]... [-main file] [-race] [-gcflags flags] [-work] main.rb [args...]
-       rb2go gen [-I dir]... [-main file] main.rb > main.go
+const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file | -trace [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [traced args...]
+       rb2go run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [args...]
+       rb2go gen [-I dir]... [-main file | -trace [-rubyopt opt]...] main.rb [traced args...] > main.go
        rb2go test [-I dir]... [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
        rb2go web [-addr 127.0.0.1:8080]
        rb2go web -static dir -assets https://host/path/`
@@ -60,17 +60,23 @@ func main() {
 		gcflags: fs.String("gcflags", "", "passed to go build (e.g. -e for every error)"),
 		work:    fs.Bool("work", false, "keep the temp module (main.go, go.mod) and print its path"),
 		main:    fs.String("main", "", "the file is a traced entry (the requires MRI loaded) and this is the program it runs (decisions 197, 288)"),
+		trace:   fs.Bool("trace", false, "run the program once under MRI with its args (it EXECUTES) and compile what it loaded (decision 296)"),
 	}
+	fs.Func("rubyopt", "an MRI option for the -trace run, as the program's launcher passes it (repeatable)", func(o string) error {
+		opts.rubyOpts = append(opts.rubyOpts, o)
+		return nil
+	})
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)
 		return nil
 	})
 	_ = fs.Parse(os.Args[2:]) // ExitOnError
-	if fs.NArg() < 1 || cmd != "run" && fs.NArg() != 1 {
+	if fs.NArg() < 1 || cmd != "run" && fs.NArg() != 1 && !*opts.trace {
 		fs.Usage()
 		os.Exit(2)
 	}
 	file := fs.Arg(0)
+	opts.args = fs.Args()[1:]
 	if cmd == "gen" {
 		os.Exit(gen(file, opts, os.Stdout))
 	}
@@ -83,7 +89,7 @@ func main() {
 		}
 		code = build(ctx, file, bin, opts)
 	} else {
-		code = run(ctx, file, fs.Args()[1:], opts)
+		code = run(ctx, file, opts.args, opts)
 	}
 	stop()
 	os.Exit(code)
@@ -167,11 +173,17 @@ type buildOpts struct {
 	gcflags  *string
 	work     *bool
 	main     *string  // -main: the file is a traced entry and this its program (decision 288)
+	trace    *bool    // -trace: compile what a run of the file with args loaded (decision 296)
+	rubyOpts []string // -rubyopt
+	args     []string // the program's args
 	loadPath []string // -I
 }
 
 // compileFile is the CLI's compile: a traced entry with -main (decision 288), else a program.
 func compileFile(ctx context.Context, file string, src []byte, opts buildOpts) ([]byte, []string, error) {
+	if opts.trace != nil && *opts.trace {
+		return rb2go.CompileTrace(ctx, file, opts.args, opts.rubyOpts, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+	}
 	if opts.main != nil && *opts.main != "" {
 		return rb2go.CompileTraced(ctx, file, src, *opts.main, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
 	}

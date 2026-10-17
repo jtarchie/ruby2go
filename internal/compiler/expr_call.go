@@ -462,7 +462,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
 			if e := f.owner.lookup(name); e != nil {
-				return f.callEntry(n, e, recv, args, block)
+				return f.selfEntryCall(n, e, recv, args, block)
 			}
 			if td := f.c.topDefs[name]; td != nil {
 				return f.callEntry(n, &entry{M: td}, recv, args, block)
@@ -651,6 +651,15 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		return x
 	}
 	return f.numericMix(n, recv, e, args, block)
+}
+
+// selfEntryCall is a call on self (Self) of its class's method e, through a `<=>` that takes untyped for a Comparable
+// op (MacOSVersion's `self >= "27"`, decision 296).
+func (f *fctx) selfEntryCall(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	if x, ok := f.untypedCmpOp(n, TClass{C: f.owner}, recv, e, args, block); ok {
+		return x
+	}
+	return f.callEntry(n, e, recv, args, block)
 }
 
 // untypedCmpOp is Comparable's `<`, `<=`, `>` or `>=` on a class whose own `<=>` takes untyped (Homebrew's

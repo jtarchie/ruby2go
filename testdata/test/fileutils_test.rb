@@ -102,6 +102,18 @@ module FileUtilsTests
       end
     end
 
+    # Homebrew's create_symlink_to_cached_download: Pathnames, force over an existing file, into a directory
+    def test_ln_s_force
+      Dir.mktmpdir do |d|
+        File.write(File.join(d, "a"), "x")
+        File.write(File.join(d, "b"), "y")
+        Dir.mkdir(File.join(d, "dir"))
+        FileUtils.ln_s(Pathname("a"), Pathname(File.join(d, "b")), force: true)
+        FileUtils.ln_sf("a", File.join(d, "dir"))
+        assert_equal ["a", "a", "x"], [File.readlink(File.join(d, "b")), File.readlink(File.join(d, "dir", "a")), File.read(File.join(d, "b"))]
+      end
+    end
+
     def test_touch_mtime_and_nocreate
       Dir.mktmpdir do |d|
         f = File.join(d, "a")

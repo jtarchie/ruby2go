@@ -330,6 +330,29 @@ func TestTracedEntry(t *testing.T) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
+// TestTraceRun compiles testdata/traced from a run of main.rb, with no entry file (decision 296).
+func TestTraceRun(t *testing.T) {
+	requireRuby4(t)
+	dir := filepath.Join("testdata", "traced")
+	main := filepath.Join(dir, "main.rb")
+	src, err := os.ReadFile(main) //nolint:gosec // testdata path
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TRACED_SPAWN", "1") // the run sees main.rb's `# env:`, as the program does
+	code, _, err := CompileTrace(t.Context(), main, nil, []string{"--disable=gems"}, loadPath(dir, src)...)
+	if err != nil {
+		t.Fatalf("rb2go: %v", err)
+	}
+	gen := t.TempDir()
+	writeModule(t, gen)
+	werr := os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+	if werr != nil {
+		t.Fatal(werr)
+	}
+	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
+}
+
 var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.

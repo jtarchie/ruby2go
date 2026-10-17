@@ -1604,13 +1604,6 @@ func rbArgAt[T any](xs []T, i int) T {
 	return zero
 }
 
-// rbNeedProc opens a Proc? passed as a block: nil is MRI's "no block given".
-func rbNeedProc[F any](p **F) *F {
-	if p == nil || *p == nil {
-		panic(NewArgumentError(Ref(String("no block given"))))
-	}
-	return *p
-}
 
 // rbMust is a gem's T? where T is wanted (decision 172): nil raises TypeError.
 func rbMust[T any](p *T, want string) T {
@@ -1737,4 +1730,16 @@ func rbIterBreakRecover() {
 			panic(r)
 		}
 	}
+}
+
+// rbLibDir is RbConfig's rubylibdir: MRI's library is compiled in, so a require under it names a library (decision 296).
+const rbLibDir = "/rb2go/lib/ruby/4.0.0"
+
+// rbBlockOf is a T? Proc passed as `&p`: its func, or no block (a nil func) for nil.
+func rbBlockOf[F any](p **F) F {
+	if p == nil || *p == nil {
+		var none F
+		return none
+	}
+	return **p
 }

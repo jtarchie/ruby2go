@@ -291,17 +291,24 @@ module Boot
     end
 
     # Constants whose value is a class named otherwise: `Impl = case ... end` picked at load time.
+    MOD_CONSTANTS = Module.instance_method(:constants)
+    MOD_AUTOLOAD = Module.instance_method(:autoload?)
+    MOD_CONST_GET = Module.instance_method(:const_get)
+
     def const_classes
       out = {}
       @classes.each_key do |name|
         owner = (Object.const_get(name) rescue next)
-        next unless owner.is_a?(Module)
+        next unless Module === owner
 
-        (owner.constants(false) | @private_constants[owner]).each do |c|
-          next if owner.autoload?(c)
+        # Module's own methods: a module can make them private for itself (brew's Cask::Quarantine, `extend self`).
+        (MOD_CONSTANTS.bind_call(owner, false) | @private_constants[owner]).each do |c|
+          next if MOD_AUTOLOAD.bind_call(owner, c)
 
-          v = (owner.const_get(c, false) rescue next)
-          out["#{name}::#{c}"] = v.name if v.is_a?(Module) && v.name && v.name != "#{name}::#{c}"
+          v = (MOD_CONST_GET.bind_call(owner, c, false) rescue next)
+          next unless Module === v # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
+
+          out["#{name}::#{c}"] = v.name if v.name && v.name != "#{name}::#{c}"
         end
       end
       out

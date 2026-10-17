@@ -320,6 +320,14 @@ def guarded_nil(s)
   s.size
 end
 
+# `return s unless s.nil?` narrows s for its own return (Homebrew's BottleManifest#manifest_annotations)
+#: (String?) -> String
+def guarded_unless_nil(s)
+  return s unless s.nil?
+
+  "none"
+end
+
 #: (Integer) -> String
 def vs_const(n)
   case n
@@ -2521,6 +2529,7 @@ module ControlTests
       assert_equal "got OK", guarded("ok")
       assert_equal(-1, guarded_nil(nil))
       assert_equal 4, guarded_nil("four")
+      assert_equal %w[four none], [guarded_unless_nil("four"), guarded_unless_nil(nil)]
     end
   end
 

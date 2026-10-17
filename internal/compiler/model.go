@@ -114,6 +114,7 @@ type Const struct {
 	guarded   bool // may be read before its assignment runs (guardConsts)
 	inMethod  bool // a class variable first assigned in a method: no init in main, reads check its set flag
 	inBody    bool // reads a local of its class body: assigned in the body's grouped statements (decision 170)
+	inMain    bool // a top-level constant reading a top-level local: assigned in place in its file's top level (decision 296)
 	initAt    *int // a constant lifted out of another's value: the offset it initializes at (decision 244)
 }
 
@@ -312,6 +313,13 @@ func (c *Class) methodSet() []entry {
 	for _, m := range c.MethodList {
 		add(entry{M: m, Owner: c, Env: identity, Entry: c})
 	}
+	var inSuper map[*Class]bool // a module the superclass already has stays where it is in the chain, as MRI's include skips it
+	if c.Super != nil {
+		inSuper = map[*Class]bool{}
+		for _, a := range c.Super.ancestors() {
+			inSuper[a] = true
+		}
+	}
 	for i := len(c.Includes) - 1; i >= 0; i-- {
 		inc := c.Includes[i]
 		env := map[string]Type{}
@@ -321,6 +329,9 @@ func (c *Class) methodSet() []entry {
 			}
 		}
 		for _, e := range inc.Mod.methodSet() {
+			if inSuper[e.Owner] {
+				continue // AbstractDownloadStrategy's own ohai, not Utils::Output::Mixin's again through Utils::Curl
+			}
 			e2 := entry{M: e.M, Owner: e.Owner, Env: composeEnv(e.Env, env), Entry: c}
 			if c.IsModule {
 				e2.Entry = e.Entry
@@ -389,9 +400,13 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 		lenientBlockParams(f.Root)
 	}
 	queue := f.Root.Statements.Body
+	locals := map[string]bool{} // the top level's, so far
 	for len(queue) > 0 {
 		n := queue[0]
 		queue = queue[1:]
+		if w, ok := n.(*parser.LocalVariableWriteNode); ok {
+			locals[w.Name] = true
+		}
 		c.keepGoing(func() {
 			switch n := n.(type) {
 			case *parser.IfNode, *parser.UnlessNode: // a condition known at compile time keeps one branch (decision 167)
@@ -419,6 +434,10 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 				}
 				c.scanAnon(ctx, f, n.Value, nil)
 				c.addConst(f, n, n.Name, nil, nil)
+				if readsLocal(n.Value, locals) { // `dir = __dir__ || raise; LIB = Pathname(dir)`: runs where it stands, with them
+					c.consts[n.Name].inMain = true
+					c.addMainStmt(f, n)
+				}
 			case *parser.ConstantPathWriteNode: // `Rack::X = v` at the top level
 				c.scanAnon(ctx, f, n.Value, nil)
 				c.addConstAt(f, n, c.declName(f, n.Target, nil), n.Value, nil)

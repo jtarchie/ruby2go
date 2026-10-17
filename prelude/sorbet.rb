@@ -16,6 +16,19 @@ module T
   class ImmutableStruct < Struct
   end
 
+  # sorbet-runtime's settings (Homebrew's standalone/sorbet.rb silences it): signatures are checked at compile time, so
+  # its handlers never run.
+  module Configuration
+    #: (untyped) -> void
+    def self.call_validation_error_handler=(handler); end
+
+    #: (untyped) -> void
+    def self.inline_type_error_handler=(handler); end
+
+    #: () -> void
+    def self.enable_final_checks_on_hooks; end
+  end
+
   # Raises as sorbet-runtime does on nil.
   #: [X] (X?) -> X
   def self.must(arg)

@@ -1706,6 +1706,7 @@ func (c *Compiler) emitTuples() {
 		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(vals, ", "))
 		// a tuple that reaches untyped answers as an Array (decision 22)
 		c.w("func (t %s) _ToAny() *Array[any] { return %s }\n\n", full, arrayLit("any", vals))
+		c.w("func (t %s) _Tuple() *Array[any] { return t._ToAny() }\n\n", full) // what a dynamic call on it answers through (rbDelegateObj)
 		// and converts back where a dynamic call's parameter is a tuple (rbAs)
 		c.w("func (%s) _FromAny(a any) (t %s, ok bool) {\n\tarr, ok := a.(Array_Any)\n\tif !ok {\n\t\treturn t, false\n\t}\n\ts := arr._ToAny().s\n\tif len(s) != %d {\n\t\treturn t, false\n\t}\n%s\n\treturn t, true\n}\n\n", full, full, n, strings.Join(from, "\n"))
 		c.w("func (t %s) Op_eq(o any) Boolean {\n\to2, ok := o.(%s)\n\tif !ok {\n\t\tif a, isArr := o.(Array_Any); isArr {\n\t\t\treturn t._ToAny().Op_eq(a._ToAny())\n\t\t}\n\t\treturn false\n\t}\n\treturn %s\n}\n\n", full, full, strings.Join(eq, " && "))
@@ -1941,6 +1942,17 @@ func (c *Compiler) constFctx(k *Const) *fctx {
 	return f
 }
 
+// probeTopLocals types, in f, the top-level local assignments of k's file before k (decision 296); one that does not
+// compile is left undefined, so k's own probe names it.
+func (c *Compiler) probeTopLocals(f *fctx, k *Const) {
+	at := k.Value.GetLocation().StartOffset
+	for _, n := range k.File.Root.Statements.Body {
+		if w, ok := n.(*parser.LocalVariableWriteNode); ok && w.Location.StartOffset < at {
+			_ = catchCompileError(func() { f.genStmt(w, tail{}) }) // f is k's own: what it emits is dropped
+		}
+	}
+}
+
 // constType is the type of constant k: its `#: T` annotation, or else the
 // type of its initializer.
 func (c *Compiler) constType(k *Const) (typ Type) {
@@ -1990,6 +2002,9 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 	k.resolving = true
 	c.constChain = append(c.constChain, k.RubyName)
 	f := c.constFctx(k)
+	if k.inMain {
+		c.probeTopLocals(f, k)
+	}
 	var e expr
 	if c.gemFile(k.File) {
 		err := catchCompileError(func() { f.probe(func() { e = f.genExpr(k.Value, nil) }) })

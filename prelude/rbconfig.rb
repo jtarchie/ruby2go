@@ -22,6 +22,10 @@ module RbConfig
     return String(exe)
   }
 
+  # MRI's library dirs: a path under rubylibdir names a library compiled in, which a computed require answers (decision 296).
+  #: () -> String
+  def self.__libdir = %x{ return String(rbLibDir) }
+
   CONFIG = {
     "host_os" => __os,
     "target_os" => __os,
@@ -37,7 +41,7 @@ module RbConfig
     "prefix" => "",
     "bindir" => "",
     "sitedir" => "",
-    "rubylibdir" => "",
-    "archdir" => "",
+    "rubylibdir" => __libdir,
+    "archdir" => "#{__libdir}/#{__arch}-#{__os}",
   } #: Hash[String, String]
 end

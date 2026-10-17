@@ -14,6 +14,10 @@ pin the upstream, keep a small series of upstream-shaped patches, and compare ag
 - `env.txt`: the environment brew's bash launcher exports, plus `HOMEBREW_SPAWN_SYSTEM=1` (Go cannot fork).
 - `dirs.txt`: `-I` load path for the vendored gems (written by `./trace`).
 - `work/` (ignored): rb2go binary, generated Go, built binaries, logs.
+- `host` + `tools/ruby-wrapper`: brew on this machine (macOS or Linux), no container and no entries. `./host` clones
+  your Homebrew at the pinned commit into `work/homebrew`, applies the patches, and puts the wrapper in place of its
+  portable Ruby. Its `bin/brew` then runs `rb2go run -trace brew.rb <args>`: rb2go runs the command once under MRI to
+  learn what it loads, compiles that, and runs the binary (decision 296).
 
 ```sh
 ./trace info info wget      # MRI run under a load tracer -> entries/info.rb, dirs.txt
@@ -25,4 +29,19 @@ pin the upstream, keep a small series of upstream-shaped patches, and compare ag
 ./hits info info --json=v2 wget  # work list: stubs (gem methods/arms that did not compile) MRI reaches running it
 ```
 
-All eight targets.txt commands (`brew info` for four formulae, `--json=v2 wget` and three casks) equal MRI's output (decision 295).
+```sh
+./host                                              # once: work/homebrew, a patched copy of $(brew --repository)
+export HOMEBREW_NO_AUTO_UPDATE=1
+work/homebrew/bin/brew info wget                    # compiled: trace, gen, go build (~5-15 min, ~9 GB), run
+HOMEBREW_RB2GO_MRI=1 work/homebrew/bin/brew info wget          # the same copy under MRI
+HOMEBREW_RB2GO_BIN=$PWD/work/mac-bin work/homebrew/bin/brew info wget  # build once into that path, then rerun it (<1 s)
+HOMEBREW_RB2GO_CMD=gen HOMEBREW_RB2GO_GEM_WARNINGS=1 work/homebrew/bin/brew info wget > work/mac.go  # the Go only
+./host-hits info wget                               # ./hits for this copy: stubs MRI reaches (work/hits-mac.txt)
+```
+
+`HOMEBREW_RB2GO_X` reaches rb2go as `RB2GO_X` (brew.sh passes on only `HOMEBREW_*`); `HOMEBREW_RB2GO_FLAGS` adds rb2go
+flags (`-work`, `-gcflags=all=-dwarf=false`). A binary built with `HOMEBREW_RB2GO_BIN` is the closed world of the
+command it traced; another command can reach code it never compiled.
+
+All eight targets.txt commands (`brew info` for four formulae, `--json=v2 wget` and three casks) equal MRI's output
+in the container (decision 295), and on macOS `brew info wget` does through `./host` (decision 296).

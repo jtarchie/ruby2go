@@ -483,6 +483,10 @@ class DemoCmpVersion
 
     v.split(".").map(&:to_i) <=> other.v.split(".").map(&:to_i)
   end
+
+  # MacOSVersion#prerelease?: the op on self (decision 296)
+  sig { returns(T::Boolean) }
+  def prerelease? = self >= "3.0"
 end
 
 module DemoCmp
@@ -493,7 +497,7 @@ module DemoCmp
     rescue ArgumentError => e
       e.message
     end
-    [a < "2.39", a >= "2.39", a > DemoCmpVersion.new("2.1"), err]
+    [a < "2.39", a >= "2.39", a > DemoCmpVersion.new("2.1"), err, a.prerelease?, DemoCmpVersion.new("3.1").prerelease?]
   end
 end
 

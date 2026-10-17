@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-//go:embed boot_hook.rb find_gems.rb
+//go:embed boot_hook.rb find_gems.rb trace_hook.rb
 var hookFS embed.FS
 
 // Manifest is what one boot recorded.
@@ -164,11 +164,20 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 	return w.buf.Write(p) //nolint:wrapcheck // bytes.Buffer never fails
 }
 
+// Ruby is the MRI that runs boot and traces: RB2GO_RUBY, else ruby on PATH. A launcher that puts rb2go in ruby's place
+// (overrides/brew's) names the real one there (decision 296).
+func Ruby() string {
+	if r := os.Getenv("RB2GO_RUBY"); r != "" {
+		return r
+	}
+	return "ruby"
+}
+
 // runRuby runs ruby with args under bootTimeout (the earlier of it and ctx's deadline wins) and returns its capped stderr.
 func runRuby(ctx context.Context, args, env []string, stdout func(context.CancelFunc) io.Writer) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, bootTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ruby", args...) //nolint:gosec // ruby runs the program's own boot
+	cmd := exec.CommandContext(ctx, Ruby(), args...) //nolint:gosec // ruby runs the program's own boot
 	cmd.Env = env
 	cmd.WaitDelay = waitDelay
 	// ponytail: the kill reaches ruby only; a grandchild (system("sleep 99")) outlives it, WaitDelay just stops Wait blocking on it. Setpgid + kill(-pid) needs build-tagged files (this package also builds into the wasm playground).

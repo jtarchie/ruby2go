@@ -1357,7 +1357,8 @@ func (c *Compiler) emitDelegateObj() {
 		}
 		c.w("func (self %s) _DelegateObj() any {\n\tvar args []any\n%s}\n\n", c.recvType(cls), body)
 	}
-	c.w("func rbDelegateObj(x any) (any, bool) {\n\tif d, ok := x.(interface{ _DelegateObj() any }); ok {\n\t\treturn d._DelegateObj(), true\n\t}\n\treturn nil, false\n}\n\n")
+	// a tuple in untyped code is an Array there (decision 22): `.map(&:last)` over Homebrew's [type, line] output pairs
+	c.w("func rbDelegateObj(x any) (any, bool) {\n\tswitch d := x.(type) {\n\tcase interface{ _DelegateObj() any }:\n\t\treturn d._DelegateObj(), true\n\tcase interface{ _Tuple() *Array[any] }:\n\t\treturn d._Tuple(), true\n\t}\n\treturn nil, false\n}\n\n")
 }
 
 // emitDynEach emits rbEachAny (dynEach): an Array's elements, a Hash's pairs, then one case per Go shape of a user or

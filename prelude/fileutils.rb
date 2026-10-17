@@ -140,11 +140,18 @@ module FileUtils
     }
   }
 
-  #: (String, String) -> nil
-  def self.ln_s(src, dest)
-    dest = File.join(dest, File.basename(src)) if File.directory?(dest)
-    __ln_s_entry(src, dest)
+  # force: replaces an existing dest (Homebrew's `FileUtils.ln_s target, symlink, force: true` of Pathnames).
+  #: (String | Pathname, String | Pathname, ?force: bool) -> nil
+  def self.ln_s(src, dest, force: false)
+    s = src.to_s
+    d = dest.to_s
+    d = File.join(d, File.basename(s)) if File.directory?(d)
+    File.delete(d) if force && (File.symlink?(d) || File.exist?(d))
+    __ln_s_entry(s, d)
   end
+
+  #: (String | Pathname, String | Pathname) -> nil
+  def self.ln_sf(src, dest) = ln_s(src, dest, force: true)
 
   #: (Array[String], String) -> nil
   def self.__ln_s_array(srcs, dest)

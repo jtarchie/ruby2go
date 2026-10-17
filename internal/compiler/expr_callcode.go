@@ -249,6 +249,8 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	}
 	if f.c.selfReturnAsserts(e, recv.typ) {
 		out.code, out.assert = out.code+".("+f.c.goType(recv.typ)+")", true
+	} else if f.c.selfVarReturns(e, recv.typ) {
+		out.code, out.assert = "any("+out.code+").(Self)", true
 	}
 	if armT != nil {
 		return f.narrowToArm(n, flatOpt(out), subst(armT, env))
@@ -518,6 +520,13 @@ func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
 	}
 	rc, ok := recvT.(TClass)
 	return ok && rc.C.isStruct() && e.Entry != rc.C
+}
+
+// selfVarReturns reports whether a `-> self` call on self in a generic method body (MacOSVersion#strip_patch calling
+// Version#major_minor) needs asserting back to Self: the Go interface method returns its class's interface.
+func (c *Compiler) selfVarReturns(e *entry, recvT Type) bool {
+	v, ok := e.M.Ret.(TVar)
+	return ok && v.Name == "Self" && isSelfVar(recvT) && e.Owner != nil && !e.M.Owner.universal
 }
 
 // genInMethodRequire is a require in a method body: resolved at run time against what was compiled (decision 197),

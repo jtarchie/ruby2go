@@ -10,6 +10,10 @@ def dynamic_ident(v) = v
 #: (Integer) -> Integer?
 def dynamic_maybe(n) = n.positive? ? n : nil
 
+# tuples reaching untyped code through Array(x) answer as Arrays (Homebrew's ErrorDuringExecution#stderr)
+#: (Array[[Symbol, String]]?) -> String
+def dynamic_stderr(out) = Array(out).select { |type,| type == :stderr }.map(&:last).join
+
 #: (Integer) -> String?
 def dynamic_word(n) = n.positive? ? "w" * n : nil
 
@@ -624,6 +628,10 @@ module DynamicTests
   end
 
   class DynamicBugsTest < Minitest::Test
+    def test_tuple_through_untyped
+      assert_equal ["ac", ""], [dynamic_stderr([[:stderr, "a"], [:stdout, "b"], [:stderr, "c"]]), dynamic_stderr(nil)]
+    end
+
     def test_case_when_object_matches_anything_but_nil
       assert_equal "object", f(1)
       assert_equal "object", f(nil)

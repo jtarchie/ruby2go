@@ -1,0 +1,25 @@
+Subject: Formula.service stores its block bound to Homebrew::Service
+
+Formula#service passes the stored block to Homebrew::Service.new, whose initialize instance_evals it on the service, as
+the service DSL's own parameter type already says: the stored and returned type now says so too.
+---
+diff --git a/Library/Homebrew/formula.rb b/Library/Homebrew/formula.rb
+index 28ba83ad5f..46c9512f19 100644
+--- a/Library/Homebrew/formula.rb
++++ b/Library/Homebrew/formula.rb
+@@ -5095,13 +5095,13 @@ class Formula
+       params(
+         block: T.nilable(T.proc.bind(Homebrew::Service).void),
+       ).returns(
+-        T.nilable(T.proc.void),
++        T.nilable(T.proc.bind(Homebrew::Service).void),
+       )
+     }
+     def service(&block)
+       return @service_block unless block
+ 
+-      @service_block = T.let(block, T.nilable(T.proc.void))
++      @service_block = T.let(block, T.nilable(T.proc.bind(Homebrew::Service).void))
+     end
+ 
+     # Defines whether the {Formula}'s bottle can be used on the given Homebrew

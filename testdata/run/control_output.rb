@@ -3,6 +3,11 @@
 # Checks that stay print-and-compare; everything else from the control_* files
 # lives in testdata/test/control_test.rb.
 
+# a top-level constant reading a top-level local runs where it stands (decision 296)
+ctl_out_dir = File.dirname(__FILE__)
+CTL_OUT_BASE = File.basename(ctl_out_dir).freeze
+puts CTL_OUT_BASE
+
 # `puts` as the void right side of &&/||/and/or and of a rescue modifier.
 # A user-defined void method there does not compile yet.
 

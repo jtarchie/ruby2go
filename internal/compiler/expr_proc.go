@@ -70,7 +70,7 @@ func (f *fctx) selfProcArg(b *parser.BlockArgumentNode, self Type) (string, bool
 	}
 	p := f.genExpr(b.Expression, nil)
 	if isOpt {
-		return "*rbNeedProc(" + p.code + ")", true
+		return "rbBlockOf(" + p.code + ")", true // `&nil` passes no block, as MRI's (Formula#service's `&self.class.service`)
 	}
 	return "(*" + p.code + ")", true
 }

@@ -664,20 +664,25 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 	case *parser.ParenthesesNode:
 		f.genStmts(n.Body, t)
 	case *parser.CallNode:
-		if isTCall(n, "bind") && bindsSelf(n) {
-			f.genSelfBind(n)
-			f.emptyTail(n, t)
-			return
-		}
-		if r := f.loopRescue(n); r != nil {
-			f.genBegin(r, t)
-			return
-		}
-		f.genCallStmt(n, t)
+		f.genCallNodeStmt(n, t)
 	default:
 		e := f.genExpr(n, t.want())
 		f.applyTail(n, e, t)
 	}
+}
+
+// genCallNodeStmt is a call in statement position: Sorbet's `T.bind(self, X)`, a loop with a rescue modifier, or a call.
+func (f *fctx) genCallNodeStmt(n *parser.CallNode, t tail) {
+	if isTCall(n, "bind") && bindsSelf(n) {
+		f.genSelfBind(n)
+		f.emptyTail(n, t)
+		return
+	}
+	if r := f.loopRescue(n); r != nil {
+		f.genBegin(r, t)
+		return
+	}
+	f.genCallStmt(n, t)
 }
 
 // genSelfBind is Sorbet's `T.bind(self, X)`: from here to the end of the block or method, self is X where X is a
@@ -692,7 +697,7 @@ func (f *fctx) genSelfBind(n *parser.CallNode) {
 	}
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, f.coerce(n, expr{code: "any(" + f.selfCode + ")", typ: TAny{}}, t))
-	f.selfType, f.selfCode = t, tmp
+	f.selfType, f.selfCode, f.owner = t, tmp, to.C // its ivars are self's (ArchRequirement's `@arch`)
 }
 
 // absentReturn reports whether s is an if/unless on an absent constant (absentGuard) whose taken branch ends in return.
@@ -945,6 +950,9 @@ func (f *fctx) elseNarrowing(n parser.Node) []narrowInfo {
 			f.probe(func() { _, nw = f.genCond(n.Receiver) })
 			return nw
 		case n.Name == "nil?" && n.Arguments == nil:
+			if v := localOf(n.Receiver); v != nil && isOpt(v.typ) && v.base == nil && !isAny(stripOpt(v.typ)) { // `return c unless c.nil?`
+				return []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
+			}
 			return one(localOf(n.Receiver), func(m Type) bool { return !isNil(m) })
 		case isIsA(n) && n.Name != "instance_of?":
 			cls := f.classRef(n.Arguments.Arguments[0])
@@ -2693,6 +2701,7 @@ func (f *fctx) concreteInit(val expr, code string, t Type) bool {
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
 	f.unset = maybeUnset(body, params)
+	closures, lambdaClosure, loops, begins, unionArm, retryFlag, retryDepth := f.closures, f.lambdaClosure, f.loops, f.begins, f.unionArm, f.retryFlag, f.retryDepth
 	fresh := func() {
 		f.locals = map[localKey]*localInfo{}
 		for _, p := range params {
@@ -2701,6 +2710,8 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 	}
 	run := func(pass int) {
 		f.pass = pass
+		// a run a compile error unwound (a gem method's first attempt, decision 251) leaves its nesting behind
+		f.closures, f.lambdaClosure, f.loops, f.begins, f.unionArm, f.retryFlag, f.retryDepth = closures, lambdaClosure, loops, begins, unionArm, retryFlag, retryDepth
 		f.buf = &strings.Builder{}
 		f.tmp, f.blockCtr, f.block = 0, 0, ""
 		f.scope = &scope{vars: map[string]*local{}}
@@ -3721,7 +3732,7 @@ func (c *Compiler) mainBodies() ([]parser.Node, []fileBody) {
 	var prelude []parser.Node
 	own := map[*File][]parser.Node{}
 	for _, k := range c.constList {
-		if k.inMethod || k.inBody { // assigned where its method or its body's unit runs
+		if k.inMethod || k.inBody || k.inMain { // assigned where its method, its body's unit or its top-level statement runs
 			continue
 		}
 		if k.File.isPrelude() {
@@ -3814,7 +3825,7 @@ func (f *fctx) genStandIn(n parser.Node) bool {
 	case *classStmt:
 		f.genClassStmt(n)
 	case *parser.ConstantWriteNode:
-		if !f.bodyUnit {
+		if k := f.c.consts[qualify(f.lex, n.Name)]; !f.bodyUnit && (k == nil || !k.inMain) {
 			return false
 		}
 		f.genBodyConst(n)

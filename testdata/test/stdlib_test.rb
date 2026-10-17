@@ -20,6 +20,9 @@ require "tempfile"
 require "time"
 require "tmpdir"
 require "uri"
+require "rubygems"
+require "fiddle"
+require "fcntl"
 require "cgi"
 require "webrick"
 require "zlib"
@@ -918,6 +921,30 @@ module StdlibTests
         assert_equal [0o600, "hi!", Errno::EEXIST, "hi!"], [File.stat(path).mode & 0o777, File.read(path), got, File.new(path, mode: "r").read]
       end
       assert_equal ["/x/a", "/x/b", "/abs"], [File.expand_path("a", "/x"), File.expand_path("../b", "/x/y"), File.expand_path("/abs", "/x")]
+    end
+
+    # Fiddle's constants, as Homebrew's os/mac/ffi builds signatures at load; a missing library is DLError
+    def test_fiddle_constants_and_dlerror
+      err = begin
+        Fiddle.dlopen("/nonexistent/libstdlib_nope.dylib")
+        nil
+      rescue Fiddle::DLError => e
+        e.class
+      end
+      assert_equal [[1, -4, 4, 10], 8, Fiddle::DLError], [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT32_T, Fiddle::TYPE_INT, Fiddle::TYPE_CONST_STRING], Fiddle::SIZEOF_VOIDP, err]
+    end
+
+    # Homebrew's LockFile: an open file's stat is the path's, inode for inode
+    def test_file_stat_ino
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "lock")
+        File.open(path, "w") do |f|
+          assert_equal [true, true, true], [f.stat.ino == File.stat(path).ino, f.stat.ino.positive?, f.stat.dev == File.stat(path).dev]
+          f.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC)
+          assert_equal [true, true, false], [File.identical?(Pathname(path), f), File.identical?(path, path), File.identical?(path, dir)]
+          assert_equal [Fcntl::FD_CLOEXEC, 0], [f.fcntl(Fcntl::F_GETFD) & Fcntl::FD_CLOEXEC, f.flock(File::LOCK_EX | File::LOCK_NB)]
+        end
+      end
     end
 
     def test_file_read_length_and_gets_forms
@@ -2096,6 +2123,14 @@ module StdlibTests
     def test_env_fetch_nil_default
       assert_equal [nil, "d", false], [ENV.fetch("RB2GO_NO_SUCH_VAR", nil), ENV.fetch("RB2GO_NO_SUCH_VAR", "d"), ENV.fetch("RB2GO_NO_SUCH_VAR", false)]
       assert_raises(KeyError) { ENV.fetch("RB2GO_NO_SUCH_VAR") }
+    end
+
+    # Gem::Version, as Homebrew's gem setup checks RubyGems' own
+    def test_gem_version
+      v = ->(s) { Gem::Version.new(s) }
+      assert_equal [0, true, true, "1.2"], [v.("1.2.0") <=> v.("1.2"), v.("1.2.a") < v.("1.2"), v.("1.10") > v.("1.9"), v.(" 1.2 ").to_s]
+      assert_equal [[1, 2, "b", 3], [1, 2], false], [v.("1.2.b3").segments, v.("1.2.0").canonical_segments, v.(Gem::VERSION) < v.("2.2.0")]
+      assert_equal [true, true], [Gem.paths.home.is_a?(String), Gem.paths.path.is_a?(Array)]
     end
 
     def test_time_to_r_and_uname

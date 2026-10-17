@@ -2,6 +2,7 @@
 package compiler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -930,5 +931,13 @@ func (c *Compiler) readUser(target string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", target, err)
 	}
+	if c.methodRequiresRuntime && bundlerStandalone(target, data) {
+		return nil, nil // its $LOAD_PATH is the trace's, resolved at compile time; the rest shims RubyGems (decision 296)
+	}
 	return data, nil
+}
+
+// bundlerStandalone is the setup.rb `bundle install --standalone` writes: RubyGems shims and $LOAD_PATH entries only.
+func bundlerStandalone(path string, data []byte) bool {
+	return strings.HasSuffix(path, "/bundler/setup.rb") && bytes.Contains(data, []byte("\n$:.unshift File.expand_path("))
 }

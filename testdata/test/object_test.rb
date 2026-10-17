@@ -5437,6 +5437,63 @@ module ObjectTests
     def greet = "hi"
   end
 
+  # `class << self; prepend M; end` is singleton_class.prepend(M) (Homebrew's `T`, prepending TNoChecks)
+  module ObjQuiet
+    #: (String) -> String
+    def shout(s) = super.downcase
+  end
+
+  class ObjCrier
+    class << self
+      prepend ObjQuiet
+    end
+
+    #: (String) -> String
+    def self.shout(s) = s + "!"
+  end
+
+  # a `-> self` method calling an inherited `-> self` one on self (Homebrew's MacOSVersion#strip_patch)
+  class ObjVer
+    #: (String) -> void
+    def initialize(s)
+      @s = s
+    end
+
+    #: () -> self
+    def major = dup
+
+    #: () -> String
+    def to_s = @s
+  end
+
+  class ObjMacVer < ObjVer
+    #: () -> self
+    def strip = major
+  end
+
+  # a module the superclass already includes, included again through another module, keeps its place after the
+  # superclass, as MRI's include skips it (Homebrew's CurlDownloadStrategy: AbstractDownloadStrategy#ohai, not
+  # Utils::Output::Mixin's through Utils::Curl)
+  module ObjSay
+    #: () -> String
+    def say = "mixin"
+  end
+
+  module ObjVia
+    include ObjSay
+  end
+
+  class ObjSayBase
+    include ObjSay
+
+    #: () -> String
+    def say = "base+" + super
+  end
+
+  class ObjSayKid < ObjSayBase
+    include ObjVia
+  end
+
   module ObjUtil
     extend self
 
@@ -5505,6 +5562,9 @@ module ObjectTests
     def test_prepend
       assert_equal "HI!", ObjGreeter.new.greet
       assert_equal [ObjLoud, ObjGreeter], ObjGreeter.ancestors.take(2)
+      assert_equal "hey!", ObjCrier.shout("HEY")
+      assert_equal ["a", ObjMacVer], [ObjMacVer.new("a").strip.to_s, ObjMacVer.new("b").strip.class]
+      assert_equal ["base+mixin", [ObjSayKid, ObjVia, ObjSayBase, ObjSay]], [ObjSayKid.new.say, ObjSayKid.ancestors.take(4)]
     end
 
     def test_extend_self_and_constant_singleton

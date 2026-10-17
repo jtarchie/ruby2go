@@ -73,6 +73,9 @@ var preludeLibs = map[string]string{
 	"date":             "prelude/date.rb",
 	"time":             "prelude/time_parse.rb",
 	"sorbet-runtime":   "prelude/sorbet.rb",
+	"rubygems":         "prelude/rubygems.rb",
+	"fiddle":           "prelude/fiddle.rb",
+	"fcntl":            "prelude/fcntl.rb",
 }
 
 // mriLibs are MRI 4.0's standard library (first path segment): never a gem to look up, so requiring them never starts Ruby.
@@ -296,8 +299,8 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 }
 
 // emitRequireTable is rbRequireComputed: `require name` for a name built at run time is false (loaded at start) when
-// name, absolute or under a -I or gem lib directory, with or without `.rb`, is a compiled file or a library the
-// prelude or MRI answers; else MRI's LoadError.
+// name, absolute or under a -I or gem lib directory, with or without `.rb`, is a compiled file or a library the prelude
+// or MRI answers, or is under RbConfig's rubylibdir (MRI's library is compiled in, decision 296); else MRI's LoadError.
 func (c *Compiler) emitRequireTable() {
 	names := map[string]bool{}
 	for _, f := range c.files {
@@ -319,7 +322,8 @@ func (c *Compiler) emitRequireTable() {
 	for lib := range preludeLibs {
 		names[lib] = true
 	}
-	c.w("func rbRequireComputed(name String) Boolean {\n\tswitch strings.TrimSuffix(string(name), \".rb\") {\n\tcase ")
+	c.w("func rbRequireComputed(name String) Boolean {\n\tif strings.HasPrefix(string(name), rbLibDir+\"/\") {\n\t\treturn false\n\t}\n")
+	c.w("\tswitch strings.TrimSuffix(string(name), \".rb\") {\n\tcase ")
 	for i, n := range slices.Sorted(maps.Keys(names)) {
 		if i > 0 {
 			c.w(",\n\t\t")
@@ -327,7 +331,7 @@ func (c *Compiler) emitRequireTable() {
 		c.w("%s", strconv.Quote(n))
 	}
 	c.w(":\n\t\treturn false\n\t}\n")
-	c.w("\tswitch first, _, _ := strings.Cut(string(name), \"/\"); first {\n\tcase ")
+	c.w("\tswitch first, _, _ := strings.Cut(strings.TrimSuffix(string(name), \".rb\"), \"/\"); first {\n\tcase ")
 	for i, n := range slices.Sorted(maps.Keys(mriLibs)) {
 		if i > 0 {
 			c.w(", ")
