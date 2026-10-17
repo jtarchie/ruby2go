@@ -2199,6 +2199,18 @@ module HashTests
     end
   end
 
+  # #102: the bang filters answer nil when nothing changed
+  class HashBangFilterTest < Minitest::Test
+    def test_reject_select_bang_nil
+      h = { a: 1, b: 2 }
+      assert_nil h.reject! { |_, v| v > 5 }
+      assert_nil h.select! { true }
+      assert_nil h.filter! { true }
+      assert_equal({ b: 2 }, h.reject! { |_, v| v == 1 })
+      assert_equal({}, h.select! { false })
+    end
+  end
+
   class HashToHSub < Hash
   end
 end

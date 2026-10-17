@@ -5646,4 +5646,18 @@ module ControlTests
       assert_equal 2, t.join(lim)&.value
     end
   end
+
+  # #102: Exception#== compares class, message and backtrace
+  class ControlExceptionEqualTest < Minitest::Test
+    def test_exception_equal
+      e = ArgumentError.new
+      o = RuntimeError.new("m")
+      o.set_backtrace ["x"]
+      t = RuntimeError.new("m")
+      t.set_backtrace nil
+      assert_equal [true, true, true, false, false, false, false],
+        [e == e.dup, RuntimeError.new == RuntimeError.new, TypeError.new("m") == TypeError.new("m"), TypeError.new("m") == TypeError.new("n"),
+         RuntimeError.new("m") == TypeError.new("m"), ArgumentError.new == String.new, o == t]
+    end
+  end
 end

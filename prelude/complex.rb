@@ -6,10 +6,10 @@ class Complex < Object
   include Numeric
 
   #: (untyped, ?untyped) -> Complex
-  def self.rectangular(re, im = 0) = Complex(re, im)
+  def self.rectangular(re, im = 0) = %x{ rbComplexRect(re, im) }
 
   #: (untyped, ?untyped) -> Complex
-  def self.rect(re, im = 0) = Complex(re, im)
+  def self.rect(re, im = 0) = %x{ rbComplexRect(re, im) }
 
   #: (untyped, ?untyped) -> Complex
   def self.polar(r, theta = 0) = %x{ rbComplexPolar(rbNumArg(r), rbNumArg(theta)) }
@@ -279,5 +279,11 @@ module Kernel
   private
 
   #: (untyped, ?untyped) -> Complex
-  def Complex(re, im = 0) = %x{ return &Complex{rbNumArg(re), rbNumArg(im)} }
+  def Complex(re, im = 0) = %x{ return rbComplexMake(re, im) }
+end
+
+class String
+  # The leading Complex, 0 when there is none, as MRI's.
+  #: () -> Complex
+  def to_c = %x{ return rbStrToC(string(self), false) }
 end

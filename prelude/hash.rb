@@ -423,14 +423,22 @@ class Hash < Object
     return self
   }
 
-  #: () { (K, V) -> bool } -> self
-  def reject!(&block) = delete_if(&block)
+  # nil when nothing was removed, as MRI's.
+  #: () { (K, V) -> bool } -> Hash[K, V]?
+  def reject!(&block)
+    n = size
+    delete_if(&block)
+    size == n ? nil : self
+  end
 
-  #: () { (K, V) -> bool } -> self
-  def select!(&block) = keep_if(&block)
+  #: () { (K, V) -> bool } -> Hash[K, V]?
+  def select!(&block)
+    n = size
+    keep_if(&block)
+    size == n ? nil : self
+  end
 
-  #: () { (K, V) -> bool } -> self
-  def filter!(&block) = keep_if(&block)
+  alias filter! select!
 
   #: () { (K, V) -> bool } -> Integer
   def __count_block

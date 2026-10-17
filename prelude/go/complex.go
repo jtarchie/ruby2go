@@ -5,6 +5,10 @@ package prelude
 
 import (
 	"math"
+	"math/big"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 // rbNumArg checks that a Complex part is a real number.
@@ -362,4 +366,103 @@ func rbNumCmp(a, b any) *Integer {
 		return Ref(Integer(0))
 	}
 	return nil
+}
+
+const rbCUNum = `\d+(?:_\d+)*(?:\.\d+(?:_\d+)*)?(?:[eE][-+]?\d+(?:_\d+)*)?(?:/\d+(?:_\d+)*)?`
+
+// rbComplexRe is MRI's string form of a Complex, alternatives ordered so leftmost-first finds the longest: polar `m@a`, `re±im i`, `im i`, `re`.
+var rbComplexRe = regexp.MustCompile(`^(?:([-+]?` + rbCUNum + `)@([-+]?` + rbCUNum + `)|([-+]?` + rbCUNum + `)([-+](?:` + rbCUNum + `)?)[iIjJ]|([-+]?(?:` + rbCUNum + `)?)[iIjJ]|([-+]?` + rbCUNum + `))`)
+
+// rbCNumVal is one part: Rational with a `/`, Float with `.` or an exponent, else Integer; a bare sign is ±1.
+func rbCNumVal(s string) any {
+	s = strings.ReplaceAll(s, "_", "")
+	switch s {
+	case "", "+":
+		return Integer(1)
+	case "-":
+		return Integer(-1)
+	}
+	if strings.Contains(s, "/") {
+		r := &Rational{}
+		if _, ok := r.v.SetString(s); !ok {
+			panic(NewZeroDivisionError(Ref(String("divided by 0"))))
+		}
+		return r
+	}
+	if strings.ContainsAny(s, ".eE") {
+		f, _ := strconv.ParseFloat(s, 64)
+		return Float(f)
+	}
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		f, _ := new(big.Int).SetString(s, 10)
+		return rbBigToInt(f)
+	}
+	return Integer(i)
+}
+
+// rbStrToC parses a Complex from the front of s; strict (Kernel#Complex) wants the whole string, whitespace aside, and raises otherwise, where String#to_c answers what it found (0 for nothing).
+func rbStrToC(s string, strict bool) *Complex {
+	if strict && strings.IndexByte(s, 0) >= 0 {
+		panic(NewArgumentError(Ref(String("string contains null byte"))))
+	}
+	t := strings.TrimLeft(s, " \t\n\v\f\r")
+	m := rbComplexRe.FindStringSubmatch(t)
+	if strict && (m == nil || strings.TrimRight(t[len(m[0]):], " \t\n\v\f\r\x00") != "") {
+		panic(NewArgumentError(Ref(String("invalid value for convert(): " + strconv.Quote(s)))))
+	}
+	switch {
+	case m == nil || m[0] == "":
+		return &Complex{Integer(0), Integer(0)}
+	case m[1] != "":
+		return rbComplexPolar(rbCNumVal(m[1]), rbCNumVal(m[2]))
+	case m[3] != "":
+		return &Complex{rbCNumVal(m[3]), rbCNumVal(m[4])}
+	case m[6] != "":
+		return &Complex{rbCNumVal(m[6]), Integer(0)}
+	}
+	return &Complex{Integer(0), rbCNumVal(m[5])}
+}
+
+// rbComplexMake is Kernel#Complex: a String parses, and Complex parts combine as re + im*i (MRI's nucomp_s_convert).
+func rbComplexMake(re, im any) *Complex {
+	re, im = rbUnbox(re), rbUnbox(im)
+	if s, ok := re.(String); ok {
+		re = rbStrToC(string(s), true)
+	}
+	if s, ok := im.(String); ok {
+		im = rbStrToC(string(s), true)
+	}
+	if c, ok := re.(*Complex); ok {
+		if i, ok := im.(Integer); ok && i == 0 {
+			return c
+		}
+	}
+	if c, ok := im.(*Complex); ok {
+		r := re
+		var ri any = Integer(0)
+		if rc, ok := re.(*Complex); ok {
+			r, ri = rc.re, rc.im
+		}
+		return &Complex{rbNumOp('-', r, c.im), rbNumOp('+', ri, c.re)}
+	}
+	if c, ok := re.(*Complex); ok {
+		return &Complex{c.re, rbNumOp('+', c.im, rbNumArg(im))}
+	}
+	return &Complex{rbNumArg(re), rbNumArg(im)}
+}
+
+// rbComplexRect is Complex.rectangular: a Complex part is allowed only when its imaginary part is zero.
+func rbComplexRect(re, im any) *Complex {
+	part := func(a any) any {
+		a = rbUnbox(a)
+		if c, ok := a.(*Complex); ok {
+			if !rbNumZero(c.im) {
+				panic(NewTypeError(Ref(String("not a real"))))
+			}
+			return c.re
+		}
+		return rbNumArg(a)
+	}
+	return &Complex{part(re), part(im)}
 }

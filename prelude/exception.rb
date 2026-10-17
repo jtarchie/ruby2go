@@ -37,6 +37,14 @@ class Exception < Object
   #: () -> String
   def message = to_s
 
+  # Same class, message and backtrace, as MRI's exc_equal (so a dup is equal).
+  #: (untyped) -> bool
+  def ==(other)
+    return true if equal?(other)
+    return false unless other.is_a?(Exception) && other.class == self.class
+    message == other.message && backtrace == other.backtrace
+  end
+
   #: (?String?) -> self
   def exception(msg = nil)
     return self if msg.nil?

@@ -2465,4 +2465,28 @@ module NumberTests
       assert_equal [[1, 4, 7, 10], [1, 4, 7], [2, 10, 18], %w[a c e]], [((1..10) % 3).to_a, (1...10).step(3).to_a, ((1..10) % 4).map { |x| x * 2 }, ("a".."e").step(2).to_a]
     end
   end
+
+  # #102: Complex from a String and from Complex parts
+  class NumberComplexParseTest < Minitest::Test
+    def test_kernel_complex_string
+      assert_equal [Complex(1, 2), Complex(Rational(2, 3)), Complex(4, Rational(2, 3)), Complex(0, -1), Complex(0, 35), Complex(2e3, 4), Complex(79, 40), Complex(79, 4)],
+        [Complex("1+2i"), Complex("2/3"), Complex("4+2/3i"), Complex("-i"), Complex("35i"), Complex("2e3+4i"), Complex("7_9+4_0i"), Complex("  79+4j  ")]
+      assert_equal Complex.polar(2, 0), Complex("2@0")
+      e = begin; Complex("79+4iruby"); rescue ArgumentError => x; x.message; end
+      assert_equal 'invalid value for convert(): "79+4iruby"', e
+    end
+
+    def test_kernel_complex_complex_parts
+      assert_equal [Complex(1, 2), Complex(-3, 9), Complex(1, 0)], [Complex(Complex(1, 2)), Complex(Complex(3, 4), Complex(5, 6)), Complex(Complex(1, 0))]
+    end
+
+    def test_string_to_c
+      assert_equal [Complex(79, 4), Complex(0, 0), Complex(3, 0)], ["79+4iruby".to_c, "ruby".to_c, "3".to_c]
+    end
+
+    def test_rectangular_complex_part
+      assert_equal Complex(1.0, 2), Complex.rectangular(1.0+0i, 2+0.0i)
+      assert_equal TypeError, (begin; Complex.rectangular(1.0+1i, 2); rescue TypeError => e; e.class; end)
+    end
+  end
 end
