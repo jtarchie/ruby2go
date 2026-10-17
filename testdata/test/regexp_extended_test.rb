@@ -54,4 +54,18 @@ module RegexpTests
       assert_equal true, "ab".match?(/[^c]^?(?!x)b/)
     end
   end
+
+  # #102: grep/grep_v with a block set $~ for each test, as MRI's
+  class RegexpGrepLastMatchTest < Minitest::Test
+    def test_grep_block_last_match
+      assert_equal ["b", "b"], ["aba", "aba"].grep(/a(b)a/) { $1 }
+      "z" =~ /z/
+      got = ["abc", "def"].grep(/b/) { |e| [e, $&] }
+      assert_equal [[["abc", "b"]], nil], [got, $~]
+      "z" =~ /z/
+      assert_equal [["abc"], "z"], [["abc", "def"].grep(/b/), $&]
+      inv = ["abc", "def"].grep_v(/e/) { |e| [e, $~.nil?] }
+      assert_equal [[["abc", true]], "e"], [inv, $&]
+    end
+  end
 end

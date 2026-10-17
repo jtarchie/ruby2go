@@ -404,3 +404,24 @@ func rbMatchKeep(lm ***MatchData, m **MatchData) **MatchData {
 	*lm = m
 	return m
 }
+
+// rbGrepLM is `xs.grep(re) { ... }` / grep_v in a frame that reads $~: each test sets the frame's last match before
+// the block runs, as MRI's grep_iter_i (a non-String, non-Symbol element is a failed test, nil match).
+func rbGrepLM[E any, U comparable](lm ***MatchData, re *Regexp, xs []E, invert bool, blk func(E) U) *Array[U] {
+	out := &Array[U]{}
+	for _, x := range xs {
+		var m **MatchData
+		switch any(x).(type) {
+		case String, Symbol:
+			s, _ := rbSubject(any(x))
+			if md := rbMatch(re, s); md != nil {
+				m = &md
+			}
+		}
+		*lm = m
+		if (m != nil) != invert {
+			out.s = append(out.s, blk(x))
+		}
+	}
+	return out
+}

@@ -958,6 +958,9 @@ func (f *fctx) rubyShapedCall(n parser.Node, recv expr, name string, args []pars
 	if e, ok := f.mixedArrayOp(n, recv, name, args, block); ok {
 		return e, true
 	}
+	if e, ok := f.grepBlockLastMatch(n, recv, name, args, block); ok {
+		return e, true
+	}
 	return f.subBlockLastMatch(n, recv, name, args, block)
 }
 

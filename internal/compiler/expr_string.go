@@ -50,6 +50,34 @@ func (f *fctx) subBlockLastMatch(n parser.Node, recv expr, name string, args []p
 	return expr{code: code, typ: f.cls("String")}, true
 }
 
+// grepBlockLastMatch is `xs.grep(re) { $1 }` / grep_v on an Array in a frame that reads $~: each test sets the
+// frame's last match before the block runs, as MRI's (decision 171's frame variable, handed to the runner).
+func (f *fctx) grepBlockLastMatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	b, ok := block.(*parser.BlockNode)
+	if f.lastMatch == "" || !ok || name != "grep" && name != "grep_v" || len(args) != 1 {
+		return expr{}, false
+	}
+	at, ok := recv.typ.(TClass)
+	if !ok || at.C.RubyName != "Array" || len(at.Args) != 1 {
+		return expr{}, false
+	}
+	if !isClass(f.probeType(args[0], nil), "Regexp") {
+		return expr{}, false
+	}
+	e := f.c.classes["Array"].lookup("__" + name + "_block")
+	if e == nil || e.M.Block == nil {
+		return expr{}, false
+	}
+	r := f.newTmp()
+	f.emit("%s := %s", r, recv.code)
+	pat := f.newTmp()
+	f.emit("%s := %s", pat, f.genExpr(args[0], nil).code)
+	env := map[string]Type{"E": at.Args[0]}
+	blk := f.genClosure(n, b, e.M.Block, env)
+	code := fmt.Sprintf("rbGrepLM(&%s, %s, %s.s, %v, %s)", f.lastMatch, pat, r, name == "grep_v", blk)
+	return expr{code: code, typ: TClass{C: f.c.classes["Array"], Args: []Type{subst(e.M.Block.Ret, env)}}}, true
+}
+
 // lastMatchVar is the Go variable holding the frame's last match ($~, decision 171).
 func (f *fctx) lastMatchVar(n parser.Node) string {
 	if f.lastMatch == "" {
