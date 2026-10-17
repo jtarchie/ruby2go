@@ -86,7 +86,7 @@ class Float < Object
   #: () -> Integer
   def round = %x{ rbFloatToI(math.Round(float64(self))) }
 
-  # A literal digits <= 0 (`x.round(-2)`) comes here, as MRI's Integer answer (decision 301): the Float to an
+  # A literal digits <= 0 (`x.round(-2)`) comes here, as MRI's Integer answer (decision 299): the Float to an
   # Integer, then Integer#round to the digits.
   #: (Integer) -> Integer
   def __round_int(digits) = %x{

@@ -603,7 +603,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	return owner.lookup(name + strconv.Itoa(len(args)))
 }
 
-// enumClassOverload is a blockless call's `__name_enum_<class>` for its one argument's class: `(1..2).step(0.5)` is a Float sequence (decision 301).
+// enumClassOverload is a blockless call's `__name_enum_<class>` for its one argument's class: `(1..2).step(0.5)` is a Float sequence (decision 299).
 func (f *fctx) enumClassOverload(owner *Class, name string, args []parser.Node) *entry {
 	if len(args) != 1 || !slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name+"enum_") }) {
 		return nil
@@ -691,7 +691,7 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 	case owner.RubyName == "CSV" && owner.metaOf != nil:
 		return f.csvOverload(m, owner, args)
 	case owner.RubyName == "Float" && (m.Name == "round" || m.Name == "floor" || m.Name == "ceil") && len(args) == 1:
-		// x.round(n) is an Integer for n <= 0, as BigDecimal's: a literal n decides the type (decision 301)
+		// x.round(n) is an Integer for n <= 0, as BigDecimal's: a literal n decides the type (decision 299)
 		if lit, ok := args[0].(*parser.IntegerNode); ok {
 			n, err := strconv.Atoi(f.f.text(lit.Location))
 			if err == nil && n <= 0 {
