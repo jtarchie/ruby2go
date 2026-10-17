@@ -2243,6 +2243,21 @@ module HashTests
     end
   end
 
+  # #102: a subclass's default(key) answers a missing key
+  class HashDefaultOverrideTest < Minitest::Test
+    def test_subclass_default_method
+      h = HashDefaultSub.new
+      h[:b] = 1
+      assert_equal [100, 1, true, false], [h[:a], h[:b], h.key?(:b), h.key?(:a)]
+    end
+  end
+
+  class HashDefaultSub < Hash
+    def default(key)
+      100
+    end
+  end
+
   class HashToHSub < Hash
   end
 end

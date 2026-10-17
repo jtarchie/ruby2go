@@ -280,6 +280,28 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 	if props, ok := f.sorbetStructs[n]; ok && cls.Methods["initialize"] == nil {
 		c.addStructInit(ctx, f, n, cls, props, append(append([]*Class(nil), scope...), cls))
 	}
+	c.addHashDefaultIdx(ctx, f, n, cls, append(append([]*Class(nil), scope...), cls))
+}
+
+// addHashDefaultIdx gives a Hash subclass that overrides `default(key)` but not `[]` a `[]` that calls it for a
+// missing key, as MRI's rb_hash_aref does through the method table. Hash#[] itself reads the stored default, so the
+// override would otherwise never be seen: plain Hash pays nothing for it.
+func (c *Compiler) addHashDefaultIdx(ctx context.Context, f *File, n *parser.ClassNode, cls *Class, scope []*Class) {
+	sup, ok := n.Superclass.(*parser.ConstantReadNode)
+	if !ok || sup.Name != "Hash" || f.isPrelude() || cls.Methods["[]"] != nil {
+		return
+	}
+	d := cls.Methods["default"]
+	if d == nil || d.Owner != cls || d.Node == nil || d.Node.Parameters == nil || len(d.Node.Parameters.Requireds) != 1 {
+		return
+	}
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte("#: (untyped) -> untyped\ndef [](key) = key?(key) ? super : default(key)\n"), originSource)
+	if err != nil {
+		c.errorf(f, n, "Hash subclass []: %v", err)
+	}
+	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
+	// ponytail: untyped, since the override's answer need not be a V; type it from default's signature when one names V
+	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, scope) //nolint:forcetypeassert // built just above
 }
 
 // bootStructProps are the props boot saw cls's T::Struct end up with that its source does not name literally: a load-time
