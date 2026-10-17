@@ -193,6 +193,7 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 			f.c.gemNilIvars = append(f.c.gemNilIvars, gemNilIvar{cls: f.owner, name: name, srcPos: srcPos{f.f, f.f.line(n.GetLocation().StartOffset)}})
 		}
 		if f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) {
+			assigned = subst(assigned, map[string]Type{"Self": TClass{C: f.owner}}) // `@me = self` in a generic body: the field holds the owner
 			if f.c.ivarReadFirst[ivarKey{f.owner, name}] {
 				assigned = optOf(assigned)
 			}

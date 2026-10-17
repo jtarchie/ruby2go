@@ -382,6 +382,16 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: a, scope: scope, file: f})
 		return true
 	}
+	if n.Name == "prepend" && !f.isPrelude() && n.Receiver != nil && prependTarget(n) != nil { // `::Module.prepend M` in a body, as at the top level
+		recv, single := prependTarget(n), false
+		if sc, ok := recv.(*parser.CallNode); ok {
+			recv, single = sc.Receiver, true
+		}
+		for _, a := range callArgs(n) {
+			c.prepends = append(c.prepends, pendingPrepend{targetRef: constRef{node: recv, scope: scope, file: f}, singleton: single, mod: constRef{node: a, scope: scope, file: f}})
+		}
+		return true
+	}
 	if n.Receiver != nil {
 		return false
 	}

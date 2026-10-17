@@ -6167,4 +6167,47 @@ module ObjectTests
       assert_equal ["/usr/lib/libx.so", 1], [AbsOs::Lib.find("/usr/lib").to_s, AbsOs::Pathname.helper]
     end
   end
+
+  # `@me = self` in a class with a subclass: the field holds the class's interface, not the generic Self.
+  class SelfIvarBase
+    def initialize = (@me = self)
+    def me = @me
+  end
+
+  class SelfIvarSub < SelfIvarBase; end
+
+  module PrependInBody
+    def tag = "prepended+#{super}"
+  end
+
+  class PrependInBodyTarget
+    def tag = "target"
+  end
+
+  module PrependInBodyHolder
+    ::ObjectTests::PrependInBodyTarget.prepend PrependInBody # a receiver'd prepend inside a module body
+  end
+
+  class SelfIvarTest < Minitest::Test
+    def test_self_ivar_in_subclassed_class
+      b = SelfIvarSub.new
+      assert b.me.equal?(b)
+    end
+
+    def test_class_body_self_ivar
+      sc = Class.new do
+        def self.body = @body
+        @body = self
+      end
+      assert sc.body.equal?(sc)
+    end
+
+    def test_prepend_inside_module_body
+      assert_equal "prepended+target", PrependInBodyTarget.new.tag
+    end
+
+    def test_overridden_initialize_arity
+      assert_equal(-1, SystemCallError.instance_method(:initialize).arity)
+    end
+  end
 end

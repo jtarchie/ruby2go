@@ -371,6 +371,12 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 			return freeFuncName(m) + "[" + targ + "](self" + comma(argList) + ")"
 		}
 	}
+	if !free && m.Name == "initialize" && !inInterface(m) {
+		// an overridden private initialize dispatches (decision 253) but is never an interface slot: through an
+		// interface-typed receiver (SystemCallErrorI) it is the free func
+		t := f.methodExprType(m, recv)
+		free = t != "" && !strings.HasPrefix(t, "(")
+	}
 	if !free {
 		if t := f.methodExprType(m, recv); t != "" {
 			return t + "." + m.GoName + "(" + recv.code + comma(argList) + ")"
