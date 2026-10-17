@@ -182,6 +182,9 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	var b strings.Builder
 	b.WriteString("class GeneratedValueClass\n")
 	if kind == valueStruct {
+		// MRI's Struct includes Enumerable over its values. Here each struct class does: through the Struct base, the
+		// generated to_h's Symbol keys would fail the override check against Enumerable#to_h.
+		b.WriteString("  include Enumerable #[untyped]\n")
 		fmt.Fprintf(&b, "  #: () -> bool?\n  def self.keyword_init? = %s\n", kwInit)
 	}
 	for i, m := range members {

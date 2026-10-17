@@ -6286,4 +6286,15 @@ module ObjectTests
       assert_equal ["SYSTEM_DEFAULT", "SYSTEM_DEFAULT", "IGNORE", "DEFAULT", "DEFAULT", "negative signal name: -HUP"], got + [msg]
     end
   end
+
+  # #102: a Struct class includes Enumerable over its values
+  class ObjectStructEnumerableTest < Minitest::Test
+    EnumPt = Struct.new(:x, :y) #: [Integer, Integer]
+
+    def test_struct_enumerable
+      pt = EnumPt.new(3, 4)
+      assert_equal [true, true], [EnumPt.include?(Enumerable), pt.is_a?(Enumerable)]
+      assert_equal [[6, 8], 3, [3, 4], 3, [[3, 0], [4, 1]], true], [pt.map { |v| v * 2 }, pt.min, pt.sort, pt.to_h[:x], pt.each_with_index.to_a, pt.include?(4)]
+    end
+  end
 end
