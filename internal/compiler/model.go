@@ -44,6 +44,7 @@ type Class struct {
 	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
 	extends       []Include         // `extend M`: included into the class object
 	mixesIn       []Include         // Sorbet's `mixes_in_class_methods(M)` in a module: its includers extend M (decision 241)
+	includers     []*Class          // a module's: the classes and modules that include it (linkInclude)
 	delegations   []delegation
 	singleFwd     bool       // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
 	fwdSingle     bool       // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods

@@ -85,9 +85,10 @@ func CompileTraced(ctx context.Context, entryName string, src []byte, main strin
 	return out, warnings, nil
 }
 
-// CompileTrace runs main with args under MRI (rubyOpts first) and compiles what that run loaded (decision 296).
-func CompileTrace(ctx context.Context, main string, args, rubyOpts []string, loadPath ...string) ([]byte, []string, error) {
-	out, warnings, err := compiler.CompileTrace(ctx, Prelude, GemSigs, main, args, rubyOpts, loadPath...)
+// CompileTrace runs main under MRI once per args in runs (rubyOpts first) and compiles what those runs loaded
+// (decision 296).
+func CompileTrace(ctx context.Context, main string, runs [][]string, rubyOpts []string, loadPath ...string) ([]byte, []string, error) {
+	out, warnings, err := compiler.CompileTrace(ctx, Prelude, GemSigs, main, runs, rubyOpts, loadPath...)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("rb2go: %w", err)
 	}

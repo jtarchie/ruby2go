@@ -86,6 +86,13 @@ module MethodTests
   end
 
   class MethodTest < Minitest::Test
+    def test_several_double_splats
+      a = { print_stdout: false } #: Hash[Symbol, untyped]
+      b = { timeout: 3, x: 1 } #: Hash[Symbol, untyped]
+      c = { x: 2 } #: Hash[Symbol, untyped]
+      assert_equal ["[\"u\"] false 3 {x: 2}", "[\"v\"] false nil {verbose: true, x: 2}"], [method_curl("u", **a, **b, **c), method_curl("v", **a, verbose: true, **c)]
+    end
+
     def test_block_argument
       assert_equal [2, 4], [1, 2].map(&method(:method_twice))
       assert_equal [4, 5], [1, 2].map(&3.method(:+))
@@ -344,3 +351,8 @@ module MethodTests
 
   class ImC < ImB; end
 end
+
+# several **splats (and a keyword between them) into named keywords and **rest: later keys win, in order (Homebrew's
+# CurlDownloadStrategy#curl)
+#: (*String, ?print_stdout: bool, ?timeout: Integer?, **untyped) -> String
+def method_curl(*args, print_stdout: true, timeout: nil, **options) = "#{args} #{print_stdout} #{timeout.inspect} #{options}"

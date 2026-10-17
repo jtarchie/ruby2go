@@ -1,0 +1,44 @@
+Subject: pour_bottle? satisfy stores its condition instead of defining a method
+
+PourBottleCheck#satisfy defined pour_bottle? on the formula class at run time. It now stores the block on the class and
+Formula#pour_bottle? instance_execs it, as the defined method ran it, with no method defined while running.
+---
+diff --git a/Library/Homebrew/formula.rb b/Library/Homebrew/formula.rb
+index 46c9512f19..fc7d5121f9 100644
+--- a/Library/Homebrew/formula.rb
++++ b/Library/Homebrew/formula.rb
+@@ -1650,7 +1650,10 @@ class Formula
+   # are supported.
+   # Replaced by {.pour_bottle?}'s `satisfy` method if it is specified.
+   sig { returns(T::Boolean) }
+-  def pour_bottle? = true
++  def pour_bottle?
++    satisfy = self.class.pour_bottle_satisfy
++    satisfy ? instance_exec(&satisfy) : true
++  end
+ 
+   delegate pour_bottle_check_unsatisfied_reason: :"self.class"
+ 
+@@ -4322,6 +4325,10 @@ class Formula
+     sig { returns(T.nilable(String)) }
+     attr_accessor :pour_bottle_check_unsatisfied_reason
+ 
++    # The condition {PourBottleCheck#satisfy} gives {#pour_bottle?}.
++    sig { returns(T.nilable(T.proc.bind(Formula).returns(T::Boolean))) }
++    attr_accessor :pour_bottle_satisfy
++
+     # Used for creating new Homebrew versions of software without new upstream
+     # versions. For example, if we bump the major version of a library that this
+     # {Formula} {.depends_on} then we may need to update the `revision` of this
+diff --git a/Library/Homebrew/pour_bottle_check.rb b/Library/Homebrew/pour_bottle_check.rb
+index 651bf289e9..a770dd1fa7 100644
+--- a/Library/Homebrew/pour_bottle_check.rb
++++ b/Library/Homebrew/pour_bottle_check.rb
+@@ -16,6 +16,6 @@ class PourBottleCheck
+ 
+   sig { params(block: T.proc.bind(::Formula).returns(T::Boolean)).void }
+   def satisfy(&block)
+-    @formula.send(:define_method, :pour_bottle?, &block)
++    @formula.pour_bottle_satisfy = block
+   end
+ end

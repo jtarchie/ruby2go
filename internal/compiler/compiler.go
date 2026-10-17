@@ -125,7 +125,6 @@ type Compiler struct {
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings              []string
 	methodRequiresRuntime bool                         // traced mode (-main): a require in a method resolves at run time, not at compile time (decisions 197, 288)
-	replaced              map[string]string            // `# rb2go_replace: path => file`: real path → the file compiled in its place (decision 197)
 	dmSites               map[*parser.CallNode]bool    // define_method calls boot recorded: no-ops at run time (decision 198)
 	prepends              []pendingPrepend             // prepends in load order, applied at link (decision 199)
 	bootBranches          map[string]boot.BranchInfo   // "path:line:col" of each if/unless boot ran (decision 201)
@@ -922,11 +921,8 @@ func phaseTimer(timing bool) func(string) {
 	}
 }
 
-// readUser reads a user file to compile, or what the entry's `# rb2go_replace:` puts in its place (decision 197).
+// readUser reads a user file to compile.
 func (c *Compiler) readUser(target string) ([]byte, error) {
-	if rep := c.replaced[c.real(target)]; rep != "" {
-		target = rep
-	}
 	data, err := os.ReadFile(target) //nolint:gosec // the user's program names it
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", target, err)

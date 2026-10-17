@@ -330,7 +330,7 @@ func TestTracedEntry(t *testing.T) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
-// TestTraceRun compiles testdata/traced from a run of main.rb, with no entry file (decision 296).
+// TestTraceRun compiles testdata/traced from runs of main.rb, with no entry file: the second (-trace-also) loads traced_argv (decision 296).
 func TestTraceRun(t *testing.T) {
 	requireRuby4(t)
 	dir := filepath.Join("testdata", "traced")
@@ -340,7 +340,7 @@ func TestTraceRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TRACED_SPAWN", "1") // the run sees main.rb's `# env:`, as the program does
-	code, _, err := CompileTrace(t.Context(), main, nil, []string{"--disable=gems"}, loadPath(dir, src)...)
+	code, _, err := CompileTrace(t.Context(), main, [][]string{nil, {"argv"}}, []string{"--disable=gems"}, loadPath(dir, src)...)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
 	}

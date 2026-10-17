@@ -143,7 +143,6 @@ func (c *Compiler) scanRequires(ctx context.Context, sources []Source) (libs []s
 			return nil, nil, perr
 		}
 		uf.path = path
-		c.readMagic(src.Src)
 		sc.parsed[path] = uf
 		sc.walk(uf)
 	}
@@ -340,22 +339,4 @@ func (c *Compiler) emitRequireTable() {
 	}
 	c.w(":\n\t\treturn false\n\t}\n")
 	c.w("\tpanic(NewLoadError(Ref(String(\"cannot load such file -- \" + string(name)))))\n}\n\n")
-}
-
-// readMagic reads the entry's `# rb2go_replace: path => file` comments (decision 197).
-func (c *Compiler) readMagic(src []byte) {
-	for line := range strings.SplitSeq(string(src), "\n") {
-		rest, found := strings.CutPrefix(line, "# rb2go_replace: ")
-		if !found {
-			continue
-		}
-		from, to, ok := strings.Cut(rest, " => ")
-		if !ok {
-			c.errorf(nil, nil, "rb2go_replace: expected `path => file`, got %q", line)
-		}
-		if c.replaced == nil {
-			c.replaced = map[string]string{}
-		}
-		c.replaced[realPath(strings.TrimSpace(from))] = strings.TrimSpace(to)
-	}
 }

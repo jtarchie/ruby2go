@@ -4,8 +4,7 @@
 # the unpatched output is left in work/mri.txt.
 cd "$(dirname "$0")"
 docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
-while IFS= read -r line; do export "$line"; done < /w/env.txt
-unset HOMEBREW_SPAWN_SYSTEM
+export HOMEBREW_NO_AUTO_UPDATE=1
 cd /home/linuxbrew
 B=/home/linuxbrew/.linuxbrew/bin/brew
 $B "$@" > /dev/null 2>&1 # warm the API cache: the download banner prints once

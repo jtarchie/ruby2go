@@ -8,9 +8,6 @@ src=${1:-$(brew --repository)} dst=$PWD/work/homebrew
 commit=$(sed -n 's/^ARG BREW_COMMIT=//p' Dockerfile)
 rm -rf "$dst" && git clone -q "$src" "$dst" && git -C "$dst" checkout -q "${commit:?no BREW_COMMIT in Dockerfile}"
 for p in patches/*.patch; do git -C "$dst" apply "$PWD/$p"; done
-vr="$dst/Library/Homebrew/vendor/portable-ruby"
-cp -R "$src/Library/Homebrew/vendor/portable-ruby" "$vr"
-bin="$vr/current/bin"
-mv "$bin/ruby" "$bin/ruby.real"
-sed "s#RB2GO_REPO#$(cd ../.. && pwd)#" tools/ruby-wrapper > "$bin/ruby" && chmod +x "$bin/ruby"
+cp -R "$src/Library/Homebrew/vendor/portable-ruby" "$dst/Library/Homebrew/vendor/portable-ruby"
+tools/install-wrapper "$dst" "$(cd ../.. && pwd)"
 echo "HOMEBREW_NO_AUTO_UPDATE=1 $dst/bin/brew info wget   # HOMEBREW_RB2GO_MRI=1 for MRI"

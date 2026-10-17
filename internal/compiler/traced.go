@@ -82,14 +82,20 @@ func under(f string, dirs []string) (dir, rel string) {
 
 // CompileTrace runs main with args under MRI (rubyOpts first, then the -I dirs) and compiles what that run loaded as a
 // traced compile of main (decision 296).
-func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, args, rubyOpts []string, loadPath ...string) ([]byte, []string, error) {
+func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, runs [][]string, rubyOpts []string, loadPath ...string) ([]byte, []string, error) {
 	opts := slices.Clone(rubyOpts)
 	for _, d := range loadPath {
 		opts = append(opts, "-I", d)
 	}
-	l, err := boot.Trace(ctx, main, args, opts)
-	if err != nil {
-		return nil, nil, err //nolint:wrapcheck // boot's errors name the trace
+	l := &boot.Loaded{}
+	for _, args := range runs { // each run's loads join the first's: one binary for several commands
+		r, err := boot.Trace(ctx, main, args, opts)
+		if err != nil {
+			return nil, nil, err //nolint:wrapcheck // boot's errors name the trace
+		}
+		l.Features = appendUnseen(l.Features, r.Features)
+		l.LoadPath = appendUnseen(l.LoadPath, r.LoadPath)
+		l.StdDirs = appendUnseen(l.StdDirs, r.StdDirs)
 	}
 	src, dirs := TracedEntry(l, main)
 	more, err := mainRequires(ctx, main, append(slices.Clone(loadPath), dirs...), src)
@@ -152,11 +158,20 @@ func mainRequires(ctx context.Context, main string, dirs []string, entry []byte)
 	return b.Bytes(), nil
 }
 
+// appendUnseen is to with each of from it lacks, in order.
+func appendUnseen(to, from []string) []string {
+	for _, s := range from {
+		if !slices.Contains(to, s) {
+			to = append(to, s)
+		}
+	}
+	return to
+}
+
 // onPath reports whether name.rb is a file in one of dirs.
 func onPath(name string, dirs []string) bool {
 	for _, d := range dirs {
-		p := filepath.Join(d, name+".rb")
-		fi, err := os.Stat(p) //nolint:gosec // a path the program names
+		fi, err := fs.Stat(os.DirFS(d), name+".rb")
 		if err == nil && !fi.IsDir() {
 			return true
 		}

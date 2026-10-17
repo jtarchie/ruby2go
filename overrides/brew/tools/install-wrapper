@@ -1,0 +1,8 @@
+#!/bin/bash
+# Puts tools/ruby-wrapper in place of a brew checkout's portable Ruby, the real one kept beside it as ruby.real
+# (decision 296). usage: tools/install-wrapper <brew repository> [rb2go checkout, when no HOMEBREW_RB2GO_EXE]
+set -e
+bin="$1/Library/Homebrew/vendor/portable-ruby/current/bin"
+[ -e "$bin/ruby.real" ] || mv "$bin/ruby" "$bin/ruby.real"
+sed "s#RB2GO_REPO#${2:-}#" "$(dirname "$0")/ruby-wrapper" > "$bin/ruby"
+chmod +x "$bin/ruby"

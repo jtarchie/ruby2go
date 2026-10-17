@@ -1,0 +1,18 @@
+Subject: with_context block returns its value
+
+with_context returns what its block returns (CurlDownloadStrategy#expand_deferred_environment_args maps its args in
+one), so the block is typed as returning a value, as the method already is.
+---
+diff --git a/Library/Homebrew/context.rb b/Library/Homebrew/context.rb
+index 3dc60ac06f..8b7630837b 100644
+--- a/Library/Homebrew/context.rb
++++ b/Library/Homebrew/context.rb
+@@ -93,7 +93,7 @@ module Context
+       quiet:                          T::Boolean,
+       verbose:                        T::Boolean,
+       deferred_environment_expansion: T::Boolean,
+-      _block:                         T.proc.void,
++      _block:                         T.proc.returns(T.untyped),
+     ).returns(T.untyped)
+   }
+   def with_context(debug: debug?, quiet: quiet?, verbose: verbose?,

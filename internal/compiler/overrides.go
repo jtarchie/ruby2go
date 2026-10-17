@@ -92,6 +92,22 @@ func inInterface(m *Method) bool {
 	return !staticPrivate(m) && !m.generic() && m.Name != "initialize" && (m.Owner.metaOf == nil || m.Name != "new")
 }
 
+// includerDefines reports whether a class including module c (or a module including it), or a subclass of one,
+// defines name: a module_function's call to another dispatches on self, so CurlDownloadStrategy's `curl` override
+// runs from Utils::Curl#curl_download, as MRI's (decision 296).
+func (c *Class) includerDefines(name string, seen map[*Class]bool) bool {
+	for _, inc := range c.includers {
+		if seen[inc] {
+			continue
+		}
+		seen[inc] = true
+		if inc.Methods[name] != nil || inc.descendantDefines(name, true) || inc.includerDefines(name, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 // staticPrivate: a private method no subclass overrides, called directly. One a subclass overrides still dispatches
 // on self, as MRI's (concurrent-ruby's private __initialize_atomic_fields__, which attr_atomic redefines per class;
 // decision 253).
@@ -99,11 +115,19 @@ func staticPrivate(m *Method) bool {
 	if !m.Private || m.Owner == nil {
 		return m.Private
 	}
-	if m.Owner.descendantDefines(m.Name, true) {
+	if m.Owner.descendantDefines(m.Name, true) || !m.Owner.universal && m.Owner.includerDefines(m.Name, map[*Class]bool{}) {
 		return false
 	}
 	if sup := m.Owner.Super; sup != nil { // an override of a dispatched private method: its slot
 		if pe := sup.lookup(m.Name); pe != nil && pe.M.Private && !staticPrivate(pe.M) {
+			return false
+		}
+	}
+	for _, inc := range m.Owner.Includes { // or of an included module's (UnpackStrategy::GenericUnar#extract_to_dir)
+		if inc.Mod == nil {
+			continue
+		}
+		if pe := inc.Mod.lookup(m.Name); pe != nil && pe.M.Private && pe.M != m && !staticPrivate(pe.M) {
 			return false
 		}
 	}

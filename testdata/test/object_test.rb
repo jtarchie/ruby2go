@@ -5494,6 +5494,53 @@ module ObjectTests
     include ObjVia
   end
 
+  # a module_function's call to another dispatches on self: an includer's override runs (Homebrew's Utils::Curl
+  # curl_download calling CurlDownloadStrategy#curl)
+  module ObjFetchUtil
+    module_function
+
+    #: (String) -> String
+    def get(url) = "get #{url}"
+
+    #: (String) -> String
+    def download(url) = get(url) + "!"
+  end
+
+  class ObjFetcher
+    include ObjFetchUtil
+
+    #: (String) -> String
+    def get(url) = "auth " + super
+
+    #: () -> String
+    def fetch = download("u")
+  end
+
+  # an includer's private override of a module's private method runs from the module's other methods
+  # (Homebrew's UnpackStrategy::GenericUnar#extract_to_dir)
+  module ObjUnpack
+    #: (String) -> String
+    def extract(to) = "#{extract_to_dir(to)}!"
+
+    private
+
+    #: (String) -> String
+    def extract_to_dir(to) = "base #{to}"
+  end
+
+  class ObjUnar
+    include ObjUnpack
+
+    private
+
+    #: (String) -> String
+    def extract_to_dir(to) = "unar #{to}"
+  end
+
+  class ObjPlainUnpack
+    include ObjUnpack
+  end
+
   module ObjUtil
     extend self
 
@@ -5565,6 +5612,8 @@ module ObjectTests
       assert_equal "hey!", ObjCrier.shout("HEY")
       assert_equal ["a", ObjMacVer], [ObjMacVer.new("a").strip.to_s, ObjMacVer.new("b").strip.class]
       assert_equal ["base+mixin", [ObjSayKid, ObjVia, ObjSayBase, ObjSay]], [ObjSayKid.new.say, ObjSayKid.ancestors.take(4)]
+      assert_equal ["auth get u!", "get v!"], [ObjFetcher.new.fetch, ObjFetchUtil.download("v")]
+      assert_equal ["unar d!", "base e!"], [ObjUnar.new.extract("d"), ObjPlainUnpack.new.extract("e")]
     end
 
     def test_extend_self_and_constant_singleton

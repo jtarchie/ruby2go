@@ -20,7 +20,7 @@ import (
 	"github.com/jtarchie/ruby2go"
 )
 
-const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file | -trace [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [traced args...]
+const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [traced args...]
        rb2go run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [args...]
        rb2go gen [-I dir]... [-main file | -trace [-rubyopt opt]...] main.rb [traced args...] > main.go
        rb2go test [-I dir]... [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
@@ -62,6 +62,10 @@ func main() {
 		main:    fs.String("main", "", "the file is a traced entry (the requires MRI loaded) and this is the program it runs (decisions 197, 288)"),
 		trace:   fs.Bool("trace", false, "run the program once under MRI with its args (it EXECUTES) and compile what it loaded (decision 296)"),
 	}
+	fs.Func("trace-also", "another `args` list to trace, space-separated: its loads join the compile, for one binary that serves several commands (repeatable)", func(a string) error {
+		opts.also = append(opts.also, strings.Fields(a))
+		return nil
+	})
 	fs.Func("rubyopt", "an MRI option for the -trace run, as the program's launcher passes it (repeatable)", func(o string) error {
 		opts.rubyOpts = append(opts.rubyOpts, o)
 		return nil
@@ -172,17 +176,18 @@ type buildOpts struct {
 	race     *bool
 	gcflags  *string
 	work     *bool
-	main     *string  // -main: the file is a traced entry and this its program (decision 288)
-	trace    *bool    // -trace: compile what a run of the file with args loaded (decision 296)
-	rubyOpts []string // -rubyopt
-	args     []string // the program's args
-	loadPath []string // -I
+	main     *string    // -main: the file is a traced entry and this its program (decision 288)
+	trace    *bool      // -trace: compile what a run of the file with args loaded (decision 296)
+	rubyOpts []string   // -rubyopt
+	args     []string   // the program's args
+	also     [][]string // -trace-also
+	loadPath []string   // -I
 }
 
 // compileFile is the CLI's compile: a traced entry with -main (decision 288), else a program.
 func compileFile(ctx context.Context, file string, src []byte, opts buildOpts) ([]byte, []string, error) {
 	if opts.trace != nil && *opts.trace {
-		return rb2go.CompileTrace(ctx, file, opts.args, opts.rubyOpts, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+		return rb2go.CompileTrace(ctx, file, append([][]string{opts.args}, opts.also...), opts.rubyOpts, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
 	}
 	if opts.main != nil && *opts.main != "" {
 		return rb2go.CompileTraced(ctx, file, src, *opts.main, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed

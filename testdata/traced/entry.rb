@@ -2,3 +2,4 @@
 require "traced_req"
 require "cmds/info"
 require "traced_late"
+require "traced_argv"

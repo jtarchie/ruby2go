@@ -244,6 +244,19 @@ func (f *fctx) splitKeywordArgs(m *Method, args []parser.Node) ([]parser.Node, *
 			f.errorf(el, "unsupported keyword argument")
 		}
 	}
+	if len(kw.splats) > 1 { // `**a, k: v, **b` is one `**{**a, k: v, **b}`: later keys win, in order, as MRI's (CurlDownloadStrategy#curl's super)
+		at := slices.Index(kw.all, kw.splats[0])
+		first := kw.splats[0].(*parser.AssocSplatNode)
+		rest := slices.Clone(kw.all[at:])
+		for _, el := range rest {
+			if a, ok := el.(*parser.AssocNode); ok {
+				delete(kw.named, a.Key.(*parser.SymbolNode).Unescaped.Value) //nolint:forcetypeassert // checked in the loop above
+				kw.order = slices.DeleteFunc(kw.order, func(o *parser.AssocNode) bool { return o == a })
+			}
+		}
+		merged := &parser.AssocSplatNode{Location: first.Location, Value: &parser.HashNode{Location: first.Location, Elements: rest}}
+		kw.splats, kw.all = []parser.Node{merged}, append(slices.Clone(kw.all[:at]), merged)
+	}
 	return args[:len(args)-1], kw
 }
 

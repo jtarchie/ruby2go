@@ -1,6 +1,7 @@
 # load_path: lib
 # env: TRACED_SPAWN=1
 # env: TRACED_LATE=1
+# args: argv
 require_relative "bundle/bundler/setup" # its $LOAD_PATH edits are the trace's; it compiles to nothing (decision 296)
 require "traced_req"
 require "cmds/info"
@@ -21,3 +22,4 @@ if ENV["TRACED_LATE"] # unset in TestTraceRun's trace: compiled from main's own 
   require "traced_late"
   p TracedLate.name
 end
+p TracedReq.require?("traced_argv"), TracedArgv.name if ARGV.first == "argv"

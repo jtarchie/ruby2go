@@ -1,20 +1,5 @@
 #!/bin/bash
-# host: for each targets.txt line, `brew <line>` under MRI (unpatched, fork mode) and under work/<name>-bin, in one
-# container so both read the same API download; prints ok/FAIL per target, diffs in work/diff-<line>.txt.
-# usage: ./check info
+# host: each targets.txt line under MRI (unpatched, fork mode) and through work/brew-bin, in one container so both read
+# the same API download; ok/FAIL per line, diffs in work/diff-<line>.txt.
 cd "$(dirname "$0")"
-docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
-while IFS= read -r line; do export "$line"; done < /w/env.txt
-cd /home/linuxbrew
-B=/home/linuxbrew/.linuxbrew/bin/brew
-$B info wget > /dev/null 2>&1 # download the API once: its banner prints only then
-fail=0
-while IFS= read -r t || [ -n "$t" ]; do
-  s=${t// /_}
-  # shellcheck disable=SC2086
-  HOMEBREW_SPAWN_SYSTEM= $B $t > /tmp/mri.txt 2>&1; echo "exit $?" >> /tmp/mri.txt
-  # shellcheck disable=SC2086
-  RB2GO_BACKTRACE=1 timeout 300 /w/work/'"$1"'-bin $t > /tmp/rb.txt 2>&1; echo "exit $?" >> /tmp/rb.txt
-  if diff /tmp/mri.txt /tmp/rb.txt > "/w/work/diff-$s.txt"; then echo "ok   brew $t"; else echo "FAIL brew $t"; fail=1; fi
-done < /w/targets.txt
-exit $fail'
+docker run --rm -v "$PWD:/w" rb2go-brew-dev /w/tools/in-container.sh check

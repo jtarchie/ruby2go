@@ -246,6 +246,7 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 		c.errorAt(inc.srcPos, "%s is not a module", mod.RubyName)
 	}
 	inc.Mod = mod
+	mod.includers = append(mod.includers, cls)
 	if len(inc.args) == 0 && mod.RubyName == "Enumerable" {
 		if at := c.sorbetElem(cls); at != nil { // Sorbet's `Elem = type_member { { fixed: T } }` is Enumerable's T (decision 196)
 			inc.args = []rbs.Type{at}

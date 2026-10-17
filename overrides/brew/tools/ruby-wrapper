@@ -1,22 +1,33 @@
 #!/bin/bash
-# bin/brew runs this as its Ruby (installed by ./host). brew.rb goes through `rb2go run -trace`; anything else, a nested
-# run under rb2go, or HOMEBREW_RB2GO_MRI=1 (brew.sh passes on only HOMEBREW_*) goes to the real Ruby beside it (decision 296).
+# bin/brew runs this as its Ruby (tools/install-wrapper puts it there). brew.rb goes through `rb2go run -trace`; anything
+# else, a nested run under rb2go, or HOMEBREW_RB2GO_MRI=1 (brew.sh passes on only HOMEBREW_*) goes to the real Ruby
+# beside it (decision 296).
 real="$(dirname "$0")/ruby.real"
-export HOMEBREW_NO_BOOTSNAP=1 HOMEBREW_SPAWN_SYSTEM=1 # as env.txt: bootsnap caches MRI's loads; Go cannot fork
+export HOMEBREW_NO_BOOTSNAP=1 HOMEBREW_SPAWN_SYSTEM=1 # bootsnap caches MRI's loads; Go cannot fork
 [[ -n "$HOMEBREW_RB2GO_RUBY" ]] && exec "$real" "$@"
-[[ -n "$HOMEBREW_RB2GO_MRI" ]] && exec "$real" ${HOMEBREW_RB2GO_MRI_REQUIRE:+-r"$HOMEBREW_RB2GO_MRI_REQUIRE"} "$@" # a tracer, for ./hits-style lists
+[[ -n "$HOMEBREW_RB2GO_MRI" ]] && exec "$real" ${HOMEBREW_RB2GO_MRI_REQUIRE:+-r"$HOMEBREW_RB2GO_MRI_REQUIRE"} "$@" # a tracer, for ./hits
 raw=() opts=()
 for a in "$@"; do [[ "$a" == -* ]] || break; raw+=("$a") opts+=(-rubyopt "$a"); done # brew.sh's -W1 --disable=...
 [[ "${@:${#raw[@]}+1:1}" == */Homebrew/brew.rb ]] || exec "$real" "$@"
 shift "${#raw[@]}"
+if [[ -n "$HOMEBREW_RB2GO_BIN" && -x "$HOMEBREW_RB2GO_BIN" ]]; then # built already: run it
+  exec "$HOMEBREW_RB2GO_BIN" "${@:2}"
+fi
 for v in ${!HOMEBREW_RB2GO_@}; do export "${v#HOMEBREW_}=${!v}"; done # HOMEBREW_RB2GO_GEM_WARNINGS=1 reaches rb2go
 export RB2GO_RUBY="$real" HOMEBREW_RB2GO_RUBY="$real" # rb2go's MRI; a nested bin/brew keeps only the second
-go=$(PATH="$HOMEBREW_PATH" command -v go) || { echo "rb2go wrapper: no go on HOMEBREW_PATH" >&2; exit 1; }
-export PATH="$PATH:${go%/*}" # rb2go runs go build; appended, so brew's own lookups are unchanged
-rb2go="${TMPDIR:-/tmp}/rb2go-brew-host"
-"$go" build -C "RB2GO_REPO" -o "$rb2go" ./cmd/rb2go || exit 1 # go run's build cache, without its cwd change
+also=()
+while IFS= read -r line; do [[ -n "$line" ]] && also+=(-trace-also "$line"); done <<< "$RB2GO_ALSO" # one binary, several commands
+rb2go=$RB2GO_EXE
+if [[ -z "$rb2go" || -n "$RB2GO_BIN" || "${RB2GO_CMD:-run}" != gen ]]; then # go builds the program (and rb2go, from its checkout)
+  go=$(PATH="$HOMEBREW_PATH:$PATH" command -v go) || { echo "rb2go wrapper: no go on PATH" >&2; exit 1; }
+  export PATH="$PATH:${go%/*}" # appended, so brew's own lookups are unchanged
+fi
+if [[ -z "$rb2go" ]]; then
+  rb2go="${TMPDIR:-/tmp}/rb2go-brew-host"
+  "$go" build -C "RB2GO_REPO" -o "$rb2go" ./cmd/rb2go || exit 1 # go run's build cache, without its cwd change
+fi
 if [[ -n "$RB2GO_BIN" ]]; then # HOMEBREW_RB2GO_BIN=path: build once (traced with these args), then rerun it
-  [[ -x "$RB2GO_BIN" ]] || "$rb2go" build -trace -o "$RB2GO_BIN" $RB2GO_FLAGS "${opts[@]}" "$@" || exit 1
+  "$rb2go" build -trace -o "$RB2GO_BIN" $RB2GO_FLAGS "${also[@]}" "${opts[@]}" "$@" || exit 1
   exec "$RB2GO_BIN" "${@:2}"
 fi
-exec "$rb2go" "${RB2GO_CMD:-run}" -trace $RB2GO_FLAGS "${opts[@]}" "$@" # HOMEBREW_RB2GO_FLAGS=-work keeps main.go; HOMEBREW_RB2GO_CMD=gen prints it
+exec "$rb2go" "${RB2GO_CMD:-run}" -trace $RB2GO_FLAGS "${also[@]}" "${opts[@]}" "$@" # FLAGS=-work keeps main.go; CMD=gen prints it
