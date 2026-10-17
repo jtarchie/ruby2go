@@ -11,6 +11,9 @@ class File < Object
   #: (String, ?(String | Integer | nil), ?Integer?, **untyped) -> File
   def self.new(path, mode = nil, perm = nil, **opts)
     m = mode.nil? ? opts.fetch(:mode, "r") : mode
+    if opts[:newline] && (opts[:binmode] || (m.is_a?(String) && m.split(":").first.to_s.include?("b")))
+      raise ArgumentError, "newline decorator with binary mode"
+    end
     extra = __int(opts.fetch(:flags, 0))
     return __new_flags(path, m | extra, perm || 0o666) if m.is_a?(Integer)
 
@@ -68,9 +71,16 @@ class File < Object
     access, spec, _ := strings.Cut(string(mode), ":")
     bin := strings.ContainsRune(access, 'b')
     access = strings.NewReplacer("b", "", "t", "").Replace(access)
+    excl := strings.HasPrefix(access, "w") && strings.HasSuffix(access, "x") // "wx": O_EXCL, only with w
+    if excl {
+      access = strings.TrimSuffix(access, "x")
+    }
     flag, ok := flags[access]
     if !ok {
       panic(NewArgumentError(Ref("invalid access mode " + mode)))
+    }
+    if excl {
+      flag |= os.O_EXCL
     }
     var withEnc func(*File)
     if spec != "" {
@@ -164,7 +174,12 @@ class File < Object
   # read(path, length, offset): at most length bytes from offset ("" past the end, where MRI answers nil: ponytail, a String? result would make every File.read optional);
   # options (encoding:, mode:) are accepted and ignored: Strings are UTF-8 bytes (decision 136).
   #: (String, ?Integer?, ?Integer?, **untyped) -> String
-  def self.read(path, length = nil, offset = nil, **_opts)
+  def self.read(path, length = nil, offset = nil, **opts)
+    raise ArgumentError, "negative offset #{offset} given" if offset && offset < 0
+    raise ArgumentError, "negative length #{length} given" if length && length < 0
+
+    mode = opts[:mode]
+    raise IOError, "not opened for reading" if !opts.key?(:open_args) && mode.is_a?(String) && mode.start_with?("w", "a") && !mode.include?("+")
     return __read_all(path) if length.nil? && offset.nil?
 
     __read_at(path, length || -1, offset || 0)
@@ -322,6 +337,13 @@ class File < Object
     return String(p)
   }
 
+  #: (String, String?) -> String
+  def self.__realpath_2(path, dir)
+    return realpath(path) if dir.nil? || path.start_with?("/")
+
+    realpath(File.join(dir, path))
+  end
+
   #: (String) -> [String, String]
   def self.split(path) = [dirname(path), basename(path)]
 
@@ -434,30 +456,25 @@ class File < Object
         panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(p) + " into String"))))
       }
       s := string(str)
-      switch {
-      case i == 0:
-      case strings.HasSuffix(out, "/"):
-        s = strings.TrimLeft(s, "/")
-      case !strings.HasPrefix(s, "/"):
-        s = "/" + s
+      if strings.IndexByte(s, 0) >= 0 {
+        panic(NewArgumentError(Ref(String("string contains null byte"))))
       }
-      out += s
+      switch { // MRI keeps the right part's separators and drops the left's
+      case i == 0:
+        out = s
+      case strings.HasPrefix(s, "/"):
+        out = strings.TrimRight(out, "/") + s
+      case strings.HasSuffix(out, "/"):
+        out += s
+      default:
+        out += "/" + s
+      }
     }
     return String(out)
   }
 
   #: (String) -> String
-  def self.expand_path(path) = %x{
-    p := string(path)
-    if p == "~" || strings.HasPrefix(p, "~/") {
-      p = os.Getenv("HOME") + p[1:]
-    }
-    abs, err := filepath.Abs(p)
-    if err != nil {
-      panic(rbSysErr(err, "rb_file_expand_path", p))
-    }
-    return String(abs)
-  }
+  def self.expand_path(path) = %x{ String(rbExpandPath(string(path))) }
 
   # A relative path against dir (itself expanded, so it may start with ~); nil dir is the working directory.
   #: (String, String?) -> String
@@ -505,6 +522,7 @@ class File < Object
   # Binary from here on: no conversion either way, external encoding ASCII-8BIT.
   #: () -> File
   def binmode = %x{
+    self.rbOpen()
     self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true, raw: self.enc.raw, unread: self.enc.unread}
     if self.r != nil {
       self.r = self.enc.readerFor(self.r)
@@ -514,7 +532,10 @@ class File < Object
   }
 
   #: () -> bool
-  def binmode? = %x{ Boolean(self.enc.bin) }
+  def binmode? = %x{
+    self.rbOpen()
+    return Boolean(self.enc.bin)
+  }
 
   #: () -> String
   def __ext = %x{ String(self.enc.ext) }
@@ -527,10 +548,14 @@ class File < Object
 
   #: (untyped) -> Integer
   def write(x) = %x{
+    self.rbOpen()
+    s := string(rbToS(x))
+    if s == "" { // MRI checks writability only when there is something to write
+      return 0
+    }
     if self.w == nil {
       panic(NewIOError(Ref[String]("not opened for writing")))
     }
-    s := string(rbToS(x))
     if self.conv != nil {
       s = self.conv(s)
     }
@@ -542,11 +567,15 @@ class File < Object
   }
 
   #: () -> bool
-  def sync = %x{ Boolean(self.sync) }
+  def sync = %x{
+    self.rbOpen()
+    return Boolean(self.sync)
+  }
 
   #: (bool) -> bool
   def sync=(on)
     %x{
+    self.rbOpen()
     self.sync = bool(on)
     if self.sync && self.w != nil {
       _ = self.w.Flush()
@@ -575,12 +604,16 @@ class File < Object
 
   # The count of lines gets has read (each_line and readline too); rewind sets it back to 0.
   #: () -> Integer
-  def lineno = %x{ Integer(self.lineno) }
+  def lineno = %x{
+    self.rbReadable()
+    return Integer(self.lineno)
+  }
 
   #: (Integer) -> Integer
   def lineno=(n)
     %x{
-    self.lineno = int(n)
+    self.rbReadable()
+    self.lineno = rbCInt(n)
     return n
     }
   end
@@ -782,10 +815,17 @@ class File < Object
 
   #: () -> File
   def flush = %x{
+    self.rbOpen()
     if self.w != nil {
       _ = self.w.Flush()
     }
     return self
+  }
+
+  #: () -> self
+  def dup = %x{
+    self.rbOpen()
+    return rbDup(self)
   }
 
   #: () -> nil
@@ -974,11 +1014,10 @@ class Dir < Object
   #: (String?) -> String
   def self.__home_1(name) = %x{
     if name == nil {
-      if h := os.Getenv("HOME"); h != "" {
+      if h, ok := os.LookupEnv("HOME"); ok {
         return String(h)
       }
-      h, _ := os.UserHomeDir()
-      return String(h)
+      return String(rbHome(""))
     }
     u, err := user.Lookup(string(*name))
     if err != nil {
@@ -989,14 +1028,10 @@ class Dir < Object
 
   #: () -> String
   def self.home = %x{
-    if h := os.Getenv("HOME"); h != "" {
+    if h, ok := os.LookupEnv("HOME"); ok {
       return String(h)
     }
-    h, err := os.UserHomeDir()
-    if err != nil {
-      panic(NewArgumentError(Ref(String("couldn't find login name -- expanding '~'"))))
-    }
-    return String(h)
+    return String(rbHome(""))
   }
 
   #: () -> String
@@ -1005,6 +1040,9 @@ class Dir < Object
   #: (String) -> bool
   def self.empty?(path) = %x{
     es, err := os.ReadDir(string(path))
+    if errors.Is(err, fs.ErrNotExist) {
+      panic(rbSysErr(err, "rb_dir_s_empty_p", string(path)))
+    }
     return Boolean(err == nil && len(es) == 0)
   }
 
@@ -1097,9 +1135,9 @@ class Dir < Object
 
   #: (String) -> Integer
   def self.rmdir(path) = %x{
-    err := os.Remove(string(path))
+    err := syscall.Rmdir(string(path)) // os.Remove would unlink a file too
     if err != nil {
-      panic(rbSysErr(err, "rb_dir_s_rmdir", string(path)))
+      panic(rbSysErr(err, "dir_s_rmdir", string(path)))
     }
     return 0
   }

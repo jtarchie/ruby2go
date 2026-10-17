@@ -7,11 +7,70 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 )
+
+// rbHome is `~` and `~name`: HOME (which must be absolute) or the passwd entry when HOME is unset, as MRI's rb_default_home_dir.
+func rbHome(name string) string {
+	if name != "" {
+		u, err := user.Lookup(name)
+		if err != nil {
+			panic(NewArgumentError(Ref(String("user " + name + " doesn't exist"))))
+		}
+		return u.HomeDir
+	}
+	h, ok := os.LookupEnv("HOME")
+	if !ok {
+		u, err := user.Current()
+		if err != nil {
+			panic(NewArgumentError(Ref(String("couldn't find login name -- expanding '~'"))))
+		}
+		return u.HomeDir
+	}
+	if !strings.HasPrefix(h, "/") {
+		panic(NewArgumentError(Ref(String("non-absolute home"))))
+	}
+	return h
+}
+
+// rbExpandPath is File.expand_path without a base: `~` expanded, `.`/`..` and repeated `/` folded. A leading run of `/` stays (POSIX leaves `//` implementation-defined) until a `..` climbs past it, as in MRI.
+func rbExpandPath(p string) string {
+	if strings.IndexByte(p, 0) >= 0 {
+		panic(NewArgumentError(Ref(String("string contains null byte"))))
+	}
+	switch {
+	case strings.HasPrefix(p, "~"):
+		name, rest, _ := strings.Cut(p[1:], "/")
+		p = rbHome(name) + "/" + rest
+	case !strings.HasPrefix(p, "/"):
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(rbSysErr(err, "rb_file_expand_path", p))
+		}
+		p = wd + "/" + p
+	}
+	rest := strings.TrimLeft(p, "/")
+	lead := p[:len(p)-len(rest)]
+	var parts []string
+	for _, s := range strings.Split(rest, "/") {
+		switch s {
+		case "", ".":
+		case "..":
+			if len(parts) == 0 {
+				lead = "/"
+			} else {
+				parts = parts[:len(parts)-1]
+			}
+		default:
+			parts = append(parts, s)
+		}
+	}
+	return lead + strings.Join(parts, "/")
+}
 
 // rbSysErr is MRI's Errno exception for a failed call: "<strerror> @ <MRI function> - <path>".
 func rbSysErr(err error, fn, path string) any {
@@ -29,6 +88,8 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_EISDIR(msg("Is a directory"))
 	case errors.Is(err, syscall.ENOTDIR):
 		return NewErrno_ENOTDIR(msg("Not a directory"))
+	case errors.Is(err, syscall.EINVAL):
+		return NewErrno_EINVAL(msg("Invalid argument"))
 	case errors.Is(err, syscall.EBADF):
 		return NewErrno_EBADF(Ref(String("Bad file descriptor")))
 	case errors.Is(err, syscall.ENOTTY):
@@ -92,6 +153,9 @@ func rbDirname(path string) string {
 		return "."
 	}
 	if d := strings.TrimRight(p[:i], "/"); d != "" {
+		if strings.HasPrefix(d, "//") { // MRI folds a leading run of / to one
+			d = "/" + strings.TrimLeft(d, "/")
+		}
 		return d
 	}
 	return "/"
@@ -114,8 +178,14 @@ func rbExtname(path string) string {
 // directories only. Each directory's entries are visited in sorted order,
 // a match before its subtree, as MRI's sort: true default gives.
 func rbGlob(pattern string) []string {
+	if strings.IndexByte(pattern, 0) >= 0 {
+		panic(NewArgumentError(Ref(String("nul-separated glob pattern is deprecated"))))
+	}
 	var out []string
 	for _, p := range rbBraces(pattern) {
+		if p == "" {
+			continue
+		}
 		dir, prefix := ".", ""
 		if strings.HasPrefix(p, "/") {
 			dir, prefix, p = "/", "/", strings.TrimLeft(p, "/")
@@ -189,8 +259,12 @@ func rbGlobMatch(seg, name string) bool {
 
 func rbGlobWalk(dir, prefix string, segs []string, out *[]string) {
 	seg, rest := segs[0], segs[1:]
-	if seg == "" { // a trailing slash: dir itself, already known to be one
-		*out = append(*out, prefix)
+	if seg == "" {
+		if len(rest) > 0 { // `a//b`: MRI keeps the doubled slash
+			rbGlobWalk(dir, prefix+"/", rest, out)
+			return
+		}
+		*out = append(*out, prefix) // a trailing slash: dir itself, already known to be one
 		return
 	}
 	if seg != "**" && !strings.ContainsAny(seg, "*?[\\") {
@@ -205,6 +279,9 @@ func rbGlobWalk(dir, prefix string, segs []string, out *[]string) {
 	es, err := os.ReadDir(dir)
 	if err != nil {
 		return
+	}
+	if seg != "**" && strings.HasPrefix(seg, ".") && rbGlobMatch(seg, ".") { // a dot pattern matches `.` (never `..`), as MRI 3.1+
+		rbGlobStep(dir, prefix+".", true, rest, out)
 	}
 	for _, e := range es { // ReadDir sorts by name
 		name := e.Name()
@@ -241,6 +318,9 @@ func rbGlobStep(p, shown string, isDir bool, rest []string, out *[]string) {
 	case len(rest) == 0:
 		*out = append(*out, shown)
 	case isDir:
+		if len(rest) == 2 && rest[0] == "**" && rest[1] == "" { // `a/**/` matches a/ itself, zero directories deep
+			*out = append(*out, shown+"/")
+		}
 		rbGlobWalk(p, shown+"/", rest, out)
 	}
 }

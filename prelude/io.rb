@@ -109,14 +109,39 @@ class IO < Object
   # An IO over descriptor fd; closing it closes fd unless `autoclose: false` (then fd stays the caller's).
   # mode: a String, or the `mode:` keyword when it is nil; other options (binmode:, encodings) are accepted and ignored (ponytail: honor them when a program needs one).
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
-  def self.new(fd, mode = nil, _perm = nil, **opts)
-    m = mode || opts[:mode]&.to_s || "r"
-    return __for_fd(fd, m) unless opts[:autoclose] == false
+  def self.new(fd, mode = nil, perm = :__none, **opts)
+    raise ArgumentError, "wrong number of arguments (given 3, expected 1..2)" unless perm == :__none
 
-    # a dup: closing it, by close or by Go's finalizer on the os.File, leaves the caller's descriptor alone
-    io = __for_fd(__dup_fd(fd), m)
-    io.__borrowed = true
+    raise ArgumentError, "invalid access mode " if mode == ""
+
+    __check_mode_opts(mode, opts)
+    m = mode || opts[:mode]&.to_s || "" # none: the descriptor's own access mode
+    io = if opts[:autoclose] == false
+      # a dup: closing it, by close or by Go's finalizer on the os.File, leaves the caller's descriptor alone
+      b = __for_fd(__dup_fd(fd), m)
+      b.__borrowed = true
+      b
+    else
+      __for_fd(fd, m)
+    end
+    io.binmode if m.split(":").first.to_s.include?("b") || opts[:binmode]
     io
+  end
+
+  #: (String?, Hash[Symbol, untyped]) -> void
+  def self.__check_mode_opts(mode, opts)
+    return unless mode # MRI's rb_io_extract_modeenc: what the mode string says no option may say again
+
+    raise ArgumentError, "mode specified twice" unless opts[:mode].nil?
+
+    access, enc = mode.split(":", 2)
+    if enc && (opts.key?(:encoding) || opts.key?(:external_encoding) || opts.key?(:internal_encoding))
+      raise ArgumentError, "encoding specified twice"
+    end
+    a = access.to_s
+    raise ArgumentError, "binmode specified twice" if a.include?("b") && opts.key?(:binmode)
+    raise ArgumentError, "textmode specified twice" if a.include?("t") && opts.key?(:textmode)
+    raise ArgumentError, "both textmode and binmode specified" if (a.include?("b") && opts.key?(:textmode)) || (a.include?("t") && opts.key?(:binmode))
   end
 
   #: (Integer, String) -> IO
@@ -147,7 +172,7 @@ class IO < Object
 
   # IO.open with a block yields the new IO and closes it after, answering the block's value; without one it is IO.new.
   #: [T] (Integer, ?String?, ?untyped, **untyped) { (IO) -> T } -> T
-  def self.open(fd, mode = nil, perm = nil, **opts)
+  def self.open(fd, mode = nil, perm = :__none, **opts)
     io = new(fd, mode, perm, **opts)
     begin
       yield io
@@ -157,10 +182,10 @@ class IO < Object
   end
 
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
-  def self.__open_enum(fd, mode = nil, perm = nil, **opts) = new(fd, mode, perm, **opts)
+  def self.__open_enum(fd, mode = nil, perm = :__none, **opts) = new(fd, mode, perm, **opts)
 
   #: (Integer, ?String?, ?untyped, **untyped) -> IO
-  def self.for_fd(fd, mode = nil, perm = nil, **opts) = new(fd, mode, perm, **opts)
+  def self.for_fd(fd, mode = nil, perm = :__none, **opts) = new(fd, mode, perm, **opts)
 
   #: (String, ?Integer?, ?Integer?, **untyped) -> String
   def self.read(path, length = nil, offset = nil, **opts) = File.read(path, length, offset, **opts)
@@ -367,6 +392,12 @@ class IO < Object
   #: () -> bool
   def closed? = %x{ Boolean(self.closed) }
 
+  #: () -> self
+  def dup = %x{
+    self.rbOpen()
+    return rbDup(self)
+  }
+
   #: () -> nil
   def close_read = %x{ self.rbCloseHalf(true) }
 
@@ -385,12 +416,16 @@ class IO < Object
   }
 
   #: () -> Integer
-  def lineno = %x{ Integer(self.lineno) }
+  def lineno = %x{
+    _ = self.rbReader()
+    return Integer(self.lineno)
+  }
 
   #: (Integer) -> Integer
   def lineno=(n)
     %x{
-    self.lineno = int(n)
+    _ = self.rbReader()
+    self.lineno = rbCInt(n)
     return n
     }
   end
@@ -514,6 +549,7 @@ class IO < Object
 
   #: () -> IO
   def binmode = %x{
+    self.rbOpen()
     self.enc = rbIOEnc{ext: "ASCII-8BIT", bin: true, raw: self.enc.raw, unread: self.enc.unread}
     if self.own && self.r != nil {
       self.r = self.enc.readerFor(self.r)
@@ -526,7 +562,10 @@ class IO < Object
   }
 
   #: () -> bool
-  def binmode? = %x{ Boolean(self.enc.bin) }
+  def binmode? = %x{
+    self.rbOpen()
+    return Boolean(self.enc.bin)
+  }
 
   #: () -> String
   def __ext = %x{ String(self.enc.ext) }
@@ -580,6 +619,9 @@ class ENVClass < Object
     if value == nil {
       _ = os.Unsetenv(string(name))
     } else {
+      if name == "" || strings.Contains(string(name), "=") {
+        panic(NewErrno_EINVAL(Ref(String("Invalid argument - setenv(" + string(name) + ")"))))
+      }
       _ = os.Setenv(string(name), string(*value))
     }
     if name == "TZ" {
@@ -631,6 +673,12 @@ class ENVClass < Object
 
   #: () -> String
   def inspect = to_h.inspect
+
+  #: () -> String
+  def to_s = "ENV"
+
+  #: () -> self
+  def dup = raise(TypeError, "Cannot dup ENV, use ENV.to_h to get a copy of ENV as a hash")
 
   #: () { (String, String) -> void } -> void
   def each_pair
@@ -768,8 +816,9 @@ class ENVClass < Object
 
   #: (Hash[String, String]) -> self
   def replace(other)
-    to_h.each { |k, _v| self[k] = nil unless other.key?(k) }
     update(other)
+    to_h.each { |k, _v| self[k] = nil unless other.key?(k) }
+    self
   end
 
   #: () -> self

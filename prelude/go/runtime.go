@@ -136,6 +136,20 @@ func rbFlushIfTTY() {
 
 var rbStdin = bufio.NewReader(os.Stdin)
 
+func (self *File) rbOpen() {
+	if self.f == nil {
+		panic(NewIOError(Ref[String]("closed stream")))
+	}
+}
+
+// rbCInt is MRI's NUM2INT: a value past a C int is a RangeError.
+func rbCInt(n Integer) int {
+	if n > math.MaxInt32 || n < math.MinInt32 {
+		panic(NewRangeError(Ref(String("integer " + strconv.FormatInt(int64(n), 10) + " too big to convert to 'int'"))))
+	}
+	return int(n)
+}
+
 func (self *File) rbReadable() {
 	if self.f == nil {
 		panic(NewIOError(Ref[String]("closed stream")))

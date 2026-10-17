@@ -551,6 +551,11 @@ func (prog *program) build(ctx context.Context, r *result, keep bool) (string, f
 	if err != nil {
 		return "", func() {}, fmt.Errorf("temp module: %w", err)
 	}
+	// macOS's TMPDIR is under the /var -> /private/var symlink; specs compare tmp() against realpath and getcwd answers, which MRI's mspec temp dir (under the checkout) never meets.
+	real, rerr := filepath.EvalSymlinks(dir)
+	if rerr == nil {
+		dir = real
+	}
 	cleanup := func() {
 		if keep {
 			fmt.Fprintln(os.Stderr, "WORK="+dir)

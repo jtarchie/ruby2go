@@ -75,7 +75,17 @@ var rbShellWords = map[string]bool{
 // rbCommand builds a system/backtick command as MRI does: several
 // arguments exec directly, one string goes through sh -c when it has
 // shell syntax and is split on whitespace otherwise.
+// rbNoNul is MRI's StringValueCStr check.
+func rbNoNul(s string) {
+	if strings.IndexByte(s, 0) >= 0 {
+		panic(NewArgumentError(Ref(String("string contains null byte"))))
+	}
+}
+
 func rbCommand(cmd string, args []String) *exec.Cmd {
+	for _, s := range append([]String{String(cmd)}, args...) {
+		rbNoNul(string(s))
+	}
 	if len(args) > 0 {
 		rest := make([]string, len(args))
 		for i, a := range args {
@@ -365,7 +375,15 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			env = map[string]any{}
 			hh := h._ToAny()
 			for _, k := range hh.keys {
-				env[string(rbToS(k))] = rbUnbox(hh.vals[k])
+				name, v := string(rbToS(k)), rbUnbox(hh.vals[k])
+				rbNoNul(name)
+				if strings.Contains(name, "=") {
+					panic(NewArgumentError(Ref(String("environment name contains a equal : " + name))))
+				}
+				if s, ok := v.(String); ok {
+					rbNoNul(string(s))
+				}
+				env[name] = v
 			}
 			args = args[1:]
 		}
@@ -385,6 +403,7 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			panic(NewArgumentError(Ref(String("wrong first argument"))))
 		}
 		argv0 = string(rbToS(pair[1]))
+		rbNoNul(argv0)
 		c = rbCommand(string(rbToS(pair[0])), rest)
 		if len(rest) == 0 {
 			c = exec.Command(string(rbToS(pair[0]))) //nolint:gosec // running the program's command is the point
@@ -413,8 +432,13 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 				if v != nil && v != Boolean(false) {
 					c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 				}
-			case "unsetenv_others":
-				clean = rbTruthy(v)
+			case "unsetenv_others", "close_others":
+				if _, ok := v.(Boolean); !ok && v != nil {
+					panic(NewArgumentError(Ref(String("expected true or false as " + string(k) + ": " + string(rbInspect(v))))))
+				}
+				if k == "unsetenv_others" {
+					clean = rbTruthy(v)
+				}
 			}
 		}
 	}

@@ -197,4 +197,116 @@ module StdlibHardeningTests
       assert_equal [1], JSON.parse("[1]", unknown_option: 1)
     end
   end
+
+  # #102: ruby/spec core/io, file, dir, env, process argument checks
+  class IOArgumentTest < Minitest::Test
+    def test_closed_streams_raise_ioerror
+      Dir.mktmpdir do |d|
+        path = File.join(d, "x.txt")
+        File.write(path, "a\n")
+        f = File.open(path)
+        f.close
+        r, w = IO.pipe
+        r.close
+        w.close
+        got = [
+          StdlibHardeningTests.raised { f.binmode }, StdlibHardeningTests.raised { f.binmode? }, StdlibHardeningTests.raised { f.lineno },
+          StdlibHardeningTests.raised { f.lineno = 1 }, StdlibHardeningTests.raised { f.write "a" }, StdlibHardeningTests.raised { f.dup },
+          StdlibHardeningTests.raised { f.sync }, StdlibHardeningTests.raised { f.sync = true }, StdlibHardeningTests.raised { f.flush },
+          StdlibHardeningTests.raised { r.binmode }, StdlibHardeningTests.raised { r.binmode? }, StdlibHardeningTests.raised { r.lineno },
+          StdlibHardeningTests.raised { w.lineno = 1 }, StdlibHardeningTests.raised { w.dup }
+        ]
+        assert_equal ["IOError"] * 14, got
+      end
+    end
+
+    def test_write_only_lineno_and_negative_lengths
+      Dir.mktmpdir do |d|
+        path = File.join(d, "x.txt")
+        w = File.open(path, "w")
+        assert_equal ["IOError", "IOError", 0], [StdlibHardeningTests.raised { w.lineno }, StdlibHardeningTests.raised { w.lineno = 2 }, w.write("")]
+        w.close
+        r, pw = IO.pipe
+        assert_equal ["ArgumentError", "ArgumentError"], [StdlibHardeningTests.raised { r.readpartial(-1) }, StdlibHardeningTests.raised { r.read_nonblock(-1) }]
+        r.close
+        pw.close
+        e = begin; IO.read(path, -1, -1); rescue ArgumentError => x; x.message; end
+        assert_equal "negative offset -1 given", e
+        assert_equal "IOError", StdlibHardeningTests.raised { IO.read(path, mode: "w") }
+      end
+    end
+
+    def test_io_new_options_said_twice
+      Dir.mktmpdir do |d|
+        fd = IO.sysopen(File.join(d, "x.txt"), "w")
+        got = [
+          StdlibHardeningTests.raised { IO.new(fd, "r") }, StdlibHardeningTests.raised { IO.new(fd, "w", mode: "w") },
+          StdlibHardeningTests.raised { IO.new(fd, "w:UTF-8", encoding: "UTF-8") }, StdlibHardeningTests.raised { IO.new(fd, "wb", binmode: true) },
+          StdlibHardeningTests.raised { IO.new(fd, "wt", textmode: false) }, StdlibHardeningTests.raised { IO.new(fd, "wb", textmode: true) },
+          StdlibHardeningTests.raised { IO.new(fd, "w", nil) }
+        ]
+        assert_equal ["Errno::EINVAL"] + ["ArgumentError"] * 6, got
+        io = IO.new(fd, "wb")
+        assert_equal true, io.binmode?
+        io.close
+      end
+    end
+
+    def test_file_open_modes
+      Dir.mktmpdir do |d|
+        x = File.join(d, "x.txt")
+        File.open(x, "wx") { |f| f.write("c") }
+        assert_equal "c", File.read(x)
+        assert_equal ["Errno::EEXIST", "ArgumentError", "ArgumentError"],
+          [StdlibHardeningTests.raised { File.open(x, "wx") { 1 } }, StdlibHardeningTests.raised { File.open(x, "rx") { 1 } },
+           StdlibHardeningTests.raised { File.open(x, "rb", newline: :universal) { 1 } }]
+        assert_equal ["Errno::ENOTDIR", "Errno::ENOENT", false, "Errno::EINVAL", "Errno::EINVAL"],
+          [StdlibHardeningTests.raised { Dir.rmdir(x) }, StdlibHardeningTests.raised { Dir.empty?(File.join(d, "nope")) }, Dir.empty?(x),
+           StdlibHardeningTests.raised { File.truncate(x, -1) }, StdlibHardeningTests.raised { File.readlink(x) }]
+      end
+    end
+
+    def test_paths
+      assert_equal ["usr//bin", "usr/bin", "/", "a/", "/a", ""], [File.join("usr/", "//bin"), File.join("usr//", "/bin"), File.join("", ""), File.join("a", ""), File.join("", "a"), File.join("")]
+      assert_equal "ArgumentError", StdlibHardeningTests.raised { File.join("a\0", "b") }
+      assert_equal ["/tmp", "/tmp", "////some/path", "/some/path", "/dir", "/", "/", "/foo"],
+        [File.expand_path("/tmp/"), File.expand_path("/tmp/../../../tmp"), File.expand_path("////some/path"), File.expand_path("/some////path"),
+         File.expand_path("/./dir"), File.expand_path(".", "/"), File.expand_path("///a/../.."), File.dirname("/////foo/bar/")]
+      assert_equal [true, true, "ArgumentError"],
+        [File.expand_path("~#{ENV["USER"]}/a") == "#{Dir.home}/a", File.expand_path("../foo", "~/dir") == "#{Dir.home}/foo",
+         StdlibHardeningTests.raised { File.expand_path("~a_not_existing_user_rb2go") }]
+      Dir.mktmpdir do |d|
+        real = File.realpath(d)
+        Dir.mkdir(File.join(d, "x"))
+        assert_equal true, File.realpath("x", d) == File.join(real, "x")
+      end
+    end
+
+    def test_dir_glob_edges
+      Dir.mktmpdir do |d|
+        Dir.mkdir(File.join(d, "deeply"))
+        Dir.mkdir(File.join(d, "deeply", "nested"))
+        Dir.mkdir(File.join(d, ".dotsubdir"))
+        File.write(File.join(d, ".dotfile"), "")
+        File.write(File.join(d, "deeply", "nested", "f"), "")
+        Dir.chdir(d) do
+          assert_equal [[], [], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir deeply], %w[deeply/ deeply/nested/], ["deeply//nested/f"]],
+            ["", "{}", ".*", ".**", "{,.}*", "deeply/**/", "{deeply//**/f}"].map { |pat| Dir.glob(pat).sort }
+          assert_equal "ArgumentError", StdlibHardeningTests.raised { Dir.glob("a\0b") }
+        end
+      end
+    end
+
+    def test_env_and_spawn_names
+      got = [
+        StdlibHardeningTests.raised { ENV["a=b"] = "x" }, StdlibHardeningTests.raised { ENV[""] = "x" },
+        StdlibHardeningTests.raised { ENV.merge!("" => "c") }, StdlibHardeningTests.raised { ENV["a=b"] = nil },
+        StdlibHardeningTests.raised { Process.spawn("echo\0x") }, StdlibHardeningTests.raised { Process.spawn("echo", "a\0b") },
+        StdlibHardeningTests.raised { Process.spawn({ "A=B" => "x" }, "echo") }, StdlibHardeningTests.raised { Process.spawn("") },
+        StdlibHardeningTests.raised { Process.spawn({}, "true", unsetenv_others: 1) }
+      ]
+      assert_equal ["Errno::EINVAL"] * 3 + ["none"] + ["ArgumentError"] * 3 + ["Errno::ENOENT", "ArgumentError"], got
+      assert_equal ["ENV", "TypeError"], [ENV.to_s, StdlibHardeningTests.raised { ENV.dup }]
+    end
+  end
 end

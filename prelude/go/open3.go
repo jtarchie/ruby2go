@@ -23,7 +23,7 @@ func rbOpen3Cmd(name string, rest []String) *exec.Cmd {
 // rbExecErr maps a failed-to-start command to MRI's Errno message shape ("<strerror> - <cmd>", unlike rbSysErr's File errors).
 func rbExecErr(err error, name string) any {
 	switch {
-	case errors.Is(err, exec.ErrNotFound), errors.Is(err, fs.ErrNotExist):
+	case name == "", errors.Is(err, exec.ErrNotFound), errors.Is(err, fs.ErrNotExist): // Go's "exec: no command" for ""
 		return NewErrno_ENOENT(Ref(String("No such file or directory - " + name)))
 	case errors.Is(err, fs.ErrPermission):
 		return NewErrno_EACCES(Ref(String("Permission denied - " + name)))

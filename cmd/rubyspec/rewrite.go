@@ -168,16 +168,9 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 // first (`before :all { create_mock_dirs }` then `before :each`). Each
 // becomes a def in place, and one hook on the last one's line calls them,
 // the `first` scope's (before :all, after :each) leading. Lines stay put.
-// ponytail: a hook inside a guard block is not grouped with its describe's.
+// A hook inside a guard block this platform keeps is its describe's too, since the guard unwraps into it.
 func (rw *rewriter) chainHooks(stmts []parser.Node, name, first string) {
-	var calls []*parser.CallNode
-	for _, n := range stmts {
-		if c, ok := n.(*parser.CallNode); ok && c.Receiver == nil && c.Name == name {
-			if _, ok := c.Block.(*parser.BlockNode); ok {
-				calls = append(calls, c)
-			}
-		}
-	}
+	calls := rw.hookCalls(stmts, name)
 	if len(calls) < 2 {
 		return
 	}
@@ -209,6 +202,33 @@ func (rw *rewriter) chainHooks(stmts []parser.Node, name, first string) {
 	}
 	_, end := span(calls[len(calls)-1].Location)
 	rw.edits = append(rw.edits, edit{end, end, "; " + name + " { " + strings.Join(append(lead, rest...), "; ") + " }"})
+}
+
+func (rw *rewriter) hookCalls(stmts []parser.Node, name string) []*parser.CallNode {
+	var calls []*parser.CallNode
+	for _, n := range stmts {
+		c, ok := n.(*parser.CallNode)
+		if !ok || c.Receiver != nil || rw.hooks[c] {
+			continue
+		}
+		blk, ok := c.Block.(*parser.BlockNode)
+		if !ok {
+			continue
+		}
+		switch {
+		case c.Name == name:
+			calls = append(calls, c)
+		case guards[c.Name]:
+			var args []parser.Node
+			if c.Arguments != nil {
+				args = c.Arguments.Arguments
+			}
+			if st, ok := blk.Body.(*parser.StatementsNode); ok && st != nil && rw.keep(c.Name, args) {
+				calls = append(calls, rw.hookCalls(st.Body, name)...)
+			}
+		}
+	}
+	return calls
 }
 
 func (rw *rewriter) text(n parser.Node) string {

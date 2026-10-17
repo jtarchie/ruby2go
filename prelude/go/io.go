@@ -298,7 +298,20 @@ func rbIOForFd(fd int, mode string) *IO {
 	if fd <= 2 {
 		return &IO{fd: fd}
 	}
+	// no mode is the descriptor's own; one it was not opened for is MRI's EINVAL (rb_io_initialize checks fcntl F_GETFL)
+	fl, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), syscall.F_GETFL, 0)
+	has := int(fl) & syscall.O_ACCMODE
+	if mode == "" {
+		mode = map[int]string{syscall.O_RDONLY: "r", syscall.O_WRONLY: "w", syscall.O_RDWR: "r+"}[has]
+		if errno != 0 || mode == "" {
+			mode = "r"
+		}
+	}
 	_, access := rbOpenAccess(mode)
+	reads, writes := access == "r" || strings.HasSuffix(access, "+"), access != "r"
+	if errno == 0 && (reads && has == syscall.O_WRONLY || writes && has == syscall.O_RDONLY) {
+		panic(NewErrno_EINVAL(Ref(String("Invalid argument"))))
+	}
 	f := os.NewFile(uintptr(fd), "fd "+strconv.Itoa(fd))
 	switch {
 	case strings.HasSuffix(access, "+"):
@@ -313,6 +326,9 @@ func rbIOForFd(fd int, mode string) *IO {
 // With nonblock, an empty pipe raises IO::EAGAINWaitReadable (a read deadline); without, it waits for some.
 // EOFError at the end, as MRI's read_nonblock and readpartial.
 func rbReadNonblock(self *IO, n int, nonblock bool) String {
+	if n < 0 {
+		panic(NewArgumentError(Ref(String("negative length " + strconv.Itoa(n) + " given"))))
+	}
 	r := *self.rbReader()
 	if n <= 0 {
 		return ""
