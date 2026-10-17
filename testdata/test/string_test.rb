@@ -1635,4 +1635,28 @@ B
       assert_equal 1, out.scan(/too many arguments for format string/).size
     end
   end
+
+  # #102: argument checks, chomp/split edge cases and \+ in a replacement, as MRI's
+  class StringRubySpec102Test < Minitest::Test
+    def test_argument_errors
+      got = [-> { "abc".center(2, "") }, -> { "abc".ljust(9, "") }, -> { "abc".to_i(-1) }, -> { "abc".tr("z-a", "x") }, -> { "abc".count("z-a") }, -> { "abc".squeeze("z-a") }].map do |l|
+        l.call
+        "none"
+      rescue ArgumentError => e
+        e.message
+      end
+      tr = 'invalid range "z-a" in string transliteration'
+      assert_equal ["zero width padding", "zero width padding", "invalid radix -1", tr, tr, tr], got
+    end
+
+    def test_chomp_and_split
+      assert_equal ["abc\r\n", "abc\r", "abc\r", "abc"], ["abc\r\n\r\n".chomp("\n"), "abc\r\r".chomp("\n"), "abc\r".chomp(""), "abc\n\r\n".chomp("")]
+      assert_equal [["1", "2 "], ["1", "2", ""], [""]], [" 1 2 ".split(" ", 2), " 1 2 ".split(" ", 4), "   ".split(" ", -1)]
+      assert_equal [["h", "i", "!", ""], ["h", "i!"], ["h", "i", "!", ""]], ["hi!".split("", -1), "hi!".split("", 2), "hi!".split("", 4)]
+    end
+
+    def test_last_group_in_replacement
+      assert_equal ["<e>llo", "hello", "h<>llo"], ["hello".sub(/(h)?(e)/, '<\+>'), "hello".gsub(/(l)|(o)/, '\+'), "hello".sub(/e/, '<\+>')]
+    end
+  end
 end

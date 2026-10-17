@@ -18,7 +18,11 @@ func rbNumArg(a any) any {
 	case Integer, Float, *Rational:
 		return a
 	}
-	panic(NewTypeError(Ref(String("can't convert " + rbClassName(a) + " into Complex"))))
+	name := rbClassName(a)
+	if a == nil {
+		name = "nil"
+	}
+	panic(NewTypeError(Ref(String("can't convert " + name + " into Complex"))))
 }
 
 // rbNumLevel orders the tower: Integer < Rational < Float.

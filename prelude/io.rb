@@ -994,8 +994,14 @@ module Kernel
   # The calling stack as backtrace lines (decision 189): caller(0) starts at the method that calls it.
   #: (?Integer, ?Integer?) -> Array[String]?
   def caller(start = 1, length = nil) = %x{
+    if start < 0 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative level (%d)", start)))))
+    }
     l := -1
     if length != nil {
+      if *length < 0 {
+        panic(NewArgumentError(Ref(String(fmt.Sprintf("negative size (%d)", *length)))))
+      }
       l = int(*length)
     }
     out := rbCaller(int(start), l)

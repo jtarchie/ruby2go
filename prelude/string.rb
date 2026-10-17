@@ -131,8 +131,15 @@ class String < Object
   # chomp(suffix): that suffix once ("" is MRI's paragraph mode: every trailing newline).
   #: (String) -> String
   def __chomp_1(suffix) = %x{
-    if suffix == "" {
-      return String(strings.TrimRight(string(self), "\\r\\n"))
+    switch suffix {
+    case "": // every trailing \\n or \\r\\n, not a lone \\r
+      s := string(self)
+      for strings.HasSuffix(s, "\\n") {
+        s = strings.TrimSuffix(strings.TrimSuffix(s, "\\n"), "\\r")
+      }
+      return String(s)
+    case "\\n":
+      return String(strings.TrimSuffix(strings.TrimSuffix(string(self), "\\n"), "\\r"))
     }
     return String(strings.TrimSuffix(string(self), string(suffix)))
   }
@@ -342,7 +349,6 @@ class String < Object
 
   #: (String, String) -> String
   def tr(from, to) = %x{
-    // ponytail: a reversed range ("z-a") expands to nothing; MRI raises ArgumentError.
     expand := func(s []rune) []rune {
       var out []rune
       for i := 0; i < len(s); i++ {
@@ -351,6 +357,9 @@ class String < Object
           i++
           out = append(out, s[i])
         case i+2 < len(s) && s[i+1] == '-':
+          if s[i] > s[i+2] {
+            panic(NewArgumentError(Ref(String(fmt.Sprintf("invalid range \\"%c-%c\\" in string transliteration", s[i], s[i+2])))))
+          }
           for r := s[i]; r <= s[i+2]; r++ {
             out = append(out, r)
           }
@@ -406,7 +415,12 @@ class String < Object
   # Base 0 reads a 0b/0o/0x prefix (or a bare leading 0 as octal); a
   # prefix matching the base is skipped. Invalid digits end the number.
   #: (Integer) -> Integer
-  def __to_i_1(base) = %x{ Integer(rbStrToIBase(string(self), int(base))) }
+  def __to_i_1(base) = %x{
+    if base < 0 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("invalid radix %d", base)))))
+    }
+    return Integer(rbStrToIBase(string(self), int(base)))
+  }
 
   #: () -> Integer
   def hex = %x{ Integer(rbStrToIBase(string(self), 16)) }
@@ -575,6 +589,9 @@ class String < Object
   #: (Integer, ?String) -> String
   def center(width, pad = " ") = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
+    if pad == "" {
+      panic(NewArgumentError(Ref(String("zero width padding"))))
+    }
     if n <= 0 {
       return rbStrClone(self)
     }
@@ -584,6 +601,9 @@ class String < Object
   #: (Integer, ?String) -> String
   def ljust(width, pad = " ") = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
+    if pad == "" {
+      panic(NewArgumentError(Ref(String("zero width padding"))))
+    }
     if n <= 0 {
       return rbStrClone(self)
     }
@@ -593,6 +613,9 @@ class String < Object
   #: (Integer, ?String) -> String
   def rjust(width, pad = " ") = %x{
     n := int(width) - utf8.RuneCountInString(string(self))
+    if pad == "" {
+      panic(NewArgumentError(Ref(String("zero width padding"))))
+    }
     if n <= 0 {
       return rbStrClone(self)
     }

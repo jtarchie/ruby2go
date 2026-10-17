@@ -803,8 +803,24 @@ module Enumerable
     var last K
     for x := range self.Each() {
       k := blk(x)
+      alone := false
+      if k != nil {
+        if s, ok := any(*k).(Symbol); ok && strings.HasPrefix(string(s), "_") {
+          switch s {
+          case "_separator":
+            k = nil
+          case "_alone":
+            alone = true
+          default:
+            panic(NewRuntimeError(Ref(String("symbols beginning with an underscore are reserved"))))
+          }
+        }
+      }
       switch {
       case k == nil:
+        cur = nil
+      case alone:
+        out.s = append(out.s, Tuple2[K, *Array[E]]{*k, &Array[E]{s: []E{x}}})
         cur = nil
       case cur != nil && bool(rbEq(last, *k)):
         cur.s = append(cur.s, x)

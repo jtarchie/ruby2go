@@ -6210,4 +6210,80 @@ module ObjectTests
       assert_equal(-1, SystemCallError.instance_method(:initialize).arity)
     end
   end
+
+  # #102: NilClass's operators, TrueClass/FalseClass/NilClass.new, Module name checks, frozen structs and objects
+  class ObjectRubySpec102Test < Minitest::Test
+    Car = Struct.new(:make, :year) #: [String, Integer]
+    class Car
+      def self.name = "A"
+    end
+
+    class Box
+      attr_reader :v #: Integer
+
+      def initialize
+        @v = 1
+      end
+    end
+
+    def test_nil_operators
+      n = nil #: untyped
+      assert_equal [Rational(0, 1), Rational(0, 1), Complex(0, 0), false, true, false, true, nil],
+        [n.to_r, n.rationalize, n.to_c, n & true, n | 1, n | nil, n ^ 2, n =~ /a/]
+    end
+
+    def test_immediate_new_undefined
+      got = [-> { TrueClass.new }, -> { FalseClass.new }, -> { NilClass.new }].map do |l|
+        l.call
+        "none"
+      rescue NoMethodError => e
+        e.message
+      end
+      assert_equal ["undefined method 'new' for class TrueClass", "undefined method 'new' for class FalseClass", "undefined method 'new' for class NilClass"], got
+    end
+
+    def test_module_name_arguments
+      got = [-> { Object.method_defined?(1) }, -> { Object.public_method_defined?(nil) }, -> { Object.private_method_defined?(false) }].map do |l|
+        l.call
+        "none"
+      rescue TypeError => e
+        e.message
+      end
+      assert_equal ["1 is not a symbol nor a string", "nil is not a symbol nor a string", "false is not a symbol nor a string"], got
+      msg = begin; Module.new.const_set("lower", 1); rescue NameError => e; e.message; end
+      assert_equal ["wrong constant name lower", 2], [msg, Module.new.const_set(:Abc, 2)]
+    end
+
+    def test_frozen_struct_writers
+      c = Car.new("a", 1)
+      c.make = "b"
+      c.freeze
+      m1 = begin; c.make = "x"; rescue FrozenError => e; e.message; end
+      m2 = begin; c[:year] = 9; rescue FrozenError => e; e.message; end
+      want = "can't modify frozen ObjectTests::ObjectRubySpec102Test::Car: #<struct ObjectTests::ObjectRubySpec102Test::Car make=\"b\", year=1>"
+      assert_equal [want, want, "b"], [m1, m2, c.make]
+    end
+
+    def test_frozen_instance_variable_set
+      b = Box.new.freeze
+      got = begin; b.instance_variable_set(:@v, 2); rescue FrozenError => e; e.class; end
+      assert_equal [FrozenError, 1], [got, b.v]
+    end
+
+    def test_thread_name_and_caller_arguments
+      got = [-> { Thread.current.name = "a\0b" }, -> { caller(-1) }, -> { caller(0, -1) }].map do |l|
+        l.call
+        "none"
+      rescue ArgumentError => e
+        e.message
+      end
+      assert_equal ["string contains null byte", "negative level (-1)", "negative size (-1)"], got
+    end
+
+    def test_signal_trap_previous_handler
+      got = [Signal.trap("PROF", "DEFAULT"), Signal.trap("PROF", "IGNORE"), Signal.trap("PROF", "SYSTEM_DEFAULT"), Signal.trap("USR2", "SIG_DFL"), Signal.trap("USR2", "DEFAULT")]
+      msg = begin; Signal.trap("-HUP") {}; rescue ArgumentError => e; e.message; end
+      assert_equal ["SYSTEM_DEFAULT", "SYSTEM_DEFAULT", "IGNORE", "DEFAULT", "DEFAULT", "negative signal name: -HUP"], got + [msg]
+    end
+  end
 end

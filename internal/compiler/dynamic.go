@@ -397,6 +397,8 @@ func (c *Compiler) emitDynName(name string) {
 	}
 	if v, ok := nilConversions[name]; ok {
 		c.w("\tif recv == nil {\n\t\trbArity(len(args), 0, 0)\n\t\treturn %s\n\t}\n", v)
+	} else if op, ok := nilOps[name]; ok {
+		c.w("\tif recv == nil {\n\t\trbArity(len(args), %d, %d)\n\t\treturn %s\n\t}\n", op.min, op.max, op.code)
 	} else if kernel != "" {
 		c.w("\tif recv == nil {\n\t\tself := recv\n%s\t}\n", kernel)
 	}

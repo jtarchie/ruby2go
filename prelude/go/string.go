@@ -151,6 +151,9 @@ func rbCharSet(spec string) func(rune) bool {
 			i++
 			set[rs[i]] = true
 		case i+2 < len(rs) && rs[i+1] == '-':
+			if rs[i] > rs[i+2] {
+				panic(NewArgumentError(Ref(String(fmt.Sprintf("invalid range \"%c-%c\" in string transliteration", rs[i], rs[i+2])))))
+			}
 			for r := rs[i]; r <= rs[i+2]; r++ {
 				set[r] = true
 			}
@@ -244,9 +247,10 @@ func rbSplitLimit(s string, sep *String, limit int) []string {
 		return []string{s}
 	case awk:
 		rest := strings.TrimLeft(s, " \t\n\v\f\r")
+		full := false
 		for rest != "" {
 			if limit > 0 && len(parts) == limit-1 {
-				parts = append(parts, rest)
+				parts, full = append(parts, rest), true
 				break
 			}
 			i := strings.IndexAny(rest, " \t\n\v\f\r")
@@ -257,7 +261,7 @@ func rbSplitLimit(s string, sep *String, limit int) []string {
 			parts = append(parts, rest[:i])
 			rest = strings.TrimLeft(rest[i:], " \t\n\v\f\r")
 		}
-		if limit < 0 && len(s) > 0 && strings.ContainsAny(s[len(s)-1:], " \t\n\v\f\r") {
+		if limit != 0 && !full && len(s) > 0 && strings.ContainsAny(s[len(s)-1:], " \t\n\v\f\r") {
 			parts = append(parts, "")
 		}
 		return parts
@@ -265,6 +269,9 @@ func rbSplitLimit(s string, sep *String, limit int) []string {
 		parts = strings.SplitN(s, string(*sep), limit)
 	default:
 		parts = strings.Split(s, string(*sep))
+	}
+	if *sep == "" && limit != 0 && s != "" && (limit < 0 || limit > len(parts)) { // MRI keeps the empty field after the last character
+		parts = append(parts, "")
 	}
 	if limit == 0 {
 		for len(parts) > 0 && parts[len(parts)-1] == "" {

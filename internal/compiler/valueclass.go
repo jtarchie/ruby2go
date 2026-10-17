@@ -184,12 +184,14 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	if kind == valueStruct {
 		fmt.Fprintf(&b, "  #: () -> bool?\n  def self.keyword_init? = %s\n", kwInit)
 	}
-	accessor := "attr_reader"
-	if kind == valueStruct {
-		accessor = "attr_accessor"
-	}
 	for i, m := range members {
-		fmt.Fprintf(&b, "  %s :%s #: %s\n", accessor, m, types[i])
+		if slices.Contains(members[:i], m) { // a duplicate member raises at run time; declare its accessors once
+			continue
+		}
+		fmt.Fprintf(&b, "  attr_reader :%s #: %s\n", m, types[i])
+		if kind == valueStruct { // a writer, not attr_writer: a frozen struct raises, as MRI's
+			fmt.Fprintf(&b, "  #: (%s) -> %s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if frozen?\n    @%s = __v\n  end\n", types[i], types[i], m, m)
+		}
 	}
 	// A struct's trailing nilable members may be omitted (Ruby fills in
 	// nil); every Data member is required.
@@ -239,7 +241,7 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	if len(insp) > 0 {
 		fields = " " + strings.Join(insp, ", ")
 	}
-	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{self.class.name}%s>\"\n", kind, fields)
+	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{__class_name}%s>\"\n", kind, fields) // the class's own name: MRI does not call an overridden `name`
 	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
 	// pp's Struct/Data layout (decision 113): the kind and the values, in members order
 	fmt.Fprintf(&b, "  #: () -> String\n  def __pp_kind = %q\n", kind)

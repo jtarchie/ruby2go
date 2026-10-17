@@ -215,6 +215,15 @@ var untypedIntrinsics = map[string]bool{"to_s": true, "inspect": true, "to_json"
 // nilConversions are NilClass's conversions, for nil held statically or untyped.
 var nilConversions = map[string]string{"to_a": "(&Array[any]{})", "to_h": "NewHash[any, any]()", "to_i": "Integer(0)", "to_f": "Float(0)"}
 
+// nilOps are NilClass's other methods, answered for an untyped nil by its dispatcher: arity bounds and the value.
+var nilOps = map[string]struct {
+	min, max int
+	code     string
+}{
+	"to_r": {0, 0, "rbRat(0, 1)"}, "rationalize": {0, 1, "rbRat(0, 1)"}, "to_c": {0, 0, "&Complex{Integer(0), Integer(0)}"},
+	"&": {1, 1, "Boolean(false)"}, "|": {1, 1, "Boolean(rbTruthy(args[0]))"}, "^": {1, 1, "Boolean(rbTruthy(args[0]))"}, "=~": {1, 1, "nil"},
+}
+
 func (f *fctx) dynClassOf(n parser.Node, recv expr) expr {
 	f.c.classOf = true
 	return expr{code: "rbClassOf(" + f.coerce(n, recv, TAny{}) + ")", typ: f.cls("Class")}

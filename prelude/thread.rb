@@ -189,6 +189,9 @@ class Thread < Object
   #: (String) -> String
   def name=(n)
     %x{
+    if strings.IndexByte(string(n), 0) >= 0 {
+      panic(NewArgumentError(Ref(String("string contains null byte"))))
+    }
     self.name.Store(&n)
     return n}
   end

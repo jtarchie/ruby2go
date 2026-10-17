@@ -48,10 +48,10 @@ class Hash < Object
         return h
       end
       if x.is_a?(Array)
-        # ponytail: MRI raises ArgumentError for a non-Array element or one of 3+ elements; this takes the first two
-        x.each do |pair|
-          k, v = pair
-          h[k] = v
+        x.each_with_index do |pair, i|
+          raise ArgumentError, "wrong element type #{pair.class} at #{i} (expected array)" unless pair.is_a?(Array)
+          raise ArgumentError, "invalid number of elements (#{pair.size} for 1..2)" unless pair.size == 1 || pair.size == 2
+          h[pair[0]] = pair[1]
         end
         return h
       end
@@ -136,6 +136,7 @@ class Hash < Object
   #: (V?) -> V?
   def default=(d)
     %x{
+    self.rbCheckFrozen()
     self.defProc = nil
     self.hasDef = true
     if d != nil {
@@ -297,6 +298,7 @@ class Hash < Object
   # In place: the block keeps the value type, as a Hash's V is fixed.
   #: () { (V) -> V } -> self
   def transform_values!
+    __check_frozen
     keys.each { |k| self[k] = yield(fetch(k)) }
     self
   end
@@ -380,6 +382,7 @@ class Hash < Object
 
   #: (Hash[K, V]) -> self
   def update(other)
+    __check_frozen
     other.each { |k, v| self[k] = v }
     self
   end
@@ -696,6 +699,7 @@ class Hash < Object
 
   #: () -> [K, V]?
   def shift
+    __check_frozen
     pair = __first_pair
     delete(pair[0]) if pair
     pair
@@ -709,8 +713,18 @@ class Hash < Object
     pairs = other.to_a
     clear
     pairs.each { |k, v| self[k] = v }
+    __copy_default(other)
     self
   end
+
+  # MRI's replace and compact carry the default value or proc over.
+  #: (Hash[K, V]) -> void
+  def __copy_default(other) = %x{
+    self.defProc, self.hasDef, self.defVal = other.defProc, other.hasDef, other.defVal
+  }
+
+  #: () -> void
+  def __check_frozen = %x{ self.rbCheckFrozen() }
 
   #: () -> self
   def to_hash = self
@@ -733,6 +747,7 @@ class Hash < Object
   def compact
     out = {} #: Hash[K, V]
     each { |k, v| out[k] = v unless v.nil? }
+    out.__copy_default(self)
     out
   end
 

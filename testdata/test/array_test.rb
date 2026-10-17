@@ -2599,4 +2599,20 @@ module ArrayTests
       assert_equal [[nil, "ab", nil], [nil, 3]], [xs, slots.lengths]
     end
   end
+
+  # #102: frozen checks and no-op mutators, as MRI's
+  class ArrayRubySpec102Test < Minitest::Test
+    def test_frozen_shuffle_and_noop_delete
+      a = [1, 2].freeze
+      got = begin; a.shuffle!; :none; rescue FrozenError => e; e.class; end
+      assert_equal [FrozenError, nil, []], [got, a.delete(5), [].insert(10)]
+    end
+
+    def test_chunk_reserved_keys
+      sep = [1, 2, 3].chunk { |x| x == 2 ? :_separator : true }.to_a
+      alone = [1, 1, 2].chunk { |x| x == 1 ? :_alone : true }.to_a
+      msg = begin; [1].chunk { :_foo }.to_a; rescue RuntimeError => e; e.message; end
+      assert_equal [[[true, [1]], [true, [3]]], [[:_alone, [1]], [:_alone, [1]], [true, [2]]], "symbols beginning with an underscore are reserved"], [sep, alone, msg]
+    end
+  end
 end

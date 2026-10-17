@@ -22,8 +22,11 @@ class Array < Object
   # Reached only by an Array subclass's `super(items)` (decision 202): the subclass starts with items' elements.
   #: (?Array[E]?) -> void
   def initialize(items = nil) = %x{
+    self.rbCheckFrozen()
     if items != nil {
       self.s = append(self.s[:0:0], (*items).s...)
+    } else {
+      self.s = self.s[:0:0]
     }
   }
 
@@ -430,6 +433,9 @@ class Array < Object
   #: (Integer, *E) -> self
   def insert(i, *objs) = %x{
     self.rbCheckFrozen()
+    if len(rest_) == 0 {
+      return self
+    }
     n := int(i)
     if n < 0 {
       n += len(self.s) + 1
@@ -657,6 +663,9 @@ class Array < Object
 
   #: (E) -> E?
   def delete(v) = %x{
+    if !slices.ContainsFunc(self.s, func(x E) bool { return bool(rbEq(x, v)) }) {
+      return nil // MRI: no FrozenError when nothing is removed
+    }
     self.rbCheckFrozen()
     var found *E
     out := self.s[:0]

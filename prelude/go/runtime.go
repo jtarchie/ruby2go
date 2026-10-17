@@ -340,6 +340,9 @@ func rbSignalArg(v any) syscall.Signal {
 		}
 		panic(NewArgumentError(Ref(String(fmt.Sprintf("invalid signal number (%d)", v)))))
 	case String, Symbol:
+		if s := fmt.Sprint(v); strings.HasPrefix(s, "-") {
+			panic(NewArgumentError(Ref(String("negative signal name: " + s))))
+		}
 		name := strings.TrimPrefix(fmt.Sprint(v), "SIG")
 		if s, ok := rbSignalNums[name]; ok {
 			return s
@@ -365,9 +368,15 @@ func rbSetTrap(v any, blk func(Integer), cmd string) *String {
 		}
 		return nil
 	}
-	if cmd == "SYSTEM_DEFAULT" {
+	switch {
+	case blk != nil:
+	case cmd == "SIG_DFL":
 		cmd = "DEFAULT"
+	case cmd == "SIG_IGN" || cmd == "":
+		cmd = "IGNORE"
 	}
+	// MRI installs its own handler for these, which DEFAULT names; for the rest DEFAULT is the OS's (SYSTEM_DEFAULT)
+	rubyOwn := slices.Contains([]syscall.Signal{syscall.SIGINT, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGALRM, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGCHLD}, sig)
 	rbTrapMu.Lock()
 	defer rbTrapMu.Unlock()
 	rbTrapHook = rbTrapped
@@ -380,10 +389,14 @@ func rbSetTrap(v any, blk func(Integer), cmd string) *String {
 		signal.Reset(sig)
 	}
 	switch {
-	case !had:
-		return Ref(String("DEFAULT"))
-	case old.blk != nil:
+	case !had && sig == syscall.SIGPIPE: // MRI ignores SIGPIPE itself and reports it as nil
 		return nil
+	case had && old.blk != nil:
+		return nil
+	case rubyOwn && (!had || old.cmd == "DEFAULT"):
+		return Ref(String("DEFAULT"))
+	case !had || old.cmd == "DEFAULT":
+		return Ref(String("SYSTEM_DEFAULT"))
 	}
 	return Ref(String(old.cmd))
 }
@@ -1488,8 +1501,11 @@ type rbFreezable interface {
 }
 
 func rbIsFrozen(p any) bool {
-	f, ok := p.(rbFreezable)
-	return ok && f.rbFrozen()
+	if f, ok := p.(rbFreezable); ok {
+		return f.rbFrozen()
+	}
+	fl := rbObjFrozenFlag(p) // a user object Kernel#freeze froze (decision 221)
+	return fl != nil && *fl
 }
 
 // rbFrozenCheck raises MRI's FrozenError before a mutation of a frozen p.

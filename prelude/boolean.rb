@@ -37,12 +37,21 @@ end
 
 # Markers only: values stay Boolean/nil; is_a?, case/when and .class test the value.
 class TrueClass < Object
+  # MRI undefines new: the class's one value is a literal.
+  #: () -> bot
+  def self.new = raise(NoMethodError, "undefined method 'new' for class TrueClass")
 end
 
 class FalseClass < Object
+  # MRI undefines new: the class's one value is a literal.
+  #: () -> bot
+  def self.new = raise(NoMethodError, "undefined method 'new' for class FalseClass")
 end
 
 class NilClass < Object
+  # MRI undefines new: the class's one value is a literal.
+  #: () -> bot
+  def self.new = raise(NoMethodError, "undefined method 'new' for class NilClass")
 end
 
 # Proc values are Go *func; this class exists for is_a?, .class and constant references.

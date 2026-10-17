@@ -79,7 +79,15 @@ class Module < Object
   def public_methods(all = true) = singleton_methods(all)
 
   #: (untyped, ?bool) -> bool
-  def private_method_defined?(name, inherit = true) = private_instance_methods(inherit).include?(name.to_s.to_sym)
+  def private_method_defined?(name, inherit = true) = private_instance_methods(inherit).include?(__method_sym(name))
+
+  # A method name argument: a Symbol or String, else MRI's TypeError.
+  #: (untyped) -> Symbol
+  def __method_sym(name)
+    return name if name.is_a?(Symbol)
+    return name.to_sym if name.is_a?(String)
+    raise TypeError, "#{name.inspect} is not a symbol nor a string"
+  end
 
   # Itself, its modules and its superclasses' (with Object, Kernel and BasicObject), from a generated table.
   #: () -> Array[Module]
@@ -123,7 +131,7 @@ class Module < Object
   }
 
   #: (untyped, ?bool) -> bool
-  def public_method_defined?(name, inherit = true) = public_instance_methods(inherit).include?(name.to_s.to_sym)
+  def public_method_defined?(name, inherit = true) = public_instance_methods(inherit).include?(__method_sym(name))
 
   #: (untyped, ?bool) -> bool
   def method_defined?(name, inherit = true) = public_method_defined?(name, inherit)
@@ -148,7 +156,11 @@ class Module < Object
   # The value, as MRI's const_set returns (decision 231). ponytail: the constant table is fixed at compile time, so
   # const_get/constants do not see a name set here; boot (decision 161) could declare what load-time const_sets make.
   #: [T] (untyped, T) -> T
-  def const_set(_name, value) = value
+  def const_set(name, value)
+    n = __method_sym(name).to_s
+    raise NameError, "wrong constant name #{n}" unless n.match?(/\A[A-Z]\w*\z/)
+    value
+  end
 end
 
 class Class < Module

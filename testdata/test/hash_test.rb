@@ -2211,6 +2211,38 @@ module HashTests
     end
   end
 
+  # #102: frozen checks, replace/compact keep the default, Hash[] element errors
+  class HashRubySpec102Test < Minitest::Test
+    def test_frozen_mutators_raise
+      h = { a: 1 }
+      h.freeze
+      got = [-> { h.shift }, -> { h.default = 1 }, -> { h.merge!({}) }, -> { h.transform_values! { |v| v } }].map do |l|
+        l.call
+        :none
+      rescue FrozenError => e
+        e.class
+      end
+      assert_equal [FrozenError, FrozenError, FrozenError, FrozenError], got
+    end
+
+    def test_replace_and_compact_keep_default
+      g = { b: 2 }
+      g.default = 9
+      r = { c: 1 }
+      r.replace(g)
+      c = { a: nil, b: 1 } #: Hash[Symbol, Integer?]
+      c.default = 3
+      assert_equal [9, 3], [r[:zz], c.compact[:q]]
+    end
+
+    def test_hash_brackets_element_errors
+      m1 = begin; Hash[[:a]]; rescue ArgumentError => e; e.message; end
+      m2 = begin; Hash[[[1, 2, 3]]]; rescue ArgumentError => e; e.message; end
+      assert_equal ["wrong element type Symbol at 0 (expected array)", "invalid number of elements (3 for 1..2)"], [m1, m2]
+      assert_equal({ a: nil, b: 2 }, Hash[[[:a], [:b, 2]]])
+    end
+  end
+
   class HashToHSub < Hash
   end
 end

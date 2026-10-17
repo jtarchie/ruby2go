@@ -235,6 +235,13 @@ func rbReRepl(rep string) func(s string, loc []int, names []string) string {
 				b.WriteString(group(0))
 			case c >= '0' && c <= '9':
 				b.WriteString(group(int(c - '0')))
+			case c == '+': // the last group that matched, empty with none
+				for i := len(loc)/2 - 1; i >= 1; i-- {
+					if loc[2*i] >= 0 {
+						b.WriteString(group(i))
+						break
+					}
+				}
 			case c == '`':
 				b.WriteString(s[:loc[0]])
 			case c == '\'':

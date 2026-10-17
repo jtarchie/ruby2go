@@ -115,6 +115,7 @@ class Array
 
   #: (Hash[Symbol, Random]) -> Array[E]
   def shuffle!(opts) = %x{
+    self.rbCheckFrozen()
     rng := rbDefaultRandom
     if r := Hash_Op_idx(opts, Symbol("random")); r != nil {
       rng = *r
