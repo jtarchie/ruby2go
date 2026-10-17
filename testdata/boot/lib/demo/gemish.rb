@@ -13,6 +13,33 @@ module Demo
 
     KINDS = %w[text html].freeze
 
+    # bindata's self-replacing `inherited` hook (decision 301)
+    module Registry
+      @names = []
+
+      def self.register(name) = @names << name
+      def self.names = @names.sort
+    end
+
+    class Base
+      class << self
+        def register_subclasses
+          singleton_class.send(:undef_method, :inherited)
+          define_singleton_method(:inherited) do |subclass|
+            Registry.register(subclass.name)
+            register_subclasses
+          end
+        end
+
+        private :register_subclasses
+      end
+
+      register_subclasses
+    end
+
+    class Leaf < Base; end
+    class Twig < Leaf; end
+
     attr_reader :state
 
     def initialize
@@ -20,6 +47,27 @@ module Demo
     end
 
     def kind?(headers) = KINDS.include?(headers["kind"])
+
+    # bindata's lazy evaluator: an alias of the respond_to? intrinsic (decision 301)
+    def safe_responds?(sym) = base_respond_to?(sym, false)
+    alias base_respond_to? respond_to?
+
+    # A local rebound to a Hash built by a block that declares its own locals (FormulaInstaller#forbidden_license_check, decision 301)
+    def rebind(text)
+      words = text.to_s.dup
+      words = words.split.each_with_object({}) do |word, hash|
+        sym = word.to_sym
+        word = sym if sym == :a
+        hash[word] = 1
+      end
+      words
+    end
+
+    # A block parameter rebound to the call's result (concurrent-ruby's TimerSet#post)
+    def rebind_block(count, &task)
+      task = Pair.new("k", count + task.call)
+      task.value > 1 ? task : false
+    end
 
     def joined
       out = String.new

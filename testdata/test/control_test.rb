@@ -5579,6 +5579,18 @@ module ControlTests
       first, = control_trip(0)
       assert_equal ["t", 1, nil], [tok, num, first]
     end
+
+    # `(a, = pair_or_nil)` as a condition (cleanup.rb's autoremove): its value is the right-hand side
+    def test_destructure_as_condition
+      got = [0, 1].map do |i|
+        if (n = i + 1) && (first, = control_trip(i)) && (up = first.to_s.upcase)
+          [n, up]
+        else
+          :none
+        end
+      end
+      assert_equal [:none, [2, "T"]], got
+    end
   end
 
   # Decision 244: `class X < self`, constants assigned inside a constant's value, $! in a rescue, $1 after a `when /re/`,

@@ -208,6 +208,9 @@ class Pathname
   def owned? = File.owned?(to_s)
 
   #: () -> bool
+  def grpowned? = File.grpowned?(to_s)
+
+  #: () -> bool
   def absolute? = to_s.start_with?("/")
 
   #: () -> bool

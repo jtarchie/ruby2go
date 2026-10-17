@@ -24,6 +24,11 @@ p g.kind?(h)
 h["kind"] = "html"
 p g.kind?(h)
 p g.joined
+p Demo::Gemish::Registry.names
+p g.rebind_block(1) { 1 }.class, g.rebind_block(-3) { 1 }
+p $LOAD_PATH.any? { |d| d.end_with?("/lib") }, $:.size == $LOAD_PATH.size
+p g.rebind("a b")
+p g.safe_responds?(:joined), g.safe_responds?(:nope)
 p g.first_big([1]) if ENV["RB2GO_NEVER"]
 begin
   g.recheck

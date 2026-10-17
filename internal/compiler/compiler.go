@@ -134,6 +134,7 @@ type Compiler struct {
 	blockEvalSites        map[*parser.CallNode]bool    // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
 	goFuncs               map[string]string            // each gem method's Go func name -> methodKey (goPoison)
 	bootDelegators        map[string][]string          // def_delegators' names boot saw, by "path:line" (decision 204)
+	bootLoadPath          []string                     // $LOAD_PATH as boot left it, nil without a boot (decision 301)
 	bootStructs           map[string][]boot.StructProp // each T::Struct's props boot saw (decision 241)
 	kept                  []string                     // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
 	anonDepth             int                          // collecting an anonymous class body, whose errors scanAnon defers
@@ -418,6 +419,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.indexBootBranches(opts.boot.Branches)
 		c.bootConstClasses = opts.boot.ConstClasses
 		c.bootDelegators = opts.boot.Delegators
+		c.bootLoadPath = opts.boot.LoadPath
 		c.bootStructs = opts.boot.Structs
 	}
 	c.markDefineMethods(dms)

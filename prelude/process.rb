@@ -108,6 +108,16 @@ module Process
   #: () -> Integer
   def self.egid = %x{ Integer(os.Getegid()) }
 
+  #: () -> Array[Integer]
+  def self.groups = %x{
+    gs, _ := os.Getgroups()
+    out := make([]Integer, len(gs))
+    for i, g := range gs {
+      out[i] = Integer(g)
+    }
+    return &Array[Integer]{s: out}
+  }
+
   #: () -> Integer
   def self.getpgrp = %x{ Integer(syscall.Getpgrp()) }
 

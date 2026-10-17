@@ -1,0 +1,161 @@
+Subject: install path: typed shapes brew's `install` reaches
+
+`brew install` loads code `info` never runs. Each change keeps MRI's behaviour and gives the compiler a plain shape:
+Cask::DSL::Version#version builds `Version.new`, not `self.class.new`; UnpackStrategy answers `extensions` itself;
+the sandbox's home-path loop uses one name per value; the global cask options are dispatched by name instead of
+`send(*args, **options)`; Formula.installed wraps its flat_map element in an Array; prelude_fetch_formulae types its
+lambda; and the `freeze` chain (Downloadable, Resource, SoftwareSpec) returns T.untyped, as Object#freeze's super does.
+---
+diff --git a/Library/Homebrew/cask/dsl/version.rb b/Library/Homebrew/cask/dsl/version.rb
+index c15d642a10..aadd7f10a5 100644
+--- a/Library/Homebrew/cask/dsl/version.rb
++++ b/Library/Homebrew/cask/dsl/version.rb
+@@ -198,7 +198,7 @@ module Cask
+       def version(&_block)
+         return self if empty? || latest?
+ 
+-        self.class.new(yield)
++        Version.new(yield)
+       end
+     end
+   end
+diff --git a/Library/Homebrew/cli/parser.rb b/Library/Homebrew/cli/parser.rb
+index cc754a3fa9..093bd49257 100644
+--- a/Library/Homebrew/cli/parser.rb
++++ b/Library/Homebrew/cli/parser.rb
+@@ -602,10 +602,13 @@ module Homebrew
+ 
+       sig { void }
+       def cask_options
+-        self.class.global_cask_options.each do |args|
+-          options = T.cast(args.pop, T::Hash[Symbol, String])
+-          send(*args, **options)
+-          conflicts "--formula", args[1]
++        self.class.global_cask_options.each do |method, name, options|
++          description = options.fetch(:description)
++          case method
++          when :flag then flag(name, description:)
++          when :comma_array then comma_array(name, description:)
++          end
++          conflicts "--formula", name
+         end
+         @cask_options = true
+       end
+diff --git a/Library/Homebrew/downloadable.rb b/Library/Homebrew/downloadable.rb
+index 5a15ab77b5..831fd936b0 100644
+--- a/Library/Homebrew/downloadable.rb
++++ b/Library/Homebrew/downloadable.rb
+@@ -191,7 +191,7 @@ module Downloadable
+     @version = @version.dup
+   end
+ 
+-  sig { overridable.returns(T.self_type) }
++  sig { overridable.returns(T.untyped) }
+   def freeze
+     @checksum.freeze
+     @mirrors.freeze
+diff --git a/Library/Homebrew/formula.rb b/Library/Homebrew/formula.rb
+index fc7d5121f9..95c8659bf1 100644
+--- a/Library/Homebrew/formula.rb
++++ b/Library/Homebrew/formula.rb
+@@ -2786,7 +2786,7 @@ class Formula
+   sig { returns(T::Array[Formula]) }
+   def self.installed
+     Formula.cache[:installed] ||= racks.flat_map do |rack|
+-      Formulary.from_rack(rack)
++      [Formulary.from_rack(rack)]
+     rescue
+       []
+     end.uniq(&:name)
+diff --git a/Library/Homebrew/install.rb b/Library/Homebrew/install.rb
+index 933af358bf..097ce48bbe 100644
+--- a/Library/Homebrew/install.rb
++++ b/Library/Homebrew/install.rb
+@@ -221,7 +221,10 @@ module Homebrew
+ 
+         # Only pass the keyword when limiting the fetch so mocks and
+         # overrides expecting the historical no-argument call keep working.
+-        action = ->(fi) { metadata_only ? fi.prelude_fetch(metadata_only: true) : fi.prelude_fetch }
++        action = T.let(
++          ->(fi) { metadata_only ? fi.prelude_fetch(metadata_only: true) : fi.prelude_fetch },
++          T.proc.params(formula_installer: FormulaInstaller).void,
++        )
+         select_formula_installers(formula_installers, action:)
+       end
+ 
+diff --git a/Library/Homebrew/resource.rb b/Library/Homebrew/resource.rb
+index 465b13e857..5b388c4668 100644
+--- a/Library/Homebrew/resource.rb
++++ b/Library/Homebrew/resource.rb
+@@ -74,7 +74,7 @@ class Resource
+     @livecheck = @livecheck.dup
+   end
+ 
+-  sig { override.returns(T.self_type) }
++  sig { override.returns(T.untyped) }
+   def freeze
+     @name.freeze
+     @patches.freeze
+diff --git a/Library/Homebrew/sandbox.rb b/Library/Homebrew/sandbox.rb
+index 5144a5fb7d..c3669ced4b 100644
+--- a/Library/Homebrew/sandbox.rb
++++ b/Library/Homebrew/sandbox.rb
+@@ -516,16 +516,16 @@ class Sandbox
+       ].each do |path|
+         next if except == :git && GIT_CREDENTIAL_PATHS.include?(path)
+ 
+-        path = home/path
+-        next unless path.exist?
++        home_path = home/path
++        next unless home_path.exist?
+ 
+-        path = path.realpath
+-        next unless path.ascend.include?(home)
++        real_path = home_path.realpath
++        next unless real_path.ascend.include?(home)
+ 
+-        if (readable_path = readable_paths.find { |required_path| required_path.ascend.include?(path) })
++        if (readable_path = readable_paths.find { |required_path| required_path.ascend.include?(real_path) })
+           opoo <<~EOS
+             The sandbox cannot prevent formulae from reading:
+-              #{path}
++              #{real_path}
+             because this required path is inside it:
+               #{readable_path}
+             Formulae may access personal data in this directory.
+@@ -533,7 +533,7 @@ class Sandbox
+           next
+         end
+ 
+-        deny_read_path path
++        deny_read_path real_path
+       rescue Errno::ENOENT
+         nil
+       end
+diff --git a/Library/Homebrew/software_spec.rb b/Library/Homebrew/software_spec.rb
+index 5e26d4a1b1..ec8e4a7c5f 100644
+--- a/Library/Homebrew/software_spec.rb
++++ b/Library/Homebrew/software_spec.rb
+@@ -108,7 +108,7 @@ class SoftwareSpec
+     @compiler_failures = @compiler_failures.dup
+   end
+ 
+-  sig { override.returns(T.self_type) }
++  sig { override.returns(T.untyped) }
+   def freeze
+     @resource.freeze
+     @resources.freeze
+diff --git a/Library/Homebrew/unpack_strategy.rb b/Library/Homebrew/unpack_strategy.rb
+index b82e801a75..0da4fcdf58 100644
+--- a/Library/Homebrew/unpack_strategy.rb
++++ b/Library/Homebrew/unpack_strategy.rb
+@@ -48,6 +48,9 @@ module UnpackStrategy
+ 
+   mixes_in_class_methods(ClassMethods)
+ 
++  sig { returns(T::Array[String]) }
++  def self.extensions = []
++
+   sig { returns(T::Array[UnpackStrategyType]) }
+   def self.strategies
+     @strategies ||= T.let([

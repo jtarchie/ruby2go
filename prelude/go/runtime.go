@@ -1634,7 +1634,6 @@ func rbArgAt[T any](xs []T, i int) T {
 	return zero
 }
 
-
 // rbMust is a gem's T? where T is wanted (decision 172): nil raises TypeError.
 func rbMust[T any](p *T, want string) T {
 	if p == nil {
@@ -1772,4 +1771,15 @@ func rbBlockOf[F any](p **F) F {
 		return none
 	}
 	return **p
+}
+
+// rbPackYield is the one value an Enumerable-style iterator hands on for a `yield a, b` (an Array) or `yield a` (a).
+func rbPackYield(xs []any) any {
+	switch len(xs) {
+	case 0:
+		return nil
+	case 1:
+		return xs[0]
+	}
+	return &Array[any]{s: slices.Clone(xs)}
 }

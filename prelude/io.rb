@@ -470,6 +470,10 @@ class IO < Object
   #: () -> String?
   def getc = %x{ return rbGetc(*self.rbReader()) }
 
+  # io/console: one character, without raw mode (line-buffered on a terminal).
+  #: () -> String?
+  def getch = getc
+
   #: () -> Integer?
   def getbyte = %x{ return rbGetbyte(*self.rbReader()) }
 

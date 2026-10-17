@@ -27,6 +27,7 @@ var hookFS embed.FS
 // Manifest is what one boot recorded.
 type Manifest struct {
 	LoadedFeatures []string                `json:"loaded_features"` // files loaded during boot
+	LoadPath       []string                `json:"load_path"`       // $LOAD_PATH as boot left it: what `$LOAD_PATH` reads in the compiled program (decision 301)
 	Classes        []ClassInfo             `json:"classes"`
 	DefineMethods  []MethodInfo            `json:"define_methods"`
 	Evals          []EvalInfo              `json:"evals"`

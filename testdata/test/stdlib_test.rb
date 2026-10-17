@@ -947,6 +947,20 @@ module StdlibTests
       end
     end
 
+    # Homebrew's install path: Stat#ctime and the access predicates, Pathname#grpowned?, Process.groups, Errno::EBUSY
+    def test_stat_access_and_groups
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "f")
+        File.write(path, "x")
+        File.chmod(0o400, path)
+        st = File.stat(path)
+        assert_equal [true, true, false, false], [st.ctime.to_i.positive?, st.readable?, st.executable?, st.writable? && Process.euid != 0]
+        assert_equal [true, true, true], [st.uid == Process.uid, st.gid.is_a?(Integer), Pathname(path).grpowned? == File.stat(path).grpowned?]
+        assert_equal [true, true], [Process.groups.is_a?(Array), Process.groups.all?(Integer)]
+        assert_equal [Errno::EBUSY, true], [Errno::EBUSY, Errno::EBUSY.new.is_a?(SystemCallError)]
+      end
+    end
+
     def test_file_read_length_and_gets_forms
       Dir.mktmpdir do |dir|
         path = File.join(dir, "g.txt")

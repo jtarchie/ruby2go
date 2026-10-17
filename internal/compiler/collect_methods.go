@@ -55,6 +55,10 @@ func (c *Compiler) linkAliases(ctx context.Context) {
 				e = mod.lookup(a.oldName)
 			}
 		}
+		if e == nil && a.oldName == "respond_to?" && c.gemFile(a.f) { // an intrinsic with no Method (genRespondTo): forward the call
+			c.addForwarder(ctx, a, "(symbol, include_private = false) = respond_to?(symbol, include_private)")
+			continue
+		}
 		if e == nil {
 			c.errorf(a.f, a.n, "undefined method '%s' for class '%s'", a.oldName, a.cls.RubyName)
 		}
@@ -70,13 +74,7 @@ func (c *Compiler) linkAliases(ctx context.Context) {
 				if !isIdentMethod(a.oldName) {
 					call = "self.send(:" + strconv.Quote(a.oldName) + ", " + fwd + ")"
 				}
-				src := strings.Repeat("\n", max(a.f.line(a.n.GetLocation().StartOffset)-1, 0)) + "def " + a.newName + "(" + params + ") = " + call + "\n"
-				sf, err := parseFile(ctx, c.parser, a.f.Name, []byte(src), originSource)
-				if err != nil {
-					c.errorf(a.f, a.n, "alias %s: %v", a.newName, err)
-				}
-				sf.path = a.f.path
-				c.addDef(sf, a.cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, nil) //nolint:forcetypeassert // built just above
+				c.addForwarder(ctx, a, "("+params+") = "+call)
 				continue
 			}
 			c.errorf(a.f, a.n, "alias of %s#%s: rb2go copies an inherited method only when it is a plain def without super from a non-generic class", e.Owner.RubyName, a.oldName)
@@ -91,6 +89,17 @@ func (c *Compiler) linkAliases(ctx context.Context) {
 			cls.msetCache, cls.msetIndex = nil, nil
 		}
 	}
+}
+
+// addForwarder defines the alias's new name as `def new<rest>`, on the alias's own line.
+func (c *Compiler) addForwarder(ctx context.Context, a pendingAlias, rest string) {
+	src := strings.Repeat("\n", max(a.f.line(a.n.GetLocation().StartOffset)-1, 0)) + "def " + a.newName + rest + "\n"
+	sf, err := parseFile(ctx, c.parser, a.f.Name, []byte(src), originSource)
+	if err != nil {
+		c.errorf(a.f, a.n, "alias %s: %v", a.newName, err)
+	}
+	sf.path = a.f.path
+	c.addDef(sf, a.cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, nil) //nolint:forcetypeassert // built just above
 }
 
 func (c *Compiler) copyAlias(cls *Class, old *Method, nn string) *Method {

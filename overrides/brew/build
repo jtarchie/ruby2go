@@ -1,5 +1,5 @@
 #!/bin/bash
-# host: cross-build work/brew.go into work/brew-bin. Killed past 14 GB RSS.
+# host: cross-build work/brew.go into work/brew-bin. Killed past 22 GB RSS.
 # -c=4, no GOMEMLIMIT: a 4 GiB limit under a ~6 GB live heap keeps the GC running nonstop (654 s vs 95 s).
 set -u
 cd "$(dirname "$0")/work"
@@ -13,7 +13,7 @@ pid=$!; peak=0
 while kill -0 $pid 2>/dev/null; do
   rss=$(ps -A -o rss=,command= | grep -E '/compile |/link |go build' | grep -v grep | awk '{s+=$1} END{print s+0}')
   [ "$rss" -gt "$peak" ] && peak=$rss
-  if [ "$rss" -gt 14680064 ]; then pkill -f 'go-build.*/compile|/link '; kill $pid; echo "KILLED at ${rss}kB"; rm -f "$name-bin"; fi
+  if [ "$rss" -gt 23068672 ]; then pkill -f 'go-build.*/compile|/link '; kill $pid; echo "KILLED at ${rss}kB"; rm -f "$name-bin"; fi
   sleep 2
 done
 wait $pid; code=$?

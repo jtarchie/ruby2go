@@ -421,9 +421,25 @@ func (f *fctx) probe(fn func()) {
 	if sc != nil {
 		had = maps.Clone(sc.vars)
 	}
+	type declState struct {
+		pass        int
+		block, ruby string
+		hoist       bool
+	}
+	decls := make(map[localKey]declState, len(f.locals))
+	for k, li := range f.locals {
+		decls[k] = declState{li.declPass, li.declBlock, li.declRuby, li.hoist}
+	}
 	defer func() {
 		f.probeDepth--
 		f.buf, f.tmp, f.blockCtr, f.indent = savedBuf, savedTmp, savedCtr, savedIndent
+		for k, li := range f.locals { // the discarded output declared no local: the real run must declare it (not find it "hoisted" from this pass)
+			if was, ok := decls[k]; ok {
+				li.declPass, li.declBlock, li.declRuby, li.hoist = was.pass, was.block, was.ruby, was.hoist
+			} else {
+				li.declPass = 0
+			}
+		}
 		if sc != nil { // locals the discarded output declared (`x = begin v = 1 end`, `xs << (w = 5)`) are not declared yet
 			for name := range sc.vars {
 				if _, ok := had[name]; !ok {
@@ -2472,6 +2488,9 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		f.noteAnyOrigin(n, name, val)
 		return f.declareAssign(n, name, typ, val, annotated)
 	}
+	if e, ok := f.rebindFuncLocal(name, existing, val, annotated); ok {
+		return e
+	}
 	f.noteAnyOrigin(n, name, val)
 	f.widenParam(name, info, existing, val)
 	if info != nil {
@@ -2493,6 +2512,19 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		return e
 	}
 	return f.narrowSet(existing, val)
+}
+
+// rebindFuncLocal: a gem rebinds its block parameter to what the block's call returned (`task = ScheduledTask.execute(&task)`):
+// a new Go variable of the value's type takes the name from here on.
+func (f *fctx) rebindFuncLocal(name string, existing *local, val expr, annotated Type) (expr, bool) {
+	if !f.lenient() || f.pass != 2 || annotated != nil || existing.base != nil || isNil(val.typ) || isAny(val.typ) || val.code == "nil" || isFuncOrOptFunc(val.typ) || !isFuncOrOptFunc(existing.typ) {
+		return expr{}, false
+	}
+	v := &local{name: name, goName: f.newTmp(), typ: val.typ, declared: true, info: existing.info}
+	f.scope.vars[name] = v
+	f.emit("%s := %s", v.goName, val.code)
+	f.emit("_ = %s", v.goName)
+	return expr{code: v.goName, typ: v.typ, stmt: true, done: true}, true
 }
 
 // reassignView writes a narrowAssign view's class again: the view stays, its var takes the value too (decision 283).
@@ -2650,6 +2682,11 @@ func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, ann
 	}
 	if f.pass == 2 {
 		v.typ = info.typ
+	}
+	if v.typ == nil && f.pass == 2 && f.lenient() && isVoid(val.typ) && !isNil(val.typ) && !val.stmt && val.code != "" { // a gem's `result = super(*mods)` of a void method (Module#include): the call runs, the local is nil
+		f.emitExprStmt(n, val)
+		val = expr{code: "nil", typ: TNil{}}
+		v.typ, info.typ = TAny{}, TAny{}
 	}
 	code := f.coerce(n, val, v.typ)
 	if val.lit && typeEq(val.typ, v.typ) {
@@ -4193,4 +4230,10 @@ func hashKeysWider(t, v Type) bool {
 	}
 	tc, ok := stripOpt(t).(TClass)
 	return ok && isClass(tc, "Hash") && !isAny(tc.Args[0])
+}
+
+// isFuncOrOptFunc is a block (Proc) type, optional or not.
+func isFuncOrOptFunc(t Type) bool {
+	_, ok := stripOpt(t).(TFunc)
+	return ok
 }

@@ -354,6 +354,15 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: "Integer(os.Getpid())", typ: f.cls("Integer")}
 	case "$~": // the frame's last match (decision 171)
 		return expr{code: f.lastMatchVar(n), typ: TOpt{Elem: f.cls("MatchData")}}
+	case "$LOAD_PATH", "$:", "$-I": // fixed when boot ran (decision 301): the compiled program has no load path of its own
+		if f.c.bootLoadPath != nil {
+			elems := make([]string, len(f.c.bootLoadPath))
+			for i, d := range f.c.bootLoadPath {
+				f.c.strLits[d] = true
+				elems[i] = strconv.Quote(d)
+			}
+			return expr{code: arrayLit("String", elems), typ: TClass{C: f.c.classes["Array"], Args: []Type{f.cls("String")}}}
+		}
 	case "$VERBOSE":
 		return expr{code: "rbVerbose", typ: TOpt{Elem: f.cls("Boolean")}}
 	case "$/": // the input record separator: chomp's default (decision 180)

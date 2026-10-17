@@ -347,6 +347,7 @@ module Boot
       end
       manifest = {
         "loaded_features" => ($LOADED_FEATURES - @features),
+        "load_path" => $LOAD_PATH.map(&:to_s),
         "classes" => classes,
         "define_methods" => @define_methods,
         "evals" => @evals.uniq { |e| [e["source"], e["kind"], e["self"], e["caller"]] },

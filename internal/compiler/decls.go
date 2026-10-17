@@ -1116,7 +1116,7 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		if !isVoid(e.M.Block.Ret) && len(e.M.Block.Params) == 1 { // `each { |x| ... }` whose block value is ignored: drop it
 			elem := c.goType(subst(e.M.Block.Params[0], env))
 			args := c.seqArgs(e.M)
-			wrapped := fmt.Sprintf("func(x %s) %s { blk(x); return *new(%s) }", elem, c.goType(subst(e.M.Block.Ret, env)), c.goType(subst(e.M.Block.Ret, env)))
+			wrapped := c.ignoredBlockValue(e.M, elem, env)
 			args = strings.Replace(args, "blk", wrapped, 1)
 			if !strings.Contains(c.argNames(e.M), "blk") {
 				args = strings.TrimPrefix(args+", "+wrapped, ", ")
@@ -2449,6 +2449,20 @@ func (c *Compiler) slotSeqAdapter(cls *Class, e entry, env map[string]Type, recv
 		return true
 	}
 	return false
+}
+
+// ignoredBlockValue is the closure an iterator adapter hands a closure-taking each: it passes the value on and drops what
+// the block returns. A `|*xs|` block packs several yielded values into one Array, as Enumerable's each does.
+func (c *Compiler) ignoredBlockValue(m *Method, elem string, env map[string]Type) string {
+	bret := c.goType(subst(m.Block.Ret, env))
+	if !m.Block.Rest {
+		return fmt.Sprintf("func(x %s) %s { blk(x); return *new(%s) }", elem, bret, bret)
+	}
+	pack := "x[0]" // ponytail: a typed rest takes the first value; pack like the untyped one if a gem needs it
+	if elem == "any" {
+		pack = "rbPackYield(x)"
+	}
+	return fmt.Sprintf("func(x ...%s) %s { blk(%s); return *new(%s) }", elem, bret, pack, bret)
 }
 
 // frozenField is the root struct's Kernel#freeze flag: lowercase with a trailing `_`, never an ivar's Go name.

@@ -316,6 +316,12 @@ class File < Object
   def self.executable?(path) = %x{ Boolean(syscall.Access(string(path), 1) == nil) }
 
   #: (String) -> bool
+  def self.grpowned?(path) = %x{
+    fi, err := os.Stat(string(path))
+    return Boolean(err == nil && rbStatGroupOwned(fi))
+  }
+
+  #: (String) -> bool
   def self.owned?(path) = %x{
     fi, err := os.Stat(string(path))
     if err != nil {
@@ -864,6 +870,38 @@ class File::Stat < Object
 
   #: () -> Time
   def atime = %x{ &Time{t: rbAtime(self.fi)} }
+
+  #: () -> Time
+  def ctime = %x{ &Time{t: rbCtime(self.fi)} }
+
+  # The mode bits as the effective user sees them (root: any), as MRI's Stat#writable? and friends.
+  #: () -> bool
+  def writable? = %x{ Boolean(rbStatAccess(self.fi, 2)) }
+
+  #: () -> bool
+  def readable? = %x{ Boolean(rbStatAccess(self.fi, 4)) }
+
+  #: () -> bool
+  def executable? = %x{ Boolean(rbStatAccess(self.fi, 1)) }
+
+  #: () -> Integer
+  def uid = %x{
+    if st, ok := self.fi.Sys().(*syscall.Stat_t); ok {
+      return Integer(st.Uid)
+    }
+    return 0
+  }
+
+  #: () -> Integer
+  def gid = %x{
+    if st, ok := self.fi.Sys().(*syscall.Stat_t); ok {
+      return Integer(st.Gid)
+    }
+    return 0
+  }
+
+  #: () -> bool
+  def grpowned? = %x{ Boolean(rbStatGroupOwned(self.fi)) }
 
   #: () -> bool
   def file? = %x{ Boolean(self.fi.Mode().IsRegular()) }

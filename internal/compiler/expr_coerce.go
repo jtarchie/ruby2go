@@ -366,6 +366,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 		return f.coerce(n, e, TAny{})
 	}
 	if ec, ok := e.typ.(TClass); ok && ec.C.hashBase && ec.C.Super == to.C { // a @go_type subclass where its base is wanted: the embedded base
+		if f.lenient() && slices.ContainsFunc(to.Args, func(a Type) bool { return !isAny(a) }) { // Array[any] inside, Array[String] wanted (Homebrew's NamedArgs < Array with a fixed Elem): converted at run time
+			return fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), embeddedSuper(ec.C, e.code), to.String())
+		}
 		return embeddedSuper(ec.C, e.code)
 	}
 	return e.code

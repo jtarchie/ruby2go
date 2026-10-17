@@ -37,6 +37,8 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.ENOTDIR
 	case *Errno_ENOTEMPTY:
 		n = syscall.ENOTEMPTY
+	case *Errno_EBUSY:
+		n = syscall.EBUSY
 	case *Errno_EINVAL:
 		n = syscall.EINVAL
 	case *Errno_ECHILD:

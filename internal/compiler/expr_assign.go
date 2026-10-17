@@ -245,7 +245,7 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, v.code)
 	f.destructureInto(n, expr{code: tmp, typ: v.typ}, n.Lefts, n.Rest, n.Rights)
-	return expr{code: "", typ: TVoid{}, stmt: true, done: true}
+	return expr{code: tmp, typ: v.typ, stmt: true, done: true} // the value of `a, = x` is x, as a condition (`(a, = x) && ...`) reads it
 }
 
 // destructureOpt is `a, b = pair_or_nil` (decision 222).

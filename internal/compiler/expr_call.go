@@ -49,7 +49,7 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 			return expr{code: "Boolean(true)", typ: f.cls("Boolean")}, true
 		}
 		return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
-	case "define_method":
+	case "define_method", "define_singleton_method":
 		if f.c.dmSites[n] {
 			return expr{code: "nil", typ: TNil{}, lit: true}, true // boot made its methods defs (decision 198)
 		}

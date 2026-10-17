@@ -561,4 +561,34 @@ module EnumeratorTests
       assert_equal [[], [], 0, nil, false, []], [e.to_a, e.map { |x| x }, e.count, e.first, e.include?(1), e.sort]
     end
   end
+
+  # decision 301: `def each(&block) = @list.each(&block)` under Enumerable (bindata's SanitizedFields)
+  class Forwarded
+    include Enumerable
+
+    #: (Forwarded?) -> void
+    def initialize(base = nil)
+      @fields = base ? base.raw_fields : []
+    end
+
+    #: (String) -> void
+    def add(name) = @fields << name
+
+    #: () -> Array[String]
+    def raw_fields = @fields.dup
+
+    def each(&block)
+      @fields.each(&block)
+    end
+  end
+
+  class ForwardedTest < Minitest::Test
+    def test_each_forwarding_its_block
+      f = Forwarded.new
+      f.add("a")
+      f.add("b")
+      assert_equal %w[a b], Forwarded.new(f).map { |s| s }
+      assert_equal %w[b], f.select { |s| s > "a" }
+    end
+  end
 end

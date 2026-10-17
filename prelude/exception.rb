@@ -162,6 +162,7 @@ module Errno
   class ENOTDIR < SystemCallError; end
   class EACCES < SystemCallError; end
   class ENOTEMPTY < SystemCallError; end
+  class EBUSY < SystemCallError; end
   class EAGAIN < SystemCallError; end
   class ECONNREFUSED < SystemCallError; end
   class EADDRINUSE < SystemCallError; end

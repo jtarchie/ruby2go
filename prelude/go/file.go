@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -88,6 +89,8 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_EISDIR(msg("Is a directory"))
 	case errors.Is(err, syscall.ENOTDIR):
 		return NewErrno_ENOTDIR(msg("Not a directory"))
+	case errors.Is(err, syscall.EBUSY):
+		return NewErrno_EBUSY(msg(strings.ToUpper(syscall.EBUSY.Error()[:1]) + syscall.EBUSY.Error()[1:])) // strerror: "Device or resource busy" (Linux), "Resource busy" (macOS)
 	case errors.Is(err, syscall.EINVAL):
 		return NewErrno_EINVAL(msg("Invalid argument"))
 	case errors.Is(err, syscall.EBADF):
@@ -347,6 +350,28 @@ type rbAtimeStat struct {
 	rbAtimeDeeper
 }
 
+// Stat_t names ctime Ctim or Ctimespec, the same trick as atime's.
+type rbCtimeNames struct{ Ctim, Ctimespec syscall.Timespec }
+
+type rbCtimeDeeper struct{ rbCtimeNames }
+
+type rbCtimeStat struct {
+	*syscall.Stat_t
+	rbCtimeDeeper
+}
+
+// rbCtime is fi's status-change time, or the modification time without a Stat_t.
+func rbCtime(fi os.FileInfo) time.Time {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fi.ModTime()
+	}
+	x := rbCtimeStat{Stat_t: st}
+	s1, n1 := x.Ctim.Unix()
+	s2, n2 := x.Ctimespec.Unix()
+	return time.Unix(s1+s2, n1+n2)
+}
+
 // rbAtime is fi's access time, or the modification time without a Stat_t; ponytail: js/wasip1's Stat_t has neither name (Atime instead), so it reads as the epoch there.
 func rbAtime(fi os.FileInfo) time.Time {
 	st, ok := fi.Sys().(*syscall.Stat_t)
@@ -428,4 +453,38 @@ func rbGetsFrom(r *bufio.Reader, sep *String, limit int, lineno *int) *String {
 		*lineno++
 	}
 	return Ref(String(out))
+}
+
+// rbStatAccess is whether the effective user may do mode bit want (4 read, 2 write, 1 execute) on fi: root may read and
+// write anything, and execute what any execute bit allows.
+func rbStatAccess(fi os.FileInfo, want uint32) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	mode := uint32(st.Mode)
+	if os.Geteuid() == 0 {
+		return want != 1 || mode&0o111 != 0 || fi.IsDir()
+	}
+	switch {
+	case int(st.Uid) == os.Geteuid():
+		mode >>= 6
+	case rbInGroups(int(st.Gid)):
+		mode >>= 3
+	}
+	return mode&want != 0
+}
+
+// rbStatGroupOwned is whether fi's group is the effective group or one of the process's groups.
+func rbStatGroupOwned(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && rbInGroups(int(st.Gid))
+}
+
+func rbInGroups(gid int) bool {
+	if gid == os.Getegid() {
+		return true
+	}
+	gs, err := os.Getgroups()
+	return err == nil && slices.Contains(gs, gid)
 }

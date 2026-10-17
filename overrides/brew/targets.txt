@@ -6,3 +6,4 @@ info --json=v2 wget
 info --cask firefox
 info --cask visual-studio-code
 info --cask font-fira-code
+install wget

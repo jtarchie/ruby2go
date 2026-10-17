@@ -14,6 +14,9 @@ if [ "$cmd" = check ]; then
     # shellcheck disable=SC2086
     $B $t > "/tmp/mri-${t// /_}.txt" 2>&1; echo "exit $?" >> "/tmp/mri-${t// /_}.txt"
   done < /w/targets.txt
+  # the MRI pass installed wget: reset so the compiled pass installs (and downloads) it afresh
+  $B uninstall --force --ignore-dependencies $($B list --formula) > /dev/null 2>&1
+  rm -rf "$HOME/.cache/Homebrew/downloads"
 fi
 for p in /w/patches/*.patch; do git -C $R apply "$p" || { echo "patch failed: $p"; exit 1; }; done
 /w/tools/install-wrapper $R
@@ -26,7 +29,8 @@ gen)
   start=$(date +%s)
   # shellcheck disable=SC2046
   $B $(head -1 /w/targets.txt) > /w/work/brew.go 2> /w/work/brew.go.log
-  echo "gen exit $? elapsed $(( $(date +%s)-start ))s"
+  rc=$?; cp /tmp/rb2go-bad-output-*.go /w/work/gotmp/ 2>/dev/null # the TMPDIR brew hands on is not ours
+  echo "gen exit $rc elapsed $(( $(date +%s)-start ))s"
   ;;
 check)
   fail=0

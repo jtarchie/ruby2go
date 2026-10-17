@@ -36,6 +36,11 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
+	if f.lenient() && f.undefsSingleton(n) {
+		// `singleton_class.send(:undef_method, :inherited)` ahead of a define_singleton_method (bindata's register_subclasses):
+		// the closed world has the one definition boot recorded, so removing the earlier one is a no-op (decision 301)
+		return expr{code: "", typ: TVoid{}, stmt: true, done: true}, true
+	}
 	if e, ok := f.runtimeExtend(n); ok {
 		return e, true
 	}
@@ -152,4 +157,23 @@ func (f *fctx) genCallForm(n *parser.CallNode, expected Type) (expr, bool) {
 		}
 	}
 	return expr{}, false
+}
+
+// undefsSingleton is `singleton_class.undef_method(:x)`, `.remove_method(:x)` or `.send(:undef_method, :x)` on the current class's singleton.
+func (f *fctx) undefsSingleton(n *parser.CallNode) bool {
+	r, ok := n.Receiver.(*parser.CallNode)
+	if !ok || r.Name != "singleton_class" || r.Arguments != nil || r.Receiver != nil && !isSelf(r.Receiver) || n.Block != nil {
+		return false
+	}
+	switch n.Name {
+	case "undef_method", "remove_method":
+		return true
+	case "send", "public_send", "__send__":
+		if args := callArgs(n); len(args) > 0 {
+			if sym, ok := args[0].(*parser.SymbolNode); ok {
+				return sym.Unescaped.Value == "undef_method" || sym.Unescaped.Value == "remove_method"
+			}
+		}
+	}
+	return false
 }
