@@ -172,6 +172,16 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 	if len(t.Args) > 0 && len(cls.TypeParams) == 0 && c.gemFile(sc.File) {
 		t.Args = nil // a Sorbet generic (type_member), erased to untyped (decision 196): its args go too
 	}
+	if len(t.Args) == 0 && cls.helperOf != nil { // a helper named in its outer class's code (decision 311)
+		if args := helperArgs(cls, sc.class); args != nil {
+			return c.classType(cls, args, sc.srcPos)
+		}
+		vars := make([]Type, len(cls.TypeParams))
+		for i, p := range cls.TypeParams {
+			vars[i] = TVar{Name: p}
+		}
+		return TClass{C: cls, Args: vars}
+	}
 	if len(t.Args) == 0 && len(cls.TypeParams) > 0 && c.gemFile(sc.File) {
 		return TClass{C: cls, Args: slices.Repeat([]Type{TAny{}}, len(cls.TypeParams))} // `Hash` with no args: untyped elements
 	}

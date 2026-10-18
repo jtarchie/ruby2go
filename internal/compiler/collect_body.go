@@ -545,7 +545,21 @@ func readsLocal(n parser.Node, names map[string]bool) bool {
 // collectIvarDecls picks up `# @rbs @x: T` annotations anywhere in a body.
 func (c *Compiler) collectIvarDecls(f *File, cls *Class, body parser.Node, scope []*Class) {
 	end := f.line(body.GetLocation().StartOffset + body.GetLocation().Length)
+	nested := map[int]bool{} // a nested class's lines: its own annotations (a module's `@rbs @x` must not take a helper class's)
+	if st, ok := body.(*parser.StatementsNode); ok {
+		for _, s := range st.Body {
+			switch s.(type) {
+			case *parser.ClassNode, *parser.ModuleNode:
+				for ln := f.line(s.GetLocation().StartOffset) + 1; ln <= f.line(s.GetLocation().StartOffset+s.GetLocation().Length); ln++ { // its first line keys the annotations before it, which are ours
+					nested[ln] = true
+				}
+			}
+		}
+	}
 	for ln := cls.Line; ln <= end+1; ln++ {
+		if nested[ln] {
+			continue
+		}
 		for _, iv := range f.annotations(ln)["ivar"] {
 			name, ty, ok := strings.Cut(iv, ":")
 			if !ok {

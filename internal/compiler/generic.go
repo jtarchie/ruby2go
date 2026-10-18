@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/jtarchie/ruby2go/internal/rbs"
 )
@@ -24,8 +25,10 @@ const maxInstanceNesting = 8
 // isTemplate reports a generic struct class: instantiated per type arguments, never emitted itself.
 func (c *Class) isTemplate() bool { return c.tmpl }
 
-// markTemplates finds the templates before link: generic struct classes whose superclass is a struct class.
+// markTemplates finds the templates before link: generic struct classes whose superclass is a struct class, and the
+// unannotated helper classes nested in one, which take its parameters (decision 311).
 func (c *Compiler) markTemplates() {
+	defer c.markHelpers()
 	for _, cls := range c.classList {
 		if len(cls.TypeParams) == 0 || !cls.isStruct() || cls.universal || cls.metaOf != nil || cls.template != nil {
 			continue
@@ -36,6 +39,33 @@ func (c *Compiler) markTemplates() {
 			cls.tmpl = sup != nil && sup.isStruct() && !sup.IsModule && (sup.universal || sup.tmpl || len(sup.TypeParams) == 0)
 		}
 	}
+}
+
+// markHelpers makes each helper of a template a template over the same parameters: a plain struct class declared
+// directly in the template's body, with no superclass, no type parameters, and no signature on any method.
+func (c *Compiler) markHelpers() {
+	for _, cls := range c.classList {
+		i := strings.LastIndex(cls.RubyName, "::")
+		if i < 0 || cls.tmpl || cls.template != nil || len(cls.TypeParams) > 0 || !cls.isStruct() || cls.universal || cls.metaOf != nil || cls.superRef != nil || cls.File.isPrelude() || len(cls.singletonDefs) > 0 || c.sigs[cls.RubyName] != nil {
+			continue
+		}
+		outer := c.classes[cls.RubyName[:i]]
+		if outer == nil || !outer.tmpl || outer.helperOf != nil || slices.ContainsFunc(cls.MethodList, func(m *Method) bool { return m.declared }) {
+			continue
+		}
+		cls.tmpl, cls.helperOf, cls.TypeParams = true, outer, slices.Clone(outer.TypeParams)
+	}
+}
+
+// helperArgs are the arguments a helper template takes where k's code names it: those of the instance of its outer
+// class (or of the helper itself) along k's superclasses; nil outside any.
+func helperArgs(helper, k *Class) []Type {
+	for ; k != nil; k = k.Super {
+		if k.template != nil && (k.template == helper.helperOf || k.template == helper) {
+			return k.instArgs
+		}
+	}
+	return nil
 }
 
 // linkSuperInst makes the superclass instance cls's superArgs name, in cls's scope (an instance's resolves its own parameters).

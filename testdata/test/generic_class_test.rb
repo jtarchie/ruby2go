@@ -130,6 +130,42 @@ module GenericClassTests
     def total = size * 10
   end
 
+  # @rbs generic T
+  class Chain
+    class Link
+      attr_accessor :val, :rest
+
+      def initialize(val, rest)
+        @val = val
+        @rest = rest
+      end
+    end
+
+    # @rbs @head: Link?
+
+    #: () -> void
+    def initialize
+      @head = nil
+    end
+
+    #: (T) -> self
+    def push(v)
+      @head = Link.new(v, @head)
+      self
+    end
+
+    #: () -> Array[T]
+    def to_a
+      out = [] #: Array[T]
+      l = @head
+      while l
+        out << l.val
+        l = l.rest
+      end
+      out
+    end
+  end
+
   class Point
     attr_reader :x #: Integer
 
@@ -227,6 +263,16 @@ module GenericClassTests
       h.push(:x, 1.5)
       h.push(7, 0.5)
       assert_equal 7, h.pop
+    end
+
+    def test_nested_helper_takes_outer_params
+      ints = Chain.new #: Chain[Integer]
+      strs = Chain.new #: Chain[String]
+      ints.push(1).push(2)
+      strs.push("x").push("y")
+      assert_equal [2, 1], ints.to_a
+      assert_equal ["y", "x"], strs.to_a
+      assert_equal 3, ints.to_a.sum
     end
 
     def test_remapped_superclass_args

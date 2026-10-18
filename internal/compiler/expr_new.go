@@ -414,6 +414,11 @@ func (f *fctx) genPerRunClass(n *parser.CallNode, cls *Class) expr {
 // initialize's parameters bind from the call's arguments.
 func (f *fctx) newInstance(n parser.Node, cls *Class, init *entry, args []parser.Node, exprs []expr, expected Type) *Class {
 	at := srcPos{f.f, f.f.shownLine(n.GetLocation().StartOffset)}
+	if cls.helperOf != nil { // a helper's instance is its outer instance's arguments (decision 311)
+		if args := helperArgs(cls, f.owner); args != nil {
+			return f.c.instOf(cls, args, at)
+		}
+	}
 	switch et, ok := expected.(TClass); {
 	case ok && et.C.template == cls:
 		return et.C

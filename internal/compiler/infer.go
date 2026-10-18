@@ -196,7 +196,7 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 		}
 	case how != pendNone: // learned from this round's calls, or only a dynamic call can reach it (decision 169)
 		prm.Type = TAny{}
-	case m.attrWriter:
+	case m.attrWriter, m.Owner != nil && m.Owner.isTemplate(): // a template's body is never compiled: its instances' are (decision 308)
 		prm.Type = TAny{} // an attr writer no call types: only a dynamic call can reach it (decision 179)
 	default: // untyped, as a gem def's: only a dynamic call (send, a hook, an untyped receiver) can pass it anything (decision 183)
 		c.warn(m.File, m.Node, "method %s's parameter %s is untyped: no call in the program gives it a type (`# @rbs %s: T` for static calls; decision 183)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
@@ -423,6 +423,15 @@ func (c *Compiler) rehome(t Type) Type {
 			}
 		} else {
 			cls = c.classes[t.C.RubyName]
+		}
+		if t.C.template != nil { // an instance by its key: absent until this compile creates it (decision 308)
+			if cls = c.insts[instKey(t.C.template, t.C.instArgs)]; cls == nil && c.classes[t.C.RubyName] != nil {
+				args := make([]Type, len(t.C.instArgs))
+				for i, a := range t.C.instArgs {
+					args[i] = c.rehome(a)
+				}
+				return c.classType(c.classes[t.C.RubyName], args, srcPos{})
+			}
 		}
 		if cls == nil {
 			return TAny{}

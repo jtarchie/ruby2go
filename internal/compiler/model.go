@@ -70,6 +70,7 @@ type Class struct {
 	superArgs     []rbs.Type       // `class Min < Base #[E]` / a sig's `< Base[E]`: the superclass's type arguments (decision 309)
 	superInst     *Class           // the superclass instance superArgs name, made with the instances
 	tmpl          bool             // a template: markTemplates decided before link
+	helperOf      *Class           // a helper template: the generic class it is nested in, whose arguments it takes (decision 311)
 }
 
 // displayName is the class's name as Ruby shows it.
