@@ -155,31 +155,24 @@ func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		main = abs // __dir__ is absolute, as MRI's
 	}
 	aug = append(aug, Source{Name: main, Src: data, Path: main})
-	poison := map[string]string{}
-	var warnings []string
-	for round := 0; ; round++ {
-		opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: true, goPoison: poison}
-		out, err := compile(ctx, preludeFS, aug, &opts)
-		if err != nil || round == goPoisonRounds {
-			return out, append(warnings, opts.warnings...), err
-		}
-		if dump := opts.env.GopoisonDump; dump != "" { // debugging: the Go before its rejected gem methods become stubs
-			_ = os.WriteFile(fmt.Sprintf("%s.%d", dump, round), out, 0o600)
-		}
-		bad := goTypeErrors(out) // nil when it does not parse: go build reports that, with the generated file kept
-		added := 0
-		for fn, msg := range bad {
-			if key, ok := opts.goFuncs[fn]; ok && poison[key] == "" {
-				poison[key] = "Go rejects it: " + msg
-				warnings = append(warnings, fmt.Sprintf("%s does not type-check in Go, so calling it raises NotImplementedError: %s (decision 205)", key, msg))
-				added++
-			}
-		}
-		if added == 0 {
-			return out, append(warnings, opts.warnings...), err
-		}
+	opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: true}
+	out, err := compile(ctx, preludeFS, aug, &opts)
+	warnings := opts.warnings
+	if err != nil {
+		return out, warnings, err
 	}
+	if dump := opts.env.GopoisonDump; dump != "" { // debugging: the Go before its rejected gem methods become stubs
+		_ = os.WriteFile(dump+".0", out, 0o600)
+	}
+	out = stubRejected(out, func(fn, msg string) (string, bool) {
+		g, ok := opts.goFuncs[fn]
+		if ok {
+			warnings = append(warnings, fmt.Sprintf("%s does not type-check in Go, so calling it raises NotImplementedError: %s (decision 205)", g.key, msg))
+		}
+		return "rb2go: " + g.name + " does not compile: Go rejects it: " + msg, ok
+	})
+	return out, warnings, nil
 }
 
-// goPoisonRounds bounds the traced build's compiles: each poisons what Go rejected in the last (decision 205).
+// goPoisonRounds bounds the traced build's type checks: each stubs what Go rejected in the last (decisions 205, 303).
 const goPoisonRounds = 4

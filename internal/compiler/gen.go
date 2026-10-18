@@ -3155,13 +3155,13 @@ func (c *Compiler) emitMethod0(m *Method) {
 	if c.isDirectMethod(m) {
 		c.labels[cls.Name+"."+m.GoName] = c.frameLabel(m)
 		if c.goFuncs != nil && c.gemFile(m.File) {
-			c.goFuncs[cls.Name+"."+m.GoName] = methodKey(m)
+			c.goFuncs[cls.Name+"."+m.GoName] = goFunc{methodKey(m), m.String()}
 		}
 		c.w("func (self %s) %s(%s) %s {\n", c.recvType(cls), m.GoName, params, retDecl)
 	} else {
 		c.labels[freeFuncName(m)] = c.frameLabel(m)
 		if c.goFuncs != nil && c.gemFile(m.File) {
-			c.goFuncs[freeFuncName(m)] = methodKey(m)
+			c.goFuncs[freeFuncName(m)] = goFunc{methodKey(m), m.String()}
 		}
 		self := "self Self"
 		switch {

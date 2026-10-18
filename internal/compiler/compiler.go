@@ -132,7 +132,7 @@ type Compiler struct {
 	badClasses            map[*Class]compileError      // gem classes that cannot compile, an error where reachable code names them
 	evalSites             map[string]bool              // "path:line" of each string eval boot compiled: a no-op (decision 204)
 	blockEvalSites        map[*parser.CallNode]bool    // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
-	goFuncs               map[string]string            // each gem method's Go func name -> methodKey (goPoison)
+	goFuncs               map[string]goFunc            // each gem method's Go func name -> its key and name (decision 303)
 	bootDelegators        map[string][]string          // def_delegators' names boot saw, by "path:line" (decision 204)
 	bootLoadPath          []string                     // $LOAD_PATH as boot left it, nil without a boot (decision 301)
 	bootStructs           map[string][]boot.StructProp // each T::Struct's props boot saw (decision 241)
@@ -276,8 +276,7 @@ type options struct {
 	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
 	mainLast   bool              // traced mode: the last source is the program's main file, and a require in a method resolves at run time (decisions 197, 288)
 	boot       *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
-	goPoison   map[string]string // gem methods whose Go did not type-check, by methodKey: poisoned (decision 205)
-	goFuncs    map[string]string // out: each gem method's Go func name -> its methodKey
+	goFuncs    map[string]goFunc // out: each gem method's Go func name -> its methodKey and name
 	noPrune    bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
 	env        envConfig         // the RB2GO_* environment, read once by compile
 	testHook   func()            // tests only: runs at the start of compileWith, to inject a panic
@@ -486,8 +485,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.inferReturns()
 	c.relinkOverrides()
 	tick("infer")
-	c.applyGoPoison(opts.goPoison)
-	c.goFuncs = map[string]string{}
+	c.goFuncs = map[string]goFunc{}
 	c.emitProgram()
 	opts.goFuncs = c.goFuncs
 	if len(c.kept) > 0 {
