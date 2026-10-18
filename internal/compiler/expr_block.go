@@ -392,6 +392,26 @@ func (f *fctx) withClosureSelf(self Type, gen func()) {
 }
 
 // genClosure renders a block as a Go func literal.
+// funcBlockArg is a dynBlockArg block func passed as a block: itself when the block is that shape (nil when the call
+// gave none), else boxed as the Proc genClosure adapts (optparse's on_tail rewritten to __on_tail_flag's (bool)).
+func funcBlockArg(b *parser.BlockArgumentNode, want TFunc, self Type) (string, *parser.BlockArgumentNode) {
+	en, ok := b.Expression.(*exprNode)
+	if !ok {
+		return "", b
+	}
+	ft, isFn := en.e.typ.(TFunc)
+	switch {
+	case !isFn || ft.Proc || self != nil:
+		return "", b
+	case typeEq(ft, want):
+		return en.e.code, b
+	case ft.Rest:
+		return "", b
+	}
+	ft.Proc = true
+	return "", &parser.BlockArgumentNode{Location: b.Location, Expression: &exprNode{Node: en.Node, e: expr{code: "(&" + en.e.code + ")", typ: ft}}}
+}
+
 func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env map[string]Type) string {
 	params := substAll(sig.Params, env)
 	self := subst(sig.Self, env) // an escaped block's self, a leading Go param (decision 164)
@@ -412,10 +432,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		if code, ok := restBlockFunc(b, sig); ok {
 			return code
 		}
-		if en, ok := b.Expression.(*exprNode); ok && self == nil {
-			if ft, ok := en.e.typ.(TFunc); ok && !ft.Proc && typeEq(ft, TFunc{Params: params, Ret: subst(sig.Ret, env), Rest: sig.Rest}) {
-				return en.e.code // the block func itself, nil when none was given (dynBlockArg)
-			}
+		var code string
+		if code, b = funcBlockArg(b, TFunc{Params: params, Ret: subst(sig.Ret, env), Rest: sig.Rest}, self); code != "" {
+			return code
 		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
