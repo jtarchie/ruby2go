@@ -60,10 +60,11 @@ func TestSigsShipped(t *testing.T) {
 		"sig/_scripts/skip.rbs": "class Foo\n  def s: () -> String\nend\n",
 	} {
 		p := filepath.Join(root, name)
-		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-			t.Fatal(err)
+		err := os.MkdirAll(filepath.Dir(p), 0o750)
+		if err == nil {
+			err = os.WriteFile(p, []byte(src), 0o600)
 		}
-		if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
+		if err != nil {
 			t.Fatal(err)
 		}
 	}

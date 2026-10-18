@@ -261,6 +261,7 @@ func eraseVars(t rbs.Type, vars map[string]bool) rbs.Type {
 			fs[i].Value = eraseVars(fs[i].Value, vars)
 		}
 		return rbs.Record{Fields: fs}
+	case rbs.Bool, rbs.Bot, rbs.Instance, rbs.Literal, rbs.Nil, rbs.Self, rbs.Singleton, rbs.Untyped, rbs.Void: // no type variable inside
 	}
 	return t
 }

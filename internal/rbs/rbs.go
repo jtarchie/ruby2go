@@ -421,7 +421,8 @@ func ParseMethodType(s string) (*MethodType, error) {
 			m.TypeParams = append(m.TypeParams, tp)
 			if p.peek() == "<" { // a bound (`[P < Pointer]`) is not modelled
 				p.next()
-				if _, err = p.parseType(); err != nil {
+				_, err = p.parseType()
+				if err != nil {
 					return nil, err
 				}
 			}
