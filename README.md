@@ -217,15 +217,16 @@ Every trade-off above has a numbered entry, with its reasoning, in the
 
 A compiled program does no interpretation, so the interpreter's
 per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
-`scripts/benchmark`, median of 7 runs over [`benchmarks/`](benchmarks/)):
+`scripts/benchmark`, median of 9 runs over [`benchmarks/`](benchmarks/)):
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.28s | 0.02s | 17.6x faster |
-| `Hash` counting, 500k | 0.13s | 0.02s | 5.4x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.16s | 0.03s | 6.6x faster |
-| string build/split, 100k | 0.13s | 0.03s | 4.1x faster |
-| `Math.sin`/`cos`, 200k | 0.10s | 0.01s | 13.2x faster |
+| `fib(32)` | 0.27s | 0.017s | 15.9x faster |
+| `Hash` counting, 500k | 0.11s | 0.025s | 4.4x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.026s | 5.7x faster |
+| string build/split, 100k | 0.11s | 0.032s | 3.4x faster |
+| `Math.sin`/`cos`, 200k | 0.08s | 0.009s | 9.8x faster |
+| total | 0.72s | 0.108s | 6.6x faster |
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one
@@ -234,14 +235,24 @@ Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 
 Correctness is measured against MRI, not a specification: 120
-[examples](examples/), 30 minitest suites and 23 compile-error archives all
+[examples](examples/), 39 minitest suites and 23 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127): of core's 17,566 examples, **5,154
-pass**, 1,970 fail or error, and 10,442 are skipped as unsupported (features
-rb2go can't compile; the largest are Bignum, String mutation, String
-encoding tags and `eval`/code loading, which rb2go leaves out by design). A
-looser name-level metric,
-[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 79.2% of
+ruby/spec under rb2go (decision 127). Measured 2026-10-17:
+
+| ruby/spec | examples | pass | fail | error | skipped |
+|---|---:|---:|---:|---:|---:|
+| `core` | 17,548 | **5,826** | 1,032 | 550 | 10,140 |
+| `library` | 3,283 | **843** | 111 | 89 | 2,240 |
+| total | 20,831 | **6,669** | 1,143 | 639 | 12,380 |
+
+"Fail" means an assertion did not hold. "Error" means the example raised
+instead. "Skipped" means the example uses something rb2go can't compile; the
+largest groups are Bignum, String mutation, String encoding tags and
+`eval`/code loading, which rb2go leaves out by design. Of the examples that
+run, 78.6% of `core` and 80.8% of `library` pass. Not counted: `library/etc`,
+which stops on a parse error in the program the runner builds, and
+`language`, which stops on an internal compiler error. A looser name-level metric,
+[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 80.2% of
 core's method spec files name a method the prelude or the compiler defines
 ([#49](https://github.com/jtarchie/ruby2go/issues/49)).
 
