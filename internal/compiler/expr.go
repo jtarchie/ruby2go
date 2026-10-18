@@ -267,12 +267,16 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 			exp = v.typ
 		}
 	}
-	empty := ann == nil && isEmptyLit(n.Value)
+	tmpl := f.openTemplate(n.Value)
+	empty := ann == nil && (isEmptyLit(n.Value) || tmpl != nil)
 	if exp == nil && empty {
 		exp = f.refined[f.localKey(n.Name)]
 	}
 	if exp == nil && empty && f.pass == 1 { // pass 1: untyped, so what goes in it can type it
 		exp = f.c.openNewType(n.Value)
+		if tmpl != nil {
+			exp = TClass{C: tmpl, Args: slices.Repeat([]Type{TAny{}}, len(tmpl.TypeParams))}
+		}
 	}
 	seed := f.widenSeed(n, ann, &exp)
 	if r, ok := n.Value.(*parser.LocalVariableReadNode); ok && r.Name == n.Name && f.erbDepth > 0 { // `x = x` declares x for the template's parse: a no-op
@@ -412,6 +416,10 @@ func (f *fctx) noteElems(n *parser.CallNode) {
 	switch r := n.Receiver.(type) {
 	case *parser.LocalVariableReadNode:
 		if info := f.localInfo(r.Name); f.pass == 1 && info != nil && info.open {
+			if tc, ok := info.typ.(TClass); ok && tc.C.isTemplate() {
+				f.noteTemplateArgs(n, tc.C, info)
+				return
+			}
 			t, open, elems, seeded = info.typ, &info.open, &info.elems, info.seeded
 		}
 	case *parser.InstanceVariableReadNode:

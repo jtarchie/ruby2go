@@ -218,6 +218,17 @@ module GenericClassTests
       assert_instance_of MinQ, q
     end
 
+    def test_open_new_typed_by_later_calls
+      q = MinQ.new
+      q.push("b", 2)
+      q.push("a", 1)
+      assert_equal "a", q.extract_min
+      h = Heap.new
+      h.push(:x, 1.5)
+      h.push(7, 0.5)
+      assert_equal 7, h.pop
+    end
+
     def test_remapped_superclass_args
       f = Flipped.new #: Flipped[Integer, String]
       f.push("x", 3)

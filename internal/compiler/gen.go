@@ -242,6 +242,7 @@ type localInfo struct {
 	open      bool      // an unannotated `[]`/`{}` that later writes may type (analyze)
 	seeded    bool      // a non-empty `[...]` open to widening: elems start with its own element type (decision 193)
 	elems     [2][]Type // what those writes put in it: elements, or keys and values
+	targs     [][]Type  // an open generic `X.new`: what later calls bind each type parameter to (decision 310)
 }
 
 type scope struct {
@@ -2997,6 +2998,9 @@ func (f *fctx) emptyRefinements() map[localKey]Type {
 			continue
 		}
 		if t := refineContainer(li.typ, li.open, li.elems); t != nil {
+			out[k] = t
+		}
+		if t := f.refineTemplate(li); t != nil {
 			out[k] = t
 		}
 	}

@@ -94,6 +94,9 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 		if inst := f.newInstance(n, cls, init, args, exprs, expected); inst != nil {
 			return f.genNew(n, inst, args, exprs, expected, block)
 		}
+		if et, ok := expected.(TClass); ok && et.C == cls { // an open X.new in pass 1, or an instance the restart will have
+			return expr{code: "nil", typ: et}
+		}
 	}
 	var codes []string
 	if init != nil {
@@ -414,6 +417,8 @@ func (f *fctx) newInstance(n parser.Node, cls *Class, init *entry, args []parser
 	switch et, ok := expected.(TClass); {
 	case ok && et.C.template == cls:
 		return et.C
+	case ok && et.C == cls && len(et.Args) == len(cls.TypeParams) && f.pass == 1 && !slices.ContainsFunc(et.Args, func(a Type) bool { return !isAny(a) }):
+		return nil // an open X.new: typed by later calls (decision 310)
 	case ok && et.C == cls && len(et.Args) == len(cls.TypeParams): // an instance this pass lacks: the restart has it
 		return f.c.instOf(cls, et.Args, at)
 	}
@@ -429,10 +434,87 @@ func (f *fctx) newInstance(n parser.Node, cls *Class, init *entry, args []parser
 	for i, p := range cls.TypeParams {
 		t, ok := env[p]
 		var vars []string
-		if freeVars(t, &vars); !ok || len(vars) > 0 {
+		if freeVars(t, &vars); (!ok || len(vars) > 0) && f.lenient() { // gem code: the erased instance (decision 310)
+			f.warn(n, "%s.new's %s is untyped: nothing in the program binds it (decision 310)", cls.RubyName, p)
+			t, ok, vars = TAny{}, true, nil
+		}
+		if !ok || len(vars) > 0 {
 			f.errorf(n, "cannot infer type parameter %s of %s.new: annotate the result (`#: %s[...]`)", p, cls.RubyName, cls.RubyName)
 		}
 		targs[i] = t
 	}
 	return f.c.instOf(cls, targs, at)
+}
+
+// openTemplate is the template of an `X.new` whose arguments cannot bind every type parameter: an open literal, typed
+// by what later calls on its local pass (decision 310).
+func (f *fctx) openTemplate(n parser.Node) *Class {
+	call, ok := n.(*parser.CallNode)
+	if !ok || call.Name != "new" || call.Block != nil || call.Receiver == nil {
+		return nil
+	}
+	cls := f.classRef(call.Receiver)
+	if cls == nil || !cls.isTemplate() {
+		return nil
+	}
+	var bound []string
+	if init := cls.lookup("initialize"); init != nil && len(callArgs(call)) > 0 {
+		for _, p := range init.M.Params {
+			freeVars(subst(p.Type, init.Env), &bound)
+		}
+	}
+	for _, tp := range cls.TypeParams {
+		if !slices.Contains(bound, tp) {
+			return cls
+		}
+	}
+	return nil
+}
+
+// noteTemplateArgs records what a call on an open generic local binds the template's parameters to, by unifying each
+// positional argument with the parameter it meets.
+func (f *fctx) noteTemplateArgs(n *parser.CallNode, tmpl *Class, info *localInfo) {
+	e := tmpl.lookup(n.Name)
+	if e == nil {
+		return
+	}
+	if info.targs == nil {
+		info.targs = make([][]Type, len(tmpl.TypeParams))
+	}
+	params := positionals(e.M)
+	for i, a := range callArgs(n) {
+		if _, splat := a.(*parser.SplatNode); splat || i >= len(params) {
+			break
+		}
+		if _, kw := a.(*parser.KeywordHashNode); kw {
+			break
+		}
+		env := map[string]Type{}
+		unify(subst(params[i].Type, e.Env), f.probeType(a, nil), env)
+		for j, tp := range tmpl.TypeParams {
+			if t, ok := env[tp]; ok {
+				info.targs[j] = append(info.targs[j], t)
+			}
+		}
+	}
+}
+
+// refineTemplate is an open generic local's instance: each parameter the join of its typed evidence; nil if one has none.
+func (f *fctx) refineTemplate(li *localInfo) Type {
+	tc, ok := li.typ.(TClass)
+	if !ok || !li.open || !tc.C.isTemplate() || li.targs == nil {
+		return nil
+	}
+	args := make([]Type, len(li.targs))
+	for i, ts := range li.targs {
+		typed := slices.DeleteFunc(slices.Clone(ts), holdsAny)
+		if len(typed) == 0 {
+			return nil
+		}
+		args[i] = typed[0]
+		for _, t := range typed[1:] { // as a parameter's uses join (decision 146): a union where classes differ
+			args[i] = joinUnion(args[i], t)
+		}
+	}
+	return f.c.classType(tc.C, args, tc.C.srcPos)
 }

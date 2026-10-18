@@ -161,6 +161,23 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 	return cls
 }
 
+// readSuperArgs reads `class X < Base #[A]`, or a sig's `< Base[A]`: the superclass's type arguments (decision 309).
+func (c *Compiler) readSuperArgs(f *File, n *parser.ClassNode, cls *Class, line int) {
+	if t, ok := f.typeArgs[line]; ok {
+		tup, err := rbs.ParseType(t)
+		if err != nil {
+			c.errorf(f, n, "bad superclass type args %q: %v", t, err)
+		}
+		cls.superArgs = tup.(rbs.Tuple).Elems //nolint:forcetypeassert // the source scanner reads `#[...]` as a tuple
+		return
+	}
+	if sd := c.sigs[cls.RubyName]; sd != nil {
+		if sn, ok := sd.Super.(rbs.Name); ok {
+			cls.superArgs = sn.Args
+		}
+	}
+}
+
 // goClassName maps a constant path to a Go identifier.
 func goClassName(rubyName string) string { return strings.ReplaceAll(rubyName, "::", "_") }
 
@@ -271,17 +288,8 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 			sup = absConstPath(scope[len(scope)-1].RubyName, sup.GetLocation())
 		}
 		ref := &constRef{node: sup, scope: scope, file: f}
-		if t, ok := f.typeArgs[line]; ok && !reopen {
-			tup, err := rbs.ParseType(t)
-			if err != nil {
-				c.errorf(f, n, "bad superclass type args %q: %v", t, err)
-			}
-			cls.superArgs = tup.(rbs.Tuple).Elems //nolint:forcetypeassert // the source scanner reads `#[...]` as a tuple
-		}
-		if sd := c.sigs[name]; sd != nil && !reopen && len(cls.superArgs) == 0 {
-			if sn, ok := sd.Super.(rbs.Name); ok {
-				cls.superArgs = sn.Args
-			}
+		if !reopen {
+			c.readSuperArgs(f, n, cls, line)
 		}
 		if reopen {
 			// the first declaration fixed the superclass (Object when it named none)
