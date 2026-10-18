@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/rbs"
 )
 
 // collectTopCall takes the top-level calls that act at compile time: require_relative, describe, include, require.
@@ -269,6 +271,18 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 			sup = absConstPath(scope[len(scope)-1].RubyName, sup.GetLocation())
 		}
 		ref := &constRef{node: sup, scope: scope, file: f}
+		if t, ok := f.typeArgs[line]; ok && !reopen {
+			tup, err := rbs.ParseType(t)
+			if err != nil {
+				c.errorf(f, n, "bad superclass type args %q: %v", t, err)
+			}
+			cls.superArgs = tup.(rbs.Tuple).Elems //nolint:forcetypeassert // the source scanner reads `#[...]` as a tuple
+		}
+		if sd := c.sigs[name]; sd != nil && !reopen && len(cls.superArgs) == 0 {
+			if sn, ok := sd.Super.(rbs.Name); ok {
+				cls.superArgs = sn.Args
+			}
+		}
 		if reopen {
 			// the first declaration fixed the superclass (Object when it named none)
 			cls.reSupers = append(cls.reSupers, ref)

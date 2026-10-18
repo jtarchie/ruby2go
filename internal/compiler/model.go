@@ -67,6 +67,9 @@ type Class struct {
 	template      *Class           // an instance's generic class (decision 308)
 	instArgs      []Type           // an instance's type arguments
 	instances     []*Class         // a template's instances
+	superArgs     []rbs.Type       // `class Min < Base #[E]` / a sig's `< Base[E]`: the superclass's type arguments (decision 309)
+	superInst     *Class           // the superclass instance superArgs name, made with the instances
+	tmpl          bool             // a template: markTemplates decided before link
 }
 
 // displayName is the class's name as Ruby shows it.

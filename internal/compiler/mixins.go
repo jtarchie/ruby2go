@@ -147,6 +147,8 @@ func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.
 func (c *Compiler) superclassOf(cls *Class) *Class {
 	var sup *Class
 	switch {
+	case cls.superInst != nil: // a generic superclass's instance (decision 309)
+		sup = cls.superInst
 	case cls.superRef != nil:
 		sup = c.resolveClassRef(cls.superRef)
 		if c.isNumericMod(sup) {

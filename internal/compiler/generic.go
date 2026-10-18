@@ -22,8 +22,35 @@ type needInstances struct{}
 const maxInstanceNesting = 8
 
 // isTemplate reports a generic struct class: instantiated per type arguments, never emitted itself.
-func (c *Class) isTemplate() bool {
-	return c.template == nil && len(c.TypeParams) > 0 && c.isStruct() && !c.universal && !c.hashBase && c.metaOf == nil && c.superRef == nil
+func (c *Class) isTemplate() bool { return c.tmpl }
+
+// markTemplates finds the templates before link: generic struct classes whose superclass is a struct class.
+func (c *Compiler) markTemplates() {
+	for _, cls := range c.classList {
+		if len(cls.TypeParams) == 0 || !cls.isStruct() || cls.universal || cls.metaOf != nil || cls.template != nil {
+			continue
+		}
+		cls.tmpl = cls.superRef == nil
+		if cls.superRef != nil {
+			sup, _ := c.lookupConst(cls.superRef.file, cls.superRef.node, cls.superRef.scope)
+			cls.tmpl = sup != nil && sup.isStruct() && !sup.IsModule && (sup.universal || sup.tmpl || len(sup.TypeParams) == 0)
+		}
+	}
+}
+
+// linkSuperInst makes the superclass instance cls's superArgs name, in cls's scope (an instance's resolves its own parameters).
+func (c *Compiler) linkSuperInst(cls *Class) {
+	if len(cls.superArgs) == 0 || cls.tmpl || cls.superRef == nil {
+		return
+	}
+	sup, _ := c.lookupConst(cls.superRef.file, cls.superRef.node, cls.superRef.scope)
+	if sup == nil || !sup.tmpl {
+		return
+	}
+	t := c.resolveType(rbs.Name{Name: sup.RubyName, Args: cls.superArgs, Absolute: true}, typeScope{class: cls, lex: cls.superRef.scope, srcPos: cls.srcPos})
+	if tc, ok := t.(TClass); ok && tc.C.template == sup {
+		cls.superInst = tc.C
+	}
 }
 
 // instKey names an instantiation as RBS: the key instances are memoized and requested by.
@@ -45,9 +72,7 @@ func (c *Compiler) instOf(tmpl *Class, args []Type, at srcPos) *Class {
 		c.instMissing = true
 		return nil
 	}
-	inst := c.cloneTemplate(tmpl, args)
-	c.insts[key] = inst
-	return inst
+	return c.cloneTemplate(tmpl, args)
 }
 
 // maxInstanceRestarts bounds the compiles one program may take to find its instances: each finds every instance its pass names.
@@ -91,6 +116,10 @@ func typeDepth(t Type) int {
 // makeInstances creates the instances an earlier pass of this compile requested, before link.
 func (c *Compiler) makeInstances(reqs *[]string) {
 	c.insts, c.instReqs, c.instOpen = map[string]*Class{}, reqs, true
+	c.markTemplates()
+	for _, cls := range slices.Clone(c.classList) {
+		c.linkSuperInst(cls) // `class IntBox < Box #[Integer]`
+	}
 	for i := 0; i < len(*reqs); i++ { //nolint:intrange // creating one may request its arguments' instances, which append
 		t, err := rbs.ParseType("::" + (*reqs)[i])
 		if err != nil {
@@ -112,7 +141,7 @@ func (c *Compiler) cloneTemplate(tmpl *Class, args []Type) *Class {
 	_, _ = h.Write([]byte(key))
 	inst := &Class{Name: fmt.Sprintf("%s_G%08x", tmpl.Name, h.Sum32()), RubyName: tmpl.RubyName, template: tmpl, instArgs: args,
 		Methods: map[string]*Method{}, Ivars: map[string]*Ivar{}, srcPos: tmpl.srcPos, superRef: tmpl.superRef,
-		ivarDecls: tmpl.ivarDecls, privateNew: tmpl.privateNew, undefs: tmpl.undefs, delegations: tmpl.delegations}
+		ivarDecls: tmpl.ivarDecls, privateNew: tmpl.privateNew, undefs: tmpl.undefs, delegations: tmpl.delegations, superArgs: tmpl.superArgs}
 	for _, inc := range tmpl.Includes {
 		inc.Mod, inc.Args = nil, nil
 		inst.Includes = append(inst.Includes, inc)
@@ -130,7 +159,15 @@ func (c *Compiler) cloneTemplate(tmpl *Class, args []Type) *Class {
 		inst.IvarList = append(inst.IvarList, &cp)
 		inst.Ivars[cp.Name] = &cp
 	}
+	for _, a := range c.inheritedAliases {
+		if a.cls == tmpl {
+			a.cls = inst
+			c.inheritedAliases = append(c.inheritedAliases, a)
+		}
+	}
 	c.classList = append(c.classList, inst)
 	tmpl.instances = append(tmpl.instances, inst)
+	c.insts[key] = inst // before its superclass's, which may name it back
+	c.linkSuperInst(inst)
 	return inst
 }

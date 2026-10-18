@@ -82,6 +82,54 @@ module GenericClassTests
     def swap = Pair.new(@v, @k)
   end
 
+  # @rbs generic E
+  # @rbs generic P
+  class Heap
+    #: () -> void
+    def initialize
+      @items = [] #: Array[[E, P]]
+    end
+
+    #: (E, P) -> self
+    def push(e, pr)
+      @items << [e, pr]
+      self
+    end
+
+    #: () -> Integer
+    def size = @items.size
+
+    #: () -> E?
+    def pop
+      best = @items.min_by { |pair| pair[1] }
+      return nil if best.nil?
+      @items.delete(best)
+      best[0]
+    end
+    alias dequeue pop
+  end
+
+  # @rbs generic E
+  # @rbs generic P
+  class MinQ < Heap #[E, P]
+    alias_method :extract_min, :dequeue
+
+    #: (E, P) -> self
+    def push(e, pr)
+      super
+    end
+  end
+
+  # @rbs generic A
+  # @rbs generic B
+  class Flipped < Heap #[B, A]
+  end
+
+  class IntHeap < Heap #[Integer, Integer]
+    #: () -> Integer
+    def total = size * 10
+  end
+
   class Point
     attr_reader :x #: Integer
 
@@ -158,6 +206,32 @@ module GenericClassTests
       assert_equal "one", pr.swap.swap.v
       assert_instance_of Pair, pr.swap
       refute_instance_of Box, pr
+    end
+
+    def test_generic_superclass
+      q = MinQ.new #: MinQ[String, Integer]
+      q.push("b", 2).push("a", 1)
+      assert_equal "a", q.extract_min
+      assert_equal 1, q.size
+      assert_kind_of Heap, q
+      assert_equal Heap, MinQ.superclass
+      assert_instance_of MinQ, q
+    end
+
+    def test_remapped_superclass_args
+      f = Flipped.new #: Flipped[Integer, String]
+      f.push("x", 3)
+      assert_equal "x", f.pop
+    end
+
+    def test_non_generic_child
+      h = IntHeap.new
+      h.push(5, 5).push(3, 3)
+      assert_equal 3, h.pop
+      assert_equal 10, h.total
+      assert_equal [IntHeap, Heap, Object], IntHeap.ancestors.take(3)
+      held = h #: untyped
+      assert Heap === held
     end
 
     def test_untyped_receiver

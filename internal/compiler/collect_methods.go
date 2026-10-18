@@ -46,6 +46,9 @@ type pendingAlias struct {
 // override of the old name leaves the alias on the ancestor's body.
 func (c *Compiler) linkAliases(ctx context.Context) {
 	for _, a := range c.inheritedAliases {
+		if a.cls.isTemplate() { // each instance has its own copy (decision 309)
+			continue
+		}
 		var e *entry
 		if a.cls.Super != nil {
 			e = a.cls.Super.lookup(a.oldName)

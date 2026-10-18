@@ -14,9 +14,7 @@ func (c *Compiler) buildMetas() {
 		if (cls.RubyName == "BasicObject" || cls.RubyName == "Kernel") && len(cls.singletonDefs) > 0 {
 			c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
 		}
-		if cls.template != nil { // instances share the template's class object (decision 308)
-			cls.meta = c.metaFor(cls.template)
-		} else if cls.metaOf == nil {
+		if cls.metaOf == nil {
 			c.metaFor(cls)
 		}
 	}
@@ -27,6 +25,10 @@ func (c *Compiler) buildMetas() {
 
 func (c *Compiler) metaFor(cls *Class) *Class {
 	if cls.meta != nil {
+		return cls.meta
+	}
+	if cls.template != nil { // instances share the template's class object (decision 308)
+		cls.meta = c.metaFor(cls.template)
 		return cls.meta
 	}
 	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 && cls.GoType == "" {
