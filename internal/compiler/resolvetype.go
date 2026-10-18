@@ -24,6 +24,9 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		if cls == nil {
 			c.errorAt(sc.srcPos, "unknown type %s", t.Name)
 		}
+		if cls.IsModule && c.gemFile(sc.File) { // Sorbet's T::Class[Downloadable] is any class that includes the module: a class object, not the module's own
+			return TClass{C: c.classes["Module"]}
+		}
 		if cls.meta == nil {
 			c.errorAt(sc.srcPos, "%s has no class object type", t)
 		}

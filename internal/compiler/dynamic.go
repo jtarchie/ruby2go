@@ -337,6 +337,12 @@ func (c *Compiler) emitDynFallback(name, gn string) {
 	if name != "__getobj__" {
 		c.w("\tif o, ok := rbDelegateObj(recv); ok {\n\t\treturn rbDyn%s(how, o, args...)\n\t}\n", gn)
 	}
+	switch name { // Kernel's block-taking methods on a value whose class defines none of its own (a gem class defines `then`, an Array does not)
+	case "then", "yield_self":
+		c.w("\tif blk, rest := rbPopBlock(args); blk != nil && len(rest) == 0 {\n\t\treturn blk.fn(recv)\n\t}\n")
+	case "tap":
+		c.w("\tif blk, rest := rbPopBlock(args); blk != nil && len(rest) == 0 {\n\t\tblk.fn(recv)\n\t\treturn recv\n\t}\n")
+	}
 	delete(c.dynLazy, "method_missing") // the fallback below needs its wrappers
 	c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
 	c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(%q)}, args...)...)\n\t}\n", name)

@@ -91,6 +91,8 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_ENOTDIR(msg("Not a directory"))
 	case errors.Is(err, syscall.EBUSY):
 		return NewErrno_EBUSY(msg(strings.ToUpper(syscall.EBUSY.Error()[:1]) + syscall.EBUSY.Error()[1:])) // strerror: "Device or resource busy" (Linux), "Resource busy" (macOS)
+	case errors.Is(err, syscall.EROFS):
+		return NewErrno_EROFS(msg("Read-only file system"))
 	case errors.Is(err, syscall.EINVAL):
 		return NewErrno_EINVAL(msg("Invalid argument"))
 	case errors.Is(err, syscall.EBADF):

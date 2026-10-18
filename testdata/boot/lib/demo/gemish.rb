@@ -37,6 +37,37 @@ module Demo
       register_subclasses
     end
 
+    # ruby-macho's `private def inherited` on the class-level (decision 301): the runtime calls a private hook
+    class Guarded
+      @seen = []
+      @fields = []
+
+      class << self
+        attr_reader :seen, :fields
+
+        def field(name) = @fields << name
+
+        private
+
+        def inherited(subclass)
+          super
+          Guarded.seen << subclass.name
+          fields = @fields.dup
+          subclass.class_eval do
+            @fields = fields
+          end
+        end
+      end
+    end
+
+    class Guard1 < Guarded
+      field :a
+    end
+
+    class Guard2 < Guard1
+      field :b
+    end
+
     class Leaf < Base; end
     class Twig < Leaf; end
 
@@ -68,6 +99,9 @@ module Demo
       task = Pair.new("k", count + task.call)
       task.value > 1 ? task : false
     end
+
+    # a call a class never gets (Cask::Cask#tab when cask/cask.rb was not loaded): found, or not, at run time (decision 301)
+    def never_defined(pair) = Pair.new("k", 1).no_such_thing(pair)
 
     def joined
       out = String.new

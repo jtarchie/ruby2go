@@ -1,0 +1,12 @@
+#!/bin/bash
+# host (macOS): gen of `brew install wget` through a symlink that gives work/homebrew the real /opt/homebrew prefix.
+# wget is uninstalled first: the trace runs the install under MRI, which re-installs it.
+# usage: ./macgen [gen|build]   (build leaves work/mac-bin; run it with ./macrun)
+cd "$(dirname "$0")" || exit 1
+export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1
+[ -L /opt/homebrew/bin/brew-rb2go ] || ln -s "$PWD/work/homebrew/bin/brew" /opt/homebrew/bin/brew-rb2go
+/opt/homebrew/bin/brew uninstall --ignore-dependencies wget > /dev/null 2>&1
+case ${1:-gen} in
+gen) HOMEBREW_RB2GO_CMD=gen HOMEBREW_RB2GO_GEM_WARNINGS=1 /opt/homebrew/bin/brew-rb2go install wget > work/mac.go 2> work/mac.go.log; echo "gen exit $?" ;;
+build) rm -f work/mac-bin; HOMEBREW_RB2GO_FLAGS="-gcflags=all=-dwarf=false" HOMEBREW_RB2GO_BIN=$PWD/work/mac-bin /opt/homebrew/bin/brew-rb2go install wget > work/mac-build.log 2>&1; echo "build exit $?" ;;
+esac

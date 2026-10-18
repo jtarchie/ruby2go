@@ -134,6 +134,10 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 	}
 	args := callArgs(n)
 	exec := strings.HasSuffix(n.Name, "_exec")
+	if n.Block == nil && f.lenient() && len(args) > 0 { // gem code (decision 172): fails only if it runs, as a ScriptError a loader can rescue (Formulary's `module_eval(contents, path)`, decision 301)
+		msg := fmt.Sprintf("rb2go: %s of a String at run time is not supported (%s:%d)", n.Name, f.f.Name, f.f.line(n.Location.StartOffset))
+		return expr{code: fmt.Sprintf("panic(NewNotImplementedError(Ref(String(%q))))", msg), typ: TVoid{}, stmt: true, noreturn: true}, true
+	}
 	if n.Block == nil {
 		f.errorf(n, "%s needs a block or a Proc (a String to eval is not supported)", n.Name)
 	}

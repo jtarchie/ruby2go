@@ -129,13 +129,32 @@ func (c *Compiler) collectBlockEval(ctx context.Context, f *File, ln int, e boot
 	if call == nil || target == nil {
 		return
 	}
-	if c.blockEvalSites == nil {
-		c.blockEvalSites = map[*parser.CallNode]bool{}
-	}
-	c.blockEvalSites[call] = true
 	body, ok := call.Block.(*parser.BlockNode).Body.(*parser.StatementsNode)
 	if !ok {
 		return
 	}
+	if seedsFromLocals(body) {
+		return // `subclass.class_eval { @x = x_local }` in a hook: run where it stands (genIvarsEval), not as the class's body
+	}
+	if c.blockEvalSites == nil {
+		c.blockEvalSites = map[*parser.CallNode]bool{}
+	}
+	c.blockEvalSites[call] = true
 	c.collectBody(ctx, f, target, body, c.lexicalOf(target), true)
+}
+
+// seedsFromLocals is a block of instance variable writes at least one of which reads an enclosing local (ruby-macho's
+// inherited hook copying its class-level state to the subclass): the values exist only where the hook runs.
+func seedsFromLocals(body *parser.StatementsNode) bool {
+	reads := false
+	for _, st := range body.Body {
+		w, ok := st.(*parser.InstanceVariableWriteNode)
+		if !ok {
+			return false
+		}
+		if _, isLocal := w.Value.(*parser.LocalVariableReadNode); isLocal {
+			reads = true
+		}
+	}
+	return reads
 }

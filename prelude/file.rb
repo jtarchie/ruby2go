@@ -384,6 +384,24 @@ class File < Object
     return Integer(len(rest_))
   }
 
+  # nil leaves the owner or the group as it is (chown(2)'s -1).
+  #: (Integer?, Integer?, *String) -> Integer
+  def self.chown(owner, group, *paths) = %x{
+    uid, gid := -1, -1
+    if owner != nil {
+      uid = int(*owner)
+    }
+    if group != nil {
+      gid = int(*group)
+    }
+    for _, p := range rest_ {
+      if err := os.Chown(string(p), uid, gid); err != nil {
+        panic(rbSysErr(err, "apply2files", string(p)))
+      }
+    }
+    return Integer(len(rest_))
+  }
+
   #: (String, String) -> Integer
   def self.symlink(old, dst) = %x{
     if err := os.Symlink(string(old), string(dst)); err != nil {

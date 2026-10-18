@@ -9380,6 +9380,17 @@ resolve; anything not listed is still open.
       `freeze` chain).
     - Linux `brew install` also needs bindata/elftools/patchelf (relocation reads ELF files): bindata's
       `define_singleton_method(:new)` closing over locals boot cannot record (`endian_classes`) is still poisoned.
+    - Later in the same push (macOS `brew install wget`, `overrides/brew/macgen`/`macrun`): a private class hook
+      (`private def inherited`) is called by the runtime, not refused; an `inherited` hook's
+      `subclass.class_eval { @x = local }` runs where the hook stands (`seedsFromLocals`), not as the class's body;
+      `module_eval(String)` in gem code raises NotImplementedError (a ScriptError the loader rescues: third-party
+      tap formulae are unreadable in a compiled brew, API formulae are fine); an undefined method on a gem class not
+      all loaded is a run-time NoMethodError inside methods; `T::Class[Mod]` of a module is any class object; a
+      Delegator member of a union forwards an iterator call; Kernel#then/yield_self/tap fall back on any value;
+      `def_delegators` through an untyped accessor forwards untyped; run-time `rbAs` unwraps a Delegator.
+      Prelude: `FileUtils.copy_file`, `File.chown`/`Pathname#chown`, `Errno::EROFS`.
+      Brew patches 0018-0023 (option lists, seatbelt template, merge_repeats kwargs, runtime dependency record
+      type, `from_extension`, sandbox inheritance File).
     - Proof: `testdata/boot` (`rebind`, `rebind_block`, `Registry`, `safe_responds?`, `$LOAD_PATH`), `control_test.rb`
       (`test_destructure_as_condition`), `enumerator_test.rb` (`ForwardedTest`), `stdlib_test.rb`
       (`test_stat_access_and_groups`).

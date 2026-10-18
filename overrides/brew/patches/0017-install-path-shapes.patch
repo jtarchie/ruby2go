@@ -3,7 +3,7 @@ Subject: install path: typed shapes brew's `install` reaches
 `brew install` loads code `info` never runs. Each change keeps MRI's behaviour and gives the compiler a plain shape:
 Cask::DSL::Version#version builds `Version.new`, not `self.class.new`; UnpackStrategy answers `extensions` itself;
 the sandbox's home-path loop uses one name per value; the global cask options are dispatched by name instead of
-`send(*args, **options)`; Formula.installed wraps its flat_map element in an Array; prelude_fetch_formulae types its
+`send(*args, **options)`; Formula.installed is a filter_map; prelude_fetch_formulae types its
 lambda; and the `freeze` chain (Downloadable, Resource, SoftwareSpec) returns T.untyped, as Object#freeze's super does.
 ---
 diff --git a/Library/Homebrew/cask/dsl/version.rb b/Library/Homebrew/cask/dsl/version.rb
@@ -61,11 +61,12 @@ index fc7d5121f9..95c8659bf1 100644
 @@ -2786,7 +2786,7 @@ class Formula
    sig { returns(T::Array[Formula]) }
    def self.installed
-     Formula.cache[:installed] ||= racks.flat_map do |rack|
--      Formulary.from_rack(rack)
-+      [Formulary.from_rack(rack)]
+-    Formula.cache[:installed] ||= racks.flat_map do |rack|
++    Formula.cache[:installed] ||= racks.filter_map do |rack|
+       Formulary.from_rack(rack)
      rescue
-       []
+-      []
++      nil
      end.uniq(&:name)
 diff --git a/Library/Homebrew/install.rb b/Library/Homebrew/install.rb
 index 933af358bf..097ce48bbe 100644

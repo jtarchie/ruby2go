@@ -163,6 +163,7 @@ module Errno
   class EACCES < SystemCallError; end
   class ENOTEMPTY < SystemCallError; end
   class EBUSY < SystemCallError; end
+  class EROFS < SystemCallError; end
   class EAGAIN < SystemCallError; end
   class ECONNREFUSED < SystemCallError; end
   class EADDRINUSE < SystemCallError; end

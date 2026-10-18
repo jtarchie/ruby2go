@@ -619,6 +619,14 @@ func rbAsSlow[T any](a any, want string) T {
 			return t
 		}
 	}
+	if o, ok := rbDelegateObj(a); ok && o != nil { // a Delegator (Homebrew's Dependencies) where its object's class is wanted: the object, as a Sorbet T::Array check lets it through
+		if t, ok := o.(T); ok {
+			return t
+		}
+		if t, ok := rbConv[T](o); ok {
+			return t
+		}
+	}
 	panic(rbConvError(a, want))
 }
 

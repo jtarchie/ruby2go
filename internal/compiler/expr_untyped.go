@@ -314,6 +314,8 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 		how = "rbVCall"
 	case f.implicitCall || call != nil && (call.Receiver == nil || isSelf(call.Receiver)):
 		how = "rbFCall"
+	case call != nil && hookNames[name] && isClassObjHook(call.Receiver): // the runtime calls a hook, private or not (ruby-macho's `private def inherited`)
+		how = "rbFCall"
 	}
 	if spread, ok := f.anySpread(args); ok { // `x.m(a, *rest, *more, **kw)` untyped: one slice into the wrapper's ...any (decision 227)
 		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
@@ -650,4 +652,10 @@ func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
 		call = "_ = " + call
 	}
 	return expr{code: fmt.Sprintf("rbEachAny(any(%s), %d, func(xs_ ...any) { %s })", recv.code, k, call), typ: TAny{}}
+}
+
+// isClassObjHook is the synthesized receiver of a class hook call (hookCall): a class object.
+func isClassObjHook(n parser.Node) bool {
+	e, ok := n.(*exprNode)
+	return ok && e.e.classObj
 }

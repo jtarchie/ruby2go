@@ -1,0 +1,7 @@
+#!/bin/bash
+# host (macOS): the work list for `brew install wget` on /opt/homebrew: stubs in work/mac.go that MRI reaches (work/hits-mac.txt).
+cd "$(dirname "$0")" || exit 1
+./macgen gen
+/opt/homebrew/bin/brew uninstall --ignore-dependencies wget > /dev/null 2>&1
+HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_RB2GO_MRI=1 HOMEBREW_RB2GO_MRI_REQUIRE="$PWD/tools/calltrace.rb" HOMEBREW_RB2GO_CALLTRACE_DIR="$PWD/work" /opt/homebrew/bin/brew-rb2go install wget > /dev/null 2>&1
+python3 tools/hits.py work/mac.go work | tee work/hits-mac.txt

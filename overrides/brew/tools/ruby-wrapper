@@ -10,10 +10,10 @@ raw=() opts=()
 for a in "$@"; do [[ "$a" == -* ]] || break; raw+=("$a") opts+=(-rubyopt "$a"); done # brew.sh's -W1 --disable=...
 [[ "${@:${#raw[@]}+1:1}" == */Homebrew/brew.rb ]] || exec "$real" "$@"
 shift "${#raw[@]}"
-if [[ -n "$HOMEBREW_RB2GO_BIN" && -x "$HOMEBREW_RB2GO_BIN" ]]; then # built already: run it
+for v in ${!HOMEBREW_RB2GO_@}; do export "${v#HOMEBREW_}=${!v}"; done # HOMEBREW_RB2GO_GEM_WARNINGS=1 reaches rb2go
+if [[ -n "$HOMEBREW_RB2GO_BIN" && -x "$HOMEBREW_RB2GO_BIN" ]]; then # built already: run it (RB2GO_BACKTRACE=1 reaches it)
   exec "$HOMEBREW_RB2GO_BIN" "${@:2}"
 fi
-for v in ${!HOMEBREW_RB2GO_@}; do export "${v#HOMEBREW_}=${!v}"; done # HOMEBREW_RB2GO_GEM_WARNINGS=1 reaches rb2go
 export RB2GO_RUBY="$real" HOMEBREW_RB2GO_RUBY="$real" # rb2go's MRI; a nested bin/brew keeps only the second
 also=()
 while IFS= read -r line; do [[ -n "$line" ]] && also+=(-trace-also "$line"); done <<< "$RB2GO_ALSO" # one binary, several commands

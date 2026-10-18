@@ -636,6 +636,10 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
 			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
+		if f.lenient() && f.m != nil && block == nil && t.C.isStruct() && t.C.File != nil && !t.C.File.isPrelude() && !t.C.universal {
+			// a gem class whose methods are not all in the closed world (Cask::Cask when the traced run never loaded cask/cask.rb): found, or not, at run time
+			return f.genDynCall(n, recv, name, args)
+		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)
 	}
 	if f.lenient() && e.Owner != nil && e.Owner.universal && e.M.File != nil && e.M.File.isPrelude() && t.C.isStruct() && !t.C.universal && t.C.descendantDefines(name, false) {

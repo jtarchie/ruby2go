@@ -1,0 +1,23 @@
+Subject: merge_repeats builds each dependency with its own constructor call
+
+`dep.class.new(name, tags, **kwargs)` passes an empty Hash positionally for a Dependency; only UsesFromMacOSDependency takes `bounds:`.
+---
+diff --git a/Library/Homebrew/dependency.rb b/Library/Homebrew/dependency.rb
+index 4f16c34809..dfe2451156 100644
+--- a/Library/Homebrew/dependency.rb
++++ b/Library/Homebrew/dependency.rb
+@@ -260,9 +260,11 @@ class Dependency
+         next unless dep
+ 
+         tags = merge_tags(deps)
+-        kwargs = {}
+-        kwargs[:bounds] = T.cast(dep, UsesFromMacOSDependency).bounds if dep.uses_from_macos?
+-        dep.class.new(name, tags, **kwargs)
++        if dep.is_a?(UsesFromMacOSDependency)
++          UsesFromMacOSDependency.new(name, tags, bounds: dep.bounds)
++        else
++          dep.class.new(name, tags)
++        end
+       end
+     end
+ 

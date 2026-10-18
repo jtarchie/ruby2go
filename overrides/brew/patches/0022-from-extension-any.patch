@@ -1,0 +1,16 @@
+Subject: UnpackStrategy.from_extension tests each extension
+
+`end_with?(*s.extensions)` splats a list of any length into a String method; `any?` over the extensions says the same.
+---
+diff --git a/Library/Homebrew/unpack_strategy.rb b/Library/Homebrew/unpack_strategy.rb
+--- a/Library/Homebrew/unpack_strategy.rb
++++ b/Library/Homebrew/unpack_strategy.rb
+@@ -119,7 +119,7 @@
+   sig { params(extension: String).returns(T.nilable(UnpackStrategyType)) }
+   def self.from_extension(extension)
+     strategies.sort_by { |s| -(s.extensions.map(&:length).max || 0) }
+-              .find { |s| extension.end_with?(*s.extensions) }
++              .find { |s| s.extensions.any? { |ext| extension.end_with?(ext) } }
+   end
+ 
+   sig { params(path: Path).returns(T.nilable(UnpackStrategyType)) }

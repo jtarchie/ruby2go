@@ -1,0 +1,125 @@
+Subject: install, reinstall and upgrade declare their options without send(*args, **options)
+
+The option lists are [method, *names, options] arrays dispatched by `send(*args, **options)`. They call `flag` or `switch` by name with
+the keywords the lists use, which the compiler can type.
+---
+diff --git a/Library/Homebrew/cmd/install.rb b/Library/Homebrew/cmd/install.rb
+index bcaa3d6e78..bc28ac85b8 100644
+--- a/Library/Homebrew/cmd/install.rb
++++ b/Library/Homebrew/cmd/install.rb
+@@ -133,8 +133,15 @@ module Homebrew
+           }],
+         ].each do |args|
+           options = args.pop
+-          send(*args, **options)
+-          conflicts "--cask", args.last
++          method = args.first
++          names = args.drop(1)
++          description = options[:description]
++          depends_on = options[:depends_on]
++          case method
++          when :flag then flag(*names, description:, depends_on:, hidden: options[:hidden] ? true : false)
++          else switch(*names, description:, depends_on:, env: options[:env], hidden: options[:hidden] ? true : false)
++          end
++          conflicts "--cask", names.last
+         end
+         formula_options
+         [
+@@ -162,8 +169,15 @@ module Homebrew
+           }],
+         ].each do |args|
+           options = args.pop
+-          send(*args, **options)
+-          conflicts "--formula", args.last
++          method = args.first
++          names = args.drop(1)
++          description = options[:description]
++          depends_on = options[:depends_on]
++          case method
++          when :flag then flag(*names, description:, depends_on:, hidden: options[:hidden] ? true : false)
++          else switch(*names, description:, depends_on:, env: options[:env], hidden: options[:hidden] ? true : false)
++          end
++          conflicts "--formula", names.last
+         end
+         cask_options
+ 
+diff --git a/Library/Homebrew/cmd/reinstall.rb b/Library/Homebrew/cmd/reinstall.rb
+index 98e68c357a..38c0a55784 100644
+--- a/Library/Homebrew/cmd/reinstall.rb
++++ b/Library/Homebrew/cmd/reinstall.rb
+@@ -79,8 +79,15 @@ module Homebrew
+           }],
+         ].each do |args|
+           options = args.pop
+-          send(*args, **options)
+-          conflicts "--cask", args.last
++          method = args.first
++          names = args.drop(1)
++          description = options[:description]
++          depends_on = options[:depends_on]
++          case method
++          when :flag then flag(*names, description:, depends_on:, hidden: options[:hidden] ? true : false)
++          else switch(*names, description:, depends_on:, env: options[:env], hidden: options[:hidden] ? true : false)
++          end
++          conflicts "--cask", names.last
+         end
+         formula_options
+         [
+@@ -108,8 +115,15 @@ module Homebrew
+           }],
+         ].each do |args|
+           options = args.pop
+-          send(*args, **options)
+-          conflicts "--formula", args.last
++          method = args.first
++          names = args.drop(1)
++          description = options[:description]
++          depends_on = options[:depends_on]
++          case method
++          when :flag then flag(*names, description:, depends_on:, hidden: options[:hidden] ? true : false)
++          else switch(*names, description:, depends_on:, env: options[:env], hidden: options[:hidden] ? true : false)
++          end
++          conflicts "--formula", names.last
+         end
+         cask_options
+ 
+diff --git a/Library/Homebrew/cmd/upgrade.rb b/Library/Homebrew/cmd/upgrade.rb
+index b96eea1681..6a5d0d0381 100644
+--- a/Library/Homebrew/cmd/upgrade.rb
++++ b/Library/Homebrew/cmd/upgrade.rb
+@@ -115,8 +115,15 @@ module Homebrew
+           }],
+         ].each do |args|
+           options = args.pop
+-          send(*args, **options)
+-          conflicts "--cask", args.last
++          method = args.first
++          names = args.drop(1)
++          description = options[:description]
++          depends_on = options[:depends_on]
++          case method
++          when :flag then flag(*names, description:, depends_on:, hidden: options[:hidden] ? true : false)
++          else switch(*names, description:, depends_on:, env: options[:env], hidden: options[:hidden] ? true : false)
++          end
++          conflicts "--cask", names.last
+         end
+         formula_options
+         [
+@@ -152,8 +159,15 @@ module Homebrew
+           }],
+         ].each do |args|
+           options = args.pop
+-          send(*args, **options)
+-          conflicts "--formula", args.last
++          method = args.first
++          names = args.drop(1)
++          description = options[:description]
++          depends_on = options[:depends_on]
++          case method
++          when :flag then flag(*names, description:, depends_on:, hidden: options[:hidden] ? true : false)
++          else switch(*names, description:, depends_on:, env: options[:env], hidden: options[:hidden] ? true : false)
++          end
++          conflicts "--formula", names.last
+         end
+         cask_options
+ 

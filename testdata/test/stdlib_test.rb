@@ -957,7 +957,9 @@ module StdlibTests
         assert_equal [true, true, false, false], [st.ctime.to_i.positive?, st.readable?, st.executable?, st.writable? && Process.euid != 0]
         assert_equal [true, true, true], [st.uid == Process.uid, st.gid.is_a?(Integer), Pathname(path).grpowned? == File.stat(path).grpowned?]
         assert_equal [true, true], [Process.groups.is_a?(Array), Process.groups.all?(Integer)]
-        assert_equal [Errno::EBUSY, true], [Errno::EBUSY, Errno::EBUSY.new.is_a?(SystemCallError)]
+        File.chown(nil, nil, path)
+        assert_equal 1, Pathname(path).chown(nil, Process.gid)
+        assert_equal [Errno::EBUSY, true, true], [Errno::EBUSY, Errno::EBUSY.new.is_a?(SystemCallError), Errno::EROFS.new.is_a?(SystemCallError)]
       end
     end
 

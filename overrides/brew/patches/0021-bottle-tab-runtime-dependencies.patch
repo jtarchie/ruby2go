@@ -1,0 +1,26 @@
+Subject: bottle tab runtime dependency records are not all Strings
+
+A runtime dependency record holds a String version and also an Integer revision and a Boolean `declared_directly`: its declared value type says String, and a typed port checks it where Sorbet does not look inside a generic.
+---
+diff --git a/Library/Homebrew/formula_installer.rb b/Library/Homebrew/formula_installer.rb
+index dc98d3eac0..4509417a3f 100644
+--- a/Library/Homebrew/formula_installer.rb
++++ b/Library/Homebrew/formula_installer.rb
+@@ -46,7 +46,7 @@ class FormulaInstaller
+   sig { override.returns(Formula) }
+   attr_reader :formula
+ 
+-  sig { returns(T::Hash[String, T::Hash[String, String]]) }
++  sig { returns(T::Hash[String, T::Hash[String, T.untyped]]) }
+   attr_reader :bottle_tab_runtime_dependencies
+ 
+   sig { returns(Options) }
+@@ -149,7 +149,7 @@ class FormulaInstaller
+     @requirement_messages = T.let([], T::Array[String])
+     @poured_bottle = T.let(false, T::Boolean)
+     @start_time = T.let(nil, T.nilable(Time))
+-    @bottle_tab_runtime_dependencies = T.let({}.freeze, T::Hash[String, T::Hash[String, String]])
++    @bottle_tab_runtime_dependencies = T.let({}.freeze, T::Hash[String, T::Hash[String, T.untyped]])
+     @bottle_built_os_version = T.let(nil, T.nilable(String))
+     @hold_locks = T.let(false, T::Boolean)
+     @show_summary_heading = T.let(false, T::Boolean)

@@ -15,6 +15,16 @@ module FileUtilsTests
       e.message.gsub(dir, "D")
     end
 
+    # Homebrew's with_verified_snapshot: a copy to the exact path
+    def test_copy_file
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        File.write(a, "hello")
+        FileUtils.copy_file(a, File.join(d, "b"))
+        assert_equal ["hello", false], [File.read(File.join(d, "b")), File.directory?(File.join(d, "b"))]
+      end
+    end
+
     def test_cp_same_path
       Dir.mktmpdir do |d|
         a = File.join(d, "a")

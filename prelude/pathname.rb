@@ -225,6 +225,9 @@ class Pathname
   #: (Integer) -> Integer
   def chmod(mode) = File.chmod(mode, to_s)
 
+  #: (Integer?, Integer?) -> Integer
+  def chown(owner, group) = File.chown(owner, group, to_s)
+
   #: (?Integer) -> Integer
   def mkdir(_mode = 0o777) = Dir.mkdir(to_s) # ponytail: mode ignored (Dir.mkdir takes none yet)
 

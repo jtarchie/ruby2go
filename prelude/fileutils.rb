@@ -57,6 +57,10 @@ module FileUtils
     __cp_file(src, dest)
   end
 
+  # Copies one file to the exact path dest (cp also takes a directory); preserve and dereference are accepted, not acted on.
+  #: (String, String, ?bool, ?bool) -> nil
+  def self.copy_file(src, dest, preserve = false, dereference = true) = __cp_file(src, dest)
+
   #: (Array[String], String) -> nil
   def self.__cp_array(srcs, dest)
     srcs.each { |s| cp(s, dest) }

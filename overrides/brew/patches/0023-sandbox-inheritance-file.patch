@@ -1,0 +1,26 @@
+Subject: the sandbox inheritance descriptor may be a File
+
+Sandbox#capture hands it `File.open(__FILE__)`; a File is an IO in Ruby, and the signature now says both.
+---
+diff --git a/Library/Homebrew/system_command.rb b/Library/Homebrew/system_command.rb
+index 7ba3921e4e..efc6a97ff0 100644
+--- a/Library/Homebrew/system_command.rb
++++ b/Library/Homebrew/system_command.rb
+@@ -102,7 +102,7 @@ class SystemCommand
+   sig { params(sandbox: T.nilable(Sandbox)).void }
+   attr_writer :sandbox
+ 
+-  sig { params(sandbox_inheritance: IO).returns(IO) }
++  sig { params(sandbox_inheritance: T.any(File, IO)).returns(T.any(File, IO)) }
+   attr_writer :sandbox_inheritance
+ 
+   sig {
+@@ -342,7 +342,7 @@ class SystemCommand
+     @chdir = chdir
+     @timeout = timeout
+     @sandbox = T.let(nil, T.nilable(Sandbox))
+-    @sandbox_inheritance = T.let(nil, T.nilable(IO))
++    @sandbox_inheritance = T.let(nil, T.nilable(T.any(File, IO)))
+   end
+ 
+   sig { returns(T::Array[String]) }

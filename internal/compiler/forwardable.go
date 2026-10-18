@@ -290,6 +290,9 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 		}
 		c.resolveMethod(e.M)
 		if e.M.Ret == nil {
+			if c.gemFile(f) { // ruby-macho's `attr_reader :header` set from a call: forwarded untyped
+				return TAny{}
+			}
 			c.errorf(f, n, "%s: %s needs a return type annotation to be delegated through", n.Name, d.accessor)
 		}
 		return e.M.Ret

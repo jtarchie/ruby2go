@@ -692,6 +692,9 @@ func (f *fctx) genUnionIterCall(n *parser.CallNode, u TUnion, t tail) bool {
 			f.emit("panic(rbNoMethod(%q, nil, false))", n.Name)
 		case entries[i] != nil:
 			f.genIterLoop(n, entries[i], expr{code: sw, typ: m})
+		case f.lenient() && f.resolve(m, n.Name) == nil && f.c.isDelegator(classOf(m)): // a Delegator forwards the loop to its object (Homebrew's Requirements)
+			obj := f.genMethodCall(n, expr{code: sw, typ: m}, "__getobj__", nil, nil)
+			f.genStmt(&parser.CallNode{Location: n.Location, Receiver: &exprNode{Node: n, e: obj}, Name: n.Name, Arguments: n.Arguments, Block: n.Block}, tail{})
 		case f.lenient() && f.resolve(m, n.Name) == nil: // a gem's member without the method: NoMethodError if taken, as MRI's
 			f.emit("panic(rbNoMethod(%q, %s, false))", n.Name, sw)
 		default:
