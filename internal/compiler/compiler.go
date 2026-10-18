@@ -184,6 +184,7 @@ type Compiler struct {
 
 	insts       map[string]*Class // generic instances by instKey (decision 308)
 	instReqs    *[]string         // instKeys to create before link: grows when a compile names a new one
+	instAt      map[string]srcPos // where each instance was first named (checkBounds)
 	instOpen    bool              // makeInstances is running: instOf may create
 	instMissing bool              // this compile named an instance it lacks: its result is discarded for a restart
 }
@@ -288,6 +289,7 @@ type options struct {
 	genCount   *int              // test hook: genExpr calls, summed over every pass
 	genLimit   *int              // test hook: the count after which genExpr fails the compile
 	instances  []string          // generic instances to create before link, by instKey (decision 308)
+	instAt     map[string]srcPos // where each was first named
 }
 
 // ErrInternal marks an error that is a compiler bug (a panic that was neither a compile error nor an inference request), not a fault in the user's program.
@@ -489,7 +491,10 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	if opts.mainLast { // a traced compile's -main is the program `ruby` ran: its $0 (decision 197)
 		c.programFile = c.userFiles[len(c.userFiles)-1]
 	}
-	c.makeInstances(&opts.instances)
+	if opts.instAt == nil {
+		opts.instAt = map[string]srcPos{}
+	}
+	c.makeInstances(&opts.instances, opts.instAt)
 	c.nameGo()
 	c.link(ctx)
 	c.checkAbstractIncludes()

@@ -22,7 +22,8 @@ type ClassDecl struct {
 	IsModule      bool
 	IsInterface   bool
 	TypeParams    []string
-	Super         Type // nil unless the class has one
+	Bounds        map[string]string // `[P < Comparable[P]]`: each bounded parameter's bound class name (decision 312)
+	Super         Type              // nil unless the class has one
 	Includes      []*IncludeDecl
 	Methods       []*MethodDecl
 	Attrs         []*AttrDecl
@@ -191,7 +192,7 @@ func parseClass(line string, ln int) (*ClassDecl, error) {
 	if err != nil {
 		return nil, fmt.Errorf("rbs: class on line %d: %w", ln, err)
 	}
-	d := &ClassDecl{Name: name, TypeParams: tps, Line: ln}
+	d := &ClassDecl{Name: name, TypeParams: tps, Line: ln, Bounds: typeBounds(line)}
 	if strings.HasPrefix(rest, "<") {
 		super, err := ParseType(strings.TrimSpace(rest[1:]))
 		if err != nil {
@@ -268,6 +269,41 @@ func closeBracket(s string) int {
 		}
 	}
 	return -1
+}
+
+// typeBounds reads a class line's `[E, P < Comparable[P]]`: the bound's name per parameter, its arguments dropped.
+func typeBounds(line string) map[string]string {
+	i := strings.IndexByte(line, '[')
+	if i < 0 || strings.IndexByte(line, '<') >= 0 && strings.IndexByte(line, '<') < i { // `class X < Base[E]`: no params of its own
+		return nil
+	}
+	end := closeBracket(line[i:])
+	if end < 0 {
+		return nil
+	}
+	var out map[string]string
+	depth, start := 0, i+1
+	for j := i + 1; j <= i+end; j++ {
+		switch {
+		case line[j] == '[':
+			depth++
+		case line[j] == ']' && depth > 0:
+			depth--
+		case depth == 0 && (line[j] == ',' || j == i+end):
+			if name, bound, ok := strings.Cut(line[start:j], "<"); ok {
+				fields := strings.Fields(name)
+				b, _, _ := strings.Cut(strings.TrimSpace(bound), "[")
+				if len(fields) > 0 && b != "" {
+					if out == nil {
+						out = map[string]string{}
+					}
+					out[fields[len(fields)-1]] = strings.TrimSpace(b)
+				}
+			}
+			start = j + 1
+		}
+	}
+	return out
 }
 
 func parseTypeParams(s string) []string {

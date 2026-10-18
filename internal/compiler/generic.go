@@ -95,6 +95,9 @@ func (c *Compiler) instOf(tmpl *Class, args []Type, at srcPos) *Class {
 	if typeDepth(TClass{C: tmpl, Args: args}) > maxInstanceNesting {
 		c.errorAt(at, "%s instantiates %s without end (polymorphic recursion): a generic class's methods may not name it at type arguments built from its own", key, tmpl.RubyName)
 	}
+	if _, seen := c.instAt[key]; !seen && at.File != nil {
+		c.instAt[key] = at // where checkBounds reports it, once link has the classes' ancestors
+	}
 	if !c.instOpen { // typed as the template until the restart, so one pass finds every sibling instance
 		if !slices.Contains(*c.instReqs, key) {
 			*c.instReqs = append(*c.instReqs, key)
@@ -103,6 +106,58 @@ func (c *Compiler) instOf(tmpl *Class, args []Type, at srcPos) *Class {
 		return nil
 	}
 	return c.cloneTemplate(tmpl, args)
+}
+
+// checkInstanceBounds runs checkBounds on every instance, in link once supers and includes are resolved.
+func (c *Compiler) checkInstanceBounds() {
+	for _, cls := range c.classList {
+		if t := cls.template; t != nil {
+			c.checkBounds(t, cls.instArgs, c.instAt[instKey(t, cls.instArgs)])
+		}
+	}
+}
+
+// checkBounds rejects, in user code, an instance whose argument is not a subclass of its parameter's bound (`P <
+// Comparable`): nil and untyped pass, as do a union's members each satisfying it. Gem code is not checked (its sigs
+// bound what MRI never checks).
+func (c *Compiler) checkBounds(tmpl *Class, args []Type, at srcPos) {
+	if c.gemFile(tmpl.File) {
+		return
+	}
+	for i, p := range tmpl.TypeParams {
+		name := tmpl.bounds[p]
+		if name == "" {
+			continue
+		}
+		bound, _ := c.lookupName(c.nestingOf(tmpl), name)
+		if bound == nil {
+			c.errorAt(tmpl.srcPos, "unknown bound %s of %s's type parameter %s", name, tmpl.RubyName, p)
+		}
+		var bad Type
+		var check func(Type)
+		check = func(t Type) {
+			switch t := t.(type) {
+			case TClass:
+				if !t.C.isSubclassOf(bound) {
+					bad = t
+				}
+			case TUnion:
+				for _, m := range t.Members {
+					check(m)
+				}
+			case TOpt:
+				check(t.Elem)
+			case TTuple, TFunc:
+				if !bound.universal {
+					bad = t
+				}
+			case TAny, TNil, TVar, TVoid, nil:
+			}
+		}
+		if check(args[i]); bad != nil {
+			c.errorAt(at, "%s: %s is not a %s, the bound of %s's %s", instKey(tmpl, args), bad, bound.RubyName, tmpl.RubyName, p)
+		}
+	}
 }
 
 // maxInstanceRestarts bounds the compiles one program may take to find its instances: each finds every instance its pass names.
@@ -144,8 +199,8 @@ func typeDepth(t Type) int {
 }
 
 // makeInstances creates the instances an earlier pass of this compile requested, before link.
-func (c *Compiler) makeInstances(reqs *[]string) {
-	c.insts, c.instReqs, c.instOpen = map[string]*Class{}, reqs, true
+func (c *Compiler) makeInstances(reqs *[]string, at map[string]srcPos) {
+	c.insts, c.instReqs, c.instAt, c.instOpen = map[string]*Class{}, reqs, at, true
 	c.markTemplates()
 	for _, cls := range slices.Clone(c.classList) {
 		c.linkSuperInst(cls) // `class IntBox < Box #[Integer]`

@@ -455,7 +455,7 @@ func (f *fctx) newInstance(n parser.Node, cls *Class, init *entry, args []parser
 // by what later calls on its local pass (decision 310).
 func (f *fctx) openTemplate(n parser.Node) *Class {
 	call, ok := n.(*parser.CallNode)
-	if !ok || call.Name != "new" || call.Block != nil || call.Receiver == nil {
+	if !ok || call.Name != "new" || call.Receiver == nil {
 		return nil
 	}
 	cls := f.classRef(call.Receiver)
@@ -487,6 +487,7 @@ func (f *fctx) noteTemplateArgs(n *parser.CallNode, tmpl *Class, info *localInfo
 		info.targs = make([][]Type, len(tmpl.TypeParams))
 	}
 	params := positionals(e.M)
+	var argTypes []Type
 	for i, a := range callArgs(n) {
 		if _, splat := a.(*parser.SplatNode); splat || i >= len(params) {
 			break
@@ -494,8 +495,22 @@ func (f *fctx) noteTemplateArgs(n *parser.CallNode, tmpl *Class, info *localInfo
 		if _, kw := a.(*parser.KeywordHashNode); kw {
 			break
 		}
+		argTypes = append(argTypes, f.probeType(a, nil))
+	}
+	for i, p := range params {
+		at := Type(nil)
+		if i < len(argTypes) {
+			at = argTypes[i]
+		} else if d, isRead := p.Default.(*parser.LocalVariableReadNode); isRead { // `priority = elem`: the default is that argument
+			if k := slices.IndexFunc(params[:i], func(q Param) bool { return q.Name == d.Name }); k >= 0 && k < len(argTypes) {
+				at = argTypes[k]
+			}
+		}
+		if at == nil {
+			continue
+		}
 		env := map[string]Type{}
-		unify(subst(params[i].Type, e.Env), f.probeType(a, nil), env)
+		unify(subst(p.Type, e.Env), at, env)
 		for j, tp := range tmpl.TypeParams {
 			if t, ok := env[tp]; ok {
 				info.targs[j] = append(info.targs[j], t)

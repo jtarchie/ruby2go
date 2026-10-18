@@ -3323,7 +3323,14 @@ func (f *fctx) fillDefault(missing string, p Param) {
 	f.emit("if %s {", missing)
 	f.indent++
 	d := f.genExpr(p.Default, p.Type)
-	f.emit("%s = %s", name, f.coerce(p.Default, d, p.Type))
+	var code string
+	err := f.try(func() { code = f.coerce(p.Default, d, p.Type) })
+	if err != nil && f.lenient() { // a gem instance's `priority = elem` where Elem is not Priority (decision 312): checked when the default runs, as MRI's value would be wherever used
+		code = f.noteConv(p.Default, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(p.Type), d.code, p.Type.String()))
+	} else if err != nil {
+		panic(*err)
+	}
+	f.emit("%s = %s", name, code)
 	f.indent--
 	f.emit("}")
 }

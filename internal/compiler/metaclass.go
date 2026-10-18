@@ -31,7 +31,7 @@ func (c *Compiler) metaFor(cls *Class) *Class {
 		cls.meta = c.metaFor(cls.template)
 		return cls.meta
 	}
-	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 && cls.GoType == "" {
+	if len(cls.TypeParams) > 0 && len(cls.singletonDefs) > 0 && cls.GoType == "" && !c.gemFile(cls.File) { // a gem's class methods see its type params as untyped (decision 312)
 		c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on generic class %s are not supported", cls.RubyName)
 	}
 	// A class object is a Class (a module's, a Module); a subclass's class

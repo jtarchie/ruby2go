@@ -166,6 +166,17 @@ module GenericClassTests
     end
   end
 
+  # @rbs generic P < Comparable
+  class Best
+    #: (P) -> void
+    def initialize(v)
+      @v = v
+    end
+
+    #: (P) -> P
+    def better(o) = o < @v ? o : @v
+  end
+
   class Point
     attr_reader :x #: Integer
 
@@ -273,6 +284,11 @@ module GenericClassTests
       assert_equal [2, 1], ints.to_a
       assert_equal ["y", "x"], strs.to_a
       assert_equal 3, ints.to_a.sum
+    end
+
+    def test_bounded_parameter
+      assert_equal 1, Best.new(3).better(1)
+      assert_equal "b", Best.new("b").better("c")
     end
 
     def test_remapped_superclass_args

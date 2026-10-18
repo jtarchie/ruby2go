@@ -53,3 +53,14 @@ class Box
   def wrap = Box.new([@v])
 end
 p Box.new(1).wrap
+-- bound.rb --
+# error: main.rb:10: Best[Object]: Object is not a Comparable, the bound of Best's P
+# @rbs generic P < Comparable
+class Best
+  #: (P) -> void
+  def initialize(v) = @v = v
+  #: () -> P
+  def get = @v
+end
+p Best.new(3).get
+p Best.new(Object.new).get

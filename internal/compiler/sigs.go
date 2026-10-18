@@ -167,10 +167,14 @@ func (c *Compiler) sigMethod(cls *Class, name string) *rbs.MethodDecl {
 	return nil
 }
 
-// ponytail: erase gem-sig generics until #104 lands (generic struct classes); then keep the params and drop this.
+// eraseGemGenerics drops a shipped sig's type params where rb2go cannot keep them: a class whose superclass is a core
+// @go_type (only decision 165's Hash subclass is generic, over V alone). A struct class keeps them: decisions 308-312.
 func (c *Compiler) eraseGemGenerics(path string, d *rbs.ClassDecl) {
 	if d.IsModule || len(d.TypeParams) == 0 {
 		return
+	}
+	if sn, ok := d.Super.(rbs.Name); !ok || c.classes[strings.TrimPrefix(sn.Name, "::")] == nil || c.classes[strings.TrimPrefix(sn.Name, "::")].GoType == "" {
+		return // a generic struct class (decision 312)
 	}
 	if old := c.sigs[d.Name]; old != nil && len(old.TypeParams) > 0 {
 		return
@@ -179,7 +183,7 @@ func (c *Compiler) eraseGemGenerics(path string, d *rbs.ClassDecl) {
 		return
 	}
 	if c.env.GemWarnings {
-		c.addWarning(nil, fmt.Sprintf("%s:%d: %s[%s]: members typed by its type params are left to inference: generic struct classes are not compiled yet (#104, decision 306)", path, d.Line, d.Name, strings.Join(d.TypeParams, ", ")))
+		c.addWarning(nil, fmt.Sprintf("%s:%d: %s[%s]: members typed by its type params are left to inference: its superclass is a core @go_type (decisions 306, 312)", path, d.Line, d.Name, strings.Join(d.TypeParams, ", ")))
 	}
 	vars := map[string]bool{}
 	for _, tp := range d.TypeParams {

@@ -55,22 +55,23 @@ type Class struct {
 	msetCache     []entry
 	msetIndex     map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
 	selfCallCache map[string]bool
-	gemSelfCalls  map[string]bool  // what gem methods added to a core module call on self: dynamic, not in the constraint (selfCalls)
-	scratchIvars  map[string]*Ivar // a gem module a value class (Pathname) includes: its ivars are per-call locals
-	prepended     []*Class         // modules prepended to it, in prepend order: ancestors lists them before it, last first
-	slotsLinked   bool             // linkOverrides ran
-	Display       string           // the name Ruby shows, when the declaration has none of its own (a describe's class)
-	specChild     bool             // a nested describe's class: MRI undefines the test methods it inherits
-	specTests     int              // its it/specify count, for MRI's test_0001_ names
-	hidden        bool             // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
-	ivarBits      bool             // its objects record which ivars were assigned (decision 153)
-	template      *Class           // an instance's generic class (decision 308)
-	instArgs      []Type           // an instance's type arguments
-	instances     []*Class         // a template's instances
-	superArgs     []rbs.Type       // `class Min < Base #[E]` / a sig's `< Base[E]`: the superclass's type arguments (decision 309)
-	superInst     *Class           // the superclass instance superArgs name, made with the instances
-	tmpl          bool             // a template: markTemplates decided before link
-	helperOf      *Class           // a helper template: the generic class it is nested in, whose arguments it takes (decision 311)
+	gemSelfCalls  map[string]bool   // what gem methods added to a core module call on self: dynamic, not in the constraint (selfCalls)
+	scratchIvars  map[string]*Ivar  // a gem module a value class (Pathname) includes: its ivars are per-call locals
+	prepended     []*Class          // modules prepended to it, in prepend order: ancestors lists them before it, last first
+	slotsLinked   bool              // linkOverrides ran
+	Display       string            // the name Ruby shows, when the declaration has none of its own (a describe's class)
+	specChild     bool              // a nested describe's class: MRI undefines the test methods it inherits
+	specTests     int               // its it/specify count, for MRI's test_0001_ names
+	hidden        bool              // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
+	ivarBits      bool              // its objects record which ivars were assigned (decision 153)
+	template      *Class            // an instance's generic class (decision 308)
+	instArgs      []Type            // an instance's type arguments
+	instances     []*Class          // a template's instances
+	superArgs     []rbs.Type        // `class Min < Base #[E]` / a sig's `< Base[E]`: the superclass's type arguments (decision 309)
+	superInst     *Class            // the superclass instance superArgs name, made with the instances
+	tmpl          bool              // a template: markTemplates decided before link
+	bounds        map[string]string // a template's `generic P < Comparable` bounds, by parameter (decision 312)
+	helperOf      *Class            // a helper template: the generic class it is nested in, whose arguments it takes (decision 311)
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -507,6 +508,7 @@ func (c *Compiler) link(ctx context.Context) {
 		}
 	}
 	c.checkCycles()
+	c.checkInstanceBounds()
 	c.checkNumeric()
 	c.buildMetas()
 	c.applyAliasNews(ctx)

@@ -21,8 +21,9 @@ def dijkstra(source)
   queue = PairingHeap::MinPriorityQueue.new
   queue.push(source, 0)
   until queue.empty?
-    top = queue.pop_with_priority #: [String, Integer]
-    node, d = top
+    node, d = queue.pop_with_priority
+    next unless node && d
+
     GRAPH.fetch(node).each do |neighbor, weight|
       alt = d + weight
       known = dist[neighbor]

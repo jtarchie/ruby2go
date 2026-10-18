@@ -137,17 +137,26 @@ func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *
 			continue
 		}
 		// `unchecked out E < Bound` → take the identifier
-		for _, fld := range fields {
+		for i, fld := range fields {
 			if fld == "unchecked" || fld == "in" || fld == "out" {
 				continue
 			}
 			cls.TypeParams = append(cls.TypeParams, fld)
+			if i+2 < len(fields) && fields[i+1] == "<" { // its bound, checked per instance (decision 312)
+				if cls.bounds == nil {
+					cls.bounds = map[string]string{}
+				}
+				cls.bounds[fld], _, _ = strings.Cut(fields[i+2], "[")
+			}
 			break
 		}
 	}
 	if len(cls.TypeParams) == 0 && !f.isPrelude() {
 		// A `.rbs` `class Foo[E]` supplies the generics an unannotated class lacks (decision 160).
 		cls.TypeParams = c.sigTypeParams(cls)
+		if sd := c.sigs[cls.RubyName]; sd != nil && len(cls.TypeParams) > 0 {
+			cls.bounds = sd.Bounds
+		}
 	}
 	if _, ok := ann["hidden"]; ok && f.isPrelude() {
 		cls.hidden = true

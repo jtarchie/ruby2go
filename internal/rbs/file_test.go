@@ -34,6 +34,9 @@ class Array = ArrayType
 		*heap.MethodAliases[1] != (MethodAliasDecl{New: "make", Old: "new", Self: true, Line: 4}) {
 		t.Errorf("aliases = %+v", heap.MethodAliases)
 	}
+	if got := fmt.Sprint(minq.Bounds, heap.Bounds); got != "map[K:Hash Priority:Comparable] map[]" {
+		t.Errorf("bounds = %s", got)
+	}
 	if got := fmt.Sprint(minq.TypeParams); got != "[Elem Priority K]" {
 		t.Errorf("type params = %s", got)
 	}
