@@ -203,3 +203,4 @@ hs = { "x" => "1", "y" => nil } #: untyped
 p Demo::Views.hash_core(ha, "a"), Demo::Views.hash_core(hs, "x"), Demo::Views.hash_core(hd, "a"), Demo::Views.hash_core(hp, "b")
 p Demo::Views.hash_core_errors(ha, "a"), Demo::Views.hash_core_errors(hs, "x")
 p Sigdemo::Meter.new.add(2).push(3).total
+p DemoKeyed.new.add("ab").add("cde").probe_both

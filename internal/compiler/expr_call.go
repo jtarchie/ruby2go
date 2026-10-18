@@ -227,6 +227,9 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if name == "__getobj__" && len(args) == 0 && block == nil {
 		return f.getobjCall(n, recv)
 	}
+	if e, ok := f.lenientLookup(n, recv, name, args, block); ok {
+		return e
+	}
 	return f.genMethodCall1(n, recv, name, args, block)
 }
 

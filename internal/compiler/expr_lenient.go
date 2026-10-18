@@ -92,6 +92,53 @@ func (f *fctx) lenientMember(n parser.Node, recv expr, name string, args []parse
 	return expr{code: fmt.Sprintf("Boolean(%s != nil && bool(%s))", tmp, call.code), typ: f.cls("Boolean")}, true
 }
 
+// lookupMiss: what each key-comparing Hash/Array lookup answers when no element equals the key (decision 307).
+var lookupMiss = map[string]map[string]string{
+	"Hash":  {"[]": "default", "key?": "false", "has_key?": "false", "include?": "false", "member?": "false", "delete": "nil", "dig": "nil", "fetch": "arg"},
+	"Array": {"include?": "false", "member?": "false", "delete": "nil", "index": "nil"},
+}
+
+// lenientLookup: a gem's untyped key of another class misses, as in MRI, instead of raising TypeError (decision 307).
+func (f *fctx) lenientLookup(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	rc, ok := recv.typ.(TClass)
+	if !ok || block != nil || !f.lenient() || len(args) == 0 || len(rc.Args) == 0 || holdsAny(rc.Args[0]) || mentionsVar(rc.Args[0]) {
+		return expr{}, false
+	}
+	miss := lookupMiss[rc.C.RubyName][name]
+	if miss == "" || miss == "arg" && len(args) != 2 || miss != "arg" && name != "dig" && len(args) != 1 || isSplatArg(args[0]) {
+		return expr{}, false
+	}
+	kt := rc.Args[0]
+	if f.c.goType(f.probeType(args[0], nil)) != "any" || f.c.goType(kt) == "any" { // untyped, or a union of classes
+		return expr{}, false
+	}
+	key, k := f.newTmp(), f.newTmp()
+	f.emit("%s := %s", key, f.genExpr(args[0], nil).code)
+	rest := append([]parser.Node{&exprNode{Node: args[0], e: expr{code: k, typ: kt}}}, args[1:]...)
+	var call expr
+	stmts := f.capture(func() { call = f.genMethodCall(n, recv, name, rest, nil) })
+	res := f.newTmp()
+	f.emit("var %s %s", res, f.c.goType(call.typ))
+	f.emit("if %s, ok := rbConv[%s](%s); ok {", k, f.c.goType(kt), key)
+	f.buf.WriteString(stmts)
+	f.emit("\t%s = %s", res, call.code)
+	f.emit("} else {")
+	f.indent++
+	switch miss {
+	case "default":
+		f.emit("%s = %s", res, f.coerce(n, f.genMethodCall(n, recv, "default", nil, nil), call.typ))
+	case "arg":
+		f.emit("%s = %s", res, f.coerce(args[1], f.genExpr(args[1], call.typ), call.typ))
+	case "false":
+		f.emit("%s = %s", res, "Boolean(false)")
+	default:
+		f.emit("%s = nil", res)
+	}
+	f.indent--
+	f.emit("}")
+	return expr{code: res, typ: call.typ}, true
+}
+
 // lenient reports gem code (decision 172): what would be a nil or union type error compiles to a run-time check.
 func (f *fctx) lenient() bool { return f.c.pruneGems && f.c.gemFile(f.f) }
 

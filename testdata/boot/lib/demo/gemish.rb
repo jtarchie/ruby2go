@@ -954,3 +954,21 @@ module DemoAPIRun
     [a.new("wget").show, b.new("curl").show, a.desc, b.desc, DemoBareLoader.load("x").new.tag, DemoBareLoader.load("y").new.tag]
   end
 end
+
+# A typed Hash or Array probed with an untyped key of another class misses, as in MRI, rather than raising (decision 307).
+class DemoKeyed
+  def initialize
+    @by = {}
+    @list = []
+  end
+
+  def add(name)
+    @by[name] = name.length
+    @list << name
+    self
+  end
+
+  def probe(k) = [@by[k], @by.key?(k), @by.include?(k), @by.fetch(k, -1), @list.include?(k), @list.index(k), @by.delete(k)]
+
+  def probe_both = [probe(1), probe(:ab), probe("ab")]
+end
