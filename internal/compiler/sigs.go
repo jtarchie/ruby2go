@@ -179,52 +179,35 @@ func (c *Compiler) eraseGemGenerics(path string, d *rbs.ClassDecl) {
 		return
 	}
 	if c.env.GemWarnings {
-		c.addWarning(nil, fmt.Sprintf("%s:%d: %s[%s] is read as untyped: generic struct classes are not compiled yet (#104, decision 306)", path, d.Line, d.Name, strings.Join(d.TypeParams, ", ")))
+		c.addWarning(nil, fmt.Sprintf("%s:%d: %s[%s]: members typed by its type params are left to inference: generic struct classes are not compiled yet (#104, decision 306)", path, d.Line, d.Name, strings.Join(d.TypeParams, ", ")))
 	}
 	vars := map[string]bool{}
 	for _, tp := range d.TypeParams {
 		vars[tp] = true
 	}
 	d.TypeParams = nil
-	e := func(t rbs.Type) rbs.Type { return eraseVars(t, vars) }
+	// a member naming a type var has no sig at all, so inference types it as without one (minimize untyped)
+	mentions := func(t rbs.Type) bool { return t != nil && eraseVars(t, vars).String() != t.String() }
+	params := func(ps []rbs.Param) bool {
+		return slices.ContainsFunc(ps, func(p rbs.Param) bool { return mentions(p.Type) })
+	}
 	if d.Super != nil {
-		d.Super = e(d.Super)
+		d.Super = eraseVars(d.Super, vars)
 	}
-	for _, m := range d.Methods {
-		for i, mt := range m.Overloads {
-			out := *mt
-			out.Params = eraseParams(mt.Params, e)
-			out.Return = e(mt.Return)
-			if mt.Block != nil {
-				b := *mt.Block
-				b.Params, b.Return = eraseParams(b.Params, e), e(b.Return)
-				if b.Self != nil {
-					b.Self = e(b.Self)
-				}
-				out.Block = &b
-			}
-			m.Overloads[i] = &out
-		}
-	}
-	for _, a := range d.Attrs {
-		a.Type = e(a.Type)
-	}
-	for _, k := range slices.Concat(d.Ivars, d.Consts) {
-		k.Type = e(k.Type)
-	}
+	d.Methods = slices.DeleteFunc(d.Methods, func(m *rbs.MethodDecl) bool {
+		return slices.ContainsFunc(m.Overloads, func(mt *rbs.MethodType) bool {
+			b := mt.Block
+			return params(mt.Params) || mentions(mt.Return) || b != nil && (params(b.Params) || mentions(b.Return) || mentions(b.Self))
+		})
+	})
+	d.Attrs = slices.DeleteFunc(d.Attrs, func(a *rbs.AttrDecl) bool { return mentions(a.Type) })
+	d.Ivars = slices.DeleteFunc(d.Ivars, func(k *rbs.ConstDecl) bool { return mentions(k.Type) })
+	d.Consts = slices.DeleteFunc(d.Consts, func(k *rbs.ConstDecl) bool { return mentions(k.Type) })
 	for _, inc := range d.Includes {
 		for i, a := range inc.Args {
-			inc.Args[i] = e(a)
+			inc.Args[i] = eraseVars(a, vars)
 		}
 	}
-}
-
-func eraseParams(ps []rbs.Param, e func(rbs.Type) rbs.Type) []rbs.Param {
-	out := slices.Clone(ps)
-	for i := range out {
-		out[i].Type = e(out[i].Type)
-	}
-	return out
 }
 
 // eraseVars is t with each type variable in vars read as untyped.

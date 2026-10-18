@@ -51,11 +51,11 @@ func TestSigsMergeUserWins(t *testing.T) {
 	}
 }
 
-// A gem's shipped sig/ loads after the vendored sigs, leniently, with its generics erased and its aliases followed (decision 306).
+// A gem's shipped sig/ loads after the vendored sigs, leniently, its members that name an erased type param dropped, and its aliases followed (decision 306).
 func TestSigsShipped(t *testing.T) {
 	root := t.TempDir()
 	for name, src := range map[string]string{
-		"sig/foo.rbs":           "class Foo[E]\n  def a: () -> E\n  def g: () -> Integer\n  def h: (E) -> Array[E]?\n  alias b a\n  alias c b\nend\n",
+		"sig/foo.rbs":           "class Foo[E]\n  def a: () -> E\n  def n: () -> Integer\n  def g: () -> Integer\n  def h: (E) -> Array[E]?\n  alias b a\n  alias m n\n  alias c m\nend\n",
 		"sig/bad.rbs":           "class Foo\n  def z: (((\nend\n",
 		"sig/_scripts/skip.rbs": "class Foo\n  def s: () -> String\nend\n",
 	} {
@@ -73,13 +73,10 @@ func TestSigsShipped(t *testing.T) {
 			"sig/gems/g/foo.rbs": {Data: []byte("class Foo\n  def g: () -> Float\nend\n")},
 		}}
 	c.loadSigs(nil)
-	for name, want := range map[string]string{"a": "untyped", "b": "untyped", "c": "untyped", "g": "Float", "s": ""} {
+	for name, want := range map[string]string{"a": "", "b": "", "h": "", "n": "Integer", "m": "Integer", "c": "Integer", "g": "Float", "s": ""} {
 		if got := sigReturn(t, c, name); got != want {
 			t.Errorf("Foo#%s returns %q, want %q", name, got, want)
 		}
-	}
-	if got := c.sigMethod(&Class{RubyName: "Foo"}, "h").Overloads[0].String(); got != "(untyped) -> Array[untyped]?" {
-		t.Errorf("Foo#h = %s", got)
 	}
 	if tps := c.sigs["Foo"].TypeParams; len(tps) != 0 {
 		t.Errorf("type params %v survived", tps)
