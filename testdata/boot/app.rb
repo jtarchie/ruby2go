@@ -189,3 +189,5 @@ ha = { "a" => 1, "b" => 2, "c" => nil } #: untyped
 p Demo::Views.hash_blocks(ha)
 hm = { "a" => "1", "b" => nil, "c" => "3" } #: untyped
 p Demo::Views.hash_mutate(hm)
+p Demo::Views.core(ints.dup), Demo::Views.core(strs.dup)
+p Demo::Views.core_errors(ints), Demo::Views.core_errors(strs)

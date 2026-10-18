@@ -480,6 +480,10 @@ var seqNames = viewHelpers(map[string][]string{
 		"take_while", "drop_while", "bsearch", "bsearch_index"},
 	"rbViewPredicate": {"all?", "any?", "none?", "one?"},
 	"rbViewSum":       {"sum"},
+	"rbViewCore": {"length", "size", "empty?", "frozen?", "to_a", "entries", "deconstruct", "itself", "dup", "clear", "[]",
+		"slice", "at", "fetch", "fetch_values", "dig", "last", "[]=", "<<", "push", "append", "unshift", "prepend", "pop",
+		"shift", "shuffle", "shuffle!", "sample"},
+	"rbViewGrep": {"grep", "grep_v"},
 })
 
 func viewHelpers(by map[string][]string) map[string]string {

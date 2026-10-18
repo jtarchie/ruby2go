@@ -117,5 +117,40 @@ module Demo
       end
       out
     end
+
+    # The element-level names (decision 304): reads, writes and their errors, one body for every element type.
+    #: (untyped) -> untyped
+    def self.core(x)
+      out = [] #: Array[untyped]
+      %i[length size empty? frozen? to_a entries deconstruct itself dup last pop shift].each { |n| out << dyn(x.dup, n) }
+      out << dyn(x, :[], 1) << dyn(x, :[], -1) << dyn(x, :[], 9) << dyn(x, :[], 0, 2) << dyn(x, :[], 1..) << dyn(x, :[], 5, 1)
+      out << dyn(x, :slice, 1, 1) << dyn(x, :at, -2) << dyn(x, :fetch, 1) << dyn(x, :fetch, 9, :none) << dyn(x, :fetch, 9) { |i| i * 2 }
+      out << dyn(x, :fetch_values, 0, -1) << dyn(x, :dig, 0) << dyn(x, :last, 2) << dyn(x, :last, 9)
+      out << dyn(x, :grep, Object).size << dyn(x, :grep_v, NilClass) << dyn(x, :grep, Object) { |v| v.to_s * 2 }
+      y = x.dup
+      out << dyn(y, :<<, x[0]) << dyn(y, :push, x[1], x[2]) << dyn(y, :append) << dyn(y, :unshift, x[2]) << dyn(y, :prepend, x[1])
+      out << dyn(y, :[]=, 0, x[1]) << dyn(y, :[]=, 1, 2, x[0]) << dyn(y, :[]=, 0..1, [x[2], x[2]]) << y
+      out << dyn(y, :pop) << dyn(y, :shift) << y << dyn(y, :clear) << dyn(y, :empty?)
+      r = Random.new(42)
+      out << x.public_send(:shuffle, random: r) << x.public_send(:sample, random: r) << x.public_send(:sample, 2, random: r)
+      z = x.dup
+      out << z.public_send(:shuffle!, random: r).equal?(z)
+      out
+    end
+
+    #: (untyped) -> untyped
+    def self.core_errors(x)
+      out = [] #: Array[untyped]
+      [-> { dyn(x, :fetch, 9) }, -> { dyn(x, :fetch_values, 0, 9) }, -> { dyn(x, :last, -1) }, -> { dyn(x.dup, :[]=, -9, x[0]) },
+       -> { dyn(x.dup, :[]=, 0, -1, x[0]) }, -> { dyn(x.dup.freeze, :push, x[0]) }, -> { dyn(x.dup.freeze, :pop) },
+       -> { dyn(x.dup.freeze, :[]=, 0, x[0]) }, -> { dyn(x, :sample, -1) }, -> { dyn(x, :[], "a") }].each do |f|
+        f.call
+        out << :none
+      rescue IndexError, ArgumentError, FrozenError, TypeError => e
+        out << e.class
+        out << e.message unless e.is_a?(TypeError) # rb2go words a conversion's TypeError apart (decision 20)
+      end
+      out
+    end
   end
 end

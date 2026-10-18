@@ -1847,7 +1847,7 @@ var genericProtocol = map[string]bool{
 	"_to_any": true, "_from_any": true, "_eq_rec": true, "_eql_rec": true, "_hash_rec": true, "_inspect_rec": true,
 	"==": true, "eql?": true, "hash": true, "<=>": true, "each": true, "succ": true, "to_s": true, "inspect": true,
 	"to_json": true, "pretty_print": true,
-	"_len": true, "_at": true, "_set": true, "_make": true, "_append": true, "_trunc": true, // the untyped views (decision 236)
+	"_len": true, "_at": true, "_set": true, "_make": true, "_append": true, "_resize": true, "_drop": true, // the untyped views (decision 236)
 	"_key_at": true, "_pair_at": true, "_has": true, "_get": true, "_store": true, "_delete": true, "_dup": true,
 }
 

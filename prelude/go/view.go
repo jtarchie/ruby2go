@@ -15,9 +15,11 @@ type rbView interface {
 	_At(i Integer) any
 	_Set(i Integer, v any)
 	_Append(v any)
-	_Trunc(n Integer)
+	_Resize(n Integer)
+	_Drop(n Integer)
 	_Make() any
 	rbCheckFrozen()
+	rbFrozen() bool
 }
 
 // rbHashView is the same for a Hash: keys in insertion order, values by key.
@@ -60,7 +62,7 @@ func rbViewFrom(s rbView, xs []any) any {
 // rbViewReplace makes s hold xs (raw elements), in place.
 func rbViewReplace(s rbView, xs []any) {
 	s.rbCheckFrozen()
-	s._Trunc(0)
+	s._Resize(0)
 	for _, x := range xs {
 		s._Append(x)
 	}
@@ -1136,4 +1138,270 @@ func rbHashViewPredicate(name string, s rbHashView, args []any) (any, bool) {
 		}
 	}
 	return Boolean(name != "any?" && (name != "one?" || hits == 1)), true
+}
+
+// rbViewCore answers the element-level Array methods (fetch, [], []=, push, pop, shift, ...) on the view, as the
+// prelude's bodies do: one body for every element type instead of a _DynGen case and its callees per type (decision 304).
+func rbViewCore(name string, s rbView, args []any) (any, bool) { //nolint:cyclop,gocognit,gocyclo,maintidx // one switch per name, as the dispatchers are
+	b, args := rbPopBlock(args)
+	n := s._Len()
+	switch name {
+	case "length", "size":
+		rbArity(len(args), 0, 0)
+		return n, true
+	case "empty?":
+		rbArity(len(args), 0, 0)
+		return Boolean(n == 0), true
+	case "frozen?":
+		rbArity(len(args), 0, 0)
+		return Boolean(s.rbFrozen()), true
+	case "to_a", "entries", "deconstruct", "itself":
+		rbArity(len(args), 0, 0)
+		return s, true
+	case "dup":
+		rbArity(len(args), 0, 0)
+		return rbViewFrom(s, rbViewElems(s)), true
+	case "clear":
+		rbArity(len(args), 0, 0)
+		s.rbCheckFrozen()
+		s._Resize(0)
+		return s, true
+	case "[]", "slice":
+		if len(args) == 2 {
+			return rbViewIdx2(s, rbAs[Integer](args[0], "Integer"), rbAs[Integer](args[1], "Integer")), true
+		}
+		rbArity(len(args), 1, 1)
+		if r, ok := args[0].(*Range[Integer]); ok {
+			sl := Range___Slice[Integer](r, n)
+			if sl == nil {
+				return nil, true
+			}
+			return rbViewIdx2(s, sl.F0, sl.F1), true
+		}
+		return rbViewAt(s, rbAs[Integer](args[0], "Integer")), true
+	case "at":
+		rbArity(len(args), 1, 1)
+		return rbViewAt(s, rbAs[Integer](args[0], "Integer")), true
+	case "fetch":
+		rbArity(len(args), 1, 2)
+		i := rbAs[Integer](args[0], "Integer")
+		if i >= -n && i < n {
+			return rbViewAt(s, i), true
+		}
+		switch {
+		case b != nil:
+			return b.fn(i), true
+		case len(args) == 2:
+			return args[1], true
+		}
+		panic(NewIndexError(Ref(String(fmt.Sprintf("index %d outside of array bounds: %d...%d", i, -n, n)))))
+	case "fetch_values":
+		var out []any
+		for _, a := range args {
+			i := rbAs[Integer](a, "Integer")
+			if i < -n || i >= n {
+				panic(NewIndexError(Ref(String(fmt.Sprintf("index %d outside of array bounds: %d...%d", i, -n, n)))))
+			}
+			out = append(out, s._At(rbViewNorm(i, n)))
+		}
+		return rbViewFrom(s, out), true
+	case "dig":
+		rbArity(len(args), 1, -1)
+		rbAs[Integer](args[0], "Integer")
+		return rbDig(s, args), true
+	case "last":
+		if len(args) == 1 {
+			k := rbAs[Integer](args[0], "Integer")
+			if k < 0 {
+				panic(NewArgumentError(Ref(String("negative array size"))))
+			}
+			return rbViewFrom(s, rbViewElems(s)[max(n-k, 0):]), true
+		}
+		rbArity(len(args), 0, 0)
+		return rbViewAt(s, -1), true
+	case "[]=":
+		return rbViewIdxSet(s, args), true
+	case "<<", "push", "append":
+		if name == "<<" {
+			rbArity(len(args), 1, 1)
+		}
+		xs := rbViewChecked(s, args)
+		s.rbCheckFrozen()
+		for _, x := range xs {
+			s._Append(x)
+		}
+		return s, true
+	case "unshift", "prepend":
+		xs := rbViewChecked(s, args)
+		s.rbCheckFrozen()
+		rbViewReplace(s, append(xs, rbViewElems(s)...))
+		return s, true
+	case "pop", "shift":
+		rbArity(len(args), 0, 0)
+		s.rbCheckFrozen()
+		if n == 0 {
+			return nil, true
+		}
+		if name == "pop" {
+			x := s._At(n - 1)
+			s._Resize(n - 1)
+			return rbUnbox(x), true
+		}
+		x := s._At(0)
+		s._Drop(1)
+		return rbUnbox(x), true
+	case "shuffle", "shuffle!":
+		rbArity(len(args), 0, 1)
+		xs := rbViewElems(s)
+		rbShuffle(xs, &rbViewRandom(args, 0).mt)
+		if name == "shuffle" {
+			return rbViewFrom(s, xs), true
+		}
+		rbViewReplace(s, xs)
+		return s, true
+	case "sample":
+		rbArity(len(args), 0, 2)
+		count := -1 // no count: one element or nil
+		opts := 0
+		if len(args) > 0 {
+			if _, ok := args[0].(*Hash[Symbol, *Random]); !ok {
+				count, opts = int(rbAs[Integer](args[0], "Integer")), 1
+				if count < 0 {
+					panic(NewArgumentError(Ref(String("negative sample number"))))
+				}
+			}
+		}
+		rng := rbViewRandom(args, opts)
+		if count < 0 {
+			if idx := rbSampleIdx(1, int(n), &rng.mt); len(idx) > 0 {
+				return rbUnbox(s._At(Integer(idx[0]))), true
+			}
+			return nil, true
+		}
+		var out []any
+		for _, i := range rbSampleIdx(count, int(n), &rng.mt) {
+			out = append(out, s._At(Integer(i)))
+		}
+		return rbViewFrom(s, out), true
+	}
+	return nil, false
+}
+
+// rbViewNorm is index i counted from the end when negative.
+func rbViewNorm(i, n Integer) Integer {
+	if i < 0 {
+		return i + n
+	}
+	return i
+}
+
+// rbViewAt is the element at i (from the end when negative) as Ruby sees it, nil outside the array.
+func rbViewAt(s rbView, i Integer) any {
+	n := s._Len()
+	if i = rbViewNorm(i, n); i < 0 || i >= n {
+		return nil
+	}
+	return rbUnbox(s._At(i))
+}
+
+// rbViewIdx2 is self[start, count]: a new array of the same element type, nil when start is out of bounds.
+func rbViewIdx2(s rbView, start, count Integer) any {
+	n := s._Len()
+	start = rbViewNorm(start, n)
+	if start < 0 || start > n || count < 0 {
+		return nil
+	}
+	return rbViewFrom(s, rbViewElems(s)[start:min(start+count, n)])
+}
+
+// rbViewChecked converts xs to the array's element type before anything is written, as a typed call converts its
+// arguments: a TypeError leaves the array as it was.
+func rbViewChecked(s rbView, xs []any) []any {
+	tmp := s._Make().(rbView)
+	for _, x := range xs {
+		tmp._Append(x)
+	}
+	return rbViewElems(tmp)
+}
+
+// rbViewIdxSet is []= with an index, a start and length, or a range, as Array#[]= and __idxset_3.
+func rbViewIdxSet(s rbView, args []any) any {
+	rbArity(len(args), 2, 3)
+	n := s._Len()
+	var start, count Integer
+	v := args[len(args)-1]
+	switch r, ok := args[0].(*Range[Integer]); {
+	case len(args) == 3:
+		start, count = rbAs[Integer](args[0], "Integer"), rbAs[Integer](args[1], "Integer")
+	case ok:
+		sp := Range___Span[Integer](r, n)
+		if sp == nil {
+			panic(NewRangeError(Ref(r.Inspect() + " out of range")))
+		}
+		start, count = sp.F0, sp.F1
+	default: // one index: the element itself, grown with E's zero value up to it
+		i := rbAs[Integer](args[0], "Integer")
+		s.rbCheckFrozen()
+		if i < 0 && -i > n {
+			panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", i, n)))))
+		}
+		i = rbViewNorm(i, n)
+		if i >= n {
+			s._Resize(i + 1)
+		}
+		s._Set(i, v)
+		return v
+	}
+	s.rbCheckFrozen()
+	if start < 0 {
+		if -start > n {
+			panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", start, n)))))
+		}
+		start += n
+	}
+	if count < 0 {
+		panic(NewIndexError(Ref(String(fmt.Sprintf("negative length (%d)", count)))))
+	}
+	items := []any{v}
+	if a, ok := v.(Array_Any); ok {
+		items = a._ToAny().s
+	}
+	items = rbViewChecked(s, items)
+	if n < start {
+		s._Resize(start)
+	}
+	xs := rbViewElems(s)
+	end := min(start+count, Integer(len(xs)))
+	rbViewReplace(s, slices.Concat(xs[:start:start], items, xs[end:]))
+	return v
+}
+
+// rbViewRandom is the random: option at args[i], else the default generator.
+func rbViewRandom(args []any, i int) *Random {
+	if i < len(args) {
+		if r := Hash_Op_idx(rbAs[*Hash[Symbol, *Random]](args[i], "Hash[Symbol, Random]"), Symbol("random")); r != nil {
+			return *r
+		}
+	}
+	return rbDefaultRandom
+}
+
+// rbViewGrep is grep/grep_v (pattern ===), mapping each match through the block when there is one; its own function so
+// only programs that call it dynamically keep the === dispatcher.
+func rbViewGrep(name string, s rbView, args []any) (any, bool) {
+	b, args := rbPopBlock(args)
+	rbArity(len(args), 1, 1)
+	var out []any
+	for _, x := range rbViewElems(s) {
+		if rbTruthy(rbDynOp_eqq(rbCall, args[0], x)) == (name == "grep") {
+			if b != nil {
+				x = b.fn(x)
+			}
+			out = append(out, x)
+		}
+	}
+	if b != nil {
+		return &Array[any]{s: out}, true
+	}
+	return rbViewFrom(s, out), true
 }

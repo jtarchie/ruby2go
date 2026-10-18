@@ -871,7 +871,7 @@ class Array < Object
     return Integer(cmp.Compare(len(self.s), len(other.s)))
   }
 
-  # The untyped view (rbView, prelude/go/view.go): five one-line accessors per element type, so a dynamic call of a
+  # The untyped view (rbView, prelude/go/view.go): a few one-line accessors per element type, so a dynamic call of a
   # whole-array method runs one body compiled once instead of one per element type (decision 236).
   #: () -> Integer
   def _len = %x{ return Integer(len(self.s)) }
@@ -888,8 +888,19 @@ class Array < Object
   #: (untyped) -> void
   def _append(v) = %x{ self.s = append(self.s, rbAs[E](v, "element")) }
 
+  # n elements: the first n, or padded with E's zero value as []= pads (decision 7).
   #: (Integer) -> void
-  def _trunc(n) = %x{ self.s = self.s[:n] }
+  def _resize(n) = %x{
+    if int(n) <= len(self.s) {
+      self.s = self.s[:n]
+      return
+    }
+    self.s = append(self.s, make([]E, int(n)-len(self.s))...)
+  }
+
+  # Drops the first n elements without copying, as shift does (decision 304).
+  #: (Integer) -> void
+  def _drop(n) = %x{ self.s = self.s[n:] }
 
   #: () -> Array[untyped]
   def _to_any = %x{
