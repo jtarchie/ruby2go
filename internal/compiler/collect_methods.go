@@ -291,9 +291,11 @@ func (c *Compiler) addModuleAttr(f *File, cls *Class, n *parser.CallNode, kind a
 		def(name, nil, nil, &parser.InstanceVariableReadNode{Location: loc, Name: iv}, rsig)
 	}
 	if kind.writes() {
-		params := &parser.ParametersNode{Location: loc, Requireds: []parser.Node{&parser.RequiredParameterNode{Location: loc, Name: "v"}}}
-		write := &parser.InstanceVariableWriteNode{Location: loc, Name: iv, Value: &parser.LocalVariableReadNode{Location: loc, Name: "v"}}
-		def(name+"=", params, []string{"v"}, write, wsig)
+		// the parameter is named for the attribute: one attr_accessor's writers share a position, and a parameter's
+		// inference key is position + name (decision 307)
+		params := &parser.ParametersNode{Location: loc, Requireds: []parser.Node{&parser.RequiredParameterNode{Location: loc, Name: name}}}
+		write := &parser.InstanceVariableWriteNode{Location: loc, Name: iv, Value: &parser.LocalVariableReadNode{Location: loc, Name: name}}
+		def(name+"=", params, []string{name}, write, wsig)
 		cls.Methods[name+"="].attrWriter = wsig == nil
 	}
 }
@@ -381,7 +383,7 @@ func (c *Compiler) defParams(m *Method, ps *parser.ParametersNode) (names []stri
 	}
 	if ps.Block != nil {
 		if m.Block == nil && m.sigText == "" && !m.File.isPrelude() { // unannotated: an untyped block, any arguments, optional (decision 183)
-			m.Block = &BlockSig{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}, Optional: true, Untyped: true}
+			m.Block = &BlockSig{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}, Optional: true, Untyped: true, Src: blockSrcAt(m.File, ps.Block.GetLocation().StartOffset)}
 		}
 		if m.Block == nil {
 			c.errorf(m.File, ps, "a &block parameter needs a block in the signature (`#: () { (T) -> U } -> R`)")

@@ -260,7 +260,7 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 		return
 	}
 	if len(inc.args) == 0 && (c.gemFile(inc.File) || !inc.File.isPrelude()) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
-		if !c.gemFile(inc.File) {
+		if !c.gemFile(inc.File) && len(mod.TypeParams) > 0 { // a module with no type parameters has nothing untyped
 			c.warnAt(inc.srcPos, "include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", mod.RubyName, cls.RubyName, mod.RubyName)
 		}
 		for range mod.TypeParams {
@@ -463,4 +463,77 @@ func (c *Compiler) linkExtends() {
 			cls.meta.Includes = append(cls.meta.Includes, ext)
 		}
 	}
+}
+
+// copyIncluderTemplates copies into each including class a module's unannotated method that calls, on self, a
+// name only its includers define (pairing_heap's MergePairs#merge_pairs calling each heap's own meld): such a method
+// is a template over its includers, whose parameters take a different type in each (their own Node). One shared free
+// func would be untyped, and its self call dynamic (decision 307). The copy is MRI's method as the includer sees it: an
+// includer that defines the name keeps its own; a method naming an ivar (the module's own state, decision 147) or
+// calling super stays shared.
+func (c *Compiler) copyIncluderTemplates() {
+	obj := c.classes["Object"]
+	for _, mod := range c.classList {
+		if !mod.IsModule || mod.File == nil || mod.File.isPrelude() || len(mod.extends) > 0 {
+			continue
+		}
+		var incs []*Class
+		for _, cls := range mod.includers {
+			if !cls.IsModule && cls.isStruct() && !cls.universal {
+				incs = append(incs, cls)
+			}
+		}
+		if len(incs) == 0 || len(incs) != len(mod.includers) {
+			continue
+		}
+		var copied []*Method
+		for _, mm := range slices.Clone(mod.MethodList) {
+			if mm.Kind != kindDef || mm.Node == nil || mm.sigText != "" || mm.sig != nil || mentionsIvar(mm) || containsSuper(mm.Node.Body) ||
+				!callsIncluderOnly(mm, mod, obj, incs, c.topDefs) {
+				continue
+			}
+			for _, cls := range incs {
+				if cls.Methods[mm.Name] != nil {
+					continue
+				}
+				cp := *mm
+				cp.Owner = cls
+				cls.Methods[cp.Name] = &cp
+				cls.MethodList = append(cls.MethodList, &cp)
+				cls.msetCache, cls.msetIndex = nil, nil
+			}
+			copied = append(copied, mm)
+		}
+		for _, mm := range copied { // every includer has its copy: the module's own would be compiled for no caller
+			delete(mod.Methods, mm.Name)
+			mod.MethodList = deleteMethod(mod.MethodList, mm)
+		}
+		if len(copied) > 0 {
+			mod.msetCache, mod.msetIndex = nil, nil
+		}
+	}
+}
+
+// callsIncluderOnly reports whether m's body calls on self a name that neither m's module nor Object (nor a top-level
+// def) answers and every includer does, with no block: a yielding includer method may be an iterator, losing the value.
+func callsIncluderOnly(m *Method, mod, obj *Class, incs []*Class, top map[string]*Method) bool {
+	found, blocked := false, false
+	var walk func(parser.Node)
+	walk = func(n parser.Node) {
+		switch n := n.(type) {
+		case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+			return
+		case *parser.CallNode:
+			if _, self := n.Receiver.(*parser.SelfNode); (n.Receiver == nil || self) && mod.lookup(n.Name) == nil &&
+				(obj == nil || obj.lookup(n.Name) == nil) && top[n.Name] == nil &&
+				!slices.ContainsFunc(incs, func(k *Class) bool { return k.lookup(n.Name) == nil }) {
+				found, blocked = true, blocked || n.Block != nil
+			}
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch)
+		}
+	}
+	walk(m.Node.Body)
+	return found && !blocked
 }

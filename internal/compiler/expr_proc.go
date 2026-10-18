@@ -248,6 +248,9 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 		for i, a := range args[:last] {
 			codes[i] = f.coerce(a, f.genExpr(a, t.Params[i]), t.Params[i])
 		}
+		if t.Src.storedBlock() {
+			f.noteUse(Param{Pending: t.Src.argc(maxStoredBlockArgs + 1)}, n, TNil{}) // a splat: any count
+		}
 		spread, ok := f.anySpread(args[last:])
 		if !ok {
 			spread = "[]any{" + strings.Join(f.anyArgs(args[last:]), ", ") + "}"
@@ -271,10 +274,16 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 			want = nil
 		}
 		e := f.genExpr(a, want)
-		if t.Src != "" {
+		switch {
+		case t.Src.storedBlock(): // each argument by position, and the count (typeStoredBlock)
+			f.noteUse(Param{Pending: t.Src.arg(i)}, a, e.typ)
+		case t.Src != "":
 			f.noteUse(Param{Pending: t.Src.arg(pi)}, a, e.typ)
 		}
 		codes[i] = f.coerce(a, e, t.Params[pi])
+	}
+	if t.Src.storedBlock() {
+		f.noteUse(Param{Pending: t.Src.argc(min(len(args), maxStoredBlockArgs+1))}, n, TNil{})
 	}
 	if t.Self != nil { // an escaped block: its self is rebound by instance_eval, so Proc#call is a compile error (decision 164)
 		if t.SelfPending != "" {

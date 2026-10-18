@@ -228,6 +228,7 @@ type BlockSig struct {
 	Self        Type         // non-nil: the block escaped (stored, instance_eval'd) and takes `self` as a leading Go param (decision 164)
 	SelfPending pendingKey   // the key Self's type is inferred from (decision 164): instance_eval records the receiver, Proc#call the lexical self
 	Untyped     bool         // an unannotated def's &block (decision 183): calling it when missing is MRI's NoMethodError at run time
+	Src         lambdaSrc    // an unannotated def's &block: the key its Proc's calls record their arguments under (decision 307)
 }
 
 func (m *Method) generic() bool { return len(m.TypeParams) > 0 }
@@ -517,6 +518,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.checkIvarModules()
 	c.expandDelegations(ctx)
 	c.applyPrepends()
+	c.copyIncluderTemplates()
 	c.linkAliases(ctx)
 	c.separateFreeFuncs()
 	c.methodClassVars()

@@ -46,7 +46,9 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 		}
 		code := f.ivarCode(iv)
+		f.storing++
 		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+		f.storing--
 		f.markIvar(iv)
 		// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
 		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
@@ -311,7 +313,7 @@ func (f *fctx) blockParamValue(n parser.Node) expr {
 	if b == nil {
 		f.errorf(n, "the block parameter &%s has no block signature", f.m.BlockParam)
 	}
-	return expr{code: "Ref(blk)", typ: TFunc{Params: b.Params, Ret: b.Ret, Proc: true, Rest: b.Rest, Self: f.blockSelf(n), SelfPending: b.SelfPending}}
+	return expr{code: "Ref(blk)", typ: TFunc{Params: b.Params, Ret: b.Ret, Proc: true, Rest: b.Rest, Self: f.blockSelf(n), SelfPending: b.SelfPending, Src: b.Src}}
 }
 
 // genLocalRead reads a local, or the method's own &block as a Proc value when

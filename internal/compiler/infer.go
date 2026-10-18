@@ -92,6 +92,46 @@ func selfKey(m *Method) pendingKey { return paramKey(m, "&self") }
 // lambdaSrc names a lambda literal typed from its calls: the prefix of its parameters' keys.
 type lambdaSrc string
 
+// blockSrcAt is the unannotated def's &block parameter at offset off of f (decision 307): its Proc's calls record
+// each argument by position, and their count under argc.
+func blockSrcAt(f *File, off int) lambdaSrc { return lambdaSrc(f.posKey(off) + "&") }
+
+func (s lambdaSrc) storedBlock() bool { return strings.HasSuffix(string(s), "&") }
+
+func (s lambdaSrc) argc(n int) pendingKey { return pendingKey(string(s) + "n" + strconv.Itoa(n)) }
+
+// typeStoredBlock types an unannotated def's &block from the calls of the Proc it became (`@order = block`, then
+// `@order[a, b]`): when every call passed the same count, the block takes those parameters, each the join of what
+// was passed there (untyped where nothing typed it), in place of decision 183's `(*untyped)`. Its result stays
+// untyped. In a round, or with no calls, it stays variadic.
+func (c *Compiler) typeStoredBlock(b *BlockSig) {
+	if b == nil || b.Src == "" || c.infer == nil || c.round {
+		return
+	}
+	n := -1
+	for k := range maxStoredBlockArgs + 1 {
+		if _, ok := c.infer.types[b.Src.argc(k)]; ok {
+			if n >= 0 {
+				return // calls disagree on the count: a Proc takes any, so it stays variadic
+			}
+			n = k
+		}
+	}
+	if n <= 0 || n > maxStoredBlockArgs { // none, or a splat or more than this many: any count
+		return
+	}
+	ps := make([]Type, n)
+	for i := range ps {
+		ps[i] = TAny{}
+		if t, ok := c.infer.types[b.Src.arg(i)]; ok && !isNil(t) {
+			ps[i] = c.rehome(t)
+		}
+	}
+	b.Params, b.Rest = ps, false
+}
+
+const maxStoredBlockArgs = 8
+
 // lambdaSrcAt is the lambda literal at offset off of f.
 func lambdaSrcAt(f *File, off int) lambdaSrc { return lambdaSrc(f.posKey(off) + "#") }
 

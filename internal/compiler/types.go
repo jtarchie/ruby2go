@@ -283,7 +283,7 @@ func subst(t Type, env map[string]Type) Type {
 		for i, p := range t.Params {
 			ps[i] = subst(p, env)
 		}
-		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc, Rest: t.Rest, Self: subst(t.Self, env), SelfPending: t.SelfPending}
+		return TFunc{Params: ps, Ret: subst(t.Ret, env), Proc: t.Proc, Rest: t.Rest, Self: subst(t.Self, env), SelfPending: t.SelfPending, Src: t.Src}
 	case TUnion:
 		ms := make([]Type, len(t.Members))
 		for i, m := range t.Members {

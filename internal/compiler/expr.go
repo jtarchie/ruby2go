@@ -460,7 +460,7 @@ func (f *fctx) noteConv(n parser.Node, code string) string {
 	if f.pass == 1 && f.convs != nil {
 		f.convs[n.GetLocation().StartOffset] = true
 	}
-	if f.pass == 2 && f.c.convs != nil {
+	if f.pass == 2 && f.c.convs != nil && (f.storing > 0 || !f.lenient()) {
 		f.c.convs[fmt.Sprintf("%s:%d", f.f.Name, n.GetLocation().StartOffset)] = true
 	}
 	return code

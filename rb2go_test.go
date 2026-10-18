@@ -1122,3 +1122,73 @@ func TestRBSIvarNestedType(t *testing.T) {
 		t.Fatalf("err = %v, warnings %v", err, warns)
 	}
 }
+
+// TestNilLinksTyped checks decision 307's typing, which minitest cannot see, compiles with no dynamic call.
+func TestNilLinksTyped(t *testing.T) {
+	src := []byte(`module Merge
+  def merge_all(first)
+    acc = first
+    cur = first&.sibling
+    while cur
+      nxt = cur.sibling
+      acc = meld(acc, cur)
+      cur = nxt
+    end
+    acc
+  end
+end
+
+class Node
+  attr_accessor :val, :child, :sibling
+
+  def initialize(val)
+    @val = val
+    @child = nil
+    @sibling = nil
+  end
+end
+
+class Heap
+  include Merge
+
+  def initialize(&block)
+    @root = nil
+    @order = block || :<=.to_proc
+  end
+
+  def push(v)
+    n = Node.new(v)
+    @root = @root ? meld(@root, n) : n
+    self
+  end
+
+  def meld(a, b)
+    if @order[a.val, b.val]
+      b.sibling = a.child
+      a.child = b
+      a
+    else
+      a.sibling = b.child
+      b.child = a
+      b
+    end
+  end
+
+  def pop
+    r = @root
+    return nil unless r
+
+    @root = merge_all(r.child)
+    r.val
+  end
+end
+
+h = Heap.new { |a, b| a >= b }
+[5, 3, 8].each { |x| h.push(x) }
+p h.pop
+`)
+	out, warns, err := Compile(t.Context(), "main.rb", src)
+	if err != nil || slices.ContainsFunc(warns, func(w string) bool { return strings.Contains(w, "dynamic call") }) || bytes.Contains(out, []byte("rbDyn")) {
+		t.Fatalf("err = %v, warnings %v", err, warns)
+	}
+}

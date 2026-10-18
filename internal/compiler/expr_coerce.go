@@ -340,10 +340,7 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if isOpt(e.typ) {
 		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
 	}
-	if isNil(e.typ) && f.lenient() && f.m != nil && f.m.inherited != nil && f.closures == 0 {
-		// ponytail: a gem override typed by its parent (concurrent-ruby's CachedThreadPool#ns_initialize ends in an
-		// `if` that is nil on MRI) gives T's zero value where it gives nil; make the slot T? with an adapter to fix
-		// (decision 251)
+	if isNil(e.typ) && f.nilAsZero() {
 		return "*new(" + f.c.goType(to) + ")"
 	}
 	if isNil(e.typ) {
@@ -403,6 +400,15 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 // _to_any and rbFrom.
 func converts(t TClass) bool {
 	return len(t.Args) > 0 && t.C.lookup("_to_any") != nil
+}
+
+// nilAsZero reports where a nil gives T's zero value instead of failing. Ivar discovery reads an ivar no write typed
+// yet as nil (decision 148), and `@root = @root ? meld(@root, n) : n` passes it to meld's typed parameter: failing would
+// lose the write that types @root (decision 307); discovery's output is discarded, and the emitting pass still reports
+// a real nil. ponytail: a gem override typed by its parent (concurrent-ruby's CachedThreadPool#ns_initialize ends in an
+// `if` that is nil on MRI) gives T's zero value where it gives nil; make the slot T? with an adapter to fix (decision 251).
+func (f *fctx) nilAsZero() bool {
+	return f.discover || f.lenient() && f.m != nil && f.m.inherited != nil && f.closures == 0
 }
 
 // sameButUntyped reports whether a and b differ only where one of them is

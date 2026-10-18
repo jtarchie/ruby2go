@@ -864,6 +864,9 @@ func (c *Compiler) dynBlockArg(f *fctx, m *Method, env map[string]Type) parser.N
 		f.emit("if blk_ == nil {\n\tblkFn_ = nil\n}")
 	}
 	f.emit("_ = blkFn_")
+	if m.Block.Optional && !m.Iterator && self == nil { // as it is: a Proc wrapped around it would never be nil (decision 307)
+		return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "blkFn_", typ: TFunc{Params: ps, Ret: ret}}}}
+	}
 	return &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: "(&blkFn_)", typ: ft}}} // a Proc value is boxed: .call derefs it
 }
 

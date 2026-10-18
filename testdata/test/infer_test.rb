@@ -215,4 +215,132 @@ module InferTests
       assert_equal ["ev x", "ev y"], [InitImm.new("x").label, InitPass.new(InitEv.new("y")).label]
     end
   end
+
+  # Decision 307: nil-initialized links, a stored &block and an includer-only self call all type statically.
+  module LinkMerge
+    def link_merge_all(first)
+      acc = first
+      cur = first&.sibling
+      while cur
+        nxt = cur.sibling
+        acc = meld(acc, cur)
+        cur = nxt
+      end
+      acc
+    end
+  end
+
+  class LinkNode
+    attr_accessor :val, :child, :sibling
+
+    def initialize(val)
+      @val = val
+      @child = nil
+      @sibling = nil
+    end
+  end
+
+  class LinkName
+    attr_accessor :name, :child, :sibling
+
+    def initialize(name)
+      @name = name
+      @child = nil
+      @sibling = nil
+    end
+  end
+
+  class LinkHeap
+    include LinkMerge
+
+    def initialize(&block)
+      @root = nil
+      @nodes = {}
+      @order = block || :<=.to_proc
+    end
+
+    def push(v)
+      n = LinkNode.new(v)
+      @nodes[v] = n
+      @root = @root ? meld(@root, n) : n
+      self
+    end
+
+    def meld(a, b)
+      if @order[a.val, b.val]
+        b.sibling = a.child
+        a.child = b
+        a
+      else
+        a.sibling = b.child
+        b.child = a
+        b
+      end
+    end
+
+    def node(v) = @nodes[v]
+
+    def pop
+      r = @root
+      return nil unless r
+
+      @nodes.delete(r.val)
+      @root = link_merge_all(r.child)
+      r.val
+    end
+  end
+
+  class LinkNames
+    include LinkMerge
+
+    def initialize
+      @root = nil
+    end
+
+    def push(s)
+      n = LinkName.new(s)
+      @root = @root ? meld(@root, n) : n
+      self
+    end
+
+    def meld(a, b)
+      if a.name.length <= b.name.length
+        b.sibling = a.child
+        a.child = b
+        a
+      else
+        a.sibling = b.child
+        b.child = a
+        b
+      end
+    end
+
+    def pop
+      r = @root
+      return nil unless r
+
+      @root = link_merge_all(r.child)
+      r.name
+    end
+  end
+
+  class LinkTest < Minitest::Test
+    def test_nil_links_typed_by_their_nodes
+      h = LinkHeap.new
+      [5, 3, 8, 1, 9, 2].each { |x| h.push(x) }
+      assert_equal 8, h.node(8)&.val
+      out = [] #: Array[Integer]
+      while (x = h.pop)
+        out << x
+      end
+      assert_equal [1, 2, 3, 5, 8, 9], out
+      assert_nil h.node(8)
+      d = LinkHeap.new { |a, b| a >= b }
+      [5, 3, 8].each { |x| d.push(x) }
+      assert_equal [8, 5], [d.pop, d.pop]
+      n = LinkNames.new
+      %w[ccc a bb].each { |w| n.push(w) }
+      assert_equal ["a", "bb", "ccc", nil], [n.pop, n.pop, n.pop, n.pop]
+    end
+  end
 end

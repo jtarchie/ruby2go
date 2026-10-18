@@ -53,6 +53,11 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	} else {
 		f.probe(func() { gen(probe) })
 	}
+	if f.c.round && slices.ContainsFunc(types, func(t Type) bool { return !holdsAny(t) && !isVoid(t) }) {
+		// an inference round's untyped is not yet learned, as a use's is (joinUses): `@root = @root ? meld(@root, n) : n`
+		// is the typed branch's, so the next round sees what it holds (decision 307)
+		types = slices.DeleteFunc(types, holdsAny)
+	}
 	var typ Type
 	err := catchCompileError(func() { typ = f.joinAll(n, types) })
 	if err != nil {

@@ -412,6 +412,11 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		if code, ok := restBlockFunc(b, sig); ok {
 			return code
 		}
+		if en, ok := b.Expression.(*exprNode); ok && self == nil {
+			if ft, ok := en.e.typ.(TFunc); ok && !ft.Proc && typeEq(ft, TFunc{Params: params, Ret: subst(sig.Ret, env), Rest: sig.Rest}) {
+				return en.e.code // the block func itself, nil when none was given (dynBlockArg)
+			}
+		}
 		sym, ok := b.Expression.(*parser.SymbolNode)
 		if !ok {
 			if code, ok := f.selfProcArg(b, self); ok {

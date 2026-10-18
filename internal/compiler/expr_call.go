@@ -213,8 +213,17 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 	return e
 }
 
+// storeNames are the Hash and Array methods that put their arguments in the container: a gem's untyped value converted
+// there could hold another class at run time, while a converted lookup key (`@nodes.delete(elem)`) only raises
+// TypeError where MRI answers nil (ponytail).
+var storeNames = map[string]bool{"<<": true, "push": true, "append": true, "unshift": true, "prepend": true, "insert": true, "[]=": true, "store": true, "fill": true, "concat": true, "replace": true, "merge!": true, "update": true}
+
 // genMethodCall dispatches a call on an already-generated receiver.
 func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if storeNames[name] && (isClass(recv.typ, "Hash") || isClass(recv.typ, "Array")) {
+		f.storing++
+		defer func() { f.storing-- }()
+	}
 	if name == "__getobj__" && len(args) == 0 && block == nil {
 		return f.getobjCall(n, recv)
 	}

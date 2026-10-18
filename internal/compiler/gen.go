@@ -57,6 +57,7 @@ type fctx struct {
 	patQuiet       bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
 	labels         int  // not rewound by probe, so labels stay unique
 	closures       int  // nesting depth of Go closures (non-iterator blocks)
+	storing        int  // generating what a gem stores (an element added, an ivar assigned): only its conversions veto an ivar's typing (decision 307)
 	nextTail       tail // the innermost closure's result, for `next`
 	begins         int  // nesting depth of rescue wrappers
 	retVar         string
@@ -1119,12 +1120,12 @@ func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
 		return "!(" + c + ")", nw, true
 	}
 	if n.Name == "nil?" && n.Arguments == nil && n.Receiver != nil {
-		e := f.genExpr(n.Receiver, nil)
-		if isOpt(e.typ) || isAny(e.typ) {
-			return e.code + " == nil", nil, true
-		}
-		if f.lenientObject(e.typ) {
-			return "any(" + e.code + ") == nil", nil, true
+		// typed first: a receiver this does not read is generated again by the call, so emitting it here would run it twice
+		switch t := f.probeType(n.Receiver, nil); {
+		case isOpt(t) || isAny(t):
+			return f.genExpr(n.Receiver, nil).code + " == nil", nil, true
+		case f.lenientObject(t):
+			return "any(" + f.genExpr(n.Receiver, nil).code + ") == nil", nil, true
 		}
 	}
 	return "", nil, false
@@ -3105,7 +3106,7 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 const optBlockGo = "blkOpt_"
 
 func optBlockType(m *Method) Type {
-	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true, Self: m.Block.Self, Rest: m.Block.Rest}}
+	return TOpt{Elem: TFunc{Params: m.Block.Params, Ret: m.Block.Ret, Proc: true, Self: m.Block.Self, Rest: m.Block.Rest, Src: m.Block.Src}}
 }
 
 func (c *Compiler) emitMethod(m *Method) {

@@ -221,12 +221,13 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.017s | 15.9x faster |
-| `Hash` counting, 500k | 0.11s | 0.025s | 4.4x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.026s | 5.7x faster |
-| string build/split, 100k | 0.11s | 0.032s | 3.4x faster |
-| `Math.sin`/`cos`, 200k | 0.08s | 0.009s | 9.8x faster |
-| total | 0.72s | 0.108s | 6.6x faster |
+| `fib(32)` | 0.27s | 0.016s | 16.7x faster |
+| `Hash` counting, 500k | 0.16s | 0.031s | 5.1x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.025s | 5.9x faster |
+| string build/split, 100k | 0.11s | 0.030s | 3.5x faster |
+| `Math.sin`/`cos`, 200k | 0.09s | 0.007s | 11.6x faster |
+| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.165s | 4.1x faster |
+| total | 1.43s | 0.273s | 5.2x faster |
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one

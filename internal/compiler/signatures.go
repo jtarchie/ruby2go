@@ -175,6 +175,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 	if m.inferRet {
 		m.Ret = nil
 	}
+	c.typeStoredBlock(m.Block)
 	if m.Block != nil {
 		m.Iterator = c.isIterator(m, m.Block)
 	}
