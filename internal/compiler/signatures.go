@@ -107,7 +107,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 	}
 	if m.sig == nil && m.sigText == "" {
 		// unannotated override inherits the parent's signature
-		if !typesInclude(m) && c.inheritSignature(m) {
+		if !typesInclude(m) && !m.ownCopy && c.inheritSignature(m) {
 			return
 		}
 		m.sigText, m.inferRet = c.paramSig(m)

@@ -177,6 +177,26 @@ module GenericClassTests
     def better(o) = o < @v ? o : @v
   end
 
+  module Twice
+    def twice(x) = combine(x, x)
+  end
+
+  # @rbs generic T
+  class Doubler
+    include Twice
+
+    #: (T) -> void
+    def initialize(v)
+      @v = v
+    end
+
+    #: (T, T) -> T
+    def combine(a, b) = a + b
+
+    #: () -> T
+    def doubled = twice(@v)
+  end
+
   class Point
     attr_reader :x #: Integer
 
@@ -289,6 +309,11 @@ module GenericClassTests
     def test_bounded_parameter
       assert_equal 1, Best.new(3).better(1)
       assert_equal "b", Best.new("b").better("c")
+    end
+
+    def test_module_method_per_instance
+      assert_equal 4, Doubler.new(2).doubled
+      assert_equal "abab", Doubler.new("ab").doubled
     end
 
     def test_remapped_superclass_args

@@ -196,12 +196,18 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 		}
 	case how != pendNone: // learned from this round's calls, or only a dynamic call can reach it (decision 169)
 		prm.Type = TAny{}
-	case m.attrWriter, m.Owner != nil && m.Owner.isTemplate(): // a template's body is never compiled: its instances' are (decision 308)
+	case m.attrWriter, m.Owner != nil && (m.Owner.isTemplate() || onlyGenericIncluders(m.Owner)): // a template's body is never compiled, its instances' are (decision 308); nor is a module's whose includers all copy it (313)
 		prm.Type = TAny{} // an attr writer no call types: only a dynamic call can reach it (decision 179)
 	default: // untyped, as a gem def's: only a dynamic call (send, a hook, an untyped receiver) can pass it anything (decision 183)
 		c.warn(m.File, m.Node, "method %s's parameter %s is untyped: no call in the program gives it a type (`# @rbs %s: T` for static calls; decision 183)", m.Name, strings.TrimLeft(pp.name, "*"), pp.name)
 		prm.Type = TAny{}
 	}
+}
+
+// onlyGenericIncluders reports a module every includer of which is a template or its instance, which copy its
+// unannotated methods (decision 313).
+func onlyGenericIncluders(mod *Class) bool {
+	return mod.IsModule && len(mod.includers) > 0 && !slices.ContainsFunc(mod.includers, func(k *Class) bool { return !k.isTemplate() && k.template == nil })
 }
 
 // yieldValueUsed reports whether a yield in m's body is not a statement of its own (`out << yield`): the block's value
