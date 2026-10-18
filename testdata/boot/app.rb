@@ -1,8 +1,10 @@
 # load_path: lib
+# load_path: sigdemo/lib
 require "demo"
 require "demo/text"
 require "demo/gemish"
 require "demo/cli"
+require "sigdemo"
 
 # A computed require in a method is a compile-time no-op (decision 163); under MRI it loads demo/unnamed.
 def load_extra(name) = require(name)
@@ -200,3 +202,4 @@ hp = hpt #: untyped
 hs = { "x" => "1", "y" => nil } #: untyped
 p Demo::Views.hash_core(ha, "a"), Demo::Views.hash_core(hs, "x"), Demo::Views.hash_core(hd, "a"), Demo::Views.hash_core(hp, "b")
 p Demo::Views.hash_core_errors(ha, "a"), Demo::Views.hash_core_errors(hs, "x")
+p Sigdemo::Meter.new.add(2).push(3).total

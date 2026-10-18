@@ -1,0 +1,10 @@
+module Sigdemo
+  class Meter
+    @readings: Array[Integer]
+
+    def initialize: () -> void
+    def add: (Integer value) -> self
+    alias push add
+    def total: () -> Integer
+  end
+end

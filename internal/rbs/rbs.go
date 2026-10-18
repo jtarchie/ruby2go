@@ -281,7 +281,7 @@ func tokenize(s string) ([]string, error) {
 		case c == '=' && i+1 < len(s) && s[i+1] == '>':
 			toks = append(toks, "=>")
 			i += 2
-		case strings.IndexByte("()[]{},|?*:&^", c) >= 0:
+		case strings.IndexByte("()[]{},|?*:&^<", c) >= 0:
 			toks = append(toks, string(c))
 			i++
 		case isIdentStart(c):
@@ -419,6 +419,12 @@ func ParseMethodType(s string) (*MethodType, error) {
 				return nil, fmt.Errorf("rbs: expected a type parameter, got %q", tp)
 			}
 			m.TypeParams = append(m.TypeParams, tp)
+			if p.peek() == "<" { // a bound (`[P < Pointer]`) is not modelled
+				p.next()
+				if _, err = p.parseType(); err != nil {
+					return nil, err
+				}
+			}
 			if p.peek() != "," {
 				break
 			}
@@ -429,13 +435,15 @@ func ParseMethodType(s string) (*MethodType, error) {
 			return nil, err
 		}
 	}
-	err = p.expect("(")
-	if err != nil {
-		return nil, err
-	}
-	m.Params, err = p.parseParams()
-	if err != nil {
-		return nil, err
+	if p.peek() != "?" && p.peek() != "{" && p.peek() != "->" { // `-> T` and `{ ... } -> T` take no parameters
+		err = p.expect("(")
+		if err != nil {
+			return nil, err
+		}
+		m.Params, err = p.parseParams()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if p.peek() == "?" || p.peek() == "{" {
 		m.Block, err = p.parseBlock()
@@ -487,7 +495,9 @@ func (p *parser) parseParams() ([]Param, error) {
 			return nil, err
 		}
 		prm.Type = t
-		if tok := p.peek(); !prm.Keyword && tok != "" && tok != "," && tok != ")" && isIdentStart(tok[0]) {
+		if tok := p.peek(); prm.Keyword && tok != "" && isIdentStart(tok[0]) {
+			p.next() // `name: T var`: the variable name is documentation
+		} else if !prm.Keyword && tok != "" && tok != "," && tok != ")" && isIdentStart(tok[0]) {
 			prm.Name = p.next()
 			if p.peek() == ":" {
 				return nil, errors.New("rbs: a keyword parameter is spelt `name: T`")

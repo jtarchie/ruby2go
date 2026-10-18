@@ -25,9 +25,15 @@ func (c *Compiler) loadSigs(sources []Source) {
 			continue
 		}
 		seen[dir] = true
-		c.loadSigDir(dir)
+		c.loadSigDir(dir, false)
 	}
 	c.loadGemSigs()
+	for _, lib := range c.gemDirs { // a gem's own sig/ beside its lib/ (decision 306), after the vendored ones it may need patching by
+		if dir := filepath.Join(filepath.Dir(lib), "sig"); filepath.Base(lib) == "lib" && !seen[dir] {
+			seen[dir] = true
+			c.loadSigDir(dir, true)
+		}
+	}
 }
 
 // loadGemSigs parses the vendored gem signatures embedded in the compiler's
@@ -76,6 +82,7 @@ func (c *Compiler) addSig(decl *rbs.ClassDecl) {
 	merged.Ivars = appendNew(d.Ivars, decl.Ivars, func(k *rbs.ConstDecl) string { return k.Name })
 	merged.Consts = appendNew(d.Consts, decl.Consts, func(k *rbs.ConstDecl) string { return k.Name })
 	merged.Aliases = appendNew(d.Aliases, decl.Aliases, func(a *rbs.TypeAliasDecl) string { return a.Name })
+	merged.MethodAliases = appendNew(d.MethodAliases, decl.MethodAliases, func(a *rbs.MethodAliasDecl) string { return fmt.Sprint(a.Self, a.New) })
 	c.sigs[decl.Name] = &merged
 }
 
@@ -95,10 +102,14 @@ func appendNew[T any](old, add []T, key func(T) string) []T {
 	return out
 }
 
-func (c *Compiler) loadSigDir(dir string) {
+// loadSigDir reads a gem's shipped sig dir leniently, as its code is (decision 306); `_` dirs are skipped as RBS does.
+func (c *Compiler) loadSigDir(dir string, shipped bool) {
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.IsDir() && shipped && path != dir && strings.HasPrefix(d.Name(), "_") {
+			return filepath.SkipDir
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".rbs") {
 			return nil
@@ -108,10 +119,19 @@ func (c *Compiler) loadSigDir(dir string) {
 			return fmt.Errorf("read %s: %w", path, rerr)
 		}
 		f, perr := rbs.ParseFile(string(data))
+		if perr != nil && shipped {
+			if c.env.GemWarnings {
+				c.addWarning(nil, fmt.Sprintf("%s: skipped, rb2go cannot read it: %v (decision 306)", path, perr))
+			}
+			return nil
+		}
 		if perr != nil {
 			c.errorf(nil, nil, "%s: %v", path, perr)
 		}
 		for _, decl := range f.Decls {
+			if shipped {
+				c.eraseGemGenerics(path, decl)
+			}
 			c.addSig(decl)
 		}
 		return nil
@@ -132,12 +152,117 @@ func (c *Compiler) sigMethod(cls *Class, name string) *rbs.MethodDecl {
 		return nil
 	}
 	wantSelf := cls.metaOf != nil
-	for _, m := range d.Methods {
-		if m.Name == name && (m.Self == wantSelf || m.Both) {
-			return m
+	for range len(d.MethodAliases) + 1 { // each hop follows one `alias new old` (decision 306)
+		for _, m := range d.Methods {
+			if m.Name == name && (m.Self == wantSelf || m.Both) {
+				return m
+			}
 		}
+		i := slices.IndexFunc(d.MethodAliases, func(a *rbs.MethodAliasDecl) bool { return a.New == name && a.Self == wantSelf })
+		if i < 0 {
+			return nil
+		}
+		name = d.MethodAliases[i].Old
 	}
 	return nil
+}
+
+// ponytail: erase gem-sig generics until #104 lands (generic struct classes); then keep the params and drop this.
+func (c *Compiler) eraseGemGenerics(path string, d *rbs.ClassDecl) {
+	if d.IsModule || len(d.TypeParams) == 0 {
+		return
+	}
+	if old := c.sigs[d.Name]; old != nil && len(old.TypeParams) > 0 {
+		return
+	}
+	if cls := c.classes[d.Name]; cls != nil && cls.File.isPrelude() {
+		return
+	}
+	if c.env.GemWarnings {
+		c.addWarning(nil, fmt.Sprintf("%s:%d: %s[%s] is read as untyped: generic struct classes are not compiled yet (#104, decision 306)", path, d.Line, d.Name, strings.Join(d.TypeParams, ", ")))
+	}
+	vars := map[string]bool{}
+	for _, tp := range d.TypeParams {
+		vars[tp] = true
+	}
+	d.TypeParams = nil
+	e := func(t rbs.Type) rbs.Type { return eraseVars(t, vars) }
+	if d.Super != nil {
+		d.Super = e(d.Super)
+	}
+	for _, m := range d.Methods {
+		for i, mt := range m.Overloads {
+			out := *mt
+			out.Params = eraseParams(mt.Params, e)
+			out.Return = e(mt.Return)
+			if mt.Block != nil {
+				b := *mt.Block
+				b.Params, b.Return = eraseParams(b.Params, e), e(b.Return)
+				if b.Self != nil {
+					b.Self = e(b.Self)
+				}
+				out.Block = &b
+			}
+			m.Overloads[i] = &out
+		}
+	}
+	for _, a := range d.Attrs {
+		a.Type = e(a.Type)
+	}
+	for _, k := range slices.Concat(d.Ivars, d.Consts) {
+		k.Type = e(k.Type)
+	}
+	for _, inc := range d.Includes {
+		for i, a := range inc.Args {
+			inc.Args[i] = e(a)
+		}
+	}
+}
+
+func eraseParams(ps []rbs.Param, e func(rbs.Type) rbs.Type) []rbs.Param {
+	out := slices.Clone(ps)
+	for i := range out {
+		out[i].Type = e(out[i].Type)
+	}
+	return out
+}
+
+// eraseVars is t with each type variable in vars read as untyped.
+func eraseVars(t rbs.Type, vars map[string]bool) rbs.Type {
+	all := func(ts []rbs.Type) []rbs.Type {
+		out := make([]rbs.Type, len(ts))
+		for i, x := range ts {
+			out[i] = eraseVars(x, vars)
+		}
+		return out
+	}
+	switch t := t.(type) {
+	case rbs.Name:
+		if vars[t.Name] && len(t.Args) == 0 && !t.Absolute {
+			return rbs.Untyped{}
+		}
+		t.Args = all(t.Args)
+		return t
+	case rbs.Optional:
+		return rbs.Optional{Elem: eraseVars(t.Elem, vars)}
+	case rbs.Tuple:
+		return rbs.Tuple{Elems: all(t.Elems)}
+	case rbs.Union:
+		return rbs.Union{Elems: all(t.Elems)}
+	case rbs.Proc:
+		p := rbs.Proc{Params: all(t.Params), Ret: eraseVars(t.Ret, vars)}
+		if t.Self != nil {
+			p.Self = eraseVars(t.Self, vars)
+		}
+		return p
+	case rbs.Record:
+		fs := slices.Clone(t.Fields)
+		for i := range fs {
+			fs[i].Value = eraseVars(fs[i].Value, vars)
+		}
+		return rbs.Record{Fields: fs}
+	}
+	return t
 }
 
 // sigAttr is the sig file's attribute `name` on cls, of any kind (an `attr_* self.` one when cls is a metaclass).

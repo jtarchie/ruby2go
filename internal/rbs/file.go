@@ -3,6 +3,7 @@ package rbs
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -17,18 +18,26 @@ type File struct {
 // ClassDecl is a `class`, `module` or `interface` declaration. Nested
 // declarations are also collected in File.Decls, under their qualified Name.
 type ClassDecl struct {
-	Name        string // qualified with the enclosing declarations: "Outer::Inner"
-	IsModule    bool
-	IsInterface bool
-	TypeParams  []string
-	Super       Type // nil unless the class has one
-	Includes    []*IncludeDecl
-	Methods     []*MethodDecl
-	Attrs       []*AttrDecl
-	Ivars       []*ConstDecl // `@x: T`, and `self.@x: T` for the class object's (Name keeps the prefix)
-	Consts      []*ConstDecl
-	Aliases     []*TypeAliasDecl
-	Line        int
+	Name          string // qualified with the enclosing declarations: "Outer::Inner"
+	IsModule      bool
+	IsInterface   bool
+	TypeParams    []string
+	Super         Type // nil unless the class has one
+	Includes      []*IncludeDecl
+	Methods       []*MethodDecl
+	Attrs         []*AttrDecl
+	Ivars         []*ConstDecl // `@x: T`, and `self.@x: T` for the class object's (Name keeps the prefix)
+	Consts        []*ConstDecl
+	Aliases       []*TypeAliasDecl
+	MethodAliases []*MethodAliasDecl
+	Line          int
+}
+
+// MethodAliasDecl is `alias new old` (Self: `alias self.new self.old`).
+type MethodAliasDecl struct {
+	New, Old string
+	Self     bool
+	Line     int
 }
 
 // MethodDecl is `def name: T` or `def self.name: T`, with `#|`-style
@@ -90,6 +99,8 @@ func ParseFile(src string) (*File, error) {
 				return nil, fmt.Errorf("rbs: unmatched `end` on line %d", i+1)
 			}
 			stack = stack[:len(stack)-1]
+		case classAlias.MatchString(line):
+			// a class alias (`class Array = ArrayType`) opens no body
 		case strings.HasPrefix(line, "class "):
 			err := openDecl(f, &stack, parseClass, line, i+1)
 			if err != nil {
@@ -111,9 +122,7 @@ func ParseFile(src string) (*File, error) {
 				owner = stack[len(stack)-1]
 			}
 			start := i + 1
-			if strings.HasPrefix(line, "def ") {
-				line = joinOverloads(lines, &i, line)
-			}
+			line = joinMember(lines, &i, line)
 			err := parseMember(owner, line, start)
 			if err != nil {
 				return nil, err
@@ -126,19 +135,38 @@ func ParseFile(src string) (*File, error) {
 	return f, nil
 }
 
-// joinOverloads appends the `| (T) -> U` continuation lines after lines[*i] to line, advancing *i past them.
-func joinOverloads(lines []string, i *int, line string) string {
+// joinMember joins a member's continuation lines (an open bracket, a leading `|`) and drops `%a{}` annotations.
+func joinMember(lines []string, i *int, line string) string {
 	var sb strings.Builder
 	sb.WriteString(line)
 	for *i+1 < len(lines) {
 		nxt := strings.TrimSpace(stripComment(lines[*i+1]))
-		if !strings.HasPrefix(nxt, "|") {
+		if !strings.HasPrefix(nxt, "|") && !strings.HasSuffix(sb.String(), "|") && bracketDepth(sb.String()) <= 0 {
 			break
 		}
 		sb.WriteString(" " + nxt)
 		*i++
 	}
-	return sb.String()
+	return strings.TrimSpace(annotation.ReplaceAllString(sb.String(), ""))
+}
+
+var classAlias = regexp.MustCompile(`^(class|module) [\w:]+ =`)
+
+// annotation is an RBS `%a{...}`, `%a(...)` or `%a[...]` annotation, which rb2go does not model.
+var annotation = regexp.MustCompile(`%a(\{[^}]*\}|\([^)]*\)|\[[^\]]*\])`)
+
+// bracketDepth is the count of s's open brackets less its closing ones (`->` is not a closing one).
+func bracketDepth(s string) int {
+	depth := 0
+	for i := range len(s) {
+		switch s[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		}
+	}
+	return depth
 }
 
 func openDecl(f *File, stack *[]*ClassDecl, parse func(string, int) (*ClassDecl, error), line string, ln int) error {
@@ -215,7 +243,7 @@ func parseHead(rest string) (name string, tps []string, tail string, err error) 
 	}
 	rest = strings.TrimSpace(rest[i:])
 	if strings.HasPrefix(rest, "[") {
-		end := strings.IndexByte(rest, ']')
+		end := closeBracket(rest)
 		if end < 0 {
 			return "", nil, "", fmt.Errorf("unterminated type parameters in %q", name)
 		}
@@ -225,9 +253,38 @@ func parseHead(rest string) (name string, tps []string, tail string, err error) 
 	return name, tps, rest, nil
 }
 
+// closeBracket is the index of the `]` closing s's leading `[`, or -1: a bound may nest (`[P < Comparable[P]]`).
+func closeBracket(s string) int {
+	depth := 0
+	for i := range len(s) {
+		switch s[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
 func parseTypeParams(s string) []string {
+	var top strings.Builder // s without a bound's brackets, whose commas are not separators
+	depth := 0
+	for i := range len(s) {
+		switch {
+		case s[i] == '[':
+			depth++
+		case s[i] == ']':
+			depth--
+		case depth == 0:
+			top.WriteByte(s[i])
+		}
+	}
 	var out []string
-	for _, part := range strings.Split(s, ",") {
+	for _, part := range strings.Split(top.String(), ",") {
 		part = strings.TrimSpace(part)
 		if i := strings.IndexByte(part, '<'); i >= 0 {
 			part = strings.TrimSpace(part[:i])
@@ -248,7 +305,7 @@ func parseMember(owner *ClassDecl, line string, ln int) error {
 		if err != nil {
 			return err
 		}
-		if owner != nil {
+		if owner != nil && len(m.Overloads) > 0 {
 			owner.Methods = append(owner.Methods, m)
 		}
 	case strings.HasPrefix(line, "@"), strings.HasPrefix(line, "self.@"):
@@ -270,6 +327,11 @@ func parseMember(owner *ClassDecl, line string, ln int) error {
 	case strings.HasPrefix(line, "type "):
 		if owner != nil {
 			return addAlias(owner, line, ln)
+		}
+	case strings.HasPrefix(line, "alias "):
+		if f := strings.Fields(line); owner != nil && len(f) == 3 {
+			nw, self := strings.CutPrefix(f[1], "self.")
+			owner.MethodAliases = append(owner.MethodAliases, &MethodAliasDecl{New: nw, Old: strings.TrimPrefix(f[2], "self."), Self: self, Line: ln})
 		}
 	case line == "private" || line == "public":
 		// visibility is not modelled
@@ -428,6 +490,9 @@ func ParseMethodTypes(s string) ([]*MethodType, error) {
 	var out []*MethodType
 	cur := ""
 	for _, part := range splitOverloads(s) {
+		if part == "..." { // the overloads the class already has: nothing for rb2go to add
+			continue
+		}
 		_, err := ParseMethodType(part)
 		switch {
 		case err == nil && cur != "":
@@ -444,6 +509,9 @@ func ParseMethodTypes(s string) ([]*MethodType, error) {
 		default:
 			cur += " | " + part
 		}
+	}
+	if cur == "" && len(out) == 0 {
+		return nil, nil // `def x: ...`
 	}
 	m, err := ParseMethodType(cur)
 	if err != nil {

@@ -1,0 +1,5 @@
+module Sigdemo
+  class Meter
+    def total: (((
+  end
+end

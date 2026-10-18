@@ -277,12 +277,22 @@ func TestBootAutoload(t *testing.T) {
 	}
 	lp := loadPath(dir, src) // # load_path: lib
 	srcs := []compiler.Source{{Name: "app.rb", Src: src, Path: app}}
+	t.Setenv("RB2GO_GEM_WARNINGS", "1")
 	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, GemSigs, srcs, lp)
 	if err != nil {
 		t.Fatalf("rb2go: %v", err)
 	}
 	for _, w := range warnings {
 		t.Logf("warning: %s", w)
+	}
+	// sigdemo's own sig/ types Meter (push through its `alias push add`); its malformed file only warns (decision 306)
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "broken.rbs: skipped") }) {
+		t.Error("no warning for sigdemo/sig/broken.rbs")
+	}
+	for _, want := range []string{"Sigdemo_Meter_Total(self Sigdemo_MeterI) Integer", "Push(value Integer) Sigdemo_MeterI"} {
+		if !bytes.Contains(code, []byte(want)) {
+			t.Errorf("main.go lacks %q: the gem's sig/ did not type Sigdemo::Meter", want)
+		}
 	}
 	gen := t.TempDir()
 	writeModule(t, gen)

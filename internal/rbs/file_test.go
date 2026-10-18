@@ -1,6 +1,53 @@
 package rbs
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
+
+func TestParseFileNestedBoundAndMethodAlias(t *testing.T) {
+	src := `class Heap[Elem, Priority]
+  def push: (Elem, ?Priority) -> self
+  alias enqueue push
+  alias self.make self.new
+end
+class MinQ[Elem, Priority < Comparable[Priority], K < Hash[Elem, Priority]] < Heap[Elem, Priority]
+  alias decrease_key change_priority
+  %a{pure} def wide: (
+    name: String name,
+    ?Integer
+  ) -> void
+  def freeze: ...
+  def each: [P < Integer] { (Elem) -> void } -> void
+          | ...
+  type kind = :a |
+              :b
+end
+class Array = ArrayType
+`
+	f, err := ParseFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heap, minq := f.Decls[0], f.Decls[1]
+	if len(heap.MethodAliases) != 2 || *heap.MethodAliases[0] != (MethodAliasDecl{New: "enqueue", Old: "push", Line: 3}) ||
+		*heap.MethodAliases[1] != (MethodAliasDecl{New: "make", Old: "new", Self: true, Line: 4}) {
+		t.Errorf("aliases = %+v", heap.MethodAliases)
+	}
+	if got := fmt.Sprint(minq.TypeParams); got != "[Elem Priority K]" {
+		t.Errorf("type params = %s", got)
+	}
+	if minq.Super == nil || minq.Super.String() != "Heap[Elem, Priority]" {
+		t.Errorf("super = %v", minq.Super)
+	}
+	if len(minq.MethodAliases) != 1 || minq.MethodAliases[0].New != "decrease_key" {
+		t.Errorf("aliases = %+v", minq.MethodAliases)
+	}
+	if got := fmt.Sprint(minq.Methods[0].Overloads, minq.Methods[1].Overloads, minq.Aliases[0].Type); len(minq.Methods) != 2 ||
+		got != "[(name: String, ?Integer) -> void] [[P] () { (Elem) -> void } -> void] :a | :b" {
+		t.Errorf("methods = %s", got)
+	}
+}
 
 func TestParseFileDecls(t *testing.T) {
 	src := `# line comment
