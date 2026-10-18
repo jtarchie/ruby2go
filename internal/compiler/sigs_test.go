@@ -51,12 +51,13 @@ func TestSigsMergeUserWins(t *testing.T) {
 	}
 }
 
-// A gem's shipped sig/ loads after the vendored sigs, leniently, its members that name an erased type param dropped, and its aliases followed (decision 306).
+// A gem's shipped sig/ loads after the vendored sigs, leniently, its aliases followed (decision 306); generics erased only over a core @go_type (decision 312).
 func TestSigsShipped(t *testing.T) {
 	root := t.TempDir()
 	for name, src := range map[string]string{
 		"sig/foo.rbs":           "class Foo[E]\n  def a: () -> E\n  def n: () -> Integer\n  def g: () -> Integer\n  def h: (E) -> Array[E]?\n  alias b a\n  alias m n\n  alias c m\nend\n",
 		"sig/bad.rbs":           "class Foo\n  def z: (((\nend\n",
+		"sig/bar.rbs":           "class Bar[V] < Hash[String, V]\n  def v: () -> V\n  def k: () -> Integer\nend\n",
 		"sig/_scripts/skip.rbs": "class Foo\n  def s: () -> String\nend\n",
 	} {
 		p := filepath.Join(root, name)
@@ -68,20 +69,23 @@ func TestSigsShipped(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	c := &Compiler{sigs: map[string]*rbs.ClassDecl{}, classes: map[string]*Class{}, warned: map[string]bool{}, env: envConfig{GemWarnings: true},
+	c := &Compiler{sigs: map[string]*rbs.ClassDecl{}, classes: map[string]*Class{"Hash": {RubyName: "Hash", GoType: "*rbHash"}}, warned: map[string]bool{}, env: envConfig{GemWarnings: true},
 		gemDirs: []string{filepath.Join(root, "lib")}, gemSigs: fstest.MapFS{
 			"sig/gems/g/foo.rbs": {Data: []byte("class Foo\n  def g: () -> Float\nend\n")},
 		}}
 	c.loadSigs(nil)
-	for name, want := range map[string]string{"a": "", "b": "", "h": "", "n": "Integer", "m": "Integer", "c": "Integer", "g": "Float", "s": ""} {
+	for name, want := range map[string]string{"a": "E", "b": "E", "h": "Array[E]?", "n": "Integer", "m": "Integer", "c": "Integer", "g": "Float", "s": ""} {
 		if got := sigReturn(t, c, name); got != want {
 			t.Errorf("Foo#%s returns %q, want %q", name, got, want)
 		}
 	}
-	if tps := c.sigs["Foo"].TypeParams; len(tps) != 0 {
-		t.Errorf("type params %v survived", tps)
+	if tps := c.sigs["Foo"].TypeParams; len(tps) != 1 { // a generic struct class keeps them (decision 312)
+		t.Errorf("type params %v dropped", tps)
+	}
+	if bar := c.sigs["Bar"]; len(bar.TypeParams) != 0 || len(bar.Methods) != 1 || bar.Methods[0].Name != "k" { // over a core @go_type: erased
+		t.Errorf("Bar = %+v, want V and v dropped", bar)
 	}
 	if len(c.Warnings) != 2 {
-		t.Errorf("warnings = %q, want bad.rbs skipped and Foo[E] erased", c.Warnings)
+		t.Errorf("warnings = %q, want bad.rbs skipped and Bar[V] erased", c.Warnings)
 	}
 }
