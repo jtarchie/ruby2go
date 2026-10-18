@@ -77,13 +77,8 @@ Smaller cases go in `testdata/`:
   - Errors are `panic(compileError)` via `errorf`/`unsupported`, recovered in `compile`. Messages carry `file:line`. Warnings (`warn`) are deduped and printed by the CLI/test.
   - When the generated Go doesn't parse, the raw output is written to `$TMPDIR/rb2go-bad-output.go`.
 
-### The prelude
+- `prelude/`: the core library in Ruby; its conventions (`%x{}`, `@go_type`, `prelude/go/` helpers) are in `prelude/CLAUDE.md`.
 
-`prelude/*.rb` is the core library, written in Ruby and compiled by the same transpiler. It reopens core classes, so it never runs on MRI.
-- `%x{ ... }` is the Go escape hatch. `self` and parameter names bind to the Go receiver and args. The body is a Ruby xstring, so write `\\n` for a Go `\n` and `\#{` for a literal `#{`, and keep braces balanced (decision 16). A one-line body of a non-void method gets an implicit `return`. Imports come from the `stdImports` table in `format.go` (selector name → std package; no goimports, no go command): a package missing there fails `go build` with "undefined: name", so add the entry (decisions 154, 263).
-- Methods with a `%x{}` body must carry a `#:` signature (the body is opaque). Pure-Ruby methods can infer.
-- `# @go_type T` makes a class a named Go type (value semantics if frozen, e.g. `String`). Classes without it become structs, with an interface (`FooI`) and pointers.
-- Package-level Go helpers (no `self`/param binding) live in `prelude/go/<name>.go`, next to the `prelude/<name>.rb` whose methods use them: real, gofmt-clean Go with its own `import` block, no xstring escaping (decision 154). The build tag `//go:build rb2go_prelude` keeps them out of `go build ./...` and the repo lint (they reference generated types); `loadPreludeGo` in `compiler.go` globs them, drops the header through the import block, merges their imports into `stdImports` (`format.go`; the table's hand entries are only for `%x{}` bodies in `.rb`) and appends each body to `c.verbatim`, skipping Prism. Type checking: `go run ./cmd/rb2go stubs` writes the gitignored `prelude/go/0_stubs.go` (what generated code declares, bodies `panic(0)`), then `go vet -tags rb2go_prelude ./prelude/go` or gopls with `-tags=rb2go_prelude` (`.vscode/settings.json`) checks the helpers; `TestPreludeGo` does both on every `go test`. Helper files must start with a letter (the embed pattern is `prelude/go/[a-z]*.go`). A top-level `%x{}` in a `.rb` still works, but new helpers go in `prelude/go/`. `runtime.rb` and `dynamic.rb` are now doc-only. `.golangci.generated.yml` has path-scoped exclusions for `prelude/go/*.go`: staticcheck's ST1003/ST1021 (names mirror Ruby, like decision 3) and nolintlint (gosec ignores `//line` remapping, so it can't correlate `//nolint:gosec` comments there even though the suppression itself works).
 
 ### Key representation rules (details in docs/design.md decisions)
 
