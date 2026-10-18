@@ -142,6 +142,11 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 				return TVar{Name: p}
 			}
 		}
+		if k := sc.class; k.template != nil && len(t.Args) == 0 {
+			if i := slices.Index(k.template.TypeParams, t.Name); i >= 0 {
+				return k.instArgs[i]
+			}
+		}
 	}
 	lex := sc.lex
 	if t.Absolute { // `::Pathname` inside a module that has its own Pathname
@@ -176,6 +181,22 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 	args := make([]Type, len(t.Args))
 	for i, a := range t.Args {
 		args[i] = c.resolveType(a, sc)
+	}
+	return c.classType(cls, args, sc.srcPos)
+}
+
+// classType is cls at args: a template's instance when args are closed (decision 308).
+func (c *Compiler) classType(cls *Class, args []Type, at srcPos) TClass {
+	if cls.isTemplate() {
+		var vars []string
+		for _, a := range args {
+			freeVars(a, &vars)
+		}
+		if len(vars) == 0 {
+			if inst := c.instOf(cls, args, at); inst != nil {
+				return TClass{C: inst}
+			}
+		}
 	}
 	return TClass{C: cls, Args: args}
 }

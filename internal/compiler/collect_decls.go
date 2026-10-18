@@ -209,7 +209,10 @@ func (cls *Class) freeFunc(m *Method) string { return cls.Name + "_" + m.GoName 
 // goNames lists every package-level Go name generated for cls.
 func (cls *Class) goNames() []string {
 	out := make([]string, 0, 8+len(cls.MethodList)+len(cls.singletonDefs))
-	out = append(out, cls.Name, cls.ifaceName(), cls.ctorName(), cls.selfName(), cls.anyName(), classVar(cls), cls.metaName(), cls.metaName()+"I")
+	out = append(out, cls.Name, cls.ifaceName(), cls.ctorName(), cls.selfName(), cls.anyName())
+	if cls.template == nil { // an instance's class object is its template's
+		out = append(out, classVar(cls), cls.metaName(), cls.metaName()+"I")
+	}
 	for _, m := range cls.MethodList {
 		out = append(out, cls.freeFunc(m))
 	}

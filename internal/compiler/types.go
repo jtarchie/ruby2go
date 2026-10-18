@@ -67,6 +67,9 @@ func (t TClass) String() string {
 	if t.C.metaOf != nil {
 		return "singleton(" + t.C.metaOf.RubyName + ")"
 	}
+	if t.C.template != nil {
+		return instKey(t.C.template, t.C.instArgs)
+	}
 	if len(t.Args) == 0 {
 		return t.C.RubyName
 	}

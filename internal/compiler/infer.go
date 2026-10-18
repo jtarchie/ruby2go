@@ -592,6 +592,9 @@ func (c *Compiler) userMethods() []*Method {
 		}
 	}
 	for _, cls := range c.classList {
+		if cls.isTemplate() {
+			continue
+		}
 		for _, m := range cls.MethodList {
 			if !m.File.isPrelude() && m.Kind == kindDef {
 				out = append(out, m)

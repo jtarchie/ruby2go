@@ -80,7 +80,7 @@ module Kernel
   #: (Module) -> bool
   def instance_of?(klass) = %x{
     d, ok := any(klass).(interface{ _DescID() int })
-    return Boolean(ok && rbClassID(self) == d._DescID())
+    return Boolean(ok && rbRubyClassID(rbClassID(self)) == d._DescID())
   }
 
   # Objects, Array, Hash and Struct values are mutable; frozen classes override. nil reaches here held untyped (NilClass has no Go type).

@@ -1964,6 +1964,8 @@ func (f *fctx) numericWhen(wn *parser.WhenNode, subj Type) *Class {
 // the arm's type, and the conversion that gives the arm that type.
 func (f *fctx) whenClass(cls *Class) ([]string, Type, string) {
 	switch {
+	case cls.isTemplate(): // any instance: the arm keeps the value untyped (decision 308)
+		return []string{cls.anyName()}, TAny{}, ""
 	case len(cls.TypeParams) > 0:
 		args := make([]Type, len(cls.TypeParams))
 		for i := range args {
@@ -3485,6 +3487,9 @@ func (c *Compiler) inferredMethods() []*Method {
 		}
 	}
 	for _, cls := range c.classList {
+		if cls.isTemplate() {
+			continue
+		}
 		for _, m := range cls.MethodList {
 			if m.inferRet {
 				out = append(out, m)
@@ -3505,7 +3510,7 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 		for _, cls := range c.classList {
-			if !cls.isStruct() && !cls.hashBase || cls.universal {
+			if !cls.isStruct() && !cls.hashBase || cls.universal || cls.isTemplate() {
 				continue
 			}
 			ms := append([]*Method(nil), cls.MethodList...)
@@ -3679,6 +3684,9 @@ func (c *Compiler) emitSynth(m *Method) {
 		if cls.isPerRun {
 			body = "return New" + cls.Name + "In(" + strings.TrimSuffix("self, "+c.argNames(m), ", ") + ")" // the object remembers this class object (decision 259)
 		}
+	}
+	if m.Name == "new" && cls.isTemplate() { // ponytail: no class-object new on a generic class held untyped; build its erasure instance
+		return
 	}
 	if m.Name == "new" {
 		c.labels[meta.Name+"."+m.GoName] = "Class#new"

@@ -64,6 +64,9 @@ type Class struct {
 	specTests     int              // its it/specify count, for MRI's test_0001_ names
 	hidden        bool             // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
 	ivarBits      bool             // its objects record which ivars were assigned (decision 153)
+	template      *Class           // an instance's generic class (decision 308)
+	instArgs      []Type           // an instance's type arguments
+	instances     []*Class         // a template's instances
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -250,7 +253,7 @@ type entry struct {
 
 func (c *Class) isSubclassOf(other *Class) bool {
 	for k := c; k != nil; k = k.Super {
-		if k == other {
+		if k == other || k.template != nil && k.template == other {
 			return true
 		}
 		for _, inc := range k.Includes {
@@ -508,7 +511,7 @@ func (c *Compiler) link(ctx context.Context) {
 		if cls.GoType != "" && cls.Super != nil && cls.Super.isStruct() && !cls.Super.universal {
 			c.errorAt(cls.srcPos, "@go_type class %s cannot inherit from struct class %s", cls.Name, cls.Super.Name)
 		}
-		if cls.isStruct() && !cls.universal && len(cls.TypeParams) > 0 {
+		if cls.isStruct() && !cls.universal && len(cls.TypeParams) > 0 && !cls.isTemplate() && !cls.hashBase {
 			c.errorAt(cls.srcPos, "generic struct classes are not supported")
 		}
 	}

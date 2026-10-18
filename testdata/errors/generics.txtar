@@ -1,0 +1,55 @@
+Compile errors for generic struct classes (docs/design.md decision 308).
+-- new_unbound.rb --
+# error: main.rb:9: cannot infer type parameter T of Box.new
+# @rbs generic T
+class Box
+  #: (?T?) -> void
+  def initialize(v = nil) = @v = v
+  #: () -> T?
+  def get = @v
+end
+b = Box.new
+p b.get
+-- wrong_type_args.rb --
+# error: main.rb:7: Box takes 1 type args, got 2
+# @rbs generic T
+class Box
+  #: (T) -> void
+  def initialize(v) = @v = v
+end
+b = Box.new(1) #: Box[Integer, String]
+p b
+-- invariant.rb --
+# error: main.rb:12: Box[Integer] where Box[untyped] is expected
+# @rbs generic T
+class Box
+  #: (T) -> void
+  def initialize(v) = @v = v
+  #: () -> T
+  def get = @v
+end
+#: (Box[untyped]) -> untyped
+def peek(b) = b.get
+b = Box.new(1)
+p peek(b)
+-- argument_mismatch.rb --
+# error: main.rb:10: String where Integer is expected
+# @rbs generic T
+class Box
+  #: (T) -> void
+  def initialize(v) = @v = v
+  #: (T) -> void
+  def set(v) = @v = v
+end
+b = Box.new(1)
+b.set("a")
+-- polymorphic_recursion.rb --
+# error: instantiates Box without end (polymorphic recursion)
+# @rbs generic T
+class Box
+  #: (T) -> void
+  def initialize(v) = @v = v
+  #: () -> Box[Array[T]]
+  def wrap = Box.new([@v])
+end
+p Box.new(1).wrap

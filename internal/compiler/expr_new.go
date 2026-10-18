@@ -90,6 +90,11 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 		args = f.keywordMembers(n, vr, args)
 	}
 	init := cls.lookup("initialize")
+	if cls.isTemplate() {
+		if inst := f.newInstance(n, cls, init, args, exprs, expected); inst != nil {
+			return f.genNew(n, inst, args, exprs, expected, block)
+		}
+	}
 	var codes []string
 	if init != nil {
 		env := map[string]Type{}
@@ -400,4 +405,34 @@ func (f *fctx) genPerRunClass(n *parser.CallNode, cls *Class) expr {
 	}
 	f.genStmt(&parser.CallNode{Location: n.Location, Receiver: obj, Name: anonBodyName, Arguments: &parser.ArgumentsNode{Arguments: args}}, tail{})
 	return expr{code: k, typ: TClass{C: cls.meta}}
+}
+
+// newInstance is the instance a template's `X.new` builds (decision 308): the expected one, else the type arguments
+// initialize's parameters bind from the call's arguments.
+func (f *fctx) newInstance(n parser.Node, cls *Class, init *entry, args []parser.Node, exprs []expr, expected Type) *Class {
+	at := srcPos{f.f, f.f.shownLine(n.GetLocation().StartOffset)}
+	switch et, ok := expected.(TClass); {
+	case ok && et.C.template == cls:
+		return et.C
+	case ok && et.C == cls && len(et.Args) == len(cls.TypeParams): // an instance this pass lacks: the restart has it
+		return f.c.instOf(cls, et.Args, at)
+	}
+	env := map[string]Type{}
+	if init != nil {
+		maps.Copy(env, init.Env)
+		for _, p := range cls.TypeParams {
+			delete(env, p)
+		}
+		f.probe(func() { f.genArgs(n, init.M, env, args, exprs) })
+	}
+	targs := make([]Type, len(cls.TypeParams))
+	for i, p := range cls.TypeParams {
+		t, ok := env[p]
+		var vars []string
+		if freeVars(t, &vars); !ok || len(vars) > 0 {
+			f.errorf(n, "cannot infer type parameter %s of %s.new: annotate the result (`#: %s[...]`)", p, cls.RubyName, cls.RubyName)
+		}
+		targs[i] = t
+	}
+	return f.c.instOf(cls, targs, at)
 }

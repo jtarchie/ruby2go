@@ -362,6 +362,9 @@ func (c *Compiler) emitProgram() {
 		c.emitClassType(cls)
 	}
 	for _, cls := range classes {
+		if cls.isTemplate() {
+			continue
+		}
 		for _, m := range cls.MethodList {
 			c.emitMethod(m)
 		}
@@ -545,6 +548,8 @@ func (c *Compiler) emitClassType(cls *Class) {
 				c.w("func %s() *%s { return &%s{} }\n\n", cls.ctorName(), inst, inst)
 			}
 		}
+	case cls.isTemplate(): // only its instances are Go structs (decision 308)
+		c.w("type %s interface{ _%s() }\n\n", cls.anyName(), cls.anyName())
 	default:
 		c.emitStructClass(cls)
 	}
@@ -787,7 +792,11 @@ func (c *Compiler) emitStructClass(cls *Class) {
 		c.w("type %s = %s\n\n", superField(cls), cls.Name)
 	}
 	c.userTypeLine(cls)
-	c.w("type %s struct {\n", cls.Name)
+	if cls.template != nil {
+		c.w("type %s struct { // %s\n", cls.Name, TClass{C: cls})
+	} else {
+		c.w("type %s struct {\n", cls.Name)
+	}
 	switch {
 	case cls.Super != nil && !cls.Super.universal:
 		c.w("\t%s\n", superField(cls.Super))
@@ -835,6 +844,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	}
 	c.w("}\n\n")
 	c.w("func (self *%s) _%s() *%s { return self }\n\n", cls.Name, cls.Name, cls.Name)
+	if t := cls.template; t != nil { // the family marker an untyped is_a?/case/rescue asserts (decision 308)
+		c.w("func (*%s) _%s() {}\n\n", cls.Name, t.anyName())
+	}
 	for _, mod := range ownIvarModules(cls) {
 		c.w("func (self *%s) _%s() *%s { return &self.%s }\n\n", cls.Name, mod.Name, ivarsType(mod), ivarsField(mod))
 	}
@@ -2291,6 +2303,17 @@ func (c *Compiler) emitClassMeta() {
 	// a table, not a marker method: a `_Ref()` on every pointer class was 11k of the test programs' functions (decision 89)
 	c.w("var rbClassRefs = [...]bool{%s}\n\n", strings.Join(refs, ", "))
 	c.w("var rbKernelInspect = [...]bool{%s}\n\n", strings.Join(kernelInspect, ", "))
+	c.w("func rbRubyClassID(id int) int {\n\tswitch id {\n") // a generic instance is its template to Ruby (decision 308)
+	for _, cls := range c.classList {
+		if len(cls.instances) > 0 {
+			ids := make([]string, len(cls.instances))
+			for i, inst := range cls.instances {
+				ids[i] = strconv.Itoa(c.classID(inst))
+			}
+			c.w("\tcase %s:\n\t\treturn %d\n", strings.Join(ids, ", "), c.classID(cls))
+		}
+	}
+	c.w("\tdefault: // gocritic rejects the one-case switch\n\t\treturn id\n\t}\n}\n\n")
 	array := c.classID(c.classes["Array"])
 	for n := 2; n <= maxTuple; n++ {
 		if c.tupleN[n] {

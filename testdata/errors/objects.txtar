@@ -143,11 +143,6 @@ end
 # @go_type int
 class Small < Base
 end
--- generic_struct_class.rb --
-# error: main.rb:3: generic struct classes are not supported
-# @rbs generic T
-class Box
-end
 -- generic_module_class_method.rb --
 # error: main.rb:5: class methods on generic class Holder are not supported
 # @rbs generic T

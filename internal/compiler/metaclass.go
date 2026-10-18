@@ -14,7 +14,9 @@ func (c *Compiler) buildMetas() {
 		if (cls.RubyName == "BasicObject" || cls.RubyName == "Kernel") && len(cls.singletonDefs) > 0 {
 			c.errorf(cls.singletonDefs[0].file, cls.singletonDefs[0].node, "class methods on %s are not supported", cls.RubyName)
 		}
-		if cls.metaOf == nil {
+		if cls.template != nil { // instances share the template's class object (decision 308)
+			cls.meta = c.metaFor(cls.template)
+		} else if cls.metaOf == nil {
 			c.metaFor(cls)
 		}
 	}
@@ -125,7 +127,12 @@ func (c *Compiler) resolveSynth(m *Method) {
 func isSynthNew(e *entry) bool { return e != nil && e.M.Kind == kindSynth && e.M.Name == "new" }
 
 // classVar is the Go variable holding a class object.
-func classVar(cls *Class) string { return cls.Name + "_class" }
+func classVar(cls *Class) string {
+	if cls.template != nil {
+		cls = cls.template
+	}
+	return cls.Name + "_class"
+}
 
 // descendantDefines reports whether a subclass of c defines a public name
 // (or a private one, with private).

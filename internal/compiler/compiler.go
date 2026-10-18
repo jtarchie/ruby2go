@@ -181,6 +181,11 @@ type Compiler struct {
 	env         envConfig                 // the RB2GO_* environment, read when this compile started
 	uses        map[pendingKey][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[pendingKey]bool       // this round's untyped parameter keys
+
+	insts       map[string]*Class // generic instances by instKey (decision 308)
+	instReqs    *[]string         // instKeys to create before link: grows when a compile names a new one
+	instOpen    bool              // makeInstances is running: instOf may create
+	instMissing bool              // this compile named an instance it lacks: its result is discarded for a restart
 }
 
 type verbatim struct {
@@ -282,6 +287,7 @@ type options struct {
 	testHook   func()            // tests only: runs at the start of compileWith, to inject a panic
 	genCount   *int              // test hook: genExpr calls, summed over every pass
 	genLimit   *int              // test hook: the count after which genExpr fails the compile
+	instances  []string          // generic instances to create before link, by instKey (decision 308)
 }
 
 // ErrInternal marks an error that is a compiler bug (a panic that was neither a compile error nor an inference request), not a fault in the user's program.
@@ -312,6 +318,17 @@ type SkippedTest struct {
 }
 
 func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) ([]byte, error) {
+	for range maxInstanceRestarts {
+		opts.round, opts.inferDone = false, false
+		out, err := compileOnce(ctx, preludeFS, sources, opts)
+		if !errors.Is(err, errNeedInstances) {
+			return out, err
+		}
+	}
+	return nil, fmt.Errorf("generic instances still missing after %d compiles: %s", maxInstanceRestarts, strings.Join(opts.instances, ", "))
+}
+
+func compileOnce(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) ([]byte, error) {
 	opts.env = loadEnv()
 	if opts.seed != nil {
 		opts.infer = opts.seed.inf
@@ -324,21 +341,7 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 		if opts.seed != nil {
 			defer func() { opts.seed.inf = opts.infer }()
 		}
-		var roundErr error
-		for range maxInferRounds {
-			opts.round = true
-			_, err = compileWith(ctx, preludeFS, sources, opts, false)
-			opts.round = false
-			if err != nil && !errors.Is(err, errInferRound) {
-				roundErr = err // it stopped inference: the final compile's untyped parameters are its doing
-				if opts.env.InferDebug {
-					fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
-				}
-			}
-			if !errors.Is(err, errInferRound) || !opts.infer.changed {
-				break
-			}
-		}
+		roundErr := inferRounds(ctx, preludeFS, sources, opts)
 		opts.inferDone = true
 		out, err = compileWith(ctx, preludeFS, sources, opts, false)
 		var ce compileError
@@ -356,6 +359,28 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 	return out, err
 }
 
+// inferRounds runs decision 146's rounds until nothing changes; the error is one that stopped them.
+func inferRounds(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options) (roundErr error) {
+	for range maxInferRounds {
+		opts.round = true
+		_, err := compileWith(ctx, preludeFS, sources, opts, false)
+		opts.round = false
+		if errors.Is(err, errNeedInstances) {
+			continue // the next round creates the generic instance this one named (decision 308)
+		}
+		if err != nil && !errors.Is(err, errInferRound) {
+			roundErr = err // it stopped inference: the final compile's untyped parameters are its doing
+			if opts.env.InferDebug {
+				fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
+			}
+		}
+		if !errors.Is(err, errInferRound) || !opts.infer.changed {
+			break
+		}
+	}
+	return roundErr
+}
+
 // panicToError is compileWith's recover: compileError and needInfer are the compiler's own control flow; any other panic is a compiler bug, returned as an internalError so a CLI or server reports it instead of dying with a Go trace.
 func panicToError(r any, sources []Source, mainLast, errStack bool) error {
 	var err error
@@ -364,6 +389,8 @@ func panicToError(r any, sources []Source, mainLast, errStack bool) error {
 		err = r
 	case needInfer:
 		return errNeedInfer
+	case needInstances:
+		return errNeedInstances
 	default:
 		ie := internalError{val: r}
 		if len(sources) > 0 {
@@ -381,9 +408,13 @@ func panicToError(r any, sources []Source, mainLast, errStack bool) error {
 }
 
 func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *options, dynEvery bool) (out []byte, err error) {
+	var c *Compiler
 	defer func() {
 		if r := recover(); r != nil {
 			err = panicToError(r, sources, opts.mainLast, opts.env.ErrStack)
+		}
+		if c != nil && c.instMissing { // whatever failed may be the template standing in for a missing instance
+			out, err = nil, errNeedInstances
 		}
 	}()
 	if opts.testHook != nil {
@@ -396,7 +427,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	tick("parser")
 
-	c := &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, procFuncs: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, unionsOut: map[string]bool{}, anonClasses: map[*parser.CallNode]*Class{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
+	c = &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, procFuncs: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, unionsOut: map[string]bool{}, anonClasses: map[*parser.CallNode]*Class{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
 		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, selfTyped: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
 	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs
@@ -458,6 +489,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	if opts.mainLast { // a traced compile's -main is the program `ruby` ran: its $0 (decision 197)
 		c.programFile = c.userFiles[len(c.userFiles)-1]
 	}
+	c.makeInstances(&opts.instances)
 	c.nameGo()
 	c.link(ctx)
 	c.checkAbstractIncludes()
