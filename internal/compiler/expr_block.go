@@ -554,6 +554,9 @@ func (f *fctx) bindClosureParams(n parser.Node, names blockParams, params []Type
 func (f *fctx) bindFromRest(names blockParams, et Type) ([]string, func()) {
 	rp := f.newTmp()
 	return []string{rp + " ..." + f.c.goType(et)}, func() {
+		if _, untyped := et.(TAny); untyped && len(names) > 1 {
+			f.emit("%s = rbAutoSplat(%s)", rp, rp) // a proc of two or more params splats a lone Array, as MRI's (decision 302)
+		}
 		for i, nm := range names {
 			f.bindBlockParam(nm.Name, expr{code: fmt.Sprintf("rbArgAt(%s, %d)", rp, i), typ: et})
 		}

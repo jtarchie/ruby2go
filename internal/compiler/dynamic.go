@@ -359,7 +359,7 @@ func (c *Compiler) emitDynName(name string) {
 	own, shared := c.dynWrappers(name)
 	var genPublic, genPrivate bool
 	own = slices.DeleteFunc(own, func(w dynWrapper) bool {
-		if seqNames[name] && w.cls.Name == "Array" || hashViewNames[name] && w.cls.Name == "Hash" {
+		if seqNames[name] != "" && w.cls.Name == "Array" || hashViewNames[name] != "" && w.cls.Name == "Hash" {
 			return true // the view answers it (rbViewCall / rbHashViewCall), once for every element type
 		}
 		if len(w.cls.TypeParams) == 0 || dynPinned[name] || name == "to_json" || strings.Contains(w.body, "//line") {
@@ -384,11 +384,11 @@ func (c *Compiler) emitDynName(name string) {
 	c.emitDynArms(shared, false)
 	c.emitDynArms(shared, true)
 	c.w("\tif r, ok := recv.(interface{ Dyn%s(...any) any }); ok {\n\t\treturn r.Dyn%s(args...)\n\t}\n", gn, gn)
-	if seqNames[name] {
-		c.w("\tif s, ok := recv.(rbView); ok {\n\t\tif v, ok := rbViewCall(%q, s, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", name)
+	if fn := seqNames[name]; fn != "" {
+		c.w("\tif s, ok := recv.(rbView); ok {\n\t\tif v, ok := %s(%q, s, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", fn, name)
 	}
-	if hashViewNames[name] {
-		c.w("\tif s, ok := recv.(rbHashView); ok {\n\t\tif v, ok := rbHashViewCall(%q, s, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", name)
+	if fn := hashViewNames[name]; fn != "" {
+		c.w("\tif s, ok := recv.(rbHashView); ok {\n\t\tif v, ok := %s(%q, s, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", fn, name)
 	}
 	if genPublic {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, name)
@@ -467,21 +467,40 @@ type dynArm struct {
 	members []dynWrapper
 }
 
-// seqNames are the whole-array methods a dynamic call answers through the untyped view, rbViewCall (decision 236).
-var seqNames = setOf("sort", "sort!", "reverse", "reverse!", "compact", "include?", "index", "find_index", "rindex",
-	"count", "max", "min", "join", "uniq", "uniq!", "+", "-", "difference", "&", "intersection", "intersect?", "|", "union", "*",
-	"delete", "delete_at", "concat", "replace", "fill", "insert", "rotate", "take", "drop", "assoc", "rassoc", "flatten", "flatten!")
+// seqNames are the whole-array methods a dynamic call answers through the untyped view (decision 236), by the helper
+// that answers them: one body for every element type. The block-taking ones (decision 302) were per-shape wrappers,
+// each naming its Enumerable chain once per element type (brew: 393 Array shapes).
+var seqNames = viewHelpers(map[string][]string{
+	"rbViewCall": {"sort", "sort!", "reverse", "reverse!", "compact", "include?", "index", "find_index", "rindex",
+		"count", "max", "min", "join", "uniq", "uniq!", "+", "-", "difference", "&", "intersection", "intersect?", "|", "union", "*",
+		"delete", "delete_at", "concat", "replace", "fill", "insert", "rotate", "take", "drop", "assoc", "rassoc", "flatten", "flatten!"},
+	"rbViewBlockCall": {"each", "each_entry", "each_with_index", "each_index", "reverse_each", "each_slice", "each_cons", "cycle",
+		"first", "select", "filter", "find_all", "reject", "select!", "filter!", "keep_if", "reject!", "delete_if", "map!", "collect!",
+		"find", "detect", "rfind", "inject", "reduce", "each_with_object", "sort_by", "sort_by!", "max_by", "min_by",
+		"take_while", "drop_while", "bsearch", "bsearch_index"},
+	"rbViewPredicate": {"all?", "any?", "none?", "one?"},
+	"rbViewSum":       {"sum"},
+})
 
-// hashViewNames are the whole-hash methods a dynamic call answers through rbHashViewCall (decision 236).
-var hashViewNames = setOf("merge", "merge!", "update", "except", "slice", "to_h", "compact", "compact!", "flatten", "value?", "has_value?", "key", "replace")
-
-func setOf(names ...string) map[string]bool {
-	out := make(map[string]bool, len(names))
-	for _, n := range names {
-		out[n] = true
+func viewHelpers(by map[string][]string) map[string]string {
+	out := map[string]string{}
+	for fn, names := range by {
+		for _, n := range names {
+			out[n] = fn
+		}
 	}
 	return out
 }
+
+// hashViewNames are the whole-hash methods a dynamic call answers through the Hash view (decisions 236, 302), by helper.
+var hashViewNames = viewHelpers(map[string][]string{
+	"rbHashViewCall": {"merge", "merge!", "update", "except", "slice", "to_h", "compact", "compact!", "flatten", "value?",
+		"has_value?", "key", "replace"},
+	"rbHashViewBlockCall": {"each", "each_pair", "each_entry", "each_key", "each_value", "each_with_index", "each_slice",
+		"each_cons", "cycle", "select", "filter", "reject", "select!", "filter!", "keep_if", "reject!", "delete_if", "count",
+		"find", "detect", "inject", "reduce", "each_with_object", "transform_values!"},
+	"rbHashViewPredicate": {"all?", "any?", "none?", "one?"},
+})
 
 // dynPinned names wrappers Go code asserts for by method (rbCmp's DynOp_cmp,
 // the dispatchers' fallbacks): each class keeps its own. (rbToJson asserts

@@ -54,6 +54,15 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 	return expr{}
 }
 
+// autoSplat is the statement that splats a lone Array argument across a literal block of two or more parameters, as
+// MRI does for a proc (decision 302); empty for fewer.
+func autoSplat(params int, args string) string {
+	if params < 2 {
+		return ""
+	}
+	return fmt.Sprintf("%s = rbAutoSplat(%s); ", args, args)
+}
+
 // genDynBlockCall is a gem's call with a block on an untyped receiver (concurrent-ruby's `synchronize { }` on a mixin's
 // self): the block goes last, as an rbBlockArg each wrapper of a block-taking method of that name adapts (decision 243).
 func (f *fctx) genDynBlockCall(n parser.Node, recv expr, name string, args []parser.Node, b *parser.BlockNode) expr {
@@ -72,7 +81,7 @@ func (f *fctx) genDynBlockCall(n parser.Node, recv expr, name string, args []par
 		vals[i] = fmt.Sprintf("rbArgAt(xs_, %d)", i)
 	}
 	clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
-	arg := fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { return (%s)(%s) }}", clo, strings.Join(vals, ", "))
+	arg := fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { %sreturn (%s)(%s) }}", autoSplat(len(names), "xs_"), clo, strings.Join(vals, ", "))
 	return f.genDynCall(n, recv, name, append(slices.Clone(args), &exprNode{e: expr{code: arg, typ: TAny{}}}))
 }
 
@@ -525,7 +534,7 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 			vals[i] = fmt.Sprintf("rbArgAt(xs_, %d)", i)
 		}
 		clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
-		return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { return (%s)(%s) }}", clo, strings.Join(vals, ", ")), true
+		return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { %sreturn (%s)(%s) }}", autoSplat(len(names), "xs_"), clo, strings.Join(vals, ", ")), true
 	case *parser.BlockArgumentNode:
 		if b.Expression == nil {
 			return "", false

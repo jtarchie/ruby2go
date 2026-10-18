@@ -1781,6 +1781,17 @@ func rbBlockOf[F any](p **F) F {
 	return **p
 }
 
+// rbAutoSplat is Ruby's auto-splat for a block of two or more parameters called with untyped values: one Array (or
+// tuple) argument is its elements, so `|k, v|` given a Hash pair binds both.
+func rbAutoSplat(xs []any) []any {
+	if len(xs) == 1 {
+		if a, ok := rbUnbox(xs[0]).(Array_Any); ok {
+			return a._ToAny().s
+		}
+	}
+	return xs
+}
+
 // rbPackYield is the one value an Enumerable-style iterator hands on for a `yield a, b` (an Array) or `yield a` (a).
 func rbPackYield(xs []any) any {
 	switch len(xs) {

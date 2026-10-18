@@ -4,6 +4,7 @@ package prelude
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -23,6 +24,7 @@ type rbView interface {
 type rbHashView interface {
 	_Len() Integer
 	_KeyAt(i Integer) any
+	_PairAt(i Integer) any
 	_Has(k any) Boolean
 	_Get(k any) any
 	_Store(k, v any)
@@ -73,6 +75,44 @@ func rbViewArg(v any, what string) []any {
 		return a._ToAny().s
 	}
 	panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into " + what))))
+}
+
+// rbViewCmp compares raw elements x and y: by the block's -1/0/1 when there is one (sort { |a, b| ... }), else <=>.
+func rbViewCmp(b *rbBlockArg, x, y any) Integer {
+	if b == nil {
+		return rbCmp(rbUnbox(x), rbUnbox(y))
+	}
+	r := rbUnbox(b.fn(x, y))
+	if r == nil {
+		panic(NewArgumentError(Ref(String("comparison of " + rbClassName(rbUnbox(x)) + " with " + rbClassName(rbUnbox(y)) + " failed"))))
+	}
+	return rbCmp[any](r, Integer(0))
+}
+
+func rbViewSortedBy(s rbView, b *rbBlockArg) []any {
+	if b == nil {
+		return rbViewSorted(s)
+	}
+	xs := rbViewElems(s)
+	sort.SliceStable(xs, func(i, j int) bool { return rbViewCmp(b, xs[i], xs[j]) < 0 })
+	return xs
+}
+
+// rbViewUniqBy is rbViewUniq keyed by the block's result when there is one.
+func rbViewUniqBy(xs []any, b *rbBlockArg) []any {
+	if b == nil {
+		return rbViewUniq(xs)
+	}
+	seen := rbNewKeySet[any](nil)
+	var out []any
+	for _, x := range xs {
+		k := rbUnbox(b.fn(x))
+		if !seen.has(k) {
+			seen.put(k)
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // rbViewUniq keeps the first of each element by eql?/hash, as Array#uniq.
@@ -134,14 +174,15 @@ func rbViewTakeDrop(s rbView, args []any, take bool) any {
 
 // rbViewCall answers a dynamic call of name on the view, or false when name is not one of its names.
 func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop,gocognit,gocyclo,maintidx // one switch per name, as the dispatchers are
+	b, args := rbPopBlock(args) // the block forms (decision 302): sort/max/min compare with it, count/index test with it, uniq keys by it
 	switch name {
 	case "sort":
 		rbArity(len(args), 0, 0)
-		return rbViewFrom(s, rbViewSorted(s)), true
+		return rbViewFrom(s, rbViewSortedBy(s, b)), true
 	case "sort!":
 		rbArity(len(args), 0, 0)
 		s.rbCheckFrozen()
-		for i, x := range rbViewSorted(s) {
+		for i, x := range rbViewSortedBy(s, b) {
 			s._Set(Integer(i), x)
 		}
 		return s, true
@@ -171,14 +212,17 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 	case "include?":
 		rbArity(len(args), 1, 1)
 		return Boolean(rbViewIndex(s, args[0], false) != nil), true
-	case "index", "find_index":
+	case "index", "find_index", "rindex":
+		if b != nil && len(args) == 0 {
+			return rbViewOrNil(rbViewIndexWhere(s, b, name == "rindex")), true
+		}
 		rbArity(len(args), 1, 1)
-		return rbViewIndex(s, args[0], false), true
-	case "rindex":
-		rbArity(len(args), 1, 1)
-		return rbViewIndex(s, args[0], true), true
+		return rbViewIndex(s, args[0], name == "rindex"), true
 	case "count":
 		rbArity(len(args), 0, 1)
+		if b != nil && len(args) == 0 {
+			return Integer(len(rbViewKeep(s, b, true))), true
+		}
 		if len(args) == 0 {
 			return s._Len(), true
 		}
@@ -191,11 +235,15 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 		return Integer(n), true
 	case "max", "min":
 		rbArity(len(args), 0, 0)
-		var best any
+		var best, raw any
 		for i, x := range rbViewElems(s) {
-			x = rbUnbox(x)
-			if i == 0 || (name == "max") == (rbCmp(x, best) > 0) && rbCmp(x, best) != 0 {
-				best = x
+			if i == 0 {
+				best, raw = rbUnbox(x), x
+				continue
+			}
+			c := rbViewCmp(b, x, raw)
+			if (name == "max") == (c > 0) && c != 0 {
+				best, raw = rbUnbox(x), x
 			}
 		}
 		return best, true
@@ -217,12 +265,12 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 		return rbStrClone(String(strings.Join(parts, string(sep)))), true
 	case "uniq":
 		rbArity(len(args), 0, 0)
-		return rbViewFrom(s, rbViewUniq(rbViewElems(s))), true
+		return rbViewFrom(s, rbViewUniqBy(rbViewElems(s), b)), true
 	case "uniq!":
 		rbArity(len(args), 0, 0)
 		s.rbCheckFrozen()
 		xs := rbViewElems(s)
-		u := rbViewUniq(xs)
+		u := rbViewUniqBy(xs, b)
 		if len(u) == len(xs) {
 			return nil, true
 		}
@@ -525,4 +573,567 @@ func rbHashViewCall(name string, s rbHashView, args []any) (any, bool) { //nolin
 	default:
 	}
 	return nil, false
+}
+
+// rbViewYield calls a dynamic call's block with raw elements, as the per-shape wrappers did, or raises as a missing yield does.
+func rbViewYield(b *rbBlockArg, xs ...any) any {
+	if b == nil {
+		panic(NewLocalJumpError(Ref(String("no block given (yield)"))))
+	}
+	return b.fn(xs...)
+}
+
+// rbViewTest is the block's result for x as a condition: a raw E result (an Integer? element's nil pointer) unboxed first.
+func rbViewTest(b *rbBlockArg, xs ...any) bool {
+	return rbTruthy(rbUnbox(rbViewYield(b, xs...)))
+}
+
+// rbViewLive is a live loop's bound: i is still inside s, read again each pass, as MRI's each sees what the block appends.
+func rbViewLive(s rbView, i int) bool { return i < int(s._Len()) }
+
+// rbViewKeep is the raw elements whose block result is truthy (or falsy when keep is false).
+func rbViewKeep(s rbView, b *rbBlockArg, keep bool) []any {
+	var out []any
+	for _, x := range rbViewElems(s) {
+		if rbViewTest(b, x) == keep {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// rbViewKeepBang is select!/reject!/keep_if/delete_if: in place, nil when nothing changed unless always.
+func rbViewKeepBang(s rbView, b *rbBlockArg, keep, always bool) any {
+	s.rbCheckFrozen()
+	n := int(s._Len())
+	xs := rbViewKeep(s, b, keep)
+	if len(xs) == n && !always {
+		return nil
+	}
+	rbViewReplace(s, xs)
+	return s
+}
+
+// rbViewBy is the element whose block key is greatest (max_by) or least, as its Ruby value.
+func rbViewBy(s rbView, b *rbBlockArg, most bool) any {
+	var best, key any
+	for i, x := range rbViewElems(s) {
+		k := rbUnbox(rbViewYield(b, x))
+		if i == 0 {
+			best, key = x, k
+			continue
+		}
+		if c := rbCmp(k, key); most && c > 0 || !most && c < 0 {
+			best, key = x, k
+		}
+	}
+	return rbUnbox(best)
+}
+
+// rbViewSortBy is the raw elements ordered by their block keys, stable as the typed path.
+func rbViewSortBy(s rbView, b *rbBlockArg) []any {
+	xs := rbViewElems(s)
+	keys := make([]any, len(xs))
+	for i, x := range xs {
+		keys[i] = rbUnbox(rbViewYield(b, x))
+	}
+	idx := make([]int, len(xs))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.SliceStable(idx, func(i, j int) bool { return rbCmp(keys[idx[i]], keys[idx[j]]) < 0 })
+	out := make([]any, len(xs))
+	for i, j := range idx {
+		out[i] = xs[j]
+	}
+	return out
+}
+
+// rbViewBsearch is the index bsearch finds: find-minimum for a true/false/nil block, find-any for a numeric one; -1 when none.
+func rbViewBsearch(s rbView, b *rbBlockArg) int {
+	lo, hi, found := 0, int(s._Len()), -1
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		switch r := rbUnbox(rbViewYield(b, s._At(Integer(mid)))).(type) {
+		case Integer, Float:
+			c := rbCmp[any](r, Integer(0))
+			if c == 0 {
+				return mid
+			}
+			if c < 0 {
+				hi = mid
+			} else {
+				lo = mid + 1
+			}
+		default:
+			if rbTruthy(r) {
+				found, hi = mid, mid
+			} else {
+				lo = mid + 1
+			}
+		}
+	}
+	return found
+}
+
+// rbViewIndexWhere is the first (or, fromEnd, last) index whose block result is truthy, or -1.
+func rbViewIndexWhere(s rbView, b *rbBlockArg, fromEnd bool) int {
+	n := int(s._Len())
+	for k := range n {
+		i := k
+		if fromEnd {
+			i = n - 1 - k
+		}
+		if rbViewTest(b, s._At(Integer(i))) {
+			return i
+		}
+	}
+	return -1
+}
+
+func rbViewOrNil(i int) any {
+	if i < 0 {
+		return nil
+	}
+	return Integer(i)
+}
+
+// rbViewSizeArg is each_slice/each_cons's size: positive, else ArgumentError with MRI's message.
+func rbViewSizeArg(args []any, msg string) int {
+	rbArity(len(args), 1, 1)
+	n := int(rbAs[Integer](args[0], "Integer"))
+	if n <= 0 {
+		panic(NewArgumentError(Ref(String(msg))))
+	}
+	return n
+}
+
+// rbViewBlockCall answers a block-taking whole-array name on the view (decision 302): one body for every element type,
+// where each Array[E] instantiation compiled a wrapper and the Enumerable chain it names. Blocks get raw elements.
+func rbViewBlockCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop,gocognit,gocyclo,maintidx // one switch per name, as the dispatchers are
+	b, args := rbPopBlock(args)
+	switch name {
+	case "each", "each_entry":
+		rbArity(len(args), 0, 0)
+		for i := 0; rbViewLive(s, i); i++ { // MRI's each sees elements the block appends
+			rbViewYield(b, s._At(Integer(i)))
+		}
+		return s, true
+	case "each_with_index":
+		rbArity(len(args), 0, 0)
+		for i := 0; rbViewLive(s, i); i++ {
+			rbViewYield(b, s._At(Integer(i)), Integer(i))
+		}
+		return s, true
+	case "each_index":
+		rbArity(len(args), 0, 0)
+		for i := 0; rbViewLive(s, i); i++ {
+			rbViewYield(b, Integer(i))
+		}
+		return s, true
+	case "reverse_each":
+		rbArity(len(args), 0, 0)
+		for _, x := range slices.Backward(rbViewElems(s)) {
+			rbViewYield(b, x)
+		}
+		return s, true
+	case "each_slice", "each_cons":
+		msg := "invalid slice size"
+		if name == "each_cons" {
+			msg = "invalid size"
+		}
+		n := rbViewSizeArg(args, msg)
+		xs := rbViewElems(s)
+		if name == "each_slice" {
+			for i := 0; i < len(xs); i += n {
+				rbViewYield(b, rbViewFrom(s, xs[i:min(i+n, len(xs))]))
+			}
+		} else {
+			for i := 0; i+n <= len(xs); i++ {
+				rbViewYield(b, rbViewFrom(s, xs[i:i+n]))
+			}
+		}
+		return s, true
+	case "cycle":
+		rbArity(len(args), 0, 1)
+		times := -1
+		if len(args) == 1 && args[0] != nil {
+			times = max(int(rbAs[Integer](args[0], "Integer")), 0)
+		}
+		for k := 0; times < 0 || k < times; k++ {
+			if s._Len() == 0 {
+				break
+			}
+			for i := 0; rbViewLive(s, i); i++ {
+				rbViewYield(b, s._At(Integer(i)))
+			}
+		}
+		return nil, true
+	case "first":
+		rbArity(len(args), 0, 1)
+		if len(args) == 0 {
+			if s._Len() == 0 {
+				return nil, true
+			}
+			return rbUnbox(s._At(0)), true
+		}
+		n := int(rbAs[Integer](args[0], "Integer"))
+		if n < 0 {
+			panic(NewArgumentError(Ref(String("negative array size"))))
+		}
+		xs := rbViewElems(s)
+		return rbViewFrom(s, xs[:min(n, len(xs))]), true
+	case "select", "filter", "find_all":
+		rbArity(len(args), 0, 0)
+		return rbViewFrom(s, rbViewKeep(s, b, true)), true
+	case "reject":
+		rbArity(len(args), 0, 0)
+		return rbViewFrom(s, rbViewKeep(s, b, false)), true
+	case "select!", "filter!", "keep_if":
+		rbArity(len(args), 0, 0)
+		return rbViewKeepBang(s, b, true, name == "keep_if"), true
+	case "reject!", "delete_if":
+		rbArity(len(args), 0, 0)
+		return rbViewKeepBang(s, b, false, name == "delete_if"), true
+	case "map!", "collect!":
+		rbArity(len(args), 0, 0)
+		s.rbCheckFrozen()
+		for i := 0; rbViewLive(s, i); i++ {
+			s._Set(Integer(i), rbViewYield(b, s._At(Integer(i))))
+		}
+		return s, true
+	case "find", "detect":
+		rbArity(len(args), 0, 0)
+		if i := rbViewIndexWhere(s, b, false); i >= 0 {
+			return rbUnbox(s._At(Integer(i))), true
+		}
+		return nil, true
+	case "rfind":
+		rbArity(len(args), 0, 0)
+		if i := rbViewIndexWhere(s, b, true); i >= 0 {
+			return rbUnbox(s._At(Integer(i))), true
+		}
+		return nil, true
+	case "inject", "reduce":
+		rbArity(len(args), 0, 1)
+		xs := rbViewElems(s)
+		var memo any
+		if len(args) == 1 {
+			memo = args[0]
+		} else if len(xs) > 0 {
+			memo, xs = xs[0], xs[1:]
+		}
+		for _, x := range xs {
+			memo = rbViewYield(b, memo, x)
+		}
+		return rbUnbox(memo), true
+	case "each_with_object":
+		rbArity(len(args), 1, 1)
+		for _, x := range rbViewElems(s) {
+			rbViewYield(b, x, args[0])
+		}
+		return args[0], true
+	case "sort_by":
+		rbArity(len(args), 0, 0)
+		return rbViewFrom(s, rbViewSortBy(s, b)), true
+	case "sort_by!":
+		rbArity(len(args), 0, 0)
+		s.rbCheckFrozen()
+		rbViewReplace(s, rbViewSortBy(s, b))
+		return s, true
+	case "max_by", "min_by":
+		rbArity(len(args), 0, 0)
+		return rbViewBy(s, b, name == "max_by"), true
+	case "take_while", "drop_while":
+		rbArity(len(args), 0, 0)
+		xs := rbViewElems(s)
+		n := 0
+		for n < len(xs) && rbViewTest(b, xs[n]) {
+			n++
+		}
+		if name == "take_while" {
+			return rbViewFrom(s, xs[:n]), true
+		}
+		return rbViewFrom(s, xs[n:]), true
+	case "bsearch":
+		rbArity(len(args), 0, 0)
+		if i := rbViewBsearch(s, b); i >= 0 {
+			return rbUnbox(s._At(Integer(i))), true
+		}
+		return nil, true
+	case "bsearch_index":
+		rbArity(len(args), 0, 0)
+		return rbViewOrNil(rbViewBsearch(s, b)), true
+	default:
+	}
+	return nil, false
+}
+
+// rbViewPredicate answers all?/any?/none?/one? with a block, a pattern (===) or neither (truthiness); its own function
+// so only programs that call one of them dynamically keep the === dispatcher.
+func rbViewPredicate(name string, s rbView, args []any) (any, bool) {
+	b, args := rbPopBlock(args)
+	rbArity(len(args), 0, 1)
+	test := func(x any) bool {
+		switch {
+		case len(args) == 1:
+			return rbTruthy(rbDynOp_eqq(rbCall, args[0], x))
+		case b != nil:
+			return rbTruthy(rbUnbox(b.fn(x)))
+		}
+		return rbTruthy(rbUnbox(x))
+	}
+	hits := 0
+	for _, x := range rbViewElems(s) {
+		if !test(x) {
+			if name == "all?" {
+				return Boolean(false), true
+			}
+			continue
+		}
+		hits++
+		if name == "any?" || name == "none?" || name == "one?" && hits > 1 {
+			return Boolean(name == "any?"), true
+		}
+	}
+	return Boolean(name != "any?" && (name != "one?" || hits == 1)), true
+}
+
+// rbViewSum is sum(init = 0) with an optional block: Integer and Float add natively, anything else through +.
+func rbViewSum(_ string, s rbView, args []any) (any, bool) {
+	b, args := rbPopBlock(args)
+	rbArity(len(args), 0, 1)
+	var acc any = Integer(0)
+	if len(args) == 1 {
+		acc = args[0]
+	}
+	for _, x := range rbViewElems(s) {
+		v := rbUnbox(x)
+		if b != nil {
+			v = rbUnbox(b.fn(x))
+		}
+		switch a := acc.(type) {
+		case Integer:
+			if n, ok := v.(Integer); ok {
+				acc = a.Op_plus(n)
+				continue
+			}
+			if f, ok := v.(Float); ok {
+				acc = Float(a) + f
+				continue
+			}
+		case Float:
+			switch n := v.(type) {
+			case Float:
+				acc = a + n
+				continue
+			case Integer:
+				acc = a + Float(n)
+				continue
+			}
+		}
+		acc = rbDynOp_plus(rbCall, acc, v)
+	}
+	return acc, true
+}
+
+// rbHashViewKeep is a copy of s with the pairs whose block result (two arguments, key and value, as Hash#select yields)
+// is truthy, or falsy when keep is false.
+func rbHashViewKeep(s rbHashView, b *rbBlockArg, keep bool) rbHashView {
+	out := s._Make().(rbHashView)
+	for _, k := range rbHashViewKeys(s) {
+		v := s._Get(k)
+		if rbViewTest(b, k, v) == keep {
+			out._Store(k, v)
+		}
+	}
+	return out
+}
+
+// rbHashViewKeepBang is select!/reject!/keep_if/delete_if: in place, nil when nothing changed unless always.
+func rbHashViewKeepBang(s rbHashView, b *rbBlockArg, keep, always bool) any {
+	s.rbCheckFrozen()
+	changed := false
+	for _, k := range rbHashViewKeys(s) {
+		if rbViewTest(b, k, s._Get(k)) != keep {
+			s._Delete(k)
+			changed = true
+		}
+	}
+	if !changed && !always {
+		return nil
+	}
+	return s
+}
+
+func rbHashViewPairs(s rbHashView) []any {
+	n := int(s._Len())
+	out := make([]any, n)
+	for i := range n {
+		out[i] = s._PairAt(Integer(i))
+	}
+	return out
+}
+
+// rbHashViewBlockCall answers a block-taking Hash name on the view (decision 302), yielding what each per-shape
+// wrapper yielded: the pair (a [K, V] tuple) for iteration and Enumerable names, key and value for the select family.
+func rbHashViewBlockCall(name string, s rbHashView, args []any) (any, bool) { //nolint:cyclop,gocognit,gocyclo,maintidx // one switch per name
+	b, args := rbPopBlock(args)
+	switch name {
+	case "each", "each_pair", "each_entry":
+		rbArity(len(args), 0, 0)
+		for _, p := range rbHashViewPairs(s) {
+			rbViewYield(b, p)
+		}
+		return s, true
+	case "each_key":
+		rbArity(len(args), 0, 0)
+		for _, k := range rbHashViewKeys(s) {
+			rbViewYield(b, k)
+		}
+		return s, true
+	case "each_value":
+		rbArity(len(args), 0, 0)
+		for _, k := range rbHashViewKeys(s) {
+			rbViewYield(b, s._Get(k))
+		}
+		return s, true
+	case "each_with_index":
+		rbArity(len(args), 0, 0)
+		for i, p := range rbHashViewPairs(s) {
+			rbViewYield(b, p, Integer(i))
+		}
+		return s, true
+	case "each_slice", "each_cons":
+		msg := "invalid slice size"
+		if name == "each_cons" {
+			msg = "invalid size"
+		}
+		n := rbViewSizeArg(args, msg)
+		ps := rbHashViewPairs(s)
+		if name == "each_slice" {
+			for i := 0; i < len(ps); i += n {
+				rbViewYield(b, &Array[any]{s: slices.Clone(ps[i:min(i+n, len(ps))])})
+			}
+		} else {
+			for i := 0; i+n <= len(ps); i++ {
+				rbViewYield(b, &Array[any]{s: slices.Clone(ps[i : i+n])})
+			}
+		}
+		return s, true
+	case "cycle":
+		rbArity(len(args), 0, 1)
+		times := -1
+		if len(args) == 1 && args[0] != nil {
+			times = max(int(rbAs[Integer](args[0], "Integer")), 0)
+		}
+		for k := 0; times < 0 || k < times; k++ {
+			ps := rbHashViewPairs(s)
+			if len(ps) == 0 {
+				break
+			}
+			for _, p := range ps {
+				rbViewYield(b, p)
+			}
+		}
+		return nil, true
+	case "select", "filter":
+		rbArity(len(args), 0, 0)
+		return rbHashViewKeep(s, b, true), true
+	case "reject":
+		rbArity(len(args), 0, 0)
+		return rbHashViewKeep(s, b, false), true
+	case "select!", "filter!", "keep_if":
+		rbArity(len(args), 0, 0)
+		return rbHashViewKeepBang(s, b, true, name == "keep_if"), true
+	case "reject!", "delete_if":
+		rbArity(len(args), 0, 0)
+		return rbHashViewKeepBang(s, b, false, name == "delete_if"), true
+	case "count":
+		rbArity(len(args), 0, 1)
+		if len(args) == 1 {
+			n := 0
+			for _, p := range rbHashViewPairs(s) {
+				if rbEq[any](rbUnbox(p), args[0]) {
+					n++
+				}
+			}
+			return Integer(n), true
+		}
+		if b == nil {
+			return s._Len(), true
+		}
+		n := 0
+		for _, p := range rbHashViewPairs(s) {
+			if rbViewTest(b, p) {
+				n++
+			}
+		}
+		return Integer(n), true
+	case "find", "detect":
+		rbArity(len(args), 0, 0)
+		for _, p := range rbHashViewPairs(s) {
+			if rbViewTest(b, p) {
+				return p, true
+			}
+		}
+		return nil, true
+	case "inject", "reduce":
+		rbArity(len(args), 0, 1)
+		ps := rbHashViewPairs(s)
+		var memo any
+		if len(args) == 1 {
+			memo = args[0]
+		} else if len(ps) > 0 {
+			memo, ps = ps[0], ps[1:]
+		}
+		for _, p := range ps {
+			memo = rbViewYield(b, memo, p)
+		}
+		return rbUnbox(memo), true
+	case "each_with_object":
+		rbArity(len(args), 1, 1)
+		for _, p := range rbHashViewPairs(s) {
+			rbViewYield(b, p, args[0])
+		}
+		return args[0], true
+	case "transform_values!":
+		rbArity(len(args), 0, 0)
+		s.rbCheckFrozen()
+		for _, k := range rbHashViewKeys(s) {
+			s._Store(k, rbViewYield(b, s._Get(k)))
+		}
+		return s, true
+	default:
+	}
+	return nil, false
+}
+
+// rbHashViewPredicate is all?/any?/none?/one? on a Hash's pairs: pattern (===), block or truthiness, as rbViewPredicate.
+func rbHashViewPredicate(name string, s rbHashView, args []any) (any, bool) {
+	b, args := rbPopBlock(args)
+	rbArity(len(args), 0, 1)
+	hits := 0
+	for _, p := range rbHashViewPairs(s) {
+		var ok bool
+		switch {
+		case len(args) == 1:
+			ok = rbTruthy(rbDynOp_eqq(rbCall, args[0], p))
+		case b != nil:
+			ok = rbTruthy(rbUnbox(b.fn(p)))
+		default:
+			ok = true // a pair is never nil or false
+		}
+		if !ok {
+			if name == "all?" {
+				return Boolean(false), true
+			}
+			continue
+		}
+		hits++
+		if name == "any?" || name == "none?" || name == "one?" && hits > 1 {
+			return Boolean(name == "any?"), true
+		}
+	}
+	return Boolean(name != "any?" && (name != "one?" || hits == 1)), true
 }

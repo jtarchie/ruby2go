@@ -170,3 +170,22 @@ p DemoDelegBlock.go
 p [DemoHoistUnderscore.go(true), DemoHoistUnderscore.go(false)]
 p DemoSetDlg.go
 p DemoBoolDyn.go
+
+require "demo/views"
+ints = [3, 1, 2] #: untyped
+strs = ["2", nil, "1"] #: untyped
+pairs = [[1, "a"], [2, "b"]] #: untyped
+p Demo::Views.blocks(ints), Demo::Views.blocks(strs)
+p Demo::Views.blocks(pairs).size
+p Demo::Views.iterate(ints), Demo::Views.iterate(pairs)
+m = [1, 2, nil, 3] #: untyped
+p Demo::Views.mutate(m), m
+p Demo::Views.search(ints.sort), Demo::Views.search([1, 5, 9, 12])
+p Demo::Views.errors(ints.dup)
+names = %i[select filter find_all reject find detect take_while drop_while all? any? none? one? select! reject! keep_if delete_if]
+p Demo::Views.sent(ints.dup, names), Demo::Views.sent(strs.dup, names), Demo::Views.sent(pairs.dup, names)
+p Demo::Views.sent_more(ints), Demo::Views.sent_more(strs.dup)
+ha = { "a" => 1, "b" => 2, "c" => nil } #: untyped
+p Demo::Views.hash_blocks(ha)
+hm = { "a" => "1", "b" => nil, "c" => "3" } #: untyped
+p Demo::Views.hash_mutate(hm)

@@ -650,6 +650,14 @@ class Hash < Object
   #: (Integer) -> untyped
   def _key_at(i) = %x{ return self.keys[i] }
 
+  # The pair at insertion index i, as each yields it (decision 302).
+  #: (Integer) -> untyped
+  def _pair_at(i) = %x{
+    k := self.keys[i]
+    v, _ := self.rbGet(k)
+    return Tuple2[K, V]{k, v}
+  }
+
   #: (untyped) -> bool
   def _has(k) = %x{
     _, ok := self.rbGet(rbAs[K](k, "key"))
