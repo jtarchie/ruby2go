@@ -152,5 +152,31 @@ module Demo
       end
       out
     end
+
+    # The entry-level Hash names, defaults included (they stay per-instantiation wrappers: decision 304).
+    #: (untyped, untyped) -> untyped
+    def self.hash_core(h, k)
+      out = [] #: Array[untyped]
+      %i[length size empty? frozen? to_hash itself].each { |n| out << dyn(h, n) }
+      out << dyn(h, :dup).equal?(h) << dyn(h, :key?, k) << dyn(h, :include?, "zz") << dyn(h, :member?, k) << dyn(h, :has_key?, k)
+      out << dyn(h, :[], k) << dyn(h, :[], "zz") << dyn(h, :dig, k) << dyn(h, :fetch, k)
+      g = h.dup
+      out << dyn(g, :[]=, "n", g[k]) << dyn(g, :store, "m", g[k]) << g << dyn(g, :delete, k) << dyn(g, :delete, "zz")
+      out << g
+      out
+    end
+
+    #: (untyped, untyped) -> untyped
+    def self.hash_core_errors(h, k)
+      out = [] #: Array[untyped]
+      [-> { dyn(h, :fetch, "zz") }, -> { dyn(h.dup.freeze, :delete, k) }, -> { dyn(h.dup.freeze, :[]=, k, h[k]) }].each do |f|
+        f.call
+        out << :none
+      rescue KeyError, FrozenError => e
+        out << e.class << e.message
+        out << [e.key, e.receiver.size] if e.is_a?(KeyError)
+      end
+      out
+    end
   end
 end

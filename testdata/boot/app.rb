@@ -191,3 +191,12 @@ hm = { "a" => "1", "b" => nil, "c" => "3" } #: untyped
 p Demo::Views.hash_mutate(hm)
 p Demo::Views.core(ints.dup), Demo::Views.core(strs.dup)
 p Demo::Views.core_errors(ints), Demo::Views.core_errors(strs)
+hdt = Hash.new(0) #: Hash[String, Integer]
+hdt["a"] = 1
+hd = hdt #: untyped
+hpt = Hash.new { |_h, key| key.size } #: Hash[String, Integer]
+hpt["b"] = 2
+hp = hpt #: untyped
+hs = { "x" => "1", "y" => nil } #: untyped
+p Demo::Views.hash_core(ha, "a"), Demo::Views.hash_core(hs, "x"), Demo::Views.hash_core(hd, "a"), Demo::Views.hash_core(hp, "b")
+p Demo::Views.hash_core_errors(ha, "a"), Demo::Views.hash_core_errors(hs, "x")
