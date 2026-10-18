@@ -142,10 +142,12 @@ func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 	if len(sources) == 0 || main == "" {
 		return nil, nil, errors.New("a traced compile needs an entry file and a main file")
 	}
+	tick := phaseTimer(loadEnv().Timing)
 	aug, autoloaded, m, err := bootSources(ctx, sources, gemDirs)
 	if err != nil {
 		return nil, nil, err
 	}
+	tick("boot")
 	data, rerr := os.ReadFile(main) //nolint:gosec // the program's main file, named by the caller
 	if rerr != nil {
 		return nil, nil, fmt.Errorf("main: %w", rerr)
@@ -158,6 +160,7 @@ func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 	opts := options{gemDirs: gemDirs, gemSigs: gemSigs, pruneGems: true, autoloaded: autoloaded, boot: m, mainLast: true}
 	out, err := compile(ctx, preludeFS, aug, &opts)
 	warnings := opts.warnings
+	tick("compile")
 	if err != nil {
 		return out, warnings, err
 	}
@@ -171,8 +174,6 @@ func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		}
 		return "rb2go: " + g.name + " does not compile: Go rejects it: " + msg, ok
 	})
+	tick("gocheck")
 	return out, warnings, nil
 }
-
-// goPoisonRounds bounds the traced build's type checks: each stubs what Go rejected in the last (decisions 205, 303).
-const goPoisonRounds = 4

@@ -1,11 +1,16 @@
 package compiler
 
 import (
+	"go/ast"
+	"go/importer"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"strings"
 	"testing"
 )
 
-// A rejected func becomes a raise in the Go text, and an import only its old body used is dropped (decision 303).
+// A rejected func becomes a raise in the Go text, and an import only stubbed bodies used is dropped, one other code still uses is kept (decision 303).
 func TestStubGoFuncs(t *testing.T) {
 	code := []byte(`package main
 
@@ -28,7 +33,7 @@ func (self *X[T]) Bad() int {
 
 func Good() int { return Bad2() + 1 }
 
-func Bad2() int { var s string = 1; return len(s) }
+func Bad2() int { var s string = 1; return len(s + fmt.Sprint()) }
 
 func main() { fmt.Println(Good(), (&X[int]{}).Bad()) }
 `)
@@ -37,8 +42,14 @@ func main() { fmt.Println(Good(), (&X[int]{}).Bad()) }
 		stubbed[fn] = true
 		return "rb2go: " + fn + " does not compile", fn != ""
 	})
-	if bad, unused := goTypeErrors(code); len(bad) > 0 || len(unused) > 0 {
-		t.Fatalf("still rejected: %v %v\n%s", bad, unused, code)
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "main.go", code, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = (&types.Config{Importer: importer.Default()}).Check("main", fset, []*ast.File{f}, nil)
+	if err != nil {
+		t.Fatalf("still rejected: %v\n%s", err, code)
 	}
 	if !stubbed["X.Bad"] || !stubbed["Bad2"] || stubbed["Good"] || strings.Contains(string(code), `"strings"`) {
 		t.Fatalf("stubbed %v\n%s", stubbed, code)

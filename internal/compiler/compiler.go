@@ -475,6 +475,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		}
 		c.collectUses()
 		c.updateInference(opts.infer)
+		tick("round")
 		return nil, errInferRound
 	}
 	c.refineIvars()
@@ -852,12 +853,20 @@ func realPath(name string) string {
 	if err != nil {
 		return name
 	}
+	if r, ok := realPaths.Load(p); ok {
+		return r.(string) //nolint:forcetypeassert // only strings are stored
+	}
 	r, err := filepath.EvalSymlinks(p)
 	if err != nil {
 		return p
 	}
+	realPaths.Store(p, r)
 	return r
 }
+
+// realPaths memoizes realPath's resolved paths for the process: a traced compile resolves each boot branch's file
+// once per pass, five passes (decision 303). A path that does not resolve yet is not cached.
+var realPaths sync.Map
 
 // warn records a warning once, with its source position.
 func (c *Compiler) warn(f *File, n parser.Node, format string, args ...any) {

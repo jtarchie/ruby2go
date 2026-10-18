@@ -87,6 +87,7 @@ func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, ru
 	for _, d := range loadPath {
 		opts = append(opts, "-I", d)
 	}
+	tick := phaseTimer(loadEnv().Timing)
 	l := &boot.Loaded{}
 	for _, args := range runs { // each run's loads join the first's: one binary for several commands
 		r, err := boot.Trace(ctx, main, args, opts)
@@ -97,6 +98,7 @@ func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, ru
 		l.LoadPath = appendUnseen(l.LoadPath, r.LoadPath)
 		l.StdDirs = appendUnseen(l.StdDirs, r.StdDirs)
 	}
+	tick("trace")
 	src, dirs := TracedEntry(l, main)
 	more, err := mainRequires(ctx, main, append(slices.Clone(loadPath), dirs...), src)
 	if err != nil {
