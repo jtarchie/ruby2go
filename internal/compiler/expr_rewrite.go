@@ -36,6 +36,17 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
+	if sym, ok := n.Receiver.(*parser.SymbolNode); ok && n.Name == "to_proc" && n.Arguments == nil && n.Block == nil {
+		// `:<=.to_proc` where a Proc is expected (`@order = block || :<=.to_proc`): the lambda `&:<=` would pass, typed by it
+		ft, ok := stripOpt(expected).(TFunc)
+		switch {
+		case ok && ft.Proc && untypedRest(ft.Params, ft.Rest):
+			// a gem's untyped Proc (decision 244): the first argument receives the name, dispatched at run time
+			return expr{code: "Ref(" + f.symbolProcAny(sym.Unescaped.Value) + ")", typ: ft}, true
+		case ok && ft.Proc:
+			return f.genLambda(n, &parser.BlockArgumentNode{Location: n.Location, Expression: sym}, nil, ft), true
+		}
+	}
 	if f.lenient() && f.undefsSingleton(n) {
 		// `singleton_class.send(:undef_method, :inherited)` ahead of a define_singleton_method (bindata's register_subclasses):
 		// the closed world has the one definition boot recorded, so removing the earlier one is a no-op (decision 301)
@@ -176,4 +187,15 @@ func (f *fctx) undefsSingleton(n *parser.CallNode) bool {
 		}
 	}
 	return false
+}
+
+// untypedRest is a gem's untyped Proc or block signature, `^(*untyped) -> untyped` (decision 244).
+func untypedRest(params []Type, rest bool) bool { return rest && len(params) == 1 && isAny(params[0]) }
+
+// symbolProcAny is `&:name` as an untyped Proc: its first argument receives name, the rest are passed on, dispatched at
+// run time, as MRI's Symbol#to_proc.
+func (f *fctx) symbolProcAny(name string) string {
+	f.c.noteDyn(name)
+	return "func(xs_ ...any) any { if len(xs_) == 0 { panic(NewArgumentError(Ref(String(\"no receiver given\")))) }; " +
+		"return rbDyn" + goMethodName(name) + "(rbCall, xs_[0], xs_[1:]...) }"
 }

@@ -419,6 +419,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			}
 			return f.genClosure(n, f.blockArgBlock(b, len(params)), sig, env)
 		}
+		if untypedRest(params, sig.Rest) && self == nil { // `super(&:<=)` into a gem's untyped &block
+			return f.symbolProcAny(sym.Unescaped.Value)
+		}
 		symbolCall = sym.Unescaped.Value
 		names = f.symbolBlockNames(b, symbolCall, len(params))
 	default:

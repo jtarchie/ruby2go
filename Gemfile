@@ -20,6 +20,9 @@ gem "rackup", "~> 2.3"
 # Sorbet-typed programs (#95): MRI runs them with the real runtime; rb2go reads `sig {}` as types.
 gem "sorbet-runtime", "~> 0.6"
 
+# A pure-Ruby priority queue rb2go compiles unmodified (example 120).
+gem "pairing_heap", "~> 3.1"
+
 # Type inference without annotations (dev tool, not a test dependency): `bundle exec tyda file.rb`
 # prints inferred RBS. See CLAUDE.md for when to reach for it.
 gem "tyda", require: false, group: :development

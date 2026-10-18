@@ -5768,6 +5768,31 @@ module ObjectTests
     end
   end
 
+  class SuperSymOrder
+    attr_reader :sorted #: Array[Integer]
+
+    #: (Array[Integer] xs) { (Integer, Integer) -> bool } -> void
+    def initialize(xs, &block)
+      @sorted = xs.sort { |a, b| yield(a, b) ? -1 : 1 }
+    end
+  end
+
+  class SuperSymMax < SuperSymOrder
+    #: (Array[Integer] xs) -> void
+    def initialize(xs)
+      super(xs, &:>=)
+    end
+  end
+
+  # `super(&:sym)` passes the symbol's block on; `:sym.to_proc` where a Proc is expected is that lambda.
+  class ObjectSuperSymbolBlockTest < Minitest::Test
+    def test_super_symbol_block
+      assert_equal [3, 2, 1], SuperSymMax.new([2, 3, 1]).sorted
+      up = :upcase.to_proc #: ^(String) -> String
+      assert_equal "AB", up.call("ab")
+    end
+  end
+
   module IsAShim; end
 
   class IsABase; end

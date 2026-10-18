@@ -115,7 +115,7 @@ func (f *fctx) superBlock(n parser.Node, m *Method, env map[string]Type) string 
 		return f.blockArg(n, m, env, b)
 	}
 	if ba, ok := lit.(*parser.BlockArgumentNode); ok && !f.isBlockParam(ba.Expression) {
-		f.errorf(n, "super with a block argument other than the method's own &block is not supported")
+		return f.blockArg(n, m, env, ba) // `super(&:<=)`, `super(&proc)`: as a call's &expr
 	}
 	if f.iterator {
 		f.errorf(n, "super from an iterator (its block returns void) is not supported: Go cannot pass a yield on")

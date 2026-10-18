@@ -545,6 +545,8 @@ func (r *reach) prune() {
 		cls.singletonDefs = defs
 		cls.delegations = slices.DeleteFunc(cls.delegations, func(d delegation) bool { return !keep(d.file, d.name, cls) })
 	}
+	// an inherited alias is not a Method until linkAliases: unreached, it would look up an old name pruned above
+	c.inheritedAliases = slices.DeleteFunc(c.inheritedAliases, func(a pendingAlias) bool { return !keep(a.f, a.newName, a.cls) })
 	r.pruneConsts()
 	var tops []*Method
 	for _, m := range c.topDefList {
