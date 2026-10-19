@@ -1100,7 +1100,7 @@ puts [1].map(&n).inspect
 -- module_ivar_untyped.rb --
 # error: main.rb:3: instance variable @n of module M needs a type: `# @rbs @n: T` in the module body (decision 147)
 module M
-  def bump = (@n = 1)
+  def peek = @n
 end
 class C
   include M

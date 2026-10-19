@@ -184,7 +184,8 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 	if iv == nil && f.owner.IsModule && f.lenient() { // gem code: an undeclared module ivar is untyped (decision 172)
 		iv = f.c.declareIvar(f.owner, name, TAny{}, f.f, f.f.line(n.GetLocation().StartOffset))
 	}
-	if iv == nil && f.owner.IsModule {
+	declares := f.discover && assigned != nil && !isNil(assigned) && !isVoid(assigned) // decision 317: a module's own assignment declares it
+	if iv == nil && f.owner.IsModule && !declares {
 		f.errorf(n, "instance variable %s of module %s needs a type: `# @rbs %s: T` in the module body (decision 147)", name, f.owner.RubyName, name)
 	}
 	if iv == nil {
@@ -225,7 +226,7 @@ func (f *fctx) ivarCode(iv *Ivar) string { return ivarPath(f.selfCode, iv) }
 // yet (`unless @x; @x = ...`): it reads nil, and the ivar is declared T? by
 // the write that follows, since MRI's reads nil there (decision 148).
 func (f *fctx) readsUnassigned(name string) bool {
-	if !f.discover || f.owner == nil || f.owner.IsModule || f.c.findIvar(f.owner, name) != nil {
+	if !f.discover || f.owner == nil || f.c.findIvar(f.owner, name) != nil { // a module's too (decision 317)
 		return false
 	}
 	if f.c.ivarReadFirst == nil {

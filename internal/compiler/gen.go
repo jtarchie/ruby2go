@@ -3521,7 +3521,8 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 		for _, cls := range c.classList {
-			if !cls.isStruct() && !cls.hashBase || cls.universal || cls.isTemplate() {
+			module := cls.IsModule && len(cls.TypeParams) == 0 && !cls.universal // a module's ivars are discovered from its own methods too (decision 317)
+			if !cls.isStruct() && !cls.hashBase && !module || cls.universal || cls.isTemplate() {
 				continue
 			}
 			ms := append([]*Method(nil), cls.MethodList...)

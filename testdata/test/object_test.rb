@@ -4933,6 +4933,25 @@ module ObjectTests
   class IvarHolderKid < IvarHolder
   end
 
+  # decision 317: a module's ivars are discovered from its own methods, as a class's are
+  module IvarDiscovered
+    #: () -> Integer
+    def hits = (@hits = (@hits || 0) + 1)
+    #: (String) -> void
+    def label=(s)
+      @labels = [] unless @labels
+      @labels << s
+    end
+    #: () -> Array[String]
+    def labels = @labels || []
+    #: () -> String?
+    def last_label = @labels&.last
+  end
+
+  class IvarDiscoveredHolder
+    include IvarDiscovered
+  end
+
   class ModuleIvarTest < Minitest::Test
     def test_per_object
       a = IvarHolder.new
@@ -4941,6 +4960,18 @@ module ObjectTests
       a.bump
       b.bump
       assert_equal [2, 1, nil], [a.raw, b.raw, IvarHolder.new.raw]
+    end
+
+    def test_discovered
+      a = IvarDiscoveredHolder.new
+      b = IvarDiscoveredHolder.new
+      a.hits
+      a.hits
+      a.label = "x"
+      a.label = "y"
+      assert_equal [3, 1], [a.hits, b.hits]
+      assert_equal [["x", "y"], []], [a.labels, b.labels]
+      assert_equal ["y", nil], [a.last_label, b.last_label]
     end
   end
 
