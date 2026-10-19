@@ -495,11 +495,14 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	fn := "rbSendByName"
 	if on := f.sendOnClasses(recv.typ); on != nil { // decision 316: only what the receiver's classes and their subclasses answer
 		fn = "rbSendOn_" + f.c.noteSendOn(on)
+		if f.m == nil || !f.m.quietDynamic {
+			f.warn(n, "dynamic call: %s with a computed name", name)
+		}
 	} else {
 		f.noteDynAll()
-	}
-	if f.m == nil || !f.m.quietDynamic {
-		f.warn(n, "dynamic call: %s with a computed name", name)
+		if f.m == nil || !f.m.quietDynamic {
+			f.warn(n, "dynamic call: %s with a computed name on %s%s", name, recv.typ, f.everyNameWhy(n, recv))
+		}
 	}
 	nameExpr := f.genExpr(args[0], nil)
 	how := "rbFCall"
@@ -634,9 +637,11 @@ func (f *fctx) genDynRespondTo(n parser.Node, recv expr, args []parser.Node) exp
 	return expr{code: fn + "(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "), " + includeAll() + ")", typ: f.cls("Boolean")}
 }
 
-// sendOnClasses are the struct classes a computed send or respond_to? on a receiver of type t can be scoped to
-// (decision 316): the value is an instance of one of them or a subclass, so only their method names can answer. nil
-// for an untyped, module, metaclass or universal receiver (or a union holding one), which keep the every-name switch.
+// sendOnClasses are the classes a computed send or respond_to? on a receiver of type t can be scoped to (decision
+// 316): the value is an instance of one of them or a subclass, so only their method names can answer. A class object
+// (a metaclass) counts, with its subclasses' metaclasses; a module (or `Self` in a module body) is the module and
+// everything that includes it. nil for an untyped, `T?` or universal receiver (or a union holding one), which keep
+// the every-name switch.
 func (f *fctx) sendOnClasses(t Type) []*Class {
 	var cls *Class
 	switch t := t.(type) {
@@ -647,7 +652,7 @@ func (f *fctx) sendOnClasses(t Type) []*Class {
 			cls = f.owner
 		}
 	case TOpt:
-		return nil // nil answers only Kernel's names, which a struct class's set would not promise
+		return nil // nil answers only Kernel's names, which a class's set would not promise
 	case TUnion:
 		var out []*Class
 		for _, m := range t.Members {
@@ -660,10 +665,25 @@ func (f *fctx) sendOnClasses(t Type) []*Class {
 		return out
 	case TAny, TFunc, TNil, TTuple, TVoid:
 	}
-	if cls == nil || cls.IsModule || cls.universal || cls.metaOf != nil || !cls.isStruct() {
+	if cls == nil || cls.universal {
 		return nil
 	}
+	if cls.IsModule {
+		return moduleIncluders(cls, nil)
+	}
 	return []*Class{cls}
+}
+
+// moduleIncluders is mod and every class or module that includes it, transitively.
+func moduleIncluders(mod *Class, out []*Class) []*Class {
+	if slices.Contains(out, mod) {
+		return out
+	}
+	out = append(out, mod)
+	for _, inc := range mod.includers {
+		out = moduleIncluders(inc, out)
+	}
+	return out
 }
 
 // universalOnly is Object's (or Kernel's) name when no class of the program defines its own, so a call on any value
@@ -709,4 +729,13 @@ func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
 func isClassObjHook(n parser.Node) bool {
 	e, ok := n.(*exprNode)
 	return ok && e.e.classObj
+}
+
+// everyNameWhy: under RB2GO_UNTYPED_WHY, the root of an untyped receiver whose computed send keeps the every-name switch.
+func (f *fctx) everyNameWhy(n parser.Node, recv expr) string {
+	call, ok := n.(*parser.CallNode)
+	if !ok || !f.c.env.UntypedWhy || !isAny(recv.typ) {
+		return ""
+	}
+	return " [why: " + f.untypedWhy(call.Receiver, 0) + "]"
 }

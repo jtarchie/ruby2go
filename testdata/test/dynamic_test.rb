@@ -3135,6 +3135,42 @@ module DynamicTests
       assert_equal "pug speaks", u.send(%w[speak].first)
       assert_equal true, u.respond_to?(%w[fetch].first)
     end
+
+    # a class object, a module's self (some includer) and a core class scope too
+    def test_class_object_module_and_core_receivers
+      k = SendOnDog #: singleton(SendOnAnimal)
+      assert_equal "kennel", k.send(%w[kennel].first)
+      assert_equal "DynamicTests::SendOnDog", k.public_send(%w[name].first)
+      assert_equal true, k.respond_to?(%w[kennel].first)
+      assert_equal false, SendOnAnimal.respond_to?(%w[kennel].first)
+      assert_equal "tagged pug", SendOnTagged.new.tagged(%w[tag].fetch(0))
+      assert_equal "ABC", "abc".send(%w[upcase].first)
+      assert_equal 3, "abc".public_send(%w[size].first)
+      assert_equal false, "abc".respond_to?(%w[speak].first)
+      s = ["x", 1].fetch(0) #: String | Integer
+      assert_equal "X", s.send(%w[upcase].first)
+    end
+  end
+
+  class SendOnAnimal
+    #: () -> String
+    def self.shelter = "none"
+  end
+
+  class SendOnDog
+    #: () -> String
+    def self.kennel = "kennel"
+  end
+
+  module SendOnTagging
+    #: (String) -> String
+    def tagged(m) = "tagged #{send(m)}"
+  end
+
+  class SendOnTagged
+    include SendOnTagging
+    #: () -> String
+    def tag = "pug"
   end
 
   class DynGenPrivateKeyTest < Minitest::Test
