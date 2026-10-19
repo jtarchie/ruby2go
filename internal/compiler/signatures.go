@@ -161,6 +161,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 		m.Block = bs
 	}
 	m.Ret = c.resolveType(m.sig.Return, sc)
+	m.retUnion = c.retUnionOf(m, sc)
 	_, m.noReturn = m.sig.Return.(rbs.Bot)
 	if m.selfText != "" {
 		st, err := rbs.ParseType(m.selfText)
@@ -692,4 +693,42 @@ func endsInRaise(body parser.Node) bool {
 	}
 	c, ok := st.Body[len(st.Body)-1].(*parser.CallNode)
 	return ok && c.Receiver == nil && (c.Name == "raise" || c.Name == "fail")
+}
+
+// retUnionOf is a gem generic method's declared union return when it resolved to untyped (decision 321), else nil.
+func (c *Compiler) retUnionOf(m *Method, sc typeScope) Type {
+	u, ok := m.sig.Return.(rbs.Union)
+	if !ok || !isAny(m.Ret) || len(m.TypeParams) == 0 || !c.gemFile(m.File) {
+		return nil
+	}
+	return c.varUnion(u, sc, m.TypeParams)
+}
+
+// varUnion resolves a gem sig's union return whose members include the method's own type variables (Sorbet's
+// `T.any(T.type_parameter(:U), String)`): the union as declared, for dropUnboundVars at each call (decision 321).
+// nil when a member is anything else resolveUnion would refuse.
+func (c *Compiler) varUnion(u rbs.Union, sc typeScope, params []string) Type {
+	ms := make([]Type, 0, len(u.Elems))
+	vars := 0
+	for _, e := range u.Elems {
+		t := c.resolveType(e, sc)
+		switch m := stripOpt(t).(type) {
+		case TVar:
+			if !slices.Contains(params, m.Name) {
+				return nil
+			}
+			vars++
+		case TClass, TTuple, TFunc, TNil:
+		default:
+			return nil
+		}
+		if isAny(t) {
+			return nil
+		}
+		ms = append(ms, t)
+	}
+	if vars == 0 || vars == len(ms) {
+		return nil
+	}
+	return TUnion{Members: ms}
 }

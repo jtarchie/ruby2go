@@ -91,7 +91,7 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 		switch m := stripOpt(ms[i]).(type) {
 		case TVar, TVoid:
 			if c.gemFile(sc.File) {
-				return TAny{} // gem code: the union is untyped (decision 172)
+				return TAny{} // gem code: the union is untyped (decision 172); a method's return keeps the members for its callers (retUnion, decision 321)
 			}
 			c.errorAt(sc.srcPos, "a union member must be a class, tuple, proc or nil, not %s: %s", m, t)
 		case TClass:

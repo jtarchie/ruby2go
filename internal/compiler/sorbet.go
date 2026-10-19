@@ -573,7 +573,7 @@ func blockExpr(c *parser.CallNode) parser.Node {
 	return body.Body[0]
 }
 
-// typeMemberFixed is a `type_member { { fixed: T } }`'s T, else untyped.
+// typeMemberFixed is a `type_member { { fixed: T } }`'s T (or `upper: T`'s), else untyped.
 func typeMemberFixed(c *parser.CallNode) string {
 	blk, ok := c.Block.(*parser.BlockNode)
 	if !ok {
@@ -589,7 +589,7 @@ func typeMemberFixed(c *parser.CallNode) string {
 	}
 	for _, el := range h.Elements {
 		if as, ok := el.(*parser.AssocNode); ok {
-			if sym, ok := as.Key.(*parser.SymbolNode); ok && sym.Unescaped.Value == "fixed" {
+			if sym, ok := as.Key.(*parser.SymbolNode); ok && (sym.Unescaped.Value == "fixed" || sym.Unescaped.Value == "upper") { // an upper bound is what reads of the member hold (Homebrew's Cacheable)
 				return sorbetType(as.Value)
 			}
 		}

@@ -228,6 +228,7 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	f.bindTypeParams(n, m, env)
 	ret := subst(m.Ret, env)
 	out := expr{code: f.callCode(e, recv, codes, env), typ: ret}
+	out = f.blocklessReturn(n, m, block, env, out)
 	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
 		if t := f.constGetType(recv, args); t != nil {
 			if isOpt(t) {
@@ -567,4 +568,40 @@ func bindUntyped(m *Method, env map[string]Type, ts ...Type) {
 func isClassValue(t Type) bool {
 	c, ok := t.(TClass)
 	return ok && !c.C.universal && !mentionsVar(t)
+}
+
+// blocklessReturn converts a call's untyped result to the gem sig's `U | String` without the members only the
+// absent block could bind (decision 321): `popen_read(cmd)` is a String where `popen_read(cmd) { |io| ... }` is not.
+func (f *fctx) blocklessReturn(n parser.Node, m *Method, block parser.Node, env map[string]Type, out expr) expr {
+	if m.retUnion == nil || !isAny(out.typ) || block != nil || m.Block == nil {
+		return out
+	}
+	var blockVars []string
+	freeVars(TFunc{Params: m.Block.Params, Ret: m.Block.Ret}, &blockVars)
+	t := subst(dropVars(m.retUnion, blockVars), env)
+	if isAny(t) || mentionsVar(t) {
+		return out
+	}
+	return expr{code: f.coerce(n, out, t), typ: t}
+}
+
+// dropVars removes from a union return type (retUnion) the method type variables in vars, those only a block the
+// call did not pass could bind (decision 321): Sorbet's `.returns(T.any(T.type_parameter(:U), String))` is String
+// when no block is given.
+func dropVars(t Type, vars []string) Type {
+	u, ok := t.(TUnion)
+	if !ok {
+		return t
+	}
+	var keep []Type
+	for _, m := range u.Members {
+		if v, isVar := stripOpt(m).(TVar); isVar && slices.Contains(vars, v.Name) {
+			continue
+		}
+		keep = append(keep, m)
+	}
+	if len(keep) == 0 {
+		return TAny{}
+	}
+	return unionOf(keep...)
 }

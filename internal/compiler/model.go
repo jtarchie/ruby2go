@@ -169,6 +169,7 @@ type Method struct {
 	sigText     string
 	declared    bool   // a `#:` or Sorbet sig typed it: its param types are the author's, not guessed (decision 241)
 	retWhy      string // RB2GO_UNTYPED_WHY: why inferRet left the return untyped
+	retUnion    Type   // a gem sig's `U | String` return, untyped as declared (decision 172): a call that leaves U unbound gets String (decision 321)
 	sig         *rbs.MethodType
 	arms        []*rbs.MethodType // a `.rbs` sig's overloads; sig is their merge, the call site picks one (decision 12)
 	TypeParams  []string

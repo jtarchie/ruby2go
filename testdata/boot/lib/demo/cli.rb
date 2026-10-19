@@ -2,6 +2,7 @@ require "delegate"
 require "json"
 require "sorbet-runtime"
 require "forwardable"
+require "strscan"
 
 # Homebrew's command DSL: a `T.proc.bind(Parser)` block stored in an ivar, passed on with `&@ivar` and
 # instance_eval'd; an anonymous `Class.new(Args)` in `class << self` (decisions 145, 231).
@@ -920,5 +921,67 @@ class DemoOwnerSpec
     s.owner = DemoOwnerForm.new
     out << s.owner_name
     out
+  end
+end
+
+# an ivar first set to nil in initialize and typed by a later method, in gem code (mechanize's @scanner)
+class DemoLateIvar
+  def initialize
+    @scanner = nil
+  end
+
+  def parse(text, header = false)
+    return nil if text.empty?
+
+    @scanner = StringScanner.new text
+    return nil if header && !@scanner.scan(/H:/)
+
+    @scanner.scan(/\w+/)
+  end
+
+  def self.go = [new.parse("abc def"), new.parse("H:xy", true), new.parse("")]
+end
+
+# decision 321: a Sorbet sig returning T.any(T.type_parameter(:U), String), U bound only by an optional block, is
+# String at a call without a block (Homebrew's Utils.popen_read); a type_member's upper bound types its reads
+module DemoRead
+  extend T::Sig
+
+  sig {
+    type_parameters(:U)
+      .params(cmd: String, block: T.nilable(T.proc.params(arg0: String).returns(T.type_parameter(:U))))
+      .returns(T.any(T.type_parameter(:U), String))
+  }
+  def self.read(cmd, &block)
+    text = "out of #{cmd}"
+    return yield(text) if block
+
+    text
+  end
+
+  def self.go = [read("ls").upcase, read("wc") { |t| t.size }]
+end
+
+module DemoCacheable
+  extend T::Sig
+  extend T::Generic
+
+  Cache = type_member { { upper: T::Hash[T.anything, T.anything] } }
+
+  sig { returns(Cache) }
+  def cache
+    @cache ||= T.let({}, T.nilable(Cache))
+  end
+end
+
+class DemoCached
+  extend T::Generic
+  include DemoCacheable
+  Cache = type_member { { fixed: T::Hash[String, Integer] } }
+
+  def self.go
+    c = new
+    c.cache["a"] = 1
+    [c.cache.key?("a"), c.cache.size]
   end
 end

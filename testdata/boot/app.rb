@@ -210,3 +210,6 @@ sm.each_reading(->(r) { p r })
 p DemoKeyed.new.add("ab").add("cde").probe_both
 p DemoKeyed.new.add("ab").add("cde").probe_fetches
 p DemoOwnerSpec.go
+p DemoLateIvar.go
+p DemoRead.go
+p DemoCached.go
