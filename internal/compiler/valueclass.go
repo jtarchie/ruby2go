@@ -302,7 +302,7 @@ func nilableRBS(t rbs.Type) bool {
 	switch t.(type) {
 	case rbs.Optional, rbs.Nil, rbs.Untyped:
 		return true
-	case rbs.Bool, rbs.Bot, rbs.Name, rbs.Proc, rbs.Self, rbs.Instance, rbs.Singleton, rbs.Tuple, rbs.Union, rbs.Void, rbs.Literal, rbs.Record: // never holds nil
+	case rbs.Bool, rbs.Bot, rbs.Intersection, rbs.Name, rbs.Proc, rbs.Self, rbs.Instance, rbs.Singleton, rbs.Tuple, rbs.Union, rbs.Void, rbs.Literal, rbs.Record: // never holds nil
 	}
 	return false
 }

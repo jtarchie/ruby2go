@@ -89,3 +89,18 @@ func TestSigsShipped(t *testing.T) {
 		t.Errorf("warnings = %q, want bad.rbs skipped and Bar[V] erased", c.Warnings)
 	}
 }
+
+// `A & B` resolves to one operand: a class over a module, a module over an RBS interface (decision 315).
+func TestResolveIntersection(t *testing.T) {
+	c := &Compiler{classes: map[string]*Class{"Node": {RubyName: "Node"}, "Comparable": {RubyName: "Comparable", IsModule: true}}}
+	for in, want := range map[string]string{"Node & _Node": "Node", "_Node & Node": "Node", "Comparable & Node": "Node", "Comparable & _Each": "Comparable"} {
+		ty, err := rbs.ParseType(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := c.resolveType(ty, typeScope{}).(TClass)
+		if got.C == nil || got.C.RubyName != want {
+			t.Errorf("%s resolved to %+v, want %s", in, got, want)
+		}
+	}
+}

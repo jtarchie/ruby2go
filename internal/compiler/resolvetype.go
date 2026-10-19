@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/jtarchie/ruby2go/internal/rbs"
 )
@@ -66,16 +67,10 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 		return TAny{}
 	case rbs.Union:
 		return c.resolveUnion(t, sc)
+	case rbs.Intersection:
+		return c.resolveIntersection(t, sc)
 	case rbs.Proc:
-		ps := make([]Type, len(t.Params))
-		for i, p := range t.Params {
-			ps[i] = c.resolveType(p, sc)
-		}
-		var self Type
-		if t.Self != nil { // a Proc instance_eval rebinds (decision 164)
-			self = c.resolveType(t.Self, sc)
-		}
-		return TFunc{Params: ps, Ret: c.resolveType(t.Ret, sc), Proc: true, Self: self}
+		return c.resolveProc(t, sc)
 	case rbs.Literal:
 		// A literal is a member of its base class (decision 12); the value
 		// matters only to select an overload arm at the call site.
@@ -127,6 +122,44 @@ func (c *Compiler) resolveUnion(t rbs.Union, sc typeScope) Type {
 		}
 	}
 	return u
+}
+
+func (c *Compiler) resolveProc(t rbs.Proc, sc typeScope) Type {
+	ps := make([]Type, len(t.Params))
+	for i, p := range t.Params {
+		ps[i] = c.resolveType(p, sc)
+	}
+	var self Type
+	if t.Self != nil { // a Proc instance_eval rebinds (decision 164)
+		self = c.resolveType(t.Self, sc)
+	}
+	return TFunc{Params: ps, Ret: c.resolveType(t.Ret, sc), Proc: true, Self: self}
+}
+
+// resolveIntersection: a value of `A & B` is each operand, so any one types it soundly; Go has no struct-and-interface intersection (decision 315).
+func (c *Compiler) resolveIntersection(t rbs.Intersection, sc typeScope) Type {
+	var pick Type
+	for _, e := range t.Elems {
+		if n, ok := e.(rbs.Name); ok && rbsInterface(n.Name) {
+			continue
+		}
+		r := c.resolveType(e, sc)
+		if k, ok := r.(TClass); ok && !k.C.IsModule {
+			return r
+		}
+		if pick == nil || !isAny(r) && isAny(pick) {
+			pick = r
+		}
+	}
+	if pick != nil {
+		return pick
+	}
+	return c.resolveType(t.Elems[0], sc)
+}
+
+// rbsInterface reports whether an RBS type name names an interface (`_Each`, `Foo::_Bar`).
+func rbsInterface(name string) bool {
+	return strings.HasPrefix(name[strings.LastIndex(name, "::")+1:], "_")
 }
 
 // resolveNameType resolves a `Foo` / `Foo[A]` type: a type variable or a class.

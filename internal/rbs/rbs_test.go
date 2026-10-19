@@ -157,6 +157,20 @@ func TestParseTypeShapes(t *testing.T) {
 		{`{ "a" => Integer }`, Record{Fields: []RecordField{{Key: "a", Value: nm("Integer")}}}},
 		{`{ id: Integer, "x" => String }`, Record{Fields: []RecordField{{Key: "id", Symbol: true, Value: nm("Integer")}, {Key: "x", Value: nm("String")}}}},
 		{`{ "a" => Integer }?`, Optional{Elem: Record{Fields: []RecordField{{Key: "a", Value: nm("Integer")}}}}},
+		// single-quoted strings (decision 315): only \' and \\ escape; a trailing comma closes a record
+		{`'git'`, Literal{Kind: "String", Value: "git"}},
+		{`'it\'s a\\b\n'`, Literal{Kind: "String", Value: `it's a\b\n`}},
+		{`{ 'type' => 'git', 'dir' => String?, }`, Record{Fields: []RecordField{{Key: "type", Value: Literal{Kind: "String", Value: "git"}}, {Key: "dir", Value: Optional{Elem: nm("String")}}}}},
+		// intersections bind tighter than unions (decision 315)
+		{"Node & _Node", Intersection{Elems: []Type{nm("Node"), nm("_Node")}}},
+		{"A & B & C", Intersection{Elems: []Type{nm("A"), nm("B"), nm("C")}}},
+		{"A | B & C", Union{Elems: []Type{nm("A"), Intersection{Elems: []Type{nm("B"), nm("C")}}}}},
+		{"A & B?", Intersection{Elems: []Type{nm("A"), Optional{Elem: nm("B")}}}},
+		{"(A & B)?", Optional{Elem: Intersection{Elems: []Type{nm("A"), nm("B")}}}},
+		{"A & (B | C)", Intersection{Elems: []Type{nm("A"), Union{Elems: []Type{nm("B"), nm("C")}}}}},
+		{"Array[Object & _C]", nm("Array", Intersection{Elems: []Type{nm("Object"), nm("_C")}})},
+		// a proc's parameter names are documentation
+		{"^(String chunk, Integer) -> void", Proc{Params: []Type{nm("String"), nm("Integer")}, Ret: Void{}}},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -198,6 +212,11 @@ func TestParseTypeErrors(t *testing.T) {
 		{"()", "", "", ""},
 		{"String name", "trailing", "", ""},
 		{"String!", "", "", ""},
+		{"'abc", "unterminated", "", ""},
+		{"A &", "", "", ""},
+		{"& A", "", "", ""},
+		{"`x`", "", "", "quoted_name_as_type"},
+		{"``", "quoted", "", "empty_quoted_name"},
 		{"singleton()", "singleton", "", ""},
 		{"singleton(Foo", "", "", ""},
 		{"singleton(Foo]", "", "", ""},
@@ -254,6 +273,9 @@ func TestParseMethodTypeParams(t *testing.T) {
 		// RBS reads the second word as a parameter name
 		{"(String Integer) -> void", nil, []Param{{Type: nm("String"), Name: "Integer"}}, Void{}},
 		{"(String | nil x) -> void", nil, []Param{{Type: Optional{Elem: nm("String")}, Name: "x"}}, Void{}},
+		// a backquoted name may be a keyword (decision 315)
+		{"(Types::t `type`, ?Set[TypeName] result) -> void", nil, []Param{{Type: nm("Types::t"), Name: "type"}, {Type: nm("Set", nm("TypeName")), Name: "result", Optional: true}}, Void{}},
+		{"(Integer `a b`) -> void", nil, []Param{{Type: nm("Integer"), Name: "a b"}}, Void{}},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {

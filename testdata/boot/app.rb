@@ -204,5 +204,8 @@ hs = { "x" => "1", "y" => nil } #: untyped
 p Demo::Views.hash_core(ha, "a"), Demo::Views.hash_core(hs, "x"), Demo::Views.hash_core(hd, "a"), Demo::Views.hash_core(hp, "b")
 p Demo::Views.hash_core_errors(ha, "a"), Demo::Views.hash_core_errors(hs, "x")
 p Sigdemo::Meter.new.add(2).push(3).total
+sm = Sigdemo::Meter.new.add(1).absorb(Sigdemo::Meter.new.add(4).push(5))
+p sm.total, sm.label({ "name" => "m", "kind" => "meter" })
+sm.each_reading(->(r) { p r })
 p DemoKeyed.new.add("ab").add("cde").probe_both
 p DemoKeyed.new.add("ab").add("cde").probe_fetches

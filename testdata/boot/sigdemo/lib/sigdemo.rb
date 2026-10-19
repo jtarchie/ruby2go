@@ -15,5 +15,17 @@ module Sigdemo
     def total
       @readings.sum
     end
+
+    def absorb(other)
+      add(other.total)
+    end
+
+    def label(src)
+      "#{src["name"]}:#{src["kind"]}"
+    end
+
+    def each_reading(sink)
+      @readings.each { |r| sink.call(r) }
+    end
   end
 end

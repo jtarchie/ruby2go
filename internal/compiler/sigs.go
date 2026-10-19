@@ -236,6 +236,8 @@ func eraseVars(t rbs.Type, vars map[string]bool) rbs.Type {
 		return rbs.Tuple{Elems: all(t.Elems)}
 	case rbs.Union:
 		return rbs.Union{Elems: all(t.Elems)}
+	case rbs.Intersection:
+		return rbs.Intersection{Elems: all(t.Elems)}
 	case rbs.Proc:
 		p := rbs.Proc{Params: all(t.Params), Ret: eraseVars(t.Ret, vars)}
 		if t.Self != nil {
@@ -420,7 +422,7 @@ func (f *fctx) argFits(a parser.Node, t rbs.Type, sc typeScope) bool {
 		return ok && v == t
 	case rbs.Union:
 		return slices.ContainsFunc(t.Elems, func(e rbs.Type) bool { return f.argFits(a, e, sc) })
-	case rbs.Bool, rbs.Bot, rbs.Name, rbs.Nil, rbs.Optional, rbs.Proc, rbs.Record, rbs.Self, rbs.Instance, rbs.Singleton, rbs.Tuple, rbs.Untyped, rbs.Void: // by the argument's class
+	case rbs.Bool, rbs.Bot, rbs.Intersection, rbs.Name, rbs.Nil, rbs.Optional, rbs.Proc, rbs.Record, rbs.Self, rbs.Instance, rbs.Singleton, rbs.Tuple, rbs.Untyped, rbs.Void: // by the argument's class
 	}
 	var at expr
 	f.probe(func() { at = f.genExpr(a, nil) })

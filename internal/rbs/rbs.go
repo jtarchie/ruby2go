@@ -20,21 +20,22 @@ type Type interface {
 	isType()
 }
 
-func (Name) isType()      {}
-func (Optional) isType()  {}
-func (Tuple) isType()     {}
-func (Union) isType()     {}
-func (Self) isType()      {}
-func (Instance) isType()  {}
-func (Void) isType()      {}
-func (Bot) isType()       {}
-func (Nil) isType()       {}
-func (Untyped) isType()   {}
-func (Bool) isType()      {}
-func (Singleton) isType() {}
-func (Proc) isType()      {}
-func (Literal) isType()   {}
-func (Record) isType()    {}
+func (Name) isType()         {}
+func (Optional) isType()     {}
+func (Tuple) isType()        {}
+func (Union) isType()        {}
+func (Intersection) isType() {}
+func (Self) isType()         {}
+func (Instance) isType()     {}
+func (Void) isType()         {}
+func (Bot) isType()          {}
+func (Nil) isType()          {}
+func (Untyped) isType()      {}
+func (Bool) isType()         {}
+func (Singleton) isType()    {}
+func (Proc) isType()         {}
+func (Literal) isType()      {}
+func (Record) isType()       {}
 
 type (
 	// Name is `Foo` or `Foo[A, B]`.
@@ -49,6 +50,8 @@ type (
 	Tuple struct{ Elems []Type }
 	// Union is `A | B`. Unions with nil are normalised to Optional.
 	Union struct{ Elems []Type }
+	// Intersection is `A & B`, binding tighter than `|` (decision 315).
+	Intersection struct{ Elems []Type }
 	// Self is `self`.
 	Self struct{}
 	// Instance is `instance`: an instance of the class whose singleton method names it.
@@ -106,22 +109,26 @@ func (t Optional) String() string {
 	return t.Elem.String() + "?"
 }
 
-// needsParens: a union or proc nested in a union or optional reparses differently without them.
+// needsParens: a union, intersection or proc nested in a union, intersection or optional reparses differently without them.
 func needsParens(t Type) bool {
 	_, union := t.(Union)
+	_, inter := t.(Intersection)
 	_, proc := t.(Proc)
-	return union || proc
+	return union || inter || proc
 }
-func (t Tuple) String() string { return "[" + join(t.Elems) + "]" }
-func (t Union) String() string {
-	parts := make([]string, len(t.Elems))
-	for i, e := range t.Elems {
+func (t Tuple) String() string        { return "[" + join(t.Elems) + "]" }
+func (t Union) String() string        { return joinOp(t.Elems, " | ") }
+func (t Intersection) String() string { return joinOp(t.Elems, " & ") }
+
+func joinOp(elems []Type, op string) string {
+	parts := make([]string, len(elems))
+	for i, e := range elems {
 		parts[i] = e.String()
 		if needsParens(e) {
 			parts[i] = "(" + parts[i] + ")"
 		}
 	}
-	return strings.Join(parts, " | ")
+	return strings.Join(parts, op)
 }
 func (Self) String() string        { return "self" }
 func (Instance) String() string    { return "instance" }
@@ -210,7 +217,7 @@ func writeParams(b *strings.Builder, params []Param) {
 		}
 		b.WriteString(p.Type.String())
 		if p.Name != "" {
-			b.WriteString(" " + p.Name)
+			b.WriteString(" " + paramName(p.Name))
 		}
 	}
 	b.WriteString(")")
@@ -260,6 +267,20 @@ func tokenize(s string) ([]string, error) {
 		case c == '-' && i+1 < len(s) && s[i+1] == '>':
 			toks = append(toks, "->")
 			i += 2
+		case c == '\'':
+			tok, ni, serr := scanSingle(s, i)
+			if serr != nil {
+				return nil, serr
+			}
+			toks = append(toks, tok)
+			i = ni
+		case c == '`': // a quoted name (`` `type` ``): any text but a backquote
+			j := strings.IndexByte(s[i+1:], '`')
+			if j <= 0 {
+				return nil, fmt.Errorf("rbs: bad quoted name in %q", s)
+			}
+			toks = append(toks, s[i:i+j+2])
+			i += j + 2
 		case c == '"':
 			tok, ni, serr := scanString(s, i)
 			if serr != nil {
@@ -340,6 +361,45 @@ func scanString(s string, i int) (string, int, error) {
 		return "", 0, fmt.Errorf("rbs: unterminated string in %q", s)
 	}
 	return s[i : j+1], j + 1, nil
+}
+
+// scanSingle reads a `'...'` literal, whose only escapes are `\'` and `\\` (RBS's
+// rbs_unescape.c), as the double-quoted token of the same text.
+func scanSingle(s string, i int) (string, int, error) {
+	var b strings.Builder
+	for j := i + 1; j < len(s); j++ {
+		switch {
+		case s[j] == '\'':
+			return strconv.Quote(b.String()), j + 1, nil
+		case s[j] == '\\' && j+1 < len(s) && (s[j+1] == '\'' || s[j+1] == '\\'):
+			j++
+		}
+		b.WriteByte(s[j])
+	}
+	return "", 0, fmt.Errorf("rbs: unterminated string in %q", s)
+}
+
+// paramName prints a parameter name, backquoted unless it is a plain identifier.
+func paramName(n string) string {
+	for i := range len(n) {
+		if !isIdentStart(n[i]) && (i == 0 || n[i] < '0' || n[i] > '9') {
+			return "`" + n + "`"
+		}
+	}
+	return n
+}
+
+// varName is the parameter name tok spells, backquotes stripped, or "".
+func varName(tok string) string {
+	switch {
+	case tok == "":
+		return ""
+	case tok[0] == '`':
+		return tok[1 : len(tok)-1]
+	case isIdentStart(tok[0]):
+		return tok
+	}
+	return ""
 }
 
 // scanNumber reads an integer literal (with an optional sign and `_`).
@@ -496,10 +556,11 @@ func (p *parser) parseParams() ([]Param, error) {
 			return nil, err
 		}
 		prm.Type = t
-		if tok := p.peek(); prm.Keyword && tok != "" && isIdentStart(tok[0]) {
+		if name := varName(p.peek()); prm.Keyword && name != "" {
 			p.next() // `name: T var`: the variable name is documentation
-		} else if !prm.Keyword && tok != "" && tok != "," && tok != ")" && isIdentStart(tok[0]) {
-			prm.Name = p.next()
+		} else if name != "" {
+			prm.Name = name
+			p.next()
 			if p.peek() == ":" {
 				return nil, errors.New("rbs: a keyword parameter is spelt `name: T`")
 			}
@@ -515,7 +576,7 @@ func (p *parser) parseParams() ([]Param, error) {
 }
 
 func (p *parser) parseType() (Type, error) {
-	first, err := p.parseSuffixed()
+	first, err := p.parseIntersection()
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +586,7 @@ func (p *parser) parseType() (Type, error) {
 	elems := []Type{first}
 	for p.peek() == "|" {
 		p.next()
-		t, err := p.parseSuffixed()
+		t, err := p.parseIntersection()
 		if err != nil {
 			return nil, err
 		}
@@ -545,6 +606,24 @@ func (p *parser) parseType() (Type, error) {
 		return Optional{Elem: nonNil[0]}, nil
 	}
 	return Union{Elems: elems}, nil
+}
+
+// parseIntersection reads `A & B`, which binds tighter than `|`.
+func (p *parser) parseIntersection() (Type, error) {
+	first, err := p.parseSuffixed()
+	if err != nil || p.peek() != "&" {
+		return first, err
+	}
+	elems := []Type{first}
+	for p.peek() == "&" {
+		p.next()
+		t, err := p.parseSuffixed()
+		if err != nil {
+			return nil, err
+		}
+		elems = append(elems, t)
+	}
+	return Intersection{Elems: elems}, nil
 }
 
 func (p *parser) parseSuffixed() (Type, error) {
@@ -819,6 +898,9 @@ func (p *parser) parseProc() (Type, error) {
 			return nil, err
 		}
 		out.Params = append(out.Params, t)
+		if varName(p.peek()) != "" {
+			p.next() // `^(String chunk) -> void`: the name is documentation
+		}
 		err = p.sep(")")
 		if err != nil {
 			return nil, err

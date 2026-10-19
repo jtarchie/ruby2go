@@ -11,6 +11,7 @@ var typeSeeds = []string{
 	"Integer | String", "^(Integer) -> String", "^() -> void", "Array[^(Integer, String) -> Integer?]",
 	"self", "untyped", "bool", "nil", "::Foo::Bar", "[A, B, C]?",
 	"(A | B)?", "(^() -> A)?", "(^() -> A) | B", "A | (B | C)", "(A?)?", "{ a: Integer, \"b\" => String }?",
+	"A & _B | C", "(A & B)?", "Array[A & (B | C)]", "{ 'k' => 'v\\'s', }", "^(String chunk) -> void",
 	strings.Repeat("(", 300) + "A" + strings.Repeat(")", 300), strings.Repeat("[", 300) + "A" + strings.Repeat("]", 300),
 	strings.Repeat("^(", 300) + "A" + strings.Repeat(") -> A", 300), strings.Repeat("::", 300) + "A", "A" + strings.Repeat("?", 300),
 }
@@ -51,7 +52,7 @@ func FuzzParseMethodType(f *testing.F) {
 	for _, s := range []string{
 		"(Integer) -> String", "[X] (Array[X]) { (X) -> void } -> X", "(?Integer, *String) -> void",
 		"() ?{ () -> void } -> self", "(^(Integer) -> Integer, Integer) -> Integer", "(Integer x, ?String y) -> bool",
-		"() ?{ (*Integer, ?String s) [self: A] -> void } -> void",
+		"() ?{ (*Integer, ?String s) [self: A] -> void } -> void", "(Types::t `type`, ?Integer `a b`) -> void",
 	} {
 		f.Add(s)
 	}

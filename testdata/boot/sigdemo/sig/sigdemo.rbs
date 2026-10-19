@@ -1,4 +1,13 @@
 module Sigdemo
+  interface _Reading
+    def total: () -> Integer
+  end
+
+  # each form below is RBS rb2go's parser once rejected (decision 315)
+  type reading = Meter & _Reading
+  type source = { 'name' => String, 'kind' => 'meter', }
+  type sink = ^(Integer reading) -> void
+
   class Meter
     @readings: Array[Integer]
 
@@ -6,5 +15,8 @@ module Sigdemo
     def add: (Integer value) -> self
     alias push add
     def total: () -> Integer
+    def absorb: (Meter & _Reading `other`) -> self
+    def label: ({ 'name' => String, 'kind' => 'meter', } src) -> String
+    def each_reading: (^(Integer reading) -> void sink) -> void
   end
 end
