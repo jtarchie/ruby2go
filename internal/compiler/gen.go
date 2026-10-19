@@ -71,6 +71,7 @@ type fctx struct {
 	yielderFed     *[]Type             // what a probed Enumerator.new block feeds its yielder (inferYielder)
 	paramWiden     map[string]Type     // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
 	anyOrigin      map[localKey]string // RB2GO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
+	blockWhy       string              // RB2GO_UNTYPED_WHY: the root of the call whose block params are being bound (blockParam)
 	breakCatch     *breakCatch         // the statement call whose closure block `break`s out of it (decision 241)
 	inMarker       bool                // markerCall's own Boolean arm: past its check (decision 241)
 }

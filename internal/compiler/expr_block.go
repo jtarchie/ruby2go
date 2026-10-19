@@ -295,6 +295,10 @@ func (f *fctx) bindArraySplat(n parser.Node, names blockParams, elem Type, untyp
 }
 
 func (f *fctx) bindBlockParams(n parser.Node, names blockParams, yields []Type) (goParams []string, prologue func()) {
+	if f.c.env.UntypedWhy {
+		f.blockWhy = f.blockParamWhy(n)
+		defer func() { f.blockWhy = "" }()
+	}
 	if names.hasRest() {
 		return f.bindRestParams(n, names, yields)
 	}
@@ -1017,6 +1021,9 @@ func (f *fctx) blockParam(name string, typ Type) *local {
 	if info == nil {
 		info = &localInfo{}
 		f.locals[key] = info
+	}
+	if isAny(typ) && f.blockWhy != "" {
+		f.setAnyOrigin(name, f.blockWhy)
 	}
 	info.noHoist = true
 	v := f.declareLocal(name, typ)

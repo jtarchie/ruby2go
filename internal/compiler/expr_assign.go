@@ -62,7 +62,11 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 func (f *fctx) genOrAssignLocal(n *parser.LocalVariableOrWriteNode) expr {
 	if f.visibleLocal(n.Name) == nil && f.sameScopeLocal(n.Name) == nil { // one assigned in a branch before is not new (`a, b = x if c`, decision 248)
 		// a new local starts out nil, so this is a plain assignment
-		return f.assignLocal(n, n.Name, f.genExpr(n.Value, nil), nil)
+		v := f.genExpr(n.Value, nil)
+		if f.c.env.UntypedWhy && isAny(v.typ) {
+			f.setAnyOrigin(n.Name, "||= from: "+f.untypedWhy(n.Value, 1))
+		}
+		return f.assignLocal(n, n.Name, v, nil)
 	}
 	v := f.readLocal(&parser.LocalVariableReadNode{Name: n.Name, Location: n.Location})
 	if v.base != nil {
@@ -238,6 +242,7 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 		return expr{code: "", typ: TVoid{}, stmt: true, done: true}
 	}
 	v := f.genExpr(n.Value, nil)
+	f.noteAnyTargets(n.Value, v, n.Lefts)
 	if isNil(v.typ) { // `q, a = nil`: no value to hold (Go has no `x := nil`)
 		f.destructureInto(n, v, n.Lefts, n.Rest, n.Rights)
 		return expr{code: "", typ: TVoid{}, stmt: true, done: true}

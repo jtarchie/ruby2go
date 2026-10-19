@@ -143,3 +143,41 @@ func (f *fctx) noteAnyJoin(n parser.Node, name string) {
 		f.setAnyOrigin(name, "pass-1 untyped write: "+f.untypedWhy(w.Value, 1))
 	}
 }
+
+// blockParamWhy names the root of an untyped block parameter: the untyped receiver (or argument, for inject's memo)
+// of the call n whose block it is, else what the yielding method is.
+func (f *fctx) blockParamWhy(n parser.Node) string {
+	call, ok := n.(*parser.CallNode)
+	if !ok {
+		return "block param of " + nodeType(n)
+	}
+	if call.Receiver != nil {
+		if rt := f.probeType(call.Receiver, nil); isAny(rt) {
+			return "block param: receiver untyped: " + f.untypedWhy(call.Receiver, 1)
+		} else if call.Name == "inject" || call.Name == "reduce" || call.Name == "each_with_object" {
+			for _, a := range callArgs(call) {
+				if isAny(f.probeType(a, nil)) {
+					return "block param: " + call.Name + "'s memo untyped: " + f.untypedWhy(a, 1)
+				}
+			}
+		} else {
+			return "block param: yield of " + typeString(rt) + "#" + call.Name
+		}
+	}
+	return "block param: yield of " + call.Name
+}
+
+// noteAnyTargets records why each local target of a multiple assignment from untyped value v is untyped.
+func (f *fctx) noteAnyTargets(value parser.Node, v expr, lefts []parser.Node) {
+	if !f.c.env.UntypedWhy || !isAny(v.typ) {
+		return
+	}
+	why := "multi-assign from: " + f.untypedWhy(value, 1)
+	for _, l := range lefts {
+		if t, ok := l.(*parser.LocalVariableTargetNode); ok {
+			if _, seen := f.anyOrigin[f.localKey(t.Name)]; !seen {
+				f.setAnyOrigin(t.Name, why)
+			}
+		}
+	}
+}
