@@ -77,6 +77,7 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 				// spliced in place, so the branch shares the body's visibility and sees the constants before it
 				queue = append(slices.Clip(c.classBodyBranch(f, n, scope)), queue...)
 			default:
+				c.classBodyIvar(f, cls, n, scope)
 				c.classBodyNode(ctx, f, n, scope, loadTime)
 			}
 		})
@@ -643,4 +644,23 @@ func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode,
 		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
 	}
 	return private
+}
+
+// classBodyIvar records a class-body `@x = v #: T` as `# @rbs self.@x: T` would (decision 322): Homebrew's
+// `@type_references = T.let({}, T::Hash[Symbol, TypeReference])`. Without an annotation the write is an ordinary
+// load-time statement, typed by discovery like any other.
+func (c *Compiler) classBodyIvar(f *File, cls *Class, stmt parser.Node, scope []*Class) {
+	n, ok := stmt.(*parser.InstanceVariableWriteNode)
+	if !ok || cls == nil {
+		return
+	}
+	ann := f.trailingAnnotation(n)
+	if ann == "" {
+		return
+	}
+	t, err := rbs.ParseType(ann)
+	if err != nil {
+		c.errorf(f, n, "%v", err)
+	}
+	cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "self." + n.Name, rbs: t, line: f.line(n.Location.StartOffset), scope: scope})
 }

@@ -4951,6 +4951,28 @@ module ObjectTests
   class IvarHolderKid < IvarHolder
   end
 
+  # decision 322: `@x = v #: T` in a class body declares the class object's @x, as `# @rbs self.@x: T` does
+  class BodyRefs
+    @refs = {} #: Hash[Symbol, Integer]
+    @count = 0 #: Integer
+
+    #: (Symbol) -> Integer
+    def self.use(key)
+      @count += 1
+      @refs[key] ||= @refs.size + 10
+    end
+
+    #: () -> Integer
+    def self.count = @count
+  end
+
+  class BodyRefsTest < Minitest::Test
+    def test_class_body_ivars
+      assert_equal [10, 11, 10], [BodyRefs.use(:a), BodyRefs.use(:b), BodyRefs.use(:a)]
+      assert_equal 3, BodyRefs.count
+    end
+  end
+
   # decision 317: a module's ivars are discovered from its own methods, as a class's are
   module IvarDiscovered
     #: () -> Integer

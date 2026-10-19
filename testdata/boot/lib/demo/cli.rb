@@ -985,3 +985,18 @@ class DemoCached
     [c.cache.key?("a"), c.cache.size]
   end
 end
+
+# a class-body ivar declared with T.let (Homebrew's CacheStore.@type_references)
+class DemoRefs
+  extend T::Sig
+  @refs = T.let({}, T::Hash[Symbol, Integer])
+  @count = T.let(0, Integer)
+
+  sig { params(key: Symbol).returns(Integer) }
+  def self.use(key)
+    @count += 1
+    @refs[key] ||= @refs.size + 10
+  end
+
+  def self.go = [use(:a), use(:b), use(:a), @count]
+end

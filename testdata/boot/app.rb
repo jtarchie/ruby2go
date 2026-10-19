@@ -213,3 +213,4 @@ p DemoOwnerSpec.go
 p DemoLateIvar.go
 p DemoRead.go
 p DemoCached.go
+p DemoRefs.go
