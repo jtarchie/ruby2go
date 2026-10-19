@@ -190,7 +190,6 @@ type Method struct {
 	poison      string  // a gem method whose body does not compile: why; its body raises NotImplementedError (decision 205)
 	freeName    string  // its free func's name when Owner_Name is taken by a class (separateFreeFuncs)
 	valueGen    bool    // generated for Struct/Data: a pattern reads the members directly (decision 143)
-	ownCopy     bool    // a module method copied into a generic instance: inferred apart, not from the module's signature (decision 313)
 
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)

@@ -238,7 +238,6 @@ func (c *Compiler) cloneTemplate(tmpl *Class, args []Type) *Class {
 		inst.MethodList = append(inst.MethodList, &mm)
 		inst.Methods[mm.Name] = &mm
 	}
-	c.cloneModuleMethods(tmpl, inst)
 	for _, iv := range tmpl.IvarList {
 		cp := *iv
 		cp.Owner = inst
@@ -256,27 +255,4 @@ func (c *Compiler) cloneTemplate(tmpl *Class, args []Type) *Class {
 	c.insts[key] = inst // before its superclass's, which may name it back
 	c.linkSuperInst(inst)
 	return inst
-}
-
-// cloneModuleMethods copies into inst each unannotated method of a module tmpl includes (decision 313): one module
-// body shared by every includer instance would join their argument types (`merge_pairs(heaps)` gets each heap's own
-// Node), so each instance infers its own copy, with self its own class. Only a plain def without super or ivars is
-// copied, and one the class itself defines is not.
-func (c *Compiler) cloneModuleMethods(tmpl, inst *Class) {
-	for _, inc := range tmpl.Includes {
-		mod, _ := c.lookupConst(inc.ref.file, inc.ref.node, inc.ref.scope)
-		if mod == nil || !mod.IsModule || mod.universal || len(mod.TypeParams) > 0 || mod.File.isPrelude() {
-			continue
-		}
-		for _, m := range mod.MethodList {
-			if m.Kind != kindDef || m.Node == nil || m.sig != nil || m.sigText != "" || inst.Methods[m.Name] != nil || containsSuper(m.Node.Body) || mentionsIvar(m) {
-				continue
-			}
-			mm := *m // ponytail: instance_method(...).owner is the class, not the module, for a copy
-			mm.Owner, mm.ownCopy = inst, true
-			mm.pendingIdx = maps.Clone(m.pendingIdx)
-			inst.MethodList = append(inst.MethodList, &mm)
-			inst.Methods[mm.Name] = &mm
-		}
-	}
 }

@@ -511,7 +511,9 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 			_ = catchCompileError(func() { c.inferRet(m) })
 		}
 		c.collectUses()
-		c.updateInference(opts.infer)
+		if !c.instMissing { // what a template stood in for is not evidence: the restart has the instance (decision 308)
+			c.updateInference(opts.infer)
+		}
 		tick("round")
 		return nil, errInferRound
 	}

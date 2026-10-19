@@ -20,8 +20,9 @@ dist = { 0 => 0 } #: Hash[Integer, Integer]
 queue = PairingHeap::MinPriorityQueue.new
 queue.push(0, 0)
 until queue.empty?
-  top = queue.pop_with_priority #: [Integer, Integer]
-  cell, d = top
+  cell, d = queue.pop_with_priority
+  next unless cell && d
+
   neighbors(cell).each do |n|
     alt = d + (cell * 7919 + n * 104_729) % 97 + 1
     known = dist[n]
