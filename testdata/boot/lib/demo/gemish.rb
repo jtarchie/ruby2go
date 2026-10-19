@@ -2,6 +2,7 @@ require "pathname"
 require "monitor"
 require "json"
 require "uri"
+require "optparse"
 # Gem code rb2go's typing would reject, compiled leniently as rack's multipart parser and request are (decision 175).
 module Demo
   class Gemish
@@ -430,6 +431,19 @@ class DemoVisitor
   def pair
     q, a = nil
     [q, a]
+  end
+end
+
+# brew's `parser.on_tail(...) { }` on a parser held untyped: the Dyn wrapper's block is rewritten to __on_tail_flag's
+# (bool) shape and stays a Proc (decision 307).
+class DemoTailCli
+  def initialize = @parts = { parser: OptionParser.new, n: 1 }
+
+  def run(argv)
+    seen = []
+    @parts[:parser].on_tail("-h", "--help", "Show help") { |v| seen << v }
+    @parts[:parser].on("-q") { |v| seen << [:q, v] }
+    [@parts[:parser].parse(argv), seen]
   end
 end
 
@@ -971,4 +985,16 @@ class DemoKeyed
   def probe(k) = [@by[k], @by.key?(k), @by.include?(k), @by.fetch(k, -1), @list.include?(k), @list.index(k), @by.delete(k)]
 
   def probe_both = [probe(1), probe(:ab), probe("ab")]
+
+  # fetch(k)'s miss is KeyError, fetch(k) { |x| }'s the block's value for x (decision 314)
+  def probe_fetch(k)
+    hit = begin
+      @by.fetch(k).to_s
+    rescue KeyError => e
+      "#{e.class}: #{e.message} #{e.key.inspect} #{e.receiver.equal?(@by)}"
+    end
+    [hit, @by.fetch(k) { |x| -x.inspect.length }]
+  end
+
+  def probe_fetches = [probe_fetch(1), probe_fetch(:ab), probe_fetch("cde")]
 end

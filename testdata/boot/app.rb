@@ -146,6 +146,7 @@ dd = DemoDelayish.new
 p dd.dupv, dd.value_with(:v)
 dv = DemoVisitor.new
 p dv.collect_yields, dv.as_proc("ab").call, dv.pair
+p DemoTailCli.new.run(%w[-q x --help])
 DemoBoundFormula.bottle { root_url "x" }
 dbr1 = DemoBoundFormula.stable.bs.root
 DemoBoundFormula.via { bottle { root_url "y" } }
@@ -204,3 +205,4 @@ p Demo::Views.hash_core(ha, "a"), Demo::Views.hash_core(hs, "x"), Demo::Views.ha
 p Demo::Views.hash_core_errors(ha, "a"), Demo::Views.hash_core_errors(hs, "x")
 p Sigdemo::Meter.new.add(2).push(3).total
 p DemoKeyed.new.add("ab").add("cde").probe_both
+p DemoKeyed.new.add("ab").add("cde").probe_fetches
