@@ -254,6 +254,11 @@ func (c *Compiler) addAttrs(f *File, cls *Class, n *parser.CallNode, args []pars
 				continue
 			}
 		}
+		if kind.writes() && !kind.reads() && c.gemFile(f) {
+			if _, opt := at.(rbs.Optional); !opt { // an attr_writer's ivar holds nil until it is called (SystemCommand's `@sandbox_inheritance = T.let(nil, ...)`)
+				at = rbs.Optional{Elem: at}
+			}
+		}
 		cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "@" + name, rbs: at, line: line, scope: scope})
 		if cls.IsModule {
 			c.addModuleAttr(f, cls, n, kind, name, at, private, scope)

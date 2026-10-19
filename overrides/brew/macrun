@@ -3,6 +3,6 @@
 cd "$(dirname "$0")" || exit 1
 export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1
 /opt/homebrew/bin/brew uninstall --ignore-dependencies wget > /dev/null 2>&1
-HOMEBREW_RB2GO_BIN=$PWD/work/mac-bin HOMEBREW_RB2GO_BACKTRACE=1 /opt/homebrew/bin/brew-rb2go install wget > work/mac-install-rb.txt 2>&1
+HOMEBREW_RB2GO_BIN=$PWD/work/mac-bin HOMEBREW_RB2GO_BACKTRACE=1 ${MACRUN_ARGS:-} /opt/homebrew/bin/brew-rb2go install wget > work/mac-install-rb.txt 2>&1
 echo "exit $?" >> work/mac-install-rb.txt
 cat work/mac-install-rb.txt

@@ -1,0 +1,35 @@
+Subject: exec3 passes its spawn options as the trailing Hash
+
+The options gain an Integer key (the sandbox inheritance descriptor), so they are a Hash of Symbol or Integer keys passed
+as spawn's trailing options Hash, which Process.spawn and exec read as they read keywords.
+---
+diff --git a/Library/Homebrew/system_command.rb b/Library/Homebrew/system_command.rb
+--- a/Library/Homebrew/system_command.rb
++++ b/Library/Homebrew/system_command.rb
+@@ -550,14 +550,15 @@
+     options[:err] = err_w
+ 
+     exec_env = env.merge({ "COLUMNS" => Tty.width.to_s })
++    spawn_options = T.let(options, T::Hash[T.any(Symbol, Integer), T.untyped])
+     if (inheritance = @sandbox_inheritance)
+-      options = options.merge(Sandbox::INHERITANCE_FD => inheritance)
++      spawn_options = spawn_options.merge(Sandbox::INHERITANCE_FD => inheritance)
+     end
+ 
+     # `Process.spawn` avoids running `malloc` in a `fork`ed child, which is not
+     # fork-safe on macOS and can abort it. `fork` is kept as a fallback.
+     pid = begin
+-      Process.spawn(exec_env, [executable, executable], *args, **options) unless @sandbox
++      Process.spawn(exec_env, [executable, executable], *args, spawn_options) unless @sandbox
+     rescue SystemCallError
+       nil
+     end
+@@ -565,7 +566,7 @@
+     pid ||= fork do
+       $stderr = err_w if @sandbox
+       @sandbox&.apply!
+-      exec(exec_env, [executable, executable], *args, **options)
++      exec(exec_env, [executable, executable], *args, spawn_options)
+     # Never unwind into the parent's Ruby control flow after fork.
+     rescue Exception => e # rubocop:disable Lint/RescueException
+       err_w.puts(e.message)

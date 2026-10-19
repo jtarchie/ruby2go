@@ -80,6 +80,7 @@ module JsonTests
       assert_equal JSON::NestingError, JsonTests.raised { JsonTests.nested(101).to_json }
       assert_equal JSON::NestingError, JsonTests.raised { JSON.generate(JsonTests.nested(101)) }
       assert_equal JSON::NestingError, JsonTests.raised { JSON.pretty_generate(JsonTests.nested(101)) }
+      assert_equal "{\n  \"a\": [\n    1\n  ]\n}", JSON.pretty_generate({ "a" => [1] }, nil) # Homebrew's Tab#to_json(options = nil)
       assert_equal JSON::NestingError, JsonTests.raised { JSON.generate({ "a" => JsonTests.nested(100) }) }
     end
 

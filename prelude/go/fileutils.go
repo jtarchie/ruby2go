@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"io/fs"
@@ -154,4 +155,17 @@ func rbTouch(path string, t time.Time, nocreate bool) error {
 		return err
 	}
 	return os.Chtimes(path, t, t)
+}
+
+// rbSameContents is FileUtils.compare_file; an unreadable file raises as MRI's File.open does.
+func rbSameContents(a, b string) bool {
+	da, err := os.ReadFile(a) //nolint:gosec // the program's own paths
+	if err != nil {
+		panic(rbSysErr(err, "rb_sysopen", a))
+	}
+	db, err := os.ReadFile(b) //nolint:gosec // the program's own paths
+	if err != nil {
+		panic(rbSysErr(err, "rb_sysopen", b))
+	}
+	return bytes.Equal(da, db)
 }

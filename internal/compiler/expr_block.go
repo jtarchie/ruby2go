@@ -236,9 +236,12 @@ func (f *fctx) bindTupleParams(n parser.Node, names blockParams, tt TTuple) ([]s
 				continue
 			}
 			v := f.blockParam(nm.Name, tt.Elems[i])
+			vars = append(vars, v)
+			if v.goName == "_" { // `|_, (token, _)|`: Go's `_ := x` declares nothing and does not compile
+				continue
+			}
 			lhs = append(lhs, v.goName)
 			rhs = append(rhs, fmt.Sprintf("%s.F%d", p, i))
-			vars = append(vars, v)
 		}
 		if len(lhs) > 0 {
 			f.emit("%s := %s", strings.Join(lhs, ", "), strings.Join(rhs, ", "))

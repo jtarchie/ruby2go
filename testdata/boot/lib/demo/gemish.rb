@@ -104,6 +104,32 @@ module Demo
     # a call a class never gets (Cask::Cask#tab when cask/cask.rb was not loaded): found, or not, at run time (decision 301)
     def never_defined(pair) = Pair.new("k", 1).no_such_thing(pair)
 
+    # a Hash literal widened by a later write of another value type (SystemCommand#each_output_line, decision 323)
+    def spawn_opts(dir)
+      options = { pgroup: true }
+      options[:chdir] = dir if dir
+      options
+    end
+
+    # a module's zero-argument override of a Pathname method taking an optional keyword (ObserverPathnameExtension#mkpath)
+    module ObservedMkpath
+      def mkpath
+        super
+        Gemish.mkpaths << to_s
+      end
+    end
+
+    class ObservedPath < Pathname
+      include ObservedMkpath
+    end
+
+    def self.mkpaths = (@mkpaths ||= [])
+
+    def observed_mkpath(dir)
+      ObservedPath.new(File.join(dir, "a", "b")).mkpath
+      [File.directory?(File.join(dir, "a", "b")), Gemish.mkpaths.size]
+    end
+
     def joined
       out = String.new
       out << "a" << "b" << "c"

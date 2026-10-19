@@ -33,6 +33,13 @@ class Pathname < Object
     out
   end
 
+  # Pathname.glob with a block yields each match and answers nil (Homebrew's Keg#empty_installation?).
+  #: (String | Pathname | Array[String]) { (Pathname) -> untyped } -> nil
+  def self.__glob_block(pattern)
+    glob(pattern).each { |p| yield p }
+    nil
+  end
+
   #: (Pathname) -> Integer
   def <=>(other) = @path <=> other.to_s
 
@@ -76,13 +83,21 @@ class Pathname < Object
   #: (String | Pathname) -> Integer
   def rename(to) = File.rename(to_s, to.to_s)
 
-  # Depth first, each directory's entries sorted, as Find.find (ponytail: no Find.prune).
-  #: () { (Pathname) -> void } -> nil
+  # Find.find over this path: depth first, each directory's entries sorted, Find.prune skipping a directory
+  # (Homebrew's Keg#link_dir).
+  # The block is a closure, not a loop body (its value is untyped), so Find.prune can unwind out of it.
+  #: () { (Pathname) -> untyped } -> nil
   def find(&blk)
-    blk.call(self)
-    Dir.children(to_s).sort.each { |c| (self + c).find(&blk) } if directory? && !File.symlink?(to_s)
-    nil
+    Pathname.__find(to_s) do |s|
+      blk.call(Pathname.new(s))
+      nil
+    end
   end
+
+  #: (String) { (String) -> untyped } -> nil
+  def self.__find(root, &blk) = %x{
+    rbFindEach(string(root), blk)
+  }
 
   #: (?String?) -> Pathname
   def basename(ext = nil)
@@ -180,6 +195,9 @@ class Pathname
   #: () -> Time
   def atime = File.atime(to_s)
 
+  #: () -> Time
+  def ctime = File.ctime(to_s)
+
   #: () -> Integer
   def size = File.size(to_s)
 
@@ -224,6 +242,12 @@ class Pathname
 
   #: (Integer) -> Integer
   def chmod(mode) = File.chmod(mode, to_s)
+
+  #: (String, ?Integer) -> bool
+  def fnmatch?(pattern, flags = 0) = File.fnmatch(pattern, to_s, flags)
+
+  #: (String, ?Integer) -> bool
+  def fnmatch(pattern, flags = 0) = File.fnmatch(pattern, to_s, flags)
 
   #: (Integer?, Integer?) -> Integer
   def chown(owner, group) = File.chown(owner, group, to_s)
@@ -299,6 +323,32 @@ class Pathname
 
   #: (String) -> Array[Pathname]
   def glob(pattern) = Dir.glob(File.join(to_s, pattern)).map { |p| Pathname.new(p) }
+
+  # glob with a block yields each match and answers nil.
+  #: (String) { (Pathname) -> untyped } -> nil
+  def __glob_block(pattern)
+    glob(pattern).each { |p| yield p }
+    nil
+  end
+
+  #: (?bool) { (Pathname) -> untyped } -> Array[Pathname]
+  def each_child(with_directory = true)
+    kids = children(with_directory)
+    kids.each { |c| yield c }
+    kids
+  end
+
+  # The root first, then each path down to this one.
+  #: () { (Pathname) -> untyped } -> nil
+  def descend
+    paths = [] #: Array[Pathname]
+    ascend { |p| paths.unshift(p) }
+    paths.each { |p| yield p }
+    nil
+  end
+
+  #: () -> Integer?
+  def world_writable? = File.world_writable?(to_s)
 
   #: (Time, Time) -> Integer
   def utime(atime, mtime) = File.utime(atime, mtime, to_s)

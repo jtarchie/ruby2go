@@ -5580,6 +5580,12 @@ module ControlTests
       assert_equal ["t", 1, nil], [tok, num, first]
     end
 
+    # `|_, (token, _)|` over a Hash of pairs (Homebrew's Keg#link): the blank params bind nothing
+    def test_blank_params_in_nested_tuple
+      h = { "a" => ["x", 1], "b" => ["y", 2], "c" => ["x", 3] } #: Hash[String, [String, Integer]]
+      assert_equal [["x", 2], ["y", 1]], h.group_by { |_, (tok, _)| tok }.map { |tok, pairs| [tok, pairs.size] }
+    end
+
     # `(a, = pair_or_nil)` as a condition (cleanup.rb's autoremove): its value is the right-hand side
     def test_destructure_as_condition
       got = [0, 1].map do |i|

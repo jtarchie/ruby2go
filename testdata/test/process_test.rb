@@ -41,6 +41,20 @@ module ProcessTests
       end
     end
 
+    # A trailing options Hash with a descriptor number (Homebrew's sandbox inheritance fd), as SystemCommand#exec3 passes it
+    def test_spawn_trailing_options_with_fd
+      Dir.mktmpdir do |d|
+        src = File.join(d, "src")
+        out = File.join(d, "out")
+        File.write(src, "inherited")
+        File.open(src) do |f|
+          opts = { 9 => f, out: out } #: Hash[untyped, untyped]
+          Process.wait(Process.spawn({}, ["sh", "sh"], "-c", "cat <&9", opts))
+        end
+        assert_equal "inherited", File.read(out)
+      end
+    end
+
     def test_popen_redirect_closes_descriptors
       before = ProcessTests.open_fds
       100.times do

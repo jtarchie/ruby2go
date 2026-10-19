@@ -338,6 +338,14 @@ class Array < Object
     return self
   }
 
+  # sort! { |a, b| ... } (Homebrew's LinkageChecker#sort_by_formula_full_name!).
+  #: () { (E, E) -> Integer } -> self
+  def __sort_bang_block = %x{
+    self.rbCheckFrozen()
+    slices.SortStableFunc(self.s, func(a, b E) int { return int(blk(a, b)) })
+    return self
+  }
+
   #: [K] () { (E) -> K } -> self
   def sort_by! = %x{
     self.rbCheckFrozen()

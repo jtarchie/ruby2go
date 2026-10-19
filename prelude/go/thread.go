@@ -93,8 +93,10 @@ func rbThreadAbort(r any) any {
 		rbFinish(int(e.Status()), nil)
 		os.Exit(0)
 	}
-	err := rbWrapPanic(rbCaptureBacktrace(r)) // join/value re-raise it on another goroutine: these are its frames
-	fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(err), "("+rbClassName(err)+")")
+	err := rbWrapPanic(rbCaptureBacktrace(r))                                 // join/value re-raise it on another goroutine: these are its frames
+	if t, ok := rbThreadOf.Load(rbGoID()); !ok || !t.(*Thread).quiet.Load() { // report_on_exception = false keeps it quiet
+		fmt.Fprintln(os.Stderr, "#<Thread> terminated with exception (report_on_exception is true):", rbToS(err), "("+rbClassName(err)+")")
+	}
 	return err
 }
 

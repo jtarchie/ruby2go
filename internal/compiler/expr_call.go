@@ -527,6 +527,12 @@ func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser
 	return f.genMethodCall(n, obj, name, args, block)
 }
 
+// partlyLoaded is a block-less call, in a gem method, on a gem class that may define the method in a file the
+// traced run never loaded.
+func (f *fctx) partlyLoaded(c *Class, block parser.Node) bool {
+	return f.lenient() && f.m != nil && block == nil && c.isStruct() && c.File != nil && !c.File.isPrelude() && !c.universal
+}
+
 // resetsDelegate: cls or a subclass may wrap something else (a subclass's own initialize, a `__setobj__` call).
 func resetsDelegate(cls *Class) bool {
 	family := []*Class{cls}
@@ -648,8 +654,7 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
 			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
 		}
-		if f.lenient() && f.m != nil && block == nil && t.C.isStruct() && t.C.File != nil && !t.C.File.isPrelude() && !t.C.universal {
-			// a gem class whose methods are not all in the closed world (Cask::Cask when the traced run never loaded cask/cask.rb): found, or not, at run time
+		if f.partlyLoaded(t.C, block) { // a gem class whose methods are not all in the closed world (Cask::Cask when the traced run never loaded cask/cask.rb): found, or not, at run time
 			return f.genDynCall(n, recv, name, args)
 		}
 		f.errorf(n, "undefined method %s for %s", name, recv.typ)

@@ -3012,17 +3012,24 @@ func (f *fctx) emptyRefinements() map[localKey]Type {
 // (decision 193); nil when untyped evidence leaves it undecided.
 func widenContainer(t Type, elems [2][]Type) Type {
 	c, ok := stripOpt(t).(TClass)
-	if !ok || len(c.Args) != 1 || len(elems[0]) == 0 || slices.ContainsFunc(elems[0], holdsAny) {
+	if !ok || len(c.Args) == 0 || len(c.Args) > 2 {
 		return nil
 	}
-	j := elems[0][0]
-	for _, e := range elems[0][1:] {
-		j = joinUnion(j, e)
+	args := make([]Type, len(c.Args))
+	for i := range args {
+		if len(elems[i]) == 0 || slices.ContainsFunc(elems[i], holdsAny) {
+			return nil
+		}
+		j := elems[i][0]
+		for _, e := range elems[i][1:] {
+			j = joinUnion(j, e)
+		}
+		if holdsAny(j) {
+			return nil
+		}
+		args[i] = j
 	}
-	if holdsAny(j) {
-		return nil
-	}
-	return TClass{C: c.C, Args: []Type{j}}
+	return TClass{C: c.C, Args: args}
 }
 
 // refineContainer is the type an open `[]`/`{}` of type t gets from what

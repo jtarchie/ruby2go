@@ -111,6 +111,12 @@ class File < Object
   }
 
   SEPARATOR = "/" #: String
+  FNM_NOESCAPE = 1 #: Integer
+  FNM_PATHNAME = 2 #: Integer
+  FNM_DOTMATCH = 4 #: Integer
+  FNM_CASEFOLD = 8 #: Integer
+  FNM_EXTGLOB = 16 #: Integer
+  FNM_SYSCASE = 0 #: Integer
   ALT_SEPARATOR = nil #: String?
   PATH_SEPARATOR = ":" #: String
 
@@ -134,6 +140,26 @@ class File < Object
       panic(rbSysErr(err, "rb_file_s_atime", string(path)))
     }
     return &Time{t: rbAtime(fi)}
+  }
+
+  # The permission bits when others may write, else nil.
+  #: (String) -> Integer?
+  def self.world_writable?(path) = %x{
+    fi, err := os.Stat(string(path))
+    if err != nil || fi.Mode().Perm()&0o002 == 0 {
+      return nil
+    }
+    v := Integer(fi.Mode().Perm())
+    return &v
+  }
+
+  #: (String) -> Time
+  def self.ctime(path) = %x{
+    fi, err := os.Stat(string(path))
+    if err != nil {
+      panic(rbSysErr(err, "rb_file_s_ctime", string(path)))
+    }
+    return &Time{t: rbCtime(fi)}
   }
 
   LOCK_SH = 1 #: Integer
@@ -507,6 +533,20 @@ class File < Object
     return expand_path(path) if path.start_with?("/", "~")
 
     expand_path(File.join(expand_path(dir), path))
+  end
+
+  #: (String | Pathname, String | Pathname, ?Integer) -> bool
+  def self.fnmatch(pattern, path, flags = 0) = %x{ Boolean(rbFnmatch(string(rbToS(pattern)), string(rbToS(path)), int(flags))) }
+
+  #: (String | Pathname, String | Pathname, ?Integer) -> bool
+  def self.fnmatch?(pattern, path, flags = 0) = fnmatch(pattern, path, flags)
+
+  # expand_path without `~`: a leading ~ is a directory name like any other.
+  #: (String, ?String?) -> String
+  def self.absolute_path(path, dir = nil)
+    return expand_path(path) if path.start_with?("/")
+
+    expand_path(File.join(dir ? absolute_path(dir) : Dir.pwd, path))
   end
 
   #: (String) -> bool

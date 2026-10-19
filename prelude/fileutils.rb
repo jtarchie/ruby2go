@@ -169,4 +169,200 @@ module FileUtils
       panic(rbSysErr(err, "rb_file_s_symlink", "("+string(src)+", "+string(dest)+")"))
     }
   }
+
+  # The list forms Homebrew's keg and download code calls (#100): a path, a Pathname or an Array of them.
+  #: (String | Pathname | Array[String | Pathname]) -> Array[String]
+  def self.__paths(list) = list.is_a?(Array) ? list.map(&:to_s) : [list.to_s]
+
+  # Each path and what it holds; a missing one raises Errno::ENOENT unless force.
+  #: (String | Pathname | Array[String | Pathname], ?force: bool, ?secure: bool, ?verbose: bool, ?noop: bool) -> nil
+  def self.rm_r(list, force: false, secure: false, verbose: false, noop: false)
+    return nil if noop
+
+    __paths(list).each do |p|
+      unless File.symlink?(p) || File.exist?(p)
+        raise Errno::ENOENT, "No such file or directory @ rb_file_s_lstat - #{p}" unless force
+
+        next
+      end
+      rm_rf(p)
+    end
+    nil
+  end
+
+  #: (String | Pathname | Array[String | Pathname], ?verbose: bool, ?noop: bool) -> nil
+  def self.remove_entry(list, verbose: false, noop: false) = rm_r(list, noop: noop)
+
+  #: (String | Pathname, ?bool) -> nil
+  def self.remove_entry_secure(path, force = false) = rm_r(path, force: force)
+
+  #: (String | Pathname | Array[String | Pathname], ?mode: Integer?, ?verbose: bool, ?noop: bool) -> nil
+  def self.mkdir(list, mode: nil, verbose: false, noop: false)
+    return nil if noop
+
+    __paths(list).each { |p| Dir.mkdir(p) }
+    nil
+  end
+
+  #: (String | Pathname | Array[String | Pathname], ?parents: bool, ?verbose: bool, ?noop: bool) -> nil
+  def self.rmdir(list, parents: false, verbose: false, noop: false)
+    return nil if noop
+
+    __paths(list).each { |p| Dir.rmdir(p) }
+    nil
+  end
+
+  #: (String | Pathname | Array[String | Pathname], ?mode: Integer?, ?verbose: bool) -> nil
+  def self.mkpath(list, mode: nil, verbose: false)
+    __paths(list).each { |p| mkdir_p(p) }
+    nil
+  end
+
+  # mode is an Integer or a symbolic "u+w,go-x" / "a=r".
+  #: (Integer | String, String | Pathname | Array[String | Pathname], ?verbose: bool, ?noop: bool) -> nil
+  def self.chmod(mode, list, verbose: false, noop: false)
+    return nil if noop
+
+    __paths(list).each { |p| File.chmod(__mode(mode, File.lstat(p).mode), p) }
+    nil
+  end
+
+  #: (Integer | String, String | Pathname | Array[String | Pathname], ?verbose: bool, ?noop: bool, ?force: bool) -> nil
+  def self.chmod_R(mode, list, verbose: false, noop: false, force: false)
+    return nil if noop
+
+    __paths(list).each do |root|
+      __walk(root).each { |p| File.chmod(__mode(mode, File.lstat(p).mode), p) unless File.symlink?(p) }
+    end
+    nil
+  end
+
+  #: (String | Integer | nil, String | Integer | nil, String | Pathname | Array[String | Pathname], ?verbose: bool, ?noop: bool) -> nil
+  def self.chown(user, group, list, verbose: false, noop: false)
+    return nil if noop
+
+    __paths(list).each { |p| File.chown(__uid(user), __gid(group), p) }
+    nil
+  end
+
+  #: (String | Integer | nil, String | Integer | nil, String | Pathname | Array[String | Pathname], ?verbose: bool, ?noop: bool, ?force: bool) -> nil
+  def self.chown_R(user, group, list, verbose: false, noop: false, force: false)
+    return nil if noop
+
+    __paths(list).each { |root| __walk(root).each { |p| File.chown(__uid(user), __gid(group), p) } }
+    nil
+  end
+
+  # A hard link; force replaces an existing dest.
+  #: (String | Pathname, String | Pathname, ?force: bool, ?verbose: bool, ?noop: bool) -> nil
+  def self.ln(src, dest, force: false, verbose: false, noop: false)
+    return nil if noop
+
+    s = src.to_s
+    d = dest.to_s
+    d = File.join(d, File.basename(s)) if File.directory?(d)
+    File.delete(d) if force && (File.symlink?(d) || File.exist?(d))
+    File.link(s, d)
+    nil
+  end
+
+  # Copies src to dest with mode (an Integer or symbolic), as install(1).
+  #: (String | Pathname, String | Pathname, ?mode: (Integer | String)?, ?verbose: bool, ?noop: bool) -> nil
+  def self.install(src, dest, mode: nil, verbose: false, noop: false)
+    return nil if noop
+
+    s = src.to_s
+    d = dest.to_s
+    d = File.join(d, File.basename(s)) if File.directory?(d)
+    File.delete(d) if File.exist?(d)
+    __cp_file(s, d)
+    File.chmod(__mode(mode, File.lstat(d).mode), d) if mode
+    nil
+  end
+
+  #: () -> String
+  def self.pwd = Dir.pwd
+
+  # Whether the two files hold the same bytes (MRI's compare_file; Homebrew's InstallRenamed.destination_for).
+  #: (String | Pathname, String | Pathname) -> bool
+  def self.compare_file(a, b) = %x{ Boolean(rbSameContents(string(rbToS(a)), string(rbToS(b)))) }
+
+  #: (String | Pathname, String | Pathname) -> bool
+  def self.identical?(a, b) = compare_file(a, b)
+
+  #: (String | Pathname, String | Pathname) -> bool
+  def self.cmp(a, b) = compare_file(a, b)
+
+  # Whether new exists and is newer than every existing old.
+  #: (String | Pathname, Array[String | Pathname]) -> bool
+  def self.uptodate?(new, old_list)
+    n = new.to_s
+    return false unless File.exist?(n)
+
+    t = File.mtime(n)
+    old_list.all? { |o| !File.exist?(o.to_s) || File.mtime(o.to_s) < t }
+  end
+
+  # root and, for a directory, everything under it, parents first.
+  #: (String) -> Array[String]
+  def self.__walk(root)
+    out = [root]
+    return out if File.symlink?(root) || !File.directory?(root)
+
+    Dir.children(root).sort.each { |c| out.concat(__walk(File.join(root, c))) }
+    out
+  end
+
+  #: (String | Integer | nil) -> Integer?
+  def self.__uid(user)
+    return nil if user.nil?
+    return user if user.is_a?(Integer)
+
+    Etc.getpwnam(user).uid
+  end
+
+  #: (String | Integer | nil) -> Integer?
+  def self.__gid(group)
+    return nil if group.nil?
+    return group if group.is_a?(Integer)
+
+    Etc.getgrnam(group).gid
+  end
+
+  # An Integer mode as it is; a symbolic one ("u+w", "go-rwx", "a=r", comma separated) applied to current.
+  #: (Integer | String | nil, Integer) -> Integer
+  def self.__mode(mode, current)
+    return current & 0o7777 if mode.nil?
+    return mode if mode.is_a?(Integer)
+
+    m = current & 0o7777
+    mode.split(",").each do |clause|
+      md = /\A([ugoa]*)([-+=])([rwxXst]*)\z/.match(clause)
+      raise ArgumentError, "invalid file mode: #{mode}" unless md
+
+      who = md[1].to_s
+      who = "ugo" if who.empty? || who == "a"
+      bits = 0
+      md[3].to_s.each_char do |c|
+        case c
+        when "r" then bits |= 0o444
+        when "w" then bits |= 0o222
+        when "x", "X" then bits |= 0o111
+        when "s" then bits |= 0o6000
+        when "t" then bits |= 0o1000
+        end
+      end
+      mask = 0
+      mask |= 0o4700 if who.include?("u")
+      mask |= 0o2070 if who.include?("g")
+      mask |= 0o1007 if who.include?("o")
+      bits &= mask
+      case md[2]
+      when "+" then m |= bits
+      when "-" then m &= ~bits
+      else m = (m & ~mask) | bits
+      end
+    end
+    m
+  end
 end

@@ -98,12 +98,35 @@ func (f *fctx) joinAll(n parser.Node, types []Type) Type {
 			continue
 		}
 		j, ok := join(out, t)
+		if !ok && f.lenient() { // a gem's `dir.directory? ? dir.children : []`: the empty literal's untyped elements take the other's
+			if k, ok2 := untypedContainerJoin(out, t); ok2 {
+				j, ok = k, true
+			}
+		}
 		if !ok {
 			f.errorf(n, "branches have incompatible types %s and %s", out, t)
 		}
 		out = j
 	}
 	return out
+}
+
+// untypedContainerJoin is a and b when they are the same container class and one's type arguments are all untyped:
+// the typed one.
+func untypedContainerJoin(a, b Type) (Type, bool) {
+	ca, ok1 := a.(TClass)
+	cb, ok2 := b.(TClass)
+	if !ok1 || !ok2 || ca.C != cb.C || len(ca.Args) == 0 || len(ca.Args) != len(cb.Args) {
+		return nil, false
+	}
+	allAny := func(ts []Type) bool { return !slices.ContainsFunc(ts, func(t Type) bool { return !isAny(t) }) }
+	switch {
+	case allAny(cb.Args):
+		return a, true
+	case allAny(ca.Args):
+		return b, true
+	}
+	return nil, false
 }
 
 // ---- operators, and/or

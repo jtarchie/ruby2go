@@ -304,7 +304,11 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 	e := f.assignLocal(n, n.Name, val, ann)
 	if info := f.localInfo(n.Name); seed != nil && info != nil { // what later writes put in it may widen it (decision 193)
 		info.open, info.seeded = true, true
-		info.elems[0] = append(info.elems[0], seed)
+		if kv, ok := seed.(TTuple); ok && isClass(stripOpt(info.typ), "Hash") { // a Hash literal's key and value types
+			info.elems[0], info.elems[1] = append(info.elems[0], kv.Elems[0]), append(info.elems[1], kv.Elems[1])
+		} else {
+			info.elems[0] = append(info.elems[0], seed)
+		}
 	}
 	if info := f.localInfo(n.Name); empty && f.pass == 1 && info != nil {
 		info.open = true
@@ -315,6 +319,9 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 // widenSeed is an unannotated `x = [1, 2]`'s element type, for later writes to widen (decision 193): in pass 1 the
 // local is Array[untyped] so any write is evidence; in pass 2 it is what the evidence joined to. nil otherwise.
 func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) Type {
+	if hn, ok := n.Value.(*parser.HashNode); ok && f.lenient() {
+		return f.widenHashSeed(n, hn, ann, exp)
+	}
 	an, ok := n.Value.(*parser.ArrayNode)
 	if !ok || ann != nil || *exp != nil || len(an.Elements) == 0 || slices.ContainsFunc(an.Elements, func(e parser.Node) bool { _, s := e.(*parser.SplatNode); return s }) {
 		return nil
@@ -336,6 +343,31 @@ func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) 
 	}
 	*exp = TClass{C: tc.C, Args: []Type{TAny{}}}
 	return tc.Args[0]
+}
+
+// widenHashSeed is widenSeed for a gem's `opts = { pgroup: true }`: its key and value types as a pair, for later
+// `opts[:chdir] = dir` writes to widen (SystemCommand#each_output_line).
+func (f *fctx) widenHashSeed(n *parser.LocalVariableWriteNode, hn *parser.HashNode, ann Type, exp *Type) Type {
+	if ann != nil || *exp != nil || len(hn.Elements) == 0 || slices.ContainsFunc(hn.Elements, func(e parser.Node) bool { _, ok := e.(*parser.AssocNode); return !ok }) {
+		return nil
+	}
+	if r := f.refined[f.localKey(n.Name)]; r != nil {
+		*exp = r
+		return nil
+	}
+	if f.pass != 1 {
+		return nil
+	}
+	var nat expr
+	if f.attempt(func() { f.probe(func() { nat = f.genExpr(n.Value, nil) }) }) != nil {
+		return nil
+	}
+	tc, ok := nat.typ.(TClass)
+	if !ok || tc.C.RubyName != "Hash" || len(tc.Args) != 2 || holdsAny(tc.Args[0]) || holdsAny(tc.Args[1]) {
+		return nil
+	}
+	*exp = TClass{C: tc.C, Args: []Type{TAny{}, TAny{}}}
+	return TTuple{Elems: []Type{tc.Args[0], tc.Args[1]}}
 }
 
 func isRangeNode(n parser.Node) bool {

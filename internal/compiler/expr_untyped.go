@@ -35,7 +35,7 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 		f.isBlockParam(ba.Expression) && !f.iterator && f.blockSig != nil && len(f.blockSig.Params) >= 1 && len(f.blockSig.Params) <= 2 {
 		return f.dynEachForward(n, recv)
 	}
-	if _, tv := recv.typ.(TVar); f.lenient() && (isAny(recv.typ) || tv) && dynEnumNames[name] { // untyped, or a gem module's self
+	if f.lenient() && f.heldAsAny(recv.typ) && dynEnumNames[name] {
 		return f.dynEnumBlock(n, expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}, name, args, block)
 	}
 	if b, ok := block.(*parser.BlockNode); ok && f.lenient() {
@@ -52,6 +52,12 @@ func (f *fctx) universalBlockCall(n parser.Node, recv expr, name string, args []
 	}
 	f.errorf(n, "blocks on untyped receivers are not supported")
 	return expr{}
+}
+
+// heldAsAny is untyped, a gem module's self, or a value held as Go any (a Sorbet T::Enumerable[X]).
+func (f *fctx) heldAsAny(t Type) bool {
+	_, tv := t.(TVar)
+	return isAny(t) || tv || f.c.goType(t) == "any"
 }
 
 // autoSplat is the statement that splats a lone Array argument across a literal block of two or more parameters, as

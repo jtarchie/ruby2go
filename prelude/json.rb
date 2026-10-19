@@ -54,8 +54,12 @@ module JSON
   def self.generate(obj, *state) = %x{ rbToJson(obj, rbJSONStateOf(rest_)) }
 
   # PRETTY_STATE_PROTOTYPE: two-space indent, one value per line.
-  #: (untyped) -> String
-  def self.pretty_generate(obj) = %x{
+  # opts: nil (Homebrew's Tab#to_json(options = nil) passes it on); ponytail: a Hash of options raises, merge it into the pretty state when a program needs one.
+  #: (untyped, ?untyped) -> String
+  def self.pretty_generate(obj, opts = nil) = %x{
+    if opts != nil {
+      panic(NewNotImplementedError(Ref(String("JSON.pretty_generate with options is not supported"))))
+    }
     st := &rbJSONState{indent: "  ", space: " ", objectNl: "\\n", arrayNl: "\\n", maxNesting: 100}
     return rbToJson(obj, st)
   }

@@ -1,0 +1,94 @@
+Subject: InstallRenamedPathname and MachOPathname::Path: Pathname subclasses instead of Object#extend
+
+etc/pkgetc/install_etc_var extended paths with InstallRenamed (and its + and / extend their results), and MachOPathname.wrap
+extended each path with MachOShim: a singleton class per path. Subclasses that include the modules do the same with
+ordinary classes, as ELFPathname::Path does (0001).
+---
+diff --git a/Library/Homebrew/install_renamed.rb b/Library/Homebrew/install_renamed.rb
+index 5262ce8e96..38f1081689 100644
+--- a/Library/Homebrew/install_renamed.rb
++++ b/Library/Homebrew/install_renamed.rb
+@@ -41,12 +41,12 @@ module InstallRenamed
+ 
+   sig { params(other: T.any(String, Pathname)).returns(Pathname) }
+   def +(other)
+-    super.extend(InstallRenamed)
++    InstallRenamedPathname.new(super)
+   end
+ 
+   sig { params(other: T.any(String, Pathname)).returns(Pathname) }
+   def /(other)
+-    super.extend(InstallRenamed)
++    InstallRenamedPathname.new(super)
+   end
+ 
+   sig { params(src: Pathname, dst: Pathname).returns(Pathname) }
+@@ -81,3 +81,8 @@ module InstallRenamed
+     Pathname.new("#{dst}.default")
+   end
+ end
++
++# A `Pathname` that installs with `InstallRenamed`'s renaming, instead of extending each instance with it.
++class InstallRenamedPathname < Pathname
++  include InstallRenamed
++end
+diff --git a/Library/Homebrew/extend/os/mac/extend/pathname.rb b/Library/Homebrew/extend/os/mac/extend/pathname.rb
+index ebc9ddc3db..37ce09a161 100644
+--- a/Library/Homebrew/extend/os/mac/extend/pathname.rb
++++ b/Library/Homebrew/extend/os/mac/extend/pathname.rb
+@@ -4,15 +4,18 @@
+ require "os/mac/mach"
+ 
+ module MachOPathname
++  # A `Pathname` that can read Mach-O metadata, instead of extending each instance with `MachOShim`.
++  class Path < ::Pathname
++    include MachOShim
++  end
++
+   module ClassMethods
+     sig { params(path: T.any(Pathname, String, MachOShim)).returns(MachOShim) }
+     def wrap(path)
+       Kernel.require "macho"
+       return path if path.is_a?(MachOShim)
+ 
+-      path = ::Pathname.new(path)
+-      path.extend(MachOShim)
+-      T.cast(path, MachOShim)
++      Path.new(path)
+     end
+   end
+ 
+diff --git a/Library/Homebrew/formula.rb b/Library/Homebrew/formula.rb
+index 23f23579d7..df90acbc7d 100644
+--- a/Library/Homebrew/formula.rb
++++ b/Library/Homebrew/formula.rb
+@@ -1399,7 +1399,7 @@ class Formula
+   #
+   # @api public
+   sig { returns(Pathname) }
+-  def etc = (HOMEBREW_PREFIX/"etc").extend(InstallRenamed)
++  def etc = InstallRenamedPathname.new(HOMEBREW_PREFIX/"etc")
+ 
+   # A subdirectory of `etc` with the formula name suffixed,
+   # e.g. `$HOMEBREW_PREFIX/etc/openssl@1.1`.
+@@ -1408,7 +1408,7 @@ class Formula
+   #
+   # @api public
+   sig { returns(Pathname) }
+-  def pkgetc = (HOMEBREW_PREFIX/"etc"/name).extend(InstallRenamed)
++  def pkgetc = InstallRenamedPathname.new(HOMEBREW_PREFIX/"etc"/name)
+ 
+   # The directory where the formula's variable files should be installed.
+   # This directory is not inside the `HOMEBREW_CELLAR` so it persists
+@@ -1701,10 +1704,9 @@ class Formula
+   def install_etc_var
+     etc_var_dirs = [bottle_prefix/"etc", bottle_prefix/"var"]
+     Find.find(*etc_var_dirs.select(&:directory?)) do |path|
+-      path = Pathname.new(path)
+       # Bottle installs and test-bot cleanup both restore `.bottle` files
+       # through `InstallRenamed`, matching formula-level `etc.install` handling.
+-      path.extend(InstallRenamed)
++      path = InstallRenamedPathname.new(path)
+       InstallRenamed.cp_path_sub(path, bottle_prefix, HOMEBREW_PREFIX)
+       path
+     end

@@ -690,7 +690,9 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 				c.errorf(m.File, m.Node, "super into a primitive class method is not supported")
 			}
 			body = fmt.Sprintf("%s%s(self%s)", freeFuncName(t.M), c.forwardTypeArgs(t, cls), comma(c.argNames(m)))
-			if ret != "" {
+			if b, ok := c.reshapedBridge(cls, m, t, ret); ok {
+				body = b
+			} else if ret != "" {
 				body = "return " + body
 			}
 		case m.Name == "initialize": // BasicObject's does nothing
@@ -705,6 +707,36 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 		}
 		c.w("func (self %s) %s(%s) %s { %s }\n", recv, bridgeName(m), ps, ret, body)
 	}
+}
+
+// reshapedBridge is a gem override's super into a parent of another shape (Homebrew's
+// ObserverPathnameExtension#mkpath, no parameters and no value, over Pathname#mkpath(mode: nil) -> self): the parent's
+// missing optional parameters get their zero values, and a parent value the override's type cannot hold is dropped.
+// ponytail: super's value is the bridge type's zero then; type the bridge by the parent's return when a gem reads it.
+func (c *Compiler) reshapedBridge(cls *Class, m *Method, t entry, ret string) (string, bool) {
+	if !c.gemFile(m.File) || len(m.Params) >= len(t.M.Params) || t.M.calleeDefaults || t.M.kwMask() || m.Block != nil || t.M.Block != nil {
+		return "", false
+	}
+	args := strings.Split(c.argNames(m), ", ")
+	if args[0] == "" {
+		args = nil
+	}
+	tenv := c.forwarderEnv(cls, t)
+	for _, p := range t.M.Params[len(m.Params):] {
+		if p.Rest || p.KwRest || p.Default == nil && !p.Keyword {
+			return "", false
+		}
+		args = append(args, "*new("+c.goType(subst(p.Type, tenv))+")")
+	}
+	call := fmt.Sprintf("%s%s(self%s)", freeFuncName(t.M), c.forwardTypeArgs(t, cls), comma(strings.Join(args, ", ")))
+	_, tret := c.sig(t.M, tenv)
+	switch ret {
+	case "":
+		return call, true
+	case tret:
+		return "return " + call, true
+	}
+	return call + "; return *new(" + ret + ")", true
 }
 
 // hookNames are Class's and Module's callbacks, whose own definitions do nothing (decision 232).

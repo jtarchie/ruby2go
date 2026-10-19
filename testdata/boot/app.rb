@@ -26,6 +26,9 @@ p g.kind?(h)
 h["kind"] = "html"
 p g.kind?(h)
 p g.joined
+require "tmpdir"
+Dir.mktmpdir { |d| p g.observed_mkpath(d) }
+p g.spawn_opts("/tmp"), g.spawn_opts(nil)
 p Demo::Gemish::Registry.names, Demo::Gemish::Guarded.seen, Demo::Gemish::Guard1.fields, Demo::Gemish::Guard2.fields
 p g.rebind_block(1) { 1 }.class, g.rebind_block(-3) { 1 }
 p $LOAD_PATH.any? { |d| d.end_with?("/lib") }, $:.size == $LOAD_PATH.size

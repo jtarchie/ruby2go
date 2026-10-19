@@ -3,6 +3,7 @@
 # Etc: getlogin/nprocessors/getpwuid/getpwnam/systmpdir, backed by os/user and runtime; loads only on a literal `require "etc"` (decisions 50, 155).
 module Etc
   Passwd = Struct.new(:name, :passwd, :uid, :gid, :gecos, :dir, :shell, :change, :uclass, :expire) #: [String, String?, Integer, Integer, String, String, String?, Integer?, String?, Integer?]
+  Group = Struct.new(:name, :passwd, :gid, :mem) #: [String, String?, Integer, Array[String]]
 
   #: () -> String?
   def self.getlogin = %x{
@@ -57,5 +58,28 @@ module Etc
       panic(NewArgumentError(Ref(String("can't find user for " + string(name)))))
     }
     return rbEtcPasswd(u)
+  }
+
+  # mem is empty: os/user does not list a group's members.
+  #: (String) -> Group
+  def self.getgrnam(name) = %x{
+    g, err := user.LookupGroup(string(name))
+    if err != nil {
+      panic(NewArgumentError(Ref(String("can't find group for " + string(name)))))
+    }
+    return rbEtcGroup(g)
+  }
+
+  #: (?Integer?) -> Group
+  def self.getgrgid(gid = nil) = %x{
+    id := os.Getgid()
+    if gid != nil {
+      id = int(*gid)
+    }
+    g, err := user.LookupGroupId(strconv.Itoa(id))
+    if err != nil {
+      panic(NewArgumentError(Ref(String("can't find group for " + strconv.Itoa(id)))))
+    }
+    return rbEtcGroup(g)
   }
 end

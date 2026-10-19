@@ -164,6 +164,7 @@ module Errno
   class ENOTEMPTY < SystemCallError; end
   class EBUSY < SystemCallError; end
   class EROFS < SystemCallError; end
+  class ELOOP < SystemCallError; end
   class EAGAIN < SystemCallError; end
   class ECONNREFUSED < SystemCallError; end
   class EADDRINUSE < SystemCallError; end

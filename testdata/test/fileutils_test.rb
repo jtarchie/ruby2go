@@ -25,6 +25,42 @@ module FileUtilsTests
       end
     end
 
+    # Homebrew's keg code: rm_r, symbolic chmod and chmod_R, install, ln, chown, mkdir/rmdir (#100)
+    def test_install_path_methods
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        f = File.join(a, "f")
+        FileUtils.mkdir([a])
+        File.write(f, "x")
+        FileUtils.chmod("u+x,go-r", f)
+        modes = [File.stat(f).mode & 0o777]
+        FileUtils.chmod(0o644, f)
+        FileUtils.chmod_R("u-w", a)
+        modes << (File.stat(f).mode & 0o777)
+        FileUtils.chmod_R("u+w", a)
+        FileUtils.install(f, File.join(d, "g"), mode: 0o755)
+        modes << (File.stat(File.join(d, "g")).mode & 0o777)
+        FileUtils.ln(File.join(d, "g"), File.join(d, "h"))
+        FileUtils.chown(nil, Process.gid, File.join(d, "g"))
+        same = [FileUtils.identical?(File.join(d, "g"), File.join(d, "h")), FileUtils.compare_file(f, File.join(d, "g")),
+                FileUtils.uptodate?(File.join(d, "g"), [f])]
+        File.write(File.join(d, "g"), "y")
+        same << FileUtils.cmp(f, File.join(d, "g"))
+        FileUtils.rm_r(a)
+        err = begin
+          FileUtils.rm_r(a)
+          nil
+        rescue Errno::ENOENT => e
+          e.class
+        end
+        FileUtils.rm_r(a, force: true)
+        FileUtils.mkdir(File.join(d, "e"))
+        FileUtils.rmdir(File.join(d, "e"))
+        assert_equal [[0o700, 0o444, 0o755], [true, true, true, false], true, false, Errno::ENOENT, false],
+          [modes, same, File.identical?(File.join(d, "g"), File.join(d, "h")), File.exist?(a), err, File.exist?(File.join(d, "e"))]
+      end
+    end
+
     def test_cp_same_path
       Dir.mktmpdir do |d|
         a = File.join(d, "a")

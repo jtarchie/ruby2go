@@ -1,0 +1,15 @@
+Subject: RUBY_PATH is the Ruby brew.sh chose
+
+brew.sh exports HOMEBREW_RUBY_PATH, the Ruby it runs brew.rb with; worker scripts (sandbox operations, build.rb) launch it
+again. RbConfig.ruby names the same file under MRI, and the program itself when brew is compiled.
+---
+diff --git a/Library/Homebrew/startup/ruby_path.rb b/Library/Homebrew/startup/ruby_path.rb
+index 9fa87e99e7..b118da9827 100644
+--- a/Library/Homebrew/startup/ruby_path.rb
++++ b/Library/Homebrew/startup/ruby_path.rb
+@@ -1,4 +1,4 @@
+ # typed: strict
+ # frozen_string_literal: true
+ 
+-RUBY_PATH = Pathname.new(RbConfig.ruby).freeze
++RUBY_PATH = Pathname.new(ENV.fetch("HOMEBREW_RUBY_PATH", RbConfig.ruby)).freeze

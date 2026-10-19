@@ -1,6 +1,8 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "find"
+require "pathname"
 require "etc"
 require "ostruct"
 require "delegate"
@@ -777,6 +779,21 @@ module StdlibTests
       assert_equal [1, 2], [1, 2].tap { stdlib_noop }
     end
 
+    # Homebrew's Utils.parallel_map: a quiet thread's raise still reaches value
+    def test_report_on_exception_false
+      t = Thread.new do
+        Thread.current.report_on_exception = false
+        raise "quiet"
+      end
+      msg = begin
+        t.value
+        nil
+      rescue RuntimeError => e
+        e.message
+      end
+      assert_equal ["quiet", false, true], [msg, t.report_on_exception, Thread.current.report_on_exception]
+    end
+
     def test_join_status_and_name
       # join(timeout): a Queue with nothing pushed blocks forever, so the timeout always fires.
       blocker = Queue.new #: Queue[Integer]
@@ -958,6 +975,8 @@ module StdlibTests
         assert_equal [true, true, true], [st.uid == Process.uid, st.gid.is_a?(Integer), Pathname(path).grpowned? == File.stat(path).grpowned?]
         assert_equal [true, true], [Process.groups.is_a?(Array), Process.groups.all?(Integer)]
         File.chown(nil, nil, path)
+        assert_equal [true, true], [File.ctime(path) == st.ctime, Pathname(path).ctime == st.ctime]
+        assert_equal [true, true, "/a/b"], [File.absolute_path(path) == path, File.absolute_path("~x") == File.join(Dir.pwd, "~x"), File.absolute_path("b", "/a")]
         assert_equal 1, Pathname(path).chown(nil, Process.gid)
         assert_equal [Errno::EBUSY, true, true], [Errno::EBUSY, Errno::EBUSY.new.is_a?(SystemCallError), Errno::EROFS.new.is_a?(SystemCallError)]
       end
@@ -2031,6 +2050,85 @@ module StdlibTests
       assert_equal [true, true], [File.basename(path).start_with?("rack"), path.end_with?(".txt")]
       t.close
       t.unlink
+    end
+
+    # File.fnmatch as MRI's fnmatch_helper: Homebrew's Keg#link_dir globs with FNM_PATHNAME
+    def test_fnmatch
+      cases = [
+        ["cat", "cat", 0], ["cat", "category", 0], ["c{at,ub}s", "cats", 0], ["c{at,ub}s", "cats", File::FNM_EXTGLOB],
+        ["c?t", "cat", 0], ["c??t", "cat", 0], ["c*", "cats", 0], ["c*t", "c/a/b/t", 0], ["ca[a-z]", "cat", 0],
+        ["ca[^t]", "cat", 0], ["cat", "CAT", 0], ["cat", "CAT", File::FNM_CASEFOLD], ["?", "/", File::FNM_PATHNAME],
+        ["*", "/", File::FNM_PATHNAME], ["[/]", "/", File::FNM_PATHNAME], ["\\?", "?", 0], ["\\a", "a", 0],
+        ["\\a", "\\a", File::FNM_NOESCAPE], ["[\\?]", "?", 0], ["*", ".profile", 0], ["*", ".profile", File::FNM_DOTMATCH],
+        [".*", ".profile", 0], ["**/*.rb", "main.rb", File::FNM_PATHNAME], ["**/*.rb", "./main.rb", File::FNM_PATHNAME],
+        ["**/*.rb", "lib/song.rb", File::FNM_PATHNAME], ["**.rb", "main.rb", File::FNM_PATHNAME], ["**.rb", "lib/song.rb", 0],
+        ["*", "dave/.profile", 0], ["**/foo", "a/b/c/foo", File::FNM_PATHNAME], ["**/foo", "/a/b/c/foo", File::FNM_PATHNAME],
+        ["**/foo", "c:/a/b/c/foo", File::FNM_PATHNAME], ["**/foo", "a/.b/c/foo", File::FNM_PATHNAME],
+        ["**/foo", "a/.b/c/foo", File::FNM_PATHNAME | File::FNM_DOTMATCH],
+        ["/opt/homebrew/opt/*/bin/wget", "/opt/homebrew/opt/wget/bin/wget", File::FNM_PATHNAME],
+        ["/opt/homebrew/opt/*/bin/wget", "/opt/homebrew/Cellar/wget/1/bin/wget", File::FNM_PATHNAME],
+        ["ca[", "ca[", 0], ["[a-c]x", "bx", 0], ["[!a-c]x", "bx", 0],
+      ]
+      assert_equal [true, false, false, true, true, false, true, true, true, false, false, true, false, false, false, true, true, true, true, false, true, true, true, false, true, true, true, true, true, true, true, false, true, true, false, false, true, false], cases.map { |pat, s, f| File.fnmatch(pat, s, f) }
+      assert_equal [true, true], [Pathname.new("/a/b").fnmatch?("/a/*", File::FNM_PATHNAME), File.fnmatch?("*.rb", "x.rb")]
+    end
+
+    # Homebrew's Cleanup and Keg: each_child, descend, world_writable?, glob with a block, Errno::ELOOP
+    def test_pathname_walk_helpers
+      Dir.mktmpdir do |d|
+        r = Pathname.new(d)
+        (r + "a").mkpath
+        (r + "b").write("x")
+        File.chmod(0o666, (r + "b").to_s)
+        kids = [] #: Array[String]
+        r.each_child { |c| kids << c.basename.to_s }
+        down = [] #: Array[String]
+        Pathname.new("/usr/local/bin").descend { |x| down << x.to_s }
+        hits = [] #: Array[String]
+        r.glob("*") { |x| hits << x.basename.to_s }
+        Pathname.glob("#{d}/*") { |x| hits << x.basename.to_s }
+        File.symlink("loop", (r + "loop").to_s)
+        err = begin
+          File.open((r + "loop").to_s)
+          nil
+        rescue Errno::ELOOP => e
+          e.class
+        end
+        assert_equal [%w[a b], 0o666, nil, ["/", "/usr", "/usr/local", "/usr/local/bin"], %w[a a b b], Errno::ELOOP],
+          [kids.sort, (r + "b").world_writable?, (r + "a").world_writable?, down, hits.sort, err]
+      end
+    end
+
+    # Homebrew's Keg#link_dir: Find.prune inside Pathname#find leaves the block and skips the directory
+    def test_pathname_find_prune
+      Dir.mktmpdir do |d|
+        root = Pathname.new(d)
+        (root + "a/skip").mkpath
+        (root + "a/keep").mkpath
+        (root + "a/skip/x").write("1")
+        (root + "a/keep/y").write("2")
+        seen = [] #: Array[String]
+        root.find do |pth|
+          Find.prune if pth.basename.to_s == "skip"
+          seen << pth.relative_path_from(root).to_s
+        end
+        assert_equal [".", "a", "a/keep", "a/keep/y"], seen
+      end
+    end
+
+    # Homebrew's File.atomic_write: Tempfile.open in a given directory, closed after the block, its value returned
+    def test_tempfile_open_in_dir
+      Dir.mktmpdir do |d|
+        path = nil #: String?
+        got = Tempfile.open(".tab", d) do |t|
+          t.binmode
+          t.write("x")
+          path = t.path
+          :done
+        end
+        p = path.to_s
+        assert_equal [:done, true, true, "x"], [got, File.dirname(p) == d, File.basename(p).start_with?(".tab"), File.read(p)]
+      end
     end
   end
 

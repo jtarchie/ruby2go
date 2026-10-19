@@ -45,3 +45,14 @@ commands it traced; `HOMEBREW_RB2GO_ALSO` (one argument list per line) traces mo
 
 All eight targets.txt commands (`brew info` for four formulae, `--json=v2 wget` and three casks) equal MRI's output
 in the container (decision 295), and on macOS `brew info wget` does through `./host` (decision 296).
+
+`brew install wget` on macOS (decision 323): wget's bottles pour only into `/opt/homebrew`, so `./macgen` links
+`/opt/homebrew/bin/brew-rb2go` to `work/homebrew/bin/brew` (the prefix comes from the link's directory, the repository
+from its target) and uninstalls wget with your Homebrew before each run; the trace re-installs it under MRI.
+
+```sh
+./macgen build      # trace `install wget`, build work/mac-bin (~3 min)
+./macrun            # uninstall wget, then `brew install wget` through work/mac-bin: work/mac-install-rb.txt
+./macgen-hits       # the reached-stub work list for that command (work/hits-mac.txt)
+rm /opt/homebrew/bin/brew-rb2go                    # when done
+```

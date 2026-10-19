@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any; pid int }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; quiet atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any; pid int }
 class Thread < Object
   # The block's value is kept for #value, untyped: Thread is not generic.
   #: () { () -> untyped } -> Thread
@@ -176,6 +176,17 @@ class Thread < Object
 
   #: () -> Array[Symbol]
   def thread_variables = %x{ return rbThreadKeys(&self.tvars) }
+
+  # Whether a raise that ends this thread is printed to stderr; join and value re-raise it either way.
+  #: () -> bool
+  def report_on_exception = %x{ Boolean(!self.quiet.Load()) }
+
+  #: (bool) -> bool
+  def report_on_exception=(on)
+    %x{
+    self.quiet.Store(!bool(on))
+    return on}
+  end
 
   #: () -> String?
   def name = %x{

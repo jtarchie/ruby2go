@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -14,6 +15,9 @@ var rbFindActive sync.Map
 
 // rbFindPrune is Find.prune: it marks the running Find.find's current entry; outside one MRI's throw :prune has no catch, so it raises the same UncaughtThrowError.
 func rbFindPrune() {
+	if slices.ContainsFunc(*rbCatches(), func(t any) bool { return t == any(Symbol("prune")) }) { // Pathname#find's walk: throw :prune, as MRI's
+		rbThrowTag(Symbol("prune"), nil)
+	}
 	p, ok := rbFindActive.Load(rbGoID())
 	if !ok {
 		panic(NewUncaughtThrowError("uncaught throw :prune", Symbol("prune"), nil))
@@ -60,4 +64,27 @@ func rbFind(roots []String, yield func(String) bool) {
 			return nil
 		})
 	}
+}
+
+// rbFindEach is Pathname#find's walk: blk runs inside catch(:prune), so Find.prune leaves the block at once and
+// skips the directory, as MRI's throw :prune does (a closure, not a range function, so the catch may recover).
+func rbFindEach(root string, blk func(String) any) {
+	if _, err := os.Lstat(root); err != nil {
+		panic(NewErrno_ENOENT(Ref(String("No such file or directory - " + root))))
+	}
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // ignore_error: true, as MRI's
+		}
+		ran := false
+		rbCatch(Symbol("prune"), func(any) any {
+			blk(String(path))
+			ran = true
+			return nil
+		})
+		if !ran && d.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	})
 }

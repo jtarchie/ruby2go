@@ -1,0 +1,103 @@
+Subject: ObservedPathname: a Pathname subclass instead of Object#extend
+
+Keg, Cleaner and Cleanup extended each path with ObserverPathnameExtension, a singleton class per path. A subclass that
+includes the module counts and reports the same way with an ordinary class. The directory lists they collect hold
+Pathnames, observed or not.
+---
+diff --git a/Library/Homebrew/cleaner.rb b/Library/Homebrew/cleaner.rb
+index 83f223ece6..9e2729cf0f 100644
+--- a/Library/Homebrew/cleaner.rb
++++ b/Library/Homebrew/cleaner.rb
+@@ -72,7 +72,7 @@ class Cleaner
+ 
+   sig { params(path: Pathname).void }
+   def observe_file_removal(path)
+-    path.extend(ObserverPathnameExtension).unlink if path.exist?
++    ObservedPathname.new(path).unlink if path.exist?
+   end
+ 
+   # Removes any empty directories in the formula's prefix subtree
+@@ -131,7 +131,7 @@ class Cleaner
+   sig { params(directory: Pathname).void }
+   def clean_dir(directory)
+     directory.find do |path|
+-      path.extend(ObserverPathnameExtension)
++      path = ObservedPathname.new(path)
+ 
+       Find.prune if @formula.skip_clean? path
+ 
+diff --git a/Library/Homebrew/cleanup.rb b/Library/Homebrew/cleanup.rb
+index 06af8f62eb..c2815d16cf 100644
+--- a/Library/Homebrew/cleanup.rb
++++ b/Library/Homebrew/cleanup.rb
+@@ -976,14 +976,14 @@ module Homebrew
+     def prune_prefix_symlinks_and_directories
+       ObserverPathnameExtension.reset_counts!
+ 
+-      dirs = []
++      dirs = T.let([], T::Array[Pathname])
+       children_count = {}
+ 
+       Keg.must_exist_subdirectories.each do |dir|
+         next unless dir.directory?
+ 
+         dir.find do |path|
+-          path.extend(ObserverPathnameExtension)
++          path = ObservedPathname.new(path)
+           if path.symlink?
+             unless resolved_path_exists?(path)
+               if path.to_s.match?(Keg::INFOFILE_RX) && !dry_run?
+@@ -1016,7 +1016,7 @@ module Homebrew
+       require "cask/caskroom"
+       if Cask::Caskroom.path.directory?
+         Cask::Caskroom.path.each_child do |path|
+-          path.extend(ObserverPathnameExtension)
++          path = ObservedPathname.new(path)
+           next if !path.symlink? || resolved_path_exists?(path)
+ 
+           if dry_run?
+diff --git a/Library/Homebrew/extend/pathname/observer_pathname_extension.rb b/Library/Homebrew/extend/pathname/observer_pathname_extension.rb
+index 1c5bb026b5..60f99a9229 100644
+--- a/Library/Homebrew/extend/pathname/observer_pathname_extension.rb
++++ b/Library/Homebrew/extend/pathname/observer_pathname_extension.rb
+@@ -91,3 +91,9 @@ module ObserverPathnameExtension
+     ObserverPathnameExtension.n += 1
+   end
+ end
++
++# A `Pathname` that counts and reports the changes linking makes, instead of extending each instance with
++# `ObserverPathnameExtension`.
++class ObservedPathname < Pathname
++  include ObserverPathnameExtension
++end
+diff --git a/Library/Homebrew/keg.rb b/Library/Homebrew/keg.rb
+index e0bb9c9073..8fea2c8a9a 100644
+--- a/Library/Homebrew/keg.rb
++++ b/Library/Homebrew/keg.rb
+@@ -361,14 +361,13 @@ class Keg
+   def unlink(verbose: false, dry_run: false)
+     ObserverPathnameExtension.reset_counts!
+ 
+-    dirs = []
++    dirs = T.let([], T::Array[Pathname])
+ 
+     keg_directories = self.class.keg_link_directories.map { |d| path/d }.select(&:exist?)
+ 
+     keg_directories.each do |dir|
+       dir.find do |src|
+-        dst = HOMEBREW_PREFIX + src.relative_path_from(path)
+-        dst.extend(ObserverPathnameExtension)
++        dst = ObservedPathname.new(HOMEBREW_PREFIX + src.relative_path_from(path))
+ 
+         dirs << dst if dst.directory? && !dst.symlink?
+ 
+@@ -913,8 +912,7 @@ class Keg
+       next if src == root
+ 
+       relative_src = src.relative_path_from(path)
+-      dst = HOMEBREW_PREFIX + relative_src
+-      dst.extend ObserverPathnameExtension
++      dst = ObservedPathname.new(HOMEBREW_PREFIX + relative_src)
+ 
+       if src.symlink? || src.file?
+         Find.prune if File.basename(src) == ".DS_Store"

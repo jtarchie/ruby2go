@@ -41,6 +41,8 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.EBUSY
 	case *Errno_EROFS:
 		n = syscall.EROFS
+	case *Errno_ELOOP:
+		n = syscall.ELOOP
 	case *Errno_EINVAL:
 		n = syscall.EINVAL
 	case *Errno_ECHILD:

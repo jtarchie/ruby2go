@@ -40,6 +40,9 @@ func (f *fctx) goTypeGuard(n parser.Node, e expr, to Type) string {
 		if from == "any" && t.Name != "Self" {
 			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, t.Name))
 		}
+		if t.Name != "Self" && want == t.Name { // a concrete value where a method type parameter is wanted (a Hash arm's pair as Item): checked at run time
+			return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", want, e.code, t.Name))
+		}
 	case TOpt:
 		src := e.code
 		if isOpt(e.typ) {

@@ -388,6 +388,31 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			args = args[1:]
 		}
 	}
+	var fds map[int]any // `198 => io` in a trailing options Hash (Homebrew's sandbox inheritance descriptor)
+	if n := len(args); n > 1 {
+		if h, ok := rbUnbox(args[n-1]).(Hash_Any); ok { // spawn's last Hash is its options, keywords or not
+			args = args[:n-1]
+			hh := h._ToAny()
+			merged := NewHash[Symbol, any]()
+			if opts != nil {
+				for _, k := range opts.keys {
+					Hash___Set[Symbol, any](merged, k, opts.vals[k])
+				}
+			}
+			for _, k := range hh.keys {
+				switch key := rbUnbox(k).(type) {
+				case Symbol:
+					Hash___Set[Symbol, any](merged, key, hh.vals[k])
+				case Integer:
+					if fds == nil {
+						fds = map[int]any{}
+					}
+					fds[int(key)] = rbUnbox(hh.vals[k])
+				}
+			}
+			opts = merged
+		}
+	}
 	if len(args) == 0 {
 		panic(NewArgumentError(Ref(String("wrong number of arguments (given 0, expected 1+)"))))
 	}
@@ -442,6 +467,15 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			}
 		}
 	}
+	for fd, v := range fds { // fd 3 and up: ExtraFiles[fd-3], the gaps closed in the child
+		if fd < 3 {
+			continue
+		}
+		for len(c.ExtraFiles) <= fd-3 {
+			c.ExtraFiles = append(c.ExtraFiles, nil)
+		}
+		c.ExtraFiles[fd-3] = redirect(v, os.O_RDONLY, true)
+	}
 	if env != nil || clean {
 		base := os.Environ()
 		if clean {
@@ -487,6 +521,8 @@ func rbSpawnFile(v any, flag int, reading bool) (f *os.File, owned bool) {
 			return x.wf, false
 		}
 		return x.rbOSFile(), false
+	case *File:
+		return x.f, false
 	case String:
 		f, err := os.OpenFile(string(x), flag, 0o644) //nolint:gosec // the program's own redirection
 		if err != nil {

@@ -1090,6 +1090,13 @@ module ArrayTests
     end
 
     # sort/max_by with an optional (Hash#[]) key
+    # sort! with a block (Homebrew's LinkageChecker#sort_by_formula_full_name!)
+    def test_sort_bang_with_block
+      a = [3, 1, 2]
+      a.sort! { |x, y| y <=> x }
+      assert_equal [3, 2, 1], a
+    end
+
     def test_sort_max_by_with_an
       counts = { "a" => 3, "b" => 7, "c" => 5 } #: Hash[String, Integer]
       key_words = ["a", "b", "c"] #: Array[String]

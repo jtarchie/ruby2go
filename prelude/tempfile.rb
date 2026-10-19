@@ -10,16 +10,29 @@ class Tempfile < Object
   include IOWritable
   include IOReadable
 
-  #: (?(String | Array[String])) -> void
-  def initialize(basename = "")
-    @file = basename.is_a?(String) ? Tempfile.__mktemp(basename) : Tempfile.__mktemp(basename[0] || "", basename[1] || "")
+  # tmpdir nil is Dir.tmpdir.
+  #: (?(String | Array[String]), ?String?) -> void
+  def initialize(basename = "", tmpdir = nil)
+    dir = tmpdir || ""
+    @file = basename.is_a?(String) ? Tempfile.__mktemp(basename, "", dir) : Tempfile.__mktemp(basename[0] || "", basename[1] || "", dir)
     @unlinked = false
   end
 
+  # Tempfile.new, then the block with it, closed (not unlinked) after: the block's value (Homebrew's File.atomic_write).
+  #: [T] (?(String | Array[String]), ?String?) { (Tempfile) -> T } -> T
+  def self.open(basename = "", tmpdir = nil)
+    t = new(basename, tmpdir)
+    begin
+      yield t
+    ensure
+      t.close
+    end
+  end
+
   # The os.CreateTemp handle itself (O_EXCL, 0600), never reopened by path, so a symlink swapped in between cannot redirect it.
-  #: (String, ?String) -> File
-  def self.__mktemp(basename, suffix = "") = %x{
-    f, err := os.CreateTemp("", string(basename)+"*"+string(suffix))
+  #: (String, ?String, ?String) -> File
+  def self.__mktemp(basename, suffix = "", dir = "") = %x{
+    f, err := os.CreateTemp(string(dir), string(basename)+"*"+string(suffix))
     if err != nil {
       panic(rbSysErr(err, "rb_sysopen", os.TempDir()))
     }
@@ -61,6 +74,16 @@ class Tempfile < Object
 
   #: () -> void
   def close = @file.close
+
+  # Bytes in, bytes out already: no transcoding to turn off.
+  #: () -> Tempfile
+  def binmode = self
+
+  #: () -> Tempfile
+  def flush
+    @file.flush
+    self
+  end
 
   #: () -> void
   def unlink
