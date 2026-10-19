@@ -27,7 +27,7 @@ func (f *fctx) noteAnyOrigin(n parser.Node, name string, val expr) {
 	case isAny(val.typ):
 		why = f.untypedWhy(w.Value, 1)
 	case f.localInfo(name) != nil && isAny(f.localInfo(name).typ):
-		why = "local assigned values of different types"
+		why = "local assigned values of different types: " + typeString(f.localInfo(name).typ) + " / " + typeString(val.typ) // ponytail: the first type is lost once widened; record it at the widening
 	default:
 		return
 	}
@@ -77,11 +77,11 @@ func (f *fctx) paramWhy(name string) string {
 	case f.paramWiden[name] != nil:
 		return "param widened by reassignment"
 	case f.m.Params[i].Pending != "":
-		return "param: no typed caller"
+		return "param: no typed caller " + f.m.Name + "(" + name + ")"
 	case f.m.declared:
-		return "param: sig untyped"
+		return "param: sig untyped " + f.m.Name + "(" + name + ")"
 	}
-	return "param: unannotated"
+	return "param: unannotated " + f.m.Name + "(" + name + ")"
 }
 
 func (f *fctx) callWhy(n *parser.CallNode, depth int) string {
@@ -111,12 +111,12 @@ func (f *fctx) callWhy(n *parser.CallNode, depth int) string {
 	case e.M.File != nil && e.M.File.isPrelude():
 		return "return of core " + n.Name
 	case e.M.declared:
-		return "return: sig untyped"
+		return "return: sig untyped " + c.C.RubyName + "#" + n.Name
 	}
 	if e.M.retWhy != "" {
-		return "return: unannotated: " + e.M.retWhy
+		return "return: unannotated " + c.C.RubyName + "#" + n.Name + ": " + e.M.retWhy
 	}
-	return "return: unannotated"
+	return "return: unannotated " + c.C.RubyName + "#" + n.Name
 }
 
 func typeString(t Type) string {

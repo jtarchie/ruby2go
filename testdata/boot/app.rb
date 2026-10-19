@@ -209,3 +209,4 @@ p sm.total, sm.label({ "name" => "m", "kind" => "meter" })
 sm.each_reading(->(r) { p r })
 p DemoKeyed.new.add("ab").add("cde").probe_both
 p DemoKeyed.new.add("ab").add("cde").probe_fetches
+p DemoOwnerSpec.go

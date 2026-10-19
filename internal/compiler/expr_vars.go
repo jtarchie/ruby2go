@@ -42,6 +42,9 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		if f.discover && ann == nil && isEmptyLit(n.Value) {
 			iv.open = true
 		}
+		if !fitsValue(val, iv.Type) && f.lenient() && isUnion(val.typ) { // a gem's union into a narrower ivar converts where it lands, as untyped does (decision 320): Homebrew's `@name = owner.name` of a Formula | Cask
+			val = expr{code: val.code, typ: TAny{}}
+		}
 		if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
 			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 		}

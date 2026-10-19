@@ -1,6 +1,7 @@
 require "delegate"
 require "json"
 require "sorbet-runtime"
+require "forwardable"
 
 # Homebrew's command DSL: a `T.proc.bind(Parser)` block stored in an ivar, passed on with `&@ivar` and
 # instance_eval'd; an anonymous `Class.new(Args)` in `class << self` (decisions 145, 231).
@@ -861,5 +862,63 @@ module DemoBoolDyn
   def self.go
     vals = [false, true, "x"] #: Array[untyped]
     vals.map { |v| v.demo_present? }
+  end
+end
+
+# decision 320: a delegation through a nilable accessor is typed and raises on nil; a union value into a
+# narrower ivar converts where it lands (Homebrew's SoftwareSpec#owner= of a Formula | Cask)
+class DemoOwnerDsl
+  extend T::Sig
+
+  sig { returns(T::Array[String]) }
+  def name = ["a", "b"]
+
+  sig { returns(String) }
+  def token = "tok"
+end
+
+class DemoOwnerForm
+  extend T::Sig
+
+  sig { returns(String) }
+  def name = "wget"
+end
+
+class DemoOwnerSpec
+  extend T::Sig
+  extend Forwardable
+  def_delegators :@dsl, :name, :token
+
+  sig { void }
+  def initialize
+    @name = T.let(nil, T.nilable(String))
+  end
+
+  sig { void }
+  def refresh
+    @dsl = T.let(DemoOwnerDsl.new, T.nilable(DemoOwnerDsl))
+  end
+
+  sig { params(owner: T.any(DemoOwnerForm, DemoOwnerDsl)).void }
+  def owner=(owner)
+    @name = owner.name
+  end
+
+  sig { returns(T.nilable(String)) }
+  def owner_name = @name
+
+  def self.go
+    s = new
+    out = []
+    begin
+      s.token
+    rescue NoMethodError => e
+      out << e.message
+    end
+    s.refresh
+    out << s.token
+    s.owner = DemoOwnerForm.new
+    out << s.owner_name
+    out
   end
 end

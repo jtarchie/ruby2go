@@ -3950,7 +3950,25 @@ module ObjectTests
     def initialize = @settings = FwdSettings.new
   end
 
+  # decision 320: a delegation through a nilable accessor raises NoMethodError on nil, as MRI's forwarder does
+  class FwdLazy
+    extend Forwardable
+    def_delegators :@cards, :size, :first
+    def_delegator :@cards, :join, :text
+
+    #: (bool) -> void
+    def initialize(ready)
+      @cards = ready ? [3, 1, 2] : nil #: Array[Integer]?
+    end
+  end
+
   class ForwardableTest < Minitest::Test
+    def test_nilable_accessor
+      assert_equal [3, 3, "3-1-2"], [FwdLazy.new(true).size, FwdLazy.new(true).first, FwdLazy.new(true).text("-")]
+      e = assert_raises(NoMethodError) { FwdLazy.new(false).size }
+      assert_includes e.message, "undefined method 'size' for nil"
+    end
+
     def test_optional_block_delegator
       app = FwdApp.new
       assert_equal 0, app.configure.level

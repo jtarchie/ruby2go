@@ -20,6 +20,7 @@ type delegation struct {
 	method   string
 	name     string
 	single   bool // SingleForwardable: a class method (decision 132)
+	nilable  bool // the accessor is T?: the forwarder raises NoMethodError on nil (decision 320)
 }
 
 // collectDelegation records `def_delegators :@x, :a, :b`,
@@ -116,6 +117,9 @@ func (c *Compiler) expandDelegation(ctx context.Context, cls *Class, d delegatio
 		c.untypedDelegateDef(ctx, cls, d)
 		return
 	}
+	if o, ok := recvT.(TOpt); ok { // `@dsl = T.let(DSL.new(self), T.nilable(DSL))`: the forwarder raises on nil, as MRI's does (decision 320)
+		recvT, d.nilable = o.Elem, true
+	}
 	rc, ok := recvT.(TClass)
 	if !ok {
 		c.errorf(f, n, "%s: cannot delegate to %s of type %s", n.Name, d.accessor, recvT)
@@ -191,6 +195,9 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 			acc = "::" + acc
 		}
 		src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-1, 0)) + "def " + name + "(...) = " + acc + "." + d.method + "(...)\n"
+		if d.nilable {
+			src = strings.Repeat("\n", max(f.line(n.Location.StartOffset)-1, 0)) + "def " + name + "(...)\n" + nilGuard(acc, d.method) + "  target." + d.method + "(...)\nend\n"
+		}
 		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 		if err != nil {
 			c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
@@ -247,6 +254,10 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	if call[0] >= 'A' && call[0] <= 'Z' { // resolved from the top level, as delegateTarget typed it
 		call = "::" + call
 	}
+	guard := ""
+	if d.nilable {
+		guard, call = nilGuard(call, d.method), "target"
+	}
 	if d.method == "[]" {
 		call += "[" + strings.Join(args, ", ") + "]"
 	} else {
@@ -258,7 +269,7 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	}
 	// padded so the def's line (errors, //line) is the def_delegators call's
 	line := f.line(n.Location.StartOffset)
-	src := strings.Repeat("\n", max(line-1-strings.Count(head, "\n")-1, 0)) + head + "\ndef " + name + "(" + strings.Join(params, ", ") + ")\n  " + call + block + "\nend\n"
+	src := strings.Repeat("\n", max(line-1-strings.Count(head, "\n")-1, 0)) + head + "\ndef " + name + "(" + strings.Join(params, ", ") + ")\n" + guard + "  " + call + block + "\nend\n"
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 	if err != nil {
 		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
@@ -301,11 +312,8 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 		return iv.Type
 	}
 	for k := cls; k != nil; k = k.Super {
-		// a class object's ivar is assigned in class methods, not initialize
-		defs := []*Method{k.Methods["initialize"]}
-		if k.metaOf != nil {
-			defs = k.MethodList
-		}
+		// initialize first, then any method: Homebrew's Cask assigns `@dsl = T.let(..., T.nilable(DSL))` in refresh (decision 320)
+		defs := append([]*Method{k.Methods["initialize"]}, k.MethodList...)
 		var ann string
 		for _, m := range defs {
 			if m == nil || m.Node == nil {
@@ -334,6 +342,11 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 	}
 	c.errorf(f, n, "%s: the type of %s must be declared to delegate to it (`# @rbs %s: T`, or `%s = ... #: T` in initialize)", n.Name, d.accessor, d.accessor, d.accessor)
 	return nil
+}
+
+// nilGuard reads a nilable accessor into `target` and raises MRI's NoMethodError when it is nil (decision 320).
+func nilGuard(acc, method string) string {
+	return "  target = " + acc + "\n  raise NoMethodError, \"undefined method '" + method + "' for nil\" unless target\n"
 }
 
 // splatConsts expands each `*NAMES` of a constant Array literal declared above (Rack::Lint's StreamWrapper).
