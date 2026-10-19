@@ -1334,6 +1334,85 @@ func (c *Compiler) emitNameSwitches() {
 	c.w("\treturn false\n}\n\n")
 }
 
+// noteSendOn asks for rbSendOn_K and rbRespondsOn_K, K the Go names of the struct classes a computed send or
+// respond_to?'s receiver may hold (decision 316), and returns K. The switch covers what those classes and their
+// subclasses answer, so only those names need dispatchers, not every name in the program (rbSendByName).
+func (c *Compiler) noteSendOn(classes []*Class) string {
+	slices.SortFunc(classes, func(a, b *Class) int { return strings.Compare(a.Name, b.Name) })
+	classes = slices.CompactFunc(classes, func(a, b *Class) bool { return a == b })
+	names := make([]string, 0, len(classes))
+	for _, cls := range classes {
+		names = append(names, cls.Name)
+	}
+	key := strings.Join(names, "_")
+	if _, ok := c.sendOn[key]; ok {
+		return key
+	}
+	if c.sendOn == nil {
+		c.sendOn = map[string][]*Class{}
+	}
+	c.sendOn[key] = classes
+	for _, name := range c.sendOnNames(classes) {
+		c.noteDyn(name)
+		c.noteRespond(name)
+	}
+	return key
+}
+
+// sendOnNames lists what an instance of one of classes or a subclass answers, filtered as allMethodNames does.
+func (c *Compiler) sendOnNames(classes []*Class) []string {
+	seen := map[string]bool{}
+	var walk func(k *Class)
+	walk = func(k *Class) {
+		for _, e := range k.methodSet() {
+			helper := strings.HasPrefix(e.M.Name, "_") && e.M.File != nil && e.M.File.isPrelude()
+			if e.M.Name != "initialize" && !strings.HasPrefix(e.M.Name, "__") && !helper {
+				seen[e.M.Name] = true
+			}
+		}
+		for _, sub := range k.Subclasses {
+			walk(sub)
+		}
+	}
+	for _, cls := range classes {
+		walk(cls)
+	}
+	return slices.Sorted(maps.Keys(seen))
+}
+
+// emitSendOn emits each noted class's rbSendOn_C and rbRespondsOn_C (decision 316): rbSendByName and rbRespondsByName
+// over that class's names only, with the same method_missing and respond_to_missing? fallbacks.
+func (c *Compiler) emitSendOn() {
+	for _, key := range slices.Sorted(maps.Keys(c.sendOn)) {
+		names := c.sendOnNames(c.sendOn[key])
+		c.w("func rbSendOn_%s(recv any, name string, how int, args ...any) any {\n", key)
+		c.emitNameCases(names, func(n string) string { return "rbDyn" + goMethodName(n) + "(how, recv, args...)" })
+		c.w("\tif r, ok := recv.(interface{ DynMethodMissing(...any) any }); ok {\n")
+		c.w("\t\treturn r.DynMethodMissing(append([]any{Symbol(name)}, args...)...)\n\t}\n")
+		c.w("\tpanic(rbNoMethod(name, recv, false))\n}\n\n")
+		c.w("func rbRespondsOn_%s(recv any, name string, priv bool) Boolean {\n", key)
+		c.emitNameCases(names, func(n string) string { return "rbResponds" + goMethodName(n) + "(recv, priv)" })
+		c.w("\tif r, ok := recv.(interface{ DynRespondToMissingQ(...any) any }); ok {\n")
+		c.w("\t\treturn Boolean(rbTruthy(r.DynRespondToMissingQ(Symbol(name), Boolean(priv))))\n\t}\n")
+		c.w("\treturn false\n}\n\n")
+	}
+}
+
+// emitNameCases writes `switch name` returning ret(name) per case; an `if` for one name, nothing for none (gocritic).
+func (c *Compiler) emitNameCases(names []string, ret func(string) string) {
+	switch len(names) {
+	case 0:
+	case 1:
+		c.w("\tif name == %q {\n\t\treturn %s\n\t}\n", names[0], ret(names[0]))
+	default:
+		c.w("\tswitch name {\n")
+		for _, n := range names {
+			c.w("\tcase %q:\n\t\treturn %s\n", n, ret(n))
+		}
+		c.w("\t}\n")
+	}
+}
+
 // emitClassOf emits rbClassOf, `.class` for a value known only at run
 // time: a type switch over the @go_type classes, and over each struct
 // hierarchy, whose instances answer _ClassOf. nil is Go nil, not an

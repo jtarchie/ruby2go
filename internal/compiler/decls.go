@@ -453,6 +453,7 @@ func (c *Compiler) emitTables() {
 	if c.dynEvery || c.callable != nil {
 		c.emitCallTables()
 	}
+	c.emitSendOn()
 	c.emitClassOf()
 	c.emitModIsA()
 	c.emitFrozenFlag()

@@ -3087,6 +3087,56 @@ module DynamicTests
   end
 
   # _DynGen keyed a private method "_name": a public `_name` shared the key (duplicate case, or its case pruned) (#101)
+  # decision 316: a computed send/respond_to? on a receiver of known class switches over that class's names only
+  class SendOnAnimal
+    #: (String) -> void
+    def initialize(name) = @name = name
+    #: () -> String
+    def speak = "#{@name} speaks"
+    #: (Integer) -> Integer
+    def twice(n) = n * 2
+    private
+    #: () -> String
+    def secret = "shh"
+  end
+
+  class SendOnDog < SendOnAnimal
+    #: () -> String
+    def fetch = "fetched"
+    #: (Symbol, *untyped) -> untyped
+    def method_missing(name, *args) = "dog mm #{name}(#{args.size})"
+    #: (Symbol, ?bool) -> bool
+    def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("x")
+  end
+
+  class SendOnTypedReceiverTest < Minitest::Test
+    def test_typed_receiver
+      a = SendOnAnimal.new("cat")
+      assert_equal ["cat speaks", "shh"], %w[speak secret].map { |m| a.send(m) }
+      assert_equal 8, a.send(%w[twice].first, 4)
+      assert_raises(NoMethodError) { a.public_send(%w[secret].first) }
+      assert_raises(NoMethodError) { a.send(%w[nope].first) }
+      assert_equal false, a.respond_to?(%w[secret].first)
+      assert_equal true, a.respond_to?(%w[secret].first, true)
+      assert_equal false, a.respond_to?(%w[fetch].first)
+    end
+
+    def test_subclass_behind_parent_type
+      pet = SendOnDog.new("rex") #: SendOnAnimal
+      assert_equal "fetched", pet.send(%w[fetch].first)
+      assert_equal "dog mm xyz(2)", pet.send(%w[xyz].first, 1, 2)
+      assert_equal true, pet.respond_to?(%w[fetch].first)
+      assert_equal true, pet.respond_to?(%w[xa].first)
+      assert_equal false, pet.respond_to?(%w[ya].first)
+    end
+
+    def test_union_receiver
+      u = [SendOnAnimal.new("owl"), SendOnDog.new("pug")].fetch(1) #: SendOnAnimal | SendOnDog
+      assert_equal "pug speaks", u.send(%w[speak].first)
+      assert_equal true, u.respond_to?(%w[fetch].first)
+    end
+  end
+
   class DynGenPrivateKeyTest < Minitest::Test
     def test_public_underscore_and_private_plain_name_on_generic_receiver
       x = [1] #: untyped

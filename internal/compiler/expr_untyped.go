@@ -492,7 +492,12 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		blockArg = code
 		f.c.dynBlockAll = true // any block-taking method a computed name reaches (decision 243)
 	}
-	f.noteDynAll()
+	fn := "rbSendByName"
+	if on := f.sendOnClasses(recv.typ); on != nil { // decision 316: only what the receiver's classes and their subclasses answer
+		fn = "rbSendOn_" + f.c.noteSendOn(on)
+	} else {
+		f.noteDynAll()
+	}
 	if f.m == nil || !f.m.quietDynamic {
 		f.warn(n, "dynamic call: %s with a computed name", name)
 	}
@@ -506,7 +511,7 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		if blockArg != "" {
 			spread = "append(" + spread + ", " + blockArg + ")"
 		}
-		return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ", " + spread + "...)", typ: TAny{}}
+		return expr{code: fn + "(" + strings.Join(codes, ", ") + ", " + spread + "...)", typ: TAny{}}
 	}
 	for _, a := range args[1:] {
 		e := f.genExpr(a, nil)
@@ -515,7 +520,7 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	if blockArg != "" {
 		codes = append(codes, blockArg)
 	}
-	return expr{code: "rbSendByName(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+	return expr{code: fn + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 }
 
 // dynBlockValue is a dynamic call's block as an rbBlockArg (decision 243): a literal block's closure over untyped
@@ -619,9 +624,46 @@ func (f *fctx) genDynRespondTo(n parser.Node, recv expr, args []parser.Node) exp
 		f.c.noteRespond(lit)
 		return expr{code: "rbResponds" + goMethodName(lit) + "(" + r + ", " + includeAll() + ")", typ: f.cls("Boolean")}
 	}
-	f.noteDynAll()
+	fn := "rbRespondsByName"
+	if on := f.sendOnClasses(recv.typ); on != nil {
+		fn = "rbRespondsOn_" + f.c.noteSendOn(on)
+	} else {
+		f.noteDynAll()
+	}
 	nameExpr := f.genExpr(args[0], nil)
-	return expr{code: "rbRespondsByName(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "), " + includeAll() + ")", typ: f.cls("Boolean")}
+	return expr{code: fn + "(" + r + ", rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + "), " + includeAll() + ")", typ: f.cls("Boolean")}
+}
+
+// sendOnClasses are the struct classes a computed send or respond_to? on a receiver of type t can be scoped to
+// (decision 316): the value is an instance of one of them or a subclass, so only their method names can answer. nil
+// for an untyped, module, metaclass or universal receiver (or a union holding one), which keep the every-name switch.
+func (f *fctx) sendOnClasses(t Type) []*Class {
+	var cls *Class
+	switch t := t.(type) {
+	case TClass:
+		cls = t.C
+	case TVar:
+		if t.Name == "Self" {
+			cls = f.owner
+		}
+	case TOpt:
+		return nil // nil answers only Kernel's names, which a struct class's set would not promise
+	case TUnion:
+		var out []*Class
+		for _, m := range t.Members {
+			on := f.sendOnClasses(m)
+			if on == nil {
+				return nil
+			}
+			out = append(out, on...)
+		}
+		return out
+	case TAny, TFunc, TNil, TTuple, TVoid:
+	}
+	if cls == nil || cls.IsModule || cls.universal || cls.metaOf != nil || !cls.isStruct() {
+		return nil
+	}
+	return []*Class{cls}
 }
 
 // universalOnly is Object's (or Kernel's) name when no class of the program defines its own, so a call on any value

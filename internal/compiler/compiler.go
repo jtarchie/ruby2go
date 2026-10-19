@@ -72,6 +72,7 @@ type Compiler struct {
 	classOf               bool                    // `.class` on a value only known at run time: emit rbClassOf
 	dynGo                 map[string]string       // Go name → the Ruby name its dispatchers serve
 	dynWrapped            map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
+	sendOn                map[string][]*Class     // per Go suffix, the struct classes a computed send/respond_to? on a receiver of known class may hold (decision 316)
 	warned                map[string]bool
 	pkgVars               []string                // package-level var declarations: compiled regexp literals, rbDATA, once-guards
 	dataVar               bool                    // rbDATA is declared
