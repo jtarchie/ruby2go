@@ -267,29 +267,30 @@ type Source struct {
 
 // options are a compile's settings beyond its sources.
 type options struct {
-	skipTests  bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
-	skipped    []SkippedTest // what skipTests skipped
-	warnings   []string
-	loadPath   []string // -I directories, which a user `require` searches first
-	gemDirs    []string // gem lib dirs, searched after loadPath (decision 173)
-	infer      *inference
-	round      bool
-	inferDone  bool
-	seed       *Inference        // types from an earlier compile of these sources, updated by this one
-	allLibs    bool              // load every prelude lib, required or not (the stub generator, decision 154)
-	gemSigs    fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
-	pruneGems  bool              // drop gem methods no reachable code names (decision 169)
-	autoloaded map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
-	mainLast   bool              // traced mode: the last source is the program's main file, and a require in a method resolves at run time (decisions 197, 288)
-	boot       *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
-	goFuncs    map[string]goFunc // out: each gem method's Go func name -> its methodKey and name
-	noPrune    bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
-	env        envConfig         // the RB2GO_* environment, read once by compile
-	testHook   func()            // tests only: runs at the start of compileWith, to inject a panic
-	genCount   *int              // test hook: genExpr calls, summed over every pass
-	genLimit   *int              // test hook: the count after which genExpr fails the compile
-	instances  []string          // generic instances to create before link, by instKey (decision 308)
-	instAt     map[string]srcPos // where each was first named
+	skipTests    bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
+	skipped      []SkippedTest // what skipTests skipped
+	warnings     []string
+	loadPath     []string // -I directories, which a user `require` searches first
+	gemDirs      []string // gem lib dirs, searched after loadPath (decision 173)
+	infer        *inference
+	round        bool
+	inferDone    bool
+	seed         *Inference        // types from an earlier compile of these sources, updated by this one
+	allLibs      bool              // load every prelude lib, required or not (the stub generator, decision 154)
+	gemSigs      fs.FS             // vendored `.rbs` signatures for gems (decision 160), or nil
+	pruneGems    bool              // drop gem methods no reachable code names (decision 169)
+	autoloaded   map[string]string // real path -> constant of each file boot's autoloads loaded (decision 175)
+	mainLast     bool              // traced mode: the last source is the program's main file, and a require in a method resolves at run time (decisions 197, 288)
+	boot         *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
+	goFuncs      map[string]goFunc // out: each gem method's Go func name -> its methodKey and name
+	noPrune      bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
+	env          envConfig         // the RB2GO_* environment, read once by compile
+	testHook     func()            // tests only: runs at the start of compileWith, to inject a panic
+	genCount     *int              // test hook: genExpr calls, summed over every pass
+	genLimit     *int              // test hook: the count after which genExpr fails the compile
+	instances    []string          // generic instances to create before link, by instKey (decision 308)
+	instAt       map[string]srcPos // where each was first named
+	instRestarts int               // compiles and rounds rerun for a missing instance (RB2GO_TIMING)
 }
 
 // ErrInternal marks an error that is a compiler bug (a panic that was neither a compile error nor an inference request), not a fault in the user's program.
@@ -324,8 +325,12 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 		opts.round, opts.inferDone = false, false
 		out, err := compileOnce(ctx, preludeFS, sources, opts)
 		if !errors.Is(err, errNeedInstances) {
+			if opts.instRestarts > 0 && opts.env.Timing {
+				fmt.Fprintf(os.Stderr, "rb2go: %d compiles restarted for generic instances (%d instances)\n", opts.instRestarts, len(opts.instances))
+			}
 			return out, err
 		}
+		opts.instRestarts++
 	}
 	return nil, fmt.Errorf("generic instances still missing after %d compiles: %s", maxInstanceRestarts, strings.Join(opts.instances, ", "))
 }
@@ -368,6 +373,7 @@ func inferRounds(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		_, err := compileWith(ctx, preludeFS, sources, opts, false)
 		opts.round = false
 		if errors.Is(err, errNeedInstances) {
+			opts.instRestarts++
 			continue // the next round creates the generic instance this one named (decision 308)
 		}
 		if err != nil && !errors.Is(err, errInferRound) {

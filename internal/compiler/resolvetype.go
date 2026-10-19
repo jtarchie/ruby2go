@@ -142,10 +142,8 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 				return TVar{Name: p}
 			}
 		}
-		if k := sc.class; k.template != nil && len(t.Args) == 0 {
-			if i := slices.Index(k.template.TypeParams, t.Name); i >= 0 {
-				return k.instArgs[i]
-			}
+		if a := instParam(sc.class, t); a != nil {
+			return a
 		}
 	}
 	lex := sc.lex
@@ -172,15 +170,8 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 	if len(t.Args) > 0 && len(cls.TypeParams) == 0 && c.gemFile(sc.File) {
 		t.Args = nil // a Sorbet generic (type_member), erased to untyped (decision 196): its args go too
 	}
-	if len(t.Args) == 0 && cls.helperOf != nil { // a helper named in its outer class's code (decision 311)
-		if args := helperArgs(cls, sc.class); args != nil {
-			return c.classType(cls, args, sc.srcPos)
-		}
-		vars := make([]Type, len(cls.TypeParams))
-		for i, p := range cls.TypeParams {
-			vars[i] = TVar{Name: p}
-		}
-		return TClass{C: cls, Args: vars}
+	if len(t.Args) == 0 && cls.helperOf != nil {
+		return c.helperType(cls, sc)
 	}
 	if len(t.Args) == 0 && len(cls.TypeParams) > 0 && c.gemFile(sc.File) {
 		return TClass{C: cls, Args: slices.Repeat([]Type{TAny{}}, len(cls.TypeParams))} // `Hash` with no args: untyped elements
@@ -193,6 +184,30 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 		args[i] = c.resolveType(a, sc)
 	}
 	return c.classType(cls, args, sc.srcPos)
+}
+
+// instParam is an instance's argument for its template's parameter t names, or nil (decision 308).
+func instParam(k *Class, t rbs.Name) Type {
+	if k.template == nil || len(t.Args) > 0 {
+		return nil
+	}
+	if i := slices.Index(k.template.TypeParams, t.Name); i >= 0 {
+		return k.instArgs[i]
+	}
+	return nil
+}
+
+// helperType is a helper named bare in its outer class's code (decision 311): the instance at the enclosing
+// instance's arguments, or in the template's own code the helper at its type variables.
+func (c *Compiler) helperType(cls *Class, sc typeScope) Type {
+	if args := helperArgs(cls, sc.class); args != nil {
+		return c.classType(cls, args, sc.srcPos)
+	}
+	vars := make([]Type, len(cls.TypeParams))
+	for i, p := range cls.TypeParams {
+		vars[i] = TVar{Name: p}
+	}
+	return TClass{C: cls, Args: vars}
 }
 
 // classType is cls at args: a template's instance when args are closed (decision 308).
