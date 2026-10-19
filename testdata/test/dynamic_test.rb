@@ -3136,6 +3136,14 @@ module DynamicTests
       assert_equal true, u.respond_to?(%w[fetch].first)
     end
 
+    # decision 319: a computed respond_to? on an untyped value answers over every name without any dispatcher
+    def test_computed_respond_to_on_untyped
+      u = dynamic_ident(SendOnDog.new("rex"))
+      assert_equal [true, true, false, true], %w[speak fetch nope xq].map { |m| u.respond_to?(m) }
+      assert_equal true, u.respond_to?(%w[secret].first, true)
+      assert_equal false, u.respond_to?(%w[secret].first)
+    end
+
     # a class object, a module's self (some includer) and a core class scope too
     def test_class_object_module_and_core_receivers
       k = SendOnDog #: singleton(SendOnAnimal)

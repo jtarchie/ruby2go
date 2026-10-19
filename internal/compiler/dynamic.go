@@ -42,7 +42,8 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 			c.dynLazy[n] = true
 		}
 	}
-	c.dynEvery = c.dynEvery || c.dynAll && (reached("rbSendByName") || reached("rbRespondsByName"))
+	c.dynEvery = c.dynEvery || c.dynAll && reached("rbSendByName")
+	c.respondEvery = c.respondEvery || c.dynEvery || c.dynAll && reached("rbRespondsByName") // decision 319: markers only, no wrappers; the eager retry sets both at once
 	if !c.dynEvery && c.callable == nil && selected("_Call") {
 		c.callable = c.callableNames()
 	}
@@ -57,7 +58,7 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 			}
 		}
 		for i := 0; i < len(c.respondNames); i++ { //nolint:intrange // same
-			if n := c.respondNames[i]; !c.respondOut[n] && c.dynNeeded(n, reached, selected) {
+			if n := c.respondNames[i]; !c.respondOut[n] && (c.respondEvery || c.dynNeeded(n, reached, selected)) {
 				c.respondOut[n] = true
 				c.emitRespond(n)
 				emitted, progress = append(emitted, n), true

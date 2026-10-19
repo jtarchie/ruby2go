@@ -98,6 +98,7 @@ type Compiler struct {
 	required              map[*File]bool   // user files require_relative loaded: they run where required, not as a top level of their own
 	stmtFile              map[parser.Node]*File
 	dynEvery              bool                    // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
+	respondEvery          bool                    // emit every noted rbResponds up front: a computed respond_to? on an untyped value is reachable (decision 319); dispatchers stay lazy
 	dynLazy               map[string]bool         // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
 	dynOut                map[string]bool         // dispatchers emitted
 	dynGen                map[*Class][]dynGenCase // a generic class's wrappers of this emitDynamic batch, emitted as one switch (decision 209)
@@ -106,7 +107,7 @@ type Compiler struct {
 	fwdOut                map[*Class]bool         // forwarders emitted
 	selfTyped             map[*Class]bool         // a module whose constraint names Self (decision 208)
 	tablesOut             bool
-	tablesAt              [13]int         // tableInputs when the tables went out
+	tablesAt              [14]int         // tableInputs when the tables went out
 	callable              map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	files                 []*File
 	preludeFS             fs.FS

@@ -1,0 +1,29 @@
+Subject: InstallSteps::Runner's context is a Formula or a Cask
+
+formula.rb and cask/artifact/install_steps.rb are its only callers, and each passes one of the two; `Object` made
+every `context_value` lookup dynamic. Only a Cask has a config, so context_config_value asks the Cask for it.
+---
+diff --git a/Library/Homebrew/install_steps.rb b/Library/Homebrew/install_steps.rb
+index dc2a758f09..8d41ce4420 100644
+--- a/Library/Homebrew/install_steps.rb
++++ b/Library/Homebrew/install_steps.rb
+@@ -908,7 +908,7 @@ module Homebrew
+         bash_completion zsh_completion fish_completion pwsh_completion
+       ].freeze
+ 
+-      sig { params(context: Object, command: T.class_of(SystemCommand)).void }
++      sig { params(context: T.any(Formula, Cask::Cask), command: T.class_of(SystemCommand)).void }
+       def initialize(context:, command: SystemCommand)
+         @context = context
+         @command = command
+@@ -1619,7 +1619,9 @@ module Homebrew
+ 
+       sig { params(method: Symbol).returns(T.nilable(Object)) }
+       def context_config_value(method)
+-        config = context_value(:config)
++        return unless @context.is_a?(Cask::Cask)
++
++        config = @context.config
+         config.public_send(method) if config.respond_to?(method)
+       end
+ 
