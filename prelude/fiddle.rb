@@ -557,7 +557,38 @@ module Fiddle
   end
 
   #: (Function, Integer, untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
-  def self.__fast(f, n, a0, a1, a2, a3, a4, a5, a6, a7) = %x{ rbFiddleFast(f, n, [8]any{a0, a1, a2, a3, a4, a5, a6, a7}) }
+  def self.__fast(f, n, a0, a1, a2, a3, a4, a5, a6, a7) = %x{
+    a := [8]any{a0, a1, a2, a3, a4, a5, a6, a7}
+    return rbFiddleFast(f, a[:n]...)
+  }
+
+  # __call for one to three arguments, the common arities: no eight-slot copy.
+  #: (Function, untyped) -> untyped
+  def self.__call1(f, a0)
+    r = __fast1(f, a0)
+    r.equal?(f) ? f.call(a0) : r
+  end
+
+  #: (Function, untyped, untyped) -> untyped
+  def self.__call2(f, a0, a1)
+    r = __fast2(f, a0, a1)
+    r.equal?(f) ? f.call(a0, a1) : r
+  end
+
+  #: (Function, untyped, untyped, untyped) -> untyped
+  def self.__call3(f, a0, a1, a2)
+    r = __fast3(f, a0, a1, a2)
+    r.equal?(f) ? f.call(a0, a1, a2) : r
+  end
+
+  #: (Function, untyped) -> untyped
+  def self.__fast1(f, a0) = %x{ rbFiddleFast(f, a0) }
+
+  #: (Function, untyped, untyped) -> untyped
+  def self.__fast2(f, a0, a1) = %x{ rbFiddleFast(f, a0, a1) }
+
+  #: (Function, untyped, untyped, untyped) -> untyped
+  def self.__fast3(f, a0, a1, a2) = %x{ rbFiddleFast(f, a0, a1, a2) }
 
   #: (Array[Integer], Integer) { (Array[untyped]) -> untyped } -> Integer
   def self.__callback(args, ret) = %x{ rbFiddleCallback(args, ret, blk) }

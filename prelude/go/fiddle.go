@@ -335,16 +335,16 @@ func rbFiddleInvoke(prepared any, args *Array[any]) any {
 
 // rbFiddleFast is Function#call's result without call's *args Array, or f itself when Function#call must run: f is
 // a subclass (which may override call), or an argument is an object other than a plain Pointer (decision 329).
-func rbFiddleFast(f Fiddle_FunctionI, n Integer, a [8]any) any {
+func rbFiddleFast(f Fiddle_FunctionI, a ...any) any {
 	x, exact := f.(*Fiddle_Function)
 	if !exact {
 		return f
 	}
 	fn, ok := x.fn.(*rbFiddleCFunc)
-	if !ok || int(n) != len(fn.args) {
+	if !ok || len(a) != len(fn.args) {
 		return f
 	}
-	for k, v := range a[:n] {
+	for k, v := range a {
 		switch v.(type) {
 		case nil, Integer, Float, String, Boolean:
 			continue
@@ -355,7 +355,7 @@ func rbFiddleFast(f Fiddle_FunctionI, n Integer, a [8]any) any {
 		}
 		a[k] = p.addr
 	}
-	return Fiddle_Meta___Ret(Fiddle_class, x.ret, rbFiddleInvokeArgs(fn, a[:n]))
+	return Fiddle_Meta___Ret(Fiddle_class, x.ret, rbFiddleInvokeArgs(fn, a))
 }
 
 // rbFiddleInvokeArgs converts args as Fiddle does, calls fn, and sets Fiddle.last_error.
