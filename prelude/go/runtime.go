@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/maphash"
 	"iter"
-	"maps"
 	"math"
 	"math/bits"
 	"os"
@@ -1014,17 +1013,19 @@ var rbFrozenLits = func() map[rbStrID]struct{} {
 	return m
 }()
 
-// rbFrozenShards hold the computed strings String#freeze marked, by address and length, each with a weak pointer
-// to its bytes, in 256 shards by address, each a plain map behind its own mutex (held for one map operation; no
-// process-wide lock, decision 147). The set does not pin its strings: an entry whose bytes died reads as unfrozen, so
-// a new string at a reused address is not frozen, and a shard drops its dead entries when it has doubled. (The
-// copy-on-write shards before copied about n/256 entries per freeze and kept every frozen string alive; a sync.Map
-// after them cost twice weak.Make itself; decision 329.)
+// rbFrozenShards hold the computed strings String#freeze marked, by address and length, in 256 shards by address,
+// each a plain map behind its own mutex (held for a map operation; no process-wide lock, decision 147). A freeze
+// records the string itself; rbFrozenConvert, a goroutine, swaps each such entry for a weak pointer to its bytes
+// soon after, off the freezing thread (weak.Make is ~400 ns, most of a freeze; decision 329). So the set pins a
+// string only until then: an entry whose bytes died reads as unfrozen, so a new string at a reused address is not
+// frozen, and a shard drops its dead entries when it has doubled. (The copy-on-write shards before copied about
+// n/256 entries per freeze and kept every frozen string alive.)
 var rbFrozenShards [256]struct {
-	mu   sync.Mutex
-	m    map[rbStrKey]rbFrozenEntry
-	next int      // the size that triggers the next sweep
-	_    [40]byte // a cache line each
+	mu      sync.Mutex
+	m       map[rbStrKey]rbFrozenEntry
+	pending []rbStrKey // entries still holding their string, for rbFrozenConvert
+	next    int        // the size that triggers the next sweep
+	_       [16]byte   // a cache line each
 }
 
 // rbStrKey is rbStrID without the pointer, so the set does not keep the bytes alive.
@@ -1033,17 +1034,24 @@ type rbStrKey struct {
 	n int
 }
 
-// rbFrozenEntry is a frozen string's bytes: weakly, or immortal for Go's constant data, which weak.Make rejects.
+// rbFrozenEntry is a frozen string's bytes: the string itself until rbFrozenConvert runs, then weakly, or immortal
+// for Go's constant data, which weak.Make rejects.
 type rbFrozenEntry struct {
+	s        string
+	strong   bool
 	w        weak.Pointer[byte]
 	immortal bool
 }
 
 // live reports whether the frozen bytes are still the ones at the key's address.
-func (e rbFrozenEntry) live() bool { return e.immortal || e.w.Value() != nil }
+func (e rbFrozenEntry) live() bool { return e.immortal || e.strong || e.w.Value() != nil }
 
-// rbFrozenNoBytes is whether the "" with a nil data pointer was frozen.
-var rbFrozenNoBytes atomic.Bool
+var (
+	rbFrozenNoBytes atomic.Bool  // whether the "" with a nil data pointer was frozen
+	rbFrozenPending atomic.Int64 // entries waiting for rbFrozenConvert
+	rbFrozenWake    = make(chan struct{}, 1)
+	rbFrozenStart   sync.Once
+)
 
 // The linker's bounds of read-only data, where Go's string constants live (strconv's digits, one-byte strings).
 //
@@ -1069,29 +1077,77 @@ func rbStrFrozen(s string, freeze bool) bool {
 	}
 	key := rbStrKey{uintptr(unsafe.Pointer(p)), len(s)} //nolint:gosec // a key, never dereferenced
 	sh := &rbFrozenShards[(key.p>>4^key.p>>12)&255]
-	var e rbFrozenEntry
-	if freeze { // made outside the lock: weak.Make is most of a freeze
-		e = rbFrozenEntry{immortal: true}
-		if key.p < uintptr(unsafe.Pointer(&rbRodata)) || key.p >= uintptr(unsafe.Pointer(&rbErodata)) { //nolint:gosec // address compare only
-			e = rbFrozenEntry{w: weak.Make(p)}
-		}
-	}
 	sh.mu.Lock()
-	defer sh.mu.Unlock()
 	old, ok := sh.m[key]
 	was := ok && old.live()
 	if !freeze || was {
+		sh.mu.Unlock()
 		return was
 	}
 	if sh.m == nil {
 		sh.m = map[rbStrKey]rbFrozenEntry{}
 	}
-	sh.m[key] = e
-	if len(sh.m) >= max(sh.next, 64) {
-		maps.DeleteFunc(sh.m, func(_ rbStrKey, e rbFrozenEntry) bool { return !e.live() })
+	immortal := key.p >= uintptr(unsafe.Pointer(&rbRodata)) && key.p < uintptr(unsafe.Pointer(&rbErodata)) //nolint:gosec // address compare only
+	if immortal {
+		sh.m[key] = rbFrozenEntry{immortal: true}
+	} else {
+		sh.m[key] = rbFrozenEntry{s: s, strong: true}
+		sh.pending = append(sh.pending, key)
+	}
+	if len(sh.m) >= max(sh.next, 64) { // a fresh map: deleting in place leaves tombstones that lengthen every probe
+		live := make(map[rbStrKey]rbFrozenEntry, len(sh.m))
+		for k, e := range sh.m {
+			if e.live() {
+				live[k] = e
+			}
+		}
+		sh.m = live
 		sh.next = 2 * len(sh.m)
 	}
+	sh.mu.Unlock()
+	if !immortal && rbFrozenPending.Add(1)&255 == 0 { // wake the converter every 256 freezes
+		rbFrozenStart.Do(func() { go rbFrozenConvert() })
+		select {
+		case rbFrozenWake <- struct{}{}:
+		default:
+		}
+	}
 	return false
+}
+
+// rbFrozenConvert turns each shard's pending entries into weak ones, a shard's batch at a time: weak.Make runs
+// outside the shard's lock, and an entry replaced meanwhile (its string died and the address was refrozen) is left.
+func rbFrozenConvert() {
+	for range rbFrozenWake {
+		for i := range rbFrozenShards {
+			sh := &rbFrozenShards[i]
+			sh.mu.Lock()
+			keys := sh.pending
+			sh.pending = nil
+			ents := make([]rbFrozenEntry, len(keys))
+			for k, key := range keys {
+				ents[k] = sh.m[key]
+			}
+			sh.mu.Unlock()
+			if len(keys) == 0 {
+				continue
+			}
+			weaks := make([]weak.Pointer[byte], len(keys))
+			for k, e := range ents {
+				if e.strong {
+					weaks[k] = weak.Make(unsafe.StringData(e.s)) //nolint:gosec // its own bytes
+				}
+			}
+			sh.mu.Lock()
+			for k, key := range keys {
+				if cur, ok := sh.m[key]; ok && cur.strong && ents[k].strong {
+					sh.m[key] = rbFrozenEntry{w: weaks[k]}
+				}
+			}
+			sh.mu.Unlock()
+			rbFrozenPending.Add(-int64(len(keys)))
+		}
+	}
 }
 
 func rbIsA[I any](r any) bool {

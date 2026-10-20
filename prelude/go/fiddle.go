@@ -117,7 +117,7 @@ func rbFiddleRealloc(addr, n Integer) Integer {
 	rbCheckAlloc(int(n), 1)
 	in := [8]uintptr{uintptr(addr), uintptr(n)}
 	var fl [8]uint64
-	r, _, _ := rbFiddleCall(rbFiddleLibcFn(rbFiddleReallocFn, "realloc"), &in, &fl)
+	r, _, _ := rbFiddleCall(&rbFiddleLibcSlot, rbFiddleLibcFn(rbFiddleReallocFn, "realloc"), &in, &fl)
 	if r == 0 && n > 0 {
 		panic(NewNoMemoryError(Ref(String("failed to allocate memory"))))
 	}
@@ -195,13 +195,16 @@ func rbFiddleCgocall(fn uintptr, arg unsafe.Pointer) int32
 //go:linkname rbFiddleTrampoline github.com/ebitengine/purego.syscallXABI0
 var rbFiddleTrampoline uintptr
 
-// rbFiddleArgsPool holds argument blocks: heap, not stack, since a callback into Go during the call may move the goroutine's stack.
-var rbFiddleArgsPool = sync.Pool{New: func() any { return new(rbFiddleArgs) }}
-
 // rbFiddleCall calls fn with in and fl (float64 bits) in registers; RegisterFunc's reflect costs ~10x the call (decision 329).
-// errno is read on the calling thread right after the call: by purego's trampoline on darwin, by a second call elsewhere.
-func rbFiddleCall(fn uintptr, in *[8]uintptr, fl *[8]uint64) (r uintptr, f uint64, errno Integer) {
-	s := rbFiddleArgsPool.Get().(*rbFiddleArgs) //nolint:forcetypeassert // the pool's New
+// The argument block is heap memory, not the stack, since a callback into Go during the call may move the goroutine's
+// stack. slot caches one per C function, taken with an atomic swap (a sync.Pool round trip cost more than half the
+// call); a concurrent call on another thread finds it empty and makes its own. errno is read on the calling thread
+// right after the call: by purego's trampoline on darwin, by a second call elsewhere.
+func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr, fl *[8]uint64) (r uintptr, f uint64, errno Integer) {
+	s := slot.Swap(nil)
+	if s == nil {
+		s = new(rbFiddleArgs)
+	}
 	s.fn = fn
 	s.a1, s.a2, s.a3, s.a4, s.a5, s.a6, s.a7, s.a8 = in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7]
 	s.f1, s.f2, s.f3, s.f4, s.f5, s.f6, s.f7, s.f8 = fl[0], fl[1], fl[2], fl[3], fl[4], fl[5], fl[6], fl[7]
@@ -220,20 +223,24 @@ func rbFiddleCall(fn uintptr, in *[8]uintptr, fl *[8]uint64) (r uintptr, f uint6
 		}
 		runtime.UnlockOSThread()
 	}
-	rbFiddleArgsPool.Put(s)
+	slot.Store(s)
 	return r, f, errno
 }
+
+// rbFiddleLibcSlot is the argument block libc's malloc, free and realloc share.
+var rbFiddleLibcSlot atomic.Pointer[rbFiddleArgs]
 
 // rbFiddleCall1 is a one-argument libc call (malloc, free).
 func rbFiddleCall1(fn, a uintptr) uintptr {
 	in := [8]uintptr{a}
 	var fl [8]uint64
-	r, _, _ := rbFiddleCall(fn, &in, &fl)
+	r, _, _ := rbFiddleCall(&rbFiddleLibcSlot, fn, &in, &fl)
 	return r
 }
 
 // rbFiddleCFunc is a bound C function: its address and TYPE_* codes; every register-passed signature goes through rbFiddleCall.
 type rbFiddleCFunc struct {
+	slot  atomic.Pointer[rbFiddleArgs]
 	addr  uintptr
 	args  []Integer
 	ret   Integer
@@ -389,7 +396,7 @@ func rbFiddleInvokeArgs(fn *rbFiddleCFunc, args []any) any {
 		}
 		ni++
 	}
-	r, f, errno := rbFiddleCall(fn.addr, &in, &fl)
+	r, f, errno := rbFiddleCall(&fn.slot, fn.addr, &in, &fl)
 	runtime.KeepAlive(&keep)
 	rbFiddleSetErrno(errno)
 	return rbFiddleValue(fn.ret, r, math.Float64frombits(f))
