@@ -284,6 +284,9 @@ func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, arg
 	return f.callEntry(n, mm, recv, nodes, block) // a method_missing taking &block gets the call's (bindata's `struct :e_ident do ... end`)
 }
 
+// notImplemented are MRI's rb_f_notimplement methods here (a Go program cannot fork): respond_to? is false (decision 326).
+var notImplemented = map[string]bool{"fork": true}
+
 // rubyPrivate names methods Ruby makes private whoever defines them.
 var rubyPrivate = map[string]bool{"initialize": true, "respond_to_missing?": true, "initialize_copy": true}
 
@@ -316,6 +319,10 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	}
 	if name == "" || cls == nil {
 		return expr{}, false
+	}
+	if e := cls.lookup(name); e != nil && e.M.File != nil && e.M.File.isPrelude() && notImplemented[name] {
+		f.discard(recv) // MRI's rb_f_notimplement: defined, raises NotImplementedError, and respond_to? is false
+		return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
 	}
 	if e := cls.lookup(name); e != nil && (priv || !e.M.Private && !rubyPrivate[name] || kernelModuleFunction(e.M, recv.typ)) {
 		f.discard(recv)

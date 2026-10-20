@@ -153,37 +153,105 @@ class SystemCallError < StandardError
 end
 
 module Errno
-  class EINVAL < SystemCallError; end
-  class ENOENT < SystemCallError; end
-  class EBADF < SystemCallError; end
-  class ECHILD < SystemCallError; end
-  class EEXIST < SystemCallError; end
-  class EISDIR < SystemCallError; end
-  class ENOTDIR < SystemCallError; end
-  class EACCES < SystemCallError; end
-  class ENOTEMPTY < SystemCallError; end
-  class EBUSY < SystemCallError; end
-  class EROFS < SystemCallError; end
-  class ELOOP < SystemCallError; end
-  class EAGAIN < SystemCallError; end
-  class ECONNREFUSED < SystemCallError; end
-  class EADDRINUSE < SystemCallError; end
-  class EADDRNOTAVAIL < SystemCallError; end
-  class EPIPE < SystemCallError; end
-  class ESPIPE < SystemCallError; end
-  class ECONNRESET < SystemCallError; end
-  class ECONNABORTED < SystemCallError; end
-  class ENOTCONN < SystemCallError; end
-  class EISCONN < SystemCallError; end
-  class EDESTADDRREQ < SystemCallError; end
-  class ETIMEDOUT < SystemCallError; end
-  class EHOSTUNREACH < SystemCallError; end
-  class ENETUNREACH < SystemCallError; end
-  class EAFNOSUPPORT < SystemCallError; end
-  class EMFILE < SystemCallError; end
-  class ENOTTY < SystemCallError; end
-  class ENODEV < SystemCallError; end
-  class ERANGE < SystemCallError; end
+  class EINVAL < SystemCallError
+    Errno = ::Errno::EINVAL.new.errno.to_i #: Integer
+  end
+  class ENOENT < SystemCallError
+    Errno = ::Errno::ENOENT.new.errno.to_i #: Integer
+  end
+  class EBADF < SystemCallError
+    Errno = ::Errno::EBADF.new.errno.to_i #: Integer
+  end
+  class ECHILD < SystemCallError
+    Errno = ::Errno::ECHILD.new.errno.to_i #: Integer
+  end
+  class EEXIST < SystemCallError
+    Errno = ::Errno::EEXIST.new.errno.to_i #: Integer
+  end
+  class EISDIR < SystemCallError
+    Errno = ::Errno::EISDIR.new.errno.to_i #: Integer
+  end
+  class ENOTDIR < SystemCallError
+    Errno = ::Errno::ENOTDIR.new.errno.to_i #: Integer
+  end
+  class EACCES < SystemCallError
+    Errno = ::Errno::EACCES.new.errno.to_i #: Integer
+  end
+  class ENOTEMPTY < SystemCallError
+    Errno = ::Errno::ENOTEMPTY.new.errno.to_i #: Integer
+  end
+  class EBUSY < SystemCallError
+    Errno = ::Errno::EBUSY.new.errno.to_i #: Integer
+  end
+  class EROFS < SystemCallError
+    Errno = ::Errno::EROFS.new.errno.to_i #: Integer
+  end
+  class ELOOP < SystemCallError
+    Errno = ::Errno::ELOOP.new.errno.to_i #: Integer
+  end
+  class EAGAIN < SystemCallError
+    Errno = ::Errno::EAGAIN.new.errno.to_i #: Integer
+  end
+  class ECONNREFUSED < SystemCallError
+    Errno = ::Errno::ECONNREFUSED.new.errno.to_i #: Integer
+  end
+  class EADDRINUSE < SystemCallError
+    Errno = ::Errno::EADDRINUSE.new.errno.to_i #: Integer
+  end
+  class EADDRNOTAVAIL < SystemCallError
+    Errno = ::Errno::EADDRNOTAVAIL.new.errno.to_i #: Integer
+  end
+  class EPIPE < SystemCallError
+    Errno = ::Errno::EPIPE.new.errno.to_i #: Integer
+  end
+  class ESPIPE < SystemCallError
+    Errno = ::Errno::ESPIPE.new.errno.to_i #: Integer
+  end
+  class ECONNRESET < SystemCallError
+    Errno = ::Errno::ECONNRESET.new.errno.to_i #: Integer
+  end
+  class ECONNABORTED < SystemCallError
+    Errno = ::Errno::ECONNABORTED.new.errno.to_i #: Integer
+  end
+  class ENOTCONN < SystemCallError
+    Errno = ::Errno::ENOTCONN.new.errno.to_i #: Integer
+  end
+  class EISCONN < SystemCallError
+    Errno = ::Errno::EISCONN.new.errno.to_i #: Integer
+  end
+  class EDESTADDRREQ < SystemCallError
+    Errno = ::Errno::EDESTADDRREQ.new.errno.to_i #: Integer
+  end
+  class ETIMEDOUT < SystemCallError
+    Errno = ::Errno::ETIMEDOUT.new.errno.to_i #: Integer
+  end
+  class EHOSTUNREACH < SystemCallError
+    Errno = ::Errno::EHOSTUNREACH.new.errno.to_i #: Integer
+  end
+  class ENETUNREACH < SystemCallError
+    Errno = ::Errno::ENETUNREACH.new.errno.to_i #: Integer
+  end
+  class EAFNOSUPPORT < SystemCallError
+    Errno = ::Errno::EAFNOSUPPORT.new.errno.to_i #: Integer
+  end
+  class EMFILE < SystemCallError
+    Errno = ::Errno::EMFILE.new.errno.to_i #: Integer
+  end
+  class ENOTTY < SystemCallError
+    Errno = ::Errno::ENOTTY.new.errno.to_i #: Integer
+  end
+  class ENODEV < SystemCallError
+    Errno = ::Errno::ENODEV.new.errno.to_i #: Integer
+  end
+  class ERANGE < SystemCallError
+    Errno = ::Errno::ERANGE.new.errno.to_i #: Integer
+  end
+  class ENOSYS < SystemCallError
+    Errno = ::Errno::ENOSYS.new.errno.to_i #: Integer
+  end
+  class EOPNOTSUPP < SystemCallError
+    Errno = ::Errno::EOPNOTSUPP.new.errno.to_i #: Integer
+  end
 end
 
 class RuntimeError < StandardError; end

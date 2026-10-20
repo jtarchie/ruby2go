@@ -32,6 +32,9 @@ var rbFiddleDefault = uintptr(purego.RTLD_DEFAULT)
 // rbFiddleDlopen is dlopen(3); a nil path is the program itself (every loaded library, RTLD_DEFAULT).
 func rbFiddleDlopen(path *String, flags Integer) Integer {
 	if path == nil {
+		if runtime.GOOS == "linux" { // MRI's process links libm; a binary without cgo links only libc
+			_, _ = purego.Dlopen("libm.so.6", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		}
 		return Integer(rbFiddleDefault)
 	}
 	h, err := purego.Dlopen(string(*path), int(flags))

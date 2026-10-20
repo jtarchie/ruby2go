@@ -51,7 +51,8 @@ module FiddleTests
 
     def test_last_error_is_errno
       open = Fiddle::Function.new(libc["open"], [Fiddle::TYPE_CONST_STRING, Fiddle::TYPE_INT], Fiddle::TYPE_INT)
-      assert_equal [-1, Errno::ENOENT.new.errno], [open.call("/nonexistent/rb2go-fiddle", 0), Fiddle.last_error]
+      assert_equal [-1, Errno::ENOENT::Errno], [open.call("/nonexistent/rb2go-fiddle", 0), Fiddle.last_error]
+      assert_equal [Errno::ENOSYS.new.errno, Errno::EOPNOTSUPP.new.errno], [Errno::ENOSYS::Errno, Errno::EOPNOTSUPP::Errno]
     end
 
     def test_pointer_bytes

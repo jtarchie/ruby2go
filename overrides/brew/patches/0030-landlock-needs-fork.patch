@@ -1,0 +1,28 @@
+Subject: Landlock: unavailable without fork
+
+Landlock is applied in a forked child that keeps running Ruby. On a Ruby whose fork is not implemented
+(respond_to?(:fork) is false, as MRI reports for rb_f_notimplement methods; a compiled brew is one) report
+:missing_fork, so brew runs the step unsandboxed with its usual warning instead of failing in safe_fork.
+---
+diff --git a/Library/Homebrew/extend/os/linux/sandbox/landlock.rb b/Library/Homebrew/extend/os/linux/sandbox/landlock.rb
+index 94a6aba359..369b1f313d 100644
+--- a/Library/Homebrew/extend/os/linux/sandbox/landlock.rb
++++ b/Library/Homebrew/extend/os/linux/sandbox/landlock.rb
+@@ -137,6 +137,8 @@ class Sandbox
+           "Landlock cannot be used because Linux sandboxing is disabled."
+         when :missing_fiddle
+           "Landlock requires Ruby's bundled Fiddle library."
++        when :missing_fork
++          "Landlock requires a Ruby that implements fork."
+         when :unsupported
+           "Landlock is not supported by this Linux kernel."
+         when :disabled
+@@ -253,6 +255,8 @@ class Sandbox
+         rescue LoadError
+           return :missing_fiddle
+         end
++        # Landlock is applied in a forked child, which needs a Ruby that implements fork.
++        return :missing_fork unless Process.respond_to?(:fork)
+ 
+         version = kernel_abi_version
+         if version

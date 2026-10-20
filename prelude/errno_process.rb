@@ -3,8 +3,12 @@
 # Errno::ESRCH and Errno::EPERM, Process.kill's errors: loaded when a program names either (decision 241), so other
 # programs do not carry two more exception classes. rbSysErr builds them through rbKillErrnoHook.
 module Errno
-  class ESRCH < SystemCallError; end
-  class EPERM < SystemCallError; end
+  class ESRCH < SystemCallError
+    Errno = ::Errno::ESRCH.new.errno.to_i #: Integer
+  end
+  class EPERM < SystemCallError
+    Errno = ::Errno::EPERM.new.errno.to_i #: Integer
+  end
 end
 
 %x{
