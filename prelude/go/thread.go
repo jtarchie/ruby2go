@@ -34,6 +34,9 @@ func rbGoID() int64 {
 
 // rbCurrentThread is Thread.current: the Thread this goroutine runs, else main (a ractor's own goroutine is its main thread, as in MRI).
 func rbCurrentThread() *Thread {
+	if rbThreadSeq.Load() == 0 {
+		return rbMainThread // no Thread started yet, so every goroutine is main's: skips rbGoID, which Fiddle's last_error pays per C call
+	}
 	if t, ok := rbThreadOf.Load(rbGoID()); ok {
 		return t.(*Thread)
 	}

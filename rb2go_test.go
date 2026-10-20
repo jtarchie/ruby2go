@@ -1262,16 +1262,25 @@ func TestVendoredGemsMRI(t *testing.T) {
 // TestVendoredMirror checks vendored/<name>/*.rb, the committed copy the embed reads, against the gems/<name>/lib submodule it
 // mirrors (scripts/vendor-gems, decision 328).
 func TestVendoredMirror(t *testing.T) {
-	libs, err := filepath.Glob(filepath.Join("gems", "*", "lib", "*.rb"))
+	gems, err := filepath.Glob(filepath.Join("gems", "*", "lib"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	var libs []string
+	for _, dir := range gems {
+		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && strings.HasSuffix(path, ".rb") {
+				libs = append(libs, path)
+			}
+			return err
+		})
+	}
 	if len(libs) == 0 {
-		t.Fatal("no gems/*/lib/*.rb: run `git submodule update --init`")
+		t.Fatal("no gems/*/lib/**/*.rb: run `git submodule update --init`")
 	}
 	for _, lib := range libs {
-		name := filepath.Base(filepath.Dir(filepath.Dir(lib)))
-		mirror := filepath.Join("vendored", name, filepath.Base(lib))
+		parts := strings.SplitN(filepath.ToSlash(lib), "/", 4) // gems/<name>/lib/<rel>
+		mirror := filepath.Join("vendored", parts[1], parts[3])
 		want, err := os.ReadFile(lib) //nolint:gosec // our own paths
 		if err != nil {
 			t.Fatal(err)
