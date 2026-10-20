@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"iter"
+	"maps"
 	"math"
 	"math/bits"
 	"os"
@@ -1013,12 +1014,18 @@ var rbFrozenLits = func() map[rbStrID]struct{} {
 	return m
 }()
 
-// rbFrozenStrs holds the computed strings String#freeze marked, by address and length, each with a weak pointer
-// to its bytes: frozen? is a lock-free load, a freeze locks one trie node (no process-wide lock), and the set
-// does not pin its strings (the copy-on-write shards it replaces copied about n/256 entries per freeze and kept
-// every frozen string alive; decision 329). An entry whose bytes died reads as unfrozen, so a new string at a
-// reused address is not frozen; rbFrozenSweep drops dead entries once the set doubles (and grew by 16k).
-var rbFrozenStrs sync.Map // rbStrKey -> rbFrozenEntry
+// rbFrozenShards hold the computed strings String#freeze marked, by address and length, each with a weak pointer
+// to its bytes, in 256 shards by address, each a plain map behind its own mutex (held for one map operation; no
+// process-wide lock, decision 147). The set does not pin its strings: an entry whose bytes died reads as unfrozen, so
+// a new string at a reused address is not frozen, and a shard drops its dead entries when it has doubled. (The
+// copy-on-write shards before copied about n/256 entries per freeze and kept every frozen string alive; a sync.Map
+// after them cost twice weak.Make itself; decision 329.)
+var rbFrozenShards [256]struct {
+	mu   sync.Mutex
+	m    map[rbStrKey]rbFrozenEntry
+	next int      // the size that triggers the next sweep
+	_    [40]byte // a cache line each
+}
 
 // rbStrKey is rbStrID without the pointer, so the set does not keep the bytes alive.
 type rbStrKey struct {
@@ -1035,12 +1042,8 @@ type rbFrozenEntry struct {
 // live reports whether the frozen bytes are still the ones at the key's address.
 func (e rbFrozenEntry) live() bool { return e.immortal || e.w.Value() != nil }
 
-var (
-	rbFrozenNoBytes  atomic.Bool  // whether the "" with a nil data pointer was frozen
-	rbFrozenCount    atomic.Int64 // entries stored since the last sweep, plus those it kept
-	rbFrozenNext     atomic.Int64 // the count that triggers the next sweep
-	rbFrozenSweeping atomic.Bool
-)
+// rbFrozenNoBytes is whether the "" with a nil data pointer was frozen.
+var rbFrozenNoBytes atomic.Bool
 
 // The linker's bounds of read-only data, where Go's string constants live (strconv's digits, one-byte strings).
 //
@@ -1065,37 +1068,30 @@ func rbStrFrozen(s string, freeze bool) bool {
 		return rbFrozenNoBytes.Load()
 	}
 	key := rbStrKey{uintptr(unsafe.Pointer(p)), len(s)} //nolint:gosec // a key, never dereferenced
-	if !freeze {
-		e, ok := rbFrozenStrs.Load(key)
-		return ok && e.(rbFrozenEntry).live() //nolint:forcetypeassert // only entries are stored
-	}
-	e := rbFrozenEntry{immortal: true}
-	if key.p < uintptr(unsafe.Pointer(&rbRodata)) || key.p >= uintptr(unsafe.Pointer(&rbErodata)) { //nolint:gosec // address compare only
-		e = rbFrozenEntry{w: weak.Make(p)} // the same bytes give the same handle, so re-freezing stores an equal entry
-	}
-	old, loaded := rbFrozenStrs.Swap(key, e)
-	if !loaded && rbFrozenCount.Add(1) > max(rbFrozenNext.Load(), 1<<14) {
-		rbFrozenSweep()
-	}
-	return loaded && old.(rbFrozenEntry).live() //nolint:forcetypeassert // only entries are stored
-}
-
-// rbFrozenSweep deletes entries whose bytes died; one sweeper at a time, the next once the set doubles again.
-func rbFrozenSweep() {
-	if !rbFrozenSweeping.CompareAndSwap(false, true) {
-		return
-	}
-	defer rbFrozenSweeping.Store(false)
-	var kept int64
-	rbFrozenStrs.Range(func(k, e any) bool {
-		if e.(rbFrozenEntry).live() { //nolint:forcetypeassert // only entries are stored
-			kept++
-		} else if rbFrozenStrs.CompareAndDelete(k, e) {
-			rbFrozenCount.Add(-1)
+	sh := &rbFrozenShards[(key.p>>4^key.p>>12)&255]
+	var e rbFrozenEntry
+	if freeze { // made outside the lock: weak.Make is most of a freeze
+		e = rbFrozenEntry{immortal: true}
+		if key.p < uintptr(unsafe.Pointer(&rbRodata)) || key.p >= uintptr(unsafe.Pointer(&rbErodata)) { //nolint:gosec // address compare only
+			e = rbFrozenEntry{w: weak.Make(p)}
 		}
-		return true
-	})
-	rbFrozenNext.Store(max(2*kept, kept+1<<14)) // at least 16k inserts between sweeps: a sweep visits every entry
+	}
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	old, ok := sh.m[key]
+	was := ok && old.live()
+	if !freeze || was {
+		return was
+	}
+	if sh.m == nil {
+		sh.m = map[rbStrKey]rbFrozenEntry{}
+	}
+	sh.m[key] = e
+	if len(sh.m) >= max(sh.next, 64) {
+		maps.DeleteFunc(sh.m, func(_ rbStrKey, e rbFrozenEntry) bool { return !e.live() })
+		sh.next = 2 * len(sh.m)
+	}
+	return false
 }
 
 func rbIsA[I any](r any) bool {

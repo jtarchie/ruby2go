@@ -208,7 +208,7 @@ func rbFiddleCall(fn uintptr, in *[8]uintptr, fl *[8]uint64) (r uintptr, f uint6
 	s.r8 = 0
 	if runtime.GOOS == "darwin" {
 		rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
-		r, f, errno = s.a1, s.f1, Integer(int32(s.a3)) //nolint:gosec // errno is a C int
+		r, f, errno = s.a1, s.f1, Integer(int32(s.a3))         //nolint:gosec // errno is a C int
 	} else {
 		runtime.LockOSThread()
 		rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
@@ -216,7 +216,7 @@ func rbFiddleCall(fn uintptr, in *[8]uintptr, fl *[8]uint64) (r uintptr, f uint6
 		if rbFiddleErrnoFn != 0 {
 			s.fn = rbFiddleErrnoFn
 			rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
-			errno = Integer(*(*int32)(rbFiddleAt(Integer(s.a1)))) //nolint:gosec // a1 is errno's address
+			errno = Integer(*(*int32)(rbFiddleAt(Integer(s.a1))))  //nolint:gosec // a1 is errno's address
 		}
 		runtime.UnlockOSThread()
 	}
@@ -395,13 +395,15 @@ func rbFiddleInvokeArgs(fn *rbFiddleCFunc, args []any) any {
 	return rbFiddleValue(fn.ret, r, math.Float64frombits(f))
 }
 
-// rbFiddleSetErrno is Fiddle.last_error = errno, a thread-local; an unchanged value skips the store (same result).
+// rbFiddleSetErrno is Fiddle.last_error = errno, a thread-local. The Thread's fiddleErrno (errno+1; 0: unknown, which
+// Thread#[]= resets it to) says what the last call stored, so an unchanged errno skips the store (decision 329).
 func rbFiddleSetErrno(errno Integer) {
 	t := rbCurrentThread()
-	if v, ok := t.locals.Load("__FIDDLE_LAST_ERROR__"); ok && v == any(errno) {
+	if t.fiddleErrno.Load() == int64(errno)+1 {
 		return
 	}
 	t.locals.Store("__FIDDLE_LAST_ERROR__", errno)
+	t.fiddleErrno.Store(int64(errno) + 1)
 }
 
 // rbFiddleValue reads type t from a register; narrow types are extended here, as the ABI leaves upper bits unspecified.

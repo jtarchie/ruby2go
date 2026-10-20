@@ -52,6 +52,12 @@ module FiddleTests
     def test_last_error_is_errno
       open = Fiddle::Function.new(libc["open"], [Fiddle::TYPE_CONST_STRING, Fiddle::TYPE_INT], Fiddle::TYPE_INT)
       assert_equal [-1, Errno::ENOENT::Errno], [open.call("/nonexistent/rb2go-fiddle", 0), Fiddle.last_error]
+      Fiddle.last_error = 7 # a call sets it again, even with the errno the call before it stored
+      open.call("/nonexistent/rb2go-fiddle", 0)
+      assert_equal [Errno::ENOENT::Errno, Errno::ENOENT::Errno], [Fiddle.last_error, Thread.current[:__FIDDLE_LAST_ERROR__]]
+      Thread.current[:__FIDDLE_LAST_ERROR__] = nil
+      open.call("/nonexistent/rb2go-fiddle", 0)
+      assert_equal Errno::ENOENT::Errno, Fiddle.last_error
       assert_equal [Errno::ENOSYS.new.errno, Errno::EOPNOTSUPP.new.errno], [Errno::ENOSYS::Errno, Errno::EOPNOTSUPP::Errno]
     end
 
