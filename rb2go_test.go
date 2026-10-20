@@ -1258,3 +1258,27 @@ func TestVendoredGemsMRI(t *testing.T) {
 		}
 	}
 }
+
+// TestVendoredMirror checks vendored/<name>/*.rb, the committed copy the embed reads, against the gems/<name>/lib submodule it
+// mirrors (scripts/vendor-gems, decision 328).
+func TestVendoredMirror(t *testing.T) {
+	libs, err := filepath.Glob(filepath.Join("gems", "*", "lib", "*.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(libs) == 0 {
+		t.Fatal("no gems/*/lib/*.rb: run `git submodule update --init`")
+	}
+	for _, lib := range libs {
+		name := filepath.Base(filepath.Dir(filepath.Dir(lib)))
+		mirror := filepath.Join("vendored", name, filepath.Base(lib))
+		want, err := os.ReadFile(lib) //nolint:gosec // our own paths
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(mirror) //nolint:gosec // our own paths
+		if err != nil || !bytes.Equal(want, got) {
+			t.Errorf("%s differs from %s (or is missing): run scripts/vendor-gems", mirror, lib)
+		}
+	}
+}

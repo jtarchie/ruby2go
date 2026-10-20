@@ -98,10 +98,10 @@ var mriLibs = map[string]bool{
 }
 
 // gemRequires lists required names (through -I files too) only an installed gem can answer (decision 173); it only parses.
-// vendoredLibs maps a require name to a vendored gem's lib file in the prelude FS (gems/<gem>/lib): pure Ruby that runs on MRI as
+// vendoredLibs maps a require name to a vendored gem's lib file in the prelude FS (vendored/<gem>/, a mirror of the gems/<gem> submodule): pure Ruby that runs on MRI as
 // a gem and is compiled here as user code (strict typing, extern synthesis), never looked up as an installed gem (decision 328).
 var vendoredLibs = map[string]string{
-	"sqlite3": "gems/sqlite3-fiddle/lib/sqlite3.rb",
+	"sqlite3": "vendored/sqlite3-fiddle/sqlite3.rb",
 }
 
 // builtinLib reports a require name the prelude or a vendored gem answers.

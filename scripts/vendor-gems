@@ -1,0 +1,10 @@
+#!/bin/sh
+# Mirrors each gems/<name>/lib/*.rb submodule file into vendored/<name>/ (decision 328): the Go embed reads the mirror, so
+# `go install ...@latest` works from the module proxy, which ships no submodule contents. TestVendoredMirror fails on drift.
+set -e
+cd "$(dirname "$0")/.."
+for lib in gems/*/lib; do
+  name=$(basename "$(dirname "$lib")")
+  mkdir -p "vendored/$name"
+  cp "$lib"/*.rb "vendored/$name/"
+done
