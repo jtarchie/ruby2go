@@ -18,7 +18,7 @@ import (
 // The character class leaves out prelude/go/0_stubs.go, the generated type-checking stubs (decision 154): helper files
 // must start with a letter.
 //
-//go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go vendored/*/*.rb
+//go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go vendored/*/*.rb vendored/*/*/*.rb vendored/*/*/*/*.rb
 var Prelude embed.FS
 
 // GemSigs holds vendored `.rbs` signatures for the gems rb2go compiles

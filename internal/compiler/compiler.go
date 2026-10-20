@@ -620,9 +620,10 @@ func (c *Compiler) loadPrelude(ctx context.Context, name string) {
 		panic(compileError{msg: err.Error()})
 	}
 	c.files = append(c.files, f)
+	before := len(c.mainStmts) // a vendored file collected earlier may have its own
 	c.collect(ctx, f)
-	if len(c.mainStmts) > 0 {
-		c.errorf(f, c.mainStmts[0], "prelude must not have top-level statements")
+	if len(c.mainStmts) > before {
+		c.errorf(f, c.mainStmts[before], "prelude must not have top-level statements")
 	}
 }
 
@@ -638,7 +639,15 @@ func (c *Compiler) loadVendored(ctx context.Context, name string) {
 		panic(compileError{msg: fmt.Sprintf("vendored gem: %v", err)})
 	}
 	var libs []string // its own top-level `require "x"` lines: the require scan covers only the program's files
+	root := strings.Join(strings.SplitN(name, "/", 3)[:2], "/") // vendored/<gem>
 	for _, m := range vendoredRequire.FindAllSubmatch(src, -1) {
+		// a file of the same gem (`require "sqlite3/database"`) is vendored too: loaded where MRI's require would load it
+		if own := root + "/" + strings.TrimSuffix(string(m[1]), ".rb") + ".rb"; fileExists(c.preludeFS, own) {
+			c.loadLibs(ctx, libs, false)
+			libs = nil
+			c.loadVendored(ctx, own)
+			continue
+		}
 		libs = append(libs, string(m[1]))
 	}
 	c.loadLibs(ctx, libs, false)
@@ -649,6 +658,11 @@ func (c *Compiler) loadVendored(ctx context.Context, name string) {
 	c.files = append(c.files, f)
 	c.userFiles = append(c.userFiles, f) // a user file, not a required one: its body is a file block before main's (no require site to splice it at)
 	c.collect(ctx, f)
+}
+
+func fileExists(fsys fs.FS, name string) bool {
+	_, err := fs.Stat(fsys, name)
+	return err == nil
 }
 
 var vendoredRequire = regexp.MustCompile(`(?m)^require "([^"]+)"$`)

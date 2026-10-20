@@ -257,7 +257,7 @@ module Sqlite3Tests
         SQLite3::Database.open(path) do |d|
           d.execute("create table k (v)")
           d.execute("insert into k values (1)")
-          assert_equal "t.db", File.basename(d.filename)
+          assert_equal "t.db", File.basename(d.filename.to_s)
         end
         ro = SQLite3::Database.new(path, readonly: true)
         assert ro.readonly?
