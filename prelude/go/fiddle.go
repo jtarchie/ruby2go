@@ -16,7 +16,11 @@ import (
 // Fiddle over purego without cgo (#32, decision 326); addresses are Integers, Pointer and friends are Ruby (fiddle.rb).
 
 // rbFiddleAt converts through memory: vet's unsafeptr flags a direct uintptr conversion, but this memory is never Go's.
+// Address 0 is MRI's DLError, never a Go nil dereference.
 func rbFiddleAt(addr Integer) unsafe.Pointer {
+	if addr == 0 {
+		panic(rbFiddleDLError("NULL pointer dereference"))
+	}
 	p := uintptr(addr)
 	return *(*unsafe.Pointer)(unsafe.Pointer(&p)) //nolint:gosec // C memory, never Go's
 }
@@ -62,28 +66,43 @@ func rbFiddleDlclose(h Integer) {
 	}
 }
 
-// rbFiddleLibc is libc's name for sym (malloc, free, the errno accessor), looked up once per program.
+// rbFiddleLibc is libc's name for sym (malloc, free, the errno accessor), looked up once per program; 0 when missing.
 func rbFiddleLibc(sym string) uintptr {
 	addr, err := purego.Dlsym(purego.RTLD_DEFAULT, sym)
 	if err != nil {
-		panic(rbFiddleDLError(err.Error()))
+		return 0
 	}
 	return addr
 }
 
-var rbFiddleMallocFn, rbFiddleFreeFn, rbFiddleReallocFn, rbFiddleErrnoFn = func() (m, f, r, e uintptr) {
-	defer func() { _ = recover() }() // a platform without them fails at the first call instead of at start
-	errnoSym := "__errno_location"
+// rbFiddleErrnoSym is libc's function returning errno's address.
+func rbFiddleErrnoSym() string {
 	if runtime.GOOS == "darwin" {
-		errnoSym = "__error"
+		return "__error"
 	}
-	return rbFiddleLibc("malloc"), rbFiddleLibc("free"), rbFiddleLibc("realloc"), rbFiddleLibc(errnoSym)
-}()
+	return "__errno_location"
+}
+
+// Each resolves on its own: a platform missing one fails at that function's first call, not at start.
+var (
+	rbFiddleMallocFn  = rbFiddleLibc("malloc")
+	rbFiddleFreeFn    = rbFiddleLibc("free")
+	rbFiddleReallocFn = rbFiddleLibc("realloc")
+	rbFiddleErrnoFn   = rbFiddleLibc(rbFiddleErrnoSym())
+)
+
+// rbFiddleLibcFn is fn, or DLError naming sym when libc lacks it (calling address 0 would crash).
+func rbFiddleLibcFn(fn uintptr, sym string) uintptr {
+	if fn == 0 {
+		panic(rbFiddleDLError("unknown symbol \"" + sym + "\""))
+	}
+	return fn
+}
 
 // rbFiddleMalloc is libc malloc, so C code may free what Ruby allocated; NoMemoryError when it fails.
 func rbFiddleMalloc(n Integer) Integer {
 	rbCheckAlloc(int(n), 1)
-	addr, _, _ := purego.SyscallN(rbFiddleMallocFn, uintptr(n))
+	addr, _, _ := purego.SyscallN(rbFiddleLibcFn(rbFiddleMallocFn, "malloc"), uintptr(n))
 	if addr == 0 && n > 0 {
 		panic(NewNoMemoryError(Ref(String("failed to allocate memory"))))
 	}
@@ -93,7 +112,7 @@ func rbFiddleMalloc(n Integer) Integer {
 // rbFiddleRealloc is libc realloc.
 func rbFiddleRealloc(addr, n Integer) Integer {
 	rbCheckAlloc(int(n), 1)
-	r, _, _ := purego.SyscallN(rbFiddleReallocFn, uintptr(addr), uintptr(n))
+	r, _, _ := purego.SyscallN(rbFiddleLibcFn(rbFiddleReallocFn, "realloc"), uintptr(addr), uintptr(n))
 	if r == 0 && n > 0 {
 		panic(NewNoMemoryError(Ref(String("failed to allocate memory"))))
 	}
@@ -102,7 +121,7 @@ func rbFiddleRealloc(addr, n Integer) Integer {
 
 // rbFiddleFree is libc free.
 func rbFiddleFree(addr Integer) {
-	purego.SyscallN(rbFiddleFreeFn, uintptr(addr))
+	purego.SyscallN(rbFiddleLibcFn(rbFiddleFreeFn, "free"), uintptr(addr))
 }
 
 // rbFiddleFreeAddr is the address of libc's free (Fiddle::RUBY_FREE's role: a free function C memory can carry).
@@ -110,9 +129,6 @@ func rbFiddleFreeAddr() Integer { return Integer(rbFiddleFreeFn) }
 
 // rbFiddleBytes is n bytes at addr.
 func rbFiddleBytes(addr, n Integer) []byte {
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	return unsafe.Slice((*byte)(rbFiddleAt(addr)), int(n)) //nolint:gosec // C memory the program owns
 }
 
@@ -126,9 +142,6 @@ func rbFiddleRead(addr, n Integer) String {
 
 // rbFiddleCString is the NUL-terminated string at addr.
 func rbFiddleCString(addr Integer) String {
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	n := 0
 	for *(*byte)(rbFiddleAt(addr + Integer(n))) != 0 {
 		n++
@@ -143,11 +156,17 @@ func rbFiddleWrite(addr Integer, s String) {
 	}
 }
 
+// rbFiddleChar is C's char at addr (Pointer#[]): signed, except on Linux arm64, where char is unsigned.
+func rbFiddleChar(addr Integer) Integer {
+	b := *(*byte)(rbFiddleAt(addr))
+	if runtime.GOOS == "linux" && runtime.GOARCH == "arm64" {
+		return Integer(b)
+	}
+	return Integer(int8(b)) //nolint:gosec // C's signed char
+}
+
 // rbFiddleWord is the pointer-sized value at addr (Pointer#ptr).
 func rbFiddleWord(addr Integer) Integer {
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	return Integer(*(*uintptr)(rbFiddleAt(addr)))
 }
 
@@ -173,29 +192,37 @@ func rbFiddleCheckType(t Integer) {
 	}
 }
 
-// rbFiddlePrepare binds addr (Function.new); past 8 int or 8 float arguments the stack layout differs per platform.
-func rbFiddlePrepare(addr Integer, args *Array[Integer], ret Integer) any {
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL function pointer"))
-	}
-	fn := &rbFiddleCFunc{ret: ret, float: rbFiddleIsFloat(ret)}
+// rbFiddleCheckArgs rejects argument types purego cannot pass: past 8 int or 8 float the stack layout differs per platform.
+func rbFiddleCheckArgs(args []Integer) {
 	ni, nf := 0, 0
-	for _, t := range args.s {
+	for _, t := range args {
 		rbFiddleCheckType(t)
 		switch {
 		case t == 0:
-			continue // (void)
 		case rbFiddleIsFloat(t):
 			nf++
 		default:
 			ni++
 		}
-		fn.args = append(fn.args, t)
 	}
-	rbFiddleCheckType(ret)
 	if ni > 8 || nf > 8 {
 		panic(NewNotImplementedError(Ref(String("rb2go: Fiddle calls take at most 8 integer and 8 floating-point arguments"))))
 	}
+}
+
+// rbFiddlePrepare binds addr (Function.new).
+func rbFiddlePrepare(addr Integer, args *Array[Integer], ret Integer) any {
+	if addr == 0 {
+		panic(rbFiddleDLError("NULL function pointer"))
+	}
+	fn := &rbFiddleCFunc{ret: ret, float: rbFiddleIsFloat(ret)}
+	rbFiddleCheckArgs(args.s)
+	for _, t := range args.s {
+		if t != 0 { // (void)
+			fn.args = append(fn.args, t)
+		}
+	}
+	rbFiddleCheckType(ret)
 	if fn.float {
 		purego.RegisterFunc(&fn.flts, uintptr(addr))
 	} else {
@@ -295,10 +322,12 @@ func rbFiddleValue(t Integer, r uintptr, f float64) any {
 
 // rbFiddleCallback is a C function pointer calling blk (Closure); purego caps them at 2000, never frees, returns no floats.
 func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) any) Integer {
+	rbFiddleCheckType(ret)
 	if rbFiddleIsFloat(ret) {
 		panic(NewNotImplementedError(Ref(String("rb2go: a Fiddle::Closure cannot return float or double (purego)"))))
 	}
 	types := slices.Clone(args.s)
+	rbFiddleCheckArgs(types)
 	cb := func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) uintptr {
 		in := [8]uintptr{i0, i1, i2, i3, i4, i5, i6, i7}
 		fl := [8]float64{f0, f1, f2, f3, f4, f5, f6, f7}
@@ -333,9 +362,6 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 // rbFiddleGetInt reads an integer member of C type t at addr.
 func rbFiddleGetInt(addr, t Integer) Integer {
 	p := rbFiddleAt(addr)
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	switch t {
 	case 2:
 		return Integer(*(*int8)(p))
@@ -356,9 +382,6 @@ func rbFiddleGetInt(addr, t Integer) Integer {
 // rbFiddleSetInt writes an integer member of C type t at addr, wrapping as C does.
 func rbFiddleSetInt(addr, t, v Integer) {
 	p := rbFiddleAt(addr)
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	switch t {
 	case 2, -2, 11:
 		*(*uint8)(p) = uint8(v) //nolint:gosec // C's truncation
@@ -373,9 +396,6 @@ func rbFiddleSetInt(addr, t, v Integer) {
 
 // rbFiddleGetFloat reads a float (t 7) or double member at addr.
 func rbFiddleGetFloat(addr, t Integer) Float {
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	if t == 7 {
 		return Float(*(*float32)(rbFiddleAt(addr)))
 	}
@@ -384,9 +404,6 @@ func rbFiddleGetFloat(addr, t Integer) Float {
 
 // rbFiddleSetFloat writes a float (t 7) or double member at addr.
 func rbFiddleSetFloat(addr, t Integer, v Float) {
-	if addr == 0 {
-		panic(rbFiddleDLError("NULL pointer dereference"))
-	}
 	if t == 7 {
 		*(*float32)(rbFiddleAt(addr)) = float32(v)
 		return

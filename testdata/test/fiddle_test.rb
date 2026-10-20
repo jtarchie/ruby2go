@@ -60,6 +60,8 @@ module FiddleTests
       ptr[0, 8] = "abcdefgh"
       ptr[1] = 90
       assert_equal ["aZcdefgh", 90, "cd", 8, false], [ptr[0, 8], ptr[1], (ptr + 2)[0, 2], ptr.size, ptr.null?]
+      ptr[2] = 200
+      assert_equal RUBY_PLATFORM.match?(/\A(?:aarch64|arm64)-linux/) ? 200 : -56, ptr[2] # C's char is unsigned only on Linux arm64
       assert_equal [3, 1], [(ptr + 3).to_i - ptr.to_i, ptr.to_i - (ptr - 1).to_i]
       assert_equal [true, false], [ptr == Fiddle::Pointer.new(ptr.to_i), ptr == Fiddle::Pointer.new(0)]
       assert ptr.to_i == ptr.ref.ptr.to_i

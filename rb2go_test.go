@@ -481,10 +481,18 @@ var preludeWhole = sync.OnceValues(func() ([]byte, error) {
 	return compiler.PreludeWhole(context.Background(), Prelude)
 })
 
-// exportData finds a package's compiled export data through the repo's module, so runtime modules (purego) resolve too.
-func exportData(t *testing.T) func(path string) (io.ReadCloser, error) {
+// exportData finds the compiled export data of f's imports through the repo's module, so runtime modules (purego) resolve too.
+func exportData(t *testing.T, f *ast.File) func(path string) (io.ReadCloser, error) {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "go", "list", "-export", "-deps", "-f", "{{.ImportPath}} {{.Export}}", "std", "github.com/ebitengine/purego").Output()
+	args := append(make([]string, 0, 5+len(f.Imports)), "list", "-export", "-deps", "-f", "{{.ImportPath}} {{.Export}}")
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, path)
+	}
+	out, err := exec.CommandContext(t.Context(), "go", args...).Output() //nolint:gosec // import paths of the prelude's own Go
 	if err != nil {
 		t.Fatalf("go list -export: %v", err)
 	}
@@ -516,7 +524,7 @@ func TestPreludeWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errs []string
-	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", exportData(t)), Error: func(err error) { errs = append(errs, err.Error()) }}
+	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", exportData(t, f)), Error: func(err error) { errs = append(errs, err.Error()) }}
 	_, _ = conf.Check("main", fset, []*ast.File{f}, nil)
 	if len(errs) > 0 {
 		t.Errorf("%d type errors in the unpruned prelude, first ones:\n%s", len(errs), strings.Join(errs[:min(20, len(errs))], "\n"))

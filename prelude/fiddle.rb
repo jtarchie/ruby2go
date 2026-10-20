@@ -205,7 +205,8 @@ module Fiddle
         ptr[0, val.bytesize + 1] = val + "\0"
         ptr.size = val.bytesize
         ptr
-      when IO then new(val.fileno)
+      # ponytail: MRI's is the IO's FILE*; an fd number as an address would crash C. Add fdopen(3) by the fd's flags if needed.
+      when IO then raise NotImplementedError, "rb2go: Fiddle::Pointer of an IO (MRI's FILE*)"
       when CStruct then val.to_ptr
       else raise TypeError, "can't convert #{val.class} into Fiddle::Pointer"
       end
@@ -326,7 +327,7 @@ module Fiddle
     def [](offset)
       raise DLError, "NULL pointer dereference" if @addr.zero?
 
-      Pointer.read(@addr + offset, 1).getbyte(0) || 0
+      Fiddle.__char(@addr + offset)
     end
 
     #: (Integer, Integer) -> String
@@ -514,6 +515,9 @@ module Fiddle
 
   #: (Integer) -> Integer
   def self.__word(addr) = %x{ rbFiddleWord(addr) }
+
+  #: (Integer) -> Integer
+  def self.__char(addr) = %x{ rbFiddleChar(addr) }
 
   #: (Integer, Integer) -> Integer
   def self.__get_i(addr, t) = %x{ rbFiddleGetInt(addr, t) }

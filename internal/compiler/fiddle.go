@@ -153,9 +153,6 @@ func (c *Compiler) collectFiddleCall(ctx context.Context, f *File, cls *Class, n
 	if err != nil {
 		c.errorf(f, n, "Fiddle::Importer#%s: %v", n.Name, err)
 	}
-	if n.Name == "extern" {
-		name = strings.SplitN(name, "@", 2)[0]
-	}
 	params := make([]string, 0, len(argTypes))
 	types := make([]string, 0, len(argTypes))
 	for i, t := range argTypes {
