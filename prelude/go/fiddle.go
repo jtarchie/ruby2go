@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"structs"
+	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -102,7 +104,7 @@ func rbFiddleLibcFn(fn uintptr, sym string) uintptr {
 // rbFiddleMalloc is libc malloc, so C code may free what Ruby allocated; NoMemoryError when it fails.
 func rbFiddleMalloc(n Integer) Integer {
 	rbCheckAlloc(int(n), 1)
-	addr, _, _ := purego.SyscallN(rbFiddleLibcFn(rbFiddleMallocFn, "malloc"), uintptr(n))
+	addr := rbFiddleCall1(rbFiddleLibcFn(rbFiddleMallocFn, "malloc"), uintptr(n))
 	if addr == 0 && n > 0 {
 		panic(NewNoMemoryError(Ref(String("failed to allocate memory"))))
 	}
@@ -112,7 +114,9 @@ func rbFiddleMalloc(n Integer) Integer {
 // rbFiddleRealloc is libc realloc.
 func rbFiddleRealloc(addr, n Integer) Integer {
 	rbCheckAlloc(int(n), 1)
-	r, _, _ := purego.SyscallN(rbFiddleLibcFn(rbFiddleReallocFn, "realloc"), uintptr(addr), uintptr(n))
+	in := [8]uintptr{uintptr(addr), uintptr(n)}
+	var fl [8]uint64
+	r, _, _ := rbFiddleCall(rbFiddleLibcFn(rbFiddleReallocFn, "realloc"), &in, &fl)
 	if r == 0 && n > 0 {
 		panic(NewNoMemoryError(Ref(String("failed to allocate memory"))))
 	}
@@ -121,7 +125,7 @@ func rbFiddleRealloc(addr, n Integer) Integer {
 
 // rbFiddleFree is libc free.
 func rbFiddleFree(addr Integer) {
-	purego.SyscallN(rbFiddleLibcFn(rbFiddleFreeFn, "free"), uintptr(addr))
+	rbFiddleCall1(rbFiddleLibcFn(rbFiddleFreeFn, "free"), uintptr(addr))
 }
 
 // rbFiddleFreeAddr is the address of libc's free (Fiddle::RUBY_FREE's role: a free function C memory can carry).
@@ -170,10 +174,66 @@ func rbFiddleWord(addr Integer) Integer {
 	return Integer(*(*uintptr)(rbFiddleAt(addr)))
 }
 
-// rbFiddleCFunc fits every register-passed C signature: int and float registers fill independently; unread ones are ignored.
+// rbFiddleArgs is purego's syscallArgs (syscall.go, v0.11.2, 64-bit): the block its trampoline loads registers from and stores results in.
+type rbFiddleArgs struct {
+	_ structs.HostLayout
+
+	fn, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15                uintptr
+	a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30, a31, a32 uintptr
+	f1, f2, f3, f4, f5, f6, f7, f8                                                      uint64
+	r8                                                                                  uintptr
+}
+
+// rbFiddleCgocall is the runtime's C call, which purego itself links to.
+//
+//go:linkname rbFiddleCgocall runtime.cgocall
+func rbFiddleCgocall(fn uintptr, arg unsafe.Pointer) int32
+
+// rbFiddleTrampoline is purego's assembly that moves an rbFiddleArgs into registers, calls, and stores the results (and errno on darwin).
+//
+//go:linkname rbFiddleTrampoline github.com/ebitengine/purego.syscallXABI0
+var rbFiddleTrampoline uintptr
+
+// rbFiddleArgsPool holds argument blocks: heap, not stack, since a callback into Go during the call may move the goroutine's stack.
+var rbFiddleArgsPool = sync.Pool{New: func() any { return new(rbFiddleArgs) }}
+
+// rbFiddleCall calls fn with in and fl (float64 bits) in registers; RegisterFunc's reflect costs ~10x the call (decision 329).
+// errno is read on the calling thread right after the call: by purego's trampoline on darwin, by a second call elsewhere.
+func rbFiddleCall(fn uintptr, in *[8]uintptr, fl *[8]uint64) (r uintptr, f uint64, errno Integer) {
+	s := rbFiddleArgsPool.Get().(*rbFiddleArgs) //nolint:forcetypeassert // the pool's New
+	s.fn = fn
+	s.a1, s.a2, s.a3, s.a4, s.a5, s.a6, s.a7, s.a8 = in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7]
+	s.f1, s.f2, s.f3, s.f4, s.f5, s.f6, s.f7, s.f8 = fl[0], fl[1], fl[2], fl[3], fl[4], fl[5], fl[6], fl[7]
+	s.r8 = 0
+	if runtime.GOOS == "darwin" {
+		rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
+		r, f, errno = s.a1, s.f1, Integer(int32(s.a3)) //nolint:gosec // errno is a C int
+	} else {
+		runtime.LockOSThread()
+		rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
+		r, f = s.a1, s.f1
+		if rbFiddleErrnoFn != 0 {
+			s.fn = rbFiddleErrnoFn
+			rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
+			errno = Integer(*(*int32)(rbFiddleAt(Integer(s.a1)))) //nolint:gosec // a1 is errno's address
+		}
+		runtime.UnlockOSThread()
+	}
+	rbFiddleArgsPool.Put(s)
+	return r, f, errno
+}
+
+// rbFiddleCall1 is a one-argument libc call (malloc, free).
+func rbFiddleCall1(fn, a uintptr) uintptr {
+	in := [8]uintptr{a}
+	var fl [8]uint64
+	r, _, _ := rbFiddleCall(fn, &in, &fl)
+	return r
+}
+
+// rbFiddleCFunc is a bound C function: its address and TYPE_* codes; every register-passed signature goes through rbFiddleCall.
 type rbFiddleCFunc struct {
-	ints  func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) uintptr
-	flts  func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) float64
+	addr  uintptr
 	args  []Integer
 	ret   Integer
 	float bool
@@ -215,7 +275,7 @@ func rbFiddlePrepare(addr Integer, args *Array[Integer], ret Integer) any {
 	if addr == 0 {
 		panic(rbFiddleDLError("NULL function pointer"))
 	}
-	fn := &rbFiddleCFunc{ret: ret, float: rbFiddleIsFloat(ret)}
+	fn := &rbFiddleCFunc{addr: uintptr(addr), ret: ret, float: rbFiddleIsFloat(ret)}
 	rbFiddleCheckArgs(args.s)
 	for _, t := range args.s {
 		if t != 0 { // (void)
@@ -223,11 +283,6 @@ func rbFiddlePrepare(addr Integer, args *Array[Integer], ret Integer) any {
 		}
 	}
 	rbFiddleCheckType(ret)
-	if fn.float {
-		purego.RegisterFunc(&fn.flts, uintptr(addr))
-	} else {
-		purego.RegisterFunc(&fn.ints, uintptr(addr))
-	}
 	return fn
 }
 
@@ -254,43 +309,98 @@ func rbFiddleWord64(t Integer, v any) (uintptr, float64) {
 	return uintptr(i), f //nolint:gosec // C's own wraparound for a negative value
 }
 
-// rbFiddleInvoke returns [result, errno]: errno is read on the calling thread before another call can reset it.
-func rbFiddleInvoke(prepared any, args *Array[any]) *Array[any] {
+// rbFiddleCString is s NUL-terminated in memory C may read during the call; kept (not freed) when the result may point into it.
+func rbFiddleCStr(s String, keep bool) (uintptr, []byte) {
+	if keep { // ponytail: a void* result may point into the copy (strchr), so it is C memory that leaks; tie it to the Pointer if needed.
+		mem := rbFiddleMalloc(Integer(len(s) + 1))
+		b := rbFiddleBytes(mem, Integer(len(s)+1))
+		b[copy(b, s)] = 0
+		return uintptr(mem), nil
+	}
+	b := make([]byte, len(s)+1)
+	copy(b, s)
+	return uintptr(unsafe.Pointer(&b[0])), b //nolint:gosec // Go's heap does not move; the caller keeps b alive across the call
+}
+
+// rbFiddleInvoke calls a prepared function with Fiddle's argument conversions (Function#call; objects are addresses already)
+// and stores errno as Fiddle.last_error.
+func rbFiddleInvoke(prepared any, args *Array[any]) any {
 	fn, ok := prepared.(*rbFiddleCFunc)
 	if !ok {
 		panic(rbFiddleDLError("rb2go: not a prepared Fiddle function"))
 	}
-	if len(args.s) != len(fn.args) {
-		panic(NewArgumentError(Ref(String("wrong number of arguments (given " + strconv.Itoa(len(args.s)) + ", expected " + strconv.Itoa(len(fn.args)) + ")"))))
+	return rbFiddleInvokeArgs(fn, args.s)
+}
+
+// rbFiddleFast is Function#call's result without call's *args Array, or f itself when Function#call must run: f is
+// a subclass (which may override call), or an argument is an object other than a plain Pointer (decision 329).
+func rbFiddleFast(f Fiddle_FunctionI, n Integer, a [8]any) any {
+	x, exact := f.(*Fiddle_Function)
+	if !exact {
+		return f
+	}
+	fn, ok := x.fn.(*rbFiddleCFunc)
+	if !ok || int(n) != len(fn.args) {
+		return f
+	}
+	for k, v := range a[:n] {
+		switch v.(type) {
+		case nil, Integer, Float, String, Boolean:
+			continue
+		}
+		p, ok := v.(*Fiddle_Pointer) // always in a program that calls C: Fiddle.__ret makes them
+		if t := fn.args[k]; !ok || rbFiddleIsFloat(t) || t == 11 {
+			return f
+		}
+		a[k] = p.addr
+	}
+	return Fiddle_Meta___Ret(Fiddle_class, x.ret, rbFiddleInvokeArgs(fn, a[:n]))
+}
+
+// rbFiddleInvokeArgs converts args as Fiddle does, calls fn, and sets Fiddle.last_error.
+func rbFiddleInvokeArgs(fn *rbFiddleCFunc, args []any) any {
+	if len(args) != len(fn.args) {
+		panic(NewArgumentError(Ref(String("wrong number of arguments (given " + strconv.Itoa(len(args)) + ", expected " + strconv.Itoa(len(fn.args)) + ")"))))
 	}
 	var in [8]uintptr
-	var fl [8]float64
+	var fl [8]uint64
+	var keep [8][]byte // String copies in Go memory, alive until the call returns
 	ni, nf := 0, 0
-	for k, a := range args.s {
-		i, f := rbFiddleWord64(fn.args[k], a)
-		if rbFiddleIsFloat(fn.args[k]) {
-			fl[nf] = f
+	for k, a := range args {
+		t := fn.args[k]
+		switch {
+		case rbFiddleIsFloat(t):
+			_, f := rbFiddleWord64(t, a)
+			fl[nf] = math.Float64bits(f)
 			nf++
-		} else {
-			in[ni] = i
-			ni++
+			continue
+		case t == 11: // TYPE_BOOL: Ruby truthiness
+			b, isBool := a.(Boolean)
+			if a != nil && (!isBool || bool(b)) {
+				in[ni] = 1
+			}
+		default:
+			if s, isStr := a.(String); isStr && (t == 1 || t == 10) {
+				in[ni], keep[ni] = rbFiddleCStr(s, fn.ret == 1)
+			} else {
+				in[ni], _ = rbFiddleWord64(t, a)
+			}
 		}
+		ni++
 	}
-	runtime.LockOSThread()
-	var r uintptr
-	var rf float64
-	if fn.float {
-		rf = fn.flts(in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7], fl[0], fl[1], fl[2], fl[3], fl[4], fl[5], fl[6], fl[7])
-	} else {
-		r = fn.ints(in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7], fl[0], fl[1], fl[2], fl[3], fl[4], fl[5], fl[6], fl[7])
+	r, f, errno := rbFiddleCall(fn.addr, &in, &fl)
+	runtime.KeepAlive(&keep)
+	rbFiddleSetErrno(errno)
+	return rbFiddleValue(fn.ret, r, math.Float64frombits(f))
+}
+
+// rbFiddleSetErrno is Fiddle.last_error = errno, a thread-local; an unchanged value skips the store (same result).
+func rbFiddleSetErrno(errno Integer) {
+	t := rbCurrentThread()
+	if v, ok := t.locals.Load("__FIDDLE_LAST_ERROR__"); ok && v == any(errno) {
+		return
 	}
-	errno := Integer(0)
-	if rbFiddleErrnoFn != 0 {
-		p, _, _ := purego.SyscallN(rbFiddleErrnoFn)
-		errno = Integer(*(*int32)(rbFiddleAt(Integer(p)))) //nolint:gosec // p is errno's address
-	}
-	runtime.UnlockOSThread()
-	return &Array[any]{s: []any{rbFiddleValue(fn.ret, r, rf), errno}}
+	t.locals.Store("__FIDDLE_LAST_ERROR__", errno)
 }
 
 // rbFiddleValue reads type t from a register; narrow types are extended here, as the ABI leaves upper bits unspecified.
@@ -328,9 +438,7 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 	}
 	types := slices.Clone(args.s)
 	rbFiddleCheckArgs(types)
-	cb := func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) uintptr {
-		in := [8]uintptr{i0, i1, i2, i3, i4, i5, i6, i7}
-		fl := [8]float64{f0, f1, f2, f3, f4, f5, f6, f7}
+	run := func(in *[8]uintptr, fl *[8]float64) uintptr {
 		vals := make([]any, 0, len(types))
 		ni, nf := 0, 0
 		for _, t := range types {
@@ -347,6 +455,7 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 		r, _ := rbFiddleWord64(ret, blk(&Array[any]{s: vals}))
 		return r
 	}
+	cb := rbFiddleCallbackFunc(types, run)
 	var addr uintptr
 	func() {
 		defer func() {
@@ -357,6 +466,41 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 		addr = purego.NewCallback(cb)
 	}()
 	return Integer(addr)
+}
+
+// rbFiddleCallbackFunc is run as a Go func purego can call back: purego reads each parameter through reflect,
+// so an integer-only closure gets exactly its own parameters (~1 µs less per call than the 16-register superset; decision 329).
+func rbFiddleCallbackFunc(types []Integer, run func(*[8]uintptr, *[8]float64) uintptr) any {
+	ni, nf := 0, 0
+	for _, t := range types {
+		switch {
+		case t == 0:
+		case rbFiddleIsFloat(t):
+			nf++
+		default:
+			ni++
+		}
+	}
+	var fl [8]float64
+	if nf == 0 {
+		switch ni {
+		case 0:
+			return func() uintptr { return run(&[8]uintptr{}, &fl) }
+		case 1:
+			return func(i0 uintptr) uintptr { return run(&[8]uintptr{i0}, &fl) }
+		case 2:
+			return func(i0, i1 uintptr) uintptr { return run(&[8]uintptr{i0, i1}, &fl) }
+		case 3:
+			return func(i0, i1, i2 uintptr) uintptr { return run(&[8]uintptr{i0, i1, i2}, &fl) }
+		case 4:
+			return func(i0, i1, i2, i3 uintptr) uintptr { return run(&[8]uintptr{i0, i1, i2, i3}, &fl) }
+		case 5:
+			return func(i0, i1, i2, i3, i4 uintptr) uintptr { return run(&[8]uintptr{i0, i1, i2, i3, i4}, &fl) }
+		}
+	}
+	return func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) uintptr {
+		return run(&[8]uintptr{i0, i1, i2, i3, i4, i5, i6, i7}, &[8]float64{f0, f1, f2, f3, f4, f5, f6, f7})
+	}
 }
 
 // rbFiddleGetInt reads an integer member of C type t at addr.
