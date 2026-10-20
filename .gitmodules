@@ -1,0 +1,3 @@
+[submodule "gems/sqlite3-fiddle"]
+	path = gems/sqlite3-fiddle
+	url = https://github.com/jtarchie/sqlite3-fiddle.git

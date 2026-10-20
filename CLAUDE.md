@@ -5,6 +5,7 @@ rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a sing
 ## Commands
 
 ```sh
+git submodule update --init         # gems/*: vendored gems the build embeds (decision 328)
 bundle install                      # rbs, rbs-inline, webrick (needed by tests)
 go test ./...                       # the oracle; see below
 go test -run 'TestExamples/each/05_word_count' .   # one example
@@ -79,7 +80,7 @@ Smaller cases go in `testdata/`:
   - When the generated Go doesn't parse, the raw output is written to `$TMPDIR/rb2go-bad-output.go`.
 
 - `prelude/`: the core library in Ruby; its conventions (`%x{}`, `@go_type`, `prelude/go/` helpers) are in `prelude/CLAUDE.md`.
-- `gems/<name>/`: vendored pure-Ruby gems (gemspec + `lib/<require>.rb`) that run on MRI unchanged and are embedded and compiled as user code when required (`vendoredLibs` in `libs.go`, decision 328); `TestVendoredGemsMRI` runs each one's minitest file under MRI with its lib on the load path. sqlite3-fiddle is the first.
+- `gems/<name>/`: vendored pure-Ruby gems as git submodules (`git submodule update --init` after a fresh clone, or `go build` fails on the embed) that run on MRI unchanged and are embedded and compiled as user code when required (`vendoredLibs` in `libs.go`, decision 328); `TestVendoredGemsMRI` runs each one's `test/*_test.rb` under MRI with its lib on the load path. sqlite3-fiddle (github.com/jtarchie/sqlite3-fiddle) is the first; its CI also compiles its test with rb2go.
 
 
 ### Key representation rules (details in docs/design.md decisions)
