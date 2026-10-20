@@ -1,0 +1,20 @@
+Subject: LinkageChecker: shared cache check without Fiddle
+
+dyld keeps system dylibs only in its shared cache, so a missing /usr/lib path is checked with
+_dyld_shared_cache_contains_path through Fiddle. A program that cannot call C functions (rb2go has no cgo:
+Fiddle.dlopen raises Fiddle::DLError) falls back to the paths the shared cache holds.
+---
+diff --git a/Library/Homebrew/extend/os/mac/linkage_checker.rb b/Library/Homebrew/extend/os/mac/linkage_checker.rb
+index ad71b52f2d..bc0e6d89eb 100644
+--- a/Library/Homebrew/extend/os/mac/linkage_checker.rb
++++ b/Library/Homebrew/extend/os/mac/linkage_checker.rb
+@@ -14,6 +14,9 @@ module OS
+       def dylib_found_in_shared_cache?(dylib)
+         require "os/mac/ffi"
+         MacOS::FFI.dyld_shared_cache_contains_path(dylib)
++      rescue Fiddle::DLError
++        # Without a C function call (a compiled brew) only system paths are in the shared cache.
++        dylib.start_with?("/usr/lib/", "/System/Library/")
+       end
+     end
+   end

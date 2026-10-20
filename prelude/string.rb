@@ -16,7 +16,7 @@ class String < Object
 
   # What slice!(range) leaves (decision 233): self without the part self[range] is.
   #: (Range[Integer]) -> String
-  def __slice_rest(r)
+  def __rest_of_slice(r)
     got = self[r]
     return self if got.nil?
 
@@ -564,6 +564,10 @@ class String < Object
 
   #: (Integer, Integer) -> String?
   def slice(start, len) = self[start, len]
+
+  # slice(range) on an untyped receiver (a typed call is []).
+  #: (Range[Integer]) -> String?
+  def __slice_range(r) = __idx_range(r)
 
   # One character set only (no intersection of several, as MRI's).
   #: (String) -> String

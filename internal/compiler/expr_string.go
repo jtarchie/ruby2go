@@ -346,7 +346,7 @@ func (f *fctx) stringSliceBang(n *parser.CallNode, args []parser.Node, cur func(
 		f.emit("%s := %s", s0, cur())
 		g := f.genMethodCall(n, expr{code: s0, typ: str}, "[]", args, nil)
 		f.emit("%s := %s", got, g.code)
-		rest := f.genMethodCall(n, expr{code: s0, typ: str}, "__slice_rest", args, nil)
+		rest := f.genMethodCall(n, expr{code: s0, typ: str}, "__rest_of_slice", args, nil)
 		write(rest)
 		return expr{code: got, typ: g.typ}, true
 	}

@@ -109,6 +109,12 @@ module DemoObjDyn
     [s, t, bin.size, bin[1, 2].bytes, bin[4].bytes]
   end
 
+  # slice on an untyped receiver with a Range of untyped bounds (ruby-macho's LCStr).
+  def self.cut(data, len)
+    from = data.size - 3
+    data.slice(from..(from + len - 1))
+  end
+
   # Integer arithmetic with an object answering coerce and to_int through method_missing.
   class Num
     def initialize(v) = @v = v
@@ -158,6 +164,20 @@ module DemoObjDyn
     include Shown
   end
 
+  # A define_method reader memoizing into an ivar named from its captured local (ruby-macho's def_mask_reader).
+  class Masked
+    def self.mask_reader(name, idx)
+      define_method(name) do
+        instance_variable_defined?("@#{name}") || instance_variable_set("@#{name}", @values[idx] & 0xff)
+        instance_variable_get("@#{name}")
+      end
+    end
+
+    def initialize(values) = @values = values
+    mask_reader :lo, 0
+    mask_reader :hi, 1
+  end
+
   def self.run
     f = Fields.new(%i[a b])
     f.b = 7
@@ -173,6 +193,8 @@ module DemoObjDyn
     out << TopLevel.new.go
     m = Memo.new(Collector)
     out << m.obj.equal?(m.obj)
+    mk = Masked.new([0x1ff, 0x2ab])
+    out << [mk.lo, mk.hi, mk.lo] << [cut("abcdef", 2), cut([1, 2, 3], 1)]
     out << bits << strings << numbers(Num.new(2)) << refined << [claim("w"), claim("w")] << ShownPath.new("/tmp/x").shown
     out
   end

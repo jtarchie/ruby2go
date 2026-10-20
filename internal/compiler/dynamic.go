@@ -1081,7 +1081,7 @@ func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
 			continue
 		}
 		te := cls.lookup(tw.Name)
-		f.emit("if x, ok := args[0].(%s); ok {", c.goType(t))
+		f.emit("if x, ok := %s; ok {", c.dynClassTest(t))
 		f.indent++
 		nodes := []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}
 		for i := 1; i < len(tw.Params); i++ {
@@ -1093,6 +1093,15 @@ func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
 		f.indent--
 		f.emit("}")
 	}
+}
+
+// dynClassTest is the Go test that args[0] is a t, for an overload picked by class: a generic instantiation converts
+// (a gem's Range of untyped bounds is String#slice's Range[Integer]: ruby-macho's LCStr, decision 325).
+func (c *Compiler) dynClassTest(t TClass) string {
+	if len(t.Args) > 0 {
+		return "rbConv[" + c.goType(t) + "](args[0])"
+	}
+	return "args[0].(" + c.goType(t) + ")"
 }
 
 // dynTwinsAndNumbers picks a twin by the argument's class (`xs * ","` is
@@ -1677,7 +1686,7 @@ func (c *Compiler) dynWideClassOverloads(f *fctx, e *entry, recv expr, req, maxA
 		}
 		te := cls.lookup(tw.Name)
 		f.emit("if len(args) >= %d && len(args) <= %d {", treq, tmax)
-		f.emit("\tif x, ok := args[0].(%s); ok {", c.goType(t))
+		f.emit("\tif x, ok := %s; ok {", c.dynClassTest(t))
 		f.indent += 2
 		for k := treq; k <= tmax; k++ { // one `if` per count: gocritic rejects a one-case switch
 			nodes := []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}
