@@ -1,0 +1,164 @@
+# Fiddle's signatures, vendored: the rbs gem ships none (decision 326). The constants are MRI's LP64 values.
+module Fiddle
+  VERSION: String
+  WINDOWS: bool
+  TYPE_VOID: Integer
+  TYPE_VOIDP: Integer
+  TYPE_CHAR: Integer
+  TYPE_UCHAR: Integer
+  TYPE_SHORT: Integer
+  TYPE_USHORT: Integer
+  TYPE_INT: Integer
+  TYPE_UINT: Integer
+  TYPE_LONG: Integer
+  TYPE_ULONG: Integer
+  TYPE_LONG_LONG: Integer
+  TYPE_ULONG_LONG: Integer
+  TYPE_FLOAT: Integer
+  TYPE_DOUBLE: Integer
+  TYPE_VARIADIC: Integer
+  TYPE_CONST_STRING: Integer
+  TYPE_BOOL: Integer
+  TYPE_INT8_T: Integer
+  TYPE_UINT8_T: Integer
+  TYPE_INT16_T: Integer
+  TYPE_UINT16_T: Integer
+  TYPE_INT32_T: Integer
+  TYPE_UINT32_T: Integer
+  TYPE_INT64_T: Integer
+  TYPE_UINT64_T: Integer
+  TYPE_SSIZE_T: Integer
+  TYPE_SIZE_T: Integer
+  TYPE_PTRDIFF_T: Integer
+  TYPE_INTPTR_T: Integer
+  TYPE_UINTPTR_T: Integer
+  SIZEOF_VOIDP: Integer
+  SIZEOF_CHAR: Integer
+  SIZEOF_SHORT: Integer
+  SIZEOF_INT: Integer
+  SIZEOF_LONG: Integer
+  SIZEOF_LONG_LONG: Integer
+  SIZEOF_FLOAT: Integer
+  SIZEOF_DOUBLE: Integer
+  SIZEOF_SIZE_T: Integer
+  SIZEOF_BOOL: Integer
+  ALIGN_VOIDP: Integer
+  ALIGN_INT: Integer
+  ALIGN_LONG: Integer
+  ALIGN_DOUBLE: Integer
+  RTLD_LAZY: Integer
+  RTLD_NOW: Integer
+  RTLD_GLOBAL: Integer
+  RUBY_FREE: Integer
+  NULL: Pointer
+
+  class Error < StandardError
+  end
+
+  class DLError < Error
+  end
+
+  class Handle
+    DEFAULT: Handle
+    def initialize: (?String? lib, ?Integer flags) -> void
+    def sym: (String name) -> Integer
+    def []: (String name) -> Integer
+    def sym_defined?: (String name) -> Integer?
+    def to_i: () -> Integer
+    def close: () -> Integer
+    def file_name: () -> String?
+    def self.sym: (String name) -> Integer
+    def self.[]: (String name) -> Integer
+  end
+
+  class Pointer
+    def initialize: (untyped addr, ?Integer size, ?untyped free) -> void
+    def self.malloc: (Integer size, ?untyped free) -> Pointer
+    def self.to_ptr: (untyped val) -> Pointer
+    def self.[]: (untyped val) -> Pointer
+    def self.read: (Integer addr, Integer len) -> String
+    def self.write: (Integer addr, String str) -> void
+    def to_i: () -> Integer
+    def to_int: () -> Integer
+    def size: () -> Integer
+    def size=: (Integer) -> Integer
+    def null?: () -> bool
+    def free: () -> Function?
+    def free=: (untyped) -> untyped
+    def call_free: () -> nil
+    def freed?: () -> bool
+    def ptr: () -> Pointer
+    def ref: () -> Pointer
+    def +: (Integer) -> Pointer
+    def -: (Integer) -> Pointer
+    def to_s: (?Integer? len) -> String
+    def to_str: (?Integer? len) -> String
+    def []: (Integer offset) -> Integer
+          | (Integer offset, Integer len) -> String
+    def []=: (Integer offset, Integer byte) -> Integer
+           | (Integer offset, Integer len, untyped src) -> untyped
+  end
+
+  class Function
+    DEFAULT: Integer
+    def initialize: (untyped ptr, Array[Integer] args, Integer ret_type, ?Integer abi, ?name: String?, ?need_gvl: bool) -> void
+    def call: (*untyped) -> untyped
+    def ptr: () -> Integer
+    def to_i: () -> Integer
+    def name: () -> String?
+    def abi: () -> Integer
+  end
+
+  class Closure
+    def initialize: (Integer ctype, Array[Integer] args, ?Integer abi) -> void
+    def call: (*untyped) -> untyped
+    def to_i: () -> Integer
+    def ctype: () -> Integer
+    def args: () -> Array[Integer]
+    def free: () -> nil
+    def freed?: () -> bool
+
+    class BlockCaller < Closure
+      def initialize: (Integer ctype, Array[Integer] args, ?Integer abi) { (*untyped) -> untyped } -> void
+    end
+  end
+
+  class CStructEntity < Pointer
+  end
+
+  class CStruct
+    def to_ptr: () -> CStructEntity
+    def to_i: () -> Integer
+    def to_h: () -> Hash[String, untyped]
+    def []: (String) -> untyped
+  end
+
+  class CUnion < CStruct
+  end
+
+  module CParser
+    def parse_signature: (String signature, ?Hash[String, String]? tymap) -> [String, Integer, Array[Integer]]
+    def parse_ctype: (String ty, ?Hash[String, String]? tymap) -> Integer
+  end
+
+  module Importer
+    include CParser
+    def dlload: (*untyped libs) -> void
+    def typealias: (String alias_type, String orig_type) -> String
+    def sizeof: (String ty) -> Integer
+    def extern: (String signature, *untyped opts) -> Function
+    def bind: (String signature, *untyped opts) { (*untyped) -> untyped } -> Function
+    def struct: (Array[String] signature) -> untyped
+    def union: (Array[String] signature) -> untyped
+    def []: (String name) -> Function?
+    def import_symbol: (String name) -> Pointer
+    def import_function: (String name, Integer ctype, Array[Integer] argtype, ?untyped call_type) -> Function
+  end
+
+  def self.dlopen: (String? lib) -> Handle
+  def self.malloc: (Integer size) -> Integer
+  def self.realloc: (Integer addr, Integer size) -> Integer
+  def self.free: (Integer addr) -> void
+  def self.last_error: () -> Integer?
+  def self.last_error=: (Integer?) -> Integer?
+end

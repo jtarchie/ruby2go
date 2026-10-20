@@ -74,17 +74,18 @@ type Compiler struct {
 	dynWrapped            map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
 	sendOn                map[string][]*Class     // per Go suffix, the struct classes a computed send/respond_to? on a receiver of known class may hold (decision 316)
 	warned                map[string]bool
-	pkgVars               []string                // package-level var declarations: compiled regexp literals, rbDATA, once-guards
-	dataVar               bool                    // rbDATA is declared
-	beginStmts            map[*File][]parser.Node // BEGIN { } bodies, run first in their file
-	regexpVars            map[string]string       // literal → its variable, to share one per pattern
-	needRxAlt             bool                    // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
-	aliasNews             []aliasNewReq           // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
-	needRequireTable      bool                    // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
-	programFile           *File                   // the file $0 names: the main file, or a traced compile's -main (decisions 241, 288)
-	dynBlockNames         map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
-	dynBlockAll           bool                    // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
-	strLits               map[string]bool         // String literal texts: String#frozen? knows them by identity
+	pkgVars               []string                     // package-level var declarations: compiled regexp literals, rbDATA, once-guards
+	dataVar               bool                         // rbDATA is declared
+	beginStmts            map[*File][]parser.Node      // BEGIN { } bodies, run first in their file
+	regexpVars            map[string]string            // literal → its variable, to share one per pattern
+	fiddleAliases         map[*Class]map[string]string // Fiddle::Importer typealiases read so far, per module (decision 326)
+	needRxAlt             bool                         // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
+	aliasNews             []aliasNewReq                // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
+	needRequireTable      bool                         // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
+	programFile           *File                        // the file $0 names: the main file, or a traced compile's -main (decisions 241, 288)
+	dynBlockNames         map[string]bool              // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
+	dynBlockAll           bool                         // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
+	strLits               map[string]bool              // String literal texts: String#frozen? knows them by identity
 	constList             []*Const
 	hooks                 []classHook // main.rb's inherited/included/extended sites
 	topDefList            []*Method

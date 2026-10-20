@@ -28,24 +28,29 @@ var Prelude embed.FS
 var GemSigs embed.FS
 
 // GoVersion is the go directive for the module generated code builds in.
-const GoVersion = "1.24"
+const GoVersion = "1.25.0"
 
 //go:embed go.sum
 var goSum string
 
-// GoMod is the go.mod generated code builds in: regexp2 is required for the programs whose patterns RE2 cannot match
-// (decision 242); Go loads it only when main.go imports it.
-const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire github.com/dlclark/regexp2 " + regexp2Version + "\n"
+// GoMod is the go.mod generated code builds in: the runtime modules a program may import (regexp2 for patterns RE2
+// cannot match, decision 242; purego for Fiddle, decision 326); Go loads one only when main.go imports it.
+const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire (\n\tgithub.com/dlclark/regexp2 " + regexp2Version + "\n\tgithub.com/ebitengine/purego " + puregoVersion + "\n)\n"
 
-// regexp2Version is the single pin GoMod and GoSum derive from; TestGoModMatchesRepo holds it to the repo's go.mod.
-const regexp2Version = "v1.12.0"
+// regexp2Version and puregoVersion are the pins GoMod and GoSum derive from; TestGoModMatchesRepo holds them to go.mod.
+const (
+	regexp2Version = "v1.12.0"
+	puregoVersion  = "v0.11.2"
+)
 
-// GoSum is go.sum for GoMod: regexp2's lines from rb2go's own.
+// GoSum is go.sum for GoMod: its modules' lines from rb2go's own.
 func GoSum() string {
 	var b strings.Builder
 	for line := range strings.Lines(goSum) {
-		if strings.HasPrefix(line, "github.com/dlclark/regexp2 "+regexp2Version+" ") || strings.HasPrefix(line, "github.com/dlclark/regexp2 "+regexp2Version+"/go.mod ") {
-			b.WriteString(line)
+		for _, mod := range []string{"github.com/dlclark/regexp2 " + regexp2Version, "github.com/ebitengine/purego " + puregoVersion} {
+			if strings.HasPrefix(line, mod+" ") || strings.HasPrefix(line, mod+"/go.mod ") {
+				b.WriteString(line)
+			}
 		}
 	}
 	return b.String()

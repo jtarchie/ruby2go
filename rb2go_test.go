@@ -13,6 +13,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -480,6 +481,28 @@ var preludeWhole = sync.OnceValues(func() ([]byte, error) {
 	return compiler.PreludeWhole(context.Background(), Prelude)
 })
 
+// exportData finds a package's compiled export data through the repo's module, so runtime modules (purego) resolve too.
+func exportData(t *testing.T) func(path string) (io.ReadCloser, error) {
+	t.Helper()
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-export", "-deps", "-f", "{{.ImportPath}} {{.Export}}", "std", "github.com/ebitengine/purego").Output()
+	if err != nil {
+		t.Fatalf("go list -export: %v", err)
+	}
+	files := map[string]string{}
+	for line := range strings.Lines(string(out)) {
+		if path, file, ok := strings.Cut(strings.TrimSpace(line), " "); ok {
+			files[path] = file
+		}
+	}
+	return func(path string) (io.ReadCloser, error) {
+		file, ok := files[path]
+		if !ok {
+			return nil, fmt.Errorf("no export data for %s", path)
+		}
+		return os.Open(file) //nolint:gosec // a path go list printed
+	}
+}
+
 // TestPreludeWhole type-checks the unpruned prelude (decision 207): pruning must not be what keeps a generic
 // instantiation cycle or an ill-typed method out of programs. A type check, as building it takes 6.8 GB.
 func TestPreludeWhole(t *testing.T) {
@@ -493,7 +516,7 @@ func TestPreludeWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errs []string
-	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", nil), Error: func(err error) { errs = append(errs, err.Error()) }}
+	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", exportData(t)), Error: func(err error) { errs = append(errs, err.Error()) }}
 	_, _ = conf.Check("main", fset, []*ast.File{f}, nil)
 	if len(errs) > 0 {
 		t.Errorf("%d type errors in the unpruned prelude, first ones:\n%s", len(errs), strings.Join(errs[:min(20, len(errs))], "\n"))
@@ -953,7 +976,7 @@ func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string)
 var requireLine = regexp.MustCompile(`(?m)^require "([^"]+)"`)
 
 // rbsLibraryNames covers requires whose gem name differs from its RBS stdlib signature directory, like `require "observer"` (defines Observable) shipping sigs under "observable".
-var rbsLibraryNames = map[string]string{"observer": "observable", "minitest-autorun": "minitest", "bigdecimal-util": "bigdecimal", "rexml-document": "rexml"}
+var rbsLibraryNames = map[string]string{"observer": "observable", "minitest-autorun": "minitest", "bigdecimal-util": "bigdecimal", "rexml-document": "rexml", "fiddle-import": "fiddle"}
 
 // rbsLibraries turns an example's `require "net/http"` lines into the `-r net-http` flags rbs needs to see those libraries' signatures. A library the rbs gem has no signatures for (`weakref`, `rexml`) has them vendored in sig/<name>.rbs (decision 110), loaded with -I instead.
 func rbsLibraries(t *testing.T, path string) []string {
@@ -1036,15 +1059,20 @@ func TestGoModMatchesRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`(?m)^\s*(?:require\s+)?github\.com/dlclark/regexp2 (\S+)`).FindSubmatch(data)
-	if m == nil {
-		t.Fatal("go.mod does not require regexp2")
+	for _, mod := range []string{"github.com/dlclark/regexp2", "github.com/ebitengine/purego"} {
+		m := regexp.MustCompile(`(?m)^\s*(?:require\s+)?` + regexp.QuoteMeta(mod) + ` (\S+)`).FindSubmatch(data)
+		if m == nil {
+			t.Fatalf("go.mod does not require %s", mod)
+		}
+		if want := mod + " " + string(m[1]) + "\n"; !strings.Contains(GoMod, want) {
+			t.Errorf("GoMod %q does not require the repo's %s %s", GoMod, mod, m[1])
+		}
+		if sum := GoSum(); !strings.Contains(sum, mod+" "+string(m[1])+" h1:") || !strings.Contains(sum, mod+" "+string(m[1])+"/go.mod h1:") {
+			t.Errorf("GoSum lacks %s %s's two lines:\n%s", mod, m[1], sum)
+		}
 	}
-	if want := "github.com/dlclark/regexp2 " + string(m[1]) + "\n"; !strings.Contains(GoMod, want) {
-		t.Errorf("GoMod %q does not require the repo's regexp2 %s", GoMod, m[1])
-	}
-	if sum := GoSum(); strings.Count(sum, "\n") != 2 || !strings.Contains(sum, "regexp2 "+string(m[1])+" h1:") || !strings.Contains(sum, string(m[1])+"/go.mod h1:") {
-		t.Errorf("GoSum lacks regexp2 %s's two lines:\n%s", m[1], sum)
+	if n := strings.Count(GoSum(), "\n"); n != 4 {
+		t.Errorf("GoSum has %d lines, want 4", n)
 	}
 }
 

@@ -75,6 +75,10 @@ var preludeLibs = map[string]string{
 	"sorbet-runtime":   "prelude/sorbet.rb",
 	"rubygems":         "prelude/rubygems.rb",
 	"fiddle":           "prelude/fiddle.rb",
+	"fiddle/import":    "prelude/fiddle_import.rb",
+	"fiddle/cparser":   "prelude/fiddle_import.rb",
+	"fiddle/closure":   "prelude/fiddle.rb",
+	"fiddle/function":  "prelude/fiddle.rb",
 	"fcntl":            "prelude/fcntl.rb",
 }
 
@@ -288,11 +292,6 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 		target = f.c.findRequire(f.f, n)
 	}
 	switch {
-	case n.Name == "require" && strings.TrimSuffix(name, ".rb") == "fiddle":
-		// a C extension: its constants are the prelude's, but nothing can be called without cgo, so a program that
-		// asks at run time (Homebrew's Landlock probe) is told what MRI says without it (decision 324)
-		call := &parser.CallNode{Location: n.Location, Name: "__rb2go_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
-		return f.genExpr(call, nil)
 	case target != "" && f.c.loaded[f.c.real(target)]:
 	case target == "" && n.Name == "require" && (preludeLibs[strings.TrimSuffix(name, ".rb")] != "" || mriLibs[strings.SplitN(name, "/", 2)[0]]):
 	default:

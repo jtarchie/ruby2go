@@ -5,8 +5,8 @@ set -u
 cd "$(dirname "$0")/work"
 name=brew d=$PWD/build-brew; rm -rf "$d"; mkdir -p "$d"
 cp "$name.go" "$d/main.go"
-printf 'module gen\n\ngo 1.24\n\nrequire github.com/dlclark/regexp2 v1.12.0\n' > "$d/go.mod"
-grep '^github.com/dlclark/regexp2 v1.12.0' ../../../go.sum > "$d/go.sum"
+printf 'module gen\n\ngo 1.25.0\n\nrequire (\n\tgithub.com/dlclark/regexp2 v1.12.0\n\tgithub.com/ebitengine/purego v0.11.2\n)\n' > "$d/go.mod"
+grep -E '^github.com/(dlclark/regexp2 v1.12.0|ebitengine/purego v0.11.2)' ../../../go.sum > "$d/go.sum"
 start=$(date +%s)
 ( cd "$d" && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 GOFLAGS= go build -p 2 -trimpath -gcflags="all=-dwarf=false -c=4" -ldflags='-s -w' -o "../$name-bin" . ) > "$name-build.log" 2>&1 &
 pid=$!; peak=0

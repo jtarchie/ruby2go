@@ -44,6 +44,9 @@ func (c *Compiler) noteConstName(full string) {
 
 // collectBodyConst declares a class-body constant; one that reads the body's locals runs in its unit (decision 170).
 func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.ConstantWriteNode, scope []*Class, locals map[string]bool) {
+	if c.collectFiddleStruct(ctx, f, n, scope) {
+		return
+	}
 	var inner []*parser.ConstantWriteNode
 	if v := liftConstWrites(n.Value, &inner); v != n.Value {
 		cp := *n // the parsed prelude is shared by concurrent compiles: rewrite a copy, never the cached node

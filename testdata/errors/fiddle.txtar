@@ -1,0 +1,39 @@
+Compile errors for Fiddle shapes rb2go cannot build (docs/design.md decision 326).
+-- extern_computed.rb --
+# error: main.rb:7: Fiddle::Importer#extern needs a literal C declaration string, read at compile time (decision 326)
+require "fiddle/import"
+module L
+  extend Fiddle::Importer
+  dlload Fiddle.dlopen(nil)
+  sig = "int abs(int)"
+  extern sig
+end
+-- extern_variadic.rb --
+# error: main.rb:5: Fiddle::Importer#extern: a variadic C function cannot be called (purego has no C varargs; decision 326)
+require "fiddle/import"
+module L
+  extend Fiddle::Importer
+  extern "int printf(const char *, ...)"
+end
+-- extern_unknown_type.rb --
+# error: main.rb:5: Fiddle::Importer#extern: unknown type: widget_t
+require "fiddle/import"
+module L
+  extend Fiddle::Importer
+  extern "widget_t make(int)"
+end
+-- struct_computed.rb --
+# error: main.rb:6: Fiddle::Importer#struct needs a literal Array of member declarations (decision 326)
+require "fiddle/import"
+module L
+  extend Fiddle::Importer
+  MEMBERS = ["int x"]
+  S = struct MEMBERS
+end
+-- struct_nested.rb --
+# error: main.rb:5: Fiddle::Importer#struct: a member must be a literal String (nested structs are not supported; decision 326)
+require "fiddle/import"
+module L
+  extend Fiddle::Importer
+  S = struct [{ "pos" => ["int x", "int y"] }]
+end

@@ -171,6 +171,8 @@ whole program at compile time rather than looked up by reflection.
   `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,
   `tempfile`, `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
+  `fiddle` (calls C libraries without cgo, through purego;
+  [example 121](examples/121_fiddle/main.rb)),
   and `minitest` (including `Minitest::Spec`); from gems, the unmodified
   `rackup` gem's WEBrick handler serves a Rack app, and the unmodified `cuba`
   gem on `rack` serves routes with captures, query parameters, POST forms and
