@@ -26,3 +26,6 @@ gem "pairing_heap", "~> 3.1"
 # Type inference without annotations (dev tool, not a test dependency): `bundle exec tyda file.rb`
 # prints inferred RBS. See CLAUDE.md for when to reach for it.
 gem "tyda", require: false, group: :development
+
+# SQLite under MRI for example 122; rb2go maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
+gem "sqlite3", "~> 2.10"

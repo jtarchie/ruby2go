@@ -1,0 +1,283 @@
+# sqlite3-ruby's signatures, vendored: the gem ships none and rb2go's port is prelude/sqlite3.rb (decision 327).
+module SQLite3
+  VERSION: String
+  SQLITE_VERSION: String
+  SQLITE_VERSION_NUMBER: Integer
+  SQLITE_LOADED_VERSION: String
+
+  def self.libversion: () -> Integer
+
+  module Constants
+    module Open
+      READONLY: Integer
+      READWRITE: Integer
+      CREATE: Integer
+      URI: Integer
+      MEMORY: Integer
+      NOMUTEX: Integer
+      FULLMUTEX: Integer
+      SHAREDCACHE: Integer
+      PRIVATECACHE: Integer
+    end
+
+    module TextRep
+      UTF8: Integer
+      UTF16LE: Integer
+      UTF16BE: Integer
+      UTF16: Integer
+      ANY: Integer
+      DETERMINISTIC: Integer
+    end
+
+    module ColumnType
+      INTEGER: Integer
+      FLOAT: Integer
+      TEXT: Integer
+      BLOB: Integer
+      NULL: Integer
+    end
+
+    module ErrorCode
+      OK: Integer
+      ERROR: Integer
+      BUSY: Integer
+      CONSTRAINT: Integer
+      ROW: Integer
+      DONE: Integer
+    end
+  end
+
+  class Blob
+    def initialize: (String) -> void
+    def to_s: () -> String
+    def to_str: () -> String
+    def bytesize: () -> Integer
+    def length: () -> Integer
+    def size: () -> Integer
+    def bytes: () -> Array[Integer]
+    def ==: (untyped) -> bool
+    def eql?: (untyped) -> bool
+    def hash: () -> Integer
+    def inspect: () -> String
+  end
+
+  class Exception < StandardError
+    attr_reader code: Integer
+    attr_reader sql: String?
+    attr_reader sql_offset: Integer
+    def message: () -> String
+  end
+
+  class SQLException < Exception
+  end
+  class InternalException < Exception
+  end
+  class PermissionException < Exception
+  end
+  class AbortException < Exception
+  end
+  class BusyException < Exception
+  end
+  class LockedException < Exception
+  end
+  class MemoryException < Exception
+  end
+  class ReadOnlyException < Exception
+  end
+  class InterruptException < Exception
+  end
+  class IOException < Exception
+  end
+  class CorruptException < Exception
+  end
+  class NotFoundException < Exception
+  end
+  class FullException < Exception
+  end
+  class CantOpenException < Exception
+  end
+  class ProtocolException < Exception
+  end
+  class EmptyException < Exception
+  end
+  class SchemaChangedException < Exception
+  end
+  class TooBigException < Exception
+  end
+  class ConstraintException < Exception
+  end
+  class MismatchException < Exception
+  end
+  class MisuseException < Exception
+  end
+  class UnsupportedException < Exception
+  end
+  class AuthorizationException < Exception
+  end
+  class FormatException < Exception
+  end
+  class RangeException < Exception
+  end
+  class NotADatabaseException < Exception
+  end
+
+  module Pragmas
+    def get_boolean_pragma: (String) -> bool
+    def set_boolean_pragma: (String, untyped) -> void
+    def get_query_pragma: (String, *untyped) ?{ (untyped) -> void } -> Array[untyped]
+    def get_enum_pragma: (String) -> untyped
+    def set_enum_pragma: (String, untyped, Hash[String, untyped]) -> void
+    def get_int_pragma: (String) -> Integer
+    def set_int_pragma: (String, Integer) -> void
+    def application_id: () -> Integer
+    def application_id=: (Integer) -> void
+    def auto_vacuum: () -> untyped
+    def auto_vacuum=: (untyped) -> void
+    def cache_size: () -> Integer
+    def cache_size=: (Integer) -> void
+    def case_sensitive_like=: (untyped) -> void
+    def data_version: () -> Integer
+    def database_list: () ?{ (untyped) -> void } -> Array[untyped]
+    def defer_foreign_keys: () -> bool
+    def defer_foreign_keys=: (untyped) -> void
+    def foreign_key_check: (*untyped) ?{ (untyped) -> void } -> Array[untyped]
+    def foreign_key_list: (String) ?{ (untyped) -> void } -> Array[untyped]
+    def foreign_keys: () -> bool
+    def foreign_keys=: (untyped) -> void
+    def freelist_count: () -> Integer
+    def ignore_check_constraints: () -> bool
+    def ignore_check_constraints=: (untyped) -> void
+    def index_info: (String) ?{ (untyped) -> void } -> Array[untyped]
+    def index_list: (String) ?{ (untyped) -> void } -> Array[untyped]
+    def integrity_check: (*untyped) ?{ (untyped) -> void } -> Array[untyped]
+    def journal_mode: () -> untyped
+    def journal_mode=: (untyped) -> void
+    def journal_size_limit: () -> Integer
+    def journal_size_limit=: (Integer) -> void
+    def locking_mode: () -> untyped
+    def locking_mode=: (untyped) -> void
+    def max_page_count: () -> Integer
+    def max_page_count=: (Integer) -> void
+    def page_count: () -> Integer
+    def page_size: () -> Integer
+    def page_size=: (Integer) -> void
+    def quick_check: () ?{ (untyped) -> void } -> Array[untyped]
+    def query_only: () -> bool
+    def query_only=: (untyped) -> void
+    def read_uncommitted: () -> bool
+    def read_uncommitted=: (untyped) -> void
+    def recursive_triggers: () -> bool
+    def recursive_triggers=: (untyped) -> void
+    def reverse_unordered_selects: () -> bool
+    def reverse_unordered_selects=: (untyped) -> void
+    def schema_version: () -> Integer
+    def schema_version=: (Integer) -> void
+    def secure_delete: () -> bool
+    def secure_delete=: (untyped) -> void
+    def synchronous: () -> untyped
+    def synchronous=: (untyped) -> void
+    def temp_store: () -> untyped
+    def temp_store=: (untyped) -> void
+    def user_version: () -> Integer
+    def user_version=: (Integer) -> void
+    def wal_autocheckpoint: () -> Integer
+    def wal_autocheckpoint=: (Integer) -> void
+    def wal_checkpoint: (*untyped) ?{ (untyped) -> void } -> Array[untyped]
+  end
+
+  class FunctionProxy
+    attr_accessor result: untyped
+    def []: (untyped) -> untyped
+    def []=: (untyped, untyped) -> untyped
+  end
+
+  class Database
+    include Pragmas
+
+    attr_accessor results_as_hash: bool
+
+    def self.open: (String, ?Hash[Symbol, untyped]) ?{ (Database) -> untyped } -> Database
+    def self.quote: (String) -> String
+    def initialize: (String, ?Hash[Symbol, untyped]) ?{ (Database) -> untyped } -> void
+    def encoding: () -> Encoding
+    def closed?: () -> bool
+    def close: () -> nil
+    def prepare: (String) ?{ (Statement) -> untyped } -> Statement
+    def filename: (?String) -> String
+    def execute: (String, ?untyped) ?{ (untyped) -> void } -> Array[untyped]
+    def execute2: (String, *untyped) ?{ (untyped) -> void } -> Array[untyped]
+    def execute_batch: (String, ?untyped) -> nil
+    def query: (String, ?untyped) ?{ (ResultSet) -> untyped } -> ResultSet
+    def get_first_row: (String, *untyped) -> untyped
+    def get_first_value: (String, *untyped) -> untyped
+    def last_insert_row_id: () -> Integer
+    def changes: () -> Integer
+    def total_changes: () -> Integer
+    def errmsg: () -> String
+    def errcode: () -> Integer
+    def extended_errcode: () -> Integer
+    def busy_timeout: (Integer) -> Integer
+    def busy_timeout=: (Integer) -> Integer
+    def complete?: (String) -> bool
+    def interrupt: () -> nil
+    def readonly?: () -> bool
+    def transaction_active?: () -> bool
+    def transaction: (?untyped) ?{ (Database) -> untyped } -> untyped
+    def commit: () -> bool
+    def rollback: () -> bool
+    def create_function: (String, Integer, ?Integer) { (FunctionProxy, untyped, untyped, untyped, untyped, untyped, untyped) -> void } -> Database
+    def define_function: (String) { (*untyped) -> untyped } -> Database
+    def table_info: (String) ?{ (Hash[String, untyped]) -> void } -> Array[Hash[String, untyped]]
+    def build_result_set: (Statement) -> ResultSet
+  end
+
+  class Statement
+    include Enumerable[Array[untyped]]
+
+    attr_reader remainder: String
+    def initialize: (Database, String) -> void
+    def must_be_open!: () -> void
+    def closed?: () -> bool
+    def close: () -> nil
+    def done?: () -> bool
+    def active?: () -> bool
+    def reset!: () -> Statement
+    def clear_bindings!: () -> Statement
+    def column_count: () -> Integer
+    def column_name: (Integer) -> String
+    def column_decltype: (Integer) -> String?
+    def bind_parameter_count: () -> Integer
+    def sql: () -> String
+    def columns: () -> Array[String]
+    def types: () -> Array[String?]
+    def bind_param: (untyped, untyped) -> void
+    def bind_params: (*untyped) -> void
+    def execute: (*untyped) ?{ (ResultSet) -> void } -> ResultSet
+    def execute!: (*untyped) ?{ (untyped) -> void } -> Array[untyped]
+    def step: () -> Array[untyped]?
+    def each: () { (Array[untyped]) -> void } -> Statement
+  end
+
+  class ResultSet
+    include Enumerable[untyped]
+
+    def initialize: (Database, Statement) -> void
+    def reset: (*untyped) -> void
+    def eof?: () -> bool
+    def next: () -> untyped
+    def each: () { (untyped) -> void } -> ResultSet
+    def each_hash: () { (Hash[String, untyped]) -> void } -> ResultSet
+    def close: () -> nil
+    def closed?: () -> bool
+    def types: () -> Array[String?]
+    def columns: () -> Array[String]
+    def next_hash: () -> Hash[String, untyped]?
+  end
+
+  class HashResultSet < ResultSet
+  end
+end
+
+class String
+  def to_blob: () -> SQLite3::Blob
+end

@@ -75,6 +75,7 @@ var preludeLibs = map[string]string{
 	"sorbet-runtime":   "prelude/sorbet.rb",
 	"rubygems":         "prelude/rubygems.rb",
 	"fiddle":           "prelude/fiddle.rb",
+	"sqlite3":          "prelude/sqlite3.rb",
 	"fiddle/import":    "prelude/fiddle_import.rb",
 	"fiddle/cparser":   "prelude/fiddle_import.rb",
 	"fiddle/closure":   "prelude/fiddle.rb",

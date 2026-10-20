@@ -56,6 +56,10 @@ class Dir
     return String(d)
   }
 
+  # $TMPDIR, else the system's (Go's os.TempDir, as MRI's Etc.systmpdir); cleaned, as MRI expand_paths it.
+  #: () -> String
+  def self.tmpdir = %x{ String(filepath.Clean(os.TempDir())) }
+
   #: (String) -> nil
   def self.__rm_rf(path) = %x{ _ = os.RemoveAll(string(path)) }
 end

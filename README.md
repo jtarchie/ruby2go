@@ -173,6 +173,8 @@ whole program at compile time rather than looked up by reflection.
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
   `fiddle` (calls C libraries without cgo, through purego;
   [example 121](examples/121_fiddle/main.rb)),
+  `sqlite3` (the sqlite3 gem's API over the system's libsqlite3 through
+  Fiddle; [example 122](examples/122_sqlite3/main.rb)),
   and `minitest` (including `Minitest::Spec`); from gems, the unmodified
   `rackup` gem's WEBrick handler serves a Rack app, and the unmodified `cuba`
   gem on `rack` serves routes with captures, query parameters, POST forms and

@@ -22,6 +22,9 @@ GEM
       prism (>= 0.29)
       rbs (~> 4.0)
     sorbet-runtime (0.6.13544)
+    sqlite3 (2.10.1-arm64-darwin)
+    sqlite3 (2.10.1-x86_64-darwin)
+    sqlite3 (2.10.1-x86_64-linux-gnu)
     tsort (0.2.0)
     tyda (0.0.20261012123826-arm64-darwin)
     tyda (0.0.20261012123826-x86_64-darwin)
@@ -41,6 +44,7 @@ DEPENDENCIES
   rbs (~> 4.0)
   rbs-inline (~> 0.14)
   sorbet-runtime (~> 0.6)
+  sqlite3 (~> 2.10)
   tyda
   webrick (~> 1.9)
 
@@ -56,6 +60,9 @@ CHECKSUMS
   rbs (4.2.0) sha256=51f7b886dcc05bc09e10b901daa6a81829f6adc03101d6ca9ea4aac6103e0674
   rbs-inline (0.14.0) sha256=eaf47b46690d63acddab1f6804c9cc205a4bc78e637cfc421a0b1239874ef51c
   sorbet-runtime (0.6.13544) sha256=30c6d716f5771da7fe81d5c51b90fc027756de32fa8c9c75cd2c4a8103792f30
+  sqlite3 (2.10.1-arm64-darwin) sha256=45f74dad0a8ee57ae5fadfac39bf160d1f09fb0484a442223310d869cd957d92
+  sqlite3 (2.10.1-x86_64-darwin) sha256=00d1cd2e8ecff5ad9fffa0c97de59d4f85c5fc54eada2587d53ca0bd933b7a5d
+  sqlite3 (2.10.1-x86_64-linux-gnu) sha256=661ecede31e23a412059cd8c684ed84e332f64f167e4a90902cf99e8ea2c8718
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
   tyda (0.0.20261012123826-arm64-darwin) sha256=cf59fe85eee4a886ffb941a92041a86f9bcf5bbad596b8a112f03e1f8084a4ed
   tyda (0.0.20261012123826-x86_64-darwin) sha256=394db007871d00ac7b5463a45393374dedc90fb8e5052510f7ff1282f2f31037
