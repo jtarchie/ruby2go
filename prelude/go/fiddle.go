@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"structs"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -438,39 +439,6 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 	}
 	types := slices.Clone(args.s)
 	rbFiddleCheckArgs(types)
-	run := func(in *[8]uintptr, fl *[8]float64) uintptr {
-		vals := make([]any, 0, len(types))
-		ni, nf := 0, 0
-		for _, t := range types {
-			switch {
-			case t == 0:
-			case rbFiddleIsFloat(t):
-				vals = append(vals, rbFiddleValue(t, 0, fl[nf]))
-				nf++
-			default:
-				vals = append(vals, rbFiddleValue(t, in[ni], 0))
-				ni++
-			}
-		}
-		r, _ := rbFiddleWord64(ret, blk(&Array[any]{s: vals}))
-		return r
-	}
-	cb := rbFiddleCallbackFunc(types, run)
-	var addr uintptr
-	func() {
-		defer func() {
-			if e := recover(); e != nil {
-				panic(rbFiddleDLError(fmt.Sprint("rb2go: ", e)))
-			}
-		}()
-		addr = purego.NewCallback(cb)
-	}()
-	return Integer(addr)
-}
-
-// rbFiddleCallbackFunc is run as a Go func purego can call back: purego reads each parameter through reflect,
-// so an integer-only closure gets exactly its own parameters (~1 µs less per call than the 16-register superset; decision 329).
-func rbFiddleCallbackFunc(types []Integer, run func(*[8]uintptr, *[8]float64) uintptr) any {
 	ni, nf := 0, 0
 	for _, t := range types {
 		switch {
@@ -481,26 +449,109 @@ func rbFiddleCallbackFunc(types []Integer, run func(*[8]uintptr, *[8]float64) ui
 			ni++
 		}
 	}
-	var fl [8]float64
-	if nf == 0 {
-		switch ni {
-		case 0:
-			return func() uintptr { return run(&[8]uintptr{}, &fl) }
-		case 1:
-			return func(i0 uintptr) uintptr { return run(&[8]uintptr{i0}, &fl) }
-		case 2:
-			return func(i0, i1 uintptr) uintptr { return run(&[8]uintptr{i0, i1}, &fl) }
-		case 3:
-			return func(i0, i1, i2 uintptr) uintptr { return run(&[8]uintptr{i0, i1, i2}, &fl) }
-		case 4:
-			return func(i0, i1, i2, i3 uintptr) uintptr { return run(&[8]uintptr{i0, i1, i2, i3}, &fl) }
-		case 5:
-			return func(i0, i1, i2, i3, i4 uintptr) uintptr { return run(&[8]uintptr{i0, i1, i2, i3, i4}, &fl) }
+	run := func(in *[8]uintptr, fl *[8]uint64) uintptr {
+		vals := make([]any, 0, len(types))
+		ni, nf := 0, 0
+		for _, t := range types {
+			switch {
+			case t == 0:
+			case rbFiddleIsFloat(t):
+				vals = append(vals, rbFiddleValue(t, 0, math.Float64frombits(fl[nf])))
+				nf++
+			default:
+				vals = append(vals, rbFiddleValue(t, in[ni], 0))
+				ni++
+			}
+		}
+		r, _ := rbFiddleWord64(ret, blk(&Array[any]{s: vals}))
+		return r
+	}
+	cb := func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) uintptr {
+		return run(&[8]uintptr{i0, i1, i2, i3, i4, i5, i6, i7}, &[8]uint64{
+			math.Float64bits(f0), math.Float64bits(f1), math.Float64bits(f2), math.Float64bits(f3),
+			math.Float64bits(f4), math.Float64bits(f5), math.Float64bits(f6), math.Float64bits(f7),
+		})
+	}
+	var addr uintptr
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				panic(rbFiddleDLError(fmt.Sprint("rb2go: ", e)))
+			}
+		}()
+		addr = purego.NewCallback(cb)
+	}()
+	if ni <= rbFiddleIntRegs() && nf <= 8 && rbFiddleCallbackInstalled() { // every argument in a register: no reflect
+		for i := range rbFiddleCallbacks {
+			if rbPuregoCallbackAddr(i) == addr {
+				rbFiddleCallbacks[i].Store(&run)
+				break
+			}
 		}
 	}
-	return func(i0, i1, i2, i3, i4, i5, i6, i7 uintptr, f0, f1, f2, f3, f4, f5, f6, f7 float64) uintptr {
-		return run(&[8]uintptr{i0, i1, i2, i3, i4, i5, i6, i7}, &[8]float64{f0, f1, f2, f3, f4, f5, f6, f7})
+	return Integer(addr)
+}
+
+// rbPuregoCallbackArgs is purego's callbackArgs (syscall_notstackargs.go, v0.11.2): which callback, the saved argument
+// registers (8 floating, then the integer ones), and the result.
+type rbPuregoCallbackArgs struct {
+	index  uintptr
+	args   unsafe.Pointer
+	result [4]uintptr
+}
+
+// rbPuregoCallbackWrap is the Go function purego's callback trampoline calls; purego's own reads every parameter
+// through reflect (~1 µs for the 16-register superset).
+//
+//go:linkname rbPuregoCallbackWrap github.com/ebitengine/purego.callbackWrap_call
+var rbPuregoCallbackWrap func(*rbPuregoCallbackArgs)
+
+// rbPuregoCallbackAddr is the C address purego hands out for callback i.
+//
+//go:linkname rbPuregoCallbackAddr github.com/ebitengine/purego.callbackasmAddr
+func rbPuregoCallbackAddr(i int) uintptr
+
+var (
+	rbFiddleCallbacks    [2000]atomic.Pointer[func(*[8]uintptr, *[8]uint64) uintptr] // by purego's index; nil: purego's own path
+	rbFiddleCallbackOnce sync.Once
+	rbFiddleCallbackOK   bool
+)
+
+// rbFiddleIntRegs is how many integer arguments the C ABI passes in registers (System V amd64: 6).
+func rbFiddleIntRegs() int {
+	if runtime.GOARCH == "amd64" {
+		return 6
 	}
+	return 8
+}
+
+// rbFiddleCallbackInstalled puts a dispatcher in front of purego's callback function, once: closures rb2go registered
+// read their registers from purego's frame without reflect (decision 329); any other index goes on to purego.
+func rbFiddleCallbackInstalled() bool {
+	rbFiddleCallbackOnce.Do(func() {
+		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" { // ponytail: other register files and frame layouts keep purego's path
+			return
+		}
+		orig := rbPuregoCallbackWrap
+		rbPuregoCallbackWrap = func(a *rbPuregoCallbackArgs) {
+			if a.index < uintptr(len(rbFiddleCallbacks)) {
+				if run := rbFiddleCallbacks[a.index].Load(); run != nil {
+					frame := (*[16]uintptr)(a.args)
+					var in [8]uintptr
+					var fl [8]uint64
+					for k := range fl {
+						fl[k] = uint64(frame[k])
+					}
+					copy(in[:rbFiddleIntRegs()], frame[8:])
+					a.result[0] = (*run)(&in, &fl)
+					return
+				}
+			}
+			orig(a)
+		}
+		rbFiddleCallbackOK = true
+	})
+	return rbFiddleCallbackOK
 }
 
 // rbFiddleGetInt reads an integer member of C type t at addr.

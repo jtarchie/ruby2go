@@ -162,9 +162,14 @@ func (c *Compiler) collectFiddleCall(ctx context.Context, f *File, cls *Class, n
 		params = append(params, fmt.Sprintf("a%d", i))
 		types = append(types, "untyped")
 	}
-	call := fmt.Sprintf("__fiddle_func(%q).call(%s)", name, strings.Join(params, ", "))
+	if c.fiddleSlots == nil {
+		c.fiddleSlots = map[*Class]int{}
+	}
+	fn := fmt.Sprintf("__fiddle_func_at(%d, %q)", c.fiddleSlots[cls], name) // an Array slot, not a hash of the name per call (decision 329)
+	c.fiddleSlots[cls]++
+	call := fmt.Sprintf("%s.call(%s)", fn, strings.Join(params, ", "))
 	if len(params) <= 8 { // Fiddle.__call's fixed arity: no *args Array per call (decision 329)
-		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fmt.Sprintf("__fiddle_func(%q)", name), strconv.Itoa(len(params))}, params...), ", "))
+		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(len(params))}, params...), ", "))
 	}
 	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = %s\n",
 		strings.Join(types, ", "), fiddleRubyType(ret), name, strings.Join(params, ", "), call)
