@@ -12,6 +12,8 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
+	noStrIndexSet  bool        // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
+	superTarget    *Method     // a gem super call's target while its arguments generate: they type none of its parameters
 	probeDepth     int         // inside probe: output is discarded
 	unionArm       int         // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
 	erbDepth       int         // inside a spliced template, where a bare name may be the caller's local
@@ -1323,7 +1325,8 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		v := "nil"
 		switch {
 		case f.ret != nil && !isVoid(f.ret):
-			v = f.coerce(n, e, f.ret)
+			v = f.newTmp() // typed, so an untyped constant (`return false`) is boxed as the method's Boolean, not Go's bool
+			f.emit("var %s %s = %s", v, f.c.goType(f.ret), f.coerce(n, e, f.ret))
 		case n.Arguments != nil:
 			f.emitExprStmt(n.Arguments.Arguments[0], e)
 		}
@@ -3522,6 +3525,7 @@ func (c *Compiler) inferredMethods() []*Method {
 // from assignments.
 func (c *Compiler) discoverIvars() {
 	c.declareGemModuleIvars()
+	c.declareComputedIvars()
 	for range 2 {
 		for _, cls := range c.classList {
 			for _, iv := range cls.Ivars {
@@ -3610,6 +3614,35 @@ type gemNilIvar struct {
 	srcPos
 }
 
+// includerClassWrites reports whether every class that includes mod has a superclass chain assigning name in a def:
+// only then is the class's field the one storage (elftools' Dynamic, included by DynamicSegment < Segment).
+func (c *Compiler) includerClassWrites(mod *Class, name string) bool {
+	any := false
+	for _, inc := range mod.includers {
+		if inc.IsModule {
+			continue
+		}
+		writes := false
+		for k := inc; k != nil && !writes; k = k.Super {
+			for _, m := range k.MethodList {
+				if m.Node == nil || m.Owner != k {
+					continue
+				}
+				eachIvarName(m.Node.Body, func(n string, x parser.Node) {
+					if _, w := x.(*parser.InstanceVariableWriteNode); w && n == name {
+						writes = true
+					}
+				})
+			}
+		}
+		if !writes {
+			return false
+		}
+		any = true
+	}
+	return any
+}
+
 // declareGemModuleIvars declares, untyped, each instance variable a gem module's methods use: its state struct and
 // the includers' fields are laid out before any body is generated (decision 147; lenient, decision 172).
 func (c *Compiler) declareGemModuleIvars() {
@@ -3630,6 +3663,7 @@ func (c *Compiler) declareGemModuleIvars() {
 			eachIvarName(m.Node.Body, func(name string, n parser.Node) {
 				switch {
 				case c.findIvar(mod, name) != nil:
+				case c.includerClassWrites(mod, name): // the includer's class keeps it (elftools' Dynamic reading Segment's @offset_from_vma): read by name (decision 324)
 				case valueIncluded: // Pathname has no struct to hold it: memoizing recomputes per call (decision 172)
 					if mod.scratchIvars == nil {
 						mod.scratchIvars = map[string]*Ivar{}

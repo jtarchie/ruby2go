@@ -120,19 +120,7 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.GlobalVariableWriteNode:
 		return f.genGlobalWrite(n), true
 	case *parser.IntegerNode:
-		code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
-		if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
-			// Ruby's 0d decimal prefix has no Go spelling; 0x/0o/0b/0 carry over.
-			code = code[:len(code)-len(digits)] + strings.TrimLeft(digits[2:], "0")
-			if strings.TrimPrefix(code, "-") == "" {
-				code += "0"
-			}
-		}
-		_, err := strconv.ParseInt(code, 0, 64)
-		if errors.Is(err, strconv.ErrRange) {
-			f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (docs/design.md decision 35)", code)
-		}
-		return expr{code: code, typ: f.cls("Integer"), lit: true}, true
+		return f.genInteger(n), true
 	case *parser.FloatNode:
 		if n.Value == 0 && math.Signbit(n.Value) {
 			// Go's constant -0.0 is +0; Ruby's is negative zero.
@@ -568,7 +556,11 @@ func (f *fctx) toS(n parser.Node, e expr) string {
 	if isClass(e.typ, "String") {
 		return e.code
 	}
-	return f.genMethodCall(n, e, "to_s", nil, nil).code
+	r := f.genMethodCall(n, e, "to_s", nil, nil)
+	if !isClass(r.typ, "String") { // a dynamic to_s (a module's `"mkdir -p #{self}"`, brew's ObserverPathnameExtension)
+		return "rbToS(" + f.coerce(n, r, TAny{}) + ")"
+	}
+	return r.code
 }
 
 // pinnable is false for Go code whose value can't change: literals and nil.
@@ -858,13 +850,12 @@ func defaultsFile(m *Method) *File {
 func (f *fctx) genToEnum(n *parser.CallNode) (expr, bool) {
 	m := f.m
 	if n.Name != "to_enum" && n.Name != "enum_for" || n.Receiver != nil && !isSelf(n.Receiver) || n.Block != nil ||
-		m == nil || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || !inInterface(m) || m.kwMask() || m.calleeDefaults {
+		m == nil || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || !inInterface(m) && !f.lenient() || m.kwMask() || m.calleeDefaults {
 		return expr{}, false
 	}
 	args := callArgs(n)
 	if len(args) > 0 {
-		sym, ok := args[0].(*parser.SymbolNode)
-		if !ok || sym.Unescaped.Value != m.Name || len(args)-1 > len(m.Params) {
+		if enumName(args[0], m) != m.Name || len(args)-1 > len(m.Params) {
 			return expr{}, false
 		}
 		args = args[1:]
@@ -883,14 +874,16 @@ func (f *fctx) genToEnum(n *parser.CallNode) (expr, bool) {
 		}
 	}
 	elem := f.c.goType(m.Block.Params[0])
-	blk := fmt.Sprintf("func(x %s) { y(x) }", elem)
-	if !isVoid(m.Block.Ret) {
-		r := f.c.goType(m.Block.Ret)
-		blk = fmt.Sprintf("func(x %s) %s { y(x); return *new(%s) }", elem, r, r)
+	as = append(as, f.enumBlock(m, elem))
+	call := f.selfCode + "." + m.GoName + "(" + strings.Join(as, ", ") + ")"
+	if m.Owner != nil && (m.Owner.IsModule || f.lenient()) && !f.c.isDirectMethod(m) { // the free func: a module's constraint, or a gem class's pruned interface, may not name it (elftools' each_symbol)
+		targs := "[Self]"
+		if f.c.plainSelf(m) {
+			targs = ""
+		}
+		call = freeFuncName(m) + targs + "(" + f.selfCode + comma(strings.Join(as, ", ")) + ")"
 	}
-	as = append(as, blk)
-	code := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(%s)) { %s.%s(%s) }), any(%s), %q, nil, nil)",
-		elem, f.selfCode, m.GoName, strings.Join(as, ", "), f.selfCode, m.Name)
+	code := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(%s)) { %s }), any(%s), %q, nil, nil)", elem, call, f.selfCode, m.Name)
 	return expr{code: code, typ: TClass{C: f.c.classes["Enumerator"], Args: []Type{m.Block.Params[0]}}}, true
 }
 
@@ -902,4 +895,59 @@ var eachReturnsSelf = map[string]bool{"each": true, "each_with_index": true, "ea
 func isTypeVar(t Type) bool {
 	v, ok := t.(TVar)
 	return ok && v.Name != "Self"
+}
+
+// genInteger is an Integer literal: Go's spelling, a lenient gem's out-of-range one clamped (decision 35).
+func (f *fctx) genInteger(n *parser.IntegerNode) expr {
+	code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
+	if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
+		// Ruby's 0d decimal prefix has no Go spelling; 0x/0o/0b/0 carry over.
+		code = code[:len(code)-len(digits)] + strings.TrimLeft(digits[2:], "0")
+		if strings.TrimPrefix(code, "-") == "" {
+			code += "0"
+		}
+	}
+	_, err := strconv.ParseInt(code, 0, 64)
+	if errors.Is(err, strconv.ErrRange) && f.lenient() { // a gem's unsigned 64-bit bound (bindata's Uint64 clamp): the nearest Integer, as no Integer exceeds it
+		f.warn(n, "Integer literal %s does not fit in 64 bits; it is clamped to the Integer range (decision 35)", code)
+		bound := "math.MaxInt64"
+		if strings.HasPrefix(code, "-") {
+			bound = "math.MinInt64"
+		}
+		return expr{code: "Integer(" + bound + ")", typ: f.cls("Integer")}
+	}
+	if errors.Is(err, strconv.ErrRange) {
+		f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (docs/design.md decision 35)", code)
+	}
+	return expr{code: code, typ: f.cls("Integer"), lit: true}
+}
+
+// enumName is the method a to_enum names: a Symbol literal, or `__method__` for m itself (patchelf's
+// `to_enum(__method__, offset)`); "" otherwise.
+func enumName(arg parser.Node, m *Method) string {
+	switch a := arg.(type) {
+	case *parser.SymbolNode:
+		return a.Unescaped.Value
+	case *parser.CallNode:
+		if a.Name == "__method__" && a.Receiver == nil && a.Arguments == nil {
+			return m.Name
+		}
+	}
+	return ""
+}
+
+// enumBlock is the block to_enum hands m: each value it yields goes to the Enumerator's y.
+func (f *fctx) enumBlock(m *Method, elem string) string {
+	if isVoid(m.Block.Ret) {
+		return fmt.Sprintf("func(x %s) { y(x) }", elem)
+	}
+	r := f.c.goType(m.Block.Ret)
+	if m.Block.Rest { // `def each_symbol(&block)` of a gem: the block is variadic
+		pack := "x[0]"
+		if elem == "any" {
+			pack = "rbPackYield(x)"
+		}
+		return fmt.Sprintf("func(x ...%s) %s { y(%s); return *new(%s) }", elem, r, pack, r)
+	}
+	return fmt.Sprintf("func(x %s) %s { y(x); return *new(%s) }", elem, r, r)
 }

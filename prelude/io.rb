@@ -199,8 +199,8 @@ class IO < Object
   #: (String, untyped) -> Integer
   def self.binwrite(path, data) = File.write(path, data)
 
-  #: (String) -> Array[String]
-  def self.readlines(path) = File.readlines(path)
+  #: (String, ?chomp: bool) -> Array[String]
+  def self.readlines(path, chomp: false) = File.readlines(path, chomp: chomp)
 
   #: (String) { (String) -> void } -> void
   def self.foreach(path)

@@ -166,6 +166,10 @@ func (f *fctx) lookupMissed(n parser.Node, miss string, recv expr, kt Type, key 
 	case "arg":
 		f.emit("%s = %s", res.code, f.coerce(args[1], f.genExpr(args[1], res.typ), res.typ))
 	case "false":
+		if rc, ok := recv.typ.(TClass); ok && rc.C.RubyName == "Array" { // `elem == obj` each: an object with its own == may equal an element (patchelf's `[SHT_SYMTAB, SHT_DYNSYM].include?(shdr.sh_type)` of a bindata Uint32)
+			f.emit("%s = rbScanEq(%s, %s)", res.code, f.materialize(recv), key)
+			break
+		}
 		f.emit("%s = Boolean(false)", res.code)
 	default:
 		f.emit("%s = nil", res.code)

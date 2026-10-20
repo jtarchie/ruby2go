@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -28,5 +30,30 @@ func TestTracedEntry(t *testing.T) {
 	}
 	if !slices.Equal(dirs, []string{g + "/gems/plist-3.7/lib", "/app/lib"}) {
 		t.Errorf("dirs: %v", dirs)
+	}
+}
+
+// A loaded gem file's literal require of the same gem's file joins the entry; another gem's or the app's does not.
+func TestTracedEntryGemOwnRequire(t *testing.T) {
+	d := t.TempDir()
+	lib := d + "/gems/patchy-1.0/lib"
+	write := func(p, s string) {
+		err := os.MkdirAll(filepath.Dir(p), 0o750)
+		if err == nil {
+			err = os.WriteFile(p, []byte(s), 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(lib+"/patchy.rb", "module Patchy\n  def self.save\n    require 'patchy/alt'\n    require \"other\"\n  end\nend\n")
+	write(lib+"/patchy/alt.rb", "require 'patchy/deep'\n")
+	write(lib+"/patchy/deep.rb", "")
+	write(d+"/app/other.rb", "")
+	l := &boot.Loaded{Features: []string{lib + "/patchy.rb"}, LoadPath: []string{lib, d + "/app"}}
+	src, _ := TracedEntry(l, d+"/main.rb")
+	want := "require \"patchy\"\nrequire \"patchy/alt\"\nrequire \"patchy/deep\"\n"
+	if string(src) != want {
+		t.Errorf("entry:\n%s\nwant:\n%s", src, want)
 	}
 }

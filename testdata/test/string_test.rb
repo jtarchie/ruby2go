@@ -1658,5 +1658,11 @@ B
     def test_last_group_in_replacement
       assert_equal ["<e>llo", "hello", "h<>llo"], ["hello".sub(/(h)?(e)/, '<\+>'), "hello".gsub(/(l)|(o)/, '\+'), "hello".sub(/e/, '<\+>')]
     end
+
+    # A String that is not valid UTF-8 is binary (decision 136): bytes are its characters (decision 324).
+    def test_binary_string_bytes
+      bin = "\x01\xe6\x01\x00\xff".b
+      assert_equal [5, [230, 1], [255], [1, 230], 7], [bin.size, bin[1, 2].bytes, bin[4].bytes, bin[0..1].bytes, bin.ljust(7, "\x00").bytesize]
+    end
   end
 end

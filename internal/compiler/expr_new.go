@@ -105,7 +105,8 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 			env[k] = v
 		}
 		env["Self"] = TClass{C: cls}
-		codes, _ = f.genArgs(n, init.M, env, args, exprs)
+		var restIdx int
+		codes, restIdx = f.genArgs(n, init.M, env, args, exprs)
 		if init.M.Block != nil {
 			blkCode := "nil"
 			switch {
@@ -115,7 +116,11 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 			case !init.M.Block.Optional:
 				f.errorf(n, "%s.new requires a block", cls.RubyName)
 			}
-			codes = append(codes, blkCode)
+			if restIdx >= 0 { // Go's variadic rest is last: the block goes before it (`X.new(a, *rest, &block)`)
+				codes = slices.Insert(codes, restIdx, blkCode)
+			} else {
+				codes = append(codes, blkCode)
+			}
 		}
 	} else if len(args) > 0 || len(exprs) > 0 {
 		f.errorf(n, "%s.new takes no arguments", cls.Name)

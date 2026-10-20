@@ -288,6 +288,10 @@ class StringIO < Object
   #: () -> Integer
   def tell = pos
 
+  # Bytes in, bytes out already: no transcoding to turn off.
+  #: () -> StringIO
+  def binmode = self
+
   #: () -> nil
   def close = %x{ self.readOpen, self.writeOpen = false, false }
 

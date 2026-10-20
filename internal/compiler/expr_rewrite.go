@@ -11,7 +11,7 @@ import (
 // genCallRewrite is a call compiled as another expression: Regexp.last_match on the caller's $~ (decision 232), a
 // frozen proc literal at its expected type (decision 226).
 func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
-	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && r.Name == "Regexp" && n.Name == "last_match" && n.Block == nil && len(callArgs(n)) <= 1 {
+	if isRegexpConst(n.Receiver) && n.Name == "last_match" && n.Block == nil && len(callArgs(n)) <= 1 {
 		// the caller's $~ (decision 171: it is the frame's), handed to the helper that indexes it
 		gv := &parser.GlobalVariableReadNode{Location: n.Location, Name: "$~"}
 		if len(callArgs(n)) == 0 {
@@ -144,6 +144,12 @@ func (f *fctx) genCallForm(n *parser.CallNode, expected Type) (expr, bool) {
 	if t, ok := f.f.sorbetCasts[n]; ok {
 		return f.genSorbetCast(n, t), true
 	}
+	if units := f.evalUnitsAt(n); len(units) > 0 && f.m != nil {
+		return f.genEvalSwitch(n, units), true
+	}
+	if rec := f.c.smSites[n]; rec != nil { // a run-time singleton method or extend: recorded on the object (decision 324)
+		return f.genExpr(rec, expected), true
+	}
 	if n.Receiver != nil && f.c.dmSites[n] || f.isEvalSite(n) || f.c.blockEvalSites[n] { // boot made their methods defs (decisions 198, 204)
 		return expr{code: "nil", typ: TNil{}, lit: true}, true
 	}
@@ -208,4 +214,15 @@ func (f *fctx) symbolToProc(n *parser.CallNode, expected Type) (expr, bool) {
 		return f.genLambda(n, &parser.BlockArgumentNode{Location: n.Location, Expression: sym}, nil, ft), true
 	}
 	return expr{}, false
+}
+
+// isRegexpConst is `Regexp` or `::Regexp` (Homebrew's `::Regexp.last_match(1)`).
+func isRegexpConst(n parser.Node) bool {
+	switch r := n.(type) {
+	case *parser.ConstantReadNode:
+		return r.Name == "Regexp"
+	case *parser.ConstantPathNode:
+		return r.Parent == nil && r.Name != nil && *r.Name == "Regexp"
+	}
+	return false
 }

@@ -306,6 +306,10 @@ func (c *Compiler) inferRet(m *Method) {
 	if !m.inferRet || m.Ret != nil {
 		return
 	}
+	if m.inferring && c.pruneGems && c.gemFile(m.File) { // a gem's recursion (bindata's `superclass.dsl_parser`): untyped at the inner call, the outer run types the rest
+		m.Ret, m.retWhy = TAny{}, "recursive"
+		return
+	}
 	if m.inferring {
 		c.errorf(m.File, m.Node, "method %s is recursive; annotate its return type (`# @rbs return: T`)", m.Name)
 	}

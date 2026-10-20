@@ -64,6 +64,7 @@ type paramUse struct {
 	file    *File
 	off     int
 	anyRest bool // a gem's untyped value into a rest parameter: its elements are anything (decision 253)
+	widen   bool // a gem's untyped value into an overridden method: the parameter is untyped (decision 324)
 }
 
 // at is the call the argument came from.
@@ -494,6 +495,9 @@ func (f *fctx) noteUse(p Param, n parser.Node, t Type) {
 	if p.Pending == "" || f.c.uses == nil || n == nil {
 		return
 	}
+	if f.superTarget != nil && slices.ContainsFunc(f.superTarget.Params, func(q Param) bool { return q.Pending == p.Pending }) {
+		return
+	}
 	f.c.uses[p.Pending] = append(f.c.uses[p.Pending], paramUse{typ: t, file: f.f, off: n.GetLocation().StartOffset})
 }
 
@@ -637,13 +641,21 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
+		if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.widen }); i >= 0 {
+			next[key], from[key] = TAny{}, uses[i].at().String()
+			continue
+		}
 		if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.anyRest }); i >= 0 {
 			// concurrent-ruby's new_blocked_by1(self, executor, executor, args): a rest parameter collecting any values
 			next[key], from[key] = TAny{}, uses[i].at().String()
 			continue
 		}
 		if u, ok := c.untypedGemUse(uses); ok { // a gem passing an untyped container: its elements are anything (decision 244)
-			next[key], from[key] = u.typ, u.at().String()
+			t := u.typ
+			if slices.ContainsFunc(uses, func(x paramUse) bool { return isNil(x.typ) }) { // `default = nil` too (bindata's parent_attribute): nilable
+				t = optOf(t)
+			}
+			next[key], from[key] = t, u.at().String()
 			continue
 		}
 		if t, at := joinUses(uses, inf.noUnion[key]); t != nil {

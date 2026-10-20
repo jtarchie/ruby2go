@@ -14,7 +14,7 @@ import (
 )
 
 // rubyRegexFlags carries a literal's options.
-type rubyRegexFlags struct{ ignoreCase, multiline, extended bool }
+type rubyRegexFlags struct{ ignoreCase, multiline, extended, binary bool }
 
 func (r rubyRegexFlags) goPrefix() string {
 	// Ruby's ^ and $ always match at line boundaries: Go's (?m). Ruby's /m
@@ -39,6 +39,9 @@ func (r rubyRegexFlags) opts() string {
 	}
 	if r.extended {
 		o += "x"
+	}
+	if r.binary { // /n: matches a binary String byte by byte (decision 324)
+		o += "n"
 	}
 	return o
 }
@@ -136,7 +139,7 @@ func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 
 // genStaticRegexp is a literal without interpolation: validated now, compiled once into a package variable.
 func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
-	flags := rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
+	flags := rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT()}
 	src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
 	goPat, err := rxPrepare(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
 	if err == nil {
@@ -171,7 +174,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	case *parser.RegularExpressionNode:
 		return f.genStaticRegexp(n)
 	case *parser.InterpolatedRegularExpressionNode:
-		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED()}
+		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT()}
 		parts = n.Parts
 		term = f.f.text(n.ClosingLoc)[0]
 		once = n.IsONCE()

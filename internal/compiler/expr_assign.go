@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -113,6 +114,20 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 		iv = f.ivar(n, n.Name, nil)
 	}
 	f.unnarrow("ivar:" + n.Name)
+	if k, g := classOf(iv.Type), f.c.goType(iv.Type); k != nil && f.lenient() && !f.discover && !isOpt(iv.Type) && (g == k.ifaceName() || strings.HasPrefix(g, "*")) {
+		// a gem's ivar typed by its only assignment is still nil until then (bindata's `@factory ||= @obj_class.new`)
+		code := f.ivarCode(iv)
+		f.emit("if %s == nil {", code)
+		f.indent++
+		saved := f.enterBlock()
+		v := f.genExpr(n.Value, iv.Type)
+		f.emit("%s = %s", code, f.coerce(n.Value, v, iv.Type))
+		f.leaveBlock(saved)
+		f.indent--
+		f.emit("}")
+		f.markIvar(iv)
+		return expr{code: code, typ: iv.Type, done: true}
+	}
 	e := f.genOrAssign(n, expr{code: f.ivarCode(iv), typ: iv.Type}, n.Value)
 	f.markIvar(iv) // set or already truthy, so assigned either way
 	if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(e.typ) {

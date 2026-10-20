@@ -267,8 +267,11 @@ class File < Object
   #: (String, untyped) -> Integer
   def self.binwrite(path, data) = write(path, data)
 
-  #: (String) -> Array[String]
-  def self.readlines(path) = File.open(path) { |f| f.readlines }
+  #: (String, ?chomp: bool) -> Array[String]
+  def self.readlines(path, chomp: false)
+    lines = File.open(path) { |f| f.readlines }
+    chomp ? lines.map(&:chomp) : lines
+  end
 
   #: (String) { (String) -> void } -> void
   def self.foreach(path)
@@ -875,6 +878,12 @@ class File < Object
   def rewind
     self.lineno = 0
     seek(0)
+  end
+
+  #: (Integer) -> Integer
+  def pos=(offset)
+    seek(offset)
+    offset
   end
 
   #: () -> File

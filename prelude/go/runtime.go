@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -627,7 +628,33 @@ func rbAsSlow[T any](a any, want string) T {
 			return t
 		}
 	}
+	if t, ok := rbImplicitConv[T](a); ok {
+		return t
+	}
 	panic(rbConvError(a, want))
+}
+
+// rbImplicitConv is MRI's implicit to_int/to_str of an object where an Integer or String is taken (bindata's
+// primitives answer them through method_missing; decision 324).
+func rbImplicitConv[T any](a any) (T, bool) {
+	var zero T
+	name := ""
+	switch any(zero).(type) {
+	case Integer:
+		name = "to_int"
+		if r, ok := a.(interface{ DynToInt(...any) any }); ok {
+			return rbConv[T](r.DynToInt())
+		}
+	case String:
+		name = "to_str"
+		if r, ok := a.(interface{ DynToStr(...any) any }); ok {
+			return rbConv[T](r.DynToStr())
+		}
+	}
+	if r, ok := a.(interface{ DynMethodMissing(...any) any }); ok && name != "" {
+		return rbConv[T](r.DynMethodMissing(Symbol(name)))
+	}
+	return zero, false
 }
 
 // rbConvError is MRI's "no implicit conversion" TypeError.
@@ -797,6 +824,9 @@ func rbEq[T comparable](a, b T) Boolean {
 	}
 	if e, ok := x.(interface{ _EqAny(any) Boolean }); ok {
 		return e._EqAny(y) // a == typed on its argument; see emitEqAdapter
+	}
+	if e, ok := x.(interface{ Op_eq(any) any }); ok { // a gem's untyped == (bindata's Base: `other == snapshot`)
+		return Boolean(rbTruthy(e.Op_eq(y)))
 	}
 	return Boolean(x == y)
 }
@@ -1089,6 +1119,9 @@ func rbWrapPanic(r any) any {
 		}
 		if strings.Contains(msg, "index out of range") {
 			return NewIndexError(Ref[String](String(msg)))
+		}
+		if os.Getenv("RB2GO_GO_STACK") != "" { // debugging: where in the Go program it failed (decision 324)
+			msg += "\n" + string(debug.Stack())
 		}
 		return NewStandardError(Ref[String](String(msg)))
 	}
@@ -1633,6 +1666,29 @@ func rbDup[T any](x T) T {
 	return x
 }
 
+// rbIntShlWrap is a gem's Integer#<<: mod 2**64 past 64 bits, as Go's shift, where MRI would make a Bignum (decision 324).
+func rbIntShlWrap(x, n Integer) Integer {
+	if n < 0 {
+		return rbIntShl(x, n)
+	}
+	return x << n
+}
+
+// rbHasMissing reports whether v's class answers unknown names through method_missing.
+func rbHasMissing(v any) bool {
+	_, ok := v.(interface{ DynMethodMissing(...any) any })
+	return ok
+}
+
+// rbIfBlk is an adapter over a forwarded block when there is one, else no block.
+func rbIfBlk[F any](ok bool, fn F) F {
+	if ok {
+		return fn
+	}
+	var none F
+	return none
+}
+
 // rbArgAt is a block parameter bound from a variadic call: the i-th value, or the zero value (nil) past the end.
 func rbArgAt[T any](xs []T, i int) T {
 	if i < len(xs) {
@@ -1663,6 +1719,27 @@ func rbDerefOrNil[T any](p *T) (z T) {
 type rbBlockArg struct {
 	fn    func(...any) any
 	bound bool
+}
+
+// rbSelfArg leads a dynamic block's values when instance_eval rebinds its self (decision 324).
+type rbSelfArg struct{ v any }
+
+// rbEvalBlock is instance_eval/instance_exec of a gem's untyped block: self, then the values it yields.
+func rbEvalBlock(blk func(...any) any, self any, vals ...any) any {
+	if blk == nil {
+		panic(NewArgumentError(Ref(String("no block given"))))
+	}
+	return blk(append([]any{rbSelfArg{self}}, vals...)...)
+}
+
+// rbSelfOr is a dynamic block's self: the one instance_eval gave, else its lexical one; and its values after it.
+func rbSelfOr(self any, xs []any) (any, []any) {
+	if len(xs) > 0 {
+		if s, ok := xs[0].(rbSelfArg); ok {
+			return s.v, xs[1:]
+		}
+	}
+	return self, xs
 }
 
 // rbBlockArgOf is a method's own optional `&block` passed on to a dynamic call: an rbBlockArg, or one with no fn when

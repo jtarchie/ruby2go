@@ -167,11 +167,19 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 		return f.genStringBang(&outer)
 	}
 	lv, write, ok := f.stringBangTarget(n, n.Receiver)
-	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "concat" && n.Name != "replace" && n.Name != "clear" {
+	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "concat" && n.Name != "replace" && n.Name != "clear" && n.Name != "[]=" {
 		return expr{}, false
 	}
+	return f.stringBangOn(n, lv, write)
+}
+
+// stringBangOn is genStringBang on the local lv, whose String write rebinds.
+func (f *fctx) stringBangOn(n *parser.CallNode, lv parser.Node, write func(expr)) (expr, bool) {
 	t := f.probeType(lv, nil)
 	str := f.cls("String")
+	if _, local := lv.(*parser.LocalVariableReadNode); n.Name == "[]=" && isAny(t) && local && !f.noStrIndexSet && f.stringEditArgs(callArgs(n)) {
+		return f.untypedIndexSet(n, lv, write), true
+	}
 	u, isUnion := stripOpt(t).(TUnion)
 	if !typeEq(t, str) && !typeEq(t, TOpt{Elem: str}) && !(isUnion && slices.ContainsFunc(u.Members, func(m Type) bool { return typeEq(m, str) })) {
 		return expr{}, false
@@ -191,19 +199,11 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	case "<<", "concat":
 		return f.stringAppendBang(n, lv, args, cur, write)
 	case "replace", "clear": // rackup's Stream::Reader#read refills its buffer
-		if len(args) != map[string]int{"replace": 1, "clear": 0}[n.Name] {
-			return expr{}, false
-		}
-		with := `""`
-		if n.Name == "replace" {
-			with = f.coerce(args[0], f.genExpr(args[0], str), str)
-		}
-		tmp := f.newTmp()
-		f.emit("%s := rbStrReplace(%s, %s)", tmp, cur(), with) // cur: a non-String receiver raises as MRI's would
-		write(expr{code: tmp, typ: str})
-		return expr{code: tmp, typ: str}, true
+		return f.stringReplaceBang(n, args, cur, write)
 	case "slice!":
 		return f.stringSliceBang(n, args, cur, write)
+	case "[]=":
+		return f.stringIndexSet(n, args, cur(), write)
 	}
 	plain := strings.TrimSuffix(n.Name, "!")
 	if f.c.classes["String"].lookup(plain) == nil {
@@ -216,6 +216,100 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	f.emit("%s := %s", after, f.coerce(n, next, str))
 	write(expr{code: after, typ: str})
 	return expr{code: fmt.Sprintf("rbStrChanged(%s, %s)", before, after), typ: TOpt{Elem: str}}, true
+}
+
+// stringReplaceBang is a gem's `s.replace(t)` / `s.clear`: s rebound to t, or to "".
+func (f *fctx) stringReplaceBang(n *parser.CallNode, args []parser.Node, cur func() string, write func(expr)) (expr, bool) {
+	str := f.cls("String")
+	if len(args) != map[string]int{"replace": 1, "clear": 0}[n.Name] {
+		return expr{}, false
+	}
+	with := `""`
+	if n.Name == "replace" {
+		with = f.coerce(args[0], f.genExpr(args[0], str), str)
+	}
+	tmp := f.newTmp()
+	f.emit("%s := rbStrReplace(%s, %s)", tmp, cur(), with) // cur: a non-String receiver raises as MRI's would
+	write(expr{code: tmp, typ: str})
+	return expr{code: tmp, typ: str}, true
+}
+
+// untypedIndexSet is a gem's `s[i] = v` on an untyped local: a String is rebound, anything else (a parsed JSON Hash)
+// takes []= as before.
+func (f *fctx) untypedIndexSet(n *parser.CallNode, lv parser.Node, write func(expr)) expr {
+	x := f.genExpr(lv, nil)
+	res, sv := f.newTmp(), f.newTmp()
+	f.emit("var %s any", res)
+	f.emit("if %s, ok := %s.(String); ok {", sv, x.code)
+	f.indent++
+	saved := f.enterBlock()
+	if r, ok := f.stringIndexSet(n, callArgs(n), sv, write); ok {
+		f.emit("%s = %s", res, f.coerce(n, r, TAny{}))
+	} else {
+		f.emit("panic(rbNoMethod(%q, %s, false))", "[]=", sv)
+	}
+	f.leaveBlock(saved)
+	f.indent--
+	f.emit("} else {")
+	f.indent++
+	saved = f.enterBlock()
+	f.noStrIndexSet = true
+	e := f.genExpr(n, nil)
+	f.noStrIndexSet = false
+	if e.stmt || isVoid(e.typ) {
+		f.emit("%s", e.code)
+	} else {
+		f.emit("%s = %s", res, f.coerce(n, e, TAny{}))
+	}
+	f.leaveBlock(saved)
+	f.indent--
+	f.emit("}")
+	return expr{code: res, typ: TAny{}}
+}
+
+// stringEditArgs reports `[]=` arguments only a String edit takes: Integer or Range indexes and a String value (a
+// Hash's `h[file] = libs` keeps its own path).
+func (f *fctx) stringEditArgs(args []parser.Node) bool {
+	if len(args) < 2 || len(args) > 3 {
+		return false
+	}
+	for i, a := range args {
+		t := f.probeType(a, nil)
+		if i == len(args)-1 {
+			return isClass(t, "String")
+		}
+		if !isClass(t, "Integer") && !isClass(t, "Range") {
+			return false
+		}
+	}
+	return false
+}
+
+// stringIndexSet is a gem's `s[range] = v` / `s[i, n] = v` / `s[i] = v` (patchelf's `new_dynstr[i..j] = "..."`):
+// s rebound to the edited String, the value v (decision 324).
+func (f *fctx) stringIndexSet(n *parser.CallNode, args []parser.Node, cur string, write func(expr)) (expr, bool) {
+	str := f.cls("String")
+	if len(args) < 2 || len(args) > 3 {
+		return expr{}, false
+	}
+	var at expr
+	f.probe(func() { at = f.genExpr(args[0], nil) })
+	helper, idx := "__with_span", slices.Clone(args[:len(args)-1])
+	switch {
+	case isClass(at.typ, "Range") && len(args) == 2:
+		helper = "__with_range"
+	case len(args) == 2:
+		idx = append(idx, &exprNode{e: expr{code: "Integer(1)", typ: f.cls("Integer"), lit: true}})
+	}
+	val := f.genExpr(args[len(args)-1], str)
+	if !typeEq(val.typ, str) { // `h[k] = obj` of an untyped h that is a Hash at run time: a String only if it is one
+		val = expr{code: f.coerce(args[len(args)-1], val, TAny{}), typ: TAny{}}
+	}
+	vt, s0 := f.newTmp(), f.newTmp()
+	f.emit("%s := String(%s)", vt, f.coerce(args[len(args)-1], val, str))
+	f.emit("%s := String(%s)", s0, cur)
+	write(f.genMethodCall(n, expr{code: s0, typ: str}, helper, append(idx, &exprNode{e: expr{code: vt, typ: str}}), nil))
+	return expr{code: vt, typ: str}, true
 }
 
 // stringAppendBang is a gem's `s << x` or `s.concat(a, b)` (decision 172, 233): s rebound to the joined String.
@@ -346,8 +440,7 @@ func readsLastMatch(body parser.Node) bool {
 		case *parser.GlobalVariableReadNode:
 			return n.Name == "$~" || n.Name == "$LAST_MATCH_INFO"
 		case *parser.CallNode: // Regexp.last_match reads the frame's $~ too
-			r, ok := n.Receiver.(*parser.ConstantReadNode)
-			return ok && r.Name == "Regexp" && n.Name == "last_match"
+			return isRegexpConst(n.Receiver) && n.Name == "last_match"
 		}
 		return false
 	})

@@ -643,7 +643,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	if isOptRecv {
 		recvT = opt.Elem
 	}
-	e := f.resolve(recvT, n.Name)
+	e := f.resolveIter(n, recvT)
 	if e == nil || !e.M.Iterator {
 		return false
 	}
@@ -667,7 +667,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	if selfValue {
 		tmp := f.newTmp()
-		f.emit("%s := %s", tmp, recv.code)
+		f.emit("var %s %s = %s", tmp, f.c.goType(recv.typ), recv.code) // typed: a literal receiver (`4.times`) is an Integer, not Go's int
 		recv.code = tmp
 		f.genIterLoop(n, e, recv)
 		f.applyTail(n, recv, t)
@@ -692,6 +692,21 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		f.emptyTail(n, t)
 	}
 	return true
+}
+
+// resolveIter is the method an iterator call names: its zero-argument twin for a call with none, Kernel's for a gem
+// module's own `loop do ... end`.
+func (f *fctx) resolveIter(n *parser.CallNode, recvT Type) *entry {
+	e := f.resolve(recvT, n.Name)
+	if e != nil && len(callArgs(n)) == 0 && slices.ContainsFunc(e.M.Params, func(p Param) bool { return p.Default == nil && !p.Rest && !p.Keyword && !p.KwRest }) {
+		if z := f.resolve(recvT, "__"+n.Name+"_0"); z != nil && z.M.Iterator { // decision 12's arity twin (`0.step do ... end`)
+			return z
+		}
+	}
+	if e == nil && n.Receiver == nil && f.owner != nil && f.owner.IsModule && f.lenient() {
+		e = f.c.classes["Object"].lookup(n.Name)
+	}
+	return e
 }
 
 // genUnionIterCall is genIterCall on a union (decision 150): a type switch

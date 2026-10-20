@@ -1,0 +1,23 @@
+bindata: count read bytes with bytesize (rb2go Strings carry no encoding tag: decision 136, 324).
+MRI's read(n) is ASCII-8BIT, so size is bytesize there; a short binary read that happens to be valid UTF-8 counted
+characters under rb2go and raised 'data truncated'.
+--- a/lib/bindata/io.rb
++++ b/lib/bindata/io.rb
+@@ -127,7 +127,7 @@
+         str = @io.read(n)
+         if n
+           raise EOFError, "End of file reached" if str.nil?
+-          raise IOError, "data truncated" if str.size < n
++          raise IOError, "data truncated" if str.bytesize < n
+         end
+         str
+       end
+@@ -359,7 +359,7 @@
+       end
+ 
+       def read(n)
+-        @io.read(n).tap { |data| @pos += (data&.size || 0) }
++        @io.read(n).tap { |data| @pos += (data&.bytesize || 0) }
+       end
+ 
+       def write(data)

@@ -11,6 +11,27 @@ import (
 
 type Range_Any interface{ _ToAny() *Range[any] }
 
+// rbFrom converts another instantiation's Range (a gem's `i..(i + n)` of untyped bounds) to this one, bound by bound.
+func (*Range[E]) rbFrom(v any) (*Range[E], bool) {
+	r, ok := v.(Range_Any)
+	if !ok {
+		return nil, false
+	}
+	a := r._ToAny()
+	out := &Range[E]{excl: a.excl, endless: a.endless, beginless: a.beginless, inf: a.inf}
+	if !a.beginless {
+		if out.b, ok = rbConv[E](a.b); !ok {
+			return nil, false
+		}
+	}
+	if !a.endless {
+		if out.e, ok = rbConv[E](a.e); !ok {
+			return nil, false
+		}
+	}
+	return out, true
+}
+
 // rbSuccAny is succ for a class whose override narrows succ's result type, so its Go name differs (decision 8): DateTime.
 type rbSuccAny interface{ rbSuccAny() any }
 
@@ -28,6 +49,16 @@ func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
 				if r.endless {
 					rbIntOverflow(i, "+", 1)
 				}
+				return
+			}
+		}
+	case *Integer: // an Integer? bound (bindata's `(0...index)` of an index typed from a find): nil is no bound
+		if b == nil {
+			panic(NewTypeError(Ref(String("can't iterate from NilClass"))))
+		}
+		e, _ := any(r.e).(*Integer)
+		for i := *b; r.endless || e == nil || i < *e || (!r.excl && i == *e); i++ {
+			if !yield(any(Ref(i)).(E)) || i == math.MaxInt {
 				return
 			}
 		}

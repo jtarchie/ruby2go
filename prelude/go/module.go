@@ -39,11 +39,27 @@ func rbConstName(name any) string {
 func rbConstFind(m rbModule, name string, inherit bool) (any, bool) {
 	for _, c := range m.(rbConstTable)._Consts() {
 		if c.name == name && (inherit || !c.inherited) {
+			if p, ok := c.value.(rbEvalConst); ok { // a class a string eval defines: there once that eval has run (decision 324)
+				if !*p.defined {
+					return nil, false
+				}
+				return p.value, true
+			}
 			return c.value, true
 		}
 	}
 	return nil, false
 }
+
+// rbEvalConst is a constant table's entry for a class a string eval defines at run time (bindata's Int and BitField
+// classes): MRI has no such constant until the eval runs, so const_defined? is false and const_get reaches const_missing.
+type rbEvalConst struct {
+	defined *bool
+	value   any
+}
+
+// rbConstMissingHook calls a module's const_missing (bindata's IntFactory); set when the program defines one.
+var rbConstMissingHook func(m rbModule, name string) (any, bool)
 
 // rbConstRead reads a constant that code may reach before main assigns
 // it; MRI raises NameError there.
@@ -74,6 +90,12 @@ func rbIsConstName(s string) bool {
 // raised segment by segment, in MRI's order. On a miss it returns the
 // NameError message.
 func rbConstResolve(m rbModule, name any, inherit bool) (any, string) {
+	return rbConstLookup(m, name, inherit, true)
+}
+
+// rbConstLookup is rbConstResolve; missing says whether an absent name reaches const_missing (const_get) or not
+// (const_defined?, as MRI's).
+func rbConstLookup(m rbModule, name any, inherit, missing bool) (any, string) {
 	var parts []string
 	var path string
 	switch n := name.(type) {
@@ -112,6 +134,9 @@ func rbConstResolve(m rbModule, name any, inherit bool) (any, string) {
 		v, ok := rbConstFind(m, p, inherit)
 		if !ok && i == 0 && inherit {
 			v, ok = rbConstFind(Object_class, p, true)
+		}
+		if !ok && missing && rbConstMissingHook != nil {
+			v, ok = rbConstMissingHook(m, p)
 		}
 		if !ok {
 			if owner := string(m.Name()); owner != "Object" {

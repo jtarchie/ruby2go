@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -50,6 +51,10 @@ func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[string]*dm
 		sf.path, sf.pinLine = site.file.path, site.file.line(site.call.Location.StartOffset)
 		def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
 		def.Name = e.Name
+		if c.dmDefined == nil {
+			c.dmDefined = map[*parser.CallNode]bool{}
+		}
+		c.dmDefined[site.call] = true
 		switch {
 		case e.Singleton:
 			owner.singletonDefs = append(owner.singletonDefs, singletonDef{node: def, scope: site.scope, file: sf})
@@ -255,17 +260,259 @@ func (c *Compiler) procLiteral(f *File, at parser.Node, loc string) string {
 // body, so `args.sizes?` is that body at :sizes?, and the run-time call is a no-op (decision 230). No method is made
 // at run time; what MRI would make for any name is compiled once.
 func (c *Compiler) collectSingletonTemplates(ctx context.Context) {
+	var sites []selfSingletonSite
 	for _, cls := range slices.Clone(c.classList) {
 		for _, m := range slices.Clone(cls.MethodList) {
 			if m.Node == nil || m.File == nil || !c.gemFile(m.File) {
 				continue
 			}
-			c.keepGoing(func() { c.singletonTemplatesIn(ctx, cls, m, m.Node.Body) })
+			c.keepGoing(func() { c.singletonTemplatesIn(ctx, cls, m, m.Node.Body, &sites) })
+		}
+		for _, d := range cls.singletonDefs { // class methods (bindata's DSLBigAndLittleEndianHandler): literal names on a receiver only
+			if d.file == nil || !c.gemFile(d.file) {
+				continue
+			}
+			m := &Method{Name: d.node.Name, Node: d.node, srcPos: srcPos{d.file, d.file.line(d.node.Location.StartOffset)}, Scope: d.scope}
+			var found []selfSingletonSite
+			c.keepGoing(func() { c.singletonTemplatesIn(ctx, cls, m, d.node.Body, &found) })
+			for _, s := range found {
+				if s.name != "" && s.call.Receiver != nil {
+					sites = append(sites, s)
+				}
+			}
+		}
+	}
+	if len(sites) == 0 {
+		return
+	}
+	byClass := map[*Class][]int{}
+	var order []*Class
+	add := func(k *Class, i int) {
+		if byClass[k] == nil {
+			order = append(order, k)
+		}
+		byClass[k] = append(byClass[k], i)
+	}
+	for i, s := range sites {
+		if s.name == "" {
+			add(s.cls, i)
+			continue
+		}
+		for _, k := range c.classList { // each class whose own def the singleton method would override
+			if om := k.Methods[s.name]; om != nil && om.Owner == k && om.Node != nil && om.Node.Receiver == nil && om.File != nil && c.gemFile(om.File) {
+				add(k, i)
+			}
+		}
+	}
+	for _, k := range order {
+		c.keepGoing(func() { c.emitSelfSingletons(ctx, k, sites, byClass[k]) })
+	}
+}
+
+// selfSingletonSite is a gem method's `define_singleton_method(name) do |params| ... end` run on objects at run time:
+// receiverless with a computed name (bindata's Struct#define_field_accessors_for(name, index), once per field), or on
+// any receiver with a literal name (bindata's `parser.define_singleton_method(:parse_and_append_field)`).
+type selfSingletonSite struct {
+	cls  *Class
+	m    *Method
+	call *parser.CallNode
+	blk  *parser.BlockNode
+	caps []string
+	name string // the literal name, or "" for a computed one
+}
+
+// selfSingleton matches a selfSingletonSite: one name argument and a literal block.
+func (c *Compiler) selfSingleton(cls *Class, m *Method, n *parser.CallNode) (selfSingletonSite, bool) {
+	blk, ok := n.Block.(*parser.BlockNode)
+	if !ok || n.Name != "define_singleton_method" || len(callArgs(n)) != 1 || blk.Body == nil {
+		return selfSingletonSite{}, false
+	}
+	name := ""
+	if sym, ok := callArgs(n)[0].(*parser.SymbolNode); ok {
+		name = sym.Unescaped.Value
+	} else if n.Receiver != nil || c.dmDefined[n] {
+		return selfSingletonSite{}, false
+	}
+	if c.dmDefined[n] {
+		return selfSingletonSite{}, false // on a class object: boot made it a def (decision 198)
+	}
+	if bp, ok := blk.Parameters.(*parser.BlockParametersNode); ok && bp.Parameters != nil {
+		if ps := bp.Parameters; len(ps.Keywords) > 0 || ps.KeywordRest != nil || len(ps.Posts) > 0 || name == "" && ps.Block != nil {
+			return selfSingletonSite{}, false
+		}
+	} else if blk.Parameters != nil {
+		return selfSingletonSite{}, false
+	}
+	site := &dmSite{file: m.File, call: n, block: blk, scope: m.Scope}
+	return selfSingletonSite{cls: cls, m: m, call: n, blk: blk, caps: c.dmCaptures(site), name: name}, true
+}
+
+// emitSelfSingletons compiles each site's block once, as a method taking its captures then its parameters; the
+// run-time call records (site, name, captures) on the object (a new Array each time: a clone shares the old one).
+// A computed name is found by method_missing/respond_to_missing?; a literal one by a check at the top of the method it
+// overrides (decision 324). No method is made at run time.
+func (c *Compiler) emitSelfSingletons(ctx context.Context, cls *Class, sites []selfSingletonSite, ids []int) {
+	if c.smSites == nil {
+		c.smSites = map[*parser.CallNode]*parser.CallNode{}
+	}
+	var b, dispatch strings.Builder
+	computed := false
+	overrides := map[string][]int{}
+	for _, i := range ids {
+		s := sites[i]
+		if s.name == "" {
+			if mm := cls.lookup("method_missing"); mm != nil && mm.Owner == cls {
+				continue
+			}
+			computed = true
+		} else {
+			overrides[s.name] = append(overrides[s.name], i)
+		}
+		params := slices.Clone(s.caps)
+		if bp, ok := s.blk.Parameters.(*parser.BlockParametersNode); ok && bp.Parameters != nil {
+			params = append(params, s.m.File.text(bp.Parameters.Location))
+		}
+		capArgs := strings.Join(s.caps, ", ")
+		fmt.Fprintf(&b, "def __rb2go_smdef_%d(__rb2go_name%s)\n  @__rb2go_sm = (@__rb2go_sm || []) + [[%d, __rb2go_name.to_s%s]]\n  nil\nend\n",
+			i, prefixComma(capArgs), i, prefixComma(capArgs))
+		fmt.Fprintf(&b, "def __rb2go_sm_%d(%s)\n%s\nend\n", i, strings.Join(params, ", "), blockAsMethodBody(s.m.File, s.blk))
+		if s.name == "" {
+			fmt.Fprintf(&dispatch, "    return __rb2go_sm_%d(%s*__rb2go_args) if __rb2go_e[0] == %d\n", i, smCaps(len(s.caps)), i)
+		}
+		if c.smSites[s.call] == nil {
+			loc := s.call.Location
+			args := make([]parser.Node, 0, 1+len(s.caps))
+			args = append(args, callArgs(s.call)[0])
+			for _, name := range s.caps {
+				args = append(args, &parser.LocalVariableReadNode{Location: loc, Name: name})
+			}
+			c.smSites[s.call] = &parser.CallNode{Location: loc, Receiver: s.call.Receiver, Name: fmt.Sprintf("__rb2go_smdef_%d", i), Arguments: &parser.ArgumentsNode{Location: loc, Arguments: args}}
+		}
+		c.keepNames = append(c.keepNames, fmt.Sprintf("__rb2go_smdef_%d", i), fmt.Sprintf("__rb2go_sm_%d", i))
+	}
+	b.WriteString("def __rb2go_smfind(s)\n  l = @__rb2go_sm\n  return nil unless l\n  i = l.size - 1\n  while i >= 0\n    e = l[i]\n    return e if e[1] == s\n    i -= 1\n  end\n  nil\nend\n")
+	if computed {
+		b.WriteString("def method_missing(__rb2go_sym, *__rb2go_args)\n  __rb2go_e = __rb2go_smfind(__rb2go_sym.to_s)\n  if __rb2go_e\n")
+		b.WriteString(dispatch.String())
+		b.WriteString("  end\n  super\nend\n")
+		b.WriteString("def respond_to_missing?(__rb2go_sym, __rb2go_all = false)\n  !__rb2go_smfind(__rb2go_sym.to_s).nil? || super\nend\n")
+	}
+	f := sites[ids[0]].m.File
+	c.addSynthDefs(ctx, f, sites[ids[0]].call, cls, b.String())
+	for _, name := range slices.Sorted(maps.Keys(overrides)) {
+		c.overrideWithSingletons(ctx, cls, name, sites, overrides[name])
+	}
+	resetMsets(cls)
+	c.keepNames = append(c.keepNames, "__rb2go_smfind")
+	if computed {
+		for _, name := range []string{"method_missing", "respond_to_missing?"} {
+			if !slices.Contains(c.keepNames, name) {
+				c.keepNames = append(c.keepNames, name)
+			}
 		}
 	}
 }
 
-func (c *Compiler) singletonTemplatesIn(ctx context.Context, cls *Class, m *Method, n parser.Node) {
+// addSynthDefs parses src's defs and adds them to cls, pinned to at's line in f.
+func (c *Compiler) addSynthDefs(ctx context.Context, f *File, at parser.Node, cls *Class, src string, public ...string) {
+	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
+	if err != nil {
+		c.errorf(f, at, "define_singleton_method template: %v\n%s", err, src)
+	}
+	sf.path, sf.pinLine = f.path, f.line(at.GetLocation().StartOffset)
+	for _, st := range sf.Root.Statements.Body {
+		def := st.(*parser.DefNode)                                                                                                                                    //nolint:forcetypeassert // built by the caller
+		c.addDef(sf, cls, def, def.Name != "method_missing" && !strings.HasPrefix(def.Name, "__rb2go_smdef_") && !slices.Contains(public, def.Name), c.nestingOf(cls)) // a recording call may have a receiver
+	}
+}
+
+// overrideWithSingletons re-reads cls's own def of name with a first statement that runs the object's latest
+// recorded singleton method of that name, when it has one.
+func (c *Compiler) overrideWithSingletons(ctx context.Context, cls *Class, name string, sites []selfSingletonSite, ids []int) {
+	om := cls.Methods[name]
+	d, f := om.Node, om.File
+	fwd, ok := defForwardArgs(d)
+	if !ok {
+		c.warn(f, d, "define_singleton_method(:%s) cannot be checked for in this def's parameters; the def runs as is", name)
+		return
+	}
+	var pro strings.Builder
+	pro.WriteString("; __rb2go_e = __rb2go_smfind(" + fmt.Sprintf("%q", name) + "); if __rb2go_e;")
+	for _, i := range ids {
+		fmt.Fprintf(&pro, " return __rb2go_sm_%d(%s%s) if __rb2go_e[0] == %d;", i, smCaps(len(sites[i].caps)), fwd, i)
+	}
+	pro.WriteString(" end")
+	c.prependToDef(ctx, cls, om, pro.String())
+}
+
+// defForwardArgs is a call passing d's parameters on as they came; false when one cannot be named (`*`, a pattern).
+func defForwardArgs(d *parser.DefNode) (string, bool) {
+	ps := d.Parameters
+	if ps == nil {
+		return "", true
+	}
+	var out []string
+	for _, p := range slices.Concat(ps.Requireds, ps.Optionals) {
+		switch p := p.(type) {
+		case *parser.RequiredParameterNode:
+			out = append(out, p.Name)
+		case *parser.OptionalParameterNode:
+			out = append(out, p.Name)
+		default:
+			return "", false
+		}
+	}
+	if r, ok := ps.Rest.(*parser.RestParameterNode); ok && r.Name != nil {
+		out = append(out, "*"+*r.Name)
+	} else if ps.Rest != nil {
+		return "", false
+	}
+	for _, p := range ps.Posts {
+		r, ok := p.(*parser.RequiredParameterNode)
+		if !ok {
+			return "", false
+		}
+		out = append(out, r.Name)
+	}
+	for _, k := range ps.Keywords {
+		switch k := k.(type) {
+		case *parser.RequiredKeywordParameterNode:
+			out = append(out, k.Name+": "+k.Name)
+		case *parser.OptionalKeywordParameterNode:
+			out = append(out, k.Name+": "+k.Name)
+		}
+	}
+	if kr, ok := ps.KeywordRest.(*parser.KeywordRestParameterNode); ok && kr.Name != nil {
+		out = append(out, "**"+*kr.Name)
+	} else if ps.KeywordRest != nil {
+		return "", false
+	}
+	if ps.Block != nil {
+		if ps.Block.Name == nil {
+			return "", false
+		}
+		out = append(out, "&"+*ps.Block.Name)
+	}
+	return strings.Join(out, ", "), true
+}
+
+// smCaps is a recorded entry's captures as arguments: `e[2], e[3], ` for two.
+func smCaps(n int) string {
+	var b strings.Builder
+	for j := range n {
+		fmt.Fprintf(&b, "__rb2go_e[%d], ", j+2)
+	}
+	return b.String()
+}
+
+func prefixComma(s string) string {
+	if s == "" {
+		return ""
+	}
+	return ", " + s
+}
+
+func (c *Compiler) singletonTemplatesIn(ctx context.Context, cls *Class, m *Method, n parser.Node, sites *[]selfSingletonSite) {
 	switch n := n.(type) {
 	case nil, *parser.DefNode:
 		return
@@ -273,9 +520,13 @@ func (c *Compiler) singletonTemplatesIn(ctx context.Context, cls *Class, m *Meth
 		if c.singletonTemplate(ctx, cls, m, n) {
 			return
 		}
+		if s, ok := c.selfSingleton(cls, m, n); ok {
+			*sites = append(*sites, s)
+			return
+		}
 	}
 	for _, ch := range n.CompactChildNodes() {
-		c.singletonTemplatesIn(ctx, cls, m, ch)
+		c.singletonTemplatesIn(ctx, cls, m, ch, sites)
 	}
 }
 

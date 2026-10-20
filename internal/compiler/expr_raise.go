@@ -38,7 +38,7 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 			break
 		}
 		switch {
-		case cls == nil && f.dynRaise() && len(args) == 2 && f.raiseObject(args[0]) == nil: // `raise klass, msg` with klass held untyped (decision 233; the prelude's Thread#raise)
+		case cls == nil && f.dynRaise() && f.raiseObject(args[0]) == nil: // `raise klass, msg` with klass held untyped (decision 233; the prelude's Thread#raise)
 			f.c.noteDyn("new")
 			k := f.genExpr(args[0], nil)
 			msg := f.genExpr(args[1], f.cls("String"))

@@ -134,9 +134,8 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 	}
 	args := callArgs(n)
 	exec := strings.HasSuffix(n.Name, "_exec")
-	if n.Block == nil && f.lenient() && len(args) > 0 { // gem code (decision 172): fails only if it runs, as a ScriptError a loader can rescue (Formulary's `module_eval(contents, path)`, decision 301)
-		msg := fmt.Sprintf("rb2go: %s of a String at run time is not supported (%s:%d)", n.Name, f.f.Name, f.f.line(n.Location.StartOffset))
-		return expr{code: fmt.Sprintf("panic(NewNotImplementedError(Ref(String(%q))))", msg), typ: TVoid{}, stmt: true, noreturn: true}, true
+	if n.Block == nil && f.lenient() && len(args) > 0 { // gem code (decision 172)
+		return f.gemStringEval(n), true
 	}
 	if n.Block == nil {
 		f.errorf(n, "%s needs a block or a Proc (a String to eval is not supported)", n.Name)
@@ -157,50 +156,87 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 		code := f.genClosure(n, b, sig, env)
 		return expr{code: code + "(" + recv.code + ")", typ: subst(sig.Ret, env)}, true
 	case *parser.BlockArgumentNode:
-		if lr, ok := b.Expression.(*parser.LocalVariableReadNode); ok && (n.Receiver == nil || isSelf(n.Receiver)) && f.localProcLiteral(lr.Name) {
-			// `instance_exec(*a, &blk)` on self with a proc this method made: its self is already ours, so it is blk.call(*a)
-			return f.genMethodCall(n, f.genExpr(lr, nil), "call", args, nil), true
-		}
-		p := f.genExpr(b.Expression, nil)
-		if o, isOpt := p.typ.(TOpt); isOpt { // instance_eval(&nil) raises, as MRI does
-			if ft, ok := o.Elem.(TFunc); ok && ft.Proc {
-				tmp := f.newTmp()
-				f.emit("%s := %s", tmp, p.code)
-				f.emit("if %s == nil {\n\tpanic(NewArgumentError(Ref(String(%q))))\n}", tmp, "wrong number of arguments (given 0, expected 1..3)")
-				p = expr{code: "(*" + tmp + ")", typ: ft}
-			}
-		}
-		pt, ok := p.typ.(TFunc)
-		if !ok || !pt.Proc {
-			f.errorf(b, "%s needs a Proc, got %s", n.Name, p.typ)
-		}
-		if pt.Self == nil {
-			f.errorf(b, "%s on a Proc that does not escape cannot rebind self (decision 164)", n.Name)
-		}
-		if len(args) != len(pt.Params) {
-			f.errorf(n, "%s passes %d values but the block takes %d", n.Name, len(args), len(pt.Params))
-		}
-		if pt.SelfPending != "" {
-			f.noteUse(Param{Pending: pt.SelfPending}, n, f.concreteSelf(recv.typ))
-		}
-		codes := make([]string, 0, len(args)+1)
-		self := recv.code
-		if o, ok := recv.typ.(TOpt); ok && !isOpt(pt.Self) { // `@livecheck.instance_eval(&block)` of a Livecheck?: the object itself
-			tmp := f.newTmp()
-			f.emit("%s := %s", tmp, recv.code)
-			// ponytail: MRI runs the block with self nil, failing at its first call; this raises before it runs
-			f.emit("if %s == nil {\n\tpanic(rbNoMethod(%q, nil, false))\n}", tmp, n.Name)
-			self = f.coerce(n, expr{code: "(*" + tmp + ")", typ: o.Elem}, pt.Self)
-		}
-		codes = append(codes, self)
-		for i, a := range args {
-			e := f.genExpr(a, pt.Params[i])
-			codes = append(codes, f.coerce(a, e, pt.Params[i]))
-		}
-		return expr{code: "(*" + p.code + ")(" + strings.Join(codes, ", ") + ")", typ: pt.Ret}, true
+		return f.evalProcArg(n, b, recv, args, exec), true
 	}
 	f.errorf(n, "%s needs a literal block or a Proc", n.Name)
 	return expr{}, false
+}
+
+// evalProcArg is instance_eval/instance_exec with `&proc`: a Proc that escaped takes the receiver as its self
+// (decision 164); a gem's untyped one rebinds through rbSelfArg (decision 324).
+func (f *fctx) evalProcArg(n *parser.CallNode, b *parser.BlockArgumentNode, recv expr, args []parser.Node, exec bool) expr {
+	if lr, ok := b.Expression.(*parser.LocalVariableReadNode); ok && (n.Receiver == nil || isSelf(n.Receiver)) && f.localProcLiteral(lr.Name) {
+		// `instance_exec(*a, &blk)` on self with a proc this method made: its self is already ours, so it is blk.call(*a)
+		return f.genMethodCall(n, f.genExpr(lr, nil), "call", args, nil)
+	}
+	p := f.genExpr(b.Expression, nil)
+	if o, isOpt := p.typ.(TOpt); isOpt { // instance_eval(&nil) raises, as MRI does
+		if ft, ok := o.Elem.(TFunc); ok && ft.Proc {
+			tmp := f.newTmp()
+			f.emit("%s := %s", tmp, p.code)
+			f.emit("if %s == nil {\n\tpanic(NewArgumentError(Ref(String(%q))))\n}", tmp, "wrong number of arguments (given 0, expected 1..3)")
+			p = expr{code: "(*" + tmp + ")", typ: ft}
+		}
+	}
+	pt, ok := p.typ.(TFunc)
+	if !ok || !pt.Proc {
+		f.errorf(b, "%s needs a Proc, got %s", n.Name, p.typ)
+	}
+	if pt.Self == nil && f.lenient() && pt.Rest && len(pt.Params) == 1 && isAny(pt.Params[0]) && isAny(pt.Ret) {
+		return f.evalUntypedBlock(n, p, recv, args, exec)
+	}
+	if pt.Self == nil {
+		f.errorf(b, "%s on a Proc that does not escape cannot rebind self (decision 164)", n.Name)
+	}
+	if len(args) != len(pt.Params) {
+		f.errorf(n, "%s passes %d values but the block takes %d", n.Name, len(args), len(pt.Params))
+	}
+	if pt.SelfPending != "" {
+		f.noteUse(Param{Pending: pt.SelfPending}, n, f.concreteSelf(recv.typ))
+	}
+	codes := make([]string, 0, len(args)+1)
+	self := recv.code
+	if o, ok := recv.typ.(TOpt); ok && !isOpt(pt.Self) { // `@livecheck.instance_eval(&block)` of a Livecheck?: the object itself
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, recv.code)
+		// ponytail: MRI runs the block with self nil, failing at its first call; this raises before it runs
+		f.emit("if %s == nil {\n\tpanic(rbNoMethod(%q, nil, false))\n}", tmp, n.Name)
+		self = f.coerce(n, expr{code: "(*" + tmp + ")", typ: o.Elem}, pt.Self)
+	}
+	codes = append(codes, self)
+	for i, a := range args {
+		e := f.genExpr(a, pt.Params[i])
+		codes = append(codes, f.coerce(a, e, pt.Params[i]))
+	}
+	return expr{code: "(*" + p.code + ")(" + strings.Join(codes, ", ") + ")", typ: pt.Ret}
+}
+
+// gemStringEval is a gem's run-time string eval: it fails only if it runs, as a ScriptError a loader can rescue
+// (Formulary's `module_eval(contents, path)`, decision 301).
+func (f *fctx) gemStringEval(n *parser.CallNode) expr {
+	if f.m != nil && f.m.Name == "method_missing" && n.Name != "instance_eval" {
+		// a method_missing memoizing the name it answers as a def (bindata's BasePrimitive): without it, the next
+		// call reaches method_missing again and gets the same answer (decision 324)
+		return expr{code: "nil", typ: TNil{}, lit: true}
+	}
+	msg := fmt.Sprintf("rb2go: %s of a String at run time is not supported (%s:%d)", n.Name, f.f.Name, f.f.line(n.Location.StartOffset))
+	return expr{code: fmt.Sprintf("panic(NewNotImplementedError(Ref(String(%q))))", msg), typ: TVoid{}, stmt: true, noreturn: true}
+}
+
+// evalUntypedBlock is a gem's instance_eval/instance_exec of an untyped &block (bindata's `parser.instance_eval(&block)`):
+// a dynamic block rebinds the self it is given first (decision 324).
+func (f *fctx) evalUntypedBlock(n parser.Node, p, recv expr, args []parser.Node, exec bool) expr {
+	self := f.coerce(n, recv, TAny{})
+	codes := []string{"*" + p.code, self}
+	if !exec {
+		codes = append(codes, self) // instance_eval yields the receiver too
+	}
+	for _, a := range args {
+		if exec {
+			codes = append(codes, f.coerce(a, f.genExpr(a, nil), TAny{}))
+		}
+	}
+	return expr{code: "rbEvalBlock(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 }
 
 // procCall is a method on a Proc value.

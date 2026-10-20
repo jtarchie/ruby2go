@@ -346,6 +346,9 @@ func (c *Compiler) emitProgram() {
 	if slices.ContainsFunc(c.classList, func(cls *Class) bool { return cls.hashBase && cls.Super.RubyName == "Hash" }) {
 		c.w("type %s[V comparable] = Hash[any, V]\n\n", superField(c.classes["Hash"]))
 	}
+	if c.pruneGems { // stubRejected's stubs raise it, and they are written after the prune (decision 324)
+		c.w("var _ = NewNotImplementedError\n\n")
+	}
 	based := map[*Class]bool{}
 	for _, cls := range c.classList {
 		if sup := cls.Super; cls.hashBase && sup.RubyName != "Hash" && !based[sup] {
@@ -374,6 +377,12 @@ func (c *Compiler) emitProgram() {
 	}
 	for _, k := range c.constList {
 		c.emitConst(k)
+	}
+	if len(c.evalClasses) > 0 { // a constant a run-time eval defines is missing until then: MRI calls the module's const_missing (decision 324)
+		c.noteDyn("const_missing")
+		c.w("var _ = func() bool {\n\trbConstMissingHook = func(m rbModule, name string) (any, bool) {\n")
+		c.w("\t\tif r, ok := m.(interface{ DynConstMissing(...any) any }); ok {\n\t\t\treturn r.DynConstMissing(Symbol(name)), true\n\t\t}\n")
+		c.w("\t\treturn nil, false\n\t}\n\treturn true\n}()\n\n")
 	}
 
 	c.emitMain()
@@ -692,6 +701,8 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 			body = fmt.Sprintf("%s%s(self%s)", freeFuncName(t.M), c.forwardTypeArgs(t, cls), comma(c.argNames(m)))
 			if b, ok := c.reshapedBridge(cls, m, t, ret); ok {
 				body = b
+			} else if _, tret := c.sig(t.M, c.forwarderEnv(cls, t)); ret != "" && tret == "" { // a void parent under a valued override's bridge: nil
+				body += "; return *new(" + ret + ")"
 			} else if ret != "" {
 				body = "return " + body
 			}
@@ -702,6 +713,8 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 			if ret != "" {
 				body = "return *new(" + ret + ")"
 			}
+		case m.Name == "const_missing" && len(m.Params) == 1: // Module#const_missing: MRI's NameError (bindata's factories chain to it)
+			body = fmt.Sprintf("panic(NewNameError(Ref(String(\"uninitialized constant \" + string(rbToS(%s))))))", strings.Split(c.argNames(m), ", ")[0])
 		default:
 			body = fmt.Sprintf("panic(NewNoMethodError(Ref(String(\"super: no superclass method '%s' for \" + rbDescribe(self)))))", m.Name)
 		}
@@ -2143,11 +2156,17 @@ func (c *Compiler) emitConstTable(cls *Class) {
 		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
 		return
 	}
+	if flag := c.evalDefFlag(desc); flag != "" {
+		c.w("var %s bool\n\n", flag)
+	}
 	c.w("func (self *%s) _Consts() []rbConst {\n\treturn []rbConst{\n", cls.Name)
 	for _, full := range c.constEntries(desc) {
 		if v, ok := c.constValue(full); ok {
 			short := full[strings.LastIndex(full, ":")+1:]
 			inherited := strings.Contains(full, "::") && strings.TrimSuffix(full, "::"+short) != desc.RubyName
+			if k := c.classes[full]; k != nil && c.evalDefFlag(k) != "" { // defined when its eval runs (decision 324)
+				v = "rbEvalConst{&" + c.evalDefFlag(k) + ", " + v + "}"
+			}
 			c.w("\t\t{%q, %s, %t},\n", short, v, inherited)
 		}
 	}

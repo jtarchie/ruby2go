@@ -451,3 +451,11 @@ func rbStrRecvAny(v any, name string) String {
 	}
 	return s
 }
+
+// rbStrLen is String#length: characters of UTF-8, bytes of anything else (ASCII-8BIT by decision 136).
+func rbStrLen(s string) int {
+	if utf8.ValidString(s) {
+		return utf8.RuneCountInString(s)
+	}
+	return len(s)
+}

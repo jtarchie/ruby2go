@@ -1,8 +1,12 @@
 package compiler
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"math"
+	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -52,6 +56,7 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 		return
 	}
 	c.evalSites[fmt.Sprintf("%s:%d", f.path, ln)] = true
+	e.Source = wrapBigLiterals(e.Source)
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(e.Source), originSource)
 	if err != nil {
 		c.errorAt(srcPos{f, ln}, "eval: %v", err)
@@ -60,8 +65,11 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	target := c.classes[e.Self]
 	switch {
 	case e.Kind == "class_eval" && target != nil:
+		c.noteEvalUnit(fmt.Sprintf("%s:%d", f.path, ln), e.Source, sf)
 		c.collectBody(ctx, sf, target, sf.Root.Statements, c.lexicalOf(target), true)
+		c.markEvalClasses(f, ln, sf)
 	case e.Kind == "instance_eval" && target != nil:
+		c.noteEvalUnit(fmt.Sprintf("%s:%d", f.path, ln), e.Source, sf)
 		for _, st := range sf.Root.Statements.Body {
 			switch n := st.(type) {
 			case *parser.DefNode: // an instance_eval'd def is the module's singleton method
@@ -74,6 +82,7 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 				c.errorf(sf, st, "instance_eval of %s: only defs and classes are compiled from boot (decision 204)", e.Self)
 			}
 		}
+		c.markEvalClasses(f, ln, sf)
 	case e.Kind == "eval" && e.Self == "":
 		c.collect(ctx, sf)
 	default:
@@ -91,6 +100,22 @@ func (c *Compiler) lexicalOf(cls *Class) []*Class {
 		}
 	}
 	return out
+}
+
+// evalUnitsAt is what an instance_eval call site ran at boot, when it defined classes there.
+func (f *fctx) evalUnitsAt(n *parser.CallNode) []evalUnit {
+	if n.Name != "instance_eval" && n.Name != "class_eval" && n.Name != "module_eval" || !f.isEvalSite(n) {
+		return nil
+	}
+	loc := n.Location
+	if n.MessageLoc != nil {
+		loc = *n.MessageLoc
+	}
+	units := f.c.evalUnits[fmt.Sprintf("%s:%d", f.f.path, f.f.line(loc.StartOffset))]
+	if !slices.ContainsFunc(units, func(u evalUnit) bool { return len(f.c.unitClasses(u.file)) > 0 }) {
+		return nil // only defs (concurrent-ruby's make_synchronized_on_cruby): collected already, the call a no-op
+	}
+	return units
 }
 
 // isEvalSite reports a string eval boot ran here: its source is compiled, so the call does nothing (decision 204).
@@ -157,4 +182,145 @@ func seedsFromLocals(body *parser.StatementsNode) bool {
 		}
 	}
 	return reads
+}
+
+// evalUnit is one source a string eval site ran at boot, and the file its classes were collected from.
+type evalUnit struct {
+	src  string
+	file *File
+}
+
+// evalDefFlag names the flag a class a run-time string eval defines sets once that eval has run, or "".
+func (c *Compiler) evalDefFlag(cls *Class) string {
+	if cls == nil || !c.evalClasses[cls] {
+		return ""
+	}
+	return "rbEvalDef_" + cls.Name
+}
+
+// markEvalClasses records the classes sf's source defines when its eval site, line ln of f, is in a method: they are
+// defined when that method runs, not at load.
+func (c *Compiler) markEvalClasses(f *File, ln int, sf *File) {
+	inDef := false
+	anyNode(f.Root, func(n parser.Node) bool {
+		if d, ok := n.(*parser.DefNode); ok && f.line(d.Location.StartOffset) <= ln && ln <= f.line(d.Location.StartOffset+d.Location.Length) {
+			inDef = true
+		}
+		return inDef
+	})
+	if !inDef {
+		return
+	}
+	if c.evalClasses == nil {
+		c.evalClasses = map[*Class]bool{}
+	}
+	for _, k := range c.unitClasses(sf) {
+		c.evalClasses[k] = true
+	}
+}
+
+// unitClasses are the classes sf's source defines.
+func (c *Compiler) unitClasses(sf *File) []*Class {
+	var out []*Class
+	for _, k := range c.classList {
+		if k.File == sf && k.metaOf == nil {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func (c *Compiler) noteEvalUnit(key, src string, sf *File) {
+	if c.evalUnits == nil {
+		c.evalUnits = map[string][]evalUnit{}
+	}
+	for _, u := range c.evalUnits[key] {
+		if u.src == src {
+			return
+		}
+	}
+	c.evalUnits[key] = append(c.evalUnits[key], evalUnit{src: src, file: sf})
+}
+
+// unitNodes are what loading sf runs: its constants' assignments, class hooks and class-body statements, in order.
+func (c *Compiler) unitNodes(sf *File) []parser.Node {
+	var out []parser.Node
+	for _, k := range c.constList {
+		if k.File == sf && !k.inMethod && !k.inBody && !k.inMain {
+			out = append(out, &constInit{k: k})
+		}
+	}
+	for _, h := range c.hooks {
+		if h.file == sf {
+			if n := c.hookCall(h); n != nil {
+				out = append(out, n)
+			}
+		}
+	}
+	for _, cs := range c.classStmts {
+		if cs.file == sf {
+			out = append(out, cs)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b parser.Node) int {
+		return cmp.Compare(a.GetLocation().StartOffset, b.GetLocation().StartOffset)
+	})
+	return out
+}
+
+// genEvalSwitch is an instance_eval site that defined classes at boot (bindata's endian subclasses, made inside a
+// method each record's class body calls): the evaluated string picks the source boot saw, and that source's load-time
+// statements (its classes' inherited hooks, their bodies) run here, each time, as MRI's eval runs them. Another
+// string raises (decision 324).
+func (f *fctx) genEvalSwitch(n *parser.CallNode, units []evalUnit) expr {
+	src := f.genExpr(firstArg(callArgs(n)), f.cls("String"))
+	tmp := f.newTmp()
+	f.emit("switch %s := string(%s); %s {", tmp, f.coerce(n, src, f.cls("String")), tmp)
+	for _, u := range units {
+		f.emit("case %s:", strconv.Quote(u.src))
+		f.indent++
+		for _, k := range f.c.unitClasses(u.file) { // defined from here: const_get finds it (decision 324)
+			if flag := f.c.evalDefFlag(k); flag != "" {
+				f.emit("%s = true", flag)
+			}
+		}
+		for _, st := range f.c.unitNodes(u.file) {
+			f.genStmt(st, tail{})
+		}
+		f.indent--
+	}
+	f.emit("default:")
+	f.emit("\tpanic(NewNotImplementedError(Ref(String(%q + %s))))", "rb2go: a string eval boot did not run: ", tmp)
+	f.emit("}")
+	return expr{code: "nil", typ: TNil{}, lit: true}
+}
+
+// wrapBigLiterals rewrites each decimal Integer literal past int64 in an eval's source as its value mod 2**64, as a
+// gem's run-time Integer#<< wraps (decision 324): the string the program builds (bindata's `"val &= #{(1 << nbits) -
+// 1}"` for 64 bits) then equals the one boot recorded, and the code means what Go's 64-bit arithmetic does with it.
+func wrapBigLiterals(src string) string {
+	var b strings.Builder
+	word := func(c byte) bool {
+		return c == '_' || c == '.' || c == '$' || c == '@' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+	}
+	for i := 0; i < len(src); {
+		if src[i] < '0' || src[i] > '9' || i > 0 && word(src[i-1]) {
+			b.WriteByte(src[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(src) && (src[j] >= '0' && src[j] <= '9' || src[j] == '_') {
+			j++
+		}
+		lit := src[i:j]
+		n, ok := new(big.Int).SetString(strings.ReplaceAll(lit, "_", ""), 10)
+		if j < len(src) && (word(src[j]) && src[j] != '.' || src[j] == '.' && j+1 < len(src) && src[j+1] >= '0' && src[j+1] <= '9') || !ok || n.IsInt64() {
+			b.WriteString(lit)
+		} else {
+			b.WriteString(strconv.FormatInt(int64(new(big.Int).And(n, new(big.Int).SetUint64(math.MaxUint64)).Uint64()), 10)) //nolint:gosec // the wrap is the point
+		}
+		i = j
+	}
+	return b.String()
 }

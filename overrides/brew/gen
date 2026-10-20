@@ -4,5 +4,5 @@ set -e
 cd "$(dirname "$0")"; mkdir -p work
 [ -f work/go.mod ] || printf 'module work\n\ngo 1.24\n' > work/go.mod # its own module: the repo's ./... skips generated Go
 (cd ../.. && GOOS=linux GOARCH=arm64 go build -o overrides/brew/work/rb2go ./cmd/rb2go)
-docker run --rm -m 10g -e RB2GO_GEM_WARNINGS -e RB2GO_UNTYPED_WHY -e RB2GO_GOPOISON_DUMP -v "$PWD:/w" rb2go-brew-dev \
+docker run --rm -m 10g -e TARGETS -e RB2GO_GEM_WARNINGS -e RB2GO_UNTYPED_WHY -e RB2GO_GOPOISON_DUMP -v "$PWD:/w" rb2go-brew-dev \
   timeout 1800 /w/tools/in-container.sh gen

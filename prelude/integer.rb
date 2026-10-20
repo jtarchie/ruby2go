@@ -357,6 +357,15 @@ class Integer < Object
     }
   }
 
+  # No limit: steps by 1 until the block breaks (elftools' `0.step do |i| ... break if ... end`).
+  #: () { (Integer) -> void } -> void
+  def __step_0 = %x{
+    return func(yield func(Integer) bool) {
+      for i := self; yield(i) && i < math.MaxInt; i++ {
+      }
+    }
+  }
+
   #: (Integer, ?Integer) -> Enumerator::ArithmeticSequence[Integer]
   def __step_enum(limit, by = 1) = %x{ return rbArithNum(self, limit, by, by != 1) }
 

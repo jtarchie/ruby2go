@@ -1,0 +1,25 @@
+# Vendored RBS for the part of bindata 3.0 that Homebrew's ELF relocation reaches (elftools, patchelf; docs/design.md
+# decision 160): the methods whose callers pass several kinds of value, which inference from the typed calls alone
+# would narrow to one.
+module BinData
+  module Int
+    def self.define_class: (untyped name, Integer nbits, Symbol endian, Symbol signed) -> untyped
+  end
+
+  module BitField
+    def self.define_class: (untyped name, untyped nbits, Symbol endian, ?Symbol signed) -> untyped
+  end
+
+  class Base
+    self.@arg_processor: untyped # a Symbol naming the processor class, then the processor
+  end
+
+  class Registry
+    def lookup: (untyped namespace, untyped name, ?untyped hints) -> untyped
+    def underscore_name: (untyped name) -> ::String
+    def search_names: (untyped namespace, untyped name, untyped hints) -> ::Array[::String]
+    def name_with_prefix: (untyped name, untyped prefix) -> ::String
+    def name_with_endian: (untyped name, untyped endian) -> ::String?
+    def backwards_compatible_search_names: (untyped name, untyped hints) -> ::Array[::String]
+  end
+end

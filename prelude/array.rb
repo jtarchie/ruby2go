@@ -54,14 +54,22 @@ class Array < Object
     }
   }
 
-  #: [X] (Integer) { (Integer) -> X } -> Array[X]
+  # Without a block, n nils (elftools' LazyArray): X is what the caller holds them as.
+  #: [X] (Integer) ?{ (Integer) -> X } -> Array[X]
   def self.__new_1(n)
     raise ArgumentError, "negative array size" if n < 0
     __check_size(n)
     out = [] #: Array[X]
-    n.times { |i| out << yield(i) }
+    if block_given?
+      n.times { |i| out << yield(i) }
+    else
+      __zeros(out, n)
+    end
     out
   end
+
+  #: [X] (Array[X], Integer) -> void
+  def self.__zeros(out, n) = %x{ out.s = make([]X, n) }
 
   #: () { (E) -> void } -> void
   def each = %x{

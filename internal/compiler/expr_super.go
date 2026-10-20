@@ -39,12 +39,21 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 	e := f.c.inheritedSig(f.m)
 	if e != nil {
 		f.c.inferRet(e.M)
+		if f.lenient() { // an override's super is no evidence of what the method's other (dynamic) callers pass (bindata's String#assign)
+			saved := f.superTarget
+			f.superTarget = e.M
+			defer func() { f.superTarget = saved }()
+		}
 	}
 	if e == nil && f.m.superBridge {
 		// the target depends on the includer: its bridge calls it (superBridges)
 		env := map[string]Type{"Self": f.selfType}
 		codes, _ := f.genArgs(n, f.m, env, f.superArgs(n, args, forwarding), nil)
-		return expr{code: f.selfCode + "." + bridgeName(f.m) + "(" + strings.Join(codes, ", ") + ")", typ: subst(f.m.Ret, env)}
+		ret := subst(f.m.Ret, env)
+		if f.m.Ret == nil && f.m.inferring { // while the method's own return is still being inferred, the super value is untyped (bindata's `v, p, q = super(...)`)
+			ret = TAny{}
+		}
+		return expr{code: f.selfCode + "." + bridgeName(f.m) + "(" + strings.Join(codes, ", ") + ")", typ: ret}
 	}
 	if e == nil {
 		switch f.m.Name {
@@ -95,8 +104,47 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 			codes = append(codes, blk)
 		}
 	}
+	if isSynthNew(e) && f.owner.metaOf != nil {
+		return f.superSynthNew(e, codes, subst(e.M.Ret, env))
+	}
 	code, ret := f.superModuleCall(e, codes), subst(e.M.Ret, env)
 	return expr{code: code, typ: ret}
+}
+
+// superSynthNew is `super` from a class's own `def self.new` into Class#new (elftools' ELFStruct.new): it makes an
+// object of the class self is, which only the run time knows, so a switch over the class objects that share the
+// constructor picks its Go constructor.
+func (f *fctx) superSynthNew(e *entry, codes []string, ret Type) expr {
+	base := e.M.Owner.metaOf
+	init := base.lookup("initialize")
+	tmps := make([]string, len(codes))
+	for i, c := range codes {
+		tmps[i] = f.newTmp()
+		spread := strings.HasSuffix(c, "...") // a splat's slice, spread at the call
+		f.emit("%s := %s", tmps[i], strings.TrimSuffix(c, "..."))
+		if spread {
+			tmps[i] += "..."
+		}
+	}
+	args := strings.Join(tmps, ", ")
+	rt := f.c.goType(ret)
+	sw := f.newTmp()
+	f.emit("var %s %s", sw, rt)
+	f.emit("switch any(%s).(type) {", f.selfCode)
+	family := []*Class{base}
+	for i := 0; i < len(family); i++ {
+		family = append(family, family[i].Subclasses...)
+	}
+	for _, k := range family {
+		ki := k.lookup("initialize")
+		if k.meta == nil || !k.isStruct() || k.isTemplate() || k.isPerRun || (ki == nil) != (init == nil) || ki != nil && ki.M != init.M {
+			continue
+		}
+		f.emit("case *%s:\n\t%s = %s(%s)", k.meta.Name, sw, k.ctorName(), args)
+	}
+	f.emit("default:\n\t%s = %s(%s)", sw, base.ctorName(), args)
+	f.emit("}")
+	return expr{code: sw, typ: ret}
 }
 
 // superBlock is the block `super` passes to m (decision 223): its own literal, else the current method's block, which

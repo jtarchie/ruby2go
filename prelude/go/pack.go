@@ -492,14 +492,17 @@ func rbUnpackPad(n, have int) {
 }
 
 // rbUnpack is String#unpack; an unsigned value past 2**63 raises RangeError where MRI makes a Bignum (decision 35).
-func rbUnpack(s, format string) *Array[any] {
+func rbUnpack(s, format string) *Array[any] { return rbUnpackWrap(s, format, false) }
+
+// rbUnpackWrap is rbUnpack; wrap keeps an unsigned value past 2**63 as its 64 bits (a gem's, decision 324).
+func rbUnpackWrap(s, format string, wrap bool) *Array[any] {
 	out := &Array[any]{}
 	pos := 0
 	big := func(u uint64) Integer {
-		if u > math.MaxInt64 {
+		if u > math.MaxInt64 && !wrap {
 			panic(NewRangeError(Ref(String(strconv.FormatUint(u, 10) + " overflows Integer (64-bit; no Bignum)"))))
 		}
-		return Integer(u)
+		return Integer(u) //nolint:gosec // wraps only when asked
 	}
 	for _, d := range rbPackParse(format, "unpack") {
 		rest := s[pos:]

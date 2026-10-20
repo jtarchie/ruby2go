@@ -25,6 +25,24 @@ class String < Object
     self[0, start].to_s + self[(start + got.size)..].to_s
   end
 
+  # What a gem's `s[range] = v` leaves (decision 324): self with the part self[range] is replaced by v.
+  #: (Range[Integer], String) -> String
+  def __with_range(r, v)
+    s = r.__slice(length)
+    raise RangeError, "#{r.inspect} out of range" unless s
+
+    __with_span(s[0], s[1], v)
+  end
+
+  # `s[start, count] = v` (and `s[i] = v`, a count of 1), as a new String.
+  #: (Integer, Integer, String) -> String
+  def __with_span(start, count, v)
+    start += length if start < 0
+    raise IndexError, "index #{start} out of string" if start < 0 || start > length
+
+    self[0, start].to_s + v + self[(start + count)..].to_s
+  end
+
   include Comparable
 
   #: (String) -> Integer
@@ -145,7 +163,7 @@ class String < Object
   }
 
   #: () -> Integer
-  def size = %x{ Integer(utf8.RuneCountInString(string(self))) }
+  def size = %x{ Integer(rbStrLen(string(self))) }
 
   #: () -> Integer
   def length = size
@@ -233,6 +251,15 @@ class String < Object
 
   #: (Integer) -> String?
   def [](i) = %x{
+    if !utf8.ValidString(string(self)) { // ASCII-8BIT by decision 136: a byte is a character
+      if i < 0 {
+        i += Integer(len(self))
+      }
+      if i < 0 || int(i) >= len(self) {
+        return nil
+      }
+      return Ref(self[i : i+1])
+    }
     r := []rune(string(self))
     if i < 0 {
       i += Integer(len(r))
@@ -256,6 +283,16 @@ class String < Object
 
   #: (Integer, Integer) -> String?
   def __idx_2(start, count) = %x{
+    if !utf8.ValidString(string(self)) { // ASCII-8BIT by decision 136: bytes, not runes (patchelf's section data)
+      n := Integer(len(self))
+      if start < 0 {
+        start += n
+      }
+      if start < 0 || start > n || count < 0 {
+        return nil
+      }
+      return Ref(rbNewStr(self, self[start:min(start+count, n)]))
+    }
     r := []rune(string(self))
     n := Integer(len(r))
     if start < 0 {
@@ -600,7 +637,7 @@ class String < Object
 
   #: (Integer, ?String) -> String
   def ljust(width, pad = " ") = %x{
-    n := int(width) - utf8.RuneCountInString(string(self))
+    n := int(width) - rbStrLen(string(self))
     if pad == "" {
       panic(NewArgumentError(Ref(String("zero width padding"))))
     }
@@ -612,7 +649,7 @@ class String < Object
 
   #: (Integer, ?String) -> String
   def rjust(width, pad = " ") = %x{
-    n := int(width) - utf8.RuneCountInString(string(self))
+    n := int(width) - rbStrLen(string(self))
     if pad == "" {
       panic(NewArgumentError(Ref(String("zero width padding"))))
     }
@@ -860,6 +897,18 @@ class String < Object
   #: (String) -> untyped
   def unpack1(format) = %x{
     if out := rbUnpack(string(self), string(format)).s; len(out) > 0 {
+      return out[0]
+    }
+    return nil
+  }
+
+  # A gem's unpack (decision 324): an unsigned value past 2**63 is its 64 bits as an Integer, as the gem's Integer#<< wraps.
+  #: (String) -> Array[untyped]
+  def __unpack_wrap(format) = %x{ return rbUnpackWrap(string(self), string(format), true) }
+
+  #: (String) -> untyped
+  def __unpack1_wrap(format) = %x{
+    if out := rbUnpackWrap(string(self), string(format), true).s; len(out) > 0 {
       return out[0]
     }
     return nil

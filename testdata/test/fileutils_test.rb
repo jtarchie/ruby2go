@@ -26,6 +26,19 @@ module FileUtilsTests
     end
 
     # Homebrew's keg code: rm_r, symbolic chmod and chmod_R, install, ln, chown, mkdir/rmdir (#100)
+    # mv and rm take MRI's options (Homebrew's UnpackStrategy::Directory: `FileUtils.mv(src, dst, verbose:)`).
+    def test_mv_rm_options
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        File.write(a, "x")
+        FileUtils.mv(a, File.join(d, "b"), verbose: false)
+        moved = Dir.children(d)
+        FileUtils.rm(File.join(d, "b"), verbose: false)
+        FileUtils.rm(File.join(d, "nope"), force: true)
+        assert_equal [["b"], []], [moved, Dir.children(d)]
+      end
+    end
+
     def test_install_path_methods
       Dir.mktmpdir do |d|
         a = File.join(d, "a")

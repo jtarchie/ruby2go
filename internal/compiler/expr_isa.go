@@ -201,10 +201,21 @@ func unionMarkerIsA(code string, u TUnion, name string) (string, bool) {
 
 // isAGoType is the Go type an untyped value is asserted to for is_a?(cls).
 func (c *Compiler) isAGoType(cls *Class) string {
+	if len(cls.TypeParams) > 0 && cls.hashBase { // a gem's `class X < Hash` (bindata's SanitizedParameters): its instances hold untyped values
+		return c.goType(TClass{C: cls, Args: anyTypes(len(cls.TypeParams))})
+	}
 	if len(cls.TypeParams) > 0 {
 		return cls.anyName()
 	}
 	return c.goType(TClass{C: cls})
+}
+
+func anyTypes(n int) []Type {
+	out := make([]Type, n)
+	for i := range out {
+		out[i] = TAny{}
+	}
+	return out
 }
 
 // numericIsA is is_a?(Numeric) on a value whose class only the run time knows (untyped, a module type,
@@ -313,6 +324,9 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	if len(cls.TypeParams) > 0 {
 		for range cls.TypeParams {
 			typ.Args = append(typ.Args, TAny{})
+		}
+		if cls.hashBase {
+			return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + f.c.goType(typ) + ")"}}
 		}
 		return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + cls.anyName() + ")._ToAny()", view: code}}
 	}

@@ -12,7 +12,12 @@ pin the upstream, keep a small series of upstream-shaped patches, and compare ag
   up its environment as always, then runs `brew.rb` through `rb2go run -trace`: rb2go runs the command once under MRI
   to learn what it loads, compiles that, and runs the binary (decision 296). No entry file, load-path list or
   replacement files: brew's boot files compile as they are.
+- `gem-patches/<gem>-<version>.patch`: applied with `patch -p1` to that vendored gem before every compile and MRI check.
+  Each one is a few lines where a gem relies on what rb2go's value Strings cannot do (an edit through an alias, a
+  character count of binary data); none changes behaviour under MRI (decision 324).
 - `targets.txt`: the commands `./check` compares. `./gen` traces all of them into one program (`-trace-also`).
+  `TARGETS=/w/install-targets.txt ./gen` (and `./check`) uses another list: `install-targets.txt` holds
+  `install wget`. `./check` keeps both outputs in `work/mri-*.txt` and `work/rb-*.txt`.
 - `work/` (ignored): rb2go binary, generated Go, built binaries, logs, and `work/homebrew` (`./host`).
 
 In the container (Linux):

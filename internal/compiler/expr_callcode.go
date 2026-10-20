@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"math/big"
 	"slices"
 	"strings"
 
@@ -85,6 +86,9 @@ func isSplatArg(a parser.Node) bool {
 }
 
 func (f *fctx) callEntry0(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	if r, ok := f.gemCallShortcut(n, e, recv, args, block); ok {
+		return r
+	}
 	if block == nil {
 		if r, ok := f.mtLiteral(n, e, recv, args); ok {
 			return r
@@ -360,16 +364,8 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
 		m.Owner.universal && mentionsSelf(m.Ret) // an interface declares `-> self` as `any`; the free func returns Self
 	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
-		// a wrapper body: the owner's free func over its interface (any for Kernel), so no forwarder is selected (decision 209)
-		targ := "any"
-		if !m.Owner.universal {
-			targ = f.c.ownerIface(f.owner, e)
-		}
-		switch {
-		case targ != "" && f.c.plainSelf(m):
-			return freeFuncName(m) + "(self" + comma(argList) + ")"
-		case targ != "":
-			return freeFuncName(m) + "[" + targ + "](self" + comma(argList) + ")"
+		if code, ok := f.wrapperSelfCall(e, argList); ok {
+			return code
 		}
 	}
 	if !free && m.Name == "initialize" && !inInterface(m) {
@@ -385,6 +381,23 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
 	return staticCallCode(m, f.typeArgs(m, recv.typ, env), recv.code, argList)
+}
+
+// wrapperSelfCall is a wrapper body's self call: the owner's free func over its interface (any for Kernel), so no
+// forwarder is selected (decision 209).
+func (f *fctx) wrapperSelfCall(e *entry, argList string) (string, bool) {
+	m := e.M
+	targ := "any"
+	if !m.Owner.universal {
+		targ = f.c.ownerIface(f.owner, e)
+	}
+	switch {
+	case targ != "" && f.c.plainSelf(m):
+		return freeFuncName(m) + "(self" + comma(argList) + ")", true
+	case targ != "":
+		return freeFuncName(m) + "[" + targ + "](self" + comma(argList) + ")", true
+	}
+	return "", false
 }
 
 // dispatchCall renders a call that bypasses Go method dispatch (dispatch.go): a direct call or an rbSend_ type switch,
@@ -604,4 +617,111 @@ func dropVars(t Type, vars []string) Type {
 		return TAny{}
 	}
 	return unionOf(keep...)
+}
+
+// foldInt is an Integer expression of literals only (`(1 << 64) - 1`), computed exactly.
+func (f *fctx) foldInt(n parser.Node) (*big.Int, bool) {
+	switch n := n.(type) {
+	case *parser.IntegerNode:
+		v, ok := new(big.Int).SetString(strings.ReplaceAll(f.f.text(n.Location), "_", ""), 0)
+		return v, ok
+	case *parser.ParenthesesNode:
+		if st, ok := n.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
+			return f.foldInt(st.Body[0])
+		}
+	case *parser.CallNode:
+		if n.Receiver == nil || n.Block != nil {
+			return nil, false
+		}
+		a, ok := f.foldInt(n.Receiver)
+		if !ok {
+			return nil, false
+		}
+		args := callArgs(n)
+		if n.Name == "-@" && len(args) == 0 {
+			return new(big.Int).Neg(a), true
+		}
+		if len(args) != 1 {
+			return nil, false
+		}
+		b, ok := f.foldInt(args[0])
+		if !ok {
+			return nil, false
+		}
+		switch n.Name {
+		case "+":
+			return new(big.Int).Add(a, b), true
+		case "-":
+			return new(big.Int).Sub(a, b), true
+		case "*":
+			return new(big.Int).Mul(a, b), true
+		case "<<":
+			if b.Sign() >= 0 && b.IsInt64() && b.Int64() < 1024 {
+				return new(big.Int).Lsh(a, uint(b.Int64())), true //nolint:gosec // 0 <= b < 1024, checked above
+			}
+		}
+	}
+	return nil, false
+}
+
+// newSigsDiffer reports whether a subclass's new takes keywords or a rest that m's Go signature does not name alike.
+func (f *fctx) newSigsDiffer(m *Method) bool {
+	ps, _ := f.c.sig(m, nil)
+	queue := slices.Clone(m.Owner.metaOf.Subclasses)
+	for len(queue) > 0 {
+		k := queue[0]
+		queue = append(queue[1:], k.Subclasses...)
+		if k.meta == nil {
+			continue
+		}
+		if e := k.meta.lookup("new"); e != nil && e.M != m && (e.M.kwMask() || m.kwMask() || slices.ContainsFunc(e.M.Params, func(p Param) bool { return p.Keyword || p.KwRest })) {
+			if qs, _ := f.c.sig(e.M, nil); qs != ps {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// gemCallShortcut is a gem's call that decision 324 compiles otherwise: a `new` over subclasses of another keyword
+// shape (dispatched at run time), unpack's wrapping twin, literal Integer arithmetic folded, a wrapping `<<`.
+func (f *fctx) gemCallShortcut(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) (expr, bool) {
+	if f.lenient() && f.m != nil && e.M.Name == "new" && e.M.Owner != nil && e.M.Owner.metaOf != nil && !recv.classObj && f.newSigsDiffer(e.M) {
+		// a gem's `klass.new(h, s, *args, **kw)` over subclasses whose initialize takes other keywords (elftools'
+		// Section.create): dispatched on the class object at run time (decision 324)
+		return f.genDynCall(n, recv, "new", args), true
+	}
+	if f.lenient() && block == nil && (e.M.Name == "unpack" || e.M.Name == "unpack1") && e.M.Owner == f.c.classes["String"] {
+		if w := f.c.classes["String"].lookup("__" + e.M.Name + "_wrap"); w != nil { // a gem's 64-bit fields wrap (decision 324)
+			return f.callMethod(n, w, recv, args, block), true
+		}
+	}
+	if f.lenient() && block == nil && e.M.Owner == f.c.classes["Integer"] {
+		return f.gemIntegerCall(n, e, recv, args)
+	}
+	return expr{}, false
+}
+
+// gemIntegerCall is a gem's Integer arithmetic: literals folded exactly and saturated to int64, `<<` mod 2**64, as
+// Go's shift (decision 324).
+func (f *fctx) gemIntegerCall(n parser.Node, e *entry, recv expr, args []parser.Node) (expr, bool) {
+	call, isCall := n.(*parser.CallNode)
+	if isCall && call.Name == e.M.Name { // not case's `when 0`, which hands its === the literal
+		if v, ok := f.foldInt(n); ok {
+			if v.IsInt64() {
+				return expr{code: "Integer(" + v.String() + ")", typ: f.cls("Integer"), lit: true}, true
+			}
+			f.warn(n, "Integer %s does not fit in 64 bits (no Bignum); using the nearest", v)
+			bound := "Integer(math.MaxInt64)"
+			if v.Sign() < 0 {
+				bound = "Integer(math.MinInt64)"
+			}
+			return expr{code: bound, typ: f.cls("Integer"), lit: true}, true
+		}
+	}
+	if e.M.Name == "<<" && len(args) == 1 && !isSplatArg(args[0]) {
+		a := f.genExpr(args[0], f.cls("Integer"))
+		return expr{code: "rbIntShlWrap(" + f.coerce(n, recv, f.cls("Integer")) + ", " + f.coerce(args[0], a, f.cls("Integer")) + ")", typ: f.cls("Integer")}, true
+	}
+	return expr{}, false
 }

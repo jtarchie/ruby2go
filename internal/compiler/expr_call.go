@@ -53,6 +53,9 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 		if f.c.dmSites[n] {
 			return expr{code: "nil", typ: TNil{}, lit: true}, true // boot made its methods defs (decision 198)
 		}
+		if rec := f.c.smSites[n]; rec != nil {
+			return f.genExpr(rec, expected), true
+		}
 		f.errorf(n, "%s is not supported", n.Name)
 	case "send", "__send__", "public_send":
 		if len(callArgs(n)) == 0 {
@@ -473,27 +476,7 @@ func (f *fctx) dispatch(n parser.Node, recv expr, name string, args []parser.Nod
 		return f.classCall(n, t, recv, name, args, block)
 	case TVar:
 		if t.Name == "Self" && f.owner != nil {
-			if e := f.owner.lookup(name); e != nil {
-				return f.selfEntryCall(n, e, recv, args, block)
-			}
-			if td := f.c.topDefs[name]; td != nil {
-				return f.callEntry(n, &entry{M: td}, recv, args, block)
-			}
-			if mm := f.owner.lookup("method_missing"); mm != nil {
-				return f.callMissing(n, mm, recv, name, args, block)
-			}
-			if f.c.isDelegator(f.owner) && f.c.classes["Object"].lookup(name) == nil {
-				return f.delegateCall(n, recv, name, args, block)
-			}
-			if f.owner.isStruct() && f.owner.descendantDefines(name, false) && block == nil {
-				return f.genDynCall(n, recv, name, args)
-			}
-			if e := f.c.classes["Object"].lookup(name); e != nil {
-				return f.callEntry(n, e, recv, args, block)
-			}
-			if !f.owner.IsModule && !untypedIntrinsics[name] && !descendantResponds(f.owner, name) {
-				f.errorf(n, "undefined method %s for %s", name, f.owner.displayName())
-			}
+			return f.selfCall(n, recv, name, args, block)
 		}
 		return f.universalCall(n, recv, name, args, block)
 	case TAny, TNil:
@@ -1094,4 +1077,36 @@ func (f *fctx) kernelCall(n parser.Node, name string, args []parser.Node) expr {
 	f.implicitCall = true
 	defer func() { f.implicitCall = false }()
 	return f.genMethodCall(n, expr{code: "rb_main", typ: f.cls("Object")}, name, args, nil)
+}
+
+// selfCall is a call on self typed Self: the owner's method, a top-level def, a Class method answered by the class
+// object a module extends, method_missing, a delegator's object, a subclass's override, else Object's.
+func (f *fctx) selfCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	if e := f.owner.lookup(name); e != nil {
+		return f.selfEntryCall(n, e, recv, args, block)
+	}
+	if td := f.c.topDefs[name]; td != nil {
+		return f.callEntry(n, &entry{M: td}, recv, args, block)
+	}
+	if f.owner.IsModule && f.lenient() && block == nil && f.c.classes["Class"].lookup(name) != nil {
+		// a module extended onto classes calling a Class method on self (bindata's DSLMixin: `superclass.dsl_parser`):
+		// the class object answers it, before the module's method_missing
+		return f.genDynCall(n, recv, name, args)
+	}
+	if mm := f.owner.lookup("method_missing"); mm != nil {
+		return f.callMissing(n, mm, recv, name, args, block)
+	}
+	if f.c.isDelegator(f.owner) && f.c.classes["Object"].lookup(name) == nil {
+		return f.delegateCall(n, recv, name, args, block)
+	}
+	if f.owner.isStruct() && f.owner.descendantDefines(name, false) && block == nil {
+		return f.genDynCall(n, recv, name, args)
+	}
+	if e := f.c.classes["Object"].lookup(name); e != nil {
+		return f.callEntry(n, e, recv, args, block)
+	}
+	if !f.owner.IsModule && !untypedIntrinsics[name] && !descendantResponds(f.owner, name) {
+		f.errorf(n, "undefined method %s for %s", name, f.owner.displayName())
+	}
+	return f.universalCall(n, recv, name, args, block)
 }

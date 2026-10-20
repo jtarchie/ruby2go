@@ -2,4 +2,4 @@
 # host: each targets.txt line under MRI (unpatched, fork mode) and through work/brew-bin, in one container so both read
 # the same API download; ok/FAIL per line, diffs in work/diff-<line>.txt.
 cd "$(dirname "$0")"
-docker run --rm -v "$PWD:/w" rb2go-brew-dev /w/tools/in-container.sh check
+docker run --rm -e TARGETS -v "$PWD:/w" rb2go-brew-dev /w/tools/in-container.sh check

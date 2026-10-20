@@ -166,11 +166,49 @@ func rbRegexpDesc(src string) string {
 }
 
 func rbMatch(r *Regexp, s string) *MatchData {
-	loc := r.re.FindStringSubmatchIndex(s)
+	loc := rbFindLoc(r, s)
 	if loc == nil {
 		return nil
 	}
 	return rbMatchAt(r, s, loc)
+}
+
+// rbFindLoc is r's first match of s with its groups, as byte offsets. A binary Regexp (/n) reads a String that is not
+// valid UTF-8 byte by byte: each byte is the character of its value (Latin-1), so `/\xFD7zXZ/n` matches the byte 0xFD
+// (Homebrew's UnpackStrategy::Xz.can_extract?), and the offsets are mapped back to the bytes (decision 324). Any other
+// Regexp raises ArgumentError on it, as MRI's does on a UTF-8 String with a bad byte.
+func rbFindLoc(r *Regexp, s string) []int {
+	if utf8.ValidString(s) {
+		return r.re.FindStringSubmatchIndex(s)
+	}
+	if !strings.ContainsRune(r.opts, 'n') { // MRI's UTF-8 Regexp on a broken UTF-8 String
+		panic(NewArgumentError(Ref(String("invalid byte sequence in UTF-8"))))
+	}
+	var b strings.Builder
+	back := make([]int, 0, len(s)*2+1) // back[j]: the byte of s where Latin-1 offset j starts
+	for i := range len(s) {
+		n := b.Len()
+		b.WriteRune(rune(s[i]))
+		for range b.Len() - n {
+			back = append(back, i)
+		}
+	}
+	back = append(back, len(s))
+	loc := r.re.FindStringSubmatchIndex(b.String())
+	for i, x := range loc {
+		if x >= 0 {
+			loc[i] = back[x]
+		}
+	}
+	return loc
+}
+
+// rbMatches is whether r matches s: Go's MatchString, or rbFindLoc's byte reading of a binary String.
+func rbMatches(r *Regexp, s string) bool {
+	if utf8.ValidString(s) {
+		return r.re.MatchString(s)
+	}
+	return rbFindLoc(r, s) != nil
 }
 
 // rbMatchAt is the MatchData of r's match of s at loc.
@@ -192,10 +230,7 @@ func rbSubject(v any) (string, bool) {
 	switch s := v.(type) {
 	case nil:
 		return "", false
-	case String:
-		if !utf8.ValidString(string(s)) {
-			panic(NewArgumentError(Ref(String("invalid byte sequence in UTF-8"))))
-		}
+	case String: // not valid UTF-8: ASCII-8BIT (decision 136), matched byte by byte (rbFindLoc)
 		return string(s), true
 	case Symbol:
 		return string(s), true

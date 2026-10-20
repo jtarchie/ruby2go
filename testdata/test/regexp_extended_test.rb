@@ -67,5 +67,22 @@ module RegexpTests
       inv = ["abc", "def"].grep_v(/e/) { |e| [e, $~.nil?] }
       assert_equal [[["abc", true]], "e"], [inv, $&]
     end
+
+    # `::Regexp.last_match(n)` reads the frame's $~ as `Regexp.last_match(n)` does (Homebrew's expand_elf_dst).
+    def test_rooted_last_match
+      out = "$ORIGIN/lib:${LIB}".gsub(/\$({?)([A-Z]+)(}?)/) { "<#{::Regexp.last_match(2)}#{::Regexp.last_match(1).empty?}>" }
+      assert_equal "<ORIGINtrue>/lib:<LIBfalse>", out
+    end
+
+    def test_escape_symbol
+      assert_equal ["a\\.b", "x\\+"], [Regexp.escape(:"a.b"), Regexp.quote("x+")]
+    end
+
+    # A binary String (not valid UTF-8) matches byte by byte (decision 324): Homebrew's magic-number checks.
+    def test_binary_subject
+      data = "\xFD7zXZ\x00\x01\x02".b
+      assert_equal [true, 2, "z", true, false], [data.match?(/\A\xFD7zXZ\x00/n), data =~ /zX/n, data.match(/7(z)X/n)&.[](1),
+                                              /\A\xFD/n === data, "\x1f\x8b\xff".b.match?(/\A\xFD/n)]
+    end
   end
 end

@@ -260,3 +260,14 @@ func rbArgsCat(parts ...[]any) []any {
 	}
 	return out
 }
+
+// rbScanEq is Array#include? of a value no element's class holds: `elem == obj` each, as MRI's rb_equal, so an object
+// whose == compares by value (Integer#== asks it back) can match (decision 324).
+func rbScanEq[E comparable](a *Array[E], key any) Boolean {
+	for _, e := range a.s {
+		if rbEq[any](any(e), key) {
+			return true
+		}
+	}
+	return false
+}

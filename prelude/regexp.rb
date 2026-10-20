@@ -56,7 +56,7 @@ class Regexp < Object
   #: (String | untyped) -> bool
   def match?(s) = %x{
     str, ok := rbSubject(s)
-    return Boolean(ok && self.re.MatchString(str))
+    return Boolean(ok && rbMatches(self, str))
   }
 
   #: (String | untyped) -> MatchData?
@@ -79,16 +79,17 @@ class Regexp < Object
     if !ok {
       return nil
     }
-    loc := self.re.FindStringIndex(str)
+    loc := rbFindLoc(self, str)
     if loc == nil {
       return nil
     }
-    return Ref(Integer(utf8.RuneCountInString(str[:loc[0]])))
+    return Ref(Integer(rbStrLen(str[:loc[0]])))
   }
 
   # Ruby's rb_reg_quote: metacharacters, space and the whitespace escapes.
-  #: (String) -> String
-  def self.escape(str) = %x{ return String(rbRegexpEscape(string(str))) }
+  # A Symbol's name too, as MRI's (Homebrew's `Version.formula_optionally_versioned_regex(:glibc)`).
+  #: (String | Symbol) -> String
+  def self.escape(str) = %x{ return String(rbRegexpEscape(string(rbToS(any(str))))) }
 
   # `case x when /re/` calls this; unlike match?, other types are false.
   #: (untyped) -> bool
@@ -96,7 +97,7 @@ class Regexp < Object
     switch other.(type) {
     case String, Symbol:
       s, _ := rbSubject(other)
-      return Boolean(self.re.MatchString(s))
+      return Boolean(rbMatches(self, s))
     }
     return false
   }
@@ -104,7 +105,7 @@ class Regexp < Object
   #: () -> String
   def source = %x{ String(self.src) }
 
-  #: (String) -> String
+  #: (String | Symbol) -> String
   def self.quote(str) = escape(str)
 
   # A Regexp matching any of pats: a String matches itself, a Regexp keeps its flags (its to_s).

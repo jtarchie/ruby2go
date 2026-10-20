@@ -1,5 +1,6 @@
 # rbs_inline: enabled
 
+require_relative "etc" # chown's user and group names
 # FileUtils on os/io/path-filepath; pathlist args dispatch String vs Array via decision 12's `__<name>_array` overload convention (decision 63).
 module FileUtils
   #: (String) -> nil
@@ -39,8 +40,11 @@ module FileUtils
     nil
   end
 
-  #: (String) -> nil
-  def self.rm(path) # File.delete already raises MRI's exact apply2files message (decision 62)
+  #: (String, ?force: bool, ?noop: bool, ?verbose: bool) -> nil
+  def self.rm(path, force: false, noop: false, verbose: false) # File.delete already raises MRI's exact apply2files message (decision 62)
+    $stderr.puts "rm#{" -f" if force} #{path}" if verbose
+    return nil if noop || force && !File.symlink?(path) && !File.exist?(path)
+
     File.delete(path)
     nil
   end
@@ -102,8 +106,11 @@ module FileUtils
     }
   }
 
-  #: (String, String) -> nil
-  def self.mv(src, dest)
+  #: (String, String, ?force: bool?, ?noop: bool?, ?verbose: bool?, ?secure: bool?) -> nil
+  def self.mv(src, dest, force: nil, noop: nil, verbose: nil, secure: nil)
+    $stderr.puts "mv#{" -f" if force} #{src} #{dest}" if verbose
+    return nil if noop
+
     dest = File.join(dest, File.basename(src)) if File.directory?(dest)
     __mv_entry(src, dest)
   end

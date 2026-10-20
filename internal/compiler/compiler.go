@@ -126,21 +126,26 @@ type Compiler struct {
 	out                   strings.Builder
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings              []string
-	methodRequiresRuntime bool                         // traced mode (-main): a require in a method resolves at run time, not at compile time (decisions 197, 288)
-	dmSites               map[*parser.CallNode]bool    // define_method calls boot recorded: no-ops at run time (decision 198)
-	prepends              []pendingPrepend             // prepends in load order, applied at link (decision 199)
-	bootBranches          map[string]boot.BranchInfo   // "path:line:col" of each if/unless boot ran (decision 201)
-	bootConstClasses      map[string]string            // constant -> the class boot saw it name (decision 203)
-	badClasses            map[*Class]compileError      // gem classes that cannot compile, an error where reachable code names them
-	evalSites             map[string]bool              // "path:line" of each string eval boot compiled: a no-op (decision 204)
-	blockEvalSites        map[*parser.CallNode]bool    // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
-	goFuncs               map[string]goFunc            // each gem method's Go func name -> its key and name (decision 303)
-	bootDelegators        map[string][]string          // def_delegators' names boot saw, by "path:line" (decision 204)
-	bootLoadPath          []string                     // $LOAD_PATH as boot left it, nil without a boot (decision 301)
-	bootStructs           map[string][]boot.StructProp // each T::Struct's props boot saw (decision 241)
-	kept                  []string                     // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
-	anonDepth             int                          // collecting an anonymous class body, whose errors scanAnon defers
-	constChain            []string                     // constants whose types are being inferred, for a cycle's message
+	methodRequiresRuntime bool                                  // traced mode (-main): a require in a method resolves at run time, not at compile time (decisions 197, 288)
+	dmSites               map[*parser.CallNode]bool             // define_method calls boot recorded: no-ops at run time (decision 198)
+	coerceOwned           *bool                                 // memo of ownCoerce
+	dmDefined             map[*parser.CallNode]bool             // the define_method calls boot's methods became defs from
+	smSites               map[*parser.CallNode]*parser.CallNode // a gem's run-time define_singleton_method: the call recording it (decision 324)
+	prepends              []pendingPrepend                      // prepends in load order, applied at link (decision 199)
+	bootBranches          map[string]boot.BranchInfo            // "path:line:col" of each if/unless boot ran (decision 201)
+	bootConstClasses      map[string]string                     // constant -> the class boot saw it name (decision 203)
+	badClasses            map[*Class]compileError               // gem classes that cannot compile, an error where reachable code names them
+	evalSites             map[string]bool                       // "path:line" of each string eval boot compiled: a no-op (decision 204)
+	evalUnits             map[string][]evalUnit                 // "path:line" of an instance_eval boot ran that defined classes: each source and its parsed file, whose load-time statements run at the call (decision 324)
+	evalClasses           map[*Class]bool                       // classes a run-time string eval defines: constant lookups see them once it has run (decision 324)
+	blockEvalSites        map[*parser.CallNode]bool             // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
+	goFuncs               map[string]goFunc                     // each gem method's Go func name -> its key and name (decision 303)
+	bootDelegators        map[string][]string                   // def_delegators' names boot saw, by "path:line" (decision 204)
+	bootLoadPath          []string                              // $LOAD_PATH as boot left it, nil without a boot (decision 301)
+	bootStructs           map[string][]boot.StructProp          // each T::Struct's props boot saw (decision 241)
+	kept                  []string                              // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
+	anonDepth             int                                   // collecting an anonymous class body, whose errors scanAnon defers
+	constChain            []string                              // constants whose types are being inferred, for a cycle's message
 
 	// tuple arities used, so their types get emitted
 	tupleN           map[int]bool
@@ -487,6 +492,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	c.collectDefineMethods(ctx, dms)
 	c.collectSingletonTemplates(ctx)
+	c.collectObjectExtends(ctx)
 	if len(c.kept) > 0 {
 		c.errorf(nil, nil, "%d collect errors:\n%s", len(c.kept), strings.Join(c.kept, "\n"))
 	}

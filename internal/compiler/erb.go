@@ -226,7 +226,7 @@ func erbLiteral(f *File, n parser.Node) (string, int, bool) {
 		if !ok1 || !ok2 || !strings.HasSuffix(f.text(re.Location), "/") || strings.Contains(to.Unescaped.Value, `\`) {
 			return "", 0, false
 		}
-		flags := rubyRegexFlags{re.IsIGNORE_CASE(), re.IsMULTI_LINE(), re.IsEXTENDED()}
+		flags := rubyRegexFlags{re.IsIGNORE_CASE(), re.IsMULTI_LINE(), re.IsEXTENDED(), re.IsASCII_8BIT()}
 		pat, err := rxPrepare(re.Unescaped.Value, flags.extended)
 		if err != nil {
 			return "", 0, false

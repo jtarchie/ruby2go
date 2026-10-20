@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 323); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 324); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
 
 ## Commands
 
@@ -22,6 +22,7 @@ RB2GO_DISPATCH_DEBUG=1 go run ./cmd/rb2go build x.rb   # why a Kernel/Object nam
 RB2GO_GEM_WARNINGS=1 go run ./cmd/rb2go gen ...       # also print gem files' warnings (skipped statements, nil constants: decision 205)
 RB2GO_GEM_WARNINGS=1 RB2GO_UNTYPED_WHY=1 go run ./cmd/rb2go gen ...  # each dynamic-call warning names the root of its untyped receiver (sig untyped, widened local, unannotated return, ...)
 RB2GO_BACKTRACE=1 ./prog                       # a built program reports an uncaught exception as MRI does, file:line and from lines (decision 178)
+RB2GO_GO_STACK=1 ./prog                        # a Go runtime panic turned into a Ruby exception carries its Go stack (decision 324)
 RB2GO_COST=1 go test -run TestCompileCost -v .    # compiled functions + compile time/memory of 05_word_count, 64_observable, 116_cuba_web (#96); or a comma list of examples
 RB2GO_CPUPROFILE=gen.prof go run ./cmd/rb2go gen x.rb > /dev/null  # CPU profile of the compile itself (go tool pprof -top gen.prof)
 go -C scripts/census run . /path/main.go           # what a generated main.go spends its functions on (forwarders, Dyn wrappers, stubs); ./inst walks generic instantiations

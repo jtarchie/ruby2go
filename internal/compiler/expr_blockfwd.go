@@ -89,6 +89,14 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 // forwardClosure passes the method's own block on to a closure-taking
 // method: `list.map(&block)`.
 func (f *fctx) forwardClosure(n parser.Node, sig *BlockSig, env map[string]Type) string {
+	code := f.forwardClosureCode(n, sig, env)
+	if code != "blk" && f.m != nil && f.m.Block != nil && (f.m.Block.Optional || f.m.Block.Untyped) {
+		return "rbIfBlk(blk != nil, " + code + ")" // an adapter over a missing block is no block (bindata's `write(io, &block)`)
+	}
+	return code
+}
+
+func (f *fctx) forwardClosureCode(n parser.Node, sig *BlockSig, env map[string]Type) string {
 	if f.iterator {
 		f.errorf(n, "this method's block is an iterator (it yields); it can only be passed on to another iterator")
 	}
@@ -150,6 +158,9 @@ func (f *fctx) selfBlockAdapter(sig *BlockSig, env map[string]Type) string {
 	}
 	call := "blk(" + strings.Join(args, ", ") + ")"
 	ret := subst(sig.Ret, env)
+	if tv, ok := ret.(TVar); ok && tv.Name != "Self" && f.lenient() { // `x.tap(&block)`: tap's X, bound by nothing at a forwarded block, is untyped as the call's type args are
+		ret = TAny{}
+	}
 	if isVoid(ret) {
 		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
 	}
@@ -192,6 +203,9 @@ func (f *fctx) restBlockAdapter(n parser.Node, sig *BlockSig, env map[string]Typ
 	}
 	call := "blk(" + strings.Join(args, ", ") + ")"
 	ret := subst(sig.Ret, env)
+	if tv, ok := ret.(TVar); ok && tv.Name != "Self" { // `x.tap(&block)`: tap's X, bound by nothing at a forwarded block, is untyped as the call's type args are
+		ret = TAny{}
+	}
 	head := "func(" + strings.Join(params, ", ") + ")"
 	switch {
 	case isVoid(ret):

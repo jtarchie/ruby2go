@@ -62,6 +62,14 @@ module Kernel
   #: () -> self
   def dup = %x{ return rbDup(self) }
 
+  # dup keeping the frozen flag (freeze: false drops it). ponytail: no singleton methods to copy (none are made at run time).
+  #: (?freeze: bool?) -> self
+  def clone(freeze: nil)
+    c = dup
+    c.freeze if freeze || (freeze.nil? && frozen?)
+    c
+  end
+
   #: () -> String
   def to_s = %x{ rbObjToS(self) }
 

@@ -35,6 +35,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 	if err == nil {
 		main = abs
 	}
+	var gemFiles []string       // loaded files of -I dirs, scanned for their gem's own requires below
 	native := map[string]bool{} // a gem with a C extension (fiddle) cannot compile: its requires stay unresolved
 	for _, f := range l.Features {
 		if m := extDir.FindStringSubmatch(f); m != nil {
@@ -66,8 +67,68 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 			dirs = append(dirs, dir)
 		}
 		add(strings.TrimSuffix(rel, ".rb"))
+		gemFiles = append(gemFiles, f)
 	}
+	addGemOwnRequires(l.LoadPath, gemFiles, seen, add)
 	return b.Bytes(), dirs
+}
+
+// addGemOwnRequires adds each loaded gem file's literal require of a file in the same gem (patchelf's
+// `require 'patchelf/alt_saver'` in Patcher#save, which MRI ran only in Homebrew's sandbox child), closed over what
+// those require (decision 324). Only a vendored gem's own files: an application's lazy requires stay as traced.
+func addGemOwnRequires(loadPath, gemFiles []string, seen map[string]bool, add func(string)) {
+	traced := len(gemFiles)
+	for i := 0; i < len(gemFiles); i++ { // appended to while walking
+		f := gemFiles[i]
+		root := gemDir.FindStringIndex(f)
+		if root == nil {
+			continue
+		}
+		src, err := os.ReadFile(f) //nolint:gosec // a file the traced run loaded
+		if err != nil {
+			continue
+		}
+		for _, name := range defRequires(src, i >= traced) { // a file added here loads its load-time requires too
+			for _, d := range loadPath {
+				cand := filepath.Join(d, name+".rb")
+				if !strings.HasPrefix(cand, f[:root[1]]) || seen[name] {
+					continue
+				}
+				_, err := os.Stat(cand)
+				if err == nil {
+					add(name)
+					gemFiles = append(gemFiles, cand)
+				}
+			}
+		}
+	}
+}
+
+var (
+	literalRequire = regexp.MustCompile(`^(\s*)require[ (]\s*['"]([^'"#]+)['"]`)
+	defLine        = regexp.MustCompile(`^(\s*)(?:private |protected |public )?def [^=]*$|^(\s*)(?:private |protected |public )?def \S+\(.*\)\s*$`)
+	endLine        = regexp.MustCompile(`^(\s*)end\b`)
+)
+
+// defRequires is the literal names a file requires inside a def's body (every one with all) (by indentation: a def line opens, the end at
+// its indent closes), not a load-time require under a platform check (concurrent-ruby's TruffleRuby backend).
+func defRequires(src []byte, all bool) []string {
+	var out []string
+	var open []int // indents of the defs being read
+	for line := range strings.Lines(string(src)) {
+		if m := defLine.FindStringSubmatch(line); m != nil {
+			open = append(open, len(m[1])+len(m[2]))
+			continue
+		}
+		if m := endLine.FindStringSubmatch(line); m != nil && len(open) > 0 && len(m[1]) == open[len(open)-1] {
+			open = open[:len(open)-1]
+			continue
+		}
+		if m := literalRequire.FindStringSubmatch(line); m != nil && (all || len(open) > 0 && len(m[1]) > open[len(open)-1]) {
+			out = append(out, m[2])
+		}
+	}
+	return out
 }
 
 // under is the longest of dirs holding f, and f relative to it.

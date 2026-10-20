@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -37,6 +38,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	if hasRest {
 		expected++
 	}
+	if exprs == nil && hasRest {
+		args = f.splatOverRest(m, args)
+		nargs = len(args)
+	}
 	splatTmp, splatAt, splatElem := f.splatArgs(m, args, exprs != nil || hasRest, npos)
 	if splatTmp != "" {
 		args, nargs = args[:splatAt], splatAt
@@ -58,6 +63,7 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	take := func(p Param, i int) {
 		an, a := f.argAt(n, p, env, args, exprs, i, codes)
 		f.noteUse(p, an, a.typ)
+		f.noteWideningUse(m, p, an, a.typ)
 		a = f.truncFloat(m, p, env, a)
 		unify(p.Type, a.typ, env)
 		f.bindGemUnbound(m, env, p.Type)
@@ -141,6 +147,46 @@ func argcCode(nargs, npos, npost int, splatTmp string, splatAt int) string {
 	return strconv.Itoa(max(min(nargs, npos)-npost, 0))
 }
 
+// splatOverRest is a gem's trailing `*xs` that reaches positional parameters before a rest one (bindata's
+// `DSLFieldParser.new(namespace, hints, *args)` into `initialize(namespace, hints, symbol, *args)`): xs's first elements
+// fill those parameters and the rest of it splats into the rest, as MRI spreads it.
+func (f *fctx) splatOverRest(m *Method, args []parser.Node) []parser.Node {
+	if !f.lenient() || len(args) == 0 || m.postCount() != 0 {
+		return args
+	}
+	sp, ok := args[len(args)-1].(*parser.SplatNode)
+	if !ok || sp.Expression == nil || slices.ContainsFunc(args[:len(args)-1], func(a parser.Node) bool { _, s := a.(*parser.SplatNode); return s }) {
+		return args
+	}
+	pre := 0 // positional parameters before the rest
+	for _, p := range m.Params {
+		if p.Rest {
+			break
+		}
+		if !p.Keyword {
+			pre++
+		}
+	}
+	before := len(args) - 1
+	if before >= pre {
+		return args
+	}
+	a := f.genExpr(sp.Expression, nil)
+	tc, ok := a.typ.(TClass)
+	if !ok || tc.C.RubyName != "Array" || len(tc.Args) != 1 {
+		a = expr{code: "&Array[any]{s: rbSplatAny(" + f.coerce(sp, a, TAny{}) + ")}", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}
+		tc = a.typ.(TClass) //nolint:forcetypeassert // built just above
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, a.code)
+	out := slices.Clone(args[:before])
+	for i := range pre - before {
+		out = append(out, &exprNode{Node: sp, e: expr{code: fmt.Sprintf("rbSplatElem(%s, %d)", tmp, i), typ: tc.Args[0]}})
+	}
+	rest := expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", tmp, pre-before), typ: tc}
+	return append(out, &parser.SplatNode{Location: sp.Location, Expression: &exprNode{Node: sp.Expression, e: rest}})
+}
+
 // splatArgs is `f(a, *xs)` into positional parameters (decision 184): xs's length is known only at run time, so the
 // arity is checked there (MRI's ArgumentError); it answers xs's temp, the splat's index and its element type, or "".
 func (f *fctx) splatArgs(m *Method, args []parser.Node, skip bool, npos int) (string, int, Type) {
@@ -155,8 +201,8 @@ func (f *fctx) splatArgs(m *Method, args []parser.Node, skip bool, npos int) (st
 	code := a.code
 	var elem Type
 	switch t := a.typ.(type) {
-	case TAny:
-		code, elem = "rbAs[*Array[any]]("+a.code+", \"Array\")", TAny{}
+	case TAny: // MRI's splat: an Array spreads, nil is nothing, anything else is one argument (bindata's `*args` of a Symbol)
+		code, elem = "&Array[any]{s: rbSplatAny("+a.code+")}", TAny{}
 	case TClass:
 		if t.C.RubyName != "Array" || len(t.Args) != 1 {
 			f.errorf(sp, "splat of %s into a non-rest parameter: only an Array is supported", a.typ)
@@ -496,6 +542,7 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 					f.errorf(an, "splat of non-array %s", a.typ)
 				}
 				f.noteUse(p, an, ac.Args[0])
+				f.noteAnyRest(p, an, ac.Args[0])
 				unify(p.Type, ac.Args[0], env)
 				if splats == nil {
 					splats = map[int]bool{}
@@ -509,9 +556,7 @@ func (f *fctx) genRestArgs(n parser.Node, p Param, env map[string]Type, args []p
 			f.pinBefore(mark, codes)
 		}
 		f.noteUse(p, an, a.typ)
-		if isAny(a.typ) && f.lenient() && p.Pending != "" && f.c.uses != nil {
-			f.c.uses[p.Pending] = append(f.c.uses[p.Pending], paramUse{typ: TAny{}, file: f.f, off: an.GetLocation().StartOffset, anyRest: true})
-		}
+		f.noteAnyRest(p, an, a.typ)
 		unify(p.Type, a.typ, env)
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
@@ -839,11 +884,39 @@ func (f *fctx) blockArg(n parser.Node, m *Method, env map[string]Type, block par
 		if f.lenient() { // a gem's `@h ||= Hash.new { |h, k| ... }` into an untyped ivar: nothing binds K, V
 			bindUntyped(m, env, m.Block.Params...) // only what the block is passed: its result (map's U) is inferred from the body
 		}
+		if b, ok := block.(*parser.BlockNode); ok && f.lenient() && anyRestBlock(m.Block) && (f.selfClassObj || isAny(f.selfType)) {
+			// a class-body DSL block that does not compile on its lexical self (`section(:a) { item 1 }`, the
+			// gem instance_eval-ing it on another object): its self is the one it is called with (decision 324)
+			err := f.try(func() { f.probe(func() { f.genClosure(n, block, m.Block, maps.Clone(env)) }) })
+			if fn, ok := f.rebindableBlock(n, b); ok && err != nil {
+				return fn
+			}
+		}
 		return f.genClosure(n, block, m.Block, env)
 	case !m.Block.Optional:
 		f.errorf(n, "%s requires a block", m.Name)
 	}
 	return "nil"
+}
+
+// noteWideningUse: a gem's untyped value into an overridden method's slot (bindata's `obj.assign(value)` on a Base) or
+// a constructor (`RawIO.new(io)` of a File where another call passes a StringIO) makes the parameter untyped (decision
+// 324).
+func (f *fctx) noteWideningUse(m *Method, p Param, an parser.Node, t Type) {
+	if _, untyped := t.(TAny); !untyped || !f.lenient() || p.Pending == "" || f.c.uses == nil || m.File == nil || !f.c.gemFile(m.File) || m.Owner == nil {
+		return
+	}
+	if m.Name == "initialize" || m.Owner.descendantDefines(m.Name, true) || m.Owner.includerDefines(m.Name, map[*Class]bool{}) {
+		f.c.uses[p.Pending] = append(f.c.uses[p.Pending], paramUse{typ: TAny{}, file: f.f, off: an.GetLocation().StartOffset, widen: true})
+	}
+}
+
+// noteAnyRest: a gem's untyped value into a rest parameter: its elements are anything (bindata's
+// parse_and_append_field(*args)).
+func (f *fctx) noteAnyRest(p Param, an parser.Node, t Type) {
+	if isAny(t) && f.lenient() && p.Pending != "" && f.c.uses != nil {
+		f.c.uses[p.Pending] = append(f.c.uses[p.Pending], paramUse{typ: TAny{}, file: f.f, off: an.GetLocation().StartOffset, anyRest: true})
+	}
 }
 
 // emptySplat checks at run time that a gem forwarder's `*args` after every positional parameter is filled is empty,

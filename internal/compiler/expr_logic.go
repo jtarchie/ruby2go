@@ -120,10 +120,16 @@ func untypedContainerJoin(a, b Type) (Type, bool) {
 		return nil, false
 	}
 	allAny := func(ts []Type) bool { return !slices.ContainsFunc(ts, func(t Type) bool { return !isAny(t) }) }
-	switch {
+	switch { // the typed one, unless it is no more typed (brew's `cond ? [x.soname, x.needed] : [nil, []]`, Array[Array?])
 	case allAny(cb.Args):
+		if slices.ContainsFunc(ca.Args, holdsAny) {
+			return b, true
+		}
 		return a, true
 	case allAny(ca.Args):
+		if slices.ContainsFunc(cb.Args, holdsAny) {
+			return a, true
+		}
 		return b, true
 	}
 	return nil, false

@@ -11,13 +11,36 @@ import (
 // dynEach is a gem's `x.each { |a, b| }` on an untyped x, as a Rack app's headers and body are (decision 176).
 func (f *fctx) dynEach(n parser.Node, recv expr, b *parser.BlockNode) expr {
 	k := len(f.blockParamList(b.Parameters))
-	if k == 0 || k > 2 {
-		f.errorf(n, "each on an untyped receiver takes a block of one or two parameters")
+	if k == 0 {
+		f.errorf(n, "each on an untyped receiver takes a block with parameters")
 	}
 	f.c.dynEach = true
-	clo := f.genClosure(n, b, &BlockSig{Params: []Type{TAny{}, TAny{}}[:k], Ret: TVoid{}}, nil)
-	xs := []string{"xs_[0]", "xs_[1]"}[:k]
+	params, xs := make([]Type, k), make([]string, k) // 3+ parameters splat each element across them, as MRI's
+	for i := range k {
+		params[i], xs[i] = TAny{}, fmt.Sprintf("xs_[%d]", i)
+	}
+	clo := f.genClosure(n, b, &BlockSig{Params: params, Ret: TVoid{}}, nil)
 	return expr{code: fmt.Sprintf("rbEachAny(%s, %d, func(xs_ ...any) { (%s)(%s) })", recv.code, k, clo, strings.Join(xs, ", ")), typ: TAny{}}
+}
+
+// gemDynShortcut is a gem's untyped call the runtime answers without a dispatcher (decision 324): `names.zip(objs)`
+// (bindata's Struct#each_pair) and a blockless `pairs.each`, an Enumerator over the elements.
+func (f *fctx) gemDynShortcut(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
+	switch {
+	case !f.lenient():
+	case name == "zip" && len(args) > 0 && !slices.ContainsFunc(args, isSplatArg):
+		f.c.dynEach = true
+		codes := make([]string, 0, len(args)+1)
+		codes = append(codes, f.coerce(n, recv, TAny{}))
+		for _, a := range args {
+			codes = append(codes, f.coerce(a, f.genExpr(a, nil), TAny{}))
+		}
+		return expr{code: "rbZipAny(" + strings.Join(codes, ", ") + ")", typ: TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}}, true
+	case name == "each" && len(args) == 0:
+		f.c.dynEach = true
+		return expr{code: "rbEachEnumAny(" + f.coerce(n, recv, TAny{}) + ")", typ: TAny{}}, true
+	}
+	return expr{}, false
 }
 
 // universalBlockCall is universalCall with a block: one method every receiver shares, or a gem's untyped each.
@@ -247,13 +270,18 @@ func (f *fctx) dynClassOf(n parser.Node, recv expr) expr {
 // callMissing sends an unknown method to the receiver's method_missing,
 // with the name as a Symbol; Ruby calls it even when it is private.
 func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, args []parser.Node, block parser.Node) expr {
-	if block != nil {
+	if block != nil && mm.M.Block == nil {
 		f.errorf(n, "a block passed to %s (handled by method_missing) is not supported", name)
 	}
 	nodes := append([]parser.Node{&parser.SymbolNode{Unescaped: parser.RubyString{Value: name}}}, args...)
+	if b, ok := block.(*parser.BlockNode); ok && anyRestBlock(mm.M.Block) {
+		if fn, ok := f.rebindableBlock(n, b); ok {
+			block = &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: fn, typ: TFunc{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}}}}}
+		}
+	}
 	f.implicitCall = true
 	defer func() { f.implicitCall = false }()
-	return f.callEntry(n, mm, recv, nodes, nil)
+	return f.callEntry(n, mm, recv, nodes, block) // a method_missing taking &block gets the call's (bindata's `struct :e_ident do ... end`)
 }
 
 // rubyPrivate names methods Ruby makes private whoever defines them.
@@ -311,6 +339,12 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 // Like MRI, only a call with an explicit receiver (other than self) cannot
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {
+	if e, ok := f.gemDynShortcut(n, recv, name, args); ok {
+		return e
+	}
+	if (name == "unpack" || name == "unpack1") && f.lenient() { // a gem's 64-bit fields wrap (decision 324)
+		name = "__" + name + "_wrap"
+	}
 	if e, ok := f.dynContainerCall(n, recv, name, args); ok {
 		return e
 	}
@@ -510,11 +544,23 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 			f.warn(n, "dynamic call: %s with a computed name on %s%s", name, recv.typ, f.everyNameWhy(n, recv))
 		}
 	}
-	nameExpr := f.genExpr(args[0], nil)
 	how := "rbFCall"
 	if name == "public_send" {
 		how = "rbCall"
 	}
+	if _, ok := args[0].(*parser.SplatNode); ok && f.lenient() { // `send(*args, &block)`: the name is the first element
+		spread, ok := f.anySpread(args)
+		if !ok {
+			f.errorf(n, "%s(*args) needs an Array of the name and arguments", name)
+		}
+		tail := "a_[1:]"
+		if blockArg != "" {
+			tail = "append(a_[1:len(a_):len(a_)], " + blockArg + ")"
+		}
+		return expr{code: fmt.Sprintf("func() any { a_ := %s; if len(a_) == 0 { panic(NewArgumentError(Ref(String(\"no method name given\")))) }; return %s(%s, rbConstName(a_[0]), %s, %s...) }()",
+			spread, fn, f.coerce(n, recv, TAny{}), how, tail), typ: TAny{}}
+	}
+	nameExpr := f.genExpr(args[0], nil)
 	codes := []string{f.coerce(n, recv, TAny{}), "rbConstName(" + f.coerce(args[0], nameExpr, TAny{}) + ")", how}
 	if spread, ok := f.anySpread(args[1:]); ok { // `send(m, state, *args)`
 		if blockArg != "" {
@@ -547,8 +593,11 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 			ps[i] = TAny{}
 			vals[i] = fmt.Sprintf("rbArgAt(xs_, %d)", i)
 		}
+		if fn, ok := f.rebindableBlock(n, b); ok {
+			return "rbBlockArg{fn: " + fn + "}", true
+		}
 		clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
-		return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { %sreturn (%s)(%s) }}", autoSplat(len(names), "xs_"), clo, strings.Join(vals, ", ")), true
+		return fmt.Sprintf("rbBlockArg{fn: func(xs_ ...any) any { _, xs_ = rbSelfOr(nil, xs_); %sreturn (%s)(%s) }}", autoSplat(len(names), "xs_"), clo, strings.Join(vals, ", ")), true
 	case *parser.BlockArgumentNode:
 		if b.Expression == nil {
 			return "", false
@@ -571,6 +620,9 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 			return "", false
 		}
 		if opt && fn.Rest && len(fn.Params) == 1 && isAny(fn.Params[0]) && isAny(fn.Ret) {
+			if strings.HasPrefix(f.c.goType(e.typ), "*") { // a Proc value is boxed (elftools' `tag_at(i).tap(&block)`)
+				return "rbBlockArg{fn: *" + e.code + "}", true
+			}
 			return "rbBlockArg{fn: " + e.code + "}", true
 		}
 		if opt && !fn.Rest {
@@ -582,6 +634,28 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// rebindableBlock is a gem's DSL block in a class body (bindata's `struct :e_ident do ... end`), or nested in one, as
+// a dynamic block: its self is whatever instance_eval later gives it, so its own calls are dynamic on that, else the
+// class it was written in (decision 324).
+func (f *fctx) rebindableBlock(n parser.Node, b *parser.BlockNode) (string, bool) {
+	if !f.lenient() || !f.selfClassObj && !isAny(f.selfType) || f.selfCode == "" {
+		return "", false
+	}
+	names := f.blockParamList(b.Parameters)
+	if names.special() {
+		return "", false
+	}
+	ps := make([]Type, len(names))
+	vals := []string{"s_"}
+	for i := range ps {
+		ps[i] = TAny{}
+		vals = append(vals, fmt.Sprintf("rbArgAt(xs_, %d)", i))
+	}
+	clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}, Self: TAny{}}, map[string]Type{})
+	return fmt.Sprintf("func(xs_ ...any) any { s_, xs_ := rbSelfOr(%s, xs_); %sreturn (%s)(%s) }",
+		f.coerce(n, expr{code: f.selfCode, typ: f.selfType, classObj: f.selfClassObj}, TAny{}), autoSplat(len(names), "xs_"), clo, strings.Join(vals, ", ")), true
 }
 
 // typedBlockArg is a method's own typed `&block` passed on to a dynamic call: its values asserted in, a bound block's

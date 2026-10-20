@@ -91,6 +91,8 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_ENOTDIR(msg("Not a directory"))
 	case errors.Is(err, syscall.EBUSY):
 		return NewErrno_EBUSY(msg(strings.ToUpper(syscall.EBUSY.Error()[:1]) + syscall.EBUSY.Error()[1:])) // strerror: "Device or resource busy" (Linux), "Resource busy" (macOS)
+	case errors.Is(err, syscall.ESPIPE):
+		return NewErrno_ESPIPE(msg("Illegal seek"))
 	case errors.Is(err, syscall.ELOOP):
 		return NewErrno_ELOOP(msg("Too many levels of symbolic links"))
 	case errors.Is(err, syscall.EROFS):

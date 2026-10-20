@@ -130,6 +130,21 @@ module Demo
       [File.directory?(File.join(dir, "a", "b")), Gemish.mkpaths.size]
     end
 
+    # `Gemish.extend Factory` inside the body (bindata's `BinData.extend BitFieldFactory`)
+    module Factory
+      def factory_name = "factory #{name}"
+    end
+    Gemish.extend Factory
+
+    # a splat of a value that is a Symbol or an Array (bindata's BitField.define_class(name, :nbits, *args))
+    def splat_args
+      made = []
+      { "Bit" => :big, "Sbit" => [:big, :signed] }.each_pair { |name, args| made << define_field(name, :nbits, *args) }
+      made
+    end
+
+    def define_field(name, nbits, endian, signed = :unsigned) = [name, nbits, endian, signed]
+
     def joined
       out = String.new
       out << "a" << "b" << "c"

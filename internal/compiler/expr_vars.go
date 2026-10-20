@@ -2,10 +2,85 @@ package compiler
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
+
+// includerIvar: a gem module's ivar its includer's class assigns (elftools' Dynamic reading Segment's
+// @offset_from_vma), one field, reached by name (decision 324).
+func (f *fctx) includerIvar(name string) bool {
+	return f.owner != nil && f.owner.IsModule && f.lenient() && f.c.findIvar(f.owner, name) == nil && f.c.includerClassWrites(f.owner, name)
+}
+
+// genIvarWrite is an @x assignment: the value converted to the ivar's type, declaring it during discovery.
+func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
+	if f.includerIvar(n.Name) {
+		return f.genIncluderIvarWrite(n)
+	}
+	var exp, ann Type
+	if t := f.f.trailingAnnotation(n); t != "" && !isLetFlag(n.Name) {
+		ann = f.parseTypeAnn(n, t)
+		exp = ann
+	} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
+		exp = iv.Type
+	} else if f.discover {
+		exp = f.c.openNewType(n.Value) // `@a = Array.new(n, nil)` is open as `@a = []` is
+	}
+	val := f.genExpr(n.Value, exp)
+	decl := val.typ
+	if ann != nil {
+		val, decl = f.annotatedIvarValue(n, val, ann)
+	}
+	f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
+	f.unnarrow("ivar:" + n.Name)
+	iv := f.ivar(n, n.Name, decl)
+	if f.discover && ann == nil && isEmptyLit(n.Value) {
+		iv.open = true
+	}
+	if !fitsValue(val, iv.Type) && f.lenient() && isUnion(val.typ) { // a gem's union into a narrower ivar converts where it lands, as untyped does (decision 320): Homebrew's `@name = owner.name` of a Formula | Cask
+		val = expr{code: val.code, typ: TAny{}}
+	}
+	if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
+		f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
+	}
+	code := f.ivarCode(iv)
+	f.storing++
+	f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
+	f.storing--
+	f.markIvar(iv)
+	// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
+	if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
+		f.narrowIvar(iv) // and reads after it, until a call through self (decision 148)
+		return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
+	}
+	return expr{code: code, typ: iv.Type, done: true}
+}
+
+// genIvarRead is an @x read: narrowed, an includer's by name, nil before discovery types it, else the field.
+func (f *fctx) genIvarRead(n *parser.InstanceVariableReadNode) expr {
+	if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed (decision 148)
+		return expr{code: v.goName, typ: v.typ}
+	}
+	if f.includerIvar(n.Name) {
+		return expr{code: "rbIvarGet(" + f.selfCode + ", Symbol(" + strconv.Quote(n.Name) + "))", typ: TAny{}}
+	}
+	if f.readsUnassigned(n.Name) {
+		return expr{code: "nil", typ: TNil{}}
+	}
+	iv := f.ivar(n, n.Name, nil)
+	return expr{code: f.ivarCode(iv), typ: iv.Type}
+}
+
+// genIncluderIvarWrite is a module's write of an ivar its includer's class keeps: set by name.
+func (f *fctx) genIncluderIvarWrite(n *parser.InstanceVariableWriteNode) expr {
+	v := f.genExpr(n.Value, nil)
+	tmp := f.newTmp()
+	f.emit("var %s any = %s", tmp, f.coerce(n.Value, v, TAny{}))
+	f.emit("rbIvarSet(%s, Symbol(%q), %s)", f.selfCode, n.Name, tmp)
+	return expr{code: tmp, typ: TAny{}, done: true}
+}
 
 // genIvarExpr handles @x reads and writes (and hands @@x to genClassVarExpr).
 func (f *fctx) genIvarExpr(n parser.Node) expr {
@@ -13,52 +88,9 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 	case *parser.ClassVariableReadNode, *parser.ClassVariableWriteNode, *parser.ClassVariableOperatorWriteNode, *parser.ClassVariableOrWriteNode:
 		return f.genClassVarExpr(n)
 	case *parser.InstanceVariableReadNode:
-		if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed (decision 148)
-			return expr{code: v.goName, typ: v.typ}
-		}
-		if f.readsUnassigned(n.Name) {
-			return expr{code: "nil", typ: TNil{}}
-		}
-		iv := f.ivar(n, n.Name, nil)
-		return expr{code: f.ivarCode(iv), typ: iv.Type}
+		return f.genIvarRead(n)
 	case *parser.InstanceVariableWriteNode:
-		var exp, ann Type
-		if t := f.f.trailingAnnotation(n); t != "" && !isLetFlag(n.Name) {
-			ann = f.parseTypeAnn(n, t)
-			exp = ann
-		} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
-			exp = iv.Type
-		} else if f.discover {
-			exp = f.c.openNewType(n.Value) // `@a = Array.new(n, nil)` is open as `@a = []` is
-		}
-		val := f.genExpr(n.Value, exp)
-		decl := val.typ
-		if ann != nil {
-			val, decl = f.annotatedIvarValue(n, val, ann)
-		}
-		f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
-		f.unnarrow("ivar:" + n.Name)
-		iv := f.ivar(n, n.Name, decl)
-		if f.discover && ann == nil && isEmptyLit(n.Value) {
-			iv.open = true
-		}
-		if !fitsValue(val, iv.Type) && f.lenient() && isUnion(val.typ) { // a gem's union into a narrower ivar converts where it lands, as untyped does (decision 320): Homebrew's `@name = owner.name` of a Formula | Cask
-			val = expr{code: val.code, typ: TAny{}}
-		}
-		if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
-			f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
-		}
-		code := f.ivarCode(iv)
-		f.storing++
-		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
-		f.storing--
-		f.markIvar(iv)
-		// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
-		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
-			f.narrowIvar(iv) // and reads after it, until a call through self (decision 148)
-			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
-		}
-		return expr{code: code, typ: iv.Type, done: true}
+		return f.genIvarWrite(n)
 	case *parser.InstanceVariableOperatorWriteNode:
 		iv := f.ivar(n, n.Name, nil)
 		code := f.ivarCode(iv)

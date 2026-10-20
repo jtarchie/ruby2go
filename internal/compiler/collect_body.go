@@ -362,6 +362,45 @@ func (c *Compiler) collectIOExtend(f *File, n *parser.CallNode, scope []*Class) 
 	return true
 }
 
+// collectConstExtend is a body's `BinData.extend BitFieldFactory`: extend on a constant naming a class or module is
+// that class's own `extend M`, as the body of the class would write it.
+func (c *Compiler) collectConstExtend(ctx context.Context, f *File, n *parser.CallNode, scope []*Class) bool {
+	if n.Name != "extend" || f.isPrelude() || n.Block != nil || len(callArgs(n)) == 0 {
+		return false
+	}
+	switch n.Receiver.(type) {
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+	default:
+		return false
+	}
+	target, _ := c.lookupName(scope, constName(n.Receiver))
+	if target == nil || target.metaOf != nil {
+		return false
+	}
+	c.collectMixinCall(ctx, f, target, n, callArgs(n), scope)
+	return true
+}
+
+// collectRefine takes a gem's `refine X do ... end` as reopening X (patchelf's StringIO#fill): the closed world has
+// no other caller to keep the method from, so `using` is a no-op (decision 324).
+func (c *Compiler) collectRefine(ctx context.Context, f *File, n *parser.CallNode, scope []*Class) bool {
+	if n.Name == "using" && n.Receiver == nil && len(callArgs(n)) == 1 && c.gemFile(f) { // its refine blocks reopened their classes
+		return true
+	}
+	blk, ok := n.Block.(*parser.BlockNode)
+	if n.Name != "refine" || n.Receiver != nil || !ok || len(callArgs(n)) != 1 || !c.gemFile(f) {
+		return false
+	}
+	target, _ := c.lookupName(scope, constName(callArgs(n)[0]))
+	if target == nil || target.metaOf != nil {
+		return false
+	}
+	if blk.Body != nil {
+		c.collectBody(ctx, f, target, blk.Body, append(slices.Clip(scope), target), false)
+	}
+	return true
+}
+
 // rejectUnsupportedDecl reports a class-body declaration rb2go recognizes but
 // does not implement, with a clearer message than the load-time call fallback
 // would give.
@@ -376,7 +415,7 @@ func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
 // load-time class body takes as a statement to run when the class is defined
 // (decision 166).
 func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, vis *visibility, scope []*Class) bool {
-	if c.anonDefineMethod(ctx, f, cls, n, scope) || c.collectIOExtend(f, n, scope) {
+	if c.anonDefineMethod(ctx, f, cls, n, scope) || c.collectIOExtend(f, n, scope) || c.collectConstExtend(ctx, f, n, scope) || c.collectRefine(ctx, f, n, scope) {
 		return true
 	}
 	if a := singletonAlias(n); a != nil { // `singleton_class.send :alias_method, :[], :new` (concurrent-ruby's LockFreeStack::Node, decision 253)

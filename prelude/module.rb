@@ -27,6 +27,9 @@ class Module < Object
   def constants(inherit = true) = %x{
     out := &Array[Symbol]{}
     for _, c := range any(self).(rbConstTable)._Consts() {
+      if p, ok := c.value.(rbEvalConst); ok && !*p.defined {
+        continue
+      }
       if bool(inherit) || !c.inherited {
         out.s = append(out.s, Symbol(c.name))
       }
@@ -136,6 +139,10 @@ class Module < Object
   #: (untyped, ?bool) -> bool
   def method_defined?(name, inherit = true) = public_method_defined?(name, inherit)
 
+  # Every constant of the closed world is defined already: none waits on an autoload (decision 324).
+  #: (untyped, ?bool) -> String?
+  def autoload?(name, inherit = true) = nil
+
   # The transpiler narrows the result type: a literal name gets that
   # constant's type, any other name the join of the module's constants.
   #: (untyped, ?bool) -> untyped
@@ -149,7 +156,7 @@ class Module < Object
 
   #: (untyped, ?bool) -> bool
   def const_defined?(name, inherit = true) = %x{
-    _, missing := rbConstResolve(self, name, bool(inherit))
+    _, missing := rbConstLookup(self, name, bool(inherit), false)
     return Boolean(missing == "")
   }
 

@@ -170,6 +170,7 @@ module Errno
   class EADDRINUSE < SystemCallError; end
   class EADDRNOTAVAIL < SystemCallError; end
   class EPIPE < SystemCallError; end
+  class ESPIPE < SystemCallError; end
   class ECONNRESET < SystemCallError; end
   class ECONNABORTED < SystemCallError; end
   class ENOTCONN < SystemCallError; end

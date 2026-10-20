@@ -36,6 +36,12 @@ func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 				c.noteDyn(name)
 				c.noteRespond(name)
 			}
+			for _, name := range slices.Clone(c.dynNames) { // a name called on an untyped value may reach a method_missing asking respond_to? of it (bindata's BasePrimitive: `kind.to_i`)
+				c.noteRespond(name)
+			}
+			for _, name := range []string{"to_int", "to_str"} { // rbImplicitConv asks an object's method_missing
+				c.noteRespond(name)
+			}
 		}
 		c.dynLazy = map[string]bool{}
 		for _, n := range slices.Concat(c.dynNames, c.respondNames) {
@@ -961,6 +967,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 			f.emit("}")
 		}
 	}
+	c.emitHashKeyMiss(f, m, env, req)
 	call := func(k int, withRest bool) {
 		nodes := make([]parser.Node, 0, k+1)
 		for i := range k {
@@ -1188,8 +1195,53 @@ func (c *Compiler) dynNumericTower(f *fctx, cls *Class, e *entry, env map[string
 	f.emit("\t\t}")
 	f.emit("\t\tpanic(rbNoMethod(%q, x, false))", m.Name)
 	f.emit("\t}")
+	if c.ownCoerce() { // an object's coerce (bindata's primitives answer it through method_missing), as MRI's
+		c.noteDyn("coerce")
+		c.noteRespond("coerce") // method_missing asks respond_to?(:coerce) of what it delegates to
+		f.emit("\tif _, ok := args[0].(interface{ DynCoerce(...any) any }); ok || rbHasMissing(args[0]) {")
+		f.emit("\t\tif p := rbToAry(rbDynCoerce(rbCall, args[0], self)).s; len(p) == 2 {")
+		f.emit("\t\t\tif r, ok := p[0].(interface{ %s(...any) any }); ok {", gn)
+		f.emit("\t\t\t\treturn r.%s(p[1])", gn)
+		f.emit("\t\t\t}")
+		f.emit("\t\t}")
+		f.emit("\t}")
+	}
 	f.emit("}")
 }
+
+// emitHashKeyMiss: a dynamic Hash lookup whose key cannot be one of its keys misses (bindata's `choices[nil]`).
+func (c *Compiler) emitHashKeyMiss(f *fctx, m *Method, env map[string]Type, req int) {
+	miss, ok := hashKeyMiss[m.Name]
+	if !ok || m.Owner != c.classes["Hash"] || req < 1 {
+		return
+	}
+	t := subst(m.Params[0].Type, env)
+	if isAny(t) {
+		return
+	}
+	if m.Name == "[]" {
+		miss = "rbUnbox(Opt(Hash_Default[" + c.goType(env["K"]) + ", " + c.goType(env["V"]) + "](self)))"
+	}
+	f.emit("if _, ok := rbConv[%s](args[0]); !ok {", c.goType(t))
+	f.emit("\treturn %s", miss)
+	f.emit("}")
+}
+
+// ownCoerce reports a non-prelude class defining coerce or method_missing: only its objects can answer an Integer
+// operator's coerce call (decision 324), so other programs keep no coerce dispatcher.
+func (c *Compiler) ownCoerce() bool {
+	if c.coerceOwned == nil {
+		v := slices.ContainsFunc(c.classList, func(k *Class) bool {
+			return k.File != nil && !k.File.isPrelude() && (k.Methods["coerce"] != nil || k.Methods["method_missing"] != nil)
+		})
+		c.coerceOwned = &v
+	}
+	return *c.coerceOwned
+}
+
+// hashKeyMiss is what a Hash lookup answers on a dynamic call whose key cannot be one of its keys.
+var hashKeyMiss = map[string]string{"[]": "nil", "key?": "Boolean(false)", "include?": "Boolean(false)", "has_key?": "Boolean(false)",
+	"member?": "Boolean(false)", "delete": "nil", "dig": "nil"}
 
 // dynArg converts argument i to type t. Past the first it is read through
 // rbArg: gosec's G602 tracks the argument count of each call site, and a
@@ -1484,7 +1536,7 @@ func (c *Compiler) emitDynEach() {
 	c.w("func rbEachAny(recv any, arity int, blk func(...any)) any {\n")
 	c.w("\tif o, ok := rbDelegateObj(recv); ok { // a Delegator's each is its object's (Homebrew's Dependencies)\n\t\trbEachAny(o, arity, blk)\n\t\treturn recv\n\t}\n")
 	c.w("\tyield := func(xs ...any) {\n\t\tswitch {\n")
-	c.w("\t\tcase arity == 2 && len(xs) == 1:\n\t\t\ta := rbToAry(xs[0]).s\n\t\t\txs = append(a[:len(a):len(a)], nil, nil)[:2]\n")
+	c.w("\t\tcase arity >= 2 && len(xs) == 1:\n\t\t\ta := rbToAry(xs[0]).s\n\t\t\txs = append(a[:len(a):len(a)], make([]any, arity)...)[:arity]\n")
 	c.w("\t\tcase arity == 1 && len(xs) == 2:\n\t\t\txs = []any{&Array[any]{s: xs}}\n\t\t}\n\t\tblk(xs...)\n\t}\n")
 	c.w("\tswitch r := recv.(type) {\n\tcase Array_Any:\n\t\tfor _, x := range r._ToAny().s {\n\t\t\tyield(x)\n\t\t}\n")
 	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor _, k := range h.keys {\n\t\t\tyield(k, h.vals[k])\n\t\t}\n")
@@ -1523,6 +1575,11 @@ func (c *Compiler) emitDynEach() {
 	c.w("\tif o, ok := rbDelegateObj(recv); ok {\n\t\trecv = o\n\t}\n")
 	c.w("\tif a, ok := recv.(Array_Any); ok {\n\t\treturn a._ToAny()\n\t}\n")
 	c.w("\tout := &Array[any]{}\n\trbEachAny(recv, 1, func(xs ...any) { out.s = append(out.s, xs[0]) })\n\treturn out\n}\n\n")
+	// rbZipAny is zip on untyped values: each element with the others' at its index, nil past their ends
+	c.w("func rbZipAny(recv any, others ...any) *Array[any] {\n\tout := &Array[any]{}\n\tos := make([]*Array[any], len(others))\n\tfor i, o := range others {\n\t\tos[i] = rbElemsAny(o)\n\t}\n")
+	c.w("\tfor i, x := range rbElemsAny(recv).s {\n\t\trow := &Array[any]{s: []any{x}}\n\t\tfor _, o := range os {\n\t\t\tvar v any\n\t\t\tif i < len(o.s) {\n\t\t\t\tv = o.s[i]\n\t\t\t}\n\t\t\trow.s = append(row.s, v)\n\t\t}\n\t\tout.s = append(out.s, row)\n\t}\n\treturn out\n}\n\n")
+	// rbEachEnumAny is a blockless each on an untyped receiver: an Enumerator over its elements
+	c.w("func rbEachEnumAny(recv any) any {\n\ta := rbElemsAny(recv)\n\treturn rbEnumOf(Array_Each(a), recv, \"each\", rbSizeOf(Integer(len(a.s))), nil)\n}\n\n")
 }
 
 // emitDynPostCall is a Dyn wrapper's call of a method with post parameters (concurrent-ruby's `evaluate_to(*args,

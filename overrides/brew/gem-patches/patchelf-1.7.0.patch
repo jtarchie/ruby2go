@@ -1,0 +1,20 @@
+patchelf: keep the edited section String in @replaced_sections (rb2go Strings are values: decision 136, 324).
+MRI mutates the String the Hash already holds; under MRI these lines change nothing.
+--- a/lib/patchelf/alt_saver.rb	2026-10-19 18:20:41
++++ b/lib/patchelf/alt_saver.rb	2026-10-19 18:20:41
+@@ -258,6 +258,7 @@
+       new_dynstr = replace_section '.dynstr', shdr_dynstr.sh_size + new_rpath.size + 1
+       new_rpath_strtab_idx = shdr_dynstr.sh_size.to_i
+       new_dynstr[new_rpath_strtab_idx..(new_rpath_strtab_idx + new_rpath.size)] = "#{new_rpath}\x00"
++      @replaced_sections['.dynstr'] = new_dynstr
+ 
+       dyn_tags.each_value do |dyn|
+         dyn[:header].d_val = new_rpath_strtab_idx
+@@ -319,6 +320,7 @@
+       dyn_rpath.write zi
+       zi.rewind
+       new_dynamic_data[0...dyn_num_bytes] = zi.read.b
++      @replaced_sections['.dynamic'] = new_dynamic_data
+     end
+ 
+     # given a index into old_sections table

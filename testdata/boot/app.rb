@@ -3,6 +3,7 @@
 require "demo"
 require "demo/text"
 require "demo/gemish"
+require "demo/objdyn"
 require "demo/cli"
 require "sigdemo"
 
@@ -26,6 +27,7 @@ p g.kind?(h)
 h["kind"] = "html"
 p g.kind?(h)
 p g.joined
+p g.splat_args, Demo::Gemish.factory_name
 require "tmpdir"
 Dir.mktmpdir { |d| p g.observed_mkpath(d) }
 p g.spawn_opts("/tmp"), g.spawn_opts(nil)
@@ -217,3 +219,4 @@ p DemoLateIvar.go
 p DemoRead.go
 p DemoCached.go
 p DemoRefs.go
+p DemoObjDyn.run

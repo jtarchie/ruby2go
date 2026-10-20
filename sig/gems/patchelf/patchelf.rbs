@@ -1,0 +1,8 @@
+# Vendored RBS for patchelf 1.7 (Homebrew's ELF relocation; docs/design.md decision 160): methods whose callers pass
+# values inference from the typed calls alone would narrow.
+module PatchELF
+  module Logger
+    # define_method'd for debug/info/warn/error/level=; level= takes a ::Logger constant (an Integer).
+    def self.level=: (untyped msg) -> nil
+  end
+end

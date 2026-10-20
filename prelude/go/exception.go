@@ -39,6 +39,8 @@ func rbErrnoOf(e any) *Integer {
 		n = syscall.ENOTEMPTY
 	case *Errno_EBUSY:
 		n = syscall.EBUSY
+	case *Errno_ESPIPE:
+		n = syscall.ESPIPE
 	case *Errno_EROFS:
 		n = syscall.EROFS
 	case *Errno_ELOOP:
