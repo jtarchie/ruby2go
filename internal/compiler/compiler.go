@@ -626,6 +626,33 @@ func (c *Compiler) loadPrelude(ctx context.Context, name string) {
 	}
 }
 
+// loadVendored loads a vendored gem's lib file from the prelude FS as user code (decision 328): the %x{} escape stays closed, extern
+// signatures are compiled, dynamic calls warn, and its top-level statements run as a required file's would.
+func (c *Compiler) loadVendored(ctx context.Context, name string) {
+	if c.loaded[name] {
+		return
+	}
+	c.loaded[name] = true
+	src, err := fs.ReadFile(c.preludeFS, name)
+	if err != nil {
+		panic(compileError{msg: fmt.Sprintf("vendored gem: %v", err)})
+	}
+	var libs []string // its own top-level `require "x"` lines: the require scan covers only the program's files
+	for _, m := range vendoredRequire.FindAllSubmatch(src, -1) {
+		libs = append(libs, string(m[1]))
+	}
+	c.loadLibs(ctx, libs, false)
+	f, err := parseFile(ctx, c.parser, name, src, originUser)
+	if err != nil {
+		panic(compileError{msg: err.Error()})
+	}
+	c.files = append(c.files, f)
+	c.userFiles = append(c.userFiles, f) // a user file, not a required one: its body is a file block before main's (no require site to splice it at)
+	c.collect(ctx, f)
+}
+
+var vendoredRequire = regexp.MustCompile(`(?m)^require "([^"]+)"$`)
+
 // preludeFiles caches each prelude file's parse for the process: the prelude is constant, a File is never written after parseFile, and under wasm Prism runs interpreted, where parsing it costs 2.5 s of a 5.5 s compile.
 var preludeFiles sync.Map // name → *File
 
@@ -798,7 +825,7 @@ func (c *Compiler) findRequireUncached(required string) string {
 		name += ".rb"
 	}
 	dirs := c.loadPath
-	if preludeLibs[strings.TrimSuffix(required, ".rb")] == "" { // the prelude's lib wins over a gem's copy (base64, forwardable)
+	if !builtinLib(required) { // the prelude's lib wins over a gem's copy (base64, forwardable), as does a vendored gem's (sqlite3)
 		dirs = append(slices.Clip(dirs), c.gemDirs...)
 	}
 	return resolveOnPath(dirs, name)

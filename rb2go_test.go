@@ -1230,3 +1230,33 @@ p h.pop
 		t.Fatalf("err = %v, warnings %v", err, warns)
 	}
 }
+
+// vendoredGemTests names the minitest file that proves each vendored gem (gems/<name>/lib, decision 328) under MRI's own
+// Fiddle; TestMinitest runs the same file against the real gem and against the compiled vendored copy.
+var vendoredGemTests = map[string]string{"sqlite3-fiddle": "sqlite3_test.rb"}
+
+// TestVendoredGemsMRI runs each vendored gem's minitest file under MRI with the gem's lib first on the load path, so the
+// pure-Ruby copy is checked as a gem, not only as compiled code.
+func TestVendoredGemsMRI(t *testing.T) {
+	requireRuby4(t)
+	gems, err := filepath.Glob(filepath.Join("gems", "*", "lib"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gems) != len(vendoredGemTests) {
+		t.Fatalf("gems/*/lib has %d entries, vendoredGemTests %d: add the new gem's test", len(gems), len(vendoredGemTests))
+	}
+	for _, lib := range gems {
+		name := filepath.Base(filepath.Dir(lib))
+		test, ok := vendoredGemTests[name]
+		if !ok {
+			t.Fatalf("no minitest file for gems/%s", name)
+		}
+		t.Run(name, func(t *testing.T) {
+			out, err := exec.CommandContext(t.Context(), "ruby", "-I", lib, filepath.Join("testdata", "test", test), "--seed", "1").CombinedOutput() //nolint:gosec // our own paths
+			if err != nil {
+				t.Fatalf("ruby -I %s %s: %v\n%s", lib, test, err, rdocNoise.ReplaceAll(out, nil))
+			}
+		})
+	}
+}

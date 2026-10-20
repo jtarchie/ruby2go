@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 327); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 328); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
 
 ## Commands
 
@@ -79,6 +79,7 @@ Smaller cases go in `testdata/`:
   - When the generated Go doesn't parse, the raw output is written to `$TMPDIR/rb2go-bad-output.go`.
 
 - `prelude/`: the core library in Ruby; its conventions (`%x{}`, `@go_type`, `prelude/go/` helpers) are in `prelude/CLAUDE.md`.
+- `gems/<name>/`: vendored pure-Ruby gems (gemspec + `lib/<require>.rb`) that run on MRI unchanged and are embedded and compiled as user code when required (`vendoredLibs` in `libs.go`, decision 328); `TestVendoredGemsMRI` runs each one's minitest file under MRI with its lib on the load path. sqlite3-fiddle is the first.
 
 
 ### Key representation rules (details in docs/design.md decisions)

@@ -1,8 +1,9 @@
 # rbs_inline: enabled
 
-# sqlite3-ruby over Fiddle (decision 327): the gem's Ruby layer ported, its C extension replaced by SQLite3::C over a dlopened libsqlite3.
+# sqlite3-fiddle: the sqlite3 gem's API in pure Ruby over Fiddle, so it runs on MRI and compiles under rb2go (decision 328).
 
-require_relative "fiddle"
+require "fiddle"
+require "fiddle/import"
 
 module SQLite3
   VERSION = "2.10.1"
@@ -214,119 +215,101 @@ module SQLite3
   #: () -> String
   def self.__lib_name = RUBY_PLATFORM.include?("darwin") ? "libsqlite3.dylib" : "libsqlite3.so.0"
 
-  # The C API: one Fiddle::Function per entry point, typed Ruby wrappers over `call`'s untyped result.
+  # The C API through Fiddle::Importer: each extern is a typed module method (rb2go compiles the literal signatures, decision 326).
   module C
+    extend Fiddle::Importer
     HANDLE = Fiddle.dlopen(SQLite3.__lib_name) #: Fiddle::Handle
-    P = Fiddle::TYPE_VOIDP
-    I = Fiddle::TYPE_INT
-    L = Fiddle::TYPE_LONG_LONG
-    D = Fiddle::TYPE_DOUBLE
-    S = Fiddle::TYPE_CONST_STRING
-    V = Fiddle::TYPE_VOID
+    dlload HANDLE
     TRANSIENT = -1 # SQLITE_TRANSIENT: sqlite copies the bytes before the call returns
 
-    #: (String, Array[Integer], Integer) -> Fiddle::Function
-    def self.fn(name, args, ret) = Fiddle::Function.new(HANDLE[name], args, ret, name: name)
+    extern "void *sqlite3_libversion(void)"
+    extern "int sqlite3_libversion_number(void)"
+    extern "int sqlite3_open_v2(void *, void *, int, void *)"
+    extern "int sqlite3_close_v2(void *)"
+    extern "void *sqlite3_errmsg(void *)"
+    extern "int sqlite3_errcode(void *)"
+    extern "int sqlite3_extended_errcode(void *)"
+    extern "int sqlite3_prepare_v2(void *, void *, int, void *, void *)"
+    extern "int sqlite3_step(void *)"
+    extern "int sqlite3_reset(void *)"
+    extern "int sqlite3_finalize(void *)"
+    extern "int sqlite3_clear_bindings(void *)"
+    extern "int sqlite3_column_count(void *)"
+    extern "void *sqlite3_column_name(void *, int)"
+    extern "void *sqlite3_column_decltype(void *, int)"
+    extern "int sqlite3_column_type(void *, int)"
+    extern "long long sqlite3_column_int64(void *, int)"
+    extern "double sqlite3_column_double(void *, int)"
+    extern "void *sqlite3_column_text(void *, int)"
+    extern "void *sqlite3_column_blob(void *, int)"
+    extern "int sqlite3_column_bytes(void *, int)"
+    extern "int sqlite3_bind_parameter_count(void *)"
+    extern "int sqlite3_bind_parameter_index(void *, void *)"
+    extern "int sqlite3_bind_text(void *, int, void *, int, void *)"
+    extern "int sqlite3_bind_blob(void *, int, void *, int, void *)"
+    extern "int sqlite3_bind_int64(void *, int, long long)"
+    extern "int sqlite3_bind_double(void *, int, double)"
+    extern "int sqlite3_bind_null(void *, int)"
+    extern "void *sqlite3_sql(void *)"
+    extern "int sqlite3_changes(void *)"
+    extern "int sqlite3_total_changes(void *)"
+    extern "long long sqlite3_last_insert_rowid(void *)"
+    extern "int sqlite3_get_autocommit(void *)"
+    extern "int sqlite3_busy_timeout(void *, int)"
+    extern "void *sqlite3_db_filename(void *, void *)"
+    extern "int sqlite3_complete(void *)"
+    extern "void sqlite3_interrupt(void *)"
+    extern "int sqlite3_create_function(void *, void *, int, int, void *, void *, void *, void *)"
+    extern "int sqlite3_value_type(void *)"
+    extern "long long sqlite3_value_int64(void *)"
+    extern "double sqlite3_value_double(void *)"
+    extern "void *sqlite3_value_text(void *)"
+    extern "void *sqlite3_value_blob(void *)"
+    extern "int sqlite3_value_bytes(void *)"
+    extern "void sqlite3_result_int64(void *, long long)"
+    extern "void sqlite3_result_double(void *, double)"
+    extern "void sqlite3_result_text(void *, void *, int, void *)"
+    extern "void sqlite3_result_blob(void *, void *, int, void *)"
+    extern "void sqlite3_result_null(void *)"
+    extern "void sqlite3_result_error(void *, void *, int)"
 
-    #: (String, Array[Integer], Integer) -> Fiddle::Function?
-    def self.fn_if(name, args, ret) = HANDLE.sym_defined?(name).nil? ? nil : fn(name, args, ret)
+    # sqlite3_error_offset arrived in SQLite 3.38; older libraries have no symbol.
+    ERROR_OFFSET = HANDLE.sym_defined?("sqlite3_error_offset").nil? ? nil : Fiddle::Function.new(HANDLE["sqlite3_error_offset"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT) #: Fiddle::Function?
 
-    LIBVERSION = fn("sqlite3_libversion", [], S)
-    LIBVERSION_NUMBER = fn("sqlite3_libversion_number", [], I)
-    OPEN_V2 = fn("sqlite3_open_v2", [P, P, I, P], I)
-    CLOSE_V2 = fn("sqlite3_close_v2", [P], I)
-    ERRMSG = fn("sqlite3_errmsg", [P], S)
-    ERRCODE = fn("sqlite3_errcode", [P], I)
-    EXTENDED_ERRCODE = fn("sqlite3_extended_errcode", [P], I)
-    ERROR_OFFSET = fn_if("sqlite3_error_offset", [P], I)
-    PREPARE_V2 = fn("sqlite3_prepare_v2", [P, P, I, P, P], I)
-    STEP = fn("sqlite3_step", [P], I)
-    RESET = fn("sqlite3_reset", [P], I)
-    FINALIZE = fn("sqlite3_finalize", [P], I)
-    CLEAR_BINDINGS = fn("sqlite3_clear_bindings", [P], I)
-    COLUMN_COUNT = fn("sqlite3_column_count", [P], I)
-    COLUMN_NAME = fn("sqlite3_column_name", [P, I], S)
-    COLUMN_DECLTYPE = fn("sqlite3_column_decltype", [P, I], S)
-    COLUMN_TYPE = fn("sqlite3_column_type", [P, I], I)
-    COLUMN_INT64 = fn("sqlite3_column_int64", [P, I], L)
-    COLUMN_DOUBLE = fn("sqlite3_column_double", [P, I], D)
-    COLUMN_TEXT = fn("sqlite3_column_text", [P, I], P)
-    COLUMN_BLOB = fn("sqlite3_column_blob", [P, I], P)
-    COLUMN_BYTES = fn("sqlite3_column_bytes", [P, I], I)
-    BIND_PARAMETER_COUNT = fn("sqlite3_bind_parameter_count", [P], I)
-    BIND_PARAMETER_INDEX = fn("sqlite3_bind_parameter_index", [P, P], I)
-    BIND_TEXT = fn("sqlite3_bind_text", [P, I, P, I, P], I)
-    BIND_BLOB = fn("sqlite3_bind_blob", [P, I, P, I, P], I)
-    BIND_INT64 = fn("sqlite3_bind_int64", [P, I, L], I)
-    BIND_DOUBLE = fn("sqlite3_bind_double", [P, I, D], I)
-    BIND_NULL = fn("sqlite3_bind_null", [P, I], I)
-    SQL = fn("sqlite3_sql", [P], S)
-    CHANGES = fn("sqlite3_changes", [P], I)
-    TOTAL_CHANGES = fn("sqlite3_total_changes", [P], I)
-    LAST_INSERT_ROWID = fn("sqlite3_last_insert_rowid", [P], L)
-    GET_AUTOCOMMIT = fn("sqlite3_get_autocommit", [P], I)
-    BUSY_TIMEOUT = fn("sqlite3_busy_timeout", [P, I], I)
-    DB_FILENAME = fn("sqlite3_db_filename", [P, P], S)
-    DB_READONLY = fn("sqlite3_db_readonly", [P, P], I)
-    COMPLETE = fn("sqlite3_complete", [P], I)
-    INTERRUPT = fn("sqlite3_interrupt", [P], V)
-    CREATE_FUNCTION = fn("sqlite3_create_function", [P, P, I, I, P, P, P, P], I)
-    VALUE_TYPE = fn("sqlite3_value_type", [P], I)
-    VALUE_INT64 = fn("sqlite3_value_int64", [P], L)
-    VALUE_DOUBLE = fn("sqlite3_value_double", [P], D)
-    VALUE_TEXT = fn("sqlite3_value_text", [P], P)
-    VALUE_BLOB = fn("sqlite3_value_blob", [P], P)
-    VALUE_BYTES = fn("sqlite3_value_bytes", [P], I)
-    RESULT_INT64 = fn("sqlite3_result_int64", [P, L], V)
-    RESULT_DOUBLE = fn("sqlite3_result_double", [P, D], V)
-    RESULT_TEXT = fn("sqlite3_result_text", [P, P, I, P], V)
-    RESULT_BLOB = fn("sqlite3_result_blob", [P, P, I, P], V)
-    RESULT_NULL = fn("sqlite3_result_null", [P], V)
-    RESULT_ERROR = fn("sqlite3_result_error", [P, P, I], V)
-
-    #: (Fiddle::Function, *untyped) -> Integer
-    def self.int(f, *args) = f.call(*args)
-
-    #: (Fiddle::Function, *untyped) -> Float
-    def self.float(f, *args) = f.call(*args)
-
-    #: (Fiddle::Function, *untyped) -> String?
-    def self.str(f, *args) = f.call(*args)
-
-    #: (Fiddle::Function, *untyped) -> Fiddle::Pointer
-    def self.ptr(f, *args) = f.call(*args)
-
+    # Pointer.read's String is binary under MRI; a TEXT column is UTF-8 (rb2go derives encoding from the bytes, decision 136).
     #: (Fiddle::Pointer, Integer) -> String
     def self.bytes(p, n) = n <= 0 || p.null? ? "" : Fiddle::Pointer.read(p.to_i, n)
 
+    #: (Fiddle::Pointer, Integer) -> String
+    def self.text(p, n) = bytes(p, n).force_encoding(Encoding::UTF_8)
+
     #: (Integer) -> untyped
     def self.value(v)
-      case int(VALUE_TYPE, v)
-      when 1 then int(VALUE_INT64, v)
-      when 2 then float(VALUE_DOUBLE, v)
-      when 3 then bytes(ptr(VALUE_TEXT, v), int(VALUE_BYTES, v))
-      when 4 then bytes(ptr(VALUE_BLOB, v), int(VALUE_BYTES, v))
+      case sqlite3_value_type(v)
+      when 1 then sqlite3_value_int64(v)
+      when 2 then sqlite3_value_double(v)
+      when 3 then text(sqlite3_value_text(v), sqlite3_value_bytes(v))
+      when 4 then bytes(sqlite3_value_blob(v), sqlite3_value_bytes(v))
       end
     end
 
-    # A Ruby value as a function's result.
     #: (Integer, untyped) -> void
     def self.result(ctx, val)
       case val
-      when Blob then RESULT_BLOB.call(ctx, val.to_s, val.bytesize, TRANSIENT)
-      when String then RESULT_TEXT.call(ctx, val.to_s, val.bytesize, TRANSIENT)
-      when Integer then RESULT_INT64.call(ctx, val)
-      when Float then RESULT_DOUBLE.call(ctx, val)
-      when nil then RESULT_NULL.call(ctx)
+      when Blob then sqlite3_result_blob(ctx, val.to_s, val.bytesize, TRANSIENT)
+      when String then sqlite3_result_text(ctx, val.to_s, val.bytesize, TRANSIENT)
+      when Integer then sqlite3_result_int64(ctx, val)
+      when Float then sqlite3_result_double(ctx, val)
+      when nil then sqlite3_result_null(ctx)
       else raise RuntimeError, "can't return #{val.class}"
       end
     end
   end
 
   #: () -> Integer
-  def self.libversion = C.int(C::LIBVERSION_NUMBER)
+  def self.libversion = C.sqlite3_libversion_number
 
-  SQLITE_VERSION = C.str(C::LIBVERSION).to_s #: String
+  SQLITE_VERSION = C.sqlite3_libversion.to_s #: String
   SQLITE_VERSION_NUMBER = libversion #: Integer
   SQLITE_LOADED_VERSION = SQLITE_VERSION #: String
 
@@ -683,13 +666,13 @@ module SQLite3
         mode = SQLite3.__int(flags)
       end
       out = Fiddle::Pointer.malloc(Fiddle::SIZEOF_VOIDP)
-      rc = C.int(C::OPEN_V2, file, out, mode, nil)
+      rc = C.sqlite3_open_v2(file, out, mode, nil)
       @db = out.ptr.to_i #: Integer
       Fiddle.free(out.to_i)
       @closed = false
       if rc != 0
-        msg = @db.zero? ? "out of memory" : C.str(C::ERRMSG, @db).to_s
-        C.int(C::CLOSE_V2, @db) unless @db.zero?
+        msg = @db.zero? ? "out of memory" : C.sqlite3_errmsg(@db).to_s
+        C.sqlite3_close_v2(@db) unless @db.zero?
         @db = 0
         @closed = true
         e = SQLite3.__exception(rc, msg)
@@ -718,10 +701,10 @@ module SQLite3
     def __check(rc, sql = nil)
       return if rc == 0 || rc == 100 || rc == 101
 
-      msg = C.str(C::ERRMSG, @db).to_s
+      msg = C.sqlite3_errmsg(@db).to_s
       offset = -1
       eo = C::ERROR_OFFSET
-      offset = C.int(eo, @db) if !sql.nil? && !eo.nil?
+      offset = SQLite3.__int(eo.call(@db)) if !sql.nil? && !eo.nil?
       e = SQLite3.__exception(rc, msg)
       e.__set(rc, sql, offset)
       raise e
@@ -736,7 +719,7 @@ module SQLite3
     #: () -> nil
     def close
       unless @closed
-        C.int(C::CLOSE_V2, @db)
+        C.sqlite3_close_v2(@db)
         @closed = true
       end
       nil
@@ -757,7 +740,7 @@ module SQLite3
     end
 
     #: (?String) -> String
-    def filename(db_name = "main") = C.str(C::DB_FILENAME, @db, db_name).to_s
+    def filename(db_name = "main") = C.sqlite3_db_filename(@db, db_name).to_s
 
     # bind_vars: one value, an Array of values (`?` in order), or a Hash of names (`:name`); with a block, each row
     # is yielded and the result is empty (MRI returns the ResultSet).
@@ -857,26 +840,26 @@ module SQLite3
     end
 
     #: () -> Integer
-    def last_insert_row_id = C.int(C::LAST_INSERT_ROWID, @db)
+    def last_insert_row_id = C.sqlite3_last_insert_rowid(@db)
 
     #: () -> Integer
-    def changes = C.int(C::CHANGES, @db)
+    def changes = C.sqlite3_changes(@db)
 
     #: () -> Integer
-    def total_changes = C.int(C::TOTAL_CHANGES, @db)
+    def total_changes = C.sqlite3_total_changes(@db)
 
     #: () -> String
-    def errmsg = C.str(C::ERRMSG, @db).to_s
+    def errmsg = C.sqlite3_errmsg(@db).to_s
 
     #: () -> Integer
-    def errcode = C.int(C::ERRCODE, @db)
+    def errcode = C.sqlite3_errcode(@db)
 
     #: () -> Integer
-    def extended_errcode = C.int(C::EXTENDED_ERRCODE, @db)
+    def extended_errcode = C.sqlite3_extended_errcode(@db)
 
     #: (Integer) -> Integer
     def busy_timeout(ms)
-      __check(C.int(C::BUSY_TIMEOUT, @db, ms))
+      __check(C.sqlite3_busy_timeout(@db, ms))
       ms
     end
 
@@ -886,11 +869,11 @@ module SQLite3
     end
 
     #: (String) -> bool
-    def complete?(sql) = C.int(C::COMPLETE, sql) != 0
+    def complete?(sql) = C.sqlite3_complete(sql) != 0
 
     #: () -> nil
     def interrupt
-      C::INTERRUPT.call(@db)
+      C.sqlite3_interrupt(@db)
       nil
     end
 
@@ -898,7 +881,7 @@ module SQLite3
     def readonly? = @readonly
 
     #: () -> bool
-    def transaction_active? = C.int(C::GET_AUTOCOMMIT, @db).zero?
+    def transaction_active? = C.sqlite3_get_autocommit(@db).zero?
 
     # Begins a transaction (deferred, immediate or exclusive); with a block, commits after it or rolls back on an
     # exception and returns the block's value.
@@ -938,7 +921,7 @@ module SQLite3
         __call_function(ctx, argc, argv) { |fp, a| block.call(fp, a[0], a[1], a[2], a[3], a[4], a[5]) }
       end
       @functions << cb
-      __check(C.int(C::CREATE_FUNCTION, @db, name, arity, text_rep, nil, cb, nil, nil))
+      __check(C.sqlite3_create_function(@db, name, arity, text_rep, nil, cb, nil, nil))
       self
     end
 
@@ -957,7 +940,7 @@ module SQLite3
       rescue StandardError => e
         # A Ruby exception cannot unwind through C: it is parked, and the step that ran the function raises it (as the gem does).
         @pending_error = e
-        C::RESULT_ERROR.call(ctx.to_i, e.message, -1)
+        C.sqlite3_result_error(ctx.to_i, e.message, -1)
       end
     end
 
@@ -968,7 +951,7 @@ module SQLite3
         __call_function(ctx, argc, argv) { |fp, a| fp.result = block.call(*a) }
       end
       @functions << cb
-      __check(C.int(C::CREATE_FUNCTION, @db, name, -1, Constants::TextRep::UTF8, nil, cb, nil, nil))
+      __check(C.sqlite3_create_function(@db, name, -1, Constants::TextRep::UTF8, nil, cb, nil, nil))
       self
     end
 
@@ -1026,10 +1009,11 @@ module SQLite3
       @columns = nil #: Array[String]?
       @types = nil #: Array[String?]?
       @done = false
-      src = Fiddle::Pointer[sql]
+      src = Fiddle::Pointer.malloc(sql.bytesize + 1)
+      src[0, sql.bytesize + 1] = sql + "\0"
       out = Fiddle::Pointer.malloc(Fiddle::SIZEOF_VOIDP)
       tail = Fiddle::Pointer.malloc(Fiddle::SIZEOF_VOIDP)
-      rc = C.int(C::PREPARE_V2, db.__db, src, sql.bytesize, out, tail)
+      rc = C.sqlite3_prepare_v2(db.__db, src, sql.bytesize, out, tail)
       @st = out.ptr.to_i #: Integer
       used = tail.ptr.to_i - src.to_i
       Fiddle.free(out.to_i)
@@ -1053,7 +1037,7 @@ module SQLite3
     #: () -> nil
     def close
       must_be_open!
-      C.int(C::FINALIZE, @st)
+      C.sqlite3_finalize(@st)
       @st = 0
       nil
     end
@@ -1067,7 +1051,7 @@ module SQLite3
     #: () -> Statement
     def reset!
       must_be_open!
-      C.int(C::RESET, @st)
+      C.sqlite3_reset(@st)
       @done = false
       self
     end
@@ -1075,38 +1059,39 @@ module SQLite3
     #: () -> Statement
     def clear_bindings!
       must_be_open!
-      C.int(C::CLEAR_BINDINGS, @st)
+      C.sqlite3_clear_bindings(@st)
       self
     end
 
     #: () -> Integer
     def column_count
       must_be_open!
-      C.int(C::COLUMN_COUNT, @st)
+      C.sqlite3_column_count(@st)
     end
 
     #: (Integer) -> String
     def column_name(i)
       must_be_open!
-      C.str(C::COLUMN_NAME, @st, i).to_s
+      C.sqlite3_column_name(@st, i).to_s
     end
 
     #: (Integer) -> String?
     def column_decltype(i)
       must_be_open!
-      C.str(C::COLUMN_DECLTYPE, @st, i)
+      p = C.sqlite3_column_decltype(@st, i)
+      p.null? ? nil : p.to_s
     end
 
     #: () -> Integer
     def bind_parameter_count
       must_be_open!
-      C.int(C::BIND_PARAMETER_COUNT, @st)
+      C.sqlite3_bind_parameter_count(@st)
     end
 
     #: () -> String
     def sql
       must_be_open!
-      C.str(C::SQL, @st).to_s
+      C.sqlite3_sql(@st).to_s
     end
 
     #: () -> Array[String]
@@ -1153,17 +1138,17 @@ module SQLite3
               when String, Symbol
                 k = key.to_s
                 k = ":#{k}" unless k.start_with?(":")
-                C.int(C::BIND_PARAMETER_INDEX, @st, k)
+                C.sqlite3_bind_parameter_index(@st, k)
               else raise TypeError, "wrong argument type #{key.class} (expected Integer, String or Symbol)"
               end
       raise SQLite3::Exception, "no such bind parameter" if index.zero?
 
       rc = case value
-           when Blob then C.int(C::BIND_BLOB, @st, index, value.to_s, value.bytesize, C::TRANSIENT)
-           when String then C.int(C::BIND_TEXT, @st, index, value.to_s, value.bytesize, C::TRANSIENT)
-           when Integer then C.int(C::BIND_INT64, @st, index, value)
-           when Float then C.int(C::BIND_DOUBLE, @st, index, value)
-           when nil then C.int(C::BIND_NULL, @st, index)
+           when Blob then C.sqlite3_bind_blob(@st, index, value.to_s, value.bytesize, C::TRANSIENT)
+           when String then C.sqlite3_bind_text(@st, index, value.to_s, value.bytesize, C::TRANSIENT)
+           when Integer then C.sqlite3_bind_int64(@st, index, value)
+           when Float then C.sqlite3_bind_double(@st, index, value)
+           when nil then C.sqlite3_bind_null(@st, index)
            else raise RuntimeError, "can't prepare #{value.class}"
            end
       @connection.__check(rc)
@@ -1210,14 +1195,14 @@ module SQLite3
       must_be_open!
       return nil if @done
 
-      rc = C.int(C::STEP, @st)
+      rc = C.sqlite3_step(@st)
       case rc
       when 100 then __row
       when 101
         @done = true
         nil
       else
-        C.int(C::RESET, @st)
+        C.sqlite3_reset(@st)
         @done = false
         err = @connection.__take_error
         raise err unless err.nil?
@@ -1229,7 +1214,7 @@ module SQLite3
 
     #: () -> Array[untyped]
     def __row
-      n = C.int(C::COLUMN_COUNT, @st)
+      n = C.sqlite3_column_count(@st)
       row = [] #: Array[untyped]
       i = 0
       while i < n
@@ -1241,11 +1226,11 @@ module SQLite3
 
     #: (Integer) -> untyped
     def __column(i)
-      case C.int(C::COLUMN_TYPE, @st, i)
-      when 1 then C.int(C::COLUMN_INT64, @st, i)
-      when 2 then C.float(C::COLUMN_DOUBLE, @st, i)
-      when 3 then C.bytes(C.ptr(C::COLUMN_TEXT, @st, i), C.int(C::COLUMN_BYTES, @st, i))
-      when 4 then C.bytes(C.ptr(C::COLUMN_BLOB, @st, i), C.int(C::COLUMN_BYTES, @st, i))
+      case C.sqlite3_column_type(@st, i)
+      when 1 then C.sqlite3_column_int64(@st, i)
+      when 2 then C.sqlite3_column_double(@st, i)
+      when 3 then C.text(C.sqlite3_column_text(@st, i), C.sqlite3_column_bytes(@st, i))
+      when 4 then C.bytes(C.sqlite3_column_blob(@st, i), C.sqlite3_column_bytes(@st, i))
       end
     end
 

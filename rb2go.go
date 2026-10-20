@@ -12,11 +12,12 @@ import (
 	"github.com/jtarchie/ruby2go/internal/compiler"
 )
 
-// Prelude holds prelude.rb, its require_relatives, and prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo).
+// Prelude holds prelude.rb, its require_relatives, prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo), and
+// the vendored gems' lib files (gems/<name>/lib, pure Ruby compiled as user code when required: vendoredLibs, decision 328).
 // The character class leaves out prelude/go/0_stubs.go, the generated type-checking stubs (decision 154): helper files
 // must start with a letter.
 //
-//go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go
+//go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go gems/*/lib/*.rb
 var Prelude embed.FS
 
 // GemSigs holds vendored `.rbs` signatures for the gems rb2go compiles

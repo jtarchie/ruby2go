@@ -75,7 +75,6 @@ var preludeLibs = map[string]string{
 	"sorbet-runtime":   "prelude/sorbet.rb",
 	"rubygems":         "prelude/rubygems.rb",
 	"fiddle":           "prelude/fiddle.rb",
-	"sqlite3":          "prelude/sqlite3.rb",
 	"fiddle/import":    "prelude/fiddle_import.rb",
 	"fiddle/cparser":   "prelude/fiddle_import.rb",
 	"fiddle/closure":   "prelude/fiddle.rb",
@@ -99,6 +98,18 @@ var mriLibs = map[string]bool{
 }
 
 // gemRequires lists required names (through -I files too) only an installed gem can answer (decision 173); it only parses.
+// vendoredLibs maps a require name to a vendored gem's lib file in the prelude FS (gems/<gem>/lib): pure Ruby that runs on MRI as
+// a gem and is compiled here as user code (strict typing, extern synthesis), never looked up as an installed gem (decision 328).
+var vendoredLibs = map[string]string{
+	"sqlite3": "gems/sqlite3-fiddle/lib/sqlite3.rb",
+}
+
+// builtinLib reports a require name the prelude or a vendored gem answers.
+func builtinLib(name string) bool {
+	name = strings.TrimSuffix(name, ".rb")
+	return preludeLibs[name] != "" || vendoredLibs[name] != ""
+}
+
 func gemRequires(ctx context.Context, sources []Source, loadPath []string) (names []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,7 +132,7 @@ func gemRequires(ctx context.Context, sources []Source, loadPath []string) (name
 	// ponytail: a missing gem's require under `rescue LoadError` still errors; mark guarded requires in requireScan to skip them.
 	for _, lib := range libs {
 		name := strings.TrimSuffix(lib, ".rb")
-		if preludeLibs[name] == "" && !mriLibs[strings.SplitN(name, "/", 2)[0]] {
+		if !builtinLib(name) && !mriLibs[strings.SplitN(name, "/", 2)[0]] {
 			names = append(names, name)
 		}
 	}
@@ -188,7 +199,7 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 			// decision 197: resolved at run time against what top-level requires compiled in; a prelude library is
 			// compiled in here too, as MRI's trace never loads one a method requires late (Homebrew's openssl, decision 281)
 			if args := callArgs(call); call.Name == "require" && len(args) == 1 {
-				if str, ok := args[0].(*parser.StringNode); ok && preludeLibs[str.Unescaped.Value] != "" {
+				if str, ok := args[0].(*parser.StringNode); ok && builtinLib(str.Unescaped.Value) {
 					sc.lib(str.Unescaped.Value)
 				}
 			}
@@ -260,11 +271,16 @@ func (c *Compiler) loadLibs(ctx context.Context, libs []string, all bool) {
 		for _, lib := range slices.Sorted(maps.Keys(preludeLibs)) {
 			c.loadPrelude(ctx, preludeLibs[lib])
 		}
+		for _, lib := range slices.Sorted(maps.Keys(vendoredLibs)) {
+			c.loadVendored(ctx, vendoredLibs[lib])
+		}
 		return
 	}
 	for _, lib := range libs {
 		if file := preludeLibs[strings.TrimSuffix(lib, ".rb")]; file != "" {
 			c.loadPrelude(ctx, file)
+		} else if file := vendoredLibs[strings.TrimSuffix(lib, ".rb")]; file != "" {
+			c.loadVendored(ctx, file)
 		}
 	}
 }
@@ -294,7 +310,7 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 	}
 	switch {
 	case target != "" && f.c.loaded[f.c.real(target)]:
-	case target == "" && n.Name == "require" && (preludeLibs[strings.TrimSuffix(name, ".rb")] != "" || mriLibs[strings.SplitN(name, "/", 2)[0]]):
+	case target == "" && n.Name == "require" && (builtinLib(name) || mriLibs[strings.SplitN(name, "/", 2)[0]]):
 	default:
 		call := &parser.CallNode{Location: n.Location, Name: "__rb2go_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
 		return f.genExpr(call, nil)
@@ -324,6 +340,9 @@ func (c *Compiler) emitRequireTable() {
 		}
 	}
 	for lib := range preludeLibs {
+		names[lib] = true
+	}
+	for lib := range vendoredLibs {
 		names[lib] = true
 	}
 	c.w("func rbRequireComputed(name String) Boolean {\n\tif strings.HasPrefix(string(name), rbLibDir+\"/\") {\n\t\treturn false\n\t}\n")

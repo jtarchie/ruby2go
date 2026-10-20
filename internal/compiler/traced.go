@@ -46,7 +46,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		if f == main {
 			continue
 		}
-		if m := gemDir.FindStringSubmatch(f); m != nil && (preludeLibs[m[1]] != "" || mriLibs[m[1]]) {
+		if m := gemDir.FindStringSubmatch(f); m != nil && (builtinLib(m[1]) || mriLibs[m[1]]) {
 			add(m[1]) // a gem the prelude is: the vendored copy's files are its
 			continue
 		} else if m != nil && native[m[1]] {
@@ -54,7 +54,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		}
 		if dir, rel := under(f, l.StdDirs); dir != "" {
 			name := strings.TrimSuffix(rel, filepath.Ext(rel))
-			if first, _, _ := strings.Cut(name, "/"); preludeLibs[name] != "" || mriLibs[first] && first != "enc" {
+			if first, _, _ := strings.Cut(name, "/"); builtinLib(name) || mriLibs[first] && first != "enc" {
 				add(name) // MRI internals (encodings, portable Ruby's helpers) have no rb2go meaning
 			}
 			continue
