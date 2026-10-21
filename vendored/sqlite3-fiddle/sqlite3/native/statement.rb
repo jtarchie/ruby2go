@@ -138,7 +138,7 @@ module SQLite3
                when nil then C.sqlite3_bind_null(st, index)
                else raise RuntimeError, "can't prepare #{value.class}"
                end
-      SQLite3.__check(C.sqlite3_db_handle(st), status)
+      SQLite3.__check(C.sqlite3_db_handle(st), status) unless status.zero? # the handle is only for the error message
       self
     end
 

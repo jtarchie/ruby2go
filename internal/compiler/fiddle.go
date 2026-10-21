@@ -162,8 +162,20 @@ func (c *Compiler) collectFiddleCall(ctx context.Context, f *File, cls *Class, n
 		params = append(params, fmt.Sprintf("a%d", i))
 		types = append(types, "untyped")
 	}
-	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = __fiddle_func(%q).call(%s)\n",
-		strings.Join(types, ", "), fiddleRubyType(ret), name, strings.Join(params, ", "), name, strings.Join(params, ", "))
+	if c.fiddleSlots == nil {
+		c.fiddleSlots = map[*Class]int{}
+	}
+	fn := fmt.Sprintf("__fiddle_func_at(%d, %q)", c.fiddleSlots[cls], name) // an Array slot, not a hash of the name per call (decision 329)
+	c.fiddleSlots[cls]++
+	call := fmt.Sprintf("%s.call(%s)", fn, strings.Join(params, ", "))
+	switch n := len(params); { // Fiddle.__call's fixed arity: no *args Array per call (decision 329)
+	case n >= 1 && n <= 3:
+		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, params...), ", "))
+	case n <= 8:
+		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(n)}, params...), ", "))
+	}
+	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = %s\n",
+		strings.Join(types, ", "), fiddleRubyType(ret), name, strings.Join(params, ", "), call)
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
 	if err != nil {
 		c.errorf(f, n, "%v", err)

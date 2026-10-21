@@ -172,11 +172,20 @@ module Fiddle
     #: (String) -> Function
     def __fiddle_func(name) = (@func_map ||= {}).fetch(name)
 
+    # An extern method's Function by the slot the compiler gave it (decision 329): an Array read, not a hash of the
+    # name per call. extern and bind empty the cache, so a redefined name is seen, as MRI's @func_map lookup sees it.
+    #: (Integer, String) -> Function
+    def __fiddle_func_at(k, name)
+      cache = (@func_cache ||= []) #: Array[Function?]
+      cache[k] || (cache[k] = __fiddle_func(name))
+    end
+
     #: (String, *untyped) -> Function
     def extern(signature, *opts)
       symname, ctype, argtype = parse_signature(signature, __type_alias)
       f = import_function(symname, ctype, argtype)
       (@func_map ||= {})[symname.sub(/@.+/, "")] = f
+      @func_cache = nil
       f
     end
 
@@ -185,6 +194,7 @@ module Fiddle
       name, ctype, argtype = parse_signature(signature, __type_alias)
       f = bind_function(name, ctype, argtype, &blk)
       (@func_map ||= {})[name] = f
+      @func_cache = nil
       f
     end
 

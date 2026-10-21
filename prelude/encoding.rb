@@ -79,6 +79,8 @@ class Encoding < Object
   # "internal" with no default_internal is nil in MRI; Encoding? would make every find's result optional, so it raises here.
   #: (untyped) -> Encoding
   def self.find(name)
+    return name if name.is_a?(Encoding)
+
     n = __name_arg(name)
     d = n.casecmp?("internal") ? default_internal : nil
     return d if d

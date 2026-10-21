@@ -284,26 +284,28 @@ module SQLite3
     #: (String, untyped) -> self
     def collation(name, comparator)
       h = __handle
-      cb = nil
-      unless comparator.nil?
-        cb = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_INT, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP]) do |_, a_len, a, b_len, b|
-          a_str = C.text(Fiddle::Pointer.new(a.to_i), a_len)
-          b_str = C.text(Fiddle::Pointer.new(b.to_i), b_len)
-          internal = Encoding.default_internal
-          if internal
-            a_str = a_str.encode(internal)
-            b_str = b_str.encode(internal)
-          end
-          Integer(comparator.compare(a_str, b_str))
-        rescue ::Exception => e
-          __park(e)
-          0
-        end
-      end
+      cb = comparator.nil? ? nil : __comparator_closure(name)
       SQLite3.__check(h, C.sqlite3_create_collation(h, C.z(name.to_str), Constants::TextRep::UTF8, nil, cb))
       __keep(cb, [:collation, name.to_str.downcase])
       @collations[name] = comparator
       self
+    end
+
+    #: (String) -> Fiddle::Closure::BlockCaller
+    def __comparator_closure(name) # its own scope, without the comparator: a replaced closure that lingers must not keep its comparator alive
+      Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_INT, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP]) do |_, a_len, a, b_len, b|
+        a_str = C.text(Fiddle::Pointer.new(a.to_i), a_len)
+        b_str = C.text(Fiddle::Pointer.new(b.to_i), b_len)
+        internal = Encoding.default_internal
+        if internal
+          a_str = a_str.encode(internal)
+          b_str = b_str.encode(internal)
+        end
+        Integer(@collations[name].compare(a_str, b_str))
+      rescue ::Exception => e
+        __park(e)
+        0
+      end
     end
 
     #: (String) ?{ (*untyped) -> untyped } -> self

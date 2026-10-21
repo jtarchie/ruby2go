@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/maphash"
 	"iter"
-	"maps"
 	"math"
 	"math/bits"
 	"os"
@@ -25,6 +24,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 	"unsafe"
+	"weak"
 )
 
 var stdout = bufio.NewWriter(os.Stdout)
@@ -1013,42 +1013,139 @@ var rbFrozenLits = func() map[rbStrID]struct{} {
 	return m
 }()
 
-// rbFrozenShards hold the computed strings String#freeze marked, by
-// identity, in 256 shards of immutable maps: frozen? reads one with an
-// atomic load, and freeze swaps in a copy of its shard with a
-// compare-and-swap. No lock, so threads never wait on each other here.
-// ponytail: a freeze copies its shard (about n/256 entries), and frozen
-// strings stay reachable from it; use weak pointers if either shows up.
-var rbFrozenShards [256]atomic.Pointer[map[rbStrID]struct{}]
+// rbFrozenShards hold the computed strings String#freeze marked, by address and length, in 256 shards by address,
+// each a plain map behind its own mutex (held for a map operation; no process-wide lock, decision 147). A freeze
+// records the string itself; rbFrozenConvert, a goroutine, swaps each such entry for a weak pointer to its bytes
+// soon after, off the freezing thread (weak.Make is ~400 ns, most of a freeze; decision 329). So the set pins a
+// string only until then: an entry whose bytes died reads as unfrozen, so a new string at a reused address is not
+// frozen, and a shard drops its dead entries when it has doubled. (The copy-on-write shards before copied about
+// n/256 entries per freeze and kept every frozen string alive.)
+var rbFrozenShards [256]struct {
+	mu      sync.Mutex
+	m       map[rbStrKey]rbFrozenEntry
+	pending []rbStrKey // entries still holding their string, for rbFrozenConvert
+	next    int        // the size that triggers the next sweep
+	_       [16]byte   // a cache line each
+}
+
+// rbStrKey is rbStrID without the pointer, so the set does not keep the bytes alive.
+type rbStrKey struct {
+	p uintptr
+	n int
+}
+
+// rbFrozenEntry is a frozen string's bytes: the string itself until rbFrozenConvert runs, then weakly, or immortal
+// for Go's constant data, which weak.Make rejects.
+type rbFrozenEntry struct {
+	s        string
+	strong   bool
+	w        weak.Pointer[byte]
+	immortal bool
+}
+
+// live reports whether the frozen bytes are still the ones at the key's address.
+func (e rbFrozenEntry) live() bool { return e.immortal || e.strong || e.w.Value() != nil }
+
+var (
+	rbFrozenNoBytes atomic.Bool  // whether the "" with a nil data pointer was frozen
+	rbFrozenPending atomic.Int64 // entries waiting for rbFrozenConvert
+	rbFrozenWake    = make(chan struct{}, 1)
+	rbFrozenStart   sync.Once
+)
+
+// The linker's bounds of read-only data, where Go's string constants live (strconv's digits, one-byte strings).
+//
+//go:linkname rbRodata runtime.rodata
+var rbRodata byte
+
+//go:linkname rbErodata runtime.erodata
+var rbErodata byte
 
 // rbStrFrozen reports whether s is a literal or was frozen, and with
 // freeze also marks it. Strings built at run time have fresh backing
 // arrays, so they aren't in the set, like MRI's unfrozen strings.
 func rbStrFrozen(s string, freeze bool) bool {
-	id := rbStrID{unsafe.StringData(s), len(s)} //nolint:gosec // identity only
-	if _, ok := rbFrozenLits[id]; ok {
+	p := unsafe.StringData(s) //nolint:gosec // identity only
+	if _, ok := rbFrozenLits[rbStrID{p, len(s)}]; ok {
 		return true
 	}
-	shard := &rbFrozenShards[(uintptr(unsafe.Pointer(id.p))>>4^uintptr(id.n))&255] //nolint:gosec // a bucket, not a pointer
-	for {
-		old := shard.Load()
-		if old != nil {
-			if _, ok := (*old)[id]; ok {
-				return true
+	if p == nil { // a "" with no bytes at all: one identity, as before
+		if freeze {
+			return rbFrozenNoBytes.Swap(true)
+		}
+		return rbFrozenNoBytes.Load()
+	}
+	key := rbStrKey{uintptr(unsafe.Pointer(p)), len(s)} //nolint:gosec // a key, never dereferenced
+	sh := &rbFrozenShards[(key.p>>4^key.p>>12)&255]
+	sh.mu.Lock()
+	old, ok := sh.m[key]
+	was := ok && old.live()
+	if !freeze || was {
+		sh.mu.Unlock()
+		return was
+	}
+	if sh.m == nil {
+		sh.m = map[rbStrKey]rbFrozenEntry{}
+	}
+	immortal := key.p >= uintptr(unsafe.Pointer(&rbRodata)) && key.p < uintptr(unsafe.Pointer(&rbErodata)) //nolint:gosec // address compare only
+	if immortal {
+		sh.m[key] = rbFrozenEntry{immortal: true}
+	} else {
+		sh.m[key] = rbFrozenEntry{s: s, strong: true}
+		sh.pending = append(sh.pending, key)
+	}
+	if len(sh.m) >= max(sh.next, 64) { // a fresh map: deleting in place leaves tombstones that lengthen every probe
+		live := make(map[rbStrKey]rbFrozenEntry, len(sh.m))
+		for k, e := range sh.m {
+			if e.live() {
+				live[k] = e
 			}
 		}
-		if !freeze {
-			return false
+		sh.m = live
+		sh.next = 2 * len(sh.m)
+	}
+	sh.mu.Unlock()
+	if !immortal && rbFrozenPending.Add(1)&255 == 0 { // wake the converter every 256 freezes
+		rbFrozenStart.Do(func() { go rbFrozenConvert() })
+		select {
+		case rbFrozenWake <- struct{}{}:
+		default:
 		}
-		var next map[rbStrID]struct{}
-		if old != nil {
-			next = maps.Clone(*old)
-		} else {
-			next = map[rbStrID]struct{}{}
-		}
-		next[id] = struct{}{}
-		if shard.CompareAndSwap(old, &next) {
-			return false
+	}
+	return false
+}
+
+// rbFrozenConvert turns each shard's pending entries into weak ones, a shard's batch at a time: weak.Make runs
+// outside the shard's lock, and an entry replaced meanwhile (its string died and the address was refrozen) is left.
+func rbFrozenConvert() {
+	for range rbFrozenWake {
+		for i := range rbFrozenShards {
+			sh := &rbFrozenShards[i]
+			sh.mu.Lock()
+			keys := sh.pending
+			sh.pending = nil
+			ents := make([]rbFrozenEntry, len(keys))
+			for k, key := range keys {
+				ents[k] = sh.m[key]
+			}
+			sh.mu.Unlock()
+			if len(keys) == 0 {
+				continue
+			}
+			weaks := make([]weak.Pointer[byte], len(keys))
+			for k, e := range ents {
+				if e.strong {
+					weaks[k] = weak.Make(unsafe.StringData(e.s)) //nolint:gosec // its own bytes
+				}
+			}
+			sh.mu.Lock()
+			for k, key := range keys {
+				if cur, ok := sh.m[key]; ok && cur.strong && ents[k].strong {
+					sh.m[key] = rbFrozenEntry{w: weaks[k]}
+				}
+			}
+			sh.mu.Unlock()
+			rbFrozenPending.Add(-int64(len(keys)))
 		}
 	}
 }

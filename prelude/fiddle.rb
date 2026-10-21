@@ -430,21 +430,22 @@ module Fiddle
     #: () -> Integer
     def to_i = @ptr
 
+    # Go converts Integers, Floats, Strings, true/false and nil (rbFiddleInvoke); objects become their address here.
     #: (*untyped) -> untyped
     def call(*args)
-      temps = [] #: Array[Integer]
-      vals = [] #: Array[untyped]
-      begin
-        args.each_with_index { |a, i| vals << Fiddle.__arg(@args.fetch(i, TYPE_VOIDP), a, temps) }
-        out = Fiddle.__invoke(@fn, vals)
-      ensure
-        # ponytail: a void* result may point into an argument's copy (strchr), so those leak; tie them to the Pointer if needed.
-        temps.each { |t| Fiddle.free(t) } unless @ret == TYPE_VOIDP
+      i = 0
+      while i < args.size
+        a = args[i]
+        case a
+        when Integer, Float, String, nil, true, false then nil
+        else
+          t = @args.fetch(i, TYPE_VOIDP)
+          args[i] = Fiddle.__addr(a) unless t == TYPE_BOOL || t == TYPE_FLOAT || t == TYPE_DOUBLE || t == TYPE_VOID
+        end
+        i += 1
       end
-      Fiddle.last_error = out[1]
-      Fiddle.__ret(@ret, out[0])
+      Fiddle.__ret(@ret, Fiddle.__invoke(@fn, args))
     end
-
   end
 
   # A Ruby method C can call: a subclass defines call, or BlockCaller wraps a block.
@@ -467,8 +468,13 @@ module Fiddle
 
     #: (Array[untyped]) -> untyped
     def __invoke(vals)
-      rubies = vals.each_with_index.map { |v, i| Fiddle.__ret(@args.fetch(i, TYPE_VOIDP), v) }
-      Fiddle.__arg(@ctype, call(*rubies), [])
+      i = 0
+      while i < vals.size
+        t = @args.fetch(i, TYPE_VOIDP)
+        vals[i] = Fiddle.__ret(t, vals[i]) if t == TYPE_VOIDP || t == TYPE_CONST_STRING
+        i += 1
+      end
+      Fiddle.__arg(@ctype, call(*vals), [])
     end
 
     #: () -> Integer
@@ -537,8 +543,52 @@ module Fiddle
   #: (Integer, Array[Integer], Integer) -> untyped
   def self.__prepare(addr, args, ret) = %x{ rbFiddlePrepare(addr, args, ret) }
 
-  #: (untyped, Array[untyped]) -> Array[untyped]
+  #: (untyped, Array[untyped]) -> untyped
   def self.__invoke(fn, vals) = %x{ rbFiddleInvoke(fn, vals) }
+
+  # What an extern method calls (decision 329): f.call(a0, ..., a(n-1)), without call's *args Array when Go can
+  # convert every argument itself and f is a plain Function; __fast answers f itself (never a C result) otherwise.
+  #: (Function, Integer, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped) -> untyped
+  def self.__call(f, n, a0 = nil, a1 = nil, a2 = nil, a3 = nil, a4 = nil, a5 = nil, a6 = nil, a7 = nil)
+    r = __fast(f, n, a0, a1, a2, a3, a4, a5, a6, a7)
+    return r unless r.equal?(f)
+
+    f.call(*[a0, a1, a2, a3, a4, a5, a6, a7].first(n))
+  end
+
+  #: (Function, Integer, untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+  def self.__fast(f, n, a0, a1, a2, a3, a4, a5, a6, a7) = %x{
+    a := [8]any{a0, a1, a2, a3, a4, a5, a6, a7}
+    return rbFiddleFast(f, a[:n]...)
+  }
+
+  # __call for one to three arguments, the common arities: no eight-slot copy.
+  #: (Function, untyped) -> untyped
+  def self.__call1(f, a0)
+    r = __fast1(f, a0)
+    r.equal?(f) ? f.call(a0) : r
+  end
+
+  #: (Function, untyped, untyped) -> untyped
+  def self.__call2(f, a0, a1)
+    r = __fast2(f, a0, a1)
+    r.equal?(f) ? f.call(a0, a1) : r
+  end
+
+  #: (Function, untyped, untyped, untyped) -> untyped
+  def self.__call3(f, a0, a1, a2)
+    r = __fast3(f, a0, a1, a2)
+    r.equal?(f) ? f.call(a0, a1, a2) : r
+  end
+
+  #: (Function, untyped) -> untyped
+  def self.__fast1(f, a0) = %x{ rbFiddleFast(f, a0) }
+
+  #: (Function, untyped, untyped) -> untyped
+  def self.__fast2(f, a0, a1) = %x{ rbFiddleFast(f, a0, a1) }
+
+  #: (Function, untyped, untyped, untyped) -> untyped
+  def self.__fast3(f, a0, a1, a2) = %x{ rbFiddleFast(f, a0, a1, a2) }
 
   #: (Array[Integer], Integer) { (Array[untyped]) -> untyped } -> Integer
   def self.__callback(args, ret) = %x{ rbFiddleCallback(args, ret, blk) }

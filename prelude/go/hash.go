@@ -61,29 +61,43 @@ func (idx *rbKeyIndex[K]) remove(k K, h uint64) {
 }
 
 // rbFrom converts v, a Hash of any instantiation, into this one: a
-// copy, keys and values converted (rbConv), as Array's rbFrom.
+// copy, keys and values converted (rbConv), as Array's rbFrom. The
+// pairs come straight from v, not through a Hash[any, any] copy with
+// its own key index (decision 329).
 func (*Hash[K, V]) rbFrom(v any) (*Hash[K, V], bool) {
-	h, ok := v.(Hash_Any)
+	h, ok := v.(interface{ rbEachAny(func(k, v any) bool) })
 	if !ok {
-		return nil, false
+		a, ok := v.(Hash_Any)
+		if !ok {
+			return nil, false
+		}
+		h = a._ToAny()
 	}
-	src := h._ToAny()
-	if out, ok := any(src).(*Hash[K, V]); ok {
-		return out, true
+	if out, ok := v.(*Hash[any, any]); ok {
+		if same, ok := any(out).(*Hash[K, V]); ok {
+			return same, true
+		}
 	}
 	out := NewHash[K, V]()
-	for _, k := range src.keys {
+	conv := true
+	h.rbEachAny(func(k, x any) bool {
 		ck, ok := rbConv[K](k)
-		if !ok {
-			return nil, false
+		cv, ok2 := rbConv[V](x)
+		if conv = ok && ok2; conv {
+			Hash_Op_idxSet(out, ck, cv)
 		}
-		cv, ok := rbConv[V](src.vals[k])
-		if !ok {
-			return nil, false
+		return conv
+	})
+	return out, conv
+}
+
+// rbEachAny yields each pair unboxed, as _ToAny's copy holds them.
+func (self *Hash[K, V]) rbEachAny(yield func(k, v any) bool) {
+	for _, k := range self.keys {
+		if !yield(rbUnbox(k), rbUnbox(self.vals[k])) {
+			return
 		}
-		Hash_Op_idxSet(out, ck, cv)
 	}
-	return out, true
 }
 
 // rbGet is the value at k. It is kept out of line so that Hash#[] fits

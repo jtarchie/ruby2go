@@ -79,6 +79,7 @@ type Compiler struct {
 	beginStmts            map[*File][]parser.Node      // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string            // literal → its variable, to share one per pattern
 	fiddleAliases         map[*Class]map[string]string // Fiddle::Importer typealiases read so far, per module (decision 326)
+	fiddleSlots           map[*Class]int               // extern/bind methods synthesized so far, per module: each one's __fiddle_func_at slot (decision 329)
 	needRxAlt             bool                         // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
 	aliasNews             []aliasNewReq                // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
 	needRequireTable      bool                         // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
@@ -638,7 +639,7 @@ func (c *Compiler) loadVendored(ctx context.Context, name string) {
 	if err != nil {
 		panic(compileError{msg: fmt.Sprintf("vendored gem: %v", err)})
 	}
-	var libs []string // its own top-level `require "x"` lines: the require scan covers only the program's files
+	var libs []string                                           // its own top-level `require "x"` lines: the require scan covers only the program's files
 	root := strings.Join(strings.SplitN(name, "/", 3)[:2], "/") // vendored/<gem>
 	for _, m := range vendoredRequire.FindAllSubmatch(src, -1) {
 		// a file of the same gem (`require "sqlite3/database"`) is vendored too: loaded where MRI's require would load it

@@ -52,6 +52,12 @@ module FiddleTests
     def test_last_error_is_errno
       open = Fiddle::Function.new(libc["open"], [Fiddle::TYPE_CONST_STRING, Fiddle::TYPE_INT], Fiddle::TYPE_INT)
       assert_equal [-1, Errno::ENOENT::Errno], [open.call("/nonexistent/rb2go-fiddle", 0), Fiddle.last_error]
+      Fiddle.last_error = 7 # a call sets it again, even with the errno the call before it stored
+      open.call("/nonexistent/rb2go-fiddle", 0)
+      assert_equal [Errno::ENOENT::Errno, Errno::ENOENT::Errno], [Fiddle.last_error, Thread.current[:__FIDDLE_LAST_ERROR__]]
+      Thread.current[:__FIDDLE_LAST_ERROR__] = nil
+      open.call("/nonexistent/rb2go-fiddle", 0)
+      assert_equal Errno::ENOENT::Errno, Fiddle.last_error
       assert_equal [Errno::ENOSYS.new.errno, Errno::EOPNOTSUPP.new.errno], [Errno::ENOSYS::Errno, Errno::EOPNOTSUPP::Errno]
     end
 
@@ -124,6 +130,21 @@ module FiddleTests
       end
       call = Fiddle::Function.new(add, [Fiddle::TYPE_INT, Fiddle::TYPE_INT], Fiddle::TYPE_INT)
       assert_equal [7, [3], [Fiddle::TYPE_INT, Fiddle::TYPE_INT], Fiddle::TYPE_INT], [call.call(3, 4), seen, add.args, add.ctype]
+    end
+
+    def test_closure_float_and_many_arguments
+      got = [] #: Array[untyped]
+      mixed = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_LONG, [Fiddle::TYPE_DOUBLE, Fiddle::TYPE_INT, Fiddle::TYPE_FLOAT, Fiddle::TYPE_LONG]) do |d, i, f, l|
+        got << [d, i, f, l]
+        (d * 4 + i + f * 2 + l).to_i
+      end
+      mixed_fn = Fiddle::Function.new(mixed, [Fiddle::TYPE_DOUBLE, Fiddle::TYPE_INT, Fiddle::TYPE_FLOAT, Fiddle::TYPE_LONG], Fiddle::TYPE_LONG)
+      assert_equal [1003, [[1.5, -3, 0.25, 1000]]], [mixed_fn.call(1.5, -3, 0.25, 1000), got]
+      seven = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_INT, [Fiddle::TYPE_INT] * 7) do |a, b, c, d, e, g, h|
+        (((((a * 2 + b) * 2 + c) * 2 + d) * 2 + e) * 2 + g) * 2 + h
+      end
+      seven_fn = Fiddle::Function.new(seven, [Fiddle::TYPE_INT] * 7, Fiddle::TYPE_INT)
+      assert_equal 0b1011001, seven_fn.call(1, 0, 1, 1, 0, 0, 1)
     end
 
     def test_handle_errors
