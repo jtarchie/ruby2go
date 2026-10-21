@@ -105,6 +105,10 @@ class Regexp < Object
   #: () -> String
   def source = %x{ String(self.src) }
 
+  # Whether the pattern has capture groups: String#scan then gives each match's groups (decision 331).
+  #: () -> bool
+  def __groups? = %x{ Boolean(self.re.NumSubexp() > 0) }
+
   #: (String | Symbol) -> String
   def self.quote(str) = escape(str)
 
@@ -430,6 +434,22 @@ class String
     }
     return out
   }
+
+  # scan where the pattern is known only at run time (a gem's untyped receiver, decision 331): each match, or each
+  # match's groups when the pattern has them, as MRI decides.
+  #: (Regexp) -> untyped
+  def __scan_any(re) = re.__groups? ? __scan_groups(re) : scan(re)
+
+  # The block form: the same values, yielded; self after.
+  #: (Regexp) { (untyped) -> untyped } -> String
+  def __scan_block(re)
+    if re.__groups?
+      __scan_groups(re).each { |g| yield g }
+    else
+      scan(re).each { |m| yield m }
+    end
+    self
+  end
 
   #: (Regexp) -> Array[Array[String?]]
   def __scan_groups(re) = %x{

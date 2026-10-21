@@ -195,6 +195,16 @@ module Enumerable
   #: () { (E) -> void } -> void
   def each_entry = each { |x| yield x }
 
+  # The elements last to first (liquid's InputIterator#reverse: `reverse_each.to_a`, decision 331).
+  #: () { (E) -> void } -> void
+  def reverse_each
+    to_a.reverse.each { |x| yield x }
+  end
+
+  # Without a block: an Array standing in for the Enumerator, as __each_slice_enum.
+  #: () -> Array[E]
+  def __reverse_each_enum = to_a.reverse
+
   #: () { (E, Integer) -> void } -> void
   def each_with_index = %x{
     return func(yield func(E, Integer) bool) {

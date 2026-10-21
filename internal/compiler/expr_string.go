@@ -466,6 +466,13 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 			f.narrowString(t.Name)
 			if v := f.visibleLocal(t.Name); v != nil && f.lenient() { // `value.gsub!(re, ' ')` as a block's last use: MRI's edit is in place, ours a dead store
 				f.emit("_ = %s", v.goName)
+				if src := f.aliasSrc[f.localKey(t.Name)]; src != nil { // liquid's `previous_token = @nodelist.last; previous_token.rstrip!`
+					if at, ok := f.elementTarget(src); ok {
+						set := &parser.CallNode{Location: src.Location, Receiver: src.Receiver, Name: "[]=", Arguments: &parser.ArgumentsNode{
+							Location: src.Location, Arguments: []parser.Node{at, &exprNode{Node: t, e: expr{code: v.goName, typ: v.typ}}}}}
+						f.emitExprStmt(src, f.genExpr(set, nil))
+					}
+				}
 			}
 		}, true
 	case *parser.InstanceVariableReadNode:

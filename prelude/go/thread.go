@@ -185,3 +185,19 @@ func rbThreadGroupList(g *ThreadGroup) *Array[*Thread] {
 	}
 	return out
 }
+
+// rbErrinfoSet makes e the thread's $! while a gem's rescue clause runs, returning what restores the one before
+// (decision 331): a bare `raise` in a method that clause calls (liquid's `->(e) { raise }` renderer) re-raises it.
+func rbErrinfoSet(e any) func() {
+	t := rbCurrentThread()
+	prev := t.errinfo.Swap(&e)
+	return func() { t.errinfo.Store(prev) }
+}
+
+// rbErrinfo is the thread's $!, nil outside every rescue clause.
+func rbErrinfo() any {
+	if p := rbCurrentThread().errinfo.Load(); p != nil {
+		return *p
+	}
+	return nil
+}

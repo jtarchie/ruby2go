@@ -54,6 +54,18 @@ class Module < Object
   #: (?bool) -> Array[Symbol]
   def instance_methods(inherit = true) = public_instance_methods(inherit)
 
+  # Protected instance methods, from their own generated table (decision 331).
+  #: (?bool) -> Array[Symbol]
+  def protected_instance_methods(inherit = true) = %x{
+    out := &Array[Symbol]{}
+    for _, m := range any(self).(interface{ _ProtectedMethods() []rbConst })._ProtectedMethods() {
+      if bool(inherit) || !m.inherited {
+        out.s = append(out.s, Symbol(m.name))
+      }
+    }
+    return out
+  }
+
   # Private instance methods from a generated table (decision 181).
   #: (?bool) -> Array[Symbol]
   def private_instance_methods(inherit = true) = %x{
@@ -116,6 +128,17 @@ class Module < Object
     }
     return out
   }
+
+  # Module#include called at run time (liquid's `send(:include, filter)`): only a module the traced run saw this
+  # class include, compiled in as a latent include (decision 331). A class body's `include` is collected statically.
+  #: (*untyped) -> self
+  def include(*mods)
+    mods.each { |m| __include_at_run(m) }
+    self
+  end
+
+  #: (untyped) -> void
+  def __include_at_run(mod) = %x{ rbIncludeAtRun(self, mod) }
 
   # Whether mod is among the modules self includes, its ancestors' too (Homebrew's `cmd_class&.include?(ShellCommand)`).
   #: (untyped) -> bool

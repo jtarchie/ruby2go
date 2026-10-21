@@ -189,7 +189,11 @@ func (f *fctx) bindBlockParam(name string, e expr) {
 		return
 	}
 	v := f.blockParam(name, e.typ)
-	if v.goName != "_" { // `_ := x` declares nothing: Go rejects it
+	switch {
+	case v.goName == "_": // `_ := x` declares nothing: Go rejects it
+	case e.code == "nil": // a slot past a pair's end (liquid's `|output, (name, args, kwargs)|` over a Hash's pairs, decision 331)
+		f.emit("var %s %s", v.goName, f.c.goType(v.typ))
+	default:
 		f.emit("%s := %s", v.goName, e.code)
 	}
 	f.noteUnused(v)

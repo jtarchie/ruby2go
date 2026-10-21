@@ -165,7 +165,7 @@ func (f *fctx) selfBlockAdapter(sig *BlockSig, env map[string]Type) string {
 		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
 	}
 	if isVoid(f.blockSig.Ret) {
-		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return *new(" + f.c.goType(ret) + ") }"
+		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
 	}
 	return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
 }
@@ -211,7 +211,7 @@ func (f *fctx) restBlockAdapter(n parser.Node, sig *BlockSig, env map[string]Typ
 	case isVoid(ret):
 		return head + " { " + call + " }"
 	case isVoid(f.blockSig.Ret):
-		return head + " " + f.c.goType(ret) + " { " + call + "; return *new(" + f.c.goType(ret) + ") }"
+		return head + " " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
 	}
 	return head + " " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
 }
@@ -245,7 +245,7 @@ func (f *fctx) procArityAdapter(sig *BlockSig, env map[string]Type) string {
 		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
 	}
 	if isVoid(f.blockSig.Ret) {
-		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return *new(" + f.c.goType(ret) + ") }"
+		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
 	}
 	return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
 }

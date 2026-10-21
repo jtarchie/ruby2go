@@ -27,7 +27,7 @@ type rbModule interface {
 type rbConstTable interface{ _Consts() []rbConst }
 
 func rbConstName(name any) string {
-	switch n := name.(type) {
+	switch n := rbUnbox(name).(type) { // a String? held untyped arrives boxed (liquid's `send(method, *args)` with a filter name)
 	case Symbol:
 		return string(n)
 	case String:
@@ -202,3 +202,42 @@ func rbModuleCmp(self, other any, above, orEqual bool) *Boolean {
 	}
 	return nil
 }
+
+// rbActiveAncestors is a class object's ancestors without the latent includes (decision 331) its own include calls
+// have not made yet. ponytail: a subclass object sees its parent's latent includes only once it includes them itself.
+func rbActiveAncestors(self any, all []any) []any {
+	latent := self.(interface{ _Latent() []any })._Latent()
+	on, _ := rbIvarGet(self, Symbol("@__rb2go_included")).(*Array[any])
+	out := make([]any, 0, len(all))
+	for _, k := range all {
+		if slices.Contains(latent, k) && (on == nil || !slices.Contains(on.s, k)) {
+			continue
+		}
+		out = append(out, k)
+	}
+	return out
+}
+
+// rbIncludeAtRun is Module#include called at run time (decision 331): a latent include boot saw becomes visible to
+// include? and ancestors on this class object; a module the class already has is MRI's no-op; any other is a module
+// the closed world cannot add, so it raises.
+func rbIncludeAtRun(self, mod any) {
+	if t, ok := self.(interface{ _Latent() []any }); ok && slices.Contains(t._Latent(), mod) {
+		on, _ := rbIvarGet(self, Symbol("@__rb2go_included")).(*Array[any])
+		if on == nil {
+			on = &Array[any]{}
+		}
+		if !slices.Contains(on.s, mod) {
+			on.s = append(on.s, mod)
+		}
+		rbIvarSet(self, Symbol("@__rb2go_included"), on)
+		return
+	}
+	if t, ok := self.(interface{ _Ancestors() []any }); ok && slices.Contains(t._Ancestors(), mod) {
+		return
+	}
+	panic(NewNotImplementedError(Ref(String("rb2go: " + rbClassName(mod) + " is included at run time where the traced run did not include it (decision 331)"))))
+}
+
+// rbNilAny is nil itself for a NilClass-typed value, which Go holds as a typed nil pointer (decision 331).
+func rbNilAny[T any](_ T) any { return nil }

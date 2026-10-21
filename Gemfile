@@ -30,5 +30,9 @@ gem "tyda", require: false, group: :development
 # Markdown to HTML (example 123): rb2go compiles the unmodified gem from a traced run (decision 330).
 gem "kramdown", "~> 2.5"
 
+# Templates (example 124): Jekyll 4's liquid, compiled unmodified from a traced run.
+gem "liquid", "~> 4.0"
+gem "bigdecimal", "~> 3.1" # liquid 4 requires it; a bundled gem since Ruby 3.4, so Bundler must list it
+
 # SQLite under MRI for example 122; rb2go maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
 gem "sqlite3", "~> 2.10"

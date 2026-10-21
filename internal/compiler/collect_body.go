@@ -56,6 +56,7 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 			case *parser.AliasMethodNode:
 				c.addAlias(f, cls, n, n.NewName, n.OldName)
 			case *parser.ClassVariableWriteNode:
+				c.scanAnon(ctx, f, n.Value, scope) // liquid's `@@global_strainer = Class.new(Strainer) do ... end` (decision 331)
 				c.addClassVar(f, cls, n, scope)
 			case *parser.UndefNode:
 				for _, name := range c.symbolArgs(f, nil, n.Names) {
@@ -681,7 +682,7 @@ func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode,
 		}
 	case c.onlyDefinesMethods(s): // `CODES.each { |n, c| define_method(n) { ... } }`: boot made the defs (decision 198)
 	default:
-		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
+		c.singletonOtherCall(f, s, scope)
 	}
 	return private
 }
@@ -703,4 +704,13 @@ func (c *Compiler) classBodyIvar(f *File, cls *Class, stmt parser.Node, scope []
 		c.errorf(f, n, "%v", err)
 	}
 	cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "self." + n.Name, rbs: t, line: f.line(n.Location.StartOffset), scope: scope})
+}
+
+// singletonOtherCall is any other call in a `class << self` body: a gem's call on a receiver runs where the body loads
+// (liquid's `Template.default_exception_renderer = lambda ...`, decision 331); anything else is unsupported.
+func (c *Compiler) singletonOtherCall(f *File, s *parser.CallNode, scope []*Class) {
+	if s.Receiver == nil || !c.gemFile(f) {
+		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
+	}
+	c.addClassStmt(f, s, scope)
 }

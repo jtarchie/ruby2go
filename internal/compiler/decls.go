@@ -702,7 +702,7 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 			if b, ok := c.reshapedBridge(cls, m, t, ret); ok {
 				body = b
 			} else if _, tret := c.sig(t.M, c.forwarderEnv(cls, t)); ret != "" && tret == "" { // a void parent under a valued override's bridge: nil
-				body += "; return *new(" + ret + ")"
+				body += "; return " + goZero(ret)
 			} else if ret != "" {
 				body = "return " + body
 			}
@@ -711,7 +711,7 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 			// Class's, Module's and Object's hooks do nothing (decision 232): a mixed-in `inherited` (decision 241) or
 			// `initialize_dup` (Homebrew's Downloadable, decision 290) calling super
 			if ret != "" {
-				body = "return *new(" + ret + ")"
+				body = "return " + goZero(ret)
 			}
 		case m.Name == "const_missing" && len(m.Params) == 1: // Module#const_missing: MRI's NameError (bindata's factories chain to it)
 			body = fmt.Sprintf("panic(NewNameError(Ref(String(\"uninitialized constant \" + string(rbToS(%s))))))", strings.Split(c.argNames(m), ", ")[0])
@@ -749,7 +749,7 @@ func (c *Compiler) reshapedBridge(cls *Class, m *Method, t entry, ret string) (s
 	case tret:
 		return "return " + call, true
 	}
-	return call + "; return *new(" + ret + ")", true
+	return call + "; return " + goZero(ret), true
 }
 
 // hookNames are Class's and Module's callbacks, whose own definitions do nothing (decision 232).
@@ -2195,7 +2195,20 @@ func (c *Compiler) emitDescendants(meta, desc *Class) {
 			anc = append(anc, classVar(k))
 		}
 	}
-	c.w("func (self *%s) _Ancestors() []any { return []any{%s} }\n\n", meta.Name, strings.Join(anc, ", "))
+	var latent []string // run-time includes boot saw: listed once this object's include call ran (decision 331)
+	for k := desc; k != nil && !k.IsModule; k = k.Super {
+		for _, inc := range k.Includes {
+			if inc.latent && inc.Mod != nil && inc.Mod.meta != nil {
+				latent = append(latent, classVar(inc.Mod))
+			}
+		}
+	}
+	if len(latent) > 0 {
+		c.w("func (self *%s) _Latent() []any { return []any{%s} }\n\n", meta.Name, strings.Join(latent, ", "))
+		c.w("func (self *%s) _Ancestors() []any { return rbActiveAncestors(self, []any{%s}) }\n\n", meta.Name, strings.Join(anc, ", "))
+	} else {
+		c.w("func (self *%s) _Ancestors() []any { return []any{%s} }\n\n", meta.Name, strings.Join(anc, ", "))
+	}
 	if desc.IsModule {
 		return
 	}
@@ -2256,7 +2269,7 @@ func (c *Compiler) emitMethodTable(cls, desc *Class) {
 	seen := map[string]bool{}
 	for _, k := range desc.ancestors() {
 		for _, m := range k.MethodList {
-			if m.Private || m.Name == "initialize" || strings.HasPrefix(m.Name, "__") || seen[m.Name] {
+			if m.Private || m.Protected || m.Name == "initialize" || strings.HasPrefix(m.Name, "__") || seen[m.Name] {
 				continue
 			}
 			if desc.specChild && k != desc && strings.HasPrefix(m.Name, "test_") {
@@ -2290,21 +2303,27 @@ func (c *Compiler) emitSingletonMethodTable(cls, desc *Class) {
 	c.w("\t}\n}\n\n")
 }
 
-// emitPrivateMethodTable is emitMethodTable's private half, for Module#private_instance_methods only (decision 181).
+// emitPrivateMethodTable is emitMethodTable's private half, for Module#private_instance_methods only (decision 181),
+// and its protected one for protected_instance_methods (liquid's Strainer.add_filter asks both, decision 331).
 func (c *Compiler) emitPrivateMethodTable(cls, desc *Class) {
+	c.emitVisibilityTable(cls, desc, "_PrivateMethods", func(m *Method) bool { return m.Private })
+	c.emitVisibilityTable(cls, desc, "_ProtectedMethods", func(m *Method) bool { return m.Protected && !m.Private })
+}
+
+func (c *Compiler) emitVisibilityTable(cls, desc *Class, fn string, has func(*Method) bool) {
 	if desc == nil {
-		c.w("func (self *%s) _PrivateMethods() []rbConst { return nil }\n\n", cls.Name)
+		c.w("func (self *%s) %s() []rbConst { return nil }\n\n", cls.Name, fn)
 		return
 	}
-	c.w("func (self *%s) _PrivateMethods() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	c.w("func (self *%s) %s() []rbConst {\n\treturn []rbConst{\n", cls.Name, fn)
 	seen := map[string]bool{}
 	for _, k := range desc.ancestors() {
 		for _, m := range k.MethodList {
 			if seen[m.Name] {
 				continue
 			}
-			seen[m.Name] = true // a public redefinition hides an ancestor's private one
-			if m.Private && m.Name != "initialize" && !strings.HasPrefix(m.Name, "__") {
+			seen[m.Name] = true // a redefinition hides an ancestor's of another visibility
+			if has(m) && m.Name != "initialize" && !strings.HasPrefix(m.Name, "__") {
 				c.w("\t\t{%q, nil, %t},\n", m.Name, k != desc)
 			}
 		}
@@ -2531,13 +2550,13 @@ func (c *Compiler) slotSeqAdapter(cls *Class, e entry, env map[string]Type, recv
 func (c *Compiler) ignoredBlockValue(m *Method, elem string, env map[string]Type) string {
 	bret := c.goType(subst(m.Block.Ret, env))
 	if !m.Block.Rest {
-		return fmt.Sprintf("func(x %s) %s { blk(x); return *new(%s) }", elem, bret, bret)
+		return fmt.Sprintf("func(x %s) %s { blk(x); return %s }", elem, bret, goZero(bret))
 	}
 	pack := "x[0]" // ponytail: a typed rest takes the first value; pack like the untyped one if a gem needs it
 	if elem == "any" {
 		pack = "rbPackYield(x)"
 	}
-	return fmt.Sprintf("func(x ...%s) %s { blk(%s); return *new(%s) }", elem, bret, pack, bret)
+	return fmt.Sprintf("func(x ...%s) %s { blk(%s); return %s }", elem, bret, pack, goZero(bret))
 }
 
 // frozenField is the root struct's Kernel#freeze flag: lowercase with a trailing `_`, never an ivar's Go name.
@@ -2652,4 +2671,12 @@ func (c *Compiler) dynAdapterBody(cls *Class, e entry, s slot) string {
 		f.emit("return %s", f.coerce(nil, expr{code: call, typ: TAny{}}, ret))
 	}
 	return f.buf.String()
+}
+
+// goZero is the zero value of Go type t as code: nil for any, which gocritic's newDeref rejects as `*new(any)`.
+func goZero(t string) string {
+	if t == "any" {
+		return "nil"
+	}
+	return "*new(" + t + ")"
 }

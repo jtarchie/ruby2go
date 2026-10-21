@@ -135,12 +135,19 @@ func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNo
 	cls := c.declareClass(f, name, line, isModule)
 	c.anonClasses[call] = cls
 	if len(args) == 1 {
-		switch args[0].(type) {
+		sup := args[0]
+		switch a := sup.(type) {
 		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		case *parser.ClassVariableReadNode: // `Class.new(@@global_strainer)`: the class that cvar's own Class.new literal made (decision 331)
+			hidden := c.cvarAnonClass(a.Name, scope)
+			if hidden == nil {
+				c.errorf(f, a, "Class.new's superclass %s must hold a Class.new literal of its class body (decision 331)", a.Name)
+			}
+			sup = &parser.ConstantReadNode{Name: hidden.Name, Location: a.Location}
 		default:
 			c.errorf(f, args[0], "Class.new's superclass must be a constant (decision 145)")
 		}
-		cls.superRef = &constRef{node: args[0], scope: scope, file: f}
+		cls.superRef = &constRef{node: sup, scope: scope, file: f}
 	}
 	if call.Block == nil {
 		return cls
@@ -249,4 +256,21 @@ func (c *Compiler) anonDefineMethod(ctx context.Context, f *File, cls *Class, n 
 	}
 	c.dmSites[n] = true
 	return true
+}
+
+// cvarAnonClass is the hidden class of the Class.new literal a class body assigned to class variable name, in the
+// innermost class of scope; nil when it holds anything else.
+func (c *Compiler) cvarAnonClass(name string, scope []*Class) *Class {
+	if len(scope) == 0 {
+		return nil
+	}
+	k := scope[len(scope)-1].cvars[name]
+	if k == nil {
+		return nil
+	}
+	call, isModule := anonClassCall(k.Value)
+	if call == nil || isModule {
+		return nil
+	}
+	return c.anonClasses[call]
 }

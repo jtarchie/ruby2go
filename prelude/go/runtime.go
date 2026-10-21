@@ -608,6 +608,9 @@ func rbAsSlow[T any](a any, want string) T {
 	if v, ok := rbConv[T](a); ok {
 		return v
 	}
+	if v, ok := rbUnbox(a).(T); ok { // a T? held untyped is a *T box (liquid's `markup = $2` then `markup =~ re`, decision 331)
+		return v
+	}
 	var zero T
 	if a == nil && any(zero) == nil { // an object type (an interface) holds nil, as MRI passes nil anywhere: a call on it raises (decision 253)
 		return zero

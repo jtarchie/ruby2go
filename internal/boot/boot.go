@@ -30,7 +30,8 @@ type Manifest struct {
 	LoadPath       []string                `json:"load_path"`       // $LOAD_PATH as boot left it: what `$LOAD_PATH` reads in the compiled program (decision 301)
 	Classes        []ClassInfo             `json:"classes"`
 	DefineMethods  []MethodInfo            `json:"define_methods"`
-	Aliases        []AliasInfo             `json:"aliases"` // each alias_method boot ran (decision 330)
+	Aliases        []AliasInfo             `json:"aliases"`  // each alias_method boot ran (decision 330)
+	Includes       []IncludeInfo           `json:"includes"` // each module an include call added during boot (decision 331)
 	Evals          []EvalInfo              `json:"evals"`
 	Autoloads      []AutoloadInfo          `json:"autoloads"`
 	ClassState     []ClassStateInfo        `json:"class_state"`
@@ -48,6 +49,16 @@ type AliasInfo struct {
 	Old       string `json:"old"`
 	File      string `json:"file"`
 	Line      int    `json:"line"`
+}
+
+// IncludeInfo is one module an include call added during boot: to the class Owner names, or (anonymous) the one the
+// Class.new call at Site ("path:line") made; File and Line are the include call's.
+type IncludeInfo struct {
+	Owner  string `json:"owner"`
+	Site   string `json:"site"`
+	Module string `json:"module"`
+	File   string `json:"file"`
+	Line   int    `json:"line"`
 }
 
 // StructProp is one T::Struct prop as MRI holds it: its Sorbet type's text, and its default's literal source if it has a

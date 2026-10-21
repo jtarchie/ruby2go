@@ -11,10 +11,11 @@ import (
 // dynEach is a gem's `x.each { |a, b| }` on an untyped x, as a Rack app's headers and body are (decision 176).
 func (f *fctx) dynEach(n parser.Node, recv expr, b *parser.BlockNode) expr {
 	k := len(f.blockParamList(b.Parameters))
-	if k == 0 {
-		f.errorf(n, "each on an untyped receiver takes a block with parameters")
-	}
 	f.c.dynEach = true
+	if k == 0 { // liquid's `@input.each { return false }`: each element runs the block, which takes none (decision 331)
+		clo := f.genClosure(n, b, &BlockSig{Ret: TVoid{}}, nil)
+		return expr{code: fmt.Sprintf("rbEachAny(%s, 1, func(_ ...any) { (%s)() })", recv.code, clo), typ: TAny{}}
+	}
 	params, xs := make([]Type, k), make([]string, k) // 3+ parameters splat each element across them, as MRI's
 	for i := range k {
 		params[i], xs[i] = TAny{}, fmt.Sprintf("xs_[%d]", i)
@@ -39,8 +40,39 @@ func (f *fctx) gemDynShortcut(n parser.Node, recv expr, name string, args []pars
 	case name == "each" && len(args) == 0:
 		f.c.dynEach = true
 		return expr{code: "rbEachEnumAny(" + f.coerce(n, recv, TAny{}) + ")", typ: TAny{}}, true
+	case name == "scan" && len(args) == 1 && f.c.classes["String"].lookup("__scan_any") != nil:
+		return f.dynStringScan(n, recv, args), true
 	}
 	return expr{}, false
+}
+
+// dynStringScan is a gem's `x.scan(re)` on an untyped x: a String's matches or groups as its pattern has them
+// (liquid's `token.scan(ContentOfVariable)`), anything else's scan (a StringScanner's) as before (decision 331).
+func (f *fctx) dynStringScan(n parser.Node, recv expr, args []parser.Node) expr {
+	r, res, sv := f.newTmp(), f.newTmp(), f.newTmp()
+	f.emit("%s := %s", r, f.coerce(n, recv, TAny{}))
+	f.emit("var %s any", res)
+	f.emit("if %s, ok := %s.(String); ok {", sv, r)
+	f.indent++
+	saved := f.enterBlock()
+	e := f.genMethodCall(n, expr{code: sv, typ: f.cls("String")}, "__scan_any", args, nil)
+	f.emit("%s = %s", res, f.coerce(n, e, TAny{}))
+	f.leaveBlock(saved)
+	f.indent--
+	f.emit("} else {")
+	f.indent++
+	saved = f.enterBlock()
+	f.c.noteDyn("scan")
+	codes := make([]string, 0, 2+len(args))
+	codes = append(codes, "rbCall", r)
+	for _, a := range args {
+		codes = append(codes, f.coerce(a, f.genExpr(a, nil), TAny{}))
+	}
+	f.emit("%s = rbDyn%s(%s)", res, f.c.dynGoName("scan"), strings.Join(codes, ", "))
+	f.leaveBlock(saved)
+	f.indent--
+	f.emit("}")
+	return expr{code: res, typ: TAny{}}
 }
 
 // universalBlockCall is universalCall with a block: one method every receiver shares, or a gem's untyped each.
@@ -356,6 +388,7 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 		return e
 	}
 	f.c.noteDyn(name)
+	f.noteDynUses(name, args)
 	if (f.m == nil || !f.m.quietDynamic) && !f.patQuiet && !f.c.isNumericMod(classOf(recv.typ)) { // a Numeric's class is chosen at run time by design (decision 142)
 		if call, ok := n.(*parser.CallNode); ok && f.c.env.UntypedWhy && isAny(recv.typ) {
 			f.warn(n, "dynamic call: %s on %s [why: %s]", name, recv.typ, f.untypedWhy(call.Receiver, 0))
@@ -825,4 +858,30 @@ func (f *fctx) everyNameWhy(n parser.Node, recv expr) string {
 		return ""
 	}
 	return " [why: " + f.untypedWhy(call.Receiver, 0) + "]"
+}
+
+// noteDynUses records, during an inference round, a gem's dynamic call's arguments as uses of each gem method of that
+// name the call may reach: liquid's `context.handle_error(e, line)` on an untyped context passes the StandardError a
+// rescue caught, where the one typed call passes a MemoryError (decision 331). An untyped argument adds nothing.
+func (f *fctx) noteDynUses(name string, args []parser.Node) {
+	if f.c.uses == nil || !f.lenient() || slices.ContainsFunc(args, isSplatArg) {
+		return
+	}
+	for _, m := range f.c.gemMethodsNamed(name) {
+		if len(args) > len(m.Params) {
+			continue
+		}
+		for i, a := range args {
+			p := m.Params[i]
+			if p.Pending == "" || p.Rest || p.Keyword {
+				break
+			}
+			if _, kw := a.(*parser.KeywordHashNode); kw {
+				break
+			}
+			if t := f.probeType(a, nil); t != nil && !isAny(t) {
+				f.c.uses[p.Pending] = append(f.c.uses[p.Pending], paramUse{typ: t, file: f.f, off: a.GetLocation().StartOffset, dyn: true})
+			}
+		}
+	}
 }

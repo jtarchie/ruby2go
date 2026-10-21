@@ -3208,3 +3208,25 @@ class Array
   #: () -> String
   def dyngen_priv = "priv2"
 end
+
+module DynamicTests
+  class DynProcAndSetTest < Minitest::Test
+    def test_proc_responds_to_call
+      h = { a: ->(a, b) { a + b }, b: :< } #: Hash[Symbol, untyped]
+      assert h[:a].respond_to?(:call)
+      refute h[:b].respond_to?(:call)
+      assert_equal 3, h[:a].call(1, 2)
+    end
+
+    def test_set_merge_untyped
+      h = { s: Set.new([1]) } #: Hash[Symbol, untyped]
+      s = h[:s]
+      s.merge([2, 3])
+      assert_equal 3, s.size
+      t = Set[1, 2]
+      t.merge(Set[4])
+      assert_equal [1, 2, 4], (t | [5]).to_a.first(3)
+      assert_equal 4, (t | [5]).size
+    end
+  end
+end

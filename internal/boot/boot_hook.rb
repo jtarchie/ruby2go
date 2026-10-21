@@ -12,6 +12,7 @@ module Boot
   @classes = {}       # name => { name:, super:, path:, line: }
   @define_methods = [] # { owner:, name:, file:, line:, source: }
   @aliases = []        # { owner:, singleton:, name:, old:, file:, line: }
+  @includes = []       # { owner:, site:, module:, file:, line: }
   @evals = []          # { file:, line:, source:, caller: }
   @autoloads = []      # { owner:, const:, path:, registered: }
   @features = nil
@@ -26,6 +27,7 @@ module Boot
       install_class_trace
       install_define_method
       install_alias_method
+      install_include
       install_evals
       install_autoload
       install_private_constant
@@ -126,6 +128,37 @@ module Boot
                       "name" => tp.return_value.to_s, "old" => m.original_name.to_s, "file" => tp.path, "line" => tp.lineno }
       end
       @alias_tp.enable
+    end
+
+    # Each module an `include` call added during boot (decision 331): a method's `send(:include, filter)` (liquid's
+    # Strainer.add_filter) names its module only at run time. An anonymous class is named by its Class.new call site.
+    def install_include
+      @anon_sites = {}.compare_by_identity
+      stack = []
+      @include_tp = TracePoint.new(:c_call, :c_return) do |tp|
+        case tp.method_id
+        when :new
+          next unless tp.event == :c_return && tp.self.equal?(Class) && tp.return_value.is_a?(Class)
+
+          @anon_sites[tp.return_value] ||= "#{tp.path}:#{tp.lineno}"
+        when :include
+          next unless Module === tp.self
+
+          if tp.event == :c_call
+            stack << MOD_ANCESTORS.bind_call(tp.self)
+            next
+          end
+          before = stack.pop || []
+          owner = tp.self
+          (MOD_ANCESTORS.bind_call(owner) - before).each do |m|
+            next if m.is_a?(Class)
+
+            @includes << { "owner" => (MOD_NAME.bind_call(owner) unless @anon_sites.key?(owner)), "site" => @anon_sites[owner],
+                           "module" => MOD_NAME.bind_call(m), "file" => tp.path, "line" => tp.lineno }
+          end
+        end
+      end
+      @include_tp.enable
     end
 
     # The caller's locals as Ruby expressions: a literal for plain data, else the constant that holds the same object.
@@ -311,6 +344,7 @@ module Boot
     MOD_CONSTANTS = Module.instance_method(:constants)
     MOD_AUTOLOAD = Module.instance_method(:autoload?)
     MOD_NAME = Module.instance_method(:name)
+    MOD_ANCESTORS = Module.instance_method(:ancestors)
     MOD_CONST_GET = Module.instance_method(:const_get)
 
     def const_classes
@@ -360,6 +394,7 @@ module Boot
       @class_tp&.disable
       @line_tp&.disable
       @alias_tp&.disable
+      @include_tp&.disable
       classes = @classes.map do |name, info|
         owner = Object.const_get(name) rescue nil
         anc = owner.is_a?(Module) ? owner.ancestors.map { |a| safe_name(a) } : []
@@ -371,6 +406,7 @@ module Boot
         "classes" => classes,
         "define_methods" => @define_methods,
         "aliases" => @aliases,
+        "includes" => @includes,
         "evals" => @evals.uniq { |e| [e["source"], e["kind"], e["self"], e["caller"]] },
         "autoloads" => resolve_autoloads,
         "class_state" => class_state,

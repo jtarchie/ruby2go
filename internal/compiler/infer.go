@@ -65,6 +65,7 @@ type paramUse struct {
 	off     int
 	anyRest bool // a gem's untyped value into a rest parameter: its elements are anything (decision 253)
 	widen   bool // a gem's untyped value into an overridden method: the parameter is untyped (decision 324)
+	dyn     bool // a gem's dynamic call by this name, which may reach another class's method of that name (decision 331)
 }
 
 // at is the call the argument came from.
@@ -665,33 +666,18 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
-		if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.widen }); i >= 0 {
-			next[key], from[key] = TAny{}, uses[i].at().String()
-			continue
+		if !slices.ContainsFunc(uses, func(u paramUse) bool { return !u.dyn }) {
+			continue // only dynamic calls by its name, maybe meant for another class's method: untyped, as before (decision 331)
 		}
-		if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.anyRest }); i >= 0 {
-			// concurrent-ruby's new_blocked_by1(self, executor, executor, args): a rest parameter collecting any values
-			next[key], from[key] = TAny{}, uses[i].at().String()
-			continue
-		}
-		if u, ok, mixed := c.untypedGemUse(uses); mixed { // and other calls pass other classes: anything (decision 330)
-			next[key], from[key] = TAny{}, u.at().String()
-			continue
-		} else if ok { // a gem passing an untyped container: its elements are anything (decision 244)
-			t := u.typ
-			if slices.ContainsFunc(uses, func(x paramUse) bool { return isNil(x.typ) }) { // `default = nil` too (bindata's parent_attribute): nilable
-				t = optOf(t)
-			}
-			next[key], from[key] = t, u.at().String()
-			continue
-		}
-		if i := slices.IndexFunc(uses, func(u paramUse) bool { return isAny(u.typ) && c.gemFile(u.file) }); i >= 0 && c.interpOnly[key] {
-			// kramdown's format_as_span_html(name, ...) gets "code" from some calls and el.type, a Symbol, from others
-			next[key], from[key] = TAny{}, uses[i].at().String()
+		if t, at, ok := c.gemUseType(key, uses); ok {
+			next[key], from[key] = t, at
 			continue
 		}
 		if t, at := joinUses(uses, inf.noUnion[key]); t != nil {
-			if c.gemUsesDisagree(uses, t) { // a gem's calls passing kinds no type joins: untyped, not the first kind (decision 244)
+			if c.gemUsesDisagree(uses, t, c.gemParams[key]) { // a gem's calls passing kinds no type joins: untyped, not the first kind (decision 244)
+				t = TAny{}
+			}
+			if c.anyGemUseWidens(t, uses) {
 				t = TAny{}
 			}
 			next[key], from[key] = t, at
@@ -737,17 +723,21 @@ func (c *Compiler) otherClassUse(u paramUse, cls *Class) bool {
 	if _, ok := u.typ.(TAny); ok && c.gemFile(u.file) {
 		return true
 	}
+	if cl, ok := stripOpt(u.typ).(TClass); ok { // its class is known even when its elements are untyped (`[drop, assigns]`)
+		return cl.C != cls
+	}
 	if _, void := u.typ.(TVoid); u.typ == nil || void || isNil(u.typ) || holdsAny(u.typ) || mentionsVar(u.typ) {
 		return false
 	}
-	cl, ok := stripOpt(u.typ).(TClass)
-	return !ok || cl.C != cls
+	return true
 }
 
 // gemUsesDisagree reports gem-file uses that joinUses left out of t because they do not join it.
-func (c *Compiler) gemUsesDisagree(uses []paramUse, t Type) bool {
+// For a gem method's own parameter (gemParam) a user's calls count too: liquid's render!(*args) takes `{...}` and
+// `strict_filters: true` from one program (decision 331).
+func (c *Compiler) gemUsesDisagree(uses []paramUse, t Type, gemParam bool) bool {
 	for _, u := range uses {
-		if u.typ == nil || isVoid(u.typ) || holdsAny(u.typ) || mentionsVar(u.typ) || !c.gemFile(u.file) {
+		if u.typ == nil || isVoid(u.typ) || holdsAny(u.typ) && !gemParam || mentionsVar(u.typ) || !gemParam && !c.gemFile(u.file) {
 			continue
 		}
 		if j, ok := join(t, u.typ); !ok || !typeEq(j, t) {
@@ -805,8 +795,8 @@ func (f *fctx) coercePending(p Param, code func() string) string {
 	return out
 }
 
-// onlyInterpolated reports whether body reads local name, and only as a whole `#{name}` interpolation (no call on it,
-// no write): what it holds needs only to_s.
+// onlyInterpolated reports whether body reads local name, and only as a whole `#{name}` interpolation or the receiver of
+// a conversion every object answers (no other call on it, no write): what it holds needs only to_s.
 func onlyInterpolated(body parser.Node, name string) bool {
 	reads, ok := 0, true
 	var walk func(parser.Node, bool)
@@ -837,6 +827,14 @@ func onlyInterpolated(body parser.Node, name string) bool {
 					return
 				}
 			}
+		case *parser.CallNode: // `method.to_s` (liquid's Strainer.invokable?): what every object answers
+			if r, isRead := x.Receiver.(*parser.LocalVariableReadNode); isRead && universalConversions[x.Name] && x.Block == nil {
+				walk(r, true)
+				for _, a := range callArgs(x) {
+					walk(a, false)
+				}
+				return
+			}
 		}
 		for _, ch := range n.CompactChildNodes() {
 			walk(ch, false)
@@ -844,4 +842,82 @@ func onlyInterpolated(body parser.Node, name string) bool {
 	}
 	walk(body, false)
 	return ok && reads > 0
+}
+
+// gemMethodsNamed lists the gem methods (instance and class) named name, built once per compile.
+func (c *Compiler) gemMethodsNamed(name string) []*Method {
+	if c.gemByName == nil {
+		c.gemByName = map[string][]*Method{}
+		for _, cls := range c.classList {
+			for _, m := range cls.MethodList {
+				if m.Node != nil && m.File != nil && c.gemFile(m.File) && m.Owner == cls {
+					c.gemByName[m.Name] = append(c.gemByName[m.Name], m)
+				}
+			}
+		}
+	}
+	return c.gemByName[name]
+}
+
+// anyGemUseWidens: a gem passing an untyped value where the other uses joined to a class object (liquid's
+// add_filter(f) for each filter, after add_filter(StandardFilters)) or to a union (BlockBody's render_node_to_output
+// from `when Variable`, `when Block` and an `else` arm's untyped node), which Go holds as any already (decision 331).
+//
+// A union with a dynamic call's use is untyped too: that call may be meant for another class's method of the name
+// (Context#evaluate's `context.evaluate(@name)` is no VariableLookup#evaluate call), so its classes do not bound it.
+func (c *Compiler) anyGemUseWidens(t Type, uses []paramUse) bool {
+	cl, isClass := stripOpt(t).(TClass)
+	union := isUnion(stripOpt(t))
+	if union && slices.ContainsFunc(uses, func(u paramUse) bool { return u.dyn }) {
+		return true
+	}
+	if (!isClass || cl.C.metaOf == nil) && !union {
+		return false
+	}
+	return slices.ContainsFunc(uses, func(u paramUse) bool { return isAny(u.typ) && c.gemFile(u.file) })
+}
+
+// universalConversions are calls every object answers the same way through Kernel, whatever its class.
+var universalConversions = map[string]bool{"to_s": true, "inspect": true, "nil?": true, "==": true, "!=": true, "hash": true, "eql?": true, "equal?": true}
+
+// typeTested reports whether body tests local name's class (`case obj when Float ... when String`, `obj.is_a?(X)`,
+// `obj.respond_to?(:m)`): a parameter meant to take several classes (liquid's Utils.to_number, decision 331).
+func typeTested(body parser.Node, name string) bool {
+	isName := func(n parser.Node) bool {
+		r, ok := n.(*parser.LocalVariableReadNode)
+		return ok && r.Name == name && r.Depth == 0
+	}
+	return anyNode(body, func(n parser.Node) bool {
+		switch x := n.(type) {
+		case *parser.CaseNode:
+			return isName(x.Predicate)
+		case *parser.CallNode:
+			return isName(x.Receiver) && (x.Name == "is_a?" || x.Name == "kind_of?" || x.Name == "instance_of?" || x.Name == "respond_to?")
+		}
+		return false
+	})
+}
+
+// gemUseType is a parameter's type when its uses settle it before joining: anything for a widening, untyped-rest or
+// mixed-class gem use or an untyped one into a parameter its body only interpolates or type-tests (decisions 324,
+// 330, 331), and an untyped container a gem passes (decision 244).
+func (c *Compiler) gemUseType(key pendingKey, uses []paramUse) (Type, string, bool) {
+	if i := slices.IndexFunc(uses, func(u paramUse) bool { return u.widen || u.anyRest }); i >= 0 {
+		// concurrent-ruby's new_blocked_by1(self, executor, executor, args): a rest parameter collecting any values
+		return TAny{}, uses[i].at().String(), true
+	}
+	if u, ok, mixed := c.untypedGemUse(uses); mixed { // and other calls pass other classes: anything (decision 330)
+		return TAny{}, u.at().String(), true
+	} else if ok { // a gem passing an untyped container: its elements are anything (decision 244)
+		t := u.typ
+		if slices.ContainsFunc(uses, func(x paramUse) bool { return isNil(x.typ) }) { // `default = nil` too (bindata's parent_attribute): nilable
+			t = optOf(t)
+		}
+		return t, u.at().String(), true
+	}
+	if i := slices.IndexFunc(uses, func(u paramUse) bool { return isAny(u.typ) && c.gemFile(u.file) }); i >= 0 && c.interpOnly[key] {
+		// kramdown's format_as_span_html(name, ...) gets "code" from some calls and el.type, a Symbol, from others
+		return TAny{}, uses[i].at().String(), true
+	}
+	return nil, "", false
 }

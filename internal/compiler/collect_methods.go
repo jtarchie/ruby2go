@@ -442,24 +442,29 @@ func isIdentMethod(name string) bool {
 }
 
 // singletonAlias is `singleton_class.alias_method(:a, :b)` or `singleton_class.send(:alias_method, :a, :b)` in a class
-// body, as the `alias_method :a, :b` of a `class << self` body; nil for anything else.
+// body, as the `alias_method :a, :b` of a `class << self` body, and the same for the attr family (liquid's
+// `singleton_class.send(:attr_accessor, :cache_classes)`, decision 331); nil for anything else.
 func singletonAlias(n *parser.CallNode) *parser.CallNode {
 	r, ok := n.Receiver.(*parser.CallNode)
 	if !ok || r.Name != "singleton_class" || r.Receiver != nil && !isSelf(r.Receiver) || r.Arguments != nil {
 		return nil
 	}
 	args := callArgs(n)
-	switch {
-	case n.Name == "alias_method" && len(args) == 2:
-	case (n.Name == "send" || n.Name == "__send__") && len(args) == 3:
-		if sym, ok := args[0].(*parser.SymbolNode); !ok || sym.Unescaped.Value != "alias_method" {
+	name := n.Name
+	if (name == "send" || name == "__send__") && len(args) > 1 {
+		sym, ok := args[0].(*parser.SymbolNode)
+		if !ok {
 			return nil
 		}
-		args = args[1:]
+		name, args = sym.Unescaped.Value, args[1:]
+	}
+	switch {
+	case name == "alias_method" && len(args) == 2:
+	case singletonAttrs[name] && len(args) > 0 && allLiteralNames(args):
 	default:
 		return nil
 	}
-	return &parser.CallNode{Location: n.Location, Name: "alias_method", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: args}}
+	return &parser.CallNode{Location: n.Location, Name: name, Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: args}}
 }
 
 // aliasNewReq is a class's `alias_method :x, :new` waiting for its synthesized new.
@@ -517,3 +522,6 @@ func (c *Compiler) aliasNew(ctx context.Context, d singletonMisc, m *Class, n *p
 	sf.path, sf.pinLine = d.file.path, d.file.line(n.Location.StartOffset)
 	c.addDef(sf, m, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // parsed just above
 }
+
+// singletonAttrs are the attr calls singletonAlias takes onto a class's singleton.
+var singletonAttrs = map[string]bool{"attr_reader": true, "attr_writer": true, "attr_accessor": true}

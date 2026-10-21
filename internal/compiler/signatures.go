@@ -238,7 +238,13 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 			m.pendingIdx = map[int]pendingParam{}
 		}
 		m.pendingIdx[len(ps)] = pendingParam{key: paramKey(m, name), name: name}
-		if c.gemFile(m.File) && onlyInterpolated(m.Node.Body, name) {
+		if c.gemFile(m.File) {
+			if c.gemParams == nil {
+				c.gemParams = map[pendingKey]bool{}
+			}
+			c.gemParams[paramKey(m, name)] = true
+		}
+		if c.gemFile(m.File) && (onlyInterpolated(m.Node.Body, name) || typeTested(m.Node.Body, name)) {
 			if c.interpOnly == nil {
 				c.interpOnly = map[pendingKey]bool{}
 			}
@@ -285,10 +291,10 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 			m.pendingBlock = append(m.pendingBlock, pendingParam{key: yieldKey(m, i), name: "yield's argument " + strconv.Itoa(i+1)})
 		}
 		ret := "void"
-		// a gem wrapper's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226).
-		// ponytail: only wrappers that also yield inside a block; any tail yield needs non-local return from closure blocks
-		// first (decision 4), since a block-valued method is a closure and Cuba's `on` returns from inside `try`'s block.
-		wrapper := c.pruneGems && from.File != nil && c.gemFile(from.File) && containsNestedYield(from.Node.Body, false)
+		// a gem method's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226;
+		// liquid's `result = with_profiling(context) { ... }`, decision 331): a gem block's `return` unwinds through the
+		// closure (decision 247), so Cuba's `on` returning from inside `try`'s block still works.
+		wrapper := c.pruneGems && from.File != nil && c.gemFile(from.File)
 		if yieldValueUsed(from.Node.Body, wrapper) {
 			ret = "untyped"
 		}
@@ -442,7 +448,7 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	for _, p := range e.M.Params {
 		m.Params = append(m.Params, Param{Name: p.Name, Type: subst(p.Type, e.Env), Default: p.Default, Rest: p.Rest, Keyword: p.Keyword, KwRest: p.KwRest, Post: p.Post, Want: subst(p.Want, e.Env), Pending: p.Pending})
 	}
-	if e.M.Block != nil {
+	if e.M.Block != nil && !c.ignoresOwnBlock(m) {
 		// all of the parent's block: a dropped Rest made concurrent-ruby's ThenPromise#initialize take one value of the
 		// (*untyped) block its parent takes, losing then_on's other arguments (decision 256)
 		b := *e.M.Block
@@ -458,6 +464,29 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	m.Iterator = e.M.Iterator && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	c.bindParamNames(m)
 	return true
+}
+
+// ignoresOwnBlock: a gem override whose body never yields, asks block_given?, names its block, or reaches a super that
+// passes it on (a zsuper, or super without a block of its own) takes none, though its parent does: liquid's
+// Document#parse calls `super do |tag, params| ... end` over BlockBody#parse's yield (decision 331). In user code a
+// block-taking override keeps its parent's signature (it is an error otherwise).
+func (c *Compiler) ignoresOwnBlock(m *Method) bool {
+	if m.Kind != kindDef || m.Node == nil || m.Node.Body == nil || m.BlockParam != "" || m.File == nil || !c.gemFile(m.File) {
+		return false
+	}
+	return !anyNode(m.Node.Body, func(x parser.Node) bool {
+		switch x := x.(type) {
+		case *parser.YieldNode, *parser.BlockArgumentNode:
+			return true
+		case *parser.ForwardingSuperNode: // `super do ... end`, no parentheses: a block of its own, else the method's
+			return x.Block == nil
+		case *parser.SuperNode:
+			return x.Block == nil
+		case *parser.CallNode:
+			return x.Receiver == nil && (x.Name == "block_given?" || x.Name == "iterator?")
+		}
+		return false
+	})
 }
 
 // isIterator decides whether a block-taking method compiles to a Go

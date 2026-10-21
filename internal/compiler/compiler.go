@@ -164,6 +164,9 @@ type Compiler struct {
 	anonRun          *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
 	ivarReadFirst    map[ivarKey]bool                  // owner#@x read before any assignment typed it, in discovery: declared T?
 	interpOnly       map[pendingKey]bool               // a gem parameter its body only interpolates: any value does (decision 330)
+	gemByName        map[string][]*Method              // gem methods by name, for a dynamic call's uses (decision 331)
+	gemParams        map[pendingKey]bool               // a gem method's parameters: every caller's disagreeing uses widen them (decision 331)
+	bareRaise        int                               // gemBareRaise's memo: 0 unknown, 1 no, 2 yes
 	ivarBitsMarked   bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
 	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
 	anonErrors       map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
@@ -496,6 +499,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.collectDefineMethods(ctx, dms)
 	if opts.boot != nil {
 		c.collectBootAliases(opts.boot.Aliases)
+		c.collectBootIncludes(opts.boot.Includes)
 	}
 	c.collectSingletonTemplates(ctx)
 	c.collectObjectExtends(ctx)

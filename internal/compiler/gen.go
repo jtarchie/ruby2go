@@ -12,6 +12,7 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
+	aliasSrc map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)
 	noStrIndexSet  bool        // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
 	superTarget    *Method     // a gem super call's target while its arguments generate: they type none of its parameters
 	probeDepth     int         // inside probe: output is discarded
@@ -746,8 +747,13 @@ func (f *fctx) absentReturn(s parser.Node) bool {
 	if taken == nil || len(taken.Body) == 0 {
 		return false
 	}
-	_, ok := taken.Body[len(taken.Body)-1].(*parser.ReturnNode)
-	return ok
+	switch last := taken.Body[len(taken.Body)-1].(type) {
+	case *parser.ReturnNode:
+		return true
+	case *parser.CallNode: // liquid's `raise "Profiler not loaded" unless defined?(Liquid::Profiler)`: what follows is dead (decision 331)
+		return last.Receiver == nil && (last.Name == "raise" || last.Name == "fail")
+	}
+	return false
 }
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
@@ -1432,15 +1438,44 @@ func (f *fctx) genBreak(n *parser.BreakNode) {
 // breakCatchStmt generates n through genBreakCatch when it is a call statement whose block breaks out of it.
 func (f *fctx) breakCatchStmt(n parser.Node, t tail) bool {
 	c, ok := n.(*parser.CallNode)
-	if !ok || t.kind != tailNone || f.breakCatch != nil && f.breakCatch.block == c.Block {
+	if !ok || t.kind != tailNone && !f.lenient() || f.breakCatch != nil && f.breakCatch.block == c.Block {
 		return false
 	}
 	b, ok := c.Block.(*parser.BlockNode)
 	if !ok || b.Body == nil || !blockBreaks(b.Body) {
 		return false
 	}
+	if t.kind != tailNone { // a gem's `segment.each do ... break ... end` as a block's value (liquid's For#render_segment, decision 331)
+		f.genBreakCatchValue(c, b, t)
+		return true
+	}
 	f.genBreakCatch(c, b, t)
 	return true
+}
+
+// genBreakCatchValue is genBreakCatch for a call whose value is used: nil when the block broke, as MRI's valueless
+// break makes it.
+func (f *fctx) genBreakCatchValue(c *parser.CallNode, b *parser.BlockNode, t tail) {
+	saved, out := f.breakCatch, f.buf
+	bc := &breakCatch{block: b, id: fmt.Sprintf("%s:%d", f.f.Name, b.Location.StartOffset)}
+	tmp := f.newTmp()
+	f.breakCatch, f.buf = bc, &strings.Builder{}
+	f.indent++
+	e := f.genExpr(c, nil)
+	if isVoid(e.typ) || e.stmt {
+		f.emitExprStmt(c, e)
+	} else {
+		f.emit("%s = %s", tmp, f.coerce(c, e, TAny{}))
+	}
+	f.indent--
+	body := f.buf.String()
+	f.breakCatch, f.buf = saved, out
+	f.emit("var %s any", tmp)
+	f.emit("func() {")
+	f.emit("\tdefer rbBreakRecover(%q)", bc.id)
+	out.WriteString(body)
+	f.emit("}()")
+	f.applyTail(c, expr{code: tmp, typ: TAny{}}, t)
 }
 
 // genBreakCatch is a call statement whose block has a `break`: when the block is a closure (decision 4), the
@@ -1606,14 +1641,14 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	u, isUnion := st.(TUnion)
 	_, localSubj := n.Predicate.(*parser.LocalVariableReadNode)
 	strUnion := isUnion && (f.lenient() || localSubj) && slices.ContainsFunc(u.Members, func(m Type) bool { return isClass(m, "String") })
-	if f.lastMatch != "" && caseHasRegexp(n) && (isClass(st, "String") || isAny(st) || strUnion) { // `when /re/` sets $~ for the arm: tests in order, as an if chain (decision 244)
+	if f.lastMatch != "" && caseHasRegexp(n, f.whenRegexp) && (isClass(st, "String") || isAny(st) || strUnion) { // `when /re/` sets $~ for the arm: tests in order, as an if chain (decision 244)
 		var subjNode parser.Node = &exprNode{Node: n.Predicate, e: expr{code: tmp, typ: subj.typ}}
 		if lv, ok := n.Predicate.(*parser.LocalVariableReadNode); ok {
 			subjNode = lv // a local's own reads: each test narrows it for its arm (`when Array` then o.partition)
 			f.emit("_ = %s", tmp)
 		}
 		isCls := func(c parser.Node) bool { return f.classRef(c) != nil }
-		f.genStmt(caseAsMatchIf(n, subjNode, !isClass(st, "String"), isCls), t)
+		f.genStmt(caseAsMatchIf(n, subjNode, !isClass(st, "String"), isCls, f.whenRegexp), t)
 		return
 	}
 	// each arm's test before the switch: one may need statements (a union subject's type switch), which cannot sit between cases
@@ -1684,23 +1719,31 @@ func (c *Compiler) rewrite(n parser.Node, build func() parser.Node) parser.Node 
 // caseEqq renders a `when`'s `cond === subj` as a Go bool: is_a? for a
 // class, the condition's own === when its class defines one (at run time
 // when it is untyped or T?), else ==, Object#==='s default.
-// caseHasRegexp reports a when with a Regexp literal.
-func caseHasRegexp(n *parser.CaseNode) bool {
-	found := false
+// caseHasRegexp reports a when with a pattern isRx accepts.
+func caseHasRegexp(n *parser.CaseNode, isRx func(parser.Node) bool) bool {
 	for _, w := range n.Conditions {
-		for _, cond := range w.(*parser.WhenNode).Conditions {
-			switch cond.(type) {
-			case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
-				found = true
-			}
+		if slices.ContainsFunc(w.(*parser.WhenNode).Conditions, isRx) {
+			return true
 		}
 	}
-	return found
+	return false
+}
+
+// whenRegexp is a when's Regexp literal, or a constant holding one (liquid's `when SINGLE_QUOTED_STRING,
+// DOUBLE_QUOTED_STRING then $1`, decision 331): its === is a match that sets $~.
+func (f *fctx) whenRegexp(cond parser.Node) bool {
+	switch cond.(type) {
+	case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
+		return true
+	case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		return isClass(f.probeType(cond, nil), "Regexp")
+	}
+	return false
 }
 
 // caseAsMatchIf is `case s when /re/ ... when X ... else ... end` as `if re =~ s ... elsif X === s ... else ... end`,
 // the regexp tests through =~ so the matching arm reads its own $~.
-func caseAsMatchIf(n *parser.CaseNode, subj parser.Node, untyped bool, isCls func(parser.Node) bool) parser.Node {
+func caseAsMatchIf(n *parser.CaseNode, subj parser.Node, untyped bool, isCls, isRx func(parser.Node) bool) parser.Node {
 	var tail parser.Node
 	if n.ElseClause != nil {
 		tail = n.ElseClause
@@ -1720,7 +1763,10 @@ func caseAsMatchIf(n *parser.CaseNode, subj parser.Node, untyped bool, isCls fun
 			switch c := cond.(type) {
 			case *parser.SplatNode: // ponytail: `when *list` as list.include?(s), == per element where MRI's is ===
 				test = call(c.Expression, "include?")
-			case *parser.RegularExpressionNode, *parser.InterpolatedRegularExpressionNode:
+			default:
+				if !isRx(cond) {
+					break
+				}
 				test = call(cond, "=~")
 				if untyped { // Regexp#=== is false for a non-String, where =~ raises
 					test = &parser.AndNode{Location: loc, Left: call(&parser.ConstantReadNode{Location: loc, Name: "String"}, "==="), Right: test}
@@ -2369,6 +2415,9 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 			bind = f.c.classes["Exception"]
 		}
 		f.bindRescue(rc.Reference, lt.Name, TClass{C: bind})
+	}
+	if f.lenient() && f.c.gemBareRaise() {
+		f.emit("defer rbErrinfoSet(r_)()") // $! for a bare raise this clause reaches through a call (decision 331)
 	}
 	f.rescues++
 	f.genStmts(rc.Statements, t)

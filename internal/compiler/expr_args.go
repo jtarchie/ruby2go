@@ -601,10 +601,7 @@ func (f *fctx) splatSlice(n parser.Node, code string, from, to Type) string {
 // minus `Op_`.
 func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	m := e.M
-	owner := m.Owner
-	if rc, ok := recvT.(TClass); ok {
-		owner = rc.C
-	}
+	owner := f.overloadOwner(m, recvT)
 	if owner == nil || strings.HasPrefix(m.Name, "__") {
 		return nil
 	}
@@ -704,8 +701,9 @@ func blocklessOverload(m *Method, owner *Class, name string, nargs int) *entry {
 	if r := owner.lookup(name + strconv.Itoa(nargs)); r != nil && r.M.Block == nil && !m.Block.Optional {
 		return r // `xs.any?`, `xs.any?(Integer)`: the blockless forms
 	}
-	if r := owner.lookup(name + "enum"); r != nil {
-		return r // `xs.each_slice(2)` without a block: an Array standing in for the Enumerator
+	if r := owner.lookup(name + "enum"); r != nil && (r.M.Owner == m.Owner || !r.M.Owner.IsModule) {
+		return r // `xs.each_slice(2)` without a block: an Array standing in for the Enumerator; not a module's twin
+		// of a method a class defines itself (Range#reverse_each over Enumerable's, decision 331)
 	}
 	return nil
 }
@@ -955,4 +953,16 @@ func (f *fctx) argAt(n parser.Node, p Param, env map[string]Type, args []parser.
 	a := f.genExpr(an, f.pendingWant(p, closed(p.Type, env)))
 	f.pinBefore(mark, codes)
 	return an, a
+}
+
+// overloadOwner is the class whose twins a call picks from: the receiver's, or for a self call in a module method the
+// enclosing class's (`reverse_each.to_a` in an Enumerable includer: its twin with the includer's E, decision 331).
+func (f *fctx) overloadOwner(m *Method, recvT Type) *Class {
+	if rc, ok := recvT.(TClass); ok {
+		return rc.C
+	}
+	if tv, ok := recvT.(TVar); ok && tv.Name == "Self" && f.owner != nil && !f.owner.IsModule && m.Owner != nil && m.Owner.IsModule {
+		return f.owner
+	}
+	return m.Owner
 }

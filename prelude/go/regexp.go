@@ -227,7 +227,7 @@ func rbMatchAt(r *Regexp, s string, loc []int) *MatchData {
 // nil matches nothing (ok is false); anything else is MRI's TypeError, and
 // a String that is not valid UTF-8 is MRI's ArgumentError.
 func rbSubject(v any) (string, bool) {
-	switch s := v.(type) {
+	switch s := rbUnbox(v).(type) { // a String? held untyped is a *String box (liquid's `markup = $2; markup =~ re`, decision 331)
 	case nil:
 		return "", false
 	case String: // not valid UTF-8: ASCII-8BIT (decision 136), matched byte by byte (rbFindLoc)

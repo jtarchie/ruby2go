@@ -184,7 +184,10 @@ whole program at compile time rather than looked up by reflection.
   ([example 116](examples/116_cuba_web/main.rb)), and the unmodified `kramdown`
   gem turns Markdown (lists, tables, footnotes, code blocks, inline HTML) into
   HTML, compiled with `rb2go build -trace` because it requires its converters
-  by computed name ([example 123](examples/123_kramdown/main.rb)).
+  by computed name ([example 123](examples/123_kramdown/main.rb)), and the
+  unmodified `liquid` gem (Jekyll's template language: loops, conditionals,
+  filters, whitespace control) renders templates
+  ([example 124](examples/124_liquid/main.rb)).
 
 [`examples/`](examples/) has one program per feature, from
 [inheritance](examples/01_inheritance/main.rb) to a

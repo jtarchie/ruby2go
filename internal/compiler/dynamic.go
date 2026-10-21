@@ -1351,6 +1351,9 @@ func (c *Compiler) emitRespond(name string) {
 	c.emitMarkers("_Responds"+gn, public)
 	c.w("func rbResponds%s(recv any, priv bool) Boolean {\n", gn)
 	c.w("\tif rbHas_Responds%s(recv) {\n\t\treturn true\n\t}\n", gn)
+	if procCallNames[name] || name == "arity" || name == "to_proc" || name == "lambda?" { // a Proc is a Go func: no class table (liquid's `operation.respond_to?(:call)`, decision 331)
+		c.w("\tif rbIsProc(recv) {\n\t\treturn true\n\t}\n")
+	}
 	if len(c.privateIn(name)) > 0 {
 		c.w("\tif priv && rbHas_Private%s(recv) {\n\t\treturn true\n\t}\n", gn)
 	}

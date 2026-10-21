@@ -256,6 +256,7 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		}
 	}
 	exp = f.selfProcDecl(n, ann, exp)
+	f.noteAliasSrc(n)
 	tmpl := f.openTemplate(n.Value)
 	empty := ann == nil && (isEmptyLit(n.Value) || tmpl != nil)
 	if exp == nil && empty {
@@ -948,9 +949,9 @@ func (f *fctx) enumBlock(m *Method, elem string) string {
 		if elem == "any" {
 			pack = "rbPackYield(x)"
 		}
-		return fmt.Sprintf("func(x ...%s) %s { y(%s); return *new(%s) }", elem, r, pack, r)
+		return fmt.Sprintf("func(x ...%s) %s { y(%s); return %s }", elem, r, pack, goZero(r))
 	}
-	return fmt.Sprintf("func(x %s) %s { y(x); return *new(%s) }", elem, r, r)
+	return fmt.Sprintf("func(x %s) %s { y(x); return %s }", elem, r, goZero(r))
 }
 
 // selfCallingProc is `x = lambda { ... x ... }` (or proc, or ->): a literal block reading the local it is assigned to.
@@ -979,4 +980,49 @@ func (f *fctx) selfProcDecl(n *parser.LocalVariableWriteNode, ann, exp Type) Typ
 	}
 	f.assignLocal(n, n.Name, expr{code: "nil", typ: TNil{}}, TAny{})
 	return TAny{}
+}
+
+// noteAliasSrc records a gem's `prev = @nodelist.last` when it is prev's only assignment in the method: a String
+// edit of prev (`prev.rstrip!`) is MRI's edit of that slot's object, so it writes the slot back too (decision 331).
+func (f *fctx) noteAliasSrc(n *parser.LocalVariableWriteNode) {
+	call, ok := n.Value.(*parser.CallNode)
+	if !ok || !f.lenient() || f.m == nil || f.m.Node == nil {
+		return
+	}
+	if _, ok := f.elementTarget(call); !ok {
+		return
+	}
+	writes := 0
+	anyNode(f.m.Node, func(x parser.Node) bool {
+		switch w := x.(type) {
+		case *parser.LocalVariableWriteNode:
+			if w.Name == n.Name {
+				writes++
+			}
+		case *parser.LocalVariableTargetNode, *parser.LocalVariableOperatorWriteNode, *parser.LocalVariableOrWriteNode:
+			if localNodeName(w) == n.Name {
+				writes += 2
+			}
+		}
+		return false
+	})
+	if writes != 1 {
+		return
+	}
+	if f.aliasSrc == nil {
+		f.aliasSrc = map[localKey]*parser.CallNode{}
+	}
+	f.aliasSrc[f.localKey(n.Name)] = call
+}
+
+func localNodeName(n parser.Node) string {
+	switch w := n.(type) {
+	case *parser.LocalVariableTargetNode:
+		return w.Name
+	case *parser.LocalVariableOperatorWriteNode:
+		return w.Name
+	case *parser.LocalVariableOrWriteNode:
+		return w.Name
+	}
+	return ""
 }

@@ -15,6 +15,10 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		f.emitExprStmt(n, e)
 		e = expr{code: "nil", typ: TNil{}}
 	}
+	if isClass(e.typ, "NilClass") && isAny(to) && !e.lit && e.code != "nil" {
+		// a reopened NilClass's `self` (liquid's `def to_liquid = self`) is a typed nil pointer: boxed, it would not be nil
+		return "rbNilAny(" + e.code + ")"
+	}
 	code := f.coerce0(n, e, to)
 	if f.lenient() && code == e.code && f.pass == 2 {
 		return f.goTypeGuard(n, e, to)

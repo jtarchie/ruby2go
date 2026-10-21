@@ -6394,3 +6394,31 @@ module ObjectTests
     end
   end
 end
+
+module ObjectTests
+  class ObjSingletonAttr
+    singleton_class.send(:attr_accessor, :level)
+    self.level = 3
+  end
+
+  module ObjProtectedMod
+    def pub = 1
+
+    protected
+
+    def prot = 2
+  end
+
+  class ObjReflectTest < Minitest::Test
+    def test_singleton_class_send_attr_accessor
+      assert_equal 3, ObjSingletonAttr.level
+      ObjSingletonAttr.level = 4
+      assert_equal 4, ObjSingletonAttr.level
+    end
+
+    def test_protected_instance_methods
+      assert_equal [:prot], ObjProtectedMod.protected_instance_methods
+      assert_equal [:pub], ObjProtectedMod.public_instance_methods
+    end
+  end
+end

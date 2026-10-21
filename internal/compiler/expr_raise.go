@@ -20,8 +20,10 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		if f.rescues > 0 { // re-raises the exception being handled
 			return expr{code: "panic(r_)", typ: TVoid{}, stmt: true, noreturn: true}
 		}
-		if f.lenient() { // MRI re-raises $!, which is nil here: an empty RuntimeError (decision 233)
+		if f.lenient() { // MRI re-raises $!, the exception a calling rescue clause handles (decision 331), else an empty RuntimeError (233)
 			val = f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{{code: `""`, typ: f.cls("String"), lit: true}}, nil, nil)
+			tmp := f.newTmp()
+			f.emit("if %s := rbErrinfo(); %s != nil {\n\tpanic(%s)\n}", tmp, tmp, tmp)
 			break
 		}
 		f.errorf(n, "bare `raise` outside a rescue clause is not supported")
@@ -108,3 +110,21 @@ func (f *fctx) raiseOne(n, arg parser.Node, exc *Class) expr {
 // dynRaise: an untyped class or message is raised as decided at run time, in gem code (decision 233) and the
 // prelude's Thread#raise (decision 257).
 func (f *fctx) dynRaise() bool { return f.lenient() || f.f.isPrelude() }
+
+// gemBareRaise reports whether some gem file has a receiverless `raise` with no arguments: only then do gem rescue
+// clauses record $! for it (decision 331).
+func (c *Compiler) gemBareRaise() bool {
+	if c.bareRaise == 0 {
+		c.bareRaise = 1
+		for _, f := range c.userFiles {
+			if c.gemFile(f) && anyNode(f.Root, func(n parser.Node) bool {
+				call, ok := n.(*parser.CallNode)
+				return ok && call.Name == "raise" && call.Receiver == nil && call.Arguments == nil
+			}) {
+				c.bareRaise = 2
+				break
+			}
+		}
+	}
+	return c.bareRaise == 2
+}

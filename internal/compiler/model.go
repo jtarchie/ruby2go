@@ -101,6 +101,7 @@ type Include struct {
 	Mod      *Class
 	Args     []Type
 	fromEach bool // no type args written: they are the includer's each's block parameters (decision 146)
+	latent   bool // a run-time include boot saw (decision 331): its methods are there, include? and ancestors wait for the call
 	ref      constRef
 	args     []rbs.Type
 	srcPos
@@ -512,6 +513,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.checkInstanceBounds()
 	c.checkNumeric()
 	c.buildMetas()
+	c.declareLatentIvars()
 	c.applyAliasNews(ctx)
 	c.checkSpecUses() // before signatures: a bad let name would otherwise surface as an override mismatch
 	for _, cls := range c.classList {

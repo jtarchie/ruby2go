@@ -80,6 +80,9 @@ func (f *fctx) lenientMember(n parser.Node, recv expr, name string, args []parse
 	if !f.lenient() || len(args) != 1 || name != "include?" && name != "member?" && name != "key?" && name != "has_key?" {
 		return expr{}, false
 	}
+	if rc, ok := recv.typ.(TClass); ok && len(rc.Args) > 0 && isOpt(rc.Args[0]) {
+		return expr{}, false // nil is one of its keys (liquid's `LITERALS = { nil => nil, 'nil' => nil, ... }`, decision 331)
+	}
 	var a expr
 	f.probe(func() { a = f.genExpr(args[0], nil) })
 	o, ok := a.typ.(TOpt)

@@ -693,3 +693,69 @@ func (c *Compiler) collectBootAliases(entries []boot.AliasInfo) {
 		})
 	}
 }
+
+// latentIvar is a class object's hidden ivar listing the latent includes its run-time include calls made (decision 331).
+const latentIvar = "@__rb2go_included"
+
+// collectBootIncludes adds each module a run-time include call added during boot (liquid's Strainer.add_filter:
+// `send(:include, filter)`) to its class as a latent include (decision 331): the methods are compiled in, while
+// include? and ancestors report the module only once that class object's include call has run (rbIncludeAtRun).
+// A class body's own `include M` is already there and is skipped.
+func (c *Compiler) collectBootIncludes(entries []boot.IncludeInfo) {
+	if len(entries) == 0 {
+		return
+	}
+	sites := map[string]*Class{} // "path:line" of each anonymous class's Class.new call
+	for path, f := range c.parsed {
+		anyNode(f.Root, func(n parser.Node) bool {
+			if call, ok := n.(*parser.CallNode); ok && c.anonClasses[call] != nil {
+				sites[fmt.Sprintf("%s:%d", path, f.line(call.Location.StartOffset))] = c.anonClasses[call]
+			}
+			return false
+		})
+	}
+	for _, e := range entries {
+		target := c.classes[e.Owner]
+		if e.Site != "" {
+			at := strings.LastIndexByte(e.Site, ':')
+			target = sites[realPath(e.Site[:at])+e.Site[at:]]
+		}
+		mod := c.classes[e.Module]
+		if target == nil || mod == nil || !mod.IsModule || target.IsModule || c.staticallyIncludes(target, mod) {
+			continue
+		}
+		f := c.parsed[realPath(e.File)]
+		if f == nil {
+			continue // an include from outside the closed world (a gem rb2go does not compile)
+		}
+		target.Includes = append(target.Includes, Include{ref: constRef{node: constPathNode(e.Module, parser.Location{}), file: f},
+			srcPos: srcPos{f, e.Line}, latent: true})
+	}
+}
+
+// declareLatentIvars gives each class object with a latent include the ivar its include calls fill (after buildMetas).
+func (c *Compiler) declareLatentIvars() {
+	for _, cls := range c.classList {
+		for _, inc := range cls.Includes {
+			if inc.latent && cls.meta != nil {
+				c.declareIvar(cls.meta, latentIvar, TAny{}, inc.File, inc.Line)
+				break
+			}
+		}
+	}
+}
+
+// staticallyIncludes reports whether cls's own body (or an earlier boot record) includes mod.
+func (c *Compiler) staticallyIncludes(cls *Class, mod *Class) bool {
+	for _, inc := range cls.Includes {
+		if inc.Mod == mod {
+			return true
+		}
+		if inc.ref.node != nil {
+			if k, _ := c.lookupConst(inc.ref.file, inc.ref.node, inc.ref.scope); k == mod {
+				return true
+			}
+		}
+	}
+	return false
+}

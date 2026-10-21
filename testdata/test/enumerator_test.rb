@@ -592,3 +592,31 @@ module EnumeratorTests
     end
   end
 end
+
+module EnumeratorTests
+  class EnumUntypedIncluder
+    include Enumerable
+
+    def initialize(xs)
+      @xs = xs
+    end
+
+    def each
+      @xs.each { |e| yield e }
+    end
+
+    def slices = each_slice(2).to_a
+    def backwards = reverse_each.to_a
+  end
+
+  class EnumBlocklessTwinTest < Minitest::Test
+    def test_blockless_twins_in_an_includer
+      it = EnumUntypedIncluder.new([1, 2, 3])
+      assert_equal [[1, 2], [3]], it.slices
+      assert_equal [3, 2, 1], it.backwards
+      out = [] #: Array[untyped]
+      it.reverse_each { |x| out << x }
+      assert_equal [3, 2, 1], out
+    end
+  end
+end

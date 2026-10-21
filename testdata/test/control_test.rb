@@ -5696,3 +5696,30 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  CONTROL_SQ = /\A'(.*)'\z/m
+  CONTROL_DQ = /\A"(.*)"\z/m
+  CONTROL_INT = /\A(-?\d+)\z/
+
+  class ControlCaseRegexpConstTest < Minitest::Test
+    #: (String) -> (String | Integer | Symbol | nil)
+    def control_parse(markup)
+      case markup
+      when CONTROL_SQ, CONTROL_DQ
+        $1
+      when CONTROL_INT
+        $1.to_i
+      else
+        :var
+      end
+    end
+
+    def test_when_regexp_constant_sets_last_match
+      assert_equal "hi", control_parse(%("hi"))
+      assert_equal "yo", control_parse("'yo'")
+      assert_equal 42, control_parse("42")
+      assert_equal :var, control_parse("x")
+    end
+  end
+end

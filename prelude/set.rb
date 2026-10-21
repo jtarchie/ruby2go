@@ -241,7 +241,9 @@ class Set < Object
   #: [U] () { (E) -> U } -> Set[Set[E]]
   def divide(&block) = Set.new(classify(&block).values)
 
-  #: (Set[E] | Array[E]) -> self
+  # An Array goes to its twin __merge_array (decision 12): a union parameter naming E keeps a method out of dynamic
+  # dispatch (growsTypeParams), and liquid's Strainer merges into a Set held untyped (decision 331).
+  #: (Set[E]) -> self
   def merge(xs)
     xs.each { |x| add(x) }
     self
@@ -254,7 +256,7 @@ class Set < Object
   end
 
   #: (Set[E] | Array[E]) -> Set[E]
-  def |(o) = dup.merge(o)
+  def |(o) = o.is_a?(Array) ? dup.__merge_array(o) : dup.merge(o)
 
   #: (Set[E] | Array[E]) -> Set[E]
   def union(o) = self | o

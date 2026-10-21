@@ -1,0 +1,15 @@
+# The liquid gem ships no signatures; this is what an example's `rbs validate` needs (rb2go compiles the gem itself from a traced run).
+module Liquid
+  class Error < StandardError
+  end
+
+  class UndefinedFilter < Error
+  end
+
+  class Template
+    def self.parse: (String source, ?Hash[Symbol, untyped] options) -> Template
+    def render: (*untyped) -> String
+    def render!: (*untyped) -> String
+    def errors: () -> Array[untyped]
+  end
+end
