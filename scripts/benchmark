@@ -10,6 +10,8 @@
 #   RB2GO=/path/to/rb2go scripts/benchmark
 #   RUNS=9 scripts/benchmark
 #
+# A workload with a `# trace: why` line builds with `rb2go build -trace`, as an example with one does.
+#
 # The numbers in README.md come from this, on one machine; they are a rough
 # ratio, not a benchmark suite (no JIT on either side, wall-clock only).
 
@@ -60,7 +62,8 @@ Dir.mktmpdir("rb2go-bench-out-") do |dir|
   wanted.each do |src|
     name = File.basename(src, ".rb")
     bin = File.join(dir, name)
-    unless system(tool, "build", "-o", bin, src, chdir: ROOT)
+    trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
+    unless system(tool, "build", *trace, "-o", bin, src, chdir: ROOT)
       warn "#{name}: did not build"
       next
     end

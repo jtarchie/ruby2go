@@ -233,13 +233,20 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.016s | 16.7x faster |
-| `Hash` counting, 500k | 0.16s | 0.031s | 5.1x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.025s | 5.9x faster |
-| string build/split, 100k | 0.11s | 0.030s | 3.5x faster |
-| `Math.sin`/`cos`, 200k | 0.09s | 0.007s | 11.6x faster |
-| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.165s | 4.1x faster |
-| total | 1.43s | 0.273s | 5.2x faster |
+| `fib(32)` | 0.30s | 0.019s | 15.8x faster |
+| `Hash` counting, 500k | 0.13s | 0.029s | 4.4x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.17s | 0.036s | 4.8x faster |
+| string build/split, 100k | 0.11s | 0.035s | 3.2x faster |
+| `Math.sin`/`cos`, 200k | 0.09s | 0.009s | 9.6x faster |
+| pairing_heap gem: Dijkstra + heapsort | 0.70s | 0.318s | 2.2x faster |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.49s | 1.509s | 3.1x slower |
+| total | 1.99s | 1.955s | 1.0x |
+
+kramdown is the one workload where MRI wins. Its parser runs on
+StringScanner with patterns RE2 cannot match (lookarounds), so they fall back
+to the regexp2 engine (decision 242), whose adapter converts the text to runes
+for each match; its block parser also leaves loops by `throw`, which rb2go
+unwinds with a Go panic. Both are fixable costs, not limits of compiling.
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one
