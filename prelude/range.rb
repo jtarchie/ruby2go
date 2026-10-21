@@ -180,7 +180,7 @@ class Range < Object
   #: () -> Integer
   def size = %x{
     rbRangeNoBegin(self)
-    b, ok := any(self.b).(Integer)
+    b, ok := rbUnbox(any(self.b)).(Integer)
     if !ok {
       panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(self.b)))))
     }
@@ -192,7 +192,7 @@ class Range < Object
 
   #: () -> Integer
   def count = %x{
-    if b, ok := any(self.b).(Integer); ok && !self.endless && !self.beginless {
+    if b, ok := rbUnbox(any(self.b)).(Integer); ok && !self.endless && !self.beginless {
       return rbRangeIntCount(b, any(self.e).(Integer), self.excl)
     }
     n := Integer(0)
@@ -336,7 +336,7 @@ class Range < Object
   # [start, length] within size n; nil when start is out of bounds, as MRI.
   #: (Integer) -> [Integer, Integer]?
   def __slice(n) = %x{
-    b, ok := any(self.b).(Integer)
+    b, ok := rbUnbox(any(self.b)).(Integer)
     if self.beginless {
       b, ok = 0, true
     }
@@ -345,7 +345,7 @@ class Range < Object
     }
     e := n
     if !self.endless {
-      e = any(self.e).(Integer)
+      e = rbUnbox(any(self.e)).(Integer)
       if e < 0 {
         e += n
       }
@@ -366,7 +366,7 @@ class Range < Object
   # [start, count] for writing the range into an array of size n (`[]=`, `fill`): a negative start counts from the end, nil when still negative (the caller raises RangeError, so its frame is the one MRI shows). Unlike __slice, a start or end past n stands: the array grows.
   #: (Integer) -> [Integer, Integer]?
   def __span(n) = %x{
-    b, ok := any(self.b).(Integer)
+    b, ok := rbUnbox(any(self.b)).(Integer)
     if self.beginless {
       b, ok = 0, true
     }
@@ -381,7 +381,7 @@ class Range < Object
     }
     e := n
     if !self.endless {
-      e = any(self.e).(Integer)
+      e = rbUnbox(any(self.e)).(Integer)
       if e < 0 {
         e += n
       }

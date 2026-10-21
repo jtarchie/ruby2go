@@ -445,7 +445,7 @@ func (c *Compiler) collect(ctx context.Context, f *File) {
 					return
 				}
 				c.scanAnon(ctx, f, n.Value, nil)
-				c.addConst(f, n, n.Name, nil, nil)
+				c.addConst(f, n, n.Name, nil)
 				if readsLocal(n.Value, locals) { // `dir = __dir__ || raise; LIB = Pathname(dir)`: runs where it stands, with them
 					c.consts[n.Name].inMain = true
 					c.addMainStmt(f, n)

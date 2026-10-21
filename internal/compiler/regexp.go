@@ -113,11 +113,13 @@ func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 	switch r := n.(type) {
 	case *parser.RegularExpressionNode:
 		src, closing, ext = file.text(r.ContentLoc), file.text(r.ClosingLoc)[0], r.IsEXTENDED()
-	case *parser.InterpolatedRegularExpressionNode: // the literal parts' groups; an interpolation counts as plain text
+	case *parser.InterpolatedRegularExpressionNode: // the literal parts' groups, and an interpolated Regexp constant's; other interpolations count as plain text
 		var b strings.Builder
 		for _, p := range r.Parts {
 			if s, ok := p.(*parser.StringNode); ok {
 				b.WriteString(file.text(s.ContentLoc))
+			} else if g, ok := f.embeddedConstGroups(file, p); ok {
+				b.WriteString(strings.Repeat("()", g)) // `/(?:\A|\s)(?:#{PAIR}|#{REF})/`: the groups are PAIR's and REF's
 			} else {
 				b.WriteString("x")
 			}
@@ -135,6 +137,22 @@ func (f *fctx) literalGroups(n parser.Node) (int, bool) {
 		return 0, false
 	}
 	return re.NumSubexp(), true
+}
+
+// embeddedConstGroups is the group count of a `#{CONST}` part whose constant is a Regexp literal, read in file's scope.
+func (f *fctx) embeddedConstGroups(file *File, p parser.Node) (int, bool) {
+	e, ok := p.(*parser.EmbeddedStatementsNode)
+	if !ok || e.Statements == nil || len(e.Statements.Body) != 1 {
+		return 0, false
+	}
+	n := e.Statements.Body[0]
+	if _, isConst := n.(*parser.ConstantReadNode); !isConst && !isConstPath(n) {
+		return 0, false
+	}
+	if file != f.f { // a constant's own literal, in another file: its parts resolve there
+		return 0, false
+	}
+	return f.literalGroups(n)
 }
 
 // genStaticRegexp is a literal without interpolation: validated now, compiled once into a package variable.

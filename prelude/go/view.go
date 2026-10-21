@@ -1170,8 +1170,7 @@ func rbViewCore(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 			return rbViewIdx2(s, rbAs[Integer](args[0], "Integer"), rbAs[Integer](args[1], "Integer")), true
 		}
 		rbArity(len(args), 1, 1)
-		if r, ok := args[0].(*Range[Integer]); ok {
-			sl := Range___Slice[Integer](r, n)
+		if sl, ok := rbRangeSlice(args[0], n); ok {
 			if sl == nil {
 				return nil, true
 			}
@@ -1329,13 +1328,12 @@ func rbViewIdxSet(s rbView, args []any) any {
 	n := s._Len()
 	var start, count Integer
 	v := args[len(args)-1]
-	switch r, ok := args[0].(*Range[Integer]); {
+	switch sp, ok := rbRangeSpan(args[0], n); {
 	case len(args) == 3:
 		start, count = rbAs[Integer](args[0], "Integer"), rbAs[Integer](args[1], "Integer")
 	case ok:
-		sp := Range___Span[Integer](r, n)
 		if sp == nil {
-			panic(NewRangeError(Ref(r.Inspect() + " out of range")))
+			panic(NewRangeError(Ref(rbInspect(args[0]) + " out of range")))
 		}
 		start, count = sp.F0, sp.F1
 	default: // one index: the element itself, grown with E's zero value up to it
@@ -1403,4 +1401,26 @@ func rbViewGrep(name string, s rbView, args []any) (any, bool) {
 		return &Array[any]{s: out}, true
 	}
 	return rbViewFrom(s, out), true
+}
+
+// rbRangeSlice is __slice on an Integer Range held untyped, of either instantiation (an end may be nil: Range[Integer?]).
+func rbRangeSlice(a any, n Integer) (*Tuple2[Integer, Integer], bool) {
+	switch r := a.(type) {
+	case *Range[Integer]:
+		return Range___Slice[Integer](r, n), true
+	case *Range[*Integer]:
+		return Range___Slice[*Integer](r, n), true
+	}
+	return nil, false
+}
+
+// rbRangeSpan is __span, as rbRangeSlice.
+func rbRangeSpan(a any, n Integer) (*Tuple2[Integer, Integer], bool) {
+	switch r := a.(type) {
+	case *Range[Integer]:
+		return Range___Span[Integer](r, n), true
+	case *Range[*Integer]:
+		return Range___Span[*Integer](r, n), true
+	}
+	return nil, false
 }

@@ -1993,3 +1993,13 @@ func rbPackYield(xs []any) any {
 	}
 	return &Array[any]{s: slices.Clone(xs)}
 }
+
+// rbSlotShared reports whether r is a container whose `r[i]` is the very object it holds (an Array or a Hash), so a
+// String edit on what it returned is seen through r, as in MRI (decision 334).
+func rbSlotShared(r any) bool {
+	switch rbUnbox(r).(type) {
+	case Array_Any, Hash_Any:
+		return true
+	}
+	return false
+}

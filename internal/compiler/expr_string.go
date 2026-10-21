@@ -153,13 +153,16 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if e, ok := f.freshAppend(n); ok {
 		return e, true
 	}
+	if e, ok := f.ternaryAppend(n); ok {
+		return e, true
+	}
 	if inner, ok := n.Receiver.(*parser.CallNode); ok && n.Name == "<<" && inner.Name == "<<" { // `x << a << b`: x << a, then x << b
 		root := inner
 		for r, ok := root.Receiver.(*parser.CallNode); ok && r.Name == "<<"; r, ok = r.Receiver.(*parser.CallNode) {
 			root = r
 		}
-		lv, ok := root.Receiver.(*parser.LocalVariableReadNode)
-		if !ok {
+		lv := root.Receiver // a local, or (kramdown's `last.value << joiner << result`) a target read again after the write
+		if _, local := lv.(*parser.LocalVariableReadNode); !local && (!f.rereadable(lv) || !f.bangTargetOK(root, lv)) {
 			return expr{}, false
 		}
 		if _, ok := f.genStringBang(inner); !ok {
@@ -180,6 +183,48 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 		return expr{}, false
 	}
 	return f.stringBangOn(n, lv, write)
+}
+
+// ternaryAppend is a gem's `(c ? a : b) << x` as `c ? a << x : b << x`, so each branch's receiver gets its own rule:
+// kramdown's `(cells.empty? ? cells : cells.last) << str` pushes onto the Array or appends to its last String (decision
+// 334).
+func (f *fctx) ternaryAppend(n *parser.CallNode) (expr, bool) {
+	if n.Name != "<<" || !f.lenient() || n.Block != nil || len(callArgs(n)) != 1 {
+		return expr{}, false
+	}
+	pn, ok := n.Receiver.(*parser.ParenthesesNode)
+	if !ok {
+		return expr{}, false
+	}
+	st, ok := pn.Body.(*parser.StatementsNode)
+	if !ok || len(st.Body) != 1 {
+		return expr{}, false
+	}
+	ifn, ok := st.Body[0].(*parser.IfNode)
+	if !ok || ifn.Statements == nil || len(ifn.Statements.Body) != 1 {
+		return expr{}, false
+	}
+	els, ok := ifn.Subsequent.(*parser.ElseNode)
+	if !ok || els.Statements == nil || len(els.Statements.Body) != 1 {
+		return expr{}, false
+	}
+	push := func(recv parser.Node) *parser.StatementsNode {
+		c := *n
+		c.Receiver = recv
+		return &parser.StatementsNode{Location: recv.GetLocation(), Body: []parser.Node{&c}}
+	}
+	e := *els
+	e.Statements = push(els.Statements.Body[0])
+	split := *ifn
+	split.Statements = push(ifn.Statements.Body[0])
+	split.Subsequent = &e
+	return f.genExpr(&split, nil), true
+}
+
+// bangTargetOK reports, without emitting anything, whether a String edit on recv can be written back (stringBangTarget).
+func (f *fctx) bangTargetOK(n parser.Node, recv parser.Node) bool {
+	_, _, ok := f.stringBangTarget(n, recv)
+	return ok
 }
 
 // safeStringBang is `x&.sub!(...)` on a local: the edit when x holds a value, nil otherwise.
@@ -470,7 +515,7 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 					if at, ok := f.elementTarget(src); ok {
 						set := &parser.CallNode{Location: src.Location, Receiver: src.Receiver, Name: "[]=", Arguments: &parser.ArgumentsNode{
 							Location: src.Location, Arguments: []parser.Node{at, &exprNode{Node: t, e: expr{code: v.goName, typ: v.typ}}}}}
-						f.emitExprStmt(src, f.genExpr(set, nil))
+						f.emitSlotWrite(src, set)
 					}
 				}
 			}
@@ -489,7 +534,7 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 			return t, func(e expr) {
 				set := &parser.CallNode{Location: t.Location, Receiver: t.Receiver, Name: "[]=", MessageLoc: t.MessageLoc,
 					Arguments: &parser.ArgumentsNode{Location: t.Location, Arguments: []parser.Node{at, &exprNode{Node: t, e: e}}}}
-				f.emitExprStmt(t, f.genExpr(set, nil))
+				f.emitSlotWrite(t, set)
 			}, true
 		}
 		if f.lenient() && f.attrTarget(t) { // kramdown's `item.value.sub!(re) { ... }`: item.value = item.value.sub(...) (decision 330)
@@ -501,6 +546,20 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 		}
 	}
 	return nil, nil, false
+}
+
+// emitSlotWrite emits set, src's `r[at] = edited`. An untyped r gets it only when it is an Array or a Hash at run time:
+// those hold the String src returned, which MRI's edit changes; a StringScanner's or a String's `[i]` is a new String,
+// which nothing else holds (kramdown's `name = @src[1]; name.downcase!`; decision 334).
+func (f *fctx) emitSlotWrite(src *parser.CallNode, set *parser.CallNode) {
+	if !isAny(stripOpt(f.probeType(src.Receiver, nil))) {
+		f.emitExprStmt(src, f.genExpr(set, nil))
+		return
+	}
+	r := f.genExpr(src.Receiver, nil)
+	f.emit("if rbSlotShared(%s) {", r.code)
+	f.emitExprStmt(src, f.genExpr(set, nil))
+	f.emit("}")
 }
 
 // elementTarget is a gem's `r.last`, `r.first` or `r[i]` (i a literal or a local) on a re-readable r: an Array slot a
@@ -587,6 +646,11 @@ func (f *fctx) freshAppend(n *parser.CallNode) (expr, bool) {
 		acc = f.genExpr(r, str)
 	case *parser.InterpolatedStringNode:
 		acc = f.genExpr(r, str)
+	case *parser.NumberedReferenceReadNode: // `$1 << pad` in a sub! block: each read of $1 is a new String (decision 334)
+		if !isClass(stripOpt(f.probeType(r, nil)), "String") {
+			return expr{}, false
+		}
+		acc = expr{code: f.coerce(r, f.genExpr(r, nil), str), typ: str}
 	default:
 		return expr{}, false
 	}

@@ -165,12 +165,6 @@ def f(v)
   x = v or return 0
   x
 end
--- and_next.rb --
-# error: main.rb:3: unsupported syntax: NextNode
-[1, 2].each do |v|
-  v.odd? and next
-  puts v
-end
 -- raise_untyped.rb --
 # error: main.rb:3: raise needs an exception class, a String, or an exception object (got untyped)
 e = ArgumentError.new("x") #: untyped

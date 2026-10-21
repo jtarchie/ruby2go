@@ -9,7 +9,8 @@ import (
 )
 
 // addConst records `NAME = value` declared in scope.
-func (c *Compiler) addConst(f *File, n parser.Node, name string, value parser.Node, scope []*Class) {
+func (c *Compiler) addConst(f *File, n parser.Node, name string, scope []*Class) {
+	var value parser.Node
 	if w, ok := n.(*parser.ConstantWriteNode); ok {
 		value = w.Value
 	}
@@ -76,7 +77,7 @@ func (c *Compiler) collectBodyConst(ctx context.Context, f *File, n *parser.Cons
 		return
 	}
 	c.scanAnon(ctx, f, n.Value, scope)
-	c.addConst(f, n, n.Name, nil, scope)
+	c.addConst(f, n, n.Name, scope)
 	if c.bodyGroup != nil && readsLocal(n.Value, locals) {
 		c.consts[qualify(scope, n.Name)].inBody = true
 		c.addClassStmt(f, n, scope)

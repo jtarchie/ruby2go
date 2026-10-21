@@ -456,7 +456,7 @@ func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.Singleto
 		case *parser.AliasMethodNode:
 			cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, scope: scope, file: f})
 		case *parser.ConstantWriteNode: // ponytail: the owner's constant, not the singleton class's; lexical lookup from its defs is the same
-			c.addConst(f, s, s.Name, nil, scope)
+			c.addConst(f, s, s.Name, scope)
 		default:
 			c.errorf(f, s, "unsupported node in `class << self`: %s", nodeType(s))
 		}

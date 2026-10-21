@@ -78,12 +78,43 @@ func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body pa
 				// spliced in place, so the branch shares the body's visibility and sees the constants before it
 				queue = append(slices.Clip(c.classBodyBranch(f, n, scope)), queue...)
 			default:
+				c.declareBeginConsts(f, n, scope, loadTime)
 				c.classBodyIvar(f, cls, n, scope)
 				c.classBodyNode(ctx, f, n, scope, loadTime)
 			}
 		})
 	}
 	c.collectIvarDecls(f, cls, body, scope)
+}
+
+// declareBeginConsts declares the constants a class-body begin assigns, in its body, rescue or else clauses, where it
+// runs: kramdown's `begin; require 'rouge'; AVAILABLE = true; rescue LoadError; AVAILABLE = false; end`, which MRI's
+// `const_defined?(:AVAILABLE)` then sees (decision 334). The first assignment gives the type.
+func (c *Compiler) declareBeginConsts(f *File, s parser.Node, scope []*Class, loadTime bool) {
+	n, ok := s.(*parser.BeginNode)
+	if !ok || !loadTime {
+		return
+	}
+	clauses := []*parser.StatementsNode{n.Statements}
+	for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
+		clauses = append(clauses, rc.Statements)
+	}
+	if n.ElseClause != nil {
+		clauses = append(clauses, n.ElseClause.Statements)
+	}
+	for _, st := range clauses {
+		if st == nil {
+			continue
+		}
+		for _, s := range st.Body {
+			w, ok := s.(*parser.ConstantWriteNode)
+			if !ok || c.consts[qualify(scope, w.Name)] != nil {
+				continue
+			}
+			c.addConst(f, w, w.Name, scope)
+			c.consts[qualify(scope, w.Name)].inBody = true
+		}
+	}
 }
 
 // classBodyBranch is the statements a class-body if/unless runs: its folded branch (decision 167), or none for

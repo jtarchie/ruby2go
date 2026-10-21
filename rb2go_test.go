@@ -1297,3 +1297,72 @@ func TestVendoredMirror(t *testing.T) {
 		}
 	}
 }
+
+// gemCorpusKnown are the kramdown testcases whose HTML differs from MRI's, and why; a case that starts to match must
+// leave the list (decision 334).
+var gemCorpusKnown = map[string]string{
+	"/block/14_table/escaping.text":   "`x and return` on a method rb2go types void (its last statement is a multiple assignment)",
+	"/span/05_html/normal.text":       "`x and return` on a method rb2go types void (its last statement is a multiple assignment)",
+	"/encoding.text":                  "byte indexing after force_encoding('ASCII-8BIT') on valid UTF-8: Strings carry no encoding (decision 136)",
+	"/span/05_html/across_lines.text": "`h.each_value { |v| v.gsub!(...) }` edits a copy (decision 136)",
+}
+
+// TestGemCorpus runs a gem's own testcases through a program compiled from a traced run over all of them and compares
+// each case's output with MRI's (decision 334): one document per feature, as examples and benchmarks give, misses most
+// of a gem's paths.
+func TestGemCorpus(t *testing.T) {
+	requireRuby4(t)
+	gemDir, err := exec.CommandContext(t.Context(), "ruby", "-e", `print Gem::Specification.find_by_name("kramdown").gem_dir`).Output()
+	if err != nil {
+		t.Skip("kramdown is not installed")
+	}
+	cases := filepath.Join(string(gemDir), "test", "testcases")
+	main, err := filepath.Abs(filepath.Join("testdata", "corpus", "kramdown.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, err := CompileTrace(t.Context(), main, [][]string{{cases}}, nil)
+	if err != nil {
+		t.Fatalf("rb2go: %v", err)
+	}
+	gen := t.TempDir()
+	writeModule(t, gen)
+	werr := os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+	if werr != nil {
+		t.Fatal(werr)
+	}
+	bin := goBuild(t, gen, "")
+	mri, err := exec.CommandContext(t.Context(), "ruby", main, cases).Output() //nolint:gosec // our own paths
+	if err != nil {
+		t.Fatalf("ruby: %v", err)
+	}
+	got, err := exec.CommandContext(t.Context(), bin, cases).Output() //nolint:gosec // the binary just built
+	if err != nil {
+		t.Fatalf("%s: %v", bin, err)
+	}
+	split := func(out []byte) map[string]string {
+		m := map[string]string{}
+		var name string
+		for _, line := range strings.SplitAfter(string(out), "\n") {
+			if rest, ok := strings.CutPrefix(line, "== "); ok {
+				name = strings.TrimSpace(rest)
+				continue
+			}
+			m[name] += line
+		}
+		return m
+	}
+	want, have := split(mri), split(got)
+	if len(want) < 100 {
+		t.Fatalf("MRI converted only %d testcases", len(want))
+	}
+	for name, w := range want {
+		reason, known := gemCorpusKnown[name]
+		switch {
+		case have[name] != w && !known:
+			t.Errorf("%s differs from MRI:\nruby:  %q\nrb2go: %q", name, w, have[name])
+		case have[name] == w && known:
+			t.Errorf("%s now matches MRI: remove it from gemCorpusKnown (%s)", name, reason)
+		}
+	}
+}

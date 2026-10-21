@@ -616,9 +616,18 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 			return
 		default:
 			f.genStmt(s, tail{})
+			if f.endsUnreachable() { // `require 'rouge'` when rouge is not compiled in: LoadError, so `AVAILABLE = true` after it never runs
+				return
+			}
 			f.applyNarrow(f.guardNarrowing(s))
 		}
 	}
+}
+
+// endsUnreachable reports whether the code just emitted ends in a call that never returns (expr.noreturn's marker), at
+// this level: a statement after it is dead, and go vet rejects it.
+func (f *fctx) endsUnreachable() bool {
+	return strings.HasSuffix(f.buf.String(), "\npanic(\"rb2go: unreachable\")\n")
 }
 
 // emptyTail handles an empty body in value position: its value is nil.
@@ -637,7 +646,7 @@ func (f *fctx) emptyTail(n parser.Node, t tail) {
 }
 
 func (f *fctx) genStmt(n parser.Node, t tail) {
-	if f.genStandIn(n) || f.noopStmt(n, t) {
+	if f.genStandIn(n) || f.noopStmt(n, t) || f.genLogicJump(n, t) {
 		return
 	}
 	f.lineOf(n)
@@ -1161,7 +1170,10 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 		return "bool(" + e.code + ")"
 	case isOpt(e.typ):
 		return optTruthy(e.code, e.typ)
-	case isNil(e.typ):
+	case isNil(e.typ) || isVoid(e.typ):
+		if !e.lit && e.code != "" && e.code != "nil" { // `puts "x" if log_it` with log_it typed nil: the call still runs (decision 334)
+			f.emitExprStmt(n, e)
+		}
 		return "false"
 	case isAny(e.typ), unionFalsy(e.typ):
 		return "rbTruthy(" + e.code + ")"
@@ -4014,7 +4026,7 @@ func (f *fctx) genStandIn(n parser.Node) bool {
 	case *classStmt:
 		f.genClassStmt(n)
 	case *parser.ConstantWriteNode:
-		if k := f.c.consts[qualify(f.lex, n.Name)]; !f.bodyUnit && (k == nil || !k.inMain) {
+		if k := f.c.consts[qualify(f.lex, n.Name)]; !f.bodyUnit && (k == nil || !k.inMain && !k.inBody) { // inBody: also inside a body's begin (decision 334)
 			return false
 		}
 		f.genBodyConst(n)
@@ -4395,4 +4407,38 @@ func isFuncOrOptFunc(t Type) bool {
 func (f *fctx) noopStmt(n parser.Node, t tail) bool {
 	call, ok := n.(*parser.CallNode)
 	return ok && f.c.dmSites[call] && f.c.smSites[call] == nil && (t.kind == tailNone || isVoid(t.typ)) // an object's singleton method still records (decision 324)
+}
+
+// genLogicJump compiles a statement `x and return v` as `return v if x` (`or`: unless; kramdown's table parser,
+// decision 334). A void x's value is lost (`a, b = c, d` as a method's last statement), so that stays unsupported.
+func (f *fctx) genLogicJump(n parser.Node, t tail) bool {
+	l, r, isOr, ok := jumpLogic(n)
+	if !ok || isVoid(f.probeType(l, nil)) {
+		return false
+	}
+	f.lineOf(n)
+	f.genIf(n, l, &parser.StatementsNode{Location: r.GetLocation(), Body: []parser.Node{r}}, nil, isOr, t)
+	return true
+}
+
+// jumpLogic splits a statement `l and j` / `l or j` whose right side j leaves the method or loop (return, break,
+// next): its condition, its jump, and whether the jump is taken when l is falsy.
+func jumpLogic(n parser.Node) (l, j parser.Node, isOr, ok bool) {
+	switch n := n.(type) {
+	case *parser.AndNode:
+		l, j = n.Left, n.Right
+	case *parser.OrNode:
+		l, j, isOr = n.Left, n.Right, true
+	default:
+		return nil, nil, false, false
+	}
+	switch l.(type) {
+	case *parser.LocalVariableWriteNode, *parser.InstanceVariableWriteNode: // `x = v or return`: x would also need narrowing after it
+		return nil, nil, false, false
+	}
+	switch j.(type) {
+	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
+		return l, j, isOr, true
+	}
+	return nil, nil, false, false
 }

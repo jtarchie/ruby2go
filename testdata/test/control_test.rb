@@ -5723,3 +5723,40 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  # `x and return v` / `x or next` as statements: the jump when x is truthy (falsy) (decision 334).
+  class ControlLogicJumpTest < Minitest::Test
+    #: (Integer) -> Symbol
+    def control_sign(x)
+      x.positive? and return :pos
+      x.zero? or return :neg
+      :zero
+    end
+
+    #: (Array[Integer]) -> nil
+    def control_nil_log(calls)
+      calls << 1
+      nil
+    end
+
+    def test_nil_condition_still_runs
+      calls = [] #: Array[Integer]
+      hit = control_nil_log(calls) ? 1 : 0
+      control_nil_log(calls) and calls << 99
+      assert_equal [[1, 1], 0], [calls, hit]
+    end
+
+    def test_and_or_jumps
+      assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
+      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i| i.even? and next i * 10
+                                                       i }
+      seen = [] #: Array[Integer]
+      [1, 2, 3].each do |v|
+        v.odd? and next
+        seen << v
+      end
+      assert_equal [2], seen
+    end
+  end
+end
