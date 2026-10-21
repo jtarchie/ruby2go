@@ -1,0 +1,61 @@
+# Vendored RBS for kramdown 2.5 (docs/design.md decisions 160, 333): the gem ships none, and untyped elements made
+# every `el.children`, `el.type` and `el.attr` a dynamic call. Only what holds for every caller under MRI.
+module Kramdown
+  class Element
+    @type: Symbol
+    @value: untyped
+    @attr: Hash[String, untyped]?
+    @options: Hash[Symbol, untyped]?
+    @children: Array[untyped] # update_tree maps children to Arrays, then flattens them
+    attr_accessor type: Symbol
+    attr_accessor value: untyped
+    attr_accessor children: Array[untyped]
+    def initialize: (Symbol type, ?untyped value, ?Hash[String, untyped]? attr, ?Hash[Symbol, untyped]? options) -> void
+    def attr: () -> Hash[String, untyped]
+    def options: () -> Hash[Symbol, untyped]
+    def self.category: (Kramdown::Element el) -> Symbol?
+    def block?: () -> bool
+    def span?: () -> bool
+  end
+
+  module Converter
+    class Html < Base
+      def convert: (Kramdown::Element el, ?Integer indent) -> String
+      def inner: (Kramdown::Element el, Integer indent) -> String
+      # name is a String or an element type (Symbol); attr an element's String-keyed Hash or a Symbol-keyed literal (footnote_content)
+      def format_as_span_html: (untyped name, untyped attr, String body) -> String
+      def format_as_block_html: (untyped name, untyped attr, String body, Integer indent) -> String
+      def format_as_indented_block_html: (untyped name, untyped attr, String body, Integer indent) -> String
+      def convert_blank: (Kramdown::Element el, Integer indent) -> String
+      def convert_text: (Kramdown::Element el, Integer indent) -> String
+      def convert_p: (Kramdown::Element el, Integer indent) -> String
+      def convert_standalone_image: (Kramdown::Element el, Integer indent) -> String
+      def convert_codeblock: (Kramdown::Element el, Integer indent) -> String
+      def convert_blockquote: (Kramdown::Element el, Integer indent) -> String
+      def convert_header: (Kramdown::Element el, Integer indent) -> String
+      def convert_hr: (Kramdown::Element el, Integer indent) -> String
+      def convert_ul: (Kramdown::Element el, Integer indent) -> String
+      def convert_dl: (Kramdown::Element el, Integer indent) -> String
+      def convert_li: (Kramdown::Element el, Integer indent) -> String
+      def convert_dt: (Kramdown::Element el, Integer indent) -> String
+      def convert_html_element: (Kramdown::Element el, Integer indent) -> String
+      def convert_xml_comment: (Kramdown::Element el, Integer indent) -> String
+      def convert_table: (Kramdown::Element el, Integer indent) -> String
+      def convert_td: (Kramdown::Element el, Integer indent) -> String
+      def convert_comment: (Kramdown::Element el, Integer indent) -> String
+      def convert_br: (Kramdown::Element el, Integer indent) -> String
+      def convert_a: (Kramdown::Element el, Integer indent) -> String
+      def convert_img: (Kramdown::Element el, Integer indent) -> String
+      def convert_codespan: (Kramdown::Element el, Integer indent) -> String
+      def convert_footnote: (Kramdown::Element el, Integer indent) -> String
+      def convert_raw: (Kramdown::Element el, Integer indent) -> String
+      def convert_em: (Kramdown::Element el, Integer indent) -> String
+      def convert_entity: (Kramdown::Element el, Integer indent) -> String
+      def convert_typographic_sym: (Kramdown::Element el, Integer indent) -> String
+      def convert_smart_quote: (Kramdown::Element el, Integer indent) -> String
+      def convert_math: (Kramdown::Element el, Integer indent) -> String
+      def convert_abbreviation: (Kramdown::Element el, Integer indent) -> String
+      def convert_root: (Kramdown::Element el, Integer indent) -> String
+    end
+  end
+end
