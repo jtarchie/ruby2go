@@ -2261,3 +2261,17 @@ module HashTests
   class HashToHSub < Hash
   end
 end
+
+module HashTests
+  class HashDefaultProcSetTest < Minitest::Test
+    def test_default_proc_assign
+      h = {} #: Hash[String, Integer]
+      h.default_proc = proc { |hh, k| hh[k] = k.size }
+      assert_equal 3, h["abc"]
+      assert_equal({ "abc" => 3 }, h)
+      h.default_proc = nil
+      assert_nil h["zz"]
+      assert_nil h.default_proc
+    end
+  end
+end

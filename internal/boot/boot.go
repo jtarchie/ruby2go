@@ -30,6 +30,7 @@ type Manifest struct {
 	LoadPath       []string                `json:"load_path"`       // $LOAD_PATH as boot left it: what `$LOAD_PATH` reads in the compiled program (decision 301)
 	Classes        []ClassInfo             `json:"classes"`
 	DefineMethods  []MethodInfo            `json:"define_methods"`
+	Aliases        []AliasInfo             `json:"aliases"` // each alias_method boot ran (decision 330)
 	Evals          []EvalInfo              `json:"evals"`
 	Autoloads      []AutoloadInfo          `json:"autoloads"`
 	ClassState     []ClassStateInfo        `json:"class_state"`
@@ -37,6 +38,16 @@ type Manifest struct {
 	ConstClasses   map[string]string       `json:"const_classes"` // a constant naming a class under another name (decision 203)
 	Delegators     map[string][]string     `json:"delegators"`    // def_delegators' method names by "path:line" (decision 204)
 	Structs        map[string][]StructProp `json:"structs"`       // each T::Struct's props after load (decision 241)
+}
+
+// AliasInfo is one alias_method boot ran: owner's new name for its method old, called at file:line.
+type AliasInfo struct {
+	Owner     string `json:"owner"`
+	Singleton bool   `json:"singleton"`
+	Name      string `json:"name"`
+	Old       string `json:"old"`
+	File      string `json:"file"`
+	Line      int    `json:"line"`
 }
 
 // StructProp is one T::Struct prop as MRI holds it: its Sorbet type's text, and its default's literal source if it has a

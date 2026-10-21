@@ -158,6 +158,15 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	if r, ok := n.(*parser.ConstantReadNode); ok && r.Name == "DATA" && f.f.data != nil {
 		return f.genData()
 	}
+	if p, ok := n.(*parser.ConstantPathNode); ok && p.Parent != nil && f.lenient() {
+		switch p.Parent.(type) {
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+		default: // `self.class::PARAGRAPH_END` (kramdown): the run-time class's constant, as const_get finds it (decision 330)
+			sym := &parser.SymbolNode{Unescaped: parser.RubyString{Value: *p.Name}, Location: p.Location}
+			return f.genExpr(&parser.CallNode{Location: p.Location, Receiver: p.Parent, Name: "const_get",
+				Arguments: &parser.ArgumentsNode{Location: p.Location, Arguments: []parser.Node{sym}}}, nil)
+		}
+	}
 	if f.lenient() { // gem code: MRI raises NameError where the read runs, not when the method loads (decision 218)
 		return expr{code: fmt.Sprintf("rbConstRead[any](false, nil, %q)", f.constMissing(n)), typ: TAny{}}
 	}

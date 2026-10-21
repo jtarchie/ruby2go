@@ -208,7 +208,7 @@ func (f *fctx) evalProcArg(n *parser.CallNode, b *parser.BlockArgumentNode, recv
 		e := f.genExpr(a, pt.Params[i])
 		codes = append(codes, f.coerce(a, e, pt.Params[i]))
 	}
-	return expr{code: "(*" + p.code + ")(" + strings.Join(codes, ", ") + ")", typ: pt.Ret}
+	return expr{code: derefCode(p.code) + "(" + strings.Join(codes, ", ") + ")", typ: pt.Ret}
 }
 
 // gemStringEval is a gem's run-time string eval: it fails only if it runs, as a ScriptError a loader can rescue
@@ -291,7 +291,7 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 		if !ok {
 			spread = "[]any{" + strings.Join(f.anyArgs(args[last:]), ", ") + "}"
 		}
-		return expr{code: "(*" + recv.code + ")(" + strings.Join(append(codes, spread+"..."), ", ") + ")", typ: t.Ret}
+		return expr{code: derefCode(recv.code) + "(" + strings.Join(append(codes, spread+"..."), ", ") + ")", typ: t.Ret}
 	}
 	switch {
 	case t.Rest && len(args) < last:
@@ -327,7 +327,7 @@ func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node)
 		}
 		f.errorf(n, "a Proc whose self is rebound by instance_eval cannot be called with call/./[]: it takes no lexical self (decision 164)")
 	}
-	return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
+	return expr{code: derefCode(recv.code) + "(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
 }
 
 // procCompose is a Proc's >> or <<: a ref'd closure calling one Proc then the
@@ -408,7 +408,7 @@ func (f *fctx) procInvokeLoose(recv expr, t TFunc, args []parser.Node) expr {
 	for i, p := range t.Params {
 		codes[i] = fmt.Sprintf("rbAs[%s](rbAt(%s, %d), %q)", f.c.goType(p), all, i, p.String())
 	}
-	return expr{code: "(*" + recv.code + ")(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
+	return expr{code: derefCode(recv.code) + "(" + strings.Join(codes, ", ") + ")", typ: t.Ret}
 }
 
 // procLiteral: `-> { }`, `proc { }`, `lambda { }`.
@@ -442,4 +442,13 @@ func adoptBind(ann, val Type) Type {
 		return o
 	}
 	return af
+}
+
+// derefCode is `(*p)` for a Proc pointer p, and x itself for `(&x)`: a func just boxed as a Proc, whose `(*(&x))`
+// staticcheck's SA4001 rejects.
+func derefCode(p string) string {
+	if inner, ok := strings.CutPrefix(p, "(&"); ok && strings.HasSuffix(inner, ")") && balancedParens(inner[:len(inner)-1]) {
+		return inner[:len(inner)-1]
+	}
+	return "(*" + p + ")"
 }

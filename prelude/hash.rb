@@ -156,6 +156,31 @@ class Hash < Object
     return self.defProc
   }
 
+  # A Proc held untyped (a gem's lambda) or another Hash's default_proc; clears the default value, as MRI does.
+  #: (untyped) -> untyped
+  def default_proc=(pr)
+    %x{
+    self.rbCheckFrozen()
+    var zero V
+    self.hasDef, self.defVal = false, zero
+    if pr == nil {
+      self.defProc = nil
+      return nil
+    }
+    if fn, ok := pr.(func(*Hash[K, V], K) V); ok {
+      self.defProc = fn
+      return pr
+    }
+    if !rbIsProc(pr) {
+      panic(NewTypeError(Ref(String("wrong default_proc type " + rbClassName(pr) + " (expected Proc)"))))
+    }
+    self.defProc = func(owner *Hash[K, V], k K) V {
+      r, _ := rbDynProcCall(pr, []any{owner, k})
+      return rbAs[V](r, "value")
+    }
+    return pr}
+  end
+
   #: (K, V) -> V
   def []=(k, v)
     %x{

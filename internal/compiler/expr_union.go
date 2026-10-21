@@ -39,6 +39,10 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		if e, ok := f.nilClassCall(n, recv, name, args); ok {
 			return e
 		}
+	case "!~": // Kernel#!~ is !(x =~ y), so nil !~ y is true (kramdown's `@src.pre_match[-1, 1] !~ /\s/` at the start)
+		if e, ok := f.nilClassCall(n, recv, "=~", args); ok {
+			return expr{code: "Boolean(!(" + optTruthy(e.code, e.typ) + "))", typ: f.cls("Boolean")}
+		}
 	case "freeze", "frozen?", "dup", "clone": // nil's own: frozen already, its dup/clone itself (Homebrew's Resource#freeze, Downloadable#initialize_dup)
 		if len(args) == 0 && block == nil {
 			return f.nilFreeze(n, recv, name)

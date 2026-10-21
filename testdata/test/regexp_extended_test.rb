@@ -86,3 +86,23 @@ module RegexpTests
     end
   end
 end
+
+module RegexpTests
+  class RegexpPosixPropertyTest < Minitest::Test
+    def test_posix_named_properties
+      assert_equal "ab_1", "ab_1 é"[/\p{Word}+/]
+      assert_equal "é", "ab_1 é"[/\p{Word}\z/]
+      assert_equal 2, "ab!" =~ /\P{Word}/
+      assert_equal 0, "x y" =~ /[\p{Word}]\s[\p{^Word}y]/
+      assert_equal 0, "Ab" =~ /\p{Upper}\p{lower}/
+      assert_equal %w[a b], "a b".scan(/\p{Alpha}/)
+    end
+
+    def test_nil_not_match
+      s = ["ab", nil][1]
+      assert_equal true, s !~ /b/
+      t = ["ab", nil][0]
+      assert_equal false, t !~ /b/
+    end
+  end
+end

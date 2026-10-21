@@ -181,7 +181,10 @@ whole program at compile time rather than looked up by reflection.
   `rackup` gem's WEBrick handler serves a Rack app, and the unmodified `cuba`
   gem on `rack` serves routes with captures, query parameters, POST forms and
   404s
-  ([example 116](examples/116_cuba_web/main.rb)).
+  ([example 116](examples/116_cuba_web/main.rb)), and the unmodified `kramdown`
+  gem turns Markdown (lists, tables, footnotes, code blocks, inline HTML) into
+  HTML, compiled with `rb2go build -trace` because it requires its converters
+  by computed name ([example 123](examples/123_kramdown/main.rb)).
 
 [`examples/`](examples/) has one program per feature, from
 [inheritance](examples/01_inheritance/main.rb) to a

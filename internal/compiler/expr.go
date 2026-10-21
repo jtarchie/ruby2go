@@ -255,6 +255,7 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 			exp = v.typ
 		}
 	}
+	exp = f.selfProcDecl(n, ann, exp)
 	tmpl := f.openTemplate(n.Value)
 	empty := ann == nil && (isEmptyLit(n.Value) || tmpl != nil)
 	if exp == nil && empty {
@@ -950,4 +951,32 @@ func (f *fctx) enumBlock(m *Method, elem string) string {
 		return fmt.Sprintf("func(x ...%s) %s { y(%s); return *new(%s) }", elem, r, pack, r)
 	}
 	return fmt.Sprintf("func(x %s) %s { y(x); return *new(%s) }", elem, r, r)
+}
+
+// selfCallingProc is `x = lambda { ... x ... }` (or proc, or ->): a literal block reading the local it is assigned to.
+func selfCallingProc(n *parser.LocalVariableWriteNode) bool {
+	var body parser.Node
+	switch v := n.Value.(type) {
+	case *parser.LambdaNode:
+		body = v.Body
+	case *parser.CallNode:
+		if blk, ok := v.Block.(*parser.BlockNode); ok && v.Receiver == nil && (v.Name == "lambda" || v.Name == "proc") {
+			body = blk.Body
+		}
+	}
+	return body != nil && anyNode(body, func(x parser.Node) bool {
+		r, ok := x.(*parser.LocalVariableReadNode)
+		return ok && r.Name == n.Name && r.Depth > 0
+	})
+}
+
+// selfProcDecl declares, untyped, a gem's local assigned a literal block that reads it (kramdown's `append_text =
+// lambda do |child| ... append_text.call(c) ... end`): Go must declare it first, and its call then goes through the
+// Proc dispatcher (decision 330). exp otherwise.
+func (f *fctx) selfProcDecl(n *parser.LocalVariableWriteNode, ann, exp Type) Type {
+	if exp != nil || ann != nil || !f.lenient() || !selfCallingProc(n) {
+		return exp
+	}
+	f.assignLocal(n, n.Name, expr{code: "nil", typ: TNil{}}, TAny{})
+	return TAny{}
 }

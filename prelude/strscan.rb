@@ -12,6 +12,10 @@ class StringScanner < Object
   #: (String) -> StringScanner
   def self.new(s) = %x{ return &StringScanner{str: string(s)} }
 
+  # What a subclass's `super(string)` reaches (kramdown's Utils::StringScanner); StringScanner.new itself skips it.
+  #: (String) -> void
+  def initialize(s) = %x{ self.str = string(s) }
+
   #: () -> String
   def string = %x{ String(self.str) }
 
@@ -166,15 +170,34 @@ class StringScanner < Object
     return Ref(String(self.str[self.mend:]))
   }
 
-  #: (Integer) -> String?
-  def [](i) = %x{
-    if i < 0 {
-      i += Integer(len(self.groups))
+  # A group by index, or by name (kramdown's `@src["contents"]`): an unknown name raises IndexError, as MRI.
+  #: (Integer | String | Symbol) -> String?
+  def [](key) = %x{
+    var name string
+    switch k := any(key).(type) {
+    case Integer:
+      i := int(k)
+      if i < 0 {
+        i += len(self.groups)
+      }
+      if i < 0 || i >= len(self.groups) {
+        return nil
+      }
+      return self.groups[i]
+    case String:
+      name = string(k)
+    case Symbol:
+      name = string(k)
     }
-    if i < 0 || int(i) >= len(self.groups) {
+    if self.groups == nil {
       return nil
     }
-    return self.groups[i]
+    for i, n := range self.names {
+      if n == name {
+        return self.groups[i]
+      }
+    }
+    panic(NewIndexError(Ref(String("undefined group name reference: " + name))))
   }
 
   #: () -> Array[String?]?

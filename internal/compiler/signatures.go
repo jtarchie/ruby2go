@@ -238,6 +238,12 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 			m.pendingIdx = map[int]pendingParam{}
 		}
 		m.pendingIdx[len(ps)] = pendingParam{key: paramKey(m, name), name: name}
+		if c.gemFile(m.File) && onlyInterpolated(m.Node.Body, name) {
+			if c.interpOnly == nil {
+				c.interpOnly = map[pendingKey]bool{}
+			}
+			c.interpOnly[paramKey(m, name)] = true
+		}
 		return "untyped"
 	}
 	for i, n := range names {

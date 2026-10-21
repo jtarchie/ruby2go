@@ -5679,3 +5679,20 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  class ControlYieldValueTest < Minitest::Test
+    def control_yield_found(flag)
+      found = nil
+      found = (block_given? ? yield : true) if flag
+      found
+    end
+
+    def test_yield_value_in_ternary
+      assert_equal true, control_yield_found(true) { 1 > 0 }
+      assert_equal true, control_yield_found(true)
+      assert_nil control_yield_found(false) { false }
+      assert_equal false, control_yield_found(true) { 1 > 2 }
+    end
+  end
+end

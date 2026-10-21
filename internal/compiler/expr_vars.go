@@ -14,6 +14,21 @@ func (f *fctx) includerIvar(name string) bool {
 	return f.owner != nil && f.owner.IsModule && f.lenient() && f.c.findIvar(f.owner, name) == nil && f.c.includerClassWrites(f.owner, name)
 }
 
+// descendantIvar is a gem class's read of an ivar it never has but a subclass does, itself or through a module it
+// includes: kramdown's Parser::Base#add_text(text, tree = @tree), where Parser::Kramdown gets @tree from Html::Parser.
+// Read by name, nil on an object without it, as MRI's (decision 330).
+func (f *fctx) descendantIvar(name string) bool {
+	if f.owner == nil || f.owner.IsModule || !f.owner.isStruct() || !f.lenient() || f.c.findIvar(f.owner, name) != nil {
+		return false
+	}
+	for _, k := range f.c.classList {
+		if k != f.owner && !k.IsModule && k.isStruct() && k.isSubclassOf(f.owner) && f.c.findIvar(k, name) != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // genIvarWrite is an @x assignment: the value converted to the ivar's type, declaring it during discovery.
 func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	if f.includerIvar(n.Name) {
@@ -63,7 +78,7 @@ func (f *fctx) genIvarRead(n *parser.InstanceVariableReadNode) expr {
 	if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed (decision 148)
 		return expr{code: v.goName, typ: v.typ}
 	}
-	if f.includerIvar(n.Name) {
+	if f.includerIvar(n.Name) || !f.discover && f.descendantIvar(n.Name) {
 		return expr{code: "rbIvarGet(" + f.selfCode + ", Symbol(" + strconv.Quote(n.Name) + "))", typ: TAny{}}
 	}
 	if f.readsUnassigned(n.Name) {
@@ -216,6 +231,7 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		return iv
 	}
 	iv := f.c.findIvar(f.owner, name)
+	f.nilableOnUntyped(iv, assigned)
 	if iv == nil && f.owner.IsModule && f.lenient() { // gem code: an undeclared module ivar is untyped (decision 172)
 		iv = f.c.declareIvar(f.owner, name, TAny{}, f.f, f.f.line(n.GetLocation().StartOffset))
 	}
@@ -461,4 +477,18 @@ func (f *fctx) unionToAnn(n parser.Node, val expr, ann Type) expr {
 		return expr{code: f.coerce(n, val, ann), typ: ann}
 	}
 	return val
+}
+
+// byValueType is a type Go holds by value, with no nil of its own: a non-struct, immutable class (Symbol, String, Integer).
+func byValueType(t Type) bool {
+	cl, ok := t.(TClass)
+	return ok && !cl.C.isStruct() && !cl.C.mutable() && !cl.C.IsModule
+}
+
+// nilableOnUntyped makes a gem ivar of a value type nilable when discovery assigns it an untyped value, which may be nil
+// (kramdown's `@tree, @text_type = @stack.pop`): a Symbol field cannot hold it (decision 330).
+func (f *fctx) nilableOnUntyped(iv *Ivar, assigned Type) {
+	if iv != nil && f.discover && f.lenient() && isAny(assigned) && byValueType(iv.Type) {
+		iv.Type = optOf(iv.Type)
+	}
 }

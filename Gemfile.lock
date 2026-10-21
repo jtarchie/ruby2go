@@ -5,6 +5,8 @@ GEM
     cuba (4.0.3)
       rack (>= 3.0.0)
       rack-session (>= 2.0.0)
+    kramdown (2.5.2)
+      rexml (>= 3.4.4)
     logger (1.7.0)
     pairing_heap (3.1.2)
     prism (1.9.0)
@@ -21,6 +23,7 @@ GEM
     rbs-inline (0.14.0)
       prism (>= 0.29)
       rbs (~> 4.0)
+    rexml (3.4.4)
     sorbet-runtime (0.6.13544)
     sqlite3 (2.10.1-arm64-darwin)
     sqlite3 (2.10.1-x86_64-darwin)
@@ -38,6 +41,7 @@ PLATFORMS
 
 DEPENDENCIES
   cuba (~> 4.0)
+  kramdown (~> 2.5)
   pairing_heap (~> 3.1)
   rack (~> 3.2, >= 3.2.7)
   rackup (~> 2.3)
@@ -51,6 +55,7 @@ DEPENDENCIES
 CHECKSUMS
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
   cuba (4.0.3) sha256=c67e3bc476719518cfbc5002273a8a9480a9f86a375ab0ce5c95aacfc7e24589
+  kramdown (2.5.2) sha256=1ba542204c66b6f9111ff00dcc26075b95b220b07f2905d8261740c82f7f02fa
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   pairing_heap (3.1.2) sha256=b78986e392cf9d6d67c51d434289bcc78656ce6254d637c04ee35b185ebf015b
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
@@ -59,6 +64,7 @@ CHECKSUMS
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
   rbs (4.2.0) sha256=51f7b886dcc05bc09e10b901daa6a81829f6adc03101d6ca9ea4aac6103e0674
   rbs-inline (0.14.0) sha256=eaf47b46690d63acddab1f6804c9cc205a4bc78e637cfc421a0b1239874ef51c
+  rexml (3.4.4) sha256=19e0a2c3425dfbf2d4fc1189747bdb2f849b6c5e74180401b15734bc97b5d142
   sorbet-runtime (0.6.13544) sha256=30c6d716f5771da7fe81d5c51b90fc027756de32fa8c9c75cd2c4a8103792f30
   sqlite3 (2.10.1-arm64-darwin) sha256=45f74dad0a8ee57ae5fadfac39bf160d1f09fb0484a442223310d869cd957d92
   sqlite3 (2.10.1-x86_64-darwin) sha256=00d1cd2e8ecff5ad9fffa0c97de59d4f85c5fc54eada2587d53ca0bd933b7a5d

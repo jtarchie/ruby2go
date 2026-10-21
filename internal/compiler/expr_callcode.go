@@ -190,6 +190,9 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 	if o := f.nilableFetch(m, args, block); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
+	if r, ok := f.gemCallForm(n, e, recv, args, block); ok {
+		return r
+	}
 	f.curBlock = block
 	o := f.overload(e, recv.typ, args)
 	f.curBlock = nil
@@ -722,6 +725,70 @@ func (f *fctx) gemIntegerCall(n parser.Node, e *entry, recv expr, args []parser.
 	if e.M.Name == "<<" && len(args) == 1 && !isSplatArg(args[0]) {
 		a := f.genExpr(args[0], f.cls("Integer"))
 		return expr{code: "rbIntShlWrap(" + f.coerce(n, recv, f.cls("Integer")) + ", " + f.coerce(args[0], a, f.cls("Integer")) + ")", typ: f.cls("Integer")}, true
+	}
+	return expr{}, false
+}
+
+// untypedTwinArg: a gem's call whose first argument is untyped, of a method with decision-12 twins by class
+// (`sub`'s `__sub_regexp`): the dispatcher picks the twin by the argument's run-time class (dynClassOverloads).
+func (f *fctx) untypedTwinArg(e *entry, recvT Type, args []parser.Node, block parser.Node) bool {
+	m := e.M
+	rc, ok := recvT.(TClass)
+	if !f.lenient() || block != nil || len(args) == 0 || !ok || strings.HasPrefix(m.Name, "__") || !classTwins(m.Name) {
+		return false
+	}
+	prefix := "__" + overloadBase(m.Name) + "_"
+	twin := slices.ContainsFunc(rc.C.methodSet(), func(x entry) bool {
+		rest := strings.TrimPrefix(x.M.Name, prefix)
+		return rest != x.M.Name && rest != "" && (rest[0] < '0' || rest[0] > '9') && len(x.M.Params) == len(m.Params)
+	})
+	if !twin {
+		return false
+	}
+	var a expr
+	f.probe(func() { a = f.genExpr(args[0], nil) })
+	return isAny(a.typ)
+}
+
+// nilKeyLookup is a gem's `h[k]` or `h.key?(k)` with k a K? where the Hash's K holds no nil (kramdown's
+// `HTML_MARKDOWN_ATTR_MAP[attrs.delete('markdown')]`): MRI's nil key is a miss, so nil answers nil (or false).
+func (f *fctx) nilKeyLookup(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) (expr, bool) {
+	name := e.M.Name
+	miss := map[string]string{"[]": "nil", "key?": "false", "has_key?": "false", "include?": "false", "member?": "false"}[name]
+	if !f.lenient() || block != nil || len(args) != 1 || miss == "" || !isClass(recv.typ, "Hash") {
+		return expr{}, false
+	}
+	kt := recv.typ.(TClass).Args[0]
+	var a expr
+	f.probe(func() { a = f.genExpr(args[0], nil) })
+	o, ok := a.typ.(TOpt)
+	if !ok || isOpt(kt) || isAny(kt) || !typeEq(o.Elem, kt) {
+		return expr{}, false
+	}
+	k := f.newTmp()
+	f.emit("%s := %s", k, f.genExpr(args[0], nil).code)
+	hit := f.callEntry(n, e, recv, []parser.Node{&exprNode{Node: args[0], e: expr{code: "(*" + k + ")", typ: kt}}}, nil)
+	res := f.newTmp()
+	if miss == "false" {
+		f.emit("%s := Boolean(false)", res)
+		f.emit("if %s != nil {\n\t%s = %s\n}", k, res, f.coerce(n, hit, f.cls("Boolean")))
+		return expr{code: res, typ: f.cls("Boolean")}, true
+	}
+	t := optOf(hit.typ)
+	f.emit("var %s %s", res, f.c.goType(t))
+	f.emit("if %s != nil {\n\t%s = %s\n}", k, res, f.coerce(n, hit, t))
+	return expr{code: res, typ: t}, true
+}
+
+// gemCallForm is a gem's call a typed call cannot make as written (decision 330): a nil key into a nil-free Hash, or an
+// untyped first argument to a method with by-class twins (kramdown's `result.sub!(indent_re, '')`, a Regexp or a
+// String at run time), which the dispatcher picks.
+func (f *fctx) gemCallForm(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) (expr, bool) {
+	if r, ok := f.nilKeyLookup(n, e, recv, args, block); ok {
+		return r, true
+	}
+	if f.untypedTwinArg(e, recv.typ, args, block) {
+		return f.genDynCall(n, expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}, e.M.Name, args), true
 	}
 	return expr{}, false
 }

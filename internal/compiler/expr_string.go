@@ -150,6 +150,9 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if e, ok := f.parenBang(n); ok {
 		return e, true
 	}
+	if e, ok := f.freshAppend(n); ok {
+		return e, true
+	}
 	if inner, ok := n.Receiver.(*parser.CallNode); ok && n.Name == "<<" && inner.Name == "<<" { // `x << a << b`: x << a, then x << b
 		root := inner
 		for r, ok := root.Receiver.(*parser.CallNode); ok && r.Name == "<<"; r, ok = r.Receiver.(*parser.CallNode) {
@@ -170,15 +173,62 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if !ok || !f.lenient() || !strings.HasSuffix(n.Name, "!") && n.Name != "<<" && n.Name != "concat" && n.Name != "replace" && n.Name != "clear" && n.Name != "[]=" {
 		return expr{}, false
 	}
+	if n.IsSAFE_NAVIGATION() { // kramdown's `second&.gsub!(re, s)`: nothing when the local is nil
+		if _, local := lv.(*parser.LocalVariableReadNode); local {
+			return f.safeStringBang(n, lv, write)
+		}
+		return expr{}, false
+	}
 	return f.stringBangOn(n, lv, write)
+}
+
+// safeStringBang is `x&.sub!(...)` on a local: the edit when x holds a value, nil otherwise.
+func (f *fctx) safeStringBang(n *parser.CallNode, lv parser.Node, write func(expr)) (expr, bool) {
+	plain := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: n.Name, MessageLoc: n.MessageLoc, Arguments: n.Arguments, Block: n.Block}
+	x := f.genExpr(lv, nil)
+	res := f.newTmp()
+	f.emit("var %s any", res)
+	f.emit("if rbUnbox(any(%s)) != nil {", x.code)
+	f.indent++
+	saved := f.enterBlock()
+	if lr, ok := lv.(*parser.LocalVariableReadNode); ok && isOpt(x.typ) {
+		if v := f.visibleLocal(lr.Name); v != nil {
+			f.applyNarrow([]narrowInfo{{local: v, typ: stripOpt(x.typ)}}) // `if x`: non-nil inside
+		}
+	}
+	e, ok := f.stringBangOn(plain, lv, write)
+	if !ok {
+		e = f.genExpr(plain, nil)
+	}
+	if e.stmt || isVoid(e.typ) {
+		f.emit("%s", e.code)
+	} else {
+		f.emit("%s = %s", res, f.coerce(n, e, TAny{}))
+	}
+	f.leaveBlock(saved)
+	f.indent--
+	f.emit("}")
+	f.emit("_ = %s", res)
+	return expr{code: res, typ: TAny{}}, true
 }
 
 // stringBangOn is genStringBang on the local lv, whose String write rebinds.
 func (f *fctx) stringBangOn(n *parser.CallNode, lv parser.Node, write func(expr)) (expr, bool) {
 	t := f.probeType(lv, nil)
 	str := f.cls("String")
-	if _, local := lv.(*parser.LocalVariableReadNode); n.Name == "[]=" && isAny(t) && local && !f.noStrIndexSet && f.stringEditArgs(callArgs(n)) {
-		return f.untypedIndexSet(n, lv, write), true
+	if _, local := lv.(*parser.LocalVariableReadNode); isAny(t) && !f.noStrIndexSet {
+		switch {
+		case n.Name == "[]=" && local && f.stringEditArgs(callArgs(n)):
+			return f.untypedIndexSet(n, lv, write), true
+		case n.Name == "<<" || n.Name == "concat" || strings.HasSuffix(n.Name, "!") && f.c.classes["String"].lookup(strings.TrimSuffix(n.Name, "!")) != nil:
+			// kramdown's adapt_source: `source = source.encode('UTF-8'); source.gsub!(...); source << "\n"` (decision 330)
+			return f.untypedStringEdit(n, lv, func(sv string) (expr, bool) {
+				if n.Name == "<<" || n.Name == "concat" { // its value is the local re-read after the write: lv itself
+					return f.stringAppendBang(n, lv, callArgs(n), func() string { return sv }, write)
+				}
+				return f.stringBangOn(n, &exprNode{Node: lv, e: expr{code: sv, typ: str}}, write)
+			}), true
+		}
 	}
 	u, isUnion := stripOpt(t).(TUnion)
 	if !typeEq(t, str) && !typeEq(t, TOpt{Elem: str}) && !(isUnion && slices.ContainsFunc(u.Members, func(m Type) bool { return typeEq(m, str) })) {
@@ -237,16 +287,29 @@ func (f *fctx) stringReplaceBang(n *parser.CallNode, args []parser.Node, cur fun
 // untypedIndexSet is a gem's `s[i] = v` on an untyped local: a String is rebound, anything else (a parsed JSON Hash)
 // takes []= as before.
 func (f *fctx) untypedIndexSet(n *parser.CallNode, lv parser.Node, write func(expr)) expr {
+	return f.untypedStringEdit(n, lv, func(sv string) (expr, bool) { return f.stringIndexSet(n, callArgs(n), sv, write) })
+}
+
+// untypedStringEdit is a gem's String edit on an untyped local: onString (the edit rebinding the local) when it holds a
+// String, the call as before on anything else.
+func (f *fctx) untypedStringEdit(n *parser.CallNode, lv parser.Node, onString func(sv string) (expr, bool)) expr {
 	x := f.genExpr(lv, nil)
 	res, sv := f.newTmp(), f.newTmp()
 	f.emit("var %s any", res)
 	f.emit("if %s, ok := %s.(String); ok {", sv, x.code)
 	f.indent++
+	f.emit("_ = %s // an append chain's edit may read the local again instead", sv)
 	saved := f.enterBlock()
-	if r, ok := f.stringIndexSet(n, callArgs(n), sv, write); ok {
+	var r expr
+	ok := false
+	err := f.tryClean(func() { r, ok = onString(sv) })
+	if err != nil { // `@tree.children << el`: no String takes an Element
+		ok = false
+	}
+	if ok {
 		f.emit("%s = %s", res, f.coerce(n, r, TAny{}))
 	} else {
-		f.emit("panic(rbNoMethod(%q, %s, false))", "[]=", sv)
+		f.emit("panic(rbNoMethod(%q, %s, false))", n.Name, sv)
 	}
 	f.leaveBlock(saved)
 	f.indent--
@@ -264,6 +327,7 @@ func (f *fctx) untypedIndexSet(n *parser.CallNode, lv parser.Node, write func(ex
 	f.leaveBlock(saved)
 	f.indent--
 	f.emit("}")
+	f.emit("_ = %s // `x << a << b`: the chain reads x again, not this", res)
 	return expr{code: res, typ: TAny{}}
 }
 
@@ -400,6 +464,9 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 		return t, func(e expr) {
 			f.assignLocal(n, t.Name, e, nil)
 			f.narrowString(t.Name)
+			if v := f.visibleLocal(t.Name); v != nil && f.lenient() { // `value.gsub!(re, ' ')` as a block's last use: MRI's edit is in place, ours a dead store
+				f.emit("_ = %s", v.goName)
+			}
 		}, true
 	case *parser.InstanceVariableReadNode:
 		return t, func(e expr) {
@@ -411,8 +478,118 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 		if f.freshString(t) { // `path.basename.to_s.delete_prefix!(x)`: nothing else sees the string, so only the value matters
 			return t, func(expr) {}, true
 		}
+		if at, ok := f.elementTarget(t); ok { // kramdown's `item.value.last << result`: item.value[-1] = item.value[-1] + result
+			return t, func(e expr) {
+				set := &parser.CallNode{Location: t.Location, Receiver: t.Receiver, Name: "[]=", MessageLoc: t.MessageLoc,
+					Arguments: &parser.ArgumentsNode{Location: t.Location, Arguments: []parser.Node{at, &exprNode{Node: t, e: e}}}}
+				f.emitExprStmt(t, f.genExpr(set, nil))
+			}, true
+		}
+		if f.lenient() && f.attrTarget(t) { // kramdown's `item.value.sub!(re) { ... }`: item.value = item.value.sub(...) (decision 330)
+			return t, func(e expr) {
+				set := &parser.CallNode{Location: t.Location, Receiver: t.Receiver, Name: t.Name + "=", MessageLoc: t.MessageLoc,
+					Arguments: &parser.ArgumentsNode{Location: t.Location, Arguments: []parser.Node{&exprNode{Node: t, e: e}}}}
+				f.emitExprStmt(t, f.genExpr(set, nil))
+			}, true
+		}
 	}
 	return nil, nil, false
+}
+
+// elementTarget is a gem's `r.last`, `r.first` or `r[i]` (i a literal or a local) on a re-readable r: an Array slot a
+// String edit writes back, so the Array sees it as MRI's shared String would; another reference to that String does
+// not (decision 136). at is the slot's index.
+func (f *fctx) elementTarget(t *parser.CallNode) (at parser.Node, ok bool) {
+	if !f.lenient() || t.Block != nil || !f.rereadable(t.Receiver) {
+		return nil, false
+	}
+	args := callArgs(t)
+	switch {
+	case t.Name == "last" && len(args) == 0:
+		at = &exprNode{Node: t, e: expr{code: "Integer(-1)", typ: f.cls("Integer"), lit: true}}
+	case t.Name == "first" && len(args) == 0:
+		at = &exprNode{Node: t, e: expr{code: "Integer(0)", typ: f.cls("Integer"), lit: true}}
+	case t.Name == "[]" && len(args) == 1:
+		switch args[0].(type) {
+		case *parser.IntegerNode, *parser.LocalVariableReadNode:
+			at = args[0]
+		default:
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+	rt := stripOpt(f.probeType(t.Receiver, nil))
+	return at, isAny(rt) || isClass(rt, "Array")
+}
+
+// rereadable is an expression evaluated again for the write-back without a side effect: a local, an ivar, self, or
+// an attribute reader of one.
+func (f *fctx) rereadable(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode, *parser.SelfNode:
+		return true
+	case *parser.CallNode:
+		if (n.Name == "first" || n.Name == "last") && n.Arguments == nil && n.Block == nil { // `kids.first.value << "\n"`
+			return f.rereadable(n.Receiver)
+		}
+		return f.attrTarget(n)
+	}
+	return false
+}
+
+// attrTarget is `r.name` with r a local, ivar or self whose class has a `name=` writer: an attribute a String edit
+// can rebind, reading r again (no side effect) to write it.
+func (f *fctx) attrTarget(t *parser.CallNode) bool {
+	if t.Block != nil || len(callArgs(t)) > 0 || t.Receiver == nil || !isIdentMethod(t.Name) {
+		return false
+	}
+	if !f.rereadable(t.Receiver) {
+		return false
+	}
+	rt := stripOpt(f.probeType(t.Receiver, nil))
+	if isAny(rt) { // kramdown's `last.value << text` on an untyped tree's child: written back by a dynamic name= call
+		return slices.ContainsFunc(f.c.classList, func(k *Class) bool { return k.lookup(t.Name+"=") != nil && k.lookup(t.Name) != nil })
+	}
+	cls := classOf(rt)
+	return cls != nil && cls.lookup(t.Name+"=") != nil
+}
+
+// freshAppend is a gem's `' ' * indent << "<" << tag << ">"`: appends onto a String nothing else holds (an operator's
+// or interpolation's result), so the chain's value is the concatenation (decision 330). Not for an Integer operand
+// (`s << 65` appends a codepoint).
+func (f *fctx) freshAppend(n *parser.CallNode) (expr, bool) {
+	if n.Name != "<<" || !f.lenient() || n.Block != nil || len(callArgs(n)) != 1 {
+		return expr{}, false
+	}
+	str := f.cls("String")
+	var acc expr
+	switch r := n.Receiver.(type) {
+	case *parser.CallNode:
+		if r.Name == "<<" {
+			inner, ok := f.freshAppend(r)
+			if !ok {
+				return expr{}, false
+			}
+			acc = inner
+			break
+		}
+		if r.Name != "*" && r.Name != "+" && r.Name != "%" && !f.freshString(r) || !isClass(f.probeType(r, nil), "String") {
+			return expr{}, false
+		}
+		acc = f.genExpr(r, str)
+	case *parser.InterpolatedStringNode:
+		acc = f.genExpr(r, str)
+	default:
+		return expr{}, false
+	}
+	arg := callArgs(n)[0]
+	at := f.probeType(arg, nil)
+	if !isClass(at, "String") && !isAny(at) {
+		return expr{}, false
+	}
+	a := f.genExpr(arg, str)
+	return expr{code: "String.Op_plus(" + acc.code + ", " + f.coerce(arg, a, str) + ")", typ: str}, true
 }
 
 // freshString: call returns a String no other reference holds, as MRI's do: `x.to_s` on a non-String, `s.dup`, `+s`.

@@ -1039,7 +1039,7 @@ func (c *Compiler) emitIvarDel(cls *Class) {
 	if len(cases) == 0 {
 		return
 	}
-	c.w("func (self *%s) _IvarDel(name string) {\n\tswitch name {\n%s\t}\n}\n\n", cls.Name, strings.Join(cases, ""))
+	c.w("func (self *%s) _IvarDel(name string) {\n\tswitch name {\n%s\tdefault: // an ivar the class lacks: nothing to clear (and gocritic rejects a one-case switch)\n\t}\n}\n\n", cls.Name, strings.Join(cases, ""))
 }
 
 // emitCopy feeds Ractor's deep copy (decision 103): a fresh struct with every

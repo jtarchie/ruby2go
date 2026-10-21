@@ -366,7 +366,7 @@ func TestTraceRun(t *testing.T) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
-var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path): (.*)$`)
+var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path|trace): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.
 func directives(src []byte, kind string) []string {
@@ -590,7 +590,13 @@ func testExample(t *testing.T, dir, gen string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeGenerated(t, gen, filepath.Join(dir, "main.rb"), src, CompileWithGems) // its real path, for require_relative; gems as the CLI finds them (decision 173)
+	compile := CompileWithGems // gems as the CLI finds them (decision 173)
+	if len(directives(src, "trace")) > 0 { // `# trace: why`: compiled from what an MRI run loads, as `rb2go build -trace` (decision 296)
+		compile = func(ctx context.Context, name string, _ []byte, lp ...string) ([]byte, []string, error) {
+			return CompileTrace(ctx, name, [][]string{nil}, nil, lp...) // ponytail: one run with no args; pass `# args:` here when a traced example takes some
+		}
+	}
+	writeGenerated(t, gen, filepath.Join(dir, "main.rb"), src, compile) // its real path, for require_relative
 	fmtOut, err := run(t, gen, "gofmt", "-l", "main.go")
 	if err != nil || strings.TrimSpace(fmtOut) != "" {
 		t.Fatalf("gofmt: %v %s", err, fmtOut)

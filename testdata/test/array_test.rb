@@ -2623,3 +2623,18 @@ module ArrayTests
     end
   end
 end
+
+module ArrayTests
+  class ArraySliceBangTest < Minitest::Test
+    def test_slice_bang_range
+      a = [1, 2, 3, 4, 5]
+      assert_equal [2, 3], a.slice!(1...3)
+      assert_equal [1, 4, 5], a
+      assert_equal [4, 5], a.slice!(-2..)
+      assert_equal [1], a
+      assert_nil a.slice!(5..6)
+      assert_equal [], a.slice!(0...0)
+      assert_equal [1], a
+    end
+  end
+end

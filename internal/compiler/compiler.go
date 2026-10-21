@@ -163,6 +163,7 @@ type Compiler struct {
 	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
 	anonRun          *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
 	ivarReadFirst    map[ivarKey]bool                  // owner#@x read before any assignment typed it, in discovery: declared T?
+	interpOnly       map[pendingKey]bool               // a gem parameter its body only interpolates: any value does (decision 330)
 	ivarBitsMarked   bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
 	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
 	anonErrors       map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
@@ -493,6 +494,9 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.keepGoing(func() { c.collectERB(ctx, uf) }) // templates need every constant collected (decision 111)
 	}
 	c.collectDefineMethods(ctx, dms)
+	if opts.boot != nil {
+		c.collectBootAliases(opts.boot.Aliases)
+	}
 	c.collectSingletonTemplates(ctx)
 	c.collectObjectExtends(ctx)
 	if len(c.kept) > 0 {

@@ -505,6 +505,9 @@ func (r *reach) call(n *parser.CallNode) bool {
 			r.constGet(n)
 		} else if ok {
 			r.add(name) // a string literal names the method as a symbol literal does (walk adds the symbol's)
+			if n.Name == "const_get" {
+				r.consts[name] = true // `self.class.const_get(:END_RE)`: each class's END_RE may be the one
+			}
 		} else {
 			r.dynamic = "a computed " + n.Name + " in " + r.from
 		}

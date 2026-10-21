@@ -27,5 +27,8 @@ gem "pairing_heap", "~> 3.1"
 # prints inferred RBS. See CLAUDE.md for when to reach for it.
 gem "tyda", require: false, group: :development
 
+# Markdown to HTML (example 123): rb2go compiles the unmodified gem from a traced run (decision 330).
+gem "kramdown", "~> 2.5"
+
 # SQLite under MRI for example 122; rb2go maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
 gem "sqlite3", "~> 2.10"

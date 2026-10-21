@@ -41,6 +41,10 @@ linters:
     - depguard
 
   settings:
+    misspell:
+      # Comments only: a string literal is the program's own data (kramdown's entity names `andd`, `infintie`), which
+      # the Ruby source spells; flagging it would fail a correct program.
+      mode: restricted
     depguard:
       rules:
         # Generated programs are compiled Ruby: class names, is_a? and the like

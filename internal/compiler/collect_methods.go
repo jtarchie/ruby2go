@@ -24,7 +24,11 @@ func (c *Compiler) addAlias(f *File, cls *Class, n parser.Node, newName, oldName
 		c.errorf(f, x, "alias names must be literal symbols")
 		return ""
 	}
-	nn, on := name(newName), name(oldName)
+	c.addAliasNamed(f, cls, n, name(newName), name(oldName))
+}
+
+// addAliasNamed is addAlias of names already read: a literal's, or one boot's alias_method made (decision 330).
+func (c *Compiler) addAliasNamed(f *File, cls *Class, n parser.Node, nn, on string) {
 	old := cls.Methods[on]
 	if old == nil { // an ancestor's, perhaps: supers resolve in link (linkAliases)
 		c.inheritedAliases = append(c.inheritedAliases, pendingAlias{f: f, cls: cls, n: n, newName: nn, oldName: on})

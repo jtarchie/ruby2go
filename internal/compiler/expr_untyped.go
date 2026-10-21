@@ -259,7 +259,7 @@ var nilOps = map[string]struct {
 	code     string
 }{
 	"to_r": {0, 0, "rbRat(0, 1)"}, "rationalize": {0, 1, "rbRat(0, 1)"}, "to_c": {0, 0, "&Complex{Integer(0), Integer(0)}"},
-	"&": {1, 1, "Boolean(false)"}, "|": {1, 1, "Boolean(rbTruthy(args[0]))"}, "^": {1, 1, "Boolean(rbTruthy(args[0]))"}, "=~": {1, 1, "nil"},
+	"&": {1, 1, "Boolean(false)"}, "|": {1, 1, "Boolean(rbTruthy(args[0]))"}, "^": {1, 1, "Boolean(rbTruthy(args[0]))"}, "=~": {1, 1, "nil"}, "!~": {1, 1, "Boolean(true)"},
 }
 
 func (f *fctx) dynClassOf(n parser.Node, recv expr) expr {

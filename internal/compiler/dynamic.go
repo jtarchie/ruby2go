@@ -400,7 +400,7 @@ func (c *Compiler) emitDynName(name string) {
 	if genPublic {
 		c.w("\tif r, ok := recv.(interface{ %s(string, []any) (any, bool) }); ok {\n\t\tif v, ok := r.%s(%q, args); ok {\n\t\t\treturn v\n\t\t}\n\t}\n", gen, gen, name)
 	}
-	if name == "call" {
+	if procCallNames[name] { // Proc#call's aliases, as the typed path (genProcCall) has them
 		c.w("\tif r, ok := rbDynProcCall(recv, args); ok {\n\t\treturn r\n\t}\n")
 	}
 	kernel := c.nilKernelBody(name) // built once: a body that cannot cross `any` warns
@@ -898,6 +898,34 @@ func (c *Compiler) dynCallBlock(f *fctx, m *Method, env map[string]Type) parser.
 	return nil
 }
 
+// dynBlockTwin routes a dynamic call that brings a block to the class's `__<name>_block` twin, when the method itself
+// takes none: kramdown's `el.value.gsub(/\A\n/) { ... }` on an untyped String is String#__gsub_block (decision 330).
+func (c *Compiler) dynBlockTwin(f *fctx, e *entry, recv expr, env map[string]Type) {
+	m, cls := e.M, classOf(recv.typ)
+	if m.Block != nil || cls == nil || strings.HasPrefix(m.Name, "__") || !c.dynBlockNames[m.Name] && !c.dynBlockAll {
+		return
+	}
+	tw := cls.lookup("__" + overloadBase(m.Name) + "_block")
+	if tw == nil || tw.M.Block == nil || tw.M.generic() || tw.M.hasKeywords() ||
+		slices.ContainsFunc(tw.M.Params, func(p Param) bool { return p.Rest || p.Default != nil }) {
+		return
+	}
+	c.resolveMethod(tw.M)
+	f.emit("if blk_, args := rbPopBlock(args); blk_ != nil {")
+	f.indent++
+	f.emit("rbArity(len(args), %d, %d)", len(tw.M.Params), len(tw.M.Params))
+	blk := c.dynBlockArg(f, tw.M, env)
+	nodes := make([]parser.Node, len(tw.M.Params))
+	for i, p := range tw.M.Params {
+		pt := subst(p.Type, env)
+		nodes[i] = &exprNode{e: expr{code: c.dynArg(pt, i), typ: pt}}
+	}
+	res := f.callEntry(&parser.NilNode{}, tw, recv, nodes, blk)
+	f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+	f.indent--
+	f.emit("}")
+}
+
 // dynIterCall is a dynamic call with a block of an iterator method: a range over it, each yield into the call's block.
 // MRI's value is the method's, often the block's (`synchronize { ... }`): the last block value stands in (decision 243).
 func (c *Compiler) dynIterCall(f *fctx, e *entry, recv expr, env map[string]Type, nodes []parser.Node) {
@@ -941,6 +969,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 			req++
 		}
 	}
+	c.dynBlockTwin(f, e, recv, env)
 	blk := c.dynCallBlock(f, m, env)
 	var kwh *exprNode // the call's keywords, passed on as **kwh (#51)
 	if m.hasKeywords() {
@@ -1661,8 +1690,8 @@ func (c *Compiler) emitDynPostCall(f *fctx, e *entry, recv expr, env map[string]
 // and the count, before the method's own arity check would reject the call.
 func (c *Compiler) dynWideClassOverloads(f *fctx, e *entry, recv expr, req, maxArgs int) {
 	m, cls := e.M, classOf(recv.typ)
-	if cls == nil || len(m.Params) == 0 || strings.HasPrefix(m.Name, "__") || maxArgs != req { // a method of fixed arity
-		return
+	if cls == nil || len(m.Params) == 0 || strings.HasPrefix(m.Name, "__") || maxArgs < 0 { // no rest: each arm is guarded by count
+		return // (an optional parameter too: kramdown's untyped `value.split(/re/, -1)` is __split_regexp)
 	}
 	if slices.ContainsFunc(m.Params, func(p Param) bool { return p.Keyword }) {
 		return
@@ -1704,3 +1733,6 @@ func (c *Compiler) dynWideClassOverloads(f *fctx, e *entry, recv expr, req, maxA
 		f.emit("}")
 	}
 }
+
+// procCallNames are Proc#call and its aliases: a dispatcher of one of them also calls a Proc held untyped.
+var procCallNames = map[string]bool{"call": true, "[]": true, "yield": true, "===": true}

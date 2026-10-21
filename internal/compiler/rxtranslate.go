@@ -226,8 +226,25 @@ func (t *rxTranslator) escape(inClass bool) (string, error) {
 		return esc[1:], nil
 	case 'p', 'P':
 		if end := strings.IndexByte(t.src[t.i:], '}'); strings.HasPrefix(t.src[t.i:], "{") && end > 0 {
+			name := t.src[t.i+1 : t.i+end]
 			esc += t.src[t.i : t.i+end+1]
 			t.i += end + 1
+			neg := esc[1] == 'P'
+			if rest, ok := strings.CutPrefix(name, "^"); ok {
+				name, neg = rest, !neg
+			}
+			// Onigmo's POSIX-named properties (kramdown's `\p{Word}`): RE2 and regexp2 know only general categories and scripts
+			if body, ok := rxPosix[strings.ToLower(strings.NewReplacer("_", "", " ", "").Replace(name))]; ok {
+				switch {
+				case inClass && neg:
+					return rxNot(body)
+				case inClass:
+					return body, nil
+				case neg:
+					return "[^" + body + "]", nil
+				}
+				return "[" + body + "]", nil
+			}
 		}
 	case 'Z':
 		// end, or before a final newline (amends 24): a lookahead, which the rxAlt engine matches (decision 242)

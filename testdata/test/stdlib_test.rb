@@ -2283,3 +2283,41 @@ module StdlibTests
     end
   end
 end
+
+module StdlibTests
+  class ScanNamedGroupTest < Minitest::Test
+    class Scan < ::StringScanner
+      attr_reader :start #: Integer
+
+      #: (String, ?Integer?) -> void
+      def initialize(str, start = 1)
+        super(str)
+        @start = start || 1
+      end
+    end
+
+    def test_named_groups
+      s = StringScanner.new("## Title\n")
+      s.scan(/(?<level>#+) (?<contents>.*)/)
+      assert_equal "##", s["level"]
+      assert_equal "Title", s[:contents]
+      assert_equal "##", s[1]
+      assert_nil s[5]
+      err = begin
+        s["nope"]
+        nil
+      rescue IndexError => e
+        e
+      end
+      assert_kind_of IndexError, err
+    end
+
+    def test_subclass_super
+      sc = Scan.new("abc", 3)
+      assert_equal "abc", sc.rest
+      assert_equal 3, sc.start
+      refute sc.eos?
+      assert_equal 1, Scan.new("x", nil).start
+    end
+  end
+end

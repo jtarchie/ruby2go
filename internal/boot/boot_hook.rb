@@ -11,12 +11,13 @@ require "json"
 module Boot
   @classes = {}       # name => { name:, super:, path:, line: }
   @define_methods = [] # { owner:, name:, file:, line:, source: }
+  @aliases = []        # { owner:, singleton:, name:, old:, file:, line: }
   @evals = []          # { file:, line:, source:, caller: }
   @autoloads = []      # { owner:, const:, path:, registered: }
   @features = nil
 
   class << self
-    attr_reader :classes, :define_methods, :evals, :autoloads
+    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads
 
     def install
       require "coverage"
@@ -24,6 +25,7 @@ module Boot
       @features = $LOADED_FEATURES.dup
       install_class_trace
       install_define_method
+      install_alias_method
       install_evals
       install_autoload
       install_private_constant
@@ -111,6 +113,21 @@ module Boot
       @define_method_tp.enable
     end
 
+    # Each alias_method MRI ran, by its caller's line: a computed name (`%w[b i].each { |t| alias_method("convert_#{t}", :convert_em) }`)
+    # becomes the alias it made (decision 330). The old name is the alias's original_name, read after the call.
+    def install_alias_method
+      @alias_tp = TracePoint.new(:c_return) do |tp|
+        next unless tp.method_id == :alias_method && Module === tp.self && tp.return_value.is_a?(Symbol)
+
+        owner = tp.self
+        m = (owner.instance_method(tp.return_value) rescue next)
+        singleton = owner.singleton_class?
+        @aliases << { "owner" => safe_name(singleton ? owner.attached_object : owner), "singleton" => singleton,
+                      "name" => tp.return_value.to_s, "old" => m.original_name.to_s, "file" => tp.path, "line" => tp.lineno }
+      end
+      @alias_tp.enable
+    end
+
     # The caller's locals as Ruby expressions: a literal for plain data, else the constant that holds the same object.
     def captures(b)
       return {} unless b
@@ -149,7 +166,7 @@ module Boot
       case x
       when Float then x.nan? ? "Float::NAN" : x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect # NaN/Infinity inspect as bare words
       when nil, true, false, Integer, Symbol then x.inspect
-      when Module then x.name && (Object.const_get(x.name) rescue nil).equal?(x) ? "::#{x.name}" : nil
+      when Module then (n = MOD_NAME.bind_call(x)) && (Object.const_get(n) rescue nil).equal?(x) ? "::#{n}" : nil
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
       when Array
@@ -228,7 +245,7 @@ module Boot
 
     def safe_name(obj)
       return nil if obj.nil?
-      obj.is_a?(Module) ? obj.name : obj.to_s
+      Module === obj ? MOD_NAME.bind_call(obj) : obj.to_s # not obj.name: a module may define its own (REXML::Functions.name)
     rescue StandardError
       nil
     end
@@ -293,6 +310,7 @@ module Boot
     # Constants whose value is a class named otherwise: `Impl = case ... end` picked at load time.
     MOD_CONSTANTS = Module.instance_method(:constants)
     MOD_AUTOLOAD = Module.instance_method(:autoload?)
+    MOD_NAME = Module.instance_method(:name)
     MOD_CONST_GET = Module.instance_method(:const_get)
 
     def const_classes
@@ -308,7 +326,8 @@ module Boot
           v = (MOD_CONST_GET.bind_call(owner, c, false) rescue next)
           next unless Module === v # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
-          out["#{name}::#{c}"] = v.name if v.name && v.name != "#{name}::#{c}"
+          vn = MOD_NAME.bind_call(v)
+          out["#{name}::#{c}"] = vn if vn && vn != "#{name}::#{c}"
         end
       end
       out
@@ -322,10 +341,10 @@ module Boot
       literal = [NilClass, TrueClass, FalseClass, Integer, Float, String, Symbol]
       out = {}
       ObjectSpace.each_object(Class) do |k|
-        next unless k < ::T::Struct && k.name
+        next unless k < ::T::Struct && MOD_NAME.bind_call(k)
 
         props = (k.props rescue next)
-        out[k.name] = props.map do |name, rules|
+        out[MOD_NAME.bind_call(k)] = props.map do |name, rules|
           h = { "name" => name.to_s, "type" => rules[:type_object].to_s }
           if rules.key?(:default)
             d = rules[:default]
@@ -340,6 +359,7 @@ module Boot
     def dump(path)
       @class_tp&.disable
       @line_tp&.disable
+      @alias_tp&.disable
       classes = @classes.map do |name, info|
         owner = Object.const_get(name) rescue nil
         anc = owner.is_a?(Module) ? owner.ancestors.map { |a| safe_name(a) } : []
@@ -350,6 +370,7 @@ module Boot
         "load_path" => $LOAD_PATH.map(&:to_s),
         "classes" => classes,
         "define_methods" => @define_methods,
+        "aliases" => @aliases,
         "evals" => @evals.uniq { |e| [e["source"], e["kind"], e["self"], e["caller"]] },
         "autoloads" => resolve_autoloads,
         "class_state" => class_state,

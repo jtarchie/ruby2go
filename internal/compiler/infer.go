@@ -219,15 +219,33 @@ func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 			if !stmt || tail {
 				used = true
 			}
-		case *parser.StatementsNode:
+		case *parser.StatementsNode: // the last statement is in the body's own position: `found = (c ? yield : true)` uses it
 			for i, ch := range x.Body {
-				walk(ch, true, tail && i == len(x.Body)-1)
+				last := i == len(x.Body)-1
+				walk(ch, stmt || !last, tail && last)
 			}
 			return
 		case *parser.BlockNode, *parser.LambdaNode:
 			tail = false // a block's value goes to its callee (each drops it), not to the method's caller
+			stmt = true  // its body's value is the callee's business
+		case *parser.WhileNode, *parser.UntilNode:
+			stmt = true // a loop body's value is dropped
+		}
+		control := false
+		switch x.(type) {
+		case *parser.IfNode, *parser.UnlessNode, *parser.ElseNode, *parser.CaseNode, *parser.WhenNode, *parser.InNode,
+			*parser.BeginNode, *parser.RescueNode, *parser.EnsureNode, *parser.ParenthesesNode,
+			*parser.BlockNode, *parser.LambdaNode, *parser.WhileNode, *parser.UntilNode:
+			control = true
 		}
 		for _, ch := range x.CompactChildNodes() {
+			switch ch.(type) {
+			case *parser.StatementsNode, *parser.ElseNode, *parser.WhenNode, *parser.InNode, *parser.RescueNode, *parser.EnsureNode:
+				if control { // a branch body is where its node is: a statement `if` leaves its arms' values unused
+					walk(ch, stmt, tail)
+					continue
+				}
+			}
 			walk(ch, false, tail)
 		}
 	}
@@ -539,7 +557,13 @@ func (c *Compiler) collectUses() {
 				f.genBody(&parser.StatementsNode{Body: []parser.Node{p.Default}}, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
 			}))
 			if len(ts) > 0 {
-				c.uses[p.Pending] = append(c.uses[p.Pending], paramUse{typ: ts[len(ts)-1], file: m.File, off: p.Default.GetLocation().StartOffset})
+				t := ts[len(ts)-1]
+				if hc, ok := t.(TClass); ok && c.gemFile(m.File) && hc.C.RubyName == "Hash" && len(hc.Args) == 2 {
+					if _, lit := p.Default.(*parser.HashNode); lit { // kramdown's `opts = {indent: 0}`: an options bag callers add any value to (decision 330)
+						t = TClass{C: hc.C, Args: []Type{hc.Args[0], TAny{}}}
+					}
+				}
+				c.uses[p.Pending] = append(c.uses[p.Pending], paramUse{typ: t, file: m.File, off: p.Default.GetLocation().StartOffset})
 			}
 		}
 	}
@@ -650,12 +674,20 @@ func (c *Compiler) updateInference(inf *inference) {
 			next[key], from[key] = TAny{}, uses[i].at().String()
 			continue
 		}
-		if u, ok := c.untypedGemUse(uses); ok { // a gem passing an untyped container: its elements are anything (decision 244)
+		if u, ok, mixed := c.untypedGemUse(uses); mixed { // and other calls pass other classes: anything (decision 330)
+			next[key], from[key] = TAny{}, u.at().String()
+			continue
+		} else if ok { // a gem passing an untyped container: its elements are anything (decision 244)
 			t := u.typ
 			if slices.ContainsFunc(uses, func(x paramUse) bool { return isNil(x.typ) }) { // `default = nil` too (bindata's parent_attribute): nilable
 				t = optOf(t)
 			}
 			next[key], from[key] = t, u.at().String()
+			continue
+		}
+		if i := slices.IndexFunc(uses, func(u paramUse) bool { return isAny(u.typ) && c.gemFile(u.file) }); i >= 0 && c.interpOnly[key] {
+			// kramdown's format_as_span_html(name, ...) gets "code" from some calls and el.type, a Symbol, from others
+			next[key], from[key] = TAny{}, uses[i].at().String()
 			continue
 		}
 		if t, at := joinUses(uses, inf.noUnion[key]); t != nil {
@@ -687,15 +719,29 @@ func (c *Compiler) updateInference(inf *inference) {
 
 // untypedGemUse is a gem file's use passing an Array or Hash of untyped (optparse's `define(*opts)` passing opts on
 // to `make_switch(opts)`): the parameter takes it, not a narrower type another call gave, so the method's branches
-// for the other element kinds compile.
-func (c *Compiler) untypedGemUse(uses []paramUse) (paramUse, bool) {
+// for the other element kinds compile. Not when another use passes some other class (kramdown's
+// `Options.define(name, type, default, desc)` with a `{}`, a String and an Integer default): mixed, so untyped.
+func (c *Compiler) untypedGemUse(uses []paramUse) (u paramUse, ok, mixed bool) {
 	for _, u := range uses {
 		if cl, ok := u.typ.(TClass); ok && len(cl.Args) > 0 && c.gemFile(u.file) && (cl.C.RubyName == "Array" || cl.C.RubyName == "Hash") &&
 			isAny(cl.Args[len(cl.Args)-1]) && !mentionsVar(u.typ) {
-			return u, true
+			return u, true, slices.ContainsFunc(uses, func(x paramUse) bool { return c.otherClassUse(x, cl.C) })
 		}
 	}
-	return paramUse{}, false
+	return paramUse{}, false, false
+}
+
+// otherClassUse is a use passing a value that may not be a cls: another class, or a gem's untyped value (kramdown's
+// `item.value, ... = parse_first_list_line(...)` into the writer `[item.value]` also calls). Nil is not.
+func (c *Compiler) otherClassUse(u paramUse, cls *Class) bool {
+	if _, ok := u.typ.(TAny); ok && c.gemFile(u.file) {
+		return true
+	}
+	if _, void := u.typ.(TVoid); u.typ == nil || void || isNil(u.typ) || holdsAny(u.typ) || mentionsVar(u.typ) {
+		return false
+	}
+	cl, ok := stripOpt(u.typ).(TClass)
+	return !ok || cl.C != cls
 }
 
 // gemUsesDisagree reports gem-file uses that joinUses left out of t because they do not join it.
@@ -757,4 +803,45 @@ func (f *fctx) coercePending(p Param, code func() string) string {
 		panic(*err)
 	}
 	return out
+}
+
+// onlyInterpolated reports whether body reads local name, and only as a whole `#{name}` interpolation (no call on it,
+// no write): what it holds needs only to_s.
+func onlyInterpolated(body parser.Node, name string) bool {
+	reads, ok := 0, true
+	var walk func(parser.Node, bool)
+	walk = func(n parser.Node, interp bool) {
+		switch x := n.(type) {
+		case nil, *parser.DefNode:
+			return
+		case *parser.LocalVariableReadNode:
+			if x.Name == name && x.Depth == 0 {
+				reads++
+				ok = ok && interp
+			}
+			return
+		case *parser.LocalVariableWriteNode:
+			ok = ok && x.Name != name
+		case *parser.LocalVariableOperatorWriteNode:
+			ok = ok && x.Name != name
+		case *parser.LocalVariableOrWriteNode:
+			ok = ok && x.Name != name
+		case *parser.LocalVariableAndWriteNode:
+			ok = ok && x.Name != name
+		case *parser.LocalVariableTargetNode:
+			ok = ok && x.Name != name
+		case *parser.EmbeddedStatementsNode:
+			if x.Statements != nil && len(x.Statements.Body) == 1 {
+				if r, isRead := x.Statements.Body[0].(*parser.LocalVariableReadNode); isRead {
+					walk(r, true)
+					return
+				}
+			}
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch, false)
+		}
+	}
+	walk(body, false)
+	return ok && reads > 0
 }

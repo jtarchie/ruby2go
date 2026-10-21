@@ -435,9 +435,14 @@ func (f *fctx) probe(fn func()) {
 	for k, li := range f.locals {
 		decls[k] = declState{li.declPass, li.declBlock, li.declRuby, li.hoist}
 	}
+	// the nesting fn entered: balanced when it returns, left behind when a caller recovers its compile error (an untyped call's retry)
+	frames, block, rbScope := len(f.rbFrames), f.block, f.rbScope
+	closures, lambdaClosure, loops, begins, unionArm, retryFlag, retryDepth := f.closures, f.lambdaClosure, f.loops, f.begins, f.unionArm, f.retryFlag, f.retryDepth
 	defer func() {
 		f.probeDepth--
 		f.buf, f.tmp, f.blockCtr, f.indent = savedBuf, savedTmp, savedCtr, savedIndent
+		f.rbFrames, f.scope, f.block, f.rbScope = f.rbFrames[:frames], sc, block, rbScope
+		f.closures, f.lambdaClosure, f.loops, f.begins, f.unionArm, f.retryFlag, f.retryDepth = closures, lambdaClosure, loops, begins, unionArm, retryFlag, retryDepth
 		for k, li := range f.locals { // the discarded output declared no local: the real run must declare it (not find it "hoisted" from this pass)
 			if was, ok := decls[k]; ok {
 				li.declPass, li.declBlock, li.declRuby, li.hoist = was.pass, was.block, was.ruby, was.hoist
@@ -631,7 +636,7 @@ func (f *fctx) emptyTail(n parser.Node, t tail) {
 }
 
 func (f *fctx) genStmt(n parser.Node, t tail) {
-	if f.genStandIn(n) {
+	if f.genStandIn(n) || f.noopStmt(n, t) {
 		return
 	}
 	f.lineOf(n)
@@ -1189,13 +1194,14 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 		cond = "!(" + cond + ")"
 		narrow = nil
 	}
+	brk := notCode(cond) // the break test
 	f.indent--
 	if stmts == "" {
 		f.emit("for %s {", cond)
 	} else {
 		f.emit("for {")
 		f.buf.WriteString(stmts)
-		f.emit("\tif !(%s) {", cond)
+		f.emit("\tif %s {", brk)
 		f.emit("\t\tbreak")
 		f.emit("\t}")
 	}
@@ -1208,6 +1214,39 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 	f.emit("}")
 	f.popLoop()
 	f.emptyTail(pred, t)
+}
+
+// notCode is Go's negation of the bool expression c: `!(x)` for x, and x for `!(x)`, since staticcheck's SA4013 rejects
+// `!(!(x))` (an until's, or `while !done`'s, break test).
+func notCode(c string) string {
+	if inner, ok := strings.CutPrefix(c, "!("); ok && strings.HasSuffix(inner, ")") && balancedParens(inner[:len(inner)-1]) {
+		return inner[:len(inner)-1]
+	}
+	return "!(" + c + ")"
+}
+
+// balancedParens reports whether s never closes more parentheses than it opened, and closes them all (string
+// literals aside: a generated condition's quotes hold Ruby names, not parentheses that would unbalance it).
+func balancedParens(s string) bool {
+	depth := 0
+	inStr := false
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case inStr && c == '\\':
+			i++
+		case c == '"':
+			inStr = !inStr
+		case inStr:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0 && !inStr
 }
 
 // genDoWhile is `begin ... end while c`: the body runs first and the condition, which may read its locals, ends each pass.
@@ -1236,7 +1275,7 @@ func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate 
 	if negate {
 		f.emit("if %s {", cond)
 	} else {
-		f.emit("if !(%s) {", cond)
+		f.emit("if %s {", notCode(cond))
 	}
 	f.emit("\tbreak")
 	f.emit("}")
@@ -2782,6 +2821,7 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 		if readsLastMatch(body) {
 			f.lastMatch = "rbLM_"
 			f.emit("var rbLM_ %s", f.c.goType(TOpt{Elem: f.cls("MatchData")}))
+			f.emit("_ = rbLM_") // the read may sit in a gem statement that was skipped (decision 205)
 		}
 		f.hoistLocals(methodScope)
 		if f.owner != nil && f.m != nil && f.m.Node != nil && body == f.m.Node.Body {
@@ -4299,4 +4339,11 @@ func hashKeysWider(t, v Type) bool {
 func isFuncOrOptFunc(t Type) bool {
 	_, ok := stripOpt(t).(TFunc)
 	return ok
+}
+
+// noopStmt is a boot-recorded define_method statement whose value nothing reads (decision 198): it emits nothing, not
+// even a //line a closing brace would follow (the whitespace linter's trailing newline).
+func (f *fctx) noopStmt(n parser.Node, t tail) bool {
+	call, ok := n.(*parser.CallNode)
+	return ok && f.c.dmSites[call] && f.c.smSites[call] == nil && (t.kind == tailNone || isVoid(t.typ)) // an object's singleton method still records (decision 324)
 }

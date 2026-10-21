@@ -169,6 +169,27 @@ class Array < Object
   #: (Range[Integer]) -> Array[E]?
   def slice(r) = self[r]
 
+  # The Range form of MRI's slice!: removes and returns self[r] (kramdown's `@warnings.slice!(0...n)`).
+  # ponytail: slice!(i) and slice!(start, len) are not here; add them as overloads when a program needs them.
+  #: (Range[Integer]) -> Array[E]?
+  def slice!(r)
+    s = r.__slice(size)
+    return nil unless s
+    out = __idx_2(s[0], s[1])
+    __cut(s[0], s[1])
+    out
+  end
+
+  #: (Integer, Integer) -> void
+  def __cut(start, count) = %x{
+    self.rbCheckFrozen()
+    end := min(int(start+count), len(self.s))
+    if start < 0 || int(start) >= end {
+      return
+    }
+    self.s = append(self.s[:start], self.s[end:]...)
+  }
+
   #: (Integer, E) -> E
   def []=(i, v)
     %x{

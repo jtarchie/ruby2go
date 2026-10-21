@@ -157,6 +157,11 @@ func (f *fctx) genArray(n *parser.ArrayNode, expected Type) expr {
 	hint := elemT
 	if isAny(expected) {
 		hint = TAny{} // a nested literal is untyped-expected too: an Array, not a tuple
+		if f.lenient() && len(n.Elements) > 0 {
+			// a gem's literal into an untyped slot holds anything later (kramdown's `%w[template]` option default, which
+			// its validator map!s to Symbols): Array[untyped], which rbConv still hands a typed reader (decision 330)
+			elemT = TAny{}
+		}
 	}
 	if slices.ContainsFunc(n.Elements, isSplat) {
 		return f.genSplatArray(n, elemT, hint)
@@ -300,6 +305,9 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 	}
 	if kT == nil {
 		kT, vT = joinOrAny(ks), joinOrAny(vs)
+		if isAny(expected) && f.lenient() && len(elements) > 0 { // a gem's options bag into an untyped slot (kramdown's `opts = {indent: 0}`), as genArray's (decision 330)
+			vT = TAny{}
+		}
 	}
 	targs := "[" + f.c.goType(kT) + ", " + f.c.goType(vT) + "]"
 	code := "NewHash" + targs + "()"

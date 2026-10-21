@@ -81,7 +81,7 @@ func (c *Compiler) indexDefineMethods(f *File, n parser.Node, scope []*Class, ou
 			scope = append(slices.Clip(scope), cls)
 		}
 	case *parser.CallNode:
-		if blk, ok := n.Block.(*parser.BlockNode); ok && (n.Name == "define_method" || n.Name == "define_singleton_method") {
+		if blk, ok := n.Block.(*parser.BlockNode); ok && isDefineMethodCall(n) {
 			loc := n.Location
 			if n.MessageLoc != nil {
 				loc = *n.MessageLoc
@@ -92,6 +92,22 @@ func (c *Compiler) indexDefineMethods(f *File, n parser.Node, scope []*Class, ou
 	for _, ch := range n.CompactChildNodes() {
 		c.indexDefineMethods(f, ch, scope, out)
 	}
+}
+
+// isDefineMethodCall is `define_method(...)`, `define_singleton_method(...)`, or either through `send`
+// (kramdown's `singleton_class.send(:define_method, name) do |data| ... end`).
+func isDefineMethodCall(n *parser.CallNode) bool {
+	switch n.Name {
+	case "define_method", "define_singleton_method":
+		return true
+	case "send", "__send__", "public_send":
+		if args := callArgs(n); len(args) > 0 {
+			if sym, ok := args[0].(*parser.SymbolNode); ok {
+				return sym.Unescaped.Value == "define_method" || sym.Unescaped.Value == "define_singleton_method"
+			}
+		}
+	}
+	return false
 }
 
 // defineMethodSource rebuilds the block as a def; captured locals become literal assignments so each method is self-contained.
@@ -209,7 +225,7 @@ func (c *Compiler) markDefineMethods(entries []boot.MethodInfo) {
 	c.dmSites = map[*parser.CallNode]bool{}
 	for path, f := range c.parsed {
 		anyNode(f.Root, func(n parser.Node) bool {
-			if call, ok := n.(*parser.CallNode); ok && (call.Name == "define_method" || call.Name == "define_singleton_method") {
+			if call, ok := n.(*parser.CallNode); ok && isDefineMethodCall(call) {
 				loc := call.Location
 				if call.MessageLoc != nil {
 					loc = *call.MessageLoc
@@ -638,4 +654,42 @@ func defParamNamed(d *parser.DefNode, name string) bool {
 		}
 	}
 	return false
+}
+
+// collectBootAliases declares the aliases boot's alias_method calls with a computed name made, and makes those calls
+// no-ops (decision 330): `%w[b i].each { |t| alias_method("convert_#{t}".to_sym, :convert_em) }` in a class body.
+func (c *Compiler) collectBootAliases(entries []boot.AliasInfo) {
+	if len(entries) == 0 {
+		return
+	}
+	byLine := map[string][]boot.AliasInfo{}
+	for _, e := range entries {
+		k := fmt.Sprintf("%s:%d", realPath(e.File), e.Line)
+		byLine[k] = append(byLine[k], e)
+	}
+	for _, path := range slices.Sorted(maps.Keys(c.parsed)) {
+		f := c.parsed[path]
+		anyNode(f.Root, func(n parser.Node) bool {
+			call, ok := n.(*parser.CallNode)
+			if !ok || call.Name != "alias_method" || call.Receiver != nil || allLiteralNames(callArgs(call)) {
+				return false
+			}
+			loc := call.Location
+			if call.MessageLoc != nil {
+				loc = *call.MessageLoc
+			}
+			es := byLine[fmt.Sprintf("%s:%d", path, f.line(loc.StartOffset))]
+			if len(es) == 0 {
+				return false
+			}
+			c.dmSites[call] = true
+			for _, e := range es {
+				// ponytail: a computed singleton alias stays a run-time NoMethodError; route it through singletonMisc when a gem needs one
+				if cls := c.classes[e.Owner]; cls != nil && !e.Singleton {
+					c.addAliasNamed(f, cls, call, e.Name, e.Old)
+				}
+			}
+			return false
+		})
+	}
 }
