@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -488,6 +489,47 @@ func rxCompile(pattern string) (*rxRegexp, error) {
 	}
 	return nil, err //nolint:wrapcheck // RE2's own error: rbRegexpErr words it by its code
 }
+
+// The compiler never calls the lazy path; the runtime's rbRegexpLenient does.
+var _ = rxCompileLazy
+
+// rxCompileLazy is rxCompile for a pattern whose failure may wait until it is used (a gem's: decision 176): one RE2
+// rejects compiles on the rxAlt engine at its first match, since a gem defines many it never uses and regexp2's
+// compile is the expensive part (large Unicode classes). src words the error a failed compile raises then.
+func rxCompileLazy(pattern, src string) (*rxRegexp, error) {
+	re, err := regexp.Compile(pattern)
+	if err == nil {
+		return rxNew(re), nil
+	}
+	if rxAltCompile == nil {
+		return nil, err //nolint:wrapcheck // RE2's own error, as rxCompile's
+	}
+	return &rxRegexp{alt: &rxAltLazy{pattern: pattern, src: src, re2: err.Error()}, pattern: pattern}, nil
+}
+
+// rxAltLazy is an rxAlt compiled at its first use; a pattern neither engine takes raises then, worded as
+// rbRegexpLenient words it at creation (RE2's error).
+type rxAltLazy struct {
+	pattern, src, re2 string
+	once              sync.Once
+	alt               rxAlt
+}
+
+func (l *rxAltLazy) get() rxAlt {
+	l.once.Do(func() {
+		alt, err := rxAltCompile(l.pattern)
+		if err == nil {
+			l.alt = alt
+		}
+	})
+	if l.alt == nil {
+		panic(RxUnsupported("regexp /" + l.src + "/ is not supported by rb2go: " + l.re2))
+	}
+	return l.alt
+}
+
+func (l *rxAltLazy) findAll(s string, from, n int) ([][]int, error) { return l.get().findAll(s, from, n) }
+func (l *rxAltLazy) names() []string                                { return l.get().names() }
 
 // altFirst is alt's first match in s, or nil.
 func (r *rxRegexp) altFirst(s string) []int {

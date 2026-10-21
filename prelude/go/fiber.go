@@ -83,7 +83,7 @@ func (f *Fiber) resume(args []any) any {
 
 // run is the fiber's goroutine: it belongs to the thread and ractor of the goroutine that first resumed it.
 func (f *Fiber) run(parent int64) {
-	id := rbGoID()
+	id := rbTagGoroutine()
 	rbFiberOf.Store(id, f)
 	defer rbFiberOf.Delete(id)
 	if t, ok := rbThreadOf.Load(parent); ok {

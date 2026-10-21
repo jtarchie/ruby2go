@@ -183,11 +183,13 @@ func rbFlush() {
 // as MRI's default does; Kernel#trap replaces that per signal (decision 100).
 // ponytail: MRI raises Interrupt/SignalException in the main thread, so rescue and ensure run; Go can't inject a panic into another goroutine.
 func rbTrapSignals() {
+	rbSetGoTag(&rbGoTag{id: rbMainGoID}) // main's tag, which goroutines it starts carry until they tag themselves
 	signal.Notify(rbSigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for sig := range rbSigCh {
 			if rbTrapHook != nil {
 				rbSpawned.Store(true) // the hook runs Ruby here, off main
+				rbTagGoroutine()
 			}
 			if rbTrapHook != nil && rbTrapHook(sig) {
 				continue

@@ -191,7 +191,10 @@ module WEBrick
       #: () { (HTTPRequest, HTTPResponse) -> void } -> void
       def serve = %x{
         rbSpawned.Store(true)
-        self.srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { rbWEBrickServe(w, r, blk) })
+        self.srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          rbTagGoroutine() // net/http's connection goroutine: its own identity, not the server thread's
+          rbWEBrickServe(w, r, blk)
+        })
         if err := self.srv.Serve(self.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
           panic(NewIOError(Ref(String(err.Error()))))
         }

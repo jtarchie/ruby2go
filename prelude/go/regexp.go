@@ -24,6 +24,7 @@ type rbRxCompiled struct {
 	pat  string
 	re   *rxRegexp
 	anch *atomic.Pointer[rxRegexp]
+	lazy bool // compiled by rxCompileLazy: not validated, so a strict caller compiles its own
 }
 
 // rbRxCache remembers the last pattern compiled into each of its slots (by hash), so an interpolated regexp rebuilt
@@ -31,21 +32,26 @@ type rbRxCompiled struct {
 // Regexp. Direct-mapped: bounded, no lock, and a collision only costs a recompile (decision 332).
 var rbRxCache [256]atomic.Pointer[rbRxCompiled]
 
-// rbRegexpCompiled is rxCompile through rbRxCache, as a Regexp.
-func rbRegexpCompiled(pat, src, opts string) (*Regexp, error) {
+// rbRegexpCompiled is rxCompile through rbRxCache, as a Regexp; lazy compiles what only RE2 rejects at its first use
+// (rxCompileLazy).
+func rbRegexpCompiled(pat, src, opts string, lazy bool) (*Regexp, error) {
 	h := uint32(2166136261)
 	for i := range len(pat) {
 		h = (h ^ uint32(pat[i])) * 16777619
 	}
 	slot := &rbRxCache[h%uint32(len(rbRxCache))]
-	if c := slot.Load(); c != nil && c.pat == pat {
+	if c := slot.Load(); c != nil && c.pat == pat && (lazy || !c.lazy) {
 		return &Regexp{re: c.re, src: src, opts: opts, anch: c.anch}, nil
 	}
-	re, err := rxCompile(pat)
+	compile := rxCompile
+	if lazy {
+		compile = func(p string) (*rxRegexp, error) { return rxCompileLazy(p, src) }
+	}
+	re, err := compile(pat)
 	if err != nil {
 		return nil, err
 	}
-	c := &rbRxCompiled{pat, re, new(atomic.Pointer[rxRegexp])}
+	c := &rbRxCompiled{pat, re, new(atomic.Pointer[rxRegexp]), lazy}
 	slot.Store(c)
 	return &Regexp{re: re, src: src, opts: opts, anch: c.anch}, nil
 }
@@ -53,7 +59,7 @@ func rbRegexpCompiled(pat, src, opts string) (*Regexp, error) {
 // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
 // may fail at run time, like Ruby's.
 func rbRegexpNew(pattern, src, opts string) *Regexp {
-	r, err := rbRegexpCompiled(rxFold(pattern), src, opts)
+	r, err := rbRegexpCompiled(rxFold(pattern), src, opts, false)
 	if err != nil {
 		panic(NewRegexpError(Ref(String(rbRegexpErr(err, src)))))
 	}
@@ -71,7 +77,7 @@ func rbRegexpLenient(prefix, src, opts string) *Regexp {
 	pat, err := rxPrepare(src, strings.Contains(opts, "x"))
 	var r *Regexp
 	if err == nil {
-		r, err = rbRegexpCompiled(rxFold(prefix+pat), src, opts)
+		r, err = rbRegexpCompiled(rxFold(prefix+pat), src, opts, true)
 	}
 	if err != nil {
 		return rbRegexpOf(&rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src, opts)

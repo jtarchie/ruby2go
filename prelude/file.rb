@@ -248,7 +248,7 @@ class File < Object
       }
       panic(rbSysErr(err, fn, string(path)))
     }
-    return rbOwnString(b)
+    return String(b)
   }
 
   #: (String, untyped) -> Integer
@@ -500,6 +500,13 @@ class File < Object
   # Arrays (nested too) are flattened into the parts, as MRI does.
   #: (*(String | Array[untyped])) -> String
   def self.join(*parts) = %x{
+    if len(rest_) == 2 { // two Strings, the common call: no flattening, one allocation
+      a, aok := rest_[0].(String)
+      b, bok := rest_[1].(String)
+      if aok && bok && a != "" && b != "" && a[len(a)-1] != '/' && b[0] != '/' && strings.IndexByte(string(a), 0) < 0 && strings.IndexByte(string(b), 0) < 0 {
+        return a + "/" + b
+      }
+    }
     flat := &Array[any]{}
     rbFlattenInto(flat, rest_, -1)
     out := ""

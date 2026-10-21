@@ -62,7 +62,12 @@ func rbRSAHash(name, data string) (crypto.Hash, []byte) {
 		panic(NewOpenSSL_PKey_PKeyError(Ref(String("unsupported digest algorithm (" + name + ")"))))
 	}
 	w := h.New()
-	w.Write([]byte(data))
+	var buf [32 << 10]byte // in pieces: []byte(data) would allocate and copy a multi-megabyte input whole
+	for len(data) > 0 {
+		n := copy(buf[:], data)
+		w.Write(buf[:n])
+		data = data[n:]
+	}
 	return h, w.Sum(nil)
 }
 

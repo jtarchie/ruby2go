@@ -28,6 +28,7 @@ module Timeout
     ch := make(chan rbTimeoutResult, 1)
     rbSpawned.Store(true)
     go func() {
+      rbTagGoroutine()
       defer func() {
         if r := recover(); r != nil {
           ch <- rbTimeoutResult{err: rbWrapPanic(r)}

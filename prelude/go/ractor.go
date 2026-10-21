@@ -205,7 +205,7 @@ func (r *Ractor) start(run func() any) *Ractor {
 	rbRactorLive.Add(1)
 	rbSpawned.Store(true)
 	go func() {
-		id := rbGoID()
+		id := rbTagGoroutine()
 		rbRactorOf.Store(id, r)
 		defer rbRactorOf.Delete(id)
 		defer close(r.done)

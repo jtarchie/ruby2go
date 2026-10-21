@@ -638,9 +638,11 @@ class String < Object
 
   #: () -> Integer
   def hash = %x{
-    h := fnv.New64a()
-    _, _ = h.Write([]byte(self))
-    return Integer(h.Sum64())
+    h := uint64(14695981039346656037) // FNV-1a, inline: hash/fnv's Write would copy the String to bytes per call
+    for i := range len(self) {
+      h = (h ^ uint64(self[i])) * 1099511628211
+    }
+    return Integer(h)
   }
 
   #: () -> String

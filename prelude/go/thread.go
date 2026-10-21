@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 var (
@@ -21,12 +22,42 @@ var (
 // rbSpawned is set before the first goroutine that can run Ruby code starts (Thread, Fiber, Ractor, Timeout, a WEBrick handler, a trap hook). Until then every caller is main, so rbGoID skips the stack walk: catch/throw and Monitor call it per use (decision 332).
 var rbSpawned atomic.Bool
 
-// rbGoID is the running goroutine's id (decision 104).
+// rbGoID is the running goroutine's id (decision 104): main's until another goroutine may run Ruby, then its tag
+// (rbTagGoroutine), else the stack's.
 func rbGoID() int64 {
 	if !rbSpawned.Load() {
 		return rbMainGoID
 	}
+	if p := rbGetGoTag(); p != nil {
+		return (*rbGoTag)(p).id
+	}
 	return rbGoIDStack()
+}
+
+// rbGoTag is a goroutine's id kept in its profiler-label slot, which the runtime gives every goroutine and copies
+// into the goroutines it starts. It begins as runtime/pprof's label map does (one slice of pairs, here empty), so a
+// CPU profile reads a tagged goroutine as unlabelled (decision 332).
+type rbGoTag struct {
+	_  []struct{ key, value string }
+	id int64
+}
+
+// The label slot's accessors: runtime/pprof's, which the runtime keeps for linkname users (go.dev/issue/67401).
+//
+//go:linkname rbGetGoTag runtime/pprof.runtime_getProfLabel
+func rbGetGoTag() unsafe.Pointer
+
+// The setter takes the tag's own pointer type (the same word as unsafe.Pointer), so no conversion is written.
+//
+//go:linkname rbSetGoTag runtime/pprof.runtime_setProfLabel
+func rbSetGoTag(*rbGoTag)
+
+// rbTagGoroutine gives the running goroutine its own tag, from one stack walk, and returns its id. A goroutine that
+// runs Ruby code calls it first: until then it carries the tag of the goroutine that started it.
+func rbTagGoroutine() int64 {
+	id := rbGoIDStack()
+	rbSetGoTag(&rbGoTag{id: id})
+	return id
 }
 
 // rbGoIDStack parses runtime.Stack's "goroutine N [" header: Go exposes no other identity. Its cost grows with stack depth (the walk formats every frame before truncating).
@@ -80,7 +111,7 @@ func rbThreadStart(t *Thread, run func() any) *Thread {
 	rbLiveThreads.Store(t, rbThreadSeq.Add(1))
 	rbSpawned.Store(true)
 	go func() {
-		id := rbGoID()
+		id := rbTagGoroutine()
 		rbThreadOf.Store(id, t)
 		defer rbThreadOf.Delete(id)
 		defer rbRootFibers.Delete(t) // Fiber.current's root fiber for this thread
