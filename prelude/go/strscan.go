@@ -32,7 +32,12 @@ func (s *StringScanner) do(re *Regexp, anchored, advance, str bool) *String {
 		}
 	}
 	rest := s.str[s.pos:]
-	loc := rx.FindStringSubmatchIndex(rest)
+	var loc []int
+	if anchored {
+		loc = rx.FindPrefixSubmatchIndex(rest)
+	} else {
+		loc = rx.FindStringSubmatchIndex(rest)
+	}
 	if loc == nil {
 		s.groups = nil
 		return nil

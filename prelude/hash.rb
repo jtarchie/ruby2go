@@ -198,6 +198,9 @@ class Hash < Object
       if byValue {
         self.idx.add(k, h)
       }
+      if self.vals == nil {
+        self.vals = make(map[K]V, 1)
+      }
     }
     self.vals[k] = v
     return v}

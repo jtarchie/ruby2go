@@ -484,10 +484,170 @@ func rxCompile(pattern string) (*rxRegexp, error) {
 	if rxAltCompile != nil {
 		alt, aerr := rxAltCompile(pattern)
 		if aerr == nil {
-			return &rxRegexp{alt: alt, pattern: pattern}, nil
+			return &rxRegexp{alt: rxAheadOr(pattern, alt), pattern: pattern}, nil
 		}
 	}
 	return nil, err //nolint:wrapcheck // RE2's own error: rbRegexpErr words it by its code
+}
+
+// rxAhead runs a pattern that is one lookahead, (?=X), on RE2 when X is RE2's: its first match is empty, at the
+// leftmost place X matches, with X's groups, which is what RE2's leftmost-first search for X finds. Other uses
+// (every match, for scan and gsub) go to the backtracking engine.
+type rxAhead struct {
+	body *rxRegexp
+	full rxAlt
+}
+
+func (a *rxAhead) findAll(s string, from, n int) ([][]int, error) {
+	if n != 1 || from != 0 {
+		return a.full.findAll(s, from, n)
+	}
+	loc := a.body.FindStringSubmatchIndex(s)
+	if loc == nil {
+		return nil, nil
+	}
+	loc = slices.Clone(loc)
+	loc[1] = loc[0]
+	return [][]int{loc}, nil
+}
+
+func (a *rxAhead) names() []string { return a.body.SubexpNames() }
+
+// rxAheadOr is full, or an rxAhead over it when pattern is one lookahead whose body RE2 compiles.
+func rxAheadOr(pattern string, full rxAlt) rxAlt {
+	body, ok := rxLookaheadBody(pattern)
+	if !ok {
+		return full
+	}
+	re, err := regexp.Compile(body)
+	if err != nil {
+		return full
+	}
+	return &rxAhead{rxNew(re), full}
+}
+
+// rxLookaheadBody is X for a pattern that is leading flag groups and then exactly (?=X): the flags, then X, with
+// a lookahead that ends one of X's branches made a plain group. That lookahead is atomic and nothing follows it
+// inside the outer one, so consuming it changes no outcome or group; X's own groups keep their numbers.
+func rxLookaheadBody(p string) (string, bool) {
+	flags := 0
+	for strings.HasPrefix(p[flags:], "(?") {
+		end := strings.IndexByte(p[flags:], ')')
+		if end < 0 || strings.ContainsAny(p[flags+2:flags+end], ":=!<>P()") {
+			break
+		}
+		flags += end + 1
+	}
+	rest := p[flags:]
+	if !strings.HasPrefix(rest, "(?=") || rxGroupEnd(rest, 0) != len(rest)-1 {
+		return "", false
+	}
+	return p[:flags] + rxLowerTailAhead(rest[3:len(rest)-1]), true
+}
+
+// rxGroupEnd is the index of the ')' closing the group opened at x[i], or -1.
+func rxGroupEnd(x string, i int) int {
+	depth := 0
+	for ; i < len(x); i++ {
+		switch x[i] {
+		case '\\':
+			i++
+		case '[':
+			i = rxClassEnd(x, i)
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// rxClassEnd is the index of the ']' closing the class opened at x[i] (a ']' first in it is literal).
+func rxClassEnd(x string, i int) int {
+	i++
+	if i < len(x) && x[i] == '^' {
+		i++
+	}
+	if i < len(x) && x[i] == ']' {
+		i++
+	}
+	for ; i < len(x); i++ {
+		switch x[i] {
+		case '\\':
+			i++
+		case '[':
+			if j := strings.Index(x[i:], ":]"); strings.HasPrefix(x[i:], "[:") && j > 0 {
+				i += j + 1
+			}
+		case ']':
+			return i
+		}
+	}
+	return len(x)
+}
+
+// rxLowerTailAhead makes a lookahead that ends a branch of x a plain group, looking into a non-capturing group that
+// ends a branch (a capturing one would then hold more text).
+func rxLowerTailAhead(x string) string {
+	var out []string
+	start, depth := 0, 0
+	branch := func(b string) string {
+		if !strings.HasSuffix(b, ")") {
+			return b
+		}
+		open := -1
+		for i := 0; i < len(b); i++ { // the group that ends b: the last top-level '('
+			switch b[i] {
+			case '\\':
+				i++
+			case '[':
+				i = rxClassEnd(b, i)
+			case '(':
+				if end := rxGroupEnd(b, i); end == len(b)-1 {
+					open = i
+				} else if end > i {
+					i = end
+				}
+			}
+		}
+		switch {
+		case open < 0:
+			return b
+		case strings.HasPrefix(b[open:], "(?="):
+			return b[:open] + "(?:" + b[open+3:]
+		case strings.HasPrefix(b[open:], "(?:"):
+			return b[:open] + "(?:" + rxLowerTailAhead(b[open+3:len(b)-1]) + ")"
+		case strings.HasPrefix(b[open:], "(?") && !strings.ContainsAny(b[open+2:open+3], "=!<>P"):
+			colon := strings.IndexByte(b[open:], ':')
+			if colon < 0 || strings.ContainsAny(b[open+2:open+colon], "()") {
+				return b
+			}
+			return b[:open+colon+1] + rxLowerTailAhead(b[open+colon+1:len(b)-1]) + ")"
+		}
+		return b
+	}
+	for i := 0; i < len(x); i++ {
+		switch x[i] {
+		case '\\':
+			i++
+		case '[':
+			i = rxClassEnd(x, i)
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case '|':
+			if depth == 0 {
+				out = append(out, branch(x[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return strings.Join(append(out, branch(x[start:])), "|")
 }
 
 // The compiler never calls the lazy path; the runtime's rbRegexpLenient does.
@@ -504,7 +664,7 @@ func rxCompileLazy(pattern, src string) (*rxRegexp, error) {
 	if rxAltCompile == nil {
 		return nil, err //nolint:wrapcheck // RE2's own error, as rxCompile's
 	}
-	return &rxRegexp{alt: &rxAltLazy{pattern: pattern, src: src, re2: err.Error()}, pattern: pattern}, nil
+	return &rxRegexp{alt: rxAheadOr(pattern, &rxAltLazy{pattern: pattern, src: src, re2: err.Error()}), pattern: pattern}, nil
 }
 
 // rxAltLazy is an rxAlt compiled at its first use; a pattern neither engine takes raises then, worded as
@@ -675,6 +835,21 @@ func (r *rxRegexp) FindStringSubmatchIndex(s string) []int {
 		return r.altFirst(s)
 	}
 	loc := r.Regexp.FindStringSubmatchIndex(s)
+	if r.differs(s, loc) {
+		loc = r.backtrack(s)
+	}
+	return loc
+}
+
+// FindPrefixSubmatchIndex is FindStringSubmatchIndex for a \A-anchored pattern (StringScanner's twins). RE2's
+// backtracker clears a bitmap the size of the whole input before every match, so on a long input the match runs
+// through a reader instead (NFA or one-pass), whose cost follows the match, not the input.
+func (r *rxRegexp) FindPrefixSubmatchIndex(s string) []int {
+	r.check()
+	if r.alt != nil || len(s) < 256 {
+		return r.FindStringSubmatchIndex(s)
+	}
+	loc := r.FindReaderSubmatchIndex(strings.NewReader(s))
 	if r.differs(s, loc) {
 		loc = r.backtrack(s)
 	}

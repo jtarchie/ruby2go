@@ -313,7 +313,7 @@ func (q *rbPrettyPrint) prettyPrint(v any) {
 	case rbPPValueClass:
 		q.ppValueClass(v, x)
 	default:
-		if o, ok := v.(interface{ _Ivars() []rbIvar }); ok && rbInspect(v) == rbObjInspect(v) {
+		if o, ok := v.(interface{ _Ivars(name string) []rbIvar }); ok && rbInspect(v) == rbObjInspect(v) {
 			q.ppObject(v, o)
 			return
 		}
@@ -384,8 +384,8 @@ func (q *rbPrettyPrint) ppValueClass(v any, x rbPPValueClass) {
 }
 
 // ppObject is pp_object: the address group with the ivars sorted by name.
-func (q *rbPrettyPrint) ppObject(v any, o interface{ _Ivars() []rbIvar }) {
-	ivars := slices.Clone(o._Ivars())
+func (q *rbPrettyPrint) ppObject(v any, o interface{ _Ivars(name string) []rbIvar }) {
+	ivars := slices.Clone(o._Ivars(""))
 	ivars = slices.DeleteFunc(ivars, func(iv rbIvar) bool { return !iv.opt && (iv.val == nil || iv.isNil) })
 	slices.SortFunc(ivars, func(a, b rbIvar) int { return strings.Compare(a.name, b.name) })
 	s := strings.TrimSuffix(string(rbObjToS(v)), ">")

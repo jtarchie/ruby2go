@@ -1666,3 +1666,27 @@ B
     end
   end
 end
+
+module StringTests
+  # `s += x` may extend s's buffer in place; no other String over it changes (decision 332).
+  class StringAppendInPlaceTest < Minitest::Test
+    def test_prefixes_keep_their_bytes
+      base = "x" * 70
+      a = base + "1"
+      b = a + "2"
+      c = a + "3"
+      d = b + "4"
+      assert_equal ["x12", "x13", "124"], [b[-3, 3], c[-3, 3], d[-3, 3]]
+      refute a.equal?(b)
+      acc = ""
+      2000.times { |i| acc += "row #{i}," }
+      assert_equal 16890, acc.size
+      assert_equal "1999,", acc[-5, 5]
+    end
+
+    def test_slice_by_characters
+      s = "héllo wörld"
+      assert_equal ["hél", "llo wörld", "", nil, "rl", "h", nil], [s[0, 3], s[2, 100], s[11, 2], s[12, 1], s[-3, 2], s[-11, 1], s[-12, 1]]
+    end
+  end
+end

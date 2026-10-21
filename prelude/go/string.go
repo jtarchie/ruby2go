@@ -9,7 +9,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // The numeric prefix String#to_i / #to_f read, as MRI scans it: leading
@@ -505,4 +507,57 @@ func rbDigits(s string) (int, bool) {
 		n = n*10 + int(c-'0')
 	}
 	return n, true
+}
+
+// rbStrBufs are the buffers rbStrCat may extend in place, in slots by their address: a loop's `s << x` or `s += x` is
+// `s = s + x` on immutable Strings, which copied all of s each time. Taking an entry is an atomic swap, so goroutines
+// never share one; a nested builder (a recursive converter's own result) sits in another slot (decision 332).
+var rbStrBufs [16]atomic.Pointer[[]byte]
+
+func rbStrSlot(p *byte) *atomic.Pointer[[]byte] {
+	return &rbStrBufs[(uintptr(unsafe.Pointer(p))>>4)%uintptr(len(rbStrBufs))] //nolint:gosec // the address only picks a slot
+}
+
+// rbStrCat is a + b. When a is the whole of a buffer rbStrCat made, b is written past a's end, where no String can see
+// it (every String over the buffer is at most as long as a): a is not copied. Otherwise it copies into a new buffer,
+// exactly sized the first time and doubled when that result is appended to, so a build loop is amortized linear.
+func rbStrCat(a, b string) string {
+	if len(b) == 0 || len(a) < 64 { // short: Go's concatenation; the buffer's bookkeeping would cost more than the copy
+		return a + b
+	}
+	pa := unsafe.StringData(a) //nolint:gosec // pointer compare only
+	slot := rbStrSlot(pa)
+	var buf []byte
+	if p := slot.Swap(nil); p != nil {
+		if old := *p; len(old) == len(a) && unsafe.SliceData(old) == pa { //nolint:gosec // pointer compare only
+			buf = old
+			if cap(buf)-len(buf) < len(b) {
+				buf = append(make([]byte, 0, 2*(len(a)+len(b))), a...)
+			}
+		} else {
+			slot.CompareAndSwap(nil, p) // another String's buffer: put it back
+		}
+	}
+	if buf == nil {
+		buf = make([]byte, 0, len(a)+len(b))
+		buf = append(buf, a...)
+	}
+	buf = append(buf, b...)
+	out := unsafe.String(unsafe.SliceData(buf), len(buf)) //nolint:gosec // buf's bytes up to here are never written again
+	rbStrSlot(unsafe.SliceData(buf)).Store(&buf)          //nolint:gosec // the address only picks a slot
+	return out
+}
+
+// rbRuneOffset is the byte offset of rune k in s, or len(s) when s has exactly k runes; past that, len(s) and false.
+func rbRuneOffset(s string, k int) (int, bool) {
+	i := 0
+	for ; k > 0 && i < len(s); k-- {
+		if s[i] < utf8.RuneSelf {
+			i++
+			continue
+		}
+		_, n := utf8.DecodeRuneInString(s[i:])
+		i += n
+	}
+	return i, k == 0
 }

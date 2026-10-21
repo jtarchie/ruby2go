@@ -1,6 +1,7 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "strscan"
 
 module RegexpTests
   # /x is stripped before the groups are counted and translated, wherever a pattern is built (decision 24).
@@ -103,6 +104,30 @@ module RegexpTests
       assert_equal true, s !~ /b/
       t = ["ab", nil][0]
       assert_equal false, t !~ /b/
+    end
+  end
+end
+
+module RegexpTests
+  # A pattern that is one lookahead runs its first match on RE2, its other uses on regexp2 (decision 332).
+  class RegexpWholeLookaheadTest < Minitest::Test
+    AHEAD = /(?=\*|_|(  |\\)(?=\n)|`)/
+
+    def test_first_match_is_empty_with_groups
+      s = "abc def  \nghi *x* `y`"
+      assert_equal 7, s =~ AHEAD
+      m = AHEAD.match(s)
+      assert_equal [7, 7, "  "], [m&.begin(0), m&.end(0), m&.[](1)]
+      assert_nil "plain" =~ AHEAD
+      assert_equal 0, "aaab".index(/(?=a+(?=b))|(?=b)/)
+    end
+
+    def test_every_match_and_scanner
+      assert_equal "ab|  \nc|*d|`", "ab  \nc*d`".gsub(AHEAD, "|")
+      ss = StringScanner.new("ab*cd`e")
+      assert_equal "ab", ss.scan_until(AHEAD)
+      ss.getch
+      assert_equal "cd", ss.scan_until(AHEAD)
     end
   end
 end

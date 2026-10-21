@@ -60,7 +60,7 @@ class String < Object
   }
 
   #: (String) -> String
-  def +(other) = %x{ rbNewStr(self, rbNewStr(other, self + other)) }
+  def +(other) = %x{ rbNewStr(self, rbNewStr(other, String(rbStrCat(string(self), string(other))))) }
 
   #: (Integer) -> String
   def *(n) = %x{
@@ -293,16 +293,21 @@ class String < Object
       }
       return Ref(rbNewStr(self, self[start:min(start+count, n)]))
     }
-    r := []rune(string(self))
-    n := Integer(len(r))
-    if start < 0 {
-      start += n
+    if start < 0 || count < 0 {
+      n := Integer(utf8.RuneCountInString(string(self)))
+      if start < 0 {
+        start += n
+      }
+      if start < 0 || start > n || count < 0 {
+        return nil
+      }
     }
-    if start < 0 || start > n || count < 0 {
+    b, ok := rbRuneOffset(string(self), int(start)) // byte offsets by walking, not a []rune of the whole String
+    if !ok {
       return nil
     }
-    end := min(start+count, n)
-    return Ref(rbNewStr(self, String(r[start:end])))
+    e, _ := rbRuneOffset(string(self[b:]), int(count))
+    return Ref(rbNewStr(self, self[b:b+e]))
   }
 
   #: () -> Array[Integer]

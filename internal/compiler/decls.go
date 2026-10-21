@@ -1010,7 +1010,20 @@ func (c *Compiler) emitIvarList(cls *Class) {
 		}
 		ivs = append(ivs, fmt.Sprintf("{%q, %s, %t, %s}", iv.Name, val, opt, isNilCode))
 	}
-	c.w("func (self *%s) _Ivars() []rbIvar { return []rbIvar{%s} }\n\n", cls.Name, strings.Join(ivs, ", "))
+	// One name's entry comes from a switch, so instance_variable_get does not build the whole list (decision 332).
+	if len(ivs) == 0 {
+		c.w("func (self *%s) _Ivars(string) []rbIvar { return nil }\n\n", cls.Name)
+	} else {
+		c.w("func (self *%s) _Ivars(name string) []rbIvar {\n\tswitch name {\n\tcase \"\":\n\t\treturn []rbIvar{%s}\n", cls.Name, strings.Join(ivs, ", "))
+		seen := map[string]bool{}
+		for i, iv := range c.ivarOrder(cls) {
+			if !seen[iv.Name] { // the first, as the loop over the whole list finds
+				seen[iv.Name] = true
+				c.w("\tcase %q:\n\t\treturn []rbIvar{%s}\n", iv.Name, ivs[i])
+			}
+		}
+		c.w("\t}\n\treturn nil\n}\n\n")
+	}
 	// Kernel#instance_variable_set: the closed world knows every ivar's type, so a write converts to it
 	c.w("func (self *%s) _IvarSet(name string, v any) bool {\n\tswitch name {\n", cls.Name)
 	for _, iv := range c.ivarOrder(cls) {
@@ -2153,13 +2166,17 @@ func (c *Compiler) emitConstTable(cls *Class) {
 	c.emitPrivateMethodTable(cls, desc)
 	c.emitSingletonMethodTable(cls, desc)
 	if desc == nil {
-		c.w("func (self *%s) _Consts() []rbConst { return nil }\n\n", cls.Name)
+		c.w("func (self *%s) _Consts(string) []rbConst { return nil }\n\n", cls.Name)
 		return
 	}
 	if flag := c.evalDefFlag(desc); flag != "" {
 		c.w("var %s bool\n\n", flag)
 	}
-	c.w("func (self *%s) _Consts() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	// One name's entries come from a switch, so const_get does not build the whole table per lookup (decision 332);
+	// "" is the whole table, for constants and the like.
+	var all []string
+	byName := map[string][]string{}
+	var names []string
 	for _, full := range c.constEntries(desc) {
 		if v, ok := c.constValue(full); ok {
 			short := full[strings.LastIndex(full, ":")+1:]
@@ -2167,10 +2184,27 @@ func (c *Compiler) emitConstTable(cls *Class) {
 			if k := c.classes[full]; k != nil && c.evalDefFlag(k) != "" { // defined when its eval runs (decision 324)
 				v = "rbEvalConst{&" + c.evalDefFlag(k) + ", " + v + "}"
 			}
-			c.w("\t\t{%q, %s, %t},\n", short, v, inherited)
+			entry := fmt.Sprintf("{%q, %s, %t}", short, v, inherited)
+			all = append(all, entry)
+			if _, seen := byName[short]; !seen {
+				names = append(names, short)
+			}
+			byName[short] = append(byName[short], entry)
 		}
 	}
-	c.w("\t}\n}\n\n")
+	if len(all) == 0 {
+		c.w("func (self *%s) _Consts(string) []rbConst { return nil }\n\n", cls.Name)
+		return
+	}
+	c.w("func (self *%s) _Consts(name string) []rbConst {\n\tswitch name {\n\tcase \"\":\n\t\treturn []rbConst{\n", cls.Name)
+	for _, e := range all {
+		c.w("\t\t\t%s,\n", e)
+	}
+	c.w("\t\t}\n")
+	for _, n := range names {
+		c.w("\tcase %q:\n\t\treturn []rbConst{%s}\n", n, strings.Join(byName[n], ", "))
+	}
+	c.w("\t}\n\treturn nil\n}\n\n")
 }
 
 // emitDescendants gives a class object its descendant classes in definition

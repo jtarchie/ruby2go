@@ -67,24 +67,45 @@ type rxRunes struct {
 	byteAt []int
 }
 
-// rxLastRunes is the last subject any regexp converted: a StringScanner's patterns take turns on one string.
-var rxLastRunes atomic.Pointer[rxRunes]
+// rxRecentRunes are the last subjects any regexp converted, replaced in turn: a StringScanner's patterns take turns on
+// one string, and a parser runs a scanner per paragraph inside the one over the document.
+var (
+	rxRecentRunes [4]atomic.Pointer[rxRunes]
+	rxRecentNext  atomic.Uint32
+)
 
-// runesOf is s as runes, reusing this regexp's or any regexp's last conversion when s is a suffix of it starting on a
+// rxSuffixAt is where s starts in c.s when s is its tail. A scanner's rest is a slice of its string, and Go's string
+// comparison returns at once for the same bytes, so the usual hit costs no comparison of the text.
+func rxSuffixAt(c *rxRunes, s string) (int, bool) {
+	if c == nil || len(s) == 0 || !strings.HasSuffix(c.s, s) {
+		return 0, false
+	}
+	return len(c.s) - len(s), true
+}
+
+// runesOf is s as runes, reusing this regexp's or a recent conversion when s is the tail of that subject starting on a
 // rune boundary, so scanning a string piece by piece costs one conversion, not one per step and pattern. byteAt is
 // relative to the cached subject: subtract off for s's offsets.
 func (a rxAlt2) runesOf(s string) (runes []rune, byteAt []int, off int) {
-	for _, c := range [...]*rxRunes{a.last.Load(), rxLastRunes.Load()} {
-		if c == nil || len(s) > len(c.s) || !strings.HasSuffix(c.s, s) {
+	cands := [1 + len(rxRecentRunes)]*rxRunes{a.last.Load()}
+	for i := range rxRecentRunes {
+		cands[1+i] = rxRecentRunes[i].Load()
+	}
+	for _, c := range cands {
+		off, ok := rxSuffixAt(c, s)
+		if !ok {
 			continue
 		}
-		off = len(c.s) - len(s)
 		if c.byteAt == nil {
-			a.last.Store(c)
+			if a.last.Load() != c {
+				a.last.Store(c)
+			}
 			return c.runes[off:], nil, 0
 		}
 		if k, ok := slices.BinarySearch(c.byteAt, off); ok {
-			a.last.Store(c)
+			if a.last.Load() != c {
+				a.last.Store(c)
+			}
 			return c.runes[k:], c.byteAt[k:], off
 		}
 	}
@@ -97,7 +118,9 @@ func (a rxAlt2) runesOf(s string) (runes []rune, byteAt []int, off int) {
 		c.byteAt = append(c.byteAt, len(s))
 	}
 	a.last.Store(c)
-	rxLastRunes.Store(c)
+	if len(s) >= 64 { // short subjects are cheap to convert again; keep the slots for the long ones
+		rxRecentRunes[rxRecentNext.Add(1)%uint32(len(rxRecentRunes))].Store(c)
+	}
 	return c.runes, c.byteAt, 0
 }
 

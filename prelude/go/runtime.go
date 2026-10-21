@@ -719,7 +719,7 @@ type rbIvar struct {
 func rbObjInspect(a any) String { return rbObjInspectIn(a, nil) }
 
 func rbObjInspectIn(a any, seen *rbSeen) String {
-	o, ok := a.(interface{ _Ivars() []rbIvar })
+	o, ok := a.(interface{ _Ivars(name string) []rbIvar })
 	if !ok {
 		return rbObjToS(a)
 	}
@@ -732,7 +732,7 @@ func rbObjInspectIn(a any, seen *rbSeen) String {
 	}
 	defer seen.leave(a, nil)
 	sep := " "
-	for _, iv := range o._Ivars() {
+	for _, iv := range o._Ivars("") {
 		if !iv.opt && (iv.val == nil || iv.isNil) {
 			continue
 		}
@@ -803,7 +803,7 @@ func rbInspectIn(a any, seen *rbSeen) String {
 	if r, ok := a.(rbInspectRec); ok {
 		return r._InspectRec(seen)
 	}
-	if _, ivars := a.(interface{ _Ivars() []rbIvar }); ivars {
+	if _, ivars := a.(interface{ _Ivars(name string) []rbIvar }); ivars {
 		if id, ok := a.(interface{ _ClassID() int }); ok && rbKernelInspect[id._ClassID()] {
 			return rbObjInspectIn(a, seen)
 		}
@@ -1332,7 +1332,7 @@ func rbStopped() {
 }
 
 func NewHash[K, V comparable]() *Hash[K, V] {
-	return &Hash[K, V]{vals: map[K]V{}, idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}}
+	return &Hash[K, V]{idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}} // vals is made by the first []=: an empty Hash allocates no map
 }
 
 // `when Array` / `when Hash` in a type switch can't match a generic
@@ -1678,8 +1678,8 @@ func rbFrozenErr(p any) {
 // rbIvarNames is Kernel#instance_variables: the ivars inspect would list (one not assigned yet reads as nil and is left out).
 func rbIvarNames(a any) *Array[Symbol] {
 	out := &Array[Symbol]{}
-	if o, ok := a.(interface{ _Ivars() []rbIvar }); ok {
-		for _, iv := range o._Ivars() {
+	if o, ok := a.(interface{ _Ivars(name string) []rbIvar }); ok {
+		for _, iv := range o._Ivars("") {
 			if iv.opt || iv.val != nil && !iv.isNil {
 				out.s = append(out.s, Symbol(iv.name))
 			}
@@ -1706,8 +1706,8 @@ func rbIvarName(name any) string {
 // rbIvarGet is Kernel#instance_variable_get: nil for an ivar the class never has.
 func rbIvarGet(a, name any) any {
 	n := rbIvarName(name)
-	if o, ok := a.(interface{ _Ivars() []rbIvar }); ok {
-		for _, iv := range o._Ivars() {
+	if o, ok := a.(interface{ _Ivars(name string) []rbIvar }); ok {
+		for _, iv := range o._Ivars(n) {
 			if iv.name == n && !iv.isNil {
 				return iv.val
 			}

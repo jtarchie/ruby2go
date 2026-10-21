@@ -26,7 +26,7 @@ class Module < Object
   #: (?bool) -> Array[Symbol]
   def constants(inherit = true) = %x{
     out := &Array[Symbol]{}
-    for _, c := range any(self).(rbConstTable)._Consts() {
+    for _, c := range any(self).(rbConstTable)._Consts("") {
       if p, ok := c.value.(rbEvalConst); ok && !*p.defined {
         continue
       }

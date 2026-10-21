@@ -19,9 +19,12 @@ const (
 
 // rbArity raises MRI's ArgumentError for a wrong argument count.
 func rbArity(given, min, max int) {
-	if given >= min && (max < 0 || given <= max) {
-		return
+	if given < min || max >= 0 && given > max {
+		rbArityFail(given, min, max) // out of line, so the check inlines into every Dyn wrapper
 	}
+}
+
+func rbArityFail(given, min, max int) {
 	expected := strconv.Itoa(min)
 	switch {
 	case max < 0:

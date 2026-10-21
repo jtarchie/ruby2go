@@ -24,7 +24,7 @@ type rbModule interface {
 // rbConstTable is a class object's generated constant table. Only constant reflection asks for
 // it, and no generated interface declares it, so the pruner keeps the tables (and every class
 // they name) only in programs that reflect (decision 49).
-type rbConstTable interface{ _Consts() []rbConst }
+type rbConstTable interface{ _Consts(name string) []rbConst }
 
 func rbConstName(name any) string {
 	switch n := rbUnbox(name).(type) { // a String? held untyped arrives boxed (liquid's `send(method, *args)` with a filter name)
@@ -37,7 +37,7 @@ func rbConstName(name any) string {
 }
 
 func rbConstFind(m rbModule, name string, inherit bool) (any, bool) {
-	for _, c := range m.(rbConstTable)._Consts() {
+	for _, c := range m.(rbConstTable)._Consts(name) {
 		if c.name == name && (inherit || !c.inherited) {
 			if p, ok := c.value.(rbEvalConst); ok { // a class a string eval defines: there once that eval has run (decision 324)
 				if !*p.defined {

@@ -233,29 +233,28 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.26s | 0.016s | 16.4x faster |
-| `Hash` counting, 500k | 0.11s | 0.024s | 4.7x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.024s | 6.0x faster |
+| `fib(32)` | 0.27s | 0.016s | 16.6x faster |
+| `Hash` counting, 500k | 0.11s | 0.024s | 4.6x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.025s | 5.7x faster |
 | string build/split, 100k | 0.11s | 0.032s | 3.4x faster |
-| `Math.sin`/`cos`, 200k | 0.08s | 0.008s | 11.1x faster |
-| classes, polymorphic calls, Comparable | 0.26s | 0.040s | 6.5x faster |
-| blocks, procs, lambdas, enumerator chains | 0.35s | 0.136s | 2.6x faster |
-| raise/rescue/retry, catch/throw | 0.28s | 0.167s | 1.7x faster |
-| regexp match/gsub/scan/tr, StringScanner | 0.78s | 0.395s | 2.0x faster |
-| sort_by/group_by/tally, Set, Struct | 0.57s | 0.192s | 3.0x faster |
-| format, StringIO, case mapping | 0.49s | 0.254s | 1.9x faster |
-| JSON generate + parse | 0.14s | 0.190s | 1.4x slower |
-| pairing_heap gem: Dijkstra + heapsort | 0.68s | 0.315s | 2.2x faster |
-| liquid gem: a template rendered 400 times | 0.37s | 0.194s | 1.9x faster |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.614s | 1.4x slower |
-| total | 5.09s | 2.602s | 2.0x faster |
+| `Math.sin`/`cos`, 200k | 0.08s | 0.008s | 10.9x faster |
+| classes, polymorphic calls, Comparable | 0.26s | 0.041s | 6.4x faster |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.137s | 2.6x faster |
+| raise/rescue/retry, catch/throw | 0.28s | 0.168s | 1.7x faster |
+| regexp match/gsub/scan/tr, StringScanner | 0.78s | 0.386s | 2.0x faster |
+| sort_by/group_by/tally, Set, Struct | 0.58s | 0.192s | 3.0x faster |
+| format, StringIO, case mapping | 0.49s | 0.256s | 1.9x faster |
+| JSON generate + parse | 0.14s | 0.192s | 1.4x slower |
+| pairing_heap gem: Dijkstra + heapsort | 0.69s | 0.294s | 2.3x faster |
+| liquid gem: a template rendered 400 times | 0.38s | 0.184s | 2.0x faster |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.46s | 0.459s | even |
+| total | 5.12s | 2.415s | 2.1x faster |
 
-MRI wins two workloads. Its `json` is a C extension; rb2go's generator builds
-a String per nested value, as the `to_json` protocol does. kramdown's parser
-runs on StringScanner with patterns RE2 cannot match (lookarounds), so they
-fall back to the regexp2 engine (decision 242), a slower backtracker than
-Onigmo; decision 332 removed the adapter's per-match conversion and the stack
-walk each `throw` paid.
+MRI keeps two workloads. Its `json` is a C extension; rb2go's generator
+builds a String per nested value, as the `to_json` protocol does. kramdown
+(once 3.1x slower) is now even: what remains is regex engines, mostly patterns
+RE2 cannot match (lookbehinds, atomic groups, backreferences), which run on
+the regexp2 backtracker (decisions 242, 332).
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one

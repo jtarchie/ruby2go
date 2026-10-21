@@ -207,13 +207,13 @@ func rbMDumpObj(w *rbMW, tag string, v any) {
 	if !w.begin(v, 'o', tag) {
 		return
 	}
-	o, ok := v.(interface{ _Ivars() []rbIvar })
+	o, ok := v.(interface{ _Ivars(name string) []rbIvar })
 	if !ok {
 		w.count(0)
 		return
 	}
 	var set []rbIvar
-	for _, iv := range o._Ivars() {
+	for _, iv := range o._Ivars("") {
 		if iv.opt || iv.val != nil && !iv.isNil {
 			set = append(set, iv)
 		}
