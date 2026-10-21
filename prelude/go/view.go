@@ -5,7 +5,6 @@ package prelude
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -47,7 +46,7 @@ func rbViewElems(s rbView) []any {
 
 func rbViewSorted(s rbView) []any {
 	xs := rbViewElems(s)
-	sort.SliceStable(xs, func(i, j int) bool { return rbCmp(rbUnbox(xs[i]), rbUnbox(xs[j])) < 0 })
+	rbSortStable(xs, func(a, b any) int { return int(rbCmp(rbUnbox(a), rbUnbox(b))) })
 	return xs
 }
 
@@ -96,7 +95,7 @@ func rbViewSortedBy(s rbView, b *rbBlockArg) []any {
 		return rbViewSorted(s)
 	}
 	xs := rbViewElems(s)
-	sort.SliceStable(xs, func(i, j int) bool { return rbViewCmp(b, xs[i], xs[j]) < 0 })
+	rbSortStable(xs, func(x, y any) int { return int(rbViewCmp(b, x, y)) })
 	return xs
 }
 
@@ -643,7 +642,7 @@ func rbViewSortBy(s rbView, b *rbBlockArg) []any {
 	for i := range idx {
 		idx[i] = i
 	}
-	sort.SliceStable(idx, func(i, j int) bool { return rbCmp(keys[idx[i]], keys[idx[j]]) < 0 })
+	rbSortStable(idx, func(i, j int) int { return int(rbCmp(keys[i], keys[j])) })
 	out := make([]any, len(xs))
 	for i, j := range idx {
 		out[i] = xs[j]

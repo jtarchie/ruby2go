@@ -92,6 +92,21 @@ func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
 		}
 	}
 	limit = rbJSONLimit(limit)
+	var (
+		fast any
+		ok   bool
+	)
+	if symbolizeNames {
+		fast, ok = rbJSONFastParse(s, limit, func(k string) Symbol { return Symbol(k) })
+	} else {
+		fast, ok = rbJSONFastParse(s, limit, func(k string) String { return String(k) })
+	}
+	if ok {
+		if freeze {
+			rbJSONFreeze(fast)
+		}
+		return fast
+	}
 	dec := json.NewDecoder(strings.NewReader(s))
 	dec.UseNumber()
 
@@ -114,6 +129,235 @@ func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
 		rbJSONFreeze(rv.v)
 	}
 	return rv.v
+}
+
+// rbJSONFast parses well-formed JSON a byte at a time, several times faster than json.Decoder's Token stream. It gives
+// up (ok false) on anything else: a syntax error, a container past the nesting limit, a surrogate \u escape or invalid
+// UTF-8; the Decoder path then reparses, so errors and their messages stay that path's (decision 332).
+type rbJSONFast[K comparable] struct {
+	s     string
+	i     int
+	limit int
+	keyOf func(string) K
+}
+
+func rbJSONFastParse[K comparable](s string, limit int, keyOf func(string) K) (any, bool) {
+	p := &rbJSONFast[K]{s: s, limit: limit, keyOf: keyOf}
+	v, ok := p.value(0)
+	if !ok || rbJSONSkipSpace(s, p.i) != len(s) {
+		return nil, false
+	}
+	return v, true
+}
+
+func (p *rbJSONFast[K]) value(depth int) (any, bool) {
+	p.i = rbJSONSkipSpace(p.s, p.i)
+	if p.i >= len(p.s) {
+		return nil, false
+	}
+	switch c := p.s[p.i]; {
+	case c == '{':
+		p.i++
+		h := NewHash[K, any]()
+		if p.i = rbJSONSkipSpace(p.s, p.i); p.i < len(p.s) && p.s[p.i] == '}' {
+			p.i++
+			return h, true
+		}
+		if depth >= p.limit {
+			return nil, false
+		}
+		for {
+			if p.i = rbJSONSkipSpace(p.s, p.i); p.i >= len(p.s) || p.s[p.i] != '"' {
+				return nil, false
+			}
+			k, ok := p.str()
+			if !ok {
+				return nil, false
+			}
+			if p.i = rbJSONSkipSpace(p.s, p.i); p.i >= len(p.s) || p.s[p.i] != ':' {
+				return nil, false
+			}
+			p.i++
+			v, ok := p.value(depth + 1)
+			if !ok {
+				return nil, false
+			}
+			Hash_Op_idxSet(h, p.keyOf(k), v)
+			if p.i = rbJSONSkipSpace(p.s, p.i); p.i >= len(p.s) {
+				return nil, false
+			}
+			p.i++
+			switch p.s[p.i-1] {
+			case '}':
+				return h, true
+			case ',':
+			default:
+				return nil, false
+			}
+		}
+	case c == '[':
+		p.i++
+		arr := &Array[any]{}
+		if p.i = rbJSONSkipSpace(p.s, p.i); p.i < len(p.s) && p.s[p.i] == ']' {
+			p.i++
+			return arr, true
+		}
+		if depth >= p.limit {
+			return nil, false
+		}
+		for {
+			v, ok := p.value(depth + 1)
+			if !ok {
+				return nil, false
+			}
+			arr.s = append(arr.s, v)
+			if p.i = rbJSONSkipSpace(p.s, p.i); p.i >= len(p.s) {
+				return nil, false
+			}
+			p.i++
+			switch p.s[p.i-1] {
+			case ']':
+				return arr, true
+			case ',':
+			default:
+				return nil, false
+			}
+		}
+	case c == '"':
+		v, ok := p.str()
+		return String(v), ok
+	case c == '-' || c >= '0' && c <= '9':
+		return p.num()
+	}
+	for _, lit := range [...]struct {
+		word string
+		v    any
+	}{{"true", Boolean(true)}, {"false", Boolean(false)}, {"null", nil}} {
+		if strings.HasPrefix(p.s[p.i:], lit.word) {
+			p.i += len(lit.word)
+			return lit.v, true
+		}
+	}
+	return nil, false
+}
+
+// str reads a string at p.i (its opening quote).
+func (p *rbJSONFast[K]) str() (string, bool) {
+	start := p.i + 1
+	for j := start; j < len(p.s); j++ {
+		switch c := p.s[j]; {
+		case c == '"':
+			p.i = j + 1
+			return p.s[start:j], true
+		case c == '\\':
+			return p.escaped(start)
+		case c < 0x20:
+			return "", false
+		case c >= utf8.RuneSelf:
+			r, n := utf8.DecodeRuneInString(p.s[j:])
+			if r == utf8.RuneError && n == 1 {
+				return "", false
+			}
+			j += n - 1
+		}
+	}
+	return "", false
+}
+
+// escaped is str for a string with a backslash in it.
+func (p *rbJSONFast[K]) escaped(start int) (string, bool) {
+	var b strings.Builder
+	for j := start; j < len(p.s); j++ {
+		c := p.s[j]
+		switch {
+		case c == '"':
+			p.i = j + 1
+			return b.String(), true
+		case c < 0x20:
+			return "", false
+		case c >= utf8.RuneSelf:
+			r, n := utf8.DecodeRuneInString(p.s[j:])
+			if r == utf8.RuneError && n == 1 {
+				return "", false
+			}
+			b.WriteString(p.s[j : j+n])
+			j += n - 1
+		case c != '\\':
+			b.WriteByte(c)
+		case j+1 >= len(p.s):
+			return "", false
+		default:
+			j++
+			switch p.s[j] {
+			case '"', '\\', '/':
+				b.WriteByte(p.s[j])
+			case 'b':
+				b.WriteByte('\b')
+			case 'f':
+				b.WriteByte('\f')
+			case 'n':
+				b.WriteByte('\n')
+			case 'r':
+				b.WriteByte('\r')
+			case 't':
+				b.WriteByte('\t')
+			case 'u':
+				if j+4 >= len(p.s) {
+					return "", false
+				}
+				r, err := strconv.ParseUint(p.s[j+1:j+5], 16, 32)
+				if err != nil || utf16.IsSurrogate(rune(r)) {
+					return "", false
+				}
+				b.WriteRune(rune(r))
+				j += 4
+			default:
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+// num reads a number at p.i by JSON's grammar: -?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?
+func (p *rbJSONFast[K]) num() (any, bool) {
+	s, j := p.s, p.i
+	digits := func() bool {
+		k := j
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			j++
+		}
+		return j > k
+	}
+	if s[j] == '-' {
+		j++
+	}
+	if j < len(s) && s[j] == '0' {
+		j++
+	} else if !digits() {
+		return nil, false
+	}
+	if j < len(s) && s[j] == '.' {
+		j++
+		if !digits() {
+			return nil, false
+		}
+	}
+	if j < len(s) && (s[j] == 'e' || s[j] == 'E') {
+		j++
+		if j < len(s) && (s[j] == '+' || s[j] == '-') {
+			j++
+		}
+		if !digits() {
+			return nil, false
+		}
+	}
+	if j < len(s) && (s[j] >= '0' && s[j] <= '9' || s[j] == '.') {
+		return nil, false // a leading zero, as 01
+	}
+	v := rbJSONParseNumber(s[p.i:j])
+	p.i = j
+	return v, true
 }
 
 // rbJSONFreeze freezes every Array and Hash of a parsed document (freeze: true); Strings are values, always frozen.
@@ -373,6 +617,11 @@ func rbJSONStateOf(args []any) *rbJSONState { return rbJSONStateOfMax(args, 100,
 
 // rbJSONStateOfMax is rbJSONStateOf with other defaults (JSON.dump's: max_nesting 0, allow_nan true).
 func rbJSONStateOfMax(args []any, maxNesting int, allowNaN bool) *rbJSONState {
+	if len(args) > 0 {
+		if o, ok := args[0].(*rbJSONState); ok { // the nested case: no allocation
+			return o
+		}
+	}
 	st := &rbJSONState{maxNesting: maxNesting, allowNaN: allowNaN}
 	if len(args) == 0 {
 		return st
@@ -501,7 +750,11 @@ func rbJSONString(s string, st *rbJSONState) String {
 	if !utf8.ValidString(s) {
 		panic(NewJSON_GeneratorError(Ref(String("source sequence is illegal/malformed utf-8"))))
 	}
+	if !st.scriptSafe && !st.asciiOnly && !strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == '"' || r == '\\' }) {
+		return String(`"` + s + `"`) // nothing to escape: one allocation
+	}
 	var b strings.Builder
+	b.Grow(len(s) + 2)
 	b.WriteByte('"')
 	for i, r := range s {
 		if st.scriptSafe && (r == '/' || r == 0x2028 || r == 0x2029) || st.asciiOnly && r >= 0x80 {

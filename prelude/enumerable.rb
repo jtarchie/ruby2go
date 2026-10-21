@@ -348,7 +348,7 @@ module Enumerable
     for x := range self.Each() {
       tmp = append(tmp, kv{blk(x), x})
     }
-    slices.SortStableFunc(tmp, func(a, b kv) int { return -int(rbCmp(b.k, a.k)) })
+    rbSortStable(tmp, func(a, b kv) int { return -int(rbCmp(b.k, a.k)) })
     out := &Array[E]{}
     for _, p := range tmp {
       out.s = append(out.s, p.v)
@@ -362,7 +362,7 @@ module Enumerable
     for x := range self.Each() {
       out.s = append(out.s, x)
     }
-    slices.SortStableFunc(out.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    rbSortStable(out.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return out
   }
 
@@ -545,7 +545,7 @@ module Enumerable
     for x := range self.Each() {
       out.s = append(out.s, x)
     }
-    slices.SortStableFunc(out.s, func(a, b E) int { return int(blk(a, b)) })
+    rbSortStable(out.s, func(a, b E) int { return int(blk(a, b)) })
     return out
   }
 

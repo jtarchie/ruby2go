@@ -26,6 +26,7 @@ module Timeout
       err any
     }
     ch := make(chan rbTimeoutResult, 1)
+    rbSpawned.Store(true)
     go func() {
       defer func() {
         if r := recover(); r != nil {

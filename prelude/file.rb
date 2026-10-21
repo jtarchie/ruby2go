@@ -248,7 +248,7 @@ class File < Object
       }
       panic(rbSysErr(err, fn, string(path)))
     }
-    return String(b)
+    return rbOwnString(b)
   }
 
   #: (String, untyped) -> Integer
@@ -688,8 +688,7 @@ class File < Object
   #: () -> String
   def read = %x{
     self.rbReadable()
-    b, _ := io.ReadAll(self.r)
-    return String(b)
+    return rbReadRest(self.r, self.f)
   }
 
   # read(length): at most length bytes, nil at the end (but "" for 0); nil length reads the rest
@@ -697,8 +696,7 @@ class File < Object
   def __read_1(length) = %x{
     self.rbReadable()
     if length == nil {
-      b, _ := io.ReadAll(self.r)
-      s := String(b)
+      s := rbReadRest(self.r, self.f)
       return &s
     }
     if *length < 0 {

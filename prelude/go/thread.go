@@ -18,8 +18,19 @@ var (
 	rbMainThread = &Thread{done: make(chan struct{})}
 )
 
-// rbGoID is the running goroutine's id, parsed from runtime.Stack's "goroutine N [" header: Go exposes no other identity (decision 104). About a microsecond; only blocking or locking paths pay it.
+// rbSpawned is set before the first goroutine that can run Ruby code starts (Thread, Fiber, Ractor, Timeout, a WEBrick handler, a trap hook). Until then every caller is main, so rbGoID skips the stack walk: catch/throw and Monitor call it per use (decision 332).
+var rbSpawned atomic.Bool
+
+// rbGoID is the running goroutine's id (decision 104).
 func rbGoID() int64 {
+	if !rbSpawned.Load() {
+		return rbMainGoID
+	}
+	return rbGoIDStack()
+}
+
+// rbGoIDStack parses runtime.Stack's "goroutine N [" header: Go exposes no other identity. Its cost grows with stack depth (the walk formats every frame before truncating).
+func rbGoIDStack() int64 {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
 	var id int64
@@ -67,6 +78,7 @@ func rbThreadStart(t *Thread, run func() any) *Thread {
 	t.group.Store(creator.group.Load()) // a new thread joins its creator's ThreadGroup, as in MRI (decision 132)
 	ractor, inRactor := rbRactorOf.Load(parent)
 	rbLiveThreads.Store(t, rbThreadSeq.Add(1))
+	rbSpawned.Store(true)
 	go func() {
 		id := rbGoID()
 		rbThreadOf.Store(id, t)

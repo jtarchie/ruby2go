@@ -18,6 +18,9 @@ func rbStrictInt(s String, base int) Integer {
 	if base == 1 || base > 36 || base < -36 {
 		panic(NewArgumentError(Ref(String("invalid radix " + strconv.Itoa(base)))))
 	}
+	if n, ok := rbDigits(string(s)); ok && (base == 10 || (base == 0 || base == -1) && (len(s) == 1 || s[0] != '0')) {
+		return Integer(n) // plain decimal digits: the common case, without the parse below
+	}
 	bad := func() {
 		panic(NewArgumentError(Ref("invalid value for Integer(): " + rbStringInspect(string(s)))))
 	}
@@ -32,7 +35,19 @@ func rbStrictInt(s String, base int) Integer {
 	}
 	prefixed := false
 	if len(t) >= 2 {
-		pb := map[string]int{"0b": 2, "0o": 8, "0d": 10, "0x": 16}[strings.ToLower(t[:2])]
+		pb := 0
+		if t[0] == '0' {
+			switch t[1] | 0x20 { // lower-cased
+			case 'b':
+				pb = 2
+			case 'o':
+				pb = 8
+			case 'd':
+				pb = 10
+			case 'x':
+				pb = 16
+			}
+		}
 		if pb != 0 && (auto || pb == base) {
 			base, t, prefixed = pb, t[2:], true
 		}

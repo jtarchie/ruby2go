@@ -418,15 +418,39 @@ class String < Object
     if len(t) > 0 {
       last = t[len(t)-1]
     }
-    m := make(map[rune]rune, len(f))
+    var ascii [128]rune // ASCII lookups skip the map: -1 is absent (a value is never negative)
+    for i := range ascii {
+      ascii[i] = -1
+    }
+    var m map[rune]rune
     for i, c := range f {
-      m[c] = last
+      v := last
       if !negate && i < len(t) {
-        m[c] = t[i]
+        v = t[i]
       }
+      if c < 128 {
+        ascii[c] = v
+        if v < 0 {
+          ascii[c] = -2 // deleted, still present
+        }
+        continue
+      }
+      if m == nil {
+        m = map[rune]rune{}
+      }
+      m[c] = v
     }
     return rbNewStr(self, String(strings.Map(func(r rune) rune {
-      v, ok := m[r]
+      var v rune
+      var ok bool
+      if r < 128 {
+        v, ok = ascii[r], ascii[r] != -1
+        if v == -2 {
+          v = -1
+        }
+      } else {
+        v, ok = m[r]
+      }
       if negate {
         if ok {
           return r
@@ -575,6 +599,9 @@ class String < Object
 
   #: () -> Integer
   def to_i = %x{
+    if n, ok := rbDigits(string(self)); ok {
+      return Integer(n)
+    }
     m := rbIntPrefix.FindStringSubmatch(string(self))
     if m == nil {
       return 0

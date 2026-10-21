@@ -19,14 +19,45 @@ func rbRegexpOf(re *rxRegexp, src, opts string) *Regexp {
 	return &Regexp{re: re, src: src, opts: opts, anch: new(atomic.Pointer[rxRegexp])}
 }
 
+// rbRxCompiled is a compiled pattern and its \A twin's slot, shared by every Regexp built from the same pattern.
+type rbRxCompiled struct {
+	pat  string
+	re   *rxRegexp
+	anch *atomic.Pointer[rxRegexp]
+}
+
+// rbRxCache remembers the last pattern compiled into each of its slots (by hash), so an interpolated regexp rebuilt
+// with the same text (a parser's per-instance patterns, a loop's /#{x}/) compiles once; each build is still its own
+// Regexp. Direct-mapped: bounded, no lock, and a collision only costs a recompile (decision 332).
+var rbRxCache [256]atomic.Pointer[rbRxCompiled]
+
+// rbRegexpCompiled is rxCompile through rbRxCache, as a Regexp.
+func rbRegexpCompiled(pat, src, opts string) (*Regexp, error) {
+	h := uint32(2166136261)
+	for i := range len(pat) {
+		h = (h ^ uint32(pat[i])) * 16777619
+	}
+	slot := &rbRxCache[h%uint32(len(rbRxCache))]
+	if c := slot.Load(); c != nil && c.pat == pat {
+		return &Regexp{re: c.re, src: src, opts: opts, anch: c.anch}, nil
+	}
+	re, err := rxCompile(pat)
+	if err != nil {
+		return nil, err
+	}
+	c := &rbRxCompiled{pat, re, new(atomic.Pointer[rxRegexp])}
+	slot.Store(c)
+	return &Regexp{re: re, src: src, opts: opts, anch: c.anch}, nil
+}
+
 // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
 // may fail at run time, like Ruby's.
 func rbRegexpNew(pattern, src, opts string) *Regexp {
-	re, err := rxCompile(rxFold(pattern))
+	r, err := rbRegexpCompiled(rxFold(pattern), src, opts)
 	if err != nil {
 		panic(NewRegexpError(Ref(String(rbRegexpErr(err, src)))))
 	}
-	return rbRegexpOf(re, src, opts)
+	return r
 }
 
 // rbRegexpNewAfter is rbRegexpNew for a pattern variable that must initialize after the regexp2 engine registers (decision 242).
@@ -38,14 +69,14 @@ func rbRegexpNewAfter(_ bool, pattern, src, opts string) *Regexp {
 // RegexpError when it is used rather than when the gem loads (Rack::Lint's URI patterns).
 func rbRegexpLenient(prefix, src, opts string) *Regexp {
 	pat, err := rxPrepare(src, strings.Contains(opts, "x"))
-	var re *rxRegexp
+	var r *Regexp
 	if err == nil {
-		re, err = rxCompile(rxFold(prefix + pat))
+		r, err = rbRegexpCompiled(rxFold(prefix+pat), src, opts)
 	}
 	if err != nil {
 		return rbRegexpOf(&rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src, opts)
 	}
-	return rbRegexpOf(re, src, opts)
+	return r
 }
 
 // rbRegexpErr words a Go regexp syntax error as Onigmo words the same

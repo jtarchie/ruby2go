@@ -62,6 +62,9 @@ var rbSpecialCasing = map[rune][3]string{
 
 // rbCaseMap is MRI's full case mapping: column i of rbSpecialCasing, else f.
 func rbCaseMap(s string, i int, f func(rune) rune) string {
+	if out, ok := rbCaseMapASCII(s, i == 0); ok {
+		return out
+	}
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
@@ -74,6 +77,34 @@ func rbCaseMap(s string, i int, f func(rune) rune) string {
 		b.WriteRune(f(r))
 	}
 	return b.String()
+}
+
+// rbCaseMapASCII is rbCaseMap for an ASCII s, to lower case or else upper (title case is upper in ASCII); s itself when
+// nothing changes. ok is false for any other s.
+func rbCaseMapASCII(s string, lower bool) (string, bool) {
+	var b []byte
+	for j := range len(s) {
+		c := s[j]
+		if c >= utf8.RuneSelf {
+			return "", false
+		}
+		d := c
+		if lower && c >= 'A' && c <= 'Z' {
+			d = c + 'a' - 'A'
+		} else if !lower && c >= 'a' && c <= 'z' {
+			d = c - ('a' - 'A')
+		}
+		if d != c && b == nil {
+			b = []byte(s)
+		}
+		if b != nil {
+			b[j] = d
+		}
+	}
+	if b == nil {
+		return s, true
+	}
+	return string(b), true
 }
 
 // rbSub replaces the first n (all if n < 0) occurrences of pat, expanding
@@ -458,4 +489,20 @@ func rbStrLen(s string) int {
 		return utf8.RuneCountInString(s)
 	}
 	return len(s)
+}
+
+// rbDigits parses s when it is only ASCII digits, too few to overflow: to_i's common case, without rbIntPrefix's regexp.
+func rbDigits(s string) (int, bool) {
+	if s == "" || len(s) > 18 {
+		return 0, false
+	}
+	n := 0
+	for i := range len(s) {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, true
 }

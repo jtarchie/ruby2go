@@ -183,10 +183,12 @@ func rbFlush() {
 // as MRI's default does; Kernel#trap replaces that per signal (decision 100).
 // ponytail: MRI raises Interrupt/SignalException in the main thread, so rescue and ensure run; Go can't inject a panic into another goroutine.
 func rbTrapSignals() {
-	rbMainGoID = rbGoID()
 	signal.Notify(rbSigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for sig := range rbSigCh {
+			if rbTrapHook != nil {
+				rbSpawned.Store(true) // the hook runs Ruby here, off main
+			}
 			if rbTrapHook != nil && rbTrapHook(sig) {
 				continue
 			}
@@ -202,7 +204,7 @@ func rbTrapSignals() {
 // Go cannot interrupt a computing goroutine, so after rbInterruptGrace
 // with nothing taking it the program dies by the signal, as before.
 var (
-	rbMainGoID       int64
+	rbMainGoID       = rbGoIDStack() // package init runs on the main goroutine
 	rbInterruptMu    sync.Mutex
 	rbInterruptSig   os.Signal             // pending, not yet taken
 	rbInterruptCh    = make(chan struct{}) // closed while one is pending; a fresh one after it is taken
@@ -913,6 +915,16 @@ func rbHash(a any) Integer {
 // through the generated DynOp_cmp wrappers (rbCmpFailed), which answer
 // nil for an incomparable argument, as MRI's <=> does.
 func rbCmp[T comparable](a, b T) Integer {
+	switch x := any(a).(type) { // the common keys by a static call: the interface assertion below costs an itab lookup
+	case Integer:
+		if y, ok := any(b).(Integer); ok {
+			return x.Op_cmp(y)
+		}
+	case String:
+		if y, ok := any(b).(String); ok {
+			return x.Op_cmp(y)
+		}
+	}
 	if c, ok := any(a).(interface{ Op_cmp(T) Integer }); ok {
 		return c.Op_cmp(b)
 	}

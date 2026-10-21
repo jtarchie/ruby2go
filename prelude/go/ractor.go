@@ -203,6 +203,7 @@ func rbNewRactor() *Ractor {
 // start runs the block on a goroutine registered as r's. Its port closes when it ends, so later sends raise ClosedError; an exception is kept for value/join and reported on stderr like a thread's.
 func (r *Ractor) start(run func() any) *Ractor {
 	rbRactorLive.Add(1)
+	rbSpawned.Store(true)
 	go func() {
 		id := rbGoID()
 		rbRactorOf.Store(id, r)

@@ -4,8 +4,10 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -24,7 +26,7 @@ var rxAltReady = func() bool {
 			return nil, fmt.Errorf("regexp2: %w", err)
 		}
 		re.MatchTimeout = rxMatchTimeout
-		return rxAlt2{re}, nil
+		return rxAlt2{re, new(atomic.Pointer[rxRunes])}, nil
 	}
 	return true
 }()
@@ -52,7 +54,60 @@ func rxAltCaret(pattern string) string {
 	return b.String()
 }
 
-type rxAlt2 struct{ re *regexp2.Regexp }
+type rxAlt2 struct {
+	re   *regexp2.Regexp
+	last *atomic.Pointer[rxRunes] // the last subject's runes: StringScanner matches each rest of one string in turn
+}
+
+// rxRunes is a subject converted for regexp2, which matches runes: byteAt maps a rune index to its byte offset (one past
+// the end too); nil for an ASCII subject, where they are equal.
+type rxRunes struct {
+	s      string
+	runes  []rune
+	byteAt []int
+}
+
+// rxLastRunes is the last subject any regexp converted: a StringScanner's patterns take turns on one string.
+var rxLastRunes atomic.Pointer[rxRunes]
+
+// runesOf is s as runes, reusing this regexp's or any regexp's last conversion when s is a suffix of it starting on a
+// rune boundary, so scanning a string piece by piece costs one conversion, not one per step and pattern. byteAt is
+// relative to the cached subject: subtract off for s's offsets.
+func (a rxAlt2) runesOf(s string) (runes []rune, byteAt []int, off int) {
+	for _, c := range [...]*rxRunes{a.last.Load(), rxLastRunes.Load()} {
+		if c == nil || len(s) > len(c.s) || !strings.HasSuffix(c.s, s) {
+			continue
+		}
+		off = len(c.s) - len(s)
+		if c.byteAt == nil {
+			a.last.Store(c)
+			return c.runes[off:], nil, 0
+		}
+		if k, ok := slices.BinarySearch(c.byteAt, off); ok {
+			a.last.Store(c)
+			return c.runes[k:], c.byteAt[k:], off
+		}
+	}
+	c := &rxRunes{s: s, runes: []rune(s)}
+	if len(c.runes) != len(s) {
+		c.byteAt = make([]int, 0, len(s)+1)
+		for i := range s {
+			c.byteAt = append(c.byteAt, i)
+		}
+		c.byteAt = append(c.byteAt, len(s))
+	}
+	a.last.Store(c)
+	rxLastRunes.Store(c)
+	return c.runes, c.byteAt, 0
+}
+
+// rxByte is rune index i's byte offset in a subject runesOf returned, off bytes into its cached subject.
+func rxByte(byteAt []int, i, off int) int {
+	if byteAt == nil {
+		return i
+	}
+	return byteAt[i] - off
+}
 
 func (a rxAlt2) names() []string {
 	nums := a.re.GetGroupNumbers()
@@ -67,21 +122,17 @@ func (a rxAlt2) names() []string {
 
 // findAll converts regexp2's rune offsets to the byte offsets the rest of the runtime uses.
 func (a rxAlt2) findAll(s string, from, n int) ([][]int, error) {
-	byteAt := make([]int, 0, len(s)+1) // rune index -> byte offset
-	for i := range s {
-		byteAt = append(byteAt, i)
-	}
-	byteAt = append(byteAt, len(s))
+	runes, byteAt, off := a.runesOf(s)
 	start := utf8.RuneCountInString(s[:from])
 	var out [][]int
-	m, err := a.re.FindRunesMatchStartingAt([]rune(s), start)
+	m, err := a.re.FindRunesMatchStartingAt(runes, start)
 	for err == nil && m != nil && (n < 0 || len(out) < n) {
 		groups := m.Groups()
 		loc := make([]int, 2*len(groups))
 		for i, g := range groups {
 			loc[2*i], loc[2*i+1] = -1, -1
 			if len(g.Captures) > 0 {
-				loc[2*i], loc[2*i+1] = byteAt[g.Index], byteAt[g.Index+g.Length]
+				loc[2*i], loc[2*i+1] = rxByte(byteAt, g.Index, off), rxByte(byteAt, g.Index+g.Length, off)
 			}
 		}
 		out = append(out, loc)

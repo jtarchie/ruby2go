@@ -64,7 +64,9 @@ func (f *Fiber) resume(args []any) any {
 		panic(NewFiberError(Ref(String("attempt to resume a resuming fiber"))))
 	}
 	if f.state == rbFiberCreated {
-		go f.run(rbGoID())
+		id := rbGoID()
+		rbSpawned.Store(true)
+		go f.run(id)
 	}
 	f.state = rbFiberResumed
 	f.in <- rbFiberPack(args)

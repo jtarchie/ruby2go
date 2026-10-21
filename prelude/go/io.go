@@ -399,3 +399,35 @@ func rbWinsize(f *os.File) ([4]uint16, error) {
 	}
 	return ws, nil
 }
+
+// rbOwnString is b as a String without copying it: b must be a fresh buffer no one else holds or writes.
+func rbOwnString(b []byte) String {
+	if len(b) == 0 {
+		return ""
+	}
+	return String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // b is the caller's own, never written again
+}
+
+// rbReadRest reads r to its end, as io.ReadAll, but sized from f (the file r reads, or nil) when it is a regular
+// file, so a large file is one allocation instead of ReadAll's doublings, and handed to String without a copy.
+func rbReadRest(r io.Reader, f *os.File) String {
+	var b []byte
+	if f != nil {
+		if fi, err := f.Stat(); err == nil && fi.Mode().IsRegular() {
+			b = make([]byte, 0, fi.Size()+1) // +1: the read that sees EOF needs room, else a full buffer would grow
+		}
+	}
+	if b == nil {
+		b = make([]byte, 0, 512)
+	}
+	for {
+		n, err := r.Read(b[len(b):cap(b)])
+		b = b[:len(b)+n]
+		if err != nil {
+			return rbOwnString(b)
+		}
+		if len(b) == cap(b) {
+			b = append(b, 0)[:len(b)]
+		}
+	}
+}

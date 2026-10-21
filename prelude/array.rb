@@ -363,7 +363,7 @@ class Array < Object
   #: () -> self
   def sort! = %x{
     self.rbCheckFrozen()
-    slices.SortStableFunc(self.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    rbSortStable(self.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return self
   }
 
@@ -371,7 +371,7 @@ class Array < Object
   #: () { (E, E) -> Integer } -> self
   def __sort_bang_block = %x{
     self.rbCheckFrozen()
-    slices.SortStableFunc(self.s, func(a, b E) int { return int(blk(a, b)) })
+    rbSortStable(self.s, func(a, b E) int { return int(blk(a, b)) })
     return self
   }
 
@@ -383,7 +383,7 @@ class Array < Object
     for i, x := range self.s {
       idx[i], keys[i] = i, blk(x)
     }
-    slices.SortStableFunc(idx, func(a, b int) int { return -int(rbCmp(keys[b], keys[a])) })
+    rbSortStable(idx, func(a, b int) int { return -int(rbCmp(keys[b], keys[a])) })
     out := &Array[E]{s: make([]E, len(self.s))}
     for i, j := range idx {
       out.s[i] = self.s[j]
