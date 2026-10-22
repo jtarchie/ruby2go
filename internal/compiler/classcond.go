@@ -337,16 +337,15 @@ func lastNode(args []parser.Node) parser.Node {
 }
 
 func (c *Compiler) indexBootBranches(bs []boot.BranchInfo) {
-	c.bootBranches = map[string]boot.BranchInfo{}
+	c.bootBranches = map[branchKey]boot.BranchInfo{}
 	for _, b := range bs {
-		c.bootBranches[fmt.Sprintf("%s:%d:%d", realPath(b.File), b.Line, b.Col)] = b
+		c.bootBranches[branchKey{Loc: boot.Loc{File: realPath(b.File), Line: b.Line}, col: b.Col}] = b
 	}
 }
 
 // bootTook is the condition value MRI's load phase saw for the if (or unless) at loc, when boot ran it (decision 201).
 func (c *Compiler) bootTook(f *File, loc parser.Location, unless bool) (value, ok bool) {
-	ln := f.line(loc.StartOffset)
-	b, seen := c.bootBranches[fmt.Sprintf("%s:%d:%d", f.path, ln, loc.StartOffset-f.lines[ln-1])]
+	b, seen := c.bootBranches[f.branchKey(loc.StartOffset)]
 	switch {
 	case !seen || b.Then > 0 && b.Else > 0 || b.Then == 0 && b.Else == 0:
 		return false, false // not reached, or both arms ran (in a method body run twice): no single answer
@@ -363,8 +362,7 @@ func (c *Compiler) loadTimeArm(f *File, n parser.Node, scope []*Class) ([]parser
 	case *parser.IfNode, *parser.UnlessNode:
 		return c.takenBranch(f, n, scope)
 	case *parser.CaseNode:
-		ln := f.line(n.Location.StartOffset)
-		b, seen := c.bootBranches[fmt.Sprintf("%s:%d:%d", f.path, ln, n.Location.StartOffset-f.lines[ln-1])]
+		b, seen := c.bootBranches[f.branchKey(n.Location.StartOffset)]
 		if !seen {
 			return nil, false
 		}

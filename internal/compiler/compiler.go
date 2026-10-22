@@ -172,18 +172,24 @@ type memoState struct {
 	bareRaise           int             // gemBareRaise's memo: 0 unknown, 1 no, 2 yes
 }
 
+// branchKey is where an if/unless/case starts: its line and the column on it (boot.BranchInfo's Loc and Col).
+type branchKey struct {
+	boot.Loc
+	col int
+}
+
 // bootFacts: what the MRI boot run recorded about a gem program (decisions 198-204, 241, 301, 324).
 type bootFacts struct {
 	dmSites          map[*parser.CallNode]bool             // define_method calls boot recorded: no-ops at run time (decision 198)
 	dmDefined        map[*parser.CallNode]bool             // the define_method calls boot's methods became defs from
 	smSites          map[*parser.CallNode]*parser.CallNode // a gem's run-time define_singleton_method: the call recording it (decision 324)
-	bootBranches     map[string]boot.BranchInfo            // "path:line:col" of each if/unless boot ran (decision 201)
+	bootBranches     map[branchKey]boot.BranchInfo         // each if/unless boot ran, by where it starts (decision 201)
 	bootConstClasses map[string]string                     // constant -> the class boot saw it name (decision 203)
-	evalSites        map[string]bool                       // "path:line" of each string eval boot compiled: a no-op (decision 204)
-	evalUnits        map[string][]evalUnit                 // "path:line" of an instance_eval boot ran that defined classes: each source and its parsed file, whose load-time statements run at the call (decision 324)
+	evalSites        map[boot.Loc]bool                     // where each string eval boot compiled is: a no-op (decision 204)
+	evalUnits        map[boot.Loc][]evalUnit               // where an instance_eval boot ran that defined classes: each source and its parsed file, whose load-time statements run at the call (decision 324)
 	evalClasses      map[*Class]bool                       // classes a run-time string eval defines: constant lookups see them once it has run (decision 324)
 	blockEvalSites   map[*parser.CallNode]bool             // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
-	bootDelegators   map[string][]string                   // def_delegators' names boot saw, by "path:line" (decision 204)
+	bootDelegators   map[boot.Loc][]string                 // def_delegators' names boot saw, by call site (decision 204)
 	bootLoadPath     []string                              // $LOAD_PATH as boot left it, nil without a boot (decision 301)
 	bootStructs      map[string][]boot.StructProp          // each T::Struct's props boot saw (decision 241)
 }
@@ -506,7 +512,12 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		dms = opts.boot.DefineMethods
 		c.indexBootBranches(opts.boot.Branches)
 		c.bootConstClasses = opts.boot.ConstClasses
-		c.bootDelegators = opts.boot.Delegators
+		c.bootDelegators = map[boot.Loc][]string{}
+		for site, names := range opts.boot.Delegators {
+			if l, ok := boot.ParseLoc(site); ok { // a key with no line never matched a call
+				c.bootDelegators[l] = names
+			}
+		}
 		c.bootLoadPath = opts.boot.LoadPath
 		c.bootStructs = opts.boot.Structs
 	}
@@ -515,7 +526,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.loadLibs(ctx, libs, opts.allLibs || c.env.AllLibs)
 	c.loadSigs(sources)
 	tick("prelude")
-	c.evalSites = map[string]bool{}
+	c.evalSites = map[boot.Loc]bool{}
 	for i, src := range sources {
 		if i == len(sources)-1 && opts.mainLast && opts.boot != nil { // load-time evals run before the program's main file (decision 204)
 			c.collectBootEvals(ctx, opts.boot.Evals)

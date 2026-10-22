@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/boot"
 )
 
 // File is one parsed Ruby source file.
@@ -99,6 +101,15 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, o
 
 func (f *File) line(off int) int {
 	return sort.Search(len(f.lines), func(i int) bool { return f.lines[i] > off })
+}
+
+// bootLoc is the key boot's per-line facts (evals, delegators, define_method sites) are indexed and looked up by.
+func (f *File) bootLoc(off int) boot.Loc { return boot.Loc{File: f.path, Line: f.line(off)} }
+
+// branchKey locates a branch the way boot's BranchInfo does: the line and the column of off within it.
+func (f *File) branchKey(off int) branchKey {
+	l := f.bootLoc(off)
+	return branchKey{Loc: l, col: off - f.lines[l.Line-1]}
 }
 
 // shownLine is the line errors, warnings and //line directives name: generated source's is its declaration's.

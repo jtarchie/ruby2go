@@ -3,7 +3,6 @@ package compiler
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"math"
 	"math/big"
 	"slices"
@@ -24,26 +23,13 @@ func (c *Compiler) collectBootEvals(ctx context.Context, evals []boot.EvalInfo) 
 	}
 }
 
-// splitLoc splits Ruby's "path:line" at the last colon: the path may hold one.
-func splitLoc(loc string) (string, int) {
-	i := strings.LastIndexByte(loc, ':')
-	if i < 0 {
-		return loc, 0
-	}
-	n, err := strconv.Atoi(loc[i+1:])
-	if err != nil {
-		return loc, 0
-	}
-	return loc[:i], n
-}
-
 // callerFile is the compiled file and line of a boot "path:line", or nil.
 func (c *Compiler) callerFile(loc string) (*File, int) {
-	path, ln := splitLoc(loc)
-	if ln == 0 {
+	l, ok := boot.ParseLoc(loc)
+	if !ok || l.Line == 0 {
 		return nil, 0
 	}
-	return c.parsed[c.real(path)], ln
+	return c.parsed[c.real(l.File)], l.Line
 }
 
 func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
@@ -55,7 +41,8 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 		c.collectBlockEval(ctx, f, ln, e)
 		return
 	}
-	c.evalSites[fmt.Sprintf("%s:%d", f.path, ln)] = true
+	site := boot.Loc{File: f.path, Line: ln}
+	c.evalSites[site] = true
 	e.Source = wrapBigLiterals(e.Source)
 	sf, err := parseFile(ctx, c.parser, f.Name, []byte(e.Source), originSource)
 	if err != nil {
@@ -65,11 +52,11 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	target := c.classes[e.Self]
 	switch {
 	case e.Kind == "class_eval" && target != nil:
-		c.noteEvalUnit(fmt.Sprintf("%s:%d", f.path, ln), e.Source, sf)
+		c.noteEvalUnit(site, e.Source, sf)
 		c.collectBody(ctx, sf, target, sf.Root.Statements, c.lexicalOf(target), true)
 		c.markEvalClasses(f, ln, sf)
 	case e.Kind == "instance_eval" && target != nil:
-		c.noteEvalUnit(fmt.Sprintf("%s:%d", f.path, ln), e.Source, sf)
+		c.noteEvalUnit(site, e.Source, sf)
 		for _, st := range sf.Root.Statements.Body {
 			switch n := st.(type) {
 			case *parser.DefNode: // an instance_eval'd def is the module's singleton method
@@ -111,7 +98,7 @@ func (f *fctx) evalUnitsAt(n *parser.CallNode) []evalUnit {
 	if n.MessageLoc != nil {
 		loc = *n.MessageLoc
 	}
-	units := f.c.evalUnits[fmt.Sprintf("%s:%d", f.f.path, f.f.line(loc.StartOffset))]
+	units := f.c.evalUnits[f.f.bootLoc(loc.StartOffset)]
 	if !slices.ContainsFunc(units, func(u evalUnit) bool { return len(f.c.unitClasses(u.file)) > 0 }) {
 		return nil // only defs (concurrent-ruby's make_synchronized_on_cruby): collected already, the call a no-op
 	}
@@ -134,7 +121,7 @@ func (f *fctx) isEvalSite(n *parser.CallNode) bool {
 	if n.MessageLoc != nil {
 		loc = *n.MessageLoc
 	}
-	return f.c.evalSites[fmt.Sprintf("%s:%d", f.f.path, f.f.line(loc.StartOffset))]
+	return f.c.evalSites[f.f.bootLoc(loc.StartOffset)]
 }
 
 // collectBlockEval collects `klass.class_eval do ... end`'s block, at line ln of f, as a body of the module boot ran it
@@ -230,9 +217,9 @@ func (c *Compiler) unitClasses(sf *File) []*Class {
 	return out
 }
 
-func (c *Compiler) noteEvalUnit(key, src string, sf *File) {
+func (c *Compiler) noteEvalUnit(key boot.Loc, src string, sf *File) {
 	if c.evalUnits == nil {
-		c.evalUnits = map[string][]evalUnit{}
+		c.evalUnits = map[boot.Loc][]evalUnit{}
 	}
 	for _, u := range c.evalUnits[key] {
 		if u.src == src {

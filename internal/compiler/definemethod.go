@@ -27,7 +27,7 @@ func (c *Compiler) collectDefineMethods(ctx context.Context, entries []boot.Meth
 	if len(entries) == 0 {
 		return
 	}
-	sites := map[string]*dmSite{}
+	sites := map[boot.Loc]*dmSite{}
 	for _, uf := range c.userFiles {
 		c.indexDefineMethods(uf, uf.Root, nil, sites)
 	}
@@ -36,9 +36,9 @@ func (c *Compiler) collectDefineMethods(ctx context.Context, entries []boot.Meth
 	}
 }
 
-func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[string]*dmSite, e boot.MethodInfo) {
+func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[boot.Loc]*dmSite, e boot.MethodInfo) {
 	{
-		site := sites[fmt.Sprintf("%s:%d", realPath(e.File), e.Line)]
+		site := sites[boot.Loc{File: realPath(e.File), Line: e.Line}]
 		owner := c.classes[e.Owner]
 		if site == nil || owner == nil {
 			return // a site outside the closed world (sorbet-runtime's own), or an anonymous owner
@@ -63,7 +63,7 @@ func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[string]*dm
 }
 
 // indexDefineMethods records each define_method call with a literal block by file:line, with its lexical scope.
-func (c *Compiler) indexDefineMethods(f *File, n parser.Node, scope []*Class, out map[string]*dmSite) {
+func (c *Compiler) indexDefineMethods(f *File, n parser.Node, scope []*Class, out map[boot.Loc]*dmSite) {
 	switch n := n.(type) {
 	case nil:
 		return
@@ -81,7 +81,7 @@ func (c *Compiler) indexDefineMethods(f *File, n parser.Node, scope []*Class, ou
 			if n.MessageLoc != nil {
 				loc = *n.MessageLoc
 			}
-			out[fmt.Sprintf("%s:%d", f.path, f.line(loc.StartOffset))] = &dmSite{file: f, call: n, block: blk, scope: scope}
+			out[f.bootLoc(loc.StartOffset)] = &dmSite{file: f, call: n, block: blk, scope: scope}
 		}
 	}
 	for _, ch := range n.CompactChildNodes() {
@@ -213,19 +213,19 @@ func blockAsMethodBody(f *File, blk *parser.BlockNode) string {
 // markDefineMethods marks the define_method calls boot recorded before collect, so a class body can drop a statement
 // that only makes methods.
 func (c *Compiler) markDefineMethods(entries []boot.MethodInfo) {
-	keys := map[string]bool{}
+	keys := map[boot.Loc]bool{}
 	for _, e := range entries {
-		keys[fmt.Sprintf("%s:%d", realPath(e.File), e.Line)] = true
+		keys[boot.Loc{File: realPath(e.File), Line: e.Line}] = true
 	}
 	c.dmSites = map[*parser.CallNode]bool{}
-	for path, f := range c.parsed {
+	for _, f := range c.parsed {
 		anyNode(f.Root, func(n parser.Node) bool {
 			if call, ok := n.(*parser.CallNode); ok && isDefineMethodCall(call) {
 				loc := call.Location
 				if call.MessageLoc != nil {
 					loc = *call.MessageLoc
 				}
-				if keys[fmt.Sprintf("%s:%d", path, f.line(loc.StartOffset))] {
+				if keys[f.bootLoc(loc.StartOffset)] {
 					c.dmSites[call] = true
 				}
 			}
@@ -648,9 +648,9 @@ func (c *Compiler) collectBootAliases(entries []boot.AliasInfo) {
 	if len(entries) == 0 {
 		return
 	}
-	byLine := map[string][]boot.AliasInfo{}
+	byLine := map[boot.Loc][]boot.AliasInfo{}
 	for _, e := range entries {
-		k := fmt.Sprintf("%s:%d", realPath(e.File), e.Line)
+		k := boot.Loc{File: realPath(e.File), Line: e.Line}
 		byLine[k] = append(byLine[k], e)
 	}
 	for _, path := range slices.Sorted(maps.Keys(c.parsed)) {
@@ -664,7 +664,7 @@ func (c *Compiler) collectBootAliases(entries []boot.AliasInfo) {
 			if call.MessageLoc != nil {
 				loc = *call.MessageLoc
 			}
-			es := byLine[fmt.Sprintf("%s:%d", path, f.line(loc.StartOffset))]
+			es := byLine[f.bootLoc(loc.StartOffset)]
 			if len(es) == 0 {
 				return false
 			}
@@ -691,11 +691,11 @@ func (c *Compiler) collectBootIncludes(entries []boot.IncludeInfo) {
 	if len(entries) == 0 {
 		return
 	}
-	sites := map[string]*Class{} // "path:line" of each anonymous class's Class.new call
-	for path, f := range c.parsed {
+	sites := map[boot.Loc]*Class{} // each anonymous class's Class.new call
+	for _, f := range c.parsed {
 		anyNode(f.Root, func(n parser.Node) bool {
 			if call, ok := n.(*parser.CallNode); ok && c.anonClasses[call] != nil {
-				sites[fmt.Sprintf("%s:%d", path, f.line(call.Location.StartOffset))] = c.anonClasses[call]
+				sites[f.bootLoc(call.Location.StartOffset)] = c.anonClasses[call]
 			}
 			return false
 		})
@@ -703,8 +703,8 @@ func (c *Compiler) collectBootIncludes(entries []boot.IncludeInfo) {
 	for _, e := range entries {
 		target := c.classes[e.Owner]
 		if e.Site != "" {
-			at := strings.LastIndexByte(e.Site, ':')
-			target = sites[realPath(e.Site[:at])+e.Site[at:]]
+			at, _ := boot.ParseLoc(e.Site)
+			target = sites[boot.Loc{File: realPath(at.File), Line: at.Line}]
 		}
 		mod := c.classes[e.Module]
 		if target == nil || mod == nil || !mod.IsModule || target.IsModule || c.staticallyIncludes(target, mod) {

@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,14 +42,35 @@ type Manifest struct {
 	Structs        map[string][]StructProp `json:"structs"`       // each T::Struct's props after load (decision 241)
 }
 
+// Loc is a file and 1-based line; records embed it so "file"/"line" stay flat JSON keys, and bare "path:line" strings go through String/ParseLoc.
+type Loc struct {
+	File string `json:"file"`
+	Line int    `json:"line"`
+}
+
+// String is "file:line".
+func (l Loc) String() string { return l.File + ":" + strconv.Itoa(l.Line) }
+
+// ParseLoc reads "path:line", splitting at the last colon (the path may hold one). ok is false without a numeric line.
+func ParseLoc(s string) (Loc, bool) {
+	i := strings.LastIndexByte(s, ':')
+	if i < 0 {
+		return Loc{}, false
+	}
+	n, err := strconv.Atoi(s[i+1:])
+	if err != nil {
+		return Loc{}, false
+	}
+	return Loc{File: s[:i], Line: n}, true
+}
+
 // AliasInfo is one alias_method boot ran: owner's new name for its method old, called at file:line.
 type AliasInfo struct {
 	Owner     string `json:"owner"`
 	Singleton bool   `json:"singleton"`
 	Name      string `json:"name"`
 	Old       string `json:"old"`
-	File      string `json:"file"`
-	Line      int    `json:"line"`
+	Loc              // the alias_method call
 }
 
 // IncludeInfo is one module an include call added during boot: to the class Owner names, or (anonymous) the one the
@@ -57,8 +79,7 @@ type IncludeInfo struct {
 	Owner  string `json:"owner"`
 	Site   string `json:"site"`
 	Module string `json:"module"`
-	File   string `json:"file"`
-	Line   int    `json:"line"`
+	Loc           // the include call
 }
 
 // StructProp is one T::Struct prop as MRI holds it: its Sorbet type's text, and its default's literal source if it has a
@@ -71,8 +92,7 @@ type StructProp struct {
 
 // BranchInfo is one if/unless boot reached and how often each arm ran (decision 201).
 type BranchInfo struct {
-	File string    `json:"file"`
-	Line int       `json:"line"`
+	Loc
 	Col  int       `json:"col"`
 	Kind string    `json:"kind"`
 	Then int       `json:"then"`
@@ -103,8 +123,7 @@ type MethodInfo struct {
 	Owner          string            `json:"owner"`
 	Singleton      bool              `json:"singleton"` // defined on Owner's singleton class
 	Name           string            `json:"name"`
-	File           string            `json:"file"` // the define_method call's site
-	Line           int               `json:"line"`
+	Loc                              // the define_method call's site
 	Source         string            `json:"source"`
 	From           string            `json:"from"`
 	Private        bool              `json:"private"`
@@ -114,12 +133,11 @@ type MethodInfo struct {
 
 // EvalInfo is a string eval: Source is the evaluated text.
 type EvalInfo struct {
-	File   string `json:"file"`
-	Line   int    `json:"line"`
+	Loc
 	Source string `json:"source"`
-	Caller string `json:"caller"`
-	Kind   string `json:"kind"` // eval, class_eval (module_eval) or instance_eval
-	Self   string `json:"self"` // the named module it ran on, "" for eval or an object
+	Caller string `json:"caller"` // "path:line" of the eval call's caller (ParseLoc)
+	Kind   string `json:"kind"`   // eval, class_eval (module_eval) or instance_eval
+	Self   string `json:"self"`   // the named module it ran on, "" for eval or an object
 }
 
 // AutoloadInfo is an autoload registration and whether boot resolved it.

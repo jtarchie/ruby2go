@@ -45,7 +45,7 @@ func (c *Compiler) collectDelegation(f *File, cls *Class, n *parser.CallNode, ar
 		if len(args) < 2 {
 			c.errorf(f, n, "def_delegators needs an accessor and method names")
 		}
-		if names, ok := c.bootDelegators[fmt.Sprintf("%s:%d", f.path, f.line(n.Location.StartOffset))]; ok && !allLiteralNames(args[1:]) {
+		if names, ok := c.bootDelegators[f.bootLoc(n.Location.StartOffset)]; ok && !allLiteralNames(args[1:]) {
 			for _, name := range names { // a list built at load time: the names boot saw (decision 204)
 				add(sym(args[0]), name, name)
 			}
