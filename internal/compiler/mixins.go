@@ -253,29 +253,41 @@ func (c *Compiler) linkInclude(cls *Class, inc *Include) {
 	}
 	inc.Mod = mod
 	mod.includers = append(mod.includers, cls)
+	c.resolveMixinArgs(cls, cls, inc, "include")
+}
+
+// resolveMixinArgs types an include's or extend's module args; host supplies `each` and Sorbet Elem (the metaclass for an extend), cls the type scope.
+func (c *Compiler) resolveMixinArgs(cls, host *Class, inc *Include, verb string) {
+	mod := inc.Mod
+	untyped := func() {
+		for range mod.TypeParams {
+			inc.Args = append(inc.Args, TAny{})
+		}
+	}
 	if len(inc.args) == 0 && mod.RubyName == "Enumerable" {
-		if at := c.sorbetElem(cls); at != nil { // Sorbet's `Elem = type_member { { fixed: T } }` is Enumerable's T (decision 196)
+		if at := c.sorbetElem(host); at != nil { // Sorbet's `Elem = type_member { { fixed: T } }` is Enumerable's T (decision 196)
 			inc.args = []rbs.Type{at}
 		}
 	}
-	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.File.isPrelude() && cls.Methods["each"] != nil {
+	if len(inc.args) == 0 && len(mod.TypeParams) > 0 && !inc.File.isPrelude() && host.Methods["each"] != nil {
 		inc.fromEach = true // typed once each's signature is resolved (includeFromEach)
-		for range mod.TypeParams {
-			inc.Args = append(inc.Args, TAny{})
-		}
+		untyped()
 		return
 	}
-	if len(inc.args) == 0 && (c.gemFile(inc.File) || !inc.File.isPrelude()) { // a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183)
+	// include: a pruned gem class's each (decision 169), or a user class with none of its own to infer from (decision 183); extend: any untyped `extend Enumerable`
+	if len(inc.args) == 0 && (verb == "include" && (c.gemFile(inc.File) || !inc.File.isPrelude()) || verb == "extend" && len(mod.TypeParams) > 0) {
 		if !c.gemFile(inc.File) && len(mod.TypeParams) > 0 { // a module with no type parameters has nothing untyped
-			c.warnAt(inc.srcPos, "include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", mod.RubyName, cls.RubyName, mod.RubyName)
+			if verb == "include" {
+				c.warnAt(inc.srcPos, "include %s is untyped: %s has no each to infer its element type from (`include %s #[...]` for static calls; decision 183)", mod.RubyName, cls.RubyName, mod.RubyName)
+			} else {
+				c.warnAt(inc.srcPos, "extend %s is untyped (`extend %s #[...]` for static calls; decision 183)", mod.RubyName, mod.RubyName)
+			}
 		}
-		for range mod.TypeParams {
-			inc.Args = append(inc.Args, TAny{})
-		}
+		untyped()
 		return
 	}
 	if len(inc.args) != len(mod.TypeParams) {
-		c.errorAt(inc.srcPos, "include %s needs %d type args (`include %s #[...]`)", mod.RubyName, len(mod.TypeParams), mod.RubyName)
+		c.errorAt(inc.srcPos, "%s %s needs %d type args (`%s %s #[...]`)", verb, mod.RubyName, len(mod.TypeParams), verb, mod.RubyName)
 	}
 	for _, a := range inc.args {
 		inc.Args = append(inc.Args, c.resolveType(a, typeScope{class: cls, lex: inc.scope, srcPos: srcPos{inc.File, inc.Line}}))
@@ -442,30 +454,7 @@ func (c *Compiler) linkExtends() {
 			if !ext.Mod.IsModule {
 				c.errorAt(ext.srcPos, "%s is not a module", ext.Mod.RubyName)
 			}
-			if len(ext.args) == 0 && ext.Mod.RubyName == "Enumerable" {
-				if at := c.sorbetElem(cls.meta); at != nil { // `class << self; Elem = type_member { { fixed: T } }` (decision 196)
-					ext.args = []rbs.Type{at}
-				}
-			}
-			switch {
-			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0 && !ext.File.isPrelude() && cls.meta.Methods["each"] != nil:
-				ext.fromEach = true // typed from the class's own `def self.each` (includeFromEach), as an include is
-				for range ext.Mod.TypeParams {
-					ext.Args = append(ext.Args, TAny{})
-				}
-			case len(ext.args) == 0 && len(ext.Mod.TypeParams) > 0: // `extend Enumerable`: untyped elements, as an unannotated include (decision 183)
-				if !c.gemFile(ext.File) {
-					c.warnAt(ext.srcPos, "extend %s is untyped (`extend %s #[...]` for static calls; decision 183)", ext.Mod.RubyName, ext.Mod.RubyName)
-				}
-				for range ext.Mod.TypeParams {
-					ext.Args = append(ext.Args, TAny{})
-				}
-			case len(ext.args) != len(ext.Mod.TypeParams):
-				c.errorAt(ext.srcPos, "extend %s needs %d type args (`extend %s #[...]`)", ext.Mod.RubyName, len(ext.Mod.TypeParams), ext.Mod.RubyName)
-			}
-			for _, a := range ext.args {
-				ext.Args = append(ext.Args, c.resolveType(a, typeScope{class: cls, lex: ext.scope, srcPos: srcPos{ext.File, ext.Line}}))
-			}
+			c.resolveMixinArgs(cls, cls.meta, &ext, "extend") // `class << self; Elem = ...` and `def self.each` are the metaclass's
 			cls.meta.Includes = append(cls.meta.Includes, ext)
 		}
 	}

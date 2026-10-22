@@ -16,6 +16,18 @@ import (
 // rubyRegexFlags carries a literal's options.
 type rubyRegexFlags struct{ ignoreCase, multiline, extended, binary bool }
 
+type regexpLiteral interface {
+	IsIGNORE_CASE() bool
+	IsMULTI_LINE() bool
+	IsEXTENDED() bool
+	IsASCII_8BIT() bool
+}
+
+// regexFlagsOf reads the flags of a regexp literal, interpolated or not.
+func regexFlagsOf(n regexpLiteral) rubyRegexFlags {
+	return rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT()}
+}
+
 func (r rubyRegexFlags) goPrefix() string {
 	// Ruby's ^ and $ always match at line boundaries: Go's (?m). Ruby's /m
 	// (dot matches newline) is Go's (?s).
@@ -157,7 +169,7 @@ func (f *fctx) embeddedConstGroups(file *File, p parser.Node) (int, bool) {
 
 // genStaticRegexp is a literal without interpolation: validated now, compiled once into a package variable.
 func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
-	flags := rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT()}
+	flags := regexFlagsOf(n)
 	src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
 	goPat, err := rxPrepare(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
 	if err == nil {
@@ -192,7 +204,7 @@ func (f *fctx) genRegexp(n parser.Node) expr {
 	case *parser.RegularExpressionNode:
 		return f.genStaticRegexp(n)
 	case *parser.InterpolatedRegularExpressionNode:
-		flags = rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT()}
+		flags = regexFlagsOf(n)
 		parts = n.Parts
 		term = f.f.text(n.ClosingLoc)[0]
 		once = n.IsONCE()

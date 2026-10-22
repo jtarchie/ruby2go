@@ -79,7 +79,7 @@ func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node,
 	return f.callEntry0(n, e, recv, args, block)
 }
 
-func isSplatArg(a parser.Node) bool {
+func isSplat(a parser.Node) bool {
 	_, ok := a.(*parser.SplatNode)
 	return ok
 }
@@ -102,10 +102,8 @@ func (f *fctx) callEntry0(n parser.Node, e *entry, recv expr, args []parser.Node
 	return r
 }
 
-// callEnv binds the type variables a call to e on recv starts from: the
-// receiver's class arguments, Self, and what its `@self` binds (decision 92).
-func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
-	m := e.M
+// receiverEnv binds the type variables a call to e on recv starts from: the receiver's class arguments and Self.
+func receiverEnv(e *entry, recv expr) map[string]Type {
 	env := map[string]Type{}
 	if rt, ok := recv.typ.(TClass); ok {
 		classEnv := map[string]Type{}
@@ -122,6 +120,13 @@ func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
 		}
 	}
 	env["Self"] = recv.typ
+	return env
+}
+
+// callEnv is receiverEnv plus what the method's `@self` binds (decision 92).
+func (f *fctx) callEnv(n parser.Node, e *entry, recv expr) map[string]Type {
+	m := e.M
+	env := receiverEnv(e, recv)
 	if m.SelfType != nil && !unify(m.SelfType, recv.typ, env) {
 		f.errorf(n, "%s needs a receiver of type %s, not %s", m.Name, m.SelfType, recv.typ)
 	}
@@ -155,19 +160,21 @@ func kernelMeta(t Type) bool {
 	return ok && c.C.metaOf != nil && c.C.metaOf.RubyName == "Kernel"
 }
 
-// kernelConst is a syntactic guess (`Kernel`, `::Kernel`) for passes with no scope to resolve it in; genCall checks the type.
-func kernelConst(n parser.Node) bool {
+// isTopConst is a syntactic guess (`Kernel`, `::Kernel`) for passes with no scope to resolve it in; genCall checks the type.
+func isTopConst(n parser.Node, name string) bool {
 	switch r := n.(type) {
 	case *parser.ConstantReadNode:
-		return r.Name == "Kernel"
+		return r.Name == name
 	case *parser.ConstantPathNode:
-		return r.Parent == nil && r.Name != nil && *r.Name == "Kernel"
+		return r.Parent == nil && r.Name != nil && *r.Name == name
 	}
 	return false
 }
 
 // kernelRecv: a receiverless call, or one on Kernel, the module function form.
-func kernelRecv(n *parser.CallNode) bool { return n.Receiver == nil || kernelConst(n.Receiver) }
+func kernelRecv(n *parser.CallNode) bool {
+	return n.Receiver == nil || isTopConst(n.Receiver, "Kernel")
+}
 
 // `Kernel.puts`: module_function makes these public on Kernel itself (decision 139).
 func kernelModuleFunction(m *Method, recv Type) bool {
@@ -722,7 +729,7 @@ func (f *fctx) gemIntegerCall(n parser.Node, e *entry, recv expr, args []parser.
 			return expr{code: bound, typ: f.cls("Integer"), lit: true}, true
 		}
 	}
-	if e.M.Name == "<<" && len(args) == 1 && !isSplatArg(args[0]) {
+	if e.M.Name == "<<" && len(args) == 1 && !isSplat(args[0]) {
 		a := f.genExpr(args[0], f.cls("Integer"))
 		return expr{code: "rbIntShlWrap(" + f.coerce(n, recv, f.cls("Integer")) + ", " + f.coerce(args[0], a, f.cls("Integer")) + ")", typ: f.cls("Integer")}, true
 	}

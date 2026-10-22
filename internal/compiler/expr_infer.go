@@ -238,7 +238,7 @@ func (f *fctx) noteAliasSrc(n *parser.LocalVariableWriteNode) {
 				writes++
 			}
 		case *parser.LocalVariableTargetNode, *parser.LocalVariableOperatorWriteNode, *parser.LocalVariableOrWriteNode:
-			if localNodeName(w) == n.Name {
+			if name, _, _ := localVarRef(w); name == n.Name {
 				writes += 2
 			}
 		}

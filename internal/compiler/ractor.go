@@ -60,23 +60,14 @@ func (f *fctx) checkIsolated(bn *parser.BlockNode) {
 	}
 	var walk func(n parser.Node, depth uint32)
 	walk = func(n parser.Node, depth uint32) {
+		if name, d, ok := localVarRef(n); ok {
+			note(name, d, depth)
+		}
 		switch x := n.(type) {
 		case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
 			return
 		case *parser.BlockNode, *parser.LambdaNode:
 			depth++
-		case *parser.LocalVariableReadNode:
-			note(x.Name, x.Depth, depth)
-		case *parser.LocalVariableWriteNode:
-			note(x.Name, x.Depth, depth)
-		case *parser.LocalVariableTargetNode:
-			note(x.Name, x.Depth, depth)
-		case *parser.LocalVariableAndWriteNode:
-			note(x.Name, x.Depth, depth)
-		case *parser.LocalVariableOrWriteNode:
-			note(x.Name, x.Depth, depth)
-		case *parser.LocalVariableOperatorWriteNode:
-			note(x.Name, x.Depth, depth)
 		case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableTargetNode,
 			*parser.InstanceVariableAndWriteNode, *parser.InstanceVariableOrWriteNode, *parser.InstanceVariableOperatorWriteNode:
 			f.errorf(n, "can not access instance variables of shareable objects from non-main Ractors (Ractor::IsolationError)")

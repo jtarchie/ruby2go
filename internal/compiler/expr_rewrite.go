@@ -84,14 +84,7 @@ func (f *fctx) runtimeExtend(n *parser.CallNode) (expr, bool) {
 // noteRuntimeRegexp: Regexp.new/compile/union of anything but string literals RE2 compiles builds a pattern only run
 // time knows, so the program gets the regexp2 engine (decision 242).
 func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
-	isRegexp := false
-	switch r := n.Receiver.(type) {
-	case *parser.ConstantReadNode:
-		isRegexp = r.Name == "Regexp"
-	case *parser.ConstantPathNode: // ::Regexp
-		isRegexp = r.Parent == nil && r.Name != nil && *r.Name == "Regexp"
-	}
-	if !isRegexp || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.isPrelude() {
+	if !isRegexpConst(n.Receiver) || n.Name != "new" && n.Name != "compile" && n.Name != "union" || f.c.needRxAlt || f.f.isPrelude() {
 		return
 	}
 	for _, a := range callArgs(n) {
@@ -211,7 +204,7 @@ func untypedRest(params []Type, rest bool) bool { return rest && len(params) == 
 func (f *fctx) symbolProcAny(name string) string {
 	f.c.noteDyn(name)
 	return "func(xs_ ...any) any { if len(xs_) == 0 { panic(NewArgumentError(Ref(String(\"no receiver given\")))) }; " +
-		"return rbDyn" + goMethodName(name) + "(rbCall, xs_[0], xs_[1:]...) }"
+		"return " + rbDynFn(name) + "(rbCall, xs_[0], xs_[1:]...) }"
 }
 
 // symbolToProc compiles `:<=.to_proc` where a Proc is expected (`@order = block || :<=.to_proc`): the lambda `&:<=` would
@@ -233,15 +226,7 @@ func (f *fctx) symbolToProc(n *parser.CallNode, expected Type) (expr, bool) {
 }
 
 // isRegexpConst is `Regexp` or `::Regexp` (Homebrew's `::Regexp.last_match(1)`).
-func isRegexpConst(n parser.Node) bool {
-	switch r := n.(type) {
-	case *parser.ConstantReadNode:
-		return r.Name == "Regexp"
-	case *parser.ConstantPathNode:
-		return r.Parent == nil && r.Name != nil && *r.Name == "Regexp"
-	}
-	return false
-}
+func isRegexpConst(n parser.Node) bool { return isTopConst(n, "Regexp") }
 
 // sideEffectFree is true for a literal node: evaluating it or not is unobservable.
 func sideEffectFree(n parser.Node) bool {

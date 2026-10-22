@@ -79,7 +79,7 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 		return f.genKernelIntrinsic(n, expected)
 	}
 	runtimeRequire := n.Name == "require" && f.c.methodRequiresRuntime && !f.f.isPrelude() // `Kernel.require path` (decision 246)
-	if !kernelConst(n.Receiver) || !kernelModuleNames[n.Name] && !runtimeRequire || n.Name == "require" && !runtimeRequire || n.Name == "require_relative" {
+	if !isTopConst(n.Receiver, "Kernel") || !kernelModuleNames[n.Name] && !runtimeRequire || n.Name == "require" && !runtimeRequire || n.Name == "require_relative" {
 		return expr{}, false
 	}
 	t := f.probeType(n.Receiver, nil)
@@ -396,7 +396,7 @@ func (f *fctx) viewCall(n parser.Node, recv expr, name string, args []parser.Nod
 	for _, a := range args {
 		codes = append(codes, f.coerce(a, f.genExpr(a, nil), TAny{}))
 	}
-	raw := expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+	raw := expr{code: rbDynFn(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 	// The raw result stays the view: `x << 1 << 2` sends both to the value.
 	return expr{code: f.coerce(n, raw, typed.typ), typ: typed.typ, view: raw.code}, true
 }

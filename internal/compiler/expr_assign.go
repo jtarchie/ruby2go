@@ -310,11 +310,6 @@ func (f *fctx) destructureLenient(v expr, t TTuple, lefts []parser.Node) {
 	}
 }
 
-func isSplat(n parser.Node) bool {
-	_, ok := n.(*parser.SplatNode)
-	return ok
-}
-
 // destructureInto assigns tuple or Array v (held in a temporary) to the
 // leading targets, a `*rest` target and the trailing ones, as Ruby: an
 // Array gives each target its element or nil, rest the middle.

@@ -155,7 +155,7 @@ func (f *fctx) splatOverRest(m *Method, args []parser.Node) []parser.Node {
 		return args
 	}
 	sp, ok := args[len(args)-1].(*parser.SplatNode)
-	if !ok || sp.Expression == nil || slices.ContainsFunc(args[:len(args)-1], func(a parser.Node) bool { _, s := a.(*parser.SplatNode); return s }) {
+	if !ok || sp.Expression == nil || slices.ContainsFunc(args[:len(args)-1], isSplat) {
 		return args
 	}
 	pre := 0 // positional parameters before the rest
@@ -194,7 +194,7 @@ func (f *fctx) splatArgs(m *Method, args []parser.Node, skip bool, npos int) (st
 		return "", -1, nil
 	}
 	sp, ok := args[len(args)-1].(*parser.SplatNode)
-	if !ok || sp.Expression == nil || slices.ContainsFunc(args[:len(args)-1], func(a parser.Node) bool { _, s := a.(*parser.SplatNode); return s }) {
+	if !ok || sp.Expression == nil || slices.ContainsFunc(args[:len(args)-1], isSplat) {
 		return "", -1, nil
 	}
 	a := f.genExpr(sp.Expression, nil)
@@ -224,11 +224,7 @@ func (f *fctx) splatParam(n parser.Node, m *Method, p Param, env map[string]Type
 	if p.Default == nil || m.calleeDefaults {
 		return got
 	}
-	caller := f.f
-	f.f = defaultsFile(m)
-	d := f.genExpr(p.Default, closed(p.Type, env))
-	f.f = caller
-	def := f.coerceArg(n, d, p, env)
+	def := f.coerceArg(n, f.defaultExpr(m, p, env), p, env)
 	return fmt.Sprintf("func() %s {\n\tif len(%s.s) > %d {\n\t\treturn %s\n\t}\n\treturn %s\n}()", f.c.goType(closed(p.Type, env)), tmp, j, got, def)
 }
 
@@ -358,12 +354,7 @@ func (f *fctx) keywordArg(n parser.Node, m *Method, p Param, env map[string]Type
 	case p.Default != nil && m.calleeDefaults:
 		return "rbZero[" + f.c.goType(subst(p.Type, env)) + "]()", false
 	case p.Default != nil:
-		caller := f.f
-		f.f = defaultsFile(m)
-		d := f.genExpr(p.Default, closed(p.Type, env))
-		f.f = caller
-		unify(p.Type, d.typ, env)
-		return f.coerceArg(n, d, p, env), false
+		return f.defaultArg(n, m, p, env), false
 	}
 	f.errorf(n, "%s: missing keyword: :%s", m, p.Name)
 	return "", false
@@ -437,11 +428,7 @@ func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[strin
 		kw.given = got // the callee runs it when the bit is clear
 	case p.Default != nil:
 		f.indent++
-		caller := f.f
-		f.f = defaultsFile(m)
-		d := f.genExpr(p.Default, closed(p.Type, env))
-		f.f = caller
-		f.emit("%s = %s", out, f.coerceArg(n, d, p, env))
+		f.emit("%s = %s", out, f.coerceArg(n, f.defaultExpr(m, p, env), p, env))
 		f.indent--
 	default:
 		f.emit("\trbKwMissing(%q)", p.Name)
@@ -938,12 +925,18 @@ func (f *fctx) emptySplat(args []parser.Node) bool {
 // defaultArg is a caller-evaluated default. The default is a node of the def's file (often the prelude): literal
 // text and error positions must come from there.
 func (f *fctx) defaultArg(n parser.Node, m *Method, p Param, env map[string]Type) string {
+	d := f.defaultExpr(m, p, env)
+	unify(p.Type, d.typ, env)
+	return f.coerceArg(n, d, p, env)
+}
+
+// defaultExpr is p's default generated in the def's file.
+func (f *fctx) defaultExpr(m *Method, p Param, env map[string]Type) expr {
 	caller := f.f
 	f.f = defaultsFile(m)
 	d := f.genExpr(p.Default, closed(p.Type, env))
 	f.f = caller
-	unify(p.Type, d.typ, env)
-	return f.coerceArg(n, d, p, env)
+	return d
 }
 
 // argAt is positional argument i for parameter p, generated (or given in exprs) with its node.

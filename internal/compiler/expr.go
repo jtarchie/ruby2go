@@ -392,14 +392,21 @@ func isTypeVar(t Type) bool {
 	return ok && v.Name != "Self"
 }
 
-func localNodeName(n parser.Node) string {
+// localVarRef is the name and scope depth of a node that reads or writes a local.
+func localVarRef(n parser.Node) (name string, depth uint32, ok bool) {
 	switch w := n.(type) {
+	case *parser.LocalVariableReadNode:
+		return w.Name, w.Depth, true
+	case *parser.LocalVariableWriteNode:
+		return w.Name, w.Depth, true
 	case *parser.LocalVariableTargetNode:
-		return w.Name
-	case *parser.LocalVariableOperatorWriteNode:
-		return w.Name
+		return w.Name, w.Depth, true
+	case *parser.LocalVariableAndWriteNode:
+		return w.Name, w.Depth, true
 	case *parser.LocalVariableOrWriteNode:
-		return w.Name
+		return w.Name, w.Depth, true
+	case *parser.LocalVariableOperatorWriteNode:
+		return w.Name, w.Depth, true
 	}
-	return ""
+	return "", 0, false
 }

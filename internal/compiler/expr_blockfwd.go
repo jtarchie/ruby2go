@@ -121,7 +121,7 @@ func (f *fctx) forwardClosureCode(n parser.Node, sig *BlockSig, env map[string]T
 			params[i] = fmt.Sprintf("p%d %s", i, f.c.goType(subst(p, env)))
 			args[i] = f.coerce(nil, expr{code: fmt.Sprintf("p%d", i), typ: subst(p, env)}, f.blockSig.Params[i])
 		}
-		return "func(" + strings.Join(params, ", ") + ") { blk(" + strings.Join(args, ", ") + ") }"
+		return f.adapterFunc(params, "blk("+strings.Join(args, ", ")+")", sig.Ret, f.blockSig.Ret)
 	}
 	if tv, ok := sig.Ret.(TVar); ok && env[tv.Name] == nil && isVoid(f.blockSig.Ret) && !isNil(f.blockSig.Ret) {
 		// a void block where the callee's returns X (`return super if block_given?` in Homebrew's Cask#tap over
@@ -133,7 +133,7 @@ func (f *fctx) forwardClosureCode(n parser.Node, sig *BlockSig, env map[string]T
 			params[i] = fmt.Sprintf("p%d %s", i, f.c.goType(subst(p, env)))
 			args[i] = fmt.Sprintf("p%d", i)
 		}
-		return "func(" + strings.Join(params, ", ") + ") any { blk(" + strings.Join(args, ", ") + "); return nil }"
+		return f.adapterFunc(params, "blk("+strings.Join(args, ", ")+")", TAny{}, f.blockSig.Ret)
 	}
 	if sig.Self != nil && f.blockSig.Self != nil && !sig.Rest && !f.blockSig.Rest && !typeEq(subst(sig.Self, env), f.blockSig.Self) {
 		return f.selfBlockAdapter(sig, env)
@@ -157,17 +157,28 @@ func (f *fctx) selfBlockAdapter(sig *BlockSig, env map[string]Type) string {
 		args = append(args, f.coerce(nil, expr{code: fmt.Sprintf("p%d", i), typ: pt}, f.blockSig.Params[i]))
 	}
 	call := "blk(" + strings.Join(args, ", ") + ")"
+	return f.adapterFunc(params, call, f.adapterRet(sig, env, f.lenient()), f.blockSig.Ret)
+}
+
+// adapterRet is sig's result for an adapter; `x.tap(&block)`'s X is bound by nothing at a forwarded block, so untyped (when untypedVar).
+func (f *fctx) adapterRet(sig *BlockSig, env map[string]Type, untypedVar bool) Type {
 	ret := subst(sig.Ret, env)
-	if tv, ok := ret.(TVar); ok && tv.Name != "Self" && f.lenient() { // `x.tap(&block)`: tap's X, bound by nothing at a forwarded block, is untyped as the call's type args are
-		ret = TAny{}
+	if tv, ok := ret.(TVar); ok && tv.Name != "Self" && untypedVar {
+		return TAny{}
 	}
-	if isVoid(ret) {
-		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
+	return ret
+}
+
+// adapterFunc wraps call of the forwarded block: value dropped for a void ret, a zero for a void block, else coerced from blkRet.
+func (f *fctx) adapterFunc(params []string, call string, ret, blkRet Type) string {
+	head := "func(" + strings.Join(params, ", ") + ")"
+	switch {
+	case isVoid(ret):
+		return head + " { " + call + " }"
+	case isVoid(blkRet):
+		return head + " " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
 	}
-	if isVoid(f.blockSig.Ret) {
-		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
-	}
-	return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
+	return head + " " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: blkRet}, ret) + " }"
 }
 
 // restBlockFunc is a Dyn wrapper's block (dynBlockArg) for a `(*untyped) -> untyped` block: already that func, nil
@@ -202,18 +213,7 @@ func (f *fctx) restBlockAdapter(n parser.Node, sig *BlockSig, env map[string]Typ
 		}
 	}
 	call := "blk(" + strings.Join(args, ", ") + ")"
-	ret := subst(sig.Ret, env)
-	if tv, ok := ret.(TVar); ok && tv.Name != "Self" { // `x.tap(&block)`: tap's X, bound by nothing at a forwarded block, is untyped as the call's type args are
-		ret = TAny{}
-	}
-	head := "func(" + strings.Join(params, ", ") + ")"
-	switch {
-	case isVoid(ret):
-		return head + " { " + call + " }"
-	case isVoid(f.blockSig.Ret):
-		return head + " " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
-	}
-	return head + " " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
+	return f.adapterFunc(params, call, f.adapterRet(sig, env, true), f.blockSig.Ret) // its only caller is lenient
 }
 
 // procArityAdapter passes the method's block where the callee yields another count of values, as a Ruby proc
@@ -240,12 +240,5 @@ func (f *fctx) procArityAdapter(sig *BlockSig, env map[string]Type) string {
 		}
 	}
 	call := "blk(" + strings.Join(args, ", ") + ")"
-	ret := subst(sig.Ret, env)
-	if isVoid(ret) {
-		return "func(" + strings.Join(params, ", ") + ") { " + call + " }"
-	}
-	if isVoid(f.blockSig.Ret) {
-		return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { " + call + "; return " + goZero(f.c.goType(ret)) + " }"
-	}
-	return "func(" + strings.Join(params, ", ") + ") " + f.c.goType(ret) + " { return " + f.coerce(nil, expr{code: call, typ: f.blockSig.Ret}, ret) + " }"
+	return f.adapterFunc(params, call, subst(sig.Ret, env), f.blockSig.Ret)
 }

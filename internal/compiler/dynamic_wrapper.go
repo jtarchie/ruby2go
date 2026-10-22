@@ -444,17 +444,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 			c.dynIterCall(f, e, recv, env, nodes)
 			return
 		}
-		res := f.callEntry(&parser.NilNode{}, e, recv, nodes, blk)
-		if isVoid(res.typ) {
-			if res.code != "" {
-				f.emit("%s", res.code)
-			}
-			if !res.noreturn {
-				f.emit("return nil")
-			}
-			return
-		}
-		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		f.emitDynReturn(f.callEntry(&parser.NilNode{}, e, recv, nodes, blk))
 	}
 	if opt == 0 {
 		call(req, rest != nil)
@@ -503,17 +493,28 @@ func (c *Compiler) dynArityOverloads(f *fctx, e *entry, recv expr, env map[strin
 		}
 		f.emit("if len(args) == %d {", n)
 		f.indent++
-		res := f.callEntry(&parser.NilNode{}, cls.lookup(tw.Name), recv, nodes, nil)
-		if isVoid(res.typ) {
-			f.emit("%s", res.code)
-			f.emit("return nil")
-		} else {
-			f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
-		}
+		f.emitDynReturn(f.callEntry(&parser.NilNode{}, cls.lookup(tw.Name), recv, nodes, nil))
 		f.indent--
 		f.emit("}")
 	}
 }
+
+// emitDynReturn ends a Dyn wrapper arm with res boxed as untyped; a void call runs, then returns nil unless it never returns.
+func (f *fctx) emitDynReturn(res expr) {
+	if !isVoid(res.typ) {
+		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		return
+	}
+	if res.code != "" {
+		f.emit("%s", res.code)
+	}
+	if !res.noreturn {
+		f.emit("return nil")
+	}
+}
+
+// rbDynFn is the Go name of the dispatcher for Ruby method name.
+func rbDynFn(name string) string { return "rbDyn" + goMethodName(name) }
 
 // dynClassOverloads picks a decision-12 overload by its first argument's run-time class, as a typed call picks it by
 // the static one: `x.gsub(/re/, s)` on an untyped String is `__gsub_regexp`, not gsub's (String, String).
@@ -543,8 +544,7 @@ func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
 			pt := tw.Params[i].Type
 			nodes = append(nodes, &exprNode{e: expr{code: c.dynArg(pt, i), typ: pt}})
 		}
-		res := f.callEntry(&parser.NilNode{}, te, recv, nodes, nil)
-		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		f.emitDynReturn(f.callEntry(&parser.NilNode{}, te, recv, nodes, nil))
 		f.indent--
 		f.emit("}")
 	}
@@ -634,8 +634,7 @@ func (c *Compiler) dynNumericTwins(f *fctx, cls *Class, e *entry, recv expr) {
 		t := TClass{C: k}
 		f.emit("case %s:", c.goType(t))
 		f.indent++
-		res := f.callEntry(&parser.NilNode{}, tw, recv, []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}, nil)
-		f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+		f.emitDynReturn(f.callEntry(&parser.NilNode{}, tw, recv, []parser.Node{&exprNode{e: expr{code: "x", typ: t}}}, nil))
 		f.indent--
 	}
 	if open {
@@ -780,17 +779,7 @@ func (c *Compiler) emitDynPostCall(f *fctx, e *entry, recv expr, env map[string]
 	for j, p := range post {
 		nodes = append(nodes, arg(subst(p.Type, env), fmt.Sprintf("len(args)-%d", len(post)-j)))
 	}
-	res := f.callEntry(&parser.NilNode{}, e, recv, nodes, nil)
-	if isVoid(res.typ) {
-		if res.code != "" {
-			f.emit("%s", res.code)
-		}
-		if !res.noreturn {
-			f.emit("return nil")
-		}
-		return true
-	}
-	f.emit("return %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+	f.emitDynReturn(f.callEntry(&parser.NilNode{}, e, recv, nodes, nil))
 	return true
 }
 
@@ -833,8 +822,9 @@ func (c *Compiler) dynWideClassOverloads(f *fctx, e *entry, recv expr, req, maxA
 				nodes = append(nodes, &exprNode{e: expr{code: c.dynArg(pt, i), typ: pt}})
 			}
 			f.emit("if len(args) == %d {", k)
-			res := f.callEntry(&parser.NilNode{}, te, recv, nodes, nil)
-			f.emit("\treturn %s", f.coerce(&parser.NilNode{}, res, TAny{}))
+			f.indent++
+			f.emitDynReturn(f.callEntry(&parser.NilNode{}, te, recv, nodes, nil))
+			f.indent--
 			f.emit("}")
 		}
 		f.indent -= 2

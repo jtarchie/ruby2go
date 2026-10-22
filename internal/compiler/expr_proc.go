@@ -264,11 +264,11 @@ func (f *fctx) procCall(n parser.Node, recv expr, t TFunc, name string, args []p
 // procInvoke is a Proc's call/()/[]/yield/===: an arity check, each argument
 // coerced to its parameter, then a Go call through the function pointer.
 func (f *fctx) procInvoke(n parser.Node, recv expr, t TFunc, args []parser.Node) expr {
-	if f.lenient() && !t.Rest && t.Self == nil && (len(args) != len(t.Params) || slices.ContainsFunc(args, isSplatArg)) {
+	if f.lenient() && !t.Rest && t.Self == nil && (len(args) != len(t.Params) || slices.ContainsFunc(args, isSplat)) {
 		return f.procInvokeLoose(recv, t, args)
 	}
 	last := len(t.Params) - 1
-	if t.Rest && isAny(t.Params[last]) && t.Self == nil && len(args) > last && slices.ContainsFunc(args[last:], isSplatArg) {
+	if t.Rest && isAny(t.Params[last]) && t.Self == nil && len(args) > last && slices.ContainsFunc(args[last:], isSplat) {
 		// `task.call(*args)` of a (*untyped) Proc: the leading values, then every rest value spread into one slice
 		codes := make([]string, last, last+1)
 		for i, a := range args[:last] {

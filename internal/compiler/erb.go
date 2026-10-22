@@ -75,20 +75,10 @@ func (c *Compiler) collectERB(ctx context.Context, f *File) {
 // erbNewCall is n when it is `ERB.new(...)`.
 func erbNewCall(n parser.Node) *parser.CallNode {
 	call, ok := n.(*parser.CallNode)
-	if !ok || call.Name != "new" {
+	if !ok || call.Name != "new" || !isTopConst(call.Receiver, "ERB") {
 		return nil
 	}
-	switch r := call.Receiver.(type) {
-	case *parser.ConstantReadNode:
-		if r.Name == "ERB" {
-			return call
-		}
-	case *parser.ConstantPathNode:
-		if r.Parent == nil && r.Name != nil && *r.Name == "ERB" {
-			return call
-		}
-	}
-	return nil
+	return call
 }
 
 // erbLocalNames are the locals a def (or the program) declares anywhere:
@@ -121,16 +111,11 @@ func erbLocalNames(root parser.Node) map[string]bool {
 			names[x.Name] = true
 		case *parser.OptionalKeywordParameterNode:
 			names[x.Name] = true
-		case *parser.LocalVariableWriteNode:
-			names[x.Name] = true
-		case *parser.LocalVariableOperatorWriteNode:
-			names[x.Name] = true
-		case *parser.LocalVariableOrWriteNode:
-			names[x.Name] = true
-		case *parser.LocalVariableAndWriteNode:
-			names[x.Name] = true
-		case *parser.LocalVariableTargetNode:
-			names[x.Name] = true
+		case *parser.LocalVariableReadNode: // a read declares nothing
+		default:
+			if name, _, ok := localVarRef(n); ok {
+				names[name] = true
+			}
 		}
 		for _, ch := range n.ChildNodes() {
 			walk(ch)
@@ -226,7 +211,7 @@ func erbLiteral(f *File, n parser.Node) (string, int, bool) {
 		if !ok1 || !ok2 || !strings.HasSuffix(f.text(re.Location), "/") || strings.Contains(to.Unescaped.Value, `\`) {
 			return "", 0, false
 		}
-		flags := rubyRegexFlags{re.IsIGNORE_CASE(), re.IsMULTI_LINE(), re.IsEXTENDED(), re.IsASCII_8BIT()}
+		flags := regexFlagsOf(re)
 		pat, err := rxPrepare(re.Unescaped.Value, flags.extended)
 		if err != nil {
 			return "", 0, false

@@ -10,6 +10,13 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
+// definedIf is `defined?`'s answer kind (a frozen literal) when the Go bool cond holds at run time, else nil.
+func (f *fctx) definedIf(kind, cond string) expr {
+	f.c.strLits[kind] = true
+	t := TOpt{Elem: f.cls("String")}
+	return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](%q) }; return nil }()", f.c.goType(t), cond, kind), typ: t}
+}
+
 // genSugar renders syntax that reduces to a literal or a plain read:
 // `defined?` (answered at compile time), `__LINE__`, `{ a: }`, `:"#{x}"`.
 func (f *fctx) genSugar(n parser.Node) expr {
@@ -17,9 +24,7 @@ func (f *fctx) genSugar(n parser.Node) expr {
 	case *parser.DefinedNode:
 		if _, ok := n.Value.(*parser.YieldNode); ok && f.m.optionalBlockLocal() != "" { // the block may be missing: answered at run time
 			c, _ := f.genCond(&parser.LocalVariableReadNode{Name: f.m.optionalBlockLocal(), Location: n.Location})
-			f.c.strLits["yield"] = true
-			t := TOpt{Elem: f.cls("String")}
-			return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"yield\") }; return nil }()", f.c.goType(t), c), typ: t}
+			return f.definedIf("yield", c)
 		}
 		switch v := n.Value.(type) {
 		case *parser.InstanceVariableReadNode: // decision 153: the object's assigned bit, or nil for an ivar self's class never has
@@ -37,17 +42,13 @@ func (f *fctx) genSugar(n parser.Node) expr {
 			case set == "": // discovery, before markIvarBits: only the type matters
 				set = "true"
 			}
-			f.c.strLits["instance-variable"] = true
-			t := TOpt{Elem: f.cls("String")}
-			return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"instance-variable\") }; return nil }()", f.c.goType(t), set), typ: t}
+			return f.definedIf("instance-variable", set)
 		case *parser.ConstantReadNode, *parser.ConstantPathNode:
 			// a constant main may read before its assignment runs (BEGIN, a method called first) is defined once it has
 			var k *Const
 			_ = catchCompileError(func() { _, k = f.c.lookupConst(f.f, v, f.lex) }) // a private path: definedKind's nil
 			if k != nil && k.guarded {
-				f.c.strLits["constant"] = true
-				t := TOpt{Elem: f.cls("String")}
-				return expr{code: fmt.Sprintf("func() %s { if %s { return Ref[String](\"constant\") }; return nil }()", f.c.goType(t), constSet(k)), typ: t}
+				return f.definedIf("constant", constSet(k))
 			}
 		}
 		kind := f.definedKind(n.Value)

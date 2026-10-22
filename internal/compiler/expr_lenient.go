@@ -104,7 +104,7 @@ var lookupMiss = map[string]map[string]string{
 // lenientLookup: a gem's untyped key of another class misses, as in MRI, instead of raising TypeError (decisions 307, 314).
 func (f *fctx) lenientLookup(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
 	rc, ok := recv.typ.(TClass)
-	if !ok || !f.lenient() || len(args) == 0 || len(rc.Args) == 0 || holdsAny(rc.Args[0]) || mentionsVar(rc.Args[0]) || isSplatArg(args[0]) {
+	if !ok || !f.lenient() || len(args) == 0 || len(rc.Args) == 0 || holdsAny(rc.Args[0]) || mentionsVar(rc.Args[0]) || isSplat(args[0]) {
 		return expr{}, false
 	}
 	miss := lookupMissMode(lookupMiss[rc.C.RubyName][name], name, len(args), block != nil)

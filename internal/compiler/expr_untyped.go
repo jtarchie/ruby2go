@@ -29,7 +29,7 @@ func (f *fctx) dynEach(n parser.Node, recv expr, b *parser.BlockNode) expr {
 func (f *fctx) gemDynShortcut(n parser.Node, recv expr, name string, args []parser.Node) (expr, bool) {
 	switch {
 	case !f.lenient():
-	case name == "zip" && len(args) > 0 && !slices.ContainsFunc(args, isSplatArg):
+	case name == "zip" && len(args) > 0 && !slices.ContainsFunc(args, isSplat):
 		f.c.dynEach = true
 		codes := make([]string, 0, len(args)+1)
 		codes = append(codes, f.coerce(n, recv, TAny{}))
@@ -407,7 +407,7 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 		how = "rbFCall"
 	}
 	if spread, ok := f.anySpread(args); ok { // `x.m(a, *rest, *more, **kw)` untyped: one slice into the wrapper's ...any (decision 227)
-		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
+		return expr{code: rbDynFn(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
 	}
 	argCodes := f.anyArgs(args)
 	if i := slices.IndexFunc(argCodes, func(c string) bool { return strings.HasSuffix(c, "...") }); i >= 0 {
@@ -416,10 +416,10 @@ func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.N
 		if len(argCodes) > i+1 {
 			spread = "append(" + spread + ", " + strings.Join(argCodes[i+1:], ", ") + ")"
 		}
-		return expr{code: "rbDyn" + goMethodName(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
+		return expr{code: rbDynFn(name) + "(" + how + ", " + f.coerce(n, recv, TAny{}) + ", " + spread + "...)", typ: TAny{}}
 	}
 	codes := append([]string{how, f.coerce(n, recv, TAny{})}, argCodes...)
-	return expr{code: "rbDyn" + goMethodName(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+	return expr{code: rbDynFn(name) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
 }
 
 // jsonArgs is anyArgs for to_json, plus its `to_json(*a)` idiom: a lone
@@ -864,7 +864,7 @@ func (f *fctx) everyNameWhy(n parser.Node, recv expr) string {
 // name the call may reach: liquid's `context.handle_error(e, line)` on an untyped context passes the StandardError a
 // rescue caught, where the one typed call passes a MemoryError (decision 331). An untyped argument adds nothing.
 func (f *fctx) noteDynUses(name string, args []parser.Node) {
-	if f.c.uses == nil || !f.lenient() || slices.ContainsFunc(args, isSplatArg) {
+	if f.c.uses == nil || !f.lenient() || slices.ContainsFunc(args, isSplat) {
 		return
 	}
 	for _, m := range f.c.gemMethodsNamed(name) {

@@ -780,25 +780,6 @@ func (f *fctx) genUnionIterCall(n *parser.CallNode, u TUnion, t tail) bool {
 	return true
 }
 
-// iterEnv is the type environment of iterator entry e called on recv.
-func iterEnv(e *entry, recv expr) map[string]Type {
-	env := map[string]Type{}
-	if rt, ok := recv.typ.(TClass); ok {
-		classEnv := map[string]Type{}
-		for i, p := range rt.C.TypeParams {
-			classEnv[p] = rt.Args[i]
-		}
-		env = composeEnv(e.Env, classEnv)
-		rt.C.containerEnv(env) // a Hash def aliased into the subclass (linkAliases) keeps Hash's K
-	} else {
-		for k, v := range e.Env {
-			env[k] = v
-		}
-	}
-	env["Self"] = recv.typ
-	return env
-}
-
 // genFor is `for x in coll`: coll.each as a range loop whose variables and
 // body locals stay in the enclosing scope, since Ruby's for opens no block.
 func (f *fctx) genFor(n *parser.ForNode, t tail) {
@@ -808,7 +789,7 @@ func (f *fctx) genFor(n *parser.ForNode, t tail) {
 		f.errorf(n.Collection, "for needs a collection whose each is an iterator (Array, Range, Hash, Set, ...), not %s", recvT)
 	}
 	recv := f.genExpr(n.Collection, nil)
-	env := iterEnv(e, recv)
+	env := receiverEnv(e, recv)
 	yields := substAll(e.M.Block.Params, env)
 	call := f.callCode(e, recv, nil, env)
 	tmps := make([]string, len(yields))
@@ -864,7 +845,7 @@ func (f *fctx) genFor(n *parser.ForNode, t tail) {
 func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	e, recv, args := f.numericIterArgs(e, recv, callArgs(n))
 	m := e.M
-	env := iterEnv(e, recv)
+	env := receiverEnv(e, recv)
 	codes, _ := f.genArgs(n, m, env, args, nil)
 	yields := substAll(m.Block.Params, env)
 	call := f.callCode(e, recv, codes, env)

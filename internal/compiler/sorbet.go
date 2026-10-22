@@ -163,7 +163,7 @@ func isSorbetModuleArg(c *parser.CallNode) bool {
 	if !ok {
 		return false
 	}
-	return strings.TrimPrefix(constName(p.Parent), "::") == "T" && p.Name != nil && (*p.Name == "Sig" || *p.Name == "Helpers" || *p.Name == "Generic")
+	return isTopConst(p.Parent, "T") && p.Name != nil && (*p.Name == "Sig" || *p.Name == "Helpers" || *p.Name == "Generic")
 }
 
 func constName(n parser.Node) string {
@@ -367,7 +367,7 @@ func sorbetBlock(t parser.Node, b parser.Node) string {
 	if c, ok := t.(*parser.CallNode); ok && isTCall(c, "nilable") {
 		opt, t = "?", oneArg(c)
 	}
-	if c, ok := t.(*parser.CallNode); ok && isTCall(c, "untyped") || strings.TrimPrefix(constName(t), "::") == "Proc" {
+	if c, ok := t.(*parser.CallNode); ok && isTCall(c, "untyped") || isTopConst(t, "Proc") {
 		return " " + opt + "{ (*untyped) -> untyped }"
 	}
 	fn := sorbetType(t)
