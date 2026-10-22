@@ -51,6 +51,10 @@ func TestGoMethodName(t *testing.T) {
 		{"__send__", "__Send__"},
 		{"foo__bar", "Foo_Bar"},
 		{"_private?", "_PrivateQ"},
+		// non-ASCII: a UTF-8 lead byte is not a rune (0xC3 reads as Latin-1 upper-case Ã)
+		{"ça", "Ça"},
+		{"éa", "Éa"},
+		{"Éa", "Cap_Éa"},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -300,5 +304,20 @@ func TestGoFuncName(t *testing.T) {
 				t.Errorf("goFuncName(%q) = %q, want %q", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// Two different non-ASCII Ruby names must not share a Go name (decision 3): ça and éa both start with lead byte 0xC3.
+func TestGoMethodNameNonASCIIInjective(t *testing.T) {
+	seen := map[string]string{}
+	for _, n := range []string{"ça", "éa", "Éa", "éa?", "ça!", "ñ", "ü", "Ü", "日本"} {
+		g := goMethodName(n)
+		if !token.IsIdentifier(g) {
+			t.Errorf("goMethodName(%q) = %q: not a Go identifier", n, g)
+		}
+		if prev, ok := seen[g]; ok {
+			t.Errorf("goMethodName(%q) and (%q) both = %q", prev, n, g)
+		}
+		seen[g] = n
 	}
 }

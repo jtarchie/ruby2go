@@ -78,6 +78,8 @@ func TestTranslateRegexp(t *testing.T) {
 		{`\u0062\u{61 62}\e`, `\x{0062}\x{61}\x{62}\x1b`},
 		{`[a-z&&[^b-y]]`, `[az]`},
 		{`[a[^\x00-y]]`, `[az-\x{10ffff}]`},
+		{`[\b]`, `[\x08]`}, // backspace in a class; \b outside is a word boundary
+		{`a\b[x\by]`, `a\b[x\x08y]`},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Operator name table (docs/design.md decision 3): `_` + lowercase never comes out of camel-casing, so `plus`, Integer#div, IO#pos cannot meet an operator.
@@ -23,8 +24,8 @@ func goMethodName(name string) string {
 	if n, ok := opNames[name]; ok {
 		return n
 	}
-	if name != "" && unicode.IsUpper(rune(name[0])) { // Kernel#String must not meet MatchData#string
-		return "Cap_" + goMethodName(strings.ToLower(name[:1])+name[1:])
+	if r, n := utf8.DecodeRuneInString(name); name != "" && unicode.IsUpper(r) { // Kernel#String must not meet MatchData#string
+		return "Cap_" + goMethodName(string(unicode.ToLower(r))+name[n:])
 	}
 	suffix := ""
 	switch {

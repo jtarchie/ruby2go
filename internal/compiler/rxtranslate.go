@@ -223,6 +223,10 @@ func (t *rxTranslator) escape(inClass bool) (string, error) {
 		return "[^" + rxSpace + "]", nil
 	case 'e':
 		return `\x1b`, nil
+	case 'b': // backspace in a class (a word boundary outside), which RE2 has no escape for
+		if inClass {
+			return `\x08`, nil
+		}
 	case 'Q', 'E':
 		return esc[1:], nil
 	case 'p', 'P':

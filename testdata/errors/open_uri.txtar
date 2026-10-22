@@ -33,3 +33,11 @@ URI("http://127.0.0.1:1/x").read("r")
 # error: main.rb:3: undefined method status for String
 require "open-uri"
 p URI("http://127.0.0.1:1/x").read.status
+-- uri_open_without_require.rb --
+# error: main.rb:3: URI.open needs require "open-uri"
+require "uri"
+URI.open("http://127.0.0.1:1/x")
+-- uri_read_without_require.rb --
+# error: main.rb:3: URI#read needs require "open-uri"
+require "uri"
+URI("http://127.0.0.1:1/x").read

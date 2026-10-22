@@ -124,7 +124,7 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 	case *parser.FloatNode:
 		if n.Value == 0 && math.Signbit(n.Value) {
 			// Go's constant -0.0 is +0; Ruby's is negative zero.
-			return expr{code: "Float(math.Copysign(0, -1))", typ: f.cls("Float")}, true
+			return expr{code: "rbNegZero()", typ: f.cls("Float")}, true
 		}
 		return expr{code: f.f.text(n.Location), typ: f.cls("Float"), lit: true}, true
 	case *parser.RationalNode:
@@ -912,9 +912,9 @@ func (f *fctx) genInteger(n *parser.IntegerNode) expr {
 	_, err := strconv.ParseInt(code, 0, 64)
 	if errors.Is(err, strconv.ErrRange) && f.lenient() { // a gem's unsigned 64-bit bound (bindata's Uint64 clamp): the nearest Integer, as no Integer exceeds it
 		f.warn(n, "Integer literal %s does not fit in 64 bits; it is clamped to the Integer range (decision 35)", code)
-		bound := "math.MaxInt64"
+		bound := "9223372036854775807" // math.MaxInt64 spelled out: a gem local named math would shadow the package
 		if strings.HasPrefix(code, "-") {
-			bound = "math.MinInt64"
+			bound = "-9223372036854775808"
 		}
 		return expr{code: "Integer(" + bound + ")", typ: f.cls("Integer")}
 	}

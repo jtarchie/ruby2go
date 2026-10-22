@@ -761,8 +761,11 @@ func stripGoPackage(src []byte) (string, int, []string, error) {
 // requireRelative resolves `require_relative "x"` inside prelude file f.
 func (c *Compiler) requireRelative(ctx context.Context, f *File, n *parser.CallNode) {
 	args := callArgs(n)
-	str, ok := args[0].(*parser.StringNode)
-	if len(args) != 1 || !ok {
+	var str *parser.StringNode
+	if len(args) == 1 {
+		str, _ = args[0].(*parser.StringNode)
+	}
+	if str == nil {
 		c.errorf(f, n, "require_relative needs a string literal")
 	}
 	target := path.Join(path.Dir(f.Name), str.Unescaped.Value)

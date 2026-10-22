@@ -360,7 +360,7 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	case "$?": // read directly: a Kernel call on main would go dynamic inside another class's method
 		return expr{code: "rbLastStatusOpt()", typ: TOpt{Elem: TClass{C: f.c.classes["Process::Status"]}}}
 	case "$$": // Process.pid
-		return expr{code: "Integer(os.Getpid())", typ: f.cls("Integer")}
+		return expr{code: "rbPid()", typ: f.cls("Integer")}
 	case "$~": // the frame's last match (decision 171)
 		return expr{code: f.lastMatchVar(n), typ: TOpt{Elem: f.cls("MatchData")}}
 	case "$LOAD_PATH", "$:", "$-I": // fixed when boot ran (decision 301): the compiled program has no load path of its own

@@ -137,7 +137,11 @@ func (c *Compiler) addInclude(f *File, n *parser.CallNode, cls *Class, a parser.
 		if err != nil {
 			c.errorf(f, n, "bad include type args %q: %v", t, err)
 		}
-		inc.args = tup.(rbs.Tuple).Elems
+		tuple, ok := tup.(rbs.Tuple)
+		if !ok {
+			c.errorf(f, n, "bad include type args %q: want [T, ...]", t)
+		}
+		inc.args = tuple.Elems
 	}
 	cls.Includes = append(cls.Includes, inc)
 }

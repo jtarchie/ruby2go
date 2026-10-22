@@ -20,6 +20,9 @@ rescue RangeError
   "RangeError"
 end
 
+#: (Integer, ?Integer, ?Integer) -> Integer
+def number_chain(a, b = a + 1, c = b + 1) = a + b + c
+
 # Helpers for the checks that were testdata/run/number_boolean.rb.
 #: (bool) -> String
 def number_yes_no(b) = b ? "yes" : "no"
@@ -2506,6 +2509,20 @@ module NumberTests
         end
       end
       assert_equal [ZeroDivisionError] * 6, zd
+    end
+
+    # Go package and builtin names the emitters use (math.Copysign, os.Getpid, min) must survive same-named locals.
+    def test_locals_named_like_go_names
+      math = 1
+      os = 2
+      min = 3
+      neg = -0.0
+      pid = $$
+      args = [1]
+      assert_equal [1, 2, 3], [math, os, min]
+      assert_equal "-0.0", neg.to_s
+      assert_equal Integer, pid.class
+      assert_equal 6, number_chain(*args)
     end
 
     def test_digits_out_of_int

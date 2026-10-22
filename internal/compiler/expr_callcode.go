@@ -715,9 +715,9 @@ func (f *fctx) gemIntegerCall(n parser.Node, e *entry, recv expr, args []parser.
 				return expr{code: "Integer(" + v.String() + ")", typ: f.cls("Integer"), lit: true}, true
 			}
 			f.warn(n, "Integer %s does not fit in 64 bits (no Bignum); using the nearest", v)
-			bound := "Integer(math.MaxInt64)"
+			bound := "Integer(9223372036854775807)" // math.MaxInt64 spelled out: a gem local named math would shadow the package
 			if v.Sign() < 0 {
-				bound = "Integer(math.MinInt64)"
+				bound = "Integer(-9223372036854775808)"
 			}
 			return expr{code: bound, typ: f.cls("Integer"), lit: true}, true
 		}

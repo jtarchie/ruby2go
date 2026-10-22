@@ -1,10 +1,13 @@
 package compiler
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
 func TestWithin(t *testing.T) {
@@ -72,5 +75,37 @@ func TestDumpBadOutput(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(dir, "missing"))
 	if got := dumpBadOutput([]byte("x")); !strings.HasPrefix(got, "raw output not saved:") {
 		t.Fatalf("a failed write must say so, got %q", got)
+	}
+}
+
+// A bare `require_relative` (no arguments) is a compile error, not an index-out-of-range panic.
+func TestRequireRelativeNoArgs(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		r := recover()
+		ce, ok := r.(compileError)
+		if !ok || !strings.Contains(ce.msg, "require_relative needs a string literal") {
+			t.Fatalf("want a compileError, got %#v", r)
+		}
+	}()
+	c := &Compiler{}
+	c.requireRelative(context.Background(), &File{Name: "p.rb"}, &parser.CallNode{Name: "require_relative", Location: parser.Location{}})
+}
+
+// A file under lib/..foo/ is inside the -I dir, so rbRequireComputed names it (HasPrefix(rel, "..") dropped it).
+func TestRequireTableDotDotName(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	c := &Compiler{loadPath: []string{dir}, files: []*File{
+		{path: filepath.Join(dir, "..foo", "x.rb"), origin: originSource},
+		{path: filepath.Join(filepath.Dir(dir), "outside.rb"), origin: originSource},
+	}}
+	c.emitRequireTable()
+	got := c.out.String()
+	if !strings.Contains(got, `"..foo/x"`) {
+		t.Errorf("rbRequireComputed lacks ..foo/x:\n%s", got)
+	}
+	if strings.Contains(got, `"../outside"`) {
+		t.Errorf("rbRequireComputed names a file outside the -I dir:\n%s", got)
 	}
 }

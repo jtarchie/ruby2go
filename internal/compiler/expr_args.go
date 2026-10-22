@@ -142,7 +142,7 @@ func (f *fctx) truncFloat(m *Method, p Param, env map[string]Type, a expr) expr 
 // argcCode is the argument count a callee-defaults method sees: a splat's is its real length (decision 184).
 func argcCode(nargs, npos, npost int, splatTmp string, splatAt int) string {
 	if splatTmp != "" {
-		return fmt.Sprintf("min(%d+len(%s.s), %d)", splatAt, splatTmp, npos)
+		return fmt.Sprintf("rbMinInt(%d+len(%s.s), %d)", splatAt, splatTmp, npos)
 	}
 	return strconv.Itoa(max(min(nargs, npos)-npost, 0))
 }

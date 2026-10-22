@@ -181,8 +181,10 @@ func (sc *requireScan) walk(f *File) {
 	if f.data != nil {
 		sc.lib("stringio")
 	}
+	prev := sc.top // a require inside a method that names a file walks it: the caller's position is restored after
 	sc.top = true
 	sc.visit(f, f.Root)
+	sc.top = prev
 }
 
 func (sc *requireScan) lib(name string) {
@@ -334,8 +336,8 @@ func (c *Compiler) emitRequireTable() {
 			names[p] = true
 			for _, dir := range slices.Concat(c.loadPath, c.gemDirs) {
 				dir, _ = filepath.Abs(dir)
-				rel, err := filepath.Rel(dir, p)
-				if err == nil && !strings.HasPrefix(rel, "..") {
+				if within(dir, p) {
+					rel, _ := filepath.Rel(dir, p) // within already checked it
 					names[filepath.ToSlash(rel)] = true
 				}
 			}

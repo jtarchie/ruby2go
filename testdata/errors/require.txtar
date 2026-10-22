@@ -34,3 +34,12 @@ module M
   autoload :Gone, File.join(__dir__, "no_such_file_here")
 end
 p 1
+-- require_in_def_then_computed.rb --
+# load_path: testdata/multi/require
+# error: main.rb:5: require of a file on the -I path must be a top-level statement
+#: (String) -> void
+def load_it(path)
+  require "b"
+  require path
+end
+load_it("b")

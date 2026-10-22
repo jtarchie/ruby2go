@@ -16,6 +16,14 @@ module RegexpTests
       assert_equal [["a", "b"], ["c", "d"]], "a=b c=d".scan(PAIR_PATTERN)
     end
 
+    # \b is backspace inside a class, a word boundary outside; Go's parser has no \b escape in a class.
+    def test_backspace_in_class
+      assert_equal "aXb", "a\bb".sub(/[\b]/, "X")
+      assert_nil "ab".match(/[\b]/)
+      assert_equal "a\b", "a\bb"[/a[x\by]/]
+      assert_equal 0, "a b" =~ /a\b/
+    end
+
     def test_c1
       s = "a\n"
       assert_equal "> a\n", s.gsub(/^/, "> ") # ^

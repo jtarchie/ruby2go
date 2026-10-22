@@ -18,8 +18,21 @@ func (f *fctx) isOpenURIRecv(t Type, name string) bool {
 	return ok && g != nil && (name == "open" || name == "read") && (tc.C == g || tc.C.isSubclassOf(g))
 }
 
+// needOpenURILib is a compile error unless open-uri is loaded, which only a literal require does (decision 155).
+func (f *fctx) needOpenURILib(n parser.Node, instance bool, name string) {
+	if f.c.classes["OpenURI"] != nil && f.c.classes["OpenURI::OpenOptions"] != nil {
+		return
+	}
+	what := "URI.open"
+	if instance {
+		what = "URI#" + name
+	}
+	f.errorf(n, "%s needs require \"open-uri\"", what)
+}
+
 // genOpenURI compiles URI.open (recv nil) and URI::Generic#open/#read: MRI's one options Hash mixes headers (String keys) and options (Symbol keys), so it is split into a Hash[String, String] and OpenOptions.new keywords to type both (decision 134).
 func (f *fctx) genOpenURI(n parser.Node, recv *expr, name string, args []parser.Node, block parser.Node) expr {
+	f.needOpenURILib(n, recv != nil, name)
 	if recv == nil {
 		if len(args) == 0 {
 			f.errorf(n, "URI.open: wrong number of arguments (given 0, expected 1+)")
