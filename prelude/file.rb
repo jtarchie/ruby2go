@@ -1244,9 +1244,23 @@ class Dir < Object
   #: (String) -> bool
   def self.exist?(path) = File.directory?(path)
 
-  #: (String) -> Integer
-  def self.mkdir(path) = %x{
-    err := os.Mkdir(string(path), 0o777) //nolint:gosec // MRI's mode; the umask applies
+  # mode nil is 0777; the umask applies, as MRI's.
+  #: (String, ?Integer?) -> Integer
+  def self.mkdir(path, mode = nil) = %x{
+    fm := fs.FileMode(0o777)
+    if mode != nil {
+      fm = fs.FileMode(*mode & 0o777)
+      if *mode&0o4000 != 0 {
+        fm |= fs.ModeSetuid
+      }
+      if *mode&0o2000 != 0 {
+        fm |= fs.ModeSetgid
+      }
+      if *mode&0o1000 != 0 {
+        fm |= fs.ModeSticky
+      }
+    }
+    err := os.Mkdir(string(path), fm) //nolint:gosec // MRI's mode; the umask applies
     if err != nil {
       panic(rbSysErr(err, "rb_dir_s_mkdir", string(path)))
     }

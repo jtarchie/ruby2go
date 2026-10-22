@@ -264,8 +264,19 @@ class Set < Object
   #: (Set[E] | Array[E]) -> Set[E]
   def +(o) = self | o
 
+  # MRI walks the argument unless it is a bigger Set: the smaller side's order wins.
   #: (Set[E] | Array[E]) -> Set[E]
-  def &(o) = Set.new(to_a.select { |x| o.include?(x) })
+  def &(o)
+    out = Set.new #: Set[E]
+    if o.is_a?(Array)
+      o.each { |x| out << x if include?(x) }
+    elsif o.size > size
+      each { |x| out << x if o.include?(x) }
+    else
+      o.each { |x| out << x if include?(x) }
+    end
+    out
+  end
 
   #: (Set[E] | Array[E]) -> Set[E]
   def intersection(o) = self & o
@@ -276,7 +287,8 @@ class Set < Object
   #: (Set[E] | Array[E]) -> Set[E]
   def difference(o) = self - o
 
-  #: (Set[E]) -> Set[E]
+  # Self-only elements in self's order, then the argument's own.
+  #: (Set[E] | Array[E]) -> Set[E]
   def ^(o) = (self | o) - (self & o)
 
   #: (Set[E]) -> bool
@@ -303,10 +315,10 @@ class Set < Object
   #: (Set[E]) -> bool
   def >(o) = proper_superset?(o)
 
-  #: (Set[E]) -> bool
+  #: (Set[E] | Array[E]) -> bool
   def disjoint?(o) = none? { |x| o.include?(x) }
 
-  #: (Set[E]) -> bool
+  #: (Set[E] | Array[E]) -> bool
   def intersect?(o) = !disjoint?(o)
 
   #: (untyped) -> bool

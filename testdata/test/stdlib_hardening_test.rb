@@ -122,6 +122,90 @@ module StdlibHardeningTests
       assert_equal false, File.exist?(seen)
     end
 
+    # the standard idiom: write, rewind, read
+    def test_tempfile_write_rewind_read
+      f = Tempfile.new("hardrw")
+      f.write("hello")
+      f.rewind
+      assert_equal "hello", f.read
+      f.puts "!"
+      f.print "a", "b"
+      f.printf("%d", 7)
+      f.rewind
+      assert_equal "hello!\nab7", f.read
+      f.rewind
+      assert_equal "hello!\n", f.gets
+      f.close!
+    end
+
+    def test_tempfile_seek_pos_and_lines
+      f = Tempfile.new("hardseek")
+      f.write("one\ntwo\n")
+      f.seek(4)
+      assert_equal 4, f.pos
+      assert_equal "two\n", f.gets
+      f.rewind
+      assert_equal ["one\n", "two\n"], f.readlines
+      assert_equal true, f.eof?
+      f.close!
+    end
+
+    def test_tempfile_size_and_length
+      f = Tempfile.new("hardsize")
+      assert_equal 0, f.size
+      f.write("abc")
+      assert_equal 3, f.size
+      assert_equal 3, f.length
+      f.close
+      assert_equal 3, f.size
+      f.unlink
+      f.close!
+    end
+
+    def test_tempfile_close_unlink_now_and_close_bang
+      f = Tempfile.new("hardclose")
+      path = f.path.to_s
+      assert_nil f.close
+      assert_equal true, File.exist?(path)
+      assert_equal true, f.closed?
+      assert_equal [true, true], [f.inspect.start_with?("#<Tempfile:"), f.inspect.end_with?(" (closed)>")]
+      assert_equal true, f.inspect.include?(path)
+      f.close(true)
+      assert_equal false, File.exist?(path)
+      assert_nil f.path
+
+      g = Tempfile.new("hardbang")
+      gp = g.path.to_s
+      g.write("x")
+      g.close!
+      assert_equal false, File.exist?(gp)
+      assert_nil g.path
+      assert_equal true, g.closed?
+      assert_nil g.unlink
+    end
+
+    def test_tempfile_open_reopens_a_closed_file
+      f = Tempfile.new("hardopen")
+      f.write("zz")
+      f.close
+      f.open
+      assert_equal false, f.closed?
+      assert_equal "zz", f.read
+      f.close!
+    end
+
+    def test_tempfile_class_open_closes_after_the_block_but_keeps_the_file
+      seen = ""
+      t = Tempfile.open("hardblock") do |g|
+        g.write("q")
+        seen = g.path.to_s
+        g
+      end
+      assert_equal true, t.closed?
+      assert_equal "q", File.read(seen)
+      t.close!
+    end
+
     # the failing path names the tmpdir argument, not the system temp dir
     def test_mktmpdir_error_names_the_requested_directory
       msg = ""

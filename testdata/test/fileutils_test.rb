@@ -244,4 +244,198 @@ module FileUtilsTests
       end
     end
   end
+
+  # mode:, noop: and verbose: on the methods MRI gives them; verbose prints the equivalent shell command to $stdout (fu_output_message, fileutils 1.8)
+  class OptionsTest < Minitest::Test
+    #: (String) -> Integer
+    def fu_perm(path) = File.stat(path).mode & 0o7777
+
+    # the class only: assert_raises would trace the message, which names the temporary directory
+    #: () { () -> void } -> untyped
+    def fu_error_class
+      yield
+      nil
+    rescue SystemCallError => e
+      e.class
+    end
+
+    #: (String) { () -> void } -> String
+    def fu_err(dir)
+      out, _ = capture_io { yield }
+      out.gsub(dir, "D")
+    end
+
+    def test_dir_mkdir_takes_a_mode
+      Dir.mktmpdir do |d|
+        Dir.mkdir(File.join(d, "a"), 0o700)
+        Dir.mkdir(File.join(d, "b"), 0o750)
+        Dir.mkdir(File.join(d, "c"))
+        assert_equal [0o700, 0o750, 0o755], [fu_perm(File.join(d, "a")), fu_perm(File.join(d, "b")), fu_perm(File.join(d, "c"))]
+      end
+    end
+
+    def test_pathname_mkdir_and_mkpath_take_a_mode
+      Dir.mktmpdir do |d|
+        Pathname(d).join("a").mkdir(0o700)
+        Pathname(d).join("p/q/r").mkpath(mode: 0o700)
+        assert_equal [0o700, 0o700, 0o700, 0o700], [fu_perm(File.join(d, "a")), fu_perm(File.join(d, "p")), fu_perm(File.join(d, "p/q")), fu_perm(File.join(d, "p/q/r"))]
+        Pathname(d).join("p/q/r").mkpath # an existing directory is fine
+      end
+    end
+
+    def test_mkdir_and_mkpath_modes
+      Dir.mktmpdir do |d|
+        FileUtils.mkdir(File.join(d, "a"), mode: 0o700)
+        FileUtils.mkdir_p(File.join(d, "x/y"), mode: 0o700)
+        FileUtils.mkpath(File.join(d, "m/n"), mode: 0o711)
+        FileUtils.mkdir_p([File.join(d, "l1"), File.join(d, "l2/z")], mode: 0o750)
+        got = %w[a x x/y m m/n l1 l2 l2/z].map { |n| fu_perm(File.join(d, n)) }
+        assert_equal [0o700, 0o700, 0o700, 0o711, 0o711, 0o750, 0o750, 0o750], got
+        FileUtils.mkdir_p(File.join(d, "x/y"), mode: 0o755) # existing: untouched
+        assert_equal 0o700, fu_perm(File.join(d, "x/y"))
+      end
+    end
+
+    def test_mkdir_p_errors_like_mri
+      Dir.mktmpdir do |d|
+        f = File.join(d, "f")
+        File.write(f, "x")
+        assert_equal [Errno::EEXIST, Errno::EEXIST], [fu_error_class { FileUtils.mkdir_p(f) }, fu_error_class { FileUtils.mkdir_p(File.join(f, "z"), mode: 0o700) }]
+      end
+    end
+
+    def test_noop_does_nothing
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        File.write(a, "x")
+        FileUtils.mkdir(File.join(d, "m"), noop: true)
+        FileUtils.mkdir_p(File.join(d, "n/o"), noop: true)
+        FileUtils.mkpath(File.join(d, "q"), noop: true)
+        FileUtils.cp(a, File.join(d, "b"), noop: true)
+        FileUtils.cp_r(a, File.join(d, "c"), noop: true)
+        FileUtils.mv(a, File.join(d, "e"), noop: true)
+        FileUtils.ln_s(a, File.join(d, "l"), noop: true)
+        FileUtils.ln(a, File.join(d, "h"), noop: true)
+        FileUtils.install(a, File.join(d, "i"), noop: true)
+        FileUtils.touch(File.join(d, "t"), noop: true)
+        FileUtils.rm(a, noop: true)
+        FileUtils.rm_f(a, noop: true)
+        FileUtils.rm_r(a, noop: true)
+        FileUtils.rm_rf(a, noop: true)
+        FileUtils.chmod(0o600, a, noop: true)
+        assert_equal ["a"], Dir.children(d)
+        assert_equal 0o644, fu_perm(a)
+      end
+    end
+
+    def test_verbose_messages_match_mri
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        File.write(a, "x")
+        got = [] #: Array[String]
+        got << fu_err(d) { FileUtils.mkdir(File.join(d, "m"), mode: 0o700, verbose: true) }
+        got << fu_err(d) { FileUtils.mkdir([File.join(d, "m2"), File.join(d, "m3")], verbose: true) }
+        got << fu_err(d) { FileUtils.mkdir_p(File.join(d, "x/y"), mode: 0o700, verbose: true) }
+        got << fu_err(d) { FileUtils.mkdir_p([File.join(d, "p"), File.join(d, "q")], verbose: true) }
+        got << fu_err(d) { FileUtils.mkpath(File.join(d, "m/n"), mode: 0o711, verbose: true) }
+        got << fu_err(d) { FileUtils.cp(a, File.join(d, "b"), verbose: true) }
+        got << fu_err(d) { FileUtils.cp(a, File.join(d, "b"), preserve: true, verbose: true) }
+        got << fu_err(d) { FileUtils.cp_r(File.join(d, "x"), File.join(d, "z"), verbose: true) }
+        got << fu_err(d) { FileUtils.cp_r(File.join(d, "x"), File.join(d, "z2"), preserve: true, verbose: true) }
+        got << fu_err(d) { FileUtils.mv(File.join(d, "b"), File.join(d, "b2"), verbose: true) }
+        got << fu_err(d) { FileUtils.mv(File.join(d, "b2"), File.join(d, "b3"), force: true, verbose: true) }
+        got << fu_err(d) { FileUtils.rm(File.join(d, "b3"), verbose: true) }
+        got << fu_err(d) { FileUtils.rm(File.join(d, "b3"), force: true, verbose: true) }
+        got << fu_err(d) { FileUtils.rm_f(File.join(d, "nope"), verbose: true) }
+        got << fu_err(d) { FileUtils.rm_r(File.join(d, "z"), verbose: true) }
+        got << fu_err(d) { FileUtils.rm_rf(File.join(d, "z2"), verbose: true) }
+        got << fu_err(d) { FileUtils.rm_rf([File.join(d, "p"), File.join(d, "q")], verbose: true) }
+        got << fu_err(d) { FileUtils.rmdir(File.join(d, "m2"), verbose: true) }
+        got << fu_err(d) { FileUtils.rmdir(File.join(d, "x/y"), parents: true, verbose: true) }
+        got << fu_err(d) { FileUtils.touch(File.join(d, "t"), verbose: true) }
+        got << fu_err(d) { FileUtils.touch(File.join(d, "t"), nocreate: true, verbose: true) }
+        got << fu_err(d) { FileUtils.ln_s(a, File.join(d, "l"), verbose: true) }
+        got << fu_err(d) { FileUtils.ln_s(a, File.join(d, "l2"), force: true, verbose: true) }
+        got << fu_err(d) { FileUtils.ln_sf(a, File.join(d, "l3"), verbose: true) }
+        got << fu_err(d) { FileUtils.ln(a, File.join(d, "h"), verbose: true) }
+        got << fu_err(d) { FileUtils.ln(a, File.join(d, "h"), force: true, verbose: true) }
+        got << fu_err(d) { FileUtils.chmod(0o600, a, verbose: true) }
+        got << fu_err(d) { FileUtils.chmod("u+x", a, verbose: true) }
+        got << fu_err(d) { FileUtils.chmod_R(0o755, File.join(d, "m"), verbose: true) }
+        got << fu_err(d) { FileUtils.install(a, File.join(d, "i"), mode: 0o644, verbose: true) }
+        got << fu_err(d) { FileUtils.install(a, File.join(d, "i2"), verbose: true) }
+        got << fu_err(d) { FileUtils.mkdir(File.join(d, "noop"), noop: true, verbose: true) }
+        got << fu_err(d) { FileUtils.chown(nil, nil, a, verbose: true) }
+        want = <<~MSG
+          mkdir -m 700 D/m
+          mkdir D/m2 D/m3
+          mkdir -p -m 700 D/x/y
+          mkdir -p D/p D/q
+          mkdir -p -m 711 D/m/n
+          cp D/a D/b
+          cp -p D/a D/b
+          cp -r D/x D/z
+          cp -rp D/x D/z2
+          mv D/b D/b2
+          mv -f D/b2 D/b3
+          rm D/b3
+          rm -f D/b3
+          rm -f D/nope
+          rm -r D/z
+          rm -rf D/z2
+          rm -rf D/p D/q
+          rmdir D/m2
+          rmdir -p D/x/y
+          touch D/t
+          touch -c D/t
+          ln -s D/a D/l
+          ln -sf D/a D/l2
+          ln -sf D/a D/l3
+          ln D/a D/h
+          ln -f D/a D/h
+          chmod 600 D/a
+          chmod u+x D/a
+          chmod -R 755 D/m
+          install -c -m 644 D/a D/i
+          install -c D/a D/i2
+          mkdir D/noop
+          chown : D/a
+        MSG
+        assert_equal want, got.join
+      end
+    end
+
+    def test_rmdir_parents_and_rm_force
+      Dir.mktmpdir do |d|
+        FileUtils.mkdir_p(File.join(d, "x/y/z"))
+        File.write(File.join(d, "x/keep"), "k")
+        FileUtils.rmdir(File.join(d, "x/y/z"), parents: true)
+        assert_equal [false, true], [File.exist?(File.join(d, "x/y")), File.exist?(File.join(d, "x"))]
+        FileUtils.mkdir(File.join(d, "dd"))
+        File.write(File.join(d, "dd", "k"), "k")
+        FileUtils.rm(File.join(d, "dd"), force: true) # force swallows any error, as MRI's
+        assert_equal true, File.directory?(File.join(d, "dd"))
+        assert_equal false, fu_error_class { FileUtils.rm(File.join(d, "dd")) }.nil?
+      end
+    end
+
+    def test_cp_preserve_keeps_mode_and_mtime
+      Dir.mktmpdir do |d|
+        src = File.join(d, "src")
+        File.write(src, "x")
+        File.chmod(0o751, src)
+        File.utime(Time.at(1_000_000), Time.at(1_000_000), src)
+        FileUtils.cp(src, File.join(d, "plain"))
+        FileUtils.cp(src, File.join(d, "kept"), preserve: true)
+        assert_equal [0o751, 1_000_000], [fu_perm(File.join(d, "kept")), File.mtime(File.join(d, "kept")).to_i]
+        assert_equal false, File.mtime(File.join(d, "plain")).to_i == 1_000_000
+        FileUtils.mkdir_p(File.join(d, "t/sub"))
+        File.write(File.join(d, "t/sub/f"), "y")
+        File.chmod(0o640, File.join(d, "t/sub/f"))
+        File.utime(Time.at(2_000_000), Time.at(2_000_000), File.join(d, "t/sub/f"))
+        FileUtils.cp_r(File.join(d, "t"), File.join(d, "t2"), preserve: true)
+        assert_equal [0o640, 2_000_000], [fu_perm(File.join(d, "t2/sub/f")), File.mtime(File.join(d, "t2/sub/f")).to_i]
+      end
+    end
+  end
 end

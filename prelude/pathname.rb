@@ -252,18 +252,19 @@ class Pathname
   #: (Integer?, Integer?) -> Integer
   def chown(owner, group) = File.chown(owner, group, to_s)
 
-  #: (?Integer) -> Integer
-  def mkdir(_mode = 0o777) = Dir.mkdir(to_s) # ponytail: mode ignored (Dir.mkdir takes none yet)
+  #: (?Integer?) -> Integer
+  def mkdir(mode = nil) = Dir.mkdir(to_s, mode)
 
-  # Every missing parent too; an existing directory is fine.
+  # Every missing parent too, each with the mode; an existing directory is fine.
   #: (?mode: Integer?) -> self
   def mkpath(mode: nil)
     return self if directory?
 
     up = dirname
-    up.mkpath unless up.to_s == to_s
+    up.mkpath(mode: mode) unless up.to_s == to_s
     begin
-      Dir.mkdir(to_s) # ponytail: mode ignored
+      Dir.mkdir(to_s, mode)
+      File.chmod(mode, to_s) if mode
     rescue Errno::EEXIST
       raise unless directory?
     end

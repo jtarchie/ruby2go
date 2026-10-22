@@ -92,8 +92,7 @@ func rbCopyTree(src, dst string, preserve bool) error {
 		abs, _ := filepath.Abs(src)
 		return &rbArgError{"cannot copy directory " + abs + " to itself " + dst}
 	}
-	var dirs []string
-	var modes []fs.FileMode
+	var dirs [][2]string
 	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -112,21 +111,32 @@ func rbCopyTree(src, dst string, preserve bool) error {
 			return os.Symlink(link, target) //nolint:gosec // as above
 		case d.IsDir():
 			if preserve {
-				fi, err := d.Info()
-				if err != nil {
-					return err
-				}
-				dirs, modes = append(dirs, target), append(modes, fi.Mode()&(fs.ModePerm|fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky))
+				dirs = append(dirs, [2]string{path, target})
 			}
 			return os.MkdirAll(target, 0o777) //nolint:gosec // as above
 		default:
-			return rbCopyFile(path, target)
+			if err := rbCopyFile(path, target); err != nil || !preserve {
+				return err
+			}
+			return rbKeep(path, target)
 		}
 	})
 	for i := len(dirs) - 1; err == nil && i >= 0; i-- {
-		err = os.Chmod(dirs[i], modes[i])
+		err = rbKeep(dirs[i][0], dirs[i][1])
 	}
 	return err
+}
+
+// rbKeep gives dst src's mode (special bits too) and times: MRI's preserve_attributes, minus the owner.
+func rbKeep(src, dst string) error {
+	fi, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if err := os.Chmod(dst, fi.Mode()&(fs.ModePerm|fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky)); err != nil {
+		return err
+	}
+	return os.Chtimes(dst, rbAtime(fi), fi.ModTime())
 }
 
 // rbMove is os.Rename with a copy+remove fallback across devices, like MRI's FileUtils.mv.

@@ -497,3 +497,55 @@ func rbGrepLM[E any, U comparable](lm ***MatchData, re *Regexp, xs []E, invert b
 	}
 	return out
 }
+
+// rbRindexLoc is r's match of s with the last start (String#rindex, rpartition). Onigmo tries each start from the end
+// with the whole of s as context, so \A, ^, \b and lookbehind see the real neighbours; here the engine steps forward
+// over every start (matches may overlap) and keeps the last. A subject that is not valid UTF-8 keeps rbFindLoc's
+// trial of each rest of the String.
+func rbRindexLoc(r *Regexp, s string) []int {
+	if !utf8.ValidString(s) {
+		for i := len(s); i >= 0; i-- {
+			if loc := rbFindLoc(r, s[i:]); loc != nil && loc[0] == 0 {
+				return []int{i, i + loc[1]}
+			}
+		}
+		return nil
+	}
+	rx := r.re
+	rx.check()
+	var find func(from int) []int
+	if rx.alt != nil {
+		find = func(from int) []int {
+			out, err := rx.alt.findAll(s, from, 1)
+			switch {
+			case errors.Is(err, errRxTimeout):
+				panic(RxTimeout(err.Error()))
+			case err != nil:
+				panic(RxUnsupported(err.Error()))
+			case len(out) == 0:
+				return nil
+			}
+			return out[0]
+		}
+	} else {
+		prog := rx.prog
+		if prog == nil {
+			tree, _ := syntax.Parse(rx.Regexp.String(), syntax.Perl)
+			prog, _ = syntax.Compile(tree.Simplify())
+		}
+		np := len(prog.Inst)
+		b := &rxBacktrack{prog: prog, s: s, np: np, visited: make([]uint64, (np*(len(s)+1)+63)/64), caps: make([]int, 2*rx.NumSubexp()+2)}
+		find = b.search
+	}
+	var last []int
+	for from := 0; from <= len(s); {
+		loc := find(from)
+		if loc == nil {
+			break
+		}
+		last = slices.Clone(loc)
+		_, w := utf8.DecodeRuneInString(s[loc[0]:])
+		from = loc[0] + max(w, 1)
+	}
+	return last
+}

@@ -1465,6 +1465,23 @@ B
                    [s.partition(/o\s?/), s.rpartition(/o/), s.partition(/z/), s.rpartition(/z/)]
     end
 
+    # rindex and rpartition match with the whole String as context: the text before a start is real, not the start of the String
+    def test_rindex_and_rpartition_see_the_text_before_the_start
+      assert_equal [nil, 2, nil, 2, nil, 0, 3, nil, 1],
+                   ["ab".rindex(/\bb/), "a b".rindex(/\bb/), "ab".rindex(/^b/), "a\nb".rindex(/^b/), "ab".rindex(/\Ab/),
+                    "abab".rindex(/\Aab/), "abab".rindex(/(?<=a)b/), "abab".rindex(/(?<!a)b/), "aaa".rindex(/aa/)]
+      assert_equal [3, 7, 6, 7, 1, 3, 4, 2, 0, 1, 1],
+                   ["abc".rindex(/x*/), "héllo wörld".rindex(/ö/), "héllo wörld".rindex(/\bw/), "foo.bar.baz".rindex(/\./),
+                    "ab".rindex(/\Bb/), "abc".rindex(/$/), "a\nb\n".rindex(/$/), "a\nb\n".rindex(/^/), "".rindex(/x*/),
+                    "ab".rindex(/(?=b)/), "ab".rindex(/b/i)]
+      assert_equal [["", "", "ab"], ["a ", "b", ""], ["a\n", "b", ""], ["aba", "b", ""], ["a", "aa", ""],
+                    ["héllo w", "ör", "ld"], ["abc", "", ""], ["foo", ".", "bar"], ["ab", "ab", ""], ["", "", "ab"]],
+                   ["ab".rpartition(/\bb/), "a b".rpartition(/\bb/), "a\nb".rpartition(/^b/), "abab".rpartition(/(?<=a)b/),
+                    "aaa".rpartition(/aa/), "héllo wörld".rpartition(/ö./), "abc".rpartition(/x*/), "foo.bar".rpartition(/\./),
+                    "abab".rpartition(/(a)(b)/), "ab".rpartition(/\Ab/)]
+      assert_equal [5, nil], ["héllo wörld".byterindex(/o/), "ab".byterindex(/\bb/)]
+    end
+
     def test_matchdata_offsets_by_group_name
       m = /(?<a>x)(?<b>y)?/.match("x")
       assert_equal [0, 1, [0, 1], [0, 1], nil], [m&.begin(:a), m&.end("a"), m&.offset(:a), m&.byteoffset("a"), m&.begin(:b)]

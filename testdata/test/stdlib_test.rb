@@ -1779,17 +1779,21 @@ module StdlibTests
   # IO.sysopen and IO.new / IO.for_fd over a raw descriptor (mspec's new_fd)
   class StdlibIOFdTest < Minitest::Test
     def test_sysopen_and_new
-      path = File.join(Dir.pwd, "rb2go_stdlib_fd_#{Process.pid}.txt")
-      fd = IO.sysopen(path, "w")
-      io = IO.new(fd, "w")
-      same = io.fileno == fd
-      io.puts "hello"
-      io.close
-      r = IO.for_fd(IO.sysopen(path))
-      line = r.gets
-      r.close
-      File.delete(path)
-      assert_equal [true, "hello\n", 1, true], [same, line, IO.new(1).fileno, $$ == Process.pid]
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "fd.txt")
+        fd = IO.sysopen(path, "w")
+        io = IO.new(fd, "w")
+        same = io.fileno == fd
+        io.puts "hello"
+        io.close
+        r = IO.for_fd(IO.sysopen(path))
+        line = begin
+          r.gets
+        ensure
+          r.close
+        end
+        assert_equal [true, "hello\n", 1, true], [same, line, IO.new(1).fileno, $$ == Process.pid]
+      end
       assert_raises(Errno::ENOENT) { IO.sysopen("/nonexistent/rb2go/zz") }
       e = assert_raises(Errno::EBADF) { IO.new(9999) }
       assert_equal "Bad file descriptor", e.message

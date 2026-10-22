@@ -716,21 +716,18 @@ class String < Object
   }
 
   # The Regexp twins of index, rindex, partition and rpartition (decision 12's `__<name>_regexp`).
-  # ponytail: rindex tries each start on the rest of the String, so a lookbehind sees no text before it; match from a position when one needs it.
+  # rindex and rpartition match with the whole String as context (rbRindexLoc), so \A, ^, \b and lookbehind see their neighbours.
   #: (Regexp) -> Integer?
   def __index_regexp(re) = re =~ self
 
   #: (Regexp) -> Integer?
-  def __rindex_regexp(re)
-    i = size
-    while i >= 0
-      m = re.match(self[i..] || "")
-      return i if m && m.begin(0) == 0
-
-      i -= 1
-    end
-    nil
-  end
+  def __rindex_regexp(re) = %x{
+    loc := rbRindexLoc(re, string(self))
+    if loc == nil {
+      return nil
+    }
+    return Ref(Integer(rbStrLen(string(self)[:loc[0]])))
+  }
 
   #: (Regexp) -> Integer?
   def __byteindex_regexp(re)
@@ -753,15 +750,13 @@ class String < Object
   end
 
   #: (Regexp) -> [String, String, String]
-  def __rpartition_regexp(re)
-    i = __rindex_regexp(re)
-    return ["", "", self] unless i
-
-    m = re.match(self[i..] || "")
-    return ["", "", self] unless m
-
-    [self[0, i] || "", m[0] || "", m.post_match]
-  end
+  def __rpartition_regexp(re) = %x{
+    loc := rbRindexLoc(re, string(self))
+    if loc == nil {
+      return Tuple3[String, String, String]{"", "", rbNewStr(self, self)}
+    }
+    return Tuple3[String, String, String]{self[:loc[0]], self[loc[0]:loc[1]], self[loc[1]:]}
+  }
 
   # byteindex(s, offset): from byte offset (negative from the end); MRI's IndexError off a character boundary.
   #: (String, Integer) -> Integer?
