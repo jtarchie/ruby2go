@@ -113,7 +113,7 @@ func (f *fctx) genOrAssignIvar(n *parser.InstanceVariableOrWriteNode) expr {
 	if iv == nil {
 		iv = f.ivar(n, n.Name, nil)
 	}
-	f.unnarrow("ivar:" + n.Name)
+	f.unnarrow(ivarNarrowKey(n.Name))
 	if k, g := classOf(iv.Type), f.c.goType(iv.Type); k != nil && f.lenient() && !f.discover && !isOpt(iv.Type) && (g == k.ifaceName() || strings.HasPrefix(g, "*")) {
 		// a gem's ivar typed by its only assignment is still nil until then (bindata's `@factory ||= @obj_class.new`)
 		code := f.ivarCode(iv)
@@ -236,7 +236,7 @@ func (f *fctx) attrRecv(n, rn parser.Node, safe bool, name string) expr {
 		f.errorf(n, "&. with an operator assignment is not supported")
 	}
 	if isSelf(rn) {
-		f.unnarrow("attr:" + name)
+		f.unnarrow(attrNarrowKey(name))
 	}
 	recv := f.valueOf(f.genExpr(rn, nil))
 	recv.code = f.pinSimple(recv.code)

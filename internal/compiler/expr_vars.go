@@ -48,8 +48,8 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	if ann != nil {
 		val, decl = f.annotatedIvarValue(n, val, ann)
 	}
-	f.unnarrow("attr:" + strings.TrimPrefix(n.Name, "@"))
-	f.unnarrow("ivar:" + n.Name)
+	f.unnarrow(attrNarrowKey(strings.TrimPrefix(n.Name, "@")))
+	f.unnarrow(ivarNarrowKey(n.Name))
 	iv := f.ivar(n, n.Name, decl)
 	if f.discover && ann == nil && isEmptyLit(n.Value) {
 		iv.open = true
@@ -78,7 +78,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 
 // genIvarRead is an @x read: narrowed, an includer's by name, nil before discovery types it, else the field.
 func (f *fctx) genIvarRead(n *parser.InstanceVariableReadNode) expr {
-	if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed (decision 148)
+	if v := f.scope.lookup(ivarNarrowKey(n.Name)); v != nil { // narrowed (decision 148)
 		return expr{code: v.goName, typ: v.typ}
 	}
 	if f.includerIvar(n.Name) || !f.discover && f.descendantIvar(n.Name) {
@@ -113,11 +113,11 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		iv := f.ivar(n, n.Name, nil)
 		code := f.ivarCode(iv)
 		cur := expr{code: code, typ: iv.Type}
-		if v := f.scope.lookup("ivar:" + n.Name); v != nil { // narrowed: @x is non-nil here (decision 148)
+		if v := f.scope.lookup(ivarNarrowKey(n.Name)); v != nil { // narrowed: @x is non-nil here (decision 148)
 			cur = expr{code: v.goName, typ: v.typ}
 		}
 		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
-		f.unnarrow("ivar:" + n.Name)
+		f.unnarrow(ivarNarrowKey(n.Name))
 		f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
 		f.markIvar(iv)
 		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
@@ -292,20 +292,20 @@ func (f *fctx) readsUnassigned(name string) bool {
 
 // narrowIvar reads iv as non-nil from here on in this scope (decision 148).
 func (f *fctx) narrowIvar(iv *Ivar) {
-	v := &local{name: "ivar:" + iv.Name, goName: f.ivarCode(iv), typ: iv.Type, declared: true}
+	v := &local{name: ivarNarrowKey(iv.Name), goName: f.ivarCode(iv), typ: iv.Type, declared: true}
 	f.applyNarrow([]narrowInfo{{local: v, typ: stripOpt(iv.Type)}})
 }
 
 // ivarLocal is @x as a local genCond can narrow, like attrLocal's readers.
 func (f *fctx) ivarLocal(n *parser.InstanceVariableReadNode) *local {
-	if v := f.scope.lookup("ivar:" + n.Name); v != nil {
+	if v := f.scope.lookup(ivarNarrowKey(n.Name)); v != nil {
 		return v
 	}
 	if f.readsUnassigned(n.Name) {
 		return nil // genIvarExpr's nil
 	}
 	iv := f.ivar(n, n.Name, nil)
-	return &local{name: "ivar:" + n.Name, goName: f.ivarCode(iv), typ: iv.Type, declared: true}
+	return &local{name: ivarNarrowKey(n.Name), goName: f.ivarCode(iv), typ: iv.Type, declared: true}
 }
 
 // afterCall forgets narrowed ivars once a call through self ran a method
@@ -333,7 +333,7 @@ func (f *fctx) afterCall(n *parser.CallNode) {
 func (f *fctx) hasNarrowedIvar() bool {
 	for sc := f.scope; sc != nil; sc = sc.parent {
 		for name, v := range sc.vars {
-			if v.base != nil && strings.HasPrefix(name, "ivar:") {
+			if v.base != nil && isIvarNarrowKey(name) {
 				return true
 			}
 		}
@@ -344,7 +344,7 @@ func (f *fctx) hasNarrowedIvar() bool {
 func (f *fctx) unnarrowIvars() {
 	for sc := f.scope; sc != nil; sc = sc.parent {
 		for name, v := range sc.vars {
-			if v.base != nil && strings.HasPrefix(name, "ivar:") {
+			if v.base != nil && isIvarNarrowKey(name) {
 				delete(sc.vars, name)
 			}
 		}
@@ -392,7 +392,7 @@ func (f *fctx) attrLocal(n parser.Node) *local {
 	if !ok || call.Receiver != nil || call.Arguments != nil || call.Block != nil || f.owner == nil {
 		return nil
 	}
-	if v := f.scope.lookup("attr:" + call.Name); v != nil {
+	if v := f.scope.lookup(attrNarrowKey(call.Name)); v != nil {
 		return v
 	}
 	e := f.owner.lookup(call.Name)
@@ -400,7 +400,7 @@ func (f *fctx) attrLocal(n parser.Node) *local {
 		return nil
 	}
 	x := f.genExpr(call, nil)
-	return &local{name: "attr:" + call.Name, goName: x.code, typ: x.typ, declared: true}
+	return &local{name: attrNarrowKey(call.Name), goName: x.code, typ: x.typ, declared: true}
 }
 
 // narrowString reads a String? local that was just assigned a String as String for the rest of its branch.

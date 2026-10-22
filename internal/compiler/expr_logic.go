@@ -170,7 +170,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		return expr{code: tmp, typ: l.typ}
 	}
 	untyped := isAny(lElem)
-	if iv, ok := n.Left.(*parser.InstanceVariableReadNode); ok && !isOpt(l.typ) && f.scope.lookup("ivar:"+iv.Name) != nil {
+	if iv, ok := n.Left.(*parser.InstanceVariableReadNode); ok && !isOpt(l.typ) && f.scope.lookup(ivarNarrowKey(iv.Name)) != nil {
 		return l // narrowed non-nil (decision 148): MRI never runs the right side either
 	}
 	if !isOpt(l.typ) && !untyped && !boolL {

@@ -75,6 +75,11 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	}
 }
 
+// Narrowed ivars/attr readers share scope.vars with locals under ":" keys no identifier can spell.
+func ivarNarrowKey(ivar string) string { return "ivar:" + ivar } // ivar keeps its "@"
+func attrNarrowKey(name string) string { return "attr:" + name } // name has no "@" or "="
+func isIvarNarrowKey(key string) bool  { return strings.HasPrefix(key, "ivar:") }
+
 type narrowInfo struct {
 	local    *local
 	typ      Type
@@ -416,7 +421,7 @@ func (f *fctx) truthy(n parser.Node, e expr) string {
 	case isAny(e.typ), unionFalsy(e.typ):
 		return "rbTruthy(" + e.code + ")"
 	}
-	if iv, ok := n.(*parser.InstanceVariableReadNode); ok && f.scope.lookup("ivar:"+iv.Name) != nil {
+	if iv, ok := n.(*parser.InstanceVariableReadNode); ok && f.scope.lookup(ivarNarrowKey(iv.Name)) != nil {
 		return "true" // narrowed (decision 148): the check is the program's, not a mistake
 	}
 	if f.lenient() {

@@ -103,7 +103,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		return e
 	}
 	if strings.HasSuffix(n.Name, "=") && (n.Receiver == nil || isSelf(n.Receiver)) {
-		f.unnarrow("attr:" + strings.TrimSuffix(n.Name, "="))
+		f.unnarrow(attrNarrowKey(strings.TrimSuffix(n.Name, "=")))
 	}
 	if e, ok := f.genERBCall(n); ok {
 		return e
@@ -331,7 +331,7 @@ func (f *fctx) genBareName(n *parser.CallNode, expected Type) (expr, bool) {
 	if n.Receiver != nil || n.Arguments != nil || n.Block != nil {
 		return expr{}, false
 	}
-	if v := f.scope.lookup("attr:" + n.Name); v != nil {
+	if v := f.scope.lookup(attrNarrowKey(n.Name)); v != nil {
 		return expr{code: v.goName, typ: v.typ}, true
 	}
 	if f.erbDepth > 0 && f.visibleLocal(n.Name) != nil {
