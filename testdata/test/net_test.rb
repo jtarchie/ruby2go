@@ -327,6 +327,32 @@ module NetTests
     end
   end
 
+  # WEBrick refuses a request line past MAX_URI_LENGTH (2083) with 414 and request line plus headers past MAX_HEADER_LENGTH (112 KiB) with 413.
+  class LimitsTest < Minitest::Test
+    #: (Integer, String) -> String?
+    def net_status(port, request)
+      sock = TCPSocket.new("127.0.0.1", port)
+      sock.write request
+      line = sock.gets
+      sock.close
+      line&.split(" ")&.at(1)
+    end
+
+    def test_request_line_and_header_limits
+      server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1")
+      server.mount_proc("/") { |_req, res| res.body = "ok" }
+      thread = Thread.new { server.start }
+      port = server.config[:Port]
+      tail = " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
+      assert_equal "200", net_status(port, "GET /#{"a" * 1000}#{tail}")
+      assert_equal "414", net_status(port, "GET /#{"a" * 2100}#{tail}")
+      assert_equal "200", net_status(port, "GET / HTTP/1.1\r\nHost: x\r\nX-Pad: #{"a" * 50_000}\r\nConnection: close\r\n\r\n")
+      assert_equal "413", net_status(port, "GET / HTTP/1.1\r\nHost: x\r\nX-Pad: #{"a" * 130_000}\r\nConnection: close\r\n\r\n")
+      server.shutdown
+      thread.join
+    end
+  end
+
   # Net::HTTP against a raw TCPServer: the bytes on the wire, which WEBrick hides.
   class RawTest < Minitest::Test
     #: (^(TCPSocket) -> void) { (Integer) -> void } -> void

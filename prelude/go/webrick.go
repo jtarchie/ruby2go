@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -32,7 +33,19 @@ func rbWEBrickListen(config *Hash[Symbol, any]) *WEBrick_HTTPServer_Handle__ {
 	}
 	Hash_Op_idxSet[Symbol, any](config, Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
 	mux := http.NewServeMux()
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	timeout := rbWEBrickRequestTimeout * time.Second
+	switch t := config.vals[Symbol("RequestTimeout")].(type) {
+	case Integer:
+		if t > 0 {
+			timeout = time.Duration(t) * time.Second
+		}
+	case Float:
+		if t > 0 {
+			timeout = time.Duration(float64(t) * float64(time.Second))
+		}
+	}
+	// ReadTimeout is for the whole request where WEBrick's RequestTimeout is per read; Go has no per-read server timeout, and a slow body is the case it must bound.
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: timeout, IdleTimeout: timeout}
 	return &WEBrick_HTTPServer_Handle__{srv: srv, ln: ln, mux: mux}
 }
 
@@ -133,9 +146,34 @@ func rbParseQuery(h *Hash[String, String], q string) {
 	}
 }
 
-func rbWEBrickRequest(r *http.Request) *WEBrick_HTTPRequest {
+// rbWEBrickTooLarge is the status WEBrick answers a request whose line (414) or line plus headers (413) is past its limits, else 0; Go has parsed the request by now, so the sizes are the wire sizes recomputed.
+func rbWEBrickTooLarge(r *http.Request) int {
+	line := len(r.Method) + 1 + len(r.RequestURI) + 1 + len(r.Proto) + 2
+	if line > rbWEBrickMaxURI {
+		return http.StatusRequestURITooLong
+	}
+	size := line + len("Host: ") + len(r.Host) + 2
+	for k, vs := range r.Header {
+		for _, v := range vs {
+			size += len(k) + 2 + len(v) + 2
+		}
+	}
+	if size > rbWEBrickMaxHeader {
+		return http.StatusRequestEntityTooLarge
+	}
+	return 0
+}
+
+func rbWEBrickRequest(r *http.Request) (*WEBrick_HTTPRequest, error) {
 	var body *String
-	if data, err := io.ReadAll(r.Body); err == nil && len(data) > 0 {
+	if r.ContentLength > rbWEBrickMaxBody {
+		return nil, errRBBodyTooLarge
+	}
+	data, err := rbReadAllLimit(r.Body, rbWEBrickMaxBody)
+	if errors.Is(err, errRBBodyTooLarge) {
+		return nil, err
+	}
+	if err == nil && len(data) > 0 {
 		s := String(data)
 		body = &s
 	}
@@ -146,12 +184,20 @@ func rbWEBrickRequest(r *http.Request) *WEBrick_HTTPRequest {
 	case body != nil && strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded"):
 		rbParseQuery(query, string(*body))
 	}
-	return &WEBrick_HTTPRequest{r: r, query: query, body: body}
+	return &WEBrick_HTTPRequest{r: r, query: query, body: body}, nil
 }
 
 // rbWEBrickServe runs a handler and writes its response like WEBrick; a raised HTTPStatus keeps the body/header already set (set_redirect relies on this).
 func rbWEBrickServe(w http.ResponseWriter, r *http.Request, handle func(*WEBrick_HTTPRequest, *WEBrick_HTTPResponse)) {
-	req := rbWEBrickRequest(r)
+	if code := rbWEBrickTooLarge(r); code != 0 {
+		w.WriteHeader(code)
+		return
+	}
+	req, err := rbWEBrickRequest(r)
+	if err != nil {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		return
+	}
 	res := &WEBrick_HTTPResponse{status: 200, header: http.Header{}, cookies: NewArray[any]()}
 	func() {
 		defer func() {

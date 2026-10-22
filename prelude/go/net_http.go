@@ -128,7 +128,10 @@ func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash
 		panic(rbHTTPFailure(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(resp.Body)
+	data, err := rbReadAllLimit(resp.Body, rbHTTPMaxBody)
+	if errors.Is(err, errRBBodyTooLarge) {
+		panic(NewNoMemoryError(Ref(String("Net::HTTP response body too large"))))
+	}
 	if err != nil {
 		panic(rbHTTPFailure(err))
 	}
