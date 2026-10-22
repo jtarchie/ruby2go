@@ -3,7 +3,6 @@ package compiler
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -205,9 +204,6 @@ func (c *Compiler) readSuperArgs(f *File, n *parser.ClassNode, cls *Class, line 
 // goClassName maps a constant path to a Go identifier.
 func goClassName(rubyName string) string { return strings.ReplaceAll(rubyName, "::", "_") }
 
-// goDecl matches a package-level Go name declared in a top-level %x{}.
-var goDecl = regexp.MustCompile(`(?m)^\s*(?:func|type|var|const)\s+([A-Z]\w*)`)
-
 // nameGo keeps user classes and constants off every other package-level Go
 // name: runtime helpers (`Opt`) and what other classes generate (`NewUser`,
 // `ShapeI`, `Foo::Bar`'s `Foo_Bar`). Prelude names are fixed, since `%x{}`
@@ -218,9 +214,7 @@ func (c *Compiler) nameGo() {
 		taken[fmt.Sprintf("Tuple%d", n)] = true
 	}
 	for _, v := range c.verbatim {
-		for _, m := range goDecl.FindAllStringSubmatch(v.code, -1) {
-			taken[m[1]] = true
-		}
+		declaredGoNames(v.code, func(n string) { taken[n] = true }) // a package-level name declared in a top-level %x{}
 	}
 	claim := func(f *File, name *string, gen func() []string) { // gen reads *name
 		for !f.isPrelude() && slices.ContainsFunc(gen(), func(n string) bool { return taken[n] }) {

@@ -3,7 +3,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -39,9 +38,6 @@ var declarationCalls = map[string]bool{
 	"private_constant": true, "public_constant": true, "include": true, "extend": true, "prepend": true, "ruby2_keywords": true,
 	"deprecate_constant": true,
 }
-
-// goCall matches a Go method call (`.Name(`) or a free func call (`Owner_Name(` / `Owner_Name[`); a field is not a call.
-var goCall = regexp.MustCompile(`(?:\.|_)([A-Z][A-Za-z0-9]*)[(\[]`)
 
 // gemFile reports whether f was loaded from a gem's lib dir (decision 173), the code decision 169 prunes.
 func (c *Compiler) gemFile(f *File) bool {
@@ -342,11 +338,11 @@ func symbolName(n parser.Node) (string, bool) {
 
 // scanGo reaches every method a Go call names, so what the runtime calls stays.
 func (r *reach) scanGo(code string) {
-	for _, m := range goCall.FindAllStringSubmatch(code, -1) {
-		for _, n := range r.goNames[m[1]] {
+	goCallNames(code, func(name string) {
+		for _, n := range r.goNames[name] {
 			r.add(n)
 		}
-	}
+	})
 }
 
 // walk adds the method and constant names n's code uses; skipDefs leaves out def bodies, which only a call reaches.
