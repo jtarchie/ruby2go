@@ -28,7 +28,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 	add := func(name string) {
 		if !seen[name] {
 			seen[name] = true
-			fmt.Fprintf(&b, "require %q\n", name)
+			fmt.Fprintf(&b, "require %s\n", rubyQuote(name))
 		}
 	}
 	abs, err := filepath.Abs(main)
@@ -131,6 +131,25 @@ func defRequires(src []byte, all bool) []string {
 	return out
 }
 
+// rubyQuote: Go's %q leaves `#` bare, so `"a#{b}"` in entry.rb would run b.
+func rubyQuote(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := range len(s) {
+		switch ch := s[i]; {
+		case ch == '\\' || ch == '"' || ch == '#':
+			b.WriteByte('\\')
+			b.WriteByte(ch)
+		case ch < 0x20 || ch == 0x7f:
+			fmt.Fprintf(&b, "\\x%02x", ch)
+		default:
+			b.WriteByte(ch)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
 // under is the longest of dirs holding f, and f relative to it.
 func under(f string, dirs []string) (dir, rel string) {
 	for _, d := range dirs {
@@ -207,7 +226,7 @@ func mainRequires(ctx context.Context, main string, dirs []string, entry []byte)
 		}
 		if call, ok := n.(*parser.CallNode); ok && call.Name == "require" && call.Receiver == nil {
 			if str, ok := firstArg(callArgs(call)).(*parser.StringNode); ok && len(callArgs(call)) == 1 {
-				line := fmt.Sprintf("require %q\n", str.Unescaped.Value)
+				line := fmt.Sprintf("require %s\n", rubyQuote(str.Unescaped.Value))
 				if !bytes.Contains(entry, []byte(line)) && !bytes.Contains(b.Bytes(), []byte(line)) && onPath(str.Unescaped.Value, dirs) {
 					b.WriteString(line)
 				}

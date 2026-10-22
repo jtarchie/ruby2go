@@ -224,7 +224,7 @@ func (r *reach) reached(name string, owner *Class) bool {
 
 // inherits reports whether owner is a superclass of cls.
 func (r *reach) inherits(cls, owner *Class) bool {
-	for c := cls; c != nil && c.superRef != nil; {
+	for c, n := cls, 0; c != nil && c.superRef != nil && n <= len(r.c.classList); n++ { // n: this runs before checkCycles, so a cycle not through owner would never end
 		if c = r.resolve(c.superRef); c == owner {
 			return true
 		}

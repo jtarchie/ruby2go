@@ -57,3 +57,35 @@ func TestTracedEntryGemOwnRequire(t *testing.T) {
 		t.Errorf("entry:\n%s\nwant:\n%s", src, want)
 	}
 }
+
+// entry.rb is Ruby: a path with `#{` (Go's %q leaves it bare) must not interpolate when the entry is parsed.
+func TestTracedEntryQuotesForRuby(t *testing.T) {
+	d := t.TempDir()
+	lib := filepath.Join(d, "lib")
+	err := os.MkdirAll(lib, 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "x#{1}y\"z\\"
+	err = os.WriteFile(filepath.Join(lib, name+".rb"), nil, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `require "x\#{1}y\"z\\"` + "\n"
+	src, _ := TracedEntry(&boot.Loaded{Features: []string{filepath.Join(lib, name+".rb")}, LoadPath: []string{lib}}, d+"/main.rb")
+	if string(src) != want {
+		t.Errorf("TracedEntry:\n%s\nwant:\n%s", src, want)
+	}
+	main := filepath.Join(d, "main.rb")
+	err = os.WriteFile(main, []byte("require 'x#{1}y\"z\\\\'\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	more, err := mainRequires(t.Context(), main, []string{lib}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(more) != want {
+		t.Errorf("mainRequires:\n%s\nwant:\n%s", more, want)
+	}
+}
