@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 331); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 335); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
 
 ## Commands
 
