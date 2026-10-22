@@ -4,18 +4,16 @@
 package prelude
 
 import (
-	"regexp"
 	"slices"
 	"strings"
 )
 
 // Ruby 3.4+ prints symbol keys as labels: `a: 1`, or `"a b": 1` when the
-// symbol is not an identifier (rbIdentRe, prelude/symbol.rb).
-var rbLabelSymbol = regexp.MustCompile(`\A` + rbIdentRe + `[?!]?\z`)
+// symbol is not an identifier (rbIsLabelSymbol, prelude/symbol.rb).
 
 func rbInspectPair(k, v any, seen *rbSeen) string {
 	if s, ok := rbUnbox(k).(Symbol); ok {
-		if rbLabelSymbol.MatchString(string(s)) {
+		if rbIsLabelSymbol(string(s)) {
 			return string(s) + ": " + string(rbInspectIn(v, seen))
 		}
 		return string(rbStringInspectAs(string(s), false)) + ": " + string(rbInspectIn(v, seen))

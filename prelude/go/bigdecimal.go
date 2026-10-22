@@ -60,16 +60,8 @@ func rbBDNorm(neg bool, mant *big.Int, exp int) *BigDecimal {
 	if exp < -rbBDExpMax {
 		return rbBDZero(neg)
 	}
-	m := new(big.Int).Set(mant)
-	r := new(big.Int)
-	for {
-		q, rem := new(big.Int).QuoRem(m, rbBDTen, r)
-		if rem.Sign() != 0 {
-			break
-		}
-		m, exp = q, exp+1
-	}
-	return &BigDecimal{mant: m, exp: exp, neg: neg}
+	m, k := rbBDStripZeros(mant)
+	return &BigDecimal{mant: m, exp: exp + k, neg: neg}
 }
 
 func rbBDSpecial(kind int, neg bool) *BigDecimal {

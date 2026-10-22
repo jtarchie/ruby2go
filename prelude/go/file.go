@@ -4,6 +4,7 @@ package prelude
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -409,16 +410,19 @@ func rbGetsFrom(r *bufio.Reader, sep *String, limit int, lineno *int) *String {
 			}
 		}
 	}
-	want := ""
+	var want []byte
 	switch {
 	case para:
-		want = "\n\n"
+		want = []byte("\n\n")
 	case sep != nil:
-		want = string(*sep)
+		want = []byte(*sep)
 	}
 	var out []byte
 	cut := false
-	for {
+	if limit < 0 {
+		out = rbReadUntil(r, want)
+	}
+	for limit > 0 {
 		if limit > 0 && len(out) >= limit {
 			for { // finish the character the limit fell inside
 				b, err := r.Peek(1)
@@ -428,7 +432,7 @@ func rbGetsFrom(r *bufio.Reader, sep *String, limit int, lineno *int) *String {
 				c, _ := r.ReadByte()
 				out = append(out, c)
 			}
-			cut = want == "" || !strings.HasSuffix(string(out), want)
+			cut = len(want) == 0 || !bytes.HasSuffix(out, want)
 			break
 		}
 		b, err := r.ReadByte()
@@ -436,7 +440,7 @@ func rbGetsFrom(r *bufio.Reader, sep *String, limit int, lineno *int) *String {
 			break
 		}
 		out = append(out, b)
-		if want != "" && strings.HasSuffix(string(out), want) {
+		if len(want) > 0 && bytes.HasSuffix(out, want) {
 			break
 		}
 	}

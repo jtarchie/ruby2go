@@ -1542,8 +1542,8 @@ func rbCallerLoc() string { return rbCallerLocN(0) }
 
 // rbCallerLocN skips n user-code frames first (warn's uplevel:); "" past the stack.
 func rbCallerLocN(n int) string {
-	pcs := make([]uintptr, 64)
-	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	var pcs [64]uintptr
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs[:])])
 	_, self, _, _ := runtime.Caller(0)
 	mod := strings.TrimSuffix(self, "prelude/go/runtime.go")
 	for {
@@ -1566,7 +1566,11 @@ func rbStringInspect(s string) String { return rbStringInspectAs(s, true) }
 
 // rbStringInspectAs inspects s; utf8 false gives the US-ASCII form of a control (\xXX), which Symbol#inspect uses.
 func rbStringInspectAs(s string, utf8Controls bool) String {
+	if rbInspectPlain(s) {
+		return String(`"` + s + `"`)
+	}
 	var b strings.Builder
+	b.Grow(len(s) + 8)
 	b.WriteByte('"')
 	for i := 0; i < len(s); {
 		r, n := utf8.DecodeRuneInString(s[i:])
@@ -1598,6 +1602,9 @@ func rbStringInspectAs(s string, utf8Controls bool) String {
 		case 0x1b:
 			b.WriteString(`\e`)
 		case '#':
+			if i < len(s) && (s[i] == '{' || s[i] == '$' || s[i] == '@') {
+				b.WriteByte('\\') // #{ #$ #@ would interpolate if the result were read back
+			}
 			b.WriteByte('#')
 		default:
 			switch {
@@ -1618,11 +1625,20 @@ func rbStringInspectAs(s string, utf8Controls bool) String {
 		}
 	}
 	b.WriteByte('"')
-	res := b.String()
-	for _, c := range []string{string(rune(123)), "$", "@"} {
-		res = strings.ReplaceAll(res, "#"+c, `\#`+c)
+	return String(b.String())
+}
+
+// rbInspectPlain is whether inspect prints s between quotes unchanged: printable ASCII, no quote, backslash or interpolation opener.
+func rbInspectPlain(s string) bool {
+	for i := range len(s) {
+		switch c := s[i]; {
+		case c < 0x20 || c >= 0x7f || c == '"' || c == '\\':
+			return false
+		case c == '#' && i+1 < len(s) && (s[i+1] == '{' || s[i+1] == '$' || s[i+1] == '@'):
+			return false
+		}
 	}
-	return String(res)
+	return true
 }
 
 // rbSleep is Kernel#sleep: MRI's errors, and the whole seconds slept.

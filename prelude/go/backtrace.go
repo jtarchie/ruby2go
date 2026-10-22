@@ -48,9 +48,9 @@ func rbCaptureBacktrace(r any) any {
 	if x.__pcs != nil {
 		return r
 	}
-	pcs := make([]uintptr, 128)
-	n := runtime.Callers(2, pcs)
-	x.__pcs = rbPCs{pcs: pcs[:n], rescued: bool(x.__seen)}
+	var buf [128]uintptr // on the stack; only the n frames hit are kept
+	n := runtime.Callers(2, buf[:])
+	x.__pcs = rbPCs{pcs: slices.Clone(buf[:n]), rescued: bool(x.__seen)}
 	return r
 }
 
@@ -295,8 +295,8 @@ func rbBacktraceFrames(pcs []uintptr, rescued bool) []string {
 // rbCaller is Kernel#caller: the stack as backtrace lines, from start frames above the method that called caller,
 // at most length of them (-1: all); nil past the stack's end, as MRI (decision 189).
 func rbCaller(start, length int) *Array[String] {
-	pcs := make([]uintptr, 128)
-	n := runtime.Callers(2, pcs)
+	var pcs [128]uintptr
+	n := runtime.Callers(2, pcs[:])
 	var lines []String
 	for _, l := range rbBacktraceFrames(pcs[:n], false) {
 		if strings.Contains(l, "'Kernel#caller'") {

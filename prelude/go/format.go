@@ -161,7 +161,11 @@ func rbFormat(format string, args []any) string {
 				width, hasWidth = n, true
 				i = j - 1
 			case d == '<' || d == '{':
-				end := strings.IndexByte(format[i:], map[byte]byte{'<': '>', '{': '}'}[d])
+				closer := byte('>')
+				if d == '{' {
+					closer = '}'
+				}
+				end := strings.IndexByte(format[i:], closer)
 				if end < 0 {
 					raise("malformed name - unmatched parenthesis")
 				}
@@ -244,6 +248,12 @@ func rbFormatSpec(flags string, width int, hasWidth bool, prec int, hasPrec bool
 
 // rbFormatOne formats v for one directive; spec is its flags, width and precision.
 func rbFormatOne(spec string, verb byte, v any) string {
+	if s, ok := rbFormatFast(spec, verb, v); ok {
+		return s
+	}
+	if verb == 's' || verb == 'p' || verb == 'c' {
+		spec = rbFormatNoZeroFlag(spec) // the 0 flag pads numbers only: Go's fmt would zero-pad these
+	}
 	switch verb {
 	case 's':
 		return fmt.Sprintf(spec+"s", string(rbToS(v)))
@@ -464,4 +474,14 @@ func rbFormatTwos(spec string, verb byte, n int) string {
 		return fmt.Sprintf("%-*s", width, s)
 	}
 	return fmt.Sprintf("%*s", width, s)
+}
+
+// rbFormatNoZeroFlag drops the 0 from spec's flags (the run of -+ #0 after the %), leaving width digits alone.
+func rbFormatNoZeroFlag(spec string) string {
+	i := 1
+	for i < len(spec) && strings.IndexByte("-+ #0", spec[i]) >= 0 {
+		i++
+	}
+
+	return spec[:1] + strings.ReplaceAll(spec[1:i], "0", "") + spec[i:]
 }

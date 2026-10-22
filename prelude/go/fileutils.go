@@ -180,13 +180,35 @@ func rbTouch(path string, t time.Time, nocreate bool) error {
 
 // rbSameContents is FileUtils.compare_file; an unreadable file raises as MRI's File.open does.
 func rbSameContents(a, b string) bool {
-	da, err := os.ReadFile(a) //nolint:gosec // the program's own paths
+	fa, err := os.Open(a) //nolint:gosec // the program's own paths
 	if err != nil {
 		panic(rbSysErr(err, "rb_sysopen", a))
 	}
-	db, err := os.ReadFile(b) //nolint:gosec // the program's own paths
+	fb, err := os.Open(b) //nolint:gosec // the program's own paths
 	if err != nil {
 		panic(rbSysErr(err, "rb_sysopen", b))
 	}
-	return bytes.Equal(da, db)
+	defer func() { _ = fa.Close(); _ = fb.Close() }()
+	sa, ea := fa.Stat()
+	sb, eb := fb.Stat()
+	if ea == nil && eb == nil && sa.Mode().IsRegular() && sb.Mode().IsRegular() && sa.Size() != sb.Size() {
+		return false // as MRI: sizes first, then the bytes
+	}
+	ba, bb := make([]byte, 64<<10), make([]byte, 64<<10)
+	for {
+		na, erra := io.ReadFull(fa, ba)
+		nb, errb := io.ReadFull(fb, bb)
+		if erra != nil && !errors.Is(erra, io.EOF) && !errors.Is(erra, io.ErrUnexpectedEOF) {
+			panic(rbSysErr(erra, "rb_sysopen", a))
+		}
+		if errb != nil && !errors.Is(errb, io.EOF) && !errors.Is(errb, io.ErrUnexpectedEOF) {
+			panic(rbSysErr(errb, "rb_sysopen", b))
+		}
+		if na != nb || !bytes.Equal(ba[:na], bb[:nb]) {
+			return false
+		}
+		if na < len(ba) {
+			return true
+		}
+	}
 }

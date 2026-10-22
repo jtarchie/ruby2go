@@ -439,3 +439,53 @@ module FileUtilsTests
     end
   end
 end
+
+module FileUtilsTests
+  # compare_file streams in chunks after a size check; the edges are the 64 KB chunk size and where the files differ.
+  class CompareFileStreamTest < Minitest::Test
+    def test_compare_file_chunk_edges
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        b = File.join(d, "b")
+        got = [] #: Array[bool]
+        [0, 1, 65_535, 65_536, 65_537, 196_608].each do |n|
+          File.write(a, "x" * n)
+          File.write(b, "x" * n)
+          got << FileUtils.compare_file(a, b)
+          got << FileUtils.compare_file(a, a)
+          File.write(b, "x" * (n + 1))
+          got << FileUtils.compare_file(a, b)
+          next if n.zero?
+
+          File.write(b, "x" * (n - 1) + "y")
+          got << FileUtils.compare_file(a, b)
+          File.write(b, "y" + "x" * (n - 1))
+          got << FileUtils.compare_file(a, b)
+          File.write(b, "x" * (n / 2) + "y" + "x" * (n - (n / 2) - 1))
+          got << FileUtils.compare_file(a, b)
+        end
+        assert_equal [true, true, false] + ([true, true, false, false, false, false] * 5), got
+        assert_equal [true, true], [FileUtils.identical?(a, a), FileUtils.cmp(a, a)]
+      end
+    end
+
+    def test_compare_file_missing_raises_enoent
+      Dir.mktmpdir do |d|
+        a = File.join(d, "a")
+        File.write(a, "x")
+        raised = [] #: Array[Class]
+        begin
+          FileUtils.compare_file(a, File.join(d, "nope"))
+        rescue Errno::ENOENT => e
+          raised << e.class
+        end
+        begin
+          FileUtils.compare_file(File.join(d, "nope"), a)
+        rescue Errno::ENOENT => e
+          raised << e.class
+        end
+        assert_equal [Errno::ENOENT, Errno::ENOENT], raised
+      end
+    end
+  end
+end

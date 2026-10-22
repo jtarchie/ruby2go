@@ -1707,3 +1707,90 @@ module StringTests
     end
   end
 end
+
+module StringTests
+  # String#inspect and Symbol#inspect take a byte-scan fast path; the expectations are MRI's own output.
+  class StringInspectScanTest < Minitest::Test
+    def test_string_inspect_escapes
+      strs = ["", "plain ascii", "a\"b", "back\\slash", "#", "#x", "a#", "\#{x}", "\#$x", "\#@x", "#\#{x}", "#\\\#{x}", "\#$", "\#@", "#\#{", "tab\t", "nl\n", "\e", "\u007F", "é", "日本", "a\u0000b", "­", "😀", "\u2028", "a\xFFb", "cr\r\f\v\a\b", "~ ok", "#\#$z"] #: Array[String]
+      assert_equal ["\"\"", "\"plain ascii\"", "\"a\\\"b\"", "\"back\\\\slash\"", "\"#\"", "\"#x\"", "\"a#\"", "\"\\\#{x}\"", "\"\\\#$x\"", "\"\\\#@x\"", "\"#\\\#{x}\"", "\"#\\\\\\\#{x}\"", "\"\\\#$\"", "\"\\\#@\"", "\"#\\\#{\"", "\"tab\\t\"", "\"nl\\n\"", "\"\\e\"", "\"\\u007F\"", "\"é\"", "\"日本\"", "\"a\\u0000b\"", "\"­\"", "\"😀\"", "\"\\u2028\"", "\"a\\xFFb\"", "\"cr\\r\\f\\v\\a\\b\"", "\"~ ok\"", "\"#\\\#$z\""], strs.map(&:inspect)
+    end
+
+    def test_symbol_inspect_by_scanner
+      syms = ["foo bar", "a?", "a!", "a=", "a?=", "a=?", "a!?", "[]=", "[]", "[]==", "9a", "a9", "+", "-", "a-b", "é", "éa?", "日本", "日本?", "$", "$a", "$-w", "$-", "$-é", "$-éé", "$1", "$10", "$01", "$0", "$~", "$~~", "@", "@@", "@@@a", "@a", "@@a", "@9", "@a?", "**", "<=>", "===", "!=", "+@", "-@", "*@", "`", "$`", "A", "_", "_9", "$_", "", "a b", "a\nb", "a\"b", "a#b", "#", "?", "=", "==", "=~", "!", "!~", "<<", ">=", "a.b", "nil", "self"] #: Array[String]
+      assert_equal [":\"foo bar\"", ":a?", ":a!", ":a=", ":\"a?=\"", ":\"a=?\"", ":\"a!?\"", ":[]=", ":[]", ":\"[]==\"", ":\"9a\"", ":a9", ":+", ":-", ":\"a-b\"", ":é", ":éa?", ":日本", ":日本?", ":\"$\"", ":$a", ":$-w", ":\"$-\"", ":$-é", ":\"$-éé\"", ":$1", ":$10", ":\"$01\"", ":$0", ":$~", ":\"$~~\"", ":\"@\"", ":\"@@\"", ":\"@@@a\"", ":@a", ":@@a", ":\"@9\"", ":\"@a?\"", ":**", ":<=>", ":===", ":!=", ":+@", ":-@", ":\"*@\"", ":`", ":$`", ":A", ":_", ":_9", ":$_", ":\"\"", ":\"a b\"", ":\"a\\nb\"", ":\"a\\\"b\"", ":\"a#b\"", ":\"#\"", ":\"?\"", ":\"=\"", ":==", ":=~", ":!", ":!~", ":<<", ":>=", ":\"a.b\"", ":nil", ":self"], syms.map { |s| s.to_sym.inspect }
+    end
+  end
+end
+
+module StringTests
+  # The 0 flag pads numbers with zeros; %s, %p and %c ignore it and pad with spaces.
+  class FormatZeroFlagTest < Minitest::Test
+    def test_zero_flag_is_ignored_for_non_numeric_directives
+      assert_equal "   ab", format("%05s", "ab")
+      assert_equal "   :a", format("%05p", :a)
+      assert_equal "    x", format("%05c", "x")
+      assert_equal "ab   |", format("%-05s|", "ab")
+      assert_equal "   ab", format("%+05s", "ab")
+      assert_equal "    x", format("%05.1s", "xyz")
+      assert_equal "00042", format("%05d", 42)
+    end
+  end
+
+  # format's flag-free %d/%s/%f with width and precision skip fmt; each row is [format, argument, MRI's result].
+  class FormatFastPathTest < Minitest::Test
+    def test_flag_free_directives_match_mri
+      rows = [
+        ["%d", 42, "42"],
+        ["%d", -42, "-42"],
+        ["%5d", 42, "   42"],
+        ["%5d", -42, "  -42"],
+        ["%2d", 12345, "12345"],
+        ["%i", 7, "7"],
+        ["%u", 7, "7"],
+        ["%d", 3.99, "3"],
+        ["%d", "12", "12"],
+        ["%1d", 0, "0"],
+        ["%s", "ab", "ab"],
+        ["%5s", "ab", "   ab"],
+        ["%2s", "abcdef", "abcdef"],
+        ["%5s", "é日", "   é日"],
+        ["%s", :sym, "sym"],
+        ["%s", nil, ""],
+        ["%4s", 12, "  12"],
+        ["%s", 1.5, "1.5"],
+        ["%s", [1, "a"], "[1, \"a\"]"],
+        ["%f", 1.5, "1.500000"],
+        ["%.2f", 3.14159, "3.14"],
+        ["%.0f", 2.5, "2"],
+        ["%.0f", 3.5, "4"],
+        ["%.1f", 0.05, "0.1"],
+        ["%8.3f", -3.14159, "  -3.142"],
+        ["%.2f", -0.0, "-0.00"],
+        ["%.2f", 7, "7.00"],
+        ["%.3f", "2.5", "2.500"],
+        ["%f", Float::INFINITY, "Inf"],
+        ["%8.2f", -Float::INFINITY, "    -Inf"],
+        ["%.2f", Float::NAN, "NaN"],
+        ["%10.2f", Float::NAN, "       NaN"],
+        ["%.2f", 1.0e+20, "100000000000000000000.00"],
+        ["%.10f", 0.3333333333333333, "0.3333333333"],
+        ["%.20f", 0.1, "0.10000000000000000555"],
+        ["%05d", 42, "00042"],
+        ["%-5d|", 42, "42   |"],
+        ["%+d", 42, "+42"],
+        ["% d", 42, " 42"],
+        ["%05.1f", 2.5, "002.5"],
+        ["%-8.2f|", 2.5, "2.50    |"],
+        ["%+.2f", 2.5, "+2.50"],
+        ["%.3d", 5, "005"],
+        ["%.3s", "abcdef", "abc"],
+        ["%-5s|", "ab", "ab   |"],
+        ["%x", 255, "ff"],
+        ["%8.3x", 255, "     0ff"],
+      ] #: Array[Array[untyped]]
+      assert_equal rows.map { |r| r[2] }, rows.map { |r| format(String(r[0]), r[1]) }
+      assert_equal ["1:ab", "<s|7>", "{a: 1}"], [format("%d:%s", 1, "ab"), format("<%{a}|%<b>d>", a: "s", b: 7), format("%s", { a: 1 })]
+    end
+  end
+end

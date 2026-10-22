@@ -131,3 +131,24 @@ module RegexpTests
     end
   end
 end
+
+module RegexpTests
+  # The UTF-8 validity of a large subject is remembered across matches; a broken String of the same length must not inherit it.
+  class RegexpLargeSubjectTest < Minitest::Test
+    def test_large_subject_validity_is_not_stale
+      big = "abc def " * 100
+      bad = big[0, big.size - 1] + "\xFF"
+      raised = [] #: Array[bool]
+      [big, bad, big, bad].each do |s|
+        begin
+          s.match?(/\Aabc/)
+          raised << false
+        rescue ArgumentError
+          raised << true
+        end
+      end
+      assert_equal [false, true, false, true], raised
+      assert_equal [true, 0, "abc"], [bad.b.match?(/\Aabc/n), big =~ /abc/, big.match(/\Aabc/)&.[](0)]
+    end
+  end
+end

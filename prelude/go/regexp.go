@@ -215,7 +215,7 @@ func rbMatch(r *Regexp, s string) *MatchData {
 // (Homebrew's UnpackStrategy::Xz.can_extract?), and the offsets are mapped back to the bytes (decision 324). Any other
 // Regexp raises ArgumentError on it, as MRI's does on a UTF-8 String with a bad byte.
 func rbFindLoc(r *Regexp, s string) []int {
-	if utf8.ValidString(s) {
+	if rbValidUTF8(s) {
 		return r.re.FindStringSubmatchIndex(s)
 	}
 	if !strings.ContainsRune(r.opts, 'n') { // MRI's UTF-8 Regexp on a broken UTF-8 String
@@ -242,7 +242,7 @@ func rbFindLoc(r *Regexp, s string) []int {
 
 // rbMatches is whether r matches s: Go's MatchString, or rbFindLoc's byte reading of a binary String.
 func rbMatches(r *Regexp, s string) bool {
-	if utf8.ValidString(s) {
+	if rbValidUTF8(s) {
 		return r.re.MatchString(s)
 	}
 	return rbFindLoc(r, s) != nil
@@ -503,7 +503,7 @@ func rbGrepLM[E any, U comparable](lm ***MatchData, re *Regexp, xs []E, invert b
 // over every start (matches may overlap) and keeps the last. A subject that is not valid UTF-8 keeps rbFindLoc's
 // trial of each rest of the String.
 func rbRindexLoc(r *Regexp, s string) []int {
-	if !utf8.ValidString(s) {
+	if !rbValidUTF8(s) {
 		for i := len(s); i >= 0; i-- {
 			if loc := rbFindLoc(r, s[i:]); loc != nil && loc[0] == 0 {
 				return []int{i, i + loc[1]}
