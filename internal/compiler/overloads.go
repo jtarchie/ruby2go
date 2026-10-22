@@ -61,11 +61,11 @@ func (f *fctx) argFits(a parser.Node, t rbs.Type, sc typeScope) bool {
 func (c *Compiler) literalOf(file *File, n parser.Node, lex []*Class) (rbs.Literal, bool) {
 	switch n := n.(type) {
 	case *parser.StringNode:
-		return rbs.Literal{Kind: "String", Value: n.Unescaped.Value}, true
+		return rbs.Literal{Kind: rbs.LitString, Value: n.Unescaped.Value}, true
 	case *parser.SymbolNode:
-		return rbs.Literal{Kind: "Symbol", Value: n.Unescaped.Value}, true
+		return rbs.Literal{Kind: rbs.LitSymbol, Value: n.Unescaped.Value}, true
 	case *parser.IntegerNode:
-		return rbs.Literal{Kind: "Integer", Value: file.text(n.Location)}, true
+		return rbs.Literal{Kind: rbs.LitInteger, Value: file.text(n.Location)}, true
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		if _, k := c.lookupConst(file, n, lex); k != nil && k.Value != nil {
 			return c.literalOf(k.File, k.Value, k.Scope)

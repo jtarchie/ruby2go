@@ -13,7 +13,7 @@ func TestIncludeKind(t *testing.T) {
 	}
 	got := make([]string, 0, 3)
 	for _, inc := range f.Decls[0].Includes {
-		got = append(got, inc.Kind+" "+inc.Module)
+		got = append(got, string(inc.Kind)+" "+inc.Module)
 	}
 	if strings.Join(got, ",") != "include A,extend B,prepend D" {
 		t.Errorf("kinds = %v", got)

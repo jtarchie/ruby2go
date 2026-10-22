@@ -52,9 +52,18 @@ type MethodDecl struct {
 	Line      int
 }
 
-// AttrDecl is `attr_reader name: T` (Kind "reader", "writer" or "accessor"); Self marks `attr_reader self.name: T`.
+// AttrKind is which accessor an AttrDecl declares.
+type AttrKind string
+
+const (
+	AttrReader   AttrKind = "reader"
+	AttrWriter   AttrKind = "writer"
+	AttrAccessor AttrKind = "accessor"
+)
+
+// AttrDecl is `attr_reader name: T` (Kind AttrReader, AttrWriter or AttrAccessor); Self marks `attr_reader self.name: T`.
 type AttrDecl struct {
-	Kind string
+	Kind AttrKind
 	Name string
 	Self bool
 	Type Type
@@ -75,9 +84,18 @@ type TypeAliasDecl struct {
 	Line int
 }
 
+// IncludeKind is the keyword of an IncludeDecl.
+type IncludeKind string
+
+const (
+	IncludeInclude IncludeKind = "include"
+	IncludeExtend  IncludeKind = "extend"
+	IncludePrepend IncludeKind = "prepend"
+)
+
 // IncludeDecl is `include M`, `extend M` or `prepend M`; Self marks extend, Kind is the keyword.
 type IncludeDecl struct {
-	Kind   string // "include", "extend" or "prepend"
+	Kind   IncludeKind
 	Module string
 	Args   []Type
 	Self   bool
@@ -365,11 +383,11 @@ func parseMember(owner *ClassDecl, line string, ln int) error {
 	case strings.HasPrefix(line, "@"), strings.HasPrefix(line, "self.@"):
 		return addIvar(owner, line, ln)
 	case strings.HasPrefix(line, "attr_reader "):
-		return addAttr(owner, "reader", line, ln)
+		return addAttr(owner, AttrReader, line, ln)
 	case strings.HasPrefix(line, "attr_writer "):
-		return addAttr(owner, "writer", line, ln)
+		return addAttr(owner, AttrWriter, line, ln)
 	case strings.HasPrefix(line, "attr_accessor "):
-		return addAttr(owner, "accessor", line, ln)
+		return addAttr(owner, AttrAccessor, line, ln)
 	case strings.HasPrefix(line, "include "), strings.HasPrefix(line, "extend "), strings.HasPrefix(line, "prepend "):
 		if owner != nil {
 			inc, err := parseInclude(line, ln)
@@ -416,7 +434,7 @@ func parseMethod(s string, ln int) (*MethodDecl, error) {
 	return m, nil
 }
 
-func addAttr(owner *ClassDecl, kind, line string, ln int) error {
+func addAttr(owner *ClassDecl, kind AttrKind, line string, ln int) error {
 	if owner == nil {
 		return nil
 	}
@@ -479,7 +497,7 @@ func addAlias(owner *ClassDecl, line string, ln int) error {
 func parseInclude(line string, ln int) (*IncludeDecl, error) {
 	self := strings.HasPrefix(line, "extend ")
 	rest := strings.TrimSpace(line[strings.IndexByte(line, ' ')+1:])
-	inc := &IncludeDecl{Kind: line[:strings.IndexByte(line, ' ')], Self: self, Line: ln}
+	inc := &IncludeDecl{Kind: IncludeKind(line[:strings.IndexByte(line, ' ')]), Self: self, Line: ln}
 	name, _, _, err := parseHead(rest)
 	if err != nil {
 		return nil, fmt.Errorf("rbs: include on line %d: %w", ln, err)

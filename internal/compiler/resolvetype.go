@@ -74,7 +74,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 	case rbs.Literal:
 		// A literal is a member of its base class (decision 12); the value
 		// matters only to select an overload arm at the call site.
-		return TClass{C: c.classes[t.Kind]}
+		return TClass{C: c.classes[string(t.Kind)]}
 	case rbs.Record:
 		return c.resolveRecord(t, sc)
 	}

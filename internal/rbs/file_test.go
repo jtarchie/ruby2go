@@ -108,7 +108,7 @@ end
 	if len(app.Aliases) != 1 || app.Aliases[0].Name != "Handler" || app.Aliases[0].Type.String() != "^(untyped) -> void" {
 		t.Errorf("aliases = %+v", app.Aliases)
 	}
-	if len(app.Attrs) != 3 || app.Attrs[0].Kind != "reader" || app.Attrs[1].Kind != "writer" || app.Attrs[2].Kind != "accessor" {
+	if len(app.Attrs) != 3 || app.Attrs[0].Kind != AttrReader || app.Attrs[1].Kind != AttrWriter || app.Attrs[2].Kind != AttrAccessor {
 		t.Errorf("attrs = %+v", app.Attrs)
 	}
 	if len(app.Methods) != 2 {

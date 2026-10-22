@@ -146,21 +146,21 @@ func TestParseTypeShapes(t *testing.T) {
 		{"bool", Bool{}},
 		{"boolish", Bool{}},
 		// literal types (decision 12)
-		{`"PATH_INFO"`, Literal{Kind: "String", Value: "PATH_INFO"}},
-		{`"a\nb"`, Literal{Kind: "String", Value: "a\nb"}},
-		{":edition", Literal{Kind: "Symbol", Value: "edition"}},
-		{"42", Literal{Kind: "Integer", Value: "42"}},
-		{"-1", Literal{Kind: "Integer", Value: "-1"}},
-		{`("yes" | "no")`, Union{Elems: []Type{Literal{Kind: "String", Value: "yes"}, Literal{Kind: "String", Value: "no"}}}},
+		{`"PATH_INFO"`, Literal{Kind: LitString, Value: "PATH_INFO"}},
+		{`"a\nb"`, Literal{Kind: LitString, Value: "a\nb"}},
+		{":edition", Literal{Kind: LitSymbol, Value: "edition"}},
+		{"42", Literal{Kind: LitInteger, Value: "42"}},
+		{"-1", Literal{Kind: LitInteger, Value: "-1"}},
+		{`("yes" | "no")`, Union{Elems: []Type{Literal{Kind: LitString, Value: "yes"}, Literal{Kind: LitString, Value: "no"}}}},
 		{"true", Bool{}},
 		// records
 		{`{ "a" => Integer }`, Record{Fields: []RecordField{{Key: "a", Value: nm("Integer")}}}},
 		{`{ id: Integer, "x" => String }`, Record{Fields: []RecordField{{Key: "id", Symbol: true, Value: nm("Integer")}, {Key: "x", Value: nm("String")}}}},
 		{`{ "a" => Integer }?`, Optional{Elem: Record{Fields: []RecordField{{Key: "a", Value: nm("Integer")}}}}},
 		// single-quoted strings (decision 315): only \' and \\ escape; a trailing comma closes a record
-		{`'git'`, Literal{Kind: "String", Value: "git"}},
-		{`'it\'s a\\b\n'`, Literal{Kind: "String", Value: `it's a\b\n`}},
-		{`{ 'type' => 'git', 'dir' => String?, }`, Record{Fields: []RecordField{{Key: "type", Value: Literal{Kind: "String", Value: "git"}}, {Key: "dir", Value: Optional{Elem: nm("String")}}}}},
+		{`'git'`, Literal{Kind: LitString, Value: "git"}},
+		{`'it\'s a\\b\n'`, Literal{Kind: LitString, Value: `it's a\b\n`}},
+		{`{ 'type' => 'git', 'dir' => String?, }`, Record{Fields: []RecordField{{Key: "type", Value: Literal{Kind: LitString, Value: "git"}}, {Key: "dir", Value: Optional{Elem: nm("String")}}}}},
 		// intersections bind tighter than unions (decision 315)
 		{"Node & _Node", Intersection{Elems: []Type{nm("Node"), nm("_Node")}}},
 		{"A & B & C", Intersection{Elems: []Type{nm("A"), nm("B"), nm("C")}}},
@@ -258,11 +258,11 @@ func TestParseMethodTypeParams(t *testing.T) {
 		{"(String a, ?Integer b, *Symbol rest) -> void", nil, []Param{
 			{Type: nm("String"), Name: "a"},
 			{Type: nm("Integer"), Name: "b", Optional: true},
-			{Type: nm("Symbol"), Name: "rest", Rest: true},
+			{Type: nm("Symbol"), Name: "rest", Kind: ParamRest},
 		}, Void{}},
 		{"(?String? x) -> void", nil, []Param{{Type: Optional{Elem: nm("String")}, Name: "x", Optional: true}}, Void{}},
 		{"(?String?) -> void", nil, []Param{{Type: Optional{Elem: nm("String")}, Optional: true}}, Void{}},
-		{"(*untyped) -> nil", nil, []Param{{Type: Untyped{}, Rest: true}}, Nil{}},
+		{"(*untyped) -> nil", nil, []Param{{Type: Untyped{}, Kind: ParamRest}}, Nil{}},
 		{"(String, ) -> void", nil, []Param{{Type: nm("String")}}, Void{}},
 		{"(Integer) -> [String, Integer]", nil, []Param{{Type: nm("Integer")}}, Tuple{Elems: []Type{nm("String"), nm("Integer")}}},
 		{"(Integer) -> (Integer | nil)", nil, []Param{{Type: nm("Integer")}}, Optional{Elem: nm("Integer")}},
@@ -307,7 +307,7 @@ func TestParseMethodTypeBlocks(t *testing.T) {
 		{"() { (String) -> void } -> void", Block{Params: []Param{{Type: nm("String")}}, Return: Void{}}},
 		{"() ?{ (String) -> void } -> void", Block{Params: []Param{{Type: nm("String")}}, Return: Void{}, Optional: true}},
 		{"() { () -> Integer } -> Integer", Block{Return: nm("Integer")}},
-		{"() { (String, *Integer) -> bool } -> void", Block{Params: []Param{{Type: nm("String")}, {Type: nm("Integer"), Rest: true}}, Return: Bool{}}},
+		{"() { (String, *Integer) -> bool } -> void", Block{Params: []Param{{Type: nm("String")}, {Type: nm("Integer"), Kind: ParamRest}}, Return: Bool{}}},
 		{"(Integer n) { (Integer i) -> void } -> void", Block{Params: []Param{{Type: nm("Integer"), Name: "i"}}, Return: Void{}}},
 		{"[X] () { (self) -> X } -> X", Block{Params: []Param{{Type: Self{}}}, Return: nm("X")}},
 		{"() { ([String, Integer]) -> String? } -> void", Block{Params: []Param{{Type: Tuple{Elems: []Type{nm("String"), nm("Integer")}}}}, Return: Optional{Elem: nm("String")}}},
@@ -371,6 +371,42 @@ func TestParseMethodTypeErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), c.errSub) {
 				t.Errorf("ParseMethodType(%q): error %q does not mention %q", c.in, err, c.errSub)
+			}
+		})
+	}
+}
+
+// TestParamKinds: each parameter shape parses to exactly one ParamKind, with Optional orthogonal.
+func TestParamKinds(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []Param
+	}{
+		{"(Integer) -> void", []Param{{Type: nm("Integer")}}},
+		{"(*Integer) -> void", []Param{{Type: nm("Integer"), Kind: ParamRest}}},
+		{"(**Integer) -> void", []Param{{Type: nm("Integer"), Kind: ParamKwRest}}},
+		{"(**Integer opts) -> void", []Param{{Type: nm("Integer"), Name: "opts", Kind: ParamKwRest}}},
+		{"(key: Integer) -> void", []Param{{Type: nm("Integer"), Name: "key", Kind: ParamKeyword}}},
+		{"(?key: Integer) -> void", []Param{{Type: nm("Integer"), Name: "key", Kind: ParamKeyword, Optional: true}}},
+		{"(?Integer) -> void", []Param{{Type: nm("Integer"), Optional: true}}},
+		{"(Integer a, *String r, k: Symbol, **untyped o) -> void", []Param{
+			{Type: nm("Integer"), Name: "a"},
+			{Type: nm("String"), Name: "r", Kind: ParamRest},
+			{Type: nm("Symbol"), Name: "k", Kind: ParamKeyword},
+			{Type: Untyped{}, Name: "o", Kind: ParamKwRest},
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			m, err := ParseMethodType(c.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(m.Params, c.want) {
+				t.Errorf("params = %#v, want %#v", m.Params, c.want)
+			}
+			if got := m.String(); got != c.in {
+				t.Errorf("String() = %q, want %q", got, c.in)
 			}
 		})
 	}

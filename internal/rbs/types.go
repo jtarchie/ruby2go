@@ -71,15 +71,24 @@ type (
 		Self   Type // `^() [self: C] -> R`: what `self` is inside it, or nil
 	}
 	// Literal is a literal type: `"foo"`, `:foo` or `42`. Kind is the base
-	// class the value is a member of ("String", "Symbol" or "Integer"); Value
+	// class the value is a member of (LitString, LitSymbol or LitInteger); Value
 	// is the decoded text. Used to select a signature by a literal argument
 	// (decision 12).
 	Literal struct {
-		Kind  string
+		Kind  LitKind
 		Value string
 	}
 	// Record is `{ "a" => T, b: U }`: a Hash-shaped type whose keys are known.
 	Record struct{ Fields []RecordField }
+)
+
+// LitKind is the base class a Literal is a member of.
+type LitKind string
+
+const (
+	LitString  LitKind = "String"
+	LitSymbol  LitKind = "Symbol"
+	LitInteger LitKind = "Integer"
 )
 
 // RecordField is one field of a Record.
@@ -138,10 +147,12 @@ func (t Singleton) String() string { return "singleton(" + t.Name + ")" }
 
 func (t Literal) String() string {
 	switch t.Kind {
-	case "String":
+	case LitString:
 		return strconv.Quote(t.Value)
-	case "Symbol":
+	case LitSymbol:
 		return ":" + t.Value
+	case LitInteger:
+		return t.Value
 	default:
 		return t.Value
 	}
@@ -171,11 +182,20 @@ func join(ts []Type) string {
 type Param struct {
 	Type     Type
 	Name     string
-	Optional bool // `?T`, or `?name: T` for a keyword
-	Rest     bool // `*T`
-	Keyword  bool // `name: T`: Name is the keyword
-	KwRest   bool // `**T`: the other keywords, a Hash[Symbol, T]
+	Optional bool      // `?T`, or `?name: T` for a keyword
+	Kind     ParamKind // positional, `*T`, `name: T` or `**T`: exactly one
 }
+
+// ParamKind is what shape of argument a Param takes. A parameter is exactly
+// one of these, so a rest keyword (or any other mix) cannot be built.
+type ParamKind uint8
+
+const (
+	ParamPositional ParamKind = iota // `T`
+	ParamRest                        // `*T`
+	ParamKeyword                     // `name: T`: Name is the keyword
+	ParamKwRest                      // `**T`: the other keywords, a Hash[Symbol, T]
+)
 
 // Block is `{ (A) -> R }`.
 type Block struct {
@@ -199,16 +219,17 @@ func writeParams(b *strings.Builder, params []Param) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		switch {
-		case p.Rest:
+		switch p.Kind {
+		case ParamRest:
 			b.WriteString("*")
-		case p.KwRest:
+		case ParamKwRest:
 			b.WriteString("**")
+		case ParamPositional, ParamKeyword:
 		}
 		if p.Optional {
 			b.WriteString("?")
 		}
-		if p.Keyword {
+		if p.Kind == ParamKeyword {
 			b.WriteString(p.Name + ": " + p.Type.String())
 			continue
 		}

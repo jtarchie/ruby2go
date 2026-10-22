@@ -123,19 +123,19 @@ func (c *Compiler) resolveMethod(m *Method) {
 	m.TypeParams = m.sig.TypeParams
 	var rest []Param // Ruby puts *rest before the keywords; it goes last, the Go variadic
 	for i, p := range m.sig.Params {
-		prm := Param{Name: p.Name, Rest: p.Rest, Keyword: p.Keyword || p.KwRest, KwRest: p.KwRest}
+		prm := Param{Name: p.Name, Rest: p.Kind == rbs.ParamRest, Keyword: p.Kind == rbs.ParamKeyword || p.Kind == rbs.ParamKwRest, KwRest: p.Kind == rbs.ParamKwRest}
 		if want := gradualParam(p.Type); want != nil {
 			prm.Type, prm.Want = TAny{}, c.resolveType(want, sc)
 		} else {
 			prm.Type = c.resolveType(p.Type, sc)
 		}
-		if pp, ok := m.pendingIdx[i]; ok && !p.KwRest {
+		if pp, ok := m.pendingIdx[i]; ok && p.Kind != rbs.ParamKwRest {
 			c.resolvePending(m, &prm, pp)
 		}
-		if p.KwRest {
+		if p.Kind == rbs.ParamKwRest {
 			prm.Type = TClass{C: c.classes["Hash"], Args: []Type{TClass{C: c.classes["Symbol"]}, prm.Type}}
 		}
-		if p.Rest {
+		if p.Kind == rbs.ParamRest {
 			rest = append(rest, prm)
 			continue
 		}
@@ -156,7 +156,7 @@ func (c *Compiler) resolveMethod(m *Method) {
 				bs.Pending = append(bs.Pending, prm.Pending)
 			}
 			bs.Params = append(bs.Params, t)
-			bs.Rest = bs.Rest || p.Rest // `{ (*T) -> R }`: a Go variadic, as a lambda's rest (decision 152)
+			bs.Rest = bs.Rest || p.Kind == rbs.ParamRest // `{ (*T) -> R }`: a Go variadic, as a lambda's rest (decision 152)
 		}
 		m.Block = bs
 	}
@@ -668,7 +668,7 @@ func (c *Compiler) checkKeywordSig(m *Method) {
 		return
 	}
 	for _, sp := range m.sig.Params {
-		if !sp.Keyword {
+		if sp.Kind != rbs.ParamKeyword {
 			continue
 		}
 		for _, p := range m.Params {

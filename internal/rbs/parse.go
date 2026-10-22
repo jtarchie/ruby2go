@@ -64,18 +64,18 @@ func (p *parser) parseParams() ([]Param, error) {
 		switch p.peek() {
 		case "*":
 			p.next()
-			prm.Rest = true
+			prm.Kind = ParamRest
 		case "**":
 			p.next()
-			prm.KwRest = true
+			prm.Kind = ParamKwRest
 		case "?":
 			p.next()
 			prm.Optional = true
 		case "&":
 			return nil, fmt.Errorf("rbs: %q parameters are not supported", p.peek())
 		}
-		if tok := p.peek(); !prm.Rest && !prm.KwRest && tok != "" && isIdentStart(tok[0]) && p.pos+1 < len(p.toks) && p.toks[p.pos+1] == ":" {
-			prm.Keyword, prm.Name = true, p.next()
+		if tok := p.peek(); prm.Kind == ParamPositional && tok != "" && isIdentStart(tok[0]) && p.pos+1 < len(p.toks) && p.toks[p.pos+1] == ":" {
+			prm.Kind, prm.Name = ParamKeyword, p.next()
 			p.next() // :
 		}
 		t, err := p.parseType()
@@ -83,7 +83,7 @@ func (p *parser) parseParams() ([]Param, error) {
 			return nil, err
 		}
 		prm.Type = t
-		if name := varName(p.peek()); prm.Keyword && name != "" {
+		if name := varName(p.peek()); prm.Kind == ParamKeyword && name != "" {
 			p.next() // `name: T var`: the variable name is documentation
 		} else if name != "" {
 			prm.Name = name
@@ -210,7 +210,7 @@ func (p *parser) parseAtom() (Type, error) {
 		if name == "" || !isIdentStart(name[0]) {
 			return nil, fmt.Errorf("rbs: bad symbol literal near %q", name)
 		}
-		return Literal{Kind: "Symbol", Value: name}, nil
+		return Literal{Kind: LitSymbol, Value: name}, nil
 	case "{":
 		return p.parseRecord()
 	case "untyped", "top":
@@ -227,10 +227,10 @@ func (p *parser) parseAtom() (Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rbs: bad string literal %q", tok)
 		}
-		return Literal{Kind: "String", Value: v}, nil
+		return Literal{Kind: LitString, Value: v}, nil
 	}
 	if tok[0] >= '0' && tok[0] <= '9' || tok[0] == '-' {
-		return Literal{Kind: "Integer", Value: tok}, nil
+		return Literal{Kind: LitInteger, Value: tok}, nil
 	}
 	if !isIdentStart(tok[0]) {
 		return nil, fmt.Errorf("rbs: unexpected %q", tok)

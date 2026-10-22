@@ -75,7 +75,7 @@ func (c *Compiler) addSig(decl *rbs.ClassDecl) {
 	if merged.Super == nil {
 		merged.Super = decl.Super
 	}
-	merged.Includes = appendNew(d.Includes, decl.Includes, func(i *rbs.IncludeDecl) string { return i.Kind + " " + i.Module })
+	merged.Includes = appendNew(d.Includes, decl.Includes, func(i *rbs.IncludeDecl) string { return string(i.Kind) + " " + i.Module })
 	merged.Methods = appendNew(d.Methods, decl.Methods, func(m *rbs.MethodDecl) string { return fmt.Sprint(m.Self, m.Name) })
 	merged.Attrs = appendNew(d.Attrs, decl.Attrs, func(a *rbs.AttrDecl) string { return fmt.Sprint(a.Self, a.Name) })
 	merged.Ivars = appendNew(d.Ivars, decl.Ivars, func(k *rbs.ConstDecl) string { return k.Name })
@@ -335,7 +335,7 @@ func mergeArms(sd *rbs.MethodDecl) *rbs.MethodType {
 			return nil
 		}
 		for i, p := range arm.Params {
-			if p.Rest || p.Keyword || p.KwRest {
+			if p.Kind != rbs.ParamPositional {
 				return nil
 			}
 			if i == len(out.Params) {

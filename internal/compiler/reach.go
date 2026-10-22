@@ -242,7 +242,7 @@ func (r *reach) typedParams(m *Method) map[string]*Class {
 		if i < len(reqs) {
 			rp, isReq = reqs[i].(*parser.RequiredParameterNode)
 		}
-		if !ok || !isReq || p.Optional || p.Rest || p.Keyword || p.KwRest {
+		if !ok || !isReq || p.Optional || p.Kind != rbs.ParamPositional {
 			continue
 		}
 		cls := r.c.classes[strings.TrimPrefix(name.Name, "::")]
