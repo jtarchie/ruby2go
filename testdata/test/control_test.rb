@@ -5760,3 +5760,78 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  # A block with fewer names than a `(Integer, *String)` signature's leading params, or naming the rest's elements positionally.
+  class ControlLeadRestYielder
+    #: () { (Integer, *String) -> void } -> void
+    def each_pair_rest
+      yield 1, "a", "b"
+    end
+  end
+
+  class ControlLeadRestTest < Minitest::Test
+    def test_block_names_fewer_than_leading_params
+      y = ControlLeadRestYielder.new
+      n = 0
+      y.each_pair_rest { n += 1 }
+      got = [] #: Array[Integer]
+      y.each_pair_rest { |a| got << a }
+      assert_equal [1, [1]], [n, got]
+    end
+
+    def test_extra_names_are_rest_elements
+      got = [] #: Array[untyped]
+      y = ControlLeadRestYielder.new
+      y.each_pair_rest { |a, b| got << [a, b] }
+      y.each_pair_rest { |a, b, c| got << [a, b, c] }
+      y.each_pair_rest { |a, b, *r| got << [a, b, r] }
+      y.each_pair_rest { |a, *r| got << [a, r] }
+      assert_equal [[1, "a"], [1, "a", "b"], [1, "a", ["b"]], [1, ["a", "b"]]], got
+    end
+  end
+end
+
+module ControlTests
+  # A `when` condition that needs statements (a ternary, a modifier if) runs only when the earlier arms did not match.
+  class ControlLazyWhenTest < Minitest::Test
+    #: (Integer, Array[Integer]) -> Symbol
+    def lazy_case(x, log)
+      case x
+      when 1 then :one
+      when (x > 5 ? control_note(log, 3) : control_note(log, 4)) then :ternary
+      when (control_note(log, 6) if x > 0) then :modifier
+      when (x > 7 || control_note(log, 7) > 0 ? 8 : 9) then :logic
+      else :other
+      end
+    end
+
+    #: (Integer) -> [Symbol, Integer?]
+    def assigned_in_when(x)
+      r = case x
+          when 1 then :a
+          when (w = (x > 5 ? 3 : 2)) then :b
+          else :c
+          end
+      [r, w]
+    end
+
+    def test_local_assigned_in_a_later_condition
+      assert_equal [[:a, nil], [:b, 2], [:c, 3]], [assigned_in_when(1), assigned_in_when(2), assigned_in_when(7)]
+    end
+
+    def test_conditions_after_a_match_do_not_run
+      log = [] #: Array[Integer]
+      assert_equal [:one, []], [lazy_case(1, log), log]
+    end
+
+    def test_conditions_run_in_order_until_a_match
+      log = [] #: Array[Integer]
+      assert_equal [:ternary, [4]], [lazy_case(4, log), log]
+      log.clear
+      assert_equal [:modifier, [3, 6]], [lazy_case(6, log), log]
+      log.clear
+      assert_equal [:other, [4, 6, 7]], [lazy_case(2, log), log]
+    end
+  end
+end

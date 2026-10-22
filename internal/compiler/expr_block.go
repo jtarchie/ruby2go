@@ -556,9 +556,20 @@ func (f *fctx) bindClosureParams(n parser.Node, names blockParams, params []Type
 	if rest && len(params) == 1 && !names.hasRest() {
 		return f.bindFromRest(names, params[0])
 	}
-	k, lead := len(params), names
+	k, lead, extra := len(params), names, blockParams(nil)
+	restName := ""
 	if rest {
-		k, lead = k-1, names[:len(names)-1]
+		// Ruby fills `|a, b|` over `(Integer, *String)` positionally: b is the rest's first element, not the rest Array (only a `*name` is). A block with fewer names than leading params binds the ones it has.
+		k = len(params) - 1
+		if names.hasRest() {
+			restName, lead = names[len(names)-1].Name, names[:len(names)-1]
+		}
+		if len(lead) > k {
+			lead, extra = lead[:k], lead[k:]
+		}
+		if extra.hasTuple() {
+			f.errorf(n, "unsupported block parameter form: a destructuring parameter over a variadic block's rest")
+		}
 	}
 	goParams, pro := f.bindBlockParams(n, lead, params[:k])
 	ps := make([]string, 0, len(goParams)+1)
@@ -572,14 +583,16 @@ func (f *fctx) bindClosureParams(n parser.Node, names blockParams, params []Type
 	ps = append(ps, rp+" ..."+et)
 	return ps, func() {
 		pro()
-		name := names[len(names)-1].Name
-		if name == "" {
+		for i, nm := range extra {
+			f.bindBlockParam(nm.Name, expr{code: fmt.Sprintf("rbArgAt(%s, %d)", rp, i), typ: params[k]})
+		}
+		if restName == "" {
 			f.emit("_ = %s", rp)
 			return
 		}
-		v := f.blockParam(name, TClass{C: f.c.classes["Array"], Args: []Type{params[k]}})
+		v := f.blockParam(restName, TClass{C: f.c.classes["Array"], Args: []Type{params[k]}})
 		if v.goName != "_" {
-			f.emit("%s := &Array[%s]{s: %s}", v.goName, et, rp)
+			f.emit("%s := &Array[%s]{s: %s[min(%d, len(%s)):]}", v.goName, et, rp, len(extra), rp)
 		} else {
 			f.emit("_ = %s", rp)
 		}

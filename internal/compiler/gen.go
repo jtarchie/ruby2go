@@ -120,7 +120,7 @@ func (f *fctx) pushLoop(kind loopKind) {
 // genEnd is `END { }`: Kernel#at_exit with that block, registered the
 // first time the statement runs only, as MRI's.
 func (f *fctx) genEnd(n *parser.PostExecutionNode) {
-	guard := fmt.Sprintf("rbEnd%d", n.Location.StartOffset)
+	guard := fmt.Sprintf("rbEnd%d_%d", slices.Index(f.c.files, f.f), n.Location.StartOffset) // offsets repeat across files
 	if !slices.Contains(f.c.pkgVars, "var "+guard+" bool") {
 		f.c.pkgVars = append(f.c.pkgVars, "var "+guard+" bool")
 	}
@@ -1663,32 +1663,55 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 		f.genStmt(caseAsMatchIf(n, subjNode, !isClass(st, "String"), isCls, f.whenRegexp), t)
 		return
 	}
-	// each arm's test before the switch: one may need statements (a union subject's type switch), which cannot sit between cases
-	arms := make([]string, len(n.Conditions))
+	// each arm's test is built before the switch: one may need statements (a union subject's type switch, a ternary), which cannot sit between cases
+	arms, pre := make([]string, len(n.Conditions)), make([]string, len(n.Conditions))
 	for i, w := range n.Conditions {
-		var conds []string
-		for _, cond := range w.(*parser.WhenNode).Conditions {
-			conds = append(conds, f.caseEqq(cond, expr{code: tmp, typ: subj.typ}))
+		build := func() {
+			pre[i] = f.capture(func() {
+				var conds []string
+				for _, cond := range w.(*parser.WhenNode).Conditions {
+					conds = append(conds, f.caseEqq(cond, expr{code: tmp, typ: subj.typ}))
+				}
+				arms[i] = strings.Join(conds, " || ")
+			})
 		}
-		arms[i] = strings.Join(conds, " || ")
+		if i == 0 {
+			build()
+			continue
+		}
+		saved := f.enterBlock() // may land in a default: a local first assigned in its test is then hoisted, not scoped to the case
+		build()
+		f.leaveBlock(saved)
+	}
+	f.genCaseSwitch(n, t, 0, arms, pre)
+}
+
+// genCaseSwitch nests an arm whose test needed statements (pre) in the previous switch's default, so a later `when` runs only if no earlier one matched, as MRI's.
+func (f *fctx) genCaseSwitch(n *parser.CaseNode, t tail, from int, arms, pre []string) {
+	f.buf.WriteString(pre[from])
+	to := from + 1
+	for to < len(arms) && pre[to] == "" {
+		to++
 	}
 	f.emit("switch {")
 	f.switches++
-	for i, w := range n.Conditions {
-		wn := w.(*parser.WhenNode)
+	for i := from; i < to; i++ {
 		f.emit("case %s:", arms[i])
 		saved := f.enterBlock()
 		f.indent++
-		f.genWhenArm(wn, t)
+		f.genWhenArm(n.Conditions[i].(*parser.WhenNode), t)
 		f.indent--
 		f.leaveBlock(saved)
 	}
 	f.emit("default:")
 	saved := f.enterBlock()
 	f.indent++
-	if n.ElseClause != nil {
+	switch {
+	case to < len(arms):
+		f.genCaseSwitch(n, t, to, arms, pre)
+	case n.ElseClause != nil:
 		f.genStmts(n.ElseClause.Statements, t)
-	} else {
+	default:
 		f.emptyTail(n, t)
 	}
 	f.indent--
@@ -3683,24 +3706,32 @@ func (c *Compiler) declareGemClassIvars() {
 	}
 }
 
+// ivarNodeName is the ivar n reads or writes in any form (a multi-assign target too), and whether it writes; "" for other nodes.
+func ivarNodeName(n parser.Node) (name string, write bool) {
+	switch x := n.(type) {
+	case *parser.InstanceVariableReadNode:
+		return x.Name, false
+	case *parser.InstanceVariableWriteNode:
+		return x.Name, true
+	case *parser.InstanceVariableTargetNode:
+		return x.Name, true
+	case *parser.InstanceVariableOrWriteNode:
+		return x.Name, true
+	case *parser.InstanceVariableAndWriteNode:
+		return x.Name, true
+	case *parser.InstanceVariableOperatorWriteNode:
+		return x.Name, true
+	}
+	return "", false
+}
+
 // eachIvarName calls fn for each instance variable n reads or writes, outside nested defs and class bodies.
 func eachIvarName(n parser.Node, fn func(string, parser.Node)) {
-	var name string
-	switch x := n.(type) {
+	switch n.(type) {
 	case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
 		return
-	case *parser.InstanceVariableReadNode:
-		name = x.Name
-	case *parser.InstanceVariableWriteNode:
-		name = x.Name
-	case *parser.InstanceVariableOrWriteNode:
-		name = x.Name
-	case *parser.InstanceVariableOperatorWriteNode:
-		name = x.Name
-	case *parser.InstanceVariableAndWriteNode:
-		name = x.Name
 	}
-	if name != "" {
+	if name, _ := ivarNodeName(n); name != "" {
 		fn(name, n)
 	}
 	for _, ch := range n.CompactChildNodes() {
@@ -3730,7 +3761,7 @@ func (c *Compiler) includerClassWrites(mod *Class, name string) bool {
 					continue
 				}
 				eachIvarName(m.Node.Body, func(n string, x parser.Node) {
-					if _, w := x.(*parser.InstanceVariableWriteNode); w && n == name {
+					if _, w := ivarNodeName(x); w && n == name {
 						writes = true
 					}
 				})
@@ -3792,16 +3823,13 @@ func mentionsIvar(m *Method) bool {
 		if found || n == nil {
 			return
 		}
-		switch n := n.(type) {
-		case *parser.InstanceVariableReadNode, *parser.InstanceVariableWriteNode, *parser.InstanceVariableOrWriteNode,
-			*parser.InstanceVariableAndWriteNode, *parser.InstanceVariableOperatorWriteNode, *parser.InstanceVariableTargetNode:
+		if name, _ := ivarNodeName(n); name != "" {
 			found = true
 			return
-		case *parser.CallNode:
-			if n.Name == "instance_variable_set" || n.Name == "instance_variable_get" {
-				found = true
-				return
-			}
+		}
+		if call, ok := n.(*parser.CallNode); ok && (call.Name == "instance_variable_set" || call.Name == "instance_variable_get") {
+			found = true
+			return
 		}
 		for _, ch := range n.CompactChildNodes() {
 			walk(ch)
@@ -4258,6 +4286,25 @@ func renameReassignedParams(b *parser.BlockNode, params []string) {
 	}
 }
 
+// localNamePtr covers a local's read and all five write forms so capturesLocal and renameLocal cannot disagree.
+func localNamePtr(n parser.Node) *string {
+	switch x := n.(type) {
+	case *parser.LocalVariableReadNode:
+		return &x.Name
+	case *parser.LocalVariableWriteNode:
+		return &x.Name
+	case *parser.LocalVariableTargetNode:
+		return &x.Name
+	case *parser.LocalVariableOperatorWriteNode:
+		return &x.Name
+	case *parser.LocalVariableOrWriteNode:
+		return &x.Name
+	case *parser.LocalVariableAndWriteNode:
+		return &x.Name
+	}
+	return nil
+}
+
 // capturesLocal reports a block or lambda inside n that reads or writes the local name.
 func capturesLocal(n parser.Node, name string) bool {
 	found := false
@@ -4266,13 +4313,12 @@ func capturesLocal(n parser.Node, name string) bool {
 		if found || n == nil {
 			return
 		}
-		switch x := n.(type) {
+		switch n.(type) {
 		case *parser.BlockNode, *parser.LambdaNode:
 			inBlock = true
-		case *parser.LocalVariableReadNode:
-			found = inBlock && x.Name == name
-		case *parser.LocalVariableWriteNode:
-			found = inBlock && x.Name == name
+		}
+		if p := localNamePtr(n); p != nil {
+			found = inBlock && *p == name
 		}
 		for _, ch := range n.CompactChildNodes() {
 			walk(ch, inBlock)
@@ -4297,30 +4343,9 @@ func renameLocal(n parser.Node, old, fresh string) {
 		if slices.Contains(x.Locals, old) {
 			return
 		}
-	case *parser.LocalVariableReadNode:
-		if x.Name == old {
-			x.Name = fresh
-		}
-	case *parser.LocalVariableWriteNode:
-		if x.Name == old {
-			x.Name = fresh
-		}
-	case *parser.LocalVariableTargetNode:
-		if x.Name == old {
-			x.Name = fresh
-		}
-	case *parser.LocalVariableOperatorWriteNode:
-		if x.Name == old {
-			x.Name = fresh
-		}
-	case *parser.LocalVariableOrWriteNode:
-		if x.Name == old {
-			x.Name = fresh
-		}
-	case *parser.LocalVariableAndWriteNode:
-		if x.Name == old {
-			x.Name = fresh
-		}
+	}
+	if p := localNamePtr(n); p != nil && *p == old {
+		*p = fresh
 	}
 	for _, ch := range n.CompactChildNodes() {
 		renameLocal(ch, old, fresh)

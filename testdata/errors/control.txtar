@@ -221,3 +221,11 @@ end
 #: (Integer) ?{ (Integer) -> Integer } -> Integer
 def c(x, &blk) = blk.call(x)
 p c(1)
+-- block_rest_destructure_extra.rb --
+# error: main.rb:7: unsupported block parameter form: a destructuring parameter over a variadic block's rest
+#: () { (Integer, *String) -> void } -> void
+def m
+  yield 1, "a"
+end
+
+m { |a, (x, y)| p a }
