@@ -25,7 +25,7 @@ In the container (Linux):
 ```sh
 ./mricheck info wget        # the patches change nothing: unpatched fork mode == patched spawn mode under MRI
 ./gen                       # trace every targets.txt line, rb2go gen -> work/brew.go (~2 min, ~3 GB)
-./build                     # go build -> work/brew-bin (~6 min, ~9 GB; killed past 14 GB)
+./build                     # go build -> work/brew-bin (~6 min, ~9 GB; killed past 22 GB)
 ./check                     # each targets.txt line: compiled output == MRI's (same container, same API data)
 ./run info wget             # one command through work/brew-bin
 ./hits info --json=v2 wget  # work list: stubs (gem methods/arms that did not compile) MRI reaches running it

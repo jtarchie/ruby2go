@@ -172,7 +172,7 @@ var (
 type rbChild struct {
 	cmd  *exec.Cmd
 	done chan struct{}
-	err  error
+	// the exit info is in cmd.ProcessState once done is closed
 }
 
 // rbSpawn starts a child with the program's standard streams and answers its pid.
@@ -197,7 +197,7 @@ func rbStartChild(c *exec.Cmd, closers []*os.File) Integer {
 	rbChildren[c.Process.Pid] = ch
 	rbChildrenMu.Unlock()
 	go func() {
-		ch.err = c.Wait()
+		_ = c.Wait()
 		close(ch.done)
 	}()
 	return Integer(c.Process.Pid)

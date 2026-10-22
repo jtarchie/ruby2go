@@ -36,70 +36,6 @@ func rbNumLevel(a any) int {
 	return 0
 }
 
-func rbNumTo(a any, level int) any {
-	switch level {
-	case 1:
-		if i, ok := a.(Integer); ok {
-			return rbRat(int64(i), 1)
-		}
-	case 2:
-		return Float(rbNumFloat(a))
-	}
-	return a
-}
-
-func rbNumFloat(a any) float64 {
-	switch v := a.(type) {
-	case Integer:
-		return float64(v)
-	case Float:
-		return float64(v)
-	case *Rational:
-		return float64(v.ToF())
-	}
-	panic(rbConvError(a, "Float"))
-}
-
-func rbNumOp(op byte, a, b any) any {
-	level := max(rbNumLevel(a), rbNumLevel(b))
-	if op == '/' && level == 0 {
-		level = 1 // Integer parts divide exactly, as MRI's quo
-	}
-	a, b = rbNumTo(a, level), rbNumTo(b, level)
-	switch level {
-	case 0:
-		x, y := a.(Integer), b.(Integer)
-		switch op {
-		case '+':
-			return x.Op_plus(y)
-		case '-':
-			return x.Op_minus(y)
-		}
-		return x.Op_mul(y)
-	case 1:
-		x, y := a.(*Rational), b.(*Rational)
-		switch op {
-		case '+':
-			return x.Op_plus(y)
-		case '-':
-			return x.Op_minus(y)
-		case '*':
-			return x.Op_mul(y)
-		}
-		return x.Op_div(y)
-	}
-	x, y := a.(Float), b.(Float)
-	switch op {
-	case '+':
-		return x + y
-	case '-':
-		return x - y
-	case '*':
-		return x * y
-	}
-	return x / y
-}
-
 func rbNumNeg(a any) any {
 	switch v := a.(type) {
 	case Integer:
@@ -108,15 +44,6 @@ func rbNumNeg(a any) any {
 		return -v
 	}
 	return a.(*Rational).Op_neg()
-}
-
-func rbNumEq(a, b any) bool {
-	level := max(rbNumLevel(a), rbNumLevel(b))
-	a, b = rbNumTo(a, level), rbNumTo(b, level)
-	if level == 1 {
-		return a.(*Rational).v.Cmp(&b.(*Rational).v) == 0
-	}
-	return a == b
 }
 
 func rbNumZero(a any) bool {
@@ -202,16 +129,6 @@ func rbComplexAbs(c *Complex) any {
 	return Float(rbComplexAbsF(c))
 }
 
-func rbNumAbs(a any) any {
-	switch v := a.(type) {
-	case Integer:
-		return v.Abs()
-	case Float:
-		return Float(math.Abs(float64(v)))
-	}
-	return a.(*Rational).Abs()
-}
-
 func rbComplexArg(c *Complex) float64 {
 	return math.Atan2(rbNumFloat(c.im), rbNumFloat(c.re))
 }
@@ -283,93 +200,12 @@ func rbComplexScalar(op byte, c *Complex, r any, left bool) *Complex {
 	return &Complex{rbNumOp(op, c.re, r), c.im}
 }
 
-// rbSummer is MRI's ary_sum/enum_sum: an exact Integer/Rational phase, then
-// Kahan-Babuska compensated Float addition once a Float appears.
-type rbSummer struct {
-	exact    any // Integer or *Rational; nil until the first value
-	floating bool
-	f, c     float64
-}
-
-func (s *rbSummer) add(x any) {
-	x = rbUnbox(x)
-	if !s.floating {
-		if _, isFloat := x.(Float); !isFloat {
-			if s.exact == nil {
-				s.exact = Integer(0)
-			}
-			s.exact = rbNumCanon(rbNumOp('+', s.exact, rbNumArg(x)))
-			return
-		}
-		s.floating = true
-		if s.exact != nil {
-			s.f = rbNumFloat(s.exact)
-		}
-	}
-	s.addFloat(rbNumFloat(rbNumArg(x)))
-}
-
-// addFloat is add for a Float, which a typed Float sum calls without boxing.
-func (s *rbSummer) addFloat(v float64) {
-	switch {
-	case math.IsNaN(s.f):
-	case math.IsNaN(v):
-		s.f = v
-	case math.IsInf(v, 0):
-		if math.IsInf(s.f, 0) && math.Signbit(v) != math.Signbit(s.f) {
-			s.f = math.NaN()
-		} else {
-			s.f = v
-		}
-	case math.IsInf(s.f, 0):
-	default:
-		t := s.f + v
-		if math.Abs(s.f) >= math.Abs(v) {
-			s.c += (s.f - t) + v
-		} else {
-			s.c += (v - t) + s.f
-		}
-		s.f = t
-	}
-}
-
-func (s *rbSummer) result() any {
-	if s.floating {
-		return Float(s.f + s.c)
-	}
-	if s.exact == nil {
-		return Integer(0)
-	}
-	return s.exact
-}
-
 // rbComplexCmp is MRI's nucomp_cmp: only two real values (an imaginary part of zero, exact or not) compare.
 func rbComplexCmp(a, b *Complex) *Integer {
 	if !rbNumZero(a.im) || !rbNumZero(b.im) {
 		return nil
 	}
 	return rbNumCmp(a.re, b.re)
-}
-
-// rbNumCmp orders two Complex parts in the tower; NaN compares to nothing.
-func rbNumCmp(a, b any) *Integer {
-	level := max(rbNumLevel(a), rbNumLevel(b))
-	a, b = rbNumTo(a, level), rbNumTo(b, level)
-	switch level {
-	case 0:
-		return Ref(a.(Integer).Op_cmp(b.(Integer)))
-	case 1:
-		return Ref(Integer(a.(*Rational).v.Cmp(&b.(*Rational).v)))
-	}
-	switch x, y := a.(Float), b.(Float); {
-	case x < y:
-		return Ref(Integer(-1))
-	case x > y:
-		return Ref(Integer(1))
-	case x == y:
-		return Ref(Integer(0))
-	}
-	return nil
 }
 
 const rbCUNum = `\d+(?:_\d+)*(?:\.\d+(?:_\d+)*)?(?:[eE][-+]?\d+(?:_\d+)*)?(?:/\d+(?:_\d+)*)?`

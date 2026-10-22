@@ -31,18 +31,13 @@ func rbExecErr(err error, name string) any {
 	return NewIOError(Ref(String(err.Error())))
 }
 
-// rbOpen3Status reads a finished command's exit info into a Process::Status.
-func rbOpen3Status(c *exec.Cmd) *Process_Status {
-	return rbStatusOf(c)
-}
-
 // rbOpen3Run raises Errno only on a start failure; a nonzero exit is a normal Process::Status.
 func rbOpen3Run(c *exec.Cmd, name string) *Process_Status {
 	err := c.Run()
 	if c.ProcessState == nil {
 		panic(rbExecErr(err, name))
 	}
-	return rbOpen3Status(c)
+	return rbStatusOf(c)
 }
 
 // rbOpen3Capture2 is Open3.capture2.
@@ -62,7 +57,7 @@ func rbOpen3Capture2e(name string, rest []String) (String, *Process_Status) {
 	if c.ProcessState == nil {
 		panic(rbExecErr(err, name))
 	}
-	return String(b), rbOpen3Status(c)
+	return String(b), rbStatusOf(c)
 }
 
 // rbOpen3Capture3 is Open3.capture3.
@@ -97,7 +92,7 @@ func rbOpen3CloseR(r *Open3_Reader) {
 func rbOpen3Wait(w *Process_Waiter) *Process_Status {
 	w.once.Do(func() {
 		_ = w.cmd.Wait()
-		w.status = rbOpen3Status(w.cmd)
+		w.status = rbStatusOf(w.cmd)
 	})
 	return w.status
 }

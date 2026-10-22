@@ -15,8 +15,7 @@ func rbUUID4() string {
 	_, _ = rand.Read(b[:])
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b[:])
-	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+	return rbUUIDString(b)
 }
 
 // rbUUID7 is a time-ordered RFC 9562 version-7 UUID: a 48-bit unix ms timestamp, then random bits.
@@ -27,6 +26,11 @@ func rbUUID7() string {
 	_, _ = rand.Read(b[6:])
 	b[6] = b[6]&0x0f | 0x70
 	b[8] = b[8]&0x3f | 0x80
+	return rbUUIDString(b)
+}
+
+// rbUUIDString is b in the 8-4-4-4-12 hex form.
+func rbUUIDString(b [16]byte) string {
 	h := hex.EncodeToString(b[:])
 	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }

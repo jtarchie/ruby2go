@@ -262,8 +262,8 @@ ulp and neither is uniquely correct ([decision 43](docs/design.md)).
 Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 
-Correctness is measured against MRI, not a specification: 121
-[examples](examples/), 39 minitest suites and 23 compile-error archives all
+Correctness is measured against MRI, not a specification: 125
+[examples](examples/), 43 minitest suites and 25 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
 ruby/spec under rb2go (decision 127). Measured 2026-10-21 (the runner walks
 nested spec folders since then, decision 336, so the totals cover 2,151 `core`

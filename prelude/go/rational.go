@@ -30,8 +30,7 @@ func rbBigToInt(b *big.Int) Integer {
 }
 
 func rbRatFloor(r *big.Rat) Integer {
-	q, m := new(big.Int).DivMod(r.Num(), r.Denom(), new(big.Int))
-	_ = m // Euclidean: the denominator is positive, so q is the floor
+	q, _ := new(big.Int).DivMod(r.Num(), r.Denom(), new(big.Int)) // Euclidean: the denominator is positive, so q is the floor
 	return rbBigToInt(q)
 }
 

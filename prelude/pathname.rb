@@ -70,9 +70,6 @@ class Pathname < Object
   #: (String, String) -> String
   def __join(a, b) = %x{ String(rbPathJoin(string(a), string(b))) }
 
-  #: (untyped) -> Pathname
-  def /(other) = self + other
-
   #: (*untyped) -> Pathname
   def join(*parts)
     result = self #: Pathname
@@ -162,17 +159,7 @@ class Pathname < Object
     }
     return String(rel)
   }
-end
 
-module Kernel
-
-  private
-
-  #: (untyped) -> Pathname
-  def Pathname(path) = Pathname.new(path)
-end
-
-class Pathname
   # MRI's file-system half of Pathname, over File and Dir (#brew; decision 65's scope widened).
   #: (?(String | Pathname)?) -> Pathname
   def expand_path(dir = nil) = Pathname.new(dir ? File.expand_path(to_s, dir.to_s) : File.expand_path(to_s))
@@ -410,4 +397,12 @@ class Pathname
 
   #: () -> bool
   def frozen? = true
+end
+
+module Kernel
+
+  private
+
+  #: (untyped) -> Pathname
+  def Pathname(path) = Pathname.new(path)
 end

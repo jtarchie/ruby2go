@@ -10,12 +10,10 @@
 # prelude file, and each lib file require_relatives what MRI's own does
 # (decision 155).
 
-require_relative "prelude/runtime"
 require_relative "prelude/object"
 require_relative "prelude/module"
 require_relative "prelude/method"
 require_relative "prelude/struct"
-require_relative "prelude/dynamic"
 require_relative "prelude/boolean"
 require_relative "prelude/numeric"
 require_relative "prelude/integer"

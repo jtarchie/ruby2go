@@ -374,7 +374,7 @@ func (f *fctx) genRespondTo(n parser.Node, recv expr, args []parser.Node) (expr,
 	return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
 }
 
-// genDynCall sends a method to an untyped value: see prelude/dynamic.rb.
+// genDynCall sends a method to an untyped value: see docs/dynamic-dispatch.md.
 // Like MRI, only a call with an explicit receiver (other than self) cannot
 // reach a private method; send (implicitCall) can.
 func (f *fctx) genDynCall(n parser.Node, recv expr, name string, args []parser.Node) expr {

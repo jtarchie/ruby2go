@@ -225,9 +225,9 @@ func rbStrToIBase(s string, base int) int {
 	if s != "" && (s[0] == '+' || s[0] == '-') {
 		neg, s = s[0] == '-', s[1:]
 	}
-	prefixes := map[string]int{"0b": 2, "0B": 2, "0o": 8, "0O": 8, "0x": 16, "0X": 16, "0d": 10, "0D": 10}
+	// a 0b/0o/0x/0d prefix names its radix (rbRadixPrefixes), honored when base is auto or the same
 	if len(s) >= 2 {
-		if pb, ok := prefixes[s[:2]]; ok && (base <= 0 || base == pb) {
+		if pb, ok := rbRadixPrefixes[s[:2]]; ok && (base <= 0 || base == pb) {
 			base, s = pb, s[2:]
 		}
 	}
@@ -561,3 +561,5 @@ func rbRuneOffset(s string, k int) (int, bool) {
 	}
 	return i, k == 0
 }
+
+var rbRadixPrefixes = map[string]int{"0b": 2, "0B": 2, "0o": 8, "0O": 8, "0x": 16, "0X": 16, "0d": 10, "0D": 10}
