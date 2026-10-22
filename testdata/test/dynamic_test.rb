@@ -1,6 +1,7 @@
 # rbs_inline: enabled
 
 require "minitest/autorun"
+require "open3"
 
 # Shared helpers (the old files each defined their own identical copies).
 
@@ -3020,6 +3021,54 @@ module DynamicTests
       g = f #: untyped
       assert_raises(FrozenError) { g.sort! }
       assert_equal [1, 2], g.sort
+    end
+
+    # NUM2INT: one RangeError helper words both ends (rbNum2Int; "too big" for a negative was wrong)
+    def test_num2int_range_error_wording
+      File.open(__FILE__) do |f|
+        e = assert_raises(RangeError) { f.lineno = -(2**40) }
+        assert_equal "integer -1099511627776 too small to convert to 'int'", e.message
+        e = assert_raises(RangeError) { f.lineno = 2**40 }
+        assert_equal "integer 1099511627776 too big to convert to 'int'", e.message
+      end
+    end
+
+    # sleep past what a Duration holds (~292 years) must still block, not wrap to a negative duration and return at once
+    def test_sleep_huge_blocks
+      q = Queue.new
+      t = Thread.new do
+        q << :started
+        sleep(1e10)
+        q << :woke
+      end
+      assert_equal :started, q.pop
+      100.times { Thread.pass }
+      assert_equal true, t.alive?
+      assert_equal true, q.empty?
+    end
+
+    # Encoding.default_* are process-wide and the build runs under -race when threads exist (decision 88)
+    def test_encoding_defaults_across_threads
+      writer = Thread.new do
+        200.times { Encoding.default_external = Encoding::UTF_8 }
+        :done
+      end
+      seen = 0
+      200.times { seen += 1 if Encoding.default_external == Encoding::UTF_8 }
+      writer.join
+      assert_equal 200, seen
+      assert_nil Encoding.default_internal
+    end
+
+    # Process::Waiter#value memoizes its status; two threads asking at once must not race (-race builds, decision 88)
+    def test_open3_wait_value_from_two_threads
+      codes = [] #: Array[untyped]
+      Open3.popen3("true") do |_in, _out, _err, wt|
+        ts = Array.new(2) { Thread.new { wt.value } }
+        ts.each(&:join)
+        codes = ts.map { |t| t.value.exitstatus }
+      end
+      assert_equal [0, 0], codes
     end
 
     def test_view_set_and_edit_methods

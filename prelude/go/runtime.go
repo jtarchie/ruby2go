@@ -143,10 +143,10 @@ func (self *File) rbOpen() {
 	}
 }
 
-// rbCInt is MRI's NUM2INT: a value past a C int is a RangeError.
-func rbCInt(n Integer) int {
+// rbNum2Int is MRI's NUM2INT: a value past a C int is a RangeError.
+func rbNum2Int(n Integer) int {
 	if n > math.MaxInt32 || n < math.MinInt32 {
-		panic(NewRangeError(Ref(String("integer " + strconv.FormatInt(int64(n), 10) + " too big to convert to 'int'"))))
+		panic(NewRangeError(Ref(String("integer " + strconv.FormatInt(int64(n), 10) + " too " + map[bool]string{true: "big", false: "small"}[n > 0] + " to convert to 'int'"))))
 	}
 	return int(n)
 }
@@ -937,12 +937,7 @@ func rbCmp[T comparable](a, b T) Integer {
 func rbCmpOp(c any, op string, a, b any) Boolean {
 	n, ok := rbUnbox(c).(Integer)
 	if !ok {
-		with := rbClassName(b)
-		switch b.(type) {
-		case nil, Boolean, Integer, Float, Symbol: // MRI's special constants show themselves
-			with = string(rbInspect(b))
-		}
-		panic(NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + with + " failed"))))
+		panic(rbCmpErr(a, b))
 	}
 	switch op {
 	case "<":
@@ -985,6 +980,11 @@ func rbCmpErr(a, b any) *ArgumentError {
 	}
 	return NewArgumentError(Ref(String("comparison of " + rbClassName(a) + " with " + with + " failed")))
 }
+
+// rbCInt and rbIntDigitsArg are rbNum2Int under the names file.rb, io.rb and float.rb call.
+func rbCInt(n Integer) int { return rbNum2Int(n) }
+
+func rbIntDigitsArg(digits Integer) { rbNum2Int(digits) }
 
 func rbIdentical(a, b any) bool {
 	if as, ok := a.(String); ok {
@@ -1631,7 +1631,11 @@ func rbSleep(secs float64) Integer {
 		panic(NewArgumentError(Ref(String("time interval must not be negative"))))
 	}
 	start := time.Now()
-	timer := time.NewTimer(time.Duration(secs * float64(time.Second)))
+	d := time.Duration(math.MaxInt64) // past ~292 years a float->int64 conversion is implementation-defined and can wrap negative
+	if secs < float64(math.MaxInt64)/float64(time.Second) {
+		d = time.Duration(secs * float64(time.Second))
+	}
+	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
@@ -2003,3 +2007,6 @@ func rbSlotShared(r any) bool {
 	}
 	return false
 }
+
+// rbMtTraceDepth is how many assert_raises blocks are running, across threads (minitest.go).
+var rbMtTraceDepth atomic.Int64

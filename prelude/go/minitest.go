@@ -208,10 +208,8 @@ var rbMtTraceFile = sync.OnceValue(func() *os.File {
 	return f
 })
 
-// rbMtTraceDepth is how many assert_raises blocks are running: assertions inside one are not logged.
-var rbMtTraceDepth int
-
-func rbMtTraceOn() bool { return rbMtTraceDepth == 0 && rbMtTraceFile() != nil }
+// rbMtTraceDepth (runtime.go: atomic needs an import here, which would shift the suppression comments above) counts the running assert_raises blocks; assertions inside one are not logged.
+func rbMtTraceOn() bool { return rbMtTraceDepth.Load() == 0 && rbMtTraceFile() != nil }
 
 // rbMtTrace appends one assertion's line to the trace file.
 func rbMtTrace(line String) {

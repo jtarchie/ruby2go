@@ -97,10 +97,10 @@ class Encoding < Object
 
   #: () -> Encoding
   def self.default_external = %x{
-    if rbEncDefaultExternal == nil {
-      return Encoding_UTF_8
+    if e := rbEncDefaultExternal.Load(); e != nil {
+      return e
     }
-    return rbEncDefaultExternal
+    return Encoding_UTF_8
   }
 
   # Stored for default_external to answer; IO keeps reading and writing UTF-8 (decision 136).
@@ -113,10 +113,10 @@ class Encoding < Object
 
   #: () -> Encoding?
   def self.default_internal = %x{
-    if rbEncDefaultInternal == nil {
-      return nil
+    if e := rbEncDefaultInternal.Load(); e != nil {
+      return Ref(e)
     }
-    return Ref(rbEncDefaultInternal)
+    return nil
   }
 
   # Stored, and encode with no target encodes to it, as MRI's does; IO does not convert to it (decision 136).
@@ -129,9 +129,10 @@ class Encoding < Object
 
   #: (Encoding, Encoding?) -> void
   def self.__set_defaults(ext, intern) = %x{
-    rbEncDefaultExternal, rbEncDefaultInternal = ext, nil
+    rbEncDefaultExternal.Store(ext)
+    rbEncDefaultInternal.Store(nil)
     if intern != nil {
-      rbEncDefaultInternal = *intern
+      rbEncDefaultInternal.Store(*intern)
     }
   }
 
@@ -299,8 +300,8 @@ class String
     flag := func(b *Boolean) bool { return b != nil && bool(*b) }
     o := rbEncOptions(invalid, undef, replace, xml, flag(universal_newline), flag(crlf_newline), flag(cr_newline))
     dflt := ""
-    if rbEncDefaultInternal != nil {
-      dflt = rbEncDefaultInternal.name
+    if e := rbEncDefaultInternal.Load(); e != nil {
+      dflt = e.name
     }
     return rbStrEncode(self, to, from, dflt, o)
   }

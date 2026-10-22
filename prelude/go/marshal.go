@@ -19,7 +19,7 @@ const rbMarshalMagic = "RB2GO\x04\x08"
 // rbKeyed is k; as a switch case it names T weakly, so the pruner drops the case when nothing else keeps T (decision 137).
 func rbKeyed[T any](k string) string { return k }
 
-// rbMW is one dump: reference values written so far (by identity, for '@') and depth left (-1: no limit).
+// rbMW is one dump: reference values written so far (by identity, for '@') and depth left (never negative: no limit means rbMarshalMaxDepth).
 type rbMW struct {
 	buf   []byte
 	refs  map[any]int
@@ -28,6 +28,9 @@ type rbMW struct {
 
 func rbMarshalDump(v any, limit int) String {
 	const head = len(rbMarshalMagic) + 8
+	if limit < 0 || limit > rbMarshalMaxDepth {
+		limit = rbMarshalMaxDepth
+	}
 	w := &rbMW{buf: make([]byte, head, 64), refs: map[any]int{}, limit: limit}
 	copy(w.buf, rbMarshalMagic)
 	w.value(v)
@@ -71,10 +74,8 @@ func (w *rbMW) value(v any) {
 	if w.limit == 0 {
 		panic(NewArgumentError(Ref(String("exceed depth limit"))))
 	}
-	if w.limit > 0 {
-		w.limit--
-		defer func() { w.limit++ }()
-	}
+	w.limit--
+	defer func() { w.limit++ }()
 	switch x := rbUnbox(v).(type) {
 	case nil:
 		w.buf = append(w.buf, '0')
@@ -291,8 +292,8 @@ type rbMR struct {
 	depth int
 }
 
-// rbMarshalMaxDepth bounds load's recursion: a Go stack overflow is fatal and no rescue catches it (MRI's SystemStackError is catchable), so hostile nesting is an ArgumentError instead.
-const rbMarshalMaxDepth = 10000
+// rbMarshalMaxDepth bounds dump's and load's recursion alike: a Go stack overflow is fatal and no rescue catches it (MRI's SystemStackError is catchable), so hostile nesting is an ArgumentError instead. Measured ~2.6 KB of peak memory per level (stack plus the nested values) for Array, Hash, Object and Struct chains, against Go's 1 GB stack limit; MRI itself gives up past ~20k-50k levels.
+const rbMarshalMaxDepth = 100000
 
 // rbMarshalBad is the error for decoded state no dump of this program holds.
 func rbMarshalBad(what string) any {

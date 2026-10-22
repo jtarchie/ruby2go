@@ -129,6 +129,7 @@ class Array < Object
         if !yield(self.s[i]) {
           return
         }
+        i = min(i, len(self.s)) // the block may have shrunk the array: MRI clamps, it does not index past the end
       }
     }
   }

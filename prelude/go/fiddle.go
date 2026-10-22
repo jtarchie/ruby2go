@@ -213,7 +213,7 @@ func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr
 		rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
 		r, f, errno = s.a1, s.f1, Integer(int32(s.a3))         //nolint:gosec // errno is a C int
 	} else {
-		runtime.LockOSThread()
+		defer rbFiddleUnlock(rbFiddleLock())
 		rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
 		r, f = s.a1, s.f1
 		if rbFiddleErrnoFn != 0 {
@@ -221,7 +221,7 @@ func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr
 			rbFiddleCgocall(rbFiddleTrampoline, unsafe.Pointer(s)) //nolint:gosec // purego's own call path
 			errno = Integer(*(*int32)(rbFiddleAt(Integer(s.a1))))  //nolint:gosec // a1 is errno's address
 		}
-		runtime.UnlockOSThread()
+		// the thread unlocks at return (defer above)
 	}
 	slot.Store(s)
 	return r, f, errno
@@ -614,3 +614,11 @@ func rbFiddleSetFloat(addr, t Integer, v Float) {
 	}
 	*(*float64)(rbFiddleAt(addr)) = float64(v)
 }
+
+// rbFiddleLock runs at the defer statement and rbFiddleUnlock at return, even when a callback's Ruby exception unwinds through the call; the pair keeps rbFiddleCall's suppression comments on their lines.
+func rbFiddleLock() struct{} {
+	runtime.LockOSThread()
+	return struct{}{}
+}
+
+func rbFiddleUnlock(struct{}) { runtime.UnlockOSThread() }

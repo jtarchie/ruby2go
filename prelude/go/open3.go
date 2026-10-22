@@ -93,12 +93,12 @@ func rbOpen3CloseR(r *Open3_Reader) {
 	_ = r.c.Close()
 }
 
-// rbOpen3Wait memoizes Wait: wait_thr.value may run inside the block and again from popen3's own cleanup, but a *exec.Cmd waits only once.
+// rbOpen3Wait memoizes Wait: wait_thr.value may run inside the block, from popen3's own cleanup and from other threads, but a *exec.Cmd waits only once.
 func rbOpen3Wait(w *Process_Waiter) *Process_Status {
-	if w.status == nil {
+	w.once.Do(func() {
 		_ = w.cmd.Wait()
 		w.status = rbOpen3Status(w.cmd)
-	}
+	})
 	return w.status
 }
 

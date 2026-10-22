@@ -690,7 +690,7 @@ module Minitest
     def __mt_trace_on? = %x{ return Boolean(rbMtTraceOn()) }
 
     #: (Integer) -> void
-    def __mt_trace_nest(by) = %x{ rbMtTraceDepth += int(by) }
+    def __mt_trace_nest(by) = %x{ rbMtTraceDepth.Add(int64(by)) }
 
     #: (String) -> void
     def __mt_trace_line(line) = %x{ rbMtTrace(line) }

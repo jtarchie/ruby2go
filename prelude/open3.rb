@@ -3,7 +3,7 @@
 require_relative "process"
 
 module Process
-  # @go_type struct { cmd *exec.Cmd; status *Process_Status }
+  # @go_type struct { cmd *exec.Cmd; status *Process_Status; once sync.Once }
   class Waiter < Object
     #: () -> Integer
     def pid = %x{ Integer(self.cmd.Process.Pid) }

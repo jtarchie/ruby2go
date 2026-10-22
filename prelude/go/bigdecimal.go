@@ -908,7 +908,7 @@ func rbBDRel(x *BigDecimal, other any, op string) bool {
 		if op == "==" {
 			return false
 		}
-		panic(NewArgumentError(Ref(String("comparison of BigDecimal with " + rbCmpName(other) + " failed"))))
+		panic(rbCmpErr(x, rbUnbox(other)))
 	}
 	c, ok := rbBDCmp(x, b)
 	if !ok {
@@ -941,16 +941,7 @@ func rbBDOrder(x *BigDecimal, other any) Integer {
 			return Integer(c)
 		}
 	}
-	panic(NewArgumentError(Ref(String("comparison of BigDecimal with " + rbCmpName(other) + " failed"))))
-}
-
-// rbCmpName names a failed comparison's operand as rb_cmperr does.
-func rbCmpName(v any) string {
-	switch rbUnbox(v).(type) {
-	case nil, Boolean, Integer, Float, Symbol:
-		return string(rbInspect(v))
-	}
-	return rbClassName(v)
+	panic(rbCmpErr(x, rbUnbox(other)))
 }
 
 // rbBDConvert is Kernel#BigDecimal.

@@ -57,7 +57,12 @@ func (idx *rbKeyIndex[K]) add(k K, h uint64) {
 }
 
 func (idx *rbKeyIndex[K]) remove(k K, h uint64) {
-	idx.byHash[h] = slices.DeleteFunc(idx.byHash[h], func(c K) bool { return c == k })
+	b := slices.DeleteFunc(idx.byHash[h], func(c K) bool { return c == k })
+	if len(b) == 0 {
+		delete(idx.byHash, h) // an empty bucket would keep its map entry and backing array for every distinct hash ever seen
+		return
+	}
+	idx.byHash[h] = b
 }
 
 // rbFrom converts v, a Hash of any instantiation, into this one: a

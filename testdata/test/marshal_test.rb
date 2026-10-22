@@ -15,6 +15,15 @@ module MarshalTests
   Point = Struct.new(:x, :y) #: [Integer, Integer]
   Pair = Data.define(:left, :right) #: [Integer, String]
 
+  class Link
+    attr_reader :nx #: untyped
+
+    #: (untyped) -> void
+    def initialize(nx)
+      @nx = nx
+    end
+  end
+
   class Node
     attr_reader :name #: String
     attr_reader :children #: Array[Node]
@@ -277,6 +286,28 @@ module MarshalTests
       e = assert_raises(ArgumentError) { Marshal.dump([[1]], 1) }
       assert_equal "exceed depth limit", e.message
       assert_equal [[1]], Marshal.load(Marshal.dump([[1]], 3))
+    end
+
+    # dump and load bound nesting alike: a chain dump accepts, load takes back (MRI manages ~20000 levels)
+    def test_deep_chain_round_trips
+      chain = nil #: untyped
+      15_000.times { chain = [chain] }
+      back = Marshal.load(Marshal.dump(chain))
+      depth = 0
+      while back
+        back = back[0]
+        depth += 1
+      end
+      assert_equal 15_000, depth
+      list = nil #: untyped
+      15_000.times { list = Link.new(list) }
+      back = Marshal.load(Marshal.dump(list))
+      length = 0
+      while back
+        back = back.nx
+        length += 1
+      end
+      assert_equal 15_000, length
     end
 
     def test_undumpable

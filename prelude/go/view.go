@@ -85,7 +85,7 @@ func rbViewCmp(b *rbBlockArg, x, y any) Integer {
 	}
 	r := rbUnbox(b.fn(x, y))
 	if r == nil {
-		panic(NewArgumentError(Ref(String("comparison of " + rbClassName(rbUnbox(x)) + " with " + rbClassName(rbUnbox(y)) + " failed"))))
+		panic(rbCmpErr(rbUnbox(x), rbUnbox(y)))
 	}
 	return rbCmp[any](r, Integer(0))
 }

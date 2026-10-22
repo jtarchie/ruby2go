@@ -2711,5 +2711,24 @@ module ArrayTests
       shared = [1, [2]] #: Array[untyped]
       assert_equal [1, 2, 1, 2], [shared, shared].flatten
     end
+
+    # MRI clamps to the shrunken length after each yield instead of indexing past it
+    def test_reverse_each_survives_the_block_shrinking_the_array
+      a = [1, 2, 3, 4, 5]
+      seen = [] #: Array[Integer]
+      a.reverse_each do |x|
+        seen << x
+        a.clear if x == 4
+      end
+      assert_equal [5, 4], seen
+      b = [1, 2, 3, 4, 5]
+      seen = []
+      b.reverse_each do |x|
+        seen << x
+        b.delete_at(0) if x == 5
+      end
+      assert_equal [5, 5, 5, 5, 5], seen
+      assert_empty b
+    end
   end
 end

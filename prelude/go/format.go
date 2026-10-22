@@ -99,11 +99,7 @@ func rbFormat(format string, args []any) string {
 		default:
 			panic(NewTypeError(Ref(String("no implicit conversion of " + rbClassName(v) + " into Integer"))))
 		}
-		if w > math.MaxInt32 || w < math.MinInt32 {
-			big := map[bool]string{true: "big", false: "small"}[w > 0]
-			panic(NewRangeError(Ref(String("integer " + strconv.Itoa(int(w)) + " too " + big + " to convert to 'int'"))))
-		}
-		return int(w)
+		return rbNum2Int(w)
 	}
 	for i := 0; i < len(format); i++ {
 		if format[i] != '%' {

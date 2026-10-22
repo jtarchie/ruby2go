@@ -21,7 +21,7 @@ import (
 var rbStdoutConv atomic.Pointer[func(string) string]
 
 // nil is MRI's start: default_external answers UTF-8, default_internal nil.
-var rbEncDefaultExternal, rbEncDefaultInternal *Encoding
+var rbEncDefaultExternal, rbEncDefaultInternal atomic.Pointer[Encoding]
 
 // Strings carry no encoding (decision 105), so these names matter only to encode, Integer#chr and IO (decision 136).
 var rbEncAliases = map[string]string{
@@ -36,14 +36,14 @@ var rbEncAliases = map[string]string{
 
 // rbEncCanon is name's canonical spelling, "" for an encoding rb2go lacks; "external" and "internal" follow the defaults, as MRI's aliases do.
 func rbEncCanon(name string) string {
-	switch u := strings.ToUpper(name); {
-	case u == "EXTERNAL" && rbEncDefaultExternal != nil:
-		return rbEncDefaultExternal.name
-	case u == "INTERNAL" && rbEncDefaultInternal != nil:
-		return rbEncDefaultInternal.name
-	default:
-		return rbEncAliases[u]
+	u := strings.ToUpper(name)
+	if e := rbEncDefaultExternal.Load(); u == "EXTERNAL" && e != nil {
+		return e.name
 	}
+	if e := rbEncDefaultInternal.Load(); u == "INTERNAL" && e != nil {
+		return e.name
+	}
+	return rbEncAliases[u]
 }
 
 // rbEncNameArg is the name an encoding argument gives: a String as is, an Encoding's own.
