@@ -7,6 +7,9 @@ require "set"
 # pp (decision 113): each layout is MRI's own PP.pp output at that width.
 module PpTests
   Pair = Struct.new(:left, :right) #: [untyped, untyped]
+  # members named like the generated helpers (#109 D1): pp reads members, to_a and inspect through MRI's own bypass
+  Odd = Struct.new(:size, :to_a, :inspect, :members, :to_h, :each_pair) #: [Integer, Integer, String, Integer, Integer, Integer]
+  OddData = Data.define(:to_h, :members, :inspect) #: [Integer, Integer, String]
 
   class PpTest < Minitest::Test
     def test_layout_0
@@ -72,6 +75,15 @@ module PpTests
 
     def test_layout_13
       assert_equal "{}\n", PP.pp({}, "".dup, 1)
+    end
+
+    def test_struct_members_named_like_helpers
+      o = Odd.new(1, 2, "i", 4, 5, 6)
+      assert_equal "#<struct PpTests::Odd size=1, to_a=2, inspect=\"i\", members=4, to_h=5, each_pair=6>\n", PP.pp(o, "".dup, 100)
+      assert_equal "#<struct PpTests::Odd\n size=1,\n to_a=2,\n inspect=\"i\",\n members=4,\n to_h=5,\n each_pair=6>\n", PP.pp(o, "".dup, 30)
+      d = OddData.new(1, 2, "i")
+      assert_equal "#<data PpTests::OddData to_h=1, members=2, inspect=\"i\">\n", PP.pp(d, "".dup, 79)
+      assert_equal "#<data PpTests::OddData\n to_h=1,\n members=2,\n inspect=\"i\">\n", PP.pp(d, "".dup, 30)
     end
 
     def test_struct_and_cycles

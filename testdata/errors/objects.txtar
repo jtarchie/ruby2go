@@ -1176,3 +1176,14 @@ module M; include N; end
 module N; include M; end
 class C; include M; end
 puts C.new.class
+-- include_type_args_not_tuple.rb --
+# error: main.rb:3: bad include type args
+class Bag
+  include Enumerable #[Integer] | nil
+end
+-- superclass_type_args_not_tuple.rb --
+# error: main.rb:4: bad superclass type args
+class Box
+end
+class IntBox < Box #[Integer] | nil
+end

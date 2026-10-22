@@ -47,8 +47,7 @@ func (c *Compiler) collectDescribe(ctx context.Context, f *File, outer *Class, n
 	}
 	c.specClasses++
 	key := fmt.Sprintf("RbSpec%d", c.specClasses) // not a name user code can reach: MRI's class is anonymous
-	cls := c.declareClass(f, key, f.line(n.Location.StartOffset), false)
-	c.topConstNames = c.topConstNames[:len(c.topConstNames)-1]
+	cls := c.declareHidden(f, key, f.line(n.Location.StartOffset), false)
 	cls.Display = strings.Join(parts, "::")
 	cls.specChild = outer != nil
 	super := parser.Node(&parser.ConstantPathNode{Parent: &parser.ConstantReadNode{Name: "Minitest"}, Name: ptr("Spec")})

@@ -385,7 +385,7 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 		return f.coercePending(p, func() string { q := p; q.Pending = ""; return f.coerceArg(n, a, q, env) })
 	}
 	if p.Want != nil && !isAny(a.typ) {
-		f.coerce(n, a, subst(p.Want, env)) // for its compile errors only
+		f.probe(func() { f.coerce(n, a, subst(p.Want, env)) }) // for its compile errors only: its statements (a tuple's temporary) would run the argument twice
 	}
 	t := subst(p.Type, env)
 	code := f.coerce(n, a, t)

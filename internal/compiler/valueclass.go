@@ -66,6 +66,11 @@ func valueClass(n parser.Node) (*parser.CallNode, valueKind) {
 // and parsed; they and the block body live in the outer lexical scope, as
 // a block does not open a constant scope in Ruby.
 func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, kind valueKind, scope []*Class) {
+	c.collectValueClassAs(ctx, f, n, call, kind, scope, false)
+}
+
+// collectValueClassAs is collectValueClass; hidden: no constant names the class (a bare `Struct.new(:a)`, a `< Struct.new(:a)` super).
+func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, kind valueKind, scope []*Class, hidden bool) {
 	members := make([]string, 0, len(callArgs(call)))
 	syms := make([]parser.Node, 0, len(callArgs(call)))
 	kwInit := "nil"
@@ -104,7 +109,11 @@ func (c *Compiler) collectValueClass(ctx context.Context, f *File, n *parser.Con
 	types := c.memberTypes(f, n, call, members)
 	full := qualify(scope, n.Name)
 	line := f.line(n.Location.StartOffset)
-	cls := c.declareClass(f, full, line, false)
+	declare := c.declareClass
+	if hidden {
+		declare = c.declareHidden
+	}
+	cls := declare(f, full, line, false)
 	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: kind.superName()}, file: f}
 	cls.value = &valueSpec{members: members, kind: kind, kwInit: kwInit == "true"}
 	// pad so the generated lines report the declaration's line
@@ -184,7 +193,9 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	if kind == valueStruct {
 		// MRI's Struct includes Enumerable over its values. Here each struct class does: through the Struct base, the
 		// generated to_h's Symbol keys would fail the override check against Enumerable#to_h.
-		b.WriteString("  include Enumerable #[untyped]\n")
+		if !slices.Contains(members, "each") && !slices.Contains(members, "to_a") { // Enumerable calls both on self, so a member of either name has no Enumerable (ponytail: MRI's would call the accessor)
+			b.WriteString("  include Enumerable #[untyped]\n")
+		}
 		fmt.Fprintf(&b, "  #: () -> bool?\n  def self.keyword_init? = %s\n", kwInit)
 	}
 	for i, m := range members {
@@ -231,24 +242,34 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	}
 	b.WriteString("  end\n")
 	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def self.members = [%s]\n", strings.Join(syms, ", "))
-	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def members = [%s]\n", strings.Join(syms, ", "))
-	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def to_h = { %s }\n", strings.Join(pairs, ", "))
+	// a member's accessor wins over a same-named helper, as in MRI; generated code calls the always-emitted `__` twins
+	pub := func(name, src string) {
+		if !slices.Contains(members, name) {
+			b.WriteString(src)
+		}
+	}
+	fmt.Fprintf(&b, "  #: () -> Array[Symbol]\n  def __members = [%s]\n", strings.Join(syms, ", "))
+	pub("members", "  #: () -> Array[Symbol]\n  def members = __members\n")
+	fmt.Fprintf(&b, "  #: () -> Hash[Symbol, untyped]\n  def __to_h = { %s }\n", strings.Join(pairs, ", "))
+	pub("to_h", "  #: () -> Hash[Symbol, untyped]\n  def to_h = __to_h\n")
 	// MRI's ==/eql? want the same class, not a subclass
 	if len(eqs) == 0 {
 		eqs = []string{"true"}
 	}
 	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
-	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    to_h.eql?(__other.to_h)\n  end\n", full)
-	b.WriteString("  #: () -> Integer\n  def hash = to_h.hash\n")
+	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    __to_h.eql?(__other.__to_h)\n  end\n", full)
+	pub("hash", "  #: () -> Integer\n  def hash = __to_h.hash\n")
 	fields := ""
 	if len(insp) > 0 {
 		fields = " " + strings.Join(insp, ", ")
 	}
-	fmt.Fprintf(&b, "  #: () -> String\n  def inspect = \"#<%s #{__class_name}%s>\"\n", kind, fields) // the class's own name: MRI does not call an overridden `name`
-	b.WriteString("  #: () -> String\n  def to_s = inspect\n")
+	fmt.Fprintf(&b, "  #: () -> String\n  def __inspect = \"#<%s #{__class_name}%s>\"\n", kind, fields) // the class's own name: MRI does not call an overridden `name`
+	pub("inspect", "  #: () -> String\n  def inspect = __inspect\n")
+	pub("to_s", "  #: () -> String\n  def to_s = __inspect\n") // MRI's to_s is inspect's C function, not a call of the method
 	// pp's Struct/Data layout (decision 113): the kind and the values, in members order
 	fmt.Fprintf(&b, "  #: () -> String\n  def __pp_kind = %q\n", kind)
 	fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def __pp_values = [%s]\n", strings.Join(reads, ", "))
+	b.WriteString("  #: () -> Array[Symbol]\n  def __pp_members = __members\n")
 	// MRI's deconstruct_keys: every member for nil, {} for more keys than members, else the requested keys up to the first non-member (decision 143)
 	whens := make([]string, len(members))
 	for i, m := range members {
@@ -257,17 +278,18 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	if len(members) == 0 {
 		whens = []string{"      when nil then return __h\n"} // no member names: the first key ends it
 	}
-	fmt.Fprintf(&b, "  #: (Array[Symbol]?) -> Hash[Symbol, untyped]\n  def deconstruct_keys(__keys)\n    return to_h if __keys.nil?\n"+
+	pub("deconstruct_keys", fmt.Sprintf("  #: (Array[Symbol]?) -> Hash[Symbol, untyped]\n  def deconstruct_keys(__keys)\n    return __to_h if __keys.nil?\n"+
 		"    __h = {} #: Hash[Symbol, untyped]\n    return __h if __keys.size > %d\n    __i = 0\n    while __i < __keys.size\n      case __keys.fetch(__i)\n%s      else return __h\n      end\n      __i += 1\n    end\n    __h\n  end\n",
-		len(members), strings.Join(whens, ""))
+		len(members), strings.Join(whens, "")))
 	if kind == valueStruct {
-		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def to_a = [%s]\n", strings.Join(reads, ", "))
-		b.WriteString("  #: () -> Array[untyped]\n  def values = to_a\n")
-		b.WriteString("  #: () -> Array[untyped]\n  def deconstruct = to_a\n")
-		fmt.Fprintf(&b, "  #: () -> Integer\n  def size = %d\n", len(members))
-		fmt.Fprintf(&b, "  #: () -> Integer\n  def length = %d\n", len(members))
-		b.WriteString("  #: () { (untyped) -> void } -> void\n  def each\n    to_a.each { |__x| yield __x }\n  end\n")
-		b.WriteString("  #: () { (Symbol, untyped) -> void } -> void\n  def each_pair\n    to_h.each { |__k, __x| yield __k, __x }\n  end\n")
+		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def __to_a = [%s]\n", strings.Join(reads, ", "))
+		pub("to_a", "  #: () -> Array[untyped]\n  def to_a = __to_a\n")
+		pub("values", "  #: () -> Array[untyped]\n  def values = __to_a\n")
+		pub("deconstruct", "  #: () -> Array[untyped]\n  def deconstruct = __to_a\n")
+		pub("size", fmt.Sprintf("  #: () -> Integer\n  def size = %d\n", len(members)))
+		pub("length", fmt.Sprintf("  #: () -> Integer\n  def length = %d\n", len(members)))
+		pub("each", "  #: () { (untyped) -> void } -> void\n  def each\n    __to_a.each { |__x| yield __x }\n  end\n")
+		pub("each_pair", "  #: () { (Symbol, untyped) -> void } -> void\n  def each_pair\n    __to_h.each { |__k, __x| yield __k, __x }\n  end\n")
 		// [] and []= take a member's index, Symbol or String, with MRI's errors
 		gets, sets := make([]string, 0, len(members)+1), make([]string, 0, len(members)+1)
 		for _, m := range members {
@@ -278,19 +300,15 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 			gets, sets = []string{"    when nil then nil\n"}, []string{"    when nil then nil\n"} // a case needs a when
 		}
 		index := fmt.Sprintf("      __i = __k < 0 ? __k + %d : __k\n      raise IndexError, \"offset #{__k} too small for struct(size:%d)\" if __i < 0\n      raise IndexError, \"offset #{__k} too large for struct(size:%d)\" if __i >= %d\n", len(members), len(members), len(members), len(members))
-		fmt.Fprintf(&b, "  #: (Integer | Symbol | String) -> untyped\n  def [](__k)\n    if __k.is_a?(Integer)\n%s      return to_a.fetch(__i)\n    end\n    case __k.to_s\n%s    else raise NameError, \"no member '#{__k}' in struct\"\n    end\n  end\n", index, strings.Join(gets, ""))
-		fmt.Fprintf(&b, "  #: (Integer | Symbol | String, untyped) -> untyped\n  def []=(__k, __v)\n    __name = __k.to_s\n    if __k.is_a?(Integer)\n%s      __name = members.fetch(__i).to_s\n    end\n    case __name\n%s    else raise NameError, \"no member '#{__k}' in struct\"\n    end\n    __v\n  end\n", index, strings.Join(sets, ""))
-		extra := func(name, src string) { // a member's accessor wins over a helper of its name (`:select`)
-			if !slices.Contains(members, name) {
-				b.WriteString(src)
-			}
-		}
+		fmt.Fprintf(&b, "  #: (Integer | Symbol | String) -> untyped\n  def [](__k)\n    if __k.is_a?(Integer)\n%s      return __to_a.fetch(__i)\n    end\n    case __k.to_s\n%s    else raise NameError, \"no member '#{__k}' in struct\"\n    end\n  end\n", index, strings.Join(gets, ""))
+		fmt.Fprintf(&b, "  #: (Integer | Symbol | String, untyped) -> untyped\n  def []=(__k, __v)\n    __name = __k.to_s\n    if __k.is_a?(Integer)\n%s      __name = __members.fetch(__i).to_s\n    end\n    case __name\n%s    else raise NameError, \"no member '#{__k}' in struct\"\n    end\n    __v\n  end\n", index, strings.Join(sets, ""))
+		extra := pub
 		extra("values_at", "  #: (*Integer) -> Array[untyped]\n  def values_at(*__is) = __is.map { |__i| self[__i] }\n")
 		extra("dig", "  # @dynamic\n  #: (Integer | Symbol | String, *untyped) -> untyped\n  def dig(__k, *__rest)\n    __v = self[__k]\n    return __v if __rest.empty? || __v.nil?\n    return __v.dig(__rest.fetch(0)) if __rest.size == 1\n    __v.dig(__rest.fetch(0), __rest.fetch(1))\n  end\n") // ponytail: no splat into a dynamic call, so dig goes 3 deep; build the call per depth when deeper is needed
-		extra("select", "  #: () { (untyped) -> bool } -> Array[untyped]\n  def select(&__blk) = to_a.select(&__blk)\n")
-		extra("filter", "  #: () { (untyped) -> bool } -> Array[untyped]\n  def filter(&__blk) = to_a.select(&__blk)\n")
+		extra("select", "  #: () { (untyped) -> bool } -> Array[untyped]\n  def select(&__blk) = __to_a.select(&__blk)\n")
+		extra("filter", "  #: () { (untyped) -> bool } -> Array[untyped]\n  def filter(&__blk) = __to_a.select(&__blk)\n")
 	} else {
-		fmt.Fprintf(&b, "  #: () -> Array[untyped]\n  def deconstruct = [%s]\n", strings.Join(reads, ", "))
+		pub("deconstruct", fmt.Sprintf("  #: () -> Array[untyped]\n  def deconstruct = [%s]\n", strings.Join(reads, ", ")))
 		// `with(k: v)` compiles to this: a copy of the receiver's class
 		fmt.Fprintf(&b, "  #: (%s) -> ::%s\n  def __with(%s) = self.class.new(%s)\n", strings.Join(sigs, ", "), full, strings.Join(vars, ", "), strings.Join(vars, ", "))
 	}

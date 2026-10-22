@@ -117,13 +117,24 @@ func (c *Compiler) requireHook(f *File, n *parser.CallNode) *parser.CallNode {
 }
 
 func (c *Compiler) declareClass(f *File, name string, line int, isModule bool) *Class {
+	return c.declare(f, name, line, isModule, true)
+}
+
+// declareHidden declares a class only its generated name reaches (anonymous Class.new, describe), so it stays out of `constants`.
+func (c *Compiler) declareHidden(f *File, name string, line int, isModule bool) *Class {
+	return c.declare(f, name, line, isModule, false)
+}
+
+func (c *Compiler) declare(f *File, name string, line int, isModule, named bool) *Class {
 	cls := c.classes[name]
 	if cls == nil {
 		cls = &Class{Name: goClassName(name), RubyName: name, IsModule: isModule, Methods: map[string]*Method{}, Ivars: map[string]*Ivar{}, srcPos: srcPos{f, line}}
 		cls.universal = name == "BasicObject" || name == "Object" || name == "Kernel"
 		c.classes[name] = cls
 		c.classList = append(c.classList, cls)
-		c.noteConstName(name)
+		if named {
+			c.noteConstName(name)
+		}
 	} else if cls.IsModule != isModule && (name != "Numeric" || f.isPrelude()) { // MRI's class Numeric is the prelude's module (decision 142): `class Numeric` reopens it
 		c.errorAt(srcPos{f, line}, "%s is already defined as a %s", name, map[bool]string{true: "module", false: "class"}[cls.IsModule])
 	}
@@ -177,7 +188,11 @@ func (c *Compiler) readSuperArgs(f *File, n *parser.ClassNode, cls *Class, line 
 		if err != nil {
 			c.errorf(f, n, "bad superclass type args %q: %v", t, err)
 		}
-		cls.superArgs = tup.(rbs.Tuple).Elems //nolint:forcetypeassert // the source scanner reads `#[...]` as a tuple
+		tuple, isTuple := tup.(rbs.Tuple)
+		if !isTuple { // `#[A] | nil` parses as a union, not the `[T, ...]` the scanner expects
+			c.errorf(f, n, "bad superclass type args %q: want [T, ...]", t)
+		}
+		cls.superArgs = tuple.Elems
 		return
 	}
 	if sd := c.sigs[cls.RubyName]; sd != nil {
@@ -290,7 +305,7 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 		}
 		if call, kind := valueClass(sup); call != nil && !reopen { // `class X < Struct.new(:a)`: a hidden value class as the super, as MRI's anonymous one
 			anon := "Struct_" + strings.ReplaceAll(name, "::", "_")
-			c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Name: anon, Value: call, Location: call.Location, NameLoc: call.Location}, call, kind, scope)
+			c.collectValueClassAs(ctx, f, &parser.ConstantWriteNode{Name: anon, Value: call, Location: call.Location, NameLoc: call.Location}, call, kind, scope, true)
 			sup = &parser.ConstantReadNode{Name: anon, Location: call.Location}
 		}
 		if _, self := sup.(*parser.SelfNode); self && len(scope) > 0 { // `class NoArgument < self` in Switch's body: the enclosing class (decision 244)

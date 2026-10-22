@@ -6396,6 +6396,205 @@ module ObjectTests
 end
 
 module ObjectTests
+  # Struct/Data members named like a generated helper: the member's accessor wins, as in MRI (#109 D1).
+  ShSize = Struct.new(:size, :length, :values) #: [Integer, Integer, Integer]
+  ShArr = Struct.new(:to_a, :to_h) #: [Integer, Integer]
+  ShStr = Struct.new(:inspect, :to_s) #: [String, String]
+  ShIdent = Struct.new(:members, :hash) #: [Integer, Integer]
+  ShIter = Struct.new(:each, :each_pair) #: [Integer, Integer]
+  ShQuery = Struct.new(:select, :filter, :dig, :values_at) #: [Integer, Integer, Integer, Integer]
+  ShDec = Struct.new(:deconstruct, :deconstruct_keys, :a) #: [Integer, Integer, Integer]
+  DhHelp = Data.define(:to_h, :hash, :members) #: [Integer, Integer, Integer]
+  DhStr = Data.define(:inspect, :to_s, :deconstruct) #: [String, String, Integer]
+
+  # An anonymous Struct/Data/Class/Module built inside a method has no constant: its hidden name stays out of `constants` (#109 D2).
+  class AnonBuilder
+    LIMIT = 1
+
+    #: () -> Integer
+    def build_struct = Struct.new(:a).new(1).a
+
+    #: () -> Integer
+    def build_data = Data.define(:a).new(2).a
+
+    #: () -> Integer
+    def self.build_class = Class.new { def n = 3 }.new.n
+
+    #: () -> Integer
+    def self.build_module = Module.new { def self.n = 4 }.n
+
+    module Inner
+      #: () -> Integer
+      def self.build = Struct.new(:b).new(6).b
+    end
+
+    class FromStruct < Struct.new(:q) #: [Integer]
+    end
+  end
+
+  # A `T | untyped` parameter checks a typed argument against T and discards the result: the argument runs once (#109 D3).
+  GRADUAL_LOG = [] #: Array[String]
+
+  #: () -> [Integer, Integer]
+  def self.gradual_pair
+    GRADUAL_LOG << "pair"
+    [1, 2]
+  end
+
+  #: ([Integer?, Integer] | untyped) -> Integer
+  def self.gradual_take(x)
+    x.is_a?(Array) ? x.size : 0
+  end
+
+  class GradualArg < Minitest::Test
+    def test_tuple_argument_to_gradual_param_runs_once
+      assert_equal 2, ObjectTests.gradual_take(ObjectTests.gradual_pair)
+      assert_equal ["pair"], GRADUAL_LOG
+    end
+  end
+
+  class AnonConstants < Minitest::Test
+    def test_anonymous_value_classes_leave_no_constants
+      assert_equal 1, AnonBuilder.new.build_struct
+      assert_equal 2, AnonBuilder.new.build_data
+      assert_equal 3, AnonBuilder.build_class
+      assert_equal 4, AnonBuilder.build_module
+      assert_equal 6, AnonBuilder::Inner.build
+      assert_equal %i[FromStruct Inner LIMIT], AnonBuilder.constants.sort
+      assert_equal [], AnonBuilder::Inner.constants
+      assert_equal false, AnonBuilder.const_defined?(:A)
+      assert_equal false, AnonBuilder.constants.any? { |c| c.to_s.start_with?("RbAnon") }
+      assert_equal false, Object.constants.any? { |c| c.to_s.start_with?("RbAnon") }
+    end
+  end
+
+  class ShHelperNames < Minitest::Test
+    def test_struct_member_wins_over_size_values
+      s = ShSize.new(5, 6, 7)
+      assert_equal 5, s.size
+      assert_equal 6, s.length
+      assert_equal 7, s.values
+      assert_equal [5, 6, 7], s.to_a
+      assert_equal({ size: 5, length: 6, values: 7 }, s.to_h)
+      assert_equal 6, s[1]
+      assert_equal 7, s[:values]
+      pairs = [] #: Array[untyped]
+      s.each_pair { |k, v| pairs << [k, v] }
+      assert_equal [[:size, 5], [:length, 6], [:values, 7]], pairs
+      vals = [] #: Array[untyped]
+      s.each { |v| vals << v }
+      assert_equal [5, 6, 7], vals
+      s.size = 9
+      assert_equal 9, s.size
+      assert_equal [9, 6, 7], s.to_a
+      assert_equal ShSize.new(9, 6, 7), s
+      assert s.eql?(ShSize.new(9, 6, 7))
+    end
+
+    def test_struct_member_wins_over_to_a_to_h
+      s = ShArr.new(1, 2)
+      assert_equal 1, s.to_a
+      assert_equal 2, s.to_h
+      assert_equal 2, s.size
+      assert_equal 2, s.length
+      assert_equal [1, 2], s.values
+      assert_equal [1, 2], s.deconstruct
+      assert_equal 2, s[1]
+      pairs = [] #: Array[untyped]
+      s.each_pair { |k, v| pairs << [k, v] }
+      assert_equal [[:to_a, 1], [:to_h, 2]], pairs
+      vals = [] #: Array[untyped]
+      s.each { |v| vals << v }
+      assert_equal [1, 2], vals
+      assert_equal [1, 2], s.values_at(0, 1)
+      assert_equal 1, s.dig(:to_a)
+      assert_equal({ to_a: 1, to_h: 2 }, s.deconstruct_keys(nil))
+      assert_equal ShArr.new(1, 2), s
+      assert_equal :v, { s => :v }[ShArr.new(1, 2)]
+      case s
+      in [1, 2] then pass
+      end
+      case s
+      in { to_h: 2 } then pass
+      end
+    end
+
+    def test_struct_member_wins_over_inspect_to_s
+      s = ShStr.new("i", "t")
+      assert_equal "i", s.inspect
+      assert_equal "t", s.to_s
+      assert_equal "t", "#{s}"
+      assert_equal %w[i t], s.to_a
+      s.freeze
+      begin
+        s.inspect = "x"
+        flunk
+      rescue FrozenError => e
+        assert_equal "can't modify frozen ObjectTests::ShStr: i", e.message # MRI's message calls the overriding inspect
+      end
+    end
+
+    def test_struct_member_wins_over_members_hash
+      s = ShIdent.new(3, 4)
+      assert_equal 3, s.members
+      assert_equal 4, s.hash
+      assert_equal %i[members hash], ShIdent.members
+      assert_equal [3, 4], s.to_a
+      assert_equal ShIdent.new(3, 4), s
+      assert_equal({ members: 3, hash: 4 }, s.to_h)
+      s[:hash] = 8
+      s[0] = 7
+      assert_equal [7, 8], s.to_a
+    end
+
+    def test_struct_member_wins_over_each
+      s = ShIter.new(1, 2)
+      assert_equal 1, s.each
+      assert_equal 2, s.each_pair
+      assert_equal [1, 2], s.to_a
+      assert_equal({ each: 1, each_pair: 2 }, s.to_h)
+    end
+
+    def test_struct_member_wins_over_select_dig
+      s = ShQuery.new(1, 2, 3, 4)
+      assert_equal [1, 2, 3, 4], [s.select, s.filter, s.dig, s.values_at]
+      assert_equal [1, 2, 3, 4], s.to_a
+      assert_equal 3, s[:dig]
+    end
+
+    def test_struct_member_wins_over_deconstruct
+      s = ShDec.new(1, 2, 3)
+      assert_equal 1, s.deconstruct
+      assert_equal 2, s.deconstruct_keys
+      assert_equal 3, s.a
+      assert_equal [1, 2, 3], s.to_a
+      assert_equal({ deconstruct: 1, deconstruct_keys: 2, a: 3 }, s.to_h)
+    end
+
+    def test_data_member_wins_over_helpers
+      d = DhHelp.new(1, 2, 3)
+      assert_equal 1, d.to_h
+      assert_equal 2, d.hash
+      assert_equal 3, d.members
+      assert_equal %i[to_h hash members], DhHelp.members
+      assert_equal DhHelp.new(1, 2, 3), d
+      assert d.eql?(DhHelp.new(1, 2, 3))
+      assert_equal 5, d.with(to_h: 5).to_h
+      assert_equal 2, d.with(to_h: 5).hash
+    end
+
+    def test_data_member_wins_over_inspect_to_s
+      d = DhStr.new("i", "t", 9)
+      assert_equal "i", d.inspect
+      assert_equal "t", d.to_s
+      assert_equal 9, d.deconstruct
+      assert_equal DhStr.new("i", "t", 9), d
+      assert_equal({ inspect: "i", to_s: "t", deconstruct: 9 }, d.to_h)
+    end
+  end
+end
+
+module ObjectTests
   class ObjSingletonAttr
     singleton_class.send(:attr_accessor, :level)
     self.level = 3

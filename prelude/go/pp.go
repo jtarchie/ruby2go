@@ -275,7 +275,7 @@ func (q *rbPrettyPrint) ppCycle(v any) {
 type rbPPValueClass interface {
 	__PpKind() String
 	__PpValues() *Array[any]
-	Members() *Array[Symbol]
+	__PpMembers() *Array[Symbol]
 }
 
 // rbPPUser is a class with its own pretty_print(q).
@@ -370,7 +370,7 @@ func (q *rbPrettyPrint) ppHash(h *Hash[any, any]) {
 
 // ppValueClass is Struct#pretty_print / Data#pretty_print.
 func (q *rbPrettyPrint) ppValueClass(v any, x rbPPValueClass) {
-	members, values := x.Members().s, x.__PpValues().s
+	members, values := x.__PpMembers().s, x.__PpValues().s
 	q.group(1, "#<"+string(x.__PpKind())+" "+rbClassName(v), ">", func() {
 		q.seplist(len(members), func() { q.text(",") }, func(i int) {
 			q.breakable(" ")

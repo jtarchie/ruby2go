@@ -30,7 +30,7 @@ func anonClassCall(n parser.Node) (*parser.CallNode, bool) {
 // collectNamedAnon declares `Name = Class.new(Super) do ... end` as
 // `class Name < Super`: the constant names the class, as in MRI.
 func (c *Compiler) collectNamedAnon(ctx context.Context, f *File, n *parser.ConstantWriteNode, call *parser.CallNode, isModule bool, scope []*Class) {
-	cls := c.declareAnon(ctx, f, call, isModule, qualify(scope, n.Name), scope)
+	cls := c.declareAnon(ctx, f, call, isModule, qualify(scope, n.Name), scope, false)
 	if !isModule && !f.isPrelude() {
 		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
@@ -53,7 +53,7 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 			// `Struct.new(:a)` anywhere but a constant assignment: a hidden value class per literal, as Class.new's
 			c.anonDepth++
 			err := catchCompileError(func() {
-				c.collectValueClass(ctx, f, &parser.ConstantWriteNode{Name: name, Location: call.Location}, call, kind, scope)
+				c.collectValueClassAs(ctx, f, &parser.ConstantWriteNode{Name: name, Location: call.Location}, call, kind, scope, true)
 				c.anonClasses[call] = c.classes[qualify(scope, name)]
 			})
 			c.anonDepth--
@@ -63,7 +63,6 @@ func (c *Compiler) scanAnon(ctx context.Context, f *File, n parser.Node, scope [
 				}
 				c.anonErrors[call] = *err
 			}
-			c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
 			return
 		}
 		if call, isModule := anonClassCall(n); call != nil {
@@ -85,7 +84,7 @@ func (c *Compiler) scanAnonClass(ctx context.Context, f *File, call *parser.Call
 	// an anonymous class's body fails where the literal stands (a test's
 	// skip, decision 127), not for the whole program: the error waits there
 	c.anonDepth++
-	err := catchCompileError(func() { c.declareAnon(ctx, f, call, isModule, name, scope) })
+	err := catchCompileError(func() { c.declareAnon(ctx, f, call, isModule, name, scope, true) })
 	c.anonDepth--
 	if err != nil {
 		if c.anonErrors == nil {
@@ -105,8 +104,6 @@ func (c *Compiler) scanAnonClass(ctx context.Context, f *File, call *parser.Call
 		}
 		c.unnamedAnon[call] = true
 	}
-	// not a name user code can reach; by name, since the block's own constants follow it in the enclosing scope's table
-	c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
 }
 
 // anonName names a literal's hidden class by its file and offset, not by a counter: decision 146's rounds carry a
@@ -123,7 +120,7 @@ func (c *Compiler) anonName(f *File, call *parser.CallNode) string {
 	return name
 }
 
-func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNode, isModule bool, name string, scope []*Class) *Class {
+func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNode, isModule bool, name string, scope []*Class, hidden bool) *Class {
 	line := f.line(call.Location.StartOffset)
 	args := callArgs(call)
 	if isModule && len(args) > 0 || len(args) > 1 {
@@ -132,7 +129,11 @@ func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNo
 	if c.classes[name] != nil {
 		c.errorf(f, call, "%s is already defined", name)
 	}
-	cls := c.declareClass(f, name, line, isModule)
+	declare := c.declareClass
+	if hidden {
+		declare = c.declareHidden
+	}
+	cls := declare(f, name, line, isModule)
 	c.anonClasses[call] = cls
 	if len(args) == 1 {
 		sup := args[0]
