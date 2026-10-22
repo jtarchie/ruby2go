@@ -24,6 +24,24 @@ export function save(cfg, file = CONFIG) {
   chmodSync(tmp, 0o600);
   renameSync(tmp, file);
 }
+// Refresh tokens rotate, but a server that does not rotate omits the field: keep the stored one rather than writing undefined.
+export const nextRefreshToken = (cfg, tok) => tok.refresh_token ?? cfg.refresh_token;
+// The platform's own files, which a deploy never deletes.
+const platform = path => path.startsWith('.') || path === 'app.css' || path.startsWith('functions/');
+// A deploy is the whole site, so it must at least be a site: an empty or index-less set would otherwise delete everything. Returns the remote files to delete; throws before any write or delete.
+export function planDeploy(names, remoteFiles) {
+  if (!names.length) throw new Error('refusing to deploy: no files to upload (the deploy would delete the whole site)');
+  if (!names.includes('index.html')) throw new Error('refusing to deploy: no index.html in the deploy set');
+  return remoteFiles.filter(path => !names.includes(path) && !platform(path));
+}
+// The files of the deploy dir, sorted; fails clearly (and before any login or network) when it is missing, empty or has no index.html.
+export function deployNames(dir) {
+  let ents;
+  try { ents = readdirSync(dir, { withFileTypes: true }); } catch (e) { throw new Error(`refusing to deploy: cannot read ${dir}: ${e.code ?? e.message}`); }
+  const names = ents.filter(e => e.isFile()).map(e => e.name).sort();
+  planDeploy(names, []);
+  return names;
+}
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function form(path, fields) {
@@ -68,7 +86,7 @@ async function token() {
     tok = await form('/oauth/token', { grant_type: 'refresh_token', refresh_token: cfg.refresh_token, client_id: cfg.client_id }).catch(() => null);
   }
   tok ??= await login(cfg);
-  save({ ...cfg, refresh_token: tok.refresh_token }); // refresh tokens rotate: the old one is spent
+  save({ ...cfg, refresh_token: nextRefreshToken(cfg, tok) });
   return tok.access_token;
 }
 
@@ -90,21 +108,20 @@ async function call(tok, name, args) {
 }
 
 async function deploy(slug, dir) {
+  const names = deployNames(dir); // before sign-in: a bad dir must not reach the network
   const tok = await token();
   const { sites } = await call(tok, 'list_sites', {});
   if (!sites.some(s => s.slug === slug)) {
     const made = await call(tok, 'create_site', { slug, title: 'rb2go playground', description: 'Write typed Ruby and see the Go that rb2go compiles it to, in your browser.' });
     console.log(`created ${made.url ?? slug}`);
   }
-  const names = readdirSync(dir).sort();
   for (const name of names) {
     const content = readFileSync(join(dir, name), 'utf8');
     const res = await call(tok, 'write_file', { slug, path: name, content, expect_sha256: createHash('sha256').update(content).digest('hex') });
     console.log(`wrote ${name} (${res.bytes ?? content.length} bytes)`);
   }
   // a deploy is the whole site: drop what an earlier one left, except the platform's own files
-  for (const path of (await call(tok, 'list_files', { slug })).files) {
-    if (names.includes(path) || path.startsWith('.') || path === 'app.css' || path.startsWith('functions/')) continue;
+  for (const path of planDeploy(names, (await call(tok, 'list_files', { slug })).files)) {
     await call(tok, 'delete_file', { slug, path });
     console.log(`deleted ${path}`);
   }

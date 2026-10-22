@@ -1,6 +1,8 @@
 #!/bin/sh
 # Static playground (decision 102): the wasm and examples go to the public R2 bucket under a content-hash prefix, the page that names it to a Top Banana site.
 set -eu
+cd "$(dirname "$0")/.." # paths below are repo-relative
+node scripts/topbanana.check.mjs >/dev/null # the deploy guards (empty set, token) must hold before anything is uploaded
 slug=${TOPBANANA_SLUG:-ruby2go}
 out=dist/web
 bucket=ruby2go
