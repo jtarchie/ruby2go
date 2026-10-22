@@ -1,0 +1,356 @@
+package compiler
+
+import (
+	"maps"
+	"slices"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+)
+
+// refineIvars types an ivar first assigned an unannotated `[]`/`{}` by
+// what the class's methods put in it (decision 15), as analyze does for
+// locals. A typing is dropped when a dry-run emission of the classes that
+// see the ivar fails to compile or adds a conversion; the rest are kept,
+// greedily in name order.
+func (c *Compiler) refineIvars() {
+	var cands []*Ivar
+	typed, orig := map[*Ivar]Type{}, map[*Ivar]Type{}
+	for range 8 { // one typed ivar can type the next: re-discover with it typed
+		n := len(cands)
+		for _, cls := range c.classList {
+			for _, name := range slices.Sorted(maps.Keys(cls.Ivars)) {
+				iv := cls.Ivars[name]
+				if t := refineContainer(iv.Type, iv.open, iv.elems); t != nil && typed[iv] == nil {
+					cands = append(cands, iv)
+					typed[iv], orig[iv] = t, iv.Type
+					iv.Type = t
+				}
+			}
+		}
+		if len(cands) == n {
+			break
+		}
+		c.discoverIvars()
+	}
+	if len(cands) == 0 {
+		return
+	}
+	for _, iv := range cands {
+		iv.Type = orig[iv]
+	}
+	base, _ := c.dryRunIvarUsers(cands)
+	try := func(set map[*Ivar]bool) bool {
+		for _, iv := range cands {
+			iv.Type = orig[iv]
+			if set[iv] {
+				iv.Type = typed[iv]
+			}
+		}
+		convs, ok := c.dryRunIvarUsers(cands)
+		for k := range convs {
+			ok = ok && base[k]
+		}
+		return ok
+	}
+	salvage(cands, try) // a failed last try leaves the original types
+}
+
+// salvage finds a set of typings that try accepts: all of them, else all
+// but one (the usual lone culprit; an untyped baseline may not compile,
+// so adding one at a time can fail throughout), else those that pass when
+// added one at a time. The last try's state is left applied; the result
+// says whether it passed.
+func salvage[K comparable](cands []K, try func(map[K]bool) bool) bool {
+	set := map[K]bool{}
+	for _, k := range cands {
+		set[k] = true
+	}
+	if try(set) {
+		return true
+	}
+	for _, k := range cands {
+		delete(set, k)
+		if try(set) {
+			return true
+		}
+		set[k] = true
+	}
+	clear(set)
+	for _, k := range cands {
+		if set[k] = true; !try(set) {
+			delete(set, k)
+		}
+	}
+	return try(set)
+}
+
+// dryRunIvarUsers emits, and discards, every method of the classes that
+// can see one of ivs, returning the conversion sites and whether it compiled.
+func (c *Compiler) dryRunIvarUsers(ivs []*Ivar) (map[string]bool, bool) {
+	saved, nw := c.out.String(), len(c.Warnings)
+	for _, m := range c.inferredMethods() {
+		m.Ret = nil // provisional: may depend on the ivar types being tried
+	}
+	c.convs = map[string]bool{}
+	err := catchCompileError(func() {
+		for _, cls := range c.classList {
+			if !slices.ContainsFunc(ivs, func(iv *Ivar) bool { return cls.isSubclassOf(iv.Owner) }) {
+				continue
+			}
+			for _, m := range cls.MethodList {
+				if m.Kind == kindDef {
+					c.inferRet(m)
+					c.emitMethod(m)
+				}
+			}
+		}
+	})
+	convs := c.convs
+	c.convs = nil
+	c.out.Reset()
+	c.out.WriteString(saved)
+	c.dropWarnings(nw)
+	return convs, err == nil
+}
+
+// inferReturns re-infers every unannotated return type (decision 36): the
+// ones inferred during discoverIvars saw ivars not yet typed.
+func (c *Compiler) inferReturns() {
+	for _, m := range c.inferredMethods() {
+		m.Ret = nil
+	}
+	for _, m := range c.inferredMethods() {
+		c.keepGoing(func() { c.inferRet(m) })
+		if m.Ret == nil { // RB2GO_KEEP_GOING after a body failed: untyped, so the rest still types
+			m.Ret = TAny{}
+		}
+	}
+}
+
+func (c *Compiler) inferredMethods() []*Method {
+	var out []*Method
+	for _, m := range c.topDefList {
+		if m.inferRet {
+			out = append(out, m)
+		}
+	}
+	for _, cls := range c.classList {
+		if cls.isTemplate() {
+			continue
+		}
+		for _, m := range cls.MethodList {
+			if m.inferRet {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// discoverIvars dry-runs struct class method bodies to learn ivar types
+// from assignments.
+func (c *Compiler) discoverIvars() {
+	c.declareGemModuleIvars()
+	c.declareComputedIvars()
+	for range 2 {
+		for _, cls := range c.classList {
+			for _, iv := range cls.Ivars {
+				iv.elems = [2][]Type{} // the last round's, when every ivar has a type
+			}
+		}
+		for _, cls := range c.classList {
+			module := cls.IsModule && len(cls.TypeParams) == 0 && !cls.universal // a module's ivars are discovered from its own methods too (decision 317)
+			if !cls.isStruct() && !cls.hashBase && !module || cls.universal || cls.isTemplate() {
+				continue
+			}
+			ms := append([]*Method(nil), cls.MethodList...)
+			for i, m := range ms {
+				if m.Name == "initialize" && i > 0 {
+					ms[0], ms[i] = ms[i], ms[0]
+				}
+			}
+			for _, m := range ms {
+				if m.Kind == kindDef && mentionsIvar(m) {
+					_ = catchCompileError(func() { c.discoverMethod(cls, m) }) // a dry run: emitMethod reports errors
+				}
+			}
+		}
+	}
+	for _, g := range c.gemNilIvars { // only ever nil in what is compiled (a gem's pruned writes, decision 169; a user's nil-only ivar, 183)
+		if c.findIvar(g.cls, g.name) == nil {
+			c.warnAt(g.srcPos, "instance variable %s is only ever nil, so it is untyped (`# @rbs %s: T` for static calls; decision 183)", g.name, g.name)
+			c.declareIvar(g.cls, g.name, TAny{}, g.File, g.Line)
+		}
+	}
+	c.declareGemClassIvars()
+}
+
+// declareGemClassIvars declares, untyped, each instance variable a gem class's own methods name that discovery left
+// without a type (decision 220): before any struct is laid out, as declareGemModuleIvars does for a gem module's.
+func (c *Compiler) declareGemClassIvars() {
+	if !c.pruneGems {
+		return
+	}
+	for _, cls := range c.classList {
+		if cls.IsModule || cls.universal || !cls.isStruct() {
+			continue
+		}
+		for _, m := range cls.MethodList {
+			if m.Node == nil || m.File == nil || !c.gemFile(m.File) {
+				continue
+			}
+			eachIvarName(m.Node.Body, func(name string, n parser.Node) {
+				if c.findIvar(cls, name) == nil {
+					c.declareIvar(cls, name, TAny{}, m.File, m.File.line(n.GetLocation().StartOffset))
+				}
+			})
+		}
+	}
+}
+
+// ivarNodeName is the ivar n reads or writes in any form (a multi-assign target too), and whether it writes; "" for other nodes.
+func ivarNodeName(n parser.Node) (name string, write bool) {
+	switch x := n.(type) {
+	case *parser.InstanceVariableReadNode:
+		return x.Name, false
+	case *parser.InstanceVariableWriteNode:
+		return x.Name, true
+	case *parser.InstanceVariableTargetNode:
+		return x.Name, true
+	case *parser.InstanceVariableOrWriteNode:
+		return x.Name, true
+	case *parser.InstanceVariableAndWriteNode:
+		return x.Name, true
+	case *parser.InstanceVariableOperatorWriteNode:
+		return x.Name, true
+	}
+	return "", false
+}
+
+// eachIvarName calls fn for each instance variable n reads or writes, outside nested defs and class bodies.
+func eachIvarName(n parser.Node, fn func(string, parser.Node)) {
+	switch n.(type) {
+	case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+		return
+	}
+	if name, _ := ivarNodeName(n); name != "" {
+		fn(name, n)
+	}
+	for _, ch := range n.CompactChildNodes() {
+		eachIvarName(ch, fn)
+	}
+}
+
+// gemNilIvar is a gem class's ivar discovery saw assigned only nil (decision 169).
+type gemNilIvar struct {
+	cls  *Class
+	name string
+	srcPos
+}
+
+// includerClassWrites reports whether every class that includes mod has a superclass chain assigning name in a def:
+// only then is the class's field the one storage (elftools' Dynamic, included by DynamicSegment < Segment).
+func (c *Compiler) includerClassWrites(mod *Class, name string) bool {
+	any := false
+	for _, inc := range mod.includers {
+		if inc.IsModule {
+			continue
+		}
+		writes := false
+		for k := inc; k != nil && !writes; k = k.Super {
+			for _, m := range k.MethodList {
+				if m.Node == nil || m.Owner != k {
+					continue
+				}
+				eachIvarName(m.Node.Body, func(n string, x parser.Node) {
+					if _, w := ivarNodeName(x); w && n == name {
+						writes = true
+					}
+				})
+			}
+		}
+		if !writes {
+			return false
+		}
+		any = true
+	}
+	return any
+}
+
+// declareGemModuleIvars declares, untyped, each instance variable a gem module's methods use: its state struct and
+// the includers' fields are laid out before any body is generated (decision 147; lenient, decision 172).
+func (c *Compiler) declareGemModuleIvars() {
+	if !c.pruneGems {
+		return
+	}
+	for _, mod := range c.classList {
+		if !mod.IsModule || mod.universal || len(mod.TypeParams) > 0 || mod.File == nil || !c.gemFile(mod.File) {
+			continue
+		}
+		valueIncluded := slices.ContainsFunc(c.classList, func(k *Class) bool {
+			return !k.IsModule && (!k.isStruct() || k.universal) && slices.Contains(k.allAncestors(), mod)
+		})
+		for _, m := range mod.MethodList {
+			if m.Node == nil || !c.gemFile(m.File) {
+				continue
+			}
+			eachIvarName(m.Node.Body, func(name string, n parser.Node) {
+				switch {
+				case c.findIvar(mod, name) != nil:
+				case c.includerClassWrites(mod, name): // the includer's class keeps it (elftools' Dynamic reading Segment's @offset_from_vma): read by name (decision 324)
+				case valueIncluded: // Pathname has no struct to hold it: memoizing recomputes per call (decision 172)
+					if mod.scratchIvars == nil {
+						mod.scratchIvars = map[string]*Ivar{}
+					}
+					if mod.scratchIvars[name] == nil {
+						mod.scratchIvars[name] = &Ivar{Name: name, Type: TAny{}, Owner: mod, scratch: true}
+					}
+				default:
+					c.declareIvar(mod, name, TAny{}, m.File, m.File.line(n.GetLocation().StartOffset))
+				}
+			})
+		}
+	}
+}
+
+// mentionsIvar reports whether m's body names an instance variable or sets one by name: only those bodies tell the
+// discovery dry run anything, and brew's two rounds over every body were 29% of its generation CPU.
+func mentionsIvar(m *Method) bool {
+	if m.ivarUse != nil {
+		return *m.ivarUse
+	}
+	found := false
+	var walk func(parser.Node)
+	walk = func(n parser.Node) {
+		if found || n == nil {
+			return
+		}
+		if name, _ := ivarNodeName(n); name != "" {
+			found = true
+			return
+		}
+		if call, ok := n.(*parser.CallNode); ok && (call.Name == "instance_variable_set" || call.Name == "instance_variable_get") {
+			found = true
+			return
+		}
+		for _, ch := range n.CompactChildNodes() {
+			walk(ch)
+		}
+	}
+	if m.Node != nil {
+		walk(m.Node.Body)
+	}
+	m.ivarUse = &found
+	return found
+}
+
+func (c *Compiler) discoverMethod(cls *Class, m *Method) {
+	f := c.newFctx(m.File, cls, m)
+	f.discover = true
+	f.retVar = "ret_"
+	t := tail{kind: tailReturn, typ: m.Ret}
+	if m.Iterator {
+		t = tail{}
+	}
+	f.genBody(m.Node.Body, c.paramLocals(m), t, nil)
+}

@@ -478,7 +478,6 @@ func (r *reach) writeNames(n parser.Node) {
 	}
 }
 
-// call reaches a call's method; true when its arguments name methods or modules without reaching them.
 // constGet: a computed const_get (rackup's Handler.[]) names classes, not methods, so it makes classes live rather than stop pruning.
 func (r *reach) constGet(n *parser.CallNode) {
 	prefix := ""
@@ -492,6 +491,7 @@ func (r *reach) constGet(n *parser.CallNode) {
 	}
 }
 
+// call reaches a call's method; true when its arguments name methods or modules without reaching them.
 func (r *reach) call(n *parser.CallNode) bool {
 	if lv, ok := n.Receiver.(*parser.LocalVariableReadNode); ok && r.params[lv.Name] != nil {
 		r.typed[n.Name] = append(r.typed[n.Name], r.params[lv.Name])
