@@ -178,3 +178,86 @@ func (f *fctx) numConvert(n parser.Node, x expr, target *Class) expr {
 	}
 	return f.genMethodCall(n, x, name, nil, nil)
 }
+
+// numericMix compiles a call on an Integer or Float whose numeric
+// parameter gets the other class, as MRI's coerce does: the classes' own
+// operators widen the Integer side to Float (still typed and unboxed), and
+// Comparable's methods run on rbNum, since clamp hands back the winning
+// argument itself. Arguments are generated once and passed on as exprNodes.
+// Any other call is plain callEntry.
+func (f *fctx) numericMix(n parser.Node, recv expr, e *entry, args []parser.Node, block parser.Node) expr {
+	x, args, ok := f.numericTower(n, recv, e, args, block)
+	if ok {
+		return x
+	}
+	m := e.M
+	if !isNumeric(recv.typ) || block != nil || len(args) == 0 || len(args) != len(m.Params) {
+		return f.callEntry(n, e, recv, args, block)
+	}
+	self := map[string]Type{"Self": recv.typ}
+	for i, p := range m.Params {
+		if _, splat := args[i].(*parser.SplatNode); splat || p.Rest || !isNumeric(subst(p.Type, self)) {
+			return f.callEntry(n, e, recv, args, block)
+		}
+	}
+	xs := make([]expr, len(args))
+	nodes := make([]parser.Node, len(args))
+	mixed := false
+	for i, a := range args {
+		pt := subst(m.Params[i].Type, self)
+		xs[i] = f.genExpr(a, pt)
+		mixed = mixed || isNumeric(xs[i].typ) && !typeEq(xs[i].typ, pt)
+		nodes[i] = &exprNode{Node: a, e: xs[i]}
+	}
+	if !mixed {
+		return f.callEntry(n, e, recv, nodes, nil)
+	}
+	if m.Owner == f.c.classes["Comparable"] {
+		codes := make([]string, len(xs))
+		for i, x := range xs {
+			codes[i] = f.coerce(args[i], x, TAny{})
+		}
+		return f.rbNumCall(n, m, f.coerce(n, recv, TAny{}), codes)
+	}
+	fe := f.c.classes["Float"].lookup(m.Name)
+	if fe == nil || len(fe.M.Params) != len(args) {
+		f.errorf(n, "%s#%s with an Integer and a Float is not supported", classOf(recv.typ).RubyName, m.Name)
+	}
+	widen := func(x expr) expr {
+		if isClass(x.typ, "Integer") {
+			return expr{code: "Float(" + x.code + ")", typ: f.cls("Float")}
+		}
+		return x
+	}
+	for i, x := range xs {
+		nodes[i] = &exprNode{Node: args[i], e: widen(x)}
+	}
+	return f.callEntry(n, fe, widen(recv), nodes, nil)
+}
+
+// rbNumCall calls Comparable method m with Self = rbNum, one Go type for
+// Integer and Float values (recv and args are untyped Go code).
+func (f *fctx) rbNumCall(n parser.Node, m *Method, recv string, args []string) expr {
+	boxed := make([]string, 0, 1+len(args))
+	for _, a := range append([]string{recv}, args...) {
+		boxed = append(boxed, "rbNum{"+a+"}")
+	}
+	code := freeFuncName(m) + "[rbNum](" + strings.Join(boxed, ", ") + ")"
+	if v, ok := m.Ret.(TVar); ok && v.Name == "Self" {
+		return expr{code: code + ".v", typ: TAny{}}
+	}
+	if m.generic() || mentionsVar(m.Ret) {
+		f.errorf(n, "%s with an Integer and a Float is not supported", m.Name)
+	}
+	return expr{code: code, typ: m.Ret}
+}
+
+// isFloatInfinity is the constant Float::INFINITY.
+func isFloatInfinity(n parser.Node) bool {
+	cp, ok := n.(*parser.ConstantPathNode)
+	if !ok || cp.Name == nil || *cp.Name != "INFINITY" {
+		return false
+	}
+	p, ok := cp.Parent.(*parser.ConstantReadNode)
+	return ok && p.Name == "Float"
+}

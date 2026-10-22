@@ -59,8 +59,7 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 	}
 }
 
-// callEntry calls e; a call to a `bot` method is noreturn, and Go must
-// see its panic to know the statement list ends there.
+// callEntry calls e; in gem code, a call the static signature cannot take falls back to a run-time dispatch (genDynCall).
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	if f.lenient() && block == nil && len(args) > 0 && f.unionArm == 0 && !slices.ContainsFunc(args, f.readsUnionLocal) { // a union argument: unionArgCall first
 		// gem code: arguments the static signature cannot take (a splat, a computed keyword) are matched per call at run time, as MRI does
@@ -85,6 +84,8 @@ func isSplatArg(a parser.Node) bool {
 	return ok
 }
 
+// callEntry0 calls e; a call to a `bot` method is noreturn, and Go must
+// see its panic to know the statement list ends there.
 func (f *fctx) callEntry0(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	if r, ok := f.gemCallShortcut(n, e, recv, args, block); ok {
 		return r
@@ -200,7 +201,6 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 		return f.callEntry(n, o, recv, args, block)
 	}
 	env := f.callEnv(n, e, recv)
-	// bind vars visible in the current generic context so they count as bound
 	f.checkVisibility(n, m, recv)
 	var armT Type // the `.rbs` overload arm this call takes (decision 12), picked before the merged parameters check the arguments
 	if len(m.arms) > 0 {
@@ -781,7 +781,7 @@ func (f *fctx) nilKeyLookup(n parser.Node, e *entry, recv expr, args []parser.No
 }
 
 // gemCallForm is a gem's call a typed call cannot make as written (decision 330): a nil key into a nil-free Hash, or an
-// untyped first argument to a method with by-class twins (kramdown's `result.sub!(indent_re, '')`, a Regexp or a
+// untyped first argument to a method with by-class twins (kramdown's `result.sub!(indent_re, ”)`, a Regexp or a
 // String at run time), which the dispatcher picks.
 func (f *fctx) gemCallForm(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) (expr, bool) {
 	if r, ok := f.nilKeyLookup(n, e, recv, args, block); ok {

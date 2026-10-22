@@ -1,0 +1,125 @@
+package compiler
+
+import (
+	"fmt"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+)
+
+// subBlockLastMatch is `s.sub(re) { $1 }` / gsub in a frame that reads $~ or $1: MRI sets them to each match while the
+// block runs, so the block runner writes the frame's last match first (decision 241).
+func (f *fctx) subBlockLastMatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	b, ok := block.(*parser.BlockNode)
+	if f.lastMatch == "" || !ok || name != "sub" && name != "gsub" || len(args) != 1 || !isClass(recv.typ, "String") {
+		return expr{}, false
+	}
+	e := f.c.classes["String"].lookup("__" + name + "_block")
+	if e == nil || e.M.Block == nil {
+		return expr{}, false
+	}
+	r := f.newTmp()
+	f.emit("%s := %s", r, recv.code)
+	pat := f.newTmp()
+	f.emit("%s := rbPattern(%s)", pat, f.coerce(args[0], f.genExpr(args[0], nil), TAny{}))
+	blk := f.genClosure(n, b, e.M.Block, map[string]Type{})
+	count := "-1"
+	if name == "sub" {
+		count = "1"
+	}
+	code := fmt.Sprintf("String(rbReSub(%s, string(%s), %s, rbReBlockLM(&%s, %s, %s)))", pat, r, count, f.lastMatch, pat, blk)
+	return expr{code: code, typ: f.cls("String")}, true
+}
+
+// grepBlockLastMatch is `xs.grep(re) { $1 }` / grep_v on an Array in a frame that reads $~: each test sets the
+// frame's last match before the block runs, as MRI's (decision 171's frame variable, handed to the runner).
+func (f *fctx) grepBlockLastMatch(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	b, ok := block.(*parser.BlockNode)
+	if f.lastMatch == "" || !ok || name != "grep" && name != "grep_v" || len(args) != 1 {
+		return expr{}, false
+	}
+	at, ok := recv.typ.(TClass)
+	if !ok || at.C.RubyName != "Array" || len(at.Args) != 1 {
+		return expr{}, false
+	}
+	if !isClass(f.probeType(args[0], nil), "Regexp") {
+		return expr{}, false
+	}
+	e := f.c.classes["Array"].lookup("__" + name + "_block")
+	if e == nil || e.M.Block == nil {
+		return expr{}, false
+	}
+	r := f.newTmp()
+	f.emit("%s := %s", r, recv.code)
+	pat := f.newTmp()
+	f.emit("%s := %s", pat, f.genExpr(args[0], nil).code)
+	env := map[string]Type{"E": at.Args[0]}
+	blk := f.genClosure(n, b, e.M.Block, env)
+	code := fmt.Sprintf("rbGrepLM(&%s, %s, %s.s, %v, %s)", f.lastMatch, pat, r, name == "grep_v", blk)
+	return expr{code: code, typ: TClass{C: f.c.classes["Array"], Args: []Type{subst(e.M.Block.Ret, env)}}}, true
+}
+
+// lastMatchVar is the Go variable holding the frame's last match ($~, decision 171).
+func (f *fctx) lastMatchVar(n parser.Node) string {
+	if f.lastMatch == "" {
+		f.errorf(n, "$~ and $1..$9 are read only in the method whose =~ sets them (decision 171)")
+	}
+	return f.lastMatch
+}
+
+// genMatchSet is `str =~ re` / `re =~ str` in a frame that reads $~ or $1..$9: it records the match (decision 171).
+func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
+	args := callArgs(n)
+	if f.lastMatch == "" || f.inMatchSet || n.Receiver == nil || len(args) != 1 || n.Block != nil {
+		return expr{}, false
+	}
+	var recvT, argT Type
+	f.probe(func() { recvT, argT = f.genExpr(n.Receiver, nil).typ, f.genExpr(args[0], nil).typ })
+	re, subj := args[0], n.Receiver
+	if isClass(recvT, "Regexp") {
+		re, subj = n.Receiver, args[0]
+	}
+	switch {
+	case n.Name == "=~":
+	case n.Name == "index" && isClass(recvT, "String") && isClass(argT, "Regexp"): // String#index(re) sets $~ too
+	case n.Name == "match" && (isClass(recvT, "Regexp") || isClass(argT, "Regexp")):
+	default:
+		return expr{}, false
+	}
+	f.inMatchSet = true // the match call below is the plain one
+	m := f.genExpr(&parser.CallNode{Location: n.Location, Receiver: re, Name: "match", MessageLoc: n.MessageLoc,
+		Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{subj}}}, nil)
+	f.inMatchSet = false
+	if n.Name == "match" {
+		return expr{code: fmt.Sprintf("rbMatchKeep(&%s, %s)", f.lastMatch, m.code), typ: m.typ}, true
+	}
+	return expr{code: fmt.Sprintf("rbMatchSet(&%s, %s)", f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
+}
+
+// readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).
+func readsLastMatch(body parser.Node) bool {
+	return anyNode(body, func(n parser.Node) bool {
+		switch n := n.(type) {
+		case *parser.NumberedReferenceReadNode, *parser.BackReferenceReadNode:
+			return true
+		case *parser.GlobalVariableReadNode:
+			return n.Name == "$~" || n.Name == "$LAST_MATCH_INFO"
+		case *parser.CallNode: // Regexp.last_match reads the frame's $~ too
+			return isRegexpConst(n.Receiver) && n.Name == "last_match"
+		}
+		return false
+	})
+}
+
+// genMatchRef is $1..$9 or $&: a group of the frame's last match (decision 171).
+func (f *fctx) genMatchRef(n parser.Node) expr {
+	group := 0
+	switch n := n.(type) {
+	case *parser.NumberedReferenceReadNode:
+		group = int(n.Number)
+	case *parser.BackReferenceReadNode:
+		if n.Name != "$&" {
+			f.errorf(n, "%s is unsupported; $~, $& and $1..$9 are (decision 171)", n.Name)
+		}
+	}
+	return expr{code: fmt.Sprintf("rbLMGroup(%s, %d)", f.lastMatchVar(n), group), typ: TOpt{Elem: f.cls("String")}}
+}

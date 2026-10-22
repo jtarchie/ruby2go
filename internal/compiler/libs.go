@@ -99,7 +99,6 @@ var mriLibs = map[string]bool{
 	"zlib": true,
 }
 
-// gemRequires lists required names (through -I files too) only an installed gem can answer (decision 173); it only parses.
 // vendoredLibs maps a require name to a vendored gem's lib file in the prelude FS (vendored/<gem>/, a mirror of the gems/<gem> submodule): pure Ruby that runs on MRI as
 // a gem and is compiled here as user code (strict typing, extern synthesis), never looked up as an installed gem (decision 328).
 var vendoredLibs = map[string]string{
@@ -112,6 +111,7 @@ func builtinLib(name string) bool {
 	return preludeLibs[name] != "" || vendoredLibs[name] != ""
 }
 
+// gemRequires lists required names (through -I files too) only an installed gem can answer (decision 173); it only parses.
 func gemRequires(ctx context.Context, sources []Source, loadPath []string) (names []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {

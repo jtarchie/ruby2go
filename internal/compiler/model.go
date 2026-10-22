@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -406,77 +405,6 @@ func (c *Class) structChain() []*Class {
 	return out
 }
 
-// collect declares the classes, modules, methods and constants of f's top-level statements (the first pass over a file).
-func (c *Compiler) collect(ctx context.Context, f *File) {
-	if c.gemFile(f) {
-		lenientBlockParams(f.Root)
-	}
-	queue := f.Root.Statements.Body
-	locals := map[string]bool{} // the top level's, so far
-	for len(queue) > 0 {
-		n := queue[0]
-		queue = queue[1:]
-		if w, ok := n.(*parser.LocalVariableWriteNode); ok {
-			locals[w.Name] = true
-		}
-		c.keepGoing(func() {
-			switch n := n.(type) {
-			case *parser.IfNode, *parser.UnlessNode: // a condition known at compile time keeps one branch (decision 167)
-				if branch, ok := c.takenBranch(f, n, nil); ok {
-					queue = append(slices.Clip(branch), queue...)
-					return
-				}
-				c.scanAnon(ctx, f, n, nil)
-				c.addMainStmt(f, n)
-			case *parser.ClassNode:
-				c.collectClass(ctx, f, n, nil)
-			case *parser.ModuleNode:
-				c.collectModule(ctx, f, n, nil)
-			case *parser.DefNode:
-				c.collectTopDef(f, n)
-				c.scanAnon(ctx, f, n.Body, nil)
-			case *parser.ConstantWriteNode:
-				if call, kind := valueClass(n.Value); call != nil {
-					c.collectValueClass(ctx, f, n, call, kind, nil)
-					return
-				}
-				if call, isModule := anonClassCall(n.Value); call != nil && !f.isPrelude() {
-					c.collectNamedAnon(ctx, f, n, call, isModule, nil)
-					return
-				}
-				c.scanAnon(ctx, f, n.Value, nil)
-				c.addConst(f, n, n.Name, nil)
-				if readsLocal(n.Value, locals) { // `dir = __dir__ || raise; LIB = Pathname(dir)`: runs where it stands, with them
-					c.consts[n.Name].inMain = true
-					c.addMainStmt(f, n)
-				}
-			case *parser.ConstantPathWriteNode: // `Rack::X = v` at the top level
-				c.scanAnon(ctx, f, n.Value, nil)
-				c.addConstAt(f, n, c.declName(f, n.Target, nil), n.Value, nil)
-			case *parser.PreExecutionNode: // BEGIN runs before the rest of its file, in the top-level scope
-				if c.beginStmts == nil {
-					c.beginStmts = map[*File][]parser.Node{}
-				}
-				if n.Statements != nil {
-					c.beginStmts[f] = append(c.beginStmts[f], n.Statements.Body...)
-				}
-			case *parser.XStringNode:
-				if !f.isPrelude() {
-					c.errorf(f, n, "top-level %%x{} is only allowed in the prelude")
-				}
-				c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{f, f.line(n.Location.StartOffset)}, code: n.Unescaped.Value})
-			case *parser.CallNode:
-				c.collectTopCall(ctx, f, n)
-			case *parser.BeginNode:
-				c.addMainStmt(f, c.beginRequires(ctx, f, n))
-			default:
-				c.scanAnon(ctx, f, n, nil)
-				c.addMainStmt(f, n)
-			}
-		})
-	}
-}
-
 func callArgs(n *parser.CallNode) []parser.Node {
 	if n.Arguments == nil {
 		return nil
@@ -497,76 +425,6 @@ type singletonMisc struct {
 	private bool
 	scope   []*Class
 	file    *File
-}
-
-func (c *Compiler) link(ctx context.Context) {
-	for _, cls := range c.classList {
-		if sup := c.superclassOf(cls); sup != nil {
-			cls.Super = sup
-			sup.Subclasses = append(sup.Subclasses, cls)
-		}
-		for i := range cls.Includes {
-			c.linkInclude(cls, &cls.Includes[i])
-		}
-	}
-	c.checkCycles()
-	c.checkInstanceBounds()
-	c.checkNumeric()
-	c.buildMetas()
-	c.declareLatentIvars()
-	c.applyAliasNews(ctx)
-	c.checkSpecUses() // before signatures: a bad let name would otherwise surface as an override mismatch
-	for _, cls := range c.classList {
-		if cls.GoType != "" && cls.Super != nil && cls.Super.isStruct() && !cls.Super.universal {
-			c.errorAt(cls.srcPos, "@go_type class %s cannot inherit from struct class %s", cls.Name, cls.Super.Name)
-		}
-		if cls.isStruct() && !cls.universal && len(cls.TypeParams) > 0 && !cls.isTemplate() && !cls.hashBase {
-			c.errorAt(cls.srcPos, "generic struct classes are not supported")
-		}
-	}
-	c.addSigIvars()
-	c.inheritRedeclaredReaders()
-	c.declareIvarAnnotations()
-	c.checkIvarModules()
-	c.expandDelegations(ctx)
-	c.applyPrepends()
-	c.copyIncluderTemplates()
-	c.linkAliases(ctx)
-	c.separateFreeFuncs()
-	c.methodClassVars()
-	c.includeFromEach() // before any override inherits from the module, which needs its type args
-	// method signatures
-	for _, cls := range c.classList {
-		for _, m := range cls.MethodList {
-			c.resolveMethod(m)
-			nameCmpNil(m)
-		}
-	}
-	for _, m := range c.topDefList {
-		c.resolveMethod(m)
-	}
-	c.markCalleeDefaults()
-	c.markSuperBridges()
-	for _, cls := range c.classList {
-		for _, m := range cls.MethodList {
-			if c.overridesIterator(m) || c.blockEachOfEnumerable(cls, m) {
-				m.seqAdapter = true
-				m.GoName += "_blk"
-			}
-		}
-	}
-	c.publicGemOverrides()
-	for _, cls := range c.classList {
-		c.linkOverrides(cls)
-	}
-	for _, cls := range c.classList {
-		ms := make([]*Method, 0, len(cls.MethodList))
-		for _, e := range cls.methodSet() {
-			ms = append(ms, e.M)
-		}
-		c.checkGoNames(cls.RubyName, ms)
-	}
-	c.checkGoNames("the top level", c.topDefList)
 }
 
 // Decision 3's naming still merges capitals (`foo_bar`/`fooBar`) and digits after `_` (`utf_8`/`utf8`), so reject those here, not at go build.
@@ -663,6 +521,16 @@ func (m *Method) positionalCount() int {
 	n := 0
 	for _, p := range m.Params {
 		if !p.Keyword && !p.Rest {
+			n++
+		}
+	}
+	return n
+}
+
+func requiredArgs(m *Method) int {
+	n := 0
+	for _, p := range m.Params {
+		if !p.Rest && !p.Keyword && p.Default == nil {
 			n++
 		}
 	}

@@ -58,3 +58,107 @@ end
 	}
 	return &parser.ConstantReadNode{Name: name, Location: call.Location}
 }
+
+// isDelegator reports whether cls is a Delegator (SimpleDelegator, a DelegateClass) or a subclass of one.
+func (c *Compiler) isDelegator(cls *Class) bool {
+	d := c.classes["Delegator"]
+	return d != nil && cls != nil && cls != d && cls.isSubclassOf(d)
+}
+
+// delegateCall is a method a delegator doesn't define, compiled to the same
+// call on its __getobj__ (decision 118): untyped, so dispatched at run time,
+// for SimpleDelegator; typed for DelegateClass(Foo).
+func (f *fctx) delegateCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
+	obj := f.genMethodCall(n, recv, "__getobj__", nil, nil) // typed when delegateType knows the wrapped object
+	return f.genMethodCall(n, obj, name, args, block)
+}
+
+// resetsDelegate: cls or a subclass may wrap something else (a subclass's own initialize, a `__setobj__` call).
+func resetsDelegate(cls *Class) bool {
+	family := []*Class{cls}
+	for i := 0; i < len(family); i++ {
+		family = append(family, family[i].Subclasses...)
+	}
+	for _, k := range family {
+		if k != cls && k.Methods["initialize"] != nil {
+			return true
+		}
+		for _, m := range k.MethodList {
+			if m.Node != nil && anyNode(m.Node.Body, func(x parser.Node) bool {
+				call, ok := x.(*parser.CallNode)
+				return ok && call.Name == "__setobj__"
+			}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// delegateType is what a SimpleDelegator subclass wraps, when its own initialize sets it only by `super(p)` from a
+// typed parameter p (a rest parameter wraps Array[T]; Homebrew's `Dependencies#initialize(*args)`) and neither it nor
+// a subclass calls `__setobj__` or defines initialize: nil otherwise, and forwarded calls stay dynamic (decision 118).
+// `super(Set.new(p))` wraps Set[T] (decision 291).
+func (c *Compiler) delegateType(cls *Class) Type {
+	if cls == nil || !c.isDelegator(cls) || cls.RubyName == "SimpleDelegator" {
+		return nil
+	}
+	init := cls.Methods["initialize"]
+	if init == nil || init.Node == nil || init.File == nil || init.File.isPrelude() || !init.declared {
+		return nil
+	}
+	setobj := resetsDelegate(cls)
+	var supers []*parser.SuperNode
+	anyNode(init.Node.Body, func(x parser.Node) bool {
+		if sn, ok := x.(*parser.SuperNode); ok {
+			supers = append(supers, sn)
+		}
+		_, fwd := x.(*parser.ForwardingSuperNode)
+		setobj = setobj || fwd
+		return false
+	})
+	if setobj || len(supers) != 1 {
+		return nil
+	}
+	if supers[0].Arguments == nil || len(supers[0].Arguments.Arguments) != 1 {
+		return nil
+	}
+	arg := supers[0].Arguments.Arguments[0]
+	inSet := false
+	if call, ok := arg.(*parser.CallNode); ok && call.Name == "new" && constName(call.Receiver) == "Set" && len(callArgs(call)) == 1 && call.Block == nil {
+		arg, inSet = callArgs(call)[0], true // `super(Set.new(args))`: Homebrew's Requirements wraps Set[Requirement]
+	}
+	lv, ok := arg.(*parser.LocalVariableReadNode)
+	if !ok {
+		return nil
+	}
+	c.resolveMethod(init)
+	return c.delegateParamType(init, lv.Name, inSet)
+}
+
+// delegateParamType is what a delegator's `super(name)` (or `super(Set.new(name))` when inSet) wraps, from the typed
+// parameter name: nil when it is untyped.
+func (c *Compiler) delegateParamType(init *Method, name string, inSet bool) Type {
+	for _, p := range init.Params {
+		var elem Type
+		switch {
+		case p.Name != name || isAny(p.Type) || p.Type == nil || p.Keyword:
+			continue
+		case p.Rest:
+			elem = p.Type
+		case !inSet:
+			return p.Type
+		default:
+			pc, isCls := p.Type.(TClass)
+			if !isCls || len(pc.Args) != 1 || !isClass(pc, "Array") && !isClass(pc, "Set") || isAny(pc.Args[0]) {
+				return nil
+			}
+			elem = pc.Args[0]
+		}
+		if inSet {
+			return TClass{C: c.classes["Set"], Args: []Type{elem}}
+		}
+		return TClass{C: c.classes["Array"], Args: []Type{elem}}
+	}
+	return nil
+}

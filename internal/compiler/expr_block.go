@@ -213,8 +213,6 @@ func (f *fctx) blockArrayOf(n parser.Node, parts []expr) expr {
 	return expr{code: arrayLit(f.c.goType(et), codes), typ: TClass{C: f.c.classes["Array"], Args: []Type{et}}}
 }
 
-// bindBlockParams declares block params for the yielded types, returning
-// the Go loop/closure parameter names and a destructuring prologue.
 // bindTupleParams destructures one yielded tuple across several block params.
 func (f *fctx) bindTupleParams(n parser.Node, names blockParams, tt TTuple) ([]string, func()) {
 	if len(names) != len(tt.Elems) && f.lenient() { // a gem's proc: extra fields dropped, missing params nil (decision 233)
@@ -301,6 +299,8 @@ func (f *fctx) bindArraySplat(n parser.Node, names blockParams, elem Type, untyp
 	}
 }
 
+// bindBlockParams declares block params for the yielded types, returning
+// the Go loop/closure parameter names and a destructuring prologue.
 func (f *fctx) bindBlockParams(n parser.Node, names blockParams, yields []Type) (goParams []string, prologue func()) {
 	if f.c.env.UntypedWhy {
 		f.blockWhy = f.blockParamWhy(n)
@@ -402,7 +402,6 @@ func (f *fctx) withClosureSelf(self Type, gen func()) {
 	f.selfType, f.selfCode = st, sc
 }
 
-// genClosure renders a block as a Go func literal.
 // funcBlockArg is a dynBlockArg block func passed as a block: itself when the block is that shape (nil when the call
 // gave none), else boxed as the Proc genClosure adapts (optparse's on_tail rewritten to __on_tail_flag's (bool)).
 func funcBlockArg(b *parser.BlockArgumentNode, want TFunc, self Type) (string, *parser.BlockArgumentNode) {
@@ -423,6 +422,7 @@ func funcBlockArg(b *parser.BlockArgumentNode, want TFunc, self Type) (string, *
 	return "", &parser.BlockArgumentNode{Location: b.Location, Expression: &exprNode{Node: en.Node, e: expr{code: "(&" + en.e.code + ")", typ: ft}}}
 }
 
+// genClosure renders a block as a Go func literal.
 func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env map[string]Type) string {
 	params := substAll(sig.Params, env)
 	self := subst(sig.Self, env) // an escaped block's self, a leading Go param (decision 164)

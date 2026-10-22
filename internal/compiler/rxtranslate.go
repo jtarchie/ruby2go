@@ -692,8 +692,10 @@ func (l *rxAltLazy) get() rxAlt {
 	return l.alt
 }
 
-func (l *rxAltLazy) findAll(s string, from, n int) ([][]int, error) { return l.get().findAll(s, from, n) }
-func (l *rxAltLazy) names() []string                                { return l.get().names() }
+func (l *rxAltLazy) findAll(s string, from, n int) ([][]int, error) {
+	return l.get().findAll(s, from, n)
+}
+func (l *rxAltLazy) names() []string { return l.get().names() }
 
 // altFirst is alt's first match in s, or nil.
 func (r *rxRegexp) altFirst(s string) []int {
@@ -1164,11 +1166,6 @@ var rxFoldMulti = map[rune]string{
 	0xfb14: "\u0574\u0565", 0xfb15: "\u0574\u056b", 0xfb16: "\u057e\u0576", 0xfb17: "\u0574\u056d",
 }
 
-// stripExtended drops /x's insignificant whitespace and `#` comments,
-// leaving escapes (`\ `, `\#`) and character classes as they are; ext is
-// whether x is on outside any group. An inline group turns x off or on for
-// its span, as an interpolated Regexp's `(?-mix:...)` or a union's
-// `(?x-mi:...)` does, and its `x` is dropped, since RE2 has none.
 // dropX is inline group flags without x: `x-mi` is `-mi`, and a `-` with nothing after it goes.
 func dropX(flags string) string {
 	on, off, _ := strings.Cut(strings.ReplaceAll(flags, "x", ""), "-")
@@ -1178,6 +1175,11 @@ func dropX(flags string) string {
 	return on + "-" + off
 }
 
+// stripExtended drops /x's insignificant whitespace and `#` comments,
+// leaving escapes (`\ `, `\#`) and character classes as they are; ext is
+// whether x is on outside any group. An inline group turns x off or on for
+// its span, as an interpolated Regexp's `(?-mix:...)` or a union's
+// `(?x-mi:...)` does, and its `x` is dropped, since RE2 has none.
 func stripExtended(src string, ext bool) string {
 	var b strings.Builder
 	var saved []bool // ext outside each open group

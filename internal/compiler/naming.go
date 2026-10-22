@@ -88,7 +88,7 @@ var goKeywords = map[string]bool{
 	"len": true, "cap": true, "new": true, "make": true, "append": true, "copy": true,
 	"panic": true, "recover": true, "print": true, "println": true, "string": true,
 	"int": true, "bool": true, "any": true, "error": true, "nil": true, "true": true, "false": true,
-	"main": true, "init": true, "stdout": true, "self": false,
+	"main": true, "init": true, "stdout": true,
 	// the generated &block parameter
 	"blk": true,
 }

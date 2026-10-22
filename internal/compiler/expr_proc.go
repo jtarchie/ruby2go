@@ -9,16 +9,6 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-func requiredArgs(m *Method) int {
-	n := 0
-	for _, p := range m.Params {
-		if !p.Rest && !p.Keyword && p.Default == nil {
-			n++
-		}
-	}
-	return n
-}
-
 // genLambda builds a Proc value (`->(x) { }`, `lambda { |x| }`, `proc { }`)
 // as a pointer to a Go closure. Its parameter types come from the expected
 // type (`#: ^(Integer) -> Integer`); a lambda without parameters may infer
