@@ -1,0 +1,219 @@
+package compiler
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/ruby2go/internal/rbs"
+)
+
+// constFctx is the codegen context a constant's initializer runs in: the
+// class body, whose self is the class object (main at top level).
+func (c *Compiler) constFctx(k *Const) *fctx {
+	f := c.newFctx(k.File, nil, nil)
+	if n := len(k.Scope); n > 0 && k.Scope[n-1].meta != nil {
+		cls := k.Scope[n-1]
+		f.selfType, f.selfCode, f.selfClassObj = TClass{C: cls.meta}, classVar(cls), true
+	}
+	f.lex = k.Scope
+	f.locals = map[localKey]*localInfo{}
+	f.scope = &scope{vars: map[string]*local{}}
+	f.pass = 2
+	return f
+}
+
+// probeTopLocals types, in f, the top-level local assignments of k's file before k (decision 296); one that does not
+// compile is left undefined, so k's own probe names it.
+func (c *Compiler) probeTopLocals(f *fctx, k *Const) {
+	at := k.Value.GetLocation().StartOffset
+	for _, n := range k.File.Root.Statements.Body {
+		if w, ok := n.(*parser.LocalVariableWriteNode); ok && w.Location.StartOffset < at {
+			_ = catchCompileError(func() { f.genStmt(w, tail{}) }) // f is k's own: what it emits is dropped
+		}
+	}
+}
+
+// constType is the type of constant k: its `#: T` annotation, or else the
+// type of its initializer.
+func (c *Compiler) constType(k *Const) (typ Type) {
+	if c.env.KeepGoing && c.anonDepth == 0 {
+		defer func() {
+			if r := recover(); r != nil {
+				ce, ok := r.(compileError)
+				if !ok {
+					panic(r)
+				}
+				c.kept = append(c.kept, ce.Error())
+				k.Type, k.resolving, typ = TAny{}, false, TAny{}
+			}
+		}()
+	}
+	if k.Type != nil {
+		return k.Type
+	}
+	if _, boot := c.bootConstClasses[k.RubyName]; boot {
+		c.constClass(k) // a class picked at load time: its value becomes that class (decision 203)
+	}
+	if k.ann != "" {
+		t, err := rbs.ParseType(k.ann)
+		if err != nil {
+			c.errorf(k.File, k.Value, "%v", err)
+		}
+		k.Type = c.resolveType(t, typeScope{lex: k.Scope, srcPos: srcPos{k.File, k.Line}})
+		return k.Type
+	}
+	if t := c.sigConst(k); t != nil { // a `.rbs` constant (decision 160)
+		k.Type = c.resolveType(t, typeScope{lex: k.Scope, srcPos: srcPos{k.File, k.Line}})
+		return k.Type
+	}
+	if k.inBody && c.gemFile(k.File) {
+		k.Type = TAny{} // gem code: untyped rather than typed outside its body's unit
+		return k.Type
+	}
+	if k.inBody {
+		c.errorf(k.File, k.Value, "constant %s reads a local of its class body: give it a type (`#: T`, or `%s: T` in a .rbs file)", k.RubyName, k.RubyName[strings.LastIndex(k.RubyName, ":")+1:])
+	}
+	if k.resolving && c.gemFile(k.File) {
+		return TAny{} // gem code: a constant whose inferred type loops back to itself is untyped (decision 172)
+	}
+	if k.resolving {
+		c.errorf(k.File, k.Value, "constant %s depends on itself (via %s); annotate it with `#: T`", k.RubyName, strings.Join(c.constChain, " -> "))
+	}
+	k.resolving = true
+	c.constChain = append(c.constChain, k.RubyName)
+	f := c.constFctx(k)
+	if k.inMain {
+		c.probeTopLocals(f, k)
+	}
+	var e expr
+	if c.gemFile(k.File) {
+		err := catchCompileError(func() { f.probe(func() { e = f.genExpr(k.Value, nil) }) })
+		if err != nil {
+			c.constChain = c.constChain[:len(c.constChain)-1]
+			k.resolving, k.poison, k.Type = false, err.Error(), TAny{}
+			c.warn(k.File, k.Value, "constant %s does not compile, so it is nil: %s (decision 205)", k.RubyName, err.Error())
+			return k.Type
+		}
+	} else {
+		f.probe(func() { e = f.genExpr(k.Value, nil) })
+	}
+	c.constChain = c.constChain[:len(c.constChain)-1]
+	k.resolving = false
+	if (isNil(e.typ) || isVoid(e.typ)) && (c.gemFile(k.File) || k.typeAlias != "") {
+		e.typ = TAny{} // a Sorbet type alias's run-time value, or a gem constant only ever nil: untyped
+	}
+	if isNil(e.typ) || isVoid(e.typ) {
+		c.errorf(k.File, k.Value, "cannot infer the type of constant %s; annotate it with `#: T`", k.RubyName)
+	}
+	k.Type = e.typ
+	return k.Type
+}
+
+// emitConst declares a constant's package variable. Its value is assigned
+// in main, in source order, where MRI would evaluate it (see constInit).
+func (c *Compiler) emitConst(k *Const) {
+	c.lineDirective(k.File, k.Line)
+	c.w("var %s %s\n\n", k.GoName, c.goType(c.constType(k)))
+	if k.guarded {
+		c.w("var %s bool\n\n", constSet(k))
+	}
+}
+
+// constSet names the flag main sets once a guarded constant is assigned.
+func constSet(k *Const) string { return "rbSet_" + k.GoName }
+
+// constEntries lists the constants a class object answers to: its own in
+// definition order, then those of its ancestors (Object's are the top-level
+// ones).
+func (c *Compiler) constEntries(cls *Class) []string {
+	if cls.RubyName == "Object" {
+		return c.topConstNames
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range cls.ancestors() {
+		for _, n := range k.constNames {
+			if !seen[n] {
+				seen[n] = true
+				out = append(out, k.RubyName+"::"+n)
+			}
+		}
+	}
+	return out
+}
+
+// constValue is the Go expression for a constant's current value, boxed.
+func (c *Compiler) constValue(full string) (string, bool) {
+	if cls := c.classes[full]; cls != nil {
+		if cls.meta == nil {
+			return "", false
+		}
+		return classVar(cls), true
+	}
+	k := c.consts[full]
+	if isOpt(c.constType(k)) {
+		return "Opt(" + k.GoName + ")", true
+	}
+	return k.GoName, true
+}
+
+// emitConstTable gives a class object its constant table. Values are read
+// when the table is asked for, so constants assigned later are seen.
+func (c *Compiler) emitConstTable(cls *Class) {
+	desc := cls.metaOf
+	kind := "class"
+	if desc != nil && desc.IsModule {
+		kind = "module"
+	}
+	c.w("func (self *%s) _Kind() string { return %q }\n\n", cls.Name, kind)
+	c.w("func (self *%s) _IsInstance(v any) bool { return %s }\n\n", cls.Name, c.isInstanceTest(desc))
+	if desc != nil {
+		c.w("func (self *%s) _DescID() int { return %d }\n\n", cls.Name, c.classID(desc))
+		c.emitDescendants(cls, desc)
+	}
+	c.emitMethodTable(cls, desc)
+	c.emitPrivateMethodTable(cls, desc)
+	c.emitSingletonMethodTable(cls, desc)
+	if desc == nil {
+		c.w("func (self *%s) _Consts(string) []rbConst { return nil }\n\n", cls.Name)
+		return
+	}
+	if flag := c.evalDefFlag(desc); flag != "" {
+		c.w("var %s bool\n\n", flag)
+	}
+	// One name's entries come from a switch, so const_get does not build the whole table per lookup (decision 332);
+	// "" is the whole table, for constants and the like.
+	var all []string
+	byName := map[string][]string{}
+	var names []string
+	for _, full := range c.constEntries(desc) {
+		if v, ok := c.constValue(full); ok {
+			short := full[strings.LastIndex(full, ":")+1:]
+			inherited := strings.Contains(full, "::") && strings.TrimSuffix(full, "::"+short) != desc.RubyName
+			if k := c.classes[full]; k != nil && c.evalDefFlag(k) != "" { // defined when its eval runs (decision 324)
+				v = "rbEvalConst{&" + c.evalDefFlag(k) + ", " + v + "}"
+			}
+			entry := fmt.Sprintf("{%q, %s, %t}", short, v, inherited)
+			all = append(all, entry)
+			if _, seen := byName[short]; !seen {
+				names = append(names, short)
+			}
+			byName[short] = append(byName[short], entry)
+		}
+	}
+	if len(all) == 0 {
+		c.w("func (self *%s) _Consts(string) []rbConst { return nil }\n\n", cls.Name)
+		return
+	}
+	c.w("func (self *%s) _Consts(name string) []rbConst {\n\tswitch name {\n\tcase \"\":\n\t\treturn []rbConst{\n", cls.Name)
+	for _, e := range all {
+		c.w("\t\t\t%s,\n", e)
+	}
+	c.w("\t\t}\n")
+	for _, n := range names {
+		c.w("\tcase %q:\n\t\treturn []rbConst{%s}\n", n, strings.Join(byName[n], ", "))
+	}
+	c.w("\t}\n\treturn nil\n}\n\n")
+}
