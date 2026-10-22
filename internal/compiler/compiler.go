@@ -31,6 +31,15 @@ import (
 
 // Compiler holds the whole program: the prelude and the user files, one closed world.
 type Compiler struct {
+	// grouped state; fields are promoted, so c.name still works
+	dynState
+	memoState
+	bootFacts
+	marshalState
+	instState
+	pathCache
+	tableState
+
 	genCount, genLimit    *int                        // test hook (decision 240): genExpr calls, and the count after which they fail the compile
 	erbSnippets           map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)
 	rewrites              map[parser.Node]parser.Node // desugared nodes, built once so every pass sees one tree
@@ -41,40 +50,12 @@ type Compiler struct {
 	classList             []*Class
 	topDefs               map[string]*Method
 	consts                map[string]*Const
-	topConstNames         []string // constants declared at top level: Object's table
-	dynNames              []string // method names called on untyped values
-	dynSeen               map[string]bool
-	universalNames        map[string]bool     // memo of universalHas
-	dispatchMemo          map[*Method]bool    // memo of dispatchable
-	sendArmsMemo          map[[2]any][]*Class // memo of sendArms, valid while classList has sendArmsN classes
-	sendArmsN             int
-	privateInMemo         map[string][]*Class // memo of privateIn, valid while classList has privateInN classes
-	privateInN            int
-	ivarsDiscovered       bool                      // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
-	keepNames             []string                  // method names the gem pruner keeps though no call names them (decision 230)
-	modIsA                map[*Class]bool           // modules an untyped value's is_a? tests at run time (decision 228)
-	objFreezeMemo         int                       // objFreeze: 0 unasked, 1 no, 2 yes
-	pendingSigs           int                       // signatures rendered while their return was still being inferred: memos taken across one are provisional
-	goCalledNames         map[string]bool           // memo of goCalled
-	renderingConstraint   bool                      // constraintNamesSelf is rendering a module interface
-	sends                 map[string]sendSpec       // rbSend_ dispatchers calls named (dispatch.go)
-	sendOut               map[string]bool           // dispatchers emitted
-	dynAll                bool                      // a computed send/respond_to?: every method may be named
-	dynAllStrict          bool                      // ... from user code: prelude-only names too (gem code narrows, decision 235)
-	symLits               map[string]bool           // symbol literals in gem and user files (symbolLiterals)
-	gemDirsReal           []string                  // gemDirs with symlinks resolved, once (gemFile)
-	realPaths             map[string]string         // realPath per path, for this compile (c.real)
-	requireTargets        map[string]string         // findRequire per required name, for this compile
-	reCache               map[string]*regexp.Regexp // c.re's compiled patterns
-	respondNames          []string                  // names asked about with respond_to? at run time
-	respondSeen           map[string]bool
-	markers               map[string]bool         // rbHas<marker> helpers emitted
-	classOf               bool                    // `.class` on a value only known at run time: emit rbClassOf
-	dynGo                 map[string]string       // Go name → the Ruby name its dispatchers serve
-	dynWrapped            map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
-	sendOn                map[string][]*Class     // per Go suffix, the struct classes a computed send/respond_to? on a receiver of known class may hold (decision 316)
+	topConstNames         []string        // constants declared at top level: Object's table
+	ivarsDiscovered       bool            // discoverIvars has run: a gem body that fails now is poisoned for good (decision 220)
+	keepNames             []string        // method names the gem pruner keeps though no call names them (decision 230)
+	modIsA                map[*Class]bool // modules an untyped value's is_a? tests at run time (decision 228)
+	symLits               map[string]bool // symbol literals in gem and user files (symbolLiterals)
 	warned                map[string]bool
-	pkgVars               []string                     // package-level var declarations: compiled regexp literals, rbDATA, once-guards
 	dataVar               bool                         // rbDATA is declared
 	beginStmts            map[*File][]parser.Node      // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string            // literal → its variable, to share one per pattern
@@ -84,9 +65,6 @@ type Compiler struct {
 	aliasNews             []aliasNewReq                // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
 	needRequireTable      bool                         // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
 	programFile           *File                        // the file $0 names: the main file, or a traced compile's -main (decisions 241, 288)
-	dynBlockNames         map[string]bool              // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
-	dynBlockAll           bool                         // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
-	strLits               map[string]bool              // String literal texts: String#frozen? knows them by identity
 	constList             []*Const
 	hooks                 []classHook // main.rb's inherited/included/extended sites
 	topDefList            []*Method
@@ -99,18 +77,7 @@ type Compiler struct {
 	loadCode              map[*File]string // a required file's top level, generated, for the loadFile that splices it
 	required              map[*File]bool   // user files require_relative loaded: they run where required, not as a top level of their own
 	stmtFile              map[parser.Node]*File
-	dynEvery              bool                    // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
-	respondEvery          bool                    // emit every noted rbResponds up front: a computed respond_to? on an untyped value is reachable (decision 319); dispatchers stay lazy
-	dynLazy               map[string]bool         // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
-	dynOut                map[string]bool         // dispatchers emitted
-	dynGen                map[*Class][]dynGenCase // a generic class's wrappers of this emitDynamic batch, emitted as one switch (decision 209)
-	dynGenRound           int                     // batches whose generic wrappers are out: names the next _DynGen method
-	respondOut            map[string]bool         // respond_to? checks emitted
-	fwdOut                map[*Class]bool         // forwarders emitted
-	selfTyped             map[*Class]bool         // a module whose constraint names Self (decision 208)
-	tablesOut             bool
-	tablesAt              [14]int         // tableInputs when the tables went out
-	callable              map[string]bool // what the _Call tables switch over, once kept code asks for _Call (callableNames)
+	selfTyped             map[*Class]bool // a module whose constraint names Self (decision 208)
 	files                 []*File
 	preludeFS             fs.FS
 	parser                *parser.Parser
@@ -128,63 +95,27 @@ type Compiler struct {
 	out                   strings.Builder
 	convs                 map[string]bool // conversion sites emitted during a refineIvars dry run
 	Warnings              []string
-	methodRequiresRuntime bool                                  // traced mode (-main): a require in a method resolves at run time, not at compile time (decisions 197, 288)
-	dmSites               map[*parser.CallNode]bool             // define_method calls boot recorded: no-ops at run time (decision 198)
-	coerceOwned           *bool                                 // memo of ownCoerce
-	dmDefined             map[*parser.CallNode]bool             // the define_method calls boot's methods became defs from
-	smSites               map[*parser.CallNode]*parser.CallNode // a gem's run-time define_singleton_method: the call recording it (decision 324)
-	prepends              []pendingPrepend                      // prepends in load order, applied at link (decision 199)
-	bootBranches          map[string]boot.BranchInfo            // "path:line:col" of each if/unless boot ran (decision 201)
-	bootConstClasses      map[string]string                     // constant -> the class boot saw it name (decision 203)
-	badClasses            map[*Class]compileError               // gem classes that cannot compile, an error where reachable code names them
-	evalSites             map[string]bool                       // "path:line" of each string eval boot compiled: a no-op (decision 204)
-	evalUnits             map[string][]evalUnit                 // "path:line" of an instance_eval boot ran that defined classes: each source and its parsed file, whose load-time statements run at the call (decision 324)
-	evalClasses           map[*Class]bool                       // classes a run-time string eval defines: constant lookups see them once it has run (decision 324)
-	blockEvalSites        map[*parser.CallNode]bool             // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
-	goFuncs               map[string]goFunc                     // each gem method's Go func name -> its key and name (decision 303)
-	bootDelegators        map[string][]string                   // def_delegators' names boot saw, by "path:line" (decision 204)
-	bootLoadPath          []string                              // $LOAD_PATH as boot left it, nil without a boot (decision 301)
-	bootStructs           map[string][]boot.StructProp          // each T::Struct's props boot saw (decision 241)
-	kept                  []string                              // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
-	anonDepth             int                                   // collecting an anonymous class body, whose errors scanAnon defers
-	constChain            []string                              // constants whose types are being inferred, for a cycle's message
-
-	// tuple arities used, so their types get emitted
-	tupleN           map[int]bool
-	dynEach          bool                              // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
-	optConv          map[string]bool                   // class T?s bound to a method type parameter: rbOptClassFrom's cases (decision 295)
-	procTypes        map[string]bool                   // Proc Go types rendered (*func(...)), for the generated rbIsProc
-	procFuncs        map[string]TFunc                  // the type each procTypes entry renders, for rbDynProcCall
-	argBoxes         map[string]bool                   // T? boxes of generic type arguments, which generic code may hold
-	classIDs         map[*Class]int                    // index in classList: the class's ID in the generated tables
-	specClasses      int                               // describes declared, for their classes' Go names
-	anonClasses      map[*parser.CallNode]*Class       // each literal's class
-	inheritedAliases []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
-	unnamedAnon      map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
-	anonRun          *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
-	ivarReadFirst    map[ivarKey]bool                  // owner#@x read before any assignment typed it, in discovery: declared T?
-	interpOnly       map[pendingKey]bool               // a gem parameter its body only interpolates: any value does (decision 330)
-	gemByName        map[string][]*Method              // gem methods by name, for a dynamic call's uses (decision 331)
-	gemParams        map[pendingKey]bool               // a gem method's parameters: every caller's disagreeing uses widen them (decision 331)
-	bareRaise        int                               // gemBareRaise's memo: 0 unknown, 1 no, 2 yes
-	ivarBitsMarked   bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
-	privateConsts    map[string]bool                   // private_constant's full names: no `M::X` path reaches them
-	anonErrors       map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
-	specUses         []specUse                         // Minitest::Spec DSL calls, checked after link
-	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
-	// says whether T is itself optional
-	boxes          map[string]bool
-	marshalSeen    map[string]Type // concrete container and tuple types of values, by Ruby type: Marshal's cases (decision 137)
-	marshalGo      map[string]bool // their Go types with a case emitted
-	marshalSkipped []string        // types left out of Marshal's cases as unreached: reaching one later recompiles eagerly
-	marshalCode    string          // rbMDumpGen/rbMLoadGen, rendered when the tables go out
-	marshalErr     *compileError   // a bad marshal_dump/marshal_load, raised once Marshal is reached
-	marshalAt      int             // len(marshalSeen) then
-	marshalOut     bool            // rbMDumpGen/rbMLoadGen emitted
-	marshalLate    bool            // rbMDumpObjGen/rbMLoadObjGen emitted
-
-	unions    map[string]TUnion // rbUnion_<hash>: an untyped value checked into a union (decision 150), by Go name
-	unionsOut map[string]bool   // those emitted: a body emitted after the tables can name a new one (emitNext)
+	methodRequiresRuntime bool                              // traced mode (-main): a require in a method resolves at run time, not at compile time (decisions 197, 288)
+	prepends              []pendingPrepend                  // prepends in load order, applied at link (decision 199)
+	badClasses            map[*Class]compileError           // gem classes that cannot compile, an error where reachable code names them
+	goFuncs               map[string]goFunc                 // each gem method's Go func name -> its key and name (decision 303)
+	kept                  []string                          // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
+	anonDepth             int                               // collecting an anonymous class body, whose errors scanAnon defers
+	constChain            []string                          // constants whose types are being inferred, for a cycle's message
+	classIDs              map[*Class]int                    // index in classList: the class's ID in the generated tables
+	specClasses           int                               // describes declared, for their classes' Go names
+	anonClasses           map[*parser.CallNode]*Class       // each literal's class
+	inheritedAliases      []pendingAlias                    // aliases of an ancestor's method, copied once supers resolve
+	unnamedAnon           map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
+	anonRun               *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
+	ivarReadFirst         map[ivarKey]bool                  // owner#@x read before any assignment typed it, in discovery: declared T?
+	interpOnly            map[pendingKey]bool               // a gem parameter its body only interpolates: any value does (decision 330)
+	gemByName             map[string][]*Method              // gem methods by name, for a dynamic call's uses (decision 331)
+	gemParams             map[pendingKey]bool               // a gem method's parameters: every caller's disagreeing uses widen them (decision 331)
+	ivarBitsMarked        bool                              // markIvarBits ran: an unmarked defined?(@x) is a bug, not discovery
+	privateConsts         map[string]bool                   // private_constant's full names: no `M::X` path reaches them
+	anonErrors            map[*parser.CallNode]compileError // a literal whose body did not collect: raised where it is generated
+	specUses              []specUse                         // Minitest::Spec DSL calls, checked after link
 
 	// parameter types from use (decision 146)
 	infer       *inference
@@ -194,12 +125,115 @@ type Compiler struct {
 	env         envConfig                 // the RB2GO_* environment, read when this compile started
 	uses        map[pendingKey][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[pendingKey]bool       // this round's untyped parameter keys
+}
 
+// dynState: dispatchers, wrappers and forwarders for calls on untyped values (dynamic*.go, dispatch.go).
+type dynState struct {
+	dynNames      []string // method names called on untyped values
+	dynSeen       map[string]bool
+	sends         map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)
+	sendOut       map[string]bool     // dispatchers emitted
+	dynAll        bool                // a computed send/respond_to?: every method may be named
+	dynAllStrict  bool                // ... from user code: prelude-only names too (gem code narrows, decision 235)
+	respondNames  []string            // names asked about with respond_to? at run time
+	respondSeen   map[string]bool
+	markers       map[string]bool         // rbHas<marker> helpers emitted
+	classOf       bool                    // `.class` on a value only known at run time: emit rbClassOf
+	dynGo         map[string]string       // Go name → the Ruby name its dispatchers serve
+	dynWrapped    map[*Class][]dynWrapped // wrappers emitted, per class, for _Call
+	sendOn        map[string][]*Class     // per Go suffix, the struct classes a computed send/respond_to? on a receiver of known class may hold (decision 316)
+	dynBlockNames map[string]bool         // names a gem calls with a block on an untyped receiver: their block-taking methods get Dyn wrappers (decision 243)
+	dynBlockAll   bool                    // a gem sends a block to a computed name: every block-taking method gets a block wrapper (decision 243)
+	dynEvery      bool                    // emit every noted dispatcher and forwarder up front: computed send is reachable, or a lazy pass came up short
+	respondEvery  bool                    // emit every noted rbResponds up front: a computed respond_to? on an untyped value is reachable (decision 319); dispatchers stay lazy
+	dynLazy       map[string]bool         // names noted before any dispatcher went out: emitted only when reached (emitDynamic)
+	dynOut        map[string]bool         // dispatchers emitted
+	dynGen        map[*Class][]dynGenCase // a generic class's wrappers of this emitDynamic batch, emitted as one switch (decision 209)
+	dynGenRound   int                     // batches whose generic wrappers are out: names the next _DynGen method
+	respondOut    map[string]bool         // respond_to? checks emitted
+	fwdOut        map[*Class]bool         // forwarders emitted
+	callable      map[string]bool         // what the _Call tables switch over, once kept code asks for _Call (callableNames)
+	dynEach       bool                    // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
+}
+
+// memoState: memos and re-entrancy flags of the analysis helpers.
+type memoState struct {
+	universalNames      map[string]bool     // memo of universalHas
+	dispatchMemo        map[*Method]bool    // memo of dispatchable
+	sendArmsMemo        map[[2]any][]*Class // memo of sendArms, valid while classList has sendArmsN classes
+	sendArmsN           int
+	privateInMemo       map[string][]*Class // memo of privateIn, valid while classList has privateInN classes
+	privateInN          int
+	objFreezeMemo       int             // objFreeze: 0 unasked, 1 no, 2 yes
+	pendingSigs         int             // signatures rendered while their return was still being inferred: memos taken across one are provisional
+	goCalledNames       map[string]bool // memo of goCalled
+	renderingConstraint bool            // constraintNamesSelf is rendering a module interface
+	coerceOwned         *bool           // memo of ownCoerce
+	bareRaise           int             // gemBareRaise's memo: 0 unknown, 1 no, 2 yes
+}
+
+// bootFacts: what the MRI boot run recorded about a gem program (decisions 198-204, 241, 301, 324).
+type bootFacts struct {
+	dmSites          map[*parser.CallNode]bool             // define_method calls boot recorded: no-ops at run time (decision 198)
+	dmDefined        map[*parser.CallNode]bool             // the define_method calls boot's methods became defs from
+	smSites          map[*parser.CallNode]*parser.CallNode // a gem's run-time define_singleton_method: the call recording it (decision 324)
+	bootBranches     map[string]boot.BranchInfo            // "path:line:col" of each if/unless boot ran (decision 201)
+	bootConstClasses map[string]string                     // constant -> the class boot saw it name (decision 203)
+	evalSites        map[string]bool                       // "path:line" of each string eval boot compiled: a no-op (decision 204)
+	evalUnits        map[string][]evalUnit                 // "path:line" of an instance_eval boot ran that defined classes: each source and its parsed file, whose load-time statements run at the call (decision 324)
+	evalClasses      map[*Class]bool                       // classes a run-time string eval defines: constant lookups see them once it has run (decision 324)
+	blockEvalSites   map[*parser.CallNode]bool             // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
+	bootDelegators   map[string][]string                   // def_delegators' names boot saw, by "path:line" (decision 204)
+	bootLoadPath     []string                              // $LOAD_PATH as boot left it, nil without a boot (decision 301)
+	bootStructs      map[string][]boot.StructProp          // each T::Struct's props boot saw (decision 241)
+}
+
+// marshalState: Marshal's generated cases (decision 137).
+type marshalState struct {
+	marshalSeen    map[string]Type // concrete container and tuple types of values, by Ruby type: Marshal's cases (decision 137)
+	marshalGo      map[string]bool // their Go types with a case emitted
+	marshalSkipped []string        // types left out of Marshal's cases as unreached: reaching one later recompiles eagerly
+	marshalCode    string          // rbMDumpGen/rbMLoadGen, rendered when the tables go out
+	marshalErr     *compileError   // a bad marshal_dump/marshal_load, raised once Marshal is reached
+	marshalAt      int             // len(marshalSeen) then
+	marshalOut     bool            // rbMDumpGen/rbMLoadGen emitted
+	marshalLate    bool            // rbMDumpObjGen/rbMLoadObjGen emitted
+}
+
+// instState: generic class instances (decision 308).
+type instState struct {
 	insts       map[string]*Class // generic instances by instKey (decision 308)
 	instReqs    *[]string         // instKeys to create before link: grows when a compile names a new one
 	instAt      map[string]srcPos // where each instance was first named (checkBounds)
 	instOpen    bool              // makeInstances is running: instOf may create
 	instMissing bool              // this compile named an instance it lacks: its result is discarded for a restart
+}
+
+// pathCache: per-compile caches of path and pattern lookups.
+type pathCache struct {
+	gemDirsReal    []string                  // gemDirs with symlinks resolved, once (gemFile)
+	realPaths      map[string]string         // realPath per path, for this compile (c.real)
+	requireTargets map[string]string         // findRequire per required name, for this compile
+	reCache        map[string]*regexp.Regexp // c.re's compiled patterns
+}
+
+// tableState: what emitTables reads (see tableInputs) and the tables' bookkeeping.
+type tableState struct {
+	pkgVars   []string        // package-level var declarations: compiled regexp literals, rbDATA, once-guards
+	strLits   map[string]bool // String literal texts: String#frozen? knows them by identity
+	tablesOut bool
+	tablesAt  tableInputs // tableInputs when the tables went out
+	// tuple arities used, so their types get emitted
+	tupleN    map[int]bool
+	optConv   map[string]bool  // class T?s bound to a method type parameter: rbOptClassFrom's cases (decision 295)
+	procTypes map[string]bool  // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	procFuncs map[string]TFunc // the type each procTypes entry renders, for rbDynProcCall
+	argBoxes  map[string]bool  // T? boxes of generic type arguments, which generic code may hold
+	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
+	// says whether T is itself optional
+	boxes     map[string]bool
+	unions    map[string]TUnion // rbUnion_<hash>: an untyped value checked into a union (decision 150), by Go name
+	unionsOut map[string]bool   // those emitted: a body emitted after the tables can name a new one (emitNext)
 }
 
 type verbatim struct {
@@ -448,8 +482,11 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	tick("parser")
 
-	c = &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, tupleN: map[int]bool{}, procTypes: map[string]bool{}, procFuncs: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, unionsOut: map[string]bool{}, anonClasses: map[*parser.CallNode]*Class{}, marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}, regexpVars: map[string]string{}, strLits: map[string]bool{}, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, warned: map[string]bool{},
-		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, dynEvery: dynEvery, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}, selfTyped: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{}}
+	c = &Compiler{classes: map[string]*Class{}, topDefs: map[string]*Method{}, consts: map[string]*Const{}, anonClasses: map[*parser.CallNode]*Class{}, regexpVars: map[string]string{}, warned: map[string]bool{},
+		preludeFS: preludeFS, parser: p, loaded: map[string]bool{}, selfTyped: map[*Class]bool{}, labels: map[string]string{}, erbSnippets: map[*parser.CallNode]*File{}, sigs: map[string]*rbs.ClassDecl{},
+		dynState:     dynState{dynEvery: dynEvery, dynSeen: map[string]bool{}, respondSeen: map[string]bool{}, markers: map[string]bool{}, dynGo: map[string]string{}, dynWrapped: map[*Class][]dynWrapped{}, dynOut: map[string]bool{}, respondOut: map[string]bool{}, fwdOut: map[*Class]bool{}},
+		marshalState: marshalState{marshalSeen: map[string]Type{}, marshalGo: map[string]bool{}},
+		tableState:   tableState{tupleN: map[int]bool{}, procTypes: map[string]bool{}, procFuncs: map[string]TFunc{}, argBoxes: map[string]bool{}, boxes: map[string]bool{}, unions: map[string]TUnion{}, unionsOut: map[string]bool{}, strLits: map[string]bool{}}}
 	c.loadPath, c.gemDirs = opts.loadPath, opts.gemDirs
 	c.gemSigs = opts.gemSigs
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone

@@ -6,7 +6,7 @@ import "testing"
 func TestCallerFileColonInPath(t *testing.T) {
 	const path = "/gems/odd:dir/lib/x.rb"
 	f := &File{path: path}
-	c := &Compiler{parsed: map[string]*File{path: f}, realPaths: map[string]string{path: path}}
+	c := &Compiler{parsed: map[string]*File{path: f}, pathCache: pathCache{realPaths: map[string]string{path: path}}}
 	for loc, wantLine := range map[string]int{path + ":12": 12, "/gems/odd:dir/lib/y.rb:3": 3} {
 		got, ln := c.callerFile(loc)
 		if loc == path+":12" && (got != f || ln != wantLine) {

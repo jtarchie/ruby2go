@@ -116,15 +116,19 @@ func (c *Compiler) emitNext(reached, selected func(string) bool) ([]byte, error)
 	return []byte(c.out.String()), nil
 }
 
-// tableInputs fingerprints what emitTables reads; the maps only grow, so sizes tell.
-func (c *Compiler) tableInputs() [14]int {
-	b2i := func(b bool) int {
-		if b {
-			return 1
-		}
-		return 0
+// tableInputs is what emitTables reads, as sizes and flags: the maps only grow, so equal sizes mean equal contents.
+type tableInputs struct {
+	tuples, argBoxes, boxes, procTypes, pkgVars, strLits, optConv     int
+	classOf, dynEvery, respondEvery, callable, dynEach, rxAlt, reqTab bool
+}
+
+func (c *Compiler) tableInputs() tableInputs {
+	return tableInputs{
+		tuples: len(c.tupleN), argBoxes: len(c.argBoxes), boxes: len(c.boxes), procTypes: len(c.procTypes),
+		pkgVars: len(c.pkgVars), strLits: len(c.strLits), optConv: len(c.optConv),
+		classOf: c.classOf, dynEvery: c.dynEvery, respondEvery: c.respondEvery, callable: c.callable != nil,
+		dynEach: c.dynEach, rxAlt: c.needRxAlt, reqTab: c.needRequireTable,
 	}
-	return [14]int{len(c.tupleN), len(c.argBoxes), len(c.boxes), len(c.procTypes), len(c.pkgVars), len(c.strLits), b2i(c.classOf), b2i(c.dynEvery), b2i(c.respondEvery), b2i(c.callable != nil), b2i(c.dynEach), b2i(c.needRxAlt), b2i(c.needRequireTable), len(c.optConv)}
 }
 
 // emitOptClassFrom emits rbOptClassFrom(zero, v): rbConv's box of an untyped value into a class's T? where a generic
