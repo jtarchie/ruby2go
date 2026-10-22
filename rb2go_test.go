@@ -1265,6 +1265,26 @@ func TestVendoredGemsMRI(t *testing.T) {
 	}
 }
 
+// TestGoModNoReplace keeps go.mod installable: `go install .../cmd/rb2go@latest` is refused for a module whose go.mod has a replace directive.
+func TestGoModNoReplace(t *testing.T) {
+	t.Parallel()
+
+	mod, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Contains(mod, []byte("module github.com/jtarchie/ruby2go")) {
+		t.Fatal("go.mod does not look like this module's: nothing was checked")
+	}
+
+	for line := range strings.SplitSeq(string(mod), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "replace") {
+			t.Errorf("go.mod has a replace directive, which breaks `go install ...@latest`: %q", line)
+		}
+	}
+}
+
 // TestVendoredMirror checks vendored/<name>/*.rb, the committed copy the embed reads, against the gems/<name>/lib submodule it
 // mirrors (scripts/vendor-gems, decision 328).
 func TestVendoredMirror(t *testing.T) {
