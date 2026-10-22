@@ -7,7 +7,7 @@ rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a sing
 ```sh
 git submodule update --init         # gems/*: vendored gem sources; the build embeds their mirror in vendored/ (scripts/vendor-gems; decision 328)
 bundle install                      # rbs, rbs-inline, webrick (needed by tests)
-go test ./...                       # the oracle; see below
+go test ./...                       # the oracle; see below. ~7 min with warm caches (2026-10-22); ~23 min the first run after a prelude/go edit, which misses the Go build cache for most programs
 go test -run 'TestExamples/each/05_word_count' .   # one example
 go test -run 'TestRun/^string_' .             # behaviour snippets by prefix
 go test -run 'TestErrors/^regexp$' .          # one compile-error archive
