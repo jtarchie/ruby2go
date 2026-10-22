@@ -84,13 +84,17 @@ func rbCopyFile(src, dst string) error {
 	return out.Close()
 }
 
-// rbCopyTree recreates src's tree under dst; symlinks are relinked, not followed.
-func rbCopyTree(src, dst string) error {
+// rbCopyTree recreates src's tree under dst; symlinks are relinked, not followed. As MRI's copy_entry, directories are made
+// with the default mode (the umask applies) so a read-only source still takes its children; preserve then sets each
+// directory's mode once its children are in.
+func rbCopyTree(src, dst string, preserve bool) error {
 	if rs, rd := rbResolve(src), rbResolve(dst); rd == rs || strings.HasPrefix(rd, rs+string(filepath.Separator)) {
 		abs, _ := filepath.Abs(src)
 		return &rbArgError{"cannot copy directory " + abs + " to itself " + dst}
 	}
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+	var dirs []string
+	var modes []fs.FileMode
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -107,15 +111,22 @@ func rbCopyTree(src, dst string) error {
 			}
 			return os.Symlink(link, target) //nolint:gosec // as above
 		case d.IsDir():
-			fi, err := d.Info()
-			if err != nil {
-				return err
+			if preserve {
+				fi, err := d.Info()
+				if err != nil {
+					return err
+				}
+				dirs, modes = append(dirs, target), append(modes, fi.Mode()&(fs.ModePerm|fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky))
 			}
-			return os.MkdirAll(target, fi.Mode().Perm()) //nolint:gosec // as above
+			return os.MkdirAll(target, 0o777) //nolint:gosec // as above
 		default:
 			return rbCopyFile(path, target)
 		}
 	})
+	for i := len(dirs) - 1; err == nil && i >= 0; i-- {
+		err = os.Chmod(dirs[i], modes[i])
+	}
+	return err
 }
 
 // rbMove is os.Rename with a copy+remove fallback across devices, like MRI's FileUtils.mv.
@@ -132,7 +143,7 @@ func rbMove(src, dst string) error {
 		return serr
 	}
 	if fi.IsDir() {
-		if cerr := rbCopyTree(src, dst); cerr != nil {
+		if cerr := rbCopyTree(src, dst, true); cerr != nil {
 			return cerr
 		}
 	} else if cerr := rbCopyFile(src, dst); cerr != nil {

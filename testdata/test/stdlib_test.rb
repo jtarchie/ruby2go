@@ -2073,6 +2073,22 @@ module StdlibTests
       assert_equal [true, true], [Pathname.new("/a/b").fnmatch?("/a/*", File::FNM_PATHNAME), File.fnmatch?("*.rb", "x.rb")]
     end
 
+    # stars backtrack to the last one only: k stars used to cost O(n^k), and `**/` segments compounded the same way
+    def test_fnmatch_many_stars_is_linear
+      many = "*a" * 14 + "*b"
+      deep = "**/" * 16 + "x"
+      segs = "a/" * 40
+      assert_equal [false, true, false, true], [
+        File.fnmatch(many, "a" * 40), File.fnmatch(many, "#{"a" * 40}b"),
+        File.fnmatch(many, "a" * 40, File::FNM_PATHNAME), File.fnmatch(many, "#{"a" * 40}b", File::FNM_PATHNAME),
+      ]
+      assert_equal [false, true, false, false, true], [
+        File.fnmatch(deep, "#{segs}y", File::FNM_PATHNAME), File.fnmatch(deep, "#{segs}x", File::FNM_PATHNAME),
+        File.fnmatch(deep, "#{segs}.b/x", File::FNM_PATHNAME), File.fnmatch("a*a*b", "a/a/b", File::FNM_PATHNAME),
+        File.fnmatch(deep, "#{segs}.b/x", File::FNM_PATHNAME | File::FNM_DOTMATCH),
+      ]
+    end
+
     # Homebrew's Cleanup and Keg: each_child, descend, world_writable?, glob with a block, Errno::ELOOP
     def test_pathname_walk_helpers
       Dir.mktmpdir do |d|

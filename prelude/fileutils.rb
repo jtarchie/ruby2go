@@ -101,7 +101,7 @@ module FileUtils
 
   #: (String, String) -> nil
   def self.__cp_tree(src, dest) = %x{
-    if err := rbCopyTree(string(src), string(dest)); err != nil {
+    if err := rbCopyTree(string(src), string(dest), false); err != nil {
       panic(rbFileErr(err, "rb_sysopen", string(src)))
     }
   }

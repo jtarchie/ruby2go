@@ -161,6 +161,58 @@ module FileUtilsTests
       end
     end
 
+    # setuid/setgid/sticky survive File.chmod, and symbolic modes that do not name them leave them alone
+    def test_chmod_special_bits
+      Dir.mktmpdir do |d|
+        f = File.join(d, "f")
+        sd = File.join(d, "sd")
+        File.write(f, "x")
+        Dir.mkdir(sd)
+        File.chmod(0o6755, f)
+        modes = [File.stat(f).mode & 0o7777]
+        FileUtils.chmod("u+x", f)
+        modes << (File.stat(f).mode & 0o7777)
+        FileUtils.chmod("g-s", f)
+        modes << (File.stat(f).mode & 0o7777)
+        File.chmod(0o755, f)
+        modes << (File.stat(f).mode & 0o7777)
+        FileUtils.chmod("u+s", f)
+        modes << (File.stat(f).mode & 0o7777)
+        File.chmod(0o1777, sd)
+        modes << (File.stat(sd).mode & 0o7777)
+        FileUtils.chmod("u+w", sd)
+        modes << (File.stat(sd).mode & 0o7777)
+        FileUtils.chmod("o-t", sd)
+        modes << (File.stat(sd).mode & 0o7777)
+        assert_equal [0o6755, 0o6755, 0o4755, 0o755, 0o4755, 0o1777, 0o1777, 0o777], modes
+      end
+    end
+
+    # a read-only source dir copies: the new dir is writable while its children go in
+    def test_cp_r_readonly_dir
+      Dir.mktmpdir do |d|
+        src = File.join(d, "src")
+        FileUtils.mkdir_p(File.join(src, "sub"))
+        File.write(File.join(src, "a"), "A")
+        File.write(File.join(src, "sub", "b"), "B")
+        File.chmod(0o555, File.join(src, "sub"))
+        File.chmod(0o555, src)
+        out = File.join(d, "out")
+        err = begin
+          FileUtils.cp_r(src, out)
+          nil
+        rescue SystemCallError => e
+          e.class
+        end
+        copied = [File.read(File.join(out, "a")), File.read(File.join(out, "sub", "b"))] unless err
+        assert_equal [nil, ["A", "B"], true], [err, copied, File.stat(out).mode.anybits?(0o200)]
+      ensure
+        File.chmod(0o755, File.join(d, "src", "sub")) if File.directory?(File.join(d, "src", "sub"))
+        File.chmod(0o755, File.join(d, "src")) if File.directory?(File.join(d, "src"))
+        File.chmod(0o755, File.join(d, "out", "sub")) if File.directory?(File.join(d, "out", "sub"))
+      end
+    end
+
     # Homebrew's create_symlink_to_cached_download: Pathnames, force over an existing file, into a directory
     def test_ln_s_force
       Dir.mktmpdir do |d|

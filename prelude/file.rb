@@ -405,8 +405,18 @@ class File < Object
 
   #: (Integer, *String) -> Integer
   def self.chmod(mode, *paths) = %x{
+    fm := fs.FileMode(mode & 0o777)
+    if mode&0o4000 != 0 {
+      fm |= fs.ModeSetuid
+    }
+    if mode&0o2000 != 0 {
+      fm |= fs.ModeSetgid
+    }
+    if mode&0o1000 != 0 {
+      fm |= fs.ModeSticky
+    }
     for _, p := range rest_ {
-      if err := os.Chmod(string(p), fs.FileMode(mode&0o777)); err != nil {
+      if err := os.Chmod(string(p), fm); err != nil {
         panic(rbSysErr(err, "apply2files", string(p)))
       }
     }

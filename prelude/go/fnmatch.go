@@ -33,85 +33,99 @@ func rbFnmatch(pattern, path string, flags int) bool {
 	return rbFnmPath(strings.Split(pattern, "/"), strings.Split(path, "/"), flags)
 }
 
-// rbFnmPath matches segment lists, `**` segments spanning zero or more path segments.
+// rbFnmPath matches segment lists, `**` segments spanning zero or more path segments. Like MRI's fnmatch it keeps only the
+// last `**/` as a backtrack point (an earlier one never needs to retry once a later one matched), so it is linear in the
+// match steps instead of exponential in the number of `**/`.
 func rbFnmPath(ps, ss []string, flags int) bool {
-	for len(ps) > 0 {
-		if ps[0] == "**" && len(ps) > 1 { // `**/`: any directories, none starting with `.` unless FNM_DOTMATCH
-			for i := 0; i <= len(ss); i++ {
-				if rbFnmPath(ps[1:], ss[i:], flags) {
-					return true
-				}
-				if i < len(ss) && strings.HasPrefix(ss[i], ".") && flags&rbFnmDotmatch == 0 {
-					return false
-				}
-			}
+	pi, si, starP, starS := 0, 0, -1, 0
+	for pi < len(ps) || si < len(ss) {
+		if pi < len(ps) && ps[pi] == "**" && pi+1 < len(ps) { // `**/`: any directories, none starting with `.` unless FNM_DOTMATCH
+			pi++
+			starP, starS = pi, si
+			continue
+		}
+		if pi < len(ps) && si < len(ss) && rbFnmSeg(ps[pi], ss[si], flags, true) {
+			pi, si = pi+1, si+1
+			continue
+		}
+		if starP < 0 || starS >= len(ss) || strings.HasPrefix(ss[starS], ".") && flags&rbFnmDotmatch == 0 {
 			return false
 		}
-		if len(ss) == 0 || !rbFnmSeg(ps[0], ss[0], flags, true) {
-			return false
-		}
-		ps, ss = ps[1:], ss[1:]
+		starS++
+		pi, si = starP, starS
 	}
-	return len(ss) == 0
+	return true
 }
 
 // rbFnmSeg matches one pattern against one string; start is whether s begins a path (or segment), for the period rule.
+// A `*` remembers only its own position (the last star's), as MRI's fnmatch_helper: earlier stars never retry.
 func rbFnmSeg(p, s string, flags int, start bool) bool {
 	period := start && flags&rbFnmDotmatch == 0 && strings.HasPrefix(s, ".")
 	escape := flags&rbFnmNoescape == 0
 	fold := flags&rbFnmCasefold != 0
 	slash := flags&rbFnmPathname != 0
-	for len(p) > 0 {
-		switch p[0] {
-		case '*':
+	star, starP, starS := false, "", ""
+	for {
+		if len(p) > 0 && p[0] == '*' {
 			for len(p) > 0 && p[0] == '*' {
 				p = p[1:]
 			}
 			if period {
 				return false
 			}
-			for i := 0; i <= len(s); i++ {
-				if rbFnmSeg(p, s[i:], flags, false) {
-					return true
-				}
-				if i < len(s) && slash && s[i] == '/' {
-					return false
-				}
-			}
-			return false
-		case '?':
-			if len(s) == 0 || period || slash && s[0] == '/' {
-				return false
-			}
-			_, n := utf8.DecodeRuneInString(s)
-			p, s = p[1:], s[n:]
-		case '[':
-			if len(s) == 0 || period || slash && s[0] == '/' {
-				return false
-			}
-			r, n := utf8.DecodeRuneInString(s)
-			ok, rest, valid := rbFnmClass(p[1:], r, escape, fold)
-			if !valid || !ok { // an unclosed `[` matches nothing, as MRI's
-				return false
-			}
-			p, s = rest, s[n:]
-		default:
-			if p[0] == '\\' && escape && len(p) > 1 {
-				p = p[1:]
-			}
-			pr, pn := utf8.DecodeRuneInString(p)
-			if len(s) == 0 {
-				return false
-			}
-			sr, sn := utf8.DecodeRuneInString(s)
-			if pr != sr && (!fold || unicode.ToLower(pr) != unicode.ToLower(sr)) {
-				return false
-			}
-			p, s = p[pn:], s[sn:]
+			star, starP, starS = true, p, s
+			continue
 		}
-		period = false
+		if len(p) == 0 && len(s) == 0 {
+			return true
+		}
+		if len(p) > 0 {
+			if np, ns, ok := rbFnmStep(p, s, period, slash, escape, fold); ok {
+				p, s, period = np, ns, false
+				continue
+			}
+		}
+		if !star || len(starS) == 0 || slash && starS[0] == '/' {
+			return false
+		}
+		_, n := utf8.DecodeRuneInString(starS)
+		starS = starS[n:]
+		p, s = starP, starS
 	}
-	return len(s) == 0
+}
+
+// rbFnmStep matches one non-`*` pattern element (`?`, a class or a literal) against the first rune of s.
+func rbFnmStep(p, s string, period, slash, escape, fold bool) (string, string, bool) {
+	switch p[0] {
+	case '?':
+		if len(s) == 0 || period || slash && s[0] == '/' {
+			return "", "", false
+		}
+		_, n := utf8.DecodeRuneInString(s)
+		return p[1:], s[n:], true
+	case '[':
+		if len(s) == 0 || period || slash && s[0] == '/' {
+			return "", "", false
+		}
+		r, n := utf8.DecodeRuneInString(s)
+		ok, rest, valid := rbFnmClass(p[1:], r, escape, fold)
+		if !valid || !ok { // an unclosed `[` matches nothing, as MRI's
+			return "", "", false
+		}
+		return rest, s[n:], true
+	}
+	if p[0] == '\\' && escape && len(p) > 1 {
+		p = p[1:]
+	}
+	if len(s) == 0 {
+		return "", "", false
+	}
+	pr, pn := utf8.DecodeRuneInString(p)
+	sr, sn := utf8.DecodeRuneInString(s)
+	if pr != sr && (!fold || unicode.ToLower(pr) != unicode.ToLower(sr)) {
+		return "", "", false
+	}
+	return p[pn:], s[sn:], true
 }
 
 // rbFnmClass reports whether r matches the class, the pattern after its `]`, and whether it was closed.
