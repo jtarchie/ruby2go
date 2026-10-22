@@ -265,22 +265,29 @@ on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 Correctness is measured against MRI, not a specification: 121
 [examples](examples/), 39 minitest suites and 23 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127). Measured 2026-10-17:
+ruby/spec under rb2go (decision 127). Measured 2026-10-21 (the runner walks
+nested spec folders since then, decision 336, so the totals cover 2,151 `core`
+and 1,517 `library` spec files, not the 1,855 and 715 it read before):
 
 | ruby/spec | examples | pass | fail | error | skipped |
 |---|---:|---:|---:|---:|---:|
-| `core` | 17,548 | **5,826** | 1,032 | 550 | 10,140 |
-| `library` | 3,283 | **843** | 111 | 89 | 2,240 |
-| total | 20,831 | **6,669** | 1,143 | 639 | 12,380 |
+| `core` | 21,731 | **6,364** | 2,020 | 2,043 | 11,304 |
+| `library` | 5,307 | **1,101** | 152 | 95 | 3,959 |
+| total | 27,038 | **7,465** | 2,172 | 2,138 | 15,263 |
 
 "Fail" means an assertion did not hold. "Error" means the example raised
 instead. "Skipped" means the example uses something rb2go can't compile; the
 largest groups are Bignum, String mutation, String encoding tags and
 `eval`/code loading, which rb2go leaves out by design. Of the examples that
-run, 78.6% of `core` and 80.8% of `library` pass. Not counted: `library/etc`,
-which stops on a parse error in the program the runner builds, and
-`language`, which stops on an internal compiler error. A looser name-level metric,
-[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 80.2% of
+run, 61.0% of `core` and 81.7% of `library` pass. Most of `core`'s drop from
+the 78.6% measured on 2026-10-17 is two directories the runner could not reach
+before: `core/array/pack` and `core/string/unpack` hold 2,438 of `core`'s 4,063
+failures and errors (`pack`/`unpack` directives are a gap, not a regression).
+Without them `core` passes 78.7% of what runs, level with before. Not counted:
+`library/etc` and `library/erb/defmethod`, which stop on a syntax error in the
+program the runner builds, and `language`, which stops on an internal compiler
+error. A looser name-level metric,
+[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 81.2% of
 core's method spec files name a method the prelude or the compiler defines
 ([#49](https://github.com/jtarchie/ruby2go/issues/49)).
 
