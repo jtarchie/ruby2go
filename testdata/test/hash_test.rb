@@ -3,6 +3,25 @@
 require "minitest/autorun"
 
 # Helpers for the checks that were testdata/run/hash_args.rb.
+# Evaluation-order recorders (decisions 98, 241): each logs when it runs.
+#: (Array[Symbol], Symbol, Integer) -> Integer
+def hash_note(log, tag, v)
+  log << tag
+  v
+end
+
+#: (Array[Symbol], Symbol, String) -> String
+def hash_snote(log, tag, v)
+  log << tag
+  v
+end
+
+#: (Array[Symbol], Symbol, ^(Integer) -> Integer) -> ^(Integer) -> Integer
+def hash_proc_note(log, tag, pr)
+  log << tag
+  pr
+end
+
 #: (Hash[Symbol, Integer]) -> String
 def hash_show(opts) = opts.inspect
 
@@ -2272,6 +2291,51 @@ module HashTests
       h.default_proc = nil
       assert_nil h["zz"]
       assert_nil h.default_proc
+    end
+  end
+end
+
+module HashTests
+  class HashEvalOrderTest < Minitest::Test
+    def test_hash_literal_hoisting_key_sees_earlier_pair
+      log = [] #: Array[Integer]
+      h = { log.push(1).size => 1, (log.last || 0) + 1 => 5 }
+      assert_equal({ 1 => 1, 2 => 5 }, h)
+    end
+
+    def test_hash_literal_splat_then_hoisting_value
+      log = [] #: Array[Integer]
+      h = { log.push(1).size => 1, **{ log.push(2).size => 2 }, 3 => (log.last || 0) + 1 }
+      assert_equal({ 1 => 1, 2 => 2, 3 => 3 }, h)
+      log.clear
+      h = { log.push(1).size => 1, **{ (log.last || 0) + 1 => 2 } }
+      assert_equal({ 1 => 1, 2 => 2 }, h)
+    end
+
+    def test_hash_literal_hoisting_value_sees_earlier_pair
+      log = [] #: Array[Integer]
+      h = { log.push(1).size => 1, log.push(2).size => log.last&.succ }
+      assert_equal({ 1 => 1, 2 => 3 }, h)
+      assert_equal [1, 2], log
+    end
+
+    def test_proc_compose_receiver_first
+      log = [] #: Array[Symbol]
+      f = proc { |x| x + 1 } #: ^(Integer) -> Integer
+      g = proc { |x| x * 2 } #: ^(Integer) -> Integer
+      left = hash_proc_note(log, :f, f) << hash_proc_note(log, :g, g)
+      right = hash_proc_note(log, :f2, f) >> hash_proc_note(log, :g2, g)
+      assert_equal [:f, :g, :f2, :g2], log
+      assert_equal [7, 8], [left.call(3), right.call(3)]
+    end
+
+    def test_env_fetch_default_is_eager
+      log = [] #: Array[Symbol]
+      v = ENV.fetch("PATH", hash_snote(log, :d, "dflt"))
+      assert_equal [:d], log
+      refute_equal "dflt", v
+      ENV.fetch(hash_snote(log, :k, "PATH"), hash_snote(log, :d2, "dflt"))
+      assert_equal [:d, :k, :d2], log
     end
   end
 end

@@ -336,14 +336,18 @@ func (f *fctx) procCompose(n parser.Node, recv expr, t TFunc, name string, args 
 	if len(args) != 1 {
 		f.errorf(n, "%s takes one Proc", name)
 	}
+	mark := f.buf.Len()
 	g := f.genExpr(args[0], nil)
+	pin := []expr{recv} // the receiver runs first, whichever side of the pair it ends up on (decision 98)
+	f.pinExprs(mark, pin)
+	recv = pin[0]
 	gt, ok := g.typ.(TFunc)
 	if !ok || !gt.Proc {
 		f.errorf(n, "%s takes a Proc, got %s", name, g.typ)
 	}
-	first, firstT, second, secondT := recv.code, t, g.code, gt
+	firstT, secondT := t, gt
 	if name == "<<" {
-		first, firstT, second, secondT = g.code, gt, recv.code, t
+		firstT, secondT = gt, t
 	}
 	if len(secondT.Params) != 1 || !typeEq(secondT.Params[0], firstT.Ret) {
 		f.errorf(n, "cannot compose %s with %s", firstT, secondT)
@@ -364,8 +368,13 @@ func (f *fctx) procCompose(n parser.Node, recv expr, t TFunc, name string, args 
 	if !isVoid(secondT.Ret) {
 		ret = " " + f.c.goType(secondT.Ret)
 	}
-	code := fmt.Sprintf("func(first %s, second %s) %s { return Ref(func(%s)%s { %s }) }(%s, %s)",
-		f.c.goType(firstT), f.c.goType(secondT), f.c.goType(out), strings.Join(ps, ", "), ret, body, first, second)
+	// the literal's parameters follow the written order of the operands, so Go evaluates the receiver first
+	params := "first " + f.c.goType(firstT) + ", second " + f.c.goType(secondT)
+	if name == "<<" {
+		params = "second " + f.c.goType(secondT) + ", first " + f.c.goType(firstT)
+	}
+	code := fmt.Sprintf("func(%s) %s { return Ref(func(%s)%s { %s }) }(%s, %s)",
+		params, f.c.goType(out), strings.Join(ps, ", "), ret, body, recv.code, g.code)
 	return expr{code: code, typ: out}
 }
 

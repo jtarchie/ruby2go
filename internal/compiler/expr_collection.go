@@ -274,6 +274,9 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 		splat parser.Node // `**h`: v is the Hash merged in
 	}
 	pairs := make([]kv, 0, len(elements))
+	// Ruby runs the pairs left to right: when a later key or value emitted statements, the earlier ones (generated as
+	// plain Go expressions) are pinned into temporaries first (decision 98), so they are tracked as a flat list.
+	var done []expr
 	ks, vs := make([]Type, 0, len(elements)), make([]Type, 0, len(elements))
 	for _, el := range elements {
 		if sp, ok := el.(*parser.AssocSplatNode); ok {
@@ -281,7 +284,9 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 			if kT != nil {
 				want = TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}
 			}
+			mark := f.buf.Len()
 			h := f.genExpr(sp.Value, want)
+			f.pinExprs(mark, done)
 			if f.lenient() && isAny(h.typ) { // a gem's `new(**formula_hash)` of an untyped Hash: converted where it lands (decision 249)
 				anyHash := TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}
 				h = expr{code: f.coerce(sp, h, anyHash), typ: anyHash}
@@ -292,16 +297,30 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 			}
 			ks, vs = append(ks, ht.Args[0]), append(vs, ht.Args[1])
 			pairs = append(pairs, kv{v: h, splat: sp})
+			done = append(done, h)
 			continue
 		}
 		a, ok := el.(*parser.AssocNode)
 		if !ok {
 			f.c.unsupported(f.f, el)
 		}
+		mark := f.buf.Len()
 		k := f.genExpr(a.Key, kT)
+		f.pinExprs(mark, done)
+		done = append(done, k)
+		mark = f.buf.Len()
 		v := f.genExpr(a.Value, vT)
+		f.pinExprs(mark, done)
+		done = append(done, v)
 		ks, vs = append(ks, k.typ), append(vs, v.typ)
 		pairs = append(pairs, kv{k: k, v: v})
+	}
+	for i, d := 0, 0; i < len(pairs); i++ { // the pinned codes
+		if pairs[i].splat != nil {
+			pairs[i].v, d = done[d], d+1
+		} else {
+			pairs[i].k, pairs[i].v, d = done[d], done[d+1], d+2
+		}
 	}
 	if kT == nil {
 		kT, vT = joinOrAny(ks), joinOrAny(vs)
@@ -310,14 +329,23 @@ func (f *fctx) genHash(n parser.Node, elements []parser.Node, expected Type) exp
 		}
 	}
 	targs := "[" + f.c.goType(kT) + ", " + f.c.goType(vT) + "]"
-	code := "NewHash" + targs + "()"
-	for _, p := range pairs { // Hash's methods are free funcs (decision 86)
+	// Hash's methods are free funcs (decision 86): the last pair's call is outermost, so the openers go in reverse.
+	var open, tail strings.Builder
+	for i := len(pairs) - 1; i >= 0; i-- {
+		if pairs[i].splat != nil {
+			open.WriteString("rbHashSplat(")
+		} else {
+			open.WriteString("Hash___Set" + targs + "(")
+		}
+	}
+	for _, p := range pairs {
 		if p.splat != nil {
-			code = "rbHashSplat(" + code + ", " + f.coerce(p.splat, p.v, TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}) + ")"
+			tail.WriteString(", " + f.coerce(p.splat, p.v, TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}) + ")")
 			continue
 		}
-		code = "Hash___Set" + targs + "(" + code + ", " + f.coerce(n, p.k, kT) + ", " + f.coerce(n, p.v, vT) + ")"
+		tail.WriteString(", " + f.coerce(n, p.k, kT) + ", " + f.coerce(n, p.v, vT) + ")")
 	}
+	code := open.String() + "NewHash" + targs + "()" + tail.String()
 	return expr{code: code, typ: TClass{C: f.c.classes["Hash"], Args: []Type{kT, vT}}}
 }
 

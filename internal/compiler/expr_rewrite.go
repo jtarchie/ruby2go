@@ -115,8 +115,24 @@ func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
 // value is a String, so this is fetch's answer whatever d is), and renamedCall's.
 func (f *fctx) callSugar(n *parser.CallNode, expected Type) (expr, bool) {
 	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && r.Name == "ENV" && n.Name == "fetch" && len(callArgs(n)) == 2 && n.Block == nil {
-		idx := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: "[]", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: callArgs(n)[:1]}}
-		return f.genExpr(&parser.OrNode{Location: n.Location, Left: idx, Right: callArgs(n)[1]}, expected), true
+		key, def := callArgs(n)[0], callArgs(n)[1]
+		if !sideEffectFree(def) { // MRI evaluates the default (after the key) even when the key exists
+			ke := f.genExpr(key, nil)
+			if pinnable(ke.code) && !ke.lit && !isVoid(ke.typ) {
+				t := f.newTmp()
+				f.emit("%s := %s", t, ke.code)
+				ke.code, ke.view = t, ""
+			}
+			de := f.genExpr(def, expected)
+			if !de.lit && !isVoid(de.typ) && de.code != "" && de.code != "nil" {
+				t := f.newTmp()
+				f.emit("%s := %s", t, de.code)
+				de.code, de.view = t, ""
+			}
+			key, def = &exprNode{Node: key, e: ke}, &exprNode{Node: def, e: de}
+		}
+		idx := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: "[]", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{key}}}
+		return f.genExpr(&parser.OrNode{Location: n.Location, Left: idx, Right: def}, expected), true
 	}
 	if to := renamedCall(n); to != "" {
 		c := *n
@@ -223,6 +239,15 @@ func isRegexpConst(n parser.Node) bool {
 		return r.Name == "Regexp"
 	case *parser.ConstantPathNode:
 		return r.Parent == nil && r.Name != nil && *r.Name == "Regexp"
+	}
+	return false
+}
+
+// sideEffectFree is true for a literal node: evaluating it or not is unobservable.
+func sideEffectFree(n parser.Node) bool {
+	switch n.(type) {
+	case *parser.StringNode, *parser.SymbolNode, *parser.IntegerNode, *parser.FloatNode, *parser.NilNode, *parser.TrueNode, *parser.FalseNode:
+		return true
 	}
 	return false
 }
