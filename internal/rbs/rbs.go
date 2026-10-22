@@ -249,6 +249,7 @@ type parser struct {
 	toks  []string
 	pos   int
 	depth int
+	wraps int // `?` suffixes so far: tree height is at most nesting + wraps (<= 2*maxDepth)
 }
 
 // maxDepth bounds type nesting: the parser and every consumer recurse on it, and a Go stack overflow is fatal.
@@ -631,8 +632,9 @@ func (p *parser) parseSuffixed() (Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	for n := 0; p.peek() == "?"; n++ {
-		if n >= maxDepth {
+	for p.peek() == "?" { // each wrap is a tree level, found after the nested type returned: so bound them in total, not per level
+		p.wraps++
+		if p.wraps > maxDepth {
 			return nil, errTooDeep
 		}
 		p.next()

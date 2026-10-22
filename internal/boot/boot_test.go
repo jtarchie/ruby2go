@@ -212,6 +212,106 @@ func TestCapture(t *testing.T) {
 	}
 }
 
+// A forked child that exits normally runs the inherited at_exit: it must not dump over the parent's manifest.
+func TestCaptureForkedChildDoesNotDump(t *testing.T) {
+	needRuby(t)
+	// The child blocks on the pipe until the parent has exited (and dumped), then defines ForkChild and exits through the handler.
+	src := "class Parent; end\nr, w = IO.pipe\nfork { w.close; r.read; class ForkChild; end }\nr.close\n"
+	dir := writeEntry(t, "entry.rb", src)
+	m, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Class("Parent") == nil {
+		t.Errorf("parent's manifest was overwritten; classes %v", classNames(m))
+	}
+	if m.Class("ForkChild") != nil {
+		t.Errorf("the forked child dumped the manifest; classes %v", classNames(m))
+	}
+}
+
+// exit! skips at_exit, so no manifest: the error says why and carries the program's stderr.
+func TestCaptureExitBang(t *testing.T) {
+	needRuby(t)
+	dir := writeEntry(t, "entry.rb", "$stderr.puts 'marker-from-program'\nexit!(0)\n")
+	_, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err == nil {
+		t.Fatal("want an error for the missing manifest")
+	}
+	for _, want := range []string{"marker-from-program", "manifest", "exit!"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q, want it to mention %q", err, want)
+		}
+	}
+}
+
+// A binary String held in class state (not valid UTF-8) must not make the dump raise.
+func TestCaptureBinaryClassState(t *testing.T) {
+	needRuby(t)
+	dir := writeEntry(t, "entry.rb", "module Bin\n  @blob = \"\\xff\\xfe\".b\n  @bad = \"\\xff\"\nend\n")
+	m, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	for _, s := range m.ClassState {
+		if s.Owner == "Bin" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("class state of Bin = %+v, want both ivars", m.ClassState)
+	}
+}
+
+// A program may define its own Boot; the hook's state must not collide with it or scan it as class state.
+func TestCaptureUserBoot(t *testing.T) {
+	needRuby(t)
+	dir := writeEntry(t, "entry.rb", "class Boot\n  @mine = {}\n  def self.dump(*) = raise('user Boot.dump called')\nend\n")
+	m, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Class("Boot") == nil {
+		t.Errorf("user class Boot not recorded; classes %v", classNames(m))
+	}
+}
+
+// A project-local json.rb on the load path must not stand in for the stdlib's in the hook.
+func TestCaptureLocalJSONShadow(t *testing.T) {
+	needRuby(t)
+	lib := writeEntry(t, "json.rb", "raise 'shadowed json'\n")
+	dir := writeEntry(t, "entry.rb", "class Plain; end\n")
+	m, err := Capture(context.Background(), filepath.Join(dir, "entry.rb"), lib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Class("Plain") == nil {
+		t.Errorf("classes %v", classNames(m))
+	}
+}
+
+// A load-list line over the scanner's buffer is an error, not a silently shortened list.
+func TestTraceOverlongLine(t *testing.T) {
+	needRuby(t)
+	dir := writeEntry(t, "entry.rb", "$LOAD_PATH << 'x' * (2 << 20)\n")
+	_, err := Trace(context.Background(), filepath.Join(dir, "entry.rb"), nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "load list") {
+		t.Errorf("err = %v, want a load list error", err)
+	}
+}
+
+// The load list is capped like the manifest.
+func TestTraceListTooBig(t *testing.T) {
+	needRuby(t)
+	shrink(t, &maxBytes, 10)
+	dir := writeEntry(t, "entry.rb", "\n")
+	_, err := Trace(context.Background(), filepath.Join(dir, "entry.rb"), nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("err = %v, want a size limit error", err)
+	}
+}
+
 func TestManifestLookups(t *testing.T) {
 	m := &Manifest{Classes: []ClassInfo{{Name: "A"}}}
 	if m.Class("A") == nil || m.Class("B") != nil {

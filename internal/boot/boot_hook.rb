@@ -6,9 +6,7 @@
 # actually loaded, every class/ancestor defined, and the objects held in class
 # state. The manifest is written as JSON to the file named by RB2GO_BOOT_OUT.
 
-require "json"
-
-module Boot
+module Rb2goBoot
   @classes = {}       # name => { name:, super:, path:, line: }
   @define_methods = [] # { owner:, name:, file:, line:, source: }
   @aliases = []        # { owner:, singleton:, name:, old:, file:, line: }
@@ -18,9 +16,15 @@ module Boot
   @features = nil
 
   class << self
-    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads
+    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads, :pid
+
+    # Valid UTF-8, since JSON raises on a binary or invalid String.
+    def text(s)
+      s.is_a?(String) ? s.dup.force_encoding(Encoding::UTF_8).scrub : s
+    end
 
     def install
+      @pid = $$
       require "coverage"
       Coverage.start(branches: true) # which arm of each load-time if boot took (decision 201)
       @features = $LOADED_FEATURES.dup
@@ -45,7 +49,7 @@ module Boot
         (%i[def_delegators def_instance_delegators] & ::Forwardable.instance_methods(false)).each do |m|
           define_method(m) do |accessor, *methods|
             loc = caller_locations(1, 1).first
-            ::Boot.delegators["#{loc.path}:#{loc.lineno}"] ||= methods.map(&:to_s) if loc
+            ::Rb2goBoot.delegators["#{loc.path}:#{loc.lineno}"] ||= methods.map(&:to_s) if loc
             super(accessor, *methods)
           end
         end
@@ -57,7 +61,7 @@ module Boot
       @private_constants = Hash.new { |h, k| h[k] = [] }
       Module.prepend(Module.new do
         def private_constant(*names)
-          ::Boot.private_constants[self].concat(names)
+          ::Rb2goBoot.private_constants[self].concat(names)
           super
         end
       end)
@@ -217,26 +221,26 @@ module Boot
     def install_evals
       Kernel.prepend(Module.new do
         def eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[2], args[3], "eval", nil) if args[0].is_a?(String)
+          ::Rb2goBoot.record_eval(args[0], args[2], args[3], "eval", nil) if args[0].is_a?(String)
           super(*args, **kw, &blk)
         end
       end)
       Module.prepend(Module.new do
         def class_eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
-          ::Boot.record_block_eval(blk, self) if blk && args.empty?
+          ::Rb2goBoot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
+          ::Rb2goBoot.record_block_eval(blk, self) if blk && args.empty?
           super(*args, **kw, &blk)
         end
 
         def module_eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
-          ::Boot.record_block_eval(blk, self) if blk && args.empty?
+          ::Rb2goBoot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
+          ::Rb2goBoot.record_block_eval(blk, self) if blk && args.empty?
           super(*args, **kw, &blk)
         end
       end)
       BasicObject.prepend(Module.new do
         def instance_eval(*args, **kw, &blk)
-          ::Boot.record_eval(args[0], args[1], args[2], "instance_eval", self) if args[0].is_a?(String)
+          ::Rb2goBoot.record_eval(args[0], args[1], args[2], "instance_eval", self) if args[0].is_a?(String)
           super(*args, **kw, &blk)
         end
       end)
@@ -245,7 +249,7 @@ module Boot
     def install_autoload
       hook = Module.new do
         def autoload(name, path)
-          ::Boot.record_autoload(self, name, path)
+          ::Rb2goBoot.record_autoload(self, name, path)
           super(name, path)
         end
       end
@@ -256,7 +260,7 @@ module Boot
     def record_eval(src, file, line, kind, recv)
       loc = caller_locations(2, 1).first
       named = recv.is_a?(Module) ? safe_name(recv) : nil
-      @evals << { "file" => file, "line" => line, "source" => src, "kind" => kind, "self" => named,
+      @evals << { "file" => text(file), "line" => line, "source" => text(src), "kind" => kind, "self" => named,
                   "caller" => loc ? "#{loc.path}:#{loc.lineno}" : nil }
     end
 
@@ -273,7 +277,7 @@ module Boot
 
     def record_autoload(owner, name, path)
       @autoloads << { "owner" => safe_name(owner), "const" => name.to_s,
-                      "path" => path, "registered" => true }
+                      "path" => text(path), "registered" => true }
     end
 
     def safe_name(obj)
@@ -317,7 +321,7 @@ module Boot
              when Mutex, Queue then "<#{kind}>"
              when Hash then "Hash(size=#{value.size}, default=#{!value.default.nil? || !value.default_proc.nil?})"
              when Array then "Array(size=#{value.size})"
-             when String then value.dup
+             when String then text(value)
              else kind.to_s
              end
       { "owner" => owner, "ivar" => ivar, "kind" => kind, "desc" => desc,
@@ -415,10 +419,23 @@ module Boot
         "delegators" => @delegators,
         "structs" => sorbet_structs,
       }
-      File.write(path, JSON.pretty_generate(manifest))
+      File.write(path, generate(manifest))
+    end
+
+    # json loads at dump, from the stdlib dirs first: the program's own `require "json"` resolves as without the hook, and a local json.rb cannot shadow ours.
+    def generate(manifest)
+      require "rbconfig"
+      saved = $LOAD_PATH.dup
+      begin
+        $LOAD_PATH.unshift(RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["archdir"])
+        require "json"
+      ensure
+        $LOAD_PATH.replace(saved)
+      end
+      JSON.pretty_generate(manifest)
     end
   end
 end
 
-Boot.install
-at_exit { Boot.dump(ENV["RB2GO_BOOT_OUT"]) if ENV["RB2GO_BOOT_OUT"] }
+Rb2goBoot.install
+at_exit { Rb2goBoot.dump(ENV["RB2GO_BOOT_OUT"]) if ENV["RB2GO_BOOT_OUT"] && $$ == Rb2goBoot.pid } # a forked child exits through here too

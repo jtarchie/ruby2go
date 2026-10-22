@@ -61,3 +61,29 @@ func TestParseDepthLimit(t *testing.T) {
 		t.Errorf("50-deep generic: %v", err)
 	}
 }
+
+// TestParseDepthOptionalWraps: each `?` wrap is a tree level, so parens x `?` per level cannot multiply past maxDepth.
+func TestParseDepthOptionalWraps(t *testing.T) {
+	rep := strings.Repeat
+	s := "A"
+	for range 5 {
+		s = "(" + s + ")" + rep("?", 100) // height 5*101 = 505 > maxDepth
+	}
+	_, err := ParseType(s)
+	if err == nil || !strings.Contains(err.Error(), "nested too deeply") {
+		t.Errorf("want a nesting error, got %v", err)
+	}
+	_, err = ParseType("(A" + rep("?", 50) + ")" + rep("?", 50))
+	if err != nil {
+		t.Errorf("ordinary `?` runs: %v", err)
+	}
+}
+
+// TestParseFileUnclosedBracket: an unclosed `(` swallowing many lines is one linear join (a quadratic one would hit go test's timeout).
+func TestParseFileUnclosedBracket(t *testing.T) {
+	src := "class C\n  def a: (" + strings.Repeat("\n  Integer,", 200_000) + "\nend\n"
+	_, err := ParseFile(src)
+	if err == nil {
+		t.Error("want an error for the unclosed bracket")
+	}
+}

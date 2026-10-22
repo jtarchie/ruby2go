@@ -210,7 +210,7 @@ func runRuby(ctx context.Context, args, env []string, stdout func(context.Cancel
 		cmd.Stdout = stdout(cancel)
 	}
 	err := cmd.Run()
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) { // a run that finished in time is not a timeout
 		return stderr.String(), fmt.Errorf("timed out (boot timeout %s, or the caller's deadline): %w", bootTimeout, context.DeadlineExceeded)
 	}
 	return stderr.String(), err
@@ -249,7 +249,7 @@ func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest,
 	}
 	info, err := os.Stat(out)
 	if err != nil {
-		return nil, fmt.Errorf("boot: %w", err)
+		return nil, fmt.Errorf("boot %s: the run wrote no manifest (the program called exit!, or the hook's dump raised): %w\n%s", entry, err, stderr)
 	}
 	if info.Size() > maxBytes {
 		return nil, fmt.Errorf("boot %s: manifest is %d bytes, over the %d byte limit", entry, info.Size(), maxBytes)

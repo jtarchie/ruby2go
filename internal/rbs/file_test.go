@@ -2,6 +2,7 @@ package rbs
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -191,5 +192,59 @@ end
 	}
 	if m := u.Methods[0]; !m.Self || !m.Both || m.Name != "escape" {
 		t.Errorf("self? method = %+v", m)
+	}
+}
+
+// TestParseFilePrivateMembers: a `private`/`public` prefix on a member (core/kernel.rbs, prism's dispatcher.rbs) does not hide it.
+func TestParseFilePrivateMembers(t *testing.T) {
+	src := `class C
+  private def respond_to_missing?: (Symbol, bool) -> bool
+  public def self.make: () -> C
+  private attr_reader secret: String
+  private
+  def after: () -> void
+end
+`
+	f, err := ParseFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := f.Decls[0]
+	names := make([]string, 0, len(c.Methods))
+	for _, m := range c.Methods {
+		names = append(names, fmt.Sprint(m.Name, m.Self))
+	}
+	if got := fmt.Sprint(names); got != "[respond_to_missing?false maketrue afterfalse]" {
+		t.Errorf("methods = %s", got)
+	}
+	if len(c.Attrs) != 1 || c.Attrs[0].Name != "secret" || len(c.Consts) != 0 {
+		t.Errorf("attrs = %+v consts = %+v", c.Attrs, c.Consts)
+	}
+}
+
+// TestParseFileQuotedHash: a `#` inside a string-literal type is not a comment.
+func TestParseFileQuotedHash(t *testing.T) {
+	src := "class C\n" +
+		"  def sep: () -> \"#\" # trailing comment\n" +
+		"  def rec: (a: { \"#\" => Integer, 'k#' => String }) -> void # c\n" +
+		"  def open: (\"(\") -> void\n" +
+		"  def after: () -> void\n" +
+		"end\n"
+	f, err := ParseFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := f.Decls[0]
+	if len(c.Methods) != 4 {
+		t.Fatalf("methods = %+v", c.Methods)
+	}
+	if got := c.Methods[0].Overloads[0].String(); got != `() -> "#"` {
+		t.Errorf("sep = %s", got)
+	}
+	if got := c.Methods[1].Overloads[0].String(); !strings.Contains(got, `"#" => Integer`) {
+		t.Errorf("rec = %s", got)
+	}
+	if c.Methods[2].Name != "open" || c.Methods[2].Overloads[0].String() != `("(") -> void` {
+		t.Errorf("open = %+v", c.Methods[2])
 	}
 }

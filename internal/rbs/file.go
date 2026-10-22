@@ -10,7 +10,7 @@ import (
 // File is a parsed RBS declaration file: the subset rb2go attaches to
 // unannotated Ruby (docs/design.md decision 160). Only declarations are
 // modelled; a line rb2go does not understand is skipped, so a gem's sig file
-// may name a wider surface than the app reaches.
+// may name a wider surface than the app reaches. Top-level `type` aliases and constants are dropped on purpose: File has no slot, nothing consumes them.
 type File struct {
 	Decls []*ClassDecl
 }
@@ -136,16 +136,21 @@ func ParseFile(src string) (*File, error) {
 	return f, nil
 }
 
-// joinMember joins a member's continuation lines (an open bracket, a leading `|`) and drops `%a{}` annotations.
+// joinMember joins a member's continuation lines (open bracket, leading `|`), dropping `%a{}`; depth is carried, not rescanned, so an unclosed `(` stays O(N).
 func joinMember(lines []string, i *int, line string) string {
 	var sb strings.Builder
 	sb.WriteString(line)
+	_, depth := scanCode(line)
+	endsPipe := strings.HasSuffix(line, "|")
 	for *i+1 < len(lines) {
 		nxt := strings.TrimSpace(stripComment(lines[*i+1]))
-		if !strings.HasPrefix(nxt, "|") && !strings.HasSuffix(sb.String(), "|") && bracketDepth(sb.String()) <= 0 {
+		if !strings.HasPrefix(nxt, "|") && !endsPipe && depth <= 0 {
 			break
 		}
 		sb.WriteString(" " + nxt)
+		_, d := scanCode(nxt)
+		depth += d
+		endsPipe = strings.HasSuffix(nxt, "|")
 		*i++
 	}
 	return strings.TrimSpace(annotation.ReplaceAllString(sb.String(), ""))
@@ -156,18 +161,25 @@ var classAlias = regexp.MustCompile(`^(class|module) [\w:]+ =`)
 // annotation is an RBS `%a{...}`, `%a(...)` or `%a[...]` annotation, which rb2go does not model.
 var annotation = regexp.MustCompile(`%a(\{[^}]*\}|\([^)]*\)|\[[^\]]*\])`)
 
-// bracketDepth is the count of s's open brackets less its closing ones (`->` is not a closing one).
-func bracketDepth(s string) int {
-	depth := 0
-	for i := range len(s) {
-		switch s[i] {
+// scanCode returns the first `#` outside a string literal (len(s) if none) and the bracket depth before it; quoted brackets do not count.
+func scanCode(s string) (end, depth int) {
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
 		case '(', '[', '{':
 			depth++
 		case ')', ']', '}':
 			depth--
+		case '#':
+			return i, depth
+		case '"', '\'':
+			for i++; i < len(s) && s[i] != c; i++ {
+				if s[i] == '\\' {
+					i++
+				}
+			}
 		}
 	}
-	return depth
+	return len(s), depth
 }
 
 func openDecl(f *File, stack *[]*ClassDecl, parse func(string, int) (*ClassDecl, error), line string, ln int) error {
@@ -335,6 +347,12 @@ func parseTypeParams(s string) []string {
 }
 
 func parseMember(owner *ClassDecl, line string, ln int) error {
+	// visibility is not modelled: `private def x: ...` is `def x: ...`
+	if rest, ok := strings.CutPrefix(line, "private "); ok {
+		line = strings.TrimSpace(rest)
+	} else if rest, ok := strings.CutPrefix(line, "public "); ok {
+		line = strings.TrimSpace(rest)
+	}
 	switch {
 	case strings.HasPrefix(line, "def "):
 		m, err := parseMethod(strings.TrimSpace(strings.TrimPrefix(line, "def")), ln)
@@ -508,14 +526,10 @@ func isConstName(s string) bool {
 	return true
 }
 
-// stripComment removes a `#` comment. A `#` inside a string-literal type
-// (decision 12's literal types) would be misread; literal types are rejected
-// by the type parser for now.
+// stripComment removes a `#` comment; a `#` inside a string-literal type (`-> "#"`, a record key `"#" =>`) is kept.
 func stripComment(s string) string {
-	if i := strings.IndexByte(s, '#'); i >= 0 {
-		return s[:i]
-	}
-	return s
+	end, _ := scanCode(s)
+	return s[:end]
 }
 
 // ParseMethodTypes parses one method type, or several overloads separated by a
@@ -525,35 +539,44 @@ func stripComment(s string) string {
 func ParseMethodTypes(s string) ([]*MethodType, error) {
 	var out []*MethodType
 	cur := ""
+	var curM *MethodType // cur's parse, when cur is one whole part (a folded union return is parsed once at the end)
 	for _, part := range splitOverloads(s) {
 		if part == "..." { // the overloads the class already has: nothing for rb2go to add
 			continue
 		}
-		_, err := ParseMethodType(part)
+		pm, err := ParseMethodType(part)
 		switch {
 		case err == nil && cur != "":
-			prev, perr := ParseMethodType(cur)
+			prev, perr := parsedOr(curM, cur)
 			if perr != nil {
 				return nil, perr
 			}
 			out = append(out, prev)
-			cur = part
+			cur, curM = part, pm
 		case err == nil:
-			cur = part
+			cur, curM = part, pm
 		case cur == "":
-			cur = part
+			cur, curM = part, nil
 		default:
-			cur += " | " + part
+			cur, curM = cur+" | "+part, nil
 		}
 	}
 	if cur == "" && len(out) == 0 {
 		return nil, nil // `def x: ...`
 	}
-	m, err := ParseMethodType(cur)
+	m, err := parsedOr(curM, cur)
 	if err != nil {
 		return nil, err
 	}
 	return append(out, m), nil
+}
+
+// parsedOr is m when the part was already parsed whole, else the parse of s (a union return folded back into its arm).
+func parsedOr(m *MethodType, s string) (*MethodType, error) {
+	if m != nil {
+		return m, nil
+	}
+	return ParseMethodType(s)
 }
 
 // splitOverloads splits on `|` at brace/paren/bracket depth 0.

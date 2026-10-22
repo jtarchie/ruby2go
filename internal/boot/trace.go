@@ -41,9 +41,17 @@ func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loade
 	if errors.Is(err, exec.ErrNotFound) {
 		return nil, fmt.Errorf("trace %s: needs ruby on PATH (or RB2GO_RUBY)", program)
 	}
-	data, rerr := os.ReadFile(out) //nolint:gosec // under os.MkdirTemp
+	f, rerr := os.Open(out) //nolint:gosec // under os.MkdirTemp
 	if rerr != nil {
 		return nil, fmt.Errorf("trace %s: the run wrote no load list: %w\n%s", program, errors.Join(rerr, err), stderr)
+	}
+	defer func() { _ = f.Close() }()
+	data, rerr := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if rerr != nil {
+		return nil, fmt.Errorf("trace %s: reading the load list: %w", program, rerr)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("trace %s: the load list is over the %d byte limit", program, maxBytes)
 	}
 	l := &Loaded{}
 	sc := bufio.NewScanner(bytes.NewReader(data))
@@ -60,6 +68,10 @@ func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loade
 		case "S":
 			l.StdDirs = append(l.StdDirs, val)
 		}
+	}
+	err = sc.Err() // a line over the buffer would otherwise end the list early
+	if err != nil {
+		return nil, fmt.Errorf("trace %s: reading the load list: %w", program, err)
 	}
 	return l, nil
 }
