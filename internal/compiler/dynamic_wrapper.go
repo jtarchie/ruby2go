@@ -203,15 +203,22 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 	}
 	rest := strings.ReplaceAll(body, "[any](self", "")
 	// a plain free func of the owner (its overloads too: Kernel___Sleep0) takes self as any or the owner's interface (decision 210)
-	plain := c.re(`\b` + e.Owner.Name + `_\w+\(self\b`)
-	if e.Owner.universal {
-		rest = plain.ReplaceAllString(rest, "")
+	plainLit := e.Owner.Name + "_"
+	plainMatch := func(s string) bool { _, n := cutPlainSelf(s, plainLit, false); return n > 0 }
+	plainCut := func(s string) string { out, _ := cutPlainSelf(s, plainLit, true); return out }
+	if regexp.QuoteMeta(e.Owner.Name) != e.Owner.Name { // never for a Ruby constant; keeps the regexp's meaning if a name ever carries metacharacters
+		plain := c.re(`\b` + e.Owner.Name + `_\w+\(self\b`)
+		plainMatch = plain.MatchString
+		plainCut = func(s string) string { return plain.ReplaceAllString(s, "") }
 	}
-	if oi := c.ownerIface(cls, e); oi != "" && (strings.Contains(rest, "["+oi+"](self") || plain.MatchString(rest)) {
-		iface, rest = oi, plain.ReplaceAllString(strings.ReplaceAll(rest, "["+oi+"](self", ""), "") // self is recv asserted to the owner's interface
-	} else if oi == "" && !e.Owner.universal && !e.Owner.IsModule && e.Owner.isStruct() && len(e.Owner.TypeParams) == 0 && c.plainSelf(e.M) && plain.MatchString(rest) {
+	if e.Owner.universal {
+		rest = plainCut(rest)
+	}
+	if oi := c.ownerIface(cls, e); oi != "" && (strings.Contains(rest, "["+oi+"](self") || plainMatch(rest)) {
+		iface, rest = oi, plainCut(strings.ReplaceAll(rest, "["+oi+"](self", "")) // self is recv asserted to the owner's interface
+	} else if oi == "" && !e.Owner.universal && !e.Owner.IsModule && e.Owner.isStruct() && len(e.Owner.TypeParams) == 0 && c.plainSelf(e.M) && plainMatch(rest) {
 		// a class object's body already calls the owner's plain func (Module_ConstGet(self, ...)): the same text serves every metaclass
-		iface, rest = e.Owner.ifaceName(), plain.ReplaceAllString(rest, "")
+		iface, rest = e.Owner.ifaceName(), plainCut(rest)
 	}
 	if mod := e.Owner; iface == "" && mod.IsModule && !mod.universal && len(mod.TypeParams) == 0 && c.dispatchable(mod, e.M) {
 		// a dispatched module method's body over the constraint itself (decision 208), the same for every includer
@@ -232,10 +239,48 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		rest = strings.ReplaceAll(rest, call, "")
 	}
 	names := c.re(`\b` + regexp.QuoteMeta(cls.Name) + `(I|_Meta|_class)?\b`) // the class's own Go names, not a substring (rbArity holds an A)
-	if selfIdent.MatchString(rest) || names.MatchString(body+iface) {
+	if strings.Contains(rest, "self") && selfIdent.MatchString(rest) || strings.Contains(body+iface, cls.Name) && names.MatchString(body+iface) {
 		return "", "", false
 	}
 	return iface, body, true
+}
+
+// cutPlainSelf is `\b<lit>\w+\(self\b` removed from s (build) and counted, without the regexp engine: the bodies are scanned once per wrapper.
+func cutPlainSelf(s, lit string, build bool) (string, int) {
+	var out strings.Builder
+	n, last := 0, 0
+	for from := 0; ; {
+		k := strings.Index(s[from:], lit)
+		if k < 0 {
+			break
+		}
+		k += from
+		from = k + 1
+		if k > 0 && isASCIIWord(s[k-1]) {
+			continue // \b before the owner's name
+		}
+		j := k + len(lit)
+		for j < len(s) && isASCIIWord(s[j]) {
+			j++
+		}
+		if j == k+len(lit) || !strings.HasPrefix(s[j:], "(self") {
+			continue
+		}
+		e := j + len("(self")
+		if e < len(s) && isASCIIWord(s[e]) {
+			continue // \b after self
+		}
+		if build {
+			out.WriteString(s[last:k])
+		}
+		n++
+		last, from = e, e
+	}
+	if !build || n == 0 {
+		return s, n
+	}
+	out.WriteString(s[last:])
+	return out.String(), n
 }
 
 // shareableClass: a struct class, or a generic class whose wrapper body is a universal owner's naming none of its type
@@ -473,9 +518,12 @@ func (c *Compiler) dynArityOverloads(f *fctx, e *entry, recv expr, env map[strin
 	prefix := "__" + overloadBase(m.Name) + "_"
 	for _, x := range cls.methodSet() {
 		k, ok := strings.CutPrefix(x.M.Name, prefix)
+		if !ok {
+			continue // before Atoi: its failure allocates an error for every other method of the class
+		}
 		n, err := strconv.Atoi(k)
 		tw := x.M
-		if !ok || err != nil || n >= req && (maxArgs < 0 || n <= maxArgs) || tw.generic() || tw.Block != nil || len(tw.Params) != n || tw.hasKeywords() {
+		if err != nil || n >= req && (maxArgs < 0 || n <= maxArgs) || tw.generic() || tw.Block != nil || len(tw.Params) != n || tw.hasKeywords() {
 			continue
 		}
 		c.resolveMethod(tw)

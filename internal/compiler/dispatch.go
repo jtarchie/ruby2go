@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"maps"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 )
@@ -390,8 +389,6 @@ func (c *Compiler) emitSends(reached func(string) bool) {
 	}
 }
 
-var goSelectorCall = regexp.MustCompile(`(\b[A-Za-z_][A-Za-z_0-9]*)?\.([A-Z_]\w*)\(`)
-
 // goCalled is every capitalized method name the prelude's Go text (`%x{}` bodies, prelude/go helpers) calls by selector:
 // Go code reaches those through a method set, so they stay Go methods. Ruby method names are lowercase, so the scan over
 // the .rb sources only sees their Go escapes. A selector on a std package name (`os.Exit(`) is not a method call;
@@ -408,12 +405,11 @@ func (c *Compiler) goCalled() map[string]bool {
 			if err != nil {
 				panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
 			}
-			for _, m := range goSelectorCall.FindAllSubmatch(src, -1) {
-				if _, std := stdImports[string(m[1])]; std {
-					continue // os.Exit(, time.Sleep(: a std package's function, not a method on a Ruby value
+			goSelectorCalls(src, func(recv, name []byte) {
+				if _, std := stdImports[string(recv)]; !std { // os.Exit(, time.Sleep(: a std package's function, not a method on a Ruby value
+					c.goCalledNames[string(name)] = true
 				}
-				c.goCalledNames[string(m[2])] = true
-			}
+			})
 		}
 	}
 	return c.goCalledNames
