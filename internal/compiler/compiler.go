@@ -512,12 +512,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		dms = opts.boot.DefineMethods
 		c.indexBootBranches(opts.boot.Branches)
 		c.bootConstClasses = opts.boot.ConstClasses
-		c.bootDelegators = map[boot.Loc][]string{}
-		for site, names := range opts.boot.Delegators {
-			if l, ok := boot.ParseLoc(site); ok { // a key with no line never matched a call
-				c.bootDelegators[l] = names
-			}
-		}
+		c.bootDelegators = parseDelegators(opts.boot.Delegators)
 		c.bootLoadPath = opts.boot.LoadPath
 		c.bootStructs = opts.boot.Structs
 	}
@@ -1100,4 +1095,15 @@ func (c *Compiler) readUser(target string) ([]byte, error) {
 // bundlerStandalone is the setup.rb `bundle install --standalone` writes: RubyGems shims and $LOAD_PATH entries only.
 func bundlerStandalone(path string, data []byte) bool {
 	return strings.HasSuffix(path, "/bundler/setup.rb") && bytes.Contains(data, []byte("\n$:.unshift File.expand_path("))
+}
+
+// parseDelegators keys def_delegators' names by call site; a key with no line never matched a call.
+func parseDelegators(m map[string][]string) map[boot.Loc][]string {
+	out := make(map[boot.Loc][]string, len(m))
+	for site, names := range m {
+		if l, ok := boot.ParseLoc(site); ok {
+			out[l] = names
+		}
+	}
+	return out
 }

@@ -19,7 +19,8 @@ func TestRecordJSONShape(t *testing.T) {
 		{"eval", `{"file":"/a/b.rb","line":6,"source":"x","caller":"/a/c.rb:1","kind":"eval","self":""}`, new(EvalInfo)},
 	}
 	for _, tc := range cases {
-		if err := json.Unmarshal([]byte(tc.in), tc.into); err != nil {
+		err := json.Unmarshal([]byte(tc.in), tc.into)
+		if err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		out, err := json.Marshal(tc.into)

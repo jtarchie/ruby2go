@@ -188,7 +188,7 @@ func (f *fctx) lookupMissed(n parser.Node, miss missMode, recv expr, kt Type, ke
 			break
 		}
 		f.emit("%s = Boolean(false)", res.code)
-	default:
+	case missNone, missNil, missFetch:
 		f.emit("%s = nil", res.code)
 	}
 }
