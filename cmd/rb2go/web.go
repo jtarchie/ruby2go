@@ -225,8 +225,7 @@ func (w *web) run(rw http.ResponseWriter, r *http.Request) {
 	}
 	code, warnings, err := w.transpile(r.Context(), src)
 	var diag, stdout, stderr capped
-	f, e := false, ""
-	dir, err := buildModule(r.Context(), code, warnings, err, "", buildOpts{race: &f, gcflags: &e, work: &f}, &diag)
+	dir, err := buildModule(r.Context(), code, warnings, err, "", buildOpts{}, &diag)
 	if dir != "" {
 		defer func() { _ = os.RemoveAll(dir) }()
 	}

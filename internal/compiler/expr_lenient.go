@@ -95,10 +95,24 @@ func (f *fctx) lenientMember(n parser.Node, recv expr, name string, args []parse
 	return expr{code: fmt.Sprintf("Boolean(%s != nil && bool(%s))", tmp, call.code), typ: f.cls("Boolean")}, true
 }
 
+// missMode is what a lookup answers on a miss (lookupMiss); missNone is "leave the call alone", missFetch is fetch before its shape picks block, arg or keyerror.
+type missMode string
+
+const (
+	missNone     missMode = ""
+	missDefault  missMode = "default"
+	missFalse    missMode = "false"
+	missNil      missMode = "nil"
+	missFetch    missMode = "fetch"
+	missBlock    missMode = "block"
+	missArg      missMode = "arg"
+	missKeyError missMode = "keyerror"
+)
+
 // lookupMiss: what each key-comparing Hash/Array lookup answers when no element equals the key (decision 307).
-var lookupMiss = map[string]map[string]string{
-	"Hash":  {"[]": "default", "key?": "false", "has_key?": "false", "include?": "false", "member?": "false", "delete": "nil", "dig": "nil", "fetch": "fetch"},
-	"Array": {"include?": "false", "member?": "false", "delete": "nil", "index": "nil"},
+var lookupMiss = map[string]map[string]missMode{
+	"Hash":  {"[]": missDefault, "key?": missFalse, "has_key?": missFalse, "include?": missFalse, "member?": missFalse, "delete": missNil, "dig": missNil, "fetch": missFetch},
+	"Array": {"include?": missFalse, "member?": missFalse, "delete": missNil, "index": missNil},
 }
 
 // lenientLookup: a gem's untyped key of another class misses, as in MRI, instead of raising TypeError (decisions 307, 314).
@@ -109,7 +123,7 @@ func (f *fctx) lenientLookup(n parser.Node, recv expr, name string, args []parse
 	}
 	miss := lookupMissMode(lookupMiss[rc.C.RubyName][name], name, len(args), block != nil)
 	kt := rc.Args[0]
-	if miss == "" || f.c.goType(f.probeType(args[0], nil)) != "any" || f.c.goType(kt) == "any" { // untyped, or a union of classes
+	if miss == missNone || f.c.goType(f.probeType(args[0], nil)) != "any" || f.c.goType(kt) == "any" { // untyped, or a union of classes
 		return expr{}, false
 	}
 	key, k := f.newTmp(), f.newTmp()
@@ -132,33 +146,33 @@ func (f *fctx) lenientLookup(n parser.Node, recv expr, name string, args []parse
 
 // lookupMissMode is lookupMiss's answer for this call's shape, "" when lenientLookup leaves it alone: fetch(k, d) is d,
 // fetch(k) { |x| } the block's value, fetch(k) KeyError (decision 314).
-func lookupMissMode(miss, name string, nargs int, hasBlock bool) string {
+func lookupMissMode(miss missMode, name string, nargs int, hasBlock bool) missMode {
 	switch {
-	case miss == "fetch" && hasBlock && nargs == 1:
-		return "block"
-	case miss == "fetch" && !hasBlock && nargs == 2:
-		return "arg"
-	case miss == "fetch" && !hasBlock && nargs == 1:
-		return "keyerror"
-	case miss == "fetch" || hasBlock || nargs != 1 && name != "dig":
-		return ""
+	case miss == missFetch && hasBlock && nargs == 1:
+		return missBlock
+	case miss == missFetch && !hasBlock && nargs == 2:
+		return missArg
+	case miss == missFetch && !hasBlock && nargs == 1:
+		return missKeyError
+	case miss == missFetch || hasBlock || nargs != 1 && name != "dig":
+		return missNone
 	}
 	return miss
 }
 
 // lookupMissed assigns res the miss's answer (lookupMiss) for a key that does not convert to kt.
-func (f *fctx) lookupMissed(n parser.Node, miss string, recv expr, kt Type, key string, args []parser.Node, block parser.Node, res expr) {
+func (f *fctx) lookupMissed(n parser.Node, miss missMode, recv expr, kt Type, key string, args []parser.Node, block parser.Node, res expr) {
 	switch miss {
-	case "default":
+	case missDefault:
 		// a default proc takes (Hash[K, V], K): it cannot be handed this key, so the miss is loud rather than the static default
 		f.emit("if %s != nil {", f.genMethodCall(n, recv, "default_proc", nil, nil).code)
 		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rb2go: a non-%s key reached a default proc taking %s (%s:%d, decision 314)",
 			kt, kt, f.f.Name, f.f.line(n.GetLocation().StartOffset)))
 		f.emit("}")
 		f.emit("%s = %s", res.code, f.coerce(n, f.genMethodCall(n, recv, "default", nil, nil), res.typ))
-	case "block": // the block again, its param untyped: MRI yields the key
+	case missBlock: // the block again, its param untyped: MRI yields the key
 		f.emit("%s = (%s)(%s)", res.code, f.genClosure(n, block, &BlockSig{Params: []Type{TAny{}}, Ret: res.typ}, nil), key)
-	case "keyerror":
+	case missKeyError:
 		loc := n.GetLocation()
 		ke := &parser.CallNode{Location: loc, Receiver: &parser.ConstantReadNode{Location: loc, Name: "KeyError"}, Name: "__for",
 			Arguments: &parser.ArgumentsNode{Location: loc, Arguments: []parser.Node{
@@ -166,9 +180,9 @@ func (f *fctx) lookupMissed(n parser.Node, miss string, recv expr, kt Type, key 
 				&exprNode{Node: n, e: expr{code: "any(" + recv.code + ")", typ: TAny{}}},
 				&exprNode{Node: n, e: expr{code: key, typ: TAny{}}}}}}
 		f.emit("panic(%s)", f.genExpr(ke, nil).code)
-	case "arg":
+	case missArg:
 		f.emit("%s = %s", res.code, f.coerce(args[1], f.genExpr(args[1], res.typ), res.typ))
-	case "false":
+	case missFalse:
 		if rc, ok := recv.typ.(TClass); ok && rc.C.RubyName == "Array" { // `elem == obj` each: an object with its own == may equal an element (patchelf's `[SHT_SYMTAB, SHT_DYNSYM].include?(shdr.sh_type)` of a bindata Uint32)
 			f.emit("%s = rbScanEq(%s, %s)", res.code, f.materialize(recv), key)
 			break

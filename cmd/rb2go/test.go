@@ -36,24 +36,23 @@ func testCmd(ctx context.Context, argv []string) int {
 
 // testBuildFlags finds rb2go's flags anywhere: minitest's own (-v, -s N, -n /re/) never share their names.
 func testBuildFlags(argv []string) (buildOpts, []string, error) {
-	race, work, gcflags := false, false, ""
-	opts := buildOpts{race: &race, gcflags: &gcflags, work: &work}
+	var opts buildOpts
 	var rest []string
 	want := "" // the flag whose value is the next argument
 	for _, a := range argv {
 		switch {
 		case want == "-gcflags":
-			gcflags, want = a, ""
+			opts.gcflags, want = a, ""
 		case want == "-I":
 			opts.loadPath, want = append(opts.loadPath, a), ""
 		case a == "-race":
-			race = true
+			opts.race = true
 		case a == "-work":
-			work = true
+			opts.work = true
 		case a == "-gcflags", a == "-I":
 			want = a
 		case strings.HasPrefix(a, "-gcflags="):
-			gcflags = strings.TrimPrefix(a, "-gcflags=")
+			opts.gcflags = strings.TrimPrefix(a, "-gcflags=")
 		case strings.HasPrefix(a, "-I"): // -Idir, as ruby's, or -I=dir, as the flag package's
 			opts.loadPath = append(opts.loadPath, strings.TrimPrefix(strings.TrimPrefix(a, "-I"), "="))
 		default:

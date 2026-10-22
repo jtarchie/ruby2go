@@ -21,9 +21,7 @@ func TestBuildAndRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := false
-	e := ""
-	opts := buildOpts{race: &f, gcflags: &e, work: &f}
+	opts := buildOpts{}
 
 	bin := filepath.Join(dir, "prog")
 	if code := build(t.Context(), src, bin, opts); code != 0 {
@@ -70,10 +68,8 @@ func TestInterrupt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f := false
-			e := ""
 			bin := filepath.Join(dir, "main")
-			if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+			if code := build(t.Context(), src, bin, buildOpts{}); code != 0 {
 				t.Fatalf("build: exit %d", code)
 			}
 			var out, errOut strings.Builder
@@ -119,10 +115,8 @@ func TestSignalFlushes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := false
-	e := ""
 	bin := filepath.Join(dir, "spin")
-	if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+	if code := build(t.Context(), src, bin, buildOpts{}); code != 0 {
 		t.Fatalf("build: exit %d", code)
 	}
 	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
@@ -200,8 +194,8 @@ func TestTestCommand(t *testing.T) {
 	}
 
 	opts, rest, err := testBuildFlags([]string{"-v", "-race", "x_test.rb", "-gcflags", "-l", "--seed", "3", "-gcflags=-e", "-I", "a", "-Ib", "-I=c"})
-	if err != nil || !*opts.race || *opts.gcflags != "-e" || !slices.Equal(rest, []string{"-v", "x_test.rb", "--seed", "3"}) || !slices.Equal(opts.loadPath, []string{"a", "b", "c"}) {
-		t.Errorf("testBuildFlags: race=%v gcflags=%q -I=%q rest=%q err=%v", *opts.race, *opts.gcflags, opts.loadPath, rest, err)
+	if err != nil || !opts.race || opts.gcflags != "-e" || !slices.Equal(rest, []string{"-v", "x_test.rb", "--seed", "3"}) || !slices.Equal(opts.loadPath, []string{"a", "b", "c"}) {
+		t.Errorf("testBuildFlags: race=%v gcflags=%q -I=%q rest=%q err=%v", opts.race, opts.gcflags, opts.loadPath, rest, err)
 	}
 }
 
@@ -222,8 +216,7 @@ puts "#{s} #{b.join}"
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, e := false, ""
-	got, code := captureStdout(t, func() int { return run(t.Context(), src, nil, buildOpts{race: &f, gcflags: &e, work: &f}) })
+	got, code := captureStdout(t, func() int { return run(t.Context(), src, nil, buildOpts{}) })
 	want, err := exec.CommandContext(t.Context(), "ruby", "-rbundler/setup", src).Output() //nolint:gosec // written above
 	if err != nil || code != 0 || got != string(want) {
 		t.Errorf("rb2go run (exit %d): %q, ruby (%v): %q", code, got, err, want)
@@ -285,8 +278,6 @@ func TestGen(t *testing.T) {
 // the program, at_exit included, reports it as MRI's ZeroDivisionError.
 func TestUncaughtZeroDivisionMessage(t *testing.T) {
 	dir := t.TempDir()
-	f := false
-	e := ""
 	for name, prog := range map[string]string{
 		"main":    "puts 7 / 0\n",
 		"at_exit": "at_exit { puts 7 % 0 }\nputs \"main\"\n",
@@ -297,7 +288,7 @@ func TestUncaughtZeroDivisionMessage(t *testing.T) {
 			t.Fatal(err)
 		}
 		bin := filepath.Join(dir, name)
-		if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+		if code := build(t.Context(), src, bin, buildOpts{}); code != 0 {
 			t.Fatalf("%s: build: exit %d", name, code)
 		}
 		var errOut strings.Builder
@@ -322,8 +313,7 @@ func TestUncaughtFullReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "main")
-	f, e := false, ""
-	if code := build(t.Context(), src, bin, buildOpts{race: &f, gcflags: &e, work: &f}); code != 0 {
+	if code := build(t.Context(), src, bin, buildOpts{}); code != 0 {
 		t.Fatalf("build: exit %d", code)
 	}
 	for env, want := range map[string]string{

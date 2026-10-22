@@ -55,13 +55,12 @@ func main() {
 	if cmd == "build" {
 		out = fs.String("o", "", "output binary (default: the file's name without .rb)")
 	}
-	opts := buildOpts{
-		race:    fs.Bool("race", false, "build with the race detector"),
-		gcflags: fs.String("gcflags", "", "passed to go build (e.g. -e for every error)"),
-		work:    fs.Bool("work", false, "keep the temp module (main.go, go.mod) and print its path"),
-		main:    fs.String("main", "", "the file is a traced entry (the requires MRI loaded) and this is the program it runs (decisions 197, 288)"),
-		trace:   fs.Bool("trace", false, "run the program once under MRI with its args (it EXECUTES) and compile what it loaded (decision 296)"),
-	}
+	var opts buildOpts
+	fs.BoolVar(&opts.race, "race", false, "build with the race detector")
+	fs.StringVar(&opts.gcflags, "gcflags", "", "passed to go build (e.g. -e for every error)")
+	fs.BoolVar(&opts.work, "work", false, "keep the temp module (main.go, go.mod) and print its path")
+	fs.StringVar(&opts.main, "main", "", "the file is a traced entry (the requires MRI loaded) and this is the program it runs (decisions 197, 288)")
+	fs.BoolVar(&opts.trace, "trace", false, "run the program once under MRI with its args (it EXECUTES) and compile what it loaded (decision 296)")
 	fs.Func("trace-also", "another `args` list to trace, space-separated: its loads join the compile, for one binary that serves several commands (repeatable)", func(a string) error {
 		opts.also = append(opts.also, strings.Fields(a))
 		return nil
@@ -75,7 +74,7 @@ func main() {
 		return nil
 	})
 	_ = fs.Parse(os.Args[2:]) // ExitOnError
-	if fs.NArg() < 1 || cmd != "run" && fs.NArg() != 1 && !*opts.trace {
+	if fs.NArg() < 1 || cmd != "run" && fs.NArg() != 1 && !opts.trace {
 		fs.Usage()
 		os.Exit(2)
 	}
@@ -173,11 +172,11 @@ func gen(file string, opts buildOpts, out io.Writer) int {
 }
 
 type buildOpts struct {
-	race     *bool
-	gcflags  *string
-	work     *bool
-	main     *string    // -main: the file is a traced entry and this its program (decision 288)
-	trace    *bool      // -trace: compile what a run of the file with args loaded (decision 296)
+	race     bool
+	gcflags  string
+	work     bool
+	main     string     // -main: the file is a traced entry and this its program (decision 288)
+	trace    bool       // -trace: compile what a run of the file with args loaded (decision 296)
 	rubyOpts []string   // -rubyopt
 	args     []string   // the program's args
 	also     [][]string // -trace-also
@@ -186,11 +185,11 @@ type buildOpts struct {
 
 // compileFile is the CLI's compile: a traced entry with -main (decision 288), else a program.
 func compileFile(ctx context.Context, file string, src []byte, opts buildOpts) ([]byte, []string, error) {
-	if opts.trace != nil && *opts.trace {
+	if opts.trace {
 		return rb2go.CompileTrace(ctx, file, append([][]string{opts.args}, opts.also...), opts.rubyOpts, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
 	}
-	if opts.main != nil && *opts.main != "" {
-		return rb2go.CompileTraced(ctx, file, src, *opts.main, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+	if opts.main != "" {
+		return rb2go.CompileTraced(ctx, file, src, opts.main, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
 	}
 	return rb2go.CompileWithGems(ctx, file, src, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
 }
@@ -339,11 +338,11 @@ func buildModule(ctx context.Context, code []byte, warnings []string, err error,
 		bin = filepath.Join(dir, "prog")
 	}
 	args := []string{"build", "-trimpath"}
-	if *opts.race {
+	if opts.race {
 		args = append(args, "-race")
 	}
-	if *opts.gcflags != "" {
-		args = append(args, "-gcflags="+*opts.gcflags)
+	if opts.gcflags != "" {
+		args = append(args, "-gcflags="+opts.gcflags)
 	}
 	cmd := exec.CommandContext(ctx, "go", append(args, "-o", bin, ".")...) //nolint:gosec // flags are the user's own
 	cmd.Dir = dir
@@ -366,7 +365,7 @@ func cleanup(dir string, opts buildOpts) {
 	if dir == "" {
 		return
 	}
-	if *opts.work {
+	if opts.work {
 		fmt.Fprintln(os.Stderr, "WORK="+dir)
 		return
 	}
