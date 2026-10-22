@@ -6,6 +6,10 @@ version: "2"
 run:
   timeout: 5m
 
+formatters:
+  enable:
+    - gofmt # `golangci-lint fmt` applies it; `run` does not check formatters, so TestGofmt (rb2go_test.go) fails the suite on drift
+
 linters:
   default: none
   enable:

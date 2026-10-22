@@ -66,7 +66,7 @@ get /: 200 len=0
 `
 
 func TestNetLimits(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	t.Parallel()
 	gen := transpile(t, "net_limits.rb", []byte(netLimitsProgram))
 	path := filepath.Join(gen, "main.go")

@@ -2,6 +2,7 @@ package rb2go
 
 import (
 	"errors"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,14 +11,17 @@ import (
 	"github.com/jtarchie/ruby2go/internal/compiler"
 )
 
-// FuzzCompile: any input either compiles or fails with a compile error; an internal panic is a bug, whether compileSafe caught it or the compiler returned it as compiler.ErrInternal (decision 263). Seeded from every example and testdata/run file.
+// FuzzCompile: any input either compiles or fails with a compile error; an internal panic is a bug, whether compileSafe caught it or the compiler returned it as compiler.ErrInternal (decision 263). Under -fuzz it is seeded from every example and testdata/run file; a plain `go test` skips them (each ran through TestExamples/TestRun already, and as seeds they cost ~58 s serially, decision 88).
+// A crash the fuzzer finds is kept in testdata/fuzz/FuzzCompile, which every run replays.
 func FuzzCompile(f *testing.F) {
-	seeds, _ := filepath.Glob("testdata/run/*.rb")
-	examples, _ := filepath.Glob("examples/*/main.rb")
-	for _, p := range append(seeds, examples...) {
-		src, err := os.ReadFile(p) //nolint:gosec // repo path
-		if err == nil {
-			f.Add(src)
+	if fz := flag.Lookup("test.fuzz"); fz != nil && fz.Value.String() != "" {
+		seeds, _ := filepath.Glob("testdata/run/*.rb")
+		examples, _ := filepath.Glob("examples/*/main.rb")
+		for _, p := range append(seeds, examples...) {
+			src, err := os.ReadFile(p) //nolint:gosec // repo path
+			if err == nil {
+				f.Add(src)
+			}
 		}
 	}
 	f.Fuzz(func(t *testing.T, src []byte) {

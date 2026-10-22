@@ -38,27 +38,37 @@ func gemCmd(t *testing.T, exe string, args ...string) *exec.Cmd {
 	return exec.CommandContext(t.Context(), "bundle", append([]string{"exec", exe}, args...)...) //nolint:gosec // test helper; args are ours
 }
 
-func requireRuby4(t *testing.T) {
-	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "ruby", "-e", "print RUBY_VERSION").Output()
+// toolchainErr checks the whole toolchain once per process (it spawns ruby and two bundle execs): ruby >= 4.0, rbs-inline, rbs and golangci-lint.
+// Every caller fails with the one error, so the fail-fast stays; it runs on a background context since the first test to ask may end before the others.
+var toolchainErr = sync.OnceValue(func() error {
+	ctx := context.Background()
+	out, err := exec.CommandContext(ctx, "ruby", "-e", "print RUBY_VERSION").Output()
 	if err != nil {
-		t.Fatalf("ruby is required: %v", err)
+		return fmt.Errorf("ruby is required: %w", err)
 	}
 	major, _ := strconv.Atoi(strings.SplitN(string(out), ".", 2)[0])
 	if major < 4 {
-		t.Fatalf("ruby >= 4.0 is required, found %s", out)
+		return fmt.Errorf("ruby >= 4.0 is required, found %s", out)
 	}
-	out, err = gemCmd(t, "rbs-inline", "--help").CombinedOutput()
-	if err != nil {
-		t.Fatalf("rbs-inline is required (run `bundle install`): %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
-	}
-	out, err = gemCmd(t, "rbs", "--version").CombinedOutput()
-	if err != nil {
-		t.Fatalf("rbs is required (run `bundle install`): %v\n%s", err, rdocNoise.ReplaceAll(out, nil))
+	for _, c := range [][]string{{"rbs-inline", "--help"}, {"rbs", "--version"}} {
+		out, err = exec.CommandContext(ctx, "bundle", append([]string{"exec"}, c...)...).CombinedOutput() //nolint:gosec // fixed args
+		if err != nil {
+			return fmt.Errorf("%s is required (run `bundle install`): %w\n%s", c[0], err, rdocNoise.ReplaceAll(out, nil))
+		}
 	}
 	_, err = exec.LookPath("golangci-lint")
 	if err != nil {
-		t.Fatalf("golangci-lint is required: %v", err)
+		return fmt.Errorf("golangci-lint is required: %w", err)
+	}
+	return nil
+})
+
+// requireToolchain fails the test unless ruby >= 4.0, the Gemfile's rbs tools and golangci-lint are present.
+func requireToolchain(t *testing.T) {
+	t.Helper()
+	err := toolchainErr()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -112,7 +122,7 @@ func mustGlob(t *testing.T, pattern string) []string {
 }
 
 func TestExamples(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	t.Parallel()
 	dirs := mustGlob(t, "examples/*/main.rb")
 	// Every example's Go lands in one module, so vet and golangci-lint load
@@ -177,7 +187,7 @@ func writeModule(t *testing.T, dir string) {
 // TestRun holds each testdata/run/*.rb to the same MRI comparison as the
 // examples, without the rbs and lint gates: one go build per file.
 func TestRun(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	t.Parallel()
 	files := mustGlob(t, "testdata/run/*.rb")
 	for _, rb := range files {
@@ -202,7 +212,7 @@ func TestRun(t *testing.T) {
 // takes Go ~30 minutes to build: Dyn wrappers grow as classes × names
 // (decision 81).
 func TestMinitest(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	t.Parallel()
 	files := mustGlob(t, "testdata/test/*_test.rb")
 	for _, rb := range files {
@@ -223,7 +233,7 @@ func TestMinitest(t *testing.T) {
 // (decision 84) and compares it with MRI loading the same files in one
 // process, as rake's test loader does.
 func TestMulti(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	t.Parallel()
 	dirs := mustGlob(t, "testdata/multi/*")
 	for _, dir := range dirs {
@@ -269,7 +279,7 @@ func TestMulti(t *testing.T) {
 // the boot snapshot records which file MRI loaded, and the compiler takes it
 // as a source (decisions 131/161). The declaration itself is compile-time.
 func TestBootAutoload(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	dir := filepath.Join("testdata", "boot")
 	app := filepath.Join(dir, "app.rb")
 	src, err := os.ReadFile(app) //nolint:gosec // testdata path
@@ -318,7 +328,8 @@ func TestBootAutoload(t *testing.T) {
 // TestTracedEntry compiles a decision 197 entry (an MRI load list) with main.rb as -main (decision 288), as Homebrew's harness does:
 // its -I dirs are gem dirs, and a require inside a method resolves at run time (decision 246).
 func TestTracedEntry(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
+	t.Parallel()
 	dir := filepath.Join("testdata", "traced")
 	entry := filepath.Join(dir, "entry.rb")
 	src, err := os.ReadFile(entry) //nolint:gosec // testdata path
@@ -345,7 +356,7 @@ func TestTracedEntry(t *testing.T) {
 
 // TestTraceRun compiles testdata/traced from runs of main.rb, with no entry file: the second (-trace-also) loads traced_argv (decision 296).
 func TestTraceRun(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	dir := filepath.Join("testdata", "traced")
 	main := filepath.Join(dir, "main.rb")
 	src, err := os.ReadFile(main) //nolint:gosec // testdata path
@@ -392,7 +403,7 @@ func skipIfMarked(t *testing.T, src []byte) {
 // TestTraceOracle checks decision 105's point: an assertion that passes on
 // both sides but sees a different operand (here a process id) is reported.
 func TestTraceOracle(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
 	t.Parallel()
 	dir := t.TempDir()
 	src := []byte(`require "minitest/autorun"
@@ -457,6 +468,7 @@ end
 // TestPreludeGo regenerates prelude/go's type-checking stubs (decision 154) and vets the helpers against them, so a
 // broken helper fails here instead of through some example's go build.
 func TestPreludeGo(t *testing.T) {
+	t.Parallel()
 	src, err := preludeWhole()
 	if err != nil {
 		t.Fatal(err)
@@ -514,6 +526,7 @@ func exportData(t *testing.T, f *ast.File) func(path string) (io.ReadCloser, err
 // TestPreludeWhole type-checks the unpruned prelude (decision 207): pruning must not be what keeps a generic
 // instantiation cycle or an ill-typed method out of programs. A type check, as building it takes 6.8 GB.
 func TestPreludeWhole(t *testing.T) {
+	t.Parallel()
 	src, err := preludeWhole()
 	if err != nil {
 		t.Fatal(err)
@@ -590,7 +603,7 @@ func testExample(t *testing.T, dir, gen string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compile := CompileWithGems // gems as the CLI finds them (decision 173)
+	compile := CompileWithGems             // gems as the CLI finds them (decision 173)
 	if len(directives(src, "trace")) > 0 { // `# trace: why`: compiled from what an MRI run loads, as `rb2go build -trace` (decision 296)
 		compile = func(ctx context.Context, name string, _ []byte, lp ...string) ([]byte, []string, error) {
 			return CompileTrace(ctx, name, [][]string{nil}, nil, lp...) // ponytail: one run with no args; pass `# args:` here when a traced example takes some
@@ -928,12 +941,12 @@ func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []s
 	return mriRun(t, dir, src, pio, slices.Concat(flags, []string{file}, args))
 }
 
-// exampleSources is every .rb file under an example's directory, main.rb and what it requires, with their paths.
+// exampleSources is every file under an example's directory with its path: main.rb and what it requires, and the data it reads (a .csv, a .rbs), so editing either misses the MRI cache.
 func exampleSources(t *testing.T, dir string) []byte {
 	t.Helper()
 	var out []byte
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || filepath.Ext(p) != ".rb" {
+		if err != nil || d.IsDir() {
 			return err
 		}
 		src, err := os.ReadFile(p) //nolint:gosec // example path
@@ -950,7 +963,8 @@ func exampleSources(t *testing.T, dir string) []byte {
 func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string) mriResult {
 	t.Helper()
 	wd, _ := os.Getwd() // the checkout: output holding __dir__ or a testdata path differs per worktree
-	key := "v5\x00" + rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00" + wd + "\x00" + gemfileLock() + "\x00"
+	key := "v6\x00" +   // v6: exampleSources hashes non-.rb files too (decision 272)
+		rubyDescription() + "\x00" + os.Getenv("TZ") + "\x00" + wd + "\x00" + gemfileLock() + "\x00"
 	if args := rubyArgs[1:]; len(args) > 0 { // `# args:` are in src; TestMinitest adds more
 		key += strings.Join(args, "\x00") + "\x00args\x00"
 	}
@@ -1240,7 +1254,8 @@ p h.pop
 // TestVendoredGemsMRI runs each vendored gem's own minitest files (gems/<name>/test, a submodule; decision 328) under MRI with
 // the gem's lib first on the load path, so the pure-Ruby copy is checked as a gem, not only as compiled code.
 func TestVendoredGemsMRI(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
+	t.Parallel()
 	gems, err := filepath.Glob(filepath.Join("gems", "*", "lib"))
 	if err != nil {
 		t.Fatal(err)
@@ -1262,6 +1277,39 @@ func TestVendoredGemsMRI(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestGofmt fails on any tracked Go file gofmt would change: `golangci-lint run` does not check formatters (v2 runs them under `fmt`), so a file
+// split or move that leaves whitespace drift would otherwise pass every gate.
+func TestGofmt(t *testing.T) {
+	t.Parallel()
+
+	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "*.go").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var files []string
+
+	for _, f := range strings.Fields(string(out)) {
+		_, statErr := os.Stat(f)
+		if statErr == nil { // a tracked file deleted in the working tree is not drift
+			files = append(files, f)
+		}
+	}
+
+	if len(files) == 0 {
+		t.Fatal("git ls-files found no Go files: nothing was checked")
+	}
+
+	bad, err := exec.CommandContext(t.Context(), "gofmt", append([]string{"-l"}, files...)...).Output() //nolint:gosec // git's own file list
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.TrimSpace(string(bad)) != "" {
+		t.Errorf("gofmt would change:\n%s(run `gofmt -w` on them)", bad)
 	}
 }
 
@@ -1451,7 +1499,8 @@ var gemCorpusKnown = map[string]string{
 // each case's output with MRI's (decision 334): one document per feature, as examples and benchmarks give, misses most
 // of a gem's paths.
 func TestGemCorpus(t *testing.T) {
-	requireRuby4(t)
+	requireToolchain(t)
+	t.Parallel()
 	gemDir, err := exec.CommandContext(t.Context(), "ruby", "-e", `print Gem::Specification.find_by_name("kramdown").gem_dir`).Output()
 	if err != nil {
 		t.Skip("kramdown is not installed")

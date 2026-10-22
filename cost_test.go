@@ -65,7 +65,7 @@ func TestCompileCost(t *testing.T) {
 	if want == "" {
 		t.Skip("set RB2GO_COST=1 (or a comma list of examples)")
 	}
-	requireRuby4(t)
+	requireToolchain(t)
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
