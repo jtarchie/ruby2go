@@ -10,18 +10,16 @@
 #   scripts/rubyspec-coverage --missing  # also list the uncovered spec names
 #   scripts/rubyspec-coverage --spec DIR # an existing ruby/spec checkout
 #
-# Without --spec, ruby/spec is shallow-cloned into the user cache directory.
+# Without --spec, the checkout is cmd/rubyspec's (pinned commit, user cache dir; decision 272).
 
 require "prism"
 
 ROOT = File.expand_path("..", __dir__)
 missing = ARGV.delete("--missing")
 spec = ARGV.index("--spec")&.then { |i| ARGV[i + 1] }
-unless spec
-  cache = ENV.fetch("XDG_CACHE_HOME", File.join(Dir.home, RUBY_PLATFORM.include?("darwin") ? "Library/Caches" : ".cache"))
-  spec = File.join(cache, "rb2go-rubyspec")
-  system("git", "clone", "-q", "--depth", "1", "https://github.com/ruby/spec", spec, exception: true) unless Dir.exist?(spec)
-end
+spec ||= IO.popen(["go", "run", "./cmd/rubyspec", "-print-root"], chdir: ROOT, &:read).strip # the pinned, atomically fetched checkout cmd/rubyspec runs
+abort "rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)" unless $?.nil? || $?.success?
+abort "rubyspec-coverage: #{spec} is not a ruby/spec checkout" unless Dir.exist?(File.join(spec, "core"))
 
 # class or module name => method names its prelude bodies define ("name.s" holds `def self.` ones)
 defs = Hash.new { |h, k| h[k] = [] }
@@ -78,6 +76,8 @@ rows = Dir[File.join(spec, "core/*/")].sort.filter_map do |dir|
   end
   [cls, names.size - uncovered.size, names.size, uncovered.sort]
 end
+
+abort "rubyspec-coverage: no core/*/*_spec.rb under #{spec}" if rows.empty?
 
 width = rows.map { |r| r[0].size }.max
 rows.sort_by { |_, got, total, _| [-got.fdiv(total), -total] }.each do |cls, got, total, uncovered|

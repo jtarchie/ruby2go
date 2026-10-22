@@ -153,3 +153,30 @@ func TestCrashFrames(t *testing.T) {
 		t.Errorf("loadFrame matched mspec.rb: %q", m)
 	}
 }
+
+func TestApplyEdits(t *testing.T) {
+	// equal starts apply in the order given (an insertion before the replacement it abuts); an unstable sort reorders many
+	got, err := applyEdits("abcdef", []edit{{2, 2, "<"}, {2, 4, "X"}})
+	if err != nil || got != "ab<Xef" {
+		t.Errorf("equal-start edits = %q, %v; want ab<Xef", got, err)
+	}
+	many := make([]edit, 0, 37)
+	many = append(many, edit{5, 5, "!"}, edit{4, 4, "?"}) // out of order, so the sort has work to do
+	for _, s := range "123456789abcdefghijklmnopqrstuvwxyz" {
+		many = append(many, edit{2, 2, string(s)})
+	}
+	got, err = applyEdits("abcdef", many)
+	if err != nil || got != "ab123456789abcdefghijklmnopqrstuvwxyzcd?e!f" {
+		t.Errorf("many equal starts = %q, %v", got, err)
+	}
+	// an edit wholly inside a replaced region is dropped on purpose
+	got, err = applyEdits("abcdef", []edit{{1, 5, "-"}, {2, 3, "Y"}})
+	if err != nil || got != "a-f" {
+		t.Errorf("nested edit = %q, %v; want a-f", got, err)
+	}
+	// one that starts inside and ends outside would be silently lost
+	_, err = applyEdits("abcdef", []edit{{1, 4, "-"}, {3, 5, "Y"}})
+	if err == nil {
+		t.Error("partially overlapping edits must be an error, not dropped")
+	}
+}

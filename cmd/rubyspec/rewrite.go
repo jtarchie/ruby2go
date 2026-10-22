@@ -20,12 +20,22 @@ type edit struct {
 	text       string
 }
 
+// apply is applyEdits for a lone edit, which cannot overlap.
 func apply(src string, edits []edit) string {
-	slices.SortFunc(edits, func(a, b edit) int { return a.start - b.start })
+	out, _ := applyEdits(src, edits)
+	return out
+}
+
+// applyEdits applies edits by start offset, equal starts in the order given. An edit wholly inside a replaced region is dropped (an outer rewrite covers it); one that sticks out of it is an error, since applying it would lose text.
+func applyEdits(src string, edits []edit) (string, error) {
+	slices.SortStableFunc(edits, func(a, b edit) int { return a.start - b.start })
 	var b strings.Builder
 	at := 0
 	for _, e := range edits {
 		if e.start < at {
+			if e.end > at {
+				return "", fmt.Errorf("edit [%d,%d) %q overlaps the one ending at %d", e.start, e.end, e.text, at)
+			}
 			continue // inside a region already replaced
 		}
 		b.WriteString(src[at:e.start])
@@ -33,7 +43,7 @@ func apply(src string, edits []edit) string {
 		at = e.end
 	}
 	b.WriteString(src[at:])
-	return b.String()
+	return b.String(), nil
 }
 
 func blank(src string, start, end int) edit {
@@ -81,7 +91,11 @@ func (prog *program) rewrite(ctx context.Context, name, src string, depth int) (
 	if rw.err != nil {
 		return "", rw.err
 	}
-	return apply(src, rw.edits), nil
+	out, err := applyEdits(src, rw.edits)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
+	return out, nil
 }
 
 func (rw *rewriter) visit(n parser.Node) {

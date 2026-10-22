@@ -1285,36 +1285,156 @@ func TestGoModNoReplace(t *testing.T) {
 	}
 }
 
-// TestVendoredMirror checks vendored/<name>/*.rb, the committed copy the embed reads, against the gems/<name>/lib submodule it
-// mirrors (scripts/vendor-gems, decision 328).
+// walkFiles lists the files under dir (slash paths relative to the working directory), failing on any walk error.
+func walkFiles(t *testing.T, fsys fs.FS, dir string, keep func(path string) bool) []string {
+	t.Helper()
+	var out []string
+	err := fs.WalkDir(fsys, dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && keep(path) {
+			out = append(out, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatalf("walking %s: %v", dir, err)
+	}
+	return out
+}
+
+// TestVendoredMirror checks vendored/ against the gems/*/lib submodules in both directions (decision 328): a file kept after its gem dropped it is stale.
 func TestVendoredMirror(t *testing.T) {
 	gems, err := filepath.Glob(filepath.Join("gems", "*", "lib"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var libs []string
+	isRb := func(path string) bool { return strings.HasSuffix(path, ".rb") }
+	want := map[string]string{} // vendored/<name>/<rel> => its gems/ source
 	for _, dir := range gems {
-		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() && strings.HasSuffix(path, ".rb") {
-				libs = append(libs, path)
-			}
-			return err
-		})
+		for _, lib := range walkFiles(t, os.DirFS("."), filepath.ToSlash(dir), isRb) {
+			parts := strings.SplitN(lib, "/", 4) // gems/<name>/lib/<rel>
+			want["vendored/"+parts[1]+"/"+parts[3]] = lib
+		}
 	}
-	if len(libs) == 0 {
+	if len(want) == 0 {
 		t.Fatal("no gems/*/lib/**/*.rb: run `git submodule update --init`")
 	}
-	for _, lib := range libs {
-		parts := strings.SplitN(filepath.ToSlash(lib), "/", 4) // gems/<name>/lib/<rel>
-		mirror := filepath.Join("vendored", parts[1], parts[3])
-		want, err := os.ReadFile(lib) //nolint:gosec // our own paths
+	for mirror, lib := range want {
+		src, err := os.ReadFile(lib) //nolint:gosec // our own paths
 		if err != nil {
 			t.Fatal(err)
 		}
 		got, err := os.ReadFile(mirror) //nolint:gosec // our own paths
-		if err != nil || !bytes.Equal(want, got) {
+		if err != nil || !bytes.Equal(src, got) {
 			t.Errorf("%s differs from %s (or is missing): run scripts/vendor-gems", mirror, lib)
 		}
+	}
+	for _, f := range walkFiles(t, os.DirFS("."), "vendored", func(string) bool { return true }) {
+		if _, ok := want[f]; !ok {
+			t.Errorf("%s has no source in gems/*/lib (stale): run scripts/vendor-gems", f)
+		}
+	}
+}
+
+// TestVendoredEmbedded: the //go:embed patterns stop at a depth, so a deeper gem file would silently not ship from the module proxy.
+func TestVendoredEmbedded(t *testing.T) {
+	onDisk := walkFiles(t, os.DirFS("."), "vendored", func(string) bool { return true })
+	embedded := walkFiles(t, Prelude, "vendored", func(string) bool { return true })
+	if len(onDisk) == 0 || len(embedded) == 0 {
+		t.Fatalf("compared nothing: %d files on disk, %d embedded", len(onDisk), len(embedded))
+	}
+	for _, f := range onDisk {
+		if !slices.Contains(embedded, f) {
+			t.Errorf("%s is vendored but not embedded: widen the //go:embed patterns in rb2go.go (or the file is not .rb)", f)
+		}
+	}
+	for _, f := range embedded {
+		if !slices.Contains(onDisk, f) {
+			t.Errorf("%s is embedded but not on disk", f)
+		}
+	}
+}
+
+var (
+	decisionHead = regexp.MustCompile(`^(\d+)\. `)
+	indexRow     = regexp.MustCompile(`^\| (\d+) \| `)
+	claudeLast   = regexp.MustCompile(`\(last: (\d+)\)`)
+)
+
+// designIndexProblems exists because scripts/design-index only numbers decisions continuing from 1, so after a gap it silently indexes fewer.
+func designIndexProblems(design, claude string) []string {
+	var problems []string
+	lines := strings.Split(design, "\n")
+	from := slices.Index(lines, "## Open decisions")
+	if from < 0 {
+		return []string{"no '## Open decisions' heading"}
+	}
+	last, rows, highest := 0, 0, 0
+	for _, l := range lines[from:] {
+		if m := decisionHead.FindStringSubmatch(l); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			switch {
+			case n == last+1:
+				last = n
+			case n > last+1:
+				highest = max(highest, n)
+			}
+		}
+	}
+	for _, l := range lines {
+		if indexRow.MatchString(l) {
+			rows++
+		}
+	}
+	if last == 0 {
+		problems = append(problems, "no numbered decisions after '## Open decisions'")
+	}
+	if highest > 0 {
+		problems = append(problems, fmt.Sprintf("decision %d follows a numbering gap after %d: scripts/design-index stops there", highest, last))
+	}
+	if rows != last {
+		problems = append(problems, fmt.Sprintf("the index has %d rows for %d decisions: run scripts/design-index", rows, last))
+	}
+	m := claudeLast.FindStringSubmatch(claude)
+	switch {
+	case m == nil:
+		problems = append(problems, `CLAUDE.md has no "(last: N)"`)
+	case m[1] != strconv.Itoa(last):
+		problems = append(problems, fmt.Sprintf("CLAUDE.md says (last: %s), design.md ends at %d", m[1], last))
+	}
+	return problems
+}
+
+// TestDesignIndex keeps docs/design.md's generated index, its numbering and CLAUDE.md's "(last: N)" in step.
+func TestDesignIndex(t *testing.T) {
+	out, err := exec.CommandContext(t.Context(), "ruby", "scripts/design-index", "--check").CombinedOutput()
+	if err != nil {
+		t.Errorf("scripts/design-index --check: %v (exit 1 = stale index: run scripts/design-index)\n%s", err, out)
+	}
+	design, err := os.ReadFile(filepath.Join("docs", "design.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claude, err := os.ReadFile("CLAUDE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range designIndexProblems(string(design), string(claude)) {
+		t.Error(p)
+	}
+	// the checker catches what it exists for
+	good := "## Open decisions\n\n1. a\n2. b\n\n<!-- design-index:start -->\n| 1 | a | 1 |\n| 2 | b | 2 |\n<!-- design-index:end -->\n"
+	for name, c := range map[string]struct{ design, claude string }{
+		"gap":          {strings.Replace(strings.Replace(good, "2. b", "3. b", 1), "| 2 | b | 2 |\n", "", 1), "(last: 1)"}, // index and CLAUDE.md agree with the truncated count
+		"stale claude": {good, "(last: 1)"},
+		"short index":  {strings.Replace(good, "| 2 | b | 2 |\n", "", 1), "(last: 2)"},
+		"no number":    {good, "nothing"},
+	} {
+		if len(designIndexProblems(c.design, c.claude)) == 0 {
+			t.Errorf("%s: no problem reported", name)
+		}
+	}
+	if p := designIndexProblems(good, "(last: 2)"); len(p) != 0 {
+		t.Errorf("consistent docs reported: %v", p)
 	}
 }
 

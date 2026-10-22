@@ -1,9 +1,11 @@
 #!/bin/sh
 # Mirrors each gems/<name>/lib/**/*.rb submodule file into vendored/<name>/ (decision 328): the Go embed reads the mirror, so
 # `go install ...@latest` works from the module proxy, which ships no submodule contents. TestVendoredMirror fails on drift.
-set -e
+set -eu
 cd "$(dirname "$0")/.."
 for lib in gems/*/lib; do
+  # an uninitialised submodule leaves the glob literal, which would create vendored/*
+  [ -d "$lib" ] || { echo "vendor-gems: $lib is not a directory: run git submodule update --init" >&2; exit 1; }
   name=$(basename "$(dirname "$lib")")
   rm -rf "vendored/$name"
   mkdir -p "vendored/$name"

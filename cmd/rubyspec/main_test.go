@@ -1,9 +1,119 @@
 package main
 
 import (
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestMain lets a test run main() as a child process (RUBYSPEC_TEST_MAIN=1), for flags and exit statuses.
+func TestMain(m *testing.M) {
+	if os.Getenv("RUBYSPEC_TEST_MAIN") == "1" {
+		main()
+		return
+	}
+	os.Exit(m.Run())
+}
+
+func runMain(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), os.Args[0], args...) //nolint:gosec // this test binary
+	cmd.Env = append(os.Environ(), "RUBYSPEC_TEST_MAIN=1")
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+func TestPrintRoot(t *testing.T) {
+	root := t.TempDir()
+	out, err := runMain(t, "-spec", root, "-print-root")
+	if err != nil || strings.TrimSpace(out) != root {
+		t.Errorf("-print-root = %q, %v; want %q", out, err, root)
+	}
+}
+
+func TestCoverageScriptFailsOnEmptyCore(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "core/README")
+	_, err := exec.LookPath("ruby")
+	if err != nil {
+		t.Fatal("ruby is required (the whole suite needs it)")
+	}
+	out, err := exec.CommandContext(t.Context(), "ruby", "../../scripts/rubyspec-coverage", "--spec", root).CombinedOutput() //nolint:gosec // our script
+	if err == nil {
+		t.Errorf("a ruby/spec checkout with no core specs must fail, not print NaN: %s", out)
+	}
+	if strings.Contains(string(out), "NaN") {
+		t.Errorf("output has NaN: %s", out)
+	}
+}
+
+func writeTree(t *testing.T, root string, files ...string) {
+	t.Helper()
+	for _, f := range files {
+		p := filepath.Join(root, f)
+		err := os.MkdirAll(filepath.Dir(p), 0o750)
+		if err == nil {
+			err = os.WriteFile(p, nil, 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func targetNames(ts []target) []string {
+	out := make([]string, 0, len(ts))
+	for _, tg := range ts {
+		out = append(out, tg.name+" "+strings.Join(tg.files, ","))
+	}
+	return out
+}
+
+func TestExpandNested(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root,
+		"core/array/a_spec.rb", "core/array/b_spec.rb", "core/array/shared/x.rb",
+		"core/array/pack/p_spec.rb",
+		"core/file/stat/s_spec.rb", "core/file/stat/deep/d_spec.rb",
+		"core/file/f_spec.rb", "core/empty/fixtures/f.rb", "core/integer/i_spec.rb")
+	got, err := expand(root, []string{"core"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"core/array core/array/a_spec.rb,core/array/b_spec.rb",
+		"core/array/pack core/array/pack/p_spec.rb",
+		"core/file core/file/f_spec.rb",
+		"core/file/stat core/file/stat/s_spec.rb",
+		"core/file/stat/deep core/file/stat/deep/d_spec.rb",
+		"core/integer core/integer/i_spec.rb",
+	}
+	if !slices.Equal(targetNames(got), want) {
+		t.Errorf("core expands to\n%q\nwant\n%q", targetNames(got), want)
+	}
+	// a directory of its own specs plus nested ones: separate targets
+	got, err = expand(root, []string{"core/file"})
+	if err != nil || len(got) != 3 {
+		t.Errorf("core/file = %q, %v; want 3 targets", targetNames(got), err)
+	}
+	// a file stays one target, and the same program is not run twice
+	got, err = expand(root, []string{"core/array/a_spec.rb", "core/array/a_spec.rb", "core/array/pack", "./core/array/pack/"})
+	if err != nil || !slices.Equal(targetNames(got), []string{"core/array/a_spec.rb core/array/a_spec.rb", "core/array/pack core/array/pack/p_spec.rb"}) {
+		t.Errorf("file + duplicates = %q, %v", targetNames(got), err)
+	}
+	// nothing to run is an error, not an empty pass
+	for _, bad := range []string{"core/empty", "core/missing"} {
+		_, err = expand(root, []string{bad})
+		if err == nil {
+			t.Errorf("expand(%s) found nothing and returned no error", bad)
+		}
+	}
+}
 
 func TestRunTargetsRecoversPanic(t *testing.T) {
 	targets := []target{{name: "core/a"}, {name: "core/boom"}, {name: "core/c"}}
@@ -21,6 +131,82 @@ func TestRunTargetsRecoversPanic(t *testing.T) {
 	}
 	if exitCode(results) != 1 {
 		t.Error("a fatal program must exit non-zero")
+	}
+}
+
+func TestRunAllGivesUp(t *testing.T) {
+	// a program that crashes on a new test every run must not read as finished
+	n := 0
+	r := &result{}
+	crash := r.runAll(func(excluded []string) *crashSite {
+		n++
+		r.crashed = "crashed: boom"
+		return &crashSite{test: "T#test_" + strings.Repeat("x", n), reason: "crashed: boom"}
+	})
+	if crash == nil || crash.file != "" || !strings.Contains(r.crashed, "gave up") {
+		t.Fatalf("runAll after %d crashing runs = %+v, crashed %q; want a file-less crash site that runTarget turns into FATAL", n, crash, r.crashed)
+	}
+	// a run that finishes is nil
+	r = &result{}
+	if got := r.runAll(func([]string) *crashSite { return nil }); got != nil {
+		t.Errorf("finished run = %+v, want nil", got)
+	}
+}
+
+func TestRunTargetCleansUp(t *testing.T) {
+	// an error after the module exists, and a panic in the run, both remove it
+	for _, how := range []string{"error", "panic"} {
+		cleaned := 0
+		r := &result{}
+		func() {
+			defer func() { _ = recover() }()
+			_, _ = r.attempt(func() (string, func(), error) {
+				if how == "error" {
+					return "", func() { cleaned++ }, errors.New("go build failed")
+				}
+				return "bin", func() { cleaned++ }, nil
+			}, func(string) *crashSite {
+				if how == "panic" {
+					panic("kaboom")
+				}
+				return nil
+			})
+		}()
+		if cleaned != 1 {
+			t.Errorf("%s: cleanup ran %d times, want 1", how, cleaned)
+		}
+	}
+}
+
+func TestOptionsValidate(t *testing.T) {
+	for _, d := range []time.Duration{0, -time.Second, time.Nanosecond} {
+		err := options{timeout: d}.validate()
+		if err == nil {
+			t.Errorf("timeout %v accepted; the watcher's ticker needs a positive interval", d)
+		}
+	}
+	err := options{timeout: 3 * time.Second}.validate()
+	if err != nil {
+		t.Errorf("timeout 3s rejected: %v", err)
+	}
+}
+
+func TestIdleWriterString(t *testing.T) {
+	// the run reads the output after Wait gave up on the pipe (WaitDelay); the copier may still write
+	w := &idleWriter{last: time.Now()}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 1000 {
+			_, _ = w.Write([]byte("x"))
+		}
+	}()
+	for range 1000 {
+		_ = w.String()
+	}
+	<-done
+	if got := len(w.String()); got != 1000 {
+		t.Errorf("collected %d bytes, want 1000", got)
 	}
 }
 

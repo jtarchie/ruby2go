@@ -8,9 +8,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -49,26 +51,53 @@ func main() {
 	flag.BoolVar(&opts.verbose, "v", false, "list every unsupported example and each program's failures")
 	flag.DurationVar(&opts.timeout, "timeout", 3*time.Second, "a test that prints nothing for this long is skipped as hung")
 	flag.BoolVar(&opts.keep, "work", false, "keep each program's module (main.go) and print its path")
+	printRoot := flag.Bool("print-root", false, "print the pinned checkout (fetching it if absent) and exit; scripts/rubyspec-coverage uses it")
 	flag.Parse()
+	err := opts.validate()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	root, err := specRoot(*spec)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if *printRoot {
+		fmt.Println(root)
+		return
 	}
 	targets, err := expand(root, flag.Args())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	ctx := context.Background()
+	// SIGINT/SIGTERM cancel every build and run, so each program's deferred cleanup removes its temp module
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest))
 	if err != nil {
+		stop()
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(1) //nolint:gocritic // stop() is called by hand
 	}
 	results := runTargets(targets, *jobs, func(t target) *result { return runTarget(ctx, p, root, t, opts) }, opts.verbose)
 	report(results, *reasons)
-	os.Exit(exitCode(results))
+	code := exitCode(results)
+	if ctx.Err() != nil {
+		fmt.Fprintln(os.Stderr, "rubyspec: interrupted")
+		code = 130
+	}
+	stop()
+	os.Exit(code)
+}
+
+// validate rejects what would panic or never end the run: watch's ticker needs a positive interval.
+func (o options) validate() error {
+	if o.timeout < time.Millisecond {
+		return fmt.Errorf("rubyspec: -timeout %v is too short (at least 1ms)", o.timeout)
+	}
+	return nil
 }
 
 // runTargets runs each target with at most jobs at once. A panic in one is that program's FATAL result, not the end of every other result.
@@ -167,45 +196,51 @@ type target struct {
 	files []string // relative to the spec root
 }
 
-// expand turns each argument into programs: a file is one, a directory of specs is one, and a directory of directories (core) is one per child.
+// expand turns each argument into programs: a file is one, and a directory is one per directory under it (itself included) that directly holds *_spec.rb files, so core/array and core/array/pack are separate programs. A program named twice runs once.
 func expand(root string, args []string) ([]target, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: rubyspec [-spec dir] [-j n] [-v] [-reasons n] path...  (core/integer, core/integer/abs_spec.rb, or core for each core/* directory)")
+		return nil, errors.New("usage: rubyspec [-spec dir] [-j n] [-v] [-reasons n] path...  (core/integer, core/integer/abs_spec.rb, or core for every directory under core/ holding specs)")
 	}
 	var out []target
+	seen := map[string]bool{}
+	add := func(t target) {
+		if !seen[t.name] {
+			seen[t.name] = true
+			out = append(out, t)
+		}
+	}
 	for _, a := range args {
 		a = filepath.Clean(a)
 		if strings.HasSuffix(a, ".rb") {
-			out = append(out, target{name: a, files: []string{a}})
+			add(target{name: a, files: []string{a}})
 			continue
-		}
-		specs, _ := filepath.Glob(filepath.Join(root, a, "*_spec.rb"))
-		if len(specs) > 0 {
-			out = append(out, target{name: a, files: relAll(root, specs)})
-			continue
-		}
-		subs, _ := filepath.Glob(filepath.Join(root, a, "*", "*_spec.rb"))
-		if len(subs) == 0 {
-			return nil, fmt.Errorf("rubyspec: no specs under %s", filepath.Join(root, a))
 		}
 		byDir := map[string][]string{}
-		for _, s := range relAll(root, subs) {
-			byDir[filepath.Dir(s)] = append(byDir[filepath.Dir(s)], s)
+		err := filepath.WalkDir(filepath.Join(root, a), func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(p, "_spec.rb") {
+				rel, rerr := filepath.Rel(root, p)
+				if rerr != nil {
+					return rerr //nolint:wrapcheck // names the path
+				}
+				byDir[filepath.Dir(rel)] = append(byDir[filepath.Dir(rel)], rel)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("rubyspec: %w", err)
+		}
+		if len(byDir) == 0 {
+			return nil, fmt.Errorf("rubyspec: no specs under %s", filepath.Join(root, a))
 		}
 		for _, d := range slices.Sorted(maps.Keys(byDir)) {
-			out = append(out, target{name: d, files: byDir[d]})
+			slices.Sort(byDir[d])
+			add(target{name: d, files: byDir[d]})
 		}
 	}
 	return out, nil
-}
-
-func relAll(root string, paths []string) []string {
-	out := make([]string, len(paths))
-	for i, p := range paths {
-		out[i], _ = filepath.Rel(root, p)
-	}
-	slices.Sort(out)
-	return out
 }
 
 // skipped is an example (or a statement outside one) taken out, and why.
@@ -240,14 +275,13 @@ func runTarget(ctx context.Context, p *parser.Parser, root string, t target, opt
 	}
 	r.dropped = append(r.dropped, prog.unloadable...)
 	for range maxCrashes {
-		bin, cleanup, err := prog.build(ctx, r, opts.keep)
+		crash, err := r.attempt(func() (string, func(), error) { return prog.build(ctx, r, opts.keep) }, func(bin string) *crashSite {
+			return r.runAll(func(excluded []string) *crashSite { return r.run(ctx, root, bin, opts.timeout, excluded) })
+		})
 		if err != nil {
-			cleanup()
 			r.fatal = err.Error()
 			return r
 		}
-		crash := r.runAll(ctx, root, bin, opts.timeout)
-		cleanup()
 		if crash == nil {
 			return r
 		}
@@ -266,11 +300,21 @@ func runTarget(ctx context.Context, p *parser.Parser, root string, t target, opt
 	return r
 }
 
-// runAll runs bin until it finishes, excluding each test that crashes or hangs it (a crash ends the whole run) by name, which needs no rebuild.
-func (r *result) runAll(ctx context.Context, root, bin string, timeout time.Duration) *crashSite {
+// attempt defers the cleanup so a panic in the run (which runTargets recovers) cannot leak the temp module.
+func (r *result) attempt(build func() (string, func(), error), run func(bin string) *crashSite) (*crashSite, error) {
+	bin, cleanup, err := build()
+	defer cleanup()
+	if err != nil {
+		return nil, err
+	}
+	return run(bin), nil
+}
+
+// runAll runs the program until it finishes, excluding each test that crashes or hangs it (a crash ends the whole run) by name, which needs no rebuild. Still crashing after maxCrashes*3 exclusions is a crash with no site, which runTarget reports as FATAL: it is not a finished run.
+func (r *result) runAll(run func(excluded []string) *crashSite) *crashSite {
 	var excluded []string
 	for range maxCrashes * 3 {
-		crash := r.run(ctx, root, bin, timeout, excluded)
+		crash := run(excluded)
 		if crash == nil || crash.test == "" {
 			return crash
 		}
@@ -278,7 +322,8 @@ func (r *result) runAll(ctx context.Context, root, bin string, timeout time.Dura
 		r.unsupported = append(r.unsupported, skipped{crash.test, crash.reason})
 		r.excluded = append(r.excluded, crash.reason)
 	}
-	return nil
+	r.crashed = fmt.Sprintf("gave up after %d crashing or hanging tests were excluded; last: %s", len(excluded), r.crashed)
+	return &crashSite{reason: r.crashed}
 }
 
 // maxCrashes bounds the runs of one program that end in a crash or hang.
@@ -321,6 +366,12 @@ func (w *idleWriter) Write(p []byte) (int, error) {
 	return w.buf.Write(p) //nolint:wrapcheck // a Builder never fails
 }
 
+func (w *idleWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
 func (w *idleWriter) idle() time.Duration {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -344,8 +395,8 @@ func watch(ctx context.Context, cancel context.CancelFunc, w *idleWriter, timeou
 	}
 }
 
-func (r *result) run(ctx context.Context, root, bin string, timeout time.Duration, excluded []string) *crashSite {
-	ctx, cancel := context.WithCancel(ctx)
+func (r *result) run(parent context.Context, root, bin string, timeout time.Duration, excluded []string) *crashSite {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	out := &idleWriter{last: time.Now()}
 	go watch(ctx, cancel, out, timeout)
@@ -360,7 +411,7 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdout, cmd.Stderr = out, out
 	err := cmd.Run()
-	r.output = out.buf.String()
+	r.output = out.String()
 	r.pass, r.fail, r.errored, r.skipped, r.crashed = 0, 0, 0, 0, ""
 	r.why = r.why[:0]
 	for _, m := range rbSkip.FindAllStringSubmatch(r.output, -1) {
@@ -386,6 +437,10 @@ func (r *result) run(ctx context.Context, root, bin string, timeout time.Duratio
 		return nil
 	}
 	reason := "crashed: " + panicLine(r.output)
+	if parent.Err() != nil { // a signal, not a hang
+		r.crashed = "interrupted"
+		return &crashSite{reason: r.crashed}
+	}
 	if ctx.Err() != nil {
 		reason = fmt.Sprintf("hung: no output for %v", timeout)
 	}
@@ -581,6 +636,8 @@ func (prog *program) build(ctx context.Context, r *result, keep bool) (string, f
 		}
 		cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-gcflags=-e", "-o", "prog", ".")
 		cmd.Dir = dir
+		cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) } // go build tidies its own children on SIGINT
+		cmd.WaitDelay = 10 * time.Second
 		cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
 		start := time.Now()
 		out, err := cmd.CombinedOutput()
