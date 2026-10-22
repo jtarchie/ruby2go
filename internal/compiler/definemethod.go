@@ -44,12 +44,7 @@ func (c *Compiler) collectDefineMethod(ctx context.Context, sites map[string]*dm
 			return // a site outside the closed world (sorbet-runtime's own), or an anonymous owner
 		}
 		src := c.defineMethodSource(site, e)
-		sf, err := parseFile(ctx, c.parser, site.file.Name, []byte(src), originSource)
-		if err != nil {
-			c.errorf(site.file, site.call, "define_method %s: %v\n%s", e.Name, err, src)
-		}
-		sf.path, sf.pinLine = site.file.path, site.file.line(site.call.Location.StartOffset)
-		def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
+		sf, def := c.synthDef(ctx, site.file, site.call, "define_method "+e.Name, src, synthOpt{Origin: originSource, Pin: true})
 		def.Name = e.Name
 		if c.dmDefined == nil {
 			c.dmDefined = map[*parser.CallNode]bool{}
@@ -431,13 +426,9 @@ func (c *Compiler) emitSelfSingletons(ctx context.Context, cls *Class, sites []s
 
 // addSynthDefs parses src's defs and adds them to cls, pinned to at's line in f.
 func (c *Compiler) addSynthDefs(ctx context.Context, f *File, at parser.Node, cls *Class, src string, public ...string) {
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
-	if err != nil {
-		c.errorf(f, at, "define_singleton_method template: %v\n%s", err, src)
-	}
-	sf.path, sf.pinLine = f.path, f.line(at.GetLocation().StartOffset)
-	for _, st := range sf.Root.Statements.Body {
-		def := st.(*parser.DefNode)                                                                                                                                    //nolint:forcetypeassert // built by the caller
+	const label = "define_singleton_method template"
+	sf := c.synthFile(ctx, f, at, label, src, synthOpt{Origin: originSource, Pin: true})
+	for _, def := range c.synthDefs(f, at, label, sf) {
 		c.addDef(sf, cls, def, def.Name != "method_missing" && !strings.HasPrefix(def.Name, "__rb2go_smdef_") && !slices.Contains(public, def.Name), c.nestingOf(cls)) // a recording call may have a receiver
 	}
 }
@@ -566,12 +557,7 @@ func (c *Compiler) singletonTemplate(ctx context.Context, cls *Class, m *Method,
 		return false
 	}
 	src := "def method_missing(" + nameVar.Name + ", *_rb2go_rest)\n" + blockAsMethodBody(m.File, blk) + "\nend\n"
-	sf, err := parseFile(ctx, c.parser, m.File.Name, []byte(src), originSource)
-	if err != nil {
-		c.errorf(m.File, n, "define_singleton_method template: %v\n%s", err, src)
-	}
-	sf.path, sf.pinLine = m.File.path, m.File.line(n.Location.StartOffset)
-	def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
+	sf, def := c.synthDef(ctx, m.File, n, "define_singleton_method template", src, synthOpt{Origin: originSource, Pin: true})
 	c.addDef(sf, target, def, false, c.nestingOf(target))
 	resetMsets(target)
 	if c.dmSites == nil {

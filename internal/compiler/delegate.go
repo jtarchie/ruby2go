@@ -26,7 +26,7 @@ func (c *Compiler) delegateClassSuper(ctx context.Context, f *File, call *parser
 	name := "DelegateClass_" + strings.ReplaceAll(strings.TrimPrefix(target, "::"), "::", "_")
 	if c.classes[qualify(scope, name)] == nil {
 		line := f.line(call.Location.StartOffset)
-		src := strings.Repeat("\n", line-1) + fmt.Sprintf(`class %[1]s < Delegator
+		src := fmt.Sprintf(`class %[1]s < Delegator
   #: (%[2]s) -> void
   def initialize(obj)
     @delegate_dc_obj = obj
@@ -50,11 +50,13 @@ func (c *Compiler) delegateClassSuper(ctx context.Context, f *File, call *parser
   def ==(other) = other.equal?(self) || __getobj__ == other
 end
 `, name, target)
-		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
-		if err != nil {
-			c.errorf(f, call, "internal error: generated DelegateClass does not parse: %v", err)
+		const label = "internal error: generated DelegateClass does not parse"
+		sf := c.synthFile(ctx, f, call, label, src, synthOpt{Origin: originSource, Pad: line - 1, NoPath: true})
+		cn, ok := sf.Root.Statements.Body[0].(*parser.ClassNode)
+		if !ok {
+			c.errorf(f, call, "%s: no class generated", label)
 		}
-		c.collectClass(ctx, sf, sf.Root.Statements.Body[0].(*parser.ClassNode), scope)
+		c.collectClass(ctx, sf, cn, scope)
 	}
 	return &parser.ConstantReadNode{Name: name, Location: call.Location}
 }

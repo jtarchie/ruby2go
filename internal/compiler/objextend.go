@@ -167,12 +167,7 @@ func (c *Compiler) prependToDef(ctx context.Context, cls *Class, om *Method, pro
 		body := d.EqualLoc.StartOffset + d.EqualLoc.Length
 		text = string(f.Src[from:at]) + pro + "\n" + string(f.Src[body:from+d.Location.Length]) + "\nend"
 	}
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(text), originSource)
-	if err != nil {
-		c.errorf(f, d, "%s: %v\n%s", om.Name, err, text)
-	}
-	sf.path, sf.pinLine = f.path, f.line(from)
-	nd := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // a def's own text
+	sf, nd := c.synthDef(ctx, f, d, om.Name, text, synthOpt{Origin: originSource, Pin: true})
 	c.addDef(sf, cls, nd, om.Private, om.Scope)
 }
 

@@ -244,12 +244,7 @@ func (c *Compiler) anonDefineMethod(ctx context.Context, f *File, cls *Class, n 
 		c.errorf(f, n, "define_method %s in a Class.new block reads the enclosing local %s; store it on the class (`@x = %s`) and read that (decision 259)", name, caps[0], caps[0])
 	}
 	src := c.defineMethodSource(site, boot.MethodInfo{Name: name})
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
-	if err != nil {
-		c.errorf(f, n, "define_method %s: %v\n%s", name, err, src)
-	}
-	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
-	def := sf.Root.Statements.Body[0].(*parser.DefNode) //nolint:forcetypeassert // built just above
+	sf, def := c.synthDef(ctx, f, n, "define_method "+name, src, synthOpt{Origin: originSource, Pin: true})
 	def.Name = name
 	c.addDef(sf, cls, def, false, scope)
 	if c.dmSites == nil {

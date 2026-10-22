@@ -100,13 +100,9 @@ func (c *Compiler) linkAliases(ctx context.Context) {
 
 // addForwarder defines the alias's new name as `def new<rest>`, on the alias's own line.
 func (c *Compiler) addForwarder(ctx context.Context, a pendingAlias, rest string) {
-	src := strings.Repeat("\n", max(a.f.line(a.n.GetLocation().StartOffset)-1, 0)) + "def " + a.newName + rest + "\n"
-	sf, err := parseFile(ctx, c.parser, a.f.Name, []byte(src), originSource)
-	if err != nil {
-		c.errorf(a.f, a.n, "alias %s: %v", a.newName, err)
-	}
-	sf.path = a.f.path
-	c.addDef(sf, a.cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, nil) //nolint:forcetypeassert // built just above
+	src := "def " + a.newName + rest + "\n"
+	sf, def := c.synthDef(ctx, a.f, a.n, "alias "+a.newName, src, synthOpt{Origin: originSource, Pad: max(a.f.line(a.n.GetLocation().StartOffset)-1, 0)})
+	c.addDef(sf, a.cls, def, false, nil)
 }
 
 func (c *Compiler) copyAlias(cls *Class, old *Method, nn string) *Method {
@@ -520,7 +516,7 @@ func (c *Compiler) aliasNew(ctx context.Context, d singletonMisc, m *Class, n *p
 		return
 	}
 	sf.path, sf.pinLine = d.file.path, d.file.line(n.Location.StartOffset)
-	c.addDef(sf, m, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // parsed just above
+	c.addDef(sf, m, c.synthDefs(d.file, n, "alias new", sf)[0], false, d.scope)
 }
 
 // singletonAttrs are the attr calls singletonAlias takes onto a class's singleton.

@@ -344,13 +344,9 @@ func (c *Compiler) addHashDefaultIdx(ctx context.Context, f *File, n *parser.Cla
 	if d == nil || d.Owner != cls || d.Node == nil || d.Node.Parameters == nil || len(d.Node.Parameters.Requireds) != 1 {
 		return
 	}
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte("#: (untyped) -> untyped\ndef [](key) = key?(key) ? super : default(key)\n"), originSource)
-	if err != nil {
-		c.errorf(f, n, "Hash subclass []: %v", err)
-	}
-	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
+	sf, def := c.synthDef(ctx, f, n, "Hash subclass []", "#: (untyped) -> untyped\ndef [](key) = key?(key) ? super : default(key)\n", synthOpt{Origin: originSource, Pin: true})
 	// ponytail: untyped, since the override's answer need not be a V; type it from default's signature when one names V
-	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, scope) //nolint:forcetypeassert // built just above
+	c.addDef(sf, cls, def, false, scope)
 }
 
 // bootStructProps are the props boot saw cls's T::Struct end up with that its source does not name literally: a load-time
@@ -422,14 +418,10 @@ func (c *Compiler) addStructInit(ctx context.Context, f *File, n *parser.ClassNo
 	// (decision 249). ponytail: the class itself answers all_props, which MRI's does not; a Decorator class to fix.
 	decorator := "#: () -> singleton(" + cls.RubyName + ")\ndef self.decorator = self\n#: () -> Array[Symbol]\ndef self.all_props = [" + strings.Join(syms, ", ") + "]\n"
 	src := "#: (" + strings.Join(sig, ", ") + ") -> void\ndef initialize(" + strings.Join(params, ", ") + ")\n" + strings.Join(body, "\n") + "\nend\n" + readers + decorator
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), originSource)
-	if err != nil {
-		c.errorf(f, n, "T::Struct initialize: %v", err)
-	}
-	sf.path, sf.pinLine = f.path, f.line(n.Location.StartOffset)
-	for _, st := range sf.Root.Statements.Body {
-		d := st.(*parser.DefNode) //nolint:forcetypeassert // built just above
-		if d.Receiver != nil {    // `def self.decorator`: a class method, as a class body's
+	const label = "T::Struct initialize"
+	sf := c.synthFile(ctx, f, n, label, src, synthOpt{Origin: originSource, Pin: true})
+	for _, d := range c.synthDefs(f, n, label, sf) {
+		if d.Receiver != nil { // `def self.decorator`: a class method, as a class body's
 			c.addMethod(sf, cls, d, false, scope)
 			continue
 		}

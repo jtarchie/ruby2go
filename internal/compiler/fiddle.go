@@ -176,11 +176,8 @@ func (c *Compiler) collectFiddleCall(ctx context.Context, f *File, cls *Class, n
 	}
 	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = %s\n",
 		strings.Join(types, ", "), fiddleRubyType(ret), name, strings.Join(params, ", "), call)
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
-	if err != nil {
-		c.errorf(f, n, "%v", err)
-	}
-	c.addMethod(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, scope)
+	sf, def := c.synthDef(ctx, f, n, "Fiddle function", src, synthOpt{Origin: f.synthOrigin(), NoPath: true})
+	c.addMethod(sf, cls, def, false, scope)
 }
 
 // fiddleMember is one struct member: name, TYPE_* code and array length (0: a scalar).
@@ -314,10 +311,7 @@ func (c *Compiler) addFiddleStruct(ctx context.Context, f *File, n *parser.Const
 		fmt.Fprintf(&b, "  #: (%s) -> %s\n  def %s=(v)\n    %s\n    v\n  end\n", at, at, m.name, fiddleSetter(m, offsets[i], "v"))
 	}
 	b.WriteString("end\n")
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(b.String()), f.synthOrigin())
-	if err != nil {
-		c.errorf(f, call, "%v", err)
-	}
+	sf := c.synthFile(ctx, f, call, "Fiddle struct", b.String(), synthOpt{Origin: f.synthOrigin(), NoPath: true})
 	cn, ok := sf.Root.Statements.Body[0].(*parser.ClassNode)
 	if !ok {
 		c.errorf(f, call, "Fiddle struct: synthesized class did not parse")

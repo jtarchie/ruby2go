@@ -116,14 +116,14 @@ func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.C
 	cls := declare(f, full, line, false)
 	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: kind.superName()}, file: f}
 	cls.value = &valueSpec{members: members, kind: kind, kwInit: kwInit == "true"}
-	// pad so the generated lines report the declaration's line
-	src := strings.Repeat("\n", line-1) + valueClassSource(kind, full, members, types, kwInit)
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
-	if err != nil {
-		c.errorf(f, n, "internal error: generated %s does not parse: %v", kind, err)
+	label := "internal error: generated " + kind.String() + " does not parse"
+	sf := c.synthFile(ctx, f, n, label, valueClassSource(kind, full, members, types, kwInit), synthOpt{Origin: f.synthOrigin(), Pad: line - 1, Pin: true, NoPath: true})
+	sf.valueGen = true
+	gen, ok := sf.Root.Statements.Body[0].(*parser.ClassNode)
+	if !ok {
+		c.errorf(f, n, "%s: no class generated", label)
 	}
-	sf.valueGen, sf.pinLine = true, line
-	c.collectBody(ctx, sf, cls, sf.Root.Statements.Body[0].(*parser.ClassNode).Body, scope, false)
+	c.collectBody(ctx, sf, cls, gen.Body, scope, false)
 	for _, m := range cls.MethodList {
 		m.valueGen = true
 	}

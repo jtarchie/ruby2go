@@ -194,17 +194,13 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 		if acc[0] >= 'A' && acc[0] <= 'Z' {
 			acc = "::" + acc
 		}
-		src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-1, 0)) + "def " + name + "(...) = " + acc + "." + d.method + "(...)\n"
+		src := "def " + name + "(...) = " + acc + "." + d.method + "(...)\n"
 		if d.nilable {
-			src = strings.Repeat("\n", max(f.line(n.Location.StartOffset)-1, 0)) + "def " + name + "(...)\n" + nilGuard(acc, d.method) + "  target." + d.method + "(...)\nend\n"
+			src = "def " + name + "(...)\n" + nilGuard(acc, d.method) + "  target." + d.method + "(...)\nend\n"
 		}
-		sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
-		if err != nil {
-			c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
-		}
-		sf.path = f.path
-		c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // built just above
-		cls.Methods[name].fwdTarget = m.Owner                                           // the delegation knows the target's class; `...` needs it before bodies type
+		sf, def := c.synthDef(ctx, f, n, n.Name+" "+d.name, src, synthOpt{Origin: f.synthOrigin(), Pad: max(f.line(n.Location.StartOffset)-1, 0)})
+		c.addDef(sf, cls, def, false, d.scope)
+		cls.Methods[name].fwdTarget = m.Owner // the delegation knows the target's class; `...` needs it before bodies type
 		return
 	}
 	var ps, params, args []string
@@ -269,13 +265,9 @@ func (c *Compiler) delegateDef(ctx context.Context, cls *Class, d delegation, m 
 	}
 	// padded so the def's line (errors, //line) is the def_delegators call's
 	line := f.line(n.Location.StartOffset)
-	src := strings.Repeat("\n", max(line-1-strings.Count(head, "\n")-1, 0)) + head + "\ndef " + name + "(" + strings.Join(params, ", ") + ")\n" + guard + "  " + call + block + "\nend\n"
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
-	if err != nil {
-		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
-	}
-	sf.path = f.path // the delegating file's: gem code stays gem code (decision 172)
-	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope)
+	src := head + "\ndef " + name + "(" + strings.Join(params, ", ") + ")\n" + guard + "  " + call + block + "\nend\n"
+	sf, def := c.synthDef(ctx, f, n, n.Name+" "+d.name, src, synthOpt{Origin: f.synthOrigin(), Pad: max(line-1-strings.Count(head, "\n")-1, 0)})
+	c.addDef(sf, cls, def, false, d.scope)
 }
 
 // delegateTarget is the declared type of a delegation's accessor.
@@ -384,13 +376,9 @@ func (c *Compiler) untypedDelegateDef(ctx context.Context, cls *Class, d delegat
 	if d.method == "[]" {
 		call = "target[*args]"
 	}
-	src := strings.Repeat("\n", max(f.line(n.Location.StartOffset)-3, 0)) + "def " + d.name + "(*args)\n  target = " + d.accessor + " #: untyped\n  " + call + "\nend\n"
-	sf, err := parseFile(ctx, c.parser, f.Name, []byte(src), f.synthOrigin())
-	if err != nil {
-		c.errorf(f, n, "%s %s: %v", n.Name, d.name, err)
-	}
-	sf.path = f.path
-	c.addDef(sf, cls, sf.Root.Statements.Body[0].(*parser.DefNode), false, d.scope) //nolint:forcetypeassert // built just above
+	src := "def " + d.name + "(*args)\n  target = " + d.accessor + " #: untyped\n  " + call + "\nend\n"
+	sf, def := c.synthDef(ctx, f, n, n.Name+" "+d.name, src, synthOpt{Origin: f.synthOrigin(), Pad: max(f.line(n.Location.StartOffset)-3, 0)})
+	c.addDef(sf, cls, def, false, d.scope)
 }
 
 // delegateConst types a delegation to a constant (`def_delegators :Foo, ...`): MRI evaluates the accessor inside
