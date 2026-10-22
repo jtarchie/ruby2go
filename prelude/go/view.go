@@ -318,8 +318,14 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 		}
 		xs := rbViewElems(s)
 		var out []any
-		for range n {
-			out = append(out, xs...)
+		if len(xs) > 0 {
+			if rbAllocTooBig(n, len(xs)*16) {
+				panic(NewArgumentError(Ref(String("argument too big"))))
+			}
+			out = make([]any, 0, len(xs)*n)
+			for range n {
+				out = append(out, xs...)
+			}
 		}
 		return rbViewFrom(s, out), true
 	case "delete":
@@ -381,6 +387,9 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 		}
 		if i < 0 {
 			panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", int(rbAs[Integer](args[0], "Integer")), len(xs)+1)))))
+		}
+		if i > len(xs) {
+			rbCheckPad(i)
 		}
 		for len(xs) < i {
 			xs = append(xs, nil)

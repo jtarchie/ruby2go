@@ -113,11 +113,29 @@ func rbToAry(x any) *Array[any] {
 
 // rbFlattenInto appends xs to out, splicing in Arrays (any instantiation,
 // tuples too) down to depth levels; depth < 0 is all of them.
-// ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
+// An Array holding itself (through any depth) is MRI's ArgumentError, as Go's stack would otherwise overflow, which no rescue catches; a bounded depth cannot loop, so only depth < 0 tracks the Arrays being flattened.
 func rbFlattenInto(out *Array[any], xs []any, depth int) {
+	var path map[*Array[any]]struct{}
+	if depth < 0 {
+		path = map[*Array[any]]struct{}{}
+	}
+	rbFlattenWalk(out, xs, depth, path)
+}
+
+func rbFlattenWalk(out *Array[any], xs []any, depth int, path map[*Array[any]]struct{}) {
 	for _, x := range xs {
 		if a, ok := x.(Array_Any); ok && depth != 0 {
-			rbFlattenInto(out, a._ToAny().s, depth-1)
+			inner := a._ToAny()
+			if path != nil {
+				if _, again := path[inner]; again {
+					panic(NewArgumentError(Ref(String("tried to flatten recursive array"))))
+				}
+				path[inner] = struct{}{}
+			}
+			rbFlattenWalk(out, inner.s, depth-1, path)
+			if path != nil {
+				delete(path, inner)
+			}
 			continue
 		}
 		out.s = append(out.s, x)
@@ -154,8 +172,14 @@ func rbRepeated[E comparable](all []E, k int, combo bool) *Array[*Array[E]] {
 	if k < 0 || n == 0 && k > 0 {
 		return out
 	}
+	if rbAllocTooBig(k, 8) { // MRI: ArgumentError from rb_ary_new's size check
+		panic(NewArgumentError(Ref(String("array size too big"))))
+	}
 	idx := make([]int, k)
 	for {
+		if rbAllocTooBig(len(out.s)+1, 24+k*8) { // eager, so the combinations built so far count
+			panic(NewNoMemoryError(Ref(String("failed to allocate memory"))))
+		}
 		c := make([]E, k)
 		for i, j := range idx {
 			c[i] = all[j]

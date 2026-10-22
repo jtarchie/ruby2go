@@ -226,5 +226,32 @@ module BigDecimalTests
       e = assert_raises(FloatDomainError) { BigDecimal("-Infinity").round }
       assert_equal "Computation results in '-Infinity'", e.message
     end
+
+    # A huge exponent must not build 10**n (#109): comparing, scaling and printing never need it, and an exponent past the 64-bit range is MRI's Infinity / 0.0. (x + 1 would allocate gigabytes on MRI itself, so it is not checked here.)
+    def test_huge_exponent_never_builds_a_power_of_ten
+      x = BigDecimal("1e99999999999")
+      assert_equal "0.1e100000000000", x.to_s
+      assert_equal 100_000_000_000, x.exponent
+      assert_equal false, x < 1
+      assert_equal true, x > 1
+      assert_equal false, x == 1
+      assert_equal 1, x <=> 1
+      assert_equal(-1, 1 <=> x)
+      assert_equal true, (-x) < 1
+      assert_equal(-1, (-x) <=> 1)
+      assert_equal 1, x <=> BigDecimal("1e99999999998")
+      assert_equal 1, BigDecimal("15e99999999998") <=> BigDecimal("14e99999999998")
+      assert_equal 0, x <=> BigDecimal("10e99999999998")
+      assert_equal "0.2e100000000000", (x * 2).to_s
+      assert_equal Float::INFINITY, x.to_f
+    end
+
+    def test_exponent_beyond_range_is_infinity_or_zero
+      assert_equal 1, BigDecimal("1e99999999999999999999").infinite?
+      assert_equal(-1, BigDecimal("-1e99999999999999999999").infinite?)
+      assert_equal 1, BigDecimal("1e9223372036854775807").infinite?
+      assert_equal true, BigDecimal("1e-99999999999999999999").zero?
+      assert_equal "0.0", BigDecimal("1e-99999999999999999999").to_s
+    end
   end
 end

@@ -200,6 +200,9 @@ class Array < Object
       }
       i += Integer(len(self.s))
     }
+    if int(i) >= len(self.s) {
+      rbCheckPad(int(i))
+    }
     for int(i) >= len(self.s) {
       // nil when E holds it; a non-nilable E pads with its zero value (decision 7)
       var zero E
@@ -480,6 +483,9 @@ class Array < Object
     if n < 0 {
       panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", int(i), len(self.s)+1)))))
     }
+    if n > len(self.s) {
+      rbCheckPad(n)
+    }
     for len(self.s) < n {
       var zero E
       self.s = append(self.s, zero)
@@ -519,11 +525,14 @@ class Array < Object
     } else {
       items = []E{rbAs[E](v, "the array's element type")}
     }
+    if Integer(len(self.s)) < start {
+      rbCheckPad(int(start))
+    }
     for Integer(len(self.s)) < start {
       var zero E
       self.s = append(self.s, zero)
     }
-    end := min(start+count, Integer(len(self.s)))
+    end := start + min(count, Integer(len(self.s))-start)
     self.s = slices.Concat(self.s[:start:start], items, self.s[end:])
     return v
   }

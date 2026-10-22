@@ -2637,4 +2637,79 @@ module ArrayTests
       assert_equal [1], a
     end
   end
+
+  # Sizes a program controls are checked before anything is allocated (#109, decision 273): a Go out-of-memory is fatal and `rescue` cannot catch it. 2**62 is past MRI's ARY_MAX_SIZE, so MRI refuses up front too.
+  class ArrayHugeTest < Minitest::Test
+    HUGE = 2**62
+
+    #: () { () -> untyped } -> Class?
+    def self.raised_class
+      yield
+      nil
+    rescue StandardError => e
+      e.class
+    end
+
+    def test_index_set_far_is_index_error
+      a = [1]
+      e = assert_raises(IndexError) { a[HUGE] = 2 }
+      assert_equal "index #{HUGE} too big", e.message
+      assert_equal [1], a
+    end
+
+    def test_index_set_start_len_far_is_index_error
+      a = [1]
+      e = assert_raises(IndexError) { a[HUGE, 1] = 2 }
+      assert_equal "index #{HUGE} too big", e.message
+      assert_equal [1], a
+    end
+
+    def test_range_set_far_is_index_error
+      a = [1]
+      e = assert_raises(IndexError) { a[HUGE..(HUGE + 1)] = 2 }
+      assert_equal "index #{HUGE} too big", e.message
+      assert_equal [1], a
+    end
+
+    def test_insert_far_is_index_error
+      a = [1]
+      e = assert_raises(IndexError) { a.insert(HUGE, 2) }
+      assert_equal "index #{HUGE} too big", e.message
+      assert_equal [1], a
+    end
+
+    def test_padding_still_works
+      a = ["a"]
+      a[3] = "d"
+      assert_equal 4, a.size
+      b = ["a"]
+      b.insert(2, "c")
+      assert_equal 3, b.size
+      c = ["a"]
+      c[2, 1] = "e"
+      assert_equal 3, c.size
+    end
+
+    def test_repeated_huge_count_is_argument_error
+      assert_equal ArgumentError, ArrayHugeTest.raised_class { [1, 2].repeated_combination(HUGE).to_a } # message differs by design (decision 20)
+      assert_equal ArgumentError, ArrayHugeTest.raised_class { [1, 2].repeated_permutation(HUGE).to_a }
+      assert_equal [[1, 1], [1, 2], [2, 2]], [1, 2].repeated_combination(2).to_a
+      assert_equal 4, [1, 2].repeated_permutation(2).to_a.size
+    end
+
+    def test_flatten_recursive_is_argument_error
+      a = [1] #: Array[untyped]
+      a << a
+      e = assert_raises(ArgumentError) { a.flatten }
+      assert_equal "tried to flatten recursive array", e.message
+      assert_raises(ArgumentError) { a.flatten! }
+      b = [a, 2] #: Array[untyped]
+      assert_raises(ArgumentError) { b.flatten }
+    end
+
+    def test_flatten_shared_is_not_recursive
+      shared = [1, [2]] #: Array[untyped]
+      assert_equal [1, 2, 1, 2], [shared, shared].flatten
+    end
+  end
 end

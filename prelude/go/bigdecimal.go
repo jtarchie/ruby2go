@@ -12,6 +12,7 @@ package prelude
 
 import (
 	"cmp"
+	"errors"
 	"math"
 	"math/big"
 	"strconv"
@@ -24,6 +25,9 @@ const (
 	rbBDNaN    = 2
 
 	rbBDDoubleFig = 16
+
+	// rbBDExpMax bounds |exp|: past it a value is MRI's Infinity (or 0.0), and the sum of two exponents (a product's) still fits an int.
+	rbBDExpMax = 1 << 61
 
 	rbBDRoundUp       = 1
 	rbBDRoundDown     = 2
@@ -49,6 +53,12 @@ func rbBDNew(mant *big.Int, exp int) *BigDecimal {
 func rbBDNorm(neg bool, mant *big.Int, exp int) *BigDecimal {
 	if mant.Sign() == 0 {
 		return &BigDecimal{mant: new(big.Int), neg: neg}
+	}
+	if exp > rbBDExpMax {
+		return rbBDSpecial(rbBDInf, neg)
+	}
+	if exp < -rbBDExpMax {
+		return rbBDZero(neg)
 	}
 	m := new(big.Int).Set(mant)
 	r := new(big.Int)
@@ -113,7 +123,11 @@ func (x *BigDecimal) signed() *big.Int {
 	return new(big.Int).Set(x.mant)
 }
 
-func rbBDPow10(n int) *big.Int { return new(big.Int).Exp(rbBDTen, big.NewInt(int64(n)), nil) }
+// rbBDPow10 is 10**n; n digits are checked as 16 bytes each (rbCheckAlloc, decision 273), so no 10**n past 2**28 is built: MRI's own limit for 1e100000000 + 1 is memory too.
+func rbBDPow10(n int) *big.Int {
+	rbCheckAlloc(n, 16)
+	return new(big.Int).Exp(rbBDTen, big.NewInt(int64(n)), nil)
+}
 
 // align scales both to the smaller exponent: a×10^e, b×10^e.
 func rbBDAlign(a, b *BigDecimal) (*big.Int, *big.Int, int) {
@@ -311,8 +325,30 @@ func rbBDCmp(a, b *BigDecimal) (int, bool) {
 	if av != 0 || bv != 0 {
 		return cmp.Compare(av, bv), true
 	}
+	// aligning needs 10**|a.exp - b.exp|, which a huge exponent makes unbuildable: past the sign and the magnitude (digits + exp) the digits decide, and their exponents then differ by less than the digit counts
+	if a.isZero() || b.isZero() || a.neg != b.neg {
+		return cmp.Compare(rbBDSign3(a), rbBDSign3(b)), true
+	}
+	if ea, eb := a.exponent10(), b.exponent10(); ea != eb {
+		c := cmp.Compare(ea, eb)
+		if a.neg {
+			c = -c
+		}
+		return c, true
+	}
 	am, bm, _ := rbBDAlign(a, b)
 	return am.Cmp(bm), true
+}
+
+// rbBDSign3 is -1, 0 or 1 for a finite value.
+func rbBDSign3(x *BigDecimal) int {
+	switch {
+	case x.isZero():
+		return 0
+	case x.neg:
+		return -1
+	}
+	return 1
 }
 
 // rbBDSign is #sign: 1/-1 zero, 2/-2 finite, 3/-3 infinite, 0 NaN.
@@ -411,7 +447,9 @@ func rbBDParse(s string, strict bool) (*BigDecimal, bool) {
 	exp := -fracPart.Len()
 	if expSeen {
 		e, err := strconv.Atoi(expPart.String())
-		if err != nil {
+		if errors.Is(err, strconv.ErrRange) {
+			e = rbBDExpMax + 1 // MRI: Infinity, or 0.0 when negative
+		} else if err != nil {
 			return nil, false
 		}
 		if expNeg {

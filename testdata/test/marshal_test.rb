@@ -355,5 +355,24 @@ module MarshalTests
       assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x02zz\x00F\x00"))
       assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x0215\x01F\x12"))
     end
+
+    #: (Integer) -> String
+    def self.zigzag(n)
+      z = n < 0 ? ((-n) << 1) - 1 : n << 1
+      bytes = [] #: Array[Integer]
+      while z >= 0x80
+        bytes << ((z & 0x7f) | 0x80)
+        z >>= 7
+      end
+      bytes << z
+      bytes.pack("C*")
+    end
+
+    # A loaded exponent past what BigDecimal arithmetic keeps would reach 10**n on the first comparison (#109).
+    def test_bigdecimal_exponent_is_checked
+      [2**61 + 1, -(2**61) - 1].each do |exp|
+        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011" +HostileInputTest.zigzag(exp) + "F\x00"))
+      end
+    end
   end
 end

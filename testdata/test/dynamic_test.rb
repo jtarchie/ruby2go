@@ -3229,4 +3229,28 @@ module DynamicTests
       assert_equal 4, (t | [5]).size
     end
   end
+
+  # An Array behind an untyped receiver takes the same allocation checks as a typed one (#109, decision 273).
+  class DynHugeAllocTest < Minitest::Test
+    HUGE = 2**62
+
+    def test_untyped_array_repeat_too_big
+      v = dynamic_ident([1, 2])
+      e = assert_raises(ArgumentError) { v * HUGE }
+      assert_equal "argument too big", e.message
+      e = assert_raises(ArgumentError) { v * -1 }
+      assert_equal "negative argument", e.message
+      assert_equal [1, 2, 1, 2], v * 2
+      assert_equal [], dynamic_ident([]) * HUGE
+    end
+
+    def test_untyped_array_insert_far
+      v = dynamic_ident([1, 2])
+      e = assert_raises(IndexError) { v.insert(HUGE, 3) }
+      assert_equal "index #{HUGE} too big", e.message
+      assert_equal [1, 2], v
+      v.insert(2, 9)
+      assert_equal [1, 2, 9], v
+    end
+  end
 end

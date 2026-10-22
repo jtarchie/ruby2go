@@ -526,6 +526,9 @@ func rbMLoadCore(r *rbMR, key string) (any, bool) {
 			}
 		}
 		x.exp = int(r.varint())
+		if x.exp > rbBDExpMax || x.exp < -rbBDExpMax {
+			panic(rbMarshalBad("BigDecimal exponent"))
+		}
 		x.neg = r.bool()
 		x.kind = int(r.varint())
 		if x.kind < rbBDFinite || x.kind > rbBDNaN {
