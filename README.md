@@ -282,8 +282,10 @@ largest groups are Bignum, String mutation, String encoding tags and
 run, 61.0% of `core` and 81.7% of `library` pass. Most of `core`'s drop from
 the 78.6% measured on 2026-10-17 is two directories the runner could not reach
 before: `core/array/pack` and `core/string/unpack` hold 2,438 of `core`'s 4,063
-failures and errors (`pack`/`unpack` directives are a gap, not a regression).
-Without them `core` passes 78.7% of what runs, level with before. Not counted:
+failures and errors. Most of those come from the runner, not from `pack` and
+`unpack`: the specs' format helpers read mspec's `@method`, which the runner
+does not set ([#110](https://github.com/jtarchie/ruby2go/issues/110)). Without
+the two directories `core` passes 78.7% of what runs, level with before. Not counted:
 `library/etc` and `library/erb/defmethod`, which stop on a syntax error in the
 program the runner builds, and `language`, which stops on an internal compiler
 error. A looser name-level metric,
