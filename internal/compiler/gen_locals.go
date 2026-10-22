@@ -457,26 +457,24 @@ func capturesLocal(n parser.Node, name string) bool {
 
 // renameLocal renames the local old to fresh in n, leaving scopes that declare their own old (a block param, a def).
 func renameLocal(n parser.Node, old, fresh string) {
-	switch x := n.(type) {
-	case nil:
-		return
-	case *parser.DefNode:
-		return
-	case *parser.BlockNode:
-		if slices.Contains(x.Locals, old) {
-			return
+	walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.DefNode:
+			return false, false
+		case *parser.BlockNode:
+			if slices.Contains(x.Locals, old) {
+				return false, false
+			}
+		case *parser.LambdaNode:
+			if slices.Contains(x.Locals, old) {
+				return false, false
+			}
 		}
-	case *parser.LambdaNode:
-		if slices.Contains(x.Locals, old) {
-			return
+		if p := localNamePtr(x); p != nil && *p == old {
+			*p = fresh
 		}
-	}
-	if p := localNamePtr(n); p != nil && *p == old {
-		*p = fresh
-	}
-	for _, ch := range n.CompactChildNodes() {
-		renameLocal(ch, old, fresh)
-	}
+		return false, true
+	})
 }
 
 // hashKeysWider: v is a Hash of untyped keys where t is a Hash of typed ones (a gem's merge of another kind of key):

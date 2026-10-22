@@ -57,22 +57,17 @@ func (f *fctx) redoLabel(body parser.Node) {
 
 // hasRedo finds a `redo` for the enclosing loop (not one in a nested loop, block or def).
 func hasRedo(n parser.Node) bool {
-	switch n := n.(type) {
-	case *parser.RedoNode:
-		return true
-	case *parser.StatementsNode:
-		if n == nil {
-			return false
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.RedoNode:
+			return true, false
+		case *parser.StatementsNode:
+			return false, x != nil
+		case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+			return false, false
 		}
-	case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
-		return false
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if hasRedo(ch) {
-			return true
-		}
-	}
-	return false
+		return false, true
+	})
 }
 
 // popLoop inserts the label only once a break used it: Go rejects unused labels.
@@ -164,24 +159,20 @@ func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate 
 
 // loopNext finds a `next` that targets the enclosing loop, not a nested loop, block or def.
 func loopNext(n parser.Node) parser.Node {
-	switch n := n.(type) {
-	case nil:
-		return nil
-	case *parser.StatementsNode:
-		if n == nil {
-			return nil
+	var found parser.Node
+	walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.StatementsNode:
+			return false, x != nil
+		case *parser.NextNode:
+			found = x
+			return true, false
+		case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+			return false, false
 		}
-	case *parser.NextNode:
-		return n
-	case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
-		return nil
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if nx := loopNext(ch); nx != nil {
-			return nx
-		}
-	}
-	return nil
+		return false, true
+	})
+	return found
 }
 
 func (f *fctx) genBreak(n *parser.BreakNode) {
@@ -282,26 +273,15 @@ func dedent(s string) string {
 
 // blockBreaks reports a valueless `break` that leaves this block: not one inside a nested loop, block or definition.
 func blockBreaks(n parser.Node) bool {
-	found := false
-	var walk func(parser.Node)
-	walk = func(n parser.Node) {
-		if found || n == nil {
-			return
-		}
-		switch x := n.(type) {
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
 		case *parser.BreakNode:
-			found = x.Arguments == nil
-			return
-		case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode, *parser.DefNode,
-			*parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
-			return
+			return x.Arguments == nil, false
+		case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode:
+			return false, false
 		}
-		for _, ch := range n.CompactChildNodes() {
-			walk(ch)
-		}
-	}
-	walk(n)
-	return found
+		return false, !opensScope(x)
+	})
 }
 
 func (f *fctx) emitBreak(l *loopFrame) {

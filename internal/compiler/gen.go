@@ -643,22 +643,6 @@ func (c *Compiler) rewrite(n parser.Node, build func() parser.Node) parser.Node 
 	return c.rewrites[n]
 }
 
-// anyNode reports whether pred holds for n or any node below it.
-func anyNode(n parser.Node, pred func(parser.Node) bool) bool {
-	if n == nil {
-		return false
-	}
-	if pred(n) {
-		return true
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if anyNode(ch, pred) {
-			return true
-		}
-	}
-	return false
-}
-
 // capture runs gen and returns the statements it emitted instead of
 // emitting them, for code that must run conditionally.
 func (f *fctx) capture(gen func()) string {

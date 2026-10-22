@@ -229,16 +229,15 @@ func ivarNodeName(n parser.Node) (name string, write bool) {
 
 // eachIvarName calls fn for each instance variable n reads or writes, outside nested defs and class bodies.
 func eachIvarName(n parser.Node, fn func(string, parser.Node)) {
-	switch n.(type) {
-	case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
-		return
-	}
-	if name, _ := ivarNodeName(n); name != "" {
-		fn(name, n)
-	}
-	for _, ch := range n.CompactChildNodes() {
-		eachIvarName(ch, fn)
-	}
+	walkNode(n, func(x parser.Node) (bool, bool) {
+		if opensScope(x) {
+			return false, false
+		}
+		if name, _ := ivarNodeName(x); name != "" {
+			fn(name, x)
+		}
+		return false, true
+	})
 }
 
 // gemNilIvar is a gem class's ivar discovery saw assigned only nil (decision 169).
@@ -320,25 +319,14 @@ func mentionsIvar(m *Method) bool {
 		return *m.ivarUse
 	}
 	found := false
-	var walk func(parser.Node)
-	walk = func(n parser.Node) {
-		if found || n == nil {
-			return
-		}
-		if name, _ := ivarNodeName(n); name != "" {
-			found = true
-			return
-		}
-		if call, ok := n.(*parser.CallNode); ok && (call.Name == "instance_variable_set" || call.Name == "instance_variable_get") {
-			found = true
-			return
-		}
-		for _, ch := range n.CompactChildNodes() {
-			walk(ch)
-		}
-	}
 	if m.Node != nil {
-		walk(m.Node.Body)
+		found = walkNode(m.Node.Body, func(n parser.Node) (bool, bool) {
+			if name, _ := ivarNodeName(n); name != "" {
+				return true, false
+			}
+			call, ok := n.(*parser.CallNode)
+			return ok && (call.Name == "instance_variable_set" || call.Name == "instance_variable_get"), true
+		})
 	}
 	m.ivarUse = &found
 	return found

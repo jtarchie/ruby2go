@@ -357,19 +357,15 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 // condWrites names the locals a condition assigns at its own level (`(w = x) && ...`), not in a block.
 func condWrites(n parser.Node) []string {
 	var out []string
-	var walk func(parser.Node)
-	walk = func(n parser.Node) {
-		switch n := n.(type) {
-		case nil, *parser.BlockNode, *parser.LambdaNode:
-			return
+	walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.BlockNode, *parser.LambdaNode:
+			return false, false
 		case *parser.LocalVariableWriteNode:
-			out = append(out, n.Name)
+			out = append(out, x.Name)
 		}
-		for _, ch := range n.CompactChildNodes() {
-			walk(ch)
-		}
-	}
-	walk(n)
+		return false, true
+	})
 	return out
 }
 

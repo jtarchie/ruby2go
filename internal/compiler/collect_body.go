@@ -657,23 +657,16 @@ var classBodyDecls = map[string]bool{
 
 // declares reports whether n holds a declaration, which a run-time condition cannot guard in a closed world.
 func declares(n parser.Node) bool {
-	switch n := n.(type) {
-	case nil:
-		return false
-	case *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode, *parser.ConstantWriteNode,
-		*parser.ConstantPathWriteNode, *parser.AliasMethodNode, *parser.UndefNode:
-		return true
-	case *parser.CallNode:
-		if n.Receiver == nil && classBodyDecls[n.Name] {
-			return true
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode, *parser.ConstantWriteNode,
+			*parser.ConstantPathWriteNode, *parser.AliasMethodNode, *parser.UndefNode:
+			return true, false
+		case *parser.CallNode:
+			return x.Receiver == nil && classBodyDecls[x.Name], true
 		}
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if declares(ch) {
-			return true
-		}
-	}
-	return false
+		return false, true
+	})
 }
 
 func (c *Compiler) folds(f *File, n parser.Node, scope []*Class) bool {

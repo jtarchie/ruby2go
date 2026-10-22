@@ -47,90 +47,55 @@ func (f *fctx) emitReturn() {
 
 // containsJump reports a return, break or next anywhere under n.
 func containsJump(n parser.Node) bool {
-	switch n.(type) {
-	case nil:
-		return false
-	case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
-		return true
-	case *parser.DefNode:
-		return false
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if containsJump(ch) {
-			return true
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x.(type) {
+		case *parser.ReturnNode, *parser.BreakNode, *parser.NextNode:
+			return true, false
+		case *parser.DefNode:
+			return false, false
 		}
-	}
-	return false
+		return false, true
+	})
 }
 
-func containsRescue(n parser.Node) bool {
-	if n == nil {
-		return false
-	}
-	switch b := n.(type) {
-	case *parser.BeginNode:
-		if b.RescueClause != nil || b.EnsureClause != nil {
-			return true
-		}
-	case *parser.RescueModifierNode:
-		return true
-	case *parser.CallNode:
-		if isStopLoop(b) {
-			return true // loopRescue makes it a begin/rescue
-		}
-	case *parser.DefNode:
-		return false
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if containsRescue(ch) {
-			return true
-		}
-	}
-	return false
-}
+func containsRescue(n parser.Node) bool { return rescues(n, true) }
 
 // containsSuper reports whether a method body calls super (nested defs
 // are other methods).
 func containsSuper(n parser.Node) bool {
-	switch n.(type) {
-	case nil, *parser.DefNode:
-		return false
-	case *parser.SuperNode, *parser.ForwardingSuperNode:
-		return true
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if containsSuper(ch) {
-			return true
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x.(type) {
+		case *parser.SuperNode, *parser.ForwardingSuperNode:
+			return true, false
+		case *parser.DefNode:
+			return false, false
 		}
-	}
-	return false
+		return false, true
+	})
 }
 
 // containsRescueClause is containsRescue without ensure-only begins.
-func containsRescueClause(n parser.Node) bool {
-	if n == nil {
-		return false
-	}
-	switch b := n.(type) {
-	case *parser.BeginNode:
-		if b.RescueClause != nil {
-			return true
+func containsRescueClause(n parser.Node) bool { return rescues(n, false) }
+
+// rescues finds a begin with a rescue clause (or, with ensure, an ensure), a rescue modifier or a rescuing loop, outside nested defs.
+func rescues(n parser.Node, ensure bool) bool {
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch b := x.(type) {
+		case *parser.BeginNode:
+			if b.RescueClause != nil || ensure && b.EnsureClause != nil {
+				return true, false
+			}
+		case *parser.RescueModifierNode:
+			return true, false
+		case *parser.CallNode:
+			if isStopLoop(b) {
+				return true, false // loopRescue makes it a begin/rescue
+			}
+		case *parser.DefNode:
+			return false, false
 		}
-	case *parser.RescueModifierNode:
-		return true
-	case *parser.CallNode:
-		if isStopLoop(b) {
-			return true
-		}
-	case *parser.DefNode:
-		return false
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if containsRescueClause(ch) {
-			return true
-		}
-	}
-	return false
+		return false, true
+	})
 }
 
 func (f *fctx) genBegin(n *parser.BeginNode, t tail) {
@@ -325,22 +290,17 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 
 // hasRetry reports a `retry` in rescue clauses rc (not in a nested begin's own rescues, a block or a def).
 func hasRetry(n parser.Node) bool {
-	switch n := n.(type) {
-	case nil:
-		return false
-	case *parser.RetryNode:
-		return true
-	case *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
-		return false
-	case *parser.BeginNode: // its own rescues own their retries; nil clauses are typed nils
-		return n.Statements != nil && hasRetry(n.Statements) || n.ElseClause != nil && hasRetry(n.ElseClause) || n.EnsureClause != nil && hasRetry(n.EnsureClause)
-	}
-	for _, ch := range n.CompactChildNodes() {
-		if hasRetry(ch) {
-			return true
+	return walkNode(n, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.RetryNode:
+			return true, false
+		case *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+			return false, false
+		case *parser.BeginNode: // its own rescues own their retries; nil clauses are typed nils
+			return x.Statements != nil && hasRetry(x.Statements) || x.ElseClause != nil && hasRetry(x.ElseClause) || x.EnsureClause != nil && hasRetry(x.EnsureClause), false
 		}
-	}
-	return false
+		return false, true
+	})
 }
 
 func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {

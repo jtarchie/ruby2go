@@ -213,9 +213,10 @@ func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	used := false
 	var walk func(parser.Node, bool, bool)
 	walk = func(x parser.Node, stmt, tail bool) {
-		switch x := x.(type) {
-		case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+		if x == nil || opensScope(x) {
 			return
+		}
+		switch x := x.(type) {
 		case *parser.YieldNode:
 			if !stmt || tail {
 				used = true
@@ -263,11 +264,11 @@ func (c *Compiler) yieldShape(m *Method) (n int, optional, ok bool) {
 	}
 	n = -1
 	agree := true
-	var walk func(parser.Node)
-	walk = func(x parser.Node) {
+	walkNode(m.Node.Body, func(x parser.Node) (bool, bool) {
+		if opensScope(x) {
+			return false, false
+		}
 		switch x := x.(type) {
-		case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
-			return
 		case *parser.YieldNode:
 			k := 0
 			if x.Arguments != nil {
@@ -284,11 +285,8 @@ func (c *Compiler) yieldShape(m *Method) (n int, optional, ok bool) {
 				optional = true
 			}
 		}
-		for _, ch := range x.CompactChildNodes() {
-			walk(ch)
-		}
-	}
-	walk(m.Node.Body)
+		return false, true
+	})
 	return n, optional, n >= 0 && agree
 }
 
