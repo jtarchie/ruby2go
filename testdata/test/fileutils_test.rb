@@ -489,3 +489,290 @@ module FileUtilsTests
     end
   end
 end
+
+module FileUtilsTests
+  # MRI's return values: lists as strings (the array as given for cp/mv/ln), 0 or nil for a lone path, nil under noop except mkdir_p. Paths are relative (a tmpdir cwd) so the trace operands match MRI's.
+  class ReturnValueTest < Minitest::Test
+    #: () { (String) -> void } -> void
+    def fu_in
+      Dir.mktmpdir do |d|
+        old = Dir.pwd
+        Dir.chdir(d)
+        begin
+          yield d
+        ensure
+          Dir.chdir(old)
+        end
+      end
+    end
+
+    #: (String, bool) -> String
+    def fu_mk(name, is_dir)
+      is_dir ? Dir.mkdir(name) : File.write(name, "x")
+      name
+    end
+
+    def test_mkdir_touch_chmod_return_the_path_list
+      fu_in do
+        assert_equal ["a"], FileUtils.mkdir("a")
+        assert_equal ["b", "c"], FileUtils.mkdir(["b", "c"])
+        assert_equal ["p/q"], FileUtils.mkdir_p("p/q")
+        assert_equal ["s/t"], FileUtils.makedirs("s/t")
+        assert_equal ["u/v"], FileUtils.mkpath("u/v")
+        assert_equal ["w", "x"], FileUtils.mkdir_p([Pathname("w"), "x"])
+        assert_equal ["y"], FileUtils.mkdir_p("y", noop: true)
+        assert_equal ["y"], FileUtils.mkpath("y", noop: true)
+        assert_nil FileUtils.mkdir("z", noop: true)
+        assert_equal ["f", "g"], FileUtils.touch(["f", "g"])
+        assert_equal ["f"], FileUtils.touch(Pathname("f"))
+        assert_nil FileUtils.touch("f", noop: true)
+        assert_equal ["f"], FileUtils.chmod(0o600, "f")
+        assert_equal ["f", "g"], FileUtils.chmod("u+w", ["f", "g"])
+        assert_equal ["a"], FileUtils.chmod_R(0o755, "a")
+        assert_equal ["f"], FileUtils.chown(nil, nil, "f")
+        assert_equal ["a"], FileUtils.chown_R(nil, nil, "a")
+        assert_nil FileUtils.chmod(0o600, "f", noop: true)
+        assert_nil FileUtils.chmod_R(0o600, "f", noop: true)
+      end
+    end
+
+    def test_remove_methods_return_the_path_list
+      fu_in do
+        assert_equal ["f1"], FileUtils.rm(fu_mk("f1", false))
+        fu_mk("f2", false)
+        fu_mk("f3", false)
+        assert_equal ["f2", "f3"], FileUtils.rm(["f2", "f3"])
+        assert_equal ["f4"], FileUtils.remove(fu_mk("f4", false))
+        assert_equal ["f5", "missing"], FileUtils.rm_f([fu_mk("f5", false), "missing"])
+        assert_equal ["f6"], FileUtils.rm(Pathname(fu_mk("f6", false)))
+        assert_equal ["f7"], FileUtils.safe_unlink(fu_mk("f7", false))
+        assert_equal ["d1"], FileUtils.rm_r(fu_mk("d1", true))
+        assert_equal ["d2"], FileUtils.rm_rf(fu_mk("d2", true))
+        assert_equal ["d3", "missing"], FileUtils.rm_rf([fu_mk("d3", true), "missing"])
+        assert_equal ["d4"], FileUtils.rmtree(fu_mk("d4", true))
+        assert_equal ["d5"], FileUtils.rm_r(Pathname(fu_mk("d5", true)))
+        assert_equal ["e1"], FileUtils.rmdir(fu_mk("e1", true))
+        assert_equal ["e2"], FileUtils.rmdir([fu_mk("e2", true)])
+        keep = fu_mk("keep", false)
+        assert_nil FileUtils.rm(keep, noop: true)
+        assert_nil FileUtils.rm_rf(keep, noop: true)
+        assert_nil FileUtils.rm_r(keep, noop: true)
+        assert_nil FileUtils.rmdir(".", noop: true)
+        assert File.exist?(keep)
+      end
+    end
+
+    def test_remove_entry_returns_what_the_last_removal_returned
+      fu_in do
+        assert_equal 1, FileUtils.remove_entry(fu_mk("f", false))
+        Dir.mkdir("dir")
+        File.write("dir/in", "y")
+        assert_equal 0, FileUtils.remove_entry("dir")
+        assert_nil FileUtils.remove_entry("f", true)
+        File.write("f", "x")
+        File.symlink("f", "ln")
+        assert_equal 1, FileUtils.remove_entry("ln")
+        assert_nil FileUtils.remove_entry_secure("f")
+        File.write("f", "x")
+        assert_equal 1, FileUtils.remove_file("f")
+        Dir.mkdir("dir")
+        assert_equal 0, FileUtils.remove_dir("dir")
+        assert_nil FileUtils.remove_file("f", true)
+      end
+    end
+
+    def test_cp_install_return_nil_for_one_path_and_the_list_for_an_array
+      fu_in do
+        fu_mk("src", false)
+        assert_nil FileUtils.cp("src", "c1")
+        assert_nil FileUtils.copy("src", "c2")
+        assert_nil FileUtils.cp_r("src", "c3")
+        assert_nil FileUtils.copy_file("src", "c4")
+        assert_nil FileUtils.install("src", "c5")
+        assert_nil FileUtils.cp("src", "c6", noop: true)
+        fu_mk("dir", true)
+        assert_equal ["src"], FileUtils.cp(["src"], "dir")
+        assert_equal [Pathname("src")], FileUtils.cp_r([Pathname("src")], "dir")
+      end
+    end
+
+    def test_mv_and_ln_return_zero_for_one_path_and_the_list_for_an_array
+      fu_in do
+        fu_mk("src", false)
+        assert_equal 0, FileUtils.ln("src", "h1")
+        assert_equal 0, FileUtils.link("src", "h2")
+        assert_equal 0, FileUtils.ln_s("src", "s1")
+        assert_equal 0, FileUtils.ln_sf("src", "s1")
+        assert_equal 0, FileUtils.symlink("src", "s2")
+        assert_equal 0, FileUtils.mv("h1", "m1")
+        assert_equal 0, FileUtils.move("h2", "m2")
+        fu_mk("dir", true)
+        assert_equal 0, FileUtils.mv("m1", "dir")
+        assert_equal ["m2"], FileUtils.mv(["m2"], "dir")
+        fu_mk("dir2", true)
+        assert_equal [Pathname("src")], FileUtils.ln_s([Pathname("src")], "dir2")
+        assert_equal ["src"], FileUtils.ln(["src"], "dir", force: true)
+        assert_nil FileUtils.mv("src", "n", noop: true)
+        assert_nil FileUtils.ln_s("src", "n", noop: true)
+        assert_nil FileUtils.ln("src", "n", noop: true)
+      end
+    end
+
+    def test_cd_and_pwd
+      Dir.mktmpdir do |d|
+        old = Dir.pwd
+        begin
+          assert_equal [:v, true], [FileUtils.cd(d) { :v }, Dir.pwd == old]
+          assert_equal [7, true], [FileUtils.chdir(d) { 7 }, Dir.pwd == old]
+          assert_equal 0, FileUtils.cd(d)
+          assert_equal [false, true, true], [Dir.pwd == old, FileUtils.pwd == Dir.pwd, FileUtils.getwd == Dir.pwd]
+        ensure
+          Dir.chdir(old)
+        end
+      end
+    end
+  end
+
+  # unlink(2) refuses a directory (EPERM on macOS, EISDIR on Linux); File.delete used to remove an empty one.
+  class DeleteDirectoryTest < Minitest::Test
+    #: () { () -> void } -> Array[untyped]
+    def fu_failure
+      yield
+      [] #: Array[untyped]
+    rescue SystemCallError => e
+      [e.class, e.message.split(" @ ").last]
+    end
+
+    def test_file_delete_and_unlink_refuse_a_directory
+      Dir.mktmpdir do |d|
+        old = Dir.pwd
+        Dir.chdir(d)
+        begin
+          Dir.mkdir("sub")
+          klass = RUBY_PLATFORM.include?("darwin") ? Errno::EPERM : Errno::EISDIR
+          want = [klass, "apply2files - sub"]
+          assert_equal [want, want, want], [fu_failure { File.delete("sub") }, fu_failure { File.unlink("sub") }, fu_failure { FileUtils.rm("sub") }]
+          assert_equal [], fu_failure { FileUtils.rm_f("sub") }
+          assert File.directory?("sub")
+          File.write("f", "x")
+          assert_equal 1, File.delete("f")
+        ensure
+          Dir.chdir(old)
+        end
+      end
+    end
+  end
+
+  class CpRKeywordsTest < Minitest::Test
+    #: () { (String) -> void } -> void
+    def fu_in
+      Dir.mktmpdir do |d|
+        old = Dir.pwd
+        Dir.chdir(d)
+        begin
+          yield d
+        ensure
+          Dir.chdir(old)
+        end
+      end
+    end
+
+    #: () { () -> void } -> untyped
+    def fu_raised
+      yield
+      nil
+    rescue SystemCallError => e
+      e.class
+    end
+
+    def test_remove_destination_replaces_a_symlink_instead_of_writing_through
+      fu_in do
+        File.write("src", "new")
+        File.write("real", "old")
+        File.symlink("real", "link")
+        FileUtils.cp_r("src", "link", remove_destination: true)
+        assert_equal [false, "new", "old"], [File.symlink?("link"), File.read("link"), File.read("real")]
+        File.delete("link")
+        File.symlink("real", "link")
+        FileUtils.cp_r("src", "link")
+        assert_equal [true, "new"], [File.symlink?("link"), File.read("real")]
+      end
+    end
+
+    def test_remove_destination_replaces_a_file_that_is_in_the_way_of_a_directory
+      fu_in do
+        Dir.mkdir("tree")
+        File.write("tree/a", "A")
+        File.write("out", "file")
+        err = fu_raised { FileUtils.cp_r("tree", "out") }
+        assert_equal [Errno::EEXIST, "file"], [err, File.read("out")]
+        FileUtils.cp_r("tree", "out", remove_destination: true)
+        assert_equal [true, "A"], [File.directory?("out"), File.read("out/a")]
+      end
+    end
+
+    def test_remove_destination_keeps_an_existing_directory
+      fu_in do
+        Dir.mkdir("tree")
+        File.write("tree/a", "A")
+        FileUtils.mkdir_p("out/tree")
+        File.write("out/tree/a", "old")
+        File.write("out/tree/keep", "K")
+        FileUtils.cp_r("tree", "out", remove_destination: true)
+        assert_equal ["A", "K"], [File.read("out/tree/a"), File.read("out/tree/keep")]
+      end
+    end
+
+    def test_remove_destination_verbose_message
+      out, _ = capture_io { FileUtils.cp_r("a", "b", noop: true, verbose: true, remove_destination: true) }
+      assert_equal "cp -r --remove-destination a b\n", out
+    end
+
+    def test_dereference_root_follows_a_source_symlink
+      fu_in do
+        Dir.mkdir("real")
+        File.write("real/a", "A")
+        File.symlink("real", "link")
+        FileUtils.cp_r("link", "deref")
+        FileUtils.cp_r("link", "deref2", dereference_root: true)
+        FileUtils.cp_r("link", "keep", dereference_root: false)
+        assert_equal [false, true, "A", false], [File.symlink?("deref"), File.directory?("deref"), File.read("deref/a"), File.symlink?("deref2")]
+        assert_equal [true, "real"], [File.symlink?("keep"), File.readlink("keep")]
+      end
+    end
+
+    def test_dereference_root_for_a_file_symlink
+      fu_in do
+        File.write("real", "R")
+        File.symlink("real", "link")
+        FileUtils.cp_r("link", "copy")
+        FileUtils.cp_r("link", "keep", dereference_root: false)
+        assert_equal [false, "R", true, "real"], [File.symlink?("copy"), File.read("copy"), File.symlink?("keep"), File.readlink("keep")]
+      end
+    end
+
+    def test_dereference_root_false_into_an_existing_destination
+      fu_in do
+        File.write("real", "R")
+        File.symlink("real", "link")
+        File.write("out", "old")
+        assert_equal Errno::EEXIST, fu_raised { FileUtils.cp_r("link", "out", dereference_root: false) }
+        FileUtils.cp_r("link", "out", dereference_root: false, remove_destination: true)
+        assert_equal [true, "R"], [File.symlink?("out"), File.read("real")]
+      end
+    end
+
+    def test_missing_source_message
+      fu_in do
+        msgs = [] #: Array[String]
+        [true, false].each do |deref|
+          FileUtils.cp_r("missing", "x", dereference_root: deref)
+        rescue SystemCallError => e
+          msgs << "#{e.class} #{e.message}"
+        end
+        assert_equal ["Errno::ENOENT No such file or directory @ rb_check_realpath_internal - missing",
+          "Errno::ENOENT No such file or directory @ rb_file_s_lstat - missing"], msgs
+      end
+    end
+  end
+end

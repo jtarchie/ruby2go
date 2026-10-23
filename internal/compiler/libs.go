@@ -187,6 +187,17 @@ func (sc *requireScan) walk(f *File) {
 	sc.top = prev
 }
 
+// unlinksPath reports File.delete/unlink and FileUtils.rm/remove: they raise EPERM for a directory on macOS.
+func unlinksPath(call *parser.CallNode) bool {
+	switch constName(call.Receiver) {
+	case "File", "::File":
+		return call.Name == "delete" || call.Name == "unlink"
+	case "FileUtils", "::FileUtils":
+		return call.Name == "rm" || call.Name == "remove"
+	}
+	return false
+}
+
 func (sc *requireScan) lib(name string) {
 	if !sc.seen["lib:"+name] {
 		sc.seen["lib:"+name] = true
@@ -214,6 +225,9 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 	}
 	if cp, ok := n.(*parser.ConstantPathNode); ok && cp.Name != nil && (*cp.Name == "ESRCH" || *cp.Name == "EPERM") && constName(cp.Parent) == "Errno" {
 		sc.lib("__errno_process") // decision 241
+	}
+	if call, ok := n.(*parser.CallNode); ok && unlinksPath(call) {
+		sc.lib("__errno_process") // unlink(2) of a directory is EPERM on macOS (decision 339)
 	}
 	if _, ok := n.(*parser.DefNode); ok { // a method body: a computed require there is reached only at run time
 		prev := sc.top

@@ -76,8 +76,15 @@ func rbExpandPath(p string) string {
 
 // rbSysErr is MRI's Errno exception for a failed call: "<strerror> @ <MRI function> - <path>".
 func rbSysErr(err error, fn, path string) any {
-	msg := func(s string) *String { return Ref(String(s + " @ " + fn + " - " + path)) }
-	switch { // errnos before fs.Err*: Go files ENOTEMPTY under ErrExist
+	loc := " @ " + fn + " - " + path
+	msg := func(s string) *String { return Ref(String(s + loc)) }
+	kloc := "" // Process.kill's EPERM and ESRCH messages are the strerror alone; File.delete's carry the location
+	if fn == "apply2files" {
+		kloc = loc
+	}
+	switch { // errnos before fs.Err*: Go files ENOTEMPTY under ErrExist, EPERM under ErrPermission
+	case rbKillErrnoHook != nil && errors.Is(err, syscall.EPERM):
+		return rbKillErrnoHook(err, kloc)
 	case errors.Is(err, syscall.ENOTEMPTY):
 		return NewErrno_ENOTEMPTY(msg("Directory not empty"))
 	case errors.Is(err, fs.ErrNotExist):
@@ -108,14 +115,14 @@ func rbSysErr(err error, fn, path string) any {
 		return NewErrno_ENODEV(Ref(String("Operation not supported by device")))
 	case errors.Is(err, syscall.ESRCH), errors.Is(err, syscall.EPERM):
 		if rbKillErrnoHook != nil {
-			return rbKillErrnoHook(err)
+			return rbKillErrnoHook(err, kloc)
 		}
 	}
 	return NewIOError(Ref(String(err.Error())))
 }
 
-// rbKillErrnoHook builds Errno::ESRCH or Errno::EPERM; prelude/errno_process.rb sets it when a program names either.
-var rbKillErrnoHook func(error) any
+// rbKillErrnoHook builds Errno::ESRCH or Errno::EPERM with loc (" @ fn - path", or "") after the strerror; prelude/errno_process.rb sets it when a program names either.
+var rbKillErrnoHook func(err error, loc string) any
 
 // rbStrs converts Go strings to an Array[String].
 func rbStrs(ss []string) *Array[String] {

@@ -13,11 +13,11 @@ end
 
 %x{
 var _ = func() bool {
-	rbKillErrnoHook = func(err error) any {
+	rbKillErrnoHook = func(err error, loc string) any {
 		if errors.Is(err, syscall.ESRCH) {
-			return NewErrno_ESRCH(Ref(String("No such process")))
+			return NewErrno_ESRCH(Ref(String("No such process" + loc)))
 		}
-		return NewErrno_EPERM(Ref(String("Operation not permitted")))
+		return NewErrno_EPERM(Ref(String("Operation not permitted" + loc)))
 	}
 	return true
 }()

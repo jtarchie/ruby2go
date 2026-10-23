@@ -479,8 +479,7 @@ class File < Object
 
   #: (String) -> Integer
   def self.delete(path) = %x{
-    err := os.Remove(string(path))
-    if err != nil {
+    if err := syscall.Unlink(string(path)); err != nil { // not os.Remove, which falls back to rmdir
       panic(rbSysErr(err, "apply2files", string(path)))
     }
     return 1

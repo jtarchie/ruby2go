@@ -86,8 +86,8 @@ func rbCopyFile(src, dst string) error {
 
 // rbCopyTree recreates src's tree under dst; symlinks are relinked, not followed. As MRI's copy_entry, directories are made
 // with the default mode (the umask applies) so a read-only source still takes its children; preserve then sets each
-// directory's mode once its children are in.
-func rbCopyTree(src, dst string, preserve bool) error {
+// directory's mode once its children are in. removeDest unlinks a file or symlink standing where an entry goes (never a directory).
+func rbCopyTree(src, dst string, preserve, removeDest bool) error {
 	if rs, rd := rbResolve(src), rbResolve(dst); rd == rs || strings.HasPrefix(rd, rs+string(filepath.Separator)) {
 		abs, _ := filepath.Abs(src)
 		return &rbArgError{"cannot copy directory " + abs + " to itself " + dst}
@@ -102,6 +102,11 @@ func rbCopyTree(src, dst string, preserve bool) error {
 			return err
 		}
 		target := filepath.Join(dst, rel)
+		if removeDest {
+			if err := rbRemoveDest(target); err != nil {
+				return err
+			}
+		}
 		switch {
 		case d.Type()&fs.ModeSymlink != 0:
 			link, err := os.Readlink(path) //nolint:gosec // cp_r walks the caller's own tree, as MRI's does
@@ -113,7 +118,13 @@ func rbCopyTree(src, dst string, preserve bool) error {
 			if preserve {
 				dirs = append(dirs, [2]string{path, target})
 			}
-			return os.MkdirAll(target, 0o777) //nolint:gosec // as above
+			// as MRI's Dir.mkdir: a directory already there is reused, anything else (a file in the way: EEXIST, no parent: ENOENT) fails
+			if err := os.Mkdir(target, 0o777); err != nil { //nolint:gosec // as above
+				if fi, serr := os.Stat(target); serr != nil || !fi.IsDir() {
+					return err
+				}
+			}
+			return nil
 		default:
 			if err := rbCopyFile(path, target); err != nil || !preserve {
 				return err
@@ -125,6 +136,21 @@ func rbCopyTree(src, dst string, preserve bool) error {
 		err = rbKeep(dirs[i][0], dirs[i][1])
 	}
 	return err
+}
+
+// rbRemoveDest is MRI's `File.unlink dest if File.file?(dest) || File.symlink?(dest)`: a directory (or nothing) stays.
+func rbRemoveDest(path string) error {
+	fi, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if fi.IsDir() {
+		return nil
+	}
+	return os.Remove(path)
 }
 
 // rbKeep gives dst src's mode (special bits too) and times: MRI's preserve_attributes, minus the owner.
@@ -153,7 +179,7 @@ func rbMove(src, dst string) error {
 		return serr
 	}
 	if fi.IsDir() {
-		if cerr := rbCopyTree(src, dst, true); cerr != nil {
+		if cerr := rbCopyTree(src, dst, true, false); cerr != nil {
 			return cerr
 		}
 	} else if cerr := rbCopyFile(src, dst); cerr != nil {
