@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -153,9 +154,10 @@ func (c *Compiler) defAnnotations(f *File, cls *Class, n *parser.DefNode, m *Met
 			c.errorf(f, n, "@binary is only allowed in the prelude")
 		}
 		m.binary = 1
-		if len(b) > 0 {
+		if slices.Contains(b, "self") {
 			m.binary = 2
 		}
+		m.binBlock = slices.Contains(b, "block")
 	}
 	if st := ann["self"]; len(st) > 0 {
 		if !f.isPrelude() || cls == nil || cls.GoType == "" {

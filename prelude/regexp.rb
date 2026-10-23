@@ -464,11 +464,7 @@ class String
     if re.re.NumSubexp() > 0 {
       panic(NewNotImplementedError(Ref(String("rb2go: String#scan with capture groups needs a Regexp literal"))))
     }
-    out := &Array[String]{}
-    for _, loc := range rbFindAll(re, string(self), -1) {
-      out.s = append(out.s, self[loc[0]:loc[1]])
-    }
-    return out
+    return rbScanLocs(self, rbFindAll(re, string(self), -1))
   }
 
   # scan where the pattern is known only at run time (a gem's untyped receiver, decision 331): each match, or each
@@ -488,82 +484,42 @@ class String
   end
 
   #: (Regexp) -> Array[Array[String?]]
-  def __scan_groups(re) = %x{
-    out := &Array[*Array[*String]]{}
-    for _, loc := range rbFindAll(re, string(self), -1) {
-      row := &Array[*String]{}
-      for i := 2; i < len(loc); i += 2 {
-        if loc[i] < 0 {
-          row.s = append(row.s, nil)
-        } else {
-          row.s = append(row.s, Ref(self[loc[i]:loc[i+1]]))
-        }
-      }
-      out.s = append(out.s, row)
+  def __scan_groups(re) = %x{ return rbScanGroupLocs(self, rbFindAll(re, string(self), -1)) }
+
+  # MRI's rb_str_split_m (rbSplitLocs). Its searches are the matches of scan, so they come from FindAll.
+  #: (Regexp, ?Integer) -> Array[String]
+  def __split_regexp(re, limit = 0) = %x{ return rbSplitLocs(string(self), rbFindAll(re, string(self), -1), int(limit), false) }
+
+  # A binary String's matches read its bytes (decision 352).
+  #: (Regexp) -> Array[String]
+  def __bin_scan(re) = %x{
+    if re.re.NumSubexp() > 0 {
+      panic(NewNotImplementedError(Ref(String("rb2go: String#scan with capture groups needs a Regexp literal"))))
     }
-    return out
+    return rbScanLocs(self, rbFindAllBin(re, string(self), -1))
   }
 
-  # MRI's rb_str_split_m: captured groups are kept, an empty match at the field start does not split, and a pattern
-  # matching the empty string splits between characters. Its searches are the matches of scan, so they come from FindAll.
+  #: (Regexp) -> Array[Array[String?]]
+  def __bin_scan_groups(re) = %x{ return rbScanGroupLocs(self, rbFindAllBin(re, string(self), -1)) }
+
   #: (Regexp, ?Integer) -> Array[String]
-  def __split_regexp(re, limit = 0) = %x{
-    s := string(self)
-    out := &Array[String]{}
-    if s == "" {
-      return out
-    }
-    lim := int(limit)
-    if lim == 1 {
-      out.s = append(out.s, String(s))
-      return out
-    }
-    beg, start, fields, lastNull := 0, 0, 1, false
-    field := func(end int, loc []int) bool { // pushes s[beg:end] and the groups; reports the limit reached
-      out.s = append(out.s, String(s[beg:end]))
-      for i := 2; i < len(loc); i += 2 {
-        if loc[i] >= 0 {
-          out.s = append(out.s, String(s[loc[i]:loc[i+1]]))
-        }
-      }
-      fields++
-      return lim > 0 && lim <= fields
-    }
-    for _, loc := range rbFindAll(re, s, -1) {
-      _, w := utf8.DecodeRuneInString(s[loc[1]:])
-      if loc[0] == start && loc[1] == start { // empty at the search start: skip a character, then split before the next match
-        if !lastNull {
-          start += max(w, 1)
-          lastNull = true
-          continue
-        }
-        done := field(start, loc)
-        beg = start
-        if done {
-          break
-        }
-      } else {
-        done := field(loc[0], loc)
-        beg, start = loc[1], loc[1]
-        if done {
-          break
-        }
-        if loc[0] != loc[1] {
-          lastNull = false
-          continue
-        }
-      }
-      start += max(w, 1)
-      lastNull = true
-    }
-    if lim != 0 || len(s) > beg {
-      out.s = append(out.s, String(s[beg:]))
-    }
-    for lim == 0 && len(out.s) > 0 && out.s[len(out.s)-1] == "" {
-      out.s = out.s[:len(out.s)-1]
-    }
-    return out
-  }
+  def __bin_split_regexp(re, limit = 0) = %x{ return rbSplitLocs(string(self), rbFindAllBin(re, string(self), -1), int(limit), true) }
+
+  # @binary
+  #: (Regexp, String) -> String
+  def __bin_sub_regexp(re, to) = %x{ String(rbReSubBin(re, string(self), 1, rbReRepl(string(to)))) }
+
+  # @binary
+  #: (Regexp, String) -> String
+  def __bin_gsub_regexp(re, to) = %x{ String(rbReSubBin(re, string(self), -1, rbReRepl(string(to)))) }
+
+  # @binary block
+  #: (untyped) { (String) -> untyped } -> String
+  def __bin_sub_block(pat) = %x{ String(rbReSubBin(rbPattern(pat), string(self), 1, rbReBlock(blk))) }
+
+  # @binary block
+  #: (untyped) { (String) -> untyped } -> String
+  def __bin_gsub_block(pat) = %x{ String(rbReSubBin(rbPattern(pat), string(self), -1, rbReBlock(blk))) }
 end
 
 class RegexpError < StandardError; end

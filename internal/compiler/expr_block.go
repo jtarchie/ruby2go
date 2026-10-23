@@ -424,6 +424,8 @@ func funcBlockArg(b *parser.BlockArgumentNode, want TFunc, self Type) (string, *
 
 // genClosure renders a block as a Go func literal.
 func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env map[string]Type) string {
+	bin := f.binNext
+	f.binNext = false
 	params := substAll(sig.Params, env)
 	self := subst(sig.Self, env) // an escaped block's self, a leading Go param (decision 164)
 	var body parser.Node
@@ -462,6 +464,11 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	default:
 		f.c.unsupported(f.f, block)
 	}
+	bindParams := func() ([]string, func()) {
+		f.binParams = bin
+		defer func() { f.binParams = false }()
+		return f.bindClosureParams(n, names, params, sig.Rest)
+	}
 	gen := func(t tail) {
 		if symbolCall != "" {
 			e := f.symbolBlockCall(n, block, symbolCall, names)
@@ -489,7 +496,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.closures++
 			f.pushLoop(loopClosure)
 			f.withClosureSelf(self, func() {
-				_, pro := f.bindClosureParams(n, names, params, sig.Rest)
+				_, pro := bindParams()
 				pro()
 				if c, ok := n.(*parser.CallNode); ok {
 					f.openMemo(c, names)
@@ -516,7 +523,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	if self != nil {
 		f.selfType, f.selfCode = self, "self"
 	}
-	ps, pro := f.bindClosureParams(n, names, params, sig.Rest)
+	ps, pro := bindParams()
 	if self != nil {
 		ps = append([]string{"self " + f.c.goType(self)}, ps...)
 	}
@@ -723,7 +730,7 @@ func (f *fctx) iterTwin(n *parser.CallNode, e *entry, recvT Type, probed expr) *
 		}
 	}
 	if probed.bin {
-		if o := f.binTwin(e.M, probed, callArgs(n), true); o != nil && o.M.Iterator {
+		if o := f.binTwin(e.M, probed, callArgs(n)); o != nil && o.M.Iterator {
 			e = o
 		}
 	}
@@ -1061,7 +1068,12 @@ func (f *fctx) blockParam(name string, typ Type) *local {
 		f.setAnyOrigin(name, f.blockWhy)
 	}
 	info.noHoist = true
+	f.declBin = f.binParams && isClass(typ, "String")
 	v := f.declareLocal(name, typ)
+	if f.declBin && f.pass < 2 {
+		info.bin = true
+	}
+	f.declBin = false
 	v.declared = true
 	return v
 }

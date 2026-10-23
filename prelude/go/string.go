@@ -723,3 +723,108 @@ func rbStrRindex(s, t String) (Integer, bool) {
 	}
 	return Integer(utf8.RuneCountInString(string(s)[:i])), true
 }
+
+// rbTr is String#tr; bin reads s byte by byte, each byte the character of its value (a String that is not valid UTF-8,
+// decision 324, or one the compiler knows is binary, decision 352).
+func rbTr(s String, from, to string, bin bool) String {
+	expand := func(cs []rune) []rune {
+		var out []rune
+		for i := 0; i < len(cs); i++ {
+			switch {
+			case cs[i] == '\\' && i+1 < len(cs):
+				i++
+				out = append(out, cs[i])
+			case i+2 < len(cs) && cs[i+1] == '-':
+				if cs[i] > cs[i+2] {
+					panic(NewArgumentError(Ref(String(fmt.Sprintf("invalid range \"%c-%c\" in string transliteration", cs[i], cs[i+2])))))
+				}
+				for r := cs[i]; r <= cs[i+2]; r++ {
+					out = append(out, r)
+				}
+				i += 2
+			default:
+				out = append(out, cs[i])
+			}
+		}
+		return out
+	}
+	runes := func(x string) []rune { // a binary list's bytes are characters too
+		if !bin || utf8.ValidString(x) {
+			return []rune(x)
+		}
+		out := make([]rune, len(x))
+		for i := range len(x) {
+			out[i] = rune(x[i])
+		}
+		return out
+	}
+	f := runes(from)
+	negate := len(f) > 1 && f[0] == '^'
+	if negate {
+		f = f[1:]
+	}
+	f, t := expand(f), expand(runes(to))
+	// An empty to-list deletes; otherwise it pads with its last rune.
+	last := rune(-1)
+	if len(t) > 0 {
+		last = t[len(t)-1]
+	}
+	var ascii [128]rune // ASCII lookups skip the map: -1 is absent (a value is never negative)
+	for i := range ascii {
+		ascii[i] = -1
+	}
+	var m map[rune]rune
+	for i, c := range f {
+		v := last
+		if !negate && i < len(t) {
+			v = t[i]
+		}
+		if c < 128 {
+			ascii[c] = v
+			if v < 0 {
+				ascii[c] = -2 // deleted, still present
+			}
+			continue
+		}
+		if m == nil {
+			m = map[rune]rune{}
+		}
+		m[c] = v
+	}
+	conv := func(r rune) rune {
+		var v rune
+		var ok bool
+		if r < 128 {
+			v, ok = ascii[r], ascii[r] != -1
+			if v == -2 {
+				v = -1
+			}
+		} else {
+			v, ok = m[r]
+		}
+		if negate {
+			if ok {
+				return r
+			}
+			return last
+		}
+		if ok {
+			return v
+		}
+		return r
+	}
+	if bin { // ASCII-8BIT: each byte is the character of its value (decision 324)
+		var out []byte
+		for i := range len(s) {
+			switch v := conv(rune(s[i])); {
+			case v < 0:
+			case v < 256:
+				out = append(out, byte(v))
+			default:
+				out = utf8.AppendRune(out, v)
+			}
+		}
+		return rbNewStr(s, String(out))
+	}
+	return rbNewStr(s, String(strings.Map(conv, string(s))))
+}

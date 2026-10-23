@@ -281,7 +281,7 @@ class String
 
   # @binary
   #: (Integer) -> String?
-  def __bin_idx_integer(i) = %x{
+  def __bin_idx(i) = %x{
     if v, ok := rbBinAt(self, i); ok {
       return &v
     }
@@ -350,6 +350,26 @@ class String
 
   #: (String) -> Integer?
   def __bin_rindex(s) = byterindex(s)
+
+  # @binary
+  #: (String, String) -> String
+  def __bin_tr(from, to) = %x{ rbTr(self, string(from), string(to), true) }
+
+  # @binary
+  #: (String) -> String
+  def __bin_delete(chars) = __bin_tr(chars, "")
+
+  #: (String) -> Integer
+  def __bin_count(chars) = %x{
+    in := rbCharSet(string(chars))
+    n := 0
+    for i := range len(self) {
+      if in(rune(self[i])) {
+        n++
+      }
+    }
+    return Integer(n)
+  }
 
   #: () -> Encoding
   def __bin_encoding = Encoding::ASCII_8BIT

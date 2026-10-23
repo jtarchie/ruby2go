@@ -67,6 +67,8 @@ type fctx struct {
 	wrap           *wrapFrame // the innermost begin wrapper
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
 	declBin        bool       // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
+	binNext        bool       // the next closure is a `@binary block` method's: its String params are binary (decision 352)
+	binParams      bool       // binding that closure's params
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
 	branchLenient  bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -193,12 +192,8 @@ func kernelModuleFunction(m *Method, recv Type) bool {
 	return false
 }
 
-// callMethod is callMethod0 with binary Strings (decision 352): a call on one, or a Regexp match of one, takes its
-// byte-wise `__bin_*` twin, and a `@binary` method's String result is binary.
+// callMethod is callMethod0 with binary Strings (decision 352): a `@binary` method's String result is binary.
 func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
-	if tw := f.binTwin(e.M, recv, args, block != nil); tw != nil {
-		e = tw
-	}
 	out := f.callMethod0(n, e, recv, args, block)
 	if b := e.M.binary; (b == 1 || b == 2 && recv.bin) && isClass(stripOpt(out.typ), "String") {
 		out.bin = true
@@ -212,15 +207,17 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 // binRegexpTwins are the Regexp methods whose String argument, when binary, takes a `__bin_*` twin.
 var binRegexpTwins = map[string]bool{"=~": true, "match": true, "match?": true, "===": true}
 
-// binTwin is m's `__bin_<name>` on a binary receiver, or a Regexp's on a binary argument (decision 352). As overloads
-// are (decision 12), `__bin_<name>_<class>` takes a first argument of that class, `__bin_<name>_<n>` n arguments, and
-// `__bin_<name>_enum` is a blockless iterator call's Enumerator.
-func (f *fctx) binTwin(m *Method, recv expr, args []parser.Node, block bool) *entry {
+// binTwin is m's `__bin_<name>` on a binary receiver, or a Regexp's on a binary argument (decision 352). It runs
+// after overload picks a twin (decision 12), so `__gsub_block` has `__bin_gsub_block`.
+func (f *fctx) binTwin(m *Method, recv expr, args []parser.Node) *entry {
 	c, ok := recv.typ.(TClass)
-	if !ok || strings.HasPrefix(m.Name, "__") {
+	if !ok || strings.HasPrefix(m.Name, "__bin_") {
 		return nil
 	}
 	base := "__bin_" + overloadBase(m.Name)
+	if strings.HasPrefix(m.Name, "__") {
+		base = "__bin_" + m.Name[2:]
+	}
 	switch {
 	case recv.bin && c.C.RubyName == "String":
 	case c.C.RubyName == "Regexp" && len(args) == 1 && binRegexpTwins[m.Name]:
@@ -233,19 +230,8 @@ func (f *fctx) binTwin(m *Method, recv expr, args []parser.Node, block bool) *en
 	default:
 		return nil
 	}
-	names := []string{base + "_" + strconv.Itoa(len(args)), base}
-	if m.Iterator && !block {
-		names = slices.Insert(names, 0, base+"_enum")
-	}
-	if len(args) == 1 {
-		if a, ok := f.probeType(args[0], nil).(TClass); ok {
-			names = slices.Insert(names, 0, base+"_"+snake(a.C.RubyName))
-		}
-	}
-	for _, name := range names {
-		if e := c.C.lookup(name); e != nil && len(args) >= requiredArgs(e.M) && len(args) <= len(e.M.Params) {
-			return e
-		}
+	if e := c.C.lookup(base); e != nil && len(args) >= requiredArgs(e.M) && len(args) <= len(e.M.Params) {
+		return e
 	}
 	return nil
 }
@@ -263,6 +249,9 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	o := f.overload(e, recv.typ, args)
 	f.curBlock = nil
 	if o != nil {
+		return f.callEntry(n, o, recv, args, block)
+	}
+	if o := f.binTwin(m, recv, args); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
 	env := f.callEnv(n, e, recv)

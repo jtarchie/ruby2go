@@ -1727,6 +1727,25 @@ B
       assert_equal [2, 0, 1], [w.index("\xa9".b), w.rindex("a"), w.index("é".b)]
       assert_equal [1, Encoding::UTF_8, "\"é\""], ["é".size, "é".encoding, "é".inspect]
     end
+
+    def test_binary_flavor_scan_sub_split
+      assert_equal "%C3%A9", "é".b.gsub(/[^a-z]/) { |m| "%%%02X" % m.ord }
+      assert_equal [[97, 49, 169], [49]], ["aé".b.sub(/[^a-z]/) { |m| m.size.to_s }.bytes, "x".b.gsub("x") { |m| m.size.to_s }.bytes]
+      s = "é b".b
+      assert_equal [3, 2, 4, [2, 1]], [s.scan(/[^ ]/).size, s.scan(/(.)(.)/).size, s.split(//).size, s.split(/ /).map(&:bytesize)]
+      assert_equal [[195, 88, 32, 98], [169, 32, 98]], [s.gsub(/\xa9/n, "X").bytes, s.sub(/./, "").bytes]
+      t = "éa".b
+      assert_equal [[195, 88, 97], [195, 169], 1, [195, 169, 42]], [t.tr("\xa9".b, "X").bytes, t.delete("a").bytes, t.count("a"), t.tr("a-z", "*").bytes]
+      assert_equal ["ea", "héo", 3], ["éa".tr("é", "e"), "héllo".delete("l"), "héllo".count("lo")]
+    end
+
+    def test_binary_flavor_binread_round_trip
+      path = File.join(Dir.tmpdir, "rb2go_string_binread_#{Process.pid}.bin")
+      File.write(path, "é!")
+      data = File.binread(path)
+      File.delete(path)
+      assert_equal ["c3a921", 3, "%C3%A9!"], [data.unpack1("H*"), data.size, data.gsub(/[^!]/) { |m| "%%%02X" % m.ord }]
+    end
   end
 end
 

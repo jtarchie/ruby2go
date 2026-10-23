@@ -908,6 +908,7 @@ func (f *fctx) blockArg(n parser.Node, m *Method, env map[string]Type, block par
 				return fn
 			}
 		}
+		f.binNext = m.binBlock // its String params are binary (decision 352)
 		return f.genClosure(n, block, m.Block, env)
 	case !m.Block.Optional:
 		f.errorf(n, "%s requires a block", m.Name)

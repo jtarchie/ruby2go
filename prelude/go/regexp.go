@@ -239,6 +239,106 @@ func rbFindLocBin(r *Regexp, s string) []int {
 	return loc
 }
 
+// rbFindAllBin is rbFindAll for a String the compiler knows is binary (decision 352), as rbFindLocBin is rbFindLoc.
+func rbFindAllBin(r *Regexp, s string, n int) [][]int {
+	if !strings.ContainsFunc(s, func(c rune) bool { return c >= utf8.RuneSelf }) {
+		return r.re.FindAllStringSubmatchIndex(s, n)
+	}
+	t, back := rbLatin1(s)
+	locs := r.re.FindAllStringSubmatchIndex(t, n)
+	for _, loc := range locs {
+		rbLatin1Back(loc, back)
+	}
+	return locs
+}
+
+// rbScanLocs is String#scan's matches at locs.
+func rbScanLocs(s String, locs [][]int) *Array[String] {
+	out := &Array[String]{}
+	for _, loc := range locs {
+		out.s = append(out.s, s[loc[0]:loc[1]])
+	}
+	return out
+}
+
+// rbScanGroupLocs is String#scan's rows of groups at locs, for a pattern with groups.
+func rbScanGroupLocs(s String, locs [][]int) *Array[*Array[*String]] {
+	out := &Array[*Array[*String]]{}
+	for _, loc := range locs {
+		row := &Array[*String]{}
+		for i := 2; i < len(loc); i += 2 {
+			if loc[i] < 0 {
+				row.s = append(row.s, nil)
+			} else {
+				row.s = append(row.s, Ref(s[loc[i]:loc[i+1]]))
+			}
+		}
+		out.s = append(out.s, row)
+	}
+	return out
+}
+
+// rbSplitLocs is MRI's rb_str_split_m over the matches at locs: captured groups are kept, an empty match at the field
+// start does not split, and a pattern matching the empty string splits between characters (bytes when bin).
+func rbSplitLocs(s string, locs [][]int, lim int, bin bool) *Array[String] {
+	out := &Array[String]{}
+	if s == "" {
+		return out
+	}
+	if lim == 1 {
+		out.s = append(out.s, String(s))
+		return out
+	}
+	beg, start, fields, lastNull := 0, 0, 1, false
+	field := func(end int, loc []int) bool { // pushes s[beg:end] and the groups; reports the limit reached
+		out.s = append(out.s, String(s[beg:end]))
+		for i := 2; i < len(loc); i += 2 {
+			if loc[i] >= 0 {
+				out.s = append(out.s, String(s[loc[i]:loc[i+1]]))
+			}
+		}
+		fields++
+		return lim > 0 && lim <= fields
+	}
+	for _, loc := range locs {
+		w := 1
+		if !bin {
+			_, w = utf8.DecodeRuneInString(s[loc[1]:])
+		}
+		if loc[0] == start && loc[1] == start { // empty at the search start: skip a character, then split before the next match
+			if !lastNull {
+				start += max(w, 1)
+				lastNull = true
+				continue
+			}
+			done := field(start, loc)
+			beg = start
+			if done {
+				break
+			}
+		} else {
+			done := field(loc[0], loc)
+			beg, start = loc[1], loc[1]
+			if done {
+				break
+			}
+			if loc[0] != loc[1] {
+				lastNull = false
+				continue
+			}
+		}
+		start += max(w, 1)
+		lastNull = true
+	}
+	if lim != 0 || len(s) > beg {
+		out.s = append(out.s, String(s[beg:]))
+	}
+	for lim == 0 && len(out.s) > 0 && out.s[len(out.s)-1] == "" {
+		out.s = out.s[:len(out.s)-1]
+	}
+	return out
+}
+
 // rbLatin1 reads each byte of s as the character of its value, for a binary Regexp (/n) on a String that is not valid
 // UTF-8; back[j] is the byte of s where offset j of the result starts.
 func rbLatin1(s string) (string, []int) {
@@ -396,11 +496,21 @@ func rbReBlockLM(lm ***MatchData, re *Regexp, blk func(String) any) func(s strin
 
 // rbReSub replaces the first n matches of re in s (all when n < 0); rxRegexp's FindAll applies the Onigmo corrections.
 func rbReSub(re *Regexp, s string, n int, repl func(s string, loc []int, names []string) string) string {
+	return rbReplaceLocs(s, rbFindAll(re, s, n), re.re.SubexpNames(), repl)
+}
+
+// rbReSubBin is rbReSub on a binary String (decision 352).
+func rbReSubBin(re *Regexp, s string, n int, repl func(s string, loc []int, names []string) string) string {
+	return rbReplaceLocs(s, rbFindAllBin(re, s, n), re.re.SubexpNames(), repl)
+}
+
+// rbReplaceLocs is s with each match at locs replaced by repl's text.
+func rbReplaceLocs(s string, locs [][]int, names []string, repl func(s string, loc []int, names []string) string) string {
 	var b strings.Builder
 	last := 0
-	for _, loc := range rbFindAll(re, s, n) {
+	for _, loc := range locs {
 		b.WriteString(s[last:loc[0]])
-		b.WriteString(repl(s, loc, re.re.SubexpNames()))
+		b.WriteString(repl(s, loc, names))
 		last = loc[1]
 	}
 	b.WriteString(s[last:])
