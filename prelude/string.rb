@@ -225,11 +225,10 @@ class String < Object
 
   #: (String) -> Integer?
   def index(s) = %x{
-    i := strings.Index(string(self), string(s))
-    if i < 0 {
-      return nil
+    if v, ok := rbStrIndex(self, s); ok {
+      return &v
     }
-    return Ref(Integer(utf8.RuneCountInString(string(self)[:i])))
+    return nil
   }
 
   #: (String, Integer) -> Integer?
@@ -251,23 +250,10 @@ class String < Object
 
   #: (Integer) -> String?
   def [](i) = %x{
-    if !utf8.ValidString(string(self)) { // ASCII-8BIT by decision 136: a byte is a character
-      if i < 0 {
-        i += Integer(len(self))
-      }
-      if i < 0 || int(i) >= len(self) {
-        return nil
-      }
-      return Ref(self[i : i+1])
+    if v, ok := rbStrAt(self, i); ok {
+      return &v
     }
-    r := []rune(string(self))
-    if i < 0 {
-      i += Integer(len(r))
-    }
-    if i < 0 || int(i) >= len(r) {
-      return nil
-    }
-    return Ref(String(r[i]))
+    return nil
   }
 
   # The String itself when self contains it, else nil.
@@ -275,39 +261,19 @@ class String < Object
   def __idx_string(str) = include?(str) ? str : nil
 
   #: (Range[Integer]) -> String?
-  def __idx_range(r)
-    s = r.__slice(length)
-    return nil unless s
-    __idx_2(s[0], s[1])
-  end
+  def __idx_range(r) = %x{
+    if v, ok := rbStrRange(self, r); ok {
+      return &v
+    }
+    return nil
+  }
 
   #: (Integer, Integer) -> String?
   def __idx_2(start, count) = %x{
-    if !utf8.ValidString(string(self)) { // ASCII-8BIT by decision 136: bytes, not runes (patchelf's section data)
-      n := Integer(len(self))
-      if start < 0 {
-        start += n
-      }
-      if start < 0 || start > n || count < 0 {
-        return nil
-      }
-      return Ref(rbNewStr(self, self[start:min(start+count, n)]))
+    if v, ok := rbStrSub(self, start, count); ok {
+      return &v
     }
-    if start < 0 || count < 0 {
-      n := Integer(utf8.RuneCountInString(string(self)))
-      if start < 0 {
-        start += n
-      }
-      if start < 0 || start > n || count < 0 {
-        return nil
-      }
-    }
-    b, ok := rbRuneOffset(string(self), int(start)) // byte offsets by walking, not a []rune of the whole String
-    if !ok {
-      return nil
-    }
-    e, _ := rbRuneOffset(string(self[b:]), int(count))
-    return Ref(rbNewStr(self, self[b:b+e]))
+    return nil
   }
 
   #: () -> Array[Integer]
@@ -699,11 +665,10 @@ class String < Object
 
   #: (String) -> Integer?
   def rindex(s) = %x{
-    i := strings.LastIndex(string(self), string(s))
-    if i < 0 {
-      return nil
+    if v, ok := rbStrRindex(self, s); ok {
+      return &v
     }
-    return Ref(Integer(utf8.RuneCountInString(string(self)[:i])))
+    return nil
   }
 
   #: (String) -> Integer?

@@ -1794,3 +1794,32 @@ module StringTests
     end
   end
 end
+
+module StringTests
+  # String#[], #index and #rindex return their String? / Integer? from out-of-line helpers so the method inlines
+  # (decision 349); characters are walked, not converted to a rune array. Edge cases against MRI.
+  class StringIndexEdgeTest < Minitest::Test
+    def test_char_and_substring
+      s = "héllo, 日本"
+      assert_equal ["h", "é", "本", "日", nil, nil, "h"], [s[0], s[1], s[-1], s[-2], s[9], s[-10], s[-9]]
+      assert_equal ["hé", "llo", "", nil, "日本", "本"], [s[0, 2], s[2, 3], s[9, 1], s[10, 1], s[7, 5], s[-1, 3]]
+      assert_nil s[0, -1]
+      assert_equal ["éll", "héllo", ", 日本", "日", "", nil], [s[1..3], s[..4], s[5..], s[-2...-1], s[9..], s[10..]]
+      e = ""
+      assert_equal ["", nil, "", nil], [e[0..], e[0], e[0, 1], e[1, 1]]
+    end
+
+    def test_binary_strings
+      b = "\xffab\xfe"
+      assert_equal ["\xFF".b, "a", "\xFE".b, nil], [b[0].b, b[1], b[-1].b, b[4]]
+      assert_equal "ab", b[1, 2]
+      assert_equal "ab", b[1..2]
+    end
+
+    def test_index_and_rindex
+      s = "日本の日本"
+      assert_equal [0, 3, 2, nil], [s.index("日"), s.rindex("日"), s.index("の"), s.index("x")]
+      assert_equal [0, 5, 0], ["abc".index(""), "abcde".rindex(""), "".index("")]
+    end
+  end
+end

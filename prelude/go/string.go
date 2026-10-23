@@ -563,3 +563,116 @@ func rbRuneOffset(s string, k int) (int, bool) {
 }
 
 var rbRadixPrefixes = map[string]int{"0b": 2, "0B": 2, "0o": 8, "0O": 8, "0x": 16, "0X": 16, "0d": 10, "0D": 10}
+
+// The String#[] family's work, out of line: each returns (value, found) so that the public method, a few lines
+// around one call, fits Go's inlining budget and its String? or Integer? stays on the caller's stack (decision 349;
+// Hash#[] does the same, decision 342). Characters are walked, never a []rune of the whole String.
+
+// rbStrAt is String#[](i): the character at i (negative from the end).
+//
+//go:noinline
+func rbStrAt(s String, i Integer) (String, bool) {
+	if !rbValidUTF8(string(s)) { // ASCII-8BIT by decision 136: a byte is a character
+		if i < 0 {
+			i += Integer(len(s))
+		}
+		if i < 0 || int(i) >= len(s) {
+			return "", false
+		}
+		return s[i : i+1], true
+	}
+	if i < 0 {
+		if i += Integer(utf8.RuneCountInString(string(s))); i < 0 {
+			return "", false
+		}
+	}
+	b, ok := rbRuneOffset(string(s), int(i))
+	if !ok || b >= len(s) {
+		return "", false
+	}
+	_, n := utf8.DecodeRuneInString(string(s[b:]))
+	return rbNewStr(s, s[b:b+n]), true
+}
+
+// rbStrSub is String#[](start, count).
+//
+//go:noinline
+func rbStrSub(s String, start, count Integer) (String, bool) {
+	if !rbValidUTF8(string(s)) { // ASCII-8BIT by decision 136: bytes, not runes (patchelf's section data)
+		n := Integer(len(s))
+		if start < 0 {
+			start += n
+		}
+		if start < 0 || start > n || count < 0 {
+			return "", false
+		}
+		return rbNewStr(s, s[start:min(start+count, n)]), true
+	}
+	if start < 0 || count < 0 {
+		n := Integer(utf8.RuneCountInString(string(s)))
+		if start < 0 {
+			start += n
+		}
+		if start < 0 || start > n || count < 0 {
+			return "", false
+		}
+	}
+	b, ok := rbRuneOffset(string(s), int(start))
+	if !ok {
+		return "", false
+	}
+	e, _ := rbRuneOffset(string(s[b:]), int(count))
+	return rbNewStr(s, s[b:b+e]), true
+}
+
+// rbStrRange is String#[](range): Range#__slice's start and count over the String's length, then rbStrSub.
+//
+//go:noinline
+func rbStrRange(s String, r *Range[Integer]) (String, bool) {
+	n := Integer(utf8.RuneCountInString(string(s)))
+	if !rbValidUTF8(string(s)) {
+		n = Integer(len(s))
+	}
+	b := r.b
+	if r.beginless {
+		b = 0
+	}
+	e := n
+	if !r.endless {
+		if e = r.e; e < 0 {
+			e += n
+		}
+		if !r.excl {
+			e++
+		}
+	}
+	if b < 0 {
+		b += n
+	}
+	if b < 0 || b > n {
+		return "", false
+	}
+	return rbStrSub(s, b, max(min(e, n)-b, 0))
+}
+
+// rbStrIndex is String#index(t): the character offset of t's first occurrence.
+//
+//go:noinline
+func rbStrIndex(s, t String) (Integer, bool) {
+	i := strings.Index(string(s), string(t))
+	if i < 0 {
+		return 0, false
+	}
+	return Integer(utf8.RuneCountInString(string(s)[:i])), true
+}
+
+// rbStrRindex is String#rindex(t): the character offset of t's last occurrence.
+//
+//go:noinline
+func rbStrRindex(s, t String) (Integer, bool) {
+	i := strings.LastIndex(string(s), string(t))
+	if i < 0 {
+		return 0, false
+	}
+	return Integer(utf8.RuneCountInString(string(s)[:i])), true
+}
