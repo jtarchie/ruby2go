@@ -25,7 +25,10 @@ func goMethodName(name string) string {
 		return n
 	}
 	if r, n := utf8.DecodeRuneInString(name); name != "" && unicode.IsUpper(r) { // Kernel#String must not meet MatchData#string
-		return "Cap_" + goMethodName(string(unicode.ToLower(r))+name[n:])
+		if l := unicode.ToLower(r); unicode.ToUpper(l) == r {
+			return "Cap_" + goMethodName(string(l)+name[n:])
+		}
+		return "Cap_" + fmt.Sprintf("_%X_", r) + goMethodName(name[n:]) // İ, K (Kelvin) lower-case to ASCII i, k
 	}
 	suffix := ""
 	switch {
@@ -47,6 +50,7 @@ func goMethodName(name string) string {
 		i++
 	}
 	parts := strings.Split(name[i:], "_")
+	internal := i >= 2 // the prelude's `__read_1` and `__call1` helpers are named by Go helpers and use both digit shapes, so they keep the old mapping
 	for j, part := range parts {
 		if part == "" {
 			b.WriteByte('_')
@@ -57,9 +61,23 @@ func goMethodName(name string) string {
 			b.WriteString("_" + part)
 			continue
 		}
-		r := []rune(part)
-		r[0] = unicode.ToUpper(r[0])
-		b.WriteString(string(r))
+		// `a_1`/`a1` both camel-case to `A1`: a word-initial digit gets `_n` (`A_n1`); `_` + lowercase is never camel-case output.
+		prevDigit := false
+		for k, r := range part {
+			digit := unicode.IsDigit(r)
+			if digit && !prevDigit && !internal && k == 0 && j > 0 {
+				b.WriteString("_n")
+			}
+			prevDigit = digit
+			switch u := unicode.ToUpper(r); {
+			case k > 0:
+				b.WriteRune(r)
+			case u == r || unicode.ToLower(u) == r:
+				b.WriteRune(u)
+			default:
+				fmt.Fprintf(&b, "_%X_", r) // ı, ſ upper-case to ASCII I, S; ς and σ both to Σ
+			}
+		}
 	}
 	b.WriteString(suffix)
 	return goIdent(b.String())

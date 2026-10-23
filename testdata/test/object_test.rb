@@ -6608,7 +6608,39 @@ module ObjectTests
     def prot = 2
   end
 
+  # `a_1` and `a1` camel-cased to one Go method name (#109); ı and ſ upper-cased onto i and s.
+  class ObjDigitNames
+    #: () -> Integer
+    def a_1 = 1
+
+    #: () -> Integer
+    def a1 = 2
+
+    #: () -> Integer
+    def i = 3
+
+    #: () -> Integer
+    def ı = 4
+
+    #: () -> Integer
+    def s = 5
+
+    #: () -> Integer
+    def ſ = 6
+
+    #: () -> Integer
+    def a_1b = 7
+
+    #: () -> Integer
+    def a1b = 8
+  end
+
   class ObjReflectTest < Minitest::Test
+    def test_underscore_digit_and_case_fold_names_stay_distinct
+      o = ObjDigitNames.new
+      assert_equal [1, 2, 3, 4, 5, 6, 7, 8], [o.a_1, o.a1, o.i, o.ı, o.s, o.ſ, o.a_1b, o.a1b]
+    end
+
     def test_singleton_class_send_attr_accessor
       assert_equal 3, ObjSingletonAttr.level
       ObjSingletonAttr.level = 4

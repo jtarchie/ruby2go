@@ -307,6 +307,30 @@ func TestGoFuncName(t *testing.T) {
 	}
 }
 
+// Pairs that camel-casing or case-mapping used to merge (#109): a digit after `_` against a digit after a letter, and runes that upper- or lower-case to another letter.
+func TestGoMethodNameNoMerge(t *testing.T) {
+	pairs := [][2]string{
+		{"a_1", "a1"}, {"utf_8", "utf8"}, {"a_1b", "a1b"}, {"a_12", "a1_2"}, {"a__1", "a_1"}, {"to_i_1", "to_i1"}, {"a_1?", "a1?"}, {"_1", "__1"},
+		{"ı", "i"}, {"ſ", "s"}, {"ıa", "ia"}, {"a_ı", "a_i"}, {"ς", "σ"}, {"µ", "μ"},
+		{"İa", "Ia"}, {"Ka", "Ka"}, // İ, Kelvin sign
+	}
+	for _, p := range pairs {
+		a, b := goMethodName(p[0]), goMethodName(p[1])
+		if !token.IsIdentifier(a) || !token.IsIdentifier(b) {
+			t.Errorf("goMethodName(%q) = %q, goMethodName(%q) = %q: not both Go identifiers", p[0], a, p[1], b)
+		}
+		if a == b {
+			t.Errorf("goMethodName(%q) and goMethodName(%q) are both %q", p[0], p[1], a)
+		}
+	}
+	// `__` names (the prelude's private helpers, `__read_1` and `__call1` alike, spelled by Go helpers and the compiler) keep their names: decision 339
+	for in, want := range map[string]string{"__read_1": "__Read1", "__sleep_0": "__Sleep0", "__idx_2": "__Idx2", "__start_with_q_3": "__StartWithQ3", "__fast1": "__Fast1", "__msg2str": "__Msg2str", "a_1": "A_n1", "a1": "A1"} {
+		if got := goMethodName(in); got != want {
+			t.Errorf("goMethodName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // Two different non-ASCII Ruby names must not share a Go name (decision 3): ça and éa both start with lead byte 0xC3.
 func TestGoMethodNameNonASCIIInjective(t *testing.T) {
 	seen := map[string]string{}

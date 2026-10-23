@@ -881,18 +881,18 @@ end
 
 puts Meter.new.foo_bar
 -- go_name_collision_inherited.rb --
-# error: both become Go Utf8 in Word
+# error: both become Go FooBar in Word
 class Base
   #: () -> Integer
-  def utf_8 = 1
+  def foo_bar = 1
 end
 
 class Word < Base
   #: () -> Integer
-  def utf8 = 2
+  def fooBar = 2
 end
 
-puts Word.new.utf8
+puts Word.new.fooBar
 -- override_unrelated_return.rb --
 # error: main.rb:9: Sub#size: () -> String overrides Base#size: () -> Integer, but its String result cannot stand in for Integer
 class Base
