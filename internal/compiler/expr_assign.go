@@ -206,6 +206,7 @@ func (f *fctx) indexOperands(n, rn parser.Node, args *parser.ArgumentsNode, bloc
 
 // genIndexOrWrite: `h[k] ||= v` is `h[k] || h[k] = v`, with h and k evaluated once.
 func (f *fctx) genIndexOrWrite(n *parser.IndexOrWriteNode) expr {
+	f.noteIndexWrite(n.Receiver, n.Arguments, n.Value)
 	recv, as := f.indexOperands(n, n.Receiver, n.Arguments, n.Block, n.IsSAFE_NAVIGATION())
 	cur := f.genMethodCall(n, recv, "[]", as, nil)
 	if !isAny(cur.typ) && !isOpt(cur.typ) && !isClass(cur.typ, "Boolean") {
@@ -223,6 +224,7 @@ func (f *fctx) genIndexOrWrite(n *parser.IndexOrWriteNode) expr {
 
 // genIndexOpWrite: `a[i] += v` is `a[i] = a[i] + v`, with a and i evaluated once; its value is the new one.
 func (f *fctx) genIndexOpWrite(n *parser.IndexOperatorWriteNode) expr {
+	f.noteIndexWrite(n.Receiver, n.Arguments, nil)
 	recv, as := f.indexOperands(n, n.Receiver, n.Arguments, n.Block, n.IsSAFE_NAVIGATION())
 	val := f.genOp(n, f.genMethodCall(n, recv, "[]", as, nil), n.BinaryOperator, n.Value)
 	val.code = f.pinSimple(val.code)

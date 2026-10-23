@@ -45,6 +45,7 @@ type fctx struct {
 	discover       bool
 	locals         map[localKey]*localInfo
 	refined        map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
+	openArgs       map[int]localKey  // an open literal passed as a memo (`each_with_object({})`): its offset -> the block param it binds (decision 344)
 	convs          map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
 	retTypes       *[]Type           // `return` values, while inferring the method's return type
 	unset          map[localKey]bool // locals read where they may be unassigned (maybeUnset)

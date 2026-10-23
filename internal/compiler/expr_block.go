@@ -491,6 +491,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.withClosureSelf(self, func() {
 				_, pro := f.bindClosureParams(n, names, params, sig.Rest)
 				pro()
+				if c, ok := n.(*parser.CallNode); ok {
+					f.openMemo(c, names)
+				}
 				f.redoLabel(body)
 				f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
 			})
@@ -527,6 +530,9 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
 	f.indent++
 	pro()
+	if c, ok := n.(*parser.CallNode); ok {
+		f.openMemo(c, names)
+	}
 	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
 	f.redoLabel(body) // redo reruns the block with the same arguments: a closure is its own Go function (#52)
 	if isVoid(ret) {

@@ -2134,6 +2134,18 @@ module HashTests
       assert_equal [{"a" => 1}, 5, [:s]], [h, q.pop, a]
     end
 
+    # Hash.new(default) and a memo literal are typed by what the code stores in them (decision 344)
+    def test_open_default_and_memo_typed_from_use
+      nums = [1, 2, 3, 4, 5]
+      h = Hash.new(0)
+      nums.each { |x| h[x % 2] += 1 }
+      g = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n % 3] += 1 }
+      e = nums.each_with_object({}) { |n, acc| acc[n] ||= n.to_s }
+      t = nums.inject(Hash.new(0)) { |acc, n| acc[n.even?] += 1; acc }
+      assert_equal [{1 => 3, 0 => 2}, {1 => 2, 2 => 2, 0 => 1}, 5, "3", {false => 3, true => 2}, 7],
+                   [h, g, e.size, e.fetch(3), t, h.fetch(1) + g.fetch(2) + 2]
+    end
+
     # pop(timeout:) with nil waits (concurrent-ruby's idle worker), an Integer or Float bounds it; clock_gettime's
     # units (decision 254)
     def test_queue_pop_timeout_and_clock_units

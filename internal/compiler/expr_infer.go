@@ -116,8 +116,30 @@ func emptyNewClass(n *parser.CallNode) string {
 		return name
 	case name == "Array" && len(args) == 2 && isNilLit(args[1]):
 		return name // Array.new(n, nil): n nils, typed by what is stored over them
+	case name == "Hash" && len(args) == 1 && !isKeywordArgs(args[0]):
+		return name // Hash.new(default): the default types V, what is stored types K (decision 344)
 	}
 	return ""
+}
+
+func isKeywordArgs(n parser.Node) bool {
+	_, ok := n.(*parser.KeywordHashNode)
+	return ok
+}
+
+// openType is openNewType with `Hash.new(default)`'s V bound to the default's type when that is concrete, so the
+// open literal keeps the V decision 5 gives it and only K is left to what is stored (decision 344).
+func (f *fctx) openType(n parser.Node) Type {
+	t := f.c.openNewType(n)
+	call, ok := n.(*parser.CallNode)
+	tc, isClass := t.(TClass)
+	if !ok || !isClass || tc.C.RubyName != "Hash" || len(callArgs(call)) != 1 {
+		return t
+	}
+	if v := f.probeType(callArgs(call)[0], nil); v != nil && !isNil(v) && !holdsAny(v) {
+		tc.Args = []Type{TAny{}, v}
+	}
+	return tc
 }
 
 // noteElems records what `x << v`, `x.push(v)`, `x[i] = v` and
@@ -165,6 +187,83 @@ func (f *fctx) noteElems(n *parser.CallNode) {
 		f.noteElem(open, &elems[0], args[0])
 		f.noteElem(open, &elems[1], args[1])
 	}
+}
+
+// noteIndexWrite records the key of `h[k] op= v` and `h[k] ||= v` on an open Hash as `h[k] = v` does (noteElems),
+// and v of `||=` as a value: `counts[w] += 1` on `Hash.new(0)` is what types K (decision 344). An op-write's value
+// reads h[k] itself, so it is no evidence for V.
+func (f *fctx) noteIndexWrite(recv parser.Node, args *parser.ArgumentsNode, value parser.Node) {
+	if args == nil || len(args.Arguments) != 1 {
+		return
+	}
+	call := &parser.CallNode{Receiver: recv, Name: "[]=", Arguments: args}
+	var t Type
+	var open *bool
+	var elems *[2][]Type
+	switch r := recv.(type) {
+	case *parser.LocalVariableReadNode:
+		if info := f.localInfo(r.Name); f.pass == 1 && info != nil && info.open {
+			t, open, elems = info.typ, &info.open, &info.elems
+		}
+	case *parser.InstanceVariableReadNode:
+		if f.discover && f.owner != nil {
+			if iv := f.c.findIvar(f.owner, r.Name); iv != nil && iv.open {
+				t, open, elems = iv.Type, &iv.open, &iv.elems
+			}
+		}
+	}
+	if elems == nil || !isClass(stripOpt(t), "Hash") {
+		return
+	}
+	f.noteElem(open, &elems[0], callArgs(call)[0])
+	if value != nil {
+		f.noteElem(open, &elems[1], value)
+	}
+}
+
+// memoParam is the index of the block param an open literal argument binds: `each_with_object({}) { |x, acc| }` and
+// `inject(Hash.new(0)) { |acc, x| }` (decision 344); -1 otherwise.
+func memoParam(n *parser.CallNode) int {
+	blk, ok := n.Block.(*parser.BlockNode)
+	args := callArgs(n)
+	if !ok || n.Receiver == nil || len(args) != 1 || !isEmptyLit(args[0]) {
+		return -1
+	}
+	_ = blk
+	switch n.Name {
+	case "each_with_object":
+		return 1
+	case "inject", "reduce":
+		return 0
+	}
+	return -1
+}
+
+// openMemo makes the memo block param of an open literal argument an open local in pass 1, typed by what the block
+// puts in it as `acc = {}` would be, and remembers which argument it came from: pass 2 passes that literal its
+// refined type (openArgType).
+func (f *fctx) openMemo(n *parser.CallNode, names blockParams) {
+	i := memoParam(n)
+	if i < 0 || i >= len(names) || names[i].Sub != nil || f.openArgs == nil {
+		return
+	}
+	key := f.localKey(names[i].Name)
+	f.openArgs[callArgs(n)[0].GetLocation().StartOffset] = key
+	if info := f.locals[key]; f.pass == 1 && info != nil {
+		info.open = true
+	}
+}
+
+// openArgType is the refined type of an open literal passed as a memo (openMemo), or nil.
+func (f *fctx) openArgType(n parser.Node) Type {
+	if f.openArgs == nil {
+		return nil
+	}
+	k, ok := f.openArgs[n.GetLocation().StartOffset]
+	if !ok {
+		return nil
+	}
+	return f.refined[k]
 }
 
 func (f *fctx) noteElem(open *bool, elems *[]Type, args ...parser.Node) {

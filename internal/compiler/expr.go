@@ -35,6 +35,11 @@ func (f *fctx) genExpr(n parser.Node, expected Type) expr {
 			f.errorf(n, "generation budget exceeded")
 		}
 	}
+	if (expected == nil || holdsAny(expected)) && f.openArgs != nil && isEmptyLit(n) {
+		if t := f.openArgType(n); t != nil { // `each_with_object(Hash.new(0))` typed by its block (decision 344)
+			expected = t
+		}
+	}
 	e := f.genExpr0(n, expected)
 	switch n.(type) {
 	case *parser.YieldNode, *parser.SuperNode, *parser.ForwardingSuperNode: // the block or the parent may reassign ivars
@@ -140,7 +145,7 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		exp = f.refined[f.localKey(n.Name)]
 	}
 	if exp == nil && empty && f.pass == 1 { // pass 1: untyped, so what goes in it can type it
-		exp = f.c.openNewType(n.Value)
+		exp = f.openType(n.Value)
 		if tmpl != nil {
 			exp = TClass{C: tmpl, Args: slices.Repeat([]Type{TAny{}}, len(tmpl.TypeParams))}
 		}

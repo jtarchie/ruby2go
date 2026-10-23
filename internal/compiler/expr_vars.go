@@ -41,7 +41,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
 		exp = iv.Type
 	} else if f.discover {
-		exp = f.c.openNewType(n.Value) // `@a = Array.new(n, nil)` is open as `@a = []` is
+		exp = f.openType(n.Value) // `@a = Array.new(n, nil)` is open as `@a = []` is
 	}
 	val := f.genExpr(n.Value, exp)
 	decl := val.typ

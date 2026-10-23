@@ -70,6 +70,9 @@ func (f *fctx) probeType(n parser.Node, expected Type) Type {
 // copy would lose Ruby's aliasing.
 func (f *fctx) analyze(fresh func(), run func(int)) {
 	nw := len(f.c.Warnings)
+	if f.openArgs == nil {
+		f.openArgs = map[int]localKey{} // before the snapshot: every run below shares it
+	}
 	saved := *f
 	nRet := 0
 	if f.retTypes != nil {
@@ -257,11 +260,15 @@ func widenContainer(t Type, elems [2][]Type) Type {
 // is): if it really is untyped, the typed run converts it and is rejected.
 func refineContainer(t Type, open bool, elems [2][]Type) Type {
 	c, ok := stripOpt(t).(TClass)
-	if !open || !ok || slices.ContainsFunc(c.Args, func(a Type) bool { return !isAny(a) }) {
+	if !open || !ok || !slices.ContainsFunc(c.Args, isAny) {
 		return nil
 	}
 	args := make([]Type, len(c.Args))
 	for i := range args {
+		if !isAny(c.Args[i]) { // `Hash.new(0)`: V is the default's, only K is open (decision 344)
+			args[i] = c.Args[i]
+			continue
+		}
 		typed := slices.DeleteFunc(slices.Clone(elems[i]), holdsAny)
 		if args[i] = joinOrAny(typed); len(typed) == 0 || holdsAny(args[i]) {
 			return nil
