@@ -23,6 +23,27 @@ module JsonTests
     e.class
   end
 
+  class Rescuer
+    #: (*untyped) -> String
+    def to_json(*a)
+      JsonTests.nested(3).to_json(*a)
+    rescue JSON::NestingError
+      "\"rescued\""
+    end
+  end
+
+  class PrettyPt
+    #: (*untyped) -> String
+    def to_json(*a) = { "x" => 1, "ys" => [2, 3] }.to_json(*a)
+  end
+
+  # @rbs generic V
+  # @rbs inherits Hash[untyped, V]
+  class Tagged < Hash
+    #: (*untyped) -> String
+    def to_json(*a) = "{\"tagged\":" + super + "}"
+  end
+
   class NestingTest < Minitest::Test
     def test_parse_depth_limit_is_100
       assert_nil JsonTests.raised { JSON.parse(JsonTests.parse_text(100)) }
@@ -117,6 +138,28 @@ module JsonTests
 
     def test_dump_has_no_limit
       assert_nil JsonTests.raised { JSON.dump(JsonTests.nested(101)) }
+    end
+
+    # the generator writes core values into one buffer: a to_json that rescues a nested error leaves no partial value behind
+    def test_generate_rescued_nested_error_leaves_nothing
+      assert_equal "[1,\"rescued\",2]", JSON.generate([1, Rescuer.new, 2], max_nesting: 3)
+    end
+
+    def test_pretty_generate_through_user_to_json
+      assert_equal "{\n  \"p\": [\n    {\n      \"x\": 1,\n      \"ys\": [\n        2,\n        3\n      ]\n    }\n  ]\n}", JSON.pretty_generate({ "p" => [PrettyPt.new] })
+    end
+
+    # the gem writes a plain Hash itself but calls a subclass's to_json
+    def test_generate_calls_a_hash_subclass_to_json
+      t = Tagged.new #: Tagged[Integer]
+      t["a"] = 1
+      xs = [] #: Array[untyped]
+      xs << t << { "b" => 2 }
+      assert_equal "[{\"tagged\":{\"a\":1}},{\"b\":2}]", JSON.generate(xs)
+    end
+
+    def test_generate_escapes_nested_strings
+      assert_equal "[\"a /\\u0001\\\"\\\\é😀\"]", JSON.generate(["a /\u0001\"\\é😀"])
     end
 
     # the gem's unlimited cycle ends in SystemStackError, rb2go's in its internal cap

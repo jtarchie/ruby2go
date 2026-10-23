@@ -51,7 +51,7 @@ module JSON
   class NestingError < ParserError; end
 
   #: (untyped, *untyped) -> String
-  def self.generate(obj, *state) = %x{ rbToJson(obj, rbJSONStateOf(rest_)) }
+  def self.generate(obj, *state) = %x{ rbJSONGenerate(obj, rbJSONStateOf(rest_)) }
 
   # PRETTY_STATE_PROTOTYPE: two-space indent, one value per line.
   # opts: nil (Homebrew's Tab#to_json(options = nil) passes it on); ponytail: a Hash of options raises, merge it into the pretty state when a program needs one.
@@ -61,11 +61,11 @@ module JSON
       panic(NewNotImplementedError(Ref(String("JSON.pretty_generate with options is not supported"))))
     }
     st := &rbJSONState{indent: "  ", space: " ", objectNl: "\\n", arrayNl: "\\n", maxNesting: 100}
-    return rbToJson(obj, st)
+    return rbJSONGenerate(obj, st)
   }
 
   #: (untyped) -> String
-  def self.dump(obj) = %x{ rbToJson(obj, rbJSONStateOfMax(nil, 0, true)) }
+  def self.dump(obj) = %x{ rbJSONGenerate(obj, rbJSONStateOfMax(nil, 0, true)) }
 
   # dump(obj, io) writes to io and returns it; nil or options give the String; an Integer limit raises NotImplementedError.
   #: (untyped, untyped) -> untyped
@@ -79,7 +79,7 @@ module JSON
   end
 
   #: (untyped, untyped) -> String
-  def self.__dump_state(obj, arg) = %x{ rbToJson(obj, rbJSONStateOfMax([]any{arg}, 0, true)) }
+  def self.__dump_state(obj, arg) = %x{ rbJSONGenerate(obj, rbJSONStateOfMax([]any{arg}, 0, true)) }
 
   #: (String, ?Hash[Symbol, untyped]) -> untyped
   def self.parse(str, opts = {}) = %x{ rbJSONParse(string(str), opts) }

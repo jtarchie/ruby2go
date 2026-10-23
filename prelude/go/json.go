@@ -601,6 +601,7 @@ type rbJSONState struct {
 	indent, space, spaceBefore, objectNl, arrayNl string
 	scriptSafe, asciiOnly, allowNaN               bool
 	depth, maxNesting                             int
+	buf                                           []byte // the document so far: core values append here instead of returning a String each
 }
 
 // enter is the gem's depth check: a container one level deeper than max_nesting (or the hard cap) raises NestingError, which also ends a cycle.
@@ -677,72 +678,221 @@ func rbJSONOpt(v any) string {
 	panic(NewTypeError(Ref(String("wrong argument type " + rbClassName(v) + " (expected String)"))))
 }
 
-// rbJSONArray and rbJSONHash port the gem's generate_json_array and
-// generate_json_object: indent per depth before each element, the
-// newline string after the opener and each ",", and before the closer
-// (then indented) only when set.
+// rbJSONGenerate is JSON.generate's body: obj written into st.buf as the gem's generate_json does.
+func rbJSONGenerate(obj any, st *rbJSONState) String {
+	n := len(st.buf)
+	rbJSONValueTo(st, obj)
+	out := String(st.buf[n:])
+	st.buf = st.buf[:n]
+	return out
+}
+
+// rbJSONCore: false when v is not self, since a subclass promotes the method and the gem calls a subclass's to_json (decision 346).
+type rbJSONCore interface{ rbJSONTo(st *rbJSONState, v any) bool }
+
+func (self *Array[E]) rbJSONTo(st *rbJSONState, v any) bool {
+	if any(self) != v {
+		return false
+	}
+	rbJSONArrayTo(st, self.s)
+	return true
+}
+
+func (self *Hash[K, V]) rbJSONTo(st *rbJSONState, v any) bool {
+	if any(self) != v {
+		return false
+	}
+	rbJSONHashTo(st, self)
+	return true
+}
+
+// rbJSONValueTo is the gem's generate_json: exact core values skip their to_json, as json 2.x does (decision 346).
+func rbJSONValueTo(st *rbJSONState, a any) {
+	switch v := a.(type) {
+	case String:
+		rbJSONStringTo(st, string(v))
+		return
+	case Integer:
+		st.buf = strconv.AppendInt(st.buf, int64(v), 10)
+		return
+	case Float:
+		st.buf = append(st.buf, rbJSONFloat(float64(v), st)...)
+		return
+	case Boolean:
+		st.buf = strconv.AppendBool(st.buf, bool(v))
+		return
+	case nil:
+		st.buf = append(st.buf, "null"...)
+		return
+	case rbJSONCore:
+		if v.rbJSONTo(st, a) {
+			return
+		}
+	}
+	u := rbUnbox(a) // a T? box (*T, **Array) or a typed nil
+	switch v := u.(type) {
+	case String, Integer, Float, Boolean, nil:
+		rbJSONValueTo(st, u)
+		return
+	case rbJSONCore:
+		if v.rbJSONTo(st, u) {
+			return
+		}
+	}
+	n := len(st.buf)
+	r := rbToJson(u, st)
+	st.buf = append(st.buf[:n], r...) // [:n]: a to_json that rescued a nested error may have left a partial value
+}
+
+// rbJSONArray and rbJSONHash are Array#/Hash#to_json: the value written past the buffer's end, then taken out as a String.
 func rbJSONArray[E any](xs []E, args []any) String {
 	st := rbJSONStateOf(args)
-	st.enter()
-	depth := st.depth
-	if len(xs) == 0 {
-		st.depth--
-		return "[]"
-	}
-	var b strings.Builder
-	b.WriteByte('[')
-	b.WriteString(st.arrayNl)
-	for i, x := range xs {
-		if i > 0 {
-			b.WriteByte(',')
-			b.WriteString(st.arrayNl)
-		}
-		b.WriteString(strings.Repeat(st.indent, depth))
-		b.WriteString(string(rbToJson(x, st)))
-		st.depth = depth
-	}
-	st.depth--
-	if st.arrayNl != "" {
-		b.WriteString(st.arrayNl)
-		b.WriteString(strings.Repeat(st.indent, st.depth))
-	}
-	b.WriteByte(']')
-	return String(b.String())
+	n := len(st.buf)
+	rbJSONArrayTo(st, xs)
+	out := String(st.buf[n:])
+	st.buf = st.buf[:n]
+	return out
 }
 
 func rbJSONHash[K, V comparable](h *Hash[K, V], args []any) String {
 	st := rbJSONStateOf(args)
+	n := len(st.buf)
+	rbJSONHashTo(st, h)
+	out := String(st.buf[n:])
+	st.buf = st.buf[:n]
+	return out
+}
+
+func rbJSONIndent(st *rbJSONState, depth int) {
+	if st.indent != "" {
+		for range depth {
+			st.buf = append(st.buf, st.indent...)
+		}
+	}
+}
+
+// rbJSONArrayTo and rbJSONHashTo port the gem's generate_json_array and
+// generate_json_object: indent per depth before each element, the
+// newline string after the opener and each ",", and before the closer
+// (then indented) only when set.
+func rbJSONArrayTo[E any](st *rbJSONState, xs []E) {
+	st.enter()
+	depth := st.depth
+	if len(xs) == 0 {
+		st.depth--
+		st.buf = append(st.buf, "[]"...)
+		return
+	}
+	st.buf = append(st.buf, '[')
+	st.buf = append(st.buf, st.arrayNl...)
+	for i, x := range xs {
+		if i > 0 {
+			st.buf = append(st.buf, ',')
+			st.buf = append(st.buf, st.arrayNl...)
+		}
+		rbJSONIndent(st, depth)
+		rbJSONValueTo(st, x)
+		st.depth = depth
+	}
+	st.depth--
+	if st.arrayNl != "" {
+		st.buf = append(st.buf, st.arrayNl...)
+		rbJSONIndent(st, st.depth)
+	}
+	st.buf = append(st.buf, ']')
+}
+
+func rbJSONHashTo[K, V comparable](st *rbJSONState, h *Hash[K, V]) {
 	st.enter()
 	depth := st.depth
 	if len(h.keys) == 0 {
 		st.depth--
-		return "{}"
+		st.buf = append(st.buf, "{}"...)
+		return
 	}
-	var b strings.Builder
-	b.WriteByte('{')
+	st.buf = append(st.buf, '{')
 	for i, k := range h.keys {
 		if i > 0 {
-			b.WriteByte(',')
+			st.buf = append(st.buf, ',')
 		}
-		b.WriteString(st.objectNl)
-		b.WriteString(strings.Repeat(st.indent, depth))
-		b.WriteString(string(rbJSONString(string(rbToS(k)), st)))
-		b.WriteString(st.spaceBefore)
-		b.WriteByte(':')
-		b.WriteString(st.space)
-		b.WriteString(string(rbToJson(h.vals[k], st)))
+		st.buf = append(st.buf, st.objectNl...)
+		rbJSONIndent(st, depth)
+		if s, ok := any(k).(String); ok {
+			rbJSONStringTo(st, string(s))
+		} else {
+			rbJSONStringTo(st, string(rbToS(k)))
+		}
+		st.buf = append(st.buf, st.spaceBefore...)
+		st.buf = append(st.buf, ':')
+		st.buf = append(st.buf, st.space...)
+		rbJSONValueTo(st, h.vals[k])
 		st.depth = depth
 	}
 	st.depth--
 	if st.objectNl != "" {
-		b.WriteString(st.objectNl)
-		b.WriteString(strings.Repeat(st.indent, st.depth))
+		st.buf = append(st.buf, st.objectNl...)
+		rbJSONIndent(st, st.depth)
 	}
-	b.WriteByte('}')
-	return String(b.String())
+	st.buf = append(st.buf, '}')
 }
 
-// rbJSONString escapes like the json gem's generator: quotes,
+// rbJSONStringTo: not jsontext.AppendQuote (same escapes) because that needs go 1.27 in the generated module (decision 346).
+func rbJSONStringTo(st *rbJSONState, s string) {
+	if st.scriptSafe || st.asciiOnly {
+		st.buf = append(st.buf, rbJSONString(s, st)...)
+		return
+	}
+	b, ok := rbJSONQuoteTo(st.buf, s)
+	if !ok {
+		panic(NewJSON_GeneratorError(Ref(String("source sequence is illegal/malformed utf-8"))))
+	}
+	st.buf = b
+}
+
+const rbJSONHex = "0123456789abcdef"
+
+func rbJSONQuoteTo(dst []byte, s string) ([]byte, bool) {
+	dst = append(dst, '"')
+	start := 0
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c >= utf8.RuneSelf {
+			r, n := utf8.DecodeRuneInString(s[i:])
+			if r == utf8.RuneError && n == 1 {
+				return dst, false
+			}
+			i += n
+			continue
+		}
+		if c >= 0x20 && c != '"' && c != '\\' {
+			i++
+			continue
+		}
+		dst = append(dst, s[start:i]...)
+		switch c {
+		case '"', '\\':
+			dst = append(dst, '\\', c)
+		case '\n':
+			dst = append(dst, '\\', 'n')
+		case '\r':
+			dst = append(dst, '\\', 'r')
+		case '\t':
+			dst = append(dst, '\\', 't')
+		case '\b':
+			dst = append(dst, '\\', 'b')
+		case '\f':
+			dst = append(dst, '\\', 'f')
+		default:
+			dst = append(dst, '\\', 'u', '0', '0', rbJSONHex[c>>4], rbJSONHex[c&0xf])
+		}
+		i++
+		start = i
+	}
+	dst = append(dst, s[start:]...)
+	return append(dst, '"'), true
+}
+
+// rbJSONString is String#to_json: it escapes like the json gem's generator: quotes,
 // backslashes and control characters; "/" and non-ASCII stay as-is
 // unless st asks for script_safe (also U+2028/9) or ascii_only.
 // Invalid UTF-8 is the gem's GeneratorError.
