@@ -926,11 +926,27 @@ func rbCmp[T comparable](a, b T) Integer {
 		if y, ok := any(b).(String); ok {
 			return x.Op_cmp(y)
 		}
+	case Float:
+		if y, ok := any(b).(Float); ok {
+			return x.Op_cmp(y)
+		}
 	}
 	if c, ok := any(a).(interface{ Op_cmp(T) Integer }); ok {
 		return c.Op_cmp(b)
 	}
 	return rbCmpBox(any(a), any(b))
+}
+
+// rbCmpFunc is rbCmp for T, resolved once per sort or min/max scan. A
+// tuple key (sort_by { [a, b] }) reaches its Op_cmp in rbCmp only through
+// an interface, which copies the tuple to the heap on every comparison;
+// its rbCmpPair method value takes both by value instead.
+func rbCmpFunc[T comparable]() func(a, b T) Integer {
+	var z T
+	if c, ok := any(z).(interface{ rbCmpPair(T, T) Integer }); ok {
+		return c.rbCmpPair
+	}
+	return rbCmp[T]
 }
 
 // rbCmpOp is Comparable's op on a `<=>` result c of a against b: MRI's ArgumentError when c is nil (decision 287).

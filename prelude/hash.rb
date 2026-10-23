@@ -110,19 +110,12 @@ class Hash < Object
   # RBS core says `(K) -> V`; with a default that holds. Without one a miss
   # is nil, so V? (decision 5). A default proc is called (self, key), as MRI's.
   #: (K) -> V?
+  # One out-of-line call, so this inlines and the V? it returns stays on the caller's stack.
   def [](k) = %x{
-    v, ok := self.rbGet(k)
-    if !ok {
-      if self.defProc != nil {
-        d := self.defProc(self, k)
-        return &d
-      }
-      if self.hasDef {
-        return &self.defVal
-      }
-      return nil
+    if v, ok := self.rbLookup(k); ok {
+      return &v
     }
-    return &v
+    return nil
   }
 
   #: () -> V?
@@ -190,19 +183,21 @@ class Hash < Object
     if !self.idx.plain {
       k, h, byValue = self.idx.find(k)
     }
-    if _, ok := self.vals[k]; !ok {
+    if self.vals == nil {
+      self.vals = make(map[K]V, 1)
+    }
+    n := len(self.vals)
+    self.vals[k] = v // one map operation: a new key is the length changing
+    if len(self.vals) != n {
       if self.iter > 0 {
+        delete(self.vals, k)
         panic(NewRuntimeError(Ref[String]("can't add a new key into hash during iteration")))
       }
       self.keys = append(self.keys, k)
       if byValue {
         self.idx.add(k, h)
       }
-      if self.vals == nil {
-        self.vals = make(map[K]V, 1)
-      }
     }
-    self.vals[k] = v
     return v}
   end
 

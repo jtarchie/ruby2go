@@ -420,3 +420,33 @@ func rbRangeNoBegin[E comparable](r *Range[E]) {
 		panic(NewTypeError(Ref(String("can't iterate from NilClass"))))
 	}
 }
+
+// rbSizeHint is how many elements x's each yields when that is known
+// without iterating (an Array, a Hash, an Integer Range), else 0: map
+// preallocates its result with it. A range's hint is capped, so a map whose
+// block breaks out early does not allocate the whole range.
+func rbSizeHint(x any) int {
+	switch s := x.(type) {
+	case interface{ rbLen() int }:
+		return s.rbLen()
+	}
+	return 0
+}
+
+func (self *Array[E]) rbLen() int  { return len(self.s) }
+func (self *Hash[K, V]) rbLen() int { return len(self.keys) }
+
+func (self *Range[E]) rbLen() int {
+	b, ok := any(self.b).(Integer)
+	if !ok || self.endless || self.beginless {
+		return 0
+	}
+	e := any(self.e).(Integer)
+	if self.excl {
+		e-- // MinInt..MinInt (excl) wraps to MaxInt: capped below like any huge range
+	}
+	if e < b {
+		return 0
+	}
+	return int(min(uint64(e)-uint64(b), 1<<20-1)) + 1
+}

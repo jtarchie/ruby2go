@@ -29,12 +29,15 @@ module Enumerable
     return a
   }
 
+  # The result is sized up front when the receiver's size is known (rbSizeHint).
   #: [U] () { (E) -> U } -> Array[U]
-  def map
-    out = [] #: Array[U]
-    each { |x| out << yield(x) }
-    out
-  end
+  def map = %x{
+    out := &Array[U]{s: make([]U, 0, rbSizeHint(self))}
+    for x := range self.Each() {
+      out.s = append(out.s, blk(x))
+    }
+    return out
+  }
 
   alias collect map
 
@@ -348,7 +351,8 @@ module Enumerable
     for x := range self.Each() {
       tmp = append(tmp, kv{blk(x), x})
     }
-    rbSortStable(tmp, func(a, b kv) int { return -int(rbCmp(b.k, a.k)) })
+    cmp := rbCmpFunc[K]()
+    rbSortStable(tmp, func(a, b kv) int { return -int(cmp(b.k, a.k)) })
     out := &Array[E]{}
     for _, p := range tmp {
       out.s = append(out.s, p.v)
@@ -362,15 +366,17 @@ module Enumerable
     for x := range self.Each() {
       out.s = append(out.s, x)
     }
-    rbSortStable(out.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    cmp := rbCmpFunc[E]()
+    rbSortStable(out.s, func(a, b E) int { return -int(cmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return out
   }
 
   #: () -> E?
   def min = %x{
     var best *E
+    cmp := rbCmpFunc[E]()
     for x := range self.Each() {
-      if best == nil || rbCmp(*best, x) > 0 { // (best, candidate), as MRI's failure names them
+      if best == nil || cmp(*best, x) > 0 { // (best, candidate), as MRI's failure names them
         x := x
         best = &x
       }
@@ -381,8 +387,9 @@ module Enumerable
   #: () -> E?
   def max = %x{
     var best *E
+    cmp := rbCmpFunc[E]()
     for x := range self.Each() {
-      if best == nil || rbCmp(*best, x) < 0 {
+      if best == nil || cmp(*best, x) < 0 {
         x := x
         best = &x
       }
@@ -409,9 +416,10 @@ module Enumerable
   def min_by = %x{
     var best *E
     var bestK K
+    cmp := rbCmpFunc[K]()
     for x := range self.Each() {
       k := blk(x)
-      if best == nil || rbCmp(bestK, k) > 0 {
+      if best == nil || cmp(bestK, k) > 0 {
         x := x
         best, bestK = &x, k
       }
@@ -423,9 +431,10 @@ module Enumerable
   def max_by = %x{
     var best *E
     var bestK K
+    cmp := rbCmpFunc[K]()
     for x := range self.Each() {
       k := blk(x)
-      if best == nil || rbCmp(bestK, k) < 0 {
+      if best == nil || cmp(bestK, k) < 0 {
         x := x
         best, bestK = &x, k
       }

@@ -367,7 +367,8 @@ class Array < Object
   #: () -> self
   def sort! = %x{
     self.rbCheckFrozen()
-    rbSortStable(self.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    cmp := rbCmpFunc[E]()
+    rbSortStable(self.s, func(a, b E) int { return -int(cmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return self
   }
 
@@ -382,12 +383,13 @@ class Array < Object
   #: [K] () { (E) -> K } -> self
   def sort_by! = %x{
     self.rbCheckFrozen()
-    keys := make(map[int]K, len(self.s))
+    keys := make([]K, len(self.s))
     idx := make([]int, len(self.s))
     for i, x := range self.s {
       idx[i], keys[i] = i, blk(x)
     }
-    rbSortStable(idx, func(a, b int) int { return -int(rbCmp(keys[b], keys[a])) })
+    cmp := rbCmpFunc[K]()
+    rbSortStable(idx, func(a, b int) int { return -int(cmp(keys[b], keys[a])) })
     out := &Array[E]{s: make([]E, len(self.s))}
     for i, j := range idx {
       out.s[i] = self.s[j]

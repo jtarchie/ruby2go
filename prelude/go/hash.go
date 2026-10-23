@@ -115,6 +115,21 @@ func (self *Hash[K, V]) rbGet(k K) (V, bool) {
 	return v, ok
 }
 
+// rbLookup is Hash#[]'s value: the value at k, else the default proc's
+// result or the default value; false only when there is neither. Out of
+// line for the same reason as rbGet: Hash#[] then inlines.
+//
+//go:noinline
+func (self *Hash[K, V]) rbLookup(k K) (V, bool) {
+	if v, ok := self.rbGet(k); ok {
+		return v, true
+	}
+	if self.defProc != nil {
+		return self.defProc(self, k), true
+	}
+	return self.defVal, self.hasDef
+}
+
 // rbKeySet is a set keyed by eql?/hash, as Hash keys are (Array#-, #&).
 type rbKeySet[K comparable] struct {
 	m   map[K]bool

@@ -39,6 +39,7 @@ func (c *Compiler) emitTuples() {
 		c.w("type %s[%s comparable] struct {\n\t%s\n}\n\n", name, strings.Join(tps, ", "), strings.Join(fields, "\n\t"))
 		full := fmt.Sprintf("%s[%s]", name, strings.Join(tps, ", "))
 		c.w("func (t %s) Op_cmp(o %s) Integer {\n\t%s\n\treturn 0\n}\n\n", full, full, strings.Join(cmp, "\n\t"))
+		c.w("func (%s) rbCmpPair(t, o %s) Integer { return t.Op_cmp(o) }\n\n", full, full) // rbCmpFunc: no boxing per comparison
 		c.w("func (t %s) Inspect() String { return \"[\" + %s + \"]\" }\n\n", full, strings.Join(insp, ` + ", " + `))
 		c.w("func (t %s) ToS() String { return t.Inspect() }\n\n", full)
 		c.w("func (t %s) ToJson(state ...any) String { return rbJSONArray([]any{%s}, state) }\n\n", full, strings.Join(vals, ", "))
