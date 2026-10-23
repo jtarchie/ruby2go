@@ -37,6 +37,9 @@ func rbBeginV[T any](body func() T) T { return body() }
 // where the panicking frames are still on the stack, and before
 // rbWrapPanic marks r as rescued (a Go panic is wrapped here first).
 func rbCaptureBacktrace(r any) any {
+	if !rbKeepPCs && !rbFullReport {
+		return r // nothing in this program reads a backtrace: the caller's rbWrapPanic is all a rescue needs
+	}
 	e, ok := r.(ExceptionI)
 	if !ok {
 		r = rbWrapPanic(r)
@@ -53,6 +56,12 @@ func rbCaptureBacktrace(r any) any {
 	x.__pcs = rbPCs{pcs: slices.Clone(buf[:n]), rescued: bool(x.__seen)}
 	return r
 }
+
+// rbKeepPCs is false when the pruned program kept no reader of a backtrace
+// but the uncaught-exception report (which RB2GO_BACKTRACE turns on, and
+// then every rescue captures): the compiler rewrites it after pruning
+// (keepPCs), since runtime.Callers in each rescue costs about a microsecond.
+const rbKeepPCs = true
 
 // rbPCs is the raw capture: the counters, and whether the exception had
 // already passed through a rescue when they were taken (a re-raise, whose

@@ -34,6 +34,40 @@ var stdImports = map[string]string{
 // errPruneIncomplete: a dispatcher became reachable after the tables went out (a type-switch case unlocked late); the caller recompiles emitting every one first.
 var errPruneIncomplete = errors.New("pruning reached dispatchers emitted lazily")
 
+// keepPCs sets rbKeepPCs to false when nothing the pruner kept calls
+// rbBacktrace but rbPrintUncaught, whose full report RB2GO_BACKTRACE turns
+// on at run time (and with it the capture): a rescue then skips
+// runtime.Callers (decision 343).
+func keepPCs(f *ast.File) {
+	read := false
+	var konst *ast.ValueSpec
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			if d.Name.Name == "rbPrintUncaught" || d.Body == nil {
+				continue
+			}
+			ast.Inspect(d.Body, func(n ast.Node) bool {
+				if c, ok := n.(*ast.CallExpr); ok {
+					if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "rbBacktrace" {
+						read = true
+					}
+				}
+				return !read
+			})
+		case *ast.GenDecl:
+			for _, s := range d.Specs {
+				if vs, ok := s.(*ast.ValueSpec); ok && d.Tok == token.CONST && len(vs.Names) == 1 && vs.Names[0].Name == "rbKeepPCs" {
+					konst = vs
+				}
+			}
+		}
+	}
+	if konst != nil && !read {
+		konst.Values = []ast.Expr{ast.NewIdent("false")}
+	}
+}
+
 // addFrameLabels emits rbFrameLabels, the Go function → Ruby label table
 // Exception#backtrace reads (decision 106), when the pruned program kept
 // its reader: one entry per kept function the compiler labelled.
@@ -118,6 +152,9 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 		if env.PruneWhy {
 			p.explain(f, os.Stderr)
 		}
+	}
+	if p != nil {
+		keepPCs(f)
 	}
 	err = addFrameLabels(fset, f, labels)
 	if err != nil {
