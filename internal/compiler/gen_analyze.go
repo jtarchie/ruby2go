@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"cmp"
 	"maps"
 	"slices"
 	"strings"
@@ -205,7 +206,11 @@ func catchCompileError(fn func()) (ce *compileError) {
 // untyped, leaves it untyped.
 func (f *fctx) emptyRefinements() map[localKey]Type {
 	out := map[localKey]Type{}
-	for k, li := range f.locals {
+	// in key order: refineTemplate may request generic instances (decision 308), and their order orders main.go
+	for _, k := range slices.SortedFunc(maps.Keys(f.locals), func(a, b localKey) int {
+		return cmp.Or(cmp.Compare(a.scope, b.scope), strings.Compare(a.name, b.name))
+	}) {
+		li := f.locals[k]
 		if li.seeded {
 			if t := widenContainer(li.typ, li.elems); t != nil {
 				out[k] = t
