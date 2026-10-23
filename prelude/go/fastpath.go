@@ -62,10 +62,17 @@ func rbReadUntil(r *bufio.Reader, want []byte) []byte {
 var rbValidCache atomic.Pointer[string]
 
 // rbValidUTF8 is utf8.ValidString with MRI's cached coderange for the large subject a loop matches again and again: == short-circuits on the same bytes (pointer-equal) and on differing lengths.
+// The cache's store is out of line: taking &s moves s to the heap at entry, which in one function cost every short
+// String a 16-byte allocation that never reached the cache (decision 349).
 func rbValidUTF8(s string) bool {
 	if len(s) < 512 {
 		return utf8.ValidString(s)
 	}
+	return rbValidUTF8Long(s)
+}
+
+//go:noinline
+func rbValidUTF8Long(s string) bool {
 	if p := rbValidCache.Load(); p != nil && *p == s {
 		return true
 	}
