@@ -26,6 +26,7 @@ module Digest
       return self
     }
 
+    # @binary
     #: () -> String
     def digest = %x{ String(rbDigestSum(self.algo, self.buf)) }
 
@@ -57,6 +58,7 @@ module Digest
   class MD5 < Object
     #: () -> Base
     def self.new = Base.__for("MD5")
+    # @binary
     #: (String) -> String
     def self.digest(s) = Base.__for("MD5").update(s).digest
     #: (String) -> String
@@ -70,6 +72,7 @@ module Digest
   class SHA1 < Object
     #: () -> Base
     def self.new = Base.__for("SHA1")
+    # @binary
     #: (String) -> String
     def self.digest(s) = Base.__for("SHA1").update(s).digest
     #: (String) -> String
@@ -83,6 +86,7 @@ module Digest
   class SHA256 < Object
     #: () -> Base
     def self.new = Base.__for("SHA256")
+    # @binary
     #: (String) -> String
     def self.digest(s) = Base.__for("SHA256").update(s).digest
     #: (String) -> String
@@ -96,6 +100,7 @@ module Digest
   class SHA384 < Object
     #: () -> Base
     def self.new = Base.__for("SHA384")
+    # @binary
     #: (String) -> String
     def self.digest(s) = Base.__for("SHA384").update(s).digest
     #: (String) -> String
@@ -109,6 +114,7 @@ module Digest
   class SHA512 < Object
     #: () -> Base
     def self.new = Base.__for("SHA512")
+    # @binary
     #: (String) -> String
     def self.digest(s) = Base.__for("SHA512").update(s).digest
     #: (String) -> String
@@ -130,6 +136,7 @@ module Digest
       panic(NewArgumentError(Ref(String(fmt.Sprintf("unsupported bit length: %d", bitlen)))))
     }
 
+    # @binary
     #: (String) -> String
     def self.digest(s) = Base.__for("SHA256").update(s).digest
     #: (String) -> String

@@ -709,6 +709,7 @@ class File < Object
   }
 
   # read(length): at most length bytes, nil at the end (but "" for 0); nil length reads the rest
+  # @binary
   #: (Integer?) -> String?
   def __read_1(length) = %x{
     self.rbReadable()

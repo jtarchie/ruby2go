@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -171,7 +172,14 @@ func (f *fctx) embeddedConstGroups(file *File, p parser.Node) (int, bool) {
 func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
 	flags := regexFlagsOf(n)
 	src := regexpSource(f.f.text(n.ContentLoc), f.f.text(n.ClosingLoc)[0])
-	goPat, err := rxPrepare(src, flags.extended) // source and inspect keep the spacing; only the matcher drops it
+	pat := src
+	if !n.IsASCII_8BIT() {
+		var bad bool
+		if pat, bad = multibyteEscapes(src); bad {
+			f.errorf(n, "invalid multibyte escape: /%s/ (MRI's SyntaxError; /n matches bytes, decision 352)", src)
+		}
+	}
+	goPat, err := rxPrepare(pat, flags.extended) // source and inspect keep the spacing; only the matcher drops it
 	if err == nil {
 		var rx *rxRegexp
 		rx, err = rxCompile(flags.goPrefix() + goPat)
@@ -191,6 +199,45 @@ func (f *fctx) genStaticRegexp(n *parser.RegularExpressionNode) expr {
 		f.c.pkgVars = append(f.c.pkgVars, "var "+name+" = rbRegexpNew("+args+")")
 	}
 	return expr{code: name, typ: f.cls("Regexp")}
+}
+
+// multibyteEscapes is src with each run of \xHH escapes past 0x7F that is valid UTF-8 written as its characters, as
+// MRI reads `/\xc3\xa9/` (Go's \xC3 is U+00C3); bad reports a run that is not valid UTF-8 (`/\xff/`), which MRI
+// rejects without /n.
+func multibyteEscapes(src string) (string, bool) {
+	var b strings.Builder
+	var run []byte
+	bad := false
+	flush := func() {
+		switch {
+		case len(run) == 0:
+		case utf8.Valid(run):
+			b.WriteString(regexp.QuoteMeta(string(run)))
+		default:
+			bad = true
+		}
+		run = run[:0]
+	}
+	for i := 0; i < len(src); i++ {
+		if src[i] != '\\' || i+1 >= len(src) {
+			flush()
+			b.WriteByte(src[i])
+			continue
+		}
+		if src[i+1] == 'x' && i+3 < len(src) {
+			v, err := strconv.ParseUint(src[i+2:i+4], 16, 8)
+			if err == nil && v >= 0x80 {
+				run = append(run, byte(v))
+				i += 3
+				continue
+			}
+		}
+		flush()
+		b.WriteString(src[i : i+2]) // the escaped character
+		i++
+	}
+	flush()
+	return b.String(), bad
 }
 
 // genRegexp renders a regexp literal. Static ones are validated now and

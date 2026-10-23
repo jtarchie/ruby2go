@@ -62,6 +62,7 @@ class String < Object
   #: (String) -> String
   def +(other) = %x{ rbNewStr(self, rbNewStr(other, String(rbStrCat(string(self), string(other))))) }
 
+  # @binary self
   #: (Integer) -> String
   def *(n) = %x{
     if n < 0 {

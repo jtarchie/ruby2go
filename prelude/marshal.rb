@@ -5,6 +5,7 @@ module Marshal
   MAJOR_VERSION = 4 #: Integer
   MINOR_VERSION = 8 #: Integer
 
+  # @binary
   #: (untyped) -> String
   def self.dump(obj) = %x{ rbMarshalDump(obj, -1) }
 

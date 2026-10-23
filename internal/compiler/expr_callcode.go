@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -201,6 +202,13 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 			out.binDeps = recv.binDeps
 		}
 	}
+	if recv.bin && e.M.Name == "+" && isClass(out.typ, "String") && len(args) == 1 { // bin + bin, or + ASCII text: binary, as MRI
+		var a expr
+		f.probe(func() { a = f.genExpr(args[0], nil) })
+		if s, ok := args[0].(*parser.StringNode); a.bin || ok && isASCII(s.Unescaped.Value) {
+			out.bin, out.binDeps = true, append(slices.Clone(recv.binDeps), a.binDeps...)
+		}
+	}
 	return out
 }
 
@@ -220,6 +228,13 @@ func (f *fctx) binTwin(m *Method, recv expr, args []parser.Node) *entry {
 	}
 	switch {
 	case recv.bin && c.C.RubyName == "String":
+	case m.Name == "p" && m.Owner != nil && m.Owner.RubyName == "Kernel" && len(args) == 1:
+		var a expr
+		f.probe(func() { a = f.genExpr(args[0], nil) })
+		if !a.bin {
+			return nil
+		}
+		return c.C.lookup(base)
 	case c.C.RubyName == "Regexp" && len(args) == 1 && binRegexpTwins[m.Name]:
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
@@ -236,6 +251,17 @@ func (f *fctx) binTwin(m *Method, recv expr, args []parser.Node) *entry {
 	return nil
 }
 
+// callTwin is the twin a call takes instead of e: its overload (decision 12), or a binary String's (decision 352).
+func (f *fctx) callTwin(e *entry, recv expr, args []parser.Node, block parser.Node) *entry {
+	f.curBlock = block
+	o := f.overload(e, recv.typ, args)
+	f.curBlock = nil
+	if o == nil {
+		o = f.binTwin(e.M, recv, args)
+	}
+	return o
+}
+
 func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	m := e.M
 	f.c.inferRet(m)
@@ -245,13 +271,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	if r, ok := f.gemCallForm(n, e, recv, args, block); ok {
 		return r
 	}
-	f.curBlock = block
-	o := f.overload(e, recv.typ, args)
-	f.curBlock = nil
-	if o != nil {
-		return f.callEntry(n, o, recv, args, block)
-	}
-	if o := f.binTwin(m, recv, args); o != nil {
+	if o := f.callTwin(e, recv, args, block); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
 	env := f.callEnv(n, e, recv)
@@ -845,4 +865,8 @@ func (f *fctx) gemCallForm(n parser.Node, e *entry, recv expr, args []parser.Nod
 		return f.genDynCall(n, expr{code: f.coerce(n, recv, TAny{}), typ: TAny{}}, e.M.Name, args), true
 	}
 	return expr{}, false
+}
+
+func isASCII(s string) bool {
+	return !strings.ContainsFunc(s, func(r rune) bool { return r >= utf8.RuneSelf })
 }

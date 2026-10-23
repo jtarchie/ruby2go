@@ -185,6 +185,13 @@ module Kernel
     nil
   end
 
+  # `p bin`: a binary String's inspect (decision 352).
+  #: (String) -> nil
+  def __bin_p(s)
+    __write(s.__bin_inspect + "\n")
+    nil
+  end
+
   #: (String, *untyped) -> String
   def format(fmt, *args) = %x{ String(rbFormat(string(fmt), rest_)) }
 

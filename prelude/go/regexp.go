@@ -230,7 +230,7 @@ func rbFindLoc(r *Regexp, s string) []int {
 // rbFindLocBin is rbFindLoc for a String the compiler knows is binary (decision 352): its bytes past ASCII are
 // characters of their value even where they form valid UTF-8 ("é".b is two).
 func rbFindLocBin(r *Regexp, s string) []int {
-	if !strings.ContainsFunc(s, func(c rune) bool { return c >= utf8.RuneSelf }) {
+	if !rbHighBytes(r, s) {
 		return r.re.FindStringSubmatchIndex(s)
 	}
 	t, back := rbLatin1(s)
@@ -241,7 +241,7 @@ func rbFindLocBin(r *Regexp, s string) []int {
 
 // rbFindAllBin is rbFindAll for a String the compiler knows is binary (decision 352), as rbFindLocBin is rbFindLoc.
 func rbFindAllBin(r *Regexp, s string, n int) [][]int {
-	if !strings.ContainsFunc(s, func(c rune) bool { return c >= utf8.RuneSelf }) {
+	if !rbHighBytes(r, s) {
 		return r.re.FindAllStringSubmatchIndex(s, n)
 	}
 	t, back := rbLatin1(s)
@@ -338,6 +338,21 @@ func rbSplitLocs(s string, locs [][]int, lim int, bin bool) *Array[String] {
 	}
 	return out
 }
+
+// rbHighBytes reports whether binary s has a byte past ASCII, so a match reads it byte by byte; then a Regexp fixed to
+// UTF-8 (a non-ASCII character, \u or a \x escape past 0x7F in its source, without /n) raises MRI's
+// Encoding::CompatibilityError.
+func rbHighBytes(r *Regexp, s string) bool {
+	if !strings.ContainsFunc(s, func(c rune) bool { return c >= utf8.RuneSelf }) {
+		return false
+	}
+	if !strings.ContainsRune(r.opts, 'n') && (strings.ContainsFunc(r.src, func(c rune) bool { return c >= utf8.RuneSelf }) || strings.Contains(r.src, `\u`) || rbHighEscape.MatchString(r.src)) {
+		panic(NewEncoding_CompatibilityError(Ref(String("incompatible encoding regexp match (UTF-8 regexp with BINARY (ASCII-8BIT) string)"))))
+	}
+	return true
+}
+
+var rbHighEscape = regexp.MustCompile(`\\x[89A-Fa-f][0-9A-Fa-f]`)
 
 // rbLatin1 reads each byte of s as the character of its value, for a binary Regexp (/n) on a String that is not valid
 // UTF-8; back[j] is the byte of s where offset j of the result starts.

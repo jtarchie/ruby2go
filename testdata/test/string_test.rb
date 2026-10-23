@@ -3,6 +3,9 @@
 require "minitest/autorun"
 require "English"
 require "stringio"
+require "digest"
+require "securerandom"
+require "zlib"
 
 # Helpers for the checks that were testdata/run/string_split.rb.
 #: (String) -> Integer
@@ -1745,6 +1748,25 @@ B
       data = File.binread(path)
       File.delete(path)
       assert_equal ["c3a921", 3, "%C3%A9!"], [data.unpack1("H*"), data.size, data.gsub(/[^!]/) { |m| "%%%02X" % m.ord }]
+    end
+
+    def test_binary_flavor_producers
+      s = "é".b
+      assert_equal [3, 4, 4, 4], [(s + "!").size, (s + s).size, (s * 2).size, ("é".b + "é".b).size]
+      assert_equal [32, 32], [Digest::SHA256.digest("a").size, Digest::SHA256.new.update("a").digest.size]
+      assert_equal [Encoding::ASCII_8BIT] * 3, [Marshal.dump("é").encoding, SecureRandom.random_bytes(4).encoding, Random.new(1).bytes(3).encoding]
+      assert_equal [Encoding::ASCII_8BIT, 2], [Zlib::Deflate.deflate("aaaa").encoding, StringIO.new("é").read(2).size]
+    end
+
+    def test_binary_flavor_utf8_regexp_raises
+      errors = [-> { "é".b =~ /é/ }, -> { "é".b.gsub(/\u00e9/, "x") }, -> { "é".b.scan(/\xc3\xa9/) }].map do |f|
+        f.call
+        nil
+      rescue Encoding::CompatibilityError => e
+        e.class
+      end
+      assert_equal [Encoding::CompatibilityError] * 3, errors
+      assert_equal [nil, 1, 0, ["a", "é"]], ["ab".b =~ /é/, "é".b =~ /\xa9/n, "é" =~ /[\xc3\xa9]/, "aé".scan(/\xc3\xa9|a/)]
     end
   end
 end

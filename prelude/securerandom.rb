@@ -4,6 +4,7 @@
 # SecureRandom on crypto/rand. Loads only on a literal `require "securerandom"` (decision 155).
 
 module SecureRandom
+  # @binary
   #: (?Integer) -> String
   def self.random_bytes(n = 16) = %x{
     if n < 0 {

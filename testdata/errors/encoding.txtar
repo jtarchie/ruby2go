@@ -41,3 +41,6 @@ puts s
 s = "é"
 s.unicode_normalize!
 puts s
+-- regexp_high_escape.rb --
+# error: main.rb:2: invalid multibyte escape: /a\xff/
+p(/a\xff/ =~ "a")

@@ -33,6 +33,7 @@ module Zlib
   end
 
   class Deflate < Object
+    # @binary
     #: (String, ?Integer) -> String
     def self.deflate(str, level = Zlib::DEFAULT_COMPRESSION) = %x{
       var buf bytes.Buffer
@@ -63,12 +64,14 @@ module Zlib
     }
   end
 
+  # @binary
   #: (String, ?Integer) -> String
   def self.deflate(str, level = Zlib::DEFAULT_COMPRESSION) = Deflate.deflate(str, level)
 
   #: (String) -> String
   def self.inflate(str) = Inflate.inflate(str)
 
+  # @binary
   #: (String, ?Integer) -> String
   def self.gzip(str, level = Zlib::DEFAULT_COMPRESSION) = %x{
     var buf bytes.Buffer

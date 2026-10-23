@@ -53,6 +53,7 @@ class Random < Object
     return b + Integer(self.mt.upto(int(e-b)))
   }
 
+  # @binary
   #: (Integer) -> String
   def bytes(n) = %x{
     out := make([]byte, 0, n+4)

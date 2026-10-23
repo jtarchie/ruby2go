@@ -195,3 +195,8 @@ def string_two_values
   return 1, 2
 end
 puts string_two_values.inspect
+
+# p of a binary String shows its bytes (decision 352)
+string_bin = "é".b
+p string_bin
+p "é".b, "é"

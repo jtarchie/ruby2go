@@ -219,10 +219,12 @@ class IO < Object
   }
 
   # What is there to read now, up to maxlen bytes; IO::EAGAINWaitReadable when nothing is, EOFError at the end.
+  # @binary
   #: (Integer) -> String
   def read_nonblock(maxlen) = %x{ return rbReadNonblock(self, int(maxlen), true) }
 
   # Up to maxlen bytes, blocking only until some are there; EOFError at the end.
+  # @binary
   #: (Integer) -> String
   def readpartial(maxlen) = %x{ return rbReadNonblock(self, int(maxlen), false) }
 
@@ -438,6 +440,7 @@ class IO < Object
   }
 
   # read(length): at most length bytes, nil at the end ("" for 0); nil reads the rest (as File#read's).
+  # @binary
   #: (Integer?) -> String?
   def __read_1(length) = %x{
     r := *self.rbReader()

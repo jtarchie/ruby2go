@@ -397,7 +397,7 @@ func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	f.emit("if %s == nil {", code)
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
-	return expr{code: "(*" + code + ")", typ: elem}
+	return expr{code: "(*" + code + ")", typ: elem, bin: recv.bin, binDeps: recv.binDeps}
 }
 
 // nilFreeze is freeze/frozen?/dup/clone on a T?: nil's own answers (itself, true, itself), T's otherwise.

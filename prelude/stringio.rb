@@ -101,6 +101,7 @@ class StringIO < Object
     return s
   }
 
+  # @binary
   #: (Integer) -> String?
   def __read_1(n) = %x{ // nil at EOF, as MRI's read(n)
     self.rbReadable()
