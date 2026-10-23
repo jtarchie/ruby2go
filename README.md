@@ -258,7 +258,7 @@ run on the regexp2 backtracker (decisions 242, 332, 347).
 
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one
-ulp and neither is uniquely correct ([decision 43](docs/design.md)).
+ulp and neither is uniquely correct ([decision 43](docs/decisions/043.md)).
 Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 

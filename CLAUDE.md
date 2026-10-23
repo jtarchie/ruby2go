@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md is the design record. Its numbered "Open decisions" list is binding: read the relevant entry before changing behavior, and add or amend an entry when a new decision is made. New decisions are appended at the END of design.md with the next number (last: 351); when one amends an older entry, also add a "see also" pointer inside the old entry. The index table near the top of design.md is generated: `scripts/design-index` rewrites the block between its `design-index` markers (run it after adding or retitling a decision).
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md holds the goals and the index of numbered decisions, one file each in `docs/decisions/NNN.md` ("decision N" anywhere means that file; docs/history.md is the early walkthrough, superseded where they disagree). The decisions are binding: read the relevant file before changing behavior, and add or amend one when a new decision is made. A new decision is the next-numbered file (last: 351); when one amends an older decision, also add a "see also" pointer inside the old file. The index table in design.md is generated: run `scripts/design-index` after adding or retitling a decision (`TestDesignIndex` fails when it is stale).
 
 ## Commands
 
@@ -83,7 +83,7 @@ Smaller cases go in `testdata/`:
 - `gems/<name>/`: vendored pure-Ruby gems as git submodules, mirrored into `vendored/<name>/` by `scripts/vendor-gems` (committed; `TestVendoredMirror` fails on drift) so the embed works from the module proxy; they run on MRI unchanged and are embedded and compiled as user code when required (`vendoredLibs` in `libs.go`, decision 328); `TestVendoredGemsMRI` runs each one's `test/*_test.rb` under MRI with its lib on the load path. sqlite3-fiddle (github.com/jtarchie/sqlite3-fiddle) is the first; its CI also compiles its test with rb2go.
 
 
-### Key representation rules (details in docs/design.md decisions)
+### Key representation rules (details in docs/decisions/)
 
 - `T?` → `*T` uniformly. `Opt()`/`Ref()` at `untyped`/optional boundaries.
 - Methods on struct classes/modules → free funcs `Owner_Name[Self]` + forwarding methods on each concrete class (Go embedding would bind `self` wrongly); a class body whose signature names no `Self` takes `self OwnerI` instead (decision 210). Module constraints are derived from what the module body calls on `self`.
