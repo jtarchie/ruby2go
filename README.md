@@ -233,22 +233,22 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.016s | 16.6x faster |
-| `Hash` counting, 500k | 0.11s | 0.024s | 4.6x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.025s | 5.7x faster |
-| string build/split, 100k | 0.11s | 0.032s | 3.4x faster |
-| `Math.sin`/`cos`, 200k | 0.08s | 0.008s | 10.9x faster |
-| classes, polymorphic calls, Comparable | 0.26s | 0.041s | 6.4x faster |
-| blocks, procs, lambdas, enumerator chains | 0.36s | 0.137s | 2.6x faster |
-| raise/rescue/retry, catch/throw | 0.28s | 0.168s | 1.7x faster |
-| regexp match/gsub/scan/tr, StringScanner | 0.78s | 0.386s | 2.0x faster |
-| sort_by/group_by/tally, Set, Struct | 0.58s | 0.192s | 3.0x faster |
-| format, StringIO, case mapping | 0.49s | 0.256s | 1.9x faster |
-| JSON generate + parse | 0.14s | 0.192s | 1.4x slower |
-| pairing_heap gem: Dijkstra + heapsort | 0.69s | 0.294s | 2.3x faster |
-| liquid gem: a template rendered 400 times | 0.38s | 0.184s | 2.0x faster |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.46s | 0.459s | even |
-| total | 5.12s | 2.415s | 2.1x faster |
+| `fib(32)` | 0.27s | 0.018s | 14.6x faster |
+| `Hash` counting, 500k | 0.11s | 0.017s | 6.4x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.021s | 6.9x faster |
+| string build/split, 100k | 0.11s | 0.034s | 3.2x faster |
+| `Math.sin`/`cos`, 200k | 0.09s | 0.010s | 8.5x faster |
+| classes, polymorphic calls, Comparable | 0.26s | 0.043s | 6.1x faster |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.116s | 3.1x faster |
+| raise/rescue/retry, catch/throw | 0.28s | 0.118s | 2.4x faster |
+| regexp match/gsub/scan/tr, StringScanner | 0.77s | 0.382s | 2.0x faster |
+| sort_by/group_by/tally, Set, Struct | 0.56s | 0.149s | 3.7x faster |
+| format, StringIO, case mapping | 0.49s | 0.239s | 2.1x faster |
+| JSON generate + parse | 0.14s | 0.187s | 1.4x slower |
+| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.163s | 4.1x faster |
+| liquid gem: a template rendered 400 times | 0.37s | 0.168s | 2.2x faster |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.432s | even |
+| total | 5.05s | 2.097s | 2.4x faster |
 
 MRI keeps two workloads. Its `json` is a C extension; rb2go's generator
 builds a String per nested value, as the `to_json` protocol does. kramdown
