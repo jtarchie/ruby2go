@@ -6,6 +6,7 @@ package prelude
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -32,7 +33,7 @@ func rbPackParse(format, what string) []rbPackDir {
 		d := format[i]
 		i++
 		switch d {
-		case ' ', '\t', '\n', '\v', '\f', '\r', 0:
+		case ' ', '\t', '\n', '\v', '\f', '\r':
 			continue
 		case '#': // a comment to the end of the line, as MRI's
 			for i < len(format) && format[i] != '\n' {
@@ -44,7 +45,15 @@ func rbPackParse(format, what string) []rbPackDir {
 			panic(NewArgumentError(Ref(String("rb2go: " + what + " directive '" + string(d) + "' (a C pointer) is not supported"))))
 		}
 		if strings.IndexByte("aAZBbHhuMmUwCcSsLlQqJjIinNvVDdFfEeGgxX@", d) < 0 {
-			panic(NewArgumentError(Ref(String("unknown " + what + " directive '" + string(d) + "' in '" + format + "'"))))
+			shown := string(d)
+			if d < ' ' || d > '~' { // MRI shows an unprintable byte as \xNN
+				shown = fmt.Sprintf("\\x%02x", d)
+			}
+			shownFmt := format
+			if strings.ContainsFunc(format, func(r rune) bool { return r < ' ' || r == 0x7f }) {
+				shownFmt = rbPackEscape(format)
+			}
+			panic(NewArgumentError(Ref(String("unknown " + what + " directive '" + shown + "' in '" + shownFmt + "'"))))
 		}
 		dir := rbPackDir{d: d, count: 1}
 		for i < len(format) && strings.IndexByte("<>_!", format[i]) >= 0 {
@@ -820,4 +829,24 @@ func rbUnpackB64(s string) (string, int) {
 		b = append(b, byte(q[1]<<4|q[2]>>2))
 	}
 	return string(b), i
+}
+
+// rbPackEscape is MRI's rb_str_escape, which names an unknown directive's format when it holds an unprintable byte.
+func rbPackEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == 0:
+			b.WriteString(`\0`)
+		case r == 0x7f:
+			b.WriteString(`\c?`)
+		case strings.ContainsRune("\n\r\t\f\v\b\a\x1b", r):
+			b.WriteString(map[rune]string{'\n': `\n`, '\r': `\r`, '\t': `\t`, '\f': `\f`, '\v': `\v`, '\b': `\b`, '\a': `\a`, 0x1b: `\e`}[r])
+		case r < ' ' || r > '~':
+			fmt.Fprintf(&b, `\u%04X`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

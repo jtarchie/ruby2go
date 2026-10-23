@@ -264,6 +264,13 @@ module EncodingTests
       assert_equal "pack(U): value out of range", assert_raises(RangeError) { [0x80000000].pack("U") }.message
     end
 
+    def test_pack_nul_directive
+      assert_equal "unknown pack directive '\\x00' in 'C\\0C'", assert_raises(ArgumentError) { [1, 2].pack("C\0C") }.message
+      assert_equal "unknown unpack directive '\\x00' in 'C\\0C'", assert_raises(ArgumentError) { "ab".unpack("C\0C") }.message
+      assert_equal "unknown pack directive '\\x01' in 'C\\u0001Z\\0\\u00E9'", assert_raises(ArgumentError) { [1].pack("C\x01Z\0é") }.message
+      assert_equal [97, 98], "ab".unpack("C C")
+    end
+
     def test_unicode_normalize
       assert_equal 6, "café".unicode_normalize(:nfd).bytesize
       assert_equal [65, 778], "Å".unicode_normalize(:nfd).codepoints
