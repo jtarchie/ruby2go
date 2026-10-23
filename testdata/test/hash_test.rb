@@ -2554,4 +2554,104 @@ module HashTests
       assert_equal 1, big[3]
     end
   end
+
+  # Fused `h[k] op= v` and `h[k] = (h[k] || d) op v` (decision 350): a hit updates in place, a miss is the unfused path.
+  class HashFusedTest < Minitest::Test
+    class Tally
+      def initialize
+        @counts = {} #: Hash[String, Integer]
+      end
+
+      #: (String) -> Integer
+      def add(w) = @counts[w] = (@counts[w] || 0) + 1
+
+      #: () -> Hash[String, Integer]
+      def counts = @counts
+    end
+
+    def test_values_and_results
+      h = { a: 1, b: 2 } #: Hash[Symbol, Integer]
+      x = (h[:a] += 5)
+      assert_equal 6, x
+      y = h[:b] = (h[:b] || 0) * 10
+      assert_equal 20, y
+      h[:c] = (h[:c] || 7) - 1
+      assert_equal({ a: 6, b: 20, c: 6 }, h)
+      f = { a: 1.5 } #: Hash[Symbol, Float]
+      f[:a] *= 2
+      f[:a] /= 0
+      assert_equal Float::INFINITY, f[:a]
+      s = { a: "x" } #: Hash[Symbol, String]
+      s[:a] += "y"
+      s[:b] = (s[:b] || "<") + "z"
+      assert_equal({ a: "xy", b: "<z" }, s)
+      m = { a: 17 } #: Hash[Symbol, Integer]
+      m[:a] %= 5
+      m[:a] -= 10
+      assert_equal(-8, m[:a])
+      t = Tally.new
+      %w[x y x z x].each { |w| t.add(w) }
+      assert_equal({ "x" => 3, "y" => 1, "z" => 1 }, t.counts)
+    end
+
+    def test_defaults_and_order
+      d = Hash.new(5) #: Hash[Symbol, Integer]
+      d[:x] -= 1
+      d[:y] += 1
+      d[:x] -= 1
+      assert_equal [[:x, 3], [:y, 6]], d.to_a
+      calls = [] #: Array[Symbol]
+      pr = Hash.new { |hash, k| calls << k; hash[k] = 10 } #: Hash[Symbol, Integer]
+      pr[:a] += 1
+      pr[:a] += 1
+      pr[:b] += 2
+      assert_equal({ a: 12, b: 12 }, pr)
+      assert_equal [:a, :b], calls
+    end
+
+    def test_errors_leave_the_entry
+      h = { a: 1 } #: Hash[Symbol, Integer]
+      zero = 0
+      raised = false
+      begin
+        h[:a] /= zero
+      rescue ZeroDivisionError
+        raised = true
+      end
+      assert raised
+      assert_equal 1, h[:a]
+      h.freeze
+      frozen = false
+      begin
+        h[:a] += 1
+      rescue FrozenError
+        frozen = true
+      end
+      assert frozen
+      frozen = false
+      begin
+        h[:a] = (h[:a] || 0) + 1
+      rescue FrozenError
+        frozen = true
+      end
+      assert frozen
+      assert_equal({ a: 1 }, h)
+    end
+
+    def test_during_each
+      h = Hash.new(0) #: Hash[Symbol, Integer]
+      h[:a] = 1
+      h[:b] = 2
+      h.each { |k, _v| h[k] += 10 }
+      assert_equal({ a: 11, b: 12 }, h)
+      raised = false
+      begin
+        h.each { |_k, _v| h[:c] += 1 }
+      rescue RuntimeError
+        raised = true
+      end
+      assert raised
+      assert_equal [:a, :b], h.keys
+    end
+  end
 end

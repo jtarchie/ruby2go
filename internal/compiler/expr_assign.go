@@ -226,10 +226,16 @@ func (f *fctx) genIndexOrWrite(n *parser.IndexOrWriteNode) expr {
 func (f *fctx) genIndexOpWrite(n *parser.IndexOperatorWriteNode) expr {
 	f.noteIndexWrite(n.Receiver, n.Arguments, nil)
 	recv, as := f.indexOperands(n, n.Receiver, n.Arguments, n.Block, n.IsSAFE_NAVIGATION())
-	val := f.genOp(n, f.genMethodCall(n, recv, "[]", as, nil), n.BinaryOperator, n.Value)
-	val.code = f.pinSimple(val.code)
-	f.emitExprStmt(n, f.genMethodCall(n, recv, "[]=", append(slices.Clone(as), &exprNode{Node: n.Value, e: val}), nil))
-	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
+	unfused := func() expr {
+		val := f.genOp(n, f.genMethodCall(n, recv, "[]", as, nil), n.BinaryOperator, n.Value)
+		val.code = f.pinSimple(val.code)
+		f.emitExprStmt(n, f.genMethodCall(n, recv, "[]=", append(slices.Clone(as), &exprNode{Node: n.Value, e: val}), nil))
+		return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
+	}
+	if ht, ok := f.fuseHash(recv.typ); ok && len(as) == 1 && f.fuseResult(n, ht.Args[1], n.BinaryOperator, n.Value) {
+		return f.genFusedSlot(n, recv, ht, as[0].(*exprNode).e, n.BinaryOperator, n.Value, unfused) // the receiver and key evaluate once either way
+	}
+	return unfused()
 }
 
 // attrRecv: the reader and the writer share one evaluation of the receiver.

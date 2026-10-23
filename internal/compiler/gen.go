@@ -12,6 +12,7 @@ import (
 type fctx struct {
 	aliasSrc       map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)
 	noStrIndexSet  bool                          // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
+	noFuse         *parser.CallNode              // the `h[k] = (h[k] || d) op v` whose miss arm is generating unfused (genFusedIndexAssign)
 	superTarget    *Method                       // a gem super call's target while its arguments generate: they type none of its parameters
 	probeDepth     int                           // inside probe: output is discarded
 	unionArm       int                           // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)

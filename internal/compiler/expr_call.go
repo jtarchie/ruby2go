@@ -93,6 +93,9 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
+	if e, ok := f.genFusedIndexAssign(n); ok {
+		return e
+	}
 	if e, ok := f.genCallRewrite(n, expected); ok {
 		return e
 	}
