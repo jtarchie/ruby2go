@@ -152,3 +152,37 @@ module RegexpTests
     end
   end
 end
+
+module RegexpTests
+  # A pattern that is one ASCII class, a class with +, or an ASCII literal matches without RE2's machinery (decision 347):
+  # every String and StringScanner entry point answers as MRI does, on ASCII, multibyte and empty subjects.
+  class RegexpFastPathTest < Minitest::Test
+    def test_simple_patterns_everywhere
+      s = "ab12 é日9 x=1/y?z"
+      assert_equal "ab23 é日0 x=2/y?z", s.gsub(/\d/) { |d| ((d.to_i + 1) % 10).to_s }
+      assert_equal ["12", "9", "1"], s.scan(/\d+/)
+      assert_equal ["ab12", "é日9", "x", "1", "y", "z"], s.split(/[\s\/?=]+/)
+      assert_equal 2, s =~ /\d/
+      assert_equal 10, s =~ /=1/ # a character index, not a byte offset
+      assert s.match?(/日9/)
+      refute "".match?(/\d/)
+      assert_nil "abc" =~ /\d+?x/
+      assert_equal "a-b-c", "a b c".gsub(/ /, "-")
+      assert_equal ["1", "2"], "1a2".scan(/\d/)
+      assert_equal 1, "aab".index(/ab/)
+      assert_equal ["ab", "12"], "ab12".match(/\A[a-z]+/).to_a + [$~.post_match]
+      assert_equal "X日X", "a日b".gsub(/[ab]/, "X")
+    end
+
+    def test_scanner_with_simple_patterns
+      ss = StringScanner.new("let x = 10 + foo;")
+      toks = [] #: Array[String]
+      until ss.eos?
+        next if ss.skip(/\s+/)
+        t = ss.scan(/\d+/) || ss.scan(/[a-z_]+/) || ss.scan(/[=+;]/) || ss.getch
+        toks << t if t
+      end
+      assert_equal ["let", "x", "=", "10", "+", "foo", ";"], toks
+    end
+  end
+end

@@ -439,10 +439,125 @@ type rxRegexp struct {
 	*regexp.Regexp
 	prog        *syntax.Prog
 	caret, word bool
-	empty       bool   // can match the empty string: Ruby's scan keeps an empty match right after a match, RE2's FindAll drops it
-	unsupported string // a gem's pattern RE2 cannot match: built anyway, it raises when used (rbRegexpLenient)
-	alt         rxAlt  // a pattern RE2 cannot match (lookaround, backreferences, \Z): regexp2's (decision 242)
-	pattern     string // alt's pattern, for String
+	empty       bool    // can match the empty string: Ruby's scan keeps an empty match right after a match, RE2's FindAll drops it
+	unsupported string  // a gem's pattern RE2 cannot match: built anyway, it raises when used (rbRegexpLenient)
+	alt         rxAlt   // a pattern RE2 cannot match (lookaround, backreferences, \Z): regexp2's (decision 242)
+	pattern     string  // alt's pattern, for String
+	fast        *rxFast // a pattern simple enough to match without RE2's machinery, or nil (decision 347)
+}
+
+// rxFast matches a pattern that is one ASCII character class, such a class with +, or a case-sensitive ASCII
+// literal, each optionally \A-anchored, with a byte table or strings.Index. Go's regexp runs even /\d/ through its
+// backtracker, at microseconds a line. Exact: an ASCII byte of a UTF-8 string is always a whole character, and one
+// of an invalid string is a character to RE2 too; the patterns have no groups, cannot match empty, and use no
+// assertion Onigmo reads differently (rxNew sets it only when prog is nil).
+type rxFast struct {
+	set      [256]bool
+	plus     bool
+	lit      string // non-empty: a literal
+	anchored bool
+}
+
+// rxFastOf is t's rxFast, or nil when t is not that simple.
+func rxFastOf(t *syntax.Regexp) *rxFast {
+	f := &rxFast{}
+	if t.Op == syntax.OpConcat && len(t.Sub) == 2 && t.Sub[0].Op == syntax.OpBeginText {
+		f.anchored = true
+		t = t.Sub[1]
+	}
+	if t.Op == syntax.OpPlus {
+		if t.Flags&syntax.NonGreedy != 0 { // \d+? matches one character
+			return nil
+		}
+		f.plus = true
+		t = t.Sub[0]
+	}
+	if t.Op == syntax.OpCharClass {
+		for i := 0; i+1 < len(t.Rune); i += 2 {
+			lo, hi := t.Rune[i], t.Rune[i+1]
+			if hi >= utf8.RuneSelf {
+				return nil
+			}
+			for c := lo; c <= hi; c++ {
+				f.set[c] = true
+			}
+		}
+		return f
+	}
+	if t.Op != syntax.OpLiteral || f.plus || t.Flags&syntax.FoldCase != 0 || len(t.Rune) == 0 {
+		return nil
+	}
+	for _, c := range t.Rune {
+		if c >= utf8.RuneSelf {
+			return nil
+		}
+	}
+	f.lit = string(t.Rune)
+	return f
+}
+
+// at is the leftmost match at byte from or later, as start and end, or -1, -1.
+func (f *rxFast) at(s string, from int) (int, int) {
+	if f.anchored && from != 0 {
+		return -1, -1
+	}
+	if f.lit != "" {
+		if f.anchored {
+			if strings.HasPrefix(s, f.lit) {
+				return 0, len(f.lit)
+			}
+			return -1, -1
+		}
+		i := strings.Index(s[from:], f.lit)
+		if i < 0 {
+			return -1, -1
+		}
+		return from + i, from + i + len(f.lit)
+	}
+	i := from
+	for i < len(s) && !f.set[s[i]] {
+		if f.anchored {
+			return -1, -1
+		}
+		i++
+	}
+	if i == len(s) {
+		return -1, -1
+	}
+	j := i + 1
+	for f.plus && j < len(s) && f.set[s[j]] {
+		j++
+	}
+	return i, j
+}
+
+// find is FindStringSubmatchIndex's answer: the match, or nil.
+func (f *rxFast) find(s string) []int {
+	if i, j := f.at(s, 0); i >= 0 {
+		return []int{i, j}
+	}
+	return nil
+}
+
+// findAll is FindAllStringSubmatchIndex's answer: up to n matches (all when n < 0), each searched from the last's end.
+func (f *rxFast) findAll(s string, n int) [][]int {
+	var out [][]int
+	var buf []int
+	for from := 0; n < 0 || len(out) < n; {
+		i, j := f.at(s, from)
+		if i < 0 {
+			break
+		}
+		if len(buf) < 2 {
+			buf = make([]int, 32) // the locations share backing arrays, as Go's FindAll does
+		}
+		loc := buf[:2:2]
+		buf = buf[2:]
+		loc[0], loc[1] = i, j
+		out = append(out, loc)
+		from = j
+	}
+	return out
 }
 
 // rxAlt is a backtracking engine for what RE2 cannot express. Only programs that may need it load one
@@ -742,6 +857,9 @@ func (r *rxRegexp) String() string {
 
 func (r *rxRegexp) FindAllStringIndex(s string, n int) [][]int {
 	r.check()
+	if r.fast != nil {
+		return r.fast.findAll(s, n)
+	}
 	if r.alt == nil && r.prog == nil {
 		return r.Regexp.FindAllStringIndex(s, n)
 	}
@@ -757,6 +875,9 @@ func (r *rxRegexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
 	r.check()
 	if r.alt != nil {
 		return r.altAll(s, n)
+	}
+	if r.fast != nil {
+		return r.fast.findAll(s, n)
 	}
 	if r.prog == nil {
 		return r.Regexp.FindAllStringSubmatchIndex(s, n)
@@ -785,6 +906,8 @@ func rxNew(re *regexp.Regexp) *rxRegexp {
 	r.empty = rxCanEmpty(tree)
 	if r.caret || r.word || r.empty {
 		r.prog, _ = syntax.Compile(tree.Simplify())
+	} else {
+		r.fast = rxFastOf(tree.Simplify())
 	}
 	return r
 }
@@ -812,6 +935,10 @@ func (r *rxRegexp) MatchString(s string) bool {
 	if r.alt != nil {
 		return r.altFirst(s) != nil
 	}
+	if r.fast != nil {
+		i, _ := r.fast.at(s, 0)
+		return i >= 0
+	}
 	if !r.caret && !r.word {
 		return r.Regexp.MatchString(s)
 	}
@@ -825,6 +952,9 @@ func (r *rxRegexp) FindStringIndex(s string) []int {
 			return m[:2]
 		}
 		return nil
+	}
+	if r.fast != nil {
+		return r.fast.find(s)
 	}
 	loc := r.Regexp.FindStringIndex(s)
 	if r.differs(s, loc) {
@@ -840,6 +970,9 @@ func (r *rxRegexp) FindStringSubmatchIndex(s string) []int {
 	if r.alt != nil {
 		return r.altFirst(s)
 	}
+	if r.fast != nil {
+		return r.fast.find(s)
+	}
 	loc := r.Regexp.FindStringSubmatchIndex(s)
 	if r.differs(s, loc) {
 		loc = r.backtrack(s)
@@ -849,10 +982,11 @@ func (r *rxRegexp) FindStringSubmatchIndex(s string) []int {
 
 // FindPrefixSubmatchIndex is FindStringSubmatchIndex for a \A-anchored pattern (StringScanner's twins). RE2's
 // backtracker clears a bitmap the size of the whole input before every match, so on a long input the match runs
-// through a reader instead (NFA or one-pass), whose cost follows the match, not the input.
+// through a reader instead (NFA or one-pass), whose cost follows the match, not the input. Below rxPrefixDirect bytes
+// the string search is cheaper still: kramdown's 2-4 KB rests cost twice as much through the reader (decision 347).
 func (r *rxRegexp) FindPrefixSubmatchIndex(s string) []int {
 	r.check()
-	if r.alt != nil || len(s) < 256 {
+	if r.alt != nil || r.fast != nil || len(s) < rxPrefixDirect {
 		return r.FindStringSubmatchIndex(s)
 	}
 	loc := r.FindReaderSubmatchIndex(strings.NewReader(s))
@@ -861,6 +995,9 @@ func (r *rxRegexp) FindPrefixSubmatchIndex(s string) []int {
 	}
 	return loc
 }
+
+// rxPrefixDirect is the subject length from which FindPrefixSubmatchIndex reads through RE2's reader (decision 347).
+const rxPrefixDirect = 8192
 
 // differs reports whether Onigmo could match s otherwise than RE2 did (loc):
 // s has a non-ASCII word character, for \b; or RE2's match ends at a final
