@@ -1693,6 +1693,40 @@ B
       assert_equal [["a", "b"], true, 4], ["a\xffb".b.split(/\xff/n), "\xffa".b.start_with?(/\xff/n), bin.scan(/./).size]
       assert_equal [["h", "é", "x"], "xéh"], ["héx".chars, "héx".reverse]
     end
+
+    # A String known binary at compile time matches bytes even when they are valid UTF-8 (decision 352).
+    def test_binary_flavor_regexp_matching
+      s = "é".b
+      assert_equal [0, 1, true, 0], ["\xff".b =~ /./, s =~ /\xa9/n, s.match?(/\xc3/n), /./ =~ s]
+      m = s.match(/(.)(.)/)
+      assert_equal [[195], [169]], [m[1].bytes, m[2].bytes]
+      t = "é".force_encoding("BINARY")
+      u = "é".force_encoding(Encoding::ASCII_8BIT)
+      assert_equal [1, 1, 1], [t =~ /\xa9/n, u =~ /\xa9/n, s.dup =~ /\xa9/n]
+      a = s
+      b = a
+      assert_equal [1, false], [b =~ /\xa9/n, b.match?(/\A.\z/)]
+      arm = case s
+            when /\xa9/n then :bin
+            else :text
+            end
+      assert_equal :bin, arm
+      assert_equal [0, true], ["é" =~ /./, "é".match?(/\A.\z/)]
+    end
+
+    def test_binary_flavor_characters
+      s = "é".b
+      assert_equal [2, 2, 195, Encoding::ASCII_8BIT, true], [s.size, s.length, s.ord, s.encoding, s.valid_encoding?]
+      assert_equal "\"\\xC3\\xA9\"", s.inspect
+      assert_equal [[195], [169], [195], nil], [s[0].bytes, s[1, 1].bytes, s[0..0].bytes, s[5]]
+      assert_equal [[[195], [169]], [169, 195]], [s.chars.map(&:bytes), s.reverse.bytes]
+      k = 0
+      s.each_char { |_c| k += 1 }
+      assert_equal [2, 2], [k, s.each_char.to_a.size]
+      w = "aé".b
+      assert_equal [2, 0, 1], [w.index("\xa9".b), w.rindex("a"), w.index("é".b)]
+      assert_equal [1, Encoding::UTF_8, "\"é\""], ["é".size, "é".encoding, "é".inspect]
+    end
   end
 end
 

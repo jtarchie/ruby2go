@@ -190,6 +190,7 @@ class IO < Object
   #: (String, ?Integer?, ?Integer?, **untyped) -> String
   def self.read(path, length = nil, offset = nil, **opts) = File.read(path, length, offset, **opts)
 
+  # @binary
   #: (String) -> String
   def self.binread(path) = File.read(path)
 

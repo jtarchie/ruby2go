@@ -593,13 +593,7 @@ var rbRadixPrefixes = map[string]int{"0b": 2, "0B": 2, "0o": 8, "0O": 8, "0x": 1
 //go:noinline
 func rbStrAt(s String, i Integer) (String, bool) {
 	if !rbValidUTF8(string(s)) { // ASCII-8BIT by decision 136: a byte is a character
-		if i < 0 {
-			i += Integer(len(s))
-		}
-		if i < 0 || int(i) >= len(s) {
-			return "", false
-		}
-		return s[i : i+1], true
+		return rbBinAt(s, i)
 	}
 	if i < 0 {
 		if i += Integer(utf8.RuneCountInString(string(s))); i < 0 {
@@ -619,14 +613,7 @@ func rbStrAt(s String, i Integer) (String, bool) {
 //go:noinline
 func rbStrSub(s String, start, count Integer) (String, bool) {
 	if !rbValidUTF8(string(s)) { // ASCII-8BIT by decision 136: bytes, not runes (patchelf's section data)
-		n := Integer(len(s))
-		if start < 0 {
-			start += n
-		}
-		if start < 0 || start > n || count < 0 {
-			return "", false
-		}
-		return rbNewStr(s, s[start:min(start+count, n)]), true
+		return rbBinSub(s, start, count)
 	}
 	if start < 0 || count < 0 {
 		n := Integer(utf8.RuneCountInString(string(s)))
@@ -649,10 +636,50 @@ func rbStrSub(s String, start, count Integer) (String, bool) {
 //
 //go:noinline
 func rbStrRange(s String, r *Range[Integer]) (String, bool) {
-	n := Integer(utf8.RuneCountInString(string(s)))
 	if !rbValidUTF8(string(s)) {
-		n = Integer(len(s))
+		return rbBinRange(s, r)
 	}
+	b, count, ok := rbStrSpan(r, Integer(utf8.RuneCountInString(string(s))))
+	if !ok {
+		return "", false
+	}
+	return rbStrSub(s, b, count)
+}
+
+// rbBinAt is String#[](i) on a binary String: a byte is a character (decisions 136, 352).
+func rbBinAt(s String, i Integer) (String, bool) {
+	if i < 0 {
+		i += Integer(len(s))
+	}
+	if i < 0 || int(i) >= len(s) {
+		return "", false
+	}
+	return s[i : i+1], true
+}
+
+// rbBinSub is String#[](start, count) on a binary String.
+func rbBinSub(s String, start, count Integer) (String, bool) {
+	n := Integer(len(s))
+	if start < 0 {
+		start += n
+	}
+	if start < 0 || start > n || count < 0 {
+		return "", false
+	}
+	return rbNewStr(s, s[start:min(start+count, n)]), true
+}
+
+// rbBinRange is String#[](range) on a binary String.
+func rbBinRange(s String, r *Range[Integer]) (String, bool) {
+	b, count, ok := rbStrSpan(r, Integer(len(s)))
+	if !ok {
+		return "", false
+	}
+	return rbBinSub(s, b, count)
+}
+
+// rbStrSpan is r over n characters as a start and count, as String#[](range) reads it.
+func rbStrSpan(r *Range[Integer], n Integer) (Integer, Integer, bool) {
 	b := r.b
 	if r.beginless {
 		b = 0
@@ -670,9 +697,9 @@ func rbStrRange(s String, r *Range[Integer]) (String, bool) {
 		b += n
 	}
 	if b < 0 || b > n {
-		return "", false
+		return 0, 0, false
 	}
-	return rbStrSub(s, b, max(min(e, n)-b, 0))
+	return b, max(min(e, n)-b, 0), true
 }
 
 // rbStrIndex is String#index(t): the character offset of t's first occurrence.

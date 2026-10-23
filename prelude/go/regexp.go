@@ -227,6 +227,18 @@ func rbFindLoc(r *Regexp, s string) []int {
 	return loc
 }
 
+// rbFindLocBin is rbFindLoc for a String the compiler knows is binary (decision 352): its bytes past ASCII are
+// characters of their value even where they form valid UTF-8 ("é".b is two).
+func rbFindLocBin(r *Regexp, s string) []int {
+	if !strings.ContainsFunc(s, func(c rune) bool { return c >= utf8.RuneSelf }) {
+		return r.re.FindStringSubmatchIndex(s)
+	}
+	t, back := rbLatin1(s)
+	loc := r.re.FindStringSubmatchIndex(t)
+	rbLatin1Back(loc, back)
+	return loc
+}
+
 // rbLatin1 reads each byte of s as the character of its value, for a binary Regexp (/n) on a String that is not valid
 // UTF-8; back[j] is the byte of s where offset j of the result starts.
 func rbLatin1(s string) (string, []int) {

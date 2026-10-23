@@ -195,6 +195,7 @@ type Method struct {
 	calleeDefaults bool // Ruby runs defaults in the callee: Go takes rbArgc first, callers pass zero values for the rest
 	superBridge    bool // a module method whose `super` target depends on the includer (superBridges)
 	quietDynamic   bool // prelude `# @dynamic`: dynamic by design, so no dynamic-call warnings (decision 78)
+	binary         int8 // prelude `# @binary`: 1 its String result is binary, 2 when its receiver is (`@binary self`, decision 352)
 	specForm       bool // declared by a Minitest::Spec DSL call, not a def (decision 83)
 	noReturn       bool // RBS `bot`: a call ends its statement list, like raise (decision 91)
 	selfText       string

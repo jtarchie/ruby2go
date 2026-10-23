@@ -654,10 +654,11 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		return false
 	}
 	var recvT Type
+	var probed expr
 	if n.Receiver == nil {
 		recvT = f.selfType
 	} else {
-		f.probe(func() { recvT = f.genExpr(n.Receiver, nil).typ })
+		f.probe(func() { probed = f.genExpr(n.Receiver, nil); recvT = probed.typ })
 	}
 	if u, ok := recvT.(TUnion); ok {
 		return f.genUnionIterCall(n, u, t)
@@ -670,13 +671,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	if e == nil || !e.M.Iterator {
 		return false
 	}
-	if rc, ok := recvT.(TClass); ok { // literal options pick a twin here too (CSV.foreach(path, headers: true), decision 117)
-		if o := f.literalOverload(e.M, rc.C, callArgs(n)); o != nil && o.M.Iterator {
-			e = o
-		} else if o := f.iterClassTwin(n, e, recvT); o != nil {
-			e = o
-		}
-	}
+	e = f.iterTwin(n, e, recvT, probed)
 	// a gem's `xs.each(&blk)` as a value is xs, as MRI's each returns its receiver (decision 172)
 	selfValue := t.kind != tailNone && f.lenient() && eachReturnsSelf[n.Name] && !isOptRecv
 	if !selfValue && t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) && !f.lenient() { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
@@ -715,6 +710,24 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		f.emptyTail(n, t)
 	}
 	return true
+}
+
+// iterTwin is the twin an iterator call takes: literal options (CSV.foreach(path, headers: true), decision 117), its
+// argument's class, or a binary receiver's (`bin.each_char { }`, decision 352).
+func (f *fctx) iterTwin(n *parser.CallNode, e *entry, recvT Type, probed expr) *entry {
+	if rc, ok := recvT.(TClass); ok {
+		if o := f.literalOverload(e.M, rc.C, callArgs(n)); o != nil && o.M.Iterator {
+			e = o
+		} else if o := f.iterClassTwin(n, e, recvT); o != nil {
+			e = o
+		}
+	}
+	if probed.bin {
+		if o := f.binTwin(e.M, probed, callArgs(n), true); o != nil && o.M.Iterator {
+			e = o
+		}
+	}
+	return e
 }
 
 // resolveIter is the method an iterator call names: its zero-argument twin for a call with none, Kernel's for a gem

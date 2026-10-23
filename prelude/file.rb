@@ -261,6 +261,7 @@ class File < Object
     return Integer(len(s))
   }
 
+  # @binary
   #: (String) -> String
   def self.binread(path) = read(path)
 

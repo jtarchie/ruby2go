@@ -267,6 +267,99 @@ class String
     self
   end
 
+  # force_encoding with a literal BINARY/ASCII-8BIT (decision 352).
+  # @binary
+  #: (untyped) -> String
+  def __force_encoding_binary(enc) = self
+
+  # The compiler calls these on a String it knows is binary (decision 352): each byte is a character.
+  #: () -> Integer
+  def __bin_size = bytesize
+
+  #: () -> Integer
+  def __bin_length = bytesize
+
+  # @binary
+  #: (Integer) -> String?
+  def __bin_idx_integer(i) = %x{
+    if v, ok := rbBinAt(self, i); ok {
+      return &v
+    }
+    return nil
+  }
+
+  # @binary
+  #: (Integer, Integer) -> String?
+  def __bin_idx_2(start, count) = %x{
+    if v, ok := rbBinSub(self, start, count); ok {
+      return &v
+    }
+    return nil
+  }
+
+  # @binary
+  #: (Range[Integer]) -> String?
+  def __bin_idx_range(r) = %x{
+    if v, ok := rbBinRange(self, r); ok {
+      return &v
+    }
+    return nil
+  }
+
+  #: () -> Array[String]
+  def __bin_chars = %x{
+    out := &Array[String]{s: make([]String, len(self))}
+    for i := range len(self) {
+      out.s[i] = self[i : i+1]
+    }
+    return out
+  }
+
+  #: () { (String) -> void } -> void
+  def __bin_each_char = %x{
+    return func(yield func(String) bool) {
+      for i := range len(self) {
+        if !yield(self[i : i+1]) {
+          return
+        }
+      }
+    }
+  }
+
+  #: () -> Enumerator[String]
+  def __bin_each_char_enum = %x{ return rbEnumOf(self.__BinEachChar(), any(self), "each_char", rbSizeOf(Integer(len(self))), nil) }
+
+  #: () -> Integer
+  def __bin_ord = %x{
+    if self == "" {
+      panic(NewArgumentError(Ref[String]("empty string")))
+    }
+    return Integer(self[0])
+  }
+
+  # @binary
+  #: () -> String
+  def __bin_reverse = %x{
+    b := []byte(string(self))
+    slices.Reverse(b)
+    return String(b)
+  }
+
+  #: (String) -> Integer?
+  def __bin_index(s) = byteindex(s)
+
+  #: (String) -> Integer?
+  def __bin_rindex(s) = byterindex(s)
+
+  #: () -> Encoding
+  def __bin_encoding = Encoding::ASCII_8BIT
+
+  #: () -> bool
+  def __bin_valid_encoding_q = true
+
+  #: () -> String
+  def __bin_inspect = %x{ String(rbDump(string(self), true)) }
+
   #: () -> bool
   def valid_encoding? = %x{ Boolean(utf8.ValidString(string(self))) }
 

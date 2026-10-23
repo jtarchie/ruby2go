@@ -25,6 +25,10 @@ type expr struct {
 	// call sent through it. Calls and untyped uses take the value itself.
 	view    string
 	nilable bool // untyped collapsed from untyped? (Hash#[]): calls warn like T?'s
+	// bin: a String the compiler knows is binary (ASCII-8BIT: `.b`, binread), so its calls take the byte-wise
+	// `__bin_*` twins; binDeps are the locals it was read from, binary only while each of them is (decision 352).
+	bin     bool
+	binDeps []*localInfo
 }
 
 // genExpr notes each value's type for Marshal: an inferred local's container type is never rendered (decision 137).

@@ -224,6 +224,8 @@ func (f *File) annotations(ln int) map[string][]string {
 			out["dynamic"] = nil
 		case t == "@hidden":
 			out["hidden"] = nil
+		case t == "@binary", t == "@binary self":
+			out["binary"] = strings.Fields(t)[1:]
 		case strings.HasPrefix(t, "@self "):
 			out["self"] = append(out["self"], strings.TrimSpace(t[6:]))
 		case strings.HasPrefix(t, "@go_type "):

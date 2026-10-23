@@ -378,7 +378,11 @@ func (f *fctx) genLocalRead(n *parser.LocalVariableReadNode) expr {
 		return f.blockParamValue(n)
 	}
 	v := f.readLocal(n)
-	return expr{code: v.goName, typ: v.typ, view: v.view}
+	out := expr{code: v.goName, typ: v.typ, view: v.view}
+	if info := v.owner(); isClass(stripOpt(v.typ), "String") && info.isBin(nil) {
+		out.bin, out.binDeps = true, []*localInfo{info}
+	}
+	return out
 }
 
 // attrLocal treats a receiver-less call of self's attribute reader as a

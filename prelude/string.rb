@@ -82,14 +82,17 @@ class String < Object
   #: () -> String
   def inspect = %x{ rbStringInspect(string(self)) }
 
+  # @binary self
   #: () -> String
   def dup = %x{ rbStrClone(self) }
 
   # `+s` is s when not frozen, else an unfrozen copy; `-s` is s when
   # frozen, else a frozen copy (MRI also dedups it).
+  # @binary self
   #: () -> String
   def +@ = frozen? ? dup : self
 
+  # @binary self
   #: () -> String
   def -@ = frozen? ? self : dup.freeze
 
@@ -635,6 +638,7 @@ class String < Object
     return Integer(h)
   }
 
+  # @binary self
   #: () -> String
   def freeze = %x{
     rbStrFrozen(string(self), true)
@@ -795,6 +799,7 @@ class String < Object
   end
 
   # One byte without a length, as MRI (byteslice(3) of "abc" is nil, byteslice(3, 1) is "").
+  # @binary self
   #: (Integer, ?Integer?) -> String?
   def byteslice(start, count = nil) = %x{
     n := Integer(len(self))
@@ -893,6 +898,8 @@ class String < Object
   #: () -> Symbol
   def intern = to_sym
 
+  # A binary String: the compiler reads it byte by byte from here (decision 352).
+  # @binary
   #: () -> String
   def b = %x{ rbStrClone(self) }
 

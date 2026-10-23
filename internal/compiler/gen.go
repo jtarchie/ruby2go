@@ -66,6 +66,7 @@ type fctx struct {
 	retVar         string
 	wrap           *wrapFrame // the innermost begin wrapper
 	retryFlag      string     // set by `retry` in the rescue clauses being generated
+	declBin        bool       // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
 	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
 	branchLenient  bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
@@ -130,6 +131,42 @@ type localInfo struct {
 	seeded    bool      // a non-empty `[...]` open to widening: elems start with its own element type (decision 193)
 	elems     [2][]Type // what those writes put in it: elements, or keys and values
 	targs     [][]Type  // an open generic `X.new`: what later calls bind each type parameter to (decision 310)
+	// bin/text: some write of the first passes held a binary String, or anything else; binDeps are the locals those
+	// binary values were read from (decision 352)
+	bin, text bool
+	binDeps   []*localInfo
+}
+
+// noteBin records what a write of the first passes put in the local: a binary String or not (decision 352).
+func (li *localInfo) noteBin(pass int, val expr) {
+	switch {
+	case li == nil || pass >= 2:
+	case val.bin:
+		li.bin = true
+		li.binDeps = append(li.binDeps, val.binDeps...)
+	default:
+		li.text = true
+	}
+}
+
+// isBin reports whether every write of the local holds a binary String, through the locals they were read from.
+func (li *localInfo) isBin(seen map[*localInfo]bool) bool {
+	if li == nil || !li.bin || li.text {
+		return false
+	}
+	if seen[li] {
+		return true
+	}
+	if seen == nil {
+		seen = map[*localInfo]bool{}
+	}
+	seen[li] = true
+	for _, d := range li.binDeps {
+		if !d.isBin(seen) {
+			return false
+		}
+	}
+	return true
 }
 
 type scope struct {

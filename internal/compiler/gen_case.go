@@ -35,12 +35,13 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	subj := f.genExpr(n.Predicate, nil)
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, f.materialize(subj))
+	held := expr{code: tmp, typ: subj.typ, bin: subj.bin, binDeps: subj.binDeps} // a binary String stays binary (decision 352)
 	st := stripOpt(subj.typ)
 	u, isUnion := st.(TUnion)
 	_, localSubj := n.Predicate.(*parser.LocalVariableReadNode)
 	strUnion := isUnion && (f.lenient() || localSubj) && slices.ContainsFunc(u.Members, func(m Type) bool { return isClass(m, "String") })
 	if f.lastMatch != "" && caseHasRegexp(n, f.whenRegexp) && (isClass(st, "String") || isAny(st) || strUnion) { // `when /re/` sets $~ for the arm: tests in order, as an if chain (decision 244)
-		var subjNode parser.Node = &exprNode{Node: n.Predicate, e: expr{code: tmp, typ: subj.typ}}
+		var subjNode parser.Node = &exprNode{Node: n.Predicate, e: held}
 		if lv, ok := n.Predicate.(*parser.LocalVariableReadNode); ok {
 			subjNode = lv // a local's own reads: each test narrows it for its arm (`when Array` then o.partition)
 			f.emit("_ = %s", tmp)
@@ -56,7 +57,7 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 			pre[i] = f.capture(func() {
 				var conds []string
 				for _, cond := range w.(*parser.WhenNode).Conditions {
-					conds = append(conds, f.caseEqq(cond, expr{code: tmp, typ: subj.typ}))
+					conds = append(conds, f.caseEqq(cond, held))
 				}
 				arms[i] = strings.Join(conds, " || ")
 			})

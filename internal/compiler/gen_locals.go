@@ -43,6 +43,9 @@ func (f *fctx) declareLocal(name string, typ Type) *local {
 		info.declPass = f.pass
 		info.declBlock, info.declRuby = f.block, f.rbScope
 	}
+	if !f.declBin && f.pass < 2 { // a block param, rescue var or other binding: not known binary (decision 352)
+		info.text = true
+	}
 	if info.noHoist {
 		// block params are fresh per block; never share analysis
 		info.declBlock = f.block
@@ -267,6 +270,7 @@ func (f *fctx) widenParam(name string, info *localInfo, existing *local, val exp
 // noteReassign records another assignment of a local: where it happens and the join of what it holds.
 func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existing *local, val expr) {
 	info.writes++
+	info.noteBin(f.pass, val)
 	if !isAncestorBlock(info.declBlock, f.block) {
 		info.hoist = true
 	}
@@ -304,8 +308,11 @@ func (f *fctx) narrowSet(v *local, val expr) expr {
 func (f *fctx) declareAssign(n parser.Node, name string, typ Type, val expr, annotated Type) expr {
 	prev := f.localInfo(name)
 	hoisted := f.pass == 2 && prev != nil && prev.hoist
+	f.declBin = val.bin
 	v := f.declareLocal(name, typ)
+	f.declBin = false
 	info := v.info
+	info.noteBin(f.pass, val)
 	switch {
 	case annotated != nil:
 		info.annotated = true

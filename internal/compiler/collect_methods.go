@@ -139,6 +139,33 @@ func (c *Compiler) addMethod(f *File, cls *Class, n *parser.DefNode, private boo
 	c.addDef(f, cls, n, private, scope)
 }
 
+// defAnnotations applies a prelude def's `# @dynamic`, `# @binary` and `# @self` lines.
+func (c *Compiler) defAnnotations(f *File, cls *Class, n *parser.DefNode, m *Method, line int) {
+	ann := f.annotations(line)
+	if _, ok := ann["dynamic"]; ok {
+		if !f.isPrelude() && !f.valueGen {
+			c.errorf(f, n, "@dynamic is only allowed in the prelude")
+		}
+		m.quietDynamic = true
+	}
+	if b, ok := ann["binary"]; ok {
+		if !f.isPrelude() {
+			c.errorf(f, n, "@binary is only allowed in the prelude")
+		}
+		m.binary = 1
+		if len(b) > 0 {
+			m.binary = 2
+		}
+	}
+	if st := ann["self"]; len(st) > 0 {
+		if !f.isPrelude() || cls == nil || cls.GoType == "" {
+			c.errorf(f, n, "@self is only allowed on a prelude @go_type class's methods")
+		}
+		m.selfText = st[0]
+		cls.selfDefs = true
+	}
+}
+
 func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, scope []*Class) {
 	line := f.line(n.Location.StartOffset)
 	m := &Method{Name: n.Name, GoName: goMethodName(n.Name), Owner: cls, Node: n, srcPos: srcPos{f, line}, Private: private || cls != nil && cls.metaOf == nil && rubyPrivate[n.Name], Scope: scope}
@@ -151,19 +178,7 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 	if m.sigText == "" && cls != nil {
 		m.sigText = protocolSig(n) // `def respond_to_missing?(name, priv)`: Ruby's protocol fixes its types (decision 182)
 	}
-	if _, ok := f.annotations(line)["dynamic"]; ok {
-		if !f.isPrelude() && !f.valueGen {
-			c.errorf(f, n, "@dynamic is only allowed in the prelude")
-		}
-		m.quietDynamic = true
-	}
-	if st := f.annotations(line)["self"]; len(st) > 0 {
-		if !f.isPrelude() || cls == nil || cls.GoType == "" {
-			c.errorf(f, n, "@self is only allowed on a prelude @go_type class's methods")
-		}
-		m.selfText = st[0]
-		cls.selfDefs = true
-	}
+	c.defAnnotations(f, cls, n, m, line)
 	if m.sigText == "" && !f.isPrelude() {
 		// A `.rbs` signature fills a method with no inline `#:` (decision 160);
 		// overloads compile once, merged, and each call picks its arm (decision 12).

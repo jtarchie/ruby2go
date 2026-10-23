@@ -710,16 +710,8 @@ func overloadBase(name string) string {
 // is typed by its switch strings (decision 101).
 func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *entry {
 	switch {
-	case m.Name == "scan" && owner.RubyName == "String" && len(args) == 1:
-		g, ok := f.literalGroups(args[0])
-		switch {
-		case ok && g > 0:
-			return owner.lookup("__scan_groups")
-		case !ok && f.lenient(): // a gem's pattern known only at run time: rows or strings, as MRI decides (decision 334)
-			if e := owner.lookup("__scan_any"); e != nil {
-				return e
-			}
-		}
+	case owner.RubyName == "String" && len(args) == 1:
+		return f.stringLiteralOverload(m, owner, args[0])
 	case owner.RubyName == "OptionParser" && (m.Name == "on" || m.Name == "on_tail" || m.Name == "on_head"):
 		if k := f.optKind(args); k != "" {
 			return owner.lookup("__" + m.Name + "_" + k)
@@ -744,6 +736,39 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 		}
 	}
 	return nil
+}
+
+// stringLiteralOverload: String#scan with a pattern that has groups yields each match's groups, and force_encoding of a
+// literal BINARY makes a binary String (decision 352).
+func (f *fctx) stringLiteralOverload(m *Method, owner *Class, arg parser.Node) *entry {
+	switch m.Name {
+	case "scan":
+		g, ok := f.literalGroups(arg)
+		switch {
+		case ok && g > 0:
+			return owner.lookup("__scan_groups")
+		case !ok && f.lenient(): // a gem's pattern known only at run time: rows or strings, as MRI decides (decision 334)
+			return owner.lookup("__scan_any")
+		}
+	case "force_encoding":
+		if binaryEncodingArg(f.f, arg) {
+			return owner.lookup("__force_encoding_binary")
+		}
+	}
+	return nil
+}
+
+// binaryEncodingArg is a literal naming ASCII-8BIT: "BINARY"/"ASCII-8BIT" in any case, or Encoding::BINARY/ASCII_8BIT.
+func binaryEncodingArg(f *File, n parser.Node) bool {
+	switch a := n.(type) {
+	case *parser.StringNode:
+		s := strings.ToUpper(a.Unescaped.Value)
+		return s == "BINARY" || s == "ASCII-8BIT"
+	case *parser.ConstantPathNode:
+		t := f.text(a.Location)
+		return t == "Encoding::BINARY" || t == "Encoding::ASCII_8BIT" || t == "::Encoding::BINARY" || t == "::Encoding::ASCII_8BIT"
+	}
+	return false
 }
 
 // selfOverload picks, for a method whose own `@self` the receiver doesn't

@@ -105,6 +105,32 @@ class Regexp < Object
   #: () -> String
   def source = %x{ String(self.src) }
 
+  # A binary String subject (decision 352): each byte is a character, and =~ is a byte index.
+  #: (String) -> Integer?
+  def __bin_eqtilde(s) = %x{
+    loc := rbFindLocBin(self, string(s))
+    if loc == nil {
+      return nil
+    }
+    return Ref(Integer(loc[0]))
+  }
+
+  #: (String) -> MatchData?
+  def __bin_match(s) = %x{
+    loc := rbFindLocBin(self, string(s))
+    if loc == nil {
+      return nil
+    }
+    m := rbMatchAt(self, string(s), loc)
+    return &m
+  }
+
+  #: (String) -> bool
+  def __bin_match_q(s) = %x{ return Boolean(rbFindLocBin(self, string(s)) != nil) }
+
+  #: (String) -> bool
+  def __bin_eqq(s) = %x{ return Boolean(rbFindLocBin(self, string(s)) != nil) }
+
   # Whether the pattern has capture groups: String#scan then gives each match's groups (decision 331).
   #: () -> bool
   def __groups? = %x{ Boolean(self.re.NumSubexp() > 0) }
@@ -398,6 +424,16 @@ class String
 
   #: (Regexp) -> bool
   def match?(re) = re.match?(self)
+
+  # A binary String's matches read its bytes (decision 352).
+  #: (Regexp) -> Integer?
+  def __bin_eqtilde(re) = re.__bin_eqtilde(self)
+
+  #: (Regexp) -> MatchData?
+  def __bin_match(re) = re.__bin_match(self)
+
+  #: (Regexp) -> bool
+  def __bin_match_q(re) = re.__bin_match_q(self)
 
   # A match that starts at 0 (Go's leftmost match starts at 0 whenever one can). ponytail: $~ is not set; set it
   # when a caller reads it after start_with?.
