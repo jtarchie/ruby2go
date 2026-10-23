@@ -112,7 +112,7 @@ class Hash < Object
   #: (K) -> V?
   # One out-of-line call, so this inlines and the V? it returns stays on the caller's stack.
   def [](k) = %x{
-    if v, ok := self.rbLookup(k); ok {
+    if v, ok := rbHashLookup(self, k); ok {
       return &v
     }
     return nil

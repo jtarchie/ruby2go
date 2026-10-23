@@ -367,8 +367,7 @@ class Array < Object
   #: () -> self
   def sort! = %x{
     self.rbCheckFrozen()
-    cmp := rbCmpFunc[E]()
-    rbSortStable(self.s, func(a, b E) int { return -int(cmp(b, a)) }) // (earlier, later), as MRI's failure names them
+    rbSortStable(self.s, func(a, b E) int { return -int(rbCmp(b, a)) }) // (earlier, later), as MRI's failure names them
     return self
   }
 
@@ -396,6 +395,19 @@ class Array < Object
     }
     self.s = out.s
     return self
+  }
+
+  # Enumerable's, with the result sized up front (decision 342).
+  #: [U] () { (E) -> U } -> Array[U]
+  def map = %x{
+    out := &Array[U]{s: make([]U, 0, len(self.s))}
+    for i := 0; ; i++ { // re-reading the length, as each does: the block may change the receiver
+      if i >= len(self.s) {
+        break
+      }
+      out.s = append(out.s, blk(self.s[i]))
+    }
+    return out
   }
 
   #: () { (E) -> E } -> self

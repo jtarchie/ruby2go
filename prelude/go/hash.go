@@ -115,12 +115,12 @@ func (self *Hash[K, V]) rbGet(k K) (V, bool) {
 	return v, ok
 }
 
-// rbLookup is Hash#[]'s value: the value at k, else the default proc's
+// rbHashLookup is Hash#[]'s value: the value at k, else the default proc's
 // result or the default value; false only when there is neither. Out of
 // line for the same reason as rbGet: Hash#[] then inlines.
 //
 //go:noinline
-func (self *Hash[K, V]) rbLookup(k K) (V, bool) {
+func rbHashLookup[K, V comparable](self *Hash[K, V], k K) (V, bool) {
 	if v, ok := self.rbGet(k); ok {
 		return v, true
 	}

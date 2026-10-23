@@ -16,6 +16,27 @@ class Range < Object
     return func(yield func(E) bool) { rbRangeEach(self, yield) }
   }
 
+  # Enumerable's, with an Integer range's result sized up front, at most 2^20 (a block may break early; decision 342).
+  #: [U] () { (E) -> U } -> Array[U]
+  def map = %x{
+    n := 0
+    if b, ok := any(self.b).(Integer); ok && !self.endless && !self.beginless {
+      e := any(self.e).(Integer)
+      if self.excl {
+        e-- // MinInt wraps to MaxInt: capped below like any huge range
+      }
+      if e >= b {
+        n = int(min(uint64(e)-uint64(b), 1<<20-1)) + 1
+      }
+    }
+    out := &Array[U]{s: make([]U, 0, n)}
+    rbRangeEach(self, func(x E) bool {
+      out.s = append(out.s, blk(x))
+      return true
+    })
+    return out
+  }
+
   #: () { (E) -> void } -> void
   def reverse_each = %x{
     return func(yield func(E) bool) {
