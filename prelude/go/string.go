@@ -5,6 +5,7 @@ package prelude
 
 import (
 	"fmt"
+	"iter"
 	"math"
 	"regexp"
 	"strconv"
@@ -486,6 +487,25 @@ func rbStrRecvAny(v any, name string) String {
 }
 
 // rbStrLen is String#length: characters of UTF-8, bytes of anything else (ASCII-8BIT by decision 136).
+// rbEachChar is s's characters: runes, or each byte of a String that is not valid UTF-8 (ASCII-8BIT, decision 324).
+func rbEachChar(s string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if !utf8.ValidString(s) {
+			for i := range len(s) {
+				if !yield(s[i : i+1]) {
+					return
+				}
+			}
+			return
+		}
+		for i, r := range s {
+			if !yield(s[i : i+utf8.RuneLen(r)]) {
+				return
+			}
+		}
+	}
+}
+
 func rbStrLen(s string) int {
 	if utf8.ValidString(s) {
 		return utf8.RuneCountInString(s)

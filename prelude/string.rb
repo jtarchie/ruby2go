@@ -116,6 +116,11 @@ class String < Object
 
   #: () -> String
   def reverse = %x{
+    if !utf8.ValidString(string(self)) { // ASCII-8BIT: byte by byte (decision 324)
+      b := []byte(string(self))
+      slices.Reverse(b)
+      return String(b)
+    }
     r := []rune(string(self))
     for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
       r[i], r[j] = r[j], r[i]
@@ -288,14 +293,14 @@ class String < Object
   #: () -> Array[String]
   def chars = %x{
     out := &Array[String]{}
-    for _, r := range string(self) {
-      out.s = append(out.s, String(r))
+    for c := range rbEachChar(string(self)) {
+      out.s = append(out.s, String(c))
     }
     return out
   }
 
   #: () -> Enumerator[String]
-  def __each_char_enum = %x{ return rbEnumOf(self.EachChar(), any(self), "each_char", rbSizeOf(Integer(utf8.RuneCountInString(string(self)))), nil) }
+  def __each_char_enum = %x{ return rbEnumOf(self.EachChar(), any(self), "each_char", rbSizeOf(Integer(rbStrLen(string(self)))), nil) }
 
   #: () { (String) -> void } -> void
   def each_line
@@ -308,8 +313,8 @@ class String < Object
   #: () { (String) -> void } -> void
   def each_char = %x{
     return func(yield func(String) bool) {
-      for _, r := range string(self) {
-        if !yield(String(r)) {
+      for c := range rbEachChar(string(self)) {
+        if !yield(String(c)) {
           return
         }
       }
@@ -411,7 +416,7 @@ class String < Object
       }
       m[c] = v
     }
-    return rbNewStr(self, String(strings.Map(func(r rune) rune {
+    conv := func(r rune) rune {
       var v rune
       var ok bool
       if r < 128 {
@@ -432,7 +437,21 @@ class String < Object
         return v
       }
       return r
-    }, string(self))))
+    }
+    if !utf8.ValidString(string(self)) { // ASCII-8BIT: each byte is the character of its value (decision 324)
+      var out []byte
+      for i := range len(self) {
+        switch v := conv(rune(self[i])); {
+        case v < 0:
+        case v < 256:
+          out = append(out, byte(v))
+        default:
+          out = utf8.AppendRune(out, v)
+        }
+      }
+      return rbNewStr(self, String(out))
+    }
+    return rbNewStr(self, String(strings.Map(conv, string(self))))
   }
 
   # An Array argument supplies every directive's value, as MRI's.

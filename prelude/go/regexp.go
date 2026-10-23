@@ -221,8 +221,17 @@ func rbFindLoc(r *Regexp, s string) []int {
 	if !strings.ContainsRune(r.opts, 'n') { // MRI's UTF-8 Regexp on a broken UTF-8 String
 		panic(NewArgumentError(Ref(String("invalid byte sequence in UTF-8"))))
 	}
+	t, back := rbLatin1(s)
+	loc := r.re.FindStringSubmatchIndex(t)
+	rbLatin1Back(loc, back)
+	return loc
+}
+
+// rbLatin1 reads each byte of s as the character of its value, for a binary Regexp (/n) on a String that is not valid
+// UTF-8; back[j] is the byte of s where offset j of the result starts.
+func rbLatin1(s string) (string, []int) {
 	var b strings.Builder
-	back := make([]int, 0, len(s)*2+1) // back[j]: the byte of s where Latin-1 offset j starts
+	back := make([]int, 0, len(s)*2+1)
 	for i := range len(s) {
 		n := b.Len()
 		b.WriteRune(rune(s[i]))
@@ -230,14 +239,31 @@ func rbFindLoc(r *Regexp, s string) []int {
 			back = append(back, i)
 		}
 	}
-	back = append(back, len(s))
-	loc := r.re.FindStringSubmatchIndex(b.String())
+	return b.String(), append(back, len(s))
+}
+
+// rbLatin1Back maps rbLatin1 offsets in loc back to bytes of the original String.
+func rbLatin1Back(loc, back []int) {
 	for i, x := range loc {
 		if x >= 0 {
 			loc[i] = back[x]
 		}
 	}
-	return loc
+}
+
+// rbFindAll is r's first n matches of s (all when n < 0) with their groups, as byte offsets: rbFindLoc's byte reading
+// for a binary Regexp on a String that is not valid UTF-8 (scan, sub, gsub, split; decision 324). Any other pair
+// keeps rxRegexp's FindAll.
+func rbFindAll(r *Regexp, s string, n int) [][]int {
+	if rbValidUTF8(s) || !strings.ContainsRune(r.opts, 'n') {
+		return r.re.FindAllStringSubmatchIndex(s, n)
+	}
+	t, back := rbLatin1(s)
+	locs := r.re.FindAllStringSubmatchIndex(t, n)
+	for _, loc := range locs {
+		rbLatin1Back(loc, back)
+	}
+	return locs
 }
 
 // rbMatches is whether r matches s: Go's MatchString, or rbFindLoc's byte reading of a binary String.
@@ -360,7 +386,7 @@ func rbReBlockLM(lm ***MatchData, re *Regexp, blk func(String) any) func(s strin
 func rbReSub(re *Regexp, s string, n int, repl func(s string, loc []int, names []string) string) string {
 	var b strings.Builder
 	last := 0
-	for _, loc := range re.re.FindAllStringSubmatchIndex(s, n) {
+	for _, loc := range rbFindAll(re, s, n) {
 		b.WriteString(s[last:loc[0]])
 		b.WriteString(repl(s, loc, re.re.SubexpNames()))
 		last = loc[1]

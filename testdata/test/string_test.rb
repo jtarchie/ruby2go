@@ -1681,6 +1681,18 @@ B
       bin = "\x01\xe6\x01\x00\xff".b
       assert_equal [5, [230, 1], [255], [1, 230], 7], [bin.size, bin[1, 2].bytes, bin[4].bytes, bin[0..1].bytes, bin.ljust(7, "\x00").bytesize]
     end
+
+    # chars, each_char, reverse and tr read the same bytes; a binary Regexp (/n) scans and replaces them (decision 324).
+    def test_binary_string_chars_and_n_regexps
+      bin = "\xff\xfeab".b
+      assert_equal [[255], [254], [97], [98]], bin.chars.map(&:bytes)
+      assert_equal [[255], [254], [97], [98]], bin.each_char.map(&:bytes)
+      assert_equal [4, [98, 97, 254, 255]], [bin.each_char.size, bin.reverse.bytes]
+      assert_equal [[255, 254, 88, 98], [255, 254, 98]], [bin.tr("a", "X").bytes, bin.delete("a").bytes]
+      assert_equal [[[255]], "Xa", "[255]a"], ["\xffa".b.scan(/[\x80-\xff]/n).map(&:bytes), "\xffa".b.gsub(/\xff/n, "X"), "\xffa".b.sub(/\xff/n) { |m| m.bytes.inspect }]
+      assert_equal [["a", "b"], true, 4], ["a\xffb".b.split(/\xff/n), "\xffa".b.start_with?(/\xff/n), bin.scan(/./).size]
+      assert_equal [["h", "é", "x"], "xéh"], ["héx".chars, "héx".reverse]
+    end
   end
 end
 

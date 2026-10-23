@@ -403,8 +403,8 @@ class String
   # when a caller reads it after start_with?.
   #: (Regexp) -> bool
   def __start_with_q_regexp(re) = %x{
-    loc := re.re.FindStringIndex(string(self))
-    return Boolean(loc != nil && loc[0] == 0)
+    locs := rbFindAll(re, string(self), 1)
+    return Boolean(len(locs) > 0 && locs[0][0] == 0)
   }
 
   # Replacement strings expand \0 \& \1-\9 \k<name> \` \' and \\.
@@ -429,7 +429,7 @@ class String
       panic(NewNotImplementedError(Ref(String("rb2go: String#scan with capture groups needs a Regexp literal"))))
     }
     out := &Array[String]{}
-    for _, loc := range re.re.FindAllStringIndex(string(self), -1) {
+    for _, loc := range rbFindAll(re, string(self), -1) {
       out.s = append(out.s, self[loc[0]:loc[1]])
     }
     return out
@@ -454,7 +454,7 @@ class String
   #: (Regexp) -> Array[Array[String?]]
   def __scan_groups(re) = %x{
     out := &Array[*Array[*String]]{}
-    for _, loc := range re.re.FindAllStringSubmatchIndex(string(self), -1) {
+    for _, loc := range rbFindAll(re, string(self), -1) {
       row := &Array[*String]{}
       for i := 2; i < len(loc); i += 2 {
         if loc[i] < 0 {
@@ -493,7 +493,7 @@ class String
       fields++
       return lim > 0 && lim <= fields
     }
-    for _, loc := range re.re.FindAllStringSubmatchIndex(s, -1) {
+    for _, loc := range rbFindAll(re, s, -1) {
       _, w := utf8.DecodeRuneInString(s[loc[1]:])
       if loc[0] == start && loc[1] == start { // empty at the search start: skip a character, then split before the next match
         if !lastNull {
