@@ -688,7 +688,9 @@ func rbJSONGenerate(obj any, st *rbJSONState) String {
 }
 
 // rbJSONCore: false when v is not self, since a subclass promotes the method and the gem calls a subclass's to_json (decision 346).
-type rbJSONCore interface{ rbJSONTo(st *rbJSONState, v any) bool }
+type rbJSONCore interface {
+	rbJSONTo(st *rbJSONState, v any) bool
+}
 
 func (self *Array[E]) rbJSONTo(st *rbJSONState, v any) bool {
 	if any(self) != v {
