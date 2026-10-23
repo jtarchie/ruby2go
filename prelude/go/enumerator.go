@@ -165,36 +165,74 @@ func (e *Enumerator[E]) rbSize() *Integer {
 	return e.size()
 }
 
-// rbSlices is each_slice(n) as a sequence.
+// rbSlabRun is how many windows of n elements one slab holds: rbSlices and rbCons carve their windows from shared
+// backing arrays (one allocation per run, not per window), each capped at n so an append reallocates rather than
+// writing into its neighbour; a window a block keeps pins at most ~4,096 elements (decision 348).
+func rbSlabRun(n int) int { return max(1, 4096/max(n, 1)) }
+
+// rbSlabArray is a fresh Array over w, its header from hdrs (refilled when empty).
+func rbSlabArray[E comparable](hdrs *[]Array[E], w []E, run int) *Array[E] {
+	if len(*hdrs) == 0 {
+		*hdrs = make([]Array[E], run)
+	}
+	a := &(*hdrs)[0]
+	*hdrs = (*hdrs)[1:]
+	a.s = w
+	return a
+}
+
+// rbSlices is each_slice(n) as a sequence: each slice a fresh Array, the last possibly shorter.
 func rbSlices[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
 	return func(yield func(*Array[E]) bool) {
-		cur := &Array[E]{}
+		run := rbSlabRun(n)
+		var slab []E
+		var hdrs []Array[E]
+		var cur []E
 		for x := range seq {
-			cur.s = append(cur.s, x)
-			if len(cur.s) == n {
-				if !yield(cur) {
+			if cur == nil {
+				switch {
+				case n > 4096: // each_slice(10**9) on a short list: grow, as before, rather than allocate n up front
+					cur = []E{}
+				case len(slab) < n:
+					slab = make([]E, n*run)
+					fallthrough
+				default:
+					cur, slab = slab[:0:n], slab[n:]
+				}
+			}
+			cur = append(cur, x)
+			if len(cur) == n {
+				if !yield(rbSlabArray(&hdrs, cur, run)) {
 					return
 				}
-				cur = &Array[E]{}
+				cur = nil
 			}
 		}
-		if len(cur.s) > 0 {
-			yield(cur)
+		if len(cur) > 0 {
+			yield(rbSlabArray(&hdrs, cur, run))
 		}
 	}
 }
 
-// rbCons is each_cons(n) as a sequence: each window a fresh Array.
+// rbCons is each_cons(n) as a sequence: each window a fresh Array (a copy, as MRI's), from a slab.
 func rbCons[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
 	return func(yield func(*Array[E]) bool) {
-		var win []E
+		run := rbSlabRun(n)
+		var win, slab []E
+		var hdrs []Array[E]
 		for x := range seq {
 			win = append(win, x)
 			if len(win) > n {
 				win = win[1:]
 			}
 			if len(win) == n {
-				if !yield(&Array[E]{s: slices.Clone(win)}) {
+				if len(slab) < n {
+					slab = make([]E, n*run)
+				}
+				w := slab[:n:n]
+				slab = slab[n:]
+				copy(w, win)
+				if !yield(rbSlabArray(&hdrs, w, run)) {
 					return
 				}
 			}

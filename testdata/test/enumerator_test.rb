@@ -620,3 +620,40 @@ module EnumeratorTests
     end
   end
 end
+
+module EnumeratorTests
+  # each_slice, each_cons and zip carve their results from shared slabs (decision 348): each window is still its own
+  # Array, so keeping, mutating or growing one leaves the others and the receiver as MRI leaves them.
+  class EnumSlabTest < Minitest::Test
+    def test_windows_are_independent
+      src = (1..7).to_a
+      cons = src.each_cons(3).to_a
+      cons[0][0] = 99
+      cons[1] << 42
+      assert_equal [[99, 2, 3], [2, 3, 4, 42], [3, 4, 5], [4, 5, 6], [5, 6, 7]], cons
+      assert_equal (1..7).to_a, src
+      slices = src.each_slice(3).to_a
+      slices[0] << 10
+      slices[1][2] = 0
+      assert_equal [[1, 2, 3, 10], [4, 5, 0], [7]], slices
+      kept = [] #: Array[Array[Integer]]
+      src.each_cons(2) { |w| kept << w }
+      assert_equal 6, kept.map(&:object_id).uniq.size
+      assert_equal [6, 7], kept.last
+    end
+
+    def test_large_and_small_sizes
+      assert_equal [[1, 2]], [1, 2].each_slice(10**9).to_a
+      assert_equal [], [1, 2].each_cons(5).to_a
+      assert_equal 4_998, (1..5_000).each_cons(3).count { |w| w.sum.positive? }
+      assert_equal 1_667, (1..5_000).each_slice(3).count
+    end
+
+    def test_zip_pairs
+      a = [1, 2, 3]
+      pairs = a.zip([10, 20])
+      assert_equal [[1, 10], [2, 20], [3, nil]], pairs
+      assert_equal 50, (1..2_000).to_a.zip((1..1_500).to_a).sum { |x, y| y ? 0 : 1 } - 450
+    end
+  end
+end

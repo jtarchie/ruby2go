@@ -643,16 +643,26 @@ module Enumerable
   #: () -> Enumerator[[E, Integer]]
   def __each_with_index_enum = %x{ return rbEnumOf(rbWithIndex(self.Each(), 0), any(self), "each_with_index", rbCountSize(any(self)), nil) }
 
+  # Each pair's U? points into a shared slab of other's values: one allocation per 1,024 pairs, not one per pair (decision 348).
   #: [U] (Array[U]) -> Array[[E, U?]]
-  def zip(other)
-    out = [] #: Array[[E, U?]]
-    i = 0
-    each do |x|
-      out << [x, other[i]]
-      i += 1
-    end
-    out
-  end
+  def zip(other) = %x{
+    out := &Array[Tuple2[E, *U]]{s: make([]Tuple2[E, *U], 0, len(other.s))} // zip of equal lengths is the common case
+    var slab []U
+    i := 0
+    for x := range self.Each() {
+      var u *U
+      if i < len(other.s) {
+        if len(slab) == 0 {
+          slab = make([]U, min(len(other.s)-i, 1024))
+        }
+        slab[0] = other.s[i]
+        u, slab = &slab[0], slab[1:]
+      }
+      out.s = append(out.s, Tuple2[E, *U]{x, u})
+      i++
+    }
+    return out
+  }
 
   #: () { (E, E) -> bool } -> Array[Array[E]]
   def chunk_while = %x{

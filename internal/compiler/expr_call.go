@@ -663,7 +663,7 @@ func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
 	if r := f.loopRescue(n); r != nil {
 		return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
 	}
-	if expected != nil {
+	if expected != nil && !isAny(expected) { // `puts xs.sum { }`: an untyped slot says nothing about the call's type parameters (decision 348)
 		saved, savedNode := f.retHint, f.retHintNode
 		f.retHint, f.retHintNode = expected, n
 		defer func() { f.retHint, f.retHintNode = saved, savedNode }()
