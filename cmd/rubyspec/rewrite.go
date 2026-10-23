@@ -293,12 +293,18 @@ func (rw *rewriter) inline(call *parser.CallNode, args []parser.Node) {
 		return m
 	})
 	// helpers outside the shared body (pack_format) read the ivars at run time, so set them too: a hook, rewritten
-	// with the body's own so it chains, on the body's first line so its lines stay put
-	set := "before do @method = " + rw.text(args[1])
-	if len(args) > 2 {
-		set += "; @object = " + rw.text(args[2])
+	// with the body's own so it chains, on the body's first line so its lines stay put. Only literals: any other
+	// expression (a lambda calling a private method) would fail to compile for every example, not just its users.
+	var set []string
+	for i, name := range []string{"@method", "@object"} {
+		if i+1 < len(args) && literal(args[i+1]) != "" {
+			set = append(set, name+" = "+rw.text(args[i+1]))
+		}
 	}
-	body, err := rw.prog.rewrite(rw.ctx, rw.name, set+" end; "+body, rw.depth+1)
+	if len(set) > 0 {
+		body = "before do " + strings.Join(set, "; ") + " end; " + body
+	}
+	body, err := rw.prog.rewrite(rw.ctx, rw.name, body, rw.depth+1)
 	if err != nil {
 		rw.err = cmpErr(rw.err, err)
 		return

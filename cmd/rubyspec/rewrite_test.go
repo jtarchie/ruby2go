@@ -53,6 +53,7 @@ describe "X#abs" do
     @a = 1
   end
   it_behaves_like :x_abs, :abs
+  it_behaves_like :x_abs, -> { 1 }
 end
 `
 	write("core/x/abs_spec.rb", spec)
@@ -82,7 +83,7 @@ end
 			t.Errorf("rewritten spec lacks %q:\n%s", want, got)
 		}
 	}
-	for _, gone := range []string{"is gone", "ruby_version_is", "require_relative", "context"} {
+	for _, gone := range []string{"is gone", "ruby_version_is", "require_relative", "context", "@method = ->"} {
 		if strings.Contains(got, gone) {
 			t.Errorf("rewritten spec still has %q:\n%s", gone, got)
 		}
