@@ -84,6 +84,10 @@ module PatternTests
     def deconstruct_keys(_keys) = { a: b, b: a }
   end
 
+  # members named like the pattern protocol: MRI calls the accessor, which wins over the generated helper (decision 336)
+  Deconstructed = Struct.new(:deconstruct) #: [Array[Integer]]
+  DeconstructedData = Data.define(:deconstruct) #: [Array[Integer]]
+
   class Bumper
     attr_reader :n #: Integer
 
@@ -451,6 +455,21 @@ module PatternTests
       v = [1, 2] #: Array[Integer]
       if v in [_one] | [_, _]
         assert_nil _one
+      end
+    end
+
+    def test_member_named_deconstruct_is_what_the_pattern_reads
+      case Deconstructed.new([7, 8])
+      in [x, y] then assert_equal [7, 8], [x, y]
+      end
+      case Deconstructed.new([7, 8])
+      in Deconstructed[a, b] then assert_equal [7, 8], [a, b]
+      end
+      case DeconstructedData.new([1, 2])
+      in [m, n] then assert_equal [1, 2], [m, n]
+      end
+      case Deconstructed.new([])
+      in [] then assert true
       end
     end
 

@@ -241,8 +241,7 @@ class Set < Object
   #: [U] () { (E) -> U } -> Set[Set[E]]
   def divide(&block) = Set.new(classify(&block).values)
 
-  # An Array goes to its twin __merge_array (decision 12): a union parameter naming E keeps a method out of dynamic
-  # dispatch (growsTypeParams), and liquid's Strainer merges into a Set held untyped (decision 331).
+  # one Set stays typed (decision 12: a union naming E blocks dynamic dispatch, growsTypeParams; liquid merges into an untyped Set, decision 331); other counts and classes are twins by count/class, and only __merge_any reaches rbEnumElems (it pulls Range#to_a), so programs that never merge many stay small
   #: (Set[E]) -> self
   def merge(xs)
     xs.each { |x| add(x) }
@@ -254,6 +253,36 @@ class Set < Object
     xs.each { |x| add(x) }
     self
   end
+
+  #: (Range[E]) -> self
+  def __merge_range(xs)
+    xs.each { |x| add(x) }
+    self
+  end
+
+  #: () -> self
+  def __merge_0 = self
+
+  #: (untyped) -> self
+  def __merge_any(en) = %x{
+    elems, ok := rbEnumElems(any(en))
+    if !ok {
+      panic(NewArgumentError(Ref(String("value must be enumerable"))))
+    }
+    for _, e := range elems.s {
+      Set_Add(self, e.(E))
+    }
+    return self
+  }
+
+  #: (untyped, untyped) -> self
+  def __merge_2(a, b) = __merge_any(a).__merge_any(b)
+
+  #: (untyped, untyped, untyped) -> self
+  def __merge_3(a, b, c) = __merge_any(a).__merge_any(b).__merge_any(c)
+
+  #: (untyped, untyped, untyped, untyped) -> self
+  def __merge_4(a, b, c, d) = __merge_any(a).__merge_any(b).__merge_any(c).__merge_any(d)
 
   #: (Set[E] | Array[E]) -> Set[E]
   def |(o) = o.is_a?(Array) ? dup.__merge_array(o) : dup.merge(o)
@@ -308,6 +337,25 @@ class Set < Object
 
   #: (Set[E]) -> bool
   def <(o) = proper_subset?(o)
+
+  #: (untyped) -> Integer?
+  def <=>(other) = %x{
+    a, ok := other.(Set_Any)
+    if !ok {
+      return nil
+    }
+    s, o := self._ToAny(), a._ToAny()
+    ns, no := Set_Size(s), Set_Size(o)
+    switch {
+    case ns == no && bool(Set_SubsetQ(s, o)):
+      return Ref[Integer](0)
+    case ns < no && bool(Set_SubsetQ(s, o)):
+      return Ref[Integer](-1)
+    case ns > no && bool(Set_SubsetQ(o, s)):
+      return Ref[Integer](1)
+    }
+    return nil
+  }
 
   #: (Set[E]) -> bool
   def proper_superset?(o) = o.proper_subset?(self)

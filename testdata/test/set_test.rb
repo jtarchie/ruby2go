@@ -109,6 +109,24 @@ module SetTests
       assert_equal [[1, 3], nil], [Set[1, 2, 3].reject!(&:even?)&.to_a, Set[1].reject!(&:even?)&.to_a]
     end
 
+    def test_merge_takes_many_enumerables_and_returns_self
+      s = Set[1]
+      assert_same s, s.merge([2, 3], Set[3, 4], 5..6)
+      assert_equal [1, 2, 3, 4, 5, 6], s.to_a
+      assert_same s, s.merge
+      assert_same s, s.merge(7..8)
+      assert_equal [1, 2, 3, 4, 5, 6, 7, 8], s.to_a
+    end
+
+    def test_spaceship_orders_by_inclusion
+      assert_equal 0, Set[1, 2] <=> Set[2, 1]
+      assert_equal(-1, Set[1] <=> Set[1, 2])
+      assert_equal 1, Set[1, 2] <=> Set[1]
+      assert_nil Set[1, 2] <=> Set[2, 3]
+      assert_nil Set[1] <=> [1]
+      assert_nil Set[1] <=> 1
+    end
+
     def test_inspect_classify_and_divide
       assert_equal ["Set[1, 2, 3]", "Set[]", "Set[1]"], [Set[1, 2, 3].inspect, Set[].inspect, Set[1].to_s]
       assert_equal [[true, [1, 3]], [false, [2]]], Set[1, 2, 3].classify(&:odd?).map { |k, v| [k, v.to_a] }

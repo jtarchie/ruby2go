@@ -41,3 +41,10 @@ b = Box.new
 case b
 in {x:} then p x
 end
+-- struct_member_deconstruct_keys.rb --
+# error: main.rb:5: Keyed#deconstruct_keys: wrong number of arguments (given 1, expected 0)
+Keyed = Struct.new(:deconstruct_keys, :z) #: [untyped, Integer]
+
+case Keyed.new({ z: 1 }, 2)
+in { z: } then p z
+end

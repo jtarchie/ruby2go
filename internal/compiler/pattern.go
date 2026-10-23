@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -706,7 +707,7 @@ func (f *fctx) patDeconstruct(pm *patMatch, p parser.Node, subj expr, needArray 
 			if t.C.RubyName == "Array" {
 				break
 			}
-			if e := f.resolve(t, "deconstruct"); e != nil && e.M.valueGen && !needArray && !t.C.descendantDefines("deconstruct", false) {
+			if e := f.resolve(t, "deconstruct"); e != nil && e.M.valueGen && !needArray && !t.C.descendantDefines("deconstruct", false) && !slices.Contains(t.C.valueRoot().value.members, "deconstruct") { // a member of that name is the accessor MRI calls (decision 336)
 				members := t.C.valueRoot().value.members
 				elems := make([]expr, len(members))
 				for i, m := range members {
@@ -919,7 +920,7 @@ func (f *fctx) patDeconstructKeys(pm *patMatch, p parser.Node, subj expr, names 
 	hashAny := TClass{C: f.c.classes["Hash"], Args: []Type{TAny{}, TAny{}}}
 	f.patShape(pm, p, subj, "deconstruct_keys", func(s expr) {
 		if t, ok := s.typ.(TClass); ok && t.C.RubyName != "Hash" {
-			if e := f.resolve(t, "deconstruct_keys"); e != nil && e.M.valueGen && !allKeys && !t.C.descendantDefines("deconstruct_keys", false) {
+			if e := f.resolve(t, "deconstruct_keys"); e != nil && e.M.valueGen && !allKeys && !t.C.descendantDefines("deconstruct_keys", false) && !slices.Contains(t.C.valueRoot().value.members, "deconstruct_keys") {
 				order := t.C.valueRoot().value.members
 				members := map[string]expr{}
 				for _, m := range order {

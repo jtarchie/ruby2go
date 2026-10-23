@@ -107,8 +107,13 @@ func (c *Compiler) emitCmpAdapter(cls *Class, recv string) {
 	}
 	arg := c.argNames(e.M)
 	// Comparable's slot is `Op_cmp(Self)`; a wider parameter (Sorbet's `other: BasicObject`) still takes a Self
-	c.w("func (self %s) Op_cmp(%s %s) Integer {\n\tif r := self.cmpNil(%s); r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
-		recv, arg, c.goType(c.cmpIncluder(cls)), arg, arg)
+	call := "self.cmpNil(" + arg + ")"
+	if strings.Contains(recv, "[") {
+		// a generic type's cmpNil forwarder is pruned unless an interface declares the name (isGenericForwarder), and none does: call the free func
+		call = freeFuncName(e.M) + c.forwardTypeArgs(*e, cls) + "(self, " + arg + ")"
+	}
+	c.w("func (self %s) Op_cmp(%s %s) Integer {\n\tif r := %s; r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
+		recv, arg, c.goType(c.cmpIncluder(cls)), call, arg)
 }
 
 // cmpIncluder is the type the Op_cmp adapter takes for cls: the topmost superclass that has Comparable (whose Self
