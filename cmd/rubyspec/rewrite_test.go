@@ -25,6 +25,9 @@ func TestRewrite(t *testing.T) {
 	}
 	write("spec_helper.rb", "raise 'never loaded'\n")
 	write("core/x/shared/abs.rb", `describe :x_abs, shared: true do
+  before :each do
+    @z = 1
+  end
   it "is positive" do
     -1.send(@method).should == 1
   end
@@ -71,6 +74,8 @@ end
 		"ProcExpectation.new(-> { 1 }, false).raise(TypeError)",
 		"before  do", // before's :each removed
 		"describe \"x_abs\" do\n",
+		"def __rbspec_before_2;", // the ivar hook chains with the shared spec's own before
+		"@method = :abs end; def __rbspec_before_2;", // helpers read the ivar at run time
 		"-1.send(:abs).should == 1", // @method substituted
 	} {
 		if !strings.Contains(got, want) {
