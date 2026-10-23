@@ -13,7 +13,11 @@ func (c *Compiler) emitClassType(cls *Class) {
 	switch {
 	case cls.universal:
 		if !cls.IsModule {
-			c.w("type %s struct{ _ byte }\n\n", cls.Name) // not zero-size: Go may give every new zero-size value one address, and Object.new must be unique
+			if c.weakRefs() {
+				c.w("type %s struct{ _ *byte }\n\n", cls.Name) // a WeakRef's referent must not be tiny-allocated (weakRefs)
+			} else {
+				c.w("type %s struct{ _ byte }\n\n", cls.Name) // not zero-size: Go may give every new zero-size value one address, and Object.new must be unique
+			}
 		}
 	case cls.IsModule:
 		c.emitModuleInterface(cls)
@@ -353,6 +357,9 @@ func (c *Compiler) emitStructClass(cls *Class) {
 	for _, iv := range cls.IvarList {
 		c.w("\t%s %s\n", goFieldName(iv.Name), c.goType(iv.Type))
 	}
+	if (cls.Super == nil || cls.Super.universal) && c.weakRefs() {
+		c.w("\t_ *byte\n") // a WeakRef's referent must not be tiny-allocated (weakRefs); subclasses embed this root
+	}
 	if cls.isPerRun {
 		c.w("\trbCls_ *%s\n", cls.meta.Name) // the class object whose new made it (decision 259)
 	}
@@ -477,3 +484,10 @@ func (c *Compiler) emitEntrySigs(cls *Class) {
 // (`Calc#calc`) would clash with it. Lowercase with a trailing `_`, it is
 // neither a method nor an ivar name (goLocalName).
 func superField(cls *Class) string { return "super_" + cls.Name + "_" }
+
+// weakRefs reports whether the program loads WeakRef. Go's allocator batches pointer-free objects of 16 bytes or
+// less into one slot, and a weak pointer into such a slot "may never become nil" while a neighbour lives (package
+// weak), so a WeakRef to a small object stayed alive by luck of placement: example 80's Session(8), a lone Integer
+// ivar, did once a Hash change moved its neighbour (decision 351). A pointer field makes every struct class a
+// scanned object, which is never batched; it costs 8 bytes an object, only in programs that require weakref.
+func (c *Compiler) weakRefs() bool { return c.loaded["prelude/weakref.rb"] }
