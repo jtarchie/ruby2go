@@ -74,9 +74,9 @@ end
 		"ProcExpectation.new(-> { 1 }, false).raise(TypeError)",
 		"before  do", // before's :each removed
 		"describe \"x_abs\" do\n",
-		"def __rbspec_before_2;", // the ivar hook chains with the shared spec's own before
+		"def __rbspec_before_2;",                     // the ivar hook chains with the shared spec's own before
 		"@method = :abs end; def __rbspec_before_2;", // helpers read the ivar at run time
-		"-1.send(:abs).should == 1", // @method substituted
+		"-1.send(:abs).should == 1",                  // @method substituted
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("rewritten spec lacks %q:\n%s", want, got)
