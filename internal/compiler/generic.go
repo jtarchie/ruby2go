@@ -250,9 +250,9 @@ func (c *Compiler) cloneTemplate(tmpl *Class, args []Type) *Class {
 			c.inheritedAliases = append(c.inheritedAliases, a)
 		}
 	}
-	c.classList = append(c.classList, inst)
 	tmpl.instances = append(tmpl.instances, inst)
 	c.insts[key] = inst // before its superclass's, which may name it back
 	c.linkSuperInst(inst)
+	c.classList = append(c.classList, inst) // after its superclass's instance: ivar discovery visits a parent's writes first, as MRI defines it first (decision 345)
 	return inst
 }

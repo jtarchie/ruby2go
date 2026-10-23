@@ -1251,6 +1251,26 @@ p h.pop
 	}
 }
 
+// TestPairingHeapGemTyped compiles benchmarks/pairing_heap.rb, the unmodified gem with decrease_key (an alias a generic
+// subclass makes of its parent's method): its node links stay static as decision 307 left them. Two regressions did not show in
+// TestNilLinksTyped: a gem parameter's untyped use in an early round counted as a kind (decision 331), and a subclass instance
+// discovered before its parent's declared @root untyped (decision 345). Each left ~45 rbDyn calls; 5 remain by design.
+func TestPairingHeapGemTyped(t *testing.T) {
+	requireToolchain(t)
+	t.Parallel()
+	src, err := os.ReadFile(filepath.Join("benchmarks", "pairing_heap.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := CompileWithGems(t.Context(), filepath.Join("benchmarks", "pairing_heap.rb"), src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(regexp.MustCompile(`rbDyn[A-Z]\w*\(rbCall`).FindAll(out, -1)); n > 5 {
+		t.Errorf("%d rbDyn call sites, want at most 5", n)
+	}
+}
+
 // TestVendoredGemsMRI runs each vendored gem's own minitest files (gems/<name>/test, a submodule; decision 328) under MRI with
 // the gem's lib first on the load path, so the pure-Ruby copy is checked as a gem, not only as compiled code.
 func TestVendoredGemsMRI(t *testing.T) {

@@ -40,7 +40,9 @@ func (c *Compiler) otherClassUse(u paramUse, cls *Class) bool {
 // `strict_filters: true` from one program (decision 331).
 func (c *Compiler) gemUsesDisagree(uses []paramUse, t Type, gemParam bool) bool {
 	for _, u := range uses {
-		if u.typ == nil || isVoid(u.typ) || holdsAny(u.typ) && !gemParam || mentionsVar(u.typ) || !gemParam && !c.gemFile(u.file) {
+		// a bare untyped use is a round's not-yet-typed value, which counts for nothing (decision 307): only a container
+		// of untyped elements is a kind for a gem's own parameter (decision 345)
+		if u.typ == nil || isVoid(u.typ) || isAny(stripOpt(u.typ)) || holdsAny(u.typ) && !gemParam || mentionsVar(u.typ) || !gemParam && !c.gemFile(u.file) {
 			continue
 		}
 		if j, ok := join(t, u.typ); !ok || !typeEq(j, t) {
