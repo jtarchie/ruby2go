@@ -1,16 +1,13 @@
 # prelude/hash.rb
 # rbs_inline: enabled
 #
-# Hash: insertion-ordered, a struct over a Go map plus a key list.
+# Hash: insertion-ordered, an entry array plus a Go map from key to entry (decision 350).
 
-# Insertion-ordered, like Ruby. Deletion is O(n) (docs/design.md decision 1).
-# Keys match by eql?/hash: see rbKeyIndex.
-# iter counts running iterators, as MRI's iter_lev: while it is non-zero []=
-# of a new key raises and delete copies the key list instead of shifting the
-# one being ranged over; iterators skip keys deleted under them.
+# iter is MRI's iter_lev: while non-zero, []= of a new key raises and nothing compacts (iterators skip tombstones; head is the first maybe-live entry, for shift).
+
 # @rbs generic K
 # @rbs generic V
-# @go_type struct { keys []K; vals map[K]V; iter int; idx rbKeyIndex[K]; frozen atomic.Bool; defVal V; hasDef bool; defProc func(*Hash[K, V], K) V }
+# @go_type struct { ents []rbHashEnt[K, V]; pos map[K]int32; gone []uint64; live int32; head int32; iter int; idx rbKeyIndex[K]; frozen atomic.Bool; defVal V; hasDef bool; defProc func(*Hash[K, V], K) V }
 class Hash < Object
   include Enumerable #[[K, V]]
 
@@ -70,8 +67,8 @@ class Hash < Object
     return func(yield func(Tuple2[K, V]) bool) {
       self.iter++
       defer func() { self.iter-- }()
-      for _, k := range self.keys {
-        if v, ok := self.vals[k]; ok && !yield(Tuple2[K, V]{k, v}) {
+      for i := int(self.head); i < len(self.ents); i++ {
+        if !rbGone(self.gone, i) && !yield(Tuple2[K, V]{self.ents[i].k, self.ents[i].v}) {
           return
         }
       }
@@ -86,8 +83,8 @@ class Hash < Object
     return func(yield func(K) bool) {
       self.iter++
       defer func() { self.iter-- }()
-      for _, k := range self.keys {
-        if _, ok := self.vals[k]; ok && !yield(k) {
+      for i := int(self.head); i < len(self.ents); i++ {
+        if !rbGone(self.gone, i) && !yield(self.ents[i].k) {
           return
         }
       }
@@ -99,8 +96,8 @@ class Hash < Object
     return func(yield func(V) bool) {
       self.iter++
       defer func() { self.iter-- }()
-      for _, k := range self.keys {
-        if v, ok := self.vals[k]; ok && !yield(v) {
+      for i := int(self.head); i < len(self.ents); i++ {
+        if !rbGone(self.gone, i) && !yield(self.ents[i].v) {
           return
         }
       }
@@ -183,20 +180,38 @@ class Hash < Object
     if !self.idx.plain {
       k, h, byValue = self.idx.find(k)
     }
-    if self.vals == nil {
-      self.vals = make(map[K]V, 1)
+    if self.pos != nil {
+      if i, ok := self.pos[k]; ok {
+        self.ents[i].v = v
+        return v
+      }
+    } else {
+      for i := range self.ents {
+        if self.ents[i].k == k && (int(self.live) == len(self.ents) || !rbGone(self.gone, i)) {
+          self.ents[i].v = v
+          return v
+        }
+      }
     }
-    n := len(self.vals)
-    self.vals[k] = v // one map operation: a new key is the length changing
-    if len(self.vals) != n {
-      if self.iter > 0 {
-        delete(self.vals, k)
-        panic(NewRuntimeError(Ref[String]("can't add a new key into hash during iteration")))
+    if self.iter > 0 {
+      panic(NewRuntimeError(Ref[String]("can't add a new key into hash during iteration")))
+    }
+    // a new key; tombstones are left to delete, so []= never compacts and the ninth entry builds pos
+    if self.pos != nil {
+      self.pos[k] = int32(len(self.ents)) //nolint:gosec // a Hash holds fewer than 2^31 entries
+    } else if len(self.ents) >= rbSmallHash {
+      self.pos = make(map[K]int32, 2*len(self.ents))
+      for i := range self.ents {
+        if !rbGone(self.gone, i) {
+          self.pos[self.ents[i].k] = int32(i) //nolint:gosec // a Hash holds fewer than 2^31 entries
+        }
       }
-      self.keys = append(self.keys, k)
-      if byValue {
-        self.idx.add(k, h)
-      }
+      self.pos[k] = int32(len(self.ents)) //nolint:gosec // a Hash holds fewer than 2^31 entries
+    }
+    self.ents = append(self.ents, rbHashEnt[K, V]{k, v})
+    self.live++
+    if byValue {
+      self.idx.add(k, h)
     }
     return v}
   end
@@ -240,8 +255,23 @@ class Hash < Object
   def dup = %x{
     out := NewHash[K, V]()
     out.defVal, out.hasDef, out.defProc = self.defVal, self.hasDef, self.defProc
-    for _, k := range self.keys {
-      v, _ := self.rbGet(k)
+    if int(self.live) == len(self.ents) && len(self.ents) > 0 { // a straight copy: no rehash
+      out.ents = append([]rbHashEnt[K, V](nil), self.ents...)
+      out.live = self.live
+      out.pos = maps.Clone(self.pos)
+      for h, b := range self.idx.byHash {
+        if out.idx.byHash == nil {
+          out.idx.byHash = make(map[uint64][]K, len(self.idx.byHash))
+        }
+        out.idx.byHash[h] = append([]K(nil), b...)
+      }
+      return out
+    }
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
       Hash_Op_idxSet[K, V](out, k, v)
     }
     return out
@@ -250,9 +280,7 @@ class Hash < Object
   #: () -> self
   def clear = %x{
     self.rbCheckFrozen()
-    self.keys = self.keys[:0]
-    clear(self.vals)
-    clear(self.idx.byHash)
+    rbHashClear(self)
     return self
   }
 
@@ -271,25 +299,27 @@ class Hash < Object
   #: (K) -> V?
   def delete(k) = %x{
     self.rbCheckFrozen()
-    k, h, byValue := self.idx.find(k)
-    v, ok := self.vals[k]
-    if !ok {
-      return nil
+    if !self.idx.plain {
+      k, _, _ = self.idx.find(k)
     }
-    delete(self.vals, k)
-    if byValue {
-      self.idx.remove(k, h)
-    }
-    for i, key := range self.keys {
-      if key == k {
-        head := self.keys[:i]
-        if self.iter > 0 {
-          head = head[:i:i] // force a copy
+    i := -1
+    if self.pos != nil {
+      if j, ok := self.pos[k]; ok {
+        i = int(j)
+      }
+    } else {
+      for j := range self.ents {
+        if self.ents[j].k == k && (int(self.live) == len(self.ents) || !rbGone(self.gone, j)) {
+          i = j
+          break
         }
-        self.keys = append(head, self.keys[i+1:]...)
-        break
       }
     }
+    if i < 0 {
+      return nil
+    }
+    v := self.ents[i].v
+    rbHashDropAt(self, i)
     return &v
   }
 
@@ -386,7 +416,7 @@ class Hash < Object
   def slice(*ks) = %x{
     out := NewHash[K, V]()
     for _, k := range rest_ {
-      if v, ok := self.vals[k]; ok {
+      if v, ok := self.rbGet(k); ok {
         Hash_Op_idxSet(out, k, v)
       }
     }
@@ -417,12 +447,17 @@ class Hash < Object
   #: (Hash[K, V]) { (K, V, V) -> V } -> Hash[K, V]
   def __merge_block(other) = %x{
     out := Hash_Dup[K, V](self)
-    for _, k := range other.keys {
-      if old, ok := out.vals[k]; ok {
-        Hash_Op_idxSet(out, k, blk(k, old, other.vals[k]))
-      } else {
-        Hash_Op_idxSet(out, k, other.vals[k])
+    other.iter++
+    defer func() { other.iter-- }()
+    for i := int(other.head); i < len(other.ents); i++ {
+      if rbGone(other.gone, i) {
+        continue
       }
+      k, v := other.ents[i].k, other.ents[i].v
+      if old, ok := out.rbGet(k); ok {
+        v = blk(k, old, v)
+      }
+      Hash_Op_idxSet(out, k, v)
     }
     return out
   }
@@ -430,22 +465,14 @@ class Hash < Object
   #: () { (K, V) -> bool } -> self
   def delete_if = %x{
     self.rbCheckFrozen()
-    for _, k := range slices.Clone(self.keys) {
-      if v, ok := self.vals[k]; ok && bool(blk(k, v)) {
-        Hash_Delete(self, k)
-      }
-    }
+    rbHashDropWhere(self, func(k K, v V) bool { return bool(blk(k, v)) })
     return self
   }
 
   #: () { (K, V) -> bool } -> self
   def keep_if = %x{
     self.rbCheckFrozen()
-    for _, k := range slices.Clone(self.keys) {
-      if v, ok := self.vals[k]; ok && !bool(blk(k, v)) {
-        Hash_Delete(self, k)
-      }
-    }
+    rbHashDropWhere(self, func(k K, v V) bool { return !bool(blk(k, v)) })
     return self
   }
 
@@ -498,26 +525,34 @@ class Hash < Object
   end
 
   #: () -> Integer
-  def size = %x{ Integer(len(self.keys)) }
+  def size = %x{ Integer(int(self.live)) }
 
   #: () -> Integer
   def length = size
 
   #: () -> bool
-  def empty? = %x{ len(self.keys) == 0 }
+  def empty? = %x{ int(self.live) == 0 }
 
   #: () -> Array[K]
   def keys = %x{
-    out := &Array[K]{}
-    out.s = append(out.s, self.keys...)
+    out := &Array[K]{s: make([]K, 0, self.live)}
+    for i := int(self.head); i < len(self.ents); i++ {
+      if !rbGone(self.gone, i) {
+        out.s = append(out.s, self.ents[i].k)
+      }
+    }
     return out
   }
 
   #: () -> Array[V]
   def values = %x{
-    out := &Array[V]{}
-    for _, k := range self.keys {
-      out.s = append(out.s, self.vals[k])
+    out := &Array[V]{s: make([]V, 0, int(self.live))}
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      v := self.ents[i].v
+      out.s = append(out.s, v)
     }
     return out
   }
@@ -534,9 +569,13 @@ class Hash < Object
       return "{...}"
     }
     defer s.leave(self, nil)
-    parts := make([]string, 0, len(self.keys))
-    for _, k := range self.keys {
-      parts = append(parts, rbInspectPair(k, self.vals[k], s))
+    parts := make([]string, 0, int(self.live))
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
+      parts = append(parts, rbInspectPair(k, v, s))
     }
     return String("{" + strings.Join(parts, ", ") + "}")
   }
@@ -560,7 +599,7 @@ class Hash < Object
       }
       return false
     }
-    if len(o.keys) != len(self.keys) {
+    if int(o.live) != int(self.live) {
       return false
     }
     s, _ := seen.(*rbSeen)
@@ -570,9 +609,12 @@ class Hash < Object
       }
       defer s.leave(self, o)
     }
-    for k, v := range self.vals {
-      k, _, _ = o.idx.find(k)
-      ov, ok := o.vals[k]
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
+      ov, ok := o.rbGet(k)
       if !ok {
         return false
       }
@@ -605,7 +647,7 @@ class Hash < Object
       }
       return false
     }
-    if len(o.keys) != len(self.keys) {
+    if int(o.live) != int(self.live) {
       return false
     }
     s, _ := seen.(*rbSeen)
@@ -615,9 +657,12 @@ class Hash < Object
       }
       defer s.leave(self, o)
     }
-    for k, v := range self.vals {
-      k, _, _ = o.idx.find(k)
-      ov, ok := o.vals[k]
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
+      ov, ok := o.rbGet(k)
       if !ok {
         return false
       }
@@ -649,8 +694,12 @@ class Hash < Object
       }
       defer s.leave(self, nil)
     }
-    h := uint64(len(self.keys))
-    for k, v := range self.vals {
+    h := uint64(int(self.live)) //nolint:gosec // a length
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
       var vh uint64
       if r, ok := any(v).(rbHashRec); ok {
         if s == nil {
@@ -668,17 +717,34 @@ class Hash < Object
 
   # The untyped view (rbHashView, prelude/go/view.go): per-instantiation accessors behind one compiled body (decision 236).
   #: () -> Integer
-  def _len = %x{ return Integer(len(self.keys)) }
+  def _len = %x{ return Integer(int(self.live)) }
 
-  #: (Integer) -> untyped
-  def _key_at(i) = %x{ return self.keys[i] }
+  # The keys, in order, each as the untyped value it is ([]any).
+  #: () -> untyped
+  def _keys_any = %x{
+    out := make([]any, 0, int(self.live))
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k := self.ents[i].k
+      out = append(out, k)
+    }
+    return out
+  }
 
-  # The pair at insertion index i, as each yields it (decision 302).
-  #: (Integer) -> untyped
-  def _pair_at(i) = %x{
-    k := self.keys[i]
-    v, _ := self.rbGet(k)
-    return Tuple2[K, V]{k, v}
+  # The pairs, in order, as each yields them (decision 302): []any of Tuple2[K, V].
+  #: () -> untyped
+  def _pairs_any = %x{
+    out := make([]any, 0, int(self.live))
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
+      out = append(out, Tuple2[K, V]{k, v})
+    }
+    return out
   }
 
   #: (untyped) -> bool
@@ -712,8 +778,12 @@ class Hash < Object
       return same
     }
     out := NewHash[any, any]()
-    for _, k := range self.keys {
-      Hash_Op_idxSet(out, rbUnbox(k), rbUnbox(self.vals[k]))
+    for i := int(self.head); i < len(self.ents); i++ {
+      if rbGone(self.gone, i) {
+        continue
+      }
+      k, v := self.ents[i].k, self.ents[i].v
+      Hash_Op_idxSet(out, rbUnbox(k), rbUnbox(v))
     }
     return out
   }
@@ -729,12 +799,16 @@ class Hash < Object
   def frozen? = %x{ Boolean(self.frozen.Load()) }
 
   #: () -> [K, V]?
-  def shift
-    __check_frozen
-    pair = __first_pair
-    delete(pair[0]) if pair
-    pair
-  end
+  def shift = %x{
+    self.rbCheckFrozen()
+    i := rbHashFirst(self)
+    if i < 0 {
+      return nil
+    }
+    pair := Tuple2[K, V]{self.ents[i].k, self.ents[i].v}
+    rbHashDropAt(self, i)
+    return &pair
+  }
 
   #: (K) -> [K, V]?
   def assoc(k) = key?(k) ? [k, fetch(k)] : nil

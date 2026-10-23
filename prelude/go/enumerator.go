@@ -145,9 +145,9 @@ type rbSized interface{ rbSize() *Integer }
 
 func (a *Array[E]) rbSize() *Integer { return Ref(Integer(len(a.s))) }
 
-func (h *Hash[K, V]) rbSize() *Integer { return Ref(Integer(len(h.keys))) }
+func (h *Hash[K, V]) rbSize() *Integer { return Ref(Integer(int(h.live))) }
 
-func (s *Set[E]) rbSize() *Integer { return Ref(Integer(len(s.h.keys))) }
+func (s *Set[E]) rbSize() *Integer { return Ref(Integer(int(s.h.live))) }
 
 // rbSize is MRI's Range#size where it is a number: nil for a non-Integer begin, and for an endless range (Infinity).
 func (r *Range[E]) rbSize() *Integer {

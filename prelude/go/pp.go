@@ -257,9 +257,9 @@ func (q *rbPrettyPrint) ppCycle(v any) {
 	case Array_Any:
 		q.text(map[bool]string{true: "[]", false: "[...]"}[len(x._ToAny().s) == 0])
 	case Hash_Any:
-		q.text(map[bool]string{true: "{}", false: "{...}"}[len(x._ToAny().keys) == 0])
+		q.text(map[bool]string{true: "{}", false: "{...}"}[int(x._ToAny().live) == 0])
 	case Set_Any:
-		q.text(map[bool]string{true: "Set[]", false: "Set[...]"}[len(x._ToAny().h.keys) == 0])
+		q.text(map[bool]string{true: "Set[]", false: "Set[...]"}[int(x._ToAny().h.live) == 0])
 	case rbPPValueClass:
 		q.text("#<" + string(x.__PpKind()) + " " + rbClassName(v) + ":...>")
 	default:
@@ -297,7 +297,7 @@ func (q *rbPrettyPrint) prettyPrint(v any) {
 	case Hash_Any:
 		q.ppHash(x._ToAny())
 	case Set_Any:
-		keys := x._ToAny().h.keys
+		keys := rbHashKeys(x._ToAny().h)
 		q.group(1, "Set[", "]", func() {
 			q.seplist(len(keys), nil, func(i int) { q.pp(keys[i]) })
 		})
@@ -343,10 +343,11 @@ var rbPPOddSymbol = regexp.MustCompile(`\A:["$@!]|[%&*+\-\/<=>@\]^` + "`" + `|~]
 
 // ppHash is pp_hash with Ruby 3.4's pair forms (`key: v`, `"odd key": v`, `k => v`).
 func (q *rbPrettyPrint) ppHash(h *Hash[any, any]) {
+	keys := rbHashKeys(h)
 	q.group(1, "{", "}", func() {
-		q.seplist(len(h.keys), nil, func(i int) {
-			k := h.keys[i]
-			v := h.vals[k]
+		q.seplist(len(keys), nil, func(i int) {
+			k := keys[i]
+			v, _ := h.rbGet(k)
 			q.group(0, "", "", func() {
 				if sym, ok := rbUnbox(k).(Symbol); ok {
 					label := string(sym)

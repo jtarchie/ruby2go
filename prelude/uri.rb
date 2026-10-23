@@ -134,9 +134,9 @@ module URI
 
   #: (Hash[String, String]) -> String
   def self.encode_www_form(form) = %x{
-    parts := make([]string, 0, len(form.keys))
-    for _, k := range form.keys {
-      parts = append(parts, rbFormEscape(string(k))+"="+rbFormEscape(string(form.vals[k])))
+    parts := make([]string, 0, int(form.live))
+    for k, hv := range rbHashPairs(form) {
+      parts = append(parts, rbFormEscape(string(k))+"="+rbFormEscape(string(hv)))
     }
     return String(strings.Join(parts, "&"))
   }

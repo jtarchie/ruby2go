@@ -1348,7 +1348,7 @@ func rbStopped() {
 }
 
 func NewHash[K, V comparable]() *Hash[K, V] {
-	return &Hash[K, V]{idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}} // vals is made by the first []=: an empty Hash allocates no map
+	return &Hash[K, V]{idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}} // pos is made by the first []=: an empty Hash allocates no map
 }
 
 // `when Array` / `when Hash` in a type switch can't match a generic
@@ -1903,7 +1903,7 @@ func rbBlockArgOf(p **func(...any) any) rbBlockArg {
 
 // rbKwArgs is a dynamic call's keywords as arguments: none for an empty Hash (`send(m, *args, **{})`).
 func rbKwArgs(h any) []any {
-	if x, ok := h.(Hash_Any); ok && len(x._ToAny().keys) == 0 {
+	if x, ok := h.(Hash_Any); ok && int(x._ToAny().live) == 0 {
 		return nil
 	}
 	return []any{h}

@@ -65,15 +65,15 @@ func rbTimeZoneArg(zone any, def *time.Location) (*time.Location, bool) {
 	case Integer:
 		return rbTimeZoneLocation(rbTimeZoneOffsetInt(int(v)))
 	case *Hash[Symbol, String]:
-		if z, ok := v.vals[Symbol("in")]; ok {
+		if z, ok := v.rbGet(Symbol("in")); ok {
 			return rbTimeZoneLocation(rbTimeZoneOffset(string(z)))
 		}
 	case *Hash[Symbol, Integer]:
-		if z, ok := v.vals[Symbol("in")]; ok {
+		if z, ok := v.rbGet(Symbol("in")); ok {
 			return rbTimeZoneLocation(rbTimeZoneOffsetInt(int(z)))
 		}
 	case *Hash[Symbol, any]:
-		if z, ok := v.vals[Symbol("in")]; ok {
+		if z, ok := v.rbGet(Symbol("in")); ok {
 			return rbTimeZoneArg(rbUnbox(z), def)
 		}
 	}

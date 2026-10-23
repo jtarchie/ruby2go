@@ -78,7 +78,7 @@ func (c *Compiler) emitDynEach() {
 	c.w("\t\tcase arity >= 2 && len(xs) == 1:\n\t\t\ta := rbToAry(xs[0]).s\n\t\t\txs = append(a[:len(a):len(a)], make([]any, arity)...)[:arity]\n")
 	c.w("\t\tcase arity == 1 && len(xs) == 2:\n\t\t\txs = []any{&Array[any]{s: xs}}\n\t\t}\n\t\tblk(xs...)\n\t}\n")
 	c.w("\tswitch r := recv.(type) {\n\tcase Array_Any:\n\t\tfor _, x := range r._ToAny().s {\n\t\t\tyield(x)\n\t\t}\n")
-	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor _, k := range h.keys {\n\t\t\tyield(k, h.vals[k])\n\t\t}\n")
+	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor k, v := range rbHashEachKV(h) {\n\t\t\tyield(k, v)\n\t\t}\n")
 
 	seen := map[string]bool{}
 	for _, cls := range c.classList {

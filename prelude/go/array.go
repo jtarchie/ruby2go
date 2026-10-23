@@ -267,9 +267,9 @@ func rbSplatAny(x any) []any {
 		return v._ToAny().s
 	case Hash_Any:
 		h := v._ToAny()
-		out := make([]any, 0, len(h.keys))
-		for _, k := range h.keys {
-			out = append(out, &Array[any]{s: []any{k, h.vals[k]}})
+		out := make([]any, 0, int(h.live))
+		for k, hv := range rbHashPairs(h) {
+			out = append(out, &Array[any]{s: []any{k, hv}})
 		}
 		return out
 	}

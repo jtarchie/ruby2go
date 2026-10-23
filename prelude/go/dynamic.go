@@ -189,12 +189,12 @@ func rbDynKw(args []any, req int) (*Hash[Symbol, any], []any) {
 		return out, args
 	}
 	all := h._ToAny()
-	for _, k := range all.keys {
+	for k, hv := range rbHashPairs(all) {
 		s, ok := rbUnbox(k).(Symbol)
 		if !ok {
 			return NewHash[Symbol, any](), args
 		}
-		Hash___Set(out, s, all.vals[k])
+		Hash___Set(out, s, hv)
 	}
 	return out, args[:len(args)-1]
 }

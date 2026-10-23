@@ -276,8 +276,8 @@ func (self *Hash[K, V]) _Copy(seen map[any]any) any {
 	}
 	out := NewHash[K, V]()
 	seen[self] = out
-	for _, k := range self.keys {
-		Hash_Op_idxSet(out, rbCopyAs(k, seen), rbCopyAs(self.vals[k], seen))
+	for k, hv := range rbHashPairs(self) {
+		Hash_Op_idxSet(out, rbCopyAs(k, seen), rbCopyAs(hv, seen))
 	}
 	return out
 }
@@ -287,15 +287,15 @@ func (self *Set[E]) _Copy(seen map[any]any) any {
 	if self == nil {
 		return self
 	}
-	for _, k := range self.h.keys {
+	for k := range rbHashPairs(self.h) {
 		if _, ok := any(k).(rbCopier); ok && !rbIsFrozen(k) {
 			panic(NewRactor_Error(Ref(String("can not copy Set object."))))
 		}
 	}
 	out := &Set[E]{h: NewHash[E, Boolean]()}
 	seen[self] = out
-	for _, k := range self.h.keys {
-		Hash_Op_idxSet(out.h, k, self.h.vals[k])
+	for k, hv := range rbHashPairs(self.h) {
+		Hash_Op_idxSet(out.h, k, hv)
 	}
 	return out
 }

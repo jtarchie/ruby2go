@@ -20,11 +20,11 @@ import (
 
 func rbWEBrickListen(config *Hash[Symbol, any]) *WEBrick_HTTPServer_Handle__ {
 	port := 0
-	if p, ok := config.vals[Symbol("Port")]; ok && p != nil {
+	if p, ok := config.rbGet(Symbol("Port")); ok && p != nil {
 		port = int(p.(Integer))
 	}
 	bind := ""
-	if b, ok := config.vals[Symbol("BindAddress")]; ok && b != nil {
+	if b, ok := config.rbGet(Symbol("BindAddress")); ok && b != nil {
 		bind = string(b.(String))
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
@@ -34,7 +34,8 @@ func rbWEBrickListen(config *Hash[Symbol, any]) *WEBrick_HTTPServer_Handle__ {
 	Hash_Op_idxSet[Symbol, any](config, Symbol("Port"), Integer(ln.Addr().(*net.TCPAddr).Port))
 	mux := http.NewServeMux()
 	timeout := rbWEBrickRequestTimeout * time.Second
-	switch t := config.vals[Symbol("RequestTimeout")].(type) {
+	rt, _ := config.rbGet(Symbol("RequestTimeout"))
+	switch t := rt.(type) {
 	case Integer:
 		if t > 0 {
 			timeout = time.Duration(t) * time.Second
@@ -140,7 +141,7 @@ func rbParseQuery(h *Hash[String, String], q string) {
 		k, v, _ := strings.Cut(part, "=")
 		k, _ = url.QueryUnescape(k)
 		v, _ = url.QueryUnescape(v)
-		if _, seen := h.vals[String(k)]; !seen {
+		if _, seen := h.rbGet(String(k)); !seen {
 			Hash_Op_idxSet(h, String(k), String(v))
 		}
 	}

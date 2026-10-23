@@ -117,8 +117,8 @@ func rbHTTPRequest(h *Net_HTTP, method, path string, body *String, headers *Hash
 		req.URL.RawPath = strings.TrimPrefix(req.URL.RawPath, "/")
 	}
 	req.Header.Set("User-Agent", "Ruby")
-	for _, k := range headers.keys {
-		req.Header.Set(string(k), string(headers.vals[k]))
+	for k, hv := range rbHashPairs(headers) {
+		req.Header.Set(string(k), string(hv))
 	}
 	client := rbHTTPClientFor(h)
 	// The transport is per request: closing its idle connections (also ones still on their way to idle) is what frees the fd and goroutines, without a Connection: close header.

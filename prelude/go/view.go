@@ -24,8 +24,8 @@ type rbView interface {
 // rbHashView is the same for a Hash: keys in insertion order, values by key.
 type rbHashView interface {
 	_Len() Integer
-	_KeyAt(i Integer) any
-	_PairAt(i Integer) any
+	_KeysAny() any
+	_PairsAny() any
 	_Has(k any) Boolean
 	_Get(k any) any
 	_Store(k, v any)
@@ -467,12 +467,7 @@ func rbHashViewArg(v any) rbHashView {
 }
 
 func rbHashViewKeys(s rbHashView) []any {
-	n := int(s._Len())
-	out := make([]any, n)
-	for i := range n {
-		out[i] = s._KeyAt(Integer(i))
-	}
-	return out
+	return s._KeysAny().([]any)
 }
 
 func rbHashViewCopy(s rbHashView) rbHashView {
@@ -977,12 +972,7 @@ func rbHashViewKeepBang(s rbHashView, b *rbBlockArg, keep, always bool) any {
 }
 
 func rbHashViewPairs(s rbHashView) []any {
-	n := int(s._Len())
-	out := make([]any, n)
-	for i := range n {
-		out[i] = s._PairAt(Integer(i))
-	}
-	return out
+	return s._PairsAny().([]any)
 }
 
 // rbHashViewBlockCall answers a block-taking Hash name on the view (decision 302), yielding what each per-shape

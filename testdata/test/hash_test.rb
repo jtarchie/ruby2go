@@ -2362,3 +2362,196 @@ module HashTests
     end
   end
 end
+
+module HashTests
+  # The entry-array layout (decision 350): tombstones, compaction, shift, and order across them.
+  class HashLayoutTest < Minitest::Test
+    def test_reinsert_after_delete_goes_last
+      h = { a: 1, b: 2, c: 3 }
+      h.delete(:a)
+      h[:a] = 4
+      assert_equal [:b, :c, :a], h.keys
+      h[:b] = 20
+      assert_equal [[:b, 20], [:c, 3], [:a, 4]], h.to_a
+      assert_equal 3, h.size
+    end
+
+    def test_many_deletes_keep_order
+      h = {} #: Hash[Integer, Integer]
+      100.times { |i| h[i] = i * i }
+      (0...100).step(2) { |i| h.delete(i) }
+      assert_equal 50, h.size
+      assert_equal (1...100).step(2).to_a, h.keys
+      (0...90).each { |i| h.delete(i) }
+      assert_equal [91, 93, 95, 97, 99], h.keys
+      h[0] = 0
+      h[93] = -1
+      assert_equal [[91, 8281], [93, -1], [95, 9025], [97, 9409], [99, 9801], [0, 0]], h.to_a
+      assert_equal 9801, h[99]
+      assert_nil h[2]
+      assert_equal({ 91 => 8281, 93 => -1, 95 => 9025, 97 => 9409, 99 => 9801, 0 => 0 }, h)
+      [91, 93, 95, 97, 99, 0].each { |k| h.delete(k) }
+      assert_empty h
+      h[5] = 5
+      assert_equal({ 5 => 5 }, h)
+    end
+
+    def test_delete_during_each
+      h = {} #: Hash[Integer, String]
+      40.times { |i| h[i] = i.to_s }
+      seen = [] #: Array[Integer]
+      h.each do |k, _v|
+        seen << k
+        h.delete(k + 1) if k.even?
+        h.delete(k) if k % 3 == 0
+      end
+      assert_equal (0...40).step(2).to_a, seen
+      assert_equal (0...40).step(2).reject { |k| k % 3 == 0 }, h.keys
+      h[100] = "x"
+      assert_equal "x", h[100]
+      assert_equal 100, h.keys.last
+    end
+
+    def test_new_key_during_each_raises_existing_updates
+      h = { a: 1, b: 2, c: 3 }
+      h.each { |k, v| h[k] = v * 10 }
+      assert_equal({ a: 10, b: 20, c: 30 }, h)
+      raised = false
+      begin
+        h.each { |_k, _v| h[:z] = 0 }
+      rescue RuntimeError => e
+        raised = e.message == "can't add a new key into hash during iteration"
+      end
+      assert raised
+      assert_equal [:a, :b, :c], h.keys
+      h.each { |k, _v| h.delete(k) }
+      assert_empty h
+      h[:z] = 1
+      assert_equal({ z: 1 }, h)
+    end
+
+    def test_clear_and_shift_during_each
+      h = { a: 1, b: 2, c: 3 }
+      seen = [] #: Array[Symbol]
+      h.each do |k, _v|
+        seen << k
+        h.clear if k == :a
+      end
+      assert_equal [:a], seen
+      assert_empty h
+      h = { a: 1, b: 2, c: 3 }
+      seen = []
+      h.each do |k, _v|
+        seen << k
+        h.shift if k == :a
+      end
+      assert_equal [:a, :b, :c], seen
+      assert_equal({ b: 2, c: 3 }, h)
+    end
+
+    def test_shift_as_queue
+      h = Hash.new(-1) #: Hash[Integer, Integer]
+      out = [] #: Array[Integer]
+      1000.times do |i|
+        h[i] = i
+        h[i + 5000] = i
+        pair = h.shift
+        out << pair[0] if pair && i % 100 == 0
+      end
+      assert_equal 1000, h.size
+      assert_equal [0, 50, 100, 150, 200, 250, 300, 350, 400, 450], out
+      assert_equal [500, 5500], h.keys.first(2)
+      h.clear
+      assert_nil h.shift
+      assert_equal(-1, h[3])
+    end
+
+    def test_delete_if_and_select_bang
+      h = {} #: Hash[Integer, Integer]
+      50.times { |i| h[i] = i }
+      h.delete_if { |k, _v| k % 5 != 0 }
+      assert_equal [0, 5, 10, 15, 20, 25, 30, 35, 40, 45], h.keys
+      assert_nil h.select! { |_k, _v| true }
+      h.keep_if { |k, _v| k > 20 }
+      assert_equal [25, 30, 35, 40, 45], h.keys
+      h.reject! { |k, _v| k == 30 }
+      h[1] = 1
+      assert_equal [25, 35, 40, 45, 1], h.keys
+      raised = false
+      begin
+        h.delete_if { |_k, _v| h[99] = 9; false }
+      rescue RuntimeError
+        raised = true
+      end
+      assert raised
+      assert_equal [25, 35, 40, 45, 1], h.keys
+    end
+
+    def test_frozen_mutators
+      h = { a: 1 }.freeze
+      [-> { h.delete(:a) }, -> { h.shift }, -> { h.clear }, -> { h[:b] = 2 }, -> { h.delete_if { true } }].each do |f|
+        ok = false
+        begin
+          f.call
+        rescue FrozenError
+          ok = true
+        end
+        assert ok
+      end
+      assert_equal({ a: 1 }, h)
+    end
+
+    def test_value_keys_after_delete
+      h = {} #: Hash[untyped, Integer]
+      h[[1, 2]] = 1
+      h[1] = 2
+      h[1.0] = 3
+      h["s"] = 4
+      assert_equal 4, h.size
+      h.delete([1, 2])
+      assert_nil h[[1, 2]]
+      h[[1, 2]] = 5
+      assert_equal [1, 1.0, "s", [1, 2]], h.keys
+      assert_equal 5, h[[1, 2]]
+      h.delete(1)
+      assert_equal 3, h[1.0]
+      assert_nil h[1]
+    end
+
+    def test_dup_merge_equality_after_deletes
+      h = {} #: Hash[String, Integer]
+      30.times { |i| h["k#{i}"] = i }
+      20.times { |i| h.delete("k#{i}") }
+      d = h.dup
+      d["new"] = 1
+      refute_equal h, d
+      d.delete("new")
+      assert_equal h, d
+      assert h.hash == d.hash
+      assert_equal "{\"k20\" => 20, \"k21\" => 21}", h.first(2).to_h.inspect
+      m = h.merge({ "k25" => 0, "z" => 9 }) { |_k, a, b| a + b }
+      assert_equal 25, m["k25"]
+      assert_equal "z", m.keys.last
+      assert_equal 11, m.size
+      assert_equal({ "k21" => 21 }, h.select { |k, _v| k == "k21" })
+    end
+
+    def test_update_in_place_and_defaults
+      counts = Hash.new(0) #: Hash[String, Integer]
+      %w[b a b c a b].each { |w| counts[w] += 1 }
+      assert_equal [["b", 3], ["a", 2], ["c", 1]], counts.to_a
+      memo = {} #: Hash[Symbol, Integer]
+      memo[:x] ||= 1
+      memo[:x] ||= 2
+      memo[:y] = (memo[:y] || 10) + 5
+      memo[:y] = (memo[:y] || 10) + 5
+      assert_equal({ x: 1, y: 20 }, memo)
+      big = Hash.new(0) #: Hash[Integer, Integer]
+      200.times { |i| big[i % 7] += i }
+      big.delete(3)
+      big[3] += 1
+      assert_equal [0, 1, 2, 4, 5, 6, 3], big.keys
+      assert_equal 1, big[3]
+    end
+  end
+end

@@ -67,7 +67,7 @@ func rbFormat(format string, args []any) string {
 			raise("one hash required")
 		}
 		key := Symbol(name[1 : len(name)-1])
-		v, ok := h._ToAny().vals[key]
+		v, ok := h._ToAny().rbGet(key)
 		if !ok {
 			e := NewKeyError(Ref(String("key" + name + " not found")))
 			e.receiver, e.key, e.has_key = args[0], key, true

@@ -278,12 +278,12 @@ func rbPopen(cmd any, mode string, opts *Hash[Symbol, any]) *IO {
 		args = []any{v}
 	case Array_Any:
 		args = v._ToAny().s
-		if len(args) > 0 && len(opts.keys) == 0 { // `IO.popen([cmd, ..., opts])`: trailing options inside the Array
+		if len(args) > 0 && int(opts.live) == 0 { // `IO.popen([cmd, ..., opts])`: trailing options inside the Array
 			if h, ok := rbUnbox(args[len(args)-1]).(Hash_Any); ok {
 				hh, o := h._ToAny(), NewHash[Symbol, any]()
-				for _, k := range hh.keys {
+				for k, hv := range rbHashPairs(hh) {
 					if s, ok := rbUnbox(k).(Symbol); ok {
-						Hash___Set(o, s, hh.vals[k])
+						Hash___Set(o, s, hv)
 					}
 				}
 				args, opts = args[:len(args)-1], o
@@ -374,8 +374,8 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 		if h, ok := args[0].(Hash_Any); ok {
 			env = map[string]any{}
 			hh := h._ToAny()
-			for _, k := range hh.keys {
-				name, v := string(rbToS(k)), rbUnbox(hh.vals[k])
+			for k, hv := range rbHashPairs(hh) {
+				name, v := string(rbToS(k)), rbUnbox(hv)
 				rbNoNul(name)
 				if strings.Contains(name, "=") {
 					panic(NewArgumentError(Ref(String("environment name contains a equal : " + name))))
@@ -395,19 +395,19 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 			hh := h._ToAny()
 			merged := NewHash[Symbol, any]()
 			if opts != nil {
-				for _, k := range opts.keys {
-					Hash___Set[Symbol, any](merged, k, opts.vals[k])
+				for k, hv := range rbHashPairs(opts) {
+					Hash___Set[Symbol, any](merged, k, hv)
 				}
 			}
-			for _, k := range hh.keys {
+			for k, hv := range rbHashPairs(hh) {
 				switch key := rbUnbox(k).(type) {
 				case Symbol:
-					Hash___Set[Symbol, any](merged, key, hh.vals[k])
+					Hash___Set[Symbol, any](merged, key, hv)
 				case Integer:
 					if fds == nil {
 						fds = map[int]any{}
 					}
-					fds[int(key)] = rbUnbox(hh.vals[k])
+					fds[int(key)] = rbUnbox(hv)
 				}
 			}
 			opts = merged
@@ -442,8 +442,8 @@ func rbSpawnCmd(args []any, opts *Hash[Symbol, any]) (c *exec.Cmd, closers []*os
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	clean := false
 	if opts != nil {
-		for _, k := range opts.keys {
-			v := rbUnbox(opts.vals[k])
+		for k, hv := range rbHashPairs(opts) {
+			v := rbUnbox(hv)
 			switch string(k) {
 			case "in":
 				c.Stdin = redirect(v, os.O_RDONLY, true)

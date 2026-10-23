@@ -96,8 +96,8 @@ func (*Hash[K, V]) rbFrom(v any) (*Hash[K, V], bool) {
 
 // rbEachAny yields each pair unboxed, as _ToAny's copy holds them.
 func (self *Hash[K, V]) rbEachAny(yield func(k, v any) bool) {
-	for _, k := range self.keys {
-		if !yield(rbUnbox(k), rbUnbox(self.vals[k])) {
+	for i := int(self.head); i < len(self.ents); i++ {
+		if !rbGone(self.gone, i) && !yield(rbUnbox(self.ents[i].k), rbUnbox(self.ents[i].v)) {
 			return
 		}
 	}
@@ -111,8 +111,188 @@ func (self *Hash[K, V]) rbGet(k K) (V, bool) {
 	if !self.idx.plain {
 		k, _, _ = self.idx.find(k)
 	}
-	v, ok := self.vals[k]
-	return v, ok
+	if self.pos != nil {
+		if i, ok := self.pos[k]; ok {
+			return self.ents[i].v, true
+		}
+	} else {
+		for i := range self.ents { // the scan is repeated in []= and delete rather than shared: one less function per instantiation
+			if self.ents[i].k == k && (int(self.live) == len(self.ents) || !rbGone(self.gone, i)) {
+				return self.ents[i].v, true
+			}
+		}
+	}
+	var zero V
+	return zero, false
+}
+
+// rbHashEnt is one entry of ents (insertion order); a deleted one stays a tombstone (gone bit) until rbHashCompact, never run while iter > 0, so an iterator's index stays valid (decision 350).
+type rbHashEnt[K, V comparable] struct {
+	k K
+	v V
+}
+
+// rbSmallHash is the most entries a Hash holds without a pos map: a scan of a few keys costs less than hashing one, and most Hashes are this small.
+const rbSmallHash = 8
+
+// rbGone reports whether Hash entry i is a tombstone; not generic, so it compiles once.
+func rbGone(gone []uint64, i int) bool {
+	w := i >> 6
+	return w < len(gone) && gone[w]&(1<<(uint(i)&63)) != 0
+}
+
+// The helpers below are free functions, not methods, so a Hash instantiation compiles only the ones it calls.
+
+// rbHashScan finds k (canonical: idx.find) in a Hash small enough to have no pos map.
+func rbHashScan[K, V comparable](h *Hash[K, V], k K) (int, bool) {
+	for i := range h.ents {
+		if h.ents[i].k == k && (int(h.live) == len(h.ents) || !rbGone(h.gone, i)) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// rbHashPairs does not bump iter, so its loop body must not run Ruby code that could mutate the Hash (rbHashEachKV does).
+func rbHashPairs[K, V comparable](h *Hash[K, V]) func(func(K, V) bool) {
+	return func(yield func(K, V) bool) {
+		for i := int(h.head); i < len(h.ents); i++ {
+			if !rbGone(h.gone, i) && !yield(h.ents[i].k, h.ents[i].v) {
+				return
+			}
+		}
+	}
+}
+
+// rbHashEachKV is rbHashPairs for a body that runs Ruby code: an open iterator, as each is.
+func rbHashEachKV[K, V comparable](h *Hash[K, V]) func(func(K, V) bool) {
+	return func(yield func(K, V) bool) {
+		h.iter++
+		defer func() { h.iter-- }()
+		rbHashPairs(h)(yield)
+	}
+}
+
+// rbHashKeys is the live keys, in order.
+func rbHashKeys[K, V comparable](h *Hash[K, V]) []K {
+	out := make([]K, 0, int(h.live))
+	for i := int(h.head); i < len(h.ents); i++ {
+		if !rbGone(h.gone, i) {
+			out = append(out, h.ents[i].k)
+		}
+	}
+	return out
+}
+
+// rbHashSlot is k's value in place (nil when absent) for the fused `h[k] op= v`: one lookup; valid only until the next insertion.
+func rbHashSlot[K, V comparable](h *Hash[K, V], k K) *V {
+	if !h.idx.plain {
+		k, _, _ = h.idx.find(k)
+	}
+	if h.pos != nil {
+		if i, ok := h.pos[k]; ok {
+			return &h.ents[i].v
+		}
+	} else if i, ok := rbHashScan(h, k); ok {
+		return &h.ents[i].v
+	}
+	return nil
+}
+
+// rbHashDropAt tombstones live entry i; with no iterator open an emptied Hash resets and a mostly-dead one compacts.
+func rbHashDropAt[K, V comparable](h *Hash[K, V], i int) {
+	k := h.ents[i].k
+	delete(h.pos, k)
+	if !h.idx.plain {
+		if hv, byValue := rbValueKey(k); byValue {
+			h.idx.remove(k, hv)
+		}
+	}
+	h.ents[i] = rbHashEnt[K, V]{}
+	for w := i >> 6; len(h.gone) <= w; {
+		h.gone = append(h.gone, 0)
+	}
+	h.gone[i>>6] |= 1 << (uint(i) & 63)
+	h.live--
+	for int(h.head) < len(h.ents) && rbGone(h.gone, int(h.head)) {
+		h.head++
+	}
+	if h.iter == 0 && (h.live == 0 || 2*int(h.live) < len(h.ents) && len(h.ents) >= 16) {
+		rbHashCompact(h)
+	}
+}
+
+// rbHashDropWhere is delete_if: the block runs as under MRI's foreach, so it cannot add a key and nothing compacts under it.
+func rbHashDropWhere[K, V comparable](h *Hash[K, V], drop func(K, V) bool) {
+	h.iter++
+	defer func() {
+		h.iter--
+		if h.iter == 0 && int(h.live) < len(h.ents) && (h.live == 0 || 2*int(h.live) < len(h.ents)) {
+			rbHashCompact(h)
+		}
+	}()
+	for i := int(h.head); i < len(h.ents); i++ {
+		if !rbGone(h.gone, i) && drop(h.ents[i].k, h.ents[i].v) && !rbGone(h.gone, i) {
+			rbHashDropAt(h, i)
+		}
+	}
+}
+
+// rbHashCompact drops the tombstones and renumbers pos, keeping the storage; no iterator may be open.
+func rbHashCompact[K, V comparable](h *Hash[K, V]) {
+	n := 0
+	for i := int(h.head); i < len(h.ents); i++ {
+		if rbGone(h.gone, i) {
+			continue
+		}
+		if n != i {
+			h.ents[n] = h.ents[i]
+			if h.pos != nil {
+				h.pos[h.ents[n].k] = int32(n) //nolint:gosec // a Hash holds fewer than 2^31 entries
+			}
+		}
+		n++
+	}
+	clear(h.ents[n:])
+	h.ents = h.ents[:n]
+	clear(h.gone)
+	h.gone = h.gone[:0]
+	h.head = 0
+}
+
+// rbHashClear tombstones every entry in place while an iterator is open, so its indices stay valid.
+func rbHashClear[K, V comparable](h *Hash[K, V]) {
+	clear(h.pos)
+	clear(h.idx.byHash)
+	if h.iter == 0 {
+		clear(h.ents)
+		h.ents = h.ents[:0]
+		clear(h.gone)
+		h.gone = h.gone[:0]
+		h.live, h.head = 0, 0
+		return
+	}
+	for i := int(h.head); i < len(h.ents); i++ {
+		if !rbGone(h.gone, i) {
+			h.ents[i] = rbHashEnt[K, V]{}
+			for w := i >> 6; len(h.gone) <= w; {
+				h.gone = append(h.gone, 0)
+			}
+			h.gone[i>>6] |= 1 << (uint(i) & 63)
+			h.live--
+		}
+	}
+	h.head = int32(len(h.ents)) //nolint:gosec // a Hash holds fewer than 2^31 entries
+}
+
+// rbHashFirst is the index of the first live entry, or -1.
+func rbHashFirst[K, V comparable](h *Hash[K, V]) int {
+	for i := int(h.head); i < len(h.ents); i++ {
+		if !rbGone(h.gone, i) {
+			return i
+		}
+	}
+	return -1
 }
 
 // rbHashLookup is Hash#[]'s value: the value at k, else the default proc's
@@ -161,9 +341,9 @@ func (s *rbKeySet[K]) has(x K) bool {
 
 // rbHashSplat is `{ **o }` inside a Hash literal: o's pairs in order, later keys overwriting.
 func rbHashSplat[K, V comparable](h, o *Hash[K, V]) *Hash[K, V] {
-	for _, k := range o.keys {
-		if v, ok := o.vals[k]; ok {
-			Hash___Set(h, k, v)
+	for i := int(o.head); i < len(o.ents); i++ {
+		if !rbGone(o.gone, i) {
+			Hash___Set(h, o.ents[i].k, o.ents[i].v)
 		}
 	}
 	return h
@@ -202,8 +382,8 @@ func rbDig(v any, keys []any) any {
 // none of them is MRI's ArgumentError (decision 23).
 func rbKwSplat[V comparable](h *Hash[Symbol, V], names ...string) *Hash[Symbol, V] {
 	var bad []string
-	for _, k := range h.keys {
-		if !slices.Contains(names, string(k)) {
+	for i := int(h.head); i < len(h.ents); i++ {
+		if k := h.ents[i].k; !rbGone(h.gone, i) && !slices.Contains(names, string(k)) {
 			bad = append(bad, string(rbInspect(k)))
 		}
 	}
@@ -233,9 +413,9 @@ func rbKwBit(given bool, bit int) int {
 // method's named keywords took by name, as MRI's.
 func rbKwRestWithout[V comparable](h *Hash[Symbol, V], names ...string) *Hash[Symbol, V] {
 	out := NewHash[Symbol, V]()
-	for _, k := range h.keys {
-		if v, ok := h.vals[k]; ok && !slices.Contains(names, string(k)) {
-			Hash___Set(out, k, v)
+	for i := int(h.head); i < len(h.ents); i++ {
+		if k := h.ents[i].k; !rbGone(h.gone, i) && !slices.Contains(names, string(k)) {
+			Hash___Set(out, k, h.ents[i].v)
 		}
 	}
 	return out

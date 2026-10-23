@@ -76,16 +76,17 @@ func rbJSONNesting(depth int, tail string) any {
 func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
 	symbolizeNames, freeze, limit := false, false, 100
 	if opts != nil {
-		v, ok := opts.vals[Symbol("symbolize_names")]
+		v, ok := opts.rbGet(Symbol("symbolize_names"))
 		symbolizeNames = ok && rbTruthy(v)
-		freeze = rbTruthy(opts.vals[Symbol("freeze")])
-		if m, ok := opts.vals[Symbol("max_nesting")]; ok {
+		fv, _ := opts.rbGet(Symbol("freeze"))
+		freeze = rbTruthy(fv)
+		if m, ok := opts.rbGet(Symbol("max_nesting")); ok {
 			limit = rbJSONMaxNesting(m)
 		}
-		for _, k := range opts.keys { // the generator's rule (decision 25): what is not implemented raises, other keys are ignored
+		for k, hv := range rbHashPairs(opts) { // the generator's rule (decision 25): what is not implemented raises, other keys are ignored
 			switch k {
 			case Symbol("allow_nan"), Symbol("object_class"), Symbol("array_class"), Symbol("decimal_class"), Symbol("create_additions"), Symbol("match_string"):
-				if rbTruthy(opts.vals[k]) {
+				if rbTruthy(hv) {
 					panic(NewNotImplementedError(Ref(String("JSON parser option " + string(k) + " is not supported"))))
 				}
 			}
@@ -370,12 +371,12 @@ func rbJSONFreeze(v any) {
 		}
 	case *Hash[String, any]:
 		x.frozen.Store(true)
-		for _, e := range x.vals {
+		for _, e := range rbHashPairs(x) {
 			rbJSONFreeze(e)
 		}
 	case *Hash[Symbol, any]:
 		x.frozen.Store(true)
-		for _, e := range x.vals {
+		for _, e := range rbHashPairs(x) {
 			rbJSONFreeze(e)
 		}
 	}
@@ -632,8 +633,8 @@ func rbJSONStateOfMax(args []any, maxNesting int, allowNaN bool) *rbJSONState {
 		return o
 	case Hash_Any:
 		opts := o._ToAny()
-		for _, k := range opts.keys {
-			v := opts.vals[k]
+		for k, hv := range rbHashPairs(opts) {
+			v := hv
 			switch k {
 			case Symbol("indent"):
 				st.indent = rbJSONOpt(v)
@@ -807,14 +808,15 @@ func rbJSONArrayTo[E any](st *rbJSONState, xs []E) {
 func rbJSONHashTo[K, V comparable](st *rbJSONState, h *Hash[K, V]) {
 	st.enter()
 	depth := st.depth
-	if len(h.keys) == 0 {
+	if int(h.live) == 0 {
 		st.depth--
 		st.buf = append(st.buf, "{}"...)
 		return
 	}
 	st.buf = append(st.buf, '{')
-	for i, k := range h.keys {
-		if i > 0 {
+	first := true
+	for k, hv := range rbHashPairs(h) {
+		if !first {
 			st.buf = append(st.buf, ',')
 		}
 		st.buf = append(st.buf, st.objectNl...)
@@ -827,7 +829,8 @@ func rbJSONHashTo[K, V comparable](st *rbJSONState, h *Hash[K, V]) {
 		st.buf = append(st.buf, st.spaceBefore...)
 		st.buf = append(st.buf, ':')
 		st.buf = append(st.buf, st.space...)
-		rbJSONValueTo(st, h.vals[k])
+		first = false
+		rbJSONValueTo(st, hv)
 		st.depth = depth
 	}
 	st.depth--

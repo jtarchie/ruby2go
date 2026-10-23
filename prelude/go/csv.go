@@ -10,7 +10,7 @@ import (
 )
 
 func rbCSVStrOpt(opts *Hash[Symbol, any], key, def string) string {
-	if v, ok := opts.vals[Symbol(key)]; ok && v != nil {
+	if v, ok := opts.rbGet(Symbol(key)); ok && v != nil {
 		if s, ok2 := v.(String); ok2 {
 			return string(s)
 		}
@@ -19,7 +19,7 @@ func rbCSVStrOpt(opts *Hash[Symbol, any], key, def string) string {
 }
 
 func rbCSVBoolOpt(opts *Hash[Symbol, any], key string) bool {
-	if v, ok := opts.vals[Symbol(key)]; ok && v != nil {
+	if v, ok := opts.rbGet(Symbol(key)); ok && v != nil {
 		if b, ok2 := v.(Boolean); ok2 {
 			return bool(b)
 		}

@@ -241,10 +241,10 @@ func rbMDumpHash[K, V comparable](w *rbMW, tag string, id any, h *Hash[K, V]) {
 	if !w.start(h == nil, id, tag) {
 		return
 	}
-	w.count(len(h.keys))
-	for _, k := range h.keys {
+	w.count(int(h.live))
+	for k, hv := range rbHashPairs(h) {
 		w.value(any(k))
-		w.value(any(h.vals[k]))
+		w.value(any(hv))
 	}
 }
 
@@ -252,8 +252,8 @@ func rbMDumpSet[E comparable](w *rbMW, tag string, id any, s *Set[E]) {
 	if !w.start(s == nil, id, tag) {
 		return
 	}
-	w.count(len(s.h.keys))
-	for _, k := range s.h.keys {
+	w.count(int(s.h.live))
+	for k := range rbHashPairs(s.h) {
 		w.value(any(k))
 	}
 }

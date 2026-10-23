@@ -132,7 +132,7 @@ module Net
 
       #: (String) -> String?
       def [](name) = %x{
-        if v, ok := self.Header().vals[String(rbHTTPCanonKey(string(name)))]; ok {
+        if v, ok := self.Header().rbGet(String(rbHTTPCanonKey(string(name)))); ok {
           return Ref(v)
         }
         return nil
@@ -217,7 +217,7 @@ module Net
     # Case-insensitive; repeated headers are joined with ", " as Ruby does.
     #: (String) -> String?
     def [](name) = %x{
-      if v, ok := self.Header().vals[String(rbHTTPCanonKey(string(name)))]; ok {
+      if v, ok := self.Header().rbGet(String(rbHTTPCanonKey(string(name)))); ok {
         return Ref(v)
       }
       return nil
@@ -225,7 +225,7 @@ module Net
 
     #: (String) -> bool
     def key?(name) = %x{
-      _, ok := self.Header().vals[String(rbHTTPCanonKey(string(name)))]
+      _, ok := self.Header().rbGet(String(rbHTTPCanonKey(string(name))))
       return Boolean(ok)
     }
 

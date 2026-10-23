@@ -25,7 +25,7 @@ func (s *StringIO) rbOUM(name string) *rbOpenURIMeta {
 
 // rbOpenURIField is one field's values joined with ", ", as Meta#meta holds them.
 func rbOpenURIField(metas *Hash[String, *Array[String]], name String) (string, bool) {
-	vs, ok := metas.vals[name]
+	vs, ok := metas.rbGet(name)
 	if !ok {
 		return "", false
 	}
@@ -39,7 +39,7 @@ func rbOpenURIField(metas *Hash[String, *Array[String]], name String) (string, b
 // rbOpenURIJoined is OpenURI::Meta#meta.
 func rbOpenURIJoined(metas *Hash[String, *Array[String]]) *Hash[String, String] {
 	out := NewHash[String, String]()
-	for _, k := range metas.keys {
+	for k := range rbHashPairs(metas) {
 		v, _ := rbOpenURIField(metas, k)
 		Hash_Op_idxSet(out, k, String(v))
 	}
