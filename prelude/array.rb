@@ -670,6 +670,29 @@ class Array < Object
   #: () -> E?
   def last = self[-1]
 
+  # MRI's split of a proc's arguments (decision 367): how many optionals take a value once the leading and trailing
+  # names have theirs, the rest, and trailing name i.
+  #: (Integer, Integer, Integer) -> Integer
+  def __bopts(pre, opt, post)
+    n = size - pre - post
+    return 0 if n < 0
+
+    n < opt ? n : opt
+  end
+
+  #: (Integer, Integer, Integer) -> Array[E]
+  def __brest(pre, opt, post)
+    from = pre + __bopts(pre, opt, post)
+    n = size - post - from
+    n > 0 ? self[from, n] || [] : []
+  end
+
+  #: (Integer, Integer, Integer, Integer) -> E?
+  def __bpost(i, pre, opt, post)
+    from = pre + __bopts(pre, opt, post)
+    self[(size - post > from ? size - post : from) + i]
+  end
+
   #: (Integer) -> Array[E]
   def __last_1(n)
     raise ArgumentError, "negative array size" if n < 0

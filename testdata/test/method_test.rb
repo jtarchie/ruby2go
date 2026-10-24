@@ -446,3 +446,21 @@ module MethodTests
     end
   end
 end
+
+module MethodTests
+  # decision 367: MRI's split of a proc's arguments over leading, optional, rest and trailing names
+  class ProcArgSplit
+    def m(a) = yield(a)
+  end
+
+  class ProcArgSplitTest < Minitest::Test
+    def test_proc_argument_split
+      s = ProcArgSplit.new
+      assert_equal [1, 5, 6, nil, nil], s.m([1]) { |a, b = 5, c = 6, d, e| [a, b, c, d, e] }
+      assert_equal [1, 2, 6, 3, 4], s.m([1, 2, 3, 4]) { |a, b = 5, c = 6, d, e| [a, b, c, d, e] }
+      assert_equal [1, 2, [3, 4, 5], 6, 7], s.m([1, 2, 3, 4, 5, 6, 7]) { |a, b = 5, *c, d, e| [a, b, c, d, e] }
+      assert_equal [1, [], 2, nil], proc { |a, *b, c, d| [a, b, c, d] }.call(1, 2)
+      assert_equal [[:opt, :a], [:rest, :b], [:opt, :c]], proc { |a, *b, c| }.parameters
+    end
+  end
+end

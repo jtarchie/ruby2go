@@ -299,6 +299,16 @@ class Float
     return out
   }
 
+  # MRI's rb_flt_rationalize: the simplest rational within half an ulp, or within |eps| (decision 367).
+  #: () -> Rational
+  def __rationalize_0 = %x{ return rbFloatRationalize(float64(self)) }
+
+  #: (Numeric) -> Rational
+  def rationalize(eps) = __rationalize_eps(eps.to_f)
+
+  #: (Float) -> Rational
+  def __rationalize_eps(e) = %x{ return rbFloatRationalizeEps(float64(self), float64(e)) }
+
   #: (Rational) -> Float
   def __plus_rational(o) = self + o.to_f
 

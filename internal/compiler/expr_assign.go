@@ -499,6 +499,13 @@ func (f *fctx) assignTarget(target parser.Node, v expr) {
 		f.emit("%s = %s", f.ivarCode(iv), f.coerce(t, v, iv.Type))
 		f.markIvar(iv)
 	case *parser.MultiTargetNode:
+		if c, ok := stripOpt(v.typ).(TClass); ok && isOpt(v.typ) && c.C.RubyName != "Array" && c.C.lookup("to_ary") == nil {
+			// `(a, b) = x` of an Integer?: x (nil or not) is the first target alone, as a one-element Array (decision 364)
+			gt := f.c.goType(v.typ)
+			one := expr{code: "(&Array[" + gt + "]{s: []" + gt + "{" + f.materialize(v) + "}})", typ: TClass{C: f.c.classes["Array"], Args: []Type{v.typ}}}
+			f.destructureInto(t, one, t.Lefts, t.Rest, t.Rights)
+			return
+		}
 		if isOpt(v.typ) {
 			f.errorf(t, "nested destructuring of a possibly-nil %s is not supported", v.typ)
 		}

@@ -132,6 +132,9 @@ func (f *fctx) genProcInfo(n *parser.CallNode) (expr, bool) {
 	if !ok {
 		return expr{}, false
 	}
+	if o := f.f.procArgsOrig[asBlockParams(params)]; o != nil {
+		params = o
+	}
 	ps := procParams(lambda, params, f.f.movedOpts)
 	switch n.Name {
 	case "lambda?":
@@ -154,4 +157,9 @@ func (f *fctx) genProcInfo(n *parser.CallNode) (expr, bool) {
 	arr := f.c.classes["Array"]
 	want := TClass{C: arr, Args: []Type{TClass{C: arr, Args: []Type{f.cls("Symbol")}}}}
 	return f.genExpr(f.c.rewrite(n, func() parser.Node { return &parser.ArrayNode{Location: loc, Elements: rows} }), want), true
+}
+
+func asBlockParams(n parser.Node) *parser.BlockParametersNode {
+	bp, _ := n.(*parser.BlockParametersNode)
+	return bp
 }

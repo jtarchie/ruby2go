@@ -112,6 +112,10 @@ func (f *fctx) blockParamList(b parser.Node) blockParams {
 // otherwise rest collects the yielded values past the leading params.
 func (f *fctx) bindRestParams(n parser.Node, names blockParams, yields []Type) ([]string, func()) {
 	lead, rest := names[:len(names)-1], names[len(names)-1].Name
+	if ac, ok := firstType(yields).(TClass); rest == procArgs && len(lead) == 0 && len(yields) == 1 && ok && ac.C.RubyName == "Array" {
+		p := f.newTmp() // a lowered block of several names splats a lone yielded Array, as MRI's proc does (decision 367)
+		return []string{p}, func() { f.bindBlockParam(rest, expr{code: p, typ: ac}) }
+	}
 	if len(yields) == 1 && len(lead) > 0 {
 		if ps, pro := f.bindSplatParams(n, yields[0], lead, rest); pro != nil {
 			return ps, pro

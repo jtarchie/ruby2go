@@ -189,6 +189,9 @@ func (f *fctx) toS(n parser.Node, e expr) string {
 // genInteger is an Integer literal: Go's spelling, a lenient gem's out-of-range one clamped (decision 35).
 func (f *fctx) genInteger(n *parser.IntegerNode) expr {
 	code := strings.ReplaceAll(f.f.text(n.Location), "_", "")
+	if n.Location.Length == 0 { // a synthesized literal (lowerProcArgs)
+		code = strconv.FormatInt(n.Value, 10)
+	}
 	if digits := strings.TrimPrefix(code, "-"); len(digits) > 1 && (digits[1] == 'd' || digits[1] == 'D') {
 		// Ruby's 0d decimal prefix has no Go spelling; 0x/0o/0b/0 carry over.
 		code = code[:len(code)-len(digits)] + strings.TrimLeft(digits[2:], "0")

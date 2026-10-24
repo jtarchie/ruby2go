@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"math"
 	"math/big"
 	"regexp"
 	"strings"
@@ -56,4 +57,83 @@ func rbStrToR(s string) *Rational {
 		out.v.Quo(&out.v, den)
 	}
 	return out
+}
+
+// rbFloatRationalize is MRI's Float#rationalize with no argument: the simplest rational within half a unit in the last
+// place of f (rb_flt_rationalize).
+func rbFloatRationalize(f float64) *Rational {
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		panic(NewFloatDomainError(Ref(rbFloatToS(f))))
+	}
+	frac, exp := math.Frexp(f)
+	m := new(big.Int)
+	new(big.Float).SetFloat64(math.Ldexp(frac, 53)).Int(m)
+	n := exp - 53
+	out := &Rational{}
+	if m.Sign() == 0 || n >= 0 {
+		out.v.SetInt(new(big.Int).Lsh(m, uint(max(n, 0))))
+		return out
+	}
+	den := new(big.Int).Lsh(big.NewInt(1), uint(1-n))
+	twoM := new(big.Int).Mul(big.NewInt(2), m)
+	a := new(big.Rat).SetFrac(new(big.Int).Sub(twoM, big.NewInt(1)), den)
+	b := new(big.Rat).SetFrac(new(big.Int).Add(twoM, big.NewInt(1)), den)
+	out.v.Set(rbSimplestRat(a, b))
+	return out
+}
+
+// rbSimplestRat is nurat_rationalize_internal on exact rationals: the continued-fraction walk to the simplest p/q in (a, b).
+func rbSimplestRat(a, b *big.Rat) *big.Rat {
+	a, b = new(big.Rat).Set(a), new(big.Rat).Set(b)
+	p0, p1, q0, q1 := big.NewInt(0), big.NewInt(1), big.NewInt(1), big.NewInt(0)
+	one := big.NewRat(1, 1)
+	ceil := func(x *big.Rat) *big.Int {
+		q, r := new(big.Int).QuoRem(x.Num(), x.Denom(), new(big.Int))
+		if r.Sign() > 0 {
+			q.Add(q, big.NewInt(1))
+		}
+		return q
+	}
+	for {
+		c := ceil(a)
+		if new(big.Rat).SetInt(c).Cmp(b) < 0 {
+			p := new(big.Int).Add(new(big.Int).Mul(c, p1), p0)
+			q := new(big.Int).Add(new(big.Int).Mul(c, q1), q0)
+			return new(big.Rat).SetFrac(p, q)
+		}
+		k := new(big.Int).Sub(c, big.NewInt(1))
+		kr := new(big.Rat).SetInt(k)
+		p2 := new(big.Int).Add(new(big.Int).Mul(k, p1), p0)
+		q2 := new(big.Int).Add(new(big.Int).Mul(k, q1), q0)
+		t := new(big.Rat).Quo(one, new(big.Rat).Sub(b, kr))
+		b = new(big.Rat).Quo(one, new(big.Rat).Sub(a, kr))
+		a = t
+		p0, q0, p1, q1 = p1, q1, p2, q2
+	}
+}
+
+// rbFloatRationalizeEps is Float#rationalize(eps): the simplest rational in [f-|eps|, f+|eps|], walked on Floats as
+// MRI's rb_flt_rationalize_with_prec does.
+func rbFloatRationalizeEps(f, e float64) *Rational {
+	e = math.Abs(e)
+	a, b := f-e, f+e
+	out := &Rational{}
+	if a == b {
+		out.v.SetFloat64(f)
+		return out
+	}
+	var p0, p1, q0, q1 int64 = 0, 1, 1, 0
+	for {
+		c := math.Ceil(a)
+		if c < b {
+			out.v.SetFrac64(int64(c)*p1+p0, int64(c)*q1+q0)
+			return out
+		}
+		k := c - 1
+		p2, q2 := int64(k)*p1+p0, int64(k)*q1+q0
+		t := 1 / (b - k)
+		b = 1 / (a - k)
+		a = t
+		p0, q0, p1, q1 = p1, q1, p2, q2
+	}
 }

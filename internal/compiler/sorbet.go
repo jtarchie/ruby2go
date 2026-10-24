@@ -49,12 +49,7 @@ func (f *File) sorbetWalk(n parser.Node) {
 	case *parser.StatementsNode:
 		n.Body = f.sorbetStatements(n.Body)
 	case *parser.BlockNode:
-		if k := optionalBlockParams(n); k > 0 {
-			if f.movedOpts == nil {
-				f.movedOpts = map[*parser.BlockParametersNode]int{}
-			}
-			f.movedOpts[n.Parameters.(*parser.BlockParametersNode)] = k //nolint:forcetypeassert // set when k > 0
-		}
+		f.lowerBlockParams(n)
 	case *parser.ClassNode:
 		switch strings.TrimPrefix(constName(n.Superclass), "::") {
 		case "T::Struct", "T::ImmutableStruct", "T::InexactStruct":
@@ -103,6 +98,20 @@ func (f *File) sorbetWalk(n parser.Node) {
 	}
 	for _, ch := range n.CompactChildNodes() {
 		f.sorbetWalk(ch)
+	}
+}
+
+// lowerBlockParams rewrites a block's parameter list into the forms the compiler binds: MRI's split of a complex list
+// (lowerProcArgs, decision 367), else optionals made required with nil-defaulting (optionalBlockParams).
+func (f *File) lowerBlockParams(n *parser.BlockNode) {
+	if f.lowerProcArgs(n) {
+		return
+	}
+	if k := optionalBlockParams(n); k > 0 {
+		if f.movedOpts == nil {
+			f.movedOpts = map[*parser.BlockParametersNode]int{}
+		}
+		f.movedOpts[n.Parameters.(*parser.BlockParametersNode)] = k //nolint:forcetypeassert // set when k > 0
 	}
 }
 

@@ -2559,3 +2559,15 @@ module NumberTests
     end
   end
 end
+
+module NumberTests
+  # decision 367: Float#rationalize, MRI's simplest rational
+  class FloatRationalizeTest < Minitest::Test
+    def test_rationalize
+      assert_equal Rational(4806858197361, 1421), 3382729202.92822.rationalize
+      assert_equal [Rational(1, 3), Rational(1, 3), Rational(3, 10), Rational(-3, 10)],
+                   [0.3.rationalize(Rational(1, 10)), 0.3.rationalize(0.05), 0.3.rationalize(0.001), (-0.3).rationalize(0.001)]
+      assert_equal Rational(333, 1000), 0.333.rationalize
+    end
+  end
+end

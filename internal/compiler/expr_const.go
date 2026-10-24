@@ -85,6 +85,26 @@ func (f *fctx) definedKind(v parser.Node) string {
 	case *parser.CallNode:
 		return f.definedCall(v)
 	}
+	return f.definedOther(v)
+}
+
+// definedOther is defined? of the forms MRI answers without running them (decision 367): an assignment, and an Array
+// literal, nil when an element is not defined.
+func (f *fctx) definedOther(v parser.Node) string {
+	switch v := v.(type) {
+	case *parser.GlobalVariableWriteNode, *parser.ClassVariableWriteNode, *parser.GlobalVariableOperatorWriteNode,
+		*parser.GlobalVariableOrWriteNode, *parser.GlobalVariableAndWriteNode, *parser.ClassVariableOperatorWriteNode,
+		*parser.ClassVariableOrWriteNode, *parser.ClassVariableAndWriteNode, *parser.InstanceVariableAndWriteNode,
+		*parser.ConstantOperatorWriteNode, *parser.ConstantOrWriteNode, *parser.IndexOperatorWriteNode,
+		*parser.CallOperatorWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode:
+		return "assignment"
+	case *parser.ArrayNode:
+		for _, e := range v.Elements {
+			if f.definedKind(e) == "" {
+				return ""
+			}
+		}
+	}
 	return "expression"
 }
 

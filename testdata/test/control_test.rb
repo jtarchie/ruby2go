@@ -5878,3 +5878,17 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  # decision 367: `(a, b) = x` of a T?, and defined? of an assignment or an Array literal
+  class NestedOptDestructureTest < Minitest::Test
+    def test_nested_destructure_and_defined
+      x = [1, 2].first #: Integer?
+      (a, b), c = x, 3
+      assert_equal [1, nil, 3], [a, b, c]
+      assert_equal "assignment", defined?(a += 1)
+      assert_nil defined?([ControlNoSuchConst, Array])
+      assert_equal "expression", defined?([1, Array])
+    end
+  end
+end
