@@ -264,11 +264,24 @@ class TypeError < StandardError; end
 
 # name and receiver are the call that failed, when rb2go raised it (a dynamic call on an untyped value).
 class NameError < StandardError
-  # @rbs @name: Symbol?
+  # @rbs @name: untyped
   # @rbs @receiver: untyped
   # @rbs @has_receiver: bool
 
-  #: () -> Symbol?
+  # `NameError.new(msg, name)`: name as given (decision 365).
+  #: (String, untyped) -> NameError
+  def self.__new_2(message, name)
+    e = new(message)
+    e.__set_name(name)
+    e
+  end
+
+  #: (untyped) -> void
+  def __set_name(name)
+    @name = name
+  end
+
+  #: () -> untyped
   def name = @name
 
   #: () -> untyped

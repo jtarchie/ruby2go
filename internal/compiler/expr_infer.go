@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -10,7 +11,7 @@ import (
 // widenSeed is an unannotated `x = [1, 2]`'s element type, for later writes to widen (decision 193): in pass 1 the
 // local is Array[untyped] so any write is evidence; in pass 2 it is what the evidence joined to. nil otherwise.
 func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) Type {
-	if hn, ok := n.Value.(*parser.HashNode); ok && f.lenient() {
+	if hn, ok := n.Value.(*parser.HashNode); ok && (f.lenient() || f.localCalled(n.Name, "[]=", "store")) { // user code too: a Hash literal its later writes widen (decision 366)
 		return f.widenHashSeed(n, hn, ann, exp)
 	}
 	an, ok := n.Value.(*parser.ArrayNode)
@@ -21,11 +22,21 @@ func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) 
 		*exp = r
 		return nil
 	}
-	if f.pass != 1 {
+	if f.pass != 1 && !f.usedAsArray(n.Name) {
 		return nil
 	}
 	var nat expr
 	if f.attempt(func() { f.probe(func() { nat = f.genExpr(n.Value, nil) }) }) != nil {
+		return nil
+	}
+	if tt, ok := nat.typ.(TTuple); ok && f.usedAsArray(n.Name) { // `a = [1, "two"]; a << 3.0`: an Array of the union (decision 366)
+		*exp = TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}} // pass 2 with no refined type: its writes did not join
+		if f.pass != 1 {
+			return nil
+		}
+		return joinAllUnion(tt.Elems)
+	}
+	if f.pass != 1 {
 		return nil
 	}
 	tc, ok := nat.typ.(TClass)
@@ -34,6 +45,46 @@ func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) 
 	}
 	*exp = TClass{C: tc.C, Args: []Type{TAny{}}}
 	return tc.Args[0]
+}
+
+// joinAllUnion folds joinUnion over ts.
+func joinAllUnion(ts []Type) Type {
+	out := ts[0]
+	for _, t := range ts[1:] {
+		out = joinUnion(out, t)
+	}
+	return out
+}
+
+// localCalled reports a call of one of names on local name in the scope being compiled.
+func (f *fctx) localCalled(name string, names ...string) bool {
+	return f.scopeCallsOn(name, func(c *parser.CallNode) bool { return slices.Contains(names, c.Name) })
+}
+
+// scopeCallsOn reports a call on local name, in the scope being compiled, that pred accepts.
+func (f *fctx) scopeCallsOn(name string, pred func(*parser.CallNode) bool) bool {
+	var body parser.Node = f.f.Root
+	if f.m != nil && f.m.Node != nil {
+		body = f.m.Node.Body
+	}
+	return walkNode(body, func(x parser.Node) (bool, bool) {
+		c, ok := x.(*parser.CallNode)
+		if !ok {
+			return false, !opensScope(x)
+		}
+		r, ok := c.Receiver.(*parser.LocalVariableReadNode)
+		return ok && r.Name == name && pred(c), true
+	})
+}
+
+// usedAsArray reports a call on local name, in the scope being compiled, that a tuple cannot answer: a mutator, a
+// `!` method or an iterator of Array's.
+func (f *fctx) usedAsArray(name string) bool {
+	arr := f.c.classes["Array"]
+	return f.scopeCallsOn(name, func(c *parser.CallNode) bool {
+		e := arr.lookup(c.Name)
+		return e != nil && (tupleMutators[c.Name] || strings.HasSuffix(c.Name, "!") || e.M.Iterator)
+	})
 }
 
 // widenHashSeed is widenSeed for a gem's `opts = { pgroup: true }`: its key and value types as a pair, for later

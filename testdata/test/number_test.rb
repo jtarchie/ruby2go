@@ -2541,3 +2541,21 @@ module NumberTests
     end
   end
 end
+
+module NumberTests
+  # decision 365: a user class may subclass Numeric; it is an Object with Comparable here
+  class NumSub < Numeric
+    def initialize(value = 1.0)
+      @value = value #: Float
+    end
+
+    def to_f = @value
+  end
+
+  class NumericSubclassTest < Minitest::Test
+    def test_numeric_subclass
+      assert_equal 2.0, NumSub.new(2.0).to_f
+      assert_equal 1.0, NumSub.new.to_f
+    end
+  end
+end

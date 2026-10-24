@@ -19,20 +19,6 @@ nums.each { |n| break n }
 # error: main.rb:3: next with a value is not supported
 nums = [1, 2] #: Array[Integer]
 nums.each { |n| next n }
--- iterator_value_assigned.rb --
-# error: main.rb:3: each with a block is an iterator and can only be used as a statement
-nums = [1, 2] #: Array[Integer]
-x = nums.each { |n| puts n }
-puts x.inspect
--- iterator_value_argument.rb --
-# error: main.rb:3: each_with_index with a block is an iterator and can only be used as a statement
-nums = [1] #: Array[Integer]
-puts nums.each_with_index { |n, i| n }.inspect
--- iterator_value_returned.rb --
-# error: main.rb:3: the value of an iterator call (each) cannot be used
-#: (Array[Integer]) -> Array[Integer]
-def show(nums) = nums.each { |n| puts n }
-show([1])
 -- block_to_blockless_method.rb --
 # error: main.rb:3: size does not take a block
 nums = [1, 2] #: Array[Integer]
@@ -154,10 +140,6 @@ puts pair[i].inspect
 # error: main.rb:3: tuple index must be a literal in range
 pair = [1, "a"]
 puts pair[2].inspect
--- tuple_each.rb --
-# error: main.rb:3: undefined method each for tuple [Integer, String]
-pair = [1, "a"]
-pair.each { |x| puts x }
 -- tuple_too_many_targets.rb --
 # error: main.rb:4: 3 targets for a 2-tuple
 #: () -> [Integer, String]

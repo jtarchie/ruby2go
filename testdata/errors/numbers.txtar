@@ -145,10 +145,6 @@ class Integer
   #| (Float) -> Float
   def add(o) = self + o
 end
--- times_value_used.rb --
-# error: main.rb:3: times with a block is an iterator and can only be used as a statement
-# rbs_inline: enabled
-x = 3.times { |i| puts i }
 -- downto_block_arity.rb --
 # error: main.rb:3: block takes 2 params but only 1 values are yielded
 # rbs_inline: enabled
@@ -216,12 +212,6 @@ puts BigDecimal("1").to_c
 # error: main.rb:3: undefined method positive? for Complex
 # rbs_inline: enabled
 puts Complex(1, 2).positive?
--- numeric_subclass.rb --
-# error: main.rb:3: subclassing Numeric is not supported
-# rbs_inline: enabled
-class Money < Numeric
-end
-puts 1
 -- numeric_include.rb --
 # error: main.rb:4: Numeric is a class, not a module
 # rbs_inline: enabled

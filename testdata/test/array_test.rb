@@ -2773,3 +2773,20 @@ module ArrayTests
     end
   end
 end
+
+module ArrayTests
+  # decision 366: a mixed literal used as an Array is an Array of the union; a tuple iterates as one
+  class ArrayMixedLiteralTest < Minitest::Test
+    def test_mixed_literal_widens
+      a = [1, "two"]
+      a << 3.0
+      assert_equal [1, "two", 3.0], a
+      got = [] #: Array[String]
+      [1.0, 42].each { |n| got << n.inspect }
+      assert_equal ["1.0", "42"], got
+      c = [1, "two", 3.0]
+      2.times { c << c }
+      assert_equal 5, c.size
+    end
+  end
+end

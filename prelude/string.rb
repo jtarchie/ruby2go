@@ -229,8 +229,13 @@ class String < Object
   def include?(s) = %x{ Boolean(strings.Contains(string(self), string(s))) }
 
   # Strings are values in rb2go (decision 136): a new one is its argument's bytes.
-  #: (?String) -> String
-  def self.new(s = "") = s
+  #: (String) -> String
+  def self.new(s) = s
+
+  # MRI's String.new with no argument is an empty BINARY String (decision 365).
+  # @binary
+  #: () -> String
+  def self.__new_0 = ""
 
   #: (String) -> Integer?
   def index(s) = %x{

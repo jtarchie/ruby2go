@@ -1987,3 +1987,15 @@ module StringTests
     end
   end
 end
+
+module StringTests
+  # decision 365: String.new with no argument and pack with a literal format and no U are BINARY
+  class StringBinaryProducersTest < Minitest::Test
+    def test_binary_producers
+      assert_equal Encoding::BINARY, String.new.encoding
+      assert_equal Encoding::UTF_8, String.new("x").encoding
+      assert_equal Encoding::BINARY, ["1"].pack("b").encoding
+      assert_equal Encoding::UTF_8, [97].pack("U").encoding
+    end
+  end
+end

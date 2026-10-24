@@ -183,6 +183,7 @@ type branchKey struct {
 type bootFacts struct {
 	dmSites          map[*parser.CallNode]bool             // define_method calls boot recorded: no-ops at run time (decision 198)
 	dmDefined        map[*parser.CallNode]bool             // the define_method calls boot's methods became defs from
+	valueCalls       map[string]int                        // names of calls whose value is used, 2 with a block (callValueUsed)
 	smSites          map[*parser.CallNode]*parser.CallNode // a gem's run-time define_singleton_method: the call recording it (decision 324)
 	bootBranches     map[branchKey]boot.BranchInfo         // each if/unless boot ran, by where it starts (decision 201)
 	bootConstClasses map[string]string                     // constant -> the class boot saw it name (decision 203)

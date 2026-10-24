@@ -327,6 +327,11 @@ class Array < Object
   #: (Array[E]) -> Array[E]
   def difference(other) = self - other
 
+  # pack with a literal format and no U directive: MRI's BINARY String (decision 365).
+  # @binary
+  #: (String) -> String
+  def __pack_binary(format) = pack(format)
+
   # Every directive but the C pointers P and p (decision 138).
   #: (String) -> String
   def pack(format) = %x{

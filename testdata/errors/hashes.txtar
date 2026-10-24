@@ -53,10 +53,6 @@ puts h["a", "b"]
 # error: main.rb:3: map requires a block
 h = { "a" => 1 } #: Hash[String, Integer]
 puts h.map.inspect
--- each_value_used.rb --
-# error: main.rb:3: each with a block is an iterator and can only be used as a statement
-h = { "a" => 1 } #: Hash[String, Integer]
-x = h.each { |k, _v| puts k }
 -- each_too_many_params.rb --
 # error: main.rb:3: block takes 3 params but the tuple has 2 elements
 h = { "a" => 1 } #: Hash[String, Integer]

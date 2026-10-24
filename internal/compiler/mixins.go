@@ -155,8 +155,15 @@ func (c *Compiler) superclassOf(cls *Class) *Class {
 		sup = cls.superInst
 	case cls.superRef != nil:
 		sup = c.resolveClassRef(cls.superRef)
-		if c.isNumericMod(sup) {
-			c.errorAt(cls.srcPos, "subclassing Numeric is not supported: a Numeric is one of Integer, Float, Rational, Complex and BigDecimal (decision 142)")
+		if c.isNumericMod(sup) { // a user `< Numeric` class: an Object with Comparable, not one of the closed Numeric set (decision 365)
+			if cls.File != nil && cls.File.isPrelude() {
+				c.errorAt(cls.srcPos, "subclassing Numeric is not supported in the prelude (decision 142)")
+			}
+			sup = c.classes["Object"]
+			if cmp := c.classes["Comparable"]; !slices.ContainsFunc(cls.Includes, func(i Include) bool { return i.Mod == cmp }) {
+				ref := constRef{file: cls.File, node: &parser.ConstantReadNode{Name: "Comparable"}}
+				cls.Includes = append(cls.Includes, Include{Mod: cmp, ref: ref, srcPos: cls.srcPos})
+			}
 		}
 		if sup.IsModule {
 			c.errorAt(cls.srcPos, "superclass %s is a module", sup.RubyName)

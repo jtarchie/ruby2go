@@ -2667,3 +2667,14 @@ module HashTests
     end
   end
 end
+
+module HashTests
+  # decision 366: a Hash literal local widens by later writes in user code too
+  class HashMixedLiteralTest < Minitest::Test
+    def test_hash_literal_widens
+      g = {1 => :a}
+      g["s"] = 2
+      assert_equal({1 => :a, "s" => 2}, g)
+    end
+  end
+end

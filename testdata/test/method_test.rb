@@ -415,3 +415,34 @@ module MethodTests
     end
   end
 end
+
+module MethodTests
+  # decision 365: a used tail yield is the method's value, a used core each its receiver, as MRI's
+  class TailValues
+    def m(a) = yield(a)
+
+    def n(a) = yield(a)
+
+    def last_each(xs)
+      xs.each { |x| x }
+    end
+
+    def quiet(xs)
+      xs.each { |x| x }
+    end
+  end
+
+  class TailValueTest < Minitest::Test
+    def test_tail_yield_and_each_values
+      t = TailValues.new
+      ary = [1, 2]
+      assert_same ary, t.m(ary) { |a| a }
+      assert_equal 3, t.n(1) { |a| a + 2 }
+      assert_equal [7, 8], t.last_each([7, 8])
+      r = [7].each_with_index { |x, i| x + i }
+      assert_equal [7], r
+      assert_equal [5], [5].send(:each) { |x| x }
+      t.quiet([1])
+    end
+  end
+end

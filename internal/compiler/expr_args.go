@@ -712,6 +712,10 @@ func (f *fctx) literalOverload(m *Method, owner *Class, args []parser.Node) *ent
 	switch {
 	case owner.RubyName == "String" && len(args) == 1:
 		return f.stringLiteralOverload(m, owner, args[0])
+	case owner.RubyName == "Array" && m.Name == "pack" && len(args) == 1: // a literal format without U packs bytes (decision 365)
+		if s, ok := args[0].(*parser.StringNode); ok && !strings.ContainsAny(s.Unescaped.Value, "UmMu") {
+			return owner.lookup("__pack_binary")
+		}
 	case owner.RubyName == "OptionParser" && (m.Name == "on" || m.Name == "on_tail" || m.Name == "on_head"):
 		if k := f.optKind(args); k != "" {
 			return owner.lookup("__" + m.Name + "_" + k)

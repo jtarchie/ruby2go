@@ -256,6 +256,65 @@ func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	return used
 }
 
+// callValueUsed reports a call named name (with a block, if withBlock) somewhere in the program's own files whose value is used
+// (not a statement of its own; a def's or block's last statement counts as used): only then is a def's tail yield or
+// tail core each its value, as MRI's, and a def that only yields otherwise stays a Go iterator (decision 365).
+func (c *Compiler) callValueUsed(name string, withBlock bool) bool {
+	if c.valueCalls == nil {
+		c.valueCalls = map[string]int{}
+		for _, f := range c.userFiles {
+			if !c.gemFile(f) {
+				callsUsed(f.Root, c.valueCalls)
+			}
+		}
+	}
+	return c.valueCalls[name] > 1 || !withBlock && c.valueCalls[name] > 0
+}
+
+// callsUsed records each call's name in n whose value is used: 2 for a call with a block, else 1.
+func callsUsed(n parser.Node, used map[string]int) {
+	var walk func(parser.Node, bool, bool)
+	walk = func(x parser.Node, stmt, tail bool) {
+		switch x := x.(type) {
+		case nil:
+			return
+		case *parser.CallNode:
+			if !stmt || tail {
+				used[x.Name] = max(used[x.Name], map[bool]int{true: 2, false: 1}[x.Block != nil])
+			}
+		case *parser.StatementsNode:
+			for i, ch := range x.Body {
+				last := i == len(x.Body)-1
+				walk(ch, stmt || !last, tail && last)
+			}
+			return
+		case *parser.DefNode, *parser.BlockNode, *parser.LambdaNode: // their value may be used: their last statement's is
+			stmt, tail = true, true
+		case *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode, *parser.WhileNode, *parser.UntilNode:
+			stmt, tail = true, false
+		}
+		control := false
+		switch x.(type) {
+		case *parser.IfNode, *parser.UnlessNode, *parser.ElseNode, *parser.CaseNode, *parser.WhenNode, *parser.InNode,
+			*parser.BeginNode, *parser.RescueNode, *parser.EnsureNode, *parser.ParenthesesNode, *parser.DefNode,
+			*parser.BlockNode, *parser.LambdaNode, *parser.WhileNode, *parser.UntilNode, *parser.ClassNode, *parser.ModuleNode,
+			*parser.SingletonClassNode, *parser.ProgramNode:
+			control = true
+		}
+		for _, ch := range x.CompactChildNodes() {
+			switch ch.(type) {
+			case *parser.StatementsNode, *parser.ElseNode, *parser.WhenNode, *parser.InNode, *parser.RescueNode, *parser.EnsureNode:
+				if control {
+					walk(ch, stmt, tail)
+					continue
+				}
+			}
+			walk(ch, false, tail)
+		}
+	}
+	walk(n, true, false)
+}
+
 // splatYields reports a body with a yield that passes a splat, `yield(*xs)`: its block takes any count.
 func splatYields(body parser.Node) bool {
 	found := false

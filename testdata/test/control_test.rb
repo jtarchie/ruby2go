@@ -5868,3 +5868,13 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  # decision 365: NameError.new(msg, name)
+  class ExceptionArityTest < Minitest::Test
+    def test_two_argument_constructors
+      e = NameError.new("msg", "name")
+      assert_equal ["name", "msg"], [e.name, e.message]
+    end
+  end
+end

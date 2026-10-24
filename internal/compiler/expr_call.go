@@ -162,7 +162,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	}
 	if n.Block != nil {
 		if _, ok := n.Block.(*parser.BlockNode); ok {
-			if e := f.resolve(recv.typ, n.Name); e != nil && e.M.Iterator {
+			if e := f.resolve(recv.typ, n.Name); e != nil && e.M.Iterator && !coreEach(e.M) {
 				f.errorf(n, "%s with a block is an iterator and can only be used as a statement", n.Name)
 			}
 		}
@@ -231,6 +231,11 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 		f.c.inferRet(e.M)
 	}
 	return e
+}
+
+// coreEach is a core each-like iterator, whose value is its receiver (decision 365).
+func coreEach(m *Method) bool {
+	return eachReturnsSelf[m.Name] && m.File != nil && m.File.isPrelude() && isVoid(m.Ret)
 }
 
 // topOverKernel reports a Kernel method a top-level def of the same name hides: the def is Object's, ahead of Kernel

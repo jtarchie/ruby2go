@@ -656,6 +656,34 @@ func (f *fctx) iterClassTwin(n *parser.CallNode, e *entry, recvT Type) *entry {
 	return nil
 }
 
+// genTupleIterCall is `[1.0, 42].each { }`: it iterates a copy of the fields as an Array of their union (decision 366).
+func (f *fctx) genTupleIterCall(n *parser.CallNode, tt TTuple, t tail) bool {
+	et := joinAllUnion(tt.Elems)
+	tmp := f.newTmp()
+	recv := f.genExpr(n.Receiver, nil)
+	f.emit("%s := %s", tmp, f.materialize(recv))
+	parts := make([]string, len(tt.Elems))
+	for i, ft := range tt.Elems {
+		parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", tmp, i), typ: ft}, et)
+	}
+	at := TClass{C: f.c.classes["Array"], Args: []Type{et}}
+	pinned := *n
+	pinned.Receiver = &exprNode{Node: n.Receiver, e: expr{code: arrayLit(f.c.goType(et), parts), typ: at}}
+	return f.genIterCall(&pinned, t)
+}
+
+// coreEachWanted is a user-code core each whose value is wanted: a typed slot, or a def's tail when a caller uses the
+// def's value (decision 365).
+func (f *fctx) coreEachWanted(m *Method, t tail) bool {
+	if !coreEach(m) {
+		return false
+	}
+	if t.typ != nil {
+		return !isVoid(t.typ)
+	}
+	return t.kind == tailReturn && f.m != nil && f.c.callValueUsed(f.m.Name, false)
+}
+
 // genIterCall emits `for ... range recv.Each(...) { body }` for iterator
 // methods called with a block. Returns false if the call is not one.
 // A T? receiver is guarded first: `&.` skips the loop on nil, `.` raises.
@@ -673,6 +701,9 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	if u, ok := recvT.(TUnion); ok {
 		return f.genUnionIterCall(n, u, t)
 	}
+	if tt, ok := recvT.(TTuple); ok && t.kind == tailNone && f.c.classes["Array"].lookup(n.Name) != nil {
+		return f.genTupleIterCall(n, tt, t)
+	}
 	opt, isOptRecv := recvT.(TOpt)
 	if isOptRecv {
 		recvT = opt.Elem
@@ -683,7 +714,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	e = f.iterTwin(n, e, recvT, probed)
 	// a gem's `xs.each(&blk)` as a value is xs, as MRI's each returns its receiver (decision 172)
-	selfValue := t.kind != tailNone && f.lenient() && eachReturnsSelf[n.Name] && !isOptRecv
+	selfValue := t.kind != tailNone && eachReturnsSelf[n.Name] && !isOptRecv && (f.lenient() || f.coreEachWanted(e.M, t))
 	if !selfValue && t.kind != tailNone && t.typ != nil && !isVoid(t.typ) && (!isAny(t.typ) || n.Name != "loop" || !kernelRecv(n)) && !f.lenient() { // loopRescue's begin: a loop that ends without StopIteration was broken out of, nil
 		f.errorf(n, "the value of an iterator call (%s) cannot be used", n.Name) // gem code: nil, a broken-out loop's (decision 233)
 	}

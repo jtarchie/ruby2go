@@ -77,11 +77,6 @@ puts :upcase.to_proc
 # error: main.rb:3: String#sub: wrong number of arguments (given 1, expected 2)
 # rbs_inline: enabled
 puts "abc".sub("a")
--- each_char_value.rb --
-# error: main.rb:3: each_char with a block is an iterator and can only be used as a statement
-# rbs_inline: enabled
-x = "abc".each_char { |c| puts c }
-puts x
 -- private_puts.rb --
 # error: main.rb:3: private method puts called on String
 # rbs_inline: enabled

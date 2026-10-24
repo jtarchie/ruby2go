@@ -534,6 +534,30 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	return staticCallCode(m, f.typeArgs(m, recv.typ, env), selfRecv.code, argList)
 }
 
+// coreEachValue is a core each-like iterator's value in value position (`f(xs.each { })`, `xs.send(:each) { }`): its
+// receiver, as MRI's each answers self (decision 365); the call runs as the iterator statement on the pinned receiver.
+func (f *fctx) coreEachValue(n parser.Node, m *Method, recv expr, block parser.Node) (expr, bool) {
+	c, ok := n.(*parser.CallNode)
+	if !ok || f.lenient() || !m.Iterator || block == nil || !coreEach(m) {
+		return expr{}, false
+	}
+	tmp := f.newTmp()
+	pinned := *c
+	pinned.Receiver = &exprNode{Node: c.Receiver, e: expr{code: tmp, typ: recv.typ}}
+	if a := callArgs(c); c.Name != m.Name && len(a) > 0 { // `xs.send(:each) { }`: the call it names
+		pinned.Name = m.Name
+		pinned.Arguments = &parser.ArgumentsNode{Location: c.Location, Arguments: a[1:]}
+	}
+	iter := false
+	f.probe(func() { iter = f.genIterCall(&pinned, tail{}) }) // a form genIterCall does not take keeps callMethod0's error
+	if !iter {
+		return expr{}, false
+	}
+	f.emit("%s := %s", tmp, f.materialize(recv))
+	f.genIterCall(&pinned, tail{})
+	return expr{code: tmp, typ: recv.typ}, true
+}
+
 // nilSelf is recv as an Object free func's `self any`: nil itself, not a typed nil pointer (decision 362).
 func (f *fctx) nilSelf(recv expr, m *Method) expr {
 	if m.Owner.universal && isClass(recv.typ, "NilClass") && f.c.plainSelf(m) {
@@ -940,6 +964,9 @@ func (f *fctx) nilKeyLookup(n parser.Node, e *entry, recv expr, args []parser.No
 // untyped first argument to a method with by-class twins (kramdown's `result.sub!(indent_re, ”)`, a Regexp or a
 // String at run time), which the dispatcher picks.
 func (f *fctx) gemCallForm(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) (expr, bool) {
+	if r, ok := f.coreEachValue(n, e.M, recv, block); ok { // user code's, not a gem form: here for callMethod0's size
+		return r, true
+	}
 	if r, ok := f.nilKeyLookup(n, e, recv, args, block); ok {
 		return r, true
 	}

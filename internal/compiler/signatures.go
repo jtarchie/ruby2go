@@ -299,7 +299,7 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 		// liquid's `result = with_profiling(context) { ... }`, decision 331): a gem block's `return` unwinds through the
 		// closure (decision 247), so Cuba's `on` returning from inside `try`'s block still works.
 		wrapper := c.pruneGems && from.File != nil && c.gemFile(from.File)
-		if yieldValueUsed(from.Node.Body, wrapper || splat) { // a *rest block is never a Go iterator: a tail yield is the method's value
+		if yieldValueUsed(from.Node.Body, wrapper || splat || c.callValueUsed(m.Name, true)) { // a *rest block is never a Go iterator: a tail yield is the method's value
 			ret = "untyped"
 		}
 		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> " + ret + " } "
