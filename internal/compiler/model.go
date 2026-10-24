@@ -603,3 +603,32 @@ func embeddedSuper(cls *Class, recv string) string {
 	}
 	return recv + "." + superField(cls.Super)
 }
+
+// leaf is a user or gem class no class inherits from: its objects are exactly *C, so values typed as it are *C rather
+// than its interface, and its methods take self as *C, direct field access the Go compiler inlines (decision 359).
+func (c *Class) leaf() bool {
+	return c.isStruct() && !c.universal && len(c.Subclasses) == 0 && len(c.TypeParams) == 0 && c.metaOf == nil && !c.hashBase &&
+		!c.isPerRun && !c.isTemplate() && c.template == nil && c.File != nil && !c.File.isPrelude() && !mixesUserModule(c)
+}
+
+// mixesUserModule reports a user or gem module among c's ancestors: its constraint may want `m() Self` of its
+// includers, which a leaf's *C methods do not declare (ponytail: prelude modules only; check the constraint's
+// signatures to let these in).
+func mixesUserModule(c *Class) bool {
+	for k := c; k != nil && !k.universal; k = k.Super {
+		for _, inc := range k.Includes {
+			if inc.Mod != nil && (inc.Mod.File == nil || !inc.Mod.File.isPrelude() || mixesUserModule(inc.Mod)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// objType is the Go type of a value of struct class c: *C for a leaf, else its interface.
+func (c *Class) objType() string {
+	if c.leaf() {
+		return "*" + c.Name
+	}
+	return c.ifaceName()
+}

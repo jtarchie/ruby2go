@@ -300,9 +300,9 @@ func TestBootAutoload(t *testing.T) {
 	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "broken.rbs: skipped") }) {
 		t.Error("no warning for sigdemo/sig/broken.rbs")
 	}
-	for _, want := range []string{"Sigdemo_Meter_Total(self Sigdemo_MeterI) Integer", "Push(value Integer) Sigdemo_MeterI",
+	for _, want := range []string{"Sigdemo_Meter_Total(self *Sigdemo_Meter) Integer", "Sigdemo_Meter_Push[Self Sigdemo_MeterI](self Self, value Integer) Self",
 		// `Meter & _Reading`, a 'single-quoted' record, a backquoted and a proc-param name (decision 315)
-		"Absorb(other Sigdemo_MeterI) Sigdemo_MeterI", "src *Hash[String, String]) String", "sink *func(Integer))"} {
+		"(self Self, other *Sigdemo_Meter) Self", "src *Hash[String, String]) String", "sink *func(Integer))"} {
 		if !bytes.Contains(code, []byte(want)) {
 			t.Errorf("main.go lacks %q: the gem's sig/ did not type Sigdemo::Meter", want)
 		}

@@ -303,6 +303,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	}
 	env := f.callEnv(n, e, recv)
 	f.checkVisibility(n, m, recv)
+	recv = f.leafRecvSelf(recv, m)
 	var armT Type // the `.rbs` overload arm this call takes (decision 12), picked before the merged parameters check the arguments
 	if len(m.arms) > 0 {
 		armT = f.armRet(n, m, args)
@@ -467,7 +468,8 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
 	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
-		m.Owner.universal && mentionsSelf(m.Ret) // an interface declares `-> self` as `any`; the free func returns Self
+		m.Owner.universal && mentionsSelf(m.Ret) || // an interface declares `-> self` as `any`; the free func returns Self
+		f.leafCall(recv)
 	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
 		if code, ok := f.wrapperSelfCall(e, argList); ok {
 			return code
@@ -644,7 +646,7 @@ func (c *Compiler) selfReturnAsserts(e *entry, recvT Type) bool {
 		return false
 	}
 	rc, ok := recvT.(TClass)
-	return ok && rc.C.isStruct() && e.Entry != rc.C
+	return ok && rc.C.isStruct() && e.Entry != rc.C && !rc.C.leaf() // a leaf's generic call is instantiated with *C: it returns *C (decision 359)
 }
 
 // selfVarReturns reports whether a `-> self` call on self in a generic method body (MacOSVersion#strip_patch calling
@@ -901,3 +903,33 @@ func isASCII(s string) bool {
 
 // provisional reports a round's untyped result of m, untyped only until its parameters are typed (decision 358).
 func (c *Compiler) provisional(m *Method, t Type) bool { return c.round && m.roundRet && isAny(t) }
+
+// leafSelf is a generic body's Self value (self, a `self`-typed parameter) where leaf class cls's *C is wanted: one
+// assertion, as Self is always *C there (decision 359).
+func (f *fctx) leafSelf(e expr, cls *Class) expr {
+	if !isSelfVar(e.typ) || cls == nil || !cls.leaf() || f.m == nil || f.c.plainSelf(f.m) {
+		return e
+	}
+	e.code = "any(" + e.code + ").(*" + cls.Name + ")"
+	return e
+}
+
+// leafCall reports a receiver that is a leaf's object, typed so or self in its body: the method found is the one
+// that runs, so the call is its free func, no forwarder (decision 359).
+func (f *fctx) leafCall(recv expr) bool {
+	return leafRecv(recv.typ) || isSelfVar(recv.typ) && f.owner != nil && f.owner.leaf()
+}
+
+// leafRecv reports a receiver typed as a leaf class (decision 359).
+func leafRecv(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && c.C.leaf()
+}
+
+// leafRecvSelf is leafSelf for the receiver of m: only a plain func takes *C, a generic one takes Self as it is.
+func (f *fctx) leafRecvSelf(recv expr, m *Method) expr {
+	if !f.c.plainSelf(m) {
+		return recv
+	}
+	return f.leafSelf(recv, m.Owner)
+}

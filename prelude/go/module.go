@@ -241,3 +241,11 @@ func rbIncludeAtRun(self, mod any) {
 
 // rbNilAny is nil itself for a NilClass-typed value, which Go holds as a typed nil pointer (decision 331).
 func rbNilAny[T any](_ T) any { return nil }
+
+// rbPtrAny boxes a leaf class's *C (decision 359): a nil one (a gem's sig that did not hold) is Ruby's nil, not a typed nil pointer.
+func rbPtrAny[T any](p *T) any {
+	if p == nil {
+		return nil
+	}
+	return p
+}

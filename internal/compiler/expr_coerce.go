@@ -158,6 +158,9 @@ func (f *fctx) coerceToAny(e expr) string {
 	if _, ok := e.typ.(TTuple); ok {
 		return e.code + "._ToAny()" // untyped code sees an Array (decision 22)
 	}
+	if leafRecv(e.typ) && e.code != "self" { // self is never nil
+		return "rbPtrAny[" + e.typ.(TClass).C.Name + "](" + e.code + ")"
+	}
 	return e.code
 }
 
@@ -355,6 +358,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	}
 	if code, ok := f.selfConv(n, e, to); ok {
 		return code
+	}
+	if l := f.leafSelf(e, to.C); l.code != e.code {
+		return l.code
 	}
 	if isClass(to, "Integer") && isClass(e.typ, "Float") {
 		if f.pass == 2 { // earlier passes may still widen the target

@@ -162,7 +162,7 @@ func (c *Compiler) ownerIface(cls *Class, e *entry) string {
 	if !cls.isStruct() || len(cls.TypeParams) > 0 || cls.metaOf != nil || e.Owner.IsModule || !e.Owner.isStruct() || len(e.Owner.TypeParams) > 0 || e.Owner.isSubclassOf(c.classes["Module"]) {
 		return ""
 	}
-	return e.Owner.ifaceName()
+	return e.Owner.objType()
 }
 
 // dynGenerated: e comes from the prelude, or is a metaclass's generated
@@ -218,7 +218,7 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 		iface, rest = oi, plainCut(strings.ReplaceAll(rest, "["+oi+"](self", "")) // self is recv asserted to the owner's interface
 	} else if oi == "" && !e.Owner.universal && !e.Owner.IsModule && e.Owner.isStruct() && len(e.Owner.TypeParams) == 0 && c.plainSelf(e.M) && plainMatch(rest) {
 		// a class object's body already calls the owner's plain func (Module_ConstGet(self, ...)): the same text serves every metaclass
-		iface, rest = e.Owner.ifaceName(), plainCut(rest)
+		iface, rest = e.Owner.objType(), plainCut(rest)
 	}
 	if mod := e.Owner; iface == "" && mod.IsModule && !mod.universal && len(mod.TypeParams) == 0 && c.dispatchable(mod, e.M) {
 		// a dispatched module method's body over the constraint itself (decision 208), the same for every includer

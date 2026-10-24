@@ -30,7 +30,7 @@ func (c *Compiler) goType(t Type) string {
 			}
 			return name
 		default:
-			return cls.ifaceName()
+			return cls.objType()
 		}
 	case TOpt:
 		s := "*" + c.goType(t.Elem)
@@ -294,7 +294,7 @@ func (c *Compiler) plainSelfType(owner *Class) string {
 	if owner.universal {
 		return "any"
 	}
-	return owner.ifaceName()
+	return owner.objType()
 }
 
 // typeParamDecl renders the type parameter list of a free func.
