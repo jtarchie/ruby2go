@@ -6,7 +6,7 @@
 # match; see internal/compiler/regexp.go. rxRegexp (rxtranslate.go) matches
 # Onigmo's `^`, `\b` and multi-character `/i` folds where RE2's differ.
 
-# @go_type struct { re *rxRegexp; src string; opts string; anch *atomic.Pointer[rxRegexp] }
+# @go_type struct { re *rxRegexp; src string; opts string; anch *atomic.Pointer[rxRegexp]; u8 bool }
 class Regexp < Object
   # Regexp.last_match(n): the compiler passes the caller's $~ (decision 232).
   #: (MatchData?, untyped) -> String?
@@ -435,6 +435,34 @@ class String
   #: (Regexp) -> bool
   def __bin_match_q(re) = re.__bin_match_q(self)
 
+  #: (Regexp) -> Integer?
+  def __bin_index_regexp(re) = re.__bin_eqtilde(self)
+
+  #: (Regexp) -> Integer?
+  def __bin_rindex_regexp(re) = %x{
+    s := string(self)
+    for i := len(s); i >= 0; i-- {
+      if loc := rbFindLocBin(re, s[i:]); loc != nil && loc[0] == 0 {
+        return Ref(Integer(i))
+      }
+    }
+    return nil
+  }
+
+  # @binary
+  #: (Regexp, ?untyped) -> String?
+  def __bin_idx_regexp(re, n = 0)
+    m = re.__bin_match(self)
+    return nil unless m
+
+    case n
+    when Integer then m[n]
+    when Symbol then m[n]
+    when String then m[n]
+    else raise TypeError, __idx_conv_message(n)
+    end
+  end
+
   # A match that starts at 0 (Go's leftmost match starts at 0 whenever one can). ponytail: $~ is not set; set it
   # when a caller reads it after start_with?.
   #: (Regexp) -> bool
@@ -488,7 +516,10 @@ class String
 
   # MRI's rb_str_split_m (rbSplitLocs). Its searches are the matches of scan, so they come from FindAll.
   #: (Regexp, ?Integer) -> Array[String]
-  def __split_regexp(re, limit = 0) = %x{ return rbSplitLocs(string(self), rbFindAll(re, string(self), -1), int(limit), false) }
+  def __split_regexp(re, limit = 0) = %x{
+    s := string(self)
+    return rbSplitLocs(s, rbFindAll(re, s, -1), int(limit), !rbValidUTF8(s) && strings.ContainsRune(re.opts, 'n')) // rbFindAll's byte path
+  }
 
   # A binary String's matches read its bytes (decision 352).
   #: (Regexp) -> Array[String]
@@ -498,6 +529,19 @@ class String
     }
     return rbScanLocs(self, rbFindAllBin(re, string(self), -1))
   }
+
+  #: (Regexp) -> untyped
+  def __bin_scan_any(re) = re.__groups? ? __bin_scan_groups(re) : __bin_scan(re)
+
+  #: (Regexp) { (untyped) -> untyped } -> String
+  def __bin_scan_block(re)
+    if re.__groups?
+      __bin_scan_groups(re).each { |g| yield g }
+    else
+      __bin_scan(re).each { |m| yield m }
+    end
+    self
+  end
 
   #: (Regexp) -> Array[Array[String?]]
   def __bin_scan_groups(re) = %x{ return rbScanGroupLocs(self, rbFindAllBin(re, string(self), -1)) }

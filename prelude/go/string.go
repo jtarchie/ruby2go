@@ -725,8 +725,9 @@ func rbStrRindex(s, t String) (Integer, bool) {
 }
 
 // rbTr is String#tr; bin reads s byte by byte, each byte the character of its value (a String that is not valid UTF-8,
-// decision 324, or one the compiler knows is binary, decision 352).
-func rbTr(s String, from, to string, bin bool) String {
+// decision 324, or one the compiler knows is binary, decision 352), and so its lists when they are not valid UTF-8 or
+// binLists (a binary String's twin, decision 352).
+func rbTr(s String, from, to string, bin, binLists bool) String {
 	expand := func(cs []rune) []rune {
 		var out []rune
 		for i := 0; i < len(cs); i++ {
@@ -749,7 +750,7 @@ func rbTr(s String, from, to string, bin bool) String {
 		return out
 	}
 	runes := func(x string) []rune { // a binary list's bytes are characters too
-		if !bin || utf8.ValidString(x) {
+		if !bin || !binLists && utf8.ValidString(x) {
 			return []rune(x)
 		}
 		out := make([]rune, len(x))

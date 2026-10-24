@@ -196,7 +196,8 @@ func kernelModuleFunction(m *Method, recv Type) bool {
 // callMethod is callMethod0 with binary Strings (decision 352): a `@binary` method's String result is binary.
 func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	out := f.callMethod0(n, e, recv, args, block)
-	if b := e.M.binary; (b == 1 || b == 2 && recv.bin) && isClass(stripOpt(out.typ), "String") {
+	f.noteForceEncoding(e.M, recv, args)
+	if b := e.M.binary; (b == 1 || b == 2 && recv.bin) && isClass(stripOpt(out.typ), "String") && !readAll(e.M, args) {
 		out.bin = true
 		if b == 2 {
 			out.binDeps = recv.binDeps
@@ -210,6 +211,26 @@ func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node
 		}
 	}
 	return out
+}
+
+// noteForceEncoding: `s.force_encoding(enc)` of anything but a literal BINARY may make the binary String it was read
+// from text (MRI changes it in place), so those locals are text in every read (decision 352).
+func (f *fctx) noteForceEncoding(m *Method, recv expr, args []parser.Node) {
+	if m.Name != "force_encoding" || !recv.bin || f.pass >= 2 || len(args) == 1 && binaryEncodingArg(f.f, args[0]) {
+		return
+	}
+	for _, d := range recv.binDeps {
+		d.text = true
+	}
+}
+
+// readAll is `io.read(nil)`: the whole stream in the external encoding (UTF-8), not read(n)'s binary bytes.
+func readAll(m *Method, args []parser.Node) bool {
+	if m.Name != "__read_1" || len(args) != 1 {
+		return false
+	}
+	_, ok := args[0].(*parser.NilNode)
+	return ok
 }
 
 // binRegexpTwins are the Regexp methods whose String argument, when binary, takes a `__bin_*` twin.

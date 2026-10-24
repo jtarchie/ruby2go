@@ -145,7 +145,11 @@ func (li *localInfo) noteBin(pass int, val expr) {
 	case li == nil || pass >= 2:
 	case val.bin:
 		li.bin = true
-		li.binDeps = append(li.binDeps, val.binDeps...)
+		for _, d := range val.binDeps { // each probe run writes again
+			if !slices.Contains(li.binDeps, d) {
+				li.binDeps = append(li.binDeps, d)
+			}
+		}
 	default:
 		li.text = true
 	}

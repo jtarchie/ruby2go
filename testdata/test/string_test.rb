@@ -42,6 +42,23 @@ def string_label(v)
   v.capitalize
 end
 
+#: () -> String
+def string_bin_lm_gsub
+  y = "é".b
+  out = y.gsub(/./) { |m| "#{m.ord}," }
+  $~ ? out : ""
+end
+
+#: () -> Integer?
+def string_bin_lm_index
+  v = "éa".b
+  r = v =~ /a/
+  $~ ? r : nil
+end
+
+#: (String) -> Integer
+def string_bin_split(x) = x.split(//n).size
+
 module StringTests
   # Helpers for the checks that were testdata/run/string_literals.rb.
   class Pt
@@ -1756,6 +1773,23 @@ B
       assert_equal [32, 32], [Digest::SHA256.digest("a").size, Digest::SHA256.new.update("a").digest.size]
       assert_equal [Encoding::ASCII_8BIT] * 3, [Marshal.dump("é").encoding, SecureRandom.random_bytes(4).encoding, Random.new(1).bytes(3).encoding]
       assert_equal [Encoding::ASCII_8BIT, 2], [Zlib::Deflate.deflate("aaaa").encoding, StringIO.new("é").read(2).size]
+    end
+
+    def test_binary_flavor_review_cases
+      s = "é".b
+      s.force_encoding("UTF-8")
+      assert_equal 1, s.size
+      assert_equal [[49, 57, 53, 44, 49, 54, 57, 44], 2], [string_bin_lm_gsub.bytes, string_bin_lm_index]
+      path = File.join(Dir.tmpdir, "rb2go_string_read_#{Process.pid}.txt")
+      File.write(path, "héllo")
+      sizes = File.open(path) { |f| [f.read(nil).size] } + File.open(path) { |f| [f.read(3).size] }
+      File.delete(path)
+      assert_equal [5, 3], sizes
+      assert_equal [1, [120, 121, 33]], ["é!".b.count("\xa9".b), "é!".b.tr("é".b, "xy").bytes]
+      n = 0
+      "é".b.scan(/./) { |_c| n += 1 }
+      assert_equal [[169], 2, 2, 3], ["aé".b[/\xa9/n].bytes, n, "aé".b.index(/\xa9/n), "aéa".b.rindex(/a/)]
+      assert_equal [2, 2, 3, 2, 1], ["é\\u".b =~ /\\u/, "é\\xA0".b =~ /\\xA0/, string_bin_split("\xff\xc3\xa9".b), "é".b.split("").size, "é".split("").size]
     end
 
     def test_binary_flavor_utf8_regexp_raises

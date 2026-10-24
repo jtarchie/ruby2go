@@ -365,7 +365,7 @@ class String < Object
   def gsub(from, to) = %x{ rbNewStr(self, String(rbSub(string(self), string(from), string(to), -1))) }
 
   #: (String, String) -> String
-  def tr(from, to) = %x{ rbTr(self, string(from), string(to), !utf8.ValidString(string(self))) }
+  def tr(from, to) = %x{ rbTr(self, string(from), string(to), !utf8.ValidString(string(self)), false) }
 
   # An Array argument supplies every directive's value, as MRI's.
   #: (untyped) -> String

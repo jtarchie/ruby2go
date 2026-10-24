@@ -21,13 +21,18 @@ func (f *fctx) subBlockLastMatch(n parser.Node, recv expr, name string, args []p
 	f.emit("%s := %s", r, recv.code)
 	pat := f.newTmp()
 	f.emit("%s := rbPattern(%s)", pat, f.coerce(args[0], f.genExpr(args[0], nil), TAny{}))
+	f.binNext = recv.bin // a binary String's matches and block param are bytes (decision 352)
 	blk := f.genClosure(n, b, e.M.Block, map[string]Type{})
 	count := "-1"
 	if name == "sub" {
 		count = "1"
 	}
-	code := fmt.Sprintf("String(rbReSub(%s, string(%s), %s, rbReBlockLM(&%s, %s, %s)))", pat, r, count, f.lastMatch, pat, blk)
-	return expr{code: code, typ: f.cls("String")}, true
+	sub := "rbReSub"
+	if recv.bin {
+		sub = "rbReSubBin"
+	}
+	code := fmt.Sprintf("String(%s(%s, string(%s), %s, rbReBlockLM(&%s, %s, %s)))", sub, pat, r, count, f.lastMatch, pat, blk)
+	return expr{code: code, typ: f.cls("String"), bin: recv.bin, binDeps: recv.binDeps}, true
 }
 
 // grepBlockLastMatch is `xs.grep(re) { $1 }` / grep_v on an Array in a frame that reads $~: each test sets the
@@ -72,11 +77,12 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 	if f.lastMatch == "" || f.inMatchSet || n.Receiver == nil || len(args) != 1 || n.Block != nil {
 		return expr{}, false
 	}
-	var recvT, argT Type
-	f.probe(func() { recvT, argT = f.genExpr(n.Receiver, nil).typ, f.genExpr(args[0], nil).typ })
-	re, subj := args[0], n.Receiver
+	var recvE, argE expr
+	f.probe(func() { recvE, argE = f.genExpr(n.Receiver, nil), f.genExpr(args[0], nil) })
+	recvT, argT := recvE.typ, argE.typ
+	re, subj, bin := args[0], n.Receiver, recvE.bin
 	if isClass(recvT, "Regexp") {
-		re, subj = n.Receiver, args[0]
+		re, subj, bin = n.Receiver, args[0], argE.bin
 	}
 	switch {
 	case n.Name == "=~":
@@ -92,7 +98,11 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 	if n.Name == "match" {
 		return expr{code: fmt.Sprintf("rbMatchKeep(&%s, %s)", f.lastMatch, m.code), typ: m.typ}, true
 	}
-	return expr{code: fmt.Sprintf("rbMatchSet(&%s, %s)", f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
+	set := "rbMatchSet"
+	if bin { // a binary subject's =~ is a byte index (decision 352)
+		set = "rbMatchSetBin"
+	}
+	return expr{code: fmt.Sprintf("%s(&%s, %s)", set, f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
 }
 
 // readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).

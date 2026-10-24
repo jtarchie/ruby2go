@@ -315,6 +315,10 @@ class String
     return out
   }
 
+  # A separator other than "" splits the same bytes either way.
+  #: (?String?) -> Array[String]
+  def __bin_split(sep = nil) = sep == "" ? __bin_chars : split(sep)
+
   #: () { (String) -> void } -> void
   def __bin_each_char = %x{
     return func(yield func(String) bool) {
@@ -353,7 +357,7 @@ class String
 
   # @binary
   #: (String, String) -> String
-  def __bin_tr(from, to) = %x{ rbTr(self, string(from), string(to), true) }
+  def __bin_tr(from, to) = %x{ rbTr(self, string(from), string(to), true, true) }
 
   # @binary
   #: (String) -> String
@@ -361,7 +365,8 @@ class String
 
   #: (String) -> Integer
   def __bin_count(chars) = %x{
-    in := rbCharSet(string(chars))
+    set, _ := rbLatin1(string(chars)) // its bytes are characters too
+    in := rbCharSet(set)
     n := 0
     for i := range len(self) {
       if in(rune(self[i])) {

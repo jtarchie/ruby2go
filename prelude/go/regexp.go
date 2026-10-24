@@ -16,7 +16,7 @@ import (
 
 // rbRegexpOf wraps a compiled pattern; anch is the slot StringScanner fills with the \A-anchored twin, so the twin lives and dies with the Regexp.
 func rbRegexpOf(re *rxRegexp, src, opts string) *Regexp {
-	return &Regexp{re: re, src: src, opts: opts, anch: new(atomic.Pointer[rxRegexp])}
+	return &Regexp{re: re, src: src, opts: opts, anch: new(atomic.Pointer[rxRegexp]), u8: rbRegexpUTF8(src, opts)}
 }
 
 // rbRxCompiled is a compiled pattern and its \A twin's slot, shared by every Regexp built from the same pattern.
@@ -41,7 +41,7 @@ func rbRegexpCompiled(pat, src, opts string, lazy bool) (*Regexp, error) {
 	}
 	slot := &rbRxCache[h%uint32(len(rbRxCache))]
 	if c := slot.Load(); c != nil && c.pat == pat && (lazy || !c.lazy) {
-		return &Regexp{re: c.re, src: src, opts: opts, anch: c.anch}, nil
+		return &Regexp{re: c.re, src: src, opts: opts, anch: c.anch, u8: rbRegexpUTF8(src, opts)}, nil
 	}
 	compile := rxCompile
 	if lazy {
@@ -53,7 +53,7 @@ func rbRegexpCompiled(pat, src, opts string, lazy bool) (*Regexp, error) {
 	}
 	c := &rbRxCompiled{pat, re, new(atomic.Pointer[rxRegexp]), lazy}
 	slot.Store(c)
-	return &Regexp{re: re, src: src, opts: opts, anch: c.anch}, nil
+	return &Regexp{re: re, src: src, opts: opts, anch: c.anch, u8: rbRegexpUTF8(src, opts)}, nil
 }
 
 // rbRegexpNew compiles a translated pattern; dynamic (interpolated) ones
@@ -340,19 +340,36 @@ func rbSplitLocs(s string, locs [][]int, lim int, bin bool) *Array[String] {
 }
 
 // rbHighBytes reports whether binary s has a byte past ASCII, so a match reads it byte by byte; then a Regexp fixed to
-// UTF-8 (a non-ASCII character, \u or a \x escape past 0x7F in its source, without /n) raises MRI's
-// Encoding::CompatibilityError.
+// UTF-8 (rbRegexpUTF8) raises MRI's Encoding::CompatibilityError.
 func rbHighBytes(r *Regexp, s string) bool {
 	if !strings.ContainsFunc(s, func(c rune) bool { return c >= utf8.RuneSelf }) {
 		return false
 	}
-	if !strings.ContainsRune(r.opts, 'n') && (strings.ContainsFunc(r.src, func(c rune) bool { return c >= utf8.RuneSelf }) || strings.Contains(r.src, `\u`) || rbHighEscape.MatchString(r.src)) {
+	if r.u8 {
 		panic(NewEncoding_CompatibilityError(Ref(String("incompatible encoding regexp match (UTF-8 regexp with BINARY (ASCII-8BIT) string)"))))
 	}
 	return true
 }
 
-var rbHighEscape = regexp.MustCompile(`\\x[89A-Fa-f][0-9A-Fa-f]`)
+// rbRegexpUTF8 reports a source fixed to UTF-8 without /n: a non-ASCII character, or an unescaped \u or \x escape
+// past 0x7F (Regexp#u8, read by rbHighBytes).
+func rbRegexpUTF8(src, opts string) bool {
+	if strings.ContainsRune(opts, 'n') {
+		return false
+	}
+	for i := 0; i < len(src); i++ {
+		switch {
+		case src[i] >= utf8.RuneSelf:
+			return true
+		case src[i] != '\\' || i+1 == len(src):
+		case src[i+1] == 'u', src[i+1] == 'x' && i+2 < len(src) && strings.IndexByte("89abcdefABCDEF", src[i+2]) >= 0:
+			return true
+		default:
+			i++ // the escaped character
+		}
+	}
+	return false
+}
 
 // rbLatin1 reads each byte of s as the character of its value, for a binary Regexp (/n) on a String that is not valid
 // UTF-8; back[j] is the byte of s where offset j of the result starts.
@@ -624,6 +641,15 @@ func rbMatchSet(lm ***MatchData, m **MatchData) *Integer {
 		return nil
 	}
 	return Ref(Integer(utf8.RuneCountInString((*m).subj[:(*m).loc[0]])))
+}
+
+// rbMatchSetBin is rbMatchSet for a binary subject: =~ is a byte index (decision 352).
+func rbMatchSetBin(lm ***MatchData, m **MatchData) *Integer {
+	*lm = m
+	if m == nil {
+		return nil
+	}
+	return Ref(Integer((*m).loc[0]))
 }
 
 // rbLMGroup is $n (or $& for 0): group n of the last match, nil without one.
