@@ -197,7 +197,7 @@ func kernelModuleFunction(m *Method, recv Type) bool {
 func (f *fctx) callMethod(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	out := f.callMethod0(n, e, recv, args, block)
 	f.noteForceEncoding(e.M, recv, args)
-	if b := e.M.binary; (b == 1 || b == 2 && recv.bin) && isClass(stripOpt(out.typ), "String") && !readAll(e.M, args) {
+	if b := e.M.binary; (b == 1 || b == 2 && recv.bin) && binCarrier(out.typ) && !readAll(e.M, args) {
 		out.bin = true
 		if b == 2 {
 			out.binDeps = recv.binDeps
@@ -222,6 +222,12 @@ func (f *fctx) noteForceEncoding(m *Method, recv expr, args []parser.Node) {
 	for _, d := range recv.binDeps {
 		d.text = true
 	}
+}
+
+// binCarrier: the types the binary flag rides on, a String or the MatchData of a binary match (decision 352).
+func binCarrier(t Type) bool {
+	t = stripOpt(t)
+	return isClass(t, "String") || isClass(t, "MatchData")
 }
 
 // readAll is `io.read(nil)`: the whole stream in the external encoding (UTF-8), not read(n)'s binary bytes.

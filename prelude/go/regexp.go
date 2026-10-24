@@ -614,6 +614,9 @@ func rbMatchOffset(m *MatchData, n Integer, side int) *Integer {
 	if b < 0 {
 		return nil
 	}
+	if m.bin { // a binary subject's characters are bytes (decision 352)
+		return Ref(Integer(b))
+	}
 	return Ref(Integer(utf8.RuneCountInString(m.subj[:b])))
 }
 
@@ -649,6 +652,7 @@ func rbMatchSetBin(lm ***MatchData, m **MatchData) *Integer {
 	if m == nil {
 		return nil
 	}
+	(*m).bin = true
 	return Ref(Integer((*m).loc[0]))
 }
 

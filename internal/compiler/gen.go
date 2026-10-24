@@ -64,12 +64,13 @@ type fctx struct {
 	nextTail       tail // the innermost closure's result, for `next`
 	begins         int  // nesting depth of rescue wrappers
 	retVar         string
-	wrap           *wrapFrame // the innermost begin wrapper
-	retryFlag      string     // set by `retry` in the rescue clauses being generated
-	declBin        bool       // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
-	binNext        bool       // the next closure is a `@binary block` method's: its String params are binary (decision 352)
-	binParams      bool       // binding that closure's params
-	retryDepth     int        // f.closures where retryFlag was set: a block's retry can't reach it
+	wrap           *wrapFrame  // the innermost begin wrapper
+	retryFlag      string      // set by `retry` in the rescue clauses being generated
+	declBin        bool        // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
+	binNext        bool        // the next closure is a `@binary block` method's: its String params are binary (decision 352)
+	binParams      bool        // binding that closure's params
+	bodyStmts      parser.Node // the statements of the method or block body being generated (noteBinStmt)
+	retryDepth     int         // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
 	branchLenient  bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
 	retTok         string              // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
@@ -137,6 +138,25 @@ type localInfo struct {
 	// binary values were read from (decision 352)
 	bin, text bool
 	binDeps   []*localInfo
+}
+
+// noteBinStmt: `s.force_encoding("BINARY")` as a statement retags s in place in MRI, so the local is binary from here
+// (its writes so far count as binary; decision 352). A pure-Ruby statement keeps the flag; the Go value is unchanged.
+func (f *fctx) noteBinStmt(n parser.Node) {
+	c, ok := n.(*parser.CallNode)
+	if !ok || c.Name != "force_encoding" || f.pass >= 2 || c.Arguments == nil || len(c.Arguments.Arguments) != 1 || !binaryEncodingArg(f.f, c.Arguments.Arguments[0]) {
+		return
+	}
+	lv, ok := c.Receiver.(*parser.LocalVariableReadNode)
+	st, direct := f.bodyStmts.(*parser.StatementsNode)
+	if !ok || !direct || !slices.Contains(st.Body, n) { // under an if or loop it may not run: the local stays text
+		return
+	}
+	if v := f.scope.lookup(lv.Name); v != nil && isClass(stripOpt(v.typ), "String") {
+		if info := v.owner(); info != nil && info.declRuby == f.rbScope {
+			info.bin, info.text = true, false
+		}
+	}
 }
 
 // noteBin records what a write of the first passes put in the local: a binary String or not (decision 352).
@@ -391,6 +411,7 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 }
 
 func (f *fctx) emitExprStmt(n parser.Node, e expr) {
+	f.noteBinStmt(n)
 	if e.code == "" || e.done || e.lit {
 		return
 	}

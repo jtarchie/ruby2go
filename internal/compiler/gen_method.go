@@ -58,6 +58,7 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 				f.emit("_ = %s", scratchIvar(name))
 			}
 		}
+		f.bodyStmts = body
 		f.genStmts(body, t)
 	}
 	fresh()

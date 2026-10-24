@@ -379,7 +379,7 @@ func (f *fctx) genLocalRead(n *parser.LocalVariableReadNode) expr {
 	}
 	v := f.readLocal(n)
 	out := expr{code: v.goName, typ: v.typ, view: v.view}
-	if info := v.owner(); isClass(stripOpt(v.typ), "String") && info.isBin(nil) {
+	if info := v.owner(); binCarrier(v.typ) && info.isBin(nil) {
 		out.bin, out.binDeps = true, []*localInfo{info}
 	}
 	return out

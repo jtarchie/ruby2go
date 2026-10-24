@@ -59,6 +59,13 @@ end
 #: (String) -> Integer
 def string_bin_split(x) = x.split(//n).size
 
+#: () -> [Integer?, Integer?]
+def string_bin_lm_offsets
+  v = "éa".b
+  v =~ /a/
+  [$~&.begin(0), $~&.end(0)]
+end
+
 module StringTests
   # Helpers for the checks that were testdata/run/string_literals.rb.
   class Pt
@@ -1790,6 +1797,20 @@ B
       "é".b.scan(/./) { |_c| n += 1 }
       assert_equal [[169], 2, 2, 3], ["aé".b[/\xa9/n].bytes, n, "aé".b.index(/\xa9/n), "aéa".b.rindex(/a/)]
       assert_equal [2, 2, 3, 2, 1], ["é\\u".b =~ /\\u/, "é\\xA0".b =~ /\\xA0/, string_bin_split("\xff\xc3\xa9".b), "é".b.split("").size, "é".split("").size]
+    end
+
+    def test_binary_flavor_statement_and_offsets
+      m = "éa".b.match(/a/)
+      assert_equal [2, 3, [2, 3], [2, 3], 2, 1, [2, 3]], [m.begin(0), m.end(0), m.offset(0), m.byteoffset(0), m.pre_match.size, "éa".match(/a/).begin(0), string_bin_lm_offsets]
+      s = "é".dup
+      s.force_encoding("BINARY")
+      assert_equal [2, 1, Encoding::ASCII_8BIT], [s.size, s =~ /\xa9/n, s.encoding]
+      t = "é".dup
+      t.force_encoding(Encoding::ASCII_8BIT)
+      t.force_encoding("UTF-8")
+      u = "é".dup
+      u.force_encoding("BINARY") if u.size > 5
+      assert_equal [1, 1], [t.size, u.size]
     end
 
     def test_binary_flavor_utf8_regexp_raises

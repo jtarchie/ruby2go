@@ -115,6 +115,7 @@ class Regexp < Object
     return Ref(Integer(loc[0]))
   }
 
+  # @binary
   #: (String) -> MatchData?
   def __bin_match(s) = %x{
     loc := rbFindLocBin(self, string(s))
@@ -122,6 +123,7 @@ class Regexp < Object
       return nil
     }
     m := rbMatchAt(self, string(s), loc)
+    m.bin = true // begin/end/offset count bytes (decision 352)
     return &m
   }
 
@@ -212,8 +214,9 @@ class Regexp < Object
 end
 
 # names are the groups' names ("" when unnamed), as Go's SubexpNames; loc holds byte offsets into subj.
-# @go_type struct { groups []*String; names []string; pre string; post string; subj string; loc []int }
+# @go_type struct { groups []*String; names []string; pre string; post string; subj string; loc []int; bin bool }
 class MatchData < Object
+  # @binary self
   #: (Integer) -> String?
   def [](i) = %x{
     if i < 0 {
@@ -244,9 +247,11 @@ class MatchData < Object
     return out
   }
 
+  # @binary self
   #: (String) -> String?
   def __idx_string(name) = %x{ return rbMatchNamed(self, string(name)) }
 
+  # @binary self
   #: (Symbol) -> String?
   def __idx_symbol(name) = %x{ return rbMatchNamed(self, string(name)) }
 
@@ -256,6 +261,7 @@ class MatchData < Object
   #: () -> Integer
   def length = size
 
+  # @binary self
   #: () -> String
   def string = %x{ String(self.subj) }
 
@@ -280,6 +286,7 @@ class MatchData < Object
     end
   end
 
+  # @binary self
   #: (Integer) -> String?
   def match(n)
     self.begin(n)
@@ -358,12 +365,15 @@ class MatchData < Object
   #: (Integer) -> Integer?
   def byteend(n) = byteoffset(n)[1]
 
+  # @binary self
   #: () -> String
   def pre_match = %x{ String(self.pre) }
 
+  # @binary self
   #: () -> String
   def post_match = %x{ String(self.post) }
 
+  # @binary self
   #: () -> String
   def to_s = self[0].to_s
 
@@ -429,6 +439,7 @@ class String
   #: (Regexp) -> Integer?
   def __bin_eqtilde(re) = re.__bin_eqtilde(self)
 
+  # @binary
   #: (Regexp) -> MatchData?
   def __bin_match(re) = re.__bin_match(self)
 

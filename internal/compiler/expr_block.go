@@ -475,7 +475,10 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			f.applyTail(n, e, t)
 			return
 		}
+		saved := f.bodyStmts
+		f.bodyStmts = body
 		f.genStmts(body, t)
+		f.bodyStmts = saved
 	}
 	// A block is its own Go function: a begin around the call (or in the
 	// method) must not route the block's value into the enclosing result.
