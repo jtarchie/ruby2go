@@ -33,6 +33,7 @@ type loopFrame struct {
 	label    string // set by the first `break` that needs it
 	redo     string // the label opening the body, when it has a `redo`
 	next     string // a do-while's label before its condition, when the body has a `next`
+	scope    *scope // the scope around the loop: a jump out of a branch skips only what lies inside the loop (leaveBranch)
 }
 
 // pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
@@ -42,7 +43,7 @@ func (f *fctx) pushLoop(kind loopKind) {
 	if i := strings.LastIndexByte(strings.TrimSuffix(s, "\n"), '\n') + 1; strings.HasPrefix(s[i:], "//line ") {
 		start = i
 	}
-	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, closures: f.closures, start: start})
+	f.loops = append(f.loops, &loopFrame{kind: kind, switches: f.switches, begins: f.begins, closures: f.closures, start: start, scope: f.scope})
 }
 
 // redoLabel opens a loop body that contains `redo` with a label for its goto.

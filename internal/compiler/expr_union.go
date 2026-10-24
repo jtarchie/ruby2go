@@ -393,6 +393,7 @@ func joinUnion(a, b Type) Type {
 func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	elem := recv.typ.(TOpt).Elem
 	f.warn(n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
+	f.nilGuarded[n] = true
 	code := f.pinSimple(recv.code)
 	f.emit("if %s == nil {", code)
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)

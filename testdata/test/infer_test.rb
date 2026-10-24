@@ -343,4 +343,153 @@ module InferTests
       assert_equal ["a", "bb", "ccc", nil], [n.pop, n.pop, n.pop, n.pop]
     end
   end
+
+  # Decisions 355-357: recursion, a nil-initialized tree typed in a branch, and call-survivor narrowing, all against MRI.
+  class RecNode
+    attr_accessor :key, :left, :right
+
+    def initialize(key, left, right)
+      @key = key
+      @left = left
+      @right = right
+    end
+  end
+
+  class RecTree
+    def initialize
+      @root = nil
+      @size = 0
+    end
+
+    def empty_p = @root.nil?
+
+    def add(key)
+      if empty_p
+        @root = RecNode.new(key, nil, nil)
+      else
+        t = @root
+        while true
+          if key < t.key
+            l = t.left
+            if l.nil?
+              t.left = RecNode.new(key, nil, nil)
+              break
+            end
+            t = l
+          else
+            r = t.right
+            if r.nil?
+              t.right = RecNode.new(key, nil, nil)
+              break
+            end
+            t = r
+          end
+        end
+      end
+      @size += 1
+    end
+
+    def leftmost
+      t = @root
+      return nil if t.nil?
+
+      while true
+        l = t.left
+        break if l.nil?
+
+        if l.key.even?
+          t = l
+          l = t.left
+          break if l.nil?
+        end
+        t = l
+      end
+      t.key
+    end
+
+    def root_key = @root&.key
+    def size = @size
+  end
+
+  class RecTest < Minitest::Test
+    def test_recursive_returns
+      assert_equal 120, infer_fact(5)
+      assert_equal [true, false], [infer_even(10), infer_even(7)]
+      assert_equal 2, infer_first_over([1, 2, 5, 3], 4)
+      assert_equal 0, infer_first_over([1, 2], 4)
+      assert_nil infer_first_over([], 4)
+      t = infer_make_tree(3)
+      assert_equal 15, infer_count_tree(t)
+      assert_nil infer_make_tree(0).left
+      assert_equal [nil, 5, nil, nil, 5], [infer_tri_a(0), infer_tri_a(1), infer_tri_a(2), infer_tri_a(3), infer_tri_a(4)]
+    end
+
+    def test_nil_initialized_tree_links
+      t = RecTree.new
+      assert_nil t.root_key
+      [50, 30, 70, 20, 40, 10].each { |k| t.add(k) }
+      assert_equal [50, 6], [t.root_key, t.size]
+      assert_equal 10, t.leftmost
+      a = RecLeaf.new(1)
+      a.nxt = RecLeaf.new(2)
+      a.nxt&.nxt = RecLeaf.new(3)
+      assert_equal 6, a.sum
+    end
+  end
+
+  class RecLeaf
+    attr_accessor :val, :nxt
+
+    def initialize(val)
+      @val = val
+      @nxt = nil
+    end
+
+    def sum
+      s = @val
+      t = @nxt
+      while t
+        s += t.val
+        t = t.nxt
+      end
+      s
+    end
+  end
 end
+
+def infer_fact(n) = n <= 1 ? 1 : n * infer_fact(n - 1)
+
+def infer_even(n)
+  return true if n == 0
+
+  infer_odd(n - 1)
+end
+
+def infer_odd(n)
+  return false if n == 0
+
+  infer_even(n - 1)
+end
+
+def infer_first_over(xs, i)
+  return nil if xs.empty?
+  return xs.size - 1 if xs.last > i
+
+  infer_first_over(xs[0...-1], i) || 0
+end
+
+def infer_make_tree(depth)
+  return InferTests::RecNode.new(depth, nil, nil) if depth == 0
+
+  InferTests::RecNode.new(depth, infer_make_tree(depth - 1), infer_make_tree(depth - 1))
+end
+
+def infer_count_tree(node)
+  return 1 if node.left.nil?
+
+  1 + infer_count_tree(node.left) + infer_count_tree(node.right)
+end
+
+def infer_tri_a(n) = n <= 0 ? nil : infer_tri_b(n - 1)
+def infer_tri_b(n) = n <= 0 ? 5 : infer_tri_c(n - 1)
+def infer_tri_c(n) = n <= 0 ? nil : infer_tri_a(n - 1)

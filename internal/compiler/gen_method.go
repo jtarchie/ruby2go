@@ -119,7 +119,7 @@ func (f *fctx) poisonedBody(t tail, prologue func()) {
 }
 
 func (c *Compiler) newFctx(f *File, owner *Class, m *Method) *fctx {
-	fc := &fctx{c: c, f: f, owner: owner, m: m, buf: &strings.Builder{}}
+	fc := &fctx{c: c, f: f, owner: owner, m: m, buf: &strings.Builder{}, nilGuarded: map[parser.Node]bool{}}
 	switch {
 	case owner == nil:
 		fc.selfType = TClass{C: c.classes["Object"]}

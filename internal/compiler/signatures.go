@@ -310,10 +310,7 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 	return sig + "untyped", true
 }
 
-// inferRet types an unannotated return from the body: a dry run of its
-// generation whose returned values are joined. Recursion needs an
-// annotation. Before ivar discovery finishes the result is provisional
-// (discoverIvars clears it).
+// inferRet: a dry run joins the body's returns; provisional until ivar discovery finishes (discoverIvars clears it).
 func (c *Compiler) inferRet(m *Method) {
 	if !m.inferRet || m.Ret != nil {
 		return
@@ -323,9 +320,11 @@ func (c *Compiler) inferRet(m *Method) {
 		return
 	}
 	if m.inferring {
+		m.recursed = true
 		c.errorf(m.File, m.Node, "method %s is recursive; annotate its return type (`# @rbs return: T`)", m.Name)
 	}
 	m.inferring = true
+	m.recursed = false
 	defer func() { m.inferring = false }()
 	if m.inherited != nil {
 		c.inferRet(m.inherited)
@@ -333,22 +332,30 @@ func (c *Compiler) inferRet(m *Method) {
 		return
 	}
 	nw := len(c.Warnings)
-	f := c.newFctx(m.File, m.Owner, m)
-	f.retVar = "ret_"
-	if c.unwindsReturn(m) {
-		f.retTok = "rbRetTok_" // a block's return is a returned value too (decision 247)
-	}
+	var f *fctx
 	var ts []Type
-	f.retTypes = &ts
-	if c.round { // a body its still-untyped parameters break returns untyped this round, so its callers still record what they pass
-		err := catchCompileError(func() { f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil) })
-		if err != nil {
+	run := func(drop bool) {
+		f = c.newFctx(m.File, m.Owner, m)
+		f.retVar = "ret_"
+		f.dropFailing = drop
+		if c.unwindsReturn(m) {
+			f.retTok = "rbRetTok_" // a block's return is a returned value too (decision 247)
+		}
+		ts = nil
+		f.retTypes = &ts
+		f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+	}
+	err := catchCompileError(func() { run(false) })
+	if err != nil && m.recursed {
+		err = catchCompileError(func() { c.inferRecursive(m, run, &ts) })
+	}
+	if err != nil {
+		if c.round { // a body its still-untyped parameters break returns untyped this round, so its callers still record what they pass
 			c.dropWarnings(nw)
 			m.Ret, m.retWhy = TAny{}, "body fails with its parameters untyped (inference round)"
 			return
 		}
-	} else {
-		f.genBody(m.Node.Body, c.paramLocals(m), tail{kind: tailReturn, types: &ts}, nil)
+		panic(*err)
 	}
 	c.dropWarnings(nw) // emitMethod warns for real
 	var ret Type = TNil{}
@@ -384,6 +391,50 @@ func (c *Compiler) inferRet(m *Method) {
 		}
 	}
 	m.Ret = ret
+}
+
+// inferRecursive: as spinel does, a recursive call's unknown value drops out of the first join, then the join is iterated to a fixpoint (decision 355).
+func (c *Compiler) inferRecursive(m *Method, run func(drop bool), ts *[]Type) {
+	run(true)
+	ret := joinReturns(nil, *ts)
+	if ret == nil || isAny(ret) {
+		c.errorf(m.File, m.Node, "method %s is recursive and no path returns a typed value without recursing; annotate its return type (`# @rbs return: T`)", m.Name)
+	}
+	var fresh []*Method
+	for _, x := range c.inferredMethods() {
+		if x != m && x.Ret == nil {
+			fresh = append(fresh, x)
+		}
+	}
+	defer func() { m.Ret = nil }()
+	for range 4 {
+		m.Ret = ret
+		for _, x := range fresh { // a cycle's other methods typed themselves against the last candidate (a 3-cycle kept a stale nil)
+			x.Ret = nil
+		}
+		run(false)
+		next := joinReturns(ret, *ts)
+		if typeString(next) == typeString(ret) {
+			return
+		}
+		ret = next
+	}
+	c.errorf(m.File, m.Node, "method %s is recursive and its return type does not settle (last %s); annotate it (`# @rbs return: T`)", m.Name, ret)
+}
+
+// joinReturns leaves out a type that does not join: inferRet's final join reports it.
+func joinReturns(ret Type, ts []Type) Type {
+	for _, t := range ts {
+		if isVoid(t) {
+			t = TNil{}
+		}
+		if ret == nil {
+			ret = t
+		} else if j, ok := join(ret, t); ok {
+			ret = j
+		}
+	}
+	return ret
 }
 
 // protocolSig is the signature Ruby's hook protocol gives an unannotated respond_to_missing? or method_missing, by its

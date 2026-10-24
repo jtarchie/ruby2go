@@ -274,10 +274,10 @@ def use(k) = nil
 #: () -> self
 def me = nil
 -- inferred_return_recursive.rb --
-# error: main.rb:3: method fact is recursive; annotate its return type
+# error: main.rb:3: method spin is recursive and no path returns a typed value without recursing
 # @rbs n: Integer
-def fact(n) = n <= 1 ? 1 : n * fact(n - 1)
-puts fact(5)
+def spin(n) = spin(n + 1)
+puts spin(5)
 -- block_param_without_block_signature.rb --
 # error: main.rb:4: a &block parameter needs a block in the signature
 class Bag

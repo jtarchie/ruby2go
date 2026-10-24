@@ -1251,6 +1251,22 @@ p h.pop
 	}
 }
 
+// TestSpinelBenchmarksTyped guards spinel's unmodified benchmarks against falling back to dynamic calls (decisions 355-357).
+func TestSpinelBenchmarksTyped(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"binary_trees", "splay"} {
+		path := filepath.Join("benchmarks", name+".rb")
+		src, err := fs.ReadFile(os.DirFS("benchmarks"), name+".rb")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, warns, err := Compile(t.Context(), path, src)
+		if err != nil || slices.ContainsFunc(warns, func(w string) bool { return strings.Contains(w, "dynamic call") || strings.Contains(w, "untyped") }) || bytes.Contains(out, []byte("rbDyn")) {
+			t.Errorf("%s: err = %v, warnings %v", name, err, warns)
+		}
+	}
+}
+
 // TestPairingHeapGemTyped compiles benchmarks/pairing_heap.rb, the unmodified gem with decrease_key (an alias a generic
 // subclass makes of its parent's method): its node links stay static as decision 307 left them. Two regressions did not show in
 // TestNilLinksTyped: a gem parameter's untyped use in an early round counted as a kind (decision 331), and a subclass instance

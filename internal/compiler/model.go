@@ -185,6 +185,7 @@ type Method struct {
 	inherited   *Method // signature source for unannotated overrides
 	inferRet    bool    // no return annotation: Ret comes from the body (inferRet)
 	inferring   bool
+	recursed    bool    // inferRet met a call to itself while inferring: its return is a fixpoint (decision 355)
 	structDef   *Method // the generated Struct/Data method a block def overrides; super reaches it
 	superTarget *Method // a prepended module's copy: the class's own method it wraps, which super calls (decision 199)
 	fwdTarget   *Class  // a delegation's `(...)` forwarder: the class it forwards to

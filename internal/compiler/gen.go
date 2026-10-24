@@ -44,6 +44,9 @@ type fctx struct {
 	pass           int  // 0 = ivar discovery, 1 = local analysis, 2 = emit
 	bodyUnit       bool // a class body's grouped statements: its constant assignments are statements (decision 170)
 	discover       bool
+	nilGuarded     map[parser.Node]bool // calls on a T? local that raise NoMethodError on nil: the local survives them non-nil (decision 357)
+	nestedDone     map[parser.Node]bool // discovery: compound statements whose branch bodies discoverNested already dry-ran
+	dropFailing    bool                 // a recursive method's first inference pass: a statement that fails drops out of the return join (decision 355)
 	locals         map[localKey]*localInfo
 	refined        map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
 	openArgs       map[int]localKey  // an open literal passed as a memo (`each_with_object({})`): its offset -> the block param it binds (decision 344)
@@ -198,6 +201,14 @@ func (li *localInfo) isBin(seen map[*localInfo]bool) bool {
 type scope struct {
 	parent *scope
 	vars   map[string]*local
+	killed []killedView // outer narrowed views a write in this scope dropped; leaveBranch may put them back (decision 357)
+}
+
+// killedView is a narrowed view unnarrow removed from an enclosing scope: sc held view, and holds repl since.
+type killedView struct {
+	sc         *scope
+	name       string
+	view, repl *local
 }
 
 type local struct {
@@ -229,7 +240,15 @@ func (s *scope) lookup(name string) *local {
 }
 
 func (f *fctx) push() { f.scope = &scope{parent: f.scope, vars: map[string]*local{}} }
-func (f *fctx) pop()  { f.scope = f.scope.parent }
+func (f *fctx) pop() {
+	inner := f.scope
+	f.scope = inner.parent
+	for _, k := range inner.killed { // still dropped for the enclosing scope, unless it is where the view lived
+		if k.sc != f.scope && f.scope != nil {
+			f.scope.killed = append(f.scope.killed, k)
+		}
+	}
+}
 func (f *fctx) errorf(n parser.Node, format string, args ...any) {
 	f.c.errorf(f.f, n, format, args...)
 }
@@ -287,6 +306,7 @@ func (f *fctx) enterRubyBlock(block parser.Node, params []string) (string, strin
 }
 
 func (f *fctx) leaveRubyBlock(saved, savedRuby string) {
+	f.scope.killed = nil // a block may run any time later: what it dropped stays dropped
 	f.rbFrames = f.rbFrames[:len(f.rbFrames)-1]
 	f.rbScope = savedRuby
 	f.leaveBlock(saved)
@@ -472,10 +492,7 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 			}
 			continue
 		}
-		if (f.c.round || f.discover) && i < len(stmts.Body)-1 {
-			// an inference round reads calls, and ivar discovery assignments, past a statement it cannot compile (decisions 146, 191)
-			f.c.debugInfer(f.try(func() { f.genStmt(s, tail{}) }))
-			f.applyNarrow(f.guardNarrowing(s))
+		if f.genStmtPastFailure(s, i == len(stmts.Body)-1, t) {
 			continue
 		}
 		switch {
@@ -490,7 +507,103 @@ func (f *fctx) genStmts(n parser.Node, t tail) {
 				return
 			}
 			f.applyNarrow(f.guardNarrowing(s))
+			f.applyNarrow(f.callNarrowing(s))
 		}
+	}
+}
+
+// genStmtPastFailure generates s where a dry run reads past what does not compile, reporting whether it did.
+func (f *fctx) genStmtPastFailure(s parser.Node, last bool, t tail) bool {
+	switch {
+	case f.dropFailing:
+		tt := tail{}
+		if last {
+			tt = t
+		}
+		n := len(*f.retTypes)
+		if f.try(func() { f.genStmt(s, tt) }) != nil {
+			*f.retTypes = (*f.retTypes)[:n] // a failed statement's half-recorded returns are not paths
+			return true
+		}
+	case (f.c.round || f.discover) && !last:
+		// an inference round reads calls, and ivar discovery assignments, past a statement it cannot compile (decisions 146, 191)
+		err := f.try(func() { f.genStmt(s, tail{}) })
+		f.c.debugInfer(err)
+		if err != nil && f.discover {
+			f.discoverNested(s)
+		}
+	case f.discover:
+		err := f.try(func() { f.genStmt(s, t) })
+		if err != nil {
+			f.discoverNested(s)
+			panic(*err)
+		}
+		return true
+	default:
+		return false
+	}
+	f.applyNarrow(f.guardNarrowing(s))
+	f.applyNarrow(f.callNarrowing(s))
+	return true
+}
+
+// discoverNested: a condition reading a not-yet-typed ivar (`if empty_p`) must not hide the writes in its branches (decision 356).
+func (f *fctx) discoverNested(s parser.Node) {
+	if f.nestedDone[s] { // an enclosing failure re-runs its descendants: without this, doubling per level
+		return
+	}
+	if f.nestedDone == nil {
+		f.nestedDone = map[parser.Node]bool{}
+	}
+	f.nestedDone[s] = true
+	var bodies []parser.Node
+	add := func(b *parser.StatementsNode) {
+		if b != nil {
+			bodies = append(bodies, b)
+		}
+	}
+	addElse := func(e *parser.ElseNode) {
+		if e != nil {
+			add(e.Statements)
+		}
+	}
+	switch n := s.(type) {
+	case *parser.IfNode:
+		add(n.Statements)
+		switch e := n.Subsequent.(type) {
+		case *parser.ElseNode:
+			addElse(e)
+		case *parser.IfNode:
+			f.discoverNested(e)
+		}
+	case *parser.UnlessNode:
+		add(n.Statements)
+		addElse(n.ElseClause)
+	case *parser.WhileNode:
+		add(n.Statements)
+	case *parser.UntilNode:
+		add(n.Statements)
+	case *parser.CaseNode:
+		for _, w := range n.Conditions {
+			if w, ok := w.(*parser.WhenNode); ok {
+				add(w.Statements)
+			}
+		}
+		addElse(n.ElseClause)
+	case *parser.BeginNode:
+		add(n.Statements)
+		for r := n.RescueClause; r != nil; r = r.Subsequent {
+			add(r.Statements)
+		}
+		addElse(n.ElseClause)
+		if n.EnsureClause != nil {
+			add(n.EnsureClause.Statements)
+		}
+	}
+	for _, b := range bodies {
+		saved := f.enterBlock()
+		_ = f.try(func() { f.genStmts(b, tail{}) })
+		f.leaveBlock(saved)
 	}
 }
 

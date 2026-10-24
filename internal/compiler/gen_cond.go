@@ -25,6 +25,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	}
 	elseNarrow := f.elseNarrowing(pred)
 	cond, narrow := f.genCond(pred)
+	f.applyNarrow(f.callNarrowing(pred)) // the condition ran before either branch: a local it called a method on is not nil (decision 357)
 	if negate {
 		cond = "!(" + cond + ")"
 		narrow, elseNarrow = elseNarrow, narrow
@@ -35,7 +36,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	f.applyNarrow(narrow)
 	f.genBranch(then, t)
 	f.indent--
-	f.leaveBlock(saved)
+	f.leaveBranch(saved, then)
 	switch e := els.(type) {
 	case nil:
 		if t.kind != tailNone {
@@ -54,7 +55,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		f.applyNarrow(elseNarrow)
 		f.genBranch(e.Statements, t)
 		f.indent--
-		f.leaveBlock(saved)
+		f.leaveBranch(saved, e.Statements)
 		f.emit("}")
 	case *parser.IfNode:
 		saved := f.enterBlock()
@@ -73,6 +74,134 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	default:
 		f.c.unsupported(f.f, els)
 	}
+}
+
+// leaveBranch: a branch that re-narrows a local it reassigned (`t = y; break if t.nil?`) leaves it non-nil on every path past it (decision 357).
+func (f *fctx) leaveBranch(saved string, body parser.Node) {
+	sc := f.scope
+	st, _ := body.(*parser.StatementsNode)
+	if len(sc.killed) == 0 || st == nil {
+		f.leaveBlock(saved)
+		return
+	}
+	ends := terminates(st)
+	jumps := anyNode(st, func(x parser.Node) bool {
+		switch x.(type) {
+		case *parser.BreakNode, *parser.NextNode, *parser.RedoNode, *parser.RetryNode:
+			return true
+		}
+		return false
+	})
+	var loop *scope // a break or next reaches code after the loop, where views outside it must stay dropped
+	if len(f.loops) > 0 {
+		loop = f.loops[len(f.loops)-1].scope
+	}
+	if len(st.Body) > 0 && !ends { // genStmts narrows after every statement but the last
+		last := st.Body[len(st.Body)-1]
+		f.applyNarrow(f.guardNarrowing(last))
+		f.applyNarrow(f.callNarrowing(last))
+	}
+	kept := sc.killed[:0]
+	for _, k := range sc.killed {
+		now := sc.vars[k.name]
+		again := ends || now != nil && now.base != nil && now.base.goName == k.view.base.goName && typeEq(now.typ, k.view.typ)
+		if again && k.sc.vars[k.name] == k.repl && (!jumps || loop == nil || insideScope(k.sc, loop)) {
+			k.sc.vars[k.name] = k.view
+			continue
+		}
+		kept = append(kept, k)
+	}
+	sc.killed = kept
+	f.leaveBlock(saved)
+}
+
+// insideScope reports whether sc lies strictly inside outer.
+func insideScope(sc, outer *scope) bool {
+	for p := sc; p != nil; p = p.parent {
+		if p.parent == outer {
+			return true
+		}
+	}
+	return false
+}
+
+// callNarrowing: a T? local that survived a nil-raising call n always runs is non-nil after it, since MRI raised otherwise (decision 357).
+func (f *fctx) callNarrowing(n parser.Node) []narrowInfo {
+	var ns []narrowInfo
+	seen := map[string]bool{}
+	var body parser.Node
+	if f.m != nil && f.m.Node != nil {
+		body = f.m.Node.Body
+	} else {
+		body = f.bodyStmts
+	}
+	var walk func(x parser.Node)
+	walk = func(x parser.Node) {
+		switch x := x.(type) {
+		case *parser.CallNode:
+			walk(x.Receiver)
+			if x.Arguments != nil {
+				for _, a := range x.Arguments.Arguments {
+					walk(a)
+				}
+			}
+			lv, ok := x.Receiver.(*parser.LocalVariableReadNode)
+			if !ok || !f.nilGuarded[x] || seen[lv.Name] {
+				return
+			}
+			seen[lv.Name] = true
+			v := f.narrowLocal(lv.Name)
+			if v == nil || v.base != nil || !isOpt(v.typ) || isAny(stripOpt(v.typ)) || assignsLocal(n, lv.Name) || body != nil && writtenInBlock(body, lv.Name, false) {
+				return
+			}
+			ns = append(ns, narrowInfo{local: v, typ: stripOpt(v.typ)})
+		case *parser.AndNode:
+			walk(x.Left)
+		case *parser.OrNode:
+			walk(x.Left)
+		case *parser.ParenthesesNode:
+			walk(x.Body)
+		case *parser.StatementsNode:
+			for _, s := range x.Body {
+				walk(s)
+			}
+		case *parser.IfNode:
+			walk(x.Predicate)
+		case *parser.UnlessNode:
+			walk(x.Predicate)
+		case *parser.LocalVariableWriteNode:
+			walk(x.Value)
+		case *parser.InstanceVariableWriteNode:
+			walk(x.Value)
+		case *parser.ReturnNode:
+			if x.Arguments != nil {
+				for _, a := range x.Arguments.Arguments {
+					walk(a)
+				}
+			}
+		}
+	}
+	walk(n)
+	return ns
+}
+
+// assignsLocal reports whether n assigns local name in any form.
+func assignsLocal(n parser.Node, name string) bool {
+	return anyNode(n, func(x parser.Node) bool {
+		switch x := x.(type) {
+		case *parser.LocalVariableWriteNode:
+			return x.Name == name
+		case *parser.LocalVariableOperatorWriteNode:
+			return x.Name == name
+		case *parser.LocalVariableOrWriteNode:
+			return x.Name == name
+		case *parser.LocalVariableAndWriteNode:
+			return x.Name == name
+		case *parser.LocalVariableTargetNode:
+			return x.Name == name
+		}
+		return false
+	})
 }
 
 // Narrowed ivars/attr readers share scope.vars with locals under ":" keys no identifier can spell.
@@ -114,6 +243,9 @@ func (f *fctx) unnarrow(name string) {
 			if !hoisted && (sc.parent == nil || sc.parent.lookup(name) == nil) { // the view replaced a parameter here (`param ||= x`): it stays
 				sc.vars[name] = v.base
 			}
+			if sc != f.scope {
+				f.scope.killed = append(f.scope.killed, killedView{sc: sc, name: name, view: v, repl: sc.vars[name]})
+			}
 		}
 	}
 }
@@ -137,12 +269,12 @@ func (f *fctx) guardNarrowing(s parser.Node) []narrowInfo {
 			return f.elseNarrowing(s.Predicate) // `return x.size if x.is_a?(String)`: the rest has the other members
 		}
 		if lv, ok := call.Receiver.(*parser.LocalVariableReadNode); ok {
-			if v := f.scope.lookup(lv.Name); v != nil && isOpt(v.typ) {
+			if v := f.narrowLocal(lv.Name); v != nil && isOpt(v.typ) {
 				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 			}
 		}
 		if w := parenWrite(call.Receiver); w != nil && call.Name == "nil?" { // `return if (data = build).nil?` (decision 249)
-			if v := f.scope.lookup(w.Name); v != nil && isOpt(v.typ) {
+			if v := f.narrowLocal(w.Name); v != nil && isOpt(v.typ) {
 				ns = []narrowInfo{{local: v, typ: v.typ.(TOpt).Elem}}
 			}
 		}
@@ -508,4 +640,12 @@ func notCond(c string) string {
 		}
 	}
 	return "!(" + c + ")"
+}
+
+// narrowLocal: a write in a branch drops a hoisted local's view from scope.vars, and a guard after it must still find it (decision 357).
+func (f *fctx) narrowLocal(name string) *local {
+	if v := f.scope.lookup(name); v != nil {
+		return v
+	}
+	return f.sameScopeLocal(name)
 }
