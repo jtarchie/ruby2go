@@ -186,9 +186,9 @@ module Kernel
   end
 
   # `p bin`: a binary String's inspect (decision 352).
-  #: (String) -> nil
+  #: (String?) -> nil
   def __bin_p(s)
-    __write(s.__bin_inspect + "\n")
+    __write((s ? s.__bin_inspect : "nil") + "\n")
     nil
   end
 

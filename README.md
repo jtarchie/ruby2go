@@ -210,7 +210,11 @@ The roadmap for the rest of the standard library is issue
   reports UTF-8 for valid UTF-8 and ASCII-8BIT otherwise. `encode`, `scrub`,
   `unicode_normalize` and `File.open(path, "r:ISO-8859-1:UTF-8")` work for
   UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32; naming any other
-  encoding is a compile error.
+  encoding is a compile error. A String the compiler can see is binary
+  (`.b`, `File.binread`, `force_encoding("BINARY")`, `read(n)`) counts,
+  slices and matches bytes even when they are valid UTF-8; passed through a
+  method parameter, ivar or collection it reads as UTF-8 again
+  ([decision 352](docs/decisions/352.md)).
 - **Integers are 64-bit.** There is no Bignum; where MRI would promote,
   rb2go raises `RangeError` rather than silently wrapping.
 - **No hash defaults.** `Hash.new(0)` is rejected; use `tally`,
@@ -262,7 +266,7 @@ ulp and neither is uniquely correct ([decision 43](docs/decisions/043.md)).
 Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 
-Correctness is measured against MRI, not a specification: 125
+Correctness is measured against MRI, not a specification: 126
 [examples](examples/), 43 minitest suites and 25 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
 ruby/spec under rb2go (decision 127). Measured 2026-10-23 (the runner walks
