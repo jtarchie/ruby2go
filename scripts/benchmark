@@ -1,19 +1,20 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Times each benchmarks/*.rb compiled by rb2go against `ruby`, using the
-# median of a few runs to blunt scheduler noise. Both must print the same
-# output; a mismatch is reported and the row is dropped.
+# Times each benchmarks/*.rb under MRI, MRI with YJIT, rb2go, spinel, and the hand ports in benchmarks/crystal and
+# benchmarks/go, using the median of a few runs to blunt scheduler noise. Every column must print what `ruby` prints;
+# a mismatch, a failed build or a missing port is reported and that cell is left out ("-").
 #
-#   scripts/benchmark              # every workload, 5 runs each
-#   scripts/benchmark fib array    # named workloads
-#   RB2GO=/path/to/rb2go scripts/benchmark
-#   RUNS=9 scripts/benchmark
+#   scripts/benchmark                    # every workload, 5 runs each
+#   scripts/benchmark fib array          # named workloads
+#   COLS=ruby,rb2go scripts/benchmark    # some columns (ruby is always the reference)
+#   RB2GO=/path/to/rb2go SPINEL=/path/to/spinel scripts/benchmark
+#   RUNS=9 MARKDOWN=1 scripts/benchmark  # the README table
 #
-# A workload with a `# trace: why` line builds with `rb2go build -trace`, as an example with one does.
+# A workload with a `# trace: why` line builds with `rb2go build -trace`, as an example with one does. spinel
+# (github.com/matz/spinel) is used when SPINEL names it or it is on PATH; crystal and go when on PATH.
 #
-# The numbers in README.md come from this, on one machine; they are a rough
-# ratio, not a benchmark suite (no JIT on either side, wall-clock only).
+# The numbers in README.md come from this, on one machine: a rough ratio, wall-clock only.
 
 require "fileutils"
 require "open3"
@@ -22,6 +23,8 @@ require "tmpdir"
 ROOT = File.expand_path("..", __dir__)
 RUNS = Integer(ENV.fetch("RUNS", "5"))
 WARMUP = 1
+ALL = %w[ruby yjit rb2go spinel crystal go].freeze
+LABELS = { "ruby" => "MRI", "yjit" => "MRI+YJIT", "rb2go" => "rb2go", "spinel" => "spinel", "crystal" => "Crystal", "go" => "Go" }.freeze
 
 def median(values)
   sorted = values.sort
@@ -31,7 +34,7 @@ end
 
 def time_once(cmd)
   start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  pid = Process.spawn(*cmd, out: File::NULL, err: File::NULL)
+  pid = Process.spawn(*cmd, out: File::NULL, err: File::NULL, chdir: ROOT)
   _, status = Process.wait2(pid)
   elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
   abort "#{cmd.join(" ")}: #{status.inspect}; a crash is not a fast run" unless status.success?
@@ -40,65 +43,117 @@ def time_once(cmd)
 end
 
 def output_of(cmd)
-  out, = Open3.capture2e(*cmd)
+  out, = Open3.capture2(*cmd, chdir: ROOT)
   out
 end
 
-def rb2go
+def which(name)
+  ENV["PATH"].split(File::PATH_SEPARATOR).map { |d| File.join(d, name) }.find { |p| File.executable?(p) }
+end
+
+def quiet(*cmd, **opts)
+  out, status = Open3.capture2e(*cmd, **opts)
+  warn out unless status.success?
+  status.success?
+end
+
+def rb2go_tool(tmp)
   return ENV["RB2GO"] if ENV["RB2GO"]
 
-  tmp = Dir.mktmpdir("rb2go-bench-")
-  at_exit { FileUtils.remove_entry(tmp) }
   bin = File.join(tmp, "rb2go")
   system("go", "build", "-o", bin, "./cmd/rb2go", chdir: ROOT, exception: true)
   bin
 end
 
-wanted = ARGV.empty? ? Dir[File.join(ROOT, "benchmarks/*.rb")].sort : ARGV.map { |n| File.join(ROOT, "benchmarks/#{File.basename(n, ".rb")}.rb") }
-tool = rb2go
+# builders: name, src, out dir → the command to time, or nil (no port, or the build failed)
+def builders(tmp)
+  spinel = ENV["SPINEL"] || which("spinel")
+  crystal = which("crystal")
+  go = which("go")
+  rb2go = nil
+  {
+    "ruby" => ->(_name, src, _dir) { ["ruby", src] },
+    "yjit" => ->(_name, src, _dir) { ["ruby", "--yjit", src] },
+    "rb2go" => lambda do |name, src, dir|
+      rb2go ||= rb2go_tool(tmp)
+      bin = File.join(dir, "rb2go_#{name}")
+      trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
+      quiet(rb2go, "build", *trace, "-o", bin, src, chdir: ROOT) ? [bin] : nil
+    end,
+    "spinel" => lambda do |name, src, dir|
+      next nil unless spinel
+
+      bin = File.join(dir, "spinel_#{name}")
+      quiet(spinel, src, "-o", bin, chdir: ROOT) ? [bin] : nil
+    end,
+    "crystal" => lambda do |name, _src, dir|
+      port = File.join(ROOT, "benchmarks/crystal/#{name}.cr")
+      next nil unless crystal && File.exist?(port)
+
+      bin = File.join(dir, "crystal_#{name}")
+      quiet(crystal, "build", "--release", "--no-debug", "-o", bin, port, chdir: ROOT) ? [bin] : nil
+    end,
+    "go" => lambda do |name, _src, dir|
+      next nil unless go && File.directory?(File.join(ROOT, "benchmarks/go", name))
+
+      bin = File.join(dir, "go_#{name}")
+      quiet(go, "build", "-o", bin, "./#{name}", chdir: File.join(ROOT, "benchmarks/go")) ? [bin] : nil
+    end,
+  }
+end
+
+cols = ENV.fetch("COLS", ALL.join(",")).split(",")
+cols.unshift("ruby") unless cols.include?("ruby")
+wanted = ARGV.empty? ? Dir[File.join(ROOT, "benchmarks/*.rb")] : ARGV.map { |n| File.join(ROOT, "benchmarks/#{File.basename(n, ".rb")}.rb") }
 
 rows = {}
-Dir.mktmpdir("rb2go-bench-out-") do |dir|
-  wanted.each do |src|
+Dir.mktmpdir("rb2go-bench-") do |dir|
+  build = builders(dir)
+  wanted.sort.each do |src|
     name = File.basename(src, ".rb")
-    bin = File.join(dir, name)
-    trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
-    unless system(tool, "build", *trace, "-o", bin, src, chdir: ROOT)
-      warn "#{name}: did not build"
-      next
-    end
     expected = output_of(["ruby", src])
-    actual = output_of([bin])
-    if expected != actual
-      warn "#{name}: output differs from ruby; skipping"
-      warn "  ruby:  #{expected.inspect}"
-      warn "  rb2go: #{actual.inspect}"
-      next
+    cmds = {}
+    cols.each do |col|
+      cmd = build.fetch(col).call(name, src, dir)
+      if cmd.nil?
+        warn "#{name}: no #{col} build"
+      elsif col != "ruby" && output_of(cmd) != expected
+        warn "#{name}: #{col} output differs from ruby; left out"
+      else
+        cmds[col] = cmd
+      end
     end
+    times = cmds.transform_values { [] }
     (WARMUP + RUNS).times do |i|
-      r = time_once(["ruby", src])
-      g = time_once([bin])
-      next if i < WARMUP
-
-      (rows[name] ||= { ruby: [], go: [] })[:ruby] << r
-      rows[name][:go] << g
+      cmds.each do |col, cmd| # interleaved, so a noisy moment hits every column alike
+        t = time_once(cmd)
+        times[col] << t if i >= WARMUP
+      end
     end
+    rows[name] = times.transform_values { |ts| median(ts) }
   end
 end
 
-if rows.empty?
-  warn "no workloads ran"
-  exit 1
+abort "no workloads ran" if rows.empty?
+
+fmt = ->(t) { t.nil? ? "-" : format(t < 0.1 ? "%.3fs" : "%.2fs", t) }
+# total per column over the rows it ran; vs MRI is MRI's total over those same rows
+totals = cols.to_h { |c| [c, rows.values.any? { |r| r[c] } ? rows.values.sum { |r| r[c] || 0.0 } : nil] }
+vs = cols.to_h do |c|
+  ran = rows.values.select { |r| r[c] }
+  [c, ran.empty? ? nil : ran.sum { |r| r["ruby"] } / ran.sum { |r| r[c] }]
 end
 
-width = rows.keys.map(&:length).max
-puts format("  %-#{width}s %10s %10s %8s", "", "ruby", "rb2go", "speedup")
-totals = { ruby: 0.0, go: 0.0 }
-rows.each do |name, t|
-  r = median(t[:ruby])
-  g = median(t[:go])
-  totals[:ruby] += r
-  totals[:go] += g
-  puts format("  %-#{width}s %9.3fs %9.3fs %7.1fx", name, r, g, r / g)
+if ENV["MARKDOWN"]
+  puts "| workload | #{cols.map { |c| LABELS[c] }.join(" | ")} |"
+  puts "|---|#{cols.map { "---:" }.join("|")}|"
+  rows.each { |name, r| puts "| #{name} | #{cols.map { |c| fmt[r[c]] }.join(" | ")} |" }
+  puts "| total (rows run) | #{cols.map { |c| fmt[totals[c]] }.join(" | ")} |"
+  puts "| vs MRI | #{cols.map { |c| vs[c] ? format("%.1fx", vs[c]) : "-" }.join(" | ")} |"
+else
+  width = [rows.keys.map(&:length).max, 16].max
+  puts format("%-#{width}s %s", "", cols.map { |c| format("%9s", LABELS[c]) }.join(" "))
+  rows.each { |name, r| puts format("%-#{width}s %s", name, cols.map { |c| format("%9s", fmt[r[c]]) }.join(" ")) }
+  puts format("%-#{width}s %s", "total (rows run)", cols.map { |c| format("%9s", fmt[totals[c]]) }.join(" "))
+  puts format("%-#{width}s %s", "vs MRI", cols.map { |c| format("%9s", vs[c] ? format("%.1fx", vs[c]) : "-") }.join(" "))
 end
-puts format("  %-#{width}s %9.3fs %9.3fs %7.1fx", "total", totals[:ruby], totals[:go], totals[:ruby] / totals[:go])
