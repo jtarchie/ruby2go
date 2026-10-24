@@ -235,3 +235,20 @@ module RegexpExtendedTests
     end
   end
 end
+
+module RegexpExtendedTests
+  # decision 368: re.match(str, pos) sets $~ as the one-argument form does
+  class MatchPosLastMatchTest < Minitest::Test
+    def test_match_pos_sets_last_match
+      m = /(.).(.)/.match("01234", 1)
+      assert_equal ["1", "3"], m&.captures
+      assert_equal "1", $1
+      assert_equal "123", $~&.[](0)
+    end
+
+    def test_fixed_encoding_flag
+      assert_equal [true, false, 16, "/a/"], [/needle/u.fixed_encoding?, /needle/.fixed_encoding?, /a/u.options, /a/u.inspect]
+      assert_equal false, /a/u == /a/
+    end
+  end
+end

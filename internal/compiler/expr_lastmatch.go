@@ -74,7 +74,16 @@ func (f *fctx) lastMatchVar(n parser.Node) string {
 // genMatchSet is `str =~ re` / `re =~ str` in a frame that reads $~ or $1..$9: it records the match (decision 171).
 func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 	args := callArgs(n)
-	if f.lastMatch == "" || f.inMatchSet || n.Receiver == nil || len(args) != 1 || n.Block != nil {
+	if f.lastMatch == "" || f.inMatchSet || n.Receiver == nil || n.Block != nil {
+		return expr{}, false
+	}
+	if len(args) == 2 && n.Name == "match" && isClass(f.probeType(n.Receiver, nil), "Regexp") { // re.match(str, pos) (decision 368)
+		f.inMatchSet = true
+		m := f.genExpr(n, nil)
+		f.inMatchSet = false
+		return expr{code: fmt.Sprintf("rbMatchKeep(&%s, %s)", f.lastMatch, m.code), typ: m.typ}, true
+	}
+	if len(args) != 1 {
 		return expr{}, false
 	}
 	var recvE, argE expr

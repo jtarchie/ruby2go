@@ -34,7 +34,7 @@ class Regexp < Object
   def options = %x{
     n := 0
     for _, f := range self.opts {
-      n |= map[rune]int{'i': 1, 'x': 2, 'm': 4}[f]
+      n |= map[rune]int{'i': 1, 'x': 2, 'm': 4, 'u': 16, 'e': 16, 's': 16}[f]
     }
     return Integer(n)
   }
@@ -220,7 +220,7 @@ class Regexp < Object
   def freeze = self
 
   #: () -> String
-  def inspect = %x{ String("/" + rbRegexpDesc(self.src) + "/" + self.opts) }
+  def inspect = %x{ String("/" + rbRegexpDesc(self.src) + "/" + strings.Trim(self.opts, "ues")) }
 
   #: () -> String
   def to_s = %x{
@@ -249,7 +249,7 @@ class Regexp < Object
   def eql?(other) = self == other
 
   #: () -> Integer
-  def hash = %x{ Integer(maphash.String(rbHashSeed, self.src+"/"+self.opts)) }
+  def hash = %x{ Integer(maphash.String(rbHashSeed, self.src+"/"+strings.Trim(self.opts, "ues"))) }
 end
 
 # names are the groups' names ("" when unnamed), as Go's SubexpNames; loc holds byte offsets into subj.

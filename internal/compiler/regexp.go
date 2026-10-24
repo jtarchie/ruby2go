@@ -15,18 +15,33 @@ import (
 )
 
 // rubyRegexFlags carries a literal's options.
-type rubyRegexFlags struct{ ignoreCase, multiline, extended, binary bool }
+type rubyRegexFlags struct {
+	ignoreCase, multiline, extended, binary bool
+	fixed                                   string // /u, /e or /s: the encoding it is fixed to (decision 368), not shown by inspect
+}
 
 type regexpLiteral interface {
 	IsIGNORE_CASE() bool
 	IsMULTI_LINE() bool
 	IsEXTENDED() bool
 	IsASCII_8BIT() bool
+	IsUTF_8() bool
+	IsEUC_JP() bool
+	IsWINDOWS_31J() bool
 }
 
 // regexFlagsOf reads the flags of a regexp literal, interpolated or not.
 func regexFlagsOf(n regexpLiteral) rubyRegexFlags {
-	return rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT()}
+	fixed := ""
+	switch {
+	case n.IsUTF_8():
+		fixed = "u"
+	case n.IsEUC_JP():
+		fixed = "e"
+	case n.IsWINDOWS_31J():
+		fixed = "s"
+	}
+	return rubyRegexFlags{n.IsIGNORE_CASE(), n.IsMULTI_LINE(), n.IsEXTENDED(), n.IsASCII_8BIT(), fixed}
 }
 
 func (r rubyRegexFlags) goPrefix() string {
@@ -56,7 +71,7 @@ func (r rubyRegexFlags) opts() string {
 	if r.binary { // /n: matches a binary String byte by byte (decision 324)
 		o += "n"
 	}
-	return o
+	return o + r.fixed
 }
 
 //go:embed rxtranslate.go
