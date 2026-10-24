@@ -321,10 +321,14 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 		return cond, nil
 	}
 	typ := TClass{C: cls}
+	for range cls.TypeParams {
+		typ.Args = append(typ.Args, TAny{})
+	}
+	if bt, ok := base.(TClass); ok && !isAbstract(bt) && !cls.isSubclassOf(bt.C) {
+		// a String? tested for Regexp: never one, so the branch never runs; its x is cls's zero value, which compiles
+		return cond, []narrowInfo{{local: v, typ: typ, code: "*new(" + f.c.goType(typ) + ")"}}
+	}
 	if len(cls.TypeParams) > 0 {
-		for range cls.TypeParams {
-			typ.Args = append(typ.Args, TAny{})
-		}
 		if cls.hashBase {
 			return cond, []narrowInfo{{local: v, typ: typ, code: code + ".(" + f.c.goType(typ) + ")"}}
 		}

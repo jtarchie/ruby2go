@@ -145,6 +145,24 @@ class NilClass
   def object_test_present? = false
 end
 
+# A nil T? receiver's Object method gets nil itself as self (decision 362), as mspec's `x.should == nil`.
+class ObjectNilSelf
+  #: (untyped) -> void
+  def initialize(v)
+    @v = v #: untyped
+  end
+
+  #: () -> bool
+  def nil_v? = @v.nil? && @v == nil
+
+  #: () -> String
+  def v_inspect = @v.inspect
+end
+
+class Object
+  def object_test_wrap = ObjectNilSelf.new(self)
+end
+
 class FalseClass
   def object_test_present? = false
 end
@@ -6595,6 +6613,16 @@ module ObjectTests
 end
 
 module ObjectTests
+  # `self::X = v` in a class or module body names the constant in that body (decision 362)
+  module ObjSelfConst
+    self::A = 42
+    B = self::A + 1
+    class Inner
+      self::C = "c"
+    end
+    def self.read = self::A
+  end
+
   class ObjSingletonAttr
     singleton_class.send(:attr_accessor, :level)
     self.level = 3
@@ -6645,6 +6673,16 @@ module ObjectTests
       assert_equal 3, ObjSingletonAttr.level
       ObjSingletonAttr.level = 4
       assert_equal 4, ObjSingletonAttr.level
+    end
+
+    def test_self_constant_write
+      assert_equal [42, 43, "c", 42], [ObjSelfConst::A, ObjSelfConst::B, ObjSelfConst::Inner::C, ObjSelfConst.read]
+    end
+
+    def test_nil_receiver_self_is_nil
+      w = /\d/.match("a").object_test_wrap
+      assert_equal [true, "nil"], [w.nil_v?, w.v_inspect]
+      assert_equal "#<MatchData \"1\">", /\d/.match("1").object_test_wrap.v_inspect
     end
 
     def test_protected_instance_methods

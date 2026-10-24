@@ -1,0 +1,7 @@
+#!/bin/bash
+# instr-diff BASE NEW: workloads whose instructions grew more than LIMIT% (default 3), and rows whose status changed.
+awk -F'\t' -v lim="${LIMIT:-3}" 'NR == FNR { b[$1] = $2; s[$1] = $3; next }
+  ($1 in b) && s[$1] != $3 { printf "%-28s status %s -> %s\n", $1, s[$1], $3; next }
+  ($1 in b) && b[$1] > 0 && $2 > 0 { d = ($2 - b[$1]) * 100 / b[$1]; if (d > lim) { bad = 1; printf "%-28s %+.1f%%  %d -> %d\n", $1, d, b[$1], $2 } }
+  !($1 in b) { printf "%-28s new: %s\n", $1, $3 }
+  END { exit bad }' "$1" "$2"

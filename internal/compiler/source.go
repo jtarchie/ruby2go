@@ -80,6 +80,9 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, o
 		return nil, fmt.Errorf("%s:%d: syntax error: %s", name, f.line(e.Location.StartOffset), e.Message)
 	}
 	fillAnonForwards(f.Root)
+	if origin != originPrelude {
+		lowerMainIvars(f.Root)
+	}
 	f.indexComments(res.Comments)
 	if origin != originPrelude {
 		serr := f.lowerSorbet()

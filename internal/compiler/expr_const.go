@@ -30,6 +30,9 @@ func (f *fctx) definedKind(v parser.Node) string {
 		if e := f.genExpr(v, nil); e.code != "" {
 			f.emit("_ = %s", e.code) // read only by defined?: Go still wants it used
 		}
+		if strings.HasPrefix(v.Name, "@") { // main's ivar, a local (decision 362)
+			return "instance-variable"
+		}
 		return "local-variable"
 	case *parser.ConstantReadNode, *parser.ConstantPathNode:
 		var cls *Class

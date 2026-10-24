@@ -220,9 +220,11 @@ module Counting
   #: () -> Integer
   def count = @count
 end
--- ivar_at_top_level.rb --
-# error: main.rb:2: instance variables are only supported in struct classes
-@x = 1
+-- ivar_in_top_level_def.rb --
+# error: main.rb:3: instance variables are only supported in struct classes
+@x = 1 # main's own, a program local (decision 362); a top-level def's self is any object
+def peek = @x
+p peek
 -- ivar_in_primitive_class.rb --
 # error: main.rb:4: instance variables are only supported in struct classes
 class String

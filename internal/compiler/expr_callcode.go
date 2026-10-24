@@ -462,7 +462,8 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		}
 		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
 	}
-	if code, ok := f.dispatchCall(e, recv, argList); ok {
+	selfRecv := f.nilSelf(recv, m)
+	if code, ok := f.dispatchCall(e, selfRecv, argList); ok {
 		return code
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
@@ -487,7 +488,15 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		}
 		return recv.code + "." + m.GoName + "(" + argList + ")"
 	}
-	return staticCallCode(m, f.typeArgs(m, recv.typ, env), recv.code, argList)
+	return staticCallCode(m, f.typeArgs(m, recv.typ, env), selfRecv.code, argList)
+}
+
+// nilSelf is recv as an Object free func's `self any`: nil itself, not a typed nil pointer (decision 362).
+func (f *fctx) nilSelf(recv expr, m *Method) expr {
+	if m.Owner.universal && isClass(recv.typ, "NilClass") && f.c.plainSelf(m) {
+		recv.code = "rbNilAny(" + recv.code + ")"
+	}
+	return recv
 }
 
 // wrapperSelfCall is a wrapper body's self call: the owner's free func over its interface (any for Kernel), so no

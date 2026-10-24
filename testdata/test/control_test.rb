@@ -4151,6 +4151,10 @@ module ControlTests
       hi = "" #: String
       hi = control_greet(pet) if pet.is_a?(MidAnimal)
       assert_equal "hi animal", hi
+      s_narrow = "a" #: String?
+      src = s_narrow.is_a?(Regexp) ? s_narrow.source : "not a regexp"
+      assert_equal "not a regexp", src
+      assert_equal 0, s_narrow.is_a?(Array) ? s_narrow.size : 0
     end
 
     # loop jumps from inside begin/rescue/ensure must still reach the enclosing loop

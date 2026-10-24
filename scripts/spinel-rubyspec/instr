@@ -1,0 +1,38 @@
+#!/bin/bash
+# Instructions retired (GOMAXPROCS=1, least of RUNS runs; macOS `time -l`) for every benchmarks/*.rb and every
+# program in spinel's benchmark/ that rb2go builds and runs right (stdout equal to MRI's / spinel's .expected).
+# The count is the speed check for #114 work: deterministic enough to compare two compilers to ~1%.
+#
+#   RB2GO=bin/rb2go SPINEL_DIR=~/src/spinel scripts/spinel-rubyspec/instr > base.tsv
+#   scripts/spinel-rubyspec/instr-diff base.tsv new.tsv     # workloads more than 3% worse, and status changes
+#
+# Each row: name, instructions (or 0), status (ok | BUILD: first error | DIFF | CRASH).
+set -u
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+RB2GO=${RB2GO:?name an rb2go binary}
+SP=${SPINEL_DIR:?name a spinel checkout}
+RUNS=${RUNS:-3}
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+one() { # name src dir expected-file
+  local n=$1 src=$2 dir=$3 exp=$4 tr=() best=0 i c
+  grep -q '^# trace: ' "$src" && tr=(-trace)
+  if ! e=$("$RB2GO" build ${tr[@]+"${tr[@]}"} -o "$T/$n" "$src" 2>&1 >/dev/null); then
+    printf '%s\t0\tBUILD: %s\n' "$n" "$(grep -v '^warning:' <<<"$e" | head -1 | tr '\t' ' ' | cut -c1-200)"; return
+  fi
+  (cd "$dir" && GOMAXPROCS=1 "$T/$n" > "$T/$n.out" 2>/dev/null) || { printf '%s\t0\tCRASH\n' "$n"; return; }
+  cmp -s "$T/$n.out" "$exp" || { printf '%s\t0\tDIFF\n' "$n"; return; }
+  for ((i = 0; i < RUNS; i++)); do
+    c=$(cd "$dir" && GOMAXPROCS=1 /usr/bin/time -l "$T/$n" 2>&1 >/dev/null | awk '/instructions retired/ {print $1}')
+    { [ "$best" = 0 ] || [ "$c" -lt "$best" ]; } && best=$c
+  done
+  printf '%s\t%s\tok\n' "$n" "$best"
+}
+for f in "$ROOT"/benchmarks/*.rb; do
+  n=$(basename "$f" .rb)
+  (cd "$ROOT" && ruby "$f" > "$T/$n.mri" 2>/dev/null)
+  one "$n" "$f" "$ROOT" "$T/$n.mri"
+done
+for f in "$SP"/benchmark/bm_*.rb; do
+  n=$(basename "$f" .rb)
+  one "$n" "$f" "$SP/benchmark" "$f.expected"
+done

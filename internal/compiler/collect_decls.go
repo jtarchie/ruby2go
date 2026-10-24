@@ -276,6 +276,9 @@ func (c *Compiler) declName(f *File, path parser.Node, scope []*Class) string {
 		if p.Parent == nil {
 			return *p.Name
 		}
+		if _, ok := p.Parent.(*parser.SelfNode); ok && len(scope) > 0 { // `self::X = v` in a class body: self is that class (decision 362)
+			return qualify(scope, *p.Name)
+		}
 		parent, _ := c.lookupConst(f, p.Parent, scope)
 		if parent == nil {
 			c.errorf(f, p.Parent, "unknown namespace %s", f.text(p.Parent.GetLocation()))

@@ -123,8 +123,21 @@ $stdout.putc(321)
 puts
 
 # modifiers on a return at top level end the program quietly (keep last)
+# main's own ivars: top-level statements and their blocks share them, a def's self is another object (decision 362)
+@main_arr = [0, 4, 7, 10, 12]
+puts @main_arr.bsearch_index { |x| x >= 4 }
+@main_h = {a: 1}
+[1, 2].each { |i| @main_h[:"k#{i}"] = i }
+p @main_h
+@main_n ||= 5
+@main_n += 1
+main_a, @main_b = 1, 2
+p [main_a, @main_b, @main_n]
+p [defined?(@main_arr), defined?(@main_never), @main_never]
+
 xs = [1] #: Array[Integer]
 return if xs.empty?
 puts "not returned"
 return unless xs.empty?
 puts "never printed"
+

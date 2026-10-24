@@ -1,0 +1,26 @@
+#!/bin/bash
+# The like-for-like ruby/spec comparison of #114: spinel's own harness (tools/rubyspec: extract.rb writes one program
+# per `it` block, run.sh checks each against MRI and classifies it PASS/FAIL/REJECT/ERROR) run on spinel and on rb2go.
+#
+#   SPINEL_DIR=~/src/spinel SPEC_DIR=~/src/ruby-spec WORK=/tmp/sp RB2GO=bin/rb2go scripts/spinel-rubyspec/compare [suite...]
+#   WORK=/tmp/sp scripts/spinel-rubyspec/audit        # totals, and what spinel passes that rb2go does not, by reason
+#
+# SPINEL_DIR is a built spinel checkout (`make deps && make`); SPEC_DIR is ruby/spec at spinel's pin, 79e2dee.
+# Extracted programs are kept in WORK/ex and reused; a suite's result file (WORK/res/<compiler>-<suite>.tsv) is reused
+# when present, so delete WORK/res/rb2go-* to re-measure rb2go. ONLY=rb2go skips spinel.
+set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+SP=${SPINEL_DIR:?} SPEC=${SPEC_DIR:?} W=${WORK:?}
+export RB2GO=${RB2GO:?} GATE_CACHE=0 RUBYSPEC_JOBS=${RUBYSPEC_JOBS:-6}
+SUITES=${*:-"language core/array core/string core/hash core/integer core/range core/symbol core/float core/matchdata core/set core/math core/rational core/nil core/true core/false core/time core/proc core/regexp core/exception core/struct core/complex core/random"}
+mkdir -p "$W/ex" "$W/res" "$W/shim"
+cp "$HERE/shim" "$W/shim/spinel" # run.sh calls the compiler `spinel`
+for d in $SUITES; do
+  nm=$(echo "$d" | tr / -)
+  [ -d "$W/ex/$nm" ] || (cd "$SP" && ruby tools/rubyspec/extract.rb "$SPEC/$d" "$W/ex/$nm" > /dev/null) || { echo "extract failed: $d"; continue; }
+  for c in ${ONLY:-spinel rb2go}; do
+    [ -s "$W/res/$c-$nm.tsv" ] && continue
+    if [ "$c" = spinel ]; then bin=$SP/bin/spinel; else bin=$W/shim/spinel; fi
+    (cd "$SP" && SPINEL=$bin bash tools/rubyspec/run.sh "$W/ex/$nm" "$W/res/$c-$nm.tsv" | head -1 | sed "s|^|$c $d: |")
+  done
+done
