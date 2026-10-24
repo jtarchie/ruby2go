@@ -238,25 +238,25 @@ median of 9 runs over [`benchmarks/`](benchmarks/)):
 
 | workload | MRI | MRI+YJIT | rb2go | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.091s | 0.017s | 0.014s | 0.017s | 0.014s |
-| `Hash` counting, 500k | 0.12s | 0.099s | 0.016s | 0.008s | 0.013s | 0.010s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.13s | 0.020s | 0.010s | 0.011s | 0.010s |
-| string build/split, 100k | 0.11s | 0.11s | 0.030s | 0.017s | 0.024s | 0.017s |
-| `Math.sin`/`cos`, 200k | 0.085s | 0.072s | 0.009s | 0.006s | 0.008s | 0.008s |
-| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.036s | - | 0.013s | 0.012s |
-| binary trees (allocation), depth 10 | 0.081s | 0.068s | 0.011s | 0.008s | 0.010s | 0.007s |
-| splay tree | 0.22s | 0.12s | 0.037s | 0.019s | 0.018s | 0.012s |
-| blocks, procs, lambdas, enumerator chains | 0.36s | 0.34s | 0.064s | 0.14s | 0.036s | 0.012s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.076s | 2.51s | 0.018s |
-| regexp match/gsub/scan/tr, StringScanner | 0.76s | 0.74s | 0.21s | 0.84s | 0.21s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.55s | 0.52s | 0.12s | 1.11s | 0.052s | 0.068s |
-| format, StringIO, case mapping | 0.49s | 0.45s | 0.24s | 0.20s | 0.14s | 0.10s |
+| `fib(32)` | 0.27s | 0.095s | 0.019s | 0.016s | 0.018s | 0.017s |
+| `Hash` counting, 500k | 0.11s | 0.10s | 0.018s | 0.009s | 0.014s | 0.011s |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.14s | 0.023s | 0.013s | 0.014s | 0.013s |
+| string build/split, 100k | 0.11s | 0.11s | 0.031s | 0.018s | 0.025s | 0.017s |
+| `Math.sin`/`cos`, 200k | 0.090s | 0.077s | 0.012s | 0.008s | 0.009s | 0.009s |
+| classes, polymorphic calls, Comparable | 0.27s | 0.17s | 0.037s | - | 0.015s | 0.014s |
+| binary trees (allocation), depth 10 | 0.083s | 0.070s | 0.012s | 0.010s | 0.012s | 0.009s |
+| splay tree | 0.22s | 0.12s | 0.014s | 0.019s | 0.018s | 0.012s |
+| blocks, procs, lambdas, enumerator chains | 0.35s | 0.34s | 0.065s | 0.14s | 0.038s | 0.013s |
+| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.078s | 2.52s | 0.020s |
+| regexp match/gsub/scan/tr, StringScanner | 0.76s | 0.73s | 0.21s | 0.84s | 0.21s | 0.28s |
+| sort_by/group_by/tally, Set, Struct | 0.54s | 0.53s | 0.12s | 1.12s | 0.054s | 0.068s |
+| format, StringIO, case mapping | 0.50s | 0.47s | 0.24s | 0.21s | 0.14s | 0.11s |
 | JSON generate + parse | 0.14s | 0.16s | 0.12s | 0.24s | 0.13s | 0.25s |
-| pairing_heap gem: Dijkstra + heapsort | 0.65s | 0.33s | 0.20s | - | 0.037s | 0.033s |
-| liquid gem: a template rendered 400 times | 0.39s | 0.32s | 0.17s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.46s | 0.61s | 0.40s | - | - | - |
-| total (rows each one ran) | 5.37s | 4.59s | 1.81s | 2.69s | 3.23s | 0.85s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.3x | 1.4x | 5.3x |
+| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.34s | 0.21s | - | 0.039s | 0.035s |
+| liquid gem: a template rendered 400 times | 0.39s | 0.31s | 0.17s | - | - | - |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.56s | 0.39s | - | - | - |
+| total (rows each one ran) | 5.37s | 4.56s | 1.81s | 2.73s | 3.26s | 0.87s |
+| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.3x | 1.4x | 5.2x |
 
 What the columns are:
 - **rb2go** and **spinel** ([matz/spinel](https://github.com/matz/spinel), a
@@ -276,8 +276,9 @@ What the columns are:
 
 Where rb2go trails the native columns, the cost is mostly in its Ruby
 semantics: a frozen check on every mutation, a Hash
-that keeps insertion order, and `T?` of a class still boxed (decision 359 made
-leaf classes plain pointers; their `nil` is next). It is ahead of spinel on
+that keeps insertion order, and `T?` still boxed for a class with subclasses or type parameters (decisions 359-360 made
+other leaf classes plain pointers with a plain `nil`, which put splay ahead
+of spinel and Crystal). It is ahead of spinel on
 regexp, collections, blocks and JSON, where spinel's runtime library is
 thinner. Against Crystal it wins on exceptions, which Crystal unwinds with a
 backtrace per raise.
