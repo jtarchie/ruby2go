@@ -3214,6 +3214,53 @@ module DynamicTests
     def self.shelter = "none"
   end
 
+  # decision 353: the interpolated name's literal prefix types render_* params from this call alone
+  class SendPatternNode
+    attr_reader :kind #: Symbol
+    attr_reader :text #: String
+
+    #: (Symbol kind, String text) -> void
+    def initialize(kind, text)
+      @kind = kind
+      @text = text
+    end
+  end
+
+  class SendPatternRenderer
+    #: (SendPatternNode node, Integer depth) -> String
+    def render(node, depth)
+      send("render_#{node.kind}", node, depth)
+    end
+
+    def render_title(node, depth) = "#" * (depth + 1) + " " + node.text.upcase
+
+    def render_para(node, depth) = ("  " * depth) + node.text.strip
+
+    private
+
+    def render_secret(node, _depth) = node.text.reverse
+  end
+
+  class SendPatternLoud < SendPatternRenderer
+    def render_shout(node, depth) = node.text.upcase + "!" * depth
+  end
+
+  class SendPatternTest < Minitest::Test
+    def test_interpolated_name_reaches_matching_methods
+      r = SendPatternRenderer.new
+      assert_equal "## HI", r.render(SendPatternNode.new(:title, "hi"), 1)
+      assert_equal "    x", r.render(SendPatternNode.new(:para, " x "), 2)
+      assert_equal "cba", r.render(SendPatternNode.new(:secret, "abc"), 0)
+      assert_raises(NoMethodError) { r.render(SendPatternNode.new(:nope, "x"), 0) }
+    end
+
+    def test_subclass_method_behind_parent_type
+      r = SendPatternLoud.new #: SendPatternRenderer
+      assert_equal "HEY!!", r.render(SendPatternNode.new(:shout, "hey"), 2)
+      assert_equal "# A", r.render(SendPatternNode.new(:title, "a"), 0)
+    end
+  end
+
   class SendOnDog
     #: () -> String
     def self.kennel = "kennel"

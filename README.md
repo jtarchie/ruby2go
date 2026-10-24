@@ -237,22 +237,22 @@ per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7;
 
 | workload | MRI | rb2go | vs MRI |
 |---|---:|---:|---:|
-| `fib(32)` | 0.26s | 0.017s | 15.3x faster |
-| `Hash` counting, 500k | 0.11s | 0.016s | 7.1x faster |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.020s | 7.6x faster |
-| string build/split, 100k | 0.11s | 0.030s | 3.8x faster |
-| `Math.sin`/`cos`, 200k | 0.09s | 0.009s | 9.8x faster |
+| `fib(32)` | 0.27s | 0.017s | 15.4x faster |
+| `Hash` counting, 500k | 0.11s | 0.015s | 7.3x faster |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.020s | 7.4x faster |
+| string build/split, 100k | 0.11s | 0.030s | 3.6x faster |
+| `Math.sin`/`cos`, 200k | 0.09s | 0.009s | 9.7x faster |
 | classes, polymorphic calls, Comparable | 0.26s | 0.042s | 6.2x faster |
 | blocks, procs, lambdas, enumerator chains | 0.36s | 0.065s | 5.5x faster |
-| raise/rescue/retry, catch/throw | 0.28s | 0.115s | 2.4x faster |
-| regexp match/gsub/scan/tr, StringScanner | 0.77s | 0.208s | 3.7x faster |
-| sort_by/group_by/tally, Set, Struct | 0.56s | 0.145s | 3.9x faster |
-| format, StringIO, case mapping | 0.49s | 0.235s | 2.1x faster |
+| raise/rescue/retry, catch/throw | 0.28s | 0.116s | 2.4x faster |
+| regexp match/gsub/scan/tr, StringScanner | 0.75s | 0.211s | 3.5x faster |
+| sort_by/group_by/tally, Set, Struct | 0.56s | 0.145s | 3.8x faster |
+| format, StringIO, case mapping | 0.49s | 0.236s | 2.1x faster |
 | JSON generate + parse | 0.14s | 0.116s | 1.2x faster |
-| pairing_heap gem: Dijkstra + heapsort | 0.70s | 0.171s | 4.1x faster |
-| liquid gem: a template rendered 400 times | 0.37s | 0.162s | 2.3x faster |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.48s | 0.421s | 1.1x faster |
-| total | 5.13s | 1.771s | 2.9x faster |
+| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.165s | 4.1x faster |
+| liquid gem: a template rendered 400 times | 0.37s | 0.163s | 2.3x faster |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.397s | 1.1x faster |
+| total | 5.04s | 1.746s | 2.9x faster |
 
 The closest two are JSON and kramdown. MRI's `json` is a C extension; rb2go's
 generator now writes into one buffer instead of a String per nested value

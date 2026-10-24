@@ -19,6 +19,11 @@ module Kramdown
   end
 
   module Converter
+    class Kramdown < Base
+      # el is every tree node; its convert_* methods are typed through convert's computed send (decision 353)
+      def convert: (Kramdown::Element el, ?Hash[Symbol, untyped] opts) -> String
+      def inner: (Kramdown::Element el, ?Hash[Symbol, untyped] opts) -> String
+    end
     class Html < Base
       def convert: (Kramdown::Element el, ?Integer indent) -> String
       def inner: (Kramdown::Element el, Integer indent) -> String

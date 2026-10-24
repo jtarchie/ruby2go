@@ -575,6 +575,7 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 	fn := "rbSendByName"
 	if on := f.sendOnClasses(recv.typ); on != nil { // decision 316: only what the receiver's classes and their subclasses answer
 		fn = "rbSendOn_" + f.c.noteSendOn(on)
+		f.noteSendUses(on, args[0], args[1:])
 		if f.m == nil || !f.m.quietDynamic {
 			f.warn(n, "dynamic call: %s with a computed name", name)
 		}
@@ -858,6 +859,78 @@ func (f *fctx) everyNameWhy(n parser.Node, recv expr) string {
 		return ""
 	}
 	return " [why: " + f.untypedWhy(call.Receiver, 0) + "]"
+}
+
+// noteSendUses: `send("convert_#{x}", el)` on known classes reaches only their matching methods, so its args type those params like a plain call (decision 353).
+func (f *fctx) noteSendUses(on []*Class, name parser.Node, args []parser.Node) {
+	if f.c.uses == nil || slices.ContainsFunc(args, func(a parser.Node) bool {
+		switch a.(type) {
+		case *parser.SplatNode, *parser.KeywordHashNode, *parser.BlockArgumentNode, *parser.ForwardingArgumentsNode:
+			return true
+		}
+		return false
+	}) {
+		return
+	}
+	pre, suf, ok := namePattern(name)
+	if !ok {
+		return
+	}
+	var types []Type
+	seen := map[*Method]bool{}
+	var walk func(k *Class)
+	walk = func(k *Class) {
+		for _, e := range k.methodSet() {
+			m := e.M
+			if seen[m] || len(m.Name) < len(pre)+len(suf) || !strings.HasPrefix(m.Name, pre) || !strings.HasSuffix(m.Name, suf) {
+				continue
+			}
+			seen[m] = true
+			if len(args) > len(m.Params) || slices.ContainsFunc(m.Params[:len(args)], func(p Param) bool { return p.Rest || p.Keyword || p.KwRest }) {
+				continue
+			}
+			if types == nil {
+				types = make([]Type, len(args))
+				for i, a := range args {
+					types[i] = f.probeType(a, nil)
+				}
+			}
+			for i, a := range args {
+				if types[i] != nil {
+					f.noteUse(m.Params[i], a, types[i])
+				}
+			}
+		}
+		for _, sub := range k.Subclasses {
+			walk(sub)
+		}
+	}
+	for _, k := range on {
+		walk(k)
+	}
+}
+
+// namePattern is the literal text around an interpolated method name; ok is false when there is none.
+func namePattern(n parser.Node) (pre, suf string, ok bool) {
+	var parts []parser.Node
+	switch n := n.(type) {
+	case *parser.InterpolatedStringNode:
+		parts = n.Parts
+	case *parser.InterpolatedSymbolNode:
+		parts = n.Parts
+	default:
+		return "", "", false
+	}
+	if len(parts) < 2 { // Prism merges adjacent literal text, so only the ends can be literal
+		return "", "", false
+	}
+	if s, isStr := parts[0].(*parser.StringNode); isStr {
+		pre = s.Unescaped.Value
+	}
+	if s, isStr := parts[len(parts)-1].(*parser.StringNode); isStr {
+		suf = s.Unescaped.Value
+	}
+	return pre, suf, pre+suf != ""
 }
 
 // noteDynUses records, during an inference round, a gem's dynamic call's arguments as uses of each gem method of that
