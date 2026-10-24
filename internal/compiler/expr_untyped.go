@@ -572,6 +572,13 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		blockArg = code
 		f.c.dynBlockAll = true // any block-taking method a computed name reaches (decision 243)
 	}
+	if blockArg == "" && name != "public_send" {
+		if on := f.sendOnClasses(recv.typ); on != nil {
+			if e, ok := f.sendSwitch(n, recv, on, args); ok {
+				return e
+			}
+		}
+	}
 	fn := "rbSendByName"
 	if on := f.sendOnClasses(recv.typ); on != nil { // decision 316: only what the receiver's classes and their subclasses answer
 		fn = "rbSendOn_" + f.c.noteSendOn(on)
@@ -908,6 +915,137 @@ func (f *fctx) noteSendUses(on []*Class, name parser.Node, args []parser.Node) {
 	for _, k := range on {
 		walk(k)
 	}
+}
+
+// sendSwitch compiles a pattern-named send on known classes to a Go switch of direct typed calls, one per matching method that compiles (decision 354).
+func (f *fctx) sendSwitch(n parser.Node, recv expr, on []*Class, args []parser.Node) (expr, bool) {
+	rest := args[1:]
+	if slices.ContainsFunc(rest, func(a parser.Node) bool {
+		switch a.(type) {
+		case *parser.SplatNode, *parser.KeywordHashNode, *parser.BlockArgumentNode, *parser.ForwardingArgumentsNode:
+			return true
+		}
+		return false
+	}) {
+		return expr{}, false
+	}
+	pre, suf, ok := namePattern(args[0])
+	if !ok {
+		return expr{}, false
+	}
+	call := func(name string, as []parser.Node) expr {
+		f.implicitCall = true // send reaches private methods
+		defer func() { f.implicitCall = false }()
+		return f.genMethodCall(n, recv, name, as, nil)
+	}
+	var names []string
+	var res Type
+	complete := true // every matching name is an arm: the default is only NoMethodError
+	for _, name := range f.c.sendOnNames(on) {
+		if len(name) < len(pre)+len(suf) || !strings.HasPrefix(name, pre) || !strings.HasSuffix(name, suf) {
+			continue
+		}
+		if slices.ContainsFunc(on, func(k *Class) bool { return k.lookup(name) == nil }) { // a subclass's own method: the default's
+			complete = false
+			continue
+		}
+		var t Type
+		var err *compileError
+		f.probe(func() { err = f.try(func() { t = call(name, rest).typ }) })
+		if err != nil {
+			complete = false
+			continue
+		}
+		names = append(names, name)
+		if t != nil && !isVoid(t) {
+			res = joinOrNil(res, t)
+		}
+	}
+	if len(names) == 0 {
+		return expr{}, false
+	}
+	if complete && f.definesMethodMissing(on) {
+		complete = false
+	}
+	if !complete {
+		f.noteSendUses(on, args[0], rest) // the default's names still take the call's types (decision 353)
+	}
+	if res == nil {
+		res = TNil{}
+	}
+	if !isSimpleGo(recv.code) {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, f.materialize(recv))
+		recv.code = tmp
+	}
+	pinned := f.pinArgs(args, len(args))
+	nameExpr := f.genExpr(pinned[0], nil)
+	key := f.newTmp()
+	f.emit("%s := rbConstName(%s)", key, f.coerce(args[0], nameExpr, TAny{}))
+	tmp := f.newTmp()
+	goT := f.c.goType(res)
+	if strings.TrimLeft(goT, "*") == "" { // arms answering only nil
+		goT = "any"
+	}
+	f.emit("var %s %s", tmp, goT)
+	f.emit("switch %s {", key)
+	f.switches++
+	for _, name := range names {
+		f.emit("case %q:", name)
+		saved := f.enterBlock()
+		f.indent++
+		e := call(name, pinned[1:])
+		switch {
+		case e.noreturn:
+			f.emitExprStmt(n, e)
+		case isVoid(e.typ) || e.code == "":
+			f.emitExprStmt(n, e)
+			f.emit("%s = nil", tmp)
+		default:
+			f.emit("%s = %s", tmp, f.coerce(n, e, res))
+		}
+		f.indent--
+		f.leaveBlock(saved)
+	}
+	f.emit("default:")
+	f.indent++
+	if complete {
+		f.emit("panic(rbNoMethod(%s, %s, false))", key, f.coerce(n, recv, TAny{}))
+	} else {
+		if f.m == nil || !f.m.quietDynamic {
+			f.warn(n, "dynamic call: send with a computed name (the %s*%s names that are not direct calls)", pre, suf)
+		}
+		codes := []string{f.coerce(n, recv, TAny{}), key, "rbFCall"}
+		for i, a := range rest {
+			codes = append(codes, f.coerce(a, f.genExpr(pinned[i+1], nil), TAny{}))
+		}
+		dyn := expr{code: "rbSendOn_" + f.c.noteSendOn(on) + "(" + strings.Join(codes, ", ") + ")", typ: TAny{}}
+		f.emit("%s = %s", tmp, f.coerce(n, dyn, res))
+	}
+	f.indent--
+	f.switches--
+	f.emit("}")
+	return expr{code: tmp, typ: res}, true
+}
+
+// joinOrNil is joinUnion with nil as the empty start.
+func joinOrNil(a, b Type) Type {
+	if a == nil {
+		return b
+	}
+	return joinUnion(a, b)
+}
+
+// definesMethodMissing reports a class in on, or a subclass, whose method_missing is not the prelude's.
+func (f *fctx) definesMethodMissing(on []*Class) bool {
+	var walk func(k *Class) bool
+	walk = func(k *Class) bool {
+		if e := k.lookup("method_missing"); e != nil && e.M.File != nil && !e.M.File.isPrelude() {
+			return true
+		}
+		return slices.ContainsFunc(k.Subclasses, walk)
+	}
+	return slices.ContainsFunc(on, walk)
 }
 
 // namePattern is the literal text around an interpolated method name; ok is false when there is none.

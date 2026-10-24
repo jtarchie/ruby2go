@@ -3245,7 +3245,32 @@ module DynamicTests
     def render_shout(node, depth) = node.text.upcase + "!" * depth
   end
 
+  # decision 354: method_missing keeps the dynamic default; arms of different types join
+  class SendPatternGhost
+    #: (String kind, Integer n) -> (String | Integer)
+    def pick(kind, n)
+      send(:"#{kind}_value", n)
+    end
+
+    def word_value(n) = "w#{n}"
+
+    def num_value(n) = n * 2
+
+    def method_missing(name, *args)
+      name.to_s.end_with?("_value") ? "ghost #{name} #{args.size}" : super
+    end
+
+    def respond_to_missing?(name, priv = false) = name.to_s.end_with?("_value") || super
+  end
+
   class SendPatternTest < Minitest::Test
+    def test_method_missing_and_mixed_arms
+      g = SendPatternGhost.new
+      assert_equal "w3", g.pick("word", 3)
+      assert_equal 6, g.pick("num", 3)
+      assert_equal "ghost other_value 1", g.pick("other", 3)
+    end
+
     def test_interpolated_name_reaches_matching_methods
       r = SendPatternRenderer.new
       assert_equal "## HI", r.render(SendPatternNode.new(:title, "hi"), 1)
