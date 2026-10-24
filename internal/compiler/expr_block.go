@@ -707,7 +707,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		rt := f.newTmp()
 		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
 		f.indent++
-		recv = expr{code: "(*" + rt + ")", typ: opt.Elem}
+		recv = expr{code: derefOpt(rt, opt), typ: opt.Elem}
 	case isOptRecv:
 		recv = f.nilGuard(n, recv, n.Name)
 	}

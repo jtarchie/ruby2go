@@ -336,7 +336,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	}
 	f.bindTypeParams(n, m, env)
 	ret := subst(m.Ret, env)
-	out := expr{code: f.callCode(e, recv, codes, env), typ: ret}
+	out := expr{code: flatLeafOpt(f.callCode(e, recv, codes, env), m.Ret, env), typ: ret}
 	out = f.blocklessReturn(n, m, block, env, out)
 	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
 		if t := f.constGetType(recv, args); t != nil {
@@ -871,7 +871,7 @@ func (f *fctx) nilKeyLookup(n parser.Node, e *entry, recv expr, args []parser.No
 	}
 	k := f.newTmp()
 	f.emit("%s := %s", k, f.genExpr(args[0], nil).code)
-	hit := f.callEntry(n, e, recv, []parser.Node{&exprNode{Node: args[0], e: expr{code: "(*" + k + ")", typ: kt}}}, nil)
+	hit := f.callEntry(n, e, recv, []parser.Node{&exprNode{Node: args[0], e: expr{code: derefOpt(k, a.typ), typ: kt}}}, nil)
 	res := f.newTmp()
 	if miss == "false" {
 		f.emit("%s := Boolean(false)", res)
@@ -932,4 +932,19 @@ func (f *fctx) leafRecvSelf(recv expr, m *Method) expr {
 		return recv
 	}
 	return f.leafSelf(recv, m.Owner)
+}
+
+// flatLeafOpt is a call's code with a generic V? result, V = *C a leaf's, opened from Go's **C to the *C its C? is
+// (decision 360).
+func flatLeafOpt(code string, decl Type, env map[string]Type) string {
+	if boxedLeafOpt(decl, env) != nil {
+		return "rbFlat(" + code + ")"
+	}
+	if t, ok := decl.(TTuple); ok && len(t.Elems) == 2 { // minmax's [E?, E?] ponytail: other tuple and container shapes keep the boxes
+		a, b := boxedLeafOpt(t.Elems[0], env), boxedLeafOpt(t.Elems[1], env)
+		if a != nil && b != nil {
+			return "rbFlatPair[" + a.Name + ", " + b.Name + "](" + code + ")"
+		}
+	}
+	return code
 }

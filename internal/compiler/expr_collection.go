@@ -121,7 +121,7 @@ func (f *fctx) splatToArray(el parser.Node, sp *parser.SplatNode, e expr) expr {
 		return spread(e)
 	}
 	rt := f.newTmp()
-	inner := expr{code: "(*" + rt + ")", typ: o.Elem}
+	inner := expr{code: derefOpt(rt, o), typ: o.Elem}
 	var probe expr
 	f.probe(func() { probe = spread(inner) })
 	out := f.newTmp()

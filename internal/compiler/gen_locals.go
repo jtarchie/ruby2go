@@ -147,7 +147,7 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		f.unnarrow(name)
 		if isOpt(existing.typ) && typeEq(stripOpt(existing.typ), val.typ) { // a T? local given a T stays narrowed
 			f.applyNarrow([]narrowInfo{{local: existing, typ: stripOpt(existing.typ)}})
-			return expr{code: "(*" + existing.goName + ")", typ: stripOpt(existing.typ), stmt: true, done: true}
+			return expr{code: derefOpt(existing.goName, existing.typ), typ: stripOpt(existing.typ), stmt: true, done: true}
 		}
 	}
 	if e, ok := f.narrowAssign(existing, val); ok {
@@ -301,7 +301,7 @@ func (f *fctx) narrowSet(v *local, val expr) expr {
 	}
 	nw := narrowInfo{local: v, typ: stripOpt(v.typ)}
 	f.applyNarrow([]narrowInfo{nw})
-	return expr{code: "(*" + v.goName + ")", typ: nw.typ, stmt: true, done: true}
+	return expr{code: derefOpt(v.goName, v.typ), typ: nw.typ, stmt: true, done: true}
 }
 
 // declareAssign emits the first assignment of a local.

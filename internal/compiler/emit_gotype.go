@@ -33,6 +33,9 @@ func (c *Compiler) goType(t Type) string {
 			return cls.objType()
 		}
 	case TOpt:
+		if leafOpt(t) {
+			return c.leafOptType(t)
+		}
 		s := "*" + c.goType(t.Elem)
 		var vars []string
 		if freeVars(t, &vars); len(vars) == 0 && s != "*" {
@@ -321,4 +324,57 @@ func goZero(t string) string {
 		return "nil"
 	}
 	return "*new(" + t + ")"
+}
+
+// leafOpt reports C? of a leaf class C (decision 359): Go *C itself, nil its nil, no box (decision 360).
+func leafOpt(t Type) bool {
+	o, ok := t.(TOpt)
+	return ok && leafRecv(o.Elem)
+}
+
+// derefOpt is a T? value's T: the box opened, or a leaf's *C as it is (decision 360).
+func derefOpt(code string, t Type) string {
+	if leafOpt(t) {
+		return code
+	}
+	return "(*" + code + ")"
+}
+
+// optOf converts untyped code to elem? (OptOf), a leaf's straight to its *C (decision 360).
+func (c *Compiler) optOf(elem Type, code string) string {
+	if leafRecv(elem) {
+		return fmt.Sprintf("rbOptPtr[%s](%s, %q)", elem.(TClass).C.Name, code, elem.String())
+	}
+	return fmt.Sprintf("OptOf[%s](%s, %q)", c.goType(elem), code, elem.String())
+}
+
+// optAny boxes a T? value as untyped (Opt), a leaf's *C as rbPtrAny does (decision 360).
+func (c *Compiler) optAny(code string, t Type) string {
+	if leafOpt(t) {
+		return "rbPtrAny[" + t.(TOpt).Elem.(TClass).C.Name + "](" + code + ")"
+	}
+	return "Opt(" + code + ")"
+}
+
+// boxedLeafOpt is the leaf class C where a signature's X? has a type variable in X bound to C: the generic Go code
+// holds it as *V with V = *C, a **C, where the caller's C? is *C (decision 360).
+func boxedLeafOpt(decl Type, env map[string]Type) *Class {
+	o, ok := decl.(TOpt)
+	if !ok || !mentionsVar(o.Elem) {
+		return nil
+	}
+	if c, ok := subst(o.Elem, env).(TClass); ok && c.C.leaf() {
+		return c.C
+	}
+	return nil
+}
+
+// leafOptType is a leaf's C?: its *C, nil its nil, noted for the box helpers (decision 360).
+func (c *Compiler) leafOptType(t TOpt) string {
+	s := c.goType(t.Elem)
+	if c.leafBoxes == nil {
+		c.leafBoxes = map[string]bool{}
+	}
+	c.leafBoxes[s] = true
+	return s
 }

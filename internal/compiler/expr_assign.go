@@ -45,7 +45,7 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 	f.indent--
 	f.emit("}")
 	if isOpt(cur.typ) && !isAny(elem) && !isOpt(v.typ) && !isNil(v.typ) {
-		return expr{code: "(*" + cur.code + ")", typ: elem, done: true}
+		return expr{code: derefOpt(cur.code, cur.typ), typ: elem, done: true}
 	}
 	if u, ok := cur.typ.(TUnion); ok && !v.noreturn && !isOpt(v.typ) && !isNil(v.typ) && !unionFalsy(v.typ) && slices.ContainsFunc(u.Members, isNil) {
 		// set or already truthy: its nil member is gone (decision 241)
@@ -216,7 +216,7 @@ func (f *fctx) genIndexOrWrite(n *parser.IndexOrWriteNode) expr {
 	f.emit("%s := %s", tmp, cur.code)
 	return f.genOrAssign(n, expr{code: tmp, typ: cur.typ}, n.Value, func(v expr) {
 		if isOpt(v.typ) && !isAny(stripOpt(v.typ)) {
-			v = expr{code: "(*" + v.code + ")", typ: stripOpt(v.typ)} // just assigned: not nil
+			v = expr{code: derefOpt(v.code, v.typ), typ: stripOpt(v.typ)} // just assigned: not nil
 		}
 		f.emitExprStmt(n, f.genMethodCall(n, recv, "[]=", append(slices.Clone(as), &exprNode{Node: n.Value, e: v}), nil))
 	})

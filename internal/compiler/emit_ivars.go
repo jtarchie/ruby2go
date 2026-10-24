@@ -18,7 +18,7 @@ func (c *Compiler) emitIvarList(cls *Class) {
 		val, opt, isNilCode := field, isAny(iv.Type), "false"
 		switch t := iv.Type.(type) {
 		case TOpt:
-			val, opt = "Opt("+val+")", true
+			val, opt = c.optAny(val, t), true
 		case TFunc:
 			isNilCode = field + " == nil"
 		case TVar:
@@ -55,7 +55,9 @@ func (c *Compiler) emitIvarList(cls *Class) {
 	c.w("func (self *%s) _IvarSet(name string, v any) bool {\n\tswitch name {\n", cls.Name)
 	for _, iv := range c.ivarOrder(cls) {
 		field := "&" + ivarPath("self", iv)
-		if o, ok := iv.Type.(TOpt); ok {
+		if o, ok := iv.Type.(TOpt); ok && leafOpt(o) {
+			c.w("\tcase %q:\n\t\trbIvarAssignPtr(%s, v, %q)\n", iv.Name, field, iv.Name)
+		} else if ok {
 			c.w("\tcase %q:\n\t\trbIvarAssignOpt[%s](%s, v, %q)\n", iv.Name, c.goType(o.Elem), field, iv.Name)
 		} else {
 			c.w("\tcase %q:\n\t\trbIvarAssign(%s, v, %q)\n", iv.Name, field, iv.Name)

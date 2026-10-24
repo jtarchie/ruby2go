@@ -86,7 +86,7 @@ func (f *fctx) narrowToArm(n parser.Node, out expr, ret Type) expr {
 	case isUnion(out.typ) || isAny(out.typ):
 		switch r := ret.(type) {
 		case TOpt:
-			return expr{code: fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(r.Elem), out.code, r.Elem.String()), typ: ret}
+			return expr{code: f.c.optOf(r.Elem, out.code), typ: ret}
 		default:
 			return expr{code: out.code + ".(" + f.c.goType(ret) + ")", typ: ret, assert: true}
 		}

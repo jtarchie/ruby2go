@@ -191,7 +191,7 @@ func (f *fctx) evalProcArg(n *parser.CallNode, b *parser.BlockArgumentNode, recv
 		f.emit("%s := %s", tmp, recv.code)
 		// ponytail: MRI runs the block with self nil, failing at its first call; this raises before it runs
 		f.emit("if %s == nil {\n\tpanic(rbNoMethod(%q, nil, false))\n}", tmp, n.Name)
-		self = f.coerce(n, expr{code: "(*" + tmp + ")", typ: o.Elem}, pt.Self)
+		self = f.coerce(n, expr{code: derefOpt(tmp, o), typ: o.Elem}, pt.Self)
 	}
 	codes = append(codes, self)
 	for i, a := range args {

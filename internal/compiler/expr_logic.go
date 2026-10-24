@@ -205,7 +205,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: l.typ}, typ))
 	default:
 		f.emit("if %s := %s; %s {", lt, l.code, optTruthy(lt, l.typ))
-		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: "(*" + lt + ")", typ: lElem}, typ))
+		f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: derefOpt(lt, l.typ), typ: lElem}, typ))
 	}
 	f.emit("} else {")
 	f.indent++
@@ -314,7 +314,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	f.push()
 	for _, nw := range narrow {
 		if isOpt(l.typ) {
-			nw.code = "(*" + lt + ")"
+			nw.code = derefOpt(lt, l.typ)
 		}
 		f.applyNarrow([]narrowInfo{nw})
 	}

@@ -171,7 +171,7 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	rt := f.newTmp()
 	inner := expr{code: rt, typ: recv.typ} // an untyped nil is nil too
 	if o, ok := recv.typ.(TOpt); ok {
-		inner = expr{code: "(*" + rt + ")", typ: o.Elem}
+		inner = expr{code: derefOpt(rt, o), typ: o.Elem}
 	}
 	if nilUnion { // `@url&.to_s` of a String | URL | nil: a union holds nil as Go's nil, and the call sees the rest
 		inner = expr{code: rt, typ: unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)}

@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -226,7 +225,7 @@ func (f *fctx) applyNarrow(ns []narrowInfo) {
 		}
 		code := nw.code
 		if code == "" {
-			code = "(*" + nw.local.goName + ")"
+			code = derefOpt(nw.local.goName, nw.local.typ)
 		}
 		f.scope.vars[nw.local.name] = &local{name: nw.local.name, goName: code, typ: nw.typ, base: base, view: nw.view, declared: true, assigned: nw.assigned}
 	}
@@ -319,7 +318,7 @@ func (f *fctx) narrowUnion(v *local, keep func(Type) bool) (narrowInfo, bool) {
 	case TNil:
 		return narrowInfo{}, false
 	case TOpt:
-		return narrowInfo{local: v, typ: to, code: fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), v.goName, to.Elem.String())}, true
+		return narrowInfo{local: v, typ: to, code: f.c.optOf(to.Elem, v.goName)}, true
 	case TAny, TClass, TFunc, TTuple, TVar, TVoid:
 	}
 	return narrowInfo{local: v, typ: to, code: v.goName + ".(" + f.c.goType(to) + ")"}, true

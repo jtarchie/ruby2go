@@ -460,7 +460,7 @@ func (f *fctx) patNarrow(e expr, cls *Class) expr {
 	base := stripOpt(e.typ)
 	code := e.code
 	if isOpt(e.typ) && !isAny(base) {
-		code = "(*" + code + ")"
+		code = derefOpt(code, e.typ)
 	}
 	if bt, ok := base.(TClass); ok && bt.C.isSubclassOf(cls) {
 		return expr{code: code, typ: base, view: e.view}
@@ -753,7 +753,7 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 	case TOpt:
 		if !isAny(tt.Elem) {
 			f.patIf(pm, subj.code+" != nil", noResp, func() {
-				f.patShape(pm, p, expr{code: "(*" + subj.code + ")", typ: tt.Elem}, method, then)
+				f.patShape(pm, p, expr{code: derefOpt(subj.code, tt), typ: tt.Elem}, method, then)
 			})
 			return
 		}

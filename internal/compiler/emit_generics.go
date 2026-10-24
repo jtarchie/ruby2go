@@ -121,7 +121,11 @@ func (c *Compiler) emitBoxes() {
 	all := maps.Clone(c.argBoxes)
 	maps.Copy(all, c.boxes)
 	unbox := slices.Sorted(maps.Keys(all))
+	leaves := slices.Sorted(maps.Keys(c.leafBoxes))
 	c.w("func rbUnbox(a any) any {\n\tswitch v := a.(type) {\n")
+	for _, b := range leaves { // generic code holding E = C? of a leaf: a nil *C is nil, any other the object (decision 360)
+		c.w("\tcase %s:\n\t\tif v == nil {\n\t\t\treturn nil\n\t\t}\n", b)
+	}
 	for _, b := range unbox {
 		if all[b] {
 			c.w("\tcase %s:\n\t\treturn rbUnbox(Opt(v))\n", b)
@@ -132,6 +136,9 @@ func (c *Compiler) emitBoxes() {
 	c.w("\t}\n\treturn a\n}\n\n")
 	// rbKeyUnbox opens one level of a box used as a Hash key or in uniq/tally, which match by what it holds
 	c.w("func rbKeyUnbox(k any) (any, bool) {\n\tswitch v := k.(type) {\n")
+	for _, b := range leaves {
+		c.w("\tcase %s:\n\t\tif v == nil {\n\t\t\treturn nil, true\n\t\t}\n", b)
+	}
 	for _, b := range unbox {
 		c.w("\tcase %s:\n\t\treturn Opt(v), true\n", b)
 	}

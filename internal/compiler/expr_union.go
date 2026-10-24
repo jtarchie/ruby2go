@@ -15,11 +15,11 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 	case "nil?":
 		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
 	case "to_s":
-		return expr{code: "rbToS(Opt(" + recv.code + "))", typ: f.cls("String")}
+		return expr{code: "rbToS(" + f.c.optAny(recv.code, recv.typ) + ")", typ: f.cls("String")}
 	case "inspect":
-		return expr{code: "rbInspect(Opt(" + recv.code + "))", typ: f.cls("String")}
+		return expr{code: "rbInspect(" + f.c.optAny(recv.code, recv.typ) + ")", typ: f.cls("String")}
 	case "to_json":
-		return expr{code: "rbToJson(" + strings.Join(append([]string{"Opt(" + recv.code + ")"}, f.jsonArgs(args)...), ", ") + ")", typ: f.cls("String")}
+		return expr{code: "rbToJson(" + strings.Join(append([]string{f.c.optAny(recv.code, recv.typ)}, f.jsonArgs(args)...), ", ") + ")", typ: f.cls("String")}
 	case "==", "equal?":
 		if len(args) != 1 {
 			f.errorf(n, "%s takes one argument", name)
@@ -27,9 +27,9 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		a := f.genExpr(args[0], nil)
 		arg := f.coerce(args[0], a, TAny{})
 		if name == "equal?" {
-			return expr{code: "Boolean(rbIdentical(Opt(" + recv.code + "), " + arg + "))", typ: f.cls("Boolean")}
+			return expr{code: "Boolean(rbIdentical(" + f.c.optAny(recv.code, recv.typ) + ", " + arg + "))", typ: f.cls("Boolean")}
 		}
-		return expr{code: "rbEq[any](Opt(" + recv.code + "), " + arg + ")", typ: f.cls("Boolean")}
+		return expr{code: "rbEq[any](" + f.c.optAny(recv.code, recv.typ) + ", " + arg + ")", typ: f.cls("Boolean")}
 	case "!":
 		if isClass(recv.typ.(TOpt).Elem, "Boolean") {
 			return expr{code: "Boolean(!" + optTruthy(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
@@ -65,7 +65,7 @@ func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.
 	rt := f.newTmp()
 	f.emit("%s := %s", rt, recv.code)
 	nt := f.cls("NilClass")
-	nilRecv, valRecv := expr{code: "(*" + nc.Name + ")(nil)", typ: nt}, expr{code: "(*" + rt + ")", typ: elem} // a typed nil: its methods still run
+	nilRecv, valRecv := expr{code: "(*" + nc.Name + ")(nil)", typ: nt}, expr{code: derefOpt(rt, recv.typ), typ: elem} // a typed nil: its methods still run
 	var nilE, valE expr
 	f.probe(func() {
 		nilE = f.genMethodCall(n, nilRecv, name, args, block)
@@ -398,13 +398,13 @@ func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	f.emit("if %s == nil {", code)
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
-	return expr{code: "(*" + code + ")", typ: elem, bin: recv.bin, binDeps: recv.binDeps}
+	return expr{code: derefOpt(code, recv.typ), typ: elem, bin: recv.bin, binDeps: recv.binDeps}
 }
 
 // nilFreeze is freeze/frozen?/dup/clone on a T?: nil's own answers (itself, true, itself), T's otherwise.
 func (f *fctx) nilFreeze(n parser.Node, recv expr, name string) expr {
 	rt := f.pinSimple(recv.code)
-	inner := expr{code: "(*" + rt + ")", typ: recv.typ.(TOpt).Elem}
+	inner := expr{code: derefOpt(rt, recv.typ), typ: recv.typ.(TOpt).Elem}
 	if name == "frozen?" {
 		var e expr
 		body := f.capture(func() { e = f.genMethodCall(n, inner, name, nil, nil) })
@@ -438,7 +438,7 @@ func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser
 		return expr{}, false
 	}
 	rt := f.newTmp()
-	inner := expr{code: "(*" + rt + ")", typ: recv.typ.(TOpt).Elem}
+	inner := expr{code: derefOpt(rt, recv.typ), typ: recv.typ.(TOpt).Elem}
 	call := func() expr { return f.genMethodCall(n, inner, name, args, nil) }
 	probe, once := f.genOperandOnce(call)
 	t := probe.e.typ

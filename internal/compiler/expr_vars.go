@@ -71,7 +71,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
 	if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 		f.narrowIvar(iv) // and reads after it, until a call through self (decision 148)
-		return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
+		return expr{code: derefOpt(code, iv.Type), typ: stripOpt(iv.Type), done: true}
 	}
 	return expr{code: code, typ: iv.Type, done: true}
 }
@@ -122,7 +122,7 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 		f.markIvar(iv)
 		if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 			f.narrowIvar(iv)
-			return expr{code: "(*" + code + ")", typ: stripOpt(iv.Type), done: true}
+			return expr{code: derefOpt(code, iv.Type), typ: stripOpt(iv.Type), done: true}
 		}
 		return expr{code: code, typ: iv.Type, done: true}
 	}

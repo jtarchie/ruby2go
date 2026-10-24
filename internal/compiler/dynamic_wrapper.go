@@ -768,7 +768,7 @@ func (c *Compiler) dynArg(t Type, i int) string {
 	case TAny:
 		return arg
 	case TOpt:
-		return fmt.Sprintf("OptOf[%s](%s, %q)", c.goType(t.Elem), arg, t.Elem.String())
+		return c.optOf(t.Elem, arg)
 	case TUnion:
 		return c.unionFn(t) + "(" + arg + ")"
 	case TClass, TFunc, TNil, TTuple, TVar, TVoid: // converted and checked by rbAs below

@@ -238,6 +238,7 @@ type tableState struct {
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes     map[string]bool
+	leafBoxes map[string]bool   // a leaf's C? rendered somewhere (decision 360): the box helpers' nil *C is nil
 	unions    map[string]TUnion // rbUnion_<hash>: an untyped value checked into a union (decision 150), by Go name
 	unionsOut map[string]bool   // those emitted: a body emitted after the tables can name a new one (emitNext)
 }

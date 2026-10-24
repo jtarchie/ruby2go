@@ -137,6 +137,10 @@ func (c *Compiler) tableInputs() tableInputs {
 func (c *Compiler) emitOptClassFrom() {
 	c.w("func rbOptClassFrom(zero any, v any) (any, bool) {\n\tswitch zero.(type) {\n")
 	for _, g := range slices.Sorted(maps.Keys(c.optConv)) {
+		if strings.HasPrefix(g, "*") { // a leaf's C? is its *C (decision 360): the object itself
+			c.w("\tcase %s:\n\t\tif v == nil {\n\t\t\treturn (%s)(nil), true\n\t\t}\n\t\tif x, ok := v.(%s); ok {\n\t\t\treturn x, true\n\t\t}\n", g, g, g)
+			continue
+		}
 		c.w("\tcase *%s:\n\t\tif v == nil {\n\t\t\treturn (*%s)(nil), true\n\t\t}\n\t\tif x, ok := v.(%s); ok {\n\t\t\treturn &x, true\n\t\t}\n", g, g, g)
 	}
 	c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t}\n\treturn nil, false\n}\n\n")

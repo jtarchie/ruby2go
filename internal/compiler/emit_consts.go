@@ -154,7 +154,7 @@ func (c *Compiler) constValue(full string) (string, bool) {
 	}
 	k := c.consts[full]
 	if isOpt(c.constType(k)) {
-		return "Opt(" + k.GoName + ")", true
+		return c.optAny(k.GoName, c.constType(k)), true
 	}
 	return k.GoName, true
 }

@@ -50,11 +50,11 @@ func (f *fctx) goTypeGuard(n parser.Node, e expr, to Type) string {
 	case TOpt:
 		src := e.code
 		if isOpt(e.typ) {
-			src = "Opt(" + e.code + ")"
+			src = f.c.optAny(e.code, e.typ)
 		} else if from != "any" {
 			return e.code
 		}
-		return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(t.Elem), src, t.Elem.String()))
+		return f.noteConv(n, f.c.optOf(t.Elem, src))
 	case TClass:
 		if from == "any" {
 			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", want, e.code, t.String()))
@@ -104,15 +104,7 @@ func (f *fctx) coerce0(n parser.Node, e expr, to Type) string {
 	case TAny:
 		return f.coerceToAny(e)
 	case TOpt:
-		switch {
-		case isNil(e.typ):
-			return "nil"
-		case isOpt(e.typ):
-			return e.code
-		case isAny(e.typ):
-			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String()))
-		}
-		return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
+		return f.coerceToOpt(n, e, to)
 	case TClass:
 		return f.coerceClass(n, e, to)
 	case TVar:
@@ -151,7 +143,7 @@ func (f *fctx) coerceToAny(e expr) string {
 			return "rbUnbox(Opt(" + e.code + "))"
 		case TAny, TClass, TFunc, TNil, TTuple, TUnion, TVoid: // a plain T?: Opt boxes it below
 		}
-		return "Opt(" + e.code + ")"
+		return f.c.optAny(e.code, e.typ)
 	case e.lit:
 		return f.c.goType(e.typ) + "(" + e.code + ")"
 	}
@@ -295,7 +287,7 @@ func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string
 		}
 	case TOpt:
 		if fits(u, to) {
-			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(to.Elem), e.code, to.Elem.String())), true
+			return f.noteConv(n, f.c.optOf(to.Elem, e.code)), true
 		}
 	case TFunc, TTuple, TVoid:
 	}
@@ -304,7 +296,7 @@ func (f *fctx) coerceFromUnion(n parser.Node, e expr, u TUnion, to Type) (string
 			return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(c), e.code, c.String())), true
 		}
 		if o, ok := to.(TOpt); ok {
-			return f.noteConv(n, fmt.Sprintf("OptOf[%s](%s, %q)", f.c.goType(o.Elem), e.code, o.Elem.String())), true
+			return f.noteConv(n, f.c.optOf(o.Elem, e.code)), true
 		}
 	}
 	f.errorf(n, "%s where %s is expected; narrow it first (`is_a?`, `case`/`when`, `if x`)", u, to)
@@ -395,6 +387,9 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 	}
 	t := subst(p.Type, env)
 	code := f.coerce(n, a, t)
+	if c := boxedLeafOpt(p.Type, env); c != nil && code != "nil" {
+		return "rbBoxPtr[" + c.Name + "](" + code + ")" // a generic V? with V = *C is Go **C (decision 360)
+	}
 	// A type variable bound to untyped gets an explicit any(...), or Go infers
 	// it from the argument's own type (E = String for Array[untyped]#include?("a")).
 	if _, ok := p.Type.(TVar); ok && isAny(t) && !isOpt(a.typ) && !isVoid(a.typ) && f.c.goType(a.typ) != "any" {
@@ -501,4 +496,20 @@ func structValued(t Type) bool {
 	case TAny, TFunc, TOpt, TTuple, TVar, TVoid:
 	}
 	return false
+}
+
+// coerceToOpt is e as a T?: nil, a T? as it is, untyped converted, else T boxed (a leaf's *C is its C?, decision 360).
+func (f *fctx) coerceToOpt(n parser.Node, e expr, to TOpt) string {
+	switch {
+	case isNil(e.typ):
+		return "nil"
+	case isOpt(e.typ):
+		return e.code
+	case isAny(e.typ):
+		return f.noteConv(n, f.c.optOf(to.Elem, e.code))
+	}
+	if leafOpt(to) {
+		return f.coerce(n, e, to.Elem)
+	}
+	return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 }

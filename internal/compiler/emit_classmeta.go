@@ -269,7 +269,7 @@ func (c *Compiler) emitDynProcCall(procs []string) {
 		case isVoid(t.Ret):
 			c.w("\t\t%s\n\t\treturn nil, true\n", call)
 		case isOpt(t.Ret):
-			c.w("\t\treturn Opt(%s), true\n", call)
+			c.w("\t\treturn %s, true\n", c.optAny(call, t.Ret))
 		default:
 			c.w("\t\treturn %s, true\n", call)
 		}

@@ -596,6 +596,27 @@ func OptOf[T any](a any, want string) *T {
 	return &v
 }
 
+// rbFlatPair opens a generic [E?, F?] whose E and F are leaf classes' *C: Go's two **C slots, to the *C each C? is (decision 360).
+func rbFlatPair[A, B any](t Tuple2[**A, **B]) Tuple2[*A, *B] {
+	return Tuple2[*A, *B]{rbFlat(t.F0), rbFlat(t.F1)}
+}
+
+// rbBoxPtr is a leaf class's C?, its *C, where generic code takes V? with V = *C (decision 360).
+func rbBoxPtr[T any](p *T) **T {
+	if p == nil {
+		return nil
+	}
+	return &p
+}
+
+// rbOptPtr is OptOf for a leaf class, whose C? is its *C (decision 360).
+func rbOptPtr[T any](a any, want string) *T {
+	if a == nil {
+		return nil
+	}
+	return rbAs[*T](a, want)
+}
+
 // rbAs converts untyped to T, raising MRI's TypeError when a is not one:
 // a bare a.(T) would panic as a Go error, a StandardError.
 func rbAs[T any](a any, want string) T {
@@ -1796,6 +1817,15 @@ func rbIvarAssign[T any](dst *T, v any, name string) {
 		panic(NewTypeError(Ref(String("rb2go: " + rbClassName(v) + " cannot be stored in " + name))))
 	}
 	*dst = x
+}
+
+// rbIvarAssignPtr is rbIvarAssignOpt for a leaf class's C?, its *C itself (decision 360).
+func rbIvarAssignPtr[T any](dst **T, v any, name string) {
+	if v == nil {
+		*dst = nil
+		return
+	}
+	rbIvarAssign(dst, v, name)
 }
 
 func rbIvarAssignOpt[T any](dst **T, v any, name string) {

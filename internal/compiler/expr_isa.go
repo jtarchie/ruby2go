@@ -84,7 +84,7 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
 		recv.code = f.pinSimple(recv.code)
-		inner := f.isA(n, expr{code: "(*" + recv.code + ")", typ: o.Elem}, cls)
+		inner := f.isA(n, expr{code: derefOpt(recv.code, o), typ: o.Elem}, cls)
 		return "(" + recv.code + " != nil && " + inner + ")"
 	}
 	if isNil(t) {
@@ -299,7 +299,7 @@ func (f *fctx) narrowIsA(call *parser.CallNode, v *local) (string, []narrowInfo)
 	base := stripOpt(v.typ)
 	code := v.goName
 	if isOpt(v.typ) {
-		code = "(*" + v.goName + ")"
+		code = derefOpt(v.goName, v.typ)
 	}
 	if cond == "true" || cond == "false" || cls.universal {
 		return cond, nil
