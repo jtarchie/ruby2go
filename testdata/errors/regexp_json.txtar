@@ -72,9 +72,6 @@ puts up(m[1]) if m
 -- string_match_arity.rb --
 # error: main.rb:2: String#match: wrong number of arguments (given 2, expected 1)
 puts "abc".match(/b/, 1).inspect
--- regexp_match_arity.rb --
-# error: main.rb:2: Regexp#match: wrong number of arguments (given 2, expected 1)
-puts(/b/.match("abc", 1).inspect)
 -- matchdata_index_arity.rb --
 # error: main.rb:3: MatchData#[]: wrong number of arguments (given 2, expected 1)
 m = /(b)/.match("abc")

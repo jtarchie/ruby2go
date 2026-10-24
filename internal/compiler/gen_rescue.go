@@ -343,7 +343,7 @@ func (f *fctx) genRescueClause(rc *parser.RescueNode, t tail) {
 		}
 		f.bindRescue(rc.Reference, lt.Name, TClass{C: bind})
 	}
-	if f.lenient() && f.c.gemBareRaise() {
+	if f.c.gemBareRaise() {
 		f.emit("defer rbErrinfoSet(r_)()") // $! for a bare raise this clause reaches through a call (decision 331)
 	}
 	f.rescues++

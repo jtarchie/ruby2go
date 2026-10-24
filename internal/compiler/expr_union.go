@@ -63,7 +63,7 @@ func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.
 	}
 	elem := recv.typ.(TOpt).Elem
 	rt := f.newTmp()
-	f.emit("%s := %s", rt, recv.code)
+	f.emit("var %s %s = %s", rt, f.c.goType(recv.typ), recv.code) // typed: `$!` outside a rescue is the literal nil
 	nt := f.cls("NilClass")
 	nilRecv, valRecv := expr{code: "(*" + nc.Name + ")(nil)", typ: nt}, expr{code: derefOpt(rt, recv.typ), typ: elem} // a typed nil: its methods still run
 	var nilE, valE expr

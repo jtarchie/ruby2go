@@ -365,7 +365,11 @@ class String < Object
   def gsub(from, to) = %x{ rbNewStr(self, String(rbSub(string(self), string(from), string(to), -1))) }
 
   #: (String, String) -> String
-  def tr(from, to) = %x{ rbTr(self, string(from), string(to), !utf8.ValidString(string(self)), false) }
+  def tr(from, to) = %x{ rbTr(self, string(from), string(to), !utf8.ValidString(string(self)), false, false) }
+
+  # tr, then a run of translated characters giving one character keeps one. ponytail: characters, not a binary String's bytes.
+  #: (String, String) -> String
+  def tr_s(from, to) = %x{ rbTr(self, string(from), string(to), false, false, true) }
 
   # An Array argument supplies every directive's value, as MRI's.
   #: (untyped) -> String
@@ -425,6 +429,74 @@ class String < Object
   def swapcase = %x{
     return String(strings.Map(func(r rune) rune {
       switch {
+      case unicode.IsUpper(r):
+        return unicode.ToLower(r)
+      case unicode.IsLower(r):
+        return unicode.ToUpper(r)
+      }
+      return r
+    }, string(self)))
+  }
+
+  # One option Symbol (decision 12's arity overloads): :ascii maps ASCII letters only, :turkic adds the dotted/dotless
+  # i pairs, :lithuanian is the plain mapping; :fold is downcase's alone. ponytail: two options are not taken.
+  #: (Symbol) -> String
+  def __upcase_1(opt)
+    case __case_opt(opt, false)
+    when 1 then __ascii_case(2)
+    when 2 then __turkic(true).upcase
+    else upcase
+    end
+  end
+
+  # ponytail: :fold is upcase then downcase (ß -> ss), not Unicode's CaseFolding table (İ folds to i̇ in MRI).
+  #: (Symbol) -> String
+  def __downcase_1(opt)
+    case __case_opt(opt, true)
+    when 1 then __ascii_case(0)
+    when 2 then __turkic(false).downcase
+    when 3 then upcase.downcase
+    else downcase
+    end
+  end
+
+  #: (Symbol) -> String
+  def __capitalize_1(opt)
+    case __case_opt(opt, false)
+    when 1 then empty? ? "" : self[0].to_s.__ascii_case(2) + self[1..].to_s.__ascii_case(0)
+    when 2 then empty? ? "" : self[0].to_s.__turkic(true).capitalize + self[1..].to_s.__turkic(false).downcase
+    else capitalize
+    end
+  end
+
+  #: (Symbol) -> String
+  def __swapcase_1(opt)
+    case __case_opt(opt, false)
+    when 1 then __ascii_case(3)
+    when 2 then __swap_turkic
+    else swapcase
+    end
+  end
+
+  #: (Symbol, bool) -> Integer
+  def __case_opt(opt, down) = %x{ Integer(rbCaseOpt(opt, bool(down))) }
+
+  #: (Integer) -> String
+  def __ascii_case(mode) = %x{ rbNewStr(self, String(rbASCIICase(string(self), int(mode)))) }
+
+  #: (bool) -> String
+  def __turkic(up) = %x{ String(rbTurkic(string(self), bool(up))) }
+
+  #: () -> String
+  def __swap_turkic = %x{
+    return String(strings.Map(func(r rune) rune {
+      switch {
+      case r == 'i':
+        return 'İ'
+      case r == 'I':
+        return 'ı'
+      case r == 'İ':
+        return 'i'
       case unicode.IsUpper(r):
         return unicode.ToLower(r)
       case unicode.IsLower(r):
@@ -602,6 +674,24 @@ class String < Object
       return &v
     }
     return nil
+  }
+
+  # The last occurrence starting at or before character pos (negative counts from the end).
+  #: (String, Integer) -> Integer?
+  def __rindex_2(s, pos) = %x{
+    r := []rune(string(self))
+    if pos < 0 {
+      pos += Integer(len(r))
+    }
+    if pos < 0 {
+      return nil
+    }
+    hay := string(r[:min(int(pos)+utf8.RuneCountInString(string(s)), len(r))])
+    i := strings.LastIndex(hay, string(s))
+    if i < 0 {
+      return nil
+    }
+    return Ref(Integer(utf8.RuneCountInString(hay[:i])))
   }
 
   #: (String) -> Integer?

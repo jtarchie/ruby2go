@@ -164,10 +164,6 @@ pair.each { |x| puts x }
 def pair = [1, "a"]
 a, b, c = pair
 puts a, b, c
--- destructure_integer.rb --
-# error: main.rb:2: cannot destructure Integer
-a, b = 5
-puts a, b
 -- tuple_eight_elements.rb --
 # error: main.rb:3: only 2- to 7-tuples are supported
 #: () -> [Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer]

@@ -6691,3 +6691,22 @@ module ObjectTests
     end
   end
 end
+
+module ObjectTests
+  # decision 364: a class variable nothing assigns raises NameError where it is read
+  class ObjNoCvar
+    def m = @@obj_nope
+  end
+
+  class ObjNoCvarTest < Minitest::Test
+    def test_unassigned_class_variable
+      msg = begin
+        ObjNoCvar.new.m
+        ""
+      rescue NameError => e
+        e.message
+      end
+      assert_equal "uninitialized class variable @@obj_nope in ObjectTests::ObjNoCvar", msg
+    end
+  end
+end

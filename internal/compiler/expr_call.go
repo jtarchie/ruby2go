@@ -75,6 +75,12 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 
 // genKernelCall compiles a receiverless call, or `Kernel.x` for one of Kernel's module functions, as a Kernel intrinsic when it is one (decision 139).
 func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
+	if n.Receiver == nil && f.owner == nil && f.m == nil && (n.Name == "public" || n.Name == "private") && n.Block == nil &&
+		!slices.ContainsFunc(callArgs(n), func(a parser.Node) bool { _, sym := a.(*parser.SymbolNode); return !sym }) {
+		// main's `public`/`private`: top-level defs are private methods of Object already, and rb2go calls them only
+		// receiverless, so a visibility switch there changes nothing it compiles (decision 364)
+		return expr{code: "nil", typ: TNil{}, lit: true}, true
+	}
 	if n.Receiver == nil {
 		return f.genKernelIntrinsic(n, expected)
 	}

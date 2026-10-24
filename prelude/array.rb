@@ -264,6 +264,30 @@ class Array < Object
     return &x
   }
 
+  #: (Integer) -> Array[E]
+  def __pop_1(n) = %x{
+    self.rbCheckFrozen()
+    if n < 0 {
+      panic(NewArgumentError(Ref(String("negative array size"))))
+    }
+    k := len(self.s) - min(int(n), len(self.s))
+    out := &Array[E]{s: slices.Clone(self.s[k:])}
+    self.s = self.s[:k]
+    return out
+  }
+
+  #: (Integer) -> Array[E]
+  def __shift_1(n) = %x{
+    self.rbCheckFrozen()
+    if n < 0 {
+      panic(NewArgumentError(Ref(String("negative array size"))))
+    }
+    k := min(int(n), len(self.s))
+    out := &Array[E]{s: slices.Clone(self.s[:k])}
+    self.s = self.s[k:]
+    return out
+  }
+
   #: (*E) -> self
   def unshift(*xs) = %x{
     self.rbCheckFrozen()

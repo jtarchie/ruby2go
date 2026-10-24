@@ -1965,3 +1965,25 @@ module StringTests
     end
   end
 end
+
+module StringTests
+  class StringCoreGapsTest < Minitest::Test
+    def test_tr_s
+      assert_equal ["hero", "ifmp", "*e*o", "x"], ["hello".tr_s("l", "r"), "hello".tr_s("a-y", "b-z"), "hello".tr_s("^aeiou", "*"), "this".tr_s("this", "x")]
+      assert_equal ["helo", "h-o", "cc", "bbb"], ["hello".tr_s("l", "l"), "hello".tr_s("el", "-"), "aabbcc".tr_s("ab", ""), "aabb".tr_s("a", "b")]
+    end
+
+    def test_rindex_with_pos
+      assert_equal [0, nil, 2], ["blablabla".rindex("bl", 0), "hello".rindex("lo", 0), "ありがりがとう".rindex("が", 3)]
+      assert_equal [3, nil, 5, 3, 4], ["hello".rindex("l", -2), "hello".rindex("l", -10), "hello".rindex("", 10), "hello".rindex("", 3), "hello".rindex("o", 100)]
+    end
+
+    def test_case_options
+      assert_equal ["AßET", "Arço", "AbC", "ÄBÇ", "ÄbÇ"], ["aßet".upcase(:ascii), "garçon"[1...-1].to_s.capitalize(:ascii), "aBc".swapcase(:ascii), "ÄbÇ".swapcase(:ascii), "ÄBÇ".downcase(:ascii)]
+      assert_equal ["İ", "ı", "i", "I", "İı", "İjk"], ["i".upcase(:turkic), "I".downcase(:turkic), "İ".downcase(:turkic), "ı".upcase(:turkic), "iI".swapcase(:turkic), "ijk".capitalize(:turkic)]
+      assert_equal ["SS", "äb", "ss"], ["ß".upcase(:lithuanian), "ÄB".downcase(:fold), "ß".downcase(:fold)]
+      assert_equal ArgumentError, (begin; "a".upcase(:fold); rescue ArgumentError => e; e.class; end)
+      assert_equal ArgumentError, (begin; "a".swapcase(:bogus); rescue ArgumentError => e; e.class; end)
+    end
+  end
+end

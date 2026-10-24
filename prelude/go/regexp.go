@@ -704,32 +704,7 @@ func rbRindexLoc(r *Regexp, s string) []int {
 		}
 		return nil
 	}
-	rx := r.re
-	rx.check()
-	var find func(from int) []int
-	if rx.alt != nil {
-		find = func(from int) []int {
-			out, err := rx.alt.findAll(s, from, 1)
-			switch {
-			case errors.Is(err, errRxTimeout):
-				panic(RxTimeout(err.Error()))
-			case err != nil:
-				panic(RxUnsupported(err.Error()))
-			case len(out) == 0:
-				return nil
-			}
-			return out[0]
-		}
-	} else {
-		prog := rx.prog
-		if prog == nil {
-			tree, _ := syntax.Parse(rx.Regexp.String(), syntax.Perl)
-			prog, _ = syntax.Compile(tree.Simplify())
-		}
-		np := len(prog.Inst)
-		b := &rxBacktrack{prog: prog, s: s, np: np, visited: make([]uint64, (np*(len(s)+1)+63)/64), caps: make([]int, 2*rx.NumSubexp()+2)}
-		find = b.search
-	}
+	find := rbFindFrom(r, s)
 	var last []int
 	for from := 0; from <= len(s); {
 		loc := find(from)
@@ -741,4 +716,48 @@ func rbRindexLoc(r *Regexp, s string) []int {
 		from = loc[0] + max(w, 1)
 	}
 	return last
+}
+
+// rbFindFrom is r's search of a valid UTF-8 s for the first match starting at or after a byte offset, with the whole
+// of s as context (\A, ^ and lookbehind see what precedes it): rbRindexLoc and Regexp#match(s, pos).
+func rbFindFrom(r *Regexp, s string) func(from int) []int {
+	rx := r.re
+	rx.check()
+	if rx.alt != nil {
+		return func(from int) []int {
+			out, err := rx.alt.findAll(s, from, 1)
+			switch {
+			case errors.Is(err, errRxTimeout):
+				panic(RxTimeout(err.Error()))
+			case err != nil:
+				panic(RxUnsupported(err.Error()))
+			case len(out) == 0:
+				return nil
+			}
+			return out[0]
+		}
+	}
+	prog := rx.prog
+	if prog == nil {
+		tree, _ := syntax.Parse(rx.Regexp.String(), syntax.Perl)
+		prog, _ = syntax.Compile(tree.Simplify())
+	}
+	np := len(prog.Inst)
+	b := &rxBacktrack{prog: prog, s: s, np: np, visited: make([]uint64, (np*(len(s)+1)+63)/64), caps: make([]int, 2*rx.NumSubexp()+2)}
+	return b.search
+}
+
+// rbHasBackref reports a \1..\9 or \k<name> / \k'name' backreference in a Ruby regexp source.
+func rbHasBackref(src string) bool {
+	for i := 0; i+1 < len(src); i++ {
+		if src[i] != '\\' {
+			continue
+		}
+		c := src[i+1]
+		if c >= '1' && c <= '9' || c == 'k' && i+2 < len(src) && (src[i+2] == '<' || src[i+2] == '\'') {
+			return true
+		}
+		i++
+	}
+	return false
 }

@@ -21,6 +21,17 @@ class Random < Object
   #: () -> Float
   def self.__rand_0 = %x{ Float(rbDefaultRandom.mt.real()) }
 
+  # Kernel#srand on the class: returns the previous seed.
+  #: (?Integer) -> Integer
+  def self.srand(seed = 0) = %x{
+    old := rbDefaultRandom.seed
+    if seed == 0 {
+      seed = rbNewSeed()
+    }
+    rbDefaultRandom = rbNewRandom(seed)
+    return old
+  }
+
   #: () -> Integer
   def seed = %x{ self.seed }
 

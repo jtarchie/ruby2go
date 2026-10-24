@@ -149,6 +149,35 @@ end
 def test(i) = "mine #{i}"
 puts test(3)
 
+# main's public/private, `(a; b)`, loops as values, `a, b = 1`, `def obj.m` on a fresh object, `case nil` (decision 364)
+public
+def ctrl_pub = 1
+private
+p ctrl_pub
+p((ctrl_a = 1; ctrl_a + 1))
+p(())
+ctrl_w = while true; break 7; end
+p ctrl_w
+ctrl_wa = while true; break *[1, 2]; end
+p ctrl_wa
+ctrl_i = 0
+p(until ctrl_i > 2; ctrl_i += 1; end)
+ctrl_m, ctrl_n = 1
+p [ctrl_m, ctrl_n]
+ctrl_o = Object.new
+def ctrl_o.to_int = 2
+p [1, 2, 3][ctrl_o]
+ctrl_e = Object.new
+def ctrl_e.each
+  yield 10
+  yield 20
+end
+ctrl_e.each { |v| p v }
+ctrl_c = case nil
+         when *[] then "foo"
+         end
+p ctrl_c
+
 xs = [1] #: Array[Integer]
 return if xs.empty?
 puts "not returned"

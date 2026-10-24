@@ -2758,3 +2758,18 @@ module ArrayTests
     end
   end
 end
+
+module ArrayTests
+  class ArrayPopShiftNTest < Minitest::Test
+    def test_pop_and_shift_n
+      a = [1, 2, 3]
+      assert_equal [[2, 3], [1]], [a.pop(2), a]
+      b = [1, 2, 3]
+      assert_equal [[1, 2], [3]], [b.shift(2), b]
+      assert_equal [[1], [], [], []], [[1].pop(5), [1].shift(0), [1].pop(0), [].shift(3)]
+      assert_equal ArgumentError, (begin; [1].pop(-1); rescue ArgumentError => e; e.class; end)
+      assert_equal FrozenError, (begin; [1].freeze.shift(1); rescue FrozenError => e; e.class; end)
+      assert_equal FrozenError, (begin; [].freeze.pop(0); rescue FrozenError => e; e.class; end)
+    end
+  end
+end

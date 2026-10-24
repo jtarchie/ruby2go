@@ -36,6 +36,50 @@ func (f *fctx) nilableFetch(m *Method, args []parser.Node, block parser.Node) *e
 	return m.Owner.lookup("__fetch_opt")
 }
 
+// unusedBlock is a block given to a method that never yields: MRI ignores it (decision 364), but a core method's block
+// form the prelude lacks (`xs.uniq(&:name)`) is an error, not a silently different answer.
+func (f *fctx) unusedBlock(n parser.Node, m *Method) {
+	switch {
+	case m.File == nil || m.File.isPrelude():
+		f.errorf(n, "%s does not take a block", m.Name)
+	case f.pass == 2 && !f.lenient():
+		f.c.warn(f.f, n, "%s never yields: its block is ignored, as MRI does", m.Name)
+	}
+}
+
+// paramlessBlock reports a call whose block literal takes nothing (`Hash.new { 5 }`): it binds no type parameter.
+func paramlessBlock(n parser.Node) bool {
+	c, ok := n.(*parser.CallNode)
+	if !ok {
+		return false
+	}
+	b, ok := c.Block.(*parser.BlockNode)
+	return ok && b.Parameters == nil
+}
+
+// paramlessBlockEnv binds, for a block that takes nothing, the type parameters only its parameters name (`Hash.new { 5 }`'s
+// K): untyped, as an empty container's (decision 192); what the block returns still binds the rest.
+func (f *fctx) paramlessBlockEnv(n parser.Node, m *Method, env map[string]Type) {
+	if !paramlessBlock(n) || containerOf(m) == "" || f.f == nil || f.f.isPrelude() {
+		return
+	}
+	if body := n.(*parser.CallNode).Block.(*parser.BlockNode).Body; body != nil { //nolint:forcetypeassert // paramlessBlock
+		if st, ok := body.(*parser.StatementsNode); ok {
+			var e expr
+			if catchCompileError(func() {
+				f.probe(func() { e = f.genExpr(&parser.BeginNode{Location: st.Location, Statements: st}, nil) })
+			}) == nil {
+				unify(m.Block.Ret, e.typ, env) // what the block returns binds V
+			}
+		}
+	}
+	for _, tp := range m.TypeParams {
+		if _, ok := env[tp]; !ok {
+			env[tp] = TAny{}
+		}
+	}
+}
+
 // bindTypeParams checks every type parameter of m is bound, first
 // unifying m's return type with the call's expected type, if any
 // (`SizedQueue.new(2) #: SizedQueue[Integer]`).
@@ -49,7 +93,7 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 				env[tp] = TAny{}
 				continue
 			}
-			if owner := containerOf(m); owner != "" && m.Block == nil && f.f != nil && !f.f.isPrelude() { // a block was typed with the parameter already
+			if owner := containerOf(m); owner != "" && (m.Block == nil || paramlessBlock(n)) && f.f != nil && !f.f.isPrelude() { // a block with parameters was typed with it already
 				// an empty core container nothing types: untyped elements, its calls dynamic (decision 192)
 				f.warn(n, "%s's %s is untyped: nothing in the program gives it a type (annotate `#: %s[...]` for static calls; decision 192)", m, tp, owner)
 				env[tp] = TAny{}
@@ -323,16 +367,15 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 		if n == f.retHintNode && f.retHint != nil {
 			unify(m.Ret, f.retHint, env)
 		}
+		f.paramlessBlockEnv(n, m, env)
 		blkCode := f.blockArg(n, m, env, block)
 		if restIdx >= 0 {
 			codes = slices.Insert(codes, restIdx, blkCode)
 		} else {
 			codes = append(codes, blkCode)
 		}
-	} else if block != nil && (!f.lenient() || m.File != nil && m.File.isPrelude()) {
-		// gem code: MRI ignores a block the method never yields to; a core method's block form the prelude lacks
-		// (`xs.uniq(&:name)`) is an error there too, not a silently different answer
-		f.errorf(n, "%s does not take a block", m.Name)
+	} else if block != nil {
+		f.unusedBlock(n, m)
 	}
 	f.bindTypeParams(n, m, env)
 	ret := subst(m.Ret, env)

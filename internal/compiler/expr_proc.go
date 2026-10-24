@@ -21,7 +21,7 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	var src lambdaSrc
 	if ft, ok := expected.(TFunc); ok && ft.Proc {
 		sig = &BlockSig{Params: ft.Params, Ret: ft.Ret, Rest: ft.Rest}
-		if names := f.blockParamList(params); ft.Rest && (len(names) != len(ft.Params) || !names.hasRest()) {
+		if names := f.blockParamList(params); ft.Rest && (len(names) != len(ft.Params) || !names.hasRest()) && !isProcLiteral(n, ft) {
 			f.errorf(n, "a lambda for %s needs %d params, the last a *rest", ft, len(ft.Params))
 		}
 	} else if names := f.blockParamList(params); len(names) > 0 {
@@ -41,6 +41,13 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 		code = f.genClosure(n, block, sig, env)
 	}
 	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src, Rest: sig.Rest}}
+}
+
+// isProcLiteral is `proc { }` or `Proc.new { }` for an untyped `^(*untyped)` Proc: a proc, not a lambda, takes any count,
+// binding its names from the rest as a block's (decision 364).
+func isProcLiteral(n parser.Node, ft TFunc) bool {
+	c, ok := n.(*parser.CallNode)
+	return ok && untypedRest(ft.Params, ft.Rest) && (c.Name == "proc" && c.Receiver == nil || c.Name == "new" && isTopConst(c.Receiver, "Proc"))
 }
 
 // selfProcArg passes `&p` straight on when p is a Proc whose self is rebound and the block wanted rebinds the same

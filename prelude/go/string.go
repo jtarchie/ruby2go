@@ -726,8 +726,9 @@ func rbStrRindex(s, t String) (Integer, bool) {
 
 // rbTr is String#tr; bin reads s byte by byte, each byte the character of its value (a String that is not valid UTF-8,
 // decision 324, or one the compiler knows is binary, decision 352), and so its lists when they are not valid UTF-8 or
-// binLists (a binary String's twin, decision 352).
-func rbTr(s String, from, to string, bin, binLists bool) String {
+// binLists (a binary String's twin, decision 352). sq is tr_s: a run of translated characters giving one character
+// keeps one.
+func rbTr(s String, from, to string, bin, binLists, sq bool) String {
 	expand := func(cs []rune) []rune {
 		var out []rune
 		for i := 0; i < len(cs); i++ {
@@ -792,6 +793,7 @@ func rbTr(s String, from, to string, bin, binLists bool) String {
 		}
 		m[c] = v
 	}
+	hit := false // conv's last rune was translated
 	conv := func(r rune) rune {
 		var v rune
 		var ok bool
@@ -803,6 +805,7 @@ func rbTr(s String, from, to string, bin, binLists bool) String {
 		} else {
 			v, ok = m[r]
 		}
+		hit = ok != negate
 		if negate {
 			if ok {
 				return r
@@ -813,6 +816,22 @@ func rbTr(s String, from, to string, bin, binLists bool) String {
 			return v
 		}
 		return r
+	}
+	if sq {
+		var b strings.Builder
+		prev := rune(-1)
+		for _, r := range string(s) {
+			v := conv(r)
+			switch {
+			case !hit:
+				b.WriteRune(v)
+				prev = -1
+			case v >= 0 && v != prev:
+				b.WriteRune(v)
+				prev = v
+			}
+		}
+		return rbNewStr(s, String(b.String()))
 	}
 	if bin { // ASCII-8BIT: each byte is the character of its value (decision 324)
 		var out []byte
@@ -828,4 +847,51 @@ func rbTr(s String, from, to string, bin, binLists bool) String {
 		return rbNewStr(s, String(out))
 	}
 	return rbNewStr(s, String(strings.Map(conv, string(s))))
+}
+
+// rbCaseOpt reads a case-mapping option Symbol: 0 none (:lithuanian too), 1 :ascii, 2 :turkic, 3 :fold (downcase only).
+func rbCaseOpt(opt Symbol, down bool) int {
+	switch opt {
+	case "lithuanian":
+		return 0
+	case "ascii":
+		return 1
+	case "turkic":
+		return 2
+	case "fold":
+		if down {
+			return 3
+		}
+		panic(NewArgumentError(Ref(String("option :fold only allowed for downcasing"))))
+	}
+	panic(NewArgumentError(Ref(String("invalid option"))))
+}
+
+// rbASCIICase maps s's ASCII letters only: mode 0 down, 2 up, 3 swap.
+func rbASCIICase(s string, mode int) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z' && mode != 0:
+			return r - ('a' - 'A')
+		case r >= 'A' && r <= 'Z' && mode != 2:
+			return r + ('a' - 'A')
+		}
+		return r
+	}, s)
+}
+
+// rbTurkic is the Turkic dotted/dotless i mapping MRI's :turkic adds, to upper case (i -> İ) or lower (I -> ı, İ -> i);
+// every other character is left to the plain mapping.
+func rbTurkic(s string, up bool) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case up && r == 'i':
+			return 'İ'
+		case !up && r == 'I':
+			return 'ı'
+		case !up && r == 'İ':
+			return 'i'
+		}
+		return r
+	}, s)
 }

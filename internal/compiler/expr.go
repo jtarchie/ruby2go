@@ -100,14 +100,9 @@ func (f *fctx) genExpr0(n parser.Node, expected Type) expr {
 		// `f(a: 1)` on a method without keyword params passes a Hash.
 		return f.genHash(n, n.Elements, expected)
 	case *parser.ParenthesesNode:
-		st, ok := n.Body.(*parser.StatementsNode)
-		if !ok || len(st.Body) != 1 {
-			f.errorf(n, "parenthesised statement lists are not supported")
-		}
-		e := f.genExpr(st.Body[0], expected)
-		e.code = "(" + e.code + ")"
-		return e
-	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.CaseMatchNode, *parser.BeginNode:
+		return f.genParens(n, expected)
+	case *parser.IfNode, *parser.UnlessNode, *parser.CaseNode, *parser.CaseMatchNode, *parser.BeginNode,
+		*parser.WhileNode, *parser.UntilNode: // a loop's value is nil, or what a `break v` passes (decision 364)
 		return f.lift(n, expected, func(t tail) { f.genStmt(n, t) })
 	case *parser.MatchRequiredNode, *parser.MatchPredicateNode:
 		return f.genMatch(n)
@@ -420,4 +415,21 @@ func localVarRef(n parser.Node) (name string, depth uint32, ok bool) {
 		return w.Name, w.Depth, true
 	}
 	return "", 0, false
+}
+
+// genParens is `(x)`, `()` (nil) and `(a; b)` (a begin's statements, decision 364).
+func (f *fctx) genParens(n *parser.ParenthesesNode, expected Type) expr {
+	st, ok := n.Body.(*parser.StatementsNode)
+	if n.Body == nil || ok && st == nil { // `()` is nil (decision 364)
+		return expr{code: "nil", typ: TNil{}, lit: true}
+	}
+	if ok && len(st.Body) > 1 { // `(a; b)`: a begin's statements, its value the last
+		return f.genExpr(f.c.rewrite(n, func() parser.Node { return &parser.BeginNode{Location: n.Location, Statements: st} }), expected)
+	}
+	if !ok || len(st.Body) != 1 {
+		f.errorf(n, "parenthesised statement lists are not supported")
+	}
+	e := f.genExpr(st.Body[0], expected)
+	e.code = "(" + e.code + ")"
+	return e
 }

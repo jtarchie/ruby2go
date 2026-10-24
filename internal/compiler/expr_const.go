@@ -400,6 +400,12 @@ func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
 		f.emit("%s = %s", v, f.coerce(n.Value, e, want))
 		return expr{code: v, typ: want}
 	}
+	if n.Name == "$~" || n.Name == "$LAST_MATCH_INFO" { // the frame's last match, set as a MatchData or nil (decision 364)
+		want := TOpt{Elem: f.cls("MatchData")}
+		v := f.lastMatchVar(n)
+		f.emit("%s = %s", v, f.coerce(n.Value, f.genExpr(n.Value, want), want))
+		return expr{code: v, typ: want, done: true}
+	}
 	if k := f.c.globals[n.Name]; k != nil {
 		t := f.c.constType(k)
 		val := f.genExpr(n.Value, t)

@@ -186,3 +186,52 @@ module RegexpTests
     end
   end
 end
+
+module RegexpTests
+  class RegexpCoreGapsTest < Minitest::Test
+    def test_linear_time
+      assert_equal [true, false, true, true, false], [Regexp.linear_time?(/.(?<=(a))/), Regexp.linear_time?(/(a)\1/), Regexp.linear_time?(/[\x80-\xff]/n), Regexp.linear_time?(/(?=a)b/), Regexp.linear_time?(/(?<n>a)\k<n>/)]
+      assert_equal [true, false], [Regexp.linear_time?("a+"), Regexp.linear_time?("(a)\\1")]
+    end
+
+    def test_fixed_encoding
+      # /u is left out: rb2go's literals drop the u/e/s flags (rubyRegexFlags), so it answers false.
+      assert_equal [false, true, false], [/needle/.fixed_encoding?, /文字化け/.fixed_encoding?, /needle/n.fixed_encoding?]
+    end
+
+    def test_match_with_pos
+      re = /(.).(.)/
+      assert_equal [["1", "3"], ["1", "3"], ["が", "う"]], [re.match("01234", 1)&.captures, re.match("01234", -4)&.captures, re.match("ありがとう", 2)&.captures]
+      assert_equal [nil, nil, nil], [re.match("01234", 4), re.match("01234", 10), re.match("01234", -10)]
+      assert_equal [nil, nil, 1], [/\Ab/.match("ab", 1), /^b/.match("ab", 1), /(?<=a)b/.match("ab", 1)&.begin(0)]
+    end
+
+    def test_match_data_deconstruct_keys
+      m = /(?<f>foo)(?<b>bar)?/.match("foobar")
+      assert m
+      if m
+        assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys(nil))
+        assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys([:f, :b]))
+        assert_equal [{}, {}, { f: "foo" }, { b: "bar" }], [m.deconstruct_keys([:f, :b, :c]), m.deconstruct_keys([:c, :f]), m.deconstruct_keys([:f, :c]), m.deconstruct_keys([:b])]
+      end
+      m2 = /(?<f>foo)(?<b>bar)?/.match("foo")
+      assert_equal({ f: "foo", b: nil }, m2&.deconstruct_keys(nil))
+    end
+  end
+end
+
+module RegexpExtendedTests
+  # decision 364: `$~ = m` sets the frame's last match
+  class LastMatchAssignTest < Minitest::Test
+    def test_assign_last_match
+      "cd" =~ /(c)/
+      m = $~
+      "x" =~ /y/
+      assert_nil $~
+      $~ = m
+      assert_equal "c", $1
+      $~ = nil
+      assert_nil $1
+    end
+  end
+end

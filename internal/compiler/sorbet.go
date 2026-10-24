@@ -49,7 +49,12 @@ func (f *File) sorbetWalk(n parser.Node) {
 	case *parser.StatementsNode:
 		n.Body = f.sorbetStatements(n.Body)
 	case *parser.BlockNode:
-		optionalBlockParams(n)
+		if k := optionalBlockParams(n); k > 0 {
+			if f.movedOpts == nil {
+				f.movedOpts = map[*parser.BlockParametersNode]int{}
+			}
+			f.movedOpts[n.Parameters.(*parser.BlockParametersNode)] = k //nolint:forcetypeassert // set when k > 0
+		}
 	case *parser.ClassNode:
 		switch strings.TrimPrefix(constName(n.Superclass), "::") {
 		case "T::Struct", "T::ImmutableStruct", "T::InexactStruct":
@@ -678,16 +683,16 @@ func (f *File) sorbetStruct(n *parser.ClassNode, immutable bool) {
 
 // optionalBlockParams turns `|a, b = d|` into `|a, b|` with `b = d if b.nil?` first in the body: a proc's missing
 // argument is nil, so this is Ruby's default except when nil is passed explicitly (decision 172).
-func optionalBlockParams(b *parser.BlockNode) {
+func optionalBlockParams(b *parser.BlockNode) int {
 	bp, ok := b.Parameters.(*parser.BlockParametersNode)
 	if !ok || bp.Parameters == nil || len(bp.Parameters.Optionals) == 0 || len(bp.Parameters.Posts) > 0 {
-		return
+		return 0
 	}
 	var defaults []parser.Node
 	for _, o := range bp.Parameters.Optionals {
 		op, ok := o.(*parser.OptionalParameterNode)
 		if !ok {
-			return
+			return 0
 		}
 		bp.Parameters.Requireds = append(bp.Parameters.Requireds, &parser.RequiredParameterNode{Location: op.NameLoc, Name: op.Name})
 		read := &parser.LocalVariableReadNode{Location: op.NameLoc, Name: op.Name}
@@ -696,6 +701,7 @@ func optionalBlockParams(b *parser.BlockNode) {
 			Predicate:  &parser.CallNode{Location: op.NameLoc, Receiver: read, Name: "nil?"},
 			Statements: &parser.StatementsNode{Location: op.Location, Body: []parser.Node{write}}})
 	}
+	moved := len(bp.Parameters.Optionals)
 	bp.Parameters.Optionals = nil
 	switch body := b.Body.(type) {
 	case nil:
@@ -708,6 +714,7 @@ func optionalBlockParams(b *parser.BlockNode) {
 		}
 		body.Statements.Body = append(defaults, body.Statements.Body...)
 	}
+	return moved
 }
 
 // bindsSelf: `T.bind(self, X)`, kept for genSelfBind, which narrows self to X when X is a subclass of what self is.

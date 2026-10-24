@@ -31,6 +31,7 @@ type File struct {
 	typeArgs map[int]string
 	// a `T.let`/`T.cast` the Sorbet pass left in an expression, and its RBS type (decision 196)
 	sorbetCasts map[*parser.CallNode]string
+	movedOpts   map[*parser.BlockParametersNode]int // a block's `|x = 1|` params optionalBlockParams made required, for Proc#parameters
 	// `X = T.type_alias { T }` constant writes and the RBS type they name (decision 196)
 	sorbetAliases map[parser.Node]string
 	// each T::Struct class's props, for its synthesized keyword initialize (decision 196)
@@ -81,6 +82,8 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, o
 	}
 	fillAnonForwards(f.Root)
 	if origin != originPrelude {
+		lowerSingletonDefs(f.Root)
+		lowerBlockParamWrites(f.Root)
 		lowerMainIvars(f.Root)
 	}
 	f.indexComments(res.Comments)

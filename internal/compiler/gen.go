@@ -396,9 +396,9 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 		f.emit("%s", e.code)
 		return
 	}
-	if _, void := e.typ.(TVoid); void && t.kind != tailNone && isAny(t.typ) {
-		// A void call where an untyped value is wanted (`tap { work }`,
-		// a Thread's block) runs as a statement and yields nil.
+	if _, void := e.typ.(TVoid); void && t.kind != tailNone && t.typ != nil && (isAny(t.typ) || isOpt(t.typ)) {
+		// a void call where an untyped or optional value is wanted (`tap { work }`, `yield if c` last in a method answering
+		// bool?) runs as a statement and yields nil (decision 364)
 		f.emitExprStmt(n, e)
 		e = expr{code: "nil", typ: TNil{}}
 	}
@@ -432,7 +432,7 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 
 func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 	f.noteBinStmt(n)
-	if e.code == "" || e.done || e.lit {
+	if e.code == "" || e.code == "nil" || e.done || e.lit {
 		return
 	}
 	switch n.(type) {
@@ -450,12 +450,12 @@ func (f *fctx) emitExprStmt(n parser.Node, e expr) {
 		*parser.LocalVariableWriteNode, *parser.InstanceVariableWriteNode,
 		*parser.LocalVariableOperatorWriteNode, *parser.InstanceVariableOperatorWriteNode,
 		*parser.CallOperatorWriteNode, *parser.CallOrWriteNode, *parser.IndexOrWriteNode, *parser.IndexOperatorWriteNode:
-		if e.stmt || strings.HasSuffix(e.code, ")") && !e.assert {
+		if e.stmt || strings.HasSuffix(e.code, ")") && !e.assert && (e.typ == nil || !strings.HasPrefix(e.code, f.c.goType(e.typ)+"(")) { // a conversion is no statement
 			f.emit("%s", e.code)
 			return
 		}
 	}
-	if e.stmt {
+	if e.stmt || isVoid(e.typ) && strings.HasSuffix(e.code, ")") { // a void call has no value to drop
 		f.emit("%s", e.code)
 		return
 	}

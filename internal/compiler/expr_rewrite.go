@@ -170,6 +170,7 @@ func (f *fctx) genCallForm(n *parser.CallNode, expected Type) (expr, bool) {
 		func() (expr, bool) { return f.genBlockCall(n) },
 		func() (expr, bool) { return f.genBareName(n, expected) },
 		func() (expr, bool) { return f.genIndexSplat(n) },
+		func() (expr, bool) { return f.genProcInfo(n) },
 	} {
 		if e, ok := form(); ok {
 			return e, true

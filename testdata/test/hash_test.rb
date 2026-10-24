@@ -2655,3 +2655,15 @@ module HashTests
     end
   end
 end
+
+module HashTests
+  # decision 364: a default block that takes nothing types V from its value, K untyped
+  class HashParamlessDefaultTest < Minitest::Test
+    def test_paramless_default_block
+      h = Hash.new { 5 }
+      assert_equal 0, h.size
+      h[:a] = 1
+      assert_equal [5, 1], [h[:b], h[:a]]
+    end
+  end
+end

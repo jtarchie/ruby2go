@@ -2407,3 +2407,25 @@ module StdlibTests
     end
   end
 end
+
+module StdlibTests
+  class TimeRandomCoreGapsTest < Minitest::Test
+    def test_utc_usec
+      assert_equal [123456, 123456699, 500], [Time.utc(2000, 1, 1, 0, 0, 0, 123456).usec, Time.gm(2000, 1, 1, 0, 0, 0, 123456.7).nsec, Time.utc(2000, 1, 1, 0, 0, 0, Rational(1, 2)).nsec]
+      assert_equal "2000-01-02 03:04:05.000006 UTC", Time.utc(2000, 1, 2, 3, 4, 5, 6).strftime("%Y-%m-%d %H:%M:%S.%6N %Z")
+    end
+
+    def test_time_deconstruct_keys
+      t = Time.utc(2000, 1, 2, 3, 4, 5, Rational(1, 2))
+      assert_equal({ year: 2000, month: 1, day: 2, yday: 2, wday: 0, hour: 3, min: 4, sec: 5, subsec: Rational(1, 2000000), dst: false, zone: "UTC" }, t.deconstruct_keys(nil))
+      assert_equal({ year: 2000, zone: "UTC" }, t.deconstruct_keys([:year, :zone, :foo]))
+      assert_equal({ zone: "UTC", year: 2000 }, t.deconstruct_keys([:zone, :year]))
+    end
+
+    def test_random_srand
+      old = Random.srand(5)
+      assert_equal 5, Random.srand(7)
+      assert_equal 7, Random.srand(old)
+    end
+  end
+end

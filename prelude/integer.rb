@@ -484,6 +484,16 @@ class Integer < Object
   #: () -> [Integer, untyped]
   def polar = negative? ? [abs, Math::PI] : [self, 0]
 
+  # Integer 0, or π for a negative number, as MRI's.
+  #: () -> untyped
+  def arg = negative? ? Math::PI : 0
+
+  #: () -> untyped
+  def angle = arg
+
+  #: () -> untyped
+  def phase = arg
+
   #: () -> Integer?
   def infinite? = nil
 

@@ -135,6 +135,17 @@ func (f *fctx) genIvarExpr(n parser.Node) expr {
 func (f *fctx) genClassVarExpr(n parser.Node) expr {
 	switch n := n.(type) {
 	case *parser.ClassVariableReadNode:
+		if f.lookupClassVar(n.Name) == nil && !f.lenient() { // nothing assigns it: MRI's NameError where the read runs (decision 364)
+			if f.pass == 2 {
+				f.c.warn(f.f, n, "uninitialized class variable %s: raises NameError if this line runs", n.Name)
+			}
+			owner := "Object"
+			if len(f.lex) > 0 {
+				owner = f.lex[len(f.lex)-1].RubyName
+			}
+			msg := fmt.Sprintf("uninitialized class variable %s in %s", n.Name, owner)
+			return expr{code: fmt.Sprintf("panic(NewNameError(Ref(String(%q))))", msg), typ: TVoid{}, stmt: true, noreturn: true}
+		}
 		k := f.classVar(n, n.Name)
 		return f.classVarRead(k, n.Name)
 	case *parser.ClassVariableWriteNode:

@@ -1,10 +1,4 @@
 Compile errors and warnings for control flow, exceptions, locals and assignment forms (docs/design.md decisions 4, 11, 14, 20, 33).
--- while_as_value.rb --
-# error: main.rb:3: unsupported syntax: WhileNode
-i = 0
-r = while i < 3
-  i += 1
-end
 -- rescue_non_class.rb --
 # error: main.rb:5: rescue needs exception class names
 klass = StandardError
@@ -25,9 +19,6 @@ class Holder
     end
   end
 end
--- bare_raise_outside_rescue.rb --
-# error: main.rb:2: bare `raise` outside a rescue clause is not supported
-raise
 -- raise_non_exception_class.rb --
 # error: main.rb:2: String is not an exception class
 raise String
@@ -113,16 +104,6 @@ a, b = nil, 1
 #: () -> [Integer, Integer]
 def two = [1, 2]
 a, b, c = two
--- multi_non_array.rb --
-# error: main.rb:2: cannot destructure Integer
-a, b = 1
--- multi_hash.rb --
-# error: main.rb:3: cannot destructure Hash[String, Integer]
-h = { "a" => 1 } #: Hash[String, Integer]
-k, v = h
--- paren_statement_list.rb --
-# error: main.rb:2: parenthesised statement lists are not supported
-x = (a = 1; a + 1)
 -- always_true_condition.rb --
 # warning: main.rb:3: condition of type Array[Integer] is always true
 arr = [] #: Array[Integer]

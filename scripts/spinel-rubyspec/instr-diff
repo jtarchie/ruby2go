@@ -1,5 +1,12 @@
 #!/bin/bash
-# instr-diff BASE NEW: workloads whose instructions grew more than LIMIT% (default 3), and rows whose status changed.
+# instr-diff PAIR.tsv (from instr with BASE) or instr-diff BASE.tsv NEW.tsv: workloads whose instructions grew more
+# than LIMIT% (default 3), and rows whose status changed. Exit 1 when one grew.
+if [ $# = 1 ]; then
+  awk -F'\t' -v lim="${LIMIT:-3}" '$5 != $3 { printf "%-28s status %s -> %s\n", $1, $5, $3; next }
+    $4 > 0 && $2 > 0 { d = ($2 - $4) * 100 / $4; if (d > lim) { bad = 1; printf "%-28s %+.1f%%  %d -> %d\n", $1, d, $4, $2 } }
+    END { exit bad }' "$1"
+  exit
+fi
 awk -F'\t' -v lim="${LIMIT:-3}" 'NR == FNR { b[$1] = $2; s[$1] = $3; next }
   ($1 in b) && s[$1] != $3 { printf "%-28s status %s -> %s\n", $1, s[$1], $3; next }
   ($1 in b) && b[$1] > 0 && $2 > 0 { d = ($2 - b[$1]) * 100 / b[$1]; if (d > lim) { bad = 1; printf "%-28s %+.1f%%  %d -> %d\n", $1, d, b[$1], $2 } }

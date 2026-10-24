@@ -273,6 +273,24 @@ class Float
   #: () -> [Float, untyped]
   def polar = negative? ? [abs, Math::PI] : [self, 0]
 
+  # Integer 0, π for a set sign bit (-0.0 too), NaN for NaN, as MRI's.
+  #: () -> untyped
+  def arg = %x{
+    switch {
+    case math.IsNaN(float64(self)):
+      return self
+    case math.Signbit(float64(self)):
+      return Float(math.Pi)
+    }
+    return Integer(0)
+  }
+
+  #: () -> untyped
+  def angle = arg
+
+  #: () -> untyped
+  def phase = arg
+
   # MRI's ruby_float_step: a counted loop, so 1.0.step(2.0, 0.1) ends at 2.0 exactly.
   #: (Float, ?Float) { (Float) -> void } -> void
   def step(limit, by = 1.0) = %x{

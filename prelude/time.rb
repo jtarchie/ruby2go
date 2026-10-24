@@ -24,14 +24,15 @@ class Time < Object
     return &Time{t: rbTimeFromFloat(float64(sec)).Add(rbTimeSubsec(sub, unit)).In(loc), utc: utc}
   }
 
-  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
-  def self.utc(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = %x{
+  # usec: microseconds, an Integer, Float or Rational.
+  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
+  def self.utc(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = %x{
     rbTimeArgs(y, mo, d, h, mi, s)
-    return &Time{t: time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(s), 0, time.UTC), utc: true}
+    return &Time{t: time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(s), 0, time.UTC).Add(rbTimeSubsec(usec, "microsecond")), utc: true}
   }
 
-  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
-  def self.gm(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = utc(y, mo, d, h, mi, s)
+  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
+  def self.gm(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = utc(y, mo, d, h, mi, s, usec)
 
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
   def self.local(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = %x{
@@ -209,6 +210,14 @@ class Time < Object
 
   #: () -> bool
   def dst? = %x{ Boolean(self.t.IsDST()) }
+
+  # Pattern matching: nil is every key, else the known ones asked for (an unknown key is skipped, as MRI's).
+  #: (Array[Symbol]?) -> Hash[Symbol, untyped]
+  def deconstruct_keys(keys)
+    all = { year: year, month: month, day: day, yday: yday, wday: wday, hour: hour, min: min, sec: sec,
+            subsec: subsec, dst: dst?, zone: zone } #: Hash[Symbol, untyped]
+    keys.nil? ? all : all.slice(*keys)
+  end
 
   #: () -> bool
   def isdst = dst?

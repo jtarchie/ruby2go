@@ -20,13 +20,12 @@ func (f *fctx) genRaise(n *parser.CallNode) expr {
 		if f.rescues > 0 { // re-raises the exception being handled
 			return expr{code: "panic(r_)", typ: TVoid{}, stmt: true, noreturn: true}
 		}
-		if f.lenient() { // MRI re-raises $!, the exception a calling rescue clause handles (decision 331), else an empty RuntimeError (233)
+		{ // MRI re-raises $!, the exception a calling rescue clause handles (decision 331), else an empty RuntimeError (233; user code: 364)
 			val = f.genNew(n, f.c.classes["RuntimeError"], nil, []expr{{code: `""`, typ: f.cls("String"), lit: true}}, nil, nil)
 			tmp := f.newTmp()
 			f.emit("if %s := rbErrinfo(); %s != nil {\n\tpanic(%s)\n}", tmp, tmp, tmp)
 			break
 		}
-		f.errorf(n, "bare `raise` outside a rescue clause is not supported")
 	case 1:
 		val = f.raiseOne(n, args[0], exc)
 	case 2, 3:
@@ -113,6 +112,26 @@ func (f *fctx) dynRaise() bool { return f.lenient() || f.f.isPrelude() }
 
 // gemBareRaise reports whether some gem file has a receiverless `raise` with no arguments: only then do gem rescue
 // clauses record $! for it (decision 331).
+// bareRaiseOutside reports a bare `raise` not inside a rescue clause, which re-raises the $! of a caller's (decision 364).
+func bareRaiseOutside(n parser.Node, inRescue bool) bool {
+	switch x := n.(type) {
+	case nil:
+		return false
+	case *parser.RescueNode:
+		inRescue = true
+	case *parser.CallNode:
+		if x.Name == "raise" && x.Receiver == nil && x.Arguments == nil && !inRescue {
+			return true
+		}
+	}
+	for _, ch := range n.CompactChildNodes() {
+		if bareRaiseOutside(ch, inRescue) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Compiler) gemBareRaise() bool {
 	if c.bareRaise == 0 {
 		c.bareRaise = 1
@@ -120,7 +139,7 @@ func (c *Compiler) gemBareRaise() bool {
 			if c.gemFile(f) && anyNode(f.Root, func(n parser.Node) bool {
 				call, ok := n.(*parser.CallNode)
 				return ok && call.Name == "raise" && call.Receiver == nil && call.Arguments == nil
-			}) {
+			}) || !c.gemFile(f) && bareRaiseOutside(f.Root, false) {
 				c.bareRaise = 2
 				break
 			}

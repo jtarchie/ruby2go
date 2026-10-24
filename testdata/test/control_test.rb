@@ -5839,3 +5839,32 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  # decision 364: a bare raise outside a rescue re-raises the $! a caller handles, else an empty RuntimeError
+  class BareRaise
+    def again = raise
+  end
+
+  class BareRaiseTest < Minitest::Test
+    def test_bare_raise_outside_rescue
+      got = begin
+        begin
+          raise ArgumentError, "x"
+        rescue StandardError
+          BareRaise.new.again
+        end
+      rescue StandardError => e
+        e
+      end
+      assert_equal [ArgumentError, "x"], [got.class, got.message]
+      f = -> { raise }
+      e2 = begin
+        f.call
+      rescue StandardError => e
+        e
+      end
+      assert_equal [RuntimeError, ""], [e2.class, e2.message]
+    end
+  end
+end

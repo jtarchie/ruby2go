@@ -383,3 +383,35 @@ module MethodTests
     end
   end
 end
+
+module MethodTests
+  # decision 364: a block to a method that never yields is ignored; a reassigned &block keeps yield on the block; a
+  # proc literal for an untyped (*untyped) Proc takes any count; Proc literals answer lambda?/arity/parameters
+  class NoYield
+    def plain(x) = x + 1
+
+    def ze(&block)
+      block = proc { block }
+      yield
+    end
+  end
+
+  class ProcInfoTest < Minitest::Test
+    def test_ignored_block
+      assert_equal 2, NoYield.new.plain(1) { raise "never" }
+    end
+
+    def test_reassigned_block_param
+      assert_equal 3, NoYield.new.ze { 3 }
+    end
+
+    def test_proc_literal_info
+      assert_equal [[:opt, :x], [:opt, :y]], proc { |x, y| }.parameters
+      assert_equal [[:req, :x], [:opt, :y]], ->(x, y = 1) {}.parameters
+      assert_equal [[:keyreq, :k], [:key, :o], [:keyrest, :kr], [:block, :b]], proc { |k:, o: 1, **kr, &b| }.parameters
+      assert_equal [], proc {}.parameters
+      assert_equal [0, -2, 2, -1, 0], [proc { |x = 1| }.arity, ->(x, y = 1) {}.arity, proc { _1 + _2 }.arity, ->(x: 1) {}.arity, proc { |x: 0| }.arity]
+      assert_equal [false, true, true], [proc {}.lambda?, -> {}.lambda?, lambda {}.lambda?]
+    end
+  end
+end

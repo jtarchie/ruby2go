@@ -72,6 +72,45 @@ class Regexp < Object
     return &m
   }
 
+  # The first match starting at or after character pos (negative counts from the end), with the whole String as context.
+  #: (String, Integer) -> MatchData?
+  def __match_2(s, pos) = %x{
+    str := string(s)
+    n := Integer(utf8.RuneCountInString(str))
+    if pos < 0 {
+      pos += n
+    }
+    if pos < 0 || pos > n {
+      return nil
+    }
+    from := len(string([]rune(str)[:pos]))
+    var loc []int
+    if rbValidUTF8(str) {
+      loc = slices.Clone(rbFindFrom(self, str)(from))
+    } else if loc = rbFindLoc(self, str[from:]); loc != nil { // ponytail: a binary subject loses the context before pos
+      for i := range loc {
+        if loc[i] >= 0 {
+          loc[i] += from
+        }
+      }
+    }
+    if loc == nil {
+      return nil
+    }
+    m := rbMatchAt(self, str, loc)
+    return &m
+  }
+
+  # A backreference makes Onigmo's match non-linear; everything else here is (RE2, or regexp2's memoised lookarounds).
+  #: (untyped) -> bool
+  def self.linear_time?(re) = %x{ return Boolean(!rbHasBackref(rbRegexpFromValue(re, nil).src)) }
+
+  # Whether the encoding is fixed: the u, e or s flag, or a non-ASCII source.
+  #: () -> bool
+  def fixed_encoding? = %x{
+    return Boolean(strings.ContainsAny(self.opts, "ues") || strings.Contains(self.src, `\\u`) || strings.IndexFunc(self.src, func(r rune) bool { return r >= 0x80 }) >= 0)
+  }
+
   # The character (not byte) index of the first match.
   #: (String | untyped) -> Integer?
   def =~(s) = %x{
@@ -272,6 +311,24 @@ class MatchData < Object
   def named_captures
     out = {} #: Hash[String, String?]
     names.each { |n| out[n] = self[n] }
+    out
+  end
+
+  # Pattern matching: nil is every named capture; more keys than names is {}; else the keys up to the first non-name.
+  #: (Array[Symbol]?) -> Hash[Symbol, String?]
+  def deconstruct_keys(keys)
+    out = {} #: Hash[Symbol, String?]
+    if keys.nil?
+      names.each { |n| out[n.to_sym] = self[n] }
+      return out
+    end
+    return out if keys.size > names.size
+
+    keys.each do |k|
+      break unless names.include?(k.to_s)
+
+      out[k] = __idx_symbol(k)
+    end
     out
   end
 

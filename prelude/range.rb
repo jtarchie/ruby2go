@@ -176,6 +176,13 @@ class Range < Object
     return self.e
   }
 
+  #: (Integer) -> Array[E]
+  def __last_1(n)
+    raise RangeError, "cannot get the last element of endless range" if __endless?
+
+    to_a.last(n)
+  end
+
   #: () -> bool
   def exclude_end? = %x{ Boolean(self.excl) }
 

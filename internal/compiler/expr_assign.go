@@ -271,7 +271,11 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 		return expr{code: "", typ: TVoid{}, stmt: true, done: true}
 	}
 	tmp := f.newTmp()
-	f.emit("%s := %s", tmp, v.code)
+	if v.lit { // typed: a literal (`a, b = 1`) is an Integer, not Go's int
+		f.emit("var %s %s = %s", tmp, f.c.goType(v.typ), v.code)
+	} else {
+		f.emit("%s := %s", tmp, v.code)
+	}
 	f.destructureInto(n, expr{code: tmp, typ: v.typ}, n.Lefts, n.Rest, n.Rights)
 	return expr{code: tmp, typ: v.typ, stmt: true, done: true} // the value of `a, = x` is x, as a condition (`(a, = x) && ...`) reads it
 }
@@ -360,7 +364,8 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		f.destructureOpt(n, v, t, lefts, rest, trail)
 	case TClass:
 		if t.C.RubyName != "Array" {
-			f.errorf(n, "cannot destructure %s", v.typ)
+			f.destructureOne(n, v, t, lefts, rest, rights)
+			return
 		}
 		et := f.c.goType(t.Args[0])
 		for i, l := range lefts {
@@ -386,6 +391,16 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 	case TFunc, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
+}
+
+// destructureOne is `a, b = x` of an object with no to_ary: x is the first target alone, as a one-element Array (decision 364).
+func (f *fctx) destructureOne(n parser.Node, v expr, t TClass, lefts []parser.Node, rest parser.Node, rights []parser.Node) {
+	if t.C.lookup("to_ary") != nil {
+		f.errorf(n, "cannot destructure %s", v.typ)
+	}
+	gt := f.c.goType(t)
+	one := TClass{C: f.c.classes["Array"], Args: []Type{t}}
+	f.destructureInto(n, expr{code: "(&Array[" + gt + "]{s: []" + gt + "{" + v.code + "}})", typ: one}, lefts, rest, rights)
 }
 
 // destructureUnion is `a, b = x` of a union (decision 241): a type switch gives each target what x's member gives it

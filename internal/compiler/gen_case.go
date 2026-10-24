@@ -34,7 +34,12 @@ func (f *fctx) genCase(n *parser.CaseNode, t tail) {
 	}
 	subj := f.genExpr(n.Predicate, nil)
 	tmp := f.newTmp()
-	f.emit("%s := %s", tmp, f.materialize(subj))
+	if isNil(subj.typ) { // `case nil`: Go has no `x := nil`
+		f.emit("var %s any", tmp)
+		f.emitExprStmt(n.Predicate, subj)
+	} else {
+		f.emit("%s := %s", tmp, f.materialize(subj))
+	}
 	held := expr{code: tmp, typ: subj.typ, bin: subj.bin, binDeps: subj.binDeps} // a binary String stays binary (decision 352)
 	st := stripOpt(subj.typ)
 	u, isUnion := st.(TUnion)

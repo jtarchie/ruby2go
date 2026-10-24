@@ -3,29 +3,43 @@
 # program in spinel's benchmark/ that rb2go builds and runs right (stdout equal to MRI's / spinel's .expected).
 # The count is the speed check for #114 work: deterministic enough to compare two compilers to ~1%.
 #
-#   RB2GO=bin/rb2go SPINEL_DIR=~/src/spinel scripts/spinel-rubyspec/instr > base.tsv
-#   scripts/spinel-rubyspec/instr-diff base.tsv new.tsv     # workloads more than 3% worse, and status changes
+#   RB2GO=new/rb2go BASE=old/rb2go SPINEL_DIR=~/src/spinel scripts/spinel-rubyspec/instr > pair.tsv
+#   scripts/spinel-rubyspec/instr-diff pair.tsv     # workloads more than 3% worse than BASE, and status changes
 #
-# Each row: name, instructions (or 0), status (ok | BUILD: first error | DIFF | CRASH).
+# Each row: name, instructions (or 0), status (ok | BUILD: first error | DIFF | CRASH), and with BASE the same two
+# for BASE's build. Counts drift ~15% between sessions on one machine, so compare a BASE measured in the same run:
+# each run of the two binaries alternates.
 set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 RB2GO=${RB2GO:?name an rb2go binary}
 SP=${SPINEL_DIR:?name a spinel checkout}
 RUNS=${RUNS:-3}
+BASE=${BASE:-}
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+build() { # compiler name src out: "" or the first error line
+  local tr=() e
+  grep -q '^# trace: ' "$2" && tr=(-trace)
+  e=$("$1" build ${tr[@]+"${tr[@]}"} -o "$4" "$3" 2>&1 >/dev/null) && return
+  echo "BUILD: $(grep -v '^warning:' <<<"$e" | head -1 | tr '\t' ' ' | cut -c1-200)"
+}
+count() { # bin dir
+  (cd "$2" && GOMAXPROCS=1 /usr/bin/time -l "$1" 2>&1 >/dev/null | awk '/instructions retired/ {print $1}')
+}
 one() { # name src dir expected-file
-  local n=$1 src=$2 dir=$3 exp=$4 tr=() best=0 i c
-  grep -q '^# trace: ' "$src" && tr=(-trace)
-  if ! e=$("$RB2GO" build ${tr[@]+"${tr[@]}"} -o "$T/$n" "$src" 2>&1 >/dev/null); then
-    printf '%s\t0\tBUILD: %s\n' "$n" "$(grep -v '^warning:' <<<"$e" | head -1 | tr '\t' ' ' | cut -c1-200)"; return
-  fi
-  (cd "$dir" && GOMAXPROCS=1 "$T/$n" > "$T/$n.out" 2>/dev/null) || { printf '%s\t0\tCRASH\n' "$n"; return; }
-  cmp -s "$T/$n.out" "$exp" || { printf '%s\t0\tDIFF\n' "$n"; return; }
+  local n=$1 src=$2 dir=$3 exp=$4 st bst="" i c best=0 bbest=0
+  st=$(build "$RB2GO" "$n" "$src" "$T/$n")
+  [ -n "$BASE" ] && bst=$(build "$BASE" "$n" "$src" "$T/$n.base")
+  check() { # bin: ok | DIFF | CRASH
+    (cd "$dir" && GOMAXPROCS=1 "$1" > "$T/$n.out" 2>/dev/null) || { echo CRASH; return; }
+    cmp -s "$T/$n.out" "$exp" && echo ok || echo DIFF
+  }
+  [ -z "$st" ] && st=$(check "$T/$n")
+  [ -n "$BASE" ] && [ -z "$bst" ] && bst=$(check "$T/$n.base")
   for ((i = 0; i < RUNS; i++)); do
-    c=$(cd "$dir" && GOMAXPROCS=1 /usr/bin/time -l "$T/$n" 2>&1 >/dev/null | awk '/instructions retired/ {print $1}')
-    { [ "$best" = 0 ] || [ "$c" -lt "$best" ]; } && best=$c
+    if [ "$st" = ok ]; then c=$(count "$T/$n" "$dir"); { [ "$best" = 0 ] || [ "$c" -lt "$best" ]; } && best=$c; fi
+    if [ "$bst" = ok ]; then c=$(count "$T/$n.base" "$dir"); { [ "$bbest" = 0 ] || [ "$c" -lt "$bbest" ]; } && bbest=$c; fi
   done
-  printf '%s\t%s\tok\n' "$n" "$best"
+  if [ -n "$BASE" ]; then printf '%s\t%s\t%s\t%s\t%s\n' "$n" "$best" "$st" "$bbest" "$bst"; else printf '%s\t%s\t%s\n' "$n" "$best" "$st"; fi
 }
 for f in "$ROOT"/benchmarks/*.rb; do
   n=$(basename "$f" .rb)

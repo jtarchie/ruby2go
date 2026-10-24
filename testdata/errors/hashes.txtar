@@ -69,10 +69,6 @@ h.each_pair { |k, _v, _z| puts k }
 # error: main.rb:3: tuple index must be a literal in range
 h = { "a" => 1 } #: Hash[String, Integer]
 h.each { |pair| puts pair[2].inspect }
--- destructure_hash.rb --
-# error: main.rb:3: cannot destructure Hash[String, Integer]
-h = { "a" => 1 } #: Hash[String, Integer]
-a, b = h
 -- splat_hash_arg.rb --
 # error: main.rb:5: splat of non-array Hash[String, Integer]
 #: (*untyped) -> Integer

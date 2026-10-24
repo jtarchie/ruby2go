@@ -2530,3 +2530,14 @@ module NumberTests
     end
   end
 end
+
+module NumberTests
+  class FloatArgTest < Minitest::Test
+    def test_arg
+      assert_equal [0, 0, Math::PI, Math::PI, 0, Math::PI], [1.0.arg, 0.0.arg, -0.0.arg, -1.0.arg, 1.0.angle, -1.0.phase]
+      assert_equal [0, Math::PI], [Float::INFINITY.arg, (-Float::INFINITY).arg]
+      assert Float::NAN.arg.nan?
+      assert_equal [0, Math::PI, 0, Math::PI], [1.arg, -1.arg, 0.angle, -5.phase]
+    end
+  end
+end

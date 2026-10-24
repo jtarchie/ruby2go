@@ -34,6 +34,7 @@ type loopFrame struct {
 	redo     string // the label opening the body, when it has a `redo`
 	next     string // a do-while's label before its condition, when the body has a `next`
 	scope    *scope // the scope around the loop: a jump out of a branch skips only what lies inside the loop (leaveBranch)
+	value    *tail  // a while used as a value: where `break v` puts v (decision 364)
 }
 
 // pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
@@ -88,7 +89,9 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 		f.genDoWhile(pred, body, negate, t)
 		return
 	}
+	valued := f.loopValue(body, t)
 	f.pushLoop(loopFor)
+	f.loops[len(f.loops)-1].value = valued
 	saved := f.enterBlock()
 	f.indent++
 	var cond string
@@ -118,12 +121,36 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 	f.leaveBlock(saved)
 	f.emit("}")
 	f.popLoop()
-	f.emptyTail(pred, t)
+	if valued == nil || t.kind != tailAssign {
+		f.emptyTail(pred, t)
+	}
+}
+
+// loopValue is the tail a `break v` in a value-position loop's body assigns, or nil; an assigned value starts nil,
+// since a break skips what follows the loop.
+func (f *fctx) loopValue(body *parser.StatementsNode, t tail) *tail {
+	if t.kind == tailNone || body == nil || !walkNode(body, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.BreakNode:
+			return x.Arguments != nil, false
+		case *parser.WhileNode, *parser.UntilNode, *parser.ForNode, *parser.BlockNode, *parser.LambdaNode:
+			return false, false
+		}
+		return false, !opensScope(x)
+	}) {
+		return nil
+	}
+	if t.kind == tailAssign {
+		f.emptyTail(body, t)
+	}
+	return &t
 }
 
 // genDoWhile is `begin ... end while c`: the body runs first and the condition, which may read its locals, ends each pass.
 func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate bool, t tail) {
+	valued := f.loopValue(body, t)
 	f.pushLoop(loopFor)
+	f.loops[len(f.loops)-1].value = valued
 	saved := f.enterBlock()
 	f.emit("for {")
 	f.indent++
@@ -155,7 +182,9 @@ func (f *fctx) genDoWhile(pred parser.Node, body *parser.StatementsNode, negate 
 	f.leaveBlock(saved)
 	f.emit("}")
 	f.popLoop()
-	f.emptyTail(pred, t)
+	if valued == nil || t.kind != tailAssign {
+		f.emptyTail(pred, t)
+	}
 }
 
 // loopNext finds a `next` that targets the enclosing loop, not a nested loop, block or def.
@@ -177,6 +206,20 @@ func loopNext(n parser.Node) parser.Node {
 }
 
 func (f *fctx) genBreak(n *parser.BreakNode) {
+	if n.Arguments != nil && len(f.loops) > 0 && f.loops[len(f.loops)-1].value != nil {
+		l := f.loops[len(f.loops)-1]
+		args := n.Arguments.Arguments
+		var v parser.Node = &parser.ArrayNode{Location: n.Location, Elements: args} // `break 1, 2` and `break *xs` are an Array
+		if len(args) == 1 && !isSplat(args[0]) {
+			v = args[0]
+		}
+		f.applyTail(n, f.genExpr(v, l.value.want()), *l.value)
+		if l.value.kind == tailReturn && f.begins == l.begins && l.value.typ != nil && !isVoid(l.value.typ) {
+			return // the return left the loop
+		}
+		f.emitBreak(l)
+		return
+	}
 	if n.Arguments != nil {
 		f.errorf(n, "break with a value is not supported")
 	}

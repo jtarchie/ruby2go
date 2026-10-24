@@ -357,7 +357,7 @@ class String
 
   # @binary
   #: (String, String) -> String
-  def __bin_tr(from, to) = %x{ rbTr(self, string(from), string(to), true, true) }
+  def __bin_tr(from, to) = %x{ rbTr(self, string(from), string(to), true, true, false) }
 
   # @binary
   #: (String) -> String

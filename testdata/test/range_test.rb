@@ -97,3 +97,13 @@ module RangeTests
     end
   end
 end
+
+module RangeTests
+  class RangeLastNTest < Minitest::Test
+    def test_last_n
+      assert_equal [[], [1], [], [4, 5], [0, 1, 2, 3, 4], ["d", "e"]], [(0..2).last(0), (1..1).last(1), (0...0).last(2), (0..5).last(2), (0...5).last(10), ("a".."e").last(2)]
+      assert_equal ArgumentError, (begin; (0..2).last(-1); rescue ArgumentError => e; e.class; end)
+      assert_equal RangeError, (begin; (0..).last(1); rescue RangeError => e; e.class; end)
+    end
+  end
+end
