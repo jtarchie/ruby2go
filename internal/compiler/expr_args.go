@@ -867,15 +867,23 @@ func (f *fctx) restArgs(n parser.Node, args []parser.Node, params []Type) string
 		if sp, ok := a.(*parser.SplatNode); ok {
 			e := f.genExpr(sp.Expression, nil)
 			t, isArr := e.typ.(TClass)
+			if isArr && t.C.RubyName == "Array" && f.blockSig != nil && len(params) == len(f.blockSig.Params) {
+				f.noteYield(last, sp, t.Args[0]) // what `yield(*xs)` passes types the block's *rest (decision 363)
+			}
 			switch {
 			case isArr && t.C.RubyName == "Array" && typeEq(t.Args[0], elem):
 				acc = "append(" + acc + ", " + e.code + ".s...)"
 			case isArr && t.C.RubyName == "Array" && isAny(elem):
 				acc = "append(" + acc + ", rbAnySlice(" + e.code + ")...)"
+			case isAny(e.typ) && isAny(elem): // MRI's splat of an untyped value: an Array spreads, nil is nothing, else one value
+				acc = "append(" + acc + ", rbSplatAny(" + e.code + ")...)"
 			default:
 				f.errorf(sp, "cannot splat %s into a block's *rest of %s", e.typ, elem)
 			}
 			continue
+		}
+		if kw, ok := a.(*parser.KeywordHashNode); ok { // a block takes `k: v` as one Hash, as a proc does
+			a = &parser.HashNode{Location: kw.Location, Elements: kw.Elements}
 		}
 		e := f.genExpr(a, elem)
 		acc = "append(" + acc + ", " + f.coerce(a, e, elem) + ")"

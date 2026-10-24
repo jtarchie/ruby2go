@@ -24,7 +24,7 @@ puts 65.chr("SJIS")
 # error: main.rb:2: encoding KOI8-R is not supported
 Encoding.default_external = "KOI8-R"
 -- constant.rb --
-# error: main.rb:2: uninitialized constant
+# warning: main.rb:2: uninitialized constant
 puts Encoding::Shift_JIS
 -- scrub_bang.rb --
 # error: main.rb:3: undefined method scrub! for String: Strings are immutable in rb2go, so assign the result of scrub instead

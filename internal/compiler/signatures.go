@@ -290,12 +290,16 @@ func (c *Compiler) paramSig(m *Method) (string, bool) {
 			bps[i] = "untyped"
 			m.pendingBlock = append(m.pendingBlock, pendingParam{key: yieldKey(m, i), name: "yield's argument " + strconv.Itoa(i+1)})
 		}
+		splat := !c.gemFile(from.File) && splatYields(from.Node.Body)
+		if splat { // `yield(*xs)`: the block takes the elements, `{ (*T) -> R }` (decision 363)
+			bps[0] = "*untyped"
+		}
 		ret := "void"
 		// a gem method's tail yield is its value (`if owned? then yield else @lock.synchronize { yield } end`, decision 226;
 		// liquid's `result = with_profiling(context) { ... }`, decision 331): a gem block's `return` unwinds through the
 		// closure (decision 247), so Cuba's `on` returning from inside `try`'s block still works.
 		wrapper := c.pruneGems && from.File != nil && c.gemFile(from.File)
-		if yieldValueUsed(from.Node.Body, wrapper) {
+		if yieldValueUsed(from.Node.Body, wrapper || splat) { // a *rest block is never a Go iterator: a tail yield is the method's value
 			ret = "untyped"
 		}
 		sig += map[bool]string{true: "?", false: ""}[optional] + "{ (" + strings.Join(bps, ", ") + ") -> " + ret + " } "

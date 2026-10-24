@@ -264,8 +264,8 @@ func (f *fctx) genBodyConst(n *parser.ConstantWriteNode) {
 	typ := f.c.constType(k)
 	f.lineOf(n)
 	f.emit("%s = %s", k.GoName, f.coerce(n.Value, f.genExpr(n.Value, typ), typ))
-	if k.guarded {
-		f.emit("%s = true", constSet(k))
+	if t := cmp.Or(k.first, k); t.guarded {
+		f.emit("%s = true", constSet(t))
 	}
 }
 
@@ -303,16 +303,23 @@ func (f *fctx) genConstInit1(k *Const) {
 	sub.hoistLocals(methodScope) // `X = if (path = a).exist? || (path = b).exist?`: assigned inside conditions
 	sub.buf.WriteString(body.String())
 	fmt.Fprintf(f.buf, "//line %s:%d\n", k.File.Name, k.Line)
+	name := k.GoName
+	if p := k.first; p != nil { // MRI's warning, then the new value (decision 363)
+		name = p.GoName
+		short := k.RubyName[strings.LastIndex(k.RubyName, ":")+1:]
+		msg := fmt.Sprintf("%s:%d: warning: already initialized constant %s\n%s:%d: warning: previous definition of %s was here\n", k.File.Name, k.Line, k.RubyName, p.File.Name, p.Line, short)
+		f.emit("rbStderrIO().Write(String(%q))", msg)
+	}
 	if sub.buf.Len() == 0 {
-		f.emit("%s = %s", k.GoName, code)
+		f.emit("%s = %s", name, code)
 	} else {
-		f.emit("%s = rbBeginV(func() %s {", k.GoName, f.c.goType(typ))
+		f.emit("%s = rbBeginV(func() %s {", name, f.c.goType(typ))
 		f.buf.WriteString(sub.buf.String())
 		f.emit("\treturn %s", code)
 		f.emit("})")
 	}
-	if k.guarded {
-		f.emit("%s = true", constSet(k))
+	if t := cmp.Or(k.first, k); t.guarded {
+		f.emit("%s = true", constSet(t))
 	}
 }
 

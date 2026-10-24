@@ -173,8 +173,10 @@ func (f *fctx) genConstRead(n parser.Node) expr {
 	if f.lenient() { // gem code: MRI raises NameError where the read runs, not when the method loads (decision 218)
 		return expr{code: fmt.Sprintf("rbConstRead[any](false, nil, %q)", f.constMissing(n)), typ: TAny{}}
 	}
-	f.errorf(n, "uninitialized constant %s", f.f.text(n.GetLocation()))
-	return expr{}
+	if f.pass == 2 { // MRI raises NameError where the read runs: code that never runs it still compiles (decision 363)
+		f.c.warn(f.f, n, "uninitialized constant %s: raises NameError if this line runs", f.f.text(n.GetLocation()))
+	}
+	return expr{code: fmt.Sprintf("panic(NewNameError(Ref(String(%q))))", "uninitialized constant "+f.constMissing(n)), typ: TVoid{}, stmt: true, noreturn: true}
 }
 
 // genData is the main file's DATA: one StringIO over the text after `__END__` (MRI's is a File at that offset; reading it reads the same).

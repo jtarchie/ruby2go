@@ -135,6 +135,20 @@ main_a, @main_b = 1, 2
 p [main_a, @main_b, @main_n]
 p [defined?(@main_arr), defined?(@main_never), @main_never]
 
+# a constant assigned again: MRI's warning, then the new value; one never defined raises where it is read (decision 363)
+CTRL_AGAIN = 1
+CTRL_AGAIN = 2
+p CTRL_AGAIN
+def ctrl_dead = CtrlMissing.record(:x)
+begin
+  ctrl_dead
+rescue NameError => e
+  puts e.message
+end
+# a top-level def hides Kernel's method of the same name (decision 363)
+def test(i) = "mine #{i}"
+puts test(3)
+
 xs = [1] #: Array[Integer]
 return if xs.empty?
 puts "not returned"

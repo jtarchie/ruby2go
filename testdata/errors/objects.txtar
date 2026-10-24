@@ -41,19 +41,11 @@ end
 
 class C < B
 end
--- constant_reassigned.rb --
-# error: main.rb:3: constant LIMIT is already defined
-LIMIT = 1
-LIMIT = 2
--- constant_reassigned_in_module.rb --
-# error: main.rb:7: constant M::X is already defined
-module M
-  X = 1
-end
-
-module M
-  X = 2
-end
+-- constant_reassigned_other_type.rb --
+# error: main.rb:3: undefined method call for String (a member of String | ^() -> Integer)
+LIMIT = -> { 1 }
+LIMIT.call
+LIMIT = "two"
 -- class_body_rescue.rb --
 # error: main.rb:2: unsupported class body
 class Guarded
@@ -444,10 +436,10 @@ NOTHING = nil
 # error: main.rb:2: rbs: unexpected end of type
 LIST = [] #: Array[
 -- constant_unknown.rb --
-# error: main.rb:2: uninitialized constant MISSING
+# warning: main.rb:2: uninitialized constant MISSING: raises NameError if this line runs
 puts MISSING
 -- compact_form_no_outer_scope.rb --
-# error: main.rb:11: uninitialized constant SECRET
+# warning: main.rb:11: uninitialized constant SECRET: raises NameError if this line runs
 module Outer
   SECRET = "s"
 
@@ -669,7 +661,7 @@ class Box
   end
 end
 -- const_via_class_object.rb --
-# error: main.rb:6: uninitialized constant self.class::SCALE
+# warning: main.rb:6: uninitialized constant self.class::SCALE: raises NameError if this line runs
 class Base
   SCALE = 2
 

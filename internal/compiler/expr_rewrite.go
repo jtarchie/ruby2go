@@ -169,12 +169,77 @@ func (f *fctx) genCallForm(n *parser.CallNode, expected Type) (expr, bool) {
 		func() (expr, bool) { return f.genStringBang(n) },
 		func() (expr, bool) { return f.genBlockCall(n) },
 		func() (expr, bool) { return f.genBareName(n, expected) },
+		func() (expr, bool) { return f.genIndexSplat(n) },
 	} {
 		if e, ok := form(); ok {
 			return e, true
 		}
 	}
 	return expr{}, false
+}
+
+// genIndexSplat is `a[*xs]` and `a[*xs] = v` (decision 363): `[]`'s arity picks its form, so it is a switch on
+// xs's length over the one- and two-index forms, each the static call; a length no form compiles for raises ArgumentError.
+func (f *fctx) genIndexSplat(n *parser.CallNode) (expr, bool) {
+	args := callArgs(n)
+	want := map[string]int{"[]": 1, "[]=": 2}[n.Name]
+	if want == 0 || n.Receiver == nil || n.Block != nil || f.lenient() || len(args) != want || !isSplat(args[0]) {
+		return expr{}, false
+	}
+	xs := f.genExpr(args[0].(*parser.SplatNode).Expression, nil) //nolint:forcetypeassert // isSplat
+	at, ok := xs.typ.(TClass)
+	if !ok || at.C.RubyName != "Array" || len(at.Args) != 1 {
+		return expr{}, false
+	}
+	pin := func(e expr) *exprNode {
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, e.code)
+		return &exprNode{Node: n, e: expr{code: tmp, typ: e.typ}}
+	}
+	xn, recv := pin(xs), pin(f.valueOf(f.genExpr(n.Receiver, nil)))
+	tail := args[1:]
+	if len(tail) == 1 && !pureNode(tail[0]) { // a literal's Go type follows the parameter: left to each arm
+		tail = []parser.Node{pin(f.genExpr(tail[0], nil))}
+	}
+	arm := func(k int) parser.Node {
+		idx := make([]parser.Node, 0, k+len(tail))
+		for i := range k {
+			idx = append(idx, &exprNode{Node: n, e: expr{code: fmt.Sprintf("rbSplatElem(%s, %d)", xn.e.code, i), typ: at.Args[0]}})
+		}
+		return &parser.CallNode{Location: n.Location, Receiver: recv, Name: n.Name, Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: append(idx, tail...)}}
+	}
+	var types []Type
+	var arities []int
+	for k := 1; k <= 2; k++ {
+		var e expr
+		if f.attempt(func() { f.probe(func() { e = f.genExpr(arm(k), nil) }) }) == nil {
+			types, arities = append(types, e.typ), append(arities, k)
+		}
+	}
+	if len(types) == 0 {
+		return expr{}, false
+	}
+	t := types[0]
+	for _, u := range types[1:] {
+		if j, ok := join(t, u); ok {
+			t = j
+		} else {
+			t = TAny{}
+		}
+	}
+	out := f.newTmp()
+	f.emit("var %s %s", out, f.c.goType(t))
+	f.emit("switch len(%s.s) {", xn.e.code)
+	for _, k := range arities {
+		f.emit("case %d:", k)
+		f.indent++
+		f.emit("%s = %s", out, f.coerce(n, f.genExpr(arm(k), nil), t))
+		f.indent--
+	}
+	f.emit("default:")
+	f.emit("\tpanic(NewArgumentError(Ref(String(fmt.Sprintf(\"wrong number of arguments (given %%d, expected %d..%d)\", len(%s.s)%s)))))", arities[0]+len(tail), arities[len(arities)-1]+len(tail), xn.e.code, map[bool]string{true: "+1", false: ""}[len(tail) == 1])
+	f.emit("}")
+	return expr{code: out, typ: t}, true
 }
 
 // undefsSingleton is `singleton_class.undef_method(:x)`, `.remove_method(:x)` or `.send(:undef_method, :x)` on the current class's singleton.

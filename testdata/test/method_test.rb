@@ -356,3 +356,30 @@ end
 # CurlDownloadStrategy#curl)
 #: (*String, ?print_stdout: bool, ?timeout: Integer?, **untyped) -> String
 def method_curl(*args, print_stdout: true, timeout: nil, **options) = "#{args} #{print_stdout} #{timeout.inspect} #{options}"
+
+module MethodTests
+  # `yield(*xs)`: the block takes the elements, `{ (*T) -> R }`, and a tail yield is the method's value (decision 363)
+  class SplatYielder
+    def m(*a)
+      yield(*a)
+    end
+
+    def k(*a)
+      yield(*a, 9)
+    end
+
+    def never(*a)
+      yield(*a)
+    end
+  end
+
+  class SplatYieldTest < Minitest::Test
+    def test_yield_splat
+      y = SplatYielder.new
+      assert_equal 3, y.m(1, 2) { |x, z| x + z }
+      assert_equal 1, y.m(1, 2) { |x| x }
+      assert_equal [1, 2], y.m(1, 2) { |*r| r }
+      assert_equal [4, 9], y.k(4) { |x, z| [x, z] }
+    end
+  end
+end

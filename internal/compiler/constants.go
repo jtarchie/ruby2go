@@ -21,6 +21,12 @@ func (c *Compiler) addConst(f *File, n parser.Node, name string, scope []*Class)
 
 // addConstAt records constant full, assigned value in lexical scope (a `A::B = v` names its namespace itself).
 func (c *Compiler) addConstAt(f *File, n parser.Node, full string, value parser.Node, scope []*Class) {
+	if prev := c.consts[full]; prev != nil && c.classes[full] == nil && value != nil && !f.isPrelude() && prev.File == f {
+		k := &Const{RubyName: full, Value: value, srcPos: srcPos{f, f.line(n.GetLocation().StartOffset)}, Scope: scope, first: prev}
+		prev.rewrites = append(prev.rewrites, k)
+		c.constList = append(c.constList, k)
+		return
+	}
 	if c.consts[full] != nil || c.classes[full] != nil {
 		c.errorf(f, n, "constant %s is already defined", full)
 	}

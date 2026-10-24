@@ -228,6 +228,9 @@ func (c *Compiler) nameGo() {
 		claim(cls.File, &cls.Name, cls.goNames)
 	}
 	for _, k := range c.constList {
+		if k.first != nil {
+			continue
+		}
 		claim(k.File, &k.GoName, func() []string { return []string{k.GoName} })
 	}
 }

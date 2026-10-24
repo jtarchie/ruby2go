@@ -256,6 +256,21 @@ func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	return used
 }
 
+// splatYields reports a body with a yield that passes a splat, `yield(*xs)`: its block takes any count.
+func splatYields(body parser.Node) bool {
+	found := false
+	walkNode(body, func(x parser.Node) (bool, bool) {
+		if opensScope(x) {
+			return false, false
+		}
+		if y, ok := x.(*parser.YieldNode); ok && y.Arguments != nil && slices.ContainsFunc(y.Arguments.Arguments, isSplat) {
+			found = true
+		}
+		return false, true
+	})
+	return found
+}
+
 // yieldShape is the block an unannotated def yields to: how many values
 // each yield passes (all must agree), and whether block_given? makes it
 // optional. ok is false for a def that does not yield, or names its block.
@@ -265,6 +280,16 @@ func (c *Compiler) yieldShape(m *Method) (n int, optional, ok bool) {
 	}
 	n = -1
 	agree := true
+	if !c.gemFile(m.File) && splatYields(m.Node.Body) { // a gem's `yield(*args)` spreads at run time (decision 250)
+		n = 1 // the *rest (decision 363)
+		walkNode(m.Node.Body, func(x parser.Node) (bool, bool) {
+			if c, ok := x.(*parser.CallNode); ok && c.Receiver == nil && c.Name == "block_given?" {
+				optional = true
+			}
+			return false, !opensScope(x)
+		})
+		return n, optional, true
+	}
 	walkNode(m.Node.Body, func(x parser.Node) (bool, bool) {
 		if opensScope(x) {
 			return false, false

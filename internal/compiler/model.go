@@ -120,11 +120,13 @@ type Const struct {
 	poison    string   // a gem constant whose value does not compile: why; it stays nil (decision 205)
 	Type      Type
 	resolving bool
-	guarded   bool // may be read before its assignment runs (guardConsts)
-	inMethod  bool // a class variable first assigned in a method: no init in main, reads check its set flag
-	inBody    bool // reads a local of its class body: assigned in the body's grouped statements (decision 170)
-	inMain    bool // a top-level constant reading a top-level local: assigned in place in its file's top level (decision 296)
-	initAt    *int // a constant lifted out of another's value: the offset it initializes at (decision 244)
+	guarded   bool     // may be read before its assignment runs (guardConsts)
+	inMethod  bool     // a class variable first assigned in a method: no init in main, reads check its set flag
+	inBody    bool     // reads a local of its class body: assigned in the body's grouped statements (decision 170)
+	inMain    bool     // a top-level constant reading a top-level local: assigned in place in its file's top level (decision 296)
+	initAt    *int     // a constant lifted out of another's value: the offset it initializes at (decision 244)
+	first     *Const   // a later `X = v` of the constant again: assigns first's variable, MRI's warning first (decision 363)
+	rewrites  []*Const // this constant's later assignments
 }
 
 // Ivar is an instance variable of a struct class.

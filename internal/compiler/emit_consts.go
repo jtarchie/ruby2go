@@ -53,6 +53,9 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 	if k.Type != nil {
 		return k.Type
 	}
+	if k.first != nil {
+		return c.constType(k.first)
+	}
 	if _, boot := c.bootConstClasses[k.RubyName]; boot {
 		c.constClass(k) // a class picked at load time: its value becomes that class (decision 203)
 	}
@@ -107,13 +110,31 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 	if isNil(e.typ) || isVoid(e.typ) {
 		c.errorf(k.File, k.Value, "cannot infer the type of constant %s; annotate it with `#: T`", k.RubyName)
 	}
-	k.Type = e.typ
+	k.Type = c.joinAgains(k, e.typ)
 	return k.Type
+}
+
+// joinAgains is a constant's type with what its later assignments give it, as a local joins its writes (decision 363).
+func (c *Compiler) joinAgains(k *Const, t Type) Type {
+	for _, a := range k.rewrites {
+		f := c.constFctx(a)
+		var e expr
+		f.probe(func() { e = f.genExpr(a.Value, nil) })
+		j, ok := join(t, e.typ)
+		if !ok {
+			c.errorf(a.File, a.Value, "constant %s is assigned %s here and %s before; annotate the first with `#: T`", k.RubyName, e.typ, t)
+		}
+		t = j
+	}
+	return t
 }
 
 // emitConst declares a constant's package variable. Its value is assigned
 // in main, in source order, where MRI would evaluate it (see constInit).
 func (c *Compiler) emitConst(k *Const) {
+	if k.first != nil {
+		return
+	}
 	c.lineDirective(k.File, k.Line)
 	c.w("var %s %s\n\n", k.GoName, c.goType(c.constType(k)))
 	if k.guarded {

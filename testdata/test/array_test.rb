@@ -2732,3 +2732,29 @@ module ArrayTests
     end
   end
 end
+
+module ArrayTests
+  # `a[*xs]` and `a[*xs] = v`: a switch on xs's length over the one- and two-index forms (decision 363)
+  class ArrayIndexSplatTest < Minitest::Test
+    def test_index_splat
+      a = ("a".."j").to_a
+      args = [1, 3]
+      a[*args] = "X"
+      assert_equal ["a", "X", "e", "f", "g", "h", "i", "j"], a
+      assert_equal ["X", "e", "f"], a[*args]
+      one = [0]
+      a[*one] = "Z"
+      assert_equal "Z", a[*one]
+      h = {1 => 2}
+      k = [5]
+      h[*k] = 6
+      assert_equal({1 => 2, 5 => 6}, h)
+      begin
+        a[*[1, 2, 3]] = "q"
+        flunk "no error"
+      rescue ArgumentError => e
+        assert_kind_of ArgumentError, e
+      end
+    end
+  end
+end

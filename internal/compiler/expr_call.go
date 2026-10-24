@@ -147,6 +147,9 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	default:
 		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
+	if recv.noreturn && recv.stmt { // `Missing.record(x)`: the NameError is raised before the call (decision 363)
+		return recv
+	}
 	f.noteElems(n)
 	if e, ok := f.genInstanceEval(n, recv); ok {
 		return e
@@ -213,7 +216,7 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 		}
 	case TAny, TFunc, TNil, TOpt, TTuple, TUnion, TVoid: // no class here to look in: only a top-level def can answer
 	}
-	if e == nil {
+	if e == nil || f.c.topOverKernel(e, name) {
 		if td := f.c.topDefs[name]; td != nil {
 			e = &entry{M: td}
 		}
@@ -222,6 +225,12 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 		f.c.inferRet(e.M)
 	}
 	return e
+}
+
+// topOverKernel reports a Kernel method a top-level def of the same name hides: the def is Object's, ahead of Kernel
+// in every ancestry (decision 363).
+func (c *Compiler) topOverKernel(e *entry, name string) bool {
+	return e.Owner != nil && e.Owner.RubyName == "Kernel" && c.topDefs[name] != nil
 }
 
 // storeNames are the Hash and Array methods that put their arguments in the container: a gem's untyped value converted
@@ -520,7 +529,7 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		return f.abstractCall(n, t, recv, name, args, block)
 	}
 	e := t.C.lookup(name)
-	if e == nil && recv.code == f.selfCode {
+	if (e == nil || f.c.topOverKernel(e, name)) && recv.code == f.selfCode {
 		if td := f.c.topDefs[name]; td != nil {
 			e = &entry{M: td}
 		}
@@ -719,7 +728,7 @@ func (f *fctx) kernelCall(n parser.Node, name string, args []parser.Node) expr {
 // selfCall is a call on self typed Self: the owner's method, a top-level def, a Class method answered by the class
 // object a module extends, method_missing, a delegator's object, a subclass's override, else Object's.
 func (f *fctx) selfCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
-	if e := f.owner.lookup(name); e != nil {
+	if e := f.owner.lookup(name); e != nil && !f.c.topOverKernel(e, name) {
 		return f.selfEntryCall(n, e, recv, args, block)
 	}
 	if td := f.c.topDefs[name]; td != nil {
