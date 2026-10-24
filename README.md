@@ -238,25 +238,25 @@ median of 9 runs over [`benchmarks/`](benchmarks/)):
 
 | workload | MRI | MRI+YJIT | rb2go | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.095s | 0.019s | 0.016s | 0.018s | 0.017s |
-| `Hash` counting, 500k | 0.11s | 0.10s | 0.018s | 0.009s | 0.014s | 0.011s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.14s | 0.023s | 0.013s | 0.014s | 0.013s |
-| string build/split, 100k | 0.11s | 0.11s | 0.031s | 0.018s | 0.025s | 0.017s |
-| `Math.sin`/`cos`, 200k | 0.090s | 0.077s | 0.012s | 0.008s | 0.009s | 0.009s |
-| classes, polymorphic calls, Comparable | 0.27s | 0.17s | 0.037s | - | 0.015s | 0.014s |
-| binary trees (allocation), depth 10 | 0.083s | 0.070s | 0.012s | 0.010s | 0.012s | 0.009s |
-| splay tree | 0.22s | 0.12s | 0.014s | 0.019s | 0.018s | 0.012s |
-| blocks, procs, lambdas, enumerator chains | 0.35s | 0.34s | 0.065s | 0.14s | 0.038s | 0.013s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.078s | 2.52s | 0.020s |
+| `fib(32)` | 0.27s | 0.092s | 0.018s | 0.014s | 0.017s | 0.015s |
+| `Hash` counting, 500k | 0.11s | 0.097s | 0.016s | 0.007s | 0.013s | 0.010s |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.13s | 0.021s | 0.011s | 0.012s | 0.010s |
+| string build/split, 100k | 0.11s | 0.11s | 0.030s | 0.018s | 0.024s | 0.017s |
+| `Math.sin`/`cos`, 200k | 0.084s | 0.071s | 0.008s | 0.006s | 0.008s | 0.007s |
+| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.037s | - | 0.014s | 0.012s |
+| binary trees (allocation), depth 10 | 0.081s | 0.067s | 0.009s | 0.008s | 0.010s | 0.007s |
+| splay tree | 0.21s | 0.12s | 0.013s | 0.019s | 0.018s | 0.012s |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.33s | 0.065s | 0.15s | 0.036s | 0.012s |
+| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.076s | 2.50s | 0.018s |
 | regexp match/gsub/scan/tr, StringScanner | 0.76s | 0.73s | 0.21s | 0.84s | 0.21s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.54s | 0.53s | 0.12s | 1.12s | 0.054s | 0.068s |
-| format, StringIO, case mapping | 0.50s | 0.47s | 0.24s | 0.21s | 0.14s | 0.11s |
+| sort_by/group_by/tally, Set, Struct | 0.56s | 0.54s | 0.12s | 1.11s | 0.053s | 0.068s |
+| format, StringIO, case mapping | 0.50s | 0.47s | 0.24s | 0.21s | 0.14s | 0.10s |
 | JSON generate + parse | 0.14s | 0.16s | 0.12s | 0.24s | 0.13s | 0.25s |
-| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.34s | 0.21s | - | 0.039s | 0.035s |
-| liquid gem: a template rendered 400 times | 0.39s | 0.31s | 0.17s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.56s | 0.39s | - | - | - |
-| total (rows each one ran) | 5.37s | 4.56s | 1.81s | 2.73s | 3.26s | 0.87s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.3x | 1.4x | 5.2x |
+| pairing_heap gem: Dijkstra + heapsort | 0.68s | 0.34s | 0.21s | - | 0.038s | 0.035s |
+| liquid gem: a template rendered 400 times | 0.37s | 0.30s | 0.16s | - | - | - |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.55s | 0.40s | - | - | - |
+| total (rows each one ran) | 5.37s | 4.53s | 1.80s | 2.70s | 3.22s | 0.86s |
+| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.3x | 1.4x | 5.3x |
 
 What the columns are:
 - **rb2go** and **spinel** ([matz/spinel](https://github.com/matz/spinel), a
@@ -325,6 +325,24 @@ error. A looser name-level metric,
 [`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 81.2% of
 core's method spec files name a method the prelude or the compiler defines
 ([#49](https://github.com/jtarchie/ruby2go/issues/49)).
+
+Side by side with spinel ([#114](https://github.com/jtarchie/ruby2go/issues/114)),
+on spinel's own ruby/spec harness (`tools/rubyspec`: its 22 enrolled suites
+at its ruby/spec pin `79e2dee`, each `it` block one standalone program,
+counting only the 7,838 programs MRI 4.0.7 passes), run for both compilers
+with [`scripts/spinel-rubyspec`](scripts/spinel-rubyspec/compare) on 2026-10-24:
+
+| suites | examples | spinel | rb2go |
+|---|---:|---:|---:|
+| `language` | 1,903 | 1,408 | 1,015 |
+| 21 `core` classes | 5,935 | 4,333 | 2,943 |
+| total | 7,838 | **5,741** (73%) | **3,958** (50%) |
+
+rb2go passes 310 of them that spinel does not, and spinel 2,093 that rb2go
+does not (from 3,106 before decisions 362-368). The largest remaining causes
+are Bignum ([#113](https://github.com/jtarchie/ruby2go/issues/113)),
+`define_method`, specs that pass a wrong type expecting a run-time
+`TypeError` (decision 20) and in-place String mutation (decision 58).
 
 ## How it works
 
