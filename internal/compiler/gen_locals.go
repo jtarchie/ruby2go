@@ -123,8 +123,8 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 	if isNil(typ) && f.pass == 2 && f.lenient() {
 		typ = TAny{} // gem code: a local only ever nil is untyped (decision 183)
 	}
-	if isNil(typ) && f.pass == 2 {
-		f.errorf(n, "cannot infer the type of %s from nil; add `#: T?`", name)
+	if isNil(typ) && f.pass == 2 { // a local only ever nil is a NilClass, its calls nil's own (decision 361)
+		typ = f.cls("NilClass")
 	}
 	if existing == nil {
 		f.noteAnyOrigin(n, name, val)

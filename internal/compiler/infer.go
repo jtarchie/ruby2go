@@ -66,6 +66,7 @@ type paramUse struct {
 	anyRest bool // a gem's untyped value into a rest parameter: its elements are anything (decision 253)
 	widen   bool // a gem's untyped value into an overridden method: the parameter is untyped (decision 324)
 	dyn     bool // a gem's dynamic call by this name, which may reach another class's method of that name (decision 331)
+	deflt   bool // the parameter's own default, not a call's argument
 }
 
 // at is the call the argument came from.
@@ -562,7 +563,7 @@ func (c *Compiler) collectUses() {
 						t = TClass{C: hc.C, Args: []Type{hc.Args[0], TAny{}}}
 					}
 				}
-				c.uses[p.Pending] = append(c.uses[p.Pending], paramUse{typ: t, file: m.File, off: p.Default.GetLocation().StartOffset})
+				c.uses[p.Pending] = append(c.uses[p.Pending], paramUse{typ: t, file: m.File, off: p.Default.GetLocation().StartOffset, deflt: true})
 			}
 		}
 	}
@@ -664,6 +665,9 @@ func (c *Compiler) updateInference(inf *inference) {
 		slices.SortFunc(uses, func(a, b paramUse) int {
 			return cmp.Or(cmp.Compare(order[a.file], order[b.file]), cmp.Compare(a.off, b.off))
 		})
+		if !slices.ContainsFunc(uses, func(u paramUse) bool { return !isNil(u.typ) && !holdsAny(u.typ) || !u.deflt && isNil(u.typ) }) {
+			continue // nothing but its `= nil` default types it: no call does, so it is untyped (decision 361)
+		}
 		if !slices.ContainsFunc(uses, func(u paramUse) bool { return !u.dyn }) {
 			continue // only dynamic calls by its name, maybe meant for another class's method: untyped, as before (decision 331)
 		}

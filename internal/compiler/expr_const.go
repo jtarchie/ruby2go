@@ -377,7 +377,10 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	case "$/": // the input record separator: chomp's default (decision 180)
 		return expr{code: "rbRS", typ: TOpt{Elem: f.cls("String")}}
 	}
-	f.errorf(n, "global variable %s is unsupported; only $0, $PROGRAM_NAME, $$, $!, $stdin, $stdout, $stderr, $VERBOSE, $/ and $? are (docs/design.md decision 61)", n.Name)
+	if k := f.c.globals[n.Name]; k != nil { // the program's own (decision 361)
+		return expr{code: k.GoName, typ: f.c.constType(k)}
+	}
+	f.errorf(n, "global variable %s is never assigned; rb2go knows $0, $PROGRAM_NAME, $$, $!, $stdin, $stdout, $stderr, $VERBOSE, $/, $? and the program's own assigned globals (decisions 61, 361)", n.Name)
 	return expr{}
 }
 
@@ -392,10 +395,47 @@ func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
 		f.emit("%s = %s", v, f.coerce(n.Value, e, want))
 		return expr{code: v, typ: want}
 	}
+	if k := f.c.globals[n.Name]; k != nil {
+		t := f.c.constType(k)
+		val := f.genExpr(n.Value, t)
+		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		return expr{code: k.GoName, typ: t, done: true}
+	}
 	fn := map[string]string{"$stdout": "rbSetStdout", "$stderr": "rbSetStderr"}[n.Name]
 	if fn == "" {
 		f.errorf(n, "global variable %s cannot be assigned; only $stdout and $stderr can (docs/design.md decision 109)", n.Name)
 	}
 	v := f.genExpr(n.Value, nil)
 	return expr{code: fn + "(" + f.coerce(n.Value, v, TAny{}) + ")", typ: TAny{}, stmt: true}
+}
+
+// genGlobalUpdate is `$x op= v`, `$x ||= v` and `$x &&= v` on the program's own global (decision 361).
+func (f *fctx) genGlobalUpdate(n parser.Node) expr {
+	var name string
+	switch n := n.(type) {
+	case *parser.GlobalVariableOperatorWriteNode:
+		name = n.Name
+	case *parser.GlobalVariableOrWriteNode:
+		name = n.Name
+	case *parser.GlobalVariableAndWriteNode:
+		name = n.Name
+	}
+	k := f.c.globals[name]
+	if k == nil {
+		f.errorf(n, "global variable %s cannot be updated; only the program's own assigned globals can (decision 361)", name)
+	}
+	t := f.c.constType(k)
+	cur := expr{code: k.GoName, typ: t}
+	switch n := n.(type) {
+	case *parser.GlobalVariableOperatorWriteNode:
+		val := f.genOp(n, cur, n.BinaryOperator, n.Value)
+		f.emit("%s = %s", k.GoName, f.coerce(n, val, t))
+		return expr{code: k.GoName, typ: t, done: true}
+	case *parser.GlobalVariableOrWriteNode:
+		return f.genOrAssign(n, cur, n.Value)
+	case *parser.GlobalVariableAndWriteNode: // `$x &&= v` is `$x && ($x = v)`
+		w := &parser.GlobalVariableWriteNode{Name: n.Name, NameLoc: n.NameLoc, Value: n.Value, Location: n.Location}
+		return f.genExpr(&parser.AndNode{Left: &parser.GlobalVariableReadNode{Name: n.Name, Location: n.NameLoc}, Right: w, Location: n.Location}, nil)
+	}
+	return expr{}
 }

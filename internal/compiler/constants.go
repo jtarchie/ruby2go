@@ -2,8 +2,10 @@ package compiler
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -414,4 +416,57 @@ func liftEach(nodes []parser.Node, out *[]*parser.ConstantWriteNode) ([]parser.N
 		}
 	}
 	return outNodes, outNodes != nil
+}
+
+// builtinGlobals are the globals genGlobalRead answers itself (decision 61); any other $name is the program's own.
+var builtinGlobals = map[string]bool{"$!": true, "$0": true, "$PROGRAM_NAME": true, "$stdin": true, "$stdout": true, "$stderr": true,
+	"$?": true, "$$": true, "$~": true, "$LOAD_PATH": true, "$:": true, "$-I": true, "$VERBOSE": true, "$/": true}
+
+// userGlobals declares the program's own globals (decision 361): every $name a non-prelude file writes, a package
+// variable typed by its first write, as a class variable first assigned in a method is: its `#: T`, else a literal.
+func (c *Compiler) userGlobals() {
+	for _, f := range c.files {
+		if f.isPrelude() || f.Root == nil {
+			continue
+		}
+		anyNode(f.Root, func(n parser.Node) bool {
+			var name string
+			var value parser.Node
+			switch w := n.(type) {
+			case *parser.GlobalVariableWriteNode:
+				name, value = w.Name, w.Value
+			case *parser.GlobalVariableOrWriteNode:
+				name, value = w.Name, w.Value
+			default:
+				return false
+			}
+			if builtinGlobals[name] || englishGlobals[name] != "" || c.globals[name] != nil {
+				return false
+			}
+			k := &Const{RubyName: name, GoName: "rbGv_" + globalGoName(name), Value: value, srcPos: srcPos{f, f.line(n.GetLocation().StartOffset)}, inMethod: true}
+			k.ann = f.trailingAnnotation(n)
+			if k.ann == "" && !isPlainLiteral(value) {
+				c.errorf(f, n, "global variable %s is first assigned here: annotate it (`%s = v #: T`)", name, name)
+			}
+			if c.globals == nil {
+				c.globals = map[string]*Const{}
+			}
+			c.globals[name] = k
+			c.constList = append(c.constList, k)
+			return false
+		})
+	}
+}
+
+// globalGoName spells a global's name as Go: `$-w`'s dash and the like as their hex code, letters, digits and _ as is.
+func globalGoName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimPrefix(name, "$") {
+		if r == '_' || r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+			b.WriteRune(r)
+		} else {
+			fmt.Fprintf(&b, "x%02x", r)
+		}
+	}
+	return b.String()
 }

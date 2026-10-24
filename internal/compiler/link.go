@@ -37,6 +37,7 @@ func (c *Compiler) link(ctx context.Context) {
 	c.linkAliases(ctx)
 	c.separateFreeFuncs()
 	c.methodClassVars()
+	c.userGlobals()
 	c.includeFromEach() // before any override inherits from the module, which needs its type args
 	// method signatures
 	for _, cls := range c.classList {

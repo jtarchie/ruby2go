@@ -98,6 +98,8 @@ func (f *fctx) genLiteral(n parser.Node) (expr, bool) {
 		return f.genMatchRef(n), true
 	case *parser.GlobalVariableWriteNode:
 		return f.genGlobalWrite(n), true
+	case *parser.GlobalVariableOperatorWriteNode, *parser.GlobalVariableOrWriteNode, *parser.GlobalVariableAndWriteNode:
+		return f.genGlobalUpdate(n), true
 	case *parser.IntegerNode:
 		return f.genInteger(n), true
 	case *parser.FloatNode:
@@ -203,8 +205,9 @@ func (f *fctx) genInteger(n *parser.IntegerNode) expr {
 		}
 		return expr{code: "Integer(" + bound + ")", typ: f.cls("Integer")}
 	}
-	if errors.Is(err, strconv.ErrRange) {
-		f.errorf(n, "Integer literal %s does not fit in 64 bits: there is no Bignum (docs/design.md decision 35)", code)
+	if errors.Is(err, strconv.ErrRange) { // raised where it runs, as an overflowing operation is: mspec's bignum_value helper is never called (decision 361)
+		f.warn(n, "Integer literal %s does not fit in 64 bits: there is no Bignum, so evaluating it raises RangeError (decision 361)", code)
+		return expr{code: "rbBigLiteral(" + strconv.Quote(code) + ")", typ: f.cls("Integer")}
 	}
 	return expr{code: code, typ: f.cls("Integer"), lit: true}
 }

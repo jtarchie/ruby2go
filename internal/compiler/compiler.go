@@ -66,7 +66,8 @@ type Compiler struct {
 	needRequireTable      bool                         // a require of a computed name: rbRequireComputed checks it against the compiled files (decision 246)
 	programFile           *File                        // the file $0 names: the main file, or a traced compile's -main (decisions 241, 288)
 	constList             []*Const
-	hooks                 []classHook // main.rb's inherited/included/extended sites
+	globals               map[string]*Const // a program's own $globals, by name (decision 361)
+	hooks                 []classHook       // main.rb's inherited/included/extended sites
 	topDefList            []*Method
 	verbatim              []verbatim
 	mainStmts             []parser.Node

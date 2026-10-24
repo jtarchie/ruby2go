@@ -56,10 +56,15 @@ puts s
 s = "abc"
 s << "d"
 puts s
--- global_write.rb --
-# error: main.rb:3: global variable $verbose cannot be assigned; only $stdout and $stderr can
+-- global_never_assigned.rb --
+# error: main.rb:3: global variable $nope is never assigned
 # rbs_inline: enabled
-$verbose = true
+puts $nope
+-- global_first_write_untyped.rb --
+# error: main.rb:3: global variable $words is first assigned here: annotate it
+# rbs_inline: enabled
+$words = "a b".split
+puts $words.size
 -- symbol_plus.rb --
 # error: main.rb:3: undefined method + for Symbol
 # rbs_inline: enabled
@@ -85,11 +90,6 @@ puts x
 # error: main.rb:3: private method __write called on String
 # rbs_inline: enabled
 "a".__write("x")
--- puts_value_from_nil.rb --
-# error: main.rb:3: cannot infer the type of r from nil
-# rbs_inline: enabled
-r = puts("a")
-puts r.inspect
 -- plus_possibly_nil.rb --
 # error: main.rb:4: possibly-nil String? where String is expected
 # rbs_inline: enabled

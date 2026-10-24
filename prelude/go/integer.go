@@ -131,3 +131,8 @@ func rbIntRoundTo(x, digits Integer, mode int) Integer {
 	}
 	return v
 }
+
+// rbBigLiteral is an Integer literal past 64 bits, evaluated: MRI's Bignum, here RangeError (decisions 35, 361).
+func rbBigLiteral(lit string) Integer {
+	panic(NewRangeError(Ref(String(lit + " overflows Integer (64-bit; no Bignum)"))))
+}

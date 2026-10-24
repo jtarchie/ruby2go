@@ -72,11 +72,6 @@ puts len(w)
 # rbs_inline: enabled
 n = 5
 puts n || 3
--- nil_local_needs_annotation.rb --
-# error: main.rb:3: cannot infer the type of x from nil; add `#: T?`
-# rbs_inline: enabled
-x = nil
-puts x.inspect
 -- nil_in_multiple_assignment.rb --
 # error: main.rb:3: cannot infer a type from nil
 # rbs_inline: enabled
