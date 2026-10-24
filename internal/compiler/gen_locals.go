@@ -274,7 +274,7 @@ func (f *fctx) noteReassign(n parser.Node, name string, info *localInfo, existin
 	if !isAncestorBlock(info.declBlock, f.block) {
 		info.hoist = true
 	}
-	if f.pass < 2 && !info.annotated {
+	if f.pass < 2 && !info.annotated && !val.provisional { // spinel's bottom: the next round types it (decision 358)
 		if hashKeysWider(info.typ, val.typ) && f.lenient() { // `opts = opts.merge(198 => io)`: the Hash of untyped keys (decision 257)
 			info.typ = val.typ
 		} else if j, ok := join(info.typ, val.typ); ok {

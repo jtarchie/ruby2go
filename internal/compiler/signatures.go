@@ -352,7 +352,7 @@ func (c *Compiler) inferRet(m *Method) {
 	if err != nil {
 		if c.round { // a body its still-untyped parameters break returns untyped this round, so its callers still record what they pass
 			c.dropWarnings(nw)
-			m.Ret, m.retWhy = TAny{}, "body fails with its parameters untyped (inference round)"
+			m.Ret, m.retWhy, m.roundRet = TAny{}, "body fails with its parameters untyped (inference round)", true
 			return
 		}
 		panic(*err)
@@ -391,6 +391,7 @@ func (c *Compiler) inferRet(m *Method) {
 		}
 	}
 	m.Ret = ret
+	m.roundRet = c.awaitsParams(m, ret)
 }
 
 // inferRecursive: as spinel does, a recursive call's unknown value drops out of the first join, then the join is iterated to a fixpoint (decision 355).
@@ -821,4 +822,12 @@ func (c *Compiler) varUnion(u rbs.Union, sc typeScope, params []string) Type {
 		return nil
 	}
 	return TUnion{Members: ms}
+}
+
+// awaitsParams reports, in a round, an untyped return that a still-untyped parameter typed from use may explain (decision 358).
+func (c *Compiler) awaitsParams(m *Method, ret Type) bool {
+	// a parameter an earlier round left untyped is not awaited again: its value would flip the local back and forth
+	return c.round && isAny(ret) && slices.ContainsFunc(m.Params, func(p Param) bool {
+		return p.Pending != "" && isAny(p.Type) && (c.infer == nil || !c.infer.none[p.Pending])
+	})
 }

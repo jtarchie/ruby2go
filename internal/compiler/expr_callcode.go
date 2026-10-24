@@ -361,6 +361,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	} else if f.c.selfVarReturns(e, recv.typ) {
 		out.code, out.assert = "any("+out.code+").(Self)", true
 	}
+	out.provisional = f.c.provisional(m, out.typ)
 	if armT != nil {
 		return f.narrowToArm(n, flatOpt(out), subst(armT, env))
 	}
@@ -897,3 +898,6 @@ func (f *fctx) gemCallForm(n parser.Node, e *entry, recv expr, args []parser.Nod
 func isASCII(s string) bool {
 	return !strings.ContainsFunc(s, func(r rune) bool { return r >= utf8.RuneSelf })
 }
+
+// provisional reports a round's untyped result of m, untyped only until its parameters are typed (decision 358).
+func (c *Compiler) provisional(m *Method, t Type) bool { return c.round && m.roundRet && isAny(t) }

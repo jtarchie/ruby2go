@@ -25,6 +25,8 @@ type expr struct {
 	// call sent through it. Calls and untyped uses take the value itself.
 	view    string
 	nilable bool // untyped collapsed from untyped? (Hash#[]): calls warn like T?'s
+	// provisional: an inference round's untyped result of a method whose parameters are not typed yet (decision 358)
+	provisional bool
 	// bin: a String the compiler knows is binary (ASCII-8BIT: `.b`, binread), so its calls take the byte-wise
 	// `__bin_*` twins; binDeps are the locals it was read from, binary only while each of them is (decision 352).
 	bin     bool

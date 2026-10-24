@@ -106,7 +106,9 @@ func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.C
 		trimmed.Arguments = &parser.ArgumentsNode{Location: call.Arguments.Location, Arguments: syms}
 		call = &trimmed
 	}
-	types := c.memberTypes(f, n, call, members)
+	fromNew := c.membersFromNew(f, n, kind, kwInit, len(members))
+	types, annotated := c.memberTypes(f, n, call, members, fromNew)
+	inferred := fromNew && !annotated
 	full := qualify(scope, n.Name)
 	line := f.line(n.Location.StartOffset)
 	declare := c.declareClass
@@ -117,7 +119,7 @@ func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.C
 	cls.superRef = &constRef{node: &parser.ConstantReadNode{Name: kind.superName()}, file: f}
 	cls.value = &valueSpec{members: members, kind: kind, kwInit: kwInit == "true"}
 	label := "internal error: generated " + kind.String() + " does not parse"
-	sf := c.synthFile(ctx, f, n, label, valueClassSource(kind, full, members, types, kwInit), synthOpt{Origin: f.synthOrigin(), Pad: line - 1, Pin: true, NoPath: true})
+	sf := c.synthFile(ctx, f, n, label, valueClassSource(kind, full, members, types, kwInit, inferred), synthOpt{Origin: f.synthOrigin(), Pad: line - 1, Pin: true, NoPath: true})
 	sf.valueGen = true
 	gen, ok := sf.Root.Statements.Body[0].(*parser.ClassNode)
 	if !ok {
@@ -126,6 +128,8 @@ func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.C
 	c.collectBody(ctx, sf, cls, gen.Body, scope, false)
 	for _, m := range cls.MethodList {
 		m.valueGen = true
+		// a writer no call types is untyped silently, as attr_writer's (decision 179)
+		m.attrWriter = inferred && strings.HasSuffix(m.Name, "=") && slices.Contains(members, strings.TrimSuffix(m.Name, "="))
 	}
 	if bn, ok := call.Block.(*parser.BlockNode); ok && bn.Body != nil {
 		gen := slices.Clone(cls.MethodList)
@@ -147,11 +151,11 @@ func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.C
 }
 
 // memberTypes reads member types: one `#: T` per member line, else a
-// trailing `#: [A, B]` tuple on the assignment.
-func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parser.CallNode, members []string) []rbs.Type {
+// trailing `#: [A, B]` tuple on the assignment; annotated is false when there is neither.
+func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parser.CallNode, members []string, fromNew bool) (types []rbs.Type, annotated bool) {
 	args := callArgs(call)
 	perLine := true
-	types := make([]rbs.Type, len(members))
+	types = make([]rbs.Type, len(members))
 	for i, a := range args {
 		ln := f.line(a.GetLocation().StartOffset)
 		t, ok := f.trailing[ln]
@@ -166,28 +170,28 @@ func (c *Compiler) memberTypes(f *File, n *parser.ConstantWriteNode, call *parse
 		types[i] = rt
 	}
 	if perLine {
-		return types
+		return types, true
 	}
 	ann := f.trailingAnnotation(n)
 	if ann == "" { // untyped members, as gem code's (decision 172): rack's `MultipartInfo = Struct.new :params, :tmp_files`
-		if !c.gemFile(f) {
+		if !c.gemFile(f) && !fromNew {
 			c.warn(f, n, "%s's members are untyped; give them types (`:a, #: T` per line, or `#: [A, B]` after the definition) for static calls (decision 179)", n.Name)
 		}
 		for i := range types {
 			types[i] = rbs.Untyped{}
 		}
-		return types
+		return types, false
 	}
 	t, err := rbs.ParseType(ann)
 	tup, ok := t.(rbs.Tuple)
 	if err != nil || !ok || len(tup.Elems) != len(members) {
 		c.errorf(f, n, "`#: %s` must be a %d-element tuple of member types", ann, len(members))
 	}
-	return tup.Elems
+	return tup.Elems, true
 }
 
 // valueClassSource is the Ruby for a Struct's or Data's generated members.
-func valueClassSource(kind valueKind, full string, members []string, types []rbs.Type, kwInit string) string {
+func valueClassSource(kind valueKind, full string, members []string, types []rbs.Type, kwInit string, inferred bool) string {
 	var b strings.Builder
 	b.WriteString("class GeneratedValueClass\n")
 	if kind == valueStruct {
@@ -202,6 +206,10 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 		if slices.Contains(members[:i], m) { // a duplicate member raises at run time; declare its accessors once
 			continue
 		}
+		if inferred {
+			fmt.Fprintf(&b, "  attr_reader :%s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if frozen?\n    @%s = __v\n  end\n", m, m, m)
+			continue
+		}
 		fmt.Fprintf(&b, "  attr_reader :%s #: %s\n", m, types[i])
 		if kind == valueStruct { // a writer, not attr_writer: a frozen struct raises, as MRI's
 			fmt.Fprintf(&b, "  #: (%s) -> %s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if frozen?\n    @%s = __v\n  end\n", types[i], types[i], m, m)
@@ -210,7 +218,7 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	// A struct's trailing nilable members may be omitted (Ruby fills in
 	// nil); every Data member is required.
 	firstOpt := len(members)
-	for kind == valueStruct && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
+	for kind == valueStruct && !inferred && firstOpt > 0 && nilableRBS(types[firstOpt-1]) {
 		firstOpt--
 	}
 	// Parameters are __v0, __v1, ... and members are read as self.m, so
@@ -236,7 +244,10 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 		insp[i] = m + "=#{self." + m + ".inspect}"
 		pairs[i] = m + ": self." + m
 	}
-	fmt.Fprintf(&b, "  #: (%s) -> void\n  def initialize(%s)\n", strings.Join(sigs, ", "), strings.Join(params, ", "))
+	if !inferred {
+		fmt.Fprintf(&b, "  #: (%s) -> void\n", strings.Join(sigs, ", "))
+	}
+	fmt.Fprintf(&b, "  def initialize(%s)\n", strings.Join(params, ", "))
 	for i, m := range members {
 		fmt.Fprintf(&b, "    @%s = %s\n", m, vars[i])
 	}
@@ -333,4 +344,60 @@ func (c *Class) valueRoot() *Class {
 		}
 	}
 	return nil
+}
+
+// fullNews reports whether root's only uses of constant name are as a call receiver, at least one a `new` with exactly
+// n plain arguments and none a `new` with others: a subclass, a stored class or a short `new` keeps the members
+// untyped (decision 358). ponytail: this file only; a short `new` in another file fails to compile instead.
+func fullNews(root parser.Node, name string, n int) bool {
+	refs, recvs, news := 0, 0, 0
+	ok := true
+	walkNode(root, func(x parser.Node) (bool, bool) {
+		switch x := x.(type) {
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			if lastConstName(x) == name {
+				refs++
+			}
+		case *parser.CallNode:
+			if lastConstName(x.Receiver) != name {
+				return false, true
+			}
+			recvs++
+			if x.Name != "new" {
+				return false, true
+			}
+			news++
+			args := callArgs(x)
+			if len(args) != n || x.Block != nil || slices.ContainsFunc(args, func(a parser.Node) bool {
+				switch a.(type) {
+				case *parser.SplatNode, *parser.KeywordHashNode, *parser.BlockArgumentNode:
+					return true
+				}
+				return false
+			}) {
+				ok = false
+			}
+		}
+		return false, true
+	})
+	return ok && news > 0 && refs == recvs
+}
+
+// lastConstName is a constant reference's own name: `B` of `A::B`.
+func lastConstName(n parser.Node) string {
+	switch n := n.(type) {
+	case *parser.ConstantReadNode:
+		return n.Name
+	case *parser.ConstantPathNode:
+		if n.Name != nil {
+			return *n.Name
+		}
+	}
+	return ""
+}
+
+// membersFromNew: a user Struct with no member types, every `new` of it in its file passing each member, is typed
+// from its calls, as unannotated defs are (decision 358).
+func (c *Compiler) membersFromNew(f *File, n *parser.ConstantWriteNode, kind valueKind, kwInit string, members int) bool {
+	return kind == valueStruct && kwInit != "true" && !c.gemFile(f) && fullNews(f.Root, n.Name, members)
 }

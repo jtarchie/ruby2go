@@ -493,3 +493,37 @@ end
 def infer_tri_a(n) = n <= 0 ? nil : infer_tri_b(n - 1)
 def infer_tri_b(n) = n <= 0 ? 5 : infer_tri_c(n - 1)
 def infer_tri_c(n) = n <= 0 ? nil : infer_tri_a(n - 1)
+
+module InferTests
+  class CycleBox
+    def bump(x)
+      (x ^ 1) + 1
+    end
+  end
+
+  CyclePair = Struct.new(:a, :b)
+
+  class CycleTest < Minitest::Test
+    def test_param_typed_through_its_own_result
+      box = CycleBox.new
+      t = 0
+      i = 0
+      while i < 4
+        t = box.bump(t + i)
+        i += 1
+      end
+      assert_equal 10, t
+      3.times { |k| t = box.bump(t + k) }
+      assert_equal 15, t
+    end
+
+    def test_struct_members_from_new
+      pr = CyclePair.new(1, "x")
+      pr.a = pr.a + 2
+      pr.b += "y"
+      assert_equal [3, "xy"], [pr.a, pr.b]
+      assert_equal "#<struct InferTests::CyclePair a=3, b=\"xy\">", pr.inspect
+      assert_equal CyclePair.new(3, "xy"), pr
+    end
+  end
+end

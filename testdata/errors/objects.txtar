@@ -334,6 +334,33 @@ Point = Struct.new(
 -- struct_member_types_missing.rb --
 # warning: main.rb:2: Point's members are untyped
 Point = Struct.new(:x, :y)
+-- struct_members_from_new.rb --
+# error: main.rb:4: undefined method upcase for Integer
+Pair = Struct.new(:a, :b)
+pr = Pair.new(1, "x")
+pr.a.upcase
+-- struct_member_lines_kept.rb --
+# warning: main.rb:6: dynamic call: upcase on untyped
+Pair = Struct.new(
+  :a, #: untyped
+  :b, #: Integer
+)
+Pair.new(1, 2).a.upcase
+-- struct_short_new_untyped.rb --
+# warning: main.rb:2: Pair's members are untyped
+Pair = Struct.new(:a, :b)
+Pair.new(1)
+-- param_typed_through_own_result.rb --
+# error: main.rb:10: undefined method upcase for Integer
+class Box
+  def bump(x)
+    (x ^ 1) + 1
+  end
+end
+b = Box.new
+t = 0
+t = b.bump(t + 1)
+t.upcase
 -- struct_member_tuple_wrong_size.rb --
 # error: main.rb:2: `#: [Integer, Integer, Integer]` must be a 2-element tuple of member types
 Point = Struct.new(:x, :y) #: [Integer, Integer, Integer]
