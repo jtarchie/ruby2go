@@ -150,6 +150,9 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 			return expr{code: derefOpt(existing.goName, existing.typ), typ: stripOpt(existing.typ), stmt: true, done: true}
 		}
 	}
+	if e, ok := f.narrowLeafAssign(existing, val, narrowed); ok {
+		return e
+	}
 	if e, ok := f.narrowAssign(existing, val); ok {
 		return e
 	}
@@ -183,6 +186,16 @@ func (f *fctx) reassignView(n parser.Node, name string, info *localInfo, view *l
 	return expr{code: view.goName, typ: view.typ, stmt: true, done: true}, true
 }
 
+// narrowLeafAssign: a leaf class's C? local (a nil-able *C, decision 360) given a C is not nil until its next write, so
+// calls on it need no NoMethodError guard (decision 371). Not when a block writes it, as for narrowAssign.
+func (f *fctx) narrowLeafAssign(v *local, val expr, narrowed bool) (expr, bool) {
+	if narrowed || !leafOpt(v.typ) || !typeEq(stripOpt(v.typ), val.typ) || f.m == nil || f.m.Node == nil || blockWritesLocal(f.m.Node.Body, v.name, f.isParam(v.name)) {
+		return expr{}, false
+	}
+	f.applyNarrow([]narrowInfo{{local: v, typ: val.typ}})
+	return expr{code: v.goName, typ: val.typ, stmt: true, done: true}, true
+}
+
 // narrowAssign: `x = v` into a union local, v of one class that fits it, leaves x that class until its next write
 // or the end of the scope (`src = Pathname(src)` with src: String | Pathname, then `src.dirname`), one Go assertion
 // here instead of a type switch or a dynamic call at each use (decision 283). Not when a block or lambda writes x,
@@ -200,6 +213,60 @@ func (f *fctx) narrowAssign(v *local, val expr) (expr, bool) {
 	f.emit("_ = %s", tmp)
 	f.applyNarrow([]narrowInfo{{local: v, typ: val.typ, code: tmp, assigned: true}})
 	return expr{code: tmp, typ: val.typ, stmt: true, done: true}, true
+}
+
+// blockWritesLocal is writtenInBlock for the scope's own local name: a block before name's first assignment outside
+// blocks (or its parameter) writes a block-local of its own, by Ruby's scoping, so only later blocks count.
+func blockWritesLocal(body parser.Node, name string, param bool) bool {
+	first := -1
+	if param {
+		first = 0
+	} else {
+		walkNode(body, func(x parser.Node) (bool, bool) {
+			switch x.(type) {
+			case *parser.BlockNode, *parser.LambdaNode, *parser.DefNode:
+				return false, false
+			}
+			if at := x.GetLocation().StartOffset; assignsLocalHere(x, name) && (first < 0 || at < first) {
+				first = at
+			}
+			return false, true
+		})
+	}
+	if first < 0 {
+		return writtenInBlock(body, name, false)
+	}
+	return walkNode(body, func(x parser.Node) (bool, bool) {
+		switch x.(type) {
+		case *parser.DefNode:
+			return false, false
+		case *parser.BlockNode, *parser.LambdaNode:
+			return x.GetLocation().StartOffset > first && writtenInBlock(x, name, false), false
+		}
+		return false, true
+	})
+}
+
+// isParam reports whether name is a parameter of the method being generated.
+func (f *fctx) isParam(name string) bool {
+	return f.m != nil && (name == f.m.BlockParam || slices.ContainsFunc(f.m.Params, func(p Param) bool { return p.Name == name }))
+}
+
+// assignsLocalHere reports whether node x itself assigns local name.
+func assignsLocalHere(x parser.Node, name string) bool {
+	switch x := x.(type) {
+	case *parser.LocalVariableWriteNode:
+		return x.Name == name
+	case *parser.LocalVariableOperatorWriteNode:
+		return x.Name == name
+	case *parser.LocalVariableOrWriteNode:
+		return x.Name == name
+	case *parser.LocalVariableAndWriteNode:
+		return x.Name == name
+	case *parser.LocalVariableTargetNode:
+		return x.Name == name
+	}
+	return false
 }
 
 // writtenInBlock reports an assignment to local name inside a block or lambda of n.

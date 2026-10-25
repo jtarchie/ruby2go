@@ -150,7 +150,7 @@ func (f *fctx) callNarrowing(n parser.Node) []narrowInfo {
 			}
 			seen[lv.Name] = true
 			v := f.narrowLocal(lv.Name)
-			if v == nil || v.base != nil || !isOpt(v.typ) || isAny(stripOpt(v.typ)) || assignsLocal(n, lv.Name) || body != nil && writtenInBlock(body, lv.Name, false) {
+			if v == nil || v.base != nil || !isOpt(v.typ) || isAny(stripOpt(v.typ)) || assignsLocal(n, lv.Name) || body != nil && blockWritesLocal(body, lv.Name, f.isParam(lv.Name)) {
 				return
 			}
 			ns = append(ns, narrowInfo{local: v, typ: stripOpt(v.typ)})
@@ -332,7 +332,7 @@ func (f *fctx) elseNarrowing(n parser.Node) []narrowInfo {
 	n = f.classEqqAsIsA(n)
 	localOf := func(r parser.Node) *local {
 		if lv, ok := r.(*parser.LocalVariableReadNode); ok {
-			return f.scope.lookup(lv.Name)
+			return f.narrowLocal(lv.Name) // also one assigned in an earlier branch or loop body, as readLocal finds it
 		}
 		if r == nil {
 			return nil
@@ -413,6 +413,7 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		var nr []narrowInfo
 		f.push()
 		f.applyNarrow(nl)
+		f.applyNarrow(f.callNarrowing(n.Left)) // the left ran first: a local it called a guarded method on is not nil
 		stmts := f.capture(func() { r, nr = f.genCond(n.Right) })
 		f.pop()
 		if stmts == "" {
@@ -433,9 +434,14 @@ func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 		f.emit("}")
 		return tmp, append(nl, nr...) // tmp holds only when both sides did
 	case *parser.OrNode:
+		lFalse := f.elseNarrowing(n.Left)
 		l, _ := f.genCond(n.Left)
 		var r string
+		f.push()
+		f.applyNarrow(lFalse) // `h.nil? || h.zero?`: the right runs only when the left was false
+		f.applyNarrow(f.callNarrowing(n.Left))
 		stmts := f.capture(func() { r, _ = f.genCond(n.Right) })
+		f.pop()
 		if stmts == "" {
 			return l + " || " + r, nil
 		}

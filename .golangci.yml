@@ -71,6 +71,9 @@ linters:
     - depguard      # enforce the import direction
 
   settings:
+    govet:
+      enable:
+        - nilness # impossible/always-true nil comparisons, nil dereferences; off in govet's default set (#115)
     depguard:
       rules:
         # The root package is the public API: embed the prelude, call the

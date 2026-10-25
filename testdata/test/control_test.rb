@@ -1331,6 +1331,39 @@ module Kernel
   def control_tag = "<#{self.class}>"
 end
 
+# Narrowings decision 371 added: each body compiles without a NoMethodError guard (or warning) on a known non-nil local.
+#: (bool) -> Integer
+def control_branch_then_or(c)
+  name = nil #: String?
+  name = "x" if c
+  return 0 if name.nil? || name.empty?
+  name.size
+end
+
+#: (String?) -> bool
+def control_strip_or(s)
+  return false if s.nil?
+  s.strip.empty? || s.strip == ":"
+end
+
+#: () -> Integer
+def control_leaf_assign
+  item = nil #: ControlTests::Counter?
+  item = ControlTests::Counter.new
+  item.n += 1
+  item.n
+end
+
+# A block's `item` before the method's own is block-local, so it does not stop narrowing the later one.
+#: () -> Integer
+def control_block_local_first
+  [1].each { |i| item = ControlTests::Counter.new; item.n += i }
+  item = nil #: ControlTests::Counter?
+  item = ControlTests::Counter.new
+  item.n += 2 if item.n.positive?
+  item.n
+end
+
 module ControlTests
   class Memo
     #: () -> void
@@ -1672,7 +1705,19 @@ module ControlTests
     end
   end
 
+  class Counter
+    attr_accessor :n #: Integer
+
+    def initialize = @n = 1
+  end
+
   class ControlAndOrTest < Minitest::Test
+    def test_narrowing_between_operands
+      assert_equal [1, 0], [control_branch_then_or(true), control_branch_then_or(false)]
+      assert_equal [true, false, false], [control_strip_or(" : "), control_strip_or("ab"), control_strip_or(nil)]
+      assert_equal [2, 3], [control_leaf_assign, control_block_local_first]
+    end
+
     def test_optional_and_untyped_operands
       assert_equal true, blank?(nil)
       assert_equal true, blank?("")

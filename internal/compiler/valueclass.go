@@ -139,7 +139,7 @@ func (c *Compiler) collectValueClassAs(ctx context.Context, f *File, n *parser.C
 		// them: keep each one under a hidden private name.
 		for _, g := range gen {
 			m := cls.Methods[g.Name]
-			if m == g || g.Kind != kindDef {
+			if m == nil || m == g || g.Kind != kindDef { // nil: the block undef'd it
 				continue
 			}
 			m.structDef = g

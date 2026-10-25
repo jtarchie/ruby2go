@@ -11,6 +11,11 @@ version: "2"
 run:
   timeout: 5m
 
+issues:
+  # every finding, not golangci-lint's default 3 per message: a codegen pattern repeats across programs, and a capped list hides how far it reaches
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
   default: none
   enable:
@@ -41,6 +46,9 @@ linters:
     - depguard
 
   settings:
+    govet:
+      enable:
+        - nilness # impossible/always-true nil comparisons, nil dereferences; off in govet's default set (#115)
     misspell:
       # Comments only: a string literal is the program's own data (kramdown's entity names `andd`, `infintie`), which
       # the Ruby source spells; flagging it would fail a correct program.
@@ -95,3 +103,10 @@ linters:
       - path: prelude/go/.*\.go
         linters:
           - nolintlint
+      # Ruby that tests a local it just set to nil (`name = nil; name ||= "x"`, `missing = nil #: String?; missing || 42`)
+      # compiles to a Go nil check SSA proves constant. The Go is the program as written; folding it needs constant
+      # propagation codegen does not do. Only both-sides-nil is excluded: `non-nil == nil` (a redundant guard codegen
+      # emitted after narrowing) and nil dereferences still fail (decision 371).
+      - linters:
+          - govet
+        text: "nilness: (tautological|impossible) condition: nil [!=]= nil"

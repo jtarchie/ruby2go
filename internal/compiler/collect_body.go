@@ -272,7 +272,10 @@ func (c *Compiler) collectVisibilityCall(f *File, cls *Class, n *parser.CallNode
 			*vis = visibility{protected: true}
 		case d != nil:
 			c.addMethod(f, cls, d, false, scope)
-			cls.Methods[d.Name].Protected = true
+			if d.Receiver != nil && cls.lookup(d.Name) == nil { // `protected def self.x` marks instance method x, as MRI's protected(:x) does
+				c.errorf(f, n, "undefined method '%s' for class '%s'", d.Name, cls.RubyName)
+			}
+			named(d.Name).Protected = true
 		default:
 			for _, name := range c.symbolArgs(f, n, args) {
 				named(name).Protected = true

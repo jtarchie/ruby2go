@@ -151,12 +151,12 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		return f.genUnionOr(n, l, u)
 	}
 	lElem := stripOpt(l.typ)
-	r, once := f.genOperandOnce(func() expr { return f.genExpr(n.Right, lElem) })
+	r, once := f.genOperandOnce(func() expr { return f.genRight(n.Left, n.Right, lElem) })
 	boolL := isClass(l.typ, "Boolean")
 	if boolL && isClass(r.e.typ, "Boolean") {
 		rc, stmts := r.e, r.stmts
 		if !once {
-			stmts = f.capture(func() { rc = f.genExpr(n.Right, l.typ) })
+			stmts = f.capture(func() { rc = f.genRight(n.Left, n.Right, l.typ) })
 		}
 		if stmts == "" {
 			return expr{code: "(" + l.code + " || " + rc.code + ")", typ: l.typ}
@@ -209,7 +209,7 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 	}
 	f.emit("} else {")
 	f.indent++
-	re := f.operandAgain(r, once, func() expr { return f.genExpr(n.Right, lElem) })
+	re := f.operandAgain(r, once, func() expr { return f.genRight(n.Left, n.Right, lElem) })
 	if re.noreturn {
 		f.emit("%s", re.code)
 	} else {
@@ -230,7 +230,7 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 		f.errorf(n, "`||` on %s, which is never nil or false, is always the left side", u)
 	}
 	lElem := unionOf(slices.DeleteFunc(slices.Clone(u.Members), isNil)...)
-	r, once := f.genOperandOnce(func() expr { return f.genExpr(n.Right, lElem) })
+	r, once := f.genOperandOnce(func() expr { return f.genRight(n.Left, n.Right, lElem) })
 	typ := lElem
 	if !r.e.noreturn {
 		typ = joinUnion(lElem, r.e.typ)
@@ -241,7 +241,7 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 	f.emit("\t%s = %s", tmp, f.coerce(n, expr{code: lt, typ: TAny{}}, typ)) // a member, so the check passes
 	f.emit("} else {")
 	f.indent++
-	re := f.operandAgain(r, once, func() expr { return f.genExpr(n.Right, lElem) })
+	re := f.operandAgain(r, once, func() expr { return f.genRight(n.Left, n.Right, lElem) })
 	if re.noreturn {
 		f.emit("%s", re.code)
 	} else {
@@ -252,13 +252,26 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 	return expr{code: tmp, typ: typ}
 }
 
+// genRight: the left of `l && r` / `l || r` always ran first, so a local it nil-guarded a call on is not nil here (decision 357).
+func (f *fctx) genRight(left, right parser.Node, expected Type) expr {
+	ns := f.callNarrowing(left)
+	if len(ns) == 0 {
+		return f.genExpr(right, expected)
+	}
+	f.push()
+	f.applyNarrow(ns)
+	e := f.genExpr(right, expected)
+	f.pop()
+	return e
+}
+
 func (f *fctx) genAnd(n *parser.AndNode) expr {
 	l := f.genExpr(n.Left, nil)
 	narrow := f.leftNarrowing(n.Left, l)
 	r, once := f.genOperandOnce(func() expr {
 		f.push()
 		f.applyNarrow(narrow)
-		e := f.genExpr(n.Right, nil)
+		e := f.genRight(n.Left, n.Right, nil)
 		f.pop()
 		return e
 	})
@@ -266,7 +279,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	if boolL && isClass(r.e.typ, "Boolean") {
 		rc, stmts := r.e, r.stmts
 		if !once || len(narrow) > 0 { // the unnarrowed generation is the one emitted
-			stmts = f.capture(func() { rc = f.genExpr(n.Right, nil) })
+			stmts = f.capture(func() { rc = f.genRight(n.Left, n.Right, nil) })
 		}
 		if stmts == "" {
 			return expr{code: "(" + l.code + " && " + rc.code + ")", typ: l.typ}
@@ -282,7 +295,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 	if !boolL && !isOpt(l.typ) && !isAny(l.typ) && !isNil(l.typ) && !unionFalsy(l.typ) {
 		// the left is never nil or false: the value is the right
 		f.discard(l)
-		return f.operandAgain(r, once && len(narrow) == 0, func() expr { return f.genExpr(n.Right, nil) })
+		return f.operandAgain(r, once && len(narrow) == 0, func() expr { return f.genRight(n.Left, n.Right, nil) })
 	}
 	// Ruby: the left when it is falsy (nil or false), else the right.
 	// A Boolean? left may be false, not just nil: it is a possible value.
@@ -318,7 +331,7 @@ func (f *fctx) genAnd(n *parser.AndNode) expr {
 		}
 		f.applyNarrow([]narrowInfo{nw})
 	}
-	re := f.operandAgain(r, once, func() expr { return f.genExpr(n.Right, nil) })
+	re := f.operandAgain(r, once, func() expr { return f.genRight(n.Left, n.Right, nil) })
 	f.pop()
 	f.emit("%s = %s", tmp, f.coerce(n, re, typ))
 	f.indent--

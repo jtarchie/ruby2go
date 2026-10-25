@@ -166,6 +166,9 @@ func (f *fctx) genOpAssignAttr(n *parser.CallOperatorWriteNode) expr {
 	recv := f.attrRecv(n, n.Receiver, n.IsSAFE_NAVIGATION(), n.ReadName)
 	val := f.genOp(n, f.genMethodCall(n, recv, n.ReadName, nil, nil), n.BinaryOperator, n.Value)
 	val.code = f.pinSimple(val.code)
+	if f.nilGuarded[n] && isOpt(recv.typ) { // the reader's guard already raised on nil: the writer's receiver is not nil
+		recv = expr{code: derefOpt(recv.code, recv.typ), typ: stripOpt(recv.typ)}
+	}
 	f.callWriter(n, recv, n.WriteName, val)
 	return expr{code: val.code, typ: val.typ, lit: val.lit, done: true}
 }
@@ -176,6 +179,9 @@ func (f *fctx) genOrAssignAttr(n *parser.CallOrWriteNode) expr {
 	cur := f.genMethodCall(n, recv, n.ReadName, nil, nil)
 	if !isAny(cur.typ) && !isOpt(cur.typ) && !isClass(cur.typ, "Boolean") {
 		return cur // never nil or false: the writer never runs
+	}
+	if f.nilGuarded[n] && isOpt(recv.typ) { // as in genOpAssignAttr
+		recv = expr{code: derefOpt(recv.code, recv.typ), typ: stripOpt(recv.typ)}
 	}
 	tmp := f.newTmp()
 	f.emit("%s := %s", tmp, cur.code)

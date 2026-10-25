@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md holds the goals and the index of numbered decisions, one file each in `docs/decisions/NNN.md` ("decision N" anywhere means that file; docs/history.md is the early walkthrough, superseded where they disagree). The decisions are binding: read the relevant file before changing behavior, and add or amend one when a new decision is made. A new decision is the next-numbered file (last: 370): `# Decision N`, then a `**Rule:**` line (one present-tense sentence, what is true now; it is the index row), then the text. A decision fully replaced later becomes a stub (`*Superseded by decision M.*` + gist + the `git show` of its full text); amending one updates its Rule line if the rule changed; when one amends an older decision, also add a "see also" pointer inside the old file. The index table in design.md is generated: run `scripts/design-index` after adding or retitling a decision (`TestDesignIndex` fails when it is stale).
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md holds the goals and the index of numbered decisions, one file each in `docs/decisions/NNN.md` ("decision N" anywhere means that file; docs/history.md is the early walkthrough, superseded where they disagree). The decisions are binding: read the relevant file before changing behavior, and add or amend one when a new decision is made. A new decision is the next-numbered file (last: 371): `# Decision N`, then a `**Rule:**` line (one present-tense sentence, what is true now; it is the index row), then the text. A decision fully replaced later becomes a stub (`*Superseded by decision M.*` + gist + the `git show` of its full text); amending one updates its Rule line if the rule changed; when one amends an older decision, also add a "see also" pointer inside the old file. The index table in design.md is generated: run `scripts/design-index` after adding or retitling a decision (`TestDesignIndex` fails when it is stale).
 
 ## Commands
 
@@ -33,6 +33,7 @@ go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMetho
 go run ./cmd/rb2go stubs && go vet -tags rb2go_prelude ./prelude/go   # type-check prelude/go helpers against generated stubs (decision 154; TestPreludeGo does the same)
 go test ./internal/rbs              # RBS parser unit tests
 golangci-lint run ./...             # repo lint (.golangci.yml)
+govulncheck ./...                   # known vulnerabilities in deps/std the code reaches; needs network, so not part of go test (decision 371)
 go run ./cmd/rb2go run examples/NN_x/main.rb        # transpile, build, run; warnings go to stderr
 go run ./cmd/rb2go build -work -gcflags=-e examples/NN_x/main.rb  # keep main.go (WORK= path on stderr), show every Go error
 scripts/rubyspec-coverage --missing   # ruby/spec core method files the prelude names, per class (#49; clones ruby/spec to the cache)

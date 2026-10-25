@@ -248,7 +248,7 @@ func (f *fctx) genStandIn(n parser.Node) bool {
 	case *classStmt:
 		f.genClassStmt(n)
 	case *parser.ConstantWriteNode:
-		if k := f.c.consts[qualify(f.lex, n.Name)]; !f.bodyUnit && (k == nil || !k.inMain && !k.inBody) { // inBody: also inside a body's begin (decision 334)
+		if k := f.c.consts[qualify(f.lex, n.Name)]; k == nil || !f.bodyUnit && !k.inMain && !k.inBody { // nil: written inside a block, which collect never sees; inBody: also inside a body's begin (decision 334)
 			return false
 		}
 		f.genBodyConst(n)

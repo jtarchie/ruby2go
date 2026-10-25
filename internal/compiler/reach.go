@@ -574,6 +574,8 @@ func (r *reach) pruneConsts() {
 			if parent := c.classes[k.RubyName[:i]]; parent != nil {
 				parent.constNames = slices.DeleteFunc(parent.constNames, func(s string) bool { return s == name })
 			}
+		} else { // Object's table (constEntries) would read the deleted entry
+			c.topConstNames = slices.DeleteFunc(c.topConstNames, func(s string) bool { return s == name })
 		}
 	}
 	c.constList = keep
