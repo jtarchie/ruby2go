@@ -103,6 +103,7 @@ pre {
 @media (max-width: 600px) { .brow { grid-template-columns: 1fr; gap: 2px; } .bname { text-align: left; } .bench th, .bench td { padding: 4px; } }
 .stats .tile { text-align: center; }
 .stats .big { font-size: 40px; font-weight: 800; line-height: 1.1; color: var(--moon); margin: 0 0 6px; font-variant-numeric: tabular-nums; }
+.exp { font-size: 13px; font-weight: 700; vertical-align: middle; color: var(--moon); border: 1px solid var(--moon); border-radius: 999px; padding: 2px 10px; margin-left: 6px; }
 footer { text-align: center; color: var(--muted); font-size: 15px; padding: 32px 16px 48px; border-top: 1px solid var(--line); }
 footer p { margin: 4px 0; }
 footer a { text-decoration: underline; }
@@ -117,6 +118,7 @@ footer a { text-decoration: underline; }
     <p class="lede">rugaroo compiles typed Ruby into a single Go file and a static native binary. No interpreter, no runtime library, and the same output as <code>ruby</code>, byte for byte.</p>
     <div class="ctas">
       <a class="pill lit" href="https://play.rugaroo.dev">Try the playground</a>
+      <a class="pill" href="https://github.com/jtarchie/rugaroo/blob/main/docs/getting-started.md">Get started</a>
       <a class="pill" href="https://github.com/jtarchie/rugaroo">GitHub</a>
     </div>
   </section>
@@ -226,8 +228,8 @@ footer a { text-decoration: underline; }
     <div class="tile"><div class="ico" aria-hidden="true">🐺</div><h3>One static binary</h3><p>No interpreter ships with it. A compiled program does no interpretation and runs about 3x faster than MRI across the benchmarks.</p></div>
   </div>
 
-  <h2>Real gems, too</h2>
-  <p class="sub">The sqlite3 gem's API, unmodified, over libsqlite3. rugaroo compiles the pure-Ruby <a href="https://github.com/jtarchie/sqlite3-fiddle">sqlite3-fiddle</a> in place of the C extension, so the binary still needs no cgo.</p>
+  <h2>Real gems, too <span class="exp">experimental</span></h2>
+  <p class="sub">The sqlite3 gem's API, unmodified, over libsqlite3. rugaroo compiles the pure-Ruby <a href="https://github.com/jtarchie/sqlite3-fiddle">sqlite3-fiddle</a> in place of the C extension, so the binary still needs no cgo. Gem support works on the gems it is tested with; the core language and standard library are the <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/support.md">stable part</a>.</p>
   <div class="code">
     <figure>
       <figcaption>books.rb</figcaption>
@@ -267,7 +269,7 @@ rugaroo run greet.rb</code></pre>
 </main>
 <footer>
   <p>A rougarou is a shape-shifter from Cajun folklore. This one turns Ruby into Go.</p>
-  <p><a href="https://play.rugaroo.dev">Playground</a> · <a href="https://github.com/jtarchie/rugaroo">Source</a> · <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/design.md">Design notes</a></p>
+  <p><a href="https://play.rugaroo.dev">Playground</a> · <a href="https://github.com/jtarchie/rugaroo">Source</a> · <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/README.md">Docs</a> · <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/support.md">What works</a> · <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/design.md">Design notes</a></p>
 </footer>
 </body>
 </html>
