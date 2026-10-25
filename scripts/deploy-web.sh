@@ -23,6 +23,8 @@ put() { # name, content type: stored gzipped, so the browser downloads a fractio
 put rugaroo.wasm application/wasm
 put wasm_exec.js "text/javascript; charset=utf-8"
 put examples.json "application/json"
+# the link-preview card (web/og/card.html), at a fixed URL since the pages name it absolutely; previewers cache it for days anyway
+wrangler r2 object put "$bucket/og.png" --file web/og/og.png --ct image/png --cc "public, max-age=86400" --remote
 
 go run ./cmd/rugaroo web -static "$tmp/static" -assets "$public/$hash/"
 rm -rf "$out"
