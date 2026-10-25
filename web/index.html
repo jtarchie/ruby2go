@@ -31,7 +31,7 @@ body {
 }
 a { color: var(--ruby); }
 a:focus-visible, .pill:focus-visible { outline: 3px solid var(--moon); outline-offset: 3px; }
-main { max-width: 980px; margin: 0 auto; padding: 0 16px 48px; }
+main { max-width: 1120px; margin: 0 auto; padding: 0 16px 48px; }
 .masthead { text-align: center; padding: 56px 0 32px; }
 .masthead img { display: block; margin: 0 auto; width: min(220px, 56vw); height: auto; filter: drop-shadow(0 0 40px #fef3c755); animation: bob 5s ease-in-out infinite; }
 @keyframes bob { 50% { transform: translateY(-8px) rotate(-2deg); } }
@@ -53,7 +53,12 @@ h2 { font-weight: 700; font-size: 26px; margin: 56px 0 16px; text-align: center;
 .tile p { margin: 0; color: var(--muted); font-size: 16px; }
 .tile .ico { font-size: 26px; line-height: 1; margin-bottom: 8px; }
 .code { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-figure { margin: 0; min-width: 0; }
+figure { margin: 0; min-width: 0; display: flex; flex-direction: column; }
+figure pre { flex: 1; }
+.note { font-weight: 400; color: var(--muted); font-size: 14px; }
+pre.scroll { max-height: 420px; overflow-y: auto; }
+@media (min-width: 700px) { pre.scroll { flex: 1 1 0; min-height: 0; max-height: none; } }
+.sub.out { margin-top: 12px; }
 figcaption { font-weight: 700; margin: 0 0 6px 4px; color: var(--moon); }
 pre {
   margin: 0; background: #100e20; border: 1px solid var(--line); border-radius: 16px; padding: 16px;
@@ -61,6 +66,7 @@ pre {
 }
 .c { color: #8f88b8; } .k { color: var(--ruby); } .s { color: #a7f3d0; } .t { color: #fde68a; }
 .install { max-width: 680px; margin: 0 auto; }
+.sub { max-width: 680px; margin: 0 auto 20px; text-align: center; color: var(--muted); }
 .install p { color: var(--muted); text-align: center; margin-top: 12px; }
 footer { text-align: center; color: var(--muted); font-size: 15px; padding: 32px 16px 48px; border-top: 1px solid var(--line); }
 footer p { margin: 4px 0; }
@@ -101,18 +107,41 @@ footer a { text-decoration: underline; }
 <span class="t">Greeter</span>.new(<span class="t">ARGV</span>.first || <span class="s">"world"</span>).greet(3).each { puts it }</code></pre>
     </figure>
     <figure>
-      <figcaption>typed Go comes out</figcaption>
-<pre><code><span class="k">type</span> <span class="t">Greeter</span> <span class="k">struct</span> {
+      <figcaption>typed Go comes out <span class="note">(your code; the prelude is left out)</span></figcaption>
+<pre class="scroll"><code><span class="k">type</span> <span class="t">Greeter</span> <span class="k">struct</span> {
 	name <span class="t">String</span>
 }
 
+<span class="k">func</span> NewGreeter(name <span class="t">String</span>) *<span class="t">Greeter</span> {
+	self := &amp;<span class="t">Greeter</span>{}
+	Greeter_Initialize(self, name)
+	<span class="k">return</span> self
+}
+
+<span class="k">func</span> Greeter_Initialize(self *<span class="t">Greeter</span>, name <span class="t">String</span>) {
+	self._Greeter().name = name
+}
+
 <span class="k">func</span> Greeter_Greet(self *<span class="t">Greeter</span>, times <span class="t">Integer</span>) *<span class="t">Array</span>[<span class="t">String</span>] {
-	<span class="k">return</span> Range_Map[<span class="t">Integer</span>, <span class="t">String</span>](
-		&amp;<span class="t">Range</span>[<span class="t">Integer</span>]{b: 1, e: times},
-		<span class="k">func</span>(i <span class="t">Integer</span>) <span class="t">String</span> {
-			<span class="k">return</span> Integer.ToS(i) + <span class="s">". hello, "</span> + self._Greeter().name
-		})
-}</code></pre>
+	<span class="k">return</span> Range_Map[<span class="t">Integer</span>, <span class="t">String</span>]((&amp;<span class="t">Range</span>[<span class="t">Integer</span>]{b: 1, e: times}), <span class="k">func</span>(i <span class="t">Integer</span>) <span class="t">String</span> {
+		<span class="k">return</span> (Integer.ToS(i) + <span class="s">". hello, "</span> + self._Greeter().name)
+	})
+}
+
+<span class="k">func</span> main() {
+	<span class="c">// … prelude setup</span>
+	<span class="k">var</span> t1_ <span class="t">String</span>
+	<span class="k">if</span> t2_ := Enumerable___First0[*<span class="t">Array</span>[<span class="t">String</span>], <span class="t">String</span>](ARGV); t2_ != <span class="k">nil</span> {
+		t1_ = (*t2_)
+	} <span class="k">else</span> {
+		t1_ = <span class="s">"world"</span>
+	}
+	<span class="k">for</span> it := <span class="k">range</span> Array_Each[<span class="t">String</span>](Greeter_Greet(NewGreeter(t1_), 3)) {
+		Kernel_Puts(rb_main, it)
+	}
+}
+
+<span class="c">// plus ToS/Inspect forwarders and a class id for the runtime</span></code></pre>
     </figure>
   </div>
 
@@ -122,6 +151,38 @@ footer a { text-decoration: underline; }
     <div class="tile"><div class="ico" aria-hidden="true">💎</div><h3>The core is written in Ruby</h3><p>String, Array, Hash and friends come from a prelude that is itself Ruby, compiled into your program and pruned down to what it uses.</p></div>
     <div class="tile"><div class="ico" aria-hidden="true">🐺</div><h3>One static binary</h3><p>No interpreter ships with it. A compiled program does no interpretation and runs about 3x faster than MRI across the benchmarks.</p></div>
   </div>
+
+  <h2>Real gems, too</h2>
+  <p class="sub">The sqlite3 gem's API, unmodified, over libsqlite3. rugaroo compiles the pure-Ruby <a href="https://github.com/jtarchie/sqlite3-fiddle">sqlite3-fiddle</a> in place of the C extension, so the binary still needs no cgo.</p>
+  <div class="code">
+    <figure>
+      <figcaption>books.rb</figcaption>
+<pre><code><span class="k">require</span> <span class="s">"sqlite3"</span>
+
+db = <span class="t">SQLite3</span>::<span class="t">Database</span>.new(<span class="s">":memory:"</span>)
+db.execute(<span class="s">"create table books (title text, year integer)"</span>)
+db.execute(<span class="s">"insert into books values (?, ?)"</span>, [<span class="s">"Dune"</span>, 1965])
+db.execute(<span class="s">"insert into books values (?, ?)"</span>, [<span class="s">"Neuromancer"</span>, 1984])
+
+db.execute(<span class="s">"select title, year from books order by year"</span>) <span class="k">do</span> |row|
+  puts <span class="s">"#{row[0]} (#{row[1]})"</span>
+<span class="k">end</span>
+puts db.get_first_value(<span class="s">"select count(*) from books"</span>)</code></pre>
+    </figure>
+    <figure>
+      <figcaption>same output from ruby and from the binary</figcaption>
+<pre><code><span class="c">$ rugaroo run books.rb</span>
+Dune (1965)
+Neuromancer (1984)
+2
+
+<span class="c">$ ruby books.rb</span>
+Dune (1965)
+Neuromancer (1984)
+2</code></pre>
+    </figure>
+  </div>
+  <p class="sub out">The full tour (blobs, prepared statements, transactions, Ruby-defined SQL functions) is <a href="https://github.com/jtarchie/rugaroo/blob/main/examples/122_sqlite3/main.rb">example 122</a>.</p>
 
   <h2>Install</h2>
   <div class="install">
