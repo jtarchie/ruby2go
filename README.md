@@ -298,21 +298,21 @@ on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 Correctness is measured against MRI, not a specification: 126
 [examples](examples/), 43 minitest suites and 25 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127). Measured 2026-10-23 (the runner walks
+ruby/spec under rb2go (decision 127). Measured 2026-10-24 (the runner walks
 nested spec folders since 2026-10-21, decision 336, so the totals cover 2,151
 `core` and 1,517 `library` spec files, not the 1,855 and 715 it read before):
 
 | ruby/spec | examples | pass | fail | error | skipped |
 |---|---:|---:|---:|---:|---:|
-| `core` | 21,731 | **8,561** | 1,094 | 772 | 11,304 |
-| `library` | 5,307 | **1,102** | 152 | 95 | 3,958 |
-| total | 27,038 | **9,663** | 1,246 | 867 | 15,262 |
+| `core` | 21,709 | **8,916** | 1,307 | 2,478 | 9,008 |
+| `library` | 5,304 | **1,116** | 192 | 1,536 | 2,460 |
+| total | 27,013 | **10,032** | 1,499 | 4,014 | 11,468 |
 
 "Fail" means an assertion did not hold. "Error" means the example raised
 instead. "Skipped" means the example uses something rb2go can't compile; the
 largest groups are Bignum, String mutation, String encoding tags and
 `eval`/code loading, which rb2go leaves out by design. Of the examples that
-run, 82.1% of `core` and 81.7% of `library` pass. `core/array/pack` and
+run, 70.2% of `core` and 39.2% of `library` pass: down from 82.1% and 81.7% on 2026-10-23 although passes rose (8,582 to 8,916 and 1,110 to 1,116), because decisions 362-370 compile examples rb2go used to skip, and many of those now run and raise (a constant a skipped fixture would have defined, `library/matrix`'s 289 without Matrix). `core/array/pack` and
 `core/string/unpack` (3,177 examples, 2,543 passing) read as 11% passing in
 the first run that reached them because the runner did not set mspec's
 `@method` for the specs' format helpers; it does now
@@ -334,12 +334,12 @@ with [`scripts/spinel-rubyspec`](scripts/spinel-rubyspec/compare) on 2026-10-24:
 
 | suites | examples | spinel | rb2go |
 |---|---:|---:|---:|
-| `language` | 1,903 | 1,408 | 1,015 |
-| 21 `core` classes | 5,935 | 4,333 | 2,943 |
-| total | 7,838 | **5,741** (73%) | **3,958** (50%) |
+| `language` | 1,903 | 1,408 | 1,028 |
+| 21 `core` classes | 5,935 | 4,333 | 2,954 |
+| total | 7,838 | **5,741** (73%) | **3,982** (51%) |
 
-rb2go passes 310 of them that spinel does not, and spinel 2,093 that rb2go
-does not (from 3,106 before decisions 362-368). The largest remaining causes
+rb2go passes 313 of them that spinel does not, and spinel 2,072 that rb2go
+does not (from 3,106 before decisions 362-370). The largest remaining causes
 are Bignum ([#113](https://github.com/jtarchie/ruby2go/issues/113)),
 `define_method`, specs that pass a wrong type expecting a run-time
 `TypeError` (decision 20) and in-place String mutation (decision 58).
