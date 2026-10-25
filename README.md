@@ -1,6 +1,15 @@
-# rugaroo
+<p align="center">
+  <img src="web/logo.svg" alt="rugaroo: a rougarou pup wearing a ruby, in front of the moon" width="160">
+</p>
 
-Compile typed Ruby to a native Go binary.
+<h1 align="center">rugaroo</h1>
+
+<p align="center"><em>Ruby by day. Go by night.</em><br>
+Compile typed Ruby to a native Go binary.<br>
+<a href="https://rugaroo.dev">rugaroo.dev</a> · <a href="https://play.rugaroo.dev">playground</a></p>
+
+A [rougarou](https://en.wikipedia.org/wiki/Rougarou) is a shape-shifter from
+Cajun folklore. This one turns Ruby into Go.
 
 rugaroo reads a Ruby program whose methods carry
 [rbs-inline](https://github.com/soutaro/rbs-inline) type annotations
@@ -89,7 +98,7 @@ rugaroo gen main.rb > main.go        # print the generated Go (no go command nee
 rugaroo test test/                   # compile minitest files into one binary and run them
 rugaroo test test/foo_test.rb --seed 1 -v   # minitest flags pass through
 rugaroo web                          # playground at http://127.0.0.1:8080: Ruby in, Go out, Run button
-rugaroo web -static dir -assets URL  # the same playground as static files, compiling in the browser (scripts/deploy-web.sh)
+rugaroo web -static dir -assets URL  # the same playground as static files, compiling in the browser (scripts/deploy-web.sh; live at play.rugaroo.dev)
 ```
 
 `-race` and `-gcflags` pass through to `go build`. `--int-overflow=MODE`

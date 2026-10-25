@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rugaroo: typed Ruby to native Go</title>
+<meta name="description" content="rugaroo compiles typed Ruby to a single Go file and a static native binary. Same output as MRI, no interpreter, no runtime library.">
+<meta property="og:title" content="rugaroo">
+<meta property="og:description" content="Ruby by day. Go by night. Compile typed Ruby to a native binary.">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+:root {
+  --sky: #17142b; --sky2: #241f42; --card: #2a2550; --line: #3b3570;
+  --fg: #f5f0ff; --muted: #c4bce6; --moon: #fef3c7; --ruby: #fb7185; --ruby-deep: #e11d48;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--sky); }
+body {
+  margin: 0; color: var(--fg); font: 17px/1.6 var(--round);
+  background:
+    radial-gradient(1px 1px at 12% 18%, #fff8 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 78% 9%, #fff9 50%, transparent 51%),
+    radial-gradient(1px 1px at 63% 31%, #fff6 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 26% 42%, #fff7 50%, transparent 51%),
+    radial-gradient(1px 1px at 90% 37%, #fff8 50%, transparent 51%),
+    radial-gradient(1px 1px at 40% 8%, #fff6 50%, transparent 51%),
+    linear-gradient(var(--sky2), var(--sky) 900px);
+  background-repeat: no-repeat;
+}
+a { color: var(--ruby); }
+a:focus-visible, .pill:focus-visible { outline: 3px solid var(--moon); outline-offset: 3px; }
+main { max-width: 980px; margin: 0 auto; padding: 0 16px 48px; }
+.masthead { text-align: center; padding: 56px 0 32px; }
+.masthead img { display: block; margin: 0 auto; width: min(220px, 56vw); height: auto; filter: drop-shadow(0 0 40px #fef3c755); animation: bob 5s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-8px) rotate(-2deg); } }
+@media (prefers-reduced-motion: reduce) { .masthead img { animation: none; } }
+h1 { font-weight: 800; font-size: clamp(44px, 9vw, 72px); line-height: 1; margin: 20px 0 8px; letter-spacing: -0.02em; }
+.tag { font-size: clamp(20px, 3.4vw, 26px); color: var(--moon); margin: 0 0 8px; }
+.lede { max-width: 620px; margin: 0 auto 28px; color: var(--muted); }
+.ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.pill {
+  display: inline-block; padding: 12px 22px; border-radius: 999px; font-weight: 700; text-decoration: none;
+  border: 2px solid var(--ruby); color: var(--fg); transition: transform .15s;
+}
+.pill:hover { transform: translateY(-2px); }
+.pill.lit { background: var(--ruby-deep); border-color: var(--ruby-deep); color: #fff; box-shadow: 0 6px 24px #e11d4855; }
+h2 { font-weight: 700; font-size: 26px; margin: 56px 0 16px; text-align: center; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 20px 22px; }
+.tile h3 { font-weight: 700; margin: 0 0 6px; font-size: 19px; }
+.tile p { margin: 0; color: var(--muted); font-size: 16px; }
+.tile .ico { font-size: 26px; line-height: 1; margin-bottom: 8px; }
+.code { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+figure { margin: 0; min-width: 0; }
+figcaption { font-weight: 700; margin: 0 0 6px 4px; color: var(--moon); }
+pre {
+  margin: 0; background: #100e20; border: 1px solid var(--line); border-radius: 16px; padding: 16px;
+  overflow-x: auto; font: 13.5px/1.55 var(--mono); color: #e9e4ff; tab-size: 2;
+}
+.c { color: #8f88b8; } .k { color: var(--ruby); } .s { color: #a7f3d0; } .t { color: #fde68a; }
+.install { max-width: 680px; margin: 0 auto; }
+.install p { color: var(--muted); text-align: center; margin-top: 12px; }
+footer { text-align: center; color: var(--muted); font-size: 15px; padding: 32px 16px 48px; border-top: 1px solid var(--line); }
+footer p { margin: 4px 0; }
+footer a { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main>
+  <section class="masthead">
+    <img src="/logo.svg" alt="A cute purple rougarou pup wearing a ruby pendant, in front of a full moon" width="220" height="220">
+    <h1>rugaroo</h1>
+    <p class="tag">Ruby by day. Go by night.</p>
+    <p class="lede">rugaroo compiles typed Ruby into a single Go file and a static native binary. No interpreter, no runtime library, and the same output as <code>ruby</code>, byte for byte.</p>
+    <div class="ctas">
+      <a class="pill lit" href="https://play.rugaroo.dev">Try the playground</a>
+      <a class="pill" href="https://github.com/jtarchie/rugaroo">GitHub</a>
+    </div>
+  </section>
+
+  <h2>Plain Ruby goes in</h2>
+  <div class="code">
+    <figure>
+      <figcaption>greet.rb</figcaption>
+<pre><code><span class="c"># rbs_inline: enabled</span>
+
+<span class="k">class</span> <span class="t">Greeter</span>
+  <span class="c">#: (String) -&gt; void</span>
+  <span class="k">def</span> initialize(name)
+    @name = name <span class="c">#: String</span>
+  <span class="k">end</span>
+
+  <span class="c">#: (Integer) -&gt; Array[String]</span>
+  <span class="k">def</span> greet(times)
+    (1..times).map { |i| <span class="s">"#{i}. hello, #{@name}"</span> }
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="t">Greeter</span>.new(<span class="t">ARGV</span>.first || <span class="s">"world"</span>).greet(3).each { puts it }</code></pre>
+    </figure>
+    <figure>
+      <figcaption>typed Go comes out</figcaption>
+<pre><code><span class="k">type</span> <span class="t">Greeter</span> <span class="k">struct</span> {
+	name <span class="t">String</span>
+}
+
+<span class="k">func</span> Greeter_Greet(self *<span class="t">Greeter</span>, times <span class="t">Integer</span>) *<span class="t">Array</span>[<span class="t">String</span>] {
+	<span class="k">return</span> Range_Map[<span class="t">Integer</span>, <span class="t">String</span>](
+		&amp;<span class="t">Range</span>[<span class="t">Integer</span>]{b: 1, e: times},
+		<span class="k">func</span>(i <span class="t">Integer</span>) <span class="t">String</span> {
+			<span class="k">return</span> Integer.ToS(i) + <span class="s">". hello, "</span> + self._Greeter().name
+		})
+}</code></pre>
+    </figure>
+  </div>
+
+  <h2>Why a werewolf?</h2>
+  <div class="tiles">
+    <div class="tile"><div class="ico" aria-hidden="true">🌕</div><h3>It still runs on MRI</h3><p>Your source stays plain Ruby with <code>#:</code> type comments. Every program rugaroo accepts runs under <code>ruby</code> unchanged, and the test suite checks they print the same thing.</p></div>
+    <div class="tile"><div class="ico" aria-hidden="true">💎</div><h3>The core is written in Ruby</h3><p>String, Array, Hash and friends come from a prelude that is itself Ruby, compiled into your program and pruned down to what it uses.</p></div>
+    <div class="tile"><div class="ico" aria-hidden="true">🐺</div><h3>One static binary</h3><p>No interpreter ships with it. A compiled program does no interpretation and runs about 3x faster than MRI across the benchmarks.</p></div>
+  </div>
+
+  <h2>Install</h2>
+  <div class="install">
+    <pre><code>go install github.com/jtarchie/rugaroo/cmd/rugaroo@latest
+rugaroo run greet.rb</code></pre>
+    <p>Needs Go 1.26 or newer. Ruby isn't needed to compile. Experimental: it handles a large subset of Ruby, not all of it.</p>
+  </div>
+</main>
+<footer>
+  <p>A rougarou is a shape-shifter from Cajun folklore. This one turns Ruby into Go.</p>
+  <p><a href="https://play.rugaroo.dev">Playground</a> · <a href="https://github.com/jtarchie/rugaroo">Source</a> · <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/design.md">Design notes</a></p>
+</footer>
+</body>
+</html>

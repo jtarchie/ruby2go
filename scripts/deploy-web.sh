@@ -1,12 +1,12 @@
 #!/bin/sh
-# Static playground (decision 102): the wasm and examples go to the public R2 bucket under a content-hash prefix, the page that names it to a Top Banana site.
+# Static playground (decision 102): the wasm and examples go to the public R2 bucket under a content-hash prefix, the page that names it to a Top Banana site (play.rugaroo.dev); web/ is the landing page (rugaroo.dev).
 set -eu
 cd "$(dirname "$0")/.." # paths below are repo-relative
 node scripts/topbanana.check.mjs >/dev/null # the deploy guards (empty set, token) must hold before anything is uploaded
 slug=${TOPBANANA_SLUG:-rugaroo}
 out=dist/web
 bucket=ruby2go # ponytail: R2 buckets cannot be renamed; the pre-rename bucket keeps the public URL below
-public=https://pub-372f595b0c2c4d7ebf282a54bd539231.r2.dev # ponytail: r2.dev is rate-limited; a custom domain on the bucket for real traffic
+public=https://assets.rugaroo.dev # the bucket's custom domain; Cloudflare cache rules keep it at the edge
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -30,3 +30,4 @@ mkdir -p "$out"
 cp "$tmp/static/index.html" "$out/"
 echo "assets: $public/$hash/"
 node scripts/topbanana.mjs deploy "$slug" "$out"
+node scripts/topbanana.mjs deploy "${TOPBANANA_LANDING_SLUG:-rugaroo-dev}" web

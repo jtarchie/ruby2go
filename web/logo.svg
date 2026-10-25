@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-labelledby="t">
+  <title id="t">rugaroo: a rougarou pup wearing a ruby, in front of the moon</title>
+  <circle cx="100" cy="96" r="92" fill="#fef3c7"/>
+  <circle cx="44" cy="62" r="9" fill="#fde68a"/>
+  <circle cx="160" cy="150" r="12" fill="#fde68a"/>
+  <circle cx="150" cy="44" r="5" fill="#fde68a"/>
+  <!-- ears -->
+  <path d="M50 84 L58 22 L96 58 Z" fill="#6d6491" stroke="#2e2a45" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M150 84 L142 22 L104 58 Z" fill="#6d6491" stroke="#2e2a45" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M60 70 L63 38 L84 58 Z" fill="#f9a8d4"/>
+  <path d="M140 70 L137 38 L116 58 Z" fill="#f9a8d4"/>
+  <!-- head with cheek fluff -->
+  <path d="M50 98 Q48 66 74 57 Q100 48 126 57 Q152 66 150 98 L162 110 L149 115 L156 128 L139 130 Q122 147 100 147 Q78 147 61 130 L44 128 L51 115 L38 110 Z" fill="#6d6491" stroke="#2e2a45" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M100 56 Q92 70 100 84 Q108 70 100 56 Z" fill="#8b82b0"/>
+  <!-- muzzle -->
+  <ellipse cx="100" cy="119" rx="27" ry="20" fill="#f5f0ff"/>
+  <!-- eyes -->
+  <circle cx="77" cy="96" r="9" fill="#1f1b2e"/>
+  <circle cx="123" cy="96" r="9" fill="#1f1b2e"/>
+  <circle cx="80.5" cy="92.5" r="3.4" fill="#fff"/>
+  <circle cx="126.5" cy="92.5" r="3.4" fill="#fff"/>
+  <circle cx="74" cy="99" r="1.6" fill="#fff"/>
+  <circle cx="120" cy="99" r="1.6" fill="#fff"/>
+  <!-- blush -->
+  <ellipse cx="64" cy="114" rx="8" ry="4.5" fill="#f472b6" opacity=".55"/>
+  <ellipse cx="136" cy="114" rx="8" ry="4.5" fill="#f472b6" opacity=".55"/>
+  <!-- nose and smile -->
+  <path d="M91 108 Q100 103 109 108 Q105 116 100 117 Q95 116 91 108 Z" fill="#1f1b2e"/>
+  <path d="M100 117 Q100 125 93 127 M100 117 Q100 125 107 127" fill="none" stroke="#1f1b2e" stroke-width="3" stroke-linecap="round"/>
+  <path d="M96 127 Q100 134 104 127 Z" fill="#fb7185"/>
+  <!-- collar -->
+  <path d="M68 139 Q100 157 132 139 L134 148 Q100 167 66 148 Z" fill="#2e2a45"/>
+  <!-- ruby pendant -->
+  <path d="M87 155 L113 155 L122 165 L100 192 L78 165 Z" fill="#e11d48" stroke="#7f1d1d" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M87 155 L113 155 L122 165 L78 165 Z" fill="#fb7185"/>
+  <path d="M78 165 L122 165 M87 155 L93 165 L100 192 L107 165 L113 155 M100 155 L93 165 M100 155 L107 165" fill="none" stroke="#7f1d1d" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M84 162 L90 157" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".85"/>
+  <!-- sparkle -->
+  <path d="M136 168 L139 175 L146 178 L139 181 L136 188 L133 181 L126 178 L133 175 Z" fill="#fff" stroke="#e11d48" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>
