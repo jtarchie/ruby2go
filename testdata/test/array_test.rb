@@ -2789,4 +2789,15 @@ module ArrayTests
       assert_equal 5, c.size
     end
   end
+
+  class ArrayMinMaxByCountTest < Minitest::Test
+    def test_max_by_and_min_by_with_a_count
+      words = %w[aaaa b ccc dd]
+      assert_equal ["aaaa", "ccc"], words.max_by(2, &:size)
+      assert_equal ["b", "dd"], words.min_by(2) { it.size }
+      assert_equal [5, 4, 3], (1..5).max_by(3) { it }
+      assert_equal [3, 1], [3, 1].max_by(5) { it }
+      assert_equal [], [1, 2].min_by(0) { it }
+    end
+  end
 end

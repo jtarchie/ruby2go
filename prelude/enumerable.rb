@@ -548,6 +548,12 @@ module Enumerable
   #: (Integer) -> Array[E]
   def __max_1(n) = sort.reverse.first(n)
 
+  #: [K] (Integer) { (E) -> K } -> Array[E]
+  def __min_by_1(n) = sort_by { |x| yield x }.first(n)
+
+  #: [K] (Integer) { (E) -> K } -> Array[E]
+  def __max_by_1(n) = sort_by { |x| yield x }.reverse.first(n)
+
   #: () { (E, E) -> Integer } -> Array[E]
   def __sort_block = %x{
     out := &Array[E]{}
