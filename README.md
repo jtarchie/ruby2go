@@ -238,25 +238,25 @@ median of 9 runs over [`benchmarks/`](benchmarks/)):
 
 | workload | MRI | MRI+YJIT | rb2go | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.091s | 0.017s | 0.014s | 0.017s | 0.014s |
-| `Hash` counting, 500k | 0.11s | 0.094s | 0.015s | 0.007s | 0.012s | 0.010s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.13s | 0.020s | 0.011s | 0.011s | 0.010s |
-| string build/split, 100k | 0.11s | 0.11s | 0.029s | 0.018s | 0.024s | 0.017s |
-| `Math.sin`/`cos`, 200k | 0.085s | 0.071s | 0.008s | 0.006s | 0.008s | 0.007s |
-| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.035s | - | 0.014s | 0.012s |
-| binary trees (allocation), depth 10 | 0.081s | 0.067s | 0.009s | 0.008s | 0.010s | 0.007s |
-| splay tree | 0.22s | 0.12s | 0.014s | 0.019s | 0.018s | 0.012s |
-| blocks, procs, lambdas, enumerator chains | 0.36s | 0.33s | 0.065s | 0.14s | 0.036s | 0.012s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.077s | 2.50s | 0.017s |
-| regexp match/gsub/scan/tr, StringScanner | 0.75s | 0.74s | 0.21s | 0.84s | 0.21s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.56s | 0.54s | 0.13s | 1.07s | 0.051s | 0.069s |
-| format, StringIO, case mapping | 0.48s | 0.44s | 0.24s | 0.20s | 0.14s | 0.10s |
-| JSON generate + parse | 0.14s | 0.15s | 0.12s | 0.23s | 0.13s | 0.25s |
-| pairing_heap gem: Dijkstra + heapsort | 0.68s | 0.34s | 0.21s | - | 0.038s | 0.035s |
+| `fib(32)` | 0.27s | 0.093s | 0.018s | 0.014s | 0.016s | 0.015s |
+| `Hash` counting, 500k | 0.11s | 0.097s | 0.016s | 0.007s | 0.013s | 0.009s |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.14s | 0.021s | 0.011s | 0.011s | 0.011s |
+| string build/split, 100k | 0.11s | 0.11s | 0.031s | 0.017s | 0.024s | 0.017s |
+| `Math.sin`/`cos`, 200k | 0.086s | 0.073s | 0.009s | 0.006s | 0.008s | 0.007s |
+| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.037s | - | 0.014s | 0.012s |
+| binary trees (allocation), depth 10 | 0.082s | 0.070s | 0.010s | 0.008s | 0.010s | 0.007s |
+| splay tree | 0.21s | 0.12s | 0.014s | 0.019s | 0.019s | 0.012s |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.34s | 0.066s | 0.15s | 0.036s | 0.013s |
+| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.075s | 2.50s | 0.018s |
+| regexp match/gsub/scan/tr, StringScanner | 0.74s | 0.72s | 0.21s | 0.83s | 0.21s | 0.28s |
+| sort_by/group_by/tally, Set, Struct | 0.56s | 0.53s | 0.13s | 1.13s | 0.053s | 0.067s |
+| format, StringIO, case mapping | 0.49s | 0.45s | 0.24s | 0.21s | 0.14s | 0.10s |
+| JSON generate + parse | 0.14s | 0.16s | 0.12s | 0.24s | 0.13s | 0.25s |
+| pairing_heap gem: Dijkstra + heapsort | 0.66s | 0.34s | 0.21s | - | 0.038s | 0.034s |
 | liquid gem: a template rendered 400 times | 0.37s | 0.30s | 0.16s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.55s | 0.40s | - | - | - |
-| total (rows each one ran) | 5.36s | 4.49s | 1.80s | 2.63s | 3.21s | 0.85s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.4x | 1.4x | 5.3x |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.55s | 0.40s | - | - | - |
+| total (rows each one ran) | 5.32s | 4.49s | 1.79s | 2.71s | 3.22s | 0.86s |
+| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.3x | 1.4x | 5.3x |
 
 What the columns are:
 - **rb2go** and **spinel** ([matz/spinel](https://github.com/matz/spinel), a
@@ -298,7 +298,7 @@ on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 Correctness is measured against MRI, not a specification: 126
 [examples](examples/), 43 minitest suites and 25 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127). Measured 2026-10-24 (the runner walks
+ruby/spec under rb2go (decision 127). Measured 2026-10-25, unchanged by decision 371 (the runner walks
 nested spec folders since 2026-10-21, decision 336, so the totals cover 2,151
 `core` and 1,517 `library` spec files, not the 1,855 and 715 it read before):
 
@@ -330,7 +330,7 @@ Side by side with spinel ([#114](https://github.com/jtarchie/ruby2go/issues/114)
 on spinel's own ruby/spec harness (`tools/rubyspec`: its 22 enrolled suites
 at its ruby/spec pin `79e2dee`, each `it` block one standalone program,
 counting only the 7,838 programs MRI 4.0.7 passes), run for both compilers
-with [`scripts/spinel-rubyspec`](scripts/spinel-rubyspec/compare) on 2026-10-24:
+with [`scripts/spinel-rubyspec`](scripts/spinel-rubyspec/compare) on 2026-10-25:
 
 | suites | examples | spinel | rb2go |
 |---|---:|---:|---:|
