@@ -50,16 +50,17 @@ $ rugaroo run greet.rb Go
 $ ruby greet.rb Go        # same output
 ```
 
-The class becomes a Go struct, and its methods become ordinary typed Go:
+The class becomes a Go struct, and its methods become ordinary typed Go
+(excerpt of `rugaroo gen`, minus `//line` directives):
 
 ```go
 type Greeter struct {
 	name String
 }
 
-func Greeter_Greet[Self GreeterI](self Self, times Integer) *Array[String] {
-	return Enumerable_Map[*Range[Integer], Integer, String]((&Range[Integer]{b: 1, e: times}), func(i Integer) String {
-		return (Integer.ToS(i) + ". hello, " + self._Greeter().name)
+func Greeter_Greet(self *Greeter, times Integer) *Array[String] {
+	return Range_Map[Integer, String](&Range[Integer]{b: 1, e: times}, func(i Integer) String {
+		return Integer.ToS(i) + ". hello, " + self._Greeter().name
 	})
 }
 ```
@@ -95,7 +96,7 @@ rugaroo web -static dir -assets URL  # the same playground as static files, comp
 chooses what an Integer past 64 bits does: `raise` (`RangeError`, the
 default), `wrap` (two's-complement wraparound, for hashes and checksums) or
 `promote` (a Bignum, as MRI); a `# int_overflow: promote` line in the file
-does the same ([decision 372](docs/decisions/372.md)). Compile errors and warnings
+does the same. Compile errors and warnings
 point at `file:line` in your Ruby source, and runtime panics map back to Ruby
 lines through `//line` directives.
 
@@ -133,7 +134,7 @@ name = nil #: String?                      # T? means "T or nil"
 
 Sorbet-typed code works too: with `require "sorbet-runtime"`, `sig { params(...).returns(...) }`,
 `T.let`, `T.cast` and `T.must` are read as the same types, and what sorbet-runtime would raise
-while running is a compile error instead (decision 196, [example 119](examples/119_sorbet_sigs/main.rb)).
+while running is a compile error instead ([example 119](examples/119_sorbet_sigs/main.rb)).
 
 How Ruby types land in Go:
 
@@ -165,7 +166,7 @@ whole program at compile time rather than looked up by reflection.
 - **Core classes:** `String`, `Symbol`, `Numeric` (`Integer`, `Float`, `Rational`,
   `Complex`, mixing as MRI coerces), `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`
   (with `next`/`peek`, `Enumerator.new` generators and `Enumerator::Lazy`),
-  `Comparable`, `Regexp`/`MatchData` (Ruby syntax on Go's RE2), `Time`,
+  `Comparable`, `Regexp`/`MatchData` (Ruby syntax over Go regexp engines), `Time`,
   `Random` (same sequence as MRI for a given seed), `Math`, `File`, `Dir`,
   `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,
   `Thread`, `Queue`, `Mutex`, `Ractor`, `Fiber`, `Marshal` (its own bytes, not
@@ -175,23 +176,12 @@ whole program at compile time rather than looked up by reflection.
   `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,
   `tempfile`, `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
   `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
-  `fiddle` (calls C libraries without cgo, through purego;
-  [example 121](examples/121_fiddle/main.rb)),
-  `sqlite3` (the sqlite3 gem's API over the system's libsqlite3 through
-  Fiddle, from the vendored pure-Ruby gem
-  [gems/sqlite3-fiddle](gems/sqlite3-fiddle), which also runs on MRI;
-  [example 122](examples/122_sqlite3/main.rb)),
-  and `minitest` (including `Minitest::Spec`); from gems, the unmodified
-  `rackup` gem's WEBrick handler serves a Rack app, and the unmodified `cuba`
-  gem on `rack` serves routes with captures, query parameters, POST forms and
-  404s
-  ([example 116](examples/116_cuba_web/main.rb)), and the unmodified `kramdown`
-  gem turns Markdown (lists, tables, footnotes, code blocks, inline HTML) into
-  HTML, compiled with `rugaroo build -trace` because it requires its converters
-  by computed name ([example 123](examples/123_kramdown/main.rb)), and the
-  unmodified `liquid` gem (Jekyll's template language: loops, conditionals,
-  filters, whitespace control) renders templates
-  ([example 124](examples/124_liquid/main.rb)).
+  `fiddle` (C libraries without cgo, via purego), `sqlite3` (the gem's API over
+  libsqlite3, from the pure-Ruby [gems/sqlite3-fiddle](gems/sqlite3-fiddle)),
+  and `minitest` (including `Minitest::Spec`). Unmodified gems compile from
+  source: `rack`/`rackup`, `cuba`, `kramdown` and `liquid` (examples
+  [116](examples/116_cuba_web/main.rb), [123](examples/123_kramdown/main.rb),
+  [124](examples/124_liquid/main.rb)).
 
 [`examples/`](examples/) has one program per feature, from
 [inheritance](examples/01_inheritance/main.rb) to a
@@ -207,103 +197,40 @@ The roadmap for the rest of the standard library is issue
 - **No `eval`, `define_method`, `instance_variable_get`, or runtime
   reopening.** rugaroo compiles a *closed world*: every class and method must be
   visible at compile time.
-- **Strings are frozen.** `String` is a Go `string` value, so in-place
-  mutation (`<<`, `upcase!`, `+"..."`) is unsupported; build new strings
-  instead, or use `StringIO`.
-- **Strings carry no encoding.** Every `String` is UTF-8 bytes; `encoding`
-  reports UTF-8 for valid UTF-8 and ASCII-8BIT otherwise. `encode`, `scrub`,
-  `unicode_normalize` and `File.open(path, "r:ISO-8859-1:UTF-8")` work for
-  UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32; naming any other
-  encoding is a compile error. A String the compiler can see is binary
-  (`.b`, `File.binread`, `force_encoding("BINARY")`, `read(n)`) counts,
-  slices and matches bytes even when they are valid UTF-8; passed through a
-  method parameter, ivar or collection it reads as UTF-8 again
-  ([decision 352](docs/decisions/352.md)).
-- **Integers are 64-bit by default.** Where MRI would grow an Integer past
-  64 bits, rugaroo raises `RangeError` rather than silently wrapping.
-  `--int-overflow=promote` makes a local that grows in a loop, a `**` result
-  and a literal past 64 bits a Bignum (example 126); overflow through a typed
-  parameter, ivar or container element still raises
-  ([decision 372](docs/decisions/372.md)).
-- **No hash defaults.** `Hash.new(0)` is rejected; use `tally`,
-  `h[k] = (h[k] || 0) + 1`, or `fetch`. `Hash#[]` returns `V?`.
-- **`return`/`break` inside a closure block** is a compile error unless the
-  block can be inlined as a loop (e.g. `each` on an `Array`).
-- **Overloaded RBS signatures** (`(Integer) -> T | () -> T`) are not
-  supported; prelude methods pick one shape.
-- **Gems** compile from source with `ruby` on PATH at build time; rack and
-  Cuba are the ones tested.
+- **Strings are immutable.** `String` is a Go `string` value, so in-place
+  mutation (`<<`, `upcase!`) is unsupported; build new strings or use
+  `StringIO`.
+- **No encoding tags.** Strings are UTF-8 bytes; `encode` works for UTF-8,
+  ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32, any other encoding is a
+  compile error.
+- **Integers are 64-bit by default.** Overflow raises `RangeError`;
+  `--int-overflow=wrap` or `promote` (Bignum) change that, with limits
+  (see the design record).
+- **`Hash#[]` returns `V?`**, so typed callers nil-check or use `fetch`.
+- **`return`/`break` out of a closure block** is a compile error unless the
+  block can be inlined as a loop (e.g. `Array#each`).
+- **Overloaded RBS signatures** are not supported.
+- **Gems** compile from source with `ruby` on PATH at build time; only a few
+  (rack, Cuba, kramdown, liquid, sqlite3) are tested.
 
-Every trade-off above has a numbered entry, with its reasoning, in the
+Each trade-off has a numbered entry, with its reasoning, in the
 [design record](docs/design.md).
 
 ## Performance and conformance
 
-A compiled program does no interpretation, so the interpreter's
-per-operation overhead is gone. Over the 18 workloads in
-[`benchmarks/`](benchmarks/) (Hash, Array, string, regexp, JSON, exceptions,
-allocation, Bignum, and three unmodified gems), rugaroo runs in 1.87s where MRI
-4.0.7 takes 5.58s: 3.0x MRI, against 1.2x for YJIT, 1.4x for spinel and Crystal and
-5.3x for hand-written Go. [BENCHMARKS.md](BENCHMARKS.md) has the full table,
-how each column is built, where rugaroo trails the native ports and why, and
-what the Integer overflow checks cost (nothing measurable).
+A compiled program does no interpretation. Over the workloads in
+[`benchmarks/`](benchmarks/) rugaroo runs about 3x faster than MRI;
+[BENCHMARKS.md](BENCHMARKS.md) has the table, the comparison columns (YJIT,
+spinel, Crystal, hand-written Go) and where rugaroo trails.
 
-Correctness is measured against MRI, not a specification: 127
-[examples](examples/), 44 minitest suites and 25 compile-error archives all
-run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rugaroo (decision 127). Measured 2026-10-25 in the default mode, unchanged by decisions 371-372 (the runner walks
-nested spec folders since 2026-10-21, decision 336, so the totals cover 2,151
-`core` and 1,517 `library` spec files, not the 1,855 and 715 it read before):
-
-| ruby/spec | examples | pass | fail | error | skipped |
-|---|---:|---:|---:|---:|---:|
-| `core` | 21,709 | **8,916** | 1,307 | 2,478 | 9,008 |
-| `library` | 5,304 | **1,116** | 192 | 1,536 | 2,460 |
-| total | 27,013 | **10,032** | 1,499 | 4,014 | 11,468 |
-
-Under `--int-overflow=promote` ([decision 372](docs/decisions/372.md)), where
-the runner also defines mspec's `bignum_value`, `core` passes **9,077** (+161:
-`core/integer` 180 to 269, `core/array/pack` 1,136 to 1,185) and `library`
-**1,120** (+4). Most Bignum specs still skip or raise there: they pass a
-Bignum through a typed parameter or call a method Bignum does not define.
-
-"Fail" means an assertion did not hold. "Error" means the example raised
-instead. "Skipped" means the example uses something rugaroo can't compile; the
-largest groups are Bignum, String mutation, String encoding tags and
-`eval`/code loading, which rugaroo leaves out by design. Of the examples that
-run, 70.2% of `core` and 39.2% of `library` pass: down from 82.1% and 81.7% on 2026-10-23 although passes rose (8,582 to 8,916 and 1,110 to 1,116), because decisions 362-370 compile examples rugaroo used to skip, and many of those now run and raise (a constant a skipped fixture would have defined, `library/matrix`'s 289 without Matrix). `core/array/pack` and
-`core/string/unpack` (3,177 examples, 2,543 passing) read as 11% passing in
-the first run that reached them because the runner did not set mspec's
-`@method` for the specs' format helpers; it does now
-([#110](https://github.com/jtarchie/rugaroo/issues/110)). What is left there is
-mostly by design: no Bignum, no encoding tags, no C pointers (`P`, `p`), and
-mock objects that answer `to_int`/`to_str`. Not counted: `library/etc` and
-`library/erb/defmethod`, which stop on a syntax error in the program the
-runner builds, and `language`, which stops on an internal compiler
-error. A looser name-level metric,
-[`scripts/rubyspec-coverage`](scripts/rubyspec-coverage), finds 81.2% of
-core's method spec files name a method the prelude or the compiler defines
-([#49](https://github.com/jtarchie/rugaroo/issues/49)).
-
-Side by side with spinel ([#114](https://github.com/jtarchie/rugaroo/issues/114)),
-on spinel's own ruby/spec harness (`tools/rubyspec`: its 22 enrolled suites
-at its ruby/spec pin `79e2dee`, each `it` block one standalone program,
-counting only the 7,838 programs MRI 4.0.7 passes), run for both compilers
-with [`scripts/spinel-rubyspec`](scripts/spinel-rubyspec/compare) on 2026-10-25:
-
-| suites | examples | spinel | rugaroo | rugaroo `--int-overflow=promote` |
-|---|---:|---:|---:|---:|
-| `language` | 1,903 | 1,408 | 1,028 | 1,030 |
-| 21 `core` classes | 5,935 | 4,333 | 2,954 | 3,072 |
-| total | 7,838 | **5,741** (73%) | **3,982** (51%) | **4,102** (52%) |
-
-rugaroo passes 313 of them that spinel does not, and spinel 2,072 that rugaroo
-does not (from 3,106 before decisions 362-370). The largest remaining causes
-are Bignum ([#113](https://github.com/jtarchie/rugaroo/issues/113): under
-`--int-overflow=promote`, rerun on 2026-10-25, `core/integer` goes from 143 to
-252 passing against spinel's 358, and RangeError crashes from 194 to 76),
-`define_method`, specs that pass a wrong type expecting a run-time
-`TypeError` (decision 20) and in-place String mutation (decision 58).
+Correctness is measured against MRI: every [example](examples/), minitest
+suite and compile-error archive runs against `ruby` under `go test`. As a
+wider probe, `cmd/rubyspec` runs [ruby/spec](https://github.com/ruby/spec)
+under rugaroo; at the last run about 10,000 of its examples pass (roughly 70%
+of `core` examples that run), and most of the rest are skipped for something
+rugaroo leaves out by design (Bignum, String mutation, encoding tags, `eval`).
+`scripts/rubyspec-coverage` and `scripts/spinel-rubyspec` hold the details and
+the side-by-side with spinel.
 
 ## How it works
 
@@ -322,8 +249,7 @@ The core library is [`prelude/`](prelude/): Ruby source that reopens core
 classes, with leaf primitives dropping into Go through `%x{ ... }` bodies.
 Generated programs use only the Go standard library and never `reflect`.
 
-Background: [docs/design.md](docs/design.md) (the design record and every
-decision), [docs/dynamic-dispatch.md](docs/dynamic-dispatch.md) (how
+Background: [docs/design.md](docs/design.md) (the design record), [docs/dynamic-dispatch.md](docs/dynamic-dispatch.md) (how
 `untyped` calls work without a runtime).
 
 ## Development
