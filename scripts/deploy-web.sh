@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.." # paths below are repo-relative
 node scripts/topbanana.check.mjs >/dev/null # the deploy guards (empty set, token) must hold before anything is uploaded
 slug=${TOPBANANA_SLUG:-rugaroo}
 out=dist/web
-bucket=rugaroo
+bucket=ruby2go # ponytail: R2 buckets cannot be renamed; the pre-rename bucket keeps the public URL below
 public=https://pub-372f595b0c2c4d7ebf282a54bd539231.r2.dev # ponytail: r2.dev is rate-limited; a custom domain on the bucket for real traffic
 
 tmp=$(mktemp -d)
