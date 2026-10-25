@@ -26,6 +26,8 @@ import (
 func (c *Compiler) emitDynamic(reached, selected func(string) bool) bool {
 	if c.dynLazy == nil {
 		c.noteDyn("<=>") // rbCmp falls back to DynOp_cmp, and which instantiations see untyped values is unknown here
+		c.noteDyn("+")   // rbViewSum's fallback for elements that are not numbers
+		c.noteDyn("===") // the views' grep/count/include-pattern fallbacks
 		if c.dynAll {
 			for _, name := range c.allMethodNames(!c.dynAllStrict) {
 				c.noteDyn(name)
