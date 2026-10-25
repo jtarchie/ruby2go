@@ -1,0 +1,180 @@
+# What rugaroo supports
+
+This page answers "will my program compile, and how far can I trust it?". Every
+feature is in one of three tiers ([decision 373](decisions/373.md)):
+
+| Tier | What it means |
+|---|---|
+| **stable** | Tested against MRI under `go test` (an example, a test file, or ruby/spec). Output that differs from `ruby` is a bug, unless a numbered decision documents the difference. |
+| **experimental** | Works on the programs it is tested with. It may change or break between commits: the design is still moving, it depends on something outside the binary, or the tests cover far less than the feature. |
+| **not supported** | A compile error that names the reason. Each one is a deliberate trade-off with its own decision. |
+
+"Proof" links point at the programs that hold each line to MRI's output. The
+ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
+[the README](../README.md#performance-and-conformance) for the totals).
+
+## Language — stable
+
+| Feature | Proof | Notes |
+|---|---|---|
+| Classes, inheritance, `super`, modules, `include`/`extend`/`prepend` | [01](../examples/01_inheritance/main.rb), [15](../examples/15_namespaces/main.rb), [16](../examples/16_class_methods/main.rb), [27](../examples/27_extend_block/main.rb) | Every class and method must be visible at compile time (a closed world). |
+| Blocks, procs, lambdas, `yield`, `Method` objects | [44](../examples/44_procs/main.rb), [98](../examples/98_method_objects/main.rb), [105](../examples/105_variadic_lambdas/main.rb), [108](../examples/108_proc_instance_eval/main.rb) | Some `break`/`return` forms out of blocks are compile errors (below). |
+| Exceptions: `raise`, `rescue`, `ensure`, `retry`, custom hierarchies, `catch`/`throw` | [04](../examples/04_exceptions/main.rb), [13](../examples/13_exceptions_flow/main.rb), [14](../examples/14_uncaught/main.rb), [68](../examples/68_catch_throw/main.rb), [78](../examples/78_backtrace/main.rb) | Uncaught exceptions print and exit as MRI; `RUGAROO_BACKTRACE=1` adds MRI-style backtraces. |
+| Control flow, `case`/`when`, pattern matching (`case`/`in`) | [08](../examples/08_control_flow/main.rb), [93](../examples/93_pattern_matching/main.rb) | |
+| Arguments: optional, splat, keyword, block; multiple assignment; `\|\|=` | [12](../examples/12_optionals/main.rb), [21](../examples/21_or_assign/main.rb), [22](../examples/22_multiple_assign/main.rb), [88](../examples/88_keyword_arguments/main.rb) | |
+| `Struct`, `Data` | [09](../examples/09_structs/main.rb), [28](../examples/28_struct_data/main.rb) | |
+| Ruby 4.0 syntax (`it`, endless methods, leading `&&`) | [07](../examples/07_ruby4_syntax/main.rb), [87](../examples/87_ruby_spec_syntax/main.rb) | |
+| Constants and reflection: `const_get`, `constants`, `instance_variable_get`/`set`, `defined?`, `respond_to?` | [26](../examples/26_constants_reflection/main.rb), [106](../examples/106_ivar_defined/main.rb) | Answered from the whole program at compile time, never by `reflect` ([decision 123](decisions/123.md)). |
+| `method_missing`, `send` and `public_send` | [29](../examples/29_method_missing/main.rb), [30](../examples/30_dynamic_send/main.rb) | On `untyped` values the call goes through a generated dispatcher ([dynamic dispatch](dynamic-dispatch.md)). |
+| `Class.new`/`Module.new` literals, `class_eval`/`module_eval` in a class body | [100](../examples/100_class_new/main.rb), [109](../examples/109_class_eval/main.rb) | One class per literal, declared at compile time ([decision 145](decisions/145.md)). |
+| `require_relative`, `require` with `-I`, `autoload` | [89](../examples/89_require_relative/main.rb), [90](../examples/90_load_path/main.rb), [118](../examples/118_autoload/main.rb) | The path must be a string literal at a file's top level. |
+| `at_exit`, `trap`, `freeze`/`frozen?` | [72](../examples/72_freeze/main.rb), [75](../examples/75_trap/main.rb) | |
+| Types: rbs-inline `#:` annotations, `.rbs` files in `sig/` (with overloads), union types, inference | [20](../examples/20_untyped/main.rb), [34](../examples/34_inferred_returns/main.rb), [101](../examples/101_inferred_params/main.rb), [104](../examples/104_union_types/main.rb), [107](../examples/107_rbs_sig/main.rb), [117](../examples/117_rbs_overloads/main.rb) | Inline overloads (`#\|`) are not supported; put them in a `.rbs` file. |
+| Threads, `Queue`, `Mutex`, `Monitor`, `Fiber`, enumerator generators | [23](../examples/23_threads/main.rb), [42](../examples/42_queues/main.rb), [79](../examples/79_monitor/main.rb), [92](../examples/92_generators/main.rb) | Goroutines and channels underneath; programs that start goroutines are built with `-race` in the tests. |
+
+## Language — experimental
+
+| Feature | Proof | Notes |
+|---|---|---|
+| `Ractor`, `Ractor::Port` | [77](../examples/77_ractor/main.rb), [ractor_test](../testdata/test/ractor_test.rb) | A goroutine and a queue; messages are deep-copied and isolation is checked at compile time. The isolation rules are new. |
+
+## Language — not supported
+
+| Feature | Why | Instead |
+|---|---|---|
+| `eval`, `instance_eval(string)`, `load`, code built at run time | The binary has no interpreter; everything is compiled ahead of time. | Write the code out. Gems that `eval` at load time can still compile (see [gems](#gems--experimental)). |
+| `define_method`, `define_singleton_method` in your own code | Methods must be known at compile time. | `def`, or `method_missing` with a signature ([29](../examples/29_method_missing/main.rb)). A gem's load-time `define_method` is supported ([decision 198](decisions/198.md)). |
+| In-place String mutation (`<<`, `upcase!`, `gsub!`, `[]=`) | A `String` is an immutable Go string value ([decision 58](decisions/058.md)). | Build new strings (`s += "x"`, `s = s.upcase`) or use `StringIO`. |
+| Encodings other than UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1, UTF-16/32 (LE/BE) | Strings carry no encoding tag ([decision 136](decisions/136.md)). | Convert at the edges. |
+| `break v`; a `break` out of a block whose call's value is used; `return` from a block stored as a closure; `next v` where the value is thrown away (`while`, `each`) | Go closures cannot unwind their caller ([decision 4](decisions/004.md)). | Restructure: plain `break`/`return` work in `while` and in blocks that run inline (like `each`). |
+| Inline overloaded signatures (`#\|`) | | Declare overloads in a `.rbs` file ([117](../examples/117_rbs_overloads/main.rb)). |
+
+## Core classes — stable
+
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+
+| Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
+|---|---|---:|---:|---|
+| `Array` | stable | 595 of 686 (87%) | 529 |  |
+| `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
+| `Hash` | stable | 243 of 276 (88%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
+| `String` | stable | 984 of 1,279 (77%) | 1,084 | Immutable: no in-place mutation ([decision 58](decisions/058.md)). |
+| `Symbol` | stable | 83 of 103 (81%) | 75 |  |
+| `Integer` | stable | 180 of 263 (68%) | 335 | 64-bit; see below. |
+| `Float` | stable | 149 of 179 (83%) | 82 |  |
+| `Rational`, `Complex` | stable | 144 of 168 (86%) | 158 | Mixed arithmetic coerces as MRI. |
+| `Numeric` | stable | 27 of 53 (51%) | 262 |  |
+| `Range` | stable | 294 of 337 (87%) | 269 |  |
+| `Set` | stable | 69 of 78 (88%) | 98 | Core, as in MRI 4.0. |
+| `Struct`, `Data` | stable | 99 of 139 (71%) | 119 |  |
+| `Enumerable` | stable | 159 of 212 (75%) | 279 |  |
+| `Enumerator`, `Enumerator::Lazy`, arithmetic sequences | stable | 45 of 68 (66%) | 280 | `next`/`peek`, `Enumerator.new` generators. |
+| `Comparable` | stable | 0 of 46 (0%) | 8 | ruby/spec's fixture class doesn't compile, so every example errors; covered by rugaroo's own tests. |
+| `Regexp`, `MatchData` | stable | 248 of 334 (74%) | 106 | Ruby syntax translated to Go's regexp engines. |
+| `Time` | stable | 304 of 382 (80%) | 270 |  |
+| `Random` | stable | 53 of 54 (98%) | 33 | The same sequence as MRI for a given seed. |
+| `Math` | stable | 116 of 117 (99%) | 126 |  |
+| `File`, `Dir`, `FileTest` | stable | 677 of 795 (85%) | 435 |  |
+| `File::Stat` | stable | 8 of 105 (8%) | 30 | Partial. |
+| `IO`, `ARGF`, `$stdin` | stable | 357 of 663 (54%) | 872 | `IO.popen`, `system` and backticks run real processes. |
+| `ENV` | stable | 75 of 87 (86%) | 106 |  |
+| `Kernel` | stable | 689 of 1,144 (60%) | 752 | No `eval`, `binding` or `load`. |
+| `Exception` and its subclasses | stable | 83 of 153 (54%) | 97 |  |
+| `Proc`, `Method`, `UnboundMethod` | stable | 85 of 230 (37%) | 168 |  |
+| `Module`, `Class` | stable | 186 of 323 (58%) | 781 | No `define_method` or runtime reopening in user code. |
+| `BasicObject`, `Object`, `nil`, `true`, `false` | stable | 66 of 114 (58%) | 69 |  |
+| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 156 of 223 (70%) | 247 | Goroutines and channels. |
+| `Fiber` | stable | 25 of 66 (38%) | 122 |  |
+| `Signal`, `Process` | stable | 35 of 87 (40%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
+| `Marshal` | stable | 28 of 250 (11%) | 102 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
+| `Encoding` | stable | 61 of 105 (58%) | 33 | Ten encodings, no per-String tag ([decision 136](decisions/136.md)). |
+| `Warning`, `GC`, `ObjectSpace` | stable | 15 of 22 (68%) | 93 | The parts a program can observe; no heap walking. |
+| `Encoding::Converter` | not supported | 0 of 139 (0%) | 4 | Use `String#encode`. |
+| `Binding`, `TracePoint`, refinements | not supported | 0 of 58 (0%) | 104 | Need an interpreter at run time. |
+| `IO::Buffer`, `ObjectSpace::WeakMap`/`WeakKeyMap`, `Enumerator::Chain`/`Product` | not supported | 0 of 254 (0%) | 43 | Not written yet; `WeakRef` (`require "weakref"`) covers weak references. |
+
+`Integer` is 64-bit: overflow raises `RangeError` unless the program opts into
+`--int-overflow=wrap` (stable) or `promote` (Bignum, experimental;
+[decision 372](decisions/372.md)). `Hash#[]` is typed `V?`, so typed code
+nil-checks it or uses `fetch` ([decision 5](decisions/005.md)). `Marshal`
+round-trips its own bytes, not MRI's.
+
+## Standard library
+
+A library loads only when the program has a literal `require` for it
+([decision 155](decisions/155.md)); the names below are every `require` the
+compiler answers. A standard library name not listed compiles as a no-op.
+
+| `require` | Tier | Proof | Notes |
+|---|---|---|---|
+| `abbrev` | stable | [63](../examples/63_abbrev/main.rb) | |
+| `base64` | stable | [46](../examples/46_digests/main.rb), [stdlib_test](../testdata/test/stdlib_test.rb) | |
+| `benchmark` | stable | [48](../examples/48_time_parse/main.rb), [stdlib_test](../testdata/test/stdlib_test.rb) | |
+| `bigdecimal`, `bigdecimal/util` | stable | [82](../examples/82_bigdecimal/main.rb), [bigdecimal_test](../testdata/test/bigdecimal_test.rb) | Over Go's `math/big`, with bigdecimal 4.1's precision rules. |
+| `cgi`, `cgi/escape`, `cgi/util` | stable | [46](../examples/46_digests/main.rb), [stdlib_test](../testdata/test/stdlib_test.rb) | Escaping helpers. |
+| `csv` | stable | [49](../examples/49_csv/main.rb), [85](../examples/85_csv_headers/main.rb) | |
+| `date` | stable | [39](../examples/39_date/main.rb), [94](../examples/94_datetime/main.rb), [date_test](../testdata/test/date_test.rb) | Proleptic Gregorian only: MRI's Julian dates before 1582 are not modelled. |
+| `delegate` | stable | [86](../examples/86_delegation/main.rb) | `DelegateClass(Foo)` is typed; `SimpleDelegator` dispatches dynamically. |
+| `digest`, `digest/md5`, `digest/sha1`, `digest/sha2` | stable | [46](../examples/46_digests/main.rb) | |
+| `erb` | stable | [81](../examples/81_erb/main.rb), [erb_test](../testdata/test/erb_test.rb) | A template that is a string literal compiles with the program ([decision 111](decisions/111.md)). |
+| `etc` | stable | [60](../examples/60_etc/main.rb) | |
+| `fcntl` | stable | [stdlib_test](../testdata/test/stdlib_test.rb) | Constants for `IO#fcntl`. |
+| `fileutils` | stable | [54](../examples/54_fileutils/main.rb), [fileutils_test](../testdata/test/fileutils_test.rb) | |
+| `find` | stable | [56](../examples/56_find/main.rb) | |
+| `forwardable` | stable | [74](../examples/74_forwardable/main.rb) | |
+| `ipaddr` | stable | [59](../examples/59_ipaddr/main.rb) | |
+| `json` | stable | [19](../examples/19_json/main.rb), [json_test](../testdata/test/json_test.rb) | |
+| `logger` | stable | [58](../examples/58_logger/main.rb) | |
+| `minitest`, `minitest/autorun`, `minitest/spec`, `minitest/mock`, `minitest/pride` | stable | [65](../examples/65_minitest/main.rb), [66](../examples/66_minitest_spec/main.rb), and rugaroo's own suite | A port of minitest 6.0.6; `rugaroo test` runs a directory of test files as one program. |
+| `net/http`, `net/https` | stable | [24](../examples/24_net_http/main.rb), [net_test](../testdata/test/net_test.rb) | Client and server. |
+| `observer` | stable | [64](../examples/64_observable/main.rb) | |
+| `open-uri` | stable | [95](../examples/95_open_uri/main.rb) | |
+| `open3` | stable | [57](../examples/57_open3/main.rb) | |
+| `optparse`, `optionparser` | stable | [76](../examples/76_optparse/main.rb) | |
+| `ostruct` | stable | [86](../examples/86_delegation/main.rb) | Fields are `untyped`. |
+| `rexml`, `rexml/document` | stable | [84](../examples/84_rexml/main.rb), [rexml_test](../testdata/test/rexml_test.rb) | A DOM and an XPath subset over a Go tokenizer. |
+| `securerandom` | stable | [46](../examples/46_digests/main.rb) | |
+| `shellwords` | stable | [47](../examples/47_strscan/main.rb) | |
+| `singleton` | stable | [50](../examples/50_format_regexp/main.rb) | |
+| `socket` | stable | [91](../examples/91_socket/main.rb), [socket_test](../testdata/test/socket_test.rb) | TCP, UDP and Unix sockets over Go's `net`; `Socket.new` is not supported. |
+| `stringio` | stable | [45](../examples/45_stringio/main.rb) | |
+| `strscan` | stable | [47](../examples/47_strscan/main.rb) | |
+| `tempfile` | stable | [54](../examples/54_fileutils/main.rb) | No finalizer: close and unlink explicitly. |
+| `time` | stable | [48](../examples/48_time_parse/main.rb) | `Time.parse`, `iso8601`, `strptime`, ... |
+| `timeout` | stable | [61](../examples/61_timeout/main.rb) | |
+| `tmpdir` | stable | [56](../examples/56_find/main.rb) | |
+| `tsort` | stable | [62](../examples/62_tsort/main.rb) | |
+| `uri` | stable | [stdlib_test](../testdata/test/stdlib_test.rb) | |
+| `weakref` | stable | [80](../examples/80_weakref/main.rb) | |
+| `webrick` | stable | [24](../examples/24_net_http/main.rb), [115](../examples/115_rack_server/main.rb) | |
+| `zlib` | stable | [46](../examples/46_digests/main.rb) | Checksums, Deflate/Inflate, gzip. |
+| `fiddle`, `fiddle/import`, `fiddle/closure`, `fiddle/cparser`, `fiddle/function` | experimental | [121](../examples/121_fiddle/main.rb), [fiddle_test](../testdata/test/fiddle_test.rb) | Calls C libraries without cgo, through purego ([decision 326](decisions/326.md)). Needs the library on the machine that runs the binary. |
+| `sqlite3` | experimental | [122](../examples/122_sqlite3/main.rb), [sqlite3_test](../testdata/test/sqlite3_test.rb) | The sqlite3 gem's API from the vendored pure-Ruby [sqlite3-fiddle](https://github.com/jtarchie/sqlite3-fiddle) over `fiddle` ([decision 328](decisions/328.md)). Needs libsqlite3 at run time. |
+| `openssl` | experimental | [openssl_test](../testdata/test/openssl_test.rb) | Only RSA public-key verification and SSL verify modes: no signing, key generation or TLS of its own ([decision 281](decisions/281.md)). |
+| `sorbet-runtime` | experimental | [119](../examples/119_sorbet_sigs/main.rb), [sorbet_test](../testdata/test/sorbet_test.rb) | `sig`, `T.let`, `T.cast`, `T.must` are read as types; what sorbet-runtime would raise is a compile error ([decision 196](decisions/196.md)). |
+| `rubygems` | experimental | (Homebrew) | Only the surface a program that requires RubyGems itself touches; no gem loading. |
+| `rexml/xmltokens`, `rexml/parsers/baseparser` | experimental | [123](../examples/123_kramdown/main.rb) | The name patterns only, for gems (kramdown) that build regexps from them. |
+
+## Gems — experimental
+
+How to use each route, and what to do when a gem fails: [gems.md](gems.md).
+
+Compiling a program that loads a gem *runs* the gem's load phase under `ruby`
+at build time, with your environment and no sandbox
+([decision 161](decisions/161.md)). Only point rugaroo at code you would run.
+
+| How the gem gets in | Tested with | Notes |
+|---|---|---|
+| Installed gem, compiled from source (`require "x"`, through Bundler when a `Gemfile` is beside the program) | rack, rackup, Cuba ([115](../examples/115_rack_server/main.rb), [116](../examples/116_cuba_web/main.rb)), pairing_heap ([120](../examples/120_pairing_heap/main.rb)) | Needs `ruby` on PATH at build time, not at run time. Metaprogramming that ran at load time is recorded and compiled in. |
+| `-trace`: run the program once under MRI and compile what it loaded | kramdown ([123](../examples/123_kramdown/main.rb)), liquid ([124](../examples/124_liquid/main.rb)), Homebrew's `brew` (with a [maintainer harness](../overrides/brew/README.md) that patches what rugaroo won't compile) | `-trace-also` merges more runs into one binary, `-main` names the program a traced entry runs ([decisions 296](decisions/296.md), [297](decisions/297.md)). |
+| Vendored gem (`gems/`, compiled as your code) | sqlite3-fiddle | See `sqlite3` above. |
+
+## Tools
+
+| Tool | Tier | Notes |
+|---|---|---|
+| `rugaroo run`, `build`, `gen`, `test` | stable | Shaped like `go run`/`build`/`test`; `-race`, `-gcflags`, `-o`, `-work`, `-I` pass through. |
+| `--int-overflow=raise` (default), `wrap` | stable | [decision 372](decisions/372.md) |
+| `--int-overflow=promote` | experimental | Bignum where MRI would grow past 64 bits ([126](../examples/126_bignum/main.rb)). |
+| `-trace`, `-trace-also`, `-rubyopt`, `-main` | experimental | See gems above. |
+| `rugaroo web` and the [playground](https://play.rugaroo.dev) | experimental | [decision 102](decisions/102.md) |

@@ -86,6 +86,10 @@ go install github.com/jtarchie/rugaroo/cmd/rugaroo@latest
 
 Or from a clone: `go install ./cmd/rugaroo`.
 
+New to rugaroo? [docs/getting-started.md](docs/getting-started.md) walks from a
+first program to porting your own scripts, including the common compile errors
+and their fixes.
+
 ## Usage
 
 The CLI is shaped like `go build` / `go run` / `go test`:
@@ -117,7 +121,9 @@ literal at a file's top level, since rugaroo reads the files when it compiles.
 supported standard library. Any other name is looked up as an installed gem
 (through Bundler when a `Gemfile` sits beside the program), which `build`,
 `run` and `gen` then compile in from source; that needs `ruby` on PATH at
-build time, and only unmodified rack and Cuba are tested. Run-time
+build time; rack, rackup, Cuba and pairing_heap are tested this way, and
+[docs/support.md](docs/support.md#gems--experimental) lists the other routes
+(`-trace`, vendored gems). Run-time
 `$LOAD_PATH` changes are not supported.
 
 Compiling a program that loads a gem *runs* it: `build`, `run` and `gen` execute
@@ -180,17 +186,24 @@ whole program at compile time rather than looked up by reflection.
   `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,
   `Thread`, `Queue`, `Mutex`, `Ractor`, `Fiber`, `Marshal` (its own bytes, not
   MRI's).
-- **Standard library:** `json`, `set`, `time`, `date`, `csv`, `stringio`,
-  `strscan`, `digest`, `base64`, `zlib`, `securerandom`, `shellwords`, `uri`,
-  `net/http`, `open-uri`, `webrick`, `socket`, `fileutils`, `find`, `pathname`,
-  `tempfile`, `open3`, `logger`, `ipaddr`, `etc`, `timeout`, `tsort`, `abbrev`,
-  `observer`, `forwardable`, `singleton`, `optparse`, `benchmark`, `cgi`,
-  `fiddle` (C libraries without cgo, via purego), `sqlite3` (the gem's API over
-  libsqlite3, from the pure-Ruby [gems/sqlite3-fiddle](gems/sqlite3-fiddle)),
-  and `minitest` (including `Minitest::Spec`). Unmodified gems compile from
-  source: `rack`/`rackup`, `cuba`, `kramdown` and `liquid` (examples
-  [116](examples/116_cuba_web/main.rb), [123](examples/123_kramdown/main.rb),
-  [124](examples/124_liquid/main.rb)).
+- **Standard library:** `abbrev`, `base64`, `benchmark`, `bigdecimal`, `cgi`,
+  `csv`, `date`, `delegate`, `digest`, `erb`, `etc`, `fcntl`, `fileutils`,
+  `find`, `forwardable`, `ipaddr`, `json`, `logger`, `minitest` (with
+  `Minitest::Spec` and `minitest/mock`), `net/http`, `observer`, `open-uri`,
+  `open3`, `optparse`, `ostruct`, `rexml`, `securerandom`, `shellwords`,
+  `singleton`, `socket`, `stringio`, `strscan`, `tempfile`, `time`, `timeout`,
+  `tmpdir`, `tsort`, `uri`, `weakref`, `webrick`, `zlib`; `set` and `pathname`
+  are core, as in MRI 4.0. Experimental: `fiddle` (C libraries without cgo,
+  via purego), `sqlite3` (the gem's API over libsqlite3, from the pure-Ruby
+  [gems/sqlite3-fiddle](gems/sqlite3-fiddle)), `openssl` (RSA verification
+  only) and `sorbet-runtime`.
+- **Gems (experimental):** unmodified gems compile from source: `rack`/`rackup`,
+  `cuba`, `pairing_heap`, and through `-trace` `kramdown` and `liquid` (examples
+  [116](examples/116_cuba_web/main.rb), [120](examples/120_pairing_heap/main.rb),
+  [123](examples/123_kramdown/main.rb), [124](examples/124_liquid/main.rb)).
+
+[docs/support.md](docs/support.md) has every feature and library with its
+tier (stable, experimental, not supported) and the tests behind it.
 
 [`examples/`](examples/) has one program per feature, from
 [inheritance](examples/01_inheritance/main.rb) to a
@@ -203,9 +216,12 @@ The roadmap for the rest of the standard library is issue
 
 ## What doesn't (by design, or not yet)
 
-- **No `eval`, `define_method`, `instance_variable_get`, or runtime
-  reopening.** rugaroo compiles a *closed world*: every class and method must be
-  visible at compile time.
+- **No `eval` or code built at run time, and no `define_method` in your own
+  code.** rugaroo compiles a *closed world*: every class and method must be
+  visible at compile time. Reflection that the whole program can answer still
+  works (`send`, `method_missing`, `const_get`, `instance_variable_get`/`set`),
+  and a gem's load-time `define_method` is compiled in
+  ([decision 198](docs/decisions/198.md)).
 - **Strings are immutable.** `String` is a Go `string` value, so in-place
   mutation (`<<`, `upcase!`) is unsupported; build new strings or use
   `StringIO`.
@@ -216,11 +232,13 @@ The roadmap for the rest of the standard library is issue
   `--int-overflow=wrap` or `promote` (Bignum) change that, with limits
   (see the design record).
 - **`Hash#[]` returns `V?`**, so typed callers nil-check or use `fetch`.
-- **`return`/`break` out of a closure block** is a compile error unless the
-  block can be inlined as a loop (e.g. `Array#each`).
-- **Overloaded RBS signatures** are not supported.
-- **Gems** compile from source with `ruby` on PATH at build time; only a few
-  (rack, Cuba, kramdown, liquid, sqlite3) are tested.
+- **`break v`, `next v` in a loop, and `return` out of a closure block** are
+  compile errors; plain `break`/`return` work in `while` and in blocks that run
+  inline (e.g. `Array#each`).
+- **Inline overloaded signatures (`#|`)** are not supported; declare overloads
+  in a `.rbs` file ([example 117](examples/117_rbs_overloads/main.rb)).
+- **Gems** are experimental: they compile from source with `ruby` on PATH at
+  build time, and only the ones above (plus Homebrew's `brew`) are tested.
 
 Each trade-off has a numbered entry, with its reasoning, in the
 [design record](docs/design.md).

@@ -23,7 +23,7 @@ import (
 const usage = `usage: rugaroo build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
        rugaroo run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
        rugaroo gen [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
-       rugaroo test [-I dir]... [-int-overflow raise|wrap|promote] [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
+       rugaroo test [-I dir]... [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] [paths...] [minitest flags: -v, -s seed, -n pattern, -e pattern, -S kinds, --show-skips]
        rugaroo web [-addr 127.0.0.1:8080]
        rugaroo web -static dir -assets https://host/path/`
 
