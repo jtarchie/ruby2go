@@ -339,3 +339,12 @@ puts ident(B.new).fooBar
 # @dynamic
 #: (untyped) -> untyped
 def f(x) = x.foo
+-- eval_top_level.rb --
+# error: main.rb:2: undefined method eval for Object: rugaroo compiles the program ahead of time
+puts eval("1 + 2")
+-- eval_in_method.rb --
+# error: main.rb:3: undefined method eval for Calc: rugaroo compiles the program ahead of time
+class Calc
+  def run = eval("1")
+end
+Calc.new.run

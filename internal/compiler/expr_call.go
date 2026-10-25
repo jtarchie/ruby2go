@@ -12,6 +12,24 @@ import (
 
 // ---- calls
 
+// stringMutators are MRI's in-place String methods without a bang, which rugaroo's immutable Strings lack.
+var stringMutators = map[string]bool{"<<": true, "concat": true, "[]=": true, "insert": true, "prepend": true, "replace": true, "clear": true, "setbyte": true}
+
+const noEval = "rugaroo compiles the program ahead of time and the binary has no interpreter, so code cannot be built at run time"
+
+// whyUndefined raises the undefined-method error with its reason when the method is one rugaroo leaves out on purpose.
+func (f *fctx) whyUndefined(n parser.Node, t TClass, recv expr, name string) {
+	if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
+		f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo, so assign the result of %s instead (decision 136)", name, plain)
+	}
+	if t.C.RubyName == "String" && stringMutators[name] {
+		f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo; build a new one (s += x, s = s.sub(...)) or write into a StringIO (decision 58)", name)
+	}
+	if name == "eval" {
+		f.errorf(n, "undefined method eval for %s: %s", recv.typ, noEval)
+	}
+}
+
 // genKernelIntrinsic handles the receiverless calls the compiler builds itself.
 func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool) {
 	switch n.Name {
@@ -566,9 +584,7 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 		if (t.C.RubyName == "Module" || t.C.RubyName == "Class" || (t.C.isStruct() && t.C.descendantDefines(name, false))) && block == nil {
 			return f.genDynCall(n, recv, name, args)
 		}
-		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
-			f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo, so assign the result of %s instead (decision 136)", name, plain)
-		}
+		f.whyUndefined(n, t, recv, name)
 		if f.partlyLoaded(t.C, block) { // a gem class whose methods are not all in the closed world (Cask::Cask when the traced run never loaded cask/cask.rb): found, or not, at run time
 			return f.genDynCall(n, recv, name, args)
 		}
@@ -771,6 +787,9 @@ func (f *fctx) selfCall(n parser.Node, recv expr, name string, args []parser.Nod
 		return f.callEntry(n, e, recv, args, block)
 	}
 	if !f.owner.IsModule && !untypedIntrinsics[name] && !descendantResponds(f.owner, name) {
+		if name == "eval" {
+			f.errorf(n, "undefined method eval for %s: %s", f.owner.displayName(), noEval)
+		}
 		f.errorf(n, "undefined method %s for %s", name, f.owner.displayName())
 	}
 	return f.universalCall(n, recv, name, args, block)

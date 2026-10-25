@@ -145,3 +145,13 @@ Object.puts "x"
 # error: main.rb:3: undefined method encoding for Symbol
 # rbs_inline: enabled
 puts :abc.encoding
+-- string_shovel.rb --
+# error: main.rb:3: undefined method << for String: Strings are immutable in rugaroo
+s = +"ab"
+s << "c"
+puts s
+-- string_index_assign.rb --
+# error: main.rb:3: undefined method []= for String: Strings are immutable in rugaroo
+s = +"ab"
+s[0] = "x"
+puts s

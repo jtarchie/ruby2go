@@ -182,8 +182,8 @@ Every message below is what rugaroo prints today, prefixed by `file:line`.
 | `possibly-nil Integer? where Integer is expected; check it first` | The value can be nil (`find`, `Hash#[]`, `first`) and the method you pass it to takes a non-nil one. | `if x`, `return unless x`, `x ||= default`, or `fetch`. |
 | `String where Integer is expected` | A typed parameter got the wrong type. | Fix the call, or widen the signature (`Integer \| String`). |
 | `undefined method upcse for String` | A typo, or a method rugaroo's prelude doesn't define (check [support.md](support.md)). | Fix the name. |
-| `undefined method << for String` | Strings are immutable in rugaroo, so `<<`, `upcase!`, `gsub!` and `[]=` on a String don't exist. | `s += "x"`, `s = s.upcase`, or build into a `StringIO` or an Array and `join`. |
-| `undefined method eval for Object` | No `eval`: the binary has no interpreter. | Write the code out. |
+| `undefined method << for String: Strings are immutable in rugaroo; ...` | `<<`, `upcase!`, `gsub!` and `[]=` would change a String in place, and rugaroo's Strings are immutable. | `s += "x"`, `s = s.upcase`, or build into a `StringIO` or an Array and `join`. |
+| `undefined method eval for Object: rugaroo compiles the program ahead of time and the binary has no interpreter, ...` | No `eval`. | Write the code out. |
 | `define_method is not supported` | Methods must exist at compile time. | `def`, or `method_missing` with a signature. |
 | `non-local return from a block is not supported` | A `return` inside a block that is stored as a closure (`map`, `select`, ...) can't unwind the method in Go. | Use `find`/`any?`/`each_with_object`, or loop with `each`, where `return` works. |
 | `break with a value is not supported` / `next with a value is not supported` | `break v`, and `next v` where the value is thrown away. | Compute the value first (`find`, `index`), then plain `break`/`next`. |
