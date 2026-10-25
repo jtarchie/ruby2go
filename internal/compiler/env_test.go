@@ -22,6 +22,7 @@ func TestLoadEnv(t *testing.T) {
 	values := map[string]func(envConfig) string{
 		"RB2GO_DISPATCH_DEBUG": func(e envConfig) string { return e.DispatchDebug },
 		"RB2GO_GOPOISON_DUMP":  func(e envConfig) string { return e.GopoisonDump },
+		"RB2GO_INT_OVERFLOW":   func(e envConfig) string { return e.IntOverflow },
 	}
 	for name := range flags {
 		t.Setenv(name, "")

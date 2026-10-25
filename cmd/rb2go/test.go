@@ -51,6 +51,12 @@ func testBuildFlags(argv []string) (buildOpts, []string, error) {
 			opts.work = true
 		case a == "-gcflags", a == "-I":
 			want = a
+		case strings.HasPrefix(a, "-int-overflow="), strings.HasPrefix(a, "--int-overflow="):
+			_, m, _ := strings.Cut(a, "=")
+			err := os.Setenv("RB2GO_INT_OVERFLOW", m)
+			if err != nil {
+				return opts, nil, fmt.Errorf("rb2go test: %w", err)
+			}
 		case strings.HasPrefix(a, "-gcflags="):
 			opts.gcflags = strings.TrimPrefix(a, "-gcflags=")
 		case strings.HasPrefix(a, "-I"): // -Idir, as ruby's, or -I=dir, as the flag package's

@@ -2,6 +2,7 @@ package rb2go
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -224,7 +225,11 @@ func TestMinitest(t *testing.T) {
 			}
 			skipIfMarked(t, src)
 			gen := transpile(t, rb, src) // Compile names it by its base; the path is for require_relative
-			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-l"), []string{"--seed", "1"})
+			extra := []string{"--seed", "1"}
+			if _, ex := laneSkips(t); len(ex) > 0 {
+				extra = append(extra, "-e", "/^("+strings.Join(ex, "|")+")$/")
+			}
+			sameAsRubyWith(t, filepath.Dir(rb), filepath.Base(rb), goBuild(t, gen, "-l"), extra)
 		})
 	}
 }
@@ -398,6 +403,33 @@ func skipIfMarked(t *testing.T, src []byte) {
 	if len(reasons) > 0 && os.Getenv("RB2GO_RUN_SKIPPED") == "" {
 		t.Skip("known failure: " + strings.Join(reasons, "; "))
 	}
+	if skip, _ := laneSkips(t); skip {
+		t.Skip("pins another --int-overflow mode's answer (testdata/int-overflow, decision 372)")
+	}
+}
+
+// laneSkips reads testdata/int-overflow/<mode>-skip.txt for RB2GO_INT_OVERFLOW's lane (decision 372): a line naming
+// the test skips it; one naming the test and a minitest method excludes that method on both sides.
+func laneSkips(t *testing.T) (skip bool, methods []string) {
+	t.Helper()
+	mode := cmp.Or(os.Getenv("RB2GO_INT_OVERFLOW"), "raise")
+	data, err := os.ReadFile(filepath.Join("testdata", "int-overflow", mode+"-skip.txt")) //nolint:gosec // testdata path
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.Lines(string(data)) {
+		line, _, _ = strings.Cut(line, "#")
+		switch f := strings.Fields(line); {
+		case len(f) == 1 && f[0] == t.Name():
+			skip = true
+		case len(f) == 2 && f[0] == t.Name():
+			methods = append(methods, f[1])
+		}
+	}
+	return skip, methods
 }
 
 // TestTraceOracle checks decision 105's point: an assertion that passes on

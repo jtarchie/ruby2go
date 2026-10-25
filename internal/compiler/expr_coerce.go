@@ -93,6 +93,9 @@ func (f *fctx) coerce0(n parser.Node, e expr, to Type) string {
 			return e.code
 		}
 	}
+	if isClass(e.typ, "Bignum") && takesInteger(to) { // `io.gets(2**128)`: MRI's RangeError, raised where it converts (decision 372)
+		e = expr{code: "rbBignumToInt(" + e.code + ")", typ: f.cls("Integer")}
+	}
 	if u, ok := e.typ.(TUnion); ok {
 		if code, done := f.coerceFromUnion(n, e, u, to); done {
 			return code
@@ -330,6 +333,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	// rbAs also converts an Array/Hash of another instantiation (rbConv).
 	if isAny(e.typ) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
+	}
+	if code, ok := bignumConv(e, to); ok {
+		return code
 	}
 	// Go instantiations are invariant: Array[Integer] where
 	// Array[untyped] is expected (or back) is a converted copy.

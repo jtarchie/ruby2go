@@ -18,7 +18,8 @@ import (
 // StringIO as it does there. A name MRI has and this table lacks stays a no-op, as before.
 var preludeLibs = map[string]string{
 	"json":                     "prelude/json.rb",
-	"__errno_process":          "prelude/errno_process.rb", // no require of its own: named by Errno::ESRCH/EPERM (requireScan.visit)
+	"__errno_process":          "prelude/errno_process.rb",
+	"__bignum":                 "prelude/bignum.rb", // no require: --int-overflow=promote (decision 372) // no require of its own: named by Errno::ESRCH/EPERM (requireScan.visit)
 	"stringio":                 "prelude/stringio.rb",
 	"fileutils":                "prelude/fileutils.rb",
 	"tempfile":                 "prelude/tempfile.rb",

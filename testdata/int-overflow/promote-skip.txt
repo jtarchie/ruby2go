@@ -1,0 +1,3 @@
+# Left out of the `RB2GO_INT_OVERFLOW=promote go test ./...` lane (decision 372); same format as raise-skip.txt.
+TestMinitest/number test_wrap_low_bits                   # wrap's low bits; promote answers RangeError for a typed Integer param
+TestErrors/numbers/bignum_literal                        # the literal is a Bignum; raise warns that it raises

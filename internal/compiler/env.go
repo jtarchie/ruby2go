@@ -17,6 +17,7 @@ type envConfig struct {
 	DispatchDebug string // RB2GO_DISPATCH_DEBUG: "all", or any other non-empty value for Kernel/Object/module owners
 	GopoisonDump  string // RB2GO_GOPOISON_DUMP: path prefix for the Go before rejected gem methods become stubs
 	UntypedWhy    bool   // RB2GO_UNTYPED_WHY: each dynamic-call warning names where its untyped receiver came from
+	IntOverflow   string // RB2GO_INT_OVERFLOW: raise (default), wrap or promote; the CLI's --int-overflow sets it (decision 372)
 }
 
 func loadEnv() envConfig {
@@ -35,5 +36,6 @@ func loadEnv() envConfig {
 		DispatchDebug: os.Getenv("RB2GO_DISPATCH_DEBUG"),
 		GopoisonDump:  os.Getenv("RB2GO_GOPOISON_DUMP"),
 		UntypedWhy:    set("RB2GO_UNTYPED_WHY"),
+		IntOverflow:   os.Getenv("RB2GO_INT_OVERFLOW"),
 	}
 }

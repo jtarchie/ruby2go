@@ -200,6 +200,9 @@ func (f *fctx) genInteger(n *parser.IntegerNode) expr {
 		}
 	}
 	_, err := strconv.ParseInt(code, 0, 64)
+	if errors.Is(err, strconv.ErrRange) && f.c.classes["Bignum"] != nil { // --int-overflow=promote (decision 372)
+		return expr{code: "rbBigLit(" + strconv.Quote(code) + ")", typ: f.cls("Bignum")}
+	}
 	if errors.Is(err, strconv.ErrRange) && f.lenient() { // a gem's unsigned 64-bit bound (bindata's Uint64 clamp): the nearest Integer, as no Integer exceeds it
 		f.warn(n, "Integer literal %s does not fit in 64 bits; it is clamped to the Integer range (decision 35)", code)
 		bound := "9223372036854775807" // math.MaxInt64 spelled out: a gem local named math would shadow the package

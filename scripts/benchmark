@@ -84,7 +84,8 @@ def builders(tmp)
       next nil unless spinel
 
       bin = File.join(dir, "spinel_#{name}")
-      quiet(spinel, src, "-o", bin, chdir: ROOT) ? [bin] : nil
+      mode = File.read(src)[/^# int_overflow: (\S+)/, 1] # rb2go reads the magic comment itself; spinel takes the flag
+      quiet(spinel, src, *(mode ? ["--int-overflow=#{mode}"] : []), "-o", bin, chdir: ROOT) ? [bin] : nil
     end,
     "crystal" => lambda do |name, _src, dir|
       port = File.join(ROOT, "benchmarks/crystal/#{name}.cr")

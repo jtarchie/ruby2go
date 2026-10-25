@@ -503,6 +503,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.methodRequiresRuntime = opts.mainLast
 	c.env = opts.env
 	c.genCount, c.genLimit = opts.genCount, opts.genLimit
+	c.env.IntOverflow = intOverflowMode(c.env.IntOverflow, sources)
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
 	if perr != nil {
@@ -521,6 +522,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	c.markDefineMethods(dms)
 	c.loadPrelude(ctx, "prelude.rb")
+	c.loadIntOverflow(ctx)
 	c.loadLibs(ctx, libs, opts.allLibs || c.env.AllLibs)
 	c.loadSigs(sources)
 	tick("prelude")
@@ -737,6 +739,30 @@ func preludeFile(ctx context.Context, p *parser.Parser, name string, src []byte)
 	return f, nil
 }
 
+// intOverflowComment is a source's `# int_overflow: mode` line (decision 372).
+var intOverflowComment = regexp.MustCompile(`(?m)^# int_overflow: (\S+)\s*$`)
+
+// loadIntOverflow loads Bignum under --int-overflow=promote (decision 372).
+func (c *Compiler) loadIntOverflow(ctx context.Context) {
+	if c.env.IntOverflow == "promote" {
+		c.loadPrelude(ctx, preludeLibs["__bignum"])
+	}
+}
+
+// intOverflowMode is the flag's mode, or the program's own magic comment, which wins: it is what the program needs.
+func intOverflowMode(flag string, sources []Source) string {
+	mode := flag
+	for _, src := range sources {
+		if m := intOverflowComment.FindSubmatch(src.Src); m != nil {
+			mode = string(m[1])
+		}
+	}
+	if !slices.Contains([]string{"", "raise", "wrap", "promote"}, mode) {
+		panic(compileError{msg: fmt.Sprintf("--int-overflow: %q is not raise, wrap or promote", mode)})
+	}
+	return mode
+}
+
 // loadPreludeGo embeds prelude/go/*.go verbatim: pure Go with no self/param binding, so it skips Ruby parsing entirely.
 // Each file is real Go (decision 154): its import block names the std packages its helpers use, which join stdImports,
 // so the table only needs hand entries for `%x{}` bodies in .rb files.
@@ -757,6 +783,9 @@ func (c *Compiler) loadPreludeGo() {
 			panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
 		}
 		imports = append(imports, fileImports...)
+		if c.env.IntOverflow == "wrap" {
+			body = strings.Replace(body, "const rbIntWrap = false", "const rbIntWrap = true", 1) // decision 372
+		}
 		c.verbatim = append(c.verbatim, verbatim{srcPos: srcPos{&File{Name: name, origin: originPrelude}, line}, code: body})
 	}
 	preludeImports.Do(func() { mergeStdImports(stdImports, imports) })

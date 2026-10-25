@@ -251,6 +251,9 @@ func (f *fctx) genClassOf(n parser.Node, recv expr) (expr, bool) {
 	switch t := recv.typ.(type) {
 	case TClass:
 		cls = t.C
+		if cls.Name == "Bignum" { // MRI's class of every integer (decision 372)
+			cls = f.c.classes["Integer"]
+		}
 	case TVar:
 		if t.Name == "Self" {
 			cls = f.owner

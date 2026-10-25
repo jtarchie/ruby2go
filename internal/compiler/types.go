@@ -448,6 +448,10 @@ func join(a, b Type) (Type, bool) {
 			return nil, false // a module member would be a `case any:` arm shadowing the rest; as for a class joined with a module
 		}
 		return unionOf(a, b), true // a member joins in; another member widens it (decision 150)
+	case isClass(a, "Integer") && isClass(b, "Bignum"): // --int-overflow=promote: an Integer local that also holds a Bignum is one (decision 372)
+		return b, true
+	case isClass(a, "Bignum") && isClass(b, "Integer"):
+		return a, true
 	case isNumeric(a) && isNumeric(b):
 		return unionOf(a, b), true // Integer | Float: each arithmetic call switches on the member (decision 150; was untyped, decision 12)
 	}

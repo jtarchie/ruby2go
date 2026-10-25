@@ -8,8 +8,8 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// numTower orders the number classes as MRI's coerce converts between them: a mix of two runs as the higher one (decision 142).
-var numTower = []string{"Integer", "Rational", "Float", "BigDecimal", "Complex"}
+// numTower orders the number classes as MRI's coerce converts between them: a mix of two runs as the higher one (decision 142); Bignum exists only under --int-overflow=promote (decision 372).
+var numTower = []string{"Integer", "Bignum", "Rational", "Float", "BigDecimal", "Complex"}
 
 // numLevel is c's place in numTower, -1 for any other class.
 func numLevel(c *Class) int {
@@ -74,13 +74,22 @@ func (f *fctx) numericTower(n parser.Node, recv expr, e *entry, args []parser.No
 		return f.rbNumCall(n, m, f.coerce(n, recv, TAny{}), codes), nil, true
 	}
 	target := f.c.classes[numTower[top]]
+	if target.Name == "Bignum" && f.bignumLacks(name) {
+		return expr{}, nodes, false // Bignum would run Integer's (bignumFallback), which converts back up: the argument converts down instead
+	}
+	if top == la {
+		return f.callEntry(n, e, recv, f.towerArgs(xs, args, target), block), nil, true
+	}
+	return f.genMethodCall(n, f.numConvert(n, recv, target), name, f.towerArgs(xs, args, target), block), nil, true
+}
+
+// towerArgs are the arguments converted up to target.
+func (f *fctx) towerArgs(xs []expr, args []parser.Node, target *Class) []parser.Node {
+	nodes := make([]parser.Node, len(xs))
 	for i, x := range xs {
 		nodes[i] = &exprNode{Node: args[i], e: f.numConvert(args[i], x, target)}
 	}
-	if top == la {
-		return f.callEntry(n, e, recv, nodes, block), nil, true
-	}
-	return f.genMethodCall(n, f.numConvert(n, recv, target), name, nodes, block), nil, true
+	return nodes
 }
 
 // genNumArgs generates plain arguments once, hinted as numericMix does by m's parameter types; nil for a splat or keywords.
@@ -169,7 +178,7 @@ func (f *fctx) numConvert(n parser.Node, x expr, target *Class) expr {
 	if numLevel(from) < 0 || from == target {
 		return x
 	}
-	name := map[string]string{"Rational": "to_r", "Float": "to_f", "BigDecimal": "to_d", "Complex": "to_c"}[target.Name]
+	name := map[string]string{"Bignum": "__to_big", "Rational": "to_r", "Float": "to_f", "BigDecimal": "to_d", "Complex": "to_c"}[target.Name]
 	switch {
 	case target.Name == "BigDecimal" && from.Name == "Rational":
 		name = "__to_d" // to_d needs digits; MRI's coerce takes the BigDecimal's

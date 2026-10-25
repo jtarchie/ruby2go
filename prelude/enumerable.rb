@@ -289,6 +289,12 @@ module Enumerable
         s.addFloat(float64(any(x).(Float)))
       }
       return any(Float(s.f + s.c)).(E)
+    case Bignum:
+      var t Bignum
+      for x := range self.Each() {
+        t = rbBigAdd(t, any(x).(Bignum))
+      }
+      return any(t).(E)
     }
     s := rbSummer{}
     for x := range self.Each() {

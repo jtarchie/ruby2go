@@ -45,6 +45,9 @@ class Integer < Object
 
   #: (Integer) -> Integer
   def +(other) = %x{
+    if rbIntWrap {
+      return self + other
+    }
     r := self + other
     if (r > self) != (other > 0) {
       rbIntOverflow(self, "+", other)
@@ -54,6 +57,9 @@ class Integer < Object
 
   #: (Integer) -> Integer
   def -(other) = %x{
+    if rbIntWrap {
+      return self - other
+    }
     r := self - other
     if (r < self) != (other > 0) {
       rbIntOverflow(self, "-", other)
@@ -64,6 +70,9 @@ class Integer < Object
   # Operands within 32 bits cannot overflow; only larger ones pay for the check.
   #: (Integer) -> Integer
   def *(other) = %x{
+    if rbIntWrap {
+      return self * other
+    }
     if (uint64(self)+1<<31)|(uint64(other)+1<<31) >= 1<<32 {
       return rbIntMul(self, other)
     }
@@ -133,6 +142,9 @@ class Integer < Object
 
   #: () -> Integer
   def -@ = %x{
+    if rbIntWrap {
+      return -self
+    }
     if self == math.MinInt {
       rbIntOverflow(0, "-", self)
     }

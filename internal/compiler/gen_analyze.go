@@ -97,6 +97,19 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 		fresh()
 		orig = catchCompileError(func() { run(1) })
 	}
+	for range 8 { // --int-overflow=promote: again with each local a run typed Bignum promoted (decision 372)
+		add := f.bignumLocals()
+		if len(add) == 0 {
+			break
+		}
+		p := maps.Clone(f.promoted)
+		maps.Copy(p, add)
+		restore()
+		f.promoted, saved.promoted = p, p
+		f.convs = map[int]bool{}
+		fresh()
+		orig = catchCompileError(func() { run(1) })
+	}
 	before := f.convs
 	refined := map[localKey]Type{}
 	var order []localKey

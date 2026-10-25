@@ -220,7 +220,7 @@ module Kernel
   def should_not = SpecExpectation.new(self, false)
 end
 
-# No bignum_value: there is no Bignum (decision 35), so a spec using it is a compile error, which the runner reports as unsupported.
+# No bignum_value: there is no Bignum (decision 35), so a spec using it is a compile error, which the runner reports as unsupported; under RB2GO_INT_OVERFLOW=promote the runner appends one (decision 372).
 
 TOLERANCE = 0.00003 #: Float
 

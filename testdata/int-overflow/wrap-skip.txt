@@ -1,0 +1,3 @@
+# Left out of the `RB2GO_INT_OVERFLOW=wrap go test ./...` lane (decision 372); same format as raise-skip.txt.
+TestMinitest/number test_promote_growth                  # Bignums; wrap answers wrapped values
+TestMinitest/number test_gcd_lcm_at_min                  # MRI exact or RangeError; wrap answers a wrapped value

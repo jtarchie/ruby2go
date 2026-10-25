@@ -81,6 +81,9 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	if c, ok := f.markerIsA(recv, cls); ok {
 		return c
 	}
+	if isClass(recv.typ, "Bignum") { // an Integer to Ruby (decision 372)
+		recv.typ = f.cls("Integer")
+	}
 	t := recv.typ
 	if o, ok := t.(TOpt); ok {
 		recv.code = f.pinSimple(recv.code)

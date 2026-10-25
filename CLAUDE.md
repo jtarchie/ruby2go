@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md holds the goals and the index of numbered decisions, one file each in `docs/decisions/NNN.md` ("decision N" anywhere means that file; docs/history.md is the early walkthrough, superseded where they disagree). The decisions are binding: read the relevant file before changing behavior, and add or amend one when a new decision is made. A new decision is the next-numbered file (last: 371): `# Decision N`, then a `**Rule:**` line (one present-tense sentence, what is true now; it is the index row), then the text. A decision fully replaced later becomes a stub (`*Superseded by decision M.*` + gist + the `git show` of its full text); amending one updates its Rule line if the rule changed; when one amends an older decision, also add a "see also" pointer inside the old file. The index table in design.md is generated: run `scripts/design-index` after adding or retitling a decision (`TestDesignIndex` fails when it is stale).
+rb2go: transpiles a typed subset of Ruby (rbs-inline `#:` annotations) to a single Go file. README.md is the user-facing intro; docs/design.md holds the goals and the index of numbered decisions, one file each in `docs/decisions/NNN.md` ("decision N" anywhere means that file; docs/history.md is the early walkthrough, superseded where they disagree). The decisions are binding: read the relevant file before changing behavior, and add or amend one when a new decision is made. A new decision is the next-numbered file (last: 372): `# Decision N`, then a `**Rule:**` line (one present-tense sentence, what is true now; it is the index row), then the text. A decision fully replaced later becomes a stub (`*Superseded by decision M.*` + gist + the `git show` of its full text); amending one updates its Rule line if the rule changed; when one amends an older decision, also add a "see also" pointer inside the old file. The index table in design.md is generated: run `scripts/design-index` after adding or retitling a decision (`TestDesignIndex` fails when it is stale).
 
 ## Commands
 
@@ -15,6 +15,7 @@ go test -run 'TestMinitest/^string$' .        # one minitest file (testdata/test
 go run ./cmd/rb2go test testdata/test --seed 1  # the whole suite as one program, as `minitest testdata/test` (slow to build: decision 81)
 go run ./cmd/rb2go test testdata/test/array_test.rb --seed 1 -v   # one test file (any minitest flags); a dir runs them all as one program
 RB2GO_RUN_SKIPPED=1 go test -run TestRun .    # also run `# skip:` known failures
+RB2GO_INT_OVERFLOW=wrap go test ./...         # the suite in another --int-overflow lane (wrap or promote); testdata/int-overflow/<mode>-skip.txt leaves out what pins another mode (decision 372)
 RB2GO_NO_MRI_CACHE=1 go test ./...            # rerun MRI instead of its cached output (`os.UserCacheDir()/rb2go-test/mri`; key: Ruby description, TZ, checkout dir, sha256 of Gemfile.lock, extra args, sources; decision 272)
 RB2GO_NO_PRUNE=1 go run ./cmd/rb2go build -work ...  # emit the whole prelude (debugging the pruner)
 RB2GO_INFER_DEBUG=1 go run ./cmd/rb2go run x.rb    # what each parameter-inference round typed and could not compile (decision 146)
@@ -35,6 +36,7 @@ go test ./internal/rbs              # RBS parser unit tests
 golangci-lint run ./...             # repo lint (.golangci.yml)
 govulncheck ./...                   # known vulnerabilities in deps/std the code reaches; needs network, so not part of go test (decision 371)
 go run ./cmd/rb2go run examples/NN_x/main.rb        # transpile, build, run; warnings go to stderr
+go run ./cmd/rb2go run --int-overflow=promote x.rb  # Integer past 64 bits: raise (default), wrap, or promote to a Bignum; a `# int_overflow: promote` line in the file does the same (decision 372)
 go run ./cmd/rb2go build -work -gcflags=-e examples/NN_x/main.rb  # keep main.go (WORK= path on stderr), show every Go error
 scripts/rubyspec-coverage --missing   # ruby/spec core method files the prelude names, per class (#49; clones ruby/spec to the cache)
 go run ./cmd/rubyspec -reasons 20 core/integer   # run ruby/spec directories under rb2go (decision 127); `core` runs each core/* dir, -v lists every skip; the pinned checkout lives in `os.UserCacheDir()/rb2go-rubyspec`

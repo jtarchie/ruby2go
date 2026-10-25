@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// rbIntWrap is --int-overflow=wrap (decision 372): Integer +, -, * and -@ wrap as Go's int. The compiler flips the
+// constant; a constant `if` costs nothing in Go's inlining budget, so the default build is the same code.
+const rbIntWrap = false
+
 // rbStrictInt is Kernel#Integer(str, base): String#to_i's syntax, but the
 // whole string bar surrounding whitespace must be the number. Base 0 (or
 // -1) reads a 0b/0o/0d/0x prefix or a leading 0 as octal; another base

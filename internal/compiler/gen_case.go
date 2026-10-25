@@ -386,6 +386,9 @@ func (f *fctx) typeCaseArm(wn *parser.WhenNode, subjT Type, isUnion bool, remain
 			if cls.IsModule && (!f.c.isNumericMod(cls) || !f.numericAtRunTime(subjT)) && f.moduleIsA(c, subjT, cls) == "false" {
 				continue
 			}
+			if isClass(subjT, "Bignum") && cls.Name == "Integer" { // an Integer to Ruby (decision 372)
+				cls = classOf(subjT)
+			}
 			var goTypes []string
 			goTypes, arm.typ, arm.convert = f.whenClass(cls)
 			arm.cases = append(arm.cases, goTypes...)

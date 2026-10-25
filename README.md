@@ -91,7 +91,11 @@ rb2go web                          # playground at http://127.0.0.1:8080: Ruby i
 rb2go web -static dir -assets URL  # the same playground as static files, compiling in the browser (scripts/deploy-web.sh)
 ```
 
-`-race` and `-gcflags` pass through to `go build`. Compile errors and warnings
+`-race` and `-gcflags` pass through to `go build`. `--int-overflow=MODE`
+chooses what an Integer past 64 bits does: `raise` (`RangeError`, the
+default), `wrap` (two's-complement wraparound, for hashes and checksums) or
+`promote` (a Bignum, as MRI); a `# int_overflow: promote` line in the file
+does the same ([decision 372](docs/decisions/372.md)). Compile errors and warnings
 point at `file:line` in your Ruby source, and runtime panics map back to Ruby
 lines through `//line` directives.
 
@@ -215,8 +219,12 @@ The roadmap for the rest of the standard library is issue
   slices and matches bytes even when they are valid UTF-8; passed through a
   method parameter, ivar or collection it reads as UTF-8 again
   ([decision 352](docs/decisions/352.md)).
-- **Integers are 64-bit.** There is no Bignum; where MRI would promote,
-  rb2go raises `RangeError` rather than silently wrapping.
+- **Integers are 64-bit by default.** Where MRI would grow an Integer past
+  64 bits, rb2go raises `RangeError` rather than silently wrapping.
+  `--int-overflow=promote` makes a local that grows in a loop, a `**` result
+  and a literal past 64 bits a Bignum (example 126); overflow through a typed
+  parameter, ivar or container element still raises
+  ([decision 372](docs/decisions/372.md)).
 - **No hash defaults.** `Hash.new(0)` is rejected; use `tally`,
   `h[k] = (h[k] || 0) + 1`, or `fetch`. `Hash#[]` returns `V?`.
 - **`return`/`break` inside a closure block** is a compile error unless the
@@ -232,73 +240,18 @@ Every trade-off above has a numbered entry, with its reasoning, in the
 ## Performance and conformance
 
 A compiled program does no interpretation, so the interpreter's
-per-operation overhead is gone. On one Apple-silicon machine (MRI 4.0.7,
-Crystal 1.22.1, Go 1.27.3, spinel `baea3e28`; `RUNS=9 MARKDOWN=1 scripts/benchmark`,
-median of 9 runs over [`benchmarks/`](benchmarks/)):
+per-operation overhead is gone. Over the 18 workloads in
+[`benchmarks/`](benchmarks/) (Hash, Array, string, regexp, JSON, exceptions,
+allocation, Bignum, and three unmodified gems), rb2go runs in 1.87s where MRI
+4.0.7 takes 5.58s: 3.0x MRI, against 1.2x for YJIT, 1.4x for spinel and Crystal and
+5.3x for hand-written Go. [BENCHMARKS.md](BENCHMARKS.md) has the full table,
+how each column is built, where rb2go trails the native ports and why, and
+what the Integer overflow checks cost (nothing measurable).
 
-| workload | MRI | MRI+YJIT | rb2go | spinel | Crystal | Go |
-|---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.093s | 0.018s | 0.014s | 0.016s | 0.015s |
-| `Hash` counting, 500k | 0.11s | 0.097s | 0.016s | 0.007s | 0.013s | 0.009s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.14s | 0.021s | 0.011s | 0.011s | 0.011s |
-| string build/split, 100k | 0.11s | 0.11s | 0.031s | 0.017s | 0.024s | 0.017s |
-| `Math.sin`/`cos`, 200k | 0.086s | 0.073s | 0.009s | 0.006s | 0.008s | 0.007s |
-| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.037s | - | 0.014s | 0.012s |
-| binary trees (allocation), depth 10 | 0.082s | 0.070s | 0.010s | 0.008s | 0.010s | 0.007s |
-| splay tree | 0.21s | 0.12s | 0.014s | 0.019s | 0.019s | 0.012s |
-| blocks, procs, lambdas, enumerator chains | 0.36s | 0.34s | 0.066s | 0.15s | 0.036s | 0.013s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.075s | 2.50s | 0.018s |
-| regexp match/gsub/scan/tr, StringScanner | 0.74s | 0.72s | 0.21s | 0.83s | 0.21s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.56s | 0.53s | 0.13s | 1.13s | 0.053s | 0.067s |
-| format, StringIO, case mapping | 0.49s | 0.45s | 0.24s | 0.21s | 0.14s | 0.10s |
-| JSON generate + parse | 0.14s | 0.16s | 0.12s | 0.24s | 0.13s | 0.25s |
-| pairing_heap gem: Dijkstra + heapsort | 0.66s | 0.34s | 0.21s | - | 0.038s | 0.034s |
-| liquid gem: a template rendered 400 times | 0.37s | 0.30s | 0.16s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.55s | 0.40s | - | - | - |
-| total (rows each one ran) | 5.32s | 4.49s | 1.79s | 2.71s | 3.22s | 0.86s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.3x | 1.4x | 5.3x |
-
-What the columns are:
-- **rb2go** and **spinel** ([matz/spinel](https://github.com/matz/spinel), a
-  Ruby-to-C compiler) compile the same unmodified `.rb` file. A "-" means it
-  did not compile it or printed something other than MRI: spinel cannot load
-  the gems or one `objects.rb` construct.
-- **Crystal** and **Go** are hand-written ports in
-  [`benchmarks/crystal`](benchmarks/crystal) and [`benchmarks/go`](benchmarks/go):
-  the same algorithm and sizes, written as a programmer in that language would,
-  stdlib only, printing exactly what MRI prints. The deviations are noted at the
-  top of each file: for example, Go uses error values instead of exceptions and a
-  value struct for `objects`' vectors. kramdown and liquid have no port, since a
-  port would be a different markdown or template library.
-- Each "vs MRI" compares a column only on the rows it ran. That is why spinel's
-  ratio is low: its `collections` row (2x slower than MRI) weighs on a smaller
-  total.
-
-Where rb2go trails the native columns, the cost is mostly in its Ruby
-semantics: a frozen check on every mutation, a Hash
-that keeps insertion order, and `T?` still boxed for a class with subclasses or type parameters (decisions 359-360 made
-other leaf classes plain pointers with a plain `nil`, which put splay ahead
-of spinel and Crystal). It is ahead of spinel on
-regexp, collections, blocks and JSON, where spinel's runtime library is
-thinner. Against Crystal it wins on exceptions, which Crystal unwinds with a
-backtrace per raise.
-
-The closest rows to MRI are JSON and kramdown. MRI's `json` is a C extension; rb2go's
-generator writes into one buffer instead of a String per nested value
-(decision 346), and its parser builds Hashes on an entry array (decision 350). kramdown spends its regex time partly on
-patterns RE2 cannot match (lookbehinds, atomic groups, backreferences), which
-run on the regexp2 backtracker (decisions 242, 332, 347).
-
-`Math` calls Go's `math` package directly, so a printed transcendental can
-differ from MRI in the last digit — Go and MRI's libm are both within one
-ulp and neither is uniquely correct ([decision 43](docs/decisions/043.md)).
-Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
-on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
-
-Correctness is measured against MRI, not a specification: 126
-[examples](examples/), 43 minitest suites and 25 compile-error archives all
+Correctness is measured against MRI, not a specification: 127
+[examples](examples/), 44 minitest suites and 25 compile-error archives all
 run against `ruby` under `go test`. As a wider probe, `cmd/rubyspec` runs
-ruby/spec under rb2go (decision 127). Measured 2026-10-25, unchanged by decision 371 (the runner walks
+ruby/spec under rb2go (decision 127). Measured 2026-10-25 in the default mode, unchanged by decisions 371-372 (the runner walks
 nested spec folders since 2026-10-21, decision 336, so the totals cover 2,151
 `core` and 1,517 `library` spec files, not the 1,855 and 715 it read before):
 
@@ -307,6 +260,12 @@ nested spec folders since 2026-10-21, decision 336, so the totals cover 2,151
 | `core` | 21,709 | **8,916** | 1,307 | 2,478 | 9,008 |
 | `library` | 5,304 | **1,116** | 192 | 1,536 | 2,460 |
 | total | 27,013 | **10,032** | 1,499 | 4,014 | 11,468 |
+
+Under `--int-overflow=promote` ([decision 372](docs/decisions/372.md)), where
+the runner also defines mspec's `bignum_value`, `core` passes **9,077** (+161:
+`core/integer` 180 to 269, `core/array/pack` 1,136 to 1,185) and `library`
+**1,120** (+4). Most Bignum specs still skip or raise there: they pass a
+Bignum through a typed parameter or call a method Bignum does not define.
 
 "Fail" means an assertion did not hold. "Error" means the example raised
 instead. "Skipped" means the example uses something rb2go can't compile; the

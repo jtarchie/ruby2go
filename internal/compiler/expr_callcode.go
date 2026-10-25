@@ -841,6 +841,10 @@ func (f *fctx) foldInt(n parser.Node) (*big.Int, bool) {
 			return new(big.Int).Sub(a, b), true
 		case "*":
 			return new(big.Int).Mul(a, b), true
+		case "**":
+			if f.c.classes["Bignum"] != nil && b.Sign() >= 0 && b.IsInt64() && b.Int64() < 1024 { // promote only: a gem's overflowing power still raises by default
+				return new(big.Int).Exp(a, b, nil), true
+			}
 		case "<<":
 			if b.Sign() >= 0 && b.IsInt64() && b.Int64() < 1024 {
 				return new(big.Int).Lsh(a, uint(b.Int64())), true //nolint:gosec // 0 <= b < 1024, checked above
@@ -884,6 +888,11 @@ func (f *fctx) gemCallShortcut(n parser.Node, e *entry, recv expr, args []parser
 	}
 	if f.lenient() && block == nil && e.M.Owner == f.c.classes["Integer"] {
 		return f.gemIntegerCall(n, e, recv, args)
+	}
+	if call, ok := n.(*parser.CallNode); ok && call.Name == "**" && e.M.Name == "**" && f.c.classes["Bignum"] != nil && e.M.Owner == f.c.classes["Integer"] {
+		if v, ok := f.foldInt(n); ok && v.IsInt64() { // `10 ** 12` under promote: a constant that fits stays an Integer (decision 372)
+			return expr{code: "Integer(" + v.String() + ")", typ: f.cls("Integer"), lit: true}, true
+		}
 	}
 	return expr{}, false
 }

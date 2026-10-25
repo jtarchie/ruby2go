@@ -502,6 +502,8 @@ func rbBDArg(v any, prec int) *BigDecimal {
 		return rbBDFromFloat(float64(x), 0)
 	case *Rational:
 		return rbBDFromRational(x, prec)
+	case Bignum: // --int-overflow=promote (decision 372); pruned otherwise
+		return rbBDNew(new(big.Int).Set(rbBigBig(x)), 0)
 	case nil:
 		panic(NewTypeError(Ref(String("can't convert nil into BigDecimal"))))
 	}

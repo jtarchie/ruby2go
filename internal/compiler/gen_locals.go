@@ -101,6 +101,7 @@ func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type)
 		existing = f.sameScopeLocal(name)
 	}
 	info := f.localInfo(name)
+	annotated = f.promotedType(name, val, annotated)
 	var typ Type
 	switch {
 	case annotated != nil:

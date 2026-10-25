@@ -23,6 +23,9 @@ end
 #: (Integer, ?Integer, ?Integer) -> Integer
 def number_chain(a, b = a + 1, c = b + 1) = a + b + c
 
+#: (Integer) -> Integer
+def number_id(n) = n
+
 # Helpers for the checks that were testdata/run/number_boolean.rb.
 #: (bool) -> String
 def number_yes_no(b) = b ? "yes" : "no"
@@ -2568,6 +2571,34 @@ module NumberTests
       assert_equal [Rational(1, 3), Rational(1, 3), Rational(3, 10), Rational(-3, 10)],
                    [0.3.rationalize(Rational(1, 10)), 0.3.rationalize(0.05), 0.3.rationalize(0.001), (-0.3).rationalize(0.001)]
       assert_equal Rational(333, 1000), 0.333.rationalize
+    end
+  end
+end
+
+module NumberTests
+  # --int-overflow lanes (decision 372): each test runs only where testdata/int-overflow/<mode>-skip.txt leaves it in.
+  class IntOverflowTest < Minitest::Test
+    # Under wrap the low bits of an overflowing +, * and -@ are MRI's exact answer's; raise and promote leave it out.
+    def test_wrap_low_bits
+      a = number_id(0x1234_5678_9abc_def0)
+      assert_equal 0xdeee_eeee_d1d0, (a * 0x0100_0000_01b3) & 0xffff_ffff_ffff
+      max = number_id(0x7fff_ffff_ffff_ffff)
+      assert_equal 0xfffe, (max + max) & 0xffff
+      assert_equal 0, -(-max - 1) & 0xffff
+    end
+
+    def test_promote_growth
+      f = 1
+      1.upto(25) { |i| f *= i }
+      assert_equal "15511210043330985984000000", f.to_s
+      a = 0
+      b = 1
+      100.times { a, b = b, a + b }
+      assert_equal 354224848179261915075, a
+      assert_equal 1267650600228229401496703205376, 2 ** 100
+      assert_equal [0, 1], [(2 ** 64) % 2, (2 ** 64 + 1) % 2]
+      assert_equal true, a > 2 ** 63
+      assert_equal Integer, f.class
     end
   end
 end

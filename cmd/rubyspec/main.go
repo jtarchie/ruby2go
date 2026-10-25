@@ -556,7 +556,11 @@ type source struct {
 
 func load(ctx context.Context, p *parser.Parser, root string, specs []string) (*program, error) {
 	prog := &program{p: p, root: root, byName: map[string]*source{}, shared: map[string]sharedSpec{}}
-	prog.add(&source{name: "mspec.rb", text: mspec})
+	text := mspec
+	if os.Getenv("RB2GO_INT_OVERFLOW") == "promote" { // a Bignum exists (decision 372), so mspec's helper does too
+		text += "\ndef bignum_value(plus = 0) = 0x8000_0000_0000_0000 + plus\n"
+	}
+	prog.add(&source{name: "mspec.rb", text: text})
 	for _, s := range specs {
 		err := prog.load(ctx, s)
 		if err != nil {

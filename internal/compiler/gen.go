@@ -46,6 +46,7 @@ type fctx struct {
 	discover       bool
 	nilGuarded     map[parser.Node]bool // calls on a T? local that raise NoMethodError on nil: the local survives them non-nil (decision 357)
 	nestedDone     map[parser.Node]bool // discovery: compound statements whose branch bodies discoverNested already dry-ran
+	promoted       map[string]bool      // --int-overflow=promote: locals typed Bignum from their first write (decision 372)
 	dropFailing    bool                 // a recursive method's first inference pass: a statement that fails drops out of the return join (decision 355)
 	locals         map[localKey]*localInfo
 	refined        map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)

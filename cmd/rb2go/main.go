@@ -20,10 +20,10 @@ import (
 	"github.com/jtarchie/ruby2go"
 )
 
-const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [traced args...]
-       rb2go run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-race] [-gcflags flags] [-work] main.rb [args...]
-       rb2go gen [-I dir]... [-main file | -trace [-rubyopt opt]...] main.rb [traced args...] > main.go
-       rb2go test [-I dir]... [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
+const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
+       rb2go run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
+       rb2go gen [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
+       rb2go test [-I dir]... [-int-overflow raise|wrap|promote] [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
        rb2go web [-addr 127.0.0.1:8080]
        rb2go web -static dir -assets https://host/path/`
 
@@ -68,6 +68,9 @@ func main() {
 	fs.Func("rubyopt", "an MRI option for the -trace run, as the program's launcher passes it (repeatable)", func(o string) error {
 		opts.rubyOpts = append(opts.rubyOpts, o)
 		return nil
+	})
+	fs.Func("int-overflow", "what an Integer result past 64 bits does: `raise` (RangeError, the default), wrap or promote (to a Bignum; decision 372)", func(m string) error {
+		return os.Setenv("RB2GO_INT_OVERFLOW", m) // read per compile, as the other RB2GO_* settings
 	})
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)
