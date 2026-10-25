@@ -291,15 +291,17 @@ at its ruby/spec pin `79e2dee`, each `it` block one standalone program,
 counting only the 7,838 programs MRI 4.0.7 passes), run for both compilers
 with [`scripts/spinel-rubyspec`](scripts/spinel-rubyspec/compare) on 2026-10-25:
 
-| suites | examples | spinel | rb2go |
-|---|---:|---:|---:|
-| `language` | 1,903 | 1,408 | 1,028 |
-| 21 `core` classes | 5,935 | 4,333 | 2,954 |
-| total | 7,838 | **5,741** (73%) | **3,982** (51%) |
+| suites | examples | spinel | rb2go | rb2go `--int-overflow=promote` |
+|---|---:|---:|---:|---:|
+| `language` | 1,903 | 1,408 | 1,028 | 1,030 |
+| 21 `core` classes | 5,935 | 4,333 | 2,954 | 3,072 |
+| total | 7,838 | **5,741** (73%) | **3,982** (51%) | **4,102** (52%) |
 
 rb2go passes 313 of them that spinel does not, and spinel 2,072 that rb2go
 does not (from 3,106 before decisions 362-370). The largest remaining causes
-are Bignum ([#113](https://github.com/jtarchie/ruby2go/issues/113)),
+are Bignum ([#113](https://github.com/jtarchie/ruby2go/issues/113): under
+`--int-overflow=promote`, rerun on 2026-10-25, `core/integer` goes from 143 to
+252 passing against spinel's 358, and RangeError crashes from 194 to 76),
 `define_method`, specs that pass a wrong type expecting a run-time
 `TypeError` (decision 20) and in-place String mutation (decision 58).
 
