@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/logo.svg" alt="rugaroo: a rougarou pup wearing a ruby, in front of the moon" width="160">
+  <img src="site/logo.svg" alt="rugaroo: a rougarou pup wearing a ruby, in front of the moon" width="160">
 </p>
 
 <h1 align="center">rugaroo</h1>

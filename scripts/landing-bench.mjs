@@ -1,4 +1,4 @@
-// Prints the landing page benchmark chart (web/index.html, from "About 3× faster" up to "Why a werewolf?"): node scripts/landing-bench.mjs
+// Prints the landing page benchmark chart (site/index.html, from "About 3× faster" up to "Why a werewolf?"): node scripts/landing-bench.mjs
 // ponytail: rows copied by hand from BENCHMARKS.md (2026-10-25); parse that table if it gets rerun often
 const rows = [
   ['fib(32)', .27, .092, .017], ['Hash counting', .11, .096, .015], ['Array map/select/sum', .15, .14, .021],

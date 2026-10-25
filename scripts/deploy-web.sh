@@ -1,5 +1,5 @@
 #!/bin/sh
-# Static playground (decision 102): the wasm and examples go to the public R2 bucket under a content-hash prefix, the page that names it to a Top Banana site (play.rugaroo.dev); web/ is the landing page (rugaroo.dev).
+# Static playground (decision 102): the wasm and examples go to the public R2 bucket under a content-hash prefix, the page that names it to a Top Banana site (play.rugaroo.dev); site/ is the landing page (rugaroo.dev).
 set -eu
 cd "$(dirname "$0")/.." # paths below are repo-relative
 node scripts/topbanana.check.mjs >/dev/null # the deploy guards (empty set, token) must hold before anything is uploaded
@@ -23,8 +23,8 @@ put() { # name, content type: stored gzipped, so the browser downloads a fractio
 put rugaroo.wasm application/wasm
 put wasm_exec.js "text/javascript; charset=utf-8"
 put examples.json "application/json"
-# the link-preview card (web/og/card.html), at a fixed URL since the pages name it absolutely; previewers cache it for days anyway
-wrangler r2 object put "$bucket/og.png" --file web/og/og.png --ct image/png --cc "public, max-age=86400" --remote
+# the link-preview card (site/og/card.html), at a fixed URL since the pages name it absolutely; previewers cache it for days anyway
+wrangler r2 object put "$bucket/og.png" --file site/og/og.png --ct image/png --cc "public, max-age=86400" --remote
 
 go run ./cmd/rugaroo web -static "$tmp/static" -assets "$public/$hash/"
 rm -rf "$out"
@@ -32,4 +32,4 @@ mkdir -p "$out"
 cp "$tmp/static/index.html" "$out/"
 echo "assets: $public/$hash/"
 node scripts/topbanana.mjs deploy "$slug" "$out"
-node scripts/topbanana.mjs deploy "${TOPBANANA_LANDING_SLUG:-rugaroo-dev}" web
+node scripts/topbanana.mjs deploy "${TOPBANANA_LANDING_SLUG:-rugaroo-dev}" site
