@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 
 # `defined?(@x)` asks whether an instance variable was ever assigned, which
-# MRI tracks per object. rb2go gives each object of a class that asks a hidden
+# MRI tracks per object. rugaroo gives each object of a class that asks a hidden
 # bit per ivar, set on every write, so memoizing with `defined?` works even
 # when the memoized value is nil or false. Classes that never ask pay nothing.
 

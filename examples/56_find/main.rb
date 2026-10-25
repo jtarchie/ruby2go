@@ -44,7 +44,7 @@ end
 
 puts "== missing root =="
 begin
-  Find.find("/no/such/rb2go/find/target") { |path| puts path }
+  Find.find("/no/such/rugaroo/find/target") { |path| puts path }
 rescue Errno::ENOENT => e
   puts "#{e.class}: #{e.message}"
 end

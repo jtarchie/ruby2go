@@ -1,4 +1,4 @@
-patchelf: keep the edited section String in @replaced_sections (rb2go Strings are values: decision 136, 324).
+patchelf: keep the edited section String in @replaced_sections (rugaroo Strings are values: decision 136, 324).
 MRI mutates the String the Hash already holds; under MRI these lines change nothing.
 --- a/lib/patchelf/alt_saver.rb	2026-10-19 18:20:41
 +++ b/lib/patchelf/alt_saver.rb	2026-10-19 18:20:41

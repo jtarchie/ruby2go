@@ -859,7 +859,7 @@ func isClassObjHook(n parser.Node) bool {
 	return ok && e.e.classObj
 }
 
-// everyNameWhy: under RB2GO_UNTYPED_WHY, the root of an untyped receiver whose computed send keeps the every-name switch.
+// everyNameWhy: under RUGAROO_UNTYPED_WHY, the root of an untyped receiver whose computed send keeps the every-name switch.
 func (f *fctx) everyNameWhy(n parser.Node, recv expr) string {
 	call, ok := n.(*parser.CallNode)
 	if !ok || !f.c.env.UntypedWhy || !isAny(recv.typ) {

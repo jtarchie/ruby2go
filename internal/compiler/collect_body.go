@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 func (c *Compiler) collectBody(ctx context.Context, f *File, cls *Class, body parser.Node, scope []*Class, loadTime bool) {
@@ -182,7 +182,7 @@ func undefLoop(n parser.Node) bool {
 
 // ruby2KeywordsShim reports whether a class-body conditional is MRI's
 // `ruby2_keywords(:m) if respond_to?(:ruby2_keywords, true)` compatibility
-// guard, which does nothing in rb2go's closed Ruby 4 world.
+// guard, which does nothing in rugaroo's closed Ruby 4 world.
 func ruby2KeywordsShim(n *parser.IfNode) bool {
 	if n.Subsequent != nil || n.Statements == nil || len(n.Statements.Body) == 0 {
 		return false
@@ -436,7 +436,7 @@ func (c *Compiler) collectRefine(ctx context.Context, f *File, n *parser.CallNod
 	return true
 }
 
-// rejectUnsupportedDecl reports a class-body declaration rb2go recognizes but
+// rejectUnsupportedDecl reports a class-body declaration rugaroo recognizes but
 // does not implement, with a clearer message than the load-time call fallback
 // would give.
 func (c *Compiler) rejectUnsupportedDecl(f *File, n *parser.CallNode) {
@@ -478,7 +478,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 	case "autoload", "ruby2_keywords", "deprecate_constant":
 		// No-ops: autoload's file is loaded at compile time (the boot
 		// snapshot, decision 161, supplies what it resolved); ruby2_keywords
-		// is MRI's keyword-passthrough marker, which rb2go passes statically;
+		// is MRI's keyword-passthrough marker, which rugaroo passes statically;
 		// deprecate_constant warns only with Warning[:deprecated], off by default.
 		c.noteAutoloadCall(n, args, scope)
 		c.loadAutoload(ctx, f, n)

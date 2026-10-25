@@ -6,15 +6,15 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// rb2goEncodings mirrors prelude/go/encoding.go's rbEncAliases: the names rb2go can transcode (decision 136).
-var rb2goEncodings = map[string]bool{
+// rugarooEncodings mirrors prelude/go/encoding.go's rbEncAliases: the names rugaroo can transcode (decision 136).
+var rugarooEncodings = map[string]bool{
 	"ASCII-8BIT": true, "BINARY": true, "UTF-8": true, "CP65001": true, "LOCALE": true, "EXTERNAL": true, "FILESYSTEM": true,
 	"US-ASCII": true, "ASCII": true, "ANSI_X3.4-1968": true, "646": true, "UTF-16BE": true, "UCS-2BE": true, "UTF-16LE": true,
 	"UTF-32BE": true, "UCS-4BE": true, "UTF-32LE": true, "UCS-4LE": true, "UTF-16": true, "UTF-32": true,
 	"ISO-8859-1": true, "ISO8859-1": true, "INTERNAL": true,
 }
 
-// mriEncodings is MRI 4.0's Encoding.name_list, upper-cased: a literal naming one rb2go lacks is a compile error, while a name MRI lacks too stays MRI's run-time error.
+// mriEncodings is MRI 4.0's Encoding.name_list, upper-cased: a literal naming one rugaroo lacks is a compile error, while a name MRI lacks too stays MRI's run-time error.
 var mriEncodings = func() map[string]bool {
 	m := map[string]bool{}
 	for _, n := range strings.Fields(`646 ANSI_X3.4-1968 ASCII ASCII-8BIT BIG5 BIG5-HKSCS BIG5-HKSCS:2008 BIG5-UAO
@@ -48,7 +48,7 @@ var encodingArgs = map[string]map[string]int{
 	"CSV.class":      {"open": 1},
 }
 
-// checkEncodingNames rejects at compile time a string literal naming an encoding MRI has and rb2go does not (decision 136).
+// checkEncodingNames rejects at compile time a string literal naming an encoding MRI has and rugaroo does not (decision 136).
 func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []parser.Node) {
 	if f.f.isPrelude() {
 		return
@@ -85,8 +85,8 @@ func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []
 		}
 		for _, e := range names {
 			u := strings.ToUpper(strings.TrimPrefix(strings.TrimPrefix(e, "BOM|"), "bom|"))
-			if mriEncodings[u] && !rb2goEncodings[u] {
-				f.errorf(n, "encoding %s is not supported: rb2go transcodes UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1, UTF-16LE/BE, UTF-32LE/BE, UTF-16 and UTF-32 (decision 136)", e)
+			if mriEncodings[u] && !rugarooEncodings[u] {
+				f.errorf(n, "encoding %s is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1, UTF-16LE/BE, UTF-32LE/BE, UTF-16 and UTF-32 (decision 136)", e)
 			}
 		}
 	}

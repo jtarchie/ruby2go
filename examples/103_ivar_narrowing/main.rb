@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 
 # Instance variables narrow like locals: after `@x ||= ...`, an assignment
-# or a nil check, rb2go knows @x is not nil, so no extra check is needed.
+# or a nil check, rugaroo knows @x is not nil, so no extra check is needed.
 
 class Settings
   #: (Hash[String, String]) -> void

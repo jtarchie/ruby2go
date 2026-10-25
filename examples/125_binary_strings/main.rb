@@ -26,7 +26,7 @@ p raw[0, 4]
 puts raw.chars.first(4).map(&:ord).inspect
 puts raw.encoding
 
-path = File.join(Dir.tmpdir, "rb2go_example_125_#{Process.pid}.jpg")
+path = File.join(Dir.tmpdir, "rugaroo_example_125_#{Process.pid}.jpg")
 File.write(path, "\xFF\xD8\xFF\xE0fake jpeg".b)
 data = File.binread(path)
 File.delete(path)

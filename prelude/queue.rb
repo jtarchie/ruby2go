@@ -199,7 +199,7 @@ class Queue < Object
     if same, ok := any(self).(*Queue[any]); ok {
       return same
     }
-    panic(NewTypeError(Ref(String("rb2go: a typed Queue cannot be viewed as untyped"))))
+    panic(NewTypeError(Ref(String("rugaroo: a typed Queue cannot be viewed as untyped"))))
   }
 end
 
@@ -306,6 +306,6 @@ class SizedQueue < Object
     if same, ok := any(self).(*SizedQueue[any]); ok {
       return same
     }
-    panic(NewTypeError(Ref(String("rb2go: a typed SizedQueue cannot be viewed as untyped"))))
+    panic(NewTypeError(Ref(String("rugaroo: a typed SizedQueue cannot be viewed as untyped"))))
   }
 end

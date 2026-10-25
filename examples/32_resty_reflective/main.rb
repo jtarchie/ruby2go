@@ -3,7 +3,7 @@
 # jtarchie/resty's library code as written (lib/resty/*.rb, in load order),
 # compiled with its reflection intact: constantize, const_get, constants,
 # method_missing, Struct.new, extend Enumerable. Only type annotations are
-# added; lines rb2go needed changed are marked `# rb2go:`. Rack::Request,
+# added; lines rugaroo needed changed are marked `# rugaroo:`. Rack::Request,
 # ActiveSupport's inflector and ActiveRecord are replaced by small shims.
 # Same transcript as example 25, which ports resty by hand instead.
 require "json"
@@ -76,7 +76,7 @@ module Resty
   Controller = Struct.new(:namespace, :controller_path) do
     #: (Module, Request) -> Controller
     def self.find_by_namespace_and_request(namespace, request)
-      controller_path = request.path.match(%r{^/(\w+)})[1].to_s # rb2go: .to_s (String? -> String)
+      controller_path = request.path.match(%r{^/(\w+)})[1].to_s # rugaroo: .to_s (String? -> String)
       new(namespace, controller_path)
     end
 
@@ -108,7 +108,7 @@ module Resty
     #: (Request) -> Resource
     def self.find_by_request(request)
       id = request.path.dup.match(%r{^/\w+/([\w-]+)/?})[1] rescue nil
-      id = nil if id == "edit" || id == "new" # rb2go: was ["edit", "new"].include?(id)
+      id = nil if id == "edit" || id == "new" # rugaroo: was ["edit", "new"].include?(id)
       new(id)
     end
   end #: [String?]

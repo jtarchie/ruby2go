@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // constFctx is the codegen context a constant's initializer runs in: the

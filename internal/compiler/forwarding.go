@@ -5,7 +5,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // isForwardAll reports `def f(...)` with no other parameters.
@@ -131,7 +131,7 @@ func (c *Compiler) forwardingTarget(m *Method, call parser.Node) *Method {
 		}
 	}
 	if target == nil || target == m {
-		c.errorf(m.File, call, "def %s(...): its forwarding target is not a method rb2go can see", m.Name)
+		c.errorf(m.File, call, "def %s(...): its forwarding target is not a method rugaroo can see", m.Name)
 	}
 	return target
 }
@@ -182,7 +182,7 @@ func (c *Compiler) forwardingOther(m *Method, n *parser.CallNode) *Method {
 		e = cls.lookup(n.Name)
 	}
 	if e == nil || len(e.Owner.TypeParams) > 0 {
-		c.errorf(m.File, n, "def %s(...) forwards to %s, whose type rb2go does not know before typing bodies: forward to a constant or an ivar declared with `# @rbs @x: T`", m.Name, m.File.text(n.Receiver.GetLocation()))
+		c.errorf(m.File, n, "def %s(...) forwards to %s, whose type rugaroo does not know before typing bodies: forward to a constant or an ivar declared with `# @rbs @x: T`", m.Name, m.File.text(n.Receiver.GetLocation()))
 	}
 	return e.M
 }

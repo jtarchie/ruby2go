@@ -11,7 +11,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 // No run-time eval: what boot's string evals defined is collected as source where it ran, and the call is a no-op (decision 204).
@@ -73,7 +73,7 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	case e.Kind == "eval" && e.Self == "":
 		c.collect(ctx, sf)
 	default:
-		c.errorAt(srcPos{f, ln}, "a %s on %q: rb2go compiles a string eval only on a named module, from boot (decision 204)", e.Kind, e.Self)
+		c.errorAt(srcPos{f, ln}, "a %s on %q: rugaroo compiles a string eval only on a named module, from boot (decision 204)", e.Kind, e.Self)
 	}
 }
 
@@ -277,7 +277,7 @@ func (f *fctx) genEvalSwitch(n *parser.CallNode, units []evalUnit) expr {
 		f.indent--
 	}
 	f.emit("default:")
-	f.emit("\tpanic(NewNotImplementedError(Ref(String(%q + %s))))", "rb2go: a string eval boot did not run: ", tmp)
+	f.emit("\tpanic(NewNotImplementedError(Ref(String(%q + %s))))", "rugaroo: a string eval boot did not run: ", tmp)
 	f.emit("}")
 	return expr{code: "nil", typ: TNil{}, lit: true}
 }

@@ -1,4 +1,4 @@
-Compile errors for Fiddle shapes rb2go cannot build (docs/design.md decision 326).
+Compile errors for Fiddle shapes rugaroo cannot build (docs/design.md decision 326).
 -- extern_computed.rb --
 # error: main.rb:7: Fiddle::Importer#extern needs a literal C declaration string, read at compile time (decision 326)
 require "fiddle/import"

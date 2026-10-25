@@ -183,7 +183,7 @@ func (f *fctx) numConvert(n parser.Node, x expr, target *Class) expr {
 	case target.Name == "BigDecimal" && from.Name == "Rational":
 		name = "__to_d" // to_d needs digits; MRI's coerce takes the BigDecimal's
 	case target.Name == "Complex" && from.Name == "BigDecimal":
-		f.errorf(n, "a BigDecimal does not mix with a Complex (rb2go's Complex parts are Integer, Rational or Float; decision 142)")
+		f.errorf(n, "a BigDecimal does not mix with a Complex (rugaroo's Complex parts are Integer, Rational or Float; decision 142)")
 	}
 	return f.genMethodCall(n, x, name, nil, nil)
 }

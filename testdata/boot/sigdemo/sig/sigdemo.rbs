@@ -3,7 +3,7 @@ module Sigdemo
     def total: () -> Integer
   end
 
-  # each form below is RBS rb2go's parser once rejected (decision 315)
+  # each form below is RBS rugaroo's parser once rejected (decision 315)
   type reading = Meter & _Reading
   type source = { 'name' => String, 'kind' => 'meter', }
   type sink = ^(Integer reading) -> void

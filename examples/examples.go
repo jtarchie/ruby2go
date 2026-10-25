@@ -1,4 +1,4 @@
-// Package examples embeds examples/*/main.rb for `rb2go web`'s example picker, kept out of the rb2go library so its importers don't carry them.
+// Package examples embeds examples/*/main.rb for `rugaroo web`'s example picker, kept out of the rugaroo library so its importers don't carry them.
 package examples
 
 import "embed"

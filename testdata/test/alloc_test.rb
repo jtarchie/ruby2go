@@ -10,7 +10,7 @@ rescue Exception => e
   [e.class.to_s, e.message]
 end
 
-# Sizes are 2**62 so nothing here allocates: MRI and rb2go both refuse up front (#101).
+# Sizes are 2**62 so nothing here allocates: MRI and rugaroo both refuse up front (#101).
 module AllocTests
   NOMEM = ["NoMemoryError", "failed to allocate memory"].freeze
   TOO_FEW = ["ArgumentError", "too few arguments"].freeze

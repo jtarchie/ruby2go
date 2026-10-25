@@ -1,9 +1,9 @@
 #!/bin/bash
 # Instructions retired (GOMAXPROCS=1, least of RUNS runs; macOS `time -l`) for every benchmarks/*.rb and every
-# program in spinel's benchmark/ that rb2go builds and runs right (stdout equal to MRI's / spinel's .expected).
+# program in spinel's benchmark/ that rugaroo builds and runs right (stdout equal to MRI's / spinel's .expected).
 # The count is the speed check for #114 work: deterministic enough to compare two compilers to ~1%.
 #
-#   RB2GO=new/rb2go BASE=old/rb2go SPINEL_DIR=~/src/spinel scripts/spinel-rubyspec/instr > pair.tsv
+#   RUGAROO=new/rugaroo BASE=old/rugaroo SPINEL_DIR=~/src/spinel scripts/spinel-rubyspec/instr > pair.tsv
 #   scripts/spinel-rubyspec/instr-diff pair.tsv     # workloads more than 3% worse than BASE, and status changes
 #
 # Each row: name, instructions (or 0), status (ok | BUILD: first error | DIFF | CRASH), and with BASE the same two
@@ -11,7 +11,7 @@
 # each run of the two binaries alternates.
 set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-RB2GO=${RB2GO:?name an rb2go binary}
+RUGAROO=${RUGAROO:?name an rugaroo binary}
 SP=${SPINEL_DIR:?name a spinel checkout}
 RUNS=${RUNS:-3}
 BASE=${BASE:-}
@@ -27,7 +27,7 @@ count() { # bin dir
 }
 one() { # name src dir expected-file
   local n=$1 src=$2 dir=$3 exp=$4 st bst="" i c best=0 bbest=0
-  st=$(build "$RB2GO" "$n" "$src" "$T/$n")
+  st=$(build "$RUGAROO" "$n" "$src" "$T/$n")
   [ -n "$BASE" ] && bst=$(build "$BASE" "$n" "$src" "$T/$n.base")
   check() { # bin: ok | DIFF | CRASH
     (cd "$dir" && GOMAXPROCS=1 "$1" > "$T/$n.out" 2>/dev/null) || { echo CRASH; return; }

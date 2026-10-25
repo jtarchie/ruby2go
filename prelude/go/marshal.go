@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-// rb2go's own stream, never MRI's (format in decision 137): magic, payload length (lets load read one dump off an IO), one value.
-const rbMarshalMagic = "RB2GO\x04\x08"
+// rugaroo's own stream, never MRI's (format in decision 137): magic, payload length (lets load read one dump off an IO), one value.
+const rbMarshalMagic = "RUGAROO\x04\x08"
 
 // rbKeyed is k; as a switch case it names T weakly, so the pruner drops the case when nothing else keeps T (decision 137).
 func rbKeyed[T any](k string) string { return k }
@@ -108,7 +108,7 @@ func (w *rbMW) value(v any) {
 func rbMarshalUndumpable(v any) any {
 	name := rbClassName(v)
 	switch name {
-	case "Queue", "SizedQueue", "ConditionVariable": // MRI's Thread:: names, which rb2go's classes lack
+	case "Queue", "SizedQueue", "ConditionVariable": // MRI's Thread:: names, which rugaroo's classes lack
 		return NewTypeError(Ref(String("can't dump Thread::" + name)))
 	case "Mutex":
 		name = "Thread::Mutex"
@@ -310,9 +310,9 @@ func rbMarshalBodySize(head any) int {
 	}
 	if !strings.HasPrefix(string(h), rbMarshalMagic) {
 		if !strings.HasPrefix(rbMarshalMagic, string(h)) {
-			msg := "incompatible marshal file format (can't be read)\n\tformat RB2GO 4.8 required"
+			msg := "incompatible marshal file format (can't be read)\n\tformat RUGAROO 4.8 required"
 			if len(h) >= 2 && h[0] == 4 && h[1] == 8 {
-				msg += "; MRI's marshal data given (rb2go reads only its own)"
+				msg += "; MRI's marshal data given (rugaroo reads only its own)"
 			}
 			panic(NewTypeError(Ref(String(msg))))
 		}
@@ -569,7 +569,7 @@ func rbMLoadObj(r *rbMR, v any) any {
 		name := r.str()
 		x := r.value()
 		if !ok || !o._IvarSet(name, x) {
-			panic(NewTypeError(Ref(String("rb2go: marshal data gives " + rbClassName(v) + " an instance variable " + name + " it does not have"))))
+			panic(NewTypeError(Ref(String("rugaroo: marshal data gives " + rbClassName(v) + " an instance variable " + name + " it does not have"))))
 		}
 	}
 	return v
@@ -587,7 +587,7 @@ func rbMAs[T any](v any) T {
 	if t, ok := rbConv[T](v); ok {
 		return t
 	}
-	panic(NewTypeError(Ref(String("rb2go: marshal data holds " + rbClassName(v) + " where this program has another type"))))
+	panic(NewTypeError(Ref(String("rugaroo: marshal data holds " + rbClassName(v) + " where this program has another type"))))
 }
 
 func rbMLoadArray[E comparable](r *rbMR) *Array[E] {
@@ -631,7 +631,7 @@ func rbMLoadRange[E comparable](r *rbMR) *Range[E] {
 
 func rbMTupleItems(r *rbMR, n int) []any {
 	if r.count() != n {
-		panic(NewTypeError(Ref(String("rb2go: marshal data holds a tuple of another size"))))
+		panic(NewTypeError(Ref(String("rugaroo: marshal data holds a tuple of another size"))))
 	}
 	xs := make([]any, n)
 	for i := range xs {

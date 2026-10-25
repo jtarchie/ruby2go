@@ -1,5 +1,5 @@
 # rbs_inline: enabled
-# mspec's expectations over minitest, for running ruby/spec under rb2go (cmd/rubyspec).
+# mspec's expectations over minitest, for running ruby/spec under rugaroo (cmd/rubyspec).
 # The runner rewrites what must be static first: context → describe, guards, shared specs.
 require "minitest/autorun"
 require "fileutils"
@@ -220,7 +220,7 @@ module Kernel
   def should_not = SpecExpectation.new(self, false)
 end
 
-# No bignum_value: there is no Bignum (decision 35), so a spec using it is a compile error, which the runner reports as unsupported; under RB2GO_INT_OVERFLOW=promote the runner appends one (decision 372).
+# No bignum_value: there is no Bignum (decision 35), so a spec using it is a compile error, which the runner reports as unsupported; under RUGAROO_INT_OVERFLOW=promote the runner appends one (decision 372).
 
 TOLERANCE = 0.00003 #: Float
 
@@ -336,10 +336,10 @@ end
 
 # ruby_exe and ruby_cmd hand Ruby source to a fresh MRI process; a compiled program has no Ruby to run it (no eval), so each such example skips for good.
 #: (*untyped, **untyped) -> bot
-def ruby_exe(*, **) = raise(Minitest::Skip, "rb2go: ruby_exe runs Ruby source in a subprocess (no eval)")
+def ruby_exe(*, **) = raise(Minitest::Skip, "rugaroo: ruby_exe runs Ruby source in a subprocess (no eval)")
 
 #: (*untyped, **untyped) -> bot
-def ruby_cmd(*, **) = raise(Minitest::Skip, "rb2go: ruby_cmd runs Ruby source in a subprocess (no eval)")
+def ruby_cmd(*, **) = raise(Minitest::Skip, "rugaroo: ruby_cmd runs Ruby source in a subprocess (no eval)")
 
 # mspec's suppress_warning: the block runs with $VERBOSE nil, so warn prints nothing.
 #: [T] () { () -> T } -> T

@@ -820,7 +820,7 @@ b/
     # an interpolated pattern that fails to compile raises RegexpError
     def test_unclosed_class_raises
       unclosed = "["
-      # only the class: MRI says "premature end of char-class: /[/", rb2go reports Go's regexp error
+      # only the class: MRI says "premature end of char-class: /[/", rugaroo reports Go's regexp error
       assert_raises(RegexpError) { /#{unclosed}/.inspect }
     end
   end
@@ -1309,7 +1309,7 @@ b/
     def test_untyped_integer_subject_raises
       assert_raises(TypeError) { /a/.match?(five) }
       assert_raises(TypeError) { /a/ =~ five }
-      err = begin # rb2go's dynamic argument check (decision 20) words this TypeError differently from MRI's Regexp check
+      err = begin # rugaroo's dynamic argument check (decision 20) words this TypeError differently from MRI's Regexp check
         "abc".match?(five)
         nil
       rescue TypeError => e

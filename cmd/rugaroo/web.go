@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jtarchie/ruby2go"
-	"github.com/jtarchie/ruby2go/examples"
+	"github.com/jtarchie/rugaroo"
+	"github.com/jtarchie/rugaroo/examples"
 )
 
 //go:embed web.html
@@ -47,7 +47,7 @@ func webCmd(args []string) int {
 	fset := flag.NewFlagSet("web", flag.ExitOnError)
 	addr := fset.String("addr", "127.0.0.1:8080", "listen address; /run executes code, so keep it on loopback")
 	static := fset.String("static", "", "instead of serving, write a static playground to this dir: index.html for any host, the rest for -assets")
-	assets := fset.String("assets", "", "with -static: the URL (ending in /) that serves rb2go.wasm, wasm_exec.js and examples.json")
+	assets := fset.String("assets", "", "with -static: the URL (ending in /) that serves rugaroo.wasm, wasm_exec.js and examples.json")
 	_ = fset.Parse(args) // ExitOnError
 	if *static != "" {
 		err := writeStatic(*static, *assets)
@@ -63,14 +63,14 @@ func webCmd(args []string) int {
 		return 2
 	}
 	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		fmt.Fprintln(os.Stderr, "warning: rb2go web runs submitted code; anyone who can reach", *addr, "can run programs as you")
+		fmt.Fprintln(os.Stderr, "warning: rugaroo web runs submitted code; anyone who can reach", *addr, "can run programs as you")
 	}
 	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", *addr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Fprintf(os.Stderr, "rb2go web: http://%s/\n", ln.Addr())
+	fmt.Fprintf(os.Stderr, "rugaroo web: http://%s/\n", ln.Addr())
 	srv := &http.Server{Handler: newWeb(host, runTimeout), ReadHeaderTimeout: 10 * time.Second}
 	err = srv.Serve(ln)
 	fmt.Fprintln(os.Stderr, err)
@@ -114,7 +114,7 @@ func (w *web) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { // compileWith turns compiler panics into errors; this covers the rest, as a result the page shows
 		if p := recover(); p != nil {
-			writeJSON(rw, runResult{Exit: -1, Error: fmt.Sprintf("rb2go web: internal error: %v", p)})
+			writeJSON(rw, runResult{Exit: -1, Error: fmt.Sprintf("rugaroo web: internal error: %v", p)})
 		}
 	}()
 	w.mux.ServeHTTP(rw, r)
@@ -150,7 +150,7 @@ func loadExamples() ([]example, error) {
 	return out, nil
 }
 
-// writeStatic writes the serverless playground: index.html for the web host, compiling with cmd/rb2go-wasm fetched from assets, and examples.json for assets (rb2go.wasm and wasm_exec.js come from scripts/deploy-web.sh).
+// writeStatic writes the serverless playground: index.html for the web host, compiling with cmd/rugaroo-wasm fetched from assets, and examples.json for assets (rugaroo.wasm and wasm_exec.js come from scripts/deploy-web.sh).
 func writeStatic(dir, assets string) error {
 	u, err := url.Parse(assets)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || !strings.HasSuffix(assets, "/") || u.String() != assets { // round-trips only if nothing needed escaping (no <, ", space)
@@ -168,7 +168,7 @@ func writeStatic(dir, assets string) error {
 	// inlined: hosts lint a cross-origin <script src>, and Top Banana any .js outside functions/; escaped so nothing in it ends or comments the element
 	hl := strings.NewReplacer("</script", `<\/script`, "<!--", `<\!--`).Replace(string(highlightJS))
 	page := strings.Replace(string(webPage), `<script src="/highlight.min.js"></script>`,
-		"<script>window.rb2goAssets = "+cfg+";</script>\n<script>"+hl+"</script>", 1)
+		"<script>window.rugarooAssets = "+cfg+";</script>\n<script>"+hl+"</script>", 1)
 	err = os.MkdirAll(dir, 0o750)
 	for name, body := range map[string][]byte{"index.html": []byte(page), "examples.json": exJSON} {
 		if err == nil {
@@ -194,7 +194,7 @@ func (w *web) compile(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code, warnings, err := w.transpile(r.Context(), src)
-	res := compileResult{Go: string(code), User: rb2go.UserCode(code, webFile), Warnings: warnings}
+	res := compileResult{Go: string(code), User: rugaroo.UserCode(code, webFile), Warnings: warnings}
 	if err != nil {
 		res.Error = err.Error()
 	}
@@ -206,9 +206,9 @@ func (w *web) transpile(ctx context.Context, src []byte) ([]byte, []string, erro
 	defer w.mu.Unlock()
 	err := ctx.Err()
 	if err != nil {
-		return nil, nil, fmt.Errorf("rb2go web: %w", err) // superseded by a newer edit while queued
+		return nil, nil, fmt.Errorf("rugaroo web: %w", err) // superseded by a newer edit while queued
 	}
-	return rb2go.Compile(ctx, webFile, src) //nolint:wrapcheck // already rb2go-prefixed
+	return rugaroo.Compile(ctx, webFile, src) //nolint:wrapcheck // already rugaroo-prefixed
 }
 
 type runResult struct {
@@ -271,7 +271,7 @@ func writeJSON(rw http.ResponseWriter, v any) {
 	rw.Header().Set("Content-Type", "application/json")
 	err := json.NewEncoder(rw).Encode(v)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "rb2go web:", err) // the client went away mid-response
+		fmt.Fprintln(os.Stderr, "rugaroo web:", err) // the client went away mid-response
 	}
 }
 

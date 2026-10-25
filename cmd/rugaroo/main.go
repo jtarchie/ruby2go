@@ -1,4 +1,4 @@
-// Command rb2go builds or runs a typed Ruby file as Go, like `go build` and `go run`, or prints the Go it compiles to.
+// Command rugaroo builds or runs a typed Ruby file as Go, like `go build` and `go run`, or prints the Go it compiles to.
 package main
 
 import (
@@ -17,15 +17,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jtarchie/ruby2go"
+	"github.com/jtarchie/rugaroo"
 )
 
-const usage = `usage: rb2go build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
-       rb2go run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
-       rb2go gen [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
-       rb2go test [-I dir]... [-int-overflow raise|wrap|promote] [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
-       rb2go web [-addr 127.0.0.1:8080]
-       rb2go web -static dir -assets https://host/path/`
+const usage = `usage: rugaroo build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
+       rugaroo run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
+       rugaroo gen [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
+       rugaroo test [-I dir]... [-int-overflow raise|wrap|promote] [-v] [-run regexp] [-p n] [-race] [-gcflags flags] [-work] [paths...] [-args args...]
+       rugaroo web [-addr 127.0.0.1:8080]
+       rugaroo web -static dir -assets https://host/path/`
 
 func main() {
 	tuneGC()
@@ -70,7 +70,7 @@ func main() {
 		return nil
 	})
 	fs.Func("int-overflow", "what an Integer result past 64 bits does: `raise` (RangeError, the default), wrap or promote (to a Bignum; decision 372)", func(m string) error {
-		return os.Setenv("RB2GO_INT_OVERFLOW", m) // read per compile, as the other RB2GO_* settings
+		return os.Setenv("RUGAROO_INT_OVERFLOW", m) // read per compile, as the other RUGAROO_* settings
 	})
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)
@@ -134,12 +134,12 @@ func interrupted(ctx context.Context) int {
 
 // gen writes the generated Go to out and warnings to stderr: the main.go that build -work keeps, without needing the go command.
 func stubs() int {
-	out, err := rb2go.PreludeStubs(context.Background())
+	out, err := rugaroo.PreludeStubs(context.Background())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	err = os.WriteFile(rb2go.StubsPath, out, 0o600)
+	err = os.WriteFile(rugaroo.StubsPath, out, 0o600)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -153,7 +153,7 @@ func gen(file string, opts buildOpts, out io.Writer) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if path := os.Getenv("RB2GO_CPUPROFILE"); path != "" { // where a slow compile spends its time (go tool pprof)
+	if path := os.Getenv("RUGAROO_CPUPROFILE"); path != "" { // where a slow compile spends its time (go tool pprof)
 		f, perr := os.Create(path) //nolint:gosec // a path the developer named
 		if perr == nil {
 			_ = pprof.StartCPUProfile(f)
@@ -189,12 +189,12 @@ type buildOpts struct {
 // compileFile is the CLI's compile: a traced entry with -main (decision 288), else a program.
 func compileFile(ctx context.Context, file string, src []byte, opts buildOpts) ([]byte, []string, error) {
 	if opts.trace {
-		return rb2go.CompileTrace(ctx, file, append([][]string{opts.args}, opts.also...), opts.rubyOpts, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+		return rugaroo.CompileTrace(ctx, file, append([][]string{opts.args}, opts.also...), opts.rubyOpts, opts.loadPath...) //nolint:wrapcheck // already "rugaroo: "-prefixed
 	}
 	if opts.main != "" {
-		return rb2go.CompileTraced(ctx, file, src, opts.main, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+		return rugaroo.CompileTraced(ctx, file, src, opts.main, opts.loadPath...) //nolint:wrapcheck // already "rugaroo: "-prefixed
 	}
-	return rb2go.CompileWithGems(ctx, file, src, opts.loadPath...) //nolint:wrapcheck // already "rb2go: "-prefixed
+	return rugaroo.CompileWithGems(ctx, file, src, opts.loadPath...) //nolint:wrapcheck // already "rugaroo: "-prefixed
 }
 
 func build(ctx context.Context, file, bin string, opts buildOpts) int {
@@ -229,7 +229,7 @@ func run(ctx context.Context, file string, args []string, opts buildOpts) int {
 	return runProg(ctx, filepath.Join(dir, "prog"), args)
 }
 
-// runProg runs a built program in the caller's cwd, as `ruby main.rb`, and returns its exit status. It outlives the child so the caller's temp dir is removed, and forwards what didn't come via the process group (kill -TERM <rb2go>).
+// runProg runs a built program in the caller's cwd, as `ruby main.rb`, and returns its exit status. It outlives the child so the caller's temp dir is removed, and forwards what didn't come via the process group (kill -TERM <rugaroo>).
 func runProg(ctx context.Context, bin string, args []string) int {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM) // before the check below, so no signal falls between it and the forwarder
@@ -298,22 +298,22 @@ func abandonable(ctx context.Context, f func() ([]byte, []string, error)) ([]byt
 	case r := <-done:
 		return r.code, r.warnings, r.err
 	case <-ctx.Done():
-		return nil, nil, fmt.Errorf("rb2go: %w", context.Cause(ctx))
+		return nil, nil, fmt.Errorf("rugaroo: %w", context.Cause(ctx))
 	}
 }
 
 // compileFiles builds several files as one program, as Ruby loads them into one process (decision 84).
 func compileFiles(ctx context.Context, files []string, bin string, opts buildOpts, diag io.Writer) (string, error) {
-	srcs := make([]rb2go.File, 0, len(files))
+	srcs := make([]rugaroo.File, 0, len(files))
 	for _, f := range files {
 		src, err := os.ReadFile(f) //nolint:gosec // the user's program
 		if err != nil {
 			return "", err //nolint:wrapcheck // the *PathError already names the file
 		}
-		srcs = append(srcs, rb2go.File{Name: f, Src: src})
+		srcs = append(srcs, rugaroo.File{Name: f, Src: src})
 	}
 	code, warnings, err := abandonable(ctx, func() ([]byte, []string, error) {
-		return rb2go.CompileFiles(ctx, srcs, opts.loadPath...)
+		return rugaroo.CompileFiles(ctx, srcs, opts.loadPath...)
 	})
 	return buildModule(ctx, code, warnings, err, bin, opts, diag)
 }
@@ -326,11 +326,11 @@ func buildModule(ctx context.Context, code []byte, warnings []string, err error,
 	if err != nil {
 		return "", err
 	}
-	dir, err := os.MkdirTemp("", "rb2go-")
+	dir, err := os.MkdirTemp("", "rugaroo-")
 	if err != nil {
 		return "", fmt.Errorf("temp module: %w", err)
 	}
-	err = rb2go.WriteModule(dir)
+	err = rugaroo.WriteModule(dir)
 	if err == nil {
 		err = os.WriteFile(filepath.Join(dir, "main.go"), code, 0o600)
 	}
@@ -355,7 +355,7 @@ func buildModule(ctx context.Context, code []byte, warnings []string, err error,
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
 	cmd.Stdout, cmd.Stderr = diag, diag
 	if errors.Is(cmd.Err, exec.ErrNotFound) {
-		return dir, errors.New("rb2go needs the go command on PATH to build")
+		return dir, errors.New("rugaroo needs the go command on PATH to build")
 	}
 	err = cmd.Run()
 	if err != nil {

@@ -38,7 +38,7 @@ func (f *fctx) genSugar(n parser.Node) expr {
 			set := ivarIsSet(f.selfCode, iv)
 			switch {
 			case set == "" && f.c.ivarBitsMarked:
-				f.errorf(v, "rb2go: defined?(%s) in a class it does not mark (decision 153)", v.Name)
+				f.errorf(v, "rugaroo: defined?(%s) in a class it does not mark (decision 153)", v.Name)
 			case set == "": // discovery, before markIvarBits: only the type matters
 				set = "true"
 			}

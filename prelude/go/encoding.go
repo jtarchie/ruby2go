@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -34,7 +34,7 @@ var rbEncAliases = map[string]string{
 	"ISO-8859-1": "ISO-8859-1", "ISO8859-1": "ISO-8859-1",
 }
 
-// rbEncCanon is name's canonical spelling, "" for an encoding rb2go lacks; "external" and "internal" follow the defaults, as MRI's aliases do.
+// rbEncCanon is name's canonical spelling, "" for an encoding rugaroo lacks; "external" and "internal" follow the defaults, as MRI's aliases do.
 func rbEncCanon(name string) string {
 	u := strings.ToUpper(name)
 	if e := rbEncDefaultExternal.Load(); u == "EXTERNAL" && e != nil {
@@ -91,7 +91,7 @@ func rbDecode1(enc string, b []byte) (r rune, n, st, again int) {
 	case "UTF-16LE", "UTF-16BE", "UTF-32LE", "UTF-32BE":
 		return rbDecodeUnits(enc, b)
 	}
-	panic("rb2go: no decoder for " + enc)
+	panic("rugaroo: no decoder for " + enc)
 }
 
 // rbDecodeUnits follows MRI's byte tries: the first byte that cannot continue the character makes it invalid, and a fault inside the first unit still takes the whole unit (or what is left) as the bad bytes.
@@ -213,7 +213,7 @@ func rbEncode1(out []byte, enc string, r rune) ([]byte, bool) {
 	case "UTF-32BE", "UTF-32":
 		return binary.BigEndian.AppendUint32(out, uint32(r)), true
 	}
-	panic("rb2go: no encoder for " + enc)
+	panic("rugaroo: no encoder for " + enc)
 }
 
 // rbBinDump is String#dump of bytes tagged ASCII-8BIT, as MRI's encoding errors quote them.
@@ -454,12 +454,12 @@ func rbEncUndef(path []string, src, dst, shown, char string) {
 	panic(NewEncoding_UndefinedConversionError(Ref(String(msg)), Ref(String(src)), Ref(String(dst)), Ref(String(char))))
 }
 
-// rbEncNotFound raises Encoding::ConverterNotFoundError for names rb2go has no converter for.
+// rbEncNotFound raises Encoding::ConverterNotFoundError for names rugaroo has no converter for.
 func rbEncNotFound(from, to string) {
 	panic(NewEncoding_ConverterNotFoundError(Ref(String("code converter not found (" + from + " to " + to + ")"))))
 }
 
-// rbStrEncode: a missing from is UTF-8, what every rb2go String holds; a missing to is default_internal (dflt), else only the options apply (decision 136).
+// rbStrEncode: a missing from is UTF-8, what every rugaroo String holds; a missing to is default_internal (dflt), else only the options apply (decision 136).
 func rbStrEncode(s String, to, from any, dflt string, o rbEncOpts) String {
 	toName, fromName := dflt, "UTF-8"
 	if to != nil {

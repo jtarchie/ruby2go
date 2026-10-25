@@ -10,7 +10,7 @@ require "ostruct"
 require "json"
 require "socket"
 
-# Marshal (decision 137): the bytes are rb2go's own, so no assertion ever sees them; only the object graphs are MRI's.
+# Marshal (decision 137): the bytes are rugaroo's own, so no assertion ever sees them; only the object graphs are MRI's.
 module MarshalTests
   Point = Struct.new(:x, :y) #: [Integer, Integer]
   Pair = Data.define(:left, :right) #: [Integer, String]
@@ -356,12 +356,12 @@ module MarshalTests
     end
   end
 
-  # rb2go's own stream (decision 137), built by hand: MRI rejects its header (TypeError), rb2go must reject the body (ArgumentError or TypeError), never panic or overflow the Go stack, which no rescue catches.
+  # rugaroo's own stream (decision 137), built by hand: MRI rejects its header (TypeError), rugaroo must reject the body (ArgumentError or TypeError), never panic or overflow the Go stack, which no rescue catches.
   class HostileInputTest < Minitest::Test
     #: (String) -> String
     def self.stream(body)
       size = body.bytesize
-      "RB2GO\x04\x08" + (0...8).map { |i| (size >> (8 * i)) & 255 }.pack("C*") + body
+      "RUGAROO\x04\x08" + (0...8).map { |i| (size >> (8 * i)) & 255 }.pack("C*") + body
     end
 
     #: (String) -> Class?

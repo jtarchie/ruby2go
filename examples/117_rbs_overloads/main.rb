@@ -17,5 +17,5 @@ puts env.double(21) + 1
 puts env.double("ab").upcase
 
 puts env.greet
-puts env.greet("rb2go")
-puts env.greet("rb2go", "?")
+puts env.greet("rugaroo")
+puts env.greet("rugaroo", "?")

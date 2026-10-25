@@ -142,7 +142,7 @@ func (f *fctx) callEntry0(n parser.Node, e *entry, recv expr, args []parser.Node
 	}
 	r := f.callMethod(n, e, recv, args, block)
 	if e.M.noReturn && !r.noreturn {
-		r = expr{code: r.code + "\npanic(\"rb2go: unreachable\")", typ: TVoid{}, stmt: true, noreturn: true}
+		r = expr{code: r.code + "\npanic(\"rugaroo: unreachable\")", typ: TVoid{}, stmt: true, noreturn: true}
 	}
 	return r
 }
@@ -736,16 +736,16 @@ func (c *Compiler) selfVarReturns(e *entry, recvT Type) bool {
 }
 
 // genInMethodRequire is a require in a method body: resolved at run time against what was compiled (decision 197),
-// else a no-op for a library the prelude has, and a compile error for a file rb2go would have to load.
+// else a no-op for a library the prelude has, and a compile error for a file rugaroo would have to load.
 func (f *fctx) genInMethodRequire(n *parser.CallNode) expr {
 	if f.c.methodRequiresRuntime && !f.f.isPrelude() {
 		return f.genRuntimeRequire(n)
 	}
 	switch {
 	case n.Name == "require_relative" && !f.f.isPrelude():
-		f.errorf(n, "require_relative must be a top-level statement: rb2go loads files at compile time")
+		f.errorf(n, "require_relative must be a top-level statement: rugaroo loads files at compile time")
 	case n.Name == "require" && f.c.findRequire(f.f, n) != "":
-		f.errorf(n, "require of a file on the -I path must be a top-level statement: rb2go loads files at compile time")
+		f.errorf(n, "require of a file on the -I path must be a top-level statement: rugaroo loads files at compile time")
 	}
 	return expr{code: "", stmt: true, typ: TVoid{}}
 }

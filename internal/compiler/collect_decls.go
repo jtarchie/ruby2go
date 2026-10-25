@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // collectTopCall takes the top-level calls that act at compile time: require_relative, describe, include, require.
@@ -546,8 +546,8 @@ func (c *Compiler) noteAutoloadCall(n *parser.CallNode, args []parser.Node, scop
 	}
 }
 
-// keepGoing runs fn; under RB2GO_KEEP_GOING=1 a compile error is recorded and collection goes on, listing at once
-// every construct a large program needs (a debugging aid, like RB2GO_NO_PRUNE).
+// keepGoing runs fn; under RUGAROO_KEEP_GOING=1 a compile error is recorded and collection goes on, listing at once
+// every construct a large program needs (a debugging aid, like RUGAROO_NO_PRUNE).
 func (c *Compiler) keepGoing(fn func()) {
 	if !c.env.KeepGoing || c.anonDepth > 0 { // an anonymous class's error already waits for its literal
 		fn()

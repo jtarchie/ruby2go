@@ -253,7 +253,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 	}
 	if str == nil {
 		if top && !sc.c.methodRequiresRuntime { // decision 197: the trace compiled in what a computed require loads
-			sc.c.errorf(f, call, "%s needs a string literal: rb2go loads libraries at compile time", call.Name)
+			sc.c.errorf(f, call, "%s needs a string literal: rugaroo loads libraries at compile time", call.Name)
 		}
 		return // a computed require in a method: a no-op at run time
 	}
@@ -284,7 +284,7 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 }
 
 // loadLibs loads the prelude files the program's requires name, in require order; every lib when all is set (the stub
-// generator, decision 154, and RB2GO_ALL_LIBS=1 for comparing against the old always-loaded prelude).
+// generator, decision 154, and RUGAROO_ALL_LIBS=1 for comparing against the old always-loaded prelude).
 func (c *Compiler) loadLibs(ctx context.Context, libs []string, all bool) {
 	if all {
 		for _, lib := range slices.Sorted(maps.Keys(preludeLibs)) {
@@ -331,7 +331,7 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 	case target != "" && f.c.loaded[f.c.real(target)]:
 	case target == "" && n.Name == "require" && (builtinLib(name) || mriLibs[strings.SplitN(name, "/", 2)[0]]):
 	default:
-		call := &parser.CallNode{Location: n.Location, Name: "__rb2go_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
+		call := &parser.CallNode{Location: n.Location, Name: "__rugaroo_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
 		return f.genExpr(call, nil)
 	}
 	return expr{code: "false", typ: f.cls("Boolean"), lit: true}

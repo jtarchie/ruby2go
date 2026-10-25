@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# trace: kramdown requires its parser and converters by computed name, so rb2go compiles what an MRI run loads (decision 296)
+# trace: kramdown requires its parser and converters by computed name, so rugaroo compiles what an MRI run loads (decision 296)
 
 # The unmodified kramdown gem: parse a Markdown document and convert it to HTML, many times over.
 require "kramdown"

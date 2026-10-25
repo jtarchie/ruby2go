@@ -178,7 +178,7 @@ module Kernel
     nil
   end
 
-  # MRI returns its argument(s); rb2go's p is a statement-only nil.
+  # MRI returns its argument(s); rugaroo's p is a statement-only nil.
   #: (*untyped) -> nil
   def p(*args)
     args.each { |a| __write(a.inspect + "\n") }

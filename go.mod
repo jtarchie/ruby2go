@@ -1,4 +1,4 @@
-module github.com/jtarchie/ruby2go
+module github.com/jtarchie/rugaroo
 
 go 1.26.0
 

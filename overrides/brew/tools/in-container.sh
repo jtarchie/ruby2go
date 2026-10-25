@@ -1,6 +1,6 @@
 #!/bin/bash
 # container: brew behind tools/ruby-wrapper (decision 296). usage: in-container.sh gen | check | run <args> | hits <args>
-#   gen    rb2go gen -trace of every targets.txt line (one binary serves them all) -> /w/work/brew.go
+#   gen    rugaroo gen -trace of every targets.txt line (one binary serves them all) -> /w/work/brew.go
 #   check  each targets.txt line under MRI (unpatched, fork mode) and under /w/work/brew-bin; diffs in /w/work
 #   run    brew <args> through /w/work/brew-bin
 #   hits   brew <args> under MRI with tools/calltrace.rb (patched, spawn mode) -> /w/work/calls.txt, lines.txt
@@ -28,13 +28,13 @@ done
 case $cmd in
 gen)
   mkdir -p /w/work/gotmp
-  export TMPDIR=/w/work/gotmp GOTMPDIR=/tmp HOMEBREW_RB2GO_EXE=/w/work/rb2go HOMEBREW_RB2GO_CMD=gen
-  export HOMEBREW_RB2GO_ALSO="$(tail -n +2 $TARGETS)" HOMEBREW_RB2GO_GEM_WARNINGS=$RB2GO_GEM_WARNINGS
-  export HOMEBREW_RB2GO_UNTYPED_WHY=$RB2GO_UNTYPED_WHY HOMEBREW_RB2GO_GOPOISON_DUMP=$RB2GO_GOPOISON_DUMP
+  export TMPDIR=/w/work/gotmp GOTMPDIR=/tmp HOMEBREW_RUGAROO_EXE=/w/work/rugaroo HOMEBREW_RUGAROO_CMD=gen
+  export HOMEBREW_RUGAROO_ALSO="$(tail -n +2 $TARGETS)" HOMEBREW_RUGAROO_GEM_WARNINGS=$RUGAROO_GEM_WARNINGS
+  export HOMEBREW_RUGAROO_UNTYPED_WHY=$RUGAROO_UNTYPED_WHY HOMEBREW_RUGAROO_GOPOISON_DUMP=$RUGAROO_GOPOISON_DUMP
   start=$(date +%s)
   # shellcheck disable=SC2046
   $B $(head -1 $TARGETS) > /w/work/brew.go 2> /w/work/brew.go.log
-  rc=$?; cp /tmp/rb2go-bad-output-*.go /w/work/gotmp/ 2>/dev/null # the TMPDIR brew hands on is not ours
+  rc=$?; cp /tmp/rugaroo-bad-output-*.go /w/work/gotmp/ 2>/dev/null # the TMPDIR brew hands on is not ours
   echo "gen exit $rc elapsed $(( $(date +%s)-start ))s"
   ;;
 check)
@@ -42,12 +42,12 @@ check)
   while IFS= read -r t || [ -n "$t" ]; do
     s=${t// /_}
     # shellcheck disable=SC2086
-    HOMEBREW_RB2GO_BIN=/w/work/brew-bin HOMEBREW_RB2GO_BACKTRACE=1 timeout 300 $B $t > /tmp/rb.txt 2>&1; echo "exit $?" >> /tmp/rb.txt
+    HOMEBREW_RUGAROO_BIN=/w/work/brew-bin HOMEBREW_RUGAROO_BACKTRACE=1 timeout 300 $B $t > /tmp/rb.txt 2>&1; echo "exit $?" >> /tmp/rb.txt
     cp "/tmp/mri-$s.txt" "/w/work/mri-$s.txt"; cp /tmp/rb.txt "/w/work/rb-$s.txt" # both outputs, for an order-free comparison
     if diff "/tmp/mri-$s.txt" /tmp/rb.txt > "/w/work/diff-$s.txt"; then echo "ok   brew $t"; else echo "FAIL brew $t"; fail=1; fi
   done < $TARGETS
   exit $fail
   ;;
-run) HOMEBREW_RB2GO_BIN=/w/work/brew-bin HOMEBREW_RB2GO_BACKTRACE=1 exec timeout 300 $B "$@" ;;
-hits) HOMEBREW_RB2GO_MRI=1 HOMEBREW_RB2GO_MRI_REQUIRE=/w/tools/calltrace.rb HOMEBREW_RB2GO_CALLTRACE_DIR=/w/work $B "$@" > /dev/null 2>&1 ;;
+run) HOMEBREW_RUGAROO_BIN=/w/work/brew-bin HOMEBREW_RUGAROO_BACKTRACE=1 exec timeout 300 $B "$@" ;;
+hits) HOMEBREW_RUGAROO_MRI=1 HOMEBREW_RUGAROO_MRI_REQUIRE=/w/tools/calltrace.rb HOMEBREW_RUGAROO_CALLTRACE_DIR=/w/work $B "$@" > /dev/null 2>&1 ;;
 esac

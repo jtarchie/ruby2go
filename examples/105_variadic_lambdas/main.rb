@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 
 # A lambda with a `*rest` parameter takes any number of arguments past its
-# leading ones. rb2go types it from its calls (no annotation needed) and
+# leading ones. rugaroo types it from its calls (no annotation needed) and
 # compiles it to a variadic Go func: `->(label, *nums)` called with Integers
 # is a `func(String, ...Integer) String`, so each call is a direct Go call.
 

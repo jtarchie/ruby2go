@@ -116,7 +116,7 @@ module WEBrick
       %x{
         s, ok := rbUnbox(body).(String)
         if !ok { // WEBrick's IO and streaming (callable) bodies
-          panic(NewNotImplementedError(Ref(String("rb2go's WEBrick takes a String body, not " + rbClassName(body)))))
+          panic(NewNotImplementedError(Ref(String("rugaroo's WEBrick takes a String body, not " + rbClassName(body)))))
         }
         self.body = s
       }

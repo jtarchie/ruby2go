@@ -73,7 +73,7 @@ type paramUse struct {
 func (u paramUse) at() srcPos { return srcPos{u.file, u.file.line(u.off)} }
 
 // pendingKey names, stably across compiles, a parameter typed from use (decisions 146, 277): the key of its
-// recorded arguments and of its inferred type. Its text is printed by RB2GO_INFER_DEBUG and quoted in warnings, so
+// recorded arguments and of its inferred type. Its text is printed by RUGAROO_INFER_DEBUG and quoted in warnings, so
 // it is built only by the constructors below.
 type pendingKey string
 
@@ -698,10 +698,10 @@ func holdsUnion(t Type) bool {
 	return false
 }
 
-// debugInfer prints what a round's dry run could not compile, under RB2GO_INFER_DEBUG.
+// debugInfer prints what a round's dry run could not compile, under RUGAROO_INFER_DEBUG.
 func (c *Compiler) debugInfer(err *compileError) {
 	if err != nil && c.env.InferDebug {
-		fmt.Fprintln(os.Stderr, "rb2go: infer round:", err.Error())
+		fmt.Fprintln(os.Stderr, "rugaroo: infer round:", err.Error())
 	}
 }
 
@@ -784,7 +784,7 @@ func (c *Compiler) updateInference(inf *inference) {
 	}
 	if c.env.InferDebug {
 		for _, k := range slices.Sorted(maps.Keys(next)) {
-			fmt.Fprintf(os.Stderr, "rb2go: inferred %s: %s\n", k, next[k])
+			fmt.Fprintf(os.Stderr, "rugaroo: inferred %s: %s\n", k, next[k])
 		}
 	}
 }

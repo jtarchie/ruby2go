@@ -109,7 +109,7 @@ func okReturns(body string) string {
 	fset := token.NewFileSet()
 	f, err := goparser.ParseFile(fset, "", "package p\nfunc _() any {\n"+body+"}\n", 0)
 	if err != nil {
-		panic(fmt.Sprintf("rb2go: wrapper body does not parse: %v\n%s", err, body))
+		panic(fmt.Sprintf("rugaroo: wrapper body does not parse: %v\n%s", err, body))
 	}
 	fd, _ := f.Decls[0].(*ast.FuncDecl)
 	ast.Inspect(fd.Body, func(n ast.Node) bool {

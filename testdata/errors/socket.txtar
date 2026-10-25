@@ -1,4 +1,4 @@
-Compile errors for socket shapes rb2go does not build (docs/design.md decision 135).
+Compile errors for socket shapes rugaroo does not build (docs/design.md decision 135).
 -- raw_socket_new.rb --
 # error: main.rb:3: Socket.new is not supported (decision 135)
 require "socket"

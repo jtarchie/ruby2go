@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# The work list: what rb2go compiled to a NotImplementedError stub (a gem method, when arm or branch that does not
+# The work list: what rugaroo compiled to a NotImplementedError stub (a gem method, when arm or branch that does not
 # compile, decisions 205/244/251) that MRI actually reached running the traced command (work/calls.txt, lines.txt).
 import re, sys, collections
 go, work = sys.argv[1], sys.argv[2]
@@ -10,7 +10,7 @@ for l in open(f"{work}/calls.txt"):
 lines = set(l.strip() for l in open(f"{work}/lines.txt"))
 src = open(go).read()
 hits = set()
-for who, why in re.findall(r'rb2go: ((?:[^"\\]|\\.)*?) does not compile: ((?:[^"\\]|\\.)*)', src):
+for who, why in re.findall(r'rugaroo: ((?:[^"\\]|\\.)*?) does not compile: ((?:[^"\\]|\\.)*)', src):
     why = why.encode().decode("unicode_escape")
     loc = re.match(r'(\S+?:\d+): ', why)
     if who.startswith("a when arm") or who.startswith("a branch"):

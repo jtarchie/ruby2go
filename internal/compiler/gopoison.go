@@ -14,7 +14,7 @@ import (
 	"strconv"
 )
 
-// A gem method whose generated Go does not type-check is poisoned as one rb2go cannot compile is (decision 205): the
+// A gem method whose generated Go does not type-check is poisoned as one rugaroo cannot compile is (decision 205): the
 // traced build type-checks its output and replaces each body Go rejected with the NotImplementedError raise, in the
 // Go text, keeping the signature so its callers still type-check (decision 303).
 

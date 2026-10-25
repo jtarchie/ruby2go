@@ -163,7 +163,7 @@ class Range < Object
   #: () -> E
   def end = %x{
     if self.inf {
-      panic(NewRangeError(Ref(String("rb2go: the end of an Integer range to Float::INFINITY is Infinity, which a Range[Integer] cannot hold (decision 140)"))))
+      panic(NewRangeError(Ref(String("rugaroo: the end of an Integer range to Float::INFINITY is Infinity, which a Range[Integer] cannot hold (decision 140)"))))
     }
     return self.e
   }
@@ -213,7 +213,7 @@ class Range < Object
       panic(NewTypeError(Ref(String("can't iterate from " + rbClassName(self.b)))))
     }
     if self.endless {
-      panic(NewRangeError(Ref(String("cannot get the size of endless range (rb2go has no Infinity Integer)"))))
+      panic(NewRangeError(Ref(String("cannot get the size of endless range (rugaroo has no Infinity Integer)"))))
     }
     return rbRangeIntCount(b, any(self.e).(Integer), self.excl)
   }
@@ -236,7 +236,7 @@ class Range < Object
     b, bok := any(self.b).(Integer)
     e, eok := any(self.e).(Integer)
     if !bok || !eok || self.endless || self.beginless {
-      panic(NewTypeError(Ref(String("rb2go: Range#sum needs an Integer range"))))
+      panic(NewTypeError(Ref(String("rugaroo: Range#sum needs an Integer range"))))
     }
     if self.excl {
       e--

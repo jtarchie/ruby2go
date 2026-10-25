@@ -1,3 +1,3 @@
-module rb2gobench
+module rugaroobench
 
 go 1.26.0

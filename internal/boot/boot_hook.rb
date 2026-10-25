@@ -4,9 +4,9 @@
 # own requires. It records what a boot does that the compiler cannot read from
 # source: methods built by define_method or a string eval, the files autoload
 # actually loaded, every class/ancestor defined, and the objects held in class
-# state. The manifest is written as JSON to the file named by RB2GO_BOOT_OUT.
+# state. The manifest is written as JSON to the file named by RUGAROO_BOOT_OUT.
 
-module Rb2goBoot
+module RugarooBoot
   @classes = {}       # name => { name:, super:, path:, line: }
   @define_methods = [] # { owner:, name:, file:, line:, source: }
   @aliases = []        # { owner:, singleton:, name:, old:, file:, line: }
@@ -49,7 +49,7 @@ module Rb2goBoot
         (%i[def_delegators def_instance_delegators] & ::Forwardable.instance_methods(false)).each do |m|
           define_method(m) do |accessor, *methods|
             loc = caller_locations(1, 1).first
-            ::Rb2goBoot.delegators["#{loc.path}:#{loc.lineno}"] ||= methods.map(&:to_s) if loc
+            ::RugarooBoot.delegators["#{loc.path}:#{loc.lineno}"] ||= methods.map(&:to_s) if loc
             super(accessor, *methods)
           end
         end
@@ -61,7 +61,7 @@ module Rb2goBoot
       @private_constants = Hash.new { |h, k| h[k] = [] }
       Module.prepend(Module.new do
         def private_constant(*names)
-          ::Rb2goBoot.private_constants[self].concat(names)
+          ::RugarooBoot.private_constants[self].concat(names)
           super
         end
       end)
@@ -221,26 +221,26 @@ module Rb2goBoot
     def install_evals
       Kernel.prepend(Module.new do
         def eval(*args, **kw, &blk)
-          ::Rb2goBoot.record_eval(args[0], args[2], args[3], "eval", nil) if args[0].is_a?(String)
+          ::RugarooBoot.record_eval(args[0], args[2], args[3], "eval", nil) if args[0].is_a?(String)
           super(*args, **kw, &blk)
         end
       end)
       Module.prepend(Module.new do
         def class_eval(*args, **kw, &blk)
-          ::Rb2goBoot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
-          ::Rb2goBoot.record_block_eval(blk, self) if blk && args.empty?
+          ::RugarooBoot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
+          ::RugarooBoot.record_block_eval(blk, self) if blk && args.empty?
           super(*args, **kw, &blk)
         end
 
         def module_eval(*args, **kw, &blk)
-          ::Rb2goBoot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
-          ::Rb2goBoot.record_block_eval(blk, self) if blk && args.empty?
+          ::RugarooBoot.record_eval(args[0], args[1], args[2], "class_eval", self) if args[0].is_a?(String)
+          ::RugarooBoot.record_block_eval(blk, self) if blk && args.empty?
           super(*args, **kw, &blk)
         end
       end)
       BasicObject.prepend(Module.new do
         def instance_eval(*args, **kw, &blk)
-          ::Rb2goBoot.record_eval(args[0], args[1], args[2], "instance_eval", self) if args[0].is_a?(String)
+          ::RugarooBoot.record_eval(args[0], args[1], args[2], "instance_eval", self) if args[0].is_a?(String)
           super(*args, **kw, &blk)
         end
       end)
@@ -249,7 +249,7 @@ module Rb2goBoot
     def install_autoload
       hook = Module.new do
         def autoload(name, path)
-          ::Rb2goBoot.record_autoload(self, name, path)
+          ::RugarooBoot.record_autoload(self, name, path)
           super(name, path)
         end
       end
@@ -437,5 +437,5 @@ module Rb2goBoot
   end
 end
 
-Rb2goBoot.install
-at_exit { Rb2goBoot.dump(ENV["RB2GO_BOOT_OUT"]) if ENV["RB2GO_BOOT_OUT"] && $$ == Rb2goBoot.pid } # a forked child exits through here too
+RugarooBoot.install
+at_exit { RugarooBoot.dump(ENV["RUGAROO_BOOT_OUT"]) if ENV["RUGAROO_BOOT_OUT"] && $$ == RugarooBoot.pid } # a forked child exits through here too

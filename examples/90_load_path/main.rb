@@ -2,7 +2,7 @@
 # load_path: lib
 
 # Plain `require` of the program's own files, found on the load path given
-# with -I (`ruby -I lib main.rb`, `rb2go run -I lib main.rb`), next to a
+# with -I (`ruby -I lib main.rb`, `rugaroo run -I lib main.rb`), next to a
 # standard library require. Each file loads once, wherever it is first
 # required.
 

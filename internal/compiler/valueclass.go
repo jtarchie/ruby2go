@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // valueKind is which of Struct.new / Data.define declared a value class.

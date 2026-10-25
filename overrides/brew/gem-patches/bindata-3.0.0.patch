@@ -1,6 +1,6 @@
-bindata: count read bytes with bytesize (rb2go Strings carry no encoding tag: decision 136, 324).
+bindata: count read bytes with bytesize (rugaroo Strings carry no encoding tag: decision 136, 324).
 MRI's read(n) is ASCII-8BIT, so size is bytesize there; a short binary read that happens to be valid UTF-8 counted
-characters under rb2go and raised 'data truncated'.
+characters under rugaroo and raised 'data truncated'.
 --- a/lib/bindata/io.rb
 +++ b/lib/bindata/io.rb
 @@ -127,7 +127,7 @@

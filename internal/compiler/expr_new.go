@@ -403,7 +403,7 @@ func (f *fctx) inheritedSelfNew(n *parser.CallNode) (expr, bool) {
 }
 
 // genPerRunClass evaluates a Class.new literal whose block runs statements: a fresh class object, Super.inherited
-// told of it, then its block's statements (`rb2go_class_body`) run with it as self and the enclosing locals they read
+// told of it, then its block's statements (`rugaroo_class_body`) run with it as self and the enclosing locals they read
 // (decision 259).
 func (f *fctx) genPerRunClass(n *parser.CallNode, cls *Class) expr {
 	k := f.newTmp()
@@ -551,7 +551,7 @@ func (f *fctx) refineTemplate(li *localInfo) Type {
 }
 
 // sysErrorArgs is `Errno::X.new`, `Errno::X.new(msg)` and `Errno::X.new(msg, location)` written in a program: MRI's
-// message, the error's text first (`Invalid argument @ location - msg`, rbSysMessage, decision 370). rb2go's own raises
+// message, the error's text first (`Invalid argument @ location - msg`, rbSysMessage, decision 370). rugaroo's own raises
 // build their messages whole, so only these calls compose one.
 func (f *fctx) sysErrorArgs(n parser.Node, cls *Class, args []parser.Node, exprs []expr, block parser.Node) ([]parser.Node, bool) {
 	sce := f.c.classes["SystemCallError"]

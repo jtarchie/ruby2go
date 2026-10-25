@@ -1,4 +1,4 @@
-// Package rbs parses the subset of RBS type syntax that rb2go understands.
+// Package rbs parses the subset of RBS type syntax that rugaroo understands.
 package rbs
 
 import (

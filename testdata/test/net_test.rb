@@ -10,7 +10,7 @@ require "tmpdir"
 require "webrick"
 
 module NetTests
-  # Ports differ between MRI and rb2go runs, so messages holding one go through net_unport.
+  # Ports differ between MRI and rugaroo runs, so messages holding one go through net_unport.
   class OpenURITest < Minitest::Test
     #: (String, Integer) -> String
     def net_unport(s, port) = s.sub(":#{port}", ":PORT")
@@ -109,8 +109,8 @@ module NetTests
       base = "http://127.0.0.1:#{port}"
 
       assert_equal "Ruby|", URI.open("#{base}/echo").read
-      assert_equal "rb2go|t1", URI.open("#{base}/echo", "User-Agent" => "rb2go", "X-Token" => "t1").read
-      assert_equal "rb2go|", URI.open("#{base}/echo", "r", "User-Agent" => "rb2go", read_timeout: 5, open_timeout: 5).read
+      assert_equal "rugaroo|t1", URI.open("#{base}/echo", "User-Agent" => "rugaroo", "X-Token" => "t1").read
+      assert_equal "rugaroo|", URI.open("#{base}/echo", "r", "User-Agent" => "rugaroo", read_timeout: 5, open_timeout: 5).read
       headers = { "X-Token" => "t2" }
       assert_equal "Ruby|t2", URI.open("#{base}/echo", headers).read
       assert_equal "Ruby|t4", URI.open("#{base}/echo", { "X-Token" => "t4", redirect: true }).read
@@ -319,7 +319,7 @@ module NetTests
         res = http.get("/")
         assert_equal ["418", "hi", ["a=1", "b=2"], "2", nil], [res.code, res.body, res.get_fields("set-cookie"), res["content-length"], res["content-type"]]
         res = http.head("/")
-        assert_equal ["418", "", "2"], [res.code, res.body.to_s, res["content-length"]] # MRI's body is nil, rb2go's Net::HTTP ""
+        assert_equal ["418", "", "2"], [res.code, res.body.to_s, res["content-length"]] # MRI's body is nil, rugaroo's Net::HTTP ""
         res = http.get("/rack")
         assert_equal ["204", "", nil, "a, b"], [res.code, res.body.to_s, res["rack.hidden"], res["x-multi"]]
         assert_equal "500", http.get("/boom").code

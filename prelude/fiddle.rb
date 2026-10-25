@@ -193,7 +193,7 @@ module Fiddle
     #: (Integer, ?untyped) -> Pointer
     def self.malloc(size, free = nil) = new(Fiddle.malloc(size), size, free)
 
-    # A String is copied: rb2go Strings are immutable, so C's writes to it never reach the String.
+    # A String is copied: rugaroo Strings are immutable, so C's writes to it never reach the String.
     #: (untyped) -> Pointer
     def self.to_ptr(val)
       case val
@@ -206,7 +206,7 @@ module Fiddle
         ptr.size = val.bytesize
         ptr
       # ponytail: MRI's is the IO's FILE*; an fd number as an address would crash C. Add fdopen(3) by the fd's flags if needed.
-      when IO then raise NotImplementedError, "rb2go: Fiddle::Pointer of an IO (MRI's FILE*)"
+      when IO then raise NotImplementedError, "rugaroo: Fiddle::Pointer of an IO (MRI's FILE*)"
       when CStruct then val.to_ptr
       else raise TypeError, "can't convert #{val.class} into Fiddle::Pointer"
       end

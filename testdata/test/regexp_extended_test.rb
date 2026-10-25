@@ -195,7 +195,7 @@ module RegexpTests
     end
 
     def test_fixed_encoding
-      # /u is left out: rb2go's literals drop the u/e/s flags (rubyRegexFlags), so it answers false.
+      # /u is left out: rugaroo's literals drop the u/e/s flags (rubyRegexFlags), so it answers false.
       assert_equal [false, true, false], [/needle/.fixed_encoding?, /文字化け/.fixed_encoding?, /needle/n.fixed_encoding?]
     end
 

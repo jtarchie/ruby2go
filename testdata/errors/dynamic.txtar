@@ -187,7 +187,7 @@ puts ident(Foo.new).f("abc")
 def check(v) = v.is_a?(Integer, Float)
 puts check(1)
 -- is_a_module_on_type_variable.rb --
-# error: main.rb:5: is_a?(Tag) on T cannot be checked: rb2go has no runtime record of included modules
+# error: main.rb:5: is_a?(Tag) on T cannot be checked: rugaroo has no runtime record of included modules
 # rbs_inline: enabled
 module Tag; end
 #: [T] (T) -> bool

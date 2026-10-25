@@ -8,7 +8,7 @@ import (
 )
 
 // procArgs is the rest a block with a complex parameter list is lowered to (lowerProcArgs).
-const procArgs = "__rb2go_args"
+const procArgs = "__rugaroo_args"
 
 // lowerProcArgs gives a block whose parameters mix optionals, a rest and trailing names (`|a, b = 5, *c, d|`) the
 // single rest procArgs and a prologue that splits it MRI's way (decision 367): leading names, then optionals while
@@ -111,7 +111,7 @@ func (f *File) lowerNestedParams(b *parser.BlockNode) {
 			if !ok || !nestedTarget(mt) {
 				continue
 			}
-			name := "__rb2go_d" + strconv.Itoa(len(b.Locals))
+			name := "__rugaroo_d" + strconv.Itoa(len(b.Locals))
 			b.Locals = append(b.Locals, name)
 			nodes[i] = &parser.RequiredParameterNode{Location: mt.Location, Name: name}
 			w := asWriteTarget(mt).(*parser.MultiTargetNode) //nolint:forcetypeassert // a MultiTargetNode stays one

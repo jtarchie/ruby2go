@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -72,7 +72,7 @@ func rbJSONNesting(depth int, tail string) any {
 	return NewJSON_NestingError(Ref(String("nesting of " + strconv.Itoa(depth) + " is too deep" + tail)))
 }
 
-// rbJSONParse walks the token stream itself, not json.Unmarshal into a map, so object keys keep insertion order (rb2go's Hash). opts is JSON.parse/.load's: symbolize_names, and max_nesting (100 unless given).
+// rbJSONParse walks the token stream itself, not json.Unmarshal into a map, so object keys keep insertion order (rugaroo's Hash). opts is JSON.parse/.load's: symbolize_names, and max_nesting (100 unless given).
 func rbJSONParse(s string, opts *Hash[Symbol, any]) any {
 	symbolizeNames, freeze, limit := false, false, 100
 	if opts != nil {

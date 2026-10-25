@@ -280,7 +280,7 @@ class BigDecimal < Object
     "#{to_i}.#{"0" * -f.exponent}#{f.__split_digits}"
   end
 
-  # [sign, significant digits, 10, exponent]: 0.123e1 is [1, "123", 10, 1] (an Array: rb2go tuples stop at 3).
+  # [sign, significant digits, 10, exponent]: 0.123e1 is [1, "123", 10, 1] (an Array: rugaroo tuples stop at 3).
   #: () -> Array[untyped]
   def split = [__split_sign, __split_digits, 10, exponent]
 
@@ -358,7 +358,7 @@ class BigDecimal < Object
   #: () -> bool
   def negative? = %x{ return Boolean(self.kind != rbBDNaN && self.neg && !self.isZero()) }
 
-  # rb2go's Complex parts are Integer, Rational or Float only (decision 142).
+  # rugaroo's Complex parts are Integer, Rational or Float only (decision 142).
   undef_method :to_c, :i
 
   #: () -> bool

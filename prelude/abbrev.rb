@@ -36,7 +36,7 @@ module Abbrev
     table
   end
 
-  # A String pattern is a prefix, not a literal Regexp (rb2go has no runtime Regexp.new).
+  # A String pattern is a prefix, not a literal Regexp (rugaroo has no runtime Regexp.new).
 
   #: (String, untyped) -> bool
   # @dynamic

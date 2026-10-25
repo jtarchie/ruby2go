@@ -1,6 +1,6 @@
 //go:build js && wasm
 
-// Command rb2go-wasm is rb2go's compiler for a browser (the static `rb2go web`, decision 102): it defines rb2goCompile(src) and stays alive for calls.
+// Command rugaroo-wasm is rugaroo's compiler for a browser (the static `rugaroo web`, decision 102): it defines rugarooCompile(src) and stays alive for calls.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 	"syscall/js"
 
-	"github.com/jtarchie/ruby2go"
+	"github.com/jtarchie/rugaroo"
 )
 
 const mainName = "main.rb"
@@ -18,7 +18,7 @@ func main() {
 	// a compile allocates ~130 MB and lives well under a second: collecting half as often is 25% faster (0.63 s vs 0.83 s), and the limit keeps the tab's memory bounded
 	debug.SetGCPercent(200)
 	debug.SetMemoryLimit(512 << 20)
-	js.Global().Set("rb2goCompile", js.FuncOf(func(_ js.Value, args []js.Value) any {
+	js.Global().Set("rugarooCompile", js.FuncOf(func(_ js.Value, args []js.Value) any {
 		return compile(args[0].String())
 	}))
 	select {}
@@ -28,15 +28,15 @@ func main() {
 func compile(src string) (res map[string]any) {
 	defer func() {
 		if r := recover(); r != nil {
-			res = map[string]any{"go": "", "user": "", "warnings": []any{}, "error": fmt.Sprintf("rb2go: internal error: %v", r)}
+			res = map[string]any{"go": "", "user": "", "warnings": []any{}, "error": fmt.Sprintf("rugaroo: internal error: %v", r)}
 		}
 	}()
-	code, warnings, err := rb2go.Compile(context.Background(), mainName, []byte(src))
+	code, warnings, err := rugaroo.Compile(context.Background(), mainName, []byte(src))
 	ws := make([]any, len(warnings))
 	for i, w := range warnings {
 		ws[i] = w
 	}
-	res = map[string]any{"go": string(code), "user": rb2go.UserCode(code, mainName), "warnings": ws}
+	res = map[string]any{"go": string(code), "user": rugaroo.UserCode(code, mainName), "warnings": ws}
 	if err != nil {
 		res["error"] = err.Error()
 	}

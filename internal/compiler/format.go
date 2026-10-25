@@ -35,7 +35,7 @@ var stdImports = map[string]string{
 var errPruneIncomplete = errors.New("pruning reached dispatchers emitted lazily")
 
 // keepPCs sets rbKeepPCs to false when nothing the pruner kept calls
-// rbBacktrace but rbPrintUncaught, whose full report RB2GO_BACKTRACE turns
+// rbBacktrace but rbPrintUncaught, whose full report RUGAROO_BACKTRACE turns
 // on at run time (and with it the capture): a rescue then skips
 // runtime.Callers (decision 343).
 func keepPCs(f *ast.File) {
@@ -113,7 +113,7 @@ func merge(f, t *ast.File) {
 	f.Comments = append(f.Comments, t.Comments...)
 }
 
-// formatGo prunes src to what main reaches (noPrune or RB2GO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
+// formatGo prunes src to what main reaches (noPrune or RUGAROO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
 func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string, noPrune bool, env envConfig) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)

@@ -1450,7 +1450,7 @@ module NumberTests
       assert_equal "~", 126.chr
       assert_equal " ", 32.chr
       assert_equal "\n", 10.chr
-      assert_equal [0], 0.chr.bytes # MRI's chr is US-ASCII and inspects as "\x00"; rb2go's strings are all UTF-8 ("\u0000")
+      assert_equal [0], 0.chr.bytes # MRI's chr is US-ASCII and inspects as "\x00"; rugaroo's strings are all UTF-8 ("\u0000")
 
       # literals
       assert_equal 1000000, 1_000_000
@@ -2003,7 +2003,7 @@ module NumberTests
       assert_equal false, v.negative?
       assert_equal "6", (v.succ).inspect
       assert_equal "4", (v.pred).inspect
-      assert_equal [5], v.chr.bytes # MRI's chr is US-ASCII and inspects as "\x05"; rb2go's strings are all UTF-8 ("\u0005")
+      assert_equal [5], v.chr.bytes # MRI's chr is US-ASCII and inspects as "\x05"; rugaroo's strings are all UTF-8 ("\u0005")
       assert_equal "5", (v.abs).inspect
       assert_equal "2", (w.floor).inspect
       assert_equal "3", (w.ceil).inspect

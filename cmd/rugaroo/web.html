@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rb2go playground</title>
-<meta name="description" content="Write typed Ruby and see the Go that rb2go compiles it to, side by side, as you type.">
+<title>rugaroo playground</title>
+<meta name="description" content="Write typed Ruby and see the Go that rugaroo compiles it to, side by side, as you type.">
 <link rel="icon" href="data:,">
 <style>
 :root {
@@ -66,7 +66,7 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 </head>
 <body>
 <header>
-  <h1>rb2go</h1>
+  <h1>rugaroo</h1>
   <label>Example <select id="examples"><option value="">—</option></select></label>
   <label><input type="checkbox" id="prelude"> Show prelude</label>
   <button id="run" title="Ctrl/Cmd+Enter">Run</button>
@@ -95,8 +95,8 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 const $ = id => document.getElementById(id);
 const rb = $('rb'), go = $('go'), diag = $('diag'), status = $('status'), run = $('run');
 let seq = 0, timer = 0, examples = [], ctl = null, jump = true, last = null, busy = false, again = false, loaded = false;
-// set by `rb2go web -static`: no server, so the compiler runs here as wasm fetched from this base URL
-const ASSETS = window.rb2goAssets;
+// set by `rugaroo web -static`: no server, so the compiler runs here as wasm fetched from this base URL
+const ASSETS = window.rugarooAssets;
 const prelude = $('prelude'), rbHl = $('rb-hl');
 // if the script fails to load, the panes still work, just plain
 const hl = (code, language) => window.hljs ? hljs.highlight(code, {language, ignoreIllegals: true}).value
@@ -107,7 +107,7 @@ function paintRb() {
   rbHl.scrollTop = rb.scrollTop;
   rbHl.scrollLeft = rb.scrollLeft;
 }
-try { prelude.checked = localStorage.getItem('rb2go.prelude') === '1'; } catch {}
+try { prelude.checked = localStorage.getItem('rugaroo.prelude') === '1'; } catch {}
 
 // the full file puts the prelude first; when it's shown, jump to the user's code once per loaded program so edits don't yank the pane
 function render() {
@@ -129,12 +129,12 @@ if (ASSETS) {
   const code = `importScripts(${JSON.stringify(ASSETS + 'wasm_exec.js')});
 const ready = (async () => {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch(${JSON.stringify(ASSETS + 'rb2go.wasm')}), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetch(${JSON.stringify(ASSETS + 'rugaroo.wasm')}), go.importObject);
   go.run(instance);
-  rb2goCompile('puts 1\\n'); // the first compile parses the prelude, cached after; pay for it before the first keystroke
+  rugarooCompile('puts 1\\n'); // the first compile parses the prelude, cached after; pay for it before the first keystroke
 })();
 onmessage = async e => {
-  try { await ready; postMessage({id: e.data.id, res: rb2goCompile(e.data.src)}); }
+  try { await ready; postMessage({id: e.data.id, res: rugarooCompile(e.data.src)}); }
   catch (err) { postMessage({id: e.data.id, err: String(err)}); }
 };`;
   const worker = new Worker(URL.createObjectURL(new Blob([code], {type: 'text/javascript'})));
@@ -227,7 +227,7 @@ rb.addEventListener('keydown', e => {
 });
 run.addEventListener('click', runProgram);
 prelude.addEventListener('change', () => {
-  try { localStorage.setItem('rb2go.prelude', prelude.checked ? '1' : '0'); } catch {}
+  try { localStorage.setItem('rugaroo.prelude', prelude.checked ? '1' : '0'); } catch {}
   jump = true;
   render();
 });

@@ -81,8 +81,8 @@ type fctx struct {
 	rescues        int                 // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
 	yielderFed     *[]Type             // what a probed Enumerator.new block feeds its yielder (inferYielder)
 	paramWiden     map[string]Type     // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
-	anyOrigin      map[localKey]string // RB2GO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
-	blockWhy       string              // RB2GO_UNTYPED_WHY: the root of the call whose block params are being bound (blockParam)
+	anyOrigin      map[localKey]string // RUGAROO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
+	blockWhy       string              // RUGAROO_UNTYPED_WHY: the root of the call whose block params are being bound (blockParam)
 	breakCatch     *breakCatch         // the statement call whose closure block `break`s out of it (decision 241)
 	inMarker       bool                // markerCall's own Boolean arm: past its check (decision 241)
 }
@@ -611,7 +611,7 @@ func (f *fctx) discoverNested(s parser.Node) {
 // endsUnreachable reports whether the code just emitted ends in a call that never returns (expr.noreturn's marker), at
 // this level: a statement after it is dead, and go vet rejects it.
 func (f *fctx) endsUnreachable() bool {
-	return strings.HasSuffix(f.buf.String(), "\npanic(\"rb2go: unreachable\")\n")
+	return strings.HasSuffix(f.buf.String(), "\npanic(\"rugaroo: unreachable\")\n")
 }
 
 // emptyTail handles an empty body in value position: its value is nil.
@@ -774,7 +774,7 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		return
 	}
 	if f.closures > 0 && f.lenient() { // gem code (decision 172): fails only if it runs
-		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", fmt.Sprintf("rb2go: non-local return from a block at %s:%d (decision 4)", f.f.Name, f.f.line(n.Location.StartOffset)))
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", fmt.Sprintf("rugaroo: non-local return from a block at %s:%d (decision 4)", f.f.Name, f.f.line(n.Location.StartOffset)))
 		return
 	}
 	if f.closures > 0 {

@@ -53,7 +53,7 @@ type pruner struct {
 	pending     map[*ast.CaseClause][]string // type-switch cases waiting for their declared type names to be kept
 	parked      map[*ast.Field]parkedField   // named interfaces' unselected methods: visited (their types kept) only once selected, as sweep slims them otherwise
 	cur         ast.Node                     // the node being visited, for why
-	why         map[ast.Node]ast.Node        // the node whose visit first kept each kept node (RB2GO_PRUNE_WHY=1 dumps the chains)
+	why         map[ast.Node]ast.Node        // the node whose visit first kept each kept node (RUGAROO_PRUNE_WHY=1 dumps the chains)
 	lazy        map[string]bool              // prelude constants: main's assignment to one waits for something else to name it
 	deferred    map[ast.Stmt]string          // those assignments, by constant
 	queue       []ast.Node
@@ -898,7 +898,7 @@ func (p *pruner) sweep(f *ast.File) {
 			at := d.Body.Lbrace + 1
 			d.Body = &ast.BlockStmt{Lbrace: d.Body.Lbrace, Rbrace: at + 1, List: []ast.Stmt{&ast.ExprStmt{X: &ast.CallExpr{
 				Fun: &ast.Ident{NamePos: at, Name: "panic"}, Lparen: at, Rparen: at,
-				Args: []ast.Expr{&ast.BasicLit{ValuePos: at, Kind: token.STRING, Value: `"rb2go: pruned"`}},
+				Args: []ast.Expr{&ast.BasicLit{ValuePos: at, Kind: token.STRING, Value: `"rugaroo: pruned"`}},
 			}}}}
 		}
 	}

@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/jtarchie/ruby2go"
+	"github.com/jtarchie/rugaroo"
 )
 
 func TestBuildAndRun(t *testing.T) {
@@ -185,7 +185,7 @@ func TestTestCommand(t *testing.T) {
 		t.Errorf("helper.rb isn't a test file:\n%s", out)
 	}
 
-	// minitest's own flags pass through; rb2go's are taken out by name
+	// minitest's own flags pass through; rugaroo's are taken out by name
 	out, code = captureStdout(t, func() int {
 		return testCmd(t.Context(), []string{"-n", "/good/", filepath.Join(dir, "sub", "fail_test.rb"), "-v", "--seed", "7"})
 	})
@@ -219,19 +219,19 @@ puts "#{s} #{b.join}"
 	got, code := captureStdout(t, func() int { return run(t.Context(), src, nil, buildOpts{}) })
 	want, err := exec.CommandContext(t.Context(), "ruby", "-rbundler/setup", src).Output() //nolint:gosec // written above
 	if err != nil || code != 0 || got != string(want) {
-		t.Errorf("rb2go run (exit %d): %q, ruby (%v): %q", code, got, err, want)
+		t.Errorf("rugaroo run (exit %d): %q, ruby (%v): %q", code, got, err, want)
 	}
 
-	_, _, err = rb2go.CompileWithGems(t.Context(), src, []byte("require \"rb2go_no_such_gem\"\n"))
-	if err == nil || !strings.Contains(err.Error(), "cannot load such file -- rb2go_no_such_gem") {
+	_, _, err = rugaroo.CompileWithGems(t.Context(), src, []byte("require \"rugaroo_no_such_gem\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "cannot load such file -- rugaroo_no_such_gem") {
 		t.Errorf("unknown require: %v", err)
 	}
 	t.Setenv("PATH", "")
-	_, _, err = rb2go.CompileWithGems(t.Context(), src, []byte("require \"set\"\nrequire \"json\"\nrequire \"English\"\nputs 1\n"))
+	_, _, err = rugaroo.CompileWithGems(t.Context(), src, []byte("require \"set\"\nrequire \"json\"\nrequire \"English\"\nputs 1\n"))
 	if err != nil {
 		t.Errorf("a program without gems needs no ruby: %v", err)
 	}
-	_, _, err = rb2go.CompileWithGems(t.Context(), src, []byte("require \"cuba\"\n"))
+	_, _, err = rugaroo.CompileWithGems(t.Context(), src, []byte("require \"cuba\"\n"))
 	if err == nil || !strings.Contains(err.Error(), "needs ruby on PATH") {
 		t.Errorf("gem without ruby: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestUncaughtZeroDivisionMessage(t *testing.T) {
 	}
 }
 
-// RB2GO_BACKTRACE=1 prints an uncaught exception as MRI does, with its location and from lines (decision 177); unset, `msg (Class)` alone.
+// RUGAROO_BACKTRACE=1 prints an uncaught exception as MRI does, with its location and from lines (decision 177); unset, `msg (Class)` alone.
 func TestUncaughtFullReport(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "main.rb")
@@ -317,8 +317,8 @@ func TestUncaughtFullReport(t *testing.T) {
 		t.Fatalf("build: exit %d", code)
 	}
 	for env, want := range map[string]string{
-		"":                  "bad (ArgumentError)\n",
-		"RB2GO_BACKTRACE=1": "main.rb:1:in 'Object#inner': bad (ArgumentError)\n\tfrom main.rb:2:in 'Object#outer'\n\tfrom main.rb:3:in '<main>'\n",
+		"":                    "bad (ArgumentError)\n",
+		"RUGAROO_BACKTRACE=1": "main.rb:1:in 'Object#inner': bad (ArgumentError)\n\tfrom main.rb:2:in 'Object#outer'\n\tfrom main.rb:3:in '<main>'\n",
 	} {
 		var errOut strings.Builder
 		cmd := exec.CommandContext(t.Context(), bin) //nolint:gosec // built above

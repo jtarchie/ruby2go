@@ -305,7 +305,7 @@ func (f *fctx) genTypeCase(n *parser.CaseNode, t tail) {
 	f.emit("_ = %s", name)
 	if isUnion && len(remaining) == 0 && n.ElseClause == nil {
 		// exhaustive: every member has its arm, so the case never falls through to nil (decision 150)
-		f.emit("panic(\"rb2go: no union member matched\")")
+		f.emit("panic(\"rugaroo: no union member matched\")")
 	} else {
 		if isUnion && subjLocal != nil {
 			f.applyNarrow(f.remainingNarrow(subjLocal, remaining)) // else holds the members no arm took
@@ -328,7 +328,7 @@ func (f *fctx) genBranch(n parser.Node, t tail) {
 	}
 	err := f.tryClean(func() { f.genStmts(n, t) })
 	if err != nil {
-		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a branch does not compile: "+err.Error())
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rugaroo: a branch does not compile: "+err.Error())
 	}
 }
 
@@ -342,7 +342,7 @@ func (f *fctx) genWhenArm(wn *parser.WhenNode, t tail) {
 	}
 	err := f.tryClean(func() { f.genStmts(wn.Statements, t) })
 	if err != nil {
-		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: a when arm does not compile: "+err.Error())
+		f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rugaroo: a when arm does not compile: "+err.Error())
 	}
 }
 

@@ -1,4 +1,4 @@
-# golangci-lint v2 configuration for rb2go. The linter set is shared with
+# golangci-lint v2 configuration for rugaroo. The linter set is shared with
 # github.com/jtarchie/steps; the depguard rules are this repo's own.
 
 version: "2"
@@ -8,7 +8,7 @@ run:
 
 formatters:
   enable:
-    - gofmt # `golangci-lint fmt` applies it; `run` does not check formatters, so TestGofmt (rb2go_test.go) fails the suite on drift
+    - gofmt # `golangci-lint fmt` applies it; `run` does not check formatters, so TestGofmt (rugaroo_test.go) fails the suite on drift
 
 linters:
   default: none
@@ -86,20 +86,20 @@ linters:
             - "!**/examples/**"
           allow:
             - "$gostd"
-            - "github.com/jtarchie/ruby2go/internal/compiler"
-            - "golang.org/x/tools/txtar" # rb2go_test.go: testdata/errors archives
-        # cmd/rb2go is the process boundary: flags in, exit code out.
+            - "github.com/jtarchie/rugaroo/internal/compiler"
+            - "golang.org/x/tools/txtar" # rugaroo_test.go: testdata/errors archives
+        # cmd/rugaroo is the process boundary: flags in, exit code out.
         # depguard matches `allow` entries by prefix, so allowing the root
-        # path alone also admits .../ruby2go/internal/...; deny it explicitly.
+        # path alone also admits .../rugaroo/internal/...; deny it explicitly.
         CLI:
           files:
             - "**/cmd/**"
             - "!**/cmd/rubyspec/**"
           allow:
             - "$gostd"
-            - "github.com/jtarchie/ruby2go"
+            - "github.com/jtarchie/rugaroo"
           deny:
-            - pkg: "github.com/jtarchie/ruby2go/internal"
+            - pkg: "github.com/jtarchie/rugaroo/internal"
               desc: cmd/ reaches the compiler only through the root package
         # cmd/rubyspec finds the example an error lands in, so it parses Ruby too.
         RubySpec:
@@ -107,10 +107,10 @@ linters:
             - "**/cmd/rubyspec/**"
           allow:
             - "$gostd"
-            - "github.com/jtarchie/ruby2go"
+            - "github.com/jtarchie/rugaroo"
             - "github.com/danielgatis/go-ruby-prism/parser"
           deny:
-            - pkg: "github.com/jtarchie/ruby2go/internal"
+            - pkg: "github.com/jtarchie/rugaroo/internal"
               desc: cmd/ reaches the compiler only through the root package
         # The compiler owns the parser and the formatter; it reaches the RBS
         # parser and the boot snapshot, but never the CLI or the root.
@@ -121,8 +121,8 @@ linters:
             - "$gostd"
             - "github.com/danielgatis/go-ruby-prism/parser"
             - "github.com/tetratelabs/wazero" # the parser's compilation cache (decision 156); already its dependency
-            - "github.com/jtarchie/ruby2go/internal/rbs"
-            - "github.com/jtarchie/ruby2go/internal/boot" # the gem load phase at compile time (decision 161)
+            - "github.com/jtarchie/rugaroo/internal/rbs"
+            - "github.com/jtarchie/rugaroo/internal/boot" # the gem load phase at compile time (decision 161)
             - "github.com/dlclark/regexp2" # patterns RE2 cannot match (decision 242): validated here, emitted into programs that need it
         # boot is a stdlib-only leaf: it runs MRI and reports what it saw,
         # and must not reach the compiler, the RBS parser or the root.

@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 
 # Class.new and Module.new with a block make a class at run time in Ruby.
-# rb2go declares one class per literal at compile time instead.
+# rugaroo declares one class per literal at compile time instead.
 
 # A constant names the class, as `class Point` would.
 Point = Class.new do

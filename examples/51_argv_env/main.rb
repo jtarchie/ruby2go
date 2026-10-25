@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 # args: --upcase alpha beta --repeat=2 gamma
 # env: GREETING=hello
-# env: RB2GO_EMPTY=
+# env: RUGAROO_EMPTY=
 # stderr: match
 
 # A small command-line tool: flags and words from ARGV, settings from ENV,
@@ -43,16 +43,16 @@ opts.words.each do |w|
   opts.repeat.times { puts "#{greeting}, #{word}" }
 end
 
-puts "missing: #{ENV["RB2GO_SURELY_UNSET"].inspect}"
-puts "empty: #{ENV["RB2GO_EMPTY"].inspect}"
-puts "default: #{ENV.fetch("RB2GO_SURELY_UNSET", "fallback")}"
+puts "missing: #{ENV["RUGAROO_SURELY_UNSET"].inspect}"
+puts "empty: #{ENV["RUGAROO_EMPTY"].inspect}"
+puts "default: #{ENV.fetch("RUGAROO_SURELY_UNSET", "fallback")}"
 puts "key?: #{ENV.key?("GREETING")}"
-ENV["RB2GO_SET"] = "set here"
-puts "set: #{ENV["RB2GO_SET"]}"
-puts "deleted: #{ENV.delete("RB2GO_SET").inspect}, now #{ENV["RB2GO_SET"].inspect}"
+ENV["RUGAROO_SET"] = "set here"
+puts "set: #{ENV["RUGAROO_SET"]}"
+puts "deleted: #{ENV.delete("RUGAROO_SET").inspect}, now #{ENV["RUGAROO_SET"].inspect}"
 
 begin
-  ENV.fetch("RB2GO_SURELY_UNSET")
+  ENV.fetch("RUGAROO_SURELY_UNSET")
 rescue KeyError => e
   puts "KeyError: #{e.message}"
 end

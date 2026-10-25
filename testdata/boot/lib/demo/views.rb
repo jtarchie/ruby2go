@@ -148,7 +148,7 @@ module Demo
         out << :none
       rescue IndexError, ArgumentError, FrozenError, TypeError => e
         out << e.class
-        out << e.message unless e.is_a?(TypeError) # rb2go words a conversion's TypeError apart (decision 20)
+        out << e.message unless e.is_a?(TypeError) # rugaroo words a conversion's TypeError apart (decision 20)
       end
       out
     end

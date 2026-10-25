@@ -216,7 +216,7 @@ func (f *fctx) gemStringEval(n *parser.CallNode) expr {
 		// call reaches method_missing again and gets the same answer (decision 324)
 		return expr{code: "nil", typ: TNil{}, lit: true}
 	}
-	msg := fmt.Sprintf("rb2go: %s of a String at run time is not supported (%s:%d)", n.Name, f.f.Name, f.f.line(n.Location.StartOffset))
+	msg := fmt.Sprintf("rugaroo: %s of a String at run time is not supported (%s:%d)", n.Name, f.f.Name, f.f.line(n.Location.StartOffset))
 	return expr{code: fmt.Sprintf("panic(NewNotImplementedError(Ref(String(%q))))", msg), typ: TVoid{}, stmt: true, noreturn: true}
 }
 
@@ -431,7 +431,7 @@ func procLiteral(n parser.Node) bool {
 
 // adoptBind is ann with the bound self of a Proc value of the same shape (decision 231): Sorbet's
 // `T.let(block, T.nilable(T.proc.void))` of a `T.proc.bind(Parser)` block drops the bind its type cannot carry, where
-// rb2go's Proc type takes self as a parameter.
+// rugaroo's Proc type takes self as a parameter.
 func adoptBind(ann, val Type) Type {
 	vf, ok := stripOpt(val).(TFunc)
 	if !ok || vf.Self == nil {

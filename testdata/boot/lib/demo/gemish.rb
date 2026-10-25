@@ -3,7 +3,7 @@ require "monitor"
 require "json"
 require "uri"
 require "optparse"
-# Gem code rb2go's typing would reject, compiled leniently as rack's multipart parser and request are (decision 175).
+# Gem code rugaroo's typing would reject, compiled leniently as rack's multipart parser and request are (decision 175).
 module Demo
   class Gemish
     Pair = Struct.new :key, :value

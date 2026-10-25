@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // addAlias is `alias new old` / `alias_method :new, :old`: a copy of the
@@ -85,7 +85,7 @@ func (c *Compiler) linkAliases(ctx context.Context) {
 				c.addForwarder(ctx, a, "("+params+") = "+call)
 				continue
 			}
-			c.errorf(a.f, a.n, "alias of %s#%s: rb2go copies an inherited method only when it is a plain def without super from a non-generic class", e.Owner.RubyName, a.oldName)
+			c.errorf(a.f, a.n, "alias of %s#%s: rugaroo copies an inherited method only when it is a plain def without super from a non-generic class", e.Owner.RubyName, a.oldName)
 		}
 		m := c.copyAlias(a.cls, e.M, a.newName)
 		if !fromHash {
@@ -427,7 +427,7 @@ func (c *Compiler) addConstSingletonDef(f *File, n *parser.DefNode, r *parser.Co
 	k := c.consts[qualify(scope, r.Name)]
 	call, ok := k.Value.(*parser.CallNode)
 	if !ok || call.Receiver == nil {
-		c.errorf(f, n, "def %s.%s: rb2go gives a singleton method only to a constant built by `Klass.new(...)` or `Klass[...]`", r.Name, n.Name)
+		c.errorf(f, n, "def %s.%s: rugaroo gives a singleton method only to a constant built by `Klass.new(...)` or `Klass[...]`", r.Name, n.Name)
 	}
 	subName := r.Name + "__Singleton"
 	sub := c.classes[qualify(scope, subName)]

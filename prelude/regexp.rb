@@ -558,7 +558,7 @@ class String
   #: (Regexp) -> Array[String]
   def scan(re) = %x{
     if re.re.NumSubexp() > 0 {
-      panic(NewNotImplementedError(Ref(String("rb2go: String#scan with capture groups needs a Regexp literal"))))
+      panic(NewNotImplementedError(Ref(String("rugaroo: String#scan with capture groups needs a Regexp literal"))))
     }
     return rbScanLocs(self, rbFindAll(re, string(self), -1))
   }
@@ -593,7 +593,7 @@ class String
   #: (Regexp) -> Array[String]
   def __bin_scan(re) = %x{
     if re.re.NumSubexp() > 0 {
-      panic(NewNotImplementedError(Ref(String("rb2go: String#scan with capture groups needs a Regexp literal"))))
+      panic(NewNotImplementedError(Ref(String("rugaroo: String#scan with capture groups needs a Regexp literal"))))
     }
     return rbScanLocs(self, rbFindAllBin(re, string(self), -1))
   }

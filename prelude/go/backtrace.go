@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 //
 // Exception#backtrace (decision 106). A rescue that binds `=> e` records
 // the Go call stack's program counters on the exception (rbCaptureBacktrace);
@@ -58,7 +58,7 @@ func rbCaptureBacktrace(r any) any {
 }
 
 // rbKeepPCs is false when the pruned program kept no reader of a backtrace
-// but the uncaught-exception report (which RB2GO_BACKTRACE turns on, and
+// but the uncaught-exception report (which RUGAROO_BACKTRACE turns on, and
 // then every rescue captures): the compiler rewrites it after pruning
 // (keepPCs), since runtime.Callers in each rescue costs about a microsecond.
 const rbKeepPCs = true

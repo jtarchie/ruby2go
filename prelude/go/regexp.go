@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -71,7 +71,7 @@ func rbRegexpNewAfter(_ bool, pattern, src, opts string) *Regexp {
 	return rbRegexpNew(pattern, src, opts)
 }
 
-// rbRegexpLenient is a gem's regexp (decision 176): MRI builds it, so rb2go does too, and one RE2 cannot match raises
+// rbRegexpLenient is a gem's regexp (decision 176): MRI builds it, so rugaroo does too, and one RE2 cannot match raises
 // RegexpError when it is used rather than when the gem loads (Rack::Lint's URI patterns).
 func rbRegexpLenient(prefix, src, opts string) *Regexp {
 	pat, err := rxPrepare(src, strings.Contains(opts, "x"))
@@ -80,7 +80,7 @@ func rbRegexpLenient(prefix, src, opts string) *Regexp {
 		r, err = rbRegexpCompiled(rxFold(prefix+pat), src, opts, true)
 	}
 	if err != nil {
-		return rbRegexpOf(&rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rb2go: " + err.Error()}, src, opts)
+		return rbRegexpOf(&rxRegexp{unsupported: "regexp /" + src + "/ is not supported by rugaroo: " + err.Error()}, src, opts)
 	}
 	return r
 }

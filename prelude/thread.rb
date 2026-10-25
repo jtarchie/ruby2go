@@ -17,7 +17,7 @@ class Thread < Object
     rbThreadStart(self, func() any { return blk() })
   }
 
-  # Runs the block: rb2go raises no asynchronous interrupt for the mask to defer (decision 233).
+  # Runs the block: rugaroo raises no asynchronous interrupt for the mask to defer (decision 233).
   # @rbs [T] (untyped) { () -> T } -> T
   def self.handle_interrupt(_mask) = yield
 
@@ -303,7 +303,7 @@ class ThreadGroup < Object
   Default = __default #: ThreadGroup
 end
 
-# MRI's names for the thread primitives, which rb2go keeps top-level (decision 203's class aliases).
+# MRI's names for the thread primitives, which rugaroo keeps top-level (decision 203's class aliases).
 class Thread
   Mutex = ::Mutex
   Queue = ::Queue

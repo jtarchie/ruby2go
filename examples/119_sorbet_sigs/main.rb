@@ -1,7 +1,7 @@
 # typed: strict
 # frozen_string_literal: true
 
-# A Sorbet-typed program: rb2go reads `sig {}` and `T.let` as its types,
+# A Sorbet-typed program: rugaroo reads `sig {}` and `T.let` as its types,
 # the way it reads `#:` comments, and MRI runs it with sorbet-runtime.
 require "sorbet-runtime"
 

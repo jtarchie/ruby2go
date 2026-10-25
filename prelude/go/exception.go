@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -21,7 +21,7 @@ func rbWithCause(e, handled any) any {
 	return e
 }
 
-// rbErrnoOf is SystemCallError#errno: the platform's number for an Errno class rb2go raises.
+// rbErrnoOf is SystemCallError#errno: the platform's number for an Errno class rugaroo raises.
 func rbErrnoOf(e any) *Integer {
 	var n syscall.Errno
 	switch e.(type) {
@@ -131,7 +131,7 @@ func rbStrerror(n int) string {
 }
 
 // rbSysMessage is the message of `Errno::X.new(m)` (genNew): MRI's, the error's text then the given one
-// (`Invalid argument - x`, `Invalid argument @ location - x`); one rb2go's runtime built already starts with the text.
+// (`Invalid argument - x`, `Invalid argument @ location - x`); one rugaroo's runtime built already starts with the text.
 func rbSysMessage(e any, m *String) *String {
 	n := rbErrnoOf(e) // ponytail: SystemCallError itself keeps its message ("unknown error - " in MRI); naming its type here made every program keep the class
 	if n == nil {

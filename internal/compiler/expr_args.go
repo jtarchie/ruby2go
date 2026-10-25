@@ -420,7 +420,7 @@ func (f *fctx) keywordFromSplat(n parser.Node, m *Method, p Param, env map[strin
 		f.emit("\t%s = %s", out, f.coerce(sp, expr{code: "any(" + v + ")", typ: TAny{}}, want))
 	default: // `{ name: "a" }` holds Strings: an :age in it is a typed boundary's TypeError (decision 20)
 		f.emit("\t_ = %s", v)
-		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rb2go: **%s holds %s values; keyword %s takes %s", f.f.text(sp.Value.GetLocation()), ht, p.Name, want))
+		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rugaroo: **%s holds %s values; keyword %s takes %s", f.f.text(sp.Value.GetLocation()), ht, p.Name, want))
 	}
 	f.emit("} else {")
 	switch {

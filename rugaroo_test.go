@@ -1,4 +1,4 @@
-package rb2go
+package rugaroo
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ import (
 
 	"golang.org/x/tools/txtar"
 
-	"github.com/jtarchie/ruby2go/internal/compiler"
+	"github.com/jtarchie/rugaroo/internal/compiler"
 )
 
 // gemCmd runs a Gemfile executable through bundler, so the versions pinned
@@ -86,7 +86,7 @@ func run(t *testing.T, dir string, name string, args ...string) (string, error) 
 type progIO struct {
 	env   []string
 	stdin string
-	trace bool // the trace oracle (decision 105): RB2GO_MT_TRACE on both runs, MRI with testdata/mt_trace.rb preloaded
+	trace bool // the trace oracle (decision 105): RUGAROO_MT_TRACE on both runs, MRI with testdata/mt_trace.rb preloaded
 }
 
 func runIO(t *testing.T, dir string, pio progIO, name string, args ...string) (stdout, stderr string, code int, err error) {
@@ -207,9 +207,9 @@ func TestRun(t *testing.T) {
 }
 
 // TestMinitest runs each testdata/test/*_test.rb with a fixed seed. MRI must
-// pass it, or the test itself is wrong; rb2go's output must then match MRI's
+// pass it, or the test itself is wrong; rugaroo's output must then match MRI's
 // apart from timings. One build per file for now: the files load together
-// as one program (decision 84, `rb2go test testdata/test`), but that program
+// as one program (decision 84, `rugaroo test testdata/test`), but that program
 // takes Go ~30 minutes to build: Dyn wrappers grow as classes × names
 // (decision 81).
 func TestMinitest(t *testing.T) {
@@ -255,7 +255,7 @@ func TestMulti(t *testing.T) {
 			}
 			code, warnings, err := CompileFiles(t.Context(), files)
 			if err != nil {
-				t.Fatalf("rb2go: %v", err)
+				t.Fatalf("rugaroo: %v", err)
 			}
 			for _, w := range warnings {
 				t.Logf("warning: %s", w)
@@ -293,10 +293,10 @@ func TestBootAutoload(t *testing.T) {
 	}
 	lp := loadPath(dir, src) // # load_path: lib
 	srcs := []compiler.Source{{Name: "app.rb", Src: src, Path: app}}
-	t.Setenv("RB2GO_GEM_WARNINGS", "1")
+	t.Setenv("RUGAROO_GEM_WARNINGS", "1")
 	code, warnings, err := compiler.CompileWithBoot(t.Context(), Prelude, GemSigs, srcs, lp)
 	if err != nil {
-		t.Fatalf("rb2go: %v", err)
+		t.Fatalf("rugaroo: %v", err)
 	}
 	for _, w := range warnings {
 		t.Logf("warning: %s", w)
@@ -318,7 +318,7 @@ func TestBootAutoload(t *testing.T) {
 	if werr != nil {
 		t.Fatal(werr)
 	}
-	if keep := os.Getenv("RB2GO_BOOT_KEEP"); keep != "" { // the generated main.go, for a failing build
+	if keep := os.Getenv("RUGAROO_BOOT_KEEP"); keep != "" { // the generated main.go, for a failing build
 		_ = os.WriteFile(keep, code, 0o600) //nolint:gosec // a developer-chosen path
 	}
 	sameAsRuby(t, dir, "app.rb", goBuild(t, gen, ""))
@@ -348,7 +348,7 @@ func TestTracedEntry(t *testing.T) {
 	srcs := []compiler.Source{{Name: "entry.rb", Src: src, Path: entry}}
 	code, _, err := compiler.CompileTraced(t.Context(), Prelude, GemSigs, srcs, filepath.Join(dir, "main.rb"), loadPath(dir, main)...)
 	if err != nil {
-		t.Fatalf("rb2go: %v", err)
+		t.Fatalf("rugaroo: %v", err)
 	}
 	gen := t.TempDir()
 	writeModule(t, gen)
@@ -371,7 +371,7 @@ func TestTraceRun(t *testing.T) {
 	t.Setenv("TRACED_SPAWN", "1") // the run sees main.rb's `# env:`, as the program does
 	code, _, err := CompileTrace(t.Context(), main, [][]string{nil, {"argv"}}, []string{"--disable=gems"}, loadPath(dir, src)...)
 	if err != nil {
-		t.Fatalf("rb2go: %v", err)
+		t.Fatalf("rugaroo: %v", err)
 	}
 	gen := t.TempDir()
 	writeModule(t, gen)
@@ -396,11 +396,11 @@ func directives(src []byte, kind string) []string {
 }
 
 // skipIfMarked skips a case carrying `# skip: reason` (a known failure),
-// unless RB2GO_RUN_SKIPPED is set.
+// unless RUGAROO_RUN_SKIPPED is set.
 func skipIfMarked(t *testing.T, src []byte) {
 	t.Helper()
 	reasons := directives(src, "skip")
-	if len(reasons) > 0 && os.Getenv("RB2GO_RUN_SKIPPED") == "" {
+	if len(reasons) > 0 && os.Getenv("RUGAROO_RUN_SKIPPED") == "" {
 		t.Skip("known failure: " + strings.Join(reasons, "; "))
 	}
 	if skip, _ := laneSkips(t); skip {
@@ -408,11 +408,11 @@ func skipIfMarked(t *testing.T, src []byte) {
 	}
 }
 
-// laneSkips reads testdata/int-overflow/<mode>-skip.txt for RB2GO_INT_OVERFLOW's lane (decision 372): a line naming
+// laneSkips reads testdata/int-overflow/<mode>-skip.txt for RUGAROO_INT_OVERFLOW's lane (decision 372): a line naming
 // the test skips it; one naming the test and a minitest method excludes that method on both sides.
 func laneSkips(t *testing.T) (skip bool, methods []string) {
 	t.Helper()
-	mode := cmp.Or(os.Getenv("RB2GO_INT_OVERFLOW"), "raise")
+	mode := cmp.Or(os.Getenv("RUGAROO_INT_OVERFLOW"), "raise")
 	data, err := os.ReadFile(filepath.Join("testdata", "int-overflow", mode+"-skip.txt")) //nolint:gosec // testdata path
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
@@ -513,10 +513,10 @@ func TestPreludeGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.CommandContext(t.Context(), "go", "vet", "-tags", "rb2go_prelude", "./prelude/go")
+	cmd := exec.CommandContext(t.Context(), "go", "vet", "-tags", "rugaroo_prelude", "./prelude/go")
 	got, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("go vet -tags rb2go_prelude ./prelude/go: %v\n%s", err, got)
+		t.Fatalf("go vet -tags rugaroo_prelude ./prelude/go: %v\n%s", err, got)
 	}
 }
 
@@ -636,7 +636,7 @@ func testExample(t *testing.T, dir, gen string) {
 		t.Fatal(err)
 	}
 	compile := CompileWithGems             // gems as the CLI finds them (decision 173)
-	if len(directives(src, "trace")) > 0 { // `# trace: why`: compiled from what an MRI run loads, as `rb2go build -trace` (decision 296)
+	if len(directives(src, "trace")) > 0 { // `# trace: why`: compiled from what an MRI run loads, as `rugaroo build -trace` (decision 296)
 		compile = func(ctx context.Context, name string, _ []byte, lp ...string) ([]byte, []string, error) {
 			return CompileTrace(ctx, name, [][]string{nil}, nil, lp...) // ponytail: one run with no args; pass `# args:` here when a traced example takes some
 		}
@@ -676,7 +676,7 @@ func onLoadPath(dir string, src []byte, name string) bool {
 	return false
 }
 
-// loadPath is src's `# load_path: dir` directories, relative to dir where the file is: `ruby -I` for MRI, -I for rb2go.
+// loadPath is src's `# load_path: dir` directories, relative to dir where the file is: `ruby -I` for MRI, -I for rugaroo.
 func loadPath(dir string, src []byte) []string {
 	dirs := directives(src, "load_path")
 	out := make([]string, 0, len(dirs))
@@ -716,7 +716,7 @@ func writeGenerated(t *testing.T, dir, name string, src []byte, compile func(con
 	t.Helper()
 	code, warnings, err := compileSafeWith(name, src, compile)
 	if err != nil {
-		t.Fatalf("rb2go: %v", err)
+		t.Fatalf("rugaroo: %v", err)
 	}
 	for _, w := range warnings {
 		t.Logf("warning: %s", w)
@@ -845,7 +845,7 @@ func binOutput(t *testing.T, dir string, pio progIO, bin string, args []string) 
 	var tracePath string
 	if pio.trace {
 		tracePath = filepath.Join(t.TempDir(), "trace")
-		pio.env = append(slices.Clone(pio.env), "RB2GO_MT_TRACE="+tracePath)
+		pio.env = append(slices.Clone(pio.env), "RUGAROO_MT_TRACE="+tracePath)
 	}
 	got.Stdout, got.Stderr, got.Code, _ = runIO(t, dir, pio, bin, args...)
 	if pio.trace {
@@ -959,7 +959,7 @@ var mtTracePreload = sync.OnceValues(func() (string, []byte) {
 	return path, src
 })
 
-// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby, TZ, Gemfile.lock and checkout (RB2GO_NO_MRI_CACHE=1 skips the cache).
+// rubyOutput is `ruby file`'s result, cached by source (which holds the args/env/stdin directives), Ruby, TZ, Gemfile.lock and checkout (RUGAROO_NO_MRI_CACHE=1 skips the cache).
 func rubyOutput(t *testing.T, dir, file string, src []byte, pio progIO, args []string) mriResult {
 	t.Helper()
 	dirs := directives(src, "load_path")
@@ -1005,13 +1005,13 @@ func mriRun(t *testing.T, dir string, src []byte, pio progIO, rubyArgs []string)
 		preload, preloadSrc := mtTracePreload()
 		key += "trace\x00" + string(preloadSrc) + "\x00"
 		tracePath = filepath.Join(t.TempDir(), "trace")
-		pio.env = append(slices.Clone(pio.env), "RB2GO_MT_TRACE="+tracePath)
+		pio.env = append(slices.Clone(pio.env), "RUGAROO_MT_TRACE="+tracePath)
 		rubyArgs = append([]string{"-r", preload}, rubyArgs...)
 	}
 	sum := sha256.Sum256(slices.Concat([]byte(key), src))
 	cacheDir, err := os.UserCacheDir()
-	cached := filepath.Join(cacheDir, "rb2go-test", "mri", hex.EncodeToString(sum[:]))
-	if err == nil && os.Getenv("RB2GO_NO_MRI_CACHE") == "" {
+	cached := filepath.Join(cacheDir, "rugaroo-test", "mri", hex.EncodeToString(sum[:]))
+	if err == nil && os.Getenv("RUGAROO_NO_MRI_CACHE") == "" {
 		data, rerr := os.ReadFile(cached) //nolint:gosec // our cache path
 		var c mriCached
 		if rerr == nil && json.Unmarshal(data, &c) == nil {
@@ -1109,7 +1109,7 @@ end
 	if !slices.Equal(got, want) {
 		t.Fatalf("skipped:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if !bytes.Contains(code, []byte(`rb2go: undefined method nope_it for s`)) {
+	if !bytes.Contains(code, []byte(`rugaroo: undefined method nope_it for s`)) {
 		t.Fatal("the failing test's body is not its skip")
 	}
 }
@@ -1381,7 +1381,7 @@ func TestGofmt(t *testing.T) {
 	}
 }
 
-// TestGoModNoReplace keeps go.mod installable: `go install .../cmd/rb2go@latest` is refused for a module whose go.mod has a replace directive.
+// TestGoModNoReplace keeps go.mod installable: `go install .../cmd/rugaroo@latest` is refused for a module whose go.mod has a replace directive.
 func TestGoModNoReplace(t *testing.T) {
 	t.Parallel()
 
@@ -1390,7 +1390,7 @@ func TestGoModNoReplace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !bytes.Contains(mod, []byte("module github.com/jtarchie/ruby2go")) {
+	if !bytes.Contains(mod, []byte("module github.com/jtarchie/rugaroo")) {
 		t.Fatal("go.mod does not look like this module's: nothing was checked")
 	}
 
@@ -1460,7 +1460,7 @@ func TestVendoredEmbedded(t *testing.T) {
 	}
 	for _, f := range onDisk {
 		if !slices.Contains(embedded, f) {
-			t.Errorf("%s is vendored but not embedded: widen the //go:embed patterns in rb2go.go (or the file is not .rb)", f)
+			t.Errorf("%s is vendored but not embedded: widen the //go:embed patterns in rugaroo.go (or the file is not .rb)", f)
 		}
 	}
 	for _, f := range embedded {
@@ -1499,8 +1499,8 @@ func TestDesignIndex(t *testing.T) {
 // gemCorpusKnown are the kramdown testcases whose HTML differs from MRI's, and why; a case that starts to match must
 // leave the list (decision 334).
 var gemCorpusKnown = map[string]string{
-	"/block/14_table/escaping.text":   "`x and return` on a method rb2go types void (its last statement is a multiple assignment)",
-	"/span/05_html/normal.text":       "`x and return` on a method rb2go types void (its last statement is a multiple assignment)",
+	"/block/14_table/escaping.text":   "`x and return` on a method rugaroo types void (its last statement is a multiple assignment)",
+	"/span/05_html/normal.text":       "`x and return` on a method rugaroo types void (its last statement is a multiple assignment)",
 	"/encoding.text":                  "byte indexing after force_encoding('ASCII-8BIT') on valid UTF-8: Strings carry no encoding (decision 136)",
 	"/span/05_html/across_lines.text": "`h.each_value { |v| v.gsub!(...) }` edits a copy (decision 136)",
 }
@@ -1522,7 +1522,7 @@ func TestGemCorpus(t *testing.T) {
 	}
 	code, _, err := CompileTrace(t.Context(), main, [][]string{{cases}}, nil)
 	if err != nil {
-		t.Fatalf("rb2go: %v", err)
+		t.Fatalf("rugaroo: %v", err)
 	}
 	gen := t.TempDir()
 	writeModule(t, gen)
@@ -1559,7 +1559,7 @@ func TestGemCorpus(t *testing.T) {
 		reason, known := gemCorpusKnown[name]
 		switch {
 		case have[name] != w && !known:
-			t.Errorf("%s differs from MRI:\nruby:  %q\nrb2go: %q", name, w, have[name])
+			t.Errorf("%s differs from MRI:\nruby:  %q\nrugaroo: %q", name, w, have[name])
 		case have[name] == w && known:
 			t.Errorf("%s now matches MRI: remove it from gemCorpusKnown (%s)", name, reason)
 		}

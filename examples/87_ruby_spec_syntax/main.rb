@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Syntax and core methods from ruby/spec that rb2go now compiles (#49):
+# Syntax and core methods from ruby/spec that rugaroo now compiles (#49):
 # a subject-less case, begin/else, begin/end while, alias, hash shorthand,
 # **splat in a hash literal, loop, and a few Integer/Symbol/Enumerable methods.
 
@@ -42,7 +42,7 @@ begin
 end while steps < 0
 puts "do-while ran #{steps} time"
 
-name = "rb2go"
+name = "rugaroo"
 version = 87
 defaults = { name: "?", debug: false }
 puts({ **defaults, name:, version: }.inspect)

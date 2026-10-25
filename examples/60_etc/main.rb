@@ -35,7 +35,7 @@ rescue ArgumentError => e
 end
 
 begin
-  Etc.getpwnam("no_such_rb2go_user")
+  Etc.getpwnam("no_such_rugaroo_user")
 rescue ArgumentError => e
   puts "#{e.class}: #{e.message}"
 end

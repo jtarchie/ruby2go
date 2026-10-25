@@ -6,7 +6,7 @@
 #
 # The structure is resty's: a request picks its action class and its format
 # class by asking each candidate class `matches?`, then instantiates the
-# winner. What changed is what resty did reflectively, which rb2go does not
+# winner. What changed is what resty did reflectively, which rugaroo does not
 # support:
 #
 #   - `"#{ns}::#{path.camelize}Controller".constantize` and

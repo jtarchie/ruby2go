@@ -15,4 +15,4 @@ def greeting = "hello from a"
 LOADED = ["a"] #: Array[String]
 
 x = 1 # a top-level local: file-scoped in Ruby
-puts "a: x=#{x}, #{Shape.new.name}" # not greeting: b redefines it, and rb2go's defs all exist before any file runs (decision 84)
+puts "a: x=#{x}, #{Shape.new.name}" # not greeting: b redefines it, and rugaroo's defs all exist before any file runs (decision 84)

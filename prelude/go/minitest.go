@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -195,9 +195,9 @@ func rbProcOrNil(blk func()) **func() {
 }
 
 // rbMtTraceFile is the trace oracle's sink (decision 105): the file
-// RB2GO_MT_TRACE names, opened for append once, or nil when unset.
+// RUGAROO_MT_TRACE names, opened for append once, or nil when unset.
 var rbMtTraceFile = sync.OnceValue(func() *os.File {
-	path := os.Getenv("RB2GO_MT_TRACE")
+	path := os.Getenv("RUGAROO_MT_TRACE")
 	if path == "" {
 		return nil
 	}

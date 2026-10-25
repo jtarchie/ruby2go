@@ -37,7 +37,7 @@ form = { "Content-Type" => "application/x-www-form-urlencoded" }
 [
   http.get("/"),
   http.get("/users/42"),
-  http.get("/search?q=%3Cb%3Erb2go%3C%2Fb%3E&page=2"),
+  http.get("/search?q=%3Cb%3Erugaroo%3C%2Fb%3E&page=2"),
   http.get("/search"),
   http.post("/items", URI.encode_www_form("name" => "a b", "qty" => "3"), form),
   http.get("/missing")

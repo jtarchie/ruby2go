@@ -18,5 +18,5 @@ puts "succeeded: #{ok.inspect}"
 ok = system("exit 2")
 puts "exit 2 -> #{ok.inspect}, exitstatus #{$?&.exitstatus}"
 
-missing = system("no_such_command_rb2go")
+missing = system("no_such_command_rugaroo")
 puts "missing command -> #{missing.inspect}"

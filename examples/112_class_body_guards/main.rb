@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# A class body may guard definitions with a condition rb2go knows at compile
+# A class body may guard definitions with a condition rugaroo knows at compile
 # time (#88, #89): a RUBY_VERSION comparison or defined? of a constant or class
 # method. The branch MRI would take is compiled; the other is dropped.
 

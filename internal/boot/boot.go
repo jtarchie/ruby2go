@@ -205,10 +205,10 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 	return w.buf.Write(p) //nolint:wrapcheck // bytes.Buffer never fails
 }
 
-// Ruby is the MRI that runs boot and traces: RB2GO_RUBY, else ruby on PATH. A launcher that puts rb2go in ruby's place
+// Ruby is the MRI that runs boot and traces: RUGAROO_RUBY, else ruby on PATH. A launcher that puts rugaroo in ruby's place
 // (overrides/brew's) names the real one there (decision 296).
 func Ruby() string {
-	if r := os.Getenv("RB2GO_RUBY"); r != "" {
+	if r := os.Getenv("RUGAROO_RUBY"); r != "" {
 		return r
 	}
 	return "ruby"
@@ -238,7 +238,7 @@ func runRuby(ctx context.Context, args, env []string, stdout func(context.Cancel
 // loadPaths as `-I` directories, and returns the boot manifest. This executes
 // the program's load phase (decision 262).
 func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest, error) {
-	dir, err := os.MkdirTemp("", "rb2go-boot-")
+	dir, err := os.MkdirTemp("", "rugaroo-boot-")
 	if err != nil {
 		return nil, fmt.Errorf("boot: %w", err)
 	}
@@ -258,7 +258,7 @@ func Capture(ctx context.Context, entry string, loadPaths ...string) (*Manifest,
 		args = append(args, "-I", lp)
 	}
 	args = append(args, "--", entry) // "--": an entry named -x.rb is a file, not an option
-	stderr, err := runRuby(ctx, args, append(os.Environ(), "RB2GO_BOOT_OUT="+out), nil)
+	stderr, err := runRuby(ctx, args, append(os.Environ(), "RUGAROO_BOOT_OUT="+out), nil)
 	if errors.Is(err, exec.ErrNotFound) {
 		return nil, fmt.Errorf("boot %s: running the program's load phase needs ruby on PATH", entry)
 	}

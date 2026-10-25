@@ -22,7 +22,7 @@ type Loaded struct {
 
 // Trace runs the whole program under MRI, as `ruby program args` would, for its load list only (decision 296).
 func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loaded, error) {
-	dir, err := os.MkdirTemp("", "rb2go-trace-")
+	dir, err := os.MkdirTemp("", "rugaroo-trace-")
 	if err != nil {
 		return nil, fmt.Errorf("trace: %w", err)
 	}
@@ -37,9 +37,9 @@ func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loade
 	}
 	out := filepath.Join(dir, "loaded.txt")
 	rargs := append(append([]string{}, rubyOpts...), "-I", dir, "-r", "trace_hook", "--", program)
-	stderr, err := runRuby(ctx, append(rargs, args...), append(os.Environ(), "RB2GO_TRACE_OUT="+out), func(context.CancelFunc) io.Writer { return io.Discard })
+	stderr, err := runRuby(ctx, append(rargs, args...), append(os.Environ(), "RUGAROO_TRACE_OUT="+out), func(context.CancelFunc) io.Writer { return io.Discard })
 	if errors.Is(err, exec.ErrNotFound) {
-		return nil, fmt.Errorf("trace %s: needs ruby on PATH (or RB2GO_RUBY)", program)
+		return nil, fmt.Errorf("trace %s: needs ruby on PATH (or RUGAROO_RUBY)", program)
 	}
 	f, rerr := os.Open(out) //nolint:gosec // under os.MkdirTemp
 	if rerr != nil {
@@ -60,7 +60,7 @@ func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loade
 		kind, val, _ := strings.Cut(sc.Text(), "\t")
 		switch kind {
 		case "F":
-			if filepath.Base(val) != "trace_hook.rb" || !strings.Contains(val, "rb2go-trace-") { // the temp dir, symlinks resolved
+			if filepath.Base(val) != "trace_hook.rb" || !strings.Contains(val, "rugaroo-trace-") { // the temp dir, symlinks resolved
 				l.Features = append(l.Features, val)
 			}
 		case "L":

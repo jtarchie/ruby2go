@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 //
 // REXML's tokenizer (decision 114): text and attribute values are kept as
 // written (entities intact), as REXML's tree parser keeps them raw, so
@@ -143,7 +143,7 @@ func rbRexmlTokens(src string) *Array[any] {
 			events.s = append(events.s, rbRexmlEvent(Symbol("cdata"), String(rest[9:9+end])))
 			sc.pos += 9 + end + 3
 		case strings.HasPrefix(rest, "<!"):
-			rbRexmlFail("rb2go: REXML DOCTYPE and DTD declarations are not supported")
+			rbRexmlFail("rugaroo: REXML DOCTYPE and DTD declarations are not supported")
 		case strings.HasPrefix(rest, "<?"):
 			end := strings.Index(rest, "?>")
 			if end < 0 {
@@ -281,8 +281,8 @@ func rbRexmlEmit(out any, s string) {
 	case interface{ Write(any) Integer }:
 		o.Write(String(s))
 	case String:
-		panic(NewTypeError(Ref(String("rb2go: REXML writes to an IO or StringIO; a String cannot be appended in place (use to_s)"))))
+		panic(NewTypeError(Ref(String("rugaroo: REXML writes to an IO or StringIO; a String cannot be appended in place (use to_s)"))))
 	default:
-		panic(NewTypeError(Ref(String("rb2go: REXML cannot write to " + rbClassName(out)))))
+		panic(NewTypeError(Ref(String("rugaroo: REXML cannot write to " + rbClassName(out)))))
 	}
 }

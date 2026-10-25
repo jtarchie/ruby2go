@@ -558,7 +558,7 @@ module Minitest
   end
 
   class Assertion < Exception
-    # port: rb2go has no backtraces, so the failure's file:line is found when it's made (rbMtLocation).
+    # port: rugaroo has no backtraces, so the failure's file:line is found when it's made (rbMtLocation).
     #: (?String?) -> void
     def initialize(msg = nil)
       super
@@ -675,7 +675,7 @@ module Minitest
     #: (String) -> String
     def __mt_pp_for_diff(str) = %x{ return rbMtPPForDiff(str) }
 
-    # The trace oracle (decision 105): with RB2GO_MT_TRACE set, each assertion a test calls logs
+    # The trace oracle (decision 105): with RUGAROO_MT_TRACE set, each assertion a test calls logs
     # one line, "Class#test assertion operand...", operands inspected. Only the outermost
     # assertion logs: the ones an assertion calls itself go through __mt_* twins that don't,
     # and assert_raises's block runs nested (__mt_trace_nest), as MRI's depth counter sees it.

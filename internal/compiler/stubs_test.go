@@ -8,7 +8,7 @@ import (
 
 // PreludeWhole keeps every declaration without touching the environment, so a compile running beside it still prunes.
 func TestPreludeWholeNoEnv(t *testing.T) {
-	t.Setenv("RB2GO_NO_PRUNE", "")
+	t.Setenv("RUGAROO_NO_PRUNE", "")
 	fsys := os.DirFS("../..")
 	src := []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}
 	pruned, err := compile(context.Background(), fsys, src, &options{})
@@ -29,7 +29,7 @@ func TestPreludeWholeNoEnv(t *testing.T) {
 	if whole := <-done; len(whole) < 20*len(pruned) {
 		t.Fatalf("PreludeWhole is %d bytes, pruned hello is %d: not whole", len(whole), len(pruned))
 	}
-	if os.Getenv("RB2GO_NO_PRUNE") != "" {
-		t.Fatal("PreludeWhole set RB2GO_NO_PRUNE")
+	if os.Getenv("RUGAROO_NO_PRUNE") != "" {
+		t.Fatal("PreludeWhole set RUGAROO_NO_PRUNE")
 	}
 }

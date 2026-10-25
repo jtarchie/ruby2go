@@ -1,5 +1,5 @@
 {
   "gopls": {
-    "buildFlags": ["-tags=rb2go_prelude"]
+    "buildFlags": ["-tags=rugaroo_prelude"]
   }
 }

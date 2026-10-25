@@ -555,7 +555,7 @@ class Enumerator
     #: () -> Integer
     def size = %x{
       if self.endless {
-        panic(NewRangeError(Ref(String("cannot get the size of an endless arithmetic sequence (rb2go has no Infinity Integer)"))))
+        panic(NewRangeError(Ref(String("cannot get the size of an endless arithmetic sequence (rugaroo has no Infinity Integer)"))))
       }
       return *self.rbSize()
     }

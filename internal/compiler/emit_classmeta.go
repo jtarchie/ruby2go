@@ -10,7 +10,7 @@ import (
 )
 
 // emitDescendants gives a class object its descendant classes in definition
-// order, which is the order MRI's inherited hooks would see them (rb2go's
+// order, which is the order MRI's inherited hooks would see them (rugaroo's
 // classes are all declared statically). Only rbDescendants asks for it.
 func (c *Compiler) emitDescendants(meta, desc *Class) {
 	var subs []string

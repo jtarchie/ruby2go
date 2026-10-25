@@ -77,7 +77,7 @@ func (f *fctx) genKernelIntrinsic(n *parser.CallNode, expected Type) (expr, bool
 func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 	if n.Receiver == nil && f.owner == nil && f.m == nil && (n.Name == "public" || n.Name == "private") && n.Block == nil &&
 		!slices.ContainsFunc(callArgs(n), func(a parser.Node) bool { _, sym := a.(*parser.SymbolNode); return !sym }) {
-		// main's `public`/`private`: top-level defs are private methods of Object already, and rb2go calls them only
+		// main's `public`/`private`: top-level defs are private methods of Object already, and rugaroo calls them only
 		// receiverless, so a visibility switch there changes nothing it compiles (decision 364)
 		return expr{code: "nil", typ: TNil{}, lit: true}, true
 	}
@@ -567,7 +567,7 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 			return f.genDynCall(n, recv, name, args)
 		}
 		if plain := strings.TrimSuffix(name, "!"); t.C.RubyName == "String" && plain != name && t.C.lookup(plain) != nil {
-			f.errorf(n, "undefined method %s for String: Strings are immutable in rb2go, so assign the result of %s instead (decision 136)", name, plain)
+			f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo, so assign the result of %s instead (decision 136)", name, plain)
 		}
 		if f.partlyLoaded(t.C, block) { // a gem class whose methods are not all in the closed world (Cask::Cask when the traced run never loaded cask/cask.rb): found, or not, at run time
 			return f.genDynCall(n, recv, name, args)

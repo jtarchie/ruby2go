@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -29,7 +29,7 @@ type Method_Any interface{ _ToAny() *Method[any] }
 // UnboundMethod_Any is Method_Any for UnboundMethod.
 type UnboundMethod_Any interface{ _ToAny() *UnboundMethod[any] }
 
-// rbSingletonClass is a singleton method's owner, MRI's #<Class:Foo>; rb2go has no other use for singleton classes.
+// rbSingletonClass is a singleton method's owner, MRI's #<Class:Foo>; rugaroo has no other use for singleton classes.
 type rbSingletonClass struct {
 	Class
 	of ModuleI
@@ -70,7 +70,7 @@ func (*UnboundMethod[F]) rbFrom(v any) (*UnboundMethod[F], bool) {
 // rbMethodCallDyn calls through the dynamic dispatcher: the method's own arity and argument checks apply.
 func rbMethodCallDyn(dyn func(any, ...any) any, recv any, info *rbMethodInfo, args []any) any {
 	if dyn == nil {
-		panic(NewNotImplementedError(Ref(String("rb2go: " + info.name + " cannot be called without its signature (decision 141)"))))
+		panic(NewNotImplementedError(Ref(String("rugaroo: " + info.name + " cannot be called without its signature (decision 141)"))))
 	}
 	return dyn(recv, args...)
 }
@@ -78,7 +78,7 @@ func rbMethodCallDyn(dyn func(any, ...any) any, recv any, info *rbMethodInfo, ar
 // rbMethodKnown is info, or NotImplementedError for what a Method taken from an untyped receiver cannot know.
 func rbMethodKnown(info *rbMethodInfo, what string) *rbMethodInfo {
 	if !info.known {
-		panic(NewNotImplementedError(Ref(String("rb2go: Method#" + what + " of a method taken from an untyped receiver is not known at compile time (decision 141)"))))
+		panic(NewNotImplementedError(Ref(String("rugaroo: Method#" + what + " of a method taken from an untyped receiver is not known at compile time (decision 141)"))))
 	}
 	return info
 }

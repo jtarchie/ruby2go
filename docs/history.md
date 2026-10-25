@@ -1,6 +1,6 @@
-# rb2go design history
+# rugaroo design history
 
-How rb2go got its shape: the first worked examples and the prelude idea. Historical
+How rugaroo got its shape: the first worked examples and the prelude idea. Historical
 record; the numbered decisions in [decisions/](decisions/) win where the two disagree.
 
 ## Simplest case
@@ -354,7 +354,7 @@ anti-goal list above:
 own `lib/` code as written, reflection and all: `constantize`,
 `const_get`, `constants.map { const_get }`, `NullAction`'s
 `method_missing`, `Struct.new ... do`, `extend Enumerable`. It adds type
-annotations and changes two lines (marked `rb2go:`); `Rack::Request`,
+annotations and changes two lines (marked `rugaroo:`); `Rack::Request`,
 ActiveSupport's `camelize`/`constantize` and ActiveRecord are small shims.
 Its transcript is the same as example 25's. The compiler warns at each of
 its dynamic calls, which is where the program's types run out.

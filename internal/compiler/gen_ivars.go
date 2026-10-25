@@ -121,7 +121,7 @@ func (c *Compiler) inferReturns() {
 	}
 	for _, m := range c.inferredMethods() {
 		c.keepGoing(func() { c.inferRet(m) })
-		if m.Ret == nil { // RB2GO_KEEP_GOING after a body failed: untyped, so the rest still types
+		if m.Ret == nil { // RUGAROO_KEEP_GOING after a body failed: untyped, so the rest still types
 			m.Ret = TAny{}
 		}
 	}

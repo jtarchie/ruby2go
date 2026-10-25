@@ -1,4 +1,4 @@
-# The kramdown gem ships no signatures; this is what an example's `rbs validate` needs (rb2go compiles the gem itself from a traced run).
+# The kramdown gem ships no signatures; this is what an example's `rbs validate` needs (rugaroo compiles the gem itself from a traced run).
 module Kramdown
   class Document
     def initialize: (String source, ?Hash[Symbol, untyped] options) -> void

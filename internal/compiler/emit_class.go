@@ -80,7 +80,7 @@ func (c *Compiler) publicEntries(cls *Class) []entry {
 	return out
 }
 
-// userTypeLine maps a user class's struct or module's constraint to its `class`/`module` line, so a Go error in it points at Ruby and `rb2go web` can tell the type, and what it names, from the prelude's.
+// userTypeLine maps a user class's struct or module's constraint to its `class`/`module` line, so a Go error in it points at Ruby and `rugaroo web` can tell the type, and what it names, from the prelude's.
 func (c *Compiler) userTypeLine(cls *Class) {
 	if cls.File != nil && !cls.File.isPrelude() && cls.metaOf == nil {
 		c.lineDirective(cls.File, cls.Line)

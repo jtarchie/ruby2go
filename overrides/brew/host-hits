@@ -3,6 +3,6 @@
 # usage: ./host-hits info wget   (writes work/mac.go first)
 cd "$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
-HOMEBREW_RB2GO_CMD=gen HOMEBREW_RB2GO_GEM_WARNINGS=1 work/homebrew/bin/brew "$@" > work/mac.go 2> work/mac.go.log || { tail -5 work/mac.go.log; exit 1; }
-HOMEBREW_RB2GO_MRI=1 HOMEBREW_RB2GO_MRI_REQUIRE="$PWD/tools/calltrace.rb" HOMEBREW_RB2GO_CALLTRACE_DIR="$PWD/work" work/homebrew/bin/brew "$@" > /dev/null 2>&1
+HOMEBREW_RUGAROO_CMD=gen HOMEBREW_RUGAROO_GEM_WARNINGS=1 work/homebrew/bin/brew "$@" > work/mac.go 2> work/mac.go.log || { tail -5 work/mac.go.log; exit 1; }
+HOMEBREW_RUGAROO_MRI=1 HOMEBREW_RUGAROO_MRI_REQUIRE="$PWD/tools/calltrace.rb" HOMEBREW_RUGAROO_CALLTRACE_DIR="$PWD/work" work/homebrew/bin/brew "$@" > /dev/null 2>&1
 python3 tools/hits.py work/mac.go work | tee work/hits-mac.txt

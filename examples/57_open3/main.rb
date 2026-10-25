@@ -33,7 +33,7 @@ puts err_data.empty?
 puts code
 
 begin
-  Open3.capture2("rb2go_missing_command_xyz")
+  Open3.capture2("rugaroo_missing_command_xyz")
 rescue Errno::ENOENT => e
   puts e.message
 end

@@ -4,7 +4,7 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// csvOptions are the CSV options rb2go implements; any other literal key
+// csvOptions are the CSV options rugaroo implements; any other literal key
 // is a compile error rather than silently ignored (decision 117).
 var csvOptions = map[string]bool{"col_sep": true, "quote_char": true, "row_sep": true, "skip_blanks": true, "force_quotes": true, "headers": true, "converters": true}
 

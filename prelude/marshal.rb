@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Marshal (decision 137): rb2go's own bytes (prelude/go/marshal.go), never MRI's; what round-trips is the object graph.
+# Marshal (decision 137): rugaroo's own bytes (prelude/go/marshal.go), never MRI's; what round-trips is the object graph.
 module Marshal
   MAJOR_VERSION = 4 #: Integer
   MINOR_VERSION = 8 #: Integer

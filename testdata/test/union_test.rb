@@ -300,7 +300,7 @@ module UnionTests
       assert_equal 4, twice(union_untyped("ab"))
       raised = false
       begin
-        twice(union_untyped(1.5)) # rb2go: TypeError at the boundary (decision 20); MRI: NoMethodError inside
+        twice(union_untyped(1.5)) # rugaroo: TypeError at the boundary (decision 20); MRI: NoMethodError inside
       rescue TypeError, NoMethodError
         raised = true
       end

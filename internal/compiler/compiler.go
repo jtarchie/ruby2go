@@ -24,8 +24,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
-	"github.com/jtarchie/ruby2go/internal/boot"
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 	"github.com/tetratelabs/wazero"
 )
 
@@ -100,7 +100,7 @@ type Compiler struct {
 	prepends              []pendingPrepend                  // prepends in load order, applied at link (decision 199)
 	badClasses            map[*Class]compileError           // gem classes that cannot compile, an error where reachable code names them
 	goFuncs               map[string]goFunc                 // each gem method's Go func name -> its key and name (decision 303)
-	kept                  []string                          // RB2GO_KEEP_GOING: collect errors recorded instead of stopping
+	kept                  []string                          // RUGAROO_KEEP_GOING: collect errors recorded instead of stopping
 	anonDepth             int                               // collecting an anonymous class body, whose errors scanAnon defers
 	constChain            []string                          // constants whose types are being inferred, for a cycle's message
 	classIDs              map[*Class]int                    // index in classList: the class's ID in the generated tables
@@ -123,7 +123,7 @@ type Compiler struct {
 	round       bool                      // an inference round: pending parameters are untyped, their arguments recorded
 	inferDone   bool                      // the rounds ran: a parameter still untyped is an error
 	noPrune     bool                      // formatGo keeps every declaration
-	env         envConfig                 // the RB2GO_* environment, read when this compile started
+	env         envConfig                 // the RUGAROO_* environment, read when this compile started
 	uses        map[pendingKey][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[pendingKey]bool       // this round's untyped parameter keys
 }
@@ -291,7 +291,7 @@ var sharedParser = sync.OnceValues(func() (*parser.Parser, error) {
 
 // wazeroConfig carries a compilation cache under the user's cache directory, so AOT-compiling prism.wasm (~150 ms)
 // happens once per wazero version and machine, not per process (#81 item 4). nil when no cache directory is usable,
-// or RB2GO_NO_WASM_CACHE is set; wazero validates the cache against its own version and the wasm's hash.
+// or RUGAROO_NO_WASM_CACHE is set; wazero validates the cache against its own version and the wasm's hash.
 func wazeroConfig() wazero.RuntimeConfig {
 	if loadEnv().NoWasmCache {
 		return nil
@@ -300,7 +300,7 @@ func wazeroConfig() wazero.RuntimeConfig {
 	if err != nil {
 		return nil
 	}
-	cache, err := wazero.NewCompilationCacheWithDir(filepath.Join(base, "rb2go", "wazero"))
+	cache, err := wazero.NewCompilationCacheWithDir(filepath.Join(base, "rugaroo", "wazero"))
 	if err != nil {
 		return nil
 	}
@@ -339,14 +339,14 @@ type options struct {
 	mainLast     bool              // traced mode: the last source is the program's main file, and a require in a method resolves at run time (decisions 197, 288)
 	boot         *boot.Manifest    // what boot recorded: define_method calls (decision 198), branches taken (decision 201)
 	goFuncs      map[string]goFunc // out: each gem method's Go func name -> its methodKey and name
-	noPrune      bool              // keep every declaration (RB2GO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
-	env          envConfig         // the RB2GO_* environment, read once by compile
+	noPrune      bool              // keep every declaration (RUGAROO_NO_PRUNE=1 also sets it): the whole-prelude program (decision 207)
+	env          envConfig         // the RUGAROO_* environment, read once by compile
 	testHook     func()            // tests only: runs at the start of compileWith, to inject a panic
 	genCount     *int              // test hook: genExpr calls, summed over every pass
 	genLimit     *int              // test hook: the count after which genExpr fails the compile
 	instances    []string          // generic instances to create before link, by instKey (decision 308)
 	instAt       map[string]srcPos // where each was first named
-	instRestarts int               // compiles and rounds rerun for a missing instance (RB2GO_TIMING)
+	instRestarts int               // compiles and rounds rerun for a missing instance (RUGAROO_TIMING)
 }
 
 // ErrInternal marks an error that is a compiler bug (a panic that was neither a compile error nor an inference request), not a fault in the user's program.
@@ -382,7 +382,7 @@ func compile(ctx context.Context, preludeFS fs.FS, sources []Source, opts *optio
 		out, err := compileOnce(ctx, preludeFS, sources, opts)
 		if !errors.Is(err, errNeedInstances) {
 			if opts.instRestarts > 0 && opts.env.Timing {
-				fmt.Fprintf(os.Stderr, "rb2go: %d compiles restarted for generic instances (%d instances)\n", opts.instRestarts, len(opts.instances))
+				fmt.Fprintf(os.Stderr, "rugaroo: %d compiles restarted for generic instances (%d instances)\n", opts.instRestarts, len(opts.instances))
 			}
 			return out, err
 		}
@@ -414,7 +414,7 @@ func compileOnce(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	}
 	if errors.Is(err, errPruneIncomplete) {
 		if opts.env.Timing {
-			fmt.Fprintln(os.Stderr, "rb2go: fallback: recompiling with every dispatcher")
+			fmt.Fprintln(os.Stderr, "rugaroo: fallback: recompiling with every dispatcher")
 		}
 		opts.skipped = nil
 		out, err = compileWith(ctx, preludeFS, sources, opts, true)
@@ -435,7 +435,7 @@ func inferRounds(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		if err != nil && !errors.Is(err, errInferRound) {
 			roundErr = err // it stopped inference: the final compile's untyped parameters are its doing
 			if opts.env.InferDebug {
-				fmt.Fprintln(os.Stderr, "rb2go: infer round failed:", err)
+				fmt.Fprintln(os.Stderr, "rugaroo: infer round failed:", err)
 			}
 		}
 		if !errors.Is(err, errInferRound) || !opts.infer.changed {
@@ -649,7 +649,7 @@ func CompileFilesWithWarnings(ctx context.Context, preludeFS fs.FS, sources []So
 	return out, opts.warnings, err
 }
 
-// CompileTestsSkipping is CompileFilesWithWarnings for a test suite that should run what compiles: each test_ method rb2go cannot compile becomes a skip carrying the error, and is listed.
+// CompileTestsSkipping is CompileFilesWithWarnings for a test suite that should run what compiles: each test_ method rugaroo cannot compile becomes a skip carrying the error, and is listed.
 // seed, when not nil, carries inferred parameter types between compiles of nearly the same sources.
 func CompileTestsSkipping(ctx context.Context, preludeFS fs.FS, sources []Source, seed *Inference) ([]byte, []string, []SkippedTest, error) {
 	if len(sources) == 0 {
@@ -861,7 +861,7 @@ func (c *Compiler) userRequireRelative(ctx context.Context, f *File, n *parser.C
 	}
 	str, ok := args[0].(*parser.StringNode)
 	if !ok {
-		c.errorf(f, n, "require_relative needs a string literal: rb2go loads files at compile time")
+		c.errorf(f, n, "require_relative needs a string literal: rugaroo loads files at compile time")
 	}
 	target := relativeTarget(f, str.Unescaped.Value)
 	src, err := c.readUser(target)
@@ -979,7 +979,7 @@ func (c *Compiler) loadUserFile(ctx context.Context, target string, src []byte) 
 
 // dumpBadOutput saves unparsable output for debugging in a fresh temp file (a fixed name follows a planted symlink and is shared by concurrent compiles) and says where, or why it could not.
 func dumpBadOutput(raw []byte) string {
-	f, err := os.CreateTemp("", "rb2go-bad-output-*.go")
+	f, err := os.CreateTemp("", "rugaroo-bad-output-*.go")
 	if err != nil {
 		return fmt.Sprintf("raw output not saved: %v", err)
 	}
@@ -1099,7 +1099,7 @@ func (c *Compiler) noteRespond(name string) {
 	c.noteDyn("respond_to_missing?")
 }
 
-// phaseTimer reports each phase's duration to stderr when RB2GO_TIMING is set: where a compile spends its time, natively or as wasm.
+// phaseTimer reports each phase's duration to stderr when RUGAROO_TIMING is set: where a compile spends its time, natively or as wasm.
 func phaseTimer(timing bool) func(string) {
 	if !timing {
 		return func(string) {}
@@ -1107,7 +1107,7 @@ func phaseTimer(timing bool) func(string) {
 	last := time.Now()
 	return func(name string) {
 		now := time.Now()
-		fmt.Fprintf(os.Stderr, "rb2go: %-8s %6dms\n", name, now.Sub(last).Milliseconds())
+		fmt.Fprintf(os.Stderr, "rugaroo: %-8s %6dms\n", name, now.Sub(last).Milliseconds())
 		last = now
 	}
 }

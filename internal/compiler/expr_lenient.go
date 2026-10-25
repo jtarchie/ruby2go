@@ -7,7 +7,7 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// lenientBlockParams rewrites a gem file's block and lambda params rb2go cannot bind as Ruby binds them: `&blk` (dropBlockArgParam)
+// lenientBlockParams rewrites a gem file's block and lambda params rugaroo cannot bind as Ruby binds them: `&blk` (dropBlockArgParam)
 // and a lambda's defaults (decision 241).
 func lenientBlockParams(root parser.Node) {
 	anyNode(root, func(n parser.Node) bool {
@@ -26,7 +26,7 @@ func lenientBlockParams(root parser.Node) {
 	})
 }
 
-// dropBlockArgParam turns a gem block's or lambda's `&blk` param into a local that is nil: rb2go passes no block to a
+// dropBlockArgParam turns a gem block's or lambda's `&blk` param into a local that is nil: rugaroo passes no block to a
 // block (decision 241). ponytail: a caller's block is dropped (concurrent-ruby's logger then logs nil for a lazy message).
 func dropBlockArgParam(params parser.Node, body *parser.Node) {
 	bp, ok := params.(*parser.BlockParametersNode)
@@ -166,7 +166,7 @@ func (f *fctx) lookupMissed(n parser.Node, miss missMode, recv expr, kt Type, ke
 	case missDefault:
 		// a default proc takes (Hash[K, V], K): it cannot be handed this key, so the miss is loud rather than the static default
 		f.emit("if %s != nil {", f.genMethodCall(n, recv, "default_proc", nil, nil).code)
-		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rb2go: a non-%s key reached a default proc taking %s (%s:%d, decision 314)",
+		f.emit("\tpanic(NewTypeError(Ref(String(%q))))", fmt.Sprintf("rugaroo: a non-%s key reached a default proc taking %s (%s:%d, decision 314)",
 			kt, kt, f.f.Name, f.f.line(n.GetLocation().StartOffset)))
 		f.emit("}")
 		f.emit("%s = %s", res.code, f.coerce(n, f.genMethodCall(n, recv, "default", nil, nil), res.typ))

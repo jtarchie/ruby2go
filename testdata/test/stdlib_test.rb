@@ -29,7 +29,7 @@ require "cgi"
 require "webrick"
 require "zlib"
 
-# Returns nil on MRI; void to rb2go.
+# Returns nil on MRI; void to rugaroo.
 #: () -> void
 def stdlib_noop = nil
 
@@ -1794,7 +1794,7 @@ module StdlibTests
         end
         assert_equal [true, "hello\n", 1, true], [same, line, IO.new(1).fileno, $$ == Process.pid]
       end
-      assert_raises(Errno::ENOENT) { IO.sysopen("/nonexistent/rb2go/zz") }
+      assert_raises(Errno::ENOENT) { IO.sysopen("/nonexistent/rugaroo/zz") }
       e = assert_raises(Errno::EBADF) { IO.new(9999) }
       assert_equal "Bad file descriptor", e.message
     end
@@ -1929,8 +1929,8 @@ module StdlibTests
       pid = io.pid
       assert_nil io.close
       assert_equal [7, true], [$?&.exitstatus, $?&.pid == pid]
-      e = assert_raises(Errno::ENOENT) { IO.popen(["no_such_cmd_rb2go"]) }
-      assert_equal "No such file or directory - no_such_cmd_rb2go", e.message
+      e = assert_raises(Errno::ENOENT) { IO.popen(["no_such_cmd_rugaroo"]) }
+      assert_equal "No such file or directory - no_such_cmd_rugaroo", e.message
     end
   end
 
@@ -1944,10 +1944,10 @@ module StdlibTests
         File.utime(t, Time.at(2_000_000_000), path)
         assert_equal [t, t, 500_000, Time.at(2_000_000_000)], [File.atime(path), File.stat(path).atime, File.stat(path).atime.usec, File.mtime(path)]
       end
-      e = assert_raises(Errno::ENOENT) { File.atime("/no/such/rb2go") }
-      assert_equal "No such file or directory @ rb_file_s_atime - /no/such/rb2go", e.message
-      e = assert_raises(Errno::ENOENT) { File.mtime("/no/such/rb2go") }
-      assert_equal "No such file or directory @ rb_file_s_mtime - /no/such/rb2go", e.message
+      e = assert_raises(Errno::ENOENT) { File.atime("/no/such/rugaroo") }
+      assert_equal "No such file or directory @ rb_file_s_atime - /no/such/rugaroo", e.message
+      e = assert_raises(Errno::ENOENT) { File.mtime("/no/such/rugaroo") }
+      assert_equal "No such file or directory @ rb_file_s_mtime - /no/such/rugaroo", e.message
     end
   end
 
@@ -2255,8 +2255,8 @@ module StdlibTests
     end
 
     def test_env_fetch_nil_default
-      assert_equal [nil, "d", false], [ENV.fetch("RB2GO_NO_SUCH_VAR", nil), ENV.fetch("RB2GO_NO_SUCH_VAR", "d"), ENV.fetch("RB2GO_NO_SUCH_VAR", false)]
-      assert_raises(KeyError) { ENV.fetch("RB2GO_NO_SUCH_VAR") }
+      assert_equal [nil, "d", false], [ENV.fetch("RUGAROO_NO_SUCH_VAR", nil), ENV.fetch("RUGAROO_NO_SUCH_VAR", "d"), ENV.fetch("RUGAROO_NO_SUCH_VAR", false)]
+      assert_raises(KeyError) { ENV.fetch("RUGAROO_NO_SUCH_VAR") }
     end
 
     # Gem::Version, as Homebrew's gem setup checks RubyGems' own

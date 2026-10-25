@@ -1,4 +1,4 @@
-// Command rubyspec runs ruby/spec directories under rb2go, one minitest program each, so an example rb2go can't compile is skipped with its error instead of losing the directory.
+// Command rubyspec runs ruby/spec directories under rugaroo, one minitest program each, so an example rugaroo can't compile is skipped with its error instead of losing the directory.
 package main
 
 import (
@@ -24,14 +24,14 @@ import (
 	"time"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
-	"github.com/jtarchie/ruby2go"
+	"github.com/jtarchie/rugaroo"
 )
 
 //go:embed mspec.rb
 var mspec string
 
 // rubyVersion is what version guards compare with.
-// ponytail: MRI's version rb2go targets, by hand; read it from the prelude once it defines RUBY_VERSION.
+// ponytail: MRI's version rugaroo targets, by hand; read it from the prelude once it defines RUBY_VERSION.
 const rubyVersion = "4.0.0"
 
 // maxRewrites bounds the compile-skip loop for one program.
@@ -142,7 +142,7 @@ func specRoot(given string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cache dir: %w", err)
 	}
-	dir := filepath.Join(cache, "rb2go-rubyspec")
+	dir := filepath.Join(cache, "rugaroo-rubyspec")
 	_, err = os.Stat(dir)
 	if err == nil {
 		have, herr := gitOutput(dir, "rev-parse", "HEAD")
@@ -256,7 +256,7 @@ type result struct {
 	dropped                      []skipped // statements outside examples removed
 	fatal                        string    // why the program produced no results
 	crashed                      string    // the last run's crash or hang
-	why                          []string  // each skipped example's rb2go reason, from the run
+	why                          []string  // each skipped example's rugaroo reason, from the run
 	excluded                     []string  // why each test a crash or hang took out did
 	output                       string    // the run's report, for -v
 	took                         time.Duration
@@ -337,8 +337,8 @@ type crashSite struct {
 	reason string
 }
 
-// rbSkip is a skip rb2go put in an example, in minitest -v's report: its reason follows "rb2go: ".
-var rbSkip = regexp.MustCompile(`(?m)\) Skipped:\n.*\n\s*rb2go: (.*)$`)
+// rbSkip is a skip rugaroo put in an example, in minitest -v's report: its reason follows "rugaroo: ".
+var rbSkip = regexp.MustCompile(`(?m)\) Skipped:\n.*\n\s*rugaroo: (.*)$`)
 
 // startedTest is minitest -v's "Class#test_name = " a test prints before its result.
 var startedTest = regexp.MustCompile(`(?m)^(.*#test_\d{4}_.*?) = `)
@@ -346,7 +346,7 @@ var startedTest = regexp.MustCompile(`(?m)^(.*#test_\d{4}_.*?) = `)
 // specFrame is a stack frame in a spec file, as the //line directives name it.
 var specFrame = regexp.MustCompile(`(?m)^\s+(?:gen/)?(\S+_spec\.rb):(\d+)`)
 
-// loadFrame is the next best, any ruby/spec file in an uncaught exception's report (RB2GO_BACKTRACE): a fixture's top-level statement that raises while the program loads.
+// loadFrame is the next best, any ruby/spec file in an uncaught exception's report (RUGAROO_BACKTRACE): a fixture's top-level statement that raises while the program loads.
 var loadFrame = regexp.MustCompile(`(?m)^(?:\s+from )?(?:gen/)?((?:core|library|language|command_line|optional|security|shared)/\S+\.rb|rbspec_mocks\.rb):(\d+):in `)
 
 // testLine is one example's line in minitest's -v report.
@@ -405,9 +405,9 @@ func (r *result) run(parent context.Context, root, bin string, timeout time.Dura
 		args = append(args, "-e", "/^(?:"+strings.Join(excluded, "|")+")$/")
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = root                                                                                                // specs name fixtures relative to the checkout
-	cmd.Env = append(os.Environ(), "RB2GO_BACKTRACE=1", "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                                      // Go dumps every goroutine: the hung example's frame is in it
+	cmd.Dir = root                                                                                                  // specs name fixtures relative to the checkout
+	cmd.Env = append(os.Environ(), "RUGAROO_BACKTRACE=1", "SPEC_TEMP_DIR="+filepath.Join(filepath.Dir(bin), "tmp")) // in the module the runner removes, even after a crash
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGQUIT) }                                        // Go dumps every goroutine: the hung example's frame is in it
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdout, cmd.Stderr = out, out
 	err := cmd.Run()
@@ -543,9 +543,9 @@ type program struct {
 	files      []*source
 	byName     map[string]*source
 	shared     map[string]sharedSpec
-	unloadable []skipped        // files rewrite could not parse, left out
-	seed       *rb2go.Inference // parameter types from the last compile, which each cut barely changes
-	mocks      []*mockClass     // mocks the rewrite made classes of, loaded as one more file
+	unloadable []skipped          // files rewrite could not parse, left out
+	seed       *rugaroo.Inference // parameter types from the last compile, which each cut barely changes
+	mocks      []*mockClass       // mocks the rewrite made classes of, loaded as one more file
 	mockN      int
 	hoisted    []string // classes and modules examples define, moved to the top level
 }
@@ -557,7 +557,7 @@ type source struct {
 func load(ctx context.Context, p *parser.Parser, root string, specs []string) (*program, error) {
 	prog := &program{p: p, root: root, byName: map[string]*source{}, shared: map[string]sharedSpec{}}
 	text := mspec
-	if os.Getenv("RB2GO_INT_OVERFLOW") == "promote" { // a Bignum exists (decision 372), so mspec's helper does too
+	if os.Getenv("RUGAROO_INT_OVERFLOW") == "promote" { // a Bignum exists (decision 372), so mspec's helper does too
 		text += "\ndef bignum_value(plus = 0) = 0x8000_0000_0000_0000 + plus\n"
 	}
 	prog.add(&source{name: "mspec.rb", text: text})
@@ -585,7 +585,7 @@ func (prog *program) add(s *source) {
 	prog.byName[s.name] = s
 }
 
-// load puts required fixtures first: rb2go has no require_relative in user code.
+// load puts required fixtures first: rugaroo has no require_relative in user code.
 func (prog *program) load(ctx context.Context, name string) error {
 	if _, ok := prog.byName[name]; ok {
 		return nil
@@ -604,7 +604,7 @@ func (prog *program) load(ctx context.Context, name string) error {
 	return nil
 }
 
-// build loops because rb2go stops at its first error; go build's -e reports all of them at once.
+// build loops because rugaroo stops at its first error; go build's -e reports all of them at once.
 func (prog *program) build(ctx context.Context, r *result, keep bool) (string, func(), error) {
 	dir, err := os.MkdirTemp("", "rubyspec-")
 	if err != nil {
@@ -622,7 +622,7 @@ func (prog *program) build(ctx context.Context, r *result, keep bool) (string, f
 		}
 		_ = os.RemoveAll(dir)
 	}
-	err = rb2go.WriteModule(dir)
+	err = rugaroo.WriteModule(dir)
 	if err != nil {
 		return "", cleanup, fmt.Errorf("temp module: %w", err)
 	}
@@ -659,15 +659,15 @@ func (prog *program) build(ctx context.Context, r *result, keep bool) (string, f
 
 // compile answers the Go program, or nil after skipping what the compile error names.
 func (prog *program) compile(ctx context.Context, r *result) ([]byte, error) {
-	files := make([]rb2go.File, len(prog.files))
+	files := make([]rugaroo.File, len(prog.files))
 	for i, f := range prog.files {
-		files[i] = rb2go.File{Name: f.name, Src: []byte(f.text)}
+		files[i] = rugaroo.File{Name: f.name, Src: []byte(f.text)}
 	}
 	start := time.Now()
 	if prog.seed == nil {
-		prog.seed = rb2go.NewInference()
+		prog.seed = rugaroo.NewInference()
 	}
-	code, _, skips, err := rb2go.CompileTestsSkipping(ctx, files, prog.seed)
+	code, _, skips, err := rugaroo.CompileTestsSkipping(ctx, files, prog.seed)
 	r.compiles, r.compileTime = r.compiles+1, r.compileTime+time.Since(start)
 	if err == nil {
 		r.compileSkips = r.compileSkips[:0] // this compile's, not the last's
@@ -676,7 +676,7 @@ func (prog *program) compile(ctx context.Context, r *result) ([]byte, error) {
 		}
 		return code, nil
 	}
-	msg := strings.TrimPrefix(err.Error(), "rb2go: ")
+	msg := strings.TrimPrefix(err.Error(), "rugaroo: ")
 	name, line, reason, ok := location(msg)
 	if !ok {
 		return nil, fmt.Errorf("compile: %s", firstLine(msg))
@@ -703,7 +703,7 @@ func (prog *program) skipBuildErrors(ctx context.Context, r *result, out string)
 	return nil
 }
 
-// location splits rb2go's "file:line: message".
+// location splits rugaroo's "file:line: message".
 func location(msg string) (string, int, string, bool) {
 	first := firstLine(msg)
 	parts := strings.SplitN(first, ":", 3)

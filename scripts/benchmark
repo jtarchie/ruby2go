@@ -1,17 +1,17 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Times each benchmarks/*.rb under MRI, MRI with YJIT, rb2go, spinel, and the hand ports in benchmarks/crystal and
+# Times each benchmarks/*.rb under MRI, MRI with YJIT, rugaroo, spinel, and the hand ports in benchmarks/crystal and
 # benchmarks/go, using the median of a few runs to blunt scheduler noise. Every column must print what `ruby` prints;
 # a mismatch, a failed build or a missing port is reported and that cell is left out ("-").
 #
 #   scripts/benchmark                    # every workload, 5 runs each
 #   scripts/benchmark fib array          # named workloads
-#   COLS=ruby,rb2go scripts/benchmark    # some columns (ruby is always the reference)
-#   RB2GO=/path/to/rb2go SPINEL=/path/to/spinel scripts/benchmark
+#   COLS=ruby,rugaroo scripts/benchmark    # some columns (ruby is always the reference)
+#   RUGAROO=/path/to/rugaroo SPINEL=/path/to/spinel scripts/benchmark
 #   RUNS=9 MARKDOWN=1 scripts/benchmark  # the README table
 #
-# A workload with a `# trace: why` line builds with `rb2go build -trace`, as an example with one does. spinel
+# A workload with a `# trace: why` line builds with `rugaroo build -trace`, as an example with one does. spinel
 # (github.com/matz/spinel) is used when SPINEL names it or it is on PATH; crystal and go when on PATH.
 #
 # The numbers in README.md come from this, on one machine: a rough ratio, wall-clock only.
@@ -23,8 +23,8 @@ require "tmpdir"
 ROOT = File.expand_path("..", __dir__)
 RUNS = Integer(ENV.fetch("RUNS", "5"))
 WARMUP = 1
-ALL = %w[ruby yjit rb2go spinel crystal go].freeze
-LABELS = { "ruby" => "MRI", "yjit" => "MRI+YJIT", "rb2go" => "rb2go", "spinel" => "spinel", "crystal" => "Crystal", "go" => "Go" }.freeze
+ALL = %w[ruby yjit rugaroo spinel crystal go].freeze
+LABELS = { "ruby" => "MRI", "yjit" => "MRI+YJIT", "rugaroo" => "rugaroo", "spinel" => "spinel", "crystal" => "Crystal", "go" => "Go" }.freeze
 
 def median(values)
   sorted = values.sort
@@ -57,11 +57,11 @@ def quiet(*cmd, **opts)
   status.success?
 end
 
-def rb2go_tool(tmp)
-  return ENV["RB2GO"] if ENV["RB2GO"]
+def rugaroo_tool(tmp)
+  return ENV["RUGAROO"] if ENV["RUGAROO"]
 
-  bin = File.join(tmp, "rb2go")
-  system("go", "build", "-o", bin, "./cmd/rb2go", chdir: ROOT, exception: true)
+  bin = File.join(tmp, "rugaroo")
+  system("go", "build", "-o", bin, "./cmd/rugaroo", chdir: ROOT, exception: true)
   bin
 end
 
@@ -70,21 +70,21 @@ def builders(tmp)
   spinel = ENV["SPINEL"] || which("spinel")
   crystal = which("crystal")
   go = which("go")
-  rb2go = nil
+  rugaroo = nil
   {
     "ruby" => ->(_name, src, _dir) { ["ruby", src] },
     "yjit" => ->(_name, src, _dir) { ["ruby", "--yjit", src] },
-    "rb2go" => lambda do |name, src, dir|
-      rb2go ||= rb2go_tool(tmp)
-      bin = File.join(dir, "rb2go_#{name}")
+    "rugaroo" => lambda do |name, src, dir|
+      rugaroo ||= rugaroo_tool(tmp)
+      bin = File.join(dir, "rugaroo_#{name}")
       trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
-      quiet(rb2go, "build", *trace, "-o", bin, src, chdir: ROOT) ? [bin] : nil
+      quiet(rugaroo, "build", *trace, "-o", bin, src, chdir: ROOT) ? [bin] : nil
     end,
     "spinel" => lambda do |name, src, dir|
       next nil unless spinel
 
       bin = File.join(dir, "spinel_#{name}")
-      mode = File.read(src)[/^# int_overflow: (\S+)/, 1] # rb2go reads the magic comment itself; spinel takes the flag
+      mode = File.read(src)[/^# int_overflow: (\S+)/, 1] # rugaroo reads the magic comment itself; spinel takes the flag
       quiet(spinel, src, *(mode ? ["--int-overflow=#{mode}"] : []), "-o", bin, chdir: ROOT) ? [bin] : nil
     end,
     "crystal" => lambda do |name, _src, dir|
@@ -108,7 +108,7 @@ cols.unshift("ruby") unless cols.include?("ruby")
 wanted = ARGV.empty? ? Dir[File.join(ROOT, "benchmarks/*.rb")] : ARGV.map { |n| File.join(ROOT, "benchmarks/#{File.basename(n, ".rb")}.rb") }
 
 rows = {}
-Dir.mktmpdir("rb2go-bench-") do |dir|
+Dir.mktmpdir("rugaroo-bench-") do |dir|
   build = builders(dir)
   wanted.sort.each do |src|
     name = File.basename(src, ".rb")

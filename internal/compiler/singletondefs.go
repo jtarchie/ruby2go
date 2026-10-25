@@ -82,7 +82,7 @@ func lowerBlockParamWrites(n parser.Node) {
 	if d, ok := n.(*parser.DefNode); ok && d.Parameters != nil && d.Parameters.Block != nil && d.Parameters.Block.Name != nil && d.Body != nil {
 		b := *d.Parameters.Block.Name
 		if writesLocal(d.Body, b) {
-			shadow := b + "_rb2go"
+			shadow := b + "_rugaroo"
 			renameLocal(d.Body, b, shadow)
 			d.Locals = append(d.Locals, shadow)
 			init := &parser.LocalVariableWriteNode{Location: d.Body.GetLocation(), Name: shadow, NameLoc: d.Body.GetLocation(), Value: &parser.LocalVariableReadNode{Location: d.Body.GetLocation(), Name: b}}

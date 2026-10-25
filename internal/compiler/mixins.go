@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // abstractStub reports a prelude module method whose body only raises NotImplementedError: a requirement the module

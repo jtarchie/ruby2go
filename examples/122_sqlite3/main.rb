@@ -1,4 +1,4 @@
-# SQLite through the sqlite3 gem's API: rb2go binds libsqlite3 over Fiddle instead of the gem's C extension.
+# SQLite through the sqlite3 gem's API: rugaroo binds libsqlite3 over Fiddle instead of the gem's C extension.
 require "sqlite3"
 require "tmpdir"
 
@@ -56,7 +56,7 @@ rescue SQLite3::SQLException => e
 end
 
 # A database file.
-path = File.join(Dir.tmpdir, "rb2go-example-122.db")
+path = File.join(Dir.tmpdir, "rugaroo-example-122.db")
 File.delete(path) if File.exist?(path)
 SQLite3::Database.open(path) { |d| d.execute("create table kv (k text primary key, v text)"); d.execute("insert into kv values ('a', '1')") }
 ro = SQLite3::Database.new(path, readonly: true)

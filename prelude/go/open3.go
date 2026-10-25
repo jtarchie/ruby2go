@@ -1,4 +1,4 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
 package prelude
 

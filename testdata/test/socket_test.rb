@@ -340,7 +340,7 @@ module SocketTests
       assert_equal [Socket::AF_INET, Socket::PF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP], [ai.afamily, ai.pfamily, ai.socktype, ai.protocol]
       assert_equal ["127.0.0.1", 80], ai.ip_unpack
       assert_equal "127.0.0.1:80", ai.inspect_sockaddr
-      assert ai.to_sockaddr == ai.to_s # binary Strings inspect differently: rb2go has no encodings
+      assert ai.to_sockaddr == ai.to_s # binary Strings inspect differently: rugaroo has no encodings
       assert_equal [16, 0, 80, 127, 0, 0, 1], [ai.to_s.bytesize] + ai.to_s.bytes.drop(2).take(6)
       assert ai.ipv4_loopback?
       u = Addrinfo.udp("::1", 53)

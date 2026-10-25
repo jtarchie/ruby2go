@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Union types: `A | B` is a value of one of a few known classes. rb2go keeps
+# Union types: `A | B` is a value of one of a few known classes. rugaroo keeps
 # the member list, so a call on the value is a Go type switch with a typed
 # call per member (no runtime method lookup), a method some member lacks is
 # a compile error, and `is_a?`/`case` narrow the value to the members left.

@@ -16,11 +16,11 @@ import (
 
 // cliBinary builds this command once for the subprocess tests.
 var cliBinary = sync.OnceValues(func() (string, error) {
-	dir, err := os.MkdirTemp("", "rb2go-cli-test-") // not "rb2go-<x>": the tests count the CLI's own rb2go-* temp modules
+	dir, err := os.MkdirTemp("", "rugaroo-cli-test-") // not "rugaroo-<x>": the tests count the CLI's own rugaroo-* temp modules
 	if err != nil {
 		return "", err //nolint:wrapcheck // test helper
 	}
-	bin := filepath.Join(dir, "rb2go")
+	bin := filepath.Join(dir, "rugaroo")
 	out, err := exec.CommandContext(context.Background(), "go", "build", "-o", bin, ".").CombinedOutput() //nolint:gosec // bin is our MkdirTemp
 	if err != nil {
 		return "", errors.Join(err, errors.New(string(out)))
@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// moduleDirs lists the CLI's temp modules (rb2go-*) under tmp.
+// moduleDirs lists the CLI's temp modules (rugaroo-*) under tmp.
 func moduleDirs(t *testing.T, tmp string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(tmp)
@@ -46,7 +46,7 @@ func moduleDirs(t *testing.T, tmp string) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "rb2go-") {
+		if strings.HasPrefix(e.Name(), "rugaroo-") {
 			out = append(out, e.Name())
 		}
 	}
@@ -81,7 +81,7 @@ func exitCode(t *testing.T, err error) int {
 	return exit.ExitCode()
 }
 
-// A signalled child is 128+signal for every subcommand, `rb2go test` included (its runProg used to return ExitCode()'s -1, so 255).
+// A signalled child is 128+signal for every subcommand, `rugaroo test` included (its runProg used to return ExitCode()'s -1, so 255).
 func TestRunProgSignalledChild(t *testing.T) {
 	got := runProg(t.Context(), "/bin/sh", []string{"-c", "kill -TERM $$"})
 	if got != 128+int(syscall.SIGTERM) {
@@ -89,7 +89,7 @@ func TestRunProgSignalledChild(t *testing.T) {
 	}
 }
 
-// TestInterruptCleansUp sends SIGINT to `rb2go run` once its temp module exists (so, during go build or after the program started) and wants the shell's 130 and the module gone: nothing handled signals before the program started, so Ctrl-C left a binary in $TMPDIR.
+// TestInterruptCleansUp sends SIGINT to `rugaroo run` once its temp module exists (so, during go build or after the program started) and wants the shell's 130 and the module gone: nothing handled signals before the program started, so Ctrl-C left a binary in $TMPDIR.
 func TestInterruptCleansUp(t *testing.T) {
 	bin, err := cliBinary()
 	if err != nil {

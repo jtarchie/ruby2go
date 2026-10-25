@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // armRet is the return type of the first of m's `.rbs` overloads the

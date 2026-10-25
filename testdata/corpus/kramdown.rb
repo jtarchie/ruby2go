@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# TestGemCorpus: every testcase of the installed kramdown gem converted to HTML with default options, as rb2go compiles
+# TestGemCorpus: every testcase of the installed kramdown gem converted to HTML with default options, as rugaroo compiles
 # it from a traced run; an exception prints its class, so one case cannot hide the rest.
 require "kramdown"
 

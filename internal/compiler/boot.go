@@ -12,7 +12,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 // CompileWithBoot is CompileFilesWithWarnings for a program that requires a
@@ -47,7 +47,7 @@ func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 		gemDirs, err = boot.FindGems(ctx, filepath.Dir(sourceName(sources[0])), names)
 	}
 	if err != nil {
-		return nil, nil, err //nolint:wrapcheck // the caller adds "rb2go: "
+		return nil, nil, err //nolint:wrapcheck // the caller adds "rugaroo: "
 	}
 	if len(gemDirs) == 0 {
 		return CompileFilesWithWarnings(ctx, preludeFS, sources, loadPath...)
@@ -172,7 +172,7 @@ func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		if ok {
 			warnings = append(warnings, fmt.Sprintf("%s does not type-check in Go, so calling it raises NotImplementedError: %s (decision 205)", g.key, msg))
 		}
-		return "rb2go: " + g.name + " does not compile: Go rejects it: " + msg, ok
+		return "rugaroo: " + g.name + " does not compile: Go rejects it: " + msg, ok
 	})
 	tick("gocheck")
 	return out, warnings, nil

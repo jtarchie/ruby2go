@@ -26,7 +26,7 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 	return code
 }
 
-// goTypeGuard converts what gem code passes unconverted although its Go type is not the wanted one, where rb2go's
+// goTypeGuard converts what gem code passes unconverted although its Go type is not the wanted one, where rugaroo's
 // lenient typing let it through (decision 172): checked at run time, as MRI would fail there.
 func (f *fctx) goTypeGuard(n parser.Node, e expr, to Type) string {
 	if to == nil || isVoid(to) || isVoid(e.typ) || e.noreturn || e.code == "nil" || e.lit {
@@ -476,7 +476,7 @@ func (f *fctx) implicitConv(n parser.Node, e expr, to TClass) (string, bool) {
 		return "", false
 	}
 	if conv == "to_str" && f.resolve(from, conv) == nil && f.resolve(from, "to_path") != nil {
-		conv = "to_path" // a path object where a String is taken: MRI's path parameters call to_path first (rb2go types paths as String)
+		conv = "to_path" // a path object where a String is taken: MRI's path parameters call to_path first (rugaroo types paths as String)
 	} else if from.C.GoType != "" && conv != "to_str" { // a struct class: a core value type's own rules stand (Float is not an Integer); a Pathname's to_path is a path's (decision 253), and a to_str it is given (Homebrew's `alias to_str to_s`) converts (decision 258)
 		return "", false
 	}

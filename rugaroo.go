@@ -1,5 +1,5 @@
-// Package rb2go compiles a typed subset of Ruby to Go.
-package rb2go
+// Package rugaroo compiles a typed subset of Ruby to Go.
+package rugaroo
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jtarchie/ruby2go/internal/compiler"
+	"github.com/jtarchie/rugaroo/internal/compiler"
 )
 
 // Prelude holds prelude.rb, its require_relatives, prelude/go/*.go (pure-Go helpers embedded directly; see loadPreludeGo), and
@@ -21,7 +21,7 @@ import (
 //go:embed prelude.rb prelude/*.rb prelude/go/[a-z]*.go vendored/*/*.rb vendored/*/*/*.rb vendored/*/*/*/*.rb
 var Prelude embed.FS
 
-// GemSigs holds vendored `.rbs` signatures for the gems rb2go compiles
+// GemSigs holds vendored `.rbs` signatures for the gems rugaroo compiles
 // (decision 160), under sig/gems/<gem>/. A gem program (one that requires a
 // gem, so its load phase runs under MRI at compile time, decision 161) reads
 // them to type the gem's otherwise-unannotated classes.
@@ -45,7 +45,7 @@ const (
 	puregoVersion  = "v0.11.2"
 )
 
-// GoSum is go.sum for GoMod: its modules' lines from rb2go's own.
+// GoSum is go.sum for GoMod: its modules' lines from rugaroo's own.
 func GoSum() string {
 	var b strings.Builder
 	for line := range strings.Lines(goSum) {
@@ -76,7 +76,7 @@ func WriteModule(dir string) error {
 func Compile(ctx context.Context, mainName string, src []byte, loadPath ...string) ([]byte, []string, error) {
 	out, warnings, err := compiler.CompileWithWarnings(ctx, Prelude, mainName, src, loadPath...)
 	if err != nil {
-		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+		return nil, warnings, fmt.Errorf("rugaroo: %w", err)
 	}
 	return out, warnings, nil
 }
@@ -87,7 +87,7 @@ func CompileTraced(ctx context.Context, entryName string, src []byte, main strin
 	srcs := []compiler.Source{{Name: filepath.Base(entryName), Src: src, Path: entryName}}
 	out, warnings, err := compiler.CompileTraced(ctx, Prelude, GemSigs, srcs, main, loadPath...)
 	if err != nil {
-		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+		return nil, warnings, fmt.Errorf("rugaroo: %w", err)
 	}
 	return out, warnings, nil
 }
@@ -97,7 +97,7 @@ func CompileTraced(ctx context.Context, entryName string, src []byte, main strin
 func CompileTrace(ctx context.Context, main string, runs [][]string, rubyOpts []string, loadPath ...string) ([]byte, []string, error) {
 	out, warnings, err := compiler.CompileTrace(ctx, Prelude, GemSigs, main, runs, rubyOpts, loadPath...)
 	if err != nil {
-		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+		return nil, warnings, fmt.Errorf("rugaroo: %w", err)
 	}
 	return out, warnings, nil
 }
@@ -107,7 +107,7 @@ func CompileWithGems(ctx context.Context, mainName string, src []byte, loadPath 
 	srcs := []compiler.Source{{Name: filepath.Base(mainName), Src: src, Path: mainName}}
 	out, warnings, err := compiler.CompileWithGems(ctx, Prelude, GemSigs, srcs, loadPath...)
 	if err != nil {
-		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+		return nil, warnings, fmt.Errorf("rugaroo: %w", err)
 	}
 	return out, warnings, nil
 }
@@ -128,7 +128,7 @@ func CompileFiles(ctx context.Context, files []File, loadPath ...string) ([]byte
 	}
 	out, warnings, err := compiler.CompileFilesWithWarnings(ctx, Prelude, srcs, loadPath...)
 	if err != nil {
-		return nil, warnings, fmt.Errorf("rb2go: %w", err)
+		return nil, warnings, fmt.Errorf("rugaroo: %w", err)
 	}
 	return out, warnings, nil
 }
@@ -152,7 +152,7 @@ func CompileTestsSkipping(ctx context.Context, files []File, seed *Inference) ([
 	}
 	out, warnings, skipped, err := compiler.CompileTestsSkipping(ctx, Prelude, srcs, seed)
 	if err != nil {
-		return nil, warnings, skipped, fmt.Errorf("rb2go: %w", err)
+		return nil, warnings, skipped, fmt.Errorf("rugaroo: %w", err)
 	}
 	return out, warnings, skipped, nil
 }

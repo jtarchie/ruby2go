@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Deploys a dir of text files to a Top Banana site over MCP, its only upload API; the first run signs in through the browser (OAuth PKCE), then reuses the refresh token in ~/.config/rb2go/topbanana.json.
+// Deploys a dir of text files to a Top Banana site over MCP, its only upload API; the first run signs in through the browser (OAuth PKCE), then reuses the refresh token in ~/.config/rugaroo/topbanana.json.
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ import { execFile } from 'node:child_process';
 
 const BASE = process.env.TOPBANANA_URL || 'https://apps.topbanana.dev';
 const REDIRECT = 'http://127.0.0.1:8976/callback'; // fixed: a registered client allows only the redirect it registered with
-const CONFIG = join(homedir(), '.config', 'rb2go', 'topbanana.json');
+const CONFIG = join(homedir(), '.config', 'rugaroo', 'topbanana.json');
 
 const b64url = buf => buf.toString('base64url');
 const load = () => { try { return JSON.parse(readFileSync(CONFIG, 'utf8')); } catch { return {}; } };
@@ -53,7 +53,7 @@ async function form(path, fields) {
 
 async function login(cfg) {
   if (!cfg.client_id) {
-    const r = await fetch(BASE + '/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: [REDIRECT], client_name: 'rb2go deploy' }) });
+    const r = await fetch(BASE + '/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: [REDIRECT], client_name: 'rugaroo deploy' }) });
     if (!r.ok) throw new Error(`register: ${r.status} ${await r.text()}`);
     cfg.client_id = (await r.json()).client_id;
     save(cfg);
@@ -112,7 +112,7 @@ async function deploy(slug, dir) {
   const tok = await token();
   const { sites } = await call(tok, 'list_sites', {});
   if (!sites.some(s => s.slug === slug)) {
-    const made = await call(tok, 'create_site', { slug, title: 'rb2go playground', description: 'Write typed Ruby and see the Go that rb2go compiles it to, in your browser.' });
+    const made = await call(tok, 'create_site', { slug, title: 'rugaroo playground', description: 'Write typed Ruby and see the Go that rugaroo compiles it to, in your browser.' });
     console.log(`created ${made.url ?? slug}`);
   }
   for (const name of names) {

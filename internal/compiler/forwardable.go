@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // delegation is one Forwardable-generated method (decision 99): name calls
@@ -279,7 +279,7 @@ func (c *Compiler) delegateTarget(cls *Class, d delegation) Type {
 		return TAny{}
 	case acc == "self.class" && cls.meta != nil: // `delegate [:desc] => :"self.class"`: the receiver's class methods
 		return TClass{C: cls.meta}
-	case acc == "$stdin" || acc == "$stdout" || acc == "$stderr": // the globals rb2go has that hold objects (decision 61)
+	case acc == "$stdin" || acc == "$stdout" || acc == "$stderr": // the globals rugaroo has that hold objects (decision 61)
 		return TClass{C: c.classes["IO"]}
 	case strings.HasPrefix(acc, "$"):
 		c.errorf(f, n, "%s: only $stdin, $stdout and $stderr can be delegated to", n.Name)

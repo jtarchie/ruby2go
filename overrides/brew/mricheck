@@ -3,7 +3,7 @@
 # the only mode a compiled (fork-less) brew runs. Prints "MRI output identical" when the patches change nothing;
 # the unpatched output is left in work/mri.txt.
 cd "$(dirname "$0")"
-docker run --rm -v "$PWD:/w" rb2go-brew-dev bash -c '
+docker run --rm -v "$PWD:/w" rugaroo-brew-dev bash -c '
 export HOMEBREW_NO_AUTO_UPDATE=1
 cd /home/linuxbrew
 B=/home/linuxbrew/.linuxbrew/bin/brew

@@ -358,7 +358,7 @@ module StdlibHardeningTests
          File.expand_path("/./dir"), File.expand_path(".", "/"), File.expand_path("///a/../.."), File.dirname("/////foo/bar/")]
       assert_equal [true, true, "ArgumentError"],
         [File.expand_path("~#{ENV["USER"]}/a") == "#{Dir.home}/a", File.expand_path("../foo", "~/dir") == "#{Dir.home}/foo",
-         StdlibHardeningTests.raised { File.expand_path("~a_not_existing_user_rb2go") }]
+         StdlibHardeningTests.raised { File.expand_path("~a_not_existing_user_rugaroo") }]
       Dir.mktmpdir do |d|
         real = File.realpath(d)
         Dir.mkdir(File.join(d, "x"))

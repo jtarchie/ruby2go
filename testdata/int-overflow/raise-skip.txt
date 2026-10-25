@@ -1,4 +1,4 @@
 # Tests pinning another --int-overflow mode's answer, left out of the default (raise) lane (decision 372).
-# A line is a go test name, or a test name and a minitest method excluded on both the MRI and rb2go side.
+# A line is a go test name, or a test name and a minitest method excluded on both the MRI and rugaroo side.
 TestMinitest/number test_wrap_low_bits                   # wrap's low bits; raise answers RangeError
 TestMinitest/number test_promote_growth                  # Bignums; raise answers RangeError

@@ -100,7 +100,7 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 	f.buf = final
 }
 
-// poisonedBody is a gem method body rb2go cannot compile: it raises NotImplementedError naming why, where MRI would
+// poisonedBody is a gem method body rugaroo cannot compile: it raises NotImplementedError naming why, where MRI would
 // have run it, and the rest of the program still builds (decision 205).
 func (f *fctx) poisonedBody(t tail, prologue func()) {
 	f.buf = &strings.Builder{}
@@ -115,7 +115,7 @@ func (f *fctx) poisonedBody(t tail, prologue func()) {
 			f.emit("return func(yield func(%s) bool) {", strings.Join(ps, ", "))
 		}
 	}
-	f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rb2go: "+f.m.String()+" does not compile: "+f.m.poison)
+	f.emit("panic(NewNotImplementedError(Ref(String(%q))))", "rugaroo: "+f.m.String()+" does not compile: "+f.m.poison)
 	if t.kind != tailNone && t.typ == nil && t.types != nil {
 		t.record(TAny{})
 	}
@@ -173,7 +173,7 @@ func optBlockType(m *Method) Type {
 }
 
 func (c *Compiler) emitMethod(m *Method) {
-	c.keepGoing(func() { c.emitMethod0(m) }) // RB2GO_KEEP_GOING: every body's error in one run
+	c.keepGoing(func() { c.emitMethod0(m) }) // RUGAROO_KEEP_GOING: every body's error in one run
 }
 
 func (c *Compiler) emitMethod0(m *Method) {

@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// File is a parsed RBS declaration file: the subset rb2go attaches to
+// File is a parsed RBS declaration file: the subset rugaroo attaches to
 // unannotated Ruby (docs/design.md decision 160). Only declarations are
-// modelled; a line rb2go does not understand is skipped, so a gem's sig file
+// modelled; a line rugaroo does not understand is skipped, so a gem's sig file
 // may name a wider surface than the app reaches. Top-level `type` aliases and constants are dropped on purpose: File has no slot, nothing consumes them.
 type File struct {
 	Decls []*ClassDecl
@@ -102,7 +102,7 @@ type IncludeDecl struct {
 	Line   int
 }
 
-// ParseFile parses RBS declaration syntax into the declarations rb2go uses.
+// ParseFile parses RBS declaration syntax into the declarations rugaroo uses.
 func ParseFile(src string) (*File, error) {
 	f := &File{}
 	var stack []*ClassDecl
@@ -176,7 +176,7 @@ func joinMember(lines []string, i *int, line string) string {
 
 var classAlias = regexp.MustCompile(`^(class|module) [\w:]+ =`)
 
-// annotation is an RBS `%a{...}`, `%a(...)` or `%a[...]` annotation, which rb2go does not model.
+// annotation is an RBS `%a{...}`, `%a(...)` or `%a[...]` annotation, which rugaroo does not model.
 var annotation = regexp.MustCompile(`%a(\{[^}]*\}|\([^)]*\)|\[[^\]]*\])`)
 
 // scanCode returns the first `#` outside a string literal (len(s) if none) and the bracket depth before it; quoted brackets do not count.
@@ -470,7 +470,7 @@ func addIvar(owner *ClassDecl, line string, ln int) error {
 func addConst(owner *ClassDecl, line string, ln int) error {
 	name, typeText, ok := splitMember(line)
 	if !ok || name == "" || !isConstName(name) {
-		return nil // not a declaration rb2go models
+		return nil // not a declaration rugaroo models
 	}
 	t, err := ParseType(typeText)
 	if err != nil {
@@ -559,7 +559,7 @@ func ParseMethodTypes(s string) ([]*MethodType, error) {
 	cur := ""
 	var curM *MethodType // cur's parse, when cur is one whole part (a folded union return is parsed once at the end)
 	for _, part := range splitOverloads(s) {
-		if part == "..." { // the overloads the class already has: nothing for rb2go to add
+		if part == "..." { // the overloads the class already has: nothing for rugaroo to add
 			continue
 		}
 		pm, err := ParseMethodType(part)

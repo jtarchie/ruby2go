@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 type typeScope struct {

@@ -423,7 +423,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		if c.emitDynPostCall(f, e, recv, env) {
 			return
 		}
-		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rb2go: "+m.String()+" takes post parameters, which a call on an untyped value cannot pass (decision 23)")
+		f.emit("panic(NewArgumentError(Ref(String(%q))))", "rugaroo: "+m.String()+" takes post parameters, which a call on an untyped value cannot pass (decision 23)")
 		return
 	}
 	var req, opt int

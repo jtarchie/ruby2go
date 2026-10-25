@@ -1,4 +1,4 @@
-Compile errors for Ractor isolation (docs/design.md decision 103): what MRI raises at run time, rb2go rejects at compile time.
+Compile errors for Ractor isolation (docs/design.md decision 103): what MRI raises at run time, rugaroo rejects at compile time.
 -- outer_local.rb --
 # error: main.rb:4: can not isolate a Proc because it accesses outer variables (x, y).
 x = 1

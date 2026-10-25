@@ -74,7 +74,7 @@ type rewriter struct {
 	hookN int
 }
 
-// rewrite makes what mspec does at run time static, as rb2go's describe needs: context, guards, shared specs, before(:each).
+// rewrite makes what mspec does at run time static, as rugaroo's describe needs: context, guards, shared specs, before(:each).
 func (prog *program) rewrite(ctx context.Context, name, src string, depth int) (string, error) {
 	if depth > 8 {
 		return "", errors.New("shared specs nest too deep")
@@ -169,7 +169,7 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 		return true
 	case (call.Name == "before" || call.Name == "after") && blk != nil && call.Arguments != nil && !rw.hooks[call]:
 		s, e := span(call.Arguments.Location)
-		rw.edits = append(rw.edits, blank(rw.src, s, e)) // rb2go's before is minitest's setup: :each, and :all once per example
+		rw.edits = append(rw.edits, blank(rw.src, s, e)) // rugaroo's before is minitest's setup: :each, and :all once per example
 	case guards[call.Name] && blk != nil:
 		rw.guard(call, blk, args)
 		return true
@@ -178,7 +178,7 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 }
 
 // chainHooks runs every before (or after) of one describe, as mspec does:
-// rb2go's, like minitest's, redefines setup, so a second one would drop the
+// rugaroo's, like minitest's, redefines setup, so a second one would drop the
 // first (`before :all { create_mock_dirs }` then `before :each`). Each
 // becomes a def in place, and one hook on the last one's line calls them,
 // the `first` scope's (before :all, after :each) leading. Lines stay put.
@@ -278,7 +278,7 @@ var methodRef = regexp.MustCompile(`@(method|object)\b(\s*=[^=~>]|)`)
 func (rw *rewriter) inline(call *parser.CallNode, args []parser.Node) {
 	spec, ok := rw.prog.shared[literal(args[0])]
 	if !ok {
-		return // left for rb2go to reject, which drops the statement
+		return // left for rugaroo to reject, which drops the statement
 	}
 	body := methodRef.ReplaceAllStringFunc(spec.body, func(m string) string {
 		sub := methodRef.FindStringSubmatch(m)
@@ -340,7 +340,7 @@ func (rw *rewriter) guard(call *parser.CallNode, blk *parser.BlockNode, args []p
 }
 
 // keep is whether a guard's block runs here: MRI rubyVersion on this machine's OS, 64-bit, little-endian, not root.
-// ponytail: guard/with_feature/kernel_is always drop their block; evaluate the ones rb2go can answer.
+// ponytail: guard/with_feature/kernel_is always drop their block; evaluate the ones rugaroo can answer.
 func (rw *rewriter) keep(name string, args []parser.Node) bool {
 	switch name {
 	case "ruby_version_is":
@@ -525,12 +525,12 @@ func (prog *program) skipAt(ctx context.Context, r *result, name string, line in
 		blk := ex.Block.(*parser.BlockNode)
 		s, e := blk.OpeningLoc.StartOffset+blk.OpeningLoc.Length, blk.ClosingLoc.StartOffset
 		body := src.text[s:e]
-		if strings.HasPrefix(body, " skip \"rb2go: ") { // the error is in the example's own code (its def line), not its body
+		if strings.HasPrefix(body, " skip \"rugaroo: ") { // the error is in the example's own code (its def line), not its body
 			src.text = apply(src.text, []edit{blankLoc(src.text, ex.Location)})
 			r.dropped = append(r.dropped, skipped{where, reason})
 			return nil
 		}
-		msg := strings.ReplaceAll(strconv.Quote("rb2go: "+reason), "#", `\#`)
+		msg := strings.ReplaceAll(strconv.Quote("rugaroo: "+reason), "#", `\#`)
 		src.text = apply(src.text, []edit{{s, e, " skip " + msg + strings.Repeat("\n", strings.Count(body, "\n"))}})
 		r.unsupported = append(r.unsupported, skipped{where + " " + literal(callArg(ex)), reason})
 		return nil
@@ -541,8 +541,8 @@ func (prog *program) skipAt(ctx context.Context, r *result, name string, line in
 	}
 	// a chained hook (chainHooks) skips instead, so each example under it reports this reason, not the hook's absence
 	if d, ok := st.(*parser.DefNode); ok && strings.HasPrefix(d.Name, "__rbspec_") && d.Body != nil {
-		if s, e := span(d.Body.GetLocation()); !strings.HasPrefix(src.text[s:e], "skip \"rb2go: ") {
-			msg := strings.ReplaceAll(strconv.Quote("rb2go: "+reason), "#", `\#`)
+		if s, e := span(d.Body.GetLocation()); !strings.HasPrefix(src.text[s:e], "skip \"rugaroo: ") {
+			msg := strings.ReplaceAll(strconv.Quote("rugaroo: "+reason), "#", `\#`)
 			src.text = apply(src.text, []edit{{s, e, "skip " + msg + strings.Repeat("\n", strings.Count(src.text[s:e], "\n"))}})
 			return nil
 		}

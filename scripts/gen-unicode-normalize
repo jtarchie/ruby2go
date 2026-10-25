@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Writes prelude/go/unicode_normalize_tables.go from MRI's own unicode_normalize tables (decision 136), so rb2go normalizes with the Unicode version MRI does.
+# Writes prelude/go/unicode_normalize_tables.go from MRI's own unicode_normalize tables (decision 136), so rugaroo normalizes with the Unicode version MRI does.
 #
 #   scripts/gen-unicode-normalize    # rewrite the file; rerun after a Ruby upgrade
 

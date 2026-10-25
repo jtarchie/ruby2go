@@ -55,7 +55,7 @@ func TestDumpBadOutput(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 	// a planted symlink at the old fixed name must not be followed
 	victim := filepath.Join(dir, "victim")
-	err := os.Symlink(victim, filepath.Join(dir, "rb2go-bad-output.go"))
+	err := os.Symlink(victim, filepath.Join(dir, "rugaroo-bad-output.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

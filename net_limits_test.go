@@ -1,4 +1,4 @@
-package rb2go
+package rugaroo
 
 import (
 	"os"

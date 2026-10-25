@@ -206,7 +206,7 @@ func (f *fctx) classVar(n parser.Node, name string) *Const {
 	if k := f.lookupClassVar(name); k != nil {
 		return k
 	}
-	f.errorf(n, "uninitialized class variable %s (rb2go needs its first assignment in a class or module body)", name)
+	f.errorf(n, "uninitialized class variable %s (rugaroo needs its first assignment in a class or module body)", name)
 	return nil
 }
 

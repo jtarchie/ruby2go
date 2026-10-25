@@ -80,7 +80,7 @@ module RexmlTests
       assert_equal true, top.has_text?
     end
 
-    # REXML's messages go on with the line, position and unconsumed input; rb2go gives the first line (decision 114), so it is not put through assert_raises.
+    # REXML's messages go on with the line, position and unconsumed input; rugaroo gives the first line (decision 114), so it is not put through assert_raises.
     #: (String) -> String
     def rx_error(src)
       REXML::Document.new(src)

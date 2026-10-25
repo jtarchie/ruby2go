@@ -1,33 +1,33 @@
 #!/bin/bash
-# bin/brew runs this as its Ruby (tools/install-wrapper puts it there). brew.rb goes through `rb2go run -trace`; anything
-# else, a nested run under rb2go, or HOMEBREW_RB2GO_MRI=1 (brew.sh passes on only HOMEBREW_*) goes to the real Ruby
+# bin/brew runs this as its Ruby (tools/install-wrapper puts it there). brew.rb goes through `rugaroo run -trace`; anything
+# else, a nested run under rugaroo, or HOMEBREW_RUGAROO_MRI=1 (brew.sh passes on only HOMEBREW_*) goes to the real Ruby
 # beside it (decision 296).
 real="$(dirname "$0")/ruby.real"
 export HOMEBREW_NO_BOOTSNAP=1 HOMEBREW_SPAWN_SYSTEM=1 # bootsnap caches MRI's loads; Go cannot fork
-[[ -n "$HOMEBREW_RB2GO_RUBY" ]] && exec "$real" "$@"
-[[ -n "$HOMEBREW_RB2GO_MRI" ]] && exec "$real" ${HOMEBREW_RB2GO_MRI_REQUIRE:+-r"$HOMEBREW_RB2GO_MRI_REQUIRE"} "$@" # a tracer, for ./hits
+[[ -n "$HOMEBREW_RUGAROO_RUBY" ]] && exec "$real" "$@"
+[[ -n "$HOMEBREW_RUGAROO_MRI" ]] && exec "$real" ${HOMEBREW_RUGAROO_MRI_REQUIRE:+-r"$HOMEBREW_RUGAROO_MRI_REQUIRE"} "$@" # a tracer, for ./hits
 raw=() opts=()
 for a in "$@"; do [[ "$a" == -* ]] || break; raw+=("$a") opts+=(-rubyopt "$a"); done # brew.sh's -W1 --disable=...
 [[ "${@:${#raw[@]}+1:1}" == */Homebrew/brew.rb ]] || exec "$real" "$@"
 shift "${#raw[@]}"
-for v in ${!HOMEBREW_RB2GO_@}; do export "${v#HOMEBREW_}=${!v}"; done # HOMEBREW_RB2GO_GEM_WARNINGS=1 reaches rb2go
-if [[ -n "$HOMEBREW_RB2GO_BIN" && -x "$HOMEBREW_RB2GO_BIN" ]]; then # built already: run it (RB2GO_BACKTRACE=1 reaches it)
-  exec "$HOMEBREW_RB2GO_BIN" "${@:2}"
+for v in ${!HOMEBREW_RUGAROO_@}; do export "${v#HOMEBREW_}=${!v}"; done # HOMEBREW_RUGAROO_GEM_WARNINGS=1 reaches rugaroo
+if [[ -n "$HOMEBREW_RUGAROO_BIN" && -x "$HOMEBREW_RUGAROO_BIN" ]]; then # built already: run it (RUGAROO_BACKTRACE=1 reaches it)
+  exec "$HOMEBREW_RUGAROO_BIN" "${@:2}"
 fi
-export RB2GO_RUBY="$real" HOMEBREW_RB2GO_RUBY="$real" # rb2go's MRI; a nested bin/brew keeps only the second
+export RUGAROO_RUBY="$real" HOMEBREW_RUGAROO_RUBY="$real" # rugaroo's MRI; a nested bin/brew keeps only the second
 also=()
-while IFS= read -r line; do [[ -n "$line" ]] && also+=(-trace-also "$line"); done <<< "$RB2GO_ALSO" # one binary, several commands
-rb2go=$RB2GO_EXE
-if [[ -z "$rb2go" || -n "$RB2GO_BIN" || "${RB2GO_CMD:-run}" != gen ]]; then # go builds the program (and rb2go, from its checkout)
-  go=$(PATH="$HOMEBREW_PATH:$PATH" command -v go) || { echo "rb2go wrapper: no go on PATH" >&2; exit 1; }
+while IFS= read -r line; do [[ -n "$line" ]] && also+=(-trace-also "$line"); done <<< "$RUGAROO_ALSO" # one binary, several commands
+rugaroo=$RUGAROO_EXE
+if [[ -z "$rugaroo" || -n "$RUGAROO_BIN" || "${RUGAROO_CMD:-run}" != gen ]]; then # go builds the program (and rugaroo, from its checkout)
+  go=$(PATH="$HOMEBREW_PATH:$PATH" command -v go) || { echo "rugaroo wrapper: no go on PATH" >&2; exit 1; }
   export PATH="$PATH:${go%/*}" # appended, so brew's own lookups are unchanged
 fi
-if [[ -z "$rb2go" ]]; then
-  rb2go="${TMPDIR:-/tmp}/rb2go-brew-host"
-  "$go" build -C "RB2GO_REPO" -o "$rb2go" ./cmd/rb2go || exit 1 # go run's build cache, without its cwd change
+if [[ -z "$rugaroo" ]]; then
+  rugaroo="${TMPDIR:-/tmp}/rugaroo-brew-host"
+  "$go" build -C "RUGAROO_REPO" -o "$rugaroo" ./cmd/rugaroo || exit 1 # go run's build cache, without its cwd change
 fi
-if [[ -n "$RB2GO_BIN" ]]; then # HOMEBREW_RB2GO_BIN=path: build once (traced with these args), then rerun it
-  "$rb2go" build -trace -o "$RB2GO_BIN" $RB2GO_FLAGS "${also[@]}" "${opts[@]}" "$@" || exit 1
-  exec "$RB2GO_BIN" "${@:2}"
+if [[ -n "$RUGAROO_BIN" ]]; then # HOMEBREW_RUGAROO_BIN=path: build once (traced with these args), then rerun it
+  "$rugaroo" build -trace -o "$RUGAROO_BIN" $RUGAROO_FLAGS "${also[@]}" "${opts[@]}" "$@" || exit 1
+  exec "$RUGAROO_BIN" "${@:2}"
 fi
-exec "$rb2go" "${RB2GO_CMD:-run}" -trace $RB2GO_FLAGS "${also[@]}" "${opts[@]}" "$@" # FLAGS=-work keeps main.go; CMD=gen prints it
+exec "$rugaroo" "${RUGAROO_CMD:-run}" -trace $RUGAROO_FLAGS "${also[@]}" "${opts[@]}" "$@" # FLAGS=-work keeps main.go; CMD=gen prints it

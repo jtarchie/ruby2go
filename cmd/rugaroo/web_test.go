@@ -95,10 +95,10 @@ func TestWeb(t *testing.T) {
 
 // TestWebRunEnv: submitted code sees PATH and its own temp dir as HOME/TMPDIR, not the developer's environment (tokens).
 func TestWebRunEnv(t *testing.T) {
-	const sentinel = "hunter2-rb2go-test-sentinel"
-	t.Setenv("RB2GO_TEST_SECRET", sentinel)
+	const sentinel = "hunter2-rugaroo-test-sentinel"
+	t.Setenv("RUGAROO_TEST_SECRET", sentinel)
 	w := newWeb("127.0.0.1", 30*time.Second)
-	src, err := json.Marshal(map[string]string{"src": "puts ENV[\"HOME\"]\nputs ENV[\"TMPDIR\"]\nputs ENV.keys.sort.inspect\nputs ENV.fetch(\"RB2GO_TEST_SECRET\", \"unset\")\n"})
+	src, err := json.Marshal(map[string]string{"src": "puts ENV[\"HOME\"]\nputs ENV[\"TMPDIR\"]\nputs ENV.keys.sort.inspect\nputs ENV.fetch(\"RUGAROO_TEST_SECRET\", \"unset\")\n"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestWebRunEnv(t *testing.T) {
 		t.Fatalf("stdout %q", res.Stdout)
 	}
 	home, tmp, keys, leaked := lines[0], lines[1], lines[2], lines[3]
-	if home == "" || home != tmp || !strings.HasPrefix(filepath.Base(home), "rb2go-") {
+	if home == "" || home != tmp || !strings.HasPrefix(filepath.Base(home), "rugaroo-") {
 		t.Errorf("HOME %q, TMPDIR %q: want the program's own temp dir", home, tmp)
 	}
 	if keys != `["HOME", "PATH", "TMPDIR"]` {
@@ -152,7 +152,7 @@ func TestWebStatic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`window.rb2goAssets = "https://assets.example/abc/";`, "<script>/*!\n  Highlight.js"} {
+	for _, want := range []string{`window.rugarooAssets = "https://assets.example/abc/";`, "<script>/*!\n  Highlight.js"} {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("index.html lacks %q", want)
 		}

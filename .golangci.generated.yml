@@ -1,5 +1,5 @@
-# golangci-lint configuration applied to rb2go's *generated* Go, by the test
-# harness (rb2go_test.go copies it next to each transpiled example). It is
+# golangci-lint configuration applied to rugaroo's *generated* Go, by the test
+# harness (rugaroo_test.go copies it next to each transpiled example). It is
 # the repo's own linter set minus what cannot apply to a transpiler's output:
 # a whole prelude is emitted for every program (`unused`), free functions take
 # `self` for uniformity (`unparam`), and identifiers mirror Ruby names

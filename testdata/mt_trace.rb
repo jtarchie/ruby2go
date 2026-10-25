@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
 # The trace oracle's MRI half (decision 105): `ruby -r ./testdata/mt_trace.rb
-# x_test.rb` with RB2GO_MT_TRACE=<path> appends one line per assertion a
+# x_test.rb` with RUGAROO_MT_TRACE=<path> appends one line per assertion a
 # test calls, "Class#test assertion operand...", operands inspected (minitest's
-# mu_pp minus its encoding note: rb2go's strings carry no encoding), the
-# lines rb2go's prelude/minitest.rb writes. Assertions an assertion calls
+# mu_pp minus its encoding note: rugaroo's strings carry no encoding), the
+# lines rugaroo's prelude/minitest.rb writes. Assertions an assertion calls
 # itself (assert_empty's assert_respond_to) are not logged: a depth counter.
 require "minitest"
 
-module RB2GoMtTrace
+module RugarooMtTrace
   # Each assertion's operands (the message argument is not one), with the
-  # defaults MRI fills in, so a call that omits `delta` logs what rb2go sees.
+  # defaults MRI fills in, so a call that omits `delta` logs what rugaroo sees.
   UNDEFINED = Minitest::Assertions::UNDEFINED
   OPERANDS = {
     assert: [nil], assert_empty: [nil], assert_equal: [nil, nil],
@@ -27,7 +27,7 @@ module RB2GoMtTrace
     refute_same: [nil, nil], assert_output: [nil, nil], assert_silent: [],
   }.freeze
 
-  FILE = File.open(ENV.fetch("RB2GO_MT_TRACE"), "a")
+  FILE = File.open(ENV.fetch("RUGAROO_MT_TRACE"), "a")
   FILE.sync = true
 
   @depth = 0
@@ -60,35 +60,35 @@ module RB2GoMtTrace
 
   # Real methods, not define_method blocks: minitest's Assertion#location
   # takes the frame after the last one named like an assertion, so these
-  # frames must read 'RB2GoMtTrace#assert_x' too.
+  # frames must read 'RugarooMtTrace#assert_x' too.
   OPERANDS.each_key do |kind|
     module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
       def #{kind}(*args, &blk)
-        RB2GoMtTrace.enter(self, :#{kind}, args)
+        RugarooMtTrace.enter(self, :#{kind}, args)
         super
       ensure
-        RB2GoMtTrace.leave
+        RugarooMtTrace.leave
       end
     RUBY
   end
 
   # Logged after the block: the classes expected, then the class and message of what came.
   def assert_raises(*exp, &blk)
-    outer = RB2GoMtTrace.depth.zero?
-    RB2GoMtTrace.depth += 1
+    outer = RugarooMtTrace.depth.zero?
+    RugarooMtTrace.depth += 1
     begin
       e = super
     ensure
-      RB2GoMtTrace.depth -= 1
+      RugarooMtTrace.depth -= 1
     end
     if outer
       classes = exp.dup
       classes.pop if classes.last.is_a?(String)
       classes << StandardError if classes.empty?
-      RB2GoMtTrace.log(self, :assert_raises, [*classes, e.class, e.message])
+      RugarooMtTrace.log(self, :assert_raises, [*classes, e.class, e.message])
     end
     e
   end
 end
 
-Minitest::Assertions.prepend(RB2GoMtTrace)
+Minitest::Assertions.prepend(RugarooMtTrace)

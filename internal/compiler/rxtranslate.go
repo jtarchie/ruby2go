@@ -802,7 +802,7 @@ func (l *rxAltLazy) get() rxAlt {
 		}
 	})
 	if l.alt == nil {
-		panic(RxUnsupported("regexp /" + l.src + "/ is not supported by rb2go: " + l.re2))
+		panic(RxUnsupported("regexp /" + l.src + "/ is not supported by rugaroo: " + l.re2))
 	}
 	return l.alt
 }

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 func TestTracedEntry(t *testing.T) {

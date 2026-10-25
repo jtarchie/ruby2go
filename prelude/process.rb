@@ -221,7 +221,7 @@ module Signal
   #: (untyped, String) -> String?
   def self.__trap_2(sig, command) = %x{ return rbSetTrap(sig, nil, string(command)) }
 
-  # ponytail: rb2go's signal table lacks platform extras (macOS EMT, INFO); add them per GOOS if a program lists them.
+  # ponytail: rugaroo's signal table lacks platform extras (macOS EMT, INFO); add them per GOOS if a program lists them.
   #: () -> Hash[String, Integer]
   def self.list = %x{
     names := slices.Collect(maps.Keys(rbSignalNums))

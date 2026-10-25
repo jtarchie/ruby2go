@@ -1,4 +1,4 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
 package prelude
 
@@ -254,7 +254,7 @@ func rbFiddleIsFloat(t Integer) bool { return t == 7 || t == 8 }
 func rbFiddleCheckType(t Integer) {
 	switch {
 	case t == 9:
-		panic(NewNotImplementedError(Ref(String("rb2go: Fiddle::TYPE_VARIADIC (purego cannot make a C variadic call)"))))
+		panic(NewNotImplementedError(Ref(String("rugaroo: Fiddle::TYPE_VARIADIC (purego cannot make a C variadic call)"))))
 	case t < -6 || t > 11:
 		panic(rbFiddleDLError("unknown type: " + strconv.Itoa(int(t))))
 	}
@@ -274,7 +274,7 @@ func rbFiddleCheckArgs(args []Integer) {
 		}
 	}
 	if ni > 8 || nf > 8 {
-		panic(NewNotImplementedError(Ref(String("rb2go: Fiddle calls take at most 8 integer and 8 floating-point arguments"))))
+		panic(NewNotImplementedError(Ref(String("rugaroo: Fiddle calls take at most 8 integer and 8 floating-point arguments"))))
 	}
 }
 
@@ -309,7 +309,7 @@ func rbFiddleWord64(t Integer, v any) (uintptr, float64) {
 			i = 1
 		}
 	default:
-		panic(NewTypeError(Ref(String("rb2go: Fiddle cannot pass " + rbClassName(v)))))
+		panic(NewTypeError(Ref(String("rugaroo: Fiddle cannot pass " + rbClassName(v)))))
 	}
 	if t == 7 { // a float sits in the low half of its register
 		return 0, math.Float64frombits(uint64(math.Float32bits(float32(f))))
@@ -335,7 +335,7 @@ func rbFiddleCStr(s String, keep bool) (uintptr, []byte) {
 func rbFiddleInvoke(prepared any, args *Array[any]) any {
 	fn, ok := prepared.(*rbFiddleCFunc)
 	if !ok {
-		panic(rbFiddleDLError("rb2go: not a prepared Fiddle function"))
+		panic(rbFiddleDLError("rugaroo: not a prepared Fiddle function"))
 	}
 	return rbFiddleInvokeArgs(fn, args.s)
 }
@@ -444,7 +444,7 @@ func rbFiddleValue(t Integer, r uintptr, f float64) any {
 func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) any) Integer {
 	rbFiddleCheckType(ret)
 	if rbFiddleIsFloat(ret) {
-		panic(NewNotImplementedError(Ref(String("rb2go: a Fiddle::Closure cannot return float or double (purego)"))))
+		panic(NewNotImplementedError(Ref(String("rugaroo: a Fiddle::Closure cannot return float or double (purego)"))))
 	}
 	types := slices.Clone(args.s)
 	rbFiddleCheckArgs(types)
@@ -485,7 +485,7 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 	func() {
 		defer func() {
 			if e := recover(); e != nil {
-				panic(rbFiddleDLError(fmt.Sprint("rb2go: ", e)))
+				panic(rbFiddleDLError(fmt.Sprint("rugaroo: ", e)))
 			}
 		}()
 		addr = purego.NewCallback(cb)
@@ -534,7 +534,7 @@ func rbFiddleIntRegs() int {
 	return 8
 }
 
-// rbFiddleCallbackInstalled puts a dispatcher in front of purego's callback function, once: closures rb2go registered
+// rbFiddleCallbackInstalled puts a dispatcher in front of purego's callback function, once: closures rugaroo registered
 // read their registers from purego's frame without reflect (decision 329); any other index goes on to purego.
 func rbFiddleCallbackInstalled() bool {
 	rbFiddleCallbackOnce.Do(func() {

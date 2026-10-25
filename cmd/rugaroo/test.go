@@ -23,7 +23,7 @@ func testCmd(ctx context.Context, argv []string) int {
 		return 1
 	}
 	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "rb2go test: no test files (test_*.rb, *_test.rb, spec_*.rb, *_spec.rb)")
+		fmt.Fprintln(os.Stderr, "rugaroo test: no test files (test_*.rb, *_test.rb, spec_*.rb, *_spec.rb)")
 		return 1
 	}
 	dir, err := compileFiles(ctx, files, "", opts, os.Stderr)
@@ -34,7 +34,7 @@ func testCmd(ctx context.Context, argv []string) int {
 	return runProg(ctx, filepath.Join(dir, "prog"), flags)
 }
 
-// testBuildFlags finds rb2go's flags anywhere: minitest's own (-v, -s N, -n /re/) never share their names.
+// testBuildFlags finds rugaroo's flags anywhere: minitest's own (-v, -s N, -n /re/) never share their names.
 func testBuildFlags(argv []string) (buildOpts, []string, error) {
 	var opts buildOpts
 	var rest []string
@@ -53,9 +53,9 @@ func testBuildFlags(argv []string) (buildOpts, []string, error) {
 			want = a
 		case strings.HasPrefix(a, "-int-overflow="), strings.HasPrefix(a, "--int-overflow="):
 			_, m, _ := strings.Cut(a, "=")
-			err := os.Setenv("RB2GO_INT_OVERFLOW", m)
+			err := os.Setenv("RUGAROO_INT_OVERFLOW", m)
 			if err != nil {
-				return opts, nil, fmt.Errorf("rb2go test: %w", err)
+				return opts, nil, fmt.Errorf("rugaroo test: %w", err)
 			}
 		case strings.HasPrefix(a, "-gcflags="):
 			opts.gcflags = strings.TrimPrefix(a, "-gcflags=")
@@ -66,7 +66,7 @@ func testBuildFlags(argv []string) (buildOpts, []string, error) {
 		}
 	}
 	if want != "" {
-		return opts, nil, fmt.Errorf("rb2go test: %s needs a value", want)
+		return opts, nil, fmt.Errorf("rugaroo test: %s needs a value", want)
 	}
 	return opts, rest, nil
 }
@@ -139,7 +139,7 @@ func expandTestPath(p string) ([]string, error) {
 	}
 	err = filepath.WalkDir(p, walk) //nolint:gosec // the user's own paths
 	if err != nil {
-		return nil, fmt.Errorf("rb2go test: %w", err)
+		return nil, fmt.Errorf("rugaroo test: %w", err)
 	}
 	slices.Sort(out)
 	return out, nil

@@ -236,7 +236,7 @@ func (f *fctx) unionSwitch(n parser.Node, subj string, u TUnion, arm func(m Type
 		f.emit("case %s:", goT)
 		if msg, ok := bad[i]; ok {
 			f.emit("\t_ = %s", sw)
-			f.emit("\tpanic(NewTypeError(Ref(String(%q))))", "rb2go: "+msg)
+			f.emit("\tpanic(NewTypeError(Ref(String(%q))))", "rugaroo: "+msg)
 			continue
 		}
 		saved := f.enterBlock()

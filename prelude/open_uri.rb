@@ -112,7 +112,7 @@ module OpenURI
 
   class TooManyRedirects < HTTPError; end
 
-  # MRI's OpenURI::Options keys rb2go acts on; any other key is a compile error.
+  # MRI's OpenURI::Options keys rugaroo acts on; any other key is a compile error.
   class OpenOptions < Object
     #: (?read_timeout: Float?, ?open_timeout: Float?, ?redirect: bool, ?max_redirects: Integer?, ?http_basic_authentication: Array[String]?, ?progress_proc: (^(Integer) -> void)?, ?content_length_proc: (^(Integer?) -> void)?, ?ssl_verify_mode: Integer?) -> void
     def initialize(read_timeout: nil, open_timeout: nil, redirect: true, max_redirects: nil, http_basic_authentication: nil, progress_proc: nil, content_length_proc: nil, ssl_verify_mode: nil)

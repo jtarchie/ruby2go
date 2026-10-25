@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 
 # The name and reference patterns of rexml 3.4.4's xmltokens.rb and parsers/baseparser.rb, verbatim, for programs
-# that build their own regexps from them (kramdown); rb2go's REXML parses in Go (decision 114), so the parser itself is not here.
+# that build their own regexps from them (kramdown); rugaroo's REXML parses in Go (decision 114), so the parser itself is not here.
 module REXML
   module XMLTokens
     # rexml builds these from local Arrays of ranges; their values, as literals

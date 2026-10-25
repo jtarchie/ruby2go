@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // Generic struct classes are monomorphized (decision 308): a template is never emitted, each closed instantiation is a cloned struct class.

@@ -2,7 +2,7 @@
 # rbs_inline: enabled
 
 # Integers past 64 bits, as MRI grows them: this file's magic comment (or
-# `rb2go build --int-overflow=promote`) turns a growing local into a Bignum.
+# `rugaroo build --int-overflow=promote`) turns a growing local into a Bignum.
 
 # Factorial: the product outgrows 64 bits at 21!.
 f = 1

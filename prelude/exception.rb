@@ -304,7 +304,7 @@ class ArgumentError < StandardError; end
 
 class TypeError < StandardError; end
 
-# name and receiver are the call that failed, when rb2go raised it (a dynamic call on an untyped value).
+# name and receiver are the call that failed, when rugaroo raised it (a dynamic call on an untyped value).
 class NameError < StandardError
   # @rbs @name: untyped
   # @rbs @receiver: untyped
@@ -479,9 +479,9 @@ class ScriptError < Exception; end
 class LoadError < ScriptError; end
 
 #: (String) -> bot
-def __rb2go_load_error(name) = raise(LoadError, "cannot load such file -- #{name}")
+def __rugaroo_load_error(name) = raise(LoadError, "cannot load such file -- #{name}")
 
-# Never raised by rb2go (there is no eval); MRI's default message.
+# Never raised by rugaroo (there is no eval); MRI's default message.
 class SyntaxError < ScriptError
   #: (?String?) -> void
   def initialize(message = nil)

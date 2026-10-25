@@ -7,10 +7,10 @@ To reproduce:
 
 ```sh
 RUNS=9 MARKDOWN=1 scripts/benchmark          # this table; SPINEL=/path/to/spinel adds that column
-COLS=ruby,rb2go scripts/benchmark fib array  # some columns, some workloads
+COLS=ruby,rugaroo scripts/benchmark fib array  # some columns, some workloads
 ```
 
-| workload | MRI | MRI+YJIT | rb2go | spinel | Crystal | Go |
+| workload | MRI | MRI+YJIT | rugaroo | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
 | `fib(32)` | 0.27s | 0.092s | 0.017s | 0.014s | 0.017s | 0.014s |
 | `Hash` counting, 500k | 0.11s | 0.096s | 0.015s | 0.007s | 0.012s | 0.009s |
@@ -42,7 +42,7 @@ those two were rerun on their own.
 
 ## What the columns are
 
-- **rb2go** and **spinel** ([matz/spinel](https://github.com/matz/spinel), a
+- **rugaroo** and **spinel** ([matz/spinel](https://github.com/matz/spinel), a
   Ruby-to-C compiler) compile the same unmodified `.rb` file. A "-" means it
   did not compile it or printed something other than MRI: spinel cannot load
   the gems or one `objects.rb` construct.
@@ -59,7 +59,7 @@ those two were rerun on their own.
 
 ## Reading the numbers
 
-Where rb2go trails the native columns, the cost is mostly in its Ruby
+Where rugaroo trails the native columns, the cost is mostly in its Ruby
 semantics: a frozen check on every mutation, a Hash
 that keeps insertion order, and `T?` still boxed for a class with subclasses or type parameters (decisions 359-360 made
 other leaf classes plain pointers with a plain `nil`, which put splay ahead
@@ -68,7 +68,7 @@ regexp, collections, blocks and JSON, where spinel's runtime library is
 thinner. Against Crystal it wins on exceptions, which Crystal unwinds with a
 backtrace per raise.
 
-The closest rows to MRI are JSON and kramdown. MRI's `json` is a C extension; rb2go's
+The closest rows to MRI are JSON and kramdown. MRI's `json` is a C extension; rugaroo's
 generator writes into one buffer instead of a String per nested value
 (decision 346), and its parser builds Hashes on an entry array (decision 350). kramdown spends its regex time partly on
 patterns RE2 cannot match (lookbehinds, atomic groups, backreferences), which
@@ -77,19 +77,19 @@ run on the regexp2 backtracker (decisions 242, 332, 347).
 `Math` calls Go's `math` package directly, so a printed transcendental can
 differ from MRI in the last digit — Go and MRI's libm are both within one
 ulp and neither is uniquely correct ([decision 43](docs/decisions/043.md)).
-Ahead-of-time compilation is the other trade: `rb2go build` is ~0.3s warm
+Ahead-of-time compilation is the other trade: `rugaroo build` is ~0.3s warm
 on hello-world, but the resulting binary starts in under 10ms (MRI ~60ms).
 
 ## Integer overflow modes
 
-`benchmarks/bignum.rb` carries `# int_overflow: promote`, so rb2go compiles it
+`benchmarks/bignum.rb` carries `# int_overflow: promote`, so rugaroo compiles it
 with Bignums ([decision 372](docs/decisions/372.md)) and `scripts/benchmark`
 hands spinel the same `--int-overflow=promote`. A Bignum is a Go `math/big`
-value only past 64 bits; smaller values stay machine words. That puts rb2go
+value only past 64 bits; smaller values stay machine words. That puts rugaroo
 ahead of MRI's bignum code (3.6x) and spinel (2x), and between the Crystal
 (GMP) and Go (`math/big`) ports.
 
-What the default `raise` mode's overflow checks cost, measured as rb2go built
+What the default `raise` mode's overflow checks cost, measured as rugaroo built
 with `--int-overflow=wrap` (no checks on `+`, `-`, `*`, `-@`) against the
 default, median of 9 paired runs per workload:
 

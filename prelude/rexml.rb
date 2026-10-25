@@ -862,7 +862,7 @@ module REXML
         name = m[1] || ""
         return cands.select { |c| c.is_a?(Element) && !__el(c).elements.to_a(name).empty? }
       end
-      raise "rb2go: XPath predicate [#{pred}] is not supported (decision 114)"
+      raise "rugaroo: XPath predicate [#{pred}] is not supported (decision 114)"
     end
 
     # An XPath node known to be an Element, typed.
@@ -887,7 +887,7 @@ module REXML
         j = i
         j += 1 while j < n && path[j] != "/" && path[j] != "["
         test = path[i...j] || ""
-        raise "rb2go: XPath #{path.inspect}: empty step" if test.empty?
+        raise "rugaroo: XPath #{path.inspect}: empty step" if test.empty?
 
         i = j
         preds = [] #: Array[String]

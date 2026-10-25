@@ -10,7 +10,7 @@ import (
 
 // A compiler bug's panic is a returned ErrInternal naming the file, not a raw Go trace (decision 263).
 func TestNonCompilePanicIsInternalError(t *testing.T) {
-	t.Setenv("RB2GO_ERR_STACK", "")
+	t.Setenv("RUGAROO_ERR_STACK", "")
 	opts := options{testHook: func() { panic("boom") }}
 	_, err := compile(context.Background(), os.DirFS("../.."), []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}, &opts)
 	if !errors.Is(err, ErrInternal) {

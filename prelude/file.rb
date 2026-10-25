@@ -86,7 +86,7 @@ class File < Object
     if spec != "" {
       hook := rbFileEncHook.Load()
       if hook == nil {
-        panic(NewNotImplementedError(Ref(String("rb2go: a File mode naming encodings must be passed to File.open, File.new or CSV.open directly (decision 136)"))))
+        panic(NewNotImplementedError(Ref(String("rugaroo: a File mode naming encodings must be passed to File.open, File.new or CSV.open directly (decision 136)"))))
       }
       withEnc = (*hook)(access, spec, bin)
     }

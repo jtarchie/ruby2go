@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# trace: liquid builds its filter classes at run time, so rb2go compiles what an MRI run loads (decisions 296, 331)
+# trace: liquid builds its filter classes at run time, so rugaroo compiles what an MRI run loads (decisions 296, 331)
 
 # The unmodified liquid gem: parse a template once and render it many times with fresh data.
 require "liquid"

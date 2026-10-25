@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // Decision 169: a gem defines far more than a program runs, and code that never runs need not type-check.
@@ -86,7 +86,7 @@ type reach struct {
 	live    map[*Class]bool
 	dynamic string // a computed reflective call, which reaches any name; "" when there is none
 	from    string
-	why     map[string]string // RB2GO_PRUNE_DEBUG: what first reached each name
+	why     map[string]string // RUGAROO_PRUNE_DEBUG: what first reached each name
 	named   map[*Class]bool   // the classes reachable code's constants resolve to
 	byName  map[string]bool   // constants that resolve to no class here: live by last segment
 	file    *File             // what the walk is in, for resolving constants lexically
@@ -164,17 +164,17 @@ func (c *Compiler) pruneGemMethods() {
 func (r *reach) dump() {
 	lines := make([]string, 0, len(r.why))
 	for name, from := range r.why {
-		lines = append(lines, fmt.Sprintf("rb2go: reach %s <- %s", name, from))
+		lines = append(lines, fmt.Sprintf("rugaroo: reach %s <- %s", name, from))
 	}
 	for cls := range r.live {
 		if r.gemClass(cls) {
-			lines = append(lines, "rb2go: live "+cls.RubyName)
+			lines = append(lines, "rugaroo: live "+cls.RubyName)
 		}
 	}
 	sort.Strings(lines)
 	fmt.Fprintln(os.Stderr, strings.Join(lines, "\n"))
 	if r.dynamic != "" {
-		fmt.Fprintf(os.Stderr, "rb2go: gem methods are not pruned: %s\n", r.dynamic)
+		fmt.Fprintf(os.Stderr, "rugaroo: gem methods are not pruned: %s\n", r.dynamic)
 	}
 }
 

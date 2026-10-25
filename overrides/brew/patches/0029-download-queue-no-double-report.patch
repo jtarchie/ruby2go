@@ -2,7 +2,7 @@ Subject: DownloadQueue: report a download once without a TTY
 
 Without cursor movement the queue prints only finished downloads. The pass that redraws pending lines prints one
 that finished after the partition before it, and the next pass prints it again from finished_downloads. MRI's GVL
-makes the window small; under rb2go the download threads run in parallel and several lines print twice.
+makes the window small; under rugaroo the download threads run in parallel and several lines print twice.
 ---
 diff --git a/Library/Homebrew/download_queue.rb b/Library/Homebrew/download_queue.rb
 --- a/Library/Homebrew/download_queue.rb

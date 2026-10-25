@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-// known skips a design-record-disagreeing case unless RB2GO_RUN_SKIPPED=1, like `# skip:` in testdata.
+// known skips a design-record-disagreeing case unless RUGAROO_RUN_SKIPPED=1, like `# skip:` in testdata.
 func known(t *testing.T, reason string) {
 	t.Helper()
-	if os.Getenv("RB2GO_RUN_SKIPPED") == "" {
+	if os.Getenv("RUGAROO_RUN_SKIPPED") == "" {
 		t.Skip("known: " + reason)
 	}
 }

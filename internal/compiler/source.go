@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 // File is one parsed Ruby source file.

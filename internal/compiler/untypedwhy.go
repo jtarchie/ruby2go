@@ -6,7 +6,7 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// RB2GO_UNTYPED_WHY (debug only): the root a dynamic call's untyped receiver came from, so work on typing gem code
+// RUGAROO_UNTYPED_WHY (debug only): the root a dynamic call's untyped receiver came from, so work on typing gem code
 // goes where the untyped values start, not where they are used.
 
 // noteAnyOrigin records, for an untyped local, what its first untyped value was.
@@ -126,7 +126,7 @@ func typeString(t Type) string {
 	return t.String()
 }
 
-// setAnyOrigin records why for local name, when RB2GO_UNTYPED_WHY is on.
+// setAnyOrigin records why for local name, when RUGAROO_UNTYPED_WHY is on.
 func (f *fctx) setAnyOrigin(name, why string) {
 	if !f.c.env.UntypedWhy {
 		return

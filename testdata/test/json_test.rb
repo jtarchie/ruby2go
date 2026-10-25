@@ -90,7 +90,7 @@ module JsonTests
       assert_equal JSON::NestingError, JsonTests.raised { JSON.load(JsonTests.parse_text(101), max_nesting: 5) }
     end
 
-    # the gem hits end of input (ParserError), rb2go its internal cap (NestingError); Go's own decoder also stops at 10000, so this guards the class, not a crash
+    # the gem hits end of input (ParserError), rugaroo its internal cap (NestingError); Go's own decoder also stops at 10000, so this guards the class, not a crash
     def test_parse_unlimited_still_cannot_overflow_the_stack
       klass = JsonTests.raised { JSON.parse("[" * 8_000_000, max_nesting: false) }
       assert_equal true, [JSON::ParserError, JSON::NestingError].include?(klass)
@@ -162,7 +162,7 @@ module JsonTests
       assert_equal "[\"a /\\u0001\\\"\\\\é😀\"]", JSON.generate(["a /\u0001\"\\é😀"])
     end
 
-    # the gem's unlimited cycle ends in SystemStackError, rb2go's in its internal cap
+    # the gem's unlimited cycle ends in SystemStackError, rugaroo's in its internal cap
     def test_generate_unlimited_cycle_cannot_overflow_the_stack
       a = [] #: Array[untyped]
       a << a

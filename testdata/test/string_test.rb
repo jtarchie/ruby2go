@@ -915,7 +915,7 @@ B
       assert_equal "", dn.to_s
       assert_equal "nil", dn.inspect
       assert_raises(TypeError) { d.center("x") }
-      err = begin # rb2go's dynamic argument check (decision 20) words this TypeError differently from MRI's Regexp check
+      err = begin # rugaroo's dynamic argument check (decision 20) words this TypeError differently from MRI's Regexp check
         d.split(1)
         nil
       rescue TypeError => e
@@ -1287,7 +1287,7 @@ B
     end
   end
 
-  # Array#pack and the rest of String#unpack (#54, decision 138); binary results compare as bytes since rb2go's inspect has no binary encoding.
+  # Array#pack and the rest of String#unpack (#54, decision 138); binary results compare as bytes since rugaroo's inspect has no binary encoding.
   class StringPackTest < Minitest::Test
     LONG = "hello world, this is long enough to wrap beyond forty five bytes!!" #: String
 
@@ -1767,7 +1767,7 @@ B
     end
 
     def test_binary_flavor_binread_round_trip
-      path = File.join(Dir.tmpdir, "rb2go_string_binread_#{Process.pid}.bin")
+      path = File.join(Dir.tmpdir, "rugaroo_string_binread_#{Process.pid}.bin")
       File.write(path, "é!")
       data = File.binread(path)
       File.delete(path)
@@ -1787,7 +1787,7 @@ B
       s.force_encoding("UTF-8")
       assert_equal 1, s.size
       assert_equal [[49, 57, 53, 44, 49, 54, 57, 44], 2], [string_bin_lm_gsub.bytes, string_bin_lm_index]
-      path = File.join(Dir.tmpdir, "rb2go_string_read_#{Process.pid}.txt")
+      path = File.join(Dir.tmpdir, "rugaroo_string_read_#{Process.pid}.txt")
       File.write(path, "héllo")
       sizes = File.open(path) { |f| [f.read(nil).size] } + File.open(path) { |f| [f.read(3).size] }
       File.delete(path)

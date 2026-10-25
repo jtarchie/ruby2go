@@ -56,7 +56,7 @@ func (f *fctx) unionIsA(n parser.Node, recv expr, u TUnion, cls *Class) string {
 		case mc != nil && !cls.IsModule && cls.isSubclassOf(mc):
 			tests = append(tests, f.c.isAGoType(cls))
 		case mc != nil && cls.IsModule && mc.includedBelow(cls):
-			f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", cls.RubyName, m)
+			f.errorf(n, "is_a?(%s) on %s cannot be checked: rugaroo has no runtime record of included modules", cls.RubyName, m)
 		}
 		all = false
 	}
@@ -286,7 +286,7 @@ func (f *fctx) moduleIsA(n parser.Node, t Type, mod *Class) string {
 		return "true"
 	case isNil(t):
 	case !ok || c.C.includedBelow(mod):
-		f.errorf(n, "is_a?(%s) on %s cannot be checked: rb2go has no runtime record of included modules", mod.RubyName, t)
+		f.errorf(n, "is_a?(%s) on %s cannot be checked: rugaroo has no runtime record of included modules", mod.RubyName, t)
 	}
 	return "false"
 }

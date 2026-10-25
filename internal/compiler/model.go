@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // Class is a Ruby class or module.
@@ -35,7 +35,7 @@ type Class struct {
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
 	ivarDecls     []ivarDecl
 	singletonDefs []singletonDef
-	perRun        []string // a Class.new literal whose block runs statements: a fresh class object per evaluation, its body `self.rb2go_class_body` taking these captured locals (decision 259)
+	perRun        []string // a Class.new literal whose block runs statements: a fresh class object per evaluation, its body `self.rugaroo_class_body` taking these captured locals (decision 259)
 	isPerRun      bool
 	singletonMisc []singletonMisc   // attr_*/alias inside `class << self`, applied to the metaclass once it exists
 	privateNew    bool              // `private_class_method :new`
@@ -170,7 +170,7 @@ type Method struct {
 	Scope       []*Class // lexical scope (Module.nesting), innermost last
 	sigText     string
 	declared    bool   // a `#:` or Sorbet sig typed it: its param types are the author's, not guessed (decision 241)
-	retWhy      string // RB2GO_UNTYPED_WHY: why inferRet left the return untyped
+	retWhy      string // RUGAROO_UNTYPED_WHY: why inferRet left the return untyped
 	roundRet    bool   // untyped only this inference round, its parameters typed from use not known yet: no local widens to it (decision 358)
 	retUnion    Type   // a gem sig's `U | String` return, untyped as declared (decision 172): a call that leaves U unbound gets String (decision 321)
 	sig         *rbs.MethodType

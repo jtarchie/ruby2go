@@ -49,7 +49,7 @@ func (c *Compiler) collectObjectExtends(ctx context.Context) {
 }
 
 func (c *Compiler) compileObjectExtend(ctx context.Context, k int, s extSite) {
-	flag := fmt.Sprintf("@__rb2go_ext_%d", k)
+	flag := fmt.Sprintf("@__rugaroo_ext_%d", k)
 	top := s.cls
 	for _, mm := range s.mod.MethodList {
 		if mm.Node == nil || mm.Node.Receiver != nil || mm.File == nil {
@@ -75,14 +75,14 @@ func (c *Compiler) compileObjectExtend(ctx context.Context, k int, s extSite) {
 			c.warn(om.File, om.Node, "extend %s: %s's parameters cannot be passed on; the def runs as is", s.mod.RubyName, mm.Name)
 			continue
 		}
-		orig := fmt.Sprintf("__rb2go_orig_%d_%s", k, goMethodName(mm.Name))
-		ext := fmt.Sprintf("__rb2go_ext_%d_%s", k, goMethodName(mm.Name))
+		orig := fmt.Sprintf("__rugaroo_orig_%d_%s", k, goMethodName(mm.Name))
+		ext := fmt.Sprintf("__rugaroo_ext_%d_%s", k, goMethodName(mm.Name))
 		c.addSynthDefs(ctx, om.File, om.Node, host, renamedDef(om.File, om.Node, orig))
 		c.addSynthDefs(ctx, mm.File, mm.Node, host, superAs(mm.File, mm.Node, ext, orig))
 		c.prependToDef(ctx, host, om, fmt.Sprintf("; if %s; return %s(%s); end", flag, ext, fwd))
 		c.keepNames = append(c.keepNames, orig, ext)
 	}
-	set := fmt.Sprintf("__rb2go_extset_%d", k)
+	set := fmt.Sprintf("__rugaroo_extset_%d", k)
 	c.addSynthDefs(ctx, s.m.File, s.call, top, fmt.Sprintf("def %s\n  %s = true\n  self\nend\n", set, flag))
 	resetMsets(top)
 	c.keepNames = append(c.keepNames, set)

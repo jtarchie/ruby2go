@@ -194,7 +194,7 @@ class Module < Object
 end
 
 class Class < Module
-  # The parent's class object; nil above Object, whose BasicObject has none in rb2go.
+  # The parent's class object; nil above Object, whose BasicObject has none in rugaroo.
   #: () -> Class?
   def superclass = %x{
     t, ok := any(self).(interface{ _Superclass() any })

@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 // MRI's Class.new/Module.new make a class at run time; a closed world
@@ -172,7 +172,7 @@ func (c *Compiler) declareAnon(ctx context.Context, f *File, call *parser.CallNo
 }
 
 // declareAnonRun makes a Class.new block's statements (`@x = v`, `desc st.desc`, ...) the class's singleton
-// `__rb2go_body`, its parameters the enclosing method's locals they read: each evaluation of the literal makes a
+// `__rugaroo_body`, its parameters the enclosing method's locals they read: each evaluation of the literal makes a
 // fresh class object and calls it there, so each class object holds its own class-level state (decision 259).
 func (c *Compiler) declareAnonRun(f *File, call *parser.CallNode, cls *Class, run []parser.Node, scope []*Class) {
 	caps := []string{}
@@ -222,7 +222,7 @@ func (c *Compiler) declareAnonRun(f *File, call *parser.CallNode, cls *Class, ru
 
 // anonBodyName is a per-run Class.new block's statements as a singleton method (decision 259); not a Ruby identifier
 // a program can call by accident.
-const anonBodyName = "rb2go_class_body"
+const anonBodyName = "rugaroo_class_body"
 
 // anonDefineMethod is `define_method(:name) do ... end` in a per-run Class.new block: a def of the hidden class at
 // compile time when its block reads no enclosing local, the call itself a no-op (decisions 198, 259).

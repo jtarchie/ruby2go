@@ -13,7 +13,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 var (
@@ -55,7 +55,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		if dir, rel := under(f, l.StdDirs); dir != "" {
 			name := strings.TrimSuffix(rel, filepath.Ext(rel))
 			if first, _, _ := strings.Cut(name, "/"); builtinLib(name) || mriLibs[first] && first != "enc" {
-				add(name) // MRI internals (encodings, portable Ruby's helpers) have no rb2go meaning
+				add(name) // MRI internals (encodings, portable Ruby's helpers) have no rugaroo meaning
 			}
 			continue
 		}
@@ -185,7 +185,7 @@ func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, ru
 		return nil, nil, err
 	}
 	src = append(src, more...)
-	dir, err := os.MkdirTemp("", "rb2go-entry-")
+	dir, err := os.MkdirTemp("", "rugaroo-entry-")
 	if err != nil {
 		return nil, nil, fmt.Errorf("trace: %w", err)
 	}

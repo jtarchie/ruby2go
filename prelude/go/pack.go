@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -42,7 +42,7 @@ func rbPackParse(format, what string) []rbPackDir {
 			continue
 		}
 		if d == 'P' || d == 'p' {
-			panic(NewArgumentError(Ref(String("rb2go: " + what + " directive '" + string(d) + "' (a C pointer) is not supported"))))
+			panic(NewArgumentError(Ref(String("rugaroo: " + what + " directive '" + string(d) + "' (a C pointer) is not supported"))))
 		}
 		if strings.IndexByte("aAZBbHhuMmUwCcSsLlQqJjIinNvVDdFfEeGgxX@", d) < 0 {
 			shown := string(d)

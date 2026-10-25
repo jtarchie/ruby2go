@@ -87,7 +87,7 @@ func (f *fctx) genClassStmt(cs *classStmt) {
 		}
 		return
 	}
-	f.c.keepGoing(func() { f.genClassStmt0(cs) }) // RB2GO_KEEP_GOING: main's load-time statements too
+	f.c.keepGoing(func() { f.genClassStmt0(cs) }) // RUGAROO_KEEP_GOING: main's load-time statements too
 }
 
 func (f *fctx) genClassStmt0(cs *classStmt) {
@@ -271,7 +271,7 @@ func (f *fctx) genBodyConst(n *parser.ConstantWriteNode) {
 
 // genConstInit assigns a constant's package variable.
 func (f *fctx) genConstInit(k *Const) {
-	f.c.keepGoing(func() { f.genConstInit0(k) }) // RB2GO_KEEP_GOING: main's load-time statements too
+	f.c.keepGoing(func() { f.genConstInit0(k) }) // RUGAROO_KEEP_GOING: main's load-time statements too
 }
 
 func (f *fctx) genConstInit0(k *Const) {

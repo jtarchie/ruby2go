@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# No `#:` annotations: rb2go types each parameter from the calls the
+# No `#:` annotations: rugaroo types each parameter from the calls the
 # program makes, as it types return values from method bodies (example 34).
 
 # A playlist of track lengths, in seconds.

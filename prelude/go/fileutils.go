@@ -1,4 +1,4 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
 // Package prelude is concatenated verbatim into the output (loadPreludeGo); types like File come from generated code.
 package prelude

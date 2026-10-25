@@ -226,7 +226,7 @@ func deleteMethod(ms []*Method, m *Method) []*Method {
 
 func ptr[T any](v T) *T { return &v }
 
-// skipFailingTests dry-emits each user test_ method and spec form (before, let), and one that fails to compile gets `skip "rb2go: <error>"` for a body, so one compile finds every failing test.
+// skipFailingTests dry-emits each user test_ method and spec form (before, let), and one that fails to compile gets `skip "rugaroo: <error>"` for a body, so one compile finds every failing test.
 func (c *Compiler) skipFailingTests() []SkippedTest {
 	var out []SkippedTest
 	for _, cls := range c.classList {
@@ -255,7 +255,7 @@ func (c *Compiler) skipFailingTests() []SkippedTest {
 			loc := m.Node.Location
 			m.Node = &parser.DefNode{Location: loc, Name: m.Node.Name, NameLoc: loc, DefKeywordLoc: loc, Body: &parser.StatementsNode{Location: loc, Body: []parser.Node{
 				&parser.CallNode{Location: loc, Name: "skip", Arguments: &parser.ArgumentsNode{Location: loc, Arguments: []parser.Node{
-					&parser.StringNode{Location: loc, Unescaped: parser.RubyString{Value: "rb2go: " + reason}},
+					&parser.StringNode{Location: loc, Unescaped: parser.RubyString{Value: "rugaroo: " + reason}},
 				}}},
 			}}}
 			m.Ret = nil

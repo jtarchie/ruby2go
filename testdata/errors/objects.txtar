@@ -1023,7 +1023,7 @@ class B < A
   alias hi hullo
 end
 -- alias_inherited_primitive.rb --
-# error: main.rb:3: alias of Kernel#inspect: rb2go copies an inherited method only when it is a plain def without super
+# error: main.rb:3: alias of Kernel#inspect: rugaroo copies an inherited method only when it is a plain def without super
 class B
   alias old_inspect inspect
 end
@@ -1057,7 +1057,7 @@ puts K.new.a
 def f(...) = 1
 p f
 -- forward_all_unknown_target.rb --
-# error: main.rb:2: def f(...): its forwarding target is not a method rb2go can see
+# error: main.rb:2: def f(...): its forwarding target is not a method rugaroo can see
 def f(...) = nope(...)
 p f
 -- method_on_proc.rb --
@@ -1148,7 +1148,7 @@ class Box
 end
 p Box::SECRET
 -- forward_all_untyped_receiver.rb --
-# error: main.rb:7: def call(...) forwards to @inner, whose type rb2go does not know before typing bodies
+# error: main.rb:7: def call(...) forwards to @inner, whose type rugaroo does not know before typing bodies
 class Inner
   #: (Integer) -> Integer
   def run(x) = x

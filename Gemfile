@@ -10,29 +10,29 @@ gem "rbs-inline", "~> 0.14", require: false
 # transpiler maps it, and net/http's client, onto Go's net/http.
 gem "webrick", "~> 1.9"
 
-# Gems rb2go compiles unmodified (#82): rack 3.2.7 is what sig/gems/rack was written against.
+# Gems rugaroo compiles unmodified (#82): rack 3.2.7 is what sig/gems/rack was written against.
 gem "rack", "~> 3.2", ">= 3.2.7"
 gem "cuba", "~> 4.0"
 
 # Serves a Rack app on WEBrick under MRI; the transpiler maps it onto Go's net/http too.
 gem "rackup", "~> 2.3"
 
-# Sorbet-typed programs (#95): MRI runs them with the real runtime; rb2go reads `sig {}` as types.
+# Sorbet-typed programs (#95): MRI runs them with the real runtime; rugaroo reads `sig {}` as types.
 gem "sorbet-runtime", "~> 0.6"
 
-# A pure-Ruby priority queue rb2go compiles unmodified (example 120).
+# A pure-Ruby priority queue rugaroo compiles unmodified (example 120).
 gem "pairing_heap", "~> 3.1"
 
 # Type inference without annotations (dev tool, not a test dependency): `bundle exec tyda file.rb`
 # prints inferred RBS. See CLAUDE.md for when to reach for it.
 gem "tyda", require: false, group: :development
 
-# Markdown to HTML (example 123): rb2go compiles the unmodified gem from a traced run (decision 330).
+# Markdown to HTML (example 123): rugaroo compiles the unmodified gem from a traced run (decision 330).
 gem "kramdown", "~> 2.5"
 
 # Templates (example 124): Jekyll 4's liquid, compiled unmodified from a traced run.
 gem "liquid", "~> 4.0"
 gem "bigdecimal", "~> 3.1" # liquid 4 requires it; a bundled gem since Ruby 3.4, so Bundler must list it
 
-# SQLite under MRI for example 122; rb2go maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
+# SQLite under MRI for example 122; rugaroo maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
 gem "sqlite3", "~> 2.10"

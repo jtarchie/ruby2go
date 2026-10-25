@@ -55,7 +55,7 @@ port = server.config[:Port]
 http = Net::HTTP.new("127.0.0.1", port)
 form = { "Content-Type" => "application/x-www-form-urlencoded" }
 [
-  http.get("/hello?name=world&x=1", { "X-Agent" => "rb2go" }),
+  http.get("/hello?name=world&x=1", { "X-Agent" => "rugaroo" }),
   http.post("/items", URI.encode_www_form("item[name]" => "a b", "qty" => "2"), form),
   http.get("/countdown"),
   http.delete("/nope")

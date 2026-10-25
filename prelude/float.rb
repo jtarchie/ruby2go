@@ -108,7 +108,7 @@ class Float < Object
   def __round_1(digits) = %x{
     rbIntDigitsArg(digits)
     if digits <= 0 {
-      panic(NewArgumentError(Ref(String("rb2go: Float#round(digits) needs digits > 0"))))
+      panic(NewArgumentError(Ref(String("rugaroo: Float#round(digits) needs digits > 0"))))
     }
     x := float64(self)
     if digits >= 15 || math.IsInf(x, 0) || math.IsNaN(x) {
@@ -131,7 +131,7 @@ class Float < Object
     x := float64(self)
     rbIntDigitsArg(digits)
     if digits <= 0 {
-      panic(NewArgumentError(Ref(String("rb2go: Float#floor(digits) needs digits > 0"))))
+      panic(NewArgumentError(Ref(String("rugaroo: Float#floor(digits) needs digits > 0"))))
     }
     if digits >= 15 || math.IsInf(x, 0) || math.IsNaN(x) {
       return self
@@ -149,7 +149,7 @@ class Float < Object
     x := float64(self)
     rbIntDigitsArg(digits)
     if digits <= 0 {
-      panic(NewArgumentError(Ref(String("rb2go: Float#ceil(digits) needs digits > 0"))))
+      panic(NewArgumentError(Ref(String("rugaroo: Float#ceil(digits) needs digits > 0"))))
     }
     if digits >= 15 || math.IsInf(x, 0) || math.IsNaN(x) {
       return self

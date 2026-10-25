@@ -1,4 +1,4 @@
-package rb2go
+package rugaroo
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 )
 
 // costLog is set on go build when the test binary is its -toolexec (TestCompileCost).
-const costLog = "RB2GO_COST_LOG"
+const costLog = "RUGAROO_COST_LOG"
 
 // The test binary is its own -toolexec so the report reads rusage portably, without /usr/bin/time's per-OS flags.
 func TestMain(m *testing.M) {
@@ -59,11 +59,11 @@ func TestMain(m *testing.M) {
 	os.Exit(0)
 }
 
-// TestCompileCost is #96's yardstick, opt-in and sequential since it measures memory; no DWARF, as test builds (decision 88, #97): RB2GO_COST=1 (or a comma list of examples) go test -run TestCompileCost -v .
+// TestCompileCost is #96's yardstick, opt-in and sequential since it measures memory; no DWARF, as test builds (decision 88, #97): RUGAROO_COST=1 (or a comma list of examples) go test -run TestCompileCost -v .
 func TestCompileCost(t *testing.T) {
-	want := os.Getenv("RB2GO_COST")
+	want := os.Getenv("RUGAROO_COST")
 	if want == "" {
-		t.Skip("set RB2GO_COST=1 (or a comma list of examples)")
+		t.Skip("set RUGAROO_COST=1 (or a comma list of examples)")
 	}
 	requireToolchain(t)
 	exe, err := os.Executable()

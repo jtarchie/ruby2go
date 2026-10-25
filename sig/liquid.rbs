@@ -1,4 +1,4 @@
-# The liquid gem ships no signatures; this is what an example's `rbs validate` needs (rb2go compiles the gem itself from a traced run).
+# The liquid gem ships no signatures; this is what an example's `rbs validate` needs (rugaroo compiles the gem itself from a traced run).
 module Liquid
   class Error < StandardError
   end

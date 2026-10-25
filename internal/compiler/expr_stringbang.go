@@ -363,7 +363,7 @@ func (f *fctx) stringSliceBang(n *parser.CallNode, args []parser.Node, cur func(
 	return expr{code: got, typ: TOpt{Elem: str}}, true
 }
 
-// genOutBuffer is a gem's `io.read_nonblock(n, buf)` (readpartial, read, sysread): MRI fills buf in place; rb2go's
+// genOutBuffer is a gem's `io.read_nonblock(n, buf)` (readpartial, read, sysread): MRI fills buf in place; rugaroo's
 // Strings do not change, so buf is rebound to what was read, which is also the call's value (decisions 172, 233).
 func (f *fctx) genOutBuffer(n *parser.CallNode) (expr, bool) {
 	args := callArgs(n)

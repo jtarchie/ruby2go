@@ -1,4 +1,4 @@
-package rb2go
+package rugaroo
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jtarchie/ruby2go/internal/compiler"
+	"github.com/jtarchie/rugaroo/internal/compiler"
 )
 
 // FuzzCompile: any input either compiles or fails with a compile error; an internal panic is a bug, whether compileSafe caught it or the compiler returned it as compiler.ErrInternal (decision 263). Under -fuzz it is seeded from every example and testdata/run file; a plain `go test` skips them (each ran through TestExamples/TestRun already, and as seeds they cost ~58 s serially, decision 88).

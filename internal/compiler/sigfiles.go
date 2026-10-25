@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jtarchie/ruby2go/internal/rbs"
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // loadSigs parses .rbs signature files beside each user source (a `sig/`
@@ -120,7 +120,7 @@ func (c *Compiler) loadSigDir(dir string, shipped bool) {
 		f, perr := rbs.ParseFile(string(data))
 		if perr != nil && shipped {
 			if c.env.GemWarnings {
-				c.addWarning(nil, fmt.Sprintf("%s: skipped, rb2go cannot read it: %v (decision 306)", path, perr))
+				c.addWarning(nil, fmt.Sprintf("%s: skipped, rugaroo cannot read it: %v (decision 306)", path, perr))
 			}
 			return nil
 		}
@@ -166,7 +166,7 @@ func (c *Compiler) sigMethod(cls *Class, name string) *rbs.MethodDecl {
 	return nil
 }
 
-// eraseGemGenerics drops a shipped sig's type params where rb2go cannot keep them: a class whose superclass is a core
+// eraseGemGenerics drops a shipped sig's type params where rugaroo cannot keep them: a class whose superclass is a core
 // @go_type (only decision 165's Hash subclass is generic, over V alone). A struct class keeps them: decisions 308-312.
 func (c *Compiler) eraseGemGenerics(path string, d *rbs.ClassDecl) {
 	if d.IsModule || len(d.TypeParams) == 0 {

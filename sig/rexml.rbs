@@ -1,5 +1,5 @@
 # REXML's signatures, vendored: neither the rbs gem nor rexml ships any (decision 110).
-# The subset rb2go ports (decision 114).
+# The subset rugaroo ports (decision 114).
 module REXML
   class ParseException < RuntimeError
   end

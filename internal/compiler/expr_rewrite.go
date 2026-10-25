@@ -74,7 +74,7 @@ func (f *fctx) runtimeExtend(n *parser.CallNode) (expr, bool) {
 		}
 		checks = append(checks, f.isACheck(n, self, a))
 	}
-	msg := fmt.Sprintf("rb2go: extend at run time is not supported (%s:%d)", f.f.Name, f.f.line(n.Location.StartOffset))
+	msg := fmt.Sprintf("rugaroo: extend at run time is not supported (%s:%d)", f.f.Name, f.f.line(n.Location.StartOffset))
 	f.emit("if !(%s) {", strings.Join(checks, " && "))
 	f.emit("\tpanic(NewNotImplementedError(Ref(String(%q))))", msg)
 	f.emit("}")
@@ -104,7 +104,7 @@ func (f *fctx) noteRuntimeRegexp(n *parser.CallNode) {
 	}
 }
 
-// callSugar rewrites a call into the form rb2go compiles (decision 241): `ENV.fetch(k, d)` is `ENV[k] || d` (an ENV
+// callSugar rewrites a call into the form rugaroo compiles (decision 241): `ENV.fetch(k, d)` is `ENV[k] || d` (an ENV
 // value is a String, so this is fetch's answer whatever d is), and renamedCall's.
 func (f *fctx) callSugar(n *parser.CallNode, expected Type) (expr, bool) {
 	if r, ok := n.Receiver.(*parser.ConstantReadNode); ok && r.Name == "ENV" && n.Name == "fetch" && len(callArgs(n)) == 2 && n.Block == nil {

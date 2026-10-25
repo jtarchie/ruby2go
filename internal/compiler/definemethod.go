@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 // No run-time define_method: boot's methods become defs with captures baked in, and the call is a no-op (decision 198).
@@ -113,7 +113,7 @@ func (c *Compiler) defineMethodSource(site *dmSite, e boot.MethodInfo) string {
 	if e.Singleton {
 		b.WriteString("self.")
 	}
-	b.WriteString("__rb2go_dm") // the real name may not be an identifier (`gcc-11`); collectDefineMethod sets it on the node
+	b.WriteString("__rugaroo_dm") // the real name may not be an identifier (`gcc-11`); collectDefineMethod sets it on the node
 	if bp, ok := blk.Parameters.(*parser.BlockParametersNode); ok && bp.Parameters != nil {
 		b.WriteString("(" + f.text(bp.Parameters.Location) + ")")
 	}
@@ -384,11 +384,11 @@ func (c *Compiler) emitSelfSingletons(ctx context.Context, cls *Class, sites []s
 			params = append(params, s.m.File.text(bp.Parameters.Location))
 		}
 		capArgs := strings.Join(s.caps, ", ")
-		fmt.Fprintf(&b, "def __rb2go_smdef_%d(__rb2go_name%s)\n  @__rb2go_sm = (@__rb2go_sm || []) + [[%d, __rb2go_name.to_s%s]]\n  nil\nend\n",
+		fmt.Fprintf(&b, "def __rugaroo_smdef_%d(__rugaroo_name%s)\n  @__rugaroo_sm = (@__rugaroo_sm || []) + [[%d, __rugaroo_name.to_s%s]]\n  nil\nend\n",
 			i, prefixComma(capArgs), i, prefixComma(capArgs))
-		fmt.Fprintf(&b, "def __rb2go_sm_%d(%s)\n%s\nend\n", i, strings.Join(params, ", "), blockAsMethodBody(s.m.File, s.blk))
+		fmt.Fprintf(&b, "def __rugaroo_sm_%d(%s)\n%s\nend\n", i, strings.Join(params, ", "), blockAsMethodBody(s.m.File, s.blk))
 		if s.name == "" {
-			fmt.Fprintf(&dispatch, "    return __rb2go_sm_%d(%s*__rb2go_args) if __rb2go_e[0] == %d\n", i, smCaps(len(s.caps)), i)
+			fmt.Fprintf(&dispatch, "    return __rugaroo_sm_%d(%s*__rugaroo_args) if __rugaroo_e[0] == %d\n", i, smCaps(len(s.caps)), i)
 		}
 		if c.smSites[s.call] == nil {
 			loc := s.call.Location
@@ -397,16 +397,16 @@ func (c *Compiler) emitSelfSingletons(ctx context.Context, cls *Class, sites []s
 			for _, name := range s.caps {
 				args = append(args, &parser.LocalVariableReadNode{Location: loc, Name: name})
 			}
-			c.smSites[s.call] = &parser.CallNode{Location: loc, Receiver: s.call.Receiver, Name: fmt.Sprintf("__rb2go_smdef_%d", i), Arguments: &parser.ArgumentsNode{Location: loc, Arguments: args}}
+			c.smSites[s.call] = &parser.CallNode{Location: loc, Receiver: s.call.Receiver, Name: fmt.Sprintf("__rugaroo_smdef_%d", i), Arguments: &parser.ArgumentsNode{Location: loc, Arguments: args}}
 		}
-		c.keepNames = append(c.keepNames, fmt.Sprintf("__rb2go_smdef_%d", i), fmt.Sprintf("__rb2go_sm_%d", i))
+		c.keepNames = append(c.keepNames, fmt.Sprintf("__rugaroo_smdef_%d", i), fmt.Sprintf("__rugaroo_sm_%d", i))
 	}
-	b.WriteString("def __rb2go_smfind(s)\n  l = @__rb2go_sm\n  return nil unless l\n  i = l.size - 1\n  while i >= 0\n    e = l[i]\n    return e if e[1] == s\n    i -= 1\n  end\n  nil\nend\n")
+	b.WriteString("def __rugaroo_smfind(s)\n  l = @__rugaroo_sm\n  return nil unless l\n  i = l.size - 1\n  while i >= 0\n    e = l[i]\n    return e if e[1] == s\n    i -= 1\n  end\n  nil\nend\n")
 	if computed {
-		b.WriteString("def method_missing(__rb2go_sym, *__rb2go_args)\n  __rb2go_e = __rb2go_smfind(__rb2go_sym.to_s)\n  if __rb2go_e\n")
+		b.WriteString("def method_missing(__rugaroo_sym, *__rugaroo_args)\n  __rugaroo_e = __rugaroo_smfind(__rugaroo_sym.to_s)\n  if __rugaroo_e\n")
 		b.WriteString(dispatch.String())
 		b.WriteString("  end\n  super\nend\n")
-		b.WriteString("def respond_to_missing?(__rb2go_sym, __rb2go_all = false)\n  !__rb2go_smfind(__rb2go_sym.to_s).nil? || super\nend\n")
+		b.WriteString("def respond_to_missing?(__rugaroo_sym, __rugaroo_all = false)\n  !__rugaroo_smfind(__rugaroo_sym.to_s).nil? || super\nend\n")
 	}
 	f := sites[ids[0]].m.File
 	c.addSynthDefs(ctx, f, sites[ids[0]].call, cls, b.String())
@@ -414,7 +414,7 @@ func (c *Compiler) emitSelfSingletons(ctx context.Context, cls *Class, sites []s
 		c.overrideWithSingletons(ctx, cls, name, sites, overrides[name])
 	}
 	resetMsets(cls)
-	c.keepNames = append(c.keepNames, "__rb2go_smfind")
+	c.keepNames = append(c.keepNames, "__rugaroo_smfind")
 	if computed {
 		for _, name := range []string{"method_missing", "respond_to_missing?"} {
 			if !slices.Contains(c.keepNames, name) {
@@ -429,7 +429,7 @@ func (c *Compiler) addSynthDefs(ctx context.Context, f *File, at parser.Node, cl
 	const label = "define_singleton_method template"
 	sf := c.synthFile(ctx, f, at, label, src, synthOpt{Origin: originSource, Pin: true})
 	for _, def := range c.synthDefs(f, at, label, sf) {
-		c.addDef(sf, cls, def, def.Name != "method_missing" && !strings.HasPrefix(def.Name, "__rb2go_smdef_") && !slices.Contains(public, def.Name), c.nestingOf(cls)) // a recording call may have a receiver
+		c.addDef(sf, cls, def, def.Name != "method_missing" && !strings.HasPrefix(def.Name, "__rugaroo_smdef_") && !slices.Contains(public, def.Name), c.nestingOf(cls)) // a recording call may have a receiver
 	}
 }
 
@@ -444,9 +444,9 @@ func (c *Compiler) overrideWithSingletons(ctx context.Context, cls *Class, name 
 		return
 	}
 	var pro strings.Builder
-	pro.WriteString("; __rb2go_e = __rb2go_smfind(" + fmt.Sprintf("%q", name) + "); if __rb2go_e;")
+	pro.WriteString("; __rugaroo_e = __rugaroo_smfind(" + fmt.Sprintf("%q", name) + "); if __rugaroo_e;")
 	for _, i := range ids {
-		fmt.Fprintf(&pro, " return __rb2go_sm_%d(%s%s) if __rb2go_e[0] == %d;", i, smCaps(len(sites[i].caps)), fwd, i)
+		fmt.Fprintf(&pro, " return __rugaroo_sm_%d(%s%s) if __rugaroo_e[0] == %d;", i, smCaps(len(sites[i].caps)), fwd, i)
 	}
 	pro.WriteString(" end")
 	c.prependToDef(ctx, cls, om, pro.String())
@@ -507,7 +507,7 @@ func defForwardArgs(d *parser.DefNode) (string, bool) {
 func smCaps(n int) string {
 	var b strings.Builder
 	for j := range n {
-		fmt.Fprintf(&b, "__rb2go_e[%d], ", j+2)
+		fmt.Fprintf(&b, "__rugaroo_e[%d], ", j+2)
 	}
 	return b.String()
 }
@@ -556,7 +556,7 @@ func (c *Compiler) singletonTemplate(ctx context.Context, cls *Class, m *Method,
 	if target == nil || target.lookup("method_missing") != nil && target.lookup("method_missing").Owner == target {
 		return false
 	}
-	src := "def method_missing(" + nameVar.Name + ", *_rb2go_rest)\n" + blockAsMethodBody(m.File, blk) + "\nend\n"
+	src := "def method_missing(" + nameVar.Name + ", *_rugaroo_rest)\n" + blockAsMethodBody(m.File, blk) + "\nend\n"
 	sf, def := c.synthDef(ctx, m.File, n, "define_singleton_method template", src, synthOpt{Origin: originSource, Pin: true})
 	c.addDef(sf, target, def, false, c.nestingOf(target))
 	resetMsets(target)
@@ -681,7 +681,7 @@ func (c *Compiler) collectBootAliases(entries []boot.AliasInfo) {
 }
 
 // latentIvar is a class object's hidden ivar listing the latent includes its run-time include calls made (decision 331).
-const latentIvar = "@__rb2go_included"
+const latentIvar = "@__rugaroo_included"
 
 // collectBootIncludes adds each module a run-time include call added during boot (liquid's Strainer.add_filter:
 // `send(:include, filter)`) to its class as a latent include (decision 331): the methods are compiled in, while
@@ -712,7 +712,7 @@ func (c *Compiler) collectBootIncludes(entries []boot.IncludeInfo) {
 		}
 		f := c.parsed[realPath(e.File)]
 		if f == nil {
-			continue // an include from outside the closed world (a gem rb2go does not compile)
+			continue // an include from outside the closed world (a gem rugaroo does not compile)
 		}
 		target.Includes = append(target.Includes, Include{ref: constRef{node: constPathNode(e.Module, parser.Location{}), file: f},
 			srcPos: srcPos{f, e.Line}, latent: true})

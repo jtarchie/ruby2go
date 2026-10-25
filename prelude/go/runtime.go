@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -455,8 +455,8 @@ func rbTopRecover() {
 	rbFinish(status, main)
 }
 
-// rbFullReport: RB2GO_BACKTRACE set prints an uncaught exception as MRI does, `file:line:in 'x': msg (Class)` and its `from` lines, where the default is `msg (Class)` alone (decision 106).
-var rbFullReport = os.Getenv("RB2GO_BACKTRACE") != ""
+// rbFullReport: RUGAROO_BACKTRACE set prints an uncaught exception as MRI does, `file:line:in 'x': msg (Class)` and its `from` lines, where the default is `msg (Class)` alone (decision 106).
+var rbFullReport = os.Getenv("RUGAROO_BACKTRACE") != ""
 
 // rbFinish runs the at_exit handlers, prints main (an uncaught exception
 // or nil) and exits with the resulting status; it returns only for 0.
@@ -1271,7 +1271,7 @@ func rbWrapPanic(r any) any {
 		if strings.Contains(msg, "index out of range") {
 			return NewIndexError(Ref[String](String(msg)))
 		}
-		if os.Getenv("RB2GO_GO_STACK") != "" { // debugging: where in the Go program it failed (decision 324)
+		if os.Getenv("RUGAROO_GO_STACK") != "" { // debugging: where in the Go program it failed (decision 324)
 			msg += "\n" + string(debug.Stack())
 		}
 		return NewStandardError(Ref[String](String(msg)))
@@ -1785,7 +1785,7 @@ func rbIvarSet(a, name, v any) any {
 	rbFrozenCheck(a)
 	o, ok := a.(interface{ _IvarSet(string, any) bool })
 	if !ok || !o._IvarSet(n, rbUnbox(v)) {
-		panic(NewNameError(Ref(String("rb2go: " + rbClassName(a) + " has no instance variable " + n + " (the closed world fixes each class's ivars)"))))
+		panic(NewNameError(Ref(String("rugaroo: " + rbClassName(a) + " has no instance variable " + n + " (the closed world fixes each class's ivars)"))))
 	}
 	return v
 }
@@ -1814,7 +1814,7 @@ func rbIvarClear[T any](p *T) {
 func rbIvarAssign[T any](dst *T, v any, name string) {
 	x, ok := rbConv[T](v)
 	if !ok {
-		panic(NewTypeError(Ref(String("rb2go: " + rbClassName(v) + " cannot be stored in " + name))))
+		panic(NewTypeError(Ref(String("rugaroo: " + rbClassName(v) + " cannot be stored in " + name))))
 	}
 	*dst = x
 }
@@ -1951,7 +1951,7 @@ func rbBlockArgAny(p any) rbBlockArg {
 	return rbBlockArg{fn: func(xs ...any) any {
 		v, ok := rbDynProcCall(p, xs)
 		if !ok {
-			panic(NewTypeError(Ref(String("rb2go: this Proc cannot be passed on as a block dynamically"))))
+			panic(NewTypeError(Ref(String("rugaroo: this Proc cannot be passed on as a block dynamically"))))
 		}
 		return v
 	}}
@@ -2027,7 +2027,7 @@ func rbIterBreakRecover() {
 }
 
 // rbLibDir is RbConfig's rubylibdir: MRI's library is compiled in, so a require under it names a library (decision 296).
-const rbLibDir = "/rb2go/lib/ruby/4.0.0"
+const rbLibDir = "/rugaroo/lib/ruby/4.0.0"
 
 // rbBlockOf is a T? Proc passed as `&p`: its func, or no block (a nil func) for nil.
 func rbBlockOf[F any](p **F) F {

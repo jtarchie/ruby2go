@@ -1,6 +1,6 @@
-Compile errors for encodings rb2go does not transcode, and String's in-place forms (docs/design.md decision 136).
+Compile errors for encodings rugaroo does not transcode, and String's in-place forms (docs/design.md decision 136).
 -- encode_sjis.rb --
-# error: main.rb:2: encoding Shift_JIS is not supported: rb2go transcodes UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1
+# error: main.rb:2: encoding Shift_JIS is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1
 puts "a".encode("Shift_JIS")
 -- encode_from_cp1252.rb --
 # error: main.rb:2: encoding Windows-1252 is not supported
@@ -27,17 +27,17 @@ Encoding.default_external = "KOI8-R"
 # error: main.rb:2: uninitialized constant
 puts Encoding::Shift_JIS
 -- scrub_bang.rb --
-# error: main.rb:3: undefined method scrub! for String: Strings are immutable in rb2go, so assign the result of scrub instead
+# error: main.rb:3: undefined method scrub! for String: Strings are immutable in rugaroo, so assign the result of scrub instead
 s = "a\xff"
 s.scrub!
 puts s
 -- encode_bang.rb --
-# error: main.rb:3: undefined method encode! for String: Strings are immutable in rb2go, so assign the result of encode instead
+# error: main.rb:3: undefined method encode! for String: Strings are immutable in rugaroo, so assign the result of encode instead
 s = "café"
 s.encode!("US-ASCII", undef: :replace)
 puts s
 -- unicode_normalize_bang.rb --
-# error: main.rb:3: undefined method unicode_normalize! for String: Strings are immutable in rb2go
+# error: main.rb:3: undefined method unicode_normalize! for String: Strings are immutable in rugaroo
 s = "é"
 s.unicode_normalize!
 puts s

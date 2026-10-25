@@ -84,7 +84,7 @@ module JSON
   #: (String, ?Hash[Symbol, untyped]) -> untyped
   def self.parse(str, opts = {}) = %x{ rbJSONParse(string(str), opts) }
 
-  # MRI's .load is .parse with unsafe defaults meant for Marshal-like data (max_nesting stays 100); rb2go's closed, untyped-only world has nothing unsafe to opt out of.
+  # MRI's .load is .parse with unsafe defaults meant for Marshal-like data (max_nesting stays 100); rugaroo's closed, untyped-only world has nothing unsafe to opt out of.
   #: (String, ?Hash[Symbol, untyped]) -> untyped
   def self.load(str, opts = {}) = parse(str, opts)
 end

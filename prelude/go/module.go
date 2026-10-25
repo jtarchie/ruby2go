@@ -1,6 +1,6 @@
-//go:build rb2go_prelude
+//go:build rugaroo_prelude
 
-// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rb2go_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
+// Package prelude is concatenated verbatim into the output (loadPreludeGo). `go vet -tags rugaroo_prelude ./prelude/go` type-checks it against generated stubs for the types generated code declares (0_stubs.go, decision 154).
 package prelude
 
 import (
@@ -207,7 +207,7 @@ func rbModuleCmp(self, other any, above, orEqual bool) *Boolean {
 // have not made yet. ponytail: a subclass object sees its parent's latent includes only once it includes them itself.
 func rbActiveAncestors(self any, all []any) []any {
 	latent := self.(interface{ _Latent() []any })._Latent()
-	on, _ := rbIvarGet(self, Symbol("@__rb2go_included")).(*Array[any])
+	on, _ := rbIvarGet(self, Symbol("@__rugaroo_included")).(*Array[any])
 	out := make([]any, 0, len(all))
 	for _, k := range all {
 		if slices.Contains(latent, k) && (on == nil || !slices.Contains(on.s, k)) {
@@ -223,20 +223,20 @@ func rbActiveAncestors(self any, all []any) []any {
 // the closed world cannot add, so it raises.
 func rbIncludeAtRun(self, mod any) {
 	if t, ok := self.(interface{ _Latent() []any }); ok && slices.Contains(t._Latent(), mod) {
-		on, _ := rbIvarGet(self, Symbol("@__rb2go_included")).(*Array[any])
+		on, _ := rbIvarGet(self, Symbol("@__rugaroo_included")).(*Array[any])
 		if on == nil {
 			on = &Array[any]{}
 		}
 		if !slices.Contains(on.s, mod) {
 			on.s = append(on.s, mod)
 		}
-		rbIvarSet(self, Symbol("@__rb2go_included"), on)
+		rbIvarSet(self, Symbol("@__rugaroo_included"), on)
 		return
 	}
 	if t, ok := self.(interface{ _Ancestors() []any }); ok && slices.Contains(t._Ancestors(), mod) {
 		return
 	}
-	panic(NewNotImplementedError(Ref(String("rb2go: " + rbClassName(mod) + " is included at run time where the traced run did not include it (decision 331)"))))
+	panic(NewNotImplementedError(Ref(String("rugaroo: " + rbClassName(mod) + " is included at run time where the traced run did not include it (decision 331)"))))
 }
 
 // rbNilAny is nil itself for a NilClass-typed value, which Go holds as a typed nil pointer (decision 331).

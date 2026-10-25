@@ -9,10 +9,10 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
-// rubyVersion is what class-body RUBY_VERSION guards fold against: rb2go compiles Ruby 4.0 (decision 167).
+// rubyVersion is what class-body RUBY_VERSION guards fold against: rugaroo compiles Ruby 4.0 (decision 167).
 const rubyVersion = "4.0.0"
 
 // takenBranch is the branch MRI would run of a class-body if/unless whose condition folds (decision 167).

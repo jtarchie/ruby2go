@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Marshal (#47): deep copies, object graphs with shared parts and cycles, and a cache file. rb2go writes its own bytes, so they are never printed.
+# Marshal (#47): deep copies, object graphs with shared parts and cycles, and a cache file. rugaroo writes its own bytes, so they are never printed.
 require "tmpdir"
 
 Item = Struct.new(:sku, :qty, :price) #: [String, Integer, Float]

@@ -3047,7 +3047,7 @@ module ObjectTests
     def test_section_0
       assert_equal 5, (Two.new(2, 3).n)
       # klass.new(1) through singleton(NaBase) on Two stays in testdata/run/object_class_new_arity.rb:
-      # rb2go fails there with a Go type-assertion error, not ArgumentError (decision 19).
+      # rugaroo fails there with a Go type-assertion error, not ArgumentError (decision 19).
       ks = [NaBase, Same] #: Array[singleton(NaBase)]
       assert_equal ["ObjectTests::NaBase: 1", "ObjectTests::Same: 1"], ks.map { |k| "#{k.name}: #{k.new(1).n}" }
     end
@@ -4681,7 +4681,7 @@ module ObjectTests
       assert_equal [true, false], [k&.include?(AncGreets), Comparable.include?(Kernel)]
     end
 
-    # rb2go's own IOReadable and IOWritable are left out, as MRI has neither (decision 139)
+    # rugaroo's own IOReadable and IOWritable are left out, as MRI has neither (decision 139)
     def test_no_prelude_modules
       assert_equal [[], []], [File.ancestors.map(&:to_s).grep(/\AIO[A-Z]/), IO.included_modules.map(&:to_s).grep(/\AIO[A-Z]/)]
     end
@@ -5349,8 +5349,8 @@ module ObjectTests
       attr_accessor :order #: Array[Symbol]
     end
 
-    self.limit = (ENV["RB2GO_NO_SUCH_LIMIT"] || 128).to_i
-    self.limit = (ENV["RB2GO_NO_SUCH_LIMIT_2"] || limit + 1).to_i
+    self.limit = (ENV["RUGAROO_NO_SUCH_LIMIT"] || 128).to_i
+    self.limit = (ENV["RUGAROO_NO_SUCH_LIMIT_2"] || limit + 1).to_i
     @order = [:a, :b]
   end
 
@@ -6151,7 +6151,7 @@ module ObjectTests
     def object_titled(t) = t.object_test_present?
 
     def test_reopened_markers
-      v = ENV["RB2GO_NO_SUCH_VAR"] || false
+      v = ENV["RUGAROO_NO_SUCH_VAR"] || false
       assert_equal [false, true, false, false, true, false], [false.object_test_present?, true.object_test_present?, v.object_test_present?,
                                                              object_titled(nil), object_titled("x"), nil.object_test_present?]
       u = { a: nil, b: 1 } #: Hash[Symbol, untyped]

@@ -67,7 +67,7 @@ func (f *fctx) definedKind(v parser.Node) string {
 			return "class variable"
 		}
 		return ""
-	case *parser.GlobalVariableReadNode: // MRI's builtins always are; rb2go rejects assigning any other (decision 109), so it never is
+	case *parser.GlobalVariableReadNode: // MRI's builtins always are; rugaroo rejects assigning any other (decision 109), so it never is
 		if slices.Contains(mriGlobals, v.Name) {
 			return "global-variable"
 		}
@@ -367,7 +367,7 @@ var englishGlobals = map[string]string{
 	"$INPUT_RECORD_SEPARATOR": "$/", "$RS": "$/",
 }
 
-// genGlobalRead maps the read-only globals rb2go knows (decision 61); $0 is the Ruby file as named at compile time, as `ruby main.rb` sets it.
+// genGlobalRead maps the read-only globals rugaroo knows (decision 61); $0 is the Ruby file as named at compile time, as `ruby main.rb` sets it.
 func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	if short, ok := englishGlobals[n.Name]; ok { // `require "English"`'s names for the punctuation globals
 		alias := *n
@@ -411,7 +411,7 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 	if k := f.c.globals[n.Name]; k != nil { // the program's own (decision 361)
 		return expr{code: k.GoName, typ: f.c.constType(k)}
 	}
-	f.errorf(n, "global variable %s is never assigned; rb2go knows $0, $PROGRAM_NAME, $$, $!, $stdin, $stdout, $stderr, $VERBOSE, $/, $? and the program's own assigned globals (decisions 61, 361)", n.Name)
+	f.errorf(n, "global variable %s is never assigned; rugaroo knows $0, $PROGRAM_NAME, $$, $!, $stdin, $stdout, $stderr, $VERBOSE, $/, $? and the program's own assigned globals (decisions 61, 361)", n.Name)
 	return expr{}
 }
 

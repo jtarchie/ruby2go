@@ -1095,7 +1095,7 @@ class Array < Object
   # @rbs [U] (?Integer) -> Array[U]
   def __flatten_nested(depth = -1) = %x{
     if depth == 0 { // the result would be Array[Array[U]], not this signature's Array[U]
-      panic(NewNotImplementedError(Ref(String("rb2go: flatten(0) of nested Arrays; use dup"))))
+      panic(NewNotImplementedError(Ref(String("rugaroo: flatten(0) of nested Arrays; use dup"))))
     }
     return rbFlattenRows(self.s, int(depth))
   }

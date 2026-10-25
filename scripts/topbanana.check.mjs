@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const { save, planDeploy, deployNames, nextRefreshToken } = await import('./topbanana.mjs');
 const root = mkdtempSync(join(tmpdir(), 'tbcheck-'));
-const dir = join(root, '.config', 'rb2go'), file = join(dir, 'topbanana.json');
+const dir = join(root, '.config', 'rugaroo'), file = join(dir, 'topbanana.json');
 mkdirSync(dir, { recursive: true }); chmodSync(dir, 0o755);
 writeFileSync(file, '{"old":1}'); chmodSync(file, 0o644);
 save({ refresh_token: 'x' }, file);

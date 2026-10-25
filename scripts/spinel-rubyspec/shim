@@ -1,7 +1,7 @@
 #!/bin/bash
-# Stands in for spinel under spinel's tools/rubyspec/run.sh: `spinel F -o BIN` becomes `rb2go build -o BIN F`.
+# Stands in for spinel under spinel's tools/rubyspec/run.sh: `spinel F -o BIN` becomes `rugaroo build -o BIN F`.
 # Its diagnostics are reworded "spinel: file:line: msg" so run.sh's reject-reason ranking reads them.
 f=$1; shift
 out=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift 2;; -c) exit 1;; *) shift;; esac; done
-"${RB2GO:?}" build -o "$out" "$f" 2> >(sed -E 's/^rb2go: /spinel: /' >&2)
+"${RUGAROO:?}" build -o "$out" "$f" 2> >(sed -E 's/^rugaroo: /spinel: /' >&2)

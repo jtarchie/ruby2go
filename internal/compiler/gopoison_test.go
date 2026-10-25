@@ -40,7 +40,7 @@ func main() { fmt.Println(Good(), (&X[int]{}).Bad()) }
 	stubbed := map[string]bool{}
 	code = stubRejected(code, func(fn, _ string) (string, bool) {
 		stubbed[fn] = true
-		return "rb2go: " + fn + " does not compile", fn != ""
+		return "rugaroo: " + fn + " does not compile", fn != ""
 	})
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", code, 0)

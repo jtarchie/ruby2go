@@ -60,7 +60,7 @@ func (c *Compiler) unionFn(u TUnion) string {
 	_, _ = h.Write([]byte(u.String())) // a hash.Hash never fails
 	name := fmt.Sprintf("rbUnion_%016x", h.Sum64())
 	if old, ok := c.unions[name]; ok && old.String() != u.String() {
-		panic(compileError{msg: "rb2go: union helper name collision: " + old.String() + " and " + u.String()}) // never silently share one checker
+		panic(compileError{msg: "rugaroo: union helper name collision: " + old.String() + " and " + u.String()}) // never silently share one checker
 	}
 	c.unions[name] = u
 	return name

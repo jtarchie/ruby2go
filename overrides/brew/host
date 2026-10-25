@@ -1,6 +1,6 @@
 #!/bin/bash
 # host (macOS or Linux): a patched copy of brew at the pinned commit, in work/homebrew, whose bin/brew runs brew.rb
-# compiled by this checkout's rb2go (tools/ruby-wrapper, decision 296). Never touches the installed Homebrew.
+# compiled by this checkout's rugaroo (tools/ruby-wrapper, decision 296). Never touches the installed Homebrew.
 # usage: ./host [source repo, default $(brew --repository)]; then work/homebrew/bin/brew info wget
 set -e
 cd "$(dirname "$0")"
@@ -10,4 +10,4 @@ rm -rf "$dst" && git clone -q "$src" "$dst" && git -C "$dst" checkout -q "${comm
 for p in patches/*.patch; do git -C "$dst" apply "$PWD/$p"; done
 cp -R "$src/Library/Homebrew/vendor/portable-ruby" "$dst/Library/Homebrew/vendor/portable-ruby"
 tools/install-wrapper "$dst" "$(cd ../.. && pwd)"
-echo "HOMEBREW_NO_AUTO_UPDATE=1 $dst/bin/brew info wget   # HOMEBREW_RB2GO_MRI=1 for MRI"
+echo "HOMEBREW_NO_AUTO_UPDATE=1 $dst/bin/brew info wget   # HOMEBREW_RUGAROO_MRI=1 for MRI"

@@ -5,7 +5,7 @@
 
 # @go_type string
 class String < Object
-  # A String as it is, else nil (rb2go has no implicit to_str conversion to try).
+  # A String as it is, else nil (rugaroo has no implicit to_str conversion to try).
   #: (untyped) -> String?
   def self.try_convert(obj) = %x{
     if v, ok := rbUnbox(obj).(String); ok {
@@ -228,7 +228,7 @@ class String < Object
   #: (String) -> bool
   def include?(s) = %x{ Boolean(strings.Contains(string(self), string(s))) }
 
-  # Strings are values in rb2go (decision 136): a new one is its argument's bytes.
+  # Strings are values in rugaroo (decision 136): a new one is its argument's bytes.
   #: (String) -> String
   def self.new(s) = s
 

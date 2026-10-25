@@ -107,7 +107,7 @@ func TestVersionGuards(t *testing.T) {
 	}
 }
 
-// mspec runs every before/after of a describe; rb2go's, like minitest's, would keep only the last.
+// mspec runs every before/after of a describe; rugaroo's, like minitest's, would keep only the last.
 func TestRewriteChainsHooks(t *testing.T) {
 	ctx := context.Background()
 	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest))

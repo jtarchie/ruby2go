@@ -5,7 +5,7 @@ import (
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 
-	"github.com/jtarchie/ruby2go/internal/boot"
+	"github.com/jtarchie/rugaroo/internal/boot"
 )
 
 // A boot "path:line" splits at the last colon, so a gem path holding one still finds its compiled file.

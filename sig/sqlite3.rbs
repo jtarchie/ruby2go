@@ -1,4 +1,4 @@
-# sqlite3-ruby's signatures, vendored: the gem ships none and rb2go's port is prelude/sqlite3.rb (decision 327).
+# sqlite3-ruby's signatures, vendored: the gem ships none and rugaroo's port is prelude/sqlite3.rb (decision 327).
 module SQLite3
   VERSION: String
   SQLITE_VERSION: String
