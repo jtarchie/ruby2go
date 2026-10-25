@@ -135,7 +135,7 @@ func (c *Compiler) loadSigDir(dir string, shipped bool) {
 		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, errors.ErrUnsupported) { // ErrUnsupported: a browser's js/wasm has no filesystem, so no sig dir
 		c.errorf(nil, nil, "%v", err)
 	}
 }
