@@ -68,6 +68,28 @@ pre {
 .install { max-width: 680px; margin: 0 auto; }
 .sub { max-width: 680px; margin: 0 auto 20px; text-align: center; color: var(--muted); }
 .install p { color: var(--muted); text-align: center; margin-top: 12px; }
+.bench { max-width: 860px; margin: 0 auto; }
+.legend { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; font-weight: 400; color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.sw.rg, .bar.rg { background: #f43f5e; } .sw.yj, .bar.yj { background: #8b7fe0; }
+.sw.base { width: 2px; border-radius: 0; background: #fef3c799; }
+.bchart { display: grid; gap: 8px; }
+.brow { display: grid; grid-template-columns: 210px 1fr; align-items: center; gap: 12px; }
+.bname { text-align: right; font-size: 14px; color: var(--muted); line-height: 1.2; }
+.brow:hover .bname { color: var(--fg); }
+.btrack { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 2px 0;
+  background: linear-gradient(to right, transparent calc(var(--one) - 1px), #fef3c799 calc(var(--one) - 1px), #fef3c799 var(--one), transparent var(--one)); }
+.l1 { display: flex; align-items: center; }
+.bar { display: block; height: 9px; border-radius: 0 4px 4px 0; }
+.bval { margin-left: 6px; font-size: 12px; line-height: 9px; color: var(--fg); font-variant-numeric: tabular-nums; }
+.axis .btrack { height: 18px; background: none; }
+.axis .btrack span { position: absolute; transform: translateX(-50%); font-size: 12px; color: var(--muted); }
+.bench details { margin-top: 16px; font-size: 14px; color: var(--muted); }
+.bench summary { cursor: pointer; text-align: center; }
+.bench table { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.bench th, .bench td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+.bench th:first-child, .bench td:first-child { text-align: left; }
+@media (max-width: 600px) { .brow { grid-template-columns: 1fr; gap: 2px; } .bname { text-align: left; } .bench th, .bench td { padding: 4px; } }
 footer { text-align: center; color: var(--muted); font-size: 15px; padding: 32px 16px 48px; border-top: 1px solid var(--line); }
 footer p { margin: 4px 0; }
 footer a { text-decoration: underline; }
@@ -144,6 +166,36 @@ footer a { text-decoration: underline; }
 <span class="c">// plus ToS/Inspect forwarders and a class id for the runtime</span></code></pre>
     </figure>
   </div>
+
+  <h2>About 3× faster than MRI</h2>
+  <p class="sub">Speedup over plain MRI (1×) on the <a href="https://github.com/jtarchie/rugaroo/tree/main/benchmarks">benchmark workloads</a>, against MRI with YJIT. All 18 together take 1.87 s compiled and 5.58 s on MRI. Median of 9 runs on one Apple-silicon machine.</p>
+  <figure class="bench" aria-labelledby="bench-cap">
+    <figcaption id="bench-cap" class="legend"><span><i class="sw rg"></i>rugaroo</span><span><i class="sw yj"></i>MRI + YJIT</span><span><i class="sw base"></i>MRI = 1×</span></figcaption>
+    <div class="bchart" style="--one:5.56%">
+      <div class="brow"><span class="bname">splay tree</span><span class="btrack" title="splay tree: MRI 210 ms, YJIT 120 ms, rugaroo 13 ms"><span class="l1"><span class="bar rg" style="width:89.74%"></span><span class="bval">16×</span></span><span class="bar yj" style="width:9.72%"></span></span></div>
+      <div class="brow"><span class="bname">fib(32)</span><span class="btrack" title="fib(32): MRI 270 ms, YJIT 92 ms, rugaroo 17 ms"><span class="l1"><span class="bar rg" style="width:88.24%"></span><span class="bval">16×</span></span><span class="bar yj" style="width:16.30%"></span></span></div>
+      <div class="brow"><span class="bname">Math.sin/cos</span><span class="btrack" title="Math.sin/cos: MRI 86 ms, YJIT 72 ms, rugaroo 9 ms"><span class="l1"><span class="bar rg" style="width:53.09%"></span><span class="bval">9.6×</span></span><span class="bar yj" style="width:6.64%"></span></span></div>
+      <div class="brow"><span class="bname">binary trees</span><span class="btrack" title="binary trees: MRI 82 ms, YJIT 68 ms, rugaroo 10 ms"><span class="l1"><span class="bar rg" style="width:45.56%"></span><span class="bval">8.2×</span></span><span class="bar yj" style="width:6.70%"></span></span></div>
+      <div class="brow"><span class="bname">Hash counting</span><span class="btrack" title="Hash counting: MRI 110 ms, YJIT 96 ms, rugaroo 15 ms"><span class="l1"><span class="bar rg" style="width:40.74%"></span><span class="bval">7.3×</span></span><span class="bar yj" style="width:6.37%"></span></span></div>
+      <div class="brow"><span class="bname">classes, polymorphic calls</span><span class="btrack" title="classes, polymorphic calls: MRI 260 ms, YJIT 170 ms, rugaroo 36 ms"><span class="l1"><span class="bar rg" style="width:40.12%"></span><span class="bval">7.2×</span></span><span class="bar yj" style="width:8.50%"></span></span></div>
+      <div class="brow"><span class="bname">Array map/select/sum</span><span class="btrack" title="Array map/select/sum: MRI 150 ms, YJIT 140 ms, rugaroo 21 ms"><span class="l1"><span class="bar rg" style="width:39.68%"></span><span class="bval">7.1×</span></span><span class="bar yj" style="width:5.95%"></span></span></div>
+      <div class="brow"><span class="bname">blocks, procs, enumerators</span><span class="btrack" title="blocks, procs, enumerators: MRI 360 ms, YJIT 340 ms, rugaroo 64 ms"><span class="l1"><span class="bar rg" style="width:31.25%"></span><span class="bval">5.6×</span></span><span class="bar yj" style="width:5.88%"></span></span></div>
+      <div class="brow"><span class="bname">sort_by/group_by/tally, Set</span><span class="btrack" title="sort_by/group_by/tally, Set: MRI 550 ms, YJIT 530 ms, rugaroo 120 ms"><span class="l1"><span class="bar rg" style="width:25.46%"></span><span class="bval">4.6×</span></span><span class="bar yj" style="width:5.77%"></span></span></div>
+      <div class="brow"><span class="bname">string build/split</span><span class="btrack" title="string build/split: MRI 110 ms, YJIT 110 ms, rugaroo 30 ms"><span class="l1"><span class="bar rg" style="width:20.37%"></span><span class="bval">3.7×</span></span><span class="bar yj" style="width:5.56%"></span></span></div>
+      <div class="brow"><span class="bname">regexp, StringScanner</span><span class="btrack" title="regexp, StringScanner: MRI 760 ms, YJIT 740 ms, rugaroo 210 ms"><span class="l1"><span class="bar rg" style="width:20.11%"></span><span class="bval">3.6×</span></span><span class="bar yj" style="width:5.71%"></span></span></div>
+      <div class="brow"><span class="bname">Bignum</span><span class="btrack" title="Bignum: MRI 210 ms, YJIT 210 ms, rugaroo 59 ms"><span class="l1"><span class="bar rg" style="width:19.77%"></span><span class="bval">3.6×</span></span><span class="bar yj" style="width:5.56%"></span></span></div>
+      <div class="brow"><span class="bname">pairing_heap gem</span><span class="btrack" title="pairing_heap gem: MRI 680 ms, YJIT 340 ms, rugaroo 210 ms"><span class="l1"><span class="bar rg" style="width:17.99%"></span><span class="bval">3.2×</span></span><span class="bar yj" style="width:11.11%"></span></span></div>
+      <div class="brow"><span class="bname">raise/rescue, catch/throw</span><span class="btrack" title="raise/rescue, catch/throw: MRI 280 ms, YJIT 250 ms, rugaroo 120 ms"><span class="l1"><span class="bar rg" style="width:12.96%"></span><span class="bval">2.3×</span></span><span class="bar yj" style="width:6.22%"></span></span></div>
+      <div class="brow"><span class="bname">liquid gem</span><span class="btrack" title="liquid gem: MRI 380 ms, YJIT 300 ms, rugaroo 170 ms"><span class="l1"><span class="bar rg" style="width:12.42%"></span><span class="bval">2.2×</span></span><span class="bar yj" style="width:7.04%"></span></span></div>
+      <div class="brow"><span class="bname">format, StringIO</span><span class="btrack" title="format, StringIO: MRI 490 ms, YJIT 440 ms, rugaroo 240 ms"><span class="l1"><span class="bar rg" style="width:11.34%"></span><span class="bval">2.0×</span></span><span class="bar yj" style="width:6.19%"></span></span></div>
+      <div class="brow"><span class="bname">JSON generate + parse</span><span class="btrack" title="JSON generate + parse: MRI 140 ms, YJIT 150 ms, rugaroo 120 ms"><span class="l1"><span class="bar rg" style="width:6.48%"></span><span class="bval">1.2×</span></span><span class="bar yj" style="width:5.19%"></span></span></div>
+      <div class="brow"><span class="bname">kramdown gem</span><span class="btrack" title="kramdown gem: MRI 450 ms, YJIT 550 ms, rugaroo 410 ms"><span class="l1"><span class="bar rg" style="width:6.10%"></span><span class="bval">1.1×</span></span><span class="bar yj" style="width:4.55%"></span></span></div>
+      <div class="brow axis" aria-hidden="true"><span class="bname"></span><span class="btrack"><span style="left:5.56%">1×</span><span style="left:27.78%">5×</span><span style="left:55.56%">10×</span><span style="left:83.33%">15×</span></span></div>
+    </div>
+    <details><summary>Table</summary><table><thead><tr><th>workload</th><th>MRI</th><th>MRI+YJIT</th><th>rugaroo</th><th>speedup</th></tr></thead><tbody><tr><td>splay tree</td><td>210 ms</td><td>120 ms</td><td>13 ms</td><td>16×</td></tr><tr><td>fib(32)</td><td>270 ms</td><td>92 ms</td><td>17 ms</td><td>16×</td></tr><tr><td>Math.sin/cos</td><td>86 ms</td><td>72 ms</td><td>9 ms</td><td>9.6×</td></tr><tr><td>binary trees</td><td>82 ms</td><td>68 ms</td><td>10 ms</td><td>8.2×</td></tr><tr><td>Hash counting</td><td>110 ms</td><td>96 ms</td><td>15 ms</td><td>7.3×</td></tr><tr><td>classes, polymorphic calls</td><td>260 ms</td><td>170 ms</td><td>36 ms</td><td>7.2×</td></tr><tr><td>Array map/select/sum</td><td>150 ms</td><td>140 ms</td><td>21 ms</td><td>7.1×</td></tr><tr><td>blocks, procs, enumerators</td><td>360 ms</td><td>340 ms</td><td>64 ms</td><td>5.6×</td></tr><tr><td>sort_by/group_by/tally, Set</td><td>550 ms</td><td>530 ms</td><td>120 ms</td><td>4.6×</td></tr><tr><td>string build/split</td><td>110 ms</td><td>110 ms</td><td>30 ms</td><td>3.7×</td></tr><tr><td>regexp, StringScanner</td><td>760 ms</td><td>740 ms</td><td>210 ms</td><td>3.6×</td></tr><tr><td>Bignum</td><td>210 ms</td><td>210 ms</td><td>59 ms</td><td>3.6×</td></tr><tr><td>pairing_heap gem</td><td>680 ms</td><td>340 ms</td><td>210 ms</td><td>3.2×</td></tr><tr><td>raise/rescue, catch/throw</td><td>280 ms</td><td>250 ms</td><td>120 ms</td><td>2.3×</td></tr><tr><td>liquid gem</td><td>380 ms</td><td>300 ms</td><td>170 ms</td><td>2.2×</td></tr><tr><td>format, StringIO</td><td>490 ms</td><td>440 ms</td><td>240 ms</td><td>2.0×</td></tr><tr><td>JSON generate + parse</td><td>140 ms</td><td>150 ms</td><td>120 ms</td><td>1.2×</td></tr><tr><td>kramdown gem</td><td>450 ms</td><td>550 ms</td><td>410 ms</td><td>1.1×</td></tr></tbody></table></details>
+  </figure>
+  <p class="sub out">Where it trails, and how it compares with spinel, Crystal and hand-written Go: <a href="https://github.com/jtarchie/rugaroo/blob/main/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+
 
   <h2>Why a werewolf?</h2>
   <div class="tiles">
