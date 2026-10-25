@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+# no test hook: the suite needs MRI, Bundler and golangci-lint for ~25 min, so run it on the commit before tagging
+
+# scripts/deploy-web.sh owns dist/web, which `--clean` would otherwise remove.
+dist: dist/goreleaser
+
+builds:
+  - id: rugaroo
+    binary: rugaroo
+    main: ./cmd/rugaroo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+    flags:
+      - -trimpath
+
+archives:
+  - id: rugaroo
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - Merge pull request
+
+homebrew_casks:
+  - name: rugaroo
+    binaries:
+      - rugaroo
+    directory: Casks
+    repository:
+      owner: jtarchie
+      name: rugaroo
+    homepage: "https://rugaroo.dev"
+    description: "Compiles typed Ruby to a native Go binary"
+    # rugaroo calls `go build` to produce each program
+    dependencies:
+      - formula: go
+    skip_upload: auto
+    hooks:
+      post:
+        # the binary is unsigned, so Gatekeeper would quarantine it and macOS refuse to run it
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/rugaroo"]
+          end
+
+release:
+  github:
+    owner: jtarchie
+    name: rugaroo
+  prerelease: auto

@@ -86,6 +86,11 @@ Prism, is embedded as WebAssembly).
 go install github.com/jtarchie/rugaroo/cmd/rugaroo@latest
 ```
 
+Or with Homebrew (`brew tap jtarchie/rugaroo https://github.com/jtarchie/rugaroo`
+then `brew install rugaroo`), or a binary from the
+[releases page](https://github.com/jtarchie/rugaroo/releases) for Linux and
+macOS. Go is still needed either way, since rugaroo runs `go build`.
+
 ```sh
 rugaroo run main.rb [args...]      # compile, build and run
 rugaroo build -o prog main.rb      # write a binary

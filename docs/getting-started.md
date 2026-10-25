@@ -16,6 +16,11 @@ output or to compile programs that load gems.
 go install github.com/jtarchie/rugaroo/cmd/rugaroo@latest
 ```
 
+Or with Homebrew (`brew tap jtarchie/rugaroo https://github.com/jtarchie/rugaroo`
+then `brew install rugaroo`), or a binary from the
+[releases page](https://github.com/jtarchie/rugaroo/releases) for Linux and
+macOS. Go is still needed either way, since rugaroo runs `go build`.
+
 To try it without installing anything, use the [playground](https://play.rugaroo.dev).
 
 ## Your first program
