@@ -48,6 +48,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 | Encodings other than UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1, UTF-16/32 (LE/BE) | Strings carry no encoding tag ([decision 136](decisions/136.md)). | Convert at the edges. |
 | `break v`; a `break` out of a block whose call's value is used; `return` from a block stored as a closure; `next v` where the value is thrown away (`while`, `each`) | Go closures cannot unwind their caller ([decision 4](decisions/004.md)). | Restructure: plain `break`/`return` work in `while` and in blocks that run inline (like `each`). |
 | Inline overloaded signatures (`#\|`) | | Declare overloads in a `.rbs` file ([117](../examples/117_rbs_overloads/main.rb)). |
+| `require` of a computed path, `$LOAD_PATH` changes at run time | Files are read when the program compiles. | String-literal paths at a file's top level; `-I dir` for load paths; `-trace` for gems ([gems.md](gems.md)). |
 
 ## Core classes — stable
 

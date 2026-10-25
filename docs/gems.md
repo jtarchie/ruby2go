@@ -8,7 +8,9 @@ that is not listed may well fail to compile.
 **Compiling a program that loads a gem runs Ruby code.** rugaroo runs the
 gem's load phase (or, with `-trace`, the whole program) under `ruby` at build
 time, with your environment and no sandbox, to learn what metaprogramming did
-([decision 161](decisions/161.md)). Only compile code you would run.
+([decision 161](decisions/161.md)). Only compile code you would run. The run is
+bounded (10 minutes, capped output), and programs without gems never start
+`ruby`.
 
 The binary itself needs neither Ruby nor the gems.
 

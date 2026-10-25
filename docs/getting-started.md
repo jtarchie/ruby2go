@@ -59,6 +59,24 @@ rugaroo gen words.rb > main.go  # print the Go it compiles to
 (rugaroo's core library, itself written in Ruby) comes along in the same file,
 pruned to what your program uses.
 
+### What your Ruby becomes
+
+| Ruby | Go |
+|---|---|
+| `Integer`, `Float`, `String`, `Symbol` | named Go types over `int`, `float64`, `string` (values, with methods) |
+| `true` / `false` | one `Boolean` type |
+| `T?` (maybe `nil`) | `*T`; `if x` narrows it |
+| `A \| B` (one of a few classes) | Go `any`; each call is a type switch with a typed call per member, and `is_a?`/`case` narrow it |
+| `Array[T]`, `Hash[K, V]` | generic Go types; `Hash` keeps insertion order like Ruby |
+| a class | a struct, plus an interface so subclasses dispatch correctly |
+| a module | generic free functions constrained by what the module calls on `self` |
+| `raise` / `rescue` / `ensure` | `panic` / `recover` / `defer` |
+| `Thread`, `Queue`, `Mutex` | goroutines, channels, `sync` |
+| `untyped` | Go `any`, with calls dispatched through generated switches (the compiler warns at each one) |
+
+Compile errors, warnings and run-time errors all point at `file:line` in your
+Ruby source.
+
 ## Do I need type annotations?
 
 Less than you might think. rugaroo infers the types of locals, block

@@ -23,9 +23,11 @@ The source stays plain Ruby. Every program rugaroo accepts also runs on MRI
 each example, the compiled binary's stdout and exit code must match
 `ruby main.rb` byte for byte.
 
-> **Status:** experimental. It compiles a large, useful subset of Ruby and a
-> good slice of the standard library (see [What works](#what-works)), but it
-> is not a drop-in replacement for `ruby`. Expect to hit gaps.
+> **Status:** the core language, core classes and most of the standard library
+> are **stable**: tested against MRI, and a difference is a bug. Gems, `fiddle`
+> and a few newer features are **experimental**. It is not a drop-in
+> replacement for `ruby`; [docs/support.md](docs/support.md) says what is in
+> which tier.
 
 ## Example
 
@@ -84,164 +86,44 @@ Prism, is embedded as WebAssembly).
 go install github.com/jtarchie/rugaroo/cmd/rugaroo@latest
 ```
 
-Or from a clone: `go install ./cmd/rugaroo`.
-
-New to rugaroo? [docs/getting-started.md](docs/getting-started.md) walks from a
-first program to porting your own scripts, including the common compile errors
-and their fixes.
-
-## Usage
-
-The CLI is shaped like `go build` / `go run` / `go test`:
-
 ```sh
-rugaroo run main.rb [args...]        # compile, build, run; exits with the program's status
-rugaroo build -o prog main.rb        # write a binary
-rugaroo build -work main.rb          # keep the generated main.go; prints its directory as WORK=...
-rugaroo gen main.rb > main.go        # print the generated Go (no go command needed)
-rugaroo test test/                   # compile minitest files into one binary and run them
-rugaroo test test/foo_test.rb --seed 1 -v   # minitest flags pass through
-rugaroo web                          # playground at http://127.0.0.1:8080: Ruby in, Go out, Run button
-rugaroo web -static dir -assets URL  # the same playground as static files, compiling in the browser (scripts/deploy-web.sh; live at play.rugaroo.dev)
+rugaroo run main.rb [args...]      # compile, build and run
+rugaroo build -o prog main.rb      # write a binary
+rugaroo gen main.rb > main.go      # print the generated Go
+rugaroo test test/                 # run minitest files as one compiled program
 ```
 
-`-race` and `-gcflags` pass through to `go build`. `--int-overflow=MODE`
-chooses what an Integer past 64 bits does: `raise` (`RangeError`, the
-default), `wrap` (two's-complement wraparound, for hashes and checksums) or
-`promote` (a Bignum, as MRI); a `# int_overflow: promote` line in the file
-does the same. Compile errors and warnings
-point at `file:line` in your Ruby source, and runtime panics map back to Ruby
-lines through `//line` directives.
+New to rugaroo? [docs/getting-started.md](docs/getting-started.md) goes from a
+first program to porting your own scripts, with the common compile errors and
+their fixes. Or try it in the browser at the [playground](https://play.rugaroo.dev).
 
-A program is a Ruby file plus whatever it `require_relative`s: each file
-loads once, where it is required, as in Ruby. The path must be a string
-literal at a file's top level, since rugaroo reads the files when it compiles.
-`require "x"` finds your own files in the directories given with `-I`, as
-`ruby -I lib main.rb` does (`rugaroo run -I lib main.rb`), and otherwise loads a
-supported standard library. Any other name is looked up as an installed gem
-(through Bundler when a `Gemfile` sits beside the program), which `build`,
-`run` and `gen` then compile in from source; that needs `ruby` on PATH at
-build time; rack, rackup, Cuba and pairing_heap are tested this way, and
-[docs/support.md](docs/support.md#gems--experimental) lists the other routes
-(`-trace`, vendored gems). Run-time
-`$LOAD_PATH` changes are not supported.
+## What you can use
 
-Compiling a program that loads a gem *runs* it: `build`, `run` and `gen` execute
-the program's load phase under `ruby` (and the `Gemfile` beside it, through
-Bundler) with your full environment, as `ruby main.rb` would. There is no
-sandbox, so don't point rugaroo at source you would not run. The run is bounded
-(10 minutes, capped output). Programs without gems never start `ruby`.
-
-## Writing Ruby for rugaroo
-
-Put `# rbs_inline: enabled` at the top and annotate method signatures with
-`#:` comments. Locals, block parameters and most return types are inferred;
-annotate where inference has nothing to go on:
-
-```ruby
-#: (String, ?Integer) -> Array[String]     # method signature (? = optional arg)
-def split_words(text, limit = 10) = text.split.first(limit)
-
-@cache = {} #: Hash[String, Integer]       # an empty literal needs its type (in initialize)
-attr_reader :name #: String                # attribute type
-name = nil #: String?                      # T? means "T or nil"
-```
-
-Sorbet-typed code works too: with `require "sorbet-runtime"`, `sig { params(...).returns(...) }`,
-`T.let`, `T.cast` and `T.must` are read as the same types, and what sorbet-runtime would raise
-while running is a compile error instead ([example 119](examples/119_sorbet_sigs/main.rb)).
-
-How Ruby types land in Go:
-
-| Ruby | Go |
+| | Tier |
 |---|---|
-| `Integer`, `Float`, `String`, `Symbol` | named Go types over `int`, `float64`, `string` (values, with methods) |
-| `true` / `false` | one `Boolean` type |
-| `T?` (maybe `nil`) | `*T`; `if x` narrows it |
-| `A \| B` (one of a few classes) | Go `any`; each call is a type switch with a typed call per member, and `is_a?`/`case` narrow it |
-| `Array[T]`, `Hash[K, V]` | generic Go types; `Hash` keeps insertion order like Ruby |
-| a class | a struct, plus an interface so subclasses dispatch correctly |
-| a module | generic free functions constrained by what the module calls on `self` |
-| `raise` / `rescue` / `ensure` | `panic` / `recover` / `defer` |
-| `Thread`, `Queue`, `Mutex` | goroutines, channels, `sync` |
-| `Ractor`, `Ractor::Port` | a goroutine and a queue; messages are deep-copied, isolation is checked at compile time |
-| `untyped` | Go `any`, with calls dispatched through generated switches (the compiler warns at each one) |
+| Classes, modules, blocks, procs, exceptions, pattern matching, `Struct`/`Data`, threads and fibers, Ruby 4.0 syntax, reflection the compiler can answer (`send`, `method_missing`, `const_get`, `instance_variable_get`) | stable |
+| Core classes: `String`, `Array`, `Hash`, `Integer`, `Float`, `Range`, `Set`, `Enumerable`, `Regexp`, `Time`, `File`, `IO`, `Kernel`, ... (Array 87%, Hash 88%, String 77% of the ruby/spec examples that run; per class in docs/support.md) | stable |
+| Standard library: `json`, `csv`, `date`, `time`, `net/http`, `webrick`, `socket`, `fileutils`, `optparse`, `logger`, `erb`, `bigdecimal`, `rexml`, `minitest` and about 25 more | stable |
+| Gems compiled from source (rack, Cuba, pairing_heap; kramdown and liquid through `-trace`), `fiddle`, `sqlite3`, `openssl` (RSA verify only), Sorbet signatures, `Ractor`, `--int-overflow=promote` | experimental |
+| `eval`, `define_method` in your own code, in-place String mutation, encodings beyond ten | not supported |
 
-`untyped` is the escape hatch for code the type system can't follow: `send`,
-`method_missing`, `const_get` and `respond_to?` work on it, generated from the
-whole program at compile time rather than looked up by reflection.
+[docs/support.md](docs/support.md) lists every feature, core class and
+`require` name with its tier and the tests behind it.
+[`examples/`](examples/) has one program per feature, each a normal Ruby
+script you can run with `ruby`.
 
-## What works
+## What it can't do
 
-- **Language:** classes, modules, `include`/`extend`, inheritance and `super`,
-  blocks, procs and lambdas, `Method` objects (`&method(:name)`), iterators,
-  `case`/`when`, exceptions with custom hierarchies, `catch`/`throw`, `Struct`
-  and `Data`, optional and splat arguments, multiple assignment, `||=`, Ruby 4.0 syntax (`it`, leading `&&`),
-  `at_exit`, signal traps.
-- **Core classes:** `String`, `Symbol`, `Numeric` (`Integer`, `Float`, `Rational`,
-  `Complex`, mixing as MRI coerces), `Array`, `Hash`, `Range`, `Set`, `Enumerable`, `Enumerator`
-  (with `next`/`peek`, `Enumerator.new` generators and `Enumerator::Lazy`),
-  `Comparable`, `Regexp`/`MatchData` (Ruby syntax over Go regexp engines), `Time`,
-  `Random` (same sequence as MRI for a given seed), `Math`, `File`, `Dir`,
-  `IO`, `ARGV`, `ENV`, `ARGF`, `$stdin`, `Kernel#system` and backticks,
-  `Thread`, `Queue`, `Mutex`, `Ractor`, `Fiber`, `Marshal` (its own bytes, not
-  MRI's).
-- **Standard library:** `abbrev`, `base64`, `benchmark`, `bigdecimal`, `cgi`,
-  `csv`, `date`, `delegate`, `digest`, `erb`, `etc`, `fcntl`, `fileutils`,
-  `find`, `forwardable`, `ipaddr`, `json`, `logger`, `minitest` (with
-  `Minitest::Spec` and `minitest/mock`), `net/http`, `observer`, `open-uri`,
-  `open3`, `optparse`, `ostruct`, `rexml`, `securerandom`, `shellwords`,
-  `singleton`, `socket`, `stringio`, `strscan`, `tempfile`, `time`, `timeout`,
-  `tmpdir`, `tsort`, `uri`, `weakref`, `webrick`, `zlib`; `set` and `pathname`
-  are core, as in MRI 4.0. Experimental: `fiddle` (C libraries without cgo,
-  via purego), `sqlite3` (the gem's API over libsqlite3, from the pure-Ruby
-  [gems/sqlite3-fiddle](gems/sqlite3-fiddle)), `openssl` (RSA verification
-  only) and `sorbet-runtime`.
-- **Gems (experimental):** unmodified gems compile from source: `rack`/`rackup`,
-  `cuba`, `pairing_heap`, and through `-trace` `kramdown` and `liquid` (examples
-  [116](examples/116_cuba_web/main.rb), [120](examples/120_pairing_heap/main.rb),
-  [123](examples/123_kramdown/main.rb), [124](examples/124_liquid/main.rb)).
-
-[docs/support.md](docs/support.md) has every feature and library with its
-tier (stable, experimental, not supported) and the tests behind it.
-
-[`examples/`](examples/) has one program per feature, from
-[inheritance](examples/01_inheritance/main.rb) to a
-[Rack-style web framework](examples/32_resty_reflective/main.rb) served over
-`net/http`. Each is a normal Ruby script you can run with `ruby`.
-
-The roadmap for the rest of the standard library is issue
-[#1](https://github.com/jtarchie/rugaroo/issues/1); CLI work is
-[#2](https://github.com/jtarchie/rugaroo/issues/2).
-
-## What doesn't (by design, or not yet)
-
-- **No `eval` or code built at run time, and no `define_method` in your own
-  code.** rugaroo compiles a *closed world*: every class and method must be
-  visible at compile time. Reflection that the whole program can answer still
-  works (`send`, `method_missing`, `const_get`, `instance_variable_get`/`set`),
-  and a gem's load-time `define_method` is compiled in
-  ([decision 198](docs/decisions/198.md)).
-- **Strings are immutable.** `String` is a Go `string` value, so in-place
-  mutation (`<<`, `upcase!`) is unsupported; build new strings or use
-  `StringIO`.
-- **No encoding tags.** Strings are UTF-8 bytes; `encode` works for UTF-8,
-  ASCII-8BIT, US-ASCII, ISO-8859-1 and UTF-16/32, any other encoding is a
-  compile error.
-- **Integers are 64-bit by default.** Overflow raises `RangeError`;
-  `--int-overflow=wrap` or `promote` (Bignum) change that, with limits
-  (see the design record).
-- **`Hash#[]` returns `V?`**, so typed callers nil-check or use `fetch`.
-- **`break v`, `next v` in a loop, and `return` out of a closure block** are
-  compile errors; plain `break`/`return` work in `while` and in blocks that run
-  inline (e.g. `Array#each`).
-- **Inline overloaded signatures (`#|`)** are not supported; declare overloads
-  in a `.rbs` file ([example 117](examples/117_rbs_overloads/main.rb)).
-- **Gems** are experimental: they compile from source with `ruby` on PATH at
-  build time, and only the ones above (plus Homebrew's `brew`) are tested.
-
-Each trade-off has a numbered entry, with its reasoning, in the
-[design record](docs/design.md).
+rugaroo compiles a *closed world*: every class and method must be visible when
+the program compiles, and the binary has no interpreter. So there is no `eval`
+and no `define_method` in your own code (a gem's load-time `define_method` is
+compiled in). Strings are immutable Go strings, so `<<` and `upcase!` are
+compile errors; build new strings or use `StringIO`. Integers are 64-bit and
+raise `RangeError` on overflow unless you opt into `--int-overflow=wrap` or
+`promote`. `Hash#[]` returns `T?`, so typed code checks for nil or uses
+`fetch`. Each of these trade-offs has a numbered decision in the
+[design record](docs/design.md); [docs/support.md](docs/support.md#language--not-supported)
+lists them with workarounds.
 
 ## Performance and conformance
 
@@ -252,12 +134,19 @@ spinel, Crystal, hand-written Go) and where rugaroo trails.
 
 Correctness is measured against MRI: every [example](examples/), minitest
 suite and compile-error archive runs against `ruby` under `go test`. As a
-wider probe, `cmd/rubyspec` runs [ruby/spec](https://github.com/ruby/spec)
-under rugaroo; at the last run about 10,000 of its examples pass (roughly 70%
-of `core` examples that run), and most of the rest are skipped for something
-rugaroo leaves out by design (Bignum, String mutation, encoding tags, `eval`).
-`scripts/rubyspec-coverage` and `scripts/spinel-rubyspec` hold the details and
-the side-by-side with spinel.
+wider probe, `cmd/rubyspec` runs [ruby/spec](https://github.com/ruby/spec):
+10,032 of its examples pass (8,916 in `core`, 70% of the `core` examples that
+run), and most of the rest are skipped for something rugaroo leaves out by
+design. [docs/support.md](docs/support.md#core-classes--stable) has the rate
+for each core class.
+
+## Docs
+
+- [Getting started](docs/getting-started.md): install, first program, annotations, warnings, tests, porting errors.
+- [Support](docs/support.md): what is stable, experimental or not supported.
+- [Gems](docs/gems.md): compiling programs that load gems.
+- [Command line](docs/cli.md): commands, flags and environment variables.
+- [Design record](docs/design.md): every trade-off, as numbered decisions.
 
 ## How it works
 
@@ -274,10 +163,9 @@ the side-by-side with spinel.
 
 The core library is [`prelude/`](prelude/): Ruby source that reopens core
 classes, with leaf primitives dropping into Go through `%x{ ... }` bodies.
-Generated programs use only the Go standard library and never `reflect`.
-
-Background: [docs/design.md](docs/design.md) (the design record), [docs/dynamic-dispatch.md](docs/dynamic-dispatch.md) (how
-`untyped` calls work without a runtime).
+Generated programs use only the Go standard library and never `reflect`;
+calls on `untyped` values go through switches generated from the whole program
+([docs/dynamic-dispatch.md](docs/dynamic-dispatch.md)).
 
 ## Development
 
@@ -304,7 +192,7 @@ internal/rbs/       the RBS type-syntax subset the compiler understands
 prelude.rb, prelude/  the core and standard library, in Ruby (+ Go helpers in prelude/go/)
 examples/           one program per feature, each checked against MRI
 testdata/           minitest suites, print-and-compare snippets, compile-error cases
-docs/               design record and deep dives
+docs/               user docs, design record and deep dives
 ```
 
 [CLAUDE.md](CLAUDE.md) has the full command list and contributor conventions.
