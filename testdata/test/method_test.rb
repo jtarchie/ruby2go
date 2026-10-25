@@ -464,3 +464,24 @@ module MethodTests
     end
   end
 end
+
+module MethodTests
+  # decision 369: nested destructuring parameters, keyword parameters a method yields none to, `|a = nil|`
+  class NestedBlockParams
+    def m(*a) = yield(*a)
+    def one(a) = yield(a)
+    def other(a) = yield(a)
+  end
+
+  class NestedBlockParamsTest < Minitest::Test
+    def test_nested_and_keyword_block_params
+      y = NestedBlockParams.new
+      assert_equal [1, 2, 3, nil], y.m(1, [2, 3]) { |a, (b, (c, d))| [a, b, c, d] }
+      assert_equal [1, 2, nil, 3], y.m(1, [2, 3]) { |a, ((b, c), d)| [a, b, c, d] }
+      assert_equal [1, [2, 3], 4, 5, 6], proc { |(a, *b, c), d, e| [a, b, c, d, e] }.call([1, 2, 3, 4], 5, 6)
+      assert_equal [[1, 2], :b, :c], y.one([1, 2]) { |a, b: :b, c: :c| [a, b, c] }
+      assert_equal [[1, 2], {}], y.one([1, 2]) { |a, **k| [a, k] }
+      assert_equal [[{"a" => 10}]], y.other(["a" => 10]) { |a = nil| [a] }
+    end
+  end
+end

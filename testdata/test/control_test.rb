@@ -5892,3 +5892,53 @@ module ControlTests
     end
   end
 end
+
+module ControlTests
+  # decision 369: an Array? destructures as the Array, nil as an empty one
+  class OptArrayDestructureTest < Minitest::Test
+    def test_opt_array_destructure
+      y = [].first #: Array[Integer]?
+      d, e = y
+      assert_equal [nil, nil], [d, e]
+      z = [[1, [2, 3]]].first
+      (a, (b, c)) = z
+      assert_equal [1, 2, 3], [a, b, c]
+    end
+  end
+end
+
+module ControlTests
+  # decision 370: SystemCallError messages and arities, SignalException.new(signo, name), FrozenError#receiver,
+  # NoMethodError#args
+  class ExceptionConstructorsTest < Minitest::Test
+    def test_system_call_error_forms
+      assert_equal ["Invalid argument - x", "Invalid argument"], [Errno::EINVAL.new("x").message, Errno::EINVAL.new.message]
+      assert_equal [42, -1, "Operation not permitted - message"],
+                   [SystemCallError.new("message", 42).errno, SystemCallError.new("message", -1).errno, SystemCallError.new("message", 1).message]
+      assert_equal 42, SystemCallError.new("message", 42).dup.errno
+      exc = Errno::EINVAL.new("custom message", "location")
+      assert_equal [Errno::EINVAL, "Invalid argument @ location - custom message"], [exc.class, exc.message]
+      msg = begin
+        File.read("/nonexistent/control_zz")
+      rescue Errno::ENOENT => e
+        e.message
+      end
+      assert_equal "No such file or directory @ rb_sysopen - /nonexistent/control_zz", msg
+    end
+
+    def test_signal_frozen_no_method
+      s = SignalException.new(2, "name")
+      assert_equal [2, "name"], [s.signo, s.message]
+      k = begin
+        SignalException.new("INT", "name")
+        nil
+      rescue ArgumentError => x
+        x.class
+      end
+      assert_equal ArgumentError, k
+      o = Object.new
+      assert_same o, FrozenError.new("msg", receiver: o).receiver
+      assert_equal ["args"], NoMethodError.new("msg", "name", ["args"]).args
+    end
+  end
+end

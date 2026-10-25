@@ -13,6 +13,11 @@ var selfChangingBlocks = map[string]bool{
 	"module_exec": true, "define_method": true, "define_singleton_method": true, "new": true, "define": true,
 }
 
+// mainSelfCalls are the receiverless calls whose block runs with main as self; a receiverless DSL call (`describe`,
+// `before`, `it`) may instance_eval its block, so its ivars are left alone.
+var mainSelfCalls = map[string]bool{"loop": true, "proc": true, "lambda": true, "catch": true, "at_exit": true, "fork": true,
+	"trap": true, "tap": true, "then": true, "yield_self": true}
+
 var nodeIface = reflect.TypeFor[parser.Node]()
 
 type ivarRead struct {
@@ -22,6 +27,9 @@ type ivarRead struct {
 }
 
 type mainIvars struct {
+	dry     bool            // the first pass: only note the writes
+	top     map[string]bool // written by a top-level statement (depth 0): only these become locals
+	any     map[string]bool // written anywhere main is self
 	written []string
 	reads   []ivarRead // each nil when nothing writes its ivar: main's unset ivar is nil
 }
@@ -32,10 +40,13 @@ func lowerMainIvars(root parser.Node) {
 	if !ok {
 		return
 	}
-	m := &mainIvars{}
+	// a write inside a block only would be a local of that block, unseen by a read elsewhere: those stay ivars
+	m := &mainIvars{dry: true, top: map[string]bool{}, any: map[string]bool{}}
+	m.walk(reflect.ValueOf(prog), 0)
+	m.dry = false
 	m.walk(reflect.ValueOf(prog), 0)
 	for _, r := range m.reads {
-		if !slices.Contains(m.written, r.name) {
+		if !m.any[r.name] {
 			r.slot.Set(reflect.ValueOf(parser.Node(&parser.NilNode{Location: r.loc})))
 		}
 	}
@@ -47,6 +58,9 @@ func lowerMainIvars(root parser.Node) {
 }
 
 func (m *mainIvars) write(name string) string {
+	if m.dry {
+		return name
+	}
 	if !slices.Contains(m.written, name) {
 		m.written = append(m.written, name)
 	}
@@ -55,6 +69,18 @@ func (m *mainIvars) write(name string) string {
 
 // lower is n as a local of main, or nil when n is no ivar node.
 func (m *mainIvars) lower(n parser.Node, depth uint32) parser.Node {
+	if name, write := ivarNodeName(n); name != "" {
+		if m.dry {
+			if write {
+				m.any[name] = true
+				m.top[name] = m.top[name] || depth == 0
+			}
+			return nil
+		}
+		if !m.top[name] && (write || m.any[name]) { // written only in blocks: an ivar, as before
+			return nil
+		}
+	}
 	switch x := n.(type) {
 	case *parser.InstanceVariableReadNode:
 		return &parser.LocalVariableReadNode{Location: x.Location, Name: x.Name, Depth: depth}
@@ -78,8 +104,8 @@ func (m *mainIvars) visit(slot reflect.Value, depth uint32) {
 	if n == nil || reflect.ValueOf(n).IsNil() {
 		return
 	}
-	if d, ok := n.(*parser.DefinedNode); ok {
-		if iv, ok := d.Value.(*parser.InstanceVariableReadNode); ok { // defined?(@x): as the read, nil when nothing writes it
+	if d, ok := n.(*parser.DefinedNode); ok && !m.dry {
+		if iv, ok := d.Value.(*parser.InstanceVariableReadNode); ok && (m.top[iv.Name] || !m.any[iv.Name]) { // defined?(@x): as the read, nil when nothing writes it
 			m.reads = append(m.reads, ivarRead{slot: slot, name: iv.Name, loc: d.Location})
 			d.Value = &parser.LocalVariableReadNode{Location: iv.Location, Name: iv.Name, Depth: depth}
 			return
@@ -96,7 +122,7 @@ func (m *mainIvars) visit(slot reflect.Value, depth uint32) {
 	case *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
 		return // self is not main inside
 	case *parser.CallNode:
-		if x.Block != nil && selfChangingBlocks[x.Name] {
+		if x.Block != nil && (selfChangingBlocks[x.Name] || x.Receiver == nil && !mainSelfCalls[x.Name]) {
 			m.walk(reflect.ValueOf(x.Receiver), depth)
 			m.walk(reflect.ValueOf(x.Arguments), depth)
 			return

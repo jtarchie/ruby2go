@@ -277,6 +277,9 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 		f.emit("%s := %s", tmp, v.code)
 	}
 	f.destructureInto(n, expr{code: tmp, typ: v.typ}, n.Lefts, n.Rest, n.Rights)
+	if len(n.Lefts) == 0 && len(n.Rights) == 0 && isBareRest(n.Rest) { // `(*) = x` reads nothing of x
+		f.emit("_ = %s", tmp)
+	}
 	return expr{code: tmp, typ: v.typ, stmt: true, done: true} // the value of `a, = x` is x, as a condition (`(a, = x) && ...`) reads it
 }
 
@@ -361,6 +364,10 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 			f.assignTarget(r, expr{code: fmt.Sprintf("%s.F%d", v.code, m-trail+j), typ: t.Elems[m-trail+j]})
 		}
 	case TOpt:
+		if a, ok := f.optArrayOrEmpty(v); ok {
+			f.destructureInto(n, a, lefts, rest, rights)
+			return
+		}
 		f.destructureOpt(n, v, t, lefts, rest, trail)
 	case TClass:
 		if t.C.RubyName != "Array" {
@@ -391,6 +398,20 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 	case TFunc, TVar, TVoid: // only tuples and Arrays split
 		f.errorf(n, "cannot destructure %s", v.typ)
 	}
+}
+
+// optArrayOrEmpty is an Array? as the Array it destructures as: nil is an empty one, every target nil (decision 369).
+func (f *fctx) optArrayOrEmpty(v expr) (expr, bool) {
+	c, ok := stripOpt(v.typ).(TClass)
+	if !ok || !isOpt(v.typ) || c.C.RubyName != "Array" {
+		return expr{}, false
+	}
+	tmp := f.newTmp()
+	f.emit("%s := %s{}", tmp, strings.Replace(f.c.goType(c), "*", "&", 1))
+	f.emit("if p := %s; p != nil {", f.materialize(v))
+	f.emit("\t%s = %s", tmp, derefOpt("p", v.typ))
+	f.emit("}")
+	return expr{code: tmp, typ: c}, true
 }
 
 // destructureOne is `a, b = x` of an object with no to_ary: x is the first target alone, as a one-element Array (decision 364).
@@ -504,6 +525,10 @@ func (f *fctx) assignTarget(target parser.Node, v expr) {
 			gt := f.c.goType(v.typ)
 			one := expr{code: "(&Array[" + gt + "]{s: []" + gt + "{" + f.materialize(v) + "}})", typ: TClass{C: f.c.classes["Array"], Args: []Type{v.typ}}}
 			f.destructureInto(t, one, t.Lefts, t.Rest, t.Rights)
+			return
+		}
+		if a, ok := f.optArrayOrEmpty(v); ok {
+			f.destructureInto(t, a, t.Lefts, t.Rest, t.Rights)
 			return
 		}
 		if isOpt(v.typ) {

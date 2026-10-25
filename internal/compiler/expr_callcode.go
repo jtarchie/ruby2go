@@ -367,6 +367,9 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 		if n == f.retHintNode && f.retHint != nil {
 			unify(m.Ret, f.retHint, env)
 		}
+		if b, ok := block.(*parser.BlockNode); ok && f.f.kwBlocks[b] && yieldsKeywords(m) {
+			f.errorf(n, "the block's keyword parameters would take %s's yielded keywords: not supported (decision 369)", m.Name)
+		}
 		f.paramlessBlockEnv(n, m, env)
 		blkCode := f.blockArg(n, m, env, block)
 		if restIdx >= 0 {

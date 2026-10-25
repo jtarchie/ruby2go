@@ -4,6 +4,8 @@
 package prelude
 
 import (
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -117,4 +119,37 @@ func rbRaiseValue(x any, msg any) ExceptionI {
 		return e
 	}
 	return NewTypeError(Ref(String("exception class/object expected")))
+}
+
+// rbStrerror is C's strerror text for errno n, capitalized as MRI's messages print it.
+func rbStrerror(n int) string {
+	s := syscall.Errno(n).Error()
+	if s == "" {
+		return "Unknown error " + strconv.Itoa(n)
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// rbSysMessage is the message of `Errno::X.new(m)` (genNew): MRI's, the error's text then the given one
+// (`Invalid argument - x`, `Invalid argument @ location - x`); one rb2go's runtime built already starts with the text.
+func rbSysMessage(e any, m *String) *String {
+	n := rbErrnoOf(e) // ponytail: SystemCallError itself keeps its message ("unknown error - " in MRI); naming its type here made every program keep the class
+	if n == nil {
+		return m
+	}
+	s := rbStrerror(int(*n))
+	switch {
+	case m == nil:
+		return Ref(String(s))
+	case strings.HasPrefix(string(*m), "@ "):
+		return Ref(String(s + " " + string(*m)))
+	case strings.HasPrefix(string(*m), s):
+		return m
+	}
+	return Ref(String(s + " - " + string(*m)))
+}
+
+// rbSysLocMessage is `Errno::X.new(m, location)`'s message before rbSysMessage puts the error's text first.
+func rbSysLocMessage(loc String, m *String) *String {
+	return Ref(String("@ " + string(loc) + " - " + string(rbDerefOrNil(m))))
 }

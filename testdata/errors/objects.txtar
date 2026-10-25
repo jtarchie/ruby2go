@@ -438,7 +438,7 @@ NOTHING = nil
 # error: main.rb:2: rbs: unexpected end of type
 LIST = [] #: Array[
 -- constant_unknown.rb --
-# warning: main.rb:2: uninitialized constant MISSING: raises NameError if this line runs
+# error: main.rb:2: uninitialized constant MISSING
 puts MISSING
 -- compact_form_no_outer_scope.rb --
 # warning: main.rb:11: uninitialized constant SECRET: raises NameError if this line runs

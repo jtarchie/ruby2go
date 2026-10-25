@@ -43,6 +43,9 @@ func (f *fctx) useGenNew(cls *Class, n *parser.CallNode) bool {
 	if isSynthNew(cls.meta.lookup("new")) && !f.newOverloaded(cls, n) {
 		return true
 	}
+	if sce := f.c.classes["SystemCallError"]; sce != nil && cls != sce && cls.isSubclassOf(sce) && len(callArgs(n)) <= 2 && !f.f.isPrelude() {
+		return true // Errno::X.new(msg, location): sysErrorArgs, not SystemCallError.new(msg, errno)'s overload
+	}
 	if cls == f.c.classes["Hash"] && n.Arguments == nil && n.Block == nil {
 		return true
 	}
@@ -77,6 +80,9 @@ func (f *fctx) genNew(n parser.Node, cls *Class, args []parser.Node, exprs []exp
 				f.errorf(n, "private method 'new' called for class %s", cls.RubyName)
 			}
 		}
+	}
+	if a, ok := f.sysErrorArgs(n, cls, args, exprs, block); ok {
+		args = a
 	}
 	switch {
 	case cls.IsModule:
@@ -542,4 +548,26 @@ func (f *fctx) refineTemplate(li *localInfo) Type {
 		}
 	}
 	return f.c.classType(tc.C, args, tc.C.srcPos)
+}
+
+// sysErrorArgs is `Errno::X.new`, `Errno::X.new(msg)` and `Errno::X.new(msg, location)` written in a program: MRI's
+// message, the error's text first (`Invalid argument @ location - msg`, rbSysMessage, decision 370). rb2go's own raises
+// build their messages whole, so only these calls compose one.
+func (f *fctx) sysErrorArgs(n parser.Node, cls *Class, args []parser.Node, exprs []expr, block parser.Node) ([]parser.Node, bool) {
+	sce := f.c.classes["SystemCallError"]
+	c, ok := n.(*parser.CallNode)
+	if !ok || f.f.isPrelude() || sce == nil || cls == sce || !cls.isSubclassOf(sce) || exprs != nil || block != nil || len(args) > 2 || c.Name != "new" {
+		return nil, false
+	}
+	str := TOpt{Elem: f.cls("String")}
+	msg := "nil"
+	if len(args) > 0 {
+		msg = f.coerce(args[0], f.genExpr(args[0], str), str)
+	}
+	if len(args) == 2 {
+		loc := f.genMethodCall(args[1], f.genExpr(args[1], nil), "to_s", nil, nil)
+		msg = fmt.Sprintf("rbSysLocMessage(%s, %s)", f.coerce(args[1], loc, f.cls("String")), msg)
+	}
+	code := fmt.Sprintf("rbSysMessage((*%s)(nil), %s)", cls.Name, msg)
+	return []parser.Node{&exprNode{Node: n, e: expr{code: code, typ: str}}}, true
 }

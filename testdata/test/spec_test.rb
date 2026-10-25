@@ -51,3 +51,14 @@ describe "expectations" do
     _(e.message).must_equal "index 5 outside of array bounds: -2...2"
   end
 end
+
+# A `before` block's ivars are the example's, not main's (decision 362's lowering leaves a receiverless DSL block alone).
+describe "ivars set in before" do
+  before do
+    @spec_seen = [1, 2] #: Array[Integer]
+  end
+
+  it "reads them in the example" do
+    _(@spec_seen).must_equal [1, 2]
+  end
+end

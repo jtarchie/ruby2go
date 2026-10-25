@@ -334,6 +334,9 @@ func (f *fctx) genRange(n *parser.RangeNode, expected Type) expr {
 	case elem == nil:
 		elem = f.joinAll(n, types)
 	}
+	if elem == nil || isVoid(elem) { // an endpoint that raises (decision 363) or has no value
+		f.errorf(n, "cannot type this Range: an endpoint has no value")
+	}
 	t := TClass{C: f.c.classes["Range"], Args: []Type{elem}}
 	code := "(&" + strings.TrimPrefix(f.c.goType(t), "*") + "{"
 	if n.Left != nil {

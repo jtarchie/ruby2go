@@ -147,9 +147,27 @@ class IOError < StandardError; end
 class EOFError < IOError; end
 
 class SystemCallError < StandardError
-  # The C errno for this class (Errno::ENOENT's is 2); nil for SystemCallError itself.
+  # @rbs @__errno: Integer?
+
+  # `SystemCallError.new(msg, errno)`: that errno, MRI's text for it first (decision 370); `Errno::X.new(msg, location)`
+  # is genNew's (sysErrorArgs).
+  #: (String?, untyped) -> SystemCallError
+  def self.__new_2(message, arg) = %x{
+    n, _ := rbUnbox(arg).(Integer)
+    e := NewSystemCallError(nil)
+    e.__errno = &n
+    e.message = Ref(String(rbStrerror(int(n)) + " - " + string(rbDerefOrNil(message))))
+    return e
+  }
+
+  # The C errno for this class (Errno::ENOENT's is 2), or the one given; nil for SystemCallError itself.
   #: () -> Integer?
-  def errno = %x{ return rbErrnoOf(self) }
+  def errno = %x{
+    if n := self._SystemCallError().__errno; n != nil {
+      return n
+    }
+    return rbErrnoOf(self)
+  }
 end
 
 module Errno
@@ -256,7 +274,31 @@ end
 
 class RuntimeError < StandardError; end
 
-class FrozenError < RuntimeError; end
+class FrozenError < RuntimeError
+  # @rbs @receiver: untyped
+  # @rbs @has_receiver: bool
+
+  # `FrozenError.new(msg, receiver: obj)` (decision 370).
+  #: (String?, Hash[Symbol, untyped]) -> FrozenError
+  def self.__new_2(message, opts)
+    e = new(message)
+    e.__set_receiver(opts[:receiver]) if opts.key?(:receiver)
+    e
+  end
+
+  #: (untyped) -> void
+  def __set_receiver(r)
+    @receiver = r
+    @has_receiver = true
+  end
+
+  #: () -> untyped
+  def receiver
+    raise ArgumentError, "no receiver is available" unless @has_receiver
+
+    @receiver
+  end
+end
 
 class ArgumentError < StandardError; end
 
@@ -299,7 +341,26 @@ class NameError < StandardError
   end
 end
 
-class NoMethodError < NameError; end
+class NoMethodError < NameError
+  # @rbs @args: untyped
+
+  # `NoMethodError.new(msg, name, args)` (decision 370).
+  #: (String, untyped, untyped) -> NoMethodError
+  def self.__new_3(message, name, args)
+    e = new(message)
+    e.__set_name(name)
+    e.__set_args(args)
+    e
+  end
+
+  #: (untyped) -> void
+  def __set_args(a)
+    @args = a
+  end
+
+  #: () -> untyped
+  def args = @args
+end
 
 class IndexError < StandardError; end
 
@@ -450,6 +511,21 @@ class SignalException < Exception
   def initialize(sig)
     @signo = __signo(sig)
     super("SIG#{__signame(@signo)}")
+  end
+
+  # `SignalException.new(signo, name)`: the name is the message; a signal name with one is MRI's ArgumentError (decision 370).
+  #: (untyped, String) -> SignalException
+  def self.__new_2(sig, name)
+    raise ArgumentError, "wrong number of arguments (given 2, expected 1)" unless sig.is_a?(Integer)
+
+    e = new(sig)
+    e.__set_message(name)
+    e
+  end
+
+  #: (String) -> void
+  def __set_message(m)
+    @message = m
   end
 
   #: (untyped) -> Integer

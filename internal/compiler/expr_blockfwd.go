@@ -48,6 +48,9 @@ func (f *fctx) blockSelf(n parser.Node) Type {
 // forwardIter passes the method's own block on to an iterator:
 // `list.each(&block)` re-yields every value (or calls the closure with it).
 func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
+	if f.blockSig == nil {
+		f.errorf(n, "a block is forwarded from a method that takes none")
+	}
 	vars := make([]string, len(yields))
 	for i := range yields {
 		vars[i] = f.newTmp()

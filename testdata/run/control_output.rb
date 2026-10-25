@@ -145,6 +145,12 @@ begin
 rescue NameError => e
   puts e.message
 end
+def ctrl_dead_lit = [CtrlMissing2, 1] # inside a literal too: it raises where it is read
+begin
+  ctrl_dead_lit
+rescue NameError => e
+  puts e.message
+end
 # a top-level def hides Kernel's method of the same name (decision 363)
 def test(i) = "mine #{i}"
 puts test(3)

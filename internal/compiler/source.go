@@ -32,6 +32,7 @@ type File struct {
 	// a `T.let`/`T.cast` the Sorbet pass left in an expression, and its RBS type (decision 196)
 	sorbetCasts  map[*parser.CallNode]string
 	movedOpts    map[*parser.BlockParametersNode]int                         // a block's `|x = 1|` params optionalBlockParams made required, for Proc#parameters
+	kwBlocks     map[*parser.BlockNode]bool                                  // blocks whose keyword parameters lowerBlockKeywords made defaults
 	procArgsOrig map[*parser.BlockParametersNode]*parser.BlockParametersNode // a lowered block's original list (lowerProcArgs)
 	// `X = T.type_alias { T }` constant writes and the RBS type they name (decision 196)
 	sorbetAliases map[parser.Node]string

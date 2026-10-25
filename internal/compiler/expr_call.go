@@ -153,7 +153,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	default:
 		recv = f.valueOf(f.genExpr(n.Receiver, nil))
 	}
-	if recv.noreturn && recv.stmt { // `Missing.record(x)`: the NameError is raised before the call (decision 363)
+	if raisesFirst(recv) { // `Missing.record(x)`: the NameError comes first (decision 363)
 		return recv
 	}
 	f.noteElems(n)
@@ -231,6 +231,11 @@ func (f *fctx) resolve(recvT Type, name string) *entry {
 		f.c.inferRet(e.M)
 	}
 	return e
+}
+
+// raisesFirst is a receiver whose evaluation raises (a constant nothing defines, decision 363): the call is never made.
+func raisesFirst(recv expr) bool {
+	return recv.noreturn && recv.stmt || strings.HasPrefix(recv.code, "rbConstRead[any](false, nil, ")
 }
 
 // coreEach is a core each-like iterator, whose value is its receiver (decision 365).

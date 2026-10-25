@@ -9,7 +9,7 @@ s.close
 require "socket"
 p Addrinfo.new(Addrinfo.tcp("127.0.0.1", 80).to_sockaddr)
 -- socks_socket.rb --
-# warning: main.rb:3: uninitialized constant SOCKSSocket: raises NameError if this line runs
+# error: main.rb:3: uninitialized constant SOCKSSocket
 require "socket"
 SOCKSSocket.new("127.0.0.1", 1080)
 -- io_select.rb --

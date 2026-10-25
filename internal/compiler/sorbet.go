@@ -56,6 +56,7 @@ func (f *File) sorbetWalk(n parser.Node) {
 			f.sorbetStruct(n, constName(n.Superclass) != "T::Struct")
 		}
 	case *parser.CallNode:
+		f.lowerBlockKeywords(n)
 		if isTCall(n, "let") || isTCall(n, "cast") {
 			args := callArgs(n)
 			if len(args) != 2 {
@@ -104,6 +105,7 @@ func (f *File) sorbetWalk(n parser.Node) {
 // lowerBlockParams rewrites a block's parameter list into the forms the compiler binds: MRI's split of a complex list
 // (lowerProcArgs, decision 367), else optionals made required with nil-defaulting (optionalBlockParams).
 func (f *File) lowerBlockParams(n *parser.BlockNode) {
+	f.lowerNestedParams(n)
 	if f.lowerProcArgs(n) {
 		return
 	}
@@ -704,6 +706,9 @@ func optionalBlockParams(b *parser.BlockNode) int {
 			return 0
 		}
 		bp.Parameters.Requireds = append(bp.Parameters.Requireds, &parser.RequiredParameterNode{Location: op.NameLoc, Name: op.Name})
+		if _, isNil := op.Value.(*parser.NilNode); isNil { // `|a = nil|`: a missing value is nil already (decision 369)
+			continue
+		}
 		read := &parser.LocalVariableReadNode{Location: op.NameLoc, Name: op.Name}
 		write := &parser.LocalVariableWriteNode{Location: op.Location, Name: op.Name, NameLoc: op.NameLoc, Value: op.Value, OperatorLoc: op.OperatorLoc}
 		defaults = append(defaults, &parser.IfNode{Location: op.Location,
