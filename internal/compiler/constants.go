@@ -158,14 +158,10 @@ func (c *Compiler) methodClassVars() {
 	}
 }
 
-// lookupConst resolves a constant expression (Foo, Foo::Bar, ::Foo) the
-// way Ruby does: lexical scope innermost-out, then the innermost class's
-// ancestors, then top level. Exactly one of the results is non-nil, or
-// both are nil when nothing matched.
-// privateRef reports a path from f naming private constant full; generated source may (a Struct's `==` names its class:
-// Homebrew's private Vulns::Scanner::Target).
+// privateRef: generated source may name a private constant by path (a Struct's `==` names Homebrew's private Vulns::Scanner::Target).
 func (c *Compiler) privateRef(f *File, full string) bool { return c.privateConsts[full] && !f.synth }
 
+// lookupConst resolves Foo, Foo::Bar, ::Foo as Ruby does: lexical scope innermost-out, the innermost class's ancestors, then top level; at most one result is non-nil.
 func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, *Const) {
 	switch n := n.(type) {
 	case *parser.ConstantReadNode:

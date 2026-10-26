@@ -920,7 +920,7 @@ func (f *fctx) blockArg(n parser.Node, m *Method, env map[string]Type, block par
 				return fn
 			}
 		}
-		if b, ok := block.(*parser.BlockNode); ok && f.lenient() && anyRestBlock(m.Block) && !f.selfClassObj && !isAny(f.selfType) {
+		if b, ok := block.(*parser.BlockNode); ok && f.lenient() && anyRestBlock(m.Block) && !f.selfClassObj && !isAny(f.selfType) && f.selfMissing() {
 			// a DSL block whose calls only self's method_missing answers on its lexical self (a cask's `postflight do
 			// system_command ... end`, instance_eval'd on a DSL::Postflight later): its self is the one it is called with
 			// (decision 374)

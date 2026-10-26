@@ -677,11 +677,7 @@ func (f *File) sorbetPropOptions(c *parser.CallNode, kh *parser.KeywordHashNode,
 	}
 }
 
-// sorbetStruct turns `const :a, T` / `prop :a, T, default: x` into typed attr_reader/attr_accessor and records the
-// keyword initialize T::Struct generates, which collectClass adds.
-// sorbetEnum puts a T::Enum's `enums do ... end` statements in the class body, as the block's constants are the
-// class's, and names each `X = new(...)` value as sorbet-runtime's enums block does after it runs: `X =
-// new(...).__enum_bind("X")`.
+// sorbetEnum hoists `enums do X = new end` into the class body (its constants are the class's), naming each value as sorbet-runtime does: `X = new.__enum_bind("X")`.
 func (f *File) sorbetEnum(n *parser.ClassNode) {
 	body, ok := n.Body.(*parser.StatementsNode)
 	if !ok {
@@ -690,8 +686,11 @@ func (f *File) sorbetEnum(n *parser.ClassNode) {
 	var out []parser.Node
 	for _, st := range body.Body {
 		c, ok := st.(*parser.CallNode)
-		blk, isBlk := c.Block.(*parser.BlockNode)
-		if !ok || c.Receiver != nil || c.Name != "enums" || !isBlk {
+		var blk *parser.BlockNode
+		if ok {
+			blk, _ = c.Block.(*parser.BlockNode)
+		}
+		if !ok || c.Receiver != nil || c.Name != "enums" || blk == nil {
 			out = append(out, st)
 			continue
 		}
@@ -714,6 +713,7 @@ func (f *File) sorbetEnum(n *parser.ClassNode) {
 	body.Body = out
 }
 
+// sorbetStruct: `const`/`prop` become typed attr_reader/attr_accessor, plus the keyword initialize collectClass adds.
 func (f *File) sorbetStruct(n *parser.ClassNode, immutable bool) {
 	body, ok := n.Body.(*parser.StatementsNode)
 	if !ok {

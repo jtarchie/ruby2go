@@ -748,7 +748,8 @@ func (c *Compiler) emitFetchDefault(f *fctx, m *Method, env map[string]Type) {
 	}
 	f.emit("if len(args) == 2 {")
 	f.emit("\tif _, ok := rbConv[%s](rbArg(args, 1)); !ok && rbArg(args, 1) != nil {", c.goType(env["V"]))
-	f.emit("\t\tif v, ok := self.rbGet(rbAs[%s](args[0], %q)); ok {\n\t\t\treturn v\n\t\t}", c.goType(env["K"]), "K")
+	f.emit("\t\tif k, ok := rbConv[%s](args[0]); ok {", c.goType(env["K"])) // a key of another type misses: the default, as MRI's
+	f.emit("\t\t\tif v, ok := self.rbGet(k); ok {\n\t\t\t\treturn v\n\t\t\t}\n\t\t}")
 	f.emit("\t\treturn rbArg(args, 1)")
 	f.emit("\t}")
 	f.emit("}")

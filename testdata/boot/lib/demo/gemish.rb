@@ -1064,7 +1064,7 @@ module DemoVerify
 end
 
 # Homebrew's Livecheck::Strategy::Git: a class-level ivar its body sets, and a singleton attr_writer for it: one
-# non-nil Hash, the writer taking a Hash (decision 374 on 323).
+# non-nil Hash; its writer still takes nil, as its sig says (decision 374 on 323).
 class DemoUrlCache
   @seen = {} #: Hash[String, String]
 
@@ -1072,6 +1072,8 @@ class DemoUrlCache
     attr_writer :seen #: Hash[String, String]
 
     def seen_count = @seen.size
+
+    def seen_nil? = @seen.nil?
   end
 end
 

@@ -199,6 +199,13 @@ func (c *Compiler) emitMethod0(m *Method) {
 		if mark != "" {
 			mark = "; " + mark
 		}
+		if len(m.Params) == 1 && isOpt(m.Params[0].Type) && !isOpt(iv.Type) && c.goType(m.Params[0].Type) == "*"+c.goType(iv.Type) {
+			// a gem's writer takes T? (decision 323) of an ivar its class body set non-nil (Livecheck's @processed_urls):
+			// nil stores the slot's zero value, MRI's nil there
+			c.w("func (self *%s) %s(v %s) {\n\tif v == nil {\n\t\t%s = rbZero[%s]()\n\t} else {\n\t\t%s = *v\n\t}%s\n}\n\n",
+				cls.Name, m.GoName, c.goType(m.Params[0].Type), ivarPath("self", iv), c.goType(iv.Type), ivarPath("self", iv), strings.ReplaceAll(mark, "; ", "\n\t"))
+			return
+		}
 		c.w("func (self *%s) %s(v %s) { %s = v%s }\n\n", cls.Name, m.GoName, c.goType(iv.Type), ivarPath("self", iv), mark)
 		return
 	}

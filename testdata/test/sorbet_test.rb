@@ -101,6 +101,8 @@ module SorbetTests
       Name = new
       Desc = new("description")
     end
+
+    def label = serialize.upcase
   end
 
   class Args
@@ -318,6 +320,7 @@ module SorbetTests
       assert_equal "name", Args.field_kind(Field::Name)
       assert_equal ["name", "description"], [Field::Name.serialize, Field::Desc.serialize]
       assert_equal "#<SorbetTests::Field::Desc>", Field::Desc.inspect
+      assert_equal "NAME", Field::Name.label
     end
 
     def test_nilable_block

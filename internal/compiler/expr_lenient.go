@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -196,6 +197,14 @@ func (f *fctx) lookupMissed(n parser.Node, miss missMode, recv expr, kt Type, ke
 // lenient reports gem code (decision 172): what would be a nil or union type error compiles to a run-time check.
 func (f *fctx) lenient() bool { return f.c.pruneGems && f.c.gemFile(f.f) }
 
+// selfMissing: self answers calls through method_missing, the only way a block's missingCalls can grow (blockArg skips its probe otherwise).
+func (f *fctx) selfMissing() bool {
+	if t, ok := f.selfType.(TClass); ok && t.C.lookup("method_missing") != nil {
+		return true
+	}
+	return f.owner != nil && f.owner.lookup("method_missing") != nil
+}
+
 // lenientClass converts what gem code passes where class to is wanted and user code would be a compile error
 // (decision 172): an Array[Sub] for Array[Base] (a converted copy, Go's instantiations being invariant), self where an
 // unrelated class is wanted (concurrent-ruby's Event as a Future, checked at run time), a T? for T (nil raises).
@@ -274,6 +283,10 @@ func (f *fctx) lenientCall(n *parser.CallNode) (expr, bool) {
 	}
 	if n.Name == "nil?" && n.Arguments == nil && n.Block == nil && n.Receiver != nil && f.lenient() {
 		t := f.probeType(n.Receiver, nil)
+		if _, cls := t.(TClass); cls && strings.HasPrefix(f.c.goType(t), "*") { // a pointer (a leaf's *C, a Hash) is nil itself: in an any it would not be
+			r := f.genExpr(n.Receiver, nil)
+			return expr{code: "Boolean((" + r.code + ") == nil)", typ: f.cls("Boolean")}, true
+		}
 		if f.lenientObject(t) {
 			r := f.genExpr(n.Receiver, nil)
 			return expr{code: "Boolean(any(" + r.code + ") == nil)", typ: f.cls("Boolean")}, true

@@ -57,7 +57,7 @@ func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loade
 	}
 	l := &Loaded{}
 	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(nil, 1<<20)
+	sc.Buffer(nil, len(data)+1) // an eval record holds its whole source on one line; data is already capped at maxBytes
 	for sc.Scan() {
 		kind, val, _ := strings.Cut(sc.Text(), "\t")
 		switch kind {

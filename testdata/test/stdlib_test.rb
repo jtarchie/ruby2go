@@ -2142,6 +2142,7 @@ module StdlibTests
     def test_pathname_descend_ascend_enum
       t = Pathname("~/bin/x")
       assert_equal ["~", %w[~ ~/bin ~/bin/x], %w[~/bin/x ~/bin ~]], [t.descend.first.to_s, t.descend.map(&:to_s), t.ascend.to_a.map(&:to_s)]
+      assert_equal [%w[./a .], %w[. ./a ./a/b]], [Pathname("./a").ascend.to_a.map(&:to_s), Pathname("./a/b").descend.map(&:to_s)]
     end
 
     def test_tempfile_to_io

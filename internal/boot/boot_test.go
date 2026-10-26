@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -291,13 +292,17 @@ func TestCaptureLocalJSONShadow(t *testing.T) {
 	}
 }
 
-// A load-list line over the scanner's buffer is an error, not a silently shortened list.
+// A load-list line of any length under the list's cap reads whole (an eval record holds a whole source), not a
+// silently shortened list.
 func TestTraceOverlongLine(t *testing.T) {
 	needRuby(t)
 	dir := writeEntry(t, "entry.rb", "$LOAD_PATH << 'x' * (2 << 20)\n")
-	_, err := Trace(context.Background(), filepath.Join(dir, "entry.rb"), nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "load list") {
-		t.Errorf("err = %v, want a load list error", err)
+	l, err := Trace(context.Background(), filepath.Join(dir, "entry.rb"), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(l.LoadPath, strings.Repeat("x", 2<<20)) {
+		t.Errorf("the long load-path entry was not read whole")
 	}
 }
 

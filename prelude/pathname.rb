@@ -378,7 +378,7 @@ class Pathname < Object
     loop do
       blk.call(path)
       up = path.dirname
-      break if up.to_s == path.to_s || up.to_s == "." # a relative path stops at its first segment, as MRI's
+      break if up.to_s == path.to_s || up.to_s == "." && !path.to_s.start_with?("./") # MRI: a/b stops at a, ./a reaches .
 
       path = up
     end

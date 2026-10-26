@@ -153,13 +153,12 @@ func (f *fctx) genRunEval(n *parser.CallNode, units []evalUnit) expr {
 	f.emit("switch %s := string(%s); %s {", tmp, src, tmp)
 	for i, u := range units {
 		f.emit("case %s:", strconv.Quote(u.src))
-		switch {
-		case isVoid(types[i]) && isVoid(t):
+		if isVoid(types[i]) {
 			f.emit("	(%s)()", codes[i])
-		case isVoid(types[i]):
-			f.emit("	(%s)()", codes[i])
-			f.emit("	%s = nil", res)
-		default:
+			if !isVoid(t) {
+				f.emit("	%s = nil", res)
+			}
+		} else {
 			f.emit("	%s = %s", res, f.coerce(n, expr{code: "(" + codes[i] + ")()", typ: types[i]}, t))
 		}
 	}

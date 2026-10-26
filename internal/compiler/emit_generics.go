@@ -127,7 +127,7 @@ func (c *Compiler) valueSubclassArms(u TUnion) string {
 			continue
 		}
 		for _, k := range c.classList {
-			if k.Super == mc.C && k.metaOf == nil {
+			if k.Super == mc.C && k.metaOf == nil && !slices.ContainsFunc(u.Members, func(x Type) bool { xc, ok := x.(TClass); return ok && xc.C == k }) { // a member itself is matched exactly: a second arm would be a duplicate case
 				fmt.Fprintf(&b, "\tcase *%s:\n\t\treturn v.%s\n", k.Name, superField(mc.C))
 			}
 		}

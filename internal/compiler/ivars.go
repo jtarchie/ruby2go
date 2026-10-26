@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
-
-	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // ivarKey names one class's ivar in the discovery-time sets (nilIvars, ivarReadFirst).
@@ -25,12 +23,7 @@ func (c *Compiler) declareIvarAnnotations() {
 			if iv, ok := strings.CutPrefix(name, "self."); ok {
 				owner, name = cls.meta, iv
 			}
-			iv := c.declareIvar(owner, name, t, cls.File, d.line)
-			if w := owner.Methods[strings.TrimPrefix(name, "@")+"="]; w != nil && w.Kind == kindAttrWriter && isOpt(t) && iv != nil && !isOpt(iv.Type) {
-				if o, ok := w.sig.Params[0].Type.(rbs.Optional); ok { // the writer of an ivar its class body set non-nil (Livecheck's @processed_urls) takes what it holds
-					w.sig.Params[0].Type = o.Elem
-				}
-			}
+			c.declareIvar(owner, name, t, cls.File, d.line)
 		}
 	}
 }

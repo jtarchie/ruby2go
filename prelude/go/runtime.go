@@ -636,6 +636,16 @@ func rbAs[T any](a any, want string) T {
 	return v
 }
 
+// rbTryBox is rbMBox without Marshal's TypeError on a mismatch, so rbAsSlow's own fallbacks and message still apply.
+func rbTryBox(dst, v any) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return rbMBox(dst, v)
+}
+
 // rbAsSlow converts as rbConv does (nil for untyped, other Array/Hash
 // instantiations, an Array into a tuple), else raises.
 func rbAsSlow[T any](a any, want string) T {
@@ -646,7 +656,7 @@ func rbAsSlow[T any](a any, want string) T {
 		return v
 	}
 	var zero T
-	if a != nil && rbMBox(&zero, a) { // T is a box where generic code binds a type parameter to C? (Homebrew's set_unique_stanza with U = DSL::Version?)
+	if a != nil && rbTryBox(&zero, a) { // T is a box where generic code binds a type parameter to C? (Homebrew's set_unique_stanza with U = DSL::Version?)
 		return zero
 	}
 	if f, ok := a.(**func(...any) any); ok && f != nil { // an optional &block's Proc? box held untyped (Homebrew's stored postflight block cast back)
