@@ -953,8 +953,9 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 			allBlank = false
 		}
 	}
+	head := f.countedLoopHead(n, e, recv, codes, names, goParams) // its temps go above the label pushLoop places
 	f.pushLoop(loopIter)
-	if head := f.countedLoopHead(n, e, recv, codes, names, goParams); head != "" {
+	if head != "" {
 		f.emit("%s", head)
 	} else if allBlank {
 		f.emit("for range %s {", call)

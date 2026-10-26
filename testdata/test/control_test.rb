@@ -6038,6 +6038,20 @@ module ControlTests
         got << i
       end
       assert_equal [0, 2, 4, 6, 101, 102, 2, 4, 6], got
+      hits = [] #: Array[Integer]
+      3.downto(1) do |k|
+        case k
+        when 3 then hits << k
+        else break
+        end
+      end
+      (1..5).each do |k|
+        case k
+        when 1, 2 then hits << k
+        else break
+        end
+      end
+      assert_equal [3, 1, 2], hits
     end
 
     def test_closures_see_their_own_element

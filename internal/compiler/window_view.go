@@ -63,6 +63,9 @@ func windowBlockSafe(blk *parser.BlockNode, immediate bool) bool {
 	if len(p.Optionals) > 0 || p.Rest != nil || len(p.Posts) > 0 || len(p.Keywords) > 0 || p.KeywordRest != nil || p.Block != nil {
 		return false
 	}
+	if len(p.Requireds) == 0 {
+		return false
+	}
 	if len(p.Requireds) > 1 {
 		return true // destructured: each param an element, copied out of the window (rbSplatVal)
 	}
@@ -107,12 +110,12 @@ func (w windowCheck) ok(n parser.Node, immediate, nested bool) bool {
 			}
 		}
 		return true
-	case *parser.IfNode:
-		return w.ok(x.Predicate, true, nested) && w.ok(x.Statements, immediate, nested) && w.ok(x.Subsequent, immediate, nested)
+	case *parser.IfNode: // a typed nil field is a non-nil Node: each is checked before it is walked
+		return w.ok(x.Predicate, true, nested) && (x.Statements == nil || w.ok(x.Statements, immediate, nested)) && w.ok(x.Subsequent, immediate, nested)
 	case *parser.UnlessNode:
-		return w.ok(x.Predicate, true, nested) && w.ok(x.Statements, immediate, nested) && w.ok(x.ElseClause, immediate, nested)
+		return w.ok(x.Predicate, true, nested) && (x.Statements == nil || w.ok(x.Statements, immediate, nested)) && (x.ElseClause == nil || w.ok(x.ElseClause, immediate, nested))
 	case *parser.ElseNode:
-		return w.ok(x.Statements, immediate, nested)
+		return x.Statements == nil || w.ok(x.Statements, immediate, nested)
 	case *parser.CallNode:
 		return w.callOK(x, immediate, nested)
 	}

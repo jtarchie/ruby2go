@@ -43,6 +43,11 @@ func TestWindowBlockSafe(t *testing.T) {
 		{"{ |a,| a }", true, false},
 		{"{ it.sum }", true, false},
 		{"{ _1.sum }", true, false},
+		{"{ |w| n += 1 unless w.empty? }", true, true},
+		{"{ |w| if w.empty? then n += 1 end }", true, true},
+		{"{ |w| if w.empty? then else n += 1 end }", true, true},
+		{"{ |w| unless w.empty? then else n += 1 end }", true, true},
+		{"{ |*w| w }", true, false},
 	} {
 		res, err := p.Parse(context.Background(), []byte("xs.each_cons(2) "+c.block+"\n"))
 		if err != nil {

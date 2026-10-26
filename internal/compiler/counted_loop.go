@@ -18,16 +18,18 @@ func (f *fctx) countedLoopHead(n *parser.CallNode, e *entry, recv expr, codes []
 	}
 	switch {
 	case m.Owner == f.c.classes["Integer"] && m.Name == "times" && len(codes) == 0:
+		n := f.newTmp()
+		f.emit("var %s Integer = %s", n, recv.code) // typed: a literal receiver is Go's int, and Integer(x) of an Integer fails unconvert
 		if gp == "_" {
-			return fmt.Sprintf("for range Integer(%s) {", recv.code)
+			return fmt.Sprintf("for range %s {", n)
 		}
-		return fmt.Sprintf("for %s := range Integer(%s) {", gp, recv.code) // a range over an int copies: the block may assign its param
+		return fmt.Sprintf("for %s := range %s {", gp, n) // a range over an int copies: the block may assign its param
 	case m.Owner == f.c.classes["Integer"] && (m.Name == "upto" || m.Name == "downto") && len(codes) == 1:
 		if gp = f.countedVar(n, names, gp); gp == "" {
 			return ""
 		}
 		from, to := f.newTmp(), f.newTmp()
-		f.emit("%s, %s := Integer(%s), Integer(%s)", from, to, recv.code, codes[0])
+		f.emit("var %s, %s Integer = %s, %s", from, to, recv.code, codes[0])
 		if m.Name == "upto" { // gp >= from: past MaxInt gp++ wraps below it
 			return fmt.Sprintf("for %s := %s; %s <= %s && %s >= %s; %s++ {", gp, from, gp, to, gp, from, gp)
 		}
