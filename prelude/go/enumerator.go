@@ -126,6 +126,19 @@ func rbWithIndex[E comparable](seq func(func(E) bool), offset Integer) func(func
 	}
 }
 
+// rbZipTake is MRI's take_items for `xs.zip(ys) { }`: ys's first len(xs) elements, copied when the call starts (decision 390).
+func rbZipTake[E, U comparable](xs []E, ys []U) []U {
+	return slices.Clone(ys[:min(len(xs), len(ys))])
+}
+
+// rbZipPair is the i-th pair of `xs.zip(ys) { }` over rbZipTake's ys (decision 390).
+func rbZipPair[E, U comparable](xs []E, ys []U, i int) Tuple2[E, *U] {
+	if i < len(ys) {
+		return Tuple2[E, *U]{xs[i], &ys[i]}
+	}
+	return Tuple2[E, *U]{xs[i], nil}
+}
+
 // rbSizeOf is a fixed size, for the enumerators that know theirs up front.
 func rbSizeOf(n Integer) func() *Integer {
 	return func() *Integer { return &n }

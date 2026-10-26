@@ -16,6 +16,9 @@ func (f *fctx) countedLoopHead(n *parser.CallNode, e *entry, recv expr, codes []
 	if len(goParams) == 1 {
 		gp = goParams[0]
 	}
+	if h := f.zipLoopHead(m, recv, codes, gp); h != "" {
+		return h
+	}
 	switch {
 	case m.Owner == f.c.classes["Integer"] && m.Name == "times" && len(codes) == 0:
 		n := f.newTmp()

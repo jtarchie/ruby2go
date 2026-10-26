@@ -54,11 +54,23 @@ func idxSetFast(s ast.Stmt) ast.Stmt {
 	slow := &ast.ExprStmt{X: &ast.CallExpr{Fun: call.Fun, Lparen: pos, Args: []ast.Expr{id(a), id(i), id(v)}, Rparen: pos}}
 	return &ast.IfStmt{
 		If:   pos,
-		Init: &ast.AssignStmt{Lhs: []ast.Expr{id(a), id(i), id(v)}, TokPos: pos, Tok: token.DEFINE, Rhs: []ast.Expr{call.Args[0], typedConst(call.Args[1], id("Integer")), typedConst(call.Args[2], ix.Index)}},
+		Init: &ast.AssignStmt{Lhs: []ast.Expr{id(a), id(i), id(v)}, TokPos: pos, Tok: token.DEFINE, Rhs: []ast.Expr{headSafe(call.Args[0]), typedConst(call.Args[1], id("Integer")), headSafe(typedConst(call.Args[2], ix.Index))}},
 		Cond: &ast.BinaryExpr{X: inBounds, OpPos: pos, Op: token.LAND, Y: notFrozen},
 		Body: &ast.BlockStmt{Lbrace: pos, List: []ast.Stmt{store}, Rbrace: pos},
 		Else: &ast.BlockStmt{Lbrace: pos, List: []ast.Stmt{slow}, Rbrace: call.End()},
 	}
+}
+
+// headSafe parenthesizes a composite literal, which an if header would otherwise read as its body (`out[0] = [7, 7]` into a tuple Array).
+func headSafe(x ast.Expr) ast.Expr {
+	lit := x
+	if u, ok := x.(*ast.UnaryExpr); ok {
+		lit = u.X
+	}
+	if _, ok := lit.(*ast.CompositeLit); ok {
+		return &ast.ParenExpr{X: x}
+	}
+	return x
 }
 
 func isIdent(x ast.Expr, name string) bool {

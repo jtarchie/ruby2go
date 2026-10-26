@@ -699,6 +699,7 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 // genCallNodeStmt is a call in statement position: Sorbet's `T.bind(self, X)`, a loop with a rescue modifier, or a call.
 func (f *fctx) genCallNodeStmt(n *parser.CallNode, t tail) {
 	f.noteWindowChain(n)
+	f.noteZipChain(n)
 	if isTCall(n, "bind") && bindsSelf(n) {
 		f.genSelfBind(n)
 		f.emptyTail(n, t)

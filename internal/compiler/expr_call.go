@@ -732,6 +732,7 @@ func (f *fctx) intrinsicGate(n parser.Node, recv expr, name string, args []parse
 // returns, so v is evaluated once and named after the call.
 func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
 	f.noteWindowChain(n)
+	f.noteZipChain(n)
 	if r := f.loopRescue(n); r != nil {
 		return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
 	}

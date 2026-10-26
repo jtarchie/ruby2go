@@ -713,6 +713,7 @@ func (f *fctx) coreEachWanted(m *Method, t tail) bool {
 // methods called with a block. Returns false if the call is not one.
 // A T? receiver is guarded first: `&.` skips the loop on nil, `.` raises.
 func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
+	n = f.zipEachBlock(n, t)
 	if cls := f.classRef(n.Receiver); cls != nil && cls.meta == nil {
 		return false
 	}
@@ -810,6 +811,11 @@ func (f *fctx) resolveIter(n *parser.CallNode, recvT Type) *entry {
 	}
 	if e == nil && n.Receiver == nil && f.owner != nil && f.owner.IsModule && f.lenient() {
 		e = f.c.classes["Object"].lookup(n.Name)
+	}
+	if e != nil && e.M.Block == nil {
+		if b := f.resolve(recvT, "__"+overloadBase(n.Name)+"_block"); b != nil && b.M.Iterator { // `xs.zip(ys) { }` (decision 390)
+			return b
+		}
 	}
 	return e
 }

@@ -84,6 +84,50 @@ class Array < Object
     }
   }
 
+  # MRI reads self at each step but other once, before the first (its take_items), so a store into other is not seen (decision 390).
+  #: [U] (Array[U]) { ([E, U?]) -> void } -> void
+  def __zip_block(other) = %x{
+    return func(yield func(Tuple2[E, *U]) bool) {
+      ys := rbZipTake(self.s, other.s)
+      for i := 0; i < len(self.s); i++ {
+        if !yield(rbZipPair(self.s, ys, i)) {
+          return
+        }
+      }
+    }
+  }
+
+  # A statement `xs.zip(ys).each { }`: MRI's pairs are built before each runs, so both are copies taken now (decision 390).
+  #: [U] (Array[U]) { ([E, U?]) -> void } -> void
+  def __zip_each(other) = %x{
+    return func(yield func(Tuple2[E, *U]) bool) {
+      xs := slices.Clone(self.s)
+      ys := rbZipTake(xs, other.s)
+      for i := range xs {
+        if !yield(rbZipPair(xs, ys, i)) {
+          return
+        }
+      }
+    }
+  }
+
+  # Copies taken now, as MRI's zip reads both Arrays before the consumer runs; no Array of pairs (decision 390).
+  #: [U] (Array[U]) -> Enumerator[[E, U?]]
+  def __zip_view_enum(other) = %x{
+    xs, ys := slices.Clone(self.s), slices.Clone(other.s)
+    return rbEnumOf(func(yield func(Tuple2[E, *U]) bool) {
+      for i, x := range xs {
+        var u *U
+        if i < len(ys) {
+          u = &ys[i]
+        }
+        if !yield(Tuple2[E, *U]{x, u}) {
+          return
+        }
+      }
+    }, any(self), "each", nil, nil)
+  }
+
   #: (E) -> Integer?
   def index(v)
     each_with_index { |x, i| return i if x == v }

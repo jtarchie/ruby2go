@@ -763,3 +763,117 @@ module EnumeratorTests
     end
   end
 end
+
+module EnumeratorTests
+  # zip with a block, or chained into one, builds no Array of pairs (decision 390): MRI's values all the same.
+  class EnumZipFuseTest < Minitest::Test
+    def test_block_form_reads_both_arrays
+      a = [1, 2, 3]
+      b = [4, 5]
+      s = 0
+      a.zip(b) { |x, y| s += x * (y || 0) }
+      assert_equal 14, s
+      seen = [] #: Array[Integer?]
+      a.zip(b) do |x, y|
+        b[1] = 7 if x == 1
+        seen << y
+      end
+      assert_equal [4, 5, nil], seen
+      grown = [] #: Array[Integer]
+      c = [1, 2]
+      c.zip([9]) do |x, _y|
+        c << 3 if x == 1
+        grown << x
+      end
+      assert_equal [1, 2, 3], grown
+      shrunk = [] #: Array[Integer?]
+      d = [1, 2, 3]
+      d.zip([9, 8, 7]) do |x, y|
+        d.pop if x == 1
+        shrunk << y
+      end
+      assert_equal [9, 8], shrunk
+    end
+
+    def test_kept_pairs_and_values
+      a = [1, 2, 3]
+      b = [4, 5]
+      out = [] #: Array[[Integer, Integer?]]
+      a.zip(b) { |pair| out << pair }
+      a.zip(b).each { |pair| out << pair }
+      ys = [] #: Array[Integer?]
+      a.zip(b) { |_x, y| ys << y }
+      a.zip(b).each { |_x, y| ys << y }
+      b[0] = 99
+      assert_equal [[1, 4], [2, 5], [3, nil], [1, 4], [2, 5], [3, nil]], out
+      assert_equal [4, 5, nil, 4, 5, nil], ys
+      out[0] = [7, 7]
+      assert_equal [2, 5], out[1]
+    end
+
+    def test_chained_consumers
+      a = [1, 2, 3, 4]
+      b = [10, 20, 30]
+      assert_equal 140, a.zip(b).sum { |x, y| x * (y || 0) }
+      assert_equal [11, 22, 33, 4], a.zip(b).map { |x, y| x + (y || 0) }
+      assert_equal 1, a.zip(b).count { |_x, y| y.nil? }
+      assert_equal [[3, 30], [4, nil]], a.zip(b).select { |x, _y| x > 2 }
+      assert_equal [[1, 10]], a.zip(b).reject { |x, _y| x > 1 }
+      assert(a.zip(b).any? { |x, y| y.nil? && x == 4 })
+      assert(a.zip(b).all? { |x, _y| x.positive? })
+      assert(a.zip(b).none? { |x, y| x == y })
+      assert_equal [10, 40, 90], a.zip(b).filter_map { |x, y| y && x * y }
+      assert_equal [1, 10, 2, 20, 3, 30, 4], a.zip(b).flat_map { |x, y| y ? [x, y] : [x] }
+      words = %w[a b]
+      assert_equal %w[a1 b2], words.zip([1, 2, 3]).map { |w, n| "#{w}#{n}" }
+    end
+
+    def test_chain_reads_arrays_before_the_block
+      a = [1, 2, 3]
+      b = [4, 5, 6]
+      got = a.zip(b).map do |x, y|
+        b[2] = 0
+        a << 9 if a.size < 5
+        x + (y || 0)
+      end
+      assert_equal [5, 7, 9], got
+      assert_equal [4, 5, 0], b
+      c = [1, 2, 3]
+      d = [4, 5, 6]
+      each_seen = [] #: Array[Integer]
+      c.zip(d).each do |x, y|
+        c[2] = 0
+        d[2] = 0
+        c << 9 if c.size < 5
+        each_seen << x << (y || -1)
+      end
+      assert_equal [1, 4, 2, 5, 3, 6], each_seen
+    end
+
+    def test_break_and_next
+      a = [1, 2, 3, 4]
+      b = [5, 6, 7, 8]
+      t = 0
+      a.zip(b) do |x, y|
+        next if x == 2
+        break if x == 4
+        t += x + y
+      end
+      assert_equal 16, t
+      u = 0
+      a.zip(b).each do |x, y|
+        break if x == 3
+        u += y - x
+      end
+      assert_equal 8, u
+    end
+
+    def test_three_arrays
+      a = [1, 2, 3]
+      b = [4, 5]
+      c = [7, 8, 9]
+      assert_equal [[1, 4, 7], [2, 5, 8], [3, nil, 9]], a.zip(b, c)
+      assert_equal [12, 15, 12], a.zip(b, c).map { |x, y, z| x + (y || 0) + (z || 0) }
+    end
+  end
+end

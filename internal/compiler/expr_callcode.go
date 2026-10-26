@@ -327,6 +327,9 @@ func (f *fctx) callTwin(n parser.Node, e *entry, recv expr, args []parser.Node, 
 	if o := f.windowViewEnum(n, e, recv.typ, block); o != nil {
 		return o
 	}
+	if o := f.zipViewEnum(n, e, recv.typ, block); o != nil {
+		return o
+	}
 	f.curBlock = block
 	o := f.overload(e, recv.typ, args)
 	f.curBlock = nil

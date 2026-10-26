@@ -700,6 +700,25 @@ module Enumerable
     return out
   }
 
+  #: [U, V] (Array[U], Array[V]) -> Array[[E, U?, V?]]
+  def __zip_2(b, c) = %x{
+    out := &Array[Tuple3[E, *U, *V]]{s: make([]Tuple3[E, *U, *V], 0, len(b.s))}
+    us, vs := slices.Clone(b.s), slices.Clone(c.s)
+    i := 0
+    for x := range self.Each() {
+      t := Tuple3[E, *U, *V]{F0: x}
+      if i < len(us) {
+        t.F1 = &us[i]
+      }
+      if i < len(vs) {
+        t.F2 = &vs[i]
+      }
+      out.s = append(out.s, t)
+      i++
+    }
+    return out
+  }
+
   #: () { (E, E) -> bool } -> Array[Array[E]]
   def chunk_while = %x{
     out := &Array[*Array[E]]{}
