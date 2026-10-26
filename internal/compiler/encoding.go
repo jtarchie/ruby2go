@@ -53,6 +53,7 @@ func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []
 	if f.f.isPrelude() {
 		return
 	}
+	f.linkEncodingKeywords(args)
 	t, ok := recv.typ.(TClass)
 	if !ok {
 		return
@@ -68,11 +69,18 @@ func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []
 	if strings.HasSuffix(key, ".class") && idx == 1 && len(args) > 1 {
 		if s, lit := args[1].(*parser.StringNode); !lit || strings.Contains(s.Unescaped.Value, ":") {
 			f.emit("rbFileEncModes()") // the mode may name encodings: link the transcoder in (rbFileEncHook)
+			if !lit {
+				f.emit("rbUseEncAll()")
+			}
 		}
 	}
 	for i, a := range args {
+		if idx >= 0 && i != idx {
+			continue
+		}
 		s, isStr := a.(*parser.StringNode)
-		if !isStr || idx >= 0 && i != idx {
+		if !isStr {
+			f.linkEncodingValue(a)
 			continue
 		}
 		lit := s.Unescaped.Value
@@ -85,8 +93,60 @@ func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []
 		}
 		for _, e := range names {
 			u := strings.ToUpper(strings.TrimPrefix(strings.TrimPrefix(e, "BOM|"), "bom|"))
-			if mriEncodings[u] && !rugarooEncodings[u] && !xtextEncodings[u] {
-				f.errorf(n, "encoding %s is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII, UTF-16LE/BE, UTF-32LE/BE, UTF-16, UTF-32 and x/text's single-byte tables (ISO-8859-*, Windows-125*, KOI8-*, IBM/CP 437-866, macRoman, macCyrillic; decisions 136, 380)", e)
+			fam, xtext := xtextEncodings[u]
+			if fam != "" {
+				f.emit("rbUseEnc%s()", fam) // link that family's x/text tables (decision 380)
+			}
+			if mriEncodings[u] && !rugarooEncodings[u] && !xtext {
+				f.errorf(n, "encoding %s is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII, UTF-16LE/BE, UTF-32LE/BE, UTF-16, UTF-32 and x/text's tables (ISO-8859-*, Windows-125*, KOI8-*, IBM/CP 437-866, macRoman, macCyrillic, Shift_JIS, Windows-31J, EUC-JP, CP51932, EUC-KR, CP949, GBK, GB2312, GB18030, Big5, CP950; decisions 136, 380)", e)
+			}
+		}
+	}
+}
+
+// linkEncodingValue links the x/text tables (decision 380) an encoding argument that is not a string literal may need:
+// an Encoding constant its own family's, anything else (a variable, a call) every family's.
+func (f *fctx) linkEncodingValue(a parser.Node) {
+	switch a := a.(type) {
+	case *parser.KeywordHashNode, *parser.NilNode, *parser.SymbolNode:
+		return
+	case *parser.ConstantPathNode:
+		if p, ok := a.Parent.(*parser.ConstantReadNode); ok && p.Name == "Encoding" && a.Name != nil {
+			if fam := xtextEncodingConsts[*a.Name]; fam != "" {
+				f.emit("rbUseEnc%s()", fam)
+			}
+			return
+		}
+	}
+	f.emit("rbUseEncAll()")
+}
+
+// linkEncodingKeywords links the tables an encoding:, external_encoding: or internal_encoding: keyword names
+// (`File.read(path, encoding: "Shift_JIS:UTF-8")`).
+func (f *fctx) linkEncodingKeywords(args []parser.Node) {
+	for _, a := range args {
+		kw, ok := a.(*parser.KeywordHashNode)
+		if !ok {
+			continue
+		}
+		for _, el := range kw.Elements {
+			assoc, ok := el.(*parser.AssocNode)
+			if !ok {
+				continue
+			}
+			key, ok := assoc.Key.(*parser.SymbolNode)
+			if !ok || key.Unescaped.Value != "encoding" && key.Unescaped.Value != "external_encoding" && key.Unescaped.Value != "internal_encoding" {
+				continue
+			}
+			s, lit := assoc.Value.(*parser.StringNode)
+			if !lit {
+				f.linkEncodingValue(assoc.Value)
+				continue
+			}
+			for _, e := range strings.Split(s.Unescaped.Value, ":") {
+				if fam := xtextEncodings[strings.ToUpper(strings.TrimPrefix(strings.TrimPrefix(e, "BOM|"), "bom|"))]; fam != "" {
+					f.emit("rbUseEnc%s()", fam)
+				}
 			}
 		}
 	}

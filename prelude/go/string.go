@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"math"
@@ -141,7 +142,7 @@ func rbCaserRun(c *cases.Caser, s string) string {
 	for {
 		c.Reset()
 		n, _, err := c.Transform(dst, src, true)
-		if err == transform.ErrShortDst {
+		if errors.Is(err, transform.ErrShortDst) {
 			dst = make([]byte, 2*len(dst))
 			continue
 		}
@@ -224,11 +225,12 @@ func rbSwapcase(s string, turkic bool) string {
 	flush := func(end int) {
 		if end > start {
 			run := s[start:end]
-			if turkic && down {
+			switch {
+			case turkic && down:
 				run = rbCaseX(rbCaseLowerTR, run)
-			} else if down {
+			case down:
 				run = rbCaserRun(lower, run)
-			} else {
+			default:
 				run = rbCaserRun(upper, run)
 			}
 			b.WriteString(run)

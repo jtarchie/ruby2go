@@ -45,7 +45,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 | `eval`, `instance_eval(string)`, `load`, code built at run time | The binary has no interpreter; everything is compiled ahead of time. | Write the code out. Gems that `eval` at load time can still compile (see [gems](#gems--experimental)). |
 | `define_method`, `define_singleton_method` in your own code | Methods must be known at compile time. | `def`, or `method_missing` with a signature ([29](../examples/29_method_missing/main.rb)). A gem's load-time `define_method` is supported ([decision 198](decisions/198.md)). |
 | In-place String mutation (`<<`, `upcase!`, `gsub!`, `[]=`) | A `String` is an immutable Go string value ([decision 58](decisions/058.md)). | Build new strings (`s += "x"`, `s = s.upcase`) or use `StringIO`. |
-| Multibyte legacy encodings (Shift_JIS, EUC-JP, GBK, Big5, ...) and single-byte ones x/text lacks (Windows-1258, ISO-8859-11, macGreek, ...) | Strings carry no encoding tag ([decision 136](decisions/136.md)); single-byte ones come from x/text ([decision 380](decisions/380.md)). | Convert at the edges. |
+| The 34 encodings listed under [Encodings](#encodings) (ISO-2022-JP, Big5-HKSCS, macGreek, ...) | x/text has no table for them, or they keep state between characters ([decision 380](decisions/380.md)). | Convert at the edges with another tool. |
 | `break v`; a `break` out of a block whose call's value is used; `return` from a block stored as a closure; `next v` where the value is thrown away (`while`, `each`) | Go closures cannot unwind their caller ([decision 4](decisions/004.md)). | Restructure: plain `break`/`return` work in `while` and in blocks that run inline (like `each`). |
 | Inline overloaded signatures (`#\|`) | | Declare overloads in a `.rbs` file ([117](../examples/117_rbs_overloads/main.rb)). |
 | `require` of a computed path, `$LOAD_PATH` changes at run time | Files are read when the program compiles. | String-literal paths at a file's top level; `-I dir` for load paths; `-trace` for gems ([gems.md](gems.md)). |
@@ -88,7 +88,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). 
 | `Fiber` | stable | 25 of 66 (38%) | 122 |  |
 | `Signal`, `Process` | stable | 35 of 87 (40%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
 | `Marshal` | stable | 28 of 250 (11%) | 102 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
-| `Encoding` | stable | 61 of 105 (58%) | 33 | 45 encodings (ISO-8859, Windows-125x, KOI8, IBM and Mac code pages through x/text, [decision 380](decisions/380.md)), no per-String tag ([decision 136](decisions/136.md)). |
+| `Encoding` | stable | 61 of 105 (58%) | 33 | 60 encodings ([list](#encodings)), no per-String tag ([decision 136](decisions/136.md)). |
 | `Warning`, `GC`, `ObjectSpace` | stable | 15 of 22 (68%) | 93 | The parts a program can observe; no heap walking. |
 | `Encoding::Converter` | not supported | 0 of 139 (0%) | 4 | Use `String#encode`. |
 | `Binding`, `TracePoint`, refinements | not supported | 0 of 58 (0%) | 104 | Need an interpreter at run time. |
@@ -99,6 +99,36 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). 
 [decision 372](decisions/372.md)). `Hash#[]` is typed `V?`, so typed code
 nil-checks it or uses `fetch` ([decision 5](decisions/005.md)). `Marshal`
 round-trips its own bytes, not MRI's.
+
+### Encodings
+
+`String#encode`, `Integer#chr`, `File.read`/`File.open`/`IO#set_encoding` and
+`Encoding.find` handle 60 encodings. Past the ten rugaroo does itself, they
+come from `golang.org/x/text`, with MRI's own mapping, byte rules and error
+messages wherever x/text's differ ([decision 380](decisions/380.md)): every
+byte and character was compared with MRI 4.0.
+
+- **Unicode and binary:** UTF-8, UTF-16, UTF-16BE, UTF-16LE, UTF-32, UTF-32BE, UTF-32LE, US-ASCII, ASCII-8BIT.
+- **Single-byte:** ISO-8859-1 to -11 and -13 to -16, TIS-620, Windows-874 and -1250 to -1257, KOI8-R, KOI8-U,
+  IBM437, CP850, IBM852, CP852, IBM855, CP855, IBM860, IBM862, IBM863, IBM865, IBM866, macRoman, macCyrillic.
+- **Multibyte:** Shift_JIS, Windows-31J (SJIS, CP932), EUC-JP, CP51932, EUC-KR, CP949, GBK (CP936), GB2312,
+  GB18030, Big5, CP950.
+
+Not supported, though MRI converts them: naming one in a literal is a compile
+error, and a name built at run time raises `Encoding::ConverterNotFoundError`.
+
+| Encodings | Why |
+|---|---|
+| ISO-2022-JP, stateless-ISO-2022-JP, CP50220, CP50221, ISO-2022-JP-KDDI, stateless-ISO-2022-JP-KDDI | Escape sequences switch a state that lasts across characters; rugaroo's transcoder reads one character at a time. |
+| Big5-HKSCS | Some of its characters decode to two code points. |
+| Big5-UAO, CP951, eucJP-ms, EUC-JIS-2004, GB12345 | No x/text table. |
+| IBM720, IBM737, IBM775, IBM857, IBM861, IBM864, IBM869, macCroatian, macGreek, macIceland, macRomania, macTurkish, macUkraine | No x/text table. |
+| IBM037 | EBCDIC: not ASCII-compatible. |
+| SJIS-DoCoMo, SJIS-KDDI, SJIS-SoftBank, UTF8-DoCoMo, UTF8-KDDI, UTF8-SoftBank | Carrier emoji tables, which x/text does not have. |
+| UTF8-MAC, CESU-8 | Unicode variants with their own rules (decomposed file names, surrogate pairs in UTF-8). |
+
+MRI has no converter for Windows-1258, EUC-TW, Emacs-Mule, GB1988,
+macCentEuro, macThai, ISO-2022-JP-2, MacJapanese or UTF-7 either.
 
 ## Standard library
 

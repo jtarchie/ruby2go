@@ -489,4 +489,52 @@ module EncodingTests
       refute "É".capitalize.equal?("É")
     end
   end
+
+  # The multibyte encodings x/text's tables carry, with MRI's byte structure and corrections (decision 380).
+  class MultiByteEncodingTest < Minitest::Test
+    def test_japanese
+      s = "日本語のテキスト、ｶﾅ"
+      assert_equal s, s.encode("Shift_JIS").encode("UTF-8", "Shift_JIS")
+      assert_equal s, s.encode("EUC-JP").encode("UTF-8", "EUC-JP")
+      assert_equal [0x93, 0xFA, 0x96, 0x7B], "日本".encode("Windows-31J").bytes
+      assert_equal "\u301C", "\x81\x60".b.encode("UTF-8", "Shift_JIS") # wave dash, as MRI's JIS table has it
+      assert_equal "\uE000", "\xF0\x40".b.encode("UTF-8", "Windows-31J") # the user-defined area
+      assert_equal "\u4E02", "\x8F\xB0\xA1".b.encode("UTF-8", "EUC-JP") # JIS X 0212's three bytes
+    end
+
+    def test_chinese_and_korean
+      assert_equal "中文字符", "中文字符".encode("GBK").encode("UTF-8", "GBK")
+      assert_equal "\u{1F600}", "\u{1F600}".encode("GB18030").encode("UTF-8", "GB18030")
+      assert_equal [0x90, 0x30, 0x81, 0x30], "\u{10000}".encode("GB18030").bytes
+      assert_equal "繁體", "繁體".encode("Big5").encode("UTF-8", "CP950")
+      assert_equal "한국어", "한국어".encode("EUC-KR").encode("UTF-8", "CP949")
+    end
+
+    def test_errors_as_mri
+      e = assert_raises(Encoding::InvalidByteSequenceError) { "\x81 ".b.encode("UTF-8", "Shift_JIS") }
+      assert_equal "\"\\x81\" followed by \" \" on Shift_JIS", e.message
+      e = assert_raises(Encoding::InvalidByteSequenceError) { "\x81".b.encode("UTF-8", "Shift_JIS") }
+      assert_equal "incomplete \"\\x81\" on Shift_JIS", e.message
+      e = assert_raises(Encoding::InvalidByteSequenceError) { "\x81\x30\x81\x2f".b.encode("UTF-8", "GB18030") }
+      assert_equal "\"\\x810\\x81\" followed by \"/\" on GB18030", e.message
+      e = assert_raises(Encoding::UndefinedConversionError) { "\u0100".encode("EUC-KR") }
+      assert_equal "U+0100 from UTF-8 to EUC-KR", e.message
+      assert_equal "a?b", "a\u0100b".encode("Shift_JIS", undef: :replace).encode("UTF-8", "Shift_JIS")
+    end
+
+    def test_names_constants_and_files
+      assert_equal Encoding::Shift_JIS, Encoding.find("shift_jis")
+      assert_equal Encoding::Windows_31J, Encoding.find("SJIS")
+      assert_equal [0x93, 0xFA], "日".encode(Encoding::Windows_31J).bytes
+      name = ["EUC", "KR"].join("-")
+      assert_equal [0xC7, 0xD1], "한".encode(name).bytes
+      path = "encoding_test_mb.txt"
+      File.write(path, "日本\n".encode("Shift_JIS"))
+      read = File.read(path, encoding: "Shift_JIS:UTF-8")
+      line = File.open(path, "r:Shift_JIS:UTF-8") { |f| f.gets }
+      File.delete(path)
+      assert_equal "日本\n", read
+      assert_equal "日本\n", line
+    end
+  end
 end

@@ -1,31 +1,31 @@
 Compile errors for encodings rugaroo does not transcode, and String's in-place forms (docs/design.md decision 136).
 -- encode_sjis.rb --
-# error: main.rb:2: encoding Shift_JIS is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII
-puts "a".encode("Shift_JIS")
+# error: main.rb:2: encoding Big5-HKSCS is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII
+puts "a".encode("Big5-HKSCS")
 -- encode_from_cp1258.rb --
 # error: main.rb:2: encoding Windows-1258 is not supported
 puts "a".encode("UTF-8", "Windows-1258")
 -- force_encoding_eucjp.rb --
-# error: main.rb:2: encoding EUC-JP is not supported
-puts "a".dup.force_encoding("EUC-JP").bytesize
+# error: main.rb:2: encoding eucJP-ms is not supported
+puts "a".dup.force_encoding("eucJP-ms").bytesize
 -- find_thai.rb --
-# error: main.rb:2: encoding iso-8859-11 is not supported
-puts Encoding.find("iso-8859-11")
+# error: main.rb:2: encoding ibm737 is not supported
+puts Encoding.find("ibm737")
 -- file_mode.rb --
-# error: main.rb:2: encoding Shift_JIS is not supported
-File.open("x.txt", "r:Shift_JIS") { |f| puts f.read }
+# error: main.rb:2: encoding IBM864 is not supported
+File.open("x.txt", "r:IBM864") { |f| puts f.read }
 -- file_mode_internal.rb --
-# error: main.rb:2: encoding EUC-JP is not supported
-File.open("x.txt", "r:UTF-8:EUC-JP") { |f| puts f.read }
+# error: main.rb:2: encoding eucJP-ms is not supported
+File.open("x.txt", "r:UTF-8:eucJP-ms") { |f| puts f.read }
 -- chr_sjis.rb --
-# error: main.rb:2: encoding SJIS is not supported
-puts 65.chr("SJIS")
+# error: main.rb:2: encoding GB12345 is not supported
+puts 65.chr("GB12345")
 -- default_external.rb --
 # error: main.rb:2: encoding macGreek is not supported
 Encoding.default_external = "macGreek"
 -- constant.rb --
 # error: main.rb:2: uninitialized constant
-puts Encoding::Shift_JIS
+puts Encoding::EUC_TW
 -- scrub_bang.rb --
 # error: main.rb:3: undefined method scrub! for String: Strings are immutable in rugaroo, so assign the result of scrub instead
 s = "a\xff"

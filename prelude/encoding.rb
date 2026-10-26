@@ -61,6 +61,25 @@ class Encoding < Object
   ISO2022_JP = ISO_2022_JP #: Encoding
 
   # BEGIN scripts/gen-encoding-fixes: the x/text encodings (decision 380), MRI's list and names
+  EUC_JP = __new("EUC-JP", "EUC-JP,eucJP", true, false) #: Encoding
+  EucJP = EUC_JP #: Encoding
+  EUCJP = EUC_JP #: Encoding
+  WINDOWS_31J = __new("Windows-31J", "Windows-31J,CP932,csWindows31J,SJIS,PCK", true, false) #: Encoding
+  CP932 = WINDOWS_31J #: Encoding
+  SJIS = WINDOWS_31J #: Encoding
+  CsWindows31J = WINDOWS_31J #: Encoding
+  CSWINDOWS31J = WINDOWS_31J #: Encoding
+  PCK = WINDOWS_31J #: Encoding
+  Windows_31J = WINDOWS_31J #: Encoding
+  BIG5 = __new("Big5", "Big5", true, false) #: Encoding
+  Big5 = BIG5 #: Encoding
+  CP949 = __new("CP949", "CP949", true, false) #: Encoding
+  EUC_KR = __new("EUC-KR", "EUC-KR,eucKR", true, false) #: Encoding
+  EucKR = EUC_KR #: Encoding
+  EUCKR = EUC_KR #: Encoding
+  GB18030 = __new("GB18030", "GB18030", true, false) #: Encoding
+  GBK = __new("GBK", "GBK,CP936", true, false) #: Encoding
+  CP936 = GBK #: Encoding
   ISO_8859_2 = __new("ISO-8859-2", "ISO-8859-2,ISO8859-2", true, false) #: Encoding
   ISO8859_2 = ISO_8859_2 #: Encoding
   ISO_8859_3 = __new("ISO-8859-3", "ISO-8859-3,ISO8859-3", true, false) #: Encoding
@@ -79,6 +98,8 @@ class Encoding < Object
   ISO8859_9 = ISO_8859_9 #: Encoding
   ISO_8859_10 = __new("ISO-8859-10", "ISO-8859-10,ISO8859-10", true, false) #: Encoding
   ISO8859_10 = ISO_8859_10 #: Encoding
+  ISO_8859_11 = __new("ISO-8859-11", "ISO-8859-11,ISO8859-11", true, false) #: Encoding
+  ISO8859_11 = ISO_8859_11 #: Encoding
   ISO_8859_13 = __new("ISO-8859-13", "ISO-8859-13,ISO8859-13", true, false) #: Encoding
   ISO8859_13 = ISO_8859_13 #: Encoding
   ISO_8859_14 = __new("ISO-8859-14", "ISO-8859-14,ISO8859-14", true, false) #: Encoding
@@ -90,6 +111,8 @@ class Encoding < Object
   KOI8_R = __new("KOI8-R", "KOI8-R,CP878", true, false) #: Encoding
   CP878 = KOI8_R #: Encoding
   KOI8_U = __new("KOI8-U", "KOI8-U", true, false) #: Encoding
+  SHIFT_JIS = __new("Shift_JIS", "Shift_JIS", true, false) #: Encoding
+  Shift_JIS = SHIFT_JIS #: Encoding
   WINDOWS_1250 = __new("Windows-1250", "Windows-1250,CP1250", true, false) #: Encoding
   CP1250 = WINDOWS_1250 #: Encoding
   Windows_1250 = WINDOWS_1250 #: Encoding
@@ -113,7 +136,9 @@ class Encoding < Object
   CP850 = __new("CP850", "CP850,IBM850", true, false) #: Encoding
   IBM850 = CP850 #: Encoding
   IBM852 = __new("IBM852", "IBM852", true, false) #: Encoding
+  CP852 = __new("CP852", "CP852", true, false) #: Encoding
   IBM855 = __new("IBM855", "IBM855", true, false) #: Encoding
+  CP855 = __new("CP855", "CP855", true, false) #: Encoding
   IBM860 = __new("IBM860", "IBM860,CP860", true, false) #: Encoding
   CP860 = IBM860 #: Encoding
   IBM862 = __new("IBM862", "IBM862,CP862", true, false) #: Encoding
@@ -128,17 +153,24 @@ class Encoding < Object
   MacCyrillic = MACCYRILLIC #: Encoding
   MACROMAN = __new("macRoman", "macRoman", true, false) #: Encoding
   MacRoman = MACROMAN #: Encoding
+  CP950 = __new("CP950", "CP950", true, false) #: Encoding
+  CP51932 = __new("CP51932", "CP51932", true, false) #: Encoding
+  GB2312 = __new("GB2312", "GB2312,EUC-CN,eucCN", true, false) #: Encoding
+  EUC_CN = GB2312 #: Encoding
+  EucCN = GB2312 #: Encoding
+  EUCCN = GB2312 #: Encoding
   WINDOWS_1256 = __new("Windows-1256", "Windows-1256,CP1256", true, false) #: Encoding
   Windows_1256 = WINDOWS_1256 #: Encoding
   CP1256 = WINDOWS_1256 #: Encoding
   WINDOWS_1255 = __new("Windows-1255", "Windows-1255,CP1255", true, false) #: Encoding
   Windows_1255 = WINDOWS_1255 #: Encoding
   CP1255 = WINDOWS_1255 #: Encoding
+  TIS_620 = __new("TIS-620", "TIS-620", true, false) #: Encoding
   WINDOWS_874 = __new("Windows-874", "Windows-874,CP874", true, false) #: Encoding
   Windows_874 = WINDOWS_874 #: Encoding
   CP874 = WINDOWS_874 #: Encoding
-  LIST__ = [ASCII_8BIT, UTF_8, US_ASCII, UTF_16BE, UTF_16LE, UTF_32BE, UTF_32LE, UTF_16, UTF_32, ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5, ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10, ISO_8859_13, ISO_8859_14, ISO_8859_15, ISO_8859_16, KOI8_R, KOI8_U, WINDOWS_1250, WINDOWS_1251, WINDOWS_1252, WINDOWS_1253, WINDOWS_1254, WINDOWS_1257, IBM437, CP850, IBM852, IBM855, IBM860, IBM862, IBM863, IBM865, IBM866, MACCYRILLIC, MACROMAN, WINDOWS_1256, WINDOWS_1255, WINDOWS_874] #: Array[Encoding]
-  NAME_LIST__ = %w[ASCII-8BIT UTF-8 US-ASCII UTF-16BE UTF-16LE UTF-32BE UTF-32LE UTF-16 UTF-32 ISO-8859-1 ISO-8859-2 ISO-8859-3 ISO-8859-4 ISO-8859-5 ISO-8859-6 ISO-8859-7 ISO-8859-8 ISO-8859-9 ISO-8859-10 ISO-8859-13 ISO-8859-14 ISO-8859-15 ISO-8859-16 KOI8-R KOI8-U Windows-1250 Windows-1251 Windows-1252 Windows-1253 Windows-1254 Windows-1257 BINARY IBM437 CP437 CP850 IBM850 IBM852 IBM855 IBM860 CP860 IBM862 CP862 IBM863 CP863 IBM865 CP865 IBM866 CP866 macCyrillic macRoman ISO8859-1 ISO8859-2 ISO8859-3 ISO8859-4 ISO8859-5 ISO8859-6 Windows-1256 CP1256 ISO8859-7 ISO8859-8 Windows-1255 CP1255 ISO8859-9 ISO8859-10 Windows-874 CP874 ISO8859-13 ISO8859-14 ISO8859-15 ISO8859-16 CP878 ASCII ANSI_X3.4-1968 646 CP65001 UCS-2BE UCS-4BE UCS-4LE CP1250 CP1251 CP1252 CP1253 CP1254 CP1257 locale external filesystem] #: Array[String]
+  LIST__ = [ASCII_8BIT, UTF_8, US_ASCII, UTF_16BE, UTF_16LE, UTF_32BE, UTF_32LE, UTF_16, UTF_32, EUC_JP, WINDOWS_31J, BIG5, CP949, EUC_KR, GB18030, GBK, ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5, ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10, ISO_8859_11, ISO_8859_13, ISO_8859_14, ISO_8859_15, ISO_8859_16, KOI8_R, KOI8_U, SHIFT_JIS, WINDOWS_1250, WINDOWS_1251, WINDOWS_1252, WINDOWS_1253, WINDOWS_1254, WINDOWS_1257, IBM437, CP850, IBM852, CP852, IBM855, CP855, IBM860, IBM862, IBM863, IBM865, IBM866, MACCYRILLIC, MACROMAN, CP950, CP51932, GB2312, WINDOWS_1256, WINDOWS_1255, TIS_620, WINDOWS_874] #: Array[Encoding]
+  NAME_LIST__ = %w[ASCII-8BIT UTF-8 US-ASCII UTF-16BE UTF-16LE UTF-32BE UTF-32LE UTF-16 UTF-32 EUC-JP Windows-31J Big5 CP949 EUC-KR GB18030 GBK ISO-8859-1 ISO-8859-2 ISO-8859-3 ISO-8859-4 ISO-8859-5 ISO-8859-6 ISO-8859-7 ISO-8859-8 ISO-8859-9 ISO-8859-10 ISO-8859-11 ISO-8859-13 ISO-8859-14 ISO-8859-15 ISO-8859-16 KOI8-R KOI8-U Shift_JIS Windows-1250 Windows-1251 Windows-1252 Windows-1253 Windows-1254 Windows-1257 BINARY IBM437 CP437 CP850 IBM850 IBM852 CP852 IBM855 CP855 IBM860 CP860 IBM862 CP862 IBM863 CP863 IBM865 CP865 IBM866 CP866 macCyrillic macRoman CP950 eucJP CP51932 eucKR GB2312 EUC-CN eucCN CP936 ISO8859-1 ISO8859-2 ISO8859-3 ISO8859-4 ISO8859-5 ISO8859-6 Windows-1256 CP1256 ISO8859-7 ISO8859-8 Windows-1255 CP1255 ISO8859-9 ISO8859-10 ISO8859-11 TIS-620 Windows-874 CP874 ISO8859-13 ISO8859-14 ISO8859-15 ISO8859-16 CP878 ASCII ANSI_X3.4-1968 646 CP65001 UCS-2BE UCS-4BE UCS-4LE CP932 csWindows31J SJIS PCK CP1250 CP1251 CP1252 CP1253 CP1254 CP1257 locale external filesystem] #: Array[String]
   # END scripts/gen-encoding-fixes
 
   #: () -> Array[Encoding]

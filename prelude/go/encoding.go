@@ -574,7 +574,7 @@ func rbIntChr(n int, enc any) String {
 	if e == "" {
 		panic(NewArgumentError(Ref(String("unknown encoding name - " + name))))
 	}
-	single := e == "ASCII-8BIT" || e == "ISO-8859-1" || e == "US-ASCII" || rbSingleByte[e] != nil
+	single := e == "ASCII-8BIT" || e == "ISO-8859-1" || e == "US-ASCII" || rbIsSingleByte[e]
 	switch {
 	case n < 0 || single && n > 0xFF || e == "UTF-8" && n > unicode.MaxRune:
 		panic(NewRangeError(Ref(String(strconv.Itoa(n) + " out of char range"))))

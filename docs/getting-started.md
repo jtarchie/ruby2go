@@ -196,7 +196,7 @@ Every message below is what rugaroo prints today, prefixed by `file:line`.
 | `blocks on untyped receivers are not supported` | A block passed to a method called on an `untyped` value. | Give the receiver a type: a signature on the method it came in through, or `list = value #: Array[Integer]`. |
 | `overloaded signatures (#\|) are not supported` | Inline overloads. | Put them in a `.rbs` file under `sig/`. |
 | `require_relative must be a top-level statement: rugaroo loads files at compile time` | A `require_relative` inside a method or condition. | Move it to the top of the file. |
-| `encoding EUC-JP is not supported` | Strings carry no encoding tag; ten encodings are known. | Convert at the program's edges. |
+| `encoding ISO-2022-JP is not supported` | 60 encodings are known; the others are listed in [support](support.md#encodings) with why. | Convert at the program's edges. |
 
 ## When rugaroo is not the tool
 
