@@ -46,6 +46,7 @@ type Compiler struct {
 	erbSnippets           map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)
 	rewrites              map[parser.Node]parser.Node // desugared nodes, built once so every pass sees one tree
 	loopInner             map[*parser.CallNode]bool   // the loop calls loopRescue wrapped, not wrapped again
+	sureTake              map[*parser.CallNode]bool   // shift/pop an emptiness guard proves non-nil (decision 391)
 	erbCounter            int
 	labels                map[string]string // Go function (its table key) → Ruby backtrace label, for every function emitted (decision 106)
 	classes               map[string]*Class

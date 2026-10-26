@@ -194,7 +194,7 @@ default `raise`.
 | bm_setivar_young | 0.29s | 0.29s | 0.017s | 0.014s |
 | bm_sieve | 0.64s | 0.64s | 0.033s | 0.020s |
 | bm_sinatra_mini | 0.055s | 0.053s | - | 0.005s |
-| bm_so_lists | 0.42s | 0.26s | 0.20s | 0.029s |
+| bm_so_lists | 0.42s | 0.26s | 0.083s | 0.029s |
 | bm_so_mandelbrot | 1.53s | 1.53s | 0.11s | 0.033s |
 | bm_sort_by | 0.065s | 0.067s | 0.015s | 0.011s |
 | bm_spectral_norm | 0.10s | 0.086s | - | 0.007s |
@@ -214,11 +214,11 @@ default `raise`.
 | bm_tree_walker | 2.12s | 0.47s | - | 0.18s |
 | bm_tree_walker_frames | 0.40s | 0.13s | - | 0.043s |
 | bm_wordfreq | 0.057s | 0.058s | 0.009s | 0.005s |
-| total (rows run) | 106.52s | 81.56s | 4.20s | 5.00s |
-| vs MRI | 1.0x | 1.3x | 14.0x | 21.3x |
+| total (rows run) | 106.52s | 81.56s | 4.08s | 5.00s |
+| vs MRI | 1.0x | 1.3x | 14.5x | 21.3x |
 
 rugaroo compiles 48 of the 74 unmodified (45 before decisions 381-388). On the
-47 rows both ran, the totals are MRI 59.0s, YJIT 40.9s, rugaroo 4.20s (14.0x
+47 rows both ran, the totals are MRI 59.0s, YJIT 40.9s, rugaroo 4.08s (14.5x
 MRI), spinel 2.73s (21.6x MRI); before decisions 381-388 that was 9.5x against
 23.3x on 44 rows. The footer's ratios above are over different row sets, so
 spinel's there includes the 26 programs rugaroo does not build.
@@ -231,9 +231,12 @@ spinel's there includes the 26 programs rugaroo does not build.
   `Array#[]=`, unboxed compares): `bm_loops_times` 0.19s to 0.039s,
   `bm_range_each` 2.15s to 0.67s, `bm_sieve` 0.099s to 0.033s,
   `bm_structaset` 0.064s to 0.045s, `bm_life` 0.16s to 0.089s.
+- **Closed by decision 391** (a `shift`/`pop` an `empty?` check guards is
+  its element, one-element `push`/`<<` appends at the site):
+  `bm_so_lists` 0.20s to 0.083s (4,323M to 684M instructions; spinel 282M).
 - **Furthest behind:** `bm_getivar_module` (30x; it only compiles since
   decision 383), `bm_partial_sums` (18x: `Float#**` is 80% of it, #134),
-  `bm_so_lists` (7x: an untyped Array filled from `shift`, #135),
+  `bm_so_lists` (2.9x: Array growth and `(1..n).to_a`),
   `bm_nested_loop` (4x: spinel's C compiler folds the loops away),
   `bm_so_mandelbrot`, `bm_keyword_args`, `bm_inline` (3x).
 - Rows under 10 ms are mostly process start-up for both binaries.

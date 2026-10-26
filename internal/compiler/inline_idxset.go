@@ -98,3 +98,81 @@ func typedConst(x, t ast.Expr) ast.Expr {
 	}
 	return &ast.CallExpr{Fun: t, Args: []ast.Expr{x}}
 }
+
+// inlinePush: a one-element `Array_Push`/`Array_Op_lshift` statement costs Go's inliner over its budget (push is variadic: 87), so the append runs at the site and the call only for a frozen Array (decision 391).
+func inlinePush(f *ast.File) {
+	own := map[string]bool{}
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && (fd.Name.Name == "Array_Push" || fd.Name.Name == "Array_Op_lshift") && preludeAppend(fd.Body) {
+			own[fd.Name.Name] = true
+		}
+	}
+	if len(own) == 0 {
+		return
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		var list []ast.Stmt
+		switch b := n.(type) {
+		case *ast.BlockStmt:
+			list = b.List
+		case *ast.CaseClause:
+			list = b.Body
+		case *ast.CommClause:
+			list = b.Body
+		default:
+			return true
+		}
+		for i, s := range list {
+			if r := pushFast(s, own); r != nil {
+				list[i] = r
+			}
+		}
+		return true
+	})
+}
+
+// preludeAppend is the prelude's body (frozen check, append, return self), not a program's own `def push`.
+func preludeAppend(b *ast.BlockStmt) bool {
+	if b == nil || len(b.List) != 3 {
+		return false
+	}
+	as, ok := b.List[1].(*ast.AssignStmt)
+	if !ok || len(as.Rhs) != 1 {
+		return false
+	}
+	call, ok := as.Rhs[0].(*ast.CallExpr)
+	return ok && isIdent(call.Fun, "append")
+}
+
+func pushFast(s ast.Stmt, own map[string]bool) ast.Stmt {
+	es, ok := s.(*ast.ExprStmt)
+	if !ok {
+		return nil
+	}
+	call, ok := es.X.(*ast.CallExpr)
+	if !ok || len(call.Args) != 2 || call.Ellipsis.IsValid() {
+		return nil
+	}
+	ix, ok := call.Fun.(*ast.IndexExpr)
+	if !ok || isIdent(call.Args[0], "rbIdxA") {
+		return nil
+	}
+	if fn, ok := ix.X.(*ast.Ident); !ok || !own[fn.Name] {
+		return nil
+	}
+	pos := call.Pos()
+	id := func(name string) *ast.Ident { return &ast.Ident{NamePos: pos, Name: name} }
+	a, v := "rbIdxA", "rbIdxV"
+	sel := func(x, f string) ast.Expr { return &ast.SelectorExpr{X: id(x), Sel: id(f)} }
+	notFrozen := &ast.UnaryExpr{OpPos: pos, Op: token.NOT, X: &ast.CallExpr{Fun: &ast.SelectorExpr{X: sel(a, "frozen"), Sel: id("Load")}, Lparen: pos, Rparen: pos}}
+	app := &ast.CallExpr{Fun: id("append"), Lparen: pos, Args: []ast.Expr{sel(a, "s"), id(v)}, Rparen: pos}
+	store := &ast.AssignStmt{Lhs: []ast.Expr{sel(a, "s")}, TokPos: pos, Tok: token.ASSIGN, Rhs: []ast.Expr{app}}
+	slow := &ast.ExprStmt{X: &ast.CallExpr{Fun: call.Fun, Lparen: pos, Args: []ast.Expr{id(a), id(v)}, Rparen: pos}}
+	return &ast.IfStmt{
+		If:   pos,
+		Init: &ast.AssignStmt{Lhs: []ast.Expr{id(a), id(v)}, TokPos: pos, Tok: token.DEFINE, Rhs: []ast.Expr{headSafe(call.Args[0]), headSafe(typedConst(call.Args[1], ix.Index))}},
+		Cond: notFrozen,
+		Body: &ast.BlockStmt{Lbrace: pos, List: []ast.Stmt{store}, Rbrace: pos},
+		Else: &ast.BlockStmt{Lbrace: pos, List: []ast.Stmt{slow}, Rbrace: call.End()},
+	}
+}

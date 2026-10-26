@@ -328,6 +328,9 @@ func (f *fctx) genMethodCall1(n parser.Node, recv expr, name string, args []pars
 	if e, ok := f.genIntrinsic(n, recv, name, args, block); ok {
 		return e
 	}
+	if e, ok := f.sureTakeCall(n, recv, name, args, block); ok {
+		return e
+	}
 	if x, ok := f.bignumFallback(recv, name); ok {
 		return f.genMethodCall(n, x, name, args, block)
 	}

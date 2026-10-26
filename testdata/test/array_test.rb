@@ -2938,4 +2938,107 @@ module ArrayTests
       assert_equal ["root:0"], pr.path
     end
   end
+
+  # A shift/pop an emptiness check guards is the element, not E? (decision 391).
+  class ArraySureTakeTest < Minitest::Test
+    def sure_drain(a, out)
+      a.clear
+      out
+    end
+
+    def test_guarded_takes_fill_a_typed_array
+      src = (1..5).to_a
+      dst = Array.new
+      while (not src.empty?)
+        dst.push(src.shift)
+      end
+      back = []
+      until dst.empty?
+        back << dst.pop
+      end
+      assert_equal [5, 4, 3, 2, 1], back
+      assert_equal 15, back.sum
+      words = %w[a b c]
+      out = []
+      out.push(words.pop) while !words.empty?
+      assert_equal "cba", out.join
+    end
+
+    def test_if_unless_and_else_guards
+      a = [1, 2, 3]
+      out = []
+      out << a.shift unless a.empty?
+      if !a.empty?
+        out << a.pop
+      end
+      if a.empty?
+        out << 0
+      else
+        out << a.shift
+      end
+      if a.empty? then out << -1 else out << a.shift end
+      assert_equal [1, 3, 2, -1], out
+    end
+
+    def test_destructured_pop
+      stack = [[1, "a"], [2, "b"]]
+      out = []
+      until stack.empty?
+        n, s = stack.pop
+        out << "#{s}#{n + 1}"
+      end
+      assert_equal ["b3", "a2"], out
+    end
+
+    def test_frozen_receiver_raises
+      a = [1, 2].freeze
+      err = assert_raises(FrozenError) do
+        until a.empty?
+          a.shift
+        end
+      end
+      assert_equal "can't modify frozen Array: [1, 2]", err.message
+    end
+
+    def test_second_take_in_one_iteration_may_be_nil
+      a = [1, 2, 3]
+      out = []
+      until a.empty?
+        x = a.shift
+        y = a.shift
+        out << [x, y]
+      end
+      assert_equal [[1, 2], [3, nil]], out
+    end
+
+    def test_redo_keeps_the_nil_check
+      a = [1]
+      out = []
+      tries = 0
+      while !a.empty?
+        out << a.shift
+        tries += 1
+        redo if tries == 1
+      end
+      assert_equal [1, nil], out
+    end
+
+    def test_call_before_take_keeps_the_nil_check
+      a = [1, 2]
+      out = []
+      until a.empty?
+        sure_drain(a, out).push(a.shift)
+      end
+      assert_equal [nil], out
+    end
+
+    def test_optional_elements_stay_optional
+      a = [1, nil, 3]
+      out = []
+      until a.empty?
+        out << a.shift
+      end
+      assert_equal [1, nil, 3], out
+    end
+  end
 end

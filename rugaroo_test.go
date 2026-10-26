@@ -1414,6 +1414,46 @@ p pr.path
 	}
 }
 
+// TestSureTake: a shift/pop an emptiness check guards is lowered to the element at the site, typing the Array it fills; a call before it, redo, or a program's own Array#shift keep E? (decision 391).
+func TestSureTake(t *testing.T) {
+	t.Parallel()
+	take := regexp.MustCompile(`t\d+_ := \w+\.s\[(0|len\(\w+\.s\)-1)\]`)
+	for _, c := range []struct {
+		name, src string
+		lowered   bool
+	}{
+		{"lists", "def m\n  a = (1..9).to_a\n  b = Array.new\n  while (not a.empty?)\n    b.push(a.shift)\n  end\n  until b.empty?\n    a << b.pop\n  end\n  a\nend\np m\n", true},
+		{"call_first", "#: (Array[Integer], Array[Integer?]) -> Array[Integer?]\ndef d(a, o) = (a.clear; o)\ndef m\n  a = [1]\n  o = [] #: Array[Integer?]\n  d(a, o).push(a.shift) until a.empty?\n  o\nend\np m\n", false},
+		{"redo", "def m\n  a = [1]\n  o = []\n  while !a.empty?\n    o << a.shift\n    redo if o.size == 1\n  end\n  o\nend\np m\n", false},
+		{"own_shift", "class Array\n  def shift = nil\nend\ndef m\n  a = [1]\n  o = []\n  o << a.shift unless a.empty?\n  o\nend\np m\n", false},
+	} {
+		out, warns, err := Compile(t.Context(), "main.rb", []byte(c.src))
+		if err != nil || bytes.Contains(out, []byte("rbDyn")) {
+			t.Fatalf("%s: err = %v, warnings %v", c.name, err, warns)
+		}
+		if got := take.Match(out); got != c.lowered {
+			t.Errorf("%s: lowered = %v, want %v", c.name, got, c.lowered)
+		}
+	}
+}
+
+// TestInlinePush: a one-element push or << statement appends at the site, unless the program defines its own (decision 391).
+func TestInlinePush(t *testing.T) {
+	t.Parallel()
+	for src, want := range map[string]bool{
+		"a = [1]\na << 2\na.push(3)\np a\n": true,
+		"class Array\n  #: (E) -> self\n  def <<(x) = self\n\n  #: (*E) -> self\n  def push(*x) = self\nend\na = [1]\na << 2\na.push(3)\np a\n": false,
+	} {
+		out, _, err := Compile(t.Context(), "main.rb", []byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bytes.Contains(out, []byte("rbIdxA.s = append(rbIdxA.s, rbIdxV)")); got != want {
+			t.Errorf("%q: inlined = %v, want %v", src, got, want)
+		}
+	}
+}
+
 // TestSpinelBenchmarksTyped guards spinel's unmodified benchmarks against falling back to dynamic calls (decisions 355-357).
 func TestSpinelBenchmarksTyped(t *testing.T) {
 	t.Parallel()

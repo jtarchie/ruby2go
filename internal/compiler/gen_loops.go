@@ -116,6 +116,7 @@ func (f *fctx) genWhile(pred parser.Node, body *parser.StatementsNode, negate bo
 	f.indent++
 	f.applyNarrow(narrow)
 	f.redoLabel(body)
+	f.c.markSureTake(pred, !negate, body)
 	f.genStmts(body, tail{})
 	f.indent--
 	f.leaveBlock(saved)

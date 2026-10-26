@@ -33,6 +33,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	saved := f.enterBlock()
 	f.indent++
 	f.applyNarrow(narrow)
+	f.c.markSureTake(pred, !negate, then)
 	f.genBranch(then, t)
 	f.indent--
 	f.leaveBranch(saved, then)
@@ -52,6 +53,7 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 		saved := f.enterBlock()
 		f.indent++
 		f.applyNarrow(elseNarrow)
+		f.c.markSureTake(pred, negate, e.Statements)
 		f.genBranch(e.Statements, t)
 		f.indent--
 		f.leaveBranch(saved, e.Statements)
