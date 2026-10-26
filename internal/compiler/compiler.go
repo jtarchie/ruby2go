@@ -40,6 +40,7 @@ type Compiler struct {
 	instState
 	pathCache
 	tableState
+	windowState
 
 	genCount, genLimit    *int                        // test hook (decision 240): genExpr calls, and the count after which they fail the compile
 	erbSnippets           map[*parser.CallNode]*File  // compiled ERB templates by their result call (decision 111)

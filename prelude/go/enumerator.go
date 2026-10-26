@@ -243,6 +243,44 @@ func rbCons[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bo
 	}
 }
 
+// rbConsView is each_cons(n) yielding one Array for every window, slid in place: the compiler picks it only for a
+// block that cannot keep, mutate or hand on the window (windowSafe, decision 384), so no copy per window.
+func rbConsView[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
+	return func(yield func(*Array[E]) bool) {
+		win := &Array[E]{s: make([]E, 0, min(n, 4096))}
+		for x := range seq {
+			if len(win.s) == n {
+				copy(win.s, win.s[1:])
+				win.s[n-1] = x
+			} else {
+				win.s = append(win.s, x)
+			}
+			if len(win.s) == n && !yield(win) {
+				return
+			}
+		}
+	}
+}
+
+// rbSlicesView is each_slice(n) yielding one Array refilled for every slice, the last possibly shorter (decision 384).
+func rbSlicesView[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
+	return func(yield func(*Array[E]) bool) {
+		cur := &Array[E]{s: make([]E, 0, min(n, 4096))}
+		for x := range seq {
+			cur.s = append(cur.s, x)
+			if len(cur.s) == n {
+				if !yield(cur) {
+					return
+				}
+				cur.s = cur.s[:0]
+			}
+		}
+		if len(cur.s) > 0 {
+			yield(cur)
+		}
+	}
+}
+
 type Enumerator_Any interface{ _ToAny() *Enumerator[any] }
 
 type Enumerator_Yielder_Any interface {

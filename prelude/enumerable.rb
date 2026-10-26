@@ -598,18 +598,12 @@ module Enumerable
   end
 
   #: (Integer) { (Array[E]) -> void } -> void
-  def each_slice(n)
-    raise ArgumentError, "invalid slice size" if n <= 0
-    cur = [] #: Array[E]
-    each do |x|
-      cur << x
-      if cur.size == n
-        yield cur
-        cur = []
-      end
-    end
-    yield cur unless cur.empty?
-  end
+  def each_slice(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid slice size"))))
+    }
+    return func(yield func(*Array[E]) bool) { rbSlices(self.Each(), int(n))(yield) }
+  }
 
   #: (Integer) -> Enumerator[Array[E]]
   def __each_slice_enum(n) = %x{
@@ -627,15 +621,12 @@ module Enumerable
   }
 
   #: (Integer) { (Array[E]) -> void } -> void
-  def each_cons(n)
-    raise ArgumentError, "invalid size" if n <= 0
-    win = [] #: Array[E]
-    each do |x|
-      win << x
-      win.shift if win.size > n
-      yield win.dup if win.size == n
-    end
-  end
+  def each_cons(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid size"))))
+    }
+    return func(yield func(*Array[E]) bool) { rbCons(self.Each(), int(n))(yield) }
+  }
 
   #: (Integer) -> Enumerator[Array[E]]
   def __each_cons_enum(n) = %x{
@@ -650,6 +641,39 @@ module Enumerable
       }
       return Ref(max(*c-n+1, 0))
     }, nil)
+  }
+
+  # each_slice and each_cons for a block that cannot keep the window: one Array refilled per window (decision 384).
+  #: (Integer) { (Array[E]) -> void } -> void
+  def __each_slice_view(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid slice size"))))
+    }
+    return func(yield func(*Array[E]) bool) { rbSlicesView(self.Each(), int(n))(yield) }
+  }
+
+  #: (Integer) -> Enumerator[Array[E]]
+  def __each_slice_view_enum(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid slice size"))))
+    }
+    return rbEnumOf(rbSlicesView(self.Each(), int(n)), any(self), "each_slice("+string(rbInspect(n))+")", nil, nil)
+  }
+
+  #: (Integer) { (Array[E]) -> void } -> void
+  def __each_cons_view(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid size"))))
+    }
+    return func(yield func(*Array[E]) bool) { rbConsView(self.Each(), int(n))(yield) }
+  }
+
+  #: (Integer) -> Enumerator[Array[E]]
+  def __each_cons_view_enum(n) = %x{
+    if n <= 0 {
+      panic(NewArgumentError(Ref(String("invalid size"))))
+    }
+    return rbEnumOf(rbConsView(self.Each(), int(n)), any(self), "each_cons("+string(rbInspect(n))+")", nil, nil)
   }
 
   #: () -> Enumerator[[E, Integer]]

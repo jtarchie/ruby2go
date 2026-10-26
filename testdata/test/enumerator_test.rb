@@ -687,4 +687,79 @@ module EnumeratorTests
       assert_equal 50, (1..2_000).to_a.zip((1..1_500).to_a).sum { |x, y| y ? 0 : 1 } - 450
     end
   end
+
+  # A block that cannot keep its window gets one Array refilled per window (decision 384); one that can gets copies.
+  class EnumWindowReuseTest < Minitest::Test
+    def test_reading_blocks
+      src = (1..10).to_a
+      assert_equal 1, src.each_cons(3).count { |w| w.sum % 5 == 0 }
+      assert_equal 15, src.each_slice(4).sum { |s| s.first.to_i }
+      assert_equal [3, 5, 7, 9, 11, 13, 15, 17, 19], src.each_cons(2).map { |w| w.sum }
+      assert_equal [10, 26, 19], src.each_slice(4).map { |s| s.sum }
+      assert(src.each_cons(4).all? { |w| w.last.to_i - w.first.to_i == 3 })
+      total = 0
+      src.each_cons(3) { |w| total += w.max.to_i * w.size }
+      assert_equal 156, total
+      n = 0
+      src.each_slice(3) { n += 1 }
+      assert_equal 4, n
+    end
+
+    def test_destructured_params_are_copies
+      kept = [] #: Array[Integer?]
+      pairs = {} #: Hash[Integer, Integer?]
+      (1..6).to_a.each_cons(2) do |a, b|
+        kept << b
+        pairs[a.to_i] = b
+      end
+      assert_equal [2, 3, 4, 5, 6], kept
+      assert_equal({ 1 => 2, 2 => 3, 3 => 4, 4 => 5, 5 => 6 }, pairs)
+      tails = [] #: Array[Integer?]
+      (1..7).to_a.each_slice(3) { |a, b, c| tails << c }
+      assert_equal [3, 6, nil], tails
+      sums = (1..5).to_a.each_cons(3).map { |a, b, c| a.to_i + b.to_i + c.to_i }
+      assert_equal [6, 9, 12], sums
+    end
+
+    def test_escaping_blocks_get_separate_windows
+      src = (1..5).to_a
+      res = [] #: Array[Array[Integer]]
+      src.each_cons(2) { |w| res << w }
+      assert_equal [[1, 2], [2, 3], [3, 4], [4, 5]], res
+      assert_equal 4, res.map(&:object_id).uniq.size
+      copies = [] #: Array[Array[Integer]]
+      src.each_slice(2) { |s| copies << s.dup }
+      assert_equal [[1, 2], [3, 4], [5]], copies
+      firsts = [] #: Array[Integer?]
+      src.each_cons(2) { |w| firsts << w.first }
+      assert_equal [1, 2, 3, 4], firsts
+      kept = src.each_slice(2).map { |s| s }
+      assert_equal [[1, 2], [3, 4], [5]], kept
+      heads = src.each_cons(3).map { |w| w.first }
+      assert_equal [1, 2, 3], heads
+      procs = [] #: Array[^() -> Integer]
+      src.each_cons(2) { |w| procs << -> { w.sum } }
+      assert_equal [3, 5, 7, 9], procs.map(&:call)
+      grown = [] #: Array[Array[Integer]]
+      src.each_cons(2) do |w|
+        w << 0
+        grown << w
+      end
+      assert_equal [[1, 2, 0], [2, 3, 0], [3, 4, 0], [4, 5, 0]], grown
+    end
+
+    def test_break_and_nesting
+      seen = [] #: Array[Integer]
+      (1..10).to_a.each_cons(2) do |a, b|
+        break if a.to_i > 3
+        seen << b.to_i
+      end
+      assert_equal [2, 3, 4], seen
+      inner = 0
+      (1..4).to_a.each_cons(2) do |w|
+        w.each_slice(1) { |x| inner += x.sum }
+      end
+      assert_equal 0, inner - 15
+    end
+  end
 end

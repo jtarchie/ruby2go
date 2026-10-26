@@ -40,6 +40,16 @@ func rbSplatAt[E comparable](a *Array[E], i int) *E {
 	return &a.s[i]
 }
 
+// rbSplatVal is rbSplatAt for a reused window (decision 384): the element copied out, so a block param a block keeps
+// does not see the next window.
+func rbSplatVal[E comparable](a *Array[E], i int) *E {
+	if i >= len(a.s) {
+		return nil
+	}
+	x := a.s[i]
+	return &x
+}
+
 // rbCombinations is every k-combination of all, in MRI's order.
 func rbCombinations[E comparable](all []E, k int) *Array[*Array[E]] {
 	out := &Array[*Array[E]]{}

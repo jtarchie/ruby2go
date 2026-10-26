@@ -322,8 +322,11 @@ func (f *fctx) binTwin(m *Method, recv expr, args []parser.Node) *entry {
 	return nil
 }
 
-// callTwin is the twin a call takes instead of e: its overload (decision 12), or a binary String's (decision 352).
-func (f *fctx) callTwin(e *entry, recv expr, args []parser.Node, block parser.Node) *entry {
+// callTwin is the twin a call takes instead of e: a reused window's (decision 384), its overload (decision 12), or a binary String's (decision 352).
+func (f *fctx) callTwin(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) *entry {
+	if o := f.windowViewEnum(n, e, recv.typ, block); o != nil {
+		return o
+	}
 	f.curBlock = block
 	o := f.overload(e, recv.typ, args)
 	f.curBlock = nil
@@ -342,7 +345,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	if r, ok := f.gemCallForm(n, e, recv, args, block); ok {
 		return r
 	}
-	if o := f.callTwin(e, recv, args, block); o != nil {
+	if o := f.callTwin(n, e, recv, args, block); o != nil {
 		return f.callEntry(n, o, recv, args, block)
 	}
 	env := f.callEnv(n, e, recv)

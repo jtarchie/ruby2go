@@ -13,6 +13,7 @@ type envConfig struct {
 	PruneDebug    bool   // RUGAROO_PRUNE_DEBUG: why gem pruning reached each method name
 	NoPrune       bool   // RUGAROO_NO_PRUNE: keep every declaration
 	NoSpecialize  bool   // RUGAROO_NO_SPECIALIZE: keep module funcs generic over Self (decision 377)
+	NoWindowReuse bool   // RUGAROO_NO_WINDOW_REUSE: each_cons/each_slice copy every window (decision 384)
 	PruneWhy      bool   // RUGAROO_PRUNE_WHY: the keep chains of the pruner
 	KeepGoing     bool   // RUGAROO_KEEP_GOING: record a collect error and go on
 	DispatchDebug string // RUGAROO_DISPATCH_DEBUG: "all", or any other non-empty value for Kernel/Object/module owners
@@ -33,6 +34,7 @@ func loadEnv() envConfig {
 		PruneDebug:    set("RUGAROO_PRUNE_DEBUG"),
 		NoPrune:       set("RUGAROO_NO_PRUNE"),
 		NoSpecialize:  set("RUGAROO_NO_SPECIALIZE"),
+		NoWindowReuse: set("RUGAROO_NO_WINDOW_REUSE"),
 		PruneWhy:      set("RUGAROO_PRUNE_WHY"),
 		KeepGoing:     set("RUGAROO_KEEP_GOING"),
 		DispatchDebug: os.Getenv("RUGAROO_DISPATCH_DEBUG"),

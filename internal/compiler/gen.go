@@ -74,6 +74,7 @@ type fctx struct {
 	declBin        bool        // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
 	binNext        bool        // the next closure is a `@binary block` method's: its String params are binary (decision 352)
 	binParams      bool        // binding that closure's params
+	viewSplat      bool        // binding a windowSafe block's params: destructuring copies out of the window (decision 384)
 	bodyStmts      parser.Node // the statements of the method or block body being generated (noteBinStmt)
 	retryDepth     int         // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
@@ -697,6 +698,7 @@ func (f *fctx) genStmt(n parser.Node, t tail) {
 
 // genCallNodeStmt is a call in statement position: Sorbet's `T.bind(self, X)`, a loop with a rescue modifier, or a call.
 func (f *fctx) genCallNodeStmt(n *parser.CallNode, t tail) {
+	f.noteWindowChain(n)
 	if isTCall(n, "bind") && bindsSelf(n) {
 		f.genSelfBind(n)
 		f.emptyTail(n, t)

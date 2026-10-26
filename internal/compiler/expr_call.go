@@ -731,6 +731,7 @@ func (f *fctx) intrinsicGate(n parser.Node, recv expr, name string, args []parse
 // (`recv.x = v`, `recv[k] = v`) Ruby's value is v, whatever the setter
 // returns, so v is evaluated once and named after the call.
 func (f *fctx) genCallValue(n *parser.CallNode, expected Type) expr {
+	f.noteWindowChain(n)
 	if r := f.loopRescue(n); r != nil {
 		return f.lift(r, expected, func(t tail) { f.genStmt(r, t) })
 	}

@@ -290,6 +290,10 @@ func (f *fctx) bindLenientTuple(n parser.Node, names blockParams, tt TTuple) ([]
 // an untyped one (elem TAny) goes through rbToAry first, as MRI's to_ary.
 func (f *fctx) bindArraySplat(n parser.Node, names blockParams, elem Type, untyped bool) ([]string, func()) {
 	p := f.newTmp()
+	splat := "rbSplatAt"
+	if f.viewSplat && !untyped {
+		splat = "rbSplatVal"
+	}
 	return []string{p}, func() {
 		a := p
 		if untyped {
@@ -297,7 +301,7 @@ func (f *fctx) bindArraySplat(n parser.Node, names blockParams, elem Type, untyp
 			f.emit("%s := rbToAry(%s)", a, p)
 		}
 		for i, nm := range names {
-			e := flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", a, i), typ: TOpt{Elem: elem}})
+			e := flatOpt(expr{code: fmt.Sprintf("%s(%s, %d)", splat, a, i), typ: TOpt{Elem: elem}})
 			if nm.Sub != nil { // `|(k, v), i|`
 				gp, pro := f.bindBlockParams(n, nm.Sub, []Type{e.typ})
 				f.emit("%s := %s", gp[0], e.code)
@@ -475,8 +479,8 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		f.c.unsupported(f.f, block)
 	}
 	bindParams := func() ([]string, func()) {
-		f.binParams = bin
-		defer func() { f.binParams = false }()
+		f.binParams, f.viewSplat = bin, f.windowSplat(block)
+		defer func() { f.binParams, f.viewSplat = false, false }()
 		return f.bindClosureParams(n, names, params, sig.Rest)
 	}
 	gen := func(t tail) {
@@ -789,6 +793,9 @@ func (f *fctx) iterTwin(n *parser.CallNode, e *entry, recvT Type, probed expr) *
 			e = o
 		}
 	}
+	if o := f.windowViewIter(n, e, recvT); o != nil && o.M.Iterator {
+		e = o
+	}
 	return e
 }
 
@@ -937,7 +944,9 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	}
 	names := f.blockParamList(blk.Parameters)
 	saved, savedRuby := f.enterRubyBlock(blk, names.locals())
+	f.viewSplat = f.windowSplat(blk)
 	goParams, pro := f.bindBlockParams(n, names, yields)
+	f.viewSplat = false
 	allBlank := true
 	for _, gp := range goParams {
 		if gp != "_" {
