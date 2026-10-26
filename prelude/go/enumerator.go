@@ -218,12 +218,15 @@ func rbSlices[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) 
 func rbCons[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
 	return func(yield func(*Array[E]) bool) {
 		run := rbSlabRun(n)
-		var win, slab []E
+		var slab []E
 		var hdrs []Array[E]
+		win := make([]E, 0, n) // slid in place: `win = win[1:]` gave up capacity and reallocated every few elements
 		for x := range seq {
-			win = append(win, x)
-			if len(win) > n {
-				win = win[1:]
+			if len(win) == n {
+				copy(win, win[1:])
+				win[n-1] = x
+			} else {
+				win = append(win, x)
 			}
 			if len(win) == n {
 				if len(slab) < n {

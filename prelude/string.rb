@@ -60,7 +60,12 @@ class String < Object
   }
 
   #: (String) -> String
-  def +(other) = %x{ rbNewStr(self, rbNewStr(other, String(rbStrCat(string(self), string(other))))) }
+  def +(other) = %x{
+    if len(self) != 0 && len(other) != 0 && len(self) < 64 { // inlines: two non-empty operands make a new String, never one of them
+      return self + other
+    }
+    return rbStrPlus(self, other)
+  }
 
   # @binary self
   #: (Integer) -> String
@@ -110,6 +115,9 @@ class String < Object
     if s == "" {
       return ""
     }
+    if rbASCII(s) {
+      return String(rbCapitalizeASCII(s))
+    }
     r, n := utf8.DecodeRuneInString(s)
     title := unicode.ToTitle
     if r >= 0x1C90 && r <= 0x1CBF { // Georgian Mtavruli: MRI titlecases to Mkhedruli, its lowercase
@@ -120,10 +128,11 @@ class String < Object
 
   #: () -> String
   def reverse = %x{
-    if !utf8.ValidString(string(self)) { // ASCII-8BIT: byte by byte (decision 324)
-      b := []byte(string(self))
-      slices.Reverse(b)
-      return String(b)
+    if rbASCII(string(self)) || !utf8.ValidString(string(self)) { // ASCII-8BIT: byte by byte (decision 324)
+      if self == "" {
+        return rbStrClone(self)
+      }
+      return String(rbReverseBytes(string(self)))
     }
     r := []rune(string(self))
     for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {

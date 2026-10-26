@@ -163,3 +163,38 @@ func (f *fctx) fmtCall(buf string, d fmtDirective, v string, t Type) string {
 	}
 	return "rbFmtAny(" + buf + ", " + v + ", " + verb + ", " + strconv.Quote(d.spec()) + ")"
 }
+
+// genStrChain compiles `a + b + c ...` of Strings to one rbConcat (decision 377): one allocation, not one per `+`.
+func (f *fctx) genStrChain(n *parser.CallNode) (expr, bool) {
+	var ops []parser.Node
+	for c := n; ; {
+		if c.Name != "+" || c.Block != nil || len(callArgs(c)) != 1 || c.Receiver == nil {
+			return expr{}, false
+		}
+		ops = append(ops, callArgs(c)[0])
+		r, ok := c.Receiver.(*parser.CallNode)
+		if !ok || r.Name != "+" || r.Block != nil || len(callArgs(r)) != 1 || r.Receiver == nil {
+			ops = append(ops, c.Receiver)
+			break
+		}
+		c = r
+	}
+	if len(ops) < 3 {
+		return expr{}, false
+	}
+	str := f.cls("String")
+	if e := f.resolve(str, "+"); e == nil || e.M.File == nil || !e.M.File.isPrelude() {
+		return expr{}, false
+	}
+	for _, o := range ops {
+		if t := f.probeType(o, nil); !isClass(t, "String") {
+			return expr{}, false
+		}
+	}
+	codes := make([]string, len(ops))
+	for i := range ops { // ops run right to left; Ruby evaluates the leftmost first
+		o := ops[len(ops)-1-i]
+		codes[i] = f.coerce(o, f.genExpr(o, str), str)
+	}
+	return expr{code: "rbConcat(" + strings.Join(codes, ", ") + ")", typ: str}, true
+}

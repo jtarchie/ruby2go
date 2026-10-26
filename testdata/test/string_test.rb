@@ -2051,4 +2051,40 @@ module StringTests
       assert_equal "05|n12     |   1.714|c\n", format("%02d|%-8s|%8.3f|%x\n", 5, "n#{12 % 97}", 12 / 7.0, 12)
     end
   end
+
+  # `a + b + c` of Strings is one concatenation (decision 377): MRI's order, a new String, a long left side extended.
+  class StringConcatChainTest < Minitest::Test
+    def test_order_and_identity
+      log = [] #: Array[String]
+      r = (log << "1"; "x") + (log << "2"; "y") + (log << "3"; "z")
+      assert_equal "xyz", r
+      assert_equal %w[1 2 3], log
+      a = "a"
+      e = ""
+      refute (e + a + e).equal?(a)
+      refute (e + e + e).equal?(e)
+      assert_equal "", e + e + e
+      f = "frozen".freeze
+      refute (f + e + e).frozen?
+    end
+
+    def test_long_left_side_in_a_loop
+      s = ""
+      2000.times { |i| s = s + "ab" + i.to_s }
+      assert_equal 10_890, s.size
+      assert_equal "ab0ab1ab2ab3", s[0, 12]
+      long = "L" * 100
+      z = long + "-" + "tail"
+      assert_equal 105, z.size
+      assert_equal "L" * 100, long
+    end
+
+    def test_case_mapping_is_a_new_string
+      t = "Same"
+      refute t.capitalize.equal?(t)
+      refute "A".capitalize.equal?("A")
+      assert_equal "olleh", "hello".reverse
+      assert_equal "Hello world", "hELLO WORLD".capitalize
+    end
+  end
 end

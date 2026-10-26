@@ -39,6 +39,9 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 	if e, ok := f.genLiteralFormat(n); ok {
 		return e, true
 	}
+	if e, ok := f.genStrChain(n); ok {
+		return e, true
+	}
 	if e, ok := f.symbolToProc(n, expected); ok {
 		return e, true
 	}

@@ -85,7 +85,7 @@ func rbCaseMap(s string, i int, f func(rune) rune) string {
 // rbCaseMapASCII is rbCaseMap for an ASCII s, to lower case or else upper (title case is upper in ASCII); s itself when
 // nothing changes. ok is false for any other s.
 func rbCaseMapASCII(s string, lower bool) (string, bool) {
-	var b []byte
+	var b strings.Builder // one allocation, and none when nothing changes: []byte(s) then string(b) was two
 	for j := range len(s) {
 		c := s[j]
 		if c >= utf8.RuneSelf {
@@ -97,17 +97,57 @@ func rbCaseMapASCII(s string, lower bool) (string, bool) {
 		} else if !lower && c >= 'a' && c <= 'z' {
 			d = c - ('a' - 'A')
 		}
-		if d != c && b == nil {
-			b = []byte(s)
+		if d != c && b.Cap() == 0 {
+			b.Grow(len(s))
+			b.WriteString(s[:j])
 		}
-		if b != nil {
-			b[j] = d
+		if b.Cap() != 0 {
+			b.WriteByte(d)
 		}
 	}
-	if b == nil {
+	if b.Cap() == 0 {
 		return s, true
 	}
-	return string(b), true
+	return b.String(), true
+}
+
+// rbASCII reports s is all ASCII, where a character is a byte.
+func rbASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// rbCapitalizeASCII is capitalize of an ASCII s, a new String in one allocation.
+func rbCapitalizeASCII(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	c := s[0]
+	if c >= 'a' && c <= 'z' {
+		c -= 'a' - 'A'
+	}
+	b.WriteByte(c)
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// rbReverseBytes is s backwards byte by byte (ASCII, or a String that is not UTF-8), in one allocation.
+func rbReverseBytes(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := len(s) - 1; i >= 0; i-- {
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // rbSub replaces the first n (all if n < 0) occurrences of pat, expanding
@@ -536,6 +576,34 @@ var rbStrBufs [16]atomic.Pointer[[]byte]
 
 func rbStrSlot(p *byte) *atomic.Pointer[[]byte] {
 	return &rbStrBufs[(uintptr(unsafe.Pointer(p))>>4)%uintptr(len(rbStrBufs))] //nolint:gosec // the address only picks a slot
+}
+
+// rbStrPlus is String#+ past its inlined short case: never one of its operands (MRI's result is a new String).
+func rbStrPlus(a, b String) String {
+	return rbNewStr(a, rbNewStr(b, String(rbStrCat(string(a), string(b)))))
+}
+
+// rbConcat is a chain of String#+ in one allocation (decision 377); a long first operand goes through rbStrCat, which may extend it in place.
+func rbConcat(parts ...String) String {
+	if len(parts) == 1 { // the rest of a long first operand's chain: a temporary, so its identity is nobody's
+		return parts[0]
+	}
+	if len(parts[0]) >= 64 {
+		return rbStrPlus(parts[0], rbConcat(parts[1:]...))
+	}
+	n := 0
+	for _, p := range parts {
+		n += len(p)
+	}
+	if n == 0 {
+		return rbStrClone("")
+	}
+	var b strings.Builder
+	b.Grow(n)
+	for _, p := range parts {
+		b.WriteString(string(p))
+	}
+	return String(b.String())
 }
 
 // rbStrCat is a + b. When a is the whole of a buffer rbStrCat made, b is written past a's end, where no String can see
