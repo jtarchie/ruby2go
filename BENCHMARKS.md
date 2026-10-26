@@ -216,7 +216,8 @@ default `raise`.
 | total (rows run) | 106.60s | 82.87s | 5.36s | 5.09s |
 | vs MRI | 1.0x | 1.3x | 9.5x | 21.0x |
 
-rugaroo compiles 45 of the 74 unmodified. On the 44 rows both ran, the
+rugaroo compiles 47 of the 74 unmodified (bm_str_concat and bm_threaded_render since
+decision 382, measured separately; the totals here predate them). On the 44 rows both ran, the
 totals are MRI 51.2s, YJIT 33.5s, rugaroo 5.36s (9.5x MRI), spinel 2.19s
 (23.3x MRI). The footer's ratios above are over different row sets, so spinel's
 21.0x there includes the 29 programs rugaroo does not build.
@@ -232,12 +233,12 @@ totals are MRI 51.2s, YJIT 33.5s, rugaroo 5.36s (9.5x MRI), spinel 2.19s
   profiled yet.
 - Rows under 10 ms are mostly process start-up for both binaries.
 
-Why the other 29 do not compile, by the first error each reports:
+Why the other 27 do not compile, by the first error each reports:
 
 | cause | programs | |
 |---|---:|---|
-| a possibly-nil value used as non-nil (`Array#[]`, `Hash#[]` (decision 5) and friends return `T?`) | 17 | fannkuch, fasta, handle_readonly_param, histogram, jekyll_lite, json_parse, matmul, nqueens, reader_index, ruby_xor, sinatra_mini, spectral_norm, stark_field, str_readonly_param, sudoku, template, tree_walker |
-| `String#<<`: Strings are immutable (decision 58) | 6 | csv_build, handle_read_loop, huffman, str_concat, template_render, threaded_render |
+| a possibly-nil value used as non-nil (`Array#[]`, `Hash#[]` (decision 5) and friends return `T?`) | 18 | fannkuch, fasta, handle_readonly_param, histogram, huffman, jekyll_lite, json_parse, matmul, nqueens, reader_index, ruby_xor, sinatra_mini, spectral_norm, stark_field, str_readonly_param, sudoku, template, tree_walker |
+| `String#<<` on a String the caller or a container also holds (a parameter, an Array element; decision 382) | 3 | csv_build, handle_read_loop, template_render |
 | a recursive method with no typed non-recursive path (decision 355) | 2 | micro_lisp, tree_walker_frames |
 | an ivar with no assignment rugaroo can type | 1 | getivar_module |
 | an ivar assigned several types (`Array \| Integer \| String`) | 1 | poly_cells |
