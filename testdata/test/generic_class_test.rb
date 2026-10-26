@@ -352,4 +352,83 @@ module GenericClassTests
       refute Stack === v
     end
   end
+
+  # A generic class's C? and a subclassed class's C? are their Go interface, nil Go's nil (decision 378).
+  # @rbs generic T
+  class NilNode
+    attr_accessor :val #: T
+    attr_accessor :next_node #: NilNode[T]?
+
+    #: (T val) -> void
+    def initialize(val)
+      @val = val
+      @next_node = nil
+    end
+  end
+
+  class NilShape
+    #: () -> String
+    def name = "shape"
+  end
+
+  class NilSquare < NilShape
+    #: () -> String
+    def name = "square"
+  end
+
+  class NilLeaf < NilShape
+    #: () -> String
+    def name = "leaf"
+  end
+
+  class NilableObjectTest < Minitest::Test
+    def test_generic_optional
+      a = NilNode.new(1) #: NilNode[Integer]
+      assert_nil a.next_node
+      assert_nil a.next_node&.val
+      a.next_node ||= NilNode.new(2)
+      a.next_node ||= NilNode.new(3)
+      assert_equal 2, a.next_node&.val
+      n = a #: NilNode[Integer]?
+      sum = 0
+      while n
+        sum += n.val
+        n = n.next_node
+      end
+      assert_equal 3, sum
+      a.next_node = nil
+      assert a.next_node.nil?
+      refute a.next_node
+      x = a.next_node #: untyped
+      assert_nil x
+    end
+
+    def test_subclassed_optional
+      s = nil #: NilShape?
+      assert_nil s&.name
+      s ||= NilSquare.new
+      assert_equal "square", s.name
+      s = nil
+      assert_equal "none", s ? s.name : "none"
+      shapes = [NilSquare.new, nil, NilShape.new] #: Array[NilShape?]
+      assert_equal ["square", "shape"], shapes.compact.map(&:name)
+      assert_equal 1, shapes.count(&:nil?)
+    end
+
+    def test_nil_leaf_into_parent_optional
+      leaf = nil #: NilLeaf?
+      parent = leaf #: NilShape?
+      assert_nil parent
+      assert parent.nil?
+      untyped = parent #: untyped
+      assert_nil untyped
+      leaf = NilLeaf.new
+      parent = leaf
+      assert_equal "leaf", parent&.name
+      h = {} #: Hash[Symbol, NilShape]
+      assert_nil h[:missing]
+      h[:a] = NilSquare.new
+      assert_equal "square", h[:a]&.name
+    end
+  end
 end

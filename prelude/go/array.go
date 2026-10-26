@@ -295,3 +295,16 @@ func rbScanEq[E comparable](a *Array[E], key any) Boolean {
 	}
 	return false
 }
+
+// rbCompactNil is compact of an Array[C?] whose C holds nil itself (a leaf's *C, another class's CI): the nils dropped,
+// the elements already the C that the result's Array[C] holds (decision 378).
+func rbCompactNil[T comparable](a *Array[T]) *Array[T] {
+	var z T
+	out := &Array[T]{s: make([]T, 0, len(a.s))}
+	for _, x := range a.s {
+		if x != z {
+			out.s = append(out.s, x)
+		}
+	}
+	return out
+}

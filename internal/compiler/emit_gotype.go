@@ -326,10 +326,23 @@ func goZero(t string) string {
 	return "*new(" + t + ")"
 }
 
-// leafOpt reports C? of a leaf class C (decision 359): Go *C itself, nil its nil, no box (decision 360).
+// leafOpt reports C? of a class whose Go value holds nil itself, so its C? is that type with no box: a leaf's *C
+// (decision 360), any other struct class's interface CI (decision 378).
 func leafOpt(t Type) bool {
 	o, ok := t.(TOpt)
-	return ok && leafRecv(o.Elem)
+	return ok && nilObj(o.Elem)
+}
+
+// nilObj reports a class whose Go value can be nil: a leaf's *C or another struct class's interface (decision 378).
+func nilObj(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && (c.C.leaf() || ifaceObj(c.C))
+}
+
+// ifaceObj is a user or gem struct class whose values are its interface CI: not a leaf, not Object or Kernel (any). The
+// prelude's own classes keep the box, as for leaves: their %x{} Go is written against *CI.
+func ifaceObj(k *Class) bool {
+	return k.isStruct() && !k.universal && !k.leaf() && k.File != nil && !k.File.isPrelude()
 }
 
 // derefOpt is a T? value's T: the box opened, or a leaf's *C as it is (decision 360).
@@ -342,16 +355,19 @@ func derefOpt(code string, t Type) string {
 
 // optOf converts untyped code to elem? (OptOf), a leaf's straight to its *C (decision 360).
 func (c *Compiler) optOf(elem Type, code string) string {
-	if leafRecv(elem) {
-		return fmt.Sprintf("rbOptPtr[%s](%s, %q)", elem.(TClass).C.Name, code, elem.String())
+	if nilObj(elem) {
+		return fmt.Sprintf("rbOptNil[%s](%s, %q)", c.goType(elem), code, elem.String())
 	}
 	return fmt.Sprintf("OptOf[%s](%s, %q)", c.goType(elem), code, elem.String())
 }
 
 // optAny boxes a T? value as untyped (Opt), a leaf's *C as rbPtrAny does (decision 360).
 func (c *Compiler) optAny(code string, t Type) string {
-	if leafOpt(t) {
+	if leafOpt(t) && leafRecv(t.(TOpt).Elem) {
 		return "rbPtrAny[" + t.(TOpt).Elem.(TClass).C.Name + "](" + code + ")"
+	}
+	if leafOpt(t) { // a nil interface is a nil any
+		return "any(" + code + ")"
 	}
 	return "Opt(" + code + ")"
 }
@@ -363,7 +379,7 @@ func boxedLeafOpt(decl Type, env map[string]Type) *Class {
 	if !ok || !mentionsVar(o.Elem) {
 		return nil
 	}
-	if c, ok := subst(o.Elem, env).(TClass); ok && c.C.leaf() {
+	if c, ok := subst(o.Elem, env).(TClass); ok && nilObj(c) {
 		return c.C
 	}
 	return nil
@@ -372,6 +388,9 @@ func boxedLeafOpt(decl Type, env map[string]Type) *Class {
 // leafOptType is a leaf's C?: its *C, nil its nil, noted for the box helpers (decision 360).
 func (c *Compiler) leafOptType(t TOpt) string {
 	s := c.goType(t.Elem)
+	if !leafRecv(t.Elem) { // an interface: a nil one boxed into any is already nil
+		return s
+	}
 	if c.leafBoxes == nil {
 		c.leafBoxes = map[string]bool{}
 	}

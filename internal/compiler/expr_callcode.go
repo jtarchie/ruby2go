@@ -425,8 +425,8 @@ func flatOpt(e expr) expr {
 		return expr{code: "Opt(" + e.code + ")", typ: o.Elem, nilable: true}
 	case isUnion(o.Elem): // E? with E = A | B: the box opens into the union, nil a member (decision 150)
 		return expr{code: "Opt(" + e.code + ")", typ: optOf(o.Elem)}
-	case isOpt(o.Elem):
-		return expr{code: "rbFlat(" + e.code + ")", typ: o.Elem}
+	case isOpt(o.Elem): // E? with E = T?: Go's *(T?), opened to T? whatever T? is (a box, a leaf's *C, an interface)
+		return expr{code: "rbFlatNil(" + e.code + ")", typ: o.Elem}
 	}
 	return e
 }
@@ -1038,7 +1038,7 @@ func flatCall(code string, m *Method, env map[string]Type) string {
 // (decision 360).
 func flatLeafOpt(code string, decl Type, env map[string]Type) string {
 	if boxedLeafOpt(decl, env) != nil {
-		return "rbFlat(" + code + ")"
+		return "rbFlatNil(" + code + ")"
 	}
 	if t, ok := decl.(TClass); ok && t.C.RubyName == "Array" && len(t.Args) == 1 { // values_at's Array[E?]
 		if c := boxedLeafOpt(t.Args[0], env); c != nil {
@@ -1048,7 +1048,7 @@ func flatLeafOpt(code string, decl Type, env map[string]Type) string {
 	if t, ok := decl.(TTuple); ok && len(t.Elems) == 2 { // minmax's [E?, E?] ponytail: other tuple and container shapes keep the boxes
 		a, b := boxedLeafOpt(t.Elems[0], env), boxedLeafOpt(t.Elems[1], env)
 		if a != nil && b != nil {
-			return "rbFlatPair[" + a.Name + ", " + b.Name + "](" + code + ")"
+			return "rbFlatPair[" + a.objType() + ", " + b.objType() + "](" + code + ")"
 		}
 	}
 	return code

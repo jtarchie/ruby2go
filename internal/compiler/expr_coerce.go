@@ -394,7 +394,7 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 	t := subst(p.Type, env)
 	code := f.coerce(n, a, t)
 	if c := boxedLeafOpt(p.Type, env); c != nil && code != "nil" {
-		return "rbBoxPtr[" + c.Name + "](" + code + ")" // a generic V? with V = *C is Go **C (decision 360)
+		return "rbBoxNil[" + c.objType() + "](" + code + ")" // a generic V? with V = *C (or CI) is Go **C (or *CI) (decisions 360, 378)
 	}
 	// A type variable bound to untyped gets an explicit any(...), or Go infers
 	// it from the argument's own type (E = String for Array[untyped]#include?("a")).
@@ -510,6 +510,9 @@ func (f *fctx) coerceToOpt(n parser.Node, e expr, to TOpt) string {
 	case isNil(e.typ):
 		return "nil"
 	case isOpt(e.typ):
+		if from, ok := e.typ.(TOpt); ok && leafOpt(from) && leafRecv(from.Elem) && leafOpt(to) && !leafRecv(to.Elem) {
+			return "rbIfaceOf[" + f.c.goType(to.Elem) + "](" + e.code + ")" // a nil *C into an interface would be a typed nil, not nil
+		}
 		return e.code
 	case isAny(e.typ):
 		return f.noteConv(n, f.c.optOf(to.Elem, e.code))

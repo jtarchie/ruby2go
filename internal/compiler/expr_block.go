@@ -551,7 +551,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	if boxed != nil {
 		f.emit("func(%s) *%s {", strings.Join(ps, ", "), f.c.goType(ret))
 		f.indent++
-		f.emit("return rbBoxPtr[%s](func()%s {", boxed.Name, retS)
+		f.emit("return rbBoxNil[%s](func()%s {", boxed.objType(), retS)
 	} else {
 		f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
 	}

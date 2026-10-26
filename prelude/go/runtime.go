@@ -596,34 +596,55 @@ func OptOf[T any](a any, want string) *T {
 	return &v
 }
 
-// rbFlatPair opens a generic [E?, F?] whose E and F are leaf classes' *C: Go's two **C slots, to the *C each C? is (decision 360).
-func rbFlatPair[A, B any](t Tuple2[**A, **B]) Tuple2[*A, *B] {
-	return Tuple2[*A, *B]{rbFlat(t.F0), rbFlat(t.F1)}
-}
-
-// rbFlatArray opens a generic Array[E?] whose E is a leaf class's *C: each **C slot to the *C its C? is (decision 360).
-func rbFlatArray[T any](a *Array[**T]) *Array[*T] {
-	out := make([]*T, len(a.s))
-	for i, p := range a.s {
-		out[i] = rbFlat(p)
-	}
-	return &Array[*T]{s: out}
-}
-
-// rbBoxPtr is a leaf class's C?, its *C, where generic code takes V? with V = *C (decision 360).
-func rbBoxPtr[T any](p *T) **T {
+// rbFlatNil opens a generic V? whose V is a class that holds nil itself (a leaf's *C, decision 360; any other struct
+// class's interface CI, decision 378): Go's *V to the V its C? is.
+func rbFlatNil[T any](p *T) T {
 	if p == nil {
-		return nil
+		var z T
+		return z
 	}
-	return &p
+	return *p
 }
 
-// rbOptPtr is OptOf for a leaf class, whose C? is its *C (decision 360).
-func rbOptPtr[T any](a any, want string) *T {
-	if a == nil {
+// rbFlatPair opens a generic [E?, F?] whose E and F hold nil themselves: Go's two *V slots, to the V each C? is.
+func rbFlatPair[A, B comparable](t Tuple2[*A, *B]) Tuple2[A, B] {
+	return Tuple2[A, B]{rbFlatNil(t.F0), rbFlatNil(t.F1)}
+}
+
+// rbFlatArray opens a generic Array[E?] whose E holds nil itself: each *V slot to the V its C? is.
+func rbFlatArray[T comparable](a *Array[*T]) *Array[T] {
+	out := make([]T, len(a.s))
+	for i, p := range a.s {
+		out[i] = rbFlatNil(p)
+	}
+	return &Array[T]{s: out}
+}
+
+// rbBoxNil is a C? that holds nil itself (*C or CI) where generic code takes V? as Go *V.
+func rbBoxNil[T comparable](v T) *T {
+	var z T
+	if v == z {
 		return nil
 	}
-	return rbAs[*T](a, want)
+	return &v
+}
+
+// rbOptNil is OptOf for a class whose C? is its own Go type (*C or CI), nil its nil.
+func rbOptNil[T any](a any, want string) T {
+	if a == nil {
+		var z T
+		return z
+	}
+	return rbAs[T](a, want)
+}
+
+// rbIfaceOf is a leaf's C? (*C) where a superclass's C? (its interface I) is wanted: nil stays nil, not a typed nil in I.
+func rbIfaceOf[I any, T any](p *T) I {
+	if p == nil {
+		var z I
+		return z
+	}
+	return any(p).(I) //nolint:forcetypeassert // *T implements I: the compiler emits this only for a subclass
 }
 
 // rbAs converts untyped to T, raising MRI's TypeError when a is not one:
@@ -1846,10 +1867,11 @@ func rbIvarAssign[T any](dst *T, v any, name string) {
 	*dst = x
 }
 
-// rbIvarAssignPtr is rbIvarAssignOpt for a leaf class's C?, its *C itself (decision 360).
-func rbIvarAssignPtr[T any](dst **T, v any, name string) {
+// rbIvarAssignPtr is rbIvarAssignOpt for a C? that is its own Go type: a leaf's *C (decision 360), another class's CI (378).
+func rbIvarAssignPtr[T any](dst *T, v any, name string) {
 	if v == nil {
-		*dst = nil
+		var z T
+		*dst = z
 		return
 	}
 	rbIvarAssign(dst, v, name)

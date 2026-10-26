@@ -39,6 +39,9 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 	if e, ok := f.genLiteralFormat(n); ok {
 		return e, true
 	}
+	if e, ok := f.compactNil(n); ok {
+		return e, true
+	}
 	if e, ok := f.genStrChain(n); ok {
 		return e, true
 	}
@@ -307,4 +310,19 @@ func sideEffectFree(n parser.Node) bool {
 		return true
 	}
 	return false
+}
+
+// compactNil is `xs.compact` of an Array[C?] whose C holds nil itself: its elements are already C's Go type, where the
+// prelude's `@self Array[U?]` form wants a box per element (decision 378).
+func (f *fctx) compactNil(n *parser.CallNode) (expr, bool) {
+	if n.Name != "compact" || n.Receiver == nil || n.Block != nil || n.Arguments != nil {
+		return expr{}, false
+	}
+	t, ok := f.probeType(n.Receiver, nil).(TClass) // not an Array? receiver: that call is genSafeNav's or an error
+	if !ok || t.C.RubyName != "Array" || len(t.Args) != 1 || !leafOpt(t.Args[0]) {
+		return expr{}, false
+	}
+	recv := f.genExpr(n.Receiver, nil)
+	elem := t.Args[0].(TOpt).Elem //nolint:forcetypeassert // leafOpt holds only for a TOpt
+	return expr{code: "rbCompactNil(" + recv.code + ")", typ: TClass{C: t.C, Args: []Type{elem}}}, true
 }
