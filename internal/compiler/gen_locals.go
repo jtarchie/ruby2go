@@ -15,6 +15,9 @@ func (f *fctx) hoistLocals(scope int) {
 		return
 	}
 	for _, li := range sortedLocals(f.locals) {
+		if li.scope == scope && li.appended {
+			f.emit("var %s []byte", appendBuf(li.name))
+		}
 		if li.scope != scope || !li.hoist || li.noHoist || li.typ == nil {
 			continue
 		}

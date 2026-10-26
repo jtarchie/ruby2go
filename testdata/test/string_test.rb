@@ -2128,4 +2128,87 @@ module StringTests
       assert_equal "0002.675|+2.68| 2.7e+00|3.|2.7      |", format(fmt, 2.675, 2.675, 2.675, 2.675, 2.675)
     end
   end
+
+  # decision 382: `<<` and `concat` on a local nothing else holds
+  class StringAppendTest < Minitest::Test
+    #: (Integer) -> String
+    def build(n)
+      s = +""
+      i = 0
+      while i < n
+        s << "ab" << i.to_s
+        i += 1
+      end
+      s
+    end
+
+    def test_loop_build_and_return
+      assert_equal "ab0ab1ab2", build(3)
+      big = build(500)
+      assert_equal 2_390, big.size
+      assert_equal "ab499", big[-5, 5]
+    end
+
+    def test_chain_appends_in_order
+      s = +"x"
+      s << "ab" << s.size.to_s
+      assert_equal "xab3", s.dup
+      s.concat("1", "2", s.size.to_s)
+      assert_equal "xab3124", s
+    end
+
+    def test_snapshots_keep_their_bytes
+      s = "q" * 70
+      t = s.dup
+      head = s[0, 3]
+      copy = "#{s}"
+      plus = s + ""
+      s << "Z"
+      assert_equal 71, s.size
+      assert_equal 70, t.size
+      assert_equal "qqq", head
+      assert_equal 70, copy.size
+      assert_equal 70, plus.size
+      assert s.end_with?("qZ")
+    end
+
+    def test_block_appends_and_later_use
+      out = +"<ul>"
+      %w[a b c].each_with_index { |w, i| out << "<li>" << w << i.to_s << "</li>" }
+      out << "</ul>"
+      kept = [out]
+      assert_equal "<ul><li>a0</li><li>b1</li><li>c2</li></ul>", kept.first
+      words = %w[x y].map do |w|
+        b = String.new
+        b << w << "!"
+        b
+      end
+      assert_equal ["x!", "y!"], words
+    end
+
+    def test_reassigned_fresh
+      s = +"a"
+      s << "b"
+      assert_equal "ab", s.dup
+      s = "c" * 2
+      s << "d"
+      assert_equal "ccd", s.dup
+      s += "e"
+      s << "f"
+      assert_equal "ccdef", s
+    end
+
+    def test_nil_argument_raises_type_error
+      s = +"a"
+      words = ["b"] #: Array[String]
+      raised = false
+      begin
+        s << words[5]
+      rescue TypeError
+        raised = true
+      end
+      assert raised
+      assert_equal "a", s.dup
+    end
+  end
 end

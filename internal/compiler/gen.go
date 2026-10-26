@@ -86,6 +86,8 @@ type fctx struct {
 	blockWhy       string              // RUGAROO_UNTYPED_WHY: the root of the call whose block params are being bound (blockParam)
 	breakCatch     *breakCatch         // the statement call whose closure block `break`s out of it (decision 241)
 	inMarker       bool                // markerCall's own Boolean arm: past its check (decision 241)
+	scopeRoot      parser.Node         // the method or program body genBody is generating: where an appended local's proof looks (decision 382)
+	appendProofs   map[localKey]string // appendWhy's answers for scopeRoot
 }
 
 // genEnd is `END { }`: Kernel#at_exit with that block, registered the
@@ -133,6 +135,7 @@ type localInfo struct {
 	writes    int
 	typ       Type
 	annotated bool
+	appended  bool      // a user String local appended to in place (decision 382)
 	noHoist   bool      // params and block params: declared by Go syntax
 	param     bool      // a method parameter
 	open      bool      // an unannotated `[]`/`{}` that later writes may type (analyze)

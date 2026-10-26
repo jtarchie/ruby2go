@@ -37,6 +37,9 @@ func parenWrite(n parser.Node) *parser.LocalVariableWriteNode {
 // genStringBang compiles a String bang method (and <<) on a local in a gem file as a rebinding of that local
 // (decision 172): Strings stay values (decision 136), and `x.sub!(a, b)` is `x = x.sub(a, b)`, nil when unchanged.
 func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
+	if e, ok := f.userAppend(n); ok {
+		return e, true
+	}
 	if e, ok := f.genOutBuffer(n); ok {
 		return e, true
 	}
@@ -323,9 +326,11 @@ func (f *fctx) stringAppendBang(n *parser.CallNode, lv parser.Node, args []parse
 	acc := cur()
 	for _, arg := range args {
 		a := f.genExpr(arg, nil)
-		code := f.coerce(arg, a, str)
+		var code string
 		if typeEq(a.typ, TOpt{Elem: str}) { // `s << nil` raises in MRI too
 			code = "rbMustStr(" + a.code + ")"
+		} else {
+			code = f.coerce(arg, a, str)
 		}
 		acc = "String.Op_plus(" + acc + ", " + code + ")"
 	}

@@ -794,6 +794,21 @@ func rbStrCat(a, b string) string {
 	return out
 }
 
+// rbStrAppend is an unaliased local's `s << x` (decision 382): buf is the local's own, so no other builder evicts it as in rbStrCat's slots.
+func rbStrAppend(buf *[]byte, s, x String) String {
+	b := *buf
+	if len(s) == 0 || len(b) != len(s) || unsafe.SliceData(b) != unsafe.StringData(string(s)) { //nolint:gosec // pointer compare only
+		if len(x) == 0 {
+			return s
+		}
+		b = make([]byte, len(s), max(2*(len(s)+len(x)), 32))
+		copy(b, s)
+	}
+	b = append(b, x...)
+	*buf = b
+	return String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // buf's bytes up to here are never written again
+}
+
 // rbRuneOffset is the byte offset of rune k in s, or len(s) when s has exactly k runes; past that, len(s) and false.
 func rbRuneOffset(s string, k int) (int, bool) {
 	i := 0

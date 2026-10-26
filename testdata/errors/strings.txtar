@@ -51,11 +51,68 @@ s = "abc"
 s.upcase!
 puts s
 -- shovel.rb --
-# error: main.rb:4: undefined method << for String
+# error: main.rb:5: undefined method << for String: Strings are immutable in rugaroo, and `s` is stored or passed on line 4 before its last append (decision 382)
 # rbs_inline: enabled
-s = "abc"
+s = +"abc"
+t = s
 s << "d"
+puts t
+-- shovel_param.rb --
+# error: main.rb:3: undefined method << for String: Strings are immutable in rugaroo, and `s` is a parameter, so the caller's String would see the append
+# rbs_inline: enabled
+def grow(s) = s << "xyz"
+s = +"abc"
+grow(s)
 puts s
+-- shovel_passed.rb --
+# error: `s` is passed to keep on line 8 before its last append
+# rbs_inline: enabled
+$kept = [] #: Array[String]
+#: (String) -> void
+def keep(x) = $kept << x
+s = +"a"
+3.times do
+  keep(s)
+  s << "b"
+end
+p $kept
+-- shovel_loop_store.rb --
+# error: `s` is passed to << on line 7 before its last append
+# rbs_inline: enabled
+rows = [] #: Array[String]
+s = +""
+%w[a b].each do |w|
+  s << w
+  rows << s
+end
+p rows
+-- shovel_lambda.rb --
+# error: `s` is appended to inside a block that may run after its call returns
+# rbs_inline: enabled
+s = +"a"
+add = -> { s << "b" }
+add.call
+puts s
+-- shovel_not_fresh.rb --
+# error: `s` is assigned a String that something else may hold (line 3)
+# rbs_inline: enabled
+s = ARGV.first || +"x"
+s << "y"
+puts s
+-- shovel_freeze.rb --
+# error: `s.freeze` may keep, return or change the String on line 4 before its last append
+# rbs_inline: enabled
+s = +"a"
+s.freeze
+s << "b"
+puts s
+-- shovel_value.rb --
+# error: the value of `s <<` (the String itself) is stored or passed on line 4 before its last append
+# rbs_inline: enabled
+s = +"a"
+t = (s << "b")
+s << "c"
+puts t
 -- global_never_assigned.rb --
 # error: main.rb:3: global variable $nope is never assigned
 # rbs_inline: enabled
@@ -146,10 +203,11 @@ Object.puts "x"
 # rbs_inline: enabled
 puts :abc.encoding
 -- string_shovel.rb --
-# error: main.rb:3: undefined method << for String: Strings are immutable in rugaroo
+# error: main.rb:4: undefined method << for String: Strings are immutable in rugaroo
 s = +"ab"
+a = [s]
 s << "c"
-puts s
+puts a
 -- string_index_assign.rb --
 # error: main.rb:3: undefined method []= for String: Strings are immutable in rugaroo
 s = +"ab"

@@ -12,6 +12,9 @@ import (
 // genBody runs the two-pass body generation into f.buf.
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
+	savedRoot, savedProofs := f.scopeRoot, f.appendProofs
+	f.scopeRoot, f.appendProofs = body, nil
+	defer func() { f.scopeRoot, f.appendProofs = savedRoot, savedProofs }()
 	f.unset = maybeUnset(body, params)
 	if f.intMode() == "promote" {
 		f.promoted = growthLocals(body)
