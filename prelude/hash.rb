@@ -1,13 +1,13 @@
 # prelude/hash.rb
 # rbs_inline: enabled
 #
-# Hash: insertion-ordered, an entry array plus a Go map from key to entry (decision 350).
+# Hash: insertion-ordered, an entry array plus an open-addressed index of it (decisions 350, 388).
 
 # iter is MRI's iter_lev: while non-zero, []= of a new key raises and nothing compacts (iterators skip tombstones; head is the first maybe-live entry, for shift).
 
 # @rbs generic K
 # @rbs generic V
-# @go_type struct { ents []rbHashEnt[K, V]; pos map[K]int32; gone []uint64; live int32; head int32; iter int; idx rbKeyIndex[K]; frozen atomic.Bool; defVal V; hasDef bool; defProc func(*Hash[K, V], K) V }
+# @go_type struct { ents []rbHashEnt[K, V]; slots []int32; gone []uint64; live int32; head int32; iter int; idx rbKeyIndex[K]; frozen atomic.Bool; defVal V; hasDef bool; defProc func(*Hash[K, V], K) V }
 class Hash < Object
   include Enumerable #[[K, V]]
 
@@ -180,8 +180,10 @@ class Hash < Object
     if !self.idx.plain {
       k, h, byValue = self.idx.find(k)
     }
-    if self.pos != nil {
-      if i, ok := self.pos[k]; ok {
+    var hv uint64
+    if self.slots != nil {
+      var i int
+      if i, hv = rbHashFind(self, k); i >= 0 {
         self.ents[i].v = v
         return v
       }
@@ -196,19 +198,11 @@ class Hash < Object
     if self.iter > 0 {
       panic(NewRuntimeError(Ref[String]("can't add a new key into hash during iteration")))
     }
-    // a new key; tombstones are left to delete, so []= never compacts and the ninth entry builds pos
-    if self.pos != nil {
-      self.pos[k] = int32(len(self.ents)) //nolint:gosec // a Hash holds fewer than 2^31 entries
-    } else if len(self.ents) >= rbSmallHash {
-      self.pos = make(map[K]int32, 2*len(self.ents))
-      for i := range self.ents {
-        if !rbGone(self.gone, i) {
-          self.pos[self.ents[i].k] = int32(i) //nolint:gosec // a Hash holds fewer than 2^31 entries
-        }
-      }
-      self.pos[k] = int32(len(self.ents)) //nolint:gosec // a Hash holds fewer than 2^31 entries
-    }
+    // a new key; tombstones are left to delete, so []= never compacts and the ninth entry builds slots
     self.ents = append(self.ents, rbHashEnt[K, V]{k, v})
+    if self.slots != nil || len(self.ents) > rbSmallHash {
+      rbHashIndex(self, hv)
+    }
     self.live++
     if byValue {
       self.idx.add(k, h)
@@ -258,7 +252,7 @@ class Hash < Object
     if int(self.live) == len(self.ents) && len(self.ents) > 0 { // a straight copy: no rehash
       out.ents = append([]rbHashEnt[K, V](nil), self.ents...)
       out.live = self.live
-      out.pos = maps.Clone(self.pos)
+      out.slots = slices.Clone(self.slots)
       for h, b := range self.idx.byHash {
         if out.idx.byHash == nil {
           out.idx.byHash = make(map[uint64][]K, len(self.idx.byHash))
@@ -303,10 +297,8 @@ class Hash < Object
       k, _, _ = self.idx.find(k)
     }
     i := -1
-    if self.pos != nil {
-      if j, ok := self.pos[k]; ok {
-        i = int(j)
-      }
+    if self.slots != nil {
+      i, _ = rbHashFind(self, k)
     } else {
       for j := range self.ents {
         if self.ents[j].k == k && (int(self.live) == len(self.ents) || !rbGone(self.gone, j)) {

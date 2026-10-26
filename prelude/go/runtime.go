@@ -1420,7 +1420,7 @@ func rbStopped() {
 }
 
 func NewHash[K, V comparable]() *Hash[K, V] {
-	return &Hash[K, V]{idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}} // pos is made by the first []=: an empty Hash allocates no map
+	return &Hash[K, V]{idx: rbKeyIndex[K]{plain: rbPlainKey[K]()}} // slots are made by the ninth key (decision 388): an empty Hash allocates no index
 }
 
 // `when Array` / `when Hash` in a type switch can't match a generic

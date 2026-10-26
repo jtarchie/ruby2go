@@ -2563,6 +2563,89 @@ module HashTests
     end
   end
 
+  # The open-addressed index past 8 entries (decision 388): probes past deleted slots, slot reuse, rebuilds.
+  class HashIndexTest < Minitest::Test
+    def test_lookups_past_deleted_slots
+      h = {} #: Hash[Integer, Integer]
+      64.times { |i| h[i * 64] = i }
+      (0...64).step(2) { |i| h.delete(i * 64) }
+      assert_equal 32, h.size
+      assert_equal (1...64).step(2).sum, (0...64).sum { |i| h[i * 64] || 0 }
+      assert_nil h[0]
+      h[0] = -1
+      h[128] = -2
+      assert_equal [-1, -2], h.values.last(2)
+      assert_equal [64, 192], h.keys.first(2)
+      h.delete(64)
+      assert_equal 33, h.size
+      assert_equal(-2, h[128])
+      assert_equal 3, h[192]
+    end
+
+    def test_churn_at_constant_size
+      h = {} #: Hash[Integer, Integer]
+      20.times { |i| h[i] = i }
+      5000.times do |i|
+        h.delete(i)
+        h[i + 20] = i
+        h[i + 7] = -i if i.even?
+      end
+      assert_equal 20, h.size
+      assert_equal (5000...5020).to_a, h.keys
+      assert_equal 4993, h[5013]
+      assert_equal(-4994, h[5001])
+    end
+
+    def test_clear_during_each_then_reuse
+      h = {} #: Hash[String, Integer]
+      12.times { |i| h["k#{i}"] = i }
+      h.each { |k, _v| h.clear if k == "k3" }
+      assert_empty h
+      12.times { |i| h["k#{i}"] = i * 2 }
+      h.delete("k5")
+      h["k5"] = 0
+      assert_equal 22, h["k11"]
+      assert_equal "k5", h.keys.last
+      assert_equal 12, h.size
+    end
+
+    def test_float_keys
+      h = {} #: Hash[Float, Integer]
+      10.times { |i| h[i.to_f + 0.5] = i }
+      h[0.0] = 1
+      h[-0.0] = 2
+      assert_equal 11, h.size
+      assert_equal 2, h[0.0]
+      assert_equal 9, h[9.5]
+      assert_nil h[10.5]
+    end
+
+    def test_value_keys_past_eight
+      h = {} #: Hash[Array[Integer], Integer]
+      20.times { |i| h[[i, i + 1]] = i }
+      (0...20).step(3) { |i| h.delete([i, i + 1]) }
+      assert_equal 13, h.size
+      assert_equal 19, h[[19, 20]]
+      assert_nil h[[3, 4]]
+      h[[3, 4]] = 99
+      assert_equal [3, 4], h.keys.last
+      assert_equal 99, h[[3, 4]]
+    end
+
+    def test_symbol_and_string_keys_past_eight
+      s = {} #: Hash[Symbol, Integer]
+      words = %w[alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu]
+      words.each_with_index { |w, i| s[w.to_sym] = i }
+      assert_equal 11, s[:mu]
+      t = {} #: Hash[String, Integer]
+      words.each_with_index { |w, i| t[w] = i }
+      t.delete("beta")
+      assert_equal 7, t["theta"]
+      assert_nil t["beta"]
+      assert_equal words - ["beta"], t.keys
+    end
+  end
+
   # Fused `h[k] op= v` and `h[k] = (h[k] || d) op v` (decision 350): a hit updates in place, a miss is the unfused path.
   class HashFusedTest < Minitest::Test
     class Tally

@@ -4,6 +4,9 @@
 package prelude
 
 import (
+	"hash/maphash"
+	"math"
+	"math/bits"
 	"slices"
 	"strings"
 )
@@ -111,8 +114,8 @@ func (self *Hash[K, V]) rbGet(k K) (V, bool) {
 	if !self.idx.plain {
 		k, _, _ = self.idx.find(k)
 	}
-	if self.pos != nil {
-		if i, ok := self.pos[k]; ok {
+	if self.slots != nil {
+		if i, _ := rbHashFind(self, k); i >= 0 {
 			return self.ents[i].v, true
 		}
 	} else {
@@ -132,7 +135,7 @@ type rbHashEnt[K, V comparable] struct {
 	v V
 }
 
-// rbSmallHash is the most entries a Hash holds without a pos map: a scan of a few keys costs less than hashing one, and most Hashes are this small.
+// rbSmallHash is the most entries a Hash holds without slots: a scan of a few keys costs less than hashing one, and most Hashes are this small.
 const rbSmallHash = 8
 
 // rbGone reports whether Hash entry i is a tombstone; not generic, so it compiles once.
@@ -143,7 +146,7 @@ func rbGone(gone []uint64, i int) bool {
 
 // The helpers below are free functions, not methods, so a Hash instantiation compiles only the ones it calls.
 
-// rbHashScan finds k (canonical: idx.find) in a Hash small enough to have no pos map.
+// rbHashScan finds k (canonical: idx.find) in a Hash small enough to have no slots.
 func rbHashScan[K, V comparable](h *Hash[K, V], k K) (int, bool) {
 	for i := range h.ents {
 		if h.ents[i].k == k && (int(h.live) == len(h.ents) || !rbGone(h.gone, i)) {
@@ -189,8 +192,8 @@ func rbHashSlot[K, V comparable](h *Hash[K, V], k K) *V {
 	if !h.idx.plain {
 		k, _, _ = h.idx.find(k)
 	}
-	if h.pos != nil {
-		if i, ok := h.pos[k]; ok {
+	if h.slots != nil {
+		if i, _ := rbHashFind(h, k); i >= 0 {
 			return &h.ents[i].v
 		}
 	} else if i, ok := rbHashScan(h, k); ok {
@@ -202,7 +205,16 @@ func rbHashSlot[K, V comparable](h *Hash[K, V], k K) *V {
 // rbHashDropAt tombstones live entry i; with no iterator open an emptied Hash resets and a mostly-dead one compacts.
 func rbHashDropAt[K, V comparable](h *Hash[K, V], i int) {
 	k := h.ents[i].k
-	delete(h.pos, k)
+	if h.slots != nil {
+		m := uint64(len(h.slots) - 1)
+		j := rbHashOf(k) & m
+		for h.slots[j] != 0 && int(h.slots[j]) != i+1 {
+			j = (j + 1) & m
+		}
+		if h.slots[j] != 0 {
+			h.slots[j] = -1
+		}
+	}
 	if !h.idx.plain {
 		if hv, byValue := rbValueKey(k); byValue {
 			h.idx.remove(k, hv)
@@ -238,7 +250,7 @@ func rbHashDropWhere[K, V comparable](h *Hash[K, V], drop func(K, V) bool) {
 	}
 }
 
-// rbHashCompact drops the tombstones and renumbers pos, keeping the storage; no iterator may be open.
+// rbHashCompact drops the tombstones and rebuilds slots, keeping the storage; no iterator may be open.
 func rbHashCompact[K, V comparable](h *Hash[K, V]) {
 	n := 0
 	for i := int(h.head); i < len(h.ents); i++ {
@@ -247,9 +259,6 @@ func rbHashCompact[K, V comparable](h *Hash[K, V]) {
 		}
 		if n != i {
 			h.ents[n] = h.ents[i]
-			if h.pos != nil {
-				h.pos[h.ents[n].k] = int32(n) //nolint:gosec // a Hash holds fewer than 2^31 entries
-			}
 		}
 		n++
 	}
@@ -258,11 +267,14 @@ func rbHashCompact[K, V comparable](h *Hash[K, V]) {
 	clear(h.gone)
 	h.gone = h.gone[:0]
 	h.head = 0
+	if h.slots != nil {
+		rbHashRehash(h)
+	}
 }
 
 // rbHashClear tombstones every entry in place while an iterator is open, so its indices stay valid.
 func rbHashClear[K, V comparable](h *Hash[K, V]) {
-	clear(h.pos)
+	clear(h.slots)
 	clear(h.idx.byHash)
 	if h.iter == 0 {
 		clear(h.ents)
@@ -431,3 +443,99 @@ func (self *Hash[K, V]) rbCheckFrozen() {
 		rbFrozenErr(self)
 	}
 }
+
+// Hash's index past rbSmallHash entries (decision 388) is slots, open-addressed with linear probing: a power-of-two count, at most half used; each holds an entry index + 1, 0 is empty and -1 a deleted entry's slot (probing goes on past it).
+
+// rbHashFind is k's entry index (canonical: idx.find), or -1, and k's hash.
+func rbHashFind[K, V comparable](h *Hash[K, V], k K) (int, uint64) {
+	hv := rbHashOf(k)
+	m := uint64(len(h.slots) - 1)
+	for i := hv & m; ; i = (i + 1) & m {
+		s := h.slots[i]
+		if s == 0 {
+			return -1, hv
+		}
+		if s > 0 && h.ents[s-1].k == k {
+			return int(s - 1), hv
+		}
+	}
+}
+
+// rbHashIndex records the entry just appended (key hash hv) in slots, rebuilding them once past half full (or at the first entry past rbSmallHash).
+func rbHashIndex[K, V comparable](h *Hash[K, V], hv uint64) {
+	n := len(h.ents)
+	if 2*n > len(h.slots) {
+		rbHashRehash(h)
+		return
+	}
+	m := uint64(len(h.slots) - 1)
+	i := hv & m
+	for h.slots[i] > 0 {
+		i = (i + 1) & m
+	}
+	h.slots[i] = int32(n) //nolint:gosec // a Hash holds fewer than 2^31 entries
+}
+
+// rbHashRehash rebuilds slots from the live entries, at least twice their count, reusing the storage.
+func rbHashRehash[K, V comparable](h *Hash[K, V]) {
+	n := 16
+	for n < 2*len(h.ents) {
+		n <<= 1
+	}
+	if cap(h.slots) >= n {
+		h.slots = h.slots[:n]
+		clear(h.slots)
+	} else {
+		h.slots = make([]int32, n)
+	}
+	m := uint64(n - 1)
+	for j := range h.ents {
+		if rbGone(h.gone, j) {
+			continue
+		}
+		i := rbHashOf(h.ents[j].k) & m
+		for h.slots[i] != 0 {
+			i = (i + 1) & m
+		}
+		h.slots[i] = int32(j + 1) //nolint:gosec // a Hash holds fewer than 2^31 entries
+	}
+}
+
+// rbHashOf is k's hash for slots, agreeing with Go == (the canonical key: by-value keys go through idx.find first). An Integer folds a multiply, so every bit of k reaches the low bits a probe starts from; it inlines, the rest is rbHashOfAny.
+func rbHashOf[K comparable](k K) uint64 {
+	if x, ok := any(k).(Integer); ok {
+		return rbMixHash(uint64(x)) //nolint:gosec // a bit pattern, not a size
+	}
+	return rbHashOfAny(k)
+}
+
+func rbMixHash(u uint64) uint64 {
+	hi, lo := bits.Mul64(u^rbIntHashSeed, 0x9E3779B97F4A7C15)
+	return hi ^ lo
+}
+
+// rbHashOfAny is rbHashOf past Integer: String and Symbol hash their bytes, Float (-0.0 as 0.0) and Boolean mix as an Integer, the rest go through maphash.Comparable.
+func rbHashOfAny[K comparable](k K) uint64 {
+	switch x := any(k).(type) {
+	case Integer:
+		return rbMixHash(uint64(x)) //nolint:gosec // a bit pattern, not a size
+	case String:
+		return maphash.String(rbHashSeed, string(x))
+	case Symbol:
+		return maphash.String(rbHashSeed, string(x))
+	case Float:
+		if x == 0 {
+			x = 0 // -0.0 == 0.0
+		}
+		return rbMixHash(math.Float64bits(float64(x)))
+	case Boolean:
+		if x {
+			return rbMixHash(1)
+		}
+		return rbMixHash(0)
+	}
+	return maphash.Comparable(rbHashSeed, k)
+}
+
+// rbIntHashSeed varies rbHashOf's Integer hashes per process, as maphash's seed does strings'.
+var rbIntHashSeed = maphash.Comparable(rbHashSeed, uint64(0))
