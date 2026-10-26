@@ -50,8 +50,24 @@ module FFI
     x.is_a?(Struct) ? x.pointer : x
   end
 
+  # Past 2**63 the value needs a Bignum: it raises unless the program is built with --int-overflow=promote (decision 372).
+  #: (Integer) -> Integer
+  def self.__u64(v) = v < 0 ? v + (1 << 64) : v
+
   #: () -> Integer
   def self.errno = LastError.error
+
+  # The gem's name mangling: "c" is libc, a bare "foo" is tried as libfoo.so / libfoo.dylib too.
+  #: (String) -> String
+  def self.map_library_name(lib)
+    lib = Platform::LIBC if lib == "c"
+    return lib unless File.basename(lib) == lib
+
+    lib = "lib#{lib}" unless lib.start_with?("lib")
+    mac = Platform::IS_MAC
+    done = mac ? lib.end_with?(".dylib") : lib.match?(/\.so(\z|\.\d+)/)
+    done ? lib : "#{lib}.#{mac ? "dylib" : "so"}"
+  end
 
   module Platform
     OS = RUBY_PLATFORM.include?("darwin") ? "darwin" : "linux" #: String
@@ -143,6 +159,42 @@ module FFI
 
     #: () -> Pointer
     def read_pointer = get_pointer(0)
+
+    #: (Integer, Integer) -> Array[Pointer]
+    def get_array_of_pointer(off, n)
+      Array.new(n) { |i| get_pointer(off + i * 8) }
+    end
+
+    #: (Integer) -> Array[Pointer]
+    def read_array_of_pointer(n) = get_array_of_pointer(0, n)
+
+    #: (Integer, Array[untyped]) -> void
+    def put_array_of_pointer(off, ptrs)
+      ptrs.each_with_index { |p, i| put_pointer(off + i * 8, p) }
+    end
+
+    #: (Array[untyped]) -> void
+    def write_array_of_pointer(ptrs)
+      put_array_of_pointer(0, ptrs)
+    end
+
+    # Reads count C strings, or up to the NULL entry when count is nil.
+    #: (Integer, ?Integer?) -> Array[String?]
+    def get_array_of_string(off, count = nil)
+      out = [] #: Array[String?]
+      i = 0
+      while count.nil? || i < count
+        w = Fiddle.__word(to_i + off + i * 8)
+        break if count.nil? && w == 0
+
+        out << (w == 0 ? nil : Fiddle.__cstring(w))
+        i += 1
+      end
+      out
+    end
+
+    #: (?Integer?) -> Array[String?]
+    def read_array_of_string(count = nil) = get_array_of_string(0, count)
 
     #: (Integer, untyped) -> void
     def put_pointer(off, p)
@@ -409,7 +461,7 @@ module FFI
     end
 
     #: (Integer) -> Integer
-    def get_ulong(off) = Fiddle.__get_i(to_i + off, -5)
+    def get_ulong(off) = FFI.__u64(Fiddle.__get_i(to_i + off, -5))
 
     #: (Integer, Integer) -> void
     def put_ulong(off, v)
@@ -477,7 +529,7 @@ module FFI
     end
 
     #: (Integer) -> Integer
-    def get_ulong_long(off) = Fiddle.__get_i(to_i + off, -6)
+    def get_ulong_long(off) = FFI.__u64(Fiddle.__get_i(to_i + off, -6))
 
     #: (Integer, Integer) -> void
     def put_ulong_long(off, v)
@@ -749,7 +801,7 @@ module FFI
     end
 
     #: (Integer) -> Integer
-    def get_uint64(off) = Fiddle.__get_i(to_i + off, -5)
+    def get_uint64(off) = FFI.__u64(Fiddle.__get_i(to_i + off, -5))
 
     #: (Integer, Integer) -> void
     def put_uint64(off, v)
@@ -857,12 +909,12 @@ module FFI
     attr_reader :total #: Integer
 
     # @dynamic
-    #: (untyped, ?Integer, ?bool) -> void
-    def initialize(size, count = 1, clear = true)
+    #: (untyped, ?Integer, ?bool) ?{ (MemoryPointer) -> untyped } -> void
+    def initialize(size, count = 1, clear = true, &block)
       unit = case size
              when Symbol then FFI.type_size(size)
              when Integer then size
-             else size.to_i
+             else size.size
              end
       n = unit * count
       @total = n
@@ -870,6 +922,11 @@ module FFI
       Fiddle::Pointer.write(mem, "\0" * n) if clear
       super(mem)
       @auto = true
+      return if block.nil?
+
+      # ponytail: new returns the pointer, not the block's value (the gem returns the value); the memory is freed after the block.
+      block.call(self)
+      free
     end
 
     #: (String) -> MemoryPointer
@@ -1121,6 +1178,7 @@ module FFI
       when :string
         w = Fiddle.__word(at)
         w == 0 ? nil : Fiddle.__cstring(w)
+      when :ulong, :uint64, :ulong_long, :size_t then FFI.__u64(Fiddle.__get_i(at, TYPES.fetch(t)))
       when Symbol then Fiddle.__get_i(at, TYPES.fetch(t))
       when ByReference then Pointer.new(Fiddle.__word(at))
       else t.new(at)
@@ -1180,14 +1238,26 @@ module FFI
         if n.equal?(CURRENT_PROCESS) || n.nil?
           libs << Fiddle.dlopen(nil)
         else
-          begin
-            libs << Fiddle.dlopen(n.to_s)
-          rescue Fiddle::DLError => e
-            raise LoadError, "Could not open library '#{n}': #{e.message}"
-          end
+          libs << __open(n.to_s)
         end
       end
       __libs.replace(libs)
+    end
+
+    #: (String) -> Fiddle::Handle
+    def __open(name)
+      cands = [name, FFI.map_library_name(name)].uniq
+      err = ""
+      i = 0
+      while i < cands.size
+        begin
+          return Fiddle.dlopen(cands[i])
+        rescue Fiddle::DLError => e
+          err = e.message
+        end
+        i += 1
+      end
+      raise LoadError, "Could not open library '#{name}': #{err}"
     end
 
     #: () -> Array[Fiddle::Handle?]
@@ -1234,9 +1304,10 @@ module FFI
     #: (*untyped) -> void
     def ffi_lib_flags(*_args); end
 
-    #: (Symbol, Symbol) -> Symbol
+    # A Struct.by_ref target is a pointer.
+    #: (untyped, Symbol) -> Symbol
     def typedef(old, add)
-      __tdefs[add] = old
+      __tdefs[add] = old.is_a?(Symbol) ? old : :pointer
     end
 
     #: (Symbol, Array[Symbol], Symbol) -> void
@@ -1315,14 +1386,31 @@ module FFI
       cache[k] || (cache[k] = __funcs.fetch(name))
     end
 
-    # A callback argument: a Proc becomes a C function pointer; a Pointer passes through.
+    #: () -> Array[[untyped, Symbol, FFI::Function]]
+    def __cbcache
+      @ffi_cbcache ||= [] #: Array[[untyped, Symbol, FFI::Function]]
+      @ffi_cbcache
+    end
+
+    # An enum travels as its int; a typedef resolves.
+    #: (Symbol) -> Symbol
+    def __ffi_cbtype(type)
+      t = __ffi_resolve(type)
+      __enums.key?(t) ? :int : t
+    end
+
+    # A callback argument: a Proc becomes a C function pointer, once per Proc (closures are never freed; decision 326).
     # @dynamic
     #: (Symbol, untyped) -> untyped
     def __ffi_cb(name, x)
       return x if x.nil? || x.is_a?(Fiddle::Pointer)
 
+      cache = __cbcache
+      cache.each { |c| return c[2] if c[0].equal?(x) && c[1] == name }
       args, ret = __cbs.fetch(__ffi_resolve(name))
-      FFI::Function.new(ret, args.map { |a| __ffi_resolve(a) }) { |*vals| x.call(*vals) }
+      fn = FFI::Function.new(__ffi_cbtype(ret), args.map { |a| __ffi_cbtype(a) }) { |*vals| x.call(*vals) }
+      cache << [x, name, fn]
+      fn
     end
 
     #: (Symbol, untyped) -> untyped

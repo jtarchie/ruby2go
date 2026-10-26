@@ -120,7 +120,11 @@ func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *p
 	}
 	if n.Name == "typedef" {
 		if len(args) == 2 {
-			c.ffiAliases[cls][sym(1)] = sym(0)
+			if call, ok := args[0].(*parser.CallNode); ok && call.Name == "by_ref" && call.Receiver != nil {
+				c.ffiAliases[cls][sym(1)] = "pointer" // a struct pointer typedef is a plain pointer
+			} else {
+				c.ffiAliases[cls][sym(1)] = sym(0)
+			}
 		}
 		return
 	}
@@ -177,12 +181,9 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 	}
 	fn := fmt.Sprintf("__ffi_func_at(%d, %q)", c.fiddleSlots[cls], name)
 	c.fiddleSlots[cls]++
-	call := fmt.Sprintf("%s.call(%s)", fn, strings.Join(exprs, ", "))
-	switch n := len(params); {
-	case n >= 1 && n <= 3:
+	call := fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(len(params))}, exprs...), ", "))
+	if n := len(params); n >= 1 && n <= 3 {
 		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, exprs...), ", "))
-	case n <= 8:
-		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(n)}, exprs...), ", "))
 	}
 	retType := ffiRubyType(ret)
 	switch rp.kind {
@@ -197,4 +198,9 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 		strings.Join(types, ", "), retType, name, strings.Join(params, ", "), call)
 	sf, def := c.synthDef(ctx, f, n, "FFI function", src, synthOpt{Origin: f.synthOrigin(), NoPath: true})
 	c.addMethod(sf, cls, def, false, scope)
+	// The gem also defines a private instance method, for a class that extends Library and calls it from its own methods.
+	inst := fmt.Sprintf("#: (%s) -> %s\ndef %s(%s) = ::%s.%s(%s)\n",
+		strings.Join(types, ", "), retType, name, strings.Join(params, ", "), cls.RubyName, name, strings.Join(params, ", "))
+	isf, idef := c.synthDef(ctx, f, n, "FFI function", inst, synthOpt{Origin: f.synthOrigin(), NoPath: true})
+	c.addMethod(isf, cls, idef, true, scope)
 }

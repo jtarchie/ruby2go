@@ -43,6 +43,38 @@ module FfiTests
     extend FFI::Library
   end
 
+  # attach_function also defines a private instance method; typedef takes a struct pointer.
+  class Wrapper
+    extend FFI::Library
+    ffi_lib FFI::Library::LIBC
+
+    class Rec < FFI::Struct
+      layout :n, :int
+    end
+
+    typedef Rec.by_ref, :rec_ptr
+    typedef :int, :myint2
+    callback :cmpc, [:pointer, :pointer], :myint2
+    attach_function :strlen, [:string], :size_t
+    attach_function :rec_copy, :memcpy, [:rec_ptr, :rec_ptr, :size_t], :rec_ptr
+    attach_function :qsort, [:pointer, :size_t, :size_t, :cmpc], :void
+
+    #: (String) -> untyped
+    def len(str) = strlen(str)
+
+    #: (untyped) -> untyped
+    def sort(mem)
+      qsort(mem, 3, 4, (@cmp ||= proc { |a, b| a.read_int <=> b.read_int }))
+      mem.read_array_of_int(3)
+    end
+  end
+
+  module Mapped
+    extend FFI::Library
+    ffi_lib "c"
+    attach_function :labs, [:long], :long
+  end
+
   class FfiTest < Minitest::Test
     def test_calls
       assert_equal [7, 3, 5, 42], [Lib.labs(-7), Lib.ffi_abs(-3), Lib.strlen("hello"), Lib.atoi("42abc")]
@@ -152,6 +184,55 @@ module FfiTests
       assert_equal -1, Lib.chdir("/nonexistent/dir/for/ffi")
       assert_equal 2, FFI.errno
       assert_equal 2, FFI::LastError.error
+    end
+
+    def test_lib_name_mapping
+      assert_equal 9, Mapped.labs(-9)
+    end
+
+    def test_instance_method_and_struct_typedef
+      w = Wrapper.new
+      assert_equal 3, w.len("abc")
+      src = Wrapper::Rec.new
+      src[:n] = 41
+      dst = Wrapper::Rec.new
+      Wrapper.rec_copy(dst, src, 4)
+      assert_equal 41, dst[:n]
+      assert_equal 3, Wrapper.strlen("xyz")
+    end
+
+    def test_callback_closure_reuse
+      w = Wrapper.new
+      mem = FFI::MemoryPointer.new(:int, 3)
+      results = []
+      2100.times do
+        mem.write_array_of_int([3, 1, 2])
+        results = w.sort(mem)
+      end
+      assert_equal [1, 2, 3], results
+    end
+
+    def test_memory_pointer_block_and_struct_size
+      seen = 0
+      FFI::MemoryPointer.new(:int) { |p| seen = p.size }
+      assert_equal 4, seen
+      assert_equal 24 * 3, FFI::MemoryPointer.new(Lib::Pair, 3).size
+    end
+
+    def test_pointer_arrays
+      a = FFI::MemoryPointer.from_string("one")
+      b = FFI::MemoryPointer.from_string("two")
+      arr = FFI::MemoryPointer.new(:pointer, 3)
+      arr.write_array_of_pointer([a, b, FFI::Pointer::NULL])
+      assert_equal true, arr.read_array_of_pointer(3).map(&:address) == [a.address, b.address, 0]
+      assert_equal ["one", "two"], arr.read_array_of_string
+      assert_equal ["one", "two", nil], arr.read_array_of_string(3)
+    end
+
+    def test_unsigned_64
+      mp = FFI::MemoryPointer.new(:uint64)
+      mp.put_uint64(0, 2**62)
+      assert_equal 2**62, mp.get_uint64(0)
     end
 
     def test_missing
