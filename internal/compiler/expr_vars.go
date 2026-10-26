@@ -49,9 +49,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	}
 	f.unnarrow(attrNarrowKey(strings.TrimPrefix(n.Name, "@")))
 	f.unnarrow(ivarNarrowKey(n.Name))
-	f.storageWrite = f.discover && isAny(decl) && f.lenient() && f.storageRead(n.Value)
-	iv := f.ivar(n, n.Name, decl)
-	f.storageWrite = false
+	iv := f.writtenIvar(n, decl)
 	if f.discover && ann == nil && isEmptyLit(n.Value) {
 		iv.open = true
 	}
@@ -303,6 +301,13 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		f.errorf(n, "instance variable %s has no known type; assign it in initialize or add `# @rbs %s: T`", name, name)
 	}
 	return iv
+}
+
+// writtenIvar is the ivar n writes a decl value to, noting whether the value was read out of storage (decision 392).
+func (f *fctx) writtenIvar(n *parser.InstanceVariableWriteNode, decl Type) *Ivar {
+	f.storageWrite = f.discover && isAny(decl) && f.lenient() && f.storageRead(n.Value)
+	defer func() { f.storageWrite = false }()
+	return f.ivar(n, n.Name, decl)
 }
 
 // untypedIvar is a gem ivar discovery has so far seen written only untyped values read back out of storage (an
