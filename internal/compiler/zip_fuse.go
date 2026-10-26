@@ -118,7 +118,10 @@ func (f *fctx) zipLoopHead(m *Method, recv expr, codes []string, gp string) stri
 		f.emit("%s := slices.Clone(%s.s)", cur, xa)
 	}
 	f.emit("%s := rbZipTake(%s, %s.s)", ys, cur, ya)
-	head := fmt.Sprintf("for %s := 0; %s < len(%s); %s++ {", i, i, cur, i)
+	head := fmt.Sprintf("for %s := range %s {", i, cur)
+	if !each { // the length re-read each step: the block may grow or shrink self
+		head = fmt.Sprintf("for %s := 0; ; %s++ {\nif %s >= len(%s) {\nbreak\n}", i, i, i, cur)
+	}
 	if gp == "_" {
 		return head
 	}
