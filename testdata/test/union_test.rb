@@ -546,3 +546,82 @@ module UnionTests
     end
   end
 end
+
+# Decision 387: decision 150's follow-ups (#123).
+#: (Array[Numeric]) -> Numeric
+def union_numeric_sum(xs) = xs.sum
+
+#: (Hash[String, Numeric]) -> Numeric
+def union_numeric_values(h) = h.values.sum
+
+#: (Integer) -> ([Integer, Integer] | String | Hash[Symbol, Integer])
+def union_shape(i)
+  case i
+  when 0 then [1, 2]
+  when 1 then "s"
+  else {k: 3}
+  end
+end
+
+#: (bool) -> (Array[Integer] | Integer)
+def union_arr_or_int(b) = b ? [3, 4, 5] : 7
+
+module UnionTests
+  class UnionAnimal
+    def initialize(n) = @n = n
+    def say = "animal #{@n}"
+  end
+
+  class UnionDog < UnionAnimal
+    def say = "dog #{@n}"
+  end
+
+  class UnionFollowUpTest < Minitest::Test
+    #: (Array[UnionAnimal]) -> Array[String]
+    def says(xs) = xs.map(&:say)
+
+    def test_instantiation_into_wider_element_type
+      ints = [1, 2, 3]
+      assert_equal 6, union_numeric_sum(ints)
+      assert_equal 3.5, union_numeric_sum([1.5, 2])
+      assert_equal 3, union_numeric_values({"a" => 1, "b" => 2})
+      assert_equal ["dog 1", "dog 2"], says([UnionDog.new(1), UnionDog.new(2)])
+    end
+
+    def test_patterns_on_a_union
+      got = (0..2).map do |i|
+        case union_shape(i)
+        in [a, b] then "pair #{a + b}"
+        in {k: Integer => k} then "hash #{k * 2}"
+        in String => s then "str #{s}"
+        end
+      end
+      assert_equal ["pair 3", "str s", "hash 6"], got
+      found = case union_arr_or_int(true)
+              in [*, 4, *post] then post.sum
+              in Integer => n then n
+              end
+      assert_equal 5, found
+      begin
+        union_shape(1) => [q, r]
+        flunk "matched #{q}, #{r}"
+      rescue NoMatchingPatternError => e
+        assert_equal %("s": "s" does not respond to #deconstruct), e.message
+      end
+    end
+
+    def test_nested_union_arithmetic
+      x = union_num(true)
+      y = union_num(false)
+      assert_equal(-82.5, 10 * (y + (x * (y - (x + (y * (x + (y * (x - (y + (x * (y - (x + (y * (x + 1)))))))))))))))
+    end
+
+    def test_mixed_literals
+      h = {a: 1, b: "x"}
+      h[:c] = 1.5
+      assert_equal({a: 1, b: "x", c: 1.5}, h)
+      t = [1, "a"]
+      assert_equal [false, 2, false], [t.nil?, t.size, t.frozen?]
+    end
+  end
+end

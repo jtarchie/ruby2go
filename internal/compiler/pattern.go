@@ -773,7 +773,16 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 				f.errorf(p, "%s pattern never matches %s: %s has no %s", map[string]string{"deconstruct": "an array", "deconstruct_keys": "a hash"}[method], t, tt.C.RubyName, method)
 			}
 		}
-	case TAny, TFunc, TUnion, TVar, TVoid: // a union's member is known at run time: patterns test it as untyped
+	case TUnion:
+		if m, ok := f.unionShapeMember(tt, method); ok && m != nil { // none answering: the untyped path still declares the pattern's locals
+			v := f.newTmp()
+			f.patIf(pm, v+", ok := "+subj.code+".("+f.c.goType(m)+"); ok", noResp, func() {
+				f.emit("_ = %s", v)
+				f.patShape(pm, p, expr{code: v, typ: m}, method, then)
+			})
+			return
+		}
+	case TAny, TFunc, TVar, TVoid:
 	}
 	// at run time: whatever the value's class answers
 	anyS := expr{code: f.coerce(p, subj, TAny{}), typ: TAny{}}
@@ -781,6 +790,33 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 	sym := &parser.SymbolNode{Location: p.GetLocation(), Unescaped: parser.RubyString{Value: method}}
 	resp := f.genDynRespondTo(p, anyS, []parser.Node{sym})
 	f.patIf(pm, "bool("+resp.code+")", noResp, func() { then(anyS) })
+}
+
+// unionShapeMember: the one member answering method gets a typed match; several (or maybe a subclass) stay untyped (decision 387).
+func (f *fctx) unionShapeMember(u TUnion, method string) (Type, bool) {
+	var found Type
+	for _, m := range u.Members {
+		answers := false
+		switch mt := m.(type) {
+		case TTuple:
+			answers = method == "deconstruct"
+		case TClass:
+			if mt.C.lookup(method) == nil && mt.C.isStruct() && mt.C.descendantDefines(method, false) {
+				return nil, false // a subclass may answer: only run time knows
+			}
+			answers = mt.C.lookup(method) != nil
+		case TNil:
+		case TAny, TFunc, TOpt, TUnion, TVar, TVoid:
+			return nil, false
+		}
+		if answers {
+			if found != nil {
+				return nil, false
+			}
+			found = m
+		}
+	}
+	return found, true
 }
 
 // ---- hash patterns
