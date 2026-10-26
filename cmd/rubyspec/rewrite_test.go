@@ -186,3 +186,26 @@ func TestApplyEdits(t *testing.T) {
 		t.Error("partially overlapping edits must be an error, not dropped")
 	}
 }
+
+// TestDropStatement: a dropped modifier-unless goes whole, and a dropped heredoc assignment takes its body with it, so
+// the rest of the file still parses (library/etc, library/erb/defmethod were FATAL).
+func TestDropStatement(t *testing.T) {
+	ctx := context.Background()
+	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := "describe \"x\" do\n  next unless ok?\n  input = <<'END'\n<% x %>\nEND\n  it \"a\" do\n  end\nend\n"
+	for _, line := range []int{2, 3} {
+		res, err := p.Parse(ctx, []byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := innermostStatement(res.Value.Statements, newLineIndex(src), line, true)
+		got := apply(src, []edit{blankLoc(src, st.GetLocation())})
+		after, err := p.Parse(ctx, []byte(got))
+		if err != nil || len(after.Errors) > 0 {
+			t.Errorf("line %d: dropping leaves %q", line, got)
+		}
+	}
+}

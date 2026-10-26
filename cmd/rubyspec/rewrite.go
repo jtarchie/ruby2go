@@ -52,7 +52,38 @@ func blank(src string, start, end int) edit {
 
 func blankLoc(src string, l parser.Location) edit {
 	s, e := span(l)
-	return blank(src, s, e)
+	return blank(src, s, heredocEnd(src, s, e))
+}
+
+// heredocOpener is a heredoc's `<<ID`, `<<~ID`, `<<-'ID'` or `<<"ID"`; one of its groups is the terminator.
+var heredocOpener = regexp.MustCompile(`<<[~-]?(?:'([A-Za-z_]\w*)'|"([A-Za-z_]\w*)"|([A-Za-z_]\w*))`)
+
+// heredocEnd is past the terminator line of the last heredoc src[s:e] opens: a node's span ends at the opener, so
+// blanking only the span would leave the body behind as code.
+func heredocEnd(src string, s, e int) int {
+	for _, m := range heredocOpener.FindAllStringSubmatch(src[s:e], -1) {
+		lineEnd := strings.IndexByte(src[e:], '\n')
+		if lineEnd < 0 {
+			return e
+		}
+		at := e + lineEnd + 1
+		for at < len(src) {
+			next := strings.IndexByte(src[at:], '\n')
+			if next < 0 {
+				next = len(src) - at
+			}
+			line := src[at : at+next]
+			at += next
+			if at < len(src) {
+				at++
+			}
+			if strings.TrimSpace(line) == m[1]+m[2]+m[3] {
+				e = at - 1
+				break
+			}
+		}
+	}
+	return e
 }
 
 func span(l parser.Location) (int, int) { return l.StartOffset, l.StartOffset + l.Length }
@@ -629,11 +660,17 @@ func innermostStatement(stmts *parser.StatementsNode, lines lineIndex, line int,
 		case *parser.SingletonClassNode:
 			body = n.Body
 		case *parser.IfNode: // a guard the compiler folds (decision 167): cut inside the branch
+			if n.EndKeywordLoc == nil { // `x if c` or a ternary: cutting x would leave `if c` to swallow what follows
+				break
+			}
 			body = n.Statements
 			if e, ok := n.Subsequent.(*parser.ElseNode); ok && e.Statements != nil && lines.holds(e.Statements, line) {
 				body = e.Statements
 			}
 		case *parser.UnlessNode:
+			if n.EndKeywordLoc == nil { // `next unless c`
+				break
+			}
 			body = n.Statements
 			if n.ElseClause != nil && n.ElseClause.Statements != nil && lines.holds(n.ElseClause.Statements, line) {
 				body = n.ElseClause.Statements
