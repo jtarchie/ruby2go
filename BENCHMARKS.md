@@ -208,7 +208,7 @@ default `raise`.
 | bm_tarai | 0.45s | 0.13s | 0.030s | 0.022s |
 | bm_template | 0.92s | 0.71s | - | 0.15s |
 | bm_template_render | 1.39s | 1.21s | - | 0.28s |
-| bm_threaded_render | 6.40s | 6.00s | TBD | 0.58s |
+| bm_threaded_render | 6.40s | 6.00s | 0.69s | 0.58s |
 | bm_throw | 0.29s | 0.24s | - | 0.006s |
 | bm_tree_walker | 2.12s | 0.47s | - | 0.18s |
 | bm_tree_walker_frames | 0.40s | 0.13s | - | 0.043s |
