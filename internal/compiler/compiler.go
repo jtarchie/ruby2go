@@ -10,6 +10,7 @@ import (
 	goparser "go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -86,6 +87,7 @@ type Compiler struct {
 	parser                *parser.Parser
 	loaded                map[string]bool           // prelude names, and user files' real paths
 	parsed                map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
+	promote               bool                      // the flag or some file's comment is int_overflow promote: Bignum is loaded (decision 381)
 	loadPath              []string                  // -I directories (decision 131)
 	gemDirs               []string                  // installed gems' lib dirs, searched after loadPath: their files are gem code (decision 173)
 	sigs                  map[string]*rbs.ClassDecl // .rbs signatures by qualified class name (decision 160)
@@ -506,7 +508,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.methodRequiresRuntime = opts.mainLast
 	c.env = opts.env
 	c.genCount, c.genLimit = opts.genCount, opts.genLimit
-	c.env.IntOverflow = intOverflowMode(c.env.IntOverflow, sources)
+	c.env.IntOverflow = checkOverflowMode("--int-overflow", c.env.IntOverflow)
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
 	if perr != nil {
@@ -745,25 +747,49 @@ func preludeFile(ctx context.Context, p *parser.Parser, name string, src []byte)
 // intOverflowComment is a source's `# int_overflow: mode` line (decision 372).
 var intOverflowComment = regexp.MustCompile(`(?m)^# int_overflow: (\S+)\s*$`)
 
-// loadIntOverflow loads Bignum under --int-overflow=promote (decision 372).
+// loadIntOverflow loads Bignum when the flag or any file's comment says promote (decisions 372, 381).
 func (c *Compiler) loadIntOverflow(ctx context.Context) {
-	if c.env.IntOverflow == "promote" {
+	c.promote = c.env.IntOverflow == "promote" || slices.ContainsFunc(slices.Collect(maps.Values(c.parsed)), func(uf *File) bool { return uf.overflow == "promote" })
+	if c.promote {
 		c.loadPrelude(ctx, preludeLibs["__bignum"])
 	}
 }
 
-// intOverflowMode is the flag's mode, or the program's own magic comment, which wins: it is what the program needs.
-func intOverflowMode(flag string, sources []Source) string {
-	mode := flag
-	for _, src := range sources {
-		if m := intOverflowComment.FindSubmatch(src.Src); m != nil {
-			mode = string(m[1])
-		}
-	}
+// checkOverflowMode rejects a mode other than raise, wrap or promote ("" is raise).
+func checkOverflowMode(where, mode string) string {
 	if !slices.Contains([]string{"", "raise", "wrap", "promote"}, mode) {
-		panic(compileError{msg: fmt.Sprintf("--int-overflow: %q is not raise, wrap or promote", mode)})
+		panic(compileError{msg: fmt.Sprintf("%s: %q is not raise, wrap or promote", where, mode)})
 	}
 	return mode
+}
+
+var intOps = map[string]string{"Op_plus": "+", "Op_minus": "-", "Op_mul": "*", "Op_neg": "-"}
+
+// intMode is the overflow mode of the Integer arithmetic being compiled: its file's own comment, else the flag's.
+func (f *fctx) intMode() string {
+	if f.f != nil && f.f.overflow != "" {
+		return f.f.overflow
+	}
+	return f.c.env.IntOverflow
+}
+
+// intOpCode writes Integer +, -, * and -@ in a file whose mode differs from the program's on wrapping: plain Go
+// arithmetic in a wrap file, the checked helpers in a raise or promote file of a wrap program (decision 381).
+func (f *fctx) intOpCode(m *Method, recv expr, argList string) (string, bool) {
+	wrapFile, wrapProg := f.intMode() == "wrap", f.c.env.IntOverflow == "wrap"
+	if wrapFile == wrapProg || m.Owner != f.c.classes["Integer"] || !isClass(recv.typ, "Integer") {
+		return "", false
+	}
+	op, ok := intOps[m.GoName]
+	switch {
+	case !ok:
+		return "", false
+	case wrapFile && m.GoName == "Op_neg":
+		return "(-" + recv.code + ")", true
+	case wrapFile:
+		return "(" + recv.code + " " + op + " " + argList + ")", true
+	}
+	return "rbIntChecked" + strings.TrimPrefix(m.GoName, "Op_") + "(" + recv.code + comma(argList) + ")", true
 }
 
 // loadPreludeGo embeds prelude/go/*.go verbatim: pure Go with no self/param binding, so it skips Ruby parsing entirely.

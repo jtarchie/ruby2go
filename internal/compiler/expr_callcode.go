@@ -590,6 +590,9 @@ func (f *fctx) wrapperSelfCall(e *entry, argList string) (string, bool) {
 // for a dispatchable method on a struct-typed receiver. Not for the method a Method object binds (staticDef: MRI runs
 // that definition, not an override) nor for a Dyn wrapper body's self call (its owner's free func, decision 209).
 func (f *fctx) dispatchCall(e *entry, recv expr, argList string) (string, bool) {
+	if code, ok := f.intOpCode(e.M, recv, argList); ok { // not a dispatch, but the same early exit (decision 381)
+		return code, true
+	}
 	if f.staticDef == e.M || f.plainCalls && recv.code == "self" {
 		return "", false
 	}
@@ -842,7 +845,7 @@ func (f *fctx) foldInt(n parser.Node) (*big.Int, bool) {
 		case "*":
 			return new(big.Int).Mul(a, b), true
 		case "**":
-			if f.c.classes["Bignum"] != nil && b.Sign() >= 0 && b.IsInt64() && b.Int64() < 1024 { // promote only: a gem's overflowing power still raises by default
+			if f.intMode() == "promote" && b.Sign() >= 0 && b.IsInt64() && b.Int64() < 1024 { // promote only: a gem's overflowing power still raises by default
 				return new(big.Int).Exp(a, b, nil), true
 			}
 		case "<<":
@@ -889,7 +892,7 @@ func (f *fctx) gemCallShortcut(n parser.Node, e *entry, recv expr, args []parser
 	if f.lenient() && block == nil && e.M.Owner == f.c.classes["Integer"] {
 		return f.gemIntegerCall(n, e, recv, args)
 	}
-	if call, ok := n.(*parser.CallNode); ok && call.Name == "**" && e.M.Name == "**" && f.c.classes["Bignum"] != nil && e.M.Owner == f.c.classes["Integer"] {
+	if call, ok := n.(*parser.CallNode); ok && call.Name == "**" && e.M.Name == "**" && f.intMode() == "promote" && e.M.Owner == f.c.classes["Integer"] {
 		if v, ok := f.foldInt(n); ok && v.IsInt64() { // `10 ** 12` under promote: a constant that fits stays an Integer (decision 372)
 			return expr{code: "Integer(" + v.String() + ")", typ: f.cls("Integer"), lit: true}, true
 		}

@@ -22,7 +22,7 @@ For `run`, `build` and `gen`; `test` takes `-I`, `-int-overflow`, `-race`,
 |---|---|---|
 | `-o prog` | stable | `build` only: the output binary. |
 | `-I dir` | stable | A directory `require` searches for your own files, as `ruby -I`. Repeatable. |
-| `-int-overflow mode` | stable (`raise`, `wrap`), experimental (`promote`) | What an Integer result past 64 bits does: `raise` a `RangeError` (the default), `wrap` around as two's complement, or `promote` to a Bignum as MRI does. A `# int_overflow: promote` line in the file does the same and wins. |
+| `-int-overflow mode` | stable (`raise`, `wrap`), experimental (`promote`) | What an Integer result past 64 bits does: `raise` a `RangeError` (the default), `wrap` around as two's complement, or `promote` to a Bignum as MRI does. A `# int_overflow: mode` line in a file does the same for the arithmetic written in that file, whatever the flag says (decision 381). |
 | `-race` | stable | Build with Go's race detector. |
 | `-gcflags flags` | stable | Passed to `go build`; `-gcflags=-e` shows every Go error when generated code fails to build (please report those). |
 | `-work` | stable | Keep the temporary module (`main.go`, `go.mod`) and print its path as `WORK=...`. |

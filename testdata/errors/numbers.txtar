@@ -228,3 +228,7 @@ n.step(3) { |x| puts x }
 # error: main.rb:3: Rational where Integer is expected
 # rbs_inline: enabled
 puts Rational(1, 4) ** Rational(1, 2)
+-- int_overflow_bad_mode.rb --
+# error: main.rb: # int_overflow: "saturate" is not raise, wrap or promote
+# int_overflow: saturate
+puts 1

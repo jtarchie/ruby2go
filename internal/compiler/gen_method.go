@@ -13,7 +13,7 @@ import (
 func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func()) {
 	final := f.buf
 	f.unset = maybeUnset(body, params)
-	if f.c.classes["Bignum"] != nil {
+	if f.intMode() == "promote" {
 		f.promoted = growthLocals(body)
 	}
 	closures, lambdaClosure, loops, begins, unionArm, retryFlag, retryDepth := f.closures, f.lambdaClosure, f.loops, f.begins, f.unionArm, f.retryFlag, f.retryDepth

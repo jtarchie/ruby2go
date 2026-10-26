@@ -14,6 +14,38 @@ import (
 // constant; a constant `if` costs nothing in Go's inlining budget, so the default build is the same code.
 const rbIntWrap = false
 
+// rbIntChecked* are Integer +, -, * and -@ with their overflow checks, for a file whose own `# int_overflow:` comment
+// is raise or promote in a --int-overflow=wrap program, where rbIntWrap skips the checks in the methods (decision 381).
+func rbIntCheckedplus(a, b Integer) Integer {
+	r := a + b
+	if (r > a) != (b > 0) {
+		rbIntOverflow(a, "+", b)
+	}
+	return r
+}
+
+func rbIntCheckedminus(a, b Integer) Integer {
+	r := a - b
+	if (r < a) != (b > 0) {
+		rbIntOverflow(a, "-", b)
+	}
+	return r
+}
+
+func rbIntCheckedmul(a, b Integer) Integer {
+	if (uint64(a)+1<<31)|(uint64(b)+1<<31) >= 1<<32 {
+		return rbIntMul(a, b)
+	}
+	return a * b
+}
+
+func rbIntCheckedneg(a Integer) Integer {
+	if a == math.MinInt {
+		rbIntOverflow(0, "-", a)
+	}
+	return -a
+}
+
 // rbStrictInt is Kernel#Integer(str, base): String#to_i's syntax, but the
 // whole string bar surrounding whitespace must be the number. Base 0 (or
 // -1) reads a 0b/0o/0d/0x prefix or a leading 0 as octal; another base
