@@ -229,6 +229,112 @@ module FfiTests
       assert_equal ["one", "two", nil], arr.read_array_of_string(3)
     end
 
+    def test_every_scalar_accessor
+      mp = FFI::MemoryPointer.new(:char, 64)
+      mp.put_char(8, -100)
+      mp.write_char(-50)
+      assert_equal [-100, -50, [-100, -50]], [mp.get_char(8), mp.read_char, (mp.put_array_of_char(16, [-100, -50]); mp.get_array_of_char(16, 2))]
+      mp.write_array_of_char([-50, -100])
+      assert_equal [-50, -100], mp.read_array_of_char(2)
+      mp.put_uchar(8, 200)
+      mp.write_uchar(100)
+      assert_equal [200, 100, [200, 100]], [mp.get_uchar(8), mp.read_uchar, (mp.put_array_of_uchar(16, [200, 100]); mp.get_array_of_uchar(16, 2))]
+      mp.write_array_of_uchar([100, 200])
+      assert_equal [100, 200], mp.read_array_of_uchar(2)
+      mp.put_short(8, -30000)
+      mp.write_short(-15000)
+      assert_equal [-30000, -15000, [-30000, -15000]], [mp.get_short(8), mp.read_short, (mp.put_array_of_short(16, [-30000, -15000]); mp.get_array_of_short(16, 2))]
+      mp.write_array_of_short([-15000, -30000])
+      assert_equal [-15000, -30000], mp.read_array_of_short(2)
+      mp.put_ushort(8, 60000)
+      mp.write_ushort(30000)
+      assert_equal [60000, 30000, [60000, 30000]], [mp.get_ushort(8), mp.read_ushort, (mp.put_array_of_ushort(16, [60000, 30000]); mp.get_array_of_ushort(16, 2))]
+      mp.write_array_of_ushort([30000, 60000])
+      assert_equal [30000, 60000], mp.read_array_of_ushort(2)
+      mp.put_int(8, -2000000000)
+      mp.write_int(-1000000000)
+      assert_equal [-2000000000, -1000000000, [-2000000000, -1000000000]], [mp.get_int(8), mp.read_int, (mp.put_array_of_int(16, [-2000000000, -1000000000]); mp.get_array_of_int(16, 2))]
+      mp.write_array_of_int([-1000000000, -2000000000])
+      assert_equal [-1000000000, -2000000000], mp.read_array_of_int(2)
+      mp.put_uint(8, 4000000000)
+      mp.write_uint(2000000000)
+      assert_equal [4000000000, 2000000000, [4000000000, 2000000000]], [mp.get_uint(8), mp.read_uint, (mp.put_array_of_uint(16, [4000000000, 2000000000]); mp.get_array_of_uint(16, 2))]
+      mp.write_array_of_uint([2000000000, 4000000000])
+      assert_equal [2000000000, 4000000000], mp.read_array_of_uint(2)
+      mp.put_long(8, -4611686018427387904)
+      mp.write_long(-2305843009213693952)
+      assert_equal [-4611686018427387904, -2305843009213693952, [-4611686018427387904, -2305843009213693952]], [mp.get_long(8), mp.read_long, (mp.put_array_of_long(16, [-4611686018427387904, -2305843009213693952]); mp.get_array_of_long(16, 2))]
+      mp.write_array_of_long([-2305843009213693952, -4611686018427387904])
+      assert_equal [-2305843009213693952, -4611686018427387904], mp.read_array_of_long(2)
+      mp.put_ulong(8, 4611686018427387904)
+      mp.write_ulong(2305843009213693952)
+      assert_equal [4611686018427387904, 2305843009213693952, [4611686018427387904, 2305843009213693952]], [mp.get_ulong(8), mp.read_ulong, (mp.put_array_of_ulong(16, [4611686018427387904, 2305843009213693952]); mp.get_array_of_ulong(16, 2))]
+      mp.write_array_of_ulong([2305843009213693952, 4611686018427387904])
+      assert_equal [2305843009213693952, 4611686018427387904], mp.read_array_of_ulong(2)
+      mp.put_long_long(8, -4611686018427387904)
+      mp.write_long_long(-2305843009213693952)
+      assert_equal [-4611686018427387904, -2305843009213693952, [-4611686018427387904, -2305843009213693952]], [mp.get_long_long(8), mp.read_long_long, (mp.put_array_of_long_long(16, [-4611686018427387904, -2305843009213693952]); mp.get_array_of_long_long(16, 2))]
+      mp.write_array_of_long_long([-2305843009213693952, -4611686018427387904])
+      assert_equal [-2305843009213693952, -4611686018427387904], mp.read_array_of_long_long(2)
+      mp.put_ulong_long(8, 4611686018427387904)
+      mp.write_ulong_long(2305843009213693952)
+      assert_equal [4611686018427387904, 2305843009213693952, [4611686018427387904, 2305843009213693952]], [mp.get_ulong_long(8), mp.read_ulong_long, (mp.put_array_of_ulong_long(16, [4611686018427387904, 2305843009213693952]); mp.get_array_of_ulong_long(16, 2))]
+      mp.write_array_of_ulong_long([2305843009213693952, 4611686018427387904])
+      assert_equal [2305843009213693952, 4611686018427387904], mp.read_array_of_ulong_long(2)
+      mp.put_int8(8, -100)
+      mp.write_int8(-50)
+      assert_equal [-100, -50, [-100, -50]], [mp.get_int8(8), mp.read_int8, (mp.put_array_of_int8(16, [-100, -50]); mp.get_array_of_int8(16, 2))]
+      mp.write_array_of_int8([-50, -100])
+      assert_equal [-50, -100], mp.read_array_of_int8(2)
+      mp.put_uint8(8, 200)
+      mp.write_uint8(100)
+      assert_equal [200, 100, [200, 100]], [mp.get_uint8(8), mp.read_uint8, (mp.put_array_of_uint8(16, [200, 100]); mp.get_array_of_uint8(16, 2))]
+      mp.write_array_of_uint8([100, 200])
+      assert_equal [100, 200], mp.read_array_of_uint8(2)
+      mp.put_int16(8, -30000)
+      mp.write_int16(-15000)
+      assert_equal [-30000, -15000, [-30000, -15000]], [mp.get_int16(8), mp.read_int16, (mp.put_array_of_int16(16, [-30000, -15000]); mp.get_array_of_int16(16, 2))]
+      mp.write_array_of_int16([-15000, -30000])
+      assert_equal [-15000, -30000], mp.read_array_of_int16(2)
+      mp.put_uint16(8, 60000)
+      mp.write_uint16(30000)
+      assert_equal [60000, 30000, [60000, 30000]], [mp.get_uint16(8), mp.read_uint16, (mp.put_array_of_uint16(16, [60000, 30000]); mp.get_array_of_uint16(16, 2))]
+      mp.write_array_of_uint16([30000, 60000])
+      assert_equal [30000, 60000], mp.read_array_of_uint16(2)
+      mp.put_int32(8, -2000000000)
+      mp.write_int32(-1000000000)
+      assert_equal [-2000000000, -1000000000, [-2000000000, -1000000000]], [mp.get_int32(8), mp.read_int32, (mp.put_array_of_int32(16, [-2000000000, -1000000000]); mp.get_array_of_int32(16, 2))]
+      mp.write_array_of_int32([-1000000000, -2000000000])
+      assert_equal [-1000000000, -2000000000], mp.read_array_of_int32(2)
+      mp.put_uint32(8, 4000000000)
+      mp.write_uint32(2000000000)
+      assert_equal [4000000000, 2000000000, [4000000000, 2000000000]], [mp.get_uint32(8), mp.read_uint32, (mp.put_array_of_uint32(16, [4000000000, 2000000000]); mp.get_array_of_uint32(16, 2))]
+      mp.write_array_of_uint32([2000000000, 4000000000])
+      assert_equal [2000000000, 4000000000], mp.read_array_of_uint32(2)
+      mp.put_int64(8, -4611686018427387904)
+      mp.write_int64(-2305843009213693952)
+      assert_equal [-4611686018427387904, -2305843009213693952, [-4611686018427387904, -2305843009213693952]], [mp.get_int64(8), mp.read_int64, (mp.put_array_of_int64(16, [-4611686018427387904, -2305843009213693952]); mp.get_array_of_int64(16, 2))]
+      mp.write_array_of_int64([-2305843009213693952, -4611686018427387904])
+      assert_equal [-2305843009213693952, -4611686018427387904], mp.read_array_of_int64(2)
+      mp.put_uint64(8, 4611686018427387904)
+      mp.write_uint64(2305843009213693952)
+      assert_equal [4611686018427387904, 2305843009213693952, [4611686018427387904, 2305843009213693952]], [mp.get_uint64(8), mp.read_uint64, (mp.put_array_of_uint64(16, [4611686018427387904, 2305843009213693952]); mp.get_array_of_uint64(16, 2))]
+      mp.write_array_of_uint64([2305843009213693952, 4611686018427387904])
+      assert_equal [2305843009213693952, 4611686018427387904], mp.read_array_of_uint64(2)
+      mp.put_float(8, 1.5)
+      mp.write_float(3.0)
+      mp.put_array_of_float(16, [1.5, 3.0])
+      assert_equal [1.5, 3.0, [1.5, 3.0]], [mp.get_float(8), mp.read_float, mp.get_array_of_float(16, 2)]
+      mp.write_array_of_float([3.0, 1.5])
+      assert_equal [3.0, 1.5], mp.read_array_of_float(2)
+      mp.put_double(8, -2.25)
+      mp.write_double(-4.5)
+      mp.put_array_of_double(16, [-2.25, -4.5])
+      assert_equal [-2.25, -4.5, [-2.25, -4.5]], [mp.get_double(8), mp.read_double, mp.get_array_of_double(16, 2)]
+      mp.write_array_of_double([-4.5, -2.25])
+      assert_equal [-4.5, -2.25], mp.read_array_of_double(2)
+    end
+
     def test_unsigned_64
       mp = FFI::MemoryPointer.new(:uint64)
       mp.put_uint64(0, 2**62)

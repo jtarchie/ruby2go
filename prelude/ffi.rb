@@ -54,6 +54,9 @@ module FFI
   #: (Integer) -> Integer
   def self.__u64(v) = v < 0 ? v + (1 << 64) : v
 
+  #: (Integer, Integer) -> Integer
+  def self.__u64_if(code, v) = code == -5 || code == -6 ? __u64(v) : v
+
   #: () -> Integer
   def self.errno = LastError.error
 
@@ -222,685 +225,678 @@ module FFI
       put_bool(0, v)
     end
 
+    #: (Integer, Integer) -> Integer
+    def __gi(off, code) = FFI.__u64_if(code, Fiddle.__get_i(to_i + off, code))
+
+    #: (Integer, Integer, Integer) -> void
+    def __pi(off, code, v)
+      Fiddle.__set_i(to_i + off, code, v)
+    end
+
+    #: (Integer, Integer) -> Float
+    def __gf(off, code) = Fiddle.__get_f(to_i + off, code)
+
+    #: (Integer, Integer, Float) -> void
+    def __pf(off, code, v)
+      Fiddle.__set_f(to_i + off, code, v)
+    end
+
+    #: (Integer, Integer, Integer, Integer) -> Array[Integer]
+    def __gai(off, n, code, size) = Array.new(n) { |i| __gi(off + i * size, code) }
+
+    #: (Integer, Array[Integer], Integer, Integer) -> void
+    def __pai(off, a, code, size)
+      a.each_with_index { |v, i| __pi(off + i * size, code, v) }
+    end
+
+    #: (Integer, Integer, Integer, Integer) -> Array[Float]
+    def __gaf(off, n, code, size) = Array.new(n) { |i| __gf(off + i * size, code) }
+
+    #: (Integer, Array[Float], Integer, Integer) -> void
+    def __paf(off, a, code, size)
+      a.each_with_index { |v, i| __pf(off + i * size, code, v) }
+    end
+
     #: (Integer) -> Integer
-    def get_char(off) = Fiddle.__get_i(to_i + off, 2)
+    def get_char(off) = __gi(off, 2)
 
     #: (Integer, Integer) -> void
     def put_char(off, v)
-      Fiddle.__set_i(to_i + off, 2, v)
+      __pi(off, 2, v)
     end
 
     #: () -> Integer
-    def read_char = get_char(0)
+    def read_char = __gi(0, 2)
 
     #: (Integer) -> void
     def write_char(v)
-      put_char(0, v)
+      __pi(0, 2, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_char(n) = get_array_of_char(0, n)
+    def read_array_of_char(n) = __gai(0, n, 2, 1)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_char(off, n)
-      Array.new(n) { |i| get_char(off + i * 1) }
-    end
+    def get_array_of_char(off, n) = __gai(off, n, 2, 1)
 
     #: (Array[Integer]) -> void
     def write_array_of_char(a)
-      put_array_of_char(0, a)
+      __pai(0, a, 2, 1)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_char(off, a)
-      a.each_with_index { |v, i| put_char(off + i * 1, v) }
+      __pai(off, a, 2, 1)
     end
 
     #: (Integer) -> Integer
-    def get_uchar(off) = Fiddle.__get_i(to_i + off, -2)
+    def get_uchar(off) = __gi(off, -2)
 
     #: (Integer, Integer) -> void
     def put_uchar(off, v)
-      Fiddle.__set_i(to_i + off, -2, v)
+      __pi(off, -2, v)
     end
 
     #: () -> Integer
-    def read_uchar = get_uchar(0)
+    def read_uchar = __gi(0, -2)
 
     #: (Integer) -> void
     def write_uchar(v)
-      put_uchar(0, v)
+      __pi(0, -2, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_uchar(n) = get_array_of_uchar(0, n)
+    def read_array_of_uchar(n) = __gai(0, n, -2, 1)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_uchar(off, n)
-      Array.new(n) { |i| get_uchar(off + i * 1) }
-    end
+    def get_array_of_uchar(off, n) = __gai(off, n, -2, 1)
 
     #: (Array[Integer]) -> void
     def write_array_of_uchar(a)
-      put_array_of_uchar(0, a)
+      __pai(0, a, -2, 1)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_uchar(off, a)
-      a.each_with_index { |v, i| put_uchar(off + i * 1, v) }
+      __pai(off, a, -2, 1)
     end
 
     #: (Integer) -> Integer
-    def get_short(off) = Fiddle.__get_i(to_i + off, 3)
+    def get_short(off) = __gi(off, 3)
 
     #: (Integer, Integer) -> void
     def put_short(off, v)
-      Fiddle.__set_i(to_i + off, 3, v)
+      __pi(off, 3, v)
     end
 
     #: () -> Integer
-    def read_short = get_short(0)
+    def read_short = __gi(0, 3)
 
     #: (Integer) -> void
     def write_short(v)
-      put_short(0, v)
+      __pi(0, 3, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_short(n) = get_array_of_short(0, n)
+    def read_array_of_short(n) = __gai(0, n, 3, 2)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_short(off, n)
-      Array.new(n) { |i| get_short(off + i * 2) }
-    end
+    def get_array_of_short(off, n) = __gai(off, n, 3, 2)
 
     #: (Array[Integer]) -> void
     def write_array_of_short(a)
-      put_array_of_short(0, a)
+      __pai(0, a, 3, 2)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_short(off, a)
-      a.each_with_index { |v, i| put_short(off + i * 2, v) }
+      __pai(off, a, 3, 2)
     end
 
     #: (Integer) -> Integer
-    def get_ushort(off) = Fiddle.__get_i(to_i + off, -3)
+    def get_ushort(off) = __gi(off, -3)
 
     #: (Integer, Integer) -> void
     def put_ushort(off, v)
-      Fiddle.__set_i(to_i + off, -3, v)
+      __pi(off, -3, v)
     end
 
     #: () -> Integer
-    def read_ushort = get_ushort(0)
+    def read_ushort = __gi(0, -3)
 
     #: (Integer) -> void
     def write_ushort(v)
-      put_ushort(0, v)
+      __pi(0, -3, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_ushort(n) = get_array_of_ushort(0, n)
+    def read_array_of_ushort(n) = __gai(0, n, -3, 2)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_ushort(off, n)
-      Array.new(n) { |i| get_ushort(off + i * 2) }
-    end
+    def get_array_of_ushort(off, n) = __gai(off, n, -3, 2)
 
     #: (Array[Integer]) -> void
     def write_array_of_ushort(a)
-      put_array_of_ushort(0, a)
+      __pai(0, a, -3, 2)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_ushort(off, a)
-      a.each_with_index { |v, i| put_ushort(off + i * 2, v) }
+      __pai(off, a, -3, 2)
     end
 
     #: (Integer) -> Integer
-    def get_int(off) = Fiddle.__get_i(to_i + off, 4)
+    def get_int(off) = __gi(off, 4)
 
     #: (Integer, Integer) -> void
     def put_int(off, v)
-      Fiddle.__set_i(to_i + off, 4, v)
+      __pi(off, 4, v)
     end
 
     #: () -> Integer
-    def read_int = get_int(0)
+    def read_int = __gi(0, 4)
 
     #: (Integer) -> void
     def write_int(v)
-      put_int(0, v)
+      __pi(0, 4, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_int(n) = get_array_of_int(0, n)
+    def read_array_of_int(n) = __gai(0, n, 4, 4)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_int(off, n)
-      Array.new(n) { |i| get_int(off + i * 4) }
-    end
+    def get_array_of_int(off, n) = __gai(off, n, 4, 4)
 
     #: (Array[Integer]) -> void
     def write_array_of_int(a)
-      put_array_of_int(0, a)
+      __pai(0, a, 4, 4)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_int(off, a)
-      a.each_with_index { |v, i| put_int(off + i * 4, v) }
+      __pai(off, a, 4, 4)
     end
 
     #: (Integer) -> Integer
-    def get_uint(off) = Fiddle.__get_i(to_i + off, -4)
+    def get_uint(off) = __gi(off, -4)
 
     #: (Integer, Integer) -> void
     def put_uint(off, v)
-      Fiddle.__set_i(to_i + off, -4, v)
+      __pi(off, -4, v)
     end
 
     #: () -> Integer
-    def read_uint = get_uint(0)
+    def read_uint = __gi(0, -4)
 
     #: (Integer) -> void
     def write_uint(v)
-      put_uint(0, v)
+      __pi(0, -4, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_uint(n) = get_array_of_uint(0, n)
+    def read_array_of_uint(n) = __gai(0, n, -4, 4)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_uint(off, n)
-      Array.new(n) { |i| get_uint(off + i * 4) }
-    end
+    def get_array_of_uint(off, n) = __gai(off, n, -4, 4)
 
     #: (Array[Integer]) -> void
     def write_array_of_uint(a)
-      put_array_of_uint(0, a)
+      __pai(0, a, -4, 4)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_uint(off, a)
-      a.each_with_index { |v, i| put_uint(off + i * 4, v) }
+      __pai(off, a, -4, 4)
     end
 
     #: (Integer) -> Integer
-    def get_long(off) = Fiddle.__get_i(to_i + off, 5)
+    def get_long(off) = __gi(off, 5)
 
     #: (Integer, Integer) -> void
     def put_long(off, v)
-      Fiddle.__set_i(to_i + off, 5, v)
+      __pi(off, 5, v)
     end
 
     #: () -> Integer
-    def read_long = get_long(0)
+    def read_long = __gi(0, 5)
 
     #: (Integer) -> void
     def write_long(v)
-      put_long(0, v)
+      __pi(0, 5, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_long(n) = get_array_of_long(0, n)
+    def read_array_of_long(n) = __gai(0, n, 5, 8)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_long(off, n)
-      Array.new(n) { |i| get_long(off + i * 8) }
-    end
+    def get_array_of_long(off, n) = __gai(off, n, 5, 8)
 
     #: (Array[Integer]) -> void
     def write_array_of_long(a)
-      put_array_of_long(0, a)
+      __pai(0, a, 5, 8)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_long(off, a)
-      a.each_with_index { |v, i| put_long(off + i * 8, v) }
+      __pai(off, a, 5, 8)
     end
 
     #: (Integer) -> Integer
-    def get_ulong(off) = FFI.__u64(Fiddle.__get_i(to_i + off, -5))
+    def get_ulong(off) = __gi(off, -5)
 
     #: (Integer, Integer) -> void
     def put_ulong(off, v)
-      Fiddle.__set_i(to_i + off, -5, v)
+      __pi(off, -5, v)
     end
 
     #: () -> Integer
-    def read_ulong = get_ulong(0)
+    def read_ulong = __gi(0, -5)
 
     #: (Integer) -> void
     def write_ulong(v)
-      put_ulong(0, v)
+      __pi(0, -5, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_ulong(n) = get_array_of_ulong(0, n)
+    def read_array_of_ulong(n) = __gai(0, n, -5, 8)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_ulong(off, n)
-      Array.new(n) { |i| get_ulong(off + i * 8) }
-    end
+    def get_array_of_ulong(off, n) = __gai(off, n, -5, 8)
 
     #: (Array[Integer]) -> void
     def write_array_of_ulong(a)
-      put_array_of_ulong(0, a)
+      __pai(0, a, -5, 8)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_ulong(off, a)
-      a.each_with_index { |v, i| put_ulong(off + i * 8, v) }
+      __pai(off, a, -5, 8)
     end
 
     #: (Integer) -> Integer
-    def get_long_long(off) = Fiddle.__get_i(to_i + off, 6)
+    def get_long_long(off) = __gi(off, 6)
 
     #: (Integer, Integer) -> void
     def put_long_long(off, v)
-      Fiddle.__set_i(to_i + off, 6, v)
+      __pi(off, 6, v)
     end
 
     #: () -> Integer
-    def read_long_long = get_long_long(0)
+    def read_long_long = __gi(0, 6)
 
     #: (Integer) -> void
     def write_long_long(v)
-      put_long_long(0, v)
+      __pi(0, 6, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_long_long(n) = get_array_of_long_long(0, n)
+    def read_array_of_long_long(n) = __gai(0, n, 6, 8)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_long_long(off, n)
-      Array.new(n) { |i| get_long_long(off + i * 8) }
-    end
+    def get_array_of_long_long(off, n) = __gai(off, n, 6, 8)
 
     #: (Array[Integer]) -> void
     def write_array_of_long_long(a)
-      put_array_of_long_long(0, a)
+      __pai(0, a, 6, 8)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_long_long(off, a)
-      a.each_with_index { |v, i| put_long_long(off + i * 8, v) }
+      __pai(off, a, 6, 8)
     end
 
     #: (Integer) -> Integer
-    def get_ulong_long(off) = FFI.__u64(Fiddle.__get_i(to_i + off, -6))
+    def get_ulong_long(off) = __gi(off, -6)
 
     #: (Integer, Integer) -> void
     def put_ulong_long(off, v)
-      Fiddle.__set_i(to_i + off, -6, v)
+      __pi(off, -6, v)
     end
 
     #: () -> Integer
-    def read_ulong_long = get_ulong_long(0)
+    def read_ulong_long = __gi(0, -6)
 
     #: (Integer) -> void
     def write_ulong_long(v)
-      put_ulong_long(0, v)
+      __pi(0, -6, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_ulong_long(n) = get_array_of_ulong_long(0, n)
+    def read_array_of_ulong_long(n) = __gai(0, n, -6, 8)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_ulong_long(off, n)
-      Array.new(n) { |i| get_ulong_long(off + i * 8) }
-    end
+    def get_array_of_ulong_long(off, n) = __gai(off, n, -6, 8)
 
     #: (Array[Integer]) -> void
     def write_array_of_ulong_long(a)
-      put_array_of_ulong_long(0, a)
+      __pai(0, a, -6, 8)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_ulong_long(off, a)
-      a.each_with_index { |v, i| put_ulong_long(off + i * 8, v) }
+      __pai(off, a, -6, 8)
     end
 
     #: (Integer) -> Integer
-    def get_int8(off) = Fiddle.__get_i(to_i + off, 2)
+    def get_int8(off) = __gi(off, 2)
 
     #: (Integer, Integer) -> void
     def put_int8(off, v)
-      Fiddle.__set_i(to_i + off, 2, v)
+      __pi(off, 2, v)
     end
 
     #: () -> Integer
-    def read_int8 = get_int8(0)
+    def read_int8 = __gi(0, 2)
 
     #: (Integer) -> void
     def write_int8(v)
-      put_int8(0, v)
+      __pi(0, 2, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_int8(n) = get_array_of_int8(0, n)
+    def read_array_of_int8(n) = __gai(0, n, 2, 1)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_int8(off, n)
-      Array.new(n) { |i| get_int8(off + i * 1) }
-    end
+    def get_array_of_int8(off, n) = __gai(off, n, 2, 1)
 
     #: (Array[Integer]) -> void
     def write_array_of_int8(a)
-      put_array_of_int8(0, a)
+      __pai(0, a, 2, 1)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_int8(off, a)
-      a.each_with_index { |v, i| put_int8(off + i * 1, v) }
+      __pai(off, a, 2, 1)
     end
 
     #: (Integer) -> Integer
-    def get_uint8(off) = Fiddle.__get_i(to_i + off, -2)
+    def get_uint8(off) = __gi(off, -2)
 
     #: (Integer, Integer) -> void
     def put_uint8(off, v)
-      Fiddle.__set_i(to_i + off, -2, v)
+      __pi(off, -2, v)
     end
 
     #: () -> Integer
-    def read_uint8 = get_uint8(0)
+    def read_uint8 = __gi(0, -2)
 
     #: (Integer) -> void
     def write_uint8(v)
-      put_uint8(0, v)
+      __pi(0, -2, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_uint8(n) = get_array_of_uint8(0, n)
+    def read_array_of_uint8(n) = __gai(0, n, -2, 1)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_uint8(off, n)
-      Array.new(n) { |i| get_uint8(off + i * 1) }
-    end
+    def get_array_of_uint8(off, n) = __gai(off, n, -2, 1)
 
     #: (Array[Integer]) -> void
     def write_array_of_uint8(a)
-      put_array_of_uint8(0, a)
+      __pai(0, a, -2, 1)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_uint8(off, a)
-      a.each_with_index { |v, i| put_uint8(off + i * 1, v) }
+      __pai(off, a, -2, 1)
     end
 
     #: (Integer) -> Integer
-    def get_int16(off) = Fiddle.__get_i(to_i + off, 3)
+    def get_int16(off) = __gi(off, 3)
 
     #: (Integer, Integer) -> void
     def put_int16(off, v)
-      Fiddle.__set_i(to_i + off, 3, v)
+      __pi(off, 3, v)
     end
 
     #: () -> Integer
-    def read_int16 = get_int16(0)
+    def read_int16 = __gi(0, 3)
 
     #: (Integer) -> void
     def write_int16(v)
-      put_int16(0, v)
+      __pi(0, 3, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_int16(n) = get_array_of_int16(0, n)
+    def read_array_of_int16(n) = __gai(0, n, 3, 2)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_int16(off, n)
-      Array.new(n) { |i| get_int16(off + i * 2) }
-    end
+    def get_array_of_int16(off, n) = __gai(off, n, 3, 2)
 
     #: (Array[Integer]) -> void
     def write_array_of_int16(a)
-      put_array_of_int16(0, a)
+      __pai(0, a, 3, 2)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_int16(off, a)
-      a.each_with_index { |v, i| put_int16(off + i * 2, v) }
+      __pai(off, a, 3, 2)
     end
 
     #: (Integer) -> Integer
-    def get_uint16(off) = Fiddle.__get_i(to_i + off, -3)
+    def get_uint16(off) = __gi(off, -3)
 
     #: (Integer, Integer) -> void
     def put_uint16(off, v)
-      Fiddle.__set_i(to_i + off, -3, v)
+      __pi(off, -3, v)
     end
 
     #: () -> Integer
-    def read_uint16 = get_uint16(0)
+    def read_uint16 = __gi(0, -3)
 
     #: (Integer) -> void
     def write_uint16(v)
-      put_uint16(0, v)
+      __pi(0, -3, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_uint16(n) = get_array_of_uint16(0, n)
+    def read_array_of_uint16(n) = __gai(0, n, -3, 2)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_uint16(off, n)
-      Array.new(n) { |i| get_uint16(off + i * 2) }
-    end
+    def get_array_of_uint16(off, n) = __gai(off, n, -3, 2)
 
     #: (Array[Integer]) -> void
     def write_array_of_uint16(a)
-      put_array_of_uint16(0, a)
+      __pai(0, a, -3, 2)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_uint16(off, a)
-      a.each_with_index { |v, i| put_uint16(off + i * 2, v) }
+      __pai(off, a, -3, 2)
     end
 
     #: (Integer) -> Integer
-    def get_int32(off) = Fiddle.__get_i(to_i + off, 4)
+    def get_int32(off) = __gi(off, 4)
 
     #: (Integer, Integer) -> void
     def put_int32(off, v)
-      Fiddle.__set_i(to_i + off, 4, v)
+      __pi(off, 4, v)
     end
 
     #: () -> Integer
-    def read_int32 = get_int32(0)
+    def read_int32 = __gi(0, 4)
 
     #: (Integer) -> void
     def write_int32(v)
-      put_int32(0, v)
+      __pi(0, 4, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_int32(n) = get_array_of_int32(0, n)
+    def read_array_of_int32(n) = __gai(0, n, 4, 4)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_int32(off, n)
-      Array.new(n) { |i| get_int32(off + i * 4) }
-    end
+    def get_array_of_int32(off, n) = __gai(off, n, 4, 4)
 
     #: (Array[Integer]) -> void
     def write_array_of_int32(a)
-      put_array_of_int32(0, a)
+      __pai(0, a, 4, 4)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_int32(off, a)
-      a.each_with_index { |v, i| put_int32(off + i * 4, v) }
+      __pai(off, a, 4, 4)
     end
 
     #: (Integer) -> Integer
-    def get_uint32(off) = Fiddle.__get_i(to_i + off, -4)
+    def get_uint32(off) = __gi(off, -4)
 
     #: (Integer, Integer) -> void
     def put_uint32(off, v)
-      Fiddle.__set_i(to_i + off, -4, v)
+      __pi(off, -4, v)
     end
 
     #: () -> Integer
-    def read_uint32 = get_uint32(0)
+    def read_uint32 = __gi(0, -4)
 
     #: (Integer) -> void
     def write_uint32(v)
-      put_uint32(0, v)
+      __pi(0, -4, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_uint32(n) = get_array_of_uint32(0, n)
+    def read_array_of_uint32(n) = __gai(0, n, -4, 4)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_uint32(off, n)
-      Array.new(n) { |i| get_uint32(off + i * 4) }
-    end
+    def get_array_of_uint32(off, n) = __gai(off, n, -4, 4)
 
     #: (Array[Integer]) -> void
     def write_array_of_uint32(a)
-      put_array_of_uint32(0, a)
+      __pai(0, a, -4, 4)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_uint32(off, a)
-      a.each_with_index { |v, i| put_uint32(off + i * 4, v) }
+      __pai(off, a, -4, 4)
     end
 
     #: (Integer) -> Integer
-    def get_int64(off) = Fiddle.__get_i(to_i + off, 5)
+    def get_int64(off) = __gi(off, 5)
 
     #: (Integer, Integer) -> void
     def put_int64(off, v)
-      Fiddle.__set_i(to_i + off, 5, v)
+      __pi(off, 5, v)
     end
 
     #: () -> Integer
-    def read_int64 = get_int64(0)
+    def read_int64 = __gi(0, 5)
 
     #: (Integer) -> void
     def write_int64(v)
-      put_int64(0, v)
+      __pi(0, 5, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_int64(n) = get_array_of_int64(0, n)
+    def read_array_of_int64(n) = __gai(0, n, 5, 8)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_int64(off, n)
-      Array.new(n) { |i| get_int64(off + i * 8) }
-    end
+    def get_array_of_int64(off, n) = __gai(off, n, 5, 8)
 
     #: (Array[Integer]) -> void
     def write_array_of_int64(a)
-      put_array_of_int64(0, a)
+      __pai(0, a, 5, 8)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_int64(off, a)
-      a.each_with_index { |v, i| put_int64(off + i * 8, v) }
+      __pai(off, a, 5, 8)
     end
 
     #: (Integer) -> Integer
-    def get_uint64(off) = FFI.__u64(Fiddle.__get_i(to_i + off, -5))
+    def get_uint64(off) = __gi(off, -5)
 
     #: (Integer, Integer) -> void
     def put_uint64(off, v)
-      Fiddle.__set_i(to_i + off, -5, v)
+      __pi(off, -5, v)
     end
 
     #: () -> Integer
-    def read_uint64 = get_uint64(0)
+    def read_uint64 = __gi(0, -5)
 
     #: (Integer) -> void
     def write_uint64(v)
-      put_uint64(0, v)
+      __pi(0, -5, v)
     end
 
     #: (Integer) -> Array[Integer]
-    def read_array_of_uint64(n) = get_array_of_uint64(0, n)
+    def read_array_of_uint64(n) = __gai(0, n, -5, 8)
 
     #: (Integer, Integer) -> Array[Integer]
-    def get_array_of_uint64(off, n)
-      Array.new(n) { |i| get_uint64(off + i * 8) }
-    end
+    def get_array_of_uint64(off, n) = __gai(off, n, -5, 8)
 
     #: (Array[Integer]) -> void
     def write_array_of_uint64(a)
-      put_array_of_uint64(0, a)
+      __pai(0, a, -5, 8)
     end
 
     #: (Integer, Array[Integer]) -> void
     def put_array_of_uint64(off, a)
-      a.each_with_index { |v, i| put_uint64(off + i * 8, v) }
+      __pai(off, a, -5, 8)
     end
 
     #: (Integer) -> Float
-    def get_float(off) = Fiddle.__get_f(to_i + off, 7)
+    def get_float(off) = __gf(off, 7)
 
     #: (Integer, Float) -> void
     def put_float(off, v)
-      Fiddle.__set_f(to_i + off, 7, v)
+      __pf(off, 7, v)
     end
 
     #: () -> Float
-    def read_float = get_float(0)
+    def read_float = __gf(0, 7)
 
     #: (Float) -> void
     def write_float(v)
-      put_float(0, v)
+      __pf(0, 7, v)
     end
 
     #: (Integer) -> Array[Float]
-    def read_array_of_float(n) = get_array_of_float(0, n)
+    def read_array_of_float(n) = __gaf(0, n, 7, 4)
 
     #: (Integer, Integer) -> Array[Float]
-    def get_array_of_float(off, n)
-      Array.new(n) { |i| get_float(off + i * 4) }
-    end
+    def get_array_of_float(off, n) = __gaf(off, n, 7, 4)
 
     #: (Array[Float]) -> void
     def write_array_of_float(a)
-      put_array_of_float(0, a)
+      __paf(0, a, 7, 4)
     end
 
     #: (Integer, Array[Float]) -> void
     def put_array_of_float(off, a)
-      a.each_with_index { |v, i| put_float(off + i * 4, v) }
+      __paf(off, a, 7, 4)
     end
 
     #: (Integer) -> Float
-    def get_double(off) = Fiddle.__get_f(to_i + off, 8)
+    def get_double(off) = __gf(off, 8)
 
     #: (Integer, Float) -> void
     def put_double(off, v)
-      Fiddle.__set_f(to_i + off, 8, v)
+      __pf(off, 8, v)
     end
 
     #: () -> Float
-    def read_double = get_double(0)
+    def read_double = __gf(0, 8)
 
     #: (Float) -> void
     def write_double(v)
-      put_double(0, v)
+      __pf(0, 8, v)
     end
 
     #: (Integer) -> Array[Float]
-    def read_array_of_double(n) = get_array_of_double(0, n)
+    def read_array_of_double(n) = __gaf(0, n, 8, 8)
 
     #: (Integer, Integer) -> Array[Float]
-    def get_array_of_double(off, n)
-      Array.new(n) { |i| get_double(off + i * 8) }
-    end
+    def get_array_of_double(off, n) = __gaf(off, n, 8, 8)
 
     #: (Array[Float]) -> void
     def write_array_of_double(a)
-      put_array_of_double(0, a)
+      __paf(0, a, 8, 8)
     end
 
     #: (Integer, Array[Float]) -> void
     def put_array_of_double(off, a)
-      a.each_with_index { |v, i| put_double(off + i * 8, v) }
+      __paf(off, a, 8, 8)
     end
+
     NULL = Pointer.new(0) #: Pointer
   end
 
