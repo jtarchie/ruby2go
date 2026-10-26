@@ -169,6 +169,11 @@ func (p *appendProof) walk(n parser.Node, stack []parser.Node) {
 	case *parser.WhileNode, *parser.UntilNode, *parser.ForNode:
 		p.loops = append(p.loops, endOf(n))
 		defer func() { p.loops = p.loops[:len(p.loops)-1] }()
+	case *parser.BeginNode:
+		if t.RescueClause != nil && anyNode(t.RescueClause, func(x parser.Node) bool { _, ok := x.(*parser.RetryNode); return ok }) { // retry runs the body again
+			p.loops = append(p.loops, endOf(n))
+			defer func() { p.loops = p.loops[:len(p.loops)-1] }()
+		}
 	case *parser.BlockNode, *parser.LambdaNode:
 		p.depth++
 		p.loops = append(p.loops, endOf(n))
@@ -232,17 +237,17 @@ func (p *appendProof) fresh(v parser.Node) bool {
 		if t.Block != nil {
 			return false
 		}
-		switch {
-		case t.Name == "+@":
+		switch t.Name {
+		case "+@":
 			switch t.Receiver.(type) {
 			case *parser.StringNode, *parser.InterpolatedStringNode:
 				return true
 			}
 			return false
-		case t.Name == "new":
+		case "new":
 			c, ok := t.Receiver.(*parser.ConstantReadNode)
 			return ok && c.Name == "String"
-		case t.Name == "format" || t.Name == "sprintf":
+		case "format", "sprintf":
 			return t.Receiver == nil
 		}
 		return t.Receiver != nil && freshStrCalls[t.Name]
@@ -252,6 +257,12 @@ func (p *appendProof) fresh(v parser.Node) bool {
 
 func (p *appendProof) read(n *parser.LocalVariableReadNode, stack []parser.Node) {
 	parent := stack[len(stack)-1]
+	if p.later > 0 { // another goroutine or a later call would read the local while it is appended to
+		if c, ok := parent.(*parser.CallNode); !ok || c.Receiver != n || c.Name != "<<" && c.Name != "concat" {
+			p.leak(n, fmt.Sprintf("`%s` is captured by a block that may run after its call returns", p.name))
+			return
+		}
+	}
 	if c, ok := parent.(*parser.CallNode); ok && c.Receiver == n {
 		switch {
 		case c.Name == "<<" || c.Name == "concat":

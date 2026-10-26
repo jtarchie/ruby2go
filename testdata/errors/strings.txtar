@@ -93,6 +93,26 @@ s = +"a"
 add = -> { s << "b" }
 add.call
 puts s
+-- shovel_thread.rb --
+# error: `s` is captured by a block that may run after its call returns on line 4 before its last append
+# rbs_inline: enabled
+s = +"a"
+t = Thread.new { puts s }
+s << "b"
+t.join
+-- shovel_retry.rb --
+# error: `s` is passed to keep on line 10 before its last append
+# rbs_inline: enabled
+#: (String) -> void
+def keep(x) = puts(x)
+s = +"a"
+begin
+  s << "b"
+  raise "again" if s.size < 3
+rescue RuntimeError
+  keep(s)
+  retry
+end
 -- shovel_not_fresh.rb --
 # error: `s` is assigned a String that something else may hold (line 3)
 # rbs_inline: enabled
