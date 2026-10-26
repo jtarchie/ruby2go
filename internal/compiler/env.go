@@ -15,7 +15,7 @@ type envConfig struct {
 	NoSpecialize  bool   // RUGAROO_NO_SPECIALIZE: keep module funcs generic over Self (decision 377)
 	NoWindowReuse bool   // RUGAROO_NO_WINDOW_REUSE: each_cons/each_slice copy every window (decision 386)
 	NoCountedLoop bool   // RUGAROO_NO_COUNTED_LOOP: times/upto/downto/(a..b).each range over their iterators, Array#[]= stays a call (decision 387)
-	NoZipFuse     bool   // RUGAROO_NO_ZIP_FUSE: zip builds its Array of pairs before a chained consumer or block runs (decision 390)
+	NoZipFuse     bool   // RUGAROO_NO_ZIP_FUSE: zip builds its Array of pairs before a chained consumer or block runs (decision 389)
 	PruneWhy      bool   // RUGAROO_PRUNE_WHY: the keep chains of the pruner
 	KeepGoing     bool   // RUGAROO_KEEP_GOING: record a collect error and go on
 	DispatchDebug string // RUGAROO_DISPATCH_DEBUG: "all", or any other non-empty value for Kernel/Object/module owners

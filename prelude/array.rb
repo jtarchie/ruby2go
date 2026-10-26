@@ -84,7 +84,7 @@ class Array < Object
     }
   }
 
-  # MRI reads self at each step but other once, before the first (its take_items), so a store into other is not seen (decision 390).
+  # MRI reads self at each step but other once, before the first (its take_items), so a store into other is not seen (decision 389).
   #: [U] (Array[U]) { ([E, U?]) -> void } -> void
   def __zip_block(other) = %x{
     return func(yield func(Tuple2[E, *U]) bool) {
@@ -97,7 +97,7 @@ class Array < Object
     }
   }
 
-  # A statement `xs.zip(ys).each { }`: MRI's pairs are built before each runs, so both are copies taken now (decision 390).
+  # A statement `xs.zip(ys).each { }`: MRI's pairs are built before each runs, so both are copies taken now (decision 389).
   #: [U] (Array[U]) { ([E, U?]) -> void } -> void
   def __zip_each(other) = %x{
     return func(yield func(Tuple2[E, *U]) bool) {
@@ -111,7 +111,7 @@ class Array < Object
     }
   }
 
-  # Copies taken now, as MRI's zip reads both Arrays before the consumer runs; no Array of pairs (decision 390).
+  # Copies taken now, as MRI's zip reads both Arrays before the consumer runs; no Array of pairs (decision 389).
   #: [U] (Array[U]) -> Enumerator[[E, U?]]
   def __zip_view_enum(other) = %x{
     xs, ys := slices.Clone(self.s), slices.Clone(other.s)

@@ -813,7 +813,7 @@ func (f *fctx) resolveIter(n *parser.CallNode, recvT Type) *entry {
 		e = f.c.classes["Object"].lookup(n.Name)
 	}
 	if e != nil && e.M.Block == nil {
-		if b := f.resolve(recvT, "__"+overloadBase(n.Name)+"_block"); b != nil && b.M.Iterator { // `xs.zip(ys) { }` (decision 390)
+		if b := f.resolve(recvT, "__"+overloadBase(n.Name)+"_block"); b != nil && b.M.Iterator { // `xs.zip(ys) { }` (decision 389)
 			return b
 		}
 	}

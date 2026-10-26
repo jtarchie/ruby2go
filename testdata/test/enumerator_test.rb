@@ -765,7 +765,7 @@ module EnumeratorTests
 end
 
 module EnumeratorTests
-  # zip with a block, or chained into one, builds no Array of pairs (decision 390): MRI's values all the same.
+  # zip with a block, or chained into one, builds no Array of pairs (decision 389): MRI's values all the same.
   class EnumZipFuseTest < Minitest::Test
     def test_block_form_reads_both_arrays
       a = [1, 2, 3]

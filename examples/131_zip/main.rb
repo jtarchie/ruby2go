@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# zip with a block, or chained into one, walks both Arrays by index without building the pairs (decision 390).
+# zip with a block, or chained into one, walks both Arrays by index without building the pairs (decision 389).
 
 names = %w[ann bob cy dee]
 scores = [91, 78, 85]

@@ -6,7 +6,7 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// Decision 390: `xs.zip(ys)` chained into a block builds no Array of pairs.
+// Decision 389: `xs.zip(ys)` chained into a block builds no Array of pairs.
 
 // zipConsumers are the Enumerator methods `xs.zip(ys).m { |x, y| }` may run on `__zip_view_enum`'s pairs: each returns what Array's does.
 var zipConsumers = map[string]bool{
