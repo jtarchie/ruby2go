@@ -36,13 +36,7 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
-	if e, ok := f.genLiteralFormat(n); ok {
-		return e, true
-	}
-	if e, ok := f.compactNil(n); ok {
-		return e, true
-	}
-	if e, ok := f.genStrChain(n); ok {
+	if e, ok := f.genStringLowering(n); ok {
 		return e, true
 	}
 	if e, ok := f.symbolToProc(n, expected); ok {
@@ -325,4 +319,16 @@ func (f *fctx) compactNil(n *parser.CallNode) (expr, bool) {
 	recv := f.genExpr(n.Receiver, nil)
 	elem := t.Args[0].(TOpt).Elem //nolint:forcetypeassert // leafOpt holds only for a TOpt
 	return expr{code: "rbCompactNil(" + recv.code + ")", typ: TClass{C: t.C, Args: []Type{elem}}}, true
+}
+
+// genStringLowering is decisions 377-378's compile-time forms: a literal format string, a String + chain, and compact on
+// an Array whose optional elements hold nil themselves.
+func (f *fctx) genStringLowering(n *parser.CallNode) (expr, bool) {
+	if e, ok := f.genLiteralFormat(n); ok {
+		return e, true
+	}
+	if e, ok := f.compactNil(n); ok {
+		return e, true
+	}
+	return f.genStrChain(n)
 }

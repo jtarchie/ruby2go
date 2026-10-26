@@ -32,11 +32,13 @@ func main() {
 		t.Fatal(err)
 	}
 	labels := map[string]string{"Enumerable_Sum": "Enumerable#sum"}
-	if err := specializeSelf(fset, f, labels); err != nil {
+	err = specializeSelf(fset, f, labels)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if err := format.Node(&buf, fset, f); err != nil {
+	err = format.Node(&buf, fset, f)
+	if err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()

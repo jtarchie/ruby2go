@@ -65,32 +65,7 @@ func parseLiteralFormat(s string) (dirs []fmtDirective, tail string, ok bool) {
 
 // genLiteralFormat lowers a literal format string to appends (decision 377): no boxed arguments, no parse at run time.
 func (f *fctx) genLiteralFormat(n *parser.CallNode) (expr, bool) {
-	if n.Block != nil {
-		return expr{}, false
-	}
-	var lit *parser.StringNode
-	var args []parser.Node
-	switch {
-	case (n.Name == "format" || n.Name == "sprintf") && n.Receiver == nil && len(callArgs(n)) > 0:
-		e := f.resolve(f.selfType, n.Name)
-		if e == nil || e.M.Owner == nil || e.M.Owner.Name != "Kernel" || e.M.File == nil || !e.M.File.isPrelude() {
-			return expr{}, false
-		}
-		lit, _ = callArgs(n)[0].(*parser.StringNode)
-		args = callArgs(n)[1:]
-	case n.Name == "%" && len(callArgs(n)) == 1:
-		lit, _ = n.Receiver.(*parser.StringNode)
-		e := f.resolve(f.cls("String"), "%")
-		if lit == nil || e == nil || e.M.File == nil || !e.M.File.isPrelude() {
-			return expr{}, false
-		}
-		args = callArgs(n)
-		if a, ok := args[0].(*parser.ArrayNode); ok {
-			args = a.Elements
-		} else if !f.fmtScalar(f.probeType(args[0], nil)) { // an Array value spreads at run time
-			return expr{}, false
-		}
-	}
+	lit, args := f.literalFormatCall(n)
 	if lit == nil {
 		return expr{}, false
 	}
@@ -135,6 +110,38 @@ func (f *fctx) genLiteralFormat(n *parser.CallNode) (expr, bool) {
 		f.emit("%s = append(%s, %s...)", buf, buf, strconv.Quote(tail))
 	}
 	return expr{code: "String(" + buf + ")", typ: f.cls("String")}, true
+}
+
+// literalFormatCall is the format string and arguments of `format("lit", ...)`, `sprintf` or `"lit" % x`, when they
+// are the prelude's methods; lit is nil for any other call.
+func (f *fctx) literalFormatCall(n *parser.CallNode) (*parser.StringNode, []parser.Node) {
+	if n.Block != nil {
+		return nil, nil
+	}
+	switch {
+	case (n.Name == "format" || n.Name == "sprintf") && n.Receiver == nil && len(callArgs(n)) > 0:
+		e := f.resolve(f.selfType, n.Name)
+		if e == nil || e.M.Owner == nil || e.M.Owner.Name != "Kernel" || e.M.File == nil || !e.M.File.isPrelude() {
+			return nil, nil
+		}
+		lit, _ := callArgs(n)[0].(*parser.StringNode)
+		return lit, callArgs(n)[1:]
+	case n.Name == "%" && len(callArgs(n)) == 1:
+		lit, _ := n.Receiver.(*parser.StringNode)
+		e := f.resolve(f.cls("String"), "%")
+		if lit == nil || e == nil || e.M.File == nil || !e.M.File.isPrelude() {
+			return nil, nil
+		}
+		args := callArgs(n)
+		if a, ok := args[0].(*parser.ArrayNode); ok {
+			return lit, a.Elements
+		}
+		if !f.fmtScalar(f.probeType(args[0], nil)) { // an Array value spreads at run time
+			return nil, nil
+		}
+		return lit, args
+	}
+	return nil, nil
 }
 
 func (f *fctx) fmtScalar(t Type) bool {
