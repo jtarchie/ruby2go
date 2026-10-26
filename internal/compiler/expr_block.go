@@ -955,11 +955,12 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	}
 	head := f.countedLoopHead(n, e, recv, codes, names, goParams) // its temps go above the label pushLoop places
 	f.pushLoop(loopIter)
-	if head != "" {
+	switch {
+	case head != "":
 		f.emit("%s", head)
-	} else if allBlank {
+	case allBlank:
 		f.emit("for range %s {", call)
-	} else {
+	default:
 		f.emit("%s", rangeHead(strings.Join(goParams, ", "), call))
 	}
 	f.indent++

@@ -110,12 +110,8 @@ func (w windowCheck) ok(n parser.Node, immediate, nested bool) bool {
 			}
 		}
 		return true
-	case *parser.IfNode: // a typed nil field is a non-nil Node: each is checked before it is walked
-		return w.ok(x.Predicate, true, nested) && (x.Statements == nil || w.ok(x.Statements, immediate, nested)) && w.ok(x.Subsequent, immediate, nested)
-	case *parser.UnlessNode:
-		return w.ok(x.Predicate, true, nested) && (x.Statements == nil || w.ok(x.Statements, immediate, nested)) && (x.ElseClause == nil || w.ok(x.ElseClause, immediate, nested))
-	case *parser.ElseNode:
-		return x.Statements == nil || w.ok(x.Statements, immediate, nested)
+	case *parser.IfNode, *parser.UnlessNode, *parser.ElseNode:
+		return w.branchOK(x, immediate, nested)
 	case *parser.CallNode:
 		return w.callOK(x, immediate, nested)
 	}
@@ -125,6 +121,19 @@ func (w windowCheck) ok(n parser.Node, immediate, nested bool) bool {
 		}
 	}
 	return true
+}
+
+// branchOK: a typed nil field is a non-nil Node, so each is checked before it is walked.
+func (w windowCheck) branchOK(n parser.Node, immediate, nested bool) bool {
+	switch x := n.(type) {
+	case *parser.IfNode:
+		return w.ok(x.Predicate, true, nested) && (x.Statements == nil || w.ok(x.Statements, immediate, nested)) && w.ok(x.Subsequent, immediate, nested)
+	case *parser.UnlessNode:
+		return w.ok(x.Predicate, true, nested) && (x.Statements == nil || w.ok(x.Statements, immediate, nested)) && (x.ElseClause == nil || w.ok(x.ElseClause, immediate, nested))
+	case *parser.ElseNode:
+		return x.Statements == nil || w.ok(x.Statements, immediate, nested)
+	}
+	return false
 }
 
 func (w windowCheck) callOK(x *parser.CallNode, immediate, nested bool) bool {
