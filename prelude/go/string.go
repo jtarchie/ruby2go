@@ -10,10 +10,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
-	"unicode"
 	"unicode/utf8"
 	"unsafe"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+	"golang.org/x/text/transform"
 )
 
 // The numeric prefix String#to_i / #to_f read, as MRI scans it: leading
@@ -24,48 +28,9 @@ var (
 	rbFloatPrefix = regexp.MustCompile(`\A[ \t\n\v\f\r]*([+-]?(?:\d+(?:_\d+)*(?:\.(?:\d+(?:_\d+)*)?)?|\.\d+(?:_\d+)*)(?:[eE][+-]?\d+(?:_\d+)*)?)`)
 )
 
-// SpecialCasing.txt's unconditional mappings, which MRI applies and Go's
-// per-rune unicode.To* cannot (one rune to several): lower, title, upper.
-var rbSpecialCasing = map[rune][3]string{
-	'ß': {"ß", "Ss", "SS"}, 'İ': {"i̇", "İ", "İ"}, 'ŉ': {"ŉ", "ʼN", "ʼN"},
-	'ǰ': {"ǰ", "J̌", "J̌"}, 'ΐ': {"ΐ", "Ϊ́", "Ϊ́"}, 'ΰ': {"ΰ", "Ϋ́", "Ϋ́"},
-	'և': {"և", "Եւ", "ԵՒ"}, 'ẖ': {"ẖ", "H̱", "H̱"}, 'ẗ': {"ẗ", "T̈", "T̈"},
-	'ẘ': {"ẘ", "W̊", "W̊"}, 'ẙ': {"ẙ", "Y̊", "Y̊"}, 'ẚ': {"ẚ", "Aʾ", "Aʾ"},
-	'ὐ': {"ὐ", "Υ̓", "Υ̓"}, 'ὒ': {"ὒ", "Υ̓̀", "Υ̓̀"}, 'ὔ': {"ὔ", "Υ̓́", "Υ̓́"},
-	'ὖ': {"ὖ", "Υ̓͂", "Υ̓͂"}, 'ᾀ': {"ᾀ", "ᾈ", "ἈΙ"}, 'ᾁ': {"ᾁ", "ᾉ", "ἉΙ"},
-	'ᾂ': {"ᾂ", "ᾊ", "ἊΙ"}, 'ᾃ': {"ᾃ", "ᾋ", "ἋΙ"}, 'ᾄ': {"ᾄ", "ᾌ", "ἌΙ"},
-	'ᾅ': {"ᾅ", "ᾍ", "ἍΙ"}, 'ᾆ': {"ᾆ", "ᾎ", "ἎΙ"}, 'ᾇ': {"ᾇ", "ᾏ", "ἏΙ"},
-	'ᾈ': {"ᾀ", "ᾈ", "ἈΙ"}, 'ᾉ': {"ᾁ", "ᾉ", "ἉΙ"}, 'ᾊ': {"ᾂ", "ᾊ", "ἊΙ"},
-	'ᾋ': {"ᾃ", "ᾋ", "ἋΙ"}, 'ᾌ': {"ᾄ", "ᾌ", "ἌΙ"}, 'ᾍ': {"ᾅ", "ᾍ", "ἍΙ"},
-	'ᾎ': {"ᾆ", "ᾎ", "ἎΙ"}, 'ᾏ': {"ᾇ", "ᾏ", "ἏΙ"}, 'ᾐ': {"ᾐ", "ᾘ", "ἨΙ"},
-	'ᾑ': {"ᾑ", "ᾙ", "ἩΙ"}, 'ᾒ': {"ᾒ", "ᾚ", "ἪΙ"}, 'ᾓ': {"ᾓ", "ᾛ", "ἫΙ"},
-	'ᾔ': {"ᾔ", "ᾜ", "ἬΙ"}, 'ᾕ': {"ᾕ", "ᾝ", "ἭΙ"}, 'ᾖ': {"ᾖ", "ᾞ", "ἮΙ"},
-	'ᾗ': {"ᾗ", "ᾟ", "ἯΙ"}, 'ᾘ': {"ᾐ", "ᾘ", "ἨΙ"}, 'ᾙ': {"ᾑ", "ᾙ", "ἩΙ"},
-	'ᾚ': {"ᾒ", "ᾚ", "ἪΙ"}, 'ᾛ': {"ᾓ", "ᾛ", "ἫΙ"}, 'ᾜ': {"ᾔ", "ᾜ", "ἬΙ"},
-	'ᾝ': {"ᾕ", "ᾝ", "ἭΙ"}, 'ᾞ': {"ᾖ", "ᾞ", "ἮΙ"}, 'ᾟ': {"ᾗ", "ᾟ", "ἯΙ"},
-	'ᾠ': {"ᾠ", "ᾨ", "ὨΙ"}, 'ᾡ': {"ᾡ", "ᾩ", "ὩΙ"}, 'ᾢ': {"ᾢ", "ᾪ", "ὪΙ"},
-	'ᾣ': {"ᾣ", "ᾫ", "ὫΙ"}, 'ᾤ': {"ᾤ", "ᾬ", "ὬΙ"}, 'ᾥ': {"ᾥ", "ᾭ", "ὭΙ"},
-	'ᾦ': {"ᾦ", "ᾮ", "ὮΙ"}, 'ᾧ': {"ᾧ", "ᾯ", "ὯΙ"}, 'ᾨ': {"ᾠ", "ᾨ", "ὨΙ"},
-	'ᾩ': {"ᾡ", "ᾩ", "ὩΙ"}, 'ᾪ': {"ᾢ", "ᾪ", "ὪΙ"}, 'ᾫ': {"ᾣ", "ᾫ", "ὫΙ"},
-	'ᾬ': {"ᾤ", "ᾬ", "ὬΙ"}, 'ᾭ': {"ᾥ", "ᾭ", "ὭΙ"}, 'ᾮ': {"ᾦ", "ᾮ", "ὮΙ"},
-	'ᾯ': {"ᾧ", "ᾯ", "ὯΙ"}, 'ᾲ': {"ᾲ", "Ὰͅ", "ᾺΙ"}, 'ᾳ': {"ᾳ", "ᾼ", "ΑΙ"},
-	'ᾴ': {"ᾴ", "Άͅ", "ΆΙ"}, 'ᾶ': {"ᾶ", "Α͂", "Α͂"}, 'ᾷ': {"ᾷ", "ᾼ͂", "Α͂Ι"},
-	'ᾼ': {"ᾳ", "ᾼ", "ΑΙ"}, 'ῂ': {"ῂ", "Ὴͅ", "ῊΙ"}, 'ῃ': {"ῃ", "ῌ", "ΗΙ"},
-	'ῄ': {"ῄ", "Ήͅ", "ΉΙ"}, 'ῆ': {"ῆ", "Η͂", "Η͂"}, 'ῇ': {"ῇ", "ῌ͂", "Η͂Ι"},
-	'ῌ': {"ῃ", "ῌ", "ΗΙ"}, 'ῒ': {"ῒ", "Ϊ̀", "Ϊ̀"}, 'ΐ': {"ΐ", "Ϊ́", "Ϊ́"},
-	'ῖ': {"ῖ", "Ι͂", "Ι͂"}, 'ῗ': {"ῗ", "Ϊ͂", "Ϊ͂"}, 'ῢ': {"ῢ", "Ϋ̀", "Ϋ̀"},
-	'ΰ': {"ΰ", "Ϋ́", "Ϋ́"}, 'ῤ': {"ῤ", "Ρ̓", "Ρ̓"}, 'ῦ': {"ῦ", "Υ͂", "Υ͂"},
-	'ῧ': {"ῧ", "Ϋ͂", "Ϋ͂"}, 'ῲ': {"ῲ", "Ὼͅ", "ῺΙ"}, 'ῳ': {"ῳ", "ῼ", "ΩΙ"},
-	'ῴ': {"ῴ", "Ώͅ", "ΏΙ"}, 'ῶ': {"ῶ", "Ω͂", "Ω͂"}, 'ῷ': {"ῷ", "ῼ͂", "Ω͂Ι"},
-	'ῼ': {"ῳ", "ῼ", "ΩΙ"}, 'ﬀ': {"ﬀ", "Ff", "FF"}, 'ﬁ': {"ﬁ", "Fi", "FI"},
-	'ﬂ': {"ﬂ", "Fl", "FL"}, 'ﬃ': {"ﬃ", "Ffi", "FFI"}, 'ﬄ': {"ﬄ", "Ffl", "FFL"},
-	'ﬅ': {"ﬅ", "St", "ST"}, 'ﬆ': {"ﬆ", "St", "ST"}, 'ﬓ': {"ﬓ", "Մն", "ՄՆ"},
-	'ﬔ': {"ﬔ", "Մե", "ՄԵ"}, 'ﬕ': {"ﬕ", "Մի", "ՄԻ"}, 'ﬖ': {"ﬖ", "Վն", "ՎՆ"},
-	'ﬗ': {"ﬗ", "Մխ", "ՄԽ"},
-}
-
-// rbCaseMap is MRI's full case mapping: column i of rbSpecialCasing, else f.
-func rbCaseMap(s string, i int, f func(rune) rune) string {
+// rbCaseMap is MRI's full case mapping, i 0 down, 1 title, 2 up: ASCII by hand, a binary String's ASCII letters only,
+// else x/text's cases (decision 380).
+func rbCaseMap(s string, i int) string {
 	if out, ok := rbCaseMapASCII(s, i == 0); ok {
 		return out
 	}
@@ -81,18 +46,110 @@ func rbCaseMap(s string, i int, f func(rune) rune) string {
 			return c
 		})
 	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if r >= 'ß' { // the lowest key: ASCII skips the lookup
-			if m, ok := rbSpecialCasing[r]; ok {
-				b.WriteString(m[i])
-				continue
+	return rbCaseX([...]int{rbCaseLower, rbCaseTitle, rbCaseUpper}[i], s)
+}
+
+// The casers rbCaseX hands out: MRI's mappings in x/text terms.
+const (
+	rbCaseLower = iota
+	rbCaseTitle
+	rbCaseUpper
+	rbCaseFold
+	rbCaseLowerTR
+	rbCaseTitleTR
+	rbCaseUpperTR
+)
+
+// rbCaserPools hold x/text casers, which keep state while they run and so are one per call, by kind.
+var rbCaserPools [rbCaseUpperTR + 1]sync.Pool
+
+// rbCaseX is s through caser k. MRI does not apply the final-sigma rule (ΣΑΣ downcases to σασ), which x/text's Lower
+// does by default; its Title, applied to one character at a time here, is that character's titlecase mapping alone.
+func rbCaseX(k int, s string) string {
+	switch k {
+	case rbCaseLowerTR: // MRI's :turkic is the dotted/dotless i pairs and else the plain mapping, without Turkish's
+		// context rule, which makes "I\u0307" one i where MRI keeps ı and the dot
+		s, k = strings.Map(func(r rune) rune {
+			switch r {
+			case 'I':
+				return 'ı'
+			case 'İ':
+				return 'i'
 			}
+			return r
+		}, s), rbCaseLower
+	case rbCaseTitle, rbCaseTitleTR: // only ever one character: a Georgian Mtavruli letter titlecases to its lower case in MRI
+		if r, _ := utf8.DecodeRuneInString(s); r >= 0x1C90 && r <= 0x1CBF {
+			k = rbCaseLower
 		}
-		b.WriteRune(f(r))
 	}
-	return b.String()
+	out := rbCaser(k, s)
+	if k == rbCaseFold { // CaseFolding.txt folds Cherokee to its capitals, as MRI does; x/text folds it to the small letters
+		out = strings.Map(func(r rune) rune {
+			switch {
+			case r >= 0xAB70 && r <= 0xABBF:
+				return r - 0xAB70 + 0x13A0
+			case r >= 0x13F8 && r <= 0x13FD:
+				return r - 8
+			}
+			return r
+		}, out)
+	}
+	return out
+}
+
+// rbCaser is s through x/text caser k, pooled: s itself where nothing changes (Span), else one buffer (Transform),
+// not transform.String's per-call scratch.
+func rbCaser(k int, s string) string {
+	c := rbCaserGet(k)
+	defer rbCaserPools[k].Put(c)
+	return rbCaserRun(c, s)
+}
+
+func rbCaserGet(k int) *cases.Caser {
+	if c, _ := rbCaserPools[k].Get().(*cases.Caser); c != nil {
+		return c
+	}
+	tag := language.Und
+	if k >= rbCaseLowerTR {
+		tag = language.Turkish
+	}
+	var cc cases.Caser
+	switch k {
+	case rbCaseLower, rbCaseLowerTR:
+		cc = cases.Lower(tag, cases.HandleFinalSigma(false))
+	case rbCaseTitle, rbCaseTitleTR:
+		cc = cases.Title(tag, cases.NoLower, cases.HandleFinalSigma(false))
+	case rbCaseUpper, rbCaseUpperTR:
+		cc = cases.Upper(tag)
+	default:
+		cc = cases.Fold()
+	}
+	return &cc
+}
+
+func rbCaserRun(c *cases.Caser, s string) string {
+	if s == "" {
+		return s
+	}
+	src := unsafe.Slice(unsafe.StringData(s), len(s)) //nolint:gosec // read only: x/text takes []byte
+	c.Reset()
+	if n, err := c.Span(src, true); err == nil && n == len(src) {
+		return s
+	}
+	dst := make([]byte, len(s)+len(s)/4+8)
+	for {
+		c.Reset()
+		n, _, err := c.Transform(dst, src, true)
+		if err == transform.ErrShortDst {
+			dst = make([]byte, 2*len(dst))
+			continue
+		}
+		if n == 0 {
+			return ""
+		}
+		return unsafe.String(&dst[0], n) //nolint:gosec // dst is never written again
+	}
 }
 
 // rbCaseMapASCII is rbCaseMap for an ASCII s, to lower case or else upper (title case is upper in ASCII); s itself when
@@ -137,10 +194,11 @@ var rbTitleSwap = map[rune]string{
 	0x1FBC: "αΙ", 0x1FCC: "ηΙ", 0x1FFC: "ωΙ",
 }
 
-// rbSwapcase is String#swapcase: full case mapping (ß is SS, İ is i̇), titlecase digraphs split, ASCII only for a
-// String that is not UTF-8 (a binary String's other bytes are kept, decision 324).
-func rbSwapcase(s string) string {
-	if !utf8.ValidString(s) {
+// rbSwapcase is String#swapcase: by full case mapping, a character with a lower case mapping lowered and else uppered
+// (ß is SS, İ is i̇, Ⅰ and Ⓐ too, though not of category Lu), titlecase digraphs split as MRI does, ASCII only for a
+// String that is not UTF-8 (a binary String's other bytes are kept, decision 324). turkic is :turkic's dotted i rules.
+func rbSwapcase(s string, turkic bool) string {
+	if !utf8.ValidString(s) || rbASCII(s) && !turkic {
 		return rbASCIIMapBytes(s, func(c byte) byte {
 			switch {
 			case c >= 'a' && c <= 'z':
@@ -151,28 +209,48 @@ func rbSwapcase(s string) string {
 			return c
 		})
 	}
+	lk, uk := rbCaseLower, rbCaseUpper
+	if turkic {
+		lk, uk = rbCaseLowerTR, rbCaseUpperTR
+	}
+	lower, upper := rbCaserGet(lk), rbCaserGet(uk)
+	defer rbCaserPools[lk].Put(lower)
+	defer rbCaserPools[uk].Put(upper)
 	var b strings.Builder
 	b.Grow(len(s))
-	for _, r := range s {
-		if m, ok := rbTitleSwap[r]; ok {
-			b.WriteString(m)
-			continue
-		}
-		// by mapping, not category: Ⅰ (Nl), Ⓐ (So) and U+0345 (Mn) have case pairs too
-		if lo := unicode.ToLower(r); lo != r {
-			if m, ok := rbSpecialCasing[r]; ok {
-				b.WriteString(m[0])
+	// runs of characters that go one way, each through its caser once: a character lowering changes is lowered (so Ⅰ
+	// and Ⓐ, not of category Lu, count), any other uppered; a titlecase digraph splits as MRI does
+	start, down := 0, false
+	flush := func(end int) {
+		if end > start {
+			run := s[start:end]
+			if turkic && down {
+				run = rbCaseX(rbCaseLowerTR, run)
+			} else if down {
+				run = rbCaserRun(lower, run)
 			} else {
-				b.WriteRune(lo)
+				run = rbCaserRun(upper, run)
 			}
-			continue
+			b.WriteString(run)
 		}
-		if m, ok := rbSpecialCasing[r]; ok {
-			b.WriteString(m[2])
-			continue
-		}
-		b.WriteRune(unicode.ToUpper(r))
+		start = end
 	}
+	for i, r := range s {
+		if m, ok := rbTitleSwap[r]; ok {
+			flush(i)
+			b.WriteString(m)
+			start = i + utf8.RuneLen(r)
+			continue
+		}
+		lower.Reset()
+		c := s[i : i+utf8.RuneLen(r)]
+		n, _ := lower.Span(unsafe.Slice(unsafe.StringData(c), len(c)), true) //nolint:gosec // read only
+		if d := n < len(c); d != down {
+			flush(i)
+			down = d
+		}
+	}
+	flush(len(s))
 	return b.String()
 }
 
@@ -1021,22 +1099,6 @@ func rbASCIICase(s string, mode int) string {
 			return r - ('a' - 'A')
 		case r >= 'A' && r <= 'Z' && mode != 2:
 			return r + ('a' - 'A')
-		}
-		return r
-	}, s)
-}
-
-// rbTurkic is the Turkic dotted/dotless i mapping MRI's :turkic adds, to upper case (i -> İ) or lower (I -> ı, İ -> i);
-// every other character is left to the plain mapping.
-func rbTurkic(s string, up bool) string {
-	return strings.Map(func(r rune) rune {
-		switch {
-		case up && r == 'i':
-			return 'İ'
-		case !up && r == 'I':
-			return 'ı'
-		case !up && r == 'İ':
-			return 'i'
 		}
 		return r
 	}, s)

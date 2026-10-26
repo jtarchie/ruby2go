@@ -45,7 +45,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 | `eval`, `instance_eval(string)`, `load`, code built at run time | The binary has no interpreter; everything is compiled ahead of time. | Write the code out. Gems that `eval` at load time can still compile (see [gems](#gems--experimental)). |
 | `define_method`, `define_singleton_method` in your own code | Methods must be known at compile time. | `def`, or `method_missing` with a signature ([29](../examples/29_method_missing/main.rb)). A gem's load-time `define_method` is supported ([decision 198](decisions/198.md)). |
 | In-place String mutation (`<<`, `upcase!`, `gsub!`, `[]=`) | A `String` is an immutable Go string value ([decision 58](decisions/058.md)). | Build new strings (`s += "x"`, `s = s.upcase`) or use `StringIO`. |
-| Encodings other than UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1, UTF-16/32 (LE/BE) | Strings carry no encoding tag ([decision 136](decisions/136.md)). | Convert at the edges. |
+| Multibyte legacy encodings (Shift_JIS, EUC-JP, GBK, Big5, ...) and single-byte ones x/text lacks (Windows-1258, ISO-8859-11, macGreek, ...) | Strings carry no encoding tag ([decision 136](decisions/136.md)); single-byte ones come from x/text ([decision 380](decisions/380.md)). | Convert at the edges. |
 | `break v`; a `break` out of a block whose call's value is used; `return` from a block stored as a closure; `next v` where the value is thrown away (`while`, `each`) | Go closures cannot unwind their caller ([decision 4](decisions/004.md)). | Restructure: plain `break`/`return` work in `while` and in blocks that run inline (like `each`). |
 | Inline overloaded signatures (`#\|`) | | Declare overloads in a `.rbs` file ([117](../examples/117_rbs_overloads/main.rb)). |
 | `require` of a computed path, `$LOAD_PATH` changes at run time | Files are read when the program compiles. | String-literal paths at a file's top level; `-I dir` for load paths; `-trace` for gems ([gems.md](gems.md)). |
@@ -88,7 +88,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). 
 | `Fiber` | stable | 25 of 66 (38%) | 122 |  |
 | `Signal`, `Process` | stable | 35 of 87 (40%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
 | `Marshal` | stable | 28 of 250 (11%) | 102 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
-| `Encoding` | stable | 61 of 105 (58%) | 33 | Ten encodings, no per-String tag ([decision 136](decisions/136.md)). |
+| `Encoding` | stable | 61 of 105 (58%) | 33 | 45 encodings (ISO-8859, Windows-125x, KOI8, IBM and Mac code pages through x/text, [decision 380](decisions/380.md)), no per-String tag ([decision 136](decisions/136.md)). |
 | `Warning`, `GC`, `ObjectSpace` | stable | 15 of 22 (68%) | 93 | The parts a program can observe; no heap walking. |
 | `Encoding::Converter` | not supported | 0 of 139 (0%) | 4 | Use `String#encode`. |
 | `Binding`, `TracePoint`, refinements | not supported | 0 of 58 (0%) | 104 | Need an interpreter at run time. |

@@ -198,7 +198,7 @@ class File < Object
   end
 
   # read(path, length, offset): at most length bytes from offset ("" past the end, where MRI answers nil: ponytail, a String? result would make every File.read optional);
-  # options (encoding:, mode:) are accepted and ignored: Strings are UTF-8 bytes (decision 136).
+  # Strings are bytes without a tag (decision 136), so encoding: "ext:int" transcodes and an external one alone keeps the bytes; mode: is checked only.
   #: (String, ?Integer?, ?Integer?, **untyped) -> String
   def self.read(path, length = nil, offset = nil, **opts)
     raise ArgumentError, "negative offset #{offset} given" if offset && offset < 0
@@ -206,9 +206,13 @@ class File < Object
 
     mode = opts[:mode]
     raise IOError, "not opened for reading" if !opts.key?(:open_args) && mode.is_a?(String) && mode.start_with?("w", "a") && !mode.include?("+")
-    return __read_all(path) if length.nil? && offset.nil?
-
-    __read_at(path, length || -1, offset || 0)
+    data = length.nil? && offset.nil? ? __read_all(path) : __read_at(path, length || -1, offset || 0)
+    enc = opts[:encoding]
+    if enc.is_a?(String) && enc.include?(":")
+      ext, int = enc.split(":", 2)
+      return data.encode(int.to_s, ext.to_s.delete_prefix("BOM|").delete_prefix("bom|"))
+    end
+    data
   end
 
   #: (String, Integer, Integer) -> String

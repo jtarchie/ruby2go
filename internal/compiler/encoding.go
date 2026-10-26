@@ -85,8 +85,8 @@ func (f *fctx) checkEncodingNames(n parser.Node, recv expr, name string, args []
 		}
 		for _, e := range names {
 			u := strings.ToUpper(strings.TrimPrefix(strings.TrimPrefix(e, "BOM|"), "bom|"))
-			if mriEncodings[u] && !rugarooEncodings[u] {
-				f.errorf(n, "encoding %s is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII, ISO-8859-1, UTF-16LE/BE, UTF-32LE/BE, UTF-16 and UTF-32 (decision 136)", e)
+			if mriEncodings[u] && !rugarooEncodings[u] && !xtextEncodings[u] {
+				f.errorf(n, "encoding %s is not supported: rugaroo transcodes UTF-8, ASCII-8BIT, US-ASCII, UTF-16LE/BE, UTF-32LE/BE, UTF-16, UTF-32 and x/text's single-byte tables (ISO-8859-*, Windows-125*, KOI8-*, IBM/CP 437-866, macRoman, macCyrillic; decisions 136, 380)", e)
 			}
 		}
 	}

@@ -103,10 +103,10 @@ class String < Object
   def -@ = frozen? ? self : dup.freeze
 
   #: () -> String
-  def upcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 2, unicode.ToUpper))) }
+  def upcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 2))) }
 
   #: () -> String
-  def downcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 0, unicode.ToLower))) }
+  def downcase = %x{ rbNewStr(self, String(rbCaseMap(string(self), 0))) }
 
   # Titlecase the first character (ǆ -> ǅ, ß -> Ss), downcase the rest.
   #: () -> String
@@ -119,14 +119,10 @@ class String < Object
       return String(rbCapitalizeASCII(s))
     }
     if !utf8.ValidString(s) { // a binary String: ASCII letters only, its other bytes kept (decision 324)
-      return String(rbCaseMap(s[:1], 2, unicode.ToUpper) + rbCaseMap(s[1:], 0, unicode.ToLower))
+      return String(rbCaseMap(s[:1], 2) + rbCaseMap(s[1:], 0))
     }
-    r, n := utf8.DecodeRuneInString(s)
-    title := unicode.ToTitle
-    if r >= 0x1C90 && r <= 0x1CBF { // Georgian Mtavruli: MRI titlecases to Mkhedruli, its lowercase
-      title = unicode.ToLower
-    }
-    return String(rbCaseMap(s[:n], 1, title) + rbCaseMap(s[n:], 0, unicode.ToLower))
+    _, n := utf8.DecodeRuneInString(s)
+    return rbNewStr(self, String(rbCaseMap(s[:n], 1)+rbCaseMap(s[n:], 0))) // one unchanged character would be self
   }
 
   #: () -> String
@@ -456,7 +452,7 @@ class String < Object
   def __squeeze_1(chars) = %x{ String(rbSqueeze(string(self), rbCharSet(string(chars)))) }
 
   #: () -> String
-  def swapcase = %x{ rbNewStr(self, String(rbSwapcase(string(self)))) }
+  def swapcase = %x{ rbNewStr(self, String(rbSwapcase(string(self), false))) }
 
   # One option Symbol (decision 12's arity overloads): :ascii maps ASCII letters only, :turkic adds the dotted/dotless
   # i pairs, :lithuanian is the plain mapping; :fold is downcase's alone. ponytail: two options are not taken.
@@ -464,18 +460,17 @@ class String < Object
   def __upcase_1(opt)
     case __case_opt(opt, false)
     when 1 then __ascii_case(2)
-    when 2 then __turkic(true).upcase
+    when 2 then __case_x(6)
     else upcase
     end
   end
 
-  # ponytail: :fold is upcase then downcase (ß -> ss), not Unicode's CaseFolding table (İ folds to i̇ in MRI).
   #: (Symbol) -> String
   def __downcase_1(opt)
     case __case_opt(opt, true)
     when 1 then __ascii_case(0)
-    when 2 then __turkic(false).downcase
-    when 3 then upcase.downcase
+    when 2 then __case_x(4)
+    when 3 then __case_x(3)
     else downcase
     end
   end
@@ -484,7 +479,7 @@ class String < Object
   def __capitalize_1(opt)
     case __case_opt(opt, false)
     when 1 then empty? ? "" : self[0].to_s.__ascii_case(2) + self[1..].to_s.__ascii_case(0)
-    when 2 then empty? ? "" : self[0].to_s.__turkic(true).capitalize + self[1..].to_s.__turkic(false).downcase
+    when 2 then empty? ? "" : self[0].to_s.__case_x(5) + self[1..].to_s.__case_x(4)
     else capitalize
     end
   end
@@ -504,27 +499,12 @@ class String < Object
   #: (Integer) -> String
   def __ascii_case(mode) = %x{ rbNewStr(self, String(rbASCIICase(string(self), int(mode)))) }
 
-  #: (bool) -> String
-  def __turkic(up) = %x{ String(rbTurkic(string(self), bool(up))) }
+  # x/text caser k (rbCaseX's kinds: 3 fold, 4 lower, 5 title, 6 upper, the last three Turkish).
+  #: (Integer) -> String
+  def __case_x(k) = %x{ rbNewStr(self, String(rbCaseX(int(k), string(self)))) }
 
   #: () -> String
-  def __swap_turkic = %x{
-    return String(strings.Map(func(r rune) rune {
-      switch {
-      case r == 'i':
-        return 'İ'
-      case r == 'I':
-        return 'ı'
-      case r == 'İ':
-        return 'i'
-      case unicode.IsUpper(r):
-        return unicode.ToLower(r)
-      case unicode.IsLower(r):
-        return unicode.ToUpper(r)
-      }
-      return r
-    }, string(self)))
-  }
+  def __swap_turkic = %x{ rbNewStr(self, String(rbSwapcase(string(self), true))) }
 
   # ASCII-only case folding, as MRI's casecmp.
   #: (String) -> Integer
@@ -541,7 +521,14 @@ class String < Object
   }
 
   #: (String) -> bool
-  def casecmp?(other) = %x{ Boolean(strings.EqualFold(string(self), string(other))) }
+  # Unicode's full case folding, as MRI's (ß matches SS; decision 380).
+  def casecmp?(other) = %x{
+    a, b := string(self), string(other)
+    if rbASCII(a) && rbASCII(b) {
+      return Boolean(strings.EqualFold(a, b))
+    }
+    return Boolean(rbCaseX(rbCaseFold, a) == rbCaseX(rbCaseFold, b))
+  }
 
   # Drops the last character; a trailing \r\n goes as one.
   #: () -> String

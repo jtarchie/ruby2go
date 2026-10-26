@@ -413,4 +413,80 @@ module EncodingTests
       assert_equal ["ISO-2022-JP", true, false, true], [e.name, e.dummy?, e.ascii_compatible?, Encoding::ISO2022_JP == e]
     end
   end
+
+  # The single-byte encodings x/text's tables carry, with MRI's corrections (decision 380).
+  class SingleByteEncodingTest < Minitest::Test
+    def test_round_trips
+      s = "Grüße, €5 - ok"
+      w = s.encode("Windows-1252")
+      assert_equal [71, 114, 252, 223, 101, 44, 32, 128, 53, 32, 45, 32, 111, 107], w.bytes
+      assert_equal s, w.encode("UTF-8", "Windows-1252")
+      assert_equal s, s.encode("ISO-8859-15").encode("UTF-8", "ISO-8859-15")
+      assert_equal [240, 210, 201, 215, 197, 212], "Привет".encode("KOI8-R").bytes
+      assert_equal [143, 224, 168, 162, 165, 226], "Привет".encode("IBM866").bytes
+      assert_equal "Привет", "Привет".encode("Windows-1251").encode("UTF-8", "CP1251")
+    end
+
+    def test_mri_tables_where_x_text_differs
+      assert_equal [0x80], "\u0080".encode("ISO-8859-2").bytes # C1 controls map to themselves
+      assert_equal "\u2126", "\xBD".b.encode("UTF-8", "macRoman") # Ohm sign, not omega
+      assert_equal "\u255D", "\xAE".b.encode("UTF-8", "KOI8-U")
+      assert_equal [0xE9, 0xC4], "\uFB1D".encode("Windows-1255").bytes # a presentation form as letter and point
+    end
+
+    def test_errors_as_mri
+      e = assert_raises(Encoding::UndefinedConversionError) { "\x81".b.encode("UTF-8", "Windows-1252") }
+      assert_equal "\"\\x81\" to UTF-8 in conversion from Windows-1252 to UTF-8", e.message
+      assert_equal "WINDOWS-1252", e.source_encoding_name
+      e = assert_raises(Encoding::UndefinedConversionError) { "\u0100".encode("Windows-1252") }
+      assert_equal "U+0100 to WINDOWS-1252 in conversion from UTF-8 to WINDOWS-1252", e.message
+      e = assert_raises(Encoding::UndefinedConversionError) { "€".encode("Windows-1252").encode("ISO-8859-2", "Windows-1252") }
+      assert_equal "U+20AC to ISO-8859-2 in conversion from Windows-1252 to UTF-8 to ISO-8859-2", e.message
+      assert_equal [42, 42, 120], "Ā€x".encode("KOI8-R", undef: :replace, replace: "*").bytes
+    end
+
+    def test_encoding_objects
+      assert_equal Encoding::Windows_1252, Encoding.find("cp1252")
+      assert_equal ["ISO-8859-15", "ISO8859-15"], Encoding.find("ISO8859-15").names
+      assert Encoding::MacRoman.ascii_compatible?
+      assert Encoding.list.include?(Encoding::KOI8_U)
+      assert Encoding.name_list.include?("CP1252")
+      assert_equal "Windows-1252", Encoding.aliases.fetch("CP1252")
+      assert_equal "\xE9".b.bytes, 0xE9.chr("Windows-1252").bytes
+    end
+
+    def test_file_read_transcodes
+      path = "encoding_test_sb.txt"
+      File.write(path, "Grüße\n".encode("Windows-1252"))
+      read = File.read(path, encoding: "Windows-1252:UTF-8")
+      line = File.open(path, "r:CP1252:UTF-8") { |f| f.gets }
+      File.delete(path)
+      assert_equal "Grüße\n", read
+      assert_equal "Grüße\n", line
+    end
+  end
+
+  # Normalization and case maps through x/text, with MRI's choices where x/text's differ (decision 380).
+  class XTextUnicodeTest < Minitest::Test
+    def test_normalize
+      assert_equal [65, 778], "Å".unicode_normalize(:nfd).codepoints
+      assert_equal "fi", "ﬁ".unicode_normalize(:nfkc)
+      assert_equal "\u1e0b\u0323".unicode_normalize(:nfc), "\u1e0d\u0307"
+      assert "café".unicode_normalized?
+      refute "cafe\u0301".unicode_normalized?
+    end
+
+    def test_case_maps
+      assert_equal "σασ οδοσ", "ΣΑΣ ΟΔΟΣ".downcase # MRI applies no final-sigma rule
+      assert_equal "ı̇", "I\u0307".downcase(:turkic)
+      assert_equal "İSTANBUL", "istanbul".upcase(:turkic)
+      assert_equal "ss", "ß".downcase(:fold)
+      assert_equal "Ꭰ", "ꭰ".downcase(:fold) # Cherokee folds to its capitals
+      assert_equal "აბ", "ᲐᲑ".capitalize # a Georgian Mtavruli first letter is lowered
+      assert "ß".casecmp?("SS")
+      assert "Straße".casecmp?("STRASSE")
+      assert "ꭰ".casecmp?("Ꭰ")
+      refute "É".capitalize.equal?("É")
+    end
+  end
 end

@@ -43,7 +43,10 @@ func rbEncCanon(name string) string {
 	if e := rbEncDefaultInternal.Load(); u == "INTERNAL" && e != nil {
 		return e.name
 	}
-	return rbEncAliases[u]
+	if n, ok := rbEncAliases[u]; ok {
+		return n
+	}
+	return rbXEncAliases[u]
 }
 
 // rbEncNameArg is the name an encoding argument gives: a String as is, an Encoding's own.
@@ -90,6 +93,9 @@ func rbDecode1(enc string, b []byte) (r rune, n, st, again int) {
 		return 0, 1, rbDecUndef, 0
 	case "UTF-16LE", "UTF-16BE", "UTF-32LE", "UTF-32BE":
 		return rbDecodeUnits(enc, b)
+	}
+	if r, n, st, again, ok := rbXDecode1(enc, b); ok {
+		return r, n, st, again
 	}
 	panic("rugaroo: no decoder for " + enc)
 }
@@ -212,6 +218,9 @@ func rbEncode1(out []byte, enc string, r rune) ([]byte, bool) {
 		return binary.LittleEndian.AppendUint32(out, uint32(r)), true
 	case "UTF-32BE", "UTF-32":
 		return binary.BigEndian.AppendUint32(out, uint32(r)), true
+	}
+	if o, defined, known := rbXEncode1(out, enc, r); known {
+		return o, defined
 	}
 	panic("rugaroo: no encoder for " + enc)
 }
@@ -448,8 +457,16 @@ func rbEncInvalid(src, dst string, bad, again []byte, incomplete bool) {
 // rbEncUndef raises Encoding::UndefinedConversionError: "X from A to B" when the step that failed is the whole conversion, else "X to B in conversion from A to UTF-8 to C".
 func rbEncUndef(path []string, src, dst, shown, char string) {
 	msg := shown + " from " + src + " to " + dst
-	if len(path) > 2 {
+	_, named := rbXConvName[src]
+	if c, ok := rbXConvName[dst]; ok { // MRI's converter for it goes by another name (WINDOWS-1252), which its message gives
+		path = append(path[:len(path)-1:len(path)-1], c)
+		dst, named = c, true
+	}
+	if len(path) > 2 || named {
 		msg = shown + " to " + dst + " in conversion from " + strings.Join(path, " to ")
+	}
+	if c, ok := rbXConvName[src]; ok { // the error's source_encoding_name is the converter's too
+		src = c
 	}
 	panic(NewEncoding_UndefinedConversionError(Ref(String(msg)), Ref(String(src)), Ref(String(dst)), Ref(String(char))))
 }
@@ -557,7 +574,7 @@ func rbIntChr(n int, enc any) String {
 	if e == "" {
 		panic(NewArgumentError(Ref(String("unknown encoding name - " + name))))
 	}
-	single := e == "ASCII-8BIT" || e == "ISO-8859-1" || e == "US-ASCII"
+	single := e == "ASCII-8BIT" || e == "ISO-8859-1" || e == "US-ASCII" || rbSingleByte[e] != nil
 	switch {
 	case n < 0 || single && n > 0xFF || e == "UTF-8" && n > unicode.MaxRune:
 		panic(NewRangeError(Ref(String(strconv.Itoa(n) + " out of char range"))))

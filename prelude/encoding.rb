@@ -60,14 +60,92 @@ class Encoding < Object
   ISO_2022_JP = __new("ISO-2022-JP", "ISO-2022-JP,ISO2022-JP", false, true) #: Encoding
   ISO2022_JP = ISO_2022_JP #: Encoding
 
-  # MRI's list order, which puts ISO-8859-1 after encodings rugaroo lacks.
-  LIST__ = [ASCII_8BIT, UTF_8, US_ASCII, UTF_16BE, UTF_16LE, UTF_32BE, UTF_32LE, UTF_16, UTF_32, ISO_8859_1] #: Array[Encoding]
+  # BEGIN scripts/gen-encoding-fixes: the x/text encodings (decision 380), MRI's list and names
+  ISO_8859_2 = __new("ISO-8859-2", "ISO-8859-2,ISO8859-2", true, false) #: Encoding
+  ISO8859_2 = ISO_8859_2 #: Encoding
+  ISO_8859_3 = __new("ISO-8859-3", "ISO-8859-3,ISO8859-3", true, false) #: Encoding
+  ISO8859_3 = ISO_8859_3 #: Encoding
+  ISO_8859_4 = __new("ISO-8859-4", "ISO-8859-4,ISO8859-4", true, false) #: Encoding
+  ISO8859_4 = ISO_8859_4 #: Encoding
+  ISO_8859_5 = __new("ISO-8859-5", "ISO-8859-5,ISO8859-5", true, false) #: Encoding
+  ISO8859_5 = ISO_8859_5 #: Encoding
+  ISO_8859_6 = __new("ISO-8859-6", "ISO-8859-6,ISO8859-6", true, false) #: Encoding
+  ISO8859_6 = ISO_8859_6 #: Encoding
+  ISO_8859_7 = __new("ISO-8859-7", "ISO-8859-7,ISO8859-7", true, false) #: Encoding
+  ISO8859_7 = ISO_8859_7 #: Encoding
+  ISO_8859_8 = __new("ISO-8859-8", "ISO-8859-8,ISO8859-8", true, false) #: Encoding
+  ISO8859_8 = ISO_8859_8 #: Encoding
+  ISO_8859_9 = __new("ISO-8859-9", "ISO-8859-9,ISO8859-9", true, false) #: Encoding
+  ISO8859_9 = ISO_8859_9 #: Encoding
+  ISO_8859_10 = __new("ISO-8859-10", "ISO-8859-10,ISO8859-10", true, false) #: Encoding
+  ISO8859_10 = ISO_8859_10 #: Encoding
+  ISO_8859_13 = __new("ISO-8859-13", "ISO-8859-13,ISO8859-13", true, false) #: Encoding
+  ISO8859_13 = ISO_8859_13 #: Encoding
+  ISO_8859_14 = __new("ISO-8859-14", "ISO-8859-14,ISO8859-14", true, false) #: Encoding
+  ISO8859_14 = ISO_8859_14 #: Encoding
+  ISO_8859_15 = __new("ISO-8859-15", "ISO-8859-15,ISO8859-15", true, false) #: Encoding
+  ISO8859_15 = ISO_8859_15 #: Encoding
+  ISO_8859_16 = __new("ISO-8859-16", "ISO-8859-16,ISO8859-16", true, false) #: Encoding
+  ISO8859_16 = ISO_8859_16 #: Encoding
+  KOI8_R = __new("KOI8-R", "KOI8-R,CP878", true, false) #: Encoding
+  CP878 = KOI8_R #: Encoding
+  KOI8_U = __new("KOI8-U", "KOI8-U", true, false) #: Encoding
+  WINDOWS_1250 = __new("Windows-1250", "Windows-1250,CP1250", true, false) #: Encoding
+  CP1250 = WINDOWS_1250 #: Encoding
+  Windows_1250 = WINDOWS_1250 #: Encoding
+  WINDOWS_1251 = __new("Windows-1251", "Windows-1251,CP1251", true, false) #: Encoding
+  CP1251 = WINDOWS_1251 #: Encoding
+  Windows_1251 = WINDOWS_1251 #: Encoding
+  WINDOWS_1252 = __new("Windows-1252", "Windows-1252,CP1252", true, false) #: Encoding
+  CP1252 = WINDOWS_1252 #: Encoding
+  Windows_1252 = WINDOWS_1252 #: Encoding
+  WINDOWS_1253 = __new("Windows-1253", "Windows-1253,CP1253", true, false) #: Encoding
+  CP1253 = WINDOWS_1253 #: Encoding
+  Windows_1253 = WINDOWS_1253 #: Encoding
+  WINDOWS_1254 = __new("Windows-1254", "Windows-1254,CP1254", true, false) #: Encoding
+  CP1254 = WINDOWS_1254 #: Encoding
+  Windows_1254 = WINDOWS_1254 #: Encoding
+  WINDOWS_1257 = __new("Windows-1257", "Windows-1257,CP1257", true, false) #: Encoding
+  CP1257 = WINDOWS_1257 #: Encoding
+  Windows_1257 = WINDOWS_1257 #: Encoding
+  IBM437 = __new("IBM437", "IBM437,CP437", true, false) #: Encoding
+  CP437 = IBM437 #: Encoding
+  CP850 = __new("CP850", "CP850,IBM850", true, false) #: Encoding
+  IBM850 = CP850 #: Encoding
+  IBM852 = __new("IBM852", "IBM852", true, false) #: Encoding
+  IBM855 = __new("IBM855", "IBM855", true, false) #: Encoding
+  IBM860 = __new("IBM860", "IBM860,CP860", true, false) #: Encoding
+  CP860 = IBM860 #: Encoding
+  IBM862 = __new("IBM862", "IBM862,CP862", true, false) #: Encoding
+  CP862 = IBM862 #: Encoding
+  IBM863 = __new("IBM863", "IBM863,CP863", true, false) #: Encoding
+  CP863 = IBM863 #: Encoding
+  IBM865 = __new("IBM865", "IBM865,CP865", true, false) #: Encoding
+  CP865 = IBM865 #: Encoding
+  IBM866 = __new("IBM866", "IBM866,CP866", true, false) #: Encoding
+  CP866 = IBM866 #: Encoding
+  MACCYRILLIC = __new("macCyrillic", "macCyrillic", true, false) #: Encoding
+  MacCyrillic = MACCYRILLIC #: Encoding
+  MACROMAN = __new("macRoman", "macRoman", true, false) #: Encoding
+  MacRoman = MACROMAN #: Encoding
+  WINDOWS_1256 = __new("Windows-1256", "Windows-1256,CP1256", true, false) #: Encoding
+  Windows_1256 = WINDOWS_1256 #: Encoding
+  CP1256 = WINDOWS_1256 #: Encoding
+  WINDOWS_1255 = __new("Windows-1255", "Windows-1255,CP1255", true, false) #: Encoding
+  Windows_1255 = WINDOWS_1255 #: Encoding
+  CP1255 = WINDOWS_1255 #: Encoding
+  WINDOWS_874 = __new("Windows-874", "Windows-874,CP874", true, false) #: Encoding
+  Windows_874 = WINDOWS_874 #: Encoding
+  CP874 = WINDOWS_874 #: Encoding
+  LIST__ = [ASCII_8BIT, UTF_8, US_ASCII, UTF_16BE, UTF_16LE, UTF_32BE, UTF_32LE, UTF_16, UTF_32, ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5, ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10, ISO_8859_13, ISO_8859_14, ISO_8859_15, ISO_8859_16, KOI8_R, KOI8_U, WINDOWS_1250, WINDOWS_1251, WINDOWS_1252, WINDOWS_1253, WINDOWS_1254, WINDOWS_1257, IBM437, CP850, IBM852, IBM855, IBM860, IBM862, IBM863, IBM865, IBM866, MACCYRILLIC, MACROMAN, WINDOWS_1256, WINDOWS_1255, WINDOWS_874] #: Array[Encoding]
+  NAME_LIST__ = %w[ASCII-8BIT UTF-8 US-ASCII UTF-16BE UTF-16LE UTF-32BE UTF-32LE UTF-16 UTF-32 ISO-8859-1 ISO-8859-2 ISO-8859-3 ISO-8859-4 ISO-8859-5 ISO-8859-6 ISO-8859-7 ISO-8859-8 ISO-8859-9 ISO-8859-10 ISO-8859-13 ISO-8859-14 ISO-8859-15 ISO-8859-16 KOI8-R KOI8-U Windows-1250 Windows-1251 Windows-1252 Windows-1253 Windows-1254 Windows-1257 BINARY IBM437 CP437 CP850 IBM850 IBM852 IBM855 IBM860 CP860 IBM862 CP862 IBM863 CP863 IBM865 CP865 IBM866 CP866 macCyrillic macRoman ISO8859-1 ISO8859-2 ISO8859-3 ISO8859-4 ISO8859-5 ISO8859-6 Windows-1256 CP1256 ISO8859-7 ISO8859-8 Windows-1255 CP1255 ISO8859-9 ISO8859-10 Windows-874 CP874 ISO8859-13 ISO8859-14 ISO8859-15 ISO8859-16 CP878 ASCII ANSI_X3.4-1968 646 CP65001 UCS-2BE UCS-4BE UCS-4LE CP1250 CP1251 CP1252 CP1253 CP1254 CP1257 locale external filesystem] #: Array[String]
+  # END scripts/gen-encoding-fixes
 
   #: () -> Array[Encoding]
   def self.list = LIST__.dup
 
   #: () -> Array[String]
-  def self.name_list = LIST__.map(&:name) + %w[BINARY ISO8859-1 ASCII ANSI_X3.4-1968 646 CP65001 UCS-2BE UCS-4BE UCS-4LE locale external filesystem]
+  def self.name_list = NAME_LIST__.dup
 
   #: () -> Hash[String, String]
   def self.aliases

@@ -12,3 +12,5 @@ require (
 require github.com/ebitengine/purego v0.11.2
 
 require github.com/goccy/go-yaml v1.19.2
+
+require golang.org/x/text v0.41.0
