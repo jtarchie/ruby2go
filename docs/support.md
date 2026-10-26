@@ -52,16 +52,16 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-26 (commit f06d141). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
-| `Array` | stable | 595 of 686 (87%) | 529 |  |
+| `Array` | stable | 597 of 689 (87%) | 526 |  |
 | `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
 | `Hash` | stable | 243 of 276 (88%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
-| `String` | stable | 984 of 1,279 (77%) | 1,084 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)). |
+| `String` | stable | 1,002 of 1,305 (77%) | 1,058 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)). |
 | `Symbol` | stable | 83 of 103 (81%) | 75 |  |
-| `Integer` | stable | 180 of 263 (68%) | 335 | 64-bit; see below. |
+| `Integer` | stable | 185 of 265 (70%) | 333 | 64-bit; see below. |
 | `Float` | stable | 149 of 179 (83%) | 82 |  |
 | `Rational`, `Complex` | stable | 144 of 168 (86%) | 158 | Mixed arithmetic coerces as MRI. |
 | `Numeric` | stable | 27 of 53 (51%) | 262 |  |
@@ -71,26 +71,26 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). 
 | `Enumerable` | stable | 159 of 212 (75%) | 279 | Elements with equal keys can come out of `sort_by`, `max_by(n)` and `min_by(n)` in another order than MRI's, whose order depends on the platform's `qsort_r`. |
 | `Enumerator`, `Enumerator::Lazy`, arithmetic sequences | stable | 45 of 68 (66%) | 280 | `next`/`peek`, `Enumerator.new` generators. |
 | `Comparable` | stable | 0 of 46 (0%) | 8 | ruby/spec's fixture class doesn't compile, so every example errors; covered by rugaroo's own tests. |
-| `Regexp`, `MatchData` | stable | 248 of 334 (74%) | 106 | Ruby syntax translated to Go's regexp engines. |
+| `Regexp`, `MatchData` | stable | 250 of 339 (74%) | 101 | Ruby syntax translated to Go's regexp engines. |
 | `Time` | stable | 304 of 382 (80%) | 270 |  |
 | `Random` | stable | 53 of 54 (98%) | 33 | The same sequence as MRI for a given seed. |
 | `Math` | stable | 116 of 117 (99%) | 126 |  |
-| `File`, `Dir`, `FileTest` | stable | 677 of 795 (85%) | 435 |  |
+| `File`, `Dir`, `FileTest` | stable | 683 of 802 (85%) | 428 |  |
 | `File::Stat` | stable | 8 of 105 (8%) | 30 | Partial. |
-| `IO`, `ARGF`, `$stdin` | stable | 357 of 663 (54%) | 872 | `IO.popen`, `system` and backticks run real processes. |
+| `IO`, `ARGF`, `$stdin` | stable | 361 of 576 (63%) | 872 | `IO.popen`, `system` and backticks run real processes. |
 | `ENV` | stable | 75 of 87 (86%) | 106 |  |
-| `Kernel` | stable | 689 of 1,144 (60%) | 752 | No `eval`, `binding` or `load`. |
+| `Kernel` | stable | 690 of 1,146 (60%) | 750 | No `eval`, `binding` or `load`. |
 | `Exception` and its subclasses | stable | 83 of 153 (54%) | 97 |  |
 | `Proc`, `Method`, `UnboundMethod` | stable | 85 of 230 (37%) | 168 |  |
 | `Module`, `Class` | stable | 186 of 323 (58%) | 781 | No `define_method` or runtime reopening in user code. |
 | `BasicObject`, `Object`, `nil`, `true`, `false` | stable | 66 of 114 (58%) | 69 |  |
 | `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 156 of 223 (70%) | 247 | Goroutines and channels. |
 | `Fiber` | stable | 25 of 66 (38%) | 122 |  |
-| `Signal`, `Process` | stable | 35 of 87 (40%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
-| `Marshal` | stable | 28 of 250 (11%) | 102 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
-| `Encoding` | stable | 61 of 105 (58%) | 33 | 60 encodings ([list](#encodings)), no per-String tag ([decision 136](decisions/136.md)). |
+| `Signal`, `Process` | stable | 35 of 79 (44%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
+| `Marshal` | stable | 29 of 255 (11%) | 97 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
+| `Encoding` | stable | 69 of 121 (57%) | 17 | 60 encodings ([list](#encodings)), no per-String tag ([decision 136](decisions/136.md)). |
 | `Warning`, `GC`, `ObjectSpace` | stable | 15 of 22 (68%) | 93 | The parts a program can observe; no heap walking. |
-| `Encoding::Converter` | not supported | 0 of 139 (0%) | 4 | Use `String#encode`. |
+| `Encoding::Converter` | not supported | 0 of 142 (0%) | 1 | Use `String#encode`. |
 | `Binding`, `TracePoint`, refinements | not supported | 0 of 58 (0%) | 104 | Need an interpreter at run time. |
 | `IO::Buffer`, `ObjectSpace::WeakMap`/`WeakKeyMap`, `Enumerator::Chain`/`Product` | not supported | 0 of 254 (0%) | 43 | Not written yet; `WeakRef` (`require "weakref"`) covers weak references. |
 
