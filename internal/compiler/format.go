@@ -153,6 +153,12 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 			p.explain(f, os.Stderr)
 		}
 	}
+	if !env.NoSpecialize {
+		err = specializeSelf(fset, f, labels)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if p != nil {
 		keepPCs(f)
 	}
