@@ -118,3 +118,134 @@ No workload gets faster without the checks beyond run-to-run noise (the
 a branch the CPU predicts, so `raise` stays the default at no measurable cost
 and `wrap` is for programs whose arithmetic is meant to wrap (hashes,
 checksums, random number generators), not for speed.
+
+## spinel's benchmark suite
+
+spinel ships its own benchmarks: 74 programs in
+[`benchmark/`](https://github.com/matz/spinel/tree/master/benchmark), mostly
+micro-benchmarks of one VM path (ivar reads and writes, sends, allocation,
+loops) plus a few small applications (a template engine, a CSV pipeline, a
+Lisp). Neither compiler was tuned against the other's suite, so this is the
+away game for rugaroo, as `benchmarks/` is for spinel. Same machine and
+versions as above, spinel `baea3e28`, 2026-10-26, median of 5 runs:
+
+```sh
+S=/path/to/spinel
+INT_OVERFLOW=promote:bm_bigint_fib,bm_pidigits RUNS=5 MARKDOWN=1 BENCH_DIR=$S/benchmark \
+  SPINEL=$S/spinel COLS=ruby,yjit,rugaroo,spinel scripts/benchmark
+```
+
+`bm_bigint_fib` and `bm_pidigits` build with `--int-overflow=promote` in both
+compilers: spinel promotes their growing locals in its default mode too, and
+the files carry no `# int_overflow:` line (#117). Every other row is the
+default `raise`.
+
+| workload | MRI | MRI+YJIT | rugaroo | spinel |
+|---|---:|---:|---:|---:|
+| bm_ackermann | 0.49s | 0.12s | 0.074s | 0.068s |
+| bm_ao_render | 2.69s | 1.15s | 0.16s | 0.11s |
+| bm_attr_accessor | 1.60s | 1.58s | 0.069s | 0.054s |
+| bm_bigint_fib | 0.053s | 0.055s | 0.006s | 0.004s |
+| bm_binary_trees | 0.081s | 0.067s | 0.010s | 0.008s |
+| bm_csv_build | 1.88s | 1.70s | - | 0.39s |
+| bm_csv_process | 0.80s | 0.69s | 0.33s | 0.24s |
+| bm_fannkuch | 0.059s | 0.060s | - | 0.005s |
+| bm_fasta | 0.059s | 0.058s | - | 0.006s |
+| bm_fib | 0.61s | 0.15s | 0.035s | 0.029s |
+| bm_gcbench | 3.17s | 1.65s | 0.24s | 0.29s |
+| bm_getivar | 0.18s | 0.19s | 0.013s | 0.005s |
+| bm_getivar_module | 1.23s | 1.24s | - | 0.005s |
+| bm_handle_read_loop | 3.04s | 1.93s | - | 0.19s |
+| bm_handle_readonly_param | 2.61s | 1.22s | - | 0.072s |
+| bm_histogram | 18.65s | 18.61s | - | 0.40s |
+| bm_huffman | 0.11s | 0.11s | - | 0.012s |
+| bm_inline | 1.72s | 1.16s | 0.099s | 0.032s |
+| bm_io_wordcount | 0.13s | 0.12s | 0.057s | 0.034s |
+| bm_jekyll_lite | 0.054s | 0.055s | - | 0.005s |
+| bm_json_parse | 0.41s | 0.30s | - | 0.058s |
+| bm_keyword_args | 0.26s | 0.25s | 0.016s | 0.005s |
+| bm_life | 0.86s | 0.41s | 0.16s | 0.030s |
+| bm_linked_list | 0.35s | 0.28s | 0.037s | 0.045s |
+| bm_loops_times | 1.07s | 0.36s | 0.19s | 0.038s |
+| bm_mandel_term | 0.072s | 0.064s | 0.014s | 0.006s |
+| bm_matmul | 0.40s | 0.40s | - | 0.012s |
+| bm_micro_lisp | 0.054s | 0.068s | - | 0.006s |
+| bm_nbody | 0.060s | 0.067s | 0.007s | 0.005s |
+| bm_nested_loop | 0.65s | 0.64s | 0.018s | 0.005s |
+| bm_nil_recv_loop | 1.32s | 0.28s | 0.069s | 0.069s |
+| bm_nqueens | 0.32s | 0.32s | - | 0.013s |
+| bm_object_new | 0.17s | 0.17s | 0.007s | 0.005s |
+| bm_object_new_init | 0.25s | 0.19s | 0.008s | 0.006s |
+| bm_object_new_no_escape | 0.30s | 0.18s | 0.009s | 0.005s |
+| bm_partial_sums | 1.27s | 1.28s | 0.43s | 0.025s |
+| bm_pidigits | 0.054s | 0.055s | 0.007s | 0.005s |
+| bm_point_in_polygon | 1.01s | 0.35s | 0.18s | 0.059s |
+| bm_poly_cells | 0.053s | 0.055s | - | 0.006s |
+| bm_range_each | 22.47s | 14.67s | 2.15s | 0.44s |
+| bm_rbs_items | 0.23s | 0.19s | 0.013s | 0.026s |
+| bm_rbs_items_control | 0.20s | 0.22s | 0.012s | 0.032s |
+| bm_rbtree | 0.51s | 0.18s | 0.025s | 0.031s |
+| bm_reader_index | 11.54s | 12.55s | - | 0.23s |
+| bm_ruby_xor | 1.44s | 0.38s | - | 0.088s |
+| bm_send_bmethod | 0.31s | 0.29s | - | 0.005s |
+| bm_send_cfunc_block | 1.08s | 1.08s | 0.031s | 0.17s |
+| bm_send_rubyfunc_block | 1.79s | 1.07s | 0.091s | 0.070s |
+| bm_setivar | 0.29s | 0.29s | 0.016s | 0.014s |
+| bm_setivar_object | 0.29s | 0.30s | 0.017s | 0.014s |
+| bm_setivar_young | 0.29s | 0.29s | 0.016s | 0.014s |
+| bm_sieve | 0.64s | 0.65s | 0.099s | 0.021s |
+| bm_sinatra_mini | 0.052s | 0.052s | - | 0.004s |
+| bm_so_lists | 0.42s | 0.26s | 0.34s | 0.030s |
+| bm_so_mandelbrot | 1.66s | 1.58s | 0.12s | 0.033s |
+| bm_sort_by | 0.10s | 0.083s | 0.019s | 0.016s |
+| bm_spectral_norm | 0.11s | 0.087s | - | 0.007s |
+| bm_splay | 0.22s | 0.12s | 0.015s | 0.020s |
+| bm_stark_field | 1.24s | 0.92s | - | 0.10s |
+| bm_str_concat | 0.057s | 0.056s | - | 0.005s |
+| bm_str_readonly_param | 0.056s | 0.057s | - | 0.009s |
+| bm_structaref | 0.24s | 0.24s | 0.014s | 0.008s |
+| bm_structaset | 0.45s | 0.46s | 0.064s | 0.016s |
+| bm_sudoku | 0.18s | 0.11s | - | 0.009s |
+| bm_tak | 0.55s | 0.14s | 0.036s | 0.027s |
+| bm_tarai | 0.45s | 0.13s | 0.030s | 0.022s |
+| bm_template | 0.92s | 0.71s | - | 0.15s |
+| bm_template_render | 1.39s | 1.21s | - | 0.28s |
+| bm_threaded_render | 6.40s | 6.00s | - | 0.58s |
+| bm_throw | 0.29s | 0.24s | - | 0.006s |
+| bm_tree_walker | 2.12s | 0.47s | - | 0.18s |
+| bm_tree_walker_frames | 0.40s | 0.13s | - | 0.043s |
+| bm_wordfreq | 0.058s | 0.059s | 0.010s | 0.006s |
+| total (rows run) | 106.60s | 82.87s | 5.36s | 5.09s |
+| vs MRI | 1.0x | 1.3x | 9.5x | 21.0x |
+
+rugaroo compiles 45 of the 74 unmodified. On the 44 rows both ran, the
+totals are MRI 51.2s, YJIT 33.5s, rugaroo 5.36s (9.5x MRI), spinel 2.19s
+(23.3x MRI). The footer's ratios above are over different row sets, so spinel's
+21.0x there includes the 29 programs rugaroo does not build.
+
+- **rugaroo ahead of spinel:** `bm_send_cfunc_block` (5.5x), `bm_rbs_items*`
+  (2-2.6x), `bm_splay`, `bm_rbtree`, `bm_linked_list`, `bm_gcbench`: the
+  allocation and block-call rows, as in the main table.
+- **Furthest behind:** `bm_partial_sums` (17x spinel: Float `**`,
+  `Math.sin`/`cos`/`sqrt` in a `while` loop), `bm_so_lists` (11x: Array
+  `shift`/`push`/`pop` and whole-Array `==`; the only row near MRI),
+  then `bm_life`, `bm_loops_times`, `bm_range_each`, `bm_sieve` (4.7-5.3x):
+  tight loops over Integers, Ranges and Arrays. These rows have not been
+  profiled yet.
+- Rows under 10 ms are mostly process start-up for both binaries.
+
+Why the other 29 do not compile, by the first error each reports:
+
+| cause | programs | |
+|---|---:|---|
+| a possibly-nil value used as non-nil (`Array#[]`, `Hash#[]` (decision 5) and friends return `T?`) | 17 | fannkuch, fasta, handle_readonly_param, histogram, jekyll_lite, json_parse, matmul, nqueens, reader_index, ruby_xor, sinatra_mini, spectral_norm, stark_field, str_readonly_param, sudoku, template, tree_walker |
+| `String#<<`: Strings are immutable (decision 58) | 6 | csv_build, handle_read_loop, huffman, str_concat, template_render, threaded_render |
+| a recursive method with no typed non-recursive path (decision 355) | 2 | micro_lisp, tree_walker_frames |
+| an ivar with no assignment rugaroo can type | 1 | getivar_module |
+| an ivar assigned several types (`Array \| Integer \| String`) | 1 | poly_cells |
+| `define_method` | 1 | send_bmethod |
+| `return` out of a block (decision 4) | 1 | throw |
+
+spinel compiles and runs all 74. The nil row is the design choice that costs
+rugaroo the most programs here: it makes a program prove `a[i]` is not `nil`
+before using it as the element type.

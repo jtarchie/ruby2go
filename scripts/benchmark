@@ -10,6 +10,8 @@
 #   COLS=ruby,rugaroo scripts/benchmark    # some columns (ruby is always the reference)
 #   RUGAROO=/path/to/rugaroo SPINEL=/path/to/spinel scripts/benchmark
 #   RUNS=9 MARKDOWN=1 scripts/benchmark  # the README table
+#   BENCH_DIR=/path/to/spinel/benchmark COLS=ruby,yjit,rugaroo,spinel scripts/benchmark  # spinel's own suite
+#   INT_OVERFLOW=promote:bm_pidigits,bm_bigint_fib ...   # --int-overflow for both compilers (all, or the named), where the file has no magic comment
 #
 # A workload with a `# trace: why` line builds with `rugaroo build -trace`, as an example with one does. spinel
 # (github.com/matz/spinel) is used when SPINEL names it or it is on PATH; crystal and go when on PATH.
@@ -57,6 +59,12 @@ def quiet(*cmd, **opts)
   status.success?
 end
 
+# INT_OVERFLOW=mode for every workload, or mode:name,name for some
+def int_overflow(name)
+  mode, names = ENV.fetch("INT_OVERFLOW", "").split(":", 2)
+  mode if mode && !mode.empty? && (names.nil? || names.split(",").include?(name))
+end
+
 def rugaroo_tool(tmp)
   return ENV["RUGAROO"] if ENV["RUGAROO"]
 
@@ -78,13 +86,14 @@ def builders(tmp)
       rugaroo ||= rugaroo_tool(tmp)
       bin = File.join(dir, "rugaroo_#{name}")
       trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
-      quiet(rugaroo, "build", *trace, "-o", bin, src, chdir: ROOT) ? [bin] : nil
+      mode = (m = int_overflow(name)) ? ["--int-overflow=#{m}"] : [] # a suite without the magic comment
+      quiet(rugaroo, "build", *trace, *mode, "-o", bin, src, chdir: ROOT) ? [bin] : nil
     end,
     "spinel" => lambda do |name, src, dir|
       next nil unless spinel
 
       bin = File.join(dir, "spinel_#{name}")
-      mode = File.read(src)[/^# int_overflow: (\S+)/, 1] # rugaroo reads the magic comment itself; spinel takes the flag
+      mode = File.read(src)[/^# int_overflow: (\S+)/, 1] || int_overflow(name) # rugaroo reads the magic comment itself; spinel takes the flag
       quiet(spinel, src, *(mode ? ["--int-overflow=#{mode}"] : []), "-o", bin, chdir: ROOT) ? [bin] : nil
     end,
     "crystal" => lambda do |name, _src, dir|
@@ -105,7 +114,8 @@ end
 
 cols = ENV.fetch("COLS", ALL.join(",")).split(",")
 cols.unshift("ruby") unless cols.include?("ruby")
-wanted = ARGV.empty? ? Dir[File.join(ROOT, "benchmarks/*.rb")] : ARGV.map { |n| File.join(ROOT, "benchmarks/#{File.basename(n, ".rb")}.rb") }
+bench = File.expand_path(ENV.fetch("BENCH_DIR", File.join(ROOT, "benchmarks"))) # another suite: spinel's benchmark/ (BENCHMARKS.md)
+wanted = ARGV.empty? ? Dir[File.join(bench, "*.rb")] : ARGV.map { |n| File.join(bench, "#{File.basename(n, ".rb")}.rb") }
 
 rows = {}
 Dir.mktmpdir("rugaroo-bench-") do |dir|
