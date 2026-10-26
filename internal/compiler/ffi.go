@@ -37,8 +37,23 @@ func ffiLibrary(f *File, cls *Class) bool {
 	return false
 }
 
-// ffiType resolves a literal type Symbol through the module's typedefs to its Fiddle code.
-func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) int {
+// ffiParam is one literal type: its Fiddle code and, for a callback or enum, the kind and the type's name.
+type ffiParam struct {
+	code int
+	kind string
+	name string
+}
+
+// ffiType resolves a literal type (a Symbol through the module's typedefs, or Struct.by_ref) to its Fiddle code.
+func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) ffiParam {
+	if call, ok := n.(*parser.CallNode); ok && call.Receiver != nil {
+		switch call.Name {
+		case "by_ref":
+			return ffiParam{code: 1, kind: "ptr"}
+		case "by_value":
+			c.errorf(f, at, "FFI::Library#attach_function: a struct by value is not supported (decision 375)")
+		}
+	}
 	s, ok := n.(*parser.SymbolNode)
 	if !ok {
 		c.errorf(f, at, "FFI::Library#attach_function needs literal Symbol types, read at compile time (decision 375)")
@@ -51,6 +66,12 @@ func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) i
 		}
 		name = next
 	}
+	switch c.ffiNamed[cls][name] {
+	case "callback":
+		return ffiParam{code: 1, kind: "callback", name: name}
+	case "enum":
+		return ffiParam{code: 4, kind: "enum", name: name}
+	}
 	if name == "varargs" {
 		c.errorf(f, at, "FFI::Library#attach_function: a varargs C function cannot be called (purego has no C varargs; decision 326)")
 	}
@@ -58,12 +79,15 @@ func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) i
 	if !ok {
 		c.errorf(f, at, "FFI::Library#attach_function: unknown type :%s", name)
 	}
-	return code
+	if code == 1 {
+		return ffiParam{code: 1, kind: "ptr"}
+	}
+	return ffiParam{code: code}
 }
 
 // collectFFICall reads a literal typedef/attach_function in a Library module; the call itself still runs at load.
 func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class) {
-	if n.Name != "attach_function" && n.Name != "typedef" || f.isPrelude() || !ffiLibrary(f, cls) {
+	if n.Name != "attach_function" && n.Name != "typedef" && n.Name != "callback" && n.Name != "enum" || f.isPrelude() || !ffiLibrary(f, cls) {
 		return
 	}
 	args := callArgs(n)
@@ -73,12 +97,26 @@ func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *p
 	if c.ffiAliases[cls] == nil {
 		c.ffiAliases[cls] = map[string]string{}
 	}
+	if c.ffiNamed == nil {
+		c.ffiNamed = map[*Class]map[string]string{}
+	}
+	if c.ffiNamed[cls] == nil {
+		c.ffiNamed[cls] = map[string]string{}
+	}
 	sym := func(i int) string {
 		s, ok := args[i].(*parser.SymbolNode)
 		if !ok {
 			c.errorf(f, n, "FFI::Library#%s needs literal Symbols, read at compile time (decision 375)", n.Name)
 		}
 		return s.Unescaped.Value
+	}
+	if n.Name == "callback" || n.Name == "enum" {
+		if len(args) >= 1 {
+			if s, ok := args[0].(*parser.SymbolNode); ok {
+				c.ffiNamed[cls][s.Unescaped.Value] = n.Name
+			}
+		}
+		return
 	}
 	if n.Name == "typedef" {
 		if len(args) == 2 {
@@ -103,29 +141,50 @@ func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *p
 	}
 	params := make([]string, 0, len(arr.Elements))
 	types := make([]string, 0, len(arr.Elements))
+	exprs := make([]string, 0, len(arr.Elements))
 	for i, el := range arr.Elements {
-		c.ffiType(f, cls, n, el)
-		params = append(params, fmt.Sprintf("a%d", i))
+		p := fmt.Sprintf("a%d", i)
+		arg := p
+		switch t := c.ffiType(f, cls, n, el); t.kind {
+		case "ptr":
+			arg = fmt.Sprintf("::FFI.__ptr(%s)", p)
+		case "callback":
+			arg = fmt.Sprintf("__ffi_cb(%s, %s)", ":"+t.name, p)
+		case "enum":
+			arg = fmt.Sprintf("__ffi_enum_in(%s, %s)", ":"+t.name, p)
+		}
+		params = append(params, p)
+		exprs = append(exprs, arg)
 		types = append(types, "untyped")
 	}
 	if len(params) > 8 {
 		c.errorf(f, n, "FFI::Library#attach_function: more than 8 arguments are stack-passed (decision 326)")
 	}
-	ret := c.ffiType(f, cls, n, rest[1])
+	rp := c.ffiType(f, cls, n, rest[1])
+	ret := rp.code
 	if c.fiddleSlots == nil {
 		c.fiddleSlots = map[*Class]int{}
 	}
 	fn := fmt.Sprintf("__ffi_func_at(%d, %q)", c.fiddleSlots[cls], name)
 	c.fiddleSlots[cls]++
-	call := fmt.Sprintf("%s.call(%s)", fn, strings.Join(params, ", "))
+	call := fmt.Sprintf("%s.call(%s)", fn, strings.Join(exprs, ", "))
 	switch n := len(params); {
 	case n >= 1 && n <= 3:
-		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, params...), ", "))
+		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, exprs...), ", "))
 	case n <= 8:
-		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(n)}, params...), ", "))
+		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(n)}, exprs...), ", "))
+	}
+	retType := ffiRubyType(ret)
+	switch {
+	case rp.kind == "ptr":
+		call, retType = "::FFI::Pointer.__wrap("+call+")", "FFI::Pointer"
+	case rp.kind == "enum":
+		call, retType = fmt.Sprintf("__ffi_enum_out(:%s, %s)", rp.name, call), "untyped"
+	case rp.kind == "callback":
+		c.errorf(f, n, "FFI::Library#attach_function: a callback cannot be a return type (decision 375)")
 	}
 	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = %s\n",
-		strings.Join(types, ", "), ffiRubyType(ret), name, strings.Join(params, ", "), call)
+		strings.Join(types, ", "), retType, name, strings.Join(params, ", "), call)
 	sf, def := c.synthDef(ctx, f, n, "FFI function", src, synthOpt{Origin: f.synthOrigin(), NoPath: true})
 	c.addMethod(sf, cls, def, false, scope)
 }

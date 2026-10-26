@@ -60,6 +60,7 @@ type Compiler struct {
 	beginStmts            map[*File][]parser.Node      // BEGIN { } bodies, run first in their file
 	regexpVars            map[string]string            // literal → its variable, to share one per pattern
 	fiddleAliases         map[*Class]map[string]string // Fiddle::Importer typealiases read so far, per module (decision 326)
+	ffiNamed              map[*Class]map[string]string // FFI::Library callbacks ("callback") and enums ("enum") read so far, per module
 	ffiAliases            map[*Class]map[string]string // FFI::Library typedefs read so far, per module (decision 375)
 	fiddleSlots           map[*Class]int               // extern/bind methods synthesized so far, per module: each one's __fiddle_func_at slot (decision 329)
 	needRxAlt             bool                         // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
