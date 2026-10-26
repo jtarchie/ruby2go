@@ -44,7 +44,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 |---|---|---|
 | `eval`, `instance_eval(string)`, `load`, code built at run time | The binary has no interpreter; everything is compiled ahead of time. | Write the code out. Gems that `eval` at load time can still compile (see [gems](#gems--experimental)). |
 | `define_method`, `define_singleton_method` in your own code | Methods must be known at compile time. | `def`, or `method_missing` with a signature ([29](../examples/29_method_missing/main.rb)). A gem's load-time `define_method` is supported ([decision 198](decisions/198.md)). |
-| In-place String mutation (`<<`, `upcase!`, `gsub!`, `[]=`) | A `String` is an immutable Go string value ([decision 58](decisions/058.md)). | Build new strings (`s += "x"`, `s = s.upcase`) or use `StringIO`. |
+| In-place String mutation (`upcase!`, `gsub!`, `[]=`; `<<` on a String something else may hold) | A `String` is an immutable Go string value ([decision 58](decisions/058.md)). `s << x` and `s.concat(x)` do work on a local the compiler proves nothing else holds: built fresh, not a parameter, not stored or passed before its last append ([decision 382](decisions/382.md)); the error names what breaks the proof. | Build new strings (`s += "x"`, `s = s.upcase`), append to a local and pass it on after the last `<<` ([129](../examples/130_string_append/main.rb)), or use `StringIO`. |
 | The 34 encodings listed under [Encodings](#encodings) (ISO-2022-JP, Big5-HKSCS, macGreek, ...) | x/text has no table for them, or they keep state between characters ([decision 380](decisions/380.md)). | Convert at the edges with another tool. |
 | `break v`; a `break` out of a block whose call's value is used; `return` from a block stored as a closure; `next v` where the value is thrown away (`while`, `each`) | Go closures cannot unwind their caller ([decision 4](decisions/004.md)). | Restructure: plain `break`/`return` work in `while` and in blocks that run inline (like `each`). |
 | Inline overloaded signatures (`#\|`) | | Declare overloads in a `.rbs` file ([117](../examples/117_rbs_overloads/main.rb)). |
@@ -59,7 +59,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-25 (commit 0a81e2c). 
 | `Array` | stable | 595 of 686 (87%) | 529 |  |
 | `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
 | `Hash` | stable | 243 of 276 (88%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
-| `String` | stable | 984 of 1,279 (77%) | 1,084 | Immutable: no in-place mutation ([decision 58](decisions/058.md)). |
+| `String` | stable | 984 of 1,279 (77%) | 1,084 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)). |
 | `Symbol` | stable | 83 of 103 (81%) | 75 |  |
 | `Integer` | stable | 180 of 263 (68%) | 335 | 64-bit; see below. |
 | `Float` | stable | 149 of 179 (83%) | 82 |  |

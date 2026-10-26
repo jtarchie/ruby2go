@@ -123,8 +123,9 @@ script you can run with `ruby`.
 rugaroo compiles a *closed world*: every class and method must be visible when
 the program compiles, and the binary has no interpreter. So there is no `eval`
 and no `define_method` in your own code (a gem's load-time `define_method` is
-compiled in). Strings are immutable Go strings, so `<<` and `upcase!` are
-compile errors; build new strings or use `StringIO`. Integers are 64-bit and
+compiled in). Strings are immutable Go strings, so `upcase!` is a compile
+error and `<<` works only on a local nothing else holds (built fresh, not
+stored or passed before its last append); build new strings or use `StringIO`. Integers are 64-bit and
 raise `RangeError` on overflow unless you opt into `--int-overflow=wrap` or
 `promote`. `Hash#[]` returns `T?`, so typed code checks for nil or uses
 `fetch`. Each of these trade-offs has a numbered decision in the

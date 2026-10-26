@@ -199,7 +199,7 @@ default `raise`.
 | bm_spectral_norm | 0.11s | 0.087s | - | 0.007s |
 | bm_splay | 0.22s | 0.12s | 0.015s | 0.020s |
 | bm_stark_field | 1.24s | 0.92s | - | 0.10s |
-| bm_str_concat | 0.057s | 0.056s | - | 0.005s |
+| bm_str_concat | 0.057s | 0.056s | 0.006s | 0.005s |
 | bm_str_readonly_param | 0.056s | 0.057s | - | 0.009s |
 | bm_structaref | 0.24s | 0.24s | 0.014s | 0.008s |
 | bm_structaset | 0.45s | 0.46s | 0.064s | 0.016s |
@@ -208,7 +208,7 @@ default `raise`.
 | bm_tarai | 0.45s | 0.13s | 0.030s | 0.022s |
 | bm_template | 0.92s | 0.71s | - | 0.15s |
 | bm_template_render | 1.39s | 1.21s | - | 0.28s |
-| bm_threaded_render | 6.40s | 6.00s | - | 0.58s |
+| bm_threaded_render | 6.40s | 6.00s | TBD | 0.58s |
 | bm_throw | 0.29s | 0.24s | - | 0.006s |
 | bm_tree_walker | 2.12s | 0.47s | - | 0.18s |
 | bm_tree_walker_frames | 0.40s | 0.13s | - | 0.043s |
