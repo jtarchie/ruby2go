@@ -2087,4 +2087,45 @@ module StringTests
       assert_equal "Hello world", "hELLO WORLD".capitalize
     end
   end
+
+  # Case maps (full swapcase, binary Strings), interpolation identity and MRI's float digits (decision 379).
+  class StringMRIQuirksTest < Minitest::Test
+    def test_swapcase_full_mapping
+      assert_equal "SSTRASSE", "ßtraße".swapcase
+      assert_equal "dŽ lJ", "ǅ ǈ".swapcase
+      assert_equal "ʼN FFI i̇", "ŉ ﬃ İ".swapcase
+      assert_equal "ⅰⅱ ⓐⓑ Ⅰ", "ⅠⅡ ⒶⒷ ⅰ".swapcase
+      assert_equal "ἀΙ", "ᾈ".swapcase
+      assert_equal "σασ aBc", "ΣΑΣ AbC".swapcase
+    end
+
+    def test_binary_case_maps_keep_bytes
+      b = "abc\xff\xc3\xa9".b
+      assert_equal "ABC\xFF\xC3\xA9".b.bytes, b.upcase.bytes
+      assert_equal "abc\xFF\xC3\xA9".b.bytes, b.downcase.bytes
+      assert_equal "Abc\xFF\xC3\xA9".b.bytes, b.capitalize.bytes
+      assert_equal "ABC\xFF\xC3\xA9".b.bytes, b.swapcase.bytes
+      assert_equal "\xFFabc".b.bytes, "\xffABC".b.capitalize.bytes
+    end
+
+    def test_interpolation_is_a_new_string
+      a = "x".freeze
+      e = ""
+      s = "#{a}#{e}"
+      refute s.frozen?
+      refute s.equal?(a)
+      refute "#{e}#{a}#{e}".equal?(a)
+      refute "lit#{e}".equal?("lit#{e}")
+      assert_equal "ab", "a#{e}b"
+    end
+
+    def test_float_digits_as_mri
+      assert_equal %w[2.68 1.00 1.02 1.04 1.12 8.34 0.12 2.50], [2.675, 1.005, 1.015, 1.035, 1.115, 8.345, 0.125, 2.5].map { |f| "%.2f" % f }
+      assert_equal "0.2 0.2 0.4", format("%.1f %.1f %.1f", 0.15, 0.25, 0.35)
+      assert_equal "2 2 0", format("%.0f %.0f %.0f", 1.5, 2.5, 0.5)
+      assert_equal "2.68e+00|609.830|6.1e+02", format("%.2e|%g|%.2g", 2.675, 609.8305, 609.8305)
+      fmt = "%08.3f|%+.2f|% .1e|%#.0f|%-9.2g|"
+      assert_equal "0002.675|+2.68| 2.7e+00|3.|2.7      |", format(fmt, 2.675, 2.675, 2.675, 2.675, 2.675)
+    end
+  end
 end

@@ -149,6 +149,20 @@ func (f *fctx) genInterp(n *parser.InterpolatedStringNode) expr {
 	if len(parts) == 1 { // "#{x}" is a new String, never x or x.to_s itself
 		return expr{code: "rbStrClone(" + parts[0] + ")", typ: f.cls("String")}
 	}
+	// Go's + hands back its lone non-empty operand itself, so `"#{a}#{""}"` would be a (and frozen with it): two
+	// non-empty literal parts can never be alone, one is checked for by identity, and none goes through rbConcat
+	var lits []string
+	for _, p := range parts {
+		if strings.HasPrefix(p, `"`) && p != `""` {
+			lits = append(lits, p)
+		}
+	}
+	switch len(lits) {
+	case 0:
+		return expr{code: "rbConcat(" + strings.Join(parts, ", ") + ")", typ: f.cls("String")}
+	case 1:
+		return expr{code: "rbNewStr(" + lits[0] + ", " + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
+	}
 	return expr{code: "(" + strings.Join(parts, " + ") + ")", typ: f.cls("String")}
 }
 

@@ -120,7 +120,7 @@ func rbFormatFast(spec string, verb byte, v any) (string, bool) {
 		if !hasPrec {
 			prec = 6
 		}
-		s = strconv.FormatFloat(f, 'f', prec, 64)
+		s = rbFmtFloatSpec(f, 'f', "%."+strconv.Itoa(prec)) // MRI's digits (decision 379)
 	case 's':
 		s = string(rbToS(v))
 		if n := utf8.RuneCountInString(s); n < width {

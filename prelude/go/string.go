@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"unicode"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -68,6 +69,18 @@ func rbCaseMap(s string, i int, f func(rune) rune) string {
 	if out, ok := rbCaseMapASCII(s, i == 0); ok {
 		return out
 	}
+	if !utf8.ValidString(s) { // a binary String: ASCII letters only, its other bytes kept (decision 324)
+		lower := i == 0
+		return rbASCIIMapBytes(s, func(c byte) byte {
+			switch {
+			case lower && c >= 'A' && c <= 'Z':
+				return c + ('a' - 'A')
+			case !lower && c >= 'a' && c <= 'z':
+				return c - ('a' - 'A')
+			}
+			return c
+		})
+	}
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
@@ -109,6 +122,69 @@ func rbCaseMapASCII(s string, lower bool) (string, bool) {
 		return s, true
 	}
 	return b.String(), true
+}
+
+// rbTitleSwap is swapcase of a titlecase letter (Unicode Lt), MRI's: the digraph's first part lowered, its second
+// uppered (ǅ is dŽ). Go's unicode package has no such mapping; generated from MRI 4.0.7.
+var rbTitleSwap = map[rune]string{
+	0x1C5: "dŽ", 0x1C8: "lJ", 0x1CB: "nJ", 0x1F2: "dZ",
+	0x1F88: "ἀΙ", 0x1F89: "ἁΙ", 0x1F8A: "ἂΙ", 0x1F8B: "ἃΙ",
+	0x1F8C: "ἄΙ", 0x1F8D: "ἅΙ", 0x1F8E: "ἆΙ", 0x1F8F: "ἇΙ",
+	0x1F98: "ἠΙ", 0x1F99: "ἡΙ", 0x1F9A: "ἢΙ", 0x1F9B: "ἣΙ",
+	0x1F9C: "ἤΙ", 0x1F9D: "ἥΙ", 0x1F9E: "ἦΙ", 0x1F9F: "ἧΙ",
+	0x1FA8: "ὠΙ", 0x1FA9: "ὡΙ", 0x1FAA: "ὢΙ", 0x1FAB: "ὣΙ",
+	0x1FAC: "ὤΙ", 0x1FAD: "ὥΙ", 0x1FAE: "ὦΙ", 0x1FAF: "ὧΙ",
+	0x1FBC: "αΙ", 0x1FCC: "ηΙ", 0x1FFC: "ωΙ",
+}
+
+// rbSwapcase is String#swapcase: full case mapping (ß is SS, İ is i̇), titlecase digraphs split, ASCII only for a
+// String that is not UTF-8 (a binary String's other bytes are kept, decision 324).
+func rbSwapcase(s string) string {
+	if !utf8.ValidString(s) {
+		return rbASCIIMapBytes(s, func(c byte) byte {
+			switch {
+			case c >= 'a' && c <= 'z':
+				return c - ('a' - 'A')
+			case c >= 'A' && c <= 'Z':
+				return c + ('a' - 'A')
+			}
+			return c
+		})
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if m, ok := rbTitleSwap[r]; ok {
+			b.WriteString(m)
+			continue
+		}
+		// by mapping, not category: Ⅰ (Nl), Ⓐ (So) and U+0345 (Mn) have case pairs too
+		if lo := unicode.ToLower(r); lo != r {
+			if m, ok := rbSpecialCasing[r]; ok {
+				b.WriteString(m[0])
+			} else {
+				b.WriteRune(lo)
+			}
+			continue
+		}
+		if m, ok := rbSpecialCasing[r]; ok {
+			b.WriteString(m[2])
+			continue
+		}
+		b.WriteRune(unicode.ToUpper(r))
+	}
+	return b.String()
+}
+
+// rbASCIIMapBytes maps each byte of s through f: the case maps of a String that is not UTF-8, which MRI applies to
+// ASCII letters only, keeping every other byte (U+FFFD would replace them as runes).
+func rbASCIIMapBytes(s string, f func(byte) byte) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := range len(s) {
+		b.WriteByte(f(s[i]))
+	}
+	return b.String()
 }
 
 // rbASCII reports s is all ASCII, where a character is a byte.

@@ -118,6 +118,9 @@ class String < Object
     if rbASCII(s) {
       return String(rbCapitalizeASCII(s))
     }
+    if !utf8.ValidString(s) { // a binary String: ASCII letters only, its other bytes kept (decision 324)
+      return String(rbCaseMap(s[:1], 2, unicode.ToUpper) + rbCaseMap(s[1:], 0, unicode.ToLower))
+    }
     r, n := utf8.DecodeRuneInString(s)
     title := unicode.ToTitle
     if r >= 0x1C90 && r <= 0x1CBF { // Georgian Mtavruli: MRI titlecases to Mkhedruli, its lowercase
@@ -453,17 +456,7 @@ class String < Object
   def __squeeze_1(chars) = %x{ String(rbSqueeze(string(self), rbCharSet(string(chars)))) }
 
   #: () -> String
-  def swapcase = %x{
-    return String(strings.Map(func(r rune) rune {
-      switch {
-      case unicode.IsUpper(r):
-        return unicode.ToLower(r)
-      case unicode.IsLower(r):
-        return unicode.ToUpper(r)
-      }
-      return r
-    }, string(self)))
-  }
+  def swapcase = %x{ rbNewStr(self, String(rbSwapcase(string(self)))) }
 
   # One option Symbol (decision 12's arity overloads): :ascii maps ASCII letters only, :turkic adds the dotted/dotless
   # i pairs, :lithuanian is the plain mapping; :fold is downcase's alone. ponytail: two options are not taken.
