@@ -1333,6 +1333,87 @@ p h.peek, acc.total, pg.show, IvCycLevar.get
 	}
 }
 
+// TestTupleStackTyped checks decision 386: Arrays used as stacks of tuples (array_test.rb ArrayTupleStackTest) compile with no dynamic call.
+func TestTupleStackTyped(t *testing.T) {
+	t.Parallel()
+	src := []byte(`class Node
+  attr_reader :name, :kids
+
+  def initialize(name, kids = [])
+    @name = name
+    @kids = kids
+  end
+end
+
+class Parser
+  def initialize
+    @stack = []
+    @tree = Node.new("root")
+    @depth = 0
+  end
+
+  def enter(el)
+    @stack.push([@tree, @depth])
+    @tree = el
+    @depth += 1
+  end
+
+  def leave
+    top = @stack.pop
+    @tree, @depth = top if top
+  end
+
+  def path = @stack.map { |t, d| "#{t.name}:#{d}" } + ["#{@tree.name}:#{@depth}"]
+end
+
+def mixed(root)
+  stack = []
+  stack << [root, :open]
+  out = []
+  until stack.empty?
+    node, state = stack.pop
+    out << "#{state}:#{node.name}"
+    stack << [node, :close] if state == :open && node.name == "never"
+    node.kids.reverse_each { |k| stack << [k, :open] }
+  end
+  out
+end
+
+def pairs(n)
+  stack = [[n, 0]]
+  out = []
+  until stack.empty?
+    k, d = stack.pop
+    out << "#{k}@#{d}"
+    stack.push([k - 1, d + 1]) if k > 0
+  end
+  out
+end
+
+def triples(root)
+  stack = [[root, "", 0]]
+  out = []
+  while (top = stack.pop)
+    node, path, depth = top
+    out << "#{path}/#{node.name}:#{depth}"
+    node.kids.each { |k| stack.push([k, path + "/" + node.name, depth + 1]) }
+  end
+  out
+end
+
+tree = Node.new("a", [Node.new("b", [Node.new("d")]), Node.new("c")])
+p mixed(tree), pairs(3), triples(tree)
+pr = Parser.new
+pr.enter(Node.new("a"))
+pr.leave
+p pr.path
+`)
+	out, warns, err := Compile(t.Context(), "main.rb", src)
+	if err != nil || slices.ContainsFunc(warns, func(w string) bool { return strings.Contains(w, "dynamic call") }) || bytes.Contains(out, []byte("rbDyn")) {
+		t.Fatalf("err = %v, warnings %v", err, warns)
+	}
+}
+
 // TestSpinelBenchmarksTyped guards spinel's unmodified benchmarks against falling back to dynamic calls (decisions 355-357).
 func TestSpinelBenchmarksTyped(t *testing.T) {
 	t.Parallel()

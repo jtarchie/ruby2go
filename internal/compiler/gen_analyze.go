@@ -115,11 +115,14 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 	var order []localKey
 	for range 8 {
 		add := f.emptyRefinements()
+		maps.DeleteFunc(add, func(k localKey, t Type) bool { r, ok := refined[k]; return ok && typeEq(r, t) }) // a seeded local's same widening again
 		if len(add) == 0 {
 			break
 		}
 		for _, k := range slices.SortedFunc(maps.Keys(add), func(a, b localKey) int { return strings.Compare(a.name, b.name) }) {
-			order = append(order, k)
+			if _, ok := refined[k]; !ok {
+				order = append(order, k)
+			}
 			refined[k] = add[k]
 		}
 		restore()
@@ -236,6 +239,11 @@ func (f *fctx) emptyRefinements() map[localKey]Type {
 		if t := refineContainer(li.typ, li.open, li.elems); t != nil {
 			out[k] = t
 		}
+		if r, ok := f.refined[k]; ok && li.open {
+			if t := rewiden(r, li.elems); t != nil {
+				out[k] = t
+			}
+		}
 		if t := f.refineTemplate(li); t != nil {
 			out[k] = t
 		}
@@ -252,17 +260,44 @@ func widenContainer(t Type, elems [2][]Type) Type {
 	}
 	args := make([]Type, len(c.Args))
 	for i := range args {
-		if len(elems[i]) == 0 || slices.ContainsFunc(elems[i], holdsAny) {
+		typed := slices.DeleteFunc(slices.Clone(elems[i]), holdsAny) // as refineContainer: untyped evidence only because the local is (decision 386)
+		if len(typed) == 0 {
 			return nil
 		}
-		j := elems[i][0]
-		for _, e := range elems[i][1:] {
+		j := typed[0]
+		for _, e := range typed[1:] {
 			j = joinUnion(j, e)
 		}
 		if holdsAny(j) {
 			return nil
 		}
 		args[i] = j
+	}
+	return TClass{C: c.C, Args: args}
+}
+
+// rewiden is an already refined `[]`/`{}` joined with what its refined run put in it, or nil when that adds nothing
+// typed: `node, state = stack.pop` re-pushed as `[node, :close]` makes Array[[Node, Symbol]] Array[[Node?, Symbol]].
+func rewiden(t Type, elems [2][]Type) Type {
+	c, ok := t.(TClass)
+	if !ok || len(c.Args) == 0 || len(c.Args) > 2 {
+		return nil
+	}
+	args := slices.Clone(c.Args)
+	for i := range args {
+		for _, e := range elems[i] {
+			if holdsAny(e) {
+				continue
+			}
+			j, ok := join(args[i], e)
+			if !ok || holdsAny(j) || isUnion(j) && !isUnion(args[i]) {
+				return nil
+			}
+			args[i] = j
+		}
+	}
+	if slices.EqualFunc(args, c.Args, typeEq) {
+		return nil
 	}
 	return TClass{C: c.C, Args: args}
 }

@@ -2809,3 +2809,91 @@ module ArrayTests
     end
   end
 end
+
+# Arrays used as stacks of tuples (decision 386).
+module ArrayTests
+  class StackNode
+    attr_reader :name, :kids
+
+    def initialize(name, kids = [])
+      @name = name
+      @kids = kids
+    end
+  end
+
+  class StackParser
+    def initialize
+      @stack = []
+      @tree = StackNode.new("root")
+      @depth = 0
+    end
+
+    def enter(el)
+      @stack.push([@tree, @depth])
+      @tree = el
+      @depth += 1
+    end
+
+    def leave
+      top = @stack.pop
+      @tree, @depth = top if top
+    end
+
+    def path = @stack.map { |t, d| "#{t.name}:#{d}" } + ["#{@tree.name}:#{@depth}"]
+  end
+
+  class ArrayTupleStackTest < Minitest::Test
+    def stack_tree
+      StackNode.new("a", [StackNode.new("b", [StackNode.new("d")]), StackNode.new("c")])
+    end
+
+    def test_local_stack_of_mixed_tuples
+      stack = []
+      stack << [stack_tree, :open]
+      out = []
+      until stack.empty?
+        node, state = stack.pop
+        out << "#{state}:#{node.name}"
+        stack << [node, :close] if state == :open && node.kids.empty? && node.name == "never"
+        node.kids.reverse_each { |k| stack << [k, :open] }
+      end
+      assert_equal ["open:a", "open:b", "open:d", "open:c"], out
+    end
+
+    def test_seeded_stack_of_pairs
+      stack = [[3, 0]]
+      out = []
+      until stack.empty?
+        k, d = stack.pop
+        out << "#{k}@#{d}"
+        stack.push([k - 1, d + 1]) if k > 0
+      end
+      assert_equal ["3@0", "2@1", "1@2", "0@3"], out
+    end
+
+    def test_seeded_stack_of_triples
+      stack = [[stack_tree, "", 0]]
+      out = []
+      while (top = stack.pop)
+        node, path, depth = top
+        out << "#{path}/#{node.name}:#{depth}"
+        node.kids.each { |k| stack.push([k, path + "/" + node.name, depth + 1]) }
+      end
+      assert_equal ["/a:0", "/a/c:1", "/a/b:1", "/a/b/d:2"], out
+      t, s = [[stack_tree, "x"]].last
+      assert_equal ["a", 1], [t.name, s.size]
+    end
+
+    def test_ivar_stack_of_tuples
+      pr = StackParser.new
+      pr.enter(StackNode.new("a"))
+      pr.enter(StackNode.new("b"))
+      assert_equal ["root:0", "a:1", "b:2"], pr.path
+      pr.leave
+      assert_equal ["root:0", "a:1"], pr.path
+      pr.leave
+      pr.leave
+      assert_equal ["root:0"], pr.path
+    end
+  end
+end

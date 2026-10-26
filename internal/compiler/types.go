@@ -461,6 +461,9 @@ func join(a, b Type) (Type, bool) {
 // joinClasses is join for two different non-nil, typed values: their
 // nearest common class, else their union.
 func joinClasses(a, b Type) (Type, bool) {
+	if t, ok := joinTuples(a, b); ok {
+		return t, true
+	}
 	// Methods of different signatures mix as Method[untyped] (decision 141).
 	if ka, _, _ := methodFn(a); ka != "" && classOf(a) == classOf(b) {
 		return TClass{C: classOf(a), Args: []Type{TAny{}}}, true
@@ -487,6 +490,24 @@ func joinClasses(a, b Type) (Type, bool) {
 		return unionOf(a, b), true
 	}
 	return nil, false
+}
+
+// joinTuples: a re-pushed popped `[node?, :close]` and `[node, :open]` are one `[Node?, Symbol]`, not two unions members of one Go type (decision 386).
+func joinTuples(a, b Type) (Type, bool) {
+	ta, ok1 := a.(TTuple)
+	tb, ok2 := b.(TTuple)
+	if !ok1 || !ok2 || len(ta.Elems) != len(tb.Elems) {
+		return nil, false
+	}
+	out := make([]Type, len(ta.Elems))
+	for i := range out {
+		j, ok := join(ta.Elems[i], tb.Elems[i])
+		if !ok || isAny(j) || isUnion(stripOpt(j)) && !isUnion(stripOpt(ta.Elems[i])) && !isUnion(stripOpt(tb.Elems[i])) {
+			return nil, false
+		}
+		out[i] = j
+	}
+	return TTuple{Elems: out}, true
 }
 
 func isUnion(t Type) bool { _, ok := t.(TUnion); return ok }
