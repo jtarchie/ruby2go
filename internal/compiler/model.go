@@ -88,6 +88,13 @@ type ivarDecl struct {
 	scope []*Class
 }
 
+// classBodyLit is a user class body's unannotated `@x = <scalar literal>`: the class object's ivar, typed by the
+// literal when no method's write typed it (decision 383).
+type classBodyLit struct {
+	ivarDecl
+	cls *Class
+}
+
 // constRef is a constant expression to resolve once every class is known.
 type constRef struct {
 	node  parser.Node

@@ -47,6 +47,14 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	decl := val.typ
 	if ann != nil {
 		val, decl = f.annotatedIvarValue(n, val, ann)
+	} else if val.provisional { // bottom until converged (decision 383): a round's untyped call result neither declares nor widens the ivar
+		iv := f.c.findIvar(f.owner, n.Name)
+		if iv == nil && f.discover {
+			return val
+		}
+		if iv != nil {
+			decl = iv.Type
+		}
 	}
 	f.unnarrow(attrNarrowKey(strings.TrimPrefix(n.Name, "@")))
 	f.unnarrow(ivarNarrowKey(n.Name))
@@ -63,7 +71,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	if !fitsValue(val, iv.Type) && f.lenient() && sameButUntyped(val.typ, stripOpt(iv.Type)) { // so does a gem's Array[untyped] (Homebrew's `@deps = graph.tsort_with_cycles { ... } - [@cask]`, decision 374)
 		val = expr{code: f.coerce(n, val, stripOpt(iv.Type)), typ: stripOpt(iv.Type)}
 	}
-	if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
+	if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) && !val.provisional { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
 		f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 	}
 	code := f.ivarCode(iv)

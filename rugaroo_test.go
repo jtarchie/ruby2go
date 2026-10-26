@@ -1307,6 +1307,32 @@ p h.pop
 	}
 }
 
+// TestIvarCyclesTyped checks decision 383's typing, which minitest cannot see: an ivar typed only through a call whose
+// parameter it types, and a class body's unannotated `@levar = 1`, compile with no dynamic call.
+func TestIvarCyclesTyped(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("testdata", "test", "infer_test.rb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := bytes.Index(src, []byte("  class IvCycNode"))
+	to := bytes.Index(src, []byte("  class IvarCycleTest"))
+	if from < 0 || to < from {
+		t.Fatal("infer_test.rb: IvCyc classes not found")
+	}
+	prog := append(append([]byte(nil), src[from:to]...), `h = IvCycHeap.new
+[5, 3, 8].each { |x| h.push(x) }
+acc = IvCycAcc.new
+[1, 2, 3].each { |x| acc.add(x) }
+pg = IvCycPing.new
+3.times { |i| pg.step(i) }
+p h.peek, acc.total, pg.show, IvCycLevar.get
+`...)
+	out, warns, err := Compile(t.Context(), "main.rb", prog)
+	if err != nil || slices.ContainsFunc(warns, func(w string) bool { return strings.Contains(w, "dynamic call") || strings.Contains(w, "untyped") }) || bytes.Contains(out, []byte("rbDyn")) {
+		t.Fatalf("err = %v, warnings %v", err, warns)
+	}
+}
+
 // TestSpinelBenchmarksTyped guards spinel's unmodified benchmarks against falling back to dynamic calls (decisions 355-357).
 func TestSpinelBenchmarksTyped(t *testing.T) {
 	t.Parallel()

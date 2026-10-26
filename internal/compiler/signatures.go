@@ -368,6 +368,7 @@ func (c *Compiler) inferRet(m *Method) {
 		// inherited signature this is (decision 233)
 		ret, m.retWhy = TAny{}, "abstract (raises)"
 	}
+	ts = c.roundBottomReturns(m, ts)
 	for i, t := range ts {
 		if isVoid(t) {
 			t = TNil{}
@@ -396,6 +397,33 @@ func (c *Compiler) inferRet(m *Method) {
 	}
 	m.Ret = ret
 	m.roundRet = c.awaitsParams(m, ret)
+}
+
+// roundBottomReturns leaves a round's untyped returns out of m's join when a typed one remains and m has a parameter not
+// typed from use: `def meld(a, b) = a.nil? ? b : a` returns b's Node, so `@root = meld(@root, n)` types @root and through it
+// a, where the untyped `a` would poison both for good (decision 383; 307's lift does this for a branch's value). The final
+// compile joins every return as before. A parameter still untyped when the rounds converge never justified the drop
+// (liquid's `slice_collection(collection, ...)`, whose `[]` would type every caller's segment): updateInference stops it.
+func (c *Compiler) roundBottomReturns(m *Method, ts []Type) []Type {
+	if !c.round || !slices.ContainsFunc(ts, func(t Type) bool { return !holdsAny(t) }) || !slices.ContainsFunc(ts, holdsAny) {
+		return ts
+	}
+	var keys []pendingKey
+	for _, p := range m.Params {
+		if p.Pending != "" && isAny(p.Type) && (c.infer == nil || !c.infer.noDrop[p.Pending]) {
+			keys = append(keys, p.Pending)
+		}
+	}
+	if len(keys) == 0 {
+		return ts
+	}
+	if c.roundDrops == nil {
+		c.roundDrops = map[pendingKey]bool{}
+	}
+	for _, k := range keys {
+		c.roundDrops[k] = true
+	}
+	return slices.DeleteFunc(slices.Clone(ts), holdsAny)
 }
 
 // inferRecursive: as spinel does, a recursive call's unknown value drops out of the first join, then the join is iterated to a fixpoint (decision 355).

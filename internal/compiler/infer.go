@@ -48,6 +48,7 @@ type inference struct {
 	types   map[pendingKey]Type
 	noUnion map[pendingKey]bool   // parameters whose union type broke their method's body: joined without unions from then on (decision 150)
 	none    map[pendingKey]bool   // pending in the last round and typed by no call: a seeded compile reports them without rounds
+	noDrop  map[pendingKey]bool   // still untyped when rounds converged with its method's untyped returns dropped: no longer dropped (decision 383)
 	from    map[pendingKey]string // the first call each type came from, file:line, for a mismatch's message
 	changed bool
 }
@@ -780,6 +781,16 @@ func (c *Compiler) updateInference(inf *inference) {
 	for k := range c.pendingSeen {
 		if _, ok := next[k]; !ok {
 			inf.none[k] = true
+		}
+	}
+	if !inf.changed { // converged with a parameter whose method's untyped returns a round dropped still untyped: the drop
+		for k := range c.roundDrops { // was never justified, so the next rounds join that method's returns honestly (decision 383)
+			if inf.none[k] {
+				if inf.noDrop == nil {
+					inf.noDrop = map[pendingKey]bool{}
+				}
+				inf.noDrop[k], inf.changed = true, true
+			}
 		}
 	}
 	if c.env.InferDebug {

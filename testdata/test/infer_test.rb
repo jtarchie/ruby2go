@@ -526,4 +526,91 @@ module InferTests
       assert_equal CyclePair.new(3, "xy"), pr
     end
   end
+
+  # Decision 383: an ivar typed through a call whose parameter it types (`@root = meld(@root, n)`), and a class body's
+  # unannotated `@levar = 1`.
+  class IvCycNode
+    attr_accessor :val, :child
+
+    def initialize(val)
+      @val = val
+      @child = nil
+    end
+  end
+
+  class IvCycHeap
+    def initialize
+      @root = nil
+    end
+
+    def push(v)
+      @root = meld(@root, IvCycNode.new(v))
+    end
+
+    def meld(a, b)
+      return b if a.nil?
+
+      if b.val < a.val
+        b.child = a
+        b
+      else
+        a.child = b
+        a
+      end
+    end
+
+    def peek = @root&.val
+  end
+
+  class IvCycAcc
+    def initialize
+      @total = nil
+    end
+
+    def add(x) = @total = combine(@total, x)
+    def combine(t, x) = t.nil? ? x : t + x
+    def total = @total
+  end
+
+  class IvCycPing
+    def initialize
+      @a = nil
+      @b = nil
+    end
+
+    def step(x)
+      @a = left(@b, x)
+      @b = right(@a)
+    end
+
+    def left(b, x) = b.nil? ? x : b + x
+    def right(a) = a * 2
+    def show = [@a, @b]
+  end
+
+  module IvCycLevar
+    @levar = 3
+
+    def self.get = @levar + 1
+  end
+
+  class IvarCycleTest < Minitest::Test
+    def test_ivar_typed_through_its_own_call
+      h = IvCycHeap.new
+      assert_nil h.peek
+      [5, 3, 8].each { |x| h.push(x) }
+      assert_equal 3, h.peek
+      acc = IvCycAcc.new
+      assert_nil acc.total
+      [1, 2, 3].each { |x| acc.add(x) }
+      assert_equal 6, acc.total
+      pg = IvCycPing.new
+      3.times { |i| pg.step(i) }
+      assert_equal [4, 8], pg.show
+    end
+
+    def test_class_body_literal_ivar
+      assert_equal 4, IvCycLevar.get
+    end
+  end
 end

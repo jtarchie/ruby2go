@@ -725,6 +725,10 @@ func (c *Compiler) classBodyIvar(f *File, cls *Class, stmt parser.Node, scope []
 	}
 	ann := f.trailingAnnotation(n)
 	if ann == "" {
+		if lit := literalRBS(n.Value); lit != "" && !c.gemFile(f) { // what discovery leaves untyped (decision 383)
+			t, _ := rbs.ParseType(lit)
+			c.classBodyLits = append(c.classBodyLits, classBodyLit{ivarDecl{name: n.Name, rbs: t, line: f.line(n.Location.StartOffset), scope: scope}, cls})
+		}
 		return
 	}
 	t, err := rbs.ParseType(ann)
@@ -732,6 +736,23 @@ func (c *Compiler) classBodyIvar(f *File, cls *Class, stmt parser.Node, scope []
 		c.errorf(f, n, "%v", err)
 	}
 	cls.ivarDecls = append(cls.ivarDecls, ivarDecl{name: "self." + n.Name, rbs: t, line: f.line(n.Location.StartOffset), scope: scope})
+}
+
+// literalRBS is the type a scalar literal spells, "" for anything else.
+func literalRBS(n parser.Node) string {
+	switch n.(type) {
+	case *parser.IntegerNode:
+		return "Integer"
+	case *parser.FloatNode:
+		return "Float"
+	case *parser.StringNode:
+		return "String"
+	case *parser.SymbolNode:
+		return "Symbol"
+	case *parser.TrueNode, *parser.FalseNode:
+		return "bool"
+	}
+	return ""
 }
 
 // singletonOtherCall is any other call in a `class << self` body: a gem's call on a receiver runs where the body loads

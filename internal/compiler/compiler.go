@@ -75,6 +75,7 @@ type Compiler struct {
 	verbatim              []verbatim
 	mainStmts             []parser.Node
 	classStmts            []*classStmt     // class/module body statements that run at load time (decision 166)
+	classBodyLits         []classBodyLit   // unannotated class-body `@x = 1`s, declared after discovery if still untyped (decision 383)
 	bodyGroup             *classStmt       // collecting a class body with locals: its statements, as one unit (decision 170)
 	mainFile              *File            // the first user file: $0, and the generated header
 	userFiles             []*File          // in load order
@@ -130,6 +131,7 @@ type Compiler struct {
 	env         envConfig                 // the RUGAROO_* environment, read when this compile started
 	uses        map[pendingKey][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[pendingKey]bool       // this round's untyped parameter keys
+	roundDrops  map[pendingKey]bool       // this round's untyped parameters whose method's untyped returns were dropped (decision 383)
 }
 
 // dynState: dispatchers, wrappers and forwarders for calls on untyped values (dynamic*.go, dispatch.go).

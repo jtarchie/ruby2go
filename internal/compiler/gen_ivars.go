@@ -176,6 +176,11 @@ func (c *Compiler) discoverIvars() {
 			}
 		}
 	}
+	for _, d := range c.classBodyLits {
+		if k := d.cls.meta; k != nil && c.findIvar(k, d.name) == nil {
+			c.declareIvar(k, d.name, c.resolveType(d.rbs, typeScope{class: d.cls, lex: d.scope, srcPos: srcPos{d.cls.File, d.line}}), d.cls.File, d.line)
+		}
+	}
 	for _, g := range c.gemNilIvars { // only ever nil in what is compiled (a gem's pruned writes, decision 169; a user's nil-only ivar, 183)
 		if c.findIvar(g.cls, g.name) == nil {
 			c.warnAt(g.srcPos, "instance variable %s is only ever nil, so it is untyped (`# @rbs %s: T` for static calls; decision 183)", g.name, g.name)
