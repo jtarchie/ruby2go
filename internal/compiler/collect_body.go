@@ -515,6 +515,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 			c.collectSpecForm(ctx, f, cls, n, scope)
 			return true
 		}
+		c.collectFFICall(ctx, f, cls, n, scope)    // Library's attach_function/typedef: the call still runs at load (decision 375)
 		c.collectFiddleCall(ctx, f, cls, n, scope) // Importer's extern/bind/typealias: the call still runs at load
 		return c.selfExtendCall(f, cls, n)
 	}
