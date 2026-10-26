@@ -2810,7 +2810,7 @@ module ArrayTests
   end
 end
 
-# Arrays used as stacks of tuples (decision 386).
+# Arrays used as stacks of tuples (decision 384).
 module ArrayTests
   class StackNode
     attr_reader :name, :kids

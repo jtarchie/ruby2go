@@ -338,7 +338,7 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 		return code
 	}
 	// Go instantiations are invariant: Array[Integer] where
-	// Array[untyped] (or back, or Array[Numeric]: decision 387) is expected is a converted copy.
+	// Array[untyped] (or back, or Array[Numeric]: decision 385) is expected is a converted copy.
 	if converts(to) && (sameButUntyped(e.typ, to) || widerInstance(e.typ, to)) && f.c.goType(e.typ) != f.c.goType(to) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}

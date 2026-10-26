@@ -492,7 +492,7 @@ func joinClasses(a, b Type) (Type, bool) {
 	return nil, false
 }
 
-// joinTuples: a re-pushed popped `[node?, :close]` and `[node, :open]` are one `[Node?, Symbol]`, not two unions members of one Go type (decision 386).
+// joinTuples: a re-pushed popped `[node?, :close]` and `[node, :open]` are one `[Node?, Symbol]`, not two unions members of one Go type (decision 384).
 func joinTuples(a, b Type) (Type, bool) {
 	ta, ok1 := a.(TTuple)
 	tb, ok2 := b.(TTuple)

@@ -1333,7 +1333,7 @@ p h.peek, acc.total, pg.show, IvCycLevar.get
 	}
 }
 
-// TestTupleStackTyped checks decision 386: Arrays used as stacks of tuples (array_test.rb ArrayTupleStackTest) compile with no dynamic call.
+// TestTupleStackTyped checks decision 384: Arrays used as stacks of tuples (array_test.rb ArrayTupleStackTest) compile with no dynamic call.
 func TestTupleStackTyped(t *testing.T) {
 	t.Parallel()
 	src := []byte(`class Node
@@ -1433,7 +1433,7 @@ func TestSpinelBenchmarksTyped(t *testing.T) {
 // TestPairingHeapGemTyped compiles benchmarks/pairing_heap.rb, the unmodified gem with decrease_key (an alias a generic
 // subclass makes of its parent's method): its node links stay static as decision 307 left them. Two regressions did not show in
 // TestNilLinksTyped: a gem parameter's untyped use in an early round counted as a kind (decision 331), and a subclass instance
-// discovered before its parent's declared @root untyped (decision 345). Each left ~45 rbDyn calls; NodeVisitor's 5 `stack.pop` sites typed by decision 386.
+// discovered before its parent's declared @root untyped (decision 345). Each left ~45 rbDyn calls; NodeVisitor's 5 `stack.pop` sites typed by decision 384.
 func TestPairingHeapGemTyped(t *testing.T) {
 	requireToolchain(t)
 	t.Parallel()

@@ -792,7 +792,7 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 	f.patIf(pm, "bool("+resp.code+")", noResp, func() { then(anyS) })
 }
 
-// unionShapeMember: the one member answering method gets a typed match; several (or maybe a subclass) stay untyped (decision 387).
+// unionShapeMember: the one member answering method gets a typed match; several (or maybe a subclass) stay untyped (decision 385).
 func (f *fctx) unionShapeMember(u TUnion, method string) (Type, bool) {
 	var found Type
 	for _, m := range u.Members {

@@ -547,7 +547,7 @@ module UnionTests
   end
 end
 
-# Decision 387: decision 150's follow-ups (#123).
+# Decision 385: decision 150's follow-ups (#123).
 #: (Array[Numeric]) -> Numeric
 def union_numeric_sum(xs) = xs.sum
 

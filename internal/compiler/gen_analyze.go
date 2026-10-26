@@ -260,7 +260,7 @@ func widenContainer(t Type, elems [2][]Type) Type {
 	}
 	args := make([]Type, len(c.Args))
 	for i := range args {
-		typed := slices.DeleteFunc(slices.Clone(elems[i]), holdsAny) // as refineContainer: untyped evidence only because the local is (decision 386)
+		typed := slices.DeleteFunc(slices.Clone(elems[i]), holdsAny) // as refineContainer: untyped evidence only because the local is (decision 384)
 		if len(typed) == 0 {
 			return nil
 		}
