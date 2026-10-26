@@ -193,8 +193,9 @@ func rbExtname(path string) string {
 // only matched by a dot), `**/` for any depth of non-hidden directories,
 // `{a,b}` alternatives expanded in order, and a trailing `/` for
 // directories only. Each directory's entries are visited in sorted order,
-// a match before its subtree, as MRI's sort: true default gives.
-func rbGlob(pattern string) []string {
+// a match before its subtree, as MRI's sort: true default gives. flags may
+// hold File::FNM_DOTMATCH: wildcards and `**` take dot entries too.
+func rbGlob(pattern string, flags int) []string {
 	if strings.IndexByte(pattern, 0) >= 0 {
 		panic(NewArgumentError(Ref(String("nul-separated glob pattern is deprecated"))))
 	}
@@ -213,10 +214,13 @@ func rbGlob(pattern string) []string {
 				segs[i] = "*" // `a/**` is `a/*`
 			}
 		}
-		rbGlobWalk(dir, prefix, segs, &out)
+		rbGlobWalk(dir, prefix, segs, flags&rbFnmDotmatch, &out)
 	}
 	return out
 }
+
+// rbGlobDeep marks a walk that `**` recursed into, where MRI's DOTMATCH `*` no longer matches `.`.
+const rbGlobDeep = 1 << 16
 
 // rbBraces expands the first top-level {a,b} of p, recursively.
 func rbBraces(p string) []string {
@@ -266,19 +270,19 @@ func rbBraces(p string) []string {
 	return []string{p}
 }
 
-func rbGlobMatch(seg, name string) bool {
-	if strings.HasPrefix(name, ".") && !strings.HasPrefix(seg, ".") {
+func rbGlobMatch(seg, name string, flags int) bool {
+	if strings.HasPrefix(name, ".") && !strings.HasPrefix(seg, ".") && flags&rbFnmDotmatch == 0 {
 		return false
 	}
 	ok, _ := filepath.Match(seg, name)
 	return ok
 }
 
-func rbGlobWalk(dir, prefix string, segs []string, out *[]string) {
+func rbGlobWalk(dir, prefix string, segs []string, flags int, out *[]string) {
 	seg, rest := segs[0], segs[1:]
 	if seg == "" {
 		if len(rest) > 0 { // `a//b`: MRI keeps the doubled slash
-			rbGlobWalk(dir, prefix+"/", rest, out)
+			rbGlobWalk(dir, prefix+"/", rest, flags, out)
 			return
 		}
 		*out = append(*out, prefix) // a trailing slash: dir itself, already known to be one
@@ -290,15 +294,19 @@ func rbGlobWalk(dir, prefix string, segs []string, out *[]string) {
 		if err != nil {
 			return
 		}
-		rbGlobStep(p, prefix+seg, fi.IsDir(), rest, out)
+		rbGlobStep(p, prefix+seg, fi.IsDir(), rest, flags, out)
 		return
 	}
 	es, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	if seg != "**" && strings.HasPrefix(seg, ".") && rbGlobMatch(seg, ".") { // a dot pattern matches `.` (never `..`), as MRI 3.1+
-		rbGlobStep(dir, prefix+".", true, rest, out)
+	dotSelf := flags&rbFnmDotmatch != 0 && flags&rbGlobDeep == 0 && len(rest) == 0
+	if seg != "**" && (strings.HasPrefix(seg, ".") || dotSelf) && rbGlobMatch(seg, ".", flags) { // a dot pattern matches `.` (never `..`), as MRI 3.1+; DOTMATCH's last `*` too, short of `**`'s depth
+		rbGlobStep(dir, prefix+".", true, rest, flags, out)
+	}
+	if seg == "**" && flags&rbFnmDotmatch != 0 && flags&rbGlobDeep == 0 && len(rest) == 1 && rbGlobMatch(rest[0], ".", flags) {
+		*out = append(*out, prefix+".") // `a/**/*` with DOTMATCH: a/. itself, at zero depth only
 	}
 	for _, e := range es { // ReadDir sorts by name
 		name := e.Name()
@@ -309,28 +317,29 @@ func rbGlobWalk(dir, prefix string, segs []string, out *[]string) {
 		}
 		plainDir := fi.IsDir() && e.Type()&fs.ModeSymlink == 0 // `**` neither lists nor enters a symlink to a directory, as MRI
 		if seg == "**" {
-			if rbGlobMatch(rest[0], name) || rest[0] == "" && !strings.HasPrefix(name, ".") {
+			hidden := strings.HasPrefix(name, ".") && flags&rbFnmDotmatch == 0
+			if rbGlobMatch(rest[0], name, flags) || rest[0] == "" && !hidden {
 				if rest[0] == "" {
 					if plainDir {
 						*out = append(*out, prefix+name+"/")
 					}
 				} else {
-					rbGlobStep(p, prefix+name, fi.IsDir(), rest[1:], out)
+					rbGlobStep(p, prefix+name, fi.IsDir(), rest[1:], flags&^rbGlobDeep, out)
 				}
 			}
-			if plainDir && !strings.HasPrefix(name, ".") {
-				rbGlobWalk(p, prefix+name+"/", segs, out)
+			if plainDir && !hidden {
+				rbGlobWalk(p, prefix+name+"/", segs, flags|rbGlobDeep, out)
 			}
 			continue
 		}
-		if rbGlobMatch(seg, name) {
-			rbGlobStep(p, prefix+name, fi.IsDir(), rest, out)
+		if rbGlobMatch(seg, name, flags) {
+			rbGlobStep(p, prefix+name, fi.IsDir(), rest, flags&^rbGlobDeep, out)
 		}
 	}
 }
 
 // rbGlobStep continues past a matched entry: emit it, or descend.
-func rbGlobStep(p, shown string, isDir bool, rest []string, out *[]string) {
+func rbGlobStep(p, shown string, isDir bool, rest []string, flags int, out *[]string) {
 	switch {
 	case len(rest) == 0:
 		*out = append(*out, shown)
@@ -338,7 +347,7 @@ func rbGlobStep(p, shown string, isDir bool, rest []string, out *[]string) {
 		if len(rest) == 2 && rest[0] == "**" && rest[1] == "" { // `a/**/` matches a/ itself, zero directories deep
 			*out = append(*out, shown+"/")
 		}
-		rbGlobWalk(p, shown+"/", rest, out)
+		rbGlobWalk(p, shown+"/", rest, flags, out)
 	}
 }
 

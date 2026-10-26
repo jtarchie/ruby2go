@@ -1000,3 +1000,64 @@ class DemoRefs
 
   def self.go = [use(:a), use(:b), use(:a), @count]
 end
+
+# Homebrew's Cask::DSL postflight and AbstractFlightBlock#abstract_phase: a DSL block whose call only another object
+# answers goes through a define_method'd stanza into a flight block's `**directives`, then is instance_eval'd there
+# through a T.cast (decision 374).
+class DemoFlightBlock
+  extend T::Sig
+
+  sig { returns(T::Hash[Symbol, Object]) }
+  attr_reader :directives
+
+  sig { params(directives: Object).void }
+  def initialize(**directives)
+    @directives = directives
+  end
+
+  sig { returns(T.untyped) }
+  def run
+    return if (block = directives[:postflight]).nil?
+
+    DemoFlightStep.new.instance_eval(&T.cast(block, T.proc.returns(T.anything)))
+  end
+end
+
+class DemoFlightDsl
+  extend T::Sig
+
+  sig { returns(T::Array[DemoFlightBlock]) }
+  attr_reader :artifacts
+
+  def initialize
+    @artifacts = T.let([], T::Array[DemoFlightBlock])
+  end
+
+  def method_missing(name, *) = raise(NoMethodError, "no #{name}")
+
+  def respond_to_missing?(*) = false
+
+  FLIGHT_CLASSES = [DemoFlightBlock].freeze
+
+  FLIGHT_CLASSES.each do |klass|
+    [:postflight].each do |key|
+      define_method(key) do |&block|
+        artifacts << klass.new(key => block)
+      end
+    end
+  end
+end
+
+class DemoFlightStep
+  def step(x) = "step #{x}"
+end
+
+module DemoFlight
+  def self.go
+    d = DemoFlightDsl.new
+    d.instance_eval do
+      postflight { step("ok") }
+    end
+    d.artifacts.fetch(0).run
+  end
+end

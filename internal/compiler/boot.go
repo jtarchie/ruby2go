@@ -139,6 +139,12 @@ func sourceName(s Source) string {
 // -main, decision 288): the -I dirs are gem dirs (boot, leniency and pruning, decisions 161/169/172), boot runs the
 // entry's load list, and main is compiled after it, never booted.
 func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, main string, gemDirs ...string) ([]byte, []string, error) {
+	return compileTraced(ctx, preludeFS, gemSigs, sources, main, nil, gemDirs...)
+}
+
+// compileTraced is CompileTraced with the run-time string evals a trace saw, each compiled at its call site (decision
+// 374).
+func compileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, main string, evals []boot.EvalInfo, gemDirs ...string) ([]byte, []string, error) {
 	if len(sources) == 0 || main == "" {
 		return nil, nil, errors.New("a traced compile needs an entry file and a main file")
 	}
@@ -148,6 +154,9 @@ func CompileTraced(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Sour
 		return nil, nil, err
 	}
 	tick("boot")
+	if m != nil {
+		m.Evals = append(m.Evals, evals...)
+	}
 	data, rerr := os.ReadFile(main) //nolint:gosec // the program's main file, named by the caller
 	if rerr != nil {
 		return nil, nil, fmt.Errorf("main: %w", rerr)

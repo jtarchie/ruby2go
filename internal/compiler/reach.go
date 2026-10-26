@@ -131,6 +131,12 @@ func (c *Compiler) pruneGemMethods() {
 		r.from, r.file, r.scope = f.Name, f, nil
 		r.walk(f.Root, false)
 	}
+	for _, units := range c.runEvals { // a run-time eval's source runs where its site is (decision 374)
+		for _, u := range units {
+			r.from, r.file, r.scope = "eval at "+u.file.path, u.file, nil
+			r.walk(u.file.Root, false)
+		}
+	}
 	for changed := true; changed && r.dynamic == ""; {
 		changed = false
 		r.computeLive()

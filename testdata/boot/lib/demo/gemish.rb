@@ -1039,3 +1039,73 @@ class DemoKeyed
 
   def probe_fetches = [probe_fetch(1), probe_fetch(:ab), probe_fetch("cde")]
 end
+
+# Homebrew's VerificationCache#verify: a leaf class's C? (decision 360) where C is wanted, nil checked only by a
+# method rugaroo does not narrow by (`blank?`): the pointer goes on, nil as MRI's nil.
+class DemoSum
+  #: (String) -> void
+  def initialize(hex) = @hex = hex
+  def hex = @hex
+end
+
+class DemoSumError
+  #: (DemoSum, DemoSum) -> void
+  def initialize(want, got) = @msg = "#{want.hex} != #{got.hex}"
+  def msg = @msg
+end
+
+module DemoVerify
+  #: (DemoSum?) -> String
+  def self.go(want)
+    raise ArgumentError if want.to_s.empty?
+
+    DemoSumError.new(want, DemoSum.new("bb")).msg
+  end
+end
+
+# Homebrew's Livecheck::Strategy::Git: a class-level ivar its body sets, and a singleton attr_writer for it: one
+# non-nil Hash, the writer taking a Hash (decision 374 on 323).
+class DemoUrlCache
+  @seen = {} #: Hash[String, String]
+
+  class << self
+    attr_writer :seen #: Hash[String, String]
+
+    def seen_count = @seen.size
+  end
+end
+
+# Homebrew's Cask::DSL#set_unique_stanza: a generic U bound to a C? box (a String subclass's, as DSL::Version's) by the
+# caller's return type, the value back from instance_variable_set untyped: it converts to the box.
+class DemoVer < String
+  def kind = "ver #{self}"
+end
+
+class DemoStash
+  def initialize
+    @shape = nil #: DemoVer?
+  end
+
+  #: [U] (Symbol) { () -> untyped } -> U
+  def put(name) = instance_variable_set(:"@#{name}", yield)
+
+  #: () -> DemoVer?
+  def shape = put(:shape) { DemoVer.new("1.2") }
+end
+
+# Homebrew's Cask::Installer#cask_and_formula_dependencies: an Array[untyped] (a tsort over two includers) into an
+# Array[A | B]? ivar converts where it lands.
+class DemoDepList
+  def initialize
+    @deps = nil #: Array[Integer | String]?
+  end
+
+  #: () -> Array[untyped]
+  def raw = [1, "a", 2]
+
+  def deps
+    return @deps if @deps
+
+    @deps = raw - [2]
+  end
+end

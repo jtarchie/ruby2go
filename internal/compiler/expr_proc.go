@@ -131,6 +131,9 @@ func (f *fctx) genInstanceEval(n *parser.CallNode, recv expr) (expr, bool) {
 	}
 	args := callArgs(n)
 	exec := strings.HasSuffix(n.Name, "_exec")
+	if units := f.runEvalsAt(n); len(units) > 0 {
+		return f.genRunEval(n, units), true
+	}
 	if n.Block == nil && f.lenient() && len(args) > 0 { // gem code (decision 172)
 		return f.gemStringEval(n), true
 	}
@@ -166,7 +169,15 @@ func (f *fctx) evalProcArg(n *parser.CallNode, b *parser.BlockArgumentNode, recv
 		// `instance_exec(*a, &blk)` on self with a proc this method made: its self is already ours, so it is blk.call(*a)
 		return f.genMethodCall(n, f.genExpr(lr, nil), "call", args, nil)
 	}
-	p := f.genExpr(b.Expression, nil)
+	target := b.Expression
+	if c, ok := target.(*parser.CallNode); ok && f.lenient() && f.f.sorbetCasts[c] != "" && isAny(f.probeType(callArgs(c)[0], nil)) {
+		target = callArgs(c)[0] // `&T.cast(block, T.proc.returns(T.anything))` of an untyped block still rebinds (Homebrew's AbstractFlightBlock#abstract_phase)
+	}
+	p := f.genExpr(target, nil)
+	if isAny(p.typ) && target != b.Expression {
+		ft := TFunc{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}, Proc: true}
+		p = expr{code: f.coerce(b, p, ft), typ: ft}
+	}
 	if o, isOpt := p.typ.(TOpt); isOpt { // instance_eval(&nil) raises, as MRI does
 		if ft, ok := o.Elem.(TFunc); ok && ft.Proc {
 			tmp := f.newTmp()

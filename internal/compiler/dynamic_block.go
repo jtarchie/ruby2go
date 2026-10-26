@@ -139,7 +139,11 @@ func (c *Compiler) dynIterCall(f *fctx, e *entry, recv expr, env map[string]Type
 	call := f.callCode(e, recv, codes, env)
 	f.emit("var last_ any")
 	f.emit("if blk_ == nil {")
-	f.emit("\tpanic(NewLocalJumpError(Ref(String(\"no block given (yield)\"))))")
+	if len(vars) == 1 && e.M.File.isPrelude() && !mentionsVar(subst(e.M.Block.Params[0], env)) { // a prelude iterator without a block answers an Enumerator, as iterEnum's typed call does; not over a type variable, whose Enumerator would instantiate itself (Homebrew's `each_strongly_connected_component.to_a` on a TSort includer held untyped)
+		f.emit("\treturn rbEnumOf(%s, any(self), %q, nil, nil)", call, e.M.Name)
+	} else {
+		f.emit("\tpanic(NewLocalJumpError(Ref(String(\"no block given (yield)\"))))")
+	}
 	f.emit("}")
 	f.emit("%s", rangeHead(strings.Join(vars, ", "), call))
 	f.emit("\tlast_ = blk_.fn(%s)", strings.Join(vars, ", "))

@@ -1,0 +1,22 @@
+#!/bin/bash
+# host (macOS): tap, trust and install rugaroo under MRI (work/rg-mri-N.out/.err), then through work/rg-bin (./tapgen build;
+# work/rg-bin-N.*), each pass from no tap, no trust, no cask; prints the per-stream diffs.
+cd "$(dirname "$0")" || exit 1
+export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_GIT_PATH=$PWD/tools/git-https
+B=/opt/homebrew/bin/brew-rugaroo
+[ -L $B ] || ln -s "$PWD/work/homebrew/bin/brew" $B
+tools/install-wrapper work/homebrew "$(cd ../.. && pwd)"
+M() { HOMEBREW_RUGAROO_MRI=1 $B "$@"; }
+reset() { M uninstall --cask rugaroo >/dev/null 2>&1; M untap jtarchie/rugaroo >/dev/null 2>&1; M untrust https://github.com/jtarchie/rugaroo >/dev/null 2>&1; }
+cmds=("tap jtarchie/rugaroo https://github.com/jtarchie/rugaroo" "trust jtarchie/rugaroo" "install rugaroo")
+for mode in mri bin; do
+  reset
+  for i in 0 1 2; do
+    if [ $mode = mri ]; then M ${cmds[$i]} > work/rg-$mode-$i.out 2> work/rg-$mode-$i.err
+    else HOMEBREW_RUGAROO_BIN=$PWD/work/rg-bin HOMEBREW_RUGAROO_BACKTRACE=1 $B ${cmds[$i]} > work/rg-$mode-$i.out 2> work/rg-$mode-$i.err; fi
+    echo "exit $?" >> work/rg-$mode-$i.out
+  done
+done
+ls -la work/homebrew/Library/Homebrew/vendor/portable-ruby/current/bin/ruby | awk '{print "wrapper size", $5}'
+for i in 0 1 2; do echo "== ${cmds[$i]}"; diff work/rg-mri-$i.out work/rg-bin-$i.out && echo "stdout same"; diff work/rg-mri-$i.err work/rg-bin-$i.err && echo "stderr same"; done
+ls -la /opt/homebrew/bin/rugaroo /opt/homebrew/Caskroom/rugaroo 2>&1 | head -3

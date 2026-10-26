@@ -41,7 +41,7 @@ func (c *Compiler) emitForwarders(cls *Class) {
 		env := c.forwarderEnv(cls, e)
 		ps, ret := c.sig(m, env)
 		targs := c.forwardTypeArgs(e, cls)
-		body := fmt.Sprintf("%s%s(self%s)", freeFuncName(m), targs, comma(c.argNames(m)))
+		body := flatLeafOpt(fmt.Sprintf("%s%s(self%s)", freeFuncName(m), targs, comma(c.argNames(m))), m.Ret, env)
 		if ret == "" {
 			c.w("func (self %s) %s(%s) { %s }\n", recv, m.GoName, ps, body)
 		} else {

@@ -127,6 +127,20 @@ module StringTests
     def show(x) = "<#{x}>|#{x.inspect}"
   end
 
+  # a String subclass held untyped into a `String | Integer` slot is its String (Homebrew's Cask::DSL::Version)
+  class VerTag < String
+  end
+
+  class StringSubclassUnionTest < Minitest::Test
+    #: (String | Integer) -> String
+    def kind(x) = x.is_a?(String) ? "s:#{x}" : "i"
+
+    def test_subclass_into_union
+      v = VerTag.new("1.0") #: untyped
+      assert_equal ["s:1.0", "i"], [kind(v), kind(3)]
+    end
+  end
+
   class StringConvertTest < Minitest::Test
     # to_i reads an optional sign and leading digits after whitespace; anything else is 0.
     def test_to_i_reads_an_optional

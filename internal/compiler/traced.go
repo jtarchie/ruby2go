@@ -177,6 +177,11 @@ func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, ru
 		l.Features = appendUnseen(l.Features, r.Features)
 		l.LoadPath = appendUnseen(l.LoadPath, r.LoadPath)
 		l.StdDirs = appendUnseen(l.StdDirs, r.StdDirs)
+		for _, e := range r.Evals {
+			if !slices.Contains(l.Evals, e) {
+				l.Evals = append(l.Evals, e)
+			}
+		}
 	}
 	tick("trace")
 	src, dirs := TracedEntry(l, main)
@@ -196,7 +201,7 @@ func CompileTrace(ctx context.Context, preludeFS, gemSigs fs.FS, main string, ru
 		return nil, nil, fmt.Errorf("trace: %w", err)
 	}
 	srcs := []Source{{Name: "entry.rb", Src: src, Path: entry}}
-	return CompileTraced(ctx, preludeFS, gemSigs, srcs, main, append(slices.Clone(loadPath), dirs...)...)
+	return compileTraced(ctx, preludeFS, gemSigs, srcs, main, l.Evals, append(slices.Clone(loadPath), dirs...)...)
 }
 
 // mainRequires is a `require` for each literal require in main, outside its methods, of a file on dirs that the entry

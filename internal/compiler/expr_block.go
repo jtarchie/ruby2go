@@ -547,7 +547,14 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			retS = " (ret_" + retS + ")"
 		}
 	}
-	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
+	boxed := boxedLeafOpt(sig.Ret, env) // a generic `{ (E) -> U? }` with U a leaf C is Go func(E) **C (decision 360)
+	if boxed != nil {
+		f.emit("func(%s) *%s {", strings.Join(ps, ", "), f.c.goType(ret))
+		f.indent++
+		f.emit("return rbBoxPtr[%s](func()%s {", boxed.Name, retS)
+	} else {
+		f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
+	}
 	f.indent++
 	pro()
 	if c, ok := n.(*parser.CallNode); ok {
@@ -564,6 +571,10 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	if strings.Contains(b.String(), "\n//line ") {
 		// the block's statements moved the line mapping; what follows it on the Go side is the call's line again. Only then: a block without its own directives (&:sym) would look to linters like it ends in blank lines.
 		f.lineOf(n)
+	}
+	if boxed != nil {
+		f.emit("}())")
+		f.indent--
 	}
 	f.emit("}")
 	f.selfType, f.selfCode = savedSelfType, savedSelfCode

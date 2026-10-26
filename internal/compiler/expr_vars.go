@@ -60,6 +60,9 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	if !fitsValue(val, iv.Type) && f.discover && f.lenient() && iv.Owner != f.owner && !isVoid(val.typ) {
 		iv.Type = TAny{} // a gem subclass storing another class in its parent's ivar (liquid's Raw: a String @body over Block's BlockBody, decision 331)
 	}
+	if !fitsValue(val, iv.Type) && f.lenient() && sameButUntyped(val.typ, stripOpt(iv.Type)) { // so does a gem's Array[untyped] (Homebrew's `@deps = graph.tsort_with_cycles { ... } - [@cask]`, decision 374)
+		val = expr{code: f.coerce(n, val, stripOpt(iv.Type)), typ: stripOpt(iv.Type)}
+	}
 	if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
 		f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 	}

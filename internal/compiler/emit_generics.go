@@ -97,7 +97,12 @@ func (c *Compiler) emitUnions() {
 			case TAny, TFunc, TNil, TOpt, TUnion, TVar, TVoid: // matched exactly or not at all
 			}
 		}
-		c.w("func %s(a any) any {\n\tswitch a.(type) {\n\tcase %s:\n\t\treturn a\n\t}\n", name, strings.Join(exact, ", "))
+		subs := c.valueSubclassArms(u)
+		sw := "switch a.(type)"
+		if subs != "" {
+			sw = "switch v := a.(type)"
+		}
+		c.w("func %s(a any) any {\n\t%s {\n\tcase %s:\n\t\treturn a\n%s\t}\n", name, sw, strings.Join(exact, ", "), subs)
 		for _, g := range conv {
 			c.w("\tif v, ok := rbConv[%s](a); ok {\n\t\treturn v\n\t}\n", g)
 		}
@@ -110,6 +115,24 @@ func (c *Compiler) emitUnions() {
 			c.w("\t}\n\treturn a\n}\n\n")
 		}
 	}
+}
+
+// valueSubclassArms are a union's cases for a subclass of a value member (Homebrew's `Cask::DSL::Version < String`
+// into `String | Version`): MRI's object is a String, so the union holds its String (decision 374).
+func (c *Compiler) valueSubclassArms(u TUnion) string {
+	var b strings.Builder
+	for _, m := range u.Members {
+		mc, ok := m.(TClass)
+		if !ok || mc.C.isStruct() || mc.C.IsModule || c.goType(m) != mc.C.Name {
+			continue
+		}
+		for _, k := range c.classList {
+			if k.Super == mc.C && k.metaOf == nil {
+				fmt.Fprintf(&b, "\tcase *%s:\n\t\treturn v.%s\n", k.Name, superField(mc.C))
+			}
+		}
+	}
+	return b.String()
 }
 
 // emitBoxes emits the helpers that open a T? box (*T) seen as `any`: generic

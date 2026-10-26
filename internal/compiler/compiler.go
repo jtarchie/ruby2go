@@ -189,6 +189,7 @@ type bootFacts struct {
 	bootConstClasses map[string]string                     // constant -> the class boot saw it name (decision 203)
 	evalSites        map[boot.Loc]bool                     // where each string eval boot compiled is: a no-op (decision 204)
 	evalUnits        map[boot.Loc][]evalUnit               // where an instance_eval boot ran that defined classes: each source and its parsed file, whose load-time statements run at the call (decision 324)
+	runEvals         map[boot.Loc][]evalUnit               // where a run-time instance_eval the trace saw was called: each source, compiled to run there (decision 374)
 	evalClasses      map[*Class]bool                       // classes a run-time string eval defines: constant lookups see them once it has run (decision 324)
 	blockEvalSites   map[*parser.CallNode]bool             // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
 	bootDelegators   map[boot.Loc][]string                 // def_delegators' names boot saw, by call site (decision 204)

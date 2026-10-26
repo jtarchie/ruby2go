@@ -54,6 +54,8 @@ func (f *File) sorbetWalk(n parser.Node) {
 		switch strings.TrimPrefix(constName(n.Superclass), "::") {
 		case "T::Struct", "T::ImmutableStruct", "T::InexactStruct":
 			f.sorbetStruct(n, constName(n.Superclass) != "T::Struct")
+		case "T::Enum":
+			f.sorbetEnum(n)
 		}
 	case *parser.CallNode:
 		f.lowerBlockKeywords(n)
@@ -137,6 +139,16 @@ func writeValue(n parser.Node) *parser.Node {
 }
 
 func (f *File) sorbetStatements(body []parser.Node) []parser.Node {
+	for _, st := range body { // before the sigs below: one may name the alias as its block's type
+		if w, ok := st.(*parser.ConstantWriteNode); ok {
+			if c, ok := w.Value.(*parser.CallNode); ok && isTCall(c, "type_alias") {
+				if f.sorbetAliasExprs == nil {
+					f.sorbetAliasExprs = map[string]parser.Node{}
+				}
+				f.sorbetAliasExprs[w.Name] = blockExpr(c)
+			}
+		}
+	}
 	out := body[:0:0]
 	for i, st := range body {
 		c, ok := st.(*parser.CallNode)
@@ -286,10 +298,12 @@ func (f *File) attachSig(sig *parser.CallNode, target parser.Node) {
 	ln := f.line(target.GetLocation().StartOffset)
 	switch t := target.(type) {
 	case *parser.DefNode:
+		f.sorbetBlockAlias(s, t)
 		f.leading[ln] = append(f.leading[ln], comment{line: ln, text: ": " + s.methodType(t)})
 		return
 	case *parser.CallNode:
 		if d := wrappedDef(t); d != nil { // `private def x`
+			f.sorbetBlockAlias(s, d)
 			f.leading[ln] = append(f.leading[ln], comment{line: ln, text: ": " + s.methodType(d)})
 			return
 		}
@@ -306,6 +320,18 @@ func (f *File) attachSig(sig *parser.CallNode, target parser.Node) {
 		}
 	}
 	sorbetFail(sig, "sig must precede a def or attr_*")
+}
+
+// sorbetBlockAlias puts the type behind a block parameter's `T.type_alias` of this file (brew's
+// `block: SearchBlockType`) in its place: an RBS block type is written out, never an alias.
+func (f *File) sorbetBlockAlias(s sigChain, d *parser.DefNode) {
+	if d.Parameters == nil || d.Parameters.Block == nil || d.Parameters.Block.Name == nil {
+		return
+	}
+	name := *d.Parameters.Block.Name
+	if c, ok := s.params[name].(*parser.ConstantReadNode); ok && f.sorbetAliasExprs[c.Name] != nil {
+		s.params[name] = f.sorbetAliasExprs[c.Name]
+	}
 }
 
 func wrappedDef(c *parser.CallNode) *parser.DefNode {
@@ -383,7 +409,10 @@ func sorbetBlock(t parser.Node, b parser.Node) string {
 	if c, ok := t.(*parser.CallNode); ok && isTCall(c, "nilable") {
 		opt, t = "?", oneArg(c)
 	}
-	if c, ok := t.(*parser.CallNode); ok && isTCall(c, "untyped") || isTopConst(t, "Proc") {
+	if c, ok := t.(*parser.CallNode); ok && isTCall(c, "untyped") {
+		return " ?{ (*untyped) -> untyped }" // untyped includes nil: the block may be left out (Homebrew's LazyObject#__getobj__(&_blk))
+	}
+	if isTopConst(t, "Proc") {
 		return " " + opt + "{ (*untyped) -> untyped }"
 	}
 	fn := sorbetType(t)
@@ -459,8 +488,8 @@ func sorbetType(n parser.Node) string {
 
 func sorbetCallType(n *parser.CallNode) string {
 	if n.Name == "[]" && (strings.TrimPrefix(constName(n.Receiver), "::") == "T::Class" || strings.TrimPrefix(constName(n.Receiver), "::") == "T::Module") {
-		if c, ok := oneArg(n).(*parser.CallNode); ok && (isTCall(c, "anything") || isTCall(c, "untyped")) {
-			return "untyped" // any class object
+		if c, ok := oneArg(n).(*parser.CallNode); ok && (isTCall(c, "anything") || isTCall(c, "untyped") || isTCall(c, "type_parameter")) {
+			return "untyped" // any class object; RBS has no singleton() of a type variable
 		}
 		return "singleton(" + sorbetType(oneArg(n)) + ")"
 	}
@@ -650,6 +679,41 @@ func (f *File) sorbetPropOptions(c *parser.CallNode, kh *parser.KeywordHashNode,
 
 // sorbetStruct turns `const :a, T` / `prop :a, T, default: x` into typed attr_reader/attr_accessor and records the
 // keyword initialize T::Struct generates, which collectClass adds.
+// sorbetEnum puts a T::Enum's `enums do ... end` statements in the class body, as the block's constants are the
+// class's, and names each `X = new(...)` value as sorbet-runtime's enums block does after it runs: `X =
+// new(...).__enum_bind("X")`.
+func (f *File) sorbetEnum(n *parser.ClassNode) {
+	body, ok := n.Body.(*parser.StatementsNode)
+	if !ok {
+		return
+	}
+	var out []parser.Node
+	for _, st := range body.Body {
+		c, ok := st.(*parser.CallNode)
+		blk, isBlk := c.Block.(*parser.BlockNode)
+		if !ok || c.Receiver != nil || c.Name != "enums" || !isBlk {
+			out = append(out, st)
+			continue
+		}
+		stmts, _ := blk.Body.(*parser.StatementsNode)
+		if stmts == nil {
+			continue
+		}
+		for _, e := range stmts.Body {
+			if w, ok := e.(*parser.ConstantWriteNode); ok {
+				if v, ok := w.Value.(*parser.CallNode); ok && v.Receiver == nil && v.Name == "new" {
+					name := &parser.StringNode{Location: w.NameLoc, Unescaped: parser.RubyString{Value: w.Name}}
+					w.Value = &parser.CallNode{Location: v.Location, Receiver: v, Name: "__enum_bind",
+						Arguments: &parser.ArgumentsNode{Location: v.Location, Arguments: []parser.Node{name}}}
+					f.trailing[f.line(w.Location.StartOffset)] = strings.TrimPrefix(constName(n.ConstantPath), "::")
+				}
+			}
+			out = append(out, e)
+		}
+	}
+	body.Body = out
+}
+
 func (f *File) sorbetStruct(n *parser.ClassNode, immutable bool) {
 	body, ok := n.Body.(*parser.StatementsNode)
 	if !ok {

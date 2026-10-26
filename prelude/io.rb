@@ -7,6 +7,10 @@ module IOWritable
   #: (untyped) -> Integer
   def write(x) = raise(NotImplementedError)
 
+  # The stream itself: an IO or File is its own IO object (a Tempfile delegates it: Homebrew's Readall `stdout_file.to_io`)
+  #: () -> self
+  def to_io = self
+
   # write(a, b, ...): each in turn, the byte count summed (MRI 2.5+).
   #: (untyped, untyped) -> Integer
   def __write_2(a, b) = write(a) + write(b)

@@ -61,3 +61,15 @@ from its target) and uninstalls wget with your Homebrew before each run; the tra
 ./macgen-hits       # the reached-stub work list for that command (work/hits-mac.txt)
 rm /opt/homebrew/bin/brew-rugaroo                    # when done
 ```
+
+`brew tap jtarchie/rugaroo https://github.com/jtarchie/rugaroo`, `brew trust jtarchie/rugaroo` and `brew install rugaroo`
+(this repository's own cask) on macOS (decision 374): the tap loads every brew command file (its completion list), and the
+install reads the cask with a run-time `instance_eval`, which the trace records and the binary runs compiled. Only the
+traced cask text compiles in; a new release of the tap needs a new build. `tools/git-https` is the git brew runs here:
+it skips the global gitconfig, whose `url.insteadOf` rewrites GitHub https to ssh.
+
+```sh
+./tapgen build      # untap, untrust, uninstall; trace the three commands, build work/rg-bin (~8 min)
+./taprun            # the three commands under MRI, then through work/rg-bin, each from the same state; per-stream diffs
+rm /opt/homebrew/bin/brew-rugaroo                    # when done
+```

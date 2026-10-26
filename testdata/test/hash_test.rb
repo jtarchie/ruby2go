@@ -426,6 +426,14 @@ module HashTests
   Rec = Struct.new(:name, :tags) #: [String, Hash[String, Integer]]
 
   class HashArgsTest < Minitest::Test
+    # a dynamic fetch whose default is not the Hash's value type answers it (concurrent-ruby's
+    # `opts.fetch(:auto_terminate, true)` on a Hash[Symbol, Integer])
+    def test_untyped_fetch_other_default
+      h = { min: 1 } #: Hash[Symbol, Integer]
+      o = h #: untyped
+      assert_equal [true, 1, 1], [o.fetch(:auto, true), o.fetch(:min, true), o.fetch(:min, 5)]
+    end
+
     def test_section_0
       assert_equal "{a: 1, b: 2}", (hash_show(a: 1, b: 2))
       assert_equal "{a: 3}", (hash_show a: 3)

@@ -307,7 +307,7 @@ func (f *fctx) callMissing(n parser.Node, mm *entry, recv expr, name string, arg
 	}
 	nodes := append([]parser.Node{&parser.SymbolNode{Unescaped: parser.RubyString{Value: name}}}, args...)
 	if b, ok := block.(*parser.BlockNode); ok && anyRestBlock(mm.M.Block) {
-		if fn, ok := f.rebindableBlock(n, b); ok {
+		if fn, ok := f.rebindableBlock(n, b, false); ok {
 			block = &parser.BlockArgumentNode{Expression: &exprNode{e: expr{code: fn, typ: TFunc{Params: []Type{TAny{}}, Rest: true, Ret: TAny{}}}}}
 		}
 	}
@@ -641,7 +641,7 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 			ps[i] = TAny{}
 			vals[i] = fmt.Sprintf("rbArgAt(xs_, %d)", i)
 		}
-		if fn, ok := f.rebindableBlock(n, b); ok {
+		if fn, ok := f.rebindableBlock(n, b, false); ok {
 			return "rbBlockArg{fn: " + fn + "}", true
 		}
 		clo := f.genClosure(n, b, &BlockSig{Params: ps, Ret: TAny{}}, map[string]Type{})
@@ -687,8 +687,8 @@ func (f *fctx) dynBlockValue(n parser.Node, block parser.Node) (string, bool) {
 // rebindableBlock is a gem's DSL block in a class body (bindata's `struct :e_ident do ... end`), or nested in one, as
 // a dynamic block: its self is whatever instance_eval later gives it, so its own calls are dynamic on that, else the
 // class it was written in (decision 324).
-func (f *fctx) rebindableBlock(n parser.Node, b *parser.BlockNode) (string, bool) {
-	if !f.lenient() || !f.selfClassObj && !isAny(f.selfType) || f.selfCode == "" {
+func (f *fctx) rebindableBlock(n parser.Node, b *parser.BlockNode, typedSelf bool) (string, bool) {
+	if !f.lenient() || !typedSelf && !f.selfClassObj && !isAny(f.selfType) || f.selfCode == "" {
 		return "", false
 	}
 	names := f.blockParamList(b.Parameters)

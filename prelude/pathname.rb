@@ -25,18 +25,18 @@ class Pathname < Object
   #: () -> Pathname
   def self.getwd = pwd
 
-  #: (String | Pathname | Array[String]) -> Array[Pathname]
-  def self.glob(pattern)
+  #: (String | Pathname | Array[String], ?Integer) -> Array[Pathname]
+  def self.glob(pattern, flags = 0)
     pats = pattern.is_a?(Array) ? pattern : [pattern.to_s]
     out = [] #: Array[Pathname]
-    pats.each { |pat| Dir.glob(pat).each { |p| out << Pathname.new(p) } }
+    pats.each { |pat| Dir.glob(pat, flags).each { |p| out << Pathname.new(p) } }
     out
   end
 
   # Pathname.glob with a block yields each match and answers nil (Homebrew's Keg#empty_installation?).
-  #: (String | Pathname | Array[String]) { (Pathname) -> untyped } -> nil
-  def self.__glob_block(pattern)
-    glob(pattern).each { |p| yield p }
+  #: (String | Pathname | Array[String], ?Integer) { (Pathname) -> untyped } -> nil
+  def self.__glob_block(pattern, flags = 0)
+    glob(pattern, flags).each { |p| yield p }
     nil
   end
 
@@ -335,6 +335,21 @@ class Pathname < Object
     nil
   end
 
+  # Without a block: an Enumerator of the same paths (Homebrew's `target.descend.first`).
+  #: () -> Enumerator[Pathname]
+  def __descend_enum
+    paths = [] #: Array[Pathname]
+    descend { |p| paths << p }
+    paths.each
+  end
+
+  #: () -> Enumerator[Pathname]
+  def __ascend_enum
+    paths = [] #: Array[Pathname]
+    ascend { |p| paths << p }
+    paths.each
+  end
+
   #: () -> Integer?
   def world_writable? = File.world_writable?(to_s)
 
@@ -363,7 +378,7 @@ class Pathname < Object
     loop do
       blk.call(path)
       up = path.dirname
-      break if up.to_s == path.to_s
+      break if up.to_s == path.to_s || up.to_s == "." # a relative path stops at its first segment, as MRI's
 
       path = up
     end

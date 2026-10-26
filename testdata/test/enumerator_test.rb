@@ -33,6 +33,37 @@ module EnumeratorTests
     end
   end
 
+  # an Enumerable includer of a leaf class, called through its parent (Homebrew's Options of Option): the forwarder opens
+  # Enumerable's E? box to the leaf's *C (decision 360)
+  class Flag
+    attr_reader :name #: String
+
+    #: (String) -> void
+    def initialize(name) = @name = name
+  end
+
+  class Flags
+    include Enumerable #[Flag]
+
+    #: (Array[Flag]) -> void
+    def initialize(a) = @a = a
+
+    #: () { (Flag) -> void } -> void
+    def each(&) = @a.each(&)
+  end
+
+  class MoreFlags < Flags
+  end
+
+  class LeafIncluderTest < Minitest::Test
+    #: (Flags) -> String?
+    def first_name(fs) = fs.first&.name
+
+    def test_first_through_parent
+      assert_equal ["z", nil], [first_name(MoreFlags.new([Flag.new("z")])), first_name(Flags.new([]))]
+    end
+  end
+
   class ExternalTest < Minitest::Test
     def test_next_peek_rewind
       e = [10, 20].each

@@ -1,0 +1,16 @@
+#!/bin/bash
+# host (macOS): trace `tap jtarchie/rugaroo <url>`, `trust` and `install rugaroo` (this repository's own cask) into one
+# compiled brew, through the /opt/homebrew/bin/brew-rugaroo link ./macgen uses; each run starts from no tap, no trust, no cask.
+# usage: ./tapgen [gen|build]   (build leaves work/rg-bin; compare with ./taprun)
+cd "$(dirname "$0")" || exit 1
+export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_GIT_PATH=$PWD/tools/git-https
+B=/opt/homebrew/bin/brew-rugaroo
+[ -L $B ] || ln -s "$PWD/work/homebrew/bin/brew" $B
+tools/install-wrapper work/homebrew "$(cd ../.. && pwd)"
+M() { HOMEBREW_RUGAROO_MRI=1 $B "$@" > /dev/null 2>&1; }
+M uninstall --cask rugaroo; M untap jtarchie/rugaroo; M untrust https://github.com/jtarchie/rugaroo
+export HOMEBREW_RUGAROO_ALSO=$'trust jtarchie/rugaroo\ninstall rugaroo'
+case ${1:-gen} in
+gen) HOMEBREW_RUGAROO_CMD=gen HOMEBREW_RUGAROO_GEM_WARNINGS=1 $B tap jtarchie/rugaroo https://github.com/jtarchie/rugaroo > work/rg.go 2> work/rg.go.log; echo "gen exit $?"; ls -d /opt/homebrew/Caskroom/rugaroo ;;
+build) rm -f work/rg-bin; HOMEBREW_RUGAROO_FLAGS="-gcflags=all=-dwarf=false" HOMEBREW_RUGAROO_BIN=$PWD/work/rg-bin $B tap jtarchie/rugaroo https://github.com/jtarchie/rugaroo > work/rg-build.log 2>&1; echo "build exit $?"; ls -d /opt/homebrew/Caskroom/rugaroo ;;
+esac

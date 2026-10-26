@@ -382,7 +382,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	}
 	f.bindTypeParams(n, m, env)
 	ret := subst(m.Ret, env)
-	out := expr{code: flatLeafOpt(f.callCode(e, recv, codes, env), m.Ret, env), typ: ret}
+	out := expr{code: flatCall(f.callCode(e, recv, codes, env), m, env), typ: ret}
 	out = f.blocklessReturn(n, m, block, env, out)
 	if m.Name == "const_get" && m.Owner.RubyName == "Module" {
 		if t := f.constGetType(recv, args); t != nil {
@@ -1025,11 +1025,25 @@ func (f *fctx) leafRecvSelf(recv expr, m *Method) expr {
 	return f.leafSelf(recv, m.Owner)
 }
 
+// flatCall is flatLeafOpt for a call of m: only when the code calls the generic func itself, since a forwarder method
+// has opened its box already.
+func flatCall(code string, m *Method, env map[string]Type) string {
+	if flat := flatLeafOpt(code, m.Ret, env); flat != code && (m.Owner == nil || strings.HasPrefix(code, freeFuncName(m))) {
+		return flat
+	}
+	return code
+}
+
 // flatLeafOpt is a call's code with a generic V? result, V = *C a leaf's, opened from Go's **C to the *C its C? is
 // (decision 360).
 func flatLeafOpt(code string, decl Type, env map[string]Type) string {
 	if boxedLeafOpt(decl, env) != nil {
 		return "rbFlat(" + code + ")"
+	}
+	if t, ok := decl.(TClass); ok && t.C.RubyName == "Array" && len(t.Args) == 1 { // values_at's Array[E?]
+		if c := boxedLeafOpt(t.Args[0], env); c != nil {
+			return "rbFlatArray(" + code + ")"
+		}
 	}
 	if t, ok := decl.(TTuple); ok && len(t.Elems) == 2 { // minmax's [E?, E?] ponytail: other tuple and container shapes keep the boxes
 		a, b := boxedLeafOpt(t.Elems[0], env), boxedLeafOpt(t.Elems[1], env)

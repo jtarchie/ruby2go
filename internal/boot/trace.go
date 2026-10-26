@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -15,9 +16,10 @@ import (
 
 // Loaded is what one traced run of a program loaded (decision 296).
 type Loaded struct {
-	Features []string // loaded files, in require start order
-	LoadPath []string // $LOAD_PATH at exit
-	StdDirs  []string // MRI's rubylibdir and archdir
+	Features []string   // loaded files, in require start order
+	LoadPath []string   // $LOAD_PATH at exit
+	StdDirs  []string   // MRI's rubylibdir and archdir
+	Evals    []EvalInfo // each run-time string eval's source and caller (Kind "run"), compiled at its call site (decision 374)
 }
 
 // Trace runs the whole program under MRI, as `ruby program args` would, for its load list only (decision 296).
@@ -67,6 +69,14 @@ func Trace(ctx context.Context, program string, args, rubyOpts []string) (*Loade
 			l.LoadPath = append(l.LoadPath, val)
 		case "S":
 			l.StdDirs = append(l.StdDirs, val)
+		case "E":
+			caller, rest, _ := strings.Cut(val, "\t")
+			file, enc, _ := strings.Cut(rest, "\t")
+			src, derr := base64.StdEncoding.DecodeString(enc)
+			if derr != nil {
+				return nil, fmt.Errorf("trace %s: an eval record: %w", program, derr)
+			}
+			l.Evals = append(l.Evals, EvalInfo{Loc: Loc{File: file}, Caller: caller, Source: string(src), Kind: "run"})
 		}
 	}
 	err = sc.Err() // a line over the buffer would otherwise end the list early

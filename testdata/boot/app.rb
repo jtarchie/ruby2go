@@ -220,3 +220,9 @@ p DemoRead.go
 p DemoCached.go
 p DemoRefs.go
 p DemoObjDyn.run
+p DemoVerify.go(DemoSum.new("aa"))
+DemoUrlCache.seen = { "a" => "b", "c" => "d" }
+p DemoUrlCache.seen_count
+p DemoStash.new.shape&.kind
+p DemoDepList.new.deps
+p DemoFlight.go

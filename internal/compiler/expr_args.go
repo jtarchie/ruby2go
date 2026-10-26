@@ -916,8 +916,20 @@ func (f *fctx) blockArg(n parser.Node, m *Method, env map[string]Type, block par
 			// a class-body DSL block that does not compile on its lexical self (`section(:a) { item 1 }`, the
 			// gem instance_eval-ing it on another object): its self is the one it is called with (decision 324)
 			err := f.try(func() { f.probe(func() { f.genClosure(n, block, m.Block, maps.Clone(env)) }) })
-			if fn, ok := f.rebindableBlock(n, b); ok && err != nil {
+			if fn, ok := f.rebindableBlock(n, b, false); ok && err != nil {
 				return fn
+			}
+		}
+		if b, ok := block.(*parser.BlockNode); ok && f.lenient() && anyRestBlock(m.Block) && !f.selfClassObj && !isAny(f.selfType) {
+			// a DSL block whose calls only self's method_missing answers on its lexical self (a cask's `postflight do
+			// system_command ... end`, instance_eval'd on a DSL::Postflight later): its self is the one it is called with
+			// (decision 374)
+			before := f.missingCalls
+			err := f.try(func() { f.probe(func() { f.genClosure(n, block, m.Block, maps.Clone(env)) }) })
+			if err == nil && f.missingCalls > before {
+				if fn, ok := f.rebindableBlock(n, b, true); ok {
+					return fn
+				}
 			}
 		}
 		f.binNext = m.binBlock // its String params are binary (decision 352)

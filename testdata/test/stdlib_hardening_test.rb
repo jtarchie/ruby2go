@@ -366,6 +366,23 @@ module StdlibHardeningTests
       end
     end
 
+    # File::FNM_DOTMATCH: wildcards take dot entries, and `**/*` lists `.` at zero depth only, as MRI (Homebrew's
+    # Quarantine.propagate)
+    def test_dir_glob_dotmatch
+      Dir.mktmpdir do |d|
+        Dir.mkdir(File.join(d, "a"))
+        Dir.mkdir(File.join(d, "a", ".h"))
+        Dir.mkdir(File.join(d, ".d"))
+        %w[x .y a/z a/.h/w .d/v].each { |f| File.write(File.join(d, f), "") }
+        Dir.chdir(d) do
+          assert_equal %w[. .d .d/v .y a a/.h a/.h/w a/z x], Dir.glob("**/*", File::FNM_DOTMATCH)
+          assert_equal %w[. .d .y a x], Dir.glob("*", File::FNM_DOTMATCH)
+          assert_equal %w[a a/z x], Dir.glob("**/*")
+          assert_equal %w[a/. a/.h a/.h/w a/z], Pathname.glob(Pathname("a") / "**/*", File::FNM_DOTMATCH).map(&:to_s)
+        end
+      end
+    end
+
     def test_dir_glob_edges
       Dir.mktmpdir do |d|
         Dir.mkdir(File.join(d, "deeply"))

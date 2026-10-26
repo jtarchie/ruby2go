@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // ivarKey names one class's ivar in the discovery-time sets (nilIvars, ivarReadFirst).
@@ -23,7 +25,12 @@ func (c *Compiler) declareIvarAnnotations() {
 			if iv, ok := strings.CutPrefix(name, "self."); ok {
 				owner, name = cls.meta, iv
 			}
-			c.declareIvar(owner, name, t, cls.File, d.line)
+			iv := c.declareIvar(owner, name, t, cls.File, d.line)
+			if w := owner.Methods[strings.TrimPrefix(name, "@")+"="]; w != nil && w.Kind == kindAttrWriter && isOpt(t) && iv != nil && !isOpt(iv.Type) {
+				if o, ok := w.sig.Params[0].Type.(rbs.Optional); ok { // the writer of an ivar its class body set non-nil (Livecheck's @processed_urls) takes what it holds
+					w.sig.Params[0].Type = o.Elem
+				}
+			}
 		}
 	}
 }
@@ -33,7 +40,8 @@ func (c *Compiler) declareIvarAnnotations() {
 func (c *Compiler) declareIvar(cls *Class, name string, t Type, f *File, line int) *Ivar {
 	for k := cls; k != nil; k = k.Super {
 		if iv := k.Ivars[name]; iv != nil {
-			narrows := isAny(iv.Type) || isNil(t) && holdsNil(iv.Type) || unionHas(iv.Type, t) // a gem subclass's reader narrowing the parent's (`returns(String)` over Integer | String | nil)
+			narrows := isAny(iv.Type) || isNil(t) && holdsNil(iv.Type) || unionHas(iv.Type, t) || // a gem subclass's reader narrowing the parent's (`returns(String)` over Integer | String | nil)
+				typeEq(t, optOf(iv.Type)) // an attr_writer-only T? (decision 323) of an ivar its class body already set: Livecheck's `@processed_urls = T.let({}, ...)`
 			if !typeEq(iv.Type, t) && (!narrows || !c.gemFile(f)) {
 				c.errorAt(srcPos{f, line}, "ivar %s declared as %s but %s has it as %s", name, t, k.Name, iv.Type)
 			}

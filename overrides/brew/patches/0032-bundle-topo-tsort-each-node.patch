@@ -1,0 +1,30 @@
+Subject: Bundle::Brew::Topo: define tsort_each_node, as Utils::TopologicalHash does
+
+The each_key override aliased as tsort_each_node only widened the block's return type for TSort. Defining
+tsort_each_node over Hash#each_key yields the same keys in the same order, with TSort's own signature, which a
+typed compile (rugaroo) can check against TSort's iterator.
+---
+diff --git a/Library/Homebrew/bundle/brew.rb b/Library/Homebrew/bundle/brew.rb
+index ff386c8d7b..fbd32f8d7f 100644
+--- a/Library/Homebrew/bundle/brew.rb
++++ b/Library/Homebrew/bundle/brew.rb
+@@ -766,16 +766,10 @@ module Homebrew
+         V = type_member { { fixed: T::Array[String] } }
+         Elem = type_member(:out) { { fixed: [String, T::Array[String]] } }
+ 
+-        # TSort interface requires a broader block return type than our implementation.
+-        # rubocop:disable Sorbet/AllowIncompatibleOverride
+-        sig {
+-          override(allow_incompatible: true).params(block: T.proc.params(arg0: String).returns(BasicObject)).void
+-        }
+-        # rubocop:enable Sorbet/AllowIncompatibleOverride
+-        def each_key(&block)
+-          keys.each(&block)
++        sig { override.params(block: T.proc.params(arg0: String).void).void }
++        def tsort_each_node(&block)
++          each_key(&block)
+         end
+-        alias tsort_each_node each_key
+ 
+         sig { override.params(node: String, block: T.proc.params(arg0: String).void).void }
+         def tsort_each_child(node, &block)

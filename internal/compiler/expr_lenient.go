@@ -213,16 +213,10 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 		!f.owner.isSubclassOf(to.C) && !slices.Contains(f.owner.ancestors(), to.C) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), e.code, to.String())), true
 	}
-	if o, ok := e.typ.(TOpt); ok && f.c.goType(e.typ) == "*"+f.c.goType(o.Elem) {
-		if e.code == "nil" { // `@x = T.let(nil, T.nilable(X))` into a non-nil slot: its zero value, read before set
-			return "rbZero[" + f.c.goType(to) + "]()", true
+	if o, ok := e.typ.(TOpt); ok {
+		if code, ok := f.lenientOpt(n, e, o, to); ok {
+			return code, true
 		}
-		if oc, ok := o.Elem.(TClass); ok && oc.C == to.C && oc.C.isStruct() {
-			// an object's interface holds nil as MRI's variable does, and gem truthiness tests it (decision 257): concurrent-ruby's
-			// `reduce(nil) { |d, f| add_delayed d, ... }` passes its nil accumulator on
-			return "rbDerefOrNil(" + e.code + ")", true
-		}
-		return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
 	}
 	if isNil(e.typ) && to.C.RubyName == "Boolean" { // a gem's predicate falling off with nil: false where a bool is kept (decision 233)
 		return "Boolean(false)", true
@@ -236,6 +230,25 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](any(%s), %q)", f.c.goType(to), e.code, to.String())), true
 	}
 	return "", false
+}
+
+// lenientOpt is a gem's T? where T is wanted (decision 172).
+func (f *fctx) lenientOpt(n parser.Node, e expr, o TOpt, to TClass) (string, bool) {
+	if oc, ok := o.Elem.(TClass); ok && leafOpt(o) && oc.C == to.C {
+		return e.code, true // a leaf's C? is its *C (decision 360): nil passes on as MRI's nil does (decision 257), Homebrew's `ChecksumMismatchError.new(f, checksum, actual)` after `checksum.blank?`
+	}
+	if f.c.goType(e.typ) != "*"+f.c.goType(o.Elem) {
+		return "", false
+	}
+	if e.code == "nil" { // `@x = T.let(nil, T.nilable(X))` into a non-nil slot: its zero value, read before set
+		return "rbZero[" + f.c.goType(to) + "]()", true
+	}
+	if oc, ok := o.Elem.(TClass); ok && oc.C == to.C && oc.C.isStruct() {
+		// an object's interface holds nil as MRI's variable does, and gem truthiness tests it (decision 257): concurrent-ruby's
+		// `reduce(nil) { |d, f| add_delayed d, ... }` passes its nil accumulator on
+		return "rbDerefOrNil(" + e.code + ")", true
+	}
+	return f.coerce(n, expr{code: fmt.Sprintf("rbMust(%s, %q)", e.code, o.Elem.String()), typ: o.Elem}, to), true
 }
 
 // bindGemUnbound: what a gem's argument left unbound (untyped, or T? for T[E]) is untyped, as for

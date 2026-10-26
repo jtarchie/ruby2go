@@ -468,6 +468,7 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 		}
 	}
 	c.emitHashKeyMiss(f, m, env, req)
+	c.emitFetchDefault(f, m, env)
 	call := func(k int, withRest bool) {
 		nodes := make([]parser.Node, 0, k+1)
 		for i := range k {
@@ -735,6 +736,21 @@ func (c *Compiler) emitHashKeyMiss(f *fctx, m *Method, env map[string]Type, req 
 	}
 	f.emit("if _, ok := rbConv[%s](args[0]); !ok {", c.goType(t))
 	f.emit("\treturn %s", miss)
+	f.emit("}")
+}
+
+// emitFetchDefault: a dynamic `h.fetch(k, default)` whose default is not the Hash's V (concurrent-ruby's
+// `opts.fetch(:auto_terminate, true)` on a Hash[Symbol, Integer]) answers the value or that default, as MRI's does
+// (decision 374).
+func (c *Compiler) emitFetchDefault(f *fctx, m *Method, env map[string]Type) {
+	if m.Name != "fetch" || m.Owner != c.classes["Hash"] || len(m.Params) != 2 || isAny(env["V"]) || isAny(env["K"]) {
+		return
+	}
+	f.emit("if len(args) == 2 {")
+	f.emit("\tif _, ok := rbConv[%s](rbArg(args, 1)); !ok && rbArg(args, 1) != nil {", c.goType(env["V"]))
+	f.emit("\t\tif v, ok := self.rbGet(rbAs[%s](args[0], %q)); ok {\n\t\t\treturn v\n\t\t}", c.goType(env["K"]), "K")
+	f.emit("\t\treturn rbArg(args, 1)")
+	f.emit("\t}")
 	f.emit("}")
 }
 

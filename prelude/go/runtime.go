@@ -601,6 +601,15 @@ func rbFlatPair[A, B any](t Tuple2[**A, **B]) Tuple2[*A, *B] {
 	return Tuple2[*A, *B]{rbFlat(t.F0), rbFlat(t.F1)}
 }
 
+// rbFlatArray opens a generic Array[E?] whose E is a leaf class's *C: each **C slot to the *C its C? is (decision 360).
+func rbFlatArray[T any](a *Array[**T]) *Array[*T] {
+	out := make([]*T, len(a.s))
+	for i, p := range a.s {
+		out[i] = rbFlat(p)
+	}
+	return &Array[*T]{s: out}
+}
+
 // rbBoxPtr is a leaf class's C?, its *C, where generic code takes V? with V = *C (decision 360).
 func rbBoxPtr[T any](p *T) **T {
 	if p == nil {
@@ -637,6 +646,14 @@ func rbAsSlow[T any](a any, want string) T {
 		return v
 	}
 	var zero T
+	if a != nil && rbMBox(&zero, a) { // T is a box where generic code binds a type parameter to C? (Homebrew's set_unique_stanza with U = DSL::Version?)
+		return zero
+	}
+	if f, ok := a.(**func(...any) any); ok && f != nil { // an optional &block's Proc? box held untyped (Homebrew's stored postflight block cast back)
+		if t, ok := any(*f).(T); ok {
+			return t
+		}
+	}
 	if a == nil && any(zero) == nil { // an object type (an interface) holds nil, as MRI passes nil anywhere: a call on it raises (decision 253)
 		return zero
 	}

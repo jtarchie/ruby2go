@@ -2137,6 +2137,23 @@ module StdlibTests
     end
 
     # Homebrew's File.atomic_write: Tempfile.open in a given directory, closed after the block, its value returned
+    # blockless descend/ascend are Enumerators, and a relative path's ascend stops at its first segment (Homebrew's
+    # Relocated#resolve_target `target.descend.first`)
+    def test_pathname_descend_ascend_enum
+      t = Pathname("~/bin/x")
+      assert_equal ["~", %w[~ ~/bin ~/bin/x], %w[~/bin/x ~/bin ~]], [t.descend.first.to_s, t.descend.map(&:to_s), t.ascend.to_a.map(&:to_s)]
+    end
+
+    def test_tempfile_to_io
+      t = Tempfile.new("to-io")
+      io = t.to_io
+      io.write("hi")
+      io.flush
+      assert_equal [true, "hi"], [io.is_a?(File), File.read(t.path.to_s)]
+      t.close
+      t.unlink
+    end
+
     def test_tempfile_open_in_dir
       Dir.mktmpdir do |d|
         path = nil #: String?

@@ -37,6 +37,10 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	if f == nil {
 		return // evaluated by code outside the closed world (a replaced gem's own)
 	}
+	if e.Kind == "run" {
+		c.collectRunEval(ctx, f, ln, e)
+		return
+	}
 	if e.Kind == "class_eval_block" {
 		c.collectBlockEval(ctx, f, ln, e)
 		return
@@ -75,6 +79,105 @@ func (c *Compiler) collectBootEval(ctx context.Context, e boot.EvalInfo) {
 	default:
 		c.errorAt(srcPos{f, ln}, "a %s on %q: rugaroo compiles a string eval only on a named module, from boot (decision 204)", e.Kind, e.Self)
 	}
+}
+
+// collectRunEval keeps a string the trace saw evaluated at run time, at line ln of f, for its call site (decision 374):
+// Homebrew's CaskLoader instance_evals a tap's cask file. A site rugaroo does not compile this way ignores it.
+func (c *Compiler) collectRunEval(ctx context.Context, f *File, ln int, e boot.EvalInfo) {
+	site := boot.Loc{File: f.path, Line: ln}
+	for _, u := range c.runEvals[site] {
+		if u.src == e.Source {
+			return
+		}
+	}
+	name := f.Name
+	if e.File != "" { // positions and backtraces name the eval's file and its own lines, as MRI's (Homebrew's deprecation notice points into Casks/x.rb)
+		name = e.File
+	}
+	sf, err := parseFile(ctx, c.parser, name, []byte(e.Source), originSource)
+	if err != nil {
+		return // Prism rejects what MRI ran (an encoding comment it does not know): the site raises, as for any other string
+	}
+	sf.path = f.path // gem or user code as its call site is
+	if e.File == "" {
+		sf.pinLine = ln
+	}
+	if c.runEvals == nil {
+		c.runEvals = map[boot.Loc][]evalUnit{}
+	}
+	c.runEvals[site] = append(c.runEvals[site], evalUnit{src: e.Source, file: sf})
+}
+
+// runEvalsAt is what the trace saw an `instance_eval(string, ...)` on self evaluate here.
+func (f *fctx) runEvalsAt(n *parser.CallNode) []evalUnit {
+	if n.Name != "instance_eval" || n.Block != nil || len(callArgs(n)) == 0 || f.c.runEvals == nil {
+		return nil
+	}
+	if _, self := n.Receiver.(*parser.SelfNode); n.Receiver != nil && !self {
+		return nil
+	}
+	loc := n.Location
+	if n.MessageLoc != nil {
+		loc = *n.MessageLoc
+	}
+	return f.c.runEvals[f.f.bootLoc(loc.StartOffset)]
+}
+
+// genRunEval is a run-time instance_eval site: the evaluated string picks the source the trace saw, which runs here as a
+// block on this self, its last value the call's. Another string raises: the binary is the closed world of what the
+// trace ran (decisions 296, 374). The file and line arguments only name the source for MRI's messages.
+func (f *fctx) genRunEval(n *parser.CallNode, units []evalUnit) expr {
+	str := f.cls("String")
+	src := f.coerce(n, f.genExpr(callArgs(n)[0], str), str)
+	codes := make([]string, len(units))
+	types := make([]Type, len(units))
+	for i, u := range units {
+		env := map[string]Type{}
+		sig := &BlockSig{Ret: TVar{Name: "R"}}
+		var body parser.Node
+		if u.file.Root.Statements != nil {
+			body = u.file.Root.Statements
+		}
+		blk := &parser.BlockNode{Location: n.Location, Body: body}
+		codes[i] = f.inFile(u.file, func() string { return f.genClosure(blk, blk, sig, env) })
+		types[i] = subst(sig.Ret, env)
+	}
+	t := types[0]
+	if len(units) > 1 {
+		t = TAny{}
+	}
+	res, tmp := f.newTmp(), f.newTmp()
+	if !isVoid(t) {
+		f.emit("var %s %s", res, f.c.goType(t))
+	}
+	f.emit("switch %s := string(%s); %s {", tmp, src, tmp)
+	for i, u := range units {
+		f.emit("case %s:", strconv.Quote(u.src))
+		switch {
+		case isVoid(types[i]) && isVoid(t):
+			f.emit("	(%s)()", codes[i])
+		case isVoid(types[i]):
+			f.emit("	(%s)()", codes[i])
+			f.emit("	%s = nil", res)
+		default:
+			f.emit("	%s = %s", res, f.coerce(n, expr{code: "(" + codes[i] + ")()", typ: types[i]}, t))
+		}
+	}
+	f.emit("default:")
+	f.emit("	panic(NewNotImplementedError(Ref(String(%q + %s))))", "rugaroo: a string eval the trace did not run: ", tmp)
+	f.emit("}")
+	if isVoid(t) {
+		return expr{code: "nil", typ: TNil{}, lit: true}
+	}
+	return expr{code: res, typ: t}
+}
+
+// inFile runs gen with sf as the file being compiled, restored however gen leaves (a compile error unwinds to a retry).
+func (f *fctx) inFile(sf *File, gen func() string) string {
+	saved := f.f
+	f.f = sf
+	defer func() { f.f = saved }()
+	return gen()
 }
 
 // lexicalOf is the lexical scope code written inside cls's body sees: each enclosing namespace, then cls.

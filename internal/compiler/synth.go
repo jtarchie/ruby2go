@@ -20,6 +20,7 @@ func (c *Compiler) synthFile(ctx context.Context, f *File, at parser.Node, label
 	if err != nil {
 		c.errorf(f, at, "%s: %v\n%s", label, err, src)
 	}
+	sf.synth = true
 	if !o.NoPath {
 		sf.path = f.path
 	}

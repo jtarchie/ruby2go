@@ -96,8 +96,34 @@ module SorbetTests
     def self.square(factor) = new(factor, factor)
   end
 
+  class Field < T::Enum
+    enums do
+      Name = new
+      Desc = new("description")
+    end
+  end
+
   class Args
     extend T::Sig
+
+    # a frozen literal of lambdas cast as a whole (Homebrew's SearchCmd::PACKAGE_MANAGERS)
+    URLS = T.let({
+      a: ->(q) { "a=#{q}" },
+      b: lambda { |q|
+        "b=#{q}"
+      },
+    }.freeze, T::Hash[Symbol, T.proc.params(query: String).returns(String)])
+
+    sig { params(f: Field).returns(String) }
+    def self.field_kind(f)
+      case f
+      when Field::Name then "name"
+      when Field::Desc then "desc"
+      else "other"
+      end
+    end
+
+    YieldType = T.type_alias { T.nilable(T.proc.params(x: Integer).returns(Integer)) }
 
     sig do
       params(a: Integer, b: Integer, rest: String, key: Symbol, opt: T.nilable(String), more: Integer)
@@ -121,6 +147,26 @@ module SorbetTests
     sig { params(blk: T.nilable(T.proc.params(x: Integer).returns(Integer))).returns(Integer) }
     def self.maybe_yield(&blk)
       blk ? blk.call(20) : -1
+    end
+
+    # a class object of a type parameter (Homebrew's Contributions#cached_github_request)
+    sig do
+      type_parameters(:U).params(type: T::Class[T.type_parameter(:U)], blk: T.proc.returns(T.type_parameter(:U)))
+                         .returns(T.nilable(T.type_parameter(:U)))
+    end
+    def self.typed_yield(type, &blk)
+      v = blk.call
+      v.is_a?(type) ? v : nil
+    end
+
+    # an untyped block may be left out (Homebrew's LazyObject#__getobj__(&_blk))
+    sig { params(blk: T.untyped).returns(String) }
+    def self.maybe_untyped_block(&blk) = blk ? "block" : "none"
+
+    # a block typed by an alias (Homebrew's Search `block: SearchBlockType`)
+    sig { params(blk: YieldType).returns(Integer) }
+    def self.alias_yield(&blk)
+      blk ? blk.call(30) : -1
     end
 
     sig { params(flag: ::T::Boolean, blk: T.nilable(Proc)).returns(String) }
@@ -263,9 +309,24 @@ module SorbetTests
       assert_equal({ name: "a", n: 1 }, Args.shape(["a", 1]))
     end
 
+    def test_frozen_lambda_hash
+      assert_equal ["b=x", [:a, :b], true], [Args::URLS.fetch(:b).call("x"), Args::URLS.keys, Args::URLS.frozen?]
+    end
+
+    def test_enum
+      assert_equal "desc", Args.field_kind(Field::Desc)
+      assert_equal "name", Args.field_kind(Field::Name)
+      assert_equal ["name", "description"], [Field::Name.serialize, Field::Desc.serialize]
+      assert_equal "#<SorbetTests::Field::Desc>", Field::Desc.inspect
+    end
+
     def test_nilable_block
       assert_equal 21, Args.maybe_yield { |x| x + 1 }
       assert_equal(-1, Args.maybe_yield)
+      assert_equal 31, Args.alias_yield { |x| x + 1 }
+      assert_equal 3, Args.typed_yield(Integer) { 3 }
+      assert_equal ["none", "block"], [Args.maybe_untyped_block, Args.maybe_untyped_block { 1 }]
+      assert_equal(-1, Args.alias_yield)
       assert_equal "block true", Args.loose_block(true) { 1 }
       assert_equal "none false", Args.loose_block(false)
     end

@@ -360,6 +360,13 @@ module ArrayTests
 
     #: () -> String
     def inspect = "#<V #{self}>"
+
+    # a leaf class's C? from a filter_map block (Homebrew's `languages.filter_map { Locale.parse(it) }`)
+    #: (String) -> Version?
+    def self.parse(s)
+      a, b = s.split(".")
+      a && b ? new(a.to_i, b.to_i) : nil
+    end
   end
 
   class Nums
@@ -1681,6 +1688,7 @@ module ArrayTests
       assert_nil (en_e.inject { |s, x| s + x })
       assert_equal [10, 6, 16, 2, 18, 4], (en_a.each_with_object([]) { |x, acc| acc << x * 2 })
       assert_equal [50, 30, 10, 90], (en_a.filter_map { |x| x * 10 if x.odd? })
+      assert_equal ["v1.2", "v3.4"], (%w[1.2 x 3.4].filter_map { |v| Version.parse(v) }.map(&:to_s))
       assert_equal [[8, 2], [5, 3, 1, 9]], en_a.partition(&:even?)
       assert_equal [1, 9], en_a.minmax
       assert_equal [nil, nil], en_e.minmax

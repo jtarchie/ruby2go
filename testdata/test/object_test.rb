@@ -4298,6 +4298,13 @@ module ObjectTests
     private_constant :LIMIT
     #: () -> Integer
     def limit = LIMIT
+
+    # a private Struct constant: its generated `==` still names it (Homebrew's Vulns::Scanner::Target)
+    Pair = Struct.new(:a, :b, keyword_init: true)
+    private_constant :Pair
+
+    #: () -> bool
+    def pairs_equal? = Pair.new(a: 1, b: 2) == Pair.new(a: 1, b: 2)
   end
 
   class VisBase
@@ -4343,6 +4350,7 @@ module ObjectTests
       assert_equal ["cfg", 42, 8, "HI", true, 3], [VisConfig.default_name, VisConfig.reveal, VisUtil.double(4), VisHelpers.shout("hi"), VisAccount.new(10).richer_than?(VisAccount.new(5)), VisFactory.build.limit]
       assert_equal "base", VisKid.new.greet
       assert_nil defined?(VisFactory::LIMIT) # #53: private: no path reaches it
+      assert VisFactory.build.pairs_equal?
     end
 
     def test_class_structure

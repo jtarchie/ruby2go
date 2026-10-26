@@ -115,12 +115,33 @@ func (f *fctx) genKernelCall(n *parser.CallNode, expected Type) (expr, bool) {
 	return f.genKernelIntrinsic(&bare, expected)
 }
 
+// genFrozenLiteral is `{...}.freeze` or `[...].freeze` where a type is expected: freeze answers its receiver, so the
+// literal is built as that type (Homebrew's `T.let({ alpine: ->(query) { ... } }.freeze, T::Hash[Symbol, T.proc...])`
+// types each lambda's parameter).
+func (f *fctx) genFrozenLiteral(n *parser.CallNode, expected Type) (expr, bool) {
+	if n.Name != "freeze" || expected == nil || n.Block != nil || len(callArgs(n)) > 0 {
+		return expr{}, false
+	}
+	switch n.Receiver.(type) {
+	case *parser.HashNode, *parser.ArrayNode:
+	default:
+		return expr{}, false
+	}
+	lit := f.genExpr(n.Receiver, expected)
+	frozen := *n
+	frozen.Receiver = &exprNode{Node: n.Receiver, e: lit}
+	return f.genCall(&frozen, nil), true
+}
+
 func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	defer f.afterCall(n) // after the arguments, which still read narrowed ivars
 	if e, ok := f.genFusedIndexAssign(n); ok {
 		return e
 	}
 	if e, ok := f.genCallRewrite(n, expected); ok {
+		return e
+	}
+	if e, ok := f.genFrozenLiteral(n, expected); ok {
 		return e
 	}
 	if e, ok := f.lenientCall(n); ok {
@@ -573,6 +594,9 @@ func (f *fctx) classCall(n parser.Node, t TClass, recv expr, name string, args [
 	}
 	if e == nil {
 		if mm := t.C.lookup("method_missing"); mm != nil {
+			if recv.code == f.selfCode {
+				f.missingCalls++
+			}
 			return f.callMissing(n, mm, recv, name, args, block)
 		}
 		if f.c.isDelegator(t.C) {
@@ -775,6 +799,7 @@ func (f *fctx) selfCall(n parser.Node, recv expr, name string, args []parser.Nod
 		return f.genDynCall(n, recv, name, args)
 	}
 	if mm := f.owner.lookup("method_missing"); mm != nil {
+		f.missingCalls++
 		return f.callMissing(n, mm, recv, name, args, block)
 	}
 	if f.c.isDelegator(f.owner) && f.c.classes["Object"].lookup(name) == nil {

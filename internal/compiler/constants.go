@@ -162,6 +162,10 @@ func (c *Compiler) methodClassVars() {
 // way Ruby does: lexical scope innermost-out, then the innermost class's
 // ancestors, then top level. Exactly one of the results is non-nil, or
 // both are nil when nothing matched.
+// privateRef reports a path from f naming private constant full; generated source may (a Struct's `==` names its class:
+// Homebrew's private Vulns::Scanner::Target).
+func (c *Compiler) privateRef(f *File, full string) bool { return c.privateConsts[full] && !f.synth }
+
 func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, *Const) {
 	switch n := n.(type) {
 	case *parser.ConstantReadNode:
@@ -193,7 +197,7 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 		for _, anc := range parent.ancestors() {
 			full := anc.RubyName + "::" + *n.Name
 			if cls, k := c.classes[full], c.consts[full]; cls != nil || k != nil {
-				if c.privateConsts[full] {
+				if c.privateRef(f, full) {
 					c.errorf(f, n, "private constant %s referenced", full)
 				}
 				if cls == nil {

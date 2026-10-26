@@ -1,0 +1,29 @@
+Subject: Tap: build the tapped-contents sentence without String#prepend
+
+`presence&.prepend(" ")` edits the sentence in place; an interpolation builds the same text as a new String,
+which rugaroo's immutable Strings can compile (decision 58).
+---
+diff --git a/Library/Homebrew/tap.rb b/Library/Homebrew/tap.rb
+index c8653b0352..63dc0cec8a 100644
+--- a/Library/Homebrew/tap.rb
++++ b/Library/Homebrew/tap.rb
+@@ -773,7 +773,8 @@ class Tap
+     Commands.rebuild_commands_completion_list
+     link_completions_and_manpages
+ 
+-    formatted_contents = Utils::Text.to_sentence(contents).presence&.prepend(" ")
++    formatted_contents = Utils::Text.to_sentence(contents).presence
++    formatted_contents = " #{formatted_contents}" if formatted_contents
+     $stderr.puts "Tapped#{formatted_contents} (#{path.abv})." unless quiet
+ 
+     require "description_cache_store"
+@@ -884,7 +885,8 @@ class Tap
+     $stderr.puts "Untapping #{name}..."
+ 
+     abv = path.abv
+-    formatted_contents = Utils::Text.to_sentence(contents).presence&.prepend(" ")
++    formatted_contents = Utils::Text.to_sentence(contents).presence
++    formatted_contents = " #{formatted_contents}" if formatted_contents
+ 
+     require "description_cache_store"
+     CacheStoreDatabase.use(:descriptions) do |db|

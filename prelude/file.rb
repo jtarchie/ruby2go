@@ -1199,9 +1199,10 @@ class Dir < Object
   #: (String) -> Array[String]
   def self.entries(path) = [".", ".."] + children(path)
 
-  # `*`, `?`, `[set]`, `**/`, `{a,b}` and a trailing `/`, in MRI's sorted order (rbGlob, decision 94).
-  #: (String) -> Array[String]
-  def self.glob(pattern) = %x{ return rbStrs(rbGlob(string(pattern))) }
+  # `*`, `?`, `[set]`, `**/`, `{a,b}` and a trailing `/`, in MRI's sorted order (rbGlob, decision 94); flags may be
+  # File::FNM_DOTMATCH.
+  #: (String, ?Integer) -> Array[String]
+  def self.glob(pattern, flags = 0) = %x{ return rbStrs(rbGlob(string(pattern), int(flags))) }
 
   #: (*String) -> Array[String]
   def self.[](*patterns)

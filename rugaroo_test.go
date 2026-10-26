@@ -359,6 +359,30 @@ func TestTracedEntry(t *testing.T) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
+// TestTraceEval compiles testdata/traced_eval from a run of main.rb: the string its loader instance_evals at run time (a
+// cask file's text) runs compiled at the call site (decision 374).
+func TestTraceEval(t *testing.T) {
+	requireToolchain(t)
+	t.Parallel()
+	dir := filepath.Join("testdata", "traced_eval")
+	main := filepath.Join(dir, "main.rb")
+	src, err := os.ReadFile(main) //nolint:gosec // testdata path
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, err := CompileTrace(t.Context(), main, [][]string{nil}, []string{"--disable=gems"}, loadPath(dir, src)...)
+	if err != nil {
+		t.Fatalf("rugaroo: %v", err)
+	}
+	gen := t.TempDir()
+	writeModule(t, gen)
+	werr := os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+	if werr != nil {
+		t.Fatal(werr)
+	}
+	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
+}
+
 // TestTraceRun compiles testdata/traced from runs of main.rb, with no entry file: the second (-trace-also) loads traced_argv (decision 296).
 func TestTraceRun(t *testing.T) {
 	requireToolchain(t)
