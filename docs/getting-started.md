@@ -134,7 +134,7 @@ how to silence it.
   is, so the call is dispatched while the program runs (through generated code,
   not reflection). It works, but a mistake surfaces as a run-time
   `NoMethodError` instead of a compile error, and it is slower. Values from
-  `JSON.parse` are the common source; annotate what you take out of them
+  `JSON.parse` and `YAML.load` are the common source; annotate what you take out of them
   (`nums = data["a"] #: Array[Integer]`).
 - **`method add's parameter x is untyped: no call in the program gives it a type`**:
   nothing calls the method with a typed argument, so inference had nothing to

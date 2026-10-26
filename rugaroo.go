@@ -36,20 +36,21 @@ const GoVersion = "1.25.0"
 var goSum string
 
 // GoMod is the go.mod generated code builds in: the runtime modules a program may import (regexp2 for patterns RE2
-// cannot match, decision 242; purego for Fiddle, decision 326); Go loads one only when main.go imports it.
-const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire (\n\tgithub.com/dlclark/regexp2 " + regexp2Version + "\n\tgithub.com/ebitengine/purego " + puregoVersion + "\n)\n"
+// cannot match, decision 242; purego for Fiddle, decision 326; go-yaml for YAML, decision 376); Go loads one only when main.go imports it.
+const GoMod = "module gen\n\ngo " + GoVersion + "\n\nrequire (\n\tgithub.com/dlclark/regexp2 " + regexp2Version + "\n\tgithub.com/ebitengine/purego " + puregoVersion + "\n\tgithub.com/goccy/go-yaml " + goYAMLVersion + "\n)\n"
 
-// regexp2Version and puregoVersion are the pins GoMod and GoSum derive from; TestGoModMatchesRepo holds them to go.mod.
+// regexp2Version, puregoVersion and goYAMLVersion are the pins GoMod and GoSum derive from; TestGoModMatchesRepo holds them to go.mod.
 const (
 	regexp2Version = "v1.12.0"
 	puregoVersion  = "v0.11.2"
+	goYAMLVersion  = "v1.19.2"
 )
 
 // GoSum is go.sum for GoMod: its modules' lines from rugaroo's own.
 func GoSum() string {
 	var b strings.Builder
 	for line := range strings.Lines(goSum) {
-		for _, mod := range []string{"github.com/dlclark/regexp2 " + regexp2Version, "github.com/ebitengine/purego " + puregoVersion} {
+		for _, mod := range []string{"github.com/dlclark/regexp2 " + regexp2Version, "github.com/ebitengine/purego " + puregoVersion, "github.com/goccy/go-yaml " + goYAMLVersion} {
 			if strings.HasPrefix(line, mod+" ") || strings.HasPrefix(line, mod+"/go.mod ") {
 				b.WriteString(line)
 			}

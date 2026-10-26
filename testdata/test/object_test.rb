@@ -5471,7 +5471,7 @@ module ObjectTests
     def test_private_and_singleton_method_tables
       k = ObjectReflectVisibility
       assert_equal [[:priv], true, [:made], true, true],
-                   [k.private_instance_methods(false), k.private_method_defined?(:priv), k.singleton_methods,
+                   [k.private_instance_methods(false), k.private_method_defined?(:priv), k.singleton_methods - [:yaml_tag], # yaml_tag: Psych's, when yaml_test loads in the same process
                     Kernel.private_instance_methods(false).include?(:puts), Kernel.public_methods(false).include?(:sprintf)]
     end
 

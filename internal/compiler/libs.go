@@ -84,6 +84,8 @@ var preludeLibs = map[string]string{
 	"fiddle/function":          "prelude/fiddle.rb",
 	"fcntl":                    "prelude/fcntl.rb",
 	"ffi":                      "prelude/ffi.rb",
+	"yaml":                     "prelude/yaml.rb",
+	"psych":                    "prelude/yaml.rb",
 }
 
 // mriLibs are MRI 4.0's standard library (first path segment): never a gem to look up, so requiring them never starts Ruby.

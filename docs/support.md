@@ -155,6 +155,7 @@ compiler answers. A standard library name not listed compiles as a no-op.
 | `openssl` | experimental | [openssl_test](../testdata/test/openssl_test.rb) | Only RSA public-key verification and SSL verify modes: no signing, key generation or TLS of its own ([decision 281](decisions/281.md)). |
 | `sorbet-runtime` | experimental | [119](../examples/119_sorbet_sigs/main.rb), [sorbet_test](../testdata/test/sorbet_test.rb) | `sig`, `T.let`, `T.cast`, `T.must` are read as types; what sorbet-runtime would raise is a compile error ([decision 196](decisions/196.md)). |
 | `rubygems` | experimental | (Homebrew) | Only the surface a program that requires RubyGems itself touches; no gem loading. |
+| `yaml`, `psych` | experimental | [128](../examples/128_yaml/main.rb), [yaml_test](../testdata/test/yaml_test.rb) | Psych's `load`/`safe_load`/`unsafe_load` (permitted classes and symbols, aliases, merge keys, YAML 1.1 scalars), `load_file`, `load_stream`, `dump`/`to_yaml`, parsed by [go-yaml](https://github.com/goccy/go-yaml) ([decision 376](decisions/376.md)). Dumped text and syntax-error messages are not libyaml's, but load back the same. No collection keys when loading, no `!ruby/object`, no `Psych.parse` tree. |
 | `rexml/xmltokens`, `rexml/parsers/baseparser` | experimental | [123](../examples/123_kramdown/main.rb) | The name patterns only, for gems (kramdown) that build regexps from them. |
 
 ## Gems — experimental
