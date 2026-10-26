@@ -36,6 +36,9 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
+	if e, ok := f.genLiteralFormat(n); ok {
+		return e, true
+	}
 	if e, ok := f.symbolToProc(n, expected); ok {
 		return e, true
 	}

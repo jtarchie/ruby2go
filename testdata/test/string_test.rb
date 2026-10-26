@@ -2014,4 +2014,41 @@ module StringTests
       assert_equal Encoding::UTF_8, [97].pack("U").encoding
     end
   end
+
+  # A literal format string compiles to appends (decision 377); each check pairs it with the run-time path on the same values.
+  class StringCompiledFormatTest < Minitest::Test
+    def test_integers
+      dyn = "%d|%5d|%-5d|%05d|%-05d|%x|%X|%5x|%05x|%-6x|%+d|% d|%o|%i|%u"
+      [0, 7, -7, 42, -255, 100_000, -1, 9_223_372_036_854_775_807].each do |i|
+        assert_equal format(dyn, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i),
+                     format("%d|%5d|%-5d|%05d|%-05d|%x|%X|%5x|%05x|%-6x|%+d|% d|%o|%i|%u", i, i, i, i, i, i, i, i, i, i, i, i, i, i, i)
+        assert_equal format("[%s] [%8s]", i, i), "[%s] [%8s]" % [i, i]
+        assert_equal format(dyn.split("|").first || "", i), "%d" % i
+      end
+    end
+
+    def test_floats
+      dyn = "%f|%.2f|%8.3f|%-8.3f|%08.3f|%.0f|%+.1f|% .1f|%e|%g|%10.4f"
+      [0.0, -0.0, 1.5, -1.5, 3.14159, 1e20, -2.5e-7, 0.125, Float::INFINITY, -Float::INFINITY, Float::NAN].each do |f|
+        assert_equal format(dyn, f, f, f, f, f, f, f, f, f, f, f), format("%f|%.2f|%8.3f|%-8.3f|%08.3f|%.0f|%+.1f|% .1f|%e|%g|%10.4f", f, f, f, f, f, f, f, f, f, f, f)
+      end
+      assert_equal "+NaN| NaN| +Inf|-Inf  ", format("%+f|% f|%+5f|%-6f", Float::NAN, Float::NAN, Float::INFINITY, -Float::INFINITY)
+    end
+
+    def test_strings
+      dyn = "[%s][%5s][%-5s][%.2s][%05s][%p]"
+      ["", "a", "héllo", "toolongstring", "日本"].each do |s|
+        assert_equal format(dyn, s, s, s, s, s, s), format("[%s][%5s][%-5s][%.2s][%05s][%p]", s, s, s, s, s, s)
+      end
+      assert_equal "sym|      |nil", format("%s|%-6s|%p", :sym, nil, nil)
+      assert_equal "100% done", format("100%% %s", "done")
+      assert_equal "a and b", "%s and %s" % ["a", "b"]
+    end
+
+    def test_arguments_evaluate_in_order_first
+      x = 0
+      assert_equal "1 11 111", format("%d %d %d", (x += 1), (x += 10), (x += 100))
+      assert_equal "05|n12     |   1.714|c\n", format("%02d|%-8s|%8.3f|%x\n", 5, "n#{12 % 97}", 12 / 7.0, 12)
+    end
+  end
 end

@@ -326,13 +326,16 @@ func rbFormatOne(spec string, verb byte, v any) string {
 		}
 		if math.IsInf(f, 0) || math.IsNaN(f) {
 			s := "Inf"
-			switch {
-			case math.IsNaN(f):
+			if math.IsNaN(f) {
 				s = "NaN"
+			}
+			switch {
 			case f < 0:
 				s = "-Inf"
-			case strings.Contains(spec, "+"):
-				s = "+Inf"
+			case strings.Contains(spec, "+"): // NaN takes the sign flags too
+				s = "+" + s
+			case strings.Contains(spec, " "):
+				s = " " + s
 			}
 			w, _ := strconv.Atoi(strings.TrimLeft(strings.SplitN(spec[1:], ".", 2)[0], "-+ 0#"))
 			if strings.Contains(spec, "-") {
@@ -484,4 +487,75 @@ func rbFormatNoZeroFlag(spec string) string {
 	}
 
 	return spec[:1] + strings.ReplaceAll(spec[1:i], "0", "") + spec[i:]
+}
+
+// rbFmtInt is a compiled %d/%i/%u/%x/%X directive (decision 377); spec and verb are rbFormat's, for what the fast path leaves out.
+func rbFmtInt(b []byte, n Integer, verb byte, width int, left, zero bool, spec string) []byte {
+	base := 10
+	if verb == 'x' || verb == 'X' {
+		if n < 0 { // MRI's ..f two's complement
+			return append(b, rbFormatOne(spec, verb, n)...)
+		}
+		base = 16
+	}
+	var tmp [24]byte
+	d := strconv.AppendInt(tmp[:0], int64(n), base)
+	if verb == 'X' {
+		for i, c := range d {
+			if c >= 'a' {
+				d[i] = c - 'a' + 'A'
+			}
+		}
+	}
+	return rbFmtPad(b, d, len(d), width, left, zero)
+}
+
+// rbFmtFloat is a compiled %f directive; prec is 6 when the directive gives none.
+func rbFmtFloat(b []byte, x Float, prec, width int, left, zero bool, spec string) []byte {
+	f := float64(x)
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return append(b, rbFormatOne(spec, 'f', x)...)
+	}
+	var tmp [64]byte
+	d := strconv.AppendFloat(tmp[:0], f, 'f', prec, 64)
+	return rbFmtPad(b, d, len(d), width, left, zero)
+}
+
+// rbFmtStr is a compiled %s directive of a String: MRI's width counts characters.
+func rbFmtStr(b []byte, s String, width int, left bool) []byte {
+	n := len(s)
+	if width > 0 { // a multibyte String's byte length can reach the width while its character count does not
+		n = utf8.RuneCountInString(string(s))
+	}
+	return rbFmtPad(b, s, n, width, left, false)
+}
+
+// rbFmtPad appends d (n characters) padded to width: spaces on the right for -, zeros after the sign for 0, else spaces on the left.
+func rbFmtPad[T ~string | ~[]byte](b []byte, d T, n, width int, left, zero bool) []byte {
+	pad := width - n
+	switch {
+	case pad <= 0:
+		return append(b, d...)
+	case left:
+		b = append(b, d...)
+		return rbFmtFill(b, ' ', pad)
+	case zero:
+		if d[0] == '-' {
+			b, d = append(b, '-'), d[1:]
+		}
+		return append(rbFmtFill(b, '0', pad), d...)
+	}
+	return append(rbFmtFill(b, ' ', pad), d...)
+}
+
+func rbFmtFill(b []byte, c byte, n int) []byte {
+	for range n {
+		b = append(b, c)
+	}
+	return b
+}
+
+// rbFmtAny is a compiled directive the fast helpers do not cover: rbFormat's own path, minus the parse.
+func rbFmtAny(b []byte, v any, verb byte, spec string) []byte {
+	return append(b, rbFormatOne(spec, verb, rbUnbox(v))...)
 }
