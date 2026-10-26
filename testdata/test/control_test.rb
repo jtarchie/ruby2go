@@ -5986,4 +5986,19 @@ module ControlTests
       assert_equal ["args"], NoMethodError.new("msg", "name", ["args"]).args
     end
   end
+
+  # decision 382: each thread appends to its own block-local buffer
+  class ThreadAppendTest < Minitest::Test
+    def test_threads_build_their_own_strings
+      ts = (0...4).map do |k|
+        Thread.new(k) do |id|
+          b = +"t#{id}:"
+          200.times { |j| b << j.to_s << "," }
+          b
+        end
+      end
+      sizes = ts.map { |t| t.value.size }
+      assert_equal [693, 693, 693, 693], sizes
+    end
+  end
 end
