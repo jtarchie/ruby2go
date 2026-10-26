@@ -25,6 +25,9 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 			f.errorf(n, "%s takes one argument", name)
 		}
 		a := f.genExpr(args[0], nil)
+		if name == "==" && f.plainOptEq(recv.typ, a.typ) { // `flags[i] == 1`: no boxing into rbEq (decision 385)
+			return expr{code: "Boolean(rbOptEq(" + recv.code + ", " + a.code + "))", typ: f.cls("Boolean")}
+		}
 		arg := f.coerce(args[0], a, TAny{})
 		if name == "equal?" {
 			return expr{code: "Boolean(rbIdentical(" + f.c.optAny(recv.code, recv.typ) + ", " + arg + "))", typ: f.cls("Boolean")}
@@ -497,4 +500,23 @@ func (f *fctx) varToUnion(n parser.Node, e expr, t TVar, to TUnion) string {
 		return "any(" + e.code + ")"
 	}
 	return f.noteConv(n, f.c.unionFn(to)+"(any("+e.code+"))")
+}
+
+// plainOptEq: an Integer?, Float? or Symbol? against a value of its own class, whose == (the prelude's) is Go's.
+func (f *fctx) plainOptEq(recv, arg Type) bool {
+	o, ok := recv.(TOpt)
+	if !ok {
+		return false
+	}
+	c, ok := o.Elem.(TClass)
+	if !ok || !typeEq(c, arg) {
+		return false
+	}
+	switch c.C.RubyName {
+	case "Integer", "Float", "Symbol":
+	default:
+		return false
+	}
+	eq := c.C.lookup("==")
+	return eq != nil && eq.M.File != nil && eq.M.File.isPrelude() && f.c.goType(recv) == "*"+f.c.goType(c)
 }

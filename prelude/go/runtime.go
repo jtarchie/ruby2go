@@ -893,6 +893,9 @@ func rbTruthy(a any) bool {
 // rbTruthyOpt tests a Boolean?: false is as falsy as nil.
 func rbTruthyOpt(p *Boolean) bool { return p != nil && bool(*p) }
 
+// rbOptEq is T? == T for a T whose == is Go's (plainOptEq): nil is never equal.
+func rbOptEq[T comparable](p *T, v T) bool { return p != nil && *p == v }
+
 func rbEq[T comparable](a, b T) Boolean {
 	x, y := rbUnbox(any(a)), rbUnbox(any(b))
 	if e, ok := x.(interface{ Op_eq(any) Boolean }); ok {

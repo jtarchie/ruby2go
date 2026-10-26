@@ -954,7 +954,9 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 		}
 	}
 	f.pushLoop(loopIter)
-	if allBlank {
+	if head := f.countedLoopHead(n, e, recv, codes, names, goParams); head != "" {
+		f.emit("%s", head)
+	} else if allBlank {
 		f.emit("for range %s {", call)
 	} else {
 		f.emit("%s", rangeHead(strings.Join(goParams, ", "), call))

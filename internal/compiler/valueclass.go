@@ -207,12 +207,12 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 			continue
 		}
 		if inferred {
-			fmt.Fprintf(&b, "  attr_reader :%s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if frozen?\n    @%s = __v\n  end\n", m, m, m)
+			fmt.Fprintf(&b, "  attr_reader :%s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if __frozen_flag?\n    @%s = __v\n  end\n", m, m, m)
 			continue
 		}
 		fmt.Fprintf(&b, "  attr_reader :%s #: %s\n", m, types[i])
 		if kind == valueStruct { // a writer, not attr_writer: a frozen struct raises, as MRI's
-			fmt.Fprintf(&b, "  #: (%s) -> %s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if frozen?\n    @%s = __v\n  end\n", types[i], types[i], m, m)
+			fmt.Fprintf(&b, "  #: (%s) -> %s\n  def %s=(__v)\n    raise FrozenError, \"can't modify frozen #{self.class}: #{inspect}\" if __frozen_flag?\n    @%s = __v\n  end\n", types[i], types[i], m, m)
 		}
 	}
 	// A struct's trailing nilable members may be omitted (Ruby fills in

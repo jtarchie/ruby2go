@@ -14,6 +14,7 @@ type envConfig struct {
 	NoPrune       bool   // RUGAROO_NO_PRUNE: keep every declaration
 	NoSpecialize  bool   // RUGAROO_NO_SPECIALIZE: keep module funcs generic over Self (decision 377)
 	NoWindowReuse bool   // RUGAROO_NO_WINDOW_REUSE: each_cons/each_slice copy every window (decision 384)
+	NoCountedLoop bool   // RUGAROO_NO_COUNTED_LOOP: times/upto/downto/(a..b).each range over their iterators, Array#[]= stays a call (decision 385)
 	PruneWhy      bool   // RUGAROO_PRUNE_WHY: the keep chains of the pruner
 	KeepGoing     bool   // RUGAROO_KEEP_GOING: record a collect error and go on
 	DispatchDebug string // RUGAROO_DISPATCH_DEBUG: "all", or any other non-empty value for Kernel/Object/module owners
@@ -35,6 +36,7 @@ func loadEnv() envConfig {
 		NoPrune:       set("RUGAROO_NO_PRUNE"),
 		NoSpecialize:  set("RUGAROO_NO_SPECIALIZE"),
 		NoWindowReuse: set("RUGAROO_NO_WINDOW_REUSE"),
+		NoCountedLoop: set("RUGAROO_NO_COUNTED_LOOP"),
 		PruneWhy:      set("RUGAROO_PRUNE_WHY"),
 		KeepGoing:     set("RUGAROO_KEEP_GOING"),
 		DispatchDebug: os.Getenv("RUGAROO_DISPATCH_DEBUG"),

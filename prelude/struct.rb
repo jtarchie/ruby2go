@@ -6,6 +6,12 @@
 # members and inspect; the member types come from a trailing `#: [A, B]`.
 
 class Struct < Object
+  # A writer checks the object's own flag, as MRI's rb_check_frozen does, not a frozen? override; with no freeze in the program it is false at compile time (decision 385).
+  #: () -> bool
+  def __frozen_flag? = %x{
+    p := rbObjFrozenFlag(any(self))
+    return Boolean(p != nil && *p)
+  }
 end
 
 # The superclass of every `Name = Data.define(:a, :b)` class: immutable

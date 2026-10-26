@@ -6001,4 +6001,64 @@ module ControlTests
       assert_equal [693, 693, 693, 693], sizes
     end
   end
+
+  # times, upto, downto and an Integer Range literal's each run as plain Go loops (decision 385).
+  class ControlCountedLoopTest < Minitest::Test
+    def test_times_and_ranges
+      seen = [] #: Array[Integer]
+      3.times { |i| seen << i }
+      0.times { seen << 99 }
+      -2.times { seen << 98 }
+      (5..7).each { |i| seen << i }
+      (5...7).each { |i| seen << i * 10 }
+      (3..1).each { seen << 97 }
+      2.upto(4) { |i| seen << i }
+      4.downto(2) { |i| seen << -i }
+      3.upto(1) { seen << 96 }
+      assert_equal [0, 1, 2, 5, 6, 7, 50, 60, 2, 3, 4, -4, -3, -2], seen
+      n = 0
+      5.times { n += 1 }
+      (1..3).each { n += 10 }
+      assert_equal 35, n
+    end
+
+    def test_jumps_and_param_writes
+      got = [] #: Array[Integer]
+      10.times do |i|
+        next if i.odd?
+        break if i > 6
+        got << i
+      end
+      (1..10).each do |i|
+        i += 100
+        got << i if i < 103
+      end
+      1.upto(3) do |i|
+        i *= 2
+        got << i
+      end
+      assert_equal [0, 2, 4, 6, 101, 102, 2, 4, 6], got
+    end
+
+    def test_closures_see_their_own_element
+      procs = [] #: Array[^() -> Integer]
+      3.times { |i| procs << -> { i } }
+      (4..5).each { |i| procs << -> { i * 2 } }
+      assert_equal [0, 1, 2, 8, 10], procs.map(&:call)
+    end
+
+    def test_bounds_at_the_edges
+      big = 2**62 + (2**62 - 1)
+      got = [] #: Array[Integer]
+      (big - 1).upto(big) { |i| got << i - big }
+      (-big - 1).downto(-big - 1) { |i| got << i + big }
+      ((big - 1)..big).each { |i| got << i - big }
+      assert_equal [-1, 0, -1, -1, 0], got
+      calls = 0
+      lim = -> { calls += 1; 3 }
+      1.upto(lim.call) { |i| calls += i * 0 }
+      lim.call.times { calls += 0 }
+      assert_equal 2, calls
+    end
+  end
 end

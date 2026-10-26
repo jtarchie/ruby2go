@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"fmt"
 	"slices"
 )
 
@@ -38,6 +39,30 @@ func rbSplatAt[E comparable](a *Array[E], i int) *E {
 		return nil
 	}
 	return &a.s[i]
+}
+
+// rbIntEqGo says Integer#== is the prelude's, Go's ==; emitProgram flips it for a program that redefines it.
+const rbIntEqGo = true
+
+// rbArrayIdxSet is Array#[]= past the in-bounds fast path: frozen, negative or growing.
+func rbArrayIdxSet[E comparable](self *Array[E], i Integer, v E) E {
+	self.rbCheckFrozen()
+	if i < 0 {
+		if -i > Integer(len(self.s)) {
+			panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", i, len(self.s))))))
+		}
+		i += Integer(len(self.s))
+	}
+	if int(i) >= len(self.s) {
+		rbCheckPad(int(i))
+	}
+	for int(i) >= len(self.s) {
+		// nil when E holds it; a non-nilable E pads with its zero value (decision 7)
+		var zero E
+		self.s = append(self.s, zero)
+	}
+	self.s[i] = v
+	return v
 }
 
 // rbSplatVal is rbSplatAt for a reused window (decision 384): the element copied out, so a block param a block keeps

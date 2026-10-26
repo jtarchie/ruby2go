@@ -23,9 +23,17 @@ func (c *Compiler) emitProgram() {
 	// Order matters for `//line` readability only; Go doesn't care. The
 	// translator goes first, so no Ruby file's directive covers it.
 	c.w("%s\n\n", strings.TrimSpace(rxTranslateGo()))
+	intEqGo := true
+	if eq := c.classes["Integer"].lookup("=="); eq == nil || eq.M.File == nil || !eq.M.File.isPrelude() {
+		intEqGo = false
+	}
 	for _, v := range c.verbatim {
 		c.lineDirective(v.File, v.Line)
-		c.w("%s\n\n", strings.TrimSpace(v.code))
+		code := v.code
+		if !intEqGo {
+			code = strings.Replace(code, "const rbIntEqGo = true", "const rbIntEqGo = false", 1) // a program's own Integer#== (decision 385)
+		}
+		c.w("%s\n\n", strings.TrimSpace(code))
 	}
 	if slices.ContainsFunc(c.classList, func(cls *Class) bool { return cls.hashBase && cls.Super.RubyName == "Hash" }) {
 		c.w("type %s[V comparable] = Hash[any, V]\n\n", superField(c.classes["Hash"]))

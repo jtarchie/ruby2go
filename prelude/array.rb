@@ -194,23 +194,11 @@ class Array < Object
   #: (Integer, E) -> E
   def []=(i, v)
     %x{
-    self.rbCheckFrozen()
-    if i < 0 {
-      if -i > Integer(len(self.s)) {
-        panic(NewIndexError(Ref(String(fmt.Sprintf("index %d too small for array; minimum: -%d", i, len(self.s))))))
-      }
-      i += Integer(len(self.s))
+    if uint64(i) < uint64(len(self.s)) && !self.frozen.Load() { // in bounds: small enough for Go to inline (decision 385)
+      self.s[i] = v
+      return v
     }
-    if int(i) >= len(self.s) {
-      rbCheckPad(int(i))
-    }
-    for int(i) >= len(self.s) {
-      // nil when E holds it; a non-nilable E pads with its zero value (decision 7)
-      var zero E
-      self.s = append(self.s, zero)
-    }
-    self.s[i] = v
-    return v}
+    return rbArrayIdxSet(self, i, v)}
   end
 
   #: (Integer, ?E?) -> E
@@ -888,6 +876,9 @@ class Array < Object
     }
     if len(o.s) != len(self.s) {
       return false
+    }
+    if a, ok := any(self.s).([]Integer); ok && rbIntEqGo { // Integer#== is Go's: no boxing per element (decision 385)
+      return Boolean(slices.Equal(a, any(o.s).([]Integer)))
     }
     s, _ := seen.(*rbSeen)
     if s != nil {

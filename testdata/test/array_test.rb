@@ -2808,6 +2808,48 @@ module ArrayTests
       assert_equal [], [1, 2].min_by(0) { it }
     end
   end
+
+  # Array#[]= stores in place when the index is in bounds and the Array not frozen, else the full path (decision 385).
+  class ArrayIndexStoreTest < Minitest::Test
+    def test_store_paths
+      a = [1, 2, 3]
+      a[0] = 10
+      a[-1] = 30
+      a[5] = 6
+      assert_equal [6, 10, 30, 6], [a.size, a[0].to_i, a[2].to_i, a[5].to_i]
+      f = [1.5, 2.5]
+      f[1] = 4
+      assert_equal [1.5, 4.0], f
+      o = [1, nil] #: Array[Integer?]
+      o[0] = nil
+      assert_nil o[0]
+      frozen = [1, 2].freeze
+      err = begin; frozen[0] = 5; ""; rescue FrozenError => e; e.message; end
+      assert_equal "can't modify frozen Array: [1, 2]", err
+      low = begin; a[-99] = 1; ""; rescue IndexError => e; e.message; end
+      assert_equal "index -99 too small for array; minimum: -6", low
+    end
+
+    def test_optional_element_compare
+      flags = [1, 0, 1]
+      assert(flags[0] == 1)
+      refute(flags[1] == 1)
+      refute(flags[9] == 1)
+      assert_equal 2, (0..3).count { |i| flags[i] == 1 }
+      floats = [0.5]
+      assert(floats[0] == 0.5)
+      refute(floats[1] == 0.5)
+    end
+
+    def test_integer_array_equality
+      assert([1, 2, 3] == [1, 2, 3])
+      refute([1, 2, 3] == [1, 2, 4])
+      refute([1, 2] == [1, 2, 3])
+      assert([1, 2] == [1.0, 2.0])
+      li = (1..1000).to_a
+      assert(li == li.reverse.reverse)
+    end
+  end
 end
 
 # Arrays used as stacks of tuples (decision 384).
