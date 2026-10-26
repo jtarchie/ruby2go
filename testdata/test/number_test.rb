@@ -788,7 +788,7 @@ module NumberTests
       assert_equal "2.73552396956703e-07", ((7.5 ** -7.5)).inspect
     end
 
-    # Float#** is exact wherever the power is a Float, on every path (decision 389)
+    # Float#** is exact wherever the power is a Float, on every path (decision 390)
     def test_float_pow_exact_powers
       bad = 0
       (2..40).each do |b|

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// powCheck goes beside a generated main.go: it compares rbFloatPow, fast paths and all, with Float#**'s former body (the special cases, then rbFloatPowExact) on random pairs of every kind (decision 389).
+// powCheck goes beside a generated main.go: it compares rbFloatPow, fast paths and all, with Float#**'s former body (the special cases, then rbFloatPowExact) on random pairs of every kind (decision 390).
 const powCheck = `package main
 
 import (

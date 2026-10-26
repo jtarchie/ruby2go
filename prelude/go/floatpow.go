@@ -5,7 +5,7 @@ package prelude
 
 import "math"
 
-// rbFloatPow is Float#**, correctly rounded as MRI's libm pow() nearly always is (Go's math.Pow is often an ulp or more off); each fast path rounds only when it provably gives rbFloatPowExact's result (decision 389), and math.Pow keeps C99's special values and results past the normal range.
+// rbFloatPow is Float#**, correctly rounded as MRI's libm pow() nearly always is (Go's math.Pow is often an ulp or more off); each fast path rounds only when it provably gives rbFloatPowExact's result (decision 390), and math.Pow keeps C99's special values and results past the normal range.
 func rbFloatPow(x, y float64) float64 {
 	switch {
 	case y == 2: // MRI's own shortcut; one rounding already
@@ -121,7 +121,7 @@ func rbPowEdge(x, y, ph float64) (float64, bool) {
 	switch {
 	case ph > -708.395 && ph < 709.795: // either side of rbFloatPowExact's cutoffs
 		return 0, false
-	case ph >= -760 && ph <= 760: // ponytail: math.Pow's subnormal results differ from MRI's in 2 of 5 (decision 389); round them at 2^-1074 by adding 1.0 first (musl's exp specialcase)
+	case ph >= -760 && ph <= 760: // ponytail: math.Pow's subnormal results differ from MRI's in 2 of 5 (decision 390); round them at 2^-1074 by adding 1.0 first (musl's exp specialcase)
 		return math.Pow(x, y), true
 	}
 	r := math.Inf(1) // what math.Pow returns there, without its squaring loop's branch misses
@@ -231,7 +231,7 @@ func rbDDMul(ah, al, bh, bl float64) (float64, float64) {
 	return h, e - (h - p)
 }
 
-// Below is `go -C scripts/pow-tables run .` (decision 389): 1/c has 8 bits so z/c - 1 is exact, and rbPowLn2h (42 bits) and rbPowL1 (35 bits) times any k or n in range are exact.
+// Below is `go -C scripts/pow-tables run .` (decision 390): 1/c has 8 bits so z/c - 1 is exact, and rbPowLn2h (42 bits) and rbPowL1 (35 bits) times any k or n in range are exact.
 var rbPowLogT = [128][3]float64{ // 1/c, log(c) as a double-double, per interval of z
 	{0x1.6ap+00, -0x1.62c82f2b9c795p-02, -0x1.7b7af915300e5p-57},
 	{0x1.68p+00, -0x1.5d1bdbf5809cap-02, -0x1.4236383dc7fe1p-56},
