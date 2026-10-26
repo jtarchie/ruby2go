@@ -41,12 +41,12 @@ func main() {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		"_ = Enumerable_Sum_onArray[int](nil)",                         // rewritten
-		"_ = Enumerable_Sum[*Array[int], string](nil)",                 // E is not Array's element: left alone
-		"_ = Enumerable_Sum[*Hash[int, int], int](nil)",                // two-parameter container: left alone
-		"_ = Enumerable_Cnt[*Array[int], int](nil)",                    // E any cannot instantiate Array[E comparable]
+		"_ = Enumerable_Sum_onArray[int](nil)",                          // rewritten
+		"_ = Enumerable_Sum[*Array[int], string](nil)",                  // E is not Array's element: left alone
+		"_ = Enumerable_Sum[*Hash[int, int], int](nil)",                 // two-parameter container: left alone
+		"_ = Enumerable_Cnt[*Array[int], int](nil)",                     // E any cannot instantiate Array[E comparable]
 		"func Enumerable_Sum_onArray[E comparable](self *Array[E]) E {", // the copy
-		"return Enumerable_First_onArray[E](self)",                     // calls inside a copy specialize too
+		"return Enumerable_First_onArray[E](self)",                      // calls inside a copy specialize too
 		"func Enumerable_First_onArray[E comparable](self *Array[E]) E {",
 	} {
 		if !strings.Contains(out, want) {

@@ -584,23 +584,25 @@ func rbStrPlus(a, b String) String {
 }
 
 // rbConcat is a chain of String#+ in one allocation (decision 377); a long first operand goes through rbStrCat, which may extend it in place.
-func rbConcat(parts ...String) String {
-	if len(parts) == 1 { // the rest of a long first operand's chain: a temporary, so its identity is nobody's
-		return parts[0]
-	}
-	if len(parts[0]) >= 64 {
-		return rbStrPlus(parts[0], rbConcat(parts[1:]...))
-	}
+func rbConcat(first String, rest ...String) String {
 	n := 0
-	for _, p := range parts {
+	for _, p := range rest {
 		n += len(p)
 	}
-	if n == 0 {
+	var b strings.Builder
+	if len(first) >= 64 {
+		b.Grow(n)
+		for _, p := range rest {
+			b.WriteString(string(p))
+		}
+		return rbStrPlus(first, String(b.String()))
+	}
+	if n+len(first) == 0 {
 		return rbStrClone("")
 	}
-	var b strings.Builder
-	b.Grow(n)
-	for _, p := range parts {
+	b.Grow(n + len(first))
+	b.WriteString(string(first))
+	for _, p := range rest {
 		b.WriteString(string(p))
 	}
 	return String(b.String())

@@ -31,10 +31,10 @@ func TestOpenMemoTyped(t *testing.T) {
 	src := string(out)
 	for _, want := range []string{
 		"h := Hash_Meta_New[Hash_MetaI, Integer, Integer](",
-		"EachWithObject[*Array[Integer], Integer, *Hash[Integer, Integer]](",
-		"EachWithObject[*Array[Integer], Integer, *Hash[Integer, String]](",
-		"EachWithObject[*Array[Integer], Integer, *Array[Integer]](",
-		"Inject[*Array[Integer], Integer, *Hash[Boolean, Integer]](",
+		"EachWithObject_onArray[Integer, *Hash[Integer, Integer]](",
+		"EachWithObject_onArray[Integer, *Hash[Integer, String]](",
+		"EachWithObject_onArray[Integer, *Array[Integer]](",
+		"Inject_onArray[Integer, *Hash[Boolean, Integer]](", // specialized per container (decision 377)
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("main.go lacks %s", want)
