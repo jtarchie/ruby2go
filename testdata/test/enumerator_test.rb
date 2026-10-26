@@ -688,7 +688,7 @@ module EnumeratorTests
     end
   end
 
-  # A block that cannot keep its window gets one Array refilled per window (decision 384); one that can gets copies.
+  # A block that cannot keep its window gets one Array refilled per window (decision 386); one that can gets copies.
   class EnumWindowReuseTest < Minitest::Test
     def test_reading_blocks
       src = (1..10).to_a

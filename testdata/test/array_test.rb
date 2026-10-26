@@ -2809,7 +2809,7 @@ module ArrayTests
     end
   end
 
-  # Array#[]= stores in place when the index is in bounds and the Array not frozen, else the full path (decision 385).
+  # Array#[]= stores in place when the index is in bounds and the Array not frozen, else the full path (decision 387).
   class ArrayIndexStoreTest < Minitest::Test
     def test_store_paths
       a = [1, 2, 3]

@@ -65,7 +65,7 @@ func rbArrayIdxSet[E comparable](self *Array[E], i Integer, v E) E {
 	return v
 }
 
-// rbSplatVal is rbSplatAt for a reused window (decision 384): the element copied out, so a block param a block keeps
+// rbSplatVal is rbSplatAt for a reused window (decision 386): the element copied out, so a block param a block keeps
 // does not see the next window.
 func rbSplatVal[E comparable](a *Array[E], i int) *E {
 	if i >= len(a.s) {

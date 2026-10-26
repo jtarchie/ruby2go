@@ -6002,7 +6002,7 @@ module ControlTests
     end
   end
 
-  # times, upto, downto and an Integer Range literal's each run as plain Go loops (decision 385).
+  # times, upto, downto and an Integer Range literal's each run as plain Go loops (decision 387).
   class ControlCountedLoopTest < Minitest::Test
     def test_times_and_ranges
       seen = [] #: Array[Integer]

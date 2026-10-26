@@ -244,7 +244,7 @@ func rbCons[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bo
 }
 
 // rbConsView is each_cons(n) yielding one Array for every window, slid in place: the compiler picks it only for a
-// block that cannot keep, mutate or hand on the window (windowSafe, decision 384), so no copy per window.
+// block that cannot keep, mutate or hand on the window (windowSafe, decision 386), so no copy per window.
 func rbConsView[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
 	return func(yield func(*Array[E]) bool) {
 		win := &Array[E]{s: make([]E, 0, min(n, 4096))}
@@ -262,7 +262,7 @@ func rbConsView[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]
 	}
 }
 
-// rbSlicesView is each_slice(n) yielding one Array refilled for every slice, the last possibly shorter (decision 384).
+// rbSlicesView is each_slice(n) yielding one Array refilled for every slice, the last possibly shorter (decision 386).
 func rbSlicesView[E comparable](seq func(func(E) bool), n int) func(func(*Array[E]) bool) {
 	return func(yield func(*Array[E]) bool) {
 		cur := &Array[E]{s: make([]E, 0, min(n, 4096))}

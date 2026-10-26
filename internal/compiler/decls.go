@@ -31,7 +31,7 @@ func (c *Compiler) emitProgram() {
 		c.lineDirective(v.File, v.Line)
 		code := v.code
 		if !intEqGo {
-			code = strings.Replace(code, "const rbIntEqGo = true", "const rbIntEqGo = false", 1) // a program's own Integer#== (decision 385)
+			code = strings.Replace(code, "const rbIntEqGo = true", "const rbIntEqGo = false", 1) // a program's own Integer#== (decision 387)
 		}
 		c.w("%s\n\n", strings.TrimSpace(code))
 	}

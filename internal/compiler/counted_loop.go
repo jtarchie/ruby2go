@@ -6,7 +6,7 @@ import (
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
-// countedLoopHead: Go does not inline a loop body past its budget into an iterator, so each element of times/upto/downto/(a..b).each was an indirect closure call (decision 385).
+// countedLoopHead: Go does not inline a loop body past its budget into an iterator, so each element of times/upto/downto/(a..b).each was an indirect closure call (decision 387).
 func (f *fctx) countedLoopHead(n *parser.CallNode, e *entry, recv expr, codes []string, names blockParams, goParams []string) string {
 	m := e.M
 	if f.c.env.NoCountedLoop || m.Owner == nil || m.File == nil || !m.File.isPrelude() || len(goParams) > 1 {

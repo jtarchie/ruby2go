@@ -194,7 +194,7 @@ class Array < Object
   #: (Integer, E) -> E
   def []=(i, v)
     %x{
-    if uint64(i) < uint64(len(self.s)) && !self.frozen.Load() { // in bounds: small enough for Go to inline (decision 385)
+    if uint64(i) < uint64(len(self.s)) && !self.frozen.Load() { // in bounds: small enough for Go to inline (decision 387)
       self.s[i] = v
       return v
     }
@@ -877,7 +877,7 @@ class Array < Object
     if len(o.s) != len(self.s) {
       return false
     }
-    if a, ok := any(self.s).([]Integer); ok && rbIntEqGo { // Integer#== is Go's: no boxing per element (decision 385)
+    if a, ok := any(self.s).([]Integer); ok && rbIntEqGo { // Integer#== is Go's: no boxing per element (decision 387)
       return Boolean(slices.Equal(a, any(o.s).([]Integer)))
     }
     s, _ := seen.(*rbSeen)

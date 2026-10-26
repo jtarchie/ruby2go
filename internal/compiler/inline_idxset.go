@@ -5,7 +5,7 @@ import (
 	"go/token"
 )
 
-// inlineIdxSet: Array#[]= costs Go's inliner over its budget (the slow path's generic call alone is ~70), so a statement `Array_Op_idxSet[T](a, i, v)` gets the in-bounds store at the site and calls it only otherwise (decision 385).
+// inlineIdxSet: Array#[]= costs Go's inliner over its budget (the slow path's generic call alone is ~70), so a statement `Array_Op_idxSet[T](a, i, v)` gets the in-bounds store at the site and calls it only otherwise (decision 387).
 func inlineIdxSet(f *ast.File) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		var list []ast.Stmt

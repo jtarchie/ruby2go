@@ -2,7 +2,7 @@ package compiler
 
 import "github.com/danielgatis/go-ruby-prism/parser"
 
-// Decision 384: a block that provably cannot keep, mutate or hand on its window gets one Array refilled per window.
+// Decision 386: a block that provably cannot keep, mutate or hand on its window gets one Array refilled per window.
 
 // windowState is the compile's window-reuse memo.
 type windowState struct {

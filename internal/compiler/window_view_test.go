@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// windowBlockSafe is what decides decision 384's reuse; the minitest suite passes either way, so this pins which blocks get it.
+// windowBlockSafe is what decides decision 386's reuse; the minitest suite passes either way, so this pins which blocks get it.
 func TestWindowBlockSafe(t *testing.T) {
 	p, err := sharedParser()
 	if err != nil {

@@ -643,7 +643,7 @@ module Enumerable
     }, nil)
   }
 
-  # each_slice and each_cons for a block that cannot keep the window: one Array refilled per window (decision 384).
+  # each_slice and each_cons for a block that cannot keep the window: one Array refilled per window (decision 386).
   #: (Integer) { (Array[E]) -> void } -> void
   def __each_slice_view(n) = %x{
     if n <= 0 {
