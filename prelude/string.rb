@@ -175,7 +175,7 @@ class String < Object
   def size = %x{ Integer(rbStrLen(string(self))) }
 
   #: () -> Integer
-  def length = size
+  def length = %x{ Integer(rbStrLen(string(self))) }
 
   #: () -> Integer
   def bytesize = %x{ Integer(len(self)) }
@@ -353,12 +353,25 @@ class String < Object
       }
       return out
     }
-    parts := strings.Split(string(self), string(*sep))
-    for len(parts) > 0 && parts[len(parts)-1] == "" {
-      parts = parts[:len(parts)-1]
+    str, sp := string(self), string(*sep)
+    if sp == "" {
+      for _, p := range strings.Split(str, "") {
+        out.s = append(out.s, String(p))
+      }
+      return out
     }
-    for _, p := range parts {
-      out.s = append(out.s, rbNewStr(self, String(p)))
+    out.s = make([]String, 0, strings.Count(str, sp)+1) // straight into the result: no []string to copy from
+    for {
+      i := strings.Index(str, sp)
+      if i < 0 {
+        break
+      }
+      out.s = append(out.s, String(str[:i]))
+      str = str[i+len(sp):]
+    }
+    out.s = append(out.s, rbNewStr(self, String(str)))
+    for len(out.s) > 0 && out.s[len(out.s)-1] == "" {
+      out.s = out.s[:len(out.s)-1]
     }
     return out
   }

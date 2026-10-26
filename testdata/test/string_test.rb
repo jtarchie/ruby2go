@@ -534,6 +534,8 @@ B
       assert_equal ["a", "b"], "a--b--".split("--")
       assert_equal ["abc"], "abc".split("x")
       assert_equal 2, "a,b".split(",").size
+      whole = "whole"
+      refute whole.split(",").fetch(0).equal?(whole), "a part is a new String even when it is the whole receiver"
     end
 
     # split("") yields characters.

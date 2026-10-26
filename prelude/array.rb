@@ -832,6 +832,10 @@ class Array < Object
     parts := make([]string, len(self.s))
     for i, x := range self.s {
       // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
+      if s, ok := any(x).(String); ok { // MRI takes a String as is, without to_s; rbToS(x) would box it
+        parts[i] = string(s)
+        continue
+      }
       if a, ok := any(x).(Array_Any); ok {
         parts[i] = string(Array_Join(a._ToAny(), sep))
         continue
