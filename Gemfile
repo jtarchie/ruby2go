@@ -36,3 +36,6 @@ gem "bigdecimal", "~> 3.1" # liquid 4 requires it; a bundled gem since Ruby 3.4,
 
 # SQLite under MRI for example 122; rugaroo maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
 gem "sqlite3", "~> 2.10"
+
+# C calls under MRI for example 127; rugaroo maps `require "ffi"` onto its own port over Fiddle (decision 375).
+gem "ffi", "~> 1.17"
