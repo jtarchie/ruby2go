@@ -338,8 +338,8 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 		return code
 	}
 	// Go instantiations are invariant: Array[Integer] where
-	// Array[untyped] is expected (or back) is a converted copy.
-	if converts(to) && sameButUntyped(e.typ, to) && f.c.goType(e.typ) != f.c.goType(to) {
+	// Array[untyped] (or back, or Array[Numeric]: decision 387) is expected is a converted copy.
+	if converts(to) && (sameButUntyped(e.typ, to) || widerInstance(e.typ, to)) && f.c.goType(e.typ) != f.c.goType(to) {
 		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}
 	if code, ok := f.lenientClass(n, e, to); ok {
@@ -372,9 +372,6 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	}
 	if isAbstract(to) { // Go any: literals need wrapping, as for untyped
 		return f.coerce(n, e, TAny{})
-	}
-	if ec, ok := e.typ.(TClass); ok && ec.C == to.C && converts(to) && f.c.goType(e.typ) != f.c.goType(to) { // Array[Integer] into Array[Numeric]: Go generics are invariant, so a converted copy (decision 387)
-		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
 	}
 	if ec, ok := e.typ.(TClass); ok && ec.C.hashBase && ec.C.Super == to.C { // a @go_type subclass where its base is wanted: the embedded base
 		if f.lenient() && slices.ContainsFunc(to.Args, func(a Type) bool { return !isAny(a) }) { // Array[any] inside, Array[String] wanted (Homebrew's NamedArgs < Array with a fixed Elem): converted at run time
@@ -410,6 +407,11 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 		return f.c.goType(t) + "(" + code + ")"
 	}
 	return code
+}
+
+func widerInstance(t Type, to TClass) bool {
+	c, ok := t.(TClass)
+	return ok && c.C == to.C && fits(t, to)
 }
 
 // converts reports whether values of t convert between instantiations
