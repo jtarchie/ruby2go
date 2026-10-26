@@ -788,6 +788,40 @@ module NumberTests
       assert_equal "2.73552396956703e-07", ((7.5 ** -7.5)).inspect
     end
 
+    # Float#** is exact wherever the power is a Float, on every path (decision 389)
+    def test_float_pow_exact_powers
+      bad = 0
+      (2..40).each do |b|
+        k = 1
+        while b ** k < 2 ** 53
+          bad += 1 if b.to_f ** k.to_f != (b ** k).to_f
+          bad += 1 if (-b).to_f ** k.to_f != ((-b) ** k).to_f
+          bad += 1 if b.to_f ** -k.to_f != 1.0 / (b ** k).to_f && b & (b - 1) == 0
+          k += 1
+        end
+      end
+      (1..1074).each { |k| bad += 1 if 2.0 ** -k.to_f != Math.ldexp(1.0, -k) }
+      (1..1023).each { |k| bad += 1 if 2.0 ** k.to_f != Math.ldexp(1.0, k) }
+      assert_equal 0, bad
+    end
+
+    # Float#** past the Float range, and large exponents in range
+    def test_float_pow_large_exponents
+      assert_equal "8.104774656527117e-177", ((2.0 / 3.0) ** 1000.0).inspect
+      assert_equal "2.3365249867684727e-308", ((2.0 / 3.0) ** 1747.0).inspect
+      assert_equal "1.9423975992963885e+130", (1.0000001 ** 3.0e9).inspect
+      assert_equal "1.43959991515206e+304", (0.999 ** -700000.0).inspect
+      assert_equal "3.4336838202925124e+30", (3.0 ** 64.0).inspect
+      assert_equal "0.002243200793301555", (1.1 ** -64.0).inspect
+      assert_equal "-405.26506222962956", ((-1.1) ** 63.0).inspect
+      assert_equal "-0.0", ((-0.5) ** 2001.0).inspect
+      assert_equal "0.0", ((-0.5) ** 2000.0).inspect
+      assert_equal "-Infinity", ((-2.0) ** 2001.0).inspect
+      assert_equal "Infinity", (2.0 ** 2000.0).inspect
+      assert_equal "-Infinity", ((-0.5) ** -2001.0).inspect
+      assert_equal "0.0", (1e-300 ** 3.0).inspect
+    end
+
     # Float#round rounds half away from zero
     def test_float_round_rounds_half_away
       assert_equal 3, 2.5.round
