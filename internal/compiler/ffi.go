@@ -59,7 +59,7 @@ func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) f
 		c.errorf(f, at, "FFI::Library#attach_function needs literal Symbol types, read at compile time (decision 375)")
 	}
 	name := s.Unescaped.Value
-	for seen := 0; seen < 32; seen++ {
+	for range 32 {
 		next, ok := c.ffiAliases[cls][name]
 		if !ok {
 			break
@@ -124,10 +124,20 @@ func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *p
 		}
 		return
 	}
+	c.attachFFI(ctx, f, cls, n, scope)
+}
+
+// attachFFI synthesizes the typed module method for a literal attach_function.
+func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class) {
+	args := callArgs(n)
 	if len(args) < 3 {
 		c.errorf(f, n, "FFI::Library#attach_function needs a name, argument types and a return type")
 	}
-	name, rest := sym(0), args[1:]
+	nameSym, ok := args[0].(*parser.SymbolNode)
+	if !ok {
+		c.errorf(f, n, "FFI::Library#attach_function needs literal Symbols, read at compile time (decision 375)")
+	}
+	name, rest := nameSym.Unescaped.Value, args[1:]
 	switch rest[0].(type) {
 	case *parser.SymbolNode, *parser.StringNode: // attach_function :ruby_name, :c_name, [...], ret
 		rest = rest[1:]
@@ -175,12 +185,12 @@ func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *p
 		call = fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(n)}, exprs...), ", "))
 	}
 	retType := ffiRubyType(ret)
-	switch {
-	case rp.kind == "ptr":
+	switch rp.kind {
+	case "ptr":
 		call, retType = "::FFI::Pointer.__wrap("+call+")", "FFI::Pointer"
-	case rp.kind == "enum":
+	case "enum":
 		call, retType = fmt.Sprintf("__ffi_enum_out(:%s, %s)", rp.name, call), "untyped"
-	case rp.kind == "callback":
+	case "callback":
 		c.errorf(f, n, "FFI::Library#attach_function: a callback cannot be a return type (decision 375)")
 	}
 	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = %s\n",
