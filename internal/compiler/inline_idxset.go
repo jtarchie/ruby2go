@@ -7,6 +7,9 @@ import (
 
 // inlineIdxSet: Array#[]= costs Go's inliner over its budget (the slow path's generic call alone is ~70), so a statement `Array_Op_idxSet[T](a, i, v)` gets the in-bounds store at the site and calls it only otherwise (decision 387).
 func inlineIdxSet(f *ast.File) {
+	if !preludeIdxSet(f) {
+		return // a program's own `def []=`: every store must call it, as in MRI
+	}
 	ast.Inspect(f, func(n ast.Node) bool {
 		var list []ast.Stmt
 		switch b := n.(type) {
@@ -26,6 +29,25 @@ func inlineIdxSet(f *ast.File) {
 		}
 		return true
 	})
+}
+
+// preludeIdxSet is whether Array_Op_idxSet is the prelude's body (its slow path calls rbArrayIdxSet), not a program's override.
+func preludeIdxSet(f *ast.File) bool {
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Recv != nil || fd.Name.Name != "Array_Op_idxSet" || fd.Body == nil {
+			continue
+		}
+		found := false
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok && isIdent(c.Fun, "rbArrayIdxSet") {
+				found = true
+			}
+			return !found
+		})
+		return found
+	}
+	return false
 }
 
 func idxSetFast(s ast.Stmt) ast.Stmt {
