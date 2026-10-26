@@ -30,3 +30,77 @@ func TestIncluderClassWritesAnyForm(t *testing.T) {
 		})
 	}
 }
+
+// Values read back out of storage (kramdown's env save/restore) leave @tree to its typed writes; an untyped return (liquid's Cycle @name) still declares untyped (decision 392).
+func TestStoredIvarTyped(t *testing.T) {
+	gem := `class Node
+  attr_reader :name, :kids
+  def initialize(name)
+    @name = name
+    @kids = []
+  end
+end
+
+class Parse
+  def self.it(s) = s.start_with?("'") ? s[1..] : Node.new(s)
+end
+
+class Tree
+  def initialize
+    reset_env
+  end
+
+  def reset_env(opts = {})
+    opts = {stack: []}.merge(opts)
+    @tree = opts[:tree]
+    @stack = opts[:stack]
+  end
+
+  def save_env = [@tree, @stack]
+
+  def restore_env(env)
+    @tree, @stack = *env
+  end
+
+  def open(el)
+    @stack.push([@tree, 1])
+    @tree = el
+  end
+
+  def close
+    @tree, _ = *@stack.pop
+  end
+
+  def nested(el)
+    env = save_env
+    reset_env
+    open(el)
+    out = @tree.name
+    restore_env(env)
+    out
+  end
+
+  def label(s)
+    @label = Parse.it(s)
+    @label = s.upcase if s.empty?
+    @label
+  end
+end
+`
+	app := "require \"tree\"\nt = Tree.new\nt.open(Node.new(\"a\"))\nputs t.nested(Node.new(\"b\"))\nt.close\np t.label(\"'x\")\n"
+	out, err := compileGemApp(t, map[string]string{"tree.rb": gem}, app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, decl, ok := strings.Cut(out, "type Tree struct {")
+	if !ok {
+		t.Fatal("Tree not emitted")
+	}
+	decl, _, _ = strings.Cut(decl, "\n}\n")
+	fields := strings.Join(strings.Fields(decl), " ")
+	for _, want := range []string{"tree *Node", "label any"} {
+		if !strings.Contains(fields, want) {
+			t.Errorf("Tree's fields lack %q:\n%s", want, decl)
+		}
+	}
+}

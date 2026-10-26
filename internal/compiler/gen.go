@@ -10,6 +10,8 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
+	storageWrite   bool                          // discovery: the ivar write generating stores a value read out of a container (decision 392)
+	destructuring  bool                          // discovery: a multiple assignment's targets take fields of a container (decision 392)
 	aliasSrc       map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)
 	noStrIndexSet  bool                          // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
 	noFuse         *parser.CallNode              // the `h[k] = (h[k] || d) op v` whose miss arm is generating unfused (genFusedIndexAssign)

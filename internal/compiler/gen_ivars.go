@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"cmp"
 	"maps"
 	"slices"
 
@@ -150,6 +151,7 @@ func (c *Compiler) inferredMethods() []*Method {
 // discoverIvars dry-runs struct class method bodies to learn ivar types
 // from assignments.
 func (c *Compiler) discoverIvars() {
+	c.untypedIvars = nil
 	c.declareGemModuleIvars()
 	c.declareComputedIvars()
 	for range 2 {
@@ -181,6 +183,14 @@ func (c *Compiler) discoverIvars() {
 			c.declareIvar(k, d.name, c.resolveType(d.rbs, typeScope{class: d.cls, lex: d.scope, srcPos: srcPos{d.cls.File, d.line}}), d.cls.File, d.line)
 		}
 	}
+	for _, k := range slices.SortedFunc(maps.Keys(c.untypedIvars), func(a, b ivarKey) int {
+		return cmp.Or(cmp.Compare(a.cls.Name, b.cls.Name), cmp.Compare(a.name, b.name))
+	}) {
+		if p := c.untypedIvars[k]; c.findIvar(k.cls, k.name) == nil { // no typed write: untyped, as its first write declared it before (decision 392)
+			c.declareIvar(k.cls, k.name, TAny{}, p.File, p.Line)
+		}
+	}
+	c.untypedIvars = nil
 	for _, g := range c.gemNilIvars { // only ever nil in what is compiled (a gem's pruned writes, decision 169; a user's nil-only ivar, 183)
 		if c.findIvar(g.cls, g.name) == nil {
 			c.warnAt(g.srcPos, "instance variable %s is only ever nil, so it is untyped (`# @rbs %s: T` for static calls; decision 183)", g.name, g.name)
@@ -246,6 +256,22 @@ func eachIvarName(n parser.Node, fn func(string, parser.Node)) {
 }
 
 // gemNilIvar is a gem class's ivar discovery saw assigned only nil (decision 169).
+// pendingIvar is an ivar discovery has seen only untyped writes to (decision 392): its stand-in and first write.
+type pendingIvar struct {
+	iv *Ivar
+	srcPos
+}
+
+// pendingIvar finds cls's (or an ancestor's) stand-in for an ivar only untyped values were written to.
+func (c *Compiler) pendingIvar(cls *Class, name string) *Ivar {
+	for k := cls; k != nil; k = k.Super {
+		if p := c.untypedIvars[ivarKey{k, name}]; p != nil {
+			return p.iv
+		}
+	}
+	return nil
+}
+
 type gemNilIvar struct {
 	cls  *Class
 	name string

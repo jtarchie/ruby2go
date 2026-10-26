@@ -49,7 +49,9 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	}
 	f.unnarrow(attrNarrowKey(strings.TrimPrefix(n.Name, "@")))
 	f.unnarrow(ivarNarrowKey(n.Name))
+	f.storageWrite = f.discover && isAny(decl) && f.lenient() && f.storageRead(n.Value)
 	iv := f.ivar(n, n.Name, decl)
+	f.storageWrite = false
 	if f.discover && ann == nil && isEmptyLit(n.Value) {
 		iv.open = true
 	}
@@ -271,6 +273,11 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 		return iv
 	}
 	iv := f.c.findIvar(f.owner, name)
+	if iv == nil {
+		if p := f.untypedIvar(n, name, assigned); p != nil {
+			return p
+		}
+	}
 	f.nilableOnUntyped(iv, assigned)
 	if iv == nil && f.owner.IsModule && f.lenient() { // gem code: an undeclared module ivar is untyped (decision 172)
 		iv = f.c.declareIvar(f.owner, name, TAny{}, f.f, f.f.line(n.GetLocation().StartOffset))
@@ -298,6 +305,66 @@ func (f *fctx) ivar(n parser.Node, name string, assigned Type) *Ivar {
 	return iv
 }
 
+// untypedIvar is a gem ivar discovery has so far seen written only untyped values read back out of storage (an
+// element of an untyped container: `@tree, @src = *@stack.pop`, `@tree = opts[:tree]`): a stand-in, untyped, that
+// reads and writes but declares nothing, so a typed write anywhere in the class declares it whatever the method
+// order, and the stored values convert where they land (decision 225). Any other untyped value (a method's untyped
+// return: liquid's `@name = Expression.parse(m)`, which may be a VariableLookup) declares it untyped, as the first
+// write always did; one only storage wrote is declared untyped after discovery (decision 392).
+func (f *fctx) untypedIvar(n parser.Node, name string, assigned Type) *Ivar {
+	if !f.discover || !f.lenient() || f.owner.IsModule || !f.owner.isStruct() {
+		return nil
+	}
+	stored := assigned != nil && isAny(assigned) && f.storageWrite
+	if p := f.c.pendingIvar(f.owner, name); p != nil && (assigned == nil || isNil(assigned) || stored) {
+		return p
+	}
+	if !stored {
+		return nil
+	}
+	if f.c.untypedIvars == nil {
+		f.c.untypedIvars = map[ivarKey]*pendingIvar{}
+	}
+	p := &pendingIvar{iv: &Ivar{Name: name, Type: TAny{}, Owner: f.owner}, srcPos: srcPos{f.f, f.f.line(n.GetLocation().StartOffset)}}
+	f.c.untypedIvars[ivarKey{f.owner, name}] = p
+	return p.iv
+}
+
+// storageRead is a value read back out of a container (decision 392): an element (`h[k]`, `a.pop`, `a.last`, ...)
+// of an untyped value or an Array or Hash.
+func (f *fctx) storageRead(n parser.Node) bool {
+	c, ok := n.(*parser.CallNode)
+	if !ok || c.Receiver == nil {
+		return false
+	}
+	switch c.Name {
+	case "[]", "fetch", "dig", "pop", "shift", "first", "last", "delete":
+	default:
+		return false
+	}
+	t := stripOpt(f.probeType(c.Receiver, nil))
+	if k, ok := t.(TClass); ok {
+		return k.C.RubyName == "Array" || k.C.RubyName == "Hash"
+	}
+	return isAny(t) || isNil(t) // nil: an ivar discovery has not typed yet
+}
+
+// storageDestructure is a multiple assignment's value whose fields are read back out of storage: a held Array
+// (`a, b = env`, `*env`) or a storageRead (`a, b = *@stack.pop`).
+func (f *fctx) storageDestructure(n parser.Node) bool {
+	if a, ok := n.(*parser.ArrayNode); ok && len(a.Elements) == 1 {
+		n = a.Elements[0]
+	}
+	if s, ok := n.(*parser.SplatNode); ok {
+		n = s.Expression
+	}
+	switch n.(type) {
+	case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode:
+		return true
+	}
+	return f.storageRead(n)
+}
+
 // nilIvar notes a discovery-time `@x = nil` where @x has no type yet (decision 182): a subclass that typed it first
 // gives it up to this class, nilable; otherwise a later subclass assignment declares it here.
 func (f *fctx) nilIvar(name string, assigned Type) *Ivar {
@@ -317,7 +384,7 @@ func (f *fctx) ivarCode(iv *Ivar) string { return ivarPath(f.selfCode, iv) }
 // yet (`unless @x; @x = ...`): it reads nil, and the ivar is declared T? by
 // the write that follows, since MRI's reads nil there (decision 148).
 func (f *fctx) readsUnassigned(name string) bool {
-	if !f.discover || f.owner == nil || f.c.findIvar(f.owner, name) != nil { // a module's too (decision 317)
+	if !f.discover || f.owner == nil || f.c.findIvar(f.owner, name) != nil || f.c.pendingIvar(f.owner, name) != nil { // a module's too (decision 317)
 		return false
 	}
 	if f.c.ivarReadFirst == nil {

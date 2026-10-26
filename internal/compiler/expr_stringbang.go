@@ -420,7 +420,11 @@ func (f *fctx) stringBangTarget(n parser.Node, recv parser.Node) (parser.Node, f
 		}, true
 	case *parser.InstanceVariableReadNode:
 		return t, func(e expr) {
-			iv := f.ivar(t, t.Name, e.typ)
+			typ := e.typ
+			if f.discover && f.lenient() && f.c.findIvar(f.owner, t.Name) == nil { // the edit stores back what the ivar held, untyped: it declares nothing (decision 392)
+				typ = TAny{}
+			}
+			iv := f.ivar(t, t.Name, typ)
 			f.emit("%s = %s", f.ivarCode(iv), f.coerce(n, e, iv.Type))
 			f.markIvar(iv)
 		}, true

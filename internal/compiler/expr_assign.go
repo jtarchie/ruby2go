@@ -282,7 +282,10 @@ func (f *fctx) genMultiWrite(n *parser.MultiWriteNode) expr {
 	} else {
 		f.emit("%s := %s", tmp, v.code)
 	}
+	saved := f.destructuring
+	f.destructuring = f.discover && f.lenient() && f.storageDestructure(n.Value)
 	f.destructureInto(n, expr{code: tmp, typ: v.typ}, n.Lefts, n.Rest, n.Rights)
+	f.destructuring = saved
 	if len(n.Lefts) == 0 && len(n.Rights) == 0 && isBareRest(n.Rest) { // `(*) = x` reads nothing of x
 		f.emit("_ = %s", tmp)
 	}
@@ -522,7 +525,9 @@ func (f *fctx) assignTarget(target parser.Node, v expr) {
 	case *parser.LocalVariableTargetNode:
 		f.assignLocal(t, t.Name, v, nil)
 	case *parser.InstanceVariableTargetNode:
+		f.storageWrite = f.destructuring
 		iv := f.ivar(t, t.Name, v.typ)
+		f.storageWrite = false
 		f.emit("%s = %s", f.ivarCode(iv), f.coerce(t, v, iv.Type))
 		f.markIvar(iv)
 	case *parser.MultiTargetNode:
