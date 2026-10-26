@@ -43,18 +43,9 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	} else if f.discover {
 		exp = f.openType(n.Value) // `@a = Array.new(n, nil)` is open as `@a = []` is
 	}
-	val := f.genExpr(n.Value, exp)
-	decl := val.typ
-	if ann != nil {
-		val, decl = f.annotatedIvarValue(n, val, ann)
-	} else if val.provisional { // bottom until converged (decision 383): a round's untyped call result neither declares nor widens the ivar
-		iv := f.c.findIvar(f.owner, n.Name)
-		if iv == nil && f.discover {
-			return val
-		}
-		if iv != nil {
-			decl = iv.Type
-		}
+	val, decl := f.ivarWriteValue(n, f.genExpr(n.Value, exp), ann)
+	if decl == nil {
+		return val
 	}
 	f.unnarrow(attrNarrowKey(strings.TrimPrefix(n.Name, "@")))
 	f.unnarrow(ivarNarrowKey(n.Name))
@@ -71,7 +62,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	if !fitsValue(val, iv.Type) && f.lenient() && sameButUntyped(val.typ, stripOpt(iv.Type)) { // so does a gem's Array[untyped] (Homebrew's `@deps = graph.tsort_with_cycles { ... } - [@cask]`, decision 374)
 		val = expr{code: f.coerce(n, val, stripOpt(iv.Type)), typ: stripOpt(iv.Type)}
 	}
-	if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) && !val.provisional { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
+	if !fitsValue(val, iv.Type) && (!f.lenient() || !isAny(val.typ)) { // a gem's `@v = T.let(v, T.untyped)` converts where it lands (decision 225)
 		f.errorf(n, "cannot assign %s to %s, which is %s", val.typ, n.Name, iv.Type)
 	}
 	code := f.ivarCode(iv)
@@ -85,6 +76,30 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 		return expr{code: derefOpt(code, iv.Type), typ: stripOpt(iv.Type), done: true}
 	}
 	return expr{code: code, typ: iv.Type, done: true}
+}
+
+// ivarWriteValue is the value an ivar write stores and the type it declares; a nil type: the write declares nothing.
+func (f *fctx) ivarWriteValue(n *parser.InstanceVariableWriteNode, val expr, ann Type) (expr, Type) {
+	switch {
+	case ann != nil:
+		return f.annotatedIvarValue(n, val, ann)
+	case val.provisional:
+		return f.provisionalIvarValue(n, val)
+	}
+	return val, val.typ
+}
+
+// provisionalIvarValue is bottom until converged (decision 383): a round's provisional value neither declares an ivar
+// (discovery leaves it to its other writes; nil decl) nor widens one (cast to its type, as 358 does for a local).
+func (f *fctx) provisionalIvarValue(n *parser.InstanceVariableWriteNode, val expr) (expr, Type) {
+	iv := f.c.findIvar(f.owner, n.Name)
+	switch {
+	case iv != nil:
+		return expr{code: f.coerce(n, val, iv.Type), typ: iv.Type}, iv.Type
+	case f.discover:
+		return val, nil
+	}
+	return val, val.typ
 }
 
 // genIvarRead is an @x read: narrowed, an includer's by name, nil before discovery types it, else the field.

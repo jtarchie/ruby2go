@@ -783,19 +783,26 @@ func (c *Compiler) updateInference(inf *inference) {
 			inf.none[k] = true
 		}
 	}
-	if !inf.changed { // converged with a parameter whose method's untyped returns a round dropped still untyped: the drop
-		for k := range c.roundDrops { // was never justified, so the next rounds join that method's returns honestly (decision 383)
-			if inf.none[k] {
-				if inf.noDrop == nil {
-					inf.noDrop = map[pendingKey]bool{}
-				}
-				inf.noDrop[k], inf.changed = true, true
-			}
-		}
-	}
+	c.stopUnjustifiedDrops(inf)
 	if c.env.InferDebug {
 		for _, k := range slices.Sorted(maps.Keys(next)) {
 			fmt.Fprintf(os.Stderr, "rugaroo: inferred %s: %s\n", k, next[k])
+		}
+	}
+}
+
+// stopUnjustifiedDrops: rounds that converged with a parameter still untyped whose method's untyped returns a round
+// dropped never justified the drop, so the next rounds join that method's returns honestly (decision 383).
+func (c *Compiler) stopUnjustifiedDrops(inf *inference) {
+	if inf.changed {
+		return
+	}
+	for k := range c.roundDrops {
+		if inf.none[k] {
+			if inf.noDrop == nil {
+				inf.noDrop = map[pendingKey]bool{}
+			}
+			inf.noDrop[k], inf.changed = true, true
 		}
 	}
 }
