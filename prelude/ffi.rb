@@ -61,7 +61,7 @@ module FFI
     IS_WINDOWS = false #: bool
     LONG_SIZE = 64 #: Integer
     ADDRESS_SIZE = 64 #: Integer
-    LIBC = RUBY_PLATFORM.include?("darwin") ? "libSystem.B.dylib" : "libc.so.6" #: String
+    LIBC = RUBY_PLATFORM.include?("darwin") ? "libc.dylib" : "libc.so.6" #: String
   end
 
   module LastError
@@ -1169,7 +1169,7 @@ module FFI
   end
 
   module Library
-    LIBC = RUBY_PLATFORM.include?("darwin") ? "/usr/lib/libSystem.B.dylib" : "libc.so.6"
+    LIBC = Platform::LIBC
 
     #: (*untyped) -> Array[Fiddle::Handle?]
     def ffi_lib(*names)
@@ -1187,16 +1187,27 @@ module FFI
           end
         end
       end
-      @ffi_libs = libs
+      __libs.replace(libs)
     end
 
     #: () -> Array[Fiddle::Handle?]
-    def ffi_libraries = (@ffi_libs ||= [Fiddle.dlopen(nil)])
+    def ffi_libraries
+      libs = __libs
+      raise LoadError, "no library specified" if libs.empty?
+
+      libs
+    end
 
     #: () -> Hash[Symbol, [Array[Symbol], Symbol]]
     def __cbs
       @ffi_callbacks ||= {} #: Hash[Symbol, [Array[Symbol], Symbol]]
       @ffi_callbacks
+    end
+
+    #: () -> Array[Fiddle::Handle?]
+    def __libs
+      @ffi_libs ||= [] #: Array[Fiddle::Handle?]
+      @ffi_libs
     end
 
     #: () -> Hash[Symbol, Enum]
